@@ -100,16 +100,17 @@ DEFINES += $(ENV_DEFINES) $(MAKE_DEFINES)
 RISCV_WARNINGS += -Wunused-variable -Wall -Wextra -Wno-unused-command-line-argument # -Werror
 
 # LLVM Flags
-LLVM_FLAGS     ?= --target=riscv64-unknown-elf -march=rv64gcv_zfh_zvfh0p1 -menable-experimental-extensions -mabi=$(RISCV_ABI) -mno-relax -fuse-ld=lld
-LLVM_V_FLAGS   ?= -fno-vectorize -mllvm -scalable-vectorization=off -mllvm -riscv-v-vector-bits-min=0 -Xclang -target-feature -Xclang +no-optimized-zero-stride-load
-RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -I/home/wangwy/openproject/ara/install/riscv-gcc/riscv64-unknown-elf/include -L/home/wangwy/openproject/ara/install/riscv-gcc/riscv64-unknown-elf/lib -std=gnu99 -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
+LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) -mno-relax -fuse-ld=lld
+LLVM_V_FLAGS   ?= -fno-vectorize -mllvm -scalable-vectorization=off -mllvm -riscv-v-vector-bits-min=0 -mno-implicit-float
+RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
 ifeq ($(LINUX),1)
 RISCV_CCFLAGS  ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
 RISCV_LDFLAGS  ?= -lm -lstdc++
 RISCV_CXXFLAGS ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
 else
 RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99
-RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld
+RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
 endif
 RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99
 RISCV_CXXFLAGS ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections

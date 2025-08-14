@@ -68,17 +68,16 @@ toolchains: toolchain-gcc toolchain-llvm
 
 toolchain-llvm: toolchain-llvm-main toolchain-llvm-newlib toolchain-llvm-rt
 
-toolchain-gcc: git-submodules Makefile
+toolchain-gcc: #git-submodules Makefile
 	mkdir -p $(GCC_INSTALL_DIR)
 	# Apply patch on riscv-binutils
-	cd $(CURDIR)/toolchain/riscv-gnu-toolchain/riscv-binutils
-	cd $(CURDIR)/toolchain/riscv-gnu-toolchain && rm -rf build && mkdir -p build && cd build && \
-	CC=$(CC) CXX=$(CXX) ../configure --prefix=$(GCC_INSTALL_DIR) --with-arch=rv64gcv --with-cmodel=medlow --enable-multilib && \
-	$(MAKE) MAKEINFO=true -j4
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/gcc && rm -rf build && mkdir -p build && cd build && \
+	CC=$(CC) CXX=$(CXX) ../configure --prefix=$(GCC_INSTALL_DIR) --with-arch=rv64gcv --with-abi=lp64d --with-cmodel=medlow --enable-multilib && \
+	$(MAKE) MAKEINFO=true -j
 
-toolchain-llvm-main: git-submodules Makefile
+toolchain-llvm-main: #git-submodules Makefile
 	mkdir -p $(LLVM_INSTALL_DIR)
-	cd $(ROOT_DIR)/toolchain/riscv-llvm && rm -rf build && mkdir -p build && cd build && \
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/riscv-llvm && rm -rf build && mkdir -p build && cd build && \
 	$(CMAKE) -G Ninja  \
 	-DCMAKE_INSTALL_PREFIX=$(LLVM_INSTALL_DIR) \
 	-DLLVM_ENABLE_PROJECTS="clang;lld" \
@@ -88,11 +87,11 @@ toolchain-llvm-main: git-submodules Makefile
 	-DLLVM_DEFAULT_TARGET_TRIPLE=riscv64-unknown-elf \
 	-DLLVM_TARGETS_TO_BUILD="RISCV" \
 	../llvm
-	cd $(ROOT_DIR)/toolchain/riscv-llvm && \
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/riscv-llvm && \
 	$(CMAKE) --build build --target install
 
-toolchain-llvm-newlib: git-submodules Makefile toolchain-llvm-main
-	cd ${ROOT_DIR}/toolchain/newlib && rm -rf build && mkdir -p build && cd build && \
+toolchain-llvm-newlib: #git-submodules Makefile toolchain-llvm-main
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/newlib && rm -rf build && mkdir -p build && cd build && \
 	../configure --prefix=${LLVM_INSTALL_DIR} \
 	--target=riscv64-unknown-elf \
 	CC_FOR_TARGET="${LLVM_INSTALL_DIR}/bin/clang -march=rv64gc -mabi=lp64d -mno-relax -mcmodel=medany -Wno-error-implicit-function-declaration -Wno-error=int-conversion" \
@@ -103,9 +102,12 @@ toolchain-llvm-newlib: git-submodules Makefile toolchain-llvm-main
 	make && \
 	make install
 
-toolchain-llvm-rt: git-submodules Makefile toolchain-llvm-main toolchain-llvm-newlib
-	cd $(ROOT_DIR)/toolchain/riscv-llvm/compiler-rt && rm -rf build && mkdir -p build && cd build && \
-	$(CMAKE) $(ROOT_DIR)/toolchain/riscv-llvm/compiler-rt -G Ninja \
+toolchain-llvm-rt:# git-submodules Makefile toolchain-llvm-main toolchain-llvm-newlib
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/riscv-llvm/compiler-rt && rm -rf build && mkdir -p build && cd build && \
+	$(CMAKE) /home/wangwy/openproject/riscv-gnu-toolchain/riscv-llvm/compiler-rt -G Ninja \
+	-DCMAKE_SYSTEM_NAME=Generic \
+	-DCMAKE_SYSTEM_PROCESSOR=riscv64 \
+	-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
 	-DCMAKE_INSTALL_PREFIX=$(LLVM_INSTALL_DIR) \
 	-DCMAKE_C_COMPILER_TARGET="riscv64-unknown-elf" \
 	-DCMAKE_ASM_COMPILER_TARGET="riscv64-unknown-elf" \
@@ -127,9 +129,9 @@ toolchain-llvm-rt: git-submodules Makefile toolchain-llvm-main toolchain-llvm-ne
 	-DCMAKE_NM=$(LLVM_INSTALL_DIR)/bin/llvm-nm \
 	-DCMAKE_RANLIB=$(LLVM_INSTALL_DIR)/bin/llvm-ranlib \
 	-DLLVM_CONFIG_PATH=$(LLVM_INSTALL_DIR)/bin/llvm-config
-	cd $(ROOT_DIR)/toolchain/riscv-llvm/compiler-rt && \
-	$(CMAKE) --build build --target install && \
-	ln -s $(LLVM_INSTALL_DIR)/lib/linux $(LLVM_INSTALL_DIR)/lib/clang/20/lib
+	cd /home/wangwy/openproject/riscv-gnu-toolchain/riscv-llvm/compiler-rt && \
+	$(CMAKE) --build build --target install
+	#ln -s $(LLVM_INSTALL_DIR)/lib/linux $(LLVM_INSTALL_DIR)/lib/clang/22/lib
 
 # Spike
 .PHONY: riscv-isa-sim riscv-isa-sim-mod
