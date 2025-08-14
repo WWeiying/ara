@@ -13,7 +13,6 @@ import "DPI-C" context function byte read_section(input longint address, inout b
 `define STRINGIFY(x) `"x`"
 
 module ara_tb;
-
   /*****************
    *  Definitions  *
    *****************/
@@ -23,16 +22,22 @@ module ara_tb;
   timeprecision 1ps;
   `endif
 
+  initial begin
+    $fsdbDumpfile("ara_tb.fsdb");
+    $fsdbDumpvars(0, ara_tb);
+    $fsdbDumpMDA();
+  end
+
   `ifdef NR_LANES
   localparam NrLanes = `NR_LANES;
   `else
-  localparam NrLanes = 0;
+  localparam NrLanes = 8;
   `endif
 
   `ifdef VLEN
   localparam VLEN = `VLEN;
   `else
-  localparam VLEN = 0;
+  localparam VLEN = 256;
   `endif
 
   localparam ClockPeriod  = 1ns;

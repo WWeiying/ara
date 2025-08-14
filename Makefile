@@ -180,8 +180,8 @@ ${VERIL_INSTALL_DIR}: Makefile
 
 # RISC-V Tests
 riscv_tests:
-	make -C apps -j4 riscv_tests && \
-	make -C hardware riscv_tests_simc
+	make -C apps -j64 riscv_tests && \
+	make -C hardware -j64 riscv_tests_simc
 
 # Initialize RVV-bench benchmark suite
 rvv-bench:
