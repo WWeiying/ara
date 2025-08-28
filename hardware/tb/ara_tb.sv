@@ -17,15 +17,16 @@ module ara_tb;
    *  Definitions  *
    *****************/
 
-  `ifndef VERILATOR
-  timeunit      1ns;
-  timeprecision 1ps;
-  `endif
+//  `ifndef VERILATOR
+//  timeunit      1ns;
+//  timeprecision 1ps;
+//  `endif
 
   initial begin
     $fsdbDumpfile("ara_tb.fsdb");
     $fsdbDumpvars(0, ara_tb);
-    $fsdbDumpMDA();
+    $fsdbDumpMDA(0, ara_tb);
+    $fsdbDumpvars("+all");
   end
 
   `ifdef NR_LANES
