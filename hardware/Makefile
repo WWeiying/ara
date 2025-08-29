@@ -40,7 +40,6 @@ bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t nots
 
 TIMESCALE := -timescale=1ns/100fs
 SIMULATOR_OPT := -full64 -sverilog +v2k -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
-CONFIG := +define+NR_LANES=$(nr_lanes) +define+VLEN=$(vlen)
 SIMULATOR_DEF := +define+SIMULATION +define+no_warning +define+TSMC_NO_WARNING
 SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
@@ -50,12 +49,11 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=/home/wangwy/openproject/ara/apps/bin/$(app)
 
-
 compile: clean ../Bender.yml
 	@echo "ARA NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
 	@mkdir -p ./sim
-	@cd ./sim && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(CONFIG) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
+	@cd ./sim && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
 sim: compile
 	@export NOVAS_FSDB_QUIET=1
