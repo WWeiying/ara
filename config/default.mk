@@ -1,2 +1,2 @@
-nr_lanes ?= 8
-vlen ?= 256
+nr_lanes ?= 4
+vlen ?= 1024
