@@ -26,10 +26,21 @@ library        ?= work
 dpi_library    ?= work-dpi
 # verilator library
 vcs_library  ?= $(buildpath)/vcs
+# Path to the binaries
+app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
+# Path to ideal dispatcher vtraces
+vtrace_path    ?= $(abspath $(ROOT_DIR)/../apps/ideal_dispatcher/vtrace)
+
+ifeq ($(ideal_dispatcher), 1)
+  vtrace       = $(vtrace_path)/$(app).vtrace
+  bender_defs += --define IDEAL_DISPATCHER=1 --define VTRACE="$(vtrace)" --define N_VINSN=$(shell wc -l $(vtrace) | cut -d " " -f 1)
+  ideal        = "_ideal"
+endif
 
 # Bender
 # Defines
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
@@ -37,6 +48,14 @@ bender_targs_simc     := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test -t verilator
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis
+
+ifdef app
+ifeq ($(ideal_dispatcher), 1)
+	preload ?= "$(app_path)/$(app).ideal"
+else
+	preload ?= "$(app_path)/$(app)"
+endif
+endif
 
 TIMESCALE := -timescale=1ns/100fs
 SIMULATOR_OPT := -full64 -sverilog +v2k -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
@@ -47,10 +66,10 @@ SIMV_POWER_OPT      := +fsdb+power +fsdb+all
 SIM_DUMP :=
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
 SIM_TIME := #+vcs+finish+10000ns
-APP := +PRELOAD=/home/wangwy/openproject/ara/apps/bin/$(app)
+APP := +PRELOAD=$(preload)
 
 compile: clean ../Bender.yml
-	@echo "ARA NR_LANES=$(nr_lanes) VLEN=$(vlen)"
+	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
 	@mkdir -p ./sim
 	@cd ./sim && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
