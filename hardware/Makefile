@@ -87,6 +87,7 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 
 
 compile: clean ../Bender.yml
+	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
 	@mkdir -p ./sim
