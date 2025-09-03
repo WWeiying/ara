@@ -30,6 +30,8 @@ vcs_library  ?= $(buildpath)/vcs
 app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
 # Path to ideal dispatcher vtraces
 vtrace_path    ?= $(abspath $(ROOT_DIR)/../apps/ideal_dispatcher/vtrace)
+# DPI source files
+dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
 
 ifeq ($(ideal_dispatcher), 1)
   vtrace       = $(vtrace_path)/$(app).vtrace
@@ -69,7 +71,19 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload)
 
-.PHONY: compile sim clean verdi lint trace dc
+.PHONY: compile sim clean verdi lint trace dc dpi
+
+# DPIs
+dpi: $(buildpath)/$(dpi_library)/ara_dpi.so
+
+$(buildpath)/$(dpi_library)/%.o: tb/dpi/%.cc
+	mkdir -p $(buildpath)/$(dpi_library)
+	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
+
+$(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
+	mkdir -p $(buildpath)/$(dpi_library)
+	$(CXX) -shared -m64 -o $(buildpath)/$(dpi_library)/ara_dpi.so $?
+
 
 compile: clean ../Bender.yml
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
@@ -83,6 +97,8 @@ sim: compile
 
 clean:
 	@cd ./sim && rm -rf *
+	@rm -rf $(buildpath)
+	@rm -f  $(BENDER)
 
 verdi:
 	@cd ./sim && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -l verdi.log &
