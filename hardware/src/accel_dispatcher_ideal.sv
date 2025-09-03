@@ -120,7 +120,7 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
   // Ideal performance counter
   logic [63:0] perf_cnt_d, perf_cnt_q;
   // Useful if the reset is not asserted exactly when the simulation starts
-  logic was_reset = 0;
+  logic was_reset;
 
   // Reset the counter and then always count-up until the end
   assign perf_cnt_d = rst_ni ? perf_cnt_q + 1 : '0;
