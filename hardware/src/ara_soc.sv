@@ -8,8 +8,8 @@
 
 module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // RVV Parameters
-    parameter  int           unsigned NrLanes      = 0,                          // Number of parallel vector lanes.
-    parameter  int           unsigned VLEN         = 0,                          // VLEN [bit]
+    parameter  int           unsigned NrLanes      = `NR_LANES,                          // Number of parallel vector lanes.
+    parameter  int           unsigned VLEN         = `VLEN,                          // VLEN [bit]
     parameter  int           unsigned OSSupport    = 1,                          // Support for OS
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,

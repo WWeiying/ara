@@ -48,6 +48,7 @@ bender_targs_simc     := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test -t verilator
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis
+bender_targs_dc       := $(bender_common_targs) 
 
 ifdef app
 ifeq ($(ideal_dispatcher), 1)
@@ -67,6 +68,8 @@ SIM_DUMP :=
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload)
+
+.PHONY: compile sim clean verdi lint trace dc
 
 compile: clean ../Bender.yml
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
@@ -91,3 +94,23 @@ lint:
 trace:
 	@./run/scripts/compare_traces.py -g ./run/log/ref_trace.log -d ./run/log/dut_trace.log -o ./run/log/diff_report
 	@head -n 20 ./run/log/diff_report
+
+dc:
+	@echo "1.Generating dc flist"
+	@$(BENDER) script verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
+	@sed -i "s/\/home\/wangwy\/openproject/\/mnt\/hgfs/" ../backend/flist/ara_soc.f
+	@cd ../backend/flist && cat ara_soc.f | \
+	grep -v "incdir" | \
+	grep -v "+define"| \
+	grep -v "_pkg.sv" > rtl.temp
+	@cd ../backend/flist && cat ara_soc.f | grep "incdir" > incdir.temp 
+	@cd ../backend/flist && echo "+define+SYNTHESIS" > defines.temp 
+	@cd ../backend/flist && echo "+define+HPDCACHE_ASSERT_OFF" > defines.temp 
+	@cd ../backend/flist && cat ara_soc.f | grep "+define" >> defines.temp 
+	@cd ../backend/flist && cat ara_soc.f | grep "_pkg.sv" > packages.temp 
+	@cd ../backend/flist && cat incdir.temp > ara_soc_dc.f
+	@cd ../backend/flist && cat defines.temp >> ara_soc_dc.f
+	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
+	@cd ../backend/flist && cat rtl.temp >> ara_soc_dc.f
+	@echo "2.Synthesis"
+	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
