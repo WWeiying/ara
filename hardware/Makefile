@@ -5,6 +5,7 @@ INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
 VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 
 BENDER         := $(ROOT_DIR)/../hardware/bender
+BENDER_VERSION := 0.27.3
 
 # Choose Ara's configuration
 ifndef config
@@ -51,7 +52,7 @@ bender_targs_simc     := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test -t verilator
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis
-bender_targs_dc       := $(bender_common_targs) 
+bender_targs_dc       := $(bender_common_targs) -t sram_blackbox
 
 ifdef app
 ifeq ($(ideal_dispatcher), 1)
@@ -72,21 +73,28 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload)
 
-.PHONY: compile sim clean verdi lint trace dc dpi
+.PHONY: bender compile sim clean verdi lint trace dc dpi
+
+# Bender
+bender: $(BENDER)
+$(BENDER):
+	@[ -x $(BENDER) ] && echo "Bender already exists." || \
+	curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh	-s -- $(BENDER_VERSION)
+	@echo "$$(./bender --version) available."
 
 # DPIs
 dpi: $(buildpath)/$(dpi_library)/ara_dpi.so
 
 $(buildpath)/$(dpi_library)/%.o: tb/dpi/%.cc
-	mkdir -p $(buildpath)/$(dpi_library)
-	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
+	@mkdir -p $(buildpath)/$(dpi_library)
+	@$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
 
 $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
-	mkdir -p $(buildpath)/$(dpi_library)
-	$(CXX) -shared -m64 -o $(buildpath)/$(dpi_library)/ara_dpi.so $?
+	@mkdir -p $(buildpath)/$(dpi_library)
+	@$(CXX) -shared -m64 -o $(buildpath)/$(dpi_library)/ara_dpi.so $?
 
 
-compile: clean ../Bender.yml
+compile: clean bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
@@ -100,7 +108,6 @@ sim: compile
 clean:
 	@cd ./sim && rm -rf *
 	@rm -rf $(buildpath)
-	@rm -f  $(BENDER)
 
 verdi:
 	@cd ./sim && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -l verdi.log &
@@ -116,7 +123,6 @@ trace:
 dc:
 	@echo "1.Generating dc flist"
 	@$(BENDER) script verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
-	@sed -i "s/\/home\/wangwy\/openproject/\/mnt\/hgfs/" ../backend/flist/ara_soc.f
 	@cd ../backend/flist && cat ara_soc.f | \
 	grep -v "incdir" | \
 	grep -v "+define"| \
