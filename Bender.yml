@@ -89,3 +89,10 @@ sources:
     - target: spyglass
       files:
         - hardware/spyglass/src/ara_soc_wrap.sv
+
+    - target: sram_blackbox
+      files:
+        - backend/blackbox/hpdcache_sram_1rw.sv
+        - backend/blackbox/hpdcache_sram_wbyteenable_1rw.sv
+        - backend/blackbox/hpdcache_sram_wmask_1rw.sv
+        - backend/blackbox/tc_sram.sv
