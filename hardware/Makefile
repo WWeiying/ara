@@ -63,7 +63,7 @@ endif
 endif
 
 TIMESCALE := -timescale=1ns/100fs
-SIMULATOR_OPT := -full64 -sverilog +v2k -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
+SIMULATOR_OPT := -full64 -sverilog +v2k -Mlib=./incremental_db -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
 SIMULATOR_DEF := +define+SIMULATION +define+no_warning +define+TSMC_NO_WARNING
 SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
@@ -94,11 +94,11 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 	@$(CXX) -shared -m64 -o $(buildpath)/$(dpi_library)/ara_dpi.so $?
 
 
-compile: clean bender dpi ../Bender.yml
+compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
-	@mkdir -p ./sim
+	@mkdir -p ./sim/incremental_db
 	@cd ./sim && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
 sim: compile

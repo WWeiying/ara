@@ -76,11 +76,6 @@ reset_vector:
     // Set up a PMP to permit all accesses
     li t0, (1 << (31 + (__riscv_xlen / 64) * (53 - 31))) - 1
     csrw pmpaddr0, t0
-    li t0, PMP_NAPOT | PMP_R | PMP_W | PMP_X
-    csrw pmpcfg0, t0
-    // Delegate no traps
-    csrwi   mie, 0
-    la      t0, trap_vector
     csrw    mtvec, t0
     csrwi   medeleg, 0
     csrwi   mideleg, 0
@@ -105,8 +100,8 @@ reset_vector:
     li      t0, (MSTATUS_VS & (MSTATUS_VS >> 1))
     csrs    mstatus, t0
     // Enable the counters
-    csrsi   mcounteren, 1
-    csrsi   scounteren, 1
+    csrsi   mcounteren, 1 | (1 << 1) | (1 << 2)
+    csrsi   scounteren, 1 | (1 << 1) | (1 << 2)
     // Call the RISC-V Test initialization function, if it exists
     la t0, rvtest_init
     beqz t0, 1f

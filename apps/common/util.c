@@ -23,6 +23,7 @@
 int *__dummy__errno__ptr__;
 
 unsigned long int timer;
+unsigned long int instret_counter;
 
 // Floating-point similarity check with threshold
 int similarity_check(double a, double b, double threshold) {

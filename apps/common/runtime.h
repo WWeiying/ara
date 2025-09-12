@@ -9,6 +9,7 @@
 
 extern int64_t event_trigger;
 extern int64_t timer;
+extern int64_t instret_counter;
 // SoC-level CSR
 extern uint64_t hw_cnt_en_reg;
 
@@ -20,6 +21,13 @@ inline int64_t get_cycle_count() {
   asm volatile("fence; csrr %[cycle_count], cycle"
                : [cycle_count] "=r"(cycle_count));
   return cycle_count;
+};
+
+inline int64_t get_instret_count() {
+  int64_t instret_count;
+  asm volatile("csrr %[instret_count], instret"
+               : [instret_count] "=r"(instret_count));
+  return instret_count;
 };
 
 #ifndef SPIKE
@@ -36,6 +44,13 @@ inline void stop_timer() { timer += get_cycle_count(); }
 
 // Get the value of the timer
 inline int64_t get_timer() { return timer; }
+
+// Start and stop the counter
+inline void start_instret_counter() { instret_counter = -get_instret_count(); }
+inline void stop_instret_counter() { instret_counter += get_instret_count(); }
+
+// Get the value of the instret counter
+inline int64_t get_instret_counter() { return instret_counter; }
 #else
 #define HW_CNT_READY ;
 #define HW_CNT_NOT_READY ;
