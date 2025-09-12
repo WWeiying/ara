@@ -33,7 +33,10 @@ endif
 # Include configuration
 include $(ARA_DIR)/config/$(config).mk
 
+vec                     ?= 0
+manual                  ?= 0
 INSTALL_DIR             ?= $(ARA_DIR)/install
+ZCC_DIR                 ?= /home/wangwy/software/Terapines/ZCC/4.1.2
 GCC_INSTALL_DIR         ?= $(INSTALL_DIR)/riscv-gcc
 LLVM_INSTALL_DIR        ?= $(INSTALL_DIR)/riscv-llvm
 ISA_SIM_INSTALL_DIR     ?= $(INSTALL_DIR)/riscv-isa-sim
@@ -100,17 +103,34 @@ DEFINES += $(ENV_DEFINES) $(MAKE_DEFINES)
 RISCV_WARNINGS += -Wunused-variable -Wall -Wextra -Wno-unused-command-line-argument # -Werror
 
 # LLVM Flags
-LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) -mno-relax -fuse-ld=lld
+LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
+ifeq ($(vec),1)
+LLVM_V_FLAGS   ?= -mllvm -riscv-v-vector-bits-min=1024 -mllvm -force-vector-width=32 -mllvm -riscv-v-fixed-length-vector-lmul-max=1 -mllvm -force-vector-interleave=1 -mllvm -enable-epilogue-vectorization -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize
+else
+# -mllvm -scalable-vectorization=on
 LLVM_V_FLAGS   ?= -fno-vectorize -mllvm -scalable-vectorization=off -mllvm -riscv-v-vector-bits-min=0 -mno-implicit-float
+endif
 RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
 ifeq ($(LINUX),1)
 RISCV_CCFLAGS  ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
 RISCV_LDFLAGS  ?= -lm -lstdc++
 RISCV_CXXFLAGS ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
 else
+ifeq ($(vec),1)
+RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dvec 
+RISCV_LDFLAGS  ?= -static -nostdlib -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+else
+ifeq ($(manual),1)
+RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dmanual
+RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+else
 RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99
 RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
 	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+endif
+endif
 endif
 RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99
 RISCV_CXXFLAGS ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections
