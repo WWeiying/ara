@@ -27,7 +27,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // AXI Resp Delay [ps] for gate-level simulation
     parameter  int           unsigned AxiRespDelay = 200,
     // Main memory
-    parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
+    //parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
+    parameter  int           unsigned L2NumWords   = (2**19) / NrLanes,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -239,6 +240,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   );
 
 `ifndef SPYGLASS
+`ifndef TARGET_SRAM_MC
   tc_sram #(
     .NumWords (L2NumWords  ),
     .NumPorts (1           ),
@@ -254,6 +256,63 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .be_i   (l2_be                                                                      ),
     .rdata_o(l2_rdata                                                                   )
   );
+`else
+  localparam DRAMNumBanks = L2NumWords/8192;
+  localparam DRAM_ADDR = $clog2(DRAMNumBanks);
+  logic [DRAMNumBanks-1:0] dram_bank_en;
+  logic [DRAMNumBanks-1:0] dram_bank_ren;
+  logic [AxiDataWidth-1:0] l2_be_o;
+  logic [AxiDataWidth-1:0] l2_rdata_bank[DRAMNumBanks-1:0];
+
+  always_comb begin
+    for(int i=0; i<(AxiDataWidth/8); i++) begin
+      l2_be_o[i*8 +: 8] = {8{l2_be[i]}};
+    end
+  end
+
+  generate
+  for (genvar i = 0; i < DRAMNumBanks; i++) begin: gen_dram
+    assign dram_bank_en[i] = (i == l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8)-:$clog2(DRAMNumBanks)]);
+    TS1N28HPCPSVTB8192X128M4SWBASO i_dram (
+      .SLP  (1'b0),
+      .SD   (1'b0),
+      .CLK  (clk_i),
+      .CEB  (!(l2_req && dram_bank_en[i])),
+      .WEB  (!(l2_we  && dram_bank_en[i])),
+      .CEBM (1'b1),
+      .WEBM (1'b1),
+      .AWT  (1'b0),
+      .A    (l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8)-$clog2(DRAMNumBanks):$clog2(AxiDataWidth/8)]),
+      .D    (l2_wdata),
+      .BWEB (~l2_be_o),
+      .AM   ('0),
+      .DM   ('0),
+      .BWEBM(128'hffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff),
+      .BIST (1'b0),
+      .Q    (l2_rdata_bank[i]));
+    end
+  endgenerate
+
+  always_ff@(posedge clk_i) begin
+    for(int i = 0; i < DRAMNumBanks; i++) begin
+      if(l2_req && !l2_we) begin
+        dram_bank_ren[i] = l2_req && !l2_we && dram_bank_en[i];
+      end else begin
+        dram_bank_ren[i] = dram_bank_ren[i];
+      end
+    end
+  end
+
+  always_comb begin
+    l2_rdata = '0;
+    for(int i = 0; i < DRAMNumBanks; i++) begin
+        if (dram_bank_ren[i]) begin
+            l2_rdata = l2_rdata_bank[i];
+        end
+    end
+  end
+
+`endif
 `else
   assign l2_rdata = '0;
 `endif

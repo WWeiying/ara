@@ -23,10 +23,22 @@ module ara_tb;
 //  `endif
 
   initial begin
+    string testcase;
     $fsdbDumpfile("ara_tb.fsdb");
     $fsdbDumpvars(0, ara_tb);
     $fsdbDumpMDA(0, ara_tb);
     $fsdbDumpvars("+all");
+
+    void'($value$plusargs("TESTCASE=%s", testcase));
+    
+    `ifdef SAIF
+    if(testcase != "") begin
+        $dumpfile($sformatf("../vcd/%s.vcd", testcase));
+    end else begin
+        $dumpfile("../vcd/default.vcd");
+    end
+    $dumpvars(0, dut.i_ara_soc);
+    `endif
   end
 
   `ifdef NR_LANES
@@ -101,10 +113,132 @@ module ara_tb;
   );
   `endif
 
+  `ifdef TARGET_SRAM_MC
+  localparam DRAMNumBanks=16;
+  localparam DRAMWordsPerBank=8192;
+  localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
+
   /*************************
    *  DRAM Initialization  *
    *************************/
+  typedef logic [AxiAddrWidth-1:0] addr_t;
+  typedef logic [AxiWideDataWidth-1:0] data_t;
 
+  initial begin : dram_init
+    automatic data_t mem_row;
+    byte buffer [];
+    addr_t address;
+    addr_t length;
+    string binary;
+    addr_t word_addr;
+    int bank_index;
+    addr_t bank_offset;
+    int word_index;
+    data_t bank_data [DRAMNumBanks][DRAMWordsPerBank];
+
+    for (int i = 0; i < DRAMNumBanks; i++) begin
+        for (int j = 0; j < DRAMWordsPerBank; j++) begin
+            bank_data[i][j] = '0;
+        end
+    end
+
+    // tc_sram is initialized with zeros. We need to overwrite this value.
+    repeat (2)
+      #ClockPeriod;
+
+    // Initialize memories
+    void'($value$plusargs("PRELOAD=%s", binary));
+    if (binary != "") begin
+      // Read ELF
+      read_elf(binary);
+      $display("Loading ELF file %s", binary);
+      while (get_section(address, length)) begin
+        // Read sections
+        automatic int nwords = (length + AxiWideBeWidth - 1)/AxiWideBeWidth;
+        $display("Loading section %x of length %x", address, length);
+        buffer = new[nwords * AxiWideBeWidth];
+        void'(read_section(address, buffer));
+
+        // Initializing memories
+        for (int w = 0; w < nwords; w++) begin
+          mem_row = '0;
+          for (int b = 0; b < AxiWideBeWidth; b++) begin
+            mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
+          end
+
+          word_addr = address + (w << AxiWideByteOffset);
+          
+          if (word_addr >= DRAMAddrBase && word_addr < DRAMAddrBase + (DRAMNumBanks * DRAMBankSizeBytes)) begin
+            bank_index = (word_addr - DRAMAddrBase) / DRAMBankSizeBytes;
+            bank_offset = (word_addr - DRAMAddrBase) % DRAMBankSizeBytes;
+            word_index = bank_offset >> AxiWideByteOffset;
+            
+            if (bank_index < DRAMNumBanks && word_index < DRAMWordsPerBank) begin
+              bank_data[bank_index][word_index] = mem_row;
+            end else begin
+              $display("Error: Address %x maps to invalid bank(%0d) or word(%0d)", 
+                       word_addr, bank_index, word_index);
+            end
+          end else begin
+                $display("Cannot initialize address %x, which doesn't fall into the L2 region.", word_addr);
+          end
+        end
+      end
+
+      for (int i = 0; i < DRAMNumBanks; i++) begin
+        automatic string temp_file = $sformatf("temp_bank_%0d.dat", i);
+        automatic int fd = $fopen(temp_file, "w");
+        
+        if (!fd) begin
+          $error("Failed to open temporary file for bank %0d: %s", i, temp_file);
+          $finish;
+        end
+
+        for (int w = 0; w < DRAMWordsPerBank; w++) begin
+//          $fwriteh(fd, "%032h\n", {bank_data[i][w][7  :  0], bank_data[i][w][15 :  8], bank_data[i][w][23 : 16], bank_data[i][w][31 : 24],
+//                                   bank_data[i][w][39 : 32], bank_data[i][w][47 : 40], bank_data[i][w][55 : 48], bank_data[i][w][63 : 56],
+//                                   bank_data[i][w][71 : 64], bank_data[i][w][79 : 72], bank_data[i][w][87 : 80], bank_data[i][w][95 : 88],
+//                                   bank_data[i][w][103: 96], bank_data[i][w][111:104], bank_data[i][w][119:112], bank_data[i][w][127:120]
+//                                  });
+          //$fwriteh(fd, "%032h\n", bank_data[i][w]);
+          $fdisplay(fd,  "%032h", bank_data[i][w]);
+        end
+
+        $fclose(fd);
+
+        $display("Initializing bank %0d with file %s", i, temp_file);
+        case (i)
+          0:  dut.i_ara_soc.gen_dram[0 ].i_dram.preloadData(temp_file);
+          1:  dut.i_ara_soc.gen_dram[1 ].i_dram.preloadData(temp_file);
+          2:  dut.i_ara_soc.gen_dram[2 ].i_dram.preloadData(temp_file);
+          3:  dut.i_ara_soc.gen_dram[3 ].i_dram.preloadData(temp_file);
+          4:  dut.i_ara_soc.gen_dram[4 ].i_dram.preloadData(temp_file);
+          5:  dut.i_ara_soc.gen_dram[5 ].i_dram.preloadData(temp_file);
+          6:  dut.i_ara_soc.gen_dram[6 ].i_dram.preloadData(temp_file);
+          7:  dut.i_ara_soc.gen_dram[7 ].i_dram.preloadData(temp_file);
+          8:  dut.i_ara_soc.gen_dram[8 ].i_dram.preloadData(temp_file);
+          9:  dut.i_ara_soc.gen_dram[9 ].i_dram.preloadData(temp_file);
+          10: dut.i_ara_soc.gen_dram[10].i_dram.preloadData(temp_file);
+          11: dut.i_ara_soc.gen_dram[11].i_dram.preloadData(temp_file);
+          12: dut.i_ara_soc.gen_dram[12].i_dram.preloadData(temp_file);
+          13: dut.i_ara_soc.gen_dram[13].i_dram.preloadData(temp_file);
+          14: dut.i_ara_soc.gen_dram[14].i_dram.preloadData(temp_file);
+          15: dut.i_ara_soc.gen_dram[15].i_dram.preloadData(temp_file);
+          default: $display("Invalid bank index: %0d", bank_index);
+        endcase
+        //$system($sformatf("rm -f %s", temp_file));
+      end
+
+    end else begin
+      $error("Expecting a firmware to run, none was provided!");
+      $finish;
+    end
+  end : dram_init
+
+  `else
+  /*************************
+   *  DRAM Initialization  *
+   *************************/
   typedef logic [AxiAddrWidth-1:0] addr_t;
   typedef logic [AxiWideDataWidth-1:0] data_t;
 
@@ -140,7 +274,7 @@ module ara_tb;
           if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
             // This requires the sections to be aligned to AxiWideByteOffset,
             // otherwise, they can be over-written.
-            dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
+              dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
           else
             $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
         end
@@ -150,6 +284,8 @@ module ara_tb;
       $finish;
     end
   end : dram_init
+  `endif
+
 
 `ifndef TARGET_GATESIM
 
@@ -222,6 +358,11 @@ module ara_tb;
 `ifndef TARGET_GATESIM
       $fclose(fd);
 `endif
+
+`ifdef SAIF
+   $dumpoff;
+   $dumpflush;
+`endif
       $finish(exit >> 1);
     end
   end
@@ -269,15 +410,13 @@ module ara_tb;
 
   initial begin
     @(start_dump_event);
-    $dumpfile(vcd_path);
-    $dumpvars(0, dut.i_ara_soc.i_system);
-    $dumpon;
+    $vcdplusfile(vcd_path);
+    $vcdpluson(0, dut.i_ara_soc);
 
     #1 $display("[TB - VCD] DUMPING...\n");
 
     @(stop_dump_event)
-    $dumpoff;
-    $dumpflush;
+    $vcdplusclose;
     $finish;
   end
 
