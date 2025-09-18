@@ -79,6 +79,7 @@ module vector_regfile import ara_pkg::*; #(
     assign vrf_clk = clk_i;
 `endif
 
+`ifndef TARGET_SRAM_MC
     tc_sram #(
       .NumWords (NumWords ),
       .DataWidth(DataWidth),
@@ -93,6 +94,32 @@ module vector_regfile import ara_pkg::*; #(
       .be_i   (be_i[bank]                        ),
       .addr_i (addr_i[bank][$clog2(NumWords)-1:0])
     );
+`else
+  logic [NrBanks-1:0][8*StrbWidth-1:0] be_i_o;
+  always_comb begin
+    for(int i=0; i<StrbWidth; i++) begin
+      be_i_o[bank][i*8 +: 8] = {8{be_i[bank][i]}};
+    end
+  end
+ TS1N28HPCPUHDSVTB16X64M1SWBSO data_sram(
+   .SLP  (1'b0),
+   .SD   (1'b0),
+   .CLK  (vrf_clk),
+   .CEB  (!req_i[bank]),
+   .WEB  (!wen_i[bank]),
+   .CEBM (1'b1),
+   .WEBM (1'b1),
+   .A    (addr_i[bank][$clog2(NumWords)-1:0]),
+   .D    (wdata_i[bank]),
+   .BWEB (~be_i_o[bank]),
+   .AM   ('0),
+   .DM   ('0),
+   .BWEBM('1),
+   .BIST (1'b0),
+   .RTSEL(2'b01),
+   .WTSEL(2'b0),
+   .Q    (rdata[bank]));
+`endif
   end : gen_banks
 
   ///////////////////
