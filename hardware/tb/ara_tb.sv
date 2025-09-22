@@ -113,7 +113,8 @@ module ara_tb;
   );
   `endif
 
-  `ifdef TARGET_SRAM_MC
+  `ifdef TARGET_SRAM_MC 
+  `ifdef SAIF
   localparam DRAMNumBanks=16;
   localparam DRAMWordsPerBank=8192;
   localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
@@ -195,12 +196,122 @@ module ara_tb;
         end
 
         for (int w = 0; w < DRAMWordsPerBank; w++) begin
-//          $fwriteh(fd, "%032h\n", {bank_data[i][w][7  :  0], bank_data[i][w][15 :  8], bank_data[i][w][23 : 16], bank_data[i][w][31 : 24],
-//                                   bank_data[i][w][39 : 32], bank_data[i][w][47 : 40], bank_data[i][w][55 : 48], bank_data[i][w][63 : 56],
-//                                   bank_data[i][w][71 : 64], bank_data[i][w][79 : 72], bank_data[i][w][87 : 80], bank_data[i][w][95 : 88],
-//                                   bank_data[i][w][103: 96], bank_data[i][w][111:104], bank_data[i][w][119:112], bank_data[i][w][127:120]
-//                                  });
-          //$fwriteh(fd, "%032h\n", bank_data[i][w]);
+          $fdisplay(fd,  "%032h", bank_data[i][w]);
+        end
+
+        $fclose(fd);
+
+        $display("Initializing bank %0d with file %s", i, temp_file);
+        case (i)
+          0:  dut.i_ara_soc.gen_dram_0__i_dram.preloadData(temp_file);
+          1:  dut.i_ara_soc.gen_dram_1__i_dram.preloadData(temp_file);
+          2:  dut.i_ara_soc.gen_dram_2__i_dram.preloadData(temp_file);
+          3:  dut.i_ara_soc.gen_dram_3__i_dram.preloadData(temp_file);
+          4:  dut.i_ara_soc.gen_dram_4__i_dram.preloadData(temp_file);
+          5:  dut.i_ara_soc.gen_dram_5__i_dram.preloadData(temp_file);
+          6:  dut.i_ara_soc.gen_dram_6__i_dram.preloadData(temp_file);
+          7:  dut.i_ara_soc.gen_dram_7__i_dram.preloadData(temp_file);
+          8:  dut.i_ara_soc.gen_dram_8__i_dram.preloadData(temp_file);
+          9:  dut.i_ara_soc.gen_dram_9__i_dram.preloadData(temp_file);
+          10: dut.i_ara_soc.gen_dram_10__i_dram.preloadData(temp_file);
+          11: dut.i_ara_soc.gen_dram_11__i_dram.preloadData(temp_file);
+          12: dut.i_ara_soc.gen_dram_12__i_dram.preloadData(temp_file);
+          13: dut.i_ara_soc.gen_dram_13__i_dram.preloadData(temp_file);
+          14: dut.i_ara_soc.gen_dram_14__i_dram.preloadData(temp_file);
+          15: dut.i_ara_soc.gen_dram_15__i_dram.preloadData(temp_file);
+          default: $display("Invalid bank index: %0d", bank_index);
+        endcase
+        //$system($sformatf("rm -f %s", temp_file));
+      end
+
+    end else begin
+      $error("Expecting a firmware to run, none was provided!");
+      $finish;
+    end
+  end : dram_init
+
+  `else
+  localparam DRAMNumBanks=16;
+  localparam DRAMWordsPerBank=8192;
+  localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
+
+  /*************************
+   *  DRAM Initialization  *
+   *************************/
+  typedef logic [AxiAddrWidth-1:0] addr_t;
+  typedef logic [AxiWideDataWidth-1:0] data_t;
+
+  initial begin : dram_init
+    automatic data_t mem_row;
+    byte buffer [];
+    addr_t address;
+    addr_t length;
+    string binary;
+    addr_t word_addr;
+    int bank_index;
+    addr_t bank_offset;
+    int word_index;
+    data_t bank_data [DRAMNumBanks][DRAMWordsPerBank];
+
+    for (int i = 0; i < DRAMNumBanks; i++) begin
+        for (int j = 0; j < DRAMWordsPerBank; j++) begin
+            bank_data[i][j] = '0;
+        end
+    end
+
+    // tc_sram is initialized with zeros. We need to overwrite this value.
+    repeat (2)
+      #ClockPeriod;
+
+    // Initialize memories
+    void'($value$plusargs("PRELOAD=%s", binary));
+    if (binary != "") begin
+      // Read ELF
+      read_elf(binary);
+      $display("Loading ELF file %s", binary);
+      while (get_section(address, length)) begin
+        // Read sections
+        automatic int nwords = (length + AxiWideBeWidth - 1)/AxiWideBeWidth;
+        $display("Loading section %x of length %x", address, length);
+        buffer = new[nwords * AxiWideBeWidth];
+        void'(read_section(address, buffer));
+
+        // Initializing memories
+        for (int w = 0; w < nwords; w++) begin
+          mem_row = '0;
+          for (int b = 0; b < AxiWideBeWidth; b++) begin
+            mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
+          end
+
+          word_addr = address + (w << AxiWideByteOffset);
+          
+          if (word_addr >= DRAMAddrBase && word_addr < DRAMAddrBase + (DRAMNumBanks * DRAMBankSizeBytes)) begin
+            bank_index = (word_addr - DRAMAddrBase) / DRAMBankSizeBytes;
+            bank_offset = (word_addr - DRAMAddrBase) % DRAMBankSizeBytes;
+            word_index = bank_offset >> AxiWideByteOffset;
+            
+            if (bank_index < DRAMNumBanks && word_index < DRAMWordsPerBank) begin
+              bank_data[bank_index][word_index] = mem_row;
+            end else begin
+              $display("Error: Address %x maps to invalid bank(%0d) or word(%0d)", 
+                       word_addr, bank_index, word_index);
+            end
+          end else begin
+                $display("Cannot initialize address %x, which doesn't fall into the L2 region.", word_addr);
+          end
+        end
+      end
+
+      for (int i = 0; i < DRAMNumBanks; i++) begin
+        automatic string temp_file = $sformatf("temp_bank_%0d.dat", i);
+        automatic int fd = $fopen(temp_file, "w");
+        
+        if (!fd) begin
+          $error("Failed to open temporary file for bank %0d: %s", i, temp_file);
+          $finish;
+        end
+
+        for (int w = 0; w < DRAMWordsPerBank; w++) begin
           $fdisplay(fd,  "%032h", bank_data[i][w]);
         end
 
@@ -235,6 +346,7 @@ module ara_tb;
     end
   end : dram_init
 
+  `endif
   `else
   /*************************
    *  DRAM Initialization  *
@@ -316,10 +428,17 @@ module ara_tb;
     $display("Dump results on %s", OutResultFile);
   end
 
+  `ifdef SAIF 
+  assign ara_w       = dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.axi_w_o[145:18];
+  assign ara_w_strb  = dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.axi_w_o[17:2];
+  assign ara_w_valid = dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.axi_w_valid_o;
+  assign ara_w_ready = dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.axi_w_ready_i;
+  `else
   assign ara_w       = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w.data;
   assign ara_w_strb  = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w.strb;
   assign ara_w_valid = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w_valid;
   assign ara_w_ready = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_resp.w_ready;
+  `endif
 
 `ifndef IDEAL_DISPATCHER
   assign dump_en_mask = dut.i_ara_soc.hw_cnt_en_o[0];

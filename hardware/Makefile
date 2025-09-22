@@ -40,7 +40,6 @@ spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hp
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
 
 mc ?= 0
-saif ?= 0
 
 define generate_sram
   > $(1)/config.txt
@@ -93,13 +92,9 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
-ifeq ($(saif), 1)
-  bender_defs += --define SAIF
-endif
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
-bender_targs_simc     := $(bender_common_targs) -t ara_test -t cva6_test
-bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test -t verilator
+bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 
 ifeq ($(mc), 1)
@@ -174,7 +169,7 @@ clean:
 	@rm -rf $(buildpath)
 
 verdi:
-	@cd ./$(sim_dir) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -l verdi.log &
+	@cd ./$(sim_dir) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -sswr ../debug/signal.rc -l verdi.log &
 
 lint:
 	cd ./hardware/lint && rm -rf brook_* *.log reports spyglass-1 brook
@@ -190,16 +185,17 @@ dc:
 	@cd ../backend/flist && cat ara_soc.f | \
 	grep -v "incdir" | \
 	grep -v "+define"| \
+	grep -v "ara_tb_verilator.sv"| \
 	grep -v "_pkg.sv" > rtl.temp
-	@cd ../backend/flist && cat ara_soc.f | grep "incdir" > incdir.temp 
-	@cd ../backend/flist && echo "+define+SYNTHESIS" > defines.temp 
-	@cd ../backend/flist && echo "+define+HPDCACHE_ASSERT_OFF" > defines.temp 
-	@cd ../backend/flist && cat ara_soc.f | grep "+define" >> defines.temp 
-	@cd ../backend/flist && cat ara_soc.f | grep "_pkg.sv" > packages.temp 
-	@cd ../backend/flist && cat incdir.temp > ara_soc_dc.f
-	@cd ../backend/flist && cat defines.temp >> ara_soc_dc.f
+	@cd ../backend/flist && cat ara_soc.f | grep "incdir"      >  incdir.temp 
+	@cd ../backend/flist && echo "+define+SYNTHESIS"           >  defines.temp 
+	@cd ../backend/flist && echo "+define+HPDCACHE_ASSERT_OFF" >> defines.temp 
+	@cd ../backend/flist && cat ara_soc.f | grep "+define"     >> defines.temp 
+	@cd ../backend/flist && cat ara_soc.f | grep "_pkg.sv"     >  packages.temp 
+	@cd ../backend/flist && cat incdir.temp   >  ara_soc_dc.f
+	@cd ../backend/flist && cat defines.temp  >> ara_soc_dc.f
 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
-	@cd ../backend/flist && cat rtl.temp >> ara_soc_dc.f
+	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
 	@echo "2.Synthesis"
 	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
 
@@ -211,6 +207,28 @@ sram:
 	@$(call generate_sram, $(spsram_techlib_path), $(DCACHE_DATA_SRAM_CONFIGS))
 
 saif:
-	mkdir -p ./vcd ./saif
-	$(MAKE) sim app=$(app) mc=1 saif=1
-	vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif
+	@mkdir -p ./vcd ./saif ./build/saif
+	@echo "1.Generating saif flist"
+	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define SAIF > ./build/saif/ara_tb.f
+	@cd ./build/saif && cat ara_tb.f | grep "incdir"       >  incdir.temp 
+	@cd ./build/saif && cat ara_tb.f | grep "_pkg.sv"      >  packages.temp 
+	@cd ./build/saif && echo "+define+SYNTHESIS"           >  defines.temp 
+	@cd ./build/saif && echo "+define+HPDCACHE_ASSERT_OFF" >> defines.temp 
+	@cd ./build/saif && cat ara_tb.f | grep "+define"      >> defines.temp 
+	@cd ./build/saif && cat ara_tb.f | grep "ara_tb.sv"          >  rtl.temp 
+	@cd ./build/saif && cat ara_tb.f | grep "ara_testharness.sv" >> rtl.temp 
+	@cd ./build/saif && echo "/home/wangwy/openproject/ara/backend/syn/ara_soc/v1-dc/outputs/ara_soc_dc.v" >> rtl.temp 
+	@cd ./build/saif && cat ara_tb.f | grep "mock_uart.sv"       >> rtl.temp 
+	@cd ./build/saif && cat incdir.temp   >  ara_tb_saif.f
+	@cd ./build/saif && cat packages.temp >> ara_tb_saif.f
+	@cd ./build/saif && cat defines.temp  >> ara_tb_saif.f
+	@cd ./build/saif && cat rtl.temp      >> ara_tb_saif.f
+	@$(call generate_sram_filelist, $(spsram127_techlib_path), ./build/saif/ara_tb_saif.f)
+	@$(call generate_sram_filelist, $(spsram_techlib_path),    ./build/saif/ara_tb_saif.f)
+	@echo "2.VCS simulate"
+	@rm sim_saif -rf
+	@mkdir -p ./sim_saif/incremental_db
+	@cd ./sim_saif && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) -f ../build/saif/ara_tb_saif.f $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+	@cd ./sim_saif && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	@echo "3.vcd2saif"
+	@vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif

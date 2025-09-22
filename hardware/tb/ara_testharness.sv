@@ -155,7 +155,11 @@ module ara_testharness #(
     // If disabled
     if (!runtime_cnt_en_q)
       // Start only if the software allowed the enable and we detect the first V instruction
+    `ifndef SAIF
       runtime_cnt_en_d = i_ara_soc.i_system.i_ara.acc_req_i.acc_req.req_valid & cnt_en_mask;
+    `else
+      runtime_cnt_en_d = i_ara_soc.i_system.i_ara.acc_req_i[476] & cnt_en_mask;
+    `endif
     // If enabled
     if (runtime_cnt_en_q)
       // Stop counting only if the software disabled the counter and Ara returned idle
@@ -179,14 +183,24 @@ module ara_testharness #(
     runtime_to_be_updated_d = runtime_to_be_updated_q;
 
     // Assert the update flag upon a new valid vector instruction
+    `ifndef SAIF
     if (!runtime_to_be_updated_q && i_ara_soc.i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+    `else
+    if (!runtime_to_be_updated_q && i_ara_soc.i_system.i_ara.acc_req_i[476]) begin
+    `endif
       runtime_to_be_updated_d = 1'b1;
     end
 
     // Update the internal runtime and reset the update flag
+    `ifndef SAIF
     if (runtime_to_be_updated_q           &&
         i_ara_soc.i_system.i_ara.ara_idle &&
         !i_ara_soc.i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+    `else
+    if (runtime_to_be_updated_q           &&
+        i_ara_soc.i_system.i_ara.ara_idle &&
+        !i_ara_soc.i_system.i_ara.acc_req_i[476]) begin
+    `endif
       runtime_buf_d = runtime_cnt_q;
       runtime_to_be_updated_d = 1'b0;
     end
@@ -229,20 +243,35 @@ module ara_testharness #(
     dcache_stall_cnt_d = dcache_stall_cnt_q;
     icache_stall_cnt_d = icache_stall_cnt_q;
     sb_full_cnt_d      = sb_full_cnt_q;
+    `ifndef SAIF
     if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_dcache_miss_i)
       dcache_stall_cnt_d += 1;
     if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_icache_miss_i)
       icache_stall_cnt_d += 1;
     if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.sb_full_i)
       sb_full_cnt_d      += 1;
+    `else
+    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter_perf_counters_i.l1_dcache_miss_i)
+      dcache_stall_cnt_d += 1;
+    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter_perf_counters_i.l1_icache_miss_i)
+      icache_stall_cnt_d += 1;
+    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter_perf_counters_i.sb_full_i)
+      sb_full_cnt_d      += 1;
+    `endif
   end
 
   // Update logic
   always_comb begin
     // Update the internal runtime and reset the update flag
+    `ifndef SAIF
     if (runtime_to_be_updated_q           &&
         i_ara_soc.i_system.i_ara.ara_idle &&
         !i_ara_soc.i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+    `else
+    if (runtime_to_be_updated_q           &&
+        i_ara_soc.i_system.i_ara.ara_idle &&
+        !i_ara_soc.i_system.i_ara.acc_req_i[476]) begin
+    `endif
       dcache_stall_buf_d = dcache_stall_cnt_q;
       icache_stall_buf_d = icache_stall_cnt_q;
       sb_full_buf_d      = sb_full_cnt_q;

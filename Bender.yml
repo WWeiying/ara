@@ -81,10 +81,10 @@ sources:
         # Level 3
         - hardware/src/accel_dispatcher_ideal.sv
 
-        - target: verilator
-          files:
-            # Level 2
-            - hardware/tb/ara_tb_verilator.sv
+    - target: verilator
+      files:
+        # Level 2
+        - hardware/tb/ara_tb_verilator.sv
 
     - target: spyglass
       files:
@@ -92,9 +92,12 @@ sources:
 
     - target: sram_blackbox
       files:
-        - backend/blackbox/tc_sram.sv
         - backend/blackbox/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.v
+
+    - target: saif 
+      files:
+        - backend/syn/ara_soc/v1-dc/outputs/ara_soc_dc.v
