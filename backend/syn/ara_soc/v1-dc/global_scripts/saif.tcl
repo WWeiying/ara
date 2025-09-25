@@ -12,6 +12,7 @@ if {$APP_LIST != "" } {
 
                 report_power -hierarchy -verbose > ../reports/power_$APP.rpt
                 report_power -hierarchy -levels 2 -verbose  > ../reports/power_level2_$APP.rpt
+                report_power -hierarchy -levels 1 -verbose  > ../reports/power_level1_$APP.rpt
                 reset_switching_activity
             } else {
                 puts "Warning: SAIF file $GUI_SAIF_FILE not found!"

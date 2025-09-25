@@ -125,9 +125,7 @@ int main() {
   }
 #else
   start_timer();
-  perf_time();
   Radix2FFT_DIF_float((float *)samples_copy, twiddle, NFFT, 10);
-  perf_time();
   stop_timer();
   SwapSamples(samples_copy, SwapTable, NFFT);
 #endif
@@ -188,9 +186,11 @@ int main() {
 
   // Execute FFT
   start_timer();
+  perf_time();
   fft_r2dif_vec(samples_reim, samples_reim + NFFT, twiddle_vec_reim,
                 twiddle_vec_reim + ((NFFT >> 1) * (31 - __builtin_clz(NFFT))),
                 mask_addr_vec, index_ptr, NFFT);
+  perf_time();
   stop_timer();
   runtime = get_timer();
 
