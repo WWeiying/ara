@@ -17,8 +17,13 @@ typedef struct {
   realtime timestamp;
   logic [63:0] cycle;
   logic [63:0] instret;
-  logic [63:0] vec_cycle;
-  logic [63:0] vec_instret;
+  logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_instret;
+  logic [63:0] rvv_op;
+  logic [63:0] rvv_op_fs1;
+  logic [63:0] rvv_op_fd;
+  logic [63:0] rvv_op_load;
+  logic [63:0] rvv_op_store;
 } perf_t;
 
 function automatic perf_t get_perf_counters();
@@ -26,8 +31,13 @@ function automatic perf_t get_perf_counters();
     counters.timestamp = $realtime;
     counters.cycle = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.cycle_q[63:0];
     counters.instret = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.instret_q[63:0];
-    counters.vec_cycle = ara_tb.vec_cycle;
-    counters.vec_instret = ara_tb.vec_instret;
+    counters.rvv_lane_cycle = ara_tb.rvv_lane_cycle;
+    counters.rvv_instret = ara_tb.rvv_instret;
+    counters.rvv_op       = ara_tb.rvv_op      ;
+    counters.rvv_op_fs1   = ara_tb.rvv_op_fs1  ;
+    counters.rvv_op_fd    = ara_tb.rvv_op_fd   ;
+    counters.rvv_op_load  = ara_tb.rvv_op_load ;
+    counters.rvv_op_store = ara_tb.rvv_op_store;
     return counters;
 endfunction
 
@@ -35,57 +45,90 @@ function void print_perf_report();
       realtime duration;
       int total_cycles;
       int total_insns;
-      int total_vector_cycles;
+      int total_rvv_lane_cycles;
       int total_vector_insns;
+      int total_rvv_op      ;
+      int total_rvv_op_fs1  ;
+      int total_rvv_op_fd   ;
+      int total_rvv_op_load ;
+      int total_rvv_op_store;
       
       real ipc;
       real utilization_rate;
       real vecinst_rate;
       int file_handle;
 
+      string testcase;
+      void'($value$plusargs("TESTCASE=%s", testcase));
+
       duration = ara_tb.perf_end.timestamp - ara_tb.perf_start.timestamp;
       total_cycles = ara_tb.perf_end.cycle - ara_tb.perf_start.cycle;
       total_insns = ara_tb.perf_end.instret - ara_tb.perf_start.instret;
-      total_vector_cycles = ara_tb.perf_end.vec_cycle - ara_tb.perf_start.vec_cycle;
-      total_vector_insns = ara_tb.perf_end.vec_instret - ara_tb.perf_start.vec_instret;
+      total_rvv_lane_cycles = ara_tb.perf_end.rvv_lane_cycle - ara_tb.perf_start.rvv_lane_cycle;
+      total_vector_insns = ara_tb.perf_end.rvv_instret - ara_tb.perf_start.rvv_instret;
+      total_rvv_op       = ara_tb.perf_end.rvv_op       - ara_tb.perf_start.rvv_op      ;
+      total_rvv_op_fs1   = ara_tb.perf_end.rvv_op_fs1   - ara_tb.perf_start.rvv_op_fs1  ;
+      total_rvv_op_fd    = ara_tb.perf_end.rvv_op_fd    - ara_tb.perf_start.rvv_op_fd   ;
+      total_rvv_op_load  = ara_tb.perf_end.rvv_op_load  - ara_tb.perf_start.rvv_op_load ;
+      total_rvv_op_store = ara_tb.perf_end.rvv_op_store - ara_tb.perf_start.rvv_op_store;
       ipc = real'(total_insns) / total_cycles;
-      utilization_rate = real'(total_vector_cycles) / total_cycles;
+      utilization_rate = real'(total_rvv_lane_cycles) / total_cycles;
       vecinst_rate = real'(total_vector_insns) / total_insns;
-      file_handle = $fopen("perf_report.log", "a");
+      file_handle = $fopen($sformatf("perf_report_%s.log", testcase), "a");
       
       $display("\n[PERF] ==== Performance Report Start ====");
-      $display("[PERF] duration           : %0t ns", duration/1000);
-      $display("[PERF] total_cycles       : %0d", total_cycles);
-      $display("[PERF] total_insns        : %0d", total_insns);
-      $display("[PERF] total_vector_cycles: %0d", total_vector_cycles);
-      $display("[PERF] total_vector_insns : %0d", total_vector_insns);
-      $display("[PERF] IPC                : %0.3f", ipc);
-      $display("[PERF] utilization rate   : %0.3f", utilization_rate);
-      $display("[PERF] vector inst rate   : %0.3f", vecinst_rate);
+      $display("[PERF] duration             : %0t x100fs", duration);
+      $display("[PERF] total_cycles         : %0d", total_cycles);
+      $display("[PERF] total_insns          : %0d", total_insns);
+      $display("[PERF] total_rvv_lane_cycles: %0d", total_rvv_lane_cycles);
+      $display("[PERF] total_vector_insns   : %0d", total_vector_insns);
+      $display("[PERF] IPC                  : %0.3f", ipc);
+      $display("[PERF] utilization rate     : %0.3f", utilization_rate);
+      $display("[PERF] vector inst rate     : %0.3f", vecinst_rate);
+      $display("[PERF] rvv_op               : %0d", total_rvv_op      );
+      $display("[PERF] rvv_op_fs1           : %0d", total_rvv_op_fs1  );
+      $display("[PERF] rvv_op_fd            : %0d", total_rvv_op_fd   );
+      $display("[PERF] rvv_op_load          : %0d", total_rvv_op_load );
+      $display("[PERF] rvv_op_store         : %0d", total_rvv_op_store);
       $display("[PERF] ==== Performance Report End ====\n");
 
 
       $fwrite(file_handle, "[PERF] ==== Performance Report Start ====\n");
-      $fwrite(file_handle, "[PERF] perf_start timestamp  : %0t ns\n", ara_tb.perf_start.timestamp/1000);
-      $fwrite(file_handle, "[PERF] perf_start cycle      : %0d\n", ara_tb.perf_start.cycle      );
-      $fwrite(file_handle, "[PERF] perf_start instret    : %0d\n", ara_tb.perf_start.instret    );
-      $fwrite(file_handle, "[PERF] perf_start vec_cycle  : %0d\n", ara_tb.perf_start.vec_cycle  );
-      $fwrite(file_handle, "[PERF] perf_start vec_instret: %0d\n", ara_tb.perf_start.vec_instret);
+      $fwrite(file_handle, "[PERF] start timestamp      : %0t x100fs\n", ara_tb.perf_start.timestamp);
+      $fwrite(file_handle, "[PERF] start cycle          : %0d\n", ara_tb.perf_start.cycle      );
+      $fwrite(file_handle, "[PERF] start instret        : %0d\n", ara_tb.perf_start.instret    );
+      $fwrite(file_handle, "[PERF] start rvv_lane_cycle : %0d\n", ara_tb.perf_start.rvv_lane_cycle);
+      $fwrite(file_handle, "[PERF] start rvv_instret    : %0d\n", ara_tb.perf_start.rvv_instret);
+      $fwrite(file_handle, "[PERF] start rvv_op         : %0d\n", ara_tb.perf_start.rvv_op      );
+      $fwrite(file_handle, "[PERF] start rvv_op_fs1     : %0d\n", ara_tb.perf_start.rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] start rvv_op_fd      : %0d\n", ara_tb.perf_start.rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] start rvv_op_load    : %0d\n", ara_tb.perf_start.rvv_op_load );
+      $fwrite(file_handle, "[PERF] start rvv_op_store   : %0d\n", ara_tb.perf_start.rvv_op_store);
       $fwrite(file_handle, "[PERF] ==================================\n");
-      $fwrite(file_handle, "[PERF] perf_end timestamp  : %0t ns\n", ara_tb.perf_end.timestamp/1000);
-      $fwrite(file_handle, "[PERF] perf_end cycle      : %0d\n", ara_tb.perf_end.cycle      );
-      $fwrite(file_handle, "[PERF] perf_end instret    : %0d\n", ara_tb.perf_end.instret    );
-      $fwrite(file_handle, "[PERF] perf_end vec_cycle  : %0d\n", ara_tb.perf_end.vec_cycle  );
-      $fwrite(file_handle, "[PERF] perf_end vec_instret: %0d\n", ara_tb.perf_end.vec_instret);
+      $fwrite(file_handle, "[PERF] end timestamp        : %0t x100fs\n", ara_tb.perf_end.timestamp);
+      $fwrite(file_handle, "[PERF] end cycle            : %0d\n", ara_tb.perf_end.cycle      );
+      $fwrite(file_handle, "[PERF] end instret          : %0d\n", ara_tb.perf_end.instret    );
+      $fwrite(file_handle, "[PERF] end rvv_lane_cycle   : %0d\n", ara_tb.perf_end.rvv_lane_cycle);
+      $fwrite(file_handle, "[PERF] end rvv_instret      : %0d\n", ara_tb.perf_end.rvv_instret);
+      $fwrite(file_handle, "[PERF] end rvv_op           : %0d\n", ara_tb.perf_end.rvv_op      );
+      $fwrite(file_handle, "[PERF] end rvv_op_fs1       : %0d\n", ara_tb.perf_end.rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] end rvv_op_fd        : %0d\n", ara_tb.perf_end.rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] end rvv_op_load      : %0d\n", ara_tb.perf_end.rvv_op_load );
+      $fwrite(file_handle, "[PERF] end rvv_op_store     : %0d\n", ara_tb.perf_end.rvv_op_store);
       $fwrite(file_handle, "[PERF] ==================================\n");
-      $fwrite(file_handle, "[PERF] duration           : %0t ns\n", duration/1000);
-      $fwrite(file_handle, "[PERF] total_cycles       : %0d\n", total_cycles);
-      $fwrite(file_handle, "[PERF] total_insns        : %0d\n", total_insns);
-      $fwrite(file_handle, "[PERF] total_vector_cycles: %0d\n", total_vector_cycles);
-      $fwrite(file_handle, "[PERF] total_vector_insns : %0d\n", total_vector_insns);
-      $fwrite(file_handle, "[PERF] IPC                : %0.3f\n", ipc);
-      $fwrite(file_handle, "[PERF] utilization rate   : %0.3f\n", utilization_rate);
-      $fwrite(file_handle, "[PERF] vector inst rate   : %0.3f\n", vecinst_rate);
+      $fwrite(file_handle, "[PERF] duration             : %0t x100fs\n", duration);
+      $fwrite(file_handle, "[PERF] total_cycles         : %0d\n", total_cycles);
+      $fwrite(file_handle, "[PERF] total_insns          : %0d\n", total_insns);
+      $fwrite(file_handle, "[PERF] total_rvv_lane_cycles: %0d\n", total_rvv_lane_cycles);
+      $fwrite(file_handle, "[PERF] total_vector_insns   : %0d\n", total_vector_insns);
+      $fwrite(file_handle, "[PERF] IPC                  : %0.3f\n", ipc);
+      $fwrite(file_handle, "[PERF] utilization rate     : %0.3f\n", utilization_rate);
+      $fwrite(file_handle, "[PERF] vector inst rate     : %0.3f\n", vecinst_rate);
+      $fwrite(file_handle, "[PERF] rvv_op               : %0d\n", total_rvv_op      );
+      $fwrite(file_handle, "[PERF] rvv_op_fs1           : %0d\n", total_rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] rvv_op_fd            : %0d\n", total_rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] rvv_op_load          : %0d\n", total_rvv_op_load );
+      $fwrite(file_handle, "[PERF] rvv_op_store         : %0d\n", total_rvv_op_store);
       $fwrite(file_handle, "[PERF] ==== Performance Report End ====\n");
 
       $fclose(file_handle);
@@ -96,32 +139,6 @@ module ara_tb;
   /*****************
    *  Definitions  *
    *****************/
-
-  `ifndef SAIF
-  logic        perf_time;
-  perf_t       perf_start, perf_end;
-  logic [63:0] vec_cycle;
-  logic [63:0] vec_instret;
-  `endif
-
-  initial begin
-    string testcase;
-    $fsdbDumpfile("ara_tb.fsdb");
-    $fsdbDumpvars(0, ara_tb);
-    $fsdbDumpMDA(0, ara_tb);
-    $fsdbDumpvars("+all");
-
-    void'($value$plusargs("TESTCASE=%s", testcase));
-    
-    `ifdef SAIF
-    if(testcase != "") begin
-        $dumpfile($sformatf("../vcd/%s.vcd", testcase));
-    end else begin
-        $dumpfile("../vcd/default.vcd");
-    end
-    $dumpvars(0, dut.i_ara_soc);
-    `endif
-  end
 
   `ifdef NR_LANES
   localparam NrLanes = `NR_LANES;
@@ -175,6 +192,37 @@ module ara_tb;
   /*********
    *  DUT  *
    *********/
+
+  `ifndef SAIF
+  logic        perf_time;
+  perf_t       perf_start, perf_end;
+  logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_instret;
+  logic [63:0] rvv_op      ;
+  logic [63:0] rvv_op_fs1  ;
+  logic [63:0] rvv_op_fd   ;
+  logic [63:0] rvv_op_load ;
+  logic [63:0] rvv_op_store;
+  `endif
+
+  initial begin
+    string testcase;
+    $fsdbDumpfile("ara_tb.fsdb");
+    $fsdbDumpvars(0, ara_tb);
+    $fsdbDumpMDA(0, ara_tb);
+    $fsdbDumpvars("+all");
+
+    void'($value$plusargs("TESTCASE=%s", testcase));
+    
+    `ifdef SAIF
+    if(testcase != "") begin
+        $dumpfile($sformatf("../vcd/%s.vcd", testcase));
+    end else begin
+        $dumpfile("../vcd/default.vcd");
+    end
+    $dumpvars(0, dut.i_ara_soc);
+    `endif
+  end
 
   logic [63:0] exit;
 
@@ -633,26 +681,44 @@ module ara_tb;
 
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
-      vec_cycle <= '0;
+      rvv_lane_cycle <= '0;
     end
-    else if(|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_q[7:0]) begin
-      vec_cycle <= vec_cycle + 1;
+    else if((|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[0]) ||
+            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[1]) ||
+            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[2]) ||
+            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[3])) begin
+      rvv_lane_cycle <= rvv_lane_cycle + 1;
     end
     else begin
-      vec_cycle <= vec_cycle;
+      rvv_lane_cycle <= rvv_lane_cycle;
     end
   end
 
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
-      vec_instret <= '0;
+      rvv_instret <= '0;
+      rvv_op       <= '0;
+      rvv_op_fs1   <= '0;
+      rvv_op_fd    <= '0;
+      rvv_op_load  <= '0;
+      rvv_op_store <= '0;
     end
     else begin
       if (|ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0]) begin
-        vec_instret <= vec_instret + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010));
+        rvv_instret <= rvv_instret + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010));
+        rvv_op       <= rvv_op       + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10110110)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10110110));
+        rvv_op_fs1   <= rvv_op_fs1   + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10110111)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10110111));
+        rvv_op_fd    <= rvv_op_fd    + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111000)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111000));
+        rvv_op_load  <= rvv_op_load  + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111001)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111001));
+        rvv_op_store <= rvv_op_store + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111010));
       end
       else begin
-        vec_instret <= vec_instret;
+        rvv_instret <= rvv_instret;
+        rvv_op       <= rvv_op      ;
+        rvv_op_fs1   <= rvv_op_fs1  ;
+        rvv_op_fd    <= rvv_op_fd   ;
+        rvv_op_load  <= rvv_op_load ;
+        rvv_op_store <= rvv_op_store;
       end
     end
   end
@@ -661,16 +727,8 @@ module ara_tb;
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
       perf_time  <= '0;
-      perf_start <= '{timestamp: '0,
-                      cycle: '0,
-                      instret: '0,
-                      vec_cycle: '0,
-                      vec_instret: '0};
-      perf_end   <= '{timestamp: '0,
-                      cycle: '0,
-                      instret: '0,
-                      vec_cycle: '0,
-                      vec_instret: '0};
+      perf_start <= '{default: '0};
+      perf_end   <= '{default: '0};
     end
     else if(ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_csr_o &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.csr_addr_i[11:0] == 12'hc00 &&
