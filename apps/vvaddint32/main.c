@@ -34,7 +34,6 @@ int main() {
     //const int VLEN = 256;      // Vector length in bits
     //const int ELEMENT_SIZE = 16; // Size in bits
 
-    
     // Calculate max vector elements per segment
     //const int MAX_VECTOR_ELEMENTS = VLEN / ELEMENT_SIZE;
     
@@ -42,12 +41,18 @@ int main() {
     
     // Perform vector operation
     //vec_mul_shift(TOTAL_ELEMENTS, source, dest, scalar_multiplier);
+    #ifndef SPIKE 
     int64_t runtime;
     int64_t runinst;
-
     start_timer();    
     start_instret_counter();
+    perf_time();
+    #endif
+
     vvaddint32(TOTAL_ELEMENTS, src1, src2, dest);
+
+    #ifndef SPIKE 
+    perf_time();
     stop_timer();
     stop_instret_counter();
 
@@ -55,6 +60,7 @@ int main() {
     runinst = get_instret_counter();
 
     printf("\tIPC: %.3f\n\tInstret: %d\n\tCycle: %d\n", (float)runinst/runtime, runinst, runtime);
+    #endif
 
     return 0;
 }

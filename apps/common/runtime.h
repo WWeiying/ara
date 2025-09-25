@@ -30,6 +30,10 @@ inline int64_t get_instret_count() {
   return instret_count;
 };
 
+inline int64_t perf_time() {
+  asm volatile("csrr x0, cycle");
+};
+
 #ifndef SPIKE
 // Enable and disable the hw-counter
 // Until the HW counter is not enabled, it will not start
@@ -66,6 +70,14 @@ inline void stop_timer() {
 
 // Get the value of the timer
 inline int64_t get_timer() { return 0; }
+
+// Start and stop the counter
+inline void start_instret_counter() {while(0);}
+inline void stop_instret_counter()  {while(0);}
+
+// Get the value of the instret counter
+inline int64_t get_instret_counter() { return 0;}
+
 #endif
 
 #endif // _RUNTIME_H_
