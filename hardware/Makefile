@@ -35,6 +35,14 @@ app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
 vtrace_path    ?= $(abspath $(ROOT_DIR)/../apps/ideal_dispatcher/vtrace)
 # DPI source files
 dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
+
+ideal          ?=
+ifeq ($(ideal_dispatcher), 1)
+  vtrace       = $(vtrace_path)/$(app).vtrace
+  bender_defs += --define IDEAL_DISPATCHER=1 --define VTRACE="$(vtrace)" --define N_VINSN=$(shell wc -l $(vtrace) | cut -d " " -f 1)
+  ideal        = "_ideal"
+endif
+
 #techlib path
 spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpd127spsram_20120200_180a/AN61001_20180416/tsn28hpcpd127spsram_20120200_180a/TSMCHOME/sram/Compiler/tsn28hpcpd127spsram_20120200_180a/tsn28hpcpd127spsram_20120200_180a
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
@@ -81,14 +89,14 @@ else
   endef
 endif
 
+# Bender
+# Defines
 ifeq ($(ideal_dispatcher), 1)
   vtrace       = $(vtrace_path)/$(app).vtrace
   bender_defs += --define IDEAL_DISPATCHER=1 --define VTRACE="$(vtrace)" --define N_VINSN=$(shell wc -l $(vtrace) | cut -d " " -f 1)
   ideal        = "_ideal"
 endif
 
-# Bender
-# Defines
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
@@ -112,11 +120,11 @@ else
 endif
 
 ifdef app
-ifeq ($(ideal_dispatcher), 1)
-	preload ?= "$(app_path)/$(app).ideal"
-else
-	preload ?= "$(app_path)/$(app)"
-endif
+  ifeq ($(ideal_dispatcher), 1)
+  	preload ?= "$(app_path)/$(app).ideal"
+  else
+  	preload ?= "$(app_path)/$(app)"
+  endif
 endif
 
 TIMESCALE := -timescale=1ns/100fs
@@ -130,7 +138,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
-.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif 
+.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif sim_all saif_all
 
 # Bender
 bender: $(BENDER)
@@ -160,7 +168,6 @@ compile: bender dpi ../Bender.yml
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
 sim: compile
-	@cd ./$(sim_dir) && rm perf_report.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 
 clean:
@@ -231,3 +238,15 @@ saif:
 	@cd ./sim_saif && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@echo "3.vcd2saif"
 	@vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif
+
+sim_apps ?= fft imatmul
+sim_all:
+	for sim_app in $(sim_apps);do \
+		$(MAKE) sim app=$$(sim_app); \
+	done
+
+saif_apps ?= fft imatmul
+saif_all:
+	for saif_app in $(saif_apps);do \
+		$(MAKE) sim app=$$(saif_app) mc=1; \
+	done

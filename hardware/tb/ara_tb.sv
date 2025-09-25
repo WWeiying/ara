@@ -13,6 +13,7 @@ import "DPI-C" context function byte read_section(input longint address, inout b
 `define STRINGIFY(x) `"x`"
 
 `ifndef SAIF
+`ifndef IDEAL_DISPATCHER
 typedef struct {
   realtime timestamp;
   logic [63:0] cycle;
@@ -134,6 +135,7 @@ function void print_perf_report();
       $fclose(file_handle);
 endfunction
 `endif
+`endif
 
 module ara_tb;
   /*****************
@@ -194,6 +196,7 @@ module ara_tb;
    *********/
 
   `ifndef SAIF
+  `ifndef IDEAL_DISPATCHER
   logic        perf_time;
   perf_t       perf_start, perf_end;
   logic [63:0] rvv_lane_cycle;
@@ -203,6 +206,7 @@ module ara_tb;
   logic [63:0] rvv_op_fd   ;
   logic [63:0] rvv_op_load ;
   logic [63:0] rvv_op_store;
+  `endif
   `endif
 
   initial begin
@@ -603,7 +607,9 @@ module ara_tb;
 `endif
         $info("Core Test ", $sformatf("*** SUCCESS *** (tohost = %0d)", (exit >> 1)));
 `ifndef SAIF
+`ifndef IDEAL_DISPATCHER 
         print_perf_report();
+`endif
 `endif
       end
 
@@ -675,6 +681,7 @@ module ara_tb;
 `endif
 
 `ifndef SAIF
+`ifndef IDEAL_DISPATCHER
  /**********************
   *  PERFMENCE MONITOR  *
   ***********************/
@@ -749,6 +756,7 @@ module ara_tb;
       perf_end   <= perf_end  ;
     end
   end
+`endif
 `endif
 
 endmodule : ara_tb

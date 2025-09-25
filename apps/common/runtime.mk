@@ -40,8 +40,8 @@ ZCC_DIR                 ?= /home/wangwy/software/Terapines/ZCC/4.1.2
 GCC_INSTALL_DIR         ?= $(INSTALL_DIR)/riscv-gcc
 LLVM_INSTALL_DIR        ?= $(INSTALL_DIR)/riscv-llvm
 ISA_SIM_INSTALL_DIR     ?= $(INSTALL_DIR)/riscv-isa-sim
-#ISA_SIM_MOD_INSTALL_DIR ?= $(INSTALL_DIR)/riscv-isa-sim-mod
-ISA_SIM_MOD_INSTALL_DIR ?= /home/wangwy/brook/toolchains/spike1.0
+ISA_SIM_MOD_INSTALL_DIR ?= $(INSTALL_DIR)/riscv-isa-sim-mod
+#ISA_SIM_MOD_INSTALL_DIR ?= /home/wangwy/brook/toolchains/spike1.0
 
 RISCV_XLEN    ?= 64
 RISCV_ARCH    ?= rv$(RISCV_XLEN)gcv
@@ -84,8 +84,8 @@ RISCV_SIM_MOD ?= $(ISA_SIM_MOD_INSTALL_DIR)/bin/spike
 # VLEN should be lower or equal than 4096 because of spike restrictions
 vlen_spike := $(shell vlen=$$(grep vlen $(ARA_DIR)/config/$(config).mk | cut -d" " -f3) && echo "$$(( $$vlen < 4096 ? $$vlen : 4096 ))")
 RISCV_SIM_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64"
-#RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64" -d
-RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zvl1024b -d
+RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64" -d
+#RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zvl1024b -d
 
 # Python
 PYTHON ?= python3
