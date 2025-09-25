@@ -125,7 +125,9 @@ int main() {
   }
 #else
   start_timer();
+  perf_time();
   Radix2FFT_DIF_float((float *)samples_copy, twiddle, NFFT, 10);
+  perf_time();
   stop_timer();
   SwapSamples(samples_copy, SwapTable, NFFT);
 #endif

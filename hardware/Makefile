@@ -150,7 +150,6 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 	@mkdir -p $(buildpath)/$(dpi_library)
 	@$(CXX) -shared -m64 -o $(buildpath)/$(dpi_library)/ara_dpi.so $?
 
-
 compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
@@ -161,7 +160,7 @@ compile: bender dpi ../Bender.yml
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
 sim: compile
-	@export NOVAS_FSDB_QUIET=1
+	@cd ./$(sim_dir) && rm perf_report.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 
 clean:

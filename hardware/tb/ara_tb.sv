@@ -12,15 +12,97 @@ import "DPI-C" context function byte read_section(input longint address, inout b
 
 `define STRINGIFY(x) `"x`"
 
+`ifndef SAIF
+typedef struct {
+  realtime timestamp;
+  logic [63:0] cycle;
+  logic [63:0] instret;
+  logic [63:0] vec_cycle;
+  logic [63:0] vec_instret;
+} perf_t;
+
+function automatic perf_t get_perf_counters();
+    perf_t counters;
+    counters.timestamp = $realtime;
+    counters.cycle = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.cycle_q[63:0];
+    counters.instret = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.instret_q[63:0];
+    counters.vec_cycle = ara_tb.vec_cycle;
+    counters.vec_instret = ara_tb.vec_instret;
+    return counters;
+endfunction
+
+function void print_perf_report();
+      realtime duration;
+      int total_cycles;
+      int total_insns;
+      int total_vector_cycles;
+      int total_vector_insns;
+      
+      real ipc;
+      real utilization_rate;
+      real vecinst_rate;
+      int file_handle;
+
+      duration = ara_tb.perf_end.timestamp - ara_tb.perf_start.timestamp;
+      total_cycles = ara_tb.perf_end.cycle - ara_tb.perf_start.cycle;
+      total_insns = ara_tb.perf_end.instret - ara_tb.perf_start.instret;
+      total_vector_cycles = ara_tb.perf_end.vec_cycle - ara_tb.perf_start.vec_cycle;
+      total_vector_insns = ara_tb.perf_end.vec_instret - ara_tb.perf_start.vec_instret;
+      ipc = real'(total_insns) / total_cycles;
+      utilization_rate = real'(total_vector_cycles) / total_cycles;
+      vecinst_rate = real'(total_vector_insns) / total_insns;
+      file_handle = $fopen("perf_report.log", "a");
+      
+      $display("\n[PERF] ==== Performance Report Start ====");
+      $display("[PERF] duration           : %0t ns", duration/1000);
+      $display("[PERF] total_cycles       : %0d", total_cycles);
+      $display("[PERF] total_insns        : %0d", total_insns);
+      $display("[PERF] total_vector_cycles: %0d", total_vector_cycles);
+      $display("[PERF] total_vector_insns : %0d", total_vector_insns);
+      $display("[PERF] IPC                : %0.3f", ipc);
+      $display("[PERF] utilization rate   : %0.3f", utilization_rate);
+      $display("[PERF] vector inst rate   : %0.3f", vecinst_rate);
+      $display("[PERF] ==== Performance Report End ====\n");
+
+
+      $fwrite(file_handle, "[PERF] ==== Performance Report Start ====\n");
+      $fwrite(file_handle, "[PERF] perf_start timestamp  : %0t ns\n", ara_tb.perf_start.timestamp/1000);
+      $fwrite(file_handle, "[PERF] perf_start cycle      : %0d\n", ara_tb.perf_start.cycle      );
+      $fwrite(file_handle, "[PERF] perf_start instret    : %0d\n", ara_tb.perf_start.instret    );
+      $fwrite(file_handle, "[PERF] perf_start vec_cycle  : %0d\n", ara_tb.perf_start.vec_cycle  );
+      $fwrite(file_handle, "[PERF] perf_start vec_instret: %0d\n", ara_tb.perf_start.vec_instret);
+      $fwrite(file_handle, "[PERF] ==================================\n");
+      $fwrite(file_handle, "[PERF] perf_end timestamp  : %0t ns\n", ara_tb.perf_end.timestamp/1000);
+      $fwrite(file_handle, "[PERF] perf_end cycle      : %0d\n", ara_tb.perf_end.cycle      );
+      $fwrite(file_handle, "[PERF] perf_end instret    : %0d\n", ara_tb.perf_end.instret    );
+      $fwrite(file_handle, "[PERF] perf_end vec_cycle  : %0d\n", ara_tb.perf_end.vec_cycle  );
+      $fwrite(file_handle, "[PERF] perf_end vec_instret: %0d\n", ara_tb.perf_end.vec_instret);
+      $fwrite(file_handle, "[PERF] ==================================\n");
+      $fwrite(file_handle, "[PERF] duration           : %0t ns\n", duration/1000);
+      $fwrite(file_handle, "[PERF] total_cycles       : %0d\n", total_cycles);
+      $fwrite(file_handle, "[PERF] total_insns        : %0d\n", total_insns);
+      $fwrite(file_handle, "[PERF] total_vector_cycles: %0d\n", total_vector_cycles);
+      $fwrite(file_handle, "[PERF] total_vector_insns : %0d\n", total_vector_insns);
+      $fwrite(file_handle, "[PERF] IPC                : %0.3f\n", ipc);
+      $fwrite(file_handle, "[PERF] utilization rate   : %0.3f\n", utilization_rate);
+      $fwrite(file_handle, "[PERF] vector inst rate   : %0.3f\n", vecinst_rate);
+      $fwrite(file_handle, "[PERF] ==== Performance Report End ====\n");
+
+      $fclose(file_handle);
+endfunction
+`endif
+
 module ara_tb;
   /*****************
    *  Definitions  *
    *****************/
 
-//  `ifndef VERILATOR
-//  timeunit      1ns;
-//  timeprecision 1ps;
-//  `endif
+  `ifndef SAIF
+  logic        perf_time;
+  perf_t       perf_start, perf_end;
+  logic [63:0] vec_cycle;
+  logic [63:0] vec_instret;
+  `endif
 
   initial begin
     string testcase;
@@ -472,6 +554,9 @@ module ara_tb;
         $display("[cva6-sb-full]: %d", int'(dut.sb_full_buf_q));
 `endif
         $info("Core Test ", $sformatf("*** SUCCESS *** (tohost = %0d)", (exit >> 1)));
+`ifndef SAIF
+        print_perf_report();
+`endif
       end
 
 `ifndef TARGET_GATESIM
@@ -539,6 +624,73 @@ module ara_tb;
     $finish;
   end
 
+`endif
+
+`ifndef SAIF
+ /**********************
+  *  PERFMENCE MONITOR  *
+  ***********************/
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vec_cycle <= '0;
+    end
+    else if(|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_q[7:0]) begin
+      vec_cycle <= vec_cycle + 1;
+    end
+    else begin
+      vec_cycle <= vec_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vec_instret <= '0;
+    end
+    else begin
+      if (|ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0]) begin
+        vec_instret <= vec_instret + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010));
+      end
+      else begin
+        vec_instret <= vec_instret;
+      end
+    end
+  end
+
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      perf_time  <= '0;
+      perf_start <= '{timestamp: '0,
+                      cycle: '0,
+                      instret: '0,
+                      vec_cycle: '0,
+                      vec_instret: '0};
+      perf_end   <= '{timestamp: '0,
+                      cycle: '0,
+                      instret: '0,
+                      vec_cycle: '0,
+                      vec_instret: '0};
+    end
+    else if(ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_csr_o &&
+            ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.csr_addr_i[11:0] == 12'hc00 &&
+            ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.csr_op_o[7:0] == 8'b100010 &&
+            ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.waddr_o[0][4:0] == 5'h0 &&
+            ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.we_gpr_o[0]) begin
+      perf_time <= !perf_time;
+      if(!perf_time) begin
+        perf_start <= get_perf_counters();
+      end
+      else begin
+        perf_end <= get_perf_counters();
+      end
+    end
+    else begin
+      perf_time  <= perf_time ;
+      perf_start <= perf_start;
+      perf_end   <= perf_end  ;
+    end
+  end
 `endif
 
 endmodule : ara_tb

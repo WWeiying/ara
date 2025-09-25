@@ -40,7 +40,8 @@ ZCC_DIR                 ?= /home/wangwy/software/Terapines/ZCC/4.1.2
 GCC_INSTALL_DIR         ?= $(INSTALL_DIR)/riscv-gcc
 LLVM_INSTALL_DIR        ?= $(INSTALL_DIR)/riscv-llvm
 ISA_SIM_INSTALL_DIR     ?= $(INSTALL_DIR)/riscv-isa-sim
-ISA_SIM_MOD_INSTALL_DIR ?= $(INSTALL_DIR)/riscv-isa-sim-mod
+#ISA_SIM_MOD_INSTALL_DIR ?= $(INSTALL_DIR)/riscv-isa-sim-mod
+ISA_SIM_MOD_INSTALL_DIR ?= /home/wangwy/brook/toolchains/spike1.0
 
 RISCV_XLEN    ?= 64
 RISCV_ARCH    ?= rv$(RISCV_XLEN)gcv
@@ -83,7 +84,8 @@ RISCV_SIM_MOD ?= $(ISA_SIM_MOD_INSTALL_DIR)/bin/spike
 # VLEN should be lower or equal than 4096 because of spike restrictions
 vlen_spike := $(shell vlen=$$(grep vlen $(ARA_DIR)/config/$(config).mk | cut -d" " -f3) && echo "$$(( $$vlen < 4096 ? $$vlen : 4096 ))")
 RISCV_SIM_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64"
-RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64" -d
+#RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zfh --varch="vlen:$(vlen_spike),elen:64" -d
+RISCV_SIM_MOD_OPT ?= --isa=rv64gcv_zvl1024b -d
 
 # Python
 PYTHON ?= python3
@@ -110,31 +112,42 @@ else
 # -mllvm -scalable-vectorization=on
 LLVM_V_FLAGS   ?= -fno-vectorize -mllvm -scalable-vectorization=off -mllvm -riscv-v-vector-bits-min=0 -mno-implicit-float
 endif
+
 RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
 ifeq ($(LINUX),1)
-RISCV_CCFLAGS  ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
-RISCV_LDFLAGS  ?= -lm -lstdc++
-RISCV_CXXFLAGS ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
+  RISCV_CCFLAGS  ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
+  RISCV_LDFLAGS  ?= -lm -lstdc++
+  RISCV_CXXFLAGS ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
 else
+  ifeq ($(vec),1)
+    RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dvec 
+    RISCV_LDFLAGS  ?= -static -nostdlib -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+    	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+  else
+    ifeq ($(manual),1)
+      RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dmanual
+      RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+      	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+    else
+      RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99
+      RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+      	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+    endif
+  endif
+endif
+
 ifeq ($(vec),1)
-RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dvec 
-RISCV_LDFLAGS  ?= -static -nostdlib -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
-	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+  RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dvec
 else
-ifeq ($(manual),1)
-RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dmanual
-RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
-	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
-else
-RISCV_CCFLAGS  ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99
-RISCV_LDFLAGS  ?= -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
-	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
+  ifeq ($(manual),1)
+    RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dmanual
+  else
+    RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99
+  endif
 endif
-endif
-endif
-RISCV_CCFLAGS_SPIKE  ?= $(RISCV_FLAGS) $(SPIKE_CCFLAGS) -ffunction-sections -fdata-sections -std=gnu99
-RISCV_CXXFLAGS ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections
+
 RISCV_LDFLAGS_SPIKE  ?= -static -nostartfiles -lm $(SPIKE_LDFLAGS) -Wl,--gc-sections
+RISCV_CXXFLAGS ?= $(RISCV_FLAGS) -ffunction-sections -fdata-sections
 
 # GCC Flags
 RISCV_FLAGS_GCC    ?= -mcmodel=medany -march=$(RISCV_ARCH) -mabi=$(RISCV_ABI) -I$(CURDIR)/common -static -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)

@@ -81,7 +81,9 @@ int main() {
     // Matrices are initialized --> Start calculating
     printf("Calculating imatmul...\n");
     start_timer();
+    perf_time();
     imatmul(c, a, b, s, s, s);
+    perf_time();
     stop_timer();
 
     // Metrics
