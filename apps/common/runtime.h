@@ -31,7 +31,8 @@ inline int64_t get_instret_count() {
 };
 
 inline int64_t perf_time() {
-  asm volatile("csrr x0, cycle");
+  asm volatile("fence");
+  asm volatile("rdcycle zero");
 };
 
 #ifndef SPIKE
