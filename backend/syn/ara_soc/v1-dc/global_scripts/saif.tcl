@@ -1,4 +1,4 @@
-set APP_LIST                            "fft imatmul"
+set APP_LIST                            "vsaxpy"
 
 if {$APP_LIST != "" } {
     foreach APP $APP_LIST {

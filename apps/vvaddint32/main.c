@@ -42,24 +42,23 @@ int main() {
     // Perform vector operation
     //vec_mul_shift(TOTAL_ELEMENTS, source, dest, scalar_multiplier);
     #ifndef SPIKE 
-    int64_t runtime;
-    int64_t runinst;
-    start_timer();    
-    start_instret_counter();
-    perf_time();
+    //int64_t runtime;
+    //int64_t runinst;
+    //start_timer();    
+    //start_instret_counter();
     #endif
 
     vvaddint32(TOTAL_ELEMENTS, src1, src2, dest);
 
     #ifndef SPIKE 
     perf_time();
-    stop_timer();
-    stop_instret_counter();
+    //stop_timer();
+    //stop_instret_counter();
 
-    runtime = get_timer();
-    runinst = get_instret_counter();
+    //runtime = get_timer();
+    //runinst = get_instret_counter();
 
-    printf("\tIPC: %.3f\n\tInstret: %d\n\tCycle: %d\n", (float)runinst/runtime, runinst, runtime);
+    //printf("\tIPC: %.3f\n\tInstret: %d\n\tCycle: %d\n", (float)runinst/runtime, runinst, runtime);
     #endif
 
     return 0;
@@ -102,6 +101,10 @@ __attribute__((noinline, used)) void vvaddint32(int n, const int *src1, const in
 __attribute__((naked, target("arch=rv64gcv_zfh_zvfh")))
 void vvaddint32(int n, const int *src1, const int *src2, int*dst) {
     __asm__ volatile (
+    #ifndef SPIKE 
+    "fence\n"
+    "rdcycle zero\n"
+    #endif
     "loop_start:\n"
     "  vsetvli t0, a0, e32, m2, ta, ma\n"
     "  vle32.v v0, (a1)\n"

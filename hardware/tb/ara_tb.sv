@@ -18,7 +18,14 @@ typedef struct {
   realtime timestamp;
   logic [63:0] cycle;
   logic [63:0] instret;
+  logic [63:0] rvv_cycle;
   logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_mem_only_cycle;
+  logic [63:0] rvv_mem_lane_cycle;
+  logic [63:0] rvv_load_only_cycle;
+  logic [63:0] rvv_load_lane_cycle;
+  logic [63:0] rvv_store_only_cycle;
+  logic [63:0] rvv_store_lane_cycle;
   logic [63:0] rvv_instret;
   logic [63:0] rvv_op;
   logic [63:0] rvv_op_fs1;
@@ -32,7 +39,14 @@ function automatic perf_t get_perf_counters();
     counters.timestamp = $realtime;
     counters.cycle = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.cycle_q[63:0];
     counters.instret = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.instret_q[63:0];
-    counters.rvv_lane_cycle = ara_tb.rvv_lane_cycle;
+    counters.rvv_cycle            = ara_tb.rvv_cycle           ;
+    counters.rvv_lane_cycle       = ara_tb.rvv_lane_cycle      ;
+    counters.rvv_mem_only_cycle  = ara_tb.rvv_mem_only_cycle ;
+    counters.rvv_mem_lane_cycle  = ara_tb.rvv_mem_lane_cycle ;
+    counters.rvv_load_only_cycle  = ara_tb.rvv_load_only_cycle ;
+    counters.rvv_load_lane_cycle  = ara_tb.rvv_load_lane_cycle ;
+    counters.rvv_store_only_cycle = ara_tb.rvv_store_only_cycle;
+    counters.rvv_store_lane_cycle = ara_tb.rvv_store_lane_cycle;
     counters.rvv_instret = ara_tb.rvv_instret;
     counters.rvv_op       = ara_tb.rvv_op      ;
     counters.rvv_op_fs1   = ara_tb.rvv_op_fs1  ;
@@ -46,7 +60,14 @@ function void print_perf_report();
       realtime duration;
       int total_cycles;
       int total_insns;
-      int total_rvv_lane_cycles;
+      int total_rvv_cycles          ;
+      int total_rvv_lane_cycles     ;
+      int total_rvv_mem_only_cycles;
+      int total_rvv_mem_lane_cycles;
+      int total_rvv_load_only_cycles;
+      int total_rvv_load_lane_cycles;
+      int total_rvv_store_only_cycles;
+      int total_rvv_store_lane_cycles;
       int total_vector_insns;
       int total_rvv_op      ;
       int total_rvv_op_fs1  ;
@@ -62,78 +83,185 @@ function void print_perf_report();
       string testcase;
       void'($value$plusargs("TESTCASE=%s", testcase));
 
-      duration = ara_tb.perf_end.timestamp - ara_tb.perf_start.timestamp;
-      total_cycles = ara_tb.perf_end.cycle - ara_tb.perf_start.cycle;
-      total_insns = ara_tb.perf_end.instret - ara_tb.perf_start.instret;
-      total_rvv_lane_cycles = ara_tb.perf_end.rvv_lane_cycle - ara_tb.perf_start.rvv_lane_cycle;
-      total_vector_insns = ara_tb.perf_end.rvv_instret - ara_tb.perf_start.rvv_instret;
-      total_rvv_op       = ara_tb.perf_end.rvv_op       - ara_tb.perf_start.rvv_op      ;
-      total_rvv_op_fs1   = ara_tb.perf_end.rvv_op_fs1   - ara_tb.perf_start.rvv_op_fs1  ;
-      total_rvv_op_fd    = ara_tb.perf_end.rvv_op_fd    - ara_tb.perf_start.rvv_op_fd   ;
-      total_rvv_op_load  = ara_tb.perf_end.rvv_op_load  - ara_tb.perf_start.rvv_op_load ;
-      total_rvv_op_store = ara_tb.perf_end.rvv_op_store - ara_tb.perf_start.rvv_op_store;
+      duration = ara_tb.perf_end_n.timestamp - ara_tb.perf_start_n.timestamp;
+      total_cycles = ara_tb.perf_end_n.cycle - ara_tb.perf_start_n.cycle + 20;
+      total_insns = ara_tb.perf_end_n.instret - ara_tb.perf_start_n.instret;
+      total_rvv_cycles            = ara_tb.perf_end_n.rvv_cycle            - ara_tb.perf_start_n.rvv_cycle           ;
+      total_rvv_lane_cycles       = ara_tb.perf_end_n.rvv_lane_cycle       - ara_tb.perf_start_n.rvv_lane_cycle      ;
+      total_rvv_mem_only_cycles  = ara_tb.perf_end_n.rvv_mem_only_cycle  - ara_tb.perf_start_n.rvv_mem_only_cycle ;
+      total_rvv_mem_lane_cycles  = ara_tb.perf_end_n.rvv_mem_lane_cycle  - ara_tb.perf_start_n.rvv_mem_lane_cycle ;
+      total_rvv_load_only_cycles  = ara_tb.perf_end_n.rvv_load_only_cycle  - ara_tb.perf_start_n.rvv_load_only_cycle ;
+      total_rvv_load_lane_cycles  = ara_tb.perf_end_n.rvv_load_lane_cycle  - ara_tb.perf_start_n.rvv_load_lane_cycle ;
+      total_rvv_store_only_cycles = ara_tb.perf_end_n.rvv_store_only_cycle - ara_tb.perf_start_n.rvv_store_only_cycle;
+      total_rvv_store_lane_cycles = ara_tb.perf_end_n.rvv_store_lane_cycle - ara_tb.perf_start_n.rvv_store_lane_cycle;
+      total_vector_insns = ara_tb.perf_end_n.rvv_instret - ara_tb.perf_start_n.rvv_instret;
+      total_rvv_op       = ara_tb.perf_end_n.rvv_op       - ara_tb.perf_start_n.rvv_op      ;
+      total_rvv_op_fs1   = ara_tb.perf_end_n.rvv_op_fs1   - ara_tb.perf_start_n.rvv_op_fs1  ;
+      total_rvv_op_fd    = ara_tb.perf_end_n.rvv_op_fd    - ara_tb.perf_start_n.rvv_op_fd   ;
+      total_rvv_op_load  = ara_tb.perf_end_n.rvv_op_load  - ara_tb.perf_start_n.rvv_op_load ;
+      total_rvv_op_store = ara_tb.perf_end_n.rvv_op_store - ara_tb.perf_start_n.rvv_op_store;
       ipc = real'(total_insns) / total_cycles;
       utilization_rate = real'(total_rvv_lane_cycles) / total_cycles;
       vecinst_rate = real'(total_vector_insns) / total_insns;
       file_handle = $fopen($sformatf("perf_report_%s.log", testcase), "a");
       
       $display("\n[PERF] ==== Performance Report Start ====");
-      $display("[PERF] duration             : %0t x100fs", duration);
-      $display("[PERF] total_cycles         : %0d", total_cycles);
-      $display("[PERF] total_insns          : %0d", total_insns);
-      $display("[PERF] total_rvv_lane_cycles: %0d", total_rvv_lane_cycles);
-      $display("[PERF] total_vector_insns   : %0d", total_vector_insns);
-      $display("[PERF] IPC                  : %0.3f", ipc);
-      $display("[PERF] utilization rate     : %0.3f", utilization_rate);
-      $display("[PERF] vector inst rate     : %0.3f", vecinst_rate);
-      $display("[PERF] rvv_op               : %0d", total_rvv_op      );
-      $display("[PERF] rvv_op_fs1           : %0d", total_rvv_op_fs1  );
-      $display("[PERF] rvv_op_fd            : %0d", total_rvv_op_fd   );
-      $display("[PERF] rvv_op_load          : %0d", total_rvv_op_load );
-      $display("[PERF] rvv_op_store         : %0d", total_rvv_op_store);
+      $display("[PERF] duration                   : %0t x100fs", duration);
+      $display("[PERF] total_cycles               : %0d", total_cycles);
+      $display("[PERF] total_insns                : %0d", total_insns);
+      $display("[PERF] total_rvv_cycles           : %0d", total_rvv_cycles           );
+      $display("[PERF] total_rvv_lane_cycles      : %0d", total_rvv_lane_cycles      );
+      $display("[PERF] total_rvv_mem_only_cycles  : %0d", total_rvv_mem_only_cycles );
+      $display("[PERF] total_rvv_mem_lane_cycles  : %0d", total_rvv_mem_lane_cycles );
+      $display("[PERF] total_rvv_load_only_cycles : %0d", total_rvv_load_only_cycles );
+      $display("[PERF] total_rvv_load_lane_cycles : %0d", total_rvv_load_lane_cycles );
+      $display("[PERF] total_rvv_store_only_cycles: %0d", total_rvv_store_only_cycles);
+      $display("[PERF] total_rvv_store_lane_cycles: %0d", total_rvv_store_lane_cycles);
+      $display("[PERF] total_vector_insns         : %0d", total_vector_insns);
+      $display("[PERF] IPC                        : %0.3f", ipc);
+      $display("[PERF] utilization rate           : %0.3f", utilization_rate);
+      $display("[PERF] vector inst rate           : %0.3f", vecinst_rate);
+      $display("[PERF] rvv_op                     : %0d", total_rvv_op      );
+      $display("[PERF] rvv_op_fs1                 : %0d", total_rvv_op_fs1  );
+      $display("[PERF] rvv_op_fd                  : %0d", total_rvv_op_fd   );
+      $display("[PERF] rvv_op_load                : %0d", total_rvv_op_load );
+      $display("[PERF] rvv_op_store               : %0d", total_rvv_op_store);
       $display("[PERF] ==== Performance Report End ====\n");
 
 
       $fwrite(file_handle, "[PERF] ==== Performance Report Start ====\n");
-      $fwrite(file_handle, "[PERF] start timestamp      : %0t x100fs\n", ara_tb.perf_start.timestamp);
-      $fwrite(file_handle, "[PERF] start cycle          : %0d\n", ara_tb.perf_start.cycle      );
-      $fwrite(file_handle, "[PERF] start instret        : %0d\n", ara_tb.perf_start.instret    );
-      $fwrite(file_handle, "[PERF] start rvv_lane_cycle : %0d\n", ara_tb.perf_start.rvv_lane_cycle);
-      $fwrite(file_handle, "[PERF] start rvv_instret    : %0d\n", ara_tb.perf_start.rvv_instret);
-      $fwrite(file_handle, "[PERF] start rvv_op         : %0d\n", ara_tb.perf_start.rvv_op      );
-      $fwrite(file_handle, "[PERF] start rvv_op_fs1     : %0d\n", ara_tb.perf_start.rvv_op_fs1  );
-      $fwrite(file_handle, "[PERF] start rvv_op_fd      : %0d\n", ara_tb.perf_start.rvv_op_fd   );
-      $fwrite(file_handle, "[PERF] start rvv_op_load    : %0d\n", ara_tb.perf_start.rvv_op_load );
-      $fwrite(file_handle, "[PERF] start rvv_op_store   : %0d\n", ara_tb.perf_start.rvv_op_store);
+      $fwrite(file_handle, "[PERF] start timestamp           : %0t x100fs\n", ara_tb.perf_start_q.timestamp);
+      $fwrite(file_handle, "[PERF] start cycle               : %0d\n", ara_tb.perf_start_q.cycle      );
+      $fwrite(file_handle, "[PERF] start instret             : %0d\n", ara_tb.perf_start_q.instret    );
+      $fwrite(file_handle, "[PERF] start rvv_cycle           : %0d\n", ara_tb.perf_start_q.rvv_cycle           );
+      $fwrite(file_handle, "[PERF] start rvv_lane_cycle      : %0d\n", ara_tb.perf_start_q.rvv_lane_cycle      );
+      $fwrite(file_handle, "[PERF] start rvv_mem_only_cycle  : %0d\n", ara_tb.perf_start_q.rvv_mem_only_cycle );
+      $fwrite(file_handle, "[PERF] start rvv_mem_lane_cycle  : %0d\n", ara_tb.perf_start_q.rvv_mem_lane_cycle );
+      $fwrite(file_handle, "[PERF] start rvv_load_only_cycle : %0d\n", ara_tb.perf_start_q.rvv_load_only_cycle );
+      $fwrite(file_handle, "[PERF] start rvv_load_lane_cycle : %0d\n", ara_tb.perf_start_q.rvv_load_lane_cycle );
+      $fwrite(file_handle, "[PERF] start rvv_store_only_cycle: %0d\n", ara_tb.perf_start_q.rvv_store_only_cycle);
+      $fwrite(file_handle, "[PERF] start rvv_store_lane_cycle: %0d\n", ara_tb.perf_start_q.rvv_store_lane_cycle);
+      $fwrite(file_handle, "[PERF] start rvv_instret         : %0d\n", ara_tb.perf_start_q.rvv_instret);
+      $fwrite(file_handle, "[PERF] start rvv_op              : %0d\n", ara_tb.perf_start_q.rvv_op      );
+      $fwrite(file_handle, "[PERF] start rvv_op_fs1          : %0d\n", ara_tb.perf_start_q.rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] start rvv_op_fd           : %0d\n", ara_tb.perf_start_q.rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] start rvv_op_load         : %0d\n", ara_tb.perf_start_q.rvv_op_load );
+      $fwrite(file_handle, "[PERF] start rvv_op_store        : %0d\n", ara_tb.perf_start_q.rvv_op_store);
       $fwrite(file_handle, "[PERF] ==================================\n");
-      $fwrite(file_handle, "[PERF] end timestamp        : %0t x100fs\n", ara_tb.perf_end.timestamp);
-      $fwrite(file_handle, "[PERF] end cycle            : %0d\n", ara_tb.perf_end.cycle      );
-      $fwrite(file_handle, "[PERF] end instret          : %0d\n", ara_tb.perf_end.instret    );
-      $fwrite(file_handle, "[PERF] end rvv_lane_cycle   : %0d\n", ara_tb.perf_end.rvv_lane_cycle);
-      $fwrite(file_handle, "[PERF] end rvv_instret      : %0d\n", ara_tb.perf_end.rvv_instret);
-      $fwrite(file_handle, "[PERF] end rvv_op           : %0d\n", ara_tb.perf_end.rvv_op      );
-      $fwrite(file_handle, "[PERF] end rvv_op_fs1       : %0d\n", ara_tb.perf_end.rvv_op_fs1  );
-      $fwrite(file_handle, "[PERF] end rvv_op_fd        : %0d\n", ara_tb.perf_end.rvv_op_fd   );
-      $fwrite(file_handle, "[PERF] end rvv_op_load      : %0d\n", ara_tb.perf_end.rvv_op_load );
-      $fwrite(file_handle, "[PERF] end rvv_op_store     : %0d\n", ara_tb.perf_end.rvv_op_store);
+      $fwrite(file_handle, "[PERF] end timestamp             : %0t x100fs\n", ara_tb.perf_end_q.timestamp);
+      $fwrite(file_handle, "[PERF] end cycle                 : %0d\n", ara_tb.perf_end_q.cycle      );
+      $fwrite(file_handle, "[PERF] end instret               : %0d\n", ara_tb.perf_end_q.instret    );
+      $fwrite(file_handle, "[PERF] end rvv_cycle             : %0d\n", ara_tb.perf_end_q.rvv_cycle           );
+      $fwrite(file_handle, "[PERF] end rvv_lane_cycle        : %0d\n", ara_tb.perf_end_q.rvv_lane_cycle      );
+      $fwrite(file_handle, "[PERF] end rvv_mem_only_cycle    : %0d\n", ara_tb.perf_end_q.rvv_mem_only_cycle );
+      $fwrite(file_handle, "[PERF] end rvv_mem_lane_cycle    : %0d\n", ara_tb.perf_end_q.rvv_mem_lane_cycle );
+      $fwrite(file_handle, "[PERF] end rvv_load_only_cycle   : %0d\n", ara_tb.perf_end_q.rvv_load_only_cycle );
+      $fwrite(file_handle, "[PERF] end rvv_load_lane_cycle   : %0d\n", ara_tb.perf_end_q.rvv_load_lane_cycle );
+      $fwrite(file_handle, "[PERF] end rvv_store_only_cycle  : %0d\n", ara_tb.perf_end_q.rvv_store_only_cycle);
+      $fwrite(file_handle, "[PERF] end rvv_store_lane_cycle  : %0d\n", ara_tb.perf_end_q.rvv_store_lane_cycle);
+      $fwrite(file_handle, "[PERF] end rvv_instret           : %0d\n", ara_tb.perf_end_q.rvv_instret);
+      $fwrite(file_handle, "[PERF] end rvv_op                : %0d\n", ara_tb.perf_end_q.rvv_op      );
+      $fwrite(file_handle, "[PERF] end rvv_op_fs1            : %0d\n", ara_tb.perf_end_q.rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] end rvv_op_fd             : %0d\n", ara_tb.perf_end_q.rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] end rvv_op_load           : %0d\n", ara_tb.perf_end_q.rvv_op_load );
+      $fwrite(file_handle, "[PERF] end rvv_op_store          : %0d\n", ara_tb.perf_end_q.rvv_op_store);
       $fwrite(file_handle, "[PERF] ==================================\n");
-      $fwrite(file_handle, "[PERF] duration             : %0t x100fs\n", duration);
-      $fwrite(file_handle, "[PERF] total_cycles         : %0d\n", total_cycles);
-      $fwrite(file_handle, "[PERF] total_insns          : %0d\n", total_insns);
-      $fwrite(file_handle, "[PERF] total_rvv_lane_cycles: %0d\n", total_rvv_lane_cycles);
-      $fwrite(file_handle, "[PERF] total_vector_insns   : %0d\n", total_vector_insns);
-      $fwrite(file_handle, "[PERF] IPC                  : %0.3f\n", ipc);
-      $fwrite(file_handle, "[PERF] utilization rate     : %0.3f\n", utilization_rate);
-      $fwrite(file_handle, "[PERF] vector inst rate     : %0.3f\n", vecinst_rate);
-      $fwrite(file_handle, "[PERF] rvv_op               : %0d\n", total_rvv_op      );
-      $fwrite(file_handle, "[PERF] rvv_op_fs1           : %0d\n", total_rvv_op_fs1  );
-      $fwrite(file_handle, "[PERF] rvv_op_fd            : %0d\n", total_rvv_op_fd   );
-      $fwrite(file_handle, "[PERF] rvv_op_load          : %0d\n", total_rvv_op_load );
-      $fwrite(file_handle, "[PERF] rvv_op_store         : %0d\n", total_rvv_op_store);
+      $fwrite(file_handle, "[PERF] duration                   : %0t x100fs\n", duration);
+      $fwrite(file_handle, "[PERF] total_cycles               : %0d\n", total_cycles);
+      $fwrite(file_handle, "[PERF] total_insns                : %0d\n", total_insns);
+      $fwrite(file_handle, "[PERF] total_rvv_cycles           : %0d\n", total_rvv_cycles           );
+      $fwrite(file_handle, "[PERF] total_rvv_lane_cycles      : %0d\n", total_rvv_lane_cycles      );
+      $fwrite(file_handle, "[PERF] total_rvv_mem_only_cycles  : %0d\n", total_rvv_mem_only_cycles );
+      $fwrite(file_handle, "[PERF] total_rvv_mem_lane_cycles  : %0d\n", total_rvv_mem_lane_cycles );
+      $fwrite(file_handle, "[PERF] total_rvv_load_only_cycles : %0d\n", total_rvv_load_only_cycles );
+      $fwrite(file_handle, "[PERF] total_rvv_load_lane_cycles : %0d\n", total_rvv_load_lane_cycles );
+      $fwrite(file_handle, "[PERF] total_rvv_store_only_cycles: %0d\n", total_rvv_store_only_cycles);
+      $fwrite(file_handle, "[PERF] total_rvv_store_lane_cycles: %0d\n", total_rvv_store_lane_cycles);
+      $fwrite(file_handle, "[PERF] total_vector_insns         : %0d\n", total_vector_insns);
+      $fwrite(file_handle, "[PERF] IPC                        : %0.3f\n", ipc);
+      $fwrite(file_handle, "[PERF] utilization rate           : %0.3f\n", utilization_rate);
+      $fwrite(file_handle, "[PERF] vector inst rate           : %0.3f\n", vecinst_rate);
+      $fwrite(file_handle, "[PERF] rvv_op                     : %0d\n", total_rvv_op      );
+      $fwrite(file_handle, "[PERF] rvv_op_fs1                 : %0d\n", total_rvv_op_fs1  );
+      $fwrite(file_handle, "[PERF] rvv_op_fd                  : %0d\n", total_rvv_op_fd   );
+      $fwrite(file_handle, "[PERF] rvv_op_load                : %0d\n", total_rvv_op_load );
+      $fwrite(file_handle, "[PERF] rvv_op_store               : %0d\n", total_rvv_op_store);
       $fwrite(file_handle, "[PERF] ==== Performance Report End ====\n");
 
       $fclose(file_handle);
 endfunction
+`else
+typedef struct {
+  realtime timestamp;
+  logic [63:0] rvv_cycle;
+  logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_mem_only_cycle;
+  logic [63:0] rvv_mem_lane_cycle;
+  logic [63:0] rvv_load_only_cycle;
+  logic [63:0] rvv_load_lane_cycle;
+  logic [63:0] rvv_store_only_cycle;
+  logic [63:0] rvv_store_lane_cycle;
+} perf_t;
+
+function automatic perf_t get_perf_counters();
+    perf_t counters;
+    counters.timestamp = $realtime;
+    counters.rvv_cycle            = ara_tb.rvv_cycle;
+    counters.rvv_lane_cycle       = ara_tb.rvv_lane_cycle;
+    counters.rvv_mem_only_cycle  = ara_tb.rvv_mem_only_cycle ;
+    counters.rvv_mem_lane_cycle  = ara_tb.rvv_mem_lane_cycle ;
+    counters.rvv_load_only_cycle  = ara_tb.rvv_load_only_cycle ;
+    counters.rvv_load_lane_cycle  = ara_tb.rvv_load_lane_cycle ;
+    counters.rvv_store_only_cycle = ara_tb.rvv_store_only_cycle;
+    counters.rvv_store_lane_cycle = ara_tb.rvv_store_lane_cycle;
+    return counters;
+endfunction
+
+function void print_perf_report();
+      realtime duration;
+      int total_rvv_cycles          ;
+      int total_rvv_lane_cycles     ;
+      int total_rvv_mem_only_cycles;
+      int total_rvv_mem_lane_cycles;
+      int total_rvv_load_only_cycles;
+      int total_rvv_load_lane_cycles;
+      int total_rvv_store_only_cycles;
+      int total_rvv_store_lane_cycles;
+      
+      real utilization_rate;
+      int file_handle;
+
+      string testcase;
+      void'($value$plusargs("TESTCASE=%s", testcase));
+
+      duration = ara_tb.perf_end_n.timestamp - ara_tb.perf_start_n.timestamp;
+      total_rvv_cycles            = ara_tb.perf_end_n.rvv_cycle            - ara_tb.perf_start_n.rvv_cycle           ;
+      total_rvv_lane_cycles       = ara_tb.perf_end_n.rvv_lane_cycle       - ara_tb.perf_start_n.rvv_lane_cycle      ;
+      total_rvv_mem_only_cycles  = ara_tb.perf_end_n.rvv_mem_only_cycle  - ara_tb.perf_start_n.rvv_mem_only_cycle ;
+      total_rvv_mem_lane_cycles  = ara_tb.perf_end_n.rvv_mem_lane_cycle  - ara_tb.perf_start_n.rvv_mem_lane_cycle ;
+      total_rvv_load_only_cycles  = ara_tb.perf_end_n.rvv_load_only_cycle  - ara_tb.perf_start_n.rvv_load_only_cycle ;
+      total_rvv_load_lane_cycles  = ara_tb.perf_end_n.rvv_load_lane_cycle  - ara_tb.perf_start_n.rvv_load_lane_cycle ;
+      total_rvv_store_only_cycles = ara_tb.perf_end_n.rvv_store_only_cycle - ara_tb.perf_start_n.rvv_store_only_cycle;
+      total_rvv_store_lane_cycles = ara_tb.perf_end_n.rvv_store_lane_cycle - ara_tb.perf_start_n.rvv_store_lane_cycle;
+      utilization_rate = real'(total_rvv_lane_cycles) / total_rvv_cycles;
+      file_handle = $fopen($sformatf("perf_report_%s_ideal.log", testcase), "a");
+      
+      $display("\n[PERF] ==== Performance Report Start ====");
+      $display("[PERF] duration                   : %0t x100fs", duration);
+      $display("[PERF] total_rvv_cycles           : %0d", total_rvv_cycles           );
+      $display("[PERF] total_rvv_lane_cycles      : %0d", total_rvv_lane_cycles      );
+      $display("[PERF] total_rvv_mem_only_cycles  : %0d", total_rvv_mem_only_cycles );
+      $display("[PERF] total_rvv_mem_lane_cycles  : %0d", total_rvv_mem_lane_cycles );
+      $display("[PERF] total_rvv_load_only_cycles : %0d", total_rvv_load_only_cycles );
+      $display("[PERF] total_rvv_load_lane_cycles : %0d", total_rvv_load_lane_cycles );
+      $display("[PERF] total_rvv_store_only_cycles: %0d", total_rvv_store_only_cycles);
+      $display("[PERF] total_rvv_store_lane_cycles: %0d", total_rvv_store_lane_cycles);
+      $display("[PERF] utilization rate           : %0.3f", utilization_rate);
+      $display("[PERF] ==== Performance Report End ====\n");
+
+      $fclose(file_handle);
+endfunction
+
 `endif
 `endif
 
@@ -197,15 +325,35 @@ module ara_tb;
 
   `ifndef SAIF
   `ifndef IDEAL_DISPATCHER
-  logic        perf_time;
-  perf_t       perf_start, perf_end;
+  logic        perf_time_q;
+  logic        perf_time_n;
+  perf_t       perf_start_q, perf_end_q;
+  perf_t       perf_start_n, perf_end_n;
+  logic [63:0] rvv_cycle;
   logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_mem_only_cycle;
+  logic [63:0] rvv_mem_lane_cycle;
+  logic [63:0] rvv_load_only_cycle;
+  logic [63:0] rvv_load_lane_cycle;
+  logic [63:0] rvv_store_only_cycle;
+  logic [63:0] rvv_store_lane_cycle;
   logic [63:0] rvv_instret;
   logic [63:0] rvv_op      ;
   logic [63:0] rvv_op_fs1  ;
   logic [63:0] rvv_op_fd   ;
   logic [63:0] rvv_op_load ;
   logic [63:0] rvv_op_store;
+  `else
+  logic        perf_monitor;
+  perf_t       perf_start_n, perf_end_n;
+  logic [63:0] rvv_cycle;
+  logic [63:0] rvv_lane_cycle;
+  logic [63:0] rvv_mem_only_cycle;
+  logic [63:0] rvv_mem_lane_cycle;
+  logic [63:0] rvv_load_only_cycle;
+  logic [63:0] rvv_load_lane_cycle;
+  logic [63:0] rvv_store_only_cycle;
+  logic [63:0] rvv_store_lane_cycle;
   `endif
   `endif
 
@@ -606,11 +754,6 @@ module ara_tb;
         $display("[cva6-sb-full]: %d", int'(dut.sb_full_buf_q));
 `endif
         $info("Core Test ", $sformatf("*** SUCCESS *** (tohost = %0d)", (exit >> 1)));
-`ifndef SAIF
-`ifndef IDEAL_DISPATCHER 
-        print_perf_report();
-`endif
-`endif
       end
 
 `ifndef TARGET_GATESIM
@@ -685,19 +828,110 @@ module ara_tb;
  /**********************
   *  PERFMENCE MONITOR  *
   ***********************/
+  logic rvv_lane_en,rvv_load_en,rvv_store_en;
+
+  always_comb begin
+    rvv_lane_en = (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[0]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[1]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[2]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[3]);
+    rvv_load_en = |ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[4];
+    rvv_store_en = |ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[5];
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_cycle <= '0;
+    end
+    else if(!ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.ara_idle_o) begin
+      rvv_cycle <= rvv_cycle + 1;
+    end
+    else begin
+      rvv_cycle <= rvv_cycle;
+    end
+  end
 
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
       rvv_lane_cycle <= '0;
     end
-    else if((|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[0]) ||
-            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[1]) ||
-            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[2]) ||
-            (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[3])) begin
+    else if(rvv_lane_en) begin
       rvv_lane_cycle <= rvv_lane_cycle + 1;
     end
     else begin
       rvv_lane_cycle <= rvv_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_mem_only_cycle <= '0;
+    end
+    else if((rvv_load_en || rvv_store_en) && !rvv_lane_en) begin
+      rvv_mem_only_cycle <= rvv_mem_only_cycle + 1;
+    end
+    else begin
+      rvv_mem_only_cycle <= rvv_mem_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_mem_lane_cycle <= '0;
+    end
+    else if((rvv_load_en || rvv_store_en) && rvv_lane_en) begin
+      rvv_mem_lane_cycle <= rvv_mem_lane_cycle + 1;
+    end
+    else begin
+      rvv_mem_lane_cycle <= rvv_mem_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_load_only_cycle <= '0;
+    end
+    else if(rvv_load_en && !rvv_lane_en) begin
+      rvv_load_only_cycle <= rvv_load_only_cycle + 1;
+    end
+    else begin
+      rvv_load_only_cycle <= rvv_load_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_load_lane_cycle <= '0;
+    end
+    else if(rvv_load_en && rvv_lane_en) begin
+      rvv_load_lane_cycle <= rvv_load_lane_cycle + 1;
+    end
+    else begin
+      rvv_load_lane_cycle <= rvv_load_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_store_only_cycle <= '0;
+    end
+    else if(rvv_store_en && !rvv_lane_en) begin
+      rvv_store_only_cycle <= rvv_store_only_cycle + 1;
+    end
+    else begin
+      rvv_store_only_cycle <= rvv_store_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_store_lane_cycle <= '0;
+    end
+    else if(rvv_store_en && rvv_lane_en) begin
+      rvv_store_lane_cycle <= rvv_store_lane_cycle + 1;
+    end
+    else begin
+      rvv_store_lane_cycle <= rvv_store_lane_cycle;
     end
   end
 
@@ -731,31 +965,170 @@ module ara_tb;
   end
 
 
-  always_ff @(posedge clk, negedge rst_n) begin
-    if(!rst_n) begin
-      perf_time  <= '0;
-      perf_start <= '{default: '0};
-      perf_end   <= '{default: '0};
-    end
-    else if(ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_csr_o &&
+  always_comb begin
+    perf_time_n = perf_time_q;
+    if(ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_csr_o &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.csr_addr_i[11:0] == 12'hc00 &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.csr_op_o[7:0] == 8'b100010 &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.waddr_o[0][4:0] == 5'h0 &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.we_gpr_o[0]) begin
-      perf_time <= !perf_time;
-      if(!perf_time) begin
-        perf_start <= get_perf_counters();
-      end
-      else begin
-        perf_end <= get_perf_counters();
-      end
-    end
-    else begin
-      perf_time  <= perf_time ;
-      perf_start <= perf_start;
-      perf_end   <= perf_end  ;
+      perf_time_n = !perf_time_q;
     end
   end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      perf_time_q  <= '0;
+      perf_start_q <= '{default: '0};
+      perf_end_q   <= '{default: '0};
+    end
+    else begin
+      perf_time_q  <= perf_time_n ;
+      perf_start_q <= perf_start_n;
+      perf_end_q   <= perf_end_n  ;
+    end
+  end
+
+  always_comb begin
+    perf_start_n = perf_start_q;
+    perf_end_n = perf_end_q;
+
+    if(!perf_time_q && perf_time_n) begin
+      perf_start_n = get_perf_counters();
+    end
+    if(perf_time_q && !perf_time_n) begin
+      perf_end_n = get_perf_counters();
+    end
+  end
+
+  always_ff @(posedge clk) begin
+    if(perf_time_q && !perf_time_n) begin
+      print_perf_report();
+    end
+  end
+
+`else
+ /**********************
+  *  PERFMENCE MONITOR  *
+  ***********************/
+  logic rvv_lane_en,rvv_load_en,rvv_store_en;
+
+  always_comb begin
+    rvv_lane_en = (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[0]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[1]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[2]) ||
+                  (|ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[3]);
+    rvv_load_en = |ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[4];
+    rvv_store_en = |ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[5];
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_cycle <= '0;
+    end
+    else if(perf_monitor) begin
+      rvv_cycle <= rvv_cycle + 1;
+    end
+    else begin
+      rvv_cycle <= rvv_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_lane_cycle <= '0;
+    end
+    else if(rvv_lane_en) begin
+      rvv_lane_cycle <= rvv_lane_cycle + 1;
+    end
+    else begin
+      rvv_lane_cycle <= rvv_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_mem_only_cycle <= '0;
+    end
+    else if((rvv_load_en || rvv_store_en) && !rvv_lane_en) begin
+      rvv_mem_only_cycle <= rvv_mem_only_cycle + 1;
+    end
+    else begin
+      rvv_mem_only_cycle <= rvv_mem_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_mem_lane_cycle <= '0;
+    end
+    else if((rvv_load_en || rvv_store_en) && rvv_lane_en) begin
+      rvv_mem_lane_cycle <= rvv_mem_lane_cycle + 1;
+    end
+    else begin
+      rvv_mem_lane_cycle <= rvv_mem_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_load_only_cycle <= '0;
+    end
+    else if(rvv_load_en && !rvv_lane_en) begin
+      rvv_load_only_cycle <= rvv_load_only_cycle + 1;
+    end
+    else begin
+      rvv_load_only_cycle <= rvv_load_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_load_lane_cycle <= '0;
+    end
+    else if(rvv_load_en && rvv_lane_en) begin
+      rvv_load_lane_cycle <= rvv_load_lane_cycle + 1;
+    end
+    else begin
+      rvv_load_lane_cycle <= rvv_load_lane_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_store_only_cycle <= '0;
+    end
+    else if(rvv_store_en && !rvv_lane_en) begin
+      rvv_store_only_cycle <= rvv_store_only_cycle + 1;
+    end
+    else begin
+      rvv_store_only_cycle <= rvv_store_only_cycle;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      rvv_store_lane_cycle <= '0;
+    end
+    else if(rvv_store_en && rvv_lane_en) begin
+      rvv_store_lane_cycle <= rvv_store_lane_cycle + 1;
+    end
+    else begin
+      rvv_store_lane_cycle <= rvv_store_lane_cycle;
+    end
+  end
+
+  initial begin
+    #15.5;
+    perf_start_n = get_perf_counters();
+    perf_monitor = 1'b1;
+  end
+
+  final begin
+    perf_end_n = get_perf_counters();
+    print_perf_report();
+  end
+
 `endif
 `endif
 

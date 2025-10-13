@@ -105,6 +105,8 @@ DEFINES += $(ENV_DEFINES) $(MAKE_DEFINES)
 RISCV_WARNINGS += -Wunused-variable -Wall -Wextra -Wno-unused-command-line-argument # -Werror
 
 # LLVM Flags
+#LLVM_OPT_FLAGS ?= -funroll-loops -mllvm -unroll-count=64
+LLVM_OPT_FLAGS ?= 
 LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
 ifeq ($(vec),1)
 LLVM_V_FLAGS   ?= -mllvm -riscv-v-vector-bits-min=1024 -mllvm -force-vector-width=32 -mllvm -riscv-v-fixed-length-vector-lmul-max=1 -mllvm -force-vector-interleave=1 -mllvm -enable-epilogue-vectorization -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize
@@ -113,7 +115,11 @@ else
 LLVM_V_FLAGS   ?= -fno-vectorize -mllvm -scalable-vectorization=off -mllvm -riscv-v-vector-bits-min=0 -mno-implicit-float
 endif
 
-RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
+ifeq ($(manual),1)
+  RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O1 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS) $(LLVM_OPT_FLAGS)
+else
+  RISCV_FLAGS    ?= $(LLVM_FLAGS) $(LLVM_V_FLAGS) -mcmodel=medany -I$(CURDIR)/common -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS) $(LLVM_OPT_FLAGS)
+endif
 ifeq ($(LINUX),1)
   RISCV_CCFLAGS  ?= -march=rv64gcv -mabi=$(RISCV_ABI) -I$(CURDIR)/common -O2 $(DEFINES)
   RISCV_LDFLAGS  ?= -lm -lstdc++
