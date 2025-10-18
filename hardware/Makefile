@@ -36,13 +36,6 @@ vtrace_path    ?= $(abspath $(ROOT_DIR)/../apps/ideal_dispatcher/vtrace)
 # DPI source files
 dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
 
-ideal          ?=
-ifeq ($(ideal_dispatcher), 1)
-  vtrace       = $(vtrace_path)/$(app).vtrace
-  bender_defs += --define IDEAL_DISPATCHER=1 --define VTRACE="$(vtrace)" --define N_VINSN=$(shell wc -l $(vtrace) | cut -d " " -f 1)
-  ideal        = "_ideal"
-endif
-
 #techlib path
 spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpd127spsram_20120200_180a/AN61001_20180416/tsn28hpcpd127spsram_20120200_180a/TSMCHOME/sram/Compiler/tsn28hpcpd127spsram_20120200_180a/tsn28hpcpd127spsram_20120200_180a
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
@@ -89,8 +82,8 @@ else
   endef
 endif
 
-# Bender
-# Defines
+# Bender Defines
+ideal          ?=
 ifeq ($(ideal_dispatcher), 1)
   vtrace       = $(vtrace_path)/$(app).vtrace
   bender_defs += --define IDEAL_DISPATCHER=1 --define VTRACE="$(vtrace)" --define N_VINSN=$(shell wc -l $(vtrace) | cut -d " " -f 1)
@@ -106,8 +99,8 @@ bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 
 ifeq ($(mc), 1)
-bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis -t sram_mc
-bender_targs_dc       := $(bender_common_targs) -t sram_blackbox -t sram_mc
+  bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis -t sram_mc
+  bender_targs_dc       := $(bender_common_targs) -t sram_blackbox -t sram_mc
 else
 bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis
 bender_targs_dc       := $(bender_common_targs) -t sram_blackbox
@@ -138,7 +131,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
-.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif sim_all saif_all
+.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
 
 # Bender
 bender: $(BENDER)
@@ -212,6 +205,9 @@ sram:
 	@$(call generate_sram, $(spsram_techlib_path), $(ICACHE_DATA_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram_techlib_path), $(DCACHE_DATA_SRAM_CONFIGS))
 
+start_time?=
+stop_time?=
+
 saif:
 	@mkdir -p ./vcd ./saif ./build/saif
 	@echo "1.Generating saif flist"
@@ -237,7 +233,7 @@ saif:
 	@cd ./sim_saif && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) -f ../build/saif/ara_tb_saif.f $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
 	@cd ./sim_saif && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@echo "3.vcd2saif"
-	@vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif
+	@vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif -time $(start_time) $(stop_time)
 
 sim_apps ?= fft imatmul
 sim_all:
@@ -250,3 +246,17 @@ saif_all:
 	for saif_app in $(saif_apps);do \
 		$(MAKE) sim app=$$(saif_app) mc=1; \
 	done
+
+saif_ara:
+	mkdir -p $(vcs_library) ./saif_ara
+	echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
+	$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define SAIF > $(vcs_library)/bender_script_$(config)
+	$(call generate_sram_filelist, $(spsram127_techlib_path), $(vcs_library)/bender_script_$(config))
+	$(call generate_sram_filelist, $(spsram_techlib_path), $(vcs_library)/bender_script_$(config))
+	cd $(vcs_library) && cat bender_script_$(config) | grep -v "ara.sv" > rtl.temp
+	cd $(vcs_library) && mv rtl.temp bender_script_$(config)
+	cd $(vcs_library) && echo "/home/wangwy/openproject/ara/backend/syn/ara_soc/v1-dc/outputs/ara_dc.v" >> bender_script_$(config) 
+	mkdir -p ./$(sim_dir)/incremental_db
+	cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v #/home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+	cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	vcd2saif -input ./vcd/$(app).vcd -output ./saif_ara/$(app).saif

@@ -56,6 +56,14 @@ int main() {
     //#ifndef SPIKE
     //perf_time();
     //#endif
+    //vsaxpy(256, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(512, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
     vsaxpy(1024, a, src1, src2);
     #ifndef SPIKE
     perf_time();
