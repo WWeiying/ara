@@ -28,42 +28,42 @@ void vsaxpy(int n, const float a, const float *src1, float *src2);
 int main() {
     const float a = 6.66;
 
-    vsaxpy(256, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(288, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(320, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(352, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(384, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(416, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(448, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
+    //vsaxpy(256, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(288, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(320, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(352, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(384, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(416, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
+    //vsaxpy(448, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
     vsaxpy(480, a, src1, src2);
     #ifndef SPIKE
     perf_time();
     #endif
-    vsaxpy(512, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
+    //vsaxpy(512, a, src1, src2);
+    //#ifndef SPIKE
+    //perf_time();
+    //#endif
     //vsaxpy(1024, a, src1, src2);
     //#ifndef SPIKE
     //perf_time();
