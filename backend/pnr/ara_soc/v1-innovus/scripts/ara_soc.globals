@@ -1,0 +1,17 @@
+set init_lef_file {../library/tlef/HVH/tsmcn28_10lm5X2Y2ZUTRDL.tlef \
+                   ../library/lef/tcbn28hpcplusbwp12t40p140.lef \
+                   ../library/lef/tcbn28hpcplusbwp12t40p140cg.lef \
+                   ../library/lef/tcbn28hpcplusbwp12t40p140hvt.lef \
+                   ../library/lef/tcbn28hpcplusbwp12t40p140lvt.lef \
+                   ../library/mem/ts1n28hpcpsvtb8192x128m4swbaso_180a/LEF/ts1n28hpcpsvtb8192x128m4swbaso_180a.lef \
+                   ../library/mem/ts1n28hpcpuhdsvtb16x64m1swbso_170a/LEF/ts1n28hpcpuhdsvtb16x64m1swbso_170a.lef \
+                   ../library/mem/ts1n28hpcpuhdsvtb64x128m4swbso_170a/LEF/ts1n28hpcpuhdsvtb64x128m4swbso_170a.lef \
+                   ../library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/LEF/ts1n28hpcpuhdsvtb64x256m1swbso_170a.lef \
+                   ../library/mem/ts1n28hpcpuhdsvtb64x48m4swbso_170a/LEF/ts1n28hpcpuhdsvtb64x48m4swbso_170a.lef
+}
+
+set init_pwr_net {VDD}
+set init_gnd_net {VSS}
+set init_top_cell {ara_soc}
+set init_mmmc_file {../scripts/ara_soc.view}
+set init_verilog {../inputs/ara_soc_dc.v}

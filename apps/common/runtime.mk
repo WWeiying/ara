@@ -107,7 +107,9 @@ RISCV_WARNINGS += -Wunused-variable -Wall -Wextra -Wno-unused-command-line-argum
 # LLVM Flags
 #LLVM_OPT_FLAGS ?= -funroll-loops -mllvm -unroll-count=64
 LLVM_OPT_FLAGS ?= 
-LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
+#LLVM_FLAGS     ?= -march=rv64gcv_zfh_zvfh -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
+LLVM_FLAGS     ?= -march=rv64gc_zfh -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
+#LLVM_FLAGS     ?= -march=rv64gc -mabi=$(RISCV_ABI) --target=riscv64-unknown-elf -mno-relax -fuse-ld=lld
 ifeq ($(vec),1)
 LLVM_V_FLAGS   ?= -mllvm -riscv-v-vector-bits-min=1024 -mllvm -force-vector-width=32 -mllvm -riscv-v-fixed-length-vector-lmul-max=1 -mllvm -force-vector-interleave=1 -mllvm -enable-epilogue-vectorization -Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize
 else
@@ -174,7 +176,7 @@ RUNTIME_GCC   ?= common/crt0-gcc.S.o common/printf-gcc.c.o common/string-gcc.c.o
 ifeq ($(LINUX),1)
 RUNTIME_LLVM  ?= common/util-llvm.c.o
 else
-RUNTIME_LLVM  ?= common/crt0-llvm.S.o common/printf-llvm.c.o common/string-llvm.c.o common/serial-llvm.c.o common/util-llvm.c.o
+RUNTIME_LLVM  ?= common/crt0-llvm.S.o common/printf-llvm.c.o common/string-llvm.c.o common/serial-llvm.c.o common/util-llvm.c.o common/print_trap_cause-llvm.c.o
 endif
 RUNTIME_SPIKE ?= $(spike_env_dir)/benchmarks/common/crt.S.o.spike $(spike_env_dir)/benchmarks/common/syscalls.c.o.spike common/util.c.o.spike
 

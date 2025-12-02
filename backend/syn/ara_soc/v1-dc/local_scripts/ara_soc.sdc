@@ -16,9 +16,9 @@ set output_delay 0.4
 ###clock define
 create_clock -name clk_i -period 1  [get_ports clk_i]
 #10%~20%
-set_clock_uncertainty -setup 0.2 [get_clocks clk_i]
+set_clock_uncertainty -setup 0.15 [get_clocks clk_i]
 # 5%~10%
-set_clock_uncertainty -hold  0.2 [get_clocks clk_i]
+set_clock_uncertainty -hold  0.075 [get_clocks clk_i]
 # 3%~8%
 set_clock_transition 0.08 clk_i
 

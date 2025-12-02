@@ -208,7 +208,7 @@ foreach_in_collection each_path_group [get_path_group] {
         eval report_timing -max_paths 1000 $report_timing_opt -group $path_group > ../reports/${path_group_rp}_max.tim
 }
 report_constraint -all_violators -significant_digits 3 > ../reports/violation.rpt
-report_qor -significant_digits 3 > ../reports/qor_$APP.rpt
+report_qor -significant_digits 3 > ../reports/qor.rpt
 report_cell > ../reports/cell.rpt
 report_power -hierarchy -verbose > ../reports/power.rpt
 report_power -hierarchy -levels 2 -verbose  > ../reports/power_level2.rpt

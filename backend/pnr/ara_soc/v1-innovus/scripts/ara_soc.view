@@ -1,0 +1,34 @@
+create_rc_corner -name rctypical_25c \
+   -T 25 \
+   -qx_tech_file {../library/RC_Extraction/RC_QRC_cln28hpc+_1p10m_5x2y2z_ut-alrdl_9corners_1.3a/RC_QRC_cln28hpc+_1p10m+ut-alrdl_5x2y2z_typical/qrcTechFile} \
+   -preRoute_res 1.0 \
+   -preRoute_cap 1.0 \
+   -preRoute_clkres 1.0 \
+   -preRoute_clkcap 1.0 \
+   -postRoute_res "1.0 1.0 1.0" \
+   -postRoute_cap "1.0 1.0 1.0" \
+   -postRoute_clkres "1.0 1.0 1.0" \
+   -postRoute_clkcap "1.0 1.0 1.0" \
+   -postRoute_xcap "1.0 1.0 1.0"
+
+create_library_set -name tt_25c \
+   -timing [list ../library/lib/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.lib \
+                 ../library/lib/tcbn28hpcplusbwp12t40p140cg_110c/tcbn28hpcplusbwp12t40p140cgtt0p9v25c.lib \
+                 ../library/lib/tcbn28hpcplusbwp12t40p140hvt_180a/tcbn28hpcplusbwp12t40p140hvttt0p9v25c.lib \
+                 ../library/lib/tcbn28hpcplusbwp12t40p140lvt_180a/tcbn28hpcplusbwp12t40p140lvttt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpsvtb8192x128m4swbaso_180a/NLDM/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpuhdsvtb16x64m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpuhdsvtb64x128m4swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpuhdsvtb64x48m4swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.lib]
+
+create_delay_corner -name tt_rctypical_25c -library_set {tt_25c} -rc_corner {rctypical_25c}
+
+create_constraint_mode -name cm_func -sdc_files {../inputs/ara_soc_dc.sdc}
+
+create_analysis_view -name func_tt_rctypical_25c -constraint_mode {cm_func} -delay_corner {tt_rctypical_25c}
+
+set_analysis_view -setup [list func_tt_rctypical_25c] \
+   -hold [list func_tt_rctypical_25c]
+
+

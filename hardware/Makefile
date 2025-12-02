@@ -37,6 +37,7 @@ vtrace_path    ?= $(abspath $(ROOT_DIR)/../apps/ideal_dispatcher/vtrace)
 dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
 
 #techlib path
+sram_techlib_path := /home/wangwy/ara/backend/library/mem
 spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpd127spsram_20120200_180a/AN61001_20180416/tsn28hpcpd127spsram_20120200_180a/TSMCHOME/sram/Compiler/tsn28hpcpd127spsram_20120200_180a/tsn28hpcpd127spsram_20120200_180a
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
 
@@ -155,12 +156,13 @@ compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
-	@$(call generate_sram_filelist, $(spsram127_techlib_path), $(vcs_library)/bender_script_$(config))
-	@$(call generate_sram_filelist, $(spsram_techlib_path), $(vcs_library)/bender_script_$(config))
+	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
 sim: compile
+	@touch ./$(sim_dir)/perf*.log
+	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 
 clean:
