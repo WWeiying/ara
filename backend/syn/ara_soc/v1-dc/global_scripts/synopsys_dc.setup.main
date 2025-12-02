@@ -9,11 +9,9 @@ while {[file isfile $log_file]} {
 }
 set_app_var sh_output_log_file $log_file
 
-set sram_mc "/home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpd127spsram_20120200_180a/AN61001_20180416/tsn28hpcpd127spsram_20120200_180a/TSMCHOME/sram/Compiler/tsn28hpcpd127spsram_20120200_180a/tsn28hpcpd127spsram_20120200_180a/ts1n28hpcpsvtb8192x128m4swbaso_180a/DB/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.db /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdsvtb16x64m1swbso_170a/DB/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.db /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdsvtb64x128m4swbso_170a/DB/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.db /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdsvtb64x48m4swbso_170a/DB/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.db"
-
 set search_path                 "$GUI_WORK_DIR/inputs $GUI_WORK_DIR/inputs/inc "
-set target_library              "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db $sram_mc"
-set synthetic_library           "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb"
+set target_library              ""
+set synthetic_library           "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb "
 set link_library                "* $target_library $synthetic_library"
 set milkyway_library            {}
 set violation_opt               {}
@@ -27,7 +25,7 @@ foreach key [array names STD_LIBRARY_LIST] {
         if {$lib_pvt == $GUI_PVT} {
                 append link_library     "$STD_LIBRARY_LIST($key) "
                 append target_library   "$STD_LIBRARY_LIST($key) "
-                append milkyway_library "$STD_PHYSICAL_LIB($lib_type) "
+ #               append milkyway_library "$STD_PHYSICAL_LIB($lib_type) "
         }
 }
 
@@ -36,18 +34,18 @@ foreach key [array names IP_LIBRARY_LIST] {
         set lib_pvt  [lindex [split $key ,] 1]
         if {[regexp " $lib_type " " $GUI_IP_LIBRARY "] && $lib_pvt == $GUI_PVT} {
                 append link_library     "$IP_LIBRARY_LIST($key) "
-                append milkyway_library "$IP_PHYSICAL_LIB($lib_type) "
+#                append milkyway_library "$IP_PHYSICAL_LIB($lib_type) "
         }
 }
 
 #set_attribute [get_lib_cells */*] dont_use true
 
-foreach key [array names STD_LIBRARY_LIST] {
-        set lib_type [lindex [split $key ,] 0]
-        if {[regexp " $lib_type " " $GUI_STD_LIBRARY "]} {
-                set_attribute [get_lib_cells */$STD_LIBRARY_PREFIX($lib_type)*$STD_LIBRARY_POSTFIX($lib_type)] dont_use false
-        }
-}
+#foreach key [array names STD_LIBRARY_LIST] {
+#        set lib_type [lindex [split $key ,] 0]
+#        if {[regexp " $lib_type " " $GUI_STD_LIBRARY "]} {
+#                set_attribute [get_lib_cells */$STD_LIBRARY_PREFIX($lib_type)*$STD_LIBRARY_POSTFIX($lib_type)] dont_use false
+#        }
+#}
 
 source -e -v $GUI_DONTUSE_FILE
 

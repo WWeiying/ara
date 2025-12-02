@@ -116,6 +116,7 @@ reset_vector:
     .align 2
 trap_vector:
     // Jump to the mtvec_handler, if it exists
+    call print_trap_cause
     la t5, mtvec_handler
     beqz t5, 1f
     jr t5

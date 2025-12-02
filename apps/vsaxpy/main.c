@@ -28,57 +28,14 @@ void vsaxpy(int n, const float a, const float *src1, float *src2);
 int main() {
     const float a = 6.66;
 
-    vsaxpy(256, a, src1, src2);
+    vsaxpy(32, a, src1, src2);
     #ifndef SPIKE
     perf_time();
     #endif
-    vsaxpy(288, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(320, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(352, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(384, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(416, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(448, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    vsaxpy(480, a, src1, src2);
-    #ifndef SPIKE
-    perf_time();
-    #endif
-    //vsaxpy(512, a, src1, src2);
-    //#ifndef SPIKE
-    //perf_time();
-    //#endif
-    //vsaxpy(1024, a, src1, src2);
-    //#ifndef SPIKE
-    //perf_time();
-    //#endif
 
     return 0;
 }
 
-#ifdef vec
-__attribute__((noinline, used)) void vsaxpy(int n, const float a, const float *src1, float *src2) {
-    for (int i=0; i<n; i++) {
-        src2[i]=a*src1[i]+src2[i];
-    }
-}
-#else
 __attribute__((naked, target("arch=rv64gcv_zfh_zvfh")))
 void vsaxpy(int n, const float a, const float *src1, float *src2) {
     __asm__ volatile (
@@ -99,4 +56,11 @@ void vsaxpy(int n, const float a, const float *src1, float *src2) {
     "ret\n"
     );
 }
-#endif
+//#ifdef vec
+//__attribute__((noinline, used)) void vsaxpy(int n, const float a, const float *src1, float *src2) {
+//    for (int i=0; i<n; i++) {
+//        src2[i]=a*src1[i]+src2[i];
+//    }
+//}
+//#else
+//#endif
