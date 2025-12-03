@@ -1,4 +1,4 @@
-set init_lef_file {../library/tlef/HVH/tsmcn28_10lm5X2Y2ZUTRDL.tlef \
+set init_lef_file {../library/tlef/VHV/tsmcn28_10lm5X2Y2ZUTRDL.tlef \
                    ../library/lef/tcbn28hpcplusbwp12t40p140.lef \
                    ../library/lef/tcbn28hpcplusbwp12t40p140cg.lef \
                    ../library/lef/tcbn28hpcplusbwp12t40p140hvt.lef \

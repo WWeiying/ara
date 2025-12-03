@@ -29,6 +29,6 @@ create_constraint_mode -name cm_func -sdc_files {../inputs/ara_soc_dc.sdc}
 create_analysis_view -name func_tt_rctypical_25c -constraint_mode {cm_func} -delay_corner {tt_rctypical_25c}
 
 set_analysis_view -setup [list func_tt_rctypical_25c] \
-   -hold [list func_tt_rctypical_25c]
+                  -hold [list func_tt_rctypical_25c]
 
 

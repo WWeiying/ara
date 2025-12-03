@@ -8,19 +8,19 @@ restoreDesign ../save/powerplan.enc.dat cortexa7core
 
 #=OCV Analysis
 setAnalysisMode -analysisType onChipVariation -cppr both
-setDelaycalMode -siAware true
+setDelayCalMode -siAware true
 
 #=Timing Derate
-set_analysis_view -setup {cortexa7core_view_cmax} -hold {cortexa7core_view_cmax}
-set_timing_derate -delay_corner {cortexa7core_corner_cmax) -early 0.952 -late 1.048 -clock
-set_timing_derate -delay_corner {cortexa7core_corner_cmax} -late 1.081 -data
-set_timing_derate -delay_corner {cortexa7core_corner_cmin} -early 1 -late 1.151 -clock
+set_analysis_view -setup {func_tt_rctypical_25c} -hold {func_tt_rctypical_25c}
+set_timing_derate -delay_corner {tt_rctypical_25c} -early 0.952 -late 1.048 -clock
+set_timing_derate -delay_corner {tt_rctypical_25c} -late 1.081 -data
+set_timing_derate -delay_corner {tt_rctypical_25c} -early 1 -late 1.151 -clock
 
 set_interactive_constraint_modes [all_constraint_modes -active];
-set_clock_uncertainty -setup 0.180 [get_clocks CLKIN]
+set_clock_uncertainty -setup 0.180 [get_clocks clk_i]
 
 # Group path
-# Reset all existing path groups, including basic path groupsreset_path_group -#? Reset all options set on all path groups.resetpathGroupptions? (CUI :reset_path_group_options)
+# Reset all existing path groups, including basic path groupsreset_path_group -#? Reset all options set on all path groups.resetPathGroupOptions? (CUI :reset_path_group_options)
 reset_path_group -all
 ### get sequentials
 set reg [filter_collection [all_registers ] "is_integrated_clock_gating_cell != true"]
@@ -54,10 +54,10 @@ setPathGroupoptions reg2out -effortLevel low
 setPathGroupoptions feedthr -effortLevel low 
 
 
-#setPathGroupoptions? $name? -effortLevel $effort -weight $welght -slackAdjustment $slack_adj
+#setPathGroupOptions? $name? -effortLevel $effort -weight $welght -slackAdjustment $slack_adj
 puts "ignore path groups for hold : \{$ignore_path_groups\} ."
-setOptMode -ignorePathGroupsforHold $ignore_path_groups
-
+setOptMode -ignorePathGroupsForHold $ignore_path_groups
+#before CTS, timeoptimize only follow setup time
 
 
 # Place Mode
@@ -65,10 +65,11 @@ setPlaceMode -reset
 setPlaceMode -place_global_ignore_scan true
 setPlaceMode -place_global_reorder_scan false
 setPlaceMode -place_global_place_io_pins false
-setPlaceMode -place_detail_legalization_lost_gap 2
+setPlaceMode -place_detail_legalization_inst_gap 2
 
 #global route layer
 setRouteMode -earlyGlobalMinRouteLayer 2 -earlyGlobalMaxRouteLayer 9
+#setTrialRouteMode -minRouteLayer M2 -maxRouteLayer M9 #only need one command above
 
 
 setDesignMode -process 28
@@ -84,19 +85,19 @@ addTieHiLo
 saveDesign ../save/placement.enc
 
 
-timeDesign -precTs -idealclock -pathReports -drvReports -slackReports -numpaths 50 -prefix precTs -outDir ../report
+timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS -outDir ../reports
 
 #setOptMode -fixDrc true -fixFanoutLoad true
-#optDesign -precTs -drv
-#optDesign -precTs
+#optDesign -preCTS -drv
+#optDesign -preCTS
 
 
-#timeDesign -precTs -idealclock -pathReports -drvReports -slackReports -numpaths 50 -prefix precTs_opt -outDir ../report
+#timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt -outDir ../report
 
 #setOptMode -fixDrc true -fixFanoutLoad true
-#optDesign -precTs -incr
+#optDesign -preCTS -incr
 
-#timeDesign -precTs -idealclock -pathReports -drvReports -slackReports -numPaths 50 -prefix precTs_opt_incr -outDir ../report
+#timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt_incr -outDir ../report
 
 
 saveDesign ../save/preCTS.enc
