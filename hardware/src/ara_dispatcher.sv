@@ -110,6 +110,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     endcase
   endfunction : next_lmul
 
+  // Calculates prev(lmul)
+  function automatic vlmul_e prev_lmul(vlmul_e lmul);
+    unique case (lmul)
+      LMUL_1_4: prev_lmul = LMUL_1_8;
+      LMUL_1_2: prev_lmul = LMUL_1_4;
+      LMUL_1  : prev_lmul = LMUL_1_2;
+      LMUL_2  : prev_lmul = LMUL_1;
+      LMUL_4  : prev_lmul = LMUL_2;
+      LMUL_8  : prev_lmul = LMUL_4;
+      default : prev_lmul = LMUL_RSVD;
+    endcase
+  endfunction : prev_lmul
+
   // Calculates prev(prev(ew))
   function automatic vew_e prev_prev_ew(vew_e ew);
     unique case (ew)
@@ -1649,6 +1662,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionZExt8;
                         ara_req.eew_vs2        = eew_q[insn.varith_type.rs2];
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(prev_lmul(prev_lmul(csr_vtype_q.vlmul)));
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW64) ||
@@ -1659,6 +1674,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionSExt8;
                         ara_req.eew_vs2        = eew_q[insn.varith_type.rs2];
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(prev_lmul(prev_lmul(csr_vtype_q.vlmul)));
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW64) ||
@@ -1669,6 +1686,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionZExt4;
                         ara_req.eew_vs2        = prev_prev_ew(csr_vtype_q.vsew);
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(prev_lmul(csr_vtype_q.vlmul));
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW32) ||
@@ -1678,6 +1697,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionSExt4;
                         ara_req.eew_vs2        = prev_prev_ew(csr_vtype_q.vsew);
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(prev_lmul(csr_vtype_q.vlmul));
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW32) ||
@@ -1687,6 +1708,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionZExt2;
                         ara_req.eew_vs2        = csr_vtype_q.vsew.prev();
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(csr_vtype_q.vlmul);
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW16) || int'(csr_vtype_q.vlmul) inside {LMUL_1_8})
@@ -1696,6 +1719,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req.conversion_vs2 = OpQueueConversionSExt2;
                         ara_req.eew_vs2        = csr_vtype_q.vsew.prev();
                         ara_req.cvt_resize     = CVT_WIDE;
+                        ara_req.emul           = csr_vtype_q.vlmul;
+                        lmul_vs2               = prev_lmul(csr_vtype_q.vlmul);
 
                         // Invalid conversion
                         if (int'(csr_vtype_q.vsew) < int'(EW16) || int'(csr_vtype_q.vlmul) inside {LMUL_1_8})
@@ -1872,15 +1897,15 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     default:;
                   endcase
                   unique case (lmul_vs2)
-                    LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                    LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                    LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs2;
+                    LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                    LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                    LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs2;
                     default:;
                   endcase
                   unique case (lmul_vs1)
-                    LMUL_2: if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs1;
-                    LMUL_4: if ((insn.varith_type.rs1 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs1;
-                    LMUL_8: if ((insn.varith_type.rs1 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs1;
+                    LMUL_2: if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs1;
+                    LMUL_4: if ((insn.varith_type.rs1 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs1;
+                    LMUL_8: if ((insn.varith_type.rs1 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs1;
                     default:;
                   endcase
                 end
@@ -2114,9 +2139,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     default:;
                   endcase
                   unique case (lmul_vs2)
-                    LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                    LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                    LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs2;
+                    LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                    LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                    LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs2;
                     default:;
                   endcase
                 end
@@ -2532,16 +2557,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       default:;
                     endcase
                     unique case (lmul_vs2)
-                      LMUL_2   : if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                      LMUL_4   : if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                      LMUL_8   : if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs2;
+                      LMUL_2   : if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                      LMUL_4   : if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                      LMUL_8   : if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs2;
                       LMUL_RSVD: illegal_insn = 1'b1;
                       default:;
                     endcase
                     unique case (lmul_vs1)
-                      LMUL_2   : if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs1;
-                      LMUL_4   : if ((insn.varith_type.rs1 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs1;
-                      LMUL_8   : if ((insn.varith_type.rs1 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs1;
+                      LMUL_2   : if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs1;
+                      LMUL_4   : if ((insn.varith_type.rs1 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs1;
+                      LMUL_8   : if ((insn.varith_type.rs1 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs1;
                       LMUL_RSVD: illegal_insn = 1'b1;
                       default:;
                     endcase
@@ -2826,9 +2851,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       default:;
                     endcase
                     unique case (lmul_vs2)
-                      LMUL_2   : if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                      LMUL_4   : if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vs2;
-                      LMUL_8   : if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vs2;
+                      LMUL_2   : if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                      LMUL_4   : if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn |= ara_req.use_vs2;
+                      LMUL_8   : if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn |= ara_req.use_vs2;
                       LMUL_RSVD: illegal_insn = 1'b1;
                       default:;
                     endcase
@@ -3606,7 +3631,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
         // Is the instruction an in-lane one and could it be subject to reshuffling?
         in_lane_op = ara_req.op inside {[VADD:VMERGE]} || ara_req.op inside {[VREDSUM:VMSBC]} ||
-                     ara_req.op inside {[VMANDNOT:VMXNOR]} || ara_req.op inside {VSLIDEUP, VSLIDEDOWN};
+                     ara_req.op inside {[VMANDNOT:VMXNOR]} || ara_req.op inside {[VMVXS:VSLIDEDOWN]};
         // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
         // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
