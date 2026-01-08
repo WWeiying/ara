@@ -13,7 +13,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 4096
+#define TOTAL_ELEMENTS 1024
 #define TEST_ELEMENTS  512
 
 extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));
@@ -28,7 +28,7 @@ void vsaxpy(int n, const float a, const float *src1, float *src2);
 int main() {
     const float a = 6.66;
 
-    vsaxpy(32, a, src1, src2);
+    vsaxpy(TOTAL_ELEMENTS, a, src1, src2);
     #ifndef SPIKE
     perf_time();
     #endif

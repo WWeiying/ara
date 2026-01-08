@@ -1,9 +1,9 @@
 set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
 echo "START : 03_powerplan $rundate" >> ../reports/runtime.log
 
-setMultiCpuUsage -localCpu 2
+setMultiCpuUsage -localCpu 8
 
-restoreDesign ../save/floorplan.enc.dat cortexa7core
+#restoreDesign ../save/floorplan.enc.dat ara_soc 
 
 clearGlobalNets
 
@@ -28,14 +28,15 @@ globalNetConnect VSS -type net -net VSS
 
 #===== Create Stripe =====
 #editDelete -type Special -shape STRIPE
+editDelete -type Special
 addStripe -nets {VSS VDD} \
         -layer M8 \
         -direction vertical \
         -width 6 \
         -spacing 2 \
-        -set_to_set_distance 30 \
+        -set_to_set_distance 25 \
         -start_from left \
-        -start_offset 1 \
+        -start_offset 10.6 \
         -uda power_stripe_M8
 
 addStripe -nets {VSS VDD} \
@@ -43,9 +44,9 @@ addStripe -nets {VSS VDD} \
         -direction horizontal \
         -width 6 \
         -spacing 2 \
-        -set_to_set_distance 30 \
+        -set_to_set_distance 25 \
         -start_from bottom \
-        -start_offset 1 \
+        -start_offset 1.5 \
         -uda power_stripe_M9
 
 
@@ -58,7 +59,16 @@ sroute -connect { corePin } \
         -allowLayerChange 1 \
         -targetViaLayerRange { M1(1) M8(8) } \
         -uda power_rail_M1
-
+#sroute -connect { corePin } \
+#        -layerChangeRange { M1(1) M9(9) } \
+#        -corePinTarget { firstAfterRowEnd } \
+#        -allowJogging 1 \
+#        -crossoverViaLayerRange { M1(1) M9(9) } \
+#        -nets { VDD VSS } \
+#        -allowLayerChange 1 \
+#        -targetViaLayerRange { M1(1) M9(9) } \
+#        -uda power_rail_M1
+#
 
 verifyConnectivity -type special -noAntenna -noWeakConnect -noUnroutedNet -error 1000 -warning 50
 
@@ -69,13 +79,13 @@ verifyConnectivity -noAntenna -noSoftPGConnect -noUnroutedNet -error 1000000 -ne
 
 verify_PG_short -no_routing_blkg
 
-
+verify_drc
 
 
 saveDesign ../save/powerplan.enc
 
 set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
-echo "END :03_powerplan $rundate" >> ../report/runtime.log
+echo "END :03_powerplan $rundate" >> ../reports/runtime.log
 
 
-close
+#close

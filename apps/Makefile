@@ -217,15 +217,15 @@ NMSIS_INCLUDE           := -Iinclude -I$(NMSIS_ROOT_DIR)/DSP/Include -I$(NMSIS_R
 NMSIS_APPS              := $(patsubst $(NMSIS_APPS_DIR)/%/,%,$(wildcard $(NMSIS_APPS_DIR)/*/))
 
 
-.PHONY: flags nmsis_all nmsis_asm gen_dsp_lib clean_dsp_lib
+.PHONY: flags nmsis_all nmsis_asm gen_dsp_lib clean_dsp_lib gen_ccflags
 
 disp:
-	echo $(APPS_DIR) 
+	echo $(NMSIS_DSP_SRCS_BINARIES) 
 
-$(APPS_DIR)/riscv_ccflags:
-	echo $(RISCV_CCFLAGS) > $@ 
+gen_ccflags: 
+	echo $(RISCV_CCFLAGS) > $(APPS_DIR)/riscv_ccflags 
 
-gen_dsp_lib: $(NMSIS_DSP_SRCS_BINARIES) $(APPS_DIR)/riscv_ccflags
+gen_dsp_lib: $(NMSIS_DSP_SRCS_BINARIES) 
 	cd $(NMSIS_ROOT_DIR)/DSP; find ./ -name "*.o.nmsis" | xargs $(RISCV_AR) rcs $(APPS_DIR)/library/libnmsis_dsp.a
 	$(RISCV_STRIP) -g $(APPS_DIR)/library/libnmsis_dsp.a
 
@@ -236,7 +236,7 @@ clean_dsp_lib:
 %.S.o.nmsis: %.S
 	$(RISCV_CC) $(NMSIS_INCLUDE) $(RISCV_CCFLAGS) -c $< -o $@
 
-%.c.o.nmsis: %.c $(APPS_DIR)/riscv_ccflags
+%.c.o.nmsis: %.c
 	-$(RISCV_CC) $(NMSIS_INCLUDE) $(RISCV_CCFLAGS) -c $< -o $@
 
 %.o.nmsis.dump: %.o.nmsis
@@ -249,6 +249,7 @@ bin/nmsis-$1: $(addsuffix .o.nmsis, $(shell find -L $(NMSIS_APPS_DIR)/$(1)/ -nam
 	mkdir -p bin/
 	$$(RISCV_CC) $(NMSIS_INCLUDE) $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o.nmsis, $$(shell find -L $(NMSIS_APPS_DIR)/$(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $$(RUNTIME_LLVM) -L$$(APPS_DIR)/library/ -lnmsis_dsp $$(RISCV_LDFLAGS) 
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > bin/nmsis-$(1).dump
+	$$(RISCV_NM) -n $$@ >> bin/nmsis-$(1).dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 	$$(RISCV_CC) $(RISCV_CCFLAGS) -dM -E - < /dev/null > compiler_macros.h
 endef
@@ -258,5 +259,3 @@ $(NMSIS_APPS): % : bin/nmsis-% $(APPS_DIR)/Makefile $(shell find common -type f)
 
 NMSIS_BINARIES := $(filter-out bin/benchmarks bin/rivec-bmarks% bin/_%, $(addprefix bin/nmsis-,$(NMSIS_APPS)))
 nmsis_all: $(NMSIS_BINARIES) 
-
-

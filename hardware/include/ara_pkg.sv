@@ -1959,4 +1959,9 @@ typedef struct packed {
   `define StuExLat 1
   localparam int unsigned StuExLat = `StuExLat;
 
+//user defined
+//
+
+
+
 endpackage : ara_pkg

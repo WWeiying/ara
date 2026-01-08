@@ -155,7 +155,7 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
-	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) > $(vcs_library)/bender_script_$(config)
+	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_SIM  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
@@ -164,13 +164,14 @@ sim: compile
 	@touch ./$(sim_dir)/perf*.log
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	@cp ./$(sim_dir)/perf_report_$(app).log ./$(sim_dir)/perf.log
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *
 	@rm -rf $(buildpath)
 
 verdi:
-	@cd ./$(sim_dir) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -sswr ../debug/signal.rc -l verdi.log &
+	@cd ./$(sim_dir) && verdi $(SIMULATOR_DEF) -sv $(SIM_FILELIST) -top ara_tb -dbdir simv.daidir -ssf ara_tb.fsdb -sswr ../debug/signal_ideal.rc -l verdi.log &
 
 lint:
 	cd ./hardware/lint && rm -rf brook_* *.log reports spyglass-1 brook

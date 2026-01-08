@@ -14,4 +14,4 @@ set init_pwr_net {VDD}
 set init_gnd_net {VSS}
 set init_top_cell {ara_soc}
 set init_mmmc_file {../scripts/ara_soc.view}
-set init_verilog {../inputs/ara_soc_dc.v}
+set init_verilog {../inputs/ara_soc_pnr.v}

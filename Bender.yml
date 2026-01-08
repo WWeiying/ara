@@ -78,14 +78,15 @@ sources:
         - hardware/tb/ara_testharness.sv
         # Level 2
         - hardware/tb/ara_tb.sv
+        - hardware/tb/vrf_perf_monitor.sv
         # Level 3
         - hardware/src/accel_dispatcher_ideal.sv
 
-    - target: verilator
-      files:
-        # Level 2
-        - hardware/tb/ara_tb_verilator.sv
-
+#    - target: verilator
+#      files:
+#        # Level 2
+#        - hardware/tb/ara_tb_verilator.sv
+#
     - target: spyglass
       files:
         - hardware/spyglass/src/ara_soc_wrap.sv

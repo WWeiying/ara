@@ -321,6 +321,10 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       vstart_byte = operand_request_i[requester_index].is_slide
                   ? 0
                   : operand_request_i[requester_index].vstart << operand_request_i[requester_index].vtype.vsew;
+      //Unaligned start address (vstart_byte % 8 = 3)
+      //vstart_byte = 3, vl_byte = 20
+      //Calculation: 20 - 3 + (3 % 8) = 17 + 3 = 20 bytes
+      //Meaning: Read 20 bytes starting from byte 0, then discard the first 3 bytes.
       vector_body_len_byte = vl_byte - vstart_byte + (vstart_byte % 8);
       scaled_vector_len_elements = vector_body_len_byte >> operand_request_i[requester_index].eew;
       if (scaled_vector_len_elements << operand_request_i[requester_index].eew < vector_body_len_byte)
@@ -572,6 +576,12 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
+  `ifdef FOR_SIM
+    logic [NrBanks-1:0] bank_vld;
+    logic [NrBanks-1:0] bank_rd_vld;
+    logic [NrBanks-1:0] bank_wr_vld;
+  `endif
+
   // Instantiate a RR arbiter per bank
   for (genvar bank = 0; bank < NrBanks; bank++) begin: gen_vrf_arbiters
     // High-priority requests
@@ -644,6 +654,12 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       .req_o (vrf_req_o[bank] ),
       .gnt_i (vrf_req_o[bank] ) // Acknowledge it directly
     );
+
+  `ifdef FOR_SIM
+    assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
+    assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank];
+    assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
+  `endif
   end : gen_vrf_arbiters
 
 endmodule : operand_requester

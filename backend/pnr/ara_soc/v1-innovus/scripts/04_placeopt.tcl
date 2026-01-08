@@ -1,9 +1,9 @@
-set rundate [clock format [clock seconds] -format %y_%m_%d_%i:%m_%p]
-echo "START : 04_placeopt $rundate" >> ../report/runtime.log
+set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
+echo "START : 04_placeopt $rundate" >> ../reports/runtime.log
 
-setMultiCpuUsage -localCpu 2
+setMultiCpuUsage -localCpu 8 -cpuAutoAdjust true
 
-restoreDesign ../save/powerplan.enc.dat cortexa7core
+#restoreDesign ../save/powerplan.enc.dat ara_soc 
 
 
 #=OCV Analysis
@@ -43,15 +43,15 @@ group_path -name reg2out -to $out
 group_path -name feedthr -from $inp -to $out
 
 ### set weight
-setPathGroupoptions reg2reg -effortLevel high
-setPathGroupoptions mem2reg -effortLevel high
-setPathGroupoptions mem2cg  -effortLevel high
-setPathGroupoptions reg2mem -effortLevel high
-setPathGroupoptions mem2mem -effortLevel high
-setPathGroupoptions reg2cg  -effortLevel high
-setPathGroupoptions in2reg  -effortLevel low 
-setPathGroupoptions reg2out -effortLevel low 
-setPathGroupoptions feedthr -effortLevel low 
+setPathGroupOptions reg2reg -effortLevel high
+setPathGroupOptions mem2reg -effortLevel high
+setPathGroupOptions mem2cg  -effortLevel high
+setPathGroupOptions reg2mem -effortLevel high
+setPathGroupOptions mem2mem -effortLevel high
+setPathGroupOptions reg2cg  -effortLevel high
+setPathGroupOptions in2reg  -effortLevel low 
+setPathGroupOptions reg2out -effortLevel low 
+setPathGroupOptions feedthr -effortLevel low 
 
 
 #setPathGroupOptions? $name? -effortLevel $effort -weight $welght -slackAdjustment $slack_adj
@@ -78,8 +78,8 @@ place_opt_design
 
 reportCongestion -overflow
 
-==== Add Tie cell =====
-setTieHiLoMode -prefix Tie -maxFanout 8 -cell "TIEHBWP4OP140 TIELBWP40P140"
+#==== Add Tie cell =====
+setTieHiLoMode -prefix Tie -maxFanout 8 -cell "TIEHBWP12T40P140 TIELBWP12T40P140"
 addTieHiLo
 
 saveDesign ../save/placement.enc
@@ -102,8 +102,8 @@ timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 
 
 saveDesign ../save/preCTS.enc
 
-set rundate [clock format [clock seconds] -format %y_%m_%d_%i:%m_%p]
-echo "END : 04_placeopt $rundate" >> ../report/runtime.log
+set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
+echo "END : 04_placeopt $rundate" >> ../reports/runtime.log
 
 
-close
+#close
