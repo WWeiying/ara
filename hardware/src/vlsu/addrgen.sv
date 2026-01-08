@@ -587,6 +587,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   /////////////////////////////////////
   //  Support for misaligned stores  //
   /////////////////////////////////////
+  //Starting address: 0x104
+  //First transfer: 4 bytes (addresses 0x104-0x107)
+  //Second transfer: 8 bytes (addresses 0x108-0x10F, because 0x108 is divisible by 8)
+  //Third transfer: 16 bytes (addresses 0x110-0x11F, because 0x110 is divisible by 16)
+  //... Continue until 64-byte alignment is reached
 
   localparam clog2_AxiStrobeWidth = $clog2(AxiDataWidth/8);
 

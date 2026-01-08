@@ -9,7 +9,8 @@ set GUI_SDC_FILE                        "$GUI_WORK_DIR/local_scripts/$GUI_DESIGN
 set GUI_BLOCK_ABSTRACTION_DESIGNS       ""
 set GUI_DDC_FILE                        ""
 set GUI_DONTUSE_FILE                    "$GUI_WORK_DIR/global_scripts/dc_dont_use.tcl"
-set GUI_MAX_CPU_NUM                     "16"
+set disable_multicore_resource_checks   true
+set GUI_MAX_CPU_NUM                     "8"
 set GUI_UNGROUP                         "0"
 set GUI_UNGROUP_FILE                    ""
 set GUI_SYN_CYCLE                       "1"

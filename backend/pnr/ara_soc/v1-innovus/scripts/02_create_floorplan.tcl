@@ -1,9 +1,9 @@
 set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
-echo "START :02_create_floorplan $rundate" >> ../report/runtime.log
+echo "START :02_create_floorplan $rundate" >> ../reports/runtime.log
 
 setMultiCpuUsage -localCpu 8 -cpuAutoAdjust true
 
-restoreDesign ../save/init_design.enc.dat cortexa7core
+#restoreDesign ../save/init_design.enc.dat ara_soc 
 
 
 set dontuse_cell [list DEL* \
@@ -26,14 +26,17 @@ foreach lib_cell $dontuse_cell {
 
 
 #====== floorplan setting ========
-set CORE_W 2665
-set CORE_H 2200
+set CORE_W 2100
+set CORE_H 2206
 
 set CORE_to_DIE "1 1 1 1"
 
 floorPlan -site core12T -S "$CORE_W $CORE_H $CORE_to_DIE"
+setPreference EnableRectilinearDesign 1
 
-defIn ../../input/floorplan_macro.def
+#defIn ../../input/floorplan_macro.def
+defIn ../save/ara_soc.def
+#defOut -floorplan -noStdCells -noSpecialNet -noTracks ../save/ara_soc.def
 
 addHaloToBlock {8 8 8 8} -allBlock
 
@@ -55,7 +58,7 @@ addWellTap -cell TAPCELLBWP12T40P140 -cellInterval 60 -prefix WELLTAP
 saveDesign ../save/floorplan.enc
 
 set rundate [clock format [clock seconds] -format %Y_%m_%d_%I:%M_%p]
-echo "END : 02_create_floorplan $rundate" >> ../report/runtime.log
+echo "END : 02_create_floorplan $rundate" >> ../reports/runtime.log
 
 
-close
+#close
