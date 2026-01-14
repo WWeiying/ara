@@ -622,6 +622,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   );
 
   // Effective AXI data width for misaligned stores
+  // 2^zeroes_cnt
   assign narrow_axi_data_bwidth = (AxiDataWidth/8) >> (clog2_AxiStrobeWidth - zeroes_cnt);
 
   //////////////////////////////
@@ -632,7 +633,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     AXI_ADDRGEN_IDLE,
     AXI_ADDRGEN_AXI_DW_STORE_MISALIGNED,    // Misaligned vector store to AxiDataWidth/8, needs special treatement
     AXI_ADDRGEN_WAITING_CORE_STORE_PENDING, // Wait until (core_st_pending_i == 0)
-    AXI_ADDRGEN_REQUESTING,                 // Perform AW/AR transactions and push addrgen_req to VSTU/VLDU
+    AXI_ADDRGEN_REQUESTING,                 // *Perform AW/AR transactions and push addrgen_req to VSTU/VLDU
     AXI_ADDRGEN_WAIT_TRANSLATION            // Wait for MMU to ack back
   } axi_addrgen_state_d, axi_addrgen_state_q;
 
@@ -1029,6 +1030,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               mmu_vaddr_o         = (state_q == ADDRGEN_IDX_OP) ? idx_final_vaddr_q : axi_addrgen_q.addr;
               mmu_is_store_o      = !axi_addrgen_q.is_load;
             end : translation_req
+
             // Either we got a valid address translation from the MMU
             // or virtual memory is disabled
             if ((mmu_valid_i && !mmu_exception_i.valid) || !en_ld_st_translation_i) begin : paddr_valid

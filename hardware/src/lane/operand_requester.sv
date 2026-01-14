@@ -263,25 +263,31 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
-  for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
-    // State of this operand requester_index
-    state_t state_d, state_q;
 
-    requester_metadata_t requester_metadata_d, requester_metadata_q;
+  // State of this operand requester_index
+  state_t [NrOperandQueues-1:0] state_d;
+  state_t [NrOperandQueues-1:0] state_q;
+
+  requester_metadata_t [NrOperandQueues-1:0] requester_metadata_d;
+  requester_metadata_t [NrOperandQueues-1:0] requester_metadata_q;
+
+  logic [NrOperandQueues-1:0] stall;
+  logic [NrOperandQueues-1:0][NrBanks-1:0] operand_requester_gnt;
+
+  for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
 
     // Is there a hazard during this cycle?
-    logic stall;
-    assign stall = |(requester_metadata_q.hazard & ~(vinsn_result_written_q &
-                   (~{NrVInsn{requester_metadata_q.is_widening}} | requester_metadata_q.waw_hazard_counter)));
+    //logic stall;
+    assign stall[requester_index] = |(requester_metadata_q[requester_index].hazard & ~(vinsn_result_written_q &
+                   (~{NrVInsn{requester_metadata_q[requester_index].is_widening}} | requester_metadata_q[requester_index].waw_hazard_counter)));
 
     // Did we get a grant?
-    logic [NrBanks-1:0] operand_requester_gnt;
     for (genvar bank = 0; bank < NrBanks; bank++) begin: gen_operand_requester_gnt
-      assign operand_requester_gnt[bank] = operand_gnt[bank][requester_index];
+      assign operand_requester_gnt[requester_index][bank] = operand_gnt[bank][requester_index];
     end
 
     // Did we issue a word to this operand queue?
-    assign operand_issued_o[requester_index] = |(operand_requester_gnt);
+    assign operand_issued_o[requester_index] = |(operand_requester_gnt[requester_index]);
 
     always_comb begin: operand_requester
       // Helper local variables
@@ -296,11 +302,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       automatic elen_t scaled_vector_len_elements;
 
       // Bank we are currently requesting
-      automatic int bank = requester_metadata_q.addr[idx_width(NrBanks)-1:0];
+      automatic int bank = requester_metadata_q[requester_index].addr[idx_width(NrBanks)-1:0];
 
       // Maintain state
-      state_d     = state_q;
-      requester_metadata_d = requester_metadata_q;
+      state_d[requester_index]     = state_q[requester_index];
+      requester_metadata_d[requester_index] = requester_metadata_q[requester_index];
 
       // Make no requests to the VRF
       operand_payload[requester_index] = '0;
@@ -360,11 +366,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         is_reduct : operand_request_i[requester_index].is_reduct
       };
 
-      case (state_q)
+      case (state_q[requester_index])
         IDLE: begin : state_q_IDLE
           // Accept a new instruction
           if (operand_request_valid_i[requester_index]) begin : op_req_valid
-            state_d                            = REQUESTING;
+            state_d[requester_index] = REQUESTING;
             // Acknowledge the request
             operand_request_ready_o[requester_index] = 1'b1;
 
@@ -378,63 +384,63 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             end : cmd_zero_rescaled_vl
 
             // Store the request
-            requester_metadata_d = requester_metadata_tmp;
+            requester_metadata_d[requester_index] = requester_metadata_tmp;
 
             // The length should be at least one after the rescaling
-            if (requester_metadata_d.len == '0) begin : req_zero_rescaled_vl
-              requester_metadata_d.len = 1;
+            if (requester_metadata_d[requester_index].len == '0) begin : req_zero_rescaled_vl
+              requester_metadata_d[requester_index].len = 1;
             end : req_zero_rescaled_vl
 
 
             // Mute the requisition if the vl is zero
             if (operand_request_i[requester_index].vl == '0) begin : zero_vl
-              state_d                              = IDLE;
+              state_d[requester_index]                              = IDLE;
               operand_queue_cmd_valid_o[requester_index] = 1'b0;
             end : zero_vl
           end : op_req_valid
         end : state_q_IDLE
 
-        REQUESTING: begin
+        REQUESTING: begin : state_q_REQUESTING
           // Update waw counters
           for (int b = 0; b < NrVInsn; b++) begin : waw_counters_update
             if ( vinsn_result_written_d[b] ) begin : result_valid
-              requester_metadata_d.waw_hazard_counter[b] = ~requester_metadata_q.waw_hazard_counter[b];
+              requester_metadata_d[requester_index].waw_hazard_counter[b] = ~requester_metadata_q[requester_index].waw_hazard_counter[b];
             end : result_valid
           end : waw_counters_update
 
-          if (operand_queue_ready_i[requester_index]) begin
+          if (operand_queue_ready_i[requester_index]) begin : operand_queue_ready
             automatic vlen_t num_elements;
 
             // Operand request
-            lane_operand_req_transposed[requester_index][bank] = !stall;
+            lane_operand_req_transposed[requester_index][bank] = !stall[requester_index] ;
             operand_payload[requester_index]   = '{
-              addr   : requester_metadata_q.addr >> $clog2(NrBanks),
+              addr   : requester_metadata_q[requester_index].addr >> $clog2(NrBanks),
               opqueue: opqueue_e'(requester_index),
               default: '0 // this is a read operation
             };
 
             // Received a grant.
-            if (|operand_requester_gnt) begin : op_req_grant
+            if (|operand_requester_gnt[requester_index]) begin : op_req_grant
               // Bump the address pointer
-              requester_metadata_d.addr = requester_metadata_q.addr + 1'b1;
+              requester_metadata_d[requester_index].addr = requester_metadata_q[requester_index].addr + 1'b1;
 
               // We read less than 64 bits worth of elements
-              num_elements = ( 1 << ( unsigned'(EW64) - unsigned'(requester_metadata_q.vew) ) );
-              if (requester_metadata_q.len < num_elements) begin
-                requester_metadata_d.len    = 0;
+              num_elements = ( 1 << ( unsigned'(EW64) - unsigned'(requester_metadata_q[requester_index].vew) ) );
+              if (requester_metadata_q[requester_index].len < num_elements) begin
+                requester_metadata_d[requester_index].len    = 0;
               end
               else begin
-                requester_metadata_d.len = requester_metadata_q.len - num_elements;
+                requester_metadata_d[requester_index].len = requester_metadata_q[requester_index].len - num_elements;
               end
             end : op_req_grant
 
             // Finished requesting all the elements
-            if (requester_metadata_d.len == '0) begin
-              state_d = IDLE;
+            if (requester_metadata_d[requester_index].len == '0) begin : finish_request
+              state_d[requester_index] = IDLE;
 
               // Accept a new instruction
-              if (operand_request_valid_i[requester_index]) begin
-                state_d                            = REQUESTING;
+              if (operand_request_valid_i[requester_index]) begin : accept_a_new_inst
+                state_d[requester_index]                            = REQUESTING;
                 // Acknowledge the request
                 operand_request_ready_o[requester_index] = 1'b1;
 
@@ -448,34 +454,35 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
                 end : cmd_zero_rescaled_vl
 
                 // Store the request
-                requester_metadata_d = requester_metadata_tmp;
+                requester_metadata_d[requester_index] = requester_metadata_tmp;
 
                 // The length should be at least one after the rescaling
-                if (requester_metadata_d.len == '0) begin : req_zero_rescaled_vl
-                  requester_metadata_d.len = 1;
+                if (requester_metadata_d[requester_index].len == '0) begin : req_zero_rescaled_vl
+                  requester_metadata_d[requester_index].len = 1;
                 end : req_zero_rescaled_vl
 
                 // Mute the requisition if the vl is zero
                 if (operand_request_i[requester_index].vl == '0) begin
-                  state_d                              = IDLE;
+                  state_d[requester_index]                              = IDLE;
                   operand_queue_cmd_valid_o[requester_index] = 1'b0;
                 end
-              end
-            end
-          end
-        end
+              end : accept_a_new_inst
+            end : finish_request
+          end : operand_queue_ready
+        end : state_q_REQUESTING
       endcase
+
       // Always keep the hazard bits up to date with the global hazard table
-      requester_metadata_d.hazard &= global_hazard_table_i[requester_metadata_d.id];
+      requester_metadata_d[requester_index].hazard &= global_hazard_table_i[requester_metadata_d[requester_index].id];
 
       // Kill all store-unit, idx, and mem-masked requests in case of exceptions
       if (lsu_ex_flush_o && (requester_index == StA || requester_index == SlideAddrGenA || requester_index == MaskM)) begin : vlsu_exception_idle
         // Reset state
-        state_d = IDLE;
+        state_d[requester_index] = IDLE;
         // Don't wake up the store queue (redundant, as it will be flushed anyway)
         operand_queue_cmd_valid_o[requester_index] = 1'b0;
         // Clear metadata
-        requester_metadata_d = '0;
+        requester_metadata_d[requester_index] = '0;
         // Flush this request
         lane_operand_req_transposed[requester_index][bank] = '0;
       end : vlsu_exception_idle
@@ -483,11 +490,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        state_q     <= IDLE;
-        requester_metadata_q <= '0;
+        state_q[requester_index]     <= IDLE;
+        requester_metadata_q[requester_index] <= '0;
       end else begin
-        state_q     <= state_d;
-        requester_metadata_q <= requester_metadata_d;
+        state_q[requester_index]     <= state_d[requester_index];
+        requester_metadata_q[requester_index] <= requester_metadata_d[requester_index];
       end
     end
   end : gen_operand_requester
@@ -577,9 +584,46 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   `ifdef FOR_SIM
+    typedef enum logic [5:0] {
+      none,
+      v0 = 6'b100000,
+      v1,
+      v2,
+      v3,
+      v4,
+      v5,
+      v6,
+      v7,
+      v8,
+      v9,
+      v10,
+      v11,
+      v12,
+      v13,
+      v14,
+      v15,
+      v16,
+      v17,
+      v18,
+      v19,
+      v20,
+      v21,
+      v22,
+      v23,
+      v24,
+      v25,
+      v26,
+      v27,
+      v28,
+      v29,
+      v30,
+      v31
+    } vid_e;
     logic [NrBanks-1:0] bank_vld;
     logic [NrBanks-1:0] bank_rd_vld;
     logic [NrBanks-1:0] bank_wr_vld;
+    vid_e bank_rd_vid[NrBanks-1:0];
+    vid_e bank_wr_vid[NrBanks-1:0];
   `endif
 
   // Instantiate a RR arbiter per bank
@@ -659,6 +703,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
     assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank];
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
+    assign bank_rd_vid[bank] = {bank_rd_vld[bank], {5{bank_rd_vld[bank]}} & 5'((vrf_addr_o[bank] >> 2) << $clog2(NrBanks))};
+    assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'((vrf_addr_o[bank] >> 2) << $clog2(NrBanks))};
   `endif
   end : gen_vrf_arbiters
 
