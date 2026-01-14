@@ -322,7 +322,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     end
 
     // We received a new vector instruction
-    if (pe_req_valid && pe_req_ready && !vinsn_running_d[pe_req.id]) begin
+    if (pe_req_valid && pe_req_ready && !vinsn_running_d[pe_req.id]) begin : lane_received_vinst
       // Populate the VFU request
       vfu_operation_d = '{
         id             : pe_req.id,
@@ -933,7 +933,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
         default:;
       endcase
-    end
+    end : lane_received_vinst
 
     // VRGATHER and VCOMPRESS access the opreq with ad-hoc requests
     if (vrgat_state_q == REQUESTING) begin

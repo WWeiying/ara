@@ -160,11 +160,17 @@ compile: bender dpi ../Bender.yml
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
+ifeq ($(ideal_dispatcher), 1)
+sim_log = "perf_report_$(app)_ideal.log"
+else
+sim_log = "perf_report_$(app).log"
+endif
+
 sim: compile
 	@touch ./$(sim_dir)/perf*.log
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
-	@cp ./$(sim_dir)/perf_report_$(app).log ./$(sim_dir)/perf.log
+	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *
