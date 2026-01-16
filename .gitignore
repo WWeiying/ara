@@ -36,4 +36,5 @@ docs/build/
 docs/source/_templates/
 apps/_*
 apps/third-party/
-backend/pnr/
+backend
+apps
