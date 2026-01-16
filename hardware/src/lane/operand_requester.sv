@@ -703,8 +703,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
     assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank];
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
-    assign bank_rd_vid[bank] = {bank_rd_vld[bank], {5{bank_rd_vld[bank]}} & 5'((vrf_addr_o[bank] >> 2) << $clog2(NrBanks))};
-    assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'((vrf_addr_o[bank] >> 2) << $clog2(NrBanks))};
+    assign bank_rd_vid[bank] = {bank_rd_vld[bank], {5{bank_rd_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
+    assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
   `endif
   end : gen_vrf_arbiters
 
