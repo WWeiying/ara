@@ -1,0 +1,12 @@
+innovus run.log
+source ../scripts/01_innovus_import_design.tcl
+source ../scripts/02_create_floorplan.tcl
+source ../scripts/03_power_routing.tcl
+source ../scripts/04_placeopt.tcl
+source ../scripts/05_cts.tcl
+source ../scripts/06_ctsopt.tcl
+source ../scripts/07_route.tcl
+source ../scripts/08_routeopt.tcl
+source ../scripts/09_chipfinish.tcl
+source ../scripts/10_pteco.tcl
+source ../scripts/11_chipfinish_eco.tcl
