@@ -38,3 +38,13 @@ apps/_*
 apps/third-party/
 backend
 apps
+cheshire/
+Makefile_backup
+debug/
+deps/
+gold_results.txt
+id_results.txt
+run.sh
+sim/
+sim_mc/
+
