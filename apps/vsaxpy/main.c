@@ -13,7 +13,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 1024
+#define TOTAL_ELEMENTS 256
 #define TEST_ELEMENTS  512
 
 extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));
@@ -36,6 +36,27 @@ int main() {
     return 0;
 }
 
+//__attribute__((naked, target("arch=rv64gcv_zfh_zvfh")))
+//void vsaxpy(int n, const float a, const float *src1, float *src2) {
+//    __asm__ volatile (
+//    #ifndef SPIKE
+//    "rdcycle zero\n"
+//    #endif
+//    "saxpy:\n"
+//    "vsetvli t0, a0, e32, m1, ta, ma\n"
+//    "vle32.v v0, (a1)\n"
+//    "sub a0, a0, t0\n"
+//    "vle32.v v8, (a2)\n"
+//    "slli t1, t0, 2\n"
+//    "vfmacc.vf v8, fa0, v0\n"
+//    "add a1, a1, t1\n"
+//    "vse32.v v8, (a2)\n"
+//    "add a2, a2, t1\n"
+//    "bnez a0, saxpy\n"
+//    "ret\n"
+//    );
+//}
+
 __attribute__((naked, target("arch=rv64gcv_zfh_zvfh")))
 void vsaxpy(int n, const float a, const float *src1, float *src2) {
     __asm__ volatile (
@@ -46,16 +67,18 @@ void vsaxpy(int n, const float a, const float *src1, float *src2) {
     "vsetvli t0, a0, e32, m1, ta, ma\n"
     "vle32.v v0, (a1)\n"
     "sub a0, a0, t0\n"
-    "vle32.v v8, (a2)\n"
-    "add a1, a1, t1\n"
-    "vfmacc.vf v8, fa0, v0\n"
+    "vadd.vi v1, v0, 1\n"
     "slli t1, t0, 2\n"
-    "vse32.v v8, (a2)\n"
+    "vsll.vi v2, v1, 1\n"
+    "add a1, a1, t1\n"
+    "vadd.vv v3, v2, v0\n"
+    "vse32.v v3, (a2)\n"
     "add a2, a2, t1\n"
     "bnez a0, saxpy\n"
     "ret\n"
     );
 }
+
 //#ifdef vec
 //__attribute__((noinline, used)) void vsaxpy(int n, const float a, const float *src1, float *src2) {
 //    for (int i=0; i<n; i++) {

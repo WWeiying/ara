@@ -73,8 +73,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
   logic    pe_req_valid;
   logic    pe_req_ready;
 
-  fall_through_register #(
-    .T(pe_req_t)
+  fall_through_register_v1 #(
+    .T(pe_req_t),
+    .DPETH(1)
   ) i_pe_req_register (
     .clk_i     (clk_i             ),
     .rst_ni    (rst_ni            ),
@@ -286,32 +287,36 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     // If the operand requesters are busy, abort the request and wait for another cycle.
     if (pe_req_valid) begin
       unique case (pe_req.vfu)
-        VFU_Alu : begin
-          pe_req_ready = !(operand_request_valid_o[AluA] ||
-            operand_request_valid_o[AluB ] ||
-            operand_request_valid_o[MaskM]);
+        VFU_Alu: begin
+          pe_req_ready = (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
+                         (!operand_request_valid_o[AluB] || operand_request_ready_i[AluB]) &&
+                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
         end
-        VFU_MFpu : begin
-          pe_req_ready = !(operand_request_valid_o[MulFPUA] ||
-            operand_request_valid_o[MulFPUB] ||
-            operand_request_valid_o[MulFPUC] ||
-            operand_request_valid_o[MaskM]);
+        VFU_MFpu: begin
+          pe_req_ready = (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
+                         (!operand_request_valid_o[MulFPUB] || operand_request_ready_i[MulFPUB]) &&
+                         (!operand_request_valid_o[MulFPUC] || operand_request_ready_i[MulFPUC]) &&
+                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
         end
-        VFU_LoadUnit : pe_req_ready = !(operand_request_valid_o[MaskM] ||
-            (pe_req.op == VLXE && operand_request_valid_o[SlideAddrGenA]));
-        VFU_SlideUnit: pe_req_ready = !(operand_request_valid_o[SlideAddrGenA]);
+        VFU_LoadUnit: begin
+          pe_req_ready = (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]) &&
+                         (!(pe_req.op == VLXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
+        end
+        VFU_SlideUnit: begin
+          pe_req_ready = (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]);
+        end
         VFU_StoreUnit: begin
-          pe_req_ready = !(operand_request_valid_o[StA] ||
-            operand_request_valid_o[MaskM] ||
-            (pe_req.op == VSXE && operand_request_valid_o[SlideAddrGenA]));
+          pe_req_ready = (!operand_request_valid_o[StA] || operand_request_ready_i[StA]) &&
+                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]) &&
+                         (!(pe_req.op == VSXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
         end
-        VFU_MaskUnit : begin
-          pe_req_ready = !(operand_request_valid_o[AluA] ||
-            operand_request_valid_o [AluB] ||
-            operand_request_valid_o [MulFPUA] ||
-            operand_request_valid_o [MulFPUB] ||
-            operand_request_valid_o[MaskB] ||
-            operand_request_valid_o[MaskM]);
+        VFU_MaskUnit: begin
+          pe_req_ready = (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
+                         (!operand_request_valid_o[AluB] || operand_request_ready_i[AluB]) &&
+                         (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
+                         (!operand_request_valid_o[MulFPUB] || operand_request_ready_i[MulFPUB]) &&
+                         (!operand_request_valid_o[MaskB] || operand_request_ready_i[MaskB]) &&
+                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
         end
         VFU_None : begin
           // VRGATHER/VCOMPRESS use the MaskB opqueue with non-traditional request scheme

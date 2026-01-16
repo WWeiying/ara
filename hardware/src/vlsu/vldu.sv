@@ -485,10 +485,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
     for (int unsigned lane = 0; lane < NrLanes; lane++) begin: vrf_result_write
       ldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane];
-      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr;
-      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id;
-      ldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata;
-      ldu_result_be_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].be;
+      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr  & {$bits(vid_t  ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id    & {$bits(vaddr_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata & {$bits(elen_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_be_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].be    & {$bits(strb_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
 
       // Update the final gnt vector
       result_final_gnt_d[lane] |= ldu_result_final_gnt_i[lane];
@@ -633,7 +633,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     //  Accept new instruction  //
     //////////////////////////////
 
-    if (!vinsn_queue_full && pe_req_valid_i && !vinsn_running_q[pe_req_i.id] &&
+    if (pe_req_valid_i && pe_req_ready_o && !vinsn_running_q[pe_req_i.id] &&
       pe_req_i.vfu == VFU_LoadUnit) begin : pe_req_valid
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
