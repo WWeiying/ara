@@ -403,6 +403,134 @@ function void print_perf_report();
       $fwrite(file_handle, "[PERF] total_rvv_store_only_cycles: %0d\n", total_rvv_store_only_cycles);
       $fwrite(file_handle, "[PERF] total_rvv_store_lane_cycles: %0d\n", total_rvv_store_lane_cycles);
       $fwrite(file_handle, "[PERF] lane utilization           : %0.3f\n", lane_utilization);
+      $fwrite(file_handle, "[PERF] ==== VRF Perf lane0 ====\n");
+      $fwrite(file_handle, "[PERF] lane0 total_bank_requests     : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
+      $fwrite(file_handle, "[PERF] lane0 total_hp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_hp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane0 total_lp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_lp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane0 total_bank_conflicts    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_bank_conflicts   );
+      $fwrite(file_handle, "[PERF] lane0 total_hp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_hp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane0 total_lp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_lp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane0 hp_block_lp             : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.hp_block_lp            );
+      $fwrite(file_handle, "[PERF] lane0 bank0_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] );
+      $fwrite(file_handle, "[PERF] lane0 bank0_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]);
+      $fwrite(file_handle, "[PERF] lane0 bank0_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] ));
+      $fwrite(file_handle, "[PERF] lane0 bank1_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] );
+      $fwrite(file_handle, "[PERF] lane0 bank1_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]);
+      $fwrite(file_handle, "[PERF] lane0 bank1_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] ));
+      $fwrite(file_handle, "[PERF] lane0 bank2_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] );
+      $fwrite(file_handle, "[PERF] lane0 bank2_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]);
+      $fwrite(file_handle, "[PERF] lane0 bank2_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] ));
+      $fwrite(file_handle, "[PERF] lane0 bank3_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] );
+      $fwrite(file_handle, "[PERF] lane0 bank3_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]);
+      $fwrite(file_handle, "[PERF] lane0 bank3_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] ));
+      $fwrite(file_handle, "[PERF] lane0 bank4_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] );
+      $fwrite(file_handle, "[PERF] lane0 bank4_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]);
+      $fwrite(file_handle, "[PERF] lane0 bank4_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] ));
+      $fwrite(file_handle, "[PERF] lane0 bank5_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] );
+      $fwrite(file_handle, "[PERF] lane0 bank5_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]);
+      $fwrite(file_handle, "[PERF] lane0 bank5_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] ));
+      $fwrite(file_handle, "[PERF] lane0 bank6_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] );
+      $fwrite(file_handle, "[PERF] lane0 bank6_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]);
+      $fwrite(file_handle, "[PERF] lane0 bank6_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] ));
+      $fwrite(file_handle, "[PERF] lane0 bank7_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] );
+      $fwrite(file_handle, "[PERF] lane0 bank7_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]);
+      $fwrite(file_handle, "[PERF] lane0 bank7_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]) / real'(ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] ));
+      $fwrite(file_handle, "[PERF] ==== VRF Perf lane1 ====\n");
+      $fwrite(file_handle, "[PERF] lane1 total_bank_requests     : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
+      $fwrite(file_handle, "[PERF] lane1 total_hp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_hp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane1 total_lp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_lp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane1 total_bank_conflicts    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_bank_conflicts   );
+      $fwrite(file_handle, "[PERF] lane1 total_hp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_hp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane1 total_lp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.total_lp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane1 hp_block_lp             : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.hp_block_lp            );
+      $fwrite(file_handle, "[PERF] lane1 bank0_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] );
+      $fwrite(file_handle, "[PERF] lane1 bank0_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]);
+      $fwrite(file_handle, "[PERF] lane1 bank0_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] ));
+      $fwrite(file_handle, "[PERF] lane1 bank1_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] );
+      $fwrite(file_handle, "[PERF] lane1 bank1_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]);
+      $fwrite(file_handle, "[PERF] lane1 bank1_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] ));
+      $fwrite(file_handle, "[PERF] lane1 bank2_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] );
+      $fwrite(file_handle, "[PERF] lane1 bank2_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]);
+      $fwrite(file_handle, "[PERF] lane1 bank2_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] ));
+      $fwrite(file_handle, "[PERF] lane1 bank3_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] );
+      $fwrite(file_handle, "[PERF] lane1 bank3_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]);
+      $fwrite(file_handle, "[PERF] lane1 bank3_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] ));
+      $fwrite(file_handle, "[PERF] lane1 bank4_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] );
+      $fwrite(file_handle, "[PERF] lane1 bank4_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]);
+      $fwrite(file_handle, "[PERF] lane1 bank4_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] ));
+      $fwrite(file_handle, "[PERF] lane1 bank5_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] );
+      $fwrite(file_handle, "[PERF] lane1 bank5_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]);
+      $fwrite(file_handle, "[PERF] lane1 bank5_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] ));
+      $fwrite(file_handle, "[PERF] lane1 bank6_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] );
+      $fwrite(file_handle, "[PERF] lane1 bank6_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]);
+      $fwrite(file_handle, "[PERF] lane1 bank6_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] ));
+      $fwrite(file_handle, "[PERF] lane1 bank7_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] );
+      $fwrite(file_handle, "[PERF] lane1 bank7_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]);
+      $fwrite(file_handle, "[PERF] lane1 bank7_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]) / real'(ara_tb.vrf_perf_monitor[1].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] ));
+      $fwrite(file_handle, "[PERF] ==== VRF Perf lane2 ====\n");
+      $fwrite(file_handle, "[PERF] lane2 total_bank_requests     : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
+      $fwrite(file_handle, "[PERF] lane2 total_hp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_hp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane2 total_lp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_lp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane2 total_bank_conflicts    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_bank_conflicts   );
+      $fwrite(file_handle, "[PERF] lane2 total_hp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_hp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane2 total_lp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.total_lp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane2 hp_block_lp             : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.hp_block_lp            );
+      $fwrite(file_handle, "[PERF] lane2 bank0_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] );
+      $fwrite(file_handle, "[PERF] lane2 bank0_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]);
+      $fwrite(file_handle, "[PERF] lane2 bank0_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] ));
+      $fwrite(file_handle, "[PERF] lane2 bank1_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] );
+      $fwrite(file_handle, "[PERF] lane2 bank1_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]);
+      $fwrite(file_handle, "[PERF] lane2 bank1_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] ));
+      $fwrite(file_handle, "[PERF] lane2 bank2_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] );
+      $fwrite(file_handle, "[PERF] lane2 bank2_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]);
+      $fwrite(file_handle, "[PERF] lane2 bank2_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] ));
+      $fwrite(file_handle, "[PERF] lane2 bank3_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] );
+      $fwrite(file_handle, "[PERF] lane2 bank3_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]);
+      $fwrite(file_handle, "[PERF] lane2 bank3_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] ));
+      $fwrite(file_handle, "[PERF] lane2 bank4_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] );
+      $fwrite(file_handle, "[PERF] lane2 bank4_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]);
+      $fwrite(file_handle, "[PERF] lane2 bank4_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] ));
+      $fwrite(file_handle, "[PERF] lane2 bank5_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] );
+      $fwrite(file_handle, "[PERF] lane2 bank5_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]);
+      $fwrite(file_handle, "[PERF] lane2 bank5_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] ));
+      $fwrite(file_handle, "[PERF] lane2 bank6_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] );
+      $fwrite(file_handle, "[PERF] lane2 bank6_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]);
+      $fwrite(file_handle, "[PERF] lane2 bank6_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] ));
+      $fwrite(file_handle, "[PERF] lane2 bank7_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] );
+      $fwrite(file_handle, "[PERF] lane2 bank7_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]);
+      $fwrite(file_handle, "[PERF] lane2 bank7_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]) / real'(ara_tb.vrf_perf_monitor[2].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] ));
+      $fwrite(file_handle, "[PERF] ==== VRF Perf lane3 ====\n");
+      $fwrite(file_handle, "[PERF] lane3 total_bank_requests     : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
+      $fwrite(file_handle, "[PERF] lane3 total_hp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_hp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane3 total_lp_bank_requests  : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_lp_bank_requests );
+      $fwrite(file_handle, "[PERF] lane3 total_bank_conflicts    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_bank_conflicts   );
+      $fwrite(file_handle, "[PERF] lane3 total_hp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_hp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane3 total_lp_bank_conflicts : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.total_lp_bank_conflicts);
+      $fwrite(file_handle, "[PERF] lane3 hp_block_lp             : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.hp_block_lp            );
+      $fwrite(file_handle, "[PERF] lane3 bank0_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] );
+      $fwrite(file_handle, "[PERF] lane3 bank0_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]);
+      $fwrite(file_handle, "[PERF] lane3 bank0_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[0]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[0] ));
+      $fwrite(file_handle, "[PERF] lane3 bank1_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] );
+      $fwrite(file_handle, "[PERF] lane3 bank1_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]);
+      $fwrite(file_handle, "[PERF] lane3 bank1_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[1]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[1] ));
+      $fwrite(file_handle, "[PERF] lane3 bank2_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] );
+      $fwrite(file_handle, "[PERF] lane3 bank2_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]);
+      $fwrite(file_handle, "[PERF] lane3 bank2_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[2]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[2] ));
+      $fwrite(file_handle, "[PERF] lane3 bank3_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] );
+      $fwrite(file_handle, "[PERF] lane3 bank3_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]);
+      $fwrite(file_handle, "[PERF] lane3 bank3_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[3]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[3] ));
+      $fwrite(file_handle, "[PERF] lane3 bank4_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] );
+      $fwrite(file_handle, "[PERF] lane3 bank4_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]);
+      $fwrite(file_handle, "[PERF] lane3 bank4_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[4]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[4] ));
+      $fwrite(file_handle, "[PERF] lane3 bank5_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] );
+      $fwrite(file_handle, "[PERF] lane3 bank5_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]);
+      $fwrite(file_handle, "[PERF] lane3 bank5_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[5]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[5] ));
+      $fwrite(file_handle, "[PERF] lane3 bank6_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] );
+      $fwrite(file_handle, "[PERF] lane3 bank6_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]);
+      $fwrite(file_handle, "[PERF] lane3 bank6_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[6]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[6] ));
+      $fwrite(file_handle, "[PERF] lane3 bank7_total_requests    : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] );
+      $fwrite(file_handle, "[PERF] lane3 bank7_total_conflicts   : %0d\n",   ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]);
+      $fwrite(file_handle, "[PERF] lane3 bank7_conflict_ratio    : %0.3f\n", real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_conflicts[7]) / real'(ara_tb.vrf_perf_monitor[3].u_vrf_perf_monitor.lane_stats.bank_total_requests[7] ));
       $fclose(file_handle);
 endfunction
 
@@ -461,7 +589,7 @@ module ara_tb;
   localparam int unsigned AxiRespDelay = 200;
 
   localparam AxiAddrWidth      = 64;
-  localparam AxiWideDataWidth  = 64 * NrLanes / 2;
+  localparam AxiWideDataWidth  = 64 * NrLanes/2;
   localparam AxiWideBeWidth    = AxiWideDataWidth / 8;
   localparam AxiWideByteOffset = $clog2(AxiWideBeWidth);
 
@@ -1053,7 +1181,18 @@ module ara_tb;
       .ext_operand_req (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_operand_requester.ext_operand_req)
     );
   end
-
+`else
+ /***************************
+  *  VRF PERFMENCE MONITOR  *
+  ***************************/
+  for(genvar i = 0; i < NrLanes; i++) begin: vrf_perf_monitor
+    vrf_perf_monitor u_vrf_perf_monitor(
+      .clk_i           (clk),
+      .rst_ni          (rst_n),
+      .lane_operand_req(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_operand_requester.lane_operand_req),
+      .ext_operand_req (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[i].i_lane.i_operand_requester.ext_operand_req)
+    );
+  end
 `endif
 `endif
 

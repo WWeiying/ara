@@ -248,6 +248,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
   // VFU operation
   vfu_operation_t vfu_operation_d;
   logic           vfu_operation_valid_d;
+  logic           vfu_ready_d;
 
   // Cut the path
   logic alu_vinsn_done_d, mfpu_vinsn_done_d;
@@ -283,17 +284,18 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     // Make no requests to the lane's VFUs
     vfu_operation_d       = '0;
     vfu_operation_valid_d = 1'b0;
+    vfu_ready_d = vfu_ready(pe_req.vfu, alu_ready_i, mfpu_ready_i);
 
     // If the operand requesters are busy, abort the request and wait for another cycle.
     if (pe_req_valid) begin
       unique case (pe_req.vfu)
         VFU_Alu: begin
-          pe_req_ready = (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
+          pe_req_ready = vfu_ready_d && (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
                          (!operand_request_valid_o[AluB] || operand_request_ready_i[AluB]) &&
                          (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
         end
         VFU_MFpu: begin
-          pe_req_ready = (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
+          pe_req_ready = vfu_ready_d && (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
                          (!operand_request_valid_o[MulFPUB] || operand_request_ready_i[MulFPUB]) &&
                          (!operand_request_valid_o[MulFPUC] || operand_request_ready_i[MulFPUC]) &&
                          (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
@@ -311,7 +313,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                          (!(pe_req.op == VSXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
         end
         VFU_MaskUnit: begin
-          pe_req_ready = (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
+          pe_req_ready = vfu_ready_d && (!operand_request_valid_o[AluA] || operand_request_ready_i[AluA]) &&
                          (!operand_request_valid_o[AluB] || operand_request_ready_i[AluB]) &&
                          (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
                          (!operand_request_valid_o[MulFPUB] || operand_request_ready_i[MulFPUB]) &&

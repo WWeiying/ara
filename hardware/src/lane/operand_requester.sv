@@ -276,11 +276,6 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
   for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
 
-    // Is there a hazard during this cycle?
-    //logic stall;
-    assign stall[requester_index] = |(requester_metadata_q[requester_index].hazard & ~(vinsn_result_written_q &
-                   (~{NrVInsn{requester_metadata_q[requester_index].is_widening}} | requester_metadata_q[requester_index].waw_hazard_counter)));
-
     // Did we get a grant?
     for (genvar bank = 0; bank < NrBanks; bank++) begin: gen_operand_requester_gnt
       assign operand_requester_gnt[requester_index][bank] = operand_gnt[bank][requester_index];
@@ -303,6 +298,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
       // Bank we are currently requesting
       automatic int bank = requester_metadata_q[requester_index].addr[idx_width(NrBanks)-1:0];
+
+      stall[requester_index] = '0;
 
       // Maintain state
       state_d[requester_index]     = state_q[requester_index];
@@ -401,6 +398,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         end : state_q_IDLE
 
         REQUESTING: begin : state_q_REQUESTING
+          // Is there a hazard during this cycle?
+          //logic stall;
+          stall[requester_index] = |(requester_metadata_q[requester_index].hazard & ~(vinsn_result_written_q &
+            (~{NrVInsn{requester_metadata_q[requester_index].is_widening}} | requester_metadata_q[requester_index].waw_hazard_counter)));
+
           // Update waw counters
           for (int b = 0; b < NrVInsn; b++) begin : waw_counters_update
             if ( vinsn_result_written_d[b] ) begin : result_valid
@@ -440,7 +442,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
               // Accept a new instruction
               if (operand_request_valid_i[requester_index]) begin : accept_a_new_inst
-                state_d[requester_index]                            = REQUESTING;
+                state_d[requester_index]                 = REQUESTING;
                 // Acknowledge the request
                 operand_request_ready_o[requester_index] = 1'b1;
 
@@ -463,7 +465,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
                 // Mute the requisition if the vl is zero
                 if (operand_request_i[requester_index].vl == '0) begin
-                  state_d[requester_index]                              = IDLE;
+                  state_d[requester_index]                   = IDLE;
                   operand_queue_cmd_valid_o[requester_index] = 1'b0;
                 end
               end : accept_a_new_inst
@@ -490,10 +492,10 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        state_q[requester_index]     <= IDLE;
+        state_q[requester_index]              <= IDLE;
         requester_metadata_q[requester_index] <= '0;
       end else begin
-        state_q[requester_index]     <= state_d[requester_index];
+        state_q[requester_index]              <= state_d[requester_index];
         requester_metadata_q[requester_index] <= requester_metadata_d[requester_index];
       end
     end
