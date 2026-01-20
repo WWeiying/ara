@@ -20,7 +20,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // Support for segment memory operations
     parameter  seg_support_e          SegSupport   = SegSupportEnable,
     // AXI Interface
-    parameter  int           unsigned AxiDataWidth = 32*NrLanes,
+    parameter  int           unsigned AxiDataWidth = 64*NrLanes/2,
     parameter  int           unsigned AxiAddrWidth = 64,
     parameter  int           unsigned AxiUserWidth = 1,
     parameter  int           unsigned AxiIdWidth   = 5,
