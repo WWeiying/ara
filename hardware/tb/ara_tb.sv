@@ -128,6 +128,9 @@ function void print_perf_report();
       
       $display("\n[PERF] ==== Performance Report Start ====");
       $display("[PERF] duration                   : %0t x100fs", duration);
+      $display("[PERF] kernel_ops                 : %0d", ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_ops[31:0]);
+      $display("[PERF] kernel_bytes               : %0d", ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_bytes[31:0]);
+      $display("[PERF] kernel_OI                  : %0.3f (ops/byte)", real'(ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_ops[31:0])/ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_bytes[31:0]);
       $display("[PERF] total_cycles               : %0d", total_cycles);
       $display("[PERF] total_insns                : %0d", total_insns);
       $display("[PERF] total_rvv_cycles           : %0d", total_rvv_cycles           );
@@ -373,6 +376,9 @@ function void print_perf_report();
       
       $display("\n[PERF] ==== Performance Report Start ====");
       $display("[PERF] duration                       : %0t x100fs", duration);
+      $display("[PERF] kernel_ops                     : %0d", ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_ops[31:0]);
+      $display("[PERF] kernel_bytes                   : %0d", ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_bytes[31:0]);
+      $display("[PERF] kernel_OI                      : %0.3f (ops/byte)", real'(ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_ops[31:0])/ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.kernel_bytes[31:0]);
       $display("[PERF] total_rvv_cycles               : %0d", total_rvv_cycles           );
       $display("[PERF] total_rvv_lane_cycles          : %0d", total_rvv_lane_cycles      );
       $display("[PERF] total_rvv_lane0_compute_cycles : %0d", ara_tb.perf_end_n.rvv_lane_compute_cycle[0] - ara_tb.perf_start_n.rvv_lane_compute_cycle[0]);
@@ -563,7 +569,6 @@ function void print_perf_csv();
 
     $fclose(csv_handle);
 endfunction
-
 `endif
 `endif
 

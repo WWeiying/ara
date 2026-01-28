@@ -349,7 +349,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   `FFLARNC(vmul_simd_in_valid_q, vmul_simd_in_valid,
     gate_ff_en, gate_ff_clr, '0, clk_i_gated, rst_ni);
 
-  for (genvar i = 0; i < 4; i++) begin
+  for (genvar i = 0; i < 4; i++) begin: power_gate
 `ifdef GF22
     power_gating_gf22 #(
 `else

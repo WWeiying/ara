@@ -3800,4 +3800,142 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     is_same_eew = same_eew_by_lmul[ara_req.emul[1:0]] | ara_req.emul[2];
   end
 
+`ifdef FOR_SIM
+  riscv::instruction_t instr_q;
+  int elem_bytes;
+  int eff_vl;
+  int inst_ops;
+  int inst_bytes;
+  int kernel_ops;
+  int kernel_bytes;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+       instr_q <= '0;
+    end else begin
+       instr_q <= instr;
+    end
+  end
+
+  always_comb begin
+    elem_bytes = 1 << ara_req_o.eew_vd_op;
+    eff_vl = (ara_req_o.vl > ara_req_o.vstart) ? 
+             (ara_req_o.vl - ara_req_o.vstart) : 0;
+    inst_ops   = 0;
+    inst_bytes = 0;
+    case (ara_req_o.op)
+      VADD, VSUB, VADC, VSBC, VRSUB, VMINU, VMIN, VMAXU, VMAX, 
+      VAND, VOR, VXOR: begin
+        inst_ops = eff_vl;
+      end
+      
+      VSADDU, VSADD, VSSUBU, VSSUB, VAADDU, VAADD, VASUBU, VASUB, 
+      VSSRL, VSSRA, VNCLIP, VNCLIPU: begin
+        inst_ops = eff_vl;
+      end
+      
+      VSLL, VSRL, VSRA, VNSRL, VNSRA: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMERGE: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMVSX, VFMVSF: begin
+        inst_ops = eff_vl;
+      end
+      
+      VREDSUM, VREDAND, VREDOR, VREDXOR, VREDMINU, VREDMIN, 
+      VREDMAXU, VREDMAX, VWREDSUMU, VWREDSUM: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMUL, VMULH, VMULHU, VMULHSU, VMACC, VNMSAC, VMADD, VNMSUB: begin
+        inst_ops = eff_vl * 2;
+      end
+      
+      VSMUL: begin
+        inst_ops = eff_vl;
+      end
+      
+      VDIVU, VDIV, VREMU, VREM: begin
+        inst_ops = eff_vl;
+      end
+      
+      VFADD, VFSUB, VFRSUB, VFMUL, VFDIV, VFRDIV, VFSQRT, 
+      VFMIN, VFMAX, VFREC7, VFRSQRT7, VFCLASS, 
+      VFSGNJ, VFSGNJN, VFSGNJX, 
+      VFCVTXUF, VFCVTXF, VFCVTFXU, VFCVTFX,
+      VFCVTRTZXUF, VFCVTRTZXF, VFNCVTRODFF, VFCVTFF: begin
+        inst_ops = eff_vl;
+      end
+      
+      VFMACC, VFNMACC, VFMSAC, VFNMSAC, VFMADD, VFNMADD, VFMSUB, VFNMSUB: begin
+        inst_ops = eff_vl * 2;
+      end
+      
+      VFREDUSUM, VFREDOSUM, VFREDMIN, VFREDMAX, VFWREDUSUM, VFWREDOSUM: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMFEQ, VMFLE, VMFLT, VMFNE, VMFGT, VMFGE: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMSEQ, VMSNE, VMSLTU, VMSLT, VMSLEU, VMSLE, VMSGTU, VMSGT: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMADC, VMSBC: begin
+        inst_ops = eff_vl;
+      end
+      
+      VMSBF, VMSOF, VMSIF, VIOTA, VID, VCPOP, VFIRST,
+      VMANDNOT, VMAND, VMOR, VMXOR, VMORNOT, VMNAND, VMNOR, VMXNOR: begin
+        inst_ops = eff_vl;
+      end
+      
+      VCOMPRESS: begin
+        inst_ops = eff_vl;
+      end
+      VRGATHER, VRGATHEREI16: begin
+        inst_bytes = eff_vl * elem_bytes * 2;
+      end
+      
+      VMVXS, VFMVFS: begin
+        inst_ops = eff_vl;
+      end
+      
+      VSLIDEUP, VSLIDEDOWN: begin
+        inst_ops = eff_vl;
+      end
+      
+      VLE, VLSE, VLXE: begin
+        inst_bytes = eff_vl * elem_bytes;
+      end
+      
+      VSE, VSSE, VSXE: begin
+        inst_bytes = eff_vl * elem_bytes;
+      end
+      
+      default: begin
+        inst_ops   = 0;
+        inst_bytes = 0;
+      end
+    endcase
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      kernel_ops <= '0;
+      kernel_bytes <= '0;
+    end else if (ara_req_valid_o && ara_req_ready_i) begin
+      kernel_ops <= kernel_ops + inst_ops;
+      kernel_bytes <= kernel_bytes + inst_bytes;
+    end
+  end
+
+`endif
+
 endmodule : ara_dispatcher
