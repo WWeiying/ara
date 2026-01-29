@@ -144,10 +144,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       ara_req_o       <= '0;
       ara_req_valid_o <= 1'b0;
     end else begin
-      if (ara_req_ready_i) begin
-        ara_req_o       <= ara_req_d;
-        ara_req_valid_o <= ara_req_valid_d;
-      end
+      ara_req_o       <= ara_req_d;
+      ara_req_valid_o <= ara_req_valid_d;
     end
   end
 
@@ -604,11 +602,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     endcase
 
     if (state_d == NORMAL_OPERATION && state_q != RESHUFFLE) begin
-      if (acc_req_i.req_valid && ara_req_ready_i && acc_req_i.resp_ready) begin
+      // Acknowledge the request
+      acc_resp_o.req_ready = !ara_req_valid_o || ara_req_ready_i;
+      if (acc_req_i.req_valid && acc_resp_o.req_ready && acc_req_i.resp_ready) begin
         // Decoding
         is_decoding = 1'b1;
-        // Acknowledge the request
-        acc_resp_o.req_ready = 1'b1;
 
         // Decode the instructions based on their opcode
         unique case (instr.itype.opcode)
@@ -2896,7 +2894,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             is_vload = 1'b1;
 
             // Wait before acknowledging this instruction
-            acc_resp_o.req_ready = 1'b0;
+            //acc_resp_o.req_ready = 1'b0;
 
             // These generate a request to Ara's backend
             ara_req.vd        = insn.vmem_type.rd;

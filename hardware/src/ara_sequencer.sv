@@ -387,7 +387,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       IDLE: begin
         // Sent a request, but the operand requesters are not ready
         // Do not trap here the instructions that do not need any operands at all
-        if (pe_req_valid_o && !(&operand_requester_ready || no_src_vrf(pe_req_o))) begin
+        if (pe_req_valid_o && !(&operand_requester_ready || no_src_vrf(pe_req_o) || addrgen_ack_i)) begin
           // Maintain output
           pe_req_d               = pe_req_o;
           pe_req_valid_d         = pe_req_valid_o;
@@ -508,10 +508,23 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
               // Some instructions need to wait for an acknowledgment
               // before being committed with Ariane
-              if (is_load(ara_req_i.op) || is_store(ara_req_i.op) || !ara_req_i.use_vd) begin
+              //if (is_load(ara_req_i.op) || is_store(ara_req_i.op) || !ara_req_i.use_vd) begin
+              //  ara_req_ready_o = 1'b0;
+              //  state_d         = WAIT;
+              //end
+
+              if (!ara_req_i.use_vd) begin
                 ara_req_ready_o = 1'b0;
                 state_d         = WAIT;
               end
+
+              //if (is_load(ara_req_i.op) || is_store(ara_req_i.op)) begin
+              //  ara_req_ready_o     = 1'b1;
+              //  ara_resp_valid_o    = 1'b1;
+              //  ara_resp_o.exception = addrgen_exception_i;
+              //  ara_resp_o.exception_vstart = addrgen_exception_vstart_i;
+              //  ara_resp_o.fof_exception = addrgen_fof_exception_i;
+              //end
 
               // Issue the instruction
               pe_req_valid_d = 1'b1;

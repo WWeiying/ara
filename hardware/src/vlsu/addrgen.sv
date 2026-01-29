@@ -105,6 +105,82 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     is_addr_error = |(max_sew_byte_t'(addr[LOG2_MAX_SEW_BYTE-1:0]) & (max_sew_byte_t'(1 << vew) - 1));
   endfunction // is_addr_error
 
+  ////////////////////////////
+  //  Register the request  //
+  ////////////////////////////
+
+  `include "common_cells/registers.svh"
+  // STU exception support
+  logic lsu_ex_flush_d;
+  `FF(lsu_ex_flush_d, lsu_ex_flush_i, 1'b0, clk_i, rst_ni);
+
+
+  // Don't accept the same request more than once!
+  // The main sequencer keeps the valid high and broadcast
+  // a certain instruction with ID == X to all the lanes
+  // until every lane has sampled it.
+
+  // Every time a lane handshakes the main sequencer, it also
+  // saves the insn ID, not to re-sample the same instruction.
+  vid_t last_id_d, last_id_q;
+  logic pe_req_valid_i_msk;
+  logic en_sync_mask_d, en_sync_mask_q;
+
+  pe_req_t pe_req;
+  logic    pe_req_valid;
+  logic    addrgen_ack;
+
+  fall_through_register_v1 #(
+    .T(pe_req_t),
+    .DEPTH(3)
+  ) i_pe_req_register (
+    .clk_i     (clk_i             ),
+    .rst_ni    (rst_ni            ),
+    .clr_i     (lsu_ex_flush_d    ),
+    .testmode_i(1'b0              ),
+    .data_i    (pe_req_i          ),
+    .valid_i   (pe_req_valid_i_msk),
+    .ready_o   (addrgen_ack_o     ),
+    .data_o    (pe_req            ),
+    .valid_o   (pe_req_valid      ),
+    .ready_i   (addrgen_ack       )
+  );
+
+  always_comb begin
+    // Default assignment
+    last_id_d      = last_id_q;
+    en_sync_mask_d = en_sync_mask_q;
+
+    // If the sync mask is enabled and the ID is the same
+    // as before, avoid to re-sample the same instruction
+    // more than once.
+    if (en_sync_mask_q && (pe_req_i.id == last_id_q))
+      pe_req_valid_i_msk = 1'b0;
+    else
+      pe_req_valid_i_msk = pe_req_valid_i;
+
+    // Enable the sync mask when a handshake happens,
+    // and save the insn ID
+    if (pe_req_valid_i_msk && addrgen_ack_o) begin
+      last_id_d      = pe_req_i.id;
+      en_sync_mask_d = 1'b1;
+    end
+
+    // Disable the block if the sequencer valid goes down
+    if (!pe_req_valid_i && en_sync_mask_q)
+      en_sync_mask_d = 1'b0;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      last_id_q      <= '0;
+      en_sync_mask_q <= 1'b0;
+    end else begin
+      last_id_q      <= last_id_d;
+      en_sync_mask_q <= en_sync_mask_d;
+    end
+  end
+
   ////////////////////
   //  PE Req Queue  //
   ////////////////////
@@ -176,7 +252,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [$clog2(NrLanes)-1:0] word_lane_ptr_d, word_lane_ptr_q;
   logic [$clog2(DataWidthB)-1:0] elm_ptr_d, elm_ptr_q;
   logic [$clog2(DataWidthB)-1:0] last_elm_subw_d, last_elm_subw_q;
-  vlen_t                              idx_op_cnt_d, idx_op_cnt_q;
+  vlen_t                         idx_op_cnt_d, idx_op_cnt_q;
 
   // Spill reg signals
   logic      idx_vaddr_valid_d, idx_vaddr_valid_q;
@@ -253,7 +329,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     addrgen_req_valid = 1'b0;
 
     // Nothing to acknowledge
-    addrgen_ack_o             = 1'b0;
+    //addrgen_ack_o             = 1'b0;
+    addrgen_ack               = 1'b0;
     addrgen_exception_o       = '0;
     addrgen_exception_o.valid = 1'b0;
     addrgen_exception_o.gva   = '0;
@@ -294,50 +371,51 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     case (state_q)
       IDLE: begin
         // Received a new request
-        if (pe_req_valid_i &&
-            (is_load(pe_req_i.op) || is_store(pe_req_i.op)) && !vinsn_running_q[pe_req_i.id]) begin
+        if (pe_req_valid &&
+            (is_load(pe_req.op) || is_store(pe_req.op)) && !vinsn_running_q[pe_req.id]) begin
           // Mark the instruction as running in this unit
-          vinsn_running_d[pe_req_i.id] = 1'b1;
+          vinsn_running_d[pe_req.id] = 1'b1;
 
           // Store the PE request
-          pe_req_d = pe_req_i;
+          pe_req_d = pe_req;
+          addrgen_ack = 1'b1;
 
           // Pre-calculate expensive additions / multiplications
           // pe_req_i shouldn't be that critical at this point
-          lookahead_addr_e_d  = pe_req_i.scalar_op + (pe_req_i.vstart << unsigned'(pe_req_i.vtype.vsew));
-          lookahead_addr_se_d = pe_req_i.scalar_op + (pe_req_i.vstart * pe_req_i.stride);
-          lookahead_len_d     = (pe_req_i.vl - pe_req_i.vstart) << unsigned'(pe_req_i.vtype.vsew[1:0]);
+          lookahead_addr_e_d  = pe_req.scalar_op + (pe_req.vstart << unsigned'(pe_req.vtype.vsew));
+          lookahead_addr_se_d = pe_req.scalar_op + (pe_req.vstart * pe_req.stride);
+          lookahead_len_d     = (pe_req.vl - pe_req.vstart) << unsigned'(pe_req.vtype.vsew[1:0]);
 
-          case (pe_req_i.op)
+          case (pe_req.op)
             VLXE, VSXE: begin
               state_d = ADDRGEN_IDX_OP;
 
               // Load element pointers
-              case (pe_req_i.eew_vs2)
+              case (pe_req.eew_vs2)
                 EW8: begin
                   last_elm_subw_d = 7;
-                  word_lane_ptr_d = pe_req_i.vstart[Log2VRFWordWidthB-1:Log2LaneWordWidthB];
-                  elm_ptr_d       = pe_req_i.vstart[Log2LaneWordWidthB-1:0];
+                  word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthB-1:Log2LaneWordWidthB];
+                  elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthB-1:0];
                 end
                 EW16: begin
                   last_elm_subw_d = 3;
-                  word_lane_ptr_d = pe_req_i.vstart[Log2VRFWordWidthH-1:Log2LaneWordWidthH];
-                  elm_ptr_d       = pe_req_i.vstart[Log2LaneWordWidthH-1:0];
+                  word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthH-1:Log2LaneWordWidthH];
+                  elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthH-1:0];
                 end
                 EW32: begin
                   last_elm_subw_d = 1;
-                  word_lane_ptr_d = pe_req_i.vstart[Log2VRFWordWidthS-1:Log2LaneWordWidthS];
-                  elm_ptr_d       = pe_req_i.vstart[Log2LaneWordWidthS-1:0];
+                  word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthS-1:Log2LaneWordWidthS];
+                  elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthS-1:0];
                 end
                 default: begin // EW64
                   last_elm_subw_d = 0;
-                  word_lane_ptr_d = pe_req_i.vstart[Log2VRFWordWidthD-1:0];
+                  word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthD-1:0];
                   elm_ptr_d       = 0;
                 end
               endcase
 
               // Load element counter
-              idx_op_cnt_d = pe_req_i.vl - pe_req_i.vstart;
+              idx_op_cnt_d = pe_req.vl - pe_req.vstart;
             end
             default: state_d = ADDRGEN;
           endcase
@@ -374,7 +452,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // Ara does not support misaligned AXI requests
         if (is_addr_error(pe_req_q.scalar_op, pe_req_q.vtype.vsew[1:0])) begin
           state_d         = IDLE;
-          addrgen_ack_o   = 1'b1;
+          //addrgen_ack_o   = 1'b1;
+          addrgen_ack   = 1'b1;
           addrgen_exception_o.valid = 1'b1;
           addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
           addrgen_exception_o.tval  = '0;
@@ -384,15 +463,68 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
           if (addrgen_req_ready) begin : finished
             addrgen_req_valid = '0;
-            addrgen_ack_o     = 1'b1;
+            //addrgen_ack_o     = 1'b1;
+            //addrgen_ack       = 1'b1;
             state_d           = IDLE;
+
+            // Received a new request
+            if (pe_req_valid &&
+                (is_load(pe_req.op) || is_store(pe_req.op)) && !vinsn_running_q[pe_req.id]) begin
+              // Mark the instruction as running in this unit
+              vinsn_running_d[pe_req.id] = 1'b1;
+
+              // Store the PE request
+              pe_req_d = pe_req;
+              addrgen_ack = 1'b1;
+
+              // Pre-calculate expensive additions / multiplications
+              // pe_req_i shouldn't be that critical at this point
+              lookahead_addr_e_d  = pe_req.scalar_op + (pe_req.vstart << unsigned'(pe_req.vtype.vsew));
+              lookahead_addr_se_d = pe_req.scalar_op + (pe_req.vstart * pe_req.stride);
+              lookahead_len_d     = (pe_req.vl - pe_req.vstart) << unsigned'(pe_req.vtype.vsew[1:0]);
+
+              case (pe_req.op)
+                VLXE, VSXE: begin
+                  state_d = ADDRGEN_IDX_OP;
+
+                  // Load element pointers
+                  case (pe_req.eew_vs2)
+                    EW8: begin
+                      last_elm_subw_d = 7;
+                      word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthB-1:Log2LaneWordWidthB];
+                      elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthB-1:0];
+                    end
+                    EW16: begin
+                      last_elm_subw_d = 3;
+                      word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthH-1:Log2LaneWordWidthH];
+                      elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthH-1:0];
+                    end
+                    EW32: begin
+                      last_elm_subw_d = 1;
+                      word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthS-1:Log2LaneWordWidthS];
+                      elm_ptr_d       = pe_req.vstart[Log2LaneWordWidthS-1:0];
+                    end
+                    default: begin // EW64
+                      last_elm_subw_d = 0;
+                      word_lane_ptr_d = pe_req.vstart[Log2VRFWordWidthD-1:0];
+                      elm_ptr_d       = 0;
+                    end
+                  endcase
+
+                  // Load element counter
+                  idx_op_cnt_d = pe_req.vl - pe_req.vstart;
+                end
+                default: state_d = ADDRGEN;
+              endcase
+            end
           end : finished
 
           // If load/store translation is enabled
           if (en_ld_st_translation_i) begin : translation_enabled
             // We need to wait for the last translation to be over before acking back
             // addrgen_req_valid = '0; TODO: figure out if set/reset here
-            addrgen_ack_o     = 1'b0;
+            //addrgen_ack_o     = 1'b0;
+            addrgen_ack       = 1'b0;
             state_d           = WAIT_LAST_TRANSLATION;
           end : translation_enabled
         end : address_valid
@@ -507,7 +639,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       // This state exists not to create combinatorial paths on the interface
       ADDRGEN_IDX_OP_END : begin
         // Acknowledge the indexed memory operation
-        addrgen_ack_o     = 1'b1;
+        //addrgen_ack_o     = 1'b1;
+        addrgen_ack       = 1'b1;
         addrgen_req_valid = '0;
         state_d           = IDLE;
         // Reset pointers
@@ -530,7 +663,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       WAIT_LAST_TRANSLATION : begin
         if (last_translation_completed | mmu_exception_q.valid) begin
           // Acknowledge the indexed memory operation
-          addrgen_ack_o     = 1'b1;
+          //addrgen_ack_o     = 1'b1;
+          addrgen_ack       = 1'b1;
           addrgen_req_valid = '0;
           state_d           = IDLE;
           // Reset pointers
@@ -544,7 +678,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     endcase
 
     // Immediately kill the load/store if the instruction was illegal
-    if (addrgen_exception_o.valid && addrgen_ack_o) begin
+    //if (addrgen_exception_o.valid && addrgen_ack_o) begin
+    if (addrgen_exception_o.valid && addrgen_ack) begin
       addrgen_illegal_load_o  =  is_load(pe_req_q.op) && (addrgen_exception_o.cause == riscv::ILLEGAL_INSTR);
       addrgen_illegal_store_o = !is_load(pe_req_q.op) && (addrgen_exception_o.cause == riscv::ILLEGAL_INSTR);
     end
