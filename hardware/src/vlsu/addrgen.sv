@@ -126,7 +126,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic pe_req_valid_i_msk;
   logic en_sync_mask_d, en_sync_mask_q;
 
-  pe_req_t pe_req_d, pe_req_q;
+  pe_req_t pe_req, pe_req_d, pe_req_q;
   logic    pe_req_valid;
   logic    addrgen_ack;
 
@@ -141,7 +141,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .data_i    (pe_req_i          ),
     .valid_i   (pe_req_valid_i_msk),
     .ready_o   (addrgen_ack_o     ),
-    .data_o    (pe_req_d          ),
+    .data_o    (pe_req            ),
     .valid_o   (pe_req_valid      ),
     .ready_i   (addrgen_ack       )
   );
@@ -240,7 +240,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [$bits(elen_t)*NrLanes-1:0] shuffled_word;
   logic [$bits(elen_t)*NrLanes-1:0] deshuffled_word;
   elen_t                            reduced_word;
-  axi_addr_t                        idx_final_vaddr_d, idx_final_vaddr_q;
   elen_t                            idx_vaddr;
   logic                             idx_op_error_d, idx_op_error_q;
   vlen_t                            addrgen_exception_vstart_d;
@@ -249,30 +248,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [$clog2(NrLanes)-1:0]    word_lane_ptr_d, word_lane_ptr_q;
   logic [$clog2(DataWidthB)-1:0] elm_ptr_d, elm_ptr_q;
   logic [$clog2(DataWidthB)-1:0] last_elm_subw_d, last_elm_subw_q;
-  vlen_t                         idx_op_cnt_d, idx_op_cnt_q;
-
-  // Spill reg signals
-  logic      idx_vaddr_valid_d, idx_vaddr_valid_q;
-  logic      idx_vaddr_ready_d, idx_vaddr_ready_q;
-
-  // Exception support
-  // This flush should be done after the backend has been flushed, too
-  logic lsu_ex_flush_q;
-
-  // Break the path from the VRF to the AXI request
-  spill_register_flushable #(
-    .T(axi_addr_t)
-  ) i_addrgen_idx_op_spill_reg (
-    .clk_i  (clk_i           ),
-    .rst_ni (rst_ni          ),
-    .flush_i(lsu_ex_flush_q  ),
-    .valid_i(idx_vaddr_valid_d),
-    .ready_o(idx_vaddr_ready_q),
-    .data_i (idx_final_vaddr_d),
-    .valid_o(idx_vaddr_valid_q),
-    .ready_i(idx_vaddr_ready_d),
-    .data_o (idx_final_vaddr_q)
-  );
 
   //////////////////////////
   //  Address generation  //
@@ -309,15 +284,20 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   localparam clog2_AxiStrobeWidth = $clog2(AxiDataWidth/8);
 
-  logic                    addrgen_req_valid;
-  logic                    addrgen_ack;
+  logic                    vreq_is_vld;
   logic [CVA6Cfg.VLEN-1:0] vreq_addr_d, vreq_addr_q;
   vlen_t                   vreq_blen_d, vreq_blen_q;
   logic                    vreq_is_load_d, vreq_is_load_q;
-  logic                    vreq_is_burst_d, vreq_is_burst_q;
+  logic                    vreq_is_unit_stride_d, vreq_is_unit_stride_q;
+  logic                    vreq_is_stride_d, vreq_is_stride_q;
+  logic                    vreq_is_index_d, vreq_is_index_q;
   logic                    axi_ax_ready;
   logic [12:0]             num_bytes;
   vlen_t                   remaining_bytes;
+  logic [CVA6Cfg.PLEN-1:0] paddr;
+  logic [31:0]             num_beats;
+  logic [31:0]             burst_length;
+  logic [NrLanes-1:0]      addrgen_operand_valid;
 
   axi_addr_t    aligned_start_addr_d, aligned_start_addr_q;
   axi_addr_t    aligned_next_start_addr_d, aligned_next_start_addr_q, aligned_next_start_addr_temp;
@@ -371,6 +351,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   always_comb begin
     state_d = state_q;
+    pe_req_d = pe_req_q;
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
 
     aligned_start_addr_d         = aligned_start_addr_q;
@@ -384,9 +365,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     eff_axi_dw_d     = eff_axi_dw_q;
     eff_axi_dw_log_d = eff_axi_dw_log_q;
 
-    idx_vaddr_ready_d           = 1'b0;
-    addrgen_exception_vstart_d  = '0;
-    idx_op_error_d = 1'b0;
+    addrgen_exception_vstart_d = '0;
+    idx_op_error_d             = 1'b0;
+    addrgen_operand_valid      = addrgen_operand_valid_i;
 
     addrgen_req_ready = 1'b0;
 
@@ -413,15 +394,20 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     last_translation_completed = 1'b0;
 
-    addrgen_req_valid = 1'b0;
+    vreq_is_vld       = 1'b0;
     addrgen_ack       = 1'b0;
     vreq_addr_d       = vreq_addr_q;
     vreq_blen_d       = vreq_blen_q;
     vreq_is_load_d    = vreq_is_load_q;
-    vreq_is_burst_d   = vreq_is_burst_q;
+    vreq_is_unit_stride_d = vreq_is_unit_stride_q;
+    vreq_is_stride_d      = vreq_is_stride_q;
+    vreq_is_index_d       = vreq_is_index_q;
     axi_ax_ready      = 1'b0;
     num_bytes         = '0;
     remaining_bytes   = '0;
+    paddr             = '0;
+    num_beats         = '0;
+    burst_length      = '0;
 
     addrgen_exception_o       = '0;
     addrgen_exception_o.valid = 1'b0;
@@ -435,40 +421,144 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     addrgen_fof_exception_o   = 1'b0;
 
-    idx_vaddr_valid_d         = 1'b0;
     addrgen_operand_ready_o   = 1'b0;
     reduced_word              = '0;
     elm_ptr_d                 = elm_ptr_q;
-    idx_op_cnt_d              = idx_op_cnt_q;
     word_lane_ptr_d           = word_lane_ptr_q;
-    idx_final_vaddr_d         = idx_final_vaddr_q;
     last_elm_subw_d           = last_elm_subw_q;
 
     shuffled_word             = addrgen_operand_i;
-    for (int unsigned b = 0; b < 8*NrLanes; b++) begin
-      automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_q.eew_vs2);
-      deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
-    end
-
-    for (int unsigned lane = 0; lane < NrLanes; lane++)
-      if (lane == word_lane_ptr_q)
-        reduced_word = deshuffled_word[word_lane_ptr_q*$bits(elen_t) +: $bits(elen_t)];
-    idx_vaddr = reduced_word;
 
     case(state_q)
     IDLE: begin : addrgen_state_IDLE
-      if (pe_req_valid &&
-          (is_load(pe_req_d.op) || is_store(pe_req_d.op)) && !vinsn_running_q[pe_req_d.id]) begin
+      if (pe_req_valid && (is_load(pe_req.op) || is_store(pe_req.op)) && !vinsn_running_q[pe_req.id]) begin : register_req
+        pe_req_d                     = pe_req;
         vinsn_running_d[pe_req_d.id] = 1'b1;
-        addrgen_ack = 1'b1;
-        vreq_is_load_d  = is_load(pe_req_d.op);
-        vreq_blen_d     = (pe_req_d.vl - pe_req_d.vstart) << unsigned'(pe_req_d.vtype.vsew[1:0]);
+        addrgen_ack                  = 1'b1;
 
-        if (pe_req_d.op inside {VLE, VSE}) begin : IDLE_VLSE_VLD
-          addrgen_req_valid = 1'b1;
+        vreq_is_vld           = 1'b1;
+        vreq_is_load_d        = is_load(pe_req_d.op);
+        vreq_blen_d           = (pe_req_d.vl - pe_req_d.vstart) << unsigned'(pe_req_d.vtype.vsew[1:0]);
+        vreq_is_unit_stride_d = pe_req_d.op inside {VLE, VSE};
+        vreq_is_stride_d      = pe_req_d.op inside {VLSE, VSSE};
+        vreq_is_index_d       = pe_req_d.op inside {VLXE, VSXE};
+        axi_ax_ready          = (vreq_is_load_d && axi_ar_ready_i) || (!vreq_is_load_d && axi_aw_ready_i);
 
+        if (vreq_is_unit_stride_d) begin : IDLE_VLSE_VLD
+          state_d = ADDRGEN;
           vreq_addr_d     = pe_req_d.scalar_op + (pe_req_d.vstart << unsigned'(pe_req_d.vtype.vsew));
-          vreq_is_burst_d = 1'b1;
+
+        end : IDLE_VLSE_VLD
+        else if (vreq_is_stride_d) begin : IDLE_VLSSE_VLD
+          state_d = ADDRGEN;
+          vreq_addr_d = pe_req_d.scalar_op + (pe_req_d.vstart * pe_req_d.stride);
+
+        end : IDLE_VLSSE_VLD
+        else begin : IDLE_VLSXE_VLD
+          for (int unsigned b = 0; b < 8*NrLanes; b++) begin
+            automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_d.eew_vs2);
+            deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
+          end
+
+          for (int unsigned lane = 0; lane < NrLanes; lane++)
+            if (lane == word_lane_ptr_d)
+              reduced_word = deshuffled_word[word_lane_ptr_d*$bits(elen_t) +: $bits(elen_t)];
+
+          state_d = ADDRGEN_IDX_OP;
+
+          case (pe_req_d.eew_vs2)
+            EW8: begin
+              last_elm_subw_d = 7;
+              word_lane_ptr_d = pe_req_d.vstart[Log2VRFWordWidthB-1:Log2LaneWordWidthB];
+              elm_ptr_d       = pe_req_d.vstart[Log2LaneWordWidthB-1:0];
+            end
+            EW16: begin
+              last_elm_subw_d = 3;
+              word_lane_ptr_d = pe_req_d.vstart[Log2VRFWordWidthH-1:Log2LaneWordWidthH];
+              elm_ptr_d       = pe_req_d.vstart[Log2LaneWordWidthH-1:0];
+            end
+            EW32: begin
+              last_elm_subw_d = 1;
+              word_lane_ptr_d = pe_req_d.vstart[Log2VRFWordWidthS-1:Log2LaneWordWidthS];
+              elm_ptr_d       = pe_req_d.vstart[Log2LaneWordWidthS-1:0];
+            end
+            default: begin
+              last_elm_subw_d = 0;
+              word_lane_ptr_d = pe_req_d.vstart[Log2VRFWordWidthD-1:0];
+              elm_ptr_d       = 0;
+            end
+          endcase
+
+          for (int unsigned lane = 0; lane < NrLanes; lane++) begin : adjust_operand_valid
+            if ((vreq_blen_d < (NrLanes * DataWidthB))
+                 && (lane < pe_req_d.vstart[idx_width(NrLanes)-1:0])) begin : vstart_lane_adjust
+              addrgen_operand_valid[lane] |= 1'b1;
+            end : vstart_lane_adjust
+          end : adjust_operand_valid
+
+          if (&addrgen_operand_valid) begin
+
+            case (pe_req_d.eew_vs2)
+              EW8: begin
+                for (int unsigned b = 0; b < 8; b++)
+                  if (b == elm_ptr_d)
+                    idx_vaddr = reduced_word[b*8 +: 8];
+              end
+              EW16: begin
+                for (int unsigned h = 0; h < 4; h++)
+                  if (h == elm_ptr_d)
+                    idx_vaddr = reduced_word[h*16 +: 16];
+              end
+              EW32: begin
+                for (int unsigned w = 0; w < 2; w++)
+                  if (w == elm_ptr_d)
+                    idx_vaddr = reduced_word[w*32 +: 32];
+              end
+              EW64: begin
+                for (int unsigned d = 0; d < 1; d++)
+                  if (d == elm_ptr_d)
+                    idx_vaddr = reduced_word[d*64 +: 64];
+              end
+              default: begin
+                for (int unsigned b = 0; b < 8; b++)
+                  if (b == elm_ptr_d)
+                    idx_vaddr = reduced_word[b*8 +: 8];
+              end
+            endcase
+
+            vreq_addr_d = pe_req_q.scalar_op + idx_vaddr;
+          end
+        end : IDLE_VLSXE_VLD
+      end : register_req
+
+    end : addrgen_state_IDLE
+
+    ADDRGEN: begin : addrgen_state_ADDRGEN
+      vreq_is_vld  = 1'b1;
+      axi_ax_ready = (vreq_is_load_d && axi_ar_ready_i) || (!vreq_is_load_d && axi_aw_ready_i);
+    end : addrgen_state_ADDRGEN
+
+    ADDRGEN_IDX_OP: begin : addrgen_state_ADDRGEN_IDX_OP
+      vreq_is_vld           = 1'b1;
+    end : addrgen_state_ADDRGEN_IDX_OP
+
+    ADDRGEN_IDX_OP_END : begin
+      state_d = IDLE;
+    end
+
+    WAIT_LAST_TRANSLATION : begin : addrgen_state_WAIT_LAST_TRANSLATION
+      if (last_translation_completed | mmu_exception_q.valid) begin
+        state_d = IDLE;
+      end
+    end : addrgen_state_WAIT_LAST_TRANSLATION
+    endcase
+
+    if ((axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && vreq_is_load_d) ||
+        (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) && vreq_is_vld) begin : can_req
+      if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
+        paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
+
+        if (vreq_is_unit_stride_d) begin : unit_stride_req
 
           aligned_start_addr_d = aligned_addr(vreq_addr_d, clog2_AxiStrobeWidth);
           next_2page_msb_d     = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
@@ -494,14 +584,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             eff_axi_dw_log_d = clog2_AxiStrobeWidth;
           end
 
-          axi_ax_ready = (vreq_is_load_d && axi_ar_ready_i) || (!vreq_is_load_d && axi_aw_ready_i);
-
           if (aligned_end_addr_d[11:0] != 12'hFFF) begin
             num_bytes = aligned_next_start_addr_d[11:0] - vreq_addr_d[11:0];
           end else begin
             num_bytes = 13'h1000 - vreq_addr_d[11:0];
           end
-
+  
           if (vreq_blen_d < num_bytes) begin
             remaining_bytes = 0;
           end
@@ -509,115 +597,40 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             remaining_bytes = vreq_blen_d - num_bytes;
           end
 
-          if (axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && vreq_is_load_d) ||
-               (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) begin
-            if (!axi_addrgen_queue_full && axi_ax_ready) begin
-              automatic logic [CVA6Cfg.PLEN-1:0] paddr;
+          num_beats = ((aligned_end_addr_d[11:0] - aligned_start_addr_d[11:0]) >> eff_axi_dw_log_d) + 1;
+          burst_length = (num_beats < 256) ? num_beats : 256;
 
-              paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
-
-              if (vreq_is_burst_d) begin
-                automatic int unsigned num_beats;
-                automatic int unsigned burst_length;
-
-                num_beats = ((aligned_end_addr_d[11:0] - aligned_start_addr_d[11:0]) >> eff_axi_dw_log_d) + 1;
-                burst_length = (num_beats < 256) ? num_beats : 256;
-
-                if (vreq_is_load_d) begin
-                  axi_ar_o = '{
-                    addr   : paddr,
-                    len    : burst_length - 1,
-                    size   : eff_axi_dw_log_d,
-                    cache  : CACHE_MODIFIABLE,
-                    burst  : BURST_INCR,
-                    default: '0
-                  };
-                end
-                else begin
-                  axi_aw_o = '{
-                    addr   : paddr,
-                    len    : burst_length - 1,
-                    size   : eff_axi_dw_log_d,
-                    cache  : CACHE_MODIFIABLE,
-                    burst  : BURST_INCR,
-                    default: '0
-                  };
-                end
-
-                axi_addrgen_queue = '{
-                  addr         : paddr,
-                  len          : burst_length - 1,
-                  size         : eff_axi_dw_log_d,
-                  is_load      : vreq_is_load_d,
-                  is_exception : 1'b0
-                };
-
-              end
-
-              if (remaining_bytes == 0) begin
-                state_d = IDLE;
-                addrgen_req_ready = 1'b1;
-                if (en_ld_st_translation_i & !mmu_exception_i.valid) begin
-                  last_translation_completed = 1'b1;
-                end
-              end
-
-              if (mmu_exception_i.valid) begin
-                state_d = IDLE;
-                addrgen_req_ready = 1'b1;
-                mmu_exception_d = mmu_exception_i;
-                axi_addrgen_queue = '{
-                  addr         : paddr,
-                  size         : pe_req_d.vtype.vsew[1:0],
-                  len          : 0,
-                  is_load      : vreq_is_load_d,
-                  is_exception : 1'b1
-                };
-                axi_addrgen_queue_push = ~(pe_req_d.fault_only_first
-                                         & (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0])));
-
-                addrgen_fof_exception_d = pe_req_d.fault_only_first && (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]));
-
-                addrgen_exception_vstart_d  = pe_req_d.vl - (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]);
-              end
-
-              if ((mmu_valid_i && !mmu_exception_i.valid) || !en_ld_st_translation_i) begin
-                if (vreq_is_burst_d) begin
-                  axi_ar_valid_o = vreq_is_load_d;
-                  axi_aw_valid_o = ~vreq_is_load_d;
-
-                  axi_addrgen_queue_push = 1'b1;
-
-                  vreq_addr_d = aligned_next_start_addr_d;
-                  vreq_blen_d = remaining_bytes;
-
-                  aligned_start_addr_d      = vreq_addr_d;
-                  aligned_end_addr_d        = aligned_end_addr_temp;
-                  aligned_next_start_addr_d = aligned_next_start_addr_temp;
-
-                  set_end_addr (
-                    next_2page_msb_d,
-                    vreq_blen_d,
-                    aligned_next_start_addr_d,
-                    eff_axi_dw_d,
-                    eff_axi_dw_log_d,
-                    aligned_next_start_addr_d,
-                    aligned_end_addr_temp,
-                    aligned_next_start_addr_temp
-                  );
-                end
-              end
-
-            end
+          if (vreq_is_load_d) begin
+            axi_ar_o = '{
+              addr   : paddr,
+              len    : burst_length - 1,
+              size   : eff_axi_dw_log_d,
+              cache  : CACHE_MODIFIABLE,
+              burst  : BURST_INCR,
+              default: '0
+            };
           end
-        end : IDLE_VLSE_VLD
-        else if (pe_req_d.op inside {VLSE, VSSE}) begin : IDLE_VLSSE_VLD
-          /////////////////////
-          //  Strided access //
-          /////////////////////
-          vreq_addr_d     = pe_req_d.scalar_op + (pe_req_d.vstart * pe_req_d.stride);
+          else begin
+            axi_aw_o = '{
+              addr   : paddr,
+              len    : burst_length - 1,
+              size   : eff_axi_dw_log_d,
+              cache  : CACHE_MODIFIABLE,
+              burst  : BURST_INCR,
+              default: '0
+            };
+          end
 
-          // AR Channel
+          axi_addrgen_queue = '{
+            addr         : paddr,
+            len          : burst_length - 1,
+            size         : eff_axi_dw_log_d,
+            is_load      : vreq_is_load_d,
+            is_exception : 1'b0
+          };
+
+        end : unit_stride_req
+        else if (vreq_is_stride_d) begin : stride_req
           if (vreq_is_load_d) begin
             axi_ar_o = '{
               addr   : vreq_addr_d,
@@ -628,7 +641,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               default: '0
             };
           end
-          // AW Channel
           else begin
             axi_aw_o = '{
               addr   : vreq_addr_d,
@@ -640,7 +652,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             };
           end
 
-          // Send this request to the load/store units
           axi_addrgen_queue = '{
             addr         : vreq_addr_d,
             size         : pe_req_d.vtype.vsew[1:0],
@@ -649,183 +660,131 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             is_exception : 1'b0
           };
 
-          // Account for the requested operands
-          // This should never overflow
           len_temp = vreq_blen_d - (1 << pe_req_d.vtype.vsew[1:0]);
-          // Calculate the addresses for the next iteration, adding the correct stride
           next_addr_strided_temp = vreq_addr_d + pe_req_d.stride;
-        end : IDLE_VLSSE_VLD
-      end
-    end : addrgen_state_IDLE
-    ADDRGEN: begin : addrgen_state_ADDRGEN
-      if (is_addr_error(pe_req_q.scalar_op, pe_req_q.vtype.vsew[1:0])) begin
-        state_d = IDLE;
-      end
-      else begin
-        if (addrgen_req_ready) begin
+        end : stride_req
+        else begin : index_req
+          if (vreq_is_load_d) begin
+            axi_ar_o = '{
+              addr   : vreq_addr_d,
+              len    : 0,
+              size   : pe_req_d.vtype.vsew[1:0],
+              cache  : CACHE_MODIFIABLE,
+              burst  : BURST_INCR,
+              default: '0
+            };
+          end
+          else begin
+            axi_aw_o = '{
+              addr   : vreq_addr_d,
+              len    : 0,
+              size   : pe_req_d.vtype.vsew[1:0],
+              cache  : CACHE_MODIFIABLE,
+              burst  : BURST_INCR,
+              default: '0
+            };
+          end
+
+          axi_addrgen_queue = '{
+            addr         : vreq_addr_d,
+            size         : pe_req_d.vtype.vsew[1:0],
+            len          : 0,
+            is_load      : vreq_is_load_d,
+            is_exception : 1'b0
+          };
+
+          len_temp = vreq_blen_d - (1 << pe_req_d.vtype.vsew[1:0]);
+        end : index_req
+
+        if (mmu_exception_i.valid) begin
           state_d = IDLE;
+          addrgen_req_ready = 1'b1;
+          mmu_exception_d = mmu_exception_i;
+          axi_addrgen_queue = '{
+            addr         : paddr,
+            size         : pe_req_d.vtype.vsew[1:0],
+            len          : 0,
+            is_load      : vreq_is_load_d,
+            is_exception : 1'b1
+          };
+          axi_addrgen_queue_push = ~(pe_req_d.fault_only_first
+                                   & (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0])));
+
+          addrgen_fof_exception_d = pe_req_d.fault_only_first && (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]));
+
+          addrgen_exception_vstart_d  = pe_req_d.vl - (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]);
         end
 
-        if (en_ld_st_translation_i) begin
-          state_d = WAIT_LAST_TRANSLATION;
+        if ((mmu_valid_i && !mmu_exception_i.valid) || !en_ld_st_translation_i) begin
+          if (vreq_is_unit_stride_d) begin : unit_stride
+            axi_ar_valid_o = vreq_is_load_d;
+            axi_aw_valid_o = ~vreq_is_load_d;
+
+            axi_addrgen_queue_push = 1'b1;
+
+            vreq_addr_d = aligned_next_start_addr_d;
+            vreq_blen_d = remaining_bytes;
+
+            aligned_start_addr_d = vreq_addr_d;
+            next_2page_msb_d  = next_2page_msb_d + 1'b1;
+
+            set_end_addr (
+              next_2page_msb_d,
+              vreq_blen_d,
+              aligned_next_start_addr_d,
+              eff_axi_dw_d,
+              eff_axi_dw_log_d,
+              aligned_next_start_addr_d,
+              aligned_end_addr_temp,
+              aligned_next_start_addr_temp
+            );
+            aligned_end_addr_d        = aligned_end_addr_temp;
+            aligned_next_start_addr_d = aligned_next_start_addr_temp;
+
+          end : unit_stride
+          else if (vreq_is_stride_d) begin : strided // STRIDED ACCESS
+            axi_ar_valid_o = vreq_is_load_d;
+            axi_aw_valid_o = ~vreq_is_load_d;
+
+            axi_addrgen_queue_push = 1'b1;
+
+            vreq_addr_d = next_addr_strided_temp;
+            vreq_blen_d = len_temp;
+          end : strided
+          else begin : indexed // INDEXED ACCESS
+            axi_ar_valid_o = vreq_is_load_d;
+            axi_aw_valid_o = ~vreq_is_load_d;
+
+            axi_addrgen_queue_push = 1'b1;
+
+            vreq_blen_d = len_temp;
+
+            if (elm_ptr_d == last_elm_subw_d) begin
+              elm_ptr_d       = '0;
+              word_lane_ptr_d += 1;
+              if (word_lane_ptr_d == NrLanes - 1) begin
+                addrgen_operand_ready_o = 1'b1;
+              end
+            end else begin
+              elm_ptr_d += 1;
+            end
+
+            if (vreq_blen_d == '0) begin
+              addrgen_operand_ready_o = 1'b1;
+            end
+
+          end : indexed
         end
-      end
 
-      aligned_start_addr_d = aligned_addr(vreq_addr_d, clog2_AxiStrobeWidth);
-      next_2page_msb_d     = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
-      set_end_addr (
-        next_2page_msb_d,
-        vreq_blen_d,
-        vreq_addr_d,
-        AxiDataWidth/8,
-        clog2_AxiStrobeWidth,
-        aligned_start_addr_d,
-        aligned_end_addr_d,
-        aligned_next_start_addr_d
-      );
-
-      if (pe_req_q.vstart != 0 && !vreq_is_load_d) begin
-        eff_axi_dw_d     = 1 << pe_req_q.vtype.vsew[1:0];
-        eff_axi_dw_log_d = pe_req_q.vtype.vsew[1:0];
-      end else if ((vreq_addr_d[clog2_AxiStrobeWidth-1:0] != '0) && !vreq_is_load_d) begin
-        eff_axi_dw_d     = {1'b0, narrow_axi_data_bwidth};
-        eff_axi_dw_log_d = zeroes_cnt;
-      end else begin
-        eff_axi_dw_d     = AxiDataWidth/8;
-        eff_axi_dw_log_d = clog2_AxiStrobeWidth;
-      end
-
-      axi_ax_ready = (vreq_is_load_d && axi_ar_ready_i) || (!vreq_is_load_d && axi_aw_ready_i);
-
-      if (aligned_end_addr_d[11:0] != 12'hFFF) begin
-        num_bytes = aligned_next_start_addr_d[11:0] - vreq_addr_d[11:0];
-      end else begin
-        num_bytes = 13'h1000 - vreq_addr_d[11:0];
-      end
-
-      if (vreq_blen_d < num_bytes) begin
-        remaining_bytes = 0;
-      end
-      else begin
-        remaining_bytes = vreq_blen_d - num_bytes;
-      end
-
-      if (axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && vreq_is_load_d) ||
-           (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) begin
-        if (!axi_addrgen_queue_full && axi_ax_ready) begin
-          automatic logic [CVA6Cfg.PLEN-1:0] paddr;
-
-          paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
-
-          if (vreq_is_burst_d) begin
-            automatic int unsigned num_beats;
-            automatic int unsigned burst_length;
-
-            num_beats = ((aligned_end_addr_d[11:0] - aligned_start_addr_d[11:0]) >> eff_axi_dw_log_d) + 1;
-            burst_length = (num_beats < 256) ? num_beats : 256;
-
-            if (vreq_is_load_d) begin
-              axi_ar_o = '{
-                addr   : paddr,
-                len    : burst_length - 1,
-                size   : eff_axi_dw_log_d,
-                cache  : CACHE_MODIFIABLE,
-                burst  : BURST_INCR,
-                default: '0
-              };
-            end
-            else begin
-              axi_aw_o = '{
-                addr   : paddr,
-                len    : burst_length - 1,
-                size   : eff_axi_dw_log_d,
-                cache  : CACHE_MODIFIABLE,
-                burst  : BURST_INCR,
-                default: '0
-              };
-            end
-
-            axi_addrgen_queue = '{
-              addr         : paddr,
-              len          : burst_length - 1,
-              size         : eff_axi_dw_log_d,
-              is_load      : vreq_is_load_d,
-              is_exception : 1'b0
-            };
-
-          end
-
-          if (remaining_bytes == 0) begin
-            addrgen_req_ready = 1'b1;
-            if (en_ld_st_translation_i & !mmu_exception_i.valid) begin
-              last_translation_completed = 1'b1;
-            end
-          end
-
-          if (mmu_exception_i.valid) begin
-            addrgen_req_ready = 1'b1;
-            mmu_exception_d = mmu_exception_i;
-            axi_addrgen_queue = '{
-              addr         : paddr,
-              size         : pe_req_d.vtype.vsew[1:0],
-              len          : 0,
-              is_load      : vreq_is_load_d,
-              is_exception : 1'b1
-            };
-            axi_addrgen_queue_push = ~(pe_req_d.fault_only_first
-                                     & (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0])));
-
-            addrgen_fof_exception_d = pe_req_d.fault_only_first && (pe_req_d.vl != (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]));
-
-            addrgen_exception_vstart_d  = pe_req_d.vl - (vreq_blen_d >> pe_req_d.vtype.vsew[1:0]);
-          end
-
-          if ((mmu_valid_i && !mmu_exception_i.valid) || !en_ld_st_translation_i) begin
-            if (vreq_is_burst_d) begin
-              axi_ar_valid_o = vreq_is_load_d;
-              axi_aw_valid_o = ~vreq_is_load_d;
-
-              axi_addrgen_queue_push = 1'b1;
-
-              vreq_addr_d = aligned_next_start_addr_d;
-              vreq_blen_d = remaining_bytes;
-
-              aligned_start_addr_d      = vreq_addr_d;
-              aligned_end_addr_d        = aligned_end_addr_temp;
-              aligned_next_start_addr_d = aligned_next_start_addr_temp;
-
-              set_end_addr (
-                next_2page_msb_d,
-                vreq_blen_d,
-                aligned_next_start_addr_d,
-                eff_axi_dw_d,
-                eff_axi_dw_log_d,
-                aligned_next_start_addr_d,
-                aligned_end_addr_temp,
-                aligned_next_start_addr_temp
-              );
-            end
+        if (vreq_blen_d == 0) begin
+          state_d = IDLE;
+          addrgen_req_ready = 1'b1;
+          if (en_ld_st_translation_i & !mmu_exception_i.valid) begin
+            last_translation_completed = 1'b1;
           end
         end
-      end
-    end : addrgen_state_ADDRGEN
-
-    ADDRGEN_IDX_OP: begin
-      if (idx_op_error_d || addrgen_req_ready || mmu_exception_d.valid) begin
-        state_d = ADDRGEN_IDX_OP_END;
-      end
-    end
-
-    ADDRGEN_IDX_OP_END : begin
-      state_d = IDLE;
-    end
-
-    WAIT_LAST_TRANSLATION : begin
-      if (last_translation_completed | mmu_exception_q.valid) begin
-        state_d = IDLE;
-      end
-    end
-    endcase
+      end : start_req
+    end : can_req
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -855,7 +814,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       vinsn_running_q            <= '0;
       word_lane_ptr_q            <= '0;
       elm_ptr_q                  <= '0;
-      idx_op_cnt_q               <= '0;
       last_elm_subw_q            <= '0;
       idx_op_error_q             <= '0;
       addrgen_exception_vstart_o <= '0;
@@ -863,14 +821,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= '0;
       lookahead_addr_se_q        <= '0;
       lookahead_len_q            <= '0;
-      lsu_ex_flush_q             <= 1'b0;
+      vreq_addr_q                <= '0;
+      vreq_blen_q                <= '0;
+      vreq_is_load_q             <= '0;
+      vreq_is_unit_stride_q      <= '0;
+      vreq_is_stride_q           <= '0;
+      vreq_is_index_q            <= '0;
     end else begin
       state_q                    <= state_d;
       pe_req_q                   <= pe_req_d;
       vinsn_running_q            <= vinsn_running_d;
       word_lane_ptr_q            <= word_lane_ptr_d;
       elm_ptr_q                  <= elm_ptr_d;
-      idx_op_cnt_q               <= idx_op_cnt_d;
       last_elm_subw_q            <= last_elm_subw_d;
       idx_op_error_q             <= idx_op_error_d;
       addrgen_exception_vstart_o <= addrgen_exception_vstart_d;
@@ -878,7 +840,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= lookahead_addr_e_d;
       lookahead_addr_se_q        <= lookahead_addr_se_d;
       lookahead_len_q            <= lookahead_len_d;
-      lsu_ex_flush_q             <= lsu_ex_flush_i;
+      vreq_addr_q                <= vreq_addr_d;
+      vreq_blen_q                <= vreq_blen_d;
+      vreq_is_load_q             <= vreq_is_load_d;
+      vreq_is_unit_stride_q      <= vreq_is_unit_stride_d;
+      vreq_is_stride_q           <= vreq_is_stride_d;
+      vreq_is_index_q            <= vreq_is_index_d;
     end
   end
 

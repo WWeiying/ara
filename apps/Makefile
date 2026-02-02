@@ -86,6 +86,7 @@ define vector_trace_template
 ideal_dispatcher/vtrace/$1.vtrace: bin/$1.spike $(VTRACE_SCRIPTS)
 	mkdir -p ideal_dispatcher/vtrace ideal_dispatcher/log ideal_dispatcher/temp
 	echo "run" | $(RISCV_SIM_MOD) $(RISCV_SIM_MOD_OPT) $$< 2> ideal_dispatcher/temp/$1.temp 1> ideal_dispatcher/log/$1.log
+	echo "run" | $(SPIKE_VREG) $(SPIKE_VREG_FLAGS) $$< 2>./$1/vreg_dump 1>/dev/null
 	cd ideal_dispatcher && scripts/vtrace.sh temp/$1.temp vtrace/$1.vtrace
 endef
 $(foreach app,$(APPS),$(eval $(call vector_trace_template,$(app))))
@@ -110,6 +111,7 @@ bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c
 	mkdir -p bin/
 	$$(RISCV_CC) -Iinclude $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS)
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $(1)/$(1)$(BIN_SUFFIX).dump
+	$$(RISCV_NM) -n $$@ >> $(1)/$(1)$(BIN_SUFFIX).dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 	$$(RISCV_CC) $(RISCV_CCFLAGS) -dM -E - < /dev/null > compiler_macros.h
 endef
