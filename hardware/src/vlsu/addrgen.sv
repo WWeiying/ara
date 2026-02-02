@@ -154,7 +154,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     // If the sync mask is enabled and the ID is the same
     // as before, avoid to re-sample the same instruction
     // more than once.
-    if (en_sync_mask_q && (pe_req_i.id == last_id_q))
+    if ((en_sync_mask_q && (pe_req_i.id == last_id_q)) || !(pe_req_i.op inside {VLE, VSE, VLSE, VSSE, VLXE, VSXE}))
       pe_req_valid_i_msk = 1'b0;
     else
       pe_req_valid_i_msk = pe_req_valid_i;
@@ -239,7 +239,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // Support for indexed memory operations (scatter/gather)
   logic [$bits(elen_t)*NrLanes-1:0] shuffled_word;
   logic [$bits(elen_t)*NrLanes-1:0] deshuffled_word;
-  elen_t                            reduced_word;
+  elen_t                            reduced_word_d, reduced_word_q;
   elen_t                            idx_vaddr;
   logic                             idx_op_error_d, idx_op_error_q;
   vlen_t                            addrgen_exception_vstart_d;
@@ -422,12 +422,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     addrgen_fof_exception_o   = 1'b0;
 
     addrgen_operand_ready_o   = 1'b0;
-    reduced_word              = '0;
+    reduced_word_d            = reduced_word_q;
     elm_ptr_d                 = elm_ptr_q;
     word_lane_ptr_d           = word_lane_ptr_q;
     last_elm_subw_d           = last_elm_subw_q;
 
-    shuffled_word             = addrgen_operand_i;
+    shuffled_word             = '0;
+    deshuffled_word           = '0;
+    idx_vaddr                 = '0;
 
     case(state_q)
     IDLE: begin : addrgen_state_IDLE
@@ -455,14 +457,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
         end : IDLE_VLSSE_VLD
         else begin : IDLE_VLSXE_VLD
-          for (int unsigned b = 0; b < 8*NrLanes; b++) begin
-            automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_d.eew_vs2);
-            deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
-          end
-
-          for (int unsigned lane = 0; lane < NrLanes; lane++)
-            if (lane == word_lane_ptr_d)
-              reduced_word = deshuffled_word[word_lane_ptr_d*$bits(elen_t) +: $bits(elen_t)];
 
           state_d = ADDRGEN_IDX_OP;
 
@@ -489,6 +483,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
           endcase
 
+
           for (int unsigned lane = 0; lane < NrLanes; lane++) begin : adjust_operand_valid
             if ((vreq_blen_d < (NrLanes * DataWidthB))
                  && (lane < pe_req_d.vstart[idx_width(NrLanes)-1:0])) begin : vstart_lane_adjust
@@ -497,37 +492,48 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           end : adjust_operand_valid
 
           if (&addrgen_operand_valid) begin
+            shuffled_word             = addrgen_operand_i;
+            for (int unsigned b = 0; b < 8*NrLanes; b++) begin
+              automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_d.eew_vs2);
+              deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
+            end
+      
+            for (int unsigned lane = 0; lane < NrLanes; lane++)
+              if (lane == word_lane_ptr_d)
+                reduced_word_d = deshuffled_word[word_lane_ptr_d*$bits(elen_t) +: $bits(elen_t)];
 
             case (pe_req_d.eew_vs2)
               EW8: begin
                 for (int unsigned b = 0; b < 8; b++)
                   if (b == elm_ptr_d)
-                    idx_vaddr = reduced_word[b*8 +: 8];
+                    idx_vaddr = reduced_word_d[b*8 +: 8];
               end
               EW16: begin
                 for (int unsigned h = 0; h < 4; h++)
                   if (h == elm_ptr_d)
-                    idx_vaddr = reduced_word[h*16 +: 16];
+                    idx_vaddr = reduced_word_d[h*16 +: 16];
               end
               EW32: begin
                 for (int unsigned w = 0; w < 2; w++)
                   if (w == elm_ptr_d)
-                    idx_vaddr = reduced_word[w*32 +: 32];
+                    idx_vaddr = reduced_word_d[w*32 +: 32];
               end
               EW64: begin
                 for (int unsigned d = 0; d < 1; d++)
                   if (d == elm_ptr_d)
-                    idx_vaddr = reduced_word[d*64 +: 64];
+                    idx_vaddr = reduced_word_d[d*64 +: 64];
               end
               default: begin
                 for (int unsigned b = 0; b < 8; b++)
                   if (b == elm_ptr_d)
-                    idx_vaddr = reduced_word[b*8 +: 8];
+                    idx_vaddr = reduced_word_d[b*8 +: 8];
               end
             endcase
 
-            vreq_addr_d = pe_req_q.scalar_op + idx_vaddr;
+            vreq_addr_d = pe_req_d.scalar_op + idx_vaddr;
           end
+
+          vreq_is_vld = &addrgen_operand_valid;
         end : IDLE_VLSXE_VLD
       end : register_req
 
@@ -539,7 +545,58 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : addrgen_state_ADDRGEN
 
     ADDRGEN_IDX_OP: begin : addrgen_state_ADDRGEN_IDX_OP
-      vreq_is_vld           = 1'b1;
+      for (int unsigned lane = 0; lane < NrLanes; lane++) begin : adjust_operand_valid
+        if ((vreq_blen_d < (NrLanes * DataWidthB))
+             && (lane < pe_req_d.vstart[idx_width(NrLanes)-1:0])) begin : vstart_lane_adjust
+          addrgen_operand_valid[lane] |= 1'b1;
+        end : vstart_lane_adjust
+      end : adjust_operand_valid
+
+      if (&addrgen_operand_valid) begin
+        shuffled_word             = addrgen_operand_i;
+        for (int unsigned b = 0; b < 8*NrLanes; b++) begin
+          automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_d.eew_vs2);
+          deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
+        end
+      
+        for (int unsigned lane = 0; lane < NrLanes; lane++)
+          if (lane == word_lane_ptr_d)
+            reduced_word_d = deshuffled_word[word_lane_ptr_d*$bits(elen_t) +: $bits(elen_t)];
+
+        case (pe_req_d.eew_vs2)
+          EW8: begin
+            for (int unsigned b = 0; b < 8; b++)
+              if (b == elm_ptr_d)
+                idx_vaddr = reduced_word_d[b*8 +: 8];
+          end
+          EW16: begin
+            for (int unsigned h = 0; h < 4; h++)
+              if (h == elm_ptr_d)
+                idx_vaddr = reduced_word_d[h*16 +: 16];
+          end
+          EW32: begin
+            for (int unsigned w = 0; w < 2; w++)
+              if (w == elm_ptr_d)
+                idx_vaddr = reduced_word_d[w*32 +: 32];
+          end
+          EW64: begin
+            for (int unsigned d = 0; d < 1; d++)
+              if (d == elm_ptr_d)
+                idx_vaddr = reduced_word_d[d*64 +: 64];
+          end
+          default: begin
+            for (int unsigned b = 0; b < 8; b++)
+              if (b == elm_ptr_d)
+                idx_vaddr = reduced_word_d[b*8 +: 8];
+          end
+        endcase
+
+        vreq_addr_d = pe_req_d.scalar_op + idx_vaddr;
+      end
+
+      vreq_is_vld  = &addrgen_operand_valid;
+      axi_ax_ready = (vreq_is_load_d && axi_ar_ready_i) || (!vreq_is_load_d && axi_aw_ready_i);
+
     end : addrgen_state_ADDRGEN_IDX_OP
 
     ADDRGEN_IDX_OP_END : begin
@@ -664,6 +721,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           next_addr_strided_temp = vreq_addr_d + pe_req_d.stride;
         end : stride_req
         else begin : index_req
+
           if (vreq_is_load_d) begin
             axi_ar_o = '{
               addr   : vreq_addr_d,
@@ -694,6 +752,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           };
 
           len_temp = vreq_blen_d - (1 << pe_req_d.vtype.vsew[1:0]);
+
+          if (elm_ptr_d == last_elm_subw_d) begin
+            elm_ptr_d       = '0;
+            if (word_lane_ptr_d == NrLanes - 1) begin
+              addrgen_operand_ready_o = 1'b1;
+            end
+            word_lane_ptr_d += 1;
+          end else begin
+            elm_ptr_d += 1;
+          end
         end : index_req
 
         if (mmu_exception_i.valid) begin
@@ -757,21 +825,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
             axi_addrgen_queue_push = 1'b1;
 
-            vreq_blen_d = len_temp;
-
-            if (elm_ptr_d == last_elm_subw_d) begin
-              elm_ptr_d       = '0;
-              word_lane_ptr_d += 1;
-              if (word_lane_ptr_d == NrLanes - 1) begin
-                addrgen_operand_ready_o = 1'b1;
-              end
-            end else begin
-              elm_ptr_d += 1;
-            end
-
             if (vreq_blen_d == '0) begin
               addrgen_operand_ready_o = 1'b1;
             end
+
+            vreq_blen_d = len_temp;
 
           end : indexed
         end
@@ -813,6 +871,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       pe_req_q                   <= '0;
       vinsn_running_q            <= '0;
       word_lane_ptr_q            <= '0;
+      reduced_word_q             <= '0;
       elm_ptr_q                  <= '0;
       last_elm_subw_q            <= '0;
       idx_op_error_q             <= '0;
@@ -832,6 +891,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       pe_req_q                   <= pe_req_d;
       vinsn_running_q            <= vinsn_running_d;
       word_lane_ptr_q            <= word_lane_ptr_d;
+      reduced_word_q             <= reduced_word_d;
       elm_ptr_q                  <= elm_ptr_d;
       last_elm_subw_q            <= last_elm_subw_d;
       idx_op_error_q             <= idx_op_error_d;
