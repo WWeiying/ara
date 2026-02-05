@@ -143,7 +143,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     if (!rst_ni) begin
       ara_req_o       <= '0;
       ara_req_valid_o <= 1'b0;
-    end else begin
+    end else if (!ara_req_valid_o || ara_req_ready_i) begin
       ara_req_o       <= ara_req_d;
       ara_req_valid_o <= ara_req_valid_d;
     end
