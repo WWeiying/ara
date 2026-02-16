@@ -589,6 +589,8 @@ module ara_tb;
   localparam VLEN = 256;
   `endif
 
+  localparam NrBanks = 8;
+
   localparam ClockPeriod  = 1ns;
   // Axi response delay [ps]
   localparam int unsigned AxiRespDelay = 200;
@@ -1526,6 +1528,138 @@ module ara_tb;
   end
 
 `endif
+`endif
+
+`ifdef FOR_VERIFY
+  logic [63:0] vrf [NrLanes][NrBanks][16];
+
+  for(genvar l=0; l<NrLanes; l++) begin
+    for(genvar b=0; b<NrBanks; b++) begin
+      for(genvar w=0; w<16; w++) begin
+        assign vrf[l][b][w] = ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vrf.gen_banks[b].data_sram.sram[w];
+      end
+    end
+  end
+  
+
+  function void print_vreg(int file_handle, logic [4:0] vs, rvv_pkg::vew_e eew);
+    localparam lane_vreg_word = 1024/8/NrLanes/8;
+    localparam lane_vreg_byte = 1024/8/NrLanes;
+    automatic  int              addr;
+    automatic  logic [VLEN-1:0] vreg;
+  
+    addr = vaddr(vs, NrLanes, VLEN);
+    $display("vs                   = %0d",vs);
+    $display("addr                 = %0d",addr);
+  
+    for(int j=0;j<lane_vreg_word;j++) begin
+      automatic logic [(NrLanes*64-1):0] lane_shuffled_vreg;
+      automatic logic [(NrLanes*64-1):0] lane_deshuffled_vreg;
+      automatic int                      bank_index;
+      automatic int                      word_index;
+      automatic int                      addr_temp;
+      addr_temp  = addr + j;
+      bank_index = addr_temp[($clog2(NrBanks)-1):0];
+      word_index = addr_temp>>$clog2(NrBanks);
+
+      for(int i=0;i<NrLanes;i++) begin
+        lane_shuffled_vreg[i*64+:64] = vrf[i][bank_index][word_index];
+      end
+
+      for(int k=0;k<lane_vreg_byte;k++) begin
+        lane_deshuffled_vreg[deshuffle_index(k,NrLanes,eew)*8+:8] = lane_shuffled_vreg[k*8+:8];
+      end
+
+      vreg[(j*NrLanes*64)+:(NrLanes*64)] = lane_deshuffled_vreg;
+    $display("bank_index           = %0d",bank_index);
+    $display("word_index           = %0d",word_index);
+    $display("lane_deshuffled_vreg = %0h",lane_deshuffled_vreg);
+    end
+  
+    $fwrite(file_handle, "v%-2d = %0256h\n", vs, vreg);
+  endfunction
+
+  logic [NrVInsn-1:0]    vinsn_running_d, vinsn_running_q;
+  logic [63:0]           cycle;
+  typedef struct {
+    riscv::instruction_t   instr;
+    vid_t                  instr_id;
+    logic [4:0]            vs1;
+    logic                  use_vs1;
+    rvv_pkg::vew_e         eew_vs1;
+    logic [4:0]            vs2;
+    logic                  use_vs2;
+    rvv_pkg::vew_e         eew_vs2;
+    logic [4:0]            vd;
+    logic                  use_vd;
+    rvv_pkg::vew_e         eew_vd;
+  } verify_instr_t;
+
+  verify_instr_t vinstr_d, vinstr_q, vinstr_queue[NrVInsn-1:0];
+  int regdump_file_handle;
+
+
+  always_comb begin
+    vinsn_running_d = ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_d[7:0];
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vinsn_running_q <= '0;
+    end
+    else begin
+      vinsn_running_q <= vinsn_running_d;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vinstr_queue <= '{default:0};
+    end else begin
+      for(int i=0;i<NrVInsn;i++) begin
+        if(!vinsn_running_q[i] && vinsn_running_d[i]) begin
+          vinstr_queue[i].instr    <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.instr;
+          vinstr_queue[i].instr_id <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.id;
+          vinstr_queue[i].vs1      <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vs1;
+          vinstr_queue[i].use_vs1  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vs1;
+          vinstr_queue[i].eew_vs1  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.eew_vs1;
+          vinstr_queue[i].vs2      <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vs2;
+          vinstr_queue[i].use_vs2  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vs2;
+          vinstr_queue[i].eew_vs2  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.eew_vs2;
+          vinstr_queue[i].vd       <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vd;
+          vinstr_queue[i].use_vd   <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vd;
+          vinstr_queue[i].eew_vd   <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.csr_vtype_q.vsew;
+        end
+      end
+    end
+  end
+
+
+  initial begin
+    regdump_file_handle = $fopen("regdump.real", "w");
+  end
+
+  always_ff @(posedge clk) begin
+    for(int i=0;i<NrVInsn;i++) begin
+      if(vinsn_running_q[i] && !vinsn_running_d[i]) begin
+        $fwrite(regdump_file_handle, "cycle = %5d, id = %1d, instr = %08h\n", wall_cycle, vinstr_queue[i].instr_id, vinstr_queue[i].instr);
+        if(vinstr_queue[i].use_vd) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vd, vinstr_queue[i].eew_vd);
+        end
+        if(vinstr_queue[i].use_vs2) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vs2, vinstr_queue[i].eew_vs2);
+        end
+        if(vinstr_queue[i].use_vs1) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vs1, vinstr_queue[i].eew_vs1);
+        end
+      end
+    end
+  end
+
+  final begin
+    $fclose(regdump_file_handle);
+  end
+  
 `endif
 
 endmodule : ara_tb

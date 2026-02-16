@@ -470,6 +470,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
               hazard_vs2    : pe_req_d.hazard_vs2,
+              `ifdef FOR_VERIFY
+              instr         : ara_req_i.instr,
+              `endif
               default       : '0
             };
 

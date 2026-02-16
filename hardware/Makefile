@@ -7,6 +7,12 @@ VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 BENDER         := $(ROOT_DIR)/../hardware/bender
 BENDER_VERSION := 0.27.3
 
+ifeq ($(verify), 1)
+  FOR_VERIFY = FOR_VERIFY
+else
+  FOR_VERIFY =
+endif
+
 # Choose Ara's configuration
 ifndef config
         ifdef ARA_CONFIGURATION
@@ -93,7 +99,7 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
-bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
+bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF --define FOR_VERIFY=$(FOR_VERIFY)
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test
@@ -132,7 +138,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
-.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
+.PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
 
 # Bender
 bender: $(BENDER)
@@ -171,6 +177,11 @@ sim: compile
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
+
+verify: 
+	@cd ../apps && $(MAKE) bin/test.ideal
+	@$(MAKE) sim app=test verify=1 ideal_dispatcher=1
+	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg  --log-file sim/regdump_compare.log
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *

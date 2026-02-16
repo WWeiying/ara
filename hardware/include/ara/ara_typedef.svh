@@ -80,6 +80,9 @@ typedef struct packed {
   logic [NrVInsn-1:0] hazard_vs2;
   logic [NrVInsn-1:0] hazard_vm;
   logic [NrVInsn-1:0] hazard_vd;
+`ifdef FOR_VERIFY
+  riscv::instruction_t instr;
+`endif
 } pe_req_t;
 
 typedef struct packed {

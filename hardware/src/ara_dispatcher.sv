@@ -605,6 +605,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       // Acknowledge the request
       acc_resp_o.req_ready = !ara_req_valid_o || ara_req_ready_i;
       if (acc_req_i.req_valid && acc_resp_o.req_ready && acc_req_i.resp_ready) begin
+      `ifdef FOR_VERIFY
+        ara_req.instr = acc_req_i.insn;
+      `endif
+
         // Decoding
         is_decoding = 1'b1;
 

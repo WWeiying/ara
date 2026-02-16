@@ -485,8 +485,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
     for (int unsigned lane = 0; lane < NrLanes; lane++) begin: vrf_result_write
       ldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane];
-      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr  & {$bits(vid_t  ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
-      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id    & {$bits(vaddr_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr  & {$bits(vaddr_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id    & {$bits(vid_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
       ldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata & {$bits(elen_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
       ldu_result_be_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].be    & {$bits(strb_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
 

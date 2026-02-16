@@ -157,6 +157,10 @@ module ara import ara_pkg::*; #(
 
     // Request token, for registration in the sequencer
     logic token;
+
+    `ifdef FOR_VERIFY
+    riscv::instruction_t instr;
+    `endif
   } ara_req_t;
 
   typedef struct packed {
