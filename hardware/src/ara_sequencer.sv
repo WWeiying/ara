@@ -54,6 +54,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  logic                            lsu_current_burst_exception_i
   );
 
+  `ifdef FOR_VERIFY
+  riscv::instruction_t sequencer_instr;
+  assign sequencer_instr = riscv::instruction_t'(pe_req_o.instr) & {$bits(pe_req_o.instr){pe_req_valid_o}};
+  `endif
+
   `include "common_cells/registers.svh"
 
   ///////////////////////////////////

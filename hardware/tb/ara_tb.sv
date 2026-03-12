@@ -1549,8 +1549,8 @@ module ara_tb;
     automatic  logic [VLEN-1:0] vreg;
   
     addr = vaddr(vs, NrLanes, VLEN);
-    $display("vs                   = %0d",vs);
-    $display("addr                 = %0d",addr);
+//    $display("vs                   = %0d",vs);
+//    $display("addr                 = %0d",addr);
   
     for(int j=0;j<lane_vreg_word;j++) begin
       automatic logic [(NrLanes*64-1):0] lane_shuffled_vreg;
@@ -1571,9 +1571,9 @@ module ara_tb;
       end
 
       vreg[(j*NrLanes*64)+:(NrLanes*64)] = lane_deshuffled_vreg;
-    $display("bank_index           = %0d",bank_index);
-    $display("word_index           = %0d",word_index);
-    $display("lane_deshuffled_vreg = %0h",lane_deshuffled_vreg);
+//    $display("bank_index           = %0d",bank_index);
+//    $display("word_index           = %0d",word_index);
+//    $display("lane_deshuffled_vreg = %0h",lane_deshuffled_vreg);
     end
   
     $fwrite(file_handle, "v%-2d = %0256h\n", vs, vreg);

@@ -13,7 +13,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 256
+#define TOTAL_ELEMENTS 512
 #define TEST_ELEMENTS  512
 
 extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));

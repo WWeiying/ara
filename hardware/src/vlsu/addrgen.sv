@@ -666,6 +666,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
             if (vreq_is_load_d) begin
               axi_ar_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : burst_length - 1,
                 size   : eff_axi_dw_log_d,
@@ -676,6 +677,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
             else begin
               axi_aw_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : burst_length - 1,
                 size   : eff_axi_dw_log_d,
@@ -697,6 +699,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           else if (vreq_is_stride_d) begin : stride_req
             if (vreq_is_load_d) begin
               axi_ar_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : 0,
                 size   : pe_req_d.vtype.vsew[1:0],
@@ -707,6 +710,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
             else begin
               axi_aw_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : 0,
                 size   : pe_req_d.vtype.vsew[1:0],
@@ -731,6 +735,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
             if (vreq_is_load_d) begin
               axi_ar_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : 0,
                 size   : pe_req_d.vtype.vsew[1:0],
@@ -741,6 +746,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
             else begin
               axi_aw_o = '{
+                id     : 4'd0,
                 addr   : paddr,
                 len    : 0,
                 size   : pe_req_d.vtype.vsew[1:0],
