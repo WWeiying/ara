@@ -269,6 +269,18 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
   localparam unsigned DataWidthB = DataWidth / 8;
 
+  logic [idx_width(AxiDataWidth/8)-1:0]    lower_byte;
+  logic [idx_width(AxiDataWidth/8)-1:0]    upper_byte;
+  vlen_t                                   vrf_valid_bytes; 
+  vlen_t                                   vinsn_valid_bytes;
+  vlen_t                                   axi_valid_bytes;
+  logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
+  `ifdef FOR_VERIFY
+  int unsigned vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
+  int unsigned vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
+  int unsigned vrf_byte_v[AxiDataWidth/8-1:0] ;
+  `endif
+
   always_comb begin: p_vldu
     // Maintain state
     vinsn_queue_d = vinsn_queue_q;
@@ -314,6 +326,18 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // Inform the main sequencer if we are idle
     pe_req_ready_o = !vinsn_queue_full;
 
+    lower_byte        = '0;
+    upper_byte        = '0;
+    vrf_valid_bytes   = '0; 
+    vinsn_valid_bytes = '0;
+    axi_valid_bytes   = '0;
+    valid_bytes       = '0;
+    `ifdef FOR_VERIFY
+    vrf_seq_byte_v     = '{default: '0};
+    vrf_seq_byte_cnt_v = '{default: '0};
+    vrf_byte_v         = '{default: '0};
+    `endif
+
     ////////////////////////////////////
     //  Read data from the R channel  //
     ////////////////////////////////////
@@ -328,9 +352,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
       // If non-unit strided load, we do not progress within the beat
-      automatic logic [idx_width(AxiDataWidth/8)-1:0] lower_byte = beat_lower_byte(axi_addrgen_req_i.addr,
+      lower_byte = beat_lower_byte(axi_addrgen_req_i.addr,
         axi_addrgen_req_i.size, axi_addrgen_req_i.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
-      automatic logic [idx_width(AxiDataWidth/8)-1:0] upper_byte = beat_upper_byte(axi_addrgen_req_i.addr,
+      upper_byte = beat_upper_byte(axi_addrgen_req_i.addr,
         axi_addrgen_req_i.size, axi_addrgen_req_i.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
 
       // Is there a vector instruction ready to be issued?
@@ -338,15 +362,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q))) begin : operands_valid
         // Account for the issued bytes
         // How many bytes are valid in this VRF word
-        automatic vlen_t vrf_valid_bytes   = (NrLanes * DataWidthB) - vrf_word_byte_pnt_q;
+        vrf_valid_bytes   = (NrLanes * DataWidthB) - vrf_word_byte_pnt_q;
         // How many bytes are valid in this instruction
-        automatic vlen_t vinsn_valid_bytes = issue_cnt_bytes_q - vrf_word_byte_cnt_q;
+        vinsn_valid_bytes = issue_cnt_bytes_q - vrf_word_byte_cnt_q;
         // How many bytes are valid in this AXI word
-        automatic vlen_t axi_valid_bytes   = upper_byte - lower_byte - axi_r_byte_pnt_q + 1;
+        axi_valid_bytes   = upper_byte - lower_byte - axi_r_byte_pnt_q + 1;
 
 
         // How many bytes are we committing?
-        automatic logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
         valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB)) ? vinsn_valid_bytes : vrf_valid_bytes;
         valid_bytes = (valid_bytes       < axi_valid_bytes       ) ? valid_bytes       : axi_valid_bytes;
 
@@ -365,6 +388,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
             automatic int unsigned vrf_seq_byte_cnt = axi_byte - lower_byte - axi_r_byte_pnt_q + vrf_word_byte_cnt_q;
             // And then shuffle it
             automatic int unsigned vrf_byte = shuffle_index(vrf_seq_byte, NrLanes, vinsn_issue_q.vtype.vsew);
+
+            `ifdef FOR_VERIFY
+            vrf_seq_byte_v[axi_byte]     = axi_byte - lower_byte - axi_r_byte_pnt_q + vrf_word_byte_pnt_q;
+            vrf_seq_byte_cnt_v[axi_byte] = axi_byte - lower_byte - axi_r_byte_pnt_q + vrf_word_byte_cnt_q;
+            vrf_byte_v[axi_byte]         = shuffle_index(vrf_seq_byte_v[axi_byte], NrLanes, vinsn_issue_q.vtype.vsew);
+            `endif
 
             // Is this byte a valid byte in the VRF word?
             // We compare vrf_seq_byte_cnt since vrf_seq_byte contains also the vstart contribution, while the issue_cnt_bytes
@@ -401,6 +430,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       if (vrf_word_byte_pnt_d == (NrLanes * DataWidthB) || vrf_word_byte_cnt_d == issue_cnt_bytes_q) begin : vrf_word_ready
         // Increment result queue pointers and counters
         result_queue_cnt_d += 1;
+
         if (result_queue_write_pnt_q == ResultQueueDepth-1) begin : result_queue_write_pnt_overflow
           result_queue_write_pnt_d = '0;
         end : result_queue_write_pnt_overflow
@@ -420,6 +450,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         // Reset the pointer in the VRF word
         vrf_word_byte_pnt_d   = '0;
         vrf_word_byte_cnt_d   = '0;
+
         // Account for the results that were issued
         if (seq_word_wr_offset_q) begin
           vrf_eff_write_bytes = (NrLanes * DataWidthB);
@@ -427,10 +458,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           // First payload of the vector instruction
           vrf_eff_write_bytes = first_payload_byte_q;
         end
-        issue_cnt_bytes_d = issue_cnt_bytes_q - vrf_eff_write_bytes;
+
         if (issue_cnt_bytes_q < vrf_eff_write_bytes) begin : issue_cnt_bytes_overflow
           issue_cnt_bytes_d = '0;
         end : issue_cnt_bytes_overflow
+        else begin
+          issue_cnt_bytes_d = issue_cnt_bytes_q - vrf_eff_write_bytes;
+        end
       end : vrf_word_ready
 
       // Consumed all valid bytes in this R beat
@@ -446,7 +480,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       if ($unsigned(axi_len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_i.len) + 1)) begin : axi_finish
         // Reset AXI pointers
         axi_len_d               = '0;
-        axi_r_byte_pnt_d             = '0;
+        axi_r_byte_pnt_d        = '0;
         // Wait for another AXI request
         axi_addrgen_req_ready_o = 1'b1;
       end : axi_finish
@@ -455,6 +489,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_issue_valid && issue_cnt_bytes_d == '0 ) begin : vrf_results_finish
         // Increment vector instruction queue pointers and counters
         vinsn_queue_d.issue_cnt -= 1;
+
         if (vinsn_queue_q.issue_pnt == (VInsnQueueDepth-1)) begin : issue_pnt_overflow
           vinsn_queue_d.issue_pnt = '0;
         end : issue_pnt_overflow
@@ -504,10 +539,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     end: vrf_result_write
 
     // How many result bytes can possibly be committed this cycle?
-    res_queue_eff_write_bytes = (NrLanes * DataWidthB);
     // If vstart > 0, the first payload can contain less than (NrLanes * DataWidthB) Bytes
     if (first_result_queue_read_q) begin
       res_queue_eff_write_bytes = first_payload_byte_q;
+    end
+    else begin
+      res_queue_eff_write_bytes = (NrLanes * DataWidthB);
     end
 
     // All lanes accepted the VRF request
@@ -520,7 +557,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         if (result_queue_read_pnt_q == (ResultQueueDepth-1)) begin : result_queue_read_pnt_overflow
           result_queue_read_pnt_d = 0;
         end : result_queue_read_pnt_overflow
-        else begin  : result_queue_read_pnt_increment
+        else begin : result_queue_read_pnt_increment
           result_queue_read_pnt_d = result_queue_read_pnt_q + 1;
         end : result_queue_read_pnt_increment
 
@@ -531,10 +568,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         first_result_queue_read_d = 1'b0;
 
         // Decrement the counter of remaining vector elements waiting to be written
-        commit_cnt_bytes_d = commit_cnt_bytes_q - res_queue_eff_write_bytes;
         if (commit_cnt_bytes_q < (NrLanes * DataWidthB)) begin : commit_cnt_bytes_overflow
           commit_cnt_bytes_d = '0;
         end : commit_cnt_bytes_overflow
+        else begin
+          commit_cnt_bytes_d = commit_cnt_bytes_q - res_queue_eff_write_bytes;
+        end
       end : result_available
     end : wait_for_write_back
 
@@ -548,10 +587,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
       // Update the commit counters and pointers
       vinsn_queue_d.commit_cnt -= 1;
-      if (vinsn_queue_d.commit_pnt == VInsnQueueDepth-1)
+
+      if (vinsn_queue_d.commit_pnt == VInsnQueueDepth-1) begin
         vinsn_queue_d.commit_pnt = '0;
-      else
+      end
+      else begin
         vinsn_queue_d.commit_pnt += 1;
+      end
 
       // Update the commit counter for the next instruction
       if (vinsn_queue_d.commit_cnt != '0) begin

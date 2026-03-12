@@ -191,6 +191,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   // Easily handle the riscv incoming instruction
   riscv::instruction_t instr;
   assign instr = riscv::instruction_t'(acc_req_i.insn);
+  `ifdef FOR_VERIFY
+  riscv::instruction_t dipatcher_instr;
+  assign dipatcher_instr = riscv::instruction_t'(ara_req_o.instr) & {$bits(ara_req_o.instr){ara_req_valid_o}};
+  `endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
