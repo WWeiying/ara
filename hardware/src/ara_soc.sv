@@ -76,9 +76,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   // Memory Map
   // 1GByte of DDR (split between two chips on Genesys2)
-  localparam logic [63:0] DRAMLength = 64'h40000000;
-  localparam logic [63:0] UARTLength = 64'h1000;
-  localparam logic [63:0] CTRLLength = 64'h1000;
+  localparam logic [63:0] DRAMLength = 64'h4000_0000; //1GB
+  localparam logic [63:0] UARTLength = 64'h1000; //4KB
+  localparam logic [63:0] CTRLLength = 64'h1000; //4KB
 
   typedef enum logic [63:0] {
     DRAMBase = 64'h8000_0000,

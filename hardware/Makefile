@@ -7,12 +7,6 @@ VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 BENDER         := $(ROOT_DIR)/../hardware/bender
 BENDER_VERSION := 0.27.3
 
-ifeq ($(verify), 1)
-  FOR_VERIFY = FOR_VERIFY
-else
-  FOR_VERIFY =
-endif
-
 # Choose Ara's configuration
 ifndef config
         ifdef ARA_CONFIGURATION
@@ -99,7 +93,7 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
-bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF --define FOR_VERIFY=$(FOR_VERIFY)
+bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF --define FOR_VERIFY
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test

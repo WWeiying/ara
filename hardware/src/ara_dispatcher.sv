@@ -74,12 +74,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   vtype_t csr_vtype_d, csr_vtype_q;
   vxsat_e csr_vxsat_d, csr_vxsat_q;
   vxrm_t  csr_vxrm_d, csr_vxrm_q;
+  vlen_t  csr_avl_d, csr_avl_q;
 
   `FF(csr_vstart_q, csr_vstart_d, '0)
   `FF(csr_vl_q, csr_vl_d, '0)
   `FF(csr_vtype_q, csr_vtype_d, '{vill: 1'b1, vsew: EW8, vlmul: LMUL_1, default: '0})
   `FF(csr_vxsat_q, csr_vxsat_d, '0)
   `FF(csr_vxrm_q, csr_vxrm_d, '0)
+  `FF(csr_avl_q, csr_avl_d, '0)
   // Converts between the internal representation of `vtype_t` and the full XLEN-bit CSR.
   function automatic xlen_t xlen_vtype(vtype_t vtype);
     xlen_vtype = {vtype.vill, {CVA6Cfg.XLEN-9{1'b0}}, vtype.vma, vtype.vta, vtype.vsew,
@@ -374,9 +376,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   always_comb begin: p_decoder
     // Default values
-    csr_vstart_d     = csr_vstart_q;
-    csr_vl_d         = csr_vl_q;
-    csr_vtype_d      = csr_vtype_q;
+    csr_vstart_d = csr_vstart_q;
+    csr_vl_d     = csr_vl_q;
+    csr_vtype_d  = csr_vtype_q;
+    csr_vxsat_d  = csr_vxsat_q;
+    csr_vxrm_d   = csr_vxrm_q;
+    csr_avl_d    = csr_avl_q;
+
     state_d      = state_q;
     eew_d        = eew_q;
     eew_valid_d  = eew_valid_q;
@@ -397,18 +403,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     rs_lmul_cnt_limit_d = '0;
     rs_mask_request_d   = 1'b0;
 
-    illegal_insn = 1'b0;
+    illegal_insn       = 1'b0;
     illegal_insn_load  = 1'b0;
     illegal_insn_store = 1'b0;
-    csr_vxsat_d      = csr_vxsat_q;
-    csr_vxrm_d       = csr_vxrm_q;
 
     is_vload      = 1'b0;
     is_vstore     = 1'b0;
     load_zero_vl  = 1'b0;
     store_zero_vl = 1'b0;
 
-    skip_lmul_checks     = 1'b0;
+    skip_lmul_checks   = 1'b0;
 
     lsu_ex_flush_start = 1'b0;
 
@@ -439,6 +443,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       vl           : csr_vl_q,
       vstart       : csr_vstart_q,
       vtype        : csr_vtype_q,
+      avl          : csr_avl_q,
       emul         : csr_vtype_q.vlmul,
       eew_vs1      : csr_vtype_q.vsew,
       old_eew_vs1  : csr_vtype_q.vsew,
@@ -674,17 +679,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
                     csr_vl_d = vlen_t'(insn.vsetivli_type.uimm5);
+                    csr_avl_d = vlen_t'(insn.vsetivli_type.uimm5);
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
                       // Do not update the vector length
                       csr_vl_d = csr_vl_q;
+                      csr_avl_d = csr_vl_q;
                     end else if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd != '0) begin
                       // Set the vector length to vlmax
                       csr_vl_d = vlmax;
+                      csr_avl_d = vlmax;
                     end else begin
                       // Normal stripmining
                       csr_vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(csr_vl_d)]) ||
                         (vlen_t'(acc_req_i.rs1) > vlmax)) ? vlmax : vlen_t'(acc_req_i.rs1);
+                      csr_avl_d = vlen_t'(acc_req_i.rs1);
                     end
                   end
                 end

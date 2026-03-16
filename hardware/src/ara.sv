@@ -154,6 +154,7 @@ module ara import ara_pkg::*; #(
     vlen_t vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+    vlen_t avl;
 
     // Request token, for registration in the sequencer
     logic token;

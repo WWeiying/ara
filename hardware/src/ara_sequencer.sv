@@ -394,8 +394,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         // Do not trap here the instructions that do not need any operands at all
         if (pe_req_valid_o && !((&operand_requester_ready && addrgen_ack_i) || no_src_vrf(pe_req_o))) begin
           // Maintain output
-          pe_req_d               = pe_req_o;
-          pe_req_valid_d         = pe_req_valid_o;
+          pe_req_d       = pe_req_o;
+          pe_req_valid_d = pe_req_valid_o;
 
           // If we are here after a faulty lsu op with VRF sources,
           // wait until the lsu signals the exception on the current burst before aborting the request.
@@ -471,6 +471,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vl            : ara_req_i.vl,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
+              avl           : ara_req_i.avl,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
@@ -488,6 +489,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             // We only issue instructions that take no operands if they have no hazards.
             // Moreover, SLIDE instructions cannot be always chained
             // ToDo: optimize the case for vslide1down, vslide1up (wait 2 cycles, then chain)
+
+            // RAW hazards may be resolved through chaining, so they do not always block issue;
+            // WAR and WAW hazards, however, would violate architectural ordering or old-value semantics,
+            // and therefore must usually stall.
             if (!(|{ara_req_i.use_vs1, ara_req_i.use_vs2, ara_req_i.use_vd_op, !ara_req_i.vm}) &&
                 |{pe_req_d.hazard_vs1, pe_req_d.hazard_vs2, pe_req_d.hazard_vm, pe_req_d.hazard_vd} ||
                 (pe_req_d.op == VSLIDEUP && |{pe_req_d.hazard_vd, pe_req_d.hazard_vs1, pe_req_d.hazard_vs2}) ||

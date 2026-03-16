@@ -17,6 +17,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     parameter  int  unsigned AxiDataWidth = 0,
     parameter  int  unsigned AxiAddrWidth = 0,
     parameter  type          axi_r_t      = logic,
+    parameter  type          axi_ar_t     = logic,
     // Dependant parameters. DO NOT CHANGE!
     localparam int           DataWidth    = $bits(elen_t),
     localparam type          strb_t       = logic[DataWidth/8-1:0],
@@ -43,6 +44,11 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           axi_addrgen_req_valid_i,
     output logic                           axi_addrgen_req_ready_o,
     input  logic                           addrgen_illegal_load_i,
+    //prefetch
+    input  logic                           prefetch_axi_ar_hit_i,
+    input  axi_ar_t                        axi_addrgen_prefetch_req_i,
+    input  logic                           axi_addrgen_prefetch_req_valid_i,
+    output logic                           axi_addrgen_prefetch_req_ready_o,
     // Interface with the lanes
     output logic             [NrLanes-1:0] ldu_result_req_o,
     output vid_t             [NrLanes-1:0] ldu_result_id_o,
@@ -155,6 +161,77 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
+  ////////////////////////////
+  //  Prefetch AXI R Queue  //
+  ////////////////////////////
+  logic [2:0] prefetch_axi_ar_hit_cnt_d, prefetch_axi_ar_hit_cnt_q;
+  axi_r_t prefetch_axi_r_queue0, prefetch_axi_r_queue0_data; 
+  logic prefetch_axi_r_queue0_push, prefetch_axi_r_queue0_pop;
+  logic prefetch_axi_r_queue0_full, prefetch_axi_r_queue0_empty;
+
+  axi_r_t prefetch_axi_r_queue1, prefetch_axi_r_queue1_data; 
+  logic prefetch_axi_r_queue1_push, prefetch_axi_r_queue1_pop;
+  logic prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
+
+  logic prefetch_axi_r_queue_pnt;
+  logic prefetch_axi_r_len_d, prefetch_axi_r_len_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prefetch_axi_r_queue_pnt <= 1'b0;
+    end
+    else if (axi_r_valid_i && (prefetch_axi_r_queue_pnt ? (!prefetch_axi_r_queue1_full)
+                                                        : (!prefetch_axi_r_queue0_full))
+                           && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+      prefetch_axi_r_queue_pnt <= ~prefetch_axi_r_queue_pnt;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prefetch_axi_r_len_q <= 1'b0;
+      prefetch_axi_ar_hit_cnt_q <= '0;
+    end
+    else begin
+      prefetch_axi_r_len_q <= prefetch_axi_r_len_d;
+      prefetch_axi_ar_hit_cnt_q <= prefetch_axi_ar_hit_cnt_d;
+    end
+  end
+
+  fifo_v3 #(
+    .DEPTH(VInsnQueueDepth*4),
+    .dtype(axi_r_t             )
+  ) i_prefetch_axi_r_queue0 (
+    .clk_i     (clk_i                      ),
+    .rst_ni    (rst_ni                     ),
+    .flush_i   (1'b0                       ),
+    .testmode_i(1'b0                       ),
+    .data_i    (prefetch_axi_r_queue0      ),
+    .push_i    (prefetch_axi_r_queue0_push ),
+    .full_o    (prefetch_axi_r_queue0_full ),
+    .data_o    (prefetch_axi_r_queue0_data ),
+    .pop_i     (prefetch_axi_r_queue0_pop  ),
+    .empty_o   (prefetch_axi_r_queue0_empty),
+    .usage_o   (/* Unused */           )
+  );
+
+  fifo_v3 #(
+    .DEPTH(VInsnQueueDepth*4),
+    .dtype(axi_r_t             )
+  ) i_prefetch_axi_r_queue1 (
+    .clk_i     (clk_i                      ),
+    .rst_ni    (rst_ni                     ),
+    .flush_i   (1'b0                       ),
+    .testmode_i(1'b0                       ),
+    .data_i    (prefetch_axi_r_queue1      ),
+    .push_i    (prefetch_axi_r_queue1_push ),
+    .full_o    (prefetch_axi_r_queue1_full ),
+    .data_o    (prefetch_axi_r_queue1_data ),
+    .pop_i     (prefetch_axi_r_queue1_pop  ),
+    .empty_o   (prefetch_axi_r_queue1_empty),
+    .usage_o   (/* Unused */           )
+  );
+
   /////////////////////
   //  Result queues  //
   /////////////////////
@@ -225,7 +302,6 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   vlen_t commit_cnt_bytes_d, commit_cnt_bytes_q;
 
   // Pointers
-  //
   // We need several pointers to copy data from the memory interface
   // into the VRF. Namely, we need:
   // - A counter of how many beats are left in the current AXI burst
@@ -279,11 +355,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   int unsigned vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
   int unsigned vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
   int unsigned vrf_byte_v[AxiDataWidth/8-1:0] ;
+  int unsigned prefetch_vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
+  int unsigned prefetch_vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
+  int unsigned prefetch_vrf_byte_v[AxiDataWidth/8-1:0] ;
   `endif
 
   always_comb begin: p_vldu
     // Maintain state
-    vinsn_queue_d = vinsn_queue_q;
+    vinsn_queue_d       = vinsn_queue_q;
     issue_cnt_bytes_d   = issue_cnt_bytes_q;
     commit_cnt_bytes_d  = commit_cnt_bytes_q;
 
@@ -296,8 +375,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     result_queue_read_pnt_d  = result_queue_read_pnt_q;
     result_queue_write_pnt_d = result_queue_write_pnt_q;
     result_queue_cnt_d       = result_queue_cnt_q;
-
-    result_final_gnt_d = result_final_gnt_q;
+    result_final_gnt_d       = result_final_gnt_q;
 
     seq_word_wr_offset_d = seq_word_wr_offset_q;
     first_payload_byte_d = first_payload_byte_q;
@@ -326,17 +404,33 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // Inform the main sequencer if we are idle
     pe_req_ready_o = !vinsn_queue_full;
 
-    lower_byte        = '0;
-    upper_byte        = '0;
-    vrf_valid_bytes   = '0; 
-    vinsn_valid_bytes = '0;
-    axi_valid_bytes   = '0;
-    valid_bytes       = '0;
+    lower_byte         = '0;
+    upper_byte         = '0;
+    vrf_valid_bytes    = '0; 
+    vinsn_valid_bytes  = '0;
+    axi_valid_bytes    = '0;
+    valid_bytes        = '0;
     `ifdef FOR_VERIFY
     vrf_seq_byte_v     = '{default: '0};
     vrf_seq_byte_cnt_v = '{default: '0};
     vrf_byte_v         = '{default: '0};
+    prefetch_vrf_seq_byte_v     = '{default: '0};
+    prefetch_vrf_seq_byte_cnt_v = '{default: '0};
+    prefetch_vrf_byte_v         = '{default: '0};
     `endif
+
+    prefetch_axi_r_queue0            = '0; 
+    prefetch_axi_r_queue0_push       = '0;
+    prefetch_axi_r_queue0_pop        = '0;
+    prefetch_axi_r_queue1            = '0; 
+    prefetch_axi_r_queue1_push       = '0;
+    prefetch_axi_r_queue1_pop        = '0;
+    prefetch_axi_r_len_d             = prefetch_axi_r_len_q;
+    axi_addrgen_prefetch_req_ready_o = '0;
+    prefetch_axi_ar_hit_cnt_d        = prefetch_axi_ar_hit_cnt_q;
+    if (prefetch_axi_ar_hit_i) begin
+      prefetch_axi_ar_hit_cnt_d = prefetch_axi_ar_hit_cnt_q + 1;
+    end
 
     ////////////////////////////////////
     //  Read data from the R channel  //
@@ -347,7 +441,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // - The Address Generator sent us the data about the corresponding AR beat
     // - There is place in the result queue to write the data read from the R channel
     // - This request did not generate an exception
-    if (axi_r_valid_i && axi_addrgen_req_valid_i
+    if ((axi_r_i.id == AXI_ID_DEMAND) && axi_r_valid_i && axi_addrgen_req_valid_i
         && axi_addrgen_req_i.is_load && !axi_addrgen_req_i.is_exception
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
@@ -367,7 +461,6 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         vinsn_valid_bytes = issue_cnt_bytes_q - vrf_word_byte_cnt_q;
         // How many bytes are valid in this AXI word
         axi_valid_bytes   = upper_byte - lower_byte - axi_r_byte_pnt_q + 1;
-
 
         // How many bytes are we committing?
         valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB)) ? vinsn_valid_bytes : vrf_valid_bytes;
@@ -424,6 +517,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           result_queue_d[result_queue_write_pnt_q][lane].addr = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + (vstart_lane >> (EW64 - vinsn_issue_q.vtype.vsew)) + seq_word_wr_offset_q;
           result_queue_d[result_queue_write_pnt_q][lane].id   = vinsn_issue_q.id;
         end : compute_vrf_addr
+
       end : operands_valid
 
       // We have a word ready to be sent to the lanes
@@ -448,8 +542,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         mask_ready_d = !vinsn_issue_q.vm;
 
         // Reset the pointer in the VRF word
-        vrf_word_byte_pnt_d   = '0;
-        vrf_word_byte_cnt_d   = '0;
+        vrf_word_byte_pnt_d = '0;
+        vrf_word_byte_cnt_d = '0;
 
         // Account for the results that were issued
         if (seq_word_wr_offset_q) begin
@@ -470,10 +564,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       // Consumed all valid bytes in this R beat
       if ((axi_r_byte_pnt_d == (upper_byte - lower_byte + 1)) || (issue_cnt_bytes_d == '0)) begin : axi_r_beat_finish
         // Request another beat
-        axi_r_ready_o = 1'b1;
-        axi_r_byte_pnt_d   = '0;
+        axi_r_ready_o    = 1'b1;
+        axi_r_byte_pnt_d = '0;
         // Account for the beat we consumed
-        axi_len_d     = axi_len_q + 1;
+        axi_len_d        = axi_len_q + 1;
       end : axi_r_beat_finish
 
       // Consumed all beats from this burst
@@ -512,7 +606,123 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
         end : issue_cnt_bytes_update
       end : vrf_results_finish
+
     end : axi_r_beat_read
+
+    ///////////////////////////////////////////
+    //  Read data from the Prefetch R Queue  //
+    ///////////////////////////////////////////
+
+    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_prefetch_req_valid_i
+        && !result_queue_full) begin : prefetch_axi_r_queue_read
+
+      if (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q))) begin : prefetch_operands_valid
+        valid_bytes = NrLanes * DataWidthB;
+
+        vrf_word_byte_pnt_d = vrf_word_byte_pnt_q + valid_bytes;
+        vrf_word_byte_cnt_d = vrf_word_byte_cnt_q + valid_bytes;
+
+        for (int unsigned prefetch_axi_r_byte = 0; prefetch_axi_r_byte < (NrLanes * DataWidthB); prefetch_axi_r_byte++) begin : prefetch_axi_r_to_result_queue
+          automatic int unsigned prefetch_vrf_seq_byte = prefetch_axi_r_byte + vrf_word_byte_pnt_q;
+          automatic int unsigned prefetch_vrf_seq_byte_cnt = prefetch_axi_r_byte + vrf_word_byte_cnt_q;
+          automatic int unsigned prefetch_vrf_byte = shuffle_index(prefetch_vrf_seq_byte, NrLanes, vinsn_issue_q.vtype.vsew);
+
+          `ifdef FOR_VERIFY
+          prefetch_vrf_seq_byte_v[prefetch_axi_r_byte]     = prefetch_axi_r_byte + vrf_word_byte_pnt_q;
+          prefetch_vrf_seq_byte_cnt_v[prefetch_axi_r_byte] = prefetch_axi_r_byte + vrf_word_byte_cnt_q;
+          prefetch_vrf_byte_v[prefetch_axi_r_byte]         = shuffle_index(prefetch_vrf_seq_byte_v[prefetch_axi_r_byte], NrLanes, vinsn_issue_q.vtype.vsew);
+          `endif
+
+          if (prefetch_vrf_seq_byte_cnt < issue_cnt_bytes_q && prefetch_vrf_seq_byte < (NrLanes * DataWidthB)) begin : is_prefetch_vrf_byte
+            automatic int unsigned prefetch_vrf_offset = prefetch_vrf_byte[2:0];
+            automatic int unsigned prefetch_vrf_lane = (prefetch_vrf_byte >> 3);
+
+            result_queue_d[result_queue_write_pnt_q][prefetch_vrf_lane].wdata[8*prefetch_vrf_offset +: 8] =
+              axi_r_i.data[8*prefetch_axi_r_byte +: 8];
+            result_queue_d[result_queue_write_pnt_q][prefetch_vrf_lane].be[prefetch_vrf_offset] =
+              vinsn_issue_q.vm || mask_q[prefetch_vrf_lane][prefetch_vrf_offset];
+          end : is_prefetch_vrf_byte
+        end : prefetch_axi_r_to_result_queue
+
+        for (int unsigned lane = 0; lane < NrLanes; lane++) begin : prefetch_compute_vrf_addr
+          automatic vlen_t vstart_lane;
+
+          vstart_lane = vinsn_issue_q.vstart / NrLanes;
+
+          result_queue_d[result_queue_write_pnt_q][lane].addr = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + (vstart_lane >> (EW64 - vinsn_issue_q.vtype.vsew)) + seq_word_wr_offset_q;
+          result_queue_d[result_queue_write_pnt_q][lane].id   = vinsn_issue_q.id;
+        end : prefetch_compute_vrf_addr
+
+      end : prefetch_operands_valid
+
+      if (vrf_word_byte_pnt_d == (NrLanes * DataWidthB) || vrf_word_byte_cnt_d == issue_cnt_bytes_q) begin : prefetch_vrf_word_ready
+        result_queue_cnt_d += 1;
+
+        if (result_queue_write_pnt_q == ResultQueueDepth-1) begin : prefetch_result_queue_write_pnt_overflow
+          result_queue_write_pnt_d = '0;
+        end : prefetch_result_queue_write_pnt_overflow
+        else begin : prefetch_result_queue_write_pnt_increment
+          result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+        end : prefetch_result_queue_write_pnt_increment
+
+        result_queue_valid_d[result_queue_write_pnt_q] = {NrLanes{1'b1}};
+
+        seq_word_wr_offset_d = seq_word_wr_offset_q + 1;
+
+        mask_ready_d = !vinsn_issue_q.vm;
+
+        vrf_word_byte_pnt_d = '0;
+        vrf_word_byte_cnt_d = '0;
+
+        if (seq_word_wr_offset_q) begin
+          vrf_eff_write_bytes = (NrLanes * DataWidthB);
+        end else begin
+          vrf_eff_write_bytes = first_payload_byte_q;
+        end
+
+        if (issue_cnt_bytes_q < vrf_eff_write_bytes) begin : prefetch_issue_cnt_bytes_overflow
+          issue_cnt_bytes_d = '0;
+        end : prefetch_issue_cnt_bytes_overflow
+        else begin
+          issue_cnt_bytes_d = issue_cnt_bytes_q - vrf_eff_write_bytes;
+        end
+
+        prefetch_axi_r_queue0_pop = 1'b1;
+        prefetch_axi_r_queue1_pop = 1'b1;
+        prefetch_axi_r_len_d      = prefetch_axi_r_len_q + 1'b1;
+
+      end : prefetch_vrf_word_ready
+
+      if ($unsigned(prefetch_axi_r_len_d) == 4) begin : prefetch_axi_r_finish
+        prefetch_axi_r_len_d             = '0;
+        axi_addrgen_prefetch_req_ready_o = 1'b1;
+        prefetch_axi_ar_hit_cnt_d        = prefetch_axi_ar_hit_cnt_d - 1;
+      end : prefetch_axi_r_finish
+
+      if (vinsn_issue_valid && issue_cnt_bytes_d == '0 ) begin : prefetch_vrf_results_finish
+        vinsn_queue_d.issue_cnt -= 1;
+
+        if (vinsn_queue_q.issue_pnt == (VInsnQueueDepth-1)) begin : prefetch_issue_pnt_overflow
+          vinsn_queue_d.issue_pnt = '0;
+        end : prefetch_issue_pnt_overflow
+        else begin : prefetch_issue_pnt_increment
+          vinsn_queue_d.issue_pnt += 1;
+        end : prefetch_issue_pnt_increment
+
+        if (vinsn_queue_d.issue_cnt != 0) begin : prefetch_issue_cnt_bytes_update
+          issue_cnt_bytes_d = (
+                                vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl
+                                - vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart
+                              ) << unsigned'(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype.vsew);
+          vrf_word_start_byte  = vinsn_issue_d.vstart[$clog2(8*NrLanes)-1:0] << vinsn_issue_d.vtype.vsew;
+          vrf_word_byte_pnt_d  = {1'b0, vrf_word_start_byte[$clog2(8*NrLanes)-1:0]};
+          vrf_word_byte_cnt_d  = '0;
+          seq_word_wr_offset_d = '0;
+          first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
+        end : prefetch_issue_cnt_bytes_update
+      end : prefetch_vrf_results_finish
+
+    end : prefetch_axi_r_queue_read
 
     //////////////////////////////////
     //  Write results into the VRF  //
@@ -611,7 +821,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
     // Handle exceptions in the clean way
     // We cannot just abort the instruction since results can be in the result queue, waiting.
-    unique case (ldu_ex_state_q)
+    handle_exceptions : unique case (ldu_ex_state_q)
       IDLE: begin
         // Handle the exception only if this is the last instruction committing results
         if (vinsn_issue_valid && (vinsn_queue_q.commit_cnt == 1) &&
@@ -676,7 +886,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     //////////////////////////////
 
     if (pe_req_valid_i && pe_req_ready_o && !vinsn_running_q[pe_req_i.id] &&
-      pe_req_i.vfu == VFU_LoadUnit) begin : pe_req_valid
+      pe_req_i.vfu == VFU_LoadUnit) begin : accept_new_instr
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
 
@@ -703,7 +913,20 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       vinsn_queue_d.accept_pnt += 1;
       vinsn_queue_d.issue_cnt += 1;
       vinsn_queue_d.commit_cnt += 1;
-    end : pe_req_valid
+    end : accept_new_instr
+
+    if (axi_r_valid_i && (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+      prefetch_axi_r_queue0_push = 1'b1; 
+      prefetch_axi_r_queue0 = axi_r_i;
+      axi_r_ready_o = 1'b1;
+    end
+
+    if (axi_r_valid_i && (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+      prefetch_axi_r_queue1_push = 1'b1; 
+      prefetch_axi_r_queue1 = axi_r_i;
+      axi_r_ready_o = 1'b1;
+    end
+
   end: p_vldu
 
   always_ff @(posedge clk_i or negedge rst_ni) begin

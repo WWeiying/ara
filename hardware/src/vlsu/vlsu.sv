@@ -105,6 +105,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic addrgen_illegal_load, addrgen_illegal_store;
   assign load_complete_o  = load_complete;
   assign store_complete_o = store_complete;
+  logic    prefetch_axi_ar_hit;
+  axi_ar_t axi_addrgen_prefetch_req;
+  logic    axi_addrgen_prefetch_req_valid;
+  logic    axi_addrgen_prefetch_req_ready;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
   assign lsu_current_burst_exception_o = stu_current_burst_exception | ldu_current_burst_exception;
@@ -196,6 +200,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .stu_axi_addrgen_req_ready_i(stu_axi_addrgen_req_ready  ),
     .lsu_ex_flush_i             (lsu_ex_flush_i             ),
 
+    //prefetch
+    .prefetch_axi_ar_hit_o           (prefetch_axi_ar_hit),
+    .axi_addrgen_prefetch_req_o      (axi_addrgen_prefetch_req),
+    .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
+    .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
+
     // CSR input
     .en_ld_st_translation_i,
     .mmu_misaligned_ex_o,
@@ -217,6 +227,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .AxiAddrWidth(AxiAddrWidth),
     .AxiDataWidth(AxiDataWidth),
     .axi_r_t     (axi_r_t     ),
+    .axi_ar_t    (axi_ar_t    ),
     .NrLanes     (NrLanes     ),
     .VLEN        (VLEN        ),
     .vaddr_t     (vaddr_t     ),
@@ -243,6 +254,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_addrgen_req_valid_i(axi_addrgen_req_valid     ),
     .axi_addrgen_req_ready_o(ldu_axi_addrgen_req_ready ),
     .addrgen_illegal_load_i (addrgen_illegal_load      ),
+    .prefetch_axi_ar_hit_i           (prefetch_axi_ar_hit),
+    .axi_addrgen_prefetch_req_i      (axi_addrgen_prefetch_req),
+    .axi_addrgen_prefetch_req_valid_i(axi_addrgen_prefetch_req_valid),
+    .axi_addrgen_prefetch_req_ready_o(axi_addrgen_prefetch_req_ready),
     // Interface with the Mask unit
     .mask_i                 (mask_i                    ),
     .mask_valid_i           (mask_valid_i              ),
