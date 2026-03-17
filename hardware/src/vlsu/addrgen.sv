@@ -229,23 +229,22 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_pending_d, prefetch_pending_q;
   axi_ar_t prefetch_axi_ar, prefetch_axi_ar_data;
   logic    prefetch_axi_ar_queue_push, prefetch_axi_ar_queue_pop;
-  logic    prefetch_axi_ar_queue_full, prefetch_axi_ar_queue_empty;
+  logic    prefetch_axi_ar_queue_valid;
 
-  fifo_v3 #(
-    .DEPTH(VaddrgenInsnQueueDepth),
-    .dtype(axi_ar_t              )
+  fall_through_register_v1 #(
+    .T(axi_ar_t),
+    .DEPTH(VaddrgenInsnQueueDepth)
   ) i_prefetch_axi_ar_queue (
-    .clk_i     (clk_i                      ),
-    .rst_ni    (rst_ni                     ),
-    .flush_i   (1'b0                       ),
-    .testmode_i(1'b0                       ),
-    .data_i    (prefetch_axi_ar            ),
-    .push_i    (prefetch_axi_ar_queue_push ),
-    .full_o    (prefetch_axi_ar_queue_full ),
-    .data_o    (prefetch_axi_ar_data       ),       
-    .pop_i     (prefetch_axi_ar_queue_pop  ),   
-    .empty_o   (prefetch_axi_ar_queue_empty), 
-    .usage_o   (/* Unused */               )
+    .clk_i     (clk_i             ),
+    .rst_ni    (rst_ni            ),
+    .clr_i     (lsu_ex_flush_d    ),
+    .testmode_i(1'b0              ),
+    .data_i    (prefetch_axi_ar           ),
+    .valid_i   (prefetch_axi_ar_queue_push),
+    .ready_o   (),
+    .data_o    (prefetch_axi_ar_data      ),
+    .valid_o   (prefetch_axi_ar_queue_valid),
+    .ready_i   (prefetch_axi_ar_queue_pop)
   );
 
   assign prefetch_axi_ar_hit_o = prefetch_axi_ar_hit;
@@ -775,8 +774,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   default: '0
                 };
 
-                prefetch_pending_d         = 1'b1;
                 prefetch_axi_ar_queue_push = 1'b1;
+                prefetch_pending_d         = !prefetch_axi_ar_hit;
               end
             end
             else begin
@@ -971,12 +970,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end : start_req
     end : demand_req
 
-    if (!prefetch_axi_ar_queue_empty && !prefetch_axi_ar_rob_full && !prefetch_pending_d) begin : prefetch_req
+    if (prefetch_axi_ar_queue_valid && !prefetch_axi_ar_rob_full && !prefetch_pending_d) begin : prefetch_req
       prefetch_axi_ar_rob_push  = 1'b1;
       prefetch_axi_ar_rob       = prefetch_axi_ar_data;
       prefetch_axi_ar_queue_pop = 1'b1;
-      axi_ar_o       = prefetch_axi_ar_data;
-      axi_ar_valid_o = 1'b1;
+      axi_ar_o                  = prefetch_axi_ar_data;
+      axi_ar_valid_o            = 1'b1;
 
       prefetch_axi_addr_rob_push = 1'b1;
       prefetch_axi_addr_rob      = prefetch_axi_ar_data.addr;

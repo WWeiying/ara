@@ -55,6 +55,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   );
 
   `ifdef FOR_VERIFY
+  logic raw_hazard, war_hazard, waw_hazard;
+
   riscv::instruction_t sequencer_instr;
   assign sequencer_instr = riscv::instruction_t'(pe_req_o.instr) & {$bits(pe_req_o.instr){pe_req_valid_o}};
   `endif
@@ -388,6 +390,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Update the running vector instructions
     for (int pe = 0; pe < NrPEs; pe++) pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
 
+    `ifdef FOR_VERIFY
+    raw_hazard = '0;
+    war_hazard = '0;
+    waw_hazard = '0;
+    `endif
+
     case (state_q)
       IDLE: begin
         // Sent a request, but the operand requesters are not ready
@@ -432,6 +440,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
               write_list_d[ara_req_i.vd].valid;
 
+            `ifdef FOR_VERIFY
+            raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
+                         (ara_req_i.use_vs2 && pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid]) ||
+                         ((!ara_req_i.vm) && pe_req_d.hazard_vm[write_list_d[VMASK].vid]);
+            war_hazard = ara_req_i.use_vd && (pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] || pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid]|| pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid]);
+            waw_hazard = (ara_req_i.use_vd) && pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid];
+            `endif
             /////////////
             //  Issue  //
             /////////////

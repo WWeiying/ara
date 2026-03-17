@@ -22,7 +22,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     localparam int           DataWidth    = $bits(elen_t),
     localparam type          strb_t       = logic[DataWidth/8-1:0],
     localparam type          vlen_t       = logic[$clog2(VLEN+1)-1:0],
-    localparam type          axi_addr_t   = logic [AxiAddrWidth-1:0]
+    localparam type          axi_addr_t   = logic [AxiAddrWidth-1:0],
+    localparam unsigned      DataWidthB   = DataWidth / 8
   ) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
@@ -165,16 +166,17 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   //  Prefetch AXI R Queue  //
   ////////////////////////////
   logic [2:0] prefetch_axi_ar_hit_cnt_d, prefetch_axi_ar_hit_cnt_q;
-  axi_r_t prefetch_axi_r_queue0, prefetch_axi_r_queue0_data; 
-  logic prefetch_axi_r_queue0_push, prefetch_axi_r_queue0_pop;
-  logic prefetch_axi_r_queue0_full, prefetch_axi_r_queue0_empty;
+  axi_r_t     prefetch_axi_r_queue0, prefetch_axi_r_queue0_data; 
+  logic       prefetch_axi_r_queue0_push, prefetch_axi_r_queue0_pop;
+  logic       prefetch_axi_r_queue0_full, prefetch_axi_r_queue0_empty;
 
   axi_r_t prefetch_axi_r_queue1, prefetch_axi_r_queue1_data; 
-  logic prefetch_axi_r_queue1_push, prefetch_axi_r_queue1_pop;
-  logic prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
+  logic   prefetch_axi_r_queue1_push, prefetch_axi_r_queue1_pop;
+  logic   prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
 
-  logic prefetch_axi_r_queue_pnt;
-  logic prefetch_axi_r_len_d, prefetch_axi_r_len_q;
+  logic                            prefetch_axi_r_queue_pnt;
+  logic [2:0]                      prefetch_axi_r_len_d, prefetch_axi_r_len_q;
+  logic [(NrLanes*DataWidth-1):0]  prefetch_axi_r_queue_data;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -189,7 +191,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      prefetch_axi_r_len_q <= 1'b0;
+      prefetch_axi_r_len_q <= '0;
       prefetch_axi_ar_hit_cnt_q <= '0;
     end
     else begin
@@ -232,11 +234,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     .usage_o   (/* Unused */           )
   );
 
+  assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data, prefetch_axi_r_queue0_data};
+
   /////////////////////
   //  Result queues  //
   /////////////////////
 
-  localparam int unsigned ResultQueueDepth = 2;
+  localparam int unsigned ResultQueueDepth = 4;
 
   // There is a result queue per lane, holding the results that were not
   // yet accepted by the corresponding lane.
@@ -343,7 +347,6 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     HANDLE_EXCEPTION
   } ldu_ex_state_d, ldu_ex_state_q;
 
-  localparam unsigned DataWidthB = DataWidth / 8;
 
   logic [idx_width(AxiDataWidth/8)-1:0]    lower_byte;
   logic [idx_width(AxiDataWidth/8)-1:0]    upper_byte;
@@ -355,9 +358,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   int unsigned vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
   int unsigned vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
   int unsigned vrf_byte_v[AxiDataWidth/8-1:0] ;
-  int unsigned prefetch_vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
-  int unsigned prefetch_vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
-  int unsigned prefetch_vrf_byte_v[AxiDataWidth/8-1:0] ;
+  int unsigned prefetch_vrf_seq_byte_v[(NrLanes*DataWidthB-1):0];
+  int unsigned prefetch_vrf_seq_byte_cnt_v[(NrLanes*DataWidthB-1):0] ;
+  int unsigned prefetch_vrf_byte_v[(NrLanes*DataWidthB-1):0];
   `endif
 
   always_comb begin: p_vldu
@@ -613,7 +616,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     //  Read data from the Prefetch R Queue  //
     ///////////////////////////////////////////
 
-    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_prefetch_req_valid_i
+    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_prefetch_req_valid_i //&& !axi_addrgen_req_valid_i
+        && (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q)))
         && !result_queue_full) begin : prefetch_axi_r_queue_read
 
       if (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q))) begin : prefetch_operands_valid
@@ -638,7 +642,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
             automatic int unsigned prefetch_vrf_lane = (prefetch_vrf_byte >> 3);
 
             result_queue_d[result_queue_write_pnt_q][prefetch_vrf_lane].wdata[8*prefetch_vrf_offset +: 8] =
-              axi_r_i.data[8*prefetch_axi_r_byte +: 8];
+              prefetch_axi_r_queue_data[8*prefetch_axi_r_byte +: 8];
             result_queue_d[result_queue_write_pnt_q][prefetch_vrf_lane].be[prefetch_vrf_offset] =
               vinsn_issue_q.vm || mask_q[prefetch_vrf_lane][prefetch_vrf_offset];
           end : is_prefetch_vrf_byte
