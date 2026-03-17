@@ -13,7 +13,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 256
+#define TOTAL_ELEMENTS 512
 #define TEST_ELEMENTS  512
 
 extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));
@@ -48,32 +48,22 @@ void vsaxpy(int n, const float a, const float *src1, float *src2) {
     "sub a0, a0, t0\n"
     "vle32.v v3, (a2)\n"
     "slli t1, t0, 2\n"
-    "vfmacc.vf v3, fa0, v0\n"
+    "vfmul.vv v4, v3, v0\n"
     "add a1, a1, t1\n"
-    "vse32.v v3, (a2)\n"
+    "vse32.v v4, (a2)\n"
     "add a2, a2, t1\n"
 
-    "vsetvli t0, a0, e32, m1, ta, ma\n"
-    "vle32.v v0, (a1)\n"
-    "sub a0, a0, t0\n"
-    "vle32.v v3, (a2)\n"
-    "slli t1, t0, 2\n"
-    "vfmacc.vf v3, fa0, v0\n"
-    "add a1, a1, t1\n"
-    "vse32.v v3, (a2)\n"
-    "add a2, a2, t1\n"
+//    "vsetvli t0, a0, e32, m1, ta, ma\n"
+//    "vle32.v v0, (a1)\n"
+//    "sub a0, a0, t0\n"
+//    "vle32.v v3, (a2)\n"
+//    "slli t1, t0, 2\n"
+//    "vfmacc.vf v3, fa0, v0\n"
+//    "add a1, a1, t1\n"
+//    "vse32.v v3, (a2)\n"
+//    "add a2, a2, t1\n"
 
-    "vsetvli t0, a0, e32, m1, ta, ma\n"
-    "vle32.v v0, (a1)\n"
-    "sub a0, a0, t0\n"
-    "vle32.v v3, (a2)\n"
-    "slli t1, t0, 2\n"
-    "vfmacc.vf v3, fa0, v0\n"
-    "add a1, a1, t1\n"
-    "vse32.v v3, (a2)\n"
-    "add a2, a2, t1\n"
-
-//    "bnez a0, saxpy\n"
+    "bnez a0, saxpy\n"
     "ret\n"
     );
 }
