@@ -3815,7 +3815,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     is_same_eew = same_eew_by_lmul[ara_req.emul[1:0]] | ara_req.emul[2];
   end
 
-`ifdef FOR_SIM
+`ifdef FOR_VERIFY
   riscv::instruction_t instr_q;
   int elem_bytes;
   int eff_vl;

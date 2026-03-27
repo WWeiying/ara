@@ -55,7 +55,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   );
 
   `ifdef FOR_VERIFY
-  logic raw_hazard, war_hazard, waw_hazard;
+  logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
 
   riscv::instruction_t sequencer_instr;
   assign sequencer_instr = riscv::instruction_t'(pe_req_o.instr) & {$bits(pe_req_o.instr){pe_req_valid_o}};
@@ -394,6 +394,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     raw_hazard = '0;
     war_hazard = '0;
     waw_hazard = '0;
+    false_hazard = '0;
+    sequencer_block = '0;
     `endif
 
     case (state_q)
@@ -446,6 +448,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                          ((!ara_req_i.vm) && pe_req_d.hazard_vm[write_list_d[VMASK].vid]);
             war_hazard = ara_req_i.use_vd && (pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] || pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid]|| pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid]);
             waw_hazard = (ara_req_i.use_vd) && pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid];
+            false_hazard = war_hazard || waw_hazard;
+            sequencer_block = (!(|{ara_req_i.use_vs1, ara_req_i.use_vs2, ara_req_i.use_vd_op, !ara_req_i.vm}) &&
+                |{pe_req_d.hazard_vs1, pe_req_d.hazard_vs2, pe_req_d.hazard_vm, pe_req_d.hazard_vd} ||
+                (pe_req_d.op == VSLIDEUP && |{pe_req_d.hazard_vd, pe_req_d.hazard_vs1, pe_req_d.hazard_vs2}) ||
+                (pe_req_d.op == VSLIDEDOWN && |{pe_req_d.hazard_vs1, pe_req_d.hazard_vs2}));
             `endif
             /////////////
             //  Issue  //

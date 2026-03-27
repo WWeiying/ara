@@ -234,7 +234,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     .usage_o   (/* Unused */           )
   );
 
-  assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data, prefetch_axi_r_queue0_data};
+  assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data.data, prefetch_axi_r_queue0_data.data};
 
   /////////////////////
   //  Result queues  //

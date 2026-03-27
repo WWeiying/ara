@@ -585,41 +585,17 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
-  `ifdef FOR_SIM
+  `ifdef FOR_VERIFY
     typedef enum logic [5:0] {
       none,
-      v0 = 6'b100000,
-      v1,
-      v2,
-      v3,
-      v4,
-      v5,
-      v6,
-      v7,
-      v8,
-      v9,
-      v10,
-      v11,
-      v12,
-      v13,
-      v14,
-      v15,
-      v16,
-      v17,
-      v18,
-      v19,
-      v20,
-      v21,
-      v22,
-      v23,
-      v24,
-      v25,
-      v26,
-      v27,
-      v28,
-      v29,
-      v30,
-      v31
+      v0 = 6'b100000, v1, v2, v3,
+      v4, v5, v6, v7,
+      v8, v9, v10, v11,
+      v12, v13, v14, v15,
+      v16, v17, v18, v19,
+      v20, v21, v22, v23,
+      v24, v25, v26, v27,
+      v28, v29, v30, v31
     } vid_e;
     logic [NrBanks-1:0] bank_vld;
     logic [NrBanks-1:0] bank_rd_vld;
@@ -701,7 +677,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       .gnt_i (vrf_req_o[bank] ) // Acknowledge it directly
     );
 
-  `ifdef FOR_SIM
+  `ifdef FOR_VERIFY
     assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
     assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank];
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
