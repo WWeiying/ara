@@ -312,6 +312,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic                                       lsu_ex_flush_op_queues_d, lsu_ex_flush_op_queues_q;
   `FF(lsu_ex_flush_op_queues_q, lsu_ex_flush_op_queues_d, 1'b0, clk_i, rst_ni);
 
+  elen_t [NrOperandQueues-1:0] forward_operand;
+  logic  [NrOperandQueues-1:0] forward_operand_valid;
+
   operand_requester #(
     .NrLanes              (NrLanes              ),
     .VLEN                 (VLEN                 ),
@@ -338,6 +341,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .vrf_wdata_o              (vrf_wdata               ),
     .vrf_be_o                 (vrf_be                  ),
     .vrf_tgt_opqueue_o        (vrf_tgt_opqueue         ),
+    //forward
+    .forward_operand_o        (forward_operand         ),
+    .forward_operand_valid_o  (forward_operand_valid   ),
     // Interface with the operand queues
     .operand_issued_o         (operand_issued          ),
     .operand_queue_ready_i    (operand_queue_ready     ),
@@ -444,6 +450,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the Vector Register File
     .operand_i                        (vrf_operand                        ),
     .operand_valid_i                  (vrf_operand_valid                  ),
+    //forward 
+    .forward_operand_i                (forward_operand                    ),
+    .forward_operand_valid_i          (forward_operand_valid              ),
     // Interface with the operand requester
     .operand_issued_i                 (operand_issued                     ),
     .operand_queue_ready_o            (operand_queue_ready                ),

@@ -175,14 +175,15 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   logic   prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
 
   logic                            prefetch_axi_r_queue_pnt;
-  logic [2:0]                      prefetch_axi_r_len_d, prefetch_axi_r_len_q;
+  logic [4:0]                      prefetch_axi_r_queue_len_d, prefetch_axi_r_queue_len_q;
   logic [(NrLanes*DataWidth-1):0]  prefetch_axi_r_queue_data;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       prefetch_axi_r_queue_pnt <= 1'b0;
     end
-    else if (axi_r_valid_i && (prefetch_axi_r_queue_pnt ? (!prefetch_axi_r_queue1_full)
+    else if (axi_r_valid_i && axi_r_ready_o
+                           && (prefetch_axi_r_queue_pnt ? (!prefetch_axi_r_queue1_full)
                                                         : (!prefetch_axi_r_queue0_full))
                            && (axi_r_i.id == AXI_ID_PREFETCH)) begin
       prefetch_axi_r_queue_pnt <= ~prefetch_axi_r_queue_pnt;
@@ -191,11 +192,11 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      prefetch_axi_r_len_q <= '0;
+      prefetch_axi_r_queue_len_q <= '0;
       prefetch_axi_ar_hit_cnt_q <= '0;
     end
     else begin
-      prefetch_axi_r_len_q <= prefetch_axi_r_len_d;
+      prefetch_axi_r_queue_len_q <= prefetch_axi_r_queue_len_d;
       prefetch_axi_ar_hit_cnt_q <= prefetch_axi_ar_hit_cnt_d;
     end
   end
@@ -310,6 +311,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   // into the VRF. Namely, we need:
   // - A counter of how many beats are left in the current AXI burst
   axi_pkg::len_t                           axi_len_d, axi_len_q;
+  axi_pkg::len_t                           prefetch_len_d, prefetch_len_q;
   // - A pointer to which byte in the current R beat we are reading data from.
   logic [idx_width(AxiDataWidth/8):0]      axi_r_byte_pnt_d, axi_r_byte_pnt_q;
   // - A pointer to which byte in the full VRF word we are writing data into.
@@ -370,6 +372,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     commit_cnt_bytes_d  = commit_cnt_bytes_q;
 
     axi_len_d           = axi_len_q;
+    prefetch_len_d      = prefetch_len_q;
     axi_r_byte_pnt_d    = axi_r_byte_pnt_q;
     vrf_word_byte_pnt_d = vrf_word_byte_pnt_q;
 
@@ -428,7 +431,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_axi_r_queue1            = '0; 
     prefetch_axi_r_queue1_push       = '0;
     prefetch_axi_r_queue1_pop        = '0;
-    prefetch_axi_r_len_d             = prefetch_axi_r_len_q;
+    prefetch_axi_r_queue_len_d       = prefetch_axi_r_queue_len_q;
     axi_addrgen_prefetch_req_ready_o = '0;
     prefetch_axi_ar_hit_cnt_d        = prefetch_axi_ar_hit_cnt_q;
     if (prefetch_axi_ar_hit_i) begin
@@ -616,7 +619,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     //  Read data from the Prefetch R Queue  //
     ///////////////////////////////////////////
 
-    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_prefetch_req_valid_i //&& !axi_addrgen_req_valid_i
+    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_req_valid_i //&& !axi_addrgen_req_valid_i
         && (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q)))
         && !result_queue_full) begin : prefetch_axi_r_queue_read
 
@@ -693,14 +696,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
         prefetch_axi_r_queue0_pop = 1'b1;
         prefetch_axi_r_queue1_pop = 1'b1;
-        prefetch_axi_r_len_d      = prefetch_axi_r_len_q + 1'b1;
+        prefetch_len_d      = prefetch_len_q + 1'b1;
 
       end : prefetch_vrf_word_ready
 
-      if ($unsigned(prefetch_axi_r_len_d) == 4) begin : prefetch_axi_r_finish
-        prefetch_axi_r_len_d             = '0;
-        axi_addrgen_prefetch_req_ready_o = 1'b1;
-        prefetch_axi_ar_hit_cnt_d        = prefetch_axi_ar_hit_cnt_d - 1;
+      if ($unsigned(prefetch_len_d) == 4) begin : prefetch_axi_r_finish
+        prefetch_len_d             = '0;
+        prefetch_axi_ar_hit_cnt_d  = prefetch_axi_ar_hit_cnt_d - 1;
+        axi_addrgen_req_ready_o    = 1'b1;
       end : prefetch_axi_r_finish
 
       if (vinsn_issue_valid && issue_cnt_bytes_d == '0 ) begin : prefetch_vrf_results_finish
@@ -919,16 +922,26 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       vinsn_queue_d.commit_cnt += 1;
     end : accept_new_instr
 
-    if (axi_r_valid_i && (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+    if (axi_r_valid_i && (axi_r_i.id == AXI_ID_PREFETCH) &&
+        (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) &&
+        axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue0_push = 1'b1; 
       prefetch_axi_r_queue0 = axi_r_i;
       axi_r_ready_o = 1'b1;
+      prefetch_axi_r_queue_len_d         = prefetch_axi_r_queue_len_d + 1;
     end
 
-    if (axi_r_valid_i && (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+    if (axi_r_valid_i && (axi_r_i.id == AXI_ID_PREFETCH) &&
+        (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) &&
+        axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue1_push = 1'b1; 
       prefetch_axi_r_queue1 = axi_r_i;
       axi_r_ready_o = 1'b1;
+      prefetch_axi_r_queue_len_d         = prefetch_axi_r_queue_len_d + 1;
+      if ($unsigned(prefetch_axi_r_queue_len_d) == 8) begin : prefetch_axi_r_finish
+        prefetch_axi_r_queue_len_d       = '0;
+        axi_addrgen_prefetch_req_ready_o = 1'b1;
+      end : prefetch_axi_r_finish
     end
 
   end: p_vldu
@@ -939,6 +952,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       issue_cnt_bytes_q             <= '0;
       commit_cnt_bytes_q            <= '0;
       axi_len_q                     <= '0;
+      prefetch_len_q                <= '0;
       axi_r_byte_pnt_q              <= '0;
       vrf_word_byte_pnt_q           <= '0;
       pe_resp_o                     <= '0;
@@ -955,6 +969,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       issue_cnt_bytes_q             <= issue_cnt_bytes_d;
       commit_cnt_bytes_q            <= commit_cnt_bytes_d;
       axi_len_q                     <= axi_len_d;
+      prefetch_len_q                <= prefetch_len_d;
       axi_r_byte_pnt_q              <= axi_r_byte_pnt_d;
       vrf_word_byte_pnt_q           <= vrf_word_byte_pnt_d;
       pe_resp_o                     <= pe_resp_d;

@@ -45,6 +45,9 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  logic                              operand_valid_i,
     input  logic                              operand_issued_i,
     output logic                              operand_queue_ready_o,
+    // Forwarding interface (from LDU or other units)
+    input  elen_t                             forward_operand_i,
+    input  logic                              forward_operand_valid_i,
     // Interface with the functional units
     output elen_t                             operand_o,
     output target_fu_e                        operand_target_fu_o,
@@ -101,8 +104,9 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     .rst_ni    (rst_ni         ),
     .testmode_i(1'b0           ),
     .flush_i   (flush_i        ),
-    .data_i    (operand_i      ),
-    .push_i    (operand_valid_i),
+    // Forwarded data has higher priority, enters queue just like normal VRF read
+    .data_i    (forward_operand_valid_i ? forward_operand_i : operand_i),
+    .push_i    (forward_operand_valid_i ? 1'b1 : operand_valid_i),
     .full_o    (/* Unused */   ),
     .data_o    (ibuf_operand   ),
     .pop_i     (ibuf_pop       ),
@@ -119,14 +123,14 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Maintain state
     ibuf_usage_d = ibuf_usage_q;
 
-    // Will received a new operand
-    if (operand_issued_i) ibuf_usage_d += 1;
+    // Will receive a new operand (either from VRF or from forwarding path)
+    if (operand_issued_i || forward_operand_valid_i) ibuf_usage_d += 1;
     // Consumed an operand
     if (ibuf_pop) ibuf_usage_d -= 1;
     // Flush the ibuf_usage_d
     if (flush_i) ibuf_usage_d = '0;
 
-    // Are we ready?
+    // Are we ready? Block if queue is full, even for forwarding
     operand_queue_ready_o = (ibuf_usage_q != DataBufDepth);
   end
 

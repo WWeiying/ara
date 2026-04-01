@@ -49,6 +49,10 @@ void vsaxpy(int n, const float a, const float *src1, float *src2) {
     "vle32.v v3, (a2)\n"
     "slli t1, t0, 2\n"
     "vfmul.vv v4, v3, v0\n"
+    "vfmul.vv v5, v4, v0\n"  // Depends on v4 (previous result) - chaining eligible
+    "vfmul.vv v6, v5, v0\n"  // Depends on v5 - chaining eligible
+    "vfmul.vv v7, v6, v0\n"  // Depends on v6 - chaining eligible
+    "vfmul.vv v4, v7, v0\n"  // Put final result back to v4
     "add a1, a1, t1\n"
     "vse32.v v4, (a2)\n"
     "add a2, a2, t1\n"

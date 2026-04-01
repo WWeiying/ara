@@ -692,7 +692,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     endcase
 
     if ((axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && vreq_is_load_d) ||
-        (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) && vreq_is_vld) begin : demand_req
+        (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) && vreq_is_vld
+        && !(vreq_is_vld && ~vreq_is_load_q && axi_addrgen_prefetch_req_valid_o)) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
 
@@ -797,10 +798,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               is_load      : vreq_is_load_d,
               is_exception : 1'b0
             };
-
-            if (prefetch_axi_ar_hit) begin
-              axi_addrgen_queue = '0;
-            end
 
           end : unit_stride_req
           else if (vreq_is_stride_d) begin : stride_req
@@ -913,9 +910,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             axi_aw_valid_o = ~vreq_is_load_d;
 
             axi_addrgen_queue_push = 1'b1;
-            if (prefetch_axi_ar_hit && vreq_is_vld) begin
-               axi_addrgen_queue_push = '0;
-            end
 
             vreq_addr_d = aligned_next_start_addr_d;
             vreq_blen_d = remaining_bytes;
@@ -970,10 +964,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end : start_req
     end : demand_req
 
-    if (prefetch_axi_ar_queue_valid && !prefetch_axi_ar_rob_full && !prefetch_pending_d) begin : prefetch_req
+    if (prefetch_axi_ar_queue_valid &&
+        !prefetch_axi_ar_rob_full && !prefetch_axi_addr_rob_full &&
+        !prefetch_pending_d) begin : prefetch_req
+      prefetch_axi_ar_queue_pop = 1'b1;
       prefetch_axi_ar_rob_push  = 1'b1;
       prefetch_axi_ar_rob       = prefetch_axi_ar_data;
-      prefetch_axi_ar_queue_pop = 1'b1;
       axi_ar_o                  = prefetch_axi_ar_data;
       axi_ar_valid_o            = 1'b1;
 
