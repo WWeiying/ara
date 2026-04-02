@@ -253,102 +253,65 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
-
+    // Unified reset branch
     if (!rst_ni) begin
-      alu_result_addr_q <= '0;
-      alu_result_id_q <= '0;
-    end
-    else if (alu_result_gnt_o) begin
-      alu_result_addr_q <= alu_result_addr_i;
-      alu_result_id_q <= alu_result_id_i;
-    end
-
-    if (!rst_ni) begin
-      alu_result_written_q <= '0;
-    end
-    else if (alu_result_gnt_o) begin
-      alu_result_written_q <= 1'b1;
-    end
-    else begin
-      alu_result_written_q <= '0;
-    end
-
-    if (!rst_ni) begin
-      mfpu_result_addr_q <= '0;
-      mfpu_result_id_q <= '0;
-    end
-    else if (mfpu_result_gnt_o) begin
-      mfpu_result_addr_q <= mfpu_result_addr_i;
-      mfpu_result_id_q <= mfpu_result_id_i;
-    end
-
-    if (!rst_ni) begin
+      alu_result_addr_q     <= '0;
+      alu_result_id_q       <= '0;
+      alu_result_written_q  <= '0;
+      mfpu_result_addr_q    <= '0;
+      mfpu_result_id_q      <= '0;
       mfpu_result_written_q <= '0;
-    end
-    else if (mfpu_result_gnt_o) begin
-      mfpu_result_written_q <= 1'b1;
-    end
-    else begin
-      mfpu_result_written_q <= '0;
-    end
-
-    if (!rst_ni) begin
-      masku_result_addr_q <= '0;
-      masku_result_id_q <= '0;
-    end
-    else if (masku_result_gnt) begin
-      masku_result_addr_q <= masku_result_addr;
-      masku_result_id_q <= masku_result_id;
-    end
-
-    if (!rst_ni) begin
+      masku_result_addr_q   <= '0;
+      masku_result_id_q     <= '0;
       masku_result_written_q <= '0;
-    end
-    else if (masku_result_gnt) begin
-      masku_result_written_q <= 1'b1;
-    end
-    else begin
-      masku_result_written_q <= '0;
-    end
-
-    if (!rst_ni) begin
-      ldu_result_addr_q <= '0;
-      ldu_result_id_q <= '0;
-    end
-    else if (ldu_result_gnt) begin
-      ldu_result_addr_q <= ldu_result_addr;
-      ldu_result_id_q <= ldu_result_id;
-    end
-
-    if (!rst_ni) begin
-      ldu_result_written_q <= '0;
-    end
-    else if (ldu_result_gnt) begin
-      ldu_result_written_q <= 1'b1;
-    end
-    else begin
-      ldu_result_written_q <= '0;
-    end
-
-    if (!rst_ni) begin
-      sldu_result_addr_q <= '0;
-      sldu_result_id_q <= '0;
-    end
-    else if (sldu_result_gnt) begin
-      sldu_result_addr_q <= sldu_result_addr;
-      sldu_result_id_q <= sldu_result_id;
-    end
-
-    if (!rst_ni) begin
+      ldu_result_addr_q     <= '0;
+      ldu_result_id_q       <= '0;
+      ldu_result_written_q  <= '0;
+      sldu_result_addr_q    <= '0;
+      sldu_result_id_q      <= '0;
       sldu_result_written_q <= '0;
+    end else begin
+      // ALU result logic
+      if (alu_result_gnt_o) begin
+        alu_result_addr_q   <= alu_result_addr_i;
+        alu_result_id_q     <= alu_result_id_i;
+        alu_result_written_q <= 1'b1;
+      end else begin
+        alu_result_written_q <= '0;
+      end
+      // MFPU result logic
+      if (mfpu_result_gnt_o) begin
+        mfpu_result_addr_q  <= mfpu_result_addr_i;
+        mfpu_result_id_q    <= mfpu_result_id_i;
+        mfpu_result_written_q <= 1'b1;
+      end else begin
+        mfpu_result_written_q <= '0;
+      end
+      // MASKU result logic
+      if (masku_result_gnt) begin
+        masku_result_addr_q <= masku_result_addr;
+        masku_result_id_q   <= masku_result_id;
+        masku_result_written_q <= 1'b1;
+      end else begin
+        masku_result_written_q <= '0;
+      end
+      // LDU result logic
+      if (ldu_result_gnt) begin
+        ldu_result_addr_q   <= ldu_result_addr;
+        ldu_result_id_q     <= ldu_result_id;
+        ldu_result_written_q <= 1'b1;
+      end else begin
+        ldu_result_written_q <= '0;
+      end
+      // SLDU result logic
+      if (sldu_result_gnt) begin
+        sldu_result_addr_q  <= sldu_result_addr;
+        sldu_result_id_q    <= sldu_result_id;
+        sldu_result_written_q <= 1'b1;
+      end else begin
+        sldu_result_written_q <= '0;
+      end
     end
-    else if (sldu_result_gnt) begin
-      sldu_result_written_q <= 1'b1;
-    end
-    else begin
-      sldu_result_written_q <= '0;
-    end
-
   end
 
   ///////////////////////
