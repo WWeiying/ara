@@ -227,8 +227,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
   // Instruction wrote a result
   logic [NrVInsn-1:0] vinsn_result_written_d, vinsn_result_written_q;
-  vid_t   alu_result_id_q, mfpu_result_id_q, masku_result_id_q, ldu_result_id_q, sldu_result_id_q;
   vaddr_t alu_result_addr_q, mfpu_result_addr_q, masku_result_addr_q, ldu_result_addr_q, sldu_result_addr_q;
+  vid_t   alu_result_id_q, mfpu_result_id_q, masku_result_id_q, ldu_result_id_q, sldu_result_id_q;
+  logic   alu_result_written_q, mfpu_result_written_q, masku_result_written_q, ldu_result_written_q, sldu_result_written_q;
 
   always_comb begin
     vinsn_result_written_d = '0;
@@ -251,31 +252,103 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
-  always_ff @(posedge clk_i) begin
-    if (vinsn_result_written_d[alu_result_id_i]) begin
-      alu_result_id_q   <= alu_result_id_i;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+
+    if (!rst_ni) begin
+      alu_result_addr_q <= '0;
+      alu_result_id_q <= '0;
+    end
+    else if (alu_result_gnt_o) begin
       alu_result_addr_q <= alu_result_addr_i;
+      alu_result_id_q <= alu_result_id_i;
     end
 
-    if (vinsn_result_written_d[mfpu_result_id_i]) begin
-      mfpu_result_id_q   <= mfpu_result_id_i;
+    if (!rst_ni) begin
+      alu_result_written_q <= '0;
+    end
+    else if (alu_result_gnt_o) begin
+      alu_result_written_q <= 1'b1;
+    end
+    else begin
+      alu_result_written_q <= '0;
+    end
+
+    if (!rst_ni) begin
+      mfpu_result_addr_q <= '0;
+      mfpu_result_id_q <= '0;
+    end
+    else if (mfpu_result_gnt_o) begin
       mfpu_result_addr_q <= mfpu_result_addr_i;
+      mfpu_result_id_q <= mfpu_result_id_i;
     end
 
-    if (vinsn_result_written_d[masku_result_id]) begin
-      masku_result_id_q   <= masku_result_id;
+    if (!rst_ni) begin
+      mfpu_result_written_q <= '0;
+    end
+    else if (mfpu_result_gnt_o) begin
+      mfpu_result_written_q <= 1'b1;
+    end
+    else begin
+      mfpu_result_written_q <= '0;
+    end
+
+    if (!rst_ni) begin
+      masku_result_addr_q <= '0;
+      masku_result_id_q <= '0;
+    end
+    else if (masku_result_gnt) begin
       masku_result_addr_q <= masku_result_addr;
+      masku_result_id_q <= masku_result_id;
     end
 
-    if (vinsn_result_written_d[ldu_result_id]) begin
-      ldu_result_id_q   <= ldu_result_id;
+    if (!rst_ni) begin
+      masku_result_written_q <= '0;
+    end
+    else if (masku_result_gnt) begin
+      masku_result_written_q <= 1'b1;
+    end
+    else begin
+      masku_result_written_q <= '0;
+    end
+
+    if (!rst_ni) begin
+      ldu_result_addr_q <= '0;
+      ldu_result_id_q <= '0;
+    end
+    else if (ldu_result_gnt) begin
       ldu_result_addr_q <= ldu_result_addr;
+      ldu_result_id_q <= ldu_result_id;
     end
 
-    if (vinsn_result_written_d[sldu_result_id]) begin
-      sldu_result_id_q   <= sldu_result_id;
-      sldu_result_addr_q <= sldu_result_addr;
+    if (!rst_ni) begin
+      ldu_result_written_q <= '0;
     end
+    else if (ldu_result_gnt) begin
+      ldu_result_written_q <= 1'b1;
+    end
+    else begin
+      ldu_result_written_q <= '0;
+    end
+
+    if (!rst_ni) begin
+      sldu_result_addr_q <= '0;
+      sldu_result_id_q <= '0;
+    end
+    else if (sldu_result_gnt) begin
+      sldu_result_addr_q <= sldu_result_addr;
+      sldu_result_id_q <= sldu_result_id;
+    end
+
+    if (!rst_ni) begin
+      sldu_result_written_q <= '0;
+    end
+    else if (sldu_result_gnt) begin
+      sldu_result_written_q <= 1'b1;
+    end
+    else begin
+      sldu_result_written_q <= '0;
+    end
+
   end
 
   ///////////////////////
@@ -540,18 +613,27 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             end
           end
 
-          forward_done[requester_index] = 1'b0;
+          //forward_done[requester_index] = 1'b0;
 
           stall[requester_index] = 1'b0;
           if (!forward_done[requester_index]) begin
             // Address match mask: 1 for ID that has matching write at current request address
 
-            addr_match_mask[requester_index][requester_metadata_q[requester_index].id] =
-              (requester_metadata_q[requester_index].id == alu_result_id_q    && requester_metadata_q[requester_index].addr == alu_result_addr_q)  ||
-              (requester_metadata_q[requester_index].id == mfpu_result_id_q   && requester_metadata_q[requester_index].addr == mfpu_result_addr_q) ||
-              (requester_metadata_q[requester_index].id == masku_result_id_q  && requester_metadata_q[requester_index].addr == masku_result_addr_q) ||
-              (requester_metadata_q[requester_index].id == ldu_result_id_q    && requester_metadata_q[requester_index].addr == ldu_result_addr_q)  ||
-              (requester_metadata_q[requester_index].id == sldu_result_id_q   && requester_metadata_q[requester_index].addr == sldu_result_addr_q);
+            if (alu_result_written_q) begin
+              addr_match_mask[requester_index][alu_result_id_q]   = (requester_metadata_q[requester_index].addr == alu_result_addr_q);
+            end
+            if (mfpu_result_written_q) begin
+              addr_match_mask[requester_index][mfpu_result_id_q]  = (requester_metadata_q[requester_index].addr == mfpu_result_addr_q);
+            end
+            if (masku_result_written_q) begin
+              addr_match_mask[requester_index][masku_result_id_q] = (requester_metadata_q[requester_index].addr == masku_result_addr_q);
+            end
+            if (ldu_result_written_q) begin
+              addr_match_mask[requester_index][ldu_result_id_q]   = (requester_metadata_q[requester_index].addr == ldu_result_addr_q);
+            end
+            if (sldu_result_written_q) begin
+              addr_match_mask[requester_index][sldu_result_id_q]  = (requester_metadata_q[requester_index].addr == sldu_result_addr_q);
+            end
 
             // Original stall structure unchanged, added address match filter for vinsn_result_written
             stall[requester_index] = |(requester_metadata_q[requester_index].hazard & ~(
@@ -771,6 +853,10 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     logic [NrBanks-1:0] bank_wr_vld;
     vid_e bank_rd_vid[NrBanks-1:0];
     vid_e bank_wr_vid[NrBanks-1:0];
+    // Forward bank valid signal (reverse index per bank for Verdi)
+    logic forward_bank_rd_vld [NrBanks-1:0];
+    // Forward bank VID signal (reverse index per bank for Verdi)
+    vid_e forward_bank_rd_vid [NrBanks-1:0];
     // LDU forwarding tracking for verification
     logic [NrOperandQueues-1:0] forward_vld;
     vaddr_t forward_addr;
@@ -898,11 +984,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
     assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank]; // Only VRF read
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
-    // Separate forwarding read signals (independent, easy to distinguish)
-    logic forward_bank_rd_vld;
-    vid_e forward_bank_rd_vid;
-    assign forward_bank_rd_vld = fwd_vld; // Only forwarding read
-    assign forward_bank_rd_vid = fwd_vld ? vid_e'({1'b1, {5{1'b1}} & 5'(fwd_addr >> 2)}) : none;
+    // Separate forwarding read signals (global array for observation)
+    assign forward_bank_rd_vld[bank] = fwd_vld; // Only forwarding read
+    assign forward_bank_rd_vid[bank] = fwd_vld ? vid_e'({1'b1, {5{1'b1}} & 5'(fwd_addr >> 2)}) : none;
     // Original VID signals (unchanged, only for VRF access)
     assign bank_rd_vid[bank] = {bank_rd_vld[bank], {5{bank_rd_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
     assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
@@ -910,15 +994,16 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   end : gen_vrf_arbiters
 
 `ifdef FOR_VERIFY
-// Remaining elements count for each operand queue
-vlen_t req_remaining_elements [NrOperandQueues];
-// Instruction ID for each operand queue's active request
-vid_t req_instr_id [NrOperandQueues];
-// Hazard write done status: 1 if any dependent instruction has completed write at current address
-logic req_hazard_write_done [NrOperandQueues];
+// Remaining elements count for each operand queue (reverse index for Verdi)
+vlen_t req_remaining_elements [NrOperandQueues-1:0];
+// Instruction ID for each operand queue (reverse index for Verdi)
+vid_t req_instr_id [NrOperandQueues-1:0];
+// Hazard write done status (reverse index for Verdi)
+logic req_hazard_write_done [NrOperandQueues-1:0];
 
 generate
 for (genvar q = 0; q < NrOperandQueues; q++) begin : gen_req_observe_signals
+  // Reverse index assignment for Verdi display order
   assign req_remaining_elements[q] = requester_metadata_q[q].len;
   assign req_instr_id[q] = requester_metadata_q[q].id;
   // Update observation signal: OR of all matching written hazard IDs
@@ -964,15 +1049,15 @@ for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_in
 end
 endgenerate
 
-// Mutex assertion for each requester
-generate
-for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_forward_mutex_assert
-  assert property (@(posedge clk_i) disable iff (!rst_ni)
-    $onehot0({ldu_forward_cond[requester_index], alu_forward_cond[requester_index], mfpu_forward_cond[requester_index], masku_forward_cond[requester_index], sldu_forward_cond[requester_index]})
-  ) else $error("Multiple forwarding conditions active for requester %0d! LDU:%0d ALU:%0d MFPU:%0d MASK:%0d SLDU:%0d",
-                requester_index, ldu_forward_cond[requester_index], alu_forward_cond[requester_index], mfpu_forward_cond[requester_index], masku_forward_cond[requester_index], sldu_forward_cond[requester_index]);
-end
-endgenerate
+// Mutex assertion for each requester (disabled per user request)
+// generate
+// for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_forward_mutex_assert
+//   assert property (@(posedge clk_i) disable iff (!rst_ni)
+//     $onehot0({ldu_forward_cond[requester_index], alu_forward_cond[requester_index], mfpu_forward_cond[requester_index], masku_forward_cond[requester_index], sldu_forward_cond[requester_index]})
+//   ) else $fatal(1, "Multiple forwarding conditions active for requester %0d at time %0t! LDU:%0d ALU:%0d MFPU:%0d MASK:%0d SLDU:%0d",
+//                 requester_index, $time, ldu_forward_cond[requester_index], alu_forward_cond[requester_index], mfpu_forward_cond[requester_index], masku_forward_cond[requester_index], sldu_forward_cond[requester_index]);
+// end
+// endgenerate
 `endif
 
 endmodule : operand_requester

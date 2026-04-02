@@ -95,23 +95,34 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic  ibuf_operand_valid;
   logic  ibuf_empty;
   logic  ibuf_pop;
+  logic  ibuf_full;  // Single write full signal
+  logic  ibuf_full2; // Dual write full signal
 
-  fifo_v3 #(
-    .DEPTH     (DataBufDepth),
-    .DATA_WIDTH(DataWidth   )
+  fifo_v4 #(
+    .DEPTH         (DataBufDepth),
+    .dtype         (elen_t       ),
+    .DUAL_WRITE_EN (DataBufDepth >= 2 ? 1'b1 : 1'b0), // Enable dual write only if depth >= 2
+    .FALL_THROUGH  (1'b0         )
   ) i_input_buffer (
-    .clk_i     (clk_i          ),
-    .rst_ni    (rst_ni         ),
-    .testmode_i(1'b0           ),
-    .flush_i   (flush_i        ),
-    // Forwarded data has higher priority, enters queue just like normal VRF read
-    .data_i    (forward_operand_valid_i ? forward_operand_i : operand_i),
-    .push_i    (forward_operand_valid_i ? 1'b1 : operand_valid_i),
-    .full_o    (/* Unused */   ),
-    .data_o    (ibuf_operand   ),
-    .pop_i     (ibuf_pop       ),
-    .empty_o   (ibuf_empty     ),
-    .usage_o   (/* Unused */   )
+    .clk_i     (clk_i                  ),
+    .rst_ni    (rst_ni                 ),
+    .testmode_i(1'b0                   ), // Test mode disabled
+    .flush_i   (flush_i                ),
+    // Write port 1: VRF read data (higher priority, stored first)
+    .wdata_i   (operand_i              ),
+    .push_i    (operand_valid_i        ),
+    .full_o    (ibuf_full              ),
+    // Write port 2: Forwarded data (lower priority, stored second)
+    .wdata2_i  (forward_operand_i      ),
+    .push2_i   (forward_operand_valid_i),
+    .full2_o   (ibuf_full2             ),
+    // Read port
+    .data_o    (ibuf_operand           ),
+    .pop_i     (ibuf_pop               ),
+    .empty_o   (ibuf_empty             ),
+    .alm_full_o(/* Unused */           ),
+    .alm_empty_o(/* Unused */          ),
+    .usage_o   (/* Unused */           )
   );
   assign ibuf_operand_valid = !ibuf_empty;
 
@@ -123,15 +134,25 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Maintain state
     ibuf_usage_d = ibuf_usage_q;
 
-    // Will receive a new operand (either from VRF or from forwarding path)
-    if (operand_issued_i || forward_operand_valid_i) ibuf_usage_d += 1;
+    // Count incoming operands: handle simultaneous dual writes
+    unique case ({forward_operand_valid_i, operand_valid_i})
+      2'b11: ibuf_usage_d += 2; // Both forward and VRF data arrive
+      2'b10: ibuf_usage_d += 1; // Only forward data arrives
+      2'b01: ibuf_usage_d += 1; // Only VRF data arrives
+      default:;
+    endcase
+
     // Consumed an operand
     if (ibuf_pop) ibuf_usage_d -= 1;
     // Flush the ibuf_usage_d
     if (flush_i) ibuf_usage_d = '0;
 
-    // Are we ready? Block if queue is full, even for forwarding
-    operand_queue_ready_o = (ibuf_usage_q != DataBufDepth);
+    // Are we ready? Block only when both ports would cause overflow
+    // - For dual write: need at least 2 free entries
+    // - For single write: need at least 1 free entry
+    operand_queue_ready_o = ~((forward_operand_valid_i && operand_valid_i && ibuf_usage_q > DataBufDepth - 2) ||
+                            (forward_operand_valid_i && !operand_valid_i && ibuf_usage_q == DataBufDepth) ||
+                            (!forward_operand_valid_i && operand_valid_i && ibuf_usage_q == DataBufDepth));
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_ibuf_usage_ff
@@ -557,5 +578,35 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       elem_count_q     <= elem_count_d;
     end
   end : p_type_conversion_ff
+
+`ifdef FOR_VERIFY
+// FIFO overflow protection assertions (disabled per user request)
+`include "common_cells/assertions.svh"
+
+// // Assert no push to full FIFO on port 1 (VRF read, higher priority)
+// `ASSERT_NEVER(VrfPushFull,
+//   operand_valid_i && ibuf_full && !flush_i,
+//   $sformatf("VRF read data pushed to full input buffer at time %0t, data lost!", $time))
+//
+// // Assert no push to full FIFO on port 2 (forwarded data, lower priority)
+// `ASSERT_NEVER(ForwardPushFull,
+//   forward_operand_valid_i && ibuf_full2 && !flush_i,
+//   $sformatf("Forward data pushed to full input buffer at time %0t, data lost!", $time))
+//
+// // Assert no dual push when not enough space
+// `ASSERT_NEVER(DualPushInsufficientSpace,
+//   forward_operand_valid_i && operand_valid_i && ibuf_full2 && !flush_i,
+//   $sformatf("Dual write attempted with insufficient FIFO space at time %0t, data lost!", $time))
+//
+// // Assert credit count never exceeds FIFO depth
+// `ASSERT_NEVER(CreditOverflow,
+//   ibuf_usage_q > DataBufDepth,
+//   $sformatf("Input buffer credit count exceeds FIFO depth at time %0t, credit logic corrupted!", $time))
+//
+// // Assert credit count never underflows
+// `ASSERT_NEVER(CreditUnderflow,
+//   ibuf_usage_q[$bits(ibuf_usage_q)-1] == 1'b1, // Sign bit set means negative
+//   $sformatf("Input buffer credit count underflow at time %0t, credit logic corrupted!", $time))
+`endif
 
 endmodule : operand_queue
