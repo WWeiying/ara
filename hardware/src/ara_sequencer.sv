@@ -51,7 +51,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  vlen_t                           addrgen_exception_vstart_i,
     input  logic                            addrgen_fof_exception_i,
     // Interface with the store unit
-    input  logic                            lsu_current_burst_exception_i
+    input  logic                            lsu_current_burst_exception_i,
+    // Source operand read completion signal from each lane
+    input  logic [NrLanes-1:0][NrVInsn-1:0] lane_src_read_done_i
   );
 
   `ifdef FOR_VERIFY
@@ -83,6 +85,16 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   // Ara is idle if no instruction is currently running on it.
   assign ara_idle_o = !(|vinsn_running_q);
+
+  // Aggregate source read completion signals across all lanes
+  // src_read_done[N] = 1 when any lane indicates read completion for instruction N
+  logic [NrVInsn-1:0] src_read_done;
+  always_comb begin
+    src_read_done = '0;
+    for (int l = 0; l < NrLanes; l++) begin
+      src_read_done |= lane_src_read_done_i[l];
+    end
+  end
 
   lzc #(.WIDTH(NrVInsn)) i_next_id (
     .in_i   (~vinsn_running_q  ),
@@ -383,7 +395,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
     // Update vector register's access list
     for (int unsigned v = 0; v < 32; v++) begin
-      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid] ;
+      // Clear read lock when source operands are fully read into queues OR instruction completes
+      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid] & ~src_read_done[read_list_q[v].vid];
+      // Write list remains unchanged: must wait for full instruction completion
       write_list_d[v].valid &= vinsn_running_q[write_list_q[v].vid];
     end
 
@@ -752,5 +766,30 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Each targeted PE must be ready (either with cnt < MAX or with a priority pass)
     assign vinsn_queue_issue[i] = ~target_vfus_vec[i] | (vinsn_queue_ready[i] | priority_pass[i]);
   end
+
+`ifdef FOR_VERIFY
+  // ---------------------------
+  // Dependency observation signals
+  // ---------------------------
+  // Bitmap indicating which in-flight instructions are being dependent on by other instructions
+  logic [NrVInsn-1:0] insn_being_dependent;
+  // High when at least one instruction is being dependent on
+  logic any_insn_dependent;
+
+  // Calculate dependency bitmap by OR-ing each column of the global hazard table
+  always_comb begin
+    insn_being_dependent = '0;
+    for (int producer_id = 0; producer_id < NrVInsn; producer_id++) begin
+      logic temp_or;
+      temp_or = 1'b0;
+      // OR all consumer bits for this producer instruction (double loop for compiler compatibility)
+      for (int consumer_id = 0; consumer_id < NrVInsn; consumer_id++) begin
+        temp_or |= global_hazard_table_o[consumer_id][producer_id];
+      end
+      insn_being_dependent[producer_id] = temp_or;
+    end
+    any_insn_dependent = |insn_being_dependent;
+  end
+`endif
 
 endmodule : ara_sequencer

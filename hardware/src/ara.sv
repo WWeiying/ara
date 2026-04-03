@@ -273,6 +273,9 @@ module ara import ara_pkg::*; #(
   logic                                        mask_valid_lane;
   logic      [NrLanes-1:0]                     lane_mask_ready;
 
+  // Source operand read completion signals from lanes
+  logic [NrLanes-1:0][NrVInsn-1:0] lane_src_read_done;
+
   // Mask unit scalar result variables
   elen_t     result_scalar;
   logic      result_scalar_valid;
@@ -314,7 +317,8 @@ module ara import ara_pkg::*; #(
     .addrgen_exception_i   (addrgen_exception        ),
     .addrgen_exception_vstart_i(addrgen_exception_vstart),
     .addrgen_fof_exception_i(addrgen_fof_exception),
-    .lsu_current_burst_exception_i(lsu_current_burst_exception)
+    .lsu_current_burst_exception_i(lsu_current_burst_exception),
+    .lane_src_read_done_i(lane_src_read_done)
   );
 
   // Scalar move support
@@ -449,7 +453,8 @@ module ara import ara_pkg::*; #(
       .masku_vrgat_req_i               (masku_vrgat_req                     ),
       .mask_i                          (mask[lane]                          ),
       .mask_valid_i                    (mask_valid[lane] & mask_valid_lane  ),
-      .mask_ready_o                    (lane_mask_ready[lane]               )
+      .mask_ready_o                    (lane_mask_ready[lane]               ),
+      .lane_src_read_done_o            (lane_src_read_done[lane]            )
     );
   end: gen_lanes
 

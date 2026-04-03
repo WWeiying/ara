@@ -691,8 +691,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : addrgen_state_WAIT_LAST_TRANSLATION
     endcase
 
-    if ((axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && vreq_is_load_d) ||
-        (~axi_addrgen_req_o.is_load && ~vreq_is_load_d)) && vreq_is_vld
+    if ((axi_addrgen_queue_empty || ((axi_addrgen_req_valid_o && axi_addrgen_req_o.is_load) && vreq_is_load_d) ||
+        ((axi_addrgen_req_valid_o && ~axi_addrgen_req_o.is_load) && ~vreq_is_load_d)) && vreq_is_vld
         && !(vreq_is_vld && ~vreq_is_load_q && axi_addrgen_prefetch_req_valid_o)) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;

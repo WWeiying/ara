@@ -83,7 +83,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  elen_t                                      ldu_result_wdata_i,
     input  strb_t                                      ldu_result_be_i,
     output logic                                       ldu_result_gnt_o,
-    output logic                                       ldu_result_final_gnt_o
+    output logic                                       ldu_result_final_gnt_o,
+    // Source operand read completion signal per requester: bit[q][N] = 1 when operands for insn N are read into queue q
+    output logic [NrVInsn-1:0]                         lane_src_read_done_o
   );
 
   import cf_math_pkg::idx_width;
@@ -390,6 +392,18 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   logic  [NrOperandQueues-1:0] forward_done;
   logic [NrVInsn-1:0] addr_match_mask[NrOperandQueues];
 
+  // Source operand read completion signals from operand requester
+  logic [NrOperandQueues-1:0][NrVInsn-1:0] lane_src_read_done;
+
+  // Aggregate read completion signals across all operand queues
+  always_comb begin
+    lane_src_read_done_o = '0;
+    for (int q = 0; q < NrOperandQueues; q++) begin
+      lane_src_read_done_o |= lane_src_read_done[q];
+    end
+  end
+
+
   for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
 
     // Did we get a grant?
@@ -479,9 +493,10 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         is_reduct : operand_request_i[requester_index].is_reduct
       };
 
-      forward_data[requester_index]    = '0;
-      forward_done[requester_index]    = '0;
-      addr_match_mask[requester_index] = '0;
+      forward_data[requester_index]       = '0;
+      forward_done[requester_index]       = '0;
+      addr_match_mask[requester_index]    = '0;
+      lane_src_read_done[requester_index] = '0;
 
       case (state_q[requester_index])
         IDLE: begin : state_q_IDLE
@@ -640,6 +655,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
             // Finished requesting all the elements
             if (requester_metadata_d[requester_index].len == '0) begin : finish_request
+              lane_src_read_done[requester_index][requester_metadata_q[requester_index].id] = 1'b1;
+
               state_d[requester_index] = IDLE;
 
               // Accept a new instruction

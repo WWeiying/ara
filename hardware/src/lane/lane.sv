@@ -106,7 +106,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface between the Mask unit and the VFUs
     input  strb_t                                          mask_i,
     input  logic                                           mask_valid_i,
-    output logic                                           mask_ready_o
+    output logic                                           mask_ready_o,
+    // Source operand read completion signal: bit[N] = 1 when all operands of insn N are read into queue in this lane
+    output logic [NrVInsn-1:0]                             lane_src_read_done_o
   );
 
   `include "common_cells/registers.svh"
@@ -387,7 +389,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .ldu_result_wdata_i       (ldu_result_wdata_i      ),
     .ldu_result_be_i          (ldu_result_be_i         ),
     .ldu_result_gnt_o         (ldu_result_gnt_o        ),
-    .ldu_result_final_gnt_o   (ldu_result_final_gnt_o  )
+    .ldu_result_final_gnt_o   (ldu_result_final_gnt_o  ),
+    // Source operand read completion signal
+    .lane_src_read_done_o     (lane_src_read_done_o    )
   );
 
   ////////////////////////////
