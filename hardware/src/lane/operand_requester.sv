@@ -966,7 +966,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
     // Separate forwarding read signals (global array for observation)
     assign forward_bank_rd_vld[bank] = fwd_vld; // Only forwarding read
-    assign forward_bank_rd_vid[bank] = fwd_vld ? vid_e'({1'b1, {5{1'b1}} & 5'(fwd_addr >> 2)}) : none;
+    assign forward_bank_rd_vid[bank] = fwd_vld ? vid_e'({1'b1, {5{1'b1}} & 5'(fwd_addr >> 2)}) : '0;
     // Original VID signals (unchanged, only for VRF access)
     assign bank_rd_vid[bank] = {bank_rd_vld[bank], {5{bank_rd_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
     assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
@@ -1028,7 +1028,7 @@ for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_in
                                                operand_queue_ready_i[requester_index];
 end
 endgenerate
-
+`endif
 // Mutex assertion for each requester (disabled per user request)
 // generate
 // for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_forward_mutex_assert
@@ -1038,6 +1038,16 @@ endgenerate
 //                 requester_index, $time, ldu_forward_cond[requester_index], alu_forward_cond[requester_index], mfpu_forward_cond[requester_index], masku_forward_cond[requester_index], sldu_forward_cond[requester_index]);
 // end
 // endgenerate
+`ifdef FOR_VERIFY
+  logic  [NrBanks-1:0][(NrGlobalMasters+NrOperandQueues-1):0] bank_req;
+  logic  [NrBanks-1:0] bank_conflict;
+  
+  for (genvar bank = 0; bank < NrBanks; bank++) begin
+     always_comb begin
+       bank_req[bank] = {ext_operand_req[bank], lane_operand_req[bank]};
+       bank_conflict[bank] = ($countones(bank_req[bank]) > 2'd1);
+     end
+  end
 `endif
 
 endmodule : operand_requester

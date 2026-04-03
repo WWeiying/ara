@@ -230,6 +230,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   axi_ar_t prefetch_axi_ar, prefetch_axi_ar_data;
   logic    prefetch_axi_ar_queue_push, prefetch_axi_ar_queue_pop;
   logic    prefetch_axi_ar_queue_valid;
+  logic    prefetch_axi_ar_queue_not_full;
 
   fall_through_register_v1 #(
     .T(axi_ar_t),
@@ -241,7 +242,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .testmode_i(1'b0              ),
     .data_i    (prefetch_axi_ar           ),
     .valid_i   (prefetch_axi_ar_queue_push),
-    .ready_o   (),
+    .ready_o   (prefetch_axi_ar_queue_not_full),
     .data_o    (prefetch_axi_ar_data      ),
     .valid_o   (prefetch_axi_ar_queue_valid),
     .ready_i   (prefetch_axi_ar_queue_pop)
@@ -764,7 +765,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               if (prefetch_axi_ar_hit) begin
                 axi_ar_o = '0;
               end
-              if (pe_req_d.avl >= (pe_req_d.vl << 1)) begin
+              if ((pe_req_d.avl >= (pe_req_d.vl << 1)) && prefetch_axi_ar_queue_not_full) begin
                 prefetch_axi_ar = '{
                   id     : AXI_ID_PREFETCH,
                   addr   : paddr + num_bytes,
