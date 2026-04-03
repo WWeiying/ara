@@ -390,6 +390,14 @@ function void print_perf_report();
       $display("[PERF] lane1 compute utilization      : %0.3f", real'(ara_tb.perf_end_n.rvv_lane_compute_cycle[1] - ara_tb.perf_start_n.rvv_lane_compute_cycle[1]) / total_rvv_cycles);
       $display("[PERF] lane2 compute utilization      : %0.3f", real'(ara_tb.perf_end_n.rvv_lane_compute_cycle[2] - ara_tb.perf_start_n.rvv_lane_compute_cycle[2]) / total_rvv_cycles);
       $display("[PERF] lane3 compute utilization      : %0.3f", real'(ara_tb.perf_end_n.rvv_lane_compute_cycle[3] - ara_tb.perf_start_n.rvv_lane_compute_cycle[3]) / total_rvv_cycles);
+      $display("[PERF] ==== VRF Perf lane0 ====\n");
+      $display("[PERF] lane0 total_bank_requests      : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
+      $display("[PERF] lane0 total_hp_bank_requests   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_hp_bank_requests );
+      $display("[PERF] lane0 total_lp_bank_requests   : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_lp_bank_requests );
+      $display("[PERF] lane0 total_bank_conflicts     : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_bank_conflicts   );
+      $display("[PERF] lane0 total_hp_bank_conflicts  : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_hp_bank_conflicts);
+      $display("[PERF] lane0 total_lp_bank_conflicts  : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_lp_bank_conflicts);
+      $display("[PERF] lane0 hp_block_lp              : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.hp_block_lp            );
       $display("[PERF] ==== Performance Report End ====\n");
 
       $fwrite(file_handle, "[PERF] ==== Performance Report Start ====\n");
