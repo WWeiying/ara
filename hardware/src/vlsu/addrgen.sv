@@ -82,6 +82,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           lsu_ex_flush_i
   );
 
+  `ifdef FOR_VERIFY
+    logic prefetch_en;
+    assign prefetch_en = 1'b1;
+  `endif
+
   localparam unsigned DataWidth = $bits(elen_t);
   localparam unsigned DataWidthB = DataWidth / 8;
 
@@ -818,7 +823,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               if (prefetch_axi_ar_hit) begin
                 axi_ar_o = '0;
               end
-              if ((pe_req_d.avl >= (pe_req_d.vl << 1)) && prefetch_axi_ar_queue_not_full) begin
+              if ((pe_req_d.avl >= (pe_req_d.vl << 1)) && prefetch_axi_ar_queue_not_full
+              `ifdef FOR_VERIFY
+                 && prefetch_en
+              `endif
+              ) begin
                 prefetch_axi_ar_queue_datain = '{
                   id     : AXI_ID_PREFETCH,
                   addr   : paddr + num_bytes,
@@ -1020,7 +1029,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     if (prefetch_axi_ar_queue_valid &&
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
-        !prefetch_pending_d) begin : prefetch_req
+        !prefetch_pending_d
+      `ifdef FOR_VERIFY
+        && prefetch_en
+      `endif
+    ) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;
       prefetch_axi_ar_rob_datain = prefetch_axi_ar_data;
