@@ -72,7 +72,7 @@ typedef struct packed {
   vlen_t vl;
   vlen_t vstart;
   rvv_pkg::vtype_t vtype;
-  vlen_t avl;
+  logic [31:0] avl;
 
   logic fault_only_first;
 

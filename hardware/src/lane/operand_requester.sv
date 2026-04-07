@@ -591,7 +591,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             end
           end
 
-          //forward_done[requester_index] = 1'b0;
+          forward_done[requester_index] = 1'b0;
 
           stall[requester_index] = 1'b0;
           if (!forward_done[requester_index]) begin

@@ -752,7 +752,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     if (vreq_is_vld &&
         // Block load only when store queue is valid AND write data hasn't been sent yet
-        !(vreq_is_load_d && (stu_axi_addrgen_queue_valid && !axi_w_valid_i))) begin : demand_req
+        !(vreq_is_load_d && ((stu_axi_addrgen_queue_valid && !axi_w_valid_i) || !prefetch_axi_ar_rob_empty))) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
 
@@ -839,7 +839,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 };
 
                 prefetch_axi_ar_queue_push = 1'b1;
-                prefetch_pending_d         = !prefetch_axi_ar_hit;
+                prefetch_pending_d         = 1'b1;//!prefetch_axi_ar_hit;
               end
             end
             else begin

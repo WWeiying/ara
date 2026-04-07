@@ -74,7 +74,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   vtype_t csr_vtype_d, csr_vtype_q;
   vxsat_e csr_vxsat_d, csr_vxsat_q;
   vxrm_t  csr_vxrm_d, csr_vxrm_q;
-  vlen_t  csr_avl_d, csr_avl_q;
+  logic [31:0] csr_avl_d, csr_avl_q;
 
   `FF(csr_vstart_q, csr_vstart_d, '0)
   `FF(csr_vl_q, csr_vl_d, '0)
@@ -679,7 +679,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
                     csr_vl_d = vlen_t'(insn.vsetivli_type.uimm5);
-                    csr_avl_d = vlen_t'(insn.vsetivli_type.uimm5);
+                    csr_avl_d = insn.vsetivli_type.uimm5;
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
                       // Do not update the vector length
@@ -693,7 +693,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       // Normal stripmining
                       csr_vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(csr_vl_d)]) ||
                         (vlen_t'(acc_req_i.rs1) > vlmax)) ? vlmax : vlen_t'(acc_req_i.rs1);
-                      csr_avl_d = vlen_t'(acc_req_i.rs1);
+                      csr_avl_d = acc_req_i.rs1[31:0];
                     end
                   end
                 end
