@@ -50,6 +50,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     input  axi_ar_t                        axi_addrgen_prefetch_req_i,
     input  logic                           axi_addrgen_prefetch_req_valid_i,
     output logic                           axi_addrgen_prefetch_req_ready_o,
+    input  logic                           block_load_addr_i,
     // Interface with the lanes
     output logic             [NrLanes-1:0] ldu_result_req_o,
     output vid_t             [NrLanes-1:0] ldu_result_id_o,

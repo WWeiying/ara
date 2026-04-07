@@ -346,6 +346,10 @@ module ara import ara_pkg::*; #(
   logic                                        addrgen_operand_ready;
   logic      [NrLanes-1:0]                     sldu_red_valid;
 
+  logic [NrLanes-1:0] lane_fpu_reduction_busy;
+  logic               block_load_addr;
+  assign block_load_addr = |lane_fpu_reduction_busy;
+
   // Results
   // Load Unit
   logic      [NrLanes-1:0]                     ldu_result_req;
@@ -408,6 +412,7 @@ module ara import ara_pkg::*; #(
       .pe_resp_o                       (pe_resp[lane]                       ),
       .alu_vinsn_done_o                (alu_vinsn_done[lane]                ),
       .mfpu_vinsn_done_o               (mfpu_vinsn_done[lane]               ),
+      .fpu_reduction_busy_o            (lane_fpu_reduction_busy[lane]       ),
       .global_hazard_table_i           (global_hazard_table                 ),
       // Interface with the slide unit
       .sldu_result_req_i               (sldu_result_req[lane]               ),
@@ -559,6 +564,7 @@ module ara import ara_pkg::*; #(
     .addrgen_operand_i          (sldu_addrgen_operand                                  ),
     .addrgen_operand_valid_i    (addrgen_operand_valid                                 ),
     .addrgen_operand_ready_o    (addrgen_operand_ready                                 ),
+    .block_load_addr_i          (block_load_addr                                       ),
     // CSR input
     .en_ld_st_translation_i     (acc_mmu_en_q                                          ),
     // Interface with CVA6's sv39 MMU

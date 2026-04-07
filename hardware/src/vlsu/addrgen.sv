@@ -74,6 +74,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output axi_ar_t                        axi_addrgen_prefetch_req_o,
     output logic                           axi_addrgen_prefetch_req_valid_o,
     input  logic                           axi_addrgen_prefetch_req_ready_i,
+    input  logic                           block_load_addr_i,
     // Interface with the lanes (for scatter/gather operations)
     input  elen_t            [NrLanes-1:0] addrgen_operand_i,
     input  logic             [NrLanes-1:0] addrgen_operand_valid_i,
@@ -752,6 +753,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     if (vreq_is_vld &&
         // Block load only when store queue is valid AND write data hasn't been sent yet
+        !(vreq_is_load_d && block_load_addr_i) &&
         !(vreq_is_load_d && ((stu_axi_addrgen_queue_valid && !axi_w_valid_i) || !prefetch_axi_ar_rob_empty))) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;

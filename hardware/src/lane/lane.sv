@@ -60,6 +60,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output `STRUCT_PORT_BITS(pe_resp_t_bits)               pe_resp_o,
     output logic                                           alu_vinsn_done_o,
     output logic                                           mfpu_vinsn_done_o,
+    output logic                                           fpu_reduction_busy_o,
     input  logic                [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_i,
     // Interface with the Store unit
     output elen_t                                          stu_operand_o,
@@ -533,6 +534,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the SLDU/ADDRGEN arbiter
     .alu_red_complete_o   (alu_red_complete                       ),
     .fpu_red_complete_o   (fpu_red_complete                       ),
+    .fpu_red_inter_done_o (fpu_red_inter_done                     ),
     // Interface with the operand requester
     // ALU
     .alu_result_req_o     (alu_result_req                         ),
@@ -624,6 +626,29 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Break timing path
   `FF(vfu_operation_valid_q, vfu_operation_valid, 1'b0, clk_i, rst_ni);
   `FF(vfu_operation_op_q, vfu_operation.op, VADD, clk_i, rst_ni);
+
+  logic fpu_reduction_busy_d, fpu_reduction_busy_q;
+  logic fpu_red_inter_done_o;
+  
+  always_comb begin
+    fpu_reduction_busy_d = fpu_reduction_busy_q;
+  
+    if (vfu_operation_valid_q && (vfu_operation_op_q inside {[VFREDUSUM:VFWREDOSUM]}))
+      fpu_reduction_busy_d = 1'b1;
+  
+    if (fpu_red_inter_done) 
+      fpu_reduction_busy_d = 1'b0;
+
+    if (fpu_red_complete)
+      fpu_reduction_busy_d = 1'b0;
+  end
+  
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) fpu_reduction_busy_q <= 1'b0;
+    else         fpu_reduction_busy_q <= fpu_reduction_busy_d;
+  end
+  
+  assign fpu_reduction_busy_o = fpu_reduction_busy_q;
 
   always_comb begin
     sldu_addrgen_sel_d = SLDU_SEL;

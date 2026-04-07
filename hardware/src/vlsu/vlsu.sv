@@ -62,6 +62,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     input  elen_t     [NrLanes-1:0] addrgen_operand_i,
     input  logic      [NrLanes-1:0] addrgen_operand_valid_i,
     output logic                    addrgen_operand_ready_o,
+    input  logic                    block_load_addr_i,
+
     // STU exception support
     input  logic                    lsu_ex_flush_i,
     output logic                    lsu_ex_flush_done_o,
@@ -211,6 +213,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_addrgen_prefetch_req_o      (axi_addrgen_prefetch_req),
     .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
+    .block_load_addr_i               (block_load_addr_i),
 
     // CSR input
     .en_ld_st_translation_i,

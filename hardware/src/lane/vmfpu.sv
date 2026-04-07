@@ -43,6 +43,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     output logic           [NrVInsn-1:0] mfpu_vinsn_done_o,
     // Interface with the lane
     output logic                         fpu_red_complete_o,
+    output logic fpu_red_inter_done_o,
     // Interface with the operand queues
     input  elen_t          [2:0]         mfpu_operand_i,
     input  logic           [2:0]         mfpu_operand_valid_i,
@@ -1414,6 +1415,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     issue_be = '0;
 
     fpu_red_complete_d = 1'b0;
+    fpu_red_inter_done_o = 1'b0;
 
     // Get latencies
     vinsn_issue_lat_d      = fpu_latency(vinsn_issue_d.vtype.vsew, vinsn_issue_d.op);
@@ -1942,6 +1944,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             sldu_transactions_cnt_d = sldu_transactions_cnt_q - 1;
             // Is this the last cycle for the INTER-LANES phase?
             if (sldu_transactions_cnt_q == 1) begin
+              fpu_red_inter_done_o = 1'b1;
               // Lane 0 is receiving an already processed result
               // and needs to SIMD-reduce the result
               if (lane_id_i == '0) begin
