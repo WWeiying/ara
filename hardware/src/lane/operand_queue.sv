@@ -126,42 +126,8 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   );
   assign ibuf_operand_valid = !ibuf_empty;
 
-  // We used a credit based system, to ensure that the FIFO is always
-  // able to accept a request.
-  logic [idx_width(DataBufDepth):0] ibuf_usage_d, ibuf_usage_q;
-
-  always_comb begin: p_ibuf_usage
-    // Maintain state
-    ibuf_usage_d = ibuf_usage_q;
-
-    // Count incoming operands: handle simultaneous dual writes
-    unique case ({forward_operand_valid_i, operand_valid_i})
-      2'b11: ibuf_usage_d += 2; // Both forward and VRF data arrive
-      2'b10: ibuf_usage_d += 1; // Only forward data arrives
-      2'b01: ibuf_usage_d += 1; // Only VRF data arrives
-      default:;
-    endcase
-
-    // Consumed an operand
-    if (ibuf_pop) ibuf_usage_d -= 1;
-    // Flush the ibuf_usage_d
-    if (flush_i) ibuf_usage_d = '0;
-
-    // Are we ready? Block only when both ports would cause overflow
-    // - For dual write: need at least 2 free entries
-    // - For single write: need at least 1 free entry
-    operand_queue_ready_o = ~((forward_operand_valid_i && operand_valid_i && ibuf_usage_q > DataBufDepth - 2) ||
-                            (forward_operand_valid_i && !operand_valid_i && ibuf_usage_q == DataBufDepth) ||
-                            (!forward_operand_valid_i && operand_valid_i && ibuf_usage_q == DataBufDepth));
-  end
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin: p_ibuf_usage_ff
-    if (!rst_ni) begin
-      ibuf_usage_q <= '0;
-    end else begin
-      ibuf_usage_q <= ibuf_usage_d;
-    end
-  end
+  assign operand_queue_ready_o = ~((operand_valid_i && ibuf_full) ||
+                                   (forward_operand_valid_i && (ibuf_full2 || operand_valid_i)));
 
   ///////////////////////
   //  Type conversion  //

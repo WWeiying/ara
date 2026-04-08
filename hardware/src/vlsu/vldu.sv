@@ -203,7 +203,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   fifo_v3 #(
-    .DEPTH(VInsnQueueDepth*4),
+    .DEPTH(VInsnQueueDepth*4*8),
     .dtype(axi_r_t             )
   ) i_prefetch_axi_r_queue0 (
     .clk_i     (clk_i                      ),
@@ -220,7 +220,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   );
 
   fifo_v3 #(
-    .DEPTH(VInsnQueueDepth*4),
+    .DEPTH(VInsnQueueDepth*4*8),
     .dtype(axi_r_t             )
   ) i_prefetch_axi_r_queue1 (
     .clk_i     (clk_i                      ),
