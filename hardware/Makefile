@@ -173,8 +173,8 @@ sim: compile
 	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
 
 verify: 
-	@cd ../apps && $(MAKE) test && $(MAKE) bin/test.ideal
-	@$(MAKE) sim app=test verify=1 ideal_dispatcher=1
+	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
+	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
 	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --dest-only --log-file sim/regdump_compare.log
 
 clean:

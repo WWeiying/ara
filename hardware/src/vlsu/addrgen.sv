@@ -1029,7 +1029,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end : start_req
     end : demand_req
 
-    if (prefetch_axi_ar_queue_valid &&
+    if (axi_ar_ready_i &&
+        prefetch_axi_ar_queue_valid &&
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_pending_d
       `ifdef FOR_VERIFY
