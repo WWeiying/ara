@@ -175,7 +175,7 @@ sim: compile
 verify: 
 	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
 	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
-	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --dest-only --log-file sim/regdump_compare.log
+	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --log-file sim/regdump_compare.log
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *
