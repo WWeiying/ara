@@ -132,7 +132,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproje
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
-.PHONY: bender compile sim clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
+.PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
 
 # Bender
 bender: $(BENDER)
@@ -171,6 +171,10 @@ sim: compile
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
+verify: 
+	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
+	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
+#	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --dest-only --log-file sim/regdump_compare.log
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *
