@@ -320,7 +320,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   `FF(alu_red_complete_o, alu_red_complete_d, 1'b0, clk_i, rst_ni);
 
   // Signal to indicate the state of the ALU
-  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION} alu_state_e;
+  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION, REDUCTION_COMMIT_WAIT} alu_state_e;
   alu_state_e alu_state_d, alu_state_q;
 
   // Reductions commit by zeroing the commit counter
@@ -708,8 +708,6 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               if (vinsn_queue_d.issue_cnt != 0)
                 issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
 
-              // Commit and give the done to the main sequencer
-              commit_cnt_d = '0;
 
               // Bump pointers and counters of the result queue
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -718,7 +716,19 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 result_queue_write_pnt_d = 0;
               else
                 result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+
+              alu_state_d = REDUCTION_COMMIT_WAIT;
             end
+          end
+        end
+
+        REDUCTION_COMMIT_WAIT: begin
+          // Wait until the final reduction result is actually written back
+          // through alu_result_req_o / alu_result_gnt_i.
+          prevent_commit = 1'b0;
+          // Commit and give the done to the main sequencer
+          if (alu_result_gnt_i) begin
+            commit_cnt_d = '0;
           end
         end
         default:;
@@ -730,8 +740,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     //////////////////////////////////
 
     alu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
-    if (alu_state_q == NO_REDUCTION || (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
-      alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] & ((alu_state_q == SIMD_REDUCTION) || !result_queue_q[result_queue_read_pnt_q].mask);
+    if (alu_state_q == NO_REDUCTION || ((alu_state_q == SIMD_REDUCTION || alu_state_q == REDUCTION_COMMIT_WAIT) && simd_red_cnt_q == simd_red_cnt_max_q)) begin
+      alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] & ((alu_state_q == SIMD_REDUCTION || alu_state_q == REDUCTION_COMMIT_WAIT) || !result_queue_q[result_queue_read_pnt_q].mask);
     end else begin
       alu_result_req_o = 1'b0;
     end
