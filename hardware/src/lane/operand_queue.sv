@@ -97,6 +97,8 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic  ibuf_pop;
   logic  ibuf_full;  // Single write full signal
   logic  ibuf_full2; // Dual write full signal
+  logic  ibuf_push_operand;
+  logic  ibuf_push_forward;
 
   fifo_v4 #(
     .DEPTH         (DataBufDepth),
@@ -110,11 +112,11 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     .flush_i   (flush_i                ),
     // Write port 1: VRF read data (higher priority, stored first)
     .wdata_i   (operand_i              ),
-    .push_i    (operand_valid_i        ),
+    .push_i    (ibuf_push_operand      ),
     .full_o    (ibuf_full              ),
     // Write port 2: Forwarded data (lower priority, stored second)
     .wdata2_i  (forward_operand_i      ),
-    .push2_i   (forward_operand_valid_i),
+    .push2_i   (ibuf_push_forward      ),
     .full2_o   (ibuf_full2             ),
     // Read port
     .data_o    (ibuf_operand           ),
@@ -126,8 +128,46 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   );
   assign ibuf_operand_valid = !ibuf_empty;
 
-  assign operand_queue_ready_o = ~((operand_valid_i && ibuf_full) ||
-                                   (forward_operand_valid_i && (ibuf_full2 || operand_valid_i)));
+  // Push policy:
+  // - Never attempt writes when FIFO ports report full.
+  // - If only one slot is available, preserve port-1 semantics (VRF path),
+  //   and suppress port-2 writes.
+  assign ibuf_push_operand = operand_valid_i && !ibuf_full;
+  assign ibuf_push_forward = forward_operand_valid_i &&
+                             ((operand_valid_i && !ibuf_full2) ||
+                              (!operand_valid_i && !ibuf_full));
+
+  // We used a credit based system, to ensure that the FIFO is always
+  // able to accept a request.
+  logic [idx_width(DataBufDepth):0] ibuf_usage_d, ibuf_usage_q;
+
+  always_comb begin: p_ibuf_usage
+    // Maintain state
+    ibuf_usage_d = ibuf_usage_q;
+
+    // Count incoming operands: handle simultaneous dual writes
+    unique case ({ibuf_push_forward, ibuf_push_operand})
+      2'b11: ibuf_usage_d += 2; // Both forward and VRF data arrive
+      2'b10: ibuf_usage_d += 1; // Only forward data arrives
+      2'b01: ibuf_usage_d += 1; // Only VRF data arrives
+      default:;
+    endcase
+
+    // Consumed an operand
+    if (ibuf_pop) ibuf_usage_d -= 1;
+    // Flush the ibuf_usage_d
+    if (flush_i) ibuf_usage_d = '0;
+
+    operand_queue_ready_o = (ibuf_usage_q <= DataBufDepth - 2);
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin: p_ibuf_usage_ff
+    if (!rst_ni) begin
+      ibuf_usage_q <= '0;
+    end else begin
+      ibuf_usage_q <= ibuf_usage_d;
+    end
+  end
 
   ///////////////////////
   //  Type conversion  //

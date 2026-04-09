@@ -411,8 +411,12 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       assign operand_requester_gnt[requester_index][bank] = operand_gnt[bank][requester_index];
     end
 
-    // Did we issue a word to this operand queue? (VRF read grant OR LDU forwarding success)
-    assign operand_issued_o[requester_index] = |(operand_requester_gnt[requester_index]) || forward_done[requester_index];
+    // Did we issue a word to this operand queue?
+    // - VRF path: accepted on bank grant.
+    // - Forward path: accepted only when queue is ready.
+    assign operand_issued_o[requester_index] = |(operand_requester_gnt[requester_index]) ||
+                                               (forward_done[requester_index] &&
+                                                operand_queue_ready_i[requester_index]);
 
     always_comb begin: operand_requester
       // Helper local variables
@@ -538,7 +542,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           if (ldu_result_req &&
               !lsu_ex_flush_i &&
               requester_metadata_q[requester_index].hazard[ldu_result_id] &&
-              ldu_result_addr == requester_metadata_q[requester_index].addr) begin
+              ldu_result_addr == requester_metadata_q[requester_index].addr &&
+              operand_queue_ready_i[requester_index]) begin
             forward_done[requester_index] = 1'b1;
             for (int byte_idx = 0; byte_idx < $bits(strb_t); byte_idx++) begin
               forward_data[requester_index][8*byte_idx +: 8] = ldu_result_be[byte_idx] ?
@@ -720,7 +725,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     forward_operand_valid_o = '0;
 
     for (int i = 0; i < NrOperandQueues; i++) begin
-      if (forward_done[i]) begin
+      if (forward_done[i] && operand_queue_ready_i[i]) begin
         forward_operand_o[i] = forward_data[i];
         forward_operand_valid_o[i] = 1'b1;
       end
@@ -841,7 +846,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       forward_addr = '0;
       forward_vid = none;
       for (int q = 0; q < NrOperandQueues; q++) begin
-        if (forward_done[q]) begin
+        if (forward_done[q] && operand_queue_ready_i[q]) begin
           forward_vld[q] = 1'b1;
           forward_addr = ldu_result_addr_i;
           forward_vid = vid_e'({1'b1, {5{1'b1}} & 5'(ldu_result_addr_i >> 2)});

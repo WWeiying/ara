@@ -83,10 +83,29 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           lsu_ex_flush_i
   );
 
-  `ifdef FOR_VERIFY
-    logic prefetch_en;
-    assign prefetch_en = 1'b1;
-  `endif
+  typedef enum logic [2:0] {
+  PF_EN_1X = 3'b000,
+  PF_EN_2X = 3'b001,
+  PF_EN_4X = 3'b010,
+  PF_EN_8X = 3'b011,
+  PF_DEN   = 3'b100
+  } pf_info;
+
+  pf_info     prefetch_info;
+  logic [1:0] prefetch_mul;
+  logic       prefetch_en;
+
+  assign prefetch_info = PF_DEN;
+
+  always_comb begin
+    case (prefetch_info)
+      PF_EN_1X: {prefetch_en, prefetch_mul} = {1'b1, 2'd0};
+      PF_EN_2X: {prefetch_en, prefetch_mul} = {1'b1, 2'd1};
+      PF_EN_4X: {prefetch_en, prefetch_mul} = {1'b1, 2'd2};
+      PF_EN_8X: {prefetch_en, prefetch_mul} = {1'b1, 2'd3};
+      default:  {prefetch_en, prefetch_mul} = {1'b0, 2'd0};
+    endcase
+  end
 
   localparam unsigned DataWidth = $bits(elen_t);
   localparam unsigned DataWidthB = DataWidth / 8;
@@ -826,13 +845,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 axi_ar_o = '0;
               end
               if ((pe_req_d.avl >= (pe_req_d.vl << 1)) && prefetch_axi_ar_queue_not_full
-              `ifdef FOR_VERIFY
                  && prefetch_en
-              `endif
               ) begin
                 prefetch_axi_ar_queue_datain = '{
                   id     : AXI_ID_PREFETCH,
-                  addr   : paddr + num_bytes,
+                  addr   : paddr + num_bytes << prefetch_mul,
                   len    : burst_length - 1,
                   size   : eff_axi_dw_log_d,
                   cache  : CACHE_MODIFIABLE,
@@ -1033,9 +1050,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         prefetch_axi_ar_queue_valid &&
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_pending_d
-      `ifdef FOR_VERIFY
         && prefetch_en
-      `endif
     ) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;
