@@ -58,9 +58,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   `ifdef FOR_VERIFY
   logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
+  vid_t instr_id;
 
   riscv::instruction_t sequencer_instr;
   assign sequencer_instr = riscv::instruction_t'(pe_req_o.instr) & {$bits(pe_req_o.instr){pe_req_valid_o}};
+  assign instr_id = riscv::instruction_t'(pe_req_o.id) & {$bits(pe_req_o.id){pe_req_valid_o}};
   `endif
 
   `include "common_cells/registers.svh"
