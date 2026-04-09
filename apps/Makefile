@@ -68,7 +68,6 @@ $(APPS): % : bin/% $(APPS_DIR)/Makefile $(shell find common -type f)
 .PHONY: patch-spike-crt0
 patch-spike-crt0: $(spike_env_dir)/benchmarks/common/crt.S
 	sed -i s/"li t0, MSTATUS_FS | MSTATUS_XS$$"/"li t0, MSTATUS_FS | MSTATUS_XS | MSTATUS_VS"/ $<
-	git update-index --assume-unchanged $<
 
 # Only some applications need to generate and then compile the data file
 # Generate a dummy data file for applications that do not need it
