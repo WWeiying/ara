@@ -31,8 +31,8 @@
 #include "printf.h"
 #endif
 
-#define M_ROW 1024
-#define V_LEN 1024
+#define M_ROW 64
+#define V_LEN 64
 double GEMV_M[M_ROW * V_LEN]
     __attribute__((aligned(4 * NR_LANES), section(".l2")));
 double GEMV_D[M_ROW] __attribute__((aligned(4 * NR_LANES), section(".l2")));

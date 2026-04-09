@@ -43,6 +43,9 @@ LLVM_INSTALL_DIR        ?= $(INSTALL_DIR)/riscv-llvm
 ISA_SIM_INSTALL_DIR     ?= $(INSTALL_DIR)/riscv-isa-sim
 ISA_SIM_MOD_INSTALL_DIR ?= $(INSTALL_DIR)/riscv-isa-sim-mod
 #ISA_SIM_MOD_INSTALL_DIR ?= /home/wangwy/brook/toolchains/spike
+SPIKE_VREG = /home/wangwy/brook/toolchains/spike1.0/bin/spike
+SPIKE_VREG_FLAGS = --isa=rv64gcv_zvl1024b -d
+
 
 RISCV_XLEN    ?= 64
 RISCV_ARCH    ?= rv$(RISCV_XLEN)gcv
