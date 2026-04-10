@@ -95,7 +95,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [1:0] prefetch_mul;
   logic       prefetch_en;
 
-  assign prefetch_info = PF_DEN;
+  assign prefetch_info = PF_EN_1X;
 
   always_comb begin
     case (prefetch_info)
