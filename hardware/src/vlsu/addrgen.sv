@@ -839,7 +839,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_axi_ar_rob_match |= second_prefetch_vld_compare_q;
 
     if (vreq_is_vld &&
-        !(vreq_is_load_d && block_load_addr_i) &&
+        //!(vreq_is_load_d && block_load_addr_i) &&
         !(vreq_is_load_d && (1'b0&(stu_axi_addrgen_queue_valid && !axi_w_valid_i) || (prefetch_axi_ar_rob_match || prefetch_axi_ar_rob_pop_done_counter_d))) &&
         !second_prefetch_vld_q) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
