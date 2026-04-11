@@ -129,7 +129,7 @@ SIMULATOR_POWER_OPT :=
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
 SIM_DUMP := 
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
-SIM_TIME := +vcs+finish+10000ns
+SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
 .PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara

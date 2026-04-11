@@ -108,18 +108,6 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   strb_t  ldu_result_be;
   logic   ldu_result_req;
   logic   ldu_result_gnt;
-//  stream_register #(.T(stream_register_payload_t)) i_ldu_stream_register (
-//    .clk_i     (clk_i                                                                    ),
-//    .rst_ni    (rst_ni                                                                   ),
-//    .clr_i     (1'b0                                                                     ),
-//    .testmode_i(1'b0                                                                     ),
-//    .data_i    ({ldu_result_id_i, ldu_result_addr_i, ldu_result_wdata_i, ldu_result_be_i}),
-//    .valid_i   (ldu_result_req_i                                                         ),
-//    .ready_o   (ldu_result_gnt_o                                                         ),
-//    .data_o    ({ldu_result_id, ldu_result_addr, ldu_result_wdata, ldu_result_be}        ),
-//    .valid_o   (ldu_result_req                                                           ),
-//    .ready_i   (ldu_result_gnt                                                           )
-//  );
 
   fall_through_register_v1 #(
     .T(stream_register_payload_t),
@@ -182,6 +170,27 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     .valid_o   (masku_result_req                                                                 ),
     .ready_i   (masku_result_gnt                                                                 )
   );
+
+  logic [NrVInsn-1:0] ldu_result_id_oh;
+  logic [NrVInsn-1:0] sldu_result_id_oh;
+  logic [NrVInsn-1:0] masku_result_id_oh;
+  logic [NrVInsn-1:0] alu_result_id_oh;
+  logic [NrVInsn-1:0] mfpu_result_id_oh;
+
+
+  always_comb begin
+    ldu_result_id_oh   = '0;
+    sldu_result_id_oh  = '0;
+    masku_result_id_oh = '0;
+    alu_result_id_oh   = '0;
+    mfpu_result_id_oh  = '0;
+
+    ldu_result_id_oh[ldu_result_id]     = 1'b1;
+    sldu_result_id_oh[sldu_result_id]   = 1'b1;
+    masku_result_id_oh[masku_result_id] = 1'b1;
+    alu_result_id_oh[alu_result_id_i]   = 1'b1;
+    mfpu_result_id_oh[mfpu_result_id_i] = 1'b1;
+  end
 
   // The very last grant must happen when the instruction actually write in the VRF
   // Otherwise the dependency is freed in advance
@@ -541,7 +550,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           // LDU forward detection
           if (ldu_result_req &&
               !lsu_ex_flush_i &&
-              requester_metadata_q[requester_index].hazard[ldu_result_id] &&
+              !(|(requester_metadata_q[requester_index].hazard & ~ldu_result_id_oh)) &&
               ldu_result_addr == requester_metadata_q[requester_index].addr &&
               operand_queue_ready_i[requester_index]) begin
             forward_done[requester_index] = 1'b1;
@@ -552,7 +561,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           end
           // ALU forward detection
           else if (alu_result_req_i &&
-              requester_metadata_q[requester_index].hazard[alu_result_id_i] &&
+              !(|(requester_metadata_q[requester_index].hazard & ~alu_result_id_oh)) &&
               alu_result_addr_i == requester_metadata_q[requester_index].addr) begin
             forward_done[requester_index] = 1'b1;
             for (int byte_idx = 0; byte_idx < $bits(strb_t); byte_idx++) begin
@@ -562,7 +571,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           end
           // MFPU forward detection
           else if (mfpu_result_req_i &&
-              requester_metadata_q[requester_index].hazard[mfpu_result_id_i] &&
+              !(|(requester_metadata_q[requester_index].hazard & ~mfpu_result_id_oh)) &&
               mfpu_result_addr_i == requester_metadata_q[requester_index].addr) begin
             forward_done[requester_index] = 1'b1;
             for (int byte_idx = 0; byte_idx < $bits(strb_t); byte_idx++) begin
@@ -572,7 +581,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           end
           // Mask unit forward detection
           else if (masku_result_req &&
-              requester_metadata_q[requester_index].hazard[masku_result_id] &&
+              !(|(requester_metadata_q[requester_index].hazard & ~masku_result_id_oh)) &&
               masku_result_addr == requester_metadata_q[requester_index].addr) begin
             forward_done[requester_index] = 1'b1;
             for (int byte_idx = 0; byte_idx < $bits(strb_t); byte_idx++) begin
@@ -582,7 +591,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           end
           // Slide unit forward detection
           else if (sldu_result_req &&
-              requester_metadata_q[requester_index].hazard[sldu_result_id] &&
+              !(|(requester_metadata_q[requester_index].hazard & ~sldu_result_id_oh)) &&
               sldu_result_addr == requester_metadata_q[requester_index].addr) begin
             forward_done[requester_index] = 1'b1;
             for (int byte_idx = 0; byte_idx < $bits(strb_t); byte_idx++) begin

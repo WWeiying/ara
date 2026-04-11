@@ -239,23 +239,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic             stu_axi_addrgen_queue_valid;
   logic             stu_axi_addrgen_queue_ready;
 
-//  fifo_v3 #(
-//    .DEPTH(VaddrgenInsnQueueDepth),
-//    .dtype(addrgen_axi_req_t     )
-//  ) i_addrgen_req_queue (
-//    .clk_i     (clk_i                  ),
-//    .rst_ni    (rst_ni                 ),
-//    .flush_i   (1'b0                   ),
-//    .testmode_i(1'b0                   ),
-//    .data_i    (axi_addrgen_queue      ),
-//    .push_i    (axi_addrgen_queue_push ),
-//    .full_o    (axi_addrgen_queue_full ),
-//    .data_o    (axi_addrgen_req_o      ),
-//    .pop_i     (axi_addrgen_queue_pop  ),
-//    .empty_o   (axi_addrgen_queue_empty),
-//    .usage_o   (/* Unused */           )
-//  );
-
   fall_through_register_v1 #(
     .T(addrgen_axi_req_t),
     .DEPTH(VaddrgenInsnQueueDepth)
@@ -332,14 +315,20 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_axi_ar_rob_pop;
   logic    prefetch_axi_ar_rob_full;
   logic    prefetch_axi_ar_rob_empty;
+  axi_addr_t prefetch_axi_ar_rob_pop_done_addr_d, prefetch_axi_ar_rob_pop_done_addr_q;
+  logic    prefetch_axi_ar_rob_pop_done_counter_d, prefetch_axi_ar_rob_pop_done_counter_q;
 
   axi_addr_t prefetch_axi_addr_lookup_fifo_datain, prefetch_axi_addr_lookup_fifo_data;
   logic      prefetch_axi_addr_lookup_fifo_push;
   logic      prefetch_axi_addr_lookup_fifo_pop;
   logic      prefetch_axi_addr_lookup_fifo_full;
   logic      prefetch_axi_addr_lookup_fifo_empty;
+  
+  axi_ar_t   prefetch_axi_ar_rob_mem[VaddrgenInsnQueueDepth];
+  logic      prefetch_axi_ar_rob_vld[VaddrgenInsnQueueDepth];
+  logic      prefetch_axi_ar_rob_match;
 
-  fifo_v3 #(
+  fifo_v5 #(
     .DEPTH(VaddrgenInsnQueueDepth),
     .dtype(axi_ar_t              )
   ) i_prefetch_axi_ar_rob (
@@ -353,12 +342,36 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .data_o    (prefetch_axi_ar_rob_data ),
     .pop_i     (prefetch_axi_ar_rob_pop  ),
     .empty_o   (prefetch_axi_ar_rob_empty),
+    .mem_o     (prefetch_axi_ar_rob_mem  ),
+    .vld_o     (prefetch_axi_ar_rob_vld  ),
     .usage_o   (/* Unused */             )
   );
 
   assign axi_addrgen_prefetch_req_valid_o = !prefetch_axi_ar_rob_empty;
   assign axi_addrgen_prefetch_req_o       = prefetch_axi_ar_rob_data;
   assign prefetch_axi_ar_rob_pop          = axi_addrgen_prefetch_req_ready_i;
+
+  always_comb begin
+    prefetch_axi_ar_rob_pop_done_counter_d = prefetch_axi_ar_rob_pop_done_counter_q;
+    prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_pop_done_addr_q;
+    if (($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) begin
+      prefetch_axi_ar_rob_pop_done_counter_d = ~prefetch_axi_ar_rob_pop_done_counter_q;
+    end
+    if (prefetch_axi_ar_rob_pop_done_counter_d) begin
+      prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_data.addr;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prefetch_axi_ar_rob_pop_done_counter_q <= '0;
+      prefetch_axi_ar_rob_pop_done_addr_q    <= '0;
+    end else begin
+      prefetch_axi_ar_rob_pop_done_counter_q <= prefetch_axi_ar_rob_pop_done_counter_d;
+      prefetch_axi_ar_rob_pop_done_addr_q    <= prefetch_axi_ar_rob_pop_done_addr_d;
+    end
+  end
+
 
   fifo_v3 #(
     .DEPTH(VaddrgenInsnQueueDepth),
@@ -439,10 +452,29 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic                    axi_ax_ready;
   logic [12:0]             num_bytes;
   vlen_t                   remaining_bytes;
-  logic [CVA6Cfg.PLEN-1:0] paddr;
+  axi_addr_t               paddr;
   logic [31:0]             num_beats;
   logic [31:0]             burst_length;
   logic [NrLanes-1:0]      addrgen_operand_valid;
+  logic                    curr_req_page_crossed;
+  logic                    curr_req_page_crossed_next;
+
+  logic [31:0]             prefetch_num_beats;
+  logic [31:0]             prefetch_num_bytes;
+  logic [31:0]             prefetch_burst_length;
+  logic                    prefetch_start_page_crossed;
+  logic                    prefetch_req_page_crossed;
+  axi_addr_t               prefetch_addr;
+  axi_addr_t               prefetch_aligned_start_addr;
+  axi_addr_t               prefetch_aligned_end_addr;
+  axi_addr_t               prefetch_aligned_next_start_addr;
+  
+  logic [($bits(axi_addr_t) - 12)-1:0] prefetch_next_2page_msb;
+  
+  logic second_prefetch_vld_d, second_prefetch_vld_q;
+  logic second_prefetch_vld_compare_d, second_prefetch_vld_compare_q;
+  logic [31:0] second_prefetch_burst_len_d, second_prefetch_burst_len_q;
+  axi_addr_t   second_prefetch_paddr_d, second_prefetch_paddr_q;
 
   axi_addr_t    aligned_start_addr_d, aligned_start_addr_q;
   axi_addr_t    aligned_next_start_addr_d, aligned_next_start_addr_q, aligned_next_start_addr_temp;
@@ -464,9 +496,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       input  logic [idx_width(clog2_AxiStrobeWidth):0] eff_axi_dw_log,
       input  axi_addr_t                                aligned_start_addr,
       output axi_addr_t                                aligned_end_addr,
-      output axi_addr_t                                aligned_next_start_addr
+      output axi_addr_t                                aligned_next_start_addr,
+      output logic                                     page_crossed
   );
     automatic int unsigned max_burst_bytes = 256 << eff_axi_dw_log;
+    page_crossed = 1'b0;
     // The final address can be found similarly...
     if (num_bytes >= max_burst_bytes) begin
         aligned_next_start_addr = aligned_addr(addr + max_burst_bytes, eff_axi_dw_log);
@@ -479,6 +513,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     if (aligned_start_addr[AxiAddrWidth-1:12] != aligned_end_addr[AxiAddrWidth-1:12]) begin
         aligned_end_addr        = {aligned_start_addr[AxiAddrWidth-1:12], 12'hFFF};
         aligned_next_start_addr = {                     next_2page_msb  , 12'h000};
+        page_crossed = 1'b1;
     end
   endfunction
 
@@ -582,15 +617,35 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     //prefetch
     prefetch_axi_ar_hit        = '0;
     prefetch_pending_d         = '0;
-    prefetch_axi_ar_queue_datain     = '0;
+    prefetch_axi_ar_queue_datain = '0;
     prefetch_axi_ar_queue_push = '0;
     prefetch_axi_ar_queue_pop  = '0;
 
     prefetch_axi_ar_rob_push             = '0;
     prefetch_axi_ar_rob_datain           = '0;
+    prefetch_axi_ar_rob_match            = 1'b0;
     prefetch_axi_addr_lookup_fifo_push   = '0;
     prefetch_axi_addr_lookup_fifo_pop    = '0;
     prefetch_axi_addr_lookup_fifo_datain = '0;
+
+    curr_req_page_crossed                = '0;
+    curr_req_page_crossed_next           = '0;
+
+    prefetch_num_beats               = '0;
+    prefetch_burst_length            = '0;
+    prefetch_start_page_crossed      = 1'b0;
+    prefetch_req_page_crossed        = 1'b0;
+    prefetch_addr                    = '0;
+    prefetch_num_bytes               = '0;
+    prefetch_aligned_start_addr      = '0;
+    prefetch_aligned_end_addr        = '0;
+    prefetch_aligned_next_start_addr = '0;
+    prefetch_next_2page_msb          = '0;
+
+    second_prefetch_vld_d         = second_prefetch_vld_q;
+    second_prefetch_vld_compare_d = second_prefetch_vld_compare_q;
+    second_prefetch_burst_len_d   = second_prefetch_burst_len_q;
+    second_prefetch_paddr_d       = second_prefetch_paddr_q;
 
     case(state_q)
     IDLE: begin : addrgen_state_IDLE
@@ -770,15 +825,29 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : addrgen_state_WAIT_LAST_TRANSLATION
     endcase
 
+    for (int i = 0; i < VaddrgenInsnQueueDepth; i++) begin
+      if (prefetch_axi_ar_rob_vld[i] &&
+          (prefetch_axi_ar_rob_mem[i].addr  == vreq_addr_d)) begin
+        prefetch_axi_ar_rob_match = 1'b1;
+      end
+    end
+
+    if ((($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) && prefetch_axi_ar_rob_pop_done_counter_q) begin
+      second_prefetch_vld_compare_d = '0;
+    end
+
+    prefetch_axi_ar_rob_match |= second_prefetch_vld_compare_q;
+
     if (vreq_is_vld &&
-        // Block load only when store queue is valid AND write data hasn't been sent yet
         !(vreq_is_load_d && block_load_addr_i) &&
-        !(vreq_is_load_d && ((stu_axi_addrgen_queue_valid && !axi_w_valid_i) || !prefetch_axi_ar_rob_empty))) begin : demand_req
+        !(vreq_is_load_d && (1'b0&(stu_axi_addrgen_queue_valid && !axi_w_valid_i) || (prefetch_axi_ar_rob_match || prefetch_axi_ar_rob_pop_done_counter_d))) &&
+        !second_prefetch_vld_q) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
 
-        if (paddr == prefetch_axi_addr_lookup_fifo_data) begin
-          prefetch_axi_ar_hit       = 1'b1;
+        if (!prefetch_axi_addr_lookup_fifo_empty &&
+            (paddr == prefetch_axi_addr_lookup_fifo_data)) begin
+          prefetch_axi_ar_hit               = 1'b1;
           prefetch_axi_addr_lookup_fifo_pop = 1'b1;
         end
 
@@ -788,7 +857,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           addrgen_exception_o.valid = 1'b1;
           addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
           addrgen_exception_o.tval  = '0;
-        end begin
+        end else begin
           if (vreq_is_unit_stride_d) begin : unit_stride_req
 
             aligned_start_addr_d = aligned_addr(paddr, clog2_AxiStrobeWidth);
@@ -801,7 +870,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               clog2_AxiStrobeWidth,
               aligned_start_addr_d,
               aligned_end_addr_d,
-              aligned_next_start_addr_d
+              aligned_next_start_addr_d,
+              curr_req_page_crossed
             );
 
             if (pe_req_d.vstart != 0 && !vreq_is_load_d) begin
@@ -815,10 +885,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               eff_axi_dw_log_d = clog2_AxiStrobeWidth;
             end
 
-            if (aligned_end_addr_d[11:0] != 12'hFFF) begin
-              num_bytes = aligned_next_start_addr_d[11:0] - paddr[11:0];
-            end else begin
+            if (curr_req_page_crossed) begin
               num_bytes = 13'h1000 - paddr[11:0];
+            end else begin
+              num_bytes = aligned_next_start_addr_d[11:0] - paddr[11:0];
             end
   
             if (vreq_blen_d < num_bytes) begin
@@ -841,25 +911,61 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 burst  : BURST_INCR,
                 default: '0
               };
+
               if (prefetch_axi_ar_hit) begin
                 axi_ar_o = '0;
               end
-              if ((pe_req_d.avl >= (pe_req_d.vl << 1)) && prefetch_axi_ar_queue_not_full
-                 && prefetch_en
-              ) begin
-                prefetch_axi_ar_queue_datain = '{
-                  id     : AXI_ID_PREFETCH,
-                  addr   : paddr + num_bytes << prefetch_mul,
-                  len    : burst_length - 1,
-                  size   : eff_axi_dw_log_d,
-                  cache  : CACHE_MODIFIABLE,
-                  burst  : BURST_INCR,
-                  default: '0
-                };
 
-                prefetch_axi_ar_queue_push = 1'b1;
-                prefetch_pending_d         = 1'b1;//!prefetch_axi_ar_hit;
-              end
+              if ((pe_req_d.avl >= (pe_req_d.vl << 1)) &&
+                  prefetch_axi_ar_queue_not_full &&
+                  prefetch_en &&
+                  !curr_req_page_crossed) begin : first_prefetch
+                prefetch_addr = paddr + (num_bytes << prefetch_mul);
+                prefetch_start_page_crossed = (prefetch_addr[AxiAddrWidth-1:12] != paddr[AxiAddrWidth-1:12]);
+              
+                if (!prefetch_start_page_crossed) begin
+                  prefetch_aligned_start_addr = aligned_addr(prefetch_addr, eff_axi_dw_log_d);
+                  prefetch_next_2page_msb     = prefetch_aligned_start_addr[AxiAddrWidth-1:12] + 1'b1;
+              
+                  set_end_addr (
+                    prefetch_next_2page_msb,
+                    vreq_blen_d,
+                    prefetch_addr,
+                    eff_axi_dw_d,
+                    eff_axi_dw_log_d,
+                    prefetch_aligned_start_addr,
+                    prefetch_aligned_end_addr,
+                    prefetch_aligned_next_start_addr,
+                    prefetch_req_page_crossed
+                  );
+              
+                  prefetch_num_beats = ((prefetch_aligned_end_addr[11:0] - prefetch_aligned_start_addr[11:0]) >> eff_axi_dw_log_d) + 1;
+                  prefetch_burst_length = (prefetch_num_beats < 256) ? prefetch_num_beats : 256;
+              
+                  if (prefetch_burst_length != 0) begin
+                    prefetch_axi_ar_queue_datain = '{
+                      id     : AXI_ID_PREFETCH,
+                      addr   : prefetch_addr,
+                      len    : prefetch_burst_length - 1,
+                      size   : eff_axi_dw_log_d,
+                      cache  : CACHE_MODIFIABLE,
+                      burst  : BURST_INCR,
+                      default: '0
+                    };
+              
+                    prefetch_axi_ar_queue_push = 1'b1;
+                    prefetch_pending_d         = 1'b1;
+                  end
+
+                  if (prefetch_req_page_crossed) begin
+                    second_prefetch_vld_d   = 1'b1;
+                    second_prefetch_vld_compare_d = 1'b1;
+                    second_prefetch_paddr_d = prefetch_aligned_next_start_addr;
+                    second_prefetch_burst_len_d = 7 - prefetch_burst_length;
+                  end
+                end
+              end : first_prefetch
+
             end
             else begin
               axi_aw_o = '{
@@ -995,6 +1101,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
             vreq_addr_d = aligned_next_start_addr_d;
             vreq_blen_d = remaining_bytes;
+            if (paddr == prefetch_axi_ar_rob_pop_done_addr_q) begin
+              vreq_blen_d = '0;
+            end
 
             aligned_start_addr_d = vreq_addr_d;
             next_2page_msb_d  = next_2page_msb_d + 1'b1;
@@ -1007,7 +1116,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               eff_axi_dw_log_d,
               aligned_next_start_addr_d,
               aligned_end_addr_temp,
-              aligned_next_start_addr_temp
+              aligned_next_start_addr_temp,
+              curr_req_page_crossed_next  
             );
             aligned_end_addr_d        = aligned_end_addr_temp;
             aligned_next_start_addr_d = aligned_next_start_addr_temp;
@@ -1045,6 +1155,22 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         end
       end : start_req
     end : demand_req
+    else if (second_prefetch_vld_q) begin : second_prefetch
+         
+      prefetch_axi_ar_queue_datain = '{
+        id     : AXI_ID_PREFETCH,
+        addr   : second_prefetch_paddr_d,
+        len    : second_prefetch_burst_len_d,
+        size   : eff_axi_dw_log_d,
+        cache  : CACHE_MODIFIABLE,
+        burst  : BURST_INCR,
+        default: '0
+      };
+      
+      prefetch_axi_ar_queue_push = 1'b1;
+      second_prefetch_vld_d = 1'b0;
+    end : second_prefetch
+
 
     if (axi_ar_ready_i &&
         prefetch_axi_ar_queue_valid &&
@@ -1061,9 +1187,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     if (!prefetch_axi_ar_rob_empty &&
         !prefetch_axi_addr_lookup_fifo_full &&
-        prefetch_axi_ar_rob_pop) begin : prefetch_data_complete
+        ((($unsigned(prefetch_axi_ar_rob_data.len) == 7) && axi_addrgen_prefetch_req_ready_i) ||
+         ((($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) && prefetch_axi_ar_rob_pop_done_counter_q))) begin : prefetch_data_complete
       prefetch_axi_addr_lookup_fifo_push   = 1'b1;
-      prefetch_axi_addr_lookup_fifo_datain = prefetch_axi_ar_rob_data.addr;
+      prefetch_axi_addr_lookup_fifo_datain = prefetch_axi_ar_rob_pop_done_counter_q ? prefetch_axi_ar_rob_pop_done_addr_q : prefetch_axi_ar_rob_data.addr;
     end : prefetch_data_complete
 
   end
@@ -1109,6 +1236,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       vreq_is_unit_stride_q      <= '0;
       vreq_is_stride_q           <= '0;
       vreq_is_index_q            <= '0;
+      second_prefetch_vld_q      <= '0;
+      second_prefetch_vld_compare_q <= '0;
+      second_prefetch_burst_len_q <= '0;
+      second_prefetch_paddr_q    <= '0;
     end else begin
       state_q                    <= state_d;
       pe_req_q                   <= pe_req_d;
@@ -1129,6 +1260,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       vreq_is_unit_stride_q      <= vreq_is_unit_stride_d;
       vreq_is_stride_q           <= vreq_is_stride_d;
       vreq_is_index_q            <= vreq_is_index_d;
+      second_prefetch_vld_q      <= second_prefetch_vld_d;
+      second_prefetch_vld_compare_q <= second_prefetch_vld_compare_d;
+      second_prefetch_burst_len_q<= second_prefetch_burst_len_d;
+      second_prefetch_paddr_q    <= second_prefetch_paddr_d;
     end
   end
 

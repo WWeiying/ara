@@ -927,22 +927,26 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue0_push = 1'b1; 
-      prefetch_axi_r_queue0 = axi_r_i;
-      axi_r_ready_o = 1'b1;
-      prefetch_axi_r_queue_len_d         = prefetch_axi_r_queue_len_d + 1;
+      prefetch_axi_r_queue0      = axi_r_i;
+      axi_r_ready_o              = 1'b1;
+      prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
+      if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
+        prefetch_axi_r_queue_len_d       = '0;
+        axi_addrgen_prefetch_req_ready_o = 1'b1;
+      end
     end
 
     if (axi_r_valid_i && (axi_r_i.id == AXI_ID_PREFETCH) &&
         (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue1_push = 1'b1; 
-      prefetch_axi_r_queue1 = axi_r_i;
-      axi_r_ready_o = 1'b1;
-      prefetch_axi_r_queue_len_d         = prefetch_axi_r_queue_len_d + 1;
-      if ($unsigned(prefetch_axi_r_queue_len_d) == 8) begin : prefetch_axi_r_finish
+      prefetch_axi_r_queue1      = axi_r_i;
+      axi_r_ready_o              = 1'b1;
+      prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
+      if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
         prefetch_axi_r_queue_len_d       = '0;
         axi_addrgen_prefetch_req_ready_o = 1'b1;
-      end : prefetch_axi_r_finish
+      end
     end
 
   end: p_vldu
