@@ -36,8 +36,8 @@ docs/build/
 docs/source/_templates/
 apps/_*
 apps/third-party/
-backend
 apps
+backend
 cheshire/
 Makefile_backup
 debug/
