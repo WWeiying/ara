@@ -846,7 +846,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
 
         if (!prefetch_axi_addr_lookup_fifo_empty &&
-            (paddr == prefetch_axi_addr_lookup_fifo_data)) begin
+            (paddr == prefetch_axi_addr_lookup_fifo_data) &&
+            vreq_is_unit_stride_d) begin
           prefetch_axi_ar_hit               = 1'b1;
           prefetch_axi_addr_lookup_fifo_pop = 1'b1;
         end
