@@ -32782,10 +32782,139 @@ src2:
 _src2_size:
 	.word 16384
 
-.section .data.fft128_tw_re
+.section .data.fft256_tw_re
 .balign 128
-.global fft128_tw_re
-fft128_tw_re:
+.global fft256_tw_re
+fft256_tw_re:
+    .word 0x3F800000
+    .word 0x3F7FEC43
+    .word 0x3F7FB10F
+    .word 0x3F7F4E6D
+    .word 0x3F7EC46D
+    .word 0x3F7E1324
+    .word 0x3F7D3AAC
+    .word 0x3F7C3B28
+    .word 0x3F7B14BE
+    .word 0x3F79C79D
+    .word 0x3F7853F8
+    .word 0x3F76BA07
+    .word 0x3F74FA0B
+    .word 0x3F731447
+    .word 0x3F710908
+    .word 0x3F6ED89E
+    .word 0x3F6C835E
+    .word 0x3F6A09A7
+    .word 0x3F676BD8
+    .word 0x3F64AA59
+    .word 0x3F61C598
+    .word 0x3F5EBE05
+    .word 0x3F5B941A
+    .word 0x3F584853
+    .word 0x3F54DB31
+    .word 0x3F514D3D
+    .word 0x3F4D9F02
+    .word 0x3F49D112
+    .word 0x3F45E403
+    .word 0x3F41D870
+    .word 0x3F3DAEF9
+    .word 0x3F396842
+    .word 0x3F3504F3
+    .word 0x3F3085BB
+    .word 0x3F2BEB4A
+    .word 0x3F273656
+    .word 0x3F226799
+    .word 0x3F1D7FD1
+    .word 0x3F187FC0
+    .word 0x3F13682A
+    .word 0x3F0E39DA
+    .word 0x3F08F59B
+    .word 0x3F039C3D
+    .word 0x3EFC5D27
+    .word 0x3EF15AEA
+    .word 0x3EE63375
+    .word 0x3EDAE880
+    .word 0x3ECF7BCA
+    .word 0x3EC3EF15
+    .word 0x3EB8442A
+    .word 0x3EAC7CD4
+    .word 0x3EA09AE5
+    .word 0x3E94A031
+    .word 0x3E888E93
+    .word 0x3E78CFCC
+    .word 0x3E605C13
+    .word 0x3E47C5C2
+    .word 0x3E2F10A2
+    .word 0x3E164083
+    .word 0x3DFAB273
+    .word 0x3DC8BD36
+    .word 0x3D96A905
+    .word 0x3D48FB30
+    .word 0x3CC90AB0
+    .word 0x248D3132
+    .word 0xBCC90AB0
+    .word 0xBD48FB30
+    .word 0xBD96A905
+    .word 0xBDC8BD36
+    .word 0xBDFAB273
+    .word 0xBE164083
+    .word 0xBE2F10A2
+    .word 0xBE47C5C2
+    .word 0xBE605C13
+    .word 0xBE78CFCC
+    .word 0xBE888E93
+    .word 0xBE94A031
+    .word 0xBEA09AE5
+    .word 0xBEAC7CD4
+    .word 0xBEB8442A
+    .word 0xBEC3EF15
+    .word 0xBECF7BCA
+    .word 0xBEDAE880
+    .word 0xBEE63375
+    .word 0xBEF15AEA
+    .word 0xBEFC5D27
+    .word 0xBF039C3D
+    .word 0xBF08F59B
+    .word 0xBF0E39DA
+    .word 0xBF13682A
+    .word 0xBF187FC0
+    .word 0xBF1D7FD1
+    .word 0xBF226799
+    .word 0xBF273656
+    .word 0xBF2BEB4A
+    .word 0xBF3085BB
+    .word 0xBF3504F3
+    .word 0xBF396842
+    .word 0xBF3DAEF9
+    .word 0xBF41D870
+    .word 0xBF45E403
+    .word 0xBF49D112
+    .word 0xBF4D9F02
+    .word 0xBF514D3D
+    .word 0xBF54DB31
+    .word 0xBF584853
+    .word 0xBF5B941A
+    .word 0xBF5EBE05
+    .word 0xBF61C598
+    .word 0xBF64AA59
+    .word 0xBF676BD8
+    .word 0xBF6A09A7
+    .word 0xBF6C835E
+    .word 0xBF6ED89E
+    .word 0xBF710908
+    .word 0xBF731447
+    .word 0xBF74FA0B
+    .word 0xBF76BA07
+    .word 0xBF7853F8
+    .word 0xBF79C79D
+    .word 0xBF7B14BE
+    .word 0xBF7C3B28
+    .word 0xBF7D3AAC
+    .word 0xBF7E1324
+    .word 0xBF7EC46D
+    .word 0xBF7F4E6D
+    .word 0xBF7FB10F
+    .word 0xBF7FEC43
+
     .word 0x3F800000
     .word 0x3F7FB10F
     .word 0x3F7EC46D
@@ -32828,6 +32957,7 @@ fft128_tw_re:
     .word 0xBEAC7CD4
     .word 0xBEC3EF15
     .word 0xBEDAE880
+    .word 0xBEE63375
     .word 0xBEF15AEA
     .word 0xBF039C3D
     .word 0xBF0E39DA
@@ -32850,6 +32980,7 @@ fft128_tw_re:
     .word 0xBF7D3AAC
     .word 0xBF7EC46D
     .word 0xBF7FB10F
+
     .word 0x3F800000
     .word 0x3F7EC46D
     .word 0x3F7B14BE
@@ -32882,6 +33013,7 @@ fft128_tw_re:
     .word 0xBF74FA0B
     .word 0xBF7B14BE
     .word 0xBF7EC46D
+
     .word 0x3F800000
     .word 0x3F7B14BE
     .word 0x3F6C835E
@@ -32898,6 +33030,7 @@ fft128_tw_re:
     .word 0xBF54DB31
     .word 0xBF6C835E
     .word 0xBF7B14BE
+
     .word 0x3F800000
     .word 0x3F6C835E
     .word 0x3F3504F3
@@ -32906,153 +33039,291 @@ fft128_tw_re:
     .word 0xBEC3EF15
     .word 0xBF3504F3
     .word 0xBF6C835E
+
     .word 0x3F800000
     .word 0x3F3504F3
     .word 0x248D3132
     .word 0xBF3504F3
+
     .word 0x3F800000
     .word 0x248D3132
+
     .word 0x3F800000
-fft128_tw_re_end:
+fft256_tw_re_end:
 
-.global _fft128_tw_re_size
-_fft128_tw_re_size:
-    .word fft128_tw_re_end - fft128_tw_re
+.global _fft256_tw_re_size
+_fft256_tw_re_size:
+    .word fft256_tw_re_end - fft256_tw_re
 
 
-.section .data.fft128_tw_im
+.section .data.fft256_tw_im
 .balign 128
-.global fft128_tw_im
-fft128_tw_im:
+.global fft256_tw_im
+fft256_tw_im:
     .word 0x80000000
+    .word 0xBCC90AB0
     .word 0xBD48FB30
+    .word 0xBD96A905
     .word 0xBDC8BD36
+    .word 0xBDFAB273
     .word 0xBE164083
+    .word 0xBE2F10A2
     .word 0xBE47C5C2
+    .word 0xBE605C13
     .word 0xBE78CFCC
+    .word 0xBE888E93
     .word 0xBE94A031
+    .word 0xBEA09AE5
     .word 0xBEAC7CD4
+    .word 0xBEB8442A
     .word 0xBEC3EF15
+    .word 0xBECF7BCA
     .word 0xBEDAE880
+    .word 0xBEE63375
     .word 0xBEF15AEA
+    .word 0xBEFC5D27
     .word 0xBF039C3D
+    .word 0xBF08F59B
     .word 0xBF0E39DA
+    .word 0xBF13682A
     .word 0xBF187FC0
+    .word 0xBF1D7FD1
     .word 0xBF226799
+    .word 0xBF273656
     .word 0xBF2BEB4A
+    .word 0xBF3085BB
     .word 0xBF3504F3
+    .word 0xBF396842
     .word 0xBF3DAEF9
+    .word 0xBF41D870
     .word 0xBF45E403
+    .word 0xBF49D112
     .word 0xBF4D9F02
+    .word 0xBF514D3D
     .word 0xBF54DB31
+    .word 0xBF584853
     .word 0xBF5B941A
+    .word 0xBF5EBE05
     .word 0xBF61C598
+    .word 0xBF64AA59
     .word 0xBF676BD8
+    .word 0xBF6A09A7
     .word 0xBF6C835E
+    .word 0xBF6ED89E
     .word 0xBF710908
+    .word 0xBF731447
     .word 0xBF74FA0B
+    .word 0xBF76BA07
     .word 0xBF7853F8
+    .word 0xBF79C79D
     .word 0xBF7B14BE
+    .word 0xBF7C3B28
     .word 0xBF7D3AAC
+    .word 0xBF7E1324
     .word 0xBF7EC46D
+    .word 0xBF7F4E6D
     .word 0xBF7FB10F
+    .word 0xBF7FEC43
     .word 0xBF800000
+    .word 0xBF7FEC43
     .word 0xBF7FB10F
+    .word 0xBF7F4E6D
     .word 0xBF7EC46D
+    .word 0xBF7E1324
     .word 0xBF7D3AAC
+    .word 0xBF7C3B28
     .word 0xBF7B14BE
+    .word 0xBF79C79D
     .word 0xBF7853F8
+    .word 0xBF76BA07
     .word 0xBF74FA0B
+    .word 0xBF731447
     .word 0xBF710908
+    .word 0xBF6ED89E
     .word 0xBF6C835E
+    .word 0xBF6A09A7
     .word 0xBF676BD8
+    .word 0xBF64AA59
     .word 0xBF61C598
+    .word 0xBF5EBE05
     .word 0xBF5B941A
+    .word 0xBF584853
     .word 0xBF54DB31
+    .word 0xBF514D3D
     .word 0xBF4D9F02
+    .word 0xBF49D112
     .word 0xBF45E403
+    .word 0xBF41D870
     .word 0xBF3DAEF9
+    .word 0xBF396842
     .word 0xBF3504F3
+    .word 0xBF3085BB
     .word 0xBF2BEB4A
+    .word 0xBF273656
     .word 0xBF226799
+    .word 0xBF1D7FD1
     .word 0xBF187FC0
+    .word 0xBF13682A
     .word 0xBF0E39DA
+    .word 0xBF08F59B
     .word 0xBF039C3D
+    .word 0xBEFC5D27
     .word 0xBEF15AEA
+    .word 0xBEE63375
     .word 0xBEDAE880
+    .word 0xBECF7BCA
     .word 0xBEC3EF15
+    .word 0xBEB8442A
     .word 0xBEAC7CD4
+    .word 0xBEA09AE5
     .word 0xBE94A031
+    .word 0xBE888E93
     .word 0xBE78CFCC
+    .word 0xBE605C13
     .word 0xBE47C5C2
+    .word 0xBE2F10A2
     .word 0xBE164083
+    .word 0xBDFAB273
     .word 0xBDC8BD36
+    .word 0xBD96A905
     .word 0xBD48FB30
-    .word 0x80000000
-    .word 0xBDC8BD36
-    .word 0xBE47C5C2
-    .word 0xBE94A031
-    .word 0xBEC3EF15
-    .word 0xBEF15AEA
-    .word 0xBF0E39DA
-    .word 0xBF226799
-    .word 0xBF3504F3
-    .word 0xBF45E403
-    .word 0xBF54DB31
-    .word 0xBF61C598
-    .word 0xBF6C835E
-    .word 0xBF74FA0B
-    .word 0xBF7B14BE
-    .word 0xBF7EC46D
-    .word 0xBF800000
-    .word 0xBF7EC46D
-    .word 0xBF7B14BE
-    .word 0xBF74FA0B
-    .word 0xBF6C835E
-    .word 0xBF61C598
-    .word 0xBF54DB31
-    .word 0xBF45E403
-    .word 0xBF3504F3
-    .word 0xBF226799
-    .word 0xBF0E39DA
-    .word 0xBEF15AEA
-    .word 0xBEC3EF15
-    .word 0xBE94A031
-    .word 0xBE47C5C2
-    .word 0xBDC8BD36
-    .word 0x80000000
-    .word 0xBE47C5C2
-    .word 0xBEC3EF15
-    .word 0xBF0E39DA
-    .word 0xBF3504F3
-    .word 0xBF54DB31
-    .word 0xBF6C835E
-    .word 0xBF7B14BE
-    .word 0xBF800000
-    .word 0xBF7B14BE
-    .word 0xBF6C835E
-    .word 0xBF54DB31
-    .word 0xBF3504F3
-    .word 0xBF0E39DA
-    .word 0xBEC3EF15
-    .word 0xBE47C5C2
-    .word 0x80000000
-    .word 0xBEC3EF15
-    .word 0xBF3504F3
-    .word 0xBF6C835E
-    .word 0xBF800000
-    .word 0xBF6C835E
-    .word 0xBF3504F3
-    .word 0xBEC3EF15
-    .word 0x80000000
-    .word 0xBF3504F3
-    .word 0xBF800000
-    .word 0xBF3504F3
-    .word 0x80000000
-    .word 0xBF800000
-    .word 0x80000000
-fft128_tw_im_end:
+    .word 0xBCC90AB0
 
-.global _fft128_tw_im_size
-_fft128_tw_im_size:
-    .word fft128_tw_im_end - fft128_tw_im
+    .word 0x80000000
+    .word 0xBD48FB30
+    .word 0xBDC8BD36
+    .word 0xBE164083
+    .word 0xBE47C5C2
+    .word 0xBE78CFCC
+    .word 0xBE94A031
+    .word 0xBEAC7CD4
+    .word 0xBEC3EF15
+    .word 0xBEDAE880
+    .word 0xBEF15AEA
+    .word 0xBF039C3D
+    .word 0xBF0E39DA
+    .word 0xBF187FC0
+    .word 0xBF226799
+    .word 0xBF2BEB4A
+    .word 0xBF3504F3
+    .word 0xBF3DAEF9
+    .word 0xBF45E403
+    .word 0xBF4D9F02
+    .word 0xBF54DB31
+    .word 0xBF5B941A
+    .word 0xBF61C598
+    .word 0xBF676BD8
+    .word 0xBF6C835E
+    .word 0xBF710908
+    .word 0xBF74FA0B
+    .word 0xBF7853F8
+    .word 0xBF7B14BE
+    .word 0xBF7D3AAC
+    .word 0xBF7EC46D
+    .word 0xBF7FB10F
+    .word 0xBF800000
+    .word 0xBF7FB10F
+    .word 0xBF7EC46D
+    .word 0xBF7D3AAC
+    .word 0xBF7B14BE
+    .word 0xBF7853F8
+    .word 0xBF74FA0B
+    .word 0xBF710908
+    .word 0xBF6C835E
+    .word 0xBF676BD8
+    .word 0xBF61C598
+    .word 0xBF5B941A
+    .word 0xBF54DB31
+    .word 0xBF4D9F02
+    .word 0xBF45E403
+    .word 0xBF3DAEF9
+    .word 0xBF3504F3
+    .word 0xBF2BEB4A
+    .word 0xBF226799
+    .word 0xBF187FC0
+    .word 0xBF0E39DA
+    .word 0xBF039C3D
+    .word 0xBEF15AEA
+    .word 0xBEDAE880
+    .word 0xBEC3EF15
+    .word 0xBEAC7CD4
+    .word 0xBE94A031
+    .word 0xBE78CFCC
+    .word 0xBE47C5C2
+    .word 0xBE164083
+    .word 0xBDC8BD36
+    .word 0xBD48FB30
+
+    .word 0x80000000
+    .word 0xBDC8BD36
+    .word 0xBE47C5C2
+    .word 0xBE94A031
+    .word 0xBEC3EF15
+    .word 0xBEF15AEA
+    .word 0xBF0E39DA
+    .word 0xBF226799
+    .word 0xBF3504F3
+    .word 0xBF45E403
+    .word 0xBF54DB31
+    .word 0xBF61C598
+    .word 0xBF6C835E
+    .word 0xBF74FA0B
+    .word 0xBF7B14BE
+    .word 0xBF7EC46D
+    .word 0xBF800000
+    .word 0xBF7EC46D
+    .word 0xBF7B14BE
+    .word 0xBF74FA0B
+    .word 0xBF6C835E
+    .word 0xBF61C598
+    .word 0xBF54DB31
+    .word 0xBF45E403
+    .word 0xBF3504F3
+    .word 0xBF226799
+    .word 0xBF0E39DA
+    .word 0xBEF15AEA
+    .word 0xBEC3EF15
+    .word 0xBE94A031
+    .word 0xBE47C5C2
+    .word 0xBDC8BD36
+
+    .word 0x80000000
+    .word 0xBE47C5C2
+    .word 0xBEC3EF15
+    .word 0xBF0E39DA
+    .word 0xBF3504F3
+    .word 0xBF54DB31
+    .word 0xBF6C835E
+    .word 0xBF7B14BE
+    .word 0xBF800000
+    .word 0xBF7B14BE
+    .word 0xBF6C835E
+    .word 0xBF54DB31
+    .word 0xBF3504F3
+    .word 0xBF0E39DA
+    .word 0xBEC3EF15
+    .word 0xBE47C5C2
+
+    .word 0x80000000
+    .word 0xBEC3EF15
+    .word 0xBF3504F3
+    .word 0xBF6C835E
+    .word 0xBF800000
+    .word 0xBF6C835E
+    .word 0xBF3504F3
+    .word 0xBEC3EF15
+
+    .word 0x80000000
+    .word 0xBF3504F3
+    .word 0xBF800000
+    .word 0xBF3504F3
+
+    .word 0x80000000
+    .word 0xBF800000
+
+    .word 0x80000000
+fft256_tw_im_end:
+
+.global _fft256_tw_im_size
+_fft256_tw_im_size:
+    .word fft256_tw_im_end - fft256_tw_im
