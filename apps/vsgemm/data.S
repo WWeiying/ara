@@ -1,5 +1,5 @@
 .section .data.src1
-.align 4
+.balign 128
 .global src1
 src1:
 	.word 0x6B1ECBD4
@@ -16391,7 +16391,7 @@ _src1_size:
 	.word 16384
 
 .section .data.src2
-.align 4
+.balign 128
 .global src2
 src2:
 	.word 0xF042935B

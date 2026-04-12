@@ -16,8 +16,8 @@
 #define TOTAL_ELEMENTS 16384
 #define TEST_ELEMENTS  512
 
-extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));
-extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src2")));
+extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(128), section(".data.src1")));
+extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(128), section(".data.src2")));
 
 extern const uint32_t _src1_size;
 extern const uint32_t _src2_size;
