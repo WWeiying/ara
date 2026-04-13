@@ -462,7 +462,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [31:0]             prefetch_num_beats;
   logic [31:0]             prefetch_num_bytes;
   logic [31:0]             prefetch_burst_length;
-  logic                    prefetch_start_page_crossed;
   logic                    prefetch_req_page_crossed;
   axi_addr_t               prefetch_addr;
   axi_addr_t               prefetch_aligned_start_addr;
@@ -633,7 +632,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     prefetch_num_beats               = '0;
     prefetch_burst_length            = '0;
-    prefetch_start_page_crossed      = 1'b0;
     prefetch_req_page_crossed        = 1'b0;
     prefetch_addr                    = '0;
     prefetch_num_bytes               = '0;
@@ -889,7 +887,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             if (curr_req_page_crossed) begin
               num_bytes = 13'h1000 - paddr[11:0];
             end else begin
-              num_bytes = aligned_next_start_addr_d[11:0] - paddr[11:0];
+              num_bytes = aligned_end_addr_d[11:0] - paddr[11:0] + 1;
             end
   
             if (vreq_blen_d < num_bytes) begin
@@ -922,48 +920,44 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   prefetch_en &&
                   !curr_req_page_crossed) begin : first_prefetch
                 prefetch_addr = paddr + (num_bytes << prefetch_mul);
-                prefetch_start_page_crossed = (prefetch_addr[AxiAddrWidth-1:12] != paddr[AxiAddrWidth-1:12]);
               
-                if (!prefetch_start_page_crossed) begin
-                  prefetch_aligned_start_addr = aligned_addr(prefetch_addr, eff_axi_dw_log_d);
-                  prefetch_next_2page_msb     = prefetch_aligned_start_addr[AxiAddrWidth-1:12] + 1'b1;
+                prefetch_aligned_start_addr = aligned_addr(prefetch_addr, eff_axi_dw_log_d);
               
-                  set_end_addr (
-                    prefetch_next_2page_msb,
-                    vreq_blen_d,
-                    prefetch_addr,
-                    eff_axi_dw_d,
-                    eff_axi_dw_log_d,
-                    prefetch_aligned_start_addr,
-                    prefetch_aligned_end_addr,
-                    prefetch_aligned_next_start_addr,
-                    prefetch_req_page_crossed
-                  );
+                set_end_addr (
+                  prefetch_next_2page_msb,
+                  vreq_blen_d,
+                  prefetch_addr,
+                  eff_axi_dw_d,
+                  eff_axi_dw_log_d,
+                  prefetch_aligned_start_addr,
+                  prefetch_aligned_end_addr,
+                  prefetch_aligned_next_start_addr,
+                  prefetch_req_page_crossed
+                );
               
-                  prefetch_num_beats = ((prefetch_aligned_end_addr[11:0] - prefetch_aligned_start_addr[11:0]) >> eff_axi_dw_log_d) + 1;
-                  prefetch_burst_length = (prefetch_num_beats < 256) ? prefetch_num_beats : 256;
+                prefetch_num_beats = ((prefetch_aligned_end_addr[11:0] - prefetch_aligned_start_addr[11:0]) >> eff_axi_dw_log_d) + 1;
+                prefetch_burst_length = (prefetch_num_beats < 256) ? prefetch_num_beats : 256;
               
-                  if (prefetch_burst_length != 0) begin
-                    prefetch_axi_ar_queue_datain = '{
-                      id     : AXI_ID_PREFETCH,
-                      addr   : prefetch_addr,
-                      len    : prefetch_burst_length - 1,
-                      size   : eff_axi_dw_log_d,
-                      cache  : CACHE_MODIFIABLE,
-                      burst  : BURST_INCR,
-                      default: '0
-                    };
+                if (prefetch_burst_length != 0) begin
+                  prefetch_axi_ar_queue_datain = '{
+                    id     : AXI_ID_PREFETCH,
+                    addr   : prefetch_addr,
+                    len    : prefetch_burst_length - 1,
+                    size   : eff_axi_dw_log_d,
+                    cache  : CACHE_MODIFIABLE,
+                    burst  : BURST_INCR,
+                    default: '0
+                  };
               
-                    prefetch_axi_ar_queue_push = 1'b1;
-                    prefetch_pending_d         = 1'b1;
-                  end
+                  prefetch_axi_ar_queue_push = 1'b1;
+                  prefetch_pending_d         = 1'b1;
+                end
 
-                  if (prefetch_req_page_crossed) begin
-                    second_prefetch_vld_d   = 1'b1;
-                    second_prefetch_vld_compare_d = 1'b1;
-                    second_prefetch_paddr_d = prefetch_aligned_next_start_addr;
-                    second_prefetch_burst_len_d = 7 - prefetch_burst_length;
-                  end
+                if (prefetch_req_page_crossed) begin
+                  second_prefetch_vld_d   = 1'b1;
+                  second_prefetch_vld_compare_d = 1'b1;
+                  second_prefetch_paddr_d = prefetch_aligned_next_start_addr;
+                  second_prefetch_burst_len_d = 7 - prefetch_burst_length;
                 end
               end : first_prefetch
 
