@@ -737,6 +737,12 @@ module ara_tb;
   end
 
   logic [63:0] exit;
+`ifdef IDEAL_DISPATCHER
+  riscv::instruction_t ideal_insn;
+  logic [63:0]         ideal_rs1, ideal_rs2;
+  logic                ideal_req_valid, ideal_resp_ready;
+  logic                ideal_req_ready, ideal_ara_idle;
+`endif
 
   // This TB must be implemented in C for integration with Verilator.
   // In order to Verilator to understand that the ara_testharness module is the top-level,
@@ -752,8 +758,32 @@ module ara_tb;
     .clk_i (clk  ),
     .rst_ni(rst_n),
     .exit_o(exit )
+`ifdef IDEAL_DISPATCHER
+    ,
+    .ideal_insn_i      (ideal_insn      ),
+    .ideal_rs1_i       (ideal_rs1       ),
+    .ideal_rs2_i       (ideal_rs2       ),
+    .ideal_req_valid_i (ideal_req_valid ),
+    .ideal_resp_ready_i(ideal_resp_ready),
+    .ideal_req_ready_o (ideal_req_ready ),
+    .ideal_ara_idle_o  (ideal_ara_idle  )
+`endif
   );
   `endif
+
+`ifdef IDEAL_DISPATCHER
+  accel_dispatcher_ideal i_accel_dispatcher_ideal (
+    .clk_i             (clk             ),
+    .rst_ni            (rst_n           ),
+    .ideal_insn_o      (ideal_insn      ),
+    .ideal_rs1_o       (ideal_rs1       ),
+    .ideal_rs2_o       (ideal_rs2       ),
+    .ideal_req_valid_o (ideal_req_valid ),
+    .ideal_resp_ready_o(ideal_resp_ready),
+    .ideal_req_ready_i (ideal_req_ready ),
+    .ideal_ara_idle_i  (ideal_ara_idle  )
+  );
+`endif
 
   `ifdef TARGET_SRAM_MC 
   //`ifdef SAIF
@@ -1545,7 +1575,11 @@ module ara_tb;
   for(genvar l=0; l<NrLanes; l++) begin
     for(genvar b=0; b<NrBanks; b++) begin
       for(genvar w=0; w<16; w++) begin
+`ifndef TARGET_SRAM_MC
         assign vrf[l][b][w] = ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vrf.gen_banks[b].data_sram.sram[w];
+`else
+        assign vrf[l][b][w] = '0;
+`endif
       end
     end
   end

@@ -66,6 +66,16 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     // AXI Interface
     output system_axi_req_t         axi_req_o,
     input  system_axi_resp_t        axi_resp_i
+`ifdef IDEAL_DISPATCHER
+    ,
+    input  riscv::instruction_t     ideal_insn_i,
+    input  logic [CVA6Cfg.XLEN-1:0] ideal_rs1_i,
+    input  logic [CVA6Cfg.XLEN-1:0] ideal_rs2_i,
+    input  logic                    ideal_req_valid_i,
+    input  logic                    ideal_resp_ready_i,
+    output logic                    ideal_req_ready_o,
+    output logic                    ideal_ara_idle_o
+`endif
   );
 
   `include "axi/assign.svh"
@@ -109,17 +119,19 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   end
 
 `ifdef IDEAL_DISPATCHER
-  // Perfect dispatcher to Ara
-  accel_dispatcher_ideal #(
-    .CVA6Cfg(CVA6Cfg),
-    .cva6_to_acc_t(cva6_to_acc_t),
-    .acc_to_cva6_t(acc_to_cva6_t)
-  ) i_accel_dispatcher_ideal (
-    .clk_i            (clk_i                 ),
-    .rst_ni           (rst_ni                ),
-    .acc_req_o        (acc_req               ),
-    .acc_resp_i       (acc_resp              )
-  );
+  always_comb begin
+    acc_req = '0;
+    acc_req.acc_req = '{
+      insn      : ideal_insn_i,
+      rs1       : ideal_rs1_i,
+      rs2       : ideal_rs2_i,
+      req_valid : ideal_req_valid_i,
+      resp_ready: ideal_resp_ready_i,
+      default   : '0
+    };
+  end
+  assign ideal_req_ready_o = acc_resp.acc_resp.req_ready;
+  assign ideal_ara_idle_o  = i_ara.ara_idle;
 `else
   cva6 #(
     .CVA6Cfg          (CVA6Cfg           ),

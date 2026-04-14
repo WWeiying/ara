@@ -167,11 +167,11 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   //  Prefetch AXI R Queue  //
   ////////////////////////////
   logic [2:0] prefetch_axi_ar_hit_cnt_d, prefetch_axi_ar_hit_cnt_q;
-  axi_r_t     prefetch_axi_r_queue0, prefetch_axi_r_queue0_data; 
+  logic [127:0] prefetch_axi_r_queue0, prefetch_axi_r_queue0_data; 
   logic       prefetch_axi_r_queue0_push, prefetch_axi_r_queue0_pop;
   logic       prefetch_axi_r_queue0_full, prefetch_axi_r_queue0_empty;
 
-  axi_r_t prefetch_axi_r_queue1, prefetch_axi_r_queue1_data; 
+  logic [127:0] prefetch_axi_r_queue1, prefetch_axi_r_queue1_data; 
   logic   prefetch_axi_r_queue1_push, prefetch_axi_r_queue1_pop;
   logic   prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
 
@@ -202,41 +202,165 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
-  fifo_v3 #(
-    .DEPTH(VInsnQueueDepth*4*8),
-    .dtype(axi_r_t             )
-  ) i_prefetch_axi_r_queue0 (
-    .clk_i     (clk_i                      ),
-    .rst_ni    (rst_ni                     ),
-    .flush_i   (1'b0                       ),
-    .testmode_i(1'b0                       ),
-    .data_i    (prefetch_axi_r_queue0      ),
-    .push_i    (prefetch_axi_r_queue0_push ),
-    .full_o    (prefetch_axi_r_queue0_full ),
-    .data_o    (prefetch_axi_r_queue0_data ),
-    .pop_i     (prefetch_axi_r_queue0_pop  ),
-    .empty_o   (prefetch_axi_r_queue0_empty),
-    .usage_o   (/* Unused */           )
-  );
+ // fifo_v3 #(
+ //   .DEPTH(VInsnQueueDepth*4*8),
+ //   .dtype(axi_r_t             )
+ // ) i_prefetch_axi_r_queue0 (
+ //   .clk_i     (clk_i                      ),
+ //   .rst_ni    (rst_ni                     ),
+ //   .flush_i   (1'b0                       ),
+ //   .testmode_i(1'b0                       ),
+ //   .data_i    (prefetch_axi_r_queue0      ),
+ //   .push_i    (prefetch_axi_r_queue0_push ),
+ //   .full_o    (prefetch_axi_r_queue0_full ),
+ //   .data_o    (prefetch_axi_r_queue0_data ),
+ //   .pop_i     (prefetch_axi_r_queue0_pop  ),
+ //   .empty_o   (prefetch_axi_r_queue0_empty),
+ //   .usage_o   (/* Unused */           )
+ // );
 
-  fifo_v3 #(
-    .DEPTH(VInsnQueueDepth*4*8),
-    .dtype(axi_r_t             )
-  ) i_prefetch_axi_r_queue1 (
-    .clk_i     (clk_i                      ),
-    .rst_ni    (rst_ni                     ),
-    .flush_i   (1'b0                       ),
-    .testmode_i(1'b0                       ),
-    .data_i    (prefetch_axi_r_queue1      ),
-    .push_i    (prefetch_axi_r_queue1_push ),
-    .full_o    (prefetch_axi_r_queue1_full ),
-    .data_o    (prefetch_axi_r_queue1_data ),
-    .pop_i     (prefetch_axi_r_queue1_pop  ),
-    .empty_o   (prefetch_axi_r_queue1_empty),
-    .usage_o   (/* Unused */           )
-  );
+ // fifo_v3 #(
+ //   .DEPTH(VInsnQueueDepth*4*8),
+ //   .dtype(axi_r_t             )
+ // ) i_prefetch_axi_r_queue1 (
+ //   .clk_i     (clk_i                      ),
+ //   .rst_ni    (rst_ni                     ),
+ //   .flush_i   (1'b0                       ),
+ //   .testmode_i(1'b0                       ),
+ //   .data_i    (prefetch_axi_r_queue1      ),
+ //   .push_i    (prefetch_axi_r_queue1_push ),
+ //   .full_o    (prefetch_axi_r_queue1_full ),
+ //   .data_o    (prefetch_axi_r_queue1_data ),
+ //   .pop_i     (prefetch_axi_r_queue1_pop  ),
+ //   .empty_o   (prefetch_axi_r_queue1_empty),
+ //   .usage_o   (/* Unused */           )
+ // );
 
-  assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data.data, prefetch_axi_r_queue0_data.data};
+ // assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data.data, prefetch_axi_r_queue0_data.data};
+
+
+  localparam int unsigned PrefetchQueueDepth = 32;
+  typedef logic [idx_width(PrefetchQueueDepth)-1:0] prefetch_queue_ptr_t;
+
+  logic [255:0] prefetch_axi_r_head_d, prefetch_axi_r_head_q;
+  logic [127:0] prefetch_axi_r_low_half_d, prefetch_axi_r_low_half_q;
+  logic         prefetch_axi_r_low_half_valid_d, prefetch_axi_r_low_half_valid_q;
+  logic [255:0] prefetch_axi_r_mem_wdata, prefetch_axi_r_mem_rdata;
+  logic         prefetch_axi_r_mem_req, prefetch_axi_r_mem_we;
+  logic [31:0]  prefetch_axi_r_mem_be;
+  logic [idx_width(PrefetchQueueDepth):0] prefetch_axi_r_word_cnt_d, prefetch_axi_r_word_cnt_q;
+  prefetch_queue_ptr_t prefetch_axi_r_word_rd_ptr_d, prefetch_axi_r_word_rd_ptr_q;
+  prefetch_queue_ptr_t prefetch_axi_r_word_wr_ptr_d, prefetch_axi_r_word_wr_ptr_q;
+  prefetch_queue_ptr_t prefetch_axi_r_mem_addr;
+  logic [255:0] prefetch_axi_r_mem_rdata_tc;
+
+  assign prefetch_axi_r_queue0_full  = (prefetch_axi_r_word_cnt_q == PrefetchQueueDepth) || prefetch_axi_r_low_half_valid_q;
+  assign prefetch_axi_r_queue1_full  = !prefetch_axi_r_low_half_valid_q;
+  assign prefetch_axi_r_queue0_empty = (prefetch_axi_r_word_cnt_q == '0);
+  assign prefetch_axi_r_queue1_empty = (prefetch_axi_r_word_cnt_q == '0);
+  assign prefetch_axi_r_mem_be       = '1;
+`ifndef TARGET_SRAM_MC
+  assign prefetch_axi_r_mem_rdata = prefetch_axi_r_mem_rdata_tc;
+`endif
+
+  always_comb begin
+    prefetch_axi_r_queue0_data = prefetch_axi_r_head_q[127:0];
+    prefetch_axi_r_queue1_data = prefetch_axi_r_head_q[255:128];
+
+    prefetch_axi_r_head_d           = prefetch_axi_r_head_q;
+    prefetch_axi_r_low_half_d       = prefetch_axi_r_low_half_q;
+    prefetch_axi_r_low_half_valid_d = prefetch_axi_r_low_half_valid_q;
+    prefetch_axi_r_word_cnt_d       = prefetch_axi_r_word_cnt_q;
+    prefetch_axi_r_word_rd_ptr_d    = prefetch_axi_r_word_rd_ptr_q;
+    prefetch_axi_r_word_wr_ptr_d    = prefetch_axi_r_word_wr_ptr_q;
+    prefetch_axi_r_mem_req          = (prefetch_axi_r_word_cnt_q > 1);
+    prefetch_axi_r_mem_we           = 1'b0;
+    prefetch_axi_r_mem_addr         = (prefetch_axi_r_word_rd_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_rd_ptr_q + 1'b1;
+    prefetch_axi_r_mem_wdata        = '0;
+
+    if (prefetch_axi_r_queue0_push && !prefetch_axi_r_queue0_full) begin
+      prefetch_axi_r_low_half_d       = prefetch_axi_r_queue0;
+      prefetch_axi_r_low_half_valid_d = 1'b1;
+    end
+
+    if (prefetch_axi_r_queue1_push && !prefetch_axi_r_queue1_full) begin
+      prefetch_axi_r_mem_req          = 1'b1;
+      prefetch_axi_r_mem_we           = 1'b1;
+      prefetch_axi_r_mem_addr         = prefetch_axi_r_word_wr_ptr_q;
+      prefetch_axi_r_mem_wdata        = {prefetch_axi_r_queue1, prefetch_axi_r_low_half_q};
+      prefetch_axi_r_low_half_valid_d = 1'b0;
+      prefetch_axi_r_word_cnt_d       = prefetch_axi_r_word_cnt_q + 1'b1;
+      prefetch_axi_r_word_wr_ptr_d    = (prefetch_axi_r_word_wr_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_wr_ptr_q + 1'b1;
+      if (prefetch_axi_r_word_cnt_q == '0) begin
+        prefetch_axi_r_head_d = {prefetch_axi_r_queue1, prefetch_axi_r_low_half_q};
+      end
+    end
+
+    if (prefetch_axi_r_queue0_pop && !prefetch_axi_r_queue0_empty) begin
+      prefetch_axi_r_word_cnt_d    = prefetch_axi_r_word_cnt_d - 1'b1;
+      prefetch_axi_r_word_rd_ptr_d = (prefetch_axi_r_word_rd_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_rd_ptr_q + 1'b1;
+      if (prefetch_axi_r_word_cnt_q > 1) begin
+        prefetch_axi_r_head_d = prefetch_axi_r_mem_rdata;
+      end
+    end
+  end
+
+`ifndef TARGET_SRAM_MC
+  tc_sram #(
+    .NumWords (PrefetchQueueDepth),
+    .NumPorts (1                 ),
+    .DataWidth(256               )
+  ) i_prefetch_axi_r_sram (
+    .clk_i  (clk_i                 ),
+    .rst_ni (rst_ni                ),
+    .req_i  (prefetch_axi_r_mem_req),
+    .we_i   (prefetch_axi_r_mem_we ),
+    .addr_i (prefetch_axi_r_mem_addr),
+    .wdata_i(prefetch_axi_r_mem_wdata),
+    .be_i   (prefetch_axi_r_mem_be ),
+    .rdata_o(prefetch_axi_r_mem_rdata_tc)
+  );
+`else
+TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
+    .SLP  (1'b0),
+    .SD   (1'b0),
+    .CLK  (clk_i),
+    .CEB  (!prefetch_axi_r_mem_req),
+    .WEB  (!prefetch_axi_r_mem_we),
+    .CEBM (1'b1),
+    .WEBM (1'b1),
+    .A    (prefetch_axi_r_mem_addr),
+    .D    (prefetch_axi_r_mem_wdata),
+    .BWEB ('0),
+    .AM   ('0),
+    .DM   ('0),
+    .BWEBM('1),
+    .BIST (1'b0),
+    .RTSEL(2'b01),
+    .WTSEL(2'b0),
+    .Q    (prefetch_axi_r_mem_rdata)
+  );
+`endif
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prefetch_axi_r_head_q           <= '0;
+      prefetch_axi_r_low_half_q       <= '0;
+      prefetch_axi_r_low_half_valid_q <= 1'b0;
+      prefetch_axi_r_word_cnt_q       <= '0;
+      prefetch_axi_r_word_rd_ptr_q    <= '0;
+      prefetch_axi_r_word_wr_ptr_q    <= '0;
+    end else begin
+      prefetch_axi_r_head_q           <= prefetch_axi_r_head_d;
+      prefetch_axi_r_low_half_q       <= prefetch_axi_r_low_half_d;
+      prefetch_axi_r_low_half_valid_q <= prefetch_axi_r_low_half_valid_d;
+      prefetch_axi_r_word_cnt_q       <= prefetch_axi_r_word_cnt_d;
+      prefetch_axi_r_word_rd_ptr_q    <= prefetch_axi_r_word_rd_ptr_d;
+      prefetch_axi_r_word_wr_ptr_q    <= prefetch_axi_r_word_wr_ptr_d;
+    end
+  end
+
+  assign prefetch_axi_r_queue_data = prefetch_axi_r_head_q;
 
   /////////////////////
   //  Result queues  //
@@ -927,7 +1051,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue0_push = 1'b1; 
-      prefetch_axi_r_queue0      = axi_r_i;
+      prefetch_axi_r_queue0      = axi_r_i.data;
       axi_r_ready_o              = 1'b1;
       prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
       if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
@@ -940,7 +1064,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
       prefetch_axi_r_queue1_push = 1'b1; 
-      prefetch_axi_r_queue1      = axi_r_i;
+      prefetch_axi_r_queue1      = axi_r_i.data;
       axi_r_ready_o              = 1'b1;
       prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
       if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin

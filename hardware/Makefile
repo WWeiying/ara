@@ -213,6 +213,7 @@ dc:
 	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
 
 sram:
+	@$(call generate_sram, $(spsram_techlib_path), $(PF_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram127_techlib_path), $(L2_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram_techlib_path), $(VECTOR_REGFILE_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram_techlib_path), $(ICACHE_TAG_SRAM_CONFIGS))

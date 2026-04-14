@@ -22,15 +22,18 @@
 
 module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
   parameter  config_pkg::cva6_cfg_t CVA6Cfg = cva6_config_pkg::cva6_cfg,
-  parameter type cva6_to_acc_t = logic,
-  parameter type acc_to_cva6_t = logic,
   localparam type xlen_t = logic [CVA6Cfg.XLEN-1:0]
 ) (
   input  logic         clk_i,
   input  logic         rst_ni,
   // Accelerator interaface
-  output cva6_to_acc_t acc_req_o,
-  input  acc_to_cva6_t acc_resp_i
+  output riscv::instruction_t ideal_insn_o,
+  output logic [63:0]         ideal_rs1_o,
+  output logic [63:0]         ideal_rs2_o,
+  output logic                ideal_req_valid_o,
+  output logic                ideal_resp_ready_o,
+  input  logic                ideal_req_ready_i,
+  input  logic                ideal_ara_idle_i
 );
 
   localparam string vtrace = `STRINGIFY(`VTRACE);
@@ -45,8 +48,8 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
 
   typedef struct packed {
     riscv::instruction_t insn;
-    xlen_t rs1;
-    xlen_t rs2;
+    logic [63:0] rs1;
+    logic [63:0] rs2;
   } fifo_payload_t;
 
   logic [DATA_WIDTH-1:0] fifo_data_raw;
@@ -70,7 +73,7 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
     status_cnt_n   = status_cnt_q;
     fifo_data_raw  = fifo_q[read_pointer_q];
 
-    if (acc_resp_i.acc_resp.req_ready && ~fifo_empty) begin
+    if (ideal_req_ready_i && ~fifo_empty) begin
       // read from the queue is a default assignment
       // but increment the read pointer...
       if (read_pointer_n == N_VINSN - 1)
@@ -97,18 +100,11 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
 
   // Output assignment
   assign fifo_data = fifo_payload_t'(fifo_data_raw);
-  assign acc_req_o.acc_req = '{
-    insn    : fifo_data.insn,
-    rs1     : fifo_data.rs1,
-    rs2     : fifo_data.rs2,
-    // Always valid until empty
-    req_valid  : ~fifo_empty,
-    // Flush the answer
-    resp_ready : 1'b1,
-    default : '0
-  };
-  assign acc_req_o.acc_mmu_resp = '0;
-  assign acc_req_o.acc_mmu_en = 1'b0;
+  assign ideal_insn_o       = fifo_data.insn;
+  assign ideal_rs1_o        = fifo_data.rs1;
+  assign ideal_rs2_o        = fifo_data.rs2;
+  assign ideal_req_valid_o  = ~fifo_empty;
+  assign ideal_resp_ready_o = 1'b1;
 
   // Initialize the perfect dispatcher
   initial $readmemh(vtrace, fifo_q);
@@ -136,7 +132,7 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; # (
   // Stop the computation when the instructions are over and ara has returned idle
   // Just check that we are after reset
   always_ff @(posedge clk_i) begin
-    if (rst_ni && was_reset && !acc_req_o.acc_req.req_valid && i_system.i_ara.ara_idle) begin
+    if (rst_ni && was_reset && !ideal_req_valid_o && ideal_ara_idle_i) begin
       $display("[hw-cycles]: %d", int'(perf_cnt_q));
       $display("[cva6-d$-stalls]: %d", int'(dut.dcache_stall_buf_q));
       $display("[cva6-i$-stalls]: %d", int'(dut.icache_stall_buf_q));

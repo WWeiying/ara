@@ -53,6 +53,16 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     input  logic [31:0] uart_prdata_i,
     input  logic        uart_pready_i,
     input  logic        uart_pslverr_i
+`ifdef IDEAL_DISPATCHER
+    ,
+    input  riscv::instruction_t ideal_insn_i,
+    input  logic [63:0]         ideal_rs1_i,
+    input  logic [63:0]         ideal_rs2_i,
+    input  logic                ideal_req_valid_i,
+    input  logic                ideal_resp_ready_i,
+    output logic                ideal_req_ready_o,
+    output logic                ideal_ara_idle_o
+`endif
   );
 
   `include "axi/assign.svh"
@@ -609,10 +619,30 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 `ifndef TARGET_GATESIM
     .axi_req_o    (system_axi_req           ),
     .axi_resp_i   (system_axi_resp          )
+`ifdef IDEAL_DISPATCHER
+    ,
+    .ideal_insn_i      (ideal_insn_i      ),
+    .ideal_rs1_i       (ideal_rs1_i       ),
+    .ideal_rs2_i       (ideal_rs2_i       ),
+    .ideal_req_valid_i (ideal_req_valid_i ),
+    .ideal_resp_ready_i(ideal_resp_ready_i),
+    .ideal_req_ready_o (ideal_req_ready_o ),
+    .ideal_ara_idle_o  (ideal_ara_idle_o  )
+`endif
   );
 `else
     .axi_req_o    (system_axi_req_spill     ),
     .axi_resp_i   (system_axi_resp_spill_del)
+`ifdef IDEAL_DISPATCHER
+    ,
+    .ideal_insn_i      (ideal_insn_i      ),
+    .ideal_rs1_i       (ideal_rs1_i       ),
+    .ideal_rs2_i       (ideal_rs2_i       ),
+    .ideal_req_valid_i (ideal_req_valid_i ),
+    .ideal_resp_ready_i(ideal_resp_ready_i),
+    .ideal_req_ready_o (ideal_req_ready_o ),
+    .ideal_ara_idle_o  (ideal_ara_idle_o  )
+`endif
   );
 `endif
 

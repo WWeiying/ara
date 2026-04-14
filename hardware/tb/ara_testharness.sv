@@ -22,6 +22,16 @@ module ara_testharness #(
     input  logic        clk_i,
     input  logic        rst_ni,
     output logic [63:0] exit_o
+`ifdef IDEAL_DISPATCHER
+    ,
+    input  riscv::instruction_t ideal_insn_i,
+    input  logic [63:0]         ideal_rs1_i,
+    input  logic [63:0]         ideal_rs2_i,
+    input  logic                ideal_req_valid_i,
+    input  logic                ideal_resp_ready_i,
+    output logic                ideal_req_ready_o,
+    output logic                ideal_ara_idle_o
+`endif
   );
 
   `include "axi/typedef.svh"
@@ -91,6 +101,16 @@ module ara_testharness #(
     .uart_prdata_i (uart_prdata ),
     .uart_pready_i (uart_pready ),
     .uart_pslverr_i(uart_pslverr)
+`ifdef IDEAL_DISPATCHER
+    ,
+    .ideal_insn_i      (ideal_insn_i      ),
+    .ideal_rs1_i       (ideal_rs1_i       ),
+    .ideal_rs2_i       (ideal_rs2_i       ),
+    .ideal_req_valid_i (ideal_req_valid_i ),
+    .ideal_resp_ready_i(ideal_resp_ready_i),
+    .ideal_req_ready_o (ideal_req_ready_o ),
+    .ideal_ara_idle_o  (ideal_ara_idle_o  )
+`endif
   );
 
   /**********
