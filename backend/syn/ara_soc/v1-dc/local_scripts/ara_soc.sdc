@@ -1,8 +1,8 @@
 ###################################################################################
 ## parameter define ,modify by custom
 ###################################################################################
-set clk_mul 1.25
-set uncertainty_add 0.2
+set clk_mul 1
+set uncertainty_add 0
 
 set clk_driving_cell {CKBD4BWP12T40P140 I Z}
 set data_driving_cell {BUFFD4BWP12T40P140 I Z}

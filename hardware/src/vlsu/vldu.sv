@@ -425,6 +425,8 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
 
   // Interface with the main sequencer
   pe_resp_t pe_resp_d;
+  addrgen_axi_req_t axi_addrgen_req_d, axi_addrgen_req_q;
+  logic             axi_addrgen_req_valid_d, axi_addrgen_req_valid_q;
 
   // Remaining bytes of the current instruction in the issue phase
   vlen_t issue_cnt_bytes_d, issue_cnt_bytes_q;
@@ -512,6 +514,9 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
     first_payload_byte_d = first_payload_byte_q;
     vrf_word_byte_cnt_d  = vrf_word_byte_cnt_q;
 
+    axi_addrgen_req_d       = axi_addrgen_req_q;
+    axi_addrgen_req_valid_d = axi_addrgen_req_valid_q;
+
     // Vector instructions currently running
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
 
@@ -572,15 +577,15 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
     // - The Address Generator sent us the data about the corresponding AR beat
     // - There is place in the result queue to write the data read from the R channel
     // - This request did not generate an exception
-    if ((axi_r_i.id == AXI_ID_DEMAND) && axi_r_valid_i && axi_addrgen_req_valid_i
-        && axi_addrgen_req_i.is_load && !axi_addrgen_req_i.is_exception
+    if ((axi_r_i.id == AXI_ID_DEMAND) && axi_r_valid_i && axi_addrgen_req_valid_q
+        && axi_addrgen_req_q.is_load && !axi_addrgen_req_q.is_exception
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
       // If non-unit strided load, we do not progress within the beat
-      lower_byte = beat_lower_byte(axi_addrgen_req_i.addr,
-        axi_addrgen_req_i.size, axi_addrgen_req_i.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
-      upper_byte = beat_upper_byte(axi_addrgen_req_i.addr,
-        axi_addrgen_req_i.size, axi_addrgen_req_i.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
+      lower_byte = beat_lower_byte(axi_addrgen_req_q.addr,
+        axi_addrgen_req_q.size, axi_addrgen_req_q.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
+      upper_byte = beat_upper_byte(axi_addrgen_req_q.addr,
+        axi_addrgen_req_q.size, axi_addrgen_req_q.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
 
       // Is there a vector instruction ready to be issued?
       // Do we have the operands for it?
@@ -702,7 +707,7 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       end : axi_r_beat_finish
 
       // Consumed all beats from this burst
-      if ($unsigned(axi_len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_i.len) + 1)) begin : axi_finish
+      if ($unsigned(axi_len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_q.len) + 1)) begin : axi_finish
         // Reset AXI pointers
         axi_len_d               = '0;
         axi_r_byte_pnt_d        = '0;
@@ -744,7 +749,7 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
     //  Read data from the Prefetch R Queue  //
     ///////////////////////////////////////////
 
-    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_req_valid_i //&& !axi_addrgen_req_valid_i
+    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_req_valid_q //&& !axi_addrgen_req_valid_i
         && (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q)))
         && !result_queue_full) begin : prefetch_axi_r_queue_read
 
@@ -957,7 +962,7 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       IDLE: begin
         // Handle the exception only if this is the last instruction committing results
         if (vinsn_issue_valid && (vinsn_queue_q.commit_cnt == 1) &&
-            ((axi_addrgen_req_valid_i && axi_addrgen_req_i.is_exception) || addrgen_illegal_load_i)) begin
+            ((axi_addrgen_req_valid_q && axi_addrgen_req_q.is_exception) || addrgen_illegal_load_i)) begin
           ldu_ex_state_d = VALID_RESULT_QUEUE;
         end
       end
@@ -989,7 +994,7 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
         axi_r_byte_pnt_d = '0;
 
         // Ack the addrgen for this last faulty request
-        axi_addrgen_req_ready_o = axi_addrgen_req_valid_i;
+        axi_addrgen_req_ready_o = axi_addrgen_req_valid_q;
 
         // Abort the main sequencer -> operand-req request
         ldu_current_burst_exception_d = 1'b1;
@@ -1012,6 +1017,16 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       end
       default:;
     endcase
+
+    // Capture a new address-generator request and keep it stable while processing.
+    if (!axi_addrgen_req_valid_q && axi_addrgen_req_valid_i) begin
+      axi_addrgen_req_d       = axi_addrgen_req_i;
+      axi_addrgen_req_valid_d = 1'b1;
+    end
+    // Release the captured request when the addrgen handshake completes.
+    if (axi_addrgen_req_valid_q && axi_addrgen_req_valid_i && axi_addrgen_req_ready_o) begin
+      axi_addrgen_req_valid_d = 1'b0;
+    end
 
     //////////////////////////////
     //  Accept new instruction  //
@@ -1093,6 +1108,8 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       ldu_current_burst_exception_o <= 1'b0;
       ldu_ex_state_q                <= IDLE;
       first_result_queue_read_q     <= 1'b0;
+      axi_addrgen_req_q             <= '0;
+      axi_addrgen_req_valid_q       <= 1'b0;
     end else begin
       vinsn_running_q               <= vinsn_running_d;
       issue_cnt_bytes_q             <= issue_cnt_bytes_d;
@@ -1110,6 +1127,8 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       ldu_current_burst_exception_o <= ldu_current_burst_exception_d;
       ldu_ex_state_q                <= ldu_ex_state_d;
       first_result_queue_read_q     <= first_result_queue_read_d;
+      axi_addrgen_req_q             <= axi_addrgen_req_d;
+      axi_addrgen_req_valid_q       <= axi_addrgen_req_valid_d;
     end
   end
 

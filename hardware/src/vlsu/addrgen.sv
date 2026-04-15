@@ -230,52 +230,53 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   addrgen_axi_req_t ldu_axi_addrgen_queue_data;
   logic             ldu_axi_addrgen_queue_push;
   logic             ldu_axi_addrgen_queue_full;
-  logic             ldu_axi_addrgen_queue_valid;
-  logic             ldu_axi_addrgen_queue_ready;
 
   addrgen_axi_req_t stu_axi_addrgen_queue_data;
   logic             stu_axi_addrgen_queue_push;
   logic             stu_axi_addrgen_queue_full;
   logic             stu_axi_addrgen_queue_valid;
-  logic             stu_axi_addrgen_queue_ready;
 
-  fall_through_register_v1 #(
-    .T(addrgen_axi_req_t),
-    .DEPTH(VaddrgenInsnQueueDepth)
+
+  logic             ldu_axi_addrgen_queue_empty;
+  logic             stu_axi_addrgen_queue_empty;
+
+  fifo_v3 #(
+    .DEPTH(VaddrgenInsnQueueDepth),
+    .dtype(addrgen_axi_req_t     )
   ) i_ldu_addrgen_req_queue (
-    .clk_i     (clk_i                      ),
-    .rst_ni    (rst_ni                     ),
-    .clr_i     (lsu_ex_flush_d             ),
-    .testmode_i(1'b0                      ),
-    .data_i    (ldu_axi_addrgen_queue_data ),
-    .valid_i   (ldu_axi_addrgen_queue_push ),
-    .ready_o   (ldu_axi_addrgen_queue_ready),
-    .data_o    (ldu_axi_addrgen_req_o      ),
-    .valid_o   (ldu_axi_addrgen_queue_valid),
-    .ready_i   (ldu_axi_addrgen_req_ready_i)
+    .clk_i     (clk_i                                                    ),
+    .rst_ni    (rst_ni                                                   ),
+    .flush_i   (lsu_ex_flush_d                                           ),
+    .testmode_i(1'b0                                                     ),
+    .data_i    (ldu_axi_addrgen_queue_data                               ),
+    .push_i    (ldu_axi_addrgen_queue_push                               ),
+    .full_o    (ldu_axi_addrgen_queue_full                               ),
+    .data_o    (ldu_axi_addrgen_req_o                                    ),
+    .pop_i     (ldu_axi_addrgen_req_ready_i && !ldu_axi_addrgen_queue_empty),
+    .empty_o   (ldu_axi_addrgen_queue_empty                              ),
+    .usage_o   (/* Unused */                                             )
   );
 
-  fall_through_register_v1 #(
-    .T(addrgen_axi_req_t),
-    .DEPTH(VaddrgenInsnQueueDepth)
+  fifo_v3 #(
+    .DEPTH(VaddrgenInsnQueueDepth),
+    .dtype(addrgen_axi_req_t     )
   ) i_stu_addrgen_req_queue (
-    .clk_i     (clk_i                      ),
-    .rst_ni    (rst_ni                     ),
-    .clr_i     (lsu_ex_flush_d             ),
-    .testmode_i(1'b0                      ),
-    .data_i    (stu_axi_addrgen_queue_data ),
-    .valid_i   (stu_axi_addrgen_queue_push ),
-    .ready_o   (stu_axi_addrgen_queue_ready),
-    .data_o    (stu_axi_addrgen_req_o      ),
-    .valid_o   (stu_axi_addrgen_queue_valid),
-    .ready_i   (stu_axi_addrgen_req_ready_i)
+    .clk_i     (clk_i                                                    ),
+    .rst_ni    (rst_ni                                                   ),
+    .flush_i   (lsu_ex_flush_d                                           ),
+    .testmode_i(1'b0                                                     ),
+    .data_i    (stu_axi_addrgen_queue_data                               ),
+    .push_i    (stu_axi_addrgen_queue_push                               ),
+    .full_o    (stu_axi_addrgen_queue_full                               ),
+    .data_o    (stu_axi_addrgen_req_o                                    ),
+    .pop_i     (stu_axi_addrgen_req_ready_i && !stu_axi_addrgen_queue_empty),
+    .empty_o   (stu_axi_addrgen_queue_empty                              ),
+    .usage_o   (/* Unused */                                             )
   );
 
-  assign ldu_axi_addrgen_req_valid_o = ldu_axi_addrgen_queue_valid;
-  assign stu_axi_addrgen_req_valid_o = stu_axi_addrgen_queue_valid;
+  assign ldu_axi_addrgen_req_valid_o = !ldu_axi_addrgen_queue_empty;
+  assign stu_axi_addrgen_req_valid_o = !stu_axi_addrgen_queue_empty;
 
-  assign ldu_axi_addrgen_queue_full = ~ldu_axi_addrgen_queue_ready;
-  assign stu_axi_addrgen_queue_full = ~stu_axi_addrgen_queue_ready;
   assign ldu_axi_addrgen_queue_data = axi_addrgen_queue;
   assign stu_axi_addrgen_queue_data = axi_addrgen_queue;
 
@@ -838,7 +839,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     if (vreq_is_vld &&
         //!(vreq_is_load_d && block_load_addr_i) &&
-        !(vreq_is_load_d && (1'b0&(stu_axi_addrgen_queue_valid && !axi_w_valid_i) || (prefetch_axi_ar_rob_match || prefetch_axi_ar_rob_pop_done_counter_d))) &&
+        !(vreq_is_load_d && (prefetch_axi_ar_rob_match || prefetch_axi_ar_rob_pop_done_counter_d)) &&
         !second_prefetch_vld_q) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
