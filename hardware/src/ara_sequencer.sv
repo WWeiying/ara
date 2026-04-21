@@ -56,6 +56,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   `include "common_cells/registers.svh"
 
+  `ifdef FOR_VERIFY
+  logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
+  `endif
   ///////////////////////////////////
   //  Running vector instructions  //
   ///////////////////////////////////
@@ -382,6 +385,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
     // Update the running vector instructions
     for (int pe = 0; pe < NrPEs; pe++) pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
+    `ifdef FOR_VERIFY
+    raw_hazard = '0;
+    war_hazard = '0;
+    waw_hazard = '0;
+    false_hazard = '0;
+    sequencer_block = '0;
+    `endif
 
     case (state_q)
       IDLE: begin
@@ -426,6 +436,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             // WAW
             if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
               write_list_d[ara_req_i.vd].valid;
+
+            `ifdef FOR_VERIFY
+            raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
+                         (ara_req_i.use_vs2 && pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid]) ||
+                         ((!ara_req_i.vm) && pe_req_d.hazard_vm[write_list_d[VMASK].vid]);
+            war_hazard = ara_req_i.use_vd && (pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] || pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid]|| pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid]);
+            waw_hazard = (ara_req_i.use_vd) && pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid];
+            false_hazard = war_hazard || waw_hazard;
+            sequencer_block = (!(|{ara_req_i.use_vs1, ara_req_i.use_vs2, ara_req_i.use_vd_op, !ara_req_i.vm}) &&
+                |{pe_req_d.hazard_vs1, pe_req_d.hazard_vs2, pe_req_d.hazard_vm, pe_req_d.hazard_vd} ||
+                (pe_req_d.op == VSLIDEUP && |{pe_req_d.hazard_vd, pe_req_d.hazard_vs1, pe_req_d.hazard_vs2}) ||
+                (pe_req_d.op == VSLIDEDOWN && |{pe_req_d.hazard_vs1, pe_req_d.hazard_vs2}));
+            `endif
 
             /////////////
             //  Issue  //

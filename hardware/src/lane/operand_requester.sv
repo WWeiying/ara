@@ -585,7 +585,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
-  `ifdef FOR_SIM
+  `ifdef FOR_VERIFY
     typedef enum logic [5:0] {
       none,
       v0 = 6'b100000,
@@ -701,7 +701,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       .gnt_i (vrf_req_o[bank] ) // Acknowledge it directly
     );
 
-  `ifdef FOR_SIM
+  `ifdef FOR_VERIFY
     assign bank_vld[bank] = |{payload_lp_gnt, payload_hp_gnt};
     assign bank_rd_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & !vrf_wen_o[bank];
     assign bank_wr_vld[bank] = |{payload_lp_gnt, payload_hp_gnt} & vrf_wen_o[bank];
