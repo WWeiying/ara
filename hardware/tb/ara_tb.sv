@@ -38,6 +38,13 @@ typedef struct {
   logic [63:0] rvv_axi_b_count;
   logic [63:0] rvv_axi_ar_count;
   logic [63:0] rvv_axi_r_count;
+`ifdef FOR_VERIFY
+  logic [63:0] seq_raw_hazard_cycle;
+  logic [63:0] seq_war_hazard_cycle;
+  logic [63:0] seq_waw_hazard_cycle;
+  logic [63:0] seq_false_hazard_cycle;
+  logic [63:0] seq_block_cycle;
+`endif
 } perf_t;
 
 function automatic perf_t get_perf_counters();
@@ -64,6 +71,13 @@ function automatic perf_t get_perf_counters();
     counters.rvv_axi_b_count  = ara_tb.rvv_axi_b_count ;
     counters.rvv_axi_ar_count = ara_tb.rvv_axi_ar_count;
     counters.rvv_axi_r_count  = ara_tb.rvv_axi_r_count ;
+`ifdef FOR_VERIFY
+    counters.seq_raw_hazard_cycle   = ara_tb.seq_raw_hazard_cycle;
+    counters.seq_war_hazard_cycle   = ara_tb.seq_war_hazard_cycle;
+    counters.seq_waw_hazard_cycle   = ara_tb.seq_waw_hazard_cycle;
+    counters.seq_false_hazard_cycle = ara_tb.seq_false_hazard_cycle;
+    counters.seq_block_cycle        = ara_tb.seq_block_cycle;
+`endif
     return counters;
 endfunction
 
@@ -90,6 +104,13 @@ function void print_perf_report();
       int total_rvv_axi_b_count ;
       int total_rvv_axi_ar_count;
       int total_rvv_axi_r_count ;
+`ifdef FOR_VERIFY
+      int total_seq_raw_hazard_cycle;
+      int total_seq_war_hazard_cycle;
+      int total_seq_waw_hazard_cycle;
+      int total_seq_false_hazard_cycle;
+      int total_seq_block_cycle;
+`endif
       
       real ipc;
       real lane_utilization;
@@ -120,7 +141,15 @@ function void print_perf_report();
       total_rvv_axi_w_count  = ara_tb.perf_end_n.rvv_axi_w_count  - ara_tb.perf_start_n.rvv_axi_w_count ;
       total_rvv_axi_b_count  = ara_tb.perf_end_n.rvv_axi_b_count  - ara_tb.perf_start_n.rvv_axi_b_count ;
       total_rvv_axi_ar_count = ara_tb.perf_end_n.rvv_axi_ar_count - ara_tb.perf_start_n.rvv_axi_ar_count;
-      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count ;
+      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count 
+`ifdef FOR_VERIFY
+      total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
+      total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
+      total_seq_waw_hazard_cycle   = ara_tb.perf_end_n.seq_waw_hazard_cycle   - ara_tb.perf_start_n.seq_waw_hazard_cycle;
+      total_seq_false_hazard_cycle = ara_tb.perf_end_n.seq_false_hazard_cycle - ara_tb.perf_start_n.seq_false_hazard_cycle;
+      total_seq_block_cycle        = ara_tb.perf_end_n.seq_block_cycle        - ara_tb.perf_start_n.seq_block_cycle;
+`endif
+
       ipc = real'(total_insns) / total_cycles;
       lane_utilization = real'(total_rvv_lane_cycles) / total_cycles;
       vecinst_rate = real'(total_vector_insns) / total_insns;
@@ -147,6 +176,13 @@ function void print_perf_report();
       $display("[PERF] rvv_op_fd                  : %0d", total_rvv_op_fd   );
       $display("[PERF] rvv_op_load                : %0d", total_rvv_op_load );
       $display("[PERF] rvv_op_store               : %0d", total_rvv_op_store);
+`ifdef FOR_VERIFY
+      $display("[PERF] seq_raw_hazard_cycles      : %0d", total_seq_raw_hazard_cycle  );
+      $display("[PERF] seq_war_hazard_cycles      : %0d", total_seq_war_hazard_cycle  );
+      $display("[PERF] seq_waw_hazard_cycles      : %0d", total_seq_waw_hazard_cycle  );
+      $display("[PERF] seq_false_hazard_cycles    : %0d", total_seq_false_hazard_cycle);
+      $display("[PERF] seq_block_cycles           : %0d", total_seq_block_cycle       );
+`endif
       $display("[PERF] ==== Performance Report End ====\n");
 
 
@@ -171,6 +207,13 @@ function void print_perf_report();
       $fwrite(file_handle, "[PERF] rvv_op_fd                  : %0d\n", total_rvv_op_fd   );
       $fwrite(file_handle, "[PERF] rvv_op_load                : %0d\n", total_rvv_op_load );
       $fwrite(file_handle, "[PERF] rvv_op_store               : %0d\n", total_rvv_op_store);
+`ifdef FOR_VERIFY
+      $fwrite(file_handle, "[PERF] seq_raw_hazard_cycles      : %0d\n", total_seq_raw_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_war_hazard_cycles      : %0d\n", total_seq_war_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_waw_hazard_cycles      : %0d\n", total_seq_waw_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_false_hazard_cycles    : %0d\n", total_seq_false_hazard_cycle);
+      $fwrite(file_handle, "[PERF] seq_block_cycles           : %0d\n", total_seq_block_cycle       );
+`endif
       $fwrite(file_handle, "[PERF] ==== AXI Transaction ====\n");
       $fwrite(file_handle, "[PERF] rvv_axi_aw_count           : %0d\n", total_rvv_axi_aw_count);
       $fwrite(file_handle, "[PERF] rvv_axi_w_count            : %0d\n", total_rvv_axi_w_count );
@@ -321,6 +364,13 @@ typedef struct {
   logic [63:0] rvv_load_lane_cycle;
   logic [63:0] rvv_store_only_cycle;
   logic [63:0] rvv_store_lane_cycle;
+`ifdef FOR_VERIFY
+  logic [63:0] seq_raw_hazard_cycle;
+  logic [63:0] seq_war_hazard_cycle;
+  logic [63:0] seq_waw_hazard_cycle;
+  logic [63:0] seq_false_hazard_cycle;
+  logic [63:0] seq_block_cycle;
+`endif
 } perf_t;
 
 function automatic perf_t get_perf_counters();
@@ -338,6 +388,13 @@ function automatic perf_t get_perf_counters();
     counters.rvv_load_lane_cycle    = ara_tb.rvv_load_lane_cycle ;
     counters.rvv_store_only_cycle   = ara_tb.rvv_store_only_cycle;
     counters.rvv_store_lane_cycle   = ara_tb.rvv_store_lane_cycle;
+`ifdef FOR_VERIFY
+    counters.seq_raw_hazard_cycle   = ara_tb.seq_raw_hazard_cycle;
+    counters.seq_war_hazard_cycle   = ara_tb.seq_war_hazard_cycle;
+    counters.seq_waw_hazard_cycle   = ara_tb.seq_waw_hazard_cycle;
+    counters.seq_false_hazard_cycle = ara_tb.seq_false_hazard_cycle;
+    counters.seq_block_cycle        = ara_tb.seq_block_cycle;
+`endif
     return counters;
 endfunction
 
@@ -350,6 +407,14 @@ function void print_perf_report();
       int total_rvv_load_only_cycles;
       int total_rvv_load_lane_cycles;
       int total_rvv_store_only_cycles;
+`ifdef FOR_VERIFY
+      int total_seq_raw_hazard_cycle;
+      int total_seq_war_hazard_cycle;
+      int total_seq_waw_hazard_cycle;
+      int total_seq_false_hazard_cycle;
+      int total_seq_block_cycle;
+`endif
+       
       int total_rvv_store_lane_cycles;
       
       real lane_utilization;
@@ -368,6 +433,15 @@ function void print_perf_report();
       total_rvv_load_lane_cycles  = ara_tb.perf_end_n.rvv_load_lane_cycle  - ara_tb.perf_start_n.rvv_load_lane_cycle ;
       total_rvv_store_only_cycles = ara_tb.perf_end_n.rvv_store_only_cycle - ara_tb.perf_start_n.rvv_store_only_cycle;
       total_rvv_store_lane_cycles = ara_tb.perf_end_n.rvv_store_lane_cycle - ara_tb.perf_start_n.rvv_store_lane_cycle;
+
+`ifdef FOR_VERIFY
+      total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
+      total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
+      total_seq_waw_hazard_cycle   = ara_tb.perf_end_n.seq_waw_hazard_cycle   - ara_tb.perf_start_n.seq_waw_hazard_cycle;
+      total_seq_false_hazard_cycle = ara_tb.perf_end_n.seq_false_hazard_cycle - ara_tb.perf_start_n.seq_false_hazard_cycle;
+      total_seq_block_cycle        = ara_tb.perf_end_n.seq_block_cycle        - ara_tb.perf_start_n.seq_block_cycle;
+`endif
+
       lane_utilization = real'(total_rvv_lane_cycles) / total_rvv_cycles;
       file_handle = $fopen($sformatf("perf_report_%s_ideal.log", testcase), "a");
       
@@ -385,6 +459,13 @@ function void print_perf_report();
       $display("[PERF] total_rvv_load_lane_cycles     : %0d", total_rvv_load_lane_cycles );
       $display("[PERF] total_rvv_store_only_cycles    : %0d", total_rvv_store_only_cycles);
       $display("[PERF] total_rvv_store_lane_cycles    : %0d", total_rvv_store_lane_cycles);
+`ifdef FOR_VERIFY
+      $display("[PERF] seq_raw_hazard_cycles          : %0d", total_seq_raw_hazard_cycle  );
+      $display("[PERF] seq_war_hazard_cycles          : %0d", total_seq_war_hazard_cycle  );
+      $display("[PERF] seq_waw_hazard_cycles          : %0d", total_seq_waw_hazard_cycle  );
+      $display("[PERF] seq_false_hazard_cycles        : %0d", total_seq_false_hazard_cycle);
+      $display("[PERF] seq_block_cycles               : %0d", total_seq_block_cycle       );
+`endif
       $display("[PERF] lane utilization               : %0.3f", lane_utilization);
       $display("[PERF] lane0 compute utilization      : %0.3f", real'(ara_tb.perf_end_n.rvv_lane_compute_cycle[0] - ara_tb.perf_start_n.rvv_lane_compute_cycle[0]) / total_rvv_cycles);
       $display("[PERF] lane1 compute utilization      : %0.3f", real'(ara_tb.perf_end_n.rvv_lane_compute_cycle[1] - ara_tb.perf_start_n.rvv_lane_compute_cycle[1]) / total_rvv_cycles);
@@ -411,6 +492,13 @@ function void print_perf_report();
       $fwrite(file_handle, "[PERF] total_rvv_load_lane_cycles : %0d\n", total_rvv_load_lane_cycles );
       $fwrite(file_handle, "[PERF] total_rvv_store_only_cycles: %0d\n", total_rvv_store_only_cycles);
       $fwrite(file_handle, "[PERF] total_rvv_store_lane_cycles: %0d\n", total_rvv_store_lane_cycles);
+`ifdef FOR_VERIFY
+      $fwrite(file_handle, "[PERF] seq_raw_hazard_cycles      : %0d\n", total_seq_raw_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_war_hazard_cycles      : %0d\n", total_seq_war_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_waw_hazard_cycles      : %0d\n", total_seq_waw_hazard_cycle  );
+      $fwrite(file_handle, "[PERF] seq_false_hazard_cycles    : %0d\n", total_seq_false_hazard_cycle);
+      $fwrite(file_handle, "[PERF] seq_block_cycles           : %0d\n", total_seq_block_cycle       );
+`endif
       $fwrite(file_handle, "[PERF] lane utilization           : %0.3f\n", lane_utilization);
       $fwrite(file_handle, "[PERF] ==== VRF Perf lane0 ====\n");
       $fwrite(file_handle, "[PERF] lane0 total_bank_requests     : %0d\n",   ara_tb.vrf_perf_monitor[0].u_vrf_perf_monitor.lane_stats.total_bank_requests    );
@@ -694,6 +782,13 @@ module ara_tb;
   logic [63:0] rvv_axi_b_count;
   logic [63:0] rvv_axi_ar_count;
   logic [63:0] rvv_axi_r_count;
+`ifdef FOR_VERIFY
+  logic [63:0] seq_raw_hazard_cycle;
+  logic [63:0] seq_war_hazard_cycle;
+  logic [63:0] seq_waw_hazard_cycle;
+  logic [63:0] seq_false_hazard_cycle;
+  logic [63:0] seq_block_cycle;
+`endif
 
   `else
   logic        perf_monitor;
@@ -706,6 +801,13 @@ module ara_tb;
   logic [63:0] rvv_load_lane_cycle;
   logic [63:0] rvv_store_only_cycle;
   logic [63:0] rvv_store_lane_cycle;
+`ifdef FOR_VERIFY
+  logic [63:0] seq_raw_hazard_cycle;
+  logic [63:0] seq_war_hazard_cycle;
+  logic [63:0] seq_waw_hazard_cycle;
+  logic [63:0] seq_false_hazard_cycle;
+  logic [63:0] seq_block_cycle;
+`endif
 
   `endif
   `endif
@@ -1318,6 +1420,25 @@ module ara_tb;
     end
   end
 
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      seq_raw_hazard_cycle   <= '0;
+      seq_war_hazard_cycle   <= '0;
+      seq_waw_hazard_cycle   <= '0;
+      seq_false_hazard_cycle <= '0;
+      seq_block_cycle        <= '0;
+    end
+    else begin
+      seq_raw_hazard_cycle   <= seq_raw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.raw_hazard;
+      seq_war_hazard_cycle   <= seq_war_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.war_hazard;
+      seq_waw_hazard_cycle   <= seq_waw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.waw_hazard;
+      seq_false_hazard_cycle <= seq_false_hazard_cycle + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.false_hazard;
+      seq_block_cycle        <= seq_block_cycle        + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.sequencer_block;
+    end
+  end
+`endif
+
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
       rvv_instret  <= '0;
@@ -1516,6 +1637,25 @@ module ara_tb;
       rvv_store_lane_cycle <= rvv_store_lane_cycle;
     end
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      seq_raw_hazard_cycle   <= '0;
+      seq_war_hazard_cycle   <= '0;
+      seq_waw_hazard_cycle   <= '0;
+      seq_false_hazard_cycle <= '0;
+      seq_block_cycle        <= '0;
+    end
+    else begin
+      seq_raw_hazard_cycle   <= seq_raw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.raw_hazard;
+      seq_war_hazard_cycle   <= seq_war_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.war_hazard;
+      seq_waw_hazard_cycle   <= seq_waw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.waw_hazard;
+      seq_false_hazard_cycle <= seq_false_hazard_cycle + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.false_hazard;
+      seq_block_cycle        <= seq_block_cycle        + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.sequencer_block;
+    end
+  end
+`endif
 
   initial begin
     #15.5;
