@@ -176,7 +176,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<1; b++) r[b] = !mul_res.w128[b][63] & (mul_res.w128[b][62:0] != '0);
           endcase
-          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = (op == VSMUL) ? (mul_res.w128[l] >> 63) + r[l] : mul_res.w128[l][63:0];
+          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = (mul_res.w128[l] >> 63) + r[l];
         end
         VMULH,
         VMULHU,
@@ -215,7 +215,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<2; b++) r[b] = !mul_res.w64[b][31] & (mul_res.w64[b][30:0] != '0);
           endcase
-          for (int l = 0; l < 2; l++) result_o[32*l +: 32] = (op == VSMUL) ? (mul_res.w64[l] >> 31) + r[l] : mul_res.w64[l][31:0];
+          for (int l = 0; l < 2; l++) result_o[32*l +: 32] = (mul_res.w64[l] >> 31) + r[l];
         end
         VMULH,
         VMULHU,
@@ -252,7 +252,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<4; b++) r[b] = !mul_res.w32[b][15] & (mul_res.w32[b][14:0] != '0);
           endcase
-          for (int l = 0; l < 4; l++) result_o[16*l +: 16] = (op == VSMUL) ? (mul_res.w32[l] >> 16) + r[l] : mul_res.w32[l][15:0];
+          for (int l = 0; l < 4; l++) result_o[16*l +: 16] = (mul_res.w32[l] >> 16) + r[l];
         end
         VMULH,
         VMULHU,
@@ -289,7 +289,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<8; b++) r[b] = !mul_res.w16[b][7] & (mul_res.w16[b][6:0] != '0);
           endcase
-          for (int l = 0; l < 8; l++) result_o[8*l +: 8] = (op == VSMUL) ? (mul_res.w16[l] >> 7) + r[l] : mul_res.w16[l][7:0];
+          for (int l = 0; l < 8; l++) result_o[8*l +: 8] = (mul_res.w16[l] >> 7) + r[l];
         end
         VMULH,
         VMULHU,

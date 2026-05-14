@@ -479,10 +479,16 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
 
   logic [idx_width(AxiDataWidth/8)-1:0]    lower_byte;
   logic [idx_width(AxiDataWidth/8)-1:0]    upper_byte;
-  vlen_t                                   vrf_valid_bytes; 
-  vlen_t                                   vinsn_valid_bytes;
-  vlen_t                                   axi_valid_bytes;
-  logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
+  vaddr_t                                  axi_addrgen_req_lsb_addr;
+  localparam int unsigned                  MaxIssueBytesPerCycle = ((AxiDataWidth/8) > (NrLanes * DataWidthB))
+    ? (AxiDataWidth/8)
+    : (NrLanes * DataWidthB);
+  typedef logic [idx_width(MaxIssueBytesPerCycle):0] issue_byte_cnt_t;
+  issue_byte_cnt_t                          vrf_valid_bytes;
+  issue_byte_cnt_t                          vinsn_valid_bytes;
+  issue_byte_cnt_t                          issue_word_valid_bytes;
+  issue_byte_cnt_t                          axi_valid_bytes;
+  issue_byte_cnt_t                          valid_bytes;
   `ifdef FOR_VERIFY
   int unsigned vrf_seq_byte_v[AxiDataWidth/8-1:0] ;
   int unsigned vrf_seq_byte_cnt_v[AxiDataWidth/8-1:0] ;
@@ -542,8 +548,10 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
 
     lower_byte         = '0;
     upper_byte         = '0;
+    axi_addrgen_req_lsb_addr = '0;
     vrf_valid_bytes    = '0; 
     vinsn_valid_bytes  = '0;
+    issue_word_valid_bytes = '0;
     axi_valid_bytes    = '0;
     valid_bytes        = '0;
     `ifdef FOR_VERIFY
@@ -582,9 +590,13 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
       // If non-unit strided load, we do not progress within the beat
-      lower_byte = beat_lower_byte(axi_addrgen_req_q.addr,
+      // Only the byte-lane bits of the base address are relevant for computing
+      // within-beat valid-byte windows.
+      axi_addrgen_req_lsb_addr[idx_width(AxiDataWidth/8)-1:0] =
+        axi_addrgen_req_q.addr[idx_width(AxiDataWidth/8)-1:0];
+      lower_byte = beat_lower_byte(axi_addrgen_req_lsb_addr,
         axi_addrgen_req_q.size, axi_addrgen_req_q.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
-      upper_byte = beat_upper_byte(axi_addrgen_req_q.addr,
+      upper_byte = beat_upper_byte(axi_addrgen_req_lsb_addr,
         axi_addrgen_req_q.size, axi_addrgen_req_q.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
 
       // Is there a vector instruction ready to be issued?
@@ -592,14 +604,18 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
       if (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q))) begin : operands_valid
         // Account for the issued bytes
         // How many bytes are valid in this VRF word
-        vrf_valid_bytes   = (NrLanes * DataWidthB) - vrf_word_byte_pnt_q;
-        // How many bytes are valid in this instruction
-        vinsn_valid_bytes = issue_cnt_bytes_q - vrf_word_byte_cnt_q;
+        vrf_valid_bytes   = issue_byte_cnt_t'((NrLanes * DataWidthB) - vrf_word_byte_pnt_q);
+        // How many bytes from this instruction can still fit in one VRF word.
+        issue_word_valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB))
+          ? issue_byte_cnt_t'(issue_cnt_bytes_q)
+          : issue_byte_cnt_t'(NrLanes * DataWidthB);
+        // How many bytes are still valid in this instruction.
+        vinsn_valid_bytes = issue_word_valid_bytes - issue_byte_cnt_t'(vrf_word_byte_cnt_q);
         // How many bytes are valid in this AXI word
-        axi_valid_bytes   = upper_byte - lower_byte - axi_r_byte_pnt_q + 1;
+        axi_valid_bytes   = issue_byte_cnt_t'(upper_byte - lower_byte - axi_r_byte_pnt_q + 1);
 
         // How many bytes are we committing?
-        valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB)) ? vinsn_valid_bytes : vrf_valid_bytes;
+        valid_bytes = (vinsn_valid_bytes < vrf_valid_bytes) ? vinsn_valid_bytes : vrf_valid_bytes;
         valid_bytes = (valid_bytes       < axi_valid_bytes       ) ? valid_bytes       : axi_valid_bytes;
 
         // Bump R beat and VRF word pointers

@@ -102,6 +102,20 @@ if { $GUI_SDC_FILE != "" } {
 
 ## ungroup
 if { $GUI_UNGROUP } {
+        # Preserve selected ARA hierarchy even when ungroup is enabled
+        set preserve_cells [get_cells -hier -filter { \
+            is_hierarchical == true && ( \
+                full_name =~ */i_ara_i_dispatcher      || \
+                full_name =~ */i_ara_i_sequencer       || \
+                full_name =~ */i_ara_i_masku           || \
+                full_name =~ */i_ara_i_sldu            || \
+                full_name =~ */i_ara_i_vlsu            || \
+                full_name =~ */i_ara_gen_lanes_*__i_lane ) }]
+
+        if {[sizeof_collection $preserve_cells] > 0} {
+                set_ungroup $preserve_cells false
+        }
+
         ungroup -all -flatten
 } else {
         set ungroup_list ""

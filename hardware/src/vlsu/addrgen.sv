@@ -158,10 +158,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   vid_t last_id_d, last_id_q;
   logic pe_req_valid_i_msk;
   logic en_sync_mask_d, en_sync_mask_q;
+  logic pe_req_i_is_mem_op, pe_req_i_is_dup;
 
   pe_req_t pe_req, pe_req_d, pe_req_q;
   logic    pe_req_valid;
   logic    addrgen_ack;
+  logic    pe_req_is_mem_op, pe_req_can_accept;
 
   fall_through_register_v1 #(
     .T(pe_req_t),
@@ -188,14 +190,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     // Default assignment
     last_id_d      = last_id_q;
     en_sync_mask_d = en_sync_mask_q;
+    pe_req_i_is_dup    = en_sync_mask_q && (pe_req_i.id == last_id_q);
+    pe_req_i_is_mem_op = pe_req_i.op inside {VLE, VSE, VLSE, VSSE, VLXE, VSXE};
 
-    // If the sync mask is enabled and the ID is the same
-    // as before, avoid to re-sample the same instruction
-    // more than once.
-    if ((en_sync_mask_q && (pe_req_i.id == last_id_q)) || !(pe_req_i.op inside {VLE, VSE, VLSE, VSSE, VLXE, VSXE}))
-      pe_req_valid_i_msk = 1'b0;
-    else
-      pe_req_valid_i_msk = pe_req_valid_i;
+    // Avoid re-sampling duplicated requests and non-memory requests.
+    pe_req_valid_i_msk = pe_req_valid_i && pe_req_i_is_mem_op && !pe_req_i_is_dup;
 
     // Enable the sync mask when a handshake happens,
     // and save the insn ID
@@ -586,6 +585,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     vreq_is_stride_d      = vreq_is_stride_q;
     vreq_is_index_d       = vreq_is_index_q;
     axi_ax_ready          = 1'b0;
+    pe_req_is_mem_op      = is_load(pe_req.op) || is_store(pe_req.op);
+    pe_req_can_accept     = pe_req_valid && pe_req_is_mem_op && !vinsn_running_q[pe_req.id];
     num_bytes             = '0;
     remaining_bytes       = '0;
     paddr                 = '0;
@@ -648,7 +649,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     case(state_q)
     IDLE: begin : addrgen_state_IDLE
-      if (pe_req_valid && (is_load(pe_req.op) || is_store(pe_req.op)) && !vinsn_running_q[pe_req.id]) begin : register_req
+      if (pe_req_can_accept) begin : register_req
         pe_req_d                     = pe_req;
         vinsn_running_d[pe_req_d.id] = 1'b1;
         addrgen_ack                  = 1'b1;

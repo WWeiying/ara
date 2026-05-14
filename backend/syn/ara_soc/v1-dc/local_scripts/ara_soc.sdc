@@ -57,4 +57,5 @@ set_input_delay -clock clk_i -max $input_delay [remove_from_collection [all_inpu
 set_output_delay -clock clk_i -max $output_delay [all_outputs]
 
 set_false_path -from [get_ports rst_ni] -to [all_registers]
-set_false_path -to [get_pins i_system/i_ariane/rvfi_probes_o]
+#set_false_path -to [get_pins i_system/i_ariane/rvfi_probes_o]
+

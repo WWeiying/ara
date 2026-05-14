@@ -1364,6 +1364,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic  unit_out_valid;
   elen_t unit_out_result;
   strb_t unit_out_mask;
+  logic  is_vmul_op, is_vdiv_op, is_vfpu_op;
 
   // Latency stall mechanism to ensure in-order FPU execution when needed
   // i.e. when issue insn has latency lower than processing insn latency
@@ -1399,9 +1400,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     vfpu_in_valid = 1'b0;
 
     // If the result queue is not full, it is ready to accept a result
-    vmul_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VMUL:VSMUL]});
-    vdiv_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VDIVU:VREM]});
-    vfpu_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VFADD:VMFGE]});
+    is_vmul_op = vinsn_processing_q.op inside {[VMUL:VSMUL]};
+    is_vdiv_op = vinsn_processing_q.op inside {[VDIVU:VREM]};
+    is_vfpu_op = vinsn_processing_q.op inside {[VFADD:VMFGE]};
+    vmul_out_ready = ~result_queue_full && is_vmul_op;
+    vdiv_out_ready = ~result_queue_full && is_vdiv_op;
+    vfpu_out_ready = ~result_queue_full && is_vfpu_op;
 
     // Valid of the unit in use (i.e., result queue input valid) is not asserted by default
     unit_out_valid  = 1'b0;
@@ -1588,23 +1592,19 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
 
         // Select the correct valid, result, and mask, to write in the result queue
-        case (vinsn_processing_q.op) inside
-          [VMUL:VSMUL]: begin
-            unit_out_valid  = vmul_out_valid;
-            unit_out_result = vmul_result;
-            unit_out_mask   = vmul_mask;
-          end
-          [VDIVU:VREM]: begin
-            unit_out_valid  = vdiv_out_valid;
-            unit_out_result = vdiv_result;
-            unit_out_mask   = vdiv_mask;
-          end
-          [VFADD:VMFGE]: begin
-            unit_out_valid  = vfpu_out_valid;
-            unit_out_result = vfpu_processed_result;
-            unit_out_mask   = vfpu_mask;
-          end
-        endcase
+        if (is_vmul_op) begin
+          unit_out_valid  = vmul_out_valid;
+          unit_out_result = vmul_result;
+          unit_out_mask   = vmul_mask;
+        end else if (is_vdiv_op) begin
+          unit_out_valid  = vdiv_out_valid;
+          unit_out_result = vdiv_result;
+          unit_out_mask   = vdiv_mask;
+        end else if (is_vfpu_op) begin
+          unit_out_valid  = vfpu_out_valid;
+          unit_out_result = vfpu_processed_result;
+          unit_out_mask   = vfpu_mask;
+        end
 
         // Narrowing FPU results need to be shuffled before being saved for storing
         unique case (vinsn_processing_q.vtype.vsew)
