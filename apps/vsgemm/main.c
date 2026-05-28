@@ -30,9 +30,9 @@ void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C);
 int main() {
     const float a = 6.66;
 
-    gemm_f32_32x32x32_4row(src1,src2,src1);
+    //gemm_f32_32x32x32_4row(src1,src2,src1);
     //gemm_f32_64x64x64_4row(src1,src2,src1);
-    //gemm_f32_128x128x128_4row(src1,src2,src1);
+    gemm_f32_128x128x128_4row(src1,src2,src1);
 
     return 0;
 }
