@@ -4,7 +4,7 @@ ARA_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$ARA_DIR)
 INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
 VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 
-BENDER         := $(ROOT_DIR)/../hardware/bender
+BENDER         := /home/wangwy/openproject/ara/hardware/bender
 BENDER_VERSION := 0.27.3
 
 # Choose Ara's configuration
