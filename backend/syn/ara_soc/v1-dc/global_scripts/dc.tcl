@@ -180,7 +180,7 @@ check_timing > ../reports/check_timing_pre.rpt
 
 ## Prevent assignment statements in the Verilog netlist
 set_fix_multiple_port_nets -all -buffer_constants
-set_app_var verilogout_no_tri ture
+set_app_var verilogout_no_tri true
 set_host_options -max_cores $GUI_MAX_CPU_NUM
 set_cost_priority -delay
 
