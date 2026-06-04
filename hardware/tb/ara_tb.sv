@@ -141,7 +141,7 @@ function void print_perf_report();
       total_rvv_axi_w_count  = ara_tb.perf_end_n.rvv_axi_w_count  - ara_tb.perf_start_n.rvv_axi_w_count ;
       total_rvv_axi_b_count  = ara_tb.perf_end_n.rvv_axi_b_count  - ara_tb.perf_start_n.rvv_axi_b_count ;
       total_rvv_axi_ar_count = ara_tb.perf_end_n.rvv_axi_ar_count - ara_tb.perf_start_n.rvv_axi_ar_count;
-      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count 
+      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count ;
 `ifdef FOR_VERIFY
       total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
       total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
@@ -149,7 +149,6 @@ function void print_perf_report();
       total_seq_false_hazard_cycle = ara_tb.perf_end_n.seq_false_hazard_cycle - ara_tb.perf_start_n.seq_false_hazard_cycle;
       total_seq_block_cycle        = ara_tb.perf_end_n.seq_block_cycle        - ara_tb.perf_start_n.seq_block_cycle;
 `endif
-
       ipc = real'(total_insns) / total_cycles;
       lane_utilization = real'(total_rvv_lane_cycles) / total_cycles;
       vecinst_rate = real'(total_vector_insns) / total_insns;
@@ -184,7 +183,6 @@ function void print_perf_report();
       $display("[PERF] seq_block_cycles           : %0d", total_seq_block_cycle       );
 `endif
       $display("[PERF] ==== Performance Report End ====\n");
-
 
       $fwrite(file_handle, "[PERF] ==== Performance Report Start ====\n");
       $fwrite(file_handle, "[PERF] duration                   : %0t x100fs\n", duration);
@@ -407,6 +405,7 @@ function void print_perf_report();
       int total_rvv_load_only_cycles;
       int total_rvv_load_lane_cycles;
       int total_rvv_store_only_cycles;
+      int total_rvv_store_lane_cycles;
 `ifdef FOR_VERIFY
       int total_seq_raw_hazard_cycle;
       int total_seq_war_hazard_cycle;
@@ -414,8 +413,6 @@ function void print_perf_report();
       int total_seq_false_hazard_cycle;
       int total_seq_block_cycle;
 `endif
-       
-      int total_rvv_store_lane_cycles;
       
       real lane_utilization;
       real lane_compute_utilization;
@@ -660,7 +657,6 @@ function void print_perf_csv();
 
     $fclose(csv_handle);
 endfunction
-
 `endif
 `endif
 
@@ -680,6 +676,8 @@ module ara_tb;
   `else
   localparam VLEN = 256;
   `endif
+
+  localparam NrBanks = 8;
 
   localparam ClockPeriod  = 1ns;
   // Axi response delay [ps]
@@ -718,6 +716,7 @@ module ara_tb;
     forever #(ClockPeriod/2) clk = ~clk;
   end
 
+`ifdef FOR_VERIFY
   logic [63:0] wall_cycle;
   logic        lane_compute[NrLanes];
   logic [63:0] lane_compute_add[NrLanes];
@@ -752,6 +751,7 @@ module ara_tb;
     end
 
   end
+`endif
 
   /*********
    *  DUT  *
@@ -801,6 +801,7 @@ module ara_tb;
   logic [63:0] rvv_load_lane_cycle;
   logic [63:0] rvv_store_only_cycle;
   logic [63:0] rvv_store_lane_cycle;
+
 `ifdef FOR_VERIFY
   logic [63:0] seq_raw_hazard_cycle;
   logic [63:0] seq_war_hazard_cycle;
@@ -808,7 +809,6 @@ module ara_tb;
   logic [63:0] seq_false_hazard_cycle;
   logic [63:0] seq_block_cycle;
 `endif
-
   `endif
   `endif
 
@@ -832,6 +832,12 @@ module ara_tb;
   end
 
   logic [63:0] exit;
+`ifdef IDEAL_DISPATCHER
+  riscv::instruction_t ideal_insn;
+  logic [63:0]         ideal_rs1, ideal_rs2;
+  logic                ideal_req_valid, ideal_resp_ready;
+  logic                ideal_req_ready, ideal_ara_idle;
+`endif
 
   // This TB must be implemented in C for integration with Verilator.
   // In order to Verilator to understand that the ara_testharness module is the top-level,
@@ -847,127 +853,151 @@ module ara_tb;
     .clk_i (clk  ),
     .rst_ni(rst_n),
     .exit_o(exit )
+`ifdef IDEAL_DISPATCHER
+    ,
+    .ideal_insn_i      (ideal_insn      ),
+    .ideal_rs1_i       (ideal_rs1       ),
+    .ideal_rs2_i       (ideal_rs2       ),
+    .ideal_req_valid_i (ideal_req_valid ),
+    .ideal_resp_ready_i(ideal_resp_ready),
+    .ideal_req_ready_o (ideal_req_ready ),
+    .ideal_ara_idle_o  (ideal_ara_idle  )
+`endif
   );
   `endif
 
+`ifdef IDEAL_DISPATCHER
+  accel_dispatcher_ideal i_accel_dispatcher_ideal (
+    .clk_i             (clk             ),
+    .rst_ni            (rst_n           ),
+    .ideal_insn_o      (ideal_insn      ),
+    .ideal_rs1_o       (ideal_rs1       ),
+    .ideal_rs2_o       (ideal_rs2       ),
+    .ideal_req_valid_o (ideal_req_valid ),
+    .ideal_resp_ready_o(ideal_resp_ready),
+    .ideal_req_ready_i (ideal_req_ready ),
+    .ideal_ara_idle_i  (ideal_ara_idle  )
+  );
+`endif
+
   `ifdef TARGET_SRAM_MC 
-  //`ifdef SAIF
-  //localparam DRAMNumBanks=16;
-  //localparam DRAMWordsPerBank=8192;
-  //localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
+  `ifdef SAIF
+  localparam DRAMNumBanks=8;
+  localparam DRAMWordsPerBank=8192;
+  localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
 
-  ///*************************
-  // *  DRAM Initialization  *
-  // *************************/
-  //typedef logic [AxiAddrWidth-1:0] addr_t;
-  //typedef logic [AxiWideDataWidth-1:0] data_t;
+  /*************************
+   *  DRAM Initialization  *
+   *************************/
+  typedef logic [AxiAddrWidth-1:0] addr_t;
+  typedef logic [AxiWideDataWidth-1:0] data_t;
 
-  //initial begin : dram_init
-  //  automatic data_t mem_row;
-  //  byte buffer [];
-  //  addr_t address;
-  //  addr_t length;
-  //  string binary;
-  //  addr_t word_addr;
-  //  int bank_index;
-  //  addr_t bank_offset;
-  //  int word_index;
-  //  data_t bank_data [DRAMNumBanks][DRAMWordsPerBank];
+  initial begin : dram_init
+    automatic data_t mem_row;
+    byte buffer [];
+    addr_t address;
+    addr_t length;
+    string binary;
+    addr_t word_addr;
+    int bank_index;
+    addr_t bank_offset;
+    int word_index;
+    data_t bank_data [DRAMNumBanks][DRAMWordsPerBank];
 
-  //  for (int i = 0; i < DRAMNumBanks; i++) begin
-  //      for (int j = 0; j < DRAMWordsPerBank; j++) begin
-  //          bank_data[i][j] = '0;
-  //      end
-  //  end
+    for (int i = 0; i < DRAMNumBanks; i++) begin
+        for (int j = 0; j < DRAMWordsPerBank; j++) begin
+            bank_data[i][j] = '0;
+        end
+    end
 
-  //  // tc_sram is initialized with zeros. We need to overwrite this value.
-  //  repeat (2)
-  //    #ClockPeriod;
+    // tc_sram is initialized with zeros. We need to overwrite this value.
+    repeat (2)
+      #ClockPeriod;
 
-  //  // Initialize memories
-  //  void'($value$plusargs("PRELOAD=%s", binary));
-  //  if (binary != "") begin
-  //    // Read ELF
-  //    read_elf(binary);
-  //    $display("Loading ELF file %s", binary);
-  //    while (get_section(address, length)) begin
-  //      // Read sections
-  //      automatic int nwords = (length + AxiWideBeWidth - 1)/AxiWideBeWidth;
-  //      $display("Loading section %x of length %x", address, length);
-  //      buffer = new[nwords * AxiWideBeWidth];
-  //      void'(read_section(address, buffer));
+    // Initialize memories
+    void'($value$plusargs("PRELOAD=%s", binary));
+    if (binary != "") begin
+      // Read ELF
+      read_elf(binary);
+      $display("Loading ELF file %s", binary);
+      while (get_section(address, length)) begin
+        // Read sections
+        automatic int nwords = (length + AxiWideBeWidth - 1)/AxiWideBeWidth;
+        $display("Loading section %x of length %x", address, length);
+        buffer = new[nwords * AxiWideBeWidth];
+        void'(read_section(address, buffer));
 
-  //      // Initializing memories
-  //      for (int w = 0; w < nwords; w++) begin
-  //        mem_row = '0;
-  //        for (int b = 0; b < AxiWideBeWidth; b++) begin
-  //          mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
-  //        end
+        // Initializing memories
+        for (int w = 0; w < nwords; w++) begin
+          mem_row = '0;
+          for (int b = 0; b < AxiWideBeWidth; b++) begin
+            mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
+          end
 
-  //        word_addr = address + (w << AxiWideByteOffset);
-  //        
-  //        if (word_addr >= DRAMAddrBase && word_addr < DRAMAddrBase + (DRAMNumBanks * DRAMBankSizeBytes)) begin
-  //          bank_index = (word_addr - DRAMAddrBase) / DRAMBankSizeBytes;
-  //          bank_offset = (word_addr - DRAMAddrBase) % DRAMBankSizeBytes;
-  //          word_index = bank_offset >> AxiWideByteOffset;
-  //          
-  //          if (bank_index < DRAMNumBanks && word_index < DRAMWordsPerBank) begin
-  //            bank_data[bank_index][word_index] = mem_row;
-  //          end else begin
-  //            $display("Error: Address %x maps to invalid bank(%0d) or word(%0d)", 
-  //                     word_addr, bank_index, word_index);
-  //          end
-  //        end else begin
-  //              $display("Cannot initialize address %x, which doesn't fall into the L2 region.", word_addr);
-  //        end
-  //      end
-  //    end
+          word_addr = address + (w << AxiWideByteOffset);
+          
+          if (word_addr >= DRAMAddrBase && word_addr < DRAMAddrBase + (DRAMNumBanks * DRAMBankSizeBytes)) begin
+            bank_index = (word_addr - DRAMAddrBase) / DRAMBankSizeBytes;
+            bank_offset = (word_addr - DRAMAddrBase) % DRAMBankSizeBytes;
+            word_index = bank_offset >> AxiWideByteOffset;
+            
+            if (bank_index < DRAMNumBanks && word_index < DRAMWordsPerBank) begin
+              bank_data[bank_index][word_index] = mem_row;
+            end else begin
+              $display("Error: Address %x maps to invalid bank(%0d) or word(%0d)", 
+                       word_addr, bank_index, word_index);
+            end
+          end else begin
+                $display("Cannot initialize address %x, which doesn't fall into the L2 region.", word_addr);
+          end
+        end
+      end
 
-  //    for (int i = 0; i < DRAMNumBanks; i++) begin
-  //      automatic string temp_file = $sformatf("temp_bank_%0d.dat", i);
-  //      automatic int fd = $fopen(temp_file, "w");
-  //      
-  //      if (!fd) begin
-  //        $error("Failed to open temporary file for bank %0d: %s", i, temp_file);
-  //        $finish;
-  //      end
+      for (int i = 0; i < DRAMNumBanks; i++) begin
+        automatic string temp_file = $sformatf("temp_bank_%0d.dat", i);
+        automatic int fd = $fopen(temp_file, "w");
+        
+        if (!fd) begin
+          $error("Failed to open temporary file for bank %0d: %s", i, temp_file);
+          $finish;
+        end
 
-  //      for (int w = 0; w < DRAMWordsPerBank; w++) begin
-  //        $fdisplay(fd,  "%032h", bank_data[i][w]);
-  //      end
+        for (int w = 0; w < DRAMWordsPerBank; w++) begin
+          $fdisplay(fd,  "%032h", bank_data[i][w]);
+        end
 
-  //      $fclose(fd);
+        $fclose(fd);
 
-  //      $display("Initializing bank %0d with file %s", i, temp_file);
-  //      case (i)
-  //        0:  dut.i_ara_soc.gen_dram_0__i_dram.preloadData(temp_file);
-  //        1:  dut.i_ara_soc.gen_dram_1__i_dram.preloadData(temp_file);
-  //        2:  dut.i_ara_soc.gen_dram_2__i_dram.preloadData(temp_file);
-  //        3:  dut.i_ara_soc.gen_dram_3__i_dram.preloadData(temp_file);
-  //        4:  dut.i_ara_soc.gen_dram_4__i_dram.preloadData(temp_file);
-  //        5:  dut.i_ara_soc.gen_dram_5__i_dram.preloadData(temp_file);
-  //        6:  dut.i_ara_soc.gen_dram_6__i_dram.preloadData(temp_file);
-  //        7:  dut.i_ara_soc.gen_dram_7__i_dram.preloadData(temp_file);
-  //        8:  dut.i_ara_soc.gen_dram_8__i_dram.preloadData(temp_file);
-  //        9:  dut.i_ara_soc.gen_dram_9__i_dram.preloadData(temp_file);
-  //        10: dut.i_ara_soc.gen_dram_10__i_dram.preloadData(temp_file);
-  //        11: dut.i_ara_soc.gen_dram_11__i_dram.preloadData(temp_file);
-  //        12: dut.i_ara_soc.gen_dram_12__i_dram.preloadData(temp_file);
-  //        13: dut.i_ara_soc.gen_dram_13__i_dram.preloadData(temp_file);
-  //        14: dut.i_ara_soc.gen_dram_14__i_dram.preloadData(temp_file);
-  //        15: dut.i_ara_soc.gen_dram_15__i_dram.preloadData(temp_file);
-  //        default: $display("Invalid bank index: %0d", bank_index);
-  //      endcase
-  //      //$system($sformatf("rm -f %s", temp_file));
-  //    end
+        $display("Initializing bank %0d with file %s", i, temp_file);
+        case (i)
+          0:  dut.i_ara_soc.gen_dram_0__i_dram.preloadData(temp_file);
+          1:  dut.i_ara_soc.gen_dram_1__i_dram.preloadData(temp_file);
+          2:  dut.i_ara_soc.gen_dram_2__i_dram.preloadData(temp_file);
+          3:  dut.i_ara_soc.gen_dram_3__i_dram.preloadData(temp_file);
+          4:  dut.i_ara_soc.gen_dram_4__i_dram.preloadData(temp_file);
+          5:  dut.i_ara_soc.gen_dram_5__i_dram.preloadData(temp_file);
+          6:  dut.i_ara_soc.gen_dram_6__i_dram.preloadData(temp_file);
+          7:  dut.i_ara_soc.gen_dram_7__i_dram.preloadData(temp_file);
+         // 8:  dut.i_ara_soc.gen_dram_8__i_dram.preloadData(temp_file);
+         // 9:  dut.i_ara_soc.gen_dram_9__i_dram.preloadData(temp_file);
+         // 10: dut.i_ara_soc.gen_dram_10__i_dram.preloadData(temp_file);
+         // 11: dut.i_ara_soc.gen_dram_11__i_dram.preloadData(temp_file);
+         // 12: dut.i_ara_soc.gen_dram_12__i_dram.preloadData(temp_file);
+         // 13: dut.i_ara_soc.gen_dram_13__i_dram.preloadData(temp_file);
+         // 14: dut.i_ara_soc.gen_dram_14__i_dram.preloadData(temp_file);
+         // 15: dut.i_ara_soc.gen_dram_15__i_dram.preloadData(temp_file);
+          default: $display("Invalid bank index: %0d", bank_index);
+        endcase
+        //$system($sformatf("rm -f %s", temp_file));
+      end
 
-  //  end else begin
-  //    $error("Expecting a firmware to run, none was provided!");
-  //    $finish;
-  //  end
-  //end : dram_init
+    end else begin
+      $error("Expecting a firmware to run, none was provided!");
+      $finish;
+    end
+  end : dram_init
 
-  //`else
+  `else
   localparam DRAMNumBanks=8;
   localparam DRAMWordsPerBank=8192;
   localparam DRAMBankSizeBytes=8192*AxiWideBeWidth;
@@ -1083,7 +1113,7 @@ module ara_tb;
     end
   end : dram_init
 
-  //`endif
+  `endif
   `else
   /*************************
    *  DRAM Initialization  *
@@ -1420,25 +1450,6 @@ module ara_tb;
     end
   end
 
-`ifdef FOR_VERIFY
-  always_ff @(posedge clk, negedge rst_n) begin
-    if(!rst_n) begin
-      seq_raw_hazard_cycle   <= '0;
-      seq_war_hazard_cycle   <= '0;
-      seq_waw_hazard_cycle   <= '0;
-      seq_false_hazard_cycle <= '0;
-      seq_block_cycle        <= '0;
-    end
-    else begin
-      seq_raw_hazard_cycle   <= seq_raw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.raw_hazard;
-      seq_war_hazard_cycle   <= seq_war_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.war_hazard;
-      seq_waw_hazard_cycle   <= seq_waw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.waw_hazard;
-      seq_false_hazard_cycle <= seq_false_hazard_cycle + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.false_hazard;
-      seq_block_cycle        <= seq_block_cycle        + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.sequencer_block;
-    end
-  end
-`endif
-
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin
       rvv_instret  <= '0;
@@ -1484,6 +1495,25 @@ module ara_tb;
       rvv_axi_r_count  <= rvv_axi_r_count  + (ara_tb.dut.i_ara_soc.i_system.i_ara.axi_resp_i.r_valid && ara_tb.dut.i_ara_soc.i_system.i_ara.axi_req_o.r_ready);
     end
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      seq_raw_hazard_cycle   <= '0;
+      seq_war_hazard_cycle   <= '0;
+      seq_waw_hazard_cycle   <= '0;
+      seq_false_hazard_cycle <= '0;
+      seq_block_cycle        <= '0;
+    end
+    else begin
+      seq_raw_hazard_cycle   <= seq_raw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.raw_hazard;
+      seq_war_hazard_cycle   <= seq_war_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.war_hazard;
+      seq_waw_hazard_cycle   <= seq_waw_hazard_cycle   + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.waw_hazard;
+      seq_false_hazard_cycle <= seq_false_hazard_cycle + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.false_hazard;
+      seq_block_cycle        <= seq_block_cycle        + ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.sequencer_block;
+    end
+  end
+`endif
 
   always_comb begin
     perf_time_n = perf_time_q;
@@ -1670,6 +1700,141 @@ module ara_tb;
   end
 
 `endif
+`endif
+
+`ifdef FOR_VERIFY
+  logic [63:0] vrf [NrLanes][NrBanks][16];
+
+  for(genvar l=0; l<NrLanes; l++) begin
+    for(genvar b=0; b<NrBanks; b++) begin
+      for(genvar w=0; w<16; w++) begin
+`ifndef TARGET_SRAM_MC
+        assign vrf[l][b][w] = ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vrf.gen_banks[b].data_sram.sram[w];
+`else
+        assign vrf[l][b][w] = '0;
+`endif
+      end
+    end
+  end
+  
+
+  function void print_vreg(int file_handle, logic [4:0] vs, rvv_pkg::vew_e eew);
+    localparam lane_vreg_word = 1024/8/NrLanes/8;
+    localparam lane_vreg_byte = 1024/8/NrLanes;
+    automatic  int              addr;
+    automatic  logic [VLEN-1:0] vreg;
+  
+    addr = vaddr(vs, NrLanes, VLEN);
+//    $display("vs                   = %0d",vs);
+//    $display("addr                 = %0d",addr);
+  
+    for(int j=0;j<lane_vreg_word;j++) begin
+      automatic logic [(NrLanes*64-1):0] lane_shuffled_vreg;
+      automatic logic [(NrLanes*64-1):0] lane_deshuffled_vreg;
+      automatic int                      bank_index;
+      automatic int                      word_index;
+      automatic int                      addr_temp;
+      addr_temp  = addr + j;
+      bank_index = addr_temp[($clog2(NrBanks)-1):0];
+      word_index = addr_temp>>$clog2(NrBanks);
+
+      for(int i=0;i<NrLanes;i++) begin
+        lane_shuffled_vreg[i*64+:64] = vrf[i][bank_index][word_index];
+      end
+
+      for(int k=0;k<lane_vreg_byte;k++) begin
+        lane_deshuffled_vreg[deshuffle_index(k,NrLanes,eew)*8+:8] = lane_shuffled_vreg[k*8+:8];
+      end
+
+      vreg[(j*NrLanes*64)+:(NrLanes*64)] = lane_deshuffled_vreg;
+//    $display("bank_index           = %0d",bank_index);
+//    $display("word_index           = %0d",word_index);
+//    $display("lane_deshuffled_vreg = %0h",lane_deshuffled_vreg);
+    end
+  
+    $fwrite(file_handle, "v%-2d = %0256h\n", vs, vreg);
+  endfunction
+
+  logic [NrVInsn-1:0]    vinsn_running_d, vinsn_running_q;
+  logic [63:0]           cycle;
+  typedef struct {
+    riscv::instruction_t   instr;
+    vid_t                  instr_id;
+    logic [4:0]            vs1;
+    logic                  use_vs1;
+    rvv_pkg::vew_e         eew_vs1;
+    logic [4:0]            vs2;
+    logic                  use_vs2;
+    rvv_pkg::vew_e         eew_vs2;
+    logic [4:0]            vd;
+    logic                  use_vd;
+    rvv_pkg::vew_e         eew_vd;
+  } verify_instr_t;
+
+  verify_instr_t vinstr_d, vinstr_q, vinstr_queue[NrVInsn-1:0];
+  int regdump_file_handle;
+
+
+  always_comb begin
+    vinsn_running_d = ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_d[7:0];
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vinsn_running_q <= '0;
+    end
+    else begin
+      vinsn_running_q <= vinsn_running_d;
+    end
+  end
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      vinstr_queue <= '{default:0};
+    end else begin
+      for(int i=0;i<NrVInsn;i++) begin
+        if(!vinsn_running_q[i] && vinsn_running_d[i]) begin
+          vinstr_queue[i].instr_id <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.id;
+          vinstr_queue[i].vs1      <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vs1;
+          vinstr_queue[i].use_vs1  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vs1;
+          vinstr_queue[i].eew_vs1  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.eew_vs1;
+          vinstr_queue[i].vs2      <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vs2;
+          vinstr_queue[i].use_vs2  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vs2;
+          vinstr_queue[i].eew_vs2  <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.eew_vs2;
+          vinstr_queue[i].vd       <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.vd;
+          vinstr_queue[i].use_vd   <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.use_vd;
+          vinstr_queue[i].eew_vd   <= ara_tb.dut.i_ara_soc.i_system.i_ara.i_dispatcher.csr_vtype_q.vsew;
+        end
+      end
+    end
+  end
+
+
+  initial begin
+    regdump_file_handle = $fopen("regdump.real", "w");
+  end
+
+  always_ff @(posedge clk) begin
+    for(int i=0;i<NrVInsn;i++) begin
+      if(vinsn_running_q[i] && !vinsn_running_d[i]) begin
+        $fwrite(regdump_file_handle, "cycle = %5d, id = %1d, instr = %08h\n", wall_cycle, vinstr_queue[i].instr_id, vinstr_queue[i].instr);
+        if(vinstr_queue[i].use_vd) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vd, vinstr_queue[i].eew_vd);
+        end
+        if(vinstr_queue[i].use_vs2) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vs2, vinstr_queue[i].eew_vs2);
+        end
+        if(vinstr_queue[i].use_vs1) begin
+          print_vreg(regdump_file_handle, vinstr_queue[i].vs1, vinstr_queue[i].eew_vs1);
+        end
+      end
+    end
+  end
+
+  final begin
+    $fclose(regdump_file_handle);
+  end
+  
 `endif
 
 endmodule : ara_tb

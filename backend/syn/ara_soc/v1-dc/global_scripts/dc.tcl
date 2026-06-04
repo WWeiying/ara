@@ -1,5 +1,7 @@
 set svf_file_tail 0
 set cur_shell_run_path  [pwd]
+file mkdir ../reports
+file mkdir ../outputs
 set svf_file $GUI_DESIGN_NAME.svf
 while {[file isfile $svf_file]} {
         incr svf_file_tail 1
@@ -102,6 +104,20 @@ if { $GUI_SDC_FILE != "" } {
 
 ## ungroup
 if { $GUI_UNGROUP } {
+#        # Preserve selected ARA hierarchy even when ungroup is enabled
+#        set preserve_cells [get_cells -hier -filter { \
+#            is_hierarchical == true && ( \
+#                full_name =~ */i_ara_i_dispatcher      || \
+#                full_name =~ */i_ara_i_sequencer       || \
+#                full_name =~ */i_ara_i_masku           || \
+#                full_name =~ */i_ara_i_sldu            || \
+#                full_name =~ */i_ara_i_vlsu            || \
+#                full_name =~ */i_ara_gen_lanes_*__i_lane ) }]
+#
+#        if {[sizeof_collection $preserve_cells] > 0} {
+#                set_ungroup $preserve_cells false
+#        }
+
         ungroup -all -flatten
 } else {
         set ungroup_list ""
@@ -156,6 +172,7 @@ if { $GUI_CLOCK_GATE } {
         append ckgt_cmd "-max_fanout $GUI_GATER_MAX_FANOUT "
         puts $ckgt_cmd
         eval $ckgt_cmd
+
         append compile_ultra_hier_opt " -gate_clock "
 
         set ICG_CELL [get_cells -hier -filter "ref_name=~$GUI_RTL_ICG_TYPE*"]
@@ -246,7 +263,7 @@ if {$GUI_SYN_CYCLE == 1} {
            write_sdc -version 1.8 ../outputs/${cell}_dc.sdc
        }
    }
-   
+
    if { $GUI_DCG_MODE } {
        eval write_def -all_vias -output ../outputs/${GUI_DESIGN_NAME}_dc.def
        uniquify
@@ -260,7 +277,7 @@ if { $GUI_SYN_CYCLE != 1 } {
         if { $GUI_DCG_MODE } { append compile_ultra_cmd " -spg" }
         echo $compile_ultra_cmd
         eval $compile_ultra_cmd
-        if {$i == $GUI_SYN_CYCLE} { 
+        if {$i == $GUI_SYN_CYCLE} {
             create_block_abstraction
             eval write -format ddc -output ../outputs/${GUI_DESIGN_NAME}_dc_loop_$i.ddc $hierarchy_opt
             eval write -format verilog -output ../outputs/${GUI_DESIGN_NAME}_dc_loop_$i.v $hierarchy_opt
@@ -274,6 +291,13 @@ if { $GUI_SYN_CYCLE != 1 } {
 
             report_constraint -all_violators -significant_digits 3 > ../reports/violation_loop_$i.rpt
             report_qor -significant_digits 3 > ../reports/qor_$APP_loop_$i.rpt
+            report_constraint -all_violators -significant_digits 3 > ../reports/violation.rpt
+            report_qor -significant_digits 3 > ../reports/qor.rpt
+            foreach_in_collection each_path_group [get_path_group] {
+                set path_group [get_object_name $each_path_group]
+                regsub -all / $path_group _ path_group_rp
+                eval report_timing -max_paths 1000 $report_timing_opt -group $path_group > ../reports/${path_group_rp}_max.tim
+            }
             report_cell > ../reports/cell_loop_$i.rpt
             report_power -hierarchy -verbose > ../reports/power_$APP_loop_$i.rpt
             report_power -hierarchy -levels 2 -verbose  > ../reports/power_$APP_level2_loop_$i.rpt

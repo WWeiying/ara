@@ -1,14 +1,14 @@
 ###################################################################################
 ## parameter define ,modify by custom
 ###################################################################################
-set clk_mul 1.25
-set uncertainty_add 0.2
+set clk_mul 1
+set uncertainty_add 0
 
 set clk_driving_cell {CKBD4BWP12T40P140 I Z}
 set data_driving_cell {BUFFD4BWP12T40P140 I Z}
 set output_load 0.02
 set max_fanout 32
-set max_transition 0.4
+set max_transition 0.3
 #30%~50%
 set input_delay [expr {0.5 * $clk_mul}]
 #25%~40%
@@ -49,12 +49,17 @@ set_load $output_load [all_outputs]
 group_path -name INPUTS -from [remove_from_collection [all_inputs] [get_ports clk_i]]
 group_path -name OUTPUTS -to [all_outputs]
 group_path -name COMBO -from [remove_from_collection [all_inputs] [get_ports clk_i]] -to [all_outputs]
-group_path -name clk_i -critical 0.2 -weight 5
+group_path -name clk_i -critical 0.20 -weight 10
 ###################################################################################
 ###port timing constrains & special constrains
 ###################################################################################
 set_input_delay -clock clk_i -max $input_delay [remove_from_collection [all_inputs] [get_ports clk_i]]
+set_input_delay -clock clk_i -min 0 [remove_from_collection [all_inputs] [get_ports clk_i]]
 set_output_delay -clock clk_i -max $output_delay [all_outputs]
+set_output_delay -clock clk_i -min 0 [all_outputs]
 
 set_false_path -from [get_ports rst_ni] -to [all_registers]
-set_false_path -to [get_pins i_system/i_ariane/rvfi_probes_o]
+set rvfi_pins [get_pins -quiet i_system/i_ariane/rvfi_probes_o]
+if {[sizeof_collection $rvfi_pins] > 0} {
+  set_false_path -to $rvfi_pins
+}
