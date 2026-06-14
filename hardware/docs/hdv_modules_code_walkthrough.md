@@ -998,17 +998,17 @@ execute_error_o
 
 **路径**：`MOCK.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `state_q` | [3:0] | 状态机状态 | 见下方状态表 |
-| `completed_packets_q` | [31:0] | 已完成的 execute packet 数 | 最终达到 7 |
-| `expected_packets_q` | [31:0] | 期望 EP 数 | 7 |
-| `csr_valid_o` | 1 | 正在写 HDV CSR | 各阶段依次脉冲 |
-| `csr_write_o` | 1 | CSR 写使能 | 写时为 1 |
-| `csr_addr_o` | [11:0] | 写入哪个 CSR | 见下方 |
-| `csr_wdata_o` | [63:0] | 写入数据 | 见下方 |
-| `execute_done_i` | 1 | HEU 发来的 execute packet 完成脉冲 | 共 7 次脉冲 |
-| `task_complete_o` | 1 | 通知 IPU 任务结束 | EP 计数达到 7 后 1 cycle 脉冲 |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `state_q` | [3:0] | MOCK 内部 | 状态机状态 | 见下方状态表 |
+| `completed_packets_q` | [31:0] | MOCK 内部 | 已完成的 execute packet 数 | 最终达到 7 |
+| `expected_packets_q` | [31:0] | MOCK 内部 | 期望 EP 数 | 7 |
+| `csr_valid_o` | 1 | MOCK → TIU | 正在写 HDV CSR | 各阶段依次脉冲 |
+| `csr_write_o` | 1 | MOCK → TIU | CSR 写使能 | 写时为 1 |
+| `csr_addr_o` | [11:0] | MOCK → TIU | 写入哪个 CSR | 见下方 |
+| `csr_wdata_o` | [63:0] | MOCK → TIU | 写入数据 | 见下方 |
+| `execute_done_i` | 1 | HEU → MOCK | HEU 发来的 execute packet 完成脉冲 | 共 7 次脉冲 |
+| `task_complete_o` | 1 | MOCK → IPU | 通知 IPU 任务结束 | EP 计数达到 7 后 1 cycle 脉冲 |
 
 **state_q 状态枚举**：
 
@@ -1041,19 +1041,19 @@ execute_error_o
 
 **路径**：`TIU.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `csr_valid_i` | 1 | 有 CSR 访问 | 与 MOCK.csr_valid_o 同步 |
-| `csr_write_i` | 1 | CSR 写 | |
-| `csr_addr_i` | [11:0] | CSR 地址 | 0x7c0/0x7c1/0x7c2/0x7c3 |
-| `csr_wdata_i` | [63:0] | 写入值 | |
-| `vtask_addr_q` | [63:0] | 已锁存的任务入口地址 | 应为 0x80001000 |
-| `task_valid_q` | 1 | 任务已提交等待 TSU 接收 | 写 VTASK_START 后变 1 |
-| `task_valid_o` | 1 | 发往 TSU | 同上 |
-| `task_entry_o` | [63:0] | 任务入口 PC | 0x80001000 |
-| `done_q` | 1 | 任务完成标志（粘滞） | TSU done 传来后置 1 |
-| `error_q` | 1 | 任务错误标志（粘滞） | 应保持 0 |
-| `task_done_i` | 1 | 来自 TSU 的 done | HEU execute_done 后置 1 |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `csr_valid_i` | 1 | MOCK → TIU | 有 CSR 访问 | 与 MOCK.csr_valid_o 同步 |
+| `csr_write_i` | 1 | MOCK → TIU | CSR 写 | |
+| `csr_addr_i` | [11:0] | MOCK → TIU | CSR 地址 | 0x7c0/0x7c1/0x7c2/0x7c3 |
+| `csr_wdata_i` | [63:0] | MOCK → TIU | 写入值 | |
+| `vtask_addr_q` | [63:0] | TIU 内部 | 已锁存的任务入口地址 | 应为 0x80001000 |
+| `task_valid_q` | 1 | TIU 内部 | 任务已提交等待 TSU 接收 | 写 VTASK_START 后变 1 |
+| `task_valid_o` | 1 | TIU → TSU | 发往 TSU | 同上 |
+| `task_entry_o` | [63:0] | TIU → TSU | 任务入口 PC | 0x80001000 |
+| `done_q` | 1 | TIU 内部 | 任务完成标志（粘滞） | TSU done 传来后置 1 |
+| `error_q` | 1 | TIU 内部 | 任务错误标志（粘滞） | 应保持 0 |
+| `task_done_i` | 1 | TSU → TIU | 来自 TSU 的 done | HEU execute_done 后置 1 |
 
 ---
 
@@ -1061,15 +1061,15 @@ execute_error_o
 
 **路径**：`TSU.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `fifo_push` | 1 | 任务入队 | TIU 提交时 1 cycle 脉冲 |
-| `fifo_pop` | 1 | 任务出队发往 IPU | 随后 1 cycle 脉冲 |
-| `active_q` | 1 | 当前有 active task | 任务执行期间保持 1 |
-| `task_out_valid_o` | 1 | 向 IPU 发出任务 | fifo_pop 时有效 |
-| `task_out_ready_i` | 1 | IPU 接受任务 | 握手成功时为 1 |
-| `done_q` | 1 | TSU 侧任务完成粘滞 | HEU execute_done 后置 1，直到 status_clear |
-| `done_o` | 1 | 输出给 TIU | 同 done_q |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `fifo_push` | 1 | TIU → TSU | 任务入队 | TIU 提交时 1 cycle 脉冲 |
+| `fifo_pop` | 1 | TSU 内部 | 任务出队发往 IPU | 随后 1 cycle 脉冲 |
+| `active_q` | 1 | TSU 内部 | 当前有 active task | 任务执行期间保持 1 |
+| `task_out_valid_o` | 1 | TSU → IPU | 向 IPU 发出任务 | fifo_pop 时有效 |
+| `task_out_ready_i` | 1 | IPU → TSU | IPU 接受任务 | 握手成功时为 1 |
+| `done_q` | 1 | TSU 内部 | TSU 侧任务完成粘滞 | HEU execute_done 后置 1，直到 status_clear |
+| `done_o` | 1 | TSU → TIU | 输出给 TIU | 同 done_q |
 
 ---
 
@@ -1077,25 +1077,25 @@ execute_error_o
 
 **路径**：`IPU.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `state_q` | [1:0] | 状态：0=IDLE, 1=FILL, 2=SERVE | FILL→SERVE 转换是关键 |
-| `fetch_base_q` | [63:0] | 当前 fill 的起始地址 | 首次 = 0x80001000 |
-| `exec_base_q` | [63:0] | 当前 serve 的起始地址 | 首次 = 0x80001000 |
-| `fill_idx_q` | [1:0] | 正在填充第几个 128-bit packet（0-3） | 0→1→2→3 顺序推进 |
-| `exec_idx_q` | [1:0] | 正在输出第几个 128-bit packet | 每次 VLIWPU 接收后递增 |
-| `active_buf_q` | 1 | 当前 serve 的 buffer（0=A, 1=B） | 初始 0 |
-| `bg_fill_done_q` | 1 | 背景预取完成 | exec_idx=3 前应为 1 |
-| `bg_stall` | 1 | 等待背景预取，暂停输出 | 正常应短暂或不出现 |
-| `packet_valid_o` | 1 | 向 VLIWPU 输出有效 packet | SERVE 状态且 !bg_stall |
-| `packet_ready_i` | 1 | VLIWPU 接受 packet | 握手 |
-| `packet_o` | [127:0] | 128-bit fetch packet 内容 | 高 32 bit = hint header |
-| `packet_pc_o` | [63:0] | fetch packet 起始 PC | 0x80001000, +16, +32, +48 |
-| `axi_ar_valid_o` | 1 | AXI 读地址请求 | FILL 阶段依次发出 |
-| `axi_ar_addr_o` | [63:0] | AXI 读地址 | 0x80001000, +16, +32, +48 |
-| `axi_r_valid_i` | 1 | AXI 读数据返回 | |
-| `axi_r_data_i` | [127:0] | 返回的 128-bit 数据 | 即 SRAM 中的 VLIW 指令 |
-| `task_complete_i` | 1 | 来自 mock host，任务结束 | MOCK.task_complete_o |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `state_q` | [1:0] | IPU 内部 | 状态：0=IDLE, 1=FILL, 2=SERVE | FILL→SERVE 转换是关键 |
+| `fetch_base_q` | [63:0] | IPU 内部 | 当前 fill 的起始地址 | 首次 = 0x80001000 |
+| `exec_base_q` | [63:0] | IPU 内部 | 当前 serve 的起始地址 | 首次 = 0x80001000 |
+| `fill_idx_q` | [1:0] | IPU 内部 | 正在填充第几个 128-bit packet（0-3） | 0→1→2→3 顺序推进 |
+| `exec_idx_q` | [1:0] | IPU 内部 | 正在输出第几个 128-bit packet | 每次 VLIWPU 接收后递增 |
+| `active_buf_q` | 1 | IPU 内部 | 当前 serve 的 buffer（0=A, 1=B） | 初始 0 |
+| `bg_fill_done_q` | 1 | IPU 内部 | 背景预取完成 | exec_idx=3 前应为 1 |
+| `bg_stall` | 1 | IPU 内部 | 等待背景预取，暂停输出 | 正常应短暂或不出现 |
+| `packet_valid_o` | 1 | IPU → VLIWPU | 向 VLIWPU 输出有效 packet | SERVE 状态且 !bg_stall |
+| `packet_ready_i` | 1 | VLIWPU → IPU | VLIWPU 接受 packet | 握手 |
+| `packet_o` | [127:0] | IPU → VLIWPU | 128-bit fetch packet 内容 | 高 32 bit = hint header |
+| `packet_pc_o` | [63:0] | IPU → VLIWPU | fetch packet 起始 PC | 0x80001000, +16, +32, +48 |
+| `axi_ar_valid_o` | 1 | IPU → SRAM/AXI | AXI 读地址请求 | FILL 阶段依次发出 |
+| `axi_ar_addr_o` | [63:0] | IPU → SRAM/AXI | AXI 读地址 | 0x80001000, +16, +32, +48 |
+| `axi_r_valid_i` | 1 | SRAM/AXI → IPU | AXI 读数据返回 | |
+| `axi_r_data_i` | [127:0] | SRAM/AXI → IPU | 返回的 128-bit 数据 | 即 SRAM 中的 VLIW 指令 |
+| `task_complete_i` | 1 | MOCK → IPU | 来自 mock host，任务结束 | MOCK.task_complete_o |
 
 **关键波形特征**：`state_q` 应从 IDLE→FILL（axi_ar 握手）→SERVE（packet_valid 拉高）。
 
@@ -1105,26 +1105,26 @@ execute_error_o
 
 **路径**：`VLIWPU.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `packet_hold_valid_q` | 1 | 持有一个 fetch packet | 接收后为 1，最后一个 EP 出去后清 0 |
-| `packet_q` | [127:0] | 锁存的 fetch packet | 高 32 bit 是 hint header |
-| `header` | [31:0] | hint header（addi x0,x0,pbits） | 低 12 bit 含 p-bits |
-| `p_bits` | [4:0] | 并行控制位 | vsaxpy 全为 5'b11111 |
-| `slots[0..5]` | [15:0] each | 6 个 16-bit 指令槽 | slot i = packet_q[i*16+:16] |
-| `slot_is_32b` | [5:0] | 哪些 slot 是 32-bit 指令起点 | vsaxpy: 6'b010101 |
-| `slot_is_continuation` | [5:0] | 哪些 slot 是 32-bit 续半 | vsaxpy: 6'b101010 |
-| `class_system_mask` | [5:0] | SYSTEM 指令标记 | packet0 slot0: bit0=1 |
-| `class_branch_mask` | [5:0] | BRANCH 指令标记 | packet3 slot0,2: bit0,2=1 |
-| `head_slot_q` | [2:0] | 当前 EP 从哪个 slot 开始 | 0→2→0→0→0→2→4 |
-| `issue_mask` | [5:0] | 当前 EP 包含哪些 slot | EP1: 6'b000011, EP2: 6'b111100, EP3/4: 6'b111111, ... |
-| `issue_count` | [3:0] | 当前 EP 包含的 slot 数 | EP1:2, EP2:4, EP3/4:6, EP5/6/7:2 |
-| `stop_pack` | 1 | EP 边界已确定 | 每个 EP 确定后组合逻辑为 1 |
-| `last_slot_in_packet` | 1 | 本 EP 是该 fetch packet 的最后 | 清空 packet_hold_valid_q |
-| `execute_valid_o` | 1 | EP 有效发往 HEU | = packet_hold_valid_q |
-| `execute_ready_i` | 1 | HEU 接收 EP | = !HEU.outstanding_q |
-| `execute_slot_valid_o` | [5:0] | EP slot 掩码 | 同 issue_mask |
-| `execute_class_o[i]` | [1:0] each | slot i 指令类别 | 0=SCALAR,1=VECTOR,2=SYSTEM,3=BRANCH |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `packet_hold_valid_q` | 1 | VLIWPU 内部 | 持有一个 fetch packet | 接收后为 1，最后一个 EP 出去后清 0 |
+| `packet_q` | [127:0] | VLIWPU 内部 | 锁存的 fetch packet | 高 32 bit 是 hint header |
+| `header` | [31:0] | VLIWPU 内部 | hint header（addi x0,x0,pbits） | 低 12 bit 含 p-bits |
+| `p_bits` | [4:0] | VLIWPU 内部 | 并行控制位 | vsaxpy 全为 5'b11111 |
+| `slots[0..5]` | [15:0] each | VLIWPU 内部 | 6 个 16-bit 指令槽 | slot i = packet_q[i*16+:16] |
+| `slot_is_32b` | [5:0] | VLIWPU 内部 | 哪些 slot 是 32-bit 指令起点 | vsaxpy: 6'b010101 |
+| `slot_is_continuation` | [5:0] | VLIWPU 内部 | 哪些 slot 是 32-bit 续半 | vsaxpy: 6'b101010 |
+| `class_system_mask` | [5:0] | VLIWPU 内部 | SYSTEM 指令标记 | packet0 slot0: bit0=1 |
+| `class_branch_mask` | [5:0] | VLIWPU 内部 | BRANCH 指令标记 | packet3 slot0,2: bit0,2=1 |
+| `head_slot_q` | [2:0] | VLIWPU 内部 | 当前 EP 从哪个 slot 开始 | 0→2→0→0→0→2→4 |
+| `issue_mask` | [5:0] | VLIWPU 内部 | 当前 EP 包含哪些 slot | EP1: 6'b000011, EP2: 6'b111100, EP3/4: 6'b111111, ... |
+| `issue_count` | [3:0] | VLIWPU 内部 | 当前 EP 包含的 slot 数 | EP1:2, EP2:4, EP3/4:6, EP5/6/7:2 |
+| `stop_pack` | 1 | VLIWPU 内部 | EP 边界已确定 | 每个 EP 确定后组合逻辑为 1 |
+| `last_slot_in_packet` | 1 | VLIWPU 内部 | 本 EP 是该 fetch packet 的最后 | 清空 packet_hold_valid_q |
+| `execute_valid_o` | 1 | VLIWPU → HEU | EP 有效发往 HEU | = packet_hold_valid_q |
+| `execute_ready_i` | 1 | HEU → VLIWPU | HEU 接收 EP | = !HEU.outstanding_q |
+| `execute_slot_valid_o` | [5:0] | VLIWPU → HEU | EP slot 掩码 | 同 issue_mask |
+| `execute_class_o[i]` | [1:0] each | VLIWPU → HEU | slot i 指令类别 | 0=SCALAR,1=VECTOR,2=SYSTEM,3=BRANCH |
 
 **7 个 EP 的 issue_mask 速查（vsaxpy）**：
 
@@ -1144,23 +1144,23 @@ execute_error_o
 
 **路径**：`HEU.*`
 
-| 信号 | 位宽 | 含义 | 期望值/事件 |
-|---|---|---|---|
-| `accept_packet` | 1 | 接收来自 VLIWPU 的 EP | 每个 EP 到来时 1 cycle 脉冲 |
-| `outstanding_q` | 1 | 有 EP 正在处理中 | accept_packet 后变 1，done 后变 0 |
-| `has_scalar` | 1 | 本 EP 含标量指令（组合） | EP 含 SCALAR/SYSTEM/BRANCH |
-| `has_vector` | 1 | 本 EP 含向量指令（组合） | EP 含 VECTOR |
-| `scalar_dispatch_valid_q` | 1 | 标量 dispatch 等待 ready | accept_packet 后若 has_scalar 则为 1 |
-| `vector_dispatch_valid_q` | 1 | 向量 dispatch 等待 ready | accept_packet 后若 has_vector 则为 1 |
-| `scalar_pending_q` | 1 | 标量后端执行中 | scalar_fire 后为 1 |
-| `vector_pending_q` | 1 | 向量后端执行中 | vector_fire 后为 1 |
-| `scalar_ready_i` | 1 | 标量后端（mock）ready | MOCK 在 RUN 状态时为 1 |
-| `vector_ready_i` | 1 | 向量后端（mock）ready | 同上 |
-| `scalar_done_i` | 1 | 标量后端完成 | ScalarLatency 周期后脉冲 |
-| `vector_done_i` | 1 | 向量后端完成 | VectorLatency 周期后脉冲 |
-| `done_q` | 1 | execute_done 脉冲（**1 cycle**） | 每个 EP 完成后出现，次周期自动清 0 |
-| `execute_done_o` | 1 | = done_q，连到 MOCK.execute_done_i | 共 7 次脉冲 |
-| `execute_ready_o` | 1 | = !outstanding_q | HEU 空闲时为 1 |
+| 信号 | 位宽 | 方向（源 → 目的） | 含义 | 期望值/事件 |
+|---|---|---|---|---|
+| `accept_packet` | 1 | HEU 内部 | 接收来自 VLIWPU 的 EP | 每个 EP 到来时 1 cycle 脉冲 |
+| `outstanding_q` | 1 | HEU 内部 | 有 EP 正在处理中 | accept_packet 后变 1，done 后变 0 |
+| `has_scalar` | 1 | HEU 内部 | 本 EP 含标量指令（组合） | EP 含 SCALAR/SYSTEM/BRANCH |
+| `has_vector` | 1 | HEU 内部 | 本 EP 含向量指令（组合） | EP 含 VECTOR |
+| `scalar_dispatch_valid_q` | 1 | HEU 内部 | 标量 dispatch 等待 ready | accept_packet 后若 has_scalar 则为 1 |
+| `vector_dispatch_valid_q` | 1 | HEU 内部 | 向量 dispatch 等待 ready | accept_packet 后若 has_vector 则为 1 |
+| `scalar_pending_q` | 1 | HEU 内部 | 标量后端执行中 | scalar_fire 后为 1 |
+| `vector_pending_q` | 1 | HEU 内部 | 向量后端执行中 | vector_fire 后为 1 |
+| `scalar_ready_i` | 1 | MOCK → HEU | 标量后端（mock）ready | MOCK 在 RUN 状态时为 1 |
+| `vector_ready_i` | 1 | MOCK → HEU | 向量后端（mock）ready | 同上 |
+| `scalar_done_i` | 1 | MOCK → HEU | 标量后端完成 | ScalarLatency 周期后脉冲 |
+| `vector_done_i` | 1 | MOCK → HEU | 向量后端完成 | VectorLatency 周期后脉冲 |
+| `done_q` | 1 | HEU 内部 | execute_done 脉冲（**1 cycle**） | 每个 EP 完成后出现，次周期自动清 0 |
+| `execute_done_o` | 1 | HEU → MOCK | = done_q，连到 MOCK.execute_done_i | 共 7 次脉冲 |
+| `execute_ready_o` | 1 | HEU → VLIWPU | = !outstanding_q | HEU 空闲时为 1 |
 
 ---
 
