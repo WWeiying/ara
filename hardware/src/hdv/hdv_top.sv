@@ -15,7 +15,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned BufferBytes      = 64,
   parameter int unsigned NumSlots         = 6,
   parameter int unsigned SlotWidth        = 16,
-  parameter int unsigned MaxIssueSlots    = 4,
+  parameter int unsigned MaxIssueSlots    = NumSlots,
   parameter type addr_t = logic [XLEN-1:0],
 
   // Ara vector backend parameters.

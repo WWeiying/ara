@@ -141,7 +141,7 @@ function void print_perf_report();
       total_rvv_axi_w_count  = ara_tb.perf_end_n.rvv_axi_w_count  - ara_tb.perf_start_n.rvv_axi_w_count ;
       total_rvv_axi_b_count  = ara_tb.perf_end_n.rvv_axi_b_count  - ara_tb.perf_start_n.rvv_axi_b_count ;
       total_rvv_axi_ar_count = ara_tb.perf_end_n.rvv_axi_ar_count - ara_tb.perf_start_n.rvv_axi_ar_count;
-      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count 
+      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count;
 `ifdef FOR_VERIFY
       total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
       total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
@@ -692,6 +692,9 @@ module ara_tb;
 
   localparam DRAMAddrBase = 64'h8000_0000;
   localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
+  localparam HdvNumSlots  = 6;
+  // Must match apps build variable HDV_TASK_ENTRY for the selected HDV program.
+  localparam HdvTaskEntry = 64'h8000_1000;
 
   /********************************
    *  Clock and Reset Generation  *
@@ -832,6 +835,36 @@ module ara_tb;
   end
 
   logic [63:0] exit;
+  logic                         hdv_host_csr_valid;
+  logic                         hdv_host_csr_write;
+  logic [11:0]                  hdv_host_csr_addr;
+  logic [63:0]                  hdv_host_csr_wdata;
+  logic                         hdv_host_csr_ready;
+  logic [63:0]                  hdv_host_csr_rdata;
+  logic                         hdv_host_csr_error;
+  logic                         hdv_redirect_valid;
+  logic [63:0]                  hdv_redirect_pc;
+  logic                         hdv_loop_lock;
+  logic [HdvNumSlots-2:0]       hdv_dep_break;
+  logic                         hdv_task_busy;
+  logic                         hdv_task_done;
+  logic                         hdv_task_error;
+  logic                         hdv_task_complete;
+  logic                         hdv_host_task_error;
+  logic                         hdv_scalar_valid;
+  logic                         hdv_scalar_ready;
+  logic                         hdv_scalar_done;
+  logic                         hdv_vector_valid;
+  logic                         hdv_vector_ready;
+  logic                         hdv_vector_done;
+  logic                         hdv_backend_error;
+  logic                         hdv_execute_done;
+  logic                         hdv_execute_error;
+
+  assign hdv_redirect_valid = 1'b0;
+  assign hdv_redirect_pc    = '0;
+  assign hdv_loop_lock      = 1'b0;
+  assign hdv_dep_break      = '0;
 
   // This TB must be implemented in C for integration with Verilator.
   // In order to Verilator to understand that the ara_testharness module is the top-level,
@@ -842,12 +875,124 @@ module ara_tb;
     .VLEN        (VLEN            ),
     .AxiAddrWidth(AxiAddrWidth    ),
     .AxiDataWidth(AxiWideDataWidth),
+    .HdvNumSlots (HdvNumSlots     ),
     .AxiRespDelay(AxiRespDelay    )
   ) dut (
     .clk_i (clk  ),
     .rst_ni(rst_n),
-    .exit_o(exit )
+    .exit_o(exit ),
+    .hdv_host_csr_valid_i(hdv_host_csr_valid),
+    .hdv_host_csr_write_i(hdv_host_csr_write),
+    .hdv_host_csr_addr_i (hdv_host_csr_addr ),
+    .hdv_host_csr_wdata_i(hdv_host_csr_wdata),
+    .hdv_host_csr_ready_o(hdv_host_csr_ready),
+    .hdv_host_csr_rdata_o(hdv_host_csr_rdata),
+    .hdv_host_csr_error_o(hdv_host_csr_error),
+    .hdv_redirect_valid_i(hdv_redirect_valid),
+    .hdv_redirect_pc_i   (hdv_redirect_pc   ),
+    .hdv_loop_lock_i     (hdv_loop_lock     ),
+    .hdv_dep_break_i     (hdv_dep_break     ),
+    .hdv_active_task_desc_o(),
+    .hdv_task_busy_o     (hdv_task_busy     ),
+    .hdv_task_done_o     (hdv_task_done     ),
+    .hdv_task_error_o    (hdv_task_error    ),
+    .hdv_task_complete_i (hdv_task_complete ),
+    .hdv_task_error_i    (hdv_host_task_error),
+    .hdv_scalar_valid_o  (hdv_scalar_valid  ),
+    .hdv_scalar_ready_i  (hdv_scalar_ready  ),
+    .hdv_scalar_insn_valid_o(),
+    .hdv_scalar_insn_o   (),
+    .hdv_scalar_insn_is_32b_o(),
+    .hdv_scalar_insn_pc_o(),
+    .hdv_scalar_pc_o     (),
+    .hdv_scalar_done_i   (hdv_scalar_done   ),
+    .hdv_vector_valid_o  (hdv_vector_valid  ),
+    .hdv_vector_ready_i  (hdv_vector_ready  ),
+    .hdv_vector_insn_valid_o(),
+    .hdv_vector_insn_o   (),
+    .hdv_vector_insn_is_32b_o(),
+    .hdv_vector_insn_pc_o(),
+    .hdv_vector_pc_o     (),
+    .hdv_vector_done_i   (hdv_vector_done   ),
+    .hdv_backend_error_i (hdv_backend_error ),
+    .hdv_execute_busy_o  (),
+    .hdv_execute_done_o  (hdv_execute_done  ),
+    .hdv_execute_error_o (hdv_execute_error )
   );
+
+  hdv_mock_host_core #(
+    .XLEN                       (64),
+    .ScalarLatency              (1),
+    .VectorLatency              (1),
+    .AutoStart                  (1'b1),
+    .AutoStartDelay             (64),
+    .AutoTaskEntry              (HdvTaskEntry),
+    .AutoTaskDesc               (DRAMAddrBase + 64'h1000),
+    // 4 VLIW fetch packets (one 64-byte buffer) → 7 execute packets
+    // (MaxIssueSlots=NumSlots=6; p-bits alone define packet boundary):
+    //   packet0: vsetvli(SYSTEM→stop) / vle32+sub          (2 EPs)
+    //   packet1: vle32+slli+vfmacc (all p-bits=1, no break) (1 EP)
+    //   packet2: add+vse32+add     (all p-bits=1, no break) (1 EP)
+    //   packet3: bnez/ret/nop      (BRANCH forces stop each)(3 EPs)
+    .AutoExpectedExecutePackets (32'd7),
+    .TaskWatchdogCycles         (4096),
+    .PacketWatchdogCycles       (1024),
+    .addr_t                     (logic [63:0])
+  ) i_hdv_mock_host_core (
+    .clk_i                     (clk),
+    .rst_ni                    (rst_n),
+    .flush_i                   (1'b0),
+    .csr_valid_o               (hdv_host_csr_valid),
+    .csr_write_o               (hdv_host_csr_write),
+    .csr_addr_o                (hdv_host_csr_addr),
+    .csr_wdata_o               (hdv_host_csr_wdata),
+    .csr_ready_i               (hdv_host_csr_ready),
+    .csr_rdata_i               (hdv_host_csr_rdata),
+    .csr_error_i               (hdv_host_csr_error),
+    .task_busy_i               (hdv_task_busy),
+    .task_done_i               (hdv_task_done),
+    .task_error_i              (hdv_task_error),
+    .task_complete_o           (hdv_task_complete),
+    .task_error_o              (hdv_host_task_error),
+    .scalar_valid_i            (hdv_scalar_valid),
+    .scalar_ready_o            (hdv_scalar_ready),
+    .scalar_done_o             (hdv_scalar_done),
+    .vector_valid_i            (hdv_vector_valid),
+    .vector_ready_o            (hdv_vector_ready),
+    .vector_done_o             (hdv_vector_done),
+    .execute_done_i            (hdv_execute_done),
+    .execute_error_i           (hdv_execute_error),
+    .backend_error_o           (hdv_backend_error)
+  );
+
+  // HDV pipeline observation: print every execute-packet completion and
+  // final state (once on entry) so the HDV IPU→VLIWPU→HEU flow is visible.
+  logic [3:0] hdv_mock_state_prev_q;
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      hdv_mock_state_prev_q <= '0;
+    end else begin
+      hdv_mock_state_prev_q <= i_hdv_mock_host_core.state_q;
+      if (hdv_execute_done) begin
+        $display("[HDV] @%0t cycle=%0d execute_done completed_so_far=%0d",
+                 $time, wall_cycle,
+                 i_hdv_mock_host_core.completed_packets_q + 1);
+      end
+      // Only print once on the cycle the state first enters FINISH/FAIL, then stop.
+      if (i_hdv_mock_host_core.state_q == 4'd9 && hdv_mock_state_prev_q != 4'd9) begin
+        $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d)",
+                 $time, wall_cycle,
+                 i_hdv_mock_host_core.expected_packets_q,
+                 i_hdv_mock_host_core.completed_packets_q);
+        $finish;
+      end
+      if (i_hdv_mock_host_core.state_q == 4'd10 && hdv_mock_state_prev_q != 4'd10) begin
+        $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED",
+                 $time, wall_cycle);
+        $finish;
+      end
+    end
+  end
   `endif
 
   `ifdef TARGET_SRAM_MC 

@@ -4,7 +4,17 @@ ARA_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$ARA_DIR)
 INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
 VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 
-BENDER         := /home/wangwy/openproject/ara/hardware/bender
+BENDER_FALLBACK := /home/wangwy/openproject/ara/hardware/bender
+BENDER         ?= $(shell \
+	if [ -x "$(ROOT_DIR)/bender" ]; then \
+	  echo "$(ROOT_DIR)/bender"; \
+	elif command -v bender >/dev/null 2>&1; then \
+	  command -v bender; \
+	elif [ -x "$(BENDER_FALLBACK)" ]; then \
+	  echo "$(BENDER_FALLBACK)"; \
+	else \
+	  echo "$(ROOT_DIR)/bender"; \
+	fi)
 BENDER_VERSION := 0.27.3
 
 # Choose Ara's configuration
@@ -128,7 +138,7 @@ SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
 SIM_DUMP := 
-SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(buildpath)/$(dpi_library)/elfloader.o
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 
@@ -138,8 +148,8 @@ APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 bender: $(BENDER)
 $(BENDER):
 	@[ -x $(BENDER) ] && echo "Bender already exists." || \
-	curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh	-s -- $(BENDER_VERSION)
-	@echo "$$(./bender --version) available."
+	(cd $(ROOT_DIR) && curl --proto '=https' --tlsv1.2 https://pulp-platform.github.io/bender/init -sSf | sh -s -- $(BENDER_VERSION))
+	@echo "$$($(BENDER) --version) available."
 
 # DPIs
 dpi: $(buildpath)/$(dpi_library)/ara_dpi.so
@@ -170,7 +180,11 @@ sim: compile
 	@touch ./$(sim_dir)/perf*.log
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
-	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
+	@if [ -f ./$(sim_dir)/$(sim_log) ]; then \
+	  cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log; \
+	else \
+	  : > ./$(sim_dir)/perf.log; \
+	fi
 verify: 
 	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
 	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
@@ -232,7 +246,7 @@ saif:
 	@cd ./build/saif && cat ara_tb.f | grep "+define"      >> defines.temp 
 	@cd ./build/saif && cat ara_tb.f | grep "ara_tb.sv"          >  rtl.temp 
 	@cd ./build/saif && cat ara_tb.f | grep "ara_testharness.sv" >> rtl.temp 
-	@cd ./build/saif && echo "/home/wangwy/openproject/ara/backend/syn/ara_soc/v1-dc/outputs/ara_soc_dc.v" >> rtl.temp 
+	@cd ./build/saif && echo "$(ARA_DIR)/backend/syn/ara_soc/v1-dc/outputs/ara_soc_dc.v" >> rtl.temp
 	@cd ./build/saif && cat ara_tb.f | grep "mock_uart.sv"       >> rtl.temp 
 	@cd ./build/saif && cat incdir.temp   >  ara_tb_saif.f
 	@cd ./build/saif && cat packages.temp >> ara_tb_saif.f
@@ -243,7 +257,7 @@ saif:
 	@echo "2.VCS simulate"
 	@rm sim_saif -rf
 	@mkdir -p ./sim_saif/incremental_db
-	@cd ./sim_saif && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) -f ../build/saif/ara_tb_saif.f $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+	@cd ./sim_saif && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) -f ../build/saif/ara_tb_saif.f $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v $(buildpath)/$(dpi_library)/elfloader.o
 	@cd ./sim_saif && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@echo "3.vcd2saif"
 	@vcd2saif -input ./vcd/$(app).vcd -output ./saif/$(app).saif -time $(start_time) $(stop_time)
@@ -268,7 +282,7 @@ saif_ara:
 	$(call generate_sram_filelist, $(spsram_techlib_path), $(vcs_library)/bender_script_$(config))
 	cd $(vcs_library) && cat bender_script_$(config) | grep -v "ara.sv" > rtl.temp
 	cd $(vcs_library) && mv rtl.temp bender_script_$(config)
-	cd $(vcs_library) && echo "/home/wangwy/openproject/ara/backend/syn/ara_soc/v1-dc/outputs/ara_dc.v" >> bender_script_$(config) 
+	cd $(vcs_library) && echo "$(ARA_DIR)/backend/syn/ara_soc/v1-dc/outputs/ara_dc.v" >> bender_script_$(config)
 	mkdir -p ./$(sim_dir)/incremental_db
 	cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT) -v /home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_170a_vlg/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp12t40p140_170a/tcbn28hpcplusbwp12t40p140.v #/home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
 	cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)

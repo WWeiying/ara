@@ -140,7 +140,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     dispatch_insn_is_32b_d  = dispatch_insn_is_32b_q;
     dispatch_insn_pc_d      = dispatch_insn_pc_q;
     dispatch_pc_d           = dispatch_pc_q;
-    done_d        = done_q;
+    // done_d auto-clears each cycle so execute_done_o is a 1-cycle pulse.
+    // Callers (mock core, TSU) must latch it themselves.
+    done_d        = 1'b0;
     error_d       = error_q;
 
     if (scalar_dispatch_valid_q && scalar_ready_i) begin

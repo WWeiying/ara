@@ -28,6 +28,7 @@ sources:
     # Packages
     - hardware/include/rvv_pkg.sv
     - hardware/include/ara_pkg.sv
+    - hardware/src/hdv/hdv_pkg.sv
 
     # Sources
     # Level 0
@@ -68,6 +69,13 @@ sources:
     - hardware/src/ara.sv
     # Level 6
     - hardware/src/ara_system.sv
+    - hardware/src/hdv/hdv_task_interface_unit.sv
+    - hardware/src/hdv/hdv_task_schedule_unit.sv
+    - hardware/src/hdv/hdv_instruction_prefetch_unit.sv
+    - hardware/src/hdv/hdv_vliw_pack_unit.sv
+    - hardware/src/hdv/hdv_hybrid_execution_unit.sv
+    - hardware/src/hdv/hdv_mock_host_core.sv
+    - hardware/src/hdv/hdv_top.sv
     # Level 7
     - hardware/src/ara_soc.sv
 

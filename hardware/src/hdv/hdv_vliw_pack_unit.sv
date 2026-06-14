@@ -5,7 +5,7 @@
 // Description:
 // Conservative VLIW Pack Unit.  The upper 32 bits of each 128-bit fetch
 // packet are treated as the RISC-V hint header, and the lower 96 bits are
-// six 16-bit instruction slots.  Header p-bits request parallel packing;
+// six 16-bit instruction slots.  Hint immediate p-bits request parallel packing;
 // dependency/resource breaks can still force a smaller execute packet.
 
 module hdv_vliw_pack_unit import hdv_pkg::*; #(
@@ -13,7 +13,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   parameter int unsigned FetchPacketWidth = 128,
   parameter int unsigned NumSlots         = 6,
   parameter int unsigned SlotWidth        = 16,
-  parameter int unsigned MaxIssueSlots    = 4,
+  parameter int unsigned MaxIssueSlots    = NumSlots,
   parameter type addr_t = logic [XLEN-1:0]
 ) (
   input  logic                                      clk_i,
@@ -43,6 +43,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   addr_t packet_pc_d, packet_pc_q;
   logic [SlotIdxWidth-1:0] head_slot_d, head_slot_q;
   logic [31:0] header;
+  logic [NumSlots-2:0] p_bits;
   logic [NumSlots-1:0][SlotWidth-1:0] slots;
   logic [NumSlots-1:0] raw_slot_is_32b;
   logic [NumSlots-1:0] slot_is_32b;
@@ -62,6 +63,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign packet_ready_o = !packet_hold_valid_q;
 
   assign header = packet_q[FetchPacketWidth-1 -: 32];
+  // RISC-V HINT header is encoded as addi x0, x0, imm.  The paper defines
+  // p-bits in the hint immediate field, so p_bits[0] is header[20].
+  assign p_bits = header[20 +: NumSlots-1];
 
   for (genvar i = 0; i < NumSlots; i++) begin : gen_slots
     assign slots[i] = packet_q[i*SlotWidth +: SlotWidth];
@@ -95,7 +99,11 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     for (int unsigned i = 0; i < NumSlots; i++) begin
       slot_class[i] = HDV_INST_SCALAR;
 
-      if (slots[i][6:0] == 7'b1010111) begin
+      if ((slots[i][6:0] == 7'b1010111) ||           // V arithmetic (opcode 0x57)
+          (slots[i][6:0] == 7'b0000111 &&            // V load (LOAD-FP), exclude scalar FLW/FLD
+           slots[i][14:12] != 3'b010 && slots[i][14:12] != 3'b011) ||
+          (slots[i][6:0] == 7'b0100111 &&            // V store (STORE-FP), exclude scalar FSW/FSD
+           slots[i][14:12] != 3'b010 && slots[i][14:12] != 3'b011)) begin
         slot_class[i] = HDV_INST_VECTOR;
       end else if ((slots[i][6:0] == 7'b1110011) || (slots[i][1:0] != 2'b11 && slots[i][15:13] == 3'b111)) begin
         slot_class[i] = HDV_INST_SYSTEM;
@@ -125,17 +133,33 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
 
     if (packet_hold_valid_q) begin
       for (int unsigned i = 0; i < NumSlots; i++) begin
-        if (!stop_pack && i >= head_slot_q && issue_count < MaxIssueSlotsCount) begin
+        // Skip continuation slots (already force-included by their 32-bit parent)
+        // and slots beyond head_slot or the packet capacity (MaxIssueSlots=NumSlots).
+        if (!stop_pack && i >= head_slot_q && issue_count < MaxIssueSlotsCount
+            && !slot_is_continuation[i]) begin
           issue_mask[i] = 1'b1;
           issue_count++;
 
           if (i == NumSlots - 1) begin
             stop_pack = 1'b1;
           end else if (slot_is_32b[i]) begin
+            // Force the second half of the 32-bit instruction into the packet.
             issue_mask[i + 1] = 1'b1;
             issue_count++;
-            stop_pack = 1'b1;
-          end else if (!header[i] || dep_break_i[i] || class_system_mask[i] || class_branch_mask[i]) begin
+            // Decide whether to continue to the NEXT instruction after this one.
+            // Stop if the 32-bit instruction itself is SYSTEM/BRANCH (checked on
+            // the STARTING slot i, not the continuation slot i+1 whose raw bits
+            // don't carry a valid opcode).  Also stop on dep_break or p-bit=0.
+            if (i + 1 == NumSlots - 1 || issue_count >= MaxIssueSlotsCount) begin
+              stop_pack = 1'b1;  // end of fetch packet, no room for more
+            end else if (!p_bits[i+1] || dep_break_i[i+1] ||
+                         class_system_mask[i] || class_branch_mask[i]) begin
+              stop_pack = 1'b1;
+            end
+            // else: continue; the loop will skip i+1 (continuation) and
+            // consider i+2 as the next instruction candidate.
+          end else if (!p_bits[i] || dep_break_i[i] ||
+                       class_system_mask[i] || class_branch_mask[i]) begin
             stop_pack = 1'b1;
           end
         end
@@ -145,7 +169,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
 
   assign execute_valid_o      = packet_hold_valid_q;
   assign execute_slot_valid_o = issue_mask;
-  assign execute_pc_o         = packet_pc_q + addr_t'(head_slot_q * (SlotWidth / 8));
+  // PC of slot 0 in the fetch packet; HEU computes per-slot PC as execute_pc_i + i*2.
+  assign execute_pc_o         = packet_pc_q;
   assign last_slot_in_packet  = issue_mask[NumSlots-1];
 
   always_comb begin : p_next

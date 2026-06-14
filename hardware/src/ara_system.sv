@@ -149,6 +149,8 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .clic_irq_id_i    ('0                      ),
     .clic_irq_level_i ('0                      ),
     .clic_irq_priv_i  (riscv::priv_lvl_t'(2'b0)),
+    .clic_irq_v_i     ('0                      ),
+    .clic_irq_vsid_i  ('0                      ),
     .clic_irq_shv_i   ('0                      ),
     .clic_irq_ready_o (/* empty */             ),
     .clic_kill_req_i  ('0                      ),

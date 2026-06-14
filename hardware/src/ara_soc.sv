@@ -6,7 +6,7 @@
 // Description:
 // Ara's SoC, containing CVA6, Ara, and a L2 cache.
 
-module ara_soc import axi_pkg::*; import ara_pkg::*; #(
+module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = `NR_LANES,                          // Number of parallel vector lanes.
     parameter  int           unsigned VLEN         = `VLEN,                          // VLEN [bit]
@@ -29,6 +29,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // Main memory
     //parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
     parameter  int           unsigned L2NumWords   = (2**18) / NrLanes,
+    parameter  int           unsigned HdvNumSlots  = 6,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -52,7 +53,47 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     output logic [31:0] uart_pwdata_o,
     input  logic [31:0] uart_prdata_i,
     input  logic        uart_pready_i,
-    input  logic        uart_pslverr_i
+    input  logic        uart_pslverr_i,
+    // HDV host-side task and dispatch interface.  Testbench-level host models
+    // drive these ports; AXI-Lite control registers remain as a secondary
+    // software path inside the SoC.
+    input  logic                         hdv_host_csr_valid_i,
+    input  logic                         hdv_host_csr_write_i,
+    input  logic [11:0]                  hdv_host_csr_addr_i,
+    input  logic [63:0]                  hdv_host_csr_wdata_i,
+    output logic                         hdv_host_csr_ready_o,
+    output logic [63:0]                  hdv_host_csr_rdata_o,
+    output logic                         hdv_host_csr_error_o,
+    input  logic                         hdv_redirect_valid_i,
+    input  logic [63:0]                  hdv_redirect_pc_i,
+    input  logic                         hdv_loop_lock_i,
+    input  logic [HdvNumSlots-2:0]       hdv_dep_break_i,
+    output logic [63:0]                  hdv_active_task_desc_o,
+    output logic                         hdv_task_busy_o,
+    output logic                         hdv_task_done_o,
+    output logic                         hdv_task_error_o,
+    input  logic                         hdv_task_complete_i,
+    input  logic                         hdv_task_error_i,
+    output logic                         hdv_scalar_valid_o,
+    input  logic                         hdv_scalar_ready_i,
+    output logic [HdvNumSlots-1:0]       hdv_scalar_insn_valid_o,
+    output logic [HdvNumSlots-1:0][31:0] hdv_scalar_insn_o,
+    output logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b_o,
+    output logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc_o,
+    output logic [63:0]                  hdv_scalar_pc_o,
+    input  logic                         hdv_scalar_done_i,
+    output logic                         hdv_vector_valid_o,
+    input  logic                         hdv_vector_ready_i,
+    output logic [HdvNumSlots-1:0]       hdv_vector_insn_valid_o,
+    output logic [HdvNumSlots-1:0][31:0] hdv_vector_insn_o,
+    output logic [HdvNumSlots-1:0]       hdv_vector_insn_is_32b_o,
+    output logic [HdvNumSlots-1:0][63:0] hdv_vector_insn_pc_o,
+    output logic [63:0]                  hdv_vector_pc_o,
+    input  logic                         hdv_vector_done_i,
+    input  logic                         hdv_backend_error_i,
+    output logic                         hdv_execute_busy_o,
+    output logic                         hdv_execute_done_o,
+    output logic                         hdv_execute_error_o
   );
 
   `include "axi/assign.svh"
@@ -97,8 +138,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   localparam AxiWideDataWidth   = AxiDataWidth;
   localparam AXiWideStrbWidth   = AxiWideDataWidth / 8;
 
+  localparam int unsigned NrSystemMuxMasters = 3;
   localparam AxiSocIdWidth  = AxiIdWidth - $clog2(NrAXIMasters);
-  localparam AxiCoreIdWidth = AxiSocIdWidth - 1;
+  localparam AxiCoreIdWidth = AxiSocIdWidth - $clog2(NrSystemMuxMasters);
 
   // Internal types
   typedef logic [AxiNarrowDataWidth-1:0] axi_narrow_data_t;
@@ -430,6 +472,35 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   soc_narrow_lite_resp_t axi_lite_ctrl_registers_resp;
 
   logic [63:0] event_trigger;
+  logic        hdv_csr_valid;
+  logic        hdv_csr_write;
+  logic [11:0] hdv_csr_addr;
+  logic [63:0] hdv_csr_wdata;
+  logic        hdv_csr_ready;
+  logic [63:0] hdv_csr_rdata;
+  logic        hdv_csr_error;
+  logic        hdv_task_busy;
+  logic        hdv_task_done;
+  logic        hdv_task_error;
+  logic        hdv_execute_done;
+  logic        hdv_execute_error;
+  logic        hdv_csr_valid_to_top;
+  logic        hdv_csr_write_to_top;
+  logic [11:0] hdv_csr_addr_to_top;
+  logic [63:0] hdv_csr_wdata_to_top;
+
+  assign hdv_csr_valid_to_top = hdv_host_csr_valid_i ? hdv_host_csr_valid_i : hdv_csr_valid;
+  assign hdv_csr_write_to_top = hdv_host_csr_valid_i ? hdv_host_csr_write_i : hdv_csr_write;
+  assign hdv_csr_addr_to_top  = hdv_host_csr_valid_i ? hdv_host_csr_addr_i  : hdv_csr_addr;
+  assign hdv_csr_wdata_to_top = hdv_host_csr_valid_i ? hdv_host_csr_wdata_i : hdv_csr_wdata;
+  assign hdv_host_csr_ready_o = hdv_host_csr_valid_i & hdv_csr_ready;
+  assign hdv_host_csr_rdata_o = hdv_csr_rdata;
+  assign hdv_host_csr_error_o = hdv_host_csr_valid_i & hdv_csr_error;
+  assign hdv_task_busy_o      = hdv_task_busy;
+  assign hdv_task_done_o      = hdv_task_done;
+  assign hdv_task_error_o     = hdv_task_error;
+  assign hdv_execute_done_o   = hdv_execute_done;
+  assign hdv_execute_error_o  = hdv_execute_error;
 
   axi_to_axi_lite #(
     .AxiAddrWidth   (AxiAddrWidth          ),
@@ -469,7 +540,17 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .dram_base_addr_o     (/* Unused */                ),
     .dram_end_addr_o      (/* Unused */                ),
     .exit_o               (exit_o                      ),
-    .event_trigger_o      (event_trigger)
+    .event_trigger_o      (event_trigger               ),
+    .hdv_csr_valid_o      (hdv_csr_valid               ),
+    .hdv_csr_write_o      (hdv_csr_write               ),
+    .hdv_csr_addr_o       (hdv_csr_addr                ),
+    .hdv_csr_wdata_o      (hdv_csr_wdata               ),
+    .hdv_csr_ready_i      (hdv_csr_ready               ),
+    .hdv_csr_rdata_i      (hdv_csr_rdata               ),
+    .hdv_csr_error_i      (hdv_csr_error               ),
+    .hdv_task_busy_i      (hdv_task_busy               ),
+    .hdv_task_done_i      (hdv_task_done               ),
+    .hdv_task_error_i     (hdv_task_error              )
   );
 
   axi_dw_converter #(
@@ -554,51 +635,106 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   `CVA6_INTF_TYPEDEF_ACC_TO_CVA6(acc_to_cva6_t, accelerator_resp_t, acc_mmu_req_t);
 
 `ifndef TARGET_GATESIM
-  ara_system #(
-    .NrLanes           (NrLanes              ),
-    .VLEN              (VLEN                 ),
-    .OSSupport         (OSSupport            ),
-    .FPUSupport        (FPUSupport           ),
-    .FPExtSupport      (FPExtSupport         ),
-    .FixPtSupport      (FixPtSupport         ),
-    .SegSupport        (SegSupport           ),
-    .CVA6Cfg           (CVA6AraConfig        ),
-    .exception_t       (exception_t          ),
-    .accelerator_req_t (accelerator_req_t    ),
-    .accelerator_resp_t(accelerator_resp_t   ),
-    .acc_mmu_req_t     (acc_mmu_req_t        ),
-    .acc_mmu_resp_t    (acc_mmu_resp_t       ),
-    .cva6_to_acc_t     (cva6_to_acc_t        ),
-    .acc_to_cva6_t     (acc_to_cva6_t        ),
-    .AxiAddrWidth      (AxiAddrWidth         ),
-    .AxiIdWidth        (AxiCoreIdWidth       ),
-    .AxiNarrowDataWidth(AxiNarrowDataWidth   ),
-    .AxiWideDataWidth  (AxiDataWidth         ),
-    .ara_axi_ar_t      (ara_axi_ar_chan_t    ),
-    .ara_axi_aw_t      (ara_axi_aw_chan_t    ),
-    .ara_axi_b_t       (ara_axi_b_chan_t     ),
-    .ara_axi_r_t       (ara_axi_r_chan_t     ),
-    .ara_axi_w_t       (ara_axi_w_chan_t     ),
-    .ara_axi_req_t     (ara_axi_req_t        ),
-    .ara_axi_resp_t    (ara_axi_resp_t       ),
-    .ariane_axi_ar_t   (ariane_axi_ar_chan_t ),
-    .ariane_axi_aw_t   (ariane_axi_aw_chan_t ),
-    .ariane_axi_b_t    (ariane_axi_b_chan_t  ),
-    .ariane_axi_r_t    (ariane_axi_r_chan_t  ),
-    .ariane_axi_w_t    (ariane_axi_w_chan_t  ),
-    .ariane_axi_req_t  (ariane_axi_req_t     ),
-    .ariane_axi_resp_t (ariane_axi_resp_t    ),
-    .system_axi_ar_t   (system_ar_chan_t     ),
-    .system_axi_aw_t   (system_aw_chan_t     ),
-    .system_axi_b_t    (system_b_chan_t      ),
-    .system_axi_r_t    (system_r_chan_t      ),
-    .system_axi_w_t    (system_w_chan_t      ),
-    .system_axi_req_t  (system_req_t         ),
-    .system_axi_resp_t (system_resp_t        ))
+  hdv_top #(
+    .XLEN                  (64                    ),
+    .NrLanes               (NrLanes               ),
+    .VLEN                  (VLEN                  ),
+    .OSSupport             (OSSupport             ),
+    .FPUSupport            (FPUSupport            ),
+    .FPExtSupport          (FPExtSupport          ),
+    .FixPtSupport          (FixPtSupport          ),
+    .SegSupport            (SegSupport            ),
+    .CVA6Cfg               (CVA6AraConfig         ),
+    .exception_t           (exception_t           ),
+    .accelerator_req_t     (accelerator_req_t     ),
+    .accelerator_resp_t    (accelerator_resp_t    ),
+    .acc_mmu_req_t         (acc_mmu_req_t         ),
+    .acc_mmu_resp_t        (acc_mmu_resp_t        ),
+    .cva6_to_acc_t         (cva6_to_acc_t         ),
+    .acc_to_cva6_t         (acc_to_cva6_t         ),
+    .AxiAddrWidth          (AxiAddrWidth          ),
+    .AxiIdWidth            (AxiCoreIdWidth        ),
+    .AxiNarrowDataWidth    (AxiNarrowDataWidth    ),
+    .AxiDataWidth          (AxiDataWidth          ),
+    .scalar_axi_ar_t       (ariane_axi_ar_chan_t  ),
+    .scalar_axi_aw_t       (ariane_axi_aw_chan_t  ),
+    .scalar_axi_b_t        (ariane_axi_b_chan_t   ),
+    .scalar_axi_r_t        (ariane_axi_r_chan_t   ),
+    .scalar_axi_w_t        (ariane_axi_w_chan_t   ),
+    .scalar_axi_req_t      (ariane_axi_req_t      ),
+    .scalar_axi_resp_t     (ariane_axi_resp_t     ),
+    .axi_ar_t              (ara_axi_ar_chan_t     ),
+    .axi_aw_t              (ara_axi_aw_chan_t     ),
+    .axi_b_t               (ara_axi_b_chan_t      ),
+    .axi_r_t               (ara_axi_r_chan_t      ),
+    .axi_w_t               (ara_axi_w_chan_t      ),
+    .axi_req_t             (ara_axi_req_t         ),
+    .axi_resp_t            (ara_axi_resp_t        ),
+    .system_axi_ar_t       (system_ar_chan_t      ),
+    .system_axi_aw_t       (system_aw_chan_t      ),
+    .system_axi_b_t        (system_b_chan_t       ),
+    .system_axi_r_t        (system_r_chan_t       ),
+    .system_axi_w_t        (system_w_chan_t       ),
+    .system_axi_req_t      (system_req_t          ),
+    .system_axi_resp_t     (system_resp_t         )
+  ) i_system (
+    .clk_i        (clk_i                    ),
+    .rst_ni       (rst_ni                   ),
+    .flush_i      (1'b0                     ),
+    .testmode_i   (1'b0                     ),
+    .boot_addr_i  (DRAMBase                 ),
+    .hart_id_i    (hart_id                  ),
+    .scan_enable_i(1'b0                     ),
+    .scan_data_i  (1'b0                     ),
+    .scan_data_o  (/* Unconnected */        ),
+    .csr_valid_i  (hdv_csr_valid_to_top     ),
+    .csr_write_i  (hdv_csr_write_to_top     ),
+    .csr_addr_i   (hdv_csr_addr_to_top      ),
+    .csr_wdata_i  (hdv_csr_wdata_to_top     ),
+    .csr_ready_o  (hdv_csr_ready            ),
+    .csr_rdata_o  (hdv_csr_rdata            ),
+    .csr_error_o  (hdv_csr_error            ),
+    .imem_req_valid_o(/* Unconnected */     ),
+    .imem_req_ready_i(1'b0                  ),
+    .imem_req_addr_o (/* Unconnected */     ),
+    .imem_rsp_valid_i(1'b0                  ),
+    .imem_rsp_ready_o(/* Unconnected */     ),
+    .imem_rsp_data_i ('0                    ),
+    .redirect_valid_i(hdv_redirect_valid_i  ),
+    .redirect_pc_i   (hdv_redirect_pc_i     ),
+    .loop_lock_i     (hdv_loop_lock_i       ),
+    .dep_break_i     (hdv_dep_break_i       ),
+    .task_complete_i (hdv_task_complete_i   ),
+    .task_error_i    (hdv_task_error_i      ),
+    .active_task_desc_o(hdv_active_task_desc_o),
+    .task_busy_o     (hdv_task_busy         ),
+    .task_done_o     (hdv_task_done         ),
+    .task_error_o    (hdv_task_error        ),
+    .scalar_valid_o  (hdv_scalar_valid_o    ),
+    .scalar_ready_i  (hdv_scalar_ready_i    ),
+    .scalar_insn_valid_o(hdv_scalar_insn_valid_o),
+    .scalar_insn_o   (hdv_scalar_insn_o     ),
+    .scalar_insn_is_32b_o(hdv_scalar_insn_is_32b_o),
+    .scalar_insn_pc_o(hdv_scalar_insn_pc_o  ),
+    .scalar_pc_o     (hdv_scalar_pc_o       ),
+    .scalar_done_i   (hdv_scalar_done_i     ),
+    .vector_valid_o  (hdv_vector_valid_o    ),
+    .vector_ready_i  (hdv_vector_ready_i    ),
+    .vector_insn_valid_o(hdv_vector_insn_valid_o),
+    .vector_insn_o   (hdv_vector_insn_o     ),
+    .vector_insn_is_32b_o(hdv_vector_insn_is_32b_o),
+    .vector_insn_pc_o(hdv_vector_insn_pc_o  ),
+    .vector_pc_o     (hdv_vector_pc_o       ),
+    .vector_done_i   (hdv_vector_done_i     ),
+    .axi_req_o       (system_axi_req        ),
+    .axi_resp_i      (system_axi_resp       ),
+    .backend_error_i (hdv_backend_error_i   ),
+    .execute_busy_o  (hdv_execute_busy_o    ),
+    .execute_done_o  (hdv_execute_done      ),
+    .execute_error_o (hdv_execute_error     )
+  );
 `else
-  ara_system
-`endif
-  i_system (
+  ara_system i_system (
     .clk_i        (clk_i                    ),
     .rst_ni       (rst_ni                   ),
     .boot_addr_i  (DRAMBase                 ), // start fetching from DRAM
@@ -606,11 +742,6 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .scan_enable_i(1'b0                     ),
     .scan_data_i  (1'b0                     ),
     .scan_data_o  (/* Unconnected */        ),
-`ifndef TARGET_GATESIM
-    .axi_req_o    (system_axi_req           ),
-    .axi_resp_i   (system_axi_resp          )
-  );
-`else
     .axi_req_o    (system_axi_req_spill     ),
     .axi_resp_i   (system_axi_resp_spill_del)
   );
