@@ -51,6 +51,10 @@ bin/fft:  ENV_DEFINES += -DFFT_SAMPLES=$(subst ",,$(firstword $(def_args_fft)))
 bin/fft%: ENV_DEFINES += -DFFT_SAMPLES=$(subst ",,$(firstword $(def_args_fft)))
 endif
 
+HDV_TASK_ENTRY ?= 0x80001000
+bin/vsaxpy_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsaxpy_hdv: DEFINES += -DVSAXPY_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
 all: $(BINARIES)
 
 # Pre-process the linker-script to correclty align the sections

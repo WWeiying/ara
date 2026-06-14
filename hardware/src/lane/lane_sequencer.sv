@@ -75,7 +75,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
   fall_through_register_v1 #(
     .T(pe_req_t),
-    .DPETH(1)
+    .DEPTH(1)
   ) i_pe_req_register (
     .clk_i     (clk_i             ),
     .rst_ni    (rst_ni            ),

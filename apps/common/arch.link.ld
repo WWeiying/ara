@@ -20,6 +20,16 @@ SECTIONS {
     *(.text.*)
   } > L2
 
+  /*
+   * Optional HDV task text placement.  Applications can pass
+   * -Wl,--defsym=HDV_TASK_ENTRY=<addr> and place code in .hdv_task to force the
+   * task entry to a manually chosen 16-byte aligned address.
+   */
+  __hdv_task_entry = DEFINED(HDV_TASK_ENTRY) ? HDV_TASK_ENTRY : .;
+  .text.hdv_task __hdv_task_entry : ALIGN(16) {
+    KEEP(*(.hdv_task))
+  } > L2
+
   .data : ALIGN(ALIGNMENT) {
     *(.data)
     *(.data.*)

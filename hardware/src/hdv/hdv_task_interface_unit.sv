@@ -86,6 +86,33 @@ module hdv_task_interface_unit import hdv_pkg::*; #(
     error_d              = error_q;
     task_status_clear_o  = 1'b0;
 
+    // Hardware status inputs (lowest priority for done/error): set when the
+    // backend reports a result.  tsu_done persists until the host clears it,
+    // so these must come before the CSR-write block so the host can override.
+    if (task_done_i) begin
+      done_d = 1'b1;
+    end
+    if (task_error_i) begin
+      error_d = 1'b1;
+    end
+
+    if (task_valid_q && task_ready_i) begin
+      task_valid_d = 1'b0;
+    end
+
+    // New-task submission clears stale done/error from the previous task.
+    if (start_pulse) begin
+      if (!task_valid_q || task_ready_i) begin
+        task_valid_d = 1'b1;
+        done_d       = 1'b0;
+        error_d      = 1'b0;
+      end else begin
+        error_d      = 1'b1;
+      end
+    end
+
+    // CSR writes (highest priority for done/error): the host can always clear
+    // the done/error bits even while task_done_i/task_error_i are still high.
     if (csr_valid_i && csr_write_i) begin
       unique case (csr_addr_i)
         HDV_CSR_VTASK_ADDR: begin
@@ -106,27 +133,6 @@ module hdv_task_interface_unit import hdv_pkg::*; #(
         default: begin
         end
       endcase
-    end
-
-    if (task_valid_q && task_ready_i) begin
-      task_valid_d = 1'b0;
-    end
-
-    if (start_pulse) begin
-      if (!task_valid_q || task_ready_i) begin
-        task_valid_d = 1'b1;
-        done_d       = 1'b0;
-        error_d      = 1'b0;
-      end else begin
-        error_d      = 1'b1;
-      end
-    end
-
-    if (task_done_i) begin
-      done_d = 1'b1;
-    end
-    if (task_error_i) begin
-      error_d = 1'b1;
     end
   end
 
