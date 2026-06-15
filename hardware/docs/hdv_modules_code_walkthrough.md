@@ -737,6 +737,169 @@ end
 
 `backend_heu_error_i` 在当前 packet outstanding 或接收 packet 同周期有效时，置 `error_q`。`heu_top_ep_error_o` 是 packet 级错误状态，由上层任务控制器决定是否转为 task error。
 
+## `hdv_vec_dispatch_unit.sv`
+
+### 模块定位
+
+`hdv_vec_dispatch_unit` 是 HEU 向量侧到 Ara 的适配器。HEU 输出的是一个 execute packet，里面最多有 `NumSlots` 个 slot，其中若干 slot 是向量指令；Ara 的 accelerator request 接口一次只能接收一条向量指令。因此这个模块负责把“一个 EP 内的多条向量指令”缓存下来，并按 slot 顺序拆成多次 Ara request。
+
+数据流是：
+
+```text
+HEU vector dispatch
+  -> hdv_vec_dispatch_unit
+  -> Ara acc_req_i
+  <- Ara acc_resp_o
+  -> vec_heu_accepted_o
+  -> HEU vector_heu_accepted_i
+```
+
+也就是说，它不是向量执行单元本身，而是 HDV 和 Ara 前端协议之间的桥。
+
+### HEU 侧接口
+
+```systemverilog
+input  logic                heu_vec_valid_i,
+output logic                vec_heu_ready_o,
+input  logic [NumSlots-1:0] heu_vec_insn_valid_i,
+input  logic [NumSlots-1:0][31:0] heu_vec_insn_i,
+output logic                vec_heu_accepted_o,
+output logic                vec_heu_error_o,
+```
+
+- `heu_vec_valid_i` 表示 HEU 当前有一个 vector EP 要交给向量后端。
+- `vec_heu_ready_o` 只在模块 `IDLE` 时为 1，表示可以接收新的 vector EP。
+- `heu_vec_insn_valid_i[i]` 表示 EP 的 slot `i` 是有效向量指令。
+- `heu_vec_insn_i[i]` 是 HEU 已经规范化好的 32-bit 向量指令。
+- `vec_heu_accepted_o` 是给 HEU 的一拍脉冲，表示这个 EP 内所有向量指令都已经被 Ara request 接口接收。
+- `vec_heu_error_o` 表示 vtrace 缺失、vtrace 指令不匹配或 Ara response 报 exception。
+
+关键点：`vec_heu_accepted_o` 不表示 Ara 已经真正执行完，也不表示 load/store 已经完成，更不表示向量写回已经退休。它只是“供给侧完成”：本 EP 的向量指令已经全部送入 Ara。
+
+### Ara 侧接口
+
+```systemverilog
+output cva6_to_acc_t acc_req_o,
+input  acc_to_cva6_t acc_resp_i
+```
+
+`acc_req_o` 复用 Ara 原本接 CVA6 accelerator dispatcher 的请求类型。当前 `hdv_top` 中不再让 CVA6/ideal dispatcher 驱动 Ara，而是由这个模块直接驱动 Ara：
+
+```systemverilog
+acc_req_o.acc_req.req_valid
+acc_req_o.acc_req.insn
+acc_req_o.acc_req.rs1
+acc_req_o.acc_req.rs2
+acc_req_o.acc_req.frm
+```
+
+Ara 用 `acc_resp_i.acc_resp.req_ready` 反压。只有 `req_valid && req_ready` 同时为 1 时，本条向量指令才算被 Ara 接收。
+
+### 内部状态机
+
+状态定义：
+
+```systemverilog
+typedef enum logic [1:0] {
+  IDLE,
+  DISPATCH,
+  WAIT,
+  DONE
+} state_e;
+```
+
+当前实际主要用三个状态：
+
+- `IDLE`: 等待 HEU 送入一个 vector EP。
+- `DISPATCH`: 找当前最低编号的有效 slot，驱动 Ara request。
+- `DONE`: 所有有效 slot 都已经被 Ara 接收，拉高 `vec_heu_accepted_o` 一拍，然后回到 `IDLE`。
+
+`WAIT` 目前是保留状态，代码里只会直接转 `DONE`，没有承担真实等待 Ara 退休的功能。
+
+### EP 缓冲
+
+模块内部有两组关键寄存器：
+
+```systemverilog
+logic [NumSlots-1:0]       insn_valid_q;
+logic [NumSlots-1:0][31:0] insn_q;
+```
+
+当 `IDLE && heu_vec_valid_i` 时：
+
+- `insn_valid_q <= heu_vec_insn_valid_i`
+- `insn_q <= heu_vec_insn_i`
+- 若至少有一个 vector slot 有效，进入 `DISPATCH`
+- 若没有有效 vector slot，直接进入 `DONE`
+
+这样 HEU 可以在本模块内部保存 EP 后释放输出，后续由本模块慢慢给 Ara 发指令。
+
+### slot 选择
+
+模块用一个简单 priority encoder 找最低编号有效 slot：
+
+```systemverilog
+for (int unsigned i = 0; i < NumSlots; i++) begin
+  if (insn_valid_q[i] && !slot_found) begin
+    slot_found = 1'b1;
+    slot_idx   = SlotIdxW'(i);
+  end
+end
+```
+
+所以 EP 内向量指令是按 slot 从小到大发给 Ara 的。对于 `vsetvli + vle32` 这类同 EP 组合，如果两个都是 vector slot，slot 0 会先发，slot 1 后发。这里能保证发射顺序，但不能单独证明 Ara 内部退休顺序；当前原型只依赖 Ara request 接口顺序接收。
+
+### vtrace 标量环境
+
+当前没有真实标量寄存器堆给 Ara 提供 `rs1/rs2`，所以模块支持用 vtrace 文件补标量上下文：
+
+```text
+{insn[31:0], rs1[63:0], rs2[63:0]}
+```
+
+每次 Ara 接收一条向量指令时，模块消耗一条 vtrace entry：
+
+```systemverilog
+if (accept_insn && UseVTraceScalar) begin
+  vtrace_idx_d = vtrace_idx_q + 1'b1;
+end
+```
+
+同时它会检查：
+
+- vtrace 是否耗尽。
+- vtrace 中的 `insn` 是否等于当前要发给 Ara 的 `insn_q[slot_idx]`。
+
+如果不匹配，`vec_heu_error_o` 会拉高，并打印错误。这是为了防止 HDV 分包顺序和 vtrace 标量值错位。
+
+### accepted 的产生
+
+Ara 接收单条指令的条件是：
+
+```systemverilog
+accept_insn = acc_resp_i.acc_resp.req_ready & acc_req_o.acc_req.req_valid;
+```
+
+每接收一条，当前 slot 的 valid bit 清零：
+
+```systemverilog
+insn_valid_d[slot_idx] = 1'b0;
+```
+
+当所有 slot 都清零后：
+
+```systemverilog
+state_d = DONE;
+```
+
+下一拍：
+
+```systemverilog
+assign vec_heu_accepted_o = (state_q == DONE);
+```
+
+HEU 收到这个 accepted 后，才认为本 EP 的 vector 切片已经被后端接收，并允许整个 EP 结束。
+
 ## `hdv_top.sv`
 
 ### 模块定位
