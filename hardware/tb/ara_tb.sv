@@ -851,6 +851,7 @@ module ara_tb;
   logic                         hdv_redirect_valid;
   logic [63:0]                  hdv_redirect_pc;
   logic                         hdv_loop_lock;
+  logic                         unused_hdv_mock_loop_lock;
   logic [HdvNumSlots-2:0]       hdv_dep_break;
   logic                         hdv_task_busy;
   logic                         hdv_task_done;
@@ -870,6 +871,7 @@ module ara_tb;
   logic                         hdv_ep_error;
 
   assign hdv_dep_break      = '0;
+  assign hdv_loop_lock      = 1'b0;
 
   // This TB must be implemented in C for integration with Verilator.
   // In order to Verilator to understand that the ara_testharness module is the top-level,
@@ -961,7 +963,7 @@ module ara_tb;
     .hdv_mock_scalar_insn_pc_i (hdv_scalar_insn_pc),
     .mock_hdv_redirect_valid_o (hdv_redirect_valid),
     .mock_hdv_redirect_pc_o    (hdv_redirect_pc),
-    .mock_hdv_loop_lock_o      (hdv_loop_lock),
+    .mock_hdv_loop_lock_o      (unused_hdv_mock_loop_lock),
     .hdv_mock_vector_valid_i   (1'b0),  // vector now handled internally by hdv_top
     .mock_hdv_vector_ready_o   (),
     .mock_hdv_vector_accepted_o    (),

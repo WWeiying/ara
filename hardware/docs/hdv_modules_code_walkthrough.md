@@ -379,11 +379,13 @@ output addr_t ipu_vliwpu_packet_pc_o,
 input logic redirect_valid_i,
 input addr_t redirect_pc_i,
 input logic loop_lock_i,
+input logic loop_exit_i,
 input logic top_ipu_task_complete_i,
 ```
 
 - `redirect_valid_i`: 后端发现分支/跳转，需要从新 PC 重新取指。
-- `loop_lock_i`: 当前 buffer 锁定为循环体，读完最后一个 packet 后回到 buffer 起点而不重新取指。
+- `loop_lock_i`: 外部显式 loop buffer 锁定控制；该信号表示外部已经知道循环还会 taken，因此保留强制 replay 语义。
+- `loop_exit_i`: 自动 loop lock 的退出事件；后向 branch 已被标量后端接收且没有 taken redirect。
 - `top_ipu_task_complete_i`: 整个任务完成，IPU 回到 idle。
 
 ### 状态机
@@ -462,25 +464,62 @@ FILL 状态在第一个 response 返回后立即切换到 SERVE：
 ```systemverilog
 assign active_packet_valid = active_buf_q ? buffer_b_valid_q[exec_idx_q]
                                           : buffer_a_valid_q[exec_idx_q];
-assign bg_stall = (exec_idx_q == LastPacketIdx) & !bg_fill_done_q & !loop_lock_i
+assign effective_loop_fetch_lock = loop_lock_i | auto_loop_lock_q;
+assign bg_stall = (exec_idx_q == LastPacketIdx) & !bg_fill_done_q & !effective_loop_fetch_lock
                 & (fill_buf_q != active_buf_q);
-assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid & !bg_stall;
+assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid
+                                 & !bg_stall & !loop_wait_q;
 ```
 
-普通 packet 只有在对应 valid bit 已置位后才会输出；如果 VLIWPU 消费速度追上取指速度，`active_packet_valid=0` 会自然暂停。到达 buffer 最后一个 packet 时，若下一个背景 buffer 尚未完成且不在 loop lock 模式，则 `bg_stall=1` 暂停输出，等 `bg_fill_done_q` 置 1 后再切换。
+普通 packet 只有在对应 valid bit 已置位后才会输出；如果 VLIWPU 消费速度追上取指速度，`active_packet_valid=0` 会自然暂停。到达 buffer 最后一个 packet 时，若下一个背景 buffer 尚未完成且不在 loop lock 模式，则 `bg_stall=1` 暂停输出，等 `bg_fill_done_q` 置 1 后再切换。进入 `loop_wait_q`（后向 branch 保持）后也会屏蔽输出，防止刚发出的 branch packet 被重复发送。
 
-**buffer 切换**（`take_packet & exec_idx==LastPacketIdx & !loop_lock_i`）：
+**后向 branch 检测（loop lock 生效的关键）**：
 
-此时 `bg_fill_done_q` 必为 1（被 `bg_stall` 保护）：
+```systemverilog
+// 扫描正在输出的 packet 的 4 个 32-bit 字，找后向 branch
+always_comb begin
+  served_packet = active_buf_q ? buffer_b_q[exec_idx_q] : buffer_a_q[exec_idx_q];
+  served_pkt_has_bwd_branch = 1'b0;
+  for (w = 0; w < FetchPacketWidth/32; w++)
+    if (served_packet[w*32 +: 7] == 7'b1100011 &&  // BRANCH opcode
+        served_packet[w*32 + 31] == 1'b1)           // imm[12]=1 → 后向
+      served_pkt_has_bwd_branch = 1'b1;
+end
+```
 
-- `active_buf_d = fill_buf_q`: 切换到已预取完成的 buffer。
-- `exec_base_d = fetch_base_q`: 执行 base 更新为新 buffer 的起始地址。
-- `fill_buf_d = !fill_buf_q`、`fetch_base_d += BufferBytes`: 推进，准备下一次背景预取。
-- `fill_req_idx_d = 0`、`fill_rsp_idx_d = 0`、`fill_req_done_d = 0`、`bg_fill_done_d = 0`: 开始新一轮预取。
+HDV task body 是非压缩的（32-bit 对齐），一个 128-bit fetch packet 正好 4 条 32-bit 指令。
+关键修复点：**当输出的 packet 里含后向 branch 时，IPU 不能投机性地切换/丢弃 active buffer**。
+否则——典型循环（如 vsaxpy）的 `bnez` 恰好落在 buffer 最后一个 packet——
+切换会让 `exec_base` 提前推进，几个周期后到来的 redirect（目标=循环头）落在 `exec_base` 之前，
+`redirect_in_active` 判否 → 退回 FILL → **每次迭代都重新取指**（这正是 loop lock “没奏效”的根因）。
 
-**loop lock**（`take_packet & exec_idx==LastPacketIdx & loop_lock_i`）：
+**输出时的三条分支**（`take_packet`）：
 
-`exec_idx_d = 0` 重头回放当前 buffer，不做 buffer 切换。即使 `bg_fill_done_q=1`，也不消耗预取结果，等 `loop_lock_i` 变 0 时正常切换。
+1. **后向 branch 保持**（`served_pkt_has_bwd_branch & !replay_loop_lock`）：
+   置 `loop_wait_d=1`，停在该 packet，**不切换、不前进**。等 taken redirect（in-active 回放）
+   或 not-taken `loop_exit`（落到下一 buffer）来决定走向。这样循环体始终驻留，taken 迭代不再取指。
+2. **直线最后一个 packet**（`exec_idx==LastPacketIdx`，无后向 branch）：正常切换到已预取完成的背景 buffer
+   （`active_buf_d=fill_buf_q`、`exec_base_d=fetch_base_q`、推进 `fill_buf`/`fetch_base`、清预取索引）。
+3. **显式 loop lock**（`replay_loop_lock=loop_lock_i`）：外部已知循环 taken，`exec_idx_d=0` 立即回放，
+   不切换 buffer。该路径需要外部控制器保证 taken；TB 当前未驱动（`hdv_loop_lock=0`），靠自动机制即可。
+
+**自动 loop lock**：
+
+当 taken redirect 的目标 16B 对齐、命中 active buffer、目标 packet 已 valid、且为后向跳转时，
+IPU 置 `auto_loop_lock_q`，使 `loop_blocks_bg_fetch=1` 停止背景取指，循环体常驻。
+若命中 active buffer 的 redirect 不是后向，则清 `auto_loop_lock_q`。
+
+**从 branch 保持中退出**（`loop_wait_q`）：
+
+- taken：`redirect_valid_i` 命中 active buffer → 高优先级 redirect 块把 `exec_idx_d` 改到目标、
+  清 `loop_wait_q`/`loop_exit_seen`、置 `auto_loop_lock_q`，从 active buffer 内回放，**不取指**。
+- not-taken：用 **寄存后的** `loop_exit_seen_q`（不是组合 `loop_exit_i`）判退出。原因：taken 迭代里
+  `loop_exit_i` 可能在（被刻意延后一拍的）redirect 之前瞬时拉高一拍；只有等到下一拍仍未被
+  redirect 清掉，才确认是真正的 not-taken，从而避免 taken 迭代被误切换 buffer。确认后若
+  在最后一个 packet 且背景 buffer 就绪则切换，否则 `exec_idx+1` 落到同 buffer 内的后续 packet。
+
+> 已知限制：当前 in-active 回放只覆盖**单 buffer（≤64B）循环**。论文提到的“≤128B 跨双 buffer 锁定”
+> 需要同时保住两个 buffer，属后续工作；vsaxpy 等紧循环为单 buffer，已覆盖。
 
 ### redirect 和 task complete
 
@@ -969,10 +1008,22 @@ HDV imem AXI adapter ------------------------+
 顶层暴露：
 
 - `ctrl_hdv_redirect_valid_i/ctrl_hdv_redirect_pc_i`: 后端跳转或异常重定向。
-- `ctrl_hdv_loop_lock_i`: loop buffer 锁定控制。
+- `ctrl_hdv_loop_lock_i`: 外部显式 loop buffer 锁定控制；自动 loop lock 不依赖该输入。
 - `ctrl_hdv_dep_break_i`: 依赖检测边界，输入 VLIWPU。
 
 当前依赖检测没有在 VLIWPU 内部完整实现，而是由外部传入 `ctrl_vliwpu_dep_break_i`。
+
+### 自动 loop 检测
+
+`hdv_top` 会扫描发往 scalar backend 的 EP。如果某个 32-bit scalar 指令是 B-type branch，且 B-type immediate 计算出的 target 小于该指令 PC，则认为这是后向 branch。
+
+检测分三步：
+
+- `scalar_dispatch_fire = hdv_scalar_valid_o & scalar_hdv_ready_i` 时，若 EP 内含后向 branch，置起 `loop_branch_inflight_q`。
+- `scalar_hdv_accepted_i` 表示该 scalar EP 已被后端接收，顶层转而置起 `loop_branch_exit_pending_q`。
+- 下一拍如果没有 `ctrl_hdv_redirect_valid_i`，说明该后向 branch not-taken，顶层向 IPU 发送 `auto_loop_exit`；如果有 redirect，则认为 taken，exit pending 被取消。
+
+这个设计要求 taken redirect 在 branch accepted 后一拍内出现。当前 mock host 正是这种时序；未来接真实标量后端时，也应保证 branch accepted 与 redirect/not-taken 事件有明确配对关系。
 
 ### task 完成接口
 

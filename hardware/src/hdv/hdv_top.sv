@@ -162,6 +162,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic task_busy;
   logic task_flush;
   logic dispatch_flush;
+  logic scalar_dispatch_fire;
+  logic scalar_backward_branch_dispatch;
+  logic loop_branch_inflight_d, loop_branch_inflight_q;
+  logic loop_branch_exit_pending_d, loop_branch_exit_pending_q;
+  logic auto_loop_exit;
 
   // ─── Vector dispatch (HEU → vec_dispatch_unit → Ara) ─────────────────────
 
@@ -206,6 +211,20 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic imem_r_accept;
   logic imem_rsp_to_ipu;
 
+  function automatic logic is_branch32(input logic [31:0] insn);
+    return insn[6:0] == 7'b1100011;
+  endfunction
+
+  function automatic addr_t btype_target(input addr_t pc, input logic [31:0] insn);
+    logic signed [12:0] branch_imm;
+    logic signed [XLEN-1:0] offset;
+    begin
+      branch_imm = {insn[31], insn[7], insn[30:25], insn[11:8], 1'b0};
+      offset = {{(XLEN-13){branch_imm[12]}}, branch_imm};
+      return pc + addr_t'(offset);
+    end
+  endfunction
+
   // ─── Combinatorial assignments ────────────────────────────────────────────
 
   assign task_busy                   = tsu_top_busy | ipu_top_busy | heu_top_busy;
@@ -227,6 +246,43 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
 
   // Scalar AXI slot produces no traffic until a real scalar backend is connected.
   assign scalar_axi_req = '0;
+
+  assign scalar_dispatch_fire = hdv_scalar_valid_o & scalar_hdv_ready_i;
+  assign auto_loop_exit = loop_branch_exit_pending_q & !ctrl_hdv_redirect_valid_i;
+
+  always_comb begin : p_auto_loop_detect
+    scalar_backward_branch_dispatch = 1'b0;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (hdv_scalar_insn_valid_o[i] &&
+          hdv_scalar_insn_is_32b_o[i] &&
+          is_branch32(hdv_scalar_insn_o[i]) &&
+          (btype_target(hdv_scalar_insn_pc_o[i], hdv_scalar_insn_o[i]) <
+           hdv_scalar_insn_pc_o[i])) begin
+        scalar_backward_branch_dispatch = 1'b1;
+      end
+    end
+
+    loop_branch_inflight_d = loop_branch_inflight_q;
+    loop_branch_exit_pending_d = loop_branch_exit_pending_q;
+
+    if (scalar_dispatch_fire && scalar_backward_branch_dispatch) begin
+      loop_branch_inflight_d = 1'b1;
+    end
+
+    if (loop_branch_inflight_q && scalar_hdv_accepted_i) begin
+      loop_branch_inflight_d = 1'b0;
+      loop_branch_exit_pending_d = 1'b1;
+    end
+
+    if (ctrl_hdv_redirect_valid_i || auto_loop_exit) begin
+      loop_branch_exit_pending_d = 1'b0;
+    end
+
+    if (dispatch_flush | host_hdv_task_complete_i | host_hdv_task_error_i) begin
+      loop_branch_inflight_d = 1'b0;
+      loop_branch_exit_pending_d = 1'b0;
+    end
+  end
 
   // ─── Instruction-fetch AXI bridge ─────────────────────────────────────────
 
@@ -488,6 +544,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .redirect_valid_i          (ctrl_hdv_redirect_valid_i),
     .redirect_pc_i             (ctrl_hdv_redirect_pc_i  ),
     .loop_lock_i               (ctrl_hdv_loop_lock_i    ),
+    .loop_exit_i               (auto_loop_exit          ),
     .top_ipu_task_complete_i   (host_hdv_task_complete_i | host_hdv_task_error_i),
     .ipu_top_busy_o            (ipu_top_busy            )
   );
@@ -561,5 +618,15 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_top_ep_accepted_o         (heu_top_ep_accepted     ),
     .heu_top_ep_error_o        (heu_top_ep_error    )
   );
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_auto_loop_regs
+    if (!rst_ni) begin
+      loop_branch_inflight_q <= 1'b0;
+      loop_branch_exit_pending_q <= 1'b0;
+    end else begin
+      loop_branch_inflight_q <= loop_branch_inflight_d;
+      loop_branch_exit_pending_q <= loop_branch_exit_pending_d;
+    end
+  end
 
 endmodule : hdv_top
