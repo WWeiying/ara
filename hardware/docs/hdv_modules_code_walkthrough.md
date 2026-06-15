@@ -445,7 +445,7 @@ FILL 状态在第一个 response 返回后立即切换到 SERVE：
 - `active_buf_d = fill_buf_q`: 当前填充 buffer 立即成为执行 buffer。
 - `buffer_*_valid_d[0] = 1`: 第一个 packet 标记为有效。
 - `exec_base_d = fetch_base_q`: 执行 base 锁定为当前 buffer 的起始地址。
-- `fill_idx_d += 1`: 后续请求继续填当前 active buffer。
+- request 侧继续用 `fill_req_idx_q` 发后续 packet 请求，response 侧继续用 `fill_rsp_idx_q` 标记后续 packet valid。
 
 若 `PacketsPerBuffer==1`，第一个 response 同时也是 `fill_done`，此时 `fill_buf_d = !fill_buf_q`，`fetch_base_d += BufferBytes`，直接开始背景预取。
 
@@ -453,9 +453,9 @@ FILL 状态在第一个 response 返回后立即切换到 SERVE：
 
 **active/background 填充**（`accept_rsp` 时）：
 
-- `fill_idx < LastPacketIdx`：递增 `fill_idx_d`。
-- `fill_idx == LastPacketIdx` 且 `fill_buf_q == active_buf_q`：early-serve 阶段的 active buffer 填完，`fill_buf` 切到另一个 buffer，`fetch_base` 推进到下一块，开始背景预取。
-- `fill_idx == LastPacketIdx` 且 `fill_buf_q != active_buf_q`：背景填充完成，置 `bg_fill_done_d = 1`，等待 active buffer 消费完后切换。
+- `fill_rsp_idx_q < LastPacketIdx`：递增 `fill_rsp_idx_d`。
+- `fill_rsp_idx_q == LastPacketIdx` 且 `fill_buf_q == active_buf_q`：early-serve 阶段的 active buffer 填完，`fill_buf` 切到另一个 buffer，`fetch_base` 推进到下一块，开始背景预取。
+- `fill_rsp_idx_q == LastPacketIdx` 且 `fill_buf_q != active_buf_q`：背景填充完成，置 `bg_fill_done_d = 1`，等待 active buffer 消费完后切换。
 
 **输出控制**：
 
@@ -476,7 +476,7 @@ assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid & !b
 - `active_buf_d = fill_buf_q`: 切换到已预取完成的 buffer。
 - `exec_base_d = fetch_base_q`: 执行 base 更新为新 buffer 的起始地址。
 - `fill_buf_d = !fill_buf_q`、`fetch_base_d += BufferBytes`: 推进，准备下一次背景预取。
-- `fill_idx_d = 0`、`bg_fill_done_d = 0`: 开始新一轮预取。
+- `fill_req_idx_d = 0`、`fill_rsp_idx_d = 0`、`fill_req_done_d = 0`、`bg_fill_done_d = 0`: 开始新一轮预取。
 
 **loop lock**（`take_packet & exec_idx==LastPacketIdx & loop_lock_i`）：
 
