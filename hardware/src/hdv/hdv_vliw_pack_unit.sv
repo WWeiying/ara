@@ -20,19 +20,19 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   input  logic                                      rst_ni,
   input  logic                                      flush_i,
 
-  input  logic                                      packet_valid_i,
-  output logic                                      packet_ready_o,
-  input  logic [FetchPacketWidth-1:0]               packet_i,
-  input  addr_t                                     packet_pc_i,
+  input  logic                                      ipu_vliwpu_packet_valid_i,
+  output logic                                      vliwpu_ipu_packet_ready_o,
+  input  logic [FetchPacketWidth-1:0]               ipu_vliwpu_packet_i,
+  input  addr_t                                     ipu_vliwpu_packet_pc_i,
 
-  input  logic [NumSlots-2:0]                       dep_break_i,
-  output logic                                      execute_valid_o,
-  input  logic                                      execute_ready_i,
-  output logic [NumSlots-1:0]                       execute_slot_valid_o,
-  output logic [NumSlots-1:0][SlotWidth-1:0]        execute_slot_o,
-  output logic [NumSlots-1:0]                       execute_slot_is_32b_o,
-  output hdv_inst_class_e [NumSlots-1:0]            execute_class_o,
-  output addr_t                                     execute_pc_o
+  input  logic [NumSlots-2:0]                       ctrl_vliwpu_dep_break_i,
+  output logic                                      vliwpu_heu_execute_valid_o,
+  input  logic                                      heu_vliwpu_execute_ready_i,
+  output logic [NumSlots-1:0]                       vliwpu_heu_execute_slot_valid_o,
+  output logic [NumSlots-1:0][SlotWidth-1:0]        vliwpu_heu_execute_slot_o,
+  output logic [NumSlots-1:0]                       vliwpu_heu_execute_slot_is_32b_o,
+  output hdv_inst_class_e [NumSlots-1:0]            vliwpu_heu_execute_class_o,
+  output addr_t                                     vliwpu_heu_execute_pc_o
 );
 
   localparam int unsigned SlotIdxWidth = (NumSlots > 1) ? $clog2(NumSlots) : 1;
@@ -58,9 +58,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   logic last_slot_in_packet;
   logic stop_pack;
 
-  assign packet_accept  = packet_valid_i & packet_ready_o;
-  assign execute_accept = execute_valid_o & execute_ready_i;
-  assign packet_ready_o = !packet_hold_valid_q;
+  assign packet_accept  = ipu_vliwpu_packet_valid_i & vliwpu_ipu_packet_ready_o;
+  assign execute_accept = vliwpu_heu_execute_valid_o & heu_vliwpu_execute_ready_i;
+  assign vliwpu_ipu_packet_ready_o = !packet_hold_valid_q;
 
   assign header = packet_q[FetchPacketWidth-1 -: 32];
   // RISC-V HINT header is encoded as addi x0, x0, imm.  The paper defines
@@ -70,8 +70,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   for (genvar i = 0; i < NumSlots; i++) begin : gen_slots
     assign slots[i] = packet_q[i*SlotWidth +: SlotWidth];
     assign raw_slot_is_32b[i] = (slots[i][1:0] == 2'b11);
-    assign execute_slot_o[i] = slots[i];
-    assign execute_slot_is_32b_o[i] = slot_is_32b[i];
+    assign vliwpu_heu_execute_slot_o[i] = slots[i];
+    assign vliwpu_heu_execute_slot_is_32b_o[i] = slot_is_32b[i];
   end
 
   always_comb begin : p_slot_marks
@@ -116,12 +116,12 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
 
       if (slot_is_continuation[i]) begin
         if (i > 0) begin
-          execute_class_o[i] = slot_class[i-1];
+          vliwpu_heu_execute_class_o[i] = slot_class[i-1];
         end else begin
-          execute_class_o[i] = slot_class[i];
+          vliwpu_heu_execute_class_o[i] = slot_class[i];
         end
       end else begin
-        execute_class_o[i] = slot_class[i];
+        vliwpu_heu_execute_class_o[i] = slot_class[i];
       end
     end
   end
@@ -152,13 +152,13 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
             // don't carry a valid opcode).  Also stop on dep_break or p-bit=0.
             if (i + 1 == NumSlots - 1 || issue_count >= MaxIssueSlotsCount) begin
               stop_pack = 1'b1;  // end of fetch packet, no room for more
-            end else if (!p_bits[i+1] || dep_break_i[i+1] ||
+            end else if (!p_bits[i+1] || ctrl_vliwpu_dep_break_i[i+1] ||
                          class_system_mask[i] || class_branch_mask[i]) begin
               stop_pack = 1'b1;
             end
             // else: continue; the loop will skip i+1 (continuation) and
             // consider i+2 as the next instruction candidate.
-          end else if (!p_bits[i] || dep_break_i[i] ||
+          end else if (!p_bits[i] || ctrl_vliwpu_dep_break_i[i] ||
                        class_system_mask[i] || class_branch_mask[i]) begin
             stop_pack = 1'b1;
           end
@@ -167,10 +167,10 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     end
   end
 
-  assign execute_valid_o      = packet_hold_valid_q;
-  assign execute_slot_valid_o = issue_mask;
-  // PC of slot 0 in the fetch packet; HEU computes per-slot PC as execute_pc_i + i*2.
-  assign execute_pc_o         = packet_pc_q;
+  assign vliwpu_heu_execute_valid_o      = packet_hold_valid_q;
+  assign vliwpu_heu_execute_slot_valid_o = issue_mask;
+  // PC of slot 0 in the fetch packet; HEU computes per-slot PC as vliwpu_heu_execute_pc_i + i*2.
+  assign vliwpu_heu_execute_pc_o         = packet_pc_q;
   assign last_slot_in_packet  = issue_mask[NumSlots-1];
 
   always_comb begin : p_next
@@ -194,8 +194,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
 
     if (packet_accept) begin
       packet_hold_valid_d = 1'b1;
-      packet_d            = packet_i;
-      packet_pc_d         = packet_pc_i;
+      packet_d            = ipu_vliwpu_packet_i;
+      packet_pc_d         = ipu_vliwpu_packet_pc_i;
       head_slot_d         = '0;
     end
 

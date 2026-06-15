@@ -81,19 +81,12 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     output logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b_o,
     output logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc_o,
     output logic [63:0]                  hdv_scalar_pc_o,
-    input  logic                         hdv_scalar_done_i,
-    output logic                         hdv_vector_valid_o,
-    input  logic                         hdv_vector_ready_i,
-    output logic [HdvNumSlots-1:0]       hdv_vector_insn_valid_o,
-    output logic [HdvNumSlots-1:0][31:0] hdv_vector_insn_o,
-    output logic [HdvNumSlots-1:0]       hdv_vector_insn_is_32b_o,
-    output logic [HdvNumSlots-1:0][63:0] hdv_vector_insn_pc_o,
-    output logic [63:0]                  hdv_vector_pc_o,
-    input  logic                         hdv_vector_done_i,
+    input  logic                         hdv_scalar_accepted_i,
+    // Vector dispatch is now internal (HEU → vec_dispatch_unit → Ara)
     input  logic                         hdv_backend_error_i,
-    output logic                         hdv_execute_busy_o,
-    output logic                         hdv_execute_done_o,
-    output logic                         hdv_execute_error_o
+    output logic                         hdv_ep_busy_o,
+    output logic                         hdv_ep_accepted_o,
+    output logic                         hdv_ep_error_o
   );
 
   `include "axi/assign.svh"
@@ -482,25 +475,25 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   logic        hdv_task_busy;
   logic        hdv_task_done;
   logic        hdv_task_error;
-  logic        hdv_execute_done;
-  logic        hdv_execute_error;
-  logic        hdv_csr_valid_to_top;
-  logic        hdv_csr_write_to_top;
-  logic [11:0] hdv_csr_addr_to_top;
-  logic [63:0] hdv_csr_wdata_to_top;
+  logic        hdv_ep_accepted;
+  logic        hdv_ep_error;
+  logic        soc_hdv_csr_valid;
+  logic        soc_hdv_csr_write;
+  logic [11:0] soc_hdv_csr_addr;
+  logic [63:0] soc_hdv_csr_wdata;
 
-  assign hdv_csr_valid_to_top = hdv_host_csr_valid_i ? hdv_host_csr_valid_i : hdv_csr_valid;
-  assign hdv_csr_write_to_top = hdv_host_csr_valid_i ? hdv_host_csr_write_i : hdv_csr_write;
-  assign hdv_csr_addr_to_top  = hdv_host_csr_valid_i ? hdv_host_csr_addr_i  : hdv_csr_addr;
-  assign hdv_csr_wdata_to_top = hdv_host_csr_valid_i ? hdv_host_csr_wdata_i : hdv_csr_wdata;
+  assign soc_hdv_csr_valid = hdv_host_csr_valid_i ? hdv_host_csr_valid_i : hdv_csr_valid;
+  assign soc_hdv_csr_write = hdv_host_csr_valid_i ? hdv_host_csr_write_i : hdv_csr_write;
+  assign soc_hdv_csr_addr  = hdv_host_csr_valid_i ? hdv_host_csr_addr_i  : hdv_csr_addr;
+  assign soc_hdv_csr_wdata = hdv_host_csr_valid_i ? hdv_host_csr_wdata_i : hdv_csr_wdata;
   assign hdv_host_csr_ready_o = hdv_host_csr_valid_i & hdv_csr_ready;
   assign hdv_host_csr_rdata_o = hdv_csr_rdata;
   assign hdv_host_csr_error_o = hdv_host_csr_valid_i & hdv_csr_error;
   assign hdv_task_busy_o      = hdv_task_busy;
   assign hdv_task_done_o      = hdv_task_done;
   assign hdv_task_error_o     = hdv_task_error;
-  assign hdv_execute_done_o   = hdv_execute_done;
-  assign hdv_execute_error_o  = hdv_execute_error;
+  assign hdv_ep_accepted_o   = hdv_ep_accepted;
+  assign hdv_ep_error_o  = hdv_ep_error;
 
   axi_to_axi_lite #(
     .AxiAddrWidth   (AxiAddrWidth          ),
@@ -656,13 +649,6 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .AxiIdWidth            (AxiCoreIdWidth        ),
     .AxiNarrowDataWidth    (AxiNarrowDataWidth    ),
     .AxiDataWidth          (AxiDataWidth          ),
-    .scalar_axi_ar_t       (ariane_axi_ar_chan_t  ),
-    .scalar_axi_aw_t       (ariane_axi_aw_chan_t  ),
-    .scalar_axi_b_t        (ariane_axi_b_chan_t   ),
-    .scalar_axi_r_t        (ariane_axi_r_chan_t   ),
-    .scalar_axi_w_t        (ariane_axi_w_chan_t   ),
-    .scalar_axi_req_t      (ariane_axi_req_t      ),
-    .scalar_axi_resp_t     (ariane_axi_resp_t     ),
     .axi_ar_t              (ara_axi_ar_chan_t     ),
     .axi_aw_t              (ara_axi_aw_chan_t     ),
     .axi_b_t               (ara_axi_b_chan_t      ),
@@ -682,56 +668,47 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .rst_ni       (rst_ni                   ),
     .flush_i      (1'b0                     ),
     .testmode_i   (1'b0                     ),
-    .boot_addr_i  (DRAMBase                 ),
-    .hart_id_i    (hart_id                  ),
     .scan_enable_i(1'b0                     ),
     .scan_data_i  (1'b0                     ),
     .scan_data_o  (/* Unconnected */        ),
-    .csr_valid_i  (hdv_csr_valid_to_top     ),
-    .csr_write_i  (hdv_csr_write_to_top     ),
-    .csr_addr_i   (hdv_csr_addr_to_top      ),
-    .csr_wdata_i  (hdv_csr_wdata_to_top     ),
-    .csr_ready_o  (hdv_csr_ready            ),
-    .csr_rdata_o  (hdv_csr_rdata            ),
-    .csr_error_o  (hdv_csr_error            ),
-    .imem_req_valid_o(/* Unconnected */     ),
-    .imem_req_ready_i(1'b0                  ),
-    .imem_req_addr_o (/* Unconnected */     ),
-    .imem_rsp_valid_i(1'b0                  ),
-    .imem_rsp_ready_o(/* Unconnected */     ),
-    .imem_rsp_data_i ('0                    ),
-    .redirect_valid_i(hdv_redirect_valid_i  ),
-    .redirect_pc_i   (hdv_redirect_pc_i     ),
-    .loop_lock_i     (hdv_loop_lock_i       ),
-    .dep_break_i     (hdv_dep_break_i       ),
-    .task_complete_i (hdv_task_complete_i   ),
-    .task_error_i    (hdv_task_error_i      ),
-    .active_task_desc_o(hdv_active_task_desc_o),
-    .task_busy_o     (hdv_task_busy         ),
-    .task_done_o     (hdv_task_done         ),
-    .task_error_o    (hdv_task_error        ),
-    .scalar_valid_o  (hdv_scalar_valid_o    ),
-    .scalar_ready_i  (hdv_scalar_ready_i    ),
-    .scalar_insn_valid_o(hdv_scalar_insn_valid_o),
-    .scalar_insn_o   (hdv_scalar_insn_o     ),
-    .scalar_insn_is_32b_o(hdv_scalar_insn_is_32b_o),
-    .scalar_insn_pc_o(hdv_scalar_insn_pc_o  ),
-    .scalar_pc_o     (hdv_scalar_pc_o       ),
-    .scalar_done_i   (hdv_scalar_done_i     ),
-    .vector_valid_o  (hdv_vector_valid_o    ),
-    .vector_ready_i  (hdv_vector_ready_i    ),
-    .vector_insn_valid_o(hdv_vector_insn_valid_o),
-    .vector_insn_o   (hdv_vector_insn_o     ),
-    .vector_insn_is_32b_o(hdv_vector_insn_is_32b_o),
-    .vector_insn_pc_o(hdv_vector_insn_pc_o  ),
-    .vector_pc_o     (hdv_vector_pc_o       ),
-    .vector_done_i   (hdv_vector_done_i     ),
+    .host_hdv_csr_valid_i       (soc_hdv_csr_valid          ),
+    .host_hdv_csr_write_i       (soc_hdv_csr_write          ),
+    .host_hdv_csr_addr_i        (soc_hdv_csr_addr           ),
+    .host_hdv_csr_wdata_i       (soc_hdv_csr_wdata          ),
+    .hdv_host_csr_ready_o       (hdv_csr_ready              ),
+    .hdv_host_csr_rdata_o       (hdv_csr_rdata              ),
+    .hdv_host_csr_error_o       (hdv_csr_error              ),
+    .hdv_imem_req_valid_o       (/* Unconnected */          ),
+    .imem_hdv_req_ready_i       (1'b0                       ),
+    .hdv_imem_req_addr_o        (/* Unconnected */          ),
+    .imem_hdv_rsp_valid_i       (1'b0                       ),
+    .hdv_imem_rsp_ready_o       (/* Unconnected */          ),
+    .imem_hdv_rsp_data_i        ('0                         ),
+    .ctrl_hdv_redirect_valid_i  (hdv_redirect_valid_i       ),
+    .ctrl_hdv_redirect_pc_i     (hdv_redirect_pc_i          ),
+    .ctrl_hdv_loop_lock_i       (hdv_loop_lock_i            ),
+    .ctrl_hdv_dep_break_i       (hdv_dep_break_i            ),
+    .host_hdv_task_complete_i   (hdv_task_complete_i        ),
+    .host_hdv_task_error_i      (hdv_task_error_i           ),
+    .hdv_host_active_task_desc_o(hdv_active_task_desc_o     ),
+    .hdv_host_task_busy_o       (hdv_task_busy              ),
+    .hdv_host_task_done_o       (hdv_task_done              ),
+    .hdv_host_task_error_o      (hdv_task_error             ),
+    .hdv_scalar_valid_o         (hdv_scalar_valid_o         ),
+    .scalar_hdv_ready_i         (hdv_scalar_ready_i         ),
+    .hdv_scalar_insn_valid_o    (hdv_scalar_insn_valid_o    ),
+    .hdv_scalar_insn_o          (hdv_scalar_insn_o          ),
+    .hdv_scalar_insn_is_32b_o   (hdv_scalar_insn_is_32b_o   ),
+    .hdv_scalar_insn_pc_o       (hdv_scalar_insn_pc_o       ),
+    .hdv_scalar_pc_o            (hdv_scalar_pc_o            ),
+    .scalar_hdv_accepted_i          (hdv_scalar_accepted_i          ),
+    // Vector dispatch is now internal (HEU → vec_dispatch_unit → Ara)
     .axi_req_o       (system_axi_req        ),
     .axi_resp_i      (system_axi_resp       ),
-    .backend_error_i (hdv_backend_error_i   ),
-    .execute_busy_o  (hdv_execute_busy_o    ),
-    .execute_done_o  (hdv_execute_done      ),
-    .execute_error_o (hdv_execute_error     )
+    .backend_hdv_error_i        (hdv_backend_error_i        ),
+    .hdv_host_ep_busy_o    (hdv_ep_busy_o         ),
+    .hdv_host_ep_accepted_o    (hdv_ep_accepted           ),
+    .hdv_host_ep_error_o   (hdv_ep_error          )
   );
 `else
   ara_system i_system (

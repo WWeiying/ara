@@ -47,19 +47,12 @@ module ara_testharness #(
     output logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b_o,
     output logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc_o,
     output logic [63:0]                  hdv_scalar_pc_o,
-    input  logic                         hdv_scalar_done_i = 1'b0,
-    output logic                         hdv_vector_valid_o,
-    input  logic                         hdv_vector_ready_i = 1'b1,
-    output logic [HdvNumSlots-1:0]       hdv_vector_insn_valid_o,
-    output logic [HdvNumSlots-1:0][31:0] hdv_vector_insn_o,
-    output logic [HdvNumSlots-1:0]       hdv_vector_insn_is_32b_o,
-    output logic [HdvNumSlots-1:0][63:0] hdv_vector_insn_pc_o,
-    output logic [63:0]                  hdv_vector_pc_o,
-    input  logic                         hdv_vector_done_i = 1'b0,
+    input  logic                         hdv_scalar_accepted_i = 1'b0,
+    // Vector dispatch is now internal (HEU → hdv_vec_dispatch_unit → Ara)
     input  logic                         hdv_backend_error_i = 1'b0,
-    output logic                         hdv_execute_busy_o,
-    output logic                         hdv_execute_done_o,
-    output logic                         hdv_execute_error_o
+    output logic                         hdv_ep_busy_o,
+    output logic                         hdv_ep_accepted_o,
+    output logic                         hdv_ep_error_o
   );
 
   `include "axi/typedef.svh"
@@ -154,19 +147,12 @@ module ara_testharness #(
     .hdv_scalar_insn_is_32b_o(hdv_scalar_insn_is_32b_o),
     .hdv_scalar_insn_pc_o(hdv_scalar_insn_pc_o),
     .hdv_scalar_pc_o     (hdv_scalar_pc_o     ),
-    .hdv_scalar_done_i   (hdv_scalar_done_i   ),
-    .hdv_vector_valid_o  (hdv_vector_valid_o  ),
-    .hdv_vector_ready_i  (hdv_vector_ready_i  ),
-    .hdv_vector_insn_valid_o(hdv_vector_insn_valid_o),
-    .hdv_vector_insn_o   (hdv_vector_insn_o   ),
-    .hdv_vector_insn_is_32b_o(hdv_vector_insn_is_32b_o),
-    .hdv_vector_insn_pc_o(hdv_vector_insn_pc_o),
-    .hdv_vector_pc_o     (hdv_vector_pc_o     ),
-    .hdv_vector_done_i   (hdv_vector_done_i   ),
+    .hdv_scalar_accepted_i   (hdv_scalar_accepted_i   ),
+    // Vector dispatch ports removed — now internal to hdv_top via hdv_vec_dispatch_unit
     .hdv_backend_error_i (hdv_backend_error_i ),
-    .hdv_execute_busy_o  (hdv_execute_busy_o  ),
-    .hdv_execute_done_o  (hdv_execute_done_o  ),
-    .hdv_execute_error_o (hdv_execute_error_o )
+    .hdv_ep_busy_o  (hdv_ep_busy_o  ),
+    .hdv_ep_accepted_o  (hdv_ep_accepted_o  ),
+    .hdv_ep_error_o (hdv_ep_error_o )
   );
 
   /**********
@@ -319,6 +305,8 @@ module ara_testharness #(
     dcache_stall_cnt_d = dcache_stall_cnt_q;
     icache_stall_cnt_d = icache_stall_cnt_q;
     sb_full_cnt_d      = sb_full_cnt_q;
+`ifdef TARGET_GATESIM
+    // GATESIM mode: CVA6 present, track cache/scoreboard stalls
     `ifndef SAIF
     if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_dcache_miss_i)
       dcache_stall_cnt_d += 1;
@@ -334,6 +322,8 @@ module ara_testharness #(
     if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter_perf_counters_i.sb_full_i)
       sb_full_cnt_d      += 1;
     `endif
+`endif
+    // HDV RTL mode: no CVA6, cache stall counters not available
   end
 
   // Update logic

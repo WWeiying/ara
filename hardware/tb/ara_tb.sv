@@ -50,8 +50,14 @@ typedef struct {
 function automatic perf_t get_perf_counters();
     perf_t counters;
     counters.timestamp = $realtime;
-    counters.cycle = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.cycle_q[63:0];
+`ifdef TARGET_GATESIM
+    counters.cycle   = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.cycle_q[63:0];
     counters.instret = ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.instret_q[63:0];
+`else
+    // HDV RTL mode: no CVA6 present; use wall-clock cycle counter instead
+    counters.cycle   = ara_tb.wall_cycle;
+    counters.instret = '0;
+`endif
     counters.rvv_cycle            = ara_tb.rvv_cycle           ;
     counters.rvv_lane_cycle       = ara_tb.rvv_lane_cycle      ;
     counters.rvv_mem_only_cycle  = ara_tb.rvv_mem_only_cycle ;
@@ -853,17 +859,16 @@ module ara_tb;
   logic                         hdv_host_task_error;
   logic                         hdv_scalar_valid;
   logic                         hdv_scalar_ready;
-  logic                         hdv_scalar_done;
-  logic                         hdv_vector_valid;
-  logic                         hdv_vector_ready;
-  logic                         hdv_vector_done;
+  logic                         hdv_scalar_accepted;
+  logic [HdvNumSlots-1:0]       hdv_scalar_insn_valid;
+  logic [HdvNumSlots-1:0][31:0] hdv_scalar_insn;
+  logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b;
+  logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc;
+  // hdv_vector_* signals removed — vector dispatch is now internal to hdv_top
   logic                         hdv_backend_error;
-  logic                         hdv_execute_done;
-  logic                         hdv_execute_error;
+  logic                         hdv_ep_accepted;
+  logic                         hdv_ep_error;
 
-  assign hdv_redirect_valid = 1'b0;
-  assign hdv_redirect_pc    = '0;
-  assign hdv_loop_lock      = 1'b0;
   assign hdv_dep_break      = '0;
 
   // This TB must be implemented in C for integration with Verilator.
@@ -900,90 +905,97 @@ module ara_tb;
     .hdv_task_error_i    (hdv_host_task_error),
     .hdv_scalar_valid_o  (hdv_scalar_valid  ),
     .hdv_scalar_ready_i  (hdv_scalar_ready  ),
-    .hdv_scalar_insn_valid_o(),
-    .hdv_scalar_insn_o   (),
-    .hdv_scalar_insn_is_32b_o(),
-    .hdv_scalar_insn_pc_o(),
+    .hdv_scalar_insn_valid_o(hdv_scalar_insn_valid),
+    .hdv_scalar_insn_o   (hdv_scalar_insn),
+    .hdv_scalar_insn_is_32b_o(hdv_scalar_insn_is_32b),
+    .hdv_scalar_insn_pc_o(hdv_scalar_insn_pc),
     .hdv_scalar_pc_o     (),
-    .hdv_scalar_done_i   (hdv_scalar_done   ),
-    .hdv_vector_valid_o  (hdv_vector_valid  ),
-    .hdv_vector_ready_i  (hdv_vector_ready  ),
-    .hdv_vector_insn_valid_o(),
-    .hdv_vector_insn_o   (),
-    .hdv_vector_insn_is_32b_o(),
-    .hdv_vector_insn_pc_o(),
-    .hdv_vector_pc_o     (),
-    .hdv_vector_done_i   (hdv_vector_done   ),
+    .hdv_scalar_accepted_i   (hdv_scalar_accepted   ),
+    // Vector dispatch ports removed — internal to hdv_top
     .hdv_backend_error_i (hdv_backend_error ),
-    .hdv_execute_busy_o  (),
-    .hdv_execute_done_o  (hdv_execute_done  ),
-    .hdv_execute_error_o (hdv_execute_error )
+    .hdv_ep_busy_o  (),
+    .hdv_ep_accepted_o  (hdv_ep_accepted  ),
+    .hdv_ep_error_o (hdv_ep_error )
   );
 
   hdv_mock_host_core #(
     .XLEN                       (64),
+    .NumSlots                   (HdvNumSlots),
     .ScalarLatency              (1),
     .VectorLatency              (1),
     .AutoStart                  (1'b1),
     .AutoStartDelay             (64),
     .AutoTaskEntry              (HdvTaskEntry),
     .AutoTaskDesc               (DRAMAddrBase + 64'h1000),
-    // 4 VLIW fetch packets (one 64-byte buffer) → 7 execute packets
-    // (MaxIssueSlots=NumSlots=6; p-bits alone define packet boundary):
-    //   packet0: vsetvli(SYSTEM→stop) / vle32+sub          (2 EPs)
-    //   packet1: vle32+slli+vfmacc (all p-bits=1, no break) (1 EP)
-    //   packet2: add+vse32+add     (all p-bits=1, no break) (1 EP)
-    //   packet3: bnez/ret/nop      (BRANCH forces stop each)(3 EPs)
-    .AutoExpectedExecutePackets (32'd7),
-    .TaskWatchdogCycles         (4096),
+    // Mock scalar branch mode executes 32 vsaxpy loop iterations:
+    //   taken iterations: packet0/1/2/bnez = 4 EPs each
+    //   final iteration : packet0/1/2/bnez/ret/nop = 6 EPs
+    .AutoExpectedEpAccepts (32'd130),
+    .EnableMockBranch           (1'b1),
+    .MockLoopIterations         (32),
+    .TaskWatchdogCycles         (65536),
     .PacketWatchdogCycles       (1024),
     .addr_t                     (logic [63:0])
   ) i_hdv_mock_host_core (
     .clk_i                     (clk),
     .rst_ni                    (rst_n),
     .flush_i                   (1'b0),
-    .csr_valid_o               (hdv_host_csr_valid),
-    .csr_write_o               (hdv_host_csr_write),
-    .csr_addr_o                (hdv_host_csr_addr),
-    .csr_wdata_o               (hdv_host_csr_wdata),
-    .csr_ready_i               (hdv_host_csr_ready),
-    .csr_rdata_i               (hdv_host_csr_rdata),
-    .csr_error_i               (hdv_host_csr_error),
-    .task_busy_i               (hdv_task_busy),
-    .task_done_i               (hdv_task_done),
-    .task_error_i              (hdv_task_error),
-    .task_complete_o           (hdv_task_complete),
-    .task_error_o              (hdv_host_task_error),
-    .scalar_valid_i            (hdv_scalar_valid),
-    .scalar_ready_o            (hdv_scalar_ready),
-    .scalar_done_o             (hdv_scalar_done),
-    .vector_valid_i            (hdv_vector_valid),
-    .vector_ready_o            (hdv_vector_ready),
-    .vector_done_o             (hdv_vector_done),
-    .execute_done_i            (hdv_execute_done),
-    .execute_error_i           (hdv_execute_error),
-    .backend_error_o           (hdv_backend_error)
+    .mock_hdv_csr_valid_o      (hdv_host_csr_valid),
+    .mock_hdv_csr_write_o      (hdv_host_csr_write),
+    .mock_hdv_csr_addr_o       (hdv_host_csr_addr),
+    .mock_hdv_csr_wdata_o      (hdv_host_csr_wdata),
+    .hdv_mock_csr_ready_i      (hdv_host_csr_ready),
+    .hdv_mock_csr_rdata_i      (hdv_host_csr_rdata),
+    .hdv_mock_csr_error_i      (hdv_host_csr_error),
+    .hdv_mock_task_busy_i      (hdv_task_busy),
+    .hdv_mock_task_done_i      (hdv_task_done),
+    .hdv_mock_task_error_i     (hdv_task_error),
+    .mock_hdv_task_complete_o  (hdv_task_complete),
+    .mock_hdv_task_error_o     (hdv_host_task_error),
+    .hdv_mock_scalar_valid_i   (hdv_scalar_valid),
+    .mock_hdv_scalar_ready_o   (hdv_scalar_ready),
+    .mock_hdv_scalar_accepted_o    (hdv_scalar_accepted),
+    .hdv_mock_scalar_insn_valid_i(hdv_scalar_insn_valid),
+    .hdv_mock_scalar_insn_i    (hdv_scalar_insn),
+    .hdv_mock_scalar_insn_is_32b_i(hdv_scalar_insn_is_32b),
+    .hdv_mock_scalar_insn_pc_i (hdv_scalar_insn_pc),
+    .mock_hdv_redirect_valid_o (hdv_redirect_valid),
+    .mock_hdv_redirect_pc_o    (hdv_redirect_pc),
+    .mock_hdv_loop_lock_o      (hdv_loop_lock),
+    .hdv_mock_vector_valid_i   (1'b0),  // vector now handled internally by hdv_top
+    .mock_hdv_vector_ready_o   (),
+    .mock_hdv_vector_accepted_o    (),
+    .hdv_mock_ep_accepted_i   (hdv_ep_accepted),
+    .hdv_mock_ep_error_i  (hdv_ep_error),
+    .mock_hdv_backend_error_o  (hdv_backend_error)
   );
 
-  // HDV pipeline observation: print every execute-packet completion and
-  // final state (once on entry) so the HDV IPU→VLIWPU→HEU flow is visible.
+  // HDV pipeline observation: print every execute-packet backend-accept event
+  // and final state (once on entry) so the HDV IPU→VLIWPU→HEU flow is visible.
   logic [3:0] hdv_mock_state_prev_q;
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       hdv_mock_state_prev_q <= '0;
     end else begin
       hdv_mock_state_prev_q <= i_hdv_mock_host_core.state_q;
-      if (hdv_execute_done) begin
-        $display("[HDV] @%0t cycle=%0d execute_done completed_so_far=%0d",
+      if (hdv_ep_accepted) begin
+        $display("[HDV] @%0t cycle=%0d ep_backend_accept accepted_so_far=%0d",
                  $time, wall_cycle,
-                 i_hdv_mock_host_core.completed_packets_q + 1);
+                 i_hdv_mock_host_core.accepted_packets_q + 1);
       end
       // Only print once on the cycle the state first enters FINISH/FAIL, then stop.
       if (i_hdv_mock_host_core.state_q == 4'd9 && hdv_mock_state_prev_q != 4'd9) begin
-        $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d)",
-                 $time, wall_cycle,
-                 i_hdv_mock_host_core.expected_packets_q,
-                 i_hdv_mock_host_core.completed_packets_q);
+        if (i_hdv_mock_host_core.accepted_packets_q == i_hdv_mock_host_core.expected_ep_accepts_q) begin
+          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d)",
+                   $time, wall_cycle,
+                   i_hdv_mock_host_core.expected_ep_accepts_q,
+                   i_hdv_mock_host_core.accepted_packets_q);
+        end else begin
+          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test FAILED (expected %0d EPs, got %0d)",
+                   $time, wall_cycle,
+                   i_hdv_mock_host_core.expected_ep_accepts_q,
+                   i_hdv_mock_host_core.accepted_packets_q);
+        end
         $finish;
       end
       if (i_hdv_mock_host_core.state_q == 4'd10 && hdv_mock_state_prev_q != 4'd10) begin
@@ -1594,6 +1606,8 @@ module ara_tb;
       rvv_op_store <= '0;
     end
     else begin
+`ifdef TARGET_GATESIM
+      // GATESIM mode: CVA6 present, track RVV commits from commit stage
       if (|ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0]) begin
         rvv_instret  <= rvv_instret + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010));
         rvv_op       <= rvv_op       + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10110110)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10110110));
@@ -1601,8 +1615,7 @@ module ara_tb;
         rvv_op_fd    <= rvv_op_fd    + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111000)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111000));
         rvv_op_load  <= rvv_op_load  + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111001)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111001));
         rvv_op_store <= rvv_op_store + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].op[7:0] == 8'b10111010)) + (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] && (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].op[7:0] == 8'b10111010));
-      end
-      else begin
+      end else begin
         rvv_instret  <= rvv_instret;
         rvv_op       <= rvv_op      ;
         rvv_op_fs1   <= rvv_op_fs1  ;
@@ -1610,6 +1623,15 @@ module ara_tb;
         rvv_op_load  <= rvv_op_load ;
         rvv_op_store <= rvv_op_store;
       end
+`else
+      // HDV RTL mode: no CVA6, RVV commit counters not available
+      rvv_instret  <= rvv_instret;
+      rvv_op       <= rvv_op;
+      rvv_op_fs1   <= rvv_op_fs1;
+      rvv_op_fd    <= rvv_op_fd;
+      rvv_op_load  <= rvv_op_load;
+      rvv_op_store <= rvv_op_store;
+`endif
     end
   end
 
@@ -1632,6 +1654,8 @@ module ara_tb;
 
   always_comb begin
     perf_time_n = perf_time_q;
+`ifdef TARGET_GATESIM
+    // GATESIM mode: CVA6 present, detect rdcycle CSR read to toggle perf window
     if(ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_csr_o &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i.csr_addr_i[11:0] == 12'hc00 &&
             ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.csr_op_o[7:0] == 8'b100010 &&
@@ -1639,6 +1663,8 @@ module ara_tb;
             ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.we_gpr_o[0]) begin
       perf_time_n = !perf_time_q;
     end
+`endif
+    // HDV RTL mode: no CVA6, perf window never toggled automatically
   end
 
   always_ff @(posedge clk, negedge rst_n) begin
