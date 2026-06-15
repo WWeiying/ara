@@ -1023,7 +1023,16 @@ HDV imem AXI adapter ------------------------+
 - `scalar_hdv_accepted_i` 表示该 scalar EP 已被后端接收，顶层转而置起 `loop_branch_exit_pending_q`。
 - 下一拍如果没有 `ctrl_hdv_redirect_valid_i`，说明该后向 branch not-taken，顶层向 IPU 发送 `auto_loop_exit`；如果有 redirect，则认为 taken，exit pending 被取消。
 
-这个设计要求 taken redirect 在 branch accepted 后一拍内出现。当前 mock host 正是这种时序；未来接真实标量后端时，也应保证 branch accepted 与 redirect/not-taken 事件有明确配对关系。
+这个设计要求 taken redirect 在 branch accepted 后一拍内出现。当前 mock host 正是这种时序：
+`mock_hdv_scalar_accepted_o` 在 T+1 拉高（组合），`branch_redirect_valid_q`（registered）在 T+2 拉高，
+即 **redirect 比 accepted 晚一拍**。顶层 `loop_branch_exit_pending_q` 也在 T+2 拉高，与 redirect 对齐，
+因此 taken 迭代里 `auto_loop_exit = exit_pending_q & !redirect = 0`，理论上不产生瞬时脉冲。
+
+> **消费侧的健壮性约定（IPU）**：IPU 不直接用组合 `loop_exit_i` 触发 buffer 切换，而是用
+> **寄存后的 `loop_exit_seen_q`**（晚一拍）。这样即使 SoC 布线让 redirect 与 accepted 之间出现
+> 一拍偏斜、导致 `auto_loop_exit` 在 redirect 前瞬时拉高一拍，IPU 也会等到下一拍——届时高优先级的
+> redirect 已经清掉 `loop_exit_seen` 并原地回放，从而不会在 taken 迭代误切换 buffer。未来接真实
+> 标量后端时，仍应保证 branch accepted 与 redirect/not-taken 事件有明确配对关系（偏斜 ≤1 拍）。
 
 ### task 完成接口
 
