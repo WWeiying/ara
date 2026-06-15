@@ -305,9 +305,13 @@ IPU 要求 redirect PC 16B 对齐，也就是 fetch packet/EP entry 对齐。`p_
 
 ### 5.9 loop lock
 
-当 `loop_lock_i=1` 且输出到 active buffer 最后一个 packet 时，IPU 不切到 background buffer，而是 `exec_idx_d=0`，从 active buffer 开头重放。这个机制依赖循环体已经完整处在 active buffer 内。
+IPU 支持两种 loop lock 来源。
 
-如果 loop lock 时背景 buffer 已经填好，它也不会被消费；等 loop lock 解除后，正常切换。
+第一种是外部显式 `loop_lock_i`。当 `loop_lock_i=1` 且输出到 active buffer 最后一个 packet 时，IPU 保留原来的强制 replay 语义：不切到 background buffer，而是 `exec_idx_d=0`，从 active buffer 开头重放。这个模式要求外部控制器已经知道循环还会 taken。
+
+第二种是硬件自动 lock。`hdv_top` 检测发往标量后端的后向 branch；IPU 在 taken redirect 命中 active buffer 时置起 `auto_loop_lock_q`。如果命中 active buffer 的 redirect 不是后向跳转，IPU 会清掉旧的自动 lock。自动 lock 只锁住 active buffer 并抑制无用背景取指，不会在最后一个 packet 自行重放。到达最后一个 packet 后，IPU 进入 `loop_wait_q`，等待下一次 taken redirect 回到 loop target，或者等待 `loop_exit_i` 表示该后向 branch 已被标量后端接收且没有 taken redirect。
+
+这样最后一次 not-taken 不会因为 IPU 盲目 replay 而死循环。若 exit 时背景 buffer 还没填好，IPU 保持 wait，恢复背景取指，等 background buffer 填完后再切换到顺序后继。
 
 ### 5.10 flush 和 task complete
 
@@ -655,7 +659,7 @@ redirect 不在 scalar_fire 同周期发出，而是等 `mock_hdv_scalar_accepte
 
 `mock_hdv_loop_lock_o = EnableMockBranch && RUN && loop_iters_remaining_q > 1`。
 
-这只是临时策略：循环未结束时一直拉 loop lock，让 IPU 尽量重放 active buffer，减少不必要取指。未来真实标量流水线应根据后向分支和 loop body 范围更精确地产生。
+这是旧的 mock 辅助信号，当前 `ara_tb` 不再把它接入 DUT，而是把外部 `hdv_loop_lock_i` 固定为 0，让 `hdv_top` 和 IPU 的自动 loop lock 逻辑接管。mock host 仍负责模拟 taken redirect，因为当前还没有真实标量执行流水线。
 
 ### 9.8 EP accepted 计数
 
@@ -690,7 +694,7 @@ host CSR：
 控制：
 
 - `ctrl_hdv_redirect_valid_i/pc_i` 给 IPU，并作为 dispatch flush 清 VLIWPU/HEU/vector dispatch。
-- `ctrl_hdv_loop_lock_i` 给 IPU。
+- `ctrl_hdv_loop_lock_i` 给 IPU，作为外部显式 lock；硬件自动 lock 由 `hdv_top` 的后向 branch 检测和 IPU 的 active-buffer redirect hit 共同产生。
 - `ctrl_hdv_dep_break_i` 给 VLIWPU。
 
 task 状态：
