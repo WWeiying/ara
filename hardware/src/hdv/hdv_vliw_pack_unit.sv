@@ -55,12 +55,14 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   logic [SlotIdxWidth:0] issue_count;
   logic packet_accept;
   logic execute_accept;
+  logic current_packet_drained;
   logic last_slot_in_packet;
   logic stop_pack;
 
   assign packet_accept  = ipu_vliwpu_packet_valid_i & vliwpu_ipu_packet_ready_o;
   assign execute_accept = vliwpu_heu_execute_valid_o & heu_vliwpu_execute_ready_i;
-  assign vliwpu_ipu_packet_ready_o = !packet_hold_valid_q;
+  assign current_packet_drained = packet_hold_valid_q & heu_vliwpu_execute_ready_i & last_slot_in_packet;
+  assign vliwpu_ipu_packet_ready_o = !packet_hold_valid_q | current_packet_drained;
 
   assign header = packet_q[FetchPacketWidth-1 -: 32];
   // RISC-V HINT header is encoded as addi x0, x0, imm.  The paper defines

@@ -73,14 +73,15 @@ module hdv_instruction_prefetch_unit #(
   logic active_buf_d, active_buf_q;
   logic fill_buf_d,   fill_buf_q;
 
-  logic [PacketIdxWidth-1:0] fill_idx_d, fill_idx_q;
+  logic [PacketIdxWidth-1:0] fill_req_idx_d, fill_req_idx_q;
+  logic [PacketIdxWidth-1:0] fill_rsp_idx_d, fill_rsp_idx_q;
   logic [PacketIdxWidth-1:0] exec_idx_d, exec_idx_q;
 
   addr_t fetch_base_d, fetch_base_q;   // byte address of current bg-fill block
   addr_t exec_base_d,  exec_base_q;    // byte address of start of active buffer
   addr_t task_desc_d,  task_desc_q;
 
-  logic req_pending_d,   req_pending_q;
+  logic fill_req_done_d, fill_req_done_q;
   logic bg_fill_done_d,  bg_fill_done_q; // background fill of fill_buf is complete
 
   logic fill_done;
@@ -114,13 +115,16 @@ module hdv_instruction_prefetch_unit #(
   assign loop_blocks_bg_fetch = loop_lock_i & (fill_buf_q != active_buf_q);
   assign ipu_mem_req_valid_o = ((state_q == FILL) |
                                 (state_q == SERVE & !bg_fill_done_q & !loop_blocks_bg_fetch)) &
-                               !req_pending_q;
-  assign ipu_mem_req_addr_o  = fetch_base_q + addr_t'(fill_idx_q * PacketBytes);
+                               !fill_req_done_q &
+                               !top_ipu_task_complete_i &
+                               !redirect_valid_i &
+                               !flush_i;
+  assign ipu_mem_req_addr_o  = fetch_base_q + addr_t'(fill_req_idx_q * PacketBytes);
 
-  // Accept response in both FILL and SERVE states.
-  assign ipu_mem_rsp_ready_o = ((state_q == FILL) | (state_q == SERVE)) & req_pending_q;
+  // Accept in-order responses in both FILL and SERVE states.
+  assign ipu_mem_rsp_ready_o = ((state_q == FILL) | (state_q == SERVE));
 
-  assign fill_done   = accept_rsp & (fill_idx_q == LastPacketIdx);
+  assign fill_done   = accept_rsp & (fill_rsp_idx_q == LastPacketIdx);
   assign accept_req  = ipu_mem_req_valid_o & mem_ipu_req_ready_i;
   assign accept_rsp  = mem_ipu_rsp_valid_i & ipu_mem_rsp_ready_o;
 
@@ -145,33 +149,44 @@ module hdv_instruction_prefetch_unit #(
     state_d        = state_q;
     active_buf_d   = active_buf_q;
     fill_buf_d     = fill_buf_q;
-    fill_idx_d     = fill_idx_q;
+    fill_req_idx_d = fill_req_idx_q;
+    fill_rsp_idx_d = fill_rsp_idx_q;
     exec_idx_d     = exec_idx_q;
     fetch_base_d   = fetch_base_q;
     exec_base_d    = exec_base_q;
     task_desc_d    = task_desc_q;
-    req_pending_d  = req_pending_q;
+    fill_req_done_d = fill_req_done_q;
     bg_fill_done_d = bg_fill_done_q;
     buffer_a_valid_d = buffer_a_valid_q;
     buffer_b_valid_d = buffer_b_valid_q;
 
-    // req_pending tracks the in-flight memory request (common to all states).
-    if (accept_req) req_pending_d = 1'b1;
-    if (accept_rsp) req_pending_d = 1'b0;
+    // Request and response indices are split so the IPU can keep several
+    // in-order fetch requests outstanding while responses fill the buffer.
+    if (accept_req) begin
+      if (fill_req_idx_q == LastPacketIdx) begin
+        fill_req_done_d = 1'b1;
+      end else begin
+        fill_req_idx_d = fill_req_idx_q + 1;
+      end
+    end
+    if (accept_rsp && (fill_rsp_idx_q != LastPacketIdx)) begin
+      fill_rsp_idx_d = fill_rsp_idx_q + 1;
+    end
     if (accept_rsp) begin
       if (!fill_buf_q) begin
-        buffer_a_valid_d[fill_idx_q] = 1'b1;
+        buffer_a_valid_d[fill_rsp_idx_q] = 1'b1;
       end else begin
-        buffer_b_valid_d[fill_idx_q] = 1'b1;
+        buffer_b_valid_d[fill_rsp_idx_q] = 1'b1;
       end
     end
 
     // Highest-priority resets: task complete, redirect, flush.
     if (top_ipu_task_complete_i) begin
       state_d        = IDLE;
-      fill_idx_d     = '0;
+      fill_req_idx_d = '0;
+      fill_rsp_idx_d = '0;
       exec_idx_d     = '0;
-      req_pending_d  = 1'b0;
+      fill_req_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
@@ -183,13 +198,14 @@ module hdv_instruction_prefetch_unit #(
       exec_idx_d   = redirect_exec_idx;
     end else if (redirect_valid_i && redirect_aligned) begin
       state_d        = FILL;
-      fill_idx_d     = '0;
+      fill_req_idx_d = '0;
+      fill_rsp_idx_d = '0;
       exec_idx_d     = '0;
       fetch_base_d   = redirect_pc_i;
       exec_base_d    = redirect_pc_i;
       active_buf_d   = 1'b0;
       fill_buf_d     = 1'b0;
-      req_pending_d  = 1'b0;
+      fill_req_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
@@ -203,14 +219,15 @@ module hdv_instruction_prefetch_unit #(
         IDLE: begin
           if (tsu_ipu_task_valid_i) begin
             state_d        = FILL;
-            fill_idx_d     = '0;
+            fill_req_idx_d = '0;
+            fill_rsp_idx_d = '0;
             exec_idx_d     = '0;
             fetch_base_d   = tsu_ipu_task_entry_i;
             exec_base_d    = tsu_ipu_task_entry_i;
             task_desc_d    = tsu_ipu_task_desc_i;
             active_buf_d   = 1'b0;
             fill_buf_d     = 1'b0;
-            req_pending_d  = 1'b0;
+            fill_req_done_d = 1'b0;
             bg_fill_done_d = 1'b0;
             buffer_a_valid_d = '0;
             buffer_b_valid_d = '0;
@@ -231,15 +248,15 @@ module hdv_instruction_prefetch_unit #(
               // Start filling the other buffer in the background.
               fill_buf_d     = !fill_buf_q;
               fetch_base_d   = fetch_base_q + addr_t'(BufferBytes);
-              fill_idx_d     = '0;
+              fill_req_idx_d = '0;
+              fill_rsp_idx_d = '0;
+              fill_req_done_d = 1'b0;
               bg_fill_done_d = 1'b0;
               if (!fill_buf_q) begin
                 buffer_b_valid_d = '0;
               end else begin
                 buffer_a_valid_d = '0;
               end
-            end else begin
-              fill_idx_d = fill_idx_q + 1;
             end
           end
         end
@@ -255,7 +272,9 @@ module hdv_instruction_prefetch_unit #(
                 // fill side to the other buffer and start background fill.
                 fill_buf_d     = !fill_buf_q;
                 fetch_base_d   = fetch_base_q + addr_t'(BufferBytes);
-                fill_idx_d     = '0;
+                fill_req_idx_d = '0;
+                fill_rsp_idx_d = '0;
+                fill_req_done_d = 1'b0;
                 bg_fill_done_d = 1'b0;
                 if (!fill_buf_q) begin
                   buffer_b_valid_d = '0;
@@ -263,12 +282,10 @@ module hdv_instruction_prefetch_unit #(
                   buffer_a_valid_d = '0;
                 end
               end else begin
-                // Background fill of fill_buf is complete.  Hold fill_idx at
-                // LastPacketIdx; the buffer switch will reset it.
+                // Background fill of fill_buf is complete.  Hold indices at
+                // their final values; the buffer switch will reset them.
                 bg_fill_done_d = 1'b1;
               end
-            end else begin
-              fill_idx_d = fill_idx_q + 1;
             end
           end
 
@@ -290,7 +307,9 @@ module hdv_instruction_prefetch_unit #(
                 exec_idx_d     = '0;
                 fill_buf_d     = !fill_buf_q;
                 fetch_base_d   = fetch_base_q + addr_t'(BufferBytes);
-                fill_idx_d     = '0;
+                fill_req_idx_d = '0;
+                fill_rsp_idx_d = '0;
+                fill_req_done_d = 1'b0;
                 bg_fill_done_d = 1'b0;
                 if (!fill_buf_q) begin
                   buffer_b_valid_d = '0;
@@ -311,11 +330,12 @@ module hdv_instruction_prefetch_unit #(
     // flush_i overrides everything (highest priority).
     if (flush_i) begin
       state_d        = IDLE;
-      fill_idx_d     = '0;
+      fill_req_idx_d = '0;
+      fill_rsp_idx_d = '0;
       exec_idx_d     = '0;
       active_buf_d   = 1'b0;
       fill_buf_d     = 1'b0;
-      req_pending_d  = 1'b0;
+      fill_req_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
@@ -327,12 +347,13 @@ module hdv_instruction_prefetch_unit #(
       state_q        <= IDLE;
       active_buf_q   <= 1'b0;
       fill_buf_q     <= 1'b0;
-      fill_idx_q     <= '0;
+      fill_req_idx_q <= '0;
+      fill_rsp_idx_q <= '0;
       exec_idx_q     <= '0;
       fetch_base_q   <= '0;
       exec_base_q    <= '0;
       task_desc_q    <= '0;
-      req_pending_q  <= 1'b0;
+      fill_req_done_q <= 1'b0;
       bg_fill_done_q <= 1'b0;
       buffer_a_valid_q <= '0;
       buffer_b_valid_q <= '0;
@@ -340,12 +361,13 @@ module hdv_instruction_prefetch_unit #(
       state_q        <= state_d;
       active_buf_q   <= active_buf_d;
       fill_buf_q     <= fill_buf_d;
-      fill_idx_q     <= fill_idx_d;
+      fill_req_idx_q <= fill_req_idx_d;
+      fill_rsp_idx_q <= fill_rsp_idx_d;
       exec_idx_q     <= exec_idx_d;
       fetch_base_q   <= fetch_base_d;
       exec_base_q    <= exec_base_d;
       task_desc_q    <= task_desc_d;
-      req_pending_q  <= req_pending_d;
+      fill_req_done_q <= fill_req_done_d;
       bg_fill_done_q <= bg_fill_done_d;
       buffer_a_valid_q <= buffer_a_valid_d;
       buffer_b_valid_q <= buffer_b_valid_d;
@@ -355,9 +377,9 @@ module hdv_instruction_prefetch_unit #(
   always_ff @(posedge clk_i) begin : p_buffer_write
     if (accept_rsp) begin
       if (!fill_buf_q) begin
-        buffer_a_q[fill_idx_q] <= mem_ipu_rsp_data_i;
+        buffer_a_q[fill_rsp_idx_q] <= mem_ipu_rsp_data_i;
       end else begin
-        buffer_b_q[fill_idx_q] <= mem_ipu_rsp_data_i;
+        buffer_b_q[fill_rsp_idx_q] <= mem_ipu_rsp_data_i;
       end
     end
   end

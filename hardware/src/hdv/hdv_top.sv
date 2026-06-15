@@ -16,6 +16,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned QueueDepth       = 4,
   parameter int unsigned FetchPacketWidth = 128,
   parameter int unsigned BufferBytes      = 64,
+  parameter int unsigned ImemOutstandingDepth = BufferBytes / (FetchPacketWidth / 8),
   parameter int unsigned NumSlots         = 6,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
@@ -170,6 +171,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic        vec_heu_error;
   logic [NumSlots-1:0]        heu_vec_insn_valid;
   logic [NumSlots-1:0][31:0]  heu_vec_insn;
+  logic [NumSlots-1:0]        unused_heu_vec_insn_is_32b;
+  addr_t [NumSlots-1:0]       unused_heu_vec_insn_pc;
+  addr_t                      unused_heu_vec_pc;
 
   // ─── AXI wires ────────────────────────────────────────────────────────────
 
@@ -193,9 +197,14 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic inval_valid;
   logic inval_ready;
   logic [AxiAddrWidth-1:0] inval_addr;
-  logic imem_read_inflight_d, imem_read_inflight_q;
+  localparam int unsigned ImemOutstandingCntWidth =
+      (ImemOutstandingDepth > 0) ? $clog2(ImemOutstandingDepth + 1) : 1;
+  logic [ImemOutstandingCntWidth-1:0] imem_outstanding_d, imem_outstanding_q;
+  logic imem_outstanding_full;
+  logic imem_outstanding_nonzero;
   logic imem_ar_accept;
   logic imem_r_accept;
+  logic imem_rsp_to_ipu;
 
   // ─── Combinatorial assignments ────────────────────────────────────────────
 
@@ -222,18 +231,22 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   // ─── Instruction-fetch AXI bridge ─────────────────────────────────────────
 
   assign hdv_imem_req_valid_o = ipu_mem_req_valid;
-  assign mem_ipu_req_ready    = !imem_read_inflight_q & hdv_imem_axi_resp.ar_ready;
+  assign imem_outstanding_full    = imem_outstanding_q == ImemOutstandingCntWidth'(ImemOutstandingDepth);
+  assign imem_outstanding_nonzero = imem_outstanding_q != '0;
+  assign mem_ipu_req_ready    = !imem_outstanding_full & hdv_imem_axi_resp.ar_ready;
   assign hdv_imem_req_addr_o  = ipu_mem_req_addr;
   assign hdv_imem_rsp_ready_o = ipu_mem_rsp_ready;
-  assign mem_ipu_rsp_valid    = imem_read_inflight_q & hdv_imem_axi_resp.r_valid;
+  assign imem_rsp_to_ipu      = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid &
+                                ipu_mem_rsp_ready;
+  assign mem_ipu_rsp_valid    = imem_rsp_to_ipu;
   assign mem_ipu_rsp_data     = hdv_imem_axi_resp.r.data[FetchPacketWidth-1:0];
 
   assign imem_ar_accept = ipu_mem_req_valid & mem_ipu_req_ready;
-  assign imem_r_accept  = mem_ipu_rsp_valid & ipu_mem_rsp_ready;
+  assign imem_r_accept  = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid;
 
   always_comb begin : p_imem_axi_req
     hdv_imem_axi_req = '0;
-    hdv_imem_axi_req.ar_valid      = ipu_mem_req_valid & !imem_read_inflight_q;
+    hdv_imem_axi_req.ar_valid      = ipu_mem_req_valid & !imem_outstanding_full;
     hdv_imem_axi_req.ar.id         = '0;
     hdv_imem_axi_req.ar.addr       = AxiAddrWidth'(ipu_mem_req_addr);
     hdv_imem_axi_req.ar.len        = '0;
@@ -245,19 +258,26 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     hdv_imem_axi_req.ar.qos        = '0;
     hdv_imem_axi_req.ar.region     = '0;
     hdv_imem_axi_req.ar.user       = '0;
-    hdv_imem_axi_req.r_ready       = imem_read_inflight_q & ipu_mem_rsp_ready;
+    // Always drain completed fetch responses while requests are outstanding.
+    // If IPU has been flushed or completed the task, mem_ipu_rsp_valid stays low
+    // and the stale data is discarded here instead of blocking the AXI fabric.
+    hdv_imem_axi_req.r_ready       = imem_outstanding_nonzero;
   end
 
   always_comb begin : p_imem_state
-    imem_read_inflight_d = imem_read_inflight_q;
-    if (imem_ar_accept)                              imem_read_inflight_d = 1'b1;
-    if (imem_r_accept && hdv_imem_axi_resp.r.last)  imem_read_inflight_d = 1'b0;
-    if (dispatch_flush)                              imem_read_inflight_d = 1'b0;
+    imem_outstanding_d = imem_outstanding_q;
+    unique case ({imem_ar_accept, imem_r_accept & hdv_imem_axi_resp.r.last})
+      2'b10: imem_outstanding_d = imem_outstanding_q + 1'b1;
+      2'b01: imem_outstanding_d = imem_outstanding_q - 1'b1;
+      default: begin
+      end
+    endcase
+    if (dispatch_flush) imem_outstanding_d = '0;
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_imem_regs
-    if (!rst_ni) imem_read_inflight_q <= 1'b0;
-    else         imem_read_inflight_q <= imem_read_inflight_d;
+    if (!rst_ni) imem_outstanding_q <= '0;
+    else         imem_outstanding_q <= imem_outstanding_d;
   end
 
   // ─── Ara cache-line invalidation packing ──────────────────────────────────
@@ -530,9 +550,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vector_heu_ready_i             (vec_heu_ready            ),
     .heu_vector_insn_valid_o        (heu_vec_insn_valid       ),
     .heu_vector_insn_o              (heu_vec_insn             ),
-    .heu_vector_insn_is_32b_o       (/* unconnected */        ),
-    .heu_vector_insn_pc_o           (/* unconnected */        ),
-    .heu_vector_pc_o                (/* unconnected */        ),
+    .heu_vector_insn_is_32b_o       (unused_heu_vec_insn_is_32b),
+    .heu_vector_insn_pc_o           (unused_heu_vec_insn_pc   ),
+    .heu_vector_pc_o                (unused_heu_vec_pc        ),
     // Done / error from backends
     .scalar_heu_accepted_i              (scalar_hdv_accepted_i        ),
     .vector_heu_accepted_i              (vec_heu_accepted             ),
