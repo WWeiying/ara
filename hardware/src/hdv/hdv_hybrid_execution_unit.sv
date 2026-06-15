@@ -17,36 +17,36 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   input  logic                               rst_ni,
   input  logic                               flush_i,
 
-  input  logic                               execute_valid_i,
-  output logic                               execute_ready_o,
-  input  logic [NumSlots-1:0]                execute_slot_valid_i,
-  input  logic [NumSlots-1:0][SlotWidth-1:0] execute_slot_i,
-  input  logic [NumSlots-1:0]                execute_slot_is_32b_i,
-  input  hdv_inst_class_e [NumSlots-1:0]     execute_class_i,
-  input  addr_t                              execute_pc_i,
+  input  logic                               vliwpu_heu_execute_valid_i,
+  output logic                               heu_vliwpu_execute_ready_o,
+  input  logic [NumSlots-1:0]                vliwpu_heu_execute_slot_valid_i,
+  input  logic [NumSlots-1:0][SlotWidth-1:0] vliwpu_heu_execute_slot_i,
+  input  logic [NumSlots-1:0]                vliwpu_heu_execute_slot_is_32b_i,
+  input  hdv_inst_class_e [NumSlots-1:0]     vliwpu_heu_execute_class_i,
+  input  addr_t                              vliwpu_heu_execute_pc_i,
 
-  output logic                               scalar_valid_o,
-  input  logic                               scalar_ready_i,
-  output logic [NumSlots-1:0]                scalar_insn_valid_o,
-  output logic [NumSlots-1:0][31:0]          scalar_insn_o,
-  output logic [NumSlots-1:0]                scalar_insn_is_32b_o,
-  output addr_t [NumSlots-1:0]               scalar_insn_pc_o,
-  output addr_t                              scalar_pc_o,
+  output logic                               heu_scalar_valid_o,
+  input  logic                               scalar_heu_ready_i,
+  output logic [NumSlots-1:0]                heu_scalar_insn_valid_o,
+  output logic [NumSlots-1:0][31:0]          heu_scalar_insn_o,
+  output logic [NumSlots-1:0]                heu_scalar_insn_is_32b_o,
+  output addr_t [NumSlots-1:0]               heu_scalar_insn_pc_o,
+  output addr_t                              heu_scalar_pc_o,
 
-  output logic                               vector_valid_o,
-  input  logic                               vector_ready_i,
-  output logic [NumSlots-1:0]                vector_insn_valid_o,
-  output logic [NumSlots-1:0][31:0]          vector_insn_o,
-  output logic [NumSlots-1:0]                vector_insn_is_32b_o,
-  output addr_t [NumSlots-1:0]               vector_insn_pc_o,
-  output addr_t                              vector_pc_o,
+  output logic                               heu_vector_valid_o,
+  input  logic                               vector_heu_ready_i,
+  output logic [NumSlots-1:0]                heu_vector_insn_valid_o,
+  output logic [NumSlots-1:0][31:0]          heu_vector_insn_o,
+  output logic [NumSlots-1:0]                heu_vector_insn_is_32b_o,
+  output addr_t [NumSlots-1:0]               heu_vector_insn_pc_o,
+  output addr_t                              heu_vector_pc_o,
 
-  input  logic                               scalar_done_i,
-  input  logic                               vector_done_i,
-  input  logic                               backend_error_i,
-  output logic                               busy_o,
-  output logic                               execute_done_o,
-  output logic                               execute_error_o
+  input  logic                               scalar_heu_accepted_i,
+  input  logic                               vector_heu_accepted_i,
+  input  logic                               backend_heu_error_i,
+  output logic                               heu_top_busy_o,
+  output logic                               heu_top_ep_accepted_o,
+  output logic                               heu_top_ep_error_o
 );
 
   logic has_scalar;
@@ -63,7 +63,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic [NumSlots-1:0] dispatch_insn_is_32b_d, dispatch_insn_is_32b_q;
   addr_t [NumSlots-1:0] dispatch_insn_pc_d, dispatch_insn_pc_q;
   addr_t dispatch_pc_d, dispatch_pc_q;
-  logic done_d, done_q;
+  logic ep_accepted_d, ep_accepted_q;
   logic error_d, error_q;
   logic [NumSlots-1:0] scalar_insn_valid_in;
   logic [NumSlots-1:0] vector_insn_valid_in;
@@ -85,21 +85,21 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 
       is_continuation = 1'b0;
       if (i > 0) begin
-        is_continuation = execute_slot_is_32b_i[i-1];
+        is_continuation = vliwpu_heu_execute_slot_is_32b_i[i-1];
       end
 
-      if (execute_slot_valid_i[i] && !is_continuation) begin
-        dispatch_insn_pc_in[i] = execute_pc_i + addr_t'(i * (SlotWidth / 8));
+      if (vliwpu_heu_execute_slot_valid_i[i] && !is_continuation) begin
+        dispatch_insn_pc_in[i] = vliwpu_heu_execute_pc_i + addr_t'(i * (SlotWidth / 8));
 
-        if (execute_slot_is_32b_i[i] && i < NumSlots - 1) begin
-          dispatch_insn_in[i] = {execute_slot_i[i+1], execute_slot_i[i]};
+        if (vliwpu_heu_execute_slot_is_32b_i[i] && i < NumSlots - 1) begin
+          dispatch_insn_in[i] = {vliwpu_heu_execute_slot_i[i+1], vliwpu_heu_execute_slot_i[i]};
           dispatch_insn_is_32b_in[i] = 1'b1;
         end else begin
-          dispatch_insn_in[i] = {16'b0, execute_slot_i[i]};
+          dispatch_insn_in[i] = {16'b0, vliwpu_heu_execute_slot_i[i]};
           dispatch_insn_is_32b_in[i] = 1'b0;
         end
 
-        if (execute_class_i[i] == HDV_INST_VECTOR) begin
+        if (vliwpu_heu_execute_class_i[i] == HDV_INST_VECTOR) begin
           has_vector = 1'b1;
           vector_insn_valid_in[i] = 1'b1;
         end else begin
@@ -110,25 +110,25 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     end
   end
 
-  assign scalar_valid_o        = scalar_dispatch_valid_q;
-  assign vector_valid_o        = vector_dispatch_valid_q;
-  assign scalar_insn_valid_o   = scalar_insn_valid_q;
-  assign vector_insn_valid_o   = vector_insn_valid_q;
-  assign scalar_insn_o         = dispatch_insn_q;
-  assign vector_insn_o         = dispatch_insn_q;
-  assign scalar_insn_is_32b_o  = dispatch_insn_is_32b_q;
-  assign vector_insn_is_32b_o  = dispatch_insn_is_32b_q;
-  assign scalar_insn_pc_o      = dispatch_insn_pc_q;
-  assign vector_insn_pc_o      = dispatch_insn_pc_q;
-  assign scalar_pc_o           = dispatch_pc_q;
-  assign vector_pc_o           = dispatch_pc_q;
+  assign heu_scalar_valid_o        = scalar_dispatch_valid_q;
+  assign heu_vector_valid_o        = vector_dispatch_valid_q;
+  assign heu_scalar_insn_valid_o   = scalar_insn_valid_q;
+  assign heu_vector_insn_valid_o   = vector_insn_valid_q;
+  assign heu_scalar_insn_o         = dispatch_insn_q;
+  assign heu_vector_insn_o         = dispatch_insn_q;
+  assign heu_scalar_insn_is_32b_o  = dispatch_insn_is_32b_q;
+  assign heu_vector_insn_is_32b_o  = dispatch_insn_is_32b_q;
+  assign heu_scalar_insn_pc_o      = dispatch_insn_pc_q;
+  assign heu_vector_insn_pc_o      = dispatch_insn_pc_q;
+  assign heu_scalar_pc_o           = dispatch_pc_q;
+  assign heu_vector_pc_o           = dispatch_pc_q;
 
-  assign execute_ready_o = !outstanding_q;
-  assign accept_packet = execute_valid_i & execute_ready_o;
+  assign heu_vliwpu_execute_ready_o = !outstanding_q;
+  assign accept_packet = vliwpu_heu_execute_valid_i & heu_vliwpu_execute_ready_o;
 
-  assign busy_o  = outstanding_q | accept_packet | scalar_dispatch_valid_q | vector_dispatch_valid_q;
-  assign execute_done_o  = done_q;
-  assign execute_error_o = error_q;
+  assign heu_top_busy_o  = outstanding_q | accept_packet | scalar_dispatch_valid_q | vector_dispatch_valid_q;
+  assign heu_top_ep_accepted_o  = ep_accepted_q;
+  assign heu_top_ep_error_o = error_q;
 
   always_comb begin : p_next
     outstanding_d = outstanding_q;
@@ -140,21 +140,21 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     dispatch_insn_is_32b_d  = dispatch_insn_is_32b_q;
     dispatch_insn_pc_d      = dispatch_insn_pc_q;
     dispatch_pc_d           = dispatch_pc_q;
-    // done_d auto-clears each cycle so execute_done_o is a 1-cycle pulse.
+    // ep_accepted_d auto-clears each cycle so heu_top_ep_accepted_o is a 1-cycle pulse.
     // Callers (mock core, TSU) must latch it themselves.
-    done_d        = 1'b0;
+    ep_accepted_d        = 1'b0;
     error_d       = error_q;
 
-    if (scalar_dispatch_valid_q && scalar_ready_i) begin
+    if (scalar_dispatch_valid_q && scalar_heu_ready_i) begin
       scalar_dispatch_valid_d = 1'b0;
     end
-    if (vector_dispatch_valid_q && vector_ready_i) begin
+    if (vector_dispatch_valid_q && vector_heu_ready_i) begin
       vector_dispatch_valid_d = 1'b0;
     end
 
     if (accept_packet) begin
       outstanding_d = 1'b1;
-      done_d        = 1'b0;
+      ep_accepted_d        = 1'b0;
       error_d       = 1'b0;
       scalar_dispatch_valid_d = has_scalar;
       vector_dispatch_valid_d = has_vector;
@@ -163,20 +163,20 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       dispatch_insn_d         = dispatch_insn_in;
       dispatch_insn_is_32b_d  = dispatch_insn_is_32b_in;
       dispatch_insn_pc_d      = dispatch_insn_pc_in;
-      dispatch_pc_d           = execute_pc_i;
+      dispatch_pc_d           = vliwpu_heu_execute_pc_i;
     end
 
-    if ((outstanding_q | accept_packet) && backend_error_i) begin
+    if ((outstanding_q | accept_packet) && backend_heu_error_i) begin
       error_d = 1'b1;
     end
 
     scalar_pending_d = scalar_pending_q;
     vector_pending_d = vector_pending_q;
 
-    if (scalar_pending_q && scalar_done_i) begin
+    if (scalar_pending_q && scalar_heu_accepted_i) begin
       scalar_pending_d = 1'b0;
     end
-    if (vector_pending_q && vector_done_i) begin
+    if (vector_pending_q && vector_heu_accepted_i) begin
       vector_pending_d = 1'b0;
     end
 
@@ -188,7 +188,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     if (outstanding_q && !scalar_pending_d && !vector_pending_d &&
         !scalar_dispatch_valid_d && !vector_dispatch_valid_d) begin
       outstanding_d = 1'b0;
-      done_d        = !error_d;
+      ep_accepted_d        = !error_d;
     end
 
     if (flush_i) begin
@@ -197,7 +197,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_pending_d = 1'b0;
       scalar_dispatch_valid_d = 1'b0;
       vector_dispatch_valid_d = 1'b0;
-      done_d        = 1'b0;
+      ep_accepted_d        = 1'b0;
       error_d       = 1'b0;
     end
   end
@@ -215,7 +215,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       dispatch_insn_is_32b_q <= '0;
       dispatch_insn_pc_q <= '0;
       dispatch_pc_q <= '0;
-      done_q        <= 1'b0;
+      ep_accepted_q        <= 1'b0;
       error_q       <= 1'b0;
     end else begin
       outstanding_q <= outstanding_d;
@@ -229,7 +229,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       dispatch_insn_is_32b_q <= dispatch_insn_is_32b_d;
       dispatch_insn_pc_q <= dispatch_insn_pc_d;
       dispatch_pc_q <= dispatch_pc_d;
-      done_q        <= done_d;
+      ep_accepted_q        <= ep_accepted_d;
       error_q       <= error_d;
     end
   end

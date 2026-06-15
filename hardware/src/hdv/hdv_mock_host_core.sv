@@ -6,18 +6,21 @@
 // Mock host core for the standalone HDV prototype.  The block models only the
 // host responsibilities that are required to keep the HDV task mechanism live:
 // program the task CSRs, accept HEU scalar/vector dispatch handshakes with a
-// fixed latency model, count execute-packet completions, and report task
+// fixed latency model, count execute-packet backend accepts, and report task
 // completion or failure back to hdv_top.
 
 module hdv_mock_host_core import hdv_pkg::*; #(
   parameter int unsigned XLEN                         = 64,
+  parameter int unsigned NumSlots                     = 6,
   parameter int unsigned ScalarLatency                = 1,
   parameter int unsigned VectorLatency                = 1,
   parameter bit          AutoStart                    = 1'b0,
   parameter int unsigned AutoStartDelay               = 32,
   parameter logic [XLEN-1:0] AutoTaskEntry            = '0,
   parameter logic [XLEN-1:0] AutoTaskDesc             = '0,
-  parameter logic [31:0] AutoExpectedExecutePackets   = 32'd1,
+  parameter logic [31:0] AutoExpectedEpAccepts   = 32'd1,
+  parameter bit          EnableMockBranch             = 1'b0,
+  parameter int unsigned MockLoopIterations           = 1,
   parameter int unsigned TaskWatchdogCycles           = 4096,
   parameter int unsigned PacketWatchdogCycles         = 1024,
   parameter type addr_t                               = logic [XLEN-1:0]
@@ -27,35 +30,42 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   input  logic                         flush_i,
 
   // HDV task CSR port.
-  output logic                         csr_valid_o,
-  output logic                         csr_write_o,
-  output logic [11:0]                  csr_addr_o,
-  output logic [XLEN-1:0]              csr_wdata_o,
-  input  logic                         csr_ready_i,
-  input  logic [XLEN-1:0]              csr_rdata_i,
-  input  logic                         csr_error_i,
+  output logic                         mock_hdv_csr_valid_o,
+  output logic                         mock_hdv_csr_write_o,
+  output logic [11:0]                  mock_hdv_csr_addr_o,
+  output logic [XLEN-1:0]              mock_hdv_csr_wdata_o,
+  input  logic                         hdv_mock_csr_ready_i,
+  input  logic [XLEN-1:0]              hdv_mock_csr_rdata_i,
+  input  logic                         hdv_mock_csr_error_i,
 
   // HDV task status.
-  input  logic                         task_busy_i,
-  input  logic                         task_done_i,
-  input  logic                         task_error_i,
-  output logic                         task_complete_o,
-  output logic                         task_error_o,
+  input  logic                         hdv_mock_task_busy_i,
+  input  logic                         hdv_mock_task_done_i,
+  input  logic                         hdv_mock_task_error_i,
+  output logic                         mock_hdv_task_complete_o,
+  output logic                         mock_hdv_task_error_o,
 
   // HEU scalar pipeline handshake.
-  input  logic                         scalar_valid_i,
-  output logic                         scalar_ready_o,
-  output logic                         scalar_done_o,
+  input  logic                         hdv_mock_scalar_valid_i,
+  output logic                         mock_hdv_scalar_ready_o,
+  output logic                         mock_hdv_scalar_accepted_o,
+  input  logic [NumSlots-1:0]          hdv_mock_scalar_insn_valid_i,
+  input  logic [NumSlots-1:0][31:0]    hdv_mock_scalar_insn_i,
+  input  logic [NumSlots-1:0]          hdv_mock_scalar_insn_is_32b_i,
+  input  addr_t [NumSlots-1:0]         hdv_mock_scalar_insn_pc_i,
+  output logic                         mock_hdv_redirect_valid_o,
+  output addr_t                        mock_hdv_redirect_pc_o,
+  output logic                         mock_hdv_loop_lock_o,
 
   // HEU vector pipeline handshake.
-  input  logic                         vector_valid_i,
-  output logic                         vector_ready_o,
-  output logic                         vector_done_o,
+  input  logic                         hdv_mock_vector_valid_i,
+  output logic                         mock_hdv_vector_ready_o,
+  output logic                         mock_hdv_vector_accepted_o,
 
-  // HEU execute-packet status.
-  input  logic                         execute_done_i,
-  input  logic                         execute_error_i,
-  output logic                         backend_error_o
+  // HEU execute-packet acceptance status.
+  input  logic                         hdv_mock_ep_accepted_i,
+  input  logic                         hdv_mock_ep_error_i,
+  output logic                         mock_hdv_backend_error_o
 );
 
   typedef enum logic [3:0] {
@@ -81,8 +91,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   state_e state_d, state_q;
   addr_t task_entry_d, task_entry_q;
   addr_t task_desc_d, task_desc_q;
-  logic [31:0] expected_packets_d, expected_packets_q;
-  logic [31:0] completed_packets_d, completed_packets_q;
+  logic [31:0] expected_ep_accepts_d, expected_ep_accepts_q;
+  logic [31:0] accepted_packets_d, accepted_packets_q;
   logic [ScalarCntWidth-1:0] scalar_count_d, scalar_count_q;
   logic [VectorCntWidth-1:0] vector_count_d, vector_count_q;
   logic [AutoStartCntWidth-1:0] auto_start_count_d, auto_start_count_q;
@@ -99,10 +109,29 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   logic task_active;
   logic task_timeout;
   logic packet_timeout;
+  logic branch_fire;
+  logic branch_taken;
+  logic branch_redirect_wait_d, branch_redirect_wait_q;
+  logic branch_redirect_valid_d, branch_redirect_valid_q;
+  addr_t branch_redirect_pc_d, branch_redirect_pc_q;
+  logic [31:0] loop_iters_remaining_d, loop_iters_remaining_q;
 
-  assign csr_fire    = csr_valid_o & csr_ready_i;
-  assign scalar_fire = scalar_valid_i & scalar_ready_o;
-  assign vector_fire = vector_valid_i & vector_ready_o;
+  function automatic logic is_mock_bnez(input logic [31:0] insn);
+    return (insn[6:0] == 7'b1100011) && (insn[14:12] == 3'b001) &&
+           (insn[24:20] == 5'd0);
+  endfunction
+
+  function automatic addr_t branch_target(input addr_t pc, input logic [31:0] insn);
+    logic [12:0] imm13;
+    logic signed [XLEN-1:0] simm;
+    imm13 = {insn[31], insn[7], insn[30:25], insn[11:8], 1'b0};
+    simm  = {{(XLEN-13){imm13[12]}}, imm13};
+    return pc + addr_t'(simm);
+  endfunction
+
+  assign csr_fire    = mock_hdv_csr_valid_o & hdv_mock_csr_ready_i;
+  assign scalar_fire = hdv_mock_scalar_valid_i & mock_hdv_scalar_ready_o;
+  assign vector_fire = hdv_mock_vector_valid_i & mock_hdv_vector_ready_o;
   assign auto_start_pulse = AutoStart
                           & auto_start_armed_q
                           & (auto_start_count_q >= AutoStartCntWidth'(AutoStartDelay));
@@ -114,43 +143,66 @@ module hdv_mock_host_core import hdv_pkg::*; #(
                         & (state_q == RUN)
                         & (packet_watchdog_q >= PacketWatchdogWidth'(PacketWatchdogCycles));
 
-  assign backend_error_o = 1'b0;
-  assign scalar_ready_o  = (state_q == RUN) & !scalar_pending_q;
-  assign vector_ready_o  = (state_q == RUN) & !vector_pending_q;
-  assign scalar_done_o   = scalar_pending_q & (scalar_count_q == '0);
-  assign vector_done_o   = vector_pending_q & (vector_count_q == '0);
+  assign mock_hdv_backend_error_o = 1'b0;
+  assign mock_hdv_scalar_ready_o  = (state_q == RUN) & !scalar_pending_q;
+  assign mock_hdv_vector_ready_o  = (state_q == RUN) & !vector_pending_q;
+  assign mock_hdv_scalar_accepted_o   = scalar_pending_q & (scalar_count_q == '0);
+  assign mock_hdv_vector_accepted_o   = vector_pending_q & (vector_count_q == '0);
+  assign mock_hdv_redirect_valid_o = branch_redirect_valid_q;
+  assign mock_hdv_redirect_pc_o    = branch_redirect_pc_q;
+  assign mock_hdv_loop_lock_o      = EnableMockBranch & (state_q == RUN) &
+                                     (loop_iters_remaining_q > 32'd1);
+
+  always_comb begin : p_branch_decode
+    branch_fire  = 1'b0;
+    branch_taken = 1'b0;
+    branch_redirect_pc_d = branch_redirect_pc_q;
+
+    if (EnableMockBranch && scalar_fire) begin
+      for (int unsigned i = 0; i < NumSlots; i++) begin
+        if (!branch_fire && hdv_mock_scalar_insn_valid_i[i] &&
+            hdv_mock_scalar_insn_is_32b_i[i] &&
+            is_mock_bnez(hdv_mock_scalar_insn_i[i])) begin
+          branch_fire = 1'b1;
+          branch_taken = (loop_iters_remaining_q > 32'd1);
+          branch_redirect_pc_d = branch_target(hdv_mock_scalar_insn_pc_i[i],
+                                               hdv_mock_scalar_insn_i[i]);
+        end
+      end
+    end
+  end
 
   always_comb begin : p_csr_drive
-    csr_valid_o = 1'b0;
-    csr_write_o = 1'b1;
-    csr_addr_o  = HDV_CSR_VTASK_ADDR;
-    csr_wdata_o = '0;
+    mock_hdv_csr_valid_o = 1'b0;
+    mock_hdv_csr_write_o = 1'b1;
+    mock_hdv_csr_addr_o  = HDV_CSR_VTASK_ADDR;
+    mock_hdv_csr_wdata_o = '0;
 
     unique case (state_q)
       WRITE_TASK_ADDR: begin
-        csr_valid_o = 1'b1;
-        csr_addr_o  = HDV_CSR_VTASK_ADDR;
-        csr_wdata_o = task_entry_q;
+        mock_hdv_csr_valid_o = 1'b1;
+        mock_hdv_csr_addr_o  = HDV_CSR_VTASK_ADDR;
+        mock_hdv_csr_wdata_o = task_entry_q;
       end
       WRITE_TASK_DESC: begin
-        csr_valid_o = 1'b1;
-        csr_addr_o  = HDV_CSR_VTASK_PADDR;
-        csr_wdata_o = task_desc_q;
+        mock_hdv_csr_valid_o = 1'b1;
+        mock_hdv_csr_addr_o  = HDV_CSR_VTASK_PADDR;
+        mock_hdv_csr_wdata_o = task_desc_q;
       end
       CLEAR_STATUS: begin
-        csr_valid_o = 1'b1;
-        csr_addr_o  = HDV_CSR_VTASK_STATUS;
-        csr_wdata_o = XLEN'(64'h6);
+        mock_hdv_csr_valid_o = 1'b1;
+        mock_hdv_csr_addr_o  = HDV_CSR_VTASK_STATUS;
+        mock_hdv_csr_wdata_o = XLEN'(64'h6);
       end
       WRITE_START: begin
-        csr_valid_o = 1'b1;
-        csr_addr_o  = HDV_CSR_VTASK_START;
-        csr_wdata_o = XLEN'(64'h1);
+        mock_hdv_csr_valid_o = 1'b1;
+        mock_hdv_csr_addr_o  = HDV_CSR_VTASK_START;
+        mock_hdv_csr_wdata_o = XLEN'(64'h1);
       end
       READ_STATUS: begin
-        csr_valid_o = 1'b1;
-        csr_write_o = 1'b0;
-        csr_addr_o  = HDV_CSR_VTASK_STATUS;
+        mock_hdv_csr_valid_o = 1'b1;
+        mock_hdv_csr_write_o = 1'b0;
+        mock_hdv_csr_addr_o  = HDV_CSR_VTASK_STATUS;
       end
       default: begin
       end
@@ -161,8 +213,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
     state_d             = state_q;
     task_entry_d        = task_entry_q;
     task_desc_d         = task_desc_q;
-    expected_packets_d  = expected_packets_q;
-    completed_packets_d = completed_packets_q;
+    expected_ep_accepts_d  = expected_ep_accepts_q;
+    accepted_packets_d = accepted_packets_q;
     auto_start_count_d  = auto_start_count_q;
     auto_start_armed_d  = auto_start_armed_q;
     scalar_pending_d    = scalar_pending_q;
@@ -171,8 +223,11 @@ module hdv_mock_host_core import hdv_pkg::*; #(
     vector_count_d      = vector_count_q;
     task_watchdog_d     = task_watchdog_q;
     packet_watchdog_d   = packet_watchdog_q;
-    task_complete_o     = 1'b0;
-    task_error_o        = 1'b0;
+    branch_redirect_wait_d = branch_redirect_wait_q;
+    branch_redirect_valid_d = 1'b0;
+    loop_iters_remaining_d = loop_iters_remaining_q;
+    mock_hdv_task_complete_o = 1'b0;
+    mock_hdv_task_error_o    = 1'b0;
     expected_reached    = 1'b0;
 
     if (AutoStart && auto_start_armed_q && (state_q == IDLE) && !auto_start_pulse) begin
@@ -210,6 +265,17 @@ module hdv_mock_host_core import hdv_pkg::*; #(
     if (scalar_fire) begin
       scalar_pending_d = 1'b1;
       scalar_count_d   = ScalarCntWidth'(ScalarLatency - 1);
+      if (branch_fire) begin
+        if (loop_iters_remaining_q != 32'd0) begin
+          loop_iters_remaining_d = loop_iters_remaining_q - 32'd1;
+        end
+        branch_redirect_wait_d = branch_taken;
+      end
+    end
+
+    if (branch_redirect_wait_q && mock_hdv_scalar_accepted_o) begin
+      branch_redirect_wait_d = 1'b0;
+      branch_redirect_valid_d = 1'b1;
     end
 
     if (vector_fire) begin
@@ -217,66 +283,67 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       vector_count_d   = VectorCntWidth'(VectorLatency - 1);
     end
 
-    if (execute_done_i) begin
-      completed_packets_d = completed_packets_q + 1'b1;
+    if (hdv_mock_ep_accepted_i) begin
+      accepted_packets_d = accepted_packets_q + 1'b1;
       packet_watchdog_d   = '0;
     end
 
-    expected_reached = execute_done_i
-                     & ((completed_packets_q + 1'b1) >= expected_packets_q)
-                     & (expected_packets_q != '0);
+    expected_reached = hdv_mock_ep_accepted_i
+                     & ((accepted_packets_q + 1'b1) >= expected_ep_accepts_q)
+                     & (expected_ep_accepts_q != '0);
 
     unique case (state_q)
       IDLE: begin
         if (auto_start_pulse) begin
           task_entry_d        = addr_t'(AutoTaskEntry);
           task_desc_d         = addr_t'(AutoTaskDesc);
-          expected_packets_d  = AutoExpectedExecutePackets;
-          completed_packets_d = '0;
+          expected_ep_accepts_d  = AutoExpectedEpAccepts;
+          accepted_packets_d = '0;
+          loop_iters_remaining_d = 32'(MockLoopIterations);
           auto_start_armed_d  = 1'b0;
           state_d             = WRITE_TASK_ADDR;
         end
       end
       WRITE_TASK_ADDR: begin
         if (csr_fire) begin
-          state_d = csr_error_i ? FAIL : WRITE_TASK_DESC;
+          state_d = hdv_mock_csr_error_i ? FAIL : WRITE_TASK_DESC;
         end
       end
       WRITE_TASK_DESC: begin
         if (csr_fire) begin
-          state_d = csr_error_i ? FAIL : CLEAR_STATUS;
+          state_d = hdv_mock_csr_error_i ? FAIL : CLEAR_STATUS;
         end
       end
       CLEAR_STATUS: begin
         if (csr_fire) begin
-          state_d = csr_error_i ? FAIL : WRITE_START;
+          state_d = hdv_mock_csr_error_i ? FAIL : WRITE_START;
         end
       end
       WRITE_START: begin
         if (csr_fire) begin
-          state_d = csr_error_i ? FAIL : RUN;
+          state_d = hdv_mock_csr_error_i ? FAIL : RUN;
         end
       end
       RUN: begin
-        if (task_error_i || execute_error_i || packet_timeout) begin
-          task_error_o = 1'b1;
-          state_d      = READ_STATUS;
+        if (hdv_mock_task_error_i || hdv_mock_ep_error_i || packet_timeout) begin
+          mock_hdv_task_error_o = 1'b1;
+          state_d      = FAIL;
         end else if (expected_reached) begin
           state_d = COMPLETE_TASK;
         end
       end
       COMPLETE_TASK: begin
-        task_complete_o = 1'b1;
+        mock_hdv_task_complete_o = 1'b1;
         state_d         = WAIT_TASK_STATUS;
       end
       WAIT_TASK_STATUS: begin
-        if (task_done_i || task_error_i || !task_busy_i) begin
+        if (hdv_mock_task_done_i || hdv_mock_task_error_i || !hdv_mock_task_busy_i) begin
           state_d = READ_STATUS;
         end
       end
       READ_STATUS: begin
         if (csr_fire) begin
-          state_d = (csr_rdata_i[2] | csr_error_i) ? FAIL : FINISH;
+          state_d = (hdv_mock_csr_rdata_i[2] | hdv_mock_csr_error_i) ? FAIL : FINISH;
         end
       end
       FINISH: begin
@@ -291,23 +358,26 @@ module hdv_mock_host_core import hdv_pkg::*; #(
     endcase
 
     if (task_timeout) begin
-      task_error_o = 1'b1;
+      mock_hdv_task_error_o = 1'b1;
       state_d      = FAIL;
     end
 
     if (flush_i) begin
       state_d             = IDLE;
-      completed_packets_d = '0;
+      accepted_packets_d = '0;
       auto_start_count_d  = '0;
       auto_start_armed_d  = AutoStart;
       scalar_pending_d    = 1'b0;
       vector_pending_d    = 1'b0;
+      branch_redirect_wait_d = 1'b0;
+      branch_redirect_valid_d = 1'b0;
+      loop_iters_remaining_d = '0;
       scalar_count_d      = '0;
       vector_count_d      = '0;
       task_watchdog_d     = '0;
       packet_watchdog_d   = '0;
-      task_complete_o     = 1'b0;
-      task_error_o        = 1'b0;
+      mock_hdv_task_complete_o = 1'b0;
+      mock_hdv_task_error_o    = 1'b0;
     end
   end
 
@@ -316,12 +386,16 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       state_q             <= IDLE;
       task_entry_q        <= '0;
       task_desc_q         <= '0;
-      expected_packets_q  <= '0;
-      completed_packets_q <= '0;
+      expected_ep_accepts_q  <= '0;
+      accepted_packets_q <= '0;
       auto_start_count_q  <= '0;
       auto_start_armed_q  <= AutoStart;
       scalar_pending_q    <= 1'b0;
       vector_pending_q    <= 1'b0;
+      branch_redirect_wait_q <= 1'b0;
+      branch_redirect_valid_q <= 1'b0;
+      branch_redirect_pc_q   <= '0;
+      loop_iters_remaining_q <= '0;
       scalar_count_q      <= '0;
       vector_count_q      <= '0;
       task_watchdog_q     <= '0;
@@ -330,12 +404,16 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       state_q             <= state_d;
       task_entry_q        <= task_entry_d;
       task_desc_q         <= task_desc_d;
-      expected_packets_q  <= expected_packets_d;
-      completed_packets_q <= completed_packets_d;
+      expected_ep_accepts_q  <= expected_ep_accepts_d;
+      accepted_packets_q <= accepted_packets_d;
       auto_start_count_q  <= auto_start_count_d;
       auto_start_armed_q  <= auto_start_armed_d;
       scalar_pending_q    <= scalar_pending_d;
       vector_pending_q    <= vector_pending_d;
+      branch_redirect_wait_q <= branch_redirect_wait_d;
+      branch_redirect_valid_q <= branch_redirect_valid_d;
+      branch_redirect_pc_q   <= branch_redirect_pc_d;
+      loop_iters_remaining_q <= loop_iters_remaining_d;
       scalar_count_q      <= scalar_count_d;
       vector_count_q      <= vector_count_d;
       task_watchdog_q     <= task_watchdog_d;

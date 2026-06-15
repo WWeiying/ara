@@ -138,6 +138,9 @@ SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
 SIM_DUMP := 
+dump_vcd ?= 0
+FSDB2VCD ?= fsdb2vcd
+FSDB2VCD_OUT ?= ara_tb.vcd
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(buildpath)/$(dpi_library)/elfloader.o
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
@@ -180,6 +183,14 @@ sim: compile
 	@touch ./$(sim_dir)/perf*.log
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
+	@if [ "$(dump_vcd)" = "1" ] && [ -f ./$(sim_dir)/ara_tb.fsdb ]; then \
+	  if command -v $(FSDB2VCD) >/dev/null 2>&1; then \
+	    echo "Converting ./$(sim_dir)/ara_tb.fsdb -> ./$(sim_dir)/$(FSDB2VCD_OUT)"; \
+	    cd ./$(sim_dir) && $(FSDB2VCD) ara_tb.fsdb -o $(FSDB2VCD_OUT); \
+	  else \
+	    echo "Skipping FSDB to VCD conversion: $(FSDB2VCD) not found"; \
+	  fi; \
+	fi
 	@if [ -f ./$(sim_dir)/$(sim_log) ]; then \
 	  cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log; \
 	else \

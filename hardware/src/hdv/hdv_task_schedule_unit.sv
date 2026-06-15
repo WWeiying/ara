@@ -15,23 +15,23 @@ module hdv_task_schedule_unit #(
   input  logic  rst_ni,
   input  logic  flush_i,
   input  logic  testmode_i,
-  input  logic  status_clear_i,
+  input  logic  tiu_tsu_status_clear_i,
 
-  input  logic  task_in_valid_i,
-  output logic  task_in_ready_o,
-  input  addr_t task_in_entry_i,
-  input  addr_t task_in_desc_i,
+  input  logic  tiu_tsu_task_valid_i,
+  output logic  tsu_tiu_task_ready_o,
+  input  addr_t tiu_tsu_task_entry_i,
+  input  addr_t tiu_tsu_task_desc_i,
 
-  output logic  task_out_valid_o,
-  input  logic  task_out_ready_i,
-  output addr_t task_out_entry_o,
-  output addr_t task_out_desc_o,
+  output logic  tsu_ipu_task_valid_o,
+  input  logic  ipu_tsu_task_ready_i,
+  output addr_t tsu_ipu_task_entry_o,
+  output addr_t tsu_ipu_task_desc_o,
 
-  input  logic  task_done_i,
-  input  logic  task_error_i,
-  output logic  busy_o,
-  output logic  done_o,
-  output logic  error_o
+  input  logic  top_tsu_task_done_i,
+  input  logic  top_tsu_task_error_i,
+  output logic  tsu_top_busy_o,
+  output logic  tsu_top_done_o,
+  output logic  tsu_top_error_o
 );
 
   typedef struct packed {
@@ -47,21 +47,21 @@ module hdv_task_schedule_unit #(
   logic  error_d, error_q;
 
   assign fifo_in = '{
-    entry: task_in_entry_i,
-    desc : task_in_desc_i
+    entry: tiu_tsu_task_entry_i,
+    desc : tiu_tsu_task_desc_i
   };
 
-  assign fifo_push       = task_in_valid_i & task_in_ready_o;
-  assign fifo_pop        = task_out_valid_o & task_out_ready_i;
-  assign task_in_ready_o = !fifo_full;
+  assign fifo_push            = tiu_tsu_task_valid_i & tsu_tiu_task_ready_o;
+  assign fifo_pop             = tsu_ipu_task_valid_o & ipu_tsu_task_ready_i;
+  assign tsu_tiu_task_ready_o = !fifo_full;
 
-  assign task_out_valid_o = !fifo_empty & !active_q;
-  assign task_out_entry_o = fifo_out.entry;
-  assign task_out_desc_o  = fifo_out.desc;
+  assign tsu_ipu_task_valid_o = !fifo_empty & !active_q;
+  assign tsu_ipu_task_entry_o = fifo_out.entry;
+  assign tsu_ipu_task_desc_o  = fifo_out.desc;
 
-  assign busy_o  = active_q | !fifo_empty;
-  assign done_o  = done_q;
-  assign error_o = error_q;
+  assign tsu_top_busy_o  = active_q | !fifo_empty;
+  assign tsu_top_done_o  = done_q;
+  assign tsu_top_error_o = error_q;
 
   fifo_v3 #(
     .FALL_THROUGH (1'b1),
@@ -92,16 +92,16 @@ module hdv_task_schedule_unit #(
       error_d  = 1'b0;
     end
 
-    if (status_clear_i) begin
+    if (tiu_tsu_status_clear_i) begin
       done_d   = 1'b0;
       error_d  = 1'b0;
     end
 
-    if (active_q && task_error_i) begin
+    if (active_q && top_tsu_task_error_i) begin
       active_d = 1'b0;
       done_d   = 1'b0;
       error_d  = 1'b1;
-    end else if (active_q && task_done_i) begin
+    end else if (active_q && top_tsu_task_done_i) begin
       active_d = 1'b0;
       done_d   = 1'b1;
     end
