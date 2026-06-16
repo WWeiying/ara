@@ -141,7 +141,7 @@ function void print_perf_report();
       total_rvv_axi_w_count  = ara_tb.perf_end_n.rvv_axi_w_count  - ara_tb.perf_start_n.rvv_axi_w_count ;
       total_rvv_axi_b_count  = ara_tb.perf_end_n.rvv_axi_b_count  - ara_tb.perf_start_n.rvv_axi_b_count ;
       total_rvv_axi_ar_count = ara_tb.perf_end_n.rvv_axi_ar_count - ara_tb.perf_start_n.rvv_axi_ar_count;
-      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count 
+      total_rvv_axi_r_count  = ara_tb.perf_end_n.rvv_axi_r_count  - ara_tb.perf_start_n.rvv_axi_r_count ;
 `ifdef FOR_VERIFY
       total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
       total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
