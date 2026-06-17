@@ -7,55 +7,6 @@
 // formation, and scalar/vector splitting, so this block keeps only the pieces
 // needed behind HEU: an architectural X/FP register context, a small RV64
 // decoder/ALU/branch path, a CSR-cycle stub, and a vector operand service.
-//
-// VLIW evolution prompts for the HDV/scalar-backend interface:
-// 1. 256-bit fetch packet / wider EP:
-//    - What is the new NumSlots value seen by this backend?
-//    - Is scalar_insn_valid_i still slot-indexed by 16-bit slots, or by decoded
-//      instructions after VLIWPU compaction?
-//    - What is the maximum number of scalar instructions that can arrive in one
-//      scalar slice after 256-bit packet expansion and cross-packet EP packing?
-// 2. Explicit cross-fetch-packet EP continuation:
-//    - Does HEU only send already-compacted complete EPs to this backend?
-//    - Can a scalar slice contain instructions whose PCs come from two fetch
-//      packets, and should scalar_insn_pc_i preserve the original per-instruction
-//      PC for branch/exception/debug?
-//    - On flush/redirect, is VLIWPU guaranteed to discard partial carry state
-//      before scalar_valid_i is asserted again?
-// 3. Functional-unit binding in HDV header metadata:
-//    - Should this backend receive a per-scalar-instruction resource class
-//      such as S_ALU0, S_ALU1, S_BR, S_LSU, S_MUL, or S_FPU?
-//    - Is resource legality guaranteed by software/VLIWPU, or must this backend
-//      detect duplicate lane usage and raise scalar_error_o?
-//    - Are vector instructions bound to V_DISP resources before HEU split, so
-//      this backend only checks scalar resources?
-// 4. Software-scheduled parallelism:
-//    - Is p-bit/header metadata considered authoritative unless a hard illegal
-//      case is detected?
-//    - Should this backend remove dynamic RAW checks inside one EP and rely on
-//      software, or keep defensive checks for same-EP scalar read/write hazards?
-//    - How should unsupported or illegal same-EP schedules be reported: task
-//      error only, or a restartable exception record?
-// 5. Branch into the middle of an EP:
-//    - Will VLIWPU provide a mask of lower-address slots to ignore after a
-//      redirect target lands in the middle of an EP?
-//    - Should this backend accept a scalar slice where low-PC scalar slots are
-//      already cleared, or should it receive an explicit suppress mask?
-//    - Are branch targets into the middle of 32-bit instructions or header words
-//      treated as illegal before reaching this backend?
-// 6. Header-marked loop start/end:
-//    - Should loop_start/loop_end header bits be consumed only by IPU/VLIWPU, or
-//      should this backend see loop metadata for branch/redirect validation?
-//    - Is a loop body cached as fetch packets or as already-formed EPs?
-//    - If cached as EPs, does scalar_insn_pc_i remain the architectural PC of
-//      each original instruction for debug and exceptions?
-// 7. Multi-lane scalar execution upgrade:
-//    - Which scalar lanes are implemented first: 2x ALU plus 1x branch, then
-//      LSU/FPU/MUL as single multi-cycle lanes?
-//    - How many XRF/FRF read and write ports are required for the chosen lane
-//      mix, and what arbitration is used for same-cycle writeback?
-//    - Does scalar_accepted_o mean all lanes completed, or only that all scalar
-//      instructions were accepted into internal per-lane queues?
 
 module cva6_hdv_scalar_backend
   import ariane_pkg::*;

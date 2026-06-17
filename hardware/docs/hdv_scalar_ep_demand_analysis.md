@@ -556,7 +556,171 @@ C66x 明确允许 execute packet 跨 fetch packet 边界。关键条件是：跨
 
 这一步完成后，HDV 的跨包行为才更接近真实 VLIW，而不是动态 fusion。
 
-## 12. 结论
+## 12. 新 VLIW 目标下的接口 Prompt
+
+如果下一版 HDV 目标改为：
+
+- fetch packet 扩大到 256 bit；
+- 支持跨 fetch packet 打包 EP；
+- HDV header 显式绑定 functional unit；
+- 并行性更多由软件/汇编器/离线 packer 保证；
+- branch 可以跳到 EP 中间，低地址处同 EP 指令被忽略；
+- header word 显式标出 loop start 和 loop end；
+
+那么需要先把下面这些接口问题回答清楚，再动 RTL。否则 IPU/VLIWPU/HEU/scalar backend/Ara vector dispatch 的职责会混在一起。
+
+### 12.1 256-bit Fetch Packet / 更宽 EP
+
+Prompt:
+
+1. 新 fetch packet 是 `256 bit = header + payload`，还是 C66x 类似 8 个 32-bit word？
+2. header 是仍占 32 bit，还是扩展到 64 bit 以容纳 p-bit、resource binding、loop bits 和 continuation bits？
+3. 新 `NumSlots` 是多少？如果仍以 16-bit slot 为单位，256-bit packet 扣掉 32-bit header 后有 14 个 16-bit slot；如果 header 变 64 bit，则有 12 个 16-bit slot。
+4. HEU 传给 scalar backend 的 `scalar_insn_valid_i` 是继续按 16-bit slot 编号，还是改成按 decoded instruction 编号？
+5. 一个 EP 的最大业务指令数是多少？是 C66x 风格最多 8 条，还是由 `MaxIssueSlots` 参数决定？
+
+建议：
+
+- 若目标是贴近 C66x，建议 EP 最大业务指令数定义为 8。
+- 但 RISC-V 32-bit 指令密度低于 C66x compact/header packet，256-bit packet 中实际业务指令数通常不会长期达到 8。
+- scalar backend 不应直接理解 fetch packet；它应只接收 VLIWPU/HEU 已经形成的完整 EP。
+
+### 12.2 显式跨 Fetch Packet EP Continuation
+
+Prompt:
+
+1. 跨 packet EP 是否必须由 header 中的 `cross_next` 或等价 continuation bit 显式授权？
+2. 跨 packet EP 的 p-bit 是“上一 packet 最后一条业务指令连接下一 packet 第一条业务指令”，还是“全局 instruction stream 边”？
+3. 如果下一 fetch packet 尚未取到，VLIWPU 是等待完整 EP，还是先发半个 EP？
+4. redirect/flush 时，VLIWPU 的 carry/cross state 是否必须全部清空？
+5. loop lock/loop buffer 命中时，跨包 EP 涉及的多个 fetch packet 或 EP 是否必须同时有效？
+
+建议：
+
+- 要接近真实 VLIW，跨包 EP 必须显式编码，不应只靠硬件 opportunistic fusion。
+- VLIWPU 可以保留动态安全校验，但不能把“硬件猜测能合并”作为软件可依赖语义。
+
+### 12.3 Header 中绑定 Functional Unit
+
+Prompt:
+
+1. header 是否为每条业务指令提供 resource class，例如 `S_ALU0/S_ALU1/S_BR/S_LSU/S_MUL/S_FPU/V_DISP`？
+2. resource binding 是由软件完全保证，还是 VLIWPU 需要重新 decode 后校验？
+3. 同一 EP 内两个指令绑定同一个 exclusive resource 时，是非法 packet、拆 EP，还是后端串行执行？
+4. vector 指令是否统一绑定 `V_DISP`，还是细分为 `V_ALU/V_LSU/V_MFPU/V_SET`？
+5. scalar load/store 与 vector load/store 是否需要共享 memory issue resource，还是由 AXI/LSU 后端仲裁？
+
+建议：
+
+- 若目标是 VLIW，resource conflict 应该是 packet legality 问题，不应静默串行化。
+- 初期资源表建议保持简单：
+
+| Resource | 数量 | 用途 |
+|---|---:|---|
+| `S_ALU` | 2 | integer simple ops/address update |
+| `S_BR` | 1 | branch/jal/jalr/ret |
+| `S_LSU` | 1 | scalar load/store |
+| `S_MUL` | 1 | integer mul/div |
+| `S_FPU` | 1 | scalar F/D |
+| `V_DISP` | 1 | Ara vector request dispatch |
+
+### 12.4 软件主导并行调度
+
+Prompt:
+
+1. p-bit/resource metadata 是否被视为 authoritative？
+2. 同一 EP 内 RAW/WAW/WAR 是否完全由软件保证？
+3. 硬件还保留哪些 defensive check？例如同 EP 双写同一个 rd、两个 branch、跳到 header、跳到 32-bit 指令中间。
+4. 如果软件调度错误，HDV 是报 `task_error`，还是需要形成可恢复异常？
+5. vset 写回、vector scalar operand snapshot、scalar branch redirect 这些跨 scalar/vector 的依赖由软件保证，还是仍由硬件保守 interlock？
+
+建议：
+
+- 第一阶段可以保留硬件安全检查，但不要在常规路径做复杂动态调度。
+- 后续若要贴近真实 VLIW，应逐步把同 EP 依赖责任转移给 packer/compiler，只保留非法 packet 检查。
+
+### 12.5 Branch 跳到 EP 中间
+
+Prompt:
+
+1. branch target 命中某个 EP 中间时，VLIWPU 是否负责重新形成“从 target slot 开始”的 partial EP？
+2. 低地址处同 EP 指令是由 VLIWPU 直接清掉 valid，还是传 `suppress_mask` 给 HEU/backend？
+3. branch target 如果指向 header word，是否立即非法？
+4. branch target 如果指向 32-bit 指令的高 16-bit halfword，是否立即非法？
+5. 如果 target 位于跨 fetch packet EP 的第二个 packet 中，是否需要回溯上一 packet 来确认原 EP 边界？
+
+建议：
+
+- 短期仍建议 branch target 只允许 EP 起点。这样 redirect、loop lock、异常恢复都简单。
+- 若实现跳入 EP 中间，VLIWPU 必须能从任意合法 slot 重建 partial EP，并忽略低地址同 EP slot。
+- 这个机制应在 VLIWPU 层完成，不应让 scalar backend 自己判断哪些低地址 slot 该忽略。
+
+### 12.6 Header 标记 Loop Start / Loop End
+
+Prompt:
+
+1. loop start/end 是标 fetch packet 边界，还是标 EP 边界？
+2. loop body 缓存为 fetch packet，还是缓存为已经 pack 好的 EP？
+3. loop end 是否必须落在 branch 所在 EP，还是可以单独由 header 标识？
+4. 跨包 EP 是否允许跨过 loop end？
+5. loop buffer 中是否保存 resource binding、p-bit、slot PC、suppress mask 等 metadata？
+
+建议：
+
+- 如果目标是接近 C66x loop buffer，应以 EP 为缓存粒度，而不是只缓存 fetch packet。
+- header 中的 loop start/end 应该标识软件调度出的 VLIW loop body，而不是仅作为取指缓存 hint。
+- `scalar_insn_pc_i` 仍必须保留每条原始指令 PC，用于 debug、branch、异常和性能分析。
+
+### 12.7 Scalar Backend 多 Lane 化
+
+Prompt:
+
+1. 第一版多 lane 是 `2x S_ALU + 1x S_BR`，还是直接加入 `S_LSU/S_FPU/S_MUL` 并行？
+2. XRF/FRF 需要多少读端口和写端口？
+3. 同周期多个 lane 写回时，是否允许多个不同 rd 同时写？
+4. scalar_accepted_o 表示所有 lane 都完成，还是只表示指令已进入 lane queue？
+5. 多周期 LSU/FPU/MUL 是否允许和后续 EP 的 scalar 指令重叠？
+
+建议：
+
+- 第一版做 `2x ALU + branch` 最稳。
+- LSU/FPU/MUL 保留单 lane 多周期，先和 simple lane 解耦，不急于多发。
+- `scalar_accepted_o` 仍建议表示“该 scalar slice 对后续 EP 已安全完成”，否则 HEU 的依赖语义要整体重写。
+
+### 12.8 这些实现后离真实 VLIW 还差多少
+
+如果上述机制都实现，HDV 会明显接近真实 VLIW：可以达到“显式 packet issue + 软件调度 + 多功能单元绑定”的核心形态。但它仍不是完整 C66x 级 VLIW。
+
+粗略评估：
+
+| 能力 | 完成后成熟度 |
+|---|---:|
+| 显式 EP/p-bit 并行语义 | 80% |
+| 跨 fetch packet EP | 75%，前提是有显式 continuation bit |
+| functional-unit binding | 70%，前提是 packer 能检查合法性 |
+| 标量多 lane 执行 | 50-60%，取决于是否真正实现多读写端口和 per-lane done |
+| branch 跳入 EP 中间 | 50%，需要 partial EP 重建和异常规则 |
+| loop buffer | 40-50%，header loop bit 只是开始，还缺 SPLOOP 类 EP buffer 语义 |
+| 异常/中断/restart | 30-40%，当前 HDV 仍主要是 task error 级别 |
+| 编译器/汇编器工具链 | 20-30%，目前主要靠手写 hint/离线构造 |
+
+总体上，这些实现完成后，HDV 可以认为达到了真实 VLIW 机制的 **约 65-75%**。剩下最核心的差距不是 fetch 宽度，而是：
+
+1. 编译器/汇编器能否稳定生成合法 packet。
+2. functional-unit latency/bypass/resource model 是否完整。
+3. 多 lane scalar backend 是否真的并行执行，而不是收到 VLIW packet 后内部串行。
+4. 异常、interrupt、debug、branch restart 是否以 EP/slot 为精确粒度。
+5. loop buffer 是否从“取指缓存优化”升级为“EP 级软件流水执行机制”。
+
+因此，下一步最科学的顺序不是直接全量实现，而是：
+
+1. 先定义 256-bit header 格式和 resource metadata。
+2. 实现 strict VLIW mode：没有显式 p-bit/continuation 就不跨包。
+3. 实现 VLIWPU resource legality check。
+4. 实现 scalar backend `2x ALU + branch` 真并行。
+5. 再实现 partial EP branch target 和 EP-level loop buffer。
+
+## 13. 结论
 
 从当前 dump 和 RTL 来看，标量后端不应该停留在永久单发射，也不应该一开始做很宽的完整多发射 core。
 
