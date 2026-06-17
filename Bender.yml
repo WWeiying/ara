@@ -76,7 +76,7 @@ sources:
     - hardware/src/hdv/hdv_hybrid_execution_unit.sv
     - hardware/src/hdv/hdv_mock_host_core.sv
     - hardware/src/hdv/hdv_vec_dispatch_unit.sv
-    - hardware/deps/cva6_hdv/hdv/cva6_hdv_scalar_backend.sv
+    - hardware/src/scala_backend/cva6_hdv_scalar_backend.sv
     - hardware/src/hdv/hdv_top.sv
     # Level 7
     - hardware/src/ara_soc.sv
