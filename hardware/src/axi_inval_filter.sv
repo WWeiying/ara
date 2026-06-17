@@ -114,6 +114,12 @@ module axi_inval_filter #(
           end
         end
       end
+
+      default: begin
+        state_d        = Idle;
+        aw_fifo_pop    = 1'b0;
+        inval_offset_d = '0;
+      end
     endcase
   end
 

@@ -30,6 +30,11 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     //parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
     parameter  int           unsigned L2NumWords   = (2**18) / NrLanes,
     parameter  int           unsigned HdvNumSlots  = 6,
+    parameter  logic [63:0]           HdvInitialRa  = '0,
+    parameter  logic [63:0]           HdvInitialA0  = '0,
+    parameter  logic [63:0]           HdvInitialA1  = '0,
+    parameter  logic [63:0]           HdvInitialA2  = '0,
+    parameter  logic [63:0]           HdvInitialFa0 = '0,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -630,6 +635,11 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
 `ifndef TARGET_GATESIM
   hdv_top #(
     .XLEN                  (64                    ),
+    .HdvInitialRa          (HdvInitialRa          ),
+    .HdvInitialA0          (HdvInitialA0          ),
+    .HdvInitialA1          (HdvInitialA1          ),
+    .HdvInitialA2          (HdvInitialA2          ),
+    .HdvInitialFa0         (HdvInitialFa0         ),
     .NrLanes               (NrLanes               ),
     .VLEN                  (VLEN                  ),
     .OSSupport             (OSSupport             ),

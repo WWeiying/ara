@@ -701,6 +701,20 @@ module ara_tb;
   localparam HdvNumSlots  = 6;
   // Must match apps build variable HDV_TASK_ENTRY for the selected HDV program.
   localparam HdvTaskEntry = 64'h8000_1000;
+  localparam int unsigned HdvVsaxpyElements = 1024;
+  localparam int unsigned HdvVsaxpyVl = VLEN / 32; // vsetvli ..., e32, m1
+  localparam int unsigned HdvVsaxpyIters =
+      (HdvVsaxpyElements + HdvVsaxpyVl - 1) / HdvVsaxpyVl;
+  // Cross-fetch-packet VLIW packing carries packet-tail non-control EPs into
+  // the next fetch packet.  vsaxpy taken iterations become:
+  //   vsetvli+vle / sub+vle+slli / vfmacc+add+vse / add+bnez = 4 EPs
+  // The final not-taken iteration also accepts ret and nop placeholders = 6 EPs.
+  localparam int unsigned HdvVsaxpyExpectedEpAccepts =
+      (HdvVsaxpyIters == 0) ? 0 : ((HdvVsaxpyIters - 1) * 4 + 6);
+  localparam logic [63:0] HdvVsaxpyN    = 64'(HdvVsaxpyElements);
+  localparam HdvVsaxpySrc1 = 64'h8000_1040;
+  localparam HdvVsaxpySrc2 = 64'h8000_5050;
+  localparam HdvVsaxpyA    = 64'hffff_ffff_40d5_1eb8;
 
   /********************************
    *  Clock and Reset Generation  *
@@ -883,6 +897,10 @@ module ara_tb;
     .AxiAddrWidth(AxiAddrWidth    ),
     .AxiDataWidth(AxiWideDataWidth),
     .HdvNumSlots (HdvNumSlots     ),
+    .HdvInitialA0(HdvVsaxpyN       ),
+    .HdvInitialA1(HdvVsaxpySrc1    ),
+    .HdvInitialA2(HdvVsaxpySrc2    ),
+    .HdvInitialFa0(HdvVsaxpyA      ),
     .AxiRespDelay(AxiRespDelay    )
   ) dut (
     .clk_i (clk  ),
@@ -929,12 +947,12 @@ module ara_tb;
     .AutoStartDelay             (64),
     .AutoTaskEntry              (HdvTaskEntry),
     .AutoTaskDesc               (DRAMAddrBase + 64'h1000),
-    // Mock scalar branch mode executes 32 vsaxpy loop iterations:
-    //   taken iterations: packet0/1/2/bnez = 4 EPs each
-    //   final iteration : packet0/1/2/bnez/ret/nop = 6 EPs
-    .AutoExpectedEpAccepts (32'd130),
-    .EnableMockBranch           (1'b1),
-    .MockLoopIterations         (32),
+    // Real scalar backend controls the loop.  VLIWPU may pack non-control
+    // packet tails across fetch-packet boundaries, so vsaxpy_hdv uses the
+    // formula above rather than a fixed packet count.
+    .AutoExpectedEpAccepts      (32'(HdvVsaxpyExpectedEpAccepts)),
+    .EnableMockBranch           (1'b0),
+    .MockLoopIterations         (0),
     .TaskWatchdogCycles         (65536),
     .PacketWatchdogCycles       (1024),
     .addr_t                     (logic [63:0])
@@ -975,34 +993,61 @@ module ara_tb;
   // HDV pipeline observation: print every execute-packet backend-accept event
   // and final state (once on entry) so the HDV IPU→VLIWPU→HEU flow is visible.
   logic [3:0] hdv_mock_state_prev_q;
+  logic [31:0] hdv_accepted_visible;
+  logic        hdv_task_cycle_active_q;
+  logic [63:0] hdv_task_cycle_base_q;
+  logic        hdv_task_start_fire;
+  logic        hdv_task_cycle_valid;
+  logic [63:0] hdv_task_cycle_base_visible;
+  logic [63:0] hdv_task_cycle;
+  assign hdv_accepted_visible = i_hdv_mock_host_core.accepted_packets_q +
+                                (hdv_ep_accepted ? 32'd1 : 32'd0);
+  assign hdv_task_start_fire = hdv_host_csr_valid && hdv_host_csr_ready &&
+                               hdv_host_csr_write &&
+                               (hdv_host_csr_addr == hdv_pkg::HDV_CSR_VTASK_START);
+  assign hdv_task_cycle_valid = hdv_task_cycle_active_q || hdv_task_start_fire;
+  assign hdv_task_cycle_base_visible = hdv_task_start_fire ? wall_cycle :
+                                       hdv_task_cycle_base_q;
+  assign hdv_task_cycle = hdv_task_cycle_valid ?
+                          (wall_cycle - hdv_task_cycle_base_visible) :
+                          64'd0;
+
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       hdv_mock_state_prev_q <= '0;
+      hdv_task_cycle_active_q <= 1'b0;
+      hdv_task_cycle_base_q <= '0;
     end else begin
       hdv_mock_state_prev_q <= i_hdv_mock_host_core.state_q;
+      if (hdv_task_start_fire) begin
+        hdv_task_cycle_active_q <= 1'b1;
+        hdv_task_cycle_base_q <= wall_cycle;
+      end
       if (hdv_ep_accepted) begin
         $display("[HDV] @%0t cycle=%0d ep_backend_accept accepted_so_far=%0d",
-                 $time, wall_cycle,
-                 i_hdv_mock_host_core.accepted_packets_q + 1);
+                 $time, hdv_task_cycle,
+                 hdv_accepted_visible);
       end
       // Only print once on the cycle the state first enters FINISH/FAIL, then stop.
       if (i_hdv_mock_host_core.state_q == 4'd9 && hdv_mock_state_prev_q != 4'd9) begin
-        if (i_hdv_mock_host_core.accepted_packets_q == i_hdv_mock_host_core.expected_ep_accepts_q) begin
-          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d)",
-                   $time, wall_cycle,
+        if (hdv_accepted_visible == i_hdv_mock_host_core.expected_ep_accepts_q) begin
+          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d, total_task_cycles=%0d)",
+                   $time, hdv_task_cycle,
                    i_hdv_mock_host_core.expected_ep_accepts_q,
-                   i_hdv_mock_host_core.accepted_packets_q);
+                   hdv_accepted_visible,
+                   hdv_task_cycle);
         end else begin
-          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test FAILED (expected %0d EPs, got %0d)",
-                   $time, wall_cycle,
+          $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test FAILED (expected %0d EPs, got %0d, total_task_cycles=%0d)",
+                   $time, hdv_task_cycle,
                    i_hdv_mock_host_core.expected_ep_accepts_q,
-                   i_hdv_mock_host_core.accepted_packets_q);
+                   hdv_accepted_visible,
+                   hdv_task_cycle);
         end
         $finish;
       end
       if (i_hdv_mock_host_core.state_q == 4'd10 && hdv_mock_state_prev_q != 4'd10) begin
-        $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED",
-                 $time, wall_cycle);
+        $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED (total_task_cycles=%0d)",
+                 $time, hdv_task_cycle, hdv_task_cycle);
         $finish;
       end
     end
