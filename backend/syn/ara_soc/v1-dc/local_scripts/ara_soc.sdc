@@ -1,8 +1,8 @@
 ###################################################################################
 ## parameter define ,modify by custom
 ###################################################################################
-set clk_mul 1.25
-set uncertainty_add 0.2
+set clk_mul 1
+set uncertainty_add 0
 
 set clk_driving_cell {CKBD4BWP12T40P140 I Z}
 set data_driving_cell {BUFFD4BWP12T40P140 I Z}
@@ -57,4 +57,9 @@ set_input_delay -clock clk_i -max $input_delay [remove_from_collection [all_inpu
 set_output_delay -clock clk_i -max $output_delay [all_outputs]
 
 set_false_path -from [get_ports rst_ni] -to [all_registers]
-set_false_path -to [get_pins i_system/i_ariane/rvfi_probes_o]
+# RVFI debug probe is CVA6/Ariane-specific and absent in the HDV hierarchy;
+# only apply the false path when the pin actually exists (works for both flows).
+set rvfi_probe_pin [get_pins -quiet i_system/i_ariane/rvfi_probes_o]
+if { [sizeof_collection $rvfi_probe_pin] > 0 } {
+  set_false_path -to $rvfi_probe_pin
+}

@@ -217,6 +217,8 @@ trace:
 	@head -n 20 ./run/log/diff_report
 
 dc:
+	@echo "0.Preparing dc output dirs"
+	@mkdir -p ../backend/flist ../backend/syn/ara_soc/v1-dc/outputs ../backend/syn/ara_soc/v1-dc/reports
 	@echo "1.Generating dc flist"
 	@$(BENDER) script verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
 	@cd ../backend/flist && cat ara_soc.f | \

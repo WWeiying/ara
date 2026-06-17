@@ -5,13 +5,13 @@
 当前代码中的 HDV 原型可以理解为：
 
 ```text
-host/mock scalar core
+host / mock task driver
   -> TIU task CSR
   -> TSU task queue
   -> IPU instruction fetch
   -> VLIWPU fetch-packet to execute-packet packing
   -> HEU scalar/vector split
-  -> scalar backend mock or future scalar pipeline
+  -> cva6_hdv_scalar_backend or mock scalar path
   -> vector dispatch adapter
   -> Ara vector backend
 ```
@@ -20,7 +20,7 @@ host/mock scalar core
 
 - `task done` 表示整个 HDV task 结束，由 task controller 或 mock host 告诉 TSU/TIU。
 - `ep_accepted` 表示一个 execute packet 的标量/向量切片已经被对应后端接收，不表示指令真正执行完成。
-- `vec_heu_accepted_o` 表示当前 EP 中所有向量指令已经被 Ara accelerator request 接口接收，不表示 Ara lane/VLSU 已退休这些指令。
+- `vec_heu_accepted_o` 表示向量后端已经安全接收这个 vector EP 切片。vtrace 模式下普通 EP 入队即可 accepted；真实标量模式下要等本 EP 的 vector request 都消耗标量操作数；带 `vset rd!=x0` 的 EP 还需要等 vset response 写回。
 - `ready/valid` 一律遵循同周期 `valid & ready` 才发生传输。
 
 ## 1. 全局数据流
@@ -57,9 +57,9 @@ execute packet 是 VLIWPU 给 HEU 的一次发射包。包内有：
 - `slot`: 原始 16-bit halfword。
 - `slot_is_32b`: 哪些 slot 是 32-bit 指令起点。
 - `class`: 每个 slot 的 SCALAR/VECTOR/SYSTEM/BRANCH 分类。
-- `pc`: fetch packet 基地址；HEU 用 `pc + slot_index * 2` 算每条指令 PC。
+- `pc`: EP 基地址；跨 fetch packet 打包时，VLIWPU 还会给每个 slot 单独携带真实 PC，HEU 使用 per-slot PC。
 
-HEU 当前一次只允许一个 EP outstanding。只有这个 EP 的 scalar/vector 切片都被后端 accepted 后，才向 VLIWPU 释放 ready 接收下一个 EP。
+HEU 当前保留一个 current EP 和一个 skid buffer EP。只有 skid buffer 满了才反压 VLIWPU；current EP 的 scalar/vector 切片都被后端 accepted 后，HEU 再推进 buffered EP。代码里保留了 `EnableBufferedVectorEarlyIssue` 参数，但当前默认关闭，因此默认路径不会把 buffered EP 的 vector 切片跨 current EP 提前送入 vector dispatch。
 
 ## 2. `hdv_pkg.sv`
 
@@ -83,7 +83,7 @@ HDV_CSR_VTASK_STATUS = 12'h7c3
 - `HDV_INST_SCALAR`: 普通标量整数/浮点/未知指令。
 - `HDV_INST_VECTOR`: RVV 算术、vector load、vector store。
 - `HDV_INST_SYSTEM`: CSR/system 类，当前走 scalar 侧。
-- `HDV_INST_BRANCH`: branch/jal/jalr，当前走 scalar 侧并由 mock 分支逻辑或未来真实标量流水线产生 redirect。
+- `HDV_INST_BRANCH`: branch/jal/jalr，当前走 scalar 侧；真实标量模式下由 `cva6_hdv_scalar_backend` 产生 redirect，关闭真实标量后端时由 mock 分支逻辑产生 redirect。
 
 分类发生在 VLIWPU，消费分类的是 HEU。
 
@@ -325,9 +325,11 @@ VLIWPU 把 128-bit fetch packet 切成一个或多个 execute packet。它是 HD
 
 ### 6.1 packet hold
 
-VLIWPU 内部只有一个 `packet_hold_valid_q`。当没有持有 packet 时，`vliwpu_ipu_packet_ready_o=1`，可以从 IPU 接收一个 fetch packet。若当前 packet 的最后一个 EP 同周期被 HEU 接收，VLIWPU 也会拉高 ready 接收下一 packet，避免 packet 边界多出一拍空泡。
+VLIWPU 内部有当前 packet 寄存器和一个很小的跨包 tail carry 缓冲。当没有持有 packet 时，`vliwpu_ipu_packet_ready_o=1`，可以从 IPU 接收一个 fetch packet。若当前 packet 的最后一个 EP 同周期被 HEU 接收，VLIWPU 也会拉高 ready 接收下一 packet，避免 packet 边界多出一拍空泡。
 
 一旦接收 packet，VLIWPU 持有它，直到这个 packet 内所有 slot 都被发成 EP。
+
+如果当前 EP 到达 fetch packet 末尾、不是 SYSTEM/BRANCH、且 `MaxIssueSlots` 还有空间，VLIWPU 不立即把这个尾部 EP 发给 HEU，而是把尾部 slot 暂存到 carry 缓冲。下一 fetch packet 到来后，VLIWPU 把 carry tail 和下一包开头 slot 压缩成同一个 EP 输出。这个机制允许例如 `sub` 位于第一个 fetch packet 尾部时，和第二个 fetch packet 开头的 `vle/slli` 合到同一个 EP。
 
 ### 6.2 header 和 p-bit
 
@@ -394,7 +396,7 @@ Branch 类：
 
 终止条件包括：
 
-- 到 packet 最后一个 slot。
+- 到 packet 最后一个 slot，且不能或不需要跨包 carry。
 - 达到 `MaxIssueSlots`。
 - 对应 p-bit 为 0。
 - `ctrl_vliwpu_dep_break_i` 对应 bit 为 1。
@@ -403,21 +405,36 @@ Branch 类：
 
 因此 p-bit=1 只允许继续；真正是否能继续还要看这些硬边界。
 
-### 6.7 execute valid/ready
+### 6.7 跨 fetch packet carry
 
-`vliwpu_heu_execute_valid_o = packet_hold_valid_q`。只要 VLIWPU 持有 packet，就持续向 HEU 提供当前 EP。
+跨包 carry 只处理 fetch packet 尾部的非控制流 EP：
+
+- `tail_cross_candidate=1` 时，当前尾部 EP 不直接发给 HEU。
+- VLIWPU 把当前尾部 slot、slot class、32-bit 起点标记和尾部第一条指令 PC 存入 carry 寄存器。
+- 下一 fetch packet 到来后，VLIWPU 从 slot0 开始继续扫描，把能放入的开头指令压缩到 carry tail 后面。
+- 跨包 EP 会同时输出 `vliwpu_heu_execute_slot_pc_o[i]`，每个压缩后的 slot 都带真实 PC。fetch packet 之间有 4B hint header 间隙，不能再假设 `base + slot_index*2` 就是真实地址。HEU 用 per-slot PC 组装标量/向量指令 PC，避免 `bnez` 这类 PC-relative 指令算错目标。
+- 如果 tail 中有 SYSTEM/BRANCH，或 issue slot 已满，就不会跨包。
+- 如果 tail 之前的同一个 fetch packet 已经出现 SYSTEM/BRANCH，也不会跨包；这避免最后一轮 `ret` 后的 `nop` 占位指令被错误 carry 到下一包。
+
+这个机制减少小循环中“packet 尾部单独成 EP”的开销，但不改变控制流边界：branch、jal、jalr、ret 仍然强制结束 EP。
+
+### 6.8 execute valid/ready
+
+`vliwpu_heu_execute_valid_o = normal_execute_valid | cross_execute_valid`。普通 EP 来自当前 packet；跨包 EP 来自 carry tail 加当前 packet 开头。
 
 `execute_accept = valid & heu_ready`。HEU 接收后，VLIWPU 更新 `head_slot_q`。
 
-### 6.8 head slot 更新
+### 6.9 head slot 更新
 
 如果本 EP 包含 packet 最后一个 slot，说明整个 fetch packet 消费完，VLIWPU 清 `packet_hold_valid_q` 并让 IPU 送下一包。
 
+如果本 EP 是跨包 EP，VLIWPU 根据本次从新 packet 开头消耗到哪个 slot 来更新 `head_slot_q`。如果新 packet 开头也被完全消耗，则清空 `packet_hold_valid_q`；否则下一次从剩余 slot 继续打包。
+
 否则，VLIWPU 扫描 `issue_mask` 中最后一个置 1 的 slot，把 `head_slot_q` 设置为它的下一个 slot。下一周期从那里继续打包同一个 fetch packet 的剩余指令。
 
-### 6.9 flush
+### 6.10 flush
 
-`flush_i` 清 `packet_hold_valid_q` 和 `head_slot_q`。在 `hdv_top` 中，VLIWPU 的 flush 包含 task error/complete 和 redirect，因此 redirect 后不会继续使用旧 packet。
+`flush_i` 清 `packet_hold_valid_q`、`head_slot_q` 和 carry 缓冲。在 `hdv_top` 中，VLIWPU 的 flush 包含 task error/complete 和 redirect，因此 redirect 后不会继续使用旧 packet 或旧跨包 tail。
 
 ## 7. `hdv_hybrid_execution_unit.sv`：HEU
 
@@ -431,6 +448,7 @@ HEU 输入包括：
 - `vliwpu_heu_execute_slot_valid_i`
 - `vliwpu_heu_execute_slot_i`
 - `vliwpu_heu_execute_slot_is_32b_i`
+- `vliwpu_heu_execute_slot_pc_i`
 - `vliwpu_heu_execute_class_i`
 - `vliwpu_heu_execute_pc_i`
 
@@ -442,7 +460,7 @@ HEU 不重新决定 EP 边界，只消费 VLIWPU 已经生成的 issue mask 和 
 
 对于一个真实指令起点：
 
-- 计算该指令 PC：`packet_pc + i * 2`。
+- 使用 VLIWPU 给出的 per-slot PC：`vliwpu_heu_execute_slot_pc_i[i]`。
 - 如果是 32-bit 指令，把 `{slot[i+1], slot[i]}` 拼成 32-bit 指令。
 - 如果是 16-bit 指令，把高 16 bit 补 0。
 - 如果 class 是 VECTOR，置 `has_vector=1` 和 `vector_insn_valid_in[i]=1`。
@@ -465,17 +483,38 @@ HEU 把 EP 内容寄存在：
 
 ### 7.4 ready 规则
 
-`heu_vliwpu_execute_ready_o = !outstanding_q`。
+`heu_vliwpu_execute_ready_o = !buffer_valid_q`。
 
-HEU 当前一次只允许一个 EP outstanding。只要还没收到 scalar/vector 后端 accepted，就不接收下一个 EP。
+HEU 当前允许一个正在等待后端 accepted 的 current EP，再加一个 skid buffer EP。只要 skid buffer 为空，VLIWPU 就可以继续交下一个 EP。这样后端 accepted 有一两拍延迟时，不会立刻反压到 VLIWPU。
 
-### 7.5 后端 valid 清除
+### 7.5 buffered vector 提前发射开关
+
+HEU 里仍保留 buffered vector 提前发射相关状态，但 `EnableBufferedVectorEarlyIssue` 当前默认是 `1'b0`。默认路径下：
+
+- skid buffer 可以提前接收下一 EP。
+- skid buffer 的 scalar/vector slice 等 promote 为 current 后再发送。
+- 不跨 current EP 提前发送 buffered EP 的 vector slice。
+
+这个选择来自当前性能调试结果：HEU 侧提前发射只能提前 vector dispatch 接收 EP，但真实标量模式下 vector dispatch 仍要等每条 vector request 抓取 scalar operand 后才向 HEU accepted。它没有真正解除 `vset -> scalar` 或 scalar operand 捕获路径上的关键等待，反而增加了 id、pending 和 promote 控制复杂度。
+
+如果以后重新打开该参数，安全边界仍然是：
+
+- 只看 skid buffer 中的下一 EP，不越过更多 EP。
+- HEU 为每个 vector slice 分配 `heu_vector_ep_id_o`；vector dispatch accepted 时返回 `vec_heu_accepted_id_o`。
+- 不跨越 current EP 中尚未 resolved 的 scalar control-flow，包括 branch/jal/jalr/ret 和常见 RVC branch/jump。
+- 不提前发送 scalar slice。
+- 不改变 vector 指令进入 Ara 的程序顺序。
+- vector dispatch 必须已经能保存正确的 scalar operand snapshot，否则后续 scalar EP 可能改写寄存器。
+
+相关状态仍在 RTL 中保留，用于参数打开时区分 current/buffered vector slice：`buffer_vector_sent_q`、`buffer_vector_pending_q`、`vector_dispatch_from_buffer_q`、`current_vector_id_q`、`buffer_vector_id_q`、`vector_dispatch_id_q` 和 `current_has_branch_q`。
+
+### 7.6 后端 valid 清除
 
 如果 `scalar_dispatch_valid_q && scalar_heu_ready_i`，标量 dispatch valid 清零。向量同理。
 
 这里的 ready 只表示后端接收了这份 dispatch 数据，不表示 EP 被完整 accepted。完整 accepted 还要等 `scalar_heu_accepted_i` 或 `vector_heu_accepted_i`。
 
-### 7.6 accept packet
+### 7.7 accept packet
 
 `accept_packet = vliwpu_heu_execute_valid_i & heu_vliwpu_execute_ready_o`。
 
@@ -486,7 +525,7 @@ HEU 当前一次只允许一个 EP outstanding。只要还没收到 scalar/vecto
 - 根据 `has_scalar/has_vector` 置 dispatch valid。
 - 保存 dispatch 指令、PC 和 valid mask。
 
-### 7.7 pending 和 EP accepted
+### 7.8 pending 和 EP accepted
 
 如果 EP 含 scalar，`scalar_pending_d=1`。如果 EP 含 vector，`vector_pending_d=1`。
 
@@ -495,7 +534,7 @@ HEU 当前一次只允许一个 EP outstanding。只要还没收到 scalar/vecto
 - `scalar_heu_accepted_i`
 - `vector_heu_accepted_i`
 
-HEU 清对应 pending。
+HEU 清对应 pending。这里的 accepted 不是“执行完成/退休”，而是“对应后端已经把这个 EP 的切片接管，HEU 可以从依赖控制角度推进到下一个 EP”。
 
 当：
 
@@ -504,13 +543,13 @@ HEU 清对应 pending。
 - `scalar_dispatch_valid_d=0`
 - `vector_dispatch_valid_d=0`
 
-时，HEU 认为 EP 已经被相关后端接收，清 `outstanding_d` 并产生一拍 `heu_top_ep_accepted_o`。
+时，HEU 认为 EP 已经被相关后端接收，清 `outstanding_d` 并产生一拍 `heu_top_ep_accepted_o`。若当前 vector valid 属于 buffered EP 的提前发射，HEU 会等它被 vector dispatch ready 接收后再 promote buffer，避免清掉仍在握手中的 buffered vector 状态。
 
-### 7.8 error
+### 7.9 error
 
 `backend_heu_error_i` 在 EP outstanding 或接收 packet 同周期有效时锁存到 `error_q`。如果 error 存在，HEU 不产生 accepted 脉冲，而是通过 `heu_top_ep_error_o` 暴露给上层。
 
-### 7.9 flush
+### 7.10 flush
 
 flush 清 outstanding、pending、dispatch valid、ep_accepted 和 error。redirect 会通过 `dispatch_flush` 清 HEU。
 
@@ -520,29 +559,38 @@ flush 清 outstanding、pending、dispatch valid、ep_accepted 和 error。redir
 
 ### 8.1 当前语义
 
-`vec_heu_accepted_o` 表示 EP 内所有 vector 指令已被 Ara 接收。它不等待 Ara 真正执行完，也不等待 load/store 返回数据或写回完成。
+`vec_heu_accepted_o` 是给 HEU 的 vector EP accepted 脉冲。vtrace 模式下，普通 vector EP 在进入本模块内部 buffer 后即可 accepted，后续由本模块继续把其中的 vector 指令顺序送给 Ara。真实标量模式下，accepted 要等本 EP 的 vector request 都已经被 Ara 接收并消耗 scalar operand，避免后续标量更新寄存器后旧 vector 指令读到新值。
+
+例外是 `vsetvli/vsetivli/vsetvl` 且 `rd!=x0` 的 EP。Ara response 会返回新的 VL/rd 值，后续 scalar EP 可能读取这个寄存器。因此这类 EP 会等到对应 vset response 写回到 scalar backend 后，才向 HEU 拉 `vec_heu_accepted_o`。
+
+所有其他 Ara response 只用于 exception、vset 写回和 task drain 的 busy 判断，不再阻塞后续 EP 供给。向量指令之间的数据依赖由 Ara 后端自己处理，HDV 不在 vector dispatch 里等待向量指令退休。
 
 这样做的目的是让 HDV 前端尽可能不断供给 Ara，避免因为把 `resp_valid/load_complete/store_complete` 当作 EP done 而过度保守。
 
-### 8.2 vtrace 标量环境
+### 8.2 向量标量操作数来源
 
-Ara vector 指令仍需要 `rs1/rs2` 等标量操作数。当前 mock 环境用 vtrace 文件提供：
+Ara vector 指令仍需要 `rs1/rs2/frs1` 等标量操作数。当前有两种来源：
+
+- `UseCva6HdvScalar=1`：`hdv_vec_dispatch_unit` 通过 operand service 向 `cva6_hdv_scalar_backend` 读取真实 XRF/FRF。这是当前真实标量后端路径。
+- `UseCva6HdvScalar=0`：`hdv_vec_dispatch_unit` 使用 vtrace 文件提供离线标量上下文，作为 bring-up/debug 模式。
+
+vtrace entry 格式是：
 
 ```text
 {insn[31:0], rs1[63:0], rs2[63:0]}
 ```
 
-`VTraceDepth` 默认为 `N_VINSN`，`VTraceFile` 默认为 `apps/ideal_dispatcher/vtrace/vsaxpy.vtrace`。模块 initial block 用 `$readmemh` 读入。
+`VTraceDepth` 默认为 `N_VINSN`，`VTraceFile` 默认为 `apps/ideal_dispatcher/vtrace/vsaxpy.vtrace`。只有 `UseVTraceScalar=1` 时 initial block 才会 `$readmemh` 读入。
 
 ### 8.3 状态和内部 buffer
 
-`insn_valid_q` 和 `insn_q` 是当前 EP 的内部缓冲。
+`insn_valid_q` 和 `insn_q` 是当前正在发给 Ara 的 EP 缓冲。另有一组 `pending_*` skid buffer，可在当前 EP 还未完全发完时提前接收下一个 vector EP。
 
 状态：
 
 - `IDLE`: 等 HEU vector dispatch。
 - `DISPATCH`: 找最低有效 slot，驱动 Ara request。
-- `DONE`: 当前 EP 内所有 vector 指令都被 Ara accepted，向 HEU 拉一拍 accepted。
+- `DONE`: 当前缓冲 EP 的 vector slot 都已送入 Ara request 接口，切到 pending EP 或回到 `IDLE`。
 - `WAIT`: 当前保留但实际只直接转 DONE。
 
 ### 8.4 slot priority encoder
@@ -556,22 +604,47 @@ Ara vector 指令仍需要 `rs1/rs2` 等标量操作数。当前 mock 环境用 
 - `acc_req.req_valid=1`
 - `acc_req.insn = selected_insn`
 - `acc_req.frm = RNE`
-- `acc_req.rs1/rs2 = vtrace 当前项`
+- `acc_req.rs1/rs2 = operand service 捕获值`，或 vtrace 模式下的 vtrace 当前项。
 
-如果 vtrace 耗尽或当前 vtrace 指令与 EP 指令不匹配，则 `req_valid=0` 并报错，避免把错误标量值发给 Ara。`selected_insn` 可能来自内部缓冲，也可能来自新 EP 输入旁路。
+如果在 vtrace 模式下 vtrace 耗尽或当前 vtrace 指令与 EP 指令不匹配，则 `req_valid=0` 并报错，避免把错误标量值发给 Ara。真实标量模式下，`req_valid` 会等 operand service 捕获到当前向量指令的标量操作数后再拉高。
+
+真实标量模式下，`vec_heu_accepted_o` 不能在 EP 入队时立即返回。原因是尚未处理的向量指令可能还没有读取 rs1/rs2/frs1，如果 HEU 提前推进后续标量 EP，标量寄存器可能被更新，旧向量指令会读到新值。因此真实标量模式等本 EP 的所有 vector slot 都被 dispatch FSM 消费，也就是 request 已经直接发给 Ara 或带 operand snapshot 进入 `vq0/vq1` 后，才向 HEU accepted；`vset rd!=0` 还要额外等 granted VL 写回。
+
+`resp_meta_*` 是 Ara response 元数据 FIFO。每发出一条 vector request，就记录这条指令是否为 vset 以及其 `rd`。Ara response 返回时弹出对应元数据，从而判断是否需要产生 `vec_scalar_vset_wb_valid_o`，并给等待 vset 写回的 EP 产生 accepted。
+
+真实标量模式下还有一个两项 `real_wait_*` accepted wait table。每个被 HEU 接收的 vector EP 会记录 `{ep_id, has_vset_wb, drained, vset_seen}`：
+
+- `drained` 表示该 EP 的所有 vector slot 都已经被 dispatch FSM 消费，标量操作数已经被读取并保存；request 可能已经到 Ara，也可能暂存在 `vq0/vq1`。
+- `vset_seen` 表示该 EP 中 scalar 可见的 `vset rd!=x0` response 已经回来并写回标量后端。
+- `real_wait_ready = drained && (!has_vset_wb || vset_seen)` 时，vector dispatch 才返回 `vec_heu_accepted_o` 和对应 `vec_heu_accepted_id_o`。
+- wait table 用 `ep_id` 标记等待项。即使默认关闭 HEU buffered vector 提前发射，它仍用于真实标量模式下区分可能排队的 vector EP；如果以后重新打开提前发射，也不会把 accepted 归错 EP。
+- `vec_heu_accepted_o` 在真实标量模式下由 registered wait-table 状态组合产生：`real_wait_ready[0] | real_wait_ready[1]`。这避免了把 accepted 再打一拍到 `ep_enqueued_q` 后造成的额外空泡。
+- `vec_heu_ready_o` 允许同周期弹出一个 ready wait entry 并接收新的 vector EP，减少两项 wait table 满时的空泡。
+
+向 Ara 发送 request 前，还有一个 depth-2 resolved-request buffer：
+
+- `vq0_*` 是队头，优先驱动 `acc_req_o`。
+- `vq1_*` 是第二项，用于 Ara backpressure 时继续保存后续已经解析并抓好 operand 的 request。
+- buffer 为空且 Ara ready 时，FSM request 可以 bypass 直接送 Ara。
+- `accept_insn` 表示 FSM 这条 vector 指令已被 Ara 接收或被放入 `vq0/vq1`，因此 dispatch FSM 可以继续处理 EP 内下一条 vector slot。
 
 ### 8.6 accept 指令
 
-`accept_insn = acc_resp.req_ready & acc_req.req_valid`。
+当前 `accept_insn = (vq_bypass & ara_acc) | vq_push`。
 
-Ara 接收一条指令后：
+这表示 vector dispatch FSM 当前选中的一条向量指令已经被消费：
+
+- 队列为空且 Ara ready 时，request bypass 直接被 Ara 接收。
+- Ara backpressure 时，request 带着已捕获的 `rs1/rs2` 被放入 `vq0/vq1`。
+
+FSM 消费一条指令后：
 
 - 清 `insn_valid_d[slot_idx]`。
 - vtrace index 加 1。
 - 如果还有有效 slot，继续留在 DISPATCH。
 - 如果没有有效 slot，进入 DONE。
 
-如果这条指令来自 `IDLE` 同周期输入旁路，则清的是 `input_slot_idx` 对应的 valid bit，再把剩余 slot 写入内部缓冲。因此只要 Ara `req_ready` 连续为 1，新 EP 的第一条 vector 指令不需要等到下一拍，EP 内后续指令也可以连续每周期发送。
+如果这条指令来自 `IDLE` 同周期输入旁路，则清的是 `input_slot_idx` 对应的 valid bit，再把剩余 slot 写入内部缓冲。因此只要 operand service 和 `vq0/vq1` 有空间，新 EP 的第一条 vector 指令不需要等到下一拍，EP 内后续指令也可以连续每周期消费；Ara 是否当拍 ready 由 resolved-request buffer 解耦。
 
 ### 8.7 response 和 error
 
@@ -583,7 +656,7 @@ flush 清 state、当前 EP buffer 和 vtrace index。注意现在 flush 会把 
 
 ## 9. `hdv_mock_host_core.sv`
 
-mock host 模拟主核和临时标量后端。它做四件事：写 CSR 启动 task、接收 scalar dispatch、模拟分支 redirect、按 EP accepted 计数决定 task complete。
+mock host 当前主要模拟主核/任务控制器：写 CSR 启动 task，按 EP accepted 计数决定 task complete，并打印 PASS/FAIL。关闭真实标量后端时，它也可以接管 scalar dispatch，作为临时标量后端和 mock branch 逻辑。
 
 ### 9.1 参数
 
@@ -659,7 +732,7 @@ redirect 不在 scalar_fire 同周期发出，而是等 `mock_hdv_scalar_accepte
 
 `mock_hdv_loop_lock_o = EnableMockBranch && RUN && loop_iters_remaining_q > 1`。
 
-这是旧的 mock 辅助信号，当前 `ara_tb` 不再把它接入 DUT，而是把外部 `hdv_loop_lock_i` 固定为 0，让 `hdv_top` 和 IPU 的自动 loop lock 逻辑接管。mock host 仍负责模拟 taken redirect，因为当前还没有真实标量执行流水线。
+这是旧的 mock 辅助信号，当前 `ara_tb` 不再把它接入 DUT，而是把外部 `hdv_loop_lock_i` 固定为 0，让 `hdv_top` 和 IPU 的自动 loop lock 逻辑接管。真实标量模式下，taken redirect 由 `cva6_hdv_scalar_backend` 的 branch 路径产生；关闭真实标量后端时，mock host 仍可模拟 taken redirect。
 
 ### 9.8 EP accepted 计数
 
@@ -766,8 +839,8 @@ HEU vector 输出连到 `i_vec_dispatch_unit`。该模块再驱动 Ara `acc_req_
 
 ```text
 Ara req_ready
-  -> hdv_vec_dispatch_unit 清 slot
-  -> vec_heu_accepted_o
+  -> hdv_vec_dispatch_unit 清 slot / 推进 response metadata
+  -> vec_heu_accepted_o（vtrace 模式普通 EP 入队即产生；真实标量模式等 request drain，vset rd!=0 还等 response 写回）
   -> HEU vector_heu_accepted_i
   -> HEU ep_accepted
 ```
@@ -780,7 +853,7 @@ Ara req_ready
 2. scalar AXI，当前绑 0，未来接真实 scalar backend。
 3. HDV instruction fetch AXI。
 
-保留 scalar slot 是为了不改变 system AXI ID 宽度和拓扑。
+scalar slot 现在连接 `cva6_hdv_scalar_backend`，用于真实标量 load/store。保留 3 个 slave port 仍然是为了不改变 system AXI ID 宽度和拓扑。
 
 ### 10.8 模块实例化顺序
 
@@ -840,9 +913,9 @@ TB 打印：
 8. 第一个 fetch packet 返回后，IPU 进入 SERVE，开始给 VLIWPU。
 9. VLIWPU 读取 hint p-bit，把 packet 内 slot 切成一个或多个 EP。
 10. HEU 接收 EP，分 scalar/vector。
-11. scalar 侧由 mock host accepted；branch EP 可能产生 redirect 和 loop lock。
-12. vector 侧由 `hdv_vec_dispatch_unit` 逐条发给 Ara，Ara `req_ready` 后 accepted。
-13. HEU 等 scalar/vector 都 accepted，产生 `ep_accepted`。
+11. scalar 侧由 `cva6_hdv_scalar_backend` 执行并 accepted；如果关闭真实标量后端，则由 mock host accepted。branch EP 可能产生 redirect 和 loop lock。
+12. vector 侧由 `hdv_vec_dispatch_unit` 接收 EP，并逐条发给 Ara。vtrace 模式下普通 vector EP 入队即向 HEU accepted；真实标量模式下等本 EP 的向量 request 都消耗了标量操作数后 accepted；`vset rd!=0` 还要等 Ara response 写回。
+13. HEU 等 scalar/vector 切片都 accepted，产生 `ep_accepted`。
 14. mock host 计数 EP accepted；达到期望数后拉 task complete。
 15. TSU/TIU 置 task done，mock host 读 STATUS，仿真 PASS。
 
@@ -920,12 +993,12 @@ TB 打印：
 
 仍然是临时或待完善的部分：
 
-- scalar 后端仍是 mock，不是真实寄存器读写/ALU/branch/LSU。
-- `hdv_vec_dispatch_unit` 通过 vtrace 提供 rs1/rs2，未来真实标量后端需要替换这部分。
+- 真实标量后端已经接入 `cva6_hdv_scalar_backend`，支持当前 HDV 路径需要的寄存器、ALU/branch/LSU、operand service 和 vset 写回；但它还不是完整 CVA6 core，也还没有完整异常/commit/scoreboard。
+- `hdv_vec_dispatch_unit` 在真实标量模式下通过 operand service 读取 `cva6_hdv_scalar_backend` 的 XRF/FRF；vtrace 只作为 bring-up/debug 模式。
 - `ep_accepted` 不等于真实执行退休。如果要验证数据正确性，仍需观察 Ara 内部完成信号和内存结果。
 - VLIWPU 的依赖断点 `ctrl_vliwpu_dep_break_i` 现在由外部提供，尚未自动分析 RAW/WAW/WAR。
 - redirect 目标被要求 16B fetch packet/EP entry 对齐，不支持跳进 EP 中间。
-- loop lock 由 mock host 简单驱动，未来要由真实分支/loop detector 精确控制。
+- IPU 已有自动 loop lock/双 buffer 取指支撑逻辑，但仍需要结合更多 kernel 验证 taken/not-taken、redirect、loop exit 和 buffer 命中边界。
 
 ## 15. 阅读代码的推荐顺序
 
