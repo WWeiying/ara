@@ -3,7 +3,7 @@
 本文档对比两个对象：
 
 - 原始 CVA6：`hardware/deps/cva6/core/` 下的完整 CVA6 core。
-- 当前 HDV 标量后端：`hardware/deps/cva6_hdv/hdv/cva6_hdv_scalar_backend.sv`。
+- 当前 HDV 标量后端：`hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`。
 
 结论先写清楚：当前 `cva6_hdv_scalar_backend` 不是“精简后的完整 CVA6 core”，而是一个 **HDV 专用、顺序执行、复用 CVA6 若干执行部件的标量后端**。它已经可以承担 HDV 中的标量切片执行、分支 redirect、向量操作数服务、vset granted-vl 回写等职责，但距离完整 RV64IMC + F/D + Zicsr 用户态标量通路还有明显缺口。
 
@@ -563,7 +563,7 @@ CVA6 的依赖处理来自：
 
 | 文件 | 作用 |
 |---|---|
-| `hardware/deps/cva6_hdv/hdv/cva6_hdv_scalar_backend.sv` | 当前标量后端主体。 |
+| `hardware/src/scala_backend/cva6_hdv_scalar_backend.sv` | 当前标量后端主体。 |
 | `hardware/src/hdv/hdv_top.sv` | 实例化标量后端，连接 HEU、vector dispatch、AXI、task done/error。 |
 | `hardware/src/hdv/hdv_hybrid_execution_unit.sv` | EP 分 scalar/vector slices，并维护当前 EP 与一项 skid buffer。 |
 | `hardware/src/hdv/hdv_vec_dispatch_unit.sv` | 向量后端请求真实标量操作数，向 Ara 发向量指令，并把 vset granted VL 写回标量后端。 |

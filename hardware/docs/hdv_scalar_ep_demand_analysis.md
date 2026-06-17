@@ -1,7 +1,7 @@
 # HDV Kernel EP 标量计算需求与标量后端实现选择分析
 
 本文基于当前仓库中的 `apps/**/*.dump`、`hardware/src/hdv/*`、以及
-`hardware/deps/cva6_hdv/hdv/cva6_hdv_scalar_backend.sv`，分析同一个 HDV
+`hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`，分析同一个 HDV
 execute packet（EP）内可能暴露给标量后端的计算需求，并据此讨论当前标量后端的实现选择。
 
 ## 1. 统计口径

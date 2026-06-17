@@ -1,6 +1,6 @@
 # CVA6_HDV 简化标量后端设计
 
-> 目标：在 `hardware/deps/cva6_hdv/` 副本中，基于 CVA6 现有模块构建一个尽量简化的
+> 目标：在 `hardware/src/scala_backend/` 中，基于 CVA6 现有模块构建一个尽量简化的
 > HDV 标量后端。HDV 仍由 IPU/VLIWPU/HEU 负责取指、HINT/p-bit、EP 打包和
 > 标量/向量分派；CVA6_HDV 只接收 HEU 的标量切片，执行标量指令、维护共享 XRF/FRF、
 > 产生分支 redirect，并给 HDV 向量后端提供真实标量操作数。
@@ -35,25 +35,19 @@ IPU -> VLIWPU -> HEU -> vector slice -> HDV vector backend -> Ara
 hardware/deps/cva6/
 ```
 
-新建副本：
+HDV 专用标量后端放在：
 
 ```text
-hardware/deps/cva6_hdv/
+hardware/src/scala_backend/
 ```
 
-所有 HDV 定制只在 `cva6_hdv` 中完成。这样可以保留 upstream CVA6 作为对照，也方便后续清理、回退或重新同步。
+所有 HDV 定制标量后端代码只在 `hardware/src/scala_backend/` 中完成。这样可以保留 upstream CVA6 作为对照，也方便后续清理、回退或重新同步。
 
-建议新增目录：
+当前目录：
 
 ```text
-hardware/deps/cva6_hdv/hdv/
+hardware/src/scala_backend/
   cva6_hdv_scalar_backend.sv
-  cva6_hdv_scalar_decode.sv
-  cva6_hdv_scalar_rf.sv
-  cva6_hdv_scalar_lsu.sv
-  cva6_hdv_csr_stub.sv
-  cva6_hdv_operand_service.sv
-  README.md
 ```
 
 ---
@@ -341,7 +335,7 @@ Ara | scalar reserved | HDV imem
 | `hardware/src/hdv/hdv_top.sv` | 增加 `USE_CVA6_HDV_SCALAR` 路径，把 `hdv_scalar_*` 接到 `cva6_hdv_scalar_backend`。 |
 | `hardware/src/hdv/hdv_vec_dispatch_unit.sv` | 去掉 vtrace 操作数模式，改为向 CVA6_HDV operand service 请求 rs1/rs2/frs1。 |
 | `hardware/tb/ara_tb.sv` | 增加 mock scalar 与 CVA6_HDV scalar 的切换开关。 |
-| `hardware/Makefile` / filelist | 增加 `hardware/deps/cva6_hdv/hdv/*.sv` 和必要 CVA6 复用模块。 |
+| `hardware/Makefile` / filelist | 增加 `hardware/src/scala_backend/*.sv` 和必要 CVA6 复用模块。 |
 
 ---
 
@@ -349,8 +343,8 @@ Ara | scalar reserved | HDV imem
 
 ### Phase 0：副本与 filelist
 
-- 复制 `hardware/deps/cva6` 到 `hardware/deps/cva6_hdv`。
-- 新增 `hardware/deps/cva6_hdv/hdv/`。
+- 保留原始 `hardware/deps/cva6` 作为参考。
+- 新增 `hardware/src/scala_backend/`。
 - 新增 HDV 专用 filelist，先只编译复用模块和新建后端。
 
 ### Phase 1：整数标量 slice
