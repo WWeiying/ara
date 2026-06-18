@@ -5,7 +5,7 @@
 - 原始 CVA6：`hardware/deps/cva6/core/` 下的完整 CVA6 core。
 - 当前 HDV 标量后端：`hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`。
 
-结论先写清楚：当前 `cva6_hdv_scalar_backend` 不是“精简后的完整 CVA6 core”，而是一个 **HDV 专用、顺序执行、复用 CVA6 若干执行部件的标量后端**。它已经可以承担 HDV 中的标量切片执行、分支 redirect、向量操作数服务、vset granted-vl 回写等职责，但距离完整 RV64IMC + F/D + Zicsr 用户态标量通路还有明显缺口。
+结论先写清楚：当前 `cva6_hdv_scalar_backend` 不是“精简后的完整 CVA6 core”，而是一个 **HDV 专用、轻量多发射、复用 CVA6 若干执行部件的标量后端**。它当前配置为 `ScalarIssueWidth=3`、`SimpleAluIssueWidth=2`：每周期最多发射两条 simple ALU 指令和一条 complex 指令。它已经可以承担 HDV 中的标量切片执行、分支 redirect、向量操作数服务、vset granted-vl 回写等职责，但距离完整 RV64IMC + F/D + Zicsr 用户态标量通路还有明显缺口。
 
 ---
 
@@ -15,7 +15,7 @@
 |---|---|---|
 | 取指 PC 管理 | 有完整 frontend、PC gen、分支预测、I-cache 接口、异常重定向。 | 没有取指。PC、fetch packet、HINT、EP 起点由 HDV 的 IPU/VLIWPU 管。 |
 | 指令队列 | 有 frontend instruction queue、re-align、compressed 处理、issue 输入队列。 | 没有全局指令队列。HEU 已经把一个 EP 内的 scalar slots 直接送入后端。 |
-| 发射机制 | CVA6 pipeline 内部 issue/read-operands/scoreboard/commit。 | 一个 EP 的 scalar slots 锁存后，按最低 slot index 顺序逐条执行。 |
+| 发射机制 | CVA6 pipeline 内部 issue/read-operands/scoreboard/commit。 | 一个 EP 的 scalar slots 锁存后，尝试 3 发射：2 simple ALU lane + 1 complex lane；hazard/order barrier 时保守拆开。 |
 | 乱序/保序 | CVA6 使用 scoreboard 和 commit 机制保证架构状态提交。 | 没有 scoreboard/commit stage；靠“EP 间保序”和后端顺序状态机保证。 |
 | 向量关系 | 原 CVA6 可通过 `acc_dispatcher`/CV-X-IF 连接 Ara。 | 不走原 `acc_dispatcher`。向量指令由 HDV VLIWPU/HEU/vector dispatch 直接送 Ara。 |
 | 寄存器堆 | CVA6 有整数/浮点寄存器文件，与 pipeline、bypass、commit 集成。 | 内部自建 `xrf_q[32]` 和 `frf_q[32]` 数组；没有 CVA6 原寄存器堆端口化实现。 |
@@ -55,7 +55,7 @@
 | `frontend/instr_queue.sv` | 否 | 无全局指令队列；EP 直接锁存。 |
 | branch predictor: BHT/BTB/RAS | 否 | 当前分支在标量后端真实解析后 redirect，没有预测。 |
 | `id_stage.sv` | 否 | 没有 CVA6 ID stage；译码在后端内部组合完成。 |
-| `issue_stage.sv` / `issue_read_operands.sv` | 否 | 没有多发射 issue/read operand stage。 |
+| `issue_stage.sv` / `issue_read_operands.sv` | 否 | 没有复用 CVA6 issue/read operand stage；HDV 后端内部自写轻量 3 发射选择和 hazard 检查。 |
 | `scoreboard.sv` | 否 | 没有 scoreboard。依赖关系由 VLIWPU p-bit/EP 边界和后端保序承担。 |
 | `ex_stage.sv` | 部分 | 没有复用完整 ex_stage，只单独实例化 ALU/branch/mult/FPU。 |
 | `commit_stage.sv` | 否 | 没有 commit/retire stage；执行完成直接写内部 XRF/FRF。 |
@@ -109,23 +109,24 @@ IDLE
 其工作方式：
 
 1. `scalar_valid_i && scalar_ready_o` 时锁存一个 EP 中的 scalar slots。
-2. 每次找最低 index 的有效 scalar slot。
-3. 使用 CVA6 `compressed_decoder + decoder` 组合译码。
-4. 根据 `cva6_decoded.fu` 选择 ALU、branch、CSR、FPU、MULT、LOAD/STORE 路径。
-5. 指令完成后直接写 `xrf_d/frf_d`，清掉该 slot valid。
-6. 所有 scalar slots 清空后进入 `DONE`，输出 `scalar_accepted_o`。
-7. 若 branch taken，则 `DONE` 后进入 `REDIRECT`，输出 `redirect_valid_o/redirect_pc_o`。
+2. 对有效 scalar slot 做 `compressed_decoder + decoder` 组合译码。
+3. 每周期选择最多两条 simple ALU 指令进入 simple lane。
+4. 同周期最多选择一条 complex 指令进入 complex lane，覆盖 branch、CSR、FPU、MULT、LOAD/STORE 以及不能走 simple lane 的指令。
+5. simple batch 内检查读写 mask、重复 rd、order barrier、vset RAW；complex lane 检查是否读取 simple batch 同周期写出的寄存器。
+6. 完成的指令直接写 `xrf_d/frf_d`，清掉对应 slot valid。
+7. 所有 scalar slots 清空后进入 `DONE`，输出 `scalar_accepted_o`。
+8. 若 branch taken，则 `DONE` 后进入 `REDIRECT`，输出 `redirect_valid_o/redirect_pc_o`。
 
 ### 4.3 这个模型的优点
 
 - 控制简单，面积小，时序相对容易。
 - 不需要完整 CVA6 frontend/issue/commit/CSR/LSU 体系。
 - 与 HDV 当前 EP 保序模型匹配：一个 EP 的 scalar slice 完成后，HEU 才认为该 scalar 部分完成。
-- EP 内标量指令如果由 VLIWPU 保证无依赖，顺序执行不会破坏功能，只是损失性能。
+- EP 内标量指令如果由 VLIWPU/软件保证无依赖，当前 2 simple ALU + 1 complex lane 可以利用常见并行；遇到本地 hazard 时再保守拆开。
 
 ### 4.4 这个模型的限制
 
-- 没有利用“同一 EP 内标量指令可并行”的性能潜力。
+- 只利用了最常见的 simple ALU/complex 组合；还不是完整 VLIW functional-unit 绑定模型。
 - 没有 bypass/scoreboard，不能安全支持跨 EP 提前发射后还保留任意标量 RAW 正确性；当前依赖 HEU/EP 保序。
 - 没有精确异常提交点；unsupported/exception 最终只是 `scalar_error_o`。
 - load/store 是阻塞式单 outstanding，容易成为性能瓶颈。
@@ -442,18 +443,18 @@ CVA6 的依赖处理来自：
 
 1. VLIWPU/p-bit：决定哪些指令可以进同一个 EP。
 2. HEU：维护 EP 边界上的 dispatch/accepted。
-3. 标量后端：一个 EP 内 scalar slots 顺序执行，并在完成后才拉 `scalar_accepted_o`。
+3. 标量后端：一个 EP 内做轻量多发射选择和局部 hazard 检查，并在完成后才拉 `scalar_accepted_o`。
 
 当前可保证：
 
-- EP 内 scalar slots 顺序执行，功能上保守正确。
+- EP 内 simple ALU/complex lane 只在本地 hazard 检查允许时同周期执行；否则保守拆成后续周期。
 - 标量后端完成所有写回后才 accepted。
 - 下一 EP 如果依赖上一 EP 的标量结果，在 HEU 保序模型下能读到。
 
 当前不能保证：
 
 - 若未来允许不同 EP 提前进入标量后端并并行执行，则必须增加 scoreboard 或至少增加跨 EP register pending tracking。
-- 若未来 EP 内 scalar slots 真并行执行，必须利用 VLIWPU 保证的“无依赖”信息，并增加多写端口仲裁。
+- 当前 EP 内并行只覆盖轻量 lane；若未来扩到更宽，仍必须增加更完整的端口仲裁和结构冲突检查。
 - memory ordering 目前只靠单 outstanding LSU，简单但低性能；没有复杂 load/store dependency。
 
 ---
