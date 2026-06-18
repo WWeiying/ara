@@ -14,9 +14,9 @@
 
 module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   parameter int unsigned XLEN          = 64,
-  parameter int unsigned NumSlots      = 6,
+  parameter int unsigned NumSlots      = 8,
   parameter int unsigned SlotWidth     = 16,
-  parameter bit          EnableBufferedVectorEarlyIssue = 1'b0,
+  parameter bit          EnableBufferedVectorEarlyIssue = 1'b1,
   parameter type addr_t = logic [XLEN-1:0]
 ) (
   input  logic                               clk_i,
@@ -71,6 +71,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic buffer_has_scalar_d, buffer_has_scalar_q;
   logic buffer_has_vector_d, buffer_has_vector_q;
   logic buffer_has_branch_d, buffer_has_branch_q;
+  logic [31:0] buffer_scalar_write_mask_d, buffer_scalar_write_mask_q;
+  logic [31:0] buffer_scalar_fpr_write_mask_d, buffer_scalar_fpr_write_mask_q;
+  logic [31:0] buffer_vector_write_mask_d, buffer_vector_write_mask_q;
+  logic [31:0] buffer_vector_read_mask_d, buffer_vector_read_mask_q;
+  logic [31:0] buffer_vector_fpr_read_mask_d, buffer_vector_fpr_read_mask_q;
   logic buffer_vector_sent_d, buffer_vector_sent_q;
   logic buffer_vector_pending_d, buffer_vector_pending_q;
   logic buffer_vector_id_d, buffer_vector_id_q;
@@ -97,6 +102,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic ep_accepted_d, ep_accepted_q;
   logic error_d, error_q;
   logic current_has_branch_d, current_has_branch_q;
+  logic [31:0] current_scalar_write_mask_d, current_scalar_write_mask_q;
+  logic [31:0] current_scalar_fpr_write_mask_d, current_scalar_fpr_write_mask_q;
+  logic [31:0] current_vector_write_mask_d, current_vector_write_mask_q;
   logic current_vector_id_d, current_vector_id_q;
   logic next_vector_id_d, next_vector_id_q;
   logic buffer_vector_can_issue;
@@ -106,6 +114,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic [NumSlots-1:0][31:0] dispatch_insn_in;
   logic [NumSlots-1:0] dispatch_insn_is_32b_in;
   addr_t [NumSlots-1:0] dispatch_insn_pc_in;
+  logic [31:0] scalar_write_mask_in;
+  logic [31:0] scalar_fpr_write_mask_in;
+  logic [31:0] vector_write_mask_in;
+  logic [31:0] vector_read_mask_in;
+  logic [31:0] vector_fpr_read_mask_in;
 
   function automatic logic is_scalar_control_flow(input logic [31:0] insn,
                                                   input logic        is_32b);
@@ -129,6 +142,159 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     end
   endfunction
 
+  function automatic logic [31:0] scalar_gpr_write_mask(input logic [31:0] insn,
+                                                        input logic        is_32b);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [4:0] rd;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      rd = insn[11:7];
+      if (!is_32b) begin
+        // Compressed scalar write decoding is intentionally conservative here:
+        // do not early-issue a later vector slice across an unexpanded C insn.
+        mask = 32'hffff_ffff;
+      end else if (rd != 5'd0) begin
+        unique case (opcode)
+          7'b0110111, // LUI
+          7'b0010111, // AUIPC
+          7'b1101111, // JAL
+          7'b1100111, // JALR
+          7'b0000011, // LOAD
+          7'b0010011, // OP-IMM
+          7'b0011011, // OP-IMM-32
+          7'b0110011, // OP
+          7'b0111011, // OP-32
+          7'b1010011, // scalar FPU may write integer rd (fcvt/fclass/fcmp)
+          7'b0001111, // FENCE rd is architecturally unused, but keep conservative
+          7'b1110011: // SYSTEM/CSR
+            mask[rd] = 1'b1;
+          default: mask = '0;
+        endcase
+      end
+      scalar_gpr_write_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] scalar_fpr_write_mask(input logic [31:0] insn,
+                                                        input logic        is_32b);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    automatic logic [4:0] rd;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      rd = insn[11:7];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else if (rd != 5'd0) begin
+        unique case (opcode)
+          7'b0000111: begin // FLW/FLD write FRF, vector loads are classified separately.
+            if ((funct3 == 3'b010) || (funct3 == 3'b011)) begin
+              mask[rd] = 1'b1;
+            end
+          end
+          7'b1010011: begin // scalar FPU usually writes FRF; mark conservatively.
+            mask[rd] = 1'b1;
+          end
+          default: mask = '0;
+        endcase
+      end
+      scalar_fpr_write_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] vector_gpr_read_mask(input logic [31:0] insn,
+                                                       input logic        is_32b);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else begin
+        unique case (opcode)
+          7'b0000111, // vector memory base address in rs1
+          7'b0100111: begin
+            if (insn[19:15] != 5'd0) begin
+              mask[insn[19:15]] = 1'b1;
+            end
+            if ((insn[27:26] == 2'b10) && (insn[24:20] != 5'd0)) begin
+              // RVV strided memory instructions use scalar rs2 as stride.
+              // Indexed memory uses vs2 in the same field and must not be
+              // treated as a scalar GPR dependency.
+              mask[insn[24:20]] = 1'b1;
+            end
+          end
+
+          7'b1010111: begin
+            unique case (funct3)
+              3'b100, // OPIVX
+              3'b110: begin // OPMVX
+                if (insn[19:15] != 5'd0) begin
+                  mask[insn[19:15]] = 1'b1;
+                end
+              end
+              3'b111: begin // vsetvli/vsetivli/vsetvl configuration
+                if (insn[19:15] != 5'd0) begin
+                  mask[insn[19:15]] = 1'b1;
+                end
+                if (insn[24:20] != 5'd0) begin
+                  mask[insn[24:20]] = 1'b1;
+                end
+              end
+              default: mask = '0;
+            endcase
+          end
+
+          default: mask = '0;
+        endcase
+      end
+      vector_gpr_read_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] vector_fpr_read_mask(input logic [31:0] insn,
+                                                       input logic        is_32b);
+    automatic logic [31:0] mask;
+    begin
+      mask = '0;
+      if (is_32b &&
+          (insn[6:0] == 7'b1010111) &&
+          (insn[14:12] == 3'b101) &&
+          (insn[19:15] != 5'd0)) begin
+        // OPFVF reads scalar FP register frs1 as the .vf operand.
+        mask[insn[19:15]] = 1'b1;
+      end
+      vector_fpr_read_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] vector_gpr_write_mask(input logic [31:0] insn,
+                                                        input logic        is_32b);
+    automatic logic [31:0] mask;
+    begin
+      mask = '0;
+      if (is_32b &&
+          (insn[6:0] == 7'b1010111) &&
+          (insn[14:12] == 3'b111) &&
+          (insn[11:7] != 5'd0)) begin
+        // vsetvli/vsetivli/vsetvl write the new VL to integer rd.  A later
+        // vector instruction may read that rd as AVL/base/vx and must not
+        // snapshot the old scalar value while this EP's vector slice is still
+        // pending.
+        mask[insn[11:7]] = 1'b1;
+      end
+      vector_gpr_write_mask = mask;
+    end
+  endfunction
+
   always_comb begin : p_split
     has_scalar = 1'b0;
     has_vector = 1'b0;
@@ -137,6 +303,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     dispatch_insn_in = '0;
     dispatch_insn_is_32b_in = '0;
     dispatch_insn_pc_in = '0;
+    scalar_write_mask_in = '0;
+    scalar_fpr_write_mask_in = '0;
+    vector_write_mask_in = '0;
+    vector_read_mask_in = '0;
+    vector_fpr_read_mask_in = '0;
 
     for (int unsigned i = 0; i < NumSlots; i++) begin
       logic is_continuation;
@@ -160,9 +331,19 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         if (vliwpu_heu_execute_class_i[i] == HDV_INST_VECTOR) begin
           has_vector = 1'b1;
           vector_insn_valid_in[i] = 1'b1;
+          vector_write_mask_in |= vector_gpr_write_mask(dispatch_insn_in[i],
+                                                        dispatch_insn_is_32b_in[i]);
+          vector_read_mask_in |= vector_gpr_read_mask(dispatch_insn_in[i],
+                                                      dispatch_insn_is_32b_in[i]);
+          vector_fpr_read_mask_in |= vector_fpr_read_mask(dispatch_insn_in[i],
+                                                          dispatch_insn_is_32b_in[i]);
         end else begin
           has_scalar = 1'b1;
           scalar_insn_valid_in[i] = 1'b1;
+          scalar_write_mask_in |= scalar_gpr_write_mask(dispatch_insn_in[i],
+                                                        dispatch_insn_is_32b_in[i]);
+          scalar_fpr_write_mask_in |= scalar_fpr_write_mask(dispatch_insn_in[i],
+                                                            dispatch_insn_is_32b_in[i]);
         end
       end
     end
@@ -196,7 +377,17 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
                                    buffer_valid_q & buffer_has_vector_q &
                                    !buffer_vector_sent_q &
                                    !vector_dispatch_valid_q &
-                                   !current_has_branch_q;
+                                   !current_has_branch_q &
+                                   (!scalar_pending_q ||
+                                    ((buffer_vector_read_mask_q &
+                                      current_scalar_write_mask_q) == 32'b0) &&
+                                    ((buffer_vector_fpr_read_mask_q &
+                                      current_scalar_fpr_write_mask_q) == 32'b0)) &
+                                   (!vector_pending_q ||
+                                    (((buffer_vector_read_mask_q &
+                                       current_vector_write_mask_q) == 32'b0) &&
+                                     ((current_vector_write_mask_q == 32'b0) ||
+                                      (buffer_vector_write_mask_q == 32'b0))));
   assign buffer_vector_issue_fire = buffer_vector_can_issue;
 
   always_comb begin : p_next
@@ -219,6 +410,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     buffer_has_scalar_d = buffer_has_scalar_q;
     buffer_has_vector_d = buffer_has_vector_q;
     buffer_has_branch_d = buffer_has_branch_q;
+    buffer_scalar_write_mask_d = buffer_scalar_write_mask_q;
+    buffer_scalar_fpr_write_mask_d = buffer_scalar_fpr_write_mask_q;
+    buffer_vector_write_mask_d = buffer_vector_write_mask_q;
+    buffer_vector_read_mask_d = buffer_vector_read_mask_q;
+    buffer_vector_fpr_read_mask_d = buffer_vector_fpr_read_mask_q;
     buffer_vector_sent_d = buffer_vector_sent_q;
     buffer_vector_pending_d = buffer_vector_pending_q;
     buffer_vector_id_d = buffer_vector_id_q;
@@ -233,6 +429,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     ep_accepted_d        = 1'b0;
     error_d       = error_q;
     current_has_branch_d = current_has_branch_q;
+    current_scalar_write_mask_d = current_scalar_write_mask_q;
+    current_scalar_fpr_write_mask_d = current_scalar_fpr_write_mask_q;
+    current_vector_write_mask_d = current_vector_write_mask_q;
     current_vector_id_d = current_vector_id_q;
     next_vector_id_d = next_vector_id_q;
 
@@ -274,6 +473,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         next_vector_id_d = ~next_vector_id_q;
       end
       current_has_branch_d    = 1'b0;
+      current_scalar_write_mask_d = scalar_write_mask_in;
+      current_scalar_fpr_write_mask_d = scalar_fpr_write_mask_in;
+      current_vector_write_mask_d = vector_write_mask_in;
       for (int unsigned i = 0; i < NumSlots; i++) begin
         current_has_branch_d |= scalar_insn_valid_in[i] &&
                                 is_scalar_control_flow(dispatch_insn_in[i],
@@ -289,6 +491,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_has_scalar_d = has_scalar;
       buffer_has_vector_d = has_vector;
       buffer_has_branch_d = 1'b0;
+      buffer_scalar_write_mask_d = scalar_write_mask_in;
+      buffer_scalar_fpr_write_mask_d = scalar_fpr_write_mask_in;
+      buffer_vector_write_mask_d = vector_write_mask_in;
+      buffer_vector_read_mask_d = vector_read_mask_in;
+      buffer_vector_fpr_read_mask_d = vector_fpr_read_mask_in;
       buffer_vector_sent_d = 1'b0;
       buffer_vector_pending_d = 1'b0;
       buffer_vector_id_d = new_vector_id;
@@ -382,13 +589,24 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
                            (!buffer_vector_sent_d || buffer_vector_pending_d);
         current_vector_id_d = buffer_vector_id_d;
         current_has_branch_d = buffer_has_branch_d;
+        current_scalar_write_mask_d = buffer_scalar_write_mask_d;
+        current_scalar_fpr_write_mask_d = buffer_scalar_fpr_write_mask_d;
+        current_vector_write_mask_d = buffer_vector_write_mask_d;
         buffer_valid_d = 1'b0;
         buffer_has_branch_d = 1'b0;
+        buffer_scalar_write_mask_d = '0;
+        buffer_scalar_fpr_write_mask_d = '0;
+        buffer_vector_write_mask_d = '0;
+        buffer_vector_read_mask_d = '0;
+        buffer_vector_fpr_read_mask_d = '0;
         buffer_vector_sent_d = 1'b0;
         buffer_vector_pending_d = 1'b0;
       end else begin
         outstanding_d = 1'b0;
         current_has_branch_d = 1'b0;
+        current_scalar_write_mask_d = '0;
+        current_scalar_fpr_write_mask_d = '0;
+        current_vector_write_mask_d = '0;
       end
     end
 
@@ -397,6 +615,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       scalar_pending_d = 1'b0;
       vector_pending_d = 1'b0;
       buffer_valid_d = 1'b0;
+      buffer_scalar_write_mask_d = '0;
+      buffer_scalar_fpr_write_mask_d = '0;
+      buffer_vector_write_mask_d = '0;
+      buffer_vector_read_mask_d = '0;
+      buffer_vector_fpr_read_mask_d = '0;
       buffer_vector_sent_d = 1'b0;
       buffer_vector_pending_d = 1'b0;
       buffer_vector_id_d = 1'b0;
@@ -406,6 +629,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       ep_accepted_d        = 1'b0;
       error_d       = 1'b0;
       current_has_branch_d = 1'b0;
+      current_scalar_write_mask_d = '0;
+      current_scalar_fpr_write_mask_d = '0;
+      current_vector_write_mask_d = '0;
       current_vector_id_d = 1'b0;
       next_vector_id_d = 1'b0;
     end
@@ -420,6 +646,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_has_scalar_q <= 1'b0;
       buffer_has_vector_q <= 1'b0;
       buffer_has_branch_q <= 1'b0;
+      buffer_scalar_write_mask_q <= '0;
+      buffer_scalar_fpr_write_mask_q <= '0;
+      buffer_vector_write_mask_q <= '0;
+      buffer_vector_read_mask_q <= '0;
+      buffer_vector_fpr_read_mask_q <= '0;
       buffer_vector_sent_q <= 1'b0;
       buffer_vector_pending_q <= 1'b0;
       buffer_vector_id_q <= 1'b0;
@@ -446,6 +677,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       ep_accepted_q        <= 1'b0;
       error_q       <= 1'b0;
       current_has_branch_q <= 1'b0;
+      current_scalar_write_mask_q <= '0;
+      current_scalar_fpr_write_mask_q <= '0;
+      current_vector_write_mask_q <= '0;
       current_vector_id_q <= 1'b0;
       next_vector_id_q <= 1'b0;
     end else begin
@@ -456,6 +690,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_has_scalar_q <= buffer_has_scalar_d;
       buffer_has_vector_q <= buffer_has_vector_d;
       buffer_has_branch_q <= buffer_has_branch_d;
+      buffer_scalar_write_mask_q <= buffer_scalar_write_mask_d;
+      buffer_scalar_fpr_write_mask_q <= buffer_scalar_fpr_write_mask_d;
+      buffer_vector_write_mask_q <= buffer_vector_write_mask_d;
+      buffer_vector_read_mask_q <= buffer_vector_read_mask_d;
+      buffer_vector_fpr_read_mask_q <= buffer_vector_fpr_read_mask_d;
       buffer_vector_sent_q <= buffer_vector_sent_d;
       buffer_vector_pending_q <= buffer_vector_pending_d;
       buffer_vector_id_q <= buffer_vector_id_d;
@@ -482,6 +721,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       ep_accepted_q        <= ep_accepted_d;
       error_q       <= error_d;
       current_has_branch_q <= current_has_branch_d;
+      current_scalar_write_mask_q <= current_scalar_write_mask_d;
+      current_scalar_fpr_write_mask_q <= current_scalar_fpr_write_mask_d;
+      current_vector_write_mask_q <= current_vector_write_mask_d;
       current_vector_id_q <= current_vector_id_d;
       next_vector_id_q <= next_vector_id_d;
     end

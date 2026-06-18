@@ -16,7 +16,7 @@ module ara_testharness #(
     parameter int unsigned AxiIdWidth   = 5,
     parameter int unsigned AxiAddrWidth = 64,
     parameter int unsigned AxiDataWidth = 64*NrLanes/2,
-    parameter int unsigned HdvNumSlots  = 6,
+    parameter int unsigned HdvNumSlots  = 8,
     parameter logic [63:0] HdvInitialRa  = '0,
     parameter logic [63:0] HdvInitialA0  = '0,
     parameter logic [63:0] HdvInitialA1  = '0,

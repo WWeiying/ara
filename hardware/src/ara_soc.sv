@@ -29,7 +29,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     // Main memory
     //parameter  int           unsigned L2NumWords   = (2**22) / NrLanes,
     parameter  int           unsigned L2NumWords   = (2**18) / NrLanes,
-    parameter  int           unsigned HdvNumSlots  = 6,
+    parameter  int           unsigned HdvNumSlots  = 8,
     parameter  logic [63:0]           HdvInitialRa  = '0,
     parameter  logic [63:0]           HdvInitialA0  = '0,
     parameter  logic [63:0]           HdvInitialA1  = '0,

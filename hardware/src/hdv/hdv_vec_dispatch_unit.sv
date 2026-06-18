@@ -41,7 +41,7 @@
 
 module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   parameter int unsigned XLEN            = 64,
-  parameter int unsigned NumSlots        = 6,
+  parameter int unsigned NumSlots        = 8,
   parameter bit          UseVTraceScalar = 1'b1,
   parameter int unsigned VTraceDepth     = `HDV_N_VINSN,
 `ifndef SYNTHESIS
@@ -355,9 +355,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // Ara's "request accepted" (req_ready).  When Ara back-pressures, the FSM can
   // keep snapshotting operands of the following EP's slots into this buffer, so
   // the next EP's vector requests are presented to Ara the moment it frees up.
-  // Safe by construction: HEU presents vector EPs strictly in order (next EP's
-  // vector arrives only after the previous EP retired), so the operand snapshot
-  // taken at push time reflects the correct program-order register values.
+  // Correctness relies on HEU's early-issue dependency gates: a buffered EP's
+  // vector slice may arrive before the current EP retires, but only when its
+  // scalar operand reads do not depend on still-pending scalar/vset writes.
+  // The snapshot taken at push time is therefore the program-order value.
   logic            vq0_valid_q, vq0_valid_d;
   logic            vq1_valid_q, vq1_valid_d;
   logic [31:0]     vq0_insn_q, vq0_insn_d, vq1_insn_q, vq1_insn_d;

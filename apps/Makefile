@@ -55,6 +55,21 @@ HDV_TASK_ENTRY ?= 0x80001000
 bin/vsaxpy_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsaxpy_hdv: DEFINES += -DVSAXPY_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
+bin/vsscal_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsscal_hdv: DEFINES += -DVSSCAL_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vvaddint32_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vvaddint32_hdv: DEFINES += -DVVADDINT32_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vscopy_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vscopy_hdv: DEFINES += -DVSCOPY_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsswap_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsswap_hdv: DEFINES += -DVSSWAP_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsdwt_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsdwt_hdv: DEFINES += -DVSDWT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
 all: $(BINARIES)
 
 # Pre-process the linker-script to correclty align the sections
