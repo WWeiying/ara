@@ -138,7 +138,11 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
         (slot[6:0] == 7'b0000111 && slot[14:12] != 3'b010 && slot[14:12] != 3'b011) ||
         (slot[6:0] == 7'b0100111 && slot[14:12] != 3'b010 && slot[14:12] != 3'b011)) begin
       classify_slot = HDV_INST_VECTOR;
-    end else if ((slot[6:0] == 7'b1110011) ||
+    // FENCE / FENCE.I (opcode 0x0F) is a memory-ordering barrier; classify it
+    // as SYSTEM so it becomes a hard EP boundary and cannot be packed with
+    // vector instructions that it must not cross.
+    end else if ((slot[6:0] == 7'b0001111) ||
+                 (slot[6:0] == 7'b1110011) ||
                  (slot[1:0] != 2'b11 && slot[15:13] == 3'b111)) begin
       classify_slot = HDV_INST_SYSTEM;
     end else if ((slot[6:0] == 7'b1100011) || (slot[6:0] == 7'b1101111) ||

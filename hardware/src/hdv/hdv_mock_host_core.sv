@@ -18,7 +18,7 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   parameter int unsigned AutoStartDelay               = 32,
   parameter logic [XLEN-1:0] AutoTaskEntry            = '0,
   parameter logic [XLEN-1:0] AutoTaskDesc             = '0,
-  parameter logic [31:0] AutoExpectedEpAccepts   = 32'd1,
+  parameter logic [31:0] AutoExpectedEpAcknowledges   = 32'd1,
   parameter bit          EnableMockBranch             = 1'b0,
   parameter int unsigned MockLoopIterations           = 1,
   parameter int unsigned TaskWatchdogCycles           = 4096,
@@ -48,7 +48,7 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   // HEU scalar pipeline handshake.
   input  logic                         hdv_mock_scalar_valid_i,
   output logic                         mock_hdv_scalar_ready_o,
-  output logic                         mock_hdv_scalar_accepted_o,
+  output logic                         mock_hdv_scalar_ep_done_o,
   input  logic [NumSlots-1:0]          hdv_mock_scalar_insn_valid_i,
   input  logic [NumSlots-1:0][31:0]    hdv_mock_scalar_insn_i,
   input  logic [NumSlots-1:0]          hdv_mock_scalar_insn_is_32b_i,
@@ -60,10 +60,10 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   // HEU vector pipeline handshake.
   input  logic                         hdv_mock_vector_valid_i,
   output logic                         mock_hdv_vector_ready_o,
-  output logic                         mock_hdv_vector_accepted_o,
+  output logic                         mock_hdv_vector_ep_acknowledged_o,
 
   // HEU execute-packet acceptance status.
-  input  logic                         hdv_mock_ep_accepted_i,
+  input  logic                         hdv_mock_ep_acknowledged_i,
   input  logic                         hdv_mock_ep_error_i,
   output logic                         mock_hdv_backend_error_o
 );
@@ -91,8 +91,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   state_e state_d, state_q;
   addr_t task_entry_d, task_entry_q;
   addr_t task_desc_d, task_desc_q;
-  logic [31:0] expected_ep_accepts_d, expected_ep_accepts_q;
-  logic [31:0] accepted_packets_d, accepted_packets_q;
+  logic [31:0] expected_ep_acknowledges_d, expected_ep_acknowledges_q;
+  logic [31:0] acknowledged_eps_d, acknowledged_eps_q;
   logic [ScalarCntWidth-1:0] scalar_count_d, scalar_count_q;
   logic [VectorCntWidth-1:0] vector_count_d, vector_count_q;
   logic [AutoStartCntWidth-1:0] auto_start_count_d, auto_start_count_q;
@@ -146,8 +146,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   assign mock_hdv_backend_error_o = 1'b0;
   assign mock_hdv_scalar_ready_o  = (state_q == RUN) & !scalar_pending_q;
   assign mock_hdv_vector_ready_o  = (state_q == RUN) & !vector_pending_q;
-  assign mock_hdv_scalar_accepted_o   = scalar_pending_q & (scalar_count_q == '0);
-  assign mock_hdv_vector_accepted_o   = vector_pending_q & (vector_count_q == '0);
+  assign mock_hdv_scalar_ep_done_o   = scalar_pending_q & (scalar_count_q == '0);
+  assign mock_hdv_vector_ep_acknowledged_o   = vector_pending_q & (vector_count_q == '0);
   assign mock_hdv_redirect_valid_o = branch_redirect_valid_q;
   assign mock_hdv_redirect_pc_o    = branch_redirect_pc_q;
   assign mock_hdv_loop_lock_o      = EnableMockBranch & (state_q == RUN) &
@@ -213,8 +213,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
     state_d             = state_q;
     task_entry_d        = task_entry_q;
     task_desc_d         = task_desc_q;
-    expected_ep_accepts_d  = expected_ep_accepts_q;
-    accepted_packets_d = accepted_packets_q;
+    expected_ep_acknowledges_d  = expected_ep_acknowledges_q;
+    acknowledged_eps_d = acknowledged_eps_q;
     auto_start_count_d  = auto_start_count_q;
     auto_start_armed_d  = auto_start_armed_q;
     scalar_pending_d    = scalar_pending_q;
@@ -273,7 +273,7 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       end
     end
 
-    if (branch_redirect_wait_q && mock_hdv_scalar_accepted_o) begin
+    if (branch_redirect_wait_q && mock_hdv_scalar_ep_done_o) begin
       branch_redirect_wait_d = 1'b0;
       branch_redirect_valid_d = 1'b1;
     end
@@ -283,22 +283,22 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       vector_count_d   = VectorCntWidth'(VectorLatency - 1);
     end
 
-    if (hdv_mock_ep_accepted_i) begin
-      accepted_packets_d = accepted_packets_q + 1'b1;
+    if (hdv_mock_ep_acknowledged_i) begin
+      acknowledged_eps_d = acknowledged_eps_q + 1'b1;
       packet_watchdog_d   = '0;
     end
 
-    expected_reached = hdv_mock_ep_accepted_i
-                     & ((accepted_packets_q + 1'b1) >= expected_ep_accepts_q)
-                     & (expected_ep_accepts_q != '0);
+    expected_reached = hdv_mock_ep_acknowledged_i
+                     & ((acknowledged_eps_q + 1'b1) >= expected_ep_acknowledges_q)
+                     & (expected_ep_acknowledges_q != '0);
 
     unique case (state_q)
       IDLE: begin
         if (auto_start_pulse) begin
           task_entry_d        = addr_t'(AutoTaskEntry);
           task_desc_d         = addr_t'(AutoTaskDesc);
-          expected_ep_accepts_d  = AutoExpectedEpAccepts;
-          accepted_packets_d = '0;
+          expected_ep_acknowledges_d  = AutoExpectedEpAcknowledges;
+          acknowledged_eps_d = '0;
           loop_iters_remaining_d = 32'(MockLoopIterations);
           auto_start_armed_d  = 1'b0;
           state_d             = WRITE_TASK_ADDR;
@@ -331,14 +331,14 @@ module hdv_mock_host_core import hdv_pkg::*; #(
         end else if (expected_reached) begin
           state_d = COMPLETE_TASK;
         end else if (hdv_mock_task_done_i) begin
-          if (expected_ep_accepts_q == '0) begin
+          if (expected_ep_acknowledges_q == '0) begin
             state_d = READ_STATUS;
           end else begin
             mock_hdv_task_error_o = 1'b1;
             state_d = FAIL;
           end
         end else if (!hdv_mock_task_busy_i) begin
-          if (expected_ep_accepts_q == '0) begin
+          if (expected_ep_acknowledges_q == '0) begin
             state_d = READ_STATUS;
           end else begin
             mock_hdv_task_error_o = 1'b1;
@@ -378,7 +378,7 @@ module hdv_mock_host_core import hdv_pkg::*; #(
 
     if (flush_i) begin
       state_d             = IDLE;
-      accepted_packets_d = '0;
+      acknowledged_eps_d = '0;
       auto_start_count_d  = '0;
       auto_start_armed_d  = AutoStart;
       scalar_pending_d    = 1'b0;
@@ -400,8 +400,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       state_q             <= IDLE;
       task_entry_q        <= '0;
       task_desc_q         <= '0;
-      expected_ep_accepts_q  <= '0;
-      accepted_packets_q <= '0;
+      expected_ep_acknowledges_q  <= '0;
+      acknowledged_eps_q <= '0;
       auto_start_count_q  <= '0;
       auto_start_armed_q  <= AutoStart;
       scalar_pending_q    <= 1'b0;
@@ -418,8 +418,8 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       state_q             <= state_d;
       task_entry_q        <= task_entry_d;
       task_desc_q         <= task_desc_d;
-      expected_ep_accepts_q  <= expected_ep_accepts_d;
-      accepted_packets_q <= accepted_packets_d;
+      expected_ep_acknowledges_q  <= expected_ep_acknowledges_d;
+      acknowledged_eps_q <= acknowledged_eps_d;
       auto_start_count_q  <= auto_start_count_d;
       auto_start_armed_q  <= auto_start_armed_d;
       scalar_pending_q    <= scalar_pending_d;

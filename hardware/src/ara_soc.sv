@@ -87,11 +87,11 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     output logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b_o,
     output logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc_o,
     output logic [63:0]                  hdv_scalar_pc_o,
-    input  logic                         hdv_scalar_accepted_i,
+    input  logic                         hdv_scalar_ep_done_i,
     // Vector dispatch is now internal (HEU → vec_dispatch_unit → Ara)
     input  logic                         hdv_backend_error_i,
     output logic                         hdv_ep_busy_o,
-    output logic                         hdv_ep_accepted_o,
+    output logic                         hdv_ep_acknowledged_o,
     output logic                         hdv_ep_error_o
   );
 
@@ -481,7 +481,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   logic        hdv_task_busy;
   logic        hdv_task_done;
   logic        hdv_task_error;
-  logic        hdv_ep_accepted;
+  logic        hdv_ep_acknowledged;
   logic        hdv_ep_error;
   logic        soc_hdv_csr_valid;
   logic        soc_hdv_csr_write;
@@ -498,7 +498,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   assign hdv_task_busy_o      = hdv_task_busy;
   assign hdv_task_done_o      = hdv_task_done;
   assign hdv_task_error_o     = hdv_task_error;
-  assign hdv_ep_accepted_o   = hdv_ep_accepted;
+  assign hdv_ep_acknowledged_o   = hdv_ep_acknowledged;
   assign hdv_ep_error_o  = hdv_ep_error;
 
   axi_to_axi_lite #(
@@ -713,13 +713,13 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .hdv_scalar_insn_is_32b_o   (hdv_scalar_insn_is_32b_o   ),
     .hdv_scalar_insn_pc_o       (hdv_scalar_insn_pc_o       ),
     .hdv_scalar_pc_o            (hdv_scalar_pc_o            ),
-    .scalar_hdv_accepted_i          (hdv_scalar_accepted_i          ),
+    .scalar_hdv_ep_done_i           (hdv_scalar_ep_done_i          ),
     // Vector dispatch is now internal (HEU → vec_dispatch_unit → Ara)
     .axi_req_o       (system_axi_req        ),
     .axi_resp_i      (system_axi_resp       ),
     .backend_hdv_error_i        (hdv_backend_error_i        ),
     .hdv_host_ep_busy_o    (hdv_ep_busy_o         ),
-    .hdv_host_ep_accepted_o    (hdv_ep_accepted           ),
+    .hdv_host_ep_acknowledged_o    (hdv_ep_acknowledged           ),
     .hdv_host_ep_error_o   (hdv_ep_error          )
   );
 `else

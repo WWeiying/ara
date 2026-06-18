@@ -117,7 +117,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   output logic [NumSlots-1:0]                hdv_scalar_insn_is_32b_o,
   output addr_t [NumSlots-1:0]               hdv_scalar_insn_pc_o,
   output addr_t                              hdv_scalar_pc_o,
-  input  logic                               scalar_hdv_accepted_i,
+  input  logic                               scalar_hdv_ep_done_i,
 
   // Unified memory system AXI port for Ara and the scalar memory master.
   output system_axi_req_t                    axi_req_o,
@@ -126,7 +126,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   // Execute-packet status from the hybrid dispatch block.
   input  logic                               backend_hdv_error_i,
   output logic                               hdv_host_ep_busy_o,
-  output logic                               hdv_host_ep_accepted_o,
+  output logic                               hdv_host_ep_acknowledged_o,
   output logic                               hdv_host_ep_error_o
 );
 
@@ -169,7 +169,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   addr_t vliwpu_heu_execute_pc;
 
   logic heu_top_busy;
-  logic heu_top_ep_accepted;
+  logic heu_top_ep_acknowledged;
   logic heu_top_ep_error;
   logic task_busy;
   logic task_flush;
@@ -179,10 +179,6 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic host_task_complete_seen_d, host_task_complete_seen_q;
   logic task_done_to_tsu;
   logic task_error_to_tsu;
-  logic scalar_dispatch_fire;
-  logic scalar_backward_branch_dispatch;
-  logic loop_branch_inflight_d, loop_branch_inflight_q;
-  logic loop_branch_exit_pending_d, loop_branch_exit_pending_q;
   logic auto_loop_exit;
   logic hdv_ctrl_redirect_valid;
   addr_t hdv_ctrl_redirect_pc;
@@ -196,9 +192,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic [NumSlots-1:0]          heu_scalar_insn_is_32b;
   addr_t [NumSlots-1:0]         heu_scalar_insn_pc;
   addr_t                        heu_scalar_pc;
-  logic                         scalar_heu_accepted;
+  logic                         scalar_ep_done;
   logic                         scalar_backend_ready;
-  logic                         scalar_backend_accepted;
+  logic                         scalar_backend_ep_done;
   logic                         scalar_backend_error;
   logic                         scalar_backend_task_complete;
   logic                         scalar_backend_redirect_valid;
@@ -226,16 +222,16 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic                         vec_scalar_wb_is_vset;
   logic                         vec_scalar_vset_inflight;
   logic [4:0]                   vec_scalar_vset_inflight_rd;
-  logic                         vec_scalar_store_pending;
+  logic                         vec_store_inflight;
 
   // ─── Vector dispatch (HEU → vec_dispatch_unit → Ara) ─────────────────────
 
   logic        heu_vec_valid;
-  logic        vec_heu_ready;
-  logic        vec_heu_accepted;
+  logic        vec_ep_ready;
+  logic        vec_ep_acknowledged;
   logic        heu_vec_ep_id;
-  logic        vec_heu_accepted_id;
-  logic        vec_heu_error;
+  logic        vec_ep_acknowledged_id;
+  logic        vec_ep_error;
   logic        vec_dispatch_busy;
   logic [NumSlots-1:0]        heu_vec_insn_valid;
   logic [NumSlots-1:0][31:0]  heu_vec_insn;
@@ -273,19 +269,10 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic imem_r_accept;
   logic imem_rsp_to_ipu;
 
-  function automatic logic is_branch32(input logic [31:0] insn);
-    return insn[6:0] == 7'b1100011;
-  endfunction
-
-  function automatic addr_t btype_target(input addr_t pc, input logic [31:0] insn);
-    logic signed [12:0] branch_imm;
-    logic signed [XLEN-1:0] offset;
-    begin
-      branch_imm = {insn[31], insn[7], insn[30:25], insn[11:8], 1'b0};
-      offset = {{(XLEN-13){branch_imm[12]}}, branch_imm};
-      return pc + addr_t'(offset);
-    end
-  endfunction
+  // Loop control is now driven exclusively by precise branch resolved events
+  // from the scalar backend (scalar_branch_resolved_valid / scalar_branch_taken /
+  // scalar_branch_pc / scalar_branch_target).  Dispatch-time instruction re-decode
+  // and accepted-state inference have been removed.
 
   // ─── Combinatorial assignments ────────────────────────────────────────────
 
@@ -297,10 +284,10 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_host_active_task_desc_o = ipu_top_active_task_desc;
 
   assign hdv_host_ep_busy_o  = heu_top_busy;
-  assign hdv_host_ep_accepted_o  = heu_top_ep_accepted;
+  assign hdv_host_ep_acknowledged_o  = heu_top_ep_acknowledged;
   assign hdv_host_ep_error_o = heu_top_ep_error;
 
-  assign task_error_to_tsu = host_hdv_task_error_i | heu_top_ep_error | vec_heu_error;
+  assign task_error_to_tsu = host_hdv_task_error_i | heu_top_ep_error | vec_ep_error;
   assign task_flush     = flush_i | task_error_to_tsu | tsu_top_error;
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
   assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
@@ -328,8 +315,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
 
   assign scalar_heu_ready = UseCva6HdvScalar ? scalar_backend_ready :
                                                 scalar_hdv_ready_i;
-  assign scalar_heu_accepted = UseCva6HdvScalar ? scalar_backend_accepted :
-                                                   scalar_hdv_accepted_i;
+  assign scalar_ep_done = UseCva6HdvScalar ? scalar_backend_ep_done :
+                                                   scalar_hdv_ep_done_i;
 
   assign hdv_scalar_valid_o       = heu_scalar_valid;
   assign hdv_scalar_insn_valid_o  = heu_scalar_insn_valid;
@@ -338,43 +325,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_scalar_insn_pc_o     = heu_scalar_insn_pc;
   assign hdv_scalar_pc_o          = heu_scalar_pc;
 
-  assign scalar_dispatch_fire = heu_scalar_valid & scalar_heu_ready;
-  assign auto_loop_exit = scalar_loop_exit |
-                          (loop_branch_exit_pending_q & !hdv_ctrl_redirect_valid);
-
-  always_comb begin : p_auto_loop_detect
-    scalar_backward_branch_dispatch = 1'b0;
-    for (int unsigned i = 0; i < NumSlots; i++) begin
-      if (heu_scalar_insn_valid[i] &&
-          heu_scalar_insn_is_32b[i] &&
-          is_branch32(heu_scalar_insn[i]) &&
-          (btype_target(heu_scalar_insn_pc[i], heu_scalar_insn[i]) <
-           heu_scalar_insn_pc[i])) begin
-        scalar_backward_branch_dispatch = 1'b1;
-      end
-    end
-
-    loop_branch_inflight_d = loop_branch_inflight_q;
-    loop_branch_exit_pending_d = loop_branch_exit_pending_q;
-
-    if (scalar_dispatch_fire && scalar_backward_branch_dispatch) begin
-      loop_branch_inflight_d = 1'b1;
-    end
-
-    if (loop_branch_inflight_q && scalar_heu_accepted) begin
-      loop_branch_inflight_d = 1'b0;
-      loop_branch_exit_pending_d = 1'b1;
-    end
-
-    if (hdv_ctrl_redirect_valid || auto_loop_exit) begin
-      loop_branch_exit_pending_d = 1'b0;
-    end
-
-    if (dispatch_flush | task_complete_request | host_hdv_task_error_i) begin
-      loop_branch_inflight_d = 1'b0;
-      loop_branch_exit_pending_d = 1'b0;
-    end
-  end
+  // auto_loop_exit is now driven exclusively by the scalar backend's precise
+  // branch resolved event: a not-taken backward branch triggers loop exit.
+  assign auto_loop_exit = scalar_loop_exit;
 
   // ─── Instruction-fetch AXI bridge ─────────────────────────────────────────
 
@@ -470,7 +423,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .scalar_insn_i                 (heu_scalar_insn             ),
     .scalar_insn_is_32b_i          (heu_scalar_insn_is_32b      ),
     .scalar_insn_pc_i              (heu_scalar_insn_pc          ),
-    .scalar_accepted_o             (scalar_backend_accepted     ),
+    .scalar_ep_done_o              (scalar_backend_ep_done     ),
     .scalar_error_o                (scalar_backend_error        ),
     .redirect_valid_o              (scalar_backend_redirect_valid),
     .redirect_pc_o                 (scalar_backend_redirect_pc   ),
@@ -494,12 +447,21 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_wb_is_vset_i              (vec_scalar_wb_is_vset       ),
     .vec_vset_inflight_i           (vec_scalar_vset_inflight    ),
     .vec_vset_inflight_rd_i        (vec_scalar_vset_inflight_rd ),
-    .vec_store_pending_i           (vec_scalar_store_pending    ),
+    .vec_store_inflight_i          (vec_store_inflight    ),
     .scalar_axi_req_o              (scalar_axi_req              ),
     .scalar_axi_resp_i             (scalar_axi_resp             )
   );
 
   // ─── hdv_vec_dispatch_unit ────────────────────────────────────────────────
+  //
+  // Outstanding-EP contract with HEU:
+  //   · HEU drives at most 2 vector EP slices concurrently (current + buffer,
+  //     EnableBufferedVectorEarlyIssue=1).
+  //   · hdv_vec_dispatch_unit.MaxOutstandingVecEPs defaults to 2 — matches
+  //     HEU's 1-bit vector_ep_id.
+  //   · To scale beyond 2 EPs: widen heu_vector_ep_id_o / heu_vec_ep_id_i to
+  //     EpIdWidth bits, increase MaxOutstandingVecEPs, and re-verify that
+  //     real_wait_depth ≥ MaxOutstandingVecEPs.
 
   hdv_vec_dispatch_unit #(
     .XLEN          (XLEN         ),
@@ -513,13 +475,13 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .rst_ni              (rst_ni          ),
     .flush_i             (task_flush      ),
     .heu_vec_valid_i     (heu_vec_valid   ),
-    .vec_heu_ready_o     (vec_heu_ready   ),
+    .vec_ep_ready_o     (vec_ep_ready   ),
     .heu_vec_insn_valid_i(heu_vec_insn_valid),
     .heu_vec_insn_i      (heu_vec_insn    ),
     .heu_vec_ep_id_i     (heu_vec_ep_id   ),
-    .vec_heu_accepted_o      (vec_heu_accepted    ),
-    .vec_heu_accepted_id_o   (vec_heu_accepted_id ),
-    .vec_heu_error_o     (vec_heu_error   ),
+    .vec_ep_acknowledged_o      (vec_ep_acknowledged    ),
+    .vec_ep_acknowledged_id_o   (vec_ep_acknowledged_id ),
+    .vec_ep_error_o     (vec_ep_error   ),
     .vec_dispatch_busy_o (vec_dispatch_busy),
     .vec_scalar_operand_req_valid_o(vec_scalar_operand_req_valid),
     .scalar_vec_operand_req_ready_i(scalar_vec_operand_req_ready),
@@ -536,7 +498,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_scalar_wb_is_vset_o(vec_scalar_wb_is_vset),
     .vec_scalar_vset_inflight_o(vec_scalar_vset_inflight),
     .vec_scalar_vset_inflight_rd_o(vec_scalar_vset_inflight_rd),
-    .vec_scalar_store_pending_o(vec_scalar_store_pending),
+    .vec_store_inflight_o(vec_store_inflight),
     .acc_req_o           (acc_req         ),
     .acc_resp_i          (ara_acc_resp_pack)
   );
@@ -779,7 +741,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_scalar_pc_o                (heu_scalar_pc            ),
     // Vector dispatch — routed internally to vec_dispatch_unit → Ara
     .heu_vector_valid_o             (heu_vec_valid            ),
-    .vector_heu_ready_i             (vec_heu_ready            ),
+    .vector_heu_ready_i             (vec_ep_ready            ),
     .heu_vector_insn_valid_o        (heu_vec_insn_valid       ),
     .heu_vector_insn_o              (heu_vec_insn             ),
     .heu_vector_insn_is_32b_o       (unused_heu_vec_insn_is_32b),
@@ -787,25 +749,15 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vector_pc_o                (unused_heu_vec_pc        ),
     .heu_vector_ep_id_o             (heu_vec_ep_id            ),
     // Done / error from backends
-    .scalar_heu_accepted_i              (scalar_heu_accepted          ),
-    .vector_heu_accepted_i              (vec_heu_accepted             ),
-    .vector_heu_accepted_id_i           (vec_heu_accepted_id          ),
-    .backend_heu_error_i            (backend_hdv_error_i | vec_heu_error |
+    .scalar_ep_done_i              (scalar_ep_done          ),
+    .vector_ep_acknowledged_i          (vec_ep_acknowledged             ),
+    .vector_ep_acknowledged_id_i       (vec_ep_acknowledged_id          ),
+    .backend_heu_error_i            (backend_hdv_error_i | vec_ep_error |
                                      (UseCva6HdvScalar ? scalar_backend_error : 1'b0)),
     .heu_top_busy_o                 (heu_top_busy             ),
-    .heu_top_ep_accepted_o         (heu_top_ep_accepted     ),
+    .heu_top_ep_acknowledged_o         (heu_top_ep_acknowledged     ),
     .heu_top_ep_error_o        (heu_top_ep_error    )
   );
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin : p_auto_loop_regs
-    if (!rst_ni) begin
-      loop_branch_inflight_q <= 1'b0;
-      loop_branch_exit_pending_q <= 1'b0;
-    end else begin
-      loop_branch_inflight_q <= loop_branch_inflight_d;
-      loop_branch_exit_pending_q <= loop_branch_exit_pending_d;
-    end
-  end
 
   always_comb begin : p_task_done_drain
     host_task_complete_seen_d = host_task_complete_seen_q;
