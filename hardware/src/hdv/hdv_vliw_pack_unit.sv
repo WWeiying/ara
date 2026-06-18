@@ -3,17 +3,22 @@
 // SPDX-License-Identifier: SHL-0.51
 //
 // Description:
-// Conservative VLIW Pack Unit.  The upper 32 bits of each 128-bit fetch
-// packet are treated as the RISC-V hint header, and the lower 96 bits are
-// six 16-bit instruction slots.  Hint immediate p-bits request parallel packing;
-// dependency/resource breaks can still force a smaller execute packet.  If a
-// non-control EP reaches the end of a fetch packet with free issue slots, the
-// tail is carried over and packed with the start of the next fetch packet.
+// Conservative VLIW Pack Unit.  IPU still supplies 128-bit fetch beats.  The
+// first 32-bit word of the first beat is a RISC-V LUI x0, imm20 hint header:
+//   imm20[12:0]  : p-bits between 16-bit slots in the logical packet
+//   imm20[13]    : logical packet is 256-bit and consumes the next 128-bit beat
+//   imm20[14]    : the tail EP may cross into the next logical packet
+//   imm20[15]    : loop-start marker, decoded here for software-visible format
+//   imm20[16]    : loop-end marker, decoded here for software-visible format
+//
+// The HEU interface remains NumSlots wide.  A 256-bit logical packet therefore
+// only enlarges the VLIWPU packing window; it does not widen a single EP beyond
+// MaxIssueSlots/NumSlots.
 
 module hdv_vliw_pack_unit import hdv_pkg::*; #(
   parameter int unsigned XLEN             = 64,
   parameter int unsigned FetchPacketWidth = 128,
-  parameter int unsigned NumSlots         = 6,
+  parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
   parameter type addr_t = logic [XLEN-1:0]
@@ -38,66 +43,147 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   output addr_t                                     vliwpu_heu_execute_pc_o
 );
 
-  localparam int unsigned SlotIdxWidth = (NumSlots > 1) ? $clog2(NumSlots) : 1;
-  localparam logic [SlotIdxWidth:0] MaxIssueSlotsCount = MaxIssueSlots;
+  localparam int unsigned HeaderBytes       = 4;
+  localparam int unsigned SlotBytes         = SlotWidth / 8;
+  localparam int unsigned Packet128Slots    = (FetchPacketWidth - 32) / SlotWidth;
+  localparam int unsigned Packet256Slots    = ((2 * FetchPacketWidth) - 32) / SlotWidth;
+  localparam int unsigned PacketSlotIdxW    = (Packet256Slots > 1) ? $clog2(Packet256Slots + 1) : 1;
+  localparam logic [PacketSlotIdxW:0] MaxIssueSlotsCount = MaxIssueSlots;
+
+  typedef logic [2*FetchPacketWidth-1:0] logical_packet_t;
+  typedef logic [PacketSlotIdxW-1:0]     packet_slot_idx_t;
+  typedef logic [PacketSlotIdxW:0]       packet_slot_count_t;
 
   logic packet_hold_valid_d, packet_hold_valid_q;
-  logic [FetchPacketWidth-1:0] packet_d, packet_q;
+  logical_packet_t packet_d, packet_q;
   addr_t packet_pc_d, packet_pc_q;
-  logic [SlotIdxWidth-1:0] head_slot_d, head_slot_q;
+  logic packet_is_256_d, packet_is_256_q;
+  packet_slot_idx_t head_slot_d, head_slot_q;
+
+  logic pending_256_d, pending_256_q;
+  logic [FetchPacketWidth-1:0] pending_first_beat_d, pending_first_beat_q;
+  addr_t pending_first_pc_d, pending_first_pc_q;
+
   logic carry_valid_d, carry_valid_q;
   logic [NumSlots-1:0] carry_slot_valid_d, carry_slot_valid_q;
   logic [NumSlots-1:0][SlotWidth-1:0] carry_slot_d, carry_slot_q;
   logic [NumSlots-1:0] carry_slot_is_32b_d, carry_slot_is_32b_q;
   addr_t [NumSlots-1:0] carry_slot_pc_d, carry_slot_pc_q;
   hdv_inst_class_e [NumSlots-1:0] carry_class_d, carry_class_q;
-  logic [SlotIdxWidth:0] carry_count_d, carry_count_q;
+  packet_slot_count_t carry_count_d, carry_count_q;
   addr_t carry_pc_d, carry_pc_q;
+
   logic [31:0] header;
-  logic [NumSlots-2:0] p_bits;
-  logic [NumSlots-1:0][SlotWidth-1:0] slots;
-  logic [NumSlots-1:0] raw_slot_is_32b;
-  logic [NumSlots-1:0] slot_is_32b;
-  logic [NumSlots-1:0] slot_is_continuation;
-  logic [NumSlots-1:0] issue_mask;
-  logic [NumSlots-1:0] class_system_mask;
-  logic [NumSlots-1:0] class_branch_mask;
-  hdv_inst_class_e [NumSlots-1:0] slot_class;
-  logic [SlotIdxWidth:0] issue_count;
+  logic [31:0] incoming_header;
+  logic [19:0] header_imm20;
+  logic [Packet256Slots-2:0] p_bits;
+  logic header_is_lui_hint;
+  logic incoming_header_is_lui_hint;
+  logic incoming_packet_256;
+  logic header_packet_256;
+  logic header_cross_next;
+  logic header_loop_start;
+  logic header_loop_end;
+
+  logic [Packet256Slots-1:0][SlotWidth-1:0] slots;
+  logic [Packet256Slots-1:0] raw_slot_is_32b;
+  logic [Packet256Slots-1:0] slot_is_32b;
+  logic [Packet256Slots-1:0] slot_is_continuation;
+  logic [Packet256Slots-1:0] issue_mask;
+  logic [Packet256Slots-1:0] class_system_mask;
+  logic [Packet256Slots-1:0] class_branch_mask;
+  hdv_inst_class_e [Packet256Slots-1:0] slot_class;
+
+  packet_slot_count_t active_slot_count;
+  packet_slot_count_t issue_count;
+  packet_slot_idx_t issue_next_head_slot;
+  logic issue_packet_drained;
+  logic issue_has_control;
+  logic prior_has_control;
+
   logic packet_accept;
   logic execute_accept;
-  logic current_packet_drained;
-  logic last_slot_in_packet;
-  logic stop_pack;
+  logic packet_hold_can_accept;
   logic normal_execute_valid;
   logic cross_execute_valid;
   logic tail_cross_candidate;
-  logic tail_has_control;
-  logic prior_has_control;
+
   logic [NumSlots-1:0] execute_slot_valid;
   logic [NumSlots-1:0][SlotWidth-1:0] execute_slot;
   logic [NumSlots-1:0] execute_slot_is_32b;
   addr_t [NumSlots-1:0] execute_slot_pc;
   hdv_inst_class_e [NumSlots-1:0] execute_class;
-  logic [SlotIdxWidth-1:0] cross_next_head_slot;
+  packet_slot_idx_t cross_next_head_slot;
   logic cross_next_drained;
+
+  function automatic logic dep_break_at(input int unsigned boundary);
+    if (boundary < NumSlots - 1) begin
+      dep_break_at = ctrl_vliwpu_dep_break_i[boundary];
+    end else begin
+      dep_break_at = 1'b0;
+    end
+  endfunction
+
+  function automatic logic p_bit_at(input int unsigned boundary);
+    if (boundary < Packet256Slots - 1) begin
+      p_bit_at = p_bits[boundary];
+    end else begin
+      p_bit_at = 1'b0;
+    end
+  endfunction
+
+  function automatic hdv_inst_class_e classify_slot(input logic [SlotWidth-1:0] slot);
+    classify_slot = HDV_INST_SCALAR;
+    if ((slot[6:0] == 7'b1010111) ||
+        (slot[6:0] == 7'b0000111 && slot[14:12] != 3'b010 && slot[14:12] != 3'b011) ||
+        (slot[6:0] == 7'b0100111 && slot[14:12] != 3'b010 && slot[14:12] != 3'b011)) begin
+      classify_slot = HDV_INST_VECTOR;
+    end else if ((slot[6:0] == 7'b1110011) ||
+                 (slot[1:0] != 2'b11 && slot[15:13] == 3'b111)) begin
+      classify_slot = HDV_INST_SYSTEM;
+    end else if ((slot[6:0] == 7'b1100011) || (slot[6:0] == 7'b1101111) ||
+                 (slot[6:0] == 7'b1100111)) begin
+      classify_slot = HDV_INST_BRANCH;
+    end
+  endfunction
 
   assign packet_accept  = ipu_vliwpu_packet_valid_i & vliwpu_ipu_packet_ready_o;
   assign execute_accept = vliwpu_heu_execute_valid_o & heu_vliwpu_execute_ready_i;
-  assign current_packet_drained = packet_hold_valid_q & heu_vliwpu_execute_ready_i &
-                                  last_slot_in_packet & !cross_execute_valid;
-  assign vliwpu_ipu_packet_ready_o = carry_valid_q ? !packet_hold_valid_q :
-                                     (!packet_hold_valid_q | current_packet_drained |
-                                      tail_cross_candidate);
 
-  assign header = packet_q[FetchPacketWidth-1 -: 32];
-  // RISC-V HINT header is encoded as addi x0, x0, imm.  The paper defines
-  // p-bits in the hint immediate field, so p_bits[0] is header[20].
-  assign p_bits = header[20 +: NumSlots-1];
+  assign incoming_header = ipu_vliwpu_packet_i[31:0];
+  assign incoming_header_is_lui_hint = (incoming_header[6:0] == 7'b0110111) &&
+                                       (incoming_header[11:7] == 5'd0);
+  assign incoming_packet_256 = incoming_header_is_lui_hint & incoming_header[25];
 
-  for (genvar i = 0; i < NumSlots; i++) begin : gen_slots
-    assign slots[i] = packet_q[i*SlotWidth +: SlotWidth];
-    assign raw_slot_is_32b[i] = (slots[i][1:0] == 2'b11);
+  assign header = packet_q[31:0];
+  assign header_imm20 = header[31:12];
+  assign header_is_lui_hint = (header[6:0] == 7'b0110111) && (header[11:7] == 5'd0);
+  assign p_bits = header_is_lui_hint ? header_imm20[0 +: Packet256Slots-1] : '0;
+  assign header_packet_256 = header_is_lui_hint & header_imm20[13];
+  assign header_cross_next = header_is_lui_hint & header_imm20[14];
+  assign header_loop_start = header_is_lui_hint & header_imm20[15];
+  assign header_loop_end   = header_is_lui_hint & header_imm20[16];
+
+  assign active_slot_count = packet_is_256_q ? packet_slot_count_t'(Packet256Slots) :
+                                               packet_slot_count_t'(Packet128Slots);
+
+  // The cross-packet path intentionally clears packet_hold_q and keeps a carry
+  // fragment while waiting for the next logical packet.  Do not block input
+  // ready on carry_valid_q in that state, otherwise cross-packet EP formation
+  // cannot receive the packet it needs to complete the EP.
+  assign packet_hold_can_accept = !packet_hold_valid_q ||
+                                  tail_cross_candidate ||
+                                  (execute_accept &&
+                                   ((normal_execute_valid && issue_packet_drained) ||
+                                    (cross_execute_valid && cross_next_drained)));
+  assign vliwpu_ipu_packet_ready_o = packet_hold_can_accept;
+
+  for (genvar i = 0; i < Packet256Slots; i++) begin : gen_slots
+    assign slots[i] = packet_q[32 + i*SlotWidth +: SlotWidth];
+    assign raw_slot_is_32b[i] = (i < active_slot_count) && (slots[i][1:0] == 2'b11);
+  end
+
+  for (genvar i = 0; i < NumSlots; i++) begin : gen_outputs
     assign vliwpu_heu_execute_slot_o[i] = execute_slot[i];
     assign vliwpu_heu_execute_slot_is_32b_o[i] = execute_slot_is_32b[i];
     assign vliwpu_heu_execute_slot_pc_o[i] = execute_slot_pc[i];
@@ -111,11 +197,13 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     slot_is_continuation = '0;
     skip_next            = 1'b0;
 
-    for (int unsigned i = 0; i < NumSlots; i++) begin
-      if (skip_next) begin
+    for (int unsigned i = 0; i < Packet256Slots; i++) begin
+      if (i >= active_slot_count) begin
+        skip_next = 1'b0;
+      end else if (skip_next) begin
         slot_is_continuation[i] = 1'b1;
         skip_next = 1'b0;
-      end else if (raw_slot_is_32b[i] && i < NumSlots - 1) begin
+      end else if (raw_slot_is_32b[i] && i + 1 < active_slot_count) begin
         slot_is_32b[i] = 1'b1;
         skip_next = 1'b1;
       end
@@ -126,76 +214,64 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     class_system_mask = '0;
     class_branch_mask = '0;
 
-    for (int unsigned i = 0; i < NumSlots; i++) begin
-      slot_class[i] = HDV_INST_SCALAR;
-
-      if ((slots[i][6:0] == 7'b1010111) ||           // V arithmetic (opcode 0x57)
-          (slots[i][6:0] == 7'b0000111 &&            // V load (LOAD-FP), exclude scalar FLW/FLD
-           slots[i][14:12] != 3'b010 && slots[i][14:12] != 3'b011) ||
-          (slots[i][6:0] == 7'b0100111 &&            // V store (STORE-FP), exclude scalar FSW/FSD
-           slots[i][14:12] != 3'b010 && slots[i][14:12] != 3'b011)) begin
-        slot_class[i] = HDV_INST_VECTOR;
-      end else if ((slots[i][6:0] == 7'b1110011) || (slots[i][1:0] != 2'b11 && slots[i][15:13] == 3'b111)) begin
-        slot_class[i] = HDV_INST_SYSTEM;
-        class_system_mask[i] = 1'b1;
-      end else if ((slots[i][6:0] == 7'b1100011) || (slots[i][6:0] == 7'b1101111) ||
-                   (slots[i][6:0] == 7'b1100111)) begin
-        slot_class[i] = HDV_INST_BRANCH;
-        class_branch_mask[i] = 1'b1;
+    for (int unsigned i = 0; i < Packet256Slots; i++) begin
+      slot_class[i] = classify_slot(slots[i]);
+      if (i >= active_slot_count) begin
+        slot_class[i] = HDV_INST_SCALAR;
       end
-
-      // Output classes are assigned from execute_class after optional
-      // cross-packet compaction.  slot_class only describes the raw packet.
+      class_system_mask[i] = (slot_class[i] == HDV_INST_SYSTEM);
+      class_branch_mask[i] = (slot_class[i] == HDV_INST_BRANCH);
     end
   end
 
   always_comb begin : p_issue_mask
+    logic stop_pack;
+    packet_slot_idx_t boundary;
+
     issue_mask = '0;
     issue_count = '0;
+    issue_next_head_slot = head_slot_q;
+    issue_packet_drained = 1'b0;
     stop_pack = 1'b0;
+    boundary = '0;
 
     if (packet_hold_valid_q) begin
-      for (int unsigned i = 0; i < NumSlots; i++) begin
-        // Skip continuation slots (already force-included by their 32-bit parent)
-        // and slots beyond head_slot or the packet capacity (MaxIssueSlots=NumSlots).
-        if (!stop_pack && i >= head_slot_q && issue_count < MaxIssueSlotsCount
-            && !slot_is_continuation[i]) begin
+      for (int unsigned i = 0; i < Packet256Slots; i++) begin
+        if (!stop_pack && (i >= head_slot_q) && (i < active_slot_count) &&
+            !slot_is_continuation[i] && (issue_count < MaxIssueSlotsCount)) begin
           issue_mask[i] = 1'b1;
           issue_count++;
+          issue_next_head_slot = packet_slot_idx_t'(i + 1);
+          boundary = packet_slot_idx_t'(i);
 
-          if (i == NumSlots - 1) begin
-            stop_pack = 1'b1;
-          end else if (slot_is_32b[i]) begin
-            // Force the second half of the 32-bit instruction into the packet.
+          if (slot_is_32b[i] && (i + 1 < active_slot_count) &&
+              (issue_count < MaxIssueSlotsCount)) begin
             issue_mask[i + 1] = 1'b1;
             issue_count++;
-            // Decide whether to continue to the NEXT instruction after this one.
-            // Stop if the 32-bit instruction itself is SYSTEM/BRANCH (checked on
-            // the STARTING slot i, not the continuation slot i+1 whose raw bits
-            // don't carry a valid opcode).  Also stop on dep_break or p-bit=0.
-            if (i + 1 == NumSlots - 1 || issue_count >= MaxIssueSlotsCount) begin
-              stop_pack = 1'b1;  // end of fetch packet, no room for more
-            end else if (!p_bits[i+1] || ctrl_vliwpu_dep_break_i[i+1] ||
-                         class_system_mask[i] || class_branch_mask[i]) begin
-              stop_pack = 1'b1;
-            end
-            // else: continue; the loop will skip i+1 (continuation) and
-            // consider i+2 as the next instruction candidate.
-          end else if (!p_bits[i] || ctrl_vliwpu_dep_break_i[i] ||
-                       class_system_mask[i] || class_branch_mask[i]) begin
+            issue_next_head_slot = packet_slot_idx_t'(i + 2);
+            boundary = packet_slot_idx_t'(i + 1);
+          end
+
+          if (issue_next_head_slot >= active_slot_count ||
+              issue_count >= MaxIssueSlotsCount ||
+              !p_bit_at(boundary) || dep_break_at(boundary) ||
+              class_system_mask[i] || class_branch_mask[i]) begin
             stop_pack = 1'b1;
           end
         end
       end
     end
+
+    issue_packet_drained = packet_hold_valid_q && (issue_next_head_slot >= active_slot_count);
   end
 
-  always_comb begin : p_tail_cross
-    tail_has_control = 1'b0;
+  always_comb begin : p_tail_info
+    issue_has_control = 1'b0;
     prior_has_control = 1'b0;
-    for (int unsigned i = 0; i < NumSlots; i++) begin
+
+    for (int unsigned i = 0; i < Packet256Slots; i++) begin
       if (issue_mask[i] && !slot_is_continuation[i]) begin
-        tail_has_control |= class_system_mask[i] | class_branch_mask[i];
+        issue_has_control |= class_system_mask[i] | class_branch_mask[i];
       end
       if ((i < head_slot_q) && !slot_is_continuation[i]) begin
         prior_has_control |= class_system_mask[i] | class_branch_mask[i];
@@ -203,23 +279,22 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     end
   end
 
-  assign last_slot_in_packet = issue_mask[NumSlots-1];
   assign tail_cross_candidate = packet_hold_valid_q && !carry_valid_q &&
-                                last_slot_in_packet &&
+                                header_cross_next &&
+                                issue_packet_drained &&
                                 (issue_count < MaxIssueSlotsCount) &&
-                                !tail_has_control && !prior_has_control;
+                                !issue_has_control && !prior_has_control;
   assign normal_execute_valid = packet_hold_valid_q && !tail_cross_candidate &&
                                 !carry_valid_q;
   assign cross_execute_valid = carry_valid_q && packet_hold_valid_q;
   assign vliwpu_heu_execute_valid_o = normal_execute_valid | cross_execute_valid;
   assign vliwpu_heu_execute_slot_valid_o = execute_slot_valid;
-  // Normal EPs use the fetch-packet base PC.  Cross-packet EPs are compacted
-  // into slot 0..N, so the base PC becomes the carried tail instruction PC.
   assign vliwpu_heu_execute_pc_o = cross_execute_valid ? carry_pc_q : packet_pc_q;
 
-  always_comb begin : p_cross_pack
+  always_comb begin : p_execute_pack
     int unsigned out_idx;
     logic stop_cross;
+    packet_slot_idx_t boundary;
 
     cross_next_head_slot = '0;
     cross_next_drained = 1'b1;
@@ -227,16 +302,15 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     execute_slot = '0;
     execute_slot_is_32b = '0;
     execute_slot_pc = '0;
+    boundary = '0;
     for (int unsigned i = 0; i < NumSlots; i++) begin
       execute_class[i] = HDV_INST_SCALAR;
     end
 
+    out_idx = 0;
     if (cross_execute_valid) begin
-      out_idx = 0;
-      stop_cross = 1'b0;
-
       for (int unsigned i = 0; i < NumSlots; i++) begin
-        if (carry_slot_valid_q[i]) begin
+        if (carry_slot_valid_q[i] && out_idx < NumSlots) begin
           execute_slot_valid[out_idx] = 1'b1;
           execute_slot[out_idx] = carry_slot_q[i];
           execute_slot_is_32b[out_idx] = carry_slot_is_32b_q[i];
@@ -246,48 +320,51 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
         end
       end
 
-      for (int unsigned i = 0; i < NumSlots; i++) begin
-        if (!stop_cross && out_idx < MaxIssueSlotsCount && !slot_is_continuation[i]) begin
+      stop_cross = 1'b0;
+      for (int unsigned i = 0; i < Packet256Slots; i++) begin
+        if (!stop_cross && (i < active_slot_count) && (out_idx < MaxIssueSlotsCount) &&
+            !slot_is_continuation[i]) begin
           execute_slot_valid[out_idx] = 1'b1;
           execute_slot[out_idx] = slots[i];
           execute_slot_is_32b[out_idx] = slot_is_32b[i];
-          execute_slot_pc[out_idx] = packet_pc_q + addr_t'(i * (SlotWidth / 8));
+          execute_slot_pc[out_idx] = packet_pc_q + addr_t'(HeaderBytes + i * SlotBytes);
           execute_class[out_idx] = slot_class[i];
           out_idx++;
-          cross_next_head_slot = SlotIdxWidth'(i + 1);
+          cross_next_head_slot = packet_slot_idx_t'(i + 1);
+          boundary = packet_slot_idx_t'(i);
 
-          if (slot_is_32b[i] && i < NumSlots - 1 && out_idx < MaxIssueSlotsCount) begin
+          if (slot_is_32b[i] && (i + 1 < active_slot_count) &&
+              (out_idx < MaxIssueSlotsCount)) begin
             execute_slot_valid[out_idx] = 1'b1;
             execute_slot[out_idx] = slots[i + 1];
             execute_slot_is_32b[out_idx] = 1'b0;
-            execute_slot_pc[out_idx] = packet_pc_q + addr_t'((i + 1) * (SlotWidth / 8));
+            execute_slot_pc[out_idx] = packet_pc_q + addr_t'(HeaderBytes + (i + 1) * SlotBytes);
             execute_class[out_idx] = slot_class[i];
             out_idx++;
-            cross_next_head_slot = SlotIdxWidth'(i + 2);
+            cross_next_head_slot = packet_slot_idx_t'(i + 2);
+            boundary = packet_slot_idx_t'(i + 1);
+          end
 
-            if (i + 1 == NumSlots - 1 || out_idx >= MaxIssueSlotsCount) begin
-              stop_cross = 1'b1;
-            end else if (!p_bits[i+1] || ctrl_vliwpu_dep_break_i[i+1] ||
-                         class_system_mask[i] || class_branch_mask[i]) begin
-              stop_cross = 1'b1;
-            end
-          end else if (i == NumSlots - 1 || out_idx >= MaxIssueSlotsCount) begin
-            stop_cross = 1'b1;
-          end else if (!p_bits[i] || ctrl_vliwpu_dep_break_i[i] ||
-                       class_system_mask[i] || class_branch_mask[i]) begin
+          if (cross_next_head_slot >= active_slot_count ||
+              out_idx >= MaxIssueSlotsCount ||
+              !p_bit_at(boundary) || dep_break_at(boundary) ||
+              class_system_mask[i] || class_branch_mask[i]) begin
             stop_cross = 1'b1;
           end
         end
       end
-
-      cross_next_drained = (cross_next_head_slot == NumSlots[SlotIdxWidth-1:0]);
+      cross_next_drained = (cross_next_head_slot >= active_slot_count);
     end else begin
-      execute_slot_valid = issue_mask;
-      execute_slot = slots;
-      execute_slot_is_32b = slot_is_32b;
-      execute_class = slot_class;
-      for (int unsigned i = 0; i < NumSlots; i++) begin
-        execute_slot_pc[i] = packet_pc_q + addr_t'(i * (SlotWidth / 8));
+      for (int unsigned i = 0; i < Packet256Slots; i++) begin
+        if (issue_mask[i] && out_idx < NumSlots) begin
+          execute_slot_valid[out_idx] = 1'b1;
+          execute_slot[out_idx] = slots[i];
+          execute_slot_is_32b[out_idx] = slot_is_32b[i];
+          execute_slot_pc[out_idx] = packet_pc_q + addr_t'(HeaderBytes + i * SlotBytes);
+          execute_class[out_idx] = slot_is_continuation[i] && (i > 0) ?
+                                   slot_class[i - 1] : slot_class[i];
+          out_idx++;
+        end
       end
     end
   end
@@ -296,7 +373,11 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     packet_hold_valid_d = packet_hold_valid_q;
     packet_d            = packet_q;
     packet_pc_d         = packet_pc_q;
+    packet_is_256_d     = packet_is_256_q;
     head_slot_d         = head_slot_q;
+    pending_256_d       = pending_256_q;
+    pending_first_beat_d = pending_first_beat_q;
+    pending_first_pc_d   = pending_first_pc_q;
     carry_valid_d       = carry_valid_q;
     carry_slot_valid_d  = carry_slot_valid_q;
     carry_slot_d        = carry_slot_q;
@@ -318,21 +399,22 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       for (int unsigned i = 0; i < NumSlots; i++) begin
         carry_class_d[i] = HDV_INST_SCALAR;
       end
-      carry_pc_d = packet_pc_q + addr_t'(head_slot_q * (SlotWidth / 8));
+      carry_pc_d = packet_pc_q + addr_t'(HeaderBytes + head_slot_q * SlotBytes);
 
-      for (int unsigned i = 0; i < NumSlots; i++) begin
-        if (issue_mask[i]) begin
+      for (int unsigned i = 0; i < Packet256Slots; i++) begin
+        if (issue_mask[i] && out_idx < NumSlots) begin
           carry_slot_valid_d[out_idx] = 1'b1;
           carry_slot_d[out_idx] = slots[i];
           carry_slot_is_32b_d[out_idx] = slot_is_32b[i];
-          carry_slot_pc_d[out_idx] = packet_pc_q + addr_t'(i * (SlotWidth / 8));
+          carry_slot_pc_d[out_idx] = packet_pc_q + addr_t'(HeaderBytes + i * SlotBytes);
           carry_class_d[out_idx] = slot_is_continuation[i] && (i > 0) ?
-                                   slot_class[i-1] : slot_class[i];
+                                   slot_class[i - 1] : slot_class[i];
           out_idx++;
         end
       end
-      carry_count_d = out_idx[SlotIdxWidth:0];
+      carry_count_d = packet_slot_count_t'(out_idx);
       packet_hold_valid_d = 1'b0;
+      packet_is_256_d = 1'b0;
       head_slot_d = '0;
     end
 
@@ -350,34 +432,54 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
         carry_pc_d = '0;
         if (cross_next_drained) begin
           packet_hold_valid_d = 1'b0;
+          packet_is_256_d = 1'b0;
           head_slot_d = '0;
         end else begin
           head_slot_d = cross_next_head_slot;
         end
       end else begin
-        if (last_slot_in_packet) begin
+        if (issue_packet_drained) begin
           packet_hold_valid_d = 1'b0;
+          packet_is_256_d = 1'b0;
           head_slot_d = '0;
         end else begin
-          for (int unsigned i = 0; i < NumSlots; i++) begin
-            if (issue_mask[i]) begin
-              head_slot_d = SlotIdxWidth'(i + 1);
-            end
-          end
+          head_slot_d = issue_next_head_slot;
         end
       end
     end
 
     if (packet_accept) begin
-      packet_hold_valid_d = 1'b1;
-      packet_d            = ipu_vliwpu_packet_i;
-      packet_pc_d         = ipu_vliwpu_packet_pc_i;
-      head_slot_d         = '0;
+      if (pending_256_q) begin
+        packet_hold_valid_d = 1'b1;
+        packet_d = {ipu_vliwpu_packet_i, pending_first_beat_q};
+        packet_pc_d = pending_first_pc_q;
+        packet_is_256_d = 1'b1;
+        head_slot_d = '0;
+        pending_256_d = 1'b0;
+        pending_first_beat_d = '0;
+        pending_first_pc_d = '0;
+      end else if (incoming_packet_256) begin
+        pending_256_d = 1'b1;
+        pending_first_beat_d = ipu_vliwpu_packet_i;
+        pending_first_pc_d = ipu_vliwpu_packet_pc_i;
+      end else begin
+        packet_hold_valid_d = 1'b1;
+        packet_d = {{FetchPacketWidth{1'b0}}, ipu_vliwpu_packet_i};
+        packet_pc_d = ipu_vliwpu_packet_pc_i;
+        packet_is_256_d = 1'b0;
+        head_slot_d = '0;
+      end
     end
 
     if (flush_i) begin
       packet_hold_valid_d = 1'b0;
+      packet_d            = '0;
+      packet_pc_d         = '0;
+      packet_is_256_d     = 1'b0;
       head_slot_d         = '0;
+      pending_256_d       = 1'b0;
+      pending_first_beat_d = '0;
+      pending_first_pc_d   = '0;
       carry_valid_d       = 1'b0;
       carry_slot_valid_d  = '0;
       carry_slot_d        = '0;
@@ -393,7 +495,11 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       packet_hold_valid_q <= 1'b0;
       packet_q            <= '0;
       packet_pc_q         <= '0;
+      packet_is_256_q     <= 1'b0;
       head_slot_q         <= '0;
+      pending_256_q       <= 1'b0;
+      pending_first_beat_q <= '0;
+      pending_first_pc_q   <= '0;
       carry_valid_q       <= 1'b0;
       carry_slot_valid_q  <= '0;
       carry_slot_q        <= '0;
@@ -408,7 +514,11 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       packet_hold_valid_q <= packet_hold_valid_d;
       packet_q            <= packet_d;
       packet_pc_q         <= packet_pc_d;
+      packet_is_256_q     <= packet_is_256_d;
       head_slot_q         <= head_slot_d;
+      pending_256_q       <= pending_256_d;
+      pending_first_beat_q <= pending_first_beat_d;
+      pending_first_pc_q   <= pending_first_pc_d;
       carry_valid_q       <= carry_valid_d;
       carry_slot_valid_q  <= carry_slot_valid_d;
       carry_slot_q        <= carry_slot_d;
@@ -419,5 +529,20 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       carry_pc_q          <= carry_pc_d;
     end
   end
+
+  `ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && packet_hold_valid_q && header_is_lui_hint) begin
+      if (header_packet_256 != packet_is_256_q) begin
+        $warning("[HDV] VLIWPU header packet_256 bit and assembled packet width disagree at pc=0x%0h",
+                 packet_pc_q);
+      end
+      if (header_loop_start || header_loop_end) begin
+        // Loop markers are part of the software-visible header format.  The
+        // current loop-lock implementation is still driven by branch redirect.
+      end
+    end
+  end
+  `endif
 
 endmodule : hdv_vliw_pack_unit

@@ -698,7 +698,7 @@ module ara_tb;
 
   localparam DRAMAddrBase = 64'h8000_0000;
   localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
-  localparam HdvNumSlots  = 6;
+  localparam HdvNumSlots  = 8;
   // Must match apps build variable HDV_TASK_ENTRY for the selected HDV program.
   localparam HdvTaskEntry = 64'h8000_1000;
   localparam int unsigned HdvVsaxpyElements = 1024;
@@ -706,11 +706,12 @@ module ara_tb;
   localparam int unsigned HdvVsaxpyIters =
       (HdvVsaxpyElements + HdvVsaxpyVl - 1) / HdvVsaxpyVl;
   // Cross-fetch-packet VLIW packing carries packet-tail non-control EPs into
-  // the next fetch packet.  vsaxpy taken iterations become:
-  //   vsetvli+vle / sub+vle+slli / vfmacc+add+vse / add+bnez = 4 EPs
-  // The final not-taken iteration also accepts ret and nop placeholders = 6 EPs.
+  // the next fetch packet.  With HdvNumSlots=8, vsaxpy taken iterations become:
+  //   vsetvli+vle / sub+vle+slli+vfmacc / add+vse+add / bnez = 4 EPs
+  // The final not-taken iteration has the same 4 EPs; the fall-through ret is
+  // one scalar EP and terminates the HDV task before nop/data are dispatched.
   localparam int unsigned HdvVsaxpyExpectedEpAccepts =
-      (HdvVsaxpyIters == 0) ? 0 : ((HdvVsaxpyIters - 1) * 4 + 6);
+      (HdvVsaxpyIters == 0) ? 0 : (HdvVsaxpyIters * 4 + 1);
   localparam logic [63:0] HdvVsaxpyN    = 64'(HdvVsaxpyElements);
   localparam HdvVsaxpySrc1 = 64'h8000_1040;
   localparam HdvVsaxpySrc2 = 64'h8000_5050;
@@ -1000,8 +1001,55 @@ module ara_tb;
   logic        hdv_task_cycle_valid;
   logic [63:0] hdv_task_cycle_base_visible;
   logic [63:0] hdv_task_cycle;
+  logic        hdv_task_done_prev_q;
+  localparam int unsigned HdvEpTraceDepth = 8;
+  int unsigned hdv_ep_trace_fd;
+  int unsigned hdv_ep_trace_head_q;
+  int unsigned hdv_ep_trace_tail_q;
+  int unsigned hdv_ep_trace_count_q;
+  bit          hdv_csr_verbose;
+  logic [63:0] hdv_ep_trace_enqueued_q;
+  logic [63:0] hdv_ep_trace_enqueue_wall_q [HdvEpTraceDepth];
+  logic [63:0] hdv_ep_trace_enqueue_task_q [HdvEpTraceDepth];
+  logic [63:0] hdv_ep_trace_ep_pc_q        [HdvEpTraceDepth];
+  logic [HdvNumSlots-1:0] hdv_ep_trace_insn_valid_q [HdvEpTraceDepth];
+  logic [HdvNumSlots-1:0] hdv_ep_trace_insn_is_32b_q[HdvEpTraceDepth];
+  logic [HdvNumSlots-1:0][31:0] hdv_ep_trace_insn_q [HdvEpTraceDepth];
+  logic [HdvNumSlots-1:0][63:0] hdv_ep_trace_insn_pc_q [HdvEpTraceDepth];
+  logic [HdvNumSlots-1:0][1:0]  hdv_ep_trace_class_q [HdvEpTraceDepth];
+  logic        hdv_ep_trace_enqueue;
+
+  function automatic string hdv_ep_class_name(input logic [1:0] cls);
+    unique case (cls)
+      hdv_pkg::HDV_INST_SCALAR: hdv_ep_class_name = "S";
+      hdv_pkg::HDV_INST_VECTOR: hdv_ep_class_name = "V";
+      hdv_pkg::HDV_INST_SYSTEM: hdv_ep_class_name = "SYS";
+      hdv_pkg::HDV_INST_BRANCH: hdv_ep_class_name = "BR";
+      default:                  hdv_ep_class_name = "UNK";
+    endcase
+  endfunction
+
+  initial begin : hdv_ep_trace_open
+    string testcase;
+    hdv_csr_verbose = $test$plusargs("HDV_CSR_VERBOSE");
+    if (!$value$plusargs("TESTCASE=%s", testcase)) begin
+      testcase = "default";
+    end
+    hdv_ep_trace_fd = $fopen($sformatf("hdv_ep_trace_%s.log", testcase), "w");
+    if (hdv_ep_trace_fd == 0) begin
+      $display("[HDV-TRACE] failed to open hdv_ep_trace_%s.log", testcase);
+    end else begin
+      $fwrite(hdv_ep_trace_fd, "# HDV execute-packet trace for TESTCASE=%s\n", testcase);
+      $fwrite(hdv_ep_trace_fd, "# One EP is captured when VLIWPU hands it to HEU and printed when backend accepted fires.\n");
+      $fwrite(hdv_ep_trace_fd, "# class: S=scalar, V=vector, SYS=system, BR=branch/control-flow\n");
+    end
+  end
+
   assign hdv_accepted_visible = i_hdv_mock_host_core.accepted_packets_q +
                                 (hdv_ep_accepted ? 32'd1 : 32'd0);
+  assign hdv_ep_trace_enqueue =
+      dut.i_ara_soc.i_system.vliwpu_heu_execute_valid &
+      dut.i_ara_soc.i_system.i_hybrid_execution_unit.heu_vliwpu_execute_ready_o;
   assign hdv_task_start_fire = hdv_host_csr_valid && hdv_host_csr_ready &&
                                hdv_host_csr_write &&
                                (hdv_host_csr_addr == hdv_pkg::HDV_CSR_VTASK_START);
@@ -1017,17 +1065,324 @@ module ara_tb;
       hdv_mock_state_prev_q <= '0;
       hdv_task_cycle_active_q <= 1'b0;
       hdv_task_cycle_base_q <= '0;
+      hdv_task_done_prev_q <= 1'b0;
+      hdv_ep_trace_head_q <= 0;
+      hdv_ep_trace_tail_q <= 0;
+      hdv_ep_trace_count_q <= 0;
+      hdv_ep_trace_enqueued_q <= '0;
+      for (int unsigned q = 0; q < HdvEpTraceDepth; q++) begin
+        hdv_ep_trace_enqueue_wall_q[q] <= '0;
+        hdv_ep_trace_enqueue_task_q[q] <= '0;
+        hdv_ep_trace_ep_pc_q[q] <= '0;
+        hdv_ep_trace_insn_valid_q[q] <= '0;
+        hdv_ep_trace_insn_is_32b_q[q] <= '0;
+        hdv_ep_trace_insn_q[q] <= '0;
+        hdv_ep_trace_insn_pc_q[q] <= '0;
+        hdv_ep_trace_class_q[q] <= '0;
+      end
     end else begin
+      int unsigned trace_head_next;
+      int unsigned trace_tail_next;
+      int unsigned trace_count_next;
+
+      trace_head_next = hdv_ep_trace_head_q;
+      trace_tail_next = hdv_ep_trace_tail_q;
+      trace_count_next = hdv_ep_trace_count_q;
+
       hdv_mock_state_prev_q <= i_hdv_mock_host_core.state_q;
+      hdv_task_done_prev_q <= hdv_task_done;
       if (hdv_task_start_fire) begin
         hdv_task_cycle_active_q <= 1'b1;
         hdv_task_cycle_base_q <= wall_cycle;
+        $display("[HDV-CSR] @%0t wall_cycle=%0d task_cycle=0 START entry=0x%016h desc=0x%016h expected_ep=%0d",
+                 $time, wall_cycle,
+                 i_hdv_mock_host_core.task_entry_q,
+                 i_hdv_mock_host_core.task_desc_q,
+                 i_hdv_mock_host_core.expected_ep_accepts_q);
+        if (hdv_csr_verbose) begin
+          $display("[HDV-CSR]   status busy=%0b done=%0b error=%0b mock_state=%0d tiu_valid=%0b tiu_done=%0b tiu_error=%0b tsu_active=%0b tsu_done=%0b tsu_error=%0b",
+                   hdv_task_busy,
+                   hdv_task_done,
+                   hdv_task_error,
+                   i_hdv_mock_host_core.state_q,
+                   dut.i_ara_soc.i_system.i_task_interface_unit.task_valid_q,
+                   dut.i_ara_soc.i_system.i_task_interface_unit.done_q,
+                   dut.i_ara_soc.i_system.i_task_interface_unit.error_q,
+                   dut.i_ara_soc.i_system.i_task_schedule_unit.active_q,
+                   dut.i_ara_soc.i_system.i_task_schedule_unit.done_q,
+                   dut.i_ara_soc.i_system.i_task_schedule_unit.error_q);
+          $display("[HDV-CSR]   frontend ipu_state=%0d ipu_busy=%0b exec_base=0x%016h fetch_base=0x%016h exec_idx=%0d fill_req=%0d fill_rsp=%0d buf_a=0x%0h buf_b=0x%0h loop_auto=%0b loop_build=%0b loop_locked=%0b imem_outstanding=%0d trace_q=%0d",
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.state_q,
+                   dut.i_ara_soc.i_system.ipu_top_busy,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_base_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fetch_base_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fill_req_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fill_rsp_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.buffer_a_valid_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.buffer_b_valid_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.auto_loop_lock_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.loop_build_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.loop_locked_q,
+                   dut.i_ara_soc.i_system.imem_outstanding_q,
+                   trace_count_next);
+          $display("[HDV-CSR]   backends heu_busy=%0b heu_outstanding=%0b heu_buf=%0b scalar_pending=%0b vector_pending=%0b buf_vec_sent=%0b buf_vec_pending=%0b scalar_state=%0d scalar_insn_valid=0x%0h vec_busy=%0b vec_state=%0d vec_pending=%0b vq0=%0b vq1=%0b resp_meta=%0d",
+                   dut.i_ara_soc.i_system.heu_top_busy,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.outstanding_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_valid_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.scalar_pending_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.vector_pending_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_vector_sent_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_vector_pending_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.state_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.insn_valid_q,
+                   dut.i_ara_soc.i_system.vec_dispatch_busy,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.state_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
+        end
+        if (hdv_ep_trace_fd != 0) begin
+          $fwrite(hdv_ep_trace_fd,
+                  "[HDV-CSR] time=%0t wall_cycle=%0d task_cycle=0 VTASK_START[0] set wdata=0x%016h entry=0x%016h desc=0x%016h expected_ep=%0d mock_state=%0d ipu_state=%0d ipu_exec_base=0x%016h ipu_fetch_base=0x%016h imem_outstanding=%0d heu_outstanding=%0b heu_buf=%0b scalar_state=%0d vec_state=%0d vec_busy=%0b trace_q=%0d\n",
+                  $time, wall_cycle,
+                  hdv_host_csr_wdata,
+                  i_hdv_mock_host_core.task_entry_q,
+                  i_hdv_mock_host_core.task_desc_q,
+                  i_hdv_mock_host_core.expected_ep_accepts_q,
+                  i_hdv_mock_host_core.state_q,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.state_q,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_base_q,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fetch_base_q,
+                  dut.i_ara_soc.i_system.imem_outstanding_q,
+                  dut.i_ara_soc.i_system.i_hybrid_execution_unit.outstanding_q,
+                  dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_valid_q,
+                  dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.state_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.state_q,
+                  dut.i_ara_soc.i_system.vec_dispatch_busy,
+                  trace_count_next);
+        end
       end
+      if (hdv_task_done && !hdv_task_done_prev_q) begin
+        $display("[HDV-CSR] @%0t wall_cycle=%0d task_cycle=%0d DONE accepted=%0d expected=%0d vec_busy=%0b imem_outstanding=%0d",
+                 $time, wall_cycle, hdv_task_cycle,
+                 i_hdv_mock_host_core.accepted_packets_q,
+                 i_hdv_mock_host_core.expected_ep_accepts_q,
+                 dut.i_ara_soc.i_system.vec_dispatch_busy,
+                 dut.i_ara_soc.i_system.imem_outstanding_q);
+        if (hdv_csr_verbose) begin
+          $display("[HDV-CSR]   completion request=%0b host_seen=%0b done_to_tsu=%0b scalar_task_complete=%0b task_busy=%0b task_done=%0b task_error=%0b vec_busy=%0b",
+                   dut.i_ara_soc.i_system.task_complete_request,
+                   dut.i_ara_soc.i_system.host_task_complete_seen_q,
+                   dut.i_ara_soc.i_system.task_done_to_tsu,
+                   dut.i_ara_soc.i_system.scalar_backend_task_complete,
+                   hdv_task_busy,
+                   hdv_task_done,
+                   hdv_task_error,
+                   dut.i_ara_soc.i_system.vec_dispatch_busy);
+          $display("[HDV-CSR]   frontend ipu_state=%0d exec_base=0x%016h fetch_base=0x%016h exec_idx=%0d fill_req=%0d fill_rsp=%0d buf_a=0x%0h buf_b=0x%0h loop_auto=%0b loop_build=%0b loop_locked=%0b loop_exit_seen=%0b imem_outstanding=%0d redirect=%0b redirect_pc=0x%016h",
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.state_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_base_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fetch_base_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fill_req_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fill_rsp_idx_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.buffer_a_valid_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.buffer_b_valid_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.auto_loop_lock_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.loop_build_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.loop_locked_q,
+                   dut.i_ara_soc.i_system.i_instruction_prefetch_unit.loop_exit_seen_q,
+                   dut.i_ara_soc.i_system.imem_outstanding_q,
+                   dut.i_ara_soc.i_system.hdv_ctrl_redirect_valid,
+                   dut.i_ara_soc.i_system.hdv_ctrl_redirect_pc);
+          $display("[HDV-CSR]   backends heu_outstanding=%0b heu_buf=%0b scalar_pending=%0b vector_pending=%0b buf_vec_sent=%0b buf_vec_pending=%0b scalar_state=%0d scalar_insn_valid=0x%0h scalar_redirect_pending=%0b scalar_task_complete_pending=%0b vec_state=%0d vec_pending=%0b real_wait=0x%0h vset_wait=%0d vq0=%0b vq1=%0b resp_meta=%0d",
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.outstanding_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_valid_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.scalar_pending_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.vector_pending_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_vector_sent_q,
+                   dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_vector_pending_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.state_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.insn_valid_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.redirect_pending_q,
+                   dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.task_complete_pending_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.state_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.real_wait_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vset_accept_wait_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
+        end
+        if (hdv_ep_trace_fd != 0) begin
+          $fwrite(hdv_ep_trace_fd,
+                  "[HDV-CSR] time=%0t wall_cycle=%0d task_cycle=%0d VTASK_STATUS.DONE set accepted=%0d expected=%0d queued=%0d request=%0b host_seen=%0b done_to_tsu=%0b scalar_task_complete=%0b vec_busy=%0b ipu_state=%0d ipu_exec_base=0x%016h ipu_fetch_base=0x%016h imem_outstanding=%0d redirect=%0b redirect_pc=0x%016h heu_outstanding=%0b heu_buf=%0b scalar_state=%0d scalar_pending=0x%0h scalar_redirect_pending=%0b scalar_task_complete_pending=%0b vec_state=%0d vec_pending=%0b real_wait=0x%0h vset_wait=%0d vq0=%0b vq1=%0b resp_meta=%0d\n",
+                  $time, wall_cycle, hdv_task_cycle,
+                  i_hdv_mock_host_core.accepted_packets_q,
+                  i_hdv_mock_host_core.expected_ep_accepts_q,
+                  trace_count_next,
+                  dut.i_ara_soc.i_system.task_complete_request,
+                  dut.i_ara_soc.i_system.host_task_complete_seen_q,
+                  dut.i_ara_soc.i_system.task_done_to_tsu,
+                  dut.i_ara_soc.i_system.scalar_backend_task_complete,
+                  dut.i_ara_soc.i_system.vec_dispatch_busy,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.state_q,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.exec_base_q,
+                  dut.i_ara_soc.i_system.i_instruction_prefetch_unit.fetch_base_q,
+                  dut.i_ara_soc.i_system.imem_outstanding_q,
+                  dut.i_ara_soc.i_system.hdv_ctrl_redirect_valid,
+                  dut.i_ara_soc.i_system.hdv_ctrl_redirect_pc,
+                  dut.i_ara_soc.i_system.i_hybrid_execution_unit.outstanding_q,
+                  dut.i_ara_soc.i_system.i_hybrid_execution_unit.buffer_valid_q,
+                  dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.state_q,
+                  dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.insn_valid_q,
+                  dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.redirect_pending_q,
+                  dut.i_ara_soc.i_system.i_cva6_hdv_scalar_backend.task_complete_pending_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.state_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.real_wait_valid_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.vset_accept_wait_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
+          $fflush(hdv_ep_trace_fd);
+        end
+        hdv_task_cycle_active_q <= 1'b0;
+      end
+
       if (hdv_ep_accepted) begin
-        $display("[HDV] @%0t cycle=%0d ep_backend_accept accepted_so_far=%0d",
-                 $time, hdv_task_cycle,
-                 hdv_accepted_visible);
+        if (trace_count_next != 0) begin
+          int unsigned trace_idx;
+          logic [HdvNumSlots-1:0] scalar_mask;
+          logic [HdvNumSlots-1:0] vector_mask;
+          logic [HdvNumSlots-1:0] branch_mask;
+          logic [HdvNumSlots-1:0] system_mask;
+
+          trace_idx = trace_head_next;
+          scalar_mask = '0;
+          vector_mask = '0;
+          branch_mask = '0;
+          system_mask = '0;
+          for (int unsigned i = 0; i < HdvNumSlots; i++) begin
+            if (hdv_ep_trace_insn_valid_q[trace_idx][i]) begin
+              unique case (hdv_ep_trace_class_q[trace_idx][i])
+                hdv_pkg::HDV_INST_SCALAR: scalar_mask[i] = 1'b1;
+                hdv_pkg::HDV_INST_VECTOR: vector_mask[i] = 1'b1;
+                hdv_pkg::HDV_INST_BRANCH: branch_mask[i] = 1'b1;
+                hdv_pkg::HDV_INST_SYSTEM: system_mask[i] = 1'b1;
+                default: begin
+                end
+              endcase
+            end
+          end
+
+          if (hdv_ep_trace_fd != 0) begin
+            $fwrite(hdv_ep_trace_fd,
+                    "[EP %0d] accept_time=%0t accept_wall=%0d accept_task_cycle=%0d accepted_so_far=%0d enqueue_wall=%0d enqueue_task_cycle=%0d front_latency=%0d ep_pc=0x%016h valid=0x%0h scalar=0x%0h vector=0x%0h branch=0x%0h system=0x%0h scalar_ready=%0b scalar_accepted=%0b vec_busy=%0b task_busy=%0b\n",
+                    hdv_accepted_visible,
+                    $time,
+                    wall_cycle,
+                    hdv_task_cycle,
+                    hdv_accepted_visible,
+                    hdv_ep_trace_enqueue_wall_q[trace_idx],
+                    hdv_ep_trace_enqueue_task_q[trace_idx],
+                    wall_cycle - hdv_ep_trace_enqueue_wall_q[trace_idx],
+                    hdv_ep_trace_ep_pc_q[trace_idx],
+                    hdv_ep_trace_insn_valid_q[trace_idx],
+                    scalar_mask,
+                    vector_mask,
+                    branch_mask,
+                    system_mask,
+                    hdv_scalar_ready,
+                    hdv_scalar_accepted,
+                    dut.i_ara_soc.i_system.vec_dispatch_busy,
+                    hdv_task_busy);
+            for (int unsigned i = 0; i < HdvNumSlots; i++) begin
+              if (hdv_ep_trace_insn_valid_q[trace_idx][i]) begin
+                $fwrite(hdv_ep_trace_fd,
+                        "  slot%0d class=%s pc=0x%016h insn=0x%08h is32=%0b\n",
+                        i,
+                        hdv_ep_class_name(hdv_ep_trace_class_q[trace_idx][i]),
+                        hdv_ep_trace_insn_pc_q[trace_idx][i],
+                        hdv_ep_trace_insn_q[trace_idx][i],
+                        hdv_ep_trace_insn_is_32b_q[trace_idx][i]);
+              end
+            end
+            $fflush(hdv_ep_trace_fd);
+          end
+
+          trace_head_next = (trace_head_next + 1) % HdvEpTraceDepth;
+          trace_count_next--;
+        end else if (hdv_ep_trace_fd != 0) begin
+          $fwrite(hdv_ep_trace_fd,
+                  "[EP %0d] accept_time=%0t accept_wall=%0d accept_task_cycle=%0d accepted_so_far=%0d WARNING=no queued EP snapshot\n",
+                  hdv_accepted_visible,
+                  $time,
+                  wall_cycle,
+                  hdv_task_cycle,
+                  hdv_accepted_visible);
+          $fflush(hdv_ep_trace_fd);
+        end
       end
+
+      if (hdv_ep_trace_enqueue) begin
+        if (trace_count_next < HdvEpTraceDepth) begin
+          int unsigned trace_idx;
+
+          trace_idx = trace_tail_next;
+          hdv_ep_trace_enqueue_wall_q[trace_idx] <= wall_cycle;
+          hdv_ep_trace_enqueue_task_q[trace_idx] <= hdv_task_cycle;
+          hdv_ep_trace_ep_pc_q[trace_idx] <= dut.i_ara_soc.i_system.vliwpu_heu_execute_pc;
+          hdv_ep_trace_insn_valid_q[trace_idx] <= '0;
+          hdv_ep_trace_insn_is_32b_q[trace_idx] <= '0;
+          hdv_ep_trace_insn_q[trace_idx] <= '0;
+          hdv_ep_trace_insn_pc_q[trace_idx] <= '0;
+          hdv_ep_trace_class_q[trace_idx] <= '0;
+          for (int unsigned i = 0; i < HdvNumSlots; i++) begin
+            logic is_continuation;
+
+            is_continuation = (i > 0) &&
+                              dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_valid[i-1] &&
+                              dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_is_32b[i-1];
+            if (dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_valid[i] && !is_continuation) begin
+              hdv_ep_trace_insn_valid_q[trace_idx][i] <= 1'b1;
+              hdv_ep_trace_insn_is_32b_q[trace_idx][i] <=
+                  dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_is_32b[i];
+              hdv_ep_trace_insn_pc_q[trace_idx][i] <=
+                  dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_pc[i];
+              hdv_ep_trace_class_q[trace_idx][i] <=
+                  dut.i_ara_soc.i_system.vliwpu_heu_execute_class[i];
+              if (dut.i_ara_soc.i_system.vliwpu_heu_execute_slot_is_32b[i] &&
+                  (i < HdvNumSlots-1)) begin
+                hdv_ep_trace_insn_q[trace_idx][i] <= {
+                    dut.i_ara_soc.i_system.vliwpu_heu_execute_slot[i+1],
+                    dut.i_ara_soc.i_system.vliwpu_heu_execute_slot[i]
+                };
+              end else begin
+                hdv_ep_trace_insn_q[trace_idx][i] <= {
+                    16'b0,
+                    dut.i_ara_soc.i_system.vliwpu_heu_execute_slot[i]
+                };
+              end
+            end
+          end
+          trace_tail_next = (trace_tail_next + 1) % HdvEpTraceDepth;
+          trace_count_next++;
+          hdv_ep_trace_enqueued_q <= hdv_ep_trace_enqueued_q + 1'b1;
+        end else if (hdv_ep_trace_fd != 0) begin
+          $fwrite(hdv_ep_trace_fd,
+                  "[HDV-TRACE] time=%0t wall_cycle=%0d task_cycle=%0d WARNING=EP snapshot queue overflow\n",
+                  $time, wall_cycle, hdv_task_cycle);
+          $fflush(hdv_ep_trace_fd);
+        end
+      end
+
+      hdv_ep_trace_head_q <= trace_head_next;
+      hdv_ep_trace_tail_q <= trace_tail_next;
+      hdv_ep_trace_count_q <= trace_count_next;
+
       // Only print once on the cycle the state first enters FINISH/FAIL, then stop.
       if (i_hdv_mock_host_core.state_q == 4'd9 && hdv_mock_state_prev_q != 4'd9) begin
         if (hdv_accepted_visible == i_hdv_mock_host_core.expected_ep_accepts_q) begin

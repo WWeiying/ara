@@ -7,8 +7,9 @@
 // 128-bit fetch packets.  The first returned packet can be served immediately;
 // the rest of the active buffer is filled while VLIWPU consumes valid entries.
 // Once the active buffer is complete, the other buffer is filled in the
-// background.  A loop-lock signal suppresses buffer switches to replay the
-// active buffer in tight loops.
+// background.  HDV LUI hint headers can mark loop start/end packets.  The IPU
+// protects the marked loop buffers and can replay a taken backward redirect
+// from either ping-pong buffer, so a locked loop can occupy up to 2*BufferBytes.
 
 module hdv_instruction_prefetch_unit #(
   parameter int unsigned XLEN             = 64,
@@ -87,8 +88,13 @@ module hdv_instruction_prefetch_unit #(
   logic auto_loop_lock_d, auto_loop_lock_q;
   logic loop_wait_d,      loop_wait_q;
   logic loop_exit_seen_d, loop_exit_seen_q; // latched not-taken exit during a hold
+  logic loop_build_d,     loop_build_q;
+  logic loop_locked_d,    loop_locked_q;
+  logic [1:0] loop_protect_d, loop_protect_q;
 
   logic served_pkt_has_bwd_branch; // served packet carries a backward branch
+  logic served_pkt_loop_start;
+  logic served_pkt_loop_end;
 
   logic fill_done;
   logic accept_req;
@@ -99,24 +105,43 @@ module hdv_instruction_prefetch_unit #(
   logic loop_blocks_bg_fetch;
   logic redirect_aligned;
   logic redirect_in_active;
+  logic redirect_in_fill;
   logic redirect_active_packet_valid;
+  logic redirect_fill_packet_valid;
   logic redirect_is_backward;
   logic effective_loop_fetch_lock;
   logic replay_loop_lock;
+  logic fill_buf_protected;
+  logic active_buf_protected;
   logic [PacketIdxWidth-1:0] redirect_exec_idx;
+  logic [PacketIdxWidth-1:0] redirect_fill_idx;
   addr_t redirect_active_offset;
+  addr_t redirect_fill_offset;
+  logic [31:0] served_header;
+  logic [19:0] served_header_imm20;
+  logic served_header_is_lui_hint;
 
   assign redirect_aligned = (redirect_pc_i[PacketOffsetWidth-1:0] == '0);
   assign redirect_active_offset = redirect_pc_i - exec_base_q;
+  assign redirect_fill_offset = redirect_pc_i - fetch_base_q;
   assign redirect_exec_idx = redirect_active_offset[PacketOffsetWidth +: PacketIdxWidth];
+  assign redirect_fill_idx = redirect_fill_offset[PacketOffsetWidth +: PacketIdxWidth];
   assign redirect_in_active = (state_q == SERVE) &&
                               (redirect_pc_i >= exec_base_q) &&
                               (redirect_pc_i < (exec_base_q + addr_t'(BufferBytes)));
+  assign redirect_in_fill = (state_q == SERVE) &&
+                            (fill_buf_q != active_buf_q) &&
+                            (redirect_pc_i >= fetch_base_q) &&
+                            (redirect_pc_i < (fetch_base_q + addr_t'(BufferBytes)));
   assign redirect_active_packet_valid = active_buf_q ? buffer_b_valid_q[redirect_exec_idx]
                                                      : buffer_a_valid_q[redirect_exec_idx];
+  assign redirect_fill_packet_valid = fill_buf_q ? buffer_b_valid_q[redirect_fill_idx]
+                                                 : buffer_a_valid_q[redirect_fill_idx];
   assign redirect_is_backward = redirect_pc_i < ipu_vliwpu_packet_pc_o;
-  assign effective_loop_fetch_lock = loop_lock_i | auto_loop_lock_q;
+  assign effective_loop_fetch_lock = loop_lock_i | auto_loop_lock_q | loop_build_q | loop_locked_q;
   assign replay_loop_lock = loop_lock_i;
+  assign fill_buf_protected = fill_buf_q ? loop_protect_q[1] : loop_protect_q[0];
+  assign active_buf_protected = active_buf_q ? loop_protect_q[1] : loop_protect_q[0];
 
   assign ipu_tsu_task_ready_o = (state_q == IDLE);
   assign ipu_top_busy_o       = (state_q != IDLE);
@@ -124,7 +149,9 @@ module hdv_instruction_prefetch_unit #(
   // Memory request: active in FILL (initial) and in SERVE while bg fill pending.
   // When loop lock is active, keep completing an already-issued request but do
   // not fetch more background packets; taken redirects replay the active body.
-  assign loop_blocks_bg_fetch = effective_loop_fetch_lock & (fill_buf_q != active_buf_q);
+  assign loop_blocks_bg_fetch = (loop_lock_i & (fill_buf_q != active_buf_q)) |
+                                (effective_loop_fetch_lock & (fill_buf_q != active_buf_q) &
+                                 fill_buf_protected);
   assign ipu_mem_req_valid_o = ((state_q == FILL) |
                                 (state_q == SERVE & !bg_fill_done_q & !loop_blocks_bg_fetch)) &
                                !fill_req_done_q &
@@ -153,6 +180,12 @@ module hdv_instruction_prefetch_unit #(
     automatic packet_t served_packet = active_buf_q ? buffer_b_q[exec_idx_q]
                                                     : buffer_a_q[exec_idx_q];
     served_pkt_has_bwd_branch = 1'b0;
+    served_header = served_packet[31:0];
+    served_header_imm20 = served_header[31:12];
+    served_header_is_lui_hint = (served_header[6:0] == 7'b0110111) &&
+                                (served_header[11:7] == 5'd0);
+    served_pkt_loop_start = served_header_is_lui_hint & served_header_imm20[15];
+    served_pkt_loop_end   = served_header_is_lui_hint & served_header_imm20[16];
     for (int unsigned w = 0; w < FetchPacketWidth/32; w++) begin
       if ((served_packet[w*32 +: 7] == 7'b1100011) &&  // BRANCH opcode
           (served_packet[w*32 + 31]  == 1'b1)) begin    // imm[12]=1 → backward
@@ -165,8 +198,7 @@ module hdv_instruction_prefetch_unit #(
   // (unless looping).  During first-buffer early serve, fill_buf==active_buf;
   // packet availability is then guarded by active_packet_valid instead.
   assign bg_stall    = (exec_idx_q == LastPacketIdx) & !bg_fill_done_q &
-                     !effective_loop_fetch_lock
-                     & (fill_buf_q != active_buf_q);
+                       !replay_loop_lock & (fill_buf_q != active_buf_q);
 
   assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid &
                                      !bg_stall & !loop_wait_q;
@@ -192,6 +224,9 @@ module hdv_instruction_prefetch_unit #(
     auto_loop_lock_d = auto_loop_lock_q;
     loop_wait_d      = loop_wait_q;
     loop_exit_seen_d = loop_exit_seen_q;
+    loop_build_d     = loop_build_q;
+    loop_locked_d    = loop_locked_q;
+    loop_protect_d   = loop_protect_q;
     buffer_a_valid_d = buffer_a_valid_q;
     buffer_b_valid_d = buffer_b_valid_q;
 
@@ -226,6 +261,9 @@ module hdv_instruction_prefetch_unit #(
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
       loop_exit_seen_d = 1'b0;
+      loop_build_d = 1'b0;
+      loop_locked_d = 1'b0;
+      loop_protect_d = '0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
     end else if (redirect_valid_i && redirect_aligned && redirect_in_active &&
@@ -234,6 +272,25 @@ module hdv_instruction_prefetch_unit #(
       // instead of invalidating the buffers and refetching the loop body.
       state_d      = SERVE;
       exec_idx_d   = redirect_exec_idx;
+      loop_wait_d  = 1'b0;
+      loop_exit_seen_d = 1'b0;
+      if (redirect_is_backward) begin
+        auto_loop_lock_d = 1'b1;
+      end else begin
+        auto_loop_lock_d = 1'b0;
+      end
+    end else if (redirect_valid_i && redirect_aligned && redirect_in_fill &&
+                 redirect_fill_packet_valid && effective_loop_fetch_lock) begin
+      // Redirect hit in the other protected buffer.  This is the key 2-buffer
+      // loop-lock path: the loop body may span both ping-pong buffers.
+      state_d      = SERVE;
+      active_buf_d = fill_buf_q;
+      fill_buf_d   = active_buf_q;
+      exec_base_d  = fetch_base_q;
+      fetch_base_d = exec_base_q;
+      exec_idx_d   = redirect_fill_idx;
+      fill_req_done_d = 1'b1;
+      bg_fill_done_d = 1'b1;
       loop_wait_d  = 1'b0;
       loop_exit_seen_d = 1'b0;
       if (redirect_is_backward) begin
@@ -255,6 +312,9 @@ module hdv_instruction_prefetch_unit #(
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
       loop_exit_seen_d = 1'b0;
+      loop_build_d = 1'b0;
+      loop_locked_d = 1'b0;
+      loop_protect_d = '0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
     end else if (redirect_valid_i) begin
@@ -280,6 +340,9 @@ module hdv_instruction_prefetch_unit #(
             auto_loop_lock_d = 1'b0;
             loop_wait_d = 1'b0;
             loop_exit_seen_d = 1'b0;
+            loop_build_d = 1'b0;
+            loop_locked_d = 1'b0;
+            loop_protect_d = '0;
             buffer_a_valid_d = '0;
             buffer_b_valid_d = '0;
           end
@@ -318,9 +381,27 @@ module hdv_instruction_prefetch_unit #(
           // ---- active/background fill ------------------------------------
           if (loop_exit_i) begin
             auto_loop_lock_d = 1'b0;
+            loop_build_d = 1'b0;
+            loop_locked_d = 1'b0;
+            loop_protect_d = '0;
             // Remember a not-taken exit that arrives while we hold on a branch,
             // so the buffer switch can complete once background fill is ready.
             if (loop_wait_q) loop_exit_seen_d = 1'b1;
+
+            // If the loop lock has preserved the other buffer, repurpose it as
+            // the fall-through prefetch buffer immediately after loop exit.
+            if ((fill_buf_q != active_buf_q) && fill_buf_protected) begin
+              fetch_base_d = exec_base_q + addr_t'(BufferBytes);
+              fill_req_idx_d = '0;
+              fill_rsp_idx_d = '0;
+              fill_req_done_d = 1'b0;
+              bg_fill_done_d = 1'b0;
+              if (!fill_buf_q) begin
+                buffer_a_valid_d = '0;
+              end else begin
+                buffer_b_valid_d = '0;
+              end
+            end
           end
 
           if (accept_rsp) begin
@@ -387,6 +468,26 @@ module hdv_instruction_prefetch_unit #(
 
           // ---- serve packets --------------------------------------------
           if (take_packet) begin
+            if (served_pkt_loop_start) begin
+              loop_build_d = 1'b1;
+              loop_locked_d = 1'b0;
+              if (active_buf_q) begin
+                loop_protect_d[1] = 1'b1;
+              end else begin
+                loop_protect_d[0] = 1'b1;
+              end
+            end
+
+            if (served_pkt_loop_end && (loop_build_q || served_pkt_loop_start)) begin
+              loop_build_d = 1'b0;
+              loop_locked_d = 1'b1;
+              if (active_buf_q) begin
+                loop_protect_d[1] = 1'b1;
+              end else begin
+                loop_protect_d[0] = 1'b1;
+              end
+            end
+
             if (served_pkt_has_bwd_branch && !replay_loop_lock) begin
               // Hold after dispatching a backward branch so the active buffer
               // stays resident.  A taken redirect then replays in-active (no
@@ -400,6 +501,19 @@ module hdv_instruction_prefetch_unit #(
                 // Explicit loop lock: external controller already knows the
                 // loop is taken, so replay immediately.
                 exec_idx_d = '0;
+              end else if (effective_loop_fetch_lock && active_buf_protected) begin
+                // Move into the other buffer while preserving the just-served
+                // active buffer as part of the locked loop body.  Do not clear
+                // or refill it; taken redirects may jump back to it.
+                active_buf_d   = fill_buf_q;
+                exec_base_d    = fetch_base_q;
+                exec_idx_d     = '0;
+                fill_buf_d     = active_buf_q;
+                fetch_base_d   = exec_base_q;
+                fill_req_idx_d = '0;
+                fill_rsp_idx_d = '0;
+                fill_req_done_d = 1'b1;
+                bg_fill_done_d = 1'b1;
               end else begin
                 // Straight-line last packet (no backward branch): switch to the
                 // freshly filled background buffer.  bg_fill_done_q is 1 here
@@ -442,6 +556,9 @@ module hdv_instruction_prefetch_unit #(
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
       loop_exit_seen_d = 1'b0;
+      loop_build_d = 1'b0;
+      loop_locked_d = 1'b0;
+      loop_protect_d = '0;
       buffer_a_valid_d = '0;
       buffer_b_valid_d = '0;
     end
@@ -463,6 +580,9 @@ module hdv_instruction_prefetch_unit #(
       auto_loop_lock_q <= 1'b0;
       loop_wait_q <= 1'b0;
       loop_exit_seen_q <= 1'b0;
+      loop_build_q <= 1'b0;
+      loop_locked_q <= 1'b0;
+      loop_protect_q <= '0;
       buffer_a_valid_q <= '0;
       buffer_b_valid_q <= '0;
     end else begin
@@ -480,6 +600,9 @@ module hdv_instruction_prefetch_unit #(
       auto_loop_lock_q <= auto_loop_lock_d;
       loop_wait_q <= loop_wait_d;
       loop_exit_seen_q <= loop_exit_seen_d;
+      loop_build_q <= loop_build_d;
+      loop_locked_q <= loop_locked_d;
+      loop_protect_q <= loop_protect_d;
       buffer_a_valid_q <= buffer_a_valid_d;
       buffer_b_valid_q <= buffer_b_valid_d;
     end

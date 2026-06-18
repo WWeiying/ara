@@ -12,7 +12,9 @@ module cva6_hdv_scalar_backend
   import ariane_pkg::*;
 #(
   parameter int unsigned XLEN     = 64,
-  parameter int unsigned NumSlots = 6,
+  parameter int unsigned NumSlots = 8,
+  parameter int unsigned ScalarIssueWidth = 3,
+  parameter int unsigned SimpleAluIssueWidth = 2,
   parameter int unsigned AxiDataWidth = 64,
   parameter int unsigned VectorVlenBytes = 0,
   parameter logic [XLEN-1:0] InitialRa  = '0,
@@ -45,6 +47,7 @@ module cva6_hdv_scalar_backend
   output logic                         branch_taken_o,
   output addr_t                        branch_pc_o,
   output addr_t                        branch_target_o,
+  output logic                         task_complete_o,
 
   input  logic                         vec_operand_req_valid_i,
   output logic                         vec_operand_req_ready_o,
@@ -68,6 +71,9 @@ module cva6_hdv_scalar_backend
   output axi_req_t                     scalar_axi_req_o,
   input  axi_resp_t                    scalar_axi_resp_i
 );
+
+  localparam int unsigned EffectiveSimpleAluIssueWidth =
+      (SimpleAluIssueWidth < ScalarIssueWidth) ? SimpleAluIssueWidth : ScalarIssueWidth;
 
   typedef enum logic [3:0] {
     IDLE      = 4'd0,
@@ -246,6 +252,7 @@ module cva6_hdv_scalar_backend
   logic redirect_pending_d, redirect_pending_q;
   addr_t redirect_pc_d, redirect_pc_q;
   logic error_seen_d, error_seen_q;
+  logic task_complete_pending_d, task_complete_pending_q;
 
   logic branch_resolved_pulse_d, branch_resolved_pulse_q;
   logic branch_taken_d, branch_taken_q;
@@ -273,11 +280,273 @@ module cva6_hdv_scalar_backend
   logic csr_addr_supported;
   logic hdv_task_ret;
 
+  typedef struct packed {
+    logic             valid;
+    logic             wb_en;
+    logic [4:0]       rd;
+    logic [XLEN-1:0]  result;
+  } simple_alu_dec_t;
+
+  logic [NumSlots-1:0]       simple_batch_mask;
+  logic [NumSlots-1:0]       simple_batch_wb_en;
+  logic [NumSlots-1:0][4:0]  simple_batch_rd;
+  logic [NumSlots-1:0][XLEN-1:0] simple_batch_result;
+  logic                      simple_batch_valid;
+  logic [31:0]               simple_batch_write_mask;
+  logic [31:0]               curr_int_read_mask;
+  logic                      complex_simple_raw_stall;
+
+  function automatic logic [XLEN-1:0] sext32(input logic [31:0] value);
+    sext32 = {{(XLEN-32){value[31]}}, value};
+  endfunction
+
+  function automatic simple_alu_dec_t decode_simple_alu(
+    input logic             is_32b,
+    input logic [31:0]      insn,
+    input addr_t            pc,
+    input logic [XLEN-1:0]  rs1_value,
+    input logic [XLEN-1:0]  rs2_value
+  );
+    automatic simple_alu_dec_t dec;
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    automatic logic [6:0] funct7;
+    automatic logic [4:0] rd;
+    automatic logic [XLEN-1:0] imm_i;
+    automatic logic [XLEN-1:0] imm_u;
+    automatic logic [31:0] word_result;
+
+    dec = '0;
+    opcode = insn[6:0];
+    funct3 = insn[14:12];
+    funct7 = insn[31:25];
+    rd = insn[11:7];
+    imm_i = {{(XLEN-12){insn[31]}}, insn[31:20]};
+    imm_u = {{(XLEN-32){insn[31]}}, insn[31:12], 12'b0};
+    word_result = '0;
+
+    if (is_32b) begin
+      unique case (opcode)
+        7'b0110111: begin // LUI
+          dec.valid  = 1'b1;
+          dec.wb_en  = 1'b1;
+          dec.result = imm_u;
+        end
+
+        7'b0010111: begin // AUIPC
+          dec.valid  = 1'b1;
+          dec.wb_en  = 1'b1;
+          dec.result = addr_t'(pc + addr_t'(imm_u));
+        end
+
+        7'b0010011: begin // OP-IMM
+          dec.valid = 1'b1;
+          dec.wb_en = 1'b1;
+          unique case (funct3)
+            3'b000: dec.result = rs1_value + imm_i; // ADDI
+            3'b010: dec.result = {{(XLEN-1){1'b0}}, ($signed(rs1_value) < $signed(imm_i))}; // SLTI
+            3'b011: dec.result = {{(XLEN-1){1'b0}}, (rs1_value < imm_i)}; // SLTIU
+            3'b100: dec.result = rs1_value ^ imm_i; // XORI
+            3'b110: dec.result = rs1_value | imm_i; // ORI
+            3'b111: dec.result = rs1_value & imm_i; // ANDI
+            3'b001: begin // SLLI
+              dec.valid  = (funct7 == 7'b0000000);
+              dec.result = rs1_value << insn[25:20];
+            end
+            3'b101: begin
+              dec.valid = (funct7 == 7'b0000000) || (funct7 == 7'b0100000);
+              if (funct7 == 7'b0100000) begin
+                dec.result = XLEN'($signed(rs1_value) >>> insn[25:20]); // SRAI
+              end else begin
+                dec.result = rs1_value >> insn[25:20]; // SRLI
+              end
+            end
+            default: dec.valid = 1'b0;
+          endcase
+        end
+
+        7'b0011011: begin // OP-IMM-32
+          dec.valid = 1'b1;
+          dec.wb_en = 1'b1;
+          unique case (funct3)
+            3'b000: begin // ADDIW
+              word_result = rs1_value[31:0] + imm_i[31:0];
+              dec.result = sext32(word_result);
+            end
+            3'b001: begin // SLLIW
+              dec.valid = (insn[31:25] == 7'b0000000);
+              word_result = rs1_value[31:0] << insn[24:20];
+              dec.result = sext32(word_result);
+            end
+            3'b101: begin
+              dec.valid = (insn[31:25] == 7'b0000000) || (insn[31:25] == 7'b0100000);
+              if (insn[31:25] == 7'b0100000) begin
+                word_result = $signed(rs1_value[31:0]) >>> insn[24:20]; // SRAIW
+              end else begin
+                word_result = rs1_value[31:0] >> insn[24:20]; // SRLIW
+              end
+              dec.result = sext32(word_result);
+            end
+            default: dec.valid = 1'b0;
+          endcase
+        end
+
+        7'b0110011: begin // OP
+          dec.wb_en = 1'b1;
+          unique case (funct3)
+            3'b000: begin
+              dec.valid = (funct7 == 7'b0000000) || (funct7 == 7'b0100000);
+              dec.result = (funct7 == 7'b0100000) ? (rs1_value - rs2_value) :
+                                                     (rs1_value + rs2_value); // SUB/ADD
+            end
+            3'b001: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = rs1_value << rs2_value[5:0]; // SLL
+            end
+            3'b010: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = {{(XLEN-1){1'b0}}, ($signed(rs1_value) < $signed(rs2_value))}; // SLT
+            end
+            3'b011: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = {{(XLEN-1){1'b0}}, (rs1_value < rs2_value)}; // SLTU
+            end
+            3'b100: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = rs1_value ^ rs2_value; // XOR
+            end
+            3'b101: begin
+              dec.valid = (funct7 == 7'b0000000) || (funct7 == 7'b0100000);
+              dec.result = (funct7 == 7'b0100000) ? XLEN'($signed(rs1_value) >>> rs2_value[5:0]) :
+                                                     (rs1_value >> rs2_value[5:0]); // SRA/SRL
+            end
+            3'b110: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = rs1_value | rs2_value; // OR
+            end
+            3'b111: begin
+              dec.valid = (funct7 == 7'b0000000);
+              dec.result = rs1_value & rs2_value; // AND
+            end
+            default: dec.valid = 1'b0;
+          endcase
+        end
+
+        7'b0111011: begin // OP-32
+          dec.wb_en = 1'b1;
+          unique case (funct3)
+            3'b000: begin // ADDW/SUBW
+              dec.valid = (funct7 == 7'b0000000) || (funct7 == 7'b0100000);
+              word_result = (funct7 == 7'b0100000) ? (rs1_value[31:0] - rs2_value[31:0]) :
+                                                     (rs1_value[31:0] + rs2_value[31:0]);
+              dec.result = sext32(word_result);
+            end
+            3'b001: begin // SLLW
+              dec.valid = (funct7 == 7'b0000000);
+              word_result = rs1_value[31:0] << rs2_value[4:0];
+              dec.result = sext32(word_result);
+            end
+            3'b101: begin
+              dec.valid = (funct7 == 7'b0000000) || (funct7 == 7'b0100000);
+              if (funct7 == 7'b0100000) begin
+                word_result = $signed(rs1_value[31:0]) >>> rs2_value[4:0]; // SRAW
+              end else begin
+                word_result = rs1_value[31:0] >> rs2_value[4:0]; // SRLW
+              end
+              dec.result = sext32(word_result);
+            end
+            default: dec.valid = 1'b0;
+          endcase
+        end
+
+        default: dec.valid = 1'b0;
+      endcase
+    end
+
+    dec.rd = rd;
+    if (rd == 5'd0) begin
+      dec.wb_en = 1'b0;
+    end
+    return dec;
+  endfunction
+
+  function automatic logic [31:0] simple_alu_read_mask(input logic        is_32b,
+                                                       input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      if (is_32b) begin
+        unique case (opcode)
+          7'b0010011,
+          7'b0011011: begin // OP-IMM / OP-IMM-32
+            if (insn[19:15] != 5'd0) mask[insn[19:15]] = 1'b1;
+          end
+          7'b0110011,
+          7'b0111011: begin // OP / OP-32
+            if (insn[19:15] != 5'd0) mask[insn[19:15]] = 1'b1;
+            if (insn[24:20] != 5'd0) mask[insn[24:20]] = 1'b1;
+          end
+          default: mask = '0; // LUI/AUIPC read no GPRs.
+        endcase
+      end
+      simple_alu_read_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] scalar_write_mask_conservative(input logic        is_32b,
+                                                                 input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [4:0] rd;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      rd = insn[11:7];
+      if (!is_32b) begin
+        // Do not speculate across an unexpanded compressed instruction.
+        mask = 32'hffff_ffff;
+      end else if (rd != 5'd0) begin
+        unique case (opcode)
+          7'b0110111, // LUI
+          7'b0010111, // AUIPC
+          7'b1101111, // JAL
+          7'b1100111, // JALR
+          7'b0000011, // LOAD
+          7'b0010011, // OP-IMM
+          7'b0011011, // OP-IMM-32
+          7'b0110011, // OP
+          7'b0111011, // OP-32
+          7'b0001111, // FENCE
+          7'b1110011: // CSR/SYSTEM
+            mask[rd] = 1'b1;
+          default: mask = '0;
+        endcase
+      end
+      scalar_write_mask_conservative = mask;
+    end
+  endfunction
+
+  function automatic logic scalar_order_barrier(input logic        is_32b,
+                                                input logic [31:0] insn);
+    automatic logic [6:0] opcode;
+    begin
+      opcode = insn[6:0];
+      scalar_order_barrier = !is_32b ||
+                             (opcode == 7'b1100011) || // BRANCH
+                             (opcode == 7'b1101111) || // JAL
+                             (opcode == 7'b1100111) || // JALR
+                             (opcode == 7'b0001111) || // FENCE
+                             (opcode == 7'b1110011);   // CSR/SYSTEM
+    end
+  endfunction
+
   always_comb begin : p_find_slot
     curr_slot_found = 1'b0;
     curr_slot_idx   = '0;
     for (int unsigned i = 0; i < NumSlots; i++) begin
-      if (insn_valid_q[i] && !curr_slot_found) begin
+      if (insn_valid_q[i] && !simple_batch_mask[i] && !curr_slot_found) begin
         curr_slot_found = 1'b1;
         curr_slot_idx   = 5'(i);
       end
@@ -288,6 +557,88 @@ module cva6_hdv_scalar_backend
   assign curr_is_32b = insn_is_32b_q[curr_slot_idx];
   assign curr_pc     = insn_pc_q[curr_slot_idx];
   assign curr_cinsn  = curr_insn[15:0];
+
+  always_comb begin : p_simple_batch
+    automatic int unsigned issued;
+    automatic logic stop_scan;
+    automatic logic [31:0] used_rd;
+    automatic logic [31:0] prior_write_mask;
+    automatic logic [31:0] read_mask;
+    automatic logic [31:0] write_mask;
+    automatic simple_alu_dec_t dec;
+    automatic logic [XLEN-1:0] lane_rs1;
+    automatic logic [XLEN-1:0] lane_rs2;
+    automatic logic lane_vset_raw_stall;
+    automatic logic lane_order_hazard;
+
+    simple_batch_mask   = '0;
+    simple_batch_wb_en  = '0;
+    simple_batch_rd     = '0;
+    simple_batch_result = '0;
+    simple_batch_write_mask = '0;
+    issued              = 0;
+    stop_scan           = 1'b0;
+    used_rd             = '0;
+    prior_write_mask     = '0;
+
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      lane_rs1 = (insn_q[i][19:15] == 5'd0) ? '0 : xrf_q[insn_q[i][19:15]];
+      lane_rs2 = (insn_q[i][24:20] == 5'd0) ? '0 : xrf_q[insn_q[i][24:20]];
+      dec = decode_simple_alu(insn_is_32b_q[i], insn_q[i], insn_pc_q[i], lane_rs1, lane_rs2);
+      read_mask = simple_alu_read_mask(insn_is_32b_q[i], insn_q[i]);
+      write_mask = scalar_write_mask_conservative(insn_is_32b_q[i], insn_q[i]);
+      lane_vset_raw_stall = vec_vset_inflight_i && (vec_vset_inflight_rd_i != 5'd0) &&
+                             ((insn_q[i][19:15] == vec_vset_inflight_rd_i) ||
+                              (insn_q[i][24:20] == vec_vset_inflight_rd_i));
+      lane_order_hazard = ((read_mask & prior_write_mask) != 32'b0) ||
+                          (dec.wb_en && prior_write_mask[dec.rd]);
+
+      if (insn_valid_q[i] && !stop_scan) begin
+        if ((issued < EffectiveSimpleAluIssueWidth) && dec.valid && !lane_vset_raw_stall &&
+            !lane_order_hazard &&
+            (!dec.wb_en || !used_rd[dec.rd])) begin
+          simple_batch_mask[i]   = 1'b1;
+          simple_batch_wb_en[i]  = dec.wb_en;
+          simple_batch_rd[i]     = dec.rd;
+          simple_batch_result[i] = dec.result;
+          if (dec.wb_en) begin
+            used_rd[dec.rd] = 1'b1;
+            simple_batch_write_mask[dec.rd] = 1'b1;
+          end
+          issued++;
+        end else if ((issued >= EffectiveSimpleAluIssueWidth) ||
+                     (dec.valid && lane_vset_raw_stall) ||
+                     (dec.valid && lane_order_hazard) ||
+                     (dec.valid && dec.wb_en && used_rd[dec.rd])) begin
+          stop_scan = 1'b1;
+        end
+
+        prior_write_mask |= write_mask;
+        if (!dec.valid && scalar_order_barrier(insn_is_32b_q[i], insn_q[i])) begin
+          stop_scan = 1'b1;
+        end
+      end
+    end
+
+    simple_batch_valid = |simple_batch_mask;
+  end
+
+  always_comb begin : p_complex_read_hazard
+    curr_int_read_mask = '0;
+    if (curr_slot_found) begin
+      if (!(CVA6Cfg.FpPresent && ariane_pkg::is_rs1_fpr(cva6_decoded.op)) &&
+          !cva6_decoded.use_zimm &&
+          (rs1_addr != 5'd0)) begin
+        curr_int_read_mask[rs1_addr] = 1'b1;
+      end
+      if (!(CVA6Cfg.FpPresent && ariane_pkg::is_rs2_fpr(cva6_decoded.op)) &&
+          (rs2_addr != 5'd0)) begin
+        curr_int_read_mask[rs2_addr] = 1'b1;
+      end
+    end
+    complex_simple_raw_stall = curr_slot_found &&
+                               ((curr_int_read_mask & simple_batch_write_mask) != 32'b0);
+  end
 
   compressed_decoder #(
     .CVA6Cfg(CVA6Cfg)
@@ -561,6 +912,8 @@ module cva6_hdv_scalar_backend
   assign branch_taken_o         = branch_taken_q;
   assign branch_pc_o            = branch_pc_q;
   assign branch_target_o        = branch_target_q;
+  assign task_complete_o        = (state_q == DONE) && task_complete_pending_q &&
+                                  !error_seen_q;
 
   assign vec_operand_req_ready_o = 1'b1;
   assign vec_rs1_data_o          = (vec_rs1_addr_i == 5'd0) ? '0 : xrf_q[vec_rs1_addr_i];
@@ -745,6 +1098,7 @@ module cva6_hdv_scalar_backend
     redirect_pending_d = redirect_pending_q;
     redirect_pc_d = redirect_pc_q;
     error_seen_d = error_seen_q;
+    task_complete_pending_d = task_complete_pending_q;
     csr_vl_d = csr_vl_q;
     csr_vtype_d = csr_vtype_q;
     csr_frm_d = csr_frm_q;
@@ -770,6 +1124,7 @@ module cva6_hdv_scalar_backend
       IDLE: begin
         redirect_pending_d = 1'b0;
         error_seen_d = 1'b0;
+        task_complete_pending_d = 1'b0;
         if (scalar_valid_i) begin
           insn_valid_d = scalar_insn_valid_i;
           insn_d = scalar_insn_i;
@@ -780,22 +1135,39 @@ module cva6_hdv_scalar_backend
       end
 
       EXECUTE: begin
-        if (vset_raw_stall) begin
-          // Hold: dependent scalar must wait for the in-flight vset VL writeback.
+        if (simple_batch_valid) begin
+          remaining_slots = insn_valid_q & ~simple_batch_mask;
+          insn_valid_d = remaining_slots;
+
+          for (int unsigned i = 0; i < NumSlots; i++) begin
+            if (simple_batch_mask[i] && simple_batch_wb_en[i] &&
+                (simple_batch_rd[i] != 5'd0)) begin
+              xrf_d[simple_batch_rd[i]] = simple_batch_result[i];
+            end
+          end
+        end else begin
+          remaining_slots = insn_valid_q;
+        end
+
+        if (vset_raw_stall || complex_simple_raw_stall) begin
+          // Hold only the non-ALU lane: independent simple ALU slots selected
+          // above have already been consumed and written back this cycle.
           state_d = EXECUTE;
         end else if (curr_slot_found) begin
           if ((cva6_decoded.fu == MULT) && !unsupported) begin
             if (cva6_mult_ready) begin
+              insn_valid_d = remaining_slots;
               state_d = WAIT_MULT;
             end
           end else if ((cva6_decoded.fu == FPU) && !unsupported) begin
             if (cva6_fpu_ready) begin
+              insn_valid_d = remaining_slots;
               state_d = WAIT_FPU;
             end
           end else if ((cva6_decoded.fu inside {LOAD, STORE}) && !unsupported) begin
+            insn_valid_d = remaining_slots;
             state_d = (cva6_decoded.fu == LOAD) ? LSU_AR : LSU_AW;
           end else begin
-            remaining_slots = insn_valid_q;
             remaining_slots[curr_slot_idx] = 1'b0;
             insn_valid_d = remaining_slots;
 
@@ -871,9 +1243,14 @@ module cva6_hdv_scalar_backend
             if (unsupported) begin
               error_seen_d = 1'b1;
             end
+            if (!unsupported && hdv_task_ret) begin
+              task_complete_pending_d = 1'b1;
+            end
 
             state_d = (|remaining_slots) ? EXECUTE : DONE;
           end
+        end else if (simple_batch_valid) begin
+          state_d = (|remaining_slots) ? EXECUTE : DONE;
         end else begin
           state_d = DONE;
         end
@@ -960,6 +1337,7 @@ module cva6_hdv_scalar_backend
       end
 
       DONE: begin
+        task_complete_pending_d = 1'b0;
         state_d = redirect_pending_q ? REDIRECT : IDLE;
       end
 
@@ -978,6 +1356,7 @@ module cva6_hdv_scalar_backend
       insn_valid_d = '0;
       redirect_pending_d = 1'b0;
       error_seen_d = 1'b0;
+      task_complete_pending_d = 1'b0;
       branch_resolved_pulse_d = 1'b0;
     end
   end
@@ -993,6 +1372,7 @@ module cva6_hdv_scalar_backend
       redirect_pending_q <= 1'b0;
       redirect_pc_q <= '0;
       error_seen_q <= 1'b0;
+      task_complete_pending_q <= 1'b0;
       branch_resolved_pulse_q <= 1'b0;
       branch_taken_q <= 1'b0;
       branch_pc_q <= '0;
@@ -1019,6 +1399,7 @@ module cva6_hdv_scalar_backend
       redirect_pending_q <= redirect_pending_d;
       redirect_pc_q <= redirect_pc_d;
       error_seen_q <= error_seen_d;
+      task_complete_pending_q <= task_complete_pending_d;
       branch_resolved_pulse_q <= branch_resolved_pulse_d;
       branch_taken_q <= branch_taken_d;
       branch_pc_q <= branch_pc_d;

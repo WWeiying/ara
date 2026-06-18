@@ -18,7 +18,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned FetchPacketWidth = 128,
   parameter int unsigned BufferBytes      = 64,
   parameter int unsigned ImemOutstandingDepth = BufferBytes / (FetchPacketWidth / 8),
-  parameter int unsigned NumSlots         = 6,
+  parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
   parameter bit          UseCva6HdvScalar = 1'b1,
@@ -172,6 +172,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic task_busy;
   logic task_flush;
   logic dispatch_flush;
+  logic task_complete_request;
   logic host_task_complete_seen_d, host_task_complete_seen_q;
   logic task_done_to_tsu;
   logic task_error_to_tsu;
@@ -196,6 +197,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic                         scalar_backend_ready;
   logic                         scalar_backend_accepted;
   logic                         scalar_backend_error;
+  logic                         scalar_backend_task_complete;
   logic                         scalar_backend_redirect_valid;
   addr_t                        scalar_backend_redirect_pc;
   logic                         scalar_branch_resolved_valid;
@@ -291,7 +293,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
 
   assign task_error_to_tsu = host_hdv_task_error_i | heu_top_ep_error | vec_heu_error;
   assign task_flush     = flush_i | task_error_to_tsu | tsu_top_error;
-  assign task_done_to_tsu = (host_hdv_task_complete_i | host_task_complete_seen_q) &
+  assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
+  assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
                             !vec_dispatch_busy;
   assign hdv_ctrl_redirect_valid = UseCva6HdvScalar ? scalar_backend_redirect_valid :
                                                        ctrl_hdv_redirect_valid_i;
@@ -301,7 +304,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   // any already-held packet/execute state in VLIWPU, HEU, and vector dispatch.
   // Do not feed this combined flush into IPU itself, otherwise IPU's redirect
   // path would be overwritten by its flush path.
-  assign dispatch_flush = task_flush | hdv_ctrl_redirect_valid;
+  assign dispatch_flush = task_flush | task_complete_request | hdv_ctrl_redirect_valid;
 
   assign scalar_heu_ready = UseCva6HdvScalar ? scalar_backend_ready :
                                                 scalar_hdv_ready_i;
@@ -346,7 +349,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
       loop_branch_exit_pending_d = 1'b0;
     end
 
-    if (dispatch_flush | host_hdv_task_complete_i | host_hdv_task_error_i) begin
+    if (dispatch_flush | task_complete_request | host_hdv_task_error_i) begin
       loop_branch_inflight_d = 1'b0;
       loop_branch_exit_pending_d = 1'b0;
     end
@@ -422,6 +425,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   cva6_hdv_scalar_backend #(
     .XLEN       (XLEN     ),
     .NumSlots   (NumSlots ),
+    .ScalarIssueWidth(3),
+    .SimpleAluIssueWidth(2),
     .AxiDataWidth(AxiDataWidth),
     .VectorVlenBytes(VLEN / 8),
     .InitialRa  (HdvInitialRa),
@@ -451,6 +456,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .branch_taken_o                (scalar_branch_taken         ),
     .branch_pc_o                   (scalar_branch_pc            ),
     .branch_target_o               (scalar_branch_target        ),
+    .task_complete_o               (scalar_backend_task_complete),
     .vec_operand_req_valid_i       (vec_scalar_operand_req_valid),
     .vec_operand_req_ready_o       (scalar_vec_operand_req_ready),
     .vec_rs1_addr_i                (vec_scalar_rs1_addr         ),
@@ -682,7 +688,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .redirect_pc_i             (hdv_ctrl_redirect_pc   ),
     .loop_lock_i               (ctrl_hdv_loop_lock_i    ),
     .loop_exit_i               (auto_loop_exit          ),
-    .top_ipu_task_complete_i   (host_hdv_task_complete_i | host_hdv_task_error_i),
+    .top_ipu_task_complete_i   (task_complete_request | host_hdv_task_error_i),
     .ipu_top_busy_o            (ipu_top_busy            )
   );
 
@@ -720,6 +726,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .XLEN      (XLEN      ),
     .NumSlots  (NumSlots  ),
     .SlotWidth (SlotWidth ),
+    .EnableBufferedVectorEarlyIssue(1'b1),
     .addr_t    (addr_t    )
   ) i_hybrid_execution_unit (
     .clk_i                          (clk_i                    ),
@@ -774,7 +781,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   always_comb begin : p_task_done_drain
     host_task_complete_seen_d = host_task_complete_seen_q;
 
-    if (host_hdv_task_complete_i && vec_dispatch_busy) begin
+    if (task_complete_request && vec_dispatch_busy) begin
       host_task_complete_seen_d = 1'b1;
     end
 
