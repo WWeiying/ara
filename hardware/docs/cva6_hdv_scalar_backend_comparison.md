@@ -529,7 +529,8 @@ CVA6 的依赖处理来自：
    `fpu_wrap` 给出的 exception flags 需要累积进 `fflags`，`fcsr` 读写要同时覆盖 `frm` 和 `fflags`。
 
 4. 明确 unsupported 指令策略  
-   对于当前不支持的 system/AMO/fence/privileged 指令，应该决定是当作 NOP、报 task error，还是进入软件 trap。不能静默误执行。
+   对于当前不支持的 system/AMO/privileged 指令，应该决定是当作 NOP、报 task error，还是进入软件 trap。不能静默误执行。
+   **当前状态**：FENCE/FENCE.I 已作为 NOP 处理（单核 in-order 系统中无架构副作用），`ebreak` 可作为显式 HDV task-end marker（通过 `TreatEbreakAsTaskExit=1` 参数控制，默认启用）。
 
 ### 11.2 第二优先级：兼容性
 

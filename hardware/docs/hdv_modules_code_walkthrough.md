@@ -2,6 +2,18 @@
 
 本文档逐语段说明 `hardware/src/hdv` 下新增的 Hybrid Decoupled Vector (HDV) 原型 RTL。当前这些模块仍是 HDV 前端原型，但 `hdv_top` 已经实例化 Ara 作为向量后端 shell，并参考原始 `ara_system` 将 Ara memory port 与预留的标量 memory master 汇成统一 system AXI 出口。
 
+> **近期信号重命名** (2026-06):
+> 本文档中的信号名以 RTL 实际代码为准。以下批量重命名已应用到所有 RTL 和 TB 文件：
+> - `*_accepted_*` → `*_ep_done_*` (scalar 真正执行完成) 或 `*_ep_acknowledged_*` (向量 operand 安全/EP 前端推进)
+> - `*_pending_*` (HEU 内部) → `*_slice_outstanding_*`
+> - `*_store_pending_*` → `*_store_inflight_*`
+> - `AutoExpectedEpAccepts` → `AutoExpectedEpAcknowledges`
+> - `vq_insn_q/rs1_q/rs2_q` → `vq_q` (`vq_entry_t` 结构化 command window)
+> - `real_wait_drained_*` → `real_ep_operands_captured_*`
+> - `real_wait_vset_seen_*` → `real_ep_vset_wb_done_*`
+>
+> 文档正文中的示例代码片段可能仍使用旧名。请以 `hardware/src/` 下实际 RTL 代码为准。
+
 ## 文件总览
 
 | 文件 | 模块 | 作用 |

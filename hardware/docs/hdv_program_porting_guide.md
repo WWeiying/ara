@@ -363,12 +363,14 @@ __attribute__((naked, aligned(16), section(".hdv_task"),
 
 - 同一 EP 内允许并行的指令用 p-bit 连起来。
 - 有 RAW/WAW 或必须先后执行的地方切 EP。
-- branch/ret 单独成 EP 或放在 packet 中但让 RTL 自动切断。
+- branch/jal/jalr/ret 单独成 EP（VLIWPU 自动切为 BRANCH 硬边界）。
+- **FENCE 单独成 EP（VLIWPU 自动切为 SYSTEM 硬边界），在 scalar backend 中作为 NOP 执行。**
+- **ebreak 可作为显式 task-end marker（与 ret 解耦），置于 task 末尾的独立 EP 中。**
 - 需要跨 packet 提高利用率时显式设置 `cross=1`。
 
 ### 9.5 计算 expected EP 数
 
-TB 中 `AutoExpectedEpAccepts` 用来判断测试是否通过。若 task 会自然执行到 `ret`，expected 应包含直到 `ret` 为止的 EP 数，不应包含 `ret` 后的 padding/data。
+TB 中 `AutoExpectedEpAcknowledges`（原名 `AutoExpectedEpAccepts`）用来判断测试是否通过。若 task 自然执行到 `ret` 或 `ebreak`，expected 应包含直到 task-end 指令为止的 EP 数，不应包含其后的 padding/data。
 
 以当前 `vsaxpy_hdv` 为例：
 
