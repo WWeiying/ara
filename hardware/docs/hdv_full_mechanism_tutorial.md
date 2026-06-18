@@ -1031,29 +1031,34 @@ TB 打印：
 
 - host/task CSR
 - task queue
-- IPU early serve、双 buffer、redirect、loop lock
+- IPU early serve、双 buffer、redirect、loop lock（**已改为由 scalar backend 的精确 branch_resolved 事件驱动**，不再依赖 dispatch 阶段 opcode 重解码）
 - hint p-bit based VLIW packing
-- HEU scalar/vector split
-- vector dispatch 到 Ara
+- HEU scalar/vector split、**buffered vector early issue 受 memory-ordering 约束保护**
+- vector dispatch 到 Ara（**command window 已结构化为 `vq_entry_t`，携带 ep_id / cmd_class / side-effect flags**）
 - mock scalar branch redirect
-- EP accepted 计数和 task done
+- **EP acknowledged 计数和 task done（信号已重命名：`accepted`→`acknowledged`/`done`，区分"前端推进"和"执行完成"）**
+- **ebreak 可作为显式 task-end marker（与 ret 解耦，参数 `TreatEbreakAsTaskExit`）**
+- **FENCE 已正确归类为 SYSTEM（EP 硬边界），在 scalar backend 中作为 NOP 处理**
 
 仍然是临时或待完善的部分：
 
 - 真实标量后端已经接入 `cva6_hdv_scalar_backend`，支持当前 HDV 路径需要的寄存器、ALU/branch/LSU、operand service、vector-to-scalar 写回和 vset inflight interlock；但它还不是完整 CVA6 core，也还没有完整异常/commit/scoreboard。
 - `hdv_vec_dispatch_unit` 在真实标量模式下通过 operand service 读取 `cva6_hdv_scalar_backend` 的 XRF/FRF；vtrace 只作为 bring-up/debug 模式。
-- `ep_accepted` 不等于真实执行退休。如果要验证数据正确性，仍需观察 Ara 内部完成信号和内存结果。
+- `ep_acknowledged` 不等于真实执行退休。如果要验证数据正确性，仍需观察 Ara 内部完成信号和内存结果。
 - VLIWPU 的依赖断点 `ctrl_vliwpu_dep_break_i` 现在由外部提供，尚未自动分析 RAW/WAW/WAR。
 - redirect 目标被要求 16B fetch packet/EP entry 对齐，不支持跳进 EP 中间。
 - IPU 已有自动 loop lock/双 buffer 取指支撑逻辑，但仍需要结合更多 kernel 验证 taken/not-taken、redirect、loop exit 和 buffer 命中边界。
+- **memory-ordering 保护当前为保守策略：current EP 含任何标量访存/FENCE/SYSTEM/AMO 时阻塞 buffered vector early issue。后续可通过 noalias 或更精细地址分析放宽。**
+- **outstanding EP 数量硬编码为 2（HEU current + buffer），参数化为 `MaxOutstandingVecEPs`。扩展到 >2 EP 需同步加宽 EP ID 位宽。**
 
 ## 15. 阅读代码的推荐顺序
 
-1. 先读 `hdv_pkg.sv`，记住 CSR 和 class。
-2. 再读 `hdv_top.sv` 的 wire 和实例化，建立全局连接图。
+1. 先读 `hdv_pkg.sv`，记住 CSR 和 class（**FENCE 现已归类为 HDV_INST_SYSTEM**）。
+2. 再读 `hdv_top.sv` 的 wire 和实例化，建立全局连接图（**loop control 已简化，`is_branch32/btype_target` 已删除**）。
 3. 读 TIU/TSU，理解 task 生命周期。
 4. 读 IPU，重点看 `state_q`、valid bit、redirect 和 loop lock。
-5. 读 VLIWPU，重点看 p-bit、32-bit continuation、issue mask。
-6. 读 HEU，重点看 dispatch valid、pending、ep_accepted。
-7. 读 vector dispatch，重点看 Ara request 和 vtrace。
+5. 读 VLIWPU，重点看 p-bit、32-bit continuation、issue mask（**FENCE 归类变更**）。
+6. 读 HEU，重点看 dispatch valid、**`scalar_slice_outstanding/vector_slice_outstanding`**、**`ep_acknowledged`**、**`current_has_branch/current_has_scalar_mem_order`**。
+7. 读 vector dispatch，重点看 **`vq_entry_t` 结构化 command window**、`vec_ep_acknowledged_o`、Ara request、**仿真性能计数器 (`ifndef SYNTHESIS`)**。
 8. 最后读 mock host 和 TB，理解当前仿真为什么能跑起来，以及哪些地方只是临时模型。
+9. **读 scalar backend 时留意 FENCE NOP 处理和 `TreatEbreakAsTaskExit` 参数**。
