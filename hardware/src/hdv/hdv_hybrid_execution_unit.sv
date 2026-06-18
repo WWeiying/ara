@@ -4,13 +4,25 @@
 //
 // Description:
 // Hybrid Execution Unit (HEU) front-end dispatcher.  This standalone block
-// splits an execute packet into scalar and vector backend streams.  Backends
-// report when their EP slice has been safely accepted; Ara may still complete
-// vector instructions later.  A one-EP skid buffer lets VLIWPU hand off the
-// next packet while the current packet waits for backend acceptance.  When the
-// current packet is stalled only by scalar dependencies, the buffered packet's
-// vector slice may be sent ahead to keep Ara fed; scalar slices remain in EP
-// order and vector early issue never crosses an unresolved scalar branch.
+// splits an execute packet into scalar and vector backend streams.
+//
+// ── Slice hand-off semantics ──────────────────────────────────────────────
+//  scalar_ep_done_i:      Scalar backend has executed ALL instructions in this
+//                         EP's scalar slice and committed results to XRF/FRF.
+//  vector_ep_acknowledged_i: Vector dispatch has captured all scalar operands
+//                         for this EP's vector slice (and any vset rd!=x0
+//                         writeback has landed).  VECTOR INSTRUCTIONS MAY STILL
+//                         BE EXECUTING IN ARA — this is a frontend-advance
+//                         event, NOT a completion event.
+//  heu_top_ep_acknowledged_o: Both slices have been handed off.  VLIWPU may
+//                         advance to the next EP.  THIS DOES NOT IMPLY THAT
+//                         VECTOR EXECUTION IS COMPLETE.
+//
+// A one-EP skid buffer lets VLIWPU hand off the next packet while the current
+// packet waits for backend hand-off.  When the current packet is stalled only
+// by scalar dependencies, the buffered packet's vector slice may be sent ahead
+// to keep Ara fed; scalar slices remain in EP order and vector early issue
+// never crosses an unresolved scalar branch.
 
 module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   parameter int unsigned XLEN          = 64,
@@ -49,12 +61,20 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   output addr_t                              heu_vector_pc_o,
   output logic                               heu_vector_ep_id_o,
 
-  input  logic                               scalar_heu_accepted_i,
-  input  logic                               vector_heu_accepted_i,
-  input  logic                               vector_heu_accepted_id_i,
+  // scalar_ep_done_i: scalar backend has finished executing all instructions
+  // in this EP's scalar slice and committed results to XRF/FRF.
+  input  logic                               scalar_ep_done_i,
+  // vector_ep_acknowledged_i: vector dispatch has captured all scalar operands
+  // for this EP's vector slice (and any vset rd!=x0 writeback has been received).
+  // THIS DOES NOT IMPLY VECTOR EXECUTION IS COMPLETE.
+  input  logic                               vector_ep_acknowledged_i,
+  input  logic                               vector_ep_acknowledged_id_i,
   input  logic                               backend_heu_error_i,
   output logic                               heu_top_busy_o,
-  output logic                               heu_top_ep_accepted_o,
+  // EP acknowledged: both scalar and vector slices have been safely handed off
+  // to their backends.  The frontend (VLIWPU) may advance to the next EP.
+  // THIS DOES NOT IMPLY ANY VECTOR INSTRUCTION HAS COMPLETED EXECUTION.
+  output logic                               heu_top_ep_acknowledged_o,
   output logic                               heu_top_ep_error_o
 );
 
@@ -65,19 +85,20 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic accept_to_buffer;
   logic current_done;
   logic outstanding_d, outstanding_q;
-  logic scalar_pending_d, scalar_pending_q;
-  logic vector_pending_d, vector_pending_q;
+  logic scalar_slice_outstanding_d, scalar_slice_outstanding_q;
+  logic vector_slice_outstanding_d, vector_slice_outstanding_q;
   logic buffer_valid_d, buffer_valid_q;
   logic buffer_has_scalar_d, buffer_has_scalar_q;
   logic buffer_has_vector_d, buffer_has_vector_q;
   logic buffer_has_branch_d, buffer_has_branch_q;
+  logic buffer_has_scalar_mem_order_d, buffer_has_scalar_mem_order_q;
   logic [31:0] buffer_scalar_write_mask_d, buffer_scalar_write_mask_q;
   logic [31:0] buffer_scalar_fpr_write_mask_d, buffer_scalar_fpr_write_mask_q;
   logic [31:0] buffer_vector_write_mask_d, buffer_vector_write_mask_q;
   logic [31:0] buffer_vector_read_mask_d, buffer_vector_read_mask_q;
   logic [31:0] buffer_vector_fpr_read_mask_d, buffer_vector_fpr_read_mask_q;
   logic buffer_vector_sent_d, buffer_vector_sent_q;
-  logic buffer_vector_pending_d, buffer_vector_pending_q;
+  logic buffer_vector_slice_outstanding_d, buffer_vector_slice_outstanding_q;
   logic buffer_vector_id_d, buffer_vector_id_q;
   logic [NumSlots-1:0] buffer_scalar_insn_valid_d, buffer_scalar_insn_valid_q;
   logic [NumSlots-1:0] buffer_vector_insn_valid_d, buffer_vector_insn_valid_q;
@@ -99,12 +120,24 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   addr_t [NumSlots-1:0] vector_dispatch_insn_pc_d, vector_dispatch_insn_pc_q;
   addr_t dispatch_pc_d, dispatch_pc_q;
   addr_t vector_dispatch_pc_d, vector_dispatch_pc_q;
-  logic ep_accepted_d, ep_accepted_q;
+  logic ep_acknowledged_d, ep_acknowledged_q;
   logic error_d, error_q;
   logic current_has_branch_d, current_has_branch_q;
+  // current_has_scalar_mem_order_q: set when the current EP's scalar slice
+  // contains any instruction with memory-ordering relevance (load, store,
+  // FENCE, AMO, FP load/store).  When asserted, buffered vector early issue
+  // is blocked to prevent the buffered EP's vector memory ops from
+  // overtaking the current EP's scalar memory ops.
+  logic current_has_scalar_mem_order_d, current_has_scalar_mem_order_q;
   logic [31:0] current_scalar_write_mask_d, current_scalar_write_mask_q;
   logic [31:0] current_scalar_fpr_write_mask_d, current_scalar_fpr_write_mask_q;
   logic [31:0] current_vector_write_mask_d, current_vector_write_mask_q;
+  // EP-id generation: a 1-bit toggle (0/1) used to distinguish the current
+  // EP's vector slice from the buffered EP's vector slice.  This is safe
+  // because at most 2 vector EP slices can be outstanding simultaneously
+  // (current + buffer).  vec_dispatch_unit.MaxOutstandingVecEPs must match.
+  // To support >2 outstanding EPs, widen these to EpIdWidth bits and replace
+  // the toggle with a wrapping counter or free-list.
   logic current_vector_id_d, current_vector_id_q;
   logic next_vector_id_d, next_vector_id_q;
   logic buffer_vector_can_issue;
@@ -295,9 +328,42 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     end
   endfunction
 
+  // ── Memory-ordering detection ──────────────────────────────────────────
+  // Returns true if the instruction has memory-ordering relevance: loads,
+  // stores, FENCE, FENCE.I, AMO, or scalar FP loads/stores.  These must not
+  // be overtaken by vector memory ops from a later EP.  SYSTEM / CSR are
+  // hard EP boundaries in VLIWPU and therefore never reach this check in
+  // a mixed EP; they are included here for defence in depth.
+  function automatic logic is_scalar_mem_order_op(input logic [31:0] insn,
+                                                   input logic        is_32b);
+    logic [6:0] opcode;
+    logic [2:0] funct3;
+    begin
+      if (!is_32b) begin
+        // Compressed instruction — conservative: treat as memory-ordering
+        // relevant to avoid any possibility of reordering.
+        is_scalar_mem_order_op = 1'b1;
+      end else begin
+        opcode = insn[6:0];
+        funct3 = insn[14:12];
+        is_scalar_mem_order_op =
+          (opcode == 7'b0000011) ||                              // integer LOAD
+          (opcode == 7'b0100011) ||                              // integer STORE
+          (opcode == 7'b0001111) ||                              // FENCE / FENCE.I
+          (opcode == 7'b0101111) ||                              // AMO
+          (opcode == 7'b0000111 && (funct3 == 3'b010 || funct3 == 3'b011)) || // FLW / FLD
+          (opcode == 7'b0100111 && (funct3 == 3'b010 || funct3 == 3'b011)) || // FSW / FSD
+          (opcode == 7'b1110011);                                // SYSTEM / CSR
+      end
+    end
+  endfunction
+
+  logic has_scalar_mem_order;
+
   always_comb begin : p_split
     has_scalar = 1'b0;
     has_vector = 1'b0;
+    has_scalar_mem_order = 1'b0;
     scalar_insn_valid_in = '0;
     vector_insn_valid_in = '0;
     dispatch_insn_in = '0;
@@ -344,6 +410,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
                                                         dispatch_insn_is_32b_in[i]);
           scalar_fpr_write_mask_in |= scalar_fpr_write_mask(dispatch_insn_in[i],
                                                             dispatch_insn_is_32b_in[i]);
+          has_scalar_mem_order |= is_scalar_mem_order_op(dispatch_insn_in[i],
+                                                         dispatch_insn_is_32b_in[i]);
         end
       end
     end
@@ -371,20 +439,26 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 
   assign heu_top_busy_o  = outstanding_q | buffer_valid_q | accept_packet |
                            scalar_dispatch_valid_q | vector_dispatch_valid_q;
-  assign heu_top_ep_accepted_o  = ep_accepted_q;
+  assign heu_top_ep_acknowledged_o  = ep_acknowledged_q;
   assign heu_top_ep_error_o = error_q;
 
+  // Buffered vector early issue is blocked when the current EP contains:
+  //  · a not-yet-resolved branch (control-flow boundary)
+  //  · a scalar memory-ordering instruction (load/store/FENCE/AMO/FP-mem)
+  //    — the buffered EP's vector memory ops must not overtake these.
+  //  · a conflicting scalar/vector register write (RAW hazard via masks)
   assign buffer_vector_can_issue = EnableBufferedVectorEarlyIssue &
                                    buffer_valid_q & buffer_has_vector_q &
                                    !buffer_vector_sent_q &
                                    !vector_dispatch_valid_q &
                                    !current_has_branch_q &
-                                   (!scalar_pending_q ||
+                                   !current_has_scalar_mem_order_q &
+                                   (!scalar_slice_outstanding_q ||
                                     ((buffer_vector_read_mask_q &
                                       current_scalar_write_mask_q) == 32'b0) &&
                                     ((buffer_vector_fpr_read_mask_q &
                                       current_scalar_fpr_write_mask_q) == 32'b0)) &
-                                   (!vector_pending_q ||
+                                   (!vector_slice_outstanding_q ||
                                     (((buffer_vector_read_mask_q &
                                        current_vector_write_mask_q) == 32'b0) &&
                                      ((current_vector_write_mask_q == 32'b0) ||
@@ -411,13 +485,14 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     buffer_has_scalar_d = buffer_has_scalar_q;
     buffer_has_vector_d = buffer_has_vector_q;
     buffer_has_branch_d = buffer_has_branch_q;
+    buffer_has_scalar_mem_order_d = buffer_has_scalar_mem_order_q;
     buffer_scalar_write_mask_d = buffer_scalar_write_mask_q;
     buffer_scalar_fpr_write_mask_d = buffer_scalar_fpr_write_mask_q;
     buffer_vector_write_mask_d = buffer_vector_write_mask_q;
     buffer_vector_read_mask_d = buffer_vector_read_mask_q;
     buffer_vector_fpr_read_mask_d = buffer_vector_fpr_read_mask_q;
     buffer_vector_sent_d = buffer_vector_sent_q;
-    buffer_vector_pending_d = buffer_vector_pending_q;
+    buffer_vector_slice_outstanding_d = buffer_vector_slice_outstanding_q;
     buffer_vector_id_d = buffer_vector_id_q;
     buffer_scalar_insn_valid_d = buffer_scalar_insn_valid_q;
     buffer_vector_insn_valid_d = buffer_vector_insn_valid_q;
@@ -425,11 +500,12 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     buffer_dispatch_insn_is_32b_d = buffer_dispatch_insn_is_32b_q;
     buffer_dispatch_insn_pc_d = buffer_dispatch_insn_pc_q;
     buffer_dispatch_pc_d = buffer_dispatch_pc_q;
-    // ep_accepted_d auto-clears each cycle so heu_top_ep_accepted_o is a 1-cycle pulse.
+    // ep_acknowledged_d auto-clears each cycle so heu_top_ep_acknowledged_o is a 1-cycle pulse.
     // Callers (mock core, TSU) must latch it themselves.
-    ep_accepted_d        = 1'b0;
+    ep_acknowledged_d        = 1'b0;
     error_d       = error_q;
     current_has_branch_d = current_has_branch_q;
+    current_has_scalar_mem_order_d = current_has_scalar_mem_order_q;
     current_scalar_write_mask_d = current_scalar_write_mask_q;
     current_scalar_fpr_write_mask_d = current_scalar_fpr_write_mask_q;
     current_vector_write_mask_d = current_vector_write_mask_q;
@@ -443,7 +519,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_dispatch_valid_d = 1'b0;
       if (vector_dispatch_from_buffer_q) begin
         buffer_vector_sent_d = 1'b1;
-        buffer_vector_pending_d = 1'b1;
+        buffer_vector_slice_outstanding_d = 1'b1;
       end
       vector_dispatch_from_buffer_d = 1'b0;
     end
@@ -453,7 +529,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 
       new_vector_id = next_vector_id_q;
       outstanding_d = 1'b1;
-      ep_accepted_d        = 1'b0;
+      ep_acknowledged_d        = 1'b0;
       error_d       = 1'b0;
       scalar_dispatch_valid_d = has_scalar;
       vector_dispatch_valid_d = has_vector;
@@ -474,6 +550,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         next_vector_id_d = ~next_vector_id_q;
       end
       current_has_branch_d    = 1'b0;
+      current_has_scalar_mem_order_d = has_scalar_mem_order;
       current_scalar_write_mask_d = scalar_write_mask_in;
       current_scalar_fpr_write_mask_d = scalar_fpr_write_mask_in;
       current_vector_write_mask_d = vector_write_mask_in;
@@ -492,13 +569,14 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_has_scalar_d = has_scalar;
       buffer_has_vector_d = has_vector;
       buffer_has_branch_d = 1'b0;
+      buffer_has_scalar_mem_order_d = has_scalar_mem_order;
       buffer_scalar_write_mask_d = scalar_write_mask_in;
       buffer_scalar_fpr_write_mask_d = scalar_fpr_write_mask_in;
       buffer_vector_write_mask_d = vector_write_mask_in;
       buffer_vector_read_mask_d = vector_read_mask_in;
       buffer_vector_fpr_read_mask_d = vector_fpr_read_mask_in;
       buffer_vector_sent_d = 1'b0;
-      buffer_vector_pending_d = 1'b0;
+      buffer_vector_slice_outstanding_d = 1'b0;
       buffer_vector_id_d = new_vector_id;
       buffer_scalar_insn_valid_d = scalar_insn_valid_in;
       buffer_vector_insn_valid_d = vector_insn_valid_in;
@@ -531,32 +609,32 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       error_d = 1'b1;
     end
 
-    scalar_pending_d = scalar_pending_q;
-    vector_pending_d = vector_pending_q;
+    scalar_slice_outstanding_d = scalar_slice_outstanding_q;
+    vector_slice_outstanding_d = vector_slice_outstanding_q;
 
-    if (scalar_pending_q && scalar_heu_accepted_i) begin
-      scalar_pending_d = 1'b0;
+    if (scalar_slice_outstanding_q && scalar_ep_done_i) begin
+      scalar_slice_outstanding_d = 1'b0;
     end
-    if (vector_pending_q && vector_heu_accepted_i &&
-        (vector_heu_accepted_id_i == current_vector_id_q)) begin
-      vector_pending_d = 1'b0;
+    if (vector_slice_outstanding_q && vector_ep_acknowledged_i &&
+        (vector_ep_acknowledged_id_i == current_vector_id_q)) begin
+      vector_slice_outstanding_d = 1'b0;
     end
-    if (buffer_vector_pending_q && vector_heu_accepted_i &&
-        (vector_heu_accepted_id_i == buffer_vector_id_q)) begin
-      buffer_vector_pending_d = 1'b0;
+    if (buffer_vector_slice_outstanding_q && vector_ep_acknowledged_i &&
+        (vector_ep_acknowledged_id_i == buffer_vector_id_q)) begin
+      buffer_vector_slice_outstanding_d = 1'b0;
     end
 
     if (accept_to_current) begin
-      scalar_pending_d = has_scalar;
-      vector_pending_d = has_vector;
+      scalar_slice_outstanding_d = has_scalar;
+      vector_slice_outstanding_d = has_vector;
     end
 
-    current_done = outstanding_q && !scalar_pending_d && !vector_pending_d &&
+    current_done = outstanding_q && !scalar_slice_outstanding_d && !vector_slice_outstanding_d &&
                    !scalar_dispatch_valid_d &&
                    !(vector_dispatch_valid_d && !vector_dispatch_from_buffer_d);
 
     if (current_done) begin
-      ep_accepted_d        = !error_d;
+      ep_acknowledged_d        = !error_d;
       if (buffer_valid_d) begin
         logic buffer_vector_inflight;
 
@@ -585,26 +663,29 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
           vector_dispatch_valid_d = 1'b0;
           vector_dispatch_from_buffer_d = 1'b0;
         end
-        scalar_pending_d = buffer_has_scalar_d;
-        vector_pending_d = buffer_has_vector_d &&
-                           (!buffer_vector_sent_d || buffer_vector_pending_d);
+        scalar_slice_outstanding_d = buffer_has_scalar_d;
+        vector_slice_outstanding_d = buffer_has_vector_d &&
+                           (!buffer_vector_sent_d || buffer_vector_slice_outstanding_d);
         current_vector_id_d = buffer_vector_id_d;
         current_has_branch_d = buffer_has_branch_d;
+        current_has_scalar_mem_order_d = buffer_has_scalar_mem_order_d;
         current_scalar_write_mask_d = buffer_scalar_write_mask_d;
         current_scalar_fpr_write_mask_d = buffer_scalar_fpr_write_mask_d;
         current_vector_write_mask_d = buffer_vector_write_mask_d;
         buffer_valid_d = 1'b0;
         buffer_has_branch_d = 1'b0;
+        buffer_has_scalar_mem_order_d = 1'b0;
         buffer_scalar_write_mask_d = '0;
         buffer_scalar_fpr_write_mask_d = '0;
         buffer_vector_write_mask_d = '0;
         buffer_vector_read_mask_d = '0;
         buffer_vector_fpr_read_mask_d = '0;
         buffer_vector_sent_d = 1'b0;
-        buffer_vector_pending_d = 1'b0;
+        buffer_vector_slice_outstanding_d = 1'b0;
       end else begin
         outstanding_d = 1'b0;
         current_has_branch_d = 1'b0;
+        current_has_scalar_mem_order_d = 1'b0;
         current_scalar_write_mask_d = '0;
         current_scalar_fpr_write_mask_d = '0;
         current_vector_write_mask_d = '0;
@@ -613,8 +694,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 
     if (flush_i) begin
       outstanding_d = 1'b0;
-      scalar_pending_d = 1'b0;
-      vector_pending_d = 1'b0;
+      scalar_slice_outstanding_d = 1'b0;
+      vector_slice_outstanding_d = 1'b0;
       buffer_valid_d = 1'b0;
       buffer_scalar_write_mask_d = '0;
       buffer_scalar_fpr_write_mask_d = '0;
@@ -622,14 +703,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_vector_read_mask_d = '0;
       buffer_vector_fpr_read_mask_d = '0;
       buffer_vector_sent_d = 1'b0;
-      buffer_vector_pending_d = 1'b0;
+      buffer_vector_slice_outstanding_d = 1'b0;
       buffer_vector_id_d = 1'b0;
       scalar_dispatch_valid_d = 1'b0;
       vector_dispatch_valid_d = 1'b0;
       vector_dispatch_from_buffer_d = 1'b0;
-      ep_accepted_d        = 1'b0;
+      ep_acknowledged_d        = 1'b0;
       error_d       = 1'b0;
       current_has_branch_d = 1'b0;
+      current_has_scalar_mem_order_d = 1'b0;
       current_scalar_write_mask_d = '0;
       current_scalar_fpr_write_mask_d = '0;
       current_vector_write_mask_d = '0;
@@ -641,19 +723,20 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
       outstanding_q <= 1'b0;
-      scalar_pending_q <= 1'b0;
-      vector_pending_q <= 1'b0;
+      scalar_slice_outstanding_q <= 1'b0;
+      vector_slice_outstanding_q <= 1'b0;
       buffer_valid_q <= 1'b0;
       buffer_has_scalar_q <= 1'b0;
       buffer_has_vector_q <= 1'b0;
       buffer_has_branch_q <= 1'b0;
+      buffer_has_scalar_mem_order_q <= 1'b0;
       buffer_scalar_write_mask_q <= '0;
       buffer_scalar_fpr_write_mask_q <= '0;
       buffer_vector_write_mask_q <= '0;
       buffer_vector_read_mask_q <= '0;
       buffer_vector_fpr_read_mask_q <= '0;
       buffer_vector_sent_q <= 1'b0;
-      buffer_vector_pending_q <= 1'b0;
+      buffer_vector_slice_outstanding_q <= 1'b0;
       buffer_vector_id_q <= 1'b0;
       buffer_scalar_insn_valid_q <= '0;
       buffer_vector_insn_valid_q <= '0;
@@ -675,9 +758,10 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_dispatch_insn_pc_q <= '0;
       dispatch_pc_q <= '0;
       vector_dispatch_pc_q <= '0;
-      ep_accepted_q        <= 1'b0;
+      ep_acknowledged_q        <= 1'b0;
       error_q       <= 1'b0;
       current_has_branch_q <= 1'b0;
+      current_has_scalar_mem_order_q <= 1'b0;
       current_scalar_write_mask_q <= '0;
       current_scalar_fpr_write_mask_q <= '0;
       current_vector_write_mask_q <= '0;
@@ -685,19 +769,20 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       next_vector_id_q <= 1'b0;
     end else begin
       outstanding_q <= outstanding_d;
-      scalar_pending_q <= scalar_pending_d;
-      vector_pending_q <= vector_pending_d;
+      scalar_slice_outstanding_q <= scalar_slice_outstanding_d;
+      vector_slice_outstanding_q <= vector_slice_outstanding_d;
       buffer_valid_q <= buffer_valid_d;
       buffer_has_scalar_q <= buffer_has_scalar_d;
       buffer_has_vector_q <= buffer_has_vector_d;
       buffer_has_branch_q <= buffer_has_branch_d;
+      buffer_has_scalar_mem_order_q <= buffer_has_scalar_mem_order_d;
       buffer_scalar_write_mask_q <= buffer_scalar_write_mask_d;
       buffer_scalar_fpr_write_mask_q <= buffer_scalar_fpr_write_mask_d;
       buffer_vector_write_mask_q <= buffer_vector_write_mask_d;
       buffer_vector_read_mask_q <= buffer_vector_read_mask_d;
       buffer_vector_fpr_read_mask_q <= buffer_vector_fpr_read_mask_d;
       buffer_vector_sent_q <= buffer_vector_sent_d;
-      buffer_vector_pending_q <= buffer_vector_pending_d;
+      buffer_vector_slice_outstanding_q <= buffer_vector_slice_outstanding_d;
       buffer_vector_id_q <= buffer_vector_id_d;
       buffer_scalar_insn_valid_q <= buffer_scalar_insn_valid_d;
       buffer_vector_insn_valid_q <= buffer_vector_insn_valid_d;
@@ -719,9 +804,10 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_dispatch_insn_pc_q <= vector_dispatch_insn_pc_d;
       dispatch_pc_q <= dispatch_pc_d;
       vector_dispatch_pc_q <= vector_dispatch_pc_d;
-      ep_accepted_q        <= ep_accepted_d;
+      ep_acknowledged_q        <= ep_acknowledged_d;
       error_q       <= error_d;
       current_has_branch_q <= current_has_branch_d;
+      current_has_scalar_mem_order_q <= current_has_scalar_mem_order_d;
       current_scalar_write_mask_q <= current_scalar_write_mask_d;
       current_scalar_fpr_write_mask_q <= current_scalar_fpr_write_mask_d;
       current_vector_write_mask_q <= current_vector_write_mask_d;

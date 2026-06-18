@@ -23,7 +23,12 @@ module cva6_hdv_scalar_backend
   parameter logic [XLEN-1:0] InitialA2  = '0,
   parameter logic [XLEN-1:0] InitialA3  = '0,
   parameter logic [XLEN-1:0] InitialFa0 = '0,
-  parameter bit TreatRetAsTaskExit = 1'b1,
+  parameter bit TreatRetAsTaskExit   = 1'b1,
+  // TreatEbreakAsTaskExit: when 1, the EBREAK instruction (0x00100073) is
+  // recognised as the end of an HDV task, decoupling task-completion from
+  // the ordinary scalar return convention.  Set to 0 if the task body uses
+  // ebreak for debug purposes and task-end is signalled by ret only.
+  parameter bit TreatEbreakAsTaskExit = 1'b1,
   parameter config_pkg::cva6_cfg_t CVA6Cfg = cva6_config_pkg::cva6_cfg,
   parameter type addr_t = logic [XLEN-1:0],
   parameter type axi_req_t = logic,
@@ -39,7 +44,7 @@ module cva6_hdv_scalar_backend
   input  logic [NumSlots-1:0][31:0]    scalar_insn_i,
   input  logic [NumSlots-1:0]          scalar_insn_is_32b_i,
   input  addr_t [NumSlots-1:0]         scalar_insn_pc_i,
-  output logic                         scalar_accepted_o,
+  output logic                         scalar_ep_done_o,
   output logic                         scalar_error_o,
 
   output logic                         redirect_valid_o,
@@ -70,7 +75,7 @@ module cva6_hdv_scalar_backend
   // stall until the writeback (A2 RAW interlock).
   input  logic                         vec_vset_inflight_i,
   input  logic [4:0]                   vec_vset_inflight_rd_i,
-  input  logic                         vec_store_pending_i,
+  input  logic                         vec_store_inflight_i,
 
   output axi_req_t                     scalar_axi_req_o,
   input  axi_resp_t                    scalar_axi_resp_i
@@ -283,6 +288,7 @@ module cva6_hdv_scalar_backend
   logic csr_op_supported;
   logic csr_addr_supported;
   logic hdv_task_ret;
+  logic hdv_task_ebreak;
 
   typedef struct packed {
     logic             valid;
@@ -838,11 +844,23 @@ module cva6_hdv_scalar_backend
     fpu_writes_fpr  = 1'b0;
     fpu_writes_xrf  = 1'b0;
     hdv_task_ret    = 1'b0;
+    hdv_task_ebreak = 1'b0;
 
     if (curr_slot_found) begin
       unsupported = cva6_decoded.ex.valid;
       hdv_task_ret = TreatRetAsTaskExit &&
                      (cva6_decoder_instr == 32'h00008067);
+      hdv_task_ebreak = TreatEbreakAsTaskExit &&
+                        (cva6_decoder_instr == 32'h00100073);
+
+      // FENCE / FENCE.I (opcode 0x0F): architecturally a NOP in a single-core
+      // in-order HDV system.  Treat as no-op to avoid spurious unsupported errors.
+      // VLIWPU already classifies FENCE as HDV_INST_SYSTEM (hard EP boundary).
+      if (cva6_decoder_instr[6:0] == 7'b0001111) begin
+        wb_en          = 1'b0;
+        unsupported    = 1'b0;
+        branch_resolved = 1'b0;
+      end else begin
 
       unique case (cva6_decoded.fu)
         ALU: begin
@@ -904,11 +922,12 @@ module cva6_hdv_scalar_backend
           unsupported = 1'b1;
         end
       endcase
-    end
-  end
+      end // closes: else begin (not FENCE)
+    end // closes: if (curr_slot_found)
+  end // closes: always_comb p_execute_decode
 
   assign scalar_ready_o         = (state_q == IDLE);
-  assign scalar_accepted_o      = (state_q == DONE);
+  assign scalar_ep_done_o      = (state_q == DONE);
   assign scalar_error_o         = (state_q == DONE) && error_seen_q;
   assign redirect_valid_o       = (state_q == REDIRECT) && redirect_pending_q;
   assign redirect_pc_o          = redirect_pc_q;
@@ -1173,7 +1192,7 @@ module cva6_hdv_scalar_backend
               state_d = WAIT_FPU;
             end
           end else if ((cva6_decoded.fu inside {LOAD, STORE}) && !unsupported) begin
-            if (vec_store_pending_i) begin
+            if (vec_store_inflight_i) begin
               state_d = EXECUTE;
             end else begin
               insn_valid_d = remaining_slots;
@@ -1256,6 +1275,9 @@ module cva6_hdv_scalar_backend
               error_seen_d = 1'b1;
             end
             if (!unsupported && hdv_task_ret) begin
+              task_complete_pending_d = 1'b1;
+            end
+            if (!unsupported && hdv_task_ebreak) begin
               task_complete_pending_d = 1'b1;
             end
 

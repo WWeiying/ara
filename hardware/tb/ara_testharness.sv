@@ -53,11 +53,11 @@ module ara_testharness #(
     output logic [HdvNumSlots-1:0]       hdv_scalar_insn_is_32b_o,
     output logic [HdvNumSlots-1:0][63:0] hdv_scalar_insn_pc_o,
     output logic [63:0]                  hdv_scalar_pc_o,
-    input  logic                         hdv_scalar_accepted_i = 1'b0,
+    input  logic                         hdv_scalar_ep_done_i = 1'b0,
     // Vector dispatch is now internal (HEU → hdv_vec_dispatch_unit → Ara)
     input  logic                         hdv_backend_error_i = 1'b0,
     output logic                         hdv_ep_busy_o,
-    output logic                         hdv_ep_accepted_o,
+    output logic                         hdv_ep_acknowledged_o,
     output logic                         hdv_ep_error_o
   );
 
@@ -159,11 +159,11 @@ module ara_testharness #(
     .hdv_scalar_insn_is_32b_o(hdv_scalar_insn_is_32b_o),
     .hdv_scalar_insn_pc_o(hdv_scalar_insn_pc_o),
     .hdv_scalar_pc_o     (hdv_scalar_pc_o     ),
-    .hdv_scalar_accepted_i   (hdv_scalar_accepted_i   ),
+    .hdv_scalar_ep_done_i   (hdv_scalar_ep_done_i   ),
     // Vector dispatch ports removed — now internal to hdv_top via hdv_vec_dispatch_unit
     .hdv_backend_error_i (hdv_backend_error_i ),
     .hdv_ep_busy_o  (hdv_ep_busy_o  ),
-    .hdv_ep_accepted_o  (hdv_ep_accepted_o  ),
+    .hdv_ep_acknowledged_o  (hdv_ep_acknowledged_o  ),
     .hdv_ep_error_o (hdv_ep_error_o )
   );
 
