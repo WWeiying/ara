@@ -21,11 +21,13 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
+  parameter int unsigned VectorCmdWindowDepth = 4,
   parameter bit          UseCva6HdvScalar = 1'b1,
   parameter logic [XLEN-1:0] HdvInitialRa  = '0,
   parameter logic [XLEN-1:0] HdvInitialA0  = '0,
   parameter logic [XLEN-1:0] HdvInitialA1  = '0,
   parameter logic [XLEN-1:0] HdvInitialA2  = '0,
+  parameter logic [XLEN-1:0] HdvInitialA3  = '0,
   parameter logic [XLEN-1:0] HdvInitialFa0 = '0,
   parameter type addr_t = logic [XLEN-1:0],
 
@@ -172,6 +174,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic task_busy;
   logic task_flush;
   logic dispatch_flush;
+  logic heu_flush;
   logic task_complete_request;
   logic host_task_complete_seen_d, host_task_complete_seen_q;
   logic task_done_to_tsu;
@@ -204,6 +207,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic                         scalar_branch_taken;
   addr_t                        scalar_branch_pc;
   addr_t                        scalar_branch_target;
+  logic                         scalar_loop_exit;
+  logic                         scalar_fast_redirect_valid;
+  addr_t                        scalar_fast_redirect_pc;
 
   logic                         vec_scalar_operand_req_valid;
   logic                         scalar_vec_operand_req_ready;
@@ -213,11 +219,14 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic [XLEN-1:0]              scalar_vec_rs1_data;
   logic [XLEN-1:0]              scalar_vec_rs2_data;
   logic [XLEN-1:0]              scalar_vec_frs1_data;
-  logic                         vec_scalar_vset_wb_valid;
-  logic [4:0]                   vec_scalar_vset_wb_rd;
-  logic [XLEN-1:0]              vec_scalar_vset_wb_data;
+  logic                         vec_scalar_wb_valid;
+  logic [4:0]                   vec_scalar_wb_rd;
+  logic [XLEN-1:0]              vec_scalar_wb_data;
+  logic                         vec_scalar_wb_is_fpr;
+  logic                         vec_scalar_wb_is_vset;
   logic                         vec_scalar_vset_inflight;
   logic [4:0]                   vec_scalar_vset_inflight_rd;
+  logic                         vec_scalar_store_pending;
 
   // ─── Vector dispatch (HEU → vec_dispatch_unit → Ara) ─────────────────────
 
@@ -296,15 +305,26 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
   assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
                             !vec_dispatch_busy;
-  assign hdv_ctrl_redirect_valid = UseCva6HdvScalar ? scalar_backend_redirect_valid :
-                                                       ctrl_hdv_redirect_valid_i;
-  assign hdv_ctrl_redirect_pc    = UseCva6HdvScalar ? scalar_backend_redirect_pc :
-                                                       ctrl_hdv_redirect_pc_i;
+  assign scalar_loop_exit = UseCva6HdvScalar &&
+                            scalar_branch_resolved_valid &&
+                            !scalar_branch_taken &&
+                            (scalar_branch_target < scalar_branch_pc);
+  assign scalar_fast_redirect_valid = UseCva6HdvScalar &&
+                                      scalar_branch_resolved_valid &&
+                                      scalar_branch_taken;
+  assign scalar_fast_redirect_pc = scalar_branch_target;
+  assign hdv_ctrl_redirect_valid = scalar_fast_redirect_valid ||
+                                   (UseCva6HdvScalar ? scalar_backend_redirect_valid :
+                                                       ctrl_hdv_redirect_valid_i);
+  assign hdv_ctrl_redirect_pc    = scalar_fast_redirect_valid ? scalar_fast_redirect_pc :
+                                   (UseCva6HdvScalar ? scalar_backend_redirect_pc :
+                                                       ctrl_hdv_redirect_pc_i);
   // A taken branch redirect restarts IPU from ctrl_hdv_redirect_pc_i and drops
   // any already-held packet/execute state in VLIWPU, HEU, and vector dispatch.
   // Do not feed this combined flush into IPU itself, otherwise IPU's redirect
   // path would be overwritten by its flush path.
   assign dispatch_flush = task_flush | task_complete_request | hdv_ctrl_redirect_valid;
+  assign heu_flush = task_flush | task_complete_request;
 
   assign scalar_heu_ready = UseCva6HdvScalar ? scalar_backend_ready :
                                                 scalar_hdv_ready_i;
@@ -319,7 +339,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_scalar_pc_o          = heu_scalar_pc;
 
   assign scalar_dispatch_fire = heu_scalar_valid & scalar_heu_ready;
-  assign auto_loop_exit = loop_branch_exit_pending_q & !hdv_ctrl_redirect_valid;
+  assign auto_loop_exit = scalar_loop_exit |
+                          (loop_branch_exit_pending_q & !hdv_ctrl_redirect_valid);
 
   always_comb begin : p_auto_loop_detect
     scalar_backward_branch_dispatch = 1'b0;
@@ -433,6 +454,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .InitialA0  (HdvInitialA0),
     .InitialA1  (HdvInitialA1),
     .InitialA2  (HdvInitialA2),
+    .InitialA3  (HdvInitialA3),
     .InitialFa0 (HdvInitialFa0),
     .CVA6Cfg    (CVA6Cfg  ),
     .addr_t     (addr_t   ),
@@ -465,11 +487,14 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_rs1_data_o                (scalar_vec_rs1_data         ),
     .vec_rs2_data_o                (scalar_vec_rs2_data         ),
     .vec_frs1_data_o               (scalar_vec_frs1_data        ),
-    .vec_vset_wb_valid_i           (vec_scalar_vset_wb_valid    ),
-    .vec_vset_wb_rd_i              (vec_scalar_vset_wb_rd       ),
-    .vec_vset_wb_data_i            (vec_scalar_vset_wb_data     ),
+    .vec_wb_valid_i                (vec_scalar_wb_valid         ),
+    .vec_wb_rd_i                   (vec_scalar_wb_rd            ),
+    .vec_wb_data_i                 (vec_scalar_wb_data          ),
+    .vec_wb_is_fpr_i               (vec_scalar_wb_is_fpr        ),
+    .vec_wb_is_vset_i              (vec_scalar_wb_is_vset       ),
     .vec_vset_inflight_i           (vec_scalar_vset_inflight    ),
     .vec_vset_inflight_rd_i        (vec_scalar_vset_inflight_rd ),
+    .vec_store_pending_i           (vec_scalar_store_pending    ),
     .scalar_axi_req_o              (scalar_axi_req              ),
     .scalar_axi_resp_i             (scalar_axi_resp             )
   );
@@ -480,6 +505,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .XLEN          (XLEN         ),
     .NumSlots      (NumSlots     ),
     .UseVTraceScalar(!UseCva6HdvScalar),
+    .CmdWindowDepth(VectorCmdWindowDepth),
     .cva6_to_acc_t (cva6_to_acc_t),
     .acc_to_cva6_t (acc_to_cva6_t)
   ) i_vec_dispatch_unit (
@@ -503,11 +529,14 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .scalar_vec_rs1_data_i(scalar_vec_rs1_data),
     .scalar_vec_rs2_data_i(scalar_vec_rs2_data),
     .scalar_vec_frs1_data_i(scalar_vec_frs1_data),
-    .vec_scalar_vset_wb_valid_o(vec_scalar_vset_wb_valid),
-    .vec_scalar_vset_wb_rd_o(vec_scalar_vset_wb_rd),
-    .vec_scalar_vset_wb_data_o(vec_scalar_vset_wb_data),
+    .vec_scalar_wb_valid_o(vec_scalar_wb_valid),
+    .vec_scalar_wb_rd_o(vec_scalar_wb_rd),
+    .vec_scalar_wb_data_o(vec_scalar_wb_data),
+    .vec_scalar_wb_is_fpr_o(vec_scalar_wb_is_fpr),
+    .vec_scalar_wb_is_vset_o(vec_scalar_wb_is_vset),
     .vec_scalar_vset_inflight_o(vec_scalar_vset_inflight),
     .vec_scalar_vset_inflight_rd_o(vec_scalar_vset_inflight_rd),
+    .vec_scalar_store_pending_o(vec_scalar_store_pending),
     .acc_req_o           (acc_req         ),
     .acc_resp_i          (ara_acc_resp_pack)
   );
@@ -731,7 +760,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   ) i_hybrid_execution_unit (
     .clk_i                          (clk_i                    ),
     .rst_ni                         (rst_ni                   ),
-    .flush_i                        (dispatch_flush           ),
+    .flush_i                        (heu_flush                ),
     .vliwpu_heu_execute_valid_i     (vliwpu_heu_execute_valid ),
     .heu_vliwpu_execute_ready_o     (heu_vliwpu_execute_ready ),
     .vliwpu_heu_execute_slot_valid_i(vliwpu_heu_execute_slot_valid),

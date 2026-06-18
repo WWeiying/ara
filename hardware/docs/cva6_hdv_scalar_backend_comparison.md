@@ -392,20 +392,23 @@ vec_frs1_data_o
 
 这套接口是 HDV 标量/向量共享寄存器堆的最小实现，不存在于原始 CVA6 core。
 
-### 7.3 vset 写回
+### 7.3 vector-to-scalar 写回
 
-向量后端执行 `vsetvli/vsetivli/vsetvl` 后，Ara 返回 granted VL。当前标量后端通过：
+向量后端执行 `vsetvli/vsetivli/vsetvl` 后，Ara 返回 granted VL；执行 `vmv.x.s`、`vfmv.f.s` 等 scalar-visible vector 指令后，也需要把结果写回标量寄存器。当前标量后端通过：
 
 ```systemverilog
-vec_vset_wb_valid_i
-vec_vset_wb_rd_i
-vec_vset_wb_data_i
+vec_wb_valid_i
+vec_wb_rd_i
+vec_wb_data_i
+vec_wb_is_fpr_i
+vec_wb_is_vset_i
 ```
 
 完成：
 
-- 若 `rd != x0`，写回 XRF[rd]。
-- 同时更新内部 `csr_vl_q`。
+- 若 `rd != x0` 且 `vec_wb_is_fpr_i=0`，写回 XRF[rd]。
+- 若 `rd != f0` 且 `vec_wb_is_fpr_i=1`，写回 FRF[rd]。
+- 若 `vec_wb_is_vset_i=1`，同时更新内部 `csr_vl_q`。
 
 缺口：
 

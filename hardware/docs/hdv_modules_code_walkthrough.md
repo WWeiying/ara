@@ -885,11 +885,11 @@ output logic                vec_heu_error_o,
 - `heu_vec_insn_valid_i[i]` 表示 EP 的 slot `i` 是有效向量指令。
 - `heu_vec_insn_i[i]` 是 HEU 已经规范化好的 32-bit 向量指令。
 - `heu_vec_ep_id_i` 是 HEU 分配给这个 vector slice 的 1-bit id，用来区分 current EP 和提前发射的 buffered EP。
-- `vec_heu_accepted_o` 是给 HEU 的一拍脉冲，表示这个 vector EP 切片已经被本模块安全接管。vtrace 模式下普通 EP 入队即可 accepted；真实标量模式下，要等本 EP 的 vector request 都已经被 Ara 接收并消耗 scalar operand。带 `vset rd!=x0` 的 EP 还要等对应 Ara response 写回 scalar backend 后 accepted。
+- `vec_heu_accepted_o` 是给 HEU 的一拍脉冲，表示这个 vector EP 切片已经被本模块安全接管。vtrace 模式下普通 EP 入队即可 accepted；真实标量模式下，要等本 EP 的 vector request 都已经被 dispatch FSM 消费，并且 scalar operand 已经被捕获到 Ara request 或 command window。带 `vset rd!=x0` 的 EP 还要等对应 Ara response 写回 scalar backend 后 accepted。
 - `vec_heu_accepted_id_o` 和 accepted 脉冲同拍有效，返回被 accepted 的 vector EP id。HEU 用它分别清 current vector pending 或 buffered vector pending。
 - `vec_heu_error_o` 表示 vtrace 缺失、vtrace 指令不匹配或 Ara response 报 exception。
 
-关键点：`vec_heu_accepted_o` 不表示 Ara 已经真正执行完，也不表示 load/store 已经完成，更不表示向量写回已经退休。向量指令之间的数据依赖由 Ara 后端自己处理，HDV 不因为普通 vector response 等待退休。唯一特殊处理的是 scalar 可见的 vset 写回。
+关键点：`vec_heu_accepted_o` 不表示 Ara 已经真正执行完，也不表示 load/store 已经完成，更不表示向量写回已经退休。向量指令之间的数据依赖由 Ara 后端自己处理，HDV 不因为普通 vector response 等待退休。HDV 只对 scalar 可见事件做额外处理：vset granted VL、`vmv.x.s`/`vfmv.f.s` 一类 vector-to-scalar 写回，以及 vector store pending 对标量内存操作的保守定序。
 
 ### Ara 侧接口
 
@@ -963,7 +963,7 @@ for (int unsigned i = 0; i < NumSlots; i++) begin
 end
 ```
 
-所以 EP 内向量指令是按 slot 从小到大发给 Ara 的。对于 `vsetvli + vle32` 这类同 EP 组合，如果两个都是 vector slot，slot 0 会先发，slot 1 后发。Ara 后端内部负责处理向量指令间的数据依赖；HDV 只保证 request 发射顺序和 scalar 可见 vset 写回顺序。
+所以 EP 内向量指令是按 slot 从小到大发给 Ara 的。对于 `vsetvli + vle32` 这类同 EP 组合，如果两个都是 vector slot，slot 0 会先发，slot 1 后发。Ara 后端内部负责处理向量指令间的数据依赖；HDV 只保证 request 发射顺序，以及 scalar-visible vector response 与标量后端之间的顺序。
 
 ### 标量操作数来源
 
@@ -995,21 +995,23 @@ end
 
 真实标量模式下，模块必须先捕获当前向量指令的 rs1/rs2/frs1，再把 request 送往 Ara 或放入内部 resolved-request buffer。这里的关键不是 Ara 是否已经完成执行，而是旧 vector 指令需要的标量操作数是否已经被快照保存。否则后续 scalar EP 可能先更新 a1/a2/a0/fa0 等寄存器，导致旧向量指令读到新值。
 
-### resolved-request buffer
+### resolved command window
 
-当前代码在 FSM request 和 Ara `req_ready` 之间放了一个 depth-2 小队列：
+当前代码在 FSM request 和 Ara `req_ready` 之间放了一个参数化小型 command window。顶层默认 `VectorCmdWindowDepth=4`，实例化时传给本模块 `CmdWindowDepth`。它保存的是“已经选中 slot、已经拿到 scalar operand”的单条 vector request：
 
 ```systemverilog
-vq0_valid_q / vq0_insn_q / vq0_rs1_q / vq0_rs2_q
-vq1_valid_q / vq1_insn_q / vq1_rs1_q / vq1_rs2_q
+vq_count_q
+vq_insn_q[CmdWindowDepth]
+vq_rs1_q[CmdWindowDepth]
+vq_rs2_q[CmdWindowDepth]
 ```
 
-它保存的是“已经选中 slot、已经拿到 scalar operand”的单条 vector request。`vq0` 是队头，优先驱动 Ara；`vq1` 是第二项。队列为空且 Ara ready 时，FSM request 可以 bypass 直接被 Ara 接收；Ara backpressure 时，FSM 仍可以继续把后续已解析 request 放入 `vq0/vq1`，减少因为 Ara 暂时不 ready 导致的前端空泡。
+`vq_*[0]` 是队头，优先驱动 Ara。window 为空且 Ara ready 时，FSM request 可以 bypass 直接被 Ara 接收；Ara backpressure 时，FSM 仍可以继续把后续已解析 request 追加进 window，减少因为 Ara 暂时不 ready 导致的前端空泡。默认深度只有 4，是为了吸收短期 `req_ready` 气泡，而不是在 HDV 侧复制 Ara 内部调度窗口。
 
 因此当前代码里的 `accept_insn` 语义是“dispatch FSM 的当前 vector slot 已经被消费”：
 
-- 如果队列为空且 Ara ready，request bypass 直接发送。
-- 如果 Ara 不 ready，request 被保存到 `vq0/vq1`。
+- 如果 window 为空且 Ara ready，request bypass 直接发送。
+- 如果 Ara 不 ready，request 被保存到 command window。
 - 两种情况都说明这条指令的 scalar operand 已经被安全捕获，FSM 可以清 slot 并继续处理下一条。
 
 ### accepted 的产生
@@ -1028,9 +1030,9 @@ insn_valid_d[slot_idx] = 1'b0;
 
 vtrace 模式下，普通 vector EP 在 `enqueue_ep && !input_ep_has_vset_wb` 时直接产生 `vec_heu_accepted_o`，表示本模块已经接管该 EP。因为操作数来自离线 trace，后续标量寄存器变化不会影响这些向量 request。
 
-真实标量模式下，普通 vector EP 等所有 slot 都被 dispatch FSM 消费后才产生 `vec_heu_accepted_o`。这些 slot 可能已经被 Ara 接收，也可能在 `vq0/vq1` 中等待 Ara ready；无论哪种情况，每条向量指令的标量操作数都已经从真实标量后端读出并保存。
+真实标量模式下，普通 vector EP 等所有 slot 都被 dispatch FSM 消费后才产生 `vec_heu_accepted_o`。这些 slot 可能已经被 Ara 接收，也可能在 command window 中等待 Ara ready；无论哪种情况，每条向量指令的标量操作数都已经从真实标量后端读出并保存。
 
-如果 EP 中存在 `vsetvli/vsetivli/vsetvl` 且 `rd!=x0`，模块先递增 `vset_accept_wait_q`，暂不 accepted。每条发给 Ara 的 vector request 会在 `resp_meta_*` FIFO 中记录 `{is_vset, rd, ep_id}`；Ara response 返回时弹出 FIFO。如果弹出的元数据表示 `vset rd!=0`，则产生 `vec_scalar_vset_wb_valid_o`，并对等待中的 vset EP 产生 `vec_heu_accepted_o`。
+如果 EP 中存在 `vsetvli/vsetivli/vsetvl` 且 `rd!=x0`，模块先递增 `vset_accept_wait_q`，暂不 accepted。每条发给 Ara 的 vector request 会在 `resp_meta_*` FIFO 中记录 `{wb_valid, is_fpr, is_vset, is_store, rd, ep_id}`；Ara response 返回时弹出 FIFO。如果弹出的元数据表示 scalar-visible writeback，则产生 `vec_scalar_wb_valid_o`，并用 `vec_scalar_wb_is_fpr_o` 区分写 XRF 还是 FRF，用 `vec_scalar_wb_is_vset_o` 区分是否为 vset granted VL。若是 `vset rd!=0`，还会对等待中的 vset EP 产生 `vec_heu_accepted_o`。
 
 真实标量模式下，accepted 不再由一个单独的 `real_ep_wait_valid` 状态保存，而是由两项 `real_wait_*` table 保存：
 

@@ -21,6 +21,7 @@ module cva6_hdv_scalar_backend
   parameter logic [XLEN-1:0] InitialA0  = '0,
   parameter logic [XLEN-1:0] InitialA1  = '0,
   parameter logic [XLEN-1:0] InitialA2  = '0,
+  parameter logic [XLEN-1:0] InitialA3  = '0,
   parameter logic [XLEN-1:0] InitialFa0 = '0,
   parameter bit TreatRetAsTaskExit = 1'b1,
   parameter config_pkg::cva6_cfg_t CVA6Cfg = cva6_config_pkg::cva6_cfg,
@@ -58,15 +59,18 @@ module cva6_hdv_scalar_backend
   output logic [XLEN-1:0]              vec_rs2_data_o,
   output logic [XLEN-1:0]              vec_frs1_data_o,
 
-  input  logic                         vec_vset_wb_valid_i,
-  input  logic [4:0]                   vec_vset_wb_rd_i,
-  input  logic [XLEN-1:0]              vec_vset_wb_data_i,
+  input  logic                         vec_wb_valid_i,
+  input  logic [4:0]                   vec_wb_rd_i,
+  input  logic [XLEN-1:0]              vec_wb_data_i,
+  input  logic                         vec_wb_is_fpr_i,
+  input  logic                         vec_wb_is_vset_i,
 
   // In-flight vset (rd!=x0) hazard hint: a vector vsetvli whose VL writeback to
   // vec_vset_inflight_rd_i has not landed yet.  A scalar that reads this rd must
   // stall until the writeback (A2 RAW interlock).
   input  logic                         vec_vset_inflight_i,
   input  logic [4:0]                   vec_vset_inflight_rd_i,
+  input  logic                         vec_store_pending_i,
 
   output axi_req_t                     scalar_axi_req_o,
   input  axi_resp_t                    scalar_axi_resp_i
@@ -1113,11 +1117,15 @@ module cva6_hdv_scalar_backend
       frf_d[i] = frf_q[i];
     end
 
-    if (vec_vset_wb_valid_i && (vec_vset_wb_rd_i != 5'd0)) begin
-      xrf_d[vec_vset_wb_rd_i] = vec_vset_wb_data_i;
+    if (vec_wb_valid_i && (vec_wb_rd_i != 5'd0)) begin
+      if (vec_wb_is_fpr_i) begin
+        frf_d[vec_wb_rd_i] = vec_wb_data_i;
+      end else begin
+        xrf_d[vec_wb_rd_i] = vec_wb_data_i;
+      end
     end
-    if (vec_vset_wb_valid_i) begin
-      csr_vl_d = vec_vset_wb_data_i;
+    if (vec_wb_valid_i && vec_wb_is_vset_i) begin
+      csr_vl_d = vec_wb_data_i;
     end
 
     unique case (state_q)
@@ -1165,8 +1173,12 @@ module cva6_hdv_scalar_backend
               state_d = WAIT_FPU;
             end
           end else if ((cva6_decoded.fu inside {LOAD, STORE}) && !unsupported) begin
-            insn_valid_d = remaining_slots;
-            state_d = (cva6_decoded.fu == LOAD) ? LSU_AR : LSU_AW;
+            if (vec_store_pending_i) begin
+              state_d = EXECUTE;
+            end else begin
+              insn_valid_d = remaining_slots;
+              state_d = (cva6_decoded.fu == LOAD) ? LSU_AR : LSU_AW;
+            end
           end else begin
             remaining_slots[curr_slot_idx] = 1'b0;
             insn_valid_d = remaining_slots;
@@ -1388,6 +1400,7 @@ module cva6_hdv_scalar_backend
       xrf_q[10] <= InitialA0;
       xrf_q[11] <= InitialA1;
       xrf_q[12] <= InitialA2;
+      xrf_q[13] <= InitialA3;
       frf_q[10] <= InitialFa0;
     end else begin
       state_q <= state_d;

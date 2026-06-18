@@ -363,7 +363,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   assign heu_vector_pc_o           = vector_dispatch_pc_q;
   assign heu_vector_ep_id_o        = vector_dispatch_id_q;
 
-  assign heu_vliwpu_execute_ready_o = !buffer_valid_q;
+  assign heu_vliwpu_execute_ready_o = !buffer_valid_q &&
+                                      !(outstanding_q && current_has_branch_q);
   assign accept_packet = vliwpu_heu_execute_valid_i & heu_vliwpu_execute_ready_o;
   assign accept_to_current = accept_packet & !outstanding_q;
   assign accept_to_buffer  = accept_packet & outstanding_q;

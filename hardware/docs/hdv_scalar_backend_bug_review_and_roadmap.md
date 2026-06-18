@@ -36,14 +36,14 @@
 当前 `hdv_vec_dispatch_unit` 已经做了 accepted 延迟来保证正确性：
 
 - vtrace 模式：普通 vector EP 入队即可 accepted；含 `vset rd!=x0` 的 EP 等对应 Ara response 写回后 accepted。
-- 真实标量模式：普通 vector EP 等本 EP 的所有 vector slot 都被 dispatch FSM 消费后 accepted，保证 rs1/rs2/frs1 已经从真实 XRF/FRF 中读出并保存到 Ara request 或 `vq0/vq1`；含 `vset rd!=x0` 的 EP 还要等 granted VL 写回。
+- 真实标量模式：普通 vector EP 等本 EP 的所有 vector slot 都被 dispatch FSM 消费后 accepted，保证 rs1/rs2/frs1 已经从真实 XRF/FRF 中读出并保存到 Ara request 或 resolved command window；含 `vset rd!=x0` 的 EP 还要等 granted VL 写回。
 
 这同时解决两类问题：
 
 - `sub a0,a0,t0` / `slli t1,t0,2` 不会在 `vsetvli` 的 `t0` 写回前读旧值。
 - 后续 scalar EP 不会先更新 a1/a2/a0，导致尚未发出的旧 vector 指令从真实寄存器堆读到新地址/新标量值。
 
-当前已加入 depth-2 `vq0/vq1` resolved-request buffer，用来保存已经抓好 operand 的 vector request。后续性能优化方向是扩大/重构这个 buffer，让 operand snapshot 更早、更批量完成，从而进一步缩短真实标量模式的 vector accepted 路径。
+当前已加入参数化 resolved command window，默认深度为 4，用来保存已经抓好 operand 的 vector request。后续性能优化方向不是盲目加深这个 window，而是让 operand snapshot 更早、更批量完成，并把真正有后端收益的 metadata 交给 Ara。
 
 ### A3（高）`unsupported` 判定过宽 + AMO/LR/SC 会被当普通 store 静默执行
 
