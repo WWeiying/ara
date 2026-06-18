@@ -34,6 +34,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     parameter  logic [63:0]           HdvInitialA0  = '0,
     parameter  logic [63:0]           HdvInitialA1  = '0,
     parameter  logic [63:0]           HdvInitialA2  = '0,
+    parameter  logic [63:0]           HdvInitialA3  = '0,
     parameter  logic [63:0]           HdvInitialFa0 = '0,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
@@ -639,6 +640,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .HdvInitialA0          (HdvInitialA0          ),
     .HdvInitialA1          (HdvInitialA1          ),
     .HdvInitialA2          (HdvInitialA2          ),
+    .HdvInitialA3          (HdvInitialA3          ),
     .HdvInitialFa0         (HdvInitialFa0         ),
     .NrLanes               (NrLanes               ),
     .VLEN                  (VLEN                  ),

@@ -587,7 +587,9 @@ HEU 清对应 pending。这里的 accepted 不是“执行完成/退休”，而
 
 ### 7.10 flush
 
-flush 清 outstanding、pending、dispatch valid、ep_accepted 和 error。redirect 会通过 `dispatch_flush` 清 HEU。
+HEU 当前使用 `heu_flush = task_flush | task_complete_request`。也就是说，task flush 和 task complete 会清 outstanding、pending、dispatch valid、ep_accepted 和 error；普通 branch redirect 不再直接 flush HEU。
+
+这个区分很重要：branch EP 可能在同一拍被 scalar backend 接收并产生 redirect。如果 redirect 同拍清 HEU，会把这个 EP 的 accepted 脉冲也清掉，导致 testbench/host 看到的 accepted EP 数少于真实后端接收数。redirect 仍会清 VLIWPU 和 vector dispatch 的旧顺序路径状态，但不会抹掉 HEU 当前 EP 的后端接收事件。
 
 ## 8. `hdv_vec_dispatch_unit.sv`：HEU 到 Ara
 
@@ -644,25 +646,26 @@ vtrace entry 格式是：
 
 如果在 vtrace 模式下 vtrace 耗尽或当前 vtrace 指令与 EP 指令不匹配，则 `req_valid=0` 并报错，避免把错误标量值发给 Ara。真实标量模式下，`req_valid` 会等 operand service 捕获到当前向量指令的标量操作数后再拉高。
 
-真实标量模式下，`vec_heu_accepted_o` 不能在 EP 入队时立即返回。原因是尚未处理的向量指令可能还没有读取 rs1/rs2/frs1，如果 HEU 提前推进后续标量 EP，标量寄存器可能被更新，旧向量指令会读到新值。因此真实标量模式等本 EP 的所有 vector slot 都被 dispatch FSM 消费，也就是 request 已经直接发给 Ara 或带 operand snapshot 进入 `vq0/vq1` 后，才向 HEU accepted；`vset rd!=0` 还要额外等 granted VL 写回。
+真实标量模式下，`vec_heu_accepted_o` 不能在 EP 入队时立即返回。原因是尚未处理的向量指令可能还没有读取 rs1/rs2/frs1，如果 HEU 提前推进后续标量 EP，标量寄存器可能被更新，旧向量指令会读到新值。因此真实标量模式等本 EP 的所有 vector slot 都被 dispatch FSM 消费，也就是 request 已经直接发给 Ara 或带 operand snapshot 进入 resolved command window 后，才向 HEU accepted；`vset rd!=0` 还要额外等 granted VL 写回。
 
-`resp_meta_*` 是 Ara response 元数据 FIFO。每发出一条 vector request，就记录这条指令是否为 vset 以及其 `rd`。Ara response 返回时弹出对应元数据，从而判断是否需要产生 `vec_scalar_vset_wb_valid_o`，并给等待 vset 写回的 EP 产生 accepted。
+`resp_meta_*` 是 Ara response 元数据 FIFO。每发出一条 vector request，就记录这条指令是否有 scalar-visible writeback、是否写 FPR、是否为 vset、是否为 vector store、`rd` 和 `ep_id`。Ara response 返回时弹出对应元数据，从而判断是否需要产生 `vec_scalar_wb_valid_o`，并给等待 vset 写回的 EP 产生 accepted。`vec_scalar_store_pending_o` 由 response metadata 中的 store 项给 scalar backend 做保守内存定序。
 
 真实标量模式下还有一个两项 `real_wait_*` accepted wait table。每个被 HEU 接收的 vector EP 会记录 `{ep_id, has_vset_wb, drained, vset_seen}`：
 
-- `drained` 表示该 EP 的所有 vector slot 都已经被 dispatch FSM 消费，标量操作数已经被读取并保存；request 可能已经到 Ara，也可能暂存在 `vq0/vq1`。
+- `drained` 表示该 EP 的所有 vector slot 都已经被 dispatch FSM 消费，标量操作数已经被读取并保存；request 可能已经到 Ara，也可能暂存在 resolved command window。
 - `vset_seen` 表示该 EP 中 scalar 可见的 `vset rd!=x0` response 已经回来并写回标量后端。
 - `real_wait_ready = drained && (!has_vset_wb || vset_seen)` 时，vector dispatch 才返回 `vec_heu_accepted_o` 和对应 `vec_heu_accepted_id_o`。
 - wait table 用 `ep_id` 标记等待项。当前 HEU buffered vector 提前发射已在 `hdv_top` 中打开，因此它用于真实标量模式下区分 current/buffered 两类可能排队的 vector EP，避免把 accepted 归错 EP。
 - `vec_heu_accepted_o` 在真实标量模式下由 registered wait-table 状态组合产生：`real_wait_ready[0] | real_wait_ready[1]`。这避免了把 accepted 再打一拍到 `ep_enqueued_q` 后造成的额外空泡。
 - `vec_heu_ready_o` 允许同周期弹出一个 ready wait entry 并接收新的 vector EP，减少两项 wait table 满时的空泡。
 
-向 Ara 发送 request 前，还有一个 depth-2 resolved-request buffer：
+向 Ara 发送 request 前，还有一个参数化 resolved command window。当前顶层默认 `VectorCmdWindowDepth=4`，并传给 `hdv_vec_dispatch_unit.CmdWindowDepth`。它不是大规模重排序窗口，只是一个小型顺序 FIFO：
 
-- `vq0_*` 是队头，优先驱动 `acc_req_o`。
-- `vq1_*` 是第二项，用于 Ara backpressure 时继续保存后续已经解析并抓好 operand 的 request。
-- buffer 为空且 Ara ready 时，FSM request 可以 bypass 直接送 Ara。
-- `accept_insn` 表示 FSM 这条 vector 指令已被 Ara 接收或被放入 `vq0/vq1`，因此 dispatch FSM 可以继续处理 EP 内下一条 vector slot。
+- `vq_count_q` 表示 window 中已有多少条 resolved request。
+- `vq_insn_q[0] / vq_rs1_q[0] / vq_rs2_q[0]` 是队头，优先驱动 `acc_req_o`。
+- window 为空且 Ara ready 时，FSM request 可以 bypass 直接送 Ara。
+- Ara backpressure 时，FSM 仍可把已经解析并抓好 operand 的 request 追加进 window，直到 4 项满。
+- `accept_insn` 表示 FSM 这条 vector 指令已被 Ara 接收或被放入 command window，因此 dispatch FSM 可以继续处理 EP 内下一条 vector slot。
 
 ### 8.6 accept 指令
 
@@ -670,8 +673,8 @@ vtrace entry 格式是：
 
 这表示 vector dispatch FSM 当前选中的一条向量指令已经被消费：
 
-- 队列为空且 Ara ready 时，request bypass 直接被 Ara 接收。
-- Ara backpressure 时，request 带着已捕获的 `rs1/rs2` 被放入 `vq0/vq1`。
+- window 为空且 Ara ready 时，request bypass 直接被 Ara 接收。
+- Ara backpressure 时，request 带着已捕获的 `rs1/rs2` 被放入 command window。
 
 FSM 消费一条指令后：
 
@@ -680,7 +683,7 @@ FSM 消费一条指令后：
 - 如果还有有效 slot，继续留在 DISPATCH。
 - 如果没有有效 slot，进入 DONE。
 
-如果这条指令来自 `IDLE` 同周期输入旁路，则清的是 `input_slot_idx` 对应的 valid bit，再把剩余 slot 写入内部缓冲。因此只要 operand service 和 `vq0/vq1` 有空间，新 EP 的第一条 vector 指令不需要等到下一拍，EP 内后续指令也可以连续每周期消费；Ara 是否当拍 ready 由 resolved-request buffer 解耦。
+如果这条指令来自 `IDLE` 同周期输入旁路，则清的是 `input_slot_idx` 对应的 valid bit，再把剩余 slot 写入内部缓冲。因此只要 operand service 和 command window 有空间，新 EP 的第一条 vector 指令不需要等到下一拍，EP 内后续指令也可以连续每周期消费；Ara 是否当拍 ready 由 resolved command window 解耦。
 
 ### 8.7 response 和 error
 
@@ -840,11 +843,15 @@ EP 状态：
 
 `task_flush = flush_i | task_error_to_tsu | tsu_top_error`。
 
-`dispatch_flush = task_flush | task_complete_request | ctrl_hdv_redirect_valid_i`。
+`dispatch_flush = task_flush | task_complete_request | hdv_ctrl_redirect_valid`。
+
+`heu_flush = task_flush | task_complete_request`。
 
 IPU 使用 `task_flush`，这样 redirect 不会被当成普通 flush，而是走 IPU 的 redirect path。
 
-VLIWPU、HEU、vector dispatch 使用 `dispatch_flush`，因为 redirect 后旧 packet/旧 EP 必须丢弃；task complete 时也要停止继续分发 fallthrough padding 指令。
+IPU 接收 redirect 请求并重定向取指。VLIWPU 和 vector dispatch 使用 `dispatch_flush`，因为 redirect 后旧 packet、旧 carry、旧 vector request window 都必须丢弃；task complete 时也要停止继续分发 fallthrough padding 指令。
+
+HEU 使用 `heu_flush`，不把 branch redirect 作为 flush 输入。这样 branch EP 被 scalar backend 接收并产生 redirect 的同拍，HEU 仍能正确输出 `heu_top_ep_accepted_o`，不会因为 redirect 清状态而漏计 EP accepted。
 
 ### 10.4 instruction fetch AXI bridge
 
@@ -1033,7 +1040,7 @@ TB 打印：
 
 仍然是临时或待完善的部分：
 
-- 真实标量后端已经接入 `cva6_hdv_scalar_backend`，支持当前 HDV 路径需要的寄存器、ALU/branch/LSU、operand service 和 vset 写回；但它还不是完整 CVA6 core，也还没有完整异常/commit/scoreboard。
+- 真实标量后端已经接入 `cva6_hdv_scalar_backend`，支持当前 HDV 路径需要的寄存器、ALU/branch/LSU、operand service、vector-to-scalar 写回和 vset inflight interlock；但它还不是完整 CVA6 core，也还没有完整异常/commit/scoreboard。
 - `hdv_vec_dispatch_unit` 在真实标量模式下通过 operand service 读取 `cva6_hdv_scalar_backend` 的 XRF/FRF；vtrace 只作为 bring-up/debug 模式。
 - `ep_accepted` 不等于真实执行退休。如果要验证数据正确性，仍需观察 Ara 内部完成信号和内存结果。
 - VLIWPU 的依赖断点 `ctrl_vliwpu_dep_break_i` 现在由外部提供，尚未自动分析 RAW/WAW/WAR。

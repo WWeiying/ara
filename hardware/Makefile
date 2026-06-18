@@ -103,6 +103,31 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
+ifdef hdv_task_entry
+  bender_defs += --define HDV_TASK_ENTRY=$(hdv_task_entry)
+endif
+ifdef hdv_vsaxpy_elements
+  bender_defs += --define HDV_VSAXPY_ELEMENTS=$(hdv_vsaxpy_elements)
+endif
+ifdef hdv_expected_ep
+  bender_defs += --define HDV_EXPECTED_EP=$(hdv_expected_ep)
+endif
+ifdef hdv_initial_a0
+  bender_defs += --define HDV_INITIAL_A0=$(hdv_initial_a0)
+endif
+ifdef hdv_initial_a1
+  bender_defs += --define HDV_INITIAL_A1=$(hdv_initial_a1)
+endif
+ifdef hdv_initial_a2
+  bender_defs += --define HDV_INITIAL_A2=$(hdv_initial_a2)
+endif
+ifdef hdv_initial_a3
+  bender_defs += --define HDV_INITIAL_A3=$(hdv_initial_a3)
+endif
+ifdef hdv_initial_fa0
+  bender_defs += --define HDV_INITIAL_FA0=$(hdv_initial_fa0)
+endif
+
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder

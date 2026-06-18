@@ -699,23 +699,53 @@ module ara_tb;
   localparam DRAMAddrBase = 64'h8000_0000;
   localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
   localparam HdvNumSlots  = 8;
-  // Must match apps build variable HDV_TASK_ENTRY for the selected HDV program.
+  `ifdef HDV_TASK_ENTRY
+  localparam HdvTaskEntry = 64'(`HDV_TASK_ENTRY);
+  `else
   localparam HdvTaskEntry = 64'h8000_1000;
+  `endif
+  `ifdef HDV_VSAXPY_ELEMENTS
+  localparam int unsigned HdvVsaxpyElements = `HDV_VSAXPY_ELEMENTS;
+  `else
   localparam int unsigned HdvVsaxpyElements = 1024;
+  `endif
   localparam int unsigned HdvVsaxpyVl = VLEN / 32; // vsetvli ..., e32, m1
   localparam int unsigned HdvVsaxpyIters =
       (HdvVsaxpyElements + HdvVsaxpyVl - 1) / HdvVsaxpyVl;
   // Cross-fetch-packet VLIW packing carries packet-tail non-control EPs into
-  // the next fetch packet.  With HdvNumSlots=8, vsaxpy taken iterations become:
-  //   vsetvli+vle / sub+vle+slli+vfmacc / add+vse+add / bnez = 4 EPs
-  // The final not-taken iteration has the same 4 EPs; the fall-through ret is
-  // one scalar EP and terminates the HDV task before nop/data are dispatched.
+  // the next fetch packet.  With HdvNumSlots=8, current vsaxpy_hdv dispatch
+  // accepts 4 EPs per loop iteration; the loop-end packet terminates the task.
+  `ifdef HDV_EXPECTED_EP
+  localparam int unsigned HdvVsaxpyExpectedEpAccepts = `HDV_EXPECTED_EP;
+  `else
   localparam int unsigned HdvVsaxpyExpectedEpAccepts =
-      (HdvVsaxpyIters == 0) ? 0 : (HdvVsaxpyIters * 4 + 1);
+      (HdvVsaxpyIters == 0) ? 0 : (HdvVsaxpyIters * 4);
+  `endif
+  `ifdef HDV_INITIAL_A0
+  localparam logic [63:0] HdvVsaxpyN    = 64'(`HDV_INITIAL_A0);
+  `else
   localparam logic [63:0] HdvVsaxpyN    = 64'(HdvVsaxpyElements);
+  `endif
+  `ifdef HDV_INITIAL_A1
+  localparam HdvVsaxpySrc1 = 64'(`HDV_INITIAL_A1);
+  `else
   localparam HdvVsaxpySrc1 = 64'h8000_1040;
+  `endif
+  `ifdef HDV_INITIAL_A2
+  localparam HdvVsaxpySrc2 = 64'(`HDV_INITIAL_A2);
+  `else
   localparam HdvVsaxpySrc2 = 64'h8000_5050;
+  `endif
+  `ifdef HDV_INITIAL_A3
+  localparam HdvVsaxpySrc3 = 64'(`HDV_INITIAL_A3);
+  `else
+  localparam HdvVsaxpySrc3 = 64'h0;
+  `endif
+  `ifdef HDV_INITIAL_FA0
+  localparam HdvVsaxpyA    = 64'(`HDV_INITIAL_FA0);
+  `else
   localparam HdvVsaxpyA    = 64'hffff_ffff_40d5_1eb8;
+  `endif
 
   /********************************
    *  Clock and Reset Generation  *
@@ -901,6 +931,7 @@ module ara_tb;
     .HdvInitialA0(HdvVsaxpyN       ),
     .HdvInitialA1(HdvVsaxpySrc1    ),
     .HdvInitialA2(HdvVsaxpySrc2    ),
+    .HdvInitialA3(HdvVsaxpySrc3    ),
     .HdvInitialFa0(HdvVsaxpyA      ),
     .AxiRespDelay(AxiRespDelay    )
   ) dut (
@@ -1001,8 +1032,9 @@ module ara_tb;
   logic        hdv_task_cycle_valid;
   logic [63:0] hdv_task_cycle_base_visible;
   logic [63:0] hdv_task_cycle;
+  logic [63:0] hdv_last_task_cycle_q;
   logic        hdv_task_done_prev_q;
-  localparam int unsigned HdvEpTraceDepth = 8;
+  localparam int unsigned HdvEpTraceDepth = 128;
   int unsigned hdv_ep_trace_fd;
   int unsigned hdv_ep_trace_head_q;
   int unsigned hdv_ep_trace_tail_q;
@@ -1018,6 +1050,7 @@ module ara_tb;
   logic [HdvNumSlots-1:0][63:0] hdv_ep_trace_insn_pc_q [HdvEpTraceDepth];
   logic [HdvNumSlots-1:0][1:0]  hdv_ep_trace_class_q [HdvEpTraceDepth];
   logic        hdv_ep_trace_enqueue;
+  logic        hdv_ep_trace_flush;
 
   function automatic string hdv_ep_class_name(input logic [1:0] cls);
     unique case (cls)
@@ -1050,6 +1083,7 @@ module ara_tb;
   assign hdv_ep_trace_enqueue =
       dut.i_ara_soc.i_system.vliwpu_heu_execute_valid &
       dut.i_ara_soc.i_system.i_hybrid_execution_unit.heu_vliwpu_execute_ready_o;
+  assign hdv_ep_trace_flush = dut.i_ara_soc.i_system.dispatch_flush;
   assign hdv_task_start_fire = hdv_host_csr_valid && hdv_host_csr_ready &&
                                hdv_host_csr_write &&
                                (hdv_host_csr_addr == hdv_pkg::HDV_CSR_VTASK_START);
@@ -1065,6 +1099,7 @@ module ara_tb;
       hdv_mock_state_prev_q <= '0;
       hdv_task_cycle_active_q <= 1'b0;
       hdv_task_cycle_base_q <= '0;
+      hdv_last_task_cycle_q <= '0;
       hdv_task_done_prev_q <= 1'b0;
       hdv_ep_trace_head_q <= 0;
       hdv_ep_trace_tail_q <= 0;
@@ -1094,6 +1129,7 @@ module ara_tb;
       if (hdv_task_start_fire) begin
         hdv_task_cycle_active_q <= 1'b1;
         hdv_task_cycle_base_q <= wall_cycle;
+        hdv_last_task_cycle_q <= '0;
         $display("[HDV-CSR] @%0t wall_cycle=%0d task_cycle=0 START entry=0x%016h desc=0x%016h expected_ep=%0d",
                  $time, wall_cycle,
                  i_hdv_mock_host_core.task_entry_q,
@@ -1139,8 +1175,8 @@ module ara_tb;
                    dut.i_ara_soc.i_system.vec_dispatch_busy,
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.state_q,
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
-                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
-                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                   (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q != '0),
+                   (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q > 1),
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
         end
         if (hdv_ep_trace_fd != 0) begin
@@ -1212,8 +1248,8 @@ module ara_tb;
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.real_wait_valid_q,
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.vset_accept_wait_q,
-                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
-                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                   (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q != '0),
+                   (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q > 1),
                    dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
         end
         if (hdv_ep_trace_fd != 0) begin
@@ -1244,11 +1280,12 @@ module ara_tb;
                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.pending_valid_q,
                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.real_wait_valid_q,
                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.vset_accept_wait_q,
-                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq0_valid_q,
-                  dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq1_valid_q,
+                  (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q != '0),
+                  (dut.i_ara_soc.i_system.i_vec_dispatch_unit.vq_count_q > 1),
                   dut.i_ara_soc.i_system.i_vec_dispatch_unit.resp_meta_count_q);
           $fflush(hdv_ep_trace_fd);
         end
+        hdv_last_task_cycle_q <= hdv_task_cycle;
         hdv_task_cycle_active_q <= 1'b0;
       end
 
@@ -1327,7 +1364,19 @@ module ara_tb;
         end
       end
 
-      if (hdv_ep_trace_enqueue) begin
+      if (hdv_ep_trace_flush) begin
+        if ((trace_count_next != 0) && (hdv_ep_trace_fd != 0)) begin
+          $fwrite(hdv_ep_trace_fd,
+                  "[HDV-TRACE] time=%0t wall_cycle=%0d task_cycle=%0d flush drops queued_ep_snapshots=%0d\n",
+                  $time, wall_cycle, hdv_task_cycle, trace_count_next);
+          $fflush(hdv_ep_trace_fd);
+        end
+        trace_head_next = 0;
+        trace_tail_next = 0;
+        trace_count_next = 0;
+      end
+
+      if (hdv_ep_trace_enqueue && !hdv_ep_trace_flush) begin
         if (trace_count_next < HdvEpTraceDepth) begin
           int unsigned trace_idx;
 
@@ -1387,22 +1436,34 @@ module ara_tb;
       if (i_hdv_mock_host_core.state_q == 4'd9 && hdv_mock_state_prev_q != 4'd9) begin
         if (hdv_accepted_visible == i_hdv_mock_host_core.expected_ep_accepts_q) begin
           $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test PASSED (expected %0d EPs, got %0d, total_task_cycles=%0d)",
-                   $time, hdv_task_cycle,
+                   $time, hdv_last_task_cycle_q,
                    i_hdv_mock_host_core.expected_ep_accepts_q,
                    hdv_accepted_visible,
-                   hdv_task_cycle);
+                   hdv_last_task_cycle_q);
         end else begin
           $display("[HDV] @%0t cycle=%0d mock host FINISH — HDV pipeline test FAILED (expected %0d EPs, got %0d, total_task_cycles=%0d)",
-                   $time, hdv_task_cycle,
+                   $time, hdv_last_task_cycle_q,
                    i_hdv_mock_host_core.expected_ep_accepts_q,
                    hdv_accepted_visible,
-                   hdv_task_cycle);
+                   hdv_last_task_cycle_q);
         end
         $finish;
       end
       if (i_hdv_mock_host_core.state_q == 4'd10 && hdv_mock_state_prev_q != 4'd10) begin
-        $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED (total_task_cycles=%0d)",
-                 $time, hdv_task_cycle, hdv_task_cycle);
+        $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED (expected %0d EPs, got %0d, total_task_cycles=%0d)",
+                 $time, hdv_task_cycle,
+                 i_hdv_mock_host_core.expected_ep_accepts_q,
+                 i_hdv_mock_host_core.accepted_packets_q,
+                 hdv_task_cycle);
+        $display("[HDV]   fail_reason task_error=%0b ep_error=%0b packet_timeout=%0b task_timeout=%0b task_busy=%0b task_done=%0b vec_busy=%0b imem_outstanding=%0d",
+                 hdv_task_error,
+                 hdv_ep_error,
+                 i_hdv_mock_host_core.packet_timeout,
+                 i_hdv_mock_host_core.task_timeout,
+                 hdv_task_busy,
+                 hdv_task_done,
+                 dut.i_ara_soc.i_system.vec_dispatch_busy,
+                 dut.i_ara_soc.i_system.imem_outstanding_q);
         $finish;
       end
     end

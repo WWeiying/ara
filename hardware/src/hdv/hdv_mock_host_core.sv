@@ -328,10 +328,22 @@ module hdv_mock_host_core import hdv_pkg::*; #(
         if (hdv_mock_task_error_i || hdv_mock_ep_error_i || packet_timeout) begin
           mock_hdv_task_error_o = 1'b1;
           state_d      = FAIL;
-        end else if (hdv_mock_task_done_i || !hdv_mock_task_busy_i) begin
-          state_d = READ_STATUS;
         end else if (expected_reached) begin
           state_d = COMPLETE_TASK;
+        end else if (hdv_mock_task_done_i) begin
+          if (expected_ep_accepts_q == '0) begin
+            state_d = READ_STATUS;
+          end else begin
+            mock_hdv_task_error_o = 1'b1;
+            state_d = FAIL;
+          end
+        end else if (!hdv_mock_task_busy_i) begin
+          if (expected_ep_accepts_q == '0) begin
+            state_d = READ_STATUS;
+          end else begin
+            mock_hdv_task_error_o = 1'b1;
+            state_d = FAIL;
+          end
         end
       end
       COMPLETE_TASK: begin

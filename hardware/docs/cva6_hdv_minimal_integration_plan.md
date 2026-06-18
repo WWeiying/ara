@@ -130,9 +130,14 @@ module cva6_hdv_scalar_backend #(
   output logic [XLEN-1:0]              vec_rs2_data_o,
   output logic [XLEN-1:0]              vec_frs1_data_o,
 
-  input  logic                         vec_vset_wb_valid_i,
-  input  logic [4:0]                   vec_vset_wb_rd_i,
-  input  logic [XLEN-1:0]              vec_vset_wb_data_i,
+  input  logic                         vec_wb_valid_i,
+  input  logic [4:0]                   vec_wb_rd_i,
+  input  logic [XLEN-1:0]              vec_wb_data_i,
+  input  logic                         vec_wb_is_fpr_i,
+  input  logic                         vec_wb_is_vset_i,
+  input  logic                         vec_vset_inflight_i,
+  input  logic [4:0]                   vec_vset_inflight_rd_i,
+  input  logic                         vec_store_pending_i,
 
   output axi_req_t                     scalar_axi_req_o,
   input  axi_resp_t                    scalar_axi_resp_i
@@ -167,9 +172,11 @@ HDV 向量后端发每条向量指令前，从 CVA6_HDV 读：
 
 由于 HEU 当前一个 EP outstanding，且 EP accepted 后才进入下一 EP，这个低速读口通常足够。
 
-### 4.3 vset 写回
+### 4.3 vector-to-scalar 写回
 
-`vsetvli/vsetivli/vsetvl` 仍走 HDV 向量后端到 Ara。Ara 返回 granted vl 后，向量后端必须通过 `vec_vset_wb_*` 写回 CVA6_HDV XRF。
+`vsetvli/vsetivli/vsetvl` 仍走 HDV 向量后端到 Ara。Ara 返回 granted vl 后，向量后端通过 `vec_wb_*` 写回 CVA6_HDV XRF。`vmv.x.s`、`vfmv.f.s` 等 scalar-visible vector 指令也复用同一组 `vec_wb_*` 接口，其中 `vec_wb_is_fpr_i` 区分写 XRF 还是 FRF，`vec_wb_is_vset_i` 区分是否同时更新内部 VL 状态。
+
+`vec_vset_inflight_*` 给标量后端做 vset RAW interlock：当某个 `vset rd!=x0` 已发给 Ara 但 granted VL 尚未写回时，后续读取该 rd 的标量 slice 必须等待。`vec_store_pending_i` 用于保守处理 vector store 与后续标量 memory op 的顺序。
 
 关键约束：
 
