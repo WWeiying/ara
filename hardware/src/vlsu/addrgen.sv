@@ -106,7 +106,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         2'b01:   prefetch_info = PF_EN_1X;
         2'b10:   prefetch_info = PF_EN_2X;
         2'b11:   prefetch_info = PF_EN_4X;
-        default: prefetch_info = PF_DEN;     // off: PF_EN_1X adds 137cy for vsaxpy VL=32
+        default: prefetch_info = PF_DEN;     // off by default; kernel header enables via VLIWPU
       endcase
     end
     case (prefetch_info)
