@@ -62,6 +62,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     input  elen_t     [NrLanes-1:0] addrgen_operand_i,
     input  logic      [NrLanes-1:0] addrgen_operand_valid_i,
     output logic                    addrgen_operand_ready_o,
+    input  logic                    block_load_addr_i,
+    input  logic                    hdv_loop_active_i,
+    input  logic [1:0]              hdv_prefetch_mode_i,
+
     // STU exception support
     input  logic                    lsu_ex_flush_i,
     output logic                    lsu_ex_flush_done_o,
@@ -105,6 +109,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic addrgen_illegal_load, addrgen_illegal_store;
   assign load_complete_o  = load_complete;
   assign store_complete_o = store_complete;
+  logic    prefetch_axi_ar_hit;
+  axi_ar_t axi_addrgen_prefetch_req;
+  logic    axi_addrgen_prefetch_req_valid;
+  logic    axi_addrgen_prefetch_req_ready;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
   assign lsu_current_burst_exception_o = stu_current_burst_exception | ldu_current_burst_exception;
@@ -147,9 +155,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   //////////////////////////
 
   // Interface with the load/store units
-  addrgen_axi_req_t axi_addrgen_req;
-  logic             axi_addrgen_req_valid;
+  addrgen_axi_req_t ldu_axi_addrgen_req;
+  logic             ldu_axi_addrgen_req_valid;
   logic             ldu_axi_addrgen_req_ready;
+  
+  addrgen_axi_req_t stu_axi_addrgen_req;
+  logic             stu_axi_addrgen_req_valid;
   logic             stu_axi_addrgen_req_ready;
 
   addrgen #(
@@ -173,6 +184,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_ar_o                   (axi_req.ar                 ),
     .axi_ar_valid_o             (axi_req.ar_valid           ),
     .axi_ar_ready_i             (axi_resp.ar_ready          ),
+    .axi_w_valid_i              (axi_req.w_valid            ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer
@@ -190,11 +202,22 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .addrgen_operand_valid_i    (addrgen_operand_valid_i    ),
     .addrgen_operand_ready_o    (addrgen_operand_ready_o    ),
     // Interface with the load/store units
-    .axi_addrgen_req_o          (axi_addrgen_req            ),
-    .axi_addrgen_req_valid_o    (axi_addrgen_req_valid      ),
+    .ldu_axi_addrgen_req_o      (ldu_axi_addrgen_req        ),
+    .ldu_axi_addrgen_req_valid_o(ldu_axi_addrgen_req_valid  ),
     .ldu_axi_addrgen_req_ready_i(ldu_axi_addrgen_req_ready  ),
+    .stu_axi_addrgen_req_o      (stu_axi_addrgen_req        ),
+    .stu_axi_addrgen_req_valid_o(stu_axi_addrgen_req_valid  ),
     .stu_axi_addrgen_req_ready_i(stu_axi_addrgen_req_ready  ),
     .lsu_ex_flush_i             (lsu_ex_flush_i             ),
+
+    //prefetch
+    .prefetch_axi_ar_hit_o           (prefetch_axi_ar_hit),
+    .axi_addrgen_prefetch_req_o      (axi_addrgen_prefetch_req),
+    .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
+    .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
+    .block_load_addr_i               (block_load_addr_i),
+    .hdv_loop_active_i              (hdv_loop_active_i),
+    .hdv_prefetch_mode_i            (hdv_prefetch_mode_i),
 
     // CSR input
     .en_ld_st_translation_i,
@@ -217,6 +240,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .AxiAddrWidth(AxiAddrWidth),
     .AxiDataWidth(AxiDataWidth),
     .axi_r_t     (axi_r_t     ),
+    .axi_ar_t    (axi_ar_t    ),
     .NrLanes     (NrLanes     ),
     .VLEN        (VLEN        ),
     .vaddr_t     (vaddr_t     ),
@@ -239,10 +263,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .pe_resp_o              (pe_resp_o[OffsetLoad]     ),
     .ldu_current_burst_exception_o (ldu_current_burst_exception),
     // Interface with the address generator
-    .axi_addrgen_req_i      (axi_addrgen_req           ),
-    .axi_addrgen_req_valid_i(axi_addrgen_req_valid     ),
+    .axi_addrgen_req_i      (ldu_axi_addrgen_req       ),
+    .axi_addrgen_req_valid_i(ldu_axi_addrgen_req_valid ),
     .axi_addrgen_req_ready_o(ldu_axi_addrgen_req_ready ),
     .addrgen_illegal_load_i (addrgen_illegal_load      ),
+    .prefetch_axi_ar_hit_i           (prefetch_axi_ar_hit),
+    .axi_addrgen_prefetch_req_i      (axi_addrgen_prefetch_req),
+    .axi_addrgen_prefetch_req_valid_i(axi_addrgen_prefetch_req_valid),
+    .axi_addrgen_prefetch_req_ready_o(axi_addrgen_prefetch_req_ready),
     // Interface with the Mask unit
     .mask_i                 (mask_i                    ),
     .mask_valid_i           (mask_valid_i              ),
@@ -293,8 +321,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .pe_resp_o              (pe_resp_o[OffsetStore]     ),
     .stu_current_burst_exception_o (stu_current_burst_exception),
     // Interface with the address generator
-    .axi_addrgen_req_i      (axi_addrgen_req            ),
-    .axi_addrgen_req_valid_i(axi_addrgen_req_valid      ),
+    .axi_addrgen_req_i      (stu_axi_addrgen_req        ),
+    .axi_addrgen_req_valid_i(stu_axi_addrgen_req_valid  ),
     .axi_addrgen_req_ready_o(stu_axi_addrgen_req_ready  ),
     .addrgen_illegal_store_i(addrgen_illegal_store      ),
     // Interface with the Mask unit

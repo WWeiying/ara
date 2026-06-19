@@ -21,7 +21,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
-  parameter int unsigned VectorCmdWindowDepth = 4,
+  parameter int unsigned VectorCmdWindowDepth = 8,
   parameter bit          UseCva6HdvScalar = 1'b1,
   parameter logic [XLEN-1:0] HdvInitialRa  = '0,
   parameter logic [XLEN-1:0] HdvInitialA0  = '0,
@@ -127,7 +127,26 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   input  logic                               backend_hdv_error_i,
   output logic                               hdv_host_ep_busy_o,
   output logic                               hdv_host_ep_acknowledged_o,
-  output logic                               hdv_host_ep_error_o
+  output logic                               hdv_host_ep_error_o,
+
+  // Performance-counter readout (FOR_VERIFY only — no ports in synthesis).
+  `ifdef FOR_VERIFY
+  input  logic [3:0]                        hdv_perf_ctr_sel_i,
+  output logic [63:0]                       hdv_perf_ctr_data_o,
+  `endif
+  // Loop-active hint to Ara: asserted while the IPU has auto-locked a
+  // backward-branch loop (the same fetch buffer is being replayed).  Ara's
+  // VLSU can use this to keep address-pattern state warm across iterations
+  // and to prefetch the next iteration's data.  Falls to 0 on loop exit.
+  output logic                               hdv_ara_loop_active_o,
+  // Prefetch mode from VLIWPU header imm20[18:17]
+  output logic [1:0]                         hdv_ara_prefetch_mode_o,
+  // Strip-mining hint to Ara: asserted from the first vector-configuration
+  // (vset) response until task end.  Tells Ara's VLSU that a vector kernel
+  // has been configured and at least one more iteration of data processing
+  // will follow — useful for keeping address generators warm and avoiding
+  // pipeline flushes between iterations.
+  output logic                               hdv_ara_vset_configured_o
 );
 
   // ─── Internal task / IPU / VLIWPU wires ────────────────────────────────────
@@ -147,6 +166,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic tsu_top_error;
 
   logic ipu_top_busy;
+  logic ipu_top_loop_active;
   logic ipu_vliwpu_packet_valid;
   logic vliwpu_ipu_packet_ready;
   logic [FetchPacketWidth-1:0] ipu_vliwpu_packet;
@@ -203,6 +223,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic                         scalar_branch_taken;
   addr_t                        scalar_branch_pc;
   addr_t                        scalar_branch_target;
+  logic                         scalar_branch_backward;   // from scalar backend
   logic                         scalar_loop_exit;
   logic                         scalar_fast_redirect_valid;
   addr_t                        scalar_fast_redirect_pc;
@@ -282,6 +303,33 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_host_task_done_o        = tsu_top_done;
   assign hdv_host_task_error_o       = tsu_top_error;
   assign hdv_host_active_task_desc_o = ipu_top_active_task_desc;
+  assign hdv_ara_loop_active_o       = ipu_top_loop_active;
+
+  // SR latch for vset-configured: set on first vset writeback, cleared on
+  // task-flush or task-complete.  Tells Ara "the vector unit has been
+  // configured and at least one kernel body will execute."
+  logic vset_configured_d, vset_configured_q;
+  assign hdv_ara_vset_configured_o = vset_configured_q;
+
+  always_comb begin : p_vset_configured
+    vset_configured_d = vset_configured_q;
+    // Set on any vset writeback from vector dispatch.
+    if (vec_scalar_wb_valid && vec_scalar_wb_is_vset) begin
+      vset_configured_d = 1'b1;
+    end
+    // Clear on task flush or completion.
+    if (task_flush || task_complete_request) begin
+      vset_configured_d = 1'b0;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_vset_configured_reg
+    if (!rst_ni) begin
+      vset_configured_q <= 1'b0;
+    end else begin
+      vset_configured_q <= vset_configured_d;
+    end
+  end
 
   assign hdv_host_ep_busy_o  = heu_top_busy;
   assign hdv_host_ep_acknowledged_o  = heu_top_ep_acknowledged;
@@ -292,10 +340,13 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
   assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
                             !vec_dispatch_busy;
+  // scalar_loop_exit: fires on a precise not-taken backward branch event.
+  // The backward determination is now done inside the scalar backend
+  // (branch_backward_o), so hdv_top no longer compares target vs pc.
   assign scalar_loop_exit = UseCva6HdvScalar &&
                             scalar_branch_resolved_valid &&
                             !scalar_branch_taken &&
-                            (scalar_branch_target < scalar_branch_pc);
+                            scalar_branch_backward;
   assign scalar_fast_redirect_valid = UseCva6HdvScalar &&
                                       scalar_branch_resolved_valid &&
                                       scalar_branch_taken;
@@ -431,6 +482,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .branch_taken_o                (scalar_branch_taken         ),
     .branch_pc_o                   (scalar_branch_pc            ),
     .branch_target_o               (scalar_branch_target        ),
+    .branch_backward_o             (scalar_branch_backward      ),
     .task_complete_o               (scalar_backend_task_complete),
     .vec_operand_req_valid_i       (vec_scalar_operand_req_valid),
     .vec_operand_req_ready_o       (scalar_vec_operand_req_ready),
@@ -462,6 +514,14 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   //   · To scale beyond 2 EPs: widen heu_vector_ep_id_o / heu_vec_ep_id_i to
   //     EpIdWidth bits, increase MaxOutstandingVecEPs, and re-verify that
   //     real_wait_depth ≥ MaxOutstandingVecEPs.
+
+  `ifdef FOR_VERIFY
+  logic [3:0]  vec_perf_ctr_sel;
+  logic [63:0] vec_perf_ctr_data;
+
+  assign vec_perf_ctr_sel  = hdv_perf_ctr_sel_i;
+  assign hdv_perf_ctr_data_o = vec_perf_ctr_data;
+  `endif
 
   hdv_vec_dispatch_unit #(
     .XLEN          (XLEN         ),
@@ -501,6 +561,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_store_inflight_o(vec_store_inflight),
     .acc_req_o           (acc_req         ),
     .acc_resp_i          (ara_acc_resp_pack)
+    `ifdef FOR_VERIFY
+    ,
+    .perf_ctr_sel_i      (vec_perf_ctr_sel ),
+    .perf_ctr_data_o     (vec_perf_ctr_data)
+    `endif
   );
 
   // ─── Ara ──────────────────────────────────────────────────────────────────
@@ -538,8 +603,10 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .scan_data_o   (scan_data_o   ),
     .acc_req_i     (acc_req       ),
     .acc_resp_o    (ara_acc_resp  ),
-    .axi_req_o     (ara_axi_req   ),
-    .axi_resp_i    (ara_axi_resp  )
+    .axi_req_o              (ara_axi_req             ),
+    .axi_resp_i             (ara_axi_resp             ),
+    .hdv_loop_active_i      (hdv_ara_loop_active_o    ),
+    .hdv_prefetch_mode_i    (hdv_ara_prefetch_mode_o  )
   );
 
   axi_inval_filter #(
@@ -675,6 +742,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .ipu_vliwpu_packet_o       (ipu_vliwpu_packet       ),
     .ipu_vliwpu_packet_pc_o    (ipu_vliwpu_packet_pc    ),
     .ipu_top_task_desc_o       (ipu_top_active_task_desc),
+    .ipu_top_loop_active_o     (ipu_top_loop_active      ),
     .redirect_valid_i          (hdv_ctrl_redirect_valid),
     .redirect_pc_i             (hdv_ctrl_redirect_pc   ),
     .loop_lock_i               (ctrl_hdv_loop_lock_i    ),
@@ -708,7 +776,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vliwpu_heu_execute_slot_is_32b_o   (vliwpu_heu_execute_slot_is_32b),
     .vliwpu_heu_execute_slot_pc_o       (vliwpu_heu_execute_slot_pc  ),
     .vliwpu_heu_execute_class_o         (vliwpu_heu_execute_class    ),
-    .vliwpu_heu_execute_pc_o            (vliwpu_heu_execute_pc       )
+    .vliwpu_heu_execute_pc_o            (vliwpu_heu_execute_pc       ),
+    .vliwpu_prefetch_mode_o             (hdv_ara_prefetch_mode_o     )
   );
 
   // ─── HEU ──────────────────────────────────────────────────────────────────

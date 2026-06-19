@@ -72,6 +72,7 @@ typedef struct packed {
   vlen_t vl;
   vlen_t vstart;
   rvv_pkg::vtype_t vtype;
+  logic [31:0] avl;
 
   logic fault_only_first;
 
@@ -80,6 +81,15 @@ typedef struct packed {
   logic [NrVInsn-1:0] hazard_vs2;
   logic [NrVInsn-1:0] hazard_vm;
   logic [NrVInsn-1:0] hazard_vd;
+
+  logic [2:0] vd_version;
+  logic [2:0] vs1_version;
+  logic [2:0] vs2_version;
+  logic       chain_en;
+
+  `ifdef FOR_VERIFY
+    riscv::instruction_t instr;
+  `endif
 } pe_req_t;
 
 typedef struct packed {

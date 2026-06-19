@@ -14,6 +14,12 @@
 >
 > 文档正文中的示例代码片段可能仍使用旧名。请以 `hardware/src/` 下实际 RTL 代码为准。
 
+> **近期架构更新** (2026-06):
+> - **VLSU Next-VL Prefetch**: `hardware/src/vlsu/` 借鉴 ideal_execution 分支的解耦访存前端。addrgen 自动检测 unit-stride load 并提前发射预取 AR（`AXI_ID_PREFETCH=4'd1`），vldu 内 ping-pong buffer 缓存预取返回数据，命中时旁路 demand AXI beat。窗口可配置（`PF_EN_1X` 至 `PF_EN_8X`），当前默认 1× VLEN。
+> - **Sequencer hazard bypass**: `ara_sequencer.sv` 新增 `vid_ep_id_q` per-vid 跟踪，利用 HDV ep_id（p-bit 保证）跳过同 EP 内的 RAW/WAW/WAR 检查。
+> - **HDV→Ara hints**: `trans_id[3:0]` = {cmd_class, is_last_in_ep, ep_id} 经 `acc_req → ara_req.hdv_hint → sequencer` 贯通。
+> - **Perf counters**: `hdv_vec_dispatch_unit` 内 15 个 64-bit 仿真计数器，带 `perf_ctr_sel_i`/`perf_ctr_data_o` 读出口。
+
 ## 文件总览
 
 | 文件 | 模块 | 作用 |
@@ -28,6 +34,11 @@
 | `cva6_hdv_scalar_backend.sv` | `cva6_hdv_scalar_backend` | HDV 专用真实标量后端，复用 CVA6 部件执行 scalar slice |
 | `hdv_mock_host_core.sv` | `hdv_mock_host_core` | 仿真用主核/标量后端模型，负责写 task CSR、模拟分支、计数 EP accepted |
 | `hdv_top.sv` | `hdv_top` | 顶层 wrapper，连接 HDV 前端、Ara shell 和统一 AXI memory port |
+| `ara_pkg.sv` (`hardware/include/`) | `ara_pkg` | Ara 参数包：`AXI_ID_DEMAND=0` / `AXI_ID_PREFETCH=1`，`NrVInsn=8`，`hdv_hint` in `ara_req_t` |
+| `ara_sequencer.sv` | `ara_sequencer` | HDV ep_id → `vid_ep_id_q` per-vid 跟踪，同 EP 免检 hazard |
+| `vlsu/addrgen.sv` | `addrgen` | 解耦地址生成 + `PF_EN_1X` 预取窗口，`AXI_ID_PREFETCH` AR |
+| `vlsu/vldu.sv` | `vldu` | 预取数据 ping-pong buffer（`prefetch_axi_r_queue0/1`），命中旁路 |
+| `vlsu/vlsu.sv` | `vlsu` | 预取 AR mux + `prefetch_axi_ar_hit` 路由 |
 
 ## `hdv_pkg.sv`
 

@@ -53,6 +53,11 @@ module cva6_hdv_scalar_backend
   output logic                         branch_taken_o,
   output addr_t                        branch_pc_o,
   output addr_t                        branch_target_o,
+  // branch_backward_o: asserted (together with branch_resolved_valid_o) when
+  // the resolved branch target is numerically less than the branch PC, i.e.
+  // it is a backward branch.  hdv_top uses this for loop-exit signalling
+  // without needing to compare addresses itself.
+  output logic                         branch_backward_o,
   output logic                         task_complete_o,
 
   input  logic                         vec_operand_req_valid_i,
@@ -267,6 +272,7 @@ module cva6_hdv_scalar_backend
   logic branch_taken_d, branch_taken_q;
   addr_t branch_pc_d, branch_pc_q;
   addr_t branch_target_d, branch_target_q;
+  logic branch_backward_d, branch_backward_q;
   logic lsu_is_load;
   addr_t lsu_addr;
   logic [1:0] lsu_size;
@@ -289,6 +295,7 @@ module cva6_hdv_scalar_backend
   logic csr_addr_supported;
   logic hdv_task_ret;
   logic hdv_task_ebreak;
+  logic branch_backward;  // combinational: resolved && target < pc
 
   typedef struct packed {
     logic             valid;
@@ -840,6 +847,7 @@ module cva6_hdv_scalar_backend
     branch_resolved = 1'b0;
     branch_taken    = 1'b0;
     branch_target   = '0;
+    branch_backward = 1'b0;
     fpu_issue       = 1'b0;
     fpu_writes_fpr  = 1'b0;
     fpu_writes_xrf  = 1'b0;
@@ -873,6 +881,8 @@ module cva6_hdv_scalar_backend
                             !unsupported && !hdv_task_ret;
           branch_taken    = cva6_resolved_branch.is_taken;
           branch_target   = addr_t'(cva6_resolved_branch.target_address);
+          branch_backward = branch_resolved &&
+                            (addr_t'(cva6_resolved_branch.target_address) < curr_pc);
           wb_en           = branch_resolved && (cva6_decoded.rd != 5'd0) &&
                             !ariane_pkg::op_is_branch(cva6_decoded.op);
           wb_data         = {{(XLEN-CVA6Cfg.VLEN){cva6_branch_result[CVA6Cfg.VLEN-1]}},
@@ -935,6 +945,7 @@ module cva6_hdv_scalar_backend
   assign branch_taken_o         = branch_taken_q;
   assign branch_pc_o            = branch_pc_q;
   assign branch_target_o        = branch_target_q;
+  assign branch_backward_o      = branch_backward_q;
   assign task_complete_o        = (state_q == DONE) && task_complete_pending_q &&
                                   !error_seen_q;
 
@@ -1129,6 +1140,7 @@ module cva6_hdv_scalar_backend
     branch_taken_d = branch_taken_q;
     branch_pc_d = branch_pc_q;
     branch_target_d = branch_target_q;
+    branch_backward_d = branch_backward_q;
     remaining_slots = insn_valid_q;
 
     for (int unsigned i = 0; i < 32; i++) begin
@@ -1265,6 +1277,7 @@ module cva6_hdv_scalar_backend
               branch_taken_d = branch_taken;
               branch_pc_d = curr_pc;
               branch_target_d = branch_target;
+              branch_backward_d = branch_backward;
               if (branch_taken) begin
                 redirect_pending_d = 1'b1;
                 redirect_pc_d = branch_target;
@@ -1411,6 +1424,7 @@ module cva6_hdv_scalar_backend
       branch_taken_q <= 1'b0;
       branch_pc_q <= '0;
       branch_target_q <= '0;
+      branch_backward_q <= 1'b0;
       csr_vl_q <= '0;
       csr_vtype_q <= '0;
       csr_frm_q <= 3'b000;
@@ -1439,6 +1453,7 @@ module cva6_hdv_scalar_backend
       branch_taken_q <= branch_taken_d;
       branch_pc_q <= branch_pc_d;
       branch_target_q <= branch_target_d;
+      branch_backward_q <= branch_backward_d;
       csr_vl_q <= csr_vl_d;
       csr_vtype_q <= csr_vtype_d;
       csr_frm_q <= csr_frm_d;

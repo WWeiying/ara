@@ -40,7 +40,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   output logic [NumSlots-1:0]                       vliwpu_heu_execute_slot_is_32b_o,
   output addr_t [NumSlots-1:0]                      vliwpu_heu_execute_slot_pc_o,
   output hdv_inst_class_e [NumSlots-1:0]            vliwpu_heu_execute_class_o,
-  output addr_t                                     vliwpu_heu_execute_pc_o
+  output addr_t                                     vliwpu_heu_execute_pc_o,
+  // Prefetch mode from HINT header imm20[18:17]: 00=off,01=1X,10=2X,11=4X
+  output logic [1:0]                                vliwpu_prefetch_mode_o
 );
 
   localparam int unsigned HeaderBytes       = 4;
@@ -167,6 +169,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign header_cross_next = header_is_lui_hint & header_imm20[14];
   assign header_loop_start = header_is_lui_hint & header_imm20[15];
   assign header_loop_end   = header_is_lui_hint & header_imm20[16];
+  // Prefetch mode: imm20[18:17] — 00=off, 01=1X, 10=2X, 11=4X
+  assign header_prefetch_mode = header_is_lui_hint ? header_imm20[18:17] : 2'b00;
 
   assign active_slot_count = packet_is_256_q ? packet_slot_count_t'(Packet256Slots) :
                                                packet_slot_count_t'(Packet128Slots);
@@ -294,6 +298,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign vliwpu_heu_execute_valid_o = normal_execute_valid | cross_execute_valid;
   assign vliwpu_heu_execute_slot_valid_o = execute_slot_valid;
   assign vliwpu_heu_execute_pc_o = cross_execute_valid ? carry_pc_q : packet_pc_q;
+  assign vliwpu_prefetch_mode_o = packet_hold_valid_q ? header_prefetch_mode : 2'b00;
 
   always_comb begin : p_execute_pack
     int unsigned out_idx;
@@ -534,7 +539,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     end
   end
 
-  `ifndef SYNTHESIS
+  `ifdef FOR_VERIFY
   always_ff @(posedge clk_i) begin
     if (rst_ni && packet_hold_valid_q && header_is_lui_hint) begin
       if (header_packet_256 != packet_is_256_q) begin
