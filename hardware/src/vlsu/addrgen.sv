@@ -97,18 +97,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [1:0] prefetch_mul;
   logic       prefetch_en;
 
-  // Dynamic prefetch control: loop_active gates, header imm20[18:17] selects window
+  // Dynamic prefetch control: header imm20[18:17] selects window directly.
+  // loop_active is NOT gated here — VLIWPU output and IPU timing may not
+  // align.  State cleanup on loop exit is handled at the VLSU level.
   always_comb begin
-    if (!hdv_loop_active_i) begin
-      prefetch_info = PF_DEN;
-    end else begin
-      unique case (hdv_prefetch_mode_i)
-        2'b01:   prefetch_info = PF_EN_1X;
-        2'b10:   prefetch_info = PF_EN_2X;
-        2'b11:   prefetch_info = PF_EN_4X;
-        default: prefetch_info = PF_DEN;     // off by default; kernel header enables via VLIWPU
-      endcase
-    end
+    unique case (hdv_prefetch_mode_i)
+      2'b01:   prefetch_info = PF_EN_1X;
+      2'b10:   prefetch_info = PF_EN_2X;
+      2'b11:   prefetch_info = PF_EN_4X;
+      default: prefetch_info = PF_DEN;
+    endcase
     case (prefetch_info)
       PF_EN_1X: {prefetch_en, prefetch_mul} = {1'b1, 2'd0};
       PF_EN_2X: {prefetch_en, prefetch_mul} = {1'b1, 2'd1};
