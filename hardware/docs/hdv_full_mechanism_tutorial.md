@@ -1054,16 +1054,58 @@ TB 打印：
 - **memory-ordering 保护当前为保守策略：current EP 含任何标量访存/FENCE/SYSTEM/AMO 时阻塞 buffered vector early issue。后续可通过 noalias 或更精细地址分析放宽。**
 - **outstanding EP 数量硬编码为 2（HEU current + buffer），参数化为 `MaxOutstandingVecEPs`。扩展到 >2 EP 需同步加宽 EP ID 位宽。**
 
-### 累计性能（vsaxpy_hdv，2 lanes，VLEN=256）
+### 累计性能（vsaxpy_hdv，4 lanes，VLEN=1024）
 
-| 阶段 | cycles | Δ |
-|---|---|---|
-| 基线 | 1284 | — |
-| + CmdWindowDepth 8 | 1284 | 0 |
-| + operand pre-fetch (HDV) | 1283 | -1 |
-| + sequencer hazard bypass (HDV ep_id) | 1066 | **-17%** |
-| + VLSU prefetch (ideal_execution 架构) | **829** | **-22%** |
-| **累计** | | **-35%** |
+| 阶段 | cycles | Δ | 关键技术 |
+|---|---|---|---|
+| 基线 | 1284 | — | — |
+| + CmdWindowDepth 8 | 1284 | 0 | 消除 HDV 侧反压 |
+| + operand pre-fetch (HDV) | 1283 | -1 | dispatch 4× 加速 |
+| + sequencer hazard bypass (HDV ep_id) | 1066 | **-17%** | `vid_ep_id_q` 同 EP 免检 |
+| + ideal VLSU 架构 | 829 | -22% | 解耦访存前端 |
+| + prefetch 动态控制 (VLIWPU header) | **769** | **-7.2%** | `imm20[18:17]`→addrgen，95%命中率 |
+| **累计** | | **-40%** | |
+
+### 最终性能计数器（769 cycles）
+
+**VLSU / Addrgen** (`[PERF-ADDRGEN]`)：
+
+| 指标 | 含义 |
+|---|---|
+| `demand_ar` | 向量 load 指令发出的 AXI 读请求（demand AR）总数 |
+| `pf_ar` | prefetch 机制发出的 AXI 读请求（prefetch AR）总数。`pf_hit / pf_ar` = 命中率 |
+| `pf_hit` | demand load 的首地址命中 prefetch buffer 的次数。命中时跳过首 beat 的 AXI 等待 |
+| `loads` | addrgen 接收到的向量 load 指令总数 |
+| `pf_en_cyc` | `prefetch_en=1` 的周期数，反映预取活跃时间占比 |
+| `demand_aw` | 向量 store 指令发出的 AXI 写请求总数 |
+| `demand_B` | demand AXI 读请求的总字节数。`demand_B / demand_ar` = 平均 burst 大小 |
+| `pf_B` | prefetch AXI 读请求的总字节数。`pf_B / demand_B` = 预取放大比 |
+
+**Sequencer** (`[PERF-SEQ]`)：
+
+| 指标 | 含义 |
+|---|---|
+| `issue` | sequencer 成功发射到 PE 的向量指令总数 |
+| `blocked` | sequencer 有指令待发射但被阻塞的周期数（hazard/队列满/lane 不同步） |
+| `raw` | RAW hazard 检测次数——新指令的源寄存器正在被前序指令写 |
+| `war` | WAR hazard 检测次数——新指令的目标寄存器正在被前序指令读 |
+| `waw` | WAW hazard 检测次数——新指令与未完成的前序指令写同一目标寄存器 |
+| `ep_bypass` | 因 HDV ep_id 同 EP 免检而跳过的 hazard 检查次数。减少 false hazard stall |
+| `full` | `vinsn_running_full=1` 的周期数——所有 8 个 vid 槽位都被占用，无法接收新指令 |
+
+**HDV Dispatch** (`[HDV-PERF]`)：
+
+| 指标 | 含义 |
+|---|---|
+| `dispatch_slots` | vec_dispatch FSM 消费的向量指令 slot 总数 |
+| `vq_push` | 进入 command window 的请求数（Ara 反压时暂存） |
+| `vq_bypass` | 绕过 command window 直发 Ara 的请求数（Ara 空闲时） |
+| `vq_full_stall` | FSM 有请求但 command window 满的阻塞周期数 |
+| `ara_backpressure` | command window 有数据但 Ara `req_ready=0` 的周期数。越大说明 Ara 是瓶颈 |
+| `operand_wait_cycles` | FSM 等待标量 operand 捕获的周期数 |
+| `dispatch_total_cycles` | FSM 在 DISPATCH 状态的周期总数 |
+| `vq_max_occupancy` | command window 的峰值占用深度 |
+| `ep_acknowledged` | 向量 EP 完成 operand 捕获的次数（≠ 向量指令执行完成） |
 
 ## 15. 阅读代码的推荐顺序
 
