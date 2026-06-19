@@ -24,7 +24,8 @@ extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src2
 extern const uint32_t _src1_size;
 extern const uint32_t _src2_size;
 
-// dest[i] = dot(matrix[i,:], x), M=32, N=128, FP32 (x built from vid).
+// dest[i] = dot(matrix[i,:], vector), M=32, N=128, FP32 (true gemv: the input
+// vector is loaded, unlike the original benchmark which synthesised x via vid).
 void gemv_f32_32x128(const float *matrix, const float *vector, float *dest);
 
 int main() {
@@ -35,8 +36,9 @@ int main() {
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
 void gemv_f32_32x128(const float *matrix, const float *vector, float *dest) {
-    // ABI: a0=matrix, a2=dest.  Each "addi t2,t0,off ; vle v,(t2)" is split so
-    // the vle snapshots the freshly bumped base (scalar->vector operand hazard).
+    // ABI: a0=matrix, a1=vector (x), a2=dest.  Each "addi t2,base,off ; vle v,(t2)"
+    // is split so the vle snapshots the freshly bumped base (scalar->vector
+    // operand hazard).
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -47,22 +49,49 @@ void gemv_f32_32x128(const float *matrix, const float *vector, float *dest) {
     ".balign 16\n"
     "vsgemv_hdv_task_start:\n"
 
-    // setup: build x = {0,1,2,...} replicated in v0..v3.
+    // setup: load the real input vector x (a1), 128 elements = 4 chunks of 32,
+    // into v0..v3.  (Deviates from the original benchmark, which synthesised x
+    // with vid and ignored the vector argument; this makes it a true gemv.)
     "HDV_HINT 0x00\n"
     "li t3, 32\n"
-    "vsetvli zero, t3, e32, m1, ta, ma\n"
-    "vid.v v0\n"
-    "HDV_HINT 0x0a\n"
-    "vfcvt.f.x.v v0, v0\n"
-    "vmv.v.v v1, v0\n"
-    "vmv.v.v v2, v0\n"
+    "nop\n"
+    "nop\n"
+    // VL config || load x chunk 0 (reads a1).
     "HDV_HINT 0x02\n"
-    "vmv.v.v v3, v0\n"
-    "mv t0, a0\n"
+    "vsetvli zero, t3, e32, m1, ta, ma\n"
+    "vle32.v v0, (a1)\n"
+    "nop\n"
+    // x chunk 1.
+    "HDV_HINT 0x00\n"
+    "addi t2, a1, 128\n"
+    "nop\n"
     "nop\n"
     "HDV_HINT 0x00\n"
-    "li t6, 1024\n"
+    "vle32.v v1, (t2)\n"
     "nop\n"
+    "nop\n"
+    // x chunk 2.
+    "HDV_HINT 0x00\n"
+    "addi t2, a1, 256\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vle32.v v2, (t2)\n"
+    "nop\n"
+    "nop\n"
+    // x chunk 3.
+    "HDV_HINT 0x00\n"
+    "addi t2, a1, 384\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vle32.v v3, (t2)\n"
+    "nop\n"
+    "nop\n"
+    // matrix row pointer + row counter.
+    "HDV_HINT 0x02\n"
+    "mv t0, a0\n"
+    "li t6, 1024\n"
     "nop\n"
 
     // row loop top: VL config || load chunk0 (reads t0).
