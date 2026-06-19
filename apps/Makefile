@@ -312,3 +312,6 @@ $(NMSIS_APPS): % : bin/nmsis-% $(APPS_DIR)/Makefile $(shell find common -type f)
 
 NMSIS_BINARIES := $(filter-out bin/benchmarks bin/rivec-bmarks% bin/_%, $(addprefix bin/nmsis-,$(NMSIS_APPS)))
 nmsis_all: $(NMSIS_BINARIES) 
+
+bin/fdotp_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/fdotp_hdv: DEFINES += -DFDOTP_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
