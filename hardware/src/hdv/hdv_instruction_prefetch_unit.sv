@@ -53,10 +53,26 @@ module hdv_instruction_prefetch_unit #(
   localparam int unsigned PacketsPerBuffer  = BufferBytes / PacketBytes;
   localparam int unsigned PacketIdxWidth    = (PacketsPerBuffer > 1) ? $clog2(PacketsPerBuffer) : 1;
   localparam int unsigned PacketOffsetWidth = (PacketBytes > 1) ? $clog2(PacketBytes) : 1;
+  localparam int unsigned IpuSramWords      = 32;
+  localparam int unsigned IpuSramAddrWidth  = $clog2(IpuSramWords);
   localparam logic [PacketIdxWidth-1:0] LastPacketIdx = PacketsPerBuffer - 1;
 
   typedef logic [FetchPacketWidth-1:0] packet_t;
-  typedef packet_t buffer_t [PacketsPerBuffer];
+
+  initial begin : p_static_config_check
+    if (FetchPacketWidth != 128) begin
+      $fatal(1, "[HDV] IPU SRAM macro binding requires FetchPacketWidth=128, got %0d",
+             FetchPacketWidth);
+    end
+    if ((BufferBytes % PacketBytes) != 0) begin
+      $fatal(1, "[HDV] BufferBytes (%0d) must be a multiple of PacketBytes (%0d)",
+             BufferBytes, PacketBytes);
+    end
+    if (PacketsPerBuffer > IpuSramWords) begin
+      $fatal(1, "[HDV] BufferBytes=%0d needs %0d packets, but IPU SRAM has %0d words",
+             BufferBytes, PacketsPerBuffer, IpuSramWords);
+    end
+  end
 
   // FILL  = wait for the first packet of a task/redirect.
   // SERVE = serve valid entries from active_buf.  During the first buffer,
@@ -69,10 +85,57 @@ module hdv_instruction_prefetch_unit #(
   } state_e;
 
   state_e state_d, state_q;
-  buffer_t buffer_a_q;
-  buffer_t buffer_b_q;
   logic [PacketsPerBuffer-1:0] buffer_a_valid_d, buffer_a_valid_q;
   logic [PacketsPerBuffer-1:0] buffer_b_valid_d, buffer_b_valid_q;
+
+  logic                         buffer_a_req;
+  logic                         buffer_b_req;
+  logic                         buffer_a_we;
+  logic                         buffer_b_we;
+  logic [IpuSramAddrWidth-1:0]  buffer_a_addr;
+  logic [IpuSramAddrWidth-1:0]  buffer_b_addr;
+  packet_t                      buffer_a_wdata;
+  packet_t                      buffer_b_wdata;
+  packet_t                      buffer_a_rdata;
+  packet_t                      buffer_b_rdata;
+  logic [PacketBytes-1:0]       buffer_be;
+  logic [FetchPacketWidth-1:0]  buffer_bweb;
+
+  logic                         buffer_a_write;
+  logic                         buffer_b_write;
+  logic                         buffer_a_read;
+  logic                         buffer_b_read;
+  logic                         buffer_read_req;
+  logic                         buffer_read_fire;
+  logic                         buffer_read_buf;
+  logic [PacketIdxWidth-1:0]    buffer_read_idx;
+  logic                         buffer_read_pending_q;
+  logic                         buffer_read_buf_q;
+  logic [PacketIdxWidth-1:0]    buffer_read_idx_q;
+
+  packet_t                      served_packet_q;
+  logic                         served_packet_valid_q;
+  logic                         served_packet_buf_q;
+  logic [PacketIdxWidth-1:0]    served_packet_idx_q;
+  logic                         served_packet_hit;
+  packet_t                      prefetch_packet_q;
+  logic                         prefetch_packet_valid_q;
+  logic                         prefetch_packet_buf_q;
+  logic [PacketIdxWidth-1:0]    prefetch_packet_idx_q;
+  logic                         prefetch_packet_hit;
+  logic                         packet_cache_hit;
+  packet_t                      packet_cache_data;
+  logic                         active_entry_valid;
+  logic                         next_entry_valid;
+  logic                         next_buf;
+  logic [PacketIdxWidth-1:0]    next_idx;
+  logic                         next_packet_hit;
+  logic                         demand_read_req;
+  logic                         prefetch_read_req;
+  logic                         keep_prefetch_valid;
+  logic                         keep_prefetch_next_valid;
+  logic                         keep_next_buf;
+  logic [PacketIdxWidth-1:0]    keep_next_idx;
 
   logic active_buf_d, active_buf_q;
   logic fill_buf_d,   fill_buf_q;
@@ -171,8 +234,70 @@ module hdv_instruction_prefetch_unit #(
   assign accept_req  = ipu_mem_req_valid_o & mem_ipu_req_ready_i;
   assign accept_rsp  = mem_ipu_rsp_valid_i & ipu_mem_rsp_ready_o;
 
-  assign active_packet_valid = active_buf_q ? buffer_b_valid_q[exec_idx_q]
-                                            : buffer_a_valid_q[exec_idx_q];
+  assign active_entry_valid = active_buf_q ? buffer_b_valid_q[exec_idx_q]
+                                           : buffer_a_valid_q[exec_idx_q];
+  assign served_packet_hit = served_packet_valid_q &&
+                             (served_packet_buf_q == active_buf_q) &&
+                             (served_packet_idx_q == exec_idx_q);
+  assign prefetch_packet_hit = prefetch_packet_valid_q &&
+                               (prefetch_packet_buf_q == active_buf_q) &&
+                               (prefetch_packet_idx_q == exec_idx_q);
+  assign packet_cache_hit    = served_packet_hit | prefetch_packet_hit;
+  assign packet_cache_data   = served_packet_hit ? served_packet_q : prefetch_packet_q;
+  assign active_packet_valid = active_entry_valid & packet_cache_hit;
+
+  always_comb begin : p_next_read_target
+    next_buf         = active_buf_q;
+    next_idx         = '0;
+    next_entry_valid = 1'b0;
+    if (exec_idx_q != LastPacketIdx) begin
+      next_buf = active_buf_q;
+      next_idx = exec_idx_q + 1;
+      next_entry_valid = active_buf_q ? buffer_b_valid_q[next_idx] : buffer_a_valid_q[next_idx];
+    end else if (replay_loop_lock) begin
+      next_buf = active_buf_q;
+      next_idx = '0;
+      next_entry_valid = active_buf_q ? buffer_b_valid_q['0] : buffer_a_valid_q['0];
+    end else if ((fill_buf_q != active_buf_q) && bg_fill_done_q) begin
+      next_buf = fill_buf_q;
+      next_idx = '0;
+      next_entry_valid = fill_buf_q ? buffer_b_valid_q['0] : buffer_a_valid_q['0];
+    end
+  end
+
+  assign next_packet_hit = ((served_packet_valid_q &&
+                             (served_packet_buf_q == next_buf) &&
+                             (served_packet_idx_q == next_idx)) ||
+                            (prefetch_packet_valid_q &&
+                             (prefetch_packet_buf_q == next_buf) &&
+                             (prefetch_packet_idx_q == next_idx)));
+
+  assign buffer_a_write = accept_rsp & !fill_buf_q;
+  assign buffer_b_write = accept_rsp &  fill_buf_q;
+  assign demand_read_req = (state_q == SERVE) & active_entry_valid & !packet_cache_hit &
+                           !top_ipu_task_complete_i & !redirect_valid_i & !flush_i;
+  assign prefetch_read_req = (state_q == SERVE) & active_entry_valid & packet_cache_hit &
+                             next_entry_valid & !next_packet_hit & !loop_wait_q &
+                             !top_ipu_task_complete_i & !redirect_valid_i & !flush_i;
+  assign buffer_read_req = demand_read_req | prefetch_read_req;
+  assign buffer_read_buf = demand_read_req ? active_buf_q : next_buf;
+  assign buffer_read_idx = demand_read_req ? exec_idx_q : next_idx;
+  assign buffer_a_read = buffer_read_req & !buffer_read_buf & !buffer_a_write;
+  assign buffer_b_read = buffer_read_req &  buffer_read_buf & !buffer_b_write;
+  assign buffer_read_fire = buffer_a_read | buffer_b_read;
+
+  assign buffer_a_req   = buffer_a_write | buffer_a_read;
+  assign buffer_b_req   = buffer_b_write | buffer_b_read;
+  assign buffer_a_we    = buffer_a_write;
+  assign buffer_b_we    = buffer_b_write;
+  assign buffer_a_addr  = buffer_a_write ? IpuSramAddrWidth'(fill_rsp_idx_q) :
+                                           IpuSramAddrWidth'(buffer_read_idx);
+  assign buffer_b_addr  = buffer_b_write ? IpuSramAddrWidth'(fill_rsp_idx_q) :
+                                           IpuSramAddrWidth'(buffer_read_idx);
+  assign buffer_a_wdata = mem_ipu_rsp_data_i;
+  assign buffer_b_wdata = mem_ipu_rsp_data_i;
+  assign buffer_be      = '1;
+  assign buffer_bweb    = {FetchPacketWidth{1'b0}};
 
   // Detect a 32-bit backward branch among the words of the packet being served.
   // The HDV task body is uncompressed (32-bit aligned), so each fetch packet
@@ -181,8 +306,7 @@ module hdv_instruction_prefetch_unit #(
   // after exec_base has already advanced, miss the active buffer, and force a
   // needless refetch of the loop body on every iteration.
   always_comb begin : p_branch_scan
-    automatic packet_t served_packet = active_buf_q ? buffer_b_q[exec_idx_q]
-                                                    : buffer_a_q[exec_idx_q];
+    automatic packet_t served_packet = packet_cache_data;
     served_pkt_has_bwd_branch = 1'b0;
     served_header = served_packet[31:0];
     served_header_imm20 = served_header[31:12];
@@ -206,8 +330,7 @@ module hdv_instruction_prefetch_unit #(
 
   assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid &
                                      !bg_stall & !loop_wait_q;
-  assign ipu_vliwpu_packet_o       = active_buf_q ? buffer_b_q[exec_idx_q]
-                                                : buffer_a_q[exec_idx_q];
+  assign ipu_vliwpu_packet_o       = packet_cache_data;
   assign ipu_vliwpu_packet_pc_o    = exec_base_q + addr_t'(exec_idx_q * PacketBytes);
   assign ipu_top_task_desc_o     = task_desc_q;
 
@@ -612,12 +735,177 @@ module hdv_instruction_prefetch_unit #(
     end
   end
 
-  always_ff @(posedge clk_i) begin : p_buffer_write
-    if (accept_rsp) begin
-      if (!fill_buf_q) begin
-        buffer_a_q[fill_rsp_idx_q] <= mem_ipu_rsp_data_i;
-      end else begin
-        buffer_b_q[fill_rsp_idx_q] <= mem_ipu_rsp_data_i;
+`ifndef TARGET_SRAM_MC
+  tc_sram #(
+    .NumWords (IpuSramWords    ),
+    .DataWidth(FetchPacketWidth),
+    .NumPorts (1               )
+  ) i_buffer_a_sram (
+    .clk_i  (clk_i        ),
+    .rst_ni (rst_ni       ),
+    .req_i  (buffer_a_req ),
+    .we_i   (buffer_a_we  ),
+    .addr_i (buffer_a_addr),
+    .wdata_i(buffer_a_wdata),
+    .be_i   (buffer_be    ),
+    .rdata_o(buffer_a_rdata)
+  );
+
+  tc_sram #(
+    .NumWords (IpuSramWords    ),
+    .DataWidth(FetchPacketWidth),
+    .NumPorts (1               )
+  ) i_buffer_b_sram (
+    .clk_i  (clk_i        ),
+    .rst_ni (rst_ni       ),
+    .req_i  (buffer_b_req ),
+    .we_i   (buffer_b_we  ),
+    .addr_i (buffer_b_addr),
+    .wdata_i(buffer_b_wdata),
+    .be_i   (buffer_be    ),
+    .rdata_o(buffer_b_rdata)
+  );
+`else
+  TS1N28HPCPUHDSVTB32X128M1SWBSO i_buffer_a_sram (
+    .SLP   (1'b0          ),
+    .SD    (1'b0          ),
+    .CLK   (clk_i         ),
+    .CEB   (!buffer_a_req ),
+    .WEB   (!buffer_a_we  ),
+    .CEBM  (1'b1          ),
+    .WEBM  (1'b1          ),
+    .A     (buffer_a_addr ),
+    .D     (buffer_a_wdata),
+    .BWEB  (buffer_bweb   ),
+    .AM    ('0            ),
+    .DM    ('0            ),
+    .BWEBM ('1            ),
+    .BIST  (1'b0          ),
+    .RTSEL (2'b01         ),
+    .WTSEL (2'b00         ),
+    .Q     (buffer_a_rdata)
+  );
+
+  TS1N28HPCPUHDSVTB32X128M1SWBSO i_buffer_b_sram (
+    .SLP   (1'b0          ),
+    .SD    (1'b0          ),
+    .CLK   (clk_i         ),
+    .CEB   (!buffer_b_req ),
+    .WEB   (!buffer_b_we  ),
+    .CEBM  (1'b1          ),
+    .WEBM  (1'b1          ),
+    .A     (buffer_b_addr ),
+    .D     (buffer_b_wdata),
+    .BWEB  (buffer_bweb   ),
+    .AM    ('0            ),
+    .DM    ('0            ),
+    .BWEBM ('1            ),
+    .BIST  (1'b0          ),
+    .RTSEL (2'b01         ),
+    .WTSEL (2'b00         ),
+    .Q     (buffer_b_rdata)
+  );
+`endif
+
+  always_comb begin : p_prefetch_keep
+    keep_next_buf = active_buf_d;
+    keep_next_idx = '0;
+    keep_prefetch_next_valid = 1'b0;
+    if (state_d == SERVE) begin
+      if (exec_idx_d != LastPacketIdx) begin
+        keep_next_buf = active_buf_d;
+        keep_next_idx = exec_idx_d + 1;
+        keep_prefetch_next_valid = active_buf_d ? buffer_b_valid_d[keep_next_idx] :
+                                                  buffer_a_valid_d[keep_next_idx];
+      end else if (replay_loop_lock) begin
+        keep_next_buf = active_buf_d;
+        keep_next_idx = '0;
+        keep_prefetch_next_valid = active_buf_d ? buffer_b_valid_d['0] :
+                                                  buffer_a_valid_d['0];
+      end else if ((fill_buf_d != active_buf_d) && bg_fill_done_d) begin
+        keep_next_buf = fill_buf_d;
+        keep_next_idx = '0;
+        keep_prefetch_next_valid = fill_buf_d ? buffer_b_valid_d['0] :
+                                                buffer_a_valid_d['0];
+      end
+    end
+
+    keep_prefetch_valid = prefetch_packet_valid_q && (state_d == SERVE) &&
+                          (((prefetch_packet_buf_q == active_buf_d) &&
+                            (prefetch_packet_idx_q == exec_idx_d)) ||
+                           (keep_prefetch_next_valid &&
+                            (prefetch_packet_buf_q == keep_next_buf) &&
+                            (prefetch_packet_idx_q == keep_next_idx)));
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_buffer_read_cache
+    if (!rst_ni) begin
+      buffer_read_pending_q <= 1'b0;
+      buffer_read_buf_q     <= 1'b0;
+      buffer_read_idx_q     <= '0;
+      served_packet_q       <= '0;
+      served_packet_valid_q <= 1'b0;
+      served_packet_buf_q   <= 1'b0;
+      served_packet_idx_q   <= '0;
+      prefetch_packet_q       <= '0;
+      prefetch_packet_valid_q <= 1'b0;
+      prefetch_packet_buf_q   <= 1'b0;
+      prefetch_packet_idx_q   <= '0;
+    end else begin
+      buffer_read_pending_q <= buffer_read_fire;
+      buffer_read_buf_q     <= buffer_read_buf;
+      buffer_read_idx_q     <= buffer_read_idx;
+
+      if (flush_i || top_ipu_task_complete_i ||
+          (redirect_valid_i && !(redirect_aligned &&
+            ((redirect_in_active && redirect_active_packet_valid) ||
+             (redirect_in_fill && redirect_fill_packet_valid && effective_loop_fetch_lock))))) begin
+        served_packet_valid_q <= 1'b0;
+        prefetch_packet_valid_q <= 1'b0;
+      end else if (served_packet_valid_q &&
+                   !((state_d == SERVE) &&
+                     (served_packet_buf_q == active_buf_d) &&
+                     (served_packet_idx_q == exec_idx_d))) begin
+        served_packet_valid_q <= 1'b0;
+      end
+      if (!keep_prefetch_valid) begin
+        prefetch_packet_valid_q <= 1'b0;
+      end
+
+      if (buffer_read_pending_q) begin
+        if ((state_d == SERVE) &&
+            (active_buf_d == buffer_read_buf_q) &&
+            (exec_idx_d == buffer_read_idx_q)) begin
+          served_packet_q       <= buffer_read_buf_q ? buffer_b_rdata : buffer_a_rdata;
+          served_packet_buf_q   <= buffer_read_buf_q;
+          served_packet_idx_q   <= buffer_read_idx_q;
+          served_packet_valid_q <= 1'b1;
+        end else if (state_d == SERVE) begin
+          prefetch_packet_q       <= buffer_read_buf_q ? buffer_b_rdata : buffer_a_rdata;
+          prefetch_packet_buf_q   <= buffer_read_buf_q;
+          prefetch_packet_idx_q   <= buffer_read_idx_q;
+          prefetch_packet_valid_q <= 1'b1;
+        end
+      end
+
+      if (accept_rsp) begin
+        if ((state_d == SERVE) &&
+            (active_buf_d == fill_buf_q) &&
+            (exec_idx_d == fill_rsp_idx_q)) begin
+          served_packet_q       <= mem_ipu_rsp_data_i;
+          served_packet_buf_q   <= fill_buf_q;
+          served_packet_idx_q   <= fill_rsp_idx_q;
+          served_packet_valid_q <= 1'b1;
+        end
+        if ((state_d == SERVE) &&
+            keep_prefetch_next_valid &&
+            (keep_next_buf == fill_buf_q) &&
+            (keep_next_idx == fill_rsp_idx_q)) begin
+          prefetch_packet_q       <= mem_ipu_rsp_data_i;
+          prefetch_packet_buf_q   <= fill_buf_q;
+          prefetch_packet_idx_q   <= fill_rsp_idx_q;
+          prefetch_packet_valid_q <= 1'b1;
+        end
       end
     end
   end
