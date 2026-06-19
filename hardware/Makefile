@@ -269,6 +269,7 @@ sram:
 	@$(call generate_sram, $(spsram_techlib_path), $(ICACHE_TAG_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram_techlib_path), $(ICACHE_DATA_SRAM_CONFIGS))
 	@$(call generate_sram, $(spsram_techlib_path), $(DCACHE_DATA_SRAM_CONFIGS))
+	@$(call generate_sram, $(spsram_techlib_path), $(HDV_IPU_SRAM_CONFIGS))
 
 start_time?=
 stop_time?=
