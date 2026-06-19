@@ -1404,19 +1404,19 @@ Disassembly of section .text:
 Disassembly of section .text.hdv_task:
 
 0000000080001000 <vsaxpy_hdv_task_start>:
-80001000: 0c002037     	lui	zero, 0xc002
+80001000: 2c002037     	lui	zero, 0x2c002
 80001004: 0d0572d7     	vsetvli	t0, a0, e32, m1, ta, ma
 80001008: 0205e007     	vle32.v	v0, (a1)
 8000100c: 40550533     	sub	a0, a0, t0
-80001010: 0001f037     	lui	zero, 0x1f
+80001010: 2001f037     	lui	zero, 0x2001f
 80001014: 02066187     	vle32.v	v3, (a2)
 80001018: 00229313     	slli	t1, t0, 0x2
 8000101c: b20551d7     	vfmacc.vf	v3, fa0, v0
-80001020: 0001f037     	lui	zero, 0x1f
+80001020: 2001f037     	lui	zero, 0x2001f
 80001024: 006585b3     	add	a1, a1, t1
 80001028: 020661a7     	vse32.v	v3, (a2)
 8000102c: 00660633     	add	a2, a2, t1
-80001030: 1001f037     	lui	zero, 0x1001f
+80001030: 3001f037     	lui	zero, 0x3001f
 80001034: fc0516e3     	bnez	a0, 0x80001000 <vsaxpy_hdv_task_start>
 80001038: 00008067     	ret
 8000103c: 00000013     	nop

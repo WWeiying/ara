@@ -286,6 +286,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic                  next_operand_valid_d, next_operand_valid_q;
   logic [XLEN-1:0]       next_operand_rs1_d, next_operand_rs1_q;
   logic [XLEN-1:0]       next_operand_rs2_d, next_operand_rs2_q;
+  logic [SlotIdxW-1:0]   next_operand_slot_idx_d, next_operand_slot_idx_q;
+  logic                  prefetch_operand_req;
+  logic                  selected_has_next_operand;
   logic                  selected_slot_found;
   logic [31:0]           selected_insn;
   logic                  selected_uses_frs1;
@@ -318,7 +321,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     next_slot_found = 1'b0;
     next_slot_idx   = '0;
     for (int unsigned i = 0; i < NumSlots; i++) begin
-      if (insn_valid_q[i] && i != slot_idx && !next_slot_found && slot_found) begin
+      if (insn_valid_q[i] && (i > slot_idx) && !next_slot_found && slot_found) begin
         next_slot_found = 1'b1;
         next_slot_idx   = SlotIdxW'(i);
       end
@@ -334,6 +337,12 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic resp_meta_is_store;
   logic [4:0] resp_meta_rd;
   logic resp_meta_ep_id;
+  logic ara_meta_wb_valid;
+  logic ara_meta_is_fpr;
+  logic ara_meta_is_vset;
+  logic ara_meta_is_store;
+  logic [4:0] ara_meta_rd;
+  logic ara_meta_ep_id;
   logic enqueue_ep;
   logic enqueue_to_pending;
   logic capture_operand;
@@ -380,16 +389,19 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign resp_meta_full = (resp_meta_count_q == RespMetaCountW'(RespMetaDepth));
   assign resp_meta_can_push = !resp_meta_full || resp_valid;
   assign capture_operand = selected_slot_found && !UseVTraceScalar &&
-                           !operand_valid_q && scalar_vec_operand_req_ready_i;
+                           !operand_valid_q && !selected_has_next_operand &&
+                           scalar_vec_operand_req_ready_i;
   assign resp_has_queued_meta = (resp_meta_count_q != '0);
   assign resp_meta_wb_valid   = resp_has_queued_meta ? resp_meta_wb_valid_q[0] :
-                                                       selected_scalar_wb_valid;
+                                                       ara_meta_wb_valid;
   assign resp_meta_is_fpr     = resp_has_queued_meta ? resp_meta_is_fpr_q[0] :
-                                                       selected_scalar_wb_is_fpr;
-  assign resp_meta_is_vset    = resp_has_queued_meta ? resp_meta_is_vset_q[0] : selected_is_vset;
-  assign resp_meta_is_store   = resp_has_queued_meta ? resp_meta_is_store_q[0] : selected_is_vstore;
-  assign resp_meta_rd         = resp_has_queued_meta ? resp_meta_rd_q[0] : selected_insn[11:7];
-  assign resp_meta_ep_id      = resp_has_queued_meta ? resp_meta_ep_id_q[0] : selected_ep_id;
+                                                       ara_meta_is_fpr;
+  assign resp_meta_is_vset    = resp_has_queued_meta ? resp_meta_is_vset_q[0] :
+                                                       ara_meta_is_vset;
+  assign resp_meta_is_store   = resp_has_queued_meta ? resp_meta_is_store_q[0] :
+                                                       ara_meta_is_store;
+  assign resp_meta_rd         = resp_has_queued_meta ? resp_meta_rd_q[0] : ara_meta_rd;
+  assign resp_meta_ep_id      = resp_has_queued_meta ? resp_meta_ep_id_q[0] : ara_meta_ep_id;
   assign resp_is_vset_wb      = resp_valid && resp_meta_is_vset && (resp_meta_rd != 5'd0);
   assign resp_is_scalar_wb    = resp_valid && resp_meta_wb_valid && (resp_meta_rd != 5'd0);
   assign vset_accept_enqueue  = enqueue_ep && input_ep_has_vset_wb;
@@ -438,16 +450,20 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
 
   // operand request: either the primary slot needs capture, or we are
   // pre-fetching the next slot while the current one dispatches.
+  assign selected_has_next_operand = (state_q == DISPATCH) && next_operand_valid_q &&
+                                     (next_operand_slot_idx_q == slot_idx);
+  assign prefetch_operand_req = (state_q == DISPATCH) && accept_insn && next_slot_found &&
+                                !UseVTraceScalar && !next_operand_valid_q;
+
   assign vec_scalar_operand_req_valid_o = (selected_slot_found && !UseVTraceScalar &&
-                                           !operand_valid_q) ||
-                                          (state_q == DISPATCH && accept_insn &&
-                                           next_slot_found && !UseVTraceScalar);
+                                           !operand_valid_q && !selected_has_next_operand) ||
+                                          prefetch_operand_req;
   // Addresses: use pre-fetch target during pre-fetch, else primary slot.
-  assign vec_scalar_rs1_addr_o  = (state_q == DISPATCH && accept_insn && next_slot_found) ?
+  assign vec_scalar_rs1_addr_o  = prefetch_operand_req ?
                                    insn_q[next_slot_idx][19:15] : selected_insn[19:15];
-  assign vec_scalar_rs2_addr_o  = (state_q == DISPATCH && accept_insn && next_slot_found) ?
+  assign vec_scalar_rs2_addr_o  = prefetch_operand_req ?
                                    insn_q[next_slot_idx][24:20] : selected_insn[24:20];
-  assign vec_scalar_frs1_addr_o = (state_q == DISPATCH && accept_insn && next_slot_found) ?
+  assign vec_scalar_frs1_addr_o = prefetch_operand_req ?
                                    insn_q[next_slot_idx][19:15] : selected_insn[19:15];
   assign vec_scalar_wb_valid_o          = resp_is_scalar_wb;
   assign vec_scalar_wb_rd_o             = resp_meta_rd;
@@ -533,12 +549,12 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     fsm_req_is_last = 1'b0;
     if (selected_slot_found) begin
       fsm_req_valid = !(vtrace_empty_error | vtrace_mismatch) &&
-                      (UseVTraceScalar || operand_valid_q || next_operand_valid_q) &&
+                      (UseVTraceScalar || operand_valid_q || selected_has_next_operand) &&
                       resp_meta_can_push;
       if (UseVTraceScalar && vtrace_available) begin
         fsm_req_rs1 = vtrace_rs1;
         fsm_req_rs2 = vtrace_rs2;
-      end else if (next_operand_valid_q) begin
+      end else if (selected_has_next_operand) begin
         fsm_req_rs1 = next_operand_rs1_q;
         fsm_req_rs2 = next_operand_rs2_q;
       end else begin
@@ -607,10 +623,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   //  trans_id[1:0]  = {is_last_in_ep, ep_id}
   //    ep_id:         0=current EP, 1=buffered EP → same value ⇒ independent
   //    is_last_in_ep: 1 ⇒ this is the final vector slot of its EP
-  //  trans_id[3:2]  = cmd_class (VQ_CMD_ARITH / LOAD / STORE / CONFIG)
-  //    Gives Ara's VLSU advance knowledge of the instruction mix without
-  //    re-decoding — valuable for memory pipeline scheduling.
-  //  trans_id[MSB:4] = 0 (reserved for future use)
+  //  trans_id[2]    = non-arithmetic class hint (LOAD / STORE / CONFIG)
+  //  CVA6 TRANS_ID_BITS is 3 for the current scoreboard depth, so the full
+  //  2-bit cmd_class is kept inside the command window but compressed at the
+  //  CV-X-IF boundary.
   //
   //  store_pending is intentionally left at 0: Ara's dispatcher forwards it
   //  via core_st_pending_o → core_st_pending_i (internal loopback to VLSU).
@@ -627,21 +643,21 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     acc_req_o.acc_req.inval_ready = 1'b1; // always consume cache-line invalidations
     acc_req_o.acc_req.frm         = fpnew_pkg::RNE;
     if (vq_serving) begin
-      acc_req_o.acc_req.req_valid     = 1'b1;
+      acc_req_o.acc_req.req_valid     = resp_meta_can_push;
       acc_req_o.acc_req.insn          = vq_q[0].insn;
       acc_req_o.acc_req.rs1           = vq_q[0].rs1;
       acc_req_o.acc_req.rs2           = vq_q[0].rs2;
       acc_req_o.acc_req.trans_id      = '0;
       acc_req_o.acc_req.trans_id[1:0] = {vq_q[0].is_last_in_ep, vq_q[0].ep_id};
-      acc_req_o.acc_req.trans_id[3:2] = vq_q[0].cmd_class;
+      acc_req_o.acc_req.trans_id[2]   = |vq_q[0].cmd_class;
     end else begin
-      acc_req_o.acc_req.req_valid     = fsm_req_valid; // bypass: empty buffer
+      acc_req_o.acc_req.req_valid     = fsm_req_valid && resp_meta_can_push; // bypass: empty buffer
       acc_req_o.acc_req.insn          = fsm_req_insn;
       acc_req_o.acc_req.rs1           = fsm_req_rs1;
       acc_req_o.acc_req.rs2           = fsm_req_rs2;
       acc_req_o.acc_req.trans_id      = '0;
       acc_req_o.acc_req.trans_id[1:0] = {fsm_req_is_last, selected_ep_id};
-      acc_req_o.acc_req.trans_id[3:2] = req_cmd_class;
+      acc_req_o.acc_req.trans_id[2]   = |req_cmd_class;
     end
   end
 
@@ -651,6 +667,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // FSM request advances when it bypassed straight to Ara, or got stored.
   assign vq_push   = fsm_req_valid & !(vq_bypass & ara_acc) & (!vq_full | vq_pop);
   assign accept_insn = (vq_bypass & ara_acc) | vq_push;    // FSM "request consumed"
+
+  assign ara_meta_wb_valid = vq_serving ? vq_q[0].has_scalar_wb : selected_scalar_wb_valid;
+  assign ara_meta_is_fpr   = vq_serving ? vq_q[0].wb_is_fpr     : selected_scalar_wb_is_fpr;
+  assign ara_meta_is_vset  = vq_serving ? (vq_q[0].cmd_class == VQ_CMD_CONFIG) : selected_is_vset;
+  assign ara_meta_is_store = vq_serving ? (vq_q[0].cmd_class == VQ_CMD_STORE)  : selected_is_vstore;
+  assign ara_meta_rd       = vq_serving ? vq_q[0].insn[11:7] : selected_insn[11:7];
+  assign ara_meta_ep_id    = vq_serving ? vq_q[0].ep_id     : selected_ep_id;
 
   always_comb begin : p_vq_next
     vq_count_d = vq_count_q;
@@ -884,6 +907,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
                                (vset_accept_wait_q != '0) |
                                (|real_wait_valid_q) |
                                operand_valid_q |
+                               next_operand_valid_q |
                                (vq_count_q != '0);
 
   always_comb begin
@@ -917,6 +941,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     operand_rs1_d = operand_rs1_q;
     operand_rs2_d = operand_rs2_q;
     real_ep_operands_done = 1'b0;
+    next_operand_valid_d = next_operand_valid_q;
+    next_operand_rs1_d = next_operand_rs1_q;
+    next_operand_rs2_d = next_operand_rs2_q;
+    next_operand_slot_idx_d = next_operand_slot_idx_q;
 
     if (vtrace_empty_error | vtrace_mismatch | ara_exception_error) begin
       error_sticky_d = 1'b1;
@@ -979,18 +1007,18 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     // Pre-fetch: capture the next slot's operand while the current one
     // is being dispatched.  This hides the 1-cycle operand-read latency
     // for all slots after the first.
-    next_operand_valid_d = next_operand_valid_q;
-    if (state_q == DISPATCH && accept_insn && next_slot_found &&
-        !UseVTraceScalar) begin
+    if (prefetch_operand_req && scalar_vec_operand_req_ready_i) begin
       next_operand_valid_d = 1'b1;
       next_operand_rs1_d = (insn_q[next_slot_idx][6:0] == 7'b1010111 &&
                             insn_q[next_slot_idx][14:12] == 3'b101) ?
                             scalar_vec_frs1_data_i : scalar_vec_rs1_data_i;
       next_operand_rs2_d = scalar_vec_rs2_data_i;
+      next_operand_slot_idx_d = next_slot_idx;
     end
     // Consume the pre-fetched operand when it is used for dispatch.
-    if (accept_insn && next_operand_valid_q) begin
+    if (accept_insn && selected_has_next_operand) begin
       next_operand_valid_d = 1'b0;
+      next_operand_slot_idx_d = '0;
     end
 
     if (resp_valid) begin
@@ -1040,20 +1068,22 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       vset_accept_wait_d = vset_accept_count_after_pop + CountW'(vset_accept_enqueue);
     end
 
-    if (accept_insn) begin
-      operand_valid_d = 1'b0;
-      // If Ara responds in the same cycle and there is no older queued
-      // response metadata, this response belongs to the instruction just
-      // accepted and is consumed directly above.
+    if (ara_acc) begin
+      // Track the request that actually entered Ara.  Requests parked in the
+      // command window do not consume response metadata until they later pop.
       if (!(resp_valid && (resp_meta_count_q == '0))) begin
-        resp_meta_wb_valid_d[resp_meta_count_d] = selected_scalar_wb_valid;
-        resp_meta_is_fpr_d[resp_meta_count_d] = selected_scalar_wb_is_fpr;
-        resp_meta_is_vset_d[resp_meta_count_d] = selected_is_vset;
-        resp_meta_is_store_d[resp_meta_count_d] = selected_is_vstore;
-        resp_meta_rd_d[resp_meta_count_d] = selected_insn[11:7];
-        resp_meta_ep_id_d[resp_meta_count_d] = selected_ep_id;
+        resp_meta_wb_valid_d[resp_meta_count_d] = ara_meta_wb_valid;
+        resp_meta_is_fpr_d[resp_meta_count_d] = ara_meta_is_fpr;
+        resp_meta_is_vset_d[resp_meta_count_d] = ara_meta_is_vset;
+        resp_meta_is_store_d[resp_meta_count_d] = ara_meta_is_store;
+        resp_meta_rd_d[resp_meta_count_d] = ara_meta_rd;
+        resp_meta_ep_id_d[resp_meta_count_d] = ara_meta_ep_id;
         resp_meta_count_d = resp_meta_count_d + RespMetaCountW'(1);
       end
+    end
+
+    if (accept_insn) begin
+      operand_valid_d = 1'b0;
     end
 
     case (state_q)
@@ -1146,6 +1176,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       operand_valid_d = 1'b0;
       operand_rs1_d = '0;
       operand_rs2_d = '0;
+      next_operand_valid_d = 1'b0;
+      next_operand_rs1_d = '0;
+      next_operand_rs2_d = '0;
+      next_operand_slot_idx_d = '0;
     end
   end
 
@@ -1212,6 +1246,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       next_operand_valid_q <= 1'b0;
       next_operand_rs1_q  <= '0;
       next_operand_rs2_q  <= '0;
+      next_operand_slot_idx_q <= '0;
     end else begin
       state_q      <= state_d;
       insn_valid_q <= insn_valid_d;
@@ -1245,6 +1280,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       next_operand_valid_q <= next_operand_valid_d;
       next_operand_rs1_q  <= next_operand_rs1_d;
       next_operand_rs2_q  <= next_operand_rs2_d;
+      next_operand_slot_idx_q <= next_operand_slot_idx_d;
     end
   end
 
