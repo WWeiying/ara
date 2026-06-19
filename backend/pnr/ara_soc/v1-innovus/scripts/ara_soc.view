@@ -18,6 +18,7 @@ create_library_set -name tt_25c \
                  ../library/lib/tcbn28hpcplusbwp12t40p140lvt_180a/tcbn28hpcplusbwp12t40p140lvttt0p9v25c.lib \
                  ../library/mem/ts1n28hpcpsvtb8192x128m4swbaso_180a/NLDM/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.lib \
                  ../library/mem/ts1n28hpcpuhdsvtb16x64m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.lib \
+                 ../library/mem/ts1n28hpcpuhdsvtb32x128m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb32x128m1swbso_170a_tt0p9v25c.lib \
                  ../library/mem/ts1n28hpcpuhdsvtb64x128m4swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.lib \
                  ../library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.lib \
                  ../library/mem/ts1n28hpcpuhdsvtb64x48m4swbso_170a/NLDM/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.lib]
@@ -30,5 +31,4 @@ create_analysis_view -name func_tt_rctypical_25c -constraint_mode {cm_func} -del
 
 set_analysis_view -setup [list func_tt_rctypical_25c] \
                   -hold [list func_tt_rctypical_25c]
-
 

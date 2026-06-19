@@ -105,6 +105,7 @@ sources:
       files:
         - backend/blackbox/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb32x128m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x128m4swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb64x48m4swbso_170a_tt0p9v25c.v
