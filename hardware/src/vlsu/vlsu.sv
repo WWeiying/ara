@@ -283,7 +283,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .ldu_result_be_o        (ldu_result_be_o           ),
     .ldu_result_gnt_i       (ldu_result_gnt_i          ),
     .ldu_result_final_gnt_i (ldu_result_final_gnt_i    ),
-    .lsu_ex_flush_i         (lsu_ex_flush_i            )
+    .lsu_ex_flush_i         (lsu_ex_flush_i            ),
+    .block_load_addr_i      (block_load_addr_i         )
   );
 
   /////////////////////////
