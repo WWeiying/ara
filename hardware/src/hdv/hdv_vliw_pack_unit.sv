@@ -86,6 +86,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   logic header_cross_next;
   logic header_loop_start;
   logic header_loop_end;
+  logic [1:0] header_prefetch_mode;
 
   logic [Packet256Slots-1:0][SlotWidth-1:0] slots;
   logic [Packet256Slots-1:0] raw_slot_is_32b;

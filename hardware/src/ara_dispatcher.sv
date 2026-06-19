@@ -452,7 +452,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       op             : VADD,
       conversion_vs1 : OpQueueConversionNone,
       conversion_vs2 : OpQueueConversionNone,
-      hdv_hint     : acc_req_i.trans_id[3:0],
+      hdv_hint     : {1'b0, acc_req_i.trans_id},
       default      : '0
     };
     ara_req_valid = 1'b0;

@@ -284,10 +284,13 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   localparam int unsigned ImemOutstandingCntWidth =
       (ImemOutstandingDepth > 0) ? $clog2(ImemOutstandingDepth + 1) : 1;
   logic [ImemOutstandingCntWidth-1:0] imem_outstanding_d, imem_outstanding_q;
+  logic [ImemOutstandingCntWidth-1:0] imem_stale_rsp_d, imem_stale_rsp_q;
   logic imem_outstanding_full;
   logic imem_outstanding_nonzero;
+  logic imem_stale_rsp_nonzero;
   logic imem_ar_accept;
   logic imem_r_accept;
+  logic imem_r_drop;
   logic imem_rsp_to_ipu;
 
   // Loop control is now driven exclusively by precise branch resolved events
@@ -385,20 +388,26 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_imem_req_valid_o = ipu_mem_req_valid;
   assign imem_outstanding_full    = imem_outstanding_q == ImemOutstandingCntWidth'(ImemOutstandingDepth);
   assign imem_outstanding_nonzero = imem_outstanding_q != '0;
-  assign mem_ipu_req_ready    = !imem_outstanding_full & hdv_imem_axi_resp.ar_ready;
+  assign imem_stale_rsp_nonzero   = imem_stale_rsp_q != '0;
+  assign mem_ipu_req_ready    = !dispatch_flush & !imem_outstanding_full &
+                                hdv_imem_axi_resp.ar_ready;
   assign hdv_imem_req_addr_o  = ipu_mem_req_addr;
   assign hdv_imem_rsp_ready_o = ipu_mem_rsp_ready;
   assign imem_rsp_to_ipu      = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid &
+                                !dispatch_flush & !imem_stale_rsp_nonzero &
                                 ipu_mem_rsp_ready;
   assign mem_ipu_rsp_valid    = imem_rsp_to_ipu;
   assign mem_ipu_rsp_data     = hdv_imem_axi_resp.r.data[FetchPacketWidth-1:0];
 
   assign imem_ar_accept = ipu_mem_req_valid & mem_ipu_req_ready;
-  assign imem_r_accept  = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid;
+  assign imem_r_drop    = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid &
+                          (dispatch_flush | imem_stale_rsp_nonzero);
+  assign imem_r_accept  = imem_rsp_to_ipu | imem_r_drop;
 
   always_comb begin : p_imem_axi_req
     hdv_imem_axi_req = '0;
-    hdv_imem_axi_req.ar_valid      = ipu_mem_req_valid & !imem_outstanding_full;
+    hdv_imem_axi_req.ar_valid      = ipu_mem_req_valid & !dispatch_flush &
+                                     !imem_outstanding_full;
     hdv_imem_axi_req.ar.id         = '0;
     hdv_imem_axi_req.ar.addr       = AxiAddrWidth'(ipu_mem_req_addr);
     hdv_imem_axi_req.ar.len        = '0;
@@ -410,26 +419,38 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     hdv_imem_axi_req.ar.qos        = '0;
     hdv_imem_axi_req.ar.region     = '0;
     hdv_imem_axi_req.ar.user       = '0;
-    // Always drain completed fetch responses while requests are outstanding.
-    // If IPU has been flushed or completed the task, mem_ipu_rsp_valid stays low
-    // and the stale data is discarded here instead of blocking the AXI fabric.
-    hdv_imem_axi_req.r_ready       = imem_outstanding_nonzero;
+    // Drain stale post-redirect responses even when IPU is not ready, but keep
+    // normal responses back-pressured by IPU readiness.
+    hdv_imem_axi_req.r_ready       = imem_outstanding_nonzero &
+                                     (dispatch_flush | imem_stale_rsp_nonzero |
+                                      ipu_mem_rsp_ready);
   end
 
   always_comb begin : p_imem_state
     imem_outstanding_d = imem_outstanding_q;
+    imem_stale_rsp_d = imem_stale_rsp_q;
     unique case ({imem_ar_accept, imem_r_accept & hdv_imem_axi_resp.r.last})
       2'b10: imem_outstanding_d = imem_outstanding_q + 1'b1;
       2'b01: imem_outstanding_d = imem_outstanding_q - 1'b1;
       default: begin
       end
     endcase
-    if (dispatch_flush) imem_outstanding_d = '0;
+    if (imem_stale_rsp_nonzero && imem_r_accept && hdv_imem_axi_resp.r.last) begin
+      imem_stale_rsp_d = imem_stale_rsp_q - 1'b1;
+    end
+    if (dispatch_flush) begin
+      imem_stale_rsp_d = imem_outstanding_d;
+    end
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_imem_regs
-    if (!rst_ni) imem_outstanding_q <= '0;
-    else         imem_outstanding_q <= imem_outstanding_d;
+    if (!rst_ni) begin
+      imem_outstanding_q <= '0;
+      imem_stale_rsp_q   <= '0;
+    end else begin
+      imem_outstanding_q <= imem_outstanding_d;
+      imem_stale_rsp_q   <= imem_stale_rsp_d;
+    end
   end
 
   // ─── Ara cache-line invalidation packing ──────────────────────────────────
