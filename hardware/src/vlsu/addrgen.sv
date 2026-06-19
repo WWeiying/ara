@@ -97,9 +97,15 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [1:0] prefetch_mul;
   logic       prefetch_en;
 
-  // Dynamic prefetch control: header imm20[18:17] selects window directly.
-  // loop_active is NOT gated here — VLIWPU output and IPU timing may not
-  // align.  State cleanup on loop exit is handled at the VLSU level.
+  // Prefetch mode from VLIWPU header imm20[18:17].  loop_active falling edge
+  // clears internal state via loop_active_fall to drain queues on loop exit.
+  logic loop_active_q;
+  wire  loop_active_fall = loop_active_q && !hdv_loop_active_i;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) loop_active_q <= 1'b0;
+    else         loop_active_q <= hdv_loop_active_i;
+  end
+
   always_comb begin
     unique case (hdv_prefetch_mode_i)
       2'b01:   prefetch_info = PF_EN_1X;
@@ -107,6 +113,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       2'b11:   prefetch_info = PF_EN_4X;
       default: prefetch_info = PF_DEN;
     endcase
+    // On loop exit, disable prefetch to drain queues
+    if (loop_active_fall) prefetch_info = PF_DEN;
     case (prefetch_info)
       PF_EN_1X: {prefetch_en, prefetch_mul} = {1'b1, 2'd0};
       PF_EN_2X: {prefetch_en, prefetch_mul} = {1'b1, 2'd1};
@@ -1272,4 +1280,44 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
+  `ifdef FOR_VERIFY
+  // ── Performance counters for quantitative analysis ────────────────────
+  logic [63:0] cnt_demand_ar;       // demand AXI read requests issued
+  logic [63:0] cnt_prefetch_ar;     // prefetch AXI read requests issued
+  logic [63:0] cnt_prefetch_hit;    // demand load hit in prefetch buffer
+  logic [63:0] cnt_load_vinsn;      // vector load instructions processed
+  logic [63:0] cnt_prefetch_en;     // cycles with prefetch_en=1
+  logic [63:0] cnt_demand_aw;       // demand AXI write requests
+  logic [63:0] cnt_demand_bytes;    // total bytes of demand reads
+  logic [63:0] cnt_prefetch_bytes;  // total bytes prefetched
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      cnt_demand_ar <= '0; cnt_prefetch_ar <= '0; cnt_prefetch_hit <= '0;
+      cnt_load_vinsn <= '0; cnt_prefetch_en <= '0; cnt_demand_aw <= '0;
+      cnt_demand_bytes <= '0; cnt_prefetch_bytes <= '0;
+    end else begin
+      if (axi_ar_valid_o && axi_ar_ready_i && vreq_is_load_d) begin
+        cnt_demand_ar <= cnt_demand_ar + 1;
+        cnt_demand_bytes <= cnt_demand_bytes + (eff_axi_dw_d * (burst_length));
+      end
+      if (prefetch_axi_ar_queue_push) begin
+        cnt_prefetch_ar <= cnt_prefetch_ar + 1;
+        cnt_prefetch_bytes <= cnt_prefetch_bytes + (eff_axi_dw_d * (prefetch_burst_length > 0 ? prefetch_burst_length : 1));
+      end
+      if (prefetch_axi_ar_hit)
+        cnt_prefetch_hit <= cnt_prefetch_hit + 1;
+      if (pe_req_valid && addrgen_ack && is_load(pe_req.op))
+        cnt_load_vinsn <= cnt_load_vinsn + 1;
+      if (prefetch_en)
+        cnt_prefetch_en <= cnt_prefetch_en + 1;
+      if (axi_aw_valid_o && axi_aw_ready_i)
+        cnt_demand_aw <= cnt_demand_aw + 1;
+    end
+  end
+  final begin
+    $display("[PERF-ADDRGEN] demand_ar=%0d pf_ar=%0d pf_hit=%0d loads=%0d pf_en_cyc=%0d demand_aw=%0d demand_B=%0d pf_B=%0d",
+             cnt_demand_ar, cnt_prefetch_ar, cnt_prefetch_hit, cnt_load_vinsn,
+             cnt_prefetch_en, cnt_demand_aw, cnt_demand_bytes, cnt_prefetch_bytes);
+  end
+  `endif
 endmodule : addrgen
