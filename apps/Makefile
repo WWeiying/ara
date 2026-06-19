@@ -315,3 +315,6 @@ nmsis_all: $(NMSIS_BINARIES)
 
 bin/fdotp_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/fdotp_hdv: DEFINES += -DFDOTP_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/dropout_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/dropout_hdv: DEFINES += -DDROPOUT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
