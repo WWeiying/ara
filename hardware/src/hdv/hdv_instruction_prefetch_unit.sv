@@ -123,6 +123,7 @@ module hdv_instruction_prefetch_unit #(
   logic                         prefetch_packet_buf_q;
   logic [PacketIdxWidth-1:0]    prefetch_packet_idx_q;
   logic                         prefetch_packet_hit;
+  logic                         sram_bypass_hit;
   logic                         packet_cache_hit;
   packet_t                      packet_cache_data;
   logic                         active_entry_valid;
@@ -242,8 +243,16 @@ module hdv_instruction_prefetch_unit #(
   assign prefetch_packet_hit = prefetch_packet_valid_q &&
                                (prefetch_packet_buf_q == active_buf_q) &&
                                (prefetch_packet_idx_q == exec_idx_q);
-  assign packet_cache_hit    = served_packet_hit | prefetch_packet_hit;
-  assign packet_cache_data   = served_packet_hit ? served_packet_q : prefetch_packet_q;
+  // SRAM bypass: read issued last cycle completes now; if it matches the
+  // current exec index, use the SRAM output directly instead of waiting for
+  // the served_packet_q latch (saves 1 cycle on every sequential access).
+  assign sram_bypass_hit = buffer_read_pending_q &
+                           (buffer_read_buf_q == active_buf_q) &
+                           (buffer_read_idx_q == exec_idx_q);
+  assign packet_cache_hit    = served_packet_hit | prefetch_packet_hit | sram_bypass_hit;
+  assign packet_cache_data   = served_packet_hit   ? served_packet_q :
+                               prefetch_packet_hit ? prefetch_packet_q :
+                               (buffer_read_buf_q ? buffer_b_rdata : buffer_a_rdata);
   assign active_packet_valid = active_entry_valid & packet_cache_hit;
 
   always_comb begin : p_next_read_target
@@ -916,5 +925,38 @@ module hdv_instruction_prefetch_unit #(
              PacketBytes, redirect_pc_i);
     end
   end
+
+`ifndef SYNTHESIS
+  // Performance counters for IPU packet serving efficiency
+  int unsigned ipu_perf_serve_cycles;    // cycles spent in SERVE state
+  int unsigned ipu_perf_packets_served;  // total packets taken by VLIWPU
+  int unsigned ipu_perf_bypass_hits;     // sram_bypass_hit was the sole hit source
+  int unsigned ipu_perf_demand_reads;    // demand_read_req asserted (cache miss)
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_ipu_perf
+    if (!rst_ni) begin
+      ipu_perf_serve_cycles  <= 0;
+      ipu_perf_packets_served <= 0;
+      ipu_perf_bypass_hits   <= 0;
+      ipu_perf_demand_reads  <= 0;
+    end else begin
+      if (state_q == SERVE)
+        ipu_perf_serve_cycles <= ipu_perf_serve_cycles + 1;
+      if (take_packet)
+        ipu_perf_packets_served <= ipu_perf_packets_served + 1;
+      if (sram_bypass_hit && !served_packet_hit && !prefetch_packet_hit)
+        ipu_perf_bypass_hits <= ipu_perf_bypass_hits + 1;
+      if (demand_read_req)
+        ipu_perf_demand_reads <= ipu_perf_demand_reads + 1;
+    end
+  end
+
+  final begin : p_ipu_perf_report
+    $display("[IPU-PERF] serve_cycles=%0d packets=%0d bypass_hits=%0d demand_reads=%0d avg_cycles_per_pkt=%0d",
+             ipu_perf_serve_cycles, ipu_perf_packets_served,
+             ipu_perf_bypass_hits, ipu_perf_demand_reads,
+             ipu_perf_packets_served > 0 ? ipu_perf_serve_cycles / ipu_perf_packets_served : 0);
+  end
+`endif
 
 endmodule : hdv_instruction_prefetch_unit
