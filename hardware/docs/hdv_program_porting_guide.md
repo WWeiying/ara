@@ -113,7 +113,8 @@ imm20[13]    packet256
 imm20[14]    cross
 imm20[15]    loop_start
 imm20[16]    loop_end
-imm20[19:17] reserved, keep 0
+imm20[18:17] prefetch_mode (00=off, 01=1×VLEN, 10=2×VLEN, 11=4×VLEN)
+imm20[19]    reserved, keep 0
 ```
 
 含义：
@@ -123,12 +124,13 @@ imm20[19:17] reserved, keep 0
 - `cross`：当前 packet 尾部 EP 是否允许跨到下一个 logical packet 开头。
 - `loop_start`：软件标记 loop 开始。
 - `loop_end`：软件标记 loop 结束。
+- `prefetch_mode`：控制 VLSU next-VL prefetch 窗口（loop 内 unit-stride load 自动预取下一轮数据）。
 
 推荐在 inline asm 中定义宏：
 
 ```asm
-.macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0
-  lui x0, (((\pbits) & 0x1fff) | (((\packet256) & 1) << 13) | (((\cross) & 1) << 14) | (((\loop_start) & 1) << 15) | (((\loop_end) & 1) << 16))
+.macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1
+  lui x0, (((\pbits) & 0x1fff) | (((\packet256) & 1) << 13) | (((\cross) & 1) << 14) | (((\loop_start) & 1) << 15) | (((\loop_end) & 1) << 16) | (((\prefetch_mode) & 3) << 17))
 .endm
 ```
 

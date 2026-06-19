@@ -759,4 +759,39 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     assign vinsn_queue_issue[i] = ~target_vfus_vec[i] | (vinsn_queue_ready[i] | priority_pass[i]);
   end
 
+  `ifdef FOR_VERIFY
+  logic [63:0] cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw;
+  logic [63:0] cnt_seq_ep_bypass, cnt_seq_full;
+  logic [63:0] cnt_seq_waw_block;  // WAW actually blocked issue (no RAW also blocking)
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      cnt_seq_issue <= '0; cnt_seq_blocked <= '0; cnt_seq_raw <= '0;
+      cnt_seq_war <= '0; cnt_seq_waw <= '0; cnt_seq_ep_bypass <= '0; cnt_seq_full <= '0;
+      cnt_seq_waw_block <= '0;
+    end else begin
+      if (pe_req_valid_o && (&pe_req_ready_i)) cnt_seq_issue <= cnt_seq_issue + 1;
+      if (ara_req_valid_i && !ara_req_ready_o) cnt_seq_blocked <= cnt_seq_blocked + 1;
+      if (raw_hazard)         cnt_seq_raw   <= cnt_seq_raw + 1;
+      if (war_hazard)         cnt_seq_war   <= cnt_seq_war + 1;
+      if (waw_hazard)         cnt_seq_waw   <= cnt_seq_waw + 1;
+      if (vinsn_running_full) cnt_seq_full  <= cnt_seq_full + 1;
+      // WAW-only block: no RAW, only WAW preventing issue
+      if (waw_hazard && !raw_hazard && ara_req_valid_i && !ara_req_ready_o)
+        cnt_seq_waw_block <= cnt_seq_waw_block + 1;
+      if (ara_req_valid_i && ara_req_ready_o) begin
+        for (int unsigned v = 0; v < NrVInsn; v++)
+          if (vid_ep_id_q[v] == ara_req_i.hdv_hint[0]) begin
+            if (ara_req_i.use_vs1 && write_list_d[ara_req_i.vs1].vid == vid_t'(v) && write_list_d[ara_req_i.vs1].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
+            if (ara_req_i.use_vs2 && write_list_d[ara_req_i.vs2].vid == vid_t'(v) && write_list_d[ara_req_i.vs2].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
+            if (ara_req_i.use_vd && write_list_d[ara_req_i.vd].vid == vid_t'(v) && write_list_d[ara_req_i.vd].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
+          end
+      end
+    end
+  end
+  final begin
+    $display("[PERF-SEQ] issue=%0d blocked=%0d raw=%0d war=%0d waw=%0d waw_block=%0d ep_bypass=%0d full=%0d",
+             cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw,
+             cnt_seq_waw_block, cnt_seq_ep_bypass, cnt_seq_full);
+  end
+  `endif
 endmodule : ara_sequencer
