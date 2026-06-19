@@ -1090,6 +1090,7 @@ TB 打印：
 | `raw` | RAW hazard 检测次数——新指令的源寄存器正在被前序指令写 |
 | `war` | WAR hazard 检测次数——新指令的目标寄存器正在被前序指令读 |
 | `waw` | WAW hazard 检测次数——新指令与未完成的前序指令写同一目标寄存器 |
+| `waw_block` | 仅因 WAW（无 RAW 同时存在）导致发射阻塞的周期数。`waw_block / waw` = 纯 WAW 占比 |
 | `ep_bypass` | 因 HDV ep_id 同 EP 免检而跳过的 hazard 检查次数。减少 false hazard stall |
 | `full` | `vinsn_running_full=1` 的周期数——所有 8 个 vid 槽位都被占用，无法接收新指令 |
 
@@ -1097,15 +1098,21 @@ TB 打印：
 
 | 指标 | 含义 |
 |---|---|
-| `dispatch_slots` | vec_dispatch FSM 消费的向量指令 slot 总数 |
+| `dispatch_slots` | vec_dispatch FSM 消费的向量指令 slot 总数。`= vq_push + vq_bypass` |
 | `vq_push` | 进入 command window 的请求数（Ara 反压时暂存） |
 | `vq_bypass` | 绕过 command window 直发 Ara 的请求数（Ara 空闲时） |
-| `vq_full_stall` | FSM 有请求但 command window 满的阻塞周期数 |
+| `vq_pop` | Ara 从 command window 取走的请求数。`vq_push ≈ vq_pop`（稳态） |
+| `vq_full_stall` | FSM 有请求但 command window 满的阻塞周期数。0 = window 足够深 |
 | `ara_backpressure` | command window 有数据但 Ara `req_ready=0` 的周期数。越大说明 Ara 是瓶颈 |
-| `operand_wait_cycles` | FSM 等待标量 operand 捕获的周期数 |
-| `dispatch_total_cycles` | FSM 在 DISPATCH 状态的周期总数 |
-| `vq_max_occupancy` | command window 的峰值占用深度 |
+| `fsm_could_bypass` | FSM 有请求且 window 为空的周期数——理论上可 bypass。`vq_bypass / fsm_could_bypass` = bypass 成功率 |
 | `ep_acknowledged` | 向量 EP 完成 operand 捕获的次数（≠ 向量指令执行完成） |
+| `ep_vset_acknowledged` | 其中因等待 vset 写回而延迟确认的 EP 数 |
+| `operand_wait_cycles` | FSM 等待标量 operand 捕获的周期数 |
+| `resp_meta_full_stall` | 响应元数据 FIFO 满导致的阻塞周期数。0 = RespMetaDepth 足够 |
+| `real_wait_full_stall` | EP 跟踪表满导致的阻塞周期数（>2 个 outstanding EP）。0 = MaxOutstandingVecEPs 足够 |
+| `vq_max_occupancy` | command window 的峰值占用深度。`vq_max / CmdWindowDepth` = 利用率 |
+| `resp_meta_max` | 响应元数据 FIFO 的峰值占用深度 |
+| `dispatch_total_cycles` | FSM 在 DISPATCH 状态的周期总数。`dispatch_slots / dispatch_total_cycles` = 每周期吞吐 |
 
 ## 15. 阅读代码的推荐顺序
 
@@ -1115,7 +1122,7 @@ TB 打印：
 4. 读 IPU，重点看 `state_q`、valid bit、redirect 和 loop lock。
 5. 读 VLIWPU，重点看 p-bit、32-bit continuation、issue mask（**FENCE 归类变更**）。
 6. 读 HEU，重点看 dispatch valid、**`scalar_slice_outstanding/vector_slice_outstanding`**、**`ep_acknowledged`**、**`current_has_branch/current_has_scalar_mem_order`**。
-7. 读 vector dispatch，重点看 **`vq_entry_t` 结构化 command window**、`vec_ep_acknowledged_o`、Ara request、**仿真性能计数器 (`ifndef SYNTHESIS`)**。
+7. 读 vector dispatch，重点看 **`vq_entry_t` 结构化 command window**、`vec_ep_acknowledged_o`、Ara request、**仿真性能计数器 (`ifdef FOR_VERIFY`)**。
 8. 最后读 mock host 和 TB，理解当前仿真为什么能跑起来，以及哪些地方只是临时模型。
 9. **读 scalar backend 时留意 FENCE NOP 处理和 `TreatEbreakAsTaskExit` 参数**。
 
