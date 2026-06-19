@@ -1,0 +1,126 @@
+#include <stdint.h>
+#include <string.h>
+
+#include "runtime.h"
+#include "util.h"
+
+#ifdef SPIKE
+#include <stdio.h>
+#elif defined ARA_LINUX
+#include <stdio.h>
+#else
+#include "printf.h"
+#endif
+
+#define TOTAL_ELEMENTS 16384
+#define SPMV_ROWS 32
+#define SPMV_NNZ  32
+
+#ifndef VSSPMV_HDV_TASK_ENTRY
+#define VSSPMV_HDV_TASK_ENTRY 0x80001000UL
+#endif
+
+extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(128), section(".data.src1")));
+extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(128), section(".data.src2")));
+
+extern const uint32_t _src1_size;
+extern const uint32_t _src2_size;
+
+static uint32_t col_idx[SPMV_ROWS * SPMV_NNZ] __attribute__((aligned(128)));
+
+void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
+                    const float *x, float *y);
+
+int main() {
+    for (int i = 0; i < SPMV_ROWS; ++i)
+        for (int j = 0; j < SPMV_NNZ; ++j)
+            col_idx[i * SPMV_NNZ + j] = (uint32_t)j;
+
+    spmv_f32_32x32(src1, col_idx, src2, src2 + 64);
+    return 0;
+}
+
+__attribute__((naked, aligned(16), section(".hdv_task"),
+               target("arch=rv64gcv_zfh_zvfh")))
+void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
+                    const float *x, float *y) {
+    // ABI: a0=val, a1=col_idx, a2=x (gather base), a3=y.  32 nnz/row, 32 rows.
+    //
+    // Vector-vector chains are packed freely (Ara resolves vector deps); the
+    // scalar reduction-store tail (vfmv.f.s -> fsw) and the zero-seed scalar are
+    // isolated so the vector->scalar writeback and the scalar operand snapshot
+    // are observed in order.
+    __asm__ volatile (
+    ".option push\n"
+    ".option norvc\n"
+    ".option norelax\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16))\n"
+    ".endm\n"
+    ".balign 16\n"
+    "vsspmv_hdv_task_start:\n"
+
+    // setup: row count, then VL config || row pointers.
+    "HDV_HINT 0x0a\n"
+    "li t0, 1024\n"
+    "mv t1, a0\n"
+    "mv t2, a1\n"
+    "HDV_HINT 0x02\n"
+    "vsetvli s0, t0, e32, m1, ta, ma\n"
+    "mv t3, a3\n"
+    "nop\n"
+
+    // row loop top: load val row || col_idx row || idx*4 (all vector).
+    "row_loop:\n"
+    "HDV_HINT 0x0a, 0, 0, 1, 0\n"
+    "vle32.v v0, (t1)\n"
+    "vle32.v v1, (t2)\n"
+    "vsll.vi v1, v1, 2\n"
+    // gather x[idx] || multiply (vector).
+    "HDV_HINT 0x02\n"
+    "vluxei32.v v2, (a2), v1\n"
+    "vfmul.vv v3, v0, v2\n"
+    "nop\n"
+    // zero seed scalar (isolate before vfmv.v.f reads it).
+    "HDV_HINT 0x00\n"
+    "fmv.w.x ft0, zero\n"
+    "nop\n"
+    "nop\n"
+    // seed vector || reduce.
+    "HDV_HINT 0x02\n"
+    "vfmv.v.f v16, ft0\n"
+    "vfredusum.vs v16, v3, v16\n"
+    "nop\n"
+    // reduction -> ft1 (vector->scalar writeback), isolate.
+    "HDV_HINT 0x00\n"
+    "vfmv.f.s ft1, v16\n"
+    "nop\n"
+    "nop\n"
+    // store y[i] (reads ft1 from writeback).
+    "HDV_HINT 0x00\n"
+    "fsw ft1, 0(t3)\n"
+    "nop\n"
+    "nop\n"
+    // pointer bumps + row decrement.
+    "HDV_HINT 0x0a\n"
+    "addi t1, t1, 128\n"
+    "addi t2, t2, 128\n"
+    "addi t3, t3, 4\n"
+    "HDV_HINT 0x00\n"
+    "addi t0, t0, -32\n"
+    "nop\n"
+    "nop\n"
+    // branch (loop_end).
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez t0, row_loop\n"
+    "nop\n"
+    "nop\n"
+
+    "HDV_HINT\n"
+    "ret\n"
+    "nop\n"
+    "nop\n"
+    ".purgem HDV_HINT\n"
+    ".option pop\n"
+    );
+}

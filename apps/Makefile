@@ -70,6 +70,42 @@ bin/vsswap_hdv: DEFINES += -DVSSWAP_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 bin/vsdwt_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsdwt_hdv: DEFINES += -DVSDWT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
+bin/vsdot_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsdot_hdv: DEFINES += -DVSDOT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+# vsspmv's main() initialises col_idx at runtime, so its regular .text is larger;
+# give it more room before the HDV task entry.
+bin/vsspmv_hdv: HDV_TASK_ENTRY := 0x80002000
+bin/vsspmv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsspmv_hdv: DEFINES += -DVSSPMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsgemv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsgemv_hdv: DEFINES += -DVSGEMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsger_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsger_hdv: DEFINES += -DVSGER_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsgemm_hdv: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vssymv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vssymv_hdv: DEFINES += -DVSSYMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vssyrk_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vssyrk_hdv: DEFINES += -DVSSYRK_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vstrsm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vstrsm_hdv: DEFINES += -DVSTRSM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vgemm_hdv: DEFINES += -DVGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vmc_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vmc_hdv: DEFINES += -DVMC_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+bin/vsfft_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+bin/vsfft_hdv: DEFINES += -DVSFFT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
 all: $(BINARIES)
 
 # Pre-process the linker-script to correclty align the sections
