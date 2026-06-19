@@ -37,7 +37,13 @@ docs/source/_templates/
 apps/_*
 apps/third-party/
 backend
-apps
+apps/*
+!apps/*_hdv/
+!apps/*_hdv/*.S
+!apps/*_hdv/*.c
+!apps/*_hdv/*.h
+!apps/*_hdv/Makefile
+apps/*_hdv/*.dump
 cheshire/
 Makefile_backup
 debug/
