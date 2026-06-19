@@ -26,16 +26,24 @@ extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(128), section(".data.sr
 extern const uint32_t _src1_size;
 extern const uint32_t _src2_size;
 
-static uint32_t col_idx[SPMV_ROWS * SPMV_NNZ] __attribute__((aligned(128)));
+// Under HDV the TB jumps straight to the kernel entry, so main()'s runtime
+// init loop never runs.  col_idx must therefore live in loaded .rodata with the
+// values baked in at compile time.  Each of the 32 rows is the index run {0..31}.
+#define SPMV_ROW_IDX \
+  0u,1u,2u,3u,4u,5u,6u,7u,8u,9u,10u,11u,12u,13u,14u,15u, \
+  16u,17u,18u,19u,20u,21u,22u,23u,24u,25u,26u,27u,28u,29u,30u,31u
+#define SPMV_ROW_IDX_X2  SPMV_ROW_IDX, SPMV_ROW_IDX
+#define SPMV_ROW_IDX_X4  SPMV_ROW_IDX_X2, SPMV_ROW_IDX_X2
+#define SPMV_ROW_IDX_X8  SPMV_ROW_IDX_X4, SPMV_ROW_IDX_X4
+#define SPMV_ROW_IDX_X16 SPMV_ROW_IDX_X8, SPMV_ROW_IDX_X8
+#define SPMV_ROW_IDX_X32 SPMV_ROW_IDX_X16, SPMV_ROW_IDX_X16
+static const uint32_t col_idx[SPMV_ROWS * SPMV_NNZ]
+    __attribute__((aligned(128))) = { SPMV_ROW_IDX_X32 };
 
 void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
                     const float *x, float *y);
 
 int main() {
-    for (int i = 0; i < SPMV_ROWS; ++i)
-        for (int j = 0; j < SPMV_NNZ; ++j)
-            col_idx[i * SPMV_NNZ + j] = (uint32_t)j;
-
     spmv_f32_32x32(src1, col_idx, src2, src2 + 64);
     return 0;
 }

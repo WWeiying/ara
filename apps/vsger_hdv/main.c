@@ -29,7 +29,10 @@ void vsger(int m, int n, const float a, const float *x, const float *y, float *A
 
 int main() {
     const float a = 6.66;
-    vsger(128, 128, a, src1, src2, src1);
+    // x, y, A must NOT alias: A is read-modify-written, so if x or y shared A's
+    // buffer they would be corrupted mid-loop.  A = src1 (128x128), x = src2[0..127],
+    // y = src2[128..255] are all disjoint.
+    vsger(128, 128, a, src2, src2 + 128, src1);
     return 0;
 }
 
