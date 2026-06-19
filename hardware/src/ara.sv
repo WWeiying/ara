@@ -59,7 +59,9 @@ module ara import ara_pkg::*; #(
     output acc_to_cva6_t      acc_resp_o,
     // AXI interface
     output axi_req_t          axi_req_o,
-    input  axi_resp_t         axi_resp_i
+    input  axi_resp_t         axi_resp_i,
+    input  logic              hdv_loop_active_i,
+    input  logic [1:0]        hdv_prefetch_mode_i
   );
 
   `include "common_cells/registers.svh"
@@ -154,9 +156,16 @@ module ara import ara_pkg::*; #(
     vlen_t vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+    logic [31:0] avl;
 
     // Request token, for registration in the sequencer
     logic token;
+    // HDV hints from acc_req.trans_id
+    logic [3:0] hdv_hint;
+
+    `ifdef FOR_VERIFY
+    riscv::instruction_t instr;
+    `endif
   } ara_req_t;
 
   typedef struct packed {
@@ -268,6 +277,10 @@ module ara import ara_pkg::*; #(
   logic                                        mask_valid_lane;
   logic      [NrLanes-1:0]                     lane_mask_ready;
 
+  // Source operand read completion signals from lanes
+  logic [NrLanes-1:0][NrVInsn-1:0] lane_src_read_done;
+  assign lane_src_read_done = '0; // tie-off: HDV lane.sv lacks this port
+
   // Mask unit scalar result variables
   elen_t     result_scalar;
   logic      result_scalar_valid;
@@ -309,7 +322,8 @@ module ara import ara_pkg::*; #(
     .addrgen_exception_i   (addrgen_exception        ),
     .addrgen_exception_vstart_i(addrgen_exception_vstart),
     .addrgen_fof_exception_i(addrgen_fof_exception),
-    .lsu_current_burst_exception_i(lsu_current_burst_exception)
+    .lsu_current_burst_exception_i(lsu_current_burst_exception),
+    .lane_src_read_done_i(lane_src_read_done)
   );
 
   // Scalar move support
@@ -336,6 +350,11 @@ module ara import ara_pkg::*; #(
   sldu_mux_e                                   sldu_mux_sel;
   logic                                        addrgen_operand_ready;
   logic      [NrLanes-1:0]                     sldu_red_valid;
+
+  logic [NrLanes-1:0] lane_fpu_reduction_busy;
+  logic               block_load_addr;
+  assign lane_fpu_reduction_busy = '0; // tie-off: HDV lane.sv lacks this port
+  assign block_load_addr = |lane_fpu_reduction_busy;
 
   // Results
   // Load Unit
@@ -549,6 +568,9 @@ module ara import ara_pkg::*; #(
     .addrgen_operand_i          (sldu_addrgen_operand                                  ),
     .addrgen_operand_valid_i    (addrgen_operand_valid                                 ),
     .addrgen_operand_ready_o    (addrgen_operand_ready                                 ),
+    .block_load_addr_i          (1'b0                                                   ),
+    .hdv_loop_active_i          (hdv_loop_active_i                                      ),
+    .hdv_prefetch_mode_i        (hdv_prefetch_mode_i                                    ),
     // CSR input
     .en_ld_st_translation_i     (acc_mmu_en_q                                          ),
     // Interface with CVA6's sv39 MMU

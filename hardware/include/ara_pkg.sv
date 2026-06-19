@@ -7,6 +7,8 @@
 // Ara's main package, containing most of the definitions for its usage.
 
 package ara_pkg;
+  parameter logic [3:0] AXI_ID_DEMAND   = 4'd0;
+  parameter logic [3:0] AXI_ID_PREFETCH = 4'd1;
 
   //////////////////
   //  Parameters  //

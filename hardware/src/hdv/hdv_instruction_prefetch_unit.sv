@@ -44,7 +44,9 @@ module hdv_instruction_prefetch_unit #(
   input  logic                         loop_lock_i,
   input  logic                         loop_exit_i,
   input  logic                         top_ipu_task_complete_i,
-  output logic                         ipu_top_busy_o
+  output logic                         ipu_top_busy_o,
+  // High while IPU is auto-locked on a backward-branch loop body.
+  output logic                         ipu_top_loop_active_o
 );
 
   localparam int unsigned PacketBytes       = FetchPacketWidth / 8;
@@ -145,6 +147,8 @@ module hdv_instruction_prefetch_unit #(
 
   assign ipu_tsu_task_ready_o = (state_q == IDLE);
   assign ipu_top_busy_o       = (state_q != IDLE);
+  // Active while a backward-branch loop body is locked in the fetch buffers.
+  assign ipu_top_loop_active_o = auto_loop_lock_q | loop_locked_q;
 
   // Memory request: active in FILL (initial) and in SERVE while bg fill pending.
   // When loop lock is active, keep completing an already-issued request but do

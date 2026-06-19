@@ -51,7 +51,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  vlen_t                           addrgen_exception_vstart_i,
     input  logic                            addrgen_fof_exception_i,
     // Interface with the store unit
-    input  logic                            lsu_current_burst_exception_i
+    input  logic                            lsu_current_burst_exception_i,
+    input  logic [NrLanes-1:0][NrVInsn-1:0] lane_src_read_done_i
   );
 
   `include "common_cells/registers.svh"
@@ -70,6 +71,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
   vid_t               vinsn_id_n;
   logic               vinsn_running_full;
+  // HDV ep_id per vid slot: 0=current EP, 1=buffered EP.  Two instructions
+  // with the same ep_id are guaranteed independent by software p-bit.
+  // Used to suppress false hazard detection within the same EP.
+  logic [NrVInsn-1:0] vid_ep_id_d, vid_ep_id_q;
 
   // NrLanes bits that indicate if the sequencer must stall because of a lane desynchronization.
   logic [NrVInsn-1:0] stall_lanes_desynch_vec;
@@ -95,9 +100,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     if (!rst_ni) begin
       vinsn_running_q    <= '0;
       pe_vinsn_running_q <= '0;
+      vid_ep_id_q        <= '0;
     end else begin
       vinsn_running_q    <= vinsn_running_d;
       pe_vinsn_running_q <= pe_vinsn_running_d;
+      vid_ep_id_q        <= vid_ep_id_d;
     end
   end
 
@@ -384,7 +391,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     end
 
     // Update the running vector instructions
-    for (int pe = 0; pe < NrPEs; pe++) pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
+    vid_ep_id_d = vid_ep_id_q;
+    for (int pe = 0; pe < NrPEs; pe++) begin
+      pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
+      // Clear ep_id tracking for completed vids
+      for (int unsigned v = 0; v < NrVInsn; v++)
+        if (pe_resp_i[pe].vinsn_done[v]) vid_ep_id_d[v] = 1'b0;
+    end
     `ifdef FOR_VERIFY
     raw_hazard = '0;
     war_hazard = '0;
@@ -417,25 +430,38 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             ///////////////
             //  Hazards  //
             ///////////////
+            // HDV ep_id bypass: instructions with the same ep_id are
+            // guaranteed independent by software p-bit.  vid slots whose
+            // ep_id matches the new instruction's ep_id are excluded
+            // from hazard checks.
+            logic [NrVInsn-1:0] same_ep_vid_mask;
+            for (int unsigned v = 0; v < NrVInsn; v++)
+              same_ep_vid_mask[v] = (vid_ep_id_q[v] == ara_req_i.hdv_hint[0]);
 
-            // RAW
-            if (ara_req_i.use_vs1) pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
-              write_list_d[ara_req_i.vs1].valid;
-            if (ara_req_i.use_vs2) pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
-              write_list_d[ara_req_i.vs2].valid;
-            if (!ara_req_i.vm) pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
-              write_list_d[VMASK].valid;
+            // RAW — skip if the conflicting writer is from the same EP
+            if (ara_req_i.use_vs1 && !same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid])
+              pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
+                write_list_d[ara_req_i.vs1].valid;
+            if (ara_req_i.use_vs2 && !same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid])
+              pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
+                write_list_d[ara_req_i.vs2].valid;
+            if (!ara_req_i.vm && !same_ep_vid_mask[write_list_d[VMASK].vid])
+              pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
+                write_list_d[VMASK].valid;
 
-            // WAR
+            // WAR — skip if the conflicting reader is from the same EP
             if (ara_req_i.use_vd) begin
-              pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
-              pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
-              pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
+              if (!same_ep_vid_mask[read_list_d[ara_req_i.vd].vid]) begin
+                pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
+                pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
+                pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
+              end
             end
 
-            // WAW
-            if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
-              write_list_d[ara_req_i.vd].valid;
+            // WAW — skip if the conflicting writer is from the same EP
+            if (ara_req_i.use_vd && !same_ep_vid_mask[write_list_d[ara_req_i.vd].vid])
+              pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
+                write_list_d[ara_req_i.vd].valid;
 
             `ifdef FOR_VERIFY
             raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
@@ -489,6 +515,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vl            : ara_req_i.vl,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
+              avl           : ara_req_i.avl,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
@@ -513,6 +540,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             end else begin
               // Acknowledge instruction
               ara_req_ready_o = 1'b1;
+
+              // Record HDV ep_id for this vid slot: same ep_id ⇒
+              // independent (p-bit guarantee), hazard check can skip it.
+              vid_ep_id_d[vinsn_id_n] = ara_req_i.hdv_hint[0];
 
               // Remember that the vector instruction is running
               unique case (vfu(ara_req_i.op))
