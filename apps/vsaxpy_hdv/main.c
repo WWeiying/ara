@@ -72,8 +72,8 @@ void vsaxpy(int n, const float a, const float *src1, float *src2) {
      * The VLIW pack unit can still stop earlier for dependency, branch/system,
      * issue-width, or 32-bit instruction integrity constraints.
      */
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0\n"
-    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16))\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
     ".endm\n"
     ".balign 16\n"
     "vsaxpy_hdv_task_start:\n"
