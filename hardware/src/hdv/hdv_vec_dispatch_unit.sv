@@ -1197,6 +1197,8 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   end
 `endif
 
+`ifdef FOR_VERIFY
+  // Runtime (clocked) sim-only assertions: exclude from synthesis.
   always_ff @(posedge clk_i) begin : p_error_report
     if (rst_ni) begin
       if (vtrace_empty_error) begin
@@ -1211,6 +1213,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       end
     end
   end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin

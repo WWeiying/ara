@@ -124,6 +124,15 @@ module hdv_instruction_prefetch_unit #(
   logic [PacketIdxWidth-1:0]    prefetch_packet_idx_q;
   logic                         prefetch_packet_hit;
   logic                         sram_bypass_hit;
+  // Loop-start packet cache: holds the loop body's first fetch packet so a
+  // backward-branch redirect replays it from a register instead of a 1-cycle
+  // SRAM demand read (the head is evicted from served/prefetch caches as the
+  // body advances). One register, refreshed every iteration.
+  packet_t                      loop_start_packet_q;
+  logic                         loop_start_packet_valid_q;
+  logic                         loop_start_packet_buf_q;
+  logic [PacketIdxWidth-1:0]    loop_start_packet_idx_q;
+  logic                         loop_start_hit;
   logic                         packet_cache_hit;
   packet_t                      packet_cache_data;
   logic                         active_entry_valid;
@@ -249,9 +258,14 @@ module hdv_instruction_prefetch_unit #(
   assign sram_bypass_hit = buffer_read_pending_q &
                            (buffer_read_buf_q == active_buf_q) &
                            (buffer_read_idx_q == exec_idx_q);
-  assign packet_cache_hit    = served_packet_hit | prefetch_packet_hit | sram_bypass_hit;
+  assign loop_start_hit  = loop_start_packet_valid_q &
+                           (loop_start_packet_buf_q == active_buf_q) &
+                           (loop_start_packet_idx_q == exec_idx_q);
+  assign packet_cache_hit    = served_packet_hit | prefetch_packet_hit | sram_bypass_hit | loop_start_hit;
   assign packet_cache_data   = served_packet_hit   ? served_packet_q :
                                prefetch_packet_hit ? prefetch_packet_q :
+                               sram_bypass_hit     ? (buffer_read_buf_q ? buffer_b_rdata : buffer_a_rdata) :
+                               loop_start_hit      ? loop_start_packet_q :
                                (buffer_read_buf_q ? buffer_b_rdata : buffer_a_rdata);
   assign active_packet_valid = active_entry_valid & packet_cache_hit;
 
@@ -860,6 +874,10 @@ module hdv_instruction_prefetch_unit #(
       prefetch_packet_valid_q <= 1'b0;
       prefetch_packet_buf_q   <= 1'b0;
       prefetch_packet_idx_q   <= '0;
+      loop_start_packet_q       <= '0;
+      loop_start_packet_valid_q <= 1'b0;
+      loop_start_packet_buf_q   <= 1'b0;
+      loop_start_packet_idx_q   <= '0;
     end else begin
       buffer_read_pending_q <= buffer_read_fire;
       buffer_read_buf_q     <= buffer_read_buf;
@@ -916,29 +934,63 @@ module hdv_instruction_prefetch_unit #(
           prefetch_packet_valid_q <= 1'b1;
         end
       end
+
+      // ---- loop-start packet cache ----------------------------------------
+      // Invalidate on the buffer-reset events and whenever the cached buffer is
+      // being refilled (its SRAM contents may then differ from the captured
+      // packet). Deliberately NOT gated on loop_exit_i: that pulses transiently
+      // on *taken* iterations (see the SERVE FSM note), so using it would wipe
+      // the cache right before each backward-branch replay and defeat it.
+      // The capture below refreshes the entry every iteration, so over-
+      // invalidating only costs a re-fetch, never correctness.
+      if (flush_i || top_ipu_task_complete_i ||
+          (redirect_valid_i && !(redirect_aligned &&
+            ((redirect_in_active && redirect_active_packet_valid) ||
+             (redirect_in_fill && redirect_fill_packet_valid && effective_loop_fetch_lock)))) ||
+          (accept_rsp && (fill_buf_q == loop_start_packet_buf_q))) begin
+        loop_start_packet_valid_q <= 1'b0;
+      end
+      if (take_packet && served_pkt_loop_start) begin
+        loop_start_packet_q       <= packet_cache_data;
+        loop_start_packet_buf_q   <= active_buf_q;
+        loop_start_packet_idx_q   <= exec_idx_q;
+        loop_start_packet_valid_q <= 1'b1;
+      end
     end
   end
 
+`ifdef FOR_VERIFY
+  // Runtime (clocked) sim-only assertion: exclude from synthesis.
   always_ff @(posedge clk_i) begin : p_redirect_alignment_check
     if (rst_ni && redirect_valid_i && !redirect_aligned) begin
       $fatal(1, "[HDV] redirect_pc_i must be %0d-byte aligned: 0x%0h",
              PacketBytes, redirect_pc_i);
     end
   end
+`endif
 
-`ifndef SYNTHESIS
+`ifdef FOR_VERIFY
   // Performance counters for IPU packet serving efficiency
   int unsigned ipu_perf_serve_cycles;    // cycles spent in SERVE state
   int unsigned ipu_perf_packets_served;  // total packets taken by VLIWPU
   int unsigned ipu_perf_bypass_hits;     // sram_bypass_hit was the sole hit source
   int unsigned ipu_perf_demand_reads;    // demand_read_req asserted (cache miss)
 
+  // Critical-path metric: cycles the consumer (VLIWPU) is ready for a packet but
+  // the IPU cannot present one (i.e. the IPU itself is the bottleneck), and how
+  // many of those are due to an SRAM demand read not yet pre-cached.
+  int unsigned ipu_perf_ready_cyc;      // SERVE cycles with consumer ready
+  int unsigned ipu_perf_ready_stall;    // ready but no valid packet from IPU
+  int unsigned ipu_perf_stall_demand;   // ready-stall coincident with a demand SRAM read
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_ipu_perf
     if (!rst_ni) begin
       ipu_perf_serve_cycles  <= 0;
       ipu_perf_packets_served <= 0;
       ipu_perf_bypass_hits   <= 0;
       ipu_perf_demand_reads  <= 0;
+      ipu_perf_ready_cyc     <= 0;
+      ipu_perf_ready_stall   <= 0;
+      ipu_perf_stall_demand  <= 0;
     end else begin
       if (state_q == SERVE)
         ipu_perf_serve_cycles <= ipu_perf_serve_cycles + 1;
@@ -948,6 +1000,14 @@ module hdv_instruction_prefetch_unit #(
         ipu_perf_bypass_hits <= ipu_perf_bypass_hits + 1;
       if (demand_read_req)
         ipu_perf_demand_reads <= ipu_perf_demand_reads + 1;
+      if ((state_q == SERVE) && vliwpu_ipu_packet_ready_i) begin
+        ipu_perf_ready_cyc <= ipu_perf_ready_cyc + 1;
+        if (!ipu_vliwpu_packet_valid_o) begin
+          ipu_perf_ready_stall <= ipu_perf_ready_stall + 1;
+          if (demand_read_req)
+            ipu_perf_stall_demand <= ipu_perf_stall_demand + 1;
+        end
+      end
     end
   end
 
@@ -956,6 +1016,10 @@ module hdv_instruction_prefetch_unit #(
              ipu_perf_serve_cycles, ipu_perf_packets_served,
              ipu_perf_bypass_hits, ipu_perf_demand_reads,
              ipu_perf_packets_served > 0 ? ipu_perf_serve_cycles / ipu_perf_packets_served : 0);
+    $display("[IPU-PERF] ready_cyc=%0d ready_stall=%0d (=%0d%% of ready) stall_due_to_sram=%0d",
+             ipu_perf_ready_cyc, ipu_perf_ready_stall,
+             ipu_perf_ready_cyc > 0 ? 100*ipu_perf_ready_stall/ipu_perf_ready_cyc : 0,
+             ipu_perf_stall_demand);
   end
 `endif
 
