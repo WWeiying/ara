@@ -130,6 +130,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   output cva6_to_acc_t                      acc_req_o,
   input  acc_to_cva6_t                      acc_resp_i,
 
+  // ── Per-request prefetch mode (from HDV header, latched per vq entry) ────
+  input  logic [1:0]                         hdv_prefetch_mode_i,
+
   // ── Performance-counter readout (FOR_VERIFY only) ─────────────────────────
   // A simple muxed readout port so the testbench / waveform / control- status
   // interface can sample any counter without hierarchical paths.
@@ -211,6 +214,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     logic             has_scalar_wb; // instruction produces scalar-visible writeback
     logic             wb_is_fpr;    // writeback targets FRF (vfmv.f.s) rather than XRF
     logic             is_last_in_ep; // this is the last vector slot of its EP
+    logic [1:0]       prefetch_mode; // per-request prefetch control (from HDV header)
   } vq_entry_t;
 
   typedef enum logic [1:0] {
@@ -620,13 +624,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
 
   // Drive Ara from the window head, or bypass the FSM request when window empty.
   // ── HDV → Ara hints: trans_id bit allocation ────────────────────────────
-  //  trans_id[1:0]  = {is_last_in_ep, ep_id}
-  //    ep_id:         0=current EP, 1=buffered EP → same value ⇒ independent
-  //    is_last_in_ep: 1 ⇒ this is the final vector slot of its EP
-  //  trans_id[2]    = non-arithmetic class hint (LOAD / STORE / CONFIG)
-  //  CVA6 TRANS_ID_BITS is 3 for the current scoreboard depth, so the full
-  //  2-bit cmd_class is kept inside the command window but compressed at the
-  //  CV-X-IF boundary.
+  //  trans_id[0]    = ep_id (0=current EP, 1=buffered EP → same value ⇒ independent)
+  //  trans_id[2:1]  = prefetch_mode from HDV header (per-request, latched at
+  //                    vq enqueue; falls through hdv_hint → pe_req.prefetch_mode)
+  //  CVA6 TRANS_ID_BITS is 3 for the current scoreboard depth (8 entries).
   //
   //  store_pending is intentionally left at 0: Ara's dispatcher forwards it
   //  via core_st_pending_o → core_st_pending_i (internal loopback to VLSU).
@@ -648,16 +649,16 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       acc_req_o.acc_req.rs1           = vq_q[0].rs1;
       acc_req_o.acc_req.rs2           = vq_q[0].rs2;
       acc_req_o.acc_req.trans_id      = '0;
-      acc_req_o.acc_req.trans_id[1:0] = {vq_q[0].is_last_in_ep, vq_q[0].ep_id};
-      acc_req_o.acc_req.trans_id[2]   = |vq_q[0].cmd_class;
+      acc_req_o.acc_req.trans_id[0]   = vq_q[0].ep_id;
+      acc_req_o.acc_req.trans_id[2:1] = vq_q[0].prefetch_mode;
     end else begin
       acc_req_o.acc_req.req_valid     = fsm_req_valid && resp_meta_can_push; // bypass: empty buffer
       acc_req_o.acc_req.insn          = fsm_req_insn;
       acc_req_o.acc_req.rs1           = fsm_req_rs1;
       acc_req_o.acc_req.rs2           = fsm_req_rs2;
       acc_req_o.acc_req.trans_id      = '0;
-      acc_req_o.acc_req.trans_id[1:0] = {fsm_req_is_last, selected_ep_id};
-      acc_req_o.acc_req.trans_id[2]   = |req_cmd_class;
+      acc_req_o.acc_req.trans_id[0]   = selected_ep_id;
+      acc_req_o.acc_req.trans_id[2:1] = hdv_prefetch_mode_i;
     end
   end
 
@@ -699,6 +700,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       vq_d[vq_count_d].has_scalar_wb = selected_scalar_wb_valid;
       vq_d[vq_count_d].wb_is_fpr     = selected_scalar_wb_is_fpr;
       vq_d[vq_count_d].is_last_in_ep = fsm_req_is_last;
+      vq_d[vq_count_d].prefetch_mode = hdv_prefetch_mode_i;
       vq_count_d = vq_count_d + CmdWindowCountW'(1);
     end
     if (flush_i) begin

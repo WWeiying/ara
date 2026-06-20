@@ -107,7 +107,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   always_comb begin
-    unique case (hdv_prefetch_mode_i)
+    // Per-request prefetch_mode (pe_req.prefetch_mode, latched from HDV hint
+    // at vq enqueue) may be stale if the global mode was disabled afterwards
+    // (e.g. loop_exit).  Respect the current global mode as a gate: when the
+    // global mode is off, per-request mode is ignored.  Non-HDV paths get
+    // pe_req.prefetch_mode == 2'b00 → fall back to global.
+    automatic logic [1:0] effective_mode;
+    effective_mode = (hdv_prefetch_mode_i == 2'b00) ? 2'b00 :
+                     (pe_req_d.prefetch_mode != 2'b00) ? pe_req_d.prefetch_mode
+                                                       : hdv_prefetch_mode_i;
+    unique case (effective_mode)
       2'b01:   prefetch_info = PF_EN_1X;
       2'b10:   prefetch_info = PF_EN_2X;
       2'b11:   prefetch_info = PF_EN_4X;
@@ -1327,11 +1336,33 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [63:0] cnt_demand_aw;       // demand AXI write requests
   logic [63:0] cnt_demand_bytes;    // total bytes of demand reads
   logic [63:0] cnt_prefetch_bytes;  // total bytes prefetched
+  // Prefetch suppression breakdown — counted on unit-stride load demand AR
+  // that could have generated a prefetch but was suppressed.
+  logic [63:0] cnt_pf_disabled;     // prefetch_en==0 (global off or mode==0)
+  logic [63:0] cnt_pf_page_cross;   // curr_req_page_crossed (demand itself crosses page)
+  logic [63:0] cnt_pf_queue_full;   // prefetch_axi_ar_queue full
+  logic [63:0] cnt_pf_avl_low;      // avl < vl*2 (not enough elements left to prefetch)
+  // Prefetch AR issue drops — prefetch was queued but AR not sent this cycle.
+  logic [63:0] cnt_pf_ar_rob_full;      // ROB full
+  logic [63:0] cnt_pf_ar_lookup_full;   // addr-lookup FIFO full
+  logic [63:0] cnt_pf_ar_pending_block; // prefetch_pending_d still set
+  logic [63:0] cnt_pf_ar_disabled;      // prefetch_en went off before issue
+  // Other
+  logic [63:0] cnt_pf_second_issued; // second (page-cross) prefetch issued
+  logic [63:0] cnt_demand_rob_block; // demand AR blocked by ROB match (events)
+  logic        demand_rob_blocked_q;  // debounce: demand was ROB-blocked last cycle
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       cnt_demand_ar <= '0; cnt_prefetch_ar <= '0; cnt_prefetch_hit <= '0;
       cnt_load_vinsn <= '0; cnt_prefetch_en <= '0; cnt_demand_aw <= '0;
       cnt_demand_bytes <= '0; cnt_prefetch_bytes <= '0;
+      cnt_pf_disabled <= '0; cnt_pf_page_cross <= '0;
+      cnt_pf_queue_full <= '0; cnt_pf_avl_low <= '0;
+      cnt_pf_ar_rob_full <= '0; cnt_pf_ar_lookup_full <= '0;
+      cnt_pf_ar_pending_block <= '0; cnt_pf_ar_disabled <= '0;
+      cnt_pf_second_issued <= '0; cnt_demand_rob_block <= '0;
+      demand_rob_blocked_q <= 1'b0;
     end else begin
       if (axi_ar_valid_o && axi_ar_ready_i && vreq_is_load_d) begin
         cnt_demand_ar <= cnt_demand_ar + 1;
@@ -1349,12 +1380,51 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         cnt_prefetch_en <= cnt_prefetch_en + 1;
       if (axi_aw_valid_o && axi_aw_ready_i)
         cnt_demand_aw <= cnt_demand_aw + 1;
+
+      // Prefetch suppression during demand unit-stride load start_req
+      // (per-beat counts — a multi-beat load may count several times)
+      if (vreq_is_vld && vreq_is_load_d && vreq_is_unit_stride_d &&
+          !prefetch_axi_ar_hit && !axi_addrgen_queue_full && axi_ax_ready) begin
+        if (!prefetch_en)
+          cnt_pf_disabled <= cnt_pf_disabled + 1;
+        else if (curr_req_page_crossed)
+          cnt_pf_page_cross <= cnt_pf_page_cross + 1;
+        else if (!prefetch_axi_ar_queue_not_full)
+          cnt_pf_queue_full <= cnt_pf_queue_full + 1;
+        else if (!(pe_req_d.avl >= (pe_req_d.vl << 1)))
+          cnt_pf_avl_low <= cnt_pf_avl_low + 1;
+      end
+
+      // Prefetch AR issue drops — per-cycle counts of lost AR bandwidth
+      if (axi_ar_ready_i && prefetch_axi_ar_queue_valid) begin
+        if (prefetch_axi_ar_rob_full)
+          cnt_pf_ar_rob_full <= cnt_pf_ar_rob_full + 1;
+        if (prefetch_axi_addr_lookup_fifo_full)
+          cnt_pf_ar_lookup_full <= cnt_pf_ar_lookup_full + 1;
+        if (prefetch_pending_d)
+          cnt_pf_ar_pending_block <= cnt_pf_ar_pending_block + 1;
+        if (!prefetch_en)
+          cnt_pf_ar_disabled <= cnt_pf_ar_disabled + 1;
+      end
+
+      if (second_prefetch_vld_d && !second_prefetch_vld_q)
+        cnt_pf_second_issued <= cnt_pf_second_issued + 1;
+
+      // Demand blocked by prefetch ROB match (distinct events, not cycles)
+      demand_rob_blocked_q <= vreq_is_vld && vreq_is_load_d && prefetch_axi_ar_rob_match;
+      if (vreq_is_vld && vreq_is_load_d && prefetch_axi_ar_rob_match && !demand_rob_blocked_q)
+        cnt_demand_rob_block <= cnt_demand_rob_block + 1;
     end
   end
   final begin
     $display("[PERF-ADDRGEN] demand_ar=%0d pf_ar=%0d pf_hit=%0d loads=%0d pf_en_cyc=%0d demand_aw=%0d demand_B=%0d pf_B=%0d",
              cnt_demand_ar, cnt_prefetch_ar, cnt_prefetch_hit, cnt_load_vinsn,
              cnt_prefetch_en, cnt_demand_aw, cnt_demand_bytes, cnt_prefetch_bytes);
+    $display("[PERF-ADDRGEN-PF] pf_disabled=%0d pf_page_cross=%0d pf_queue_full=%0d pf_avl_low=%0d",
+             cnt_pf_disabled, cnt_pf_page_cross, cnt_pf_queue_full, cnt_pf_avl_low);
+    $display("[PERF-ADDRGEN-PF] pf_ar_rob_full=%0d pf_ar_lkup_full=%0d pf_ar_pending=%0d pf_ar_dis=%0d pf_2nd=%0d dem_rob_block=%0d",
+             cnt_pf_ar_rob_full, cnt_pf_ar_lookup_full, cnt_pf_ar_pending_block,
+             cnt_pf_ar_disabled, cnt_pf_second_issued, cnt_demand_rob_block);
   end
   `endif
 endmodule : addrgen

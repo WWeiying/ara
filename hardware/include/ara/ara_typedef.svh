@@ -87,6 +87,11 @@ typedef struct packed {
   logic [2:0] vs2_version;
   logic       chain_en;
 
+  // Per-request prefetch control (from HDV hint, carried through trans_id →
+  // ara_req.hdv_hint[3:2]).  When 2'b00 the addrgen falls back to the
+  // global hdv_prefetch_mode_i for backward compatibility.
+  logic [1:0] prefetch_mode;
+
   `ifdef FOR_VERIFY
     riscv::instruction_t instr;
   `endif
