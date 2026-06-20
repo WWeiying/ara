@@ -4,8 +4,8 @@
 
 | 文档 | 内容 |
 |---|---|
-| `hdv_full_mechanism_tutorial.md` | **HDV 完整教程**。任务启动→取指→HINT/p-bit→EP 打包→HEU 分发→标量/向量后端→task complete 全流程，包含 §16 指令发射与依赖处理、§14 性能优化记录（-35% cycles）。**推荐先读这个。** |
-| `hdv_modules_code_walkthrough.md` | **RTL 模块逐讲解**。TIU/TSU/IPU/VLIWPU/HEU/vector dispatch/`hdv_top`/Ara 侧（sequencer hazard bypass、VLSU prefetch）的关键信号、状态机、波形观察点。适合逐模块读代码和查信号。 |
+| `hdv_full_mechanism_tutorial.md` | **HDV 完整教程**。任务启动→取指→HINT/p-bit→EP 打包→HEU 分发→标量/向量后端→task complete 全流程，包含 §16 指令发射与依赖处理、性能计数器和当前 vsaxpy_hdv 运行口径。**推荐先读这个。** |
+| `hdv_modules_code_walkthrough.md` | **RTL 模块逐讲解**。TIU/TSU/IPU/VLIWPU/HEU/vector dispatch/`hdv_top`/Ara 侧（sequencer hazard bypass、VLSU prefetch）的关键信号、状态机、波形观察点，以及 `run.vcs.log` / EP trace 的性能观测点。适合逐模块读代码和查信号。 |
 | `hdv_program_porting_guide.md` | **HDV 程序移植指南**。普通 RVV kernel 改造成 HDV task 的规则：`.hdv_task`、task entry、`lui x0, imm20` HINT、p-bit、cross、loop flags、ebreak task-end、expected EP 计算。 |
 
 ## 参考文档（3 个）
