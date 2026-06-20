@@ -581,7 +581,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_scalar_vset_inflight_rd_o(vec_scalar_vset_inflight_rd),
     .vec_store_inflight_o(vec_store_inflight),
     .acc_req_o           (acc_req         ),
-    .acc_resp_i          (ara_acc_resp_pack)
+    .acc_resp_i          (ara_acc_resp_pack),
+    .hdv_prefetch_mode_i (hdv_ara_prefetch_mode_o)
     `ifdef FOR_VERIFY
     ,
     .perf_ctr_sel_i      (vec_perf_ctr_sel ),
