@@ -45,7 +45,7 @@ __attribute__((naked, aligned(16), section(".hdv_task"),
 void vvaddint32(int n, const int *src1, const int *src2, int *dst) {
     // ABI on entry: a0 = n, a1 = src1, a2 = src2, a3 = dst.
     //
-    // HDV packetisation (5 EPs per loop iteration; LMUL=2):
+    // HDV packetisation (4 EPs per loop iteration; LMUL=1):
     //   EP0 = vsetvli || vle(v0,src1)             (sub tail-carries via cross=1)
     //   EP1 = sub || slli || add a1 || vle(v8,src2)
     //   EP2 = add a2 || vadd || vse(dst)
@@ -72,7 +72,7 @@ void vvaddint32(int n, const int *src1, const int *src2, int *dst) {
     // sub into packet 1.
     "loop:\n"
     "HDV_HINT 0x02, 0, 1, 1, 0\n"
-    "vsetvli t0, a0, e32, m2, ta, ma\n"
+    "vsetvli t0, a0, e32, m1, ta, ma\n"
     "vle32.v v0, (a1)\n"
     "sub a0, a0, t0\n"
 

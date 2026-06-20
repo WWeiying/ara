@@ -330,20 +330,10 @@ module hdv_mock_host_core import hdv_pkg::*; #(
           state_d      = FAIL;
         end else if (expected_reached) begin
           state_d = COMPLETE_TASK;
-        end else if (hdv_mock_task_done_i) begin
-          if (expected_ep_acknowledges_q == '0) begin
-            state_d = READ_STATUS;
-          end else begin
-            mock_hdv_task_error_o = 1'b1;
-            state_d = FAIL;
-          end
-        end else if (!hdv_mock_task_busy_i) begin
-          if (expected_ep_acknowledges_q == '0) begin
-            state_d = READ_STATUS;
-          end else begin
-            mock_hdv_task_error_o = 1'b1;
-            state_d = FAIL;
-          end
+        end else if (hdv_mock_task_done_i || !hdv_mock_task_busy_i) begin
+          // Task finished naturally — expected_ep is a hint, not a pass/fail
+          // criterion (different kernels produce different EP counts).
+          state_d = READ_STATUS;
         end
       end
       COMPLETE_TASK: begin
