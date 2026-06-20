@@ -18,7 +18,7 @@
 > - **VLSU Next-VL Prefetch**: `hardware/src/vlsu/` 借鉴 ideal_execution 分支的解耦访存前端。addrgen 自动检测 unit-stride load 并提前发射预取 AR（`AXI_ID_PREFETCH=4'd1`），vldu 内 ping-pong buffer 缓存预取返回数据，命中时旁路 demand AXI beat。窗口可配置（`PF_EN_1X` 至 `PF_EN_8X`），当前默认 1× VLEN。
 > - **Sequencer hazard bypass**: `ara_sequencer.sv` 新增 `vid_ep_id_q` per-vid 跟踪，利用 HDV ep_id（p-bit 保证）跳过同 EP 内的 RAW/WAW/WAR 检查。
 > - **HDV→Ara hints**: `trans_id[3:0]` = {cmd_class, is_last_in_ep, ep_id} 经 `acc_req → ara_req.hdv_hint → sequencer` 贯通。
-> - **Perf counters**: `hdv_vec_dispatch_unit` 内 15 个 64-bit 仿真计数器，带 `perf_ctr_sel_i`/`perf_ctr_data_o` 读出口。
+> - **Perf counters / logs**: `run.vcs.log` 中会打印 `[HDV-CSR]`、`[HDV-PERF]`、`[IPU-PERF]`、`[PERF-SEQ]`、`[PERF-ADDRGEN]`。其中 `hdv_vec_dispatch_unit` 内 15 个 64-bit 仿真计数器带 `perf_ctr_sel_i`/`perf_ctr_data_o` 读出口；IPU/sequencer/addrgen 计数器在 `FOR_VERIFY` 仿真配置下用 `$display` 直接输出。EP 逐包明细写入 `hdv_ep_trace_<TESTCASE>.log`。
 
 ## 文件总览
 
@@ -1545,6 +1545,22 @@ hdv_host_ep_error_o
 
 6. **看 `HEU.accept_packet` 和 `HEU.ep_accepted_q`**：确认 HEU 逐包接收，并在标量/向量后端 accepted 后发出 EP accepted 脉冲。
 
-7. **看 `MOCK.hdv_mock_ep_accepted_i` 和 `MOCK.accepted_packets_q`**：确认计数器从 0 走到 7。
+7. **看 `MOCK.hdv_mock_ep_acknowledged_i` 和 `MOCK.acknowledged_eps_q`**：确认计数器从 0 走到 `expected_ep_acknowledges_q`。当前 `vsaxpy_hdv` 的默认期望值是 128 个 EP。
 
-8. **最后看 `MOCK.state_q == 9`（FINISH）**：验证通过。
+8. **最后看 `MOCK.state_q == 9`（FINISH）和 `run.vcs.log`**：通过时会打印 `[HDV] ... PASSED`，并随后输出 `[HDV-PERF]`、`[IPU-PERF]`、`[PERF-SEQ]`、`[PERF-ADDRGEN]` 四组性能计数。
+
+9. **需要逐 EP 查瓶颈时看 `hdv_ep_trace_<TESTCASE>.log`**：该文件记录 EP 被 VLIWPU 交给 HEU 的时间、后端 acknowledged 的时间、EP PC、slot valid mask、slot class 和每条指令编码。`run.vcs.log` 保留总体性能摘要，trace 文件保留高频逐包细节，避免控制台刷屏。
+
+### `run.vcs.log` 性能计数器口径
+
+当前仿真结束时有五类 HDV 相关输出：
+
+| 前缀 | 产生位置 | 作用 |
+|---|---|---|
+| `[HDV-CSR]` | `hardware/tb/ara_tb.sv` | 任务 START/DONE 的 wall cycle、task cycle、入口地址、期望 EP 数、前端/后端关键状态 |
+| `[HDV-PERF]` | `hardware/tb/ara_tb.sv` 读取 `hdv_vec_dispatch_unit` 层级计数器 | vector command path：command window、Ara backpressure、operand wait、EP acknowledged |
+| `[IPU-PERF]` | `hdv_instruction_prefetch_unit.sv` `FOR_VERIFY` final block | IPU 取指供给：SERVE 周期、packet 数、SRAM bypass、demand read、ready stall |
+| `[PERF-SEQ]` | `ara_sequencer.sv` `FOR_VERIFY` final block | Ara sequencer 发射和 hazard：issue、blocked、RAW/WAR/WAW、同 EP bypass、running table full |
+| `[PERF-ADDRGEN]` | `vlsu/addrgen.sv` `FOR_VERIFY` final block | VLSU 地址/预取：demand/prefetch AR、prefetch hit、load/store 字节数 |
+
+这些输出都进入 `hardware/sim/run.vcs.log`。如果只想看总体性能，先看 `task_cycle`、`ara_backpressure`、`ready_stall`、`blocked`、`pf_hit/pf_ar`；如果要定位某个 EP 或某条指令，再打开 EP trace 文件。

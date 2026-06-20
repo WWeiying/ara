@@ -1068,6 +1068,21 @@ TB 打印：
 
 ### 最终性能计数器（769 cycles）
 
+当前 `hardware/sim/run.vcs.log` 中的性能输出分为四组：HDV vector dispatch、IPU fetch supply、Ara sequencer、VLSU addrgen。逐 EP 的高频明细不直接刷控制台，而是写入 `hdv_ep_trace_<TESTCASE>.log`，避免 `run.vcs.log` 被每个 EP 的 slot 信息淹没。
+
+**IPU / Fetch supply** (`[IPU-PERF]`)：
+
+| 指标 | 含义 |
+|---|---|
+| `serve_cycles` | IPU 处于 SERVE 状态的周期数。反映取指侧实际服务任务的时间窗口 |
+| `packets` | VLIWPU 从 IPU 接收的 fetch packet 数 |
+| `bypass_hits` | SRAM 同步读后一拍数据通过 `sram_bypass_hit` 直接供给当前 packet 的次数，避免再等 `served_packet_q` |
+| `demand_reads` | 当前 packet cache miss 后发起的 SRAM demand read 次数。越低说明 read-ahead / loop-start cache 越有效 |
+| `avg_cycles_per_pkt` | `serve_cycles / packets`，粗略衡量取指供给平均间隔。它包含下游 backpressure，不等价于纯 IPU miss penalty |
+| `ready_cyc` | VLIWPU ready 且 IPU 在 SERVE 的周期数 |
+| `ready_stall` | VLIWPU ready 但 IPU 没有 valid packet 的周期数。非 0 时说明取指侧确实饿住后级 |
+| `stall_due_to_sram` | `ready_stall` 中与 demand SRAM read 同拍的次数，用来评估 SRAM 一拍读延迟造成的实际损失 |
+
 **VLSU / Addrgen** (`[PERF-ADDRGEN]`)：
 
 | 指标 | 含义 |
@@ -1125,6 +1140,7 @@ TB 打印：
 7. 读 vector dispatch，重点看 **`vq_entry_t` 结构化 command window**、`vec_ep_acknowledged_o`、Ara request、**仿真性能计数器 (`ifdef FOR_VERIFY`)**。
 8. 最后读 mock host 和 TB，理解当前仿真为什么能跑起来，以及哪些地方只是临时模型。
 9. **读 scalar backend 时留意 FENCE NOP 处理和 `TreatEbreakAsTaskExit` 参数**。
+10. 性能调试时先读 `run.vcs.log` 的 `[HDV-CSR]`/`[HDV-PERF]`/`[IPU-PERF]`/`[PERF-SEQ]`/`[PERF-ADDRGEN]`，再用 `hdv_ep_trace_<TESTCASE>.log` 对照具体 EP。
 
 ## 16. 指令发射与依赖处理（合并自 hdv_instruction_issue_dependency_logic.md）
 
