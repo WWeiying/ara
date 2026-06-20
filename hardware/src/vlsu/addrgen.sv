@@ -335,6 +335,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_axi_ar_rob_empty;
   axi_addr_t prefetch_axi_ar_rob_pop_done_addr_d, prefetch_axi_ar_rob_pop_done_addr_q;
   logic    prefetch_axi_ar_rob_pop_done_counter_d, prefetch_axi_ar_rob_pop_done_counter_q;
+  // Declared here (ahead of its later siblings) so the pop_done_counter always_comb
+  // below can gate on it; it marks an in-flight page-cross prefetch window.
+  logic    second_prefetch_vld_compare_d, second_prefetch_vld_compare_q;
 
   axi_addr_t prefetch_axi_addr_lookup_fifo_datain, prefetch_axi_addr_lookup_fifo_data;
   logic      prefetch_axi_addr_lookup_fifo_push;
@@ -372,7 +375,19 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   always_comb begin
     prefetch_axi_ar_rob_pop_done_counter_d = prefetch_axi_ar_rob_pop_done_counter_q;
     prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_pop_done_addr_q;
-    if (($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) begin
+    // The page-cross pairing counter must only respond to genuine page-cross
+    // prefetch segments, NOT to bursts that are simply shorter than 8 beats
+    // (a small vl produces len!=7 single-segment prefetches). second_prefetch_
+    // vld_compare_q is asserted exactly across a page-cross window (set when the
+    // crossing prefetch is generated, cleared when its 2nd segment completes),
+    // and the two segments are adjacent in the in-order ROB, so gating on it
+    // makes this whole mechanism (counter / pop_done_addr / demand-block at the
+    // `prefetch_axi_ar_rob_pop_done_counter_d` site / vreq_blen truncation)
+    // immune to naturally-short prefetches. Without this gate a short non-
+    // crossing prefetch toggles the counter to 1 with no partner to clear it,
+    // wedging the demand path (deadlock) or truncating a later load.
+    if (($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i
+        && second_prefetch_vld_compare_q) begin
       prefetch_axi_ar_rob_pop_done_counter_d = ~prefetch_axi_ar_rob_pop_done_counter_q;
     end
     if (prefetch_axi_ar_rob_pop_done_counter_d) begin
@@ -489,7 +504,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [($bits(axi_addr_t) - 12)-1:0] prefetch_next_2page_msb;
   
   logic second_prefetch_vld_d, second_prefetch_vld_q;
-  logic second_prefetch_vld_compare_d, second_prefetch_vld_compare_q;
   logic [31:0] second_prefetch_burst_len_d, second_prefetch_burst_len_q;
   axi_addr_t   second_prefetch_paddr_d, second_prefetch_paddr_q;
 
@@ -938,9 +952,15 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   prefetch_en &&
                   !curr_req_page_crossed) begin : first_prefetch
                 prefetch_addr = paddr + (num_bytes << prefetch_mul);
-              
+
                 prefetch_aligned_start_addr = aligned_addr(prefetch_addr, eff_axi_dw_log_d);
-              
+                // MSB of the page that follows the prefetch start. The demand
+                // path computes its next_2page_msb the same way; the prefetch
+                // path left it at 0, so a page-crossing prefetch sent its second
+                // segment to address {0,12'h0}=0 and the page-crossing iteration
+                // missed (and issued a bogus read to address 0).
+                prefetch_next_2page_msb = prefetch_aligned_start_addr[AxiAddrWidth-1:12] + 1'b1;
+
                 set_end_addr (
                   prefetch_next_2page_msb,
                   vreq_blen_d,
@@ -975,7 +995,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   second_prefetch_vld_d   = 1'b1;
                   second_prefetch_vld_compare_d = 1'b1;
                   second_prefetch_paddr_d = prefetch_aligned_next_start_addr;
-                  second_prefetch_burst_len_d = 7 - prefetch_burst_length;
+                  // Next-page segment length = total intended beats minus the
+                  // in-page first segment, as an AXI len (beats-1). Was hard-coded
+                  // (7 - first), i.e. assuming every prefetch is exactly 8 beats
+                  // (true only for vl=32/e32); derive it from the real burst size.
+                  second_prefetch_burst_len_d =
+                      (vreq_blen_d >> eff_axi_dw_log_d) - prefetch_burst_length - 1;
                 end
               end : first_prefetch
 
@@ -1185,7 +1210,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : second_prefetch
 
 
+    // Demand AR has priority on the single AR port. The demand path above may
+    // already be driving axi_ar_valid_o this cycle; the prefetch drain must NOT
+    // override it (that would silently drop the demand AR while its
+    // ldu_addrgen_queue entry still waits for id=DEMAND R beats). Prefetch ARs
+    // only fill the cycles where demand is not using the bus.
     if (axi_ar_ready_i &&
+        !axi_ar_valid_o &&
         prefetch_axi_ar_queue_valid &&
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_pending_d
@@ -1198,12 +1229,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       axi_ar_o                   = prefetch_axi_ar_data;
     end : prefetch_req
 
+    // Record each completing prefetch burst's OWN start address into the lookup
+    // FIFO. A page-crossing prefetch is split into two ROB entries (in-page part
+    // + next-page second_prefetch part) and the matching demand also splits into
+    // two segments at the page boundary, so BOTH addresses must be recorded --
+    // one push per completed burst keyed by that burst's address. The previous
+    // pop_done_counter scheme pushed only one entry per crossed pair, so the
+    // first segment of every page-crossing iteration missed.
     if (!prefetch_axi_ar_rob_empty &&
         !prefetch_axi_addr_lookup_fifo_full &&
-        ((($unsigned(prefetch_axi_ar_rob_data.len) == 7) && axi_addrgen_prefetch_req_ready_i) ||
-         ((($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) && prefetch_axi_ar_rob_pop_done_counter_q))) begin : prefetch_data_complete
+        axi_addrgen_prefetch_req_ready_i) begin : prefetch_data_complete
       prefetch_axi_addr_lookup_fifo_push   = 1'b1;
-      prefetch_axi_addr_lookup_fifo_datain = prefetch_axi_ar_rob_pop_done_counter_q ? prefetch_axi_ar_rob_pop_done_addr_q : prefetch_axi_ar_rob_data.addr;
+      prefetch_axi_addr_lookup_fifo_datain = prefetch_axi_ar_rob_data.addr;
     end : prefetch_data_complete
 
   end
