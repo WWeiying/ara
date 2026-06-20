@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 1024
 
 // 16-byte aligned HDV task entry used by the mock host/TB.
 // Override with: make -C apps bin/vsdwt_hdv HDV_TASK_ENTRY=0x80002000
@@ -69,7 +69,7 @@ void dwt_haar_hdv(float *even, float *odd) {
 
     // setup packet 0: loop count and the upper/lower halves of the constant.
     "HDV_HINT 0x0a\n"
-    "addi t0, zero, 512\n"
+    "addi t0, zero, 32\n"
     "lui t6, 0x3f350\n"
     "addi t6, t6, 0x4f3\n"
 
@@ -81,9 +81,10 @@ void dwt_haar_hdv(float *even, float *odd) {
 
     // loop body
     "dwt_loop:\n"
-    "HDV_HINT 0x0a, 0, 0, 1, 0\n"
+    "HDV_HINT 0x02, 0, 0, 1, 0\n"
     "vsetvli t1, t0, e32, m1, ta, ma\n"
     "vle32.v v0, (a0)\n"
+    "HDV_HINT 0x00\n"
     "vle32.v v1, (a1)\n"
 
     "HDV_HINT 0x0a\n"
@@ -91,9 +92,10 @@ void dwt_haar_hdv(float *even, float *odd) {
     "vfsub.vv v3, v0, v1\n"
     "vfmul.vf v2, v2, ft0\n"
 
-    "HDV_HINT 0x0a\n"
+    "HDV_HINT 0x02\n"
     "vfmul.vf v3, v3, ft0\n"
     "vse32.v v2, (a0)\n"
+    "HDV_HINT 0x00\n"
     "vse32.v v3, (a1)\n"
 
     "HDV_HINT 0x0a\n"

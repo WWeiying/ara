@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 1024
 #define SPMV_ROWS 32
 #define SPMV_NNZ  32
 
@@ -80,7 +80,7 @@ void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
 
     // row loop top: load val row || col_idx row || idx*4 (all vector).
     "row_loop:\n"
-    "HDV_HINT 0x0a, 0, 0, 1, 0\n"
+    "HDV_HINT 0x08, 0, 0, 1, 0\n"
     "vle32.v v0, (t1)\n"
     "vle32.v v1, (t2)\n"
     "vsll.vi v1, v1, 2\n"
@@ -94,10 +94,15 @@ void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
     "fmv.w.x ft0, zero\n"
     "nop\n"
     "nop\n"
-    // seed vector || reduce.
-    "HDV_HINT 0x02\n"
+    // seed vector → isolate (vfmv.v.f writes v16, must commit before reduction).
+    "HDV_HINT 0x00\n"
     "vfmv.v.f v16, ft0\n"
+    "nop\n"
+    "nop\n"
+    // reduce (reads seed v16, writes result v16 — separate EP avoids WAW bypass).
+    "HDV_HINT 0x00\n"
     "vfredusum.vs v16, v3, v16\n"
+    "nop\n"
     "nop\n"
     // reduction -> ft1 (vector->scalar writeback), isolate.
     "HDV_HINT 0x00\n"

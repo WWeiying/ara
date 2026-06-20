@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 1024
 
 #ifndef VSGER_HDV_TASK_ENTRY
 #define VSGER_HDV_TASK_ENTRY 0x80001000UL

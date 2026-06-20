@@ -74,11 +74,17 @@ void vssymv_f32_32x32(const float *A, const float *x, float *y,
     "vsetvli s0, t0, e32, m1, ta, ma\n"
     "vle32.v v1, (t1)\n"
     "nop\n"
-    // A[i,:]*x ; seed ; reduce  (vector chain, Ara handles deps).
-    "HDV_HINT 0x0a\n"
+    // A[i,:]*x || seed — vfmul writes v2, vfmv.v.f writes v16 (no conflict).
+    "HDV_HINT 0x02\n"
     "vfmul.vv v2, v1, v0\n"
     "vfmv.v.f v16, ft0\n"
+    "nop\n"
+    // reduce — separate EP: vfredusum reads v2, v16; writes v16.
+    // Must be in different EP from vfmv.v.f to avoid WAW bypass on v16.
+    "HDV_HINT 0x00\n"
     "vfredusum.vs v16, v2, v16\n"
+    "nop\n"
+    "nop\n"
     // dot -> ft1 (vector->scalar writeback): isolate so fmadd sees it.
     "HDV_HINT 0x00\n"
     "vfmv.f.s ft1, v16\n"
