@@ -74,6 +74,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output axi_ar_t                        axi_addrgen_prefetch_req_o,
     output logic                           axi_addrgen_prefetch_req_valid_o,
     input  logic                           axi_addrgen_prefetch_req_ready_i,
+    // Resident occupancy of the vldu prefetch R buffer, in 256-bit words.
+    // Feeds the prefetch credit flow control (see PrefetchBufBeats).
+    input  logic [7:0]                     prefetch_buf_occupancy_i,
     input  logic                           block_load_addr_i,
     input  logic                           hdv_loop_active_i,
     input  logic [1:0]                     hdv_prefetch_mode_i,
@@ -135,6 +138,21 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   localparam unsigned DataWidth = $bits(elen_t);
   localparam unsigned DataWidthB = DataWidth / 8;
+
+  // Prefetch-buffer credit flow control (replaces the old static LMUL guard).
+  // Capacity = vldu PrefetchQueueDepth(64 256-bit words) x 2 AXI beats/word =
+  // 128 beats. Keep in sync with vldu.sv PrefetchQueueDepth. A prefetch AR is
+  // only issued when (already-buffered beats + in-flight beats + this burst)
+  // stays within this budget, so every prefetch R beat is guaranteed buffer
+  // room when it lands and can never back-pressure a demand beat on the shared
+  // R channel into deadlock -- for ANY LMUL and ANY number of load streams K.
+  // Over-budget bursts simply wait (or the loop runs demand-only), never wedge.
+  localparam int unsigned PrefetchBufBeats = 128;
+
+  // In-flight prefetch beats: issued (ROB-pushed) but not yet landed in the
+  // buffer (ROB-popped on the burst's last R beat). Added to the vldu's
+  // resident occupancy to get the total beats committed to the buffer.
+  logic [9:0] prefetch_inflight_beats_d, prefetch_inflight_beats_q;
 
   localparam unsigned Log2NrLanes = $clog2(NrLanes);
   localparam unsigned Log2LaneWordWidthB = $clog2(DataWidthB/1);
@@ -377,6 +395,53 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .usage_o   (/* Unused */             )
   );
 
+  // ── Page-cross segment tag, carried in lockstep with the prefetch AR ───────
+  // A prefetch burst that crosses a page is split into two short segments (the
+  // in-page 1st part + the next-page 2nd part). The page-cross pairing logic
+  // below must know which completing ROB entries are such segments. The old
+  // test `len != 7` inferred that from the m1 full-burst length (8 beats) and
+  // mis-classified any LMUL>1 full burst (len 15/31/63) as a segment, wrongly
+  // toggling the pairing counter when a full burst completed inside a crossing
+  // window. Instead tag each AR at generation (1st segment = page-crossed,
+  // 2nd segment = 1, full burst = 0) and carry the tag through a queue + ROB
+  // mirroring the AR's, so the pairing keys off the real flag for any LMUL.
+  logic prefetch_seg_queue_datain, prefetch_seg_at_issue, prefetch_seg_rob_data;
+
+  fall_through_register_v1 #(
+    .T(logic),
+    .DEPTH(VaddrgenInsnQueueDepth)
+  ) i_prefetch_seg_queue (
+    .clk_i     (clk_i                       ),
+    .rst_ni    (rst_ni                      ),
+    .clr_i     (lsu_ex_flush_d              ),
+    .testmode_i(1'b0                        ),
+    .data_i    (prefetch_seg_queue_datain   ),
+    .valid_i   (prefetch_axi_ar_queue_push  ),
+    .ready_o   (                            ),
+    .data_o    (prefetch_seg_at_issue       ),
+    .valid_o   (                            ),
+    .ready_i   (prefetch_axi_ar_queue_pop   )
+  );
+
+  fifo_v5 #(
+    .DEPTH(VaddrgenInsnQueueDepth),
+    .dtype(logic                 )
+  ) i_prefetch_seg_rob (
+    .clk_i     (clk_i                     ),
+    .rst_ni    (rst_ni                    ),
+    .flush_i   (1'b0                      ),
+    .testmode_i(1'b0                      ),
+    .data_i    (prefetch_seg_at_issue     ),
+    .push_i    (prefetch_axi_ar_rob_push  ),
+    .full_o    (                          ),
+    .data_o    (prefetch_seg_rob_data     ),
+    .pop_i     (prefetch_axi_ar_rob_pop   ),
+    .empty_o   (                          ),
+    .mem_o     (                          ),
+    .vld_o     (                          ),
+    .usage_o   (                          )
+  );
+
   assign axi_addrgen_prefetch_req_valid_o = !prefetch_axi_ar_rob_empty;
   assign axi_addrgen_prefetch_req_o       = prefetch_axi_ar_rob_data;
   assign prefetch_axi_ar_rob_pop          = axi_addrgen_prefetch_req_ready_i;
@@ -385,17 +450,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_axi_ar_rob_pop_done_counter_d = prefetch_axi_ar_rob_pop_done_counter_q;
     prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_pop_done_addr_q;
     // The page-cross pairing counter must only respond to genuine page-cross
-    // prefetch segments, NOT to bursts that are simply shorter than 8 beats
-    // (a small vl produces len!=7 single-segment prefetches). second_prefetch_
-    // vld_compare_q is asserted exactly across a page-cross window (set when the
-    // crossing prefetch is generated, cleared when its 2nd segment completes),
-    // and the two segments are adjacent in the in-order ROB, so gating on it
-    // makes this whole mechanism (counter / pop_done_addr / demand-block at the
-    // `prefetch_axi_ar_rob_pop_done_counter_d` site / vreq_blen truncation)
-    // immune to naturally-short prefetches. Without this gate a short non-
-    // crossing prefetch toggles the counter to 1 with no partner to clear it,
-    // wedging the demand path (deadlock) or truncating a later load.
-    if (($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i
+    // prefetch segments, NOT to full (non-crossing) bursts. prefetch_seg_rob_data
+    // is the per-ROB-entry tag (1 = page-cross 1st/2nd segment, 0 = full burst),
+    // replacing the old `len != 7` which assumed an 8-beat m1 full burst and
+    // mis-tagged any LMUL>1 full burst (len 15/31/63) as a segment. It is further
+    // gated by second_prefetch_vld_compare_q, asserted exactly across a page-cross
+    // window (set when the crossing prefetch is generated, cleared when its 2nd
+    // segment completes); the two segments are adjacent in the in-order ROB.
+    // Without the seg tag a full burst completing inside the window would toggle
+    // the counter with no partner, wedging the demand path or truncating a load.
+    if (prefetch_seg_rob_data && axi_addrgen_prefetch_req_ready_i
         && second_prefetch_vld_compare_q) begin
       prefetch_axi_ar_rob_pop_done_counter_d = ~prefetch_axi_ar_rob_pop_done_counter_q;
     end
@@ -412,6 +476,28 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       prefetch_axi_ar_rob_pop_done_counter_q <= prefetch_axi_ar_rob_pop_done_counter_d;
       prefetch_axi_ar_rob_pop_done_addr_q    <= prefetch_axi_ar_rob_pop_done_addr_d;
     end
+  end
+
+  // ── Prefetch in-flight beat accounting (credit flow control) ──────────────
+  // Beats issued to the AXI AR but not yet landed in the vldu buffer:
+  //   +burst when a prefetch AR is issued (ROB push, prefetch_req below),
+  //   -burst when its last R beat lands (ROB pop = prefetch_req_ready_i).
+  // Combined with the vldu resident occupancy this bounds the beats committed
+  // to the buffer; the issue gate uses it so landings can never overflow.
+  always_comb begin
+    prefetch_inflight_beats_d = prefetch_inflight_beats_q;
+    if (prefetch_axi_ar_rob_push)
+      prefetch_inflight_beats_d = prefetch_inflight_beats_d
+                                + ($unsigned(prefetch_axi_ar_data.len) + 1);
+    if (prefetch_axi_ar_rob_pop &&
+        (prefetch_inflight_beats_d >= ($unsigned(prefetch_axi_ar_rob_data.len) + 1)))
+      prefetch_inflight_beats_d = prefetch_inflight_beats_d
+                                - ($unsigned(prefetch_axi_ar_rob_data.len) + 1);
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) prefetch_inflight_beats_q <= '0;
+    else         prefetch_inflight_beats_q <= prefetch_inflight_beats_d;
   end
 
 
@@ -658,6 +744,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_axi_ar_hit        = '0;
     prefetch_pending_d         = '0;
     prefetch_axi_ar_queue_datain = '0;
+    prefetch_seg_queue_datain  = 1'b0;
     prefetch_axi_ar_queue_push = '0;
     prefetch_axi_ar_queue_pop  = '0;
 
@@ -871,7 +958,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
 
-    if ((($unsigned(prefetch_axi_ar_rob_data.len) != 7) && axi_addrgen_prefetch_req_ready_i) && prefetch_axi_ar_rob_pop_done_counter_q) begin
+    if ((prefetch_seg_rob_data && axi_addrgen_prefetch_req_ready_i) && prefetch_axi_ar_rob_pop_done_counter_q) begin
       second_prefetch_vld_compare_d = '0;
     end
 
@@ -997,6 +1084,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   };
               
                   prefetch_axi_ar_queue_push = 1'b1;
+                  // This AR is a page-cross 1st segment iff the prefetch crosses
+                  // a page; otherwise it is a full (non-segment) burst.
+                  prefetch_seg_queue_datain  = prefetch_req_page_crossed;
                   prefetch_pending_d         = 1'b1;
                 end
 
@@ -1215,6 +1305,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       };
       
       prefetch_axi_ar_queue_push = 1'b1;
+      prefetch_seg_queue_datain  = 1'b1; // 2nd (next-page) segment of a crossing
       second_prefetch_vld_d = 1'b0;
     end : second_prefetch
 
@@ -1230,6 +1321,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_pending_d
         && prefetch_en
+        // Credit: only issue if the buffer can still absorb this burst on top of
+        // what is already resident (occupancy*2 beats) and in flight. Guarantees
+        // the landing R beats never overflow / back-pressure into deadlock.
+        && ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q
+             + $unsigned(prefetch_axi_ar_data.len) + 1) <= PrefetchBufBeats)
     ) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;

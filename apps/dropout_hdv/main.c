@@ -28,8 +28,22 @@ void dropout_vec(unsigned int n, const float *in, float scale,
                  const uint8_t *sel, float *out);
 
 int main() {
+    printf("\n=== DROPOUT (HDV) ===\nN: %u\n", N);
     dropout_vec(N, I, SCALE, SEL, o);
-    return 0;
+    // gold: o[k] = (mask bit k) ? I[k]*SCALE : 0
+    int error = 0, nerr = 0;
+    for (unsigned int k = 0; k < N; ++k) {
+        int sel = (SEL[k >> 3] >> (k & 7)) & 1;
+        float g = sel ? I[k] * SCALE : 0.f;
+        if (!similarity_check(g, o[k], 0.0001f)) {
+            error = 1;
+            if (nerr++ < 8)
+                printf("Error at %u: %f != %f\n", k, o[k], g);
+        }
+    }
+    if (!error)
+        printf("Check okay. No errors.\n");
+    return error;
 }
 
 __attribute__((naked, aligned(16), section(".hdv_task"),

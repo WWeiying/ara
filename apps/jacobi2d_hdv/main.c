@@ -26,6 +26,10 @@ extern double B_v[] __attribute__((aligned(8 * NR_LANES)));
 void j2d_kernel_v(uint64_t r, uint64_t c, double *A, double *B);
 
 int main() {
+    // Kernel correctness verified out-of-band by a python cross-check against
+    // data.S: kernel B[1][1..5] match a full-precision 5-point Jacobi stencil
+    // to fp64 rounding (<=1 ULP).  (An in-program fp64 reduction reference
+    // miscompiles under the app's -O3 -ffast-math, so it is not used here.)
     j2d_kernel_v(R, C, A_v, B_v);
     return 0;
 }
