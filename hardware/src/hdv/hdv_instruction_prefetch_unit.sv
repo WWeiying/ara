@@ -229,8 +229,16 @@ module hdv_instruction_prefetch_unit #(
   assign loop_blocks_bg_fetch = (loop_lock_i & (fill_buf_q != active_buf_q)) |
                                 (effective_loop_fetch_lock & (fill_buf_q != active_buf_q) &
                                  fill_buf_protected);
+  // Deadlock guard: a loop body that spans more than the active buffer marks the
+  // (still empty) fill buffer as loop-protected, so loop_blocks_bg_fetch would
+  // suppress the very fetch needed to fill it.  When bg_stall holds we are parked
+  // on the last served packet waiting for that empty fill buffer, so the fetch is
+  // a demand fetch to continue the loop, not a background prefetch: force it.
+  // Small loops that fit and replay set replay_loop_lock, clearing bg_stall, so
+  // they are unaffected.
   assign ipu_mem_req_valid_o = ((state_q == FILL) |
-                                (state_q == SERVE & !bg_fill_done_q & !loop_blocks_bg_fetch)) &
+                                (state_q == SERVE & !bg_fill_done_q &
+                                 (!loop_blocks_bg_fetch | bg_stall))) &
                                !fill_req_done_q &
                                !top_ipu_task_complete_i &
                                !redirect_valid_i &
@@ -397,6 +405,20 @@ module hdv_instruction_prefetch_unit #(
         buffer_a_valid_d[fill_rsp_idx_q] = 1'b1;
       end else begin
         buffer_b_valid_d[fill_rsp_idx_q] = 1'b1;
+      end
+      // Bound the prefetch to the loop body.  Once the loop-end packet (HDV
+      // header imm20[16] = instruction bit 28) lands in the buffer, stop issuing
+      // more fill requests: speculatively filling the rest of a large (32-packet)
+      // buffer just reads the data region past the kernel and steals memory
+      // bandwidth from Ara's own loads/stores, which can deadlock a store-heavy
+      // loop (e.g. vsaxpy) when the whole loop fits in one buffer.  The imem
+      // outstanding limit keeps fill_req from running far ahead, so this caps the
+      // fill at ~loop_size + a few in-flight packets; loop_exit_i re-enables
+      // fetching when the loop falls through to the post-loop code.
+      if ((mem_ipu_rsp_data_i[6:0] == 7'b0110111) &&
+          (mem_ipu_rsp_data_i[11:7] == 5'd0) &&
+          mem_ipu_rsp_data_i[28]) begin
+        fill_req_done_d = 1'b1;
       end
     end
 

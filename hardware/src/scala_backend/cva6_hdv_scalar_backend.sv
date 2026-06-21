@@ -1284,7 +1284,11 @@ module cva6_hdv_scalar_backend
               end
             end
 
-            if (unsupported) begin
+            // A zero instruction word (0x00000000) is the reset/empty-slot value,
+            // not real code: it can momentarily appear when insn_valid races ahead
+            // of the insn_q latch.  cva6 decodes it as an illegal instruction, so
+            // guard against raising a spurious task error for it (treat as no-op).
+            if (unsupported && (cva6_decoder_instr != 32'h00000000)) begin
               error_seen_d = 1'b1;
             end
             if (!unsupported && hdv_task_ret) begin

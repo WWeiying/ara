@@ -78,16 +78,29 @@ void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
     "mv t3, a3\n"
     "nop\n"
 
-    // row loop top: load val row || col_idx row || idx*4 (all vector).
+    // Row loop.  The HDV same-EP hazard bypass assumes every instruction packed
+    // into one EP is INDEPENDENT (software p-bit guarantee), so a producer and a
+    // consumer must never share an EP — otherwise their RAW hazard is bypassed and
+    // the consumer reads a stale operand.  The dependent chain here is
+    //   vle v1 -> vsll v1 -> vluxei v1 -> vfmul v2
+    // so vsll, vluxei and vfmul each get their own EP.  Only the two independent
+    // loads (v0, v1) may share an EP.
     "row_loop:\n"
-    "HDV_HINT 0x08, 0, 0, 1, 0\n"
+    "HDV_HINT 0x08, 0, 0, 1, 0\n"   // EP: independent loads val(v0) || col_idx(v1)
     "vle32.v v0, (t1)\n"
     "vle32.v v1, (t2)\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"               // EP: idx*4 (RAW on v1 from the vle above)
     "vsll.vi v1, v1, 2\n"
-    // gather x[idx] || multiply (vector).
-    "HDV_HINT 0x02\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"               // EP: gather x[idx] (RAW on v1 from vsll)
     "vluxei32.v v2, (a2), v1\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"               // EP: multiply (RAW on v2 from the gather)
     "vfmul.vv v3, v0, v2\n"
+    "nop\n"
     "nop\n"
     // zero seed scalar (isolate before vfmv.v.f reads it).
     "HDV_HINT 0x00\n"
