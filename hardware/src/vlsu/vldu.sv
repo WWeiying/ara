@@ -50,6 +50,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     input  axi_ar_t                        axi_addrgen_prefetch_req_i,
     input  logic                           axi_addrgen_prefetch_req_valid_i,
     output logic                           axi_addrgen_prefetch_req_ready_o,
+    // Resident occupancy of the prefetch R buffer (256-bit words). Drives the
+    // addrgen prefetch credit flow control so it never overflows this buffer.
+    output logic [7:0]                     prefetch_buf_occupancy_o,
     input  logic                           block_load_addr_i,
     // Interface with the lanes
     output logic             [NrLanes-1:0] ldu_result_req_o,
@@ -176,7 +179,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   logic   prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
 
   logic                            prefetch_axi_r_queue_pnt;
-  logic [4:0]                      prefetch_axi_r_queue_len_d, prefetch_axi_r_queue_len_q;
+  // Counts R beats received for the current prefetch burst, compared against
+  // (axi_addrgen_prefetch_req_i.len + 1) to detect burst completion. Was [4:0]
+  // (max 31) -- fine for m1(8)/m2(16) beats but it WRAPPED for m4(32)/m8(64)
+  // beats, so the ==len+1 completion never fired and the demand wedged forever.
+  // Sized to the AXI len_t (+1) so any burst up to 256 beats completes.
+  logic [8:0]                      prefetch_axi_r_queue_len_d, prefetch_axi_r_queue_len_q;
   logic [(NrLanes*DataWidth-1):0]  prefetch_axi_r_queue_data;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -239,7 +247,19 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
  // assign prefetch_axi_r_queue_data = {prefetch_axi_r_queue1_data.data, prefetch_axi_r_queue0_data.data};
 
 
-  localparam int unsigned PrefetchQueueDepth = 32;
+  // Prefetch R-data buffer depth, in 256-bit words (2 AXI beats / 32 B each).
+  // 64 words = 128 beats = 2 KB: enough to double-buffer a single load stream
+  // through m8 (32 words/iter) or a dual stream through m4. Pointer/counter
+  // widths below all derive from this via idx_width(), so they track the depth.
+  // NOTE: this only benefits LMUL>1 once the m1-baked beat accounting is
+  // generalised (vldu prefetch_len==4 -> 4*LMUL, addrgen len==7 page-cross
+  // pairing) and the addrgen prefetch guard is relaxed; until then LMUL>1 still
+  // falls back to the demand path and this larger buffer is simply unused.
+  // The behavioural tc_sram below tracks this depth automatically; the
+  // TARGET_SRAM_MC macro path now instantiates the 64-deep TS1N28...64X256
+  // macro, but its backend/blackbox model is still a mislabeled 16x64 stub and
+  // must be regenerated from the memory compiler before that target builds.
+  localparam int unsigned PrefetchQueueDepth = 64;
   typedef logic [idx_width(PrefetchQueueDepth)-1:0] prefetch_queue_ptr_t;
 
   logic [255:0] prefetch_axi_r_head_d, prefetch_axi_r_head_q;
@@ -254,6 +274,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   prefetch_queue_ptr_t prefetch_axi_r_mem_addr;
   logic [255:0] prefetch_axi_r_mem_rdata_tc;
 
+  // Resident words for the addrgen prefetch credit (zero-extended to the port).
+  assign prefetch_buf_occupancy_o    = prefetch_axi_r_word_cnt_q;
   assign prefetch_axi_r_queue0_full  = (prefetch_axi_r_word_cnt_q == PrefetchQueueDepth) || prefetch_axi_r_low_half_valid_q;
   assign prefetch_axi_r_queue1_full  = !prefetch_axi_r_low_half_valid_q;
   assign prefetch_axi_r_queue0_empty = (prefetch_axi_r_word_cnt_q == '0);
@@ -321,7 +343,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     .rdata_o(prefetch_axi_r_mem_rdata_tc)
   );
 `else
-TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
+// 64-word x 256-bit single-port macro matching PrefetchQueueDepth=64 (and the
+// Bender.yml sram_blackbox filelist, which already lists ...64x256...). The RTL
+// port widths are ready (A = idx_width(64) = 6 bit, D/Q/BWEB = 256 bit).
+// WARNING: backend/blackbox/ts1n28hpcpuhdsvtb64x256m1swbso_*.v is currently a
+// MISLABELED 16x64 stub (A[3:0]/D[63:0]); the real 64x256 model (and its
+// .lib/.lef/.db/GDS views) must be regenerated from the memory compiler before
+// the TARGET_SRAM_MC / sram_blackbox build is used.
+TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     .SLP  (1'b0),
     .SD   (1'b0),
     .CLK  (clk_i),
@@ -830,7 +859,13 @@ TS1N28HPCPUHDSVTB32X256M1SWBSO i_prefetch_axi_r_sram (
 
       end : prefetch_vrf_word_ready
 
-      if ($unsigned(prefetch_len_d) == 4) begin : prefetch_axi_r_finish
+      // One prefetched burst = one full vector; it is fully drained after
+      // (vl*eew)/(NrLanes*DataWidthB) VRF words. This threshold was hard-coded
+      // to 4 (the m1 value), so it decremented the hit counter / ack'd the
+      // addrgen half-way through an m2+ vector and desynced the buffer for any
+      // LMUL>1. Derive it from vl/vsew so it scales: m1=4, m2=8, m4=16, m8=32.
+      if ($unsigned(prefetch_len_d) ==
+          (($unsigned(vinsn_issue_q.vl) << vinsn_issue_q.vtype.vsew) / (NrLanes * DataWidthB))) begin : prefetch_axi_r_finish
         prefetch_len_d             = '0;
         prefetch_axi_ar_hit_cnt_d  = prefetch_axi_ar_hit_cnt_d - 1;
         axi_addrgen_req_ready_o    = 1'b1;

@@ -1040,7 +1040,8 @@ TB 打印：
 - **ebreak 可作为显式 task-end marker（与 ret 解耦，参数 `TreatEbreakAsTaskExit`）**
 - **FENCE 已正确归类为 SYSTEM（EP 硬边界），在 scalar backend 中作为 NOP 处理**
 - **Sequencer hazard bypass：HDV 的 ep_id（p-bit 保证）驱动 Ara sequencer 跳过同 EP 内的 RAW/WAW/WAR 检查（`vid_ep_id_q` per-vid 跟踪），减少 false hazard stall → 减少 Ara backpressure**
-- **VLSU Next-VL prefetch：Ara VLSU 借鉴 ideal_execution 分支的解耦访存前端 + 预取机制。addrgen 自动检测 unit-stride load 并提前发射下一 VL 区间的预取 AR（AXI ID=PREFETCH）；预取返回数据存入 vldu ping-pong buffer，命中时跳过 demand AXI beat。当前 PF_EN_1X（1×VLEN 窗口）→ 累计 -35% cycles**
+- **VLSU Next-VL prefetch：Ara VLSU 借鉴 ideal_execution 分支的解耦访存前端 + 预取机制。addrgen 自动检测 unit-stride load 并提前发射下一 VL 区间的预取 AR（AXI ID=PREFETCH）；预取返回数据存入 vldu 预取 buffer，命中时跳过 demand AXI beat。幅度由 VLIWPU header `imm20[18:17]` 控制（off/1X/2X/4X，匹配内核迭代步长 S/B；用法详见 porting guide §3.5）→ 累计 -35% cycles**
+- **预取已泛化支持 LMUL 1/2/4/8（不再只 m1）。预取 buffer = vldu `PrefetchQueueDepth=64`×256bit = 2KB（行为级 `tc_sram`，宏 `TS1N28...64X256`）。addrgen 用基于 vldu buffer 占用的**信用流控**（`prefetch_inflight_beats` + issue 门控 `占用×2+在途+burst ≤128`），对任意 LMUL/流数 K(1-4) 都不溢出、不死锁。配套修复了 5 个原 m1-烤死点：vldu beat 计数器位宽 5→9bit（m4=32/m8=64 beats 完成判据）、hit 完成 `==4`→`4×LMUL`、buffer 32→64、信用流控、addrgen 页跨越配对 `len!=7`→ROB 段标志。**
 - **HDV→Ara hints 贯通：`trans_id[3:0]` = {cmd_class, is_last_in_ep, ep_id} 经 acc_req → ara_req → sequencer；`hdv_ara_loop_active_o` 经 hdv_top → ara → VLSU 预留接口**
 
 仍然是临时或待完善的部分：

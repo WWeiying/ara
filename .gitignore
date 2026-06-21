@@ -54,3 +54,7 @@ run.sh
 sim/
 sim_mc/
 autosave.bat
+apps/*_hdv/*.o
+apps/*_hdv/*.spike
+apps/*_hdv/*.o.spike
+apps/*_hdv/data.S.o

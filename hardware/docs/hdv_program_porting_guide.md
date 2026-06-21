@@ -113,7 +113,7 @@ imm20[13]    packet256
 imm20[14]    cross
 imm20[15]    loop_start
 imm20[16]    loop_end
-imm20[18:17] prefetch_mode (00=off, 01=1×VLEN, 10=2×VLEN, 11=4×VLEN)
+imm20[18:17] prefetch_mode (00=off, 01=1X, 10=2X, 11=4X；详见 §3.5)
 imm20[19]    reserved, keep 0
 ```
 
@@ -124,7 +124,7 @@ imm20[19]    reserved, keep 0
 - `cross`：当前 packet 尾部 EP 是否允许跨到下一个 logical packet 开头。
 - `loop_start`：软件标记 loop 开始。
 - `loop_end`：软件标记 loop 结束。
-- `prefetch_mode`：控制 VLSU next-VL prefetch 窗口（loop 内 unit-stride load 自动预取下一轮数据）。
+- `prefetch_mode`：控制 VLSU next-VL prefetch 的**幅度**（loop 内 unit-stride load 自动预取下一轮数据）。`00`=关、`01/10/11`=1X/2X/4X。**幅度要匹配内核两次迭代间同一条 vle 的地址步长**，绝大多数"每迭代前进一个向量"的内核用默认 `1`（1X）即可。完整用法见 §3.5。
 
 推荐在 inline asm 中定义宏：
 
@@ -139,6 +139,60 @@ imm20[19]    reserved, keep 0
 - 不要用 `.word` 隐藏 header。写成 `lui x0, ...` 能在 dump 中一眼看出这是 header。
 - `imm20` 最大只能承载 20 bit，所以不要再塞超出 bit 19 的字段。
 - reserved bit 必须保持 0，便于后续扩展。
+
+### 3.5 prefetch_mode 幅度设置详解
+
+VLSU 会自动检测 loop 内的 unit-stride load，提前发射"下一轮"数据的预取 AR（AXI ID=PREFETCH），返回数据进 vldu 预取 buffer，demand 命中时直接消费、跳过 demand AXI beat。`prefetch_mode` 决定**预取多远**。
+
+#### 编码
+
+| `prefetch_mode` | 倍数 | 行为 |
+|---|---|---|
+| `00` | off | 不预取，纯 demand |
+| `01` | 1X | 预取 `paddr + 1·B` |
+| `10` | 2X | 预取 `paddr + 2·B` |
+| `11` | 4X | 预取 `paddr + 4·B` |
+
+其中 `B = vl×eew`（一次访问/一个向量的字节数）。硬件里还定义了 8X（`PF_EN_8X`/`prefetch_mul=3`），但 2-bit 编码已用尽、**选不到 8X**，幅度上限是 4X。
+
+#### 核心规则：幅度 = 步长÷burst（S/B）
+
+预取地址 = `paddr + (B << prefetch_mul)`。要命中，必须让它等于**下一次 demand 的地址**，即内核两次迭代间同一条 vle 的真实步长 `S`：
+
+> **`B × 2^mul = S`  ⟹  prefetch_mode 选 `2^mul = S/B`**
+
+- 内核每迭代前进**一个向量**（`S = B`，最常见，如 vsaxpy/fdotp）→ **1X**（默认）。
+- 每迭代跳 2 个向量（`S = 2B`）→ **2X**；跳 4 个 → **4X**。
+- `S < B`（窗口重叠，如 stencil）或 `S` 非 2 的整幂倍 → **无法匹配**，用 `00` 关掉（或接受不命中）。
+
+#### 两条独立的轴（别混）
+
+| 量 | 决定者 | 影响 |
+|---|---|---|
+| **Burst `B = vl×eew`** | LMUL/SEW/VLEN | 一次预取取多少数据 → 占多少 buffer |
+| **Stride `S`** | 内核指针步进 | 下一迭代读哪 → 由 `prefetch_mode` 幅度匹配 |
+
+两者只有在"每迭代前进一个向量"时才相等。`prefetch_mode` 管的是 **S/B**，不是 LMUL。
+
+#### LMUL 支持与 buffer 预算
+
+预取 buffer = 64×256bit = 2KB = 128 AXI beats，**LMUL 1/2/4/8 均支持**（信用流控保证任意配置不溢出、不死锁）。能"双缓冲"（真正跑在前面、零气泡）的条件：
+
+> **幅度 × LMUL × K ≤ 8**（K = 循环内并发的 unit-stride load 流数，最多 4）
+
+| K=流数 | 最大 LMUL（双缓冲，1X） |
+|---|---|
+| 1（如 fmatmul） | m8 |
+| 2（如 vsaxpy/fdotp） | m4 |
+| 3 | m2 |
+
+超出预算时信用流控**安全降级**为单缓冲（仍正确，只是预取跑不到很前），不会死锁。
+
+#### 实操建议
+
+- 典型流式内核（每迭代一个向量、unit-stride）：保持默认 `prefetch_mode=1`（1X）。
+- 跨步访问（列遍历、隔块）：按 `S/B` 选 2X/4X。
+- gather/scatter、非 unit-stride、或重叠窗口（stencil）：用 `00` 关闭。
 
 ## 4. Fetch Packet 布局
 
