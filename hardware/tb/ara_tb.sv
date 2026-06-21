@@ -721,23 +721,28 @@ module ara_tb;
   localparam int unsigned HdvVsaxpyExpectedEpAcknowledges =
       (HdvVsaxpyIters == 0) ? 0 : (HdvVsaxpyIters * 4);
   `endif
+  // The HDV_INITIAL_A* overrides arrive as plain (unbased) decimal defines from
+  // the Makefile.  A bare decimal > 2^31 (e.g. an 0x8000_xxxx address) would be
+  // taken as a negative 32-bit int and sign-extended by a 64-bit cast, corrupting
+  // the pointer.  Zero-extend the low 32 bits explicitly so any 32-bit address or
+  // count passes through unchanged.
   `ifdef HDV_INITIAL_A0
-  localparam logic [63:0] HdvVsaxpyN    = 64'(`HDV_INITIAL_A0);
+  localparam logic [63:0] HdvVsaxpyN    = {32'h0, 32'(`HDV_INITIAL_A0)};
   `else
   localparam logic [63:0] HdvVsaxpyN    = 64'(HdvVsaxpyElements);
   `endif
   `ifdef HDV_INITIAL_A1
-  localparam HdvVsaxpySrc1 = 64'(`HDV_INITIAL_A1);
+  localparam HdvVsaxpySrc1 = {32'h0, 32'(`HDV_INITIAL_A1)};
   `else
   localparam HdvVsaxpySrc1 = 64'h8000_1040;
   `endif
   `ifdef HDV_INITIAL_A2
-  localparam HdvVsaxpySrc2 = 64'(`HDV_INITIAL_A2);
+  localparam HdvVsaxpySrc2 = {32'h0, 32'(`HDV_INITIAL_A2)};
   `else
   localparam HdvVsaxpySrc2 = 64'h8000_5050;
   `endif
   `ifdef HDV_INITIAL_A3
-  localparam HdvVsaxpySrc3 = 64'(`HDV_INITIAL_A3);
+  localparam HdvVsaxpySrc3 = {32'h0, 32'(`HDV_INITIAL_A3)};
   `else
   localparam HdvVsaxpySrc3 = 64'h0;
   `endif

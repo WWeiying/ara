@@ -16,8 +16,22 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned XLEN             = 64,
   parameter int unsigned QueueDepth       = 4,
   parameter int unsigned FetchPacketWidth = 128,
-  parameter int unsigned BufferBytes      = 64,
-  parameter int unsigned ImemOutstandingDepth = BufferBytes / (FetchPacketWidth / 8),
+  // BufferBytes = 512 = full physical IPU SRAM (32 words x 128b per ping-pong
+  // buffer).  Enlarging the buffer so a whole loop fits in one buffer lets the
+  // IPU lock-and-replay the loop without refetching, BUT the IPU must not keep
+  // speculatively filling the rest of the 32-packet window past the loop body --
+  // that reads the data region after the kernel and steals memory bandwidth from
+  // Ara, deadlocking store-heavy loops (vsaxpy).  The IPU therefore stops issuing
+  // fill requests once the loop-end packet has been fetched (see "Bound the
+  // prefetch to the loop body" in hdv_instruction_prefetch_unit.sv).
+  parameter int unsigned BufferBytes      = 512,
+  // Decoupled from BufferBytes: the buffer can be large (32 packets) but the
+  // number of in-flight imem AR reads must stay small.  The IPU imem shares the
+  // system AXI mux with the scalar load/store unit and Ara; flooding it with a
+  // full 32-deep burst starves/serialises the scalar LSU reads and deadlocks the
+  // shared memory.  4 outstanding is the proven-safe level (it matches the old
+  // 64B-buffer behaviour) and still fills the buffer fast enough for early-serve.
+  parameter int unsigned ImemOutstandingDepth = 4,
   parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,

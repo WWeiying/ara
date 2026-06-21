@@ -103,6 +103,50 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
+# Per-app HDV kernel arguments (a0-a3).  The TB's default HdvInitial* values are
+# vsaxpy's; every other HDV kernel needs its own pointer arguments because main()'s
+# C argument setup never runs under HDV (the TB jumps straight to the kernel entry).
+# Values are plain decimal addresses (the TB zero-extends them to 64 bits).
+ifeq ($(app),vsspmv_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x80001100)  # a0 = src1   (val)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80021200)  # a1 = col_idx (gather indices)
+  hdv_initial_a2 ?= $(shell printf '%d' 0x80011180)  # a2 = src2   (x, gather base)
+  hdv_initial_a3 ?= $(shell printf '%d' 0x80011280)  # a3 = src2+64 (y, output)
+endif
+ifeq ($(app),vsdot_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x80001070)  # a0 = src1 (a)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80005080)  # a1 = src2 (b)
+  hdv_initial_a2 ?= 1024                             # a2 = avl  (TOTAL_ELEMENTS)
+endif
+ifeq ($(app),vsscal_hdv)
+  hdv_initial_a0 ?= 1024                             # a0 = n (TOTAL_ELEMENTS)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80001040)  # a1 = src
+  hdv_initial_a2 ?= $(shell printf '%d' 0x80005050)  # a2 = dst (fa0=6.66=vsaxpy default)
+endif
+ifeq ($(app),fdotp_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x80001090)  # a0 = v64a
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80002090)  # a1 = v64b
+  hdv_initial_a2 ?= 1024                             # a2 = avl (DOTP_AVL)
+endif
+ifeq ($(app),vmc_hdv)
+  hdv_initial_a0 ?= 1024                             # a0 = n (TOTAL_ELEMENTS)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x800010d0)  # a1 = src1
+  hdv_initial_a2 ?= $(shell printf '%d' 0x800020e0)  # a2 = dest
+  hdv_initial_a3 ?= 3                                # a3 = shift
+endif
+ifeq ($(app),jacobi2d_hdv)
+  hdv_initial_a0 ?= 130                              # a0 = R
+  hdv_initial_a1 ?= 130                              # a1 = C
+  hdv_initial_a2 ?= $(shell printf '%d' 0x800011d0)  # a2 = A_v
+  hdv_initial_a3 ?= $(shell printf '%d' 0x800264f0)  # a3 = B_v
+endif
+ifeq ($(app),dropout_hdv)
+  hdv_initial_a0 ?= 1024                             # a0 = n (N)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80001090)  # a1 = in (I)
+  hdv_initial_a2 ?= $(shell printf '%d' 0x80002090)  # a2 = sel (SEL); scale->fa0
+  hdv_initial_a3 ?= $(shell printf '%d' 0x80002490)  # a3 = o
+endif
+
 ifdef hdv_task_entry
   bender_defs += --define HDV_TASK_ENTRY=$(hdv_task_entry)
 endif
