@@ -146,6 +146,30 @@ ifeq ($(app),dropout_hdv)
   hdv_initial_a2 ?= $(shell printf '%d' 0x80002090)  # a2 = sel (SEL); scale->fa0
   hdv_initial_a3 ?= $(shell printf '%d' 0x80002490)  # a3 = o
 endif
+ifeq ($(app),lavamd_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x800082c0)  # a0 = bx (px)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x800086c0)  # a1 = by (py)
+  hdv_initial_a2 ?= $(shell printf '%d' 0x80008ac0)  # a2 = bz (pz)
+  hdv_initial_a3 ?= $(shell printf '%d' 0x80008ec0)  # a3 = bv (pv)
+  hdv_initial_a4 ?= $(shell printf '%d' 0x800092c0)  # a4 = bq (pq)
+  hdv_initial_a5 ?= $(shell printf '%d' 0x800096c0)  # a5 = aparams (ap)
+  hdv_initial_a6 ?= $(shell printf '%d' 0x800096d8)  # a6 = fout_v (output)
+  hdv_initial_a7 ?= 256                              # a7 = NPAR (count)
+endif
+ifeq ($(app),softmax_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x800082d0)  # a0 = i  (input)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x8000a6d0)  # a1 = o_v (output)
+  hdv_initial_a2 ?= 3                                # a2 = channels
+  hdv_initial_a3 ?= 256                              # a3 = innerSize
+endif
+ifeq ($(app),fconv2d_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x8001c710)  # a0 = o  (output)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80001260)  # a1 = i  (input)
+  hdv_initial_a2 ?= $(shell printf '%d' 0x8001c580)  # a2 = f  (filter)
+  hdv_initial_a3 ?= 112                              # a3 = M (rows)
+  hdv_initial_a4 ?= 112                              # a4 = N (cols)
+  hdv_initial_a5 ?= 7                                # a5 = F (filter dim, 7x7)
+endif
 
 ifdef hdv_task_entry
   bender_defs += --define HDV_TASK_ENTRY=$(hdv_task_entry)
@@ -167,6 +191,18 @@ ifdef hdv_initial_a2
 endif
 ifdef hdv_initial_a3
   bender_defs += --define HDV_INITIAL_A3=$(hdv_initial_a3)
+endif
+ifdef hdv_initial_a4
+  bender_defs += --define HDV_INITIAL_A4=$(hdv_initial_a4)
+endif
+ifdef hdv_initial_a5
+  bender_defs += --define HDV_INITIAL_A5=$(hdv_initial_a5)
+endif
+ifdef hdv_initial_a6
+  bender_defs += --define HDV_INITIAL_A6=$(hdv_initial_a6)
+endif
+ifdef hdv_initial_a7
+  bender_defs += --define HDV_INITIAL_A7=$(hdv_initial_a7)
 endif
 ifdef hdv_initial_fa0
   bender_defs += --define HDV_INITIAL_FA0=$(hdv_initial_fa0)

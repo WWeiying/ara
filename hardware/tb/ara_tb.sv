@@ -700,7 +700,10 @@ module ara_tb;
   localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
   localparam HdvNumSlots  = 8;
   `ifdef HDV_TASK_ENTRY
-  localparam HdvTaskEntry = 64'(`HDV_TASK_ENTRY);
+  // Pass as a plain DECIMAL (e.g. hdv_task_entry=2147516416 for 0x80008000):
+  // SV `'h` literals lose their apostrophe through make->bender->VCS, and a
+  // bare decimal >2^31 sign-extends under 64'(...), so zero-extend the low 32b.
+  localparam HdvTaskEntry = {32'h0, 32'(`HDV_TASK_ENTRY)};
   `else
   localparam HdvTaskEntry = 64'h8000_1000;
   `endif
@@ -745,6 +748,26 @@ module ara_tb;
   localparam HdvVsaxpySrc3 = {32'h0, 32'(`HDV_INITIAL_A3)};
   `else
   localparam HdvVsaxpySrc3 = 64'h0;
+  `endif
+  `ifdef HDV_INITIAL_A4
+  localparam HdvVsaxpyA4   = {32'h0, 32'(`HDV_INITIAL_A4)};
+  `else
+  localparam HdvVsaxpyA4   = 64'h0;
+  `endif
+  `ifdef HDV_INITIAL_A5
+  localparam HdvVsaxpyA5   = {32'h0, 32'(`HDV_INITIAL_A5)};
+  `else
+  localparam HdvVsaxpyA5   = 64'h0;
+  `endif
+  `ifdef HDV_INITIAL_A6
+  localparam HdvVsaxpyA6   = {32'h0, 32'(`HDV_INITIAL_A6)};
+  `else
+  localparam HdvVsaxpyA6   = 64'h0;
+  `endif
+  `ifdef HDV_INITIAL_A7
+  localparam HdvVsaxpyA7   = {32'h0, 32'(`HDV_INITIAL_A7)};
+  `else
+  localparam HdvVsaxpyA7   = 64'h0;
   `endif
   `ifdef HDV_INITIAL_FA0
   localparam HdvVsaxpyA    = 64'(`HDV_INITIAL_FA0);
@@ -937,6 +960,10 @@ module ara_tb;
     .HdvInitialA1(HdvVsaxpySrc1    ),
     .HdvInitialA2(HdvVsaxpySrc2    ),
     .HdvInitialA3(HdvVsaxpySrc3    ),
+    .HdvInitialA4(HdvVsaxpyA4      ),
+    .HdvInitialA5(HdvVsaxpyA5      ),
+    .HdvInitialA6(HdvVsaxpyA6      ),
+    .HdvInitialA7(HdvVsaxpyA7      ),
     .HdvInitialFa0(HdvVsaxpyA      ),
     .AxiRespDelay(AxiRespDelay    )
   ) dut (

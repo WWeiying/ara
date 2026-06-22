@@ -71,9 +71,14 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "softmax_hdv_task_start:\n"
 
     // ---- prologue ----
+    // NOTE: no stack save. Under HDV the TB enters this naked task with sp (x2)
+    // uninitialised (=0); a `sd s0,8(sp)` would store to ~0xff..f8, a non-DRAM
+    // address whose AXI write never completes and -- via the scalar-memory /
+    // vector ordering guard -- blocks the following vector ops and wedges the
+    // task. s0 may be clobbered freely here, so the save/restore is dropped.
     "HDV_HINT 0x00\n"
-    "addi sp, sp, -16\n"
-    "sd   s0, 8(sp)\n"
+    "nop\n"
+    "nop\n"
     "nop\n"
     "HDV_HINT 0x00\n"
     "beqz a3, 9f\n"                 // innerSize == 0
@@ -112,8 +117,14 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "nop\n"
 
     // ---- stripmine loop ----
+    // NOTE: this kernel carries no explicit HDV_HINT loop_start/loop_end marks.
+    // The IPU auto-locks on backward branches, so each loop body (strip-mine,
+    // max, exp, div) is replayed without software marks; the back-edges redirect
+    // and the not-taken exits drive the IPU loop-exit (scalar backend's precise
+    // backward-branch resolution).  All four loops -- including the inner ones
+    // that fall through to more code -- exit correctly.
     "1:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "HDV_HINT 0x00\n"
     "vsetvli t5, a3, e32, m1, ta, ma\n"
     "vle32.v v8, (a0)\n"
     "bltu a2, a6, 3f\n"            // channels < 2 -> skip max loop
@@ -124,11 +135,11 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
 
     // max loop over channels
     "2:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "HDV_HINT 0x00\n"
     "vle32.v v9, (a4)\n"
     "addi a5, a5, -1\n"
     "vfmax.vv v8, v8, v9\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "add  a4, a4, t6\n"
     "bnez a5, 2b\n"
     "nop\n"
@@ -166,7 +177,7 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
 
     // ---- exp loop over channels ----
     "4:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "HDV_HINT 0x00\n"
     "vle32.v v25, (a5)\n"
     "vfsub.vv v25, v25, v8\n"
     "vfmin.vv v25, v25, v10\n"
@@ -210,7 +221,7 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "vfadd.vv v11, v11, v25\n"
     "add  a4, a4, t6\n"
     "add  a5, a5, t6\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "bnez s0, 4b\n"
     "nop\n"
     "nop\n"
@@ -221,7 +232,7 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "mv   a5, a2\n"
     "nop\n"
     "5:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "HDV_HINT 0x00\n"
     "vle32.v v8, (a4)\n"
     "vfdiv.vv v8, v8, v11\n"
     "addi a5, a5, -1\n"
@@ -229,7 +240,7 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "vse32.v v8, (a4)\n"
     "add  a4, a4, t6\n"
     "nop\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "bnez a5, 5b\n"
     "nop\n"
     "nop\n"
@@ -239,7 +250,7 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     "slli a4, t5, 2\n"
     "sub  a3, a3, t5\n"
     "add  a0, a0, a4\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "add  a1, a1, a4\n"
     "bnez a3, 1b\n"
     "nop\n"
@@ -247,8 +258,8 @@ void softmax_clean(const float *in, float *out, uint64_t ch, uint64_t inner) {
     // ---- epilogue ----
     "9:\n"
     "HDV_HINT 0x00\n"
-    "ld   s0, 8(sp)\n"
-    "addi sp, sp, 16\n"
+    "nop\n"
+    "nop\n"
     "ret\n"
     "HDV_HINT 0x00\n"
     "nop\n"

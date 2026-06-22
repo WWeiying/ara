@@ -119,8 +119,14 @@ void fconv2d_clean(double *o, double *in, double *flt, int64_t R, int64_t C,
     "nop\n"
 
     // output-row loop.  Filter row 0: taps c+0,c+1,c+2.
+    // NOTE: no HDV_HINT loop_start/loop_end marks.  This task body is ~38 fetch
+    // packets, larger than the 32-packet IPU buffer; an explicit loop_start
+    // asserts the IPU loop-lock at the loop head and blocks background prefetch
+    // of the packets past the buffer end, so the IPU bg-stalls at the last
+    // buffer slot during the first iteration.  Unmarked, the IPU double-buffers
+    // and auto-locks the loop on the backward branch instead.
     "fc_row:\n"
-    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "HDV_HINT 0x02\n"
     "vle64.v v0, (t1)\n"
     "vfmul.vf v8, v0, ft0\n"
     "nop\n"
@@ -199,7 +205,7 @@ void fconv2d_clean(double *o, double *in, double *flt, int64_t R, int64_t C,
     "add t1, t1, s0\n"
     "add t2, t2, s1\n"
     "addi t3, t3, -1\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "bnez t3, fc_row\n"
     "nop\n"
     "nop\n"
