@@ -22,6 +22,10 @@ module cva6_hdv_scalar_backend
   parameter logic [XLEN-1:0] InitialA1  = '0,
   parameter logic [XLEN-1:0] InitialA2  = '0,
   parameter logic [XLEN-1:0] InitialA3  = '0,
+  parameter logic [XLEN-1:0] InitialA4  = '0,
+  parameter logic [XLEN-1:0] InitialA5  = '0,
+  parameter logic [XLEN-1:0] InitialA6  = '0,
+  parameter logic [XLEN-1:0] InitialA7  = '0,
   parameter logic [XLEN-1:0] InitialFa0 = '0,
   parameter bit TreatRetAsTaskExit   = 1'b1,
   // TreatEbreakAsTaskExit: when 1, the EBREAK instruction (0x00100073) is
@@ -881,8 +885,17 @@ module cva6_hdv_scalar_backend
                             !unsupported && !hdv_task_ret;
           branch_taken    = cva6_resolved_branch.is_taken;
           branch_target   = addr_t'(cva6_resolved_branch.target_address);
+          // "backward" must be a property of the branch instruction itself, not
+          // of the resolved direction.  For a conditional branch the CVA6 unit
+          // reports target_address as the FALL-THROUGH PC when NOT taken, which
+          // would hide a backward (loop back-edge) target and break loop-exit
+          // signalling (scalar_loop_exit = !taken && backward).  Derive backward
+          // from the B-type immediate sign (insn[31] = imm[12]) for conditional
+          // branches; keep the target-vs-pc test for jumps (always taken).
           branch_backward = branch_resolved &&
-                            (addr_t'(cva6_resolved_branch.target_address) < curr_pc);
+                            (ariane_pkg::op_is_branch(cva6_decoded.op)
+                               ? cva6_decoder_instr[31]
+                               : (addr_t'(cva6_resolved_branch.target_address) < curr_pc));
           wb_en           = branch_resolved && (cva6_decoded.rd != 5'd0) &&
                             !ariane_pkg::op_is_branch(cva6_decoded.op);
           wb_data         = {{(XLEN-CVA6Cfg.VLEN){cva6_branch_result[CVA6Cfg.VLEN-1]}},
@@ -1441,6 +1454,10 @@ module cva6_hdv_scalar_backend
       xrf_q[11] <= InitialA1;
       xrf_q[12] <= InitialA2;
       xrf_q[13] <= InitialA3;
+      xrf_q[14] <= InitialA4;
+      xrf_q[15] <= InitialA5;
+      xrf_q[16] <= InitialA6;
+      xrf_q[17] <= InitialA7;
       frf_q[10] <= InitialFa0;
     end else begin
       state_q <= state_d;

@@ -22,6 +22,10 @@ module ara_testharness #(
     parameter logic [63:0] HdvInitialA1  = '0,
     parameter logic [63:0] HdvInitialA2  = '0,
     parameter logic [63:0] HdvInitialA3  = '0,
+    parameter logic [63:0] HdvInitialA4  = '0,
+    parameter logic [63:0] HdvInitialA5  = '0,
+    parameter logic [63:0] HdvInitialA6  = '0,
+    parameter logic [63:0] HdvInitialA7  = '0,
     parameter logic [63:0] HdvInitialFa0 = '0,
     // AXI Resp Delay [ps] for gate-level simulation
     parameter int unsigned AxiRespDelay = 200
@@ -116,6 +120,10 @@ module ara_testharness #(
     .HdvInitialA1(HdvInitialA1  ),
     .HdvInitialA2(HdvInitialA2  ),
     .HdvInitialA3(HdvInitialA3  ),
+    .HdvInitialA4(HdvInitialA4  ),
+    .HdvInitialA5(HdvInitialA5  ),
+    .HdvInitialA6(HdvInitialA6  ),
+    .HdvInitialA7(HdvInitialA7  ),
     .HdvInitialFa0(HdvInitialFa0),
     .AxiRespDelay(AxiRespDelay )
   ) i_ara_soc (

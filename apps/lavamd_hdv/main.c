@@ -132,8 +132,15 @@ void lavamd_clean(const float *px, const float *py, const float *pz,
     "nop\n"
 
     // ---- force loop ----
+    // NOTE: no HDV_HINT loop_start/loop_end marks.  This task body is ~40 fetch
+    // packets, larger than the 32-packet IPU instruction buffer.  An explicit
+    // loop_start asserts the IPU loop-lock early (at the loop head), which
+    // blocks background prefetch of the packets past the buffer end; the IPU
+    // then bg-stalls at the last buffer slot during the very first iteration and
+    // wedges.  Leaving the loop unmarked lets the IPU double-buffer normally and
+    // auto-lock the loop on the backward branch instead.
     "1:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "HDV_HINT 0x00\n"
     "vsetvli t0, a7, e32, m1, ta, ma\n"
     "vle32.v v5, (a0)\n"
     "vle32.v v6, (a1)\n"
@@ -211,7 +218,7 @@ void lavamd_clean(const float *px, const float *py, const float *pz,
     "add  a3, a3, t1\n"
     "add  a4, a4, t1\n"
     "sub  a7, a7, t0\n"
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "HDV_HINT 0x00\n"
     "bnez a7, 1b\n"
     "nop\n"
     "nop\n"
