@@ -53,6 +53,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // Resident occupancy of the prefetch R buffer (256-bit words). Drives the
     // addrgen prefetch credit flow control so it never overflows this buffer.
     output logic [7:0]                     prefetch_buf_occupancy_o,
+    // Same-id order tag from addrgen: is_prefetch head + empty; pop per R burst.
+    input  logic                           prefetch_tag_head_i,
+    input  logic                           prefetch_tag_empty_i,
+    output logic                           prefetch_tag_pop_o,
     input  logic                           block_load_addr_i,
     // Interface with the lanes
     output logic             [NrLanes-1:0] ldu_result_req_o,
@@ -187,6 +191,17 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   logic [8:0]                      prefetch_axi_r_queue_len_d, prefetch_axi_r_queue_len_q;
   logic [(NrLanes*DataWidth-1):0]  prefetch_axi_r_queue_data;
 
+  // Same-id R-beat demux: the head of the addrgen order-tag FIFO -- not the R id --
+  // tells whether the CURRENT R burst is a prefetch (-> buffer) or a demand load
+  // (-> result queue). Prefetch and demand bursts now share AXI_ID_DEMAND. The
+  // !empty guards mean a beat that somehow arrives before its tag is never
+  // mis-routed (same-id in-order return pushes the tag at AR-accept, ahead of its R
+  // beats). The two values are mutually exclusive, restoring the demand/prefetch
+  // path mutex the id used to give.
+  logic cur_burst_is_prefetch, cur_burst_is_demand;
+  assign cur_burst_is_prefetch = !prefetch_tag_empty_i &&  prefetch_tag_head_i;
+  assign cur_burst_is_demand   = !prefetch_tag_empty_i && !prefetch_tag_head_i;
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       prefetch_axi_r_queue_pnt <= 1'b0;
@@ -194,7 +209,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     else if (axi_r_valid_i && axi_r_ready_o
                            && (prefetch_axi_r_queue_pnt ? (!prefetch_axi_r_queue1_full)
                                                         : (!prefetch_axi_r_queue0_full))
-                           && (axi_r_i.id == AXI_ID_PREFETCH)) begin
+                           && cur_burst_is_prefetch) begin
       prefetch_axi_r_queue_pnt <= ~prefetch_axi_r_queue_pnt;
     end
   end
@@ -606,7 +621,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     // - The Address Generator sent us the data about the corresponding AR beat
     // - There is place in the result queue to write the data read from the R channel
     // - This request did not generate an exception
-    if ((axi_r_i.id == AXI_ID_DEMAND) && axi_r_valid_i && axi_addrgen_req_valid_q
+    if (cur_burst_is_demand && axi_r_valid_i && axi_addrgen_req_valid_q
         && axi_addrgen_req_q.is_load && !axi_addrgen_req_q.is_exception
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
@@ -1097,10 +1112,10 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       vinsn_queue_d.commit_cnt += 1;
     end : accept_new_instr
 
-    if (axi_r_valid_i && (axi_r_i.id == AXI_ID_PREFETCH) &&
+    if (axi_r_valid_i && cur_burst_is_prefetch &&
         (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
-      prefetch_axi_r_queue0_push = 1'b1; 
+      prefetch_axi_r_queue0_push = 1'b1;
       prefetch_axi_r_queue0      = axi_r_i.data;
       axi_r_ready_o              = 1'b1;
       prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
@@ -1110,10 +1125,10 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       end
     end
 
-    if (axi_r_valid_i && (axi_r_i.id == AXI_ID_PREFETCH) &&
+    if (axi_r_valid_i && cur_burst_is_prefetch &&
         (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) &&
         axi_addrgen_prefetch_req_valid_i) begin
-      prefetch_axi_r_queue1_push = 1'b1; 
+      prefetch_axi_r_queue1_push = 1'b1;
       prefetch_axi_r_queue1      = axi_r_i.data;
       axi_r_ready_o              = 1'b1;
       prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
@@ -1166,5 +1181,16 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       axi_addrgen_req_valid_q       <= axi_addrgen_req_valid_d;
     end
   end
+
+  // Pulse on the last R beat of a DEMAND burst (tag=demand && last accepted).
+  // Internal only: it advances the order-tag FIFO (prefetch_tag_pop_o below).
+  logic demand_burst_done;
+  assign demand_burst_done = axi_r_valid_i && axi_r_ready_o &&
+                             cur_burst_is_demand && axi_r_i.last;
+
+  // Pop the order tag once per COMPLETED R burst: a demand burst's last beat, or a
+  // prefetch burst's completion (axi_addrgen_prefetch_req_ready_o, raised when the
+  // prefetch beat count hits len+1). Exactly one fires per burst, advancing the tag.
+  assign prefetch_tag_pop_o = demand_burst_done || axi_addrgen_prefetch_req_ready_o;
 
 endmodule : vldu

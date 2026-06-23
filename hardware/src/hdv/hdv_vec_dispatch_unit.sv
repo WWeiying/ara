@@ -253,6 +253,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic [RealWaitDepth-1:0]      real_wait_has_vset_d, real_wait_has_vset_q;
   logic [RealWaitDepth-1:0]      real_ep_operands_captured_d, real_ep_operands_captured_q;
   logic [RealWaitDepth-1:0]      real_ep_vset_wb_done_d, real_ep_vset_wb_done_q;
+  // Per-ep_id latch for a vsetvli writeback that arrives (immediate Ara response)
+  // BEFORE its owning EP is enqueued into real_wait; consumed at enqueue.
+  logic [1:0]                   vset_wb_pending_d, vset_wb_pending_q;
   logic                         operand_valid_d, operand_valid_q;
   logic [XLEN-1:0]              operand_rs1_d, operand_rs1_q;
   logic [XLEN-1:0]              operand_rs2_d, operand_rs2_q;
@@ -341,6 +344,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic resp_meta_is_store;
   logic [4:0] resp_meta_rd;
   logic resp_meta_ep_id;
+  // Identity-based vset-wb routing. Ara echoes acc_req.trans_id into
+  // acc_resp.trans_id (ara_dispatcher.sv:426), so trans_id[0] is the TRUE owning
+  // ep_id of whatever instruction responds this cycle -- exact regardless of how
+  // Ara reorders responses. The old key resp_meta_ep_id is FIFO-head order; a
+  // prefetch-reordered response desyncs the head, so the vset rd!=x0 writeback was
+  // dropped/misrouted -> the owning EP never became operand-safe -> deadlock.
+  logic resp_ep_id_from_trans;
   logic ara_meta_wb_valid;
   logic ara_meta_is_fpr;
   logic ara_meta_is_vset;
@@ -407,6 +417,8 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign resp_meta_rd         = resp_has_queued_meta ? resp_meta_rd_q[0] : ara_meta_rd;
   assign resp_meta_ep_id      = resp_has_queued_meta ? resp_meta_ep_id_q[0] : ara_meta_ep_id;
   assign resp_is_vset_wb      = resp_valid && resp_meta_is_vset && (resp_meta_rd != 5'd0);
+  // True owning ep_id of the responding instruction (echoed by Ara, reorder-proof).
+  assign resp_ep_id_from_trans = acc_resp_i.acc_resp.trans_id[0];
   assign resp_is_scalar_wb    = resp_valid && resp_meta_wb_valid && (resp_meta_rd != 5'd0);
   assign vset_accept_enqueue  = enqueue_ep && input_ep_has_vset_wb;
   assign vset_accept_ack      = resp_is_vset_wb &&
@@ -932,6 +944,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     resp_meta_is_store_d = resp_meta_is_store_q;
     resp_meta_rd_d = resp_meta_rd_q;
     resp_meta_ep_id_d = resp_meta_ep_id_q;
+    vset_wb_pending_d = vset_wb_pending_q;
     vset_accept_wait_d = vset_accept_wait_q;
     vset_accept_id_d = vset_accept_id_q;
     real_wait_valid_d = real_wait_valid_q;
@@ -981,14 +994,17 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
           real_wait_id_d[0] = heu_vec_ep_id_i;
           real_wait_has_vset_d[0] = input_ep_has_vset_wb;
           real_ep_operands_captured_d[0] = 1'b0;
-          real_ep_vset_wb_done_d[0] = 1'b0;
+          // Consume an early-arrived vset writeback latched for this ep_id.
+          real_ep_vset_wb_done_d[0] = input_ep_has_vset_wb && vset_wb_pending_q[heu_vec_ep_id_i];
         end else begin
           real_wait_valid_d[1] = 1'b1;
           real_wait_id_d[1] = heu_vec_ep_id_i;
           real_wait_has_vset_d[1] = input_ep_has_vset_wb;
           real_ep_operands_captured_d[1] = 1'b0;
-          real_ep_vset_wb_done_d[1] = 1'b0;
+          real_ep_vset_wb_done_d[1] = input_ep_has_vset_wb && vset_wb_pending_q[heu_vec_ep_id_i];
         end
+        if (input_ep_has_vset_wb)
+          vset_wb_pending_d[heu_vec_ep_id_i] = 1'b0;
       end
     end
 
@@ -1048,12 +1064,42 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
                                                             heu_vec_ep_id_i;
         end
       end
-      if (!UseVTraceScalar && resp_is_vset_wb) begin
+      // Mark EP i's vsetvli writeback done, routed to its TRUE owner by the echoed
+      // identity resp_ep_id_from_trans (= trans_id[0]). trans_id is the ONLY reorder-
+      // proof key: Ara responses reach this unit out of program order (a prefetch-
+      // reordered load response can overtake a later EP's vset), which ALSO desyncs the
+      // meta-FIFO head -- so resp_meta_is_vset/resp_meta_rd cannot reliably tell whether
+      // THIS response is the vset writeback.
+      //   DO NOT gate this loop on resp_is_vset_wb. That trusts the meta head, MISSES
+      //   the vset writeback under reorder, and empirically re-deadlocks vvaddint32 /
+      //   fdotp (verified: precise gate -> FAILED, this gate -> PASSED). Gating on
+      //   resp_valid -- mark on the FIRST response carrying the EP's id -- is what keeps
+      //   the design live: the <=2 outstanding EPs always carry DISTINCT ep_ids (HEU
+      //   toggles a 1-bit id, MaxOutstandingVecEPs=2), and the vsetvli is dispatched
+      //   first in its EP, so the first response for id X is EP X's own vsetvli.
+      //   Residual (not observed in-suite): a freed non-vset EP's late load response
+      //   could alias a new same-id vset EP; a fully precise+reorder-safe gate would
+      //   need trans_id to carry an is_vset marker bit.
+      // Use _d for valid/has_vset/id so an EP enqueued THIS cycle (whose vsetvli
+      // responds same-cycle in Ara) is not missed; _q for the done bit avoids a
+      // combinational loop (done_d depends on this block).
+      if (!UseVTraceScalar && resp_valid) begin
+        logic vwb_matched;
+        vwb_matched = 1'b0;
         for (int unsigned i = 0; i < RealWaitDepth; i++) begin
-          if (real_wait_valid_d[i] && (real_wait_id_d[i] == resp_meta_ep_id)) begin
+          if (real_wait_valid_d[i] && real_wait_has_vset_d[i] &&
+              !real_ep_vset_wb_done_q[i] &&
+              (real_wait_id_d[i] == resp_ep_id_from_trans)) begin
             real_ep_vset_wb_done_d[i] = 1'b1;
+            vwb_matched = 1'b1;
           end
         end
+        // Early-arrival: the vsetvli writeback (immediate Ara response) landed before
+        // its owning EP was enqueued into real_wait. Latch it per ep_id (gated on
+        // resp_is_vset_wb -- here the request at the bus IS that vsetvli); the enqueue
+        // consumes it. This is the case the wait-table recognition above can't catch.
+        if (!vwb_matched && resp_is_vset_wb)
+          vset_wb_pending_d[resp_ep_id_from_trans] = 1'b1;
       end
     end
 
@@ -1175,6 +1221,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_d = '0;
       real_ep_operands_captured_d = '0;
       real_ep_vset_wb_done_d = '0;
+      vset_wb_pending_d = '0;   // drop early-arrival latches so a stale bit can't satisfy a post-flush EP
       operand_valid_d = 1'b0;
       operand_rs1_d = '0;
       operand_rs2_d = '0;
@@ -1245,6 +1292,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_q <= '0;
       real_ep_operands_captured_q <= '0;
       real_ep_vset_wb_done_q <= '0;
+      vset_wb_pending_q <= '0;
       operand_valid_q <= 1'b0;
       operand_rs1_q <= '0;
       operand_rs2_q <= '0;
@@ -1279,6 +1327,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_q <= real_wait_has_vset_d;
       real_ep_operands_captured_q <= real_ep_operands_captured_d;
       real_ep_vset_wb_done_q <= real_ep_vset_wb_done_d;
+      vset_wb_pending_q <= vset_wb_pending_d;
       operand_valid_q <= operand_valid_d;
       operand_rs1_q <= operand_rs1_d;
       operand_rs2_q <= operand_rs2_d;
