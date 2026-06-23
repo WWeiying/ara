@@ -93,6 +93,21 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   addr_t task_desc_d, task_desc_q;
   logic [31:0] expected_ep_acknowledges_d, expected_ep_acknowledges_q;
   logic [31:0] acknowledged_eps_d, acknowledged_eps_q;
+`ifdef FOR_VERIFY
+  // Runtime expected-EP override: +HDV_EXPECTED_EP=<N> sets the EP cap at which
+  // the host auto-completes the task.  An AVL sweep passes a huge value so the
+  // host waits for the kernel's natural `ret` instead of capping at the
+  // compile-time AutoExpectedEpAcknowledges (derived from ELEMENTS, e.g. 1024).
+  logic [31:0] hdv_ep_ovr;
+  logic        hdv_ep_ovr_en;
+  initial begin
+    longint unsigned v;
+    hdv_ep_ovr_en = 1'b0;
+    if ($value$plusargs("HDV_EXPECTED_EP=%d", v)) begin
+      hdv_ep_ovr_en = 1'b1; hdv_ep_ovr = v[31:0];
+    end
+  end
+`endif
   logic [ScalarCntWidth-1:0] scalar_count_d, scalar_count_q;
   logic [VectorCntWidth-1:0] vector_count_d, vector_count_q;
   logic [AutoStartCntWidth-1:0] auto_start_count_d, auto_start_count_q;
@@ -297,7 +312,11 @@ module hdv_mock_host_core import hdv_pkg::*; #(
         if (auto_start_pulse) begin
           task_entry_d        = addr_t'(AutoTaskEntry);
           task_desc_d         = addr_t'(AutoTaskDesc);
+`ifdef FOR_VERIFY
+          expected_ep_acknowledges_d  = hdv_ep_ovr_en ? hdv_ep_ovr : AutoExpectedEpAcknowledges;
+`else
           expected_ep_acknowledges_d  = AutoExpectedEpAcknowledges;
+`endif
           acknowledged_eps_d = '0;
           loop_iters_remaining_d = 32'(MockLoopIterations);
           auto_start_armed_d  = 1'b0;

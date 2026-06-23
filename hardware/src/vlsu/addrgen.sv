@@ -77,6 +77,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     // Resident occupancy of the vldu prefetch R buffer, in 256-bit words.
     // Feeds the prefetch credit flow control (see PrefetchBufBeats).
     input  logic [7:0]                     prefetch_buf_occupancy_i,
+    // Same-id order tag (is_prefetch per accepted AR) -> vldu R-beat demux.
+    output logic                           prefetch_tag_head_o,
+    output logic                           prefetch_tag_empty_o,
+    input  logic                           prefetch_tag_pop_i,
+    // High while the store unit has a vector store instruction in flight. Used to
+    // gate the prefetch's inter-iteration drain ONLY when a store is actually stuck.
+    input  logic                           store_pending_i,
     input  logic                           block_load_addr_i,
     input  logic                           hdv_loop_active_i,
     input  logic [1:0]                     hdv_prefetch_mode_i,
@@ -148,6 +155,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // R channel into deadlock -- for ANY LMUL and ANY number of load streams K.
   // Over-budget bursts simply wait (or the loop runs demand-only), never wedge.
   localparam int unsigned PrefetchBufBeats = 128;
+
 
   // In-flight prefetch beats: issued (ROB-pushed) but not yet landed in the
   // buffer (ROB-popped on the burst's last R beat). Added to the vldu's
@@ -500,6 +508,69 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     else         prefetch_inflight_beats_q <= prefetch_inflight_beats_d;
   end
 
+  // "Wait per loop ITERATION" prefetch pacing. The application AVL decrements by one
+  // vl each strip-mine iteration, so pe_req.avl is CONSTANT within an iteration and
+  // CHANGES between iterations. While still in the current iteration (avl unchanged)
+  // the prefetch issues freely -- feeding all of that iteration's load streams
+  // (e.g. src1 + src2). When a NEW iteration begins (avl differs from the last
+  // prefetched iteration) it must first wait for the PREVIOUS iteration's prefetch
+  // beats to fully drain (in-flight == 0). That inter-iteration drain opens a window
+  // where the single-port memory is free for demand STORES, so store-heavy vsaxpy no
+  // longer starves -- and it adapts to each kernel's real iteration size (unlike a
+  // fixed beat batch, which starved fdotp's larger loads).
+  logic [$bits(pe_req_d.avl)-1:0] prefetch_iter_avl_d, prefetch_iter_avl_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) prefetch_iter_avl_q <= '0;
+    else         prefetch_iter_avl_q <= prefetch_iter_avl_d;
+  end
+
+  // Store-stuck detector. store_pending_i is high while the store unit is working
+  // on a vector store. A store that COMPLETES quickly (e.g. vvaddint32, writing a
+  // separate array) keeps it high only briefly; a STARVED store (vsaxpy, whose
+  // writes lose the single memory port to the prefetch read-flood) keeps it high
+  // continuously. Counting the continuous-high cycles distinguishes the two: only
+  // once it exceeds StoreStuckThresh do we treat the store as starved and let the
+  // per-iteration prefetch drain kick in (freeing the bus for the store). Below the
+  // threshold the prefetch runs free, so store-light loops pay no drain penalty.
+  localparam int unsigned StoreStuckThresh = 32;
+  logic [7:0] store_stuck_cnt_q;
+  logic       store_stuck;
+  assign store_stuck = (store_stuck_cnt_q >= StoreStuckThresh[7:0]);
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni)              store_stuck_cnt_q <= '0;
+    else if (!store_pending_i) store_stuck_cnt_q <= '0;          // store drained -> reset
+    else if (store_stuck_cnt_q != 8'hFF)
+                              store_stuck_cnt_q <= store_stuck_cnt_q + 1'b1;
+  end
+
+
+  // Same-id redesign: per-AR is_prefetch ORDER TAG for the vldu R-beat demux.
+  // Prefetch ARs now carry AXI_ID_DEMAND, so the AXI id can no longer tell a
+  // prefetch R burst from a demand one. Push one tag per ACCEPTED AR (demand AND
+  // prefetch) in bus-issue order; the vldu pops one per completed R burst to route
+  // it. is_prefetch = the prefetch drain won the AR (prefetch_axi_ar_queue_pop).
+  // AXI returns same-id bursts strictly in AR-issue order, so tag order == R order.
+  // On a prefetch hit no AR is issued (axi_ar_valid_o=0) -> no phantom tag.
+  // Depth >> max outstanding ARs (prefetch ROB + demand) so it never fills.
+  logic prefetch_tag_full;
+  fifo_v3 #(
+    .DEPTH (16    ),
+    .dtype (logic )
+  ) i_prefetch_tag_fifo (
+    .clk_i     (clk_i                           ),
+    .rst_ni    (rst_ni                          ),
+    .flush_i   (1'b0                            ),
+    .testmode_i(1'b0                            ),
+    .data_i    (prefetch_axi_ar_queue_pop       ), // 1 = prefetch drove this AR
+    .push_i    (axi_ar_valid_o && axi_ar_ready_i), // one push per accepted AR
+    .full_o    (prefetch_tag_full               ),
+    .data_o    (prefetch_tag_head_o             ),
+    .pop_i     (prefetch_tag_pop_i              ),
+    .empty_o   (prefetch_tag_empty_o            ),
+    .usage_o   (/* unused */                    )
+  );
+
+
 
   fifo_v3 #(
     .DEPTH(VaddrgenInsnQueueDepth),
@@ -747,6 +818,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_seg_queue_datain  = 1'b0;
     prefetch_axi_ar_queue_push = '0;
     prefetch_axi_ar_queue_pop  = '0;
+    prefetch_iter_avl_d        = prefetch_iter_avl_q; // hold the prefetched iteration
 
     prefetch_axi_ar_rob_push             = '0;
     prefetch_axi_ar_rob_datain           = '0;
@@ -1074,7 +1146,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               
                 if (prefetch_burst_length != 0) begin
                   prefetch_axi_ar_queue_datain = '{
-                    id     : AXI_ID_PREFETCH,
+                    id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
                     addr   : prefetch_addr,
                     len    : prefetch_burst_length - 1,
                     size   : eff_axi_dw_log_d,
@@ -1293,9 +1365,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end : start_req
     end : demand_req
     else if (second_prefetch_vld_q) begin : second_prefetch
-         
+
       prefetch_axi_ar_queue_datain = '{
-        id     : AXI_ID_PREFETCH,
+        id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
         addr   : second_prefetch_paddr_d,
         len    : second_prefetch_burst_len_d,
         size   : eff_axi_dw_log_d,
@@ -1326,12 +1398,24 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // the landing R beats never overflow / back-pressure into deadlock.
         && ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q
              + $unsigned(prefetch_axi_ar_data.len) + 1) <= PrefetchBufBeats)
+        // Wait-per-iteration pacing: issue freely while still in the current iteration
+        // (avl unchanged), but on a NEW iteration (avl differs) wait until the previous
+        // iteration's prefetch beats have fully drained (in-flight == 0). The drain
+        // gap frees the single memory port for demand stores (vsaxpy).
+        // Store-aware: only pace the prefetch (drain between iterations) while a
+        // store is STARVED; otherwise run free so store-light loops (vvaddint32) pay
+        // no penalty. When starved, fall back to the per-iteration drain that frees
+        // the memory port for the store (vsaxpy).
+        && (!store_stuck
+            || (pe_req_d.avl == prefetch_iter_avl_q)
+            || (prefetch_inflight_beats_q == '0))
     ) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;
       prefetch_axi_ar_rob_datain = prefetch_axi_ar_data;
       axi_ar_valid_o             = 1'b1;
       axi_ar_o                   = prefetch_axi_ar_data;
+      prefetch_iter_avl_d        = pe_req_d.avl; // mark the iteration we prefetched
     end : prefetch_req
 
     // Record each completing prefetch burst's OWN start address into the lookup

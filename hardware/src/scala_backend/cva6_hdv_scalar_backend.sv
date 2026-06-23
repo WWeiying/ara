@@ -1425,6 +1425,27 @@ module cva6_hdv_scalar_backend
     end
   end
 
+`ifdef FOR_VERIFY
+  // Runtime arg-injection override (simulation only).  `+HDV_A<n>=<val>` on the
+  // simv command line sets xrf[10+n] at reset, beating the compile-time
+  // InitialA<n>.  This lets an AVL sweep change the application vector length
+  // per run WITHOUT re-elaborating: VCS keeps `../simv up to date` and ignores
+  // changed +define+ values, so a define-based AVL is stale/unreliable.
+  logic [63:0] hdv_arg_ovr [0:7];
+  logic        hdv_arg_en  [0:7];
+  initial begin
+    longint unsigned v;
+    for (int j = 0; j < 8; j++) hdv_arg_en[j] = 1'b0;
+    if ($value$plusargs("HDV_A0=%d", v)) begin hdv_arg_en[0] = 1'b1; hdv_arg_ovr[0] = v; end
+    if ($value$plusargs("HDV_A1=%d", v)) begin hdv_arg_en[1] = 1'b1; hdv_arg_ovr[1] = v; end
+    if ($value$plusargs("HDV_A2=%d", v)) begin hdv_arg_en[2] = 1'b1; hdv_arg_ovr[2] = v; end
+    if ($value$plusargs("HDV_A3=%d", v)) begin hdv_arg_en[3] = 1'b1; hdv_arg_ovr[3] = v; end
+    if ($value$plusargs("HDV_A4=%d", v)) begin hdv_arg_en[4] = 1'b1; hdv_arg_ovr[4] = v; end
+    if ($value$plusargs("HDV_A5=%d", v)) begin hdv_arg_en[5] = 1'b1; hdv_arg_ovr[5] = v; end
+    if ($value$plusargs("HDV_A6=%d", v)) begin hdv_arg_en[6] = 1'b1; hdv_arg_ovr[6] = v; end
+    if ($value$plusargs("HDV_A7=%d", v)) begin hdv_arg_en[7] = 1'b1; hdv_arg_ovr[7] = v; end
+  end
+`endif
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
       state_q <= IDLE;
@@ -1450,6 +1471,19 @@ module cva6_hdv_scalar_backend
         frf_q[i] <= '0;
       end
       xrf_q[1] <= InitialRa;
+`ifdef FOR_VERIFY
+      // Runtime arg override: +HDV_A<n>=<val> wins over the compile-time
+      // InitialA<n> (see hdv_arg_* below).  Lets an AVL sweep change the
+      // application vector length per run without re-elaborating the simv.
+      xrf_q[10] <= hdv_arg_en[0] ? hdv_arg_ovr[0][XLEN-1:0] : InitialA0;
+      xrf_q[11] <= hdv_arg_en[1] ? hdv_arg_ovr[1][XLEN-1:0] : InitialA1;
+      xrf_q[12] <= hdv_arg_en[2] ? hdv_arg_ovr[2][XLEN-1:0] : InitialA2;
+      xrf_q[13] <= hdv_arg_en[3] ? hdv_arg_ovr[3][XLEN-1:0] : InitialA3;
+      xrf_q[14] <= hdv_arg_en[4] ? hdv_arg_ovr[4][XLEN-1:0] : InitialA4;
+      xrf_q[15] <= hdv_arg_en[5] ? hdv_arg_ovr[5][XLEN-1:0] : InitialA5;
+      xrf_q[16] <= hdv_arg_en[6] ? hdv_arg_ovr[6][XLEN-1:0] : InitialA6;
+      xrf_q[17] <= hdv_arg_en[7] ? hdv_arg_ovr[7][XLEN-1:0] : InitialA7;
+`else
       xrf_q[10] <= InitialA0;
       xrf_q[11] <= InitialA1;
       xrf_q[12] <= InitialA2;
@@ -1458,6 +1492,7 @@ module cva6_hdv_scalar_backend
       xrf_q[15] <= InitialA5;
       xrf_q[16] <= InitialA6;
       xrf_q[17] <= InitialA7;
+`endif
       frf_q[10] <= InitialFa0;
     end else begin
       state_q <= state_d;

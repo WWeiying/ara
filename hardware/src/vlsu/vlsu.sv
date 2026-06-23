@@ -114,6 +114,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic    axi_addrgen_prefetch_req_valid;
   logic    axi_addrgen_prefetch_req_ready;
   logic [7:0] prefetch_buf_occupancy;
+  // Same-id order tag: addrgen pushes is_prefetch per AR, vldu pops per R burst.
+  logic       prefetch_tag_head;
+  logic       prefetch_tag_empty;
+  logic       prefetch_tag_pop;
+  logic       stu_store_pending; // vstu store-in-flight -> addrgen prefetch pacing
+  assign store_pending_o = stu_store_pending;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
   assign lsu_current_burst_exception_o = stu_current_burst_exception | ldu_current_burst_exception;
@@ -217,6 +223,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
     .prefetch_buf_occupancy_i        (prefetch_buf_occupancy),
+    .prefetch_tag_head_o             (prefetch_tag_head),
+    .prefetch_tag_empty_o            (prefetch_tag_empty),
+    .prefetch_tag_pop_i              (prefetch_tag_pop),
+    .store_pending_i                 (stu_store_pending),
     .block_load_addr_i               (block_load_addr_i),
     .hdv_loop_active_i              (hdv_loop_active_i),
     .hdv_prefetch_mode_i            (hdv_prefetch_mode_i),
@@ -274,6 +284,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_addrgen_prefetch_req_valid_i(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_o(axi_addrgen_prefetch_req_ready),
     .prefetch_buf_occupancy_o        (prefetch_buf_occupancy),
+    .prefetch_tag_head_i             (prefetch_tag_head),
+    .prefetch_tag_empty_i            (prefetch_tag_empty),
+    .prefetch_tag_pop_o              (prefetch_tag_pop),
     // Interface with the Mask unit
     .mask_i                 (mask_i                    ),
     .mask_valid_i           (mask_valid_i              ),
@@ -315,7 +328,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_b_valid_i          (axi_resp.b_valid           ),
     .axi_b_ready_o          (axi_req.b_ready            ),
     // Interface with the dispatcher
-    .store_pending_o        (store_pending_o            ),
+    .store_pending_o        (stu_store_pending          ),
     .store_complete_o       (store_complete             ),
     // Interface with the main sequencer
     .pe_req_i               (pe_req_i                   ),
