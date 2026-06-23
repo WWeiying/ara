@@ -483,6 +483,9 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
   // - A counter of how many beats are left in the current AXI burst
   axi_pkg::len_t                           axi_len_d, axi_len_q;
   axi_pkg::len_t                           prefetch_len_d, prefetch_len_q;
+  // Bytes drained toward the CURRENT addrgen descriptor's burst, for per-burst
+  // descriptor consume in the prefetch-hit path (mirrors the demand path's axi_len).
+  vlen_t                                   prefetch_burst_bytes_d, prefetch_burst_bytes_q;
   // - A pointer to which byte in the current R beat we are reading data from.
   logic [idx_width(AxiDataWidth/8):0]      axi_r_byte_pnt_d, axi_r_byte_pnt_q;
   // - A pointer to which byte in the full VRF word we are writing data into.
@@ -544,6 +547,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
 
     axi_len_d           = axi_len_q;
     prefetch_len_d      = prefetch_len_q;
+    prefetch_burst_bytes_d = prefetch_burst_bytes_q;
     axi_r_byte_pnt_d    = axi_r_byte_pnt_q;
     vrf_word_byte_pnt_d = vrf_word_byte_pnt_q;
 
@@ -868,26 +872,44 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
           issue_cnt_bytes_d = issue_cnt_bytes_q - vrf_eff_write_bytes;
         end
 
+        // Accumulate the bytes drained this VRF word toward the CURRENT descriptor's
+        // burst, for the per-burst descriptor consume below.
+        prefetch_burst_bytes_d = prefetch_burst_bytes_d + (issue_cnt_bytes_q - issue_cnt_bytes_d);
+
         prefetch_axi_r_queue0_pop = 1'b1;
         prefetch_axi_r_queue1_pop = 1'b1;
         prefetch_len_d      = prefetch_len_q + 1'b1;
 
       end : prefetch_vrf_word_ready
 
-      // One prefetched burst = one full vector; it is fully drained after
-      // (vl*eew)/(NrLanes*DataWidthB) VRF words. This threshold was hard-coded
-      // to 4 (the m1 value), so it decremented the hit counter / ack'd the
-      // addrgen half-way through an m2+ vector and desynced the buffer for any
-      // LMUL>1. Derive it from vl/vsew so it scales: m1=4, m2=8, m4=16, m8=32.
+      // Per-vector VRF-word counter reset (full vector drained). Scales with vl/vsew.
       if ($unsigned(prefetch_len_d) ==
           (($unsigned(vinsn_issue_q.vl) << vinsn_issue_q.vtype.vsew) / (NrLanes * DataWidthB))) begin : prefetch_axi_r_finish
         prefetch_len_d             = '0;
-        prefetch_axi_ar_hit_cnt_d  = prefetch_axi_ar_hit_cnt_d - 1;
-        axi_addrgen_req_ready_o    = 1'b1;
       end : prefetch_axi_r_finish
+
+      // Per-BURST addrgen descriptor consume. The demand path acks ONE descriptor per
+      // AXI burst (axi_len == len+1); the prefetch-hit path used to ack ONE per WHOLE
+      // VECTOR, so a page-crossing HIT load (addrgen splits it into 2 bursts -> 2
+      // descriptors, +2 hit-counter) ORPHANED its 2nd descriptor in the ldu queue ->
+      // qfull freezes addrgen -> the in-place store of vsswap@4096 starves -> deadlock.
+      // Mirror the demand path: accumulate drained bytes and ack one descriptor every
+      // (len+1)*(AxiDataWidth/8) bytes, decrementing the hit counter once per
+      // descriptor. Single-burst loads (the common case, incl. vsdot) consume exactly
+      // once == old behavior, so they stay bit-exact.
+      if (axi_addrgen_req_valid_q &&
+          ($unsigned(prefetch_burst_bytes_d) >=
+           (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8)))) begin : prefetch_burst_consume
+        prefetch_burst_bytes_d    = prefetch_burst_bytes_d
+                                  - (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8));
+        prefetch_axi_ar_hit_cnt_d = prefetch_axi_ar_hit_cnt_d - 1;
+        axi_addrgen_req_ready_o   = 1'b1;
+      end : prefetch_burst_consume
 
       if (vinsn_issue_valid && issue_cnt_bytes_d == '0 ) begin : prefetch_vrf_results_finish
         vinsn_queue_d.issue_cnt -= 1;
+        // Vector fully drained: clear the burst-byte accumulator for the next vinsn.
+        prefetch_burst_bytes_d = '0;
 
         if (vinsn_queue_q.issue_pnt == (VInsnQueueDepth-1)) begin : prefetch_issue_pnt_overflow
           vinsn_queue_d.issue_pnt = '0;
@@ -1147,6 +1169,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       commit_cnt_bytes_q            <= '0;
       axi_len_q                     <= '0;
       prefetch_len_q                <= '0;
+      prefetch_burst_bytes_q        <= '0;
       axi_r_byte_pnt_q              <= '0;
       vrf_word_byte_pnt_q           <= '0;
       pe_resp_o                     <= '0;
@@ -1166,6 +1189,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       commit_cnt_bytes_q            <= commit_cnt_bytes_d;
       axi_len_q                     <= axi_len_d;
       prefetch_len_q                <= prefetch_len_d;
+      prefetch_burst_bytes_q        <= prefetch_burst_bytes_d;
       axi_r_byte_pnt_q              <= axi_r_byte_pnt_d;
       vrf_word_byte_pnt_q           <= vrf_word_byte_pnt_d;
       pe_resp_o                     <= pe_resp_d;

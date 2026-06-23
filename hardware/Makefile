@@ -162,10 +162,15 @@ ifeq ($(app),jacobi2d_hdv)
   hdv_initial_a3 ?= $(shell printf '%d' 0x800264f0)  # a3 = B_v
 endif
 ifeq ($(app),dropout_hdv)
+  # 4KB-page-aligned, spaced for AVL up to 4096 (mock host checks task_done, not data
+  # values, so these just need to be mapped + non-overlapping). e32/m8 -> VLMAX=256,
+  # load/store stride = vl*4 = 1024 B (1024 | 4096), bitmask stride = vl/8 = 32 B; with
+  # page-aligned bases every load/store stays inside one page -> single-burst, no
+  # page-cross, so the prefetch hit path is the bit-exact single-burst case.
   hdv_initial_a0 ?= $(avl)                           # a0 = n (AVL sweep)
-  hdv_initial_a1 ?= $(shell printf '%d' 0x80001090)  # a1 = in (I)
-  hdv_initial_a2 ?= $(shell printf '%d' 0x80002090)  # a2 = sel (SEL); scale->fa0
-  hdv_initial_a3 ?= $(shell printf '%d' 0x80002490)  # a3 = o
+  hdv_initial_a1 ?= $(shell printf '%d' 0x80002000)  # a1 = in  (I),  16KB @4096
+  hdv_initial_a2 ?= $(shell printf '%d' 0x80006000)  # a2 = sel (SEL), 512B @4096; scale->fa0
+  hdv_initial_a3 ?= $(shell printf '%d' 0x80007000)  # a3 = o,         16KB @4096
 endif
 ifeq ($(app),lavamd_hdv)
   hdv_initial_a0 ?= $(shell printf '%d' 0x800082c0)  # a0 = bx (px)
