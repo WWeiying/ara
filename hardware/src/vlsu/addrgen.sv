@@ -1034,7 +1034,21 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       second_prefetch_vld_compare_d = '0;
     end
 
-    prefetch_axi_ar_rob_match |= second_prefetch_vld_compare_q;
+    // rob_match means "a prefetch AR for this demand's address is still OUTSTANDING
+    // (issued, not yet retired)" -- fundamentally an ROB-occupancy property. The
+    // page-cross pairing flag second_prefetch_vld_compare_q is OR'd in to hold the
+    // demand across the 2-segment window, but it can get STUCK high when the pairing
+    // counter mis-tracks (its clear at line ~1034 needs pop_done_counter_q=1, which a
+    // dropped/odd segment completion can leave at 0). A stuck flag then forces
+    // rob_match forever with an EMPTY ROB, deferring a demand whose data is already
+    // prefetched-and-ready in the lookup FIFO -> the load never gets a descriptor,
+    // never completes, and WAR-blocks the next load -> full pipeline deadlock
+    // (observed: fdotp@512, vsswap@4096). Gate the flag on a non-empty ROB: during a
+    // genuine page-cross window both segments are resident so this is a no-op, but
+    // once every prefetch AR has retired (ROB empty) there is nothing to wait for, so
+    // the flag can no longer wedge the demand path. Performance-neutral: it only
+    // removes a spurious block.
+    prefetch_axi_ar_rob_match |= (second_prefetch_vld_compare_q && !prefetch_axi_ar_rob_empty);
 
     if (vreq_is_vld &&
         //!(vreq_is_load_d && block_load_addr_i) &&
@@ -1043,7 +1057,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
 
-        if (!prefetch_axi_addr_lookup_fifo_empty &&
+        // Prefetch-hit detection. MUST be gated on vreq_is_load_d: the data prefetcher
+        // is read-only, so only a LOAD can legitimately hit it. An in-place STORE
+        // (vsswap writes the very addresses it loaded/prefetched) would otherwise match
+        // here, set prefetch_axi_ar_hit, and POP the lookup FIFO -- stealing a real
+        // load's prefetch-hit entry. That desyncs the load hit/descriptor accounting
+        // (orphan load descriptors pile up in the ldu queue -> qfull freezes addrgen)
+        // and the store path, deadlocking the only in-place-store kernel at max AVL
+        // (vsswap@4096). Loads keep the original behavior unchanged -> performance-neutral.
+        if (vreq_is_load_d &&
+            !prefetch_axi_addr_lookup_fifo_empty &&
             (paddr == prefetch_axi_addr_lookup_fifo_data) &&
             vreq_is_unit_stride_d) begin
           prefetch_axi_ar_hit               = 1'b1;
@@ -1310,7 +1333,17 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
             vreq_addr_d = aligned_next_start_addr_d;
             vreq_blen_d = remaining_bytes;
-            if (paddr == prefetch_axi_ar_rob_pop_done_addr_q) begin
+            // Prefetch-hit truncation: if this burst's address was already covered by
+            // a completed page-cross prefetch, skip the remaining bytes. This is a
+            // LOAD-only optimization (prefetch is read-only). It MUST be gated on
+            // vreq_is_load_d: an in-place STORE (vsswap stores to the very addresses
+            // it loads/prefetches) would otherwise match this stale prefetch address
+            // and get its remaining bursts truncated -> the store's tail descriptor is
+            // never pushed -> vstu hangs with desc_v=0,issbytes>0 -> the unfinished
+            // store WAR-blocks the next load -> ldu descriptor queue fills -> addrgen
+            // wedges on that load -> full deadlock (observed: vsswap@4096, the only
+            // in-place-store kernel). Loads keep the original behavior unchanged.
+            if (vreq_is_load_d && paddr == prefetch_axi_ar_rob_pop_done_addr_q) begin
               vreq_blen_d = '0;
             end
 
@@ -1607,4 +1640,5 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
              cnt_pf_ar_disabled, cnt_pf_second_issued, cnt_demand_rob_block);
   end
   `endif
+
 endmodule : addrgen
