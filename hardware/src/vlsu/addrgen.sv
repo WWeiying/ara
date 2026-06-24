@@ -117,14 +117,19 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   always_comb begin
-    // Per-request prefetch_mode (pe_req.prefetch_mode, latched from HDV hint
-    // at vq enqueue) may be stale if the global mode was disabled afterwards
-    // (e.g. loop_exit).  Respect the current global mode as a gate: when the
-    // global mode is off, per-request mode is ignored.  Non-HDV paths get
-    // pe_req.prefetch_mode == 2'b00 → fall back to global.
+    // Effective prefetch mode = the per-request mode latched from the HDV hint at
+    // vq enqueue (stable per request); fall back to the global mode for non-HDV
+    // paths (pe_req.prefetch_mode == 0).  The global hdv_prefetch_mode_i must NOT
+    // veto a valid per-request mode: it drops to 0 in the gaps BETWEEN HDV packets
+    // (hdv_vliw_pack_unit drives 0 when no packet is held), and because the addrgen
+    // lags the front-end a short single-load-stream loop (vsscal) is processed
+    // exactly during such a gap -> its legitimate prefetch was spuriously suppressed
+    // (stuck at 3 ARs for the whole kernel).  loop_active_fall below still forces
+    // PF_DEN on the real loop exit, so dropping the global veto removes only an
+    // over-conservative suppression (vsscal prefetch 3 -> per-iteration, -15%
+    // cycles; full 8-kernel sweep all pass, no kernel regresses).
     automatic logic [1:0] effective_mode;
-    effective_mode = (hdv_prefetch_mode_i == 2'b00) ? 2'b00 :
-                     (pe_req_d.prefetch_mode != 2'b00) ? pe_req_d.prefetch_mode
+    effective_mode = (pe_req_d.prefetch_mode != 2'b00) ? pe_req_d.prefetch_mode
                                                        : hdv_prefetch_mode_i;
     unique case (effective_mode)
       2'b01:   prefetch_info = PF_EN_1X;
@@ -155,6 +160,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // R channel into deadlock -- for ANY LMUL and ANY number of load streams K.
   // Over-budget bursts simply wait (or the loop runs demand-only), never wedge.
   localparam int unsigned PrefetchBufBeats = 128;
+  // Store-aware BOUNDED-LEAD prefetch budget. When a store is starved
+  // (store_stuck) the prefetch no longer drains to empty between iterations
+  // (which collapsed the distance-1 pipeline -> low hit rate on vsaxpy); instead
+  // it keeps at most this many beats of lead (resident + in-flight) ahead of the
+  // demand, then pauses to yield the single port to the store. ~1.5 iterations
+  // of a 2-stream e32/m1 loop (2*8 beats) -> enough to stay one iteration ahead
+  // (100% hit) yet shallow enough that the store still gets its port turns.
+  localparam int unsigned PrefetchLeadBeats = 24;
 
 
   // In-flight prefetch beats: issued (ROB-pushed) but not yet landed in the
@@ -1435,13 +1448,17 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // (avl unchanged), but on a NEW iteration (avl differs) wait until the previous
         // iteration's prefetch beats have fully drained (in-flight == 0). The drain
         // gap frees the single memory port for demand stores (vsaxpy).
-        // Store-aware: only pace the prefetch (drain between iterations) while a
-        // store is STARVED; otherwise run free so store-light loops (vvaddint32) pay
-        // no penalty. When starved, fall back to the per-iteration drain that frees
-        // the memory port for the store (vsaxpy).
+        // Store-aware BOUNDED-LEAD pacing: only pace the prefetch while a store is
+        // STARVED; otherwise run free so store-light loops (vvaddint32) pay no
+        // penalty. When starved, instead of draining to empty between iterations
+        // (== 0, which left the prefetch 0-ahead -> demand missed), keep a small
+        // lead (resident*2 + in-flight <= PrefetchLeadBeats) so the next iteration's
+        // data is already prefetched (100% hit) while the bounded depth still yields
+        // the single port to the demand store.
         && (!store_stuck
             || (pe_req_d.avl == prefetch_iter_avl_q)
-            || (prefetch_inflight_beats_q == '0))
+            || ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q)
+                <= PrefetchLeadBeats))
     ) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;
