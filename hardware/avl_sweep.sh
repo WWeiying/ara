@@ -13,7 +13,11 @@
 #   ./avl_sweep.sh all "16 64 256 1024"     # all kernels, custom AVL list
 #
 # Output: avl_sweep_out/<kernel>.csv (per kernel) + avl_sweep_out/all.csv
-# (combined) + a live console table.
+# (combined) + a live console table.  The CSV captures the FULL set of perf
+# counters the HDV mock-host sim emits: HDV-CSR (cycles/EPs/idle), HDV-PERF
+# (dispatch path), IPU-PERF (operand serve), PERF-ADDRGEN / -PF (LSU + data
+# prefetcher), PERF-SEQ (sequencer hazards).  ~60 columns; the console shows a
+# compact subset.
 
 set -uo pipefail
 cd "$(dirname "$0")"            # hardware/
@@ -47,18 +51,33 @@ if [ "$ARG_K" = "all" ]; then KERNELS="$ALL_KERNELS"; else KERNELS="$ARG_K"; fi
 OUT=avl_sweep_out
 mkdir -p "$OUT"
 COMBINED="$OUT/all.csv"
-echo "kernel,avl,result,cycles,cyc_per_elem,eps,packets,avg_cyc_per_pkt,pf_ar,pf_hit" > "$COMBINED"
 
-extract() {  # $1=log $2=pat -> first integer after pat
-  grep -oE "$2[0-9]+" "$1" 2>/dev/null | head -1 | grep -oE '[0-9]+'
-}
+# ── Full column set (order matters: the row is assembled in this exact order) ──
+H_ID="avl,result,task_cycles,cyc_per_elem,wall_cycles,eps,vec_busy,imem_outstanding"
+H_HDV="ep_ack,ep_vset_ack,vq_push,vq_pop,vq_max_occ,vq_bypass,vq_full_stall,dispatch_slots,dispatch_cycles,fsm_could_bypass,operand_wait_cyc,ara_backpressure,real_wait_stall,resp_meta_stall,resp_meta_max"
+H_IPU="ipu_ready_cyc,ipu_ready_stall,ipu_sram_stall,ipu_serve_cyc,packets,bypass_hits,demand_reads,avg_cyc_per_pkt"
+H_AG="demand_ar,pf_ar,pf_hit,loads,pf_en_cyc,demand_aw,demand_B,pf_B"
+H_AGPF="pf_ar_rob_full,pf_ar_lkup_full,pf_ar_pending,pf_ar_dis,pf_2nd,dem_rob_block,pf_disabled,pf_page_cross,pf_queue_full,pf_avl_low"
+H_SEQ="seq_issue,seq_blocked,seq_raw,seq_war,seq_waw,seq_waw_block,seq_ep_bypass,seq_full"
+H_DERIV="pf_hit_rate"
+ROWHDR="$H_ID,$H_HDV,$H_IPU,$H_AG,$H_AGPF,$H_SEQ,$H_DERIV"     # per-kernel CSV header
+echo "kernel,$ROWHDR" > "$COMBINED"                            # combined adds kernel col
+
+# kv TAG KEY -> first numeric value of `KEY=<n>` (or `KEY = <n>`) on a line
+# matching TAG.  Scoping to TAG avoids cross-group prefix collisions (e.g. SEQ
+# `full=` vs ADDRGEN-PF `pf_queue_full=`).  KEY must be immediately followed by
+# optional spaces then `=`, so `waw=` never matches `waw_block=`.
+log=""
+kv() { grep -hE "$1" "$log" 2>/dev/null | grep -oE "$2[[:space:]]*=[[:space:]]*[0-9]+" | head -1 | grep -oE '[0-9]+$'; }
+d() { local v; v=$(grep -hE "$1" "$log" 2>/dev/null | grep -oE "$2=[0-9]+" | head -1 | grep -oE '[0-9]+'); echo "$v"; }
 
 for k in $KERNELS; do
   max=${MAXAVL[$k]:-1024}
   csv="$OUT/${k}.csv"
-  echo "avl,result,cycles,cyc_per_elem,eps,packets,avg_cyc_per_pkt,pf_ar,pf_hit" > "$csv"
+  echo "$ROWHDR" > "$csv"
   echo "==================== $k  (max AVL=$max) ===================="
-  printf "%-7s %-7s %-8s %-8s %-6s %-7s %s\n" "AVL" "result" "cycles" "cyc/el" "EPs" "avg/pk" "pf_ar→hit"
+  printf "%-7s %-7s %-8s %-7s %-6s %-7s %-7s %-9s %s\n" \
+         "AVL" "result" "cycles" "cyc/el" "EPs" "pkts" "avg/pk" "pf_ar→hit" "seq_blk"
   for n in $AVLS; do
     if [ "$n" -gt "$max" ]; then continue; fi
     log=/tmp/avl_${k}_${n}.log
@@ -66,20 +85,68 @@ for k in $KERNELS; do
     # +HDV_EXPECTED_EP huge: don't cap the task at the compile-time EP count;
     # let the kernel run its full AVL and `ret` naturally.
     timeout 600 make sim app="$k" hdv_plusargs="+HDV_${reg}=${n} +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
-    r=$(grep -E 'mock host' "$log" | head -1 | grep -oE 'PASSED|FAILED')
-    [ -z "$r" ] && r="ERR"
-    c=$(extract "$log" 'total_task_cycles=')
-    got=$(grep -E 'mock host' "$log" | head -1 | grep -oE 'got [0-9]+' | grep -oE '[0-9]+')
-    pk=$(grep "IPU-PERF] serve" "$log" | grep -oE 'packets=[0-9]+' | head -1 | grep -oE '[0-9]+')
-    ac=$(grep "IPU-PERF] serve" "$log" | grep -oE 'avg_cycles_per_pkt=[0-9]+' | head -1 | grep -oE '[0-9]+')
-    pfa=$(grep "PERF-ADDRGEN]" "$log" | grep -oE 'pf_ar=[0-9]+' | head -1 | grep -oE '[0-9]+')
-    pfh=$(grep "PERF-ADDRGEN]" "$log" | grep -oE 'pf_hit=[0-9]+' | head -1 | grep -oE '[0-9]+')
-    cpe="-"; if [ -n "$c" ]; then cpe=$(echo "scale=3; $c/$n" | bc); fi
-    printf "%-7s %-7s %-8s %-8s %-6s %-7s %s\n" "$n" "$r" "${c:--}" "$cpe" "${got:--}" "${ac:--}" "${pfa:--}→${pfh:--}"
-    echo "$n,$r,${c:-},$cpe,${got:-},${pk:-},${ac:-},${pfa:-},${pfh:-}" >> "$csv"
-    echo "$k,$n,$r,${c:-},$cpe,${got:-},${pk:-},${ac:-},${pfa:-},${pfh:-}" >> "$COMBINED"
+
+    # ── identity / result ──
+    r=$(grep -E 'mock host' "$log" | head -1 | grep -oE 'PASSED|FAILED'); [ -z "$r" ] && r="ERR"
+    tc=$(kv 'mock host' 'total_task_cycles')
+    wc=$(d 'HDV-CSR.*DONE' 'wall_cycle')
+    eps=$(d 'HDV-CSR.*DONE' 'accepted'); [ -z "$eps" ] && eps=$(grep -E 'mock host' "$log" | grep -oE 'got [0-9]+' | grep -oE '[0-9]+')
+    vbusy=$(d 'HDV-CSR.*DONE' 'vec_busy')
+    imem=$(d 'HDV-CSR.*DONE' 'imem_outstanding')
+    cpe="-"; [ -n "$tc" ] && cpe=$(echo "scale=3; $tc/$n" | bc)
+
+    # ── HDV-PERF (dispatch path) ──
+    ep_ack=$(kv 'HDV-PERF' 'ep_acknowledged')
+    ep_vack=$(kv 'HDV-PERF' 'ep_vset_acknowledged')
+    vqpush=$(kv 'HDV-PERF' 'vq_push'); vqpop=$(kv 'HDV-PERF' 'vq_pop')
+    vqmax=$(kv 'HDV-PERF' 'vq_max_occupancy'); vqbyp=$(kv 'HDV-PERF' 'vq_bypass')
+    vqfs=$(kv 'HDV-PERF' 'vq_full_stall')
+    dslots=$(kv 'HDV-PERF' 'dispatch_slots'); dcyc=$(kv 'HDV-PERF' 'dispatch_total_cycles')
+    fbyp=$(kv 'HDV-PERF' 'fsm_could_bypass'); owc=$(kv 'HDV-PERF' 'operand_wait_cycles')
+    abp=$(kv 'HDV-PERF' 'ara_backpressure'); rwfs=$(kv 'HDV-PERF' 'real_wait_full_stall')
+    rmfs=$(kv 'HDV-PERF' 'resp_meta_full_stall'); rmmax=$(kv 'HDV-PERF' 'resp_meta_max')
+
+    # ── IPU-PERF (operand serve) ──
+    irc=$(kv 'IPU-PERF' 'ready_cyc'); irs=$(kv 'IPU-PERF' 'ready_stall')
+    isr=$(kv 'IPU-PERF' 'stall_due_to_sram'); isc=$(kv 'IPU-PERF' 'serve_cycles')
+    pk=$(kv 'IPU-PERF' 'packets'); byh=$(kv 'IPU-PERF' 'bypass_hits')
+    dmr=$(kv 'IPU-PERF' 'demand_reads'); acp=$(kv 'IPU-PERF' 'avg_cycles_per_pkt')
+
+    # ── PERF-ADDRGEN (LSU + data prefetcher) ──  ']' in tag excludes -PF lines
+    dar=$(kv 'PERF-ADDRGEN\]' 'demand_ar'); pfa=$(kv 'PERF-ADDRGEN\]' 'pf_ar')
+    pfh=$(kv 'PERF-ADDRGEN\]' 'pf_hit'); lds=$(kv 'PERF-ADDRGEN\]' 'loads')
+    pfen=$(kv 'PERF-ADDRGEN\]' 'pf_en_cyc'); daw=$(kv 'PERF-ADDRGEN\]' 'demand_aw')
+    dB=$(kv 'PERF-ADDRGEN\]' 'demand_B'); pfB=$(kv 'PERF-ADDRGEN\]' 'pf_B')
+
+    # ── PERF-ADDRGEN-PF (prefetch back-pressure breakdown) ──
+    parf=$(kv 'PERF-ADDRGEN-PF' 'pf_ar_rob_full'); palf=$(kv 'PERF-ADDRGEN-PF' 'pf_ar_lkup_full')
+    pap=$(kv 'PERF-ADDRGEN-PF' 'pf_ar_pending'); pad=$(kv 'PERF-ADDRGEN-PF' 'pf_ar_dis')
+    p2nd=$(kv 'PERF-ADDRGEN-PF' 'pf_2nd'); drb=$(kv 'PERF-ADDRGEN-PF' 'dem_rob_block')
+    pdis=$(kv 'PERF-ADDRGEN-PF' 'pf_disabled'); ppc=$(kv 'PERF-ADDRGEN-PF' 'pf_page_cross')
+    pqf=$(kv 'PERF-ADDRGEN-PF' 'pf_queue_full'); pal=$(kv 'PERF-ADDRGEN-PF' 'pf_avl_low')
+
+    # ── PERF-SEQ (sequencer hazards) ──
+    sissue=$(kv 'PERF-SEQ' 'issue'); sblk=$(kv 'PERF-SEQ' 'blocked')
+    sraw=$(kv 'PERF-SEQ' 'raw'); swar=$(kv 'PERF-SEQ' 'war'); swaw=$(kv 'PERF-SEQ' 'waw')
+    swawb=$(kv 'PERF-SEQ' 'waw_block'); sepb=$(kv 'PERF-SEQ' 'ep_bypass'); sfull=$(kv 'PERF-SEQ' 'full')
+
+    # ── derived ──
+    pfhr="-"; if [ -n "$pfa" ] && [ "$pfa" -gt 0 ] 2>/dev/null; then pfhr=$(echo "scale=3; ${pfh:-0}/$pfa" | bc); fi
+
+    row="$n,$r,${tc:-},$cpe,${wc:-},${eps:-},${vbusy:-},${imem:-}"
+    row="$row,${ep_ack:-},${ep_vack:-},${vqpush:-},${vqpop:-},${vqmax:-},${vqbyp:-},${vqfs:-},${dslots:-},${dcyc:-},${fbyp:-},${owc:-},${abp:-},${rwfs:-},${rmfs:-},${rmmax:-}"
+    row="$row,${irc:-},${irs:-},${isr:-},${isc:-},${pk:-},${byh:-},${dmr:-},${acp:-}"
+    row="$row,${dar:-},${pfa:-},${pfh:-},${lds:-},${pfen:-},${daw:-},${dB:-},${pfB:-}"
+    row="$row,${parf:-},${palf:-},${pap:-},${pad:-},${p2nd:-},${drb:-},${pdis:-},${ppc:-},${pqf:-},${pal:-}"
+    row="$row,${sissue:-},${sblk:-},${sraw:-},${swar:-},${swaw:-},${swawb:-},${sepb:-},${sfull:-}"
+    row="$row,$pfhr"
+
+    echo "$row"       >> "$csv"
+    echo "$k,$row"    >> "$COMBINED"
+    printf "%-7s %-7s %-8s %-7s %-6s %-7s %-7s %-9s %s\n" \
+           "$n" "$r" "${tc:--}" "$cpe" "${eps:--}" "${pk:--}" "${acp:--}" "${pfa:--}→${pfh:--}" "${sblk:--}"
   done
-  echo "  -> $csv"
+  echo "  -> $csv  ($(($(head -1 "$csv" | tr ',' '\n' | wc -l))) columns)"
 done
 echo ""
 echo "combined: $COMBINED"
