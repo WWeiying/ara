@@ -635,6 +635,19 @@ module hdv_instruction_prefetch_unit #(
               exec_idx_d       = exec_idx_q + 1;
               loop_wait_d      = 1'b0;
               loop_exit_seen_d = 1'b0;
+              // The loop-end cap (see fill_req_done_d=1 on the loop_end packet
+              // above) stopped the fill mid-buffer to avoid speculatively reading
+              // past the loop.  On a confirmed not-taken exit whose fall-through
+              // stays in THIS buffer, re-enable the fill so the post-loop code
+              // beyond the loop body (still inside the buffer) gets fetched;
+              // otherwise exec stalls forever at the first un-fetched packet.
+              // (The exec_idx==LastPacketIdx branch above already does this via
+              // the next-buffer switch; the single-buffer fall-through did not.)
+              // bg_fill_done_d is 0 here (only set in the 2-buffer fill path), so
+              // resetting it is a no-op; kept for parity with the other re-enable
+              // sites (lines ~569/588/623) and as a guard on the mem_req_v gate.
+              fill_req_done_d  = 1'b0;
+              bg_fill_done_d   = 1'b0;
             end
           end
 
