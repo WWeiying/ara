@@ -1,0 +1,5 @@
+avl,result,cycles,cyc_per_elem,eps,packets,avg_cyc_per_pkt,pf_ar,pf_hit
+256,PASSED,396,1.546,19,12,6,2,2
+512,PASSED,701,1.369,29,22,16,6,3
+1024,PASSED,1348,1.316,49,42,24,9,3
+2048,PASSED,2500,1.220,89,82,26,9,3
