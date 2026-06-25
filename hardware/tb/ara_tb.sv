@@ -1488,7 +1488,12 @@ module ara_tb;
         $display("[HDV-PERF]   vq_max_occupancy      = %0d", dut.i_ara_soc.i_system.i_vec_dispatch_unit.cnt_vq_max_occupancy);
         $display("[HDV-PERF]   resp_meta_max         = %0d", dut.i_ara_soc.i_system.i_vec_dispatch_unit.cnt_resp_meta_max);
         $display("[HDV-PERF]   dispatch_total_cycles = %0d", dut.i_ara_soc.i_system.i_vec_dispatch_unit.cnt_dispatch_total_cycles);
-        $finish;
+        // Let outstanding vector stores drain to L2 before ending (perf counters
+        // are already captured above; this only affects the L2 write monitor).
+        fork begin : drain_finish
+          repeat (400) @(posedge clk);
+          $finish;
+        end join_none
       end
       if (i_hdv_mock_host_core.state_q == 4'd10 && hdv_mock_state_prev_q != 4'd10) begin
         $display("[HDV] @%0t cycle=%0d mock host FAIL — HDV pipeline test FAILED (expected %0d EPs, got %0d, total_task_cycles=%0d)",

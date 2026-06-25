@@ -317,6 +317,49 @@ module cva6_hdv_scalar_backend
   logic [31:0]               curr_int_read_mask;
   logic                      complex_simple_raw_stall;
 
+  // ── Pipelined (non-blocking) scalar load queue ─────────────────────────────
+  // The original LSU blocks one load per EP (IDLE->EXECUTE->LSU_AR->LSU_R), so a
+  // GEMM iteration's 4 A-loads serialize at full AXI round-trip latency.  This
+  // queue lets a single EP issue several load ARs back-to-back (same AXI id => R
+  // returns in order) and collect the R responses into FRF/XRF as they arrive,
+  // pipelining the round-trips.  The state (repurposed LSU_AR) stays until every
+  // outstanding R has drained, so a dependent vfmacc reading the loaded fa (in a
+  // later EP, gated by scalar_ep_done) still observes the written value.
+  localparam int unsigned LdQDepth = 4;
+  localparam int unsigned LdQPtrW  = (LdQDepth > 1) ? $clog2(LdQDepth) : 1;
+  localparam int unsigned ByteOffW = $clog2(AxiDataWidth/8);
+  logic [LdQDepth-1:0][4:0]          ldq_rd_q, ldq_rd_d;
+  logic [LdQDepth-1:0]               ldq_is_fpr_q, ldq_is_fpr_d;
+  logic [LdQDepth-1:0][ByteOffW-1:0] ldq_off_q, ldq_off_d;
+  logic [LdQDepth-1:0][2:0]          ldq_ext_q, ldq_ext_d;
+  logic [LdQPtrW-1:0]                ldq_head_q, ldq_head_d;
+  logic [LdQPtrW-1:0]                ldq_tail_q, ldq_tail_d;
+  logic [LdQPtrW:0]                  ldq_count_q, ldq_count_d;
+  localparam logic [LdQPtrW:0]       LdQDepthC = LdQDepth;
+  logic                             ldq_full, ldq_empty;
+  logic                             ld_ar_valid, ld_ar_fire, ld_r_fire;
+  logic                             curr_is_load;
+  logic [2:0]                        curr_ld_ext;
+  logic [XLEN-1:0]                   ldq_pop_data;
+  logic                             ldq_pop_err;
+
+  function automatic logic [XLEN-1:0] ld_extend(input logic [AxiDataWidth-1:0] data,
+                                                input logic [ByteOffW-1:0]      off,
+                                                input logic [2:0]               ext);
+    logic [AxiDataWidth-1:0] raw;
+    raw = data >> (8 * off);
+    unique case (ext)
+      3'd0: ld_extend = {{(XLEN-8){raw[7]}},   raw[7:0]};
+      3'd1: ld_extend = {{(XLEN-8){1'b0}},     raw[7:0]};
+      3'd2: ld_extend = {{(XLEN-16){raw[15]}}, raw[15:0]};
+      3'd3: ld_extend = {{(XLEN-16){1'b0}},    raw[15:0]};
+      3'd4: ld_extend = {{(XLEN-32){raw[31]}}, raw[31:0]};
+      3'd5: ld_extend = {{(XLEN-32){1'b0}},    raw[31:0]};
+      3'd6: ld_extend = {{(XLEN-32){1'b1}},    raw[31:0]};
+      default: ld_extend = raw[XLEN-1:0];
+    endcase
+  endfunction
+
   function automatic logic [XLEN-1:0] sext32(input logic [31:0] value);
     sext32 = {{(XLEN-32){value[31]}}, value};
   endfunction
@@ -1096,6 +1139,57 @@ module cva6_hdv_scalar_backend
     end
   end
 
+  always_comb begin : p_ldq_ctrl
+    curr_is_load = curr_slot_found && (cva6_decoded.fu == LOAD) && !unsupported;
+    case (cva6_decoded.op)
+      LB:      curr_ld_ext = 3'd0;
+      LBU:     curr_ld_ext = 3'd1;
+      LH:      curr_ld_ext = 3'd2;
+      LHU:     curr_ld_ext = 3'd3;
+      LW:      curr_ld_ext = 3'd4;
+      LWU:     curr_ld_ext = 3'd5;
+      FLW:     curr_ld_ext = 3'd6;
+      default: curr_ld_ext = 3'd7;
+    endcase
+    ldq_full     = (ldq_count_q == LdQDepthC);
+    ldq_empty    = (ldq_count_q == '0);
+    ld_ar_valid  = (state_q == LSU_AR) && curr_is_load && !vec_store_inflight_i && !ldq_full;
+    ld_ar_fire   = ld_ar_valid && scalar_axi_resp_i.ar_ready && !flush_i;
+    ld_r_fire    = (state_q == LSU_AR) && !ldq_empty && scalar_axi_resp_i.r_valid && !flush_i;
+    ldq_pop_data = ld_extend(scalar_axi_resp_i.r.data, ldq_off_q[ldq_head_q], ldq_ext_q[ldq_head_q]);
+    ldq_pop_err  = ld_r_fire && (scalar_axi_resp_i.r.resp != axi_pkg::RESP_OKAY);
+  end
+
+  always_comb begin : p_ldq_update
+    ldq_rd_d     = ldq_rd_q;
+    ldq_is_fpr_d = ldq_is_fpr_q;
+    ldq_off_d    = ldq_off_q;
+    ldq_ext_d    = ldq_ext_q;
+    ldq_head_d   = ldq_head_q;
+    ldq_tail_d   = ldq_tail_q;
+    ldq_count_d  = ldq_count_q;
+    if (ld_ar_fire) begin
+      ldq_rd_d[ldq_tail_q]     = rd_addr;
+      ldq_is_fpr_d[ldq_tail_q] = lsu_is_fp;
+      ldq_off_d[ldq_tail_q]    = lsu_addr[ByteOffW-1:0];
+      ldq_ext_d[ldq_tail_q]    = curr_ld_ext;
+      ldq_tail_d               = ldq_tail_q + 1'b1;
+    end
+    if (ld_r_fire) begin
+      ldq_head_d = ldq_head_q + 1'b1;
+    end
+    unique case ({ld_ar_fire, ld_r_fire})
+      2'b10:   ldq_count_d = ldq_count_q + 1'b1;
+      2'b01:   ldq_count_d = ldq_count_q - 1'b1;
+      default: ldq_count_d = ldq_count_q;
+    endcase
+    if (flush_i) begin
+      ldq_head_d  = '0;
+      ldq_tail_d  = '0;
+      ldq_count_d = '0;
+    end
+  end
+
   always_comb begin : p_scalar_axi_req
     scalar_axi_req = '0;
     scalar_axi_req.ar.id     = '0;
@@ -1128,8 +1222,8 @@ module cva6_hdv_scalar_backend
     scalar_axi_req.w.last = 1'b1;
     scalar_axi_req.w.user = '0;
 
-    scalar_axi_req.ar_valid = (state_q == LSU_AR) && !flush_i;
-    scalar_axi_req.r_ready  = (state_q == LSU_R)  && !flush_i;
+    scalar_axi_req.ar_valid = ld_ar_valid && !flush_i;
+    scalar_axi_req.r_ready  = (state_q == LSU_AR) && !ldq_empty && !flush_i;
     scalar_axi_req.aw_valid = (state_q == LSU_AW) && !flush_i;
     scalar_axi_req.w_valid  = (state_q == LSU_W)  && !flush_i;
     scalar_axi_req.b_ready  = (state_q == LSU_B)  && !flush_i;
@@ -1352,8 +1446,33 @@ module cva6_hdv_scalar_backend
       end
 
       LSU_AR: begin
-        if (scalar_axi_resp_i.ar_ready) begin
-          state_d = LSU_R;
+        // Pipelined load: issue ARs for consecutive load slots (each cleared on
+        // its AR fire so curr_slot advances to the next load) while collecting R
+        // responses in order into FRF/XRF.  The EP only leaves this state once
+        // every outstanding R has drained, so scalar_ep_done (=> a dependent
+        // vfmacc's operand read) observes the written value.
+        remaining_slots = insn_valid_q;
+        if (ld_ar_fire) begin
+          remaining_slots[curr_slot_idx] = 1'b0;
+          insn_valid_d = remaining_slots;
+        end
+        if (ld_r_fire) begin
+          if (!ldq_pop_err && (ldq_rd_q[ldq_head_q] != 5'd0)) begin
+            if (ldq_is_fpr_q[ldq_head_q]) begin
+              frf_d[ldq_rd_q[ldq_head_q]] = ldq_pop_data;
+            end else begin
+              xrf_d[ldq_rd_q[ldq_head_q]] = ldq_pop_data;
+            end
+          end
+          if (ldq_pop_err) begin
+            error_seen_d = 1'b1;
+          end
+        end
+        // Leave once no further load AR can be issued and the queue has drained
+        // (this cycle's pop empties it).
+        if (!curr_is_load &&
+            ((ldq_count_q == '0) || (ld_r_fire && (ldq_count_q == 'd1)))) begin
+          state_d = (|insn_valid_d) ? EXECUTE : DONE;
         end
       end
 
@@ -1466,6 +1585,13 @@ module cva6_hdv_scalar_backend
       csr_vl_q <= '0;
       csr_vtype_q <= '0;
       csr_frm_q <= 3'b000;
+      ldq_rd_q <= '0;
+      ldq_is_fpr_q <= '0;
+      ldq_off_q <= '0;
+      ldq_ext_q <= '0;
+      ldq_head_q <= '0;
+      ldq_tail_q <= '0;
+      ldq_count_q <= '0;
       for (int unsigned i = 0; i < 32; i++) begin
         xrf_q[i] <= '0;
         frf_q[i] <= '0;
@@ -1513,6 +1639,13 @@ module cva6_hdv_scalar_backend
       csr_vl_q <= csr_vl_d;
       csr_vtype_q <= csr_vtype_d;
       csr_frm_q <= csr_frm_d;
+      ldq_rd_q <= ldq_rd_d;
+      ldq_is_fpr_q <= ldq_is_fpr_d;
+      ldq_off_q <= ldq_off_d;
+      ldq_ext_q <= ldq_ext_d;
+      ldq_head_q <= ldq_head_d;
+      ldq_tail_q <= ldq_tail_d;
+      ldq_count_q <= ldq_count_d;
       for (int unsigned i = 0; i < 32; i++) begin
         xrf_q[i] <= xrf_d[i];
         frf_q[i] <= frf_d[i];
