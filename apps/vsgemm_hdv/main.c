@@ -54,9 +54,12 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
 
-    // setup: VL config + row-block count + A/C bases.
+    // setup: VL config + row-block count + A/C bases.  AVL is set to 1024 (VL
+    // still resolves to 32 because VLMAX=32) so the data prefetcher sees
+    // avl >= vl*2 for the B-row load across the whole inner loop -- this lets the
+    // prefetch engage WITHOUT a per-iteration vsetvli (which would cost an EP).
     "HDV_HINT 0x00\n"
-    "li a3, 32\n"
+    "li a3, 1024\n"
     "vsetvli zero, a3, e32, m1, ta, ma\n"
     "li t0, 8\n"
     "HDV_HINT 0x02\n"
@@ -74,67 +77,47 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     "vmv.v.i v11, 0\n"
     "nop\n"
     "nop\n"
-    // 4 A row pointers for rows i..i+3.
+    // A base pointer for row i (rows i+1..i+3 are read via immediate offsets
+    // 128/256/384 off t3, so t4..t6 are no longer needed).
     "HDV_HINT 0x0a\n"
     "mv t3, t1\n"
-    "addi t4, t1, 128\n"
-    "addi t5, t1, 256\n"
-    "HDV_HINT 0x0a\n"
-    "addi t6, t1, 384\n"
     "mv a3, a1\n"
     "li a4, 1024\n"
 
     // inner loop top: VL config.
     "k_loop_32:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
-    "vsetvli zero, a4, e32, m1, ta, ma\n"
-    "nop\n"
-    "nop\n"
-    // 4 scalar loads A[i+r][k] (one per EP: synchronous scalar LSU).
-    "HDV_HINT 0x00\n"
+    // Rows i+1..i+3 of A are read via immediate offsets 128/256/384 off t3 (the
+    // row stride is 128B), so only t3 is bumped below.
+    // ── Dense pack: packet256 + cross + p-bits (boundary p-bit=1 keep in same EP,
+    //    p-bit=0 cut; cross=1 carries the packet tail EP into the next packet;
+    //    see hdv_vliw_pack_unit.sv) ─────────────────────────────────────────────
+    // packet 0 (256-bit, loop_start, cross): the 4 scalar A loads packed into ONE
+    // EP (p-bits keep slots 1/3/5) so the pipelined scalar LSU issues all 4 ARs
+    // back-to-back and overlaps their AXI round-trips (~36->~15 cyc/iter); then
+    // the B load and the first 2 of the 4 vfmacc.  The vfmacc EP is the packet
+    // tail (< 8 slots), so cross=1 carries it into packet 1 with no pad nops.
+    // (The prefetch AVL comes from the setup vsetvli, a3=1024.)
+    // p-bits = 0x82a (keep flw fa0..fa3 at 1/3/5; cut before vle at 7; keep
+    // vfmacc(v8) -> vfmacc(v9) at 11).
+    "HDV_HINT 0x82a, 1, 1, 1, 0, 0\n"
     "flw fa0, 0(t3)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "flw fa1, 0(t4)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "flw fa2, 0(t5)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "flw fa3, 0(t6)\n"
-    "nop\n"
-    "nop\n"
-    // load one B[k,:] row.
-    "HDV_HINT 0x00\n"
+    "flw fa1, 128(t3)\n"
+    "flw fa2, 256(t3)\n"
+    "flw fa3, 384(t3)\n"
     "vle32.v v0, (a3)\n"
-    "nop\n"
-    "nop\n"
-    // 4 fmacc into the 4 accumulators (vector chain).
-    "HDV_HINT 0x0a\n"
     "vfmacc.vf v8, fa0, v0\n"
     "vfmacc.vf v9, fa1, v0\n"
+    // packet 1 (256-bit, loop_end): the carried v8/v9 complete the 4-wide vfmacc
+    // EP with v10/v11 (continue at slot 1, cut at 3), then the 3 addi as one EP
+    // (continue at slots 5/7), then bnez (a branch forces its own EP).
+    // p-bits = 0xa2.
+    "HDV_HINT 0xa2, 1, 0, 0, 1, 0\n"
     "vfmacc.vf v10, fa2, v0\n"
-    "HDV_HINT 0x00\n"
     "vfmacc.vf v11, fa3, v0\n"
-    "nop\n"
-    "nop\n"
-    // advance A row pointers (4) ...
-    "HDV_HINT 0x0a\n"
     "addi t3, t3, 4\n"
-    "addi t4, t4, 4\n"
-    "addi t5, t5, 4\n"
-    // ... B row pointer + k decrement.
-    "HDV_HINT 0x0a\n"
-    "addi t6, t6, 4\n"
     "addi a3, a3, 128\n"
     "addi a4, a4, -32\n"
-    // inner back-edge.
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
     "bnez a4, k_loop_32\n"
-    "nop\n"
     "nop\n"
 
     // store row i.
