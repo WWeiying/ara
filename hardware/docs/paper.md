@@ -1,6 +1,6 @@
 # SEAM-V 实验规划（execution doc）
 
-> 论文：**SEAM-V: A Hybrid Decoupled RISC-V Vector Processor with Back-End-Visible Execute Packets**
+> 论文：**SEAM-V: A Hybrid Decoupled RISC-V Vector Processor with Back-End-Visible Execute Packets for High-Throughput Vector Execution**
 > 投稿：*Integration, the VLSI Journal*（Elsevier, CCF-C）
 > 前作：ISCAS 2026（已发表）→ 本期刊版必须严格差异化，核心是 **H0→H+ 的后端增量**。
 > 本文档是论文工作文档（小节结构 + 实验执行清单 + 思考）。所有性能数字以真实仿真/综合/PR 结果为准，未跑的标 `TODO`。
