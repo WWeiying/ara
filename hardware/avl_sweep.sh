@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # AVL sweep for HDV 1D streaming kernels.
 #
+# For the B-tier (BLAS-2/3 + GEMM) kernels — vsgemm {size}x{rows} load-stream
+# variants and the square BLAS dim-N sweep — use the companion ./blas_sweep.sh
+# (separate because they need an app rebuild / runtime dimension register, not
+# the pure RTL-param AVL injection used here).
+#
 # Each kernel's application vector length (AVL) is driven by the unified `avl`
 # Makefile knob (see hardware/Makefile).  Data arrays are static, so AVL is
 # capped per kernel by its array size (MAXAVL below); regenerate the data via
@@ -30,23 +35,40 @@ cd "$(dirname "$0")"            # hardware/
 # 不跨页）后已能随 AVL 缩放，放开到 4096。
 # fdotp 已退出 sweep：它的预取对自身地址/时序病态敏感（非单调），任何描述符消费时
 # 序的改动都会大幅改变其命中率；点积类由 vsdot 覆盖（vsdot 对所有改动逐位一致）。
+# Prefetch micro-benchmarks (LMUL x stream-count x lead).  a0 = iteration count
+# (the swept "AVL"), a1..a4 = stream bases, a5 = output base — all from plusargs.
+# AVL (count) is capped low so even m8 (chunk = VLMAX*4 = 1024 B) keeps each of the
+# up-to-5 regions inside the 1 MB L2 at the 0x20000-spaced bases below.
+PF_KERNELS="vspf_m1k1_hdv vspf_m1k2_hdv vspf_m1k4_hdv vspf_m2k2_hdv vspf_m4k2_hdv vspf_m8k2_hdv"
+# a1..a5 = 0x80010000, 0x80030000, 0x80050000, 0x80070000, 0x80090000 (decimal).
+PF_PTRS="+HDV_A1=2147549184 +HDV_A2=2147680256 +HDV_A3=2147811328 +HDV_A4=2147942400 +HDV_A5=2148073472"
+
 declare -A MAXAVL=(
   [vsaxpy_hdv]=4096   [vscopy_hdv]=4096   [vsscal_hdv]=4096
   [vsswap_hdv]=4096   [vsdot_hdv]=4096    [vvaddint32_hdv]=4096
   [vmc_hdv]=4096      [dropout_hdv]=4096
+  [vspf_m1k1_hdv]=64  [vspf_m1k2_hdv]=64  [vspf_m1k4_hdv]=64
+  [vspf_m2k2_hdv]=64  [vspf_m4k2_hdv]=64  [vspf_m8k2_hdv]=64
 )
 ALL_KERNELS="vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv"
 DEFAULT_AVLS="8 16 32 64 128 256 512 1024 2048 4096"
 
 # Which xrf reg holds the AVL per kernel (a0=A0, a2=A2).  Injected at RUNTIME via
-# the scalar backend's +HDV_A<n> plusarg (see cva6_hdv_scalar_backend.sv), so the
+# the scalar backend's +HDV_A<n> plusarg (see hdv_scalar_backend.sv), so the
 # simv is NOT re-elaborated per AVL point (VCS keeps it "up to date"); only the
 # first run of each kernel recompiles its address defines.
-declare -A AVLREG=( [vsdot_hdv]=A2 )   # others default to A0
+declare -A AVLREG=( [vsdot_hdv]=A2 )   # vspf + others default to A0 (count)
+# Per-kernel extra plusargs (pointer args that aren't the swept AVL register).
+declare -A EXTRA_PLUSARGS=(
+  [vspf_m1k1_hdv]="$PF_PTRS" [vspf_m1k2_hdv]="$PF_PTRS" [vspf_m1k4_hdv]="$PF_PTRS"
+  [vspf_m2k2_hdv]="$PF_PTRS" [vspf_m4k2_hdv]="$PF_PTRS" [vspf_m8k2_hdv]="$PF_PTRS"
+)
 
 ARG_K="${1:-all}"
 AVLS="${2:-$DEFAULT_AVLS}"
-if [ "$ARG_K" = "all" ]; then KERNELS="$ALL_KERNELS"; else KERNELS="$ARG_K"; fi
+if   [ "$ARG_K" = "all" ]; then KERNELS="$ALL_KERNELS"
+elif [ "$ARG_K" = "pf"  ]; then KERNELS="$PF_KERNELS"; AVLS="${2:-16 64}"
+else KERNELS="$ARG_K"; fi
 
 OUT=avl_sweep_out
 mkdir -p "$OUT"
@@ -84,7 +106,7 @@ for k in $KERNELS; do
     reg=${AVLREG[$k]:-A0}
     # +HDV_EXPECTED_EP huge: don't cap the task at the compile-time EP count;
     # let the kernel run its full AVL and `ret` naturally.
-    timeout 600 make sim app="$k" hdv_plusargs="+HDV_${reg}=${n} +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
+    timeout 600 make sim app="$k" hdv_plusargs="+HDV_${reg}=${n} ${EXTRA_PLUSARGS[$k]:-} +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
 
     # ── identity / result ──
     r=$(grep -E 'mock host' "$log" | head -1 | grep -oE 'PASSED|FAILED'); [ -z "$r" ] && r="ERR"

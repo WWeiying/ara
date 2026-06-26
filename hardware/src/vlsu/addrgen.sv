@@ -71,6 +71,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           stu_axi_addrgen_req_ready_i,
     //prefetch
     output logic                           prefetch_axi_ar_hit_o,
+    // Stream-break recovery: pulse to flush the vldu prefetch R buffer in lockstep
+    // with this addrgen's lookup FIFO when the demand stream resets (re-stream) and
+    // the buffered prefetches become stale.  Only pulsed when no prefetch is in
+    // flight (ROB empty + 0 in-flight beats), so it never races landing R beats.
+    output logic                           prefetch_buf_flush_o,
     output axi_ar_t                        axi_addrgen_prefetch_req_o,
     output logic                           axi_addrgen_prefetch_req_valid_o,
     input  logic                           axi_addrgen_prefetch_req_ready_i,
@@ -115,6 +120,22 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     if (!rst_ni) loop_active_q <= 1'b0;
     else         loop_active_q <= hdv_loop_active_i;
   end
+
+  // ── Stream-break prefetch recovery ──────────────────────────────────────────
+  // A demand load whose address does not match the lookup-FIFO head (FIFO non-
+  // empty) means the demand stream diverged from the prefetch order — e.g. a GEMM
+  // that re-streams the same B rows each row-block leaves an over-prefetched tail
+  // (B[N], one past the stream) stuck at the head, which never matches again and
+  // clogs the FIFO (every later demand misses).  On such a break, stop issuing new
+  // prefetch, wait until everything in flight has landed (ROB empty + 0 in-flight
+  // beats), then flush the lookup FIFO AND the vldu buffer in the same cycle (both
+  // hold only COMPLETED data at that point, so the flush is race-free).
+  logic stream_break;        // demand diverged from the prefetch FIFO order
+  logic flush_pending_q;     // a break was seen; draining before the flush
+  logic prefetch_flush_now;  // do the flush this cycle (drain complete)
+  assign prefetch_buf_flush_o = prefetch_flush_now;
+  // prefetch_flush_now / flush_pending_q logic is below, after the in-flight and
+  // ROB-empty signals it depends on are declared.
 
   always_comb begin
     // Effective prefetch mode = the per-request mode latched from the HDV hint at
@@ -381,6 +402,15 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_axi_ar_rob_pop;
   logic    prefetch_axi_ar_rob_full;
   logic    prefetch_axi_ar_rob_empty;
+  // Stream-break flush: fire only once everything in flight has landed, so the
+  // lookup FIFO + vldu buffer (both holding only completed data) flush race-free.
+  assign prefetch_flush_now = flush_pending_q && (prefetch_inflight_beats_q == '0)
+                                              && prefetch_axi_ar_rob_empty;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni)                 flush_pending_q <= 1'b0;
+    else if (prefetch_flush_now) flush_pending_q <= 1'b0;
+    else if (stream_break)       flush_pending_q <= 1'b1;
+  end
   axi_addr_t prefetch_axi_ar_rob_pop_done_addr_d, prefetch_axi_ar_rob_pop_done_addr_q;
   logic    prefetch_axi_ar_rob_pop_done_counter_d, prefetch_axi_ar_rob_pop_done_counter_q;
   // Declared here (ahead of its later siblings) so the pop_done_counter always_comb
@@ -591,7 +621,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   ) i_prefetch_axi_addr_lookup_fifo (
     .clk_i     (clk_i                      ),
     .rst_ni    (rst_ni                     ),
-    .flush_i   (1'b0                       ),
+    .flush_i   (prefetch_flush_now         ),
     .testmode_i(1'b0                       ),
     .data_i    (prefetch_axi_addr_lookup_fifo_datain),
     .push_i    (prefetch_axi_addr_lookup_fifo_push ),
@@ -826,6 +856,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     //prefetch
     prefetch_axi_ar_hit        = '0;
+    stream_break               = 1'b0;
     prefetch_pending_d         = '0;
     prefetch_axi_ar_queue_datain = '0;
     prefetch_seg_queue_datain  = 1'b0;
@@ -1085,6 +1116,19 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           prefetch_axi_ar_hit               = 1'b1;
           prefetch_axi_addr_lookup_fifo_pop = 1'b1;
         end
+        // Stream break: a unit-stride load whose address is BEHIND the lookup-FIFO
+        // head (the demand jumped backward) means the stream restarted and the
+        // buffered prefetches ahead of it are stale -> arm the drain-then-flush.
+        // Strictly "< head" (not "!= head") so a non-monotonic but forward-moving
+        // pattern (e.g. fdotp's page-cross prefetch) never spuriously flushes mid
+        // page-cross (which would wedge its delicate second-prefetch state).
+        else if (vreq_is_load_d &&
+                 !prefetch_axi_addr_lookup_fifo_empty &&
+                 (paddr < prefetch_axi_addr_lookup_fifo_data) &&
+                 !second_prefetch_vld_q &&
+                 vreq_is_unit_stride_d) begin
+          stream_break = 1'b1;
+        end
 
         if (is_addr_error(paddr, pe_req_d.vtype.vsew[1:0])) begin
           state_d                   = IDLE;
@@ -1153,7 +1197,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
               if ((pe_req_d.avl >= (pe_req_d.vl << 1)) &&
                   prefetch_axi_ar_queue_not_full &&
-                  prefetch_en &&
+                  prefetch_en && !flush_pending_q &&
                   !curr_req_page_crossed) begin : first_prefetch
                 prefetch_addr = paddr + (num_bytes << prefetch_mul);
 
@@ -1438,7 +1482,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         prefetch_axi_ar_queue_valid &&
         !prefetch_axi_ar_rob_full && !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_pending_d
-        && prefetch_en
+        && prefetch_en && !flush_pending_q
         // Credit: only issue if the buffer can still absorb this burst on top of
         // what is already resident (occupancy*2 beats) and in flight. Guarantees
         // the landing R beats never overflow / back-pressure into deadlock.

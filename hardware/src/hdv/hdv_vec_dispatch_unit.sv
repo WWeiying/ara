@@ -86,6 +86,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   input  logic [NumSlots-1:0]               heu_vec_insn_valid_i,   // which slots are vector
   input  logic [NumSlots-1:0][31:0]         heu_vec_insn_i,         // assembled 32-bit insns
   input  logic                              heu_vec_ep_id_i,
+  input  logic [1:0]                        heu_vec_prefetch_mode_i, // EP-bundled prefetch mode (aligned w/ EP)
 
   // ── EP acknowledged pulse back to HEU (1-cycle) ───────────────────────────
   // vec_ep_acknowledged_o fires when all vector slots in this EP have reached
@@ -228,9 +229,15 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic [NumSlots-1:0]       insn_valid_d, insn_valid_q;
   logic [NumSlots-1:0][31:0] insn_d,       insn_q;
   logic                      insn_ep_id_d, insn_ep_id_q;
+  // Per-buffered-packet prefetch mode, latched WITH the packet (like insn_ep_id_q)
+  // so a vle reaches the addrgen with its own EP's mode even when the front-end has
+  // advanced (dense packet256+cross): fixes the racy push-time sample of the global
+  // hdv_prefetch_mode_i that dropped vsgemm's B-row vle to mode 0.
+  logic [1:0]                insn_prefetch_mode_d,    insn_prefetch_mode_q;
   logic [NumSlots-1:0]       pending_insn_valid_d, pending_insn_valid_q;
   logic [NumSlots-1:0][31:0] pending_insn_d,       pending_insn_q;
   logic                      pending_ep_id_d, pending_ep_id_q;
+  logic [1:0]                pending_prefetch_mode_d, pending_prefetch_mode_q;
   logic                      pending_valid_d,      pending_valid_q;
   logic                      ep_acknowledged_d,        ep_acknowledged_q;
   logic                      ep_acknowledged_id_d,     ep_acknowledged_id_q;
@@ -365,6 +372,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic [CountW-1:0] vset_accept_count_after_pop;
   logic real_ep_operands_done;
   logic selected_ep_id;
+  logic [1:0] selected_prefetch_mode;
 
   function automatic logic is_vector_scalar_wb(input logic [31:0] insn);
     logic is_vset;
@@ -439,6 +447,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign selected_insn       = (state_q == DISPATCH) ? insn_q[slot_idx]
                                                      : heu_vec_insn_i[input_slot_idx];
   assign selected_ep_id      = (state_q == DISPATCH) ? insn_ep_id_q : heu_vec_ep_id_i;
+  // Mode travels with the instruction: buffered packet's latched mode in DISPATCH,
+  // else the live header (bypass path dispatches the currently-presented packet).
+  assign selected_prefetch_mode = (state_q == DISPATCH) ? insn_prefetch_mode_q
+                                                        : heu_vec_prefetch_mode_i;
   // RVV OPFVF uses scalar FP register rs1 as the .vf operand.  Other vector
   // encodings use integer rs1 for AVL/base/vx operands.
   assign selected_uses_frs1  = selected_insn[6:0] == 7'b1010111 &&
@@ -497,6 +509,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // registered resp_meta_is_store_q won't reflect the new entry yet.
   assign vec_store_inflight_o = ((resp_meta_count_q != '0) && (|resp_meta_is_store_q)) ||
                                  vq_has_store;
+
 
   // ── In-flight vset tracking (A2 RAW interlock hint) ───────────────────────
   // Level signal covering the whole window from "vset EP presented" to "VL
@@ -670,7 +683,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       acc_req_o.acc_req.rs2           = fsm_req_rs2;
       acc_req_o.acc_req.trans_id      = '0;
       acc_req_o.acc_req.trans_id[0]   = selected_ep_id;
-      acc_req_o.acc_req.trans_id[2:1] = hdv_prefetch_mode_i;
+      acc_req_o.acc_req.trans_id[2:1] = selected_prefetch_mode;
     end
   end
 
@@ -712,7 +725,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       vq_d[vq_count_d].has_scalar_wb = selected_scalar_wb_valid;
       vq_d[vq_count_d].wb_is_fpr     = selected_scalar_wb_is_fpr;
       vq_d[vq_count_d].is_last_in_ep = fsm_req_is_last;
-      vq_d[vq_count_d].prefetch_mode = hdv_prefetch_mode_i;
+      vq_d[vq_count_d].prefetch_mode = selected_prefetch_mode;
       vq_count_d = vq_count_d + CmdWindowCountW'(1);
     end
     if (flush_i) begin
@@ -929,9 +942,11 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     insn_valid_d = insn_valid_q;
     insn_d       = insn_q;
     insn_ep_id_d = insn_ep_id_q;
+    insn_prefetch_mode_d = insn_prefetch_mode_q;
     pending_insn_valid_d = pending_insn_valid_q;
     pending_insn_d = pending_insn_q;
     pending_ep_id_d = pending_ep_id_q;
+    pending_prefetch_mode_d = pending_prefetch_mode_q;
     pending_valid_d = pending_valid_q;
     ep_acknowledged_d = 1'b0;
     ep_acknowledged_id_d = ep_acknowledged_id_q;
@@ -1013,6 +1028,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       pending_insn_valid_d = heu_vec_insn_valid_i;
       pending_insn_d = heu_vec_insn_i;
       pending_ep_id_d = heu_vec_ep_id_i;
+      pending_prefetch_mode_d = heu_vec_prefetch_mode_i;
     end
 
     if (capture_operand) begin
@@ -1140,6 +1156,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
           insn_valid_d = heu_vec_insn_valid_i;
           insn_d       = heu_vec_insn_i;
           insn_ep_id_d = heu_vec_ep_id_i;
+          insn_prefetch_mode_d = heu_vec_prefetch_mode_i;
           if (accept_insn) begin
             insn_valid_d[input_slot_idx] = 1'b0;
             if (UseVTraceScalar) begin
@@ -1178,6 +1195,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
           insn_valid_d = pending_insn_valid_d;
           insn_d = pending_insn_d;
           insn_ep_id_d = pending_ep_id_d;
+          insn_prefetch_mode_d = pending_prefetch_mode_d;
           pending_valid_d = 1'b0;
           state_d = (|pending_insn_valid_d) ? DISPATCH : IDLE;
         end else begin
@@ -1200,8 +1218,10 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       state_d      = IDLE;
       insn_valid_d = '0;
       insn_ep_id_d = 1'b0;
+      insn_prefetch_mode_d = 2'b0;
       pending_insn_valid_d = '0;
       pending_ep_id_d = 1'b0;
+      pending_prefetch_mode_d = 2'b0;
       pending_valid_d = 1'b0;
       ep_acknowledged_d = 1'b0;
       ep_acknowledged_id_d = 1'b0;
@@ -1270,9 +1290,11 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       insn_valid_q <= '0;
       insn_q       <= '0;
       insn_ep_id_q <= 1'b0;
+      insn_prefetch_mode_q <= 2'b0;
       pending_insn_valid_q <= '0;
       pending_insn_q <= '0;
       pending_ep_id_q <= 1'b0;
+      pending_prefetch_mode_q <= 2'b0;
       pending_valid_q <= 1'b0;
       ep_acknowledged_q <= 1'b0;
       ep_acknowledged_id_q <= 1'b0;
@@ -1305,9 +1327,11 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       insn_valid_q <= insn_valid_d;
       insn_q       <= insn_d;
       insn_ep_id_q <= insn_ep_id_d;
+      insn_prefetch_mode_q <= insn_prefetch_mode_d;
       pending_insn_valid_q <= pending_insn_valid_d;
       pending_insn_q <= pending_insn_d;
       pending_ep_id_q <= pending_ep_id_d;
+      pending_prefetch_mode_q <= pending_prefetch_mode_d;
       pending_valid_q <= pending_valid_d;
       ep_acknowledged_q <= ep_acknowledged_d;
       ep_acknowledged_id_q <= ep_acknowledged_id_d;

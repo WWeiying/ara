@@ -158,6 +158,7 @@ module hdv_mock_host_core import hdv_pkg::*; #(
                         & (state_q == RUN)
                         & (packet_watchdog_q >= PacketWatchdogWidth'(PacketWatchdogCycles));
 
+
   assign mock_hdv_backend_error_o = 1'b0;
   assign mock_hdv_scalar_ready_o  = (state_q == RUN) & !scalar_pending_q;
   assign mock_hdv_vector_ready_o  = (state_q == RUN) & !vector_pending_q;
