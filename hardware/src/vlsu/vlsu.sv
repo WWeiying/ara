@@ -110,6 +110,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   assign load_complete_o  = load_complete;
   assign store_complete_o = store_complete;
   logic    prefetch_axi_ar_hit;
+  logic    prefetch_buf_flush;  // addrgen -> vldu: stream-break prefetch buffer flush
   axi_ar_t axi_addrgen_prefetch_req;
   logic    axi_addrgen_prefetch_req_valid;
   logic    axi_addrgen_prefetch_req_ready;
@@ -219,6 +220,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
     //prefetch
     .prefetch_axi_ar_hit_o           (prefetch_axi_ar_hit),
+    .prefetch_buf_flush_o            (prefetch_buf_flush),
     .axi_addrgen_prefetch_req_o      (axi_addrgen_prefetch_req),
     .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
@@ -280,6 +282,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_addrgen_req_ready_o(ldu_axi_addrgen_req_ready ),
     .addrgen_illegal_load_i (addrgen_illegal_load      ),
     .prefetch_axi_ar_hit_i           (prefetch_axi_ar_hit),
+    .prefetch_buf_flush_i            (prefetch_buf_flush),
     .axi_addrgen_prefetch_req_i      (axi_addrgen_prefetch_req),
     .axi_addrgen_prefetch_req_valid_i(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_o(axi_addrgen_prefetch_req_ready),

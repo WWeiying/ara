@@ -47,6 +47,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           addrgen_illegal_load_i,
     //prefetch
     input  logic                           prefetch_axi_ar_hit_i,
+    // Stream-break recovery: empty the prefetch R buffer (addrgen pulses this in
+    // lockstep with flushing its lookup FIFO; only when nothing is in flight, so
+    // no landing R beat is lost).  See addrgen prefetch_buf_flush_o.
+    input  logic                           prefetch_buf_flush_i,
     input  axi_ar_t                        axi_addrgen_prefetch_req_i,
     input  logic                           axi_addrgen_prefetch_req_valid_i,
     output logic                           axi_addrgen_prefetch_req_ready_o,
@@ -388,6 +392,16 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
+      prefetch_axi_r_head_q           <= '0;
+      prefetch_axi_r_low_half_q       <= '0;
+      prefetch_axi_r_low_half_valid_q <= 1'b0;
+      prefetch_axi_r_word_cnt_q       <= '0;
+      prefetch_axi_r_word_rd_ptr_q    <= '0;
+      prefetch_axi_r_word_wr_ptr_q    <= '0;
+    end else if (prefetch_buf_flush_i) begin
+      // Discard all buffered (completed) prefetch data — its lookup-FIFO entries
+      // are being flushed the same cycle, so they stay consistent.  Safe because
+      // the addrgen only pulses this with no prefetch in flight.
       prefetch_axi_r_head_q           <= '0;
       prefetch_axi_r_low_half_q       <= '0;
       prefetch_axi_r_low_half_valid_q <= 1'b0;

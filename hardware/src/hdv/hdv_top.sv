@@ -269,6 +269,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic        vec_ep_ready;
   logic        vec_ep_acknowledged;
   logic        heu_vec_ep_id;
+  logic [1:0]  heu_vec_prefetch_mode;  // EP-bundled prefetch mode (HEU -> vec_dispatch)
   logic        vec_ep_acknowledged_id;
   logic        vec_ep_error;
   logic        vec_dispatch_busy;
@@ -361,6 +362,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
   assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
                             !vec_dispatch_busy;
+
   // scalar_loop_exit: fires on a precise not-taken backward branch event.
   // The backward determination is now done inside the scalar backend
   // (branch_backward_o), so hdv_top no longer compares target vs pc.
@@ -461,6 +463,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     end
   end
 
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_imem_regs
     if (!rst_ni) begin
       imem_outstanding_q <= '0;
@@ -486,7 +489,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
 
   // ─── CVA6_HDV scalar backend ──────────────────────────────────────────────
 
-  cva6_hdv_scalar_backend #(
+  hdv_scalar_backend #(
     .XLEN       (XLEN     ),
     .NumSlots   (NumSlots ),
     .ScalarIssueWidth(3),
@@ -507,7 +510,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .addr_t     (addr_t   ),
     .axi_req_t  (axi_req_t ),
     .axi_resp_t (axi_resp_t)
-  ) i_cva6_hdv_scalar_backend (
+  ) i_hdv_scalar_backend (
     .clk_i                         (clk_i                       ),
     .rst_ni                        (rst_ni                      ),
     .flush_i                       (task_flush                  ),
@@ -582,6 +585,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vec_insn_valid_i(heu_vec_insn_valid),
     .heu_vec_insn_i      (heu_vec_insn    ),
     .heu_vec_ep_id_i     (heu_vec_ep_id   ),
+    .heu_vec_prefetch_mode_i (heu_vec_prefetch_mode),
     .vec_ep_acknowledged_o      (vec_ep_acknowledged    ),
     .vec_ep_acknowledged_id_o   (vec_ep_acknowledged_id ),
     .vec_ep_error_o     (vec_ep_error   ),
@@ -844,7 +848,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vliwpu_heu_execute_slot_pc_i   (vliwpu_heu_execute_slot_pc),
     .vliwpu_heu_execute_class_i     (vliwpu_heu_execute_class ),
     .vliwpu_heu_execute_pc_i        (vliwpu_heu_execute_pc    ),
-    // Scalar dispatch — routed internally to cva6_hdv_scalar_backend.
+    .vliwpu_heu_execute_prefetch_mode_i (hdv_ara_prefetch_mode_o),
+    // Scalar dispatch — routed internally to hdv_scalar_backend.
     .heu_scalar_valid_o             (heu_scalar_valid         ),
     .scalar_heu_ready_i             (scalar_heu_ready         ),
     .heu_scalar_insn_valid_o        (heu_scalar_insn_valid    ),
@@ -861,6 +866,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vector_insn_pc_o           (unused_heu_vec_insn_pc   ),
     .heu_vector_pc_o                (unused_heu_vec_pc        ),
     .heu_vector_ep_id_o             (heu_vec_ep_id            ),
+    .heu_vector_prefetch_mode_o     (heu_vec_prefetch_mode    ),
     // Done / error from backends
     .scalar_ep_done_i              (scalar_ep_done          ),
     .vector_ep_acknowledged_i          (vec_ep_acknowledged             ),

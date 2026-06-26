@@ -77,22 +77,32 @@ bin/vsspmv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsspmv_hdv: DEFINES += -DVSSPMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
 bin/vsgemv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vsgemv_hdv: DEFINES += -DVSGEMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsgemv_hdv: DEFINES += -DVSGEMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
 
 bin/vsger_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsger_hdv: DEFINES += -DVSGER_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
+# vsgemm selector: gemm_lmul in {1,4}, gemm_rows in {1,2,4}.
+#   gemm_lmul=1 : original m1 fixed-32 kernels (validated, dense packing).
+#   gemm_lmul=4 : unified m4 runtime-N kernels (N via +HDV_A3, sweepable).
+# gemm_rows = # scalar A load streams packed per k-iteration.  make can't see -D
+# changes, so blas_sweep.sh rm's main.c.o to force a rebuild per variant.
+gemm_lmul ?= 1
+gemm_rows ?= 4
+# BLAS kernels (vssymv/vssyrk/vsgemv/vstrsm): blas_lmul in {1,4}.  1 = original m1
+# fixed-size kernel (default, validated); 4 = unified m4 runtime-N kernel.
+blas_lmul ?= 1
 bin/vsgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vsgemm_hdv: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsgemm_hdv: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DGEMM_LMUL=$(gemm_lmul) -DGEMM_ROWS=$(gemm_rows)
 
 bin/vssymv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vssymv_hdv: DEFINES += -DVSSYMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vssymv_hdv: DEFINES += -DVSSYMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
 
 bin/vssyrk_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vssyrk_hdv: DEFINES += -DVSSYRK_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vssyrk_hdv: DEFINES += -DVSSYRK_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
 
 bin/vstrsm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vstrsm_hdv: DEFINES += -DVSTRSM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vstrsm_hdv: DEFINES += -DVSTRSM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
 
 bin/vgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vgemm_hdv: DEFINES += -DVGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
@@ -102,6 +112,14 @@ bin/vmc_hdv: DEFINES += -DVMC_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
 bin/vsfft_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsfft_hdv: DEFINES += -DVSFFT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
+# Prefetch micro-benchmarks (LMUL x stream-count x lead).  Each reads its pointers
+# from +HDV_A* (no data symbols), so its data.S is just touched empty.
+define vspf_rule
+bin/$1: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$$(HDV_TASK_ENTRY)
+bin/$1: DEFINES += -D$(shell echo $1 | tr a-z A-Z)_TASK_ENTRY=$$(HDV_TASK_ENTRY)UL
+endef
+$(foreach v,vspf_m1k1_hdv vspf_m1k2_hdv vspf_m1k4_hdv vspf_m2k2_hdv vspf_m4k2_hdv vspf_m8k2_hdv,$(eval $(call vspf_rule,$(v))))
 
 all: $(BINARIES)
 

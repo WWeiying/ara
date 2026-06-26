@@ -299,6 +299,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign vliwpu_heu_execute_valid_o = normal_execute_valid | cross_execute_valid;
   assign vliwpu_heu_execute_slot_valid_o = execute_slot_valid;
   assign vliwpu_heu_execute_pc_o = cross_execute_valid ? carry_pc_q : packet_pc_q;
+  // The EP-bundled copy of this (routed through the HEU register stage so it stays
+  // aligned with the EP) is what the addrgen actually uses; this stays the live
+  // value for the ara fallback path.
   assign vliwpu_prefetch_mode_o = packet_hold_valid_q ? header_prefetch_mode : 2'b00;
 
   always_comb begin : p_execute_pack

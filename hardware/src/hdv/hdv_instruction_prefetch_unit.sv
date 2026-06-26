@@ -223,6 +223,7 @@ module hdv_instruction_prefetch_unit #(
   // Active while a backward-branch loop body is locked in the fetch buffers.
   assign ipu_top_loop_active_o = auto_loop_lock_q | loop_locked_q;
 
+
   // Memory request: active in FILL (initial) and in SERVE while bg fill pending.
   // When loop lock is active, keep completing an already-issued request but do
   // not fetch more background packets; taken redirects replay the active body.
@@ -446,6 +447,18 @@ module hdv_instruction_prefetch_unit #(
       exec_idx_d   = redirect_exec_idx;
       loop_wait_d  = 1'b0;
       loop_exit_seen_d = 1'b0;
+      // This redirect raises dispatch_flush in the imem bridge, which marks every
+      // in-flight fetch response STALE and DROPS it (hdv_top: imem_stale_rsp_q,
+      // imem_r_drop).  Dropped responses never advance fill_rsp_idx, but
+      // fill_req_idx may have already run ahead via speculative background fill
+      // past the loop body (the nested-loop vstrsm case).  Roll the request
+      // pointer back to the last-responded slot so the dropped packets are
+      // re-requested in order; otherwise the next forwarded response lands one-or-
+      // more slots too low and corrupts SRAM (the post-loop ret packet, idx-20
+      // desync).  fill_rsp_idx <= fill_req_idx always holds, so this is a
+      // backward-or-equal move that never skips ahead; it is a no-op whenever no
+      // speculative request is outstanding (fill_req_idx == fill_rsp_idx).
+      fill_req_idx_d = fill_rsp_idx_q;
       if (redirect_is_backward) begin
         auto_loop_lock_d = 1'b1;
       end else begin
@@ -931,6 +944,19 @@ module hdv_instruction_prefetch_unit #(
         served_packet_valid_q <= 1'b0;
       end
       if (!keep_prefetch_valid) begin
+        prefetch_packet_valid_q <= 1'b0;
+      end
+      // Coherence guard (mirrors the loop-start cache guard at the accept_rsp
+      // clause below, ~line 1018): if a fill response overwrites the exact slot
+      // the prefetch copy caches, the held bytes are now stale w.r.t. SRAM, but
+      // the {buf,idx} tag (lines 280-282) and keep_prefetch_valid (911-916) are
+      // pure tag compares that never notice the rewrite.  Drop the copy.  Any
+      // same-cycle re-cache of this slot via the SRAM-read path (965-969) or the
+      // accept_rsp bypass (989-996) below runs AFTER this and re-asserts valid
+      // with the fresh bytes, so this is a no-op except when the slot is
+      // rewritten WITHOUT being re-cached (the vstrsm post-loop idx-20 case).
+      if (accept_rsp && (fill_buf_q == prefetch_packet_buf_q) &&
+          (fill_rsp_idx_q == prefetch_packet_idx_q)) begin
         prefetch_packet_valid_q <= 1'b0;
       end
 

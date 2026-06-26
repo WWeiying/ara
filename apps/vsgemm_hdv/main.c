@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 4096
+#define TOTAL_ELEMENTS 16384
 
 #ifndef VSGEMM_HDV_TASK_ENTRY
 #define VSGEMM_HDV_TASK_ENTRY 0x80001000UL
@@ -24,26 +24,217 @@ extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src2
 extern const uint32_t _src1_size;
 extern const uint32_t _src2_size;
 
-// C = A * B, 32x32x32 row-major FP32, 4-row register blocking.
+// ── GEMM variant selector: GEMM_LMUL x GEMM_ROWS ────────────────────────────
+// GEMM_LMUL = 1 : the ORIGINAL m1 kernels, fixed 32x32x32, VLMAX=32 (one vector
+//                 register = one 32-wide row), dense packet256+cross packing.
+//                 These are the validated runs (4row=10847, 2row=19248,
+//                 1row=31846 cyc; L2 256/256 bit-exact for 4row).
+// GEMM_LMUL = 4 : the unified m4 kernels, RUNTIME dimension N<=128 (a3, injected
+//                 via +HDV_A3=N), VLMAX=128 (one group = a full N-wide row), VL
+//                 set once in setup, strides via slli.  Sweepable across N.
+// GEMM_ROWS = 1 | 2 | 4 : register-blocking rows = # scalar A load streams packed
+//                 into one EP per k-iteration (the pipelined-LSU study variable).
+// avl_sweep / the Makefile pass -DGEMM_LMUL and -DGEMM_ROWS.  Both kept, both
+// selectable; only ONE function compiles into .hdv_task (it becomes the entry).
+#ifndef GEMM_LMUL
+#define GEMM_LMUL 1
+#endif
+#ifndef GEMM_ROWS
+#define GEMM_ROWS 4
+#endif
+
+// m1 fixed-32 variants.
+void gemm_f32_32x32x32_1row(const float *A, const float *B, float *C);
+void gemm_f32_32x32x32_2row(const float *A, const float *B, float *C);
 void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C);
-void gemm_f32_64x64x64_4row(const float *A, const float *B, float *C);
-void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C);
+// m4 runtime-N variants.
+void gemm_f32_1row(const float *A, const float *B, float *C, int n);
+void gemm_f32_2row(const float *A, const float *B, float *C, int n);
+void gemm_f32_4row(const float *A, const float *B, float *C, int n);
 
 int main() {
+#if GEMM_LMUL == 1
+#if GEMM_ROWS == 1
+    gemm_f32_32x32x32_1row(src1, src2, src1);
+#elif GEMM_ROWS == 2
+    gemm_f32_32x32x32_2row(src1, src2, src1);
+#else
     gemm_f32_32x32x32_4row(src1, src2, src1);
+#endif
+#else
+#if GEMM_ROWS == 1
+    gemm_f32_1row(src1, src2, src1, 32);
+#elif GEMM_ROWS == 2
+    gemm_f32_2row(src1, src2, src1, 32);
+#else
+    gemm_f32_4row(src1, src2, src1, 32);
+#endif
+#endif
     return 0;
 }
 
+#if GEMM_LMUL == 1
+// ════════════════════════ m1 fixed-32 kernels ═══════════════════════════════
+#if GEMM_ROWS == 1
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
-    // ABI: a0=A, a1=B, a2=C.
-    //
-    // Nested loop, 4-row blocking: outer (row_block_loop) processes 4 C rows at a
-    // time with accumulators v8..v11; inner (k_loop) loads 4 scalars A[i+r][k]
-    // and one B[k,:] row, doing 4 vfmacc.vf.  Scalar loads are one-per-EP (the
-    // scalar LSU is synchronous); the 4 vfmacc are packed (Ara resolves the
-    // vector deps); each "addi a5,t2,off ; vse v,(a5)" store base is split.
+void gemm_f32_32x32x32_1row(const float *A, const float *B, float *C) {
+    // ABI: a0=A, a1=B, a2=C.  m1, fixed 32, 1 scalar A load stream per k.
+    __asm__ volatile (
+    ".option push\n"
+    ".option norvc\n"
+    ".option norelax\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".endm\n"
+    ".balign 16\n"
+    "vsgemm_hdv_task_start:\n"
+    "HDV_HINT 0x00\n"
+    "li a3, 1024\n"
+    "vsetvli zero, a3, e32, m1, ta, ma\n"
+    "li t0, 32\n"
+    "HDV_HINT 0x02\n"
+    "mv t1, a0\n"
+    "mv t2, a2\n"
+    "nop\n"
+    "row_block_loop_32_1r:\n"
+    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "vmv.v.i v8, 0\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "mv t3, t1\n"
+    "mv a3, a1\n"
+    "li a4, 1024\n"
+    "k_loop_32_1r:\n"
+    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "flw fa0, 0(t3)\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x02\n"
+    "vle32.v v0, (a3)\n"
+    "vfmacc.vf v8, fa0, v0\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "addi t3, t3, 4\n"
+    "addi a3, a3, 128\n"
+    "addi a4, a4, -32\n"
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez a4, k_loop_32_1r\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v8, (t2)\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "addi t1, t1, 128\n"
+    "addi t2, t2, 128\n"
+    "addi t0, t0, -1\n"
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez t0, row_block_loop_32_1r\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT\n"
+    "ret\n"
+    "nop\n"
+    "nop\n"
+    ".purgem HDV_HINT\n"
+    ".option pop\n"
+    );
+}
+#elif GEMM_ROWS == 2
+__attribute__((naked, aligned(16), section(".hdv_task"),
+               target("arch=rv64gcv_zfh_zvfh")))
+void gemm_f32_32x32x32_2row(const float *A, const float *B, float *C) {
+    // ABI: a0=A, a1=B, a2=C.  m1, fixed 32, 2 A load streams packed per k.
+    __asm__ volatile (
+    ".option push\n"
+    ".option norvc\n"
+    ".option norelax\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".endm\n"
+    ".balign 16\n"
+    "vsgemm_hdv_task_start:\n"
+    "HDV_HINT 0x00\n"
+    "li a3, 1024\n"
+    "vsetvli zero, a3, e32, m1, ta, ma\n"
+    "li t0, 16\n"
+    "HDV_HINT 0x02\n"
+    "mv t1, a0\n"
+    "mv t2, a2\n"
+    "nop\n"
+    "row_block_loop_32_2r:\n"
+    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "vmv.v.i v8, 0\n"
+    "vmv.v.i v9, 0\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "mv t3, t1\n"
+    "mv a3, a1\n"
+    "li a4, 1024\n"
+    "k_loop_32_2r:\n"
+    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "flw fa0, 0(t3)\n"
+    "flw fa1, 128(t3)\n"
+    "nop\n"
+    "HDV_HINT 0x02\n"
+    "vle32.v v0, (a3)\n"
+    "vfmacc.vf v8, fa0, v0\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vfmacc.vf v9, fa1, v0\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "addi t3, t3, 4\n"
+    "addi a3, a3, 128\n"
+    "addi a4, a4, -32\n"
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez a4, k_loop_32_2r\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v8, (t2)\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "addi a5, t2, 128\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v9, (a5)\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
+    "addi t1, t1, 256\n"
+    "addi t2, t2, 256\n"
+    "addi t0, t0, -1\n"
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez t0, row_block_loop_32_2r\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT\n"
+    "ret\n"
+    "nop\n"
+    "nop\n"
+    ".purgem HDV_HINT\n"
+    ".option pop\n"
+    );
+}
+#else
+#include "vsgemm_m1_4row.inc"
+#endif
+#else
+// ════════════════════════ m4 runtime-N kernels ══════════════════════════════
+
+#if GEMM_ROWS == 1
+__attribute__((naked, aligned(16), section(".hdv_task"),
+               target("arch=rv64gcv_zfh_zvfh")))
+void gemm_f32_1row(const float *A, const float *B, float *C, int n) {
+    // ABI: a0=A, a1=B, a2=C, a3=N.  1-row = ONE scalar A load stream per k
+    // (baseline: nothing for the pipelined LSU to overlap).
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -54,112 +245,57 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
 
-    // setup: VL config + row-block count + A/C bases.  AVL is set to 1024 (VL
-    // still resolves to 32 because VLMAX=32) so the data prefetcher sees
-    // avl >= vl*2 for the B-row load across the whole inner loop -- this lets the
-    // prefetch engage WITHOUT a per-iteration vsetvli (which would cost an EP).
+    // setup: N -> s0, VL=N (m4, once), stride s1 = N*4, counters + bases.
     "HDV_HINT 0x00\n"
-    "li a3, 1024\n"
-    "vsetvli zero, a3, e32, m1, ta, ma\n"
-    "li t0, 8\n"
-    "HDV_HINT 0x02\n"
+    "mv s0, a3\n"
+    "vsetvli zero, s0, e32, m4, ta, ma\n"
+    "slli s1, a3, 2\n"
+    "HDV_HINT 0x0a\n"
+    "mv t0, s0\n"
     "mv t1, a0\n"
     "mv t2, a2\n"
-    "nop\n"
 
-    // outer loop top: zero the 4 row accumulators.
-    "row_block_loop_32:\n"
-    "HDV_HINT 0x0a, 0, 0, 1, 0\n"
-    "vmv.v.i v8, 0\n"
-    "vmv.v.i v9, 0\n"
-    "vmv.v.i v10, 0\n"
-    "HDV_HINT 0x00\n"
-    "vmv.v.i v11, 0\n"
+    ".balign 16\n"
+    "row_block_loop:\n"
+    "HDV_HINT 0x00, 0, 0, 1, 0\n"
+    "vmv.v.i v4, 0\n"
     "nop\n"
     "nop\n"
-    // A base pointer for row i (rows i+1..i+3 are read via immediate offsets
-    // 128/256/384 off t3, so t4..t6 are no longer needed).
     "HDV_HINT 0x0a\n"
     "mv t3, t1\n"
-    "mv a3, a1\n"
-    "li a4, 1024\n"
+    "mv a4, a1\n"
+    "mv a5, s0\n"
 
-    // inner loop top: VL config.
-    "k_loop_32:\n"
-    // Rows i+1..i+3 of A are read via immediate offsets 128/256/384 off t3 (the
-    // row stride is 128B), so only t3 is bumped below.
-    // ── Dense pack: packet256 + cross + p-bits (boundary p-bit=1 keep in same EP,
-    //    p-bit=0 cut; cross=1 carries the packet tail EP into the next packet;
-    //    see hdv_vliw_pack_unit.sv) ─────────────────────────────────────────────
-    // packet 0 (256-bit, loop_start, cross): the 4 scalar A loads packed into ONE
-    // EP (p-bits keep slots 1/3/5) so the pipelined scalar LSU issues all 4 ARs
-    // back-to-back and overlaps their AXI round-trips (~36->~15 cyc/iter); then
-    // the B load and the first 2 of the 4 vfmacc.  The vfmacc EP is the packet
-    // tail (< 8 slots), so cross=1 carries it into packet 1 with no pad nops.
-    // (The prefetch AVL comes from the setup vsetvli, a3=1024.)
-    // p-bits = 0x82a (keep flw fa0..fa3 at 1/3/5; cut before vle at 7; keep
-    // vfmacc(v8) -> vfmacc(v9) at 11).
-    "HDV_HINT 0x82a, 1, 1, 1, 0, 0\n"
+    ".balign 16\n"
+    "k_loop:\n"
+    // 1 scalar A load (own EP), then B row + 1 vfmacc.
+    "HDV_HINT 0x00, 0, 0, 1, 0\n"
     "flw fa0, 0(t3)\n"
-    "flw fa1, 128(t3)\n"
-    "flw fa2, 256(t3)\n"
-    "flw fa3, 384(t3)\n"
-    "vle32.v v0, (a3)\n"
-    "vfmacc.vf v8, fa0, v0\n"
-    "vfmacc.vf v9, fa1, v0\n"
-    // packet 1 (256-bit, loop_end): the carried v8/v9 complete the 4-wide vfmacc
-    // EP with v10/v11 (continue at slot 1, cut at 3), then the 3 addi as one EP
-    // (continue at slots 5/7), then bnez (a branch forces its own EP).
-    // p-bits = 0xa2.
-    "HDV_HINT 0xa2, 1, 0, 0, 1, 0\n"
-    "vfmacc.vf v10, fa2, v0\n"
-    "vfmacc.vf v11, fa3, v0\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x02\n"
+    "vle32.v v0, (a4)\n"
+    "vfmacc.vf v4, fa0, v0\n"
+    "nop\n"
+    "HDV_HINT 0x0a\n"
     "addi t3, t3, 4\n"
-    "addi a3, a3, 128\n"
-    "addi a4, a4, -32\n"
-    "bnez a4, k_loop_32\n"
+    "add a4, a4, s1\n"
+    "addi a5, a5, -1\n"
+    "HDV_HINT 0x00, 0, 0, 0, 1\n"
+    "bnez a5, k_loop\n"
+    "nop\n"
     "nop\n"
 
-    // store row i.
     "HDV_HINT 0x00\n"
-    "vse32.v v8, (t2)\n"
+    "vse32.v v4, (t2)\n"
     "nop\n"
     "nop\n"
-    // store row i+1.
-    "HDV_HINT 0x00\n"
-    "addi a5, t2, 128\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "vse32.v v9, (a5)\n"
-    "nop\n"
-    "nop\n"
-    // store row i+2.
-    "HDV_HINT 0x00\n"
-    "addi a5, t2, 256\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "vse32.v v10, (a5)\n"
-    "nop\n"
-    "nop\n"
-    // store row i+3.
-    "HDV_HINT 0x00\n"
-    "addi a5, t2, 384\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
-    "vse32.v v11, (a5)\n"
-    "nop\n"
-    "nop\n"
-    // advance to next 4-row block + block decrement.
     "HDV_HINT 0x0a\n"
-    "addi t1, t1, 512\n"
-    "addi t2, t2, 512\n"
+    "add t1, t1, s1\n"
+    "add t2, t2, s1\n"
     "addi t0, t0, -1\n"
-    // outer back-edge.
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
-    "bnez t0, row_block_loop_32\n"
+    "bnez t0, row_block_loop\n"
     "nop\n"
     "nop\n"
 
@@ -171,154 +307,97 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     ".option pop\n"
     );
 }
-
-// C = A * B, 64x64x64 row-major FP32, 4-row register blocking.
-void gemm_f32_64x64x64_4row(const float *A, const float *B, float *C);
-
+#elif GEMM_ROWS == 2
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void gemm_f32_64x64x64_4row(const float *A, const float *B, float *C) {
-    // ABI: a0=A, a1=B, a2=C.
-    //
-    // M=N=K=64, 4-row blocking, VL=32 -> 2 vector chunks per row.
-    // Accumulators: v8/v9 (row i), v10/v11 (i+1), v12/v13 (i+2), v14/v15 (i+3).
-    // Each B[k][:] row = 64 elements = 256B, loaded as 2 chunks.
-    // prefetch_mode=2: N=2 chunks, stride = 256B.
+void gemm_f32_2row(const float *A, const float *B, float *C, int n) {
+    // ABI: a0=A, a1=B, a2=C, a3=N.  2-row = TWO A load streams packed per k.
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=2\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
     "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
     ".endm\n"
     ".balign 16\n"
-    "vsgemm_64x64_hdv_task_start:\n"
+    "vsgemm_hdv_task_start:\n"
 
-    // setup: VL config + block count + A/C bases.
+    // setup: N -> s0, VL=N (m4, once), s1 = N*4, s2 = 2*N*4 (block stride).
     "HDV_HINT 0x00\n"
-    "li a3, 32\n"
-    "vsetvli zero, a3, e32, m1, ta, ma\n"
-    "li t0, 16\n"
-    "HDV_HINT 0x02\n"
+    "mv s0, a3\n"
+    "vsetvli zero, s0, e32, m4, ta, ma\n"
+    "slli s1, a3, 2\n"
+    "HDV_HINT 0x0a\n"
+    "slli s2, a3, 3\n"
+    "srli t0, a3, 1\n"
     "mv t1, a0\n"
+    "HDV_HINT 0x02\n"
     "mv t2, a2\n"
     "nop\n"
 
-    // outer loop: zero 8 accumulators.
-    "row_block_loop_64:\n"
-    "HDV_HINT 0x0a, 0, 0, 1, 0\n"
+    ".balign 16\n"
+    "row_block_loop:\n"
+    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "vmv.v.i v4, 0\n"
     "vmv.v.i v8, 0\n"
-    "vmv.v.i v9, 0\n"
-    "vmv.v.i v10, 0\n"
-    "HDV_HINT 0x0a\n"
-    "vmv.v.i v11, 0\n"
-    "vmv.v.i v12, 0\n"
-    "vmv.v.i v13, 0\n"
-    "HDV_HINT 0x00\n"
-    "vmv.v.i v14, 0\n"
-    "vmv.v.i v15, 0\n"
     "nop\n"
-    // 4 A row pointers.
+    // A row pointers (rows i, i+1) + B base + k count.
     "HDV_HINT 0x0a\n"
     "mv t3, t1\n"
-    "addi t4, t1, 256\n"
-    "addi t5, t1, 512\n"
-    "HDV_HINT 0x0a\n"
-    "addi t6, t1, 768\n"
-    "mv a3, a1\n"
-    "li a4, 2048\n"
+    "add t4, t1, s1\n"
+    "mv a4, a1\n"
+    "HDV_HINT 0x00\n"
+    "mv a5, s0\n"
+    "nop\n"
+    "nop\n"
 
-    // inner loop: VL config.
-    "k_loop_64:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
-    "vsetvli zero, a4, e32, m1, ta, ma\n"
-    "nop\n"
-    "nop\n"
-    // 4 scalar loads.
-    "HDV_HINT 0x00\n"
+    ".balign 16\n"
+    "k_loop:\n"
+    // 2 A loads packed into ONE EP.
+    "HDV_HINT 0x02, 0, 0, 1, 0\n"
     "flw fa0, 0(t3)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
     "flw fa1, 0(t4)\n"
     "nop\n"
+    // B row + first vfmacc.
+    "HDV_HINT 0x02\n"
+    "vle32.v v0, (a4)\n"
+    "vfmacc.vf v4, fa0, v0\n"
     "nop\n"
+    // second vfmacc.
     "HDV_HINT 0x00\n"
-    "flw fa2, 0(t5)\n"
+    "vfmacc.vf v8, fa1, v0\n"
     "nop\n"
     "nop\n"
-    "HDV_HINT 0x00\n"
-    "flw fa3, 0(t6)\n"
-    "nop\n"
-    "nop\n"
-    // load B[k][:] - 2 chunks.
-    "HDV_HINT 0x0a\n"
-    "vle32.v v0, (a3)\n"
-    "addi a5, a3, 128\n"
-    "vle32.v v1, (a5)\n"
-    "nop\n"
-    // 8 fmacc (4 rows x 2 chunks).
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v8,  fa0, v0\n"
-    "vfmacc.vf v9,  fa0, v1\n"
-    "vfmacc.vf v10, fa1, v0\n"
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v11, fa1, v1\n"
-    "vfmacc.vf v12, fa2, v0\n"
-    "vfmacc.vf v13, fa2, v1\n"
-    "HDV_HINT 0x00\n"
-    "vfmacc.vf v14, fa3, v0\n"
-    "vfmacc.vf v15, fa3, v1\n"
-    "nop\n"
-    // advance pointers.
+    // pointer bumps + k decrement.
     "HDV_HINT 0x0a\n"
     "addi t3, t3, 4\n"
     "addi t4, t4, 4\n"
-    "addi t5, t5, 4\n"
-    "HDV_HINT 0x0a\n"
-    "addi t6, t6, 4\n"
-    "addi a3, a3, 256\n"
-    "addi a4, a4, -32\n"
-    // inner back-edge.
+    "add a4, a4, s1\n"
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
-    "bnez a4, k_loop_64\n"
-    "nop\n"
+    "addi a5, a5, -1\n"
+    "bnez a5, k_loop\n"
     "nop\n"
 
-    // store row i.
-    "HDV_HINT 0x0a\n"
-    "vse32.v v8, (t2)\n"
-    "addi a5, t2, 128\n"
-    "vse32.v v9, (a5)\n"
+    // store rows i, i+1.
+    "HDV_HINT 0x00\n"
+    "vse32.v v4, (t2)\n"
     "nop\n"
-    // store row i+1.
-    "HDV_HINT 0x0a\n"
-    "addi a5, t2, 256\n"
-    "vse32.v v10, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v11, (a5)\n"
     "nop\n"
-    // store row i+2.
     "HDV_HINT 0x0a\n"
-    "addi a5, t2, 512\n"
-    "vse32.v v12, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v13, (a5)\n"
+    "add a6, t2, s1\n"
     "nop\n"
-    // store row i+3.
-    "HDV_HINT 0x0a\n"
-    "addi a5, t2, 768\n"
-    "vse32.v v14, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v15, (a5)\n"
     "nop\n"
-    // advance to next 4-row block.
+    "HDV_HINT 0x00\n"
+    "vse32.v v8, (a6)\n"
+    "nop\n"
+    "nop\n"
+    // advance to next 2-row block.
     "HDV_HINT 0x0a\n"
-    "addi t1, t1, 1024\n"
-    "addi t2, t2, 1024\n"
+    "add t1, t1, s2\n"
+    "add t2, t2, s2\n"
     "addi t0, t0, -1\n"
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
-    "bnez t0, row_block_loop_64\n"
+    "bnez t0, row_block_loop\n"
     "nop\n"
     "nop\n"
 
@@ -330,204 +409,126 @@ void gemm_f32_64x64x64_4row(const float *A, const float *B, float *C) {
     ".option pop\n"
     );
 }
-
-// C = A * B, 128x128x128 row-major FP32, 4-row register blocking.
-void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C);
-
+#else
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C) {
-    // ABI: a0=A, a1=B, a2=C.
-    //
-    // M=N=K=128, 4-row blocking, VL=32 -> 4 vector chunks per row.
-    // Accumulators: v8..v11 (row i), v12..v15 (i+1), v16..v19 (i+2), v20..v23 (i+3).
-    // Each B[k][:] row = 128 elements = 512B, loaded as 4 chunks.
-    // prefetch_mode=3 (4X): N=4 chunks, stride = 512B.
+void gemm_f32_4row(const float *A, const float *B, float *C, int n) {
+    // ABI: a0=A, a1=B, a2=C, a3=N.  4-row = FOUR A load streams packed per k
+    // (the case the pipelined LSU overlaps maximally).
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=3\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
     "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
     ".endm\n"
     ".balign 16\n"
-    "vsgemm_128x128_hdv_task_start:\n"
+    "vsgemm_hdv_task_start:\n"
 
-    // setup.
+    // setup: N -> s0, VL=N (m4, once), s1 = N*4, s2 = 4*N*4 (block stride).
     "HDV_HINT 0x00\n"
-    "li a3, 32\n"
-    "vsetvli zero, a3, e32, m1, ta, ma\n"
-    "li t0, 32\n"
-    "HDV_HINT 0x02\n"
+    "mv s0, a3\n"
+    "vsetvli zero, s0, e32, m4, ta, ma\n"
+    "slli s1, a3, 2\n"
+    "HDV_HINT 0x0a\n"
+    "slli s2, a3, 4\n"
+    "srli t0, a3, 2\n"
     "mv t1, a0\n"
+    "HDV_HINT 0x02\n"
     "mv t2, a2\n"
     "nop\n"
 
-    // outer loop: zero 16 accumulators.
-    "row_block_loop_128:\n"
+    ".balign 16\n"
+    "row_block_loop:\n"
     "HDV_HINT 0x0a, 0, 0, 1, 0\n"
+    "vmv.v.i v4, 0\n"
     "vmv.v.i v8, 0\n"
-    "vmv.v.i v9, 0\n"
-    "vmv.v.i v10, 0\n"
-    "HDV_HINT 0x0a\n"
-    "vmv.v.i v11, 0\n"
     "vmv.v.i v12, 0\n"
-    "vmv.v.i v13, 0\n"
-    "HDV_HINT 0x0a\n"
-    "vmv.v.i v14, 0\n"
-    "vmv.v.i v15, 0\n"
+    "HDV_HINT 0x00\n"
     "vmv.v.i v16, 0\n"
-    "HDV_HINT 0x0a\n"
-    "vmv.v.i v17, 0\n"
-    "vmv.v.i v18, 0\n"
-    "vmv.v.i v19, 0\n"
-    "HDV_HINT 0x0a\n"
-    "vmv.v.i v20, 0\n"
-    "vmv.v.i v21, 0\n"
-    "vmv.v.i v22, 0\n"
-    "HDV_HINT 0x00\n"
-    "vmv.v.i v23, 0\n"
     "nop\n"
     "nop\n"
-    // 4 A row pointers.
+    // A row pointers (rows i..i+3) — chained adds of the runtime stride s1.
     "HDV_HINT 0x0a\n"
     "mv t3, t1\n"
-    "addi t4, t1, 512\n"
-    "addi t5, t1, 1024\n"
+    "add t4, t1, s1\n"
+    "add t5, t4, s1\n"
     "HDV_HINT 0x0a\n"
-    "addi t6, t1, 1536\n"
-    "mv a3, a1\n"
-    "li a4, 4096\n"
+    "add t6, t5, s1\n"
+    "mv a4, a1\n"
+    "mv a5, s0\n"
 
-    // inner loop.
-    "k_loop_128:\n"
-    "HDV_HINT 0x00, 0, 0, 1, 0\n"
-    "vsetvli zero, a4, e32, m1, ta, ma\n"
-    "nop\n"
-    "nop\n"
-    // 4 scalar loads.
-    "HDV_HINT 0x00\n"
+    ".balign 16\n"
+    "k_loop:\n"
+    // 4 A loads packed into ONE EP (p-bits 0x2a keep slots 1/3/5).
+    "HDV_HINT 0x2a, 1, 0, 1, 0\n"
     "flw fa0, 0(t3)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
     "flw fa1, 0(t4)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
     "flw fa2, 0(t5)\n"
-    "nop\n"
-    "nop\n"
-    "HDV_HINT 0x00\n"
     "flw fa3, 0(t6)\n"
+    "vle32.v v0, (a4)\n"
     "nop\n"
     "nop\n"
-    // load B[k][:] - 4 chunks.
-    "HDV_HINT 0x0a\n"
-    "vle32.v v0, (a3)\n"
-    "addi a5, a3, 128\n"
-    "vle32.v v1, (a5)\n"
-    "HDV_HINT 0x0a\n"
-    "addi a5, a3, 256\n"
-    "vle32.v v2, (a5)\n"
-    "addi a5, a3, 384\n"
-    "vle32.v v3, (a5)\n"
+    // 4 vfmacc (one EP — Ara resolves the vector deps; all read v0).
+    "HDV_HINT 0x2a\n"
+    "vfmacc.vf v4,  fa0, v0\n"
+    "vfmacc.vf v8,  fa1, v0\n"
+    "vfmacc.vf v12, fa2, v0\n"
+    "vfmacc.vf v16, fa3, v0\n"
     "nop\n"
-    // 16 fmacc (4 rows x 4 chunks).
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v8,  fa0, v0\n"
-    "vfmacc.vf v9,  fa0, v1\n"
-    "vfmacc.vf v10, fa0, v2\n"
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v11, fa0, v3\n"
-    "vfmacc.vf v12, fa1, v0\n"
-    "vfmacc.vf v13, fa1, v1\n"
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v14, fa1, v2\n"
-    "vfmacc.vf v15, fa1, v3\n"
-    "vfmacc.vf v16, fa2, v0\n"
-    "HDV_HINT 0x0a\n"
-    "vfmacc.vf v17, fa2, v1\n"
-    "vfmacc.vf v18, fa2, v2\n"
-    "vfmacc.vf v19, fa2, v3\n"
-    "HDV_HINT 0x00\n"
-    "vfmacc.vf v20, fa3, v0\n"
-    "vfmacc.vf v21, fa3, v1\n"
-    "vfmacc.vf v22, fa3, v2\n"
-    "vfmacc.vf v23, fa3, v3\n"
     "nop\n"
-    // advance pointers.
+    "nop\n"
+    // A pointer bumps.
     "HDV_HINT 0x0a\n"
     "addi t3, t3, 4\n"
     "addi t4, t4, 4\n"
     "addi t5, t5, 4\n"
+    // last A bump + B bump + k decrement.
     "HDV_HINT 0x0a\n"
     "addi t6, t6, 4\n"
-    "addi a3, a3, 512\n"
-    "addi a4, a4, -32\n"
+    "add a4, a4, s1\n"
+    "addi a5, a5, -1\n"
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
-    "bnez a4, k_loop_128\n"
+    "bnez a5, k_loop\n"
     "nop\n"
     "nop\n"
 
-    // store row i (4 chunks).
-    "HDV_HINT 0x0a\n"
-    "vse32.v v8, (t2)\n"
-    "addi a5, t2, 128\n"
-    "vse32.v v9, (a5)\n"
-    "HDV_HINT 0x0a\n"
-    "addi a5, t2, 256\n"
-    "vse32.v v10, (a5)\n"
-    "addi a5, t2, 384\n"
-    "vse32.v v11, (a5)\n"
+    // store rows i..i+3 (bases t2, t2+s1, t2+2s1, t2+3s1).
+    "HDV_HINT 0x00\n"
+    "vse32.v v4, (t2)\n"
     "nop\n"
-    // store row i+1.
-    "HDV_HINT 0x0a\n"
-    "addi a5, t2, 512\n"
-    "vse32.v v12, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v13, (a5)\n"
-    "HDV_HINT 0x0a\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v14, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v15, (a5)\n"
     "nop\n"
-    // store row i+2.
     "HDV_HINT 0x0a\n"
-    "addi a5, t2, 1024\n"
-    "vse32.v v16, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v17, (a5)\n"
-    "HDV_HINT 0x0a\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v18, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v19, (a5)\n"
+    "add a6, t2, s1\n"
     "nop\n"
-    // store row i+3.
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v8, (a6)\n"
+    "nop\n"
+    "nop\n"
     "HDV_HINT 0x0a\n"
-    "addi a5, t2, 1536\n"
-    "vse32.v v20, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v21, (a5)\n"
+    "add a6, a6, s1\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v12, (a6)\n"
+    "nop\n"
+    "nop\n"
     "HDV_HINT 0x0a\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v22, (a5)\n"
-    "addi a5, a5, 128\n"
-    "vse32.v v23, (a5)\n"
+    "add a6, a6, s1\n"
+    "nop\n"
+    "nop\n"
+    "HDV_HINT 0x00\n"
+    "vse32.v v16, (a6)\n"
+    "nop\n"
     "nop\n"
     // advance to next 4-row block.
     "HDV_HINT 0x0a\n"
-    "addi t1, t1, 1024\n"
-    "addi t1, t1, 1024\n"
-    "addi t2, t2, 1024\n"
-    "HDV_HINT 0x0a\n"
-    "addi t2, t2, 1024\n"
+    "add t1, t1, s2\n"
+    "add t2, t2, s2\n"
     "addi t0, t0, -1\n"
-    "nop\n"
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
-    "bnez t0, row_block_loop_128\n"
+    "bnez t0, row_block_loop\n"
     "nop\n"
     "nop\n"
 
@@ -539,3 +540,5 @@ void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C) {
     ".option pop\n"
     );
 }
+#endif
+#endif

@@ -8,7 +8,7 @@
 // needed behind HEU: an architectural X/FP register context, a small RV64
 // decoder/ALU/branch path, a CSR-cycle stub, and a vector operand service.
 
-module cva6_hdv_scalar_backend
+module hdv_scalar_backend
   import ariane_pkg::*;
 #(
   parameter int unsigned XLEN     = 64,
@@ -1005,6 +1005,7 @@ module cva6_hdv_scalar_backend
   assign task_complete_o        = (state_q == DONE) && task_complete_pending_q &&
                                   !error_seen_q;
 
+
   assign vec_operand_req_ready_o = 1'b1;
   assign vec_rs1_data_o          = (vec_rs1_addr_i == 5'd0) ? '0 : xrf_q[vec_rs1_addr_i];
   assign vec_rs2_data_o          = (vec_rs2_addr_i == 5'd0) ? '0 : xrf_q[vec_rs2_addr_i];
@@ -1655,7 +1656,7 @@ module cva6_hdv_scalar_backend
 
   always_ff @(posedge clk_i) begin : p_unsupported_report
     if (rst_ni && (state_q == EXECUTE) && curr_slot_found && unsupported) begin
-      $warning("[HDV] cva6_hdv_scalar_backend unsupported scalar instruction pc=0x%016h insn=0x%08h is32=%0b",
+      $warning("[HDV] hdv_scalar_backend unsupported scalar instruction pc=0x%016h insn=0x%08h is32=%0b",
                curr_pc, curr_insn, curr_is_32b);
     end
   end
@@ -1663,4 +1664,4 @@ module cva6_hdv_scalar_backend
   logic unused_vec_operand_req_valid;
   assign unused_vec_operand_req_valid = vec_operand_req_valid_i;
 
-endmodule : cva6_hdv_scalar_backend
+endmodule : hdv_scalar_backend
