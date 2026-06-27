@@ -242,3 +242,53 @@ seq_full = pf_ar_rob_full = pf_ar_lkup_full = pf_queue_full = 0`,且 `vq_push ==
   0x80001000)+ 4KB 对齐数据后随 AVL 正常缩放(稳态 ≈ 0.54 cyc/el)。
 - **冷启动**:vmc / dropout 高 AVL 命中率差 1,是首迭代必然的 demand miss,物理最优。
 - **fdotp** 排除原因见 §1。
+
+## 8. BLAS-2/3 + GEMM 内核(B-tier,LMUL 可配)
+
+§1–7 是 1D 流式核(单层循环)。本节是 B-tier:BLAS-2(vssymv/vsgemv/vsger)、BLAS-3
+(vstrsm/vssyrk)、GEMM(vsgemm),含**嵌套循环**与**非单位步长**访存。
+
+### 8.1 配置
+
+- 每个 BLAS 核 `BLAS_LMUL` / `GEMM_LMUL` 可选:`=1` 走原版 m1 `.inc`,`m2/m4/m8` 走统一核、
+  运行期维度(`+HDV_A<k>=N` 注入,无需重编)。
+- **预取按核适配,不硬套**:
+  - **vssymv / vsgemv**(矩阵行 = 单位步长单流):开预取,1X next-iteration lead(高 AVL /
+    低 VL 使 `avl ≥ 2·vl` 闸门导通)。
+  - **vstrsm**(store-heavy 两层循环,`avl>vl` 会触发前端死锁):**demand-only**(`avl=vl`)。
+  - **vssyrk**(列访问 = strided `vlse`):不开预取(strided 不匹配单位步长预取器,见 §8.3)。
+- 采集同 `avl_sweep`(58 列);看门狗 `TaskWatchdogCycles = 65536`。一键:
+  `hardware/blas_sweep.sh {vsgemm|blas|blas_pf|all}`。
+
+### 8.2 结果总览
+
+| 核 | 类 | LMUL | 维度 | 结果 | task_cycles | pf_hit |
+|---|---|---|---|---|--:|--:|
+| vstrsm | B3 | m2 | M=16 | PASS | 8241  | 136 |
+| vstrsm | B3 | m4 | M=16 | PASS | 10682 | 139 |
+| vstrsm | B3 | m8 | M=16 | PASS | 19394 | 136 |
+| vstrsm | B3 | m2 | M=32 | PASS | 30985 | 528 |
+| vstrsm | B3 | m4 | M=32 | PASS | 40898 | 531 |
+| vstrsm | B3 | m8 | M=32 | 超看门狗 | — | — |
+| vssymv | B2 | m2 | 16 行 | PASS | 1296 | 16 |
+| vssymv | B2 | m4 | 16 行 | PASS | 1581 | 17 |
+| vssymv | B2 | m8 | 16 行 | PASS | 2232 | 19 |
+| vsgemv | B2 | m2 | 16 行 | PASS | 1292 | 16 |
+| vsgemv | B2 | m4 | 16 行 | PASS | 1572 | 17 |
+| vsgemv | B2 | m8 | 16 行 | PASS | 2207 | 19 |
+| vsger  | B2 | m4 | N=32 | PASS | 3004 | 32 |
+| vsger  | B2 | m4 | N=64 | PASS | 4604 | 32 |
+| vsgemm | G  | m4 | N=32,4row | PASS | 13211 | — |
+| vssyrk | B3 | m1/m4 | 32×32 | PASS* | 84582 | — |
+
+- vssymv/vsgemv 负载由 `a3 = 行数 × VLMAX` 设定(上表 = 16 行);预取每 16 行命中 16/17/19
+  (m2/m4/m8),周期随 VLMAX 线性增。单位步长行核(vssymv/vsgemv)千级周期。
+- `*` vssyrk 与 vstrsm m8@M=32 单次 sim 内超默认 65536 看门狗;vssyrk 的 84582 是放大看门狗
+  后测得的完成周期(见 §8.3),vstrsm m8@M=32 按 m4@M=32=40898 线性外推约 8 万周期。
+
+### 8.3 vssyrk:strided 列访问的架构成本
+
+vssyrk 的热 load 是列方向的 strided `vlse32.v v0,(t3),t5`(stride = 128 B,逐元素 AR),每行约
+2648 周期、32×32 共 **84582 周期**,远高于同规模单位步长行核(vssymv/vsgemv 千级周期),也
+超出默认 65536 看门狗。这是 SYRK 列访问在**单位步长优化**的 HDV/Ara 单共享 AXI 上的固有
+架构成本,可作为论文中"非单位步长(strided / 列)访存是该架构短板"的实测支撑。
