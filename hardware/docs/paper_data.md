@@ -13,7 +13,8 @@
   + vldu per-burst 预取命中消费 + store-aware **bounded-lead** 预取 + **去除全局预取模式否决**。
 - **采集**:`hardware/avl_sweep.sh`,每个 AVL 点记录 58 列(HDV-CSR / HDV-PERF / IPU-PERF /
   PERF-ADDRGEN(-PF) / PERF-SEQ + 派生)。
-- **核集合**:8 个 —— vsaxpy、vvaddint32、vscopy、vsscal、vsdot、vsswap、vmc、dropout。
+- **核集合**:9 个 —— vsaxpy、vvaddint32、vscopy、vsscal、vsdot、vsswap、vmc、dropout、vsdwt
+  (单步 Haar 小波,1D 流式核;预取使能但 0 命中——原地 even/odd 访存无下一迭代可取)。
 - **fdotp 排除**:其预取对自身地址/时序病态敏感(非单调),任何描述符消费时序的改动都
   会大幅改变其命中率;点积类由 vsdot 代表(vsdot 对所有修复逐位一致)。
 - AVL 8 → 4096 全程 **全核 PASS**。
@@ -32,6 +33,9 @@
 | vsswap     | f32 | 334 | 670 | 1350 | 2693 | 5379 |
 | vmc        | i32 | 113 | 192 | 394  | 813  | 1656 |
 | dropout    | f32 |  59 | 196 | 536  | 1096 | 2216 |
+| vsdwt      | f32 | 451 | 875 | 1723 | 3419 | 6811 |
+
+vsdwt = 单步 Haar 小波(even/odd 两个单位步长流,原地变换);AVL = 信号元素数。
 
 ### 2.2 效率(cyc/el)
 
@@ -45,6 +49,7 @@
 | vsswap     | 1.304 | 1.308 | 1.318 | 1.314 | 1.313 |
 | vmc        | 0.441 | 0.375 | 0.384 | 0.396 | 0.404 |
 | dropout    | 0.230 | 0.382 | 0.523 | 0.535 | 0.541 |
+| vsdwt      | 1.761 | 1.708 | 1.682 | 1.669 | 1.662 |
 
 所有核 cyc/el 都呈"小 AVL 高、大 AVL 收敛到 plateau":小 AVL 时每核固定的启动开销
 (vsetvli、首迭代冷启动 miss、流水填充)摊到很少元素上;AVL ≥ 1024 摊薄到稳态。
@@ -243,52 +248,101 @@ seq_full = pf_ar_rob_full = pf_ar_lkup_full = pf_queue_full = 0`,且 `vq_push ==
 - **冷启动**:vmc / dropout 高 AVL 命中率差 1,是首迭代必然的 demand miss,物理最优。
 - **fdotp** 排除原因见 §1。
 
-## 8. BLAS-2/3 + GEMM 内核(B-tier,LMUL 可配)
+## 8. BLAS-2/3 + GEMM + 通用核(B-tier,LMUL 可配)
 
-§1–7 是 1D 流式核(单层循环)。本节是 B-tier:BLAS-2(vssymv/vsgemv/vsger)、BLAS-3
-(vstrsm/vssyrk)、GEMM(vsgemm),含**嵌套循环**与**非单位步长**访存。
+§1–7 是 1D 流式核(单层循环)。本节是含**嵌套循环**与**多样访存**的更复杂核:
+BLAS-2(vssymv/vsgemv/vsger)、BLAS-3(vstrsm/vssyrk)、GEMM(vsgemm),以及卷积/stencil/
+ML/变换/N-body(fconv2d/jacobi2d/softmax/vsdwt/lavamd)。
 
 ### 8.1 配置
 
 - 每个 BLAS 核 `BLAS_LMUL` / `GEMM_LMUL` 可选:`=1` 走原版 m1 `.inc`,`m2/m4/m8` 走统一核、
-  运行期维度(`+HDV_A<k>=N` 注入,无需重编)。
-- **预取按核适配,不硬套**:
-  - **vssymv / vsgemv**(矩阵行 = 单位步长单流):开预取,1X next-iteration lead(高 AVL /
-    低 VL 使 `avl ≥ 2·vl` 闸门导通)。
-  - **vstrsm**(store-heavy 两层循环,`avl>vl` 会触发前端死锁):**demand-only**(`avl=vl`)。
-  - **vssyrk**(列访问 = strided `vlse`):不开预取(strided 不匹配单位步长预取器,见 §8.3)。
-- 采集同 `avl_sweep`(58 列);看门狗 `TaskWatchdogCycles = 65536`。一键:
-  `hardware/blas_sweep.sh {vsgemm|blas|blas_pf|all}`。
+  运行期维度(`+HDV_A<k>=N` 注入,无需重编)。e32 下 VLMAX = LMUL×32(m2=64,m4=128,m8=256)。
+- **预取按核访存适配**(单位步长单流才开):
+  - vssymv/vsgemv(矩阵行=单位步长单流)、vsgemm m1(打包 A 标量流)、vsger、lavamd:**开**。
+  - vstrsm(store-heavy 两层循环,高-AVL 预取触发前端死锁):**demand-only**(`avl=vl`)。
+  - softmax(多 strip 流式触发 VLSU 预取死锁):**关**。vssyrk(strided 列访问):**关**。
+- 指标:`pf_ar→pf_hit` = 预取 AR 发出数→命中数;`pf_en` = 预取使能周期。采集 58 列计数器。
+  看门狗 `TaskWatchdogCycles = 65536`。
 
-### 8.2 结果总览
+### 8.2 BLAS-2/3 + GEMM 实测(多 LMUL × 多维度)
 
-| 核 | 类 | LMUL | 维度 | 结果 | task_cycles | pf_hit |
-|---|---|---|---|---|--:|--:|
-| vstrsm | B3 | m2 | M=16 | PASS | 8241  | 136 |
-| vstrsm | B3 | m4 | M=16 | PASS | 10682 | 139 |
-| vstrsm | B3 | m8 | M=16 | PASS | 19394 | 136 |
-| vstrsm | B3 | m2 | M=32 | PASS | 30985 | 528 |
-| vstrsm | B3 | m4 | M=32 | PASS | 40898 | 531 |
-| vstrsm | B3 | m8 | M=32 | 超看门狗 | — | — |
-| vssymv | B2 | m2 | 16 行 | PASS | 1296 | 16 |
-| vssymv | B2 | m4 | 16 行 | PASS | 1581 | 17 |
-| vssymv | B2 | m8 | 16 行 | PASS | 2232 | 19 |
-| vsgemv | B2 | m2 | 16 行 | PASS | 1292 | 16 |
-| vsgemv | B2 | m4 | 16 行 | PASS | 1572 | 17 |
-| vsgemv | B2 | m8 | 16 行 | PASS | 2207 | 19 |
-| vsger  | B2 | m4 | N=32 | PASS | 3004 | 32 |
-| vsger  | B2 | m4 | N=64 | PASS | 4604 | 32 |
-| vsgemm | G  | m4 | N=32,4row | PASS | 13211 | — |
-| vssyrk | B3 | m1/m4 | 32×32 | PASS* | 84582 | — |
+| 核 | LMUL | 维度 | 结果 | task_cycles | demand_ar | pf_ar→pf_hit |
+|---|---|---|---|--:|--:|--:|
+| **vstrsm** | m2 | M=16 | PASS | 8241  | 150 | off |
+| vstrsm | m2 | M=32 | PASS | 30985 | 572 | off |
+| vstrsm | m4 | M=16 | PASS | 10682 | 158 | off |
+| vstrsm | m4 | M=32 | PASS | 40898 | 604 | off |
+| vstrsm | m8 | M=16 | PASS | 19394 | 176 | off |
+| vstrsm | m8 | M=32 | FAIL(看门狗) | >65536 | — | off |
+| **vssymv** | m2 | 16 行 | PASS | 1296 | 18 | 16→16 |
+| vssymv | m2 | 32 行 | PASS | 2546 | 35 | 33→33 |
+| vssymv | m4 | 16 行 | PASS | 1581 | 19 | 17→17 |
+| vssymv | m4 | 32 行 | PASS | 3083 | 37 | 35→35 |
+| vssymv | m8 | 16 行 | PASS | 2232 | 21 | 19→19 |
+| vssymv | m8 | 32 行 | PASS | 4328 | 41 | 39→39 |
+| **vsgemv** | m2 | 16 行 | PASS | 1292 | 18 | 16→16 |
+| vsgemv | m2 | 32 行 | PASS | 2541 | 35 | 33→33 |
+| vsgemv | m4 | 16 行 | PASS | 1572 | 19 | 17→17 |
+| vsgemv | m4 | 32 行 | PASS | 3078 | 37 | 35→35 |
+| vsgemv | m8 | 16 行 | PASS | 2207 | 21 | 19→19 |
+| vsgemv | m8 | 32 行 | PASS | 4303 | 41 | 39→39 |
+| **vsger** | m4 | N=32 | PASS | 3004 | 65  | 0→0 |
+| vsger | m4 | N=64 | PASS | 4604 | 130 | 64→64 |
+| vsger | m4 | N=128 | PASS | 7804 | 260 | 196→196 |
+| **vsgemm** | m1 | N=32,1行 | PASS | 31910 | 1056 | 1024→992 |
+| vsgemm | m1 | N=32,2行 | PASS | 19248 | 528 | 512→496 |
+| vsgemm | m1 | N=32,4行 | PASS | 9183  | 264 | 256→248 |
+| vsgemm | m4 | N=32,1行 | PASS | 31837 | 1024 | off |
+| vsgemm | m4 | N=32,2行 | PASS | 20819 | 512 | off |
+| vsgemm | m4 | N=32,4行 | PASS | 13211 | 256 | off |
+| vsgemm | m4 | N=64 | FAIL | — | — | off |
+| **vssyrk** | m1/m4 | 32×32 | PASS* | 84582 | 817 | off |
 
-- vssymv/vsgemv 负载由 `a3 = 行数 × VLMAX` 设定(上表 = 16 行);预取每 16 行命中 16/17/19
-  (m2/m4/m8),周期随 VLMAX 线性增。单位步长行核(vssymv/vsgemv)千级周期。
-- `*` vssyrk 与 vstrsm m8@M=32 单次 sim 内超默认 65536 看门狗;vssyrk 的 84582 是放大看门狗
-  后测得的完成周期(见 §8.3),vstrsm m8@M=32 按 m4@M=32=40898 线性外推约 8 万周期。
+### 8.3 卷积 / Stencil / ML / 变换 / N-body 核
 
-### 8.3 vssyrk:strided 列访问的架构成本
+| 核 | 类型 | dtype | 规模 | 结果 | task_cycles | demand_ar | pf_ar→pf_hit |
+|---|---|---|---|---|--:|--:|--:|
+| **fconv2d** | 2D 卷积 | e64/m2 | 3×3,R16 C32 | PASS | 4906 | 153 | 0→0 |
+| **jacobi2d** | 2D stencil | e64/m4 | 5 点,16×64 | PASS | 2363 | 19 | 0→0 |
+| **lavamd** | N-body | e32/m1 | NPAR=256 | PASS | 2757 | 55 | 35→21 |
+| **softmax** | softmax | e32/m1 | ch3×inner256 | PASS | 6881 | 73 | off |
+| softmax | softmax | e32/m1 | ch3×inner32 | PASS | 996 | 9 | off |
+| **vsdwt** | Haar DWT | e32/m1 | 单步 | PASS | 60 | 1 | 0→0 |
 
-vssyrk 的热 load 是列方向的 strided `vlse32.v v0,(t3),t5`(stride = 128 B,逐元素 AR),每行约
-2648 周期、32×32 共 **84582 周期**,远高于同规模单位步长行核(vssymv/vsgemv 千级周期),也
-超出默认 65536 看门狗。这是 SYRK 列访问在**单位步长优化**的 HDV/Ara 单共享 AXI 上的固有
-架构成本,可作为论文中"非单位步长(strided / 列)访存是该架构短板"的实测支撑。
+### 8.4 预取有效性小结(论文支撑)
+
+- **单位步长单流核预取全命中**:vssymv/vsgemv 的 `pf_ar == pf_hit`(16/33/35/39 …,随 LMUL/行数
+  增长),16 行→32 行预取数翻倍而命中率仍 100% —— 解耦预取完全藏住 load 延迟。
+- **GEMM 打包流预取近全命中**:vsgemm m1 命中 992/1024(97%)、496/512、248/256;且**多行打包
+  显著降周期**(1 行 31910 → 4 行 9183,A 标量流压进同一 EP)。m4 走 demand-only(`pf=off`)较慢
+  (4 行 13211 > m1 4 行 9183),印证打包 + 预取的价值。
+- **vsger 预取随规模导通**:N=32 预取使能但 0 命中(单 burst 已覆盖、无下一迭代可取),N≥64
+  起 100% 命中(64/196)。
+- **demand-only 核(vstrsm)**:`pf=off`,全靠 demand_ar;周期随 M、LMUL 线性放大(M=16→32 约 ×3.7)。
+- **prefetch=off 的核**:vstrsm(高-AVL 死锁)、softmax(多 strip VLSU 预取死锁)、vssyrk(strided)
+  关闭预取规避死锁;fconv2d/jacobi2d/vsdwt 预取使能但访存(e64 卷积 / stencil / 单步)不发 AR。
+- **lavamd 部分命中**(35→21):N-body 单位步长读但带规约依赖,预取部分有效。
+
+### 8.5 vssyrk:strided 列访问的架构成本
+
+vssyrk 的热 load 是列方向的 strided `vlse32.v v0,(t3),t5`(stride = 128 B,逐元素 AR,
+demand_ar=817),每行约 2648 周期、32×32 共 **84582 周期**(`*` 需放大看门狗才在单次 sim 跑完),
+远高于同规模单位步长行核(vssymv/vsgemv 千级周期)。vstrsm m8@M=32 同理超默认看门狗(按
+m4@M=32=40898 外推约 8 万)。这是非单位步长(strided / 列)访存在**单位步长优化**的 HDV/Ara
+单共享 AXI 上的固有架构成本,可作为论文"非单位步长访存是该架构短板"的实测支撑。
+
+## 9. 预取微基准(vspf,设计验证)
+
+`vspf_*` 是为**受控验证 DATA 预取器**而造的合成核:`m{1,2,4,8} × K{1,2,4}`(LMUL × 单位步长
+load 流数),1X next-iteration lead。它们不是应用核,而是把预取的"几条流 × 多大 LMUL"两个轴
+拉开做压力测试。
+
+- **单流(vspf_m1k1)**:命中近 100%——AVL=16 → `pf 16→15`,AVL=64 → `pf 64→63`。证明 1X lead
+  对单条单位步长流完全藏住 load 延迟(与 §4 的 1D 核、§8.4 的 BLAS-2 行核一致)。
+- **多流 / 多 LMUL**(m1k2/k4、m2k2、m4k2、m8k2):每配置结果见 `avl_sweep_out/vspf_*.csv`
+  (`hardware/avl_sweep.sh pf` 一键复跑)。小 AVL 下多流预取尚未热身(如 m1k2@AVL16 `32→0`),
+  AVL 增大后改善——刻画了"预取信用 / 流数"对命中率的影响,作为预取设计的边界验证。
+
+合并 §4(1D)+ §8.4(BLAS)+ 本节(合成微基准),三层共同支撑"解耦单位步长预取在该架构上
+完全藏 load 延迟、且按流数/LMUL 可预测"的论点。

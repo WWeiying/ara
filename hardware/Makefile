@@ -144,6 +144,11 @@ ifeq ($(app),vsscal_hdv)
   hdv_initial_a1 ?= $(shell printf '%d' 0x80001040)  # a1 = src
   hdv_initial_a2 ?= $(shell printf '%d' 0x80005050)  # a2 = dst (fa0=6.66=vsaxpy default)
 endif
+ifeq ($(app),vsdwt_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x80001090)  # a0 = even (src1)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x800110a0)  # a1 = odd  (src2)
+  hdv_initial_a2 ?= $(avl)                           # a2 = n    (AVL sweep, element count)
+endif
 ifeq ($(app),fdotp_hdv)
   hdv_initial_a0 ?= $(shell printf '%d' 0x80001090)  # a0 = v64a (4096-tiled)
   hdv_initial_a1 ?= $(shell printf '%d' 0x80005090)  # a1 = v64b (shifted by tiling)

@@ -46,18 +46,18 @@ PF_PTRS="+HDV_A1=2147549184 +HDV_A2=2147680256 +HDV_A3=2147811328 +HDV_A4=214794
 declare -A MAXAVL=(
   [vsaxpy_hdv]=4096   [vscopy_hdv]=4096   [vsscal_hdv]=4096
   [vsswap_hdv]=4096   [vsdot_hdv]=4096    [vvaddint32_hdv]=4096
-  [vmc_hdv]=4096      [dropout_hdv]=4096
+  [vmc_hdv]=4096      [dropout_hdv]=4096  [vsdwt_hdv]=4096
   [vspf_m1k1_hdv]=64  [vspf_m1k2_hdv]=64  [vspf_m1k4_hdv]=64
   [vspf_m2k2_hdv]=64  [vspf_m4k2_hdv]=64  [vspf_m8k2_hdv]=64
 )
-ALL_KERNELS="vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv"
+ALL_KERNELS="vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv vsdwt_hdv"
 DEFAULT_AVLS="8 16 32 64 128 256 512 1024 2048 4096"
 
 # Which xrf reg holds the AVL per kernel (a0=A0, a2=A2).  Injected at RUNTIME via
 # the scalar backend's +HDV_A<n> plusarg (see hdv_scalar_backend.sv), so the
 # simv is NOT re-elaborated per AVL point (VCS keeps it "up to date"); only the
 # first run of each kernel recompiles its address defines.
-declare -A AVLREG=( [vsdot_hdv]=A2 )   # vspf + others default to A0 (count)
+declare -A AVLREG=( [vsdot_hdv]=A2 [vsdwt_hdv]=A2 )   # vspf + others default to A0 (count)
 # Per-kernel extra plusargs (pointer args that aren't the swept AVL register).
 declare -A EXTRA_PLUSARGS=(
   [vspf_m1k1_hdv]="$PF_PTRS" [vspf_m1k2_hdv]="$PF_PTRS" [vspf_m1k4_hdv]="$PF_PTRS"
