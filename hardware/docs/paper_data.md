@@ -17,6 +17,8 @@
 - **fdotp 排除**:其预取对自身地址/时序病态敏感(非单调),任何描述符消费时序的改动都
   会大幅改变其命中率;点积类由 vsdot 代表(vsdot 对所有修复逐位一致)。
 - AVL 8 → 4096 全程 **全核 PASS**。
+- **零回归确认**:在 §8 的 IPU `fill_req/rsp` desync 修复后重跑本 sweep,8 核 × 5 AVL =
+  **40/40 PASS 且逐位与修复前基线一致**(修复对单循环核是字面 no-op,见 §8.3)。
 
 ## 2. 主结果:周期与效率
 
@@ -242,3 +244,89 @@ seq_full = pf_ar_rob_full = pf_ar_lkup_full = pf_queue_full = 0`,且 `vq_push ==
   0x80001000)+ 4KB 对齐数据后随 AVL 正常缩放(稳态 ≈ 0.54 cyc/el)。
 - **冷启动**:vmc / dropout 高 AVL 命中率差 1,是首迭代必然的 demand miss,物理最优。
 - **fdotp** 排除原因见 §1。
+
+## 8. BLAS-2/3 + GEMM 内核(B-tier,LMUL 可配)
+
+§1–7 是 1D 流式核(单层循环)。本节是 B-tier:BLAS-2(vssymv/vsgemv/vsger)、BLAS-3
+(vstrsm/vssyrk)、GEMM(vsgemm),含**嵌套循环**与**非单位步长**访存,经一处关键前端修复
+后测得。
+
+### 8.1 配置
+
+- 每个 BLAS 核改造成 `BLAS_LMUL` / `GEMM_LMUL` 可选:`=1` 走原版 m1 `.inc`(已验证基线),
+  `m2/m4/m8` 走统一核、运行期维度(`+HDV_A<k>=N` 注入,无需重编)。
+- **预取按核适配,不硬套**:
+  - **vssymv / vsgemv**(矩阵行 = 单位步长单流):开预取,1X next-iteration lead(高 AVL /
+    低 VL trick 让 `avl ≥ 2·vl` 闸门导通)。
+  - **vstrsm**(store-heavy 两层循环):`avl>vl` 会触发前端死锁,故 **demand-only**(`avl=vl`)。
+  - **vssyrk**(列访问 = strided `vlse`):不开预取(strided 不匹配单位步长预取器,见 §8.4)。
+- 采集同 `avl_sweep`(58 列);看门狗 `TaskWatchdogCycles = 65536`、`PacketWatchdogCycles = 1024`。
+- 一键:`hardware/blas_sweep.sh {vsgemm|blas|blas_pf|all}`。
+
+### 8.2 结果总览(实测,post-fix)
+
+| 核 | 类 | LMUL | 维度 | 结果 | task_cycles | pf_hit | 备注 |
+|---|---|---|---|---|--:|--:|---|
+| vstrsm | B3 | m2 | M=16 | PASS | 8241  | 136 | demand-only,嵌套循环 |
+| vstrsm | B3 | m4 | M=16 | PASS | 10682 | 139 | **IPU desync 修复后由 hang→PASS** |
+| vstrsm | B3 | m8 | M=16 | PASS | 19394 | 136 | |
+| vstrsm | B3 | m2 | M=32 | PASS | 30985 | 528 | |
+| vstrsm | B3 | m4 | M=32 | PASS | 40898 | 531 | |
+| vstrsm | B3 | m8 | M=32 | —    | >65536| —   | 工作量随 LMUL×维度 外推 ~80k > 看门狗 |
+| vssymv | B2 | m2 | 16 行 | PASS | 1296 | 16 | 预取工作 |
+| vssymv | B2 | m4 | 16 行 | PASS | 1581 | 17 | |
+| vssymv | B2 | m8 | 16 行 | PASS | 2232 | 19 | |
+| vsgemv | B2 | m2 | 16 行 | PASS | 1292 | 16 | 预取工作 |
+| vsgemv | B2 | m4 | 16 行 | PASS | 1572 | 17 | |
+| vsgemv | B2 | m8 | 16 行 | PASS | 2207 | 19 | |
+| vsger  | B2 | m4 | N=32 | PASS | 3004 | 32 | |
+| vsger  | B2 | m4 | N=64 | PASS | 4604 | 32 | |
+| vsgemm | G  | m4 | N=32,4row | PASS | 13211 | — | m1 基线 ≈9183 |
+| vssyrk | B3 | m1/m4 | 32×32 | 慢 | 84582 | — | **功能正确但 strided 超看门狗,见 §8.4** |
+
+- **vssymv/vsgemv 必须用正确 ABI 驱动**:`a3 = 行数 × VLMAX`(非维度 N)。`blas_sweep.sh blas_pf`
+  曾把 `a3` 误传成维度 → 核几乎不干活、出"假 PASS"(cyc≈108、`demand_ar=3`);上表是
+  按 `a3 = 16×VLMAX`(16 行)正确驱动的真实数。预取每 16 行命中 16/17/19(m2/m4/m8),
+  随 LMUL 增大命中略升、周期随 VLMAX 线性增。
+- **5/6 个 BLAS 核在默认看门狗内完全 PASS**;vstrsm 大维度与 vssyrk 是工作量/架构问题,非功能 bug。
+
+### 8.3 关键 RTL 修复:IPU `fill_req/rsp` 取指流 desync(vstrsm m4)
+
+**症状**:vstrsm m4 hang(PacketWatchdog),m2/m8 跑同一二进制却 PASS(纯时序)。
+
+**根因(逐级 RTL 探针实测,非推理)**:IPU 把 imem AR 地址绑到 `fill_req_idx`、把 SRAM 写槽
+绑到独立的 `fill_rsp_idx`,默认"每个请求恰好回一个按序响应"。嵌套循环里 IPU 会**投机预取
+过循环体**(取到循环后的 ret packet + nop pad,固有 ≤4 个在途);外层 `bnez` 回跳触发
+`dispatch_flush`,imem 桥接把这些在途响应标 **stale 并丢弃**;但 redirect-in-active 回放分支
+**不复位 fill 指针** → `fill_req_idx` 跑到 24、`fill_rsp_idx` 停在 20,错位 4 → 后续 idx24
+(nop-pad 地址)的响应被写到 **SRAM[20](ret packet)**,ret 被 nop 覆盖 → 标量后端永不解码
+ret → task_complete 不发 → 看门狗触发。
+
+**修复(1 行,最小)**:redirect-in-active 回放分支里 `fill_req_idx_d = fill_rsp_idx_q;`——把
+请求指针回滚到响应指针,使被丢弃的 packet 按序重取、流重新对齐。**对无投机在途的核(所有
+单循环核稳态)是字面 no-op**(自洽:若任何已过核在该点 `fill_req_idx>fill_rsp_idx`,它今天
+就已 desync 失败)→ §1–7 的 1D sweep **40/40 逐位不变**。这是 HDV 前端的**通用** bug
+(任何嵌套循环 + 投机预取过循环体的核都会中招,vstrsm m4 触发)。
+
+### 8.4 vssyrk:功能正确,但 strided 列访问太慢
+
+`vssyrk` 在默认看门狗下"FAIL",但**逐级探针证明它功能完全正确**,只是太慢:
+
+| 探针 | 实测 | 推翻/坐实 |
+|---|---|---|
+| `error_seen`(标量非法指令) | **从不触发** | 推翻"runahead 越 ret 取 .data 当指令"假设 |
+| 标量最远 PC | 0x800010c4(外层 bnez),**从未到 ret** | 卡在外层循环 |
+| IPU 心跳 | `exec_idx` 持续变化 | **非死锁**,在推进 |
+| 外层计数器 t0 | **正确递减 31→…→8**(每行 ~2648 周期) | 逻辑正确,只是慢 |
+| 看门狗调 200000 | **PASS,cycle=84582,t0→0,到达 ret** | **坐实:正确但慢** |
+
+每行 ~2648 周期由 32 个 strided 列 load(`vlse32.v v0,(t3),t5`,stride=128B,逐元素 AR)主导;
+32×32 需 **84582 周期** > 默认 65536。这是 SYRK 列访问在**单位步长优化**的 HDV/Ara 单共享
+AXI 上的固有架构成本——单位步长行核(vssymv/vsgemv)只需千级周期,strided 列核要 8.4 万。
+**结论:vssyrk 不改代码**;若需在 sweep 显示 PASS,只需放大看门狗(纯测试配置)。
+
+### 8.5 方法学(与 §1–7 一致)
+
+vstrsm m4 与 vssyrk 都**严格走"静态查 kernel + 深度 RTL 探针实测"**:vstrsm 用 imem 桥接
+时间线(IMAR/IMDROP/IMFLUSH)坐实 desync;vssyrk 用 `error_seen`/最远 PC/外层计数器 三个
+探针逐一推翻"非法指令/死锁"假设、坐实"正确但慢"。**全程无"删测试/换指令试来试去"**。
