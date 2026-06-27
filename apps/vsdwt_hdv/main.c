@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 1024
+#define TOTAL_ELEMENTS 4096
 
 // 16-byte aligned HDV task entry used by the mock host/TB.
 // Override with: make -C apps bin/vsdwt_hdv HDV_TASK_ENTRY=0x80002000
@@ -27,10 +27,10 @@ extern const uint32_t _src1_size;
 extern const uint32_t _src2_size;
 
 // In-place Haar DWT step: for each pair, (even,odd) -> ((e+o)/sqrt2, (e-o)/sqrt2)
-void dwt_haar_hdv(float *even, float *odd);
+void dwt_haar_hdv(float *even, float *odd, int n);
 
 int main() {
-    dwt_haar_hdv(src1, src2);
+    dwt_haar_hdv(src1, src2, TOTAL_ELEMENTS);
     #ifndef SPIKE
     perf_time();
     #endif
@@ -40,8 +40,8 @@ int main() {
 
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void dwt_haar_hdv(float *even, float *odd) {
-    // ABI on entry: a0 = even, a1 = odd.
+void dwt_haar_hdv(float *even, float *odd, int n) {
+    // ABI on entry: a0 = even, a1 = odd, a2 = n (runtime element count, AVL).
     //
     // One-time setup runs as the first two EPs (count and the 1/sqrt(2) constant
     // in ft0), then the strip-mined loop follows.  The 0x3f3504f3 immediate is
@@ -67,9 +67,9 @@ void dwt_haar_hdv(float *even, float *odd) {
     ".balign 16\n"
     "dwt_haar_hdv_task_start:\n"
 
-    // setup packet 0: loop count and the upper/lower halves of the constant.
+    // setup packet 0: loop count (runtime N from a2) + upper half of the constant.
     "HDV_HINT 0x0a\n"
-    "addi t0, zero, 32\n"
+    "mv t0, a2\n"
     "lui t6, 0x3f350\n"
     "addi t6, t6, 0x4f3\n"
 
@@ -103,13 +103,25 @@ void dwt_haar_hdv(float *even, float *odd) {
     "add a0, a0, t2\n"
     "add a1, a1, t2\n"
 
-    "HDV_HINT 0x1f, 0, 0, 0, 1\n"
+    // count decrement in its OWN EP so its writeback completes before the
+    // branch reads t0 (avoids a sub->bnez RAW hazard inside one EP).
+    "HDV_HINT 0x0a\n"
     "sub t0, t0, t1\n"
+    "nop\n"
+    "nop\n"
+
+    // loop_end EP: the back-edge branch is the LAST instruction in the loop.
+    // The previous structure packed `ret` into this same EP, so on a multi-strip
+    // iteration the taken bnez still executed the trailing ret and ended the
+    // task after one strip.  Keep bnez alone here; the ret lives in its own EP
+    // below, reached only when the loop falls through (t0 == 0).
+    "HDV_HINT 0x1f, 0, 0, 0, 1\n"
     "bnez t0, dwt_loop\n"
-    "ret\n"
+    "nop\n"
+    "nop\n"
 
     "HDV_HINT\n"
-    "nop\n"
+    "ret\n"
     "nop\n"
     "nop\n"
     ".purgem HDV_HINT\n"

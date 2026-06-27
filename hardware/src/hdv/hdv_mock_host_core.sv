@@ -107,11 +107,23 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       hdv_ep_ovr_en = 1'b1; hdv_ep_ovr = v[31:0];
     end
   end
+  // Runtime task-watchdog override: +HDV_TASK_WATCHDOG=<N> raises the total-task
+  // cycle cap so quadratic-work kernels (vsgemm/vstrsm at large N) can finish.
+  logic [31:0] hdv_wd_ovr;
+  logic        hdv_wd_ovr_en;
+  initial begin
+    longint unsigned wv;
+    hdv_wd_ovr_en = 1'b0;
+    if ($value$plusargs("HDV_TASK_WATCHDOG=%d", wv)) begin
+      hdv_wd_ovr_en = 1'b1; hdv_wd_ovr = wv[31:0];
+    end
+  end
 `endif
   logic [ScalarCntWidth-1:0] scalar_count_d, scalar_count_q;
   logic [VectorCntWidth-1:0] vector_count_d, vector_count_q;
   logic [AutoStartCntWidth-1:0] auto_start_count_d, auto_start_count_q;
-  logic [TaskWatchdogWidth-1:0] task_watchdog_d, task_watchdog_q;
+  logic [31:0] task_watchdog_d, task_watchdog_q;
+  logic [31:0] task_wd_limit;
   logic [PacketWatchdogWidth-1:0] packet_watchdog_d, packet_watchdog_q;
   logic scalar_pending_d, scalar_pending_q;
   logic vector_pending_d, vector_pending_q;
@@ -151,9 +163,14 @@ module hdv_mock_host_core import hdv_pkg::*; #(
                           & auto_start_armed_q
                           & (auto_start_count_q >= AutoStartCntWidth'(AutoStartDelay));
   assign task_active = (state_q != IDLE) & (state_q != FINISH) & (state_q != FAIL);
-  assign task_timeout = (TaskWatchdogCycles != 0)
+`ifdef FOR_VERIFY
+  assign task_wd_limit = hdv_wd_ovr_en ? hdv_wd_ovr : 32'(TaskWatchdogCycles);
+`else
+  assign task_wd_limit = 32'(TaskWatchdogCycles);
+`endif
+  assign task_timeout = (task_wd_limit != 0)
                       & task_active
-                      & (task_watchdog_q >= TaskWatchdogWidth'(TaskWatchdogCycles));
+                      & (task_watchdog_q >= task_wd_limit);
   assign packet_timeout = (PacketWatchdogCycles != 0)
                         & (state_q == RUN)
                         & (packet_watchdog_q >= PacketWatchdogWidth'(PacketWatchdogCycles));
