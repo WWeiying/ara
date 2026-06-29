@@ -35,6 +35,12 @@ set -uo pipefail
 cd "$(dirname "$0")"                       # hardware/
 HW="$(pwd)"; ROOT="$(cd .. && pwd)"; APPS="$ROOT/apps"; SIM="$HW/sim"; APP_BIN="$APPS/bin"
 MODES="${MODES:-both}"
+SIM_TIMEOUT="${SIM_TIMEOUT:-600}"   # per-point sim timeout (s); 0 = unlimited
+run_sim() {                          # run_sim <logfile> <cmd...>; honors SIM_TIMEOUT
+  local log="$1"; shift
+  if [ "$SIM_TIMEOUT" = 0 ]; then "$@" >"$log" 2>&1; return $?; fi
+  timeout "$SIM_TIMEOUT" "$@" >"$log" 2>&1
+}
 OUT="$HW/asm_sweep_out"; mkdir -p "$OUT"
 BUILDLOG="$OUT/build.log"; : > "$BUILDLOG"
 CSV="$OUT/asm_sweep.csv"
@@ -97,10 +103,14 @@ if [ "$MODES" = both ] || [ "$MODES" = real ]; then
     rm -f "$SIM/perf_report_${app}.log"
     rlog="$OUT/${app}__${tag}__real.log"
     if [ "$rtl_ready" = 0 ]; then
-      ( cd "$HW" && make -B sim app="$app" ) >"$rlog" 2>&1     # first point: compile + run
+      run_sim "$rlog" bash -c "cd '$HW' && make -B sim app='$app'"     # first point: compile + run
       rtl_ready=1
     else
-      ( cd "$SIM" && ./simv -l run.vcs.log +PRELOAD="$APP_BIN/${app}" +TESTCASE="${app}" ) >"$rlog" 2>&1   # reuse RTL
+      run_sim "$rlog" bash -c "cd '$SIM' && ./simv -l run.vcs.log +PRELOAD='$APP_BIN/${app}' +TESTCASE='${app}'"   # reuse RTL
+    fi
+    if [ $? -ne 0 ]; then
+      echo "    *** TIMEOUT/FAIL real $app [$tag]" | tee -a "$rlog"
+      REALD["$app|$tag"]="TIMEOUT,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA"; continue
     fi
     rpt="$SIM/perf_report_${app}.log"
     REALD["$app|$tag"]="$(pf "$rpt" total_cycles),$(pf "$rpt" total_rvv_cycles),$(pf "$rpt" total_vector_insns),$(pf "$rpt" total_insns),$(pf "$rpt" IPC),$(st "$rlog" '[hw-cycles]'),$(st "$rlog" '[cva6-d$-stalls]'),$(st "$rlog" '[cva6-i$-stalls]'),$(st "$rlog" '[cva6-sb-full]'),$(pf "$rpt" rvv_axi_ar_count),$(pf "$rpt" rvv_axi_r_count),$(pf "$rpt" rvv_axi_aw_count),$(pf "$rpt" rvv_axi_w_count),$(pf "$rpt" rvv_axi_b_count)"
@@ -120,7 +130,11 @@ if [ "$MODES" = both ] || [ "$MODES" = ideal ]; then
       IDEALD["$app|$tag"]="BUILD_FAIL,NA"; continue
     fi
     ilog="$OUT/${app}__${tag}__ideal.log"
-    ( cd "$HW" && make -B sim app="$app" ideal_dispatcher=1 ) >"$ilog" 2>&1
+    run_sim "$ilog" bash -c "cd '$HW' && make -B sim app='$app' ideal_dispatcher=1"
+    if [ $? -ne 0 ]; then
+      echo "    *** TIMEOUT/FAIL ideal $app [$tag]" | tee -a "$ilog"
+      IDEALD["$app|$tag"]="TIMEOUT,NA"; continue
+    fi
     ipt="$SIM/perf_report_${app}_ideal.log"
     IDEALD["$app|$tag"]="$(pf "$ipt" total_rvv_cycles),$(pf "$ipt" 'lane utilization')"
     echo "    ideal_rvv=$(echo "${IDEALD[$app|$tag]}" | cut -d, -f1)"
