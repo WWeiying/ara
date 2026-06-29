@@ -12,7 +12,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| `cva6_hdv_scalar_backend_comparison.md` | `cva6_hdv_scalar_backend.sv` 与完整 CVA6 的详细对比。复用/删减清单、指令集覆盖、CSR stub、FENCE NOP、ebreak task-end。 |
+| `hdv_scalar_backend_comparison.md` | `hdv_scalar_backend.sv` 与完整 CVA6 的详细对比。复用/删减清单、指令集覆盖、CSR stub、FENCE NOP、ebreak task-end。 |
 | `hdv_scalar_ep_demand_analysis.md` | 基于 apps dump/kernel 的 EP 内标量需求分析，评估 2 simple ALU + 1 complex lane 是否合适。 |
 | `hdv_scalar_backend_bug_review_and_roadmap.md` | 标量后端早期问题复盘和 roadmap，不代表当前 RTL 状态。 |
 
@@ -26,7 +26,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| `archive/hdv_minimal_scalar_core_plan.md` | 早期"最小标量核"草案，当前已演进为 `cva6_hdv_scalar_backend`。 |
+| `archive/hdv_minimal_scalar_core_plan.md` | 早期"最小标量核"草案，当前已演进为 `hdv_scalar_backend`。 |
 | `archive/cva6_hdv_minimal_integration_plan.md` | 早期 CVA6→HDV 标量后端接入计划，当前已落地在 `scala_backend/`。 |
 
 ## 阅读顺序
@@ -34,4 +34,4 @@
 1. `hdv_full_mechanism_tutorial.md` — 建立全局理解
 2. `hdv_modules_code_walkthrough.md` — 对应 RTL 模块和信号
 3. `hdv_program_porting_guide.md` — 改写新 app
-4. `cva6_hdv_scalar_backend_comparison.md` — 调标量后端时参考
+4. `hdv_scalar_backend_comparison.md` — 调标量后端时参考

@@ -3,9 +3,9 @@
 本文档对比两个对象：
 
 - 原始 CVA6：`hardware/deps/cva6/core/` 下的完整 CVA6 core。
-- 当前 HDV 标量后端：`hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`。
+- 当前 HDV 标量后端：`hardware/src/scala_backend/hdv_scalar_backend.sv`。
 
-结论先写清楚：当前 `cva6_hdv_scalar_backend` 不是“精简后的完整 CVA6 core”，而是一个 **HDV 专用、轻量多发射、复用 CVA6 若干执行部件的标量后端**。它当前配置为 `ScalarIssueWidth=3`、`SimpleAluIssueWidth=2`：每周期最多发射两条 simple ALU 指令和一条 complex 指令。它已经可以承担 HDV 中的标量切片执行、分支 redirect、向量操作数服务、vset granted-vl 回写等职责，但距离完整 RV64IMC + F/D + Zicsr 用户态标量通路还有明显缺口。
+结论先写清楚：当前 `hdv_scalar_backend` 不是“精简后的完整 CVA6 core”，而是一个 **HDV 专用、轻量多发射、复用 CVA6 若干执行部件的标量后端**。它当前配置为 `ScalarIssueWidth=3`、`SimpleAluIssueWidth=2`：每周期最多发射两条 simple ALU 指令和一条 complex 指令。它已经可以承担 HDV 中的标量切片执行、分支 redirect、向量操作数服务、vset granted-vl 回写等职责，但距离完整 RV64IMC + F/D + Zicsr 用户态标量通路还有明显缺口。
 
 ---
 
@@ -114,7 +114,7 @@ IDLE
 4. 同周期最多选择一条 complex 指令进入 complex lane，覆盖 branch、CSR、FPU、MULT、LOAD/STORE 以及不能走 simple lane 的指令。
 5. simple batch 内检查读写 mask、重复 rd、order barrier、vset RAW；complex lane 检查是否读取 simple batch 同周期写出的寄存器。
 6. 完成的指令直接写 `xrf_d/frf_d`，清掉对应 slot valid。
-7. 所有 scalar slots 清空后进入 `DONE`，输出 `scalar_accepted_o`。
+7. 所有 scalar slots 清空后进入 `DONE`，输出 `scalar_ep_done_o`。
 8. 若 branch taken，则 `DONE` 后进入 `REDIRECT`，输出 `redirect_valid_o/redirect_pc_o`。
 
 ### 4.3 这个模型的优点
@@ -358,7 +358,7 @@ scalar_insn_valid_i[NumSlots]
 scalar_insn_i[NumSlots][31:0]
 scalar_insn_is_32b_i[NumSlots]
 scalar_insn_pc_i[NumSlots]
-scalar_accepted_o
+scalar_ep_done_o
 scalar_error_o
 ```
 
@@ -445,13 +445,13 @@ CVA6 的依赖处理来自：
 当前后端没有这些复杂机制，依赖关系由三层共同承担：
 
 1. VLIWPU/p-bit：决定哪些指令可以进同一个 EP。
-2. HEU：维护 EP 边界上的 dispatch/accepted。
-3. 标量后端：一个 EP 内做轻量多发射选择和局部 hazard 检查，并在完成后才拉 `scalar_accepted_o`。
+2. HEU：维护 EP 边界上的 dispatch、scalar done 和 vector acknowledged。
+3. 标量后端：一个 EP 内做轻量多发射选择和局部 hazard 检查，并在完成后才拉 `scalar_ep_done_o`。
 
 当前可保证：
 
 - EP 内 simple ALU/complex lane 只在本地 hazard 检查允许时同周期执行；否则保守拆成后续周期。
-- 标量后端完成所有写回后才 accepted。
+- 标量后端完成所有写回后才 done。
 - 下一 EP 如果依赖上一 EP 的标量结果，在 HEU 保序模型下能读到。
 
 当前不能保证：
@@ -568,11 +568,11 @@ CVA6 的依赖处理来自：
 
 | 文件 | 作用 |
 |---|---|
-| `hardware/src/scala_backend/cva6_hdv_scalar_backend.sv` | 当前标量后端主体。 |
+| `hardware/src/scala_backend/hdv_scalar_backend.sv` | 当前标量后端主体。 |
 | `hardware/src/hdv/hdv_top.sv` | 实例化标量后端，连接 HEU、vector dispatch、AXI、task done/error。 |
 | `hardware/src/hdv/hdv_hybrid_execution_unit.sv` | EP 分 scalar/vector slices，并维护当前 EP 与一项 skid buffer。 |
 | `hardware/src/hdv/hdv_vec_dispatch_unit.sv` | 向量后端请求真实标量操作数，向 Ara 发向量指令，并把 vset granted VL 写回标量后端。 |
-| `Bender.yml` | 把 `cva6_hdv_scalar_backend.sv` 纳入编译。 |
+| `Bender.yml` | 把 `hdv_scalar_backend.sv` 纳入编译。 |
 
 ### 12.2 原始 CVA6 对照文件
 
@@ -595,7 +595,7 @@ CVA6 的依赖处理来自：
 
 ## 13. 最终判断
 
-当前 `cva6_hdv_scalar_backend` 的设计选择是合理的原型路线：
+当前 `hdv_scalar_backend` 的设计选择是合理的原型路线：
 
 - 它避免把完整 CVA6 core 和 HDV IPU/VLIWPU/HEU 重复连接。
 - 它复用了 CVA6 最容易出错的译码、ALU、branch、mult、FPU 部件。

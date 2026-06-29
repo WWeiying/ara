@@ -1,10 +1,10 @@
 # CVA6_HDV 简化标量后端设计
 
 > 状态说明：本文是接入设计计划，不是逐行 RTL 说明。当前实现已经落在
-> `hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`，并采用轻量 3 发射
+> `hardware/src/scala_backend/hdv_scalar_backend.sv`，并采用轻量 3 发射
 > （`ScalarIssueWidth=3`、`SimpleAluIssueWidth=2`）。若本文某些段落讨论“按 slot
-> 顺序执行”的早期简化模型，应按当前 RTL 和 `cva6_hdv_scalar_backend_comparison.md`
-> 中的描述理解为已演进。
+> 顺序执行”的早期简化模型，或使用 `accepted`/`cva6_hdv_scalar_backend` 等旧命名，
+> 应按当前 RTL 和 `hdv_scalar_backend_comparison.md` 中的描述理解为已演进。
 
 > 目标：在 `hardware/src/scala_backend/` 中，基于 CVA6 现有模块构建一个尽量简化的
 > HDV 标量后端。HDV 仍由 IPU/VLIWPU/HEU 负责取指、HINT/p-bit、EP 打包和
