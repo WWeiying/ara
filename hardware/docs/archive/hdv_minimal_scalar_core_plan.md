@@ -1,10 +1,11 @@
 # HDV 最小标量核实现方案
 
 > 状态说明：本文是早期“最小标量核”草案，保留作为设计演进背景。当前 RTL 已实现
-> `hardware/src/scala_backend/cva6_hdv_scalar_backend.sv`，并配置为 `ScalarIssueWidth=3`、
+> `hardware/src/scala_backend/hdv_scalar_backend.sv`，并配置为 `ScalarIssueWidth=3`、
 > `SimpleAluIssueWidth=2`，不是本文最初设想的永久单发射最小核。当前准确实现请优先参考
-> `hdv_modules_code_walkthrough.md`、`hdv_instruction_issue_dependency_logic.md` 和
-> `cva6_hdv_scalar_backend_comparison.md`。
+> `hdv_modules_code_walkthrough.md`、`hdv_full_mechanism_tutorial.md` 和
+> `hdv_scalar_backend_comparison.md`。正文中的 `accepted`/`cva6_hdv_scalar_backend`
+> 等旧命名保留为历史上下文。
 
 > 目标：用从 CVA6 拆出来的现成模块，搭一个**最小标量指令子集**的标量执行核，
 > 替换当前的 `hdv_mock_host_core` 标量伪执行 + `hdv_vec_dispatch_unit` 的 vtrace 喂数机制，

@@ -33,22 +33,13 @@ cd "$(dirname "$0")"            # hardware/
 # 数组元素数（data.S 实际存储）。vsswap/vsdot 本就 4096；vmc/vvaddint32 已平铺到
 # 4096。dropout 改造为干净 HDV 核（main 极简、task 落在 0x80001000、a1/a2/a3 4KB 对齐
 # 不跨页）后已能随 AVL 缩放，放开到 4096。
-# fdotp 已退出 sweep：它的预取对自身地址/时序病态敏感（非单调），任何描述符消费时
-# 序的改动都会大幅改变其命中率；点积类由 vsdot 覆盖（vsdot 对所有改动逐位一致）。
-# Prefetch micro-benchmarks (LMUL x stream-count x lead).  a0 = iteration count
-# (the swept "AVL"), a1..a4 = stream bases, a5 = output base — all from plusargs.
-# AVL (count) is capped low so even m8 (chunk = VLMAX*4 = 1024 B) keeps each of the
-# up-to-5 regions inside the 1 MB L2 at the 0x20000-spaced bases below.
-PF_KERNELS="vspf_m1k1_hdv vspf_m1k2_hdv vspf_m1k4_hdv vspf_m2k2_hdv vspf_m4k2_hdv vspf_m8k2_hdv"
-# a1..a5 = 0x80010000, 0x80030000, 0x80050000, 0x80070000, 0x80090000 (decimal).
-PF_PTRS="+HDV_A1=2147549184 +HDV_A2=2147680256 +HDV_A3=2147811328 +HDV_A4=2147942400 +HDV_A5=2148073472"
+# fdotp 和 vspf 已退出 active sweep。fdotp 的预取对自身地址/时序病态敏感(非单调);
+# vspf 是历史预取微基准,不是应用核。点积类由 vsdot 覆盖。
 
 declare -A MAXAVL=(
   [vsaxpy_hdv]=4096   [vscopy_hdv]=4096   [vsscal_hdv]=4096
   [vsswap_hdv]=4096   [vsdot_hdv]=4096    [vvaddint32_hdv]=4096
   [vmc_hdv]=4096      [dropout_hdv]=4096  [vsdwt_hdv]=4096
-  [vspf_m1k1_hdv]=64  [vspf_m1k2_hdv]=64  [vspf_m1k4_hdv]=64
-  [vspf_m2k2_hdv]=64  [vspf_m4k2_hdv]=64  [vspf_m8k2_hdv]=64
 )
 ALL_KERNELS="vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv vsdwt_hdv"
 DEFAULT_AVLS="8 16 32 64 128 256 512 1024 2048 4096"
@@ -57,18 +48,25 @@ DEFAULT_AVLS="8 16 32 64 128 256 512 1024 2048 4096"
 # the scalar backend's +HDV_A<n> plusarg (see hdv_scalar_backend.sv), so the
 # simv is NOT re-elaborated per AVL point (VCS keeps it "up to date"); only the
 # first run of each kernel recompiles its address defines.
-declare -A AVLREG=( [vsdot_hdv]=A2 [vsdwt_hdv]=A2 )   # vspf + others default to A0 (count)
+declare -A AVLREG=( [vsdot_hdv]=A2 [vsdwt_hdv]=A2 )
 # Per-kernel extra plusargs (pointer args that aren't the swept AVL register).
-declare -A EXTRA_PLUSARGS=(
-  [vspf_m1k1_hdv]="$PF_PTRS" [vspf_m1k2_hdv]="$PF_PTRS" [vspf_m1k4_hdv]="$PF_PTRS"
-  [vspf_m2k2_hdv]="$PF_PTRS" [vspf_m4k2_hdv]="$PF_PTRS" [vspf_m8k2_hdv]="$PF_PTRS"
-)
+declare -A EXTRA_PLUSARGS=()
 
 ARG_K="${1:-all}"
 AVLS="${2:-$DEFAULT_AVLS}"
 if   [ "$ARG_K" = "all" ]; then KERNELS="$ALL_KERNELS"
-elif [ "$ARG_K" = "pf"  ]; then KERNELS="$PF_KERNELS"; AVLS="${2:-16 64}"
+elif [ "$ARG_K" = "pf"  ]; then
+  echo "ERROR: vspf prefetch micro-benchmarks are excluded from active sweep." >&2
+  exit 2
 else KERNELS="$ARG_K"; fi
+for k in $KERNELS; do
+  case "$k" in
+    fdotp_hdv|vspf_*_hdv)
+      echo "ERROR: $k is excluded from active sweep." >&2
+      exit 2
+      ;;
+  esac
+done
 
 OUT=avl_sweep_out
 mkdir -p "$OUT"

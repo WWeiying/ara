@@ -143,6 +143,6 @@ make sim app=vsdot_hdv  hdv_plusargs="+HDV_A2=512"
 ## 6. 范围与局限
 
 - **已覆盖（9 个 1D 流式内核）**：vsaxpy, vvaddint32, vscopy, vsswap, vsdot, vsscal, vmc, dropout, fdotp —— "AVL" = 向量长度，干净可扫。
-- **数据上限（静态数组）**：vsaxpy/vscopy/vsswap/vsdot/vsscal=4096；vmc=2048；vvaddint32/dropout=1024；fdotp=512。提升需 gen 脚本重生成。
+- **数据上限（静态数组）**：vsaxpy/vscopy/vsswap/vsdot/vsscal=4096；vmc=2048；vvaddint32/dropout=1024；fdotp=2048。提升需 gen 脚本重生成。
 - **未覆盖**：vsdwt（AVL 经 t0，接法不同）；矩阵/2D 内核（gemm/syrk/jacobi2d/fconv2d 等，"AVL"=内层维度，需按 2D 维度单独参数化）。
-- **性能限制**：每 AVL 点重 verilate；运行期 plusarg 注入可大幅加速（未来工作）。
+- **性能**：AVL 经运行期 `+HDV_A<n>` 注入（`hdv_scalar_backend.sv`），同一内核扫各 AVL 点**无需重编**；仅换内核时重编一次。`+HDV_EXPECTED_EP` / `+HDV_TASK_WATCHDOG` 同理运行期覆盖。
