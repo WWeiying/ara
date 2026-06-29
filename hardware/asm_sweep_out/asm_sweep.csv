@@ -1,0 +1,1 @@
+kernel,tag,avl,blas_lmul,gemm_rows,ideal_rvv_cycles,ideal_lane_util,real_total_cycles,real_rvv_cycles,real_vector_insns,real_insns,real_ipc,hw_cycles,dcache_stalls,icache_stalls,sb_full,axi_ar,axi_r,axi_aw,axi_w,axi_b
