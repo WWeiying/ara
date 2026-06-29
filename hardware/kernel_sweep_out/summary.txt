@@ -1,0 +1,20 @@
+########## Group 1: 1D 流式核 + fdotp + vspf (AVL 扫) ##########
+  -> avl_sweep_out/*.csv
+########## Group 2: BLAS-2/3 全 LMUL + GEMM ##########
+vssymv m1 32x32                    PASSED  cyc=2373
+vsgemv m1 32x128                   PASSED  cyc=4660
+vssyrk m2 N=32                     PASSED  cyc=84582
+vssyrk m2 N=64                     FAILED  cyc=399998
+vssyrk m2 N=128                    FAILED  cyc=399998
+vssyrk m8 N=32                     PASSED  cyc=84582
+vssyrk m8 N=64                     FAILED  cyc=399998
+vssyrk m8 N=128                    FAILED  cyc=399998
+  -> blas_sweep_out/*.csv
+########## Group 3: 固定尺寸/应用核(大看门狗)##########
+vssyrk m1 32x32 (strided)          PASSED  cyc=84582
+vstrsm m1 32x32                    PASSED  cyc=30918
+vsspmv sparse 32x32                PASSED  cyc=4908
+fconv2d 3x3 e64 R64xC32            PASSED  cyc=19170
+jacobi2d 5pt e64 128x64            PASSED  cyc=20338
+lavamd N-body NPAR=256             PASSED  cyc=2757
+softmax ch3 x inner256             PASSED  cyc=6881
