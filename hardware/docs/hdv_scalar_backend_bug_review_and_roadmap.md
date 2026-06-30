@@ -1,10 +1,10 @@
 # HDV 标量后端：Bug 核查 + 下一步效率/性能路线
 
-针对 `cva6_hdv_scalar_backend.sv` 及其在 `hdv_top` / HEU / `hdv_vec_dispatch_unit` 中的集成，
+针对 `hdv_scalar_backend.sv` 及其在 `hdv_top` / HEU / `hdv_vec_dispatch_unit` 中的集成，
 做了一轮静态核查。结论分两部分：**(A) Bug / 正确性问题**（按严重度排序），**(B) 效率与性能路线**。
 
 > 复核基准：`UseCva6HdvScalar=1`（默认，真实后端启用，未被 `ara_soc`/TB 覆盖）。
-> 此时 IPU 的 redirect、HEU 的 scalar accepted/ready 全部取自真实标量后端，循环由真实 `bnez` 驱动。
+> 此时 IPU 的 redirect、HEU 的 scalar done/ready 全部取自真实标量后端，循环由真实 `bnez` 驱动。
 
 ---
 
@@ -12,38 +12,34 @@
 
 ### A0（验证缺口）当前集成需要新的编译/仿真结果闭环
 
-- `sim/run.vcs.log` 时间戳 **2026-06-15 22:40**；而 `cva6_hdv_scalar_backend.sv`（06-16 11:51）、
+- `sim/run.vcs.log` 时间戳 **2026-06-15 22:40**；而 `hdv_scalar_backend.sv`（06-16 11:51）、
   `hdv_top.sv`（12:51）、HEU（12:41）、`hdv_vec_dispatch_unit.sv`（12:57）都更新于其后。
 - 也就是说，那份“PASSED, got 130 EPs”是**旧代码**（很可能 mock 驱动循环、或更早后端）的结果，
   **不能代表当前真实后端 + 最新集成的行为**。
 - **行动**：当前环境先以 `make -C hardware compile` 和静态检查为准；功能正确性需要后续在有仿真许可时重跑，或用你提供的新 VCD/log 做后验分析。
 
-### A1（阻塞级）缺少任务 ABI/上下文初始化 —— kernel 参数从未建立
+### A1（已解决）任务 ABI/上下文初始化 —— kernel 参数注入机制已实现
 
-- 标量后端 `xrf_q/frf_q` 复位为全 0，且**没有任何外部装载端口 / `$readmemh` / initial**（已核实：0 个 init 块）。
-- vsaxpy 的入口参数 `a0=AVL`、`a1=x 指针`、`a2=y 指针`、`fa0=alpha` 是函数实参，
-  在 HDV 模型里本应由 host core 在派发任务前写入寄存器；当前 mock host 只写 CSR，不建寄存器上下文。
-- 后果（真实后端驱动时）：`vsetvli t0,a0(=0)` → `vl=0` → 所有向量指令成 vl=0 空操作；
-  `sub a0,a0,t0=0` → `bnez a0(=0)` **不跳转** → 循环第 1 次就退出。
-  即使 EP 握手能跑通，**计算结果无意义、循环次数也不真实**。
-- **这是真实后端能跑“真程序”的第一前置条件。** 需要定义并实现：
-  host/TIU 通过任务描述符把 `a0..a7 / fa0.. / sp` 等写入标量后端的入口机制
-  （新增一组 `ctx_wr_valid/addr/data` 端口，或在 task descriptor 里带初始寄存器块）。
-- 参考：comparison 文档 §11.1#1 已把它列为最高优先，这里确认它是**当前实际阻塞点**。
+- ~~标量后端 `xrf_q/frf_q` 复位为全 0，且没有任何外部装载端口 / `$readmemh` / initial（已核实：0 个 init 块）~~
+- **已解决**：`hdv_scalar_backend.sv` 第 20-35 行定义了 `Initial*` 参数，第 1549-1566 行通过 `+HDV_A0..A7` plusarg 在 initial 块中将寄存器上下文写入寄存器堆。复位后寄存器初始值由仿真注入，`a0=AVL`、`a1=x 指针`、`a2=y 指针`、`fa0=alpha` 均可在启动前正确建立。
+- vsaxpy 的入口参数在 HDV 模型里由 host core 在派发任务前写入寄存器；当前机制通过 plusarg 完成上下文初始化，mock host 不再需要额外写寄存器。
+- **这是真实后端能跑”真程序”的第一前置条件，当前已满足。** 后续若需动态上下文切换，仍可扩展
+  host/TIU 通过任务描述符把 `a0..a7 / fa0.. / sp` 等写入标量后端的端口机制。
+- 参考：comparison 文档 §11.1#1 已把它列为最高优先，当前 RTL 已实现该机制。
 
 ### A2（已处理，仍需优化）vset→标量 / 向量操作数快照冒险
 
-当前 `hdv_vec_dispatch_unit` 已经做了 accepted 延迟来保证正确性：
+当前 `hdv_vec_dispatch_unit` 已经做了 acknowledged 延迟来保证正确性：
 
-- vtrace 模式：普通 vector EP 入队即可 accepted；含 `vset rd!=x0` 的 EP 等对应 Ara response 写回后 accepted。
-- 真实标量模式：普通 vector EP 等本 EP 的所有 vector slot 都被 dispatch FSM 消费后 accepted，保证 rs1/rs2/frs1 已经从真实 XRF/FRF 中读出并保存到 Ara request 或 resolved command window；含 `vset rd!=x0` 的 EP 还要等 granted VL 写回。
+- vtrace 模式：普通 vector EP 入队即可 acknowledged；含 `vset rd!=x0` 的 EP 等对应 Ara response 写回后 acknowledged。
+- 真实标量模式：普通 vector EP 等本 EP 的所有 vector slot 都被 dispatch FSM 消费后 acknowledged，保证 rs1/rs2/frs1 已经从真实 XRF/FRF 中读出并保存到 Ara request 或 resolved command window；含 `vset rd!=x0` 的 EP 还要等 granted VL 写回。
 
 这同时解决两类问题：
 
 - `sub a0,a0,t0` / `slli t1,t0,2` 不会在 `vsetvli` 的 `t0` 写回前读旧值。
 - 后续 scalar EP 不会先更新 a1/a2/a0，导致尚未发出的旧 vector 指令从真实寄存器堆读到新地址/新标量值。
 
-当前已加入参数化 resolved command window，默认深度为 4，用来保存已经抓好 operand 的 vector request。后续性能优化方向不是盲目加深这个 window，而是让 operand snapshot 更早、更批量完成，并把真正有后端收益的 metadata 交给 Ara。
+当前已加入参数化 resolved command window，顶层默认深度为 8，用来保存已经抓好 operand 的 vector request。后续性能优化方向不是盲目加深这个 window，而是让 operand snapshot 更早、更批量完成，并把真正有后端收益的 metadata 交给 Ara。
 
 ### A3（高）`unsupported` 判定过宽 + AMO/LR/SC 会被当普通 store 静默执行
 
@@ -57,7 +53,7 @@
 
 ### A4（中）测试 oracle 只数 EP 个数，掩盖“算错/循环次数错”
 
-- mock host 在 `AutoExpectedEpAccepts=130` 命中即 FINISH=PASS；不校验数据，也不校验循环真的跑了 32 次。
+- mock host 在 `AutoExpectedEpAcknowledges=130` 命中即 FINISH=PASS；不校验数据，也不校验循环真的跑了 32 次。
 - 真实后端即便把 `a0` 算错（A1/A2 导致），只要凑够 130 个 EP 握手就“PASS”。
 - **建议**：增加自检模式——让真实 `bnez` 自然终止循环（去掉硬上限），
   仿真结束比对输出向量（y = alpha*x + y）与黄金值；或至少断言实际迭代数 == 期望。
@@ -83,7 +79,7 @@
 1. 当前环境先跑 compile 和静态检查；有仿真许可或新 VCD/log 后再闭环 A0。
 2. 实现任务上下文初始化（A1）：最小可行——TIU/task descriptor 带一个初始寄存器块，
    复位后由 host 写入 `a0..a2 / fa0`。先让 vsaxpy 在真实后端上跑出**正确数据 + 正确 32 次循环**。
-3. vset→标量冒险当前已用 vector dispatch accepted 延迟规避；后续若要提吞吐，再扩展 operand snapshot / resolved-request buffer，或增加标量端向量写回 scoreboard。
+3. vset→标量冒险当前已用 vector dispatch acknowledged 延迟规避；后续若要提吞吐，再扩展 operand snapshot / resolved-request buffer，或增加标量端向量写回 scoreboard。
 4. 改造 oracle 为数据自检（A4），把“真实后端跑对 vsaxpy”作为新基线。
 5. 收紧 `unsupported` + AMO 报错（A3）。
 
@@ -100,7 +96,7 @@
   优先级中，先做 AW/W 合并这种低风险项。
 
 ### 阶段 3：向量派发吞吐
-- **操作数 snapshot FIFO**：真实标量模式下，先把一个 EP 的所有 vector 操作数快照保存下来，再向 HEU accepted。
+- **操作数 snapshot FIFO**：真实标量模式下，先把一个 EP 的所有 vector 操作数快照保存下来，再向 HEU acknowledged。
   这样后续 scalar EP 可以提前更新寄存器，而旧 vector request 仍使用快照值。
 - **跨 EP 持续灌 Ara**：当前 HEU 已用“入队”推进（已经有一定解耦 + 1-EP skid buffer）。
   在 A2 用记分位保证标量正确读后，可让不同 EP 的向量指令**持续**流入 Ara，

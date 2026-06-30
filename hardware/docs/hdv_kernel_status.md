@@ -148,7 +148,7 @@
 
 ## 本轮修复（使 fconv2d / softmax / lavamd 通过）
 
-1. **branch_backward（RTL `cva6_hdv_scalar_backend.sv`）**：不跳的后向分支曾用 fall-through PC 判 backward → IPU loop-exit 失效 → 内层循环退出到后续代码时锁死。改为条件分支取 B-imm 符号位 `insn[31]`。→ **softmax**。
+1. **branch_backward（RTL `hdv_scalar_backend.sv`）**：不跳的后向分支曾用 fall-through PC 判 backward → IPU loop-exit 失效 → 内层循环退出到后续代码时锁死。改为条件分支取 B-imm 符号位 `insn[31]`。→ **softmax**。
 2. **IPU bg_stall 规避（kernel 侧）**：内核 > 32 fetch 包（lavamd 40、fconv2d 38）时，显式 `loop_start` 标记令 IPU 在循环头 loop-lock，挡住超出 buffer 的后台预取 → buffer 末包死锁。去掉 loop 标记靠 auto-lock。→ **lavamd / fconv2d**。
 3. **a0–a7 八参数注入链**：补齐 `InitialA6/A7`（xrf[16/17]）贯穿 5 文件 + Makefile。
 4. softmax 去掉未初始化栈访问 `sd/ld s0`。

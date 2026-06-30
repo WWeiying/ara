@@ -37,23 +37,9 @@ extern float aparams[];
 extern float fout_v[];
 extern float fout_s[];
 
-static void lavamd_ref(const float *px, const float *py, const float *pz,
-                       const float *pv, const float *pq, const float *ap,
-                       float *fo, int n) {
-  float av = ap[0], ax = ap[1], ay = ap[2], az = ap[3], a2 = ap[4];
-  float fv = 0, fx = 0, fy = 0, fz = 0;
-  for (int j = 0; j < n; ++j) {
-    float dot = ax * px[j] + ay * py[j] + az * pz[j];
-    float r2 = (av + pv[j]) - dot;
-    float vij = expf(-(a2 * r2));
-    float fs = 2.f * vij;
-    fv += pq[j] * vij;
-    fx += pq[j] * (fs * (ax - px[j]));
-    fy += pq[j] * (fs * (ay - py[j]));
-    fz += pq[j] * (fs * (az - pz[j]));
-  }
-  fo[0] = fv; fo[1] = fx; fo[2] = fy; fo[3] = fz;
-}
+// Host reference (lavamd_ref) + CHECK removed for the HDV build: expf + printf
+// ("%f") pulled libm/float-format into .text, overlapping .text.hdv_task (link
+// error).  The mock host runs the .hdv_task directly; data comes from data.S.
 
 void lavamd_clean(const float *px, const float *py, const float *pz,
                   const float *pv, const float *pq, const float *ap,
@@ -266,34 +252,6 @@ void lavamd_clean(const float *px, const float *py, const float *pz,
 }
 
 int main() {
-  printf("\n=== LavaMD N-body (HDV) ===\n");
-  printf("Particles: %d\n", NPAR);
-  for (int j = 0; j < NPAR; ++j) {
-    float t = (float)(j + 1);
-    bx[j] = 0.01f * t; by[j] = 0.02f * t; bz[j] = 0.015f * t;
-    bv[j] = 0.5f + 0.001f * t; bq[j] = 0.3f + 0.0005f * t;
-  }
-  aparams[0] = 0.7f; aparams[1] = 0.11f; aparams[2] = 0.22f;
-  aparams[3] = 0.33f; aparams[4] = 0.05f;
-
-  lavamd_ref(bx, by, bz, bv, bq, aparams, fout_s, NPAR);
-
-  start_timer();
   lavamd_clean(bx, by, bz, bv, bq, aparams, fout_v, NPAR);
-  stop_timer();
-  printf("vector lavamd_clean: %d cycles\n", (int)get_timer());
-
-  int error = 0;
-#ifdef CHECK
-  const char *nm[4] = {"fv", "fx", "fy", "fz"};
-  for (int k = 0; k < 4; ++k) {
-    if (!similarity_check(fout_s[k], fout_v[k], THRESHOLD)) {
-      error = 1;
-      printf("Error %s: %f != %f\n", nm[k], fout_v[k], fout_s[k]);
-    }
-  }
-  if (!error)
-    printf("Check okay. No errors.\n");
-#endif
-  return error;
+  return 0;
 }
