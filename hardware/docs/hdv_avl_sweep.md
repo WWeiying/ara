@@ -10,13 +10,13 @@
 ## 1. 实验方法
 
 - **统一旋钮**：`hardware/Makefile` 加 `avl ?= 1024`，接到各 1D 内核的 AVL 参数（a0 / a2 / vsaxpy 的 elements）。`make sim app=<k> avl=<N>` 即把该内核的应用向量长度设为 N。
-- **sweep 脚本**：`hardware/avl_sweep.sh`
+- **sweep 脚本**：`hardware/kernel_sweep.sh`
   ```bash
-  ./avl_sweep.sh                          # 所有 9 个 1D 内核 × 默认 AVL
-  ./avl_sweep.sh vsdot_hdv "32 64 256"    # 单内核 × 自定义 AVL
-  ./avl_sweep.sh all "16 64 256 1024 4096"
+  ./kernel_sweep.sh 1d "32 64 256 1024 4096"          # 所有 9 个 1D 内核 × 自定义 AVL
+  ./kernel_sweep.sh kernel vsdot_hdv "32 64 256"      # 单内核 × 自定义 AVL
+  ./kernel_sweep.sh all                               # 1D + BLAS/GEMM + fixed 全量 sweep
   ```
-  输出 `avl_sweep_out/<kernel>.csv` + `all.csv` + 实时控制台表。
+  输出统一写入 `kernel_sweep_out/`: `avl_all.csv`、`<kernel>.csv`、log 和实时控制台表。
 - **本次数据**：AVL = `16 64 256 1024 4096`（5 点几何序列）。
 - **AVL 运行期注入（已实现，关键）**：scalar backend 复位时读 `$value$plusargs("HDV_A<n>=%d")` 覆盖 `xrf[10+n]`。sweep 脚本用 `make sim app=<k> hdv_plusargs="+HDV_A<reg>=<N>"` 设 AVL，**运行期生效、无需重 elaborate**。
   - *为什么必须运行期*：VCS 对命令行 `+define+` 改动不重编（`../simv up to date`），所以 **define-based AVL 是 stale 的**（实测 vsdot 改 a2 define 不生效，卡在首次编译值）。plusarg 每次跑都生效，可靠。
@@ -43,7 +43,7 @@
 
 > 列：cycles=total_task_cycles；cyc/el=cycles/AVL（吞吐）；EPs=执行包；avg/pk=IPU avg_cycles_per_pkt；pf=预取 AR→命中。
 
-采集自 `avl_sweep_out/`（运行期注入，可靠）。`—`=数据上限或未取。
+采集自 `kernel_sweep_out/`（运行期注入，可靠）。`—`=数据上限或未取。
 
 ### 表 3a — Cycles（total_task_cycles）
 
@@ -90,7 +90,7 @@
 | vsdot | 0→0 | 2→2 | 14→14 | 63→63 | — |
 | vmc | 0→0 | 0→0 | 0→0 | 3→3 | — |
 
-> EPs / packets / avg_cyc_per_pkt 全量见 `avl_sweep_out/<kernel>.csv`。
+> EPs / packets / avg_cyc_per_pkt 全量见 `kernel_sweep_out/<kernel>.csv`。
 
 ## 4. 分析
 
@@ -131,9 +131,9 @@
 
 ```bash
 cd hardware
-./avl_sweep.sh all "16 64 256 1024 4096"   # 重跑本报告
+./kernel_sweep.sh 1d "16 64 256 1024 4096" # 重跑本报告
 # 单内核加密：
-./avl_sweep.sh vsdot_hdv "8 16 32 64 128 256 512 1024 2048 4096"
+./kernel_sweep.sh kernel vsdot_hdv "8 16 32 64 128 256 512 1024 2048 4096"
 
 # 单点直接跑(运行期注入,AVL 寄存器: 多数 a0=A0; vsdot/fdotp=A2):
 make sim app=vscopy_hdv hdv_plusargs="+HDV_A0=2048"
@@ -143,6 +143,6 @@ make sim app=vsdot_hdv  hdv_plusargs="+HDV_A2=512"
 ## 6. 范围与局限
 
 - **已覆盖（9 个 1D 流式内核）**：vsaxpy, vvaddint32, vscopy, vsswap, vsdot, vsscal, vmc, dropout, fdotp —— "AVL" = 向量长度，干净可扫。
-- **数据上限（静态数组）**：vsaxpy/vscopy/vsswap/vsdot/vsscal=4096；vmc=2048；vvaddint32/dropout=1024；fdotp=512。提升需 gen 脚本重生成。
+- **数据上限（静态数组）**：vsaxpy/vscopy/vsswap/vsdot/vsscal=4096；vmc=2048；vvaddint32/dropout=1024；fdotp=2048。提升需 gen 脚本重生成。
 - **未覆盖**：vsdwt（AVL 经 t0，接法不同）；矩阵/2D 内核（gemm/syrk/jacobi2d/fconv2d 等，"AVL"=内层维度，需按 2D 维度单独参数化）。
-- **性能限制**：每 AVL 点重 verilate；运行期 plusarg 注入可大幅加速（未来工作）。
+- **性能**：AVL 经运行期 `+HDV_A<n>` 注入（`hdv_scalar_backend.sv`），同一内核扫各 AVL 点**无需重编**；仅换内核时重编一次。`+HDV_EXPECTED_EP` / `+HDV_TASK_WATCHDOG` 同理运行期覆盖。

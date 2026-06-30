@@ -18,7 +18,7 @@
 - **2. Background & Related Work**：2.1 紧耦合 RISC-V 向量单元(Ara/Vitruvius…)=基线类；2.2 解耦与 ILP 暴露(DAE/乱序向量/VLIW-EPIC，**ISCAS 前作在此引用**)；2.3 向量 hazard 处理与访存预取；（差异化表）
 - **3. SEAM-V Architecture Overview**：3.1 顶层(前端+集成标量后端+Ara) vs 紧耦合基线；3.2 执行包+VLIW HINT header(基底)；3.3 解耦内部的语义鸿沟(铺垫 §4)；3.4 **后端可见的执行包：trans_id 标签通道**(统一机制，核心图)
 - **4. Back-End-Visible Execute Packets（核心贡献）**：4.1 EP-aware sequencer hazard bypass；4.2 解耦 VLSU Next-VL 预取(buffer+信用流控+LMUL 泛化)；4.3 访存定序安全的跨 EP 向量提前发射
-- **5. Scalar Back-End & Programming Model**：5.1 cva6_hdv_scalar_backend；5.2 task 流+hint 编码+编程模型
+- **5. Scalar Back-End & Programming Model**：5.1 hdv_scalar_backend；5.2 task 流+hint 编码+编程模型
 - **6. Experimental Methodology**：6.1 RTL 配置(4 lanes,VLEN=1024)；6.2 基线=紧耦合 Ara + ablation 阶梯(T/H_base/H1-H4/IDEAL)；6.3 Benchmark(BLAS L1/L2/L3+真实应用)；6.4 综合/PR/功耗(TSMC 28nm)
 - **7. Evaluation**：7.1 主表/ablation(vs 紧耦合 Ara,E1)；7.2 AVL sweep/短向量利用率(E2)；7.3 Lane sweep(E3)；7.4 内存延迟敏感性(E4)；7.5 微架构计数器(E5)；7.6 真实应用(E6)；7.7 PPA+版图(E7)；7.8 敏感性(E8,可选)
 - **8. Discussion**：局限、>2 EP 扩展、future work
@@ -243,7 +243,7 @@ AVL = 32, 64, 128, 256, 512, 1024, 2048   (元素数, fp32)
 | L1 block | 对应 RTL |
 |---|---|
 | HDV 前端 | `hdv_top` 下的 TIU/TSU/IPU/VLIWPU/HEU/vec_dispatch（去掉 mock host） |
-| 标量后端 | `cva6_hdv_scalar_backend` |
+| 标量后端 | `hdv_scalar_backend` |
 | Ara 向量核 | `ara` = dispatcher + sequencer + lanes + VLSU + MASKU/SLDU |
 | 访存/互连 | `axi_mux` + AXI bridge + `axi_inval_filter` |
 
@@ -251,7 +251,7 @@ AVL = 32, 64, 128, 256, 512, 1024, 2048   (元素数, fp32)
 | 区域 | 子模块 (RTL 文件) |
 |---|---|
 | HDV 前端 | `hdv_task_interface_unit` (TIU)、`hdv_task_schedule_unit` (TSU)、`hdv_instruction_prefetch_unit` (IPU，含双 64B buffer)、`hdv_vliw_pack_unit` (VLIWPU)、`hdv_hybrid_execution_unit` (HEU)、`hdv_vec_dispatch_unit`（含 command window + operand service） |
-| 标量后端 | decoder、2× simple ALU、complex lane(branch/mult/FPU/LSU)、XRF/FRF/CSR stub（`cva6_hdv_scalar_backend` 内部） |
+| 标量后端 | decoder、2× simple ALU、complex lane(branch/mult/FPU/LSU)、XRF/FRF/CSR stub（`hdv_scalar_backend` 内部） |
 | Ara 向量核 | `ara_dispatcher`、`ara_sequencer`、`lane`×N（内含 `vector_regfile`/`operand_queue`/`vmfpu`/`valu`/`simd_mul`/`simd_div`）、`vlsu`(`addrgen`/`vldu`/`vstu`)、MASKU、SLDU |
 
 **L3 — SEAM-V 新增逻辑的增量面积（贡献成本的关键证据）**：
@@ -368,7 +368,7 @@ Energy_per_kernel = avg_power × cycles
 
 ## 1. Introduction（引言）
 
-深度神经网络、科学计算与自动驾驶等数据并行负载的算力需求在过去十年持续高速增长 [1]，推动通用处理器走向 SIMD 与向量化。RISC-V 向量扩展（RVV）[2] 以开源、可伸缩、变长向量的特性，成为兼顾峰值性能与能效的主流路线。当前主流实现普遍采用异构组织：一个应用级标量核负责控制流、地址计算与标量运算，**紧耦合**驱动一个由多条同构 lane 构成的向量协处理器来承担数据并行计算，以 CVA6 + Ara [3,4,5] 为代表。
+深度神经网络、科学计算与自动驾驶等数据并行负载的算力需求在过去十年持续高速增长 [1]，推动通用处理器走向 SIMD 与向量化。RISC-V 向量扩展（RVV）[2] 以开源、可伸缩、变长向量的特性，成为兼顾峰值性能与能效的主流路线。当前主流实现普遍采用异构紧耦合组织：一个应用级标量核负责控制流、地址计算与标量运算，**紧耦合**驱动一个由多条同构 lane 构成的向量协处理器来承担数据并行计算，以 CVA6 + Ara [3,4,5] 为代表。
 
 这一紧耦合组织的根本约束在于：标量核处在**向量指令供给的关键路径**上——每条向量指令都必须先由标量核取指、译码、发射，才能进入向量流水。向量体系结构本应"用一条指令摊销到整条向量上"以隐藏取指与发射开销 [3,4]；CVA6 执行一个点积内核时每次操作耗能约 317 pJ，其中仅约 28 pJ 用于真正的计算，其余几乎全部花在标量控制路径上 [4,5]。因此一旦**向量较短或控制流较密集**，标量核的发射速率便不足以喂饱向量 lane，向量单元利用率随向量长度（AVL）缩短而急剧下降——短向量（AVL≈32）下利用率可降至约 40%（不足峰值的一半）[16]，意味着占据芯片绝大多数面积与功耗预算的向量硬件被大量闲置。而短向量恰恰是 DNN 推理、稀疏与不规则核、以及 strip-mine 循环尾部等真实负载中的常态 [10]，使该瓶颈在实际应用中难以回避。
 

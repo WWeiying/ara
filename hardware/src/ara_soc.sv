@@ -729,8 +729,10 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .hdv_host_ep_busy_o    (hdv_ep_busy_o         ),
     .hdv_host_ep_acknowledged_o    (hdv_ep_acknowledged           ),
     .hdv_host_ep_error_o   (hdv_ep_error          ),
+`ifdef FOR_VERIFY
     .hdv_perf_ctr_sel_i    (4'd0                  ),
     .hdv_perf_ctr_data_o   (),
+`endif
     .hdv_ara_loop_active_o (),
     .hdv_ara_prefetch_mode_o (),
     .hdv_ara_vset_configured_o ()

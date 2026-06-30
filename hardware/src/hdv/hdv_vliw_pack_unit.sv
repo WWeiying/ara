@@ -556,6 +556,27 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       end
     end
   end
+
+  always_ff @(posedge clk_i) begin : p_pf_probe_pack
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE") && execute_accept &&
+        (vliwpu_heu_execute_pc_o >= addr_t'(64'h8000_1000)) &&
+        (vliwpu_heu_execute_pc_o <= addr_t'(64'h8000_1200))) begin
+      $display("[PFPROBE-PACK] ev=execute pc=0x%0h packet_pc=0x%0h head=%0d is256=%0d cross=%0d tail_cross=%0d pbits=0x%0h dep=0x%0h issue=0x%0h issue_next=%0d drained=%0d slot32=0x%0h cont=0x%0h active=%0d raw0=0x%032h raw1=0x%032h",
+               vliwpu_heu_execute_pc_o, packet_pc_q, head_slot_q, packet_is_256_q,
+               cross_execute_valid, tail_cross_candidate, p_bits, ctrl_vliwpu_dep_break_i,
+               issue_mask, issue_next_head_slot, issue_packet_drained, slot_is_32b,
+               slot_is_continuation, active_slot_count, packet_q[127:0], packet_q[255:128]);
+      $display("[PFPROBE-PACK] slots pc=0x%0h s0=0x%04h s1=0x%04h s2=0x%04h s3=0x%04h s4=0x%04h s5=0x%04h s6=0x%04h s7=0x%04h",
+               packet_pc_q, slots[0], slots[1], slots[2], slots[3],
+               slots[4], slots[5], slots[6], slots[7]);
+      $display("[PFPROBE-PACK] exec valid=%b is32=%b pc0=0x%0h e0=0x%04h pc1=0x%0h e1=0x%04h pc2=0x%0h e2=0x%04h pc3=0x%0h e3=0x%04h pc4=0x%0h e4=0x%04h pc5=0x%0h e5=0x%04h pc6=0x%0h e6=0x%04h pc7=0x%0h e7=0x%04h",
+               execute_slot_valid, execute_slot_is_32b,
+               execute_slot_pc[0], execute_slot[0], execute_slot_pc[1], execute_slot[1],
+               execute_slot_pc[2], execute_slot[2], execute_slot_pc[3], execute_slot[3],
+               execute_slot_pc[4], execute_slot[4], execute_slot_pc[5], execute_slot[5],
+               execute_slot_pc[6], execute_slot[6], execute_slot_pc[7], execute_slot[7]);
+    end
+  end
   `endif
 
 endmodule : hdv_vliw_pack_unit

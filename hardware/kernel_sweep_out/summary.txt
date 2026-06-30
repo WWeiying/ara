@@ -1,0 +1,16 @@
+########## Group 1: active 1D streaming kernels ##########
+  -> kernel_sweep_out/avl_all.csv
+########## Group 2B: BLAS dim sweep ##########
+  -> kernel_sweep_out/blas_all.csv
+########## Group 2C: BLAS LMUL prefetch sweep ##########
+  -> kernel_sweep_out/blas_all.csv
+########## Group 2A: vsgemm ##########
+  -> kernel_sweep_out/blas_all.csv
+########## Group 3: fixed/app-shaped kernels ##########
+vssyrk m1 32x32 (strided)          PASSED  cyc=84582
+vstrsm m1 32x32                    PASSED  cyc=30918
+vsspmv sparse 32x32                PASSED  cyc=4908
+fconv2d 3x3 e64 R64xC32            PASSED  cyc=19170
+jacobi2d 5pt e64 128x64            PASSED  cyc=20338
+lavamd N-body NPAR=256             PASSED  cyc=2757
+softmax ch3 x inner256             PASSED  cyc=6881

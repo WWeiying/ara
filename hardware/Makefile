@@ -110,7 +110,7 @@ bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIA
 #
 # AVL sweep knob: `make sim app=<k> avl=<N>` overrides the application vector
 # length (strip-mined element count) for the 1D kernels wired below.  The data
-# arrays are static, so N must be <= each kernel's array size (see avl_sweep.sh
+# arrays are static, so N must be <= each kernel's array size (see kernel_sweep.sh
 # for the per-kernel max).  Default keeps the historical 1024.
 avl ?= 1024
 ifeq ($(app),vsaxpy_hdv)
@@ -143,6 +143,11 @@ ifeq ($(app),vsscal_hdv)
   hdv_initial_a0 ?= $(avl)                           # a0 = n (AVL sweep)
   hdv_initial_a1 ?= $(shell printf '%d' 0x80001040)  # a1 = src
   hdv_initial_a2 ?= $(shell printf '%d' 0x80005050)  # a2 = dst (fa0=6.66=vsaxpy default)
+endif
+ifeq ($(app),vsdwt_hdv)
+  hdv_initial_a0 ?= $(shell printf '%d' 0x80001090)  # a0 = even (src1)
+  hdv_initial_a1 ?= $(shell printf '%d' 0x800110a0)  # a1 = odd  (src2)
+  hdv_initial_a2 ?= $(avl)                           # a2 = n    (AVL sweep, element count)
 endif
 ifeq ($(app),fdotp_hdv)
   hdv_initial_a0 ?= $(shell printf '%d' 0x80001090)  # a0 = v64a (4096-tiled)
