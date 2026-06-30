@@ -132,12 +132,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   input  acc_to_cva6_t                      acc_resp_i,
 
   // ── Per-request prefetch mode (from HDV header, latched per vq entry) ────
-  input  logic [1:0]                         hdv_prefetch_mode_i,
+  input  logic [1:0]                         hdv_prefetch_mode_i
 
   // ── Performance-counter readout (FOR_VERIFY only) ─────────────────────────
   // A simple muxed readout port so the testbench / waveform / control- status
   // interface can sample any counter without hierarchical paths.
   `ifdef FOR_VERIFY
+  ,
   input  logic [3:0]                        perf_ctr_sel_i,
   output logic [63:0]                       perf_ctr_data_o
   `endif
@@ -1279,6 +1280,56 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       end
       if (ara_exception_error) begin
         $error("[HDV] Ara reported exception for vector dispatch");
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i) begin : p_pf_probe_vec_dispatch
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE")) begin
+      if (enqueue_ep) begin
+        $display("[PFPROBE-VEC] ev=enqueue_ep state=%0d ep=%0d valid=%b insn0=0x%08h insn1=0x%08h insn2=0x%08h insn3=0x%08h pfmode=%0d real_wait=%b safe=%b",
+                 state_q, heu_vec_ep_id_i, heu_vec_insn_valid_i, heu_vec_insn_i[0],
+                 heu_vec_insn_i[1], heu_vec_insn_i[2], heu_vec_insn_i[3],
+                 heu_vec_prefetch_mode_i, real_wait_valid_q, real_ep_safe);
+      end
+
+      if (capture_operand) begin
+        $display("[PFPROBE-VEC] ev=capture_operand state=%0d ep=%0d slot=%0d insn=0x%08h rs1=x%0d data=0x%0h rs2=x%0d data=0x%0h frs1=%0d selected_next=%0d",
+                 state_q, selected_ep_id, (state_q == DISPATCH) ? slot_idx : input_slot_idx,
+                 selected_insn, selected_insn[19:15],
+                 selected_uses_frs1 ? scalar_vec_frs1_data_i : scalar_vec_rs1_data_i,
+                 selected_insn[24:20], scalar_vec_rs2_data_i, selected_uses_frs1,
+                 selected_has_next_operand);
+      end
+
+      if (prefetch_operand_req && scalar_vec_operand_req_ready_i) begin
+        $display("[PFPROBE-VEC] ev=prefetch_operand state=%0d ep=%0d next_slot=%0d insn=0x%08h rs1=x%0d data=0x%0h rs2=x%0d data=0x%0h",
+                 state_q, insn_ep_id_q, next_slot_idx, insn_q[next_slot_idx],
+                 insn_q[next_slot_idx][19:15],
+                 ((insn_q[next_slot_idx][6:0] == 7'b1010111) &&
+                  (insn_q[next_slot_idx][14:12] == 3'b101)) ?
+                     scalar_vec_frs1_data_i : scalar_vec_rs1_data_i,
+                 insn_q[next_slot_idx][24:20], scalar_vec_rs2_data_i);
+      end
+
+      if (accept_insn) begin
+        $display("[PFPROBE-VEC] ev=accept_insn state=%0d ep=%0d slot=%0d insn=0x%08h rs1=0x%0h rs2=0x%0h bypass=%0d push=%0d pop=%0d vq_count=%0d next_operand=%0d",
+                 state_q, selected_ep_id, (state_q == DISPATCH) ? slot_idx : input_slot_idx,
+                 fsm_req_insn, fsm_req_rs1, fsm_req_rs2, vq_bypass, vq_push, vq_pop,
+                 vq_count_q, selected_has_next_operand);
+      end
+
+      if (ara_acc) begin
+        $display("[PFPROBE-VEC] ev=ara_acc serving=%0d insn=0x%08h rs1=0x%0h rs2=0x%0h trans_id=0x%0h meta_rd=x%0d meta_vset=%0d meta_store=%0d",
+                 vq_serving, acc_req_o.acc_req.insn, acc_req_o.acc_req.rs1,
+                 acc_req_o.acc_req.rs2, acc_req_o.acc_req.trans_id,
+                 ara_meta_rd, ara_meta_is_vset, ara_meta_is_store);
+      end
+
+      if (vec_ep_acknowledged_o) begin
+        $display("[PFPROBE-VEC] ev=vec_ack id=%0d real_wait=%b safe=%b operands_captured=%b vset_done=%b",
+                 vec_ep_acknowledged_id_o, real_wait_valid_q, real_ep_safe,
+                 real_ep_operands_captured_q, real_ep_vset_wb_done_q);
       end
     end
   end

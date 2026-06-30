@@ -1661,6 +1661,57 @@ module hdv_scalar_backend
     end
   end
 
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin : p_pf_probe_scalar
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE")) begin
+      if (scalar_valid_i && scalar_ready_o) begin
+        $display("[PFPROBE-SCALAR] cyc=%0d ev=scalar_accept valid=%b pc0=0x%0h pc1=0x%0h pc2=0x%0h pc3=0x%0h insn0=0x%08h insn1=0x%08h insn2=0x%08h insn3=0x%08h x5=0x%0h x6=0x%0h x7=0x%0h a0=0x%0h a1=0x%0h a2=0x%0h",
+                 cycle_q, scalar_insn_valid_i, scalar_insn_pc_i[0], scalar_insn_pc_i[1],
+                 scalar_insn_pc_i[2], scalar_insn_pc_i[3], scalar_insn_i[0],
+                 scalar_insn_i[1], scalar_insn_i[2], scalar_insn_i[3],
+                 xrf_q[5], xrf_q[6], xrf_q[7], xrf_q[10], xrf_q[11], xrf_q[12]);
+      end
+
+      if (state_q == EXECUTE) begin
+        for (int unsigned i = 0; i < NumSlots; i++) begin
+          if (simple_batch_mask[i] && simple_batch_wb_en[i] &&
+              ((simple_batch_rd[i] == 5'd5) || (simple_batch_rd[i] == 5'd6) ||
+               (simple_batch_rd[i] == 5'd7) || (simple_batch_rd[i] == 5'd10) ||
+               (simple_batch_rd[i] == 5'd11) || (simple_batch_rd[i] == 5'd12))) begin
+            $display("[PFPROBE-SCALAR] cyc=%0d ev=simple_wb slot=%0d pc=0x%0h insn=0x%08h rd=x%0d data=0x%0h before_a0=0x%0h before_a1=0x%0h before_x5=0x%0h before_x6=0x%0h before_x7=0x%0h",
+                     cycle_q, i, insn_pc_q[i], insn_q[i], simple_batch_rd[i],
+                     simple_batch_result[i], xrf_q[10], xrf_q[11], xrf_q[5],
+                     xrf_q[6], xrf_q[7]);
+          end
+        end
+
+        if (curr_slot_found && wb_en && !unsupported &&
+            ((wb_addr == 5'd5) || (wb_addr == 5'd6) || (wb_addr == 5'd7) ||
+             (wb_addr == 5'd10) || (wb_addr == 5'd11) || (wb_addr == 5'd12))) begin
+          $display("[PFPROBE-SCALAR] cyc=%0d ev=complex_wb slot=%0d pc=0x%0h insn=0x%08h rd=x%0d data=0x%0h before_a0=0x%0h before_a1=0x%0h before_x5=0x%0h before_x6=0x%0h before_x7=0x%0h",
+                   cycle_q, curr_slot_idx, curr_pc, curr_insn, wb_addr, wb_data,
+                   xrf_q[10], xrf_q[11], xrf_q[5], xrf_q[6], xrf_q[7]);
+        end
+      end
+
+      if (branch_resolved_pulse_d) begin
+        $display("[PFPROBE-SCALAR] cyc=%0d ev=branch pc=0x%0h target=0x%0h taken=%0d a0=0x%0h a1=0x%0h x5=0x%0h x6=0x%0h x7=0x%0h",
+                 cycle_q, branch_pc_d, branch_target_d, branch_taken_d,
+                 xrf_d[10], xrf_d[11], xrf_d[5], xrf_d[6], xrf_d[7]);
+      end
+
+      if (vec_wb_valid_i &&
+          ((vec_wb_rd_i == 5'd5) || (vec_wb_rd_i == 5'd6) ||
+           (vec_wb_rd_i == 5'd10) || (vec_wb_rd_i == 5'd11) ||
+           (vec_wb_rd_i == 5'd12))) begin
+        $display("[PFPROBE-SCALAR] cyc=%0d ev=vec_wb rd=x%0d data=0x%0h is_vset=%0d is_fpr=%0d before_x5=0x%0h before_x6=0x%0h a0=0x%0h a1=0x%0h",
+                 cycle_q, vec_wb_rd_i, vec_wb_data_i, vec_wb_is_vset_i,
+                 vec_wb_is_fpr_i, xrf_q[5], xrf_q[6], xrf_q[10], xrf_q[11]);
+      end
+    end
+  end
+`endif
+
   logic unused_vec_operand_req_valid;
   assign unused_vec_operand_req_valid = vec_operand_req_valid_i;
 

@@ -97,6 +97,8 @@ void dwt_haar_hdv(float *even, float *odd, int n) {
     "vse32.v v2, (a0)\n"
     "HDV_HINT 0x00\n"
     "vse32.v v3, (a1)\n"
+    "nop\n"
+    "nop\n"
 
     "HDV_HINT 0x0a\n"
     "slli t2, t1, 2\n"

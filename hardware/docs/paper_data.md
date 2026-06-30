@@ -1,448 +1,240 @@
-# HDV 流式内核 AVL Sweep —— 结果与分析
+# HDV Kernel Sweep 数据
 
-记录 ARA-HDV 向量流水在一组 1D 流式内核上、随应用向量长度(AVL)缩放的性能,并基于
-增强版 sweep 采集的 58 列计数器做瓶颈诊断。
+本文档已同步到当前 `hardware/kernel_sweep_out/kernel_all.csv`。
 
-## 1. 测量配置
+## 1. CSV 一致性检查
 
-- **硬件**:VLEN = 1024 b、NrLanes = 4、AxiDataWidth = 128 b(= 16 B/beat),**单个共享
-  AXI 端口**,DATA 预取器开启。
-- **指标**:`task_cycles` = mock-host 测得的任务总周期;`cyc/el` = task_cycles ÷ AVL;
-  `pf` = 预取 AR 发出数 → demand 命中数。
-- **RTL 状态(post-fix)**:same-id LSU + vset-wb 路由 + addrgen `rob_match` 跨页 flag 修复
-  + vldu per-burst 预取命中消费 + store-aware **bounded-lead** 预取 + **去除全局预取模式否决**。
-- **采集**:`hardware/avl_sweep.sh`,每个 AVL 点记录 58 列(HDV-CSR / HDV-PERF / IPU-PERF /
-  PERF-ADDRGEN(-PF) / PERF-SEQ + 派生)。
-<<<<<<< HEAD
-- **核集合**:8 个 —— vsaxpy、vvaddint32、vscopy、vsscal、vsdot、vsswap、vmc、dropout。
-- **fdotp 排除**:其预取对自身地址/时序病态敏感(非单调),任何描述符消费时序的改动都
-  会大幅改变其命中率;点积类由 vsdot 代表(vsdot 对所有修复逐位一致)。
-- AVL 8 → 4096 全程 **全核 PASS**。
-- **零回归确认**:在 §8 的 IPU `fill_req/rsp` desync 修复后重跑本 sweep,8 核 × 5 AVL =
-  **40/40 PASS 且逐位与修复前基线一致**(修复对单循环核是字面 no-op,见 §8.3)。
-=======
-- **核集合**:9 个 —— vsaxpy、vvaddint32、vscopy、vsscal、vsdot、vsswap、vmc、dropout、vsdwt
-  (单步 Haar 小波,1D 流式核;预取使能但 0 命中——原地 even/odd 访存无下一迭代可取)。
-- **排除项**:fdotp 和 vspf 不再纳入 active sweep。fdotp 的预取对自身地址/时序病态敏感
-  (非单调),点积类由 vsdot 代表;vspf 是历史预取微基准,不是应用核。
-- active sweep(9 个应用核)在 AVL 8 → 4096 全程 **全核 PASS**。
->>>>>>> b787e19ff8c953807895375002956f1308bfac76
+- 数据源: `hardware/kernel_sweep_out/kernel_all.csv`
+- 形状: 65 列,132 条数据行。
+- 行宽检查: 所有数据行都是 65 列。
+- 单项 CSV 检查: 每个 `kernel_sweep_out/*.csv` 都和 `kernel_all.csv` 中对应 kernel 的子集一致,
+  没有发现单项 CSV 的旧数据混入总表。
+- 派生字段检查:
+  - 对所有带 AVL 的行,`cyc_per_elem == task_cycles / avl`。
+  - 对所有 `pf_ar > 0` 的行,`pf_hit_rate == pf_hit / pf_ar`。
+- 当前通过/失败汇总: 131 PASS,1 FAIL。
+  - `blas,vssyrk_hdv,size=128,n=128`: FAILED, `task_cycles = 799998`.
+- PASS 行结构性检查:
+  - 所有 PASS 行均满足 `vq_push == vq_pop`。
+  - 所有 PASS 行均满足 `real_wait_stall == 0` 且 `resp_meta_stall == 0`。
+  - 所有 PASS 行在采样 DONE 点均满足 `vec_busy == 0`。
+  - `imem_outstanding` 不是全 0;PASS 行最大观测值为 4,因此当前不能再写
+    "imem_outstanding 全 0" 作为健康性断言。
+  - `seq_full` 只有 `jacobi2d_fix` 非零(`seq_full = 4718`)。
 
-## 2. 主结果:周期与效率
+当前总表不包含 `fdotp` 和 `vspf`。
 
-### 2.1 总周期 vs AVL
+## 2. 指标说明
 
-| 核 | dtype | 256 | 512 | 1024 | 2048 | 4096 |
-|---|---|--:|--:|--:|--:|--:|
-| vsaxpy     | f32 | 195 | 387 | 771  | 1552 | 3114 |
-| vvaddint32 | i32 | 212 | 403 | 796  | 1578 | 3140 |
-| vscopy     | f32 | 208 | 416 | 832  | 1657 | 3307 |
-| vsscal     | f32 | 250 | 506 | 1018 | 2037 | 4075 |
-| vsdot      | f32 | 472 | 904 | 1768 | 3496 | 6952 |
-| vsswap     | f32 | 335 | 671 | 1351 | 2694 | 5380 |
-| vmc        | i32 | 113 | 192 | 394  | 813  | 1656 |
-| dropout    | f32 |  59 | 196 | 536  | 1096 | 2216 |
-| vsdwt      | f32 | 451 | 875 | 1723 | 3419 | 6811 |
+- `task_cycles`: mock-host 报告的任务周期。
+- `cyc_per_elem`: `task_cycles / AVL`,仅 AVL sweep 行填写。
+- `cyc_per_macc`: BLAS/GEMM 行由脚本按操作量计算的归一化指标。
+- `pf_ar->pf_hit`: 发出的预取 AR 数量以及 demand load 命中的已完成预取数量。
+- 空单元格表示该指标不适用或对应 log 未输出。
+- FAILED 行仅用于调试可见性,不应作为论文性能点。
 
-vsdwt = 单步 Haar 小波(even/odd 两个单位步长流,原地变换);AVL = 信号元素数。
+## 3. AVL Sweep
 
-### 2.2 效率(cyc/el)
+当前 active AVL sweep 包含 9 个 kernel:
+`vsaxpy_hdv`, `vvaddint32_hdv`, `vscopy_hdv`, `vsscal_hdv`, `vsdot_hdv`,
+`vsswap_hdv`, `vmc_hdv`, `dropout_hdv`, `vsdwt_hdv`。
 
-| 核 | 256 | 512 | 1024 | 2048 | 4096 |
+### 3.1 任务周期
+
+| Kernel | 256 | 512 | 1024 | 2048 | 4096 |
 |---|--:|--:|--:|--:|--:|
-| vsaxpy     | 0.761 | 0.755 | 0.752 | 0.757 | 0.760 |
-| vvaddint32 | 0.828 | 0.787 | 0.777 | 0.770 | 0.766 |
-| vscopy     | 0.812 | 0.812 | 0.812 | 0.809 | 0.807 |
-| vsscal     | 0.976 | 0.988 | 0.994 | 0.994 | 0.994 |
-| vsdot      | 1.843 | 1.765 | 1.726 | 1.707 | 1.697 |
-| vsswap     | 1.308 | 1.310 | 1.319 | 1.315 | 1.313 |
-| vmc        | 0.441 | 0.375 | 0.384 | 0.396 | 0.404 |
-| dropout    | 0.230 | 0.382 | 0.523 | 0.535 | 0.541 |
-| vsdwt      | 1.761 | 1.708 | 1.682 | 1.669 | 1.662 |
+| vsaxpy | 195 | 387 | 771 | 1552 | 3114 |
+| vvaddint32 | 212 | 403 | 796 | 1578 | 3140 |
+| vscopy | 208 | 416 | 832 | 1657 | 3307 |
+| vsscal | 250 | 506 | 1018 | 2037 | 4075 |
+| vsdot | 472 | 904 | 1768 | 3496 | 6952 |
+| vsswap | 335 | 671 | 1351 | 2694 | 5380 |
+| vmc | 113 | 192 | 394 | 813 | 1656 |
+| dropout | 59 | 196 | 536 | 1096 | 2216 |
+| vsdwt | 451 | 875 | 1723 | 3419 | 6811 |
 
-所有核 cyc/el 都呈"小 AVL 高、大 AVL 收敛到 plateau":小 AVL 时每核固定的启动开销
-(vsetvli、首迭代冷启动 miss、流水填充)摊到很少元素上;AVL ≥ 1024 摊薄到稳态。
-**评估稳态性能应看 AVL ≥ 1024 的点**,256 及以下偏悲观。
+### 3.2 每元素周期
 
-## 3. 瓶颈分类:带宽受限 vs 延迟/计算受限
+| Kernel | 256 | 512 | 1024 | 2048 | 4096 |
+|---|--:|--:|--:|--:|--:|
+| vsaxpy | .761 | .755 | .752 | .757 | .760 |
+| vvaddint32 | .828 | .787 | .777 | .770 | .766 |
+| vscopy | .812 | .812 | .812 | .809 | .807 |
+| vsscal | .976 | .988 | .994 | .994 | .994 |
+| vsdot | 1.843 | 1.765 | 1.726 | 1.707 | 1.697 |
+| vsswap | 1.308 | 1.310 | 1.319 | 1.315 | 1.313 |
+| vmc | .441 | .375 | .384 | .396 | .404 |
+| dropout | .230 | .382 | .523 | .535 | .541 |
+| vsdwt | 1.761 | 1.708 | 1.682 | 1.669 | 1.662 |
 
-单端口 16 B/beat、1 beat/cycle,R 与 W 串行(由 vsaxpy 实测端口利用率 ≈ 94 % 印证),
-故带宽下界 `floor(cyc/el) = 每元素搬运字节 ÷ 16`:
+### 3.3 预取 AR 与命中
 
-| 核 | 访存模式 | B/elem | floor | 实测@4096 | 距 floor | 瓶颈 |
-|---|---|--:|--:|--:|--:|---|
-| vsaxpy     | 2L+1S e32       | 12   | 0.75 | 0.760 | **99 %** | 带宽 |
-| vvaddint32 | 2L+1S i32       | 12   | 0.75 | 0.766 | **98 %** | 带宽 |
-| dropout    | L+mask+S e32/m8 | ~8.1 | ~0.51| 0.541 | ~94 %    | 带宽 |
-| vsswap     | 2L+2S e32(原地)| 16   | 1.00 | 1.313 | 76 %     | 带宽(最重) |
-| vscopy     | 1L+1S e32       | 8    | 0.50 | 0.807 | 62 %     | 有余量 |
-| vmc        | 1L+1S e16/m4    | 4    | 0.25 | 0.404 | 62 %     | 有余量 |
-| vsscal     | 1L+1S e32       | 8    | 0.50 | 0.994 | 50 %     | 计算/依赖 |
-| vsdot      | 2L e32(规约)   | 8    | 0.50 | 1.697 | **29 %** | 规约依赖 |
-
-- **带宽受限组(vsaxpy / vvaddint32 / dropout / vsswap)**:实测贴着 floor(76–99 %),
-  预取满命中,已压到单端口物理极限 —— 再快只能靠加宽 AXI 或让 R/W 并发。
-- **延迟/计算受限组(vsdot / vsscal / vscopy / vmc)**:实测远离 floor,瓶颈不在带宽:
-  - **vsdot(1.70 cyc/el,仅 29 % floor,最慢)**:规约 `vfmacc` 把结果累加进同一寄存器,
-    形成迭代间依赖链,compute 无法流水,load 再快也填不满 —— 规约依赖受限,与访存无关。
-  - **vsscal(0.99,50 %)**:1L+1S 本应与 vscopy 一样轻,但多了 `vfmul` + 标量依赖、EP 链
-    更长;瓶颈在计算侧,不是预取(见 §5C 的 `ipu_ready_stall`)。
-  - **vscopy / vmc(62 %)**:纯 copy / 轻核,余量来自单端口 R/W 串行 + 每 strip 启动开销。
-
-## 4. 预取效果
-
-### pf ARs → demand hits
-
-| 核 | 256 | 1024 | 4096 |
+| Kernel | 256 | 1024 | 4096 |
 |---|--:|--:|--:|
-| vsaxpy     | 13→13 | 63→63 | 255→255 |
-| vvaddint32 | 14→14 | 64→64 | 260→260 |
-| vscopy     | 7→7   | 32→32 | 131→131 |
-| vsscal     | 7→7   | 32→32 | 131→131 |
-| vsdot      | 14→14 | 63→63 | 258→258 |
-| vsswap     | 14→14 | 64→64 | 262→262 |
-| vmc        | 0→0   | 3→3   | 17→17   |
-| dropout    | 1→0   | 7→6   | 31→30   |
-| vsdwt      | 7→0   | 31→0  | 127→0   |
+| vsaxpy | 13->13 | 63->63 | 255->255 |
+| vvaddint32 | 14->14 | 64->64 | 260->260 |
+| vscopy | 7->7 | 32->32 | 131->131 |
+| vsscal | 7->7 | 32->32 | 131->131 |
+| vsdot | 14->14 | 63->63 | 258->258 |
+| vsswap | 14->14 | 64->64 | 262->262 |
+| vmc | 0->0 | 3->3 | 17->17 |
+| dropout | 1->0 | 7->6 | 31->30 |
+| vsdwt | 7->0 | 31->0 | 127->0 |
 
-去掉过度保守的全局模式否决 + bounded-lead 后,除 vsdwt 外的单位步长流式核高 AVL 都达
-~100 % 命中。dropout 的系统性"差 1"来自**冷启动**:首迭代之前无物可预取,必然一次
-demand miss —— 物理最优,不是缺陷。vsdwt 原地 even/odd 访存没有下一迭代可命中的稳定
-单位步长预取流,因此 `pf_hit = 0` 符合预期。
+当前 CSV 显示:简单单位步长流式 kernel 基本都是满命中;`dropout_hdv` 保持预期的冷启动差
+1 次命中;`vsdwt_hdv` 发出预取 AR 但 demand 命中为 0。
 
-两处修复的定位:
-- **vsaxpy(带宽受限组)**:store-aware drain 原来把预取排空到 0、demand 暴露 load 延迟;
-  改成保留 ~1 迭代提前量的 bounded-lead 后,贴上 0.75 floor(−7…−12 %)。
-- **vsscal(延迟受限组)**:预取曾被全局预取模式否决误杀到只剩 3 个 AR(该全局模式在
-  HDV packet 间隙瞬时掉 0,而 addrgen 滞后于前端,单流短循环恰好在间隙被处理 → 合法
-  预取被一刀切)。去掉这个否决后预取满命中(3 → 131,−7…−15 %)。它仍到不了带宽 floor
-  是 `vfmul` 依赖所限,不是预取问题。
+## 4. AVL=4096 详细计数器
 
-## 5. 全量计数器诊断(58 列 @ AVL=4096)
+### 4.1 顶层与派发
 
-由增强版 `avl_sweep.sh` 采集。**健康性总览**:全核
-`vec_busy = imem_outstanding = real_wait_stall = resp_meta_stall = resp_meta_max =
-seq_full = pf_ar_rob_full = pf_ar_lkup_full = pf_queue_full = 0`,且 `vq_push == vq_pop`
-—— 无结构性溢出、无命令泄漏、无死锁残留;预取信用 = 物理 buffer(128 beat = 128 beat),不溢。
+| Kernel | task_cycles | cyc/el | eps | ep_ack | ep_vset_ack | vq_push/pop | vq_max | vq_full_stall | dispatch_cycles | operand_wait | ara_backpressure | ipu_ready_stall |
+|---|--:|--:|--:|--:|--:|---:|--:|--:|--:|--:|--:|--:|
+| vsaxpy | 3114 | .760 | 512 | 384 | 128 | 637/637 | 8 | 45 | 940 | 640 | 2450 | 2 |
+| vvaddint32 | 3140 | .766 | 512 | 384 | 128 | 637/637 | 8 | 11 | 906 | 651 | 2477 | 3 |
+| vscopy | 3307 | .807 | 384 | 256 | 128 | 382/382 | 5 | 0 | 512 | 384 | 2900 | 3 |
+| vsscal | 4075 | .994 | 384 | 384 | 128 | 509/509 | 7 | 0 | 766 | 512 | 3541 | 3120 |
+| vsdot | 6952 | 1.697 | 519 | 386 | 129 | 638/638 | 8 | 0 | 898 | 643 | 6281 | 2 |
+| vsswap | 5380 | 1.313 | 512 | 384 | 128 | 638/638 | 8 | 1237 | 2259 | 640 | 4720 | 2 |
+| vmc | 1656 | .404 | 424 | 80 | 16 | 90/90 | 7 | 0 | 96 | 96 | 1448 | 2 |
+| dropout | 2216 | .541 | 149 | 48 | 16 | 94/94 | 8 | 1278 | 1406 | 96 | 2071 | 18 |
+| vsdwt | 6811 | 1.662 | 2180 | 768 | 128 | 384/384 | 1 | 0 | 1024 | 896 | 384 | 773 |
 
-### 5A. 顶层周期 / EP
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
+### 4.2 访存与预取
+
+| Kernel | demand_ar | pf_ar | pf_hit | loads | hit_rate | demand_aw | demand_B | pf_B |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
-| task_cycles | 3114 | 3140 | 3307 | 4075 | 6952 | 5380 | 1656 | 2216 |
-| cyc/el | .760 | .766 | .807 | .994 | 1.697 | 1.313 | .404 | .541 |
-| wall_cycles | 3182 | 3208 | 3375 | 4143 | 7020 | 5448 | 1724 | 2284 |
-| eps | 512 | 512 | 384 | 384 | 519 | 512 | 424 | 149 |
+| vsaxpy | 139 | 255 | 255 | 256 | 1.000 | 132 | 1296 | 30832 |
+| vvaddint32 | 213 | 260 | 260 | 256 | 1.000 | 132 | 480 | 31648 |
+| vscopy | 132 | 131 | 131 | 128 | 1.000 | 132 | 128 | 15872 |
+| vsscal | 132 | 131 | 131 | 128 | 1.000 | 132 | 128 | 15872 |
+| vsdot | 260 | 258 | 258 | 256 | 1.000 | 0 | 256 | 32080 |
+| vsswap | 256 | 262 | 262 | 256 | 1.000 | 264 | 256 | 31728 |
+| vmc | 17 | 17 | 17 | 16 | 1.000 | 20 | 512 | 6992 |
+| dropout | 32 | 31 | 30 | 32 | .967 | 16 | 1056 | 15872 |
+| vsdwt | 255 | 127 | 0 | 128 | 0 | 260 | 32768 | 16256 |
 
-`wall = task + 68`(恒定 68 = mock host 启动开销)。`eps` = 迭代数 × 每迭代 EP 数;dot 519
-(规约尾)、drop 149(m8 宽、迭代少)。
+### 4.3 Sequencer 计数器
 
-### 5B. HDV-PERF(派发路径)
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| ep_ack | 384 | 384 | 256 | 384 | 386 | 384 | 80 | 48 |
-| ep_vset_ack | 128 | 128 | 128 | 128 | 129 | 128 | 16 | 16 |
-| vq_push/pop | 637 | 637 | 382 | 509 | 638 | 638 | 90 | 94 |
-| vq_max_occ | 8 | 8 | 5 | 7 | 8 | 8 | 7 | 8 |
-| vq_bypass | 3 | 3 | 2 | 3 | 5 | 2 | 6 | 2 |
-| **vq_full_stall** | 45 | 11 | 0 | 0 | 0 | **1237** | 0 | **1278** |
-| dispatch_cycles | 940 | 906 | 512 | 766 | 898 | **2259** | 96 | **1406** |
-| operand_wait_cyc | 640 | 651 | 384 | 512 | 643 | 640 | 96 | 96 |
-| ara_backpressure | 2450 | 2477 | 2900 | 3541 | 6281 | 4720 | 1448 | 2071 |
+| Kernel | seq_blocked | seq_raw | seq_war | seq_waw | seq_ep_bypass | seq_full |
+|---|--:|--:|--:|--:|--:|--:|
+| vsaxpy | 2071 | 252 | 1 | 1687 | 320 | 0 |
+| vvaddint32 | 2097 | 128 | 1793 | 33 | 512 | 0 |
+| vscopy | 2647 | 128 | 2391 | 0 | 128 | 0 |
+| vsscal | 3288 | 256 | 3033 | 128 | 192 | 0 |
+| vsdot | 6027 | 131 | 5785 | 528 | 449 | 0 |
+| vsswap | 4210 | 128 | 3698 | 1 | 261 | 0 |
+| vmc | 32 | 32 | 2 | 0 | 32 | 0 |
+| dropout | 2029 | 17 | 1982 | 64 | 56 | 0 |
+| vsdwt | 384 | 384 | 1 | 128 | 384 | 0 |
 
-- `ep_vset_ack = 128`(= 迭代数,4096/32):每迭代一条 vsetvli;vmc/drop=16(m4/m8 宽)。
-- **`vq_full_stall`:swap 1237、drop 1278 突出** —— 这两核把向量命令队列压满、派发被挡
-  (swap 是 2L+2S 最重访存,drop 是 m8 宽包,后端消化慢 → vq 堆积,`dispatch_cycles` 同步偏高)。
-- `ara_backpressure` 随总周期单调(dot 最高 6281)。`real_wait_stall = resp_meta_stall = 0`
-  —— 派发后端从不满,派发不是任何核的瓶颈。
+当前计数器支持的主要结论:
 
-### 5C. IPU-PERF(操作数服务)—— vsscal 瓶颈的铁证
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| ipu_ready_cyc | 640 | 642 | 514 | **3631** | 643 | 640 | 179 | 130 |
-| **ipu_ready_stall** | 2 | 3 | 3 | **3120** | 2 | 2 | 2 | 18 |
-| ipu_sram_stall | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 17 |
-| ipu_serve_cyc | 3094 | 3113 | 3283 | 4047 | 6814 | 5333 | 1630 | 2089 |
-| packets | 638 | 639 | 511 | 511 | 641 | 638 | 177 | 112 |
-| bypass_hits | 255 | 256 | 130 | 130 | 258 | **382** | 132 | 80 |
-| demand_reads | 1 | 1 | 2 | 2 | 5 | 1 | **118** | 49 |
-| avg_cyc_per_pkt | 4 | 4 | 6 | 7 | 10 | 8 | 9 | **18** |
+- `vsaxpy_hdv`,`vvaddint32_hdv`,`vsswap_hdv` 主要受访存带宽/写端口压力限制。
+- `vsscal_hdv` 主要受计算/依赖限制;预取满命中,但 `ipu_ready_stall = 3120`。
+- `vsdot_hdv` 主要受规约依赖限制;`seq_war = 5785` 且 `demand_aw = 0`。
+- `vsdwt_hdv` 当前会发出预取 AR,但没有 demand 命中。
 
-- **`ipu_ready_stall`:vsscal 3120,其余核仅 2~18 —— 单这一列就把 vsscal 的瓶颈钉死**:
-  IPU 准备好却卡 3120 周期,等的是 `vfmul` 依赖链;它的预取已满命中(load 不缺),剩下
-  全卡在计算侧 → vsscal 是计算/依赖受限,不是带宽、不是预取。
-- `ipu_serve_cyc ≈ task_cycles`:操作数服务几乎占满全程(IPU 是主干)。
-- `demand_reads`:多数核 1~2(几乎全靠预取/bypass 命中);**vmc 118、drop 49** 例外
-  (mask / 部分流走 demand 读)。`avg_cyc_per_pkt`:drop 18(m8 宽包)、dot 10(规约慢)。
-- `bypass_hits`:swap 382 最高(原地交换,操作数大量走 bypass)。
+## 5. BLAS / GEMM 行
 
-### 5D. PERF-ADDRGEN(访存 / 预取主计数)
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| demand_ar | 139 | 213 | 132 | 132 | 260 | 256 | 17 | 32 |
-| pf_ar | 255 | 260 | 131 | 131 | 258 | 262 | 17 | 31 |
-| pf_hit | 255 | 260 | 131 | 131 | 258 | 262 | 17 | 30 |
-| loads | 256 | 256 | 128 | 128 | 256 | 256 | 16 | 32 |
-| pf_en_cyc | 3379 | 3405 | 3572 | 4340 | 7217 | 5645 | 2033 | 2593 |
-| **demand_aw** | 132 | 132 | 132 | 132 | **0** | 264 | 20 | 16 |
-| demand_B | 1296 | 480 | 128 | 128 | 256 | 256 | 512 | 1056 |
-| pf_B | 30832 | 31648 | 15872 | 15872 | 32080 | 31728 | 6992 | 15872 |
+下表直接来自当前 `group=blas` 行。`size`、`rows`、`n` 是 `kernel_sweep_sum.sh` 写入 CSV
+的原始字段;对于 `*_m2/m4/m8` 行,`size` 表示 LMUL selector。
 
-- **`demand_aw`(store AW)dot = 0** —— 印证 dot 循环内无 store(规约,末尾才写);swap = 264
-  (2 store/迭代),其余 ~128~132(1 store/迭代)。
-- `pf_ar ≈ pf_hit ≈ loads`:预取数 ≈ 命中数 ≈ load 数 —— 除 dropout 冷启动和 vsdwt 外,
-  几乎每条 load 都被预取命中。
-- vsscal 虽然预取同样满命中,仍停在 0.994 cyc/el;结合 §5C 的 `ipu_ready_stall=3120`,
-  瓶颈明确在 `vfmul` 依赖链,不是 load 延迟。
-- `pf_B ≫ demand_B`:读流量绝大部分以预取形式发出(藏延迟),demand 读只剩零头。
+| Kernel | size | rows | n | result | task_cycles | cyc/MACC | demand_ar | pf_ar->hit |
+|---|--:|--:|--:|---|--:|--:|--:|--:|
+| vsgemv_hdv_m2 | 2 | 32 | 32 | PASSED | 111 | .0541 | 2 | 0->0 |
+| vsgemv_hdv_m2 | 2 | 64 | 64 | PASSED | 121 | .0295 | 2 | 0->0 |
+| vsgemv_hdv_m4 | 4 | 32 | 32 | PASSED | 126 | .0307 | 2 | 0->0 |
+| vsgemv_hdv_m4 | 4 | 64 | 64 | PASSED | 136 | .0166 | 2 | 0->0 |
+| vsgemv_hdv_m8 | 8 | 32 | 32 | PASSED | 160 | .0195 | 2 | 0->0 |
+| vsgemv_hdv_m8 | 8 | 64 | 64 | PASSED | 170 | .0103 | 2 | 0->0 |
+| vssymv_hdv_m2 | 2 | 32 | 32 | PASSED | 112 | .0546 | 2 | 0->0 |
+| vssymv_hdv_m2 | 2 | 64 | 64 | PASSED | 122 | .0297 | 2 | 0->0 |
+| vssymv_hdv_m4 | 4 | 32 | 32 | PASSED | 128 | .0312 | 2 | 0->0 |
+| vssymv_hdv_m4 | 4 | 64 | 64 | PASSED | 138 | .0168 | 2 | 0->0 |
+| vssymv_hdv_m8 | 8 | 32 | 32 | PASSED | 160 | .0195 | 2 | 0->0 |
+| vssymv_hdv_m8 | 8 | 64 | 64 | PASSED | 170 | .0103 | 2 | 0->0 |
+| vstrsm_hdv_m2 | 2 | 32 | 32 | PASSED | 30985 | 15.1293 | 572 | 0->0 |
+| vstrsm_hdv_m2 | 2 | 64 | 64 | PASSED | 120249 | 29.3576 | 2232 | 0->0 |
+| vstrsm_hdv_m4 | 4 | 32 | 32 | PASSED | 40898 | 9.9848 | 604 | 0->0 |
+| vstrsm_hdv_m4 | 4 | 64 | 64 | PASSED | 160466 | 19.5881 | 2360 | 0->0 |
+| vstrsm_hdv_m8 | 8 | 32 | 32 | PASSED | 74462 | 9.0895 | 672 | 0->0 |
+| vstrsm_hdv_m8 | 8 | 64 | 64 | PASSED | 292310 | 17.8411 | 2624 | 0->0 |
+| vsgemm_m1_1r | 32 | 1 | 32 | PASSED | 31910 | .9738 | 1056 | 1024->992 |
+| vsgemm_m1_2r | 32 | 2 | 32 | PASSED | 19248 | .5874 | 528 | 512->496 |
+| vsgemm_m1_4r | 32 | 4 | 32 | PASSED | 9183 | .2802 | 264 | 256->248 |
+| vsgemm_m4_1r | 16 | 1 | 16 | PASSED | 8255 | 2.0153 | 256 | 0->0 |
+| vsgemm_m4_1r | 32 | 1 | 32 | PASSED | 31837 | .9715 | 1024 | 0->0 |
+| vsgemm_m4_1r | 64 | 1 | 64 | PASSED | 133676 | .5099 | 4352 | 0->0 |
+| vsgemm_m4_1r | 128 | 1 | 128 | PASSED | 794787 | .3789 | 18432 | 0->0 |
+| vsgemm_m4_2r | 16 | 2 | 16 | PASSED | 5435 | 1.3269 | 128 | 0->0 |
+| vsgemm_m4_2r | 32 | 2 | 32 | PASSED | 20819 | .6353 | 512 | 0->0 |
+| vsgemm_m4_2r | 64 | 2 | 64 | PASSED | 81541 | .3110 | 2048 | 0->0 |
+| vsgemm_m4_2r | 128 | 2 | 128 | PASSED | 478798 | .2283 | 8192 | 0->0 |
+| vsgemm_m4_4r | 16 | 4 | 16 | PASSED | 3485 | .8508 | 64 | 0->0 |
+| vsgemm_m4_4r | 32 | 4 | 32 | PASSED | 13211 | .4031 | 256 | 0->0 |
+| vsgemm_m4_4r | 64 | 4 | 64 | PASSED | 55253 | .2107 | 1024 | 0->0 |
+| vsgemm_m4_4r | 128 | 4 | 128 | PASSED | 351503 | .1676 | 4096 | 0->0 |
+| vsgemv_hdv | 16 |  | 16 | PASSED | 121 | .4726 | 2 | 0->0 |
+| vsgemv_hdv | 32 |  | 32 | PASSED | 126 | .1230 | 2 | 0->0 |
+| vsgemv_hdv | 64 |  | 64 | PASSED | 136 | .0332 | 2 | 0->0 |
+| vsgemv_hdv | 128 |  | 128 | PASSED | 160 | .0097 | 2 | 0->0 |
+| vsger_hdv | 16 |  | 16 | PASSED | 3004 | 11.7343 | 64 | 0->0 |
+| vsger_hdv | 32 |  | 32 | PASSED | 3004 | 2.9335 | 65 | 0->0 |
+| vsger_hdv | 64 |  | 64 | PASSED | 4604 | 1.1240 | 130 | 64->64 |
+| vsger_hdv | 128 |  | 128 | PASSED | 7804 | .4763 | 260 | 196->196 |
+| vssymv_hdv | 16 |  | 16 | PASSED | 122 | .4765 | 2 | 0->0 |
+| vssymv_hdv | 32 |  | 32 | PASSED | 128 | .1250 | 2 | 0->0 |
+| vssymv_hdv | 64 |  | 64 | PASSED | 138 | .0336 | 2 | 0->0 |
+| vssymv_hdv | 128 |  | 128 | PASSED | 162 | .0098 | 2 | 0->0 |
+| vssyrk_hdv | 16 |  | 16 | PASSED | 13840 | 54.0625 | 4112 | 0->0 |
+| vssyrk_hdv | 32 |  | 32 | PASSED | 84582 | 82.5996 | 32801 | 0->0 |
+| vssyrk_hdv | 64 |  | 64 | PASSED | 600231 | 146.5407 | 262212 | 0->0 |
+| vssyrk_hdv | 128 |  | 128 | FAILED | 799998 | 48.8280 | 373010 | 0->0 |
+| vstrsm_hdv | 16 |  | 16 | PASSED | 10682 | 41.7265 | 158 | 0->0 |
+| vstrsm_hdv | 32 |  | 32 | PASSED | 40898 | 39.9394 | 604 | 0->0 |
+| vstrsm_hdv | 64 |  | 64 | PASSED | 160466 | 39.1762 | 2360 | 0->0 |
+| vstrsm_hdv | 128 |  | 128 | PASSED | 636146 | 38.8272 | 9328 | 0->0 |
 
-### 5E. PERF-ADDRGEN-PF(预取背压细分;rob_full / lkup_full / queue_full 全 0,略)
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| pf_ar_pending | 247 | 253 | 127 | 127 | 254 | 254 | 15 | 31 |
-| pf_ar_dis | 0 | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
-| pf_2nd | 8 | 7 | 4 | 4 | 4 | 8 | 2 | 0 |
-| **dem_rob_block** | **239** | 50 | 0 | 0 | 2 | 4 | 2 | 1 |
-| **pf_disabled** | **115** | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| pf_page_cross | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| pf_avl_low | 21 | 1 | 0 | 0 | 0 | 0 | 9 | 0 |
+当前总表中的注意点:
 
-- **`dem_rob_block`:axpy 239、vadd 50** —— demand 命中 `rob_match` 被 defer(等自己的预取
-  退休)的次数,是预取-命中机制正常工作的体现(axpy 预取深、defer 多)。
-- **`pf_disabled`:axpy 115** —— bounded-lead 的 store-aware 节流在起作用(store 紧张时暂停
-  预取让端口),只对 axpy 这种 store-bound 核生效,正是它能贴 floor 的关键。
-- `pf_2nd`(跨页第二段)0~8、`pf_page_cross` 仅 vadd=1:即使数据未对齐,高 AVL 下跨页预取
-  也极少,**绝大多数是单 burst** —— 所以"对齐"对这批核没必要。
-- `pf_avl_low`:axpy=21、vmc=9,均来自尾段/节流窗口下 avl 不足以继续发下一轮预取。
+- 参数化的 `vsgemv_hdv_m*` 和 `vssymv_hdv_m*` 当前显示很小的 task cycles,且没有预取流量;
+  这里按当前 log 如实记录,不再沿用旧文档中的 BLAS 预取数据。
+- `vsgemm_m1_*` 仍然显示有效预取:1024->992、512->496、256->248。
+- `vsgemm_m4_*` 在当前总表中为 demand-only。
+- `vssyrk_hdv@128` 当前失败,不能作为有效论文性能点。
 
-### 5F. PERF-SEQ(定序器冒险)—— 这列直接标出"延迟/依赖受限核"
-| 计数 | axpy | vadd | copy | scal | dot | swap | vmc | drop |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| seq_issue | 640 | 640 | 384 | 512 | 387 | 768 | 80 | 49 |
-| seq_blocked | 2071 | 2097 | 2647 | 3288 | **6027** | 4210 | 32 | 2029 |
-| seq_raw | 252 | 128 | 128 | 256 | 131 | 128 | 32 | 17 |
-| **seq_war** | 1 | 1793 | 2391 | 3033 | **5785** | 3698 | 2 | 1982 |
-| seq_waw | **1687** | 33 | 0 | 128 | 528 | 1 | 0 | 64 |
-| seq_waw_block | 1687 | 33 | 0 | 0 | 401 | 1 | 0 | 48 |
-| seq_ep_bypass | 320 | 512 | 128 | 192 | 449 | 261 | 32 | 56 |
+## 6. 固定规模 kernel
 
-- **`seq_war`(写后读冒险)是计算/依赖受限的指纹**:dot 5785(规约累加器,每迭代 WAR)、
-  swap 3698、scal 3033、copy 2391、drop 1982 —— 定序器被 WAR 大量阻塞;而 axpy=1、vmc=2
-  几乎无 WAR。这条线与"cyc/el 远离带宽 floor"完全吻合:**WAR 风暴 = compute 流水填不满**。
-- `seq_blocked`:dot 6027 最高,与它最慢一致。
-- **`seq_waw`:axpy 1687 独高且全 block** —— axpy 有强 WAW(累加进 y),但因为它是**带宽
-  受限**,WAW 阻塞和访存等待重叠、不在关键路径上,cyc/el 仍贴 floor。**教训:单看一个冒险
-  计数会误判,必须结合瓶颈类别一起读。**
+| Kernel | result | task_cycles | demand_ar | pf_ar->hit | seq_full |
+|---|---|--:|--:|--:|--:|
+| fconv2d_fix | PASSED | 19170 | 600 | 0->0 | 0 |
+| jacobi2d_fix | PASSED | 20338 | 144 | 0->0 | 4718 |
+| lavamd_fix | PASSED | 2757 | 5 | 36->36 | 0 |
+| softmax_fix | PASSED | 6881 | 73 | 0->0 | 0 |
+| vsspmv_fix | PASSED | 4908 | 1090 | 64->62 | 0 |
+| vssyrk_m1_fix | PASSED | 84582 | 32801 | 0->0 | 0 |
+| vstrsm_m1_fix | PASSED | 30918 | 558 | 0->0 | 0 |
 
-### 5G. 一句话总览(58 列读出来的因果)
-| 核 | 主瓶颈(由哪几列坐实) |
-|---|---|
-| vsaxpy / vvaddint32 | 带宽(cyc/el ≈ floor;pf 满命中;`dem_rob_block`/`pf_disabled` 显示预取+store 节流在工作) |
-| vsscal | **计算**(`ipu_ready_stall=3120` + vfmul 的 `seq_war=3033`;预取已满命中) |
-| vsdot | **规约依赖**(`seq_war=5785` 最高 + `demand_aw=0` 无 store + `seq_blocked=6027`) |
-| vsswap | 带宽最重(`demand_aw=264` 双 store + `vq_full_stall=1237`) |
-| vmc / dropout | 访存轻 + 冷启动(`demand_reads` 偏高、命中率差 1) |
+当前固定规模 kernel 注意点:
 
-## 6. 本轮修复的净收益(原始基线 → 现在,@4096)
+- `lavamd_fix` 当前在 `kernel_all.csv` 中为 PASSED;统计修正后实际 demand AR 为 5,
+  prefetch AR/hit 为 36->36。
+- `jacobi2d_fix` 通过,但它是唯一一个 `seq_full != 0` 的 PASS 行。
+- `vssyrk_m1_fix` 是固定规模 m1 的通过结果,对应 32-size vssyrk 点。
 
-| 核 | 周期 | Δ | 由哪处修复 |
-|---|--:|--:|---|
-| vsscal | 4813 → 4075 | **−15.3 %** | 去全局预取模式否决,解除单流预取抑制 |
-| vsaxpy | 3358 → 3114 | **−7.3 %**  | bounded-lead 恢复 distance-1 预取流水 |
-| 其余 active 核 | 不变 | 0 | 逐位一致,零回归 |
+## 7. 当前可用于论文的数据点
 
-## 7. 方法学注记
+性能结论只使用 PASS 行:
 
-- **vsswap@4096** 是唯一原地 read-modify-write 核,曾在数组大小 AVL **死锁**;per-burst
-  预取命中描述符消费修复之(5380 cyc、1.31 cyc/el,与其余 AVL 点一致)。
-- **dropout**(掩码标量乘 `o[k] = SEL[k] ? I[k]·scale : 0`,e32/m8)曾因臃肿的标量 `main`
-  把任务推离 mock host 启动入口而退化成常数 113 cyc / 2 EP;改造成极简 `main`(任务落在
-  0x80001000)+ 4KB 对齐数据后随 AVL 正常缩放(稳态 ≈ 0.54 cyc/el)。
-- **冷启动**:dropout 高 AVL 命中率差 1,是首迭代必然的 demand miss,物理最优。
-- **fdotp / vspf** 不再纳入 active sweep,排除原因见 §1。
+- AVL sweep:72 条 AVL 行全部 PASS。
+- BLAS/GEMM:除 `vssyrk_hdv@128` 外,当前 BLAS 行全部 PASS。
+- 固定规模 kernel:当前 fixed 行全部 PASS。
 
-## 8. BLAS-2/3 + GEMM + 通用核(B-tier,LMUL 可配)
+当前 CSV 支撑的主要定性结论:
 
-<<<<<<< HEAD
-§1–7 是 1D 流式核(单层循环)。本节是 B-tier:BLAS-2(vssymv/vsgemv/vsger)、BLAS-3
-<<<<<<< HEAD
-(vstrsm/vssyrk)、GEMM(vsgemm),含**嵌套循环**与**非单位步长**访存,经一处关键前端修复
-后测得。
-
-### 8.1 配置
-
-- 每个 BLAS 核改造成 `BLAS_LMUL` / `GEMM_LMUL` 可选:`=1` 走原版 m1 `.inc`(已验证基线),
-  `m2/m4/m8` 走统一核、运行期维度(`+HDV_A<k>=N` 注入,无需重编)。
-- **预取按核适配,不硬套**:
-  - **vssymv / vsgemv**(矩阵行 = 单位步长单流):开预取,1X next-iteration lead(高 AVL /
-    低 VL trick 让 `avl ≥ 2·vl` 闸门导通)。
-  - **vstrsm**(store-heavy 两层循环):`avl>vl` 会触发前端死锁,故 **demand-only**(`avl=vl`)。
-  - **vssyrk**(列访问 = strided `vlse`):不开预取(strided 不匹配单位步长预取器,见 §8.4)。
-- 采集同 `avl_sweep`(58 列);看门狗 `TaskWatchdogCycles = 65536`、`PacketWatchdogCycles = 1024`。
-- 一键:`hardware/blas_sweep.sh {vsgemm|blas|blas_pf|all}`。
-
-### 8.2 结果总览(实测,post-fix)
-
-| 核 | 类 | LMUL | 维度 | 结果 | task_cycles | pf_hit | 备注 |
-|---|---|---|---|---|--:|--:|---|
-| vstrsm | B3 | m2 | M=16 | PASS | 8241  | 136 | demand-only,嵌套循环 |
-| vstrsm | B3 | m4 | M=16 | PASS | 10682 | 139 | **IPU desync 修复后由 hang→PASS** |
-| vstrsm | B3 | m8 | M=16 | PASS | 19394 | 136 | |
-| vstrsm | B3 | m2 | M=32 | PASS | 30985 | 528 | |
-| vstrsm | B3 | m4 | M=32 | PASS | 40898 | 531 | |
-| vstrsm | B3 | m8 | M=32 | —    | >65536| —   | 工作量随 LMUL×维度 外推 ~80k > 看门狗 |
-| vssymv | B2 | m2 | 16 行 | PASS | 1296 | 16 | 预取工作 |
-| vssymv | B2 | m4 | 16 行 | PASS | 1581 | 17 | |
-| vssymv | B2 | m8 | 16 行 | PASS | 2232 | 19 | |
-| vsgemv | B2 | m2 | 16 行 | PASS | 1292 | 16 | 预取工作 |
-| vsgemv | B2 | m4 | 16 行 | PASS | 1572 | 17 | |
-| vsgemv | B2 | m8 | 16 行 | PASS | 2207 | 19 | |
-| vsger  | B2 | m4 | N=32 | PASS | 3004 | 32 | |
-| vsger  | B2 | m4 | N=64 | PASS | 4604 | 32 | |
-| vsgemm | G  | m4 | N=32,4row | PASS | 13211 | — | m1 基线 ≈9183 |
-| vssyrk | B3 | m1/m4 | 32×32 | 慢 | 84582 | — | **功能正确但 strided 超看门狗,见 §8.4** |
-
-- **vssymv/vsgemv 必须用正确 ABI 驱动**:`a3 = 行数 × VLMAX`(非维度 N)。`blas_sweep.sh blas_pf`
-  曾把 `a3` 误传成维度 → 核几乎不干活、出"假 PASS"(cyc≈108、`demand_ar=3`);上表是
-  按 `a3 = 16×VLMAX`(16 行)正确驱动的真实数。预取每 16 行命中 16/17/19(m2/m4/m8),
-  随 LMUL 增大命中略升、周期随 VLMAX 线性增。
-- **5/6 个 BLAS 核在默认看门狗内完全 PASS**;vstrsm 大维度与 vssyrk 是工作量/架构问题,非功能 bug。
-
-### 8.3 关键 RTL 修复:IPU `fill_req/rsp` 取指流 desync(vstrsm m4)
-
-**症状**:vstrsm m4 hang(PacketWatchdog),m2/m8 跑同一二进制却 PASS(纯时序)。
-
-**根因(逐级 RTL 探针实测,非推理)**:IPU 把 imem AR 地址绑到 `fill_req_idx`、把 SRAM 写槽
-绑到独立的 `fill_rsp_idx`,默认"每个请求恰好回一个按序响应"。嵌套循环里 IPU 会**投机预取
-过循环体**(取到循环后的 ret packet + nop pad,固有 ≤4 个在途);外层 `bnez` 回跳触发
-`dispatch_flush`,imem 桥接把这些在途响应标 **stale 并丢弃**;但 redirect-in-active 回放分支
-**不复位 fill 指针** → `fill_req_idx` 跑到 24、`fill_rsp_idx` 停在 20,错位 4 → 后续 idx24
-(nop-pad 地址)的响应被写到 **SRAM[20](ret packet)**,ret 被 nop 覆盖 → 标量后端永不解码
-ret → task_complete 不发 → 看门狗触发。
-
-**修复(1 行,最小)**:redirect-in-active 回放分支里 `fill_req_idx_d = fill_rsp_idx_q;`——把
-请求指针回滚到响应指针,使被丢弃的 packet 按序重取、流重新对齐。**对无投机在途的核(所有
-单循环核稳态)是字面 no-op**(自洽:若任何已过核在该点 `fill_req_idx>fill_rsp_idx`,它今天
-就已 desync 失败)→ §1–7 的 1D sweep **40/40 逐位不变**。这是 HDV 前端的**通用** bug
-(任何嵌套循环 + 投机预取过循环体的核都会中招,vstrsm m4 触发)。
-
-### 8.4 vssyrk:功能正确,但 strided 列访问太慢
-
-`vssyrk` 在默认看门狗下"FAIL",但**逐级探针证明它功能完全正确**,只是太慢:
-
-| 探针 | 实测 | 推翻/坐实 |
-|---|---|---|
-| `error_seen`(标量非法指令) | **从不触发** | 推翻"runahead 越 ret 取 .data 当指令"假设 |
-| 标量最远 PC | 0x800010c4(外层 bnez),**从未到 ret** | 卡在外层循环 |
-| IPU 心跳 | `exec_idx` 持续变化 | **非死锁**,在推进 |
-| 外层计数器 t0 | **正确递减 31→…→8**(每行 ~2648 周期) | 逻辑正确,只是慢 |
-| 看门狗调 200000 | **PASS,cycle=84582,t0→0,到达 ret** | **坐实:正确但慢** |
-
-每行 ~2648 周期由 32 个 strided 列 load(`vlse32.v v0,(t3),t5`,stride=128B,逐元素 AR)主导;
-32×32 需 **84582 周期** > 默认 65536。这是 SYRK 列访问在**单位步长优化**的 HDV/Ara 单共享
-AXI 上的固有架构成本——单位步长行核(vssymv/vsgemv)只需千级周期,strided 列核要 8.4 万。
-**结论:vssyrk 不改代码**;若需在 sweep 显示 PASS,只需放大看门狗(纯测试配置)。
-
-### 8.5 方法学(与 §1–7 一致)
-
-vstrsm m4 与 vssyrk 都**严格走"静态查 kernel + 深度 RTL 探针实测"**:vstrsm 用 imem 桥接
-时间线(IMAR/IMDROP/IMFLUSH)坐实 desync;vssyrk 用 `error_seen`/最远 PC/外层计数器 三个
-探针逐一推翻"非法指令/死锁"假设、坐实"正确但慢"。**全程无"删测试/换指令试来试去"**。
-=======
-(vstrsm/vssyrk)、GEMM(vsgemm),含**嵌套循环**与**非单位步长**访存。
-=======
-§1–7 是 1D 流式核(单层循环)。本节是含**嵌套循环**与**多样访存**的更复杂核:
-BLAS-2(vssymv/vsgemv/vsger)、BLAS-3(vstrsm/vssyrk)、GEMM(vsgemm),以及卷积/stencil/
-ML/变换/N-body(fconv2d/jacobi2d/softmax/vsdwt/lavamd)。
->>>>>>> b787e19ff8c953807895375002956f1308bfac76
-
-### 8.1 配置
-
-- 每个 BLAS 核 `BLAS_LMUL` / `GEMM_LMUL` 可选:`=1` 走原版 m1 `.inc`,`m2/m4/m8` 走统一核、
-  运行期维度(`+HDV_A<k>=N` 注入,无需重编)。e32 下 VLMAX = LMUL×32(m2=64,m4=128,m8=256)。
-- **预取按核访存适配**(单位步长单流才开):
-  - vssymv/vsgemv(矩阵行=单位步长单流)、vsgemm m1(打包 A 标量流)、vsger、lavamd:**开**。
-  - vstrsm(store-heavy 两层循环,高-AVL 预取触发前端死锁):**demand-only**(`avl=vl`)。
-  - softmax(多 strip 流式触发 VLSU 预取死锁):**关**。vssyrk(strided 列访问):**关**。
-- 指标:`pf_ar→pf_hit` = 预取 AR 发出数→命中数;`pf_en` = 预取使能周期。采集 58 列计数器。
-  看门狗 `TaskWatchdogCycles = 65536`。
-
-### 8.2 BLAS-2/3 + GEMM 实测(多 LMUL × 多维度)
-
-| 核 | LMUL | 维度 | 结果 | task_cycles | demand_ar | pf_ar→pf_hit |
-|---|---|---|---|--:|--:|--:|
-| **vstrsm** | m2 | M=16 | PASS | 8241  | 150 | off |
-| vstrsm | m2 | M=32 | PASS | 30985 | 572 | off |
-| vstrsm | m4 | M=16 | PASS | 10682 | 158 | off |
-| vstrsm | m4 | M=32 | PASS | 40898 | 604 | off |
-| vstrsm | m8 | M=16 | PASS | 19394 | 176 | off |
-| vstrsm | m8 | M=32 | FAIL(看门狗) | >65536 | — | off |
-| **vssymv** | m2 | 16 行 | PASS | 1296 | 18 | 16→16 |
-| vssymv | m2 | 32 行 | PASS | 2546 | 35 | 33→33 |
-| vssymv | m4 | 16 行 | PASS | 1581 | 19 | 17→17 |
-| vssymv | m4 | 32 行 | PASS | 3083 | 37 | 35→35 |
-| vssymv | m8 | 16 行 | PASS | 2232 | 21 | 19→19 |
-| vssymv | m8 | 32 行 | PASS | 4328 | 41 | 39→39 |
-| **vsgemv** | m2 | 16 行 | PASS | 1292 | 18 | 16→16 |
-| vsgemv | m2 | 32 行 | PASS | 2541 | 35 | 33→33 |
-| vsgemv | m4 | 16 行 | PASS | 1572 | 19 | 17→17 |
-| vsgemv | m4 | 32 行 | PASS | 3078 | 37 | 35→35 |
-| vsgemv | m8 | 16 行 | PASS | 2207 | 21 | 19→19 |
-| vsgemv | m8 | 32 行 | PASS | 4303 | 41 | 39→39 |
-| **vsger** | m4 | N=32 | PASS | 3004 | 65  | 0→0 |
-| vsger | m4 | N=64 | PASS | 4604 | 130 | 64→64 |
-| vsger | m4 | N=128 | PASS | 7804 | 260 | 196→196 |
-| **vsgemm** | m1 | N=32,1行 | PASS | 31910 | 1056 | 1024→992 |
-| vsgemm | m1 | N=32,2行 | PASS | 19248 | 528 | 512→496 |
-| vsgemm | m1 | N=32,4行 | PASS | 9183  | 264 | 256→248 |
-| vsgemm | m4 | N=32,1行 | PASS | 31837 | 1024 | off |
-| vsgemm | m4 | N=32,2行 | PASS | 20819 | 512 | off |
-| vsgemm | m4 | N=32,4行 | PASS | 13211 | 256 | off |
-| vsgemm | m4 | N=64 | FAIL | — | — | off |
-| **vssyrk** | m1/m4 | 32×32 | PASS* | 84582 | 817 | off |
-
-### 8.3 卷积 / Stencil / ML / 变换 / N-body 核
-
-| 核 | 类型 | dtype | 规模 | 结果 | task_cycles | demand_ar | pf_ar→pf_hit |
-|---|---|---|---|---|--:|--:|--:|
-| **fconv2d** | 2D 卷积 | e64/m2 | 3×3,R16 C32 | PASS | 4906 | 153 | 0→0 |
-| **jacobi2d** | 2D stencil | e64/m4 | 5 点,16×64 | PASS | 2363 | 19 | 0→0 |
-| **lavamd** | N-body | e32/m1 | NPAR=256 | PASS | 2757 | 55 | 35→21 |
-| **softmax** | softmax | e32/m1 | ch3×inner256 | PASS | 6881 | 73 | off |
-| softmax | softmax | e32/m1 | ch3×inner32 | PASS | 996 | 9 | off |
-| **vsdwt** | Haar DWT | e32/m1 | 单步 | PASS | 60 | 1 | 0→0 |
-
-<<<<<<< HEAD
-vssyrk 的热 load 是列方向的 strided `vlse32.v v0,(t3),t5`(stride = 128 B,逐元素 AR),每行约
-2648 周期、32×32 共 **84582 周期**,远高于同规模单位步长行核(vssymv/vsgemv 千级周期),也
-超出默认 65536 看门狗。这是 SYRK 列访问在**单位步长优化**的 HDV/Ara 单共享 AXI 上的固有
-架构成本,可作为论文中"非单位步长(strided / 列)访存是该架构短板"的实测支撑。
->>>>>>> 54f855a864ee95847eac48fe3651eba10ac4ec4c
-=======
-### 8.4 预取有效性小结(论文支撑)
-
-- **单位步长单流核预取全命中**:vssymv/vsgemv 的 `pf_ar == pf_hit`(16/33/35/39 …,随 LMUL/行数
-  增长),16 行→32 行预取数翻倍而命中率仍 100% —— 解耦预取完全藏住 load 延迟。
-- **GEMM 打包流预取近全命中**:vsgemm m1 命中 992/1024(97%)、496/512、248/256;且**多行打包
-  显著降周期**(1 行 31910 → 4 行 9183,A 标量流压进同一 EP)。m4 走 demand-only(`pf=off`)较慢
-  (4 行 13211 > m1 4 行 9183),印证打包 + 预取的价值。
-- **vsger 预取随规模导通**:N=32 预取使能但 0 命中(单 burst 已覆盖、无下一迭代可取),N≥64
-  起 100% 命中(64/196)。
-- **demand-only 核(vstrsm)**:`pf=off`,全靠 demand_ar;周期随 M、LMUL 线性放大(M=16→32 约 ×3.7)。
-- **prefetch=off 的核**:vstrsm(高-AVL 死锁)、softmax(多 strip VLSU 预取死锁)、vssyrk(strided)
-  关闭预取规避死锁;fconv2d/jacobi2d/vsdwt 预取使能但访存(e64 卷积 / stencil / 单步)不发 AR。
-- **lavamd 部分命中**(35→21):N-body 单位步长读但带规约依赖,预取部分有效。
-
-### 8.5 vssyrk:strided 列访问的架构成本
-
-vssyrk 的热 load 是列方向的 strided `vlse32.v v0,(t3),t5`(stride = 128 B,逐元素 AR,
-demand_ar=817),每行约 2648 周期、32×32 共 **84582 周期**(`*` 需放大看门狗才在单次 sim 跑完),
-远高于同规模单位步长行核(vssymv/vsgemv 千级周期)。vstrsm m8@M=32 同理超默认看门狗(按
-m4@M=32=40898 外推约 8 万)。这是非单位步长(strided / 列)访存在**单位步长优化**的 HDV/Ara
-单共享 AXI 上的固有架构成本,可作为论文"非单位步长访存是该架构短板"的实测支撑。
-
-## 9. 排除项
-
-fdotp 和 vspf 系列不再纳入 active sweep,`avl_sweep_out/` 中也不保留对应结果。
-本文的 AVL sweep 结论以 §1 所列 9 个应用核为准;预取有效性由 §4 的 1D 流式核和
-§8.4 的 BLAS/GEMM 结果支撑。
->>>>>>> b787e19ff8c953807895375002956f1308bfac76
+- 单位步长流式 AVL kernel 仍然能达到完整或近完整预取命中。
+- `dropout_hdv` 在大 AVL 下保持预期的冷启动差 1 次命中。
+- `vsdwt_hdv` 当前有预取 AR 流量,但 demand 命中为 0。
+- `vsscal_hdv` 和 `vsdot_hdv` 主要受计算/依赖行为支配,不是预取 miss 支配。
+- demand-only 或 strided BLAS kernel(`vstrsm_hdv`,`vssyrk_hdv`)仍明显慢于简单单位步长流式 kernel。
