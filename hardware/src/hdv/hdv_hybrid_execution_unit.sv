@@ -835,4 +835,54 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     end
   end
 
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin : p_pf_probe_heu
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE")) begin
+      if (accept_packet) begin
+        $display("[PFPROBE-HEU] ev=accept_packet to_current=%0d to_buffer=%0d pc=0x%0h has_scalar=%0d has_vector=%0d vec_read=0x%08h scalar_write=0x%08h vector_write=0x%08h pfmode=%0d outstanding=%0d buffer_valid=%0d curr_scalar_out=%0d curr_vector_out=%0d",
+                 accept_to_current, accept_to_buffer, vliwpu_heu_execute_pc_i,
+                 has_scalar, has_vector, vector_read_mask_in, scalar_write_mask_in,
+                 vector_write_mask_in, vliwpu_heu_execute_prefetch_mode_i,
+                 outstanding_q, buffer_valid_q, scalar_slice_outstanding_q,
+                 vector_slice_outstanding_q);
+      end
+
+      if (scalar_dispatch_valid_q && scalar_heu_ready_i) begin
+        $display("[PFPROBE-HEU] ev=scalar_dispatch pc=0x%0h valid=%b insn0=0x%08h insn1=0x%08h insn2=0x%08h insn3=0x%08h curr_scalar_write=0x%08h curr_vector_write=0x%08h",
+                 dispatch_pc_q, scalar_insn_valid_q, dispatch_insn_q[0],
+                 dispatch_insn_q[1], dispatch_insn_q[2], dispatch_insn_q[3],
+                 current_scalar_write_mask_q, current_vector_write_mask_q);
+      end
+
+      if (vector_dispatch_valid_q && vector_heu_ready_i) begin
+        $display("[PFPROBE-HEU] ev=vector_dispatch from_buffer=%0d id=%0d pc=0x%0h valid=%b insn0=0x%08h insn1=0x%08h insn2=0x%08h insn3=0x%08h curr_scalar_write=0x%08h buffer_vec_read=0x%08h buffer_scalar_write=0x%08h",
+                 vector_dispatch_from_buffer_q, vector_dispatch_id_q,
+                 vector_dispatch_pc_q, vector_insn_valid_q, vector_dispatch_insn_q[0],
+                 vector_dispatch_insn_q[1], vector_dispatch_insn_q[2],
+                 vector_dispatch_insn_q[3], current_scalar_write_mask_q,
+                 buffer_vector_read_mask_q, buffer_scalar_write_mask_q);
+      end
+
+      if (buffer_vector_issue_fire) begin
+        $display("[PFPROBE-HEU] ev=buffer_vector_issue id=%0d pc=0x%0h buffer_vec_read=0x%08h curr_scalar_write=0x%08h curr_vector_write=0x%08h scalar_out=%0d vector_out=%0d curr_branch=%0d curr_mem_order=%0d",
+                 buffer_vector_id_q, buffer_dispatch_pc_q, buffer_vector_read_mask_q,
+                 current_scalar_write_mask_q, current_vector_write_mask_q,
+                 scalar_slice_outstanding_q, vector_slice_outstanding_q,
+                 current_has_branch_q, current_has_scalar_mem_order_q);
+      end
+
+      if (current_done) begin
+        $display("[PFPROBE-HEU] ev=current_done current_id=%0d buffer_valid=%0d buffer_sent=%0d scalar_out=%0d vector_out=%0d",
+                 current_vector_id_q, buffer_valid_q, buffer_vector_sent_q,
+                 scalar_slice_outstanding_d, vector_slice_outstanding_d);
+      end
+
+      if (ep_acknowledged_q) begin
+        $display("[PFPROBE-HEU] ev=ep_ack outstanding=%0d buffer_valid=%0d current_id=%0d buffer_id=%0d",
+                 outstanding_q, buffer_valid_q, current_vector_id_q, buffer_vector_id_q);
+      end
+    end
+  end
+`endif
+
 endmodule : hdv_hybrid_execution_unit

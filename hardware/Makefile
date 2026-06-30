@@ -110,7 +110,7 @@ bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIA
 #
 # AVL sweep knob: `make sim app=<k> avl=<N>` overrides the application vector
 # length (strip-mined element count) for the 1D kernels wired below.  The data
-# arrays are static, so N must be <= each kernel's array size (see avl_sweep.sh
+# arrays are static, so N must be <= each kernel's array size (see kernel_sweep.sh
 # for the per-kernel max).  Default keeps the historical 1024.
 avl ?= 1024
 ifeq ($(app),vsaxpy_hdv)

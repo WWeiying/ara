@@ -1,9 +1,10 @@
-.PHONY: cpfiles import floorplan power_routing placeopt cts ctsopt route routeopt chipfinish pteco chipfinisheco clean
+.PHONY: init import floorplan power_routing placeopt cts ctsopt route routeopt chipfinish pteco chipfinisheco clean
 
-cpfiles:
+init:
+	mkdir -p work save reports data data_eco
 	cd inputs && cp ara_soc_dc.v ara_soc_pnr.v && cp ara_soc_dc.sdc ara_soc_pnr.sdc 
 	
-import:
+import: init
 	cd work && innovus -files ../scripts/01_innovus_import_design.tcl
 
 floorplan: import
@@ -37,4 +38,4 @@ chipfinisheco: pteco
 	cd work && innovus -files ../scripts/11_chipfinish_eco.tcl
 
 clean:
-	rm -r ./save/* ./work/*	
+	rm -rf ./save/* ./work/* ./reports/* ./data/* ./data_eco/*
