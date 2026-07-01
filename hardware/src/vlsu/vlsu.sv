@@ -64,7 +64,6 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output logic                    addrgen_operand_ready_o,
     input  logic                    block_load_addr_i,
     input  logic                    hdv_loop_active_i,
-    input  logic [1:0]              hdv_prefetch_mode_i,
 
     // STU exception support
     input  logic                    lsu_ex_flush_i,
@@ -230,8 +229,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .prefetch_tag_pop_i              (prefetch_tag_pop),
     .store_pending_i                 (stu_store_pending),
     .block_load_addr_i               (block_load_addr_i),
-    .hdv_loop_active_i              (hdv_loop_active_i),
-    .hdv_prefetch_mode_i            (hdv_prefetch_mode_i),
+    .hdv_loop_active_i               (hdv_loop_active_i),
 
     // CSR input
     .en_ld_st_translation_i,

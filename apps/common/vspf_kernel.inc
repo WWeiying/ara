@@ -5,7 +5,7 @@
 // The including main.c must define (all literals):
 //   PF_LMUL  1|2|4|8     vector LMUL (VLMAX = LMUL*32 for e32, VLEN=1024)
 //   PF_K     1|2|4       number of load streams
-//   PF_MODE  1|2|3       prefetch lead = 1X|2X|4X (HDV hint, 2-bit field, max 4X)
+//   PF_MODE  0|1|2|3     prefetch lead = 1X|2X|4X|8X (HDV hint mode field)
 //   PF_VS0..PF_VS3       stream vreg numbers (LMUL-group aligned)
 //   PF_VR                result vreg number (LMUL-group aligned)
 //
@@ -27,8 +27,8 @@ void vspf_task(int count, const float *s0, const float *s1,
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0\n"
-    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17) | (((\\prefetch_disable) & 1) << 19))\n"
     ".endm\n"
     ".balign 16\n"
     "vspf_hdv_task_start:\n"

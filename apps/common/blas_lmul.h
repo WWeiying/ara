@@ -14,7 +14,7 @@
 //   BL_G1=1*LMUL, BL_G2=2*LMUL, BL_G3=3*LMUL  (group 0 = v0, implicit)
 //   m2 -> v2,v4,v6 ; m4 -> v4,v8,v12 ; m8 -> v8,v16,v24
 //
-// prefetch lead BL_PFM = 1X (mul=0) for EVERY LMUL and stream count.  Each
+// prefetch lead BL_PFM = 1X (encoded mode=0) for EVERY LMUL and stream count.  Each
 // iteration consumes exactly one descriptor (one VLMAX-wide row), so 1X prefetches
 // addr+num_bytes*1 = the NEXT row = next iteration's data — exactly the goal.  A
 // larger lead overshoots (prefetches i+2/i+4): more warm-up misses, more
@@ -43,6 +43,6 @@
 #endif
 
 // prefetch lead = 1X (next iteration) for all LMUL / stream counts.
-#define BL_PFM 1
+#define BL_PFM 0
 
 #endif

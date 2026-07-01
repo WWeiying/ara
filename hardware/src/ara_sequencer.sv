@@ -71,10 +71,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
   vid_t               vinsn_id_n;
   logic               vinsn_running_full;
-  // HDV ep_id per vid slot: 0=current EP, 1=buffered EP.  Two instructions
-  // with the same ep_id are guaranteed independent by software p-bit.
-  // Used to suppress false hazard detection within the same EP.
+  // HDV ep_id per vid slot.  Used by the rollback experiment below to suppress
+  // hazards between instructions that carry the same frontend EP tag.
   logic [NrVInsn-1:0] vid_ep_id_d, vid_ep_id_q;
+  logic [NrVInsn-1:0] vid_hdv_valid_d, vid_hdv_valid_q;
 
   // NrLanes bits that indicate if the sequencer must stall because of a lane desynchronization.
   logic [NrVInsn-1:0] stall_lanes_desynch_vec;
@@ -101,10 +101,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       vinsn_running_q    <= '0;
       pe_vinsn_running_q <= '0;
       vid_ep_id_q        <= '0;
+      vid_hdv_valid_q    <= '0;
     end else begin
       vinsn_running_q    <= vinsn_running_d;
       pe_vinsn_running_q <= pe_vinsn_running_d;
       vid_ep_id_q        <= vid_ep_id_d;
+      vid_hdv_valid_q    <= vid_hdv_valid_d;
     end
   end
 
@@ -392,11 +394,14 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
     // Update the running vector instructions
     vid_ep_id_d = vid_ep_id_q;
+    vid_hdv_valid_d = vid_hdv_valid_q;
     for (int pe = 0; pe < NrPEs; pe++) begin
       pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
-      // Clear ep_id tracking for completed vids
-      for (int unsigned v = 0; v < NrVInsn; v++)
+      // Clear HDV tracking for completed vids.
+      for (int unsigned v = 0; v < NrVInsn; v++) begin
         if (pe_resp_i[pe].vinsn_done[v]) vid_ep_id_d[v] = 1'b0;
+        if (pe_resp_i[pe].vinsn_done[v]) vid_hdv_valid_d[v] = 1'b0;
+      end
     end
     `ifdef FOR_VERIFY
     raw_hazard = '0;
@@ -430,15 +435,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             ///////////////
             //  Hazards  //
             ///////////////
-            // HDV ep_id bypass: instructions with the same ep_id are
-            // guaranteed independent by software p-bit.  vid slots whose
-            // ep_id matches the new instruction's ep_id are excluded
-            // from hazard checks.
             logic [NrVInsn-1:0] same_ep_vid_mask;
-            for (int unsigned v = 0; v < NrVInsn; v++)
-              same_ep_vid_mask[v] = (vid_ep_id_q[v] == ara_req_i.hdv_hint[0]);
+            for (int unsigned v = 0; v < NrVInsn; v++) begin
+              same_ep_vid_mask[v] = vid_hdv_valid_q[v] &&
+                                    ara_req_i.hdv_meta.hdv_valid &&
+                                    (vid_ep_id_q[v] == ara_req_i.hdv_meta.ep_id);
+            end
 
-            // RAW — skip if the conflicting writer is from the same EP
             if (ara_req_i.use_vs1 && !same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid])
               pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
                 write_list_d[ara_req_i.vs1].valid;
@@ -449,7 +452,6 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
                 write_list_d[VMASK].valid;
 
-            // WAR — skip if the conflicting reader is from the same EP
             if (ara_req_i.use_vd) begin
               if (!same_ep_vid_mask[read_list_d[ara_req_i.vd].vid]) begin
                 pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
@@ -458,7 +460,6 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               end
             end
 
-            // WAW — skip if the conflicting writer is from the same EP
             if (ara_req_i.use_vd && !same_ep_vid_mask[write_list_d[ara_req_i.vd].vid])
               pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
                 write_list_d[ara_req_i.vd].valid;
@@ -516,7 +517,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
               avl           : ara_req_i.avl,
-              prefetch_mode : ara_req_i.hdv_hint[2:1],
+              hdv_meta      : ara_req_i.hdv_meta,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
@@ -542,9 +543,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               // Acknowledge instruction
               ara_req_ready_o = 1'b1;
 
-              // Record HDV ep_id for this vid slot: same ep_id ⇒
-              // independent (p-bit guarantee), hazard check can skip it.
-              vid_ep_id_d[vinsn_id_n] = ara_req_i.hdv_hint[0];
+              // Record HDV metadata for rollback bypass visibility.
+              vid_ep_id_d[vinsn_id_n] = ara_req_i.hdv_meta.ep_id;
+              vid_hdv_valid_d[vinsn_id_n] = ara_req_i.hdv_meta.hdv_valid;
 
               // Remember that the vector instruction is running
               unique case (vfu(ara_req_i.op))
@@ -764,11 +765,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [63:0] cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw;
   logic [63:0] cnt_seq_ep_bypass, cnt_seq_full;
   logic [63:0] cnt_seq_waw_block;  // WAW actually blocked issue (no RAW also blocking)
+  logic [31:0] pf_probe_seq_block_cycles_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       cnt_seq_issue <= '0; cnt_seq_blocked <= '0; cnt_seq_raw <= '0;
       cnt_seq_war <= '0; cnt_seq_waw <= '0; cnt_seq_ep_bypass <= '0; cnt_seq_full <= '0;
       cnt_seq_waw_block <= '0;
+      pf_probe_seq_block_cycles_q <= '0;
     end else begin
       if (pe_req_valid_o && (&pe_req_ready_i)) cnt_seq_issue <= cnt_seq_issue + 1;
       if (ara_req_valid_i && !ara_req_ready_o) cnt_seq_blocked <= cnt_seq_blocked + 1;
@@ -779,13 +782,24 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       // WAW-only block: no RAW, only WAW preventing issue
       if (waw_hazard && !raw_hazard && ara_req_valid_i && !ara_req_ready_o)
         cnt_seq_waw_block <= cnt_seq_waw_block + 1;
-      if (ara_req_valid_i && ara_req_ready_o) begin
-        for (int unsigned v = 0; v < NrVInsn; v++)
-          if (vid_ep_id_q[v] == ara_req_i.hdv_hint[0]) begin
-            if (ara_req_i.use_vs1 && write_list_d[ara_req_i.vs1].vid == vid_t'(v) && write_list_d[ara_req_i.vs1].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
-            if (ara_req_i.use_vs2 && write_list_d[ara_req_i.vs2].vid == vid_t'(v) && write_list_d[ara_req_i.vs2].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
-            if (ara_req_i.use_vd && write_list_d[ara_req_i.vd].vid == vid_t'(v) && write_list_d[ara_req_i.vd].valid) cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
-          end
+      if ($test$plusargs("HDV_PF_PROBE") && ara_req_valid_i && !ara_req_ready_o) begin
+        pf_probe_seq_block_cycles_q <= pf_probe_seq_block_cycles_q + 32'd1;
+        if ((pf_probe_seq_block_cycles_q <= 32'd8) ||
+            ((pf_probe_seq_block_cycles_q[9:0] == 10'h0) &&
+             (pf_probe_seq_block_cycles_q != 32'd0))) begin
+          $display("[PFPROBE-SEQ] ev=blocked cyc=%0d state=%0d state_d=%0d op=%0d vfu=%0d req_valid=%0d ready=%0d pe_valid=%0d pe_ready=%b operand_ready=%b addrgen_ack=%0d load=%0d store=%0d no_src=%0d vinsn_full=%0d lane_desync=%0d queue_issue=%b queue_ready=%b target=%b raw=%0d war=%0d waw=%0d seq_block=%0d cnt=%p pe_run=%b hdv_ep=%0d hdv_valid=%0d",
+                   pf_probe_seq_block_cycles_q, state_q, state_d, ara_req_i.op,
+                   vfu(ara_req_i.op), ara_req_valid_i, ara_req_ready_o,
+                   pe_req_valid_o, pe_req_ready_i, operand_requester_ready,
+                   addrgen_ack_i, is_load(ara_req_i.op), is_store(ara_req_i.op),
+                   no_src_vrf(pe_req_o), vinsn_running_full, stall_lanes_desynch,
+                   vinsn_queue_issue, vinsn_queue_ready, target_vfus_vec,
+                   raw_hazard, war_hazard, waw_hazard, sequencer_block,
+                   insn_queue_cnt_q, pe_vinsn_running_q, ara_req_i.hdv_meta.ep_id,
+                   ara_req_i.hdv_meta.hdv_valid);
+        end
+      end else begin
+        pf_probe_seq_block_cycles_q <= '0;
       end
     end
   end

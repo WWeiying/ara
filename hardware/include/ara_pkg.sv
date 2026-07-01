@@ -121,6 +121,14 @@ package ara_pkg;
   typedef logic [$clog2(NrVInsn)-1:0] vid_t;
   typedef logic [ELEN-1:0] elen_t;
 
+  typedef struct packed {
+    logic       hdv_valid;
+    logic       ep_id;
+    logic       prefetch_hint_valid;
+    logic       prefetch_disable;
+    logic [1:0] prefetch_mode;
+  } hdv_meta_t;
+
   //////////////////
   //  Operations  //
   //////////////////

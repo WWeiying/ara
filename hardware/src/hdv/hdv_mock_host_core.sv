@@ -86,7 +86,6 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   localparam int unsigned VectorCntWidth = (VectorLatency > 1) ? $clog2(VectorLatency + 1) : 1;
   localparam int unsigned AutoStartCntWidth = (AutoStartDelay > 1) ? $clog2(AutoStartDelay + 1) : 1;
   localparam int unsigned TaskWatchdogWidth = (TaskWatchdogCycles > 1) ? $clog2(TaskWatchdogCycles + 1) : 1;
-  localparam int unsigned PacketWatchdogWidth = (PacketWatchdogCycles > 1) ? $clog2(PacketWatchdogCycles + 1) : 1;
 
   state_e state_d, state_q;
   addr_t task_entry_d, task_entry_q;
@@ -118,13 +117,25 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       hdv_wd_ovr_en = 1'b1; hdv_wd_ovr = wv[31:0];
     end
   end
+  // Runtime packet-watchdog override: +HDV_PACKET_WATCHDOG=<N> raises the
+  // inter-packet progress cap for legal long backend drain intervals.
+  logic [31:0] hdv_packet_wd_ovr;
+  logic        hdv_packet_wd_ovr_en;
+  initial begin
+    longint unsigned pwv;
+    hdv_packet_wd_ovr_en = 1'b0;
+    if ($value$plusargs("HDV_PACKET_WATCHDOG=%d", pwv)) begin
+      hdv_packet_wd_ovr_en = 1'b1; hdv_packet_wd_ovr = pwv[31:0];
+    end
+  end
 `endif
   logic [ScalarCntWidth-1:0] scalar_count_d, scalar_count_q;
   logic [VectorCntWidth-1:0] vector_count_d, vector_count_q;
   logic [AutoStartCntWidth-1:0] auto_start_count_d, auto_start_count_q;
   logic [31:0] task_watchdog_d, task_watchdog_q;
   logic [31:0] task_wd_limit;
-  logic [PacketWatchdogWidth-1:0] packet_watchdog_d, packet_watchdog_q;
+  logic [31:0] packet_watchdog_d, packet_watchdog_q;
+  logic [31:0] packet_wd_limit;
   logic scalar_pending_d, scalar_pending_q;
   logic vector_pending_d, vector_pending_q;
   logic auto_start_armed_d, auto_start_armed_q;
@@ -165,15 +176,18 @@ module hdv_mock_host_core import hdv_pkg::*; #(
   assign task_active = (state_q != IDLE) & (state_q != FINISH) & (state_q != FAIL);
 `ifdef FOR_VERIFY
   assign task_wd_limit = hdv_wd_ovr_en ? hdv_wd_ovr : 32'(TaskWatchdogCycles);
+  assign packet_wd_limit = hdv_packet_wd_ovr_en ? hdv_packet_wd_ovr :
+                           32'(PacketWatchdogCycles);
 `else
   assign task_wd_limit = 32'(TaskWatchdogCycles);
+  assign packet_wd_limit = 32'(PacketWatchdogCycles);
 `endif
   assign task_timeout = (task_wd_limit != 0)
                       & task_active
                       & (task_watchdog_q >= task_wd_limit);
-  assign packet_timeout = (PacketWatchdogCycles != 0)
+  assign packet_timeout = (packet_wd_limit != 0)
                         & (state_q == RUN)
-                        & (packet_watchdog_q >= PacketWatchdogWidth'(PacketWatchdogCycles));
+                        & (packet_watchdog_q >= packet_wd_limit);
 
 
   assign mock_hdv_backend_error_o = 1'b0;
@@ -461,6 +475,24 @@ module hdv_mock_host_core import hdv_pkg::*; #(
       packet_watchdog_q   <= packet_watchdog_d;
     end
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin : p_pf_probe_host
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE") && (state_q == RUN) &&
+        (hdv_mock_task_error_i || hdv_mock_ep_error_i || packet_timeout ||
+         task_timeout || ((packet_wd_limit != 32'd0) &&
+                          (packet_watchdog_q + 32'd4 >= packet_wd_limit)))) begin
+      $display("[PFPROBE-HOST] time=%0t state=%0d task_err_i=%0d ep_err_i=%0d pkt_to=%0d task_to=%0d pkt_wd=%0d pkt_lim=%0d task_wd=%0d task_lim=%0d busy=%0d done=%0d ep_ack=%0d ack_eps=%0d expected=%0d scalar_pending=%0d vector_pending=%0d scalar_count=%0d vector_count=%0d loop_left=%0d state_d=%0d",
+               $time, state_q, hdv_mock_task_error_i, hdv_mock_ep_error_i,
+               packet_timeout, task_timeout, packet_watchdog_q, packet_wd_limit,
+               task_watchdog_q, task_wd_limit, hdv_mock_task_busy_i,
+               hdv_mock_task_done_i, hdv_mock_ep_acknowledged_i,
+               acknowledged_eps_q, expected_ep_acknowledges_q,
+               scalar_pending_q, vector_pending_q, scalar_count_q,
+               vector_count_q, loop_iters_remaining_q, state_d);
+    end
+  end
+`endif
 
   if (ScalarLatency == 0)
     $error("[hdv_mock_host_core] ScalarLatency must be at least 1.");

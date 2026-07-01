@@ -23,7 +23,7 @@ extern const uint8_t SEL[] __attribute__((aligned(4 * NR_LANES)));
 extern float o[] __attribute__((aligned(4 * NR_LANES)));
 
 // Dropout: o[k] = SEL[k] ? I[k]*SCALE : 0.  HDV-packetised counterpart of
-// dropout_asm (masked vfmul, e32/LMUL=8).
+// dropout_asm (masked vfmul, e32/LMUL=4).
 void dropout_vec(unsigned int n, const float *in, float scale,
                  const uint8_t *sel, float *out);
 
@@ -57,8 +57,8 @@ void dropout_vec(unsigned int n, const float *in, float scale,
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
-    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17) | (((\\prefetch_disable) & 1) << 19))\n"
     ".endm\n"
     ".balign 16\n"
     "dropout_hdv_task_start:\n"
@@ -72,7 +72,7 @@ void dropout_vec(unsigned int n, const float *in, float scale,
     // loop top: VL config || load mask || zero output accumulator.
     "dropout_loop:\n"
     "HDV_HINT 0x0a, 0, 0, 1, 0\n"
-    "vsetvli a4, a0, e32, m8, ta, ma\n"
+    "vsetvli a4, a0, e32, m4, ta, ma\n"
     "vlm.v v0, (a2)\n"
     "vmv.v.i v24, 0\n"
     // load input || masked multiply (out = sel ? in*scale : 0).

@@ -12,8 +12,8 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
-    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17) | (((\\prefetch_disable) & 1) << 19))\n"
     ".endm\n"
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
@@ -63,7 +63,7 @@ void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C) {
     // (The prefetch AVL comes from the setup vsetvli, a3=1024.)
     // p-bits = 0x82a (keep flw fa0..fa3 at 1/3/5; cut before vle at 7; keep
     // vfmacc(v8) -> vfmacc(v9) at 11).
-    "HDV_HINT 0x82a, 1, 1, 1, 0, 1\n"
+    "HDV_HINT 0x82a, 1, 1, 1, 0, 0\n"
     "flw fa0, 0(t3)\n"
     "flw fa1, 128(t3)\n"
     "flw fa2, 256(t3)\n"

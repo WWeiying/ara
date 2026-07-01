@@ -35,7 +35,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   parameter int unsigned NumSlots         = 8,
   parameter int unsigned SlotWidth        = 16,
   parameter int unsigned MaxIssueSlots    = NumSlots,
-  parameter int unsigned VectorCmdWindowDepth = 8,
+  // Absorbs Ara req_ready bubbles without stalling HEU on VQ-full in dense
+  // streaming packets.  Depth 12 covers the observed 9-entry peak with margin.
+  parameter int unsigned VectorCmdWindowDepth = 12,
   parameter bit          UseCva6HdvScalar = 1'b1,
   parameter logic [XLEN-1:0] HdvInitialRa  = '0,
   parameter logic [XLEN-1:0] HdvInitialA0  = '0,
@@ -269,7 +271,12 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic        vec_ep_ready;
   logic        vec_ep_acknowledged;
   logic        heu_vec_ep_id;
+  logic        vliwpu_prefetch_hint_valid;
+  logic        vliwpu_prefetch_disable;
+  logic        heu_vec_prefetch_hint_valid;
+  logic        heu_vec_prefetch_disable;
   logic [1:0]  heu_vec_prefetch_mode;  // EP-bundled prefetch mode (HEU -> vec_dispatch)
+  ara_pkg::hdv_meta_t ara_req_hdv_meta;
   logic        vec_ep_acknowledged_id;
   logic        vec_ep_error;
   logic        vec_dispatch_busy;
@@ -362,6 +369,18 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
   assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
                             !vec_dispatch_busy;
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin : p_pf_probe_task_error
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE") && task_error_to_tsu) begin
+      $display("[PFPROBE-TOP] time=%0t task_error_to_tsu host=%0d heu=%0d vec=%0d scalar=%0d tsu_error=%0d vec_busy=%0d heu_busy=%0d vec_ack=%0d vec_ack_id=%0d",
+               $time, host_hdv_task_error_i, heu_top_ep_error, vec_ep_error,
+               (UseCva6HdvScalar ? scalar_backend_error : 1'b0), tsu_top_error,
+               vec_dispatch_busy, heu_top_busy, vec_ep_acknowledged,
+               vec_ep_acknowledged_id);
+    end
+  end
+`endif
 
   // scalar_loop_exit: fires on a precise not-taken backward branch event.
   // The backward determination is now done inside the scalar backend
@@ -585,6 +604,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vec_insn_valid_i(heu_vec_insn_valid),
     .heu_vec_insn_i      (heu_vec_insn    ),
     .heu_vec_ep_id_i     (heu_vec_ep_id   ),
+    .heu_vec_prefetch_hint_valid_i(heu_vec_prefetch_hint_valid),
+    .heu_vec_prefetch_disable_i(heu_vec_prefetch_disable),
     .heu_vec_prefetch_mode_i (heu_vec_prefetch_mode),
     .vec_ep_acknowledged_o      (vec_ep_acknowledged    ),
     .vec_ep_acknowledged_id_o   (vec_ep_acknowledged_id ),
@@ -608,7 +629,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_store_inflight_o(vec_store_inflight),
     .acc_req_o           (acc_req         ),
     .acc_resp_i          (ara_acc_resp_pack),
-    .hdv_prefetch_mode_i (hdv_ara_prefetch_mode_o)
+    .acc_req_hdv_meta_o  (ara_req_hdv_meta)
     `ifdef FOR_VERIFY
     ,
     .perf_ctr_sel_i      (vec_perf_ctr_sel ),
@@ -654,7 +675,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .axi_req_o              (ara_axi_req             ),
     .axi_resp_i             (ara_axi_resp             ),
     .hdv_loop_active_i      (hdv_ara_loop_active_o    ),
-    .hdv_prefetch_mode_i    (hdv_ara_prefetch_mode_o  )
+    .hdv_meta_i             (ara_req_hdv_meta          )
   );
 
   axi_inval_filter #(
@@ -825,6 +846,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vliwpu_heu_execute_slot_pc_o       (vliwpu_heu_execute_slot_pc  ),
     .vliwpu_heu_execute_class_o         (vliwpu_heu_execute_class    ),
     .vliwpu_heu_execute_pc_o            (vliwpu_heu_execute_pc       ),
+    .vliwpu_prefetch_hint_valid_o       (vliwpu_prefetch_hint_valid  ),
+    .vliwpu_prefetch_disable_o          (vliwpu_prefetch_disable     ),
     .vliwpu_prefetch_mode_o             (hdv_ara_prefetch_mode_o     )
   );
 
@@ -848,6 +871,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vliwpu_heu_execute_slot_pc_i   (vliwpu_heu_execute_slot_pc),
     .vliwpu_heu_execute_class_i     (vliwpu_heu_execute_class ),
     .vliwpu_heu_execute_pc_i        (vliwpu_heu_execute_pc    ),
+    .vliwpu_heu_execute_prefetch_hint_valid_i(vliwpu_prefetch_hint_valid),
+    .vliwpu_heu_execute_prefetch_disable_i   (vliwpu_prefetch_disable),
     .vliwpu_heu_execute_prefetch_mode_i (hdv_ara_prefetch_mode_o),
     // Scalar dispatch — routed internally to hdv_scalar_backend.
     .heu_scalar_valid_o             (heu_scalar_valid         ),
@@ -866,6 +891,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vector_insn_pc_o           (unused_heu_vec_insn_pc   ),
     .heu_vector_pc_o                (unused_heu_vec_pc        ),
     .heu_vector_ep_id_o             (heu_vec_ep_id            ),
+    .heu_vector_prefetch_hint_valid_o(heu_vec_prefetch_hint_valid),
+    .heu_vector_prefetch_disable_o  (heu_vec_prefetch_disable ),
     .heu_vector_prefetch_mode_o     (heu_vec_prefetch_mode    ),
     // Done / error from backends
     .scalar_ep_done_i              (scalar_ep_done          ),

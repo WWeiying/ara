@@ -206,6 +206,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   assign cur_burst_is_prefetch = !prefetch_tag_empty_i &&  prefetch_tag_head_i;
   assign cur_burst_is_demand   = !prefetch_tag_empty_i && !prefetch_tag_head_i;
 
+`ifdef FOR_VERIFY
+  localparam int unsigned VlduPfProbeMaxEvents = 1024;
+  logic [31:0] vldu_pf_probe_events_q;
+  logic        prefetch_hit_cnt_wrap_risk;
+  logic        prefetch_hit_desc_consume;
+`endif
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       prefetch_axi_r_queue_pnt <= 1'b0;
@@ -485,6 +492,15 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
   pe_resp_t pe_resp_d;
   addrgen_axi_req_t axi_addrgen_req_d, axi_addrgen_req_q;
   logic             axi_addrgen_req_valid_d, axi_addrgen_req_valid_q;
+
+`ifdef FOR_VERIFY
+  assign prefetch_hit_desc_consume =
+      axi_addrgen_req_valid_q && axi_addrgen_req_ready_o &&
+      (prefetch_axi_ar_hit_cnt_q != '0);
+  assign prefetch_hit_cnt_wrap_risk =
+      prefetch_axi_ar_hit_i && (prefetch_axi_ar_hit_cnt_q == 3'h7) &&
+      !prefetch_hit_desc_consume;
+`endif
 
   // Remaining bytes of the current instruction in the issue phase
   vlen_t issue_cnt_bytes_d, issue_cnt_bytes_q;
@@ -1175,6 +1191,39 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     end
 
   end: p_vldu
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_vldu_pf_probe
+    if (!rst_ni) begin
+      vldu_pf_probe_events_q <= '0;
+    end else if ($test$plusargs("HDV_PF_PROBE") &&
+                 (vldu_pf_probe_events_q < VlduPfProbeMaxEvents)) begin
+      if (prefetch_axi_ar_hit_i || prefetch_hit_desc_consume ||
+          prefetch_hit_cnt_wrap_risk || prefetch_axi_r_queue0_push ||
+          prefetch_axi_r_queue1_push || axi_addrgen_prefetch_req_ready_o) begin
+        vldu_pf_probe_events_q <= vldu_pf_probe_events_q + 1'b1;
+        $display("[PFPROBE-VLDU] time=%0t hit=%0d consume=%0d wrap_risk=%0d hit_cnt_q=%0d hit_cnt_d=%0d desc_v=%0d desc_ready=%0d desc_addr=0x%0h desc_len=%0d burst_bytes_q=%0d burst_bytes_d=%0d issue_bytes_q=%0d issue_bytes_d=%0d pf_len_q=%0d pf_len_d=%0d q0_push=%0d q1_push=%0d q0_pop=%0d q1_pop=%0d word_cnt=%0d low_half=%0d r_valid=%0d r_ready=%0d pf_req_v=%0d pf_req_ready=%0d pf_req_addr=0x%0h pf_req_len=%0d tag_empty=%0d tag_head=%0d cur_pf=%0d cur_dem=%0d result_full=%0d issue_cnt=%0d commit_cnt=%0d",
+                 $time, prefetch_axi_ar_hit_i, prefetch_hit_desc_consume,
+                 prefetch_hit_cnt_wrap_risk, prefetch_axi_ar_hit_cnt_q,
+                 prefetch_axi_ar_hit_cnt_d, axi_addrgen_req_valid_q,
+                 axi_addrgen_req_ready_o, axi_addrgen_req_q.addr,
+                 axi_addrgen_req_q.len, prefetch_burst_bytes_q,
+                 prefetch_burst_bytes_d, issue_cnt_bytes_q, issue_cnt_bytes_d,
+                 prefetch_len_q, prefetch_len_d, prefetch_axi_r_queue0_push,
+                 prefetch_axi_r_queue1_push, prefetch_axi_r_queue0_pop,
+                 prefetch_axi_r_queue1_pop, prefetch_axi_r_word_cnt_q,
+                 prefetch_axi_r_low_half_valid_q, axi_r_valid_i, axi_r_ready_o,
+                 axi_addrgen_prefetch_req_valid_i,
+                 axi_addrgen_prefetch_req_ready_o,
+                 axi_addrgen_prefetch_req_i.addr,
+                 axi_addrgen_prefetch_req_i.len, prefetch_tag_empty_i,
+                 prefetch_tag_head_i, cur_burst_is_prefetch,
+                 cur_burst_is_demand, result_queue_full,
+                 vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt);
+      end
+    end
+  end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin

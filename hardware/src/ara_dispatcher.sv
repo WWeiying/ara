@@ -36,6 +36,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     // Interfaces with Ariane
     input  accelerator_req_t                     acc_req_i,
     output accelerator_resp_t                    acc_resp_o,
+    input  hdv_meta_t                            hdv_meta_i,
     // Interface with Ara's backend
     output ara_req_t                             ara_req_o,
     output logic                                 ara_req_valid_o,
@@ -452,7 +453,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       op             : VADD,
       conversion_vs1 : OpQueueConversionNone,
       conversion_vs2 : OpQueueConversionNone,
-      hdv_hint     : {1'b0, acc_req_i.trans_id},
+      hdv_meta     : hdv_meta_i,
       default      : '0
     };
     ara_req_valid = 1'b0;

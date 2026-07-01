@@ -61,7 +61,7 @@ module ara import ara_pkg::*; #(
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i,
     input  logic              hdv_loop_active_i,
-    input  logic [1:0]        hdv_prefetch_mode_i
+    input  hdv_meta_t         hdv_meta_i
   );
 
   `include "common_cells/registers.svh"
@@ -160,8 +160,9 @@ module ara import ara_pkg::*; #(
 
     // Request token, for registration in the sequencer
     logic token;
-    // HDV hints from acc_req.trans_id
-    logic [3:0] hdv_hint;
+    // HDV metadata travels beside acc_req instead of being packed into
+    // trans_id. trans_id[0] is still used only for response routing.
+    hdv_meta_t hdv_meta;
 
     `ifdef FOR_VERIFY
     riscv::instruction_t instr;
@@ -223,6 +224,7 @@ module ara import ara_pkg::*; #(
     // Interface with Ariane
     .acc_req_i         (acc_req_i.acc_req  ),
     .acc_resp_o        (acc_resp_o.acc_resp),
+    .hdv_meta_i        (hdv_meta_i),
     // Interface with the sequencer
     .ara_req_o         (ara_req         ),
     .ara_req_valid_o   (ara_req_valid   ),
@@ -570,7 +572,6 @@ module ara import ara_pkg::*; #(
     .addrgen_operand_ready_o    (addrgen_operand_ready                                 ),
     .block_load_addr_i          (1'b0                                                   ),
     .hdv_loop_active_i          (hdv_loop_active_i                                      ),
-    .hdv_prefetch_mode_i        (hdv_prefetch_mode_i                                    ),
     // CSR input
     .en_ld_st_translation_i     (acc_mmu_en_q                                          ),
     // Interface with CVA6's sv39 MMU
