@@ -14,6 +14,8 @@ void vssymv_f32_32x32(const float *A, const float *x, float *y,
     ".option norelax\n"
     ".balign 16\n"
     "vssymv_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
 
     // setup A: li t3,32 ; vsetvli (config) ; vle x.
     "li t3, 32\n"
@@ -63,6 +65,8 @@ void vssymv_f32_32x32(const float *A, const float *x, float *y,
     "nop\n"
 
     // ret terminates the HDV task.
+    "ld s0, 0(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

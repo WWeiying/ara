@@ -20,7 +20,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 32768
 
 #ifndef VSTRSM_HDV_TASK_ENTRY
 #define VSTRSM_HDV_TASK_ENTRY 0x80001000UL
@@ -90,6 +90,9 @@ void strsm_f32_left_lower(const float *L, float *B, int m) {
     ".option norelax\n"
     ".balign 16\n"
     "vstrsm_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
+    "sd s1, 8(sp)\n"
 
     // setup: AVL = VLMAX (avl=vl, so the HDV doesn't fault on this kernel), stride
     // s1 = VLMAX*4, i index, bases, M row count.
@@ -113,11 +116,17 @@ void strsm_f32_left_lower(const float *L, float *B, int m) {
     "flw fa0, 0(t3)\n"
     "nop\n"
     "nop\n"
-    // load RHS row, divide by diag, store back.
+    // load RHS row, divide by diag via scalar reciprocal, store back.
     "vle32.v v0, (t2)\n"
     "nop\n"
     "nop\n"
-    "vfdiv.vf v0, v0, fa0\n"
+    "li a5, 0x3f800000\n"
+    "fmv.w.x ft2, a5\n"
+    "nop\n"
+    "fdiv.s ft2, ft2, fa0\n"
+    "nop\n"
+    "nop\n"
+    "vfmul.vf v0, v0, ft2\n"
     "nop\n"
     "nop\n"
     "vse32.v v0, (t2)\n"
@@ -174,6 +183,9 @@ void strsm_f32_left_lower(const float *L, float *B, int m) {
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "ld s1, 8(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

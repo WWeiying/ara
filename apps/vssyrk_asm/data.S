@@ -16386,9 +16386,10 @@ src1:
 	.word 0x95C925DF
 	.word 0xC77CFE74
 	.word 0xD4D5A6CD
+	.zero 65536
 .global _src1_size
 _src1_size:
-	.word 16384
+	.word 32768
 
 .section .data.src2
 .align 4
@@ -32778,7 +32779,8 @@ src2:
 	.word 0x3D999804
 	.word 0x92A924FD
 	.word 0x65157CF0
+	.zero 65536
 .global _src2_size
 _src2_size:
-	.word 16384
+	.word 32768
 

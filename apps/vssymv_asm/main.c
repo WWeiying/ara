@@ -92,6 +92,8 @@ void vssymv_f32(const float *A, const float *x, float *y, int total,
     ".option norelax\n"
     ".balign 16\n"
     "vssymv_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
 
     // setup: config VL=VLMAX, load x; zero seed, total -> t0, A/y bases.
     "li t3, " BL_STR(BLAS_LMUL) "*32\n"
@@ -138,6 +140,8 @@ void vssymv_f32(const float *A, const float *x, float *y, int total,
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

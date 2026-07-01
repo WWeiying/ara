@@ -20,7 +20,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 32768
 
 #ifndef VSSYRK_HDV_TASK_ENTRY
 #define VSSYRK_HDV_TASK_ENTRY 0x80001000UL
@@ -95,6 +95,9 @@ void ssyrk_f32_full(const float *A, float *C, int n, const float alpha,
     ".option norelax\n"
     ".balign 16\n"
     "vssyrk_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
+    "sd s1, 8(sp)\n"
 
     // setup: N -> s0, VL=N (m4, once), stride s1 = N*4, counters + bases.
     "mv s0, a2\n"
@@ -155,6 +158,9 @@ void ssyrk_f32_full(const float *A, float *C, int n, const float alpha,
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "ld s1, 8(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

@@ -86,6 +86,8 @@ void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
     ".option norelax\n"
     ".balign 16\n"
     "vsspmv_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
 
     // setup: row count, then VL config || row pointers.
     "li t0, 1024\n"
@@ -147,6 +149,8 @@ void spmv_f32_32x32(const float *val, const uint32_t *col_idx,
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

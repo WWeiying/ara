@@ -20,7 +20,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 16384
+#define TOTAL_ELEMENTS 32768
 
 #ifndef VSGEMM_HDV_TASK_ENTRY
 #define VSGEMM_HDV_TASK_ENTRY 0x80001000UL
@@ -231,6 +231,10 @@ void gemm_f32_1row(const float *A, const float *B, float *C, int n) {
     ".option norelax\n"
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
+    "addi sp, sp, -32\n"
+    "sd s0, 0(sp)\n"
+    "sd s1, 8(sp)\n"
+    "sd s2, 16(sp)\n"
 
     // setup: N -> s0, VL=N (m4, once), stride s1 = N*4, counters + bases.
     "mv s0, a3\n"
@@ -275,6 +279,10 @@ void gemm_f32_1row(const float *A, const float *B, float *C, int n) {
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "ld s1, 8(sp)\n"
+    "ld s2, 16(sp)\n"
+    "addi sp, sp, 32\n"
     "ret\n"
     "nop\n"
     "nop\n"
@@ -292,6 +300,10 @@ void gemm_f32_2row(const float *A, const float *B, float *C, int n) {
     ".option norelax\n"
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
+    "addi sp, sp, -32\n"
+    "sd s0, 0(sp)\n"
+    "sd s1, 8(sp)\n"
+    "sd s2, 16(sp)\n"
 
     // setup: N -> s0, VL=N (m4, once), s1 = N*4, s2 = 2*N*4 (block stride).
     "mv s0, a3\n"
@@ -356,6 +368,10 @@ void gemm_f32_2row(const float *A, const float *B, float *C, int n) {
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "ld s1, 8(sp)\n"
+    "ld s2, 16(sp)\n"
+    "addi sp, sp, 32\n"
     "ret\n"
     "nop\n"
     "nop\n"
@@ -374,6 +390,10 @@ void gemm_f32_4row(const float *A, const float *B, float *C, int n) {
     ".option norelax\n"
     ".balign 16\n"
     "vsgemm_hdv_task_start:\n"
+    "addi sp, sp, -32\n"
+    "sd s0, 0(sp)\n"
+    "sd s1, 8(sp)\n"
+    "sd s2, 16(sp)\n"
 
     // setup: N -> s0, VL=N (m4, once), s1 = N*4, s2 = 4*N*4 (block stride).
     "mv s0, a3\n"
@@ -461,6 +481,10 @@ void gemm_f32_4row(const float *A, const float *B, float *C, int n) {
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "ld s1, 8(sp)\n"
+    "ld s2, 16(sp)\n"
+    "addi sp, sp, 32\n"
     "ret\n"
     "nop\n"
     "nop\n"

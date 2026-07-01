@@ -14,6 +14,8 @@ void ssyrk_f32_full_32x32x32(const float *A, float *C, const float alpha,
     ".option norelax\n"
     ".balign 16\n"
     "vssyrk_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
 
     // setup: VL config + row stride + counters + base pointers.
     "li s0, 32\n"
@@ -72,6 +74,8 @@ void ssyrk_f32_full_32x32x32(const float *A, float *C, const float alpha,
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

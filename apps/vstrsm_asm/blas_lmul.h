@@ -7,8 +7,8 @@
 //   VL = VLMAX  via  AVL = 2*VLMAX (= LMUL*64);  matrix width = VLMAX (= LMUL*32);
 //   row stride  = VLMAX*4 (= LMUL*128);  loop count M = rows (a3, runtime).
 //   Row-major rows are contiguous -> ONE unit-stride prefetch stream.
-//   The data buffer (16384 floats) is read at width VLMAX, so M*VLMAX<=16384
-//   (m8 -> M<=64).  Values are irrelevant (the TB checks task_done, not output).
+//   The data buffer (32768 floats) is read at width VLMAX, so M*VLMAX<=32768
+//   (m8 -> M<=128).  Values are irrelevant (the TB checks task_done, not output).
 //
 // vreg groups are LMUL-aligned: group g uses vreg number g*BLAS_LMUL
 //   BL_G1=1*LMUL, BL_G2=2*LMUL, BL_G3=3*LMUL  (group 0 = v0, implicit)

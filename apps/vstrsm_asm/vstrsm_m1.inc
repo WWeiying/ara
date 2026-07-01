@@ -14,6 +14,8 @@ void strsm_f32_left_lower_32x32(const float *L, float *B) {
     ".option norelax\n"
     ".balign 16\n"
     "vstrsm_hdv_task_start:\n"
+    "addi sp, sp, -16\n"
+    "sd s0, 0(sp)\n"
 
     // setup: VL config + indices + base pointers + row count.
     "li s0, 32\n"
@@ -91,6 +93,8 @@ void strsm_f32_left_lower_32x32(const float *L, float *B) {
     "nop\n"
     "nop\n"
 
+    "ld s0, 0(sp)\n"
+    "addi sp, sp, 16\n"
     "ret\n"
     "nop\n"
     "nop\n"

@@ -124,6 +124,9 @@ endif
 TIMESCALE := -timescale=1ns/100fs
 SIMULATOR_OPT := -full64 -sverilog +v2k -Mlib=./incremental_db -Mupdate -j64 -lca -kdb -debug_access+all +nospecify +notimingchecks +lint=TFIPC-L  +vpi +lint=PCWM +error+30
 SIMULATOR_DEF := +define+SIMULATION +define+no_warning +define+TSMC_NO_WARNING
+ifeq ($(fail_on_assert), 1)
+SIMULATOR_DEF += +define+ARA_FAIL_FAST_ASSERTS
+endif
 SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
@@ -131,6 +134,9 @@ SIM_DUMP :=
 SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
+ifeq ($(no_fsdb), 1)
+APP += +NO_FSDB
+endif
 
 .PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
 
