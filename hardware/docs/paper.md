@@ -364,74 +364,358 @@ Energy_per_kernel = avg_power × cycles
 
 # 论文正文初稿（中文）
 
-> 投 *Integration, the VLSI Journal*。以下为 §1、§2 中文初稿，引用编号见文末"参考文献（本节）"。英文定稿时整体翻译润色；正文以紧耦合 Ara 为对比基线，不以"混合解耦"作对比类别。
+
 
 ## 1. Introduction（引言）
 
-深度神经网络、科学计算与自动驾驶等数据并行负载的算力需求在过去十年持续高速增长 [1]，推动通用处理器走向 SIMD 与向量化。RISC-V 向量扩展（RVV）[2] 以开源、可伸缩、变长向量的特性，成为兼顾峰值性能与能效的主流路线。当前主流实现普遍采用异构紧耦合组织：一个应用级标量核负责控制流、地址计算与标量运算，**紧耦合**驱动一个由多条同构 lane 构成的向量协处理器来承担数据并行计算，以 CVA6 + Ara [3,4,5] 为代表。
+深度神经网络、科学计算、图像处理和自动驾驶等数据并行负载持续推动通用处理器向向量化架构演进。RISC-V 向量扩展（RVV）以开放、可伸缩和向量长度无关的编程模型，为不同物理向量长度下的软件可移植性与性能扩展提供了统一接口 [1]。现有 RVV 处理器通常采用紧耦合执行组织：应用级标量核负责取指、译码、控制流、地址计算和向量指令发射，向量单元作为后端执行数据并行命令。该组织接口清晰、兼容性好，但其执行效率受限于标量驱动的逐条命令流模型：向量后端虽具备较强的数据并行能力，前端供给、控制推进、后端调度和访存访问之间却缺乏能够跨前后端保留的包级执行语义。
 
-这一紧耦合组织的根本约束在于：标量核处在**向量指令供给的关键路径**上——每条向量指令都必须先由标量核取指、译码、发射，才能进入向量流水。向量体系结构本应"用一条指令摊销到整条向量上"以隐藏取指与发射开销 [3,4]；CVA6 执行一个点积内核时每次操作耗能约 317 pJ，其中仅约 28 pJ 用于真正的计算，其余几乎全部花在标量控制路径上 [4,5]。因此一旦**向量较短或控制流较密集**，标量核的发射速率便不足以喂饱向量 lane，向量单元利用率随向量长度（AVL）缩短而急剧下降——短向量（AVL≈32）下利用率可降至约 40%（不足峰值的一半）[16]，意味着占据芯片绝大多数面积与功耗预算的向量硬件被大量闲置。而短向量恰恰是 DNN 推理、稀疏与不规则核、以及 strip-mine 循环尾部等真实负载中的常态 [10]，使该瓶颈在实际应用中难以回避。
+这一限制会在不同粒度和不同阶段的实际负载中显现。短向量、循环尾部、小 batch 算子和小矩阵计算会削弱向量指令对标量控制开销的摊销能力；控制密集、不规则或访存敏感 kernel 则会因标量/向量交织、保守相关性处理和内存等待打断向量执行连续性。即使应用整体具有较大数据并行度，其内部也常包含向量粒度、控制强度和访存行为不断变化的执行阶段。因此，问题并不局限于短 AVL 场景，而是源于传统逐条供给模型难以向后端持续传递可用于调度和访存协同的包级执行单元。
 
-为缓解这一瓶颈，已有工作或以更宽发射、乱序的标量核更快地投放向量指令 [7,8,9]，或把向量侧从标量核解耦、借助软件在打包阶段暴露的并行性（VLIW/显式 ILP）半自治执行 [6,11,12,16]（详见 §2）。前者以标量侧显著增加的面积、功耗与设计复杂度为代价；后者虽提升了指令供给，却只解决了问题的一半——**解耦之后的向量后端，对前端在打包阶段本已掌握的语义（哪些指令同属一个互不依赖的发射组、是否处于循环体内、接下来将连续访问哪段地址）依然"无感知"**，只能按最坏情况保守地重查数据相关、并以 demand-only 方式访存，把本可省去的假相关阻塞与访存延迟重新计入关键路径。换言之，解耦在提高"指令供给"的同时，反而在前后端之间制造了一道**语义鸿沟**。
+已有方法主要从增强前端、解耦执行和显式并行表达等方向提升向量执行效率。一类方案通过更强的标量主核、乱序发射或复杂内存系统提高指令投放速率和延迟容忍能力，但通常伴随更高的面积、功耗和验证成本 [2]–[4]。另一类方案采用解耦执行、显式并行表达或 VLIW 风格组织，使向量侧减少对标量核逐条同步发射的依赖，并在前端形成更连续的指令供给 [5]–[8]。然而，前端供给连续性并不等价于端到端执行效率：若前端形成的包级并行性、控制边界和访存意图无法跨越后端接口保留下来，向量后端仍只能消费无包级语义的命令流，并以保守方式处理相关性、调度和访存请求。包级执行语义在前后端之间的退化，成为限制向量处理器持续吞吐提升的关键缺口。
 
-本文提出 **SEAM-V**，一个解耦、VLIW 打包的 RISC-V 向量处理器，其核心思想是**让前端的执行包（execute packet, EP）对后端保持"可见"**。SEAM-V 在前端以一条 RISC-V HINT 指令（`lui x0, imm20`，因 `rd=x0` 对架构状态无副作用）[15] 作为取指包头部，一次性编码软件暴露的并行性（p-bit）、循环边界与预取意图；并由此派生出一组轻量标签——执行包身份、循环活跃标志与预取幅度——通过复用既有的加速器请求通路、以近乎零开销贯通进向量后端。后端据此得以：(i) 对同一执行包内本无数据依赖的向量指令免除假相关检查、(ii) 对循环体内的单位步长访存按软件指定幅度提前预取、(iii) 在保证内存定序正确的前提下跨执行包提前发射向量指令。相对于紧耦合 Ara 基线，这些后端协同优化在保持 RVV ISA 与编程模型不变、且新增逻辑相对四 lane Ara 面积/功耗代价近乎可忽略的前提下，将典型核的执行周期显著降低，并大幅回升短向量场景的向量单元利用率。
+本文提出 **SEAM-V**，一种面向 RVV 的混合解耦向量执行架构。SEAM-V 的核心思想是以 execute packet（EP）作为贯穿前后端的基本执行语义：前端通过任务级解耦、本地指令获取、标量控制与 VLIW 风格指令组织，将细粒度交织的标量/向量指令流重构为连续可供给的执行包；软件通过轻量级 HINT header 与 p-bit 显式标记包边界、局部并行性、循环属性和访存意图，使 EP 不仅是前端供给单元，也是后端可利用的语义载体。通过这一设计，SEAM-V 将传统 scalar-driven RVV instruction stream 转化为 EP-driven packet stream，从而为前端供给、后端调度和访存系统提供共同的语义基础。
+
+进一步地，SEAM-V 将 EP 身份、请求级访存提示和循环执行状态对后端可见，使后端能够围绕 EP 进行协同执行。基于后端可见的 EP 语义，SEAM-V 在统一抽象下支持包级相关性处理、访存提前化与受限跨包执行重叠，从而在保持 RVV 软件模型和后端正确性边界不变的前提下，提高标量控制、向量计算和访存访问之间的流水并行度。本文围绕这一 EP-centric 执行模型展开设计、实现与评估，目标是在不同向量粒度和执行阶段中提升 RVV 向量处理器的持续执行效率。
 
 本文主要贡献如下：
-1. **后端可见的执行包（back-end-visible execute packets）**：提出一种跨解耦边界的前后端协同设计抽象，并给出零开销的标签通道——`trans_id = {cmd_class, is_last_in_ep, ep_id}` 连同 `loop_active` 与 `prefetch_mode`，复用 `acc_req → ara_req` 通路贯通至向量后端，不修改 RVV ISA、不新增握手。
-2. **EP-aware sequencer hazard bypass**：在向量 sequencer 内按执行包身份跳过同包内的 RAW/WAW/WAR 检查（p-bit 保证同包无依赖），消除由指令快速连续投放引发的假相关阻塞。
-3. **EP-driven 解耦 VLSU 预取**：地址生成单元在循环体内自动识别单位步长 load，并按头部指定幅度提前发射预取请求；配以 ping-pong 预取缓冲、基于占用的信用流控，并泛化支持 LMUL 1/2/4/8。
-4. **访存定序安全的跨 EP 向量提前发射**，并以真实的、基于 CVA6 的标量后端完成全系统实现，在 TSMC 28 nm 工艺下完成综合与版图，给出面积、功耗与能量的完整 PPA 评估。<!-- 具体加速比/利用率/PPA 数字待实验回填 -->
 
-全文组织如下：§2 回顾 RVV 与紧耦合向量单元、并讨论相关工作；§3 概述 SEAM-V 架构与执行包/HINT 基底，并引出解耦后端的语义鸿沟；§4 详述后端可见执行包的标签通道及其使能的三项后端优化；§5 介绍标量后端微架构与编程模型；§6、§7 给出实验方法学与评估；§8 讨论局限与扩展；§9 总结。
+1. **面向 RVV 的混合解耦执行架构与 Execute Packet 生成机制。** 本文提出一种前端解耦的向量执行框架，将向量任务从标量核逐条同步发射中解耦，并通过本地指令获取、标量控制与 VLIW 风格指令组织，将细粒度交织的标量/向量指令流重构为以 execute packet（EP）为基本单位的连续供给结构，从而缓解多粒度和控制/访存敏感场景下的前端供给瓶颈。
+2. **后端可见的执行包语义贯通机制。** 本文将 EP 从前端打包结果提升为贯穿前后端的统一执行语义，使 EP 身份、请求级访存提示和循环执行状态能够跨越解耦边界对向量后端可见，在不修改 RVV ISA 的前提下保持包级执行语义的连续性，避免其在后端退化为普通命令流。
+3. **基于 EP 语义驱动的后端协同执行机制。** 本文利用后端可见的 EP 语义，使后端围绕执行包进行相关性裁剪、访存延迟隐藏与受限跨包执行重叠，在保证依赖关系和内存定序正确性的前提下，提高向量计算、标量控制与访存访问之间的流水并行度。
+4. **完整系统实现与物理级评估。** 本文完成 SEAM-V 的端到端 RTL 实现，并通过综合与物理设计流程评估其面积、功耗和能效开销；同时结合微基准与真实向量工作负载，系统量化前端解耦、执行包语义贯通和后端协同优化带来的性能与能效收益。
 
-
-
-
-
-
+全文组织如下：§2 回顾 RVV、向量后端执行模型以及相关工作；§3 介绍 SEAM-V 硬件架构，包括前端解耦、EP 形成、后端可见语义通路和 EP-driven 后端协同；§4 介绍编程模型与软件接口，说明 task、HINT header、p-bit 契约和访存意图如何表达硬件可消费的 EP 语义；§5 给出实验方法、性能评估、消融分析、敏感性分析和物理级代价评估；§6 讨论 SEAM-V 的适用边界、软件标注和扩展方向；§7 总结全文。
 
 ## 2. Background and Related Work（背景与相关工作）
 
-### 2.1 向量体系结构与 RISC-V 向量扩展（RVV）
+### 2.1 RVV and Spatio-Temporal Vector Execution
 
-向量体系结构的思想可追溯到 Cray-1 [17]：以一组**向量寄存器**为核心，单条向量指令在深度流水的功能单元上依次处理一整组元素，并通过 **chaining**（链接）把一条指令的逐元素结果直接前递给下一条相关指令，从而在不增加指令数的前提下重叠多条向量运算。"用一条指令把取指/译码/发射开销摊销到一整组数据上"这一向量架构的根本优势即源于此。RVV [2] 在现代开源 RISC-V 上复兴并推广了该思想，但采用了**向量长度无关（vector-length agnostic, VLA）**的编程模型：架构层面提供 32 个向量寄存器，单条二进制无需在编译期知道目标实现的物理向量位宽（VLEN），即可在不同 VLEN 的实现上正确且高效地运行。
+SIMD 与向量体系结构都利用数据级并行性，但二者暴露和组织并行性的方式不同。固定宽度 SIMD 通常以架构可见的数据宽度约束单次操作的元素规模；相比之下，向量处理器将一条向量指令组织为由运行时状态决定长度的元素流，并在空间 lane 与时间 beat 上共同展开。对于 RVV，这一展开过程由 `vl`、SEW、LMUL、mask、访存模式和物理 lane 数共同决定，可能持续多个周期，并涉及多次寄存器访问、lane 流水推进和访存请求。因此，RVV 后端并不是简单的固定宽度 SIMD datapath，而是负责执行进度、结构冲突、访存返回和内存定序的有状态向量执行后端。
 
-程序以 `vsetvli` 在运行时配置 `vtype`（元素宽度 SEW、寄存器分组 LMUL、尾/掩码处理策略）并申请本轮可处理的向量长度 `vl`；SEW 与 LMUL 共同决定一条逻辑向量覆盖的元素数，LMUL 还可把数个物理寄存器拼成一条长向量，掩码运算以 `v0` 为掩码源。由此形成 RVV 标志性的 **strip-mine 循环**：每轮先申请一段 `vl` 元素、执行 load/算术/store 向量体，再据 `vl` 推进指针与剩余计数并经条件回边继续，直到处理完任意长度的应用向量（AVL）。该模型换得跨实现可移植性，代价是**每轮迭代都夹带一组标量控制指令**（vset、指针/计数更新、回边分支），且 `vl` 在循环体内取满、在尾部取部分——短向量与不规则负载下，正是这部分标量控制开销主导了执行时间。
+这一时间-空间展开特性构成了 SEAM-V 的基本设计前提。执行包可以在前端表达局部并行性、控制边界和访存意图，但不能完全静态决定向量指令在后端的真实执行过程。真实的依赖关系、寄存器一致性、访存返回顺序和内存定序仍必须由向量后端动态维护。因此，面向 RVV 的执行包机制不应将后端静态化为 VLIW/SIMD 式执行阵列，而应在保留后端正确性边界的前提下，将前端可知的包级语义传递给后端利用。
 
-RVV 的代表性**紧耦合实现** Ara [3,4] 由若干同构 lane 组成，每条 lane 持有向量寄存器文件与功能单元（整型/浮点）的一个切片；它作为协处理器挂接在应用级标量核 CVA6 [5] 之后，标量核顺序地把向量指令经加速器接口投放给 Ara 的派发器（dispatcher）与定序器（sequencer），再由 sequencer 跨 lane 调度、并以类 chaining 方式重叠相邻向量指令。在长向量、计算密集场景下 Ara 可达到很高的功能单元利用率（16 lane 上的双精度大矩阵乘约 97% [3]）；但由于每条向量指令都须先经标量核取指—译码—发射、且每轮 strip-mine 还附带上述标量控制开销，其利用率随 AVL 缩短而迅速下降（§1）。Spatz [10] 以紧凑向量单元集群化来改善短向量效率，但单元内仍受标量供给约束。本文即以紧耦合 Ara 作为对比基线。
+### 2.2 Scalar-Driven Execution and Semantic Gap
 
-### 2.2 提升指令供给与暴露指令级并行
+现有许多 RVV 处理器采用紧耦合组织：应用级标量核负责取指、译码、控制流、地址计算和向量指令发射，向量单元逐条接收并执行向量命令。该组织接口清晰、兼容性好，但前端按标量指令流推进，后端按运行时状态展开执行，二者之间通常只传递普通向量命令，而缺少包级边界、局部并行性、循环上下文和访存意图等可供后端消费的 EP 语义。
 
-围绕"如何更快地把向量指令送进向量单元"，已有工作可归为两类。**(a) 增强标量主核**：乱序向量体系结构 [8,9] 及 SemiDynamics 的乱序向量单元 [7] 借助乱序发射、寄存器重命名与深内存子系统提高发射率与访存容忍度；代价是标量/向量前端的面积、功耗与验证复杂度大幅上升。**(b) 解耦执行与显式并行**：DAE [11] 将访存与计算解耦为可重叠的指令流；Vitruvius+ [6] 以译码后解耦加重命名实现混合顺序/乱序、并通过开放向量接口与标量核松耦合；VLIW/EPIC [12] 与 TI C66x 等 DSP 用 p-bit 在编译期标记并行边界、把无依赖指令打成长指令包以零硬件依赖检查暴露 ILP [13]。作者在前期工作 [16] 中借鉴上述思想，用 RISC-V HINT 在向量场景实现**动态 VLIW 打包**与任务级解耦，构成本文 SEAM-V 的前端基底。需要强调的是，上述工作主要解决"指令供给"一侧：它们把指令更快、更自治地送进向量单元，但**解耦后的向量后端依然对前端的打包语义无感知**；SEAM-V 补上的正是"让后端利用执行包语义"这一被忽略的环节，这也是本文相对前作 [16] 的核心新增（前作聚焦前端打包与任务解耦，本文聚焦后端协同）。
+这种语义缺失在向量粒度、控制强度和访存行为频繁变化的 workload 中尤为明显。其根本问题并非某一类场景的局部低效，而是标量驱动的逐条命令流难以持续向后端提供可用于调度和访存协同的包级执行信息。换言之，即使前端能够更快地投放指令，若后端仍只能看到无 EP 语义的命令流，端到端执行效率仍会受到保守相关性处理、访存等待和调度不连续性的限制。这一前端结构化信息在后端接口处退化的问题，本文称为前后端执行语义鸿沟。
 
-### 2.3 向量相关性处理与访存预取
+### 2.3 Decoupling, Packetization, and Backend Management
 
-在向量后端内部，sequencer 通常以 scoreboard 对在飞向量指令做保守的 RAW/WAW/WAR 检查 [3,4]；当指令被快速连续投放时，这种最坏情况检查会把本无依赖的指令也判为相关而阻塞发射，产生**假相关**开销。访存一侧，硬件预取与跨步预取 [14] 以及解耦访存前端常被用于隐藏内存延迟，但其预测多基于运行时观测到的地址流，对短促或不规则的访问难以及时收敛。SEAM-V 与上述思路的关键区别在于其信息来源：它不依赖运行时的相关性推断或地址流预测，而是直接利用**软件在打包阶段即已确定的执行包边界与循环标记**——据此精确地判定同包指令互不依赖以免检、并触发与循环迭代步长相匹配的预取，从而以更低的硬件代价获得更精确的相关性处理与访存提前。
+已有研究主要从增强前端、解耦执行、显式并行表达和后端动态管理等方向提升向量执行效率。一类方案采用更宽发射、乱序执行、寄存器重命名和复杂内存系统，以提高指令投放速率和延迟容忍能力 [2]–[4]。这类方案通用性强，但通常伴随更高的面积、功耗和验证复杂度。另一类方案采用解耦执行，将控制、访存或向量计算从主核逐条同步发射中分离，通过队列化接口和局部执行上下文提高供给连续性 [5], [6]。
 
-### 2.4 与已有工作的差异化
+与解耦执行互补，VLIW/EPIC 及部分 DSP 架构通过软件或编译期标记显式暴露指令级并行性，将可并行操作组织为执行包，以降低硬件动态依赖发现压力 [7], [8]。这类 packetized execution 在执行资源、延迟和依赖关系能够被充分建模时较为有效。然而，对于 RVV，执行包不能直接替代后端动态管理：向量指令会在后端展开为多拍元素流，真实执行进度、寄存器冲突、访存返回和内存顺序仍需由 sequencer、scoreboard 和访存定序逻辑维护。
 
-综上，已有工作或以加重标量/向量前端复杂度换取更高发射率 [7,8,9]，或以解耦与显式并行把指令送进向量单元 [6,11,12,16]，或以运行时启发式做相关性检查与访存预取 [3,4,14]。SEAM-V 的独特之处在于**同时**：(1) 维持解耦带来的高指令供给；(2) 让向量后端"看见"并利用前端的执行包语义，从而在 sequencer 与 VLSU 两处以软件确定性的信息消除假相关与访存延迟；(3) 全程不修改 RVV ISA、新增逻辑 PPA 代价极低。<!-- §2.4 配一张差异化对照表（行=工作类别，列=指令供给/后端语义利用/PPA 代价/是否改 ISA），末行 SEAM-V。 -->
+因此，现有方向分别改善了前端供给、显式并行表达或运行时重叠能力，但通常没有将前端形成的包级信息作为后端可消费的统一语义保留下来。若 EP 身份、包边界、包内并行性、循环状态和访存意图不能跨越后端接口，后端仍需按无包级语义的逐条命令流进行保守处理。SEAM-V 关注的正是这一缺口：不是用静态打包取代后端动态管理，而是让后端在自身正确性框架内利用 EP 语义。
 
-> **与前作的重复发表声明**：参考文献 [16] 为作者团队已发表的前期工作，提出了基于 RISC-V HINT 的混合解耦前端与动态 VLIW 打包。本文不复用其图表与正文，主对比基线为原生紧耦合 Ara；本文的全部核心贡献（§4 后端可见执行包及其三项后端优化、§5 真实标量后端实现、§6–§7 的 PPA 与扩展评估）均为相对 [16] 的新增内容。
+### 2.4 Positioning of SEAM-V
+
+SEAM-V 位于解耦向量执行、显式执行包和向量后端动态调度三类工作的交汇处。它通过前端解耦与 VLIW 风格组织形成 EP，但不将 EP 静态化为 VLIW/SIMD 调度结果；它保留向量后端作为 RVV 时间-空间展开执行的正确性维护者，同时使 EP 身份、循环状态和请求级访存提示对后端可见，使其能够在现有动态调度框架内消费包级语义。
+
+相对于前期工作 [16]，本文保留其前端解耦与执行包形成思想，并将其作为 SEAM-V 的前端基础；在此基础上，本文进一步提出后端可见的 EP 语义贯通机制、EP-driven 后端协同执行机制，以及完整系统实现与物理级评估。由此，SEAM-V 区别于仅提升供给的解耦设计、仅在前端暴露并行性的 packetized execution，以及仅依赖运行时推断的后端优化机制。其核心定位是在保持 RVV 软件模型和后端正确性边界的前提下，建立从 EP 生成、语义贯通到后端消费的端到端执行路径。
+
+## 3. SEAM-V Hardware Architecture（SEAM-V 硬件架构）
+
+前两节指出，RVV 向量指令会在后端进行时间-空间展开，因此向量后端必须保留依赖管理、寄存器状态维护、访存定序和多拍执行控制能力；与此同时，传统标量驱动的逐条命令流又难以向后端传递包级执行语义。SEAM-V 的硬件架构围绕这一矛盾展开：前端将标量/向量交织指令流组织为 execute packet（EP），并将 EP 语义跨越解耦边界传递至向量后端；后端仍作为 RVV 执行正确性的维护者，但能够利用 EP 语义减少不必要的保守性并增强调度协同。
+
+图 3 展示 SEAM-V 的整体微架构。系统在 host 与向量后端之间引入一条混合解耦执行路径，包括任务接口、本地指令供给、VLIW 风格 EP 形成、混合标量/向量分流、向量派发，以及后端可见 EP 语义通路。该路径将传统 scalar-driven RVV instruction stream 重构为 EP-driven packet stream：前端负责显式化包边界、局部并行性、循环上下文和访存意图；后端负责管理真实向量执行进度、寄存器相关性和内存顺序，并在此基础上消费 EP 语义。
+
+【图 3：SEAM-V Overall Architecture】
+
+### 3.1 Architecture Overview
+
+SEAM-V 的硬件流水可概括为五个阶段。首先，host 以 task 粒度提交向量 kernel，任务接口和调度逻辑将其转化为本地执行上下文。其次，本地指令供给单元从任务入口取指，并在循环阶段复用已获取的指令流，为前端打包提供稳定的局部窗口。第三，VLIW 打包单元根据 HINT header 与 p-bit 将标量/向量交织指令组织为 EP。第四，混合执行单元将 EP 分解为 scalar slice 和 vector slice，分别送入集成标量后端和向量派发路径。最后，向量派发单元将 vector slice 中的向量指令转化为后端请求，并将 EP 语义绑定到请求元数据中。
+
+这一组织形成了明确的前后端分工。前端不再只是加速取指或缓存指令，而是将程序中的局部结构显式化为 EP；后端不被静态打包取代，而是在保留 RVV 时间-空间展开执行所需正确性机制的同时，利用 EP 语义进行更积极的相关性处理、访存提前化和执行重叠。换言之，SEAM-V 的核心不是增加若干孤立优化模块，而是建立一条从 EP 生成到 EP 消费的端到端语义路径。
+
+### 3.2 Front-End Decoupling and Instruction Supply
+
+SEAM-V 以 task 为粒度启动向量 kernel。Host 只提交任务入口和控制信息，任务启动后，本地前端独立推进取指、标量控制和 EP 形成，从而将 host 的职责从细粒度指令驱动转化为粗粒度任务提交。该设计直接缓解了紧耦合 RVV 中标量核长期处于向量指令供给关键路径的问题。
+
+本地指令供给单元以 fetch packet 形式向 VLIW 打包单元提供输入。对于循环 kernel，前端根据标量后端解析出的分支重定向推进取指，并利用 header 中的 loop marker 保留软件可见的循环边界信息。该机制减少循环体重复取指，并为 EP 形成提供稳定、连续的局部指令窗口，使程序中的局部并行性、控制边界和访存意图能够持续暴露给硬件。
+
+### 3.3 Execute Packet Formation
+
+EP 形成是 SEAM-V 前端的核心。软件通过 HINT header 提供 packet 级上下文，通过 p-bit 描述相邻指令是否允许进入同一 EP；硬件则在 logical packet 内扫描 instruction slots，并根据 p-bit、控制/系统边界、依赖断点和最大发射宽度生成 EP。HINT/p-bit 并不是强制并行执行命令，而是向硬件提供可利用的包级语义；硬件仍可因控制边界、issue width、后端压力或安全条件切分 EP。
+
+图 4 展示 HINT header、p-bit、slot scanning 与 EP output 的关系。HINT header 定义 packet 级上下文，包括 logical packet 宽度、跨 packet 打包许可、循环标记和访存提示；p-bit 定义 packet 内部的连接关系；VLIW 打包单元根据这些信息从线性指令流中形成一个或多个 EP。完整 HINT header 编码和软件契约将在 §4 中给出。
+
+【图 4：HINT Header and EP Formation】
+
+每个 EP 同时承担三种角色。第一，EP 是前端供给单元，定义一组可共同进入后续流水的标量/向量指令。第二，EP 是局部并行性的显式载体，为后端相关性裁剪提供依据。第三，EP 携带循环上下文和访存意图，为后端访存提前化提供语义来源。因此，SEAM-V 将 EP 同时作为前端组织单元和后端协同执行的共同语义对象。
+
+### 3.4 Hybrid Execution and Back-End-Visible Propagation
+
+混合执行单元接收 EP 后，将其划分为 scalar slice 和 vector slice。Scalar slice 由集成标量后端执行，用于循环控制、分支解析、地址计算、标量寄存器更新和任务推进；vector slice 进入向量派发路径，由派发逻辑读取所需标量操作数并转换为后端请求。由于 RVV 后端会继续管理向量指令的多拍展开，前端推进不以整条向量指令完成为条件，而以 vector slice 的标量操作数已被派发逻辑捕获、必要的 `vset` 标量可见写回已完成为条件。该事件只表示向量 slice 已进入后端管理域，并不表示向量指令已经执行完成。
+
+为支持 EP 粒度的流水重叠，HEU 维护 current EP 与 buffered EP 两级状态，并为包含 vector slice 的 EP 分配轻量级 `ep_id`。`ep_id` 与请求级访存提示随向量请求进入后端，使后端能够区分不同 EP 的请求归属和访存提前化意图。受限的 buffered vector early issue 允许后续 EP 的 vector slice 在满足依赖和内存顺序约束时提前进入派发路径，从而将标量控制、向量计算和访存等待在 EP 粒度上重叠。
+
+图 5 展示 current EP、buffered EP、scalar/vector slice 和 early-issue 安全条件。该机制只允许 memory-order-safe 的跨 EP 重叠：若 current EP 含未解析分支、标量访存或其他可能影响内存顺序的操作，或者 buffered vector slice 依赖 current EP 的写结果，则提前发射被阻止。因此，SEAM-V 的 cross-EP overlap 是受限执行重叠，而不是任意跨包乱序。
+
+【图 5：Hybrid Execution and Safe Cross-EP Overlap】
+
+向量派发单元将 vector slice 序列化为后端可接受的逐条向量请求。由于后端接口仍以单条向量命令为粒度，VDU 使用 command window 保持每条请求与其所属 EP 的对应关系，并复用既有 accelerator request metadata path 传递 EP 语义。当前实现中，向量请求元数据携带 `ep_id`、`prefetch_disable` 与 `prefetch_mode`；后端 dispatcher 将其转化为内部 HDV hint，供 sequencer 和 VLSU 消费。命令类别和 EP 内最后一条向量指令等信息主要用于 VDU 内部响应匹配、写回路由和 EP acknowledge，并不作为后端访存幅度选择的语义来源。
+
+除 per-request metadata 外，SEAM-V 还向后端提供 loop-active 等全局上下文。Loop-active 指示前端当前处于循环体执行阶段；它与每条请求携带的 EP 身份和访存提示共同构成后端可见 EP 语义，使后端能够识别命令所属 EP、循环状态和访存提前化意图。由此，后端不再只看到无结构的向量命令流，而是获得可用于相关性、访存和调度协同的包级信息。
+
+### 3.5 EP-Driven Backend Cooperation
+
+后端可见 EP 语义被三个路径消费：相关性处理、访存提前化和跨 EP 执行重叠。三者并不是孤立优化，而是同一 EP 语义在不同后端子系统中的使用方式。图 6 展示 EP 语义在 sequencer、VLSU 和 HEU/VDU/后端执行路径中的消费过程。
+
+【图 6：Back-End-Visible EP Consumption】
+
+首先，sequencer 利用 `ep_id` 进行 EP-aware dependency handling。传统 sequencer 需要根据在飞命令维护 RAW、WAR 和 WAW 检查；SEAM-V 在在飞向量指令状态中记录 EP 身份，并在新请求到来时识别同包候选冲突。对于 p-bit 契约下被标记为同 EP、且软件保证不会破坏 RVV 正确性的候选冲突，sequencer 可将对应在飞指令从保守 hazard 检查集合中排除。该机制不移除 scoreboard，也不绕过跨 EP 或真实数据依赖，而是在后端动态管理框架内利用前端提供的包级独立性信息减少假相关阻塞。
+
+其次，VLSU 利用请求级访存提示与 loop-active 上下文进行 EP-driven memory anticipation。`prefetch_disable` 显式决定是否关闭预取；在未关闭时，`prefetch_mode` 选择 1X、2X、4X 或 8X 的预取幅度。将访存提示绑定到向量请求，而非仅依赖瞬时 header 信号，可以避免前端推进、packet 间隙或请求排队导致的语义错位。地址生成逻辑结合预取幅度、队列占用和在途请求信用进行流控，避免预取请求压制 demand load/store。这样，软件和前端已知的循环访存意图被转化为后端可执行的访存提前化行为。
+
+最后，HEU 的 buffered vector early issue 与 VDU command window 共同支持跨 EP 执行重叠。后续 EP 的 vector slice 可在满足依赖和内存顺序约束后提前进入后端；后端则根据 `ep_id` 区分请求归属，并在 sequencer、VLSU 和响应路径中维护正确状态。该机制使标量控制、向量计算和访存访问能够在 EP 粒度上形成时空重叠，而不是严格等待前一 EP 的所有事件完成后再启动下一 EP。
+
+综上，SEAM-V 的硬件架构围绕 EP 构建了一条端到端语义路径：前端通过任务级解耦和 VLIW 打包生成 EP，混合执行单元以 EP 为粒度组织标量/向量分流和受限跨包重叠，向量派发单元将 EP 语义绑定到后端请求，向量后端则在保留 RVV 动态正确性管理的前提下消费这些语义。下一节将从软件侧介绍 task、HINT header、p-bit 契约和访存意图如何表达这些硬件可消费的 EP 语义。
+
+## 4. Programming Model and Software Interface（编程模型与软件接口）
+
+前一节说明了 SEAM-V 如何在硬件中生成、传递并消费 EP 语义。本节从软件侧定义这些语义如何表达。SEAM-V 的软件接口遵循两个原则：第一，不改变 RVV 指令语义和既有向量 kernel 的计算模型；第二，将软件可知的局部并行性、控制边界和访存意图以轻量级标注形式暴露给硬件。由此，SEAM-V 在普通 RVV 编程模型之上建立显式的软件-硬件契约，使硬件能够利用程序结构，而不依赖完全动态的后端推断。
+
+### 4.1 Task-Level Execution Model
+
+SEAM-V 以 task 为基本执行单元。主程序负责数据准备、参数传递和结果校验，热点 RVV kernel 被封装为 SEAM-V task 并提交给硬件执行。Task 内部仍使用标准 RVV 指令描述向量计算，但其取指、标量控制、向量派发和 EP 形成由 SEAM-V 本地前端推进。相比 host 逐条投放向量指令的紧耦合模式，task-level execution 将软件接口提升到 kernel 粒度，降低 host 参与度，并为前端包级组织提供稳定执行上下文。
+
+这一模型将软件侧职责划分为两层：算法层仍以普通 RVV kernel 表达数据并行计算；执行结构层则通过 HINT header、p-bit 和访存提示表达可供硬件利用的包级语义。换言之，SEAM-V 并不要求软件显式管理向量后端状态，而是要求软件在可确定的局部范围内描述哪些指令可被组织为 EP、哪些位置构成控制或访存边界，以及哪些访存流具有可提前化的规律。Task 的结束由标量后端识别的 task-end 指令触发；本文示例采用 `ret` 表示任务返回。
+
+### 4.2 HINT Header Format and EP Annotation
+
+SEAM-V 使用 RISC-V HINT 形式的 `lui x0, imm20` 描述 EP 形成规则。该指令不改变普通 RISC-V architectural state；在 SEAM-V 中，其立即数字段被解释为 packet 级元信息。表 1 给出当前 HINT header 格式。
+
+【表 1：HINT Header Encoding】
+
+| 字段               | 位范围         | 含义                                                         |
+| ------------------ | -------------- | ------------------------------------------------------------ |
+| `pbits`            | `imm20[12:0]`  | 相邻 16-bit slot 是否允许继续并入同一 EP                     |
+| `packet256`        | `imm20[13]`    | 当前 logical packet 是否扩展为 256-bit                       |
+| `cross`            | `imm20[14]`    | 当前 logical packet 尾部 EP 是否允许跨入下一 logical packet  |
+| `loop_start`       | `imm20[15]`    | 循环体起始标记                                               |
+| `loop_end`         | `imm20[16]`    | 循环体结束标记                                               |
+| `prefetch_mode`    | `imm20[18:17]` | 预取幅度；在 `prefetch_disable=0` 时，`00`=1X，`01`=2X，`10`=4X，`11`=8X |
+| `prefetch_disable` | `imm20[19]`    | 显式关闭 prefetch                                            |
+
+HINT header 定义 packet 级上下文，p-bit 定义 packet 内部的连接关系。其中，`packet256` 扩大 VLIW 打包单元的 logical packet 扫描窗口；`cross` 则允许当前 logical packet 的尾部 EP 跨越取指包边界，与下一 logical packet 开头继续形成同一个 EP。二者均不改变单个 EP 的硬件最大发射宽度；实际 EP 宽度仍受 issue width、p-bit、dependency break、控制/系统边界和后端安全条件约束。
+
+访存提示由 `prefetch_disable` 和 `prefetch_mode` 共同定义。当 `prefetch_disable=1` 时，该 packet 显式关闭预取；当 `prefetch_disable=0` 时，`prefetch_mode` 编码预取幅度，分别表示 1X、2X、4X 和 8X。该设计将“是否启用预取”和“预取距离选择”解耦，避免将 `00` 同时用作关闭语义和最小预取幅度语义。
+
+p-bit 不是强制并行执行命令，而是一种安全性契约：当软件将多条指令连接到同一 EP 中时，表示这些指令在该 packet 语义下不存在会因后端 EP-aware 相关性裁剪而破坏正确性的依赖、控制或访存边界。硬件仍可根据 issue width、控制边界、后端压力和安全条件切分 EP。因此，EP annotation 是可被硬件利用的结构化信息，而不是替代后端正确性管理的静态调度结果。
+
+该契约同时支持保守退化。若软件无法确认相邻指令是否可以安全合并，应切断对应 p-bit，使其进入不同 EP；若存在分支、系统指令、内存顺序约束或未解析依赖，也应形成 EP 边界。保守标注不会改变功能正确性，只会减少硬件可利用的包级语义。
+
+### 4.3 HDV Kernel Example
+
+Listing 1 给出一个简化的 HDV 标注向量 kernel 片段，用于说明 HINT header、p-bit、`packet256`、cross-packet packing 以及 loop/prefetch annotation 的关系。示例使用伪宏 `HDV_HINT` 表达软件可见标注语义，而非完整可编译 kernel；其中 `P_SPLIT` 表示 logical packet 内部仍按照真实依赖、控制边界和后端安全条件切分为多个 EP，不表示将 header 覆盖范围内的所有业务指令强制合并为同一 EP。示例中的 `prefetch_mode=1X` 隐含 `prefetch_disable=0`。
+
+【Listing 1：Simplified HDV-Annotated Vector Kernel】
+
+```asm
+loop:
+    HDV_HINT pbits=P_SPLIT, packet256=1, cross=1, loop_start=1, prefetch_mode=1X
+    vsetvli   t0, a0, e32, m1, ta, ma
+    vle32.v   v0, (a1)
+    vle32.v   v1, (a2)
+    sub       a0, a0, t0
+    slli      t1, t0, 2
+    add       a1, a1, t1
+    add       a2, a2, t1
+
+    HDV_HINT pbits=P_SPLIT, loop_end=1, prefetch_mode=1X
+    vfadd.vv  v2, v0, v1
+    vse32.v   v2, (a3)
+    add       a3, a3, t1
+
+    HDV_HINT pbits=P_NONE, prefetch_disable=1
+    bnez      a0, loop
+    ret
+```
+
+该示例展示了三类软件意图。第一，`packet256` 允许一个 HINT header 覆盖更大的 logical packet，从而摊销 header 的静态代码空间和取指开销；logical packet 内部仍可通过 p-bit 切分为多个 EP，以保留真实依赖、控制边界和硬件安全条件。第二，`cross` 允许 logical packet 尾部 EP 在满足 p-bit 和安全条件时跨入下一 logical packet 开头继续打包，从而减少因取指包边界造成的 EP 人为截断。第三，loop 标记和 `prefetch_mode=1X` 将循环上下文与流式 unit-stride 访存意图暴露给后端。实际 kernel 可根据依赖关系、控制边界和访存模式选择更保守或更积极的 EP 标注。
+
+### 4.4 Memory Intent and Correctness Boundary
+
+Prefetch annotation 描述循环体内规则 unit-stride load 的访存提前化意图。软件首先通过 `prefetch_disable` 显式决定是否关闭预取；在启用预取时，再通过 `prefetch_mode` 选择 1X、2X、4X 或 8X 的预取幅度，使后端能够根据循环访存步长提前发起后续访问。对于不规则访存、gather/scatter、短促执行阶段或难以由固定幅度建模的访问模式，软件可关闭该提示，使后端退化为普通 demand-driven 访存执行。
+
+Prefetch annotation 是性能提示而非正确性条件。程序 RVV 语义不依赖预取是否命中或是否实际发出；硬件仍负责维护队列资源、访存定序、预取流控和循环退出时的状态清理。由此，SEAM-V 能够在规则流式访问中利用软件暴露的访存意图隐藏延迟，同时在访问模式不匹配时保持保守、正确的执行行为。
+
+SEAM-V 保持 RVV 软件模型不变。EP、p-bit、loop 标记、`prefetch_disable` 和 `prefetch_mode` 均为 SEAM-V 微架构解释的信息，而不是新的 RVV 指令语义。软件负责遵守 EP annotation contract，不将存在未解决依赖、控制不确定性或内存顺序风险的指令错误合并；硬件负责维护 RVV 后端的动态依赖管理、寄存器一致性和内存定序。保守标注不会影响功能正确性，只会减少可利用的包级语义。由此，SEAM-V 在不改变算法语义的前提下，为 RVV kernel 提供了可被硬件消费的显式执行结构。
+
+
+
+## 5. Experimental Methodology and Evaluation（实验方法与评估）
+
+本节从性能、机制贡献、微结构行为和物理代价四个层面评估 SEAM-V。实验围绕 EP-centric execution 的完整路径展开：前端是否能够稳定生成 EP，EP 语义是否能够跨越前后端边界保留，后端是否能够利用这些语义降低保守阻塞、提前访存并增加执行重叠。除特别说明外，所有性能结果均归一化到紧耦合 RVV baseline。
+
+### 5.1 Experimental Setup and Workloads
+
+本文基于 RTL 仿真、kernel sweep 和物理级实现流程进行评估。比较对象包括紧耦合 RVV baseline（`T`）和完整 SEAM-V（`H4`）。`H4` 启用 task-level decoupling、local instruction supply、EP formation、backend-visible EP、EP-aware hazard bypass、EP-driven prefetch 和 memory-order-safe cross-EP overlap。为分离各机制贡献，本文进一步构造逐级消融配置：`H_base` 仅启用前端解耦与 EP 生成，`H1` 加入同 EP 相关性裁剪，`H2/H3` 加入预取控制，`H4` 为完整设计。表 X 总结实验配置、向量后端参数、存储系统设置和消融开关。
+
+【表 X：Experimental Setup and Evaluated Configurations】
+
+Workload 覆盖三类执行模式。AVL sweep kernels 用于观察不同向量粒度下的执行效率；BLAS/GEMM kernels 用于评估计算密集和不同 LMUL 配置下的行为；fixed-size kernels 覆盖卷积、stencil、softmax、分子动力学以及稀疏/不规则访存片段，用于验证 SEAM-V 在更复杂执行阶段中的适用性。所有统计仅包含功能检查通过的数据点；失败或调试配置不进入几何平均值。本文报告 task cycles、speedup、cycles per element、cycles per MAC、sequencer stalls、EP bypass 次数、prefetch hit rate、backpressure、area、power、energy 和 EDP。
+
+当前 hdv sweep 数据已完成基础一致性检查。有效数据点满足向量请求 push/pop 平衡，任务结束采样点无遗留向量 busy 状态，可用于性能趋势和微结构计数器分析。对于尚未完成的 main/hdv 对齐实验，正文仅保留统计占位，最终数值以后续相同 workload、相同后端配置和相同 memory model 下的成对实验为准。
+
+### 5.2 Overall Performance
+
+图 X 给出完整 SEAM-V 相对于紧耦合 RVV baseline 的归一化性能。Across all evaluated workloads，`H4` 实现 `[待填]` 的几何平均加速比；在 AVL sweep、BLAS/GEMM 和 fixed-size kernels 中分别达到 `[待填]`、`[待填]` 和 `[待填]`。该结果用于验证 SEAM-V 的收益是否跨越不同向量粒度、访存模式和计算强度，而不是集中于单一短向量 microbenchmark。
+
+【图 X：Normalized Performance over Tight-Coupled RVV Baseline】
+
+已有 hdv 数据显示，SEAM-V 在流式 AVL kernels 上能够维持稳定的单位元素执行成本。以典型 unit-stride workloads 为例，`vsaxpy`、`vscopy` 和 `vvaddint32` 的 cycles per element 在 AVL 增大后基本收敛，说明本地指令供给和 EP 形成可以支撑连续执行。相比之下，`vsdot`、`vsdwt` 等规约或访存模式更复杂的 kernel 具有更高单位成本，表明其瓶颈更多来自真实依赖、访存结构或后端资源压力，而非单纯前端供给不足。
+
+【图 X：AVL Sweep and Per-Element Efficiency】
+
+BLAS/GEMM 结果采用 cycles per MAC 归一化，以避免矩阵规模差异掩盖结构趋势。GEMV/SYMV 类 kernel 主要反映向量配置和短任务粒度下的执行效率；GEMM、SYRK 和 TRSM 类 kernel 则体现计算密集、访存复杂或依赖更强场景下的收益边界。Fixed-size kernels 直接报告 task cycles 和 normalized speedup，用于说明 SEAM-V 在真实应用片段中的端到端效果。
+
+总体来看，SEAM-V 的收益来源随 workload 改变。规则 unit-stride kernel 主要受益于连续供给和 EP-driven prefetch；标量/向量交织明显的 kernel 更依赖前端解耦和跨 EP 执行重叠；规约、强依赖或后端饱和的 kernel 收益较小。该趋势说明，SEAM-V 提升的是多阶段执行中的持续吞吐，而不是单个 datapath 的峰值计算能力。
+
+### 5.3 Ablation Study
+
+图 X 展示 `T → H_base → H1 → H2/H3 → H4` 的逐级消融。`H_base` 衡量前端解耦和 EP 生成的供给收益；`H1` 衡量同 EP 相关性裁剪对 sequencer 保守阻塞的影响；`H2/H3` 衡量 EP-driven prefetch 对访存等待的隐藏能力；`H4` 衡量 cross-EP overlap 对标量控制、向量计算和访存访问重叠的额外贡献。相对于 `H_base`，完整后端协同进一步带来 `[待填]` 的平均性能提升，其中 hazard bypass、prefetch 和 overlap 分别贡献 `[待填]`、`[待填]` 和 `[待填]`。
+
+【图 X：Ablation Study of SEAM-V Mechanisms】
+
+消融样例选择覆盖不同瓶颈类型，包括流式访存、规约依赖、访存/写回压力、计算密集和真实应用片段。若 `H_base` 已显著优于 `T`，说明任务级解耦、本地供给和 EP 形成有效缓解了标量驱动供给瓶颈；若 `H1–H4` 继续带来增益，则说明 EP 语义不仅在前端形成，而且能够在 sequencer、VLSU 和执行控制路径中被后端实际消费。
+
+该实验也是区分 SEAM-V 与普通前端优化的关键。仅提高前端供给并不能解决后端保守相关性、访存等待和跨包重叠不足等问题；只有当 EP identity、loop context 和 memory intent 被保留下来，后端才能围绕同一包级语义进行协同。因此，Full SEAM-V 的收益应理解为前端组织和后端消费共同作用的结果。
+
+### 5.4 Microarchitectural Analysis
+
+图 X 汇总代表性 kernel 的后端计数器，包括 sequencer stalls、EP bypass、prefetch request/hit、operand wait 和 backpressure。Sequencer 统计用于验证 EP-aware dependency handling：当 p-bit contract 暴露同 EP 内可安全处理的候选冲突时，`seq_ep_bypass` 增加，保守 RAW/WAR/WAW 阻塞应相应降低。该结果说明 SEAM-V 并未移除 scoreboard，而是在后端正确性边界内减少不必要的假相关阻塞。
+
+【图 X：Sequencer Stall and EP Bypass Breakdown】
+
+Prefetch 统计用于验证 EP-driven memory anticipation。当前数据表明，规则 unit-stride kernels 能获得完整或近完整的 prefetch 命中；`dropout` 类 kernel 保留冷启动带来的少量缺口；而 `vsdwt` 这类访存模式不匹配样例虽然产生 prefetch 请求，却无法转化为 demand 命中。这一结果说明 prefetch mode 是性能提示而非正确性条件：访问模式稳定时，它提高访存提前化能力；访问模式不匹配时，系统仍可退化为 demand-driven 执行。
+
+【图 X：Prefetch Usefulness and Memory Behavior】
+
+后端 backpressure 和 operand wait 用于解释瓶颈迁移。当 SEAM-V 缓解前端供给空洞后，部分 workload 的主要限制会转向向量后端队列、访存端口、写回路径或真实数据依赖。例如，规约类 kernel 的单位成本更高，主要受依赖链约束；访存/写回压力较强的 kernel 则可能在 Ara backpressure 上表现更突出。因此，本文同时报告 speedup 和微结构计数器，避免将所有性能变化简单归因于单一机制。
+
+### 5.5 Sensitivity and Boundary Cases
+
+图 X 给出不同 AVL、LMUL/GEMM 配置和 memory-latency 条件下的敏感性结果。AVL sweep 用于观察向量粒度变化时的供给与后端利用率；LMUL/GEMM sweep 用于分析 RVV 时间-空间展开粒度变化下的计算效率；memory-latency sweep 用于评估 EP-driven prefetch 和 cross-EP overlap 在不同访存压力下的鲁棒性。尚未完成的 sensitivity 数据在图中保留占位，正文不据此作最终结论。
+
+【图 X：Sensitivity to Vector Granularity and Memory Behavior】
+
+该组实验强调两点。第一，SEAM-V 不是短 AVL 专用优化；短向量更容易暴露前端供给和控制开销，但 EP 语义贯通的作用贯穿不同向量粒度。第二，SEAM-V 的收益依赖可利用的局部并行性和可预测访存意图。对于强串行依赖、不规则 gather/scatter、访存提示与真实访问模式不匹配或后端已充分饱和的 workload，EP 语义仍保持正确性，但可转化为性能收益的空间有限。
+
+### 5.6 Physical Cost and Energy Efficiency
+
+本文采用 TSMC 28nm HPC+ 工艺进行物理级评估，典型条件为 TT/0.9V/25°C，目标频率为 1GHz。综合和功耗评估基于 Synopsys Design Compiler 与 SAIF switching activity；后端物理实现报告布局布线后的面积、时序和功耗。若 post-PnR 频率与 baseline 不同，性能和能量结果按实际频率归一化。
+
+【表 X：Physical Implementation Setup】
+
+SEAM-V 的新增硬件主要包括 task interface、local instruction supply、VLIW pack unit、HEU control、VDU command window、EP metadata path、sequencer EP-aware logic 和 VLSU prefetch support。表 X 给出模块面积和功耗拆分。Full SEAM-V 的总面积开销为 `[待填]`，功耗变化为 `[待填]`，关键路径变化为 `[待填]`。该表重点说明新增代价集中在 EP 语义生成、传递和消费路径，而不是扩大向量 datapath。
+
+【表 X：Post-PnR Area and Power Breakdown】
+
+能量评估综合考虑执行周期和功耗。本文使用 task cycles、实际时钟周期和 post-PnR power 计算单任务能量，并报告 EDP 以刻画性能/功耗权衡。Full SEAM-V 的平均 energy reduction 为 `[待填]`，EDP reduction 为 `[待填]`。若物理结果显示新增控制和缓冲逻辑开销可控，同时执行周期显著减少，则说明 backend-visible EP 能够以较低硬件代价提升 RVV 向量处理器的性能与能效。
+
+【图 X：Energy and EDP Comparison】
+
+
+
+## 5. Experimental Methodology and Evaluation（实验方法与评估）前版本
+
+本节从性能、机制贡献、适用范围和硬件代价四个方面评估 SEAM-V。实验旨在回答三个问题：第一，EP-centric execution 是否能够提升 RVV 向量处理器在多粒度 workload 下的持续执行效率；第二，前端解耦与 EP 生成、后端可见 EP 语义贯通以及 EP-driven 后端协同分别贡献多少收益；第三，这些性能与能效收益是否能够以可控的面积和功耗开销获得。
+
+### 5.1 Experimental Setup and Workloads
+
+本文基于 RTL 仿真和物理级评估流程对 SEAM-V 进行实验。所有性能实验均在相同向量后端配置、相同存储系统模型和相同 workload 输入下进行，比较对象包括紧耦合 RVV baseline、仅启用前端解耦与 EP 形成的 SEAM-V-FE，以及启用后端可见 EP 和全部 EP-driven 后端协同机制的 Full SEAM-V。对于机制分析，本文进一步构造逐项打开 hazard bypass、EP-driven prefetch 和 cross-EP overlap 的消融配置。
+
+【表 X：Experimental Setup and Evaluated Configurations】
+
+Workload 覆盖三类执行特征。第一类是向量粒度可调的 microbenchmarks，用于分析不同 AVL、循环粒度和标量/向量交织程度下的执行效率。第二类是 BLAS/GEMM 类计算 kernel，用于评估 SEAM-V 在计算密集与不同向量配置下的表现。第三类是真实应用片段，包括卷积、迭代 stencil、分子动力学、softmax 和稀疏/不规则访存相关 kernel，用于验证 SEAM-V 是否能够覆盖更复杂的执行阶段。所有统计均只包含功能检查通过的测试点；失败或调试中的配置不进入性能几何平均值。
+
+本文报告任务周期数、相对 speedup、每元素周期、每 MAC 周期、向量后端利用率、sequencer stall、EP bypass 次数、prefetch 请求与命中率、后端 backpressure，以及面积、功耗、能量和能效指标。除特别说明外，所有性能结果均归一化到紧耦合 RVV baseline。
+
+### 5.2 Overall Performance
+
+图 X 给出 Full SEAM-V 相对于紧耦合 RVV baseline 的总体性能。SEAM-V 通过任务级解耦降低 host 逐条驱动压力，通过 EP 形成提高前端供给连续性，并通过后端可见 EP 使向量后端能够消费包级语义。Across all evaluated workloads，Full SEAM-V 实现平均 `[TODO: geomean speedup]` 的性能提升，并在 `[TODO: best-performing kernel]` 上达到最高 `[TODO: max speedup]`。
+
+【图 X：Overall Performance of Full SEAM-V】
+
+不同 workload 类别体现出不同收益来源。流式 unit-stride kernel 主要受益于 EP-driven memory anticipation；标量/向量交织明显的 kernel 更依赖前端解耦和跨 EP 执行重叠；计算密集 kernel 的收益则取决于向量后端是否已接近饱和，以及 EP 是否能减少供给间隙和保守调度。真实应用片段的结果表明，SEAM-V 的收益并不局限于短 AVL 场景，而来自不同向量粒度、控制强度和访存行为阶段中的持续执行效率提升。
+
+为了更清楚地区分 workload 行为，图 X 按 workload 类别汇总归一化性能。对于 AVL sweep kernel，本文报告不同向量长度下的 speedup 趋势；对于 BLAS/GEMM kernel，本文使用每 MAC 周期作为归一化指标；对于固定规模真实 kernel，本文直接报告任务周期和相对 speedup。该分类有助于避免单一平均值掩盖 SEAM-V 在不同执行模式下的效果差异。
+
+### 5.3 Ablation Study
+
+图 X 展示 SEAM-V 的消融结果。消融配置按照本文贡献逐步展开：Baseline 表示传统紧耦合 RVV 执行；SEAM-V-FE 仅包含任务级解耦、本地指令供给和 EP 形成；SEAM-V-BEV 在此基础上加入后端可见 EP 语义通路；后续配置分别打开 EP-aware hazard bypass、EP-driven prefetch 和 cross-EP overlap；Full SEAM-V 启用全部机制。
+
+【图 X：Ablation of SEAM-V Mechanisms】
+
+SEAM-V-FE 用于量化前端解耦与 EP 生成的基础收益。该配置减少 host 逐条发射和重复取指带来的供给间隙，并将标量/向量交织指令流组织为可连续推进的执行包。SEAM-V-BEV 进一步验证 EP 语义贯通的必要性：当 EP 身份、循环上下文和访存意图能够跨越前后端边界保留下来时，后端获得消费包级信息的基础。
+
+后端协同配置用于区分三类 EP 消费方式的贡献。EP-aware hazard bypass 通过同 EP 相关性裁剪降低保守 scoreboard 阻塞；EP-driven prefetch 将循环体内规则访存意图转化为后端访存提前化；cross-EP overlap 则允许安全条件下的后续 EP 向量 slice 提前进入后端。消融结果显示，三类机制分别作用于相关性处理、访存延迟和执行重叠，并在 Full SEAM-V 中共同提升端到端吞吐率。具体而言，Full SEAM-V 相对于 SEAM-V-FE 进一步带来 `[TODO: backend cooperation speedup]` 的平均提升，其中 hazard bypass、prefetch 和 overlap 分别贡献 `[TODO]`、`[TODO]` 和 `[TODO]`。
+
+### 5.4 Microarchitectural and Sensitivity Analysis
+
+为解释性能收益来源，本文进一步分析后端计数器和敏感性实验。图 X 展示代表性 kernel 的 stall breakdown、sequencer 相关性阻塞、EP bypass 次数和访存等待。对于同 EP 内由 p-bit 契约暴露无非法依赖的向量指令，sequencer 可减少不必要的 RAW/WAR/WAW 保守检查；因此，具有较多局部并行向量操作的 kernel 应表现出更高的 EP bypass 计数和更低的相关性阻塞比例。
+
+【图 X：Microarchitectural Counter Breakdown】
+
+图 X 分析 EP-driven prefetch 的有效性。对于规则 unit-stride 访问，prefetch 请求能够转化为较高命中率，并降低 demand load 等待；对于冷启动阶段、短促执行阶段或非规则访存，prefetch 命中率可能较低。该结果说明，prefetch annotation 是性能提示而非正确性条件：当访问模式稳定时，它提高后端访存提前化能力；当访问模式不匹配时，硬件仍可退化为 demand-driven 访存执行。
+
+【图 X：Prefetch Usefulness and Memory Behavior】
+
+图 X 给出不同向量粒度和访存条件下的敏感性结果。AVL sweep 用于观察从短向量到较长向量阶段的性能变化；memory latency sweep 用于评估访存压力对 EP-driven prefetch 和 cross-EP overlap 的影响；LMUL 或向量配置 sweep 用于观察 RVV 时间-空间展开粒度变化时的收益趋势。该组实验强调，SEAM-V 并不是针对某一固定 AVL 的特化优化，而是在 workload 粒度、控制强度和访存行为变化时，通过 EP 语义贯通提升前端供给、后端调度和访存协同。
+
+【图 X：Sensitivity to Vector Granularity and Memory Behavior】
+
+总体而言，SEAM-V 对具有稳定局部并行性、规则访存意图和标量/向量交织的 kernel 更有利；对于强串行依赖、不规则 gather/scatter 或已经充分饱和向量后端的长向量 kernel，收益可能受限。本文将这些 limited-benefit cases 纳入分析，以界定 SEAM-V 的适用范围。
+
+### 5.5 Physical Cost and Energy Efficiency
+
+SEAM-V 的新增硬件主要来自任务接口、本地指令供给、VLIW 打包、混合执行控制、向量派发 command window、后端 EP hint 通路以及 VLSU prefetch 支持。表 X 给出面积和功耗拆分。相对于 baseline，Full SEAM-V 的总面积开销为 `[TODO: area overhead]`，总功耗开销为 `[TODO: power overhead]`，最高工作频率变化为 `[TODO: frequency/timing impact]`。
+
+【表 X：Area and Power Breakdown】
+
+能量结果综合考虑功耗开销和执行周期减少。虽然 SEAM-V 引入额外控制逻辑，但其减少了前端供给间隙、保守后端阻塞和访存等待，因此可能降低单个 workload 的总能量。图 X 报告代表性 workload 的归一化能量和 energy-delay product。Full SEAM-V 在所有通过测试的 workload 上实现平均 `[TODO: energy reduction]` 的能量改善，并将 EDP 降低 `[TODO: EDP reduction]`。
+
+【图 X：Energy and Cost-Benefit Analysis】
+
+从成本收益角度看，SEAM-V 的硬件代价主要集中在小规模控制和缓冲逻辑，而性能收益来自更连续的前端供给、更少的后端保守阻塞和更积极的访存提前化。该结果表明，以 EP 为核心的前后端语义贯通能够以可控硬件开销提升 RVV 向量处理器在多粒度 workload 下的性能与能效。
+
+
 
 ---
 
-### 参考文献（本节 §1/§2 引用，定稿时并入全局 References）
+1. ## 参考文献候选
 
-1. J. Sevilla, L. Heim, A. Ho, T. Besiroglu, M. Hobbhahn, P. Villalobos. "Compute Trends Across Three Eras of Machine Learning," *IJCNN*, 2022.
-2. A. Waterman, K. Asanović (eds.). "The RISC-V Instruction Set Manual, Vol. I: Unprivileged ISA — 'V' Standard Extension (RVV 1.0)," RISC-V International, 2021.
-3. M. Cavalcante, F. Schuiki, F. Zaruba, M. Schaffner, L. Benini. "Ara: A 1-GHz+ Scalable and Energy-Efficient RISC-V Vector Processor with Multiprecision Floating-Point Support in 22-nm FD-SOI," *IEEE Trans. VLSI Systems*, 28(2):530–543, 2020.
-4. M. Perotti, M. Cavalcante, N. Wistoff, R. Andri, L. Benini, et al. "A 'New Ara' for Vector Computing: An Open-Source Highly Efficient RISC-V V1.0 Vector Processor," *IEEE ASAP* / arXiv:2210.08882, 2022（及 Ara2, arXiv:2311.07493）.
-5. F. Zaruba, L. Benini. "The Cost of Application-Class Processing: Energy and Performance Analysis of a Linux-Ready 1.7-GHz 64-bit RISC-V Core (CVA6/Ariane) in 22-nm FDSOI," *IEEE Trans. VLSI Systems*, 27(11):2629–2640, 2019.
-6. F. Minervini, O. Palomar, O. Unsal, E. Reggiani, J. Quiroga, J. Marimon, C. Rojas, et al. "Vitruvius+: An Area-Efficient RISC-V Decoupled Vector Coprocessor for High Performance Computing Applications," *ACM TACO*, 20(2):1–25, 2023.
-7. R. Espasa (Semidynamics). "Implementation of an Out-of-Order RISC-V Vector Unit," RISC-V Summit / 技术报告, 2021.
-8. R. Espasa, M. Valero, J. E. Smith. "Out-of-Order Vector Architectures," *MICRO-30*, pp. 160–170, 1997.
-9. Y. Gao, R. Egawa, H. Takizawa, H. Kobayashi. "An Out-of-Order Vector Processing Mechanism for Multimedia Applications," *Computing Frontiers*, pp. 233–236, 2012.
-10. M. Cavalcante, M. Wüthrich, M. Perotti, S. Riedel, L. Benini. "Spatz: Clustering Compact RISC-V-Based Vector Units to Maximize Computing Efficiency," *ICCAD* / arXiv:2309.10137, 2023.
-11. J. E. Smith. "Decoupled Access/Execute Computer Architectures," *ISCA* 1982 / *ACM TOCS*, 2(4):289–308, 1984.
-12. J. A. Fisher. "Very Long Instruction Word Architectures and the ELI-512," *ISCA*, pp. 140–150, 1983.
-13. Texas Instruments. "TMS320C66x DSP CPU and Instruction Set Reference Guide," SPRUGH7, 2010.
-14. M. Payami, E. Azarkhish, I. Loi, L. Benini. "A Hybrid Instruction Prefetching Mechanism for Ultra Low-Power Multicore Clusters," *IEEE Embedded Systems Letters*, 9(4):125–128, 2017.
-15. A. Waterman, K. Asanović (eds.). "The RISC-V Instruction Set Manual, Vol. I: Unprivileged ISA — HINT Instructions," RISC-V International, 2019.
-16. [作者团队]. "Boosting Vector Instruction Throughput in RISC-V via a Hybrid Decoupled Architecture with VLIW-Driven Execution," *IEEE ISCAS*, 2026.（前作）
-17. R. M. Russell. "The CRAY-1 Computer System," *Communications of the ACM*, 21(1):63–72, 1978.
+   [1] RISC-V International, “The RISC-V Vector Extension, Version 1.0,” 2021.
+
+   [2] M. Cavalcante, F. Schuiki, F. Zaruba, M. Schaffner, and L. Benini, “Ara: A 1 GHz+ Scalable and Energy-Efficient RISC-V Vector Processor with Multi-Precision Floating Point Support in 22 nm FD-SOI,” IEEE Transactions on Very Large Scale Integration (VLSI) Systems, vol. 28, no. 2, pp. 530–543, 2020.
+
+   [3] M. Perotti, M. Cavalcante, N. Wistoff, R. Andri, L. Cavigelli, and L. Benini, “A ‘New Ara’ for Vector Computing: An Open Source Highly Efficient RISC-V V 1.0 Vector Processor Design,” in Proc. IEEE International Conference on Application-specific Systems, Architectures and Processors (ASAP), 2022.
+
+   [4] M. Perotti, M. Cavalcante, R. Andri, L. Cavigelli, and L. Benini, “Ara2: Exploring Single- and Multi-Core Vector Processing with an Efficient RVV 1.0 Compliant Open-Source Processor,” IEEE Transactions on Computers, 2024.
+
+   [5] F. Minervini et al., “Vitruvius+: An Area-Efficient RISC-V Decoupled Vector Coprocessor for High Performance Computing Applications,” ACM Transactions on Architecture and Code Optimization, vol. 20, no. 2, 2023.
+
+   [6] J. E. Smith, “Decoupled Access/Execute Computer Architectures,” in Proc. International Symposium on Computer Architecture (ISCA), pp. 112–119, 1982.
+
+   [7] J. A. Fisher, “Very Long Instruction Word Architectures and the ELI-512,” in Proc. International Symposium on Computer Architecture (ISCA), pp. 140–150, 1983.
+
+   [8] M. S. Schlansker and B. R. Rau, “EPIC: Explicitly Parallel Instruction Computing,” Computer, vol. 33, no. 2, pp. 37–45, 2000.
+
+   [9] R. Espasa, M. Valero, and J. E. Smith, “Vector Architectures: Past, Present and Future,” in Proc. International Conference on Supercomputing (ICS), 1998.
+
+   [10] R. M. Russell, “The CRAY-1 Computer System,” Communications of the ACM, vol. 21, no. 1, pp. 63–72, 1978.
+
+   [11] J. L. Hennessy and D. A. Patterson, Computer Architecture: A Quantitative Approach, 6th ed. Morgan Kaufmann, 2017.
+
+   [12] B. R. Rau and J. A. Fisher, “Instruction-Level Parallel Processing: History, Overview, and Perspective,” Journal of Supercomputing, vol. 7, pp. 9–50, 1993.
+
+   [13] Texas Instruments, TMS320C6000 CPU and Instruction Set Reference Guide, Texas Instruments, latest available revision.
+
+   [14] CDC, CDC 6600 Computer System Reference Manual, Control Data Corporation, 1964.
+
+   [15] M. Perotti et al., “Ara2: Exploring Single- and Multi-Core Vector Processing with an Efficient RVV 1.0 Compliant Open-Source Processor,” arXiv:2311.07493, 2023. 若采用 IEEE TC 正式版，可与 [4] 合并。
+
+   [16] <你的前期工作>, “<前端解耦与 VLIW/EP 打包相关论文题名>,” in Proc. , .
