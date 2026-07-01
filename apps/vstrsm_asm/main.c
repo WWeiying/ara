@@ -94,11 +94,12 @@ void strsm_f32_left_lower(const float *L, float *B, int m) {
     "sd s0, 0(sp)\n"
     "sd s1, 8(sp)\n"
 
-    // setup: AVL = VLMAX (avl=vl, so the HDV doesn't fault on this kernel), stride
-    // s1 = VLMAX*4, i index, bases, M row count.
+    // setup: AVL = VLMAX (avl=vl, so the HDV doesn't fault on this kernel),
+    // row_stride = runtime N*4, i index, bases, M row count.
     "li s0, " BL_STR(BLAS_LMUL) "*32\n"
     "vsetvli zero, s0, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
-    "li s1, " BL_STR(BLAS_LMUL) "*128\n"
+    "mv s1, a2\n"
+    "slli s1, s1, 2\n"
     "li t0, 0\n"
     "mv t1, a0\n"
     "mv t2, a1\n"

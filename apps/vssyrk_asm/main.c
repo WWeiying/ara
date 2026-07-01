@@ -162,8 +162,11 @@ void ssyrk_f32_full(const float *A, float *C, int n, const float alpha,
     "ld s1, 8(sp)\n"
     "addi sp, sp, 16\n"
     "ret\n"
+    // packet padding after ret; keeps front-end from linearly prefetching into
+    // random data after task completion.
+    ".rept 24\n"
     "nop\n"
-    "nop\n"
+    ".endr\n"
     ".option pop\n"
     );
 }

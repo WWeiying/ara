@@ -284,8 +284,11 @@ void gemm_f32_1row(const float *A, const float *B, float *C, int n) {
     "ld s2, 16(sp)\n"
     "addi sp, sp, 32\n"
     "ret\n"
+    // packet padding after ret; keeps front-end prefetch from stepping into
+    // adjacent data after task completion.
+    ".rept 24\n"
     "nop\n"
-    "nop\n"
+    ".endr\n"
     ".option pop\n"
     );
 }
@@ -373,8 +376,11 @@ void gemm_f32_2row(const float *A, const float *B, float *C, int n) {
     "ld s2, 16(sp)\n"
     "addi sp, sp, 32\n"
     "ret\n"
+    // packet padding after ret; keeps front-end prefetch from stepping into
+    // adjacent data after task completion.
+    ".rept 24\n"
     "nop\n"
-    "nop\n"
+    ".endr\n"
     ".option pop\n"
     );
 }
@@ -486,8 +492,11 @@ void gemm_f32_4row(const float *A, const float *B, float *C, int n) {
     "ld s2, 16(sp)\n"
     "addi sp, sp, 32\n"
     "ret\n"
+    // packet padding after ret; keeps front-end prefetch from stepping into
+    // adjacent data after task completion.
+    ".rept 24\n"
     "nop\n"
-    "nop\n"
+    ".endr\n"
     ".option pop\n"
     );
 }

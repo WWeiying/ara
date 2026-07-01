@@ -85,7 +85,9 @@ define vector_trace_template
 ideal_dispatcher/vtrace/$1.vtrace: bin/$1.spike $(VTRACE_SCRIPTS)
 	mkdir -p ideal_dispatcher/vtrace ideal_dispatcher/log ideal_dispatcher/temp
 	echo "run" | $(RISCV_SIM_MOD) $(RISCV_SIM_MOD_OPT) $$< 2> ideal_dispatcher/temp/$1.temp 1> ideal_dispatcher/log/$1.log
+ifneq ($(SKIP_SPIKE_VREG),1)
 	echo "run" | $(SPIKE_VREG) $(SPIKE_VREG_FLAGS) $$< 2>../hardware/sim/regdump.ideal 1>/dev/null
+endif
 	cd ideal_dispatcher && scripts/vtrace.sh temp/$1.temp vtrace/$1.vtrace
 endef
 $(foreach app,$(APPS),$(eval $(call vector_trace_template,$(app))))
