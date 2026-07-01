@@ -43,9 +43,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   input  addr_t [NumSlots-1:0]               vliwpu_heu_execute_slot_pc_i,
   input  hdv_inst_class_e [NumSlots-1:0]     vliwpu_heu_execute_class_i,
   input  addr_t                              vliwpu_heu_execute_pc_i,
-  // Prefetch mode of the EP being accepted — bundled with the EP so it stays
+  // Prefetch hint of the EP being accepted — bundled with the EP so it stays
   // aligned through this stage's register (the live header signal desyncs across
   // a cross-packet advance; see hdv_vliw_pack_unit / addrgen).
+  input  logic                               vliwpu_heu_execute_prefetch_hint_valid_i,
+  input  logic                               vliwpu_heu_execute_prefetch_disable_i,
   input  logic [1:0]                         vliwpu_heu_execute_prefetch_mode_i,
 
   output logic                               heu_scalar_valid_o,
@@ -64,6 +66,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   output addr_t [NumSlots-1:0]               heu_vector_insn_pc_o,
   output addr_t                              heu_vector_pc_o,
   output logic                               heu_vector_ep_id_o,
+  output logic                               heu_vector_prefetch_hint_valid_o,
+  output logic                               heu_vector_prefetch_disable_o,
   output logic [1:0]                         heu_vector_prefetch_mode_o,
 
   // scalar_ep_done_i: scalar backend has finished executing all instructions
@@ -105,6 +109,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic buffer_vector_sent_d, buffer_vector_sent_q;
   logic buffer_vector_slice_outstanding_d, buffer_vector_slice_outstanding_q;
   logic buffer_vector_id_d, buffer_vector_id_q;
+  logic buffer_vector_prefetch_hint_valid_d, buffer_vector_prefetch_hint_valid_q;
+  logic buffer_vector_prefetch_disable_d, buffer_vector_prefetch_disable_q;
   logic [1:0] buffer_vector_prefetch_mode_d, buffer_vector_prefetch_mode_q;
   logic [NumSlots-1:0] buffer_scalar_insn_valid_d, buffer_scalar_insn_valid_q;
   logic [NumSlots-1:0] buffer_vector_insn_valid_d, buffer_vector_insn_valid_q;
@@ -118,6 +124,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic [NumSlots-1:0] vector_insn_valid_d, vector_insn_valid_q;
   logic vector_dispatch_from_buffer_d, vector_dispatch_from_buffer_q;
   logic vector_dispatch_id_d, vector_dispatch_id_q;
+  logic vector_dispatch_prefetch_hint_valid_d, vector_dispatch_prefetch_hint_valid_q;
+  logic vector_dispatch_prefetch_disable_d, vector_dispatch_prefetch_disable_q;
   logic [1:0] vector_dispatch_prefetch_mode_d, vector_dispatch_prefetch_mode_q;
   logic [NumSlots-1:0][31:0] dispatch_insn_d, dispatch_insn_q;
   logic [NumSlots-1:0][31:0] vector_dispatch_insn_d, vector_dispatch_insn_q;
@@ -437,6 +445,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   assign heu_scalar_pc_o           = dispatch_pc_q;
   assign heu_vector_pc_o           = vector_dispatch_pc_q;
   assign heu_vector_ep_id_o        = vector_dispatch_id_q;
+  assign heu_vector_prefetch_hint_valid_o = vector_dispatch_prefetch_hint_valid_q;
+  assign heu_vector_prefetch_disable_o = vector_dispatch_prefetch_disable_q;
   assign heu_vector_prefetch_mode_o = vector_dispatch_prefetch_mode_q;
 
   assign heu_vliwpu_execute_ready_o = !buffer_valid_q &&
@@ -483,6 +493,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     vector_insn_valid_d     = vector_insn_valid_q;
     vector_dispatch_from_buffer_d = vector_dispatch_from_buffer_q;
     vector_dispatch_id_d    = vector_dispatch_id_q;
+    vector_dispatch_prefetch_hint_valid_d = vector_dispatch_prefetch_hint_valid_q;
+    vector_dispatch_prefetch_disable_d = vector_dispatch_prefetch_disable_q;
     vector_dispatch_prefetch_mode_d = vector_dispatch_prefetch_mode_q;
     dispatch_insn_d         = dispatch_insn_q;
     vector_dispatch_insn_d  = vector_dispatch_insn_q;
@@ -505,6 +517,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     buffer_vector_sent_d = buffer_vector_sent_q;
     buffer_vector_slice_outstanding_d = buffer_vector_slice_outstanding_q;
     buffer_vector_id_d = buffer_vector_id_q;
+    buffer_vector_prefetch_hint_valid_d = buffer_vector_prefetch_hint_valid_q;
+    buffer_vector_prefetch_disable_d = buffer_vector_prefetch_disable_q;
     buffer_vector_prefetch_mode_d = buffer_vector_prefetch_mode_q;
     buffer_scalar_insn_valid_d = buffer_scalar_insn_valid_q;
     buffer_vector_insn_valid_d = buffer_vector_insn_valid_q;
@@ -557,6 +571,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_dispatch_pc_d    = vliwpu_heu_execute_pc_i;
       vector_dispatch_from_buffer_d = 1'b0;
       vector_dispatch_id_d = new_vector_id;
+      vector_dispatch_prefetch_hint_valid_d = vliwpu_heu_execute_prefetch_hint_valid_i;
+      vector_dispatch_prefetch_disable_d = vliwpu_heu_execute_prefetch_disable_i;
       vector_dispatch_prefetch_mode_d = vliwpu_heu_execute_prefetch_mode_i;
       current_vector_id_d = new_vector_id;
       if (has_vector) begin
@@ -591,6 +607,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_vector_sent_d = 1'b0;
       buffer_vector_slice_outstanding_d = 1'b0;
       buffer_vector_id_d = new_vector_id;
+      buffer_vector_prefetch_hint_valid_d = vliwpu_heu_execute_prefetch_hint_valid_i;
+      buffer_vector_prefetch_disable_d = vliwpu_heu_execute_prefetch_disable_i;
       buffer_vector_prefetch_mode_d = vliwpu_heu_execute_prefetch_mode_i;
       buffer_scalar_insn_valid_d = scalar_insn_valid_in;
       buffer_vector_insn_valid_d = vector_insn_valid_in;
@@ -617,6 +635,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_dispatch_pc_d = buffer_dispatch_pc_q;
       vector_dispatch_from_buffer_d = 1'b1;
       vector_dispatch_id_d = buffer_vector_id_q;
+      vector_dispatch_prefetch_hint_valid_d = buffer_vector_prefetch_hint_valid_q;
+      vector_dispatch_prefetch_disable_d = buffer_vector_prefetch_disable_q;
       vector_dispatch_prefetch_mode_d = buffer_vector_prefetch_mode_q;
     end
 
@@ -753,6 +773,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_vector_sent_q <= 1'b0;
       buffer_vector_slice_outstanding_q <= 1'b0;
       buffer_vector_id_q <= 1'b0;
+      buffer_vector_prefetch_hint_valid_q <= 1'b0;
+      buffer_vector_prefetch_disable_q <= 1'b0;
       buffer_vector_prefetch_mode_q <= 2'b0;
       buffer_scalar_insn_valid_q <= '0;
       buffer_vector_insn_valid_q <= '0;
@@ -766,6 +788,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_insn_valid_q <= '0;
       vector_dispatch_from_buffer_q <= 1'b0;
       vector_dispatch_id_q <= 1'b0;
+      vector_dispatch_prefetch_hint_valid_q <= 1'b0;
+      vector_dispatch_prefetch_disable_q <= 1'b0;
       vector_dispatch_prefetch_mode_q <= 2'b0;
       dispatch_insn_q <= '0;
       vector_dispatch_insn_q <= '0;
@@ -801,6 +825,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       buffer_vector_sent_q <= buffer_vector_sent_d;
       buffer_vector_slice_outstanding_q <= buffer_vector_slice_outstanding_d;
       buffer_vector_id_q <= buffer_vector_id_d;
+      buffer_vector_prefetch_hint_valid_q <= buffer_vector_prefetch_hint_valid_d;
+      buffer_vector_prefetch_disable_q <= buffer_vector_prefetch_disable_d;
       buffer_vector_prefetch_mode_q <= buffer_vector_prefetch_mode_d;
       buffer_scalar_insn_valid_q <= buffer_scalar_insn_valid_d;
       buffer_vector_insn_valid_q <= buffer_vector_insn_valid_d;
@@ -814,6 +840,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       vector_insn_valid_q <= vector_insn_valid_d;
       vector_dispatch_from_buffer_q <= vector_dispatch_from_buffer_d;
       vector_dispatch_id_q <= vector_dispatch_id_d;
+      vector_dispatch_prefetch_hint_valid_q <= vector_dispatch_prefetch_hint_valid_d;
+      vector_dispatch_prefetch_disable_q <= vector_dispatch_prefetch_disable_d;
       vector_dispatch_prefetch_mode_q <= vector_dispatch_prefetch_mode_d;
       dispatch_insn_q <= dispatch_insn_d;
       vector_dispatch_insn_q <= vector_dispatch_insn_d;

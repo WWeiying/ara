@@ -5,11 +5,11 @@
 #endif
 
 // Prefetch micro-benchmark variant: LMUL=m1, K=4 streams, lead 3
-// (1X/2X/4X = 1/2/3).  prefetch_mode chosen per the 128-beat budget fit rule
+// (1X/2X/4X/8X = 0/1/2/3).  prefetch_mode chosen per the 128-beat budget fit rule
 // K*L*VLMAX/4 <= 128 (see hardware/docs/prefetch_config.md).
 #define PF_LMUL 1
 #define PF_K    4
-#define PF_MODE 1
+#define PF_MODE 0
 #define PF_VS0  0
 #define PF_VS1  1
 #define PF_VS2  2

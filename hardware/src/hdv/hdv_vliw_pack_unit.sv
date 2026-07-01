@@ -10,6 +10,8 @@
 //   imm20[14]    : the tail EP may cross into the next logical packet
 //   imm20[15]    : loop-start marker, decoded here for software-visible format
 //   imm20[16]    : loop-end marker, decoded here for software-visible format
+//   imm20[18:17] : prefetch distance, 00=1X, 01=2X, 10=4X, 11=8X
+//   imm20[19]    : explicit prefetch disable for this hint
 //
 // The HEU interface remains NumSlots wide.  A 256-bit logical packet therefore
 // only enlarges the VLIWPU packing window; it does not widen a single EP beyond
@@ -41,7 +43,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   output addr_t [NumSlots-1:0]                      vliwpu_heu_execute_slot_pc_o,
   output hdv_inst_class_e [NumSlots-1:0]            vliwpu_heu_execute_class_o,
   output addr_t                                     vliwpu_heu_execute_pc_o,
-  // Prefetch mode from HINT header imm20[18:17]: 00=off,01=1X,10=2X,11=4X
+  output logic                                      vliwpu_prefetch_hint_valid_o,
+  output logic                                      vliwpu_prefetch_disable_o,
   output logic [1:0]                                vliwpu_prefetch_mode_o
 );
 
@@ -74,6 +77,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   hdv_inst_class_e [NumSlots-1:0] carry_class_d, carry_class_q;
   packet_slot_count_t carry_count_d, carry_count_q;
   addr_t carry_pc_d, carry_pc_q;
+  logic carry_prefetch_hint_valid_d, carry_prefetch_hint_valid_q;
+  logic carry_prefetch_disable_d, carry_prefetch_disable_q;
+  logic [1:0] carry_prefetch_mode_d, carry_prefetch_mode_q;
 
   logic [31:0] header;
   logic [31:0] incoming_header;
@@ -86,6 +92,7 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   logic header_cross_next;
   logic header_loop_start;
   logic header_loop_end;
+  logic header_prefetch_disable;
   logic [1:0] header_prefetch_mode;
 
   logic [Packet256Slots-1:0][SlotWidth-1:0] slots;
@@ -170,7 +177,8 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign header_cross_next = header_is_lui_hint & header_imm20[14];
   assign header_loop_start = header_is_lui_hint & header_imm20[15];
   assign header_loop_end   = header_is_lui_hint & header_imm20[16];
-  // Prefetch mode: imm20[18:17] — 00=off, 01=1X, 10=2X, 11=4X
+  // Prefetch hint: imm20[19]=explicit off, imm20[18:17]=00/01/10/11 -> 1X/2X/4X/8X.
+  assign header_prefetch_disable = header_is_lui_hint & header_imm20[19];
   assign header_prefetch_mode = header_is_lui_hint ? header_imm20[18:17] : 2'b00;
 
   assign active_slot_count = packet_is_256_q ? packet_slot_count_t'(Packet256Slots) :
@@ -300,9 +308,16 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
   assign vliwpu_heu_execute_slot_valid_o = execute_slot_valid;
   assign vliwpu_heu_execute_pc_o = cross_execute_valid ? carry_pc_q : packet_pc_q;
   // The EP-bundled copy of this (routed through the HEU register stage so it stays
-  // aligned with the EP) is what the addrgen actually uses; this stays the live
-  // value for the ara fallback path.
-  assign vliwpu_prefetch_mode_o = packet_hold_valid_q ? header_prefetch_mode : 2'b00;
+  // aligned with the EP) is what the addrgen actually uses.
+  assign vliwpu_prefetch_hint_valid_o = cross_execute_valid ? carry_prefetch_hint_valid_q :
+                                                              (packet_hold_valid_q &
+                                                               header_is_lui_hint);
+  assign vliwpu_prefetch_disable_o = cross_execute_valid ? carry_prefetch_disable_q :
+                                                          (packet_hold_valid_q &
+                                                           header_prefetch_disable);
+  assign vliwpu_prefetch_mode_o = cross_execute_valid ? carry_prefetch_mode_q :
+                                                       (packet_hold_valid_q ?
+                                                        header_prefetch_mode : 2'b00);
 
   always_comb begin : p_execute_pack
     int unsigned out_idx;
@@ -399,6 +414,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
     carry_class_d       = carry_class_q;
     carry_count_d       = carry_count_q;
     carry_pc_d          = carry_pc_q;
+    carry_prefetch_hint_valid_d = carry_prefetch_hint_valid_q;
+    carry_prefetch_disable_d = carry_prefetch_disable_q;
+    carry_prefetch_mode_d = carry_prefetch_mode_q;
 
     if (tail_cross_candidate) begin
       int unsigned out_idx;
@@ -426,6 +444,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
         end
       end
       carry_count_d = packet_slot_count_t'(out_idx);
+      carry_prefetch_hint_valid_d = header_is_lui_hint;
+      carry_prefetch_disable_d = header_prefetch_disable;
+      carry_prefetch_mode_d = header_prefetch_mode;
       packet_hold_valid_d = 1'b0;
       packet_is_256_d = 1'b0;
       head_slot_d = '0;
@@ -443,6 +464,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
         end
         carry_count_d = '0;
         carry_pc_d = '0;
+        carry_prefetch_hint_valid_d = 1'b0;
+        carry_prefetch_disable_d = 1'b0;
+        carry_prefetch_mode_d = 2'b00;
         if (cross_next_drained) begin
           packet_hold_valid_d = 1'b0;
           packet_is_256_d = 1'b0;
@@ -498,8 +522,14 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       carry_slot_d        = '0;
       carry_slot_is_32b_d = '0;
       carry_slot_pc_d     = '0;
+      for (int unsigned i = 0; i < NumSlots; i++) begin
+        carry_class_d[i] = HDV_INST_SCALAR;
+      end
       carry_count_d       = '0;
       carry_pc_d          = '0;
+      carry_prefetch_hint_valid_d = 1'b0;
+      carry_prefetch_disable_d = 1'b0;
+      carry_prefetch_mode_d = 2'b00;
     end
   end
 
@@ -523,6 +553,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       end
       carry_count_q       <= '0;
       carry_pc_q          <= '0;
+      carry_prefetch_hint_valid_q <= 1'b0;
+      carry_prefetch_disable_q <= 1'b0;
+      carry_prefetch_mode_q <= 2'b00;
     end else begin
       packet_hold_valid_q <= packet_hold_valid_d;
       packet_q            <= packet_d;
@@ -540,6 +573,9 @@ module hdv_vliw_pack_unit import hdv_pkg::*; #(
       carry_class_q       <= carry_class_d;
       carry_count_q       <= carry_count_d;
       carry_pc_q          <= carry_pc_d;
+      carry_prefetch_hint_valid_q <= carry_prefetch_hint_valid_d;
+      carry_prefetch_disable_q <= carry_prefetch_disable_d;
+      carry_prefetch_mode_q <= carry_prefetch_mode_d;
     end
   end
 

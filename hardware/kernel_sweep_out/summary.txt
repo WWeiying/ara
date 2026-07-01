@@ -1,16 +1,24 @@
 ########## Group 1: active 1D streaming kernels ##########
-  -> kernel_sweep_out/avl_all.csv
 ########## Group 2B: BLAS dim sweep ##########
-  -> kernel_sweep_out/blas_all.csv
 ########## Group 2C: BLAS LMUL prefetch sweep ##########
-  -> kernel_sweep_out/blas_all.csv
 ########## Group 2A: vsgemm ##########
-  -> kernel_sweep_out/blas_all.csv
 ########## Group 3: fixed/app-shaped kernels ##########
-vssyrk m1 32x32 (strided)          PASSED  cyc=84582
-vstrsm m1 32x32                    PASSED  cyc=30918
-vsspmv sparse 32x32                PASSED  cyc=4908
-fconv2d 3x3 e64 R64xC32            PASSED  cyc=19170
-jacobi2d 5pt e64 128x64            PASSED  cyc=20338
-lavamd N-body NPAR=256             PASSED  cyc=2757
-softmax ch3 x inner256             PASSED  cyc=6881
+vssyrk m1 32x32 (strided)          PASSED  cyc=85608    pf=0->0      seq_blk=82258
+vstrsm m1 32x32                    PASSED  cyc=30920    pf=0->0      seq_blk=1056
+vsspmv sparse 32x32                PASSED  cyc=4918     pf=64->62    seq_blk=4475
+fconv2d 3x3 e64 R64xC32            PASSED  cyc=18686    pf=0->0      seq_blk=16625
+jacobi2d 5pt e64 128x64            PASSED  cyc=20339    pf=0->0      seq_blk=16785
+lavamd N-body NPAR=256             PASSED  cyc=2753     pf=34->3     seq_blk=2097
+softmax ch3 x inner256             PASSED  cyc=6923     pf=0->0      seq_blk=5371
+########## Single fixed/app-shaped point: lavamd_fix ##########
+lavamd N-body NPAR=256             PASSED  cyc=2745     pf=0->0      seq_blk=2089
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single 1D AVL point: dropout_hdv AVL=1024 ##########
+==================== dropout_hdv  (single AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+1024    PASSED  592      .578    77     56      9       15->14    479
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
