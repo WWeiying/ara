@@ -1,24 +1,305 @@
 ########## Group 1: active 1D streaming kernels ##########
+==================== vsaxpy_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  27       .843    4      4       4       0->0      3
+64      PASSED  48       .750    8      8       4       2->2      14
+128     PASSED  94       .734    16     18      4       5->5      44
+256     PASSED  190      .742    32     38      4       13->13    108
+512     PASSED  382      .746    64     78      4       29->29    236
+1024    PASSED  766      .748    128    158     4       62->62    492
+2048    PASSED  1531     .747    256    318     4       130->130  1001
+4096    PASSED  3063     .747    512    638     4       262->262  2021
+==================== vvaddint32_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  28       .875    4      5       4       0->0      3
+64      PASSED  71       1.109   8      9       4       2->2      36
+128     PASSED  116      .906    16     19      5       6->6      65
+256     PASSED  213      .832    32     39      5       14->14    130
+512     PASSED  405      .791    64     79      4       30->30    258
+1024    PASSED  789      .770    128    159     4       64->64    514
+2048    PASSED  1556     .759    256    319     4       130->130  1025
+4096    PASSED  3090     .754    512    639     4       262->262  2047
+==================== vscopy_hdv  (max AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  25       .781    3      4       4       0->0      2
+64      PASSED  53       .828    6      7       4       1->1      23
+128     PASSED  107      .835    12     15      5       3->3      67
+256     PASSED  215      .839    24     31      6       7->7      155
+512     PASSED  431      .841    48     63      6       15->15    331
+1024    PASSED  864      .843    96     127     6       32->32    684
+==================== vsswap_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  28       .875    4      4       5       0->0      4
+64      PASSED  84       1.312   8      8       4       2->2      49
+128     PASSED  170      1.328   16     18      7       6->6      117
+256     PASSED  342      1.335   32     38      7       14->14    253
+512     PASSED  686      1.339   64     78      8       30->30    525
+1024    PASSED  1374     1.341   128    158     8       64->64    1069
+2048    PASSED  2742     1.338   256    318     8       130->130  2149
+4096    PASSED  5478     1.337   512    638     8       262->262  4309
+==================== vsdot_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  98       3.062   11     7       5       0->0      62
+64      PASSED  152      2.375   15     11      5       2->2      110
+128     PASSED  260      2.031   23     21      6       6->6      204
+256     PASSED  476      1.859   39     41      8       14->14    392
+512     PASSED  908      1.773   71     81      9       30->30    768
+1024    PASSED  1772     1.730   135    161     10      63->63    1520
+2048    PASSED  3500     1.708   263    321     10      128->128  3024
+4096    PASSED  6956     1.698   519    641     10      258->258  6032
+==================== vsscal_hdv  (max AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  27       .843    3      4       4       0->0      2
+64      PASSED  59       .921    6      7       4       1->1      28
+128     PASSED  125      .976    12     15      6       3->3      82
+256     PASSED  257      1.003   24     31      7       7->7      190
+512     PASSED  521      1.017   48     63      7       15->15    406
+1024    PASSED  1049     1.024   96     127     8       32->32    838
+==================== vmc_hdv  (max AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  111      3.468   34     13      7       0->0      2
+64      PASSED  111      1.734   34     13      7       0->0      2
+128     PASSED  111      .867    34     13      7       0->0      2
+256     PASSED  111      .433    34     13      7       0->0      2
+########## Group 1: active 1D streaming kernels ##########
+==================== vmc_hdv  (max AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+512     PASSED  188      .367    60     23      7       1->1      4
+1024    PASSED  397      .387    112    45      7       3->3      8
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Group 1: active 1D streaming kernels ##########
+==================== dropout_hdv  (max AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  57       1.781   14     8       6       1->0      3
+64      PASSED  57       .890    14     8       6       1->0      3
+128     PASSED  57       .445    14     8       6       1->0      3
+256     PASSED  108      .421    23     14      5       3->2      49
+512     PASSED  288      .562    41     28      8       7->6      211
+1024    PASSED  592      .578    77     56      9       15->14    479
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Group 1: active 1D streaming kernels ##########
+==================== vsdwt_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  62       1.937   17     10      5       0->0      3
+64      PASSED  105      1.640   31     17      5       1->1      6
+128     PASSED  189      1.476   59     33      5       3->3      12
+256     PASSED  357      1.394   115    65      5       7->7      24
+512     PASSED  693      1.353   227    129     5       15->15    48
+1024    PASSED  1365     1.333   451    257     5       32->32    96
+2048    PASSED  2709     1.322   899    513     5       65->65    192
+4096    PASSED  5397     1.317   1795   1025    5       131->131  384
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Group 1: active 1D streaming kernels ##########
+==================== vstencil3_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  95       2.968   29     14      6       0->0      4
+64      PASSED  166      2.593   53     25      6       3->3      8
+128     PASSED  306      2.390   101    49      6       9->9      16
+256     PASSED  586      2.289   197    97      5       21->21    32
+512     PASSED  1146     2.238   389    193     5       45->45    64
+1024    PASSED  2266     2.212   773    385     5       95->95    128
+2048    PASSED  4506     2.200   1541   769     5       193->193  256
+4096    PASSED  8986     2.193   3077   1537    5       388->383  512
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Group 1: active 1D streaming kernels ##########
+==================== vfir5_hdv  (max AVL=4096) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+32      PASSED  123      3.843   39     18      6       0->0      6
+64      PASSED  227      3.546   75     33      6       2->2      12
+128     PASSED  433      3.382   147    65      6       6->6      24
+256     PASSED  845      3.300   291    129     6       14->14    48
+512     PASSED  1669     3.259   579    257     6       30->30    96
+1024    PASSED  3317     3.239   1155   513     6       64->64    192
+2048    PASSED  6613     3.229   2307   1025    6       130->130  384
+4096    PASSED  13205    3.223   4611   2049    6       262->262  768
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
 ########## Group 2B: BLAS dim sweep ##########
+==================== vsger_hdv  (dim sweep) ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsger_hdv          16    -     PASSED  3004     11.7343   870     1       0->0      96
+vsger_hdv          32    -     PASSED  3004     2.9335    870     1       0->0      96
+vsger_hdv          64    -     PASSED  4604     1.1240    1382    1       64->64    192
+vsger_hdv          128   -     PASSED  7804     .4763     2406    1       196->196  384
+==================== vssymv_hdv  (dim sweep) ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssymv_hdv         16    -     PASSED  123      .4804     28      1       0->0      70
+vssymv_hdv         32    -     PASSED  128      .1250     28      1       0->0      75
+vssymv_hdv         64    -     PASSED  138      .0336     28      1       0->0      85
+vssymv_hdv         128   -     PASSED  162      .0098     28      1       0->0      109
+==================== vssyrk_hdv  (dim sweep) ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssyrk_hdv         16    -     PASSED  13603    53.1367   3750    2       0->0      533
+vssyrk_hdv         32    -     PASSED  85608    83.6015   14662   12      0->0      82258
+########## Single BLAS dim point: vstrsm_hdv N=16 ##########
+==================== vstrsm_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv         16    -     PASSED  10804    42.2031   2445    3       0->0      2197
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vstrsm_hdv N=32 ##########
+==================== vstrsm_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv         32    -     PASSED  41412    40.4414   9237    3       0->0      8821
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vstrsm_hdv N=64 ##########
+==================== vstrsm_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+########## Single BLAS dim point: vsgemv_hdv N=16 ##########
+==================== vsgemv_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv         16    -     PASSED  122      .4765     22      1       0->0      69
+########## Single BLAS dim point: vsgemv_hdv N=32 ##########
+==================== vsgemv_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv         32    -     PASSED  127      .1240     22      1       0->0      74
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vsgemv_hdv N=64 ##########
+==================== vsgemv_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv         64    -     PASSED  137      .0334     22      1       0->0      84
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vsgemv_hdv N=128 ##########
+==================== vsgemv_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv         128   -     PASSED  161      .0098     22      1       0->0      108
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
 ########## Group 2C: BLAS LMUL prefetch sweep ##########
+============== vssymv_hdv  m2  (LMUL prefetch sweep) ==============
+tag                m2    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssymv_hdv_m2      2     32    PASSED  116      .0566     28      1       0->0      63
+vssymv_hdv_m2      2     64    PASSED  123      .0300     28      1       0->0      70
+============== vssymv_hdv  m4  (LMUL prefetch sweep) ==============
+tag                m4    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssymv_hdv_m4      4     32    PASSED  128      .0312     28      1       0->0      75
+vssymv_hdv_m4      4     64    PASSED  138      .0168     28      1       0->0      85
+============== vssymv_hdv  m8  (LMUL prefetch sweep) ==============
+tag                m8    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssymv_hdv_m8      8     32    PASSED  160      .0195     28      1       0->0      107
+vssymv_hdv_m8      8     64    PASSED  170      .0103     28      1       0->0      117
+============== vsgemv_hdv  m2  (LMUL prefetch sweep) ==============
+tag                m2    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv_m2      2     32    PASSED  116      .0566     22      1       0->0      63
+vsgemv_hdv_m2      2     64    PASSED  123      .0300     22      1       0->0      70
+============== vsgemv_hdv  m4  (LMUL prefetch sweep) ==============
+tag                m4    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv_m4      4     32    PASSED  127      .0310     22      1       0->0      74
+vsgemv_hdv_m4      4     64    PASSED  137      .0167     22      1       0->0      84
+============== vsgemv_hdv  m8  (LMUL prefetch sweep) ==============
+tag                m8    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv_m8      8     32    PASSED  161      .0196     22      1       0->0      108
+vsgemv_hdv_m8      8     64    PASSED  171      .0104     22      1       0->0      118
+============== vstrsm_hdv  m2  (LMUL prefetch sweep) ==============
+tag                m2    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv_m2      2     32    PASSED  31017    15.1450   9237    3       0->0      1162
+vstrsm_hdv_m2      2     64    PASSED  120387   29.3913   35877   3       0->0      4266
+============== vstrsm_hdv  m4  (LMUL prefetch sweep) ==============
+tag                m4    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv_m4      4     32    PASSED  41412    10.1103   9237    3       0->0      8821
+vstrsm_hdv_m4      4     64    PASSED  162532   19.8403   35877   3       0->0      35893
+============== vstrsm_hdv  m8  (LMUL prefetch sweep) ==============
+tag                m8    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv_m8      8     32    PASSED  74980    9.1528    9237    3       0->0      18423
+########## Group 2D: BLAS GEMV/SYMV multi-row sweep ##########
+============== vssymv_hdv  m4  (multi-row sweep) ==============
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssymv_hdv_m4_2g   4     2     PASSED  277      1.0820    46      3       0->0      207
+vssymv_hdv_m4_4g   4     4     PASSED  507      .9902     82      3       0->0      403
+vssymv_hdv_m4_8g   4     8     PASSED  969      .9462     154     3       0->0      797
+============== vsgemv_hdv  m4  (multi-row sweep) ==============
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemv_hdv_m4_2g   4     2     PASSED  277      1.0820    34      3       0->0      207
+vsgemv_hdv_m4_4g   4     4     PASSED  509      .9941     58      3       0->0      405
+vsgemv_hdv_m4_8g   4     8     PASSED  975      .9521     106     3       0->0      803
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
 ########## Group 2A: vsgemm ##########
+==================== vsgemm  {lmul}x{rows}x{N} ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_1r       32    1     PASSED  31910    .9738     7527    2       1024->992 1149
+vsgemm_m1_2r       32    2     PASSED  19234    .5869     4871    2       512->496  574
+vsgemm_m1_4r       32    4     PASSED  9153     .2793     1519    5       256->248  2287
+vsgemm_m4_1r       16    1     PASSED  8241     2.0119    1974    2       0->0      272
+vsgemm_m4_1r       32    1     PASSED  31806    .9706     7526    2       0->0      1149
+vsgemm_m4_1r       64    1     PASSED  137646   .5250     29382   2       0->0      4853
+vsgemm_m4_1r       128   1     PASSED  811169   .3867     116102  2       0->0      21480
+vsgemm_m4_2r       16    2     PASSED  5425     1.3244    1416    2       0->0      144
+vsgemm_m4_2r       32    2     PASSED  20801    .6347     5384    2       0->0      574
+vsgemm_m4_2r       64    2     PASSED  81511    .3109     21000   2       0->0      2547
+vsgemm_m4_2r       128   2     PASSED  486881   .2321     82952   3       0->0      109712
+vsgemm_m4_4r       16    4     PASSED  3409     .8322     812     1       0->0      80
+vsgemm_m4_4r       32    4     PASSED  12932    .3946     3024    1       0->0      288
+vsgemm_m4_4r       64    4     PASSED  56270    .2146     11672   4       0->0      22857
+vsgemm_m4_4r       128   4     PASSED  355499   .1695     45864   12      0->0      328182
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
 ########## Group 3: fixed/app-shaped kernels ##########
 vssyrk m1 32x32 (strided)          PASSED  cyc=85608    pf=0->0      seq_blk=82258
 vstrsm m1 32x32                    PASSED  cyc=30920    pf=0->0      seq_blk=1056
 vsspmv sparse 32x32                PASSED  cyc=4918     pf=64->62    seq_blk=4475
 fconv2d 3x3 e64 R64xC32            PASSED  cyc=18686    pf=0->0      seq_blk=16625
 jacobi2d 5pt e64 128x64            PASSED  cyc=20339    pf=0->0      seq_blk=16785
-lavamd N-body NPAR=256             PASSED  cyc=2753     pf=34->3     seq_blk=2097
-softmax ch3 x inner256             PASSED  cyc=6923     pf=0->0      seq_blk=5371
-########## Single fixed/app-shaped point: lavamd_fix ##########
 lavamd N-body NPAR=256             PASSED  cyc=2745     pf=0->0      seq_blk=2089
-  -> kernel_sweep_out/kernel_all.csv
+softmax ch3 x inner256             PASSED  cyc=6923     pf=0->0      seq_blk=5371
+########## Single BLAS dim point: vssyrk_hdv N=64 ##########
+==================== vssyrk_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssyrk_hdv         64    -     PASSED  604327   147.5407  57990   12      0->0      591608
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
 
 ==== output -> kernel_sweep_out/ ====
-########## Single 1D AVL point: dropout_hdv AVL=1024 ##########
-==================== dropout_hdv  (single AVL=1024) ====================
-AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
-1024    PASSED  592      .578    77     56      9       15->14    479
-  -> kernel_sweep_out/kernel_all.csv
+########## Single BLAS dim point: vssyrk_hdv N=128 ##########
+==================== vssyrk_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssyrk_hdv         128   -     FAILED  34955    2.1334    1809    -       0->0      34444
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vstrsm_hdv N=64 ##########
+==================== vstrsm_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv         64    -     PASSED  162532   39.6806   35877   3       0->0      35893
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vstrsm_hdv N=128 ##########
+==================== vstrsm_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv         128   -     PASSED  644388   39.3303   141381  3       0->0      145333
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS LMUL point: vstrsm_hdv_m8 M=64 ##########
+============== vstrsm_hdv  m8  single LMUL point ==============
+tag                m8    rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vstrsm_hdv_m8      8     64    PASSED  294380   17.9675   35877   3       0->0      74543
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
+
+==== output -> kernel_sweep_out/ ====
+########## Single BLAS dim point: vssyrk_hdv N=128 ##########
+==================== vssyrk_hdv  single dim point ====================
+tag                size  rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vssyrk_hdv         128   -     FAILED  34955    2.1334    1809    -       0->0      34444
+  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)
 
 ==== output -> kernel_sweep_out/ ====

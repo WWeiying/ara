@@ -496,7 +496,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
 `ifdef FOR_VERIFY
   assign prefetch_hit_desc_consume =
       axi_addrgen_req_valid_q && axi_addrgen_req_ready_o &&
-      (prefetch_axi_ar_hit_cnt_q != '0);
+      axi_addrgen_req_q.is_prefetch_hit;
   assign prefetch_hit_cnt_wrap_risk =
       prefetch_axi_ar_hit_i && (prefetch_axi_ar_hit_cnt_q == 3'h7) &&
       !prefetch_hit_desc_consume;
@@ -827,7 +827,8 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     //  Read data from the Prefetch R Queue  //
     ///////////////////////////////////////////
 
-    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_req_valid_q //&& !axi_addrgen_req_valid_i
+    if ((|prefetch_axi_ar_hit_cnt_d) && axi_addrgen_req_valid_q &&
+        axi_addrgen_req_q.is_prefetch_hit //&& !axi_addrgen_req_valid_i
         && (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q)))
         && !result_queue_full) begin : prefetch_axi_r_queue_read
 
@@ -925,13 +926,21 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       // qfull freezes addrgen -> the in-place store of vsswap@4096 starves -> deadlock.
       // Mirror the demand path: accumulate drained bytes and ack one descriptor every
       // (len+1)*(AxiDataWidth/8) bytes, decrementing the hit counter once per
-      // descriptor. Single-burst loads (the common case, incl. vsdot) consume exactly
-      // once == old behavior, so they stay bit-exact.
+      // descriptor. Unaligned hit descriptors may cover more AXI bytes than the
+      // logical vector length, so the final descriptor is also consumed when the
+      // vector's logical bytes have drained.
       if (axi_addrgen_req_valid_q &&
-          ($unsigned(prefetch_burst_bytes_d) >=
-           (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8)))) begin : prefetch_burst_consume
-        prefetch_burst_bytes_d    = prefetch_burst_bytes_d
-                                  - (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8));
+          (($unsigned(prefetch_burst_bytes_d) >=
+            (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8))) ||
+           ((issue_cnt_bytes_d == '0) && (prefetch_burst_bytes_d != '0) &&
+            (prefetch_axi_r_queue0_pop || prefetch_axi_r_queue1_pop)))) begin : prefetch_burst_consume
+        if ($unsigned(prefetch_burst_bytes_d) >=
+            (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8))) begin
+          prefetch_burst_bytes_d = prefetch_burst_bytes_d
+                                 - (($unsigned(axi_addrgen_req_q.len) + 1) * (AxiDataWidth/8));
+        end else begin
+          prefetch_burst_bytes_d = '0;
+        end
         prefetch_axi_ar_hit_cnt_d = prefetch_axi_ar_hit_cnt_d - 1;
         axi_addrgen_req_ready_o   = 1'b1;
       end : prefetch_burst_consume

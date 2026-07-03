@@ -20,7 +20,8 @@
 
 // ── Variant selector: BLAS_LMUL ─────────────────────────────────────────────
 // BLAS_LMUL=1 : original m1 kernel, fixed 32x32 (VLMAX=32). default, validated.
-// BLAS_LMUL=4 : unified m4 kernel, RUNTIME dim N<=128 (a3, +HDV_A3=N), sweepable.
+// BLAS_LMUL=4 : unified m4 kernel, runtime dim N<=VLMAX (a3, +HDV_A3=N), sweepable.
+// Optional HDV a4/+HDV_A4 repeats consecutive rows; 0 keeps the legacy one-row task.
 // Only ONE compiles into .hdv_task (it becomes the entry).  Makefile: blas_lmul.
 #ifndef BLAS_LMUL
 #define BLAS_LMUL 1
@@ -35,14 +36,14 @@ extern const uint32_t _src2_size;
 // m1 (original, fixed 32x32) and m4 (unified, runtime N).
 void vssymv_f32_32x32(const float *A, const float *x, float *y,
                       const float alpha, const float beta);
-void vssymv_f32(const float *A, const float *x, float *y, int n,
+void vssymv_f32(const float *A, const float *x, float *y, int n, int groups,
                 const float alpha, const float beta);
 
 int main() {
 #if BLAS_LMUL == 1
     vssymv_f32_32x32(src1, src2, src1, 1.0f, 1.0f);
 #else
-    vssymv_f32(src1, src2, src1, 32, 1.0f, 1.0f);
+    vssymv_f32(src1, src2, src1, 32, 1, 1.0f, 1.0f);
 #endif
     return 0;
 }
@@ -54,16 +55,15 @@ int main() {
 
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void vssymv_f32(const float *A, const float *x, float *y, int total,
+void vssymv_f32(const float *A, const float *x, float *y, int n, int groups,
                 const float alpha, const float beta) {
     // ── Prefetch-enabled m{2,4,8} form (parameterized original m1 strip-mine) ──
-    // ABI: a0=A, a1=x, a2=y, a3=TOTAL elements (= rows*VLMAX), fa0=alpha, fa1=beta.
+    // ABI: a0=A, a1=x, a2=y, a3=N, a4=groups, fa0=alpha, fa1=beta.
+    // +HDV_A4=0 means one group.
     //
-    // Like the m1 .inc: the in-loop `vsetvli s0, t0` re-establishes VL each row
-    // with AVL=t0 = remaining elements (starts high, decrements by VL).  avl>=2*vl
-    // for all but the tail -> the A-row load prefetches at 1X (next row=next iter).
-    // The in-loop vsetvli is REQUIRED: hoisting it to setup makes the HDV drop the
-    // vector loads (they never reach the VLSU).  vregs LMUL-aligned (BL_G*).
+    // The in-loop `vsetvli s0, a3` re-establishes VL for each repeated group at
+    // the runtime row length N.  Per group i: A[i,:]*x, reduction, then
+    // alpha*dot + beta*y[i].  vregs are LMUL-aligned (BL_G*).
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -74,24 +74,27 @@ void vssymv_f32(const float *A, const float *x, float *y, int total,
     ".balign 16\n"
     "vssymv_hdv_task_start:\n"
 
-    // setup: config VL=VLMAX, load x; zero seed, total -> t0, A/y bases.
+    // setup: config VL=VLMAX, load x; zero seed, n/groups -> counters, A/y bases.
     "HDV_HINT 0x00\n"
     "li t3, " BL_STR(BLAS_LMUL) "*32\n"
     "vsetvli zero, t3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
     "vle32.v v0, (a1)\n"
     "HDV_HINT 0x0a\n"
     "fmv.w.x ft0, zero\n"
-    "mv t0, a3\n"
+    "mv t0, a4\n"
+    "sltiu t5, t0, 1\n"
+    "HDV_HINT 0x0a\n"
+    "add t0, t0, t5\n"
     "mv t1, a0\n"
-    "HDV_HINT 0x02\n"
     "mv t2, a2\n"
     "nop\n"
     "nop\n"
 
-    // row loop top: in-loop vsetvli (AVL=t0, high) || load A row (1X prefetch).
+    // row loop top: one dot product per group.  a3 is the row length (N<=VLMAX).
+    ".balign 16\n"
     "row_loop:\n"
     "HDV_HINT 0x02, 0, 0, 1, 0, " BL_STR(BL_PFM) "\n"
-    "vsetvli s0, t0, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
+    "vsetvli s0, a3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
     "vle32.v v" BL_STR(BL_G1) ", (t1)\n"
     "nop\n"
     // A[i,:]*x || seed (vfmul writes G2, vfmv.v.f writes G3 — no conflict).
@@ -119,11 +122,11 @@ void vssymv_f32(const float *A, const float *x, float *y, int total,
     "fmadd.s ft2, ft1, fa0, ft2\n"
     "fsw ft2, 0(t2)\n"
     "nop\n"
-    // pointer bumps (A by VLMAX*4, y by 4) + remaining-elements decrement.
+    // pointer bumps (A by VLMAX*4, y by 4) + group countdown.
     "HDV_HINT 0x0a\n"
     "addi t1, t1, " BL_STR(BLAS_LMUL) "*128\n"
     "addi t2, t2, 4\n"
-    "sub t0, t0, s0\n"
+    "addi t0, t0, -1\n"
     // branch (loop_end).
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
     "bnez t0, row_loop\n"

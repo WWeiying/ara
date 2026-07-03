@@ -12,6 +12,15 @@ cd "$(dirname "$0")"
 
 OUT="${1:-kernel_sweep_out}"
 mkdir -p "$OUT"
+if [ "${KERNEL_SWEEP_LOCK_HELD:-0}" != "1" ]; then
+  LOCK_NAME="${PWD//\//_}_${OUT//\//_}"
+  exec 9>"/tmp/ara_hdv_kernel_sweep_${LOCK_NAME}.lock"
+  if ! flock -n 9; then
+    echo "[lock] another kernel sweep/sum is using $OUT; waiting..."
+    flock 9
+  fi
+  export KERNEL_SWEEP_LOCK_HELD=1
+fi
 
 log=""
 LAST_ROW=""
@@ -138,13 +147,24 @@ while IFS= read -r log; do
       ;;
     log_blaspf_*.log)
       rest=${stem#log_blaspf_}
-      n=${rest##*_}
-      rest=${rest%_*}
-      lm=${rest##*_}
-      kernel=${rest%_*}
-      tag="${kernel}_m${lm}"
-      macc=$((n*lm*32))
-      append_log_row "blas" "$tag" "$tag" "" "$lm" "$n" "$n" 0 "$macc"
+      groups=""
+      if [[ "$rest" =~ ^(.+)_([0-9]+)_([0-9]+)_([0-9]+)g$ ]]; then
+        kernel="${BASH_REMATCH[1]}"
+        lm="${BASH_REMATCH[2]}"
+        n="${BASH_REMATCH[3]}"
+        groups="${BASH_REMATCH[4]}"
+        tag="${kernel}_m${lm}_${groups}g"
+        macc=$((n*groups))
+        append_log_row "blas" "$tag" "$tag" "" "$lm" "$groups" "$n" 0 "$macc"
+      else
+        n=${rest##*_}
+        rest=${rest%_*}
+        lm=${rest##*_}
+        kernel=${rest%_*}
+        tag="${kernel}_m${lm}"
+        macc=$((n*lm*32))
+        append_log_row "blas" "$tag" "$tag" "" "$lm" "$n" "$n" 0 "$macc"
+      fi
       ;;
     vssyrk_m1_fix.log|vstrsm_m1_fix.log|vsspmv_fix.log|fconv2d_fix.log|jacobi2d_fix.log|lavamd_fix.log|softmax_fix.log)
       append_log_row "fixed" "$stem" "$stem" "" "" "" "" 0 0

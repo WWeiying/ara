@@ -20,7 +20,8 @@
 
 // ── Variant selector: BLAS_LMUL ─────────────────────────────────────────────
 // BLAS_LMUL=1 : original m1 kernel, fixed 32x128 (VLMAX=32). default, validated.
-// BLAS_LMUL=4 : unified m4 kernel, RUNTIME dim N<=128 (a3, +HDV_A3=N), sweepable.
+// BLAS_LMUL=4 : unified m4 kernel, runtime dim N<=VLMAX (a3, +HDV_A3=N), sweepable.
+// Optional HDV a4/+HDV_A4 repeats consecutive rows; 0 keeps the legacy one-row task.
 #ifndef BLAS_LMUL
 #define BLAS_LMUL 1
 #endif
@@ -33,13 +34,13 @@ extern const uint32_t _src2_size;
 
 // m1 (original, fixed 32x128) and m4 (unified, runtime N).
 void gemv_f32_32x128(const float *matrix, const float *vector, float *dest);
-void gemv_f32(const float *A, const float *x, float *y, int n);
+void gemv_f32(const float *A, const float *x, float *y, int n, int groups);
 
 int main() {
 #if BLAS_LMUL == 1
     gemv_f32_32x128(src1, src2, src1);
 #else
-    gemv_f32(src1, src2, src1, 32);
+    gemv_f32(src1, src2, src1, 32, 1);
 #endif
     return 0;
 }
@@ -50,14 +51,13 @@ int main() {
 #include "blas_lmul.h"
 __attribute__((naked, aligned(16), section(".hdv_task"),
                target("arch=rv64gcv_zfh_zvfh")))
-void gemv_f32(const float *A, const float *x, float *y, int total) {
+void gemv_f32(const float *A, const float *x, float *y, int n, int groups) {
     // ── Prefetch-enabled m{2,4,8} form (parameterized original m1 strip-mine) ──
-    // ABI: a0=A, a1=x, a2=y, a3=TOTAL elements (= rows*VLMAX).  +HDV_A3=TOTAL.
+    // ABI: a0=A, a1=x, a2=y, a3=N, a4=groups.  +HDV_A4=0 means one group.
     //
-    // In-loop `vsetvli s0, t0` (AVL=t0 = remaining elements, decrementing) keeps
-    // avl>=2*vl so the A-row load prefetches at 1X.  The in-loop vsetvli is
-    // REQUIRED (hoisting it makes the HDV drop the loads).  Per row i: A[i,:]*x
-    // then a tree reduction to scalar y[i].  vregs LMUL-aligned (BL_G*).
+    // In-loop `vsetvli s0, a3` keeps each repeated group at the runtime row
+    // length N.  Per group i: A[i,:]*x then a tree reduction to scalar y[i].
+    // vregs are LMUL-aligned (BL_G*).
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -68,24 +68,27 @@ void gemv_f32(const float *A, const float *x, float *y, int total) {
     ".balign 16\n"
     "vsgemv_hdv_task_start:\n"
 
-    // setup: config VL=VLMAX, load x; zero seed, total -> t0, A/y bases.
+    // setup: config VL=VLMAX, load x; zero seed, n/groups -> counters, A/y bases.
     "HDV_HINT 0x00\n"
     "li t3, " BL_STR(BLAS_LMUL) "*32\n"
     "vsetvli zero, t3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
     "vle32.v v0, (a1)\n"
     "HDV_HINT 0x0a\n"
     "fmv.w.x ft0, zero\n"
-    "mv t0, a3\n"
+    "mv t0, a4\n"
+    "sltiu t5, t0, 1\n"
+    "HDV_HINT 0x0a\n"
+    "add t0, t0, t5\n"
     "mv t1, a0\n"
-    "HDV_HINT 0x02\n"
     "mv t2, a2\n"
     "nop\n"
     "nop\n"
 
-    // row loop top: in-loop vsetvli (AVL=t0, high) || load A row (1X prefetch).
+    // row loop top: one dot product per group.  a3 is the row length (N<=VLMAX).
+    ".balign 16\n"
     "row_loop:\n"
     "HDV_HINT 0x02, 0, 0, 1, 0, " BL_STR(BL_PFM) "\n"
-    "vsetvli s0, t0, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
+    "vsetvli s0, a3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
     "vle32.v v" BL_STR(BL_G1) ", (t1)\n"
     "nop\n"
     // A[i,:]*x || seed (vfmul writes G2, vfmv.v.f writes G3 — no conflict).
@@ -103,11 +106,11 @@ void gemv_f32(const float *A, const float *x, float *y, int total) {
     "vfmv.f.s ft1, v" BL_STR(BL_G3) "\n"
     "fsw ft1, 0(t2)\n"
     "nop\n"
-    // pointer bumps (A by VLMAX*4, y by 4) + remaining-elements decrement.
+    // pointer bumps (A by VLMAX*4, y by 4) + group countdown.
     "HDV_HINT 0x0a\n"
     "addi t1, t1, " BL_STR(BLAS_LMUL) "*128\n"
     "addi t2, t2, 4\n"
-    "sub t0, t0, s0\n"
+    "addi t0, t0, -1\n"
     // branch (loop_end).
     "HDV_HINT 0x00, 0, 0, 0, 1\n"
     "bnez t0, row_loop\n"

@@ -1007,6 +1007,7 @@ typedef struct packed {
     axi_pkg::len_t len;
     logic is_load;
     logic is_exception;
+    logic is_prefetch_hit;
   } addrgen_axi_req_t;
 
   //////////////////////////

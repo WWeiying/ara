@@ -2,7 +2,7 @@
 # ============================================================================
 # Unified HDV kernel sweep.
 #
-#   ./kernel_sweep.sh [--skip-long] [all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|vsgemm|fixed|long] [args]
+#   ./kernel_sweep.sh [--skip-long] [all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|blas_groups|vsgemm|fixed|long] [args]
 #
 # Options:
 #   --skip-long     skip sweep points historically taking more than 10 minutes
@@ -29,13 +29,16 @@ WD=400000
 OUT=kernel_sweep_out
 
 usage() {
-  echo "usage: $0 [--skip-long] [--append] {all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|vsgemm|fixed|long} [args]"
+  echo "usage: $0 [--skip-long] [--append] {all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|blas_groups|vsgemm|fixed|long} [args]"
   echo "       KERNEL_SWEEP_SKIP_LONG=1 $0 all"
   echo "       $0 point vvaddint32_hdv 2048"
   echo "       $0 point lavamd_fix"
   echo "       $0 point vsgemm_m4_1r 128"
   echo "       $0 point vssyrk_hdv 128"
   echo "       $0 point vstrsm_hdv_m8 64"
+  echo "       $0 point vsgemv_hdv_m4 128 8"
+  echo "       $0 point vssymv_hdv_m4 128 8"
+  echo "       $0 blas_groups \"128\" \"2 4 8\" \"4\""
   echo "       $0 long"
 }
 
@@ -78,8 +81,14 @@ if [ "$MODE" = "long" ] || [ "$MODE" = "point" ]; then
 fi
 
 mkdir -p "$OUT"
-if [ "$APPEND_OUT" != "1" ]; then
-  find "$OUT" -maxdepth 1 -type f \( -name '*.csv' -o -name '*.log' -o -name 'summary.txt' \) -delete
+if [ "${KERNEL_SWEEP_LOCK_HELD:-0}" != "1" ]; then
+  LOCK_NAME="${PWD//\//_}_${OUT//\//_}"
+  exec 9>"/tmp/ara_hdv_kernel_sweep_${LOCK_NAME}.lock"
+  if ! flock -n 9; then
+    echo "[lock] another kernel sweep/sum is using $OUT; waiting..."
+    flock 9
+  fi
+  export KERNEL_SWEEP_LOCK_HELD=1
 fi
 SUMMARY="$OUT/summary.txt"
 if [ "$APPEND_OUT" = "1" ]; then
@@ -109,6 +118,23 @@ addr_of() {
   hex=$(grep -E "[0-9a-f]+ [A-Za-z] $2\$" "$APPS/$1/$1.dump" 2>/dev/null | head -1 | awk '{print $1}')
   [ -z "$hex" ] && { echo ""; return 1; }
   printf '%d' "0x$hex"
+}
+
+one_d_ptr_plusargs() {
+  local k=$1 s1 s2
+
+  case "$k" in
+    vstencil3_hdv)
+      s1=$(addr_of "$k" src1)
+      s2=$(addr_of "$k" src2)
+      [ -n "$s1" ] && [ -n "$s2" ] && printf '+HDV_A1=%d +HDV_A2=%d ' "$((s1 + 4))" "$s2"
+      ;;
+    vfir5_hdv)
+      s1=$(addr_of "$k" src1)
+      s2=$(addr_of "$k" src2)
+      [ -n "$s1" ] && [ -n "$s2" ] && printf '+HDV_A1=%d +HDV_A2=%d ' "$s1" "$s2"
+      ;;
+  esac
 }
 
 note() {
@@ -197,19 +223,22 @@ AVL_ROWHDR="$KERNEL_ROWHDR"
 
 run_1d_sweep() {
   local avls="${1:-32 64 128 256 512 1024 2048 4096}"
-  local kernels="${2:-vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv vsdwt_hdv}"
+  local kernels="${2:-vsaxpy_hdv vvaddint32_hdv vscopy_hdv vsswap_hdv vsdot_hdv vsscal_hdv vmc_hdv dropout_hdv vsdwt_hdv vstencil3_hdv vfir5_hdv}"
 
   declare -A maxavl=(
-    [vsaxpy_hdv]=1024   [vscopy_hdv]=1024   [vsscal_hdv]=1024
-    [vsswap_hdv]=1024   [vsdot_hdv]=1024    [vvaddint32_hdv]=4096
+    [vsaxpy_hdv]=4096   [vscopy_hdv]=1024   [vsscal_hdv]=1024
+    [vsswap_hdv]=4096   [vsdot_hdv]=4096    [vvaddint32_hdv]=4096
     [vmc_hdv]=1024      [dropout_hdv]=1024  [vsdwt_hdv]=4096
+    [vstencil3_hdv]=4096 [vfir5_hdv]=4096
   )
   declare -A avlreg=( [vsdot_hdv]=A2 [vsdwt_hdv]=A2 )
   declare -A extra_plusargs=()
+  extra_plusargs[vstencil3_hdv]="+HDV_PACKET_WATCHDOG=20000"
+  extra_plusargs[vfir5_hdv]="+HDV_PACKET_WATCHDOG=20000"
 
   note "########## Group 1: active 1D streaming kernels ##########"
 
-  local k n csv max reg row
+  local k n csv max reg row ptr_pa
   for k in $kernels; do
     case "$k" in
       fdotp_hdv|vspf_*_hdv)
@@ -230,12 +259,13 @@ run_1d_sweep() {
       continue
     fi
 
+    ptr_pa=$(one_d_ptr_plusargs "$k")
     for n in $avls; do
       if [ "$n" -gt "$max" ]; then continue; fi
       log="$OUT/log_avl_${k}_${n}.log"
       reg=${avlreg[$k]:-A0}
       timeout 3600 make sim app="$k" \
-        hdv_plusargs="+HDV_${reg}=${n} ${extra_plusargs[$k]:-} +HDV_EXPECTED_EP=8000000" \
+        hdv_plusargs="+HDV_${reg}=${n} $ptr_pa${extra_plusargs[$k]:-} +HDV_EXPECTED_EP=8000000" \
         > "$log" 2>&1
 
       write_kernel_csv_row "avl" "$k" "" "$n" "" "" "" "$n" 0 "$csv"
@@ -257,7 +287,7 @@ run_1d_sweep() {
 
 run_1d_point() {
   local k=$1 n=${2:-1024}
-  local csv="$OUT/${k}.csv" reg row r tc eps cpe pk acp pfa pfh sblk
+  local csv="$OUT/${k}.csv" reg row r tc eps cpe pk acp pfa pfh sblk extra_pa="" ptr_pa=""
 
   case "$k" in
     fdotp_hdv|vspf_*_hdv)
@@ -267,6 +297,11 @@ run_1d_point() {
   esac
 
   declare -A avlreg=( [vsdot_hdv]=A2 [vsdwt_hdv]=A2 )
+  case "$k" in
+    vstencil3_hdv|vfir5_hdv)
+      extra_pa="+HDV_PACKET_WATCHDOG=20000"
+      ;;
+  esac
 
   note "########## Single 1D AVL point: $k AVL=$n ##########"
   echo "$AVL_ROWHDR" > "$csv"
@@ -282,8 +317,9 @@ run_1d_point() {
 
   log="$OUT/log_avl_${k}_${n}.log"
   reg=${avlreg[$k]:-A0}
+  ptr_pa=$(one_d_ptr_plusargs "$k")
   timeout 3600 make sim app="$k" \
-    hdv_plusargs="+HDV_${reg}=${n} +HDV_EXPECTED_EP=8000000" \
+    hdv_plusargs="+HDV_${reg}=${n} $ptr_pa$extra_pa +HDV_EXPECTED_EP=8000000" \
     > "$log" 2>&1
 
   write_kernel_csv_row "avl" "$k" "" "$n" "" "" "" "$n" 0 "$csv"
@@ -383,7 +419,7 @@ sweep_vsgemm() {
         if { [ "$lmul" = "4" ] && [ "$rows" != "4" ] && [ "$n" -ge 64 ]; } ||
            { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; }; then
           timeout 3600 make sim app=vsgemm_hdv \
-            hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=800000" \
+            hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=1000000" \
             > "$log" 2>&1
         else
           timeout 600 make sim app=vsgemm_hdv \
@@ -495,10 +531,52 @@ sweep_blas_pf() {
   done
 }
 
+sweep_blas_groups() {
+  local ns="${1:-128}" groups_list="${2:-2 4 8}" lms="${3:-4}"
+  note "########## Group 2D: BLAS GEMV/SYMV multi-row sweep ##########"
+
+  local k lm n groups s1 s2 yoff ptrs tag log macc vlmax
+  for k in vssymv_hdv vsgemv_hdv; do
+    for lm in $lms; do
+      rm -f "$APPS/$k/main.c.o"
+      ( cd "$APPS" && timeout 600 make bin/$k blas_lmul=$lm ) > "$OUT/build_blasgrp_${k}_${lm}.log" 2>&1
+      s1=$(addr_of "$k" src1); s2=$(addr_of "$k" src2)
+      if [ -z "$s1" ]; then
+        echo "  $k m$lm: BUILD/ADDR FAIL"
+        continue
+      fi
+      yoff=$((lm*128))
+      vlmax=$((lm*32))
+      echo "============== $k  m$lm  (multi-row sweep) =============="
+      printf "%-18s %-5s %-5s %-7s %-8s %-9s %-7s %-7s %-9s %s\n" \
+             "tag" "N" "rows" "result" "cycles" "cyc/macc" "EPs" "vq_max" "pf_ar->hit" "seq_blk"
+      for n in $ns; do
+        if [ "$n" -gt "$vlmax" ]; then
+          note "[skip] ${k}_m${lm} N=$n rows=* skipped: N exceeds VLMAX=$vlmax"
+          continue
+        fi
+        for groups in $groups_list; do
+          case "$k" in
+            vssymv_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_A4=$groups" ;;
+            vsgemv_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$((s2+yoff)) +HDV_A3=$n +HDV_A4=$groups" ;;
+          esac
+          tag="${k}_m${lm}_${groups}g"
+          log="$OUT/log_blaspf_${k}_${lm}_${n}_${groups}g.log"
+          timeout 600 make sim app=$k \
+            hdv_plusargs="$ptrs +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
+          macc=$((n*groups))
+          parse_blas_perf "$tag" "$lm" "$groups" "$n" "$macc"
+        done
+      done
+    done
+  done
+}
+
 sweep_blas_all() {
   local ns="${1:-16 32 64 128}"
   sweep_blas_dim "$ns"
   sweep_blas_pf "32 64"
+  sweep_blas_groups "128" "2 4 8" "4"
   sweep_vsgemm "$ns"
 }
 
@@ -524,7 +602,7 @@ run_long_sweep() {
     tag="vsgemm_m${lmul}_${rows}r"
     log="$OUT/log_blas_${tag}_${n}.log"
     timeout 3600 make sim app=vsgemm_hdv \
-      hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=800000" \
+      hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=1000000" \
       > "$log" 2>&1
     macc=$((n*n*n))
     parse_blas_perf "$tag" "$n" "$rows" "$n" "$macc"
@@ -591,6 +669,7 @@ run_onepoint_sweep() {
   run_1d_sweep "1024"
   sweep_blas_dim "32"
   sweep_blas_pf "32"
+  sweep_blas_groups "128" "2" "4"
   sweep_vsgemm "32"
   run_fixed_sweep
 }
@@ -736,8 +815,8 @@ run_blas_dim_point() {
 }
 
 run_blas_pf_point() {
-  local k=$1 lm=$2 M=${3:-32}
-  local s1 s2 yoff ptrs tag
+  local k=$1 lm=$2 M=${3:-32} groups=${4:-1}
+  local s1 s2 yoff ptrs tag log_suffix rows macc
 
   note "########## Single BLAS LMUL point: ${k}_m${lm} M=$M ##########"
   rm -f "$APPS/$k/main.c.o"
@@ -754,12 +833,24 @@ run_blas_pf_point() {
     vstrsm_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$M" ;;
     *) return 1 ;;
   esac
+  if { [ "$k" = "vssymv_hdv" ] || [ "$k" = "vsgemv_hdv" ]; } && [ "$groups" != "1" ]; then
+    ptrs="$ptrs +HDV_A4=$groups"
+  fi
 
   tag="${k}_m${lm}"
+  log_suffix="${k}_${lm}_${M}"
+  rows="$M"
+  macc=$((M*lm*32))
+  if { [ "$k" = "vssymv_hdv" ] || [ "$k" = "vsgemv_hdv" ]; } && [ "$groups" != "1" ]; then
+    tag="${tag}_${groups}g"
+    log_suffix="${log_suffix}_${groups}g"
+    rows="$groups"
+    macc=$((M*groups))
+  fi
   echo "============== $k  m$lm  single LMUL point =============="
   printf "%-18s %-5s %-5s %-7s %-8s %-9s %-7s %-7s %-9s %s\n" \
          "tag" "m$lm" "rows" "result" "cycles" "cyc/macc" "EPs" "vq_max" "pf_ar->hit" "seq_blk"
-  log="$OUT/log_blaspf_${k}_${lm}_${M}.log"
+  log="$OUT/log_blaspf_${log_suffix}.log"
   if [ "$k" = "vstrsm_hdv" ] &&
      { { [ "$lm" = "2" ] && [ "$M" -ge 64 ]; } ||
        { [ "$lm" = "4" ] && [ "$M" -ge 64 ]; } ||
@@ -770,7 +861,7 @@ run_blas_pf_point() {
     timeout 600 make sim app=$k \
       hdv_plusargs="$ptrs +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
   fi
-  parse_blas_perf "$tag" "$lm" "$M" "$M" "$((M*lm*32))"
+  parse_blas_perf "$tag" "$lm" "$rows" "$M" "$macc"
 }
 
 run_vsgemm_point() {
@@ -794,7 +885,7 @@ run_vsgemm_point() {
   if { [ "$lmul" = "4" ] && [ "$rows" != "4" ] && [ "$n" -ge 64 ]; } ||
      { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; }; then
     timeout 3600 make sim app=vsgemm_hdv \
-      hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=800000" \
+      hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=1000000" \
       > "$log" 2>&1
   else
     timeout 600 make sim app=vsgemm_hdv \
@@ -813,7 +904,7 @@ run_point() {
   fi
 
   case "$name" in
-    vsaxpy_hdv|vvaddint32_hdv|vscopy_hdv|vsswap_hdv|vsdot_hdv|vsscal_hdv|vmc_hdv|dropout_hdv|vsdwt_hdv)
+    vsaxpy_hdv|vvaddint32_hdv|vscopy_hdv|vsswap_hdv|vsdot_hdv|vsscal_hdv|vmc_hdv|dropout_hdv|vsdwt_hdv|vstencil3_hdv|vfir5_hdv)
       run_1d_point "$name" "${a:-1024}"
       return
       ;;
@@ -823,7 +914,7 @@ run_point() {
       ;;
     vssymv_hdv_m[248]|vsgemv_hdv_m[248]|vstrsm_hdv_m[248])
       local base=${name%_m[248]} lm=${name##*_m}
-      run_blas_pf_point "$base" "$lm" "${a:-32}"
+      run_blas_pf_point "$base" "$lm" "${a:-32}" "${b:-1}"
       return
       ;;
     vsgemm_m*_?r)
@@ -849,6 +940,8 @@ run_point() {
   echo "  $0 point vsgemm_m4_1r 128"
   echo "  $0 point vssyrk_hdv 128"
   echo "  $0 point vstrsm_hdv_m8 64"
+  echo "  $0 point vsgemv_hdv_m4 128 8"
+  echo "  $0 point vssymv_hdv_m4 128 8"
   return 1
 }
 
@@ -883,6 +976,9 @@ case "$MODE" in
   blas_pf)
     sweep_blas_pf "${ARG1:-32 64}"
     ;;
+  blas_groups)
+    sweep_blas_groups "${ARG1:-128}" "${ARG2:-2 4 8}" "${ARG3:-4}"
+    ;;
   vsgemm)
     sweep_vsgemm "${ARG1:-16 32 64 128}"
     ;;
@@ -893,12 +989,16 @@ case "$MODE" in
     run_long_sweep
     ;;
   *)
-    echo "usage: $0 {all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|vsgemm|fixed|long} [args]"
+    echo "usage: $0 {all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|blas_groups|vsgemm|fixed|long} [args]"
     exit 1
     ;;
 esac
 
-./kernel_sweep_sum.sh "$OUT"
+if [ "${KERNEL_SWEEP_NO_SUM:-0}" = "1" ]; then
+  echo "  -> summary skipped (KERNEL_SWEEP_NO_SUM=1)"
+else
+  ./kernel_sweep_sum.sh "$OUT"
+fi
 
 echo ""
 echo "==== output -> $OUT/ ===="
