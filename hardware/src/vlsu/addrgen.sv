@@ -179,8 +179,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // demand, then pauses to yield the single port to the store. ~1.5 iterations
   // of a 2-stream e32/m1 loop (2*8 beats) -> enough to stay one iteration ahead
   // (100% hit) yet shallow enough that the store still gets its port turns.
-  localparam int unsigned PrefetchLeadBeats = 24;
+  localparam int unsigned PrefetchLeadBeats = 32;
   localparam int unsigned PrefetchBadThresh = 4;
+  // Keep a few completed/in-flight prefetch address slots free.  The data-buffer
+  // credit below bounds beats, but dense multi-stream kernels can fill the
+  // lookup FIFO with many small bursts before the beat budget is exhausted.
+  // Once lookup is full, completed prefetches cannot retire from the ROB, so a
+  // stream-break flush can wait forever for "in-flight" work that already landed.
+  localparam int unsigned PrefetchLookupEntryReserve = 1;
 
 
   // In-flight prefetch beats: issued (ROB-pushed) but not yet landed in the
@@ -189,6 +195,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [9:0] prefetch_inflight_beats_d, prefetch_inflight_beats_q;
   logic [3:0] prefetch_bad_cnt_d, prefetch_bad_cnt_q;
   logic       prefetch_adaptive_throttle;
+  logic [$clog2((2 * VaddrgenInsnQueueDepth) + 1)-1:0] prefetch_lookup_entry_use;
+  logic       prefetch_lookup_entry_credit;
   assign prefetch_adaptive_throttle = (prefetch_bad_cnt_q >= PrefetchBadThresh[3:0]);
 
   localparam unsigned Log2NrLanes = $clog2(NrLanes);
@@ -708,6 +716,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .vld_o     (prefetch_axi_addr_lookup_second_vld  ),
     .usage_o   (/* Unused */                         )
   );
+
+  always_comb begin
+    prefetch_lookup_entry_use = '0;
+    for (int unsigned i = 0; i < VaddrgenInsnQueueDepth; i++) begin
+      prefetch_lookup_entry_use += prefetch_axi_addr_lookup_fifo_vld[i];
+      prefetch_lookup_entry_use += prefetch_axi_ar_rob_vld[i];
+    end
+  end
+
+  assign prefetch_lookup_entry_credit =
+      ($unsigned(prefetch_lookup_entry_use) <=
+       $unsigned(VaddrgenInsnQueueDepth - PrefetchLookupEntryReserve));
 
   //////////////////////////
   //  Indexed Memory Ops  //
@@ -1388,6 +1408,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                                       $unsigned(prefetch_required_avl));
               if (prefetch_avl_enough &&
                   prefetch_axi_ar_queue_not_full &&
+                  prefetch_lookup_entry_credit &&
                   prefetch_en && !prefetch_adaptive_throttle && !flush_pending_q &&
                   !curr_req_page_crossed) begin : first_prefetch
                 // Prefetch the same unit-stride stream in a future strip-mined
@@ -1674,6 +1695,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         !prefetch_axi_ar_rob_full &&
         !prefetch_axi_addr_lookup_fifo_full &&
         !prefetch_axi_addr_lookup_second_full &&
+        prefetch_lookup_entry_credit &&
         !prefetch_pending_d
         && prefetch_en && !prefetch_adaptive_throttle && !flush_pending_q
         // Credit: only issue if the buffer can still absorb this burst on top of
@@ -1827,7 +1849,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [63:0] cnt_pf_second_issued; // second (page-cross) prefetch issued
   logic [63:0] cnt_demand_rob_block; // demand AR blocked by ROB match (events)
   logic        demand_rob_blocked_q;  // debounce: demand was ROB-blocked last cycle
-  localparam int unsigned DemandPrefetchWaitWatchdogCycles = 4096;
+  localparam int unsigned DemandPrefetchWaitWatchdogCycles = 20000;
   localparam int unsigned DemandPrefetchWaitCounterWidth =
       $clog2(DemandPrefetchWaitWatchdogCycles + 1);
   logic [DemandPrefetchWaitCounterWidth-1:0] demand_pf_wait_cnt_q;

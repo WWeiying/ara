@@ -43,10 +43,10 @@ __attribute__((naked, aligned(16), section(".hdv_task"),
 void vscopy(int n, const float *src, float *dst) {
     // ABI on entry: a0 = n, a1 = src, a2 = dst.
     //
-    // HDV packetisation (4 EPs per loop iteration):
-    //   EP0 = vsetvli || vle(v0,src)              (sub tail-carries via cross=1)
-    //   EP1 = sub || slli || add a1 || vse(dst)   (store snapshots current dst)
-    //   EP2 = add a2                              (dst pointer bump)
+    // HDV packetisation (256b loop body):
+    //   EP0 = vsetvli || vle(v0,src)
+    //   EP1 = sub || slli || add a1
+    //   EP2 = vse(dst) || add a2
     //   EP3 = bnez
     // On loop exit the fall-through ret terminates the HDV task.
     __asm__ volatile (
@@ -60,25 +60,22 @@ void vscopy(int n, const float *src, float *dst) {
     "vscopy_hdv_task_start:\n"
 
     "loop:\n"
-    "HDV_HINT 0x02, 0, 1, 1, 0\n"
+    "HDV_HINT 0x8a2, 1, 0, 1, 0\n"
     "vsetvli t0, a0, e32, m1, ta, ma\n"
     "vle32.v v0, (a1)\n"
     "sub a0, a0, t0\n"
-
-    // EP1: carried sub || slli || add a1 || vse.  vse reads the current dst base
-    // a2; the increment of a2 is deferred to EP2, so the store sees the right
-    // address.  slli writes the byte stride t1 that add a1 consumes in slot order.
-    "HDV_HINT 0x0a\n"
     "slli t1, t0, 2\n"
     "add a1, a1, t1\n"
     "vse32.v v0, (a2)\n"
+    "add a2, a2, t1\n"
 
     "HDV_HINT 0x1f, 0, 0, 0, 1\n"
-    "add a2, a2, t1\n"
     "bnez a0, loop\n"
-    "ret\n"
+    "nop\n"
+    "nop\n"
 
     "HDV_HINT\n"
+    "ret\n"
     "nop\n"
     "nop\n"
     ".purgem HDV_HINT\n"

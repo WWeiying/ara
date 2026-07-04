@@ -49,14 +49,19 @@ void dwt_haar_hdv(float *even, float *odd, int n) {
     // unpredictably).
     //
     // Loop packetisation (per iteration):
-    //   EP0 = vsetvli || vle(v0,even) || vle(v1,odd)
-    //   EP1 = vfadd(v2) || vfsub(v3) || vfmul(v2,ft0)
-    //   EP2 = vfmul(v3,ft0) || vse(v2->even) || vse(v3->odd)
-    //   EP3 = slli || add even || add odd
-    //   EP4 = sub
-    //   EP5 = bnez
-    // Loads precede the in-place stores via EP order; the byte stride t2 produced
-    // in EP3 is consumed by the pointer bumps in slot order.
+    //   256b packet 0:
+    //     EP0 = vsetvli || vle(even) || vle(odd)
+    //     EP1 = vfadd || vfsub || vfmul(low)
+    //     EP2 = vfmul(high)
+    //   256b packet 1:
+    //     EP3 = vse(low) || vse(high)
+    //     EP4 = slli || add even || add odd
+    //     EP5 = sub
+    //   loop-end packet:
+    //     EP6 = bnez
+    // Loads precede the in-place stores via EP order; the byte stride t2 is
+    // produced before the pointer bumps in the same EP, and the count decrement
+    // is still isolated from the branch by an EP boundary.
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -81,35 +86,22 @@ void dwt_haar_hdv(float *even, float *odd, int n) {
 
     // loop body
     "dwt_loop:\n"
-    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "HDV_HINT 0x28a, 1, 0, 1, 0\n"
     "vsetvli t1, t0, e32, m1, ta, ma\n"
     "vle32.v v0, (a0)\n"
-    "HDV_HINT 0x00\n"
     "vle32.v v1, (a1)\n"
-
-    "HDV_HINT 0x0a\n"
     "vfadd.vv v2, v0, v1\n"
     "vfsub.vv v3, v0, v1\n"
     "vfmul.vf v2, v2, ft0\n"
-
-    "HDV_HINT 0x02\n"
     "vfmul.vf v3, v3, ft0\n"
-    "vse32.v v2, (a0)\n"
-    "HDV_HINT 0x00\n"
-    "vse32.v v3, (a1)\n"
-    "nop\n"
-    "nop\n"
 
-    "HDV_HINT 0x0a\n"
+    "HDV_HINT 0x8a2, 1, 0, 0, 0\n"
+    "vse32.v v2, (a0)\n"
+    "vse32.v v3, (a1)\n"
     "slli t2, t1, 2\n"
     "add a0, a0, t2\n"
     "add a1, a1, t2\n"
-
-    // count decrement in its OWN EP so its writeback completes before the
-    // branch reads t0 (avoids a sub->bnez RAW hazard inside one EP).
-    "HDV_HINT 0x0a\n"
     "sub t0, t0, t1\n"
-    "nop\n"
     "nop\n"
 
     // loop_end EP: the back-edge branch is the LAST instruction in the loop.
