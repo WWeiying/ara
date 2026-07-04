@@ -209,3 +209,36 @@ softmax ch3 x inner256             PASSED  cyc=6923     pf=0->0      seq_blk=537
   -> kernel_sweep_out/kernel_all.csv
 
 ==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  9153     .0349     1519    5       256->248  2287
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  9153     .0043     1519    5       256->248  2287
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  9153     .2793     1519    5       256->248  2287
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  9153     .2793     1519    5       256->248  2287
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+  vsgemm_m1_4r: invalid N=64; m1 vsgemm is fixed 32x32x32. Use vsgemm_m4_4r 64 for runtime N.
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+  vsgemm_m1_4r: invalid N=64; m1 vsgemm is fixed 32x32x32. Use vsgemm_m4_4r 64 for runtime N.

@@ -141,7 +141,11 @@ while IFS= read -r log; do
       macc=$((n*n))
       if [[ "$tag" =~ ^vsgemm_m([0-9]+)_([0-9]+)r$ ]]; then
         rows="${BASH_REMATCH[2]}"
-        macc=$((n*n*n))
+        if [ "${BASH_REMATCH[1]}" = "1" ]; then
+          macc=32768
+        else
+          macc=$((n*n*n))
+        fi
       fi
       append_log_row "blas" "$tag" "$tag" "" "$size" "$rows" "$n" 0 "$macc"
       ;;

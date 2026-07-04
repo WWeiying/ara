@@ -426,7 +426,11 @@ sweep_vsgemm() {
             hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000" \
             > "$log" 2>&1
         fi
-        macc=$((n*n*n))
+        if [ "$lmul" = "1" ]; then
+          macc=32768
+        else
+          macc=$((n*n*n))
+        fi
         parse_blas_perf "$tag" "$n" "$rows" "$n" "$macc"
       done
     done
@@ -868,6 +872,11 @@ run_vsgemm_point() {
   local lmul=$1 rows=$2 n=${3:-32}
   local tag="vsgemm_m${lmul}_${rows}r" s1 s2 macc
 
+  if [ "$lmul" = "1" ] && [ "$n" != "32" ]; then
+    echo "  $tag: invalid N=$n; m1 vsgemm is fixed 32x32x32. Use vsgemm_m4_${rows}r $n for runtime N."
+    return 1
+  fi
+
   note "########## Single vsgemm point: $tag N=$n ##########"
   rm -f "$APPS/vsgemm_hdv/main.c.o"
   ( cd "$APPS" && timeout 600 make bin/vsgemm_hdv gemm_lmul=$lmul gemm_rows=$rows ) \
@@ -892,7 +901,11 @@ run_vsgemm_point() {
       hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000" \
       > "$log" 2>&1
   fi
-  macc=$((n*n*n))
+  if [ "$lmul" = "1" ]; then
+    macc=32768
+  else
+    macc=$((n*n*n))
+  fi
   parse_blas_perf "$tag" "$n" "$rows" "$n" "$macc"
 }
 
@@ -955,7 +968,7 @@ case "$MODE" in
     run_onepoint_sweep
     ;;
   point)
-    run_point "$ARG1" "$ARG2" "$ARG3" "$ARG4"
+    run_point "$ARG1" "$ARG2" "$ARG3" "$ARG4" || exit 1
     ;;
   1d)
     run_1d_sweep "${ARG1:-32 64 128 256 512 1024 2048 4096}"
