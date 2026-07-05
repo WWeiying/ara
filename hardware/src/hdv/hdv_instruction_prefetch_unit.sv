@@ -159,6 +159,7 @@ module hdv_instruction_prefetch_unit #(
   addr_t task_desc_d,  task_desc_q;
 
   logic fill_req_done_d, fill_req_done_q;
+  logic fill_cap_done_d, fill_cap_done_q;
   logic bg_fill_done_d,  bg_fill_done_q; // background fill of fill_buf is complete
   logic auto_loop_lock_d, auto_loop_lock_q;
   logic loop_wait_d,      loop_wait_q;
@@ -177,6 +178,8 @@ module hdv_instruction_prefetch_unit #(
   logic take_packet;
   logic active_packet_valid;
   logic bg_stall;  // hold at last slot until background fill completes
+  logic bg_fill_ready;
+  logic fill_first_valid;
   logic loop_blocks_bg_fetch;
   logic redirect_aligned;
   logic redirect_in_active;
@@ -255,6 +258,16 @@ module hdv_instruction_prefetch_unit #(
 
   assign active_entry_valid = active_buf_q ? buffer_b_valid_q[exec_idx_q]
                                            : buffer_a_valid_q[exec_idx_q];
+  assign fill_first_valid = fill_buf_q ? buffer_b_valid_q['0] : buffer_a_valid_q['0];
+  // A background buffer is executable either when the whole physical buffer has
+  // been filled, or when fill was deliberately capped at a loop-end/post-loop
+  // marker and all requests that were already issued have returned.  The latter
+  // case matters for large (512B) IPU buffers: code after a loop may end before
+  // the physical buffer is full, and waiting for bg_fill_done_q would deadlock.
+  assign bg_fill_ready = bg_fill_done_q |
+                         ((state_q == SERVE) && (fill_buf_q != active_buf_q) &&
+                          fill_cap_done_q && fill_req_done_q &&
+                          (fill_rsp_idx_q == fill_req_idx_q) && fill_first_valid);
   assign served_packet_hit = served_packet_valid_q &&
                              (served_packet_buf_q == active_buf_q) &&
                              (served_packet_idx_q == exec_idx_q);
@@ -290,7 +303,7 @@ module hdv_instruction_prefetch_unit #(
       next_buf = active_buf_q;
       next_idx = '0;
       next_entry_valid = active_buf_q ? buffer_b_valid_q['0] : buffer_a_valid_q['0];
-    end else if ((fill_buf_q != active_buf_q) && bg_fill_done_q) begin
+    end else if ((fill_buf_q != active_buf_q) && bg_fill_ready) begin
       next_buf = fill_buf_q;
       next_idx = '0;
       next_entry_valid = fill_buf_q ? buffer_b_valid_q['0] : buffer_a_valid_q['0];
@@ -357,7 +370,7 @@ module hdv_instruction_prefetch_unit #(
   // Stall at last slot when the next background buffer is not yet ready
   // (unless looping).  During first-buffer early serve, fill_buf==active_buf;
   // packet availability is then guarded by active_packet_valid instead.
-  assign bg_stall    = (exec_idx_q == LastPacketIdx) & !bg_fill_done_q &
+  assign bg_stall    = (exec_idx_q == LastPacketIdx) & !bg_fill_ready &
                        !replay_loop_lock & (fill_buf_q != active_buf_q);
 
   assign ipu_vliwpu_packet_valid_o = (state_q == SERVE) & active_packet_valid &
@@ -379,6 +392,7 @@ module hdv_instruction_prefetch_unit #(
     exec_base_d    = exec_base_q;
     task_desc_d    = task_desc_q;
     fill_req_done_d = fill_req_done_q;
+    fill_cap_done_d = fill_cap_done_q;
     bg_fill_done_d = bg_fill_done_q;
     auto_loop_lock_d = auto_loop_lock_q;
     loop_wait_d      = loop_wait_q;
@@ -394,6 +408,7 @@ module hdv_instruction_prefetch_unit #(
     if (accept_req) begin
       if (fill_req_idx_q == LastPacketIdx) begin
         fill_req_done_d = 1'b1;
+        fill_cap_done_d = 1'b0;
       end else begin
         fill_req_idx_d = fill_req_idx_q + 1;
       end
@@ -420,6 +435,7 @@ module hdv_instruction_prefetch_unit #(
           (mem_ipu_rsp_data_i[11:7] == 5'd0) &&
           mem_ipu_rsp_data_i[28]) begin
         fill_req_done_d = 1'b1;
+        fill_cap_done_d = 1'b1;
       end
     end
 
@@ -430,6 +446,7 @@ module hdv_instruction_prefetch_unit #(
       fill_rsp_idx_d = '0;
       exec_idx_d     = '0;
       fill_req_done_d = 1'b0;
+      fill_cap_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
@@ -459,6 +476,7 @@ module hdv_instruction_prefetch_unit #(
       // backward-or-equal move that never skips ahead; it is a no-op whenever no
       // speculative request is outstanding (fill_req_idx == fill_rsp_idx).
       fill_req_idx_d = fill_rsp_idx_q;
+      fill_cap_done_d = 1'b0;
       if (redirect_is_backward) begin
         auto_loop_lock_d = 1'b1;
       end else begin
@@ -475,6 +493,7 @@ module hdv_instruction_prefetch_unit #(
       fetch_base_d = exec_base_q;
       exec_idx_d   = redirect_fill_idx;
       fill_req_done_d = 1'b1;
+      fill_cap_done_d = 1'b0;
       bg_fill_done_d = 1'b1;
       loop_wait_d  = 1'b0;
       loop_exit_seen_d = 1'b0;
@@ -493,6 +512,7 @@ module hdv_instruction_prefetch_unit #(
       active_buf_d   = 1'b0;
       fill_buf_d     = 1'b0;
       fill_req_done_d = 1'b0;
+      fill_cap_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
@@ -521,6 +541,7 @@ module hdv_instruction_prefetch_unit #(
             active_buf_d   = 1'b0;
             fill_buf_d     = 1'b0;
             fill_req_done_d = 1'b0;
+            fill_cap_done_d = 1'b0;
             bg_fill_done_d = 1'b0;
             auto_loop_lock_d = 1'b0;
             loop_wait_d = 1'b0;
@@ -550,6 +571,7 @@ module hdv_instruction_prefetch_unit #(
               fill_req_idx_d = '0;
               fill_rsp_idx_d = '0;
               fill_req_done_d = 1'b0;
+              fill_cap_done_d = 1'b0;
               bg_fill_done_d = 1'b0;
               if (!fill_buf_q) begin
                 buffer_b_valid_d = '0;
@@ -580,6 +602,7 @@ module hdv_instruction_prefetch_unit #(
               fill_req_idx_d = '0;
               fill_rsp_idx_d = '0;
               fill_req_done_d = 1'b0;
+              fill_cap_done_d = 1'b0;
               bg_fill_done_d = 1'b0;
               if (!fill_buf_q) begin
                 buffer_a_valid_d = '0;
@@ -599,6 +622,7 @@ module hdv_instruction_prefetch_unit #(
                 fill_req_idx_d = '0;
                 fill_rsp_idx_d = '0;
                 fill_req_done_d = 1'b0;
+                fill_cap_done_d = 1'b0;
                 bg_fill_done_d = 1'b0;
                 if (!fill_buf_q) begin
                   buffer_b_valid_d = '0;
@@ -625,7 +649,7 @@ module hdv_instruction_prefetch_unit #(
           if (loop_wait_q && loop_exit_seen_q) begin
             if (exec_idx_q == LastPacketIdx) begin
               // Fall through to the next buffer once it is filled.
-              if (bg_fill_done_q) begin
+              if (bg_fill_ready) begin
                 active_buf_d   = fill_buf_q;
                 exec_base_d    = fetch_base_q;
                 exec_idx_d     = '0;
@@ -634,6 +658,7 @@ module hdv_instruction_prefetch_unit #(
                 fill_req_idx_d = '0;
                 fill_rsp_idx_d = '0;
                 fill_req_done_d = 1'b0;
+                fill_cap_done_d = 1'b0;
                 bg_fill_done_d = 1'b0;
                 loop_wait_d      = 1'b0;
                 loop_exit_seen_d = 1'b0;
@@ -660,6 +685,7 @@ module hdv_instruction_prefetch_unit #(
               // resetting it is a no-op; kept for parity with the other re-enable
               // sites (lines ~569/588/623) and as a guard on the mem_req_v gate.
               fill_req_done_d  = 1'b0;
+              fill_cap_done_d  = 1'b0;
               bg_fill_done_d   = 1'b0;
             end
           end
@@ -711,11 +737,12 @@ module hdv_instruction_prefetch_unit #(
                 fill_req_idx_d = '0;
                 fill_rsp_idx_d = '0;
                 fill_req_done_d = 1'b1;
+                fill_cap_done_d = 1'b0;
                 bg_fill_done_d = 1'b1;
               end else begin
                 // Straight-line last packet (no backward branch): switch to the
-                // freshly filled background buffer.  bg_fill_done_q is 1 here
-                // (bg_stall blocks take_packet until the bg fill completes).
+                // ready background buffer.  It may be physically full, or
+                // deliberately capped at a post-loop marker.
                 active_buf_d   = fill_buf_q;
                 exec_base_d    = fetch_base_q;
                 exec_idx_d     = '0;
@@ -724,6 +751,7 @@ module hdv_instruction_prefetch_unit #(
                 fill_req_idx_d = '0;
                 fill_rsp_idx_d = '0;
                 fill_req_done_d = 1'b0;
+                fill_cap_done_d = 1'b0;
                 bg_fill_done_d = 1'b0;
                 if (!fill_buf_q) begin
                   buffer_b_valid_d = '0;
@@ -750,6 +778,7 @@ module hdv_instruction_prefetch_unit #(
       active_buf_d   = 1'b0;
       fill_buf_d     = 1'b0;
       fill_req_done_d = 1'b0;
+      fill_cap_done_d = 1'b0;
       bg_fill_done_d = 1'b0;
       auto_loop_lock_d = 1'b0;
       loop_wait_d = 1'b0;
@@ -774,6 +803,7 @@ module hdv_instruction_prefetch_unit #(
       exec_base_q    <= '0;
       task_desc_q    <= '0;
       fill_req_done_q <= 1'b0;
+      fill_cap_done_q <= 1'b0;
       bg_fill_done_q <= 1'b0;
       auto_loop_lock_q <= 1'b0;
       loop_wait_q <= 1'b0;
@@ -794,6 +824,7 @@ module hdv_instruction_prefetch_unit #(
       exec_base_q    <= exec_base_d;
       task_desc_q    <= task_desc_d;
       fill_req_done_q <= fill_req_done_d;
+      fill_cap_done_q <= fill_cap_done_d;
       bg_fill_done_q <= bg_fill_done_d;
       auto_loop_lock_q <= auto_loop_lock_d;
       loop_wait_q <= loop_wait_d;
@@ -893,7 +924,11 @@ module hdv_instruction_prefetch_unit #(
         keep_next_idx = '0;
         keep_prefetch_next_valid = active_buf_d ? buffer_b_valid_d['0] :
                                                   buffer_a_valid_d['0];
-      end else if ((fill_buf_d != active_buf_d) && bg_fill_done_d) begin
+      end else if ((fill_buf_d != active_buf_d) &&
+                   (bg_fill_done_d ||
+                    (fill_cap_done_d && fill_req_done_d &&
+                     (fill_rsp_idx_d == fill_req_idx_d) &&
+                     (fill_buf_d ? buffer_b_valid_d['0] : buffer_a_valid_d['0])))) begin
         keep_next_buf = fill_buf_d;
         keep_next_idx = '0;
         keep_prefetch_next_valid = fill_buf_d ? buffer_b_valid_d['0] :

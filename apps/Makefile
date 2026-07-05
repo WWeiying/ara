@@ -89,17 +89,18 @@ bin/vsger_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vsger_hdv: DEFINES += -DVSGER_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 
 # vsgemm selector: gemm_lmul in {1,4}, gemm_rows in {1,2,4}.
-#   gemm_lmul=1 : original m1 fixed-32 kernels (validated, dense packing).
+#   gemm_lmul=1 : original m1 kernels; 4-row supports gemm_n in {32,64,128}.
 #   gemm_lmul=4 : unified m4 runtime-N kernels (N via +HDV_A3, sweepable).
 # gemm_rows = # scalar A load streams packed per k-iteration.  make can't see -D
 # changes, so blas_sweep.sh rm's main.c.o to force a rebuild per variant.
 gemm_lmul ?= 1
 gemm_rows ?= 4
+gemm_n ?= 32
 # BLAS kernels (vssymv/vssyrk/vsgemv/vstrsm): blas_lmul in {1,4}.  1 = original m1
 # fixed-size kernel (default, validated); 4 = unified m4 runtime-N kernel.
 blas_lmul ?= 1
 bin/vsgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
-bin/vsgemm_hdv: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DGEMM_LMUL=$(gemm_lmul) -DGEMM_ROWS=$(gemm_rows)
+bin/vsgemm_hdv: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DGEMM_LMUL=$(gemm_lmul) -DGEMM_ROWS=$(gemm_rows) -DGEMM_N=$(gemm_n)
 
 bin/vssymv_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vssymv_hdv: DEFINES += -DVSSYMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)

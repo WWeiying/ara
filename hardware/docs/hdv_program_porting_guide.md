@@ -113,8 +113,8 @@ imm20[13]    packet256
 imm20[14]    cross
 imm20[15]    loop_start
 imm20[16]    loop_end
-imm20[18:17] prefetch_mode (00=off, 01=1X, 10=2X, 11=4X；详见 §3.5)
-imm20[19]    reserved, keep 0
+imm20[18:17] prefetch_mode (00=1X, 01=2X, 10=4X, 11=8X；详见 §3.5)
+imm20[19]    prefetch_disable
 ```
 
 含义：
@@ -124,13 +124,14 @@ imm20[19]    reserved, keep 0
 - `cross`：当前 packet 尾部 EP 是否允许跨到下一个 logical packet 开头。
 - `loop_start`：软件标记 loop 开始。
 - `loop_end`：软件标记 loop 结束。
-- `prefetch_mode`：控制 VLSU next-VL prefetch 的**幅度**（loop 内 unit-stride load 自动预取下一轮数据）。`00`=关、`01/10/11`=1X/2X/4X。**幅度要匹配内核两次迭代间同一条 vle 的地址步长**，绝大多数"每迭代前进一个向量"的内核用默认 `1`（1X）即可。完整用法见 §3.5。
+- `prefetch_mode`：控制 VLSU next-VL prefetch 的**幅度**（loop 内 unit-stride load 自动预取下一轮数据）。`00/01/10/11` 分别表示 1X/2X/4X/8X。**幅度要匹配内核两次迭代间同一条 vle 的地址步长**，绝大多数"每迭代前进一个向量"的内核用默认 `0`（1X）即可。完整用法见 §3.5。
+- `prefetch_disable`：显式关闭当前 packet 的 prefetch。它和“没有 header”不同：没有 header 表示没有软件 hint；有 header 且 `prefetch_disable=1` 表示软件明确要求不预取。
 
 推荐在 inline asm 中定义宏：
 
 ```asm
-.macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1
-  lui x0, (((\pbits) & 0x1fff) | (((\packet256) & 1) << 13) | (((\cross) & 1) << 14) | (((\loop_start) & 1) << 15) | (((\loop_end) & 1) << 16) | (((\prefetch_mode) & 3) << 17))
+.macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0
+  lui x0, (((\pbits) & 0x1fff) | (((\packet256) & 1) << 13) | (((\cross) & 1) << 14) | (((\loop_start) & 1) << 15) | (((\loop_end) & 1) << 16) | (((\prefetch_mode) & 3) << 17) | (((\prefetch_disable) & 1) << 19))
 .endm
 ```
 
@@ -138,32 +139,33 @@ imm20[19]    reserved, keep 0
 
 - 不要用 `.word` 隐藏 header。写成 `lui x0, ...` 能在 dump 中一眼看出这是 header。
 - `imm20` 最大只能承载 20 bit，所以不要再塞超出 bit 19 的字段。
-- reserved bit 必须保持 0，便于后续扩展。
+- 要关闭 prefetch 时使用 `prefetch_disable=1`，不要把 `prefetch_mode=0` 当关闭；当前 RTL 中 `prefetch_mode=0` 是 1X。
 
 ### 3.5 prefetch_mode 幅度设置详解
 
-VLSU 会自动检测 loop 内的 unit-stride load，提前发射"下一轮"数据的预取 AR（AXI ID=PREFETCH），返回数据进 vldu 预取 buffer，demand 命中时直接消费、跳过 demand AXI beat。`prefetch_mode` 决定**预取多远**。
+VLSU 会自动检测 loop 内的 unit-stride load，提前发射"下一轮"数据的预取 AR。当前 RTL 中 prefetch AR 和 demand AR 共用 `AXI_ID_DEMAND`，addrgen/vldu 用同 ID tag FIFO 区分返回 burst 类型；返回数据进 vldu 预取 buffer，demand 命中时直接消费、跳过 demand AXI beat。`prefetch_mode` 决定**预取多远**，`prefetch_disable` 决定是否显式关闭。
 
 #### 编码
 
-| `prefetch_mode` | 倍数 | 行为 |
-|---|---|---|
-| `00` | off | 不预取，纯 demand |
-| `01` | 1X | 预取 `paddr + 1·B` |
-| `10` | 2X | 预取 `paddr + 2·B` |
-| `11` | 4X | 预取 `paddr + 4·B` |
+| `prefetch_disable` | `prefetch_mode` | 倍数 | 行为 |
+|---|---|---|---|
+| `1` | 任意 | off | 不预取，纯 demand |
+| `0` | `00` | 1X | 预取 `paddr + 1·B` |
+| `0` | `01` | 2X | 预取 `paddr + 2·B` |
+| `0` | `10` | 4X | 预取 `paddr + 4·B` |
+| `0` | `11` | 8X | 预取 `paddr + 8·B` |
 
-其中 `B = vl×eew`（一次访问/一个向量的字节数）。硬件里还定义了 8X（`PF_EN_8X`/`prefetch_mul=3`），但 2-bit 编码已用尽、**选不到 8X**，幅度上限是 4X。
+其中 `B = vl×eew`（一次访问/一个向量的字节数）。当前 2-bit `prefetch_mode` 已经完整映射到 1X/2X/4X/8X，关闭由独立 bit 完成。
 
 #### 核心规则：幅度 = 步长÷burst（S/B）
 
-预取地址 = `paddr + (B << prefetch_mul)`。要命中，必须让它等于**下一次 demand 的地址**，即内核两次迭代间同一条 vle 的真实步长 `S`：
+预取地址 = `paddr + (B << prefetch_mode)`。要命中，必须让它等于**下一次 demand 的地址**，即内核两次迭代间同一条 vle 的真实步长 `S`：
 
-> **`B × 2^mul = S`  ⟹  prefetch_mode 选 `2^mul = S/B`**
+> **`B × 2^mode = S`  ⟹  prefetch_mode 选 `log2(S/B)`**
 
-- 内核每迭代前进**一个向量**（`S = B`，最常见，如 vsaxpy/fdotp）→ **1X**（默认）。
-- 每迭代跳 2 个向量（`S = 2B`）→ **2X**；跳 4 个 → **4X**。
-- `S < B`（窗口重叠，如 stencil）或 `S` 非 2 的整幂倍 → **无法匹配**，用 `00` 关掉（或接受不命中）。
+- 内核每迭代前进**一个向量**（`S = B`，最常见，如 vsaxpy/fdotp）→ **1X**（默认 `prefetch_mode=0`）。
+- 每迭代跳 2 个向量（`S = 2B`）→ **2X**；跳 4 个 → **4X**；跳 8 个 → **8X**。
+- `S < B`（窗口重叠，如 stencil）或 `S` 非 2 的整幂倍 → 单一幅度无法精确匹配，通常用 `prefetch_disable=1` 关掉，或者只对能稳定命中的 load packet 开启。
 
 #### 两条独立的轴（别混）
 
@@ -190,9 +192,9 @@ VLSU 会自动检测 loop 内的 unit-stride load，提前发射"下一轮"数�
 
 #### 实操建议
 
-- 典型流式内核（每迭代一个向量、unit-stride）：保持默认 `prefetch_mode=1`（1X）。
-- 跨步访问（列遍历、隔块）：按 `S/B` 选 2X/4X。
-- gather/scatter、非 unit-stride、或重叠窗口（stencil）：用 `00` 关闭。
+- 典型流式内核（每迭代一个向量、unit-stride）：保持默认 `prefetch_mode=0`（1X）。
+- 跨步访问（列遍历、隔块）：按 `S/B` 选 2X/4X/8X。
+- gather/scatter、非 unit-stride、或重叠窗口（stencil）：用 `prefetch_disable=1` 关闭，或者只给稳定单调前进的 load packet 开启。
 
 ## 4. Fetch Packet 布局
 
@@ -273,7 +275,8 @@ inst2
 - p-bit 是“允许并行”的软件承诺，不是强制并行。
 - VLIWPU 仍会因为 branch/system、issue width、32-bit 指令边界、硬件依赖断点等条件提前切 EP。
 - 同一 EP 内的指令应由软件保证没有非法 RAW/WAW/资源冲突。
-- 向量指令之间的数据相关由 Ara 后端处理，但标量操作数 snapshot、`vset rd` 写回、branch/ret 等仍需要按当前 HDV 规则保守安排。
+- 同一 EP 内的向量指令会携带相同 `ep_id`，当前 sequencer 会裁剪 same-EP RAW/WAR/WAW hazard 候选；因此真实需要串行的向量寄存器依赖必须用 p-bit 切到不同 EP。
+- 向量指令之间的数据相关由 Ara 后端处理，但标量操作数 snapshot、`vset rd` 写回、branch/ret、scalar/vector memory 顺序等仍需要按当前 HDV 规则保守安排。
 
 ## 6. 跨 Packet 打包
 
@@ -361,6 +364,7 @@ ra               普通 C call 的返回地址
 - `vfmacc.vf` 这类指令的 scalar FP operand 来自 FRF，例如 `fa0`。
 - `vsetvli rd, rs1, ...` 若 `rd != x0`，后续标量指令读取这个 rd 时要等 Ara 的 vset response 写回；当前 RTL 对此有保护，但软件排布仍应尽量清晰。
 - 同一个 EP 内如果标量指令更新某个寄存器，另一个向量指令又读取这个寄存器作为 operand，必须明确想要旧值还是新值。当前 vector dispatch 会在消费该 vector slot 时抓取标量 operand，不等于“同 EP 内自动读写旁路”。
+- 如果 scalar memory 和 vector memory 之间存在必须观察到的顺序，不要放在同一 EP。把它们拆开后，HEU 会用 scalar memory-order 标记阻止后一 EP vector memory 提前越过，VDU/标量后端也会用 `vec_store_inflight` 阻止后续 scalar memory 越过 vector store。
 
 ## 9. 从普通 RVV Kernel 改写的步骤
 
@@ -555,8 +559,8 @@ void kernel_hdv(long n, float a, const float *in, float *out) {
     ".option push\n"
     ".option norvc\n"
     ".option norelax\n"
-    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=1\n"
-    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17))\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17) | (((\\prefetch_disable) & 1) << 19))\n"
     ".endm\n"
     ".balign 16\n"
     "loop:\n"
@@ -589,4 +593,3 @@ void kernel_hdv(long n, float a, const float *in, float *out) {
 4. 再逐步增大 p-bit 并合并 EP。
 5. 最后尝试 `cross=1` 跨 packet 合并尾部 EP。
 6. 每次改 packet 布局后同步 expected EP 数和注释。
-

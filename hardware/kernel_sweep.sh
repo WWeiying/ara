@@ -396,28 +396,32 @@ sweep_vsgemm() {
 
   local lmul rows n nlist tag s1 s2 macc
   for lmul in 1 4; do
-    nlist="$ns"
-    [ "$lmul" = "1" ] && nlist="32"
     for rows in 1 2 4; do
-      rm -f "$APPS/vsgemm_hdv/main.c.o"
-      ( cd "$APPS" && timeout 600 make bin/vsgemm_hdv gemm_lmul=$lmul gemm_rows=$rows ) \
-        > "$OUT/build_vsgemm_m${lmul}_${rows}r.log" 2>&1
-      s1=$(addr_of vsgemm_hdv src1); s2=$(addr_of vsgemm_hdv src2)
-      if [ -z "$s1" ] || [ -z "$s2" ]; then
-        echo "  vsgemm m${lmul} ${rows}r: BUILD/ADDR FAIL"
-        continue
-      fi
+      nlist="$ns"
+      [ "$lmul" = "1" ] && [ "$rows" != "4" ] && nlist="32"
+      [ "$lmul" = "1" ] && [ "$rows" = "4" ] && nlist="32 64 128"
       for n in $nlist; do
         tag="vsgemm_m${lmul}_${rows}r"
+        rm -f "$APPS/vsgemm_hdv/main.c.o"
+        ( cd "$APPS" && timeout 600 make bin/vsgemm_hdv gemm_lmul=$lmul gemm_rows=$rows gemm_n=$n ) \
+          > "$OUT/build_vsgemm_m${lmul}_${rows}r_${n}.log" 2>&1
+        s1=$(addr_of vsgemm_hdv src1); s2=$(addr_of vsgemm_hdv src2)
+        if [ -z "$s1" ] || [ -z "$s2" ]; then
+          echo "  vsgemm m${lmul} ${rows}r N=$n: BUILD/ADDR FAIL"
+          continue
+        fi
         log="$OUT/log_blas_${tag}_${n}.log"
-        if [ "$SKIP_LONG" = "1" ] && [ "$lmul" = "4" ] && [ "$n" -ge 128 ]; then
+        if [ "$SKIP_LONG" = "1" ] &&
+           { { [ "$lmul" = "4" ] && [ "$n" -ge 128 ]; } ||
+             { [ "$lmul" = "1" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; }; }; then
           skip_long_note "$tag N=$n"
           printf "%-18s %-5s %-5s %-7s %-8s %-9s %-7s %-7s %-9s %s\n" \
                  "$tag" "$n" "$rows" "SKIP" "-" "-" "-" "-" "-->-" "over_10min"
           continue
         fi
         if { [ "$lmul" = "4" ] && [ "$rows" != "4" ] && [ "$n" -ge 64 ]; } ||
-           { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; }; then
+           { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; } ||
+           { [ "$lmul" = "1" ] && [ "$rows" = "4" ] && [ "$n" -ge 64 ]; }; then
           timeout 3600 make sim app=vsgemm_hdv \
             hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=1000000" \
             > "$log" 2>&1
@@ -426,7 +430,7 @@ sweep_vsgemm() {
             hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000" \
             > "$log" 2>&1
         fi
-        if [ "$lmul" = "1" ]; then
+        if [ "$lmul" = "1" ] && [ "$rows" != "4" ]; then
           macc=32768
         else
           macc=$((n*n*n))
@@ -872,14 +876,19 @@ run_vsgemm_point() {
   local lmul=$1 rows=$2 n=${3:-32}
   local tag="vsgemm_m${lmul}_${rows}r" s1 s2 macc
 
-  if [ "$lmul" = "1" ] && [ "$n" != "32" ]; then
-    echo "  $tag: invalid N=$n; m1 vsgemm is fixed 32x32x32. Use vsgemm_m4_${rows}r $n for runtime N."
+  if [ "$lmul" = "1" ] && [ "$rows" != "4" ] && [ "$n" != "32" ]; then
+    echo "  $tag: invalid N=$n; m1 ${rows}r vsgemm is fixed 32x32x32."
+    return 1
+  fi
+  if [ "$lmul" = "1" ] && [ "$rows" = "4" ] &&
+     [ "$n" != "32" ] && [ "$n" != "64" ] && [ "$n" != "128" ]; then
+    echo "  $tag: invalid N=$n; m1 4r vsgemm supports N=32/64/128."
     return 1
   fi
 
   note "########## Single vsgemm point: $tag N=$n ##########"
   rm -f "$APPS/vsgemm_hdv/main.c.o"
-  ( cd "$APPS" && timeout 600 make bin/vsgemm_hdv gemm_lmul=$lmul gemm_rows=$rows ) \
+  ( cd "$APPS" && timeout 600 make bin/vsgemm_hdv gemm_lmul=$lmul gemm_rows=$rows gemm_n=$n ) \
     > "$OUT/build_${tag}.log" 2>&1
   s1=$(addr_of vsgemm_hdv src1); s2=$(addr_of vsgemm_hdv src2)
   if [ -z "$s1" ] || [ -z "$s2" ]; then
@@ -892,7 +901,8 @@ run_vsgemm_point() {
          "tag" "N" "rows" "result" "cycles" "cyc/macc" "EPs" "vq_max" "pf_ar->hit" "seq_blk"
   log="$OUT/log_blas_${tag}_${n}.log"
   if { [ "$lmul" = "4" ] && [ "$rows" != "4" ] && [ "$n" -ge 64 ]; } ||
-     { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; }; then
+     { [ "$lmul" = "4" ] && [ "$rows" = "4" ] && [ "$n" -ge 128 ]; } ||
+     { [ "$lmul" = "1" ] && [ "$rows" = "4" ] && [ "$n" -ge 64 ]; }; then
     timeout 3600 make sim app=vsgemm_hdv \
       hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000 +HDV_TASK_WATCHDOG=1000000" \
       > "$log" 2>&1
@@ -901,7 +911,7 @@ run_vsgemm_point() {
       hdv_plusargs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n +HDV_EXPECTED_EP=8000000" \
       > "$log" 2>&1
   fi
-  if [ "$lmul" = "1" ]; then
+  if [ "$lmul" = "1" ] && [ "$rows" != "4" ]; then
     macc=32768
   else
     macc=$((n*n*n))

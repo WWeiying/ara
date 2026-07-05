@@ -242,3 +242,99 @@ vsgemm_m1_4r       128   4     PASSED  9153     .2793     1519    5       256->2
 
 ==== output -> kernel_sweep_out/ ====
   vsgemm_m1_4r: invalid N=64; m1 vsgemm is fixed 32x32x32. Use vsgemm_m4_4r 64 for runtime N.
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     ERR     -        -         -       -       0->0      2
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     FAILED  999998   3.8146    269230  -       25640->25639 102567
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  577178   .2752     171529  8       16384->16352 83616
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single 1D AVL point: vsaxpy_hdv AVL=1024 ##########
+==================== vsaxpy_hdv  (single AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+1024    PASSED  766      .748    128    158     4       62->62    492
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single 1D AVL point: vsdwt_hdv AVL=1024 ##########
+==================== vsdwt_hdv  (single AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+1024    PASSED  1047     1.022   227    193     5       64->64    613
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single 1D AVL point: vstencil3_hdv AVL=1024 ##########
+==================== vstencil3_hdv  (single AVL=1024) ====================
+AVL     result  cycles   cyc/el  EPs    pkts    avg/pk  pf_ar->hit seq_blk
+1024    PASSED  1235     1.206   293    225     5       46->42    623
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  82792    .3158     22441   3       2048->2032 8528
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single fixed/app-shaped point: softmax_fix ##########
+softmax ch3 x inner256             PASSED  cyc=6923     pf=0->0      seq_blk=5371
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  64109    .2445     11161   12      2048->2032 50481
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  463007   .2207     60841   12      12257->4096 357922
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     FAILED  1299     .0006     55      -       6->2      1203
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  463007   .2207     60841   12      12257->4096 357922
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=128 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       128   4     PASSED  406271   .1937     60841   12      12960->12768 300640
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  54054    .2061     11161   10      2048->2016 39504
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====

@@ -3,8 +3,7 @@
 > 状态说明：本文是早期“最小标量核”草案，保留作为设计演进背景。当前 RTL 已实现
 > `hardware/src/scala_backend/hdv_scalar_backend.sv`，并配置为 `ScalarIssueWidth=3`、
 > `SimpleAluIssueWidth=2`，不是本文最初设想的永久单发射最小核。当前准确实现请优先参考
-> `hdv_modules_code_walkthrough.md`、`hdv_full_mechanism_tutorial.md` 和
-> `hdv_scalar_backend_comparison.md`。正文中的 `accepted`/`cva6_hdv_scalar_backend`
+> `../hdv_design.md`。正文中的 `accepted`/`cva6_hdv_scalar_backend`
 > 等旧命名保留为历史上下文。
 
 > 目标：用从 CVA6 拆出来的现成模块，搭一个**最小标量指令子集**的标量执行核，

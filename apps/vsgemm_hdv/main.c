@@ -42,11 +42,16 @@ extern const uint32_t _src2_size;
 #ifndef GEMM_ROWS
 #define GEMM_ROWS 4
 #endif
+#ifndef GEMM_N
+#define GEMM_N 32
+#endif
 
-// m1 fixed-32 variants.
+// m1 fixed-size variants.
 void gemm_f32_32x32x32_1row(const float *A, const float *B, float *C);
 void gemm_f32_32x32x32_2row(const float *A, const float *B, float *C);
 void gemm_f32_32x32x32_4row(const float *A, const float *B, float *C);
+void gemm_f32_64x64x64_4row(const float *A, const float *B, float *C);
+void gemm_f32_128x128x128_4row(const float *A, const float *B, float *C);
 // m4 runtime-N variants.
 void gemm_f32_1row(const float *A, const float *B, float *C, int n);
 void gemm_f32_2row(const float *A, const float *B, float *C, int n);
@@ -59,7 +64,15 @@ int main() {
 #elif GEMM_ROWS == 2
     gemm_f32_32x32x32_2row(src1, src2, src1);
 #else
+#if GEMM_N == 32
     gemm_f32_32x32x32_4row(src1, src2, src1);
+#elif GEMM_N == 64
+    gemm_f32_64x64x64_4row(src1, src2, src1);
+#elif GEMM_N == 128
+    gemm_f32_128x128x128_4row(src1, src2, src1);
+#else
+#error "m1 4-row vsgemm supports GEMM_N in {32,64,128}"
+#endif
 #endif
 #else
 #if GEMM_ROWS == 1
@@ -224,7 +237,15 @@ void gemm_f32_32x32x32_2row(const float *A, const float *B, float *C) {
     );
 }
 #else
+#if GEMM_N == 32
 #include "vsgemm_m1_4row.inc"
+#elif GEMM_N == 64
+#include "vsgemm_m1_4row_64.inc"
+#elif GEMM_N == 128
+#include "vsgemm_m1_4row_128.inc"
+#else
+#error "m1 4-row vsgemm supports GEMM_N in {32,64,128}"
+#endif
 #endif
 #else
 // ════════════════════════ m4 runtime-N kernels ══════════════════════════════
