@@ -8,6 +8,9 @@
 #   --skip-long     skip sweep points historically taking more than 10 minutes
 #   --append        preserve existing kernel_sweep_out files before running
 #
+# Ablation:
+#   HDV_ABLATION=full|base|vdu|ovlp|pf|pf_only|haz|pf_haz
+#
 # Everything is implemented here.  The old split sweep scripts are no longer
 # called by this top-level flow.  All generated CSVs and logs go under:
 #
@@ -26,10 +29,29 @@ cd "$(dirname "$0")"
 
 APPS=../apps
 WD=400000
-OUT=kernel_sweep_out
+HDV_ABLATION="${HDV_ABLATION:-full}"
+case "$HDV_ABLATION" in
+  full|base|vdu|ovlp|pf|pf_only|haz|pf_haz) ;;
+  *)
+    echo "ERROR: invalid HDV_ABLATION=$HDV_ABLATION (use full|base|vdu|ovlp|pf|pf_only|haz|pf_haz)" >&2
+    exit 2
+    ;;
+esac
+export hdv_ablation="$HDV_ABLATION"
+
+if [ -n "${KERNEL_SWEEP_OUT:-}" ]; then
+  OUT="$KERNEL_SWEEP_OUT"
+elif [ "$HDV_ABLATION" = "full" ]; then
+  OUT=kernel_sweep_out
+else
+  OUT="kernel_sweep_out_${HDV_ABLATION}"
+fi
 
 usage() {
   echo "usage: $0 [--skip-long] [--append] {all|onepoint|point|1d|kernel|blas|blas_dim|blas_pf|blas_groups|vsgemm|fixed|long} [args]"
+  echo "       HDV_ABLATION=base|vdu|ovlp|pf|full $0 --skip-long all"
+  echo "       HDV_ABLATION=pf_only|haz|pf_haz $0 point vsaxpy_hdv 1024"
+  echo "       KERNEL_SWEEP_OUT=my_out HDV_ABLATION=base $0 point vsaxpy_hdv 4096"
   echo "       KERNEL_SWEEP_SKIP_LONG=1 $0 all"
   echo "       $0 point vvaddint32_hdv 2048"
   echo "       $0 point lavamd_fix"
@@ -104,6 +126,9 @@ exec > >(tee -a "$SUMMARY") 2>&1
 
 if [ "$SKIP_LONG" = "1" ]; then
   echo "[skip-long] enabled: known >10min sweep points will be skipped"
+fi
+if [ "$HDV_ABLATION" != "full" ]; then
+  echo "[ablation] mode=$HDV_ABLATION out=$OUT"
 fi
 if [ "$MODE" = "long" ]; then
   echo "[long] enabled: only known >10min sweep points will be run; existing output is preserved"

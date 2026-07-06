@@ -1172,6 +1172,59 @@ VDU 的 `FOR_VERIFY` 计数器包括：
 
 调 prefetch 时，`+HDV_PF_PROBE` 会打开多处 `$display`，包括 HEU/VDU/scalar/addrgen/vldu 的周期级事件。该探针用于定位真实原因，不能作为最终论文数据。
 
+### 14.1 累积式消融开关
+
+当前 RTL 支持用 `hdv_ablation` 编译期开关跑 5.3 的累积式消融。默认值是 `full`，不改变当前仿真行为；只有显式设置其它模式才会加 disable define，并使用独立仿真目录。
+
+| 模式 | Make 变量 | 关闭机制 | 机制含义 |
+|---|---|---|---|
+| 完整设计 | `hdv_ablation=full` | 无 | 默认全套 HDV 机制 |
+| `H_base` | `hdv_ablation=base` | VLSU prefetch、buffered early issue、same-EP hazard bypass、VDU scalar-operand lookahead/bypass | 只保留 HDV 前端、EP 形成、HEU/VDU 最小执行通路 |
+| `H_pf_only` | `hdv_ablation=pf_only` | buffered early issue、same-EP hazard bypass、VDU scalar-operand lookahead/bypass | 在 `H_base` 上只打开 request-bound VLSU prefetch |
+| `H_haz` | `hdv_ablation=haz` | VLSU prefetch、buffered early issue、VDU scalar-operand lookahead/bypass | 在 `H_base` 上只打开 same-EP hazard handling |
+| `H_pf_haz` | `hdv_ablation=pf_haz` | buffered early issue、VDU scalar-operand lookahead/bypass | 同时打开 VLSU prefetch 和 same-EP hazard handling |
+
+`sweep` 脚本使用环境变量 `HDV_ABLATION` 映射到 Make 变量：
+
+```bash
+HDV_ABLATION=base ./kernel_sweep.sh --skip-long all
+HDV_ABLATION=pf_only ./kernel_sweep.sh --skip-long all
+HDV_ABLATION=haz ./kernel_sweep.sh --skip-long all
+HDV_ABLATION=pf_haz ./kernel_sweep.sh --skip-long all
+./kernel_sweep.sh --skip-long all   # full, unchanged default
+```
+
+单点手动仿真直接传给 Make 时使用小写 Make 变量，避免 shell 中残留的大写环境变量误改默认 full 行为：
+
+```bash
+make sim app=vsaxpy_hdv avl=4096 hdv_ablation=base
+make sim app=vsaxpy_hdv avl=4096 hdv_ablation=pf_haz
+```
+
+如果要一键跑全部 HDV 消融，并且不覆盖当前默认 `kernel_sweep_out` 或 `sim`，使用：
+
+```bash
+./kernel_ablation.sh --parallel --skip-long all
+```
+
+该 wrapper 默认运行 `base/pf_only/haz/pf_haz`，把结果写到 `kernel_sweep_out_ablate_<mode>`，并显式使用 `sim_ablate_<mode>`。如果 `mc=1`，对应仿真目录为 `sim_mc_ablate_<mode>`。完整 `full` 设计不由 wrapper 默认重复运行，仍使用普通 `kernel_sweep.sh` 和默认 `kernel_sweep_out`。如果只想跑某几个模式，可设置：
+
+```bash
+HDV_ABLATION_MODES="base pf_only haz pf_haz" ./kernel_ablation.sh --parallel --skip-long all
+```
+
+如果要自定义单次 sweep 的输出目录，可设置 `KERNEL_SWEEP_OUT=<dir>`。消融结果汇总仍使用同一个脚本：
+
+```bash
+./kernel_sweep_sum.sh kernel_sweep_out_ablate_base
+./kernel_sweep_sum.sh kernel_sweep_out_ablate_pf_only
+./kernel_sweep_sum.sh kernel_sweep_out_ablate_haz
+./kernel_sweep_sum.sh kernel_sweep_out_ablate_pf_haz
+./kernel_sweep_sum.sh kernel_sweep_out
+```
+
+这些开关的目的是关闭“后端对 EP metadata 的性能化消费”，不是移除 HDV 程序运行所需的最小 dispatch plumbing。尤其 `H_base` 仍保留 HEU/VDU、基本 operand snapshot、EP acknowledge 和 command window，否则 HDV kernel 无法通过 Ara 执行。当前实验拆法不强行把所有机制排成单一路径，而是先分别测两个主要后端消费路径：`H_pf_only` 观察 request-bound prefetch 的独立贡献，`H_haz` 观察 same-EP hazard handling 的独立贡献，`H_pf_haz` 观察二者叠加后的效果。`H_full` 相比 `H_pf_haz` 继续打开 buffered vector early issue 和 VDU scalar-operand lookahead/bypass；后者指 VDU 在当前 vector slot 发射时提前读取下一 slot 的标量操作数，以及 DISPATCH 阶段的同周期 operand bypass。
+
 ## 15. 学习与教学路线
 
 如果把这份设计讲给没有读过代码的人，建议不要从每个 RTL 文件逐个讲起，而是按四层递进：

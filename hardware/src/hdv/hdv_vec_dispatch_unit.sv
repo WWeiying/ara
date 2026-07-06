@@ -552,9 +552,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // cycle between EP enqueue and scalar-operand snapshot preserves the existing
   // cross-EP scalar write/read timing; within DISPATCH, the scalar backend's
   // combinational operand port can still feed the Ara request/window directly.
+`ifdef HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+  assign selected_operand_bypass = 1'b0;
+`else
   assign selected_operand_bypass = (state_q == DISPATCH) &&
                                    selected_operand_port_busy &&
                                    scalar_vec_operand_req_ready_i;
+`endif
   assign next_needs_operand = next_slot_found &&
                               vector_needs_scalar_operand(insn_q[next_slot_idx]);
   // RVV configuration instructions share opcode 0x57 and funct3 OPCFG=111.
@@ -582,9 +586,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // pre-fetching the next slot while the current one dispatches.
   assign selected_has_next_operand = (state_q == DISPATCH) && next_operand_valid_q &&
                                      (next_operand_slot_idx_q == slot_idx);
+`ifdef HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+  assign prefetch_operand_req = 1'b0;
+`else
   assign prefetch_operand_req = (state_q == DISPATCH) && accept_insn && next_slot_found &&
                                 next_needs_operand && !UseVTraceScalar &&
                                 !next_operand_valid_q && !selected_operand_port_busy;
+`endif
 
   assign vec_scalar_operand_req_valid_o = selected_operand_port_busy ||
                                           prefetch_operand_req;

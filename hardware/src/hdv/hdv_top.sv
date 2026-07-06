@@ -857,7 +857,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .XLEN      (XLEN      ),
     .NumSlots  (NumSlots  ),
     .SlotWidth (SlotWidth ),
+`ifdef HDV_ABLATION_NO_EARLY_ISSUE
+    .EnableBufferedVectorEarlyIssue(1'b0),
+`else
     .EnableBufferedVectorEarlyIssue(1'b1),
+`endif
     .addr_t    (addr_t    )
   ) i_hybrid_execution_unit (
     .clk_i                          (clk_i                    ),

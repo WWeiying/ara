@@ -151,6 +151,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       prefetch_info = PF_DEN;
     // On loop exit, disable prefetch to drain queues
     if (loop_active_fall) prefetch_info = PF_DEN;
+`ifdef HDV_ABLATION_NO_PREFETCH
+    prefetch_info = PF_DEN;
+`endif
     case (prefetch_info)
       PF_EN_1X: {prefetch_en, prefetch_mul} = {1'b1, 2'd0};
       PF_EN_2X: {prefetch_en, prefetch_mul} = {1'b1, 2'd1};

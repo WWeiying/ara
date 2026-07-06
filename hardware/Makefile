@@ -52,6 +52,11 @@ spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hp
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
 
 mc ?= 0
+hdv_ablation ?= full
+HDV_ABLATION_MODES := full base vdu ovlp pf pf_only haz pf_haz
+ifeq ($(filter $(hdv_ablation),$(HDV_ABLATION_MODES)),)
+  $(error Invalid hdv_ablation=$(hdv_ablation). Use one of: $(HDV_ABLATION_MODES))
+endif
 
 define generate_sram
   > $(1)/config.txt
@@ -102,6 +107,39 @@ ifeq ($(ideal_dispatcher), 1)
 endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+
+ifeq ($(hdv_ablation),base)
+  bender_defs += --define HDV_ABLATION_NO_PREFETCH
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+endif
+ifeq ($(hdv_ablation),vdu)
+  bender_defs += --define HDV_ABLATION_NO_PREFETCH
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+endif
+ifeq ($(hdv_ablation),ovlp)
+  bender_defs += --define HDV_ABLATION_NO_PREFETCH
+  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+endif
+ifeq ($(hdv_ablation),pf)
+  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+endif
+ifeq ($(hdv_ablation),pf_only)
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+endif
+ifeq ($(hdv_ablation),haz)
+  bender_defs += --define HDV_ABLATION_NO_PREFETCH
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+endif
+ifeq ($(hdv_ablation),pf_haz)
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+endif
 
 # Per-app HDV kernel arguments (a0-a3).  The TB's default HdvInitial* values are
 # vsaxpy's; every other HDV kernel needs its own pointer arguments because main()'s
@@ -254,9 +292,15 @@ bender_targs_dc       := $(bender_common_targs) -t sram_blackbox
 endif
 
 ifeq ($(mc), 1)
-  sim_dir ?= sim_mc
+  sim_dir_default := sim_mc
 else
-  sim_dir ?= sim
+  sim_dir_default := sim
+endif
+ifeq ($(hdv_ablation),full)
+  sim_dir ?= $(sim_dir_default)
+else
+  sim_dir ?= $(sim_dir_default)_$(hdv_ablation)
+  vcs_library := $(buildpath)/vcs_$(hdv_ablation)
 endif
 
 ifdef app
@@ -303,7 +347,7 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 
 compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
-	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
+	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen) HDV_ABLATION=$(hdv_ablation)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_VERIFY  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db

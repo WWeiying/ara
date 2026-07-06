@@ -1,5 +1,7 @@
 # HDV 内核执行数据 / 状态报告（详细）
 
+> **历史快照**：本文记录 2026-06-22 左右一次 clean RTL 扫描和当时的计数器状态。当前 RTL、kernel 集合、prefetch hint、消融开关和结果汇总已经更新；最新状态应以 `hdv_design.md` 的机制说明、`paper_data.md` 和当前 `kernel_sweep_out/kernel_all.csv` 为准。本文不再作为当前通过/失败清单。
+
 **日期**：2026-06-22 　**分支**：`hdv`
 **平台**：ARA + HDV 前端，VLEN=1024，NrLanes=4，AxiDataWidth=128bit（16B/beat），IPU 指令 buffer=32 包，MaxOutstandingVecEPs=2
 **判定**：mock host `task_done` 为准（"expected 128 EPs" 仅看门狗提示，非通过条件）。数据采自全量扫描（clean RTL，无调试探针）。

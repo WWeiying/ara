@@ -1,5 +1,7 @@
 # HDV 内核 AVL Sweep 报告
 
+> **历史快照**：本文记录 2026-06-22 左右一次 AVL sweep 和当时的问题定位。当前 RTL、kernel hint、消融开关和汇总 CSV 已多次演进；最新性能数据应以 `paper_data.md`、`kernel_sweep_out/kernel_all.csv` 以及当前脚本输出为准。本文不再作为当前硬件状态说明。
+
 **日期**：2026-06-22 　**分支**：`hdv`
 **平台**：ARA + HDV 前端，VLEN=1024，NrLanes=4，AxiDataWidth=128bit，IPU buffer=32 包，预取 buffer=64 项，MaxOutstandingVecEPs=2
 

@@ -59,6 +59,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   `ifdef FOR_VERIFY
   logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
+  logic same_ep_bypass_event;
   `endif
   ///////////////////////////////////
   //  Running vector instructions  //
@@ -409,6 +410,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     waw_hazard = '0;
     false_hazard = '0;
     sequencer_block = '0;
+    same_ep_bypass_event = '0;
     `endif
 
     case (state_q)
@@ -437,10 +439,33 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             ///////////////
             logic [NrVInsn-1:0] same_ep_vid_mask;
             for (int unsigned v = 0; v < NrVInsn; v++) begin
+`ifdef HDV_ABLATION_NO_SAME_EP_BYPASS
+              same_ep_vid_mask[v] = 1'b0;
+`else
               same_ep_vid_mask[v] = vid_hdv_valid_q[v] &&
                                     ara_req_i.hdv_meta.hdv_valid &&
                                     (vid_ep_id_q[v] == ara_req_i.hdv_meta.ep_id);
+`endif
             end
+
+            `ifdef FOR_VERIFY
+            same_ep_bypass_event =
+              (ara_req_i.use_vs1 &&
+               same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid] &&
+               write_list_d[ara_req_i.vs1].valid) ||
+              (ara_req_i.use_vs2 &&
+               same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid] &&
+               write_list_d[ara_req_i.vs2].valid) ||
+              (!ara_req_i.vm &&
+               same_ep_vid_mask[write_list_d[VMASK].vid] &&
+               write_list_d[VMASK].valid) ||
+              (ara_req_i.use_vd &&
+               same_ep_vid_mask[read_list_d[ara_req_i.vd].vid] &&
+               read_list_d[ara_req_i.vd].valid) ||
+              (ara_req_i.use_vd &&
+               same_ep_vid_mask[write_list_d[ara_req_i.vd].vid] &&
+               write_list_d[ara_req_i.vd].valid);
+            `endif
 
             if (ara_req_i.use_vs1 && !same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid])
               pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
@@ -779,6 +804,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       if (war_hazard)         cnt_seq_war   <= cnt_seq_war + 1;
       if (waw_hazard)         cnt_seq_waw   <= cnt_seq_waw + 1;
       if (vinsn_running_full) cnt_seq_full  <= cnt_seq_full + 1;
+      if (same_ep_bypass_event && ara_req_valid_i && ara_req_ready_o)
+        cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
       // WAW-only block: no RAW, only WAW preventing issue
       if (waw_hazard && !raw_hazard && ara_req_valid_i && !ara_req_ready_o)
         cnt_seq_waw_block <= cnt_seq_waw_block + 1;
