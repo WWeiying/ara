@@ -12,7 +12,7 @@
 #include "printf.h"
 #endif
 
-#define TOTAL_ELEMENTS 1024
+#define TOTAL_ELEMENTS 16384
 
 #ifndef VSGER_HDV_TASK_ENTRY
 #define VSGER_HDV_TASK_ENTRY 0x80001000UL
@@ -44,8 +44,9 @@ void vsger(int m, int n, const float a, const float *x, const float *y, float *A
     // Nested loop.  Outer (row_loop) computes ft1 = alpha*x[i] (scalar FP, split
     // from its load-use); inner (col_loop) is a strip-mine that loads A/y chunks,
     // does vfmacc.vf (reads ft1 as scalar operand from a completed EP), and stores
-    // back.  vsetvli rd=a5 is read by slli in a LATER EP (A2-safe).  Both loop
-    // back-edges sit in their own EP (loop_end marker).
+    // back.  The inner body uses GEMM-style 256b packets: the two vector loads are
+    // kept close to the loop head for prefetch visibility, while the store and
+    // scalar pointer updates are packed after the FMA.
     __asm__ volatile (
     ".option push\n"
     ".option norvc\n"
@@ -83,39 +84,27 @@ void vsger(int m, int n, const float a, const float *x, const float *y, float *A
     "mv t4, a1\n"
     "mv t5, t2\n"
 
-    // inner loop top: VL config || load y chunk.
+    // inner loop top.  Packet 0 keeps vsetvli||vle(y) together, then cuts before
+    // vle(A), slli, and vfmacc so the a5/a6 and vector data dependencies remain
+    // explicit.  Both vector loads keep prefetch enabled with the default 1X mode.
     "col_loop:\n"
-    "HDV_HINT 0x02, 0, 0, 1, 0\n"
+    "HDV_HINT 0x02, 1, 0, 1, 0\n"
     "vsetvli a5, t4, e32, m1, ta, ma\n"
     "vle32.v v0, (t3)\n"
-    "nop\n"
-    // load A chunk.
-    "HDV_HINT 0x00\n"
     "vle32.v v1, (t5)\n"
-    "nop\n"
-    "nop\n"
-    // byte stride from granted VL (a5 writeback already landed).
-    "HDV_HINT 0x00\n"
     "slli a6, a5, 2\n"
-    "nop\n"
-    "nop\n"
-    // A += (alpha*x[i]) * y.
-    "HDV_HINT 0x00\n"
     "vfmacc.vf v1, ft1, v0\n"
     "nop\n"
     "nop\n"
-    // store old A chunk || bump A pointer.
-    "HDV_HINT 0x02\n"
+
+    // Packet 1 packs the read-modify-write tail: store with the old A pointer,
+    // then bump A/y and the remaining-column counter.  The branch is still a
+    // separate loop_end EP.
+    "HDV_HINT 0x2a, 1, 0, 0, 1\n"
     "vse32.v v1, (t5)\n"
     "add t5, t5, a6\n"
-    "nop\n"
-    // bump y pointer || decrement column counter.
-    "HDV_HINT 0x02\n"
     "add t3, t3, a6\n"
     "sub t4, t4, a5\n"
-    "nop\n"
-    // inner back-edge.
-    "HDV_HINT 0x00, 0, 0, 0, 1\n"
     "bnez t4, col_loop\n"
     "nop\n"
     "nop\n"

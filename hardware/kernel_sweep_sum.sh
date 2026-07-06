@@ -138,7 +138,11 @@ while IFS= read -r log; do
       tag=${rest%_*}
       rows=""
       size="$n"
-      macc=$((n*n))
+      if [[ "$tag" == "vsger_hdv" ]]; then
+        macc=$((128*n))
+      else
+        macc=$((n*n))
+      fi
       if [[ "$tag" =~ ^vsgemm_m([0-9]+)_([0-9]+)r$ ]]; then
         rows="${BASH_REMATCH[2]}"
         if [ "${BASH_REMATCH[1]}" = "1" ] && [ "$rows" != "4" ]; then

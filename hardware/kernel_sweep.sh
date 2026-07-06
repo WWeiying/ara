@@ -487,7 +487,7 @@ sweep_blas_dim() {
     reg=${b_dimreg[$k]}
     for n in $ns; do
       case "$k" in
-        vsger_hdv)  ptrs="+HDV_A0=32 +HDV_A2=$s2 +HDV_A3=$((s2+512)) +HDV_A4=$s1 +HDV_A1=$n" ;;
+        vsger_hdv)  ptrs="+HDV_A0=128 +HDV_A2=$s2 +HDV_A3=$((s2+512)) +HDV_A4=$s1 +HDV_A1=$n" ;;
         vssymv_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n" ;;
         vssyrk_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$n" ;;
         vstrsm_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$n" ;;
@@ -510,7 +510,11 @@ sweep_blas_dim() {
         timeout 600 make sim app=$k \
           hdv_plusargs="$ptrs +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
       fi
-      macc=$((n*n))
+      if [ "$k" = "vsger_hdv" ]; then
+        macc=$((128*n))
+      else
+        macc=$((n*n))
+      fi
       parse_blas_perf "$k" "$n" "-" "$n" "$macc"
     done
   done
@@ -823,7 +827,7 @@ run_blas_dim_point() {
     return 1
   fi
   case "$k" in
-    vsger_hdv)  ptrs="+HDV_A0=32 +HDV_A2=$s2 +HDV_A3=$((s2+512)) +HDV_A4=$s1 +HDV_A1=$n" ;;
+    vsger_hdv)  ptrs="+HDV_A0=128 +HDV_A2=$s2 +HDV_A3=$((s2+512)) +HDV_A4=$s1 +HDV_A1=$n" ;;
     vssymv_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$s1 +HDV_A3=$n" ;;
     vssyrk_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$n" ;;
     vstrsm_hdv) ptrs="+HDV_A0=$s1 +HDV_A1=$s2 +HDV_A2=$n" ;;
@@ -843,7 +847,11 @@ run_blas_dim_point() {
     timeout 600 make sim app=$k \
       hdv_plusargs="$ptrs +HDV_EXPECTED_EP=8000000" > "$log" 2>&1
   fi
-  macc=$((n*n))
+  if [ "$k" = "vsger_hdv" ]; then
+    macc=$((128*n))
+  else
+    macc=$((n*n))
+  fi
   parse_blas_perf "$k" "$n" "-" "$n" "$macc"
 }
 
