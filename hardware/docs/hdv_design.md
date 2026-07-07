@@ -111,9 +111,9 @@ HDV 里有三类 memory master：IPU instruction fetch、`hdv_scalar_backend` �
 - Prefetch 只来源于带有效 hint 且未显式关闭的 unit-stride load。它不会服务 store，也不会改变 store 可见顺序。
 - Demand AR 优先于 prefetch AR。只要当前 demand 能发，prefetch 不会抢占地址通道。
 - 当前 prefetch 与 demand 共用 `AXI_ID_DEMAND`，addrgen 在 AR 接受时压入 burst tag，vldu 按 same-id 返回顺序 pop tag。这样返回数据属于 demand 还是 prefetch 由 tag 决定，不靠猜测。
-- Demand 命中 prefetch 的条件是 demand 地址匹配 lookup FIFO head，或者正好匹配仍在 queue/ROB 中的 pending prefetch 并短暂等待其完成。命中后 demand 不发 AR，vldu 从 prefetch buffer 取同地址数据。
+- Demand 命中 prefetch 的条件是 demand 地址匹配 lookup FIFO head。若同地址 prefetch 已经进入 ROB/in-flight/return path，或者处在 page-cross 第一段已可消费但第二段仍需对齐的等待路径，demand 可以短暂等待其变成 lookup hit。单纯还停在 prefetch AR queue 里的同地址请求不会阻塞 demand；如果它太晚，demand 会按普通 AR 发出，后续 stale prefetch 由 stream-break/flush 清理。
 - 如果 demand stream 和 lookup head 不一致，addrgen 进入 stream-break recovery：停止新 prefetch，等待 prefetch ROB/in-flight beat 排空，然后 flush lookup FIFO 和 vldu prefetch buffer。错误或过远的 prefetch 最多浪费带宽，不会被错误消费为 demand 数据。
-- Demand 等待 pending prefetch 有 watchdog。若等待过长会 fatal，避免把 prefetch miss/乱序问题伪装成无限等待。
+- Demand 等待 in-flight pending prefetch 有 watchdog。若等待过长会 fatal，避免把 prefetch miss/乱序问题伪装成无限等待。
 
 所以，memory 正确性的核心是“demand 可见顺序仍由原 VLSU/标量 LSU 执行，HDV 只允许安全提前形成请求；prefetch 只能在地址精确匹配时替代同一个 demand load，否则必须退回 demand-driven 或 flush”。性能 hint 不能成为正确性条件。
 
@@ -167,7 +167,631 @@ HDV 不把这段代码变成一个后端乱序窗口。它做的是把代码拆�
 
 如果要判断一个 kernel hint 是否安全，可以按这张表逐项检查：同 EP 内没有真实 vector 串行依赖；同 EP 内没有必须读新值的 scalar-to-vector 关系；必须保序的 scalar/vector memory 被拆到不同 EP；`vset rd` 的消费者不在同 EP 内；prefetch mode 只影响性能，不参与功能正确性。
 
-## 2. 软件可见格式与硬件解释
+## 2. HDV 端到端流水线
+
+这一章把 HDV 当成一条完整流水线来讲，而不是按 RTL 文件孤立讲。画 SEAM-V 总体框图时，可以直接把下面的 stage 画成主数据流，再把 scalar slice、vector slice、metadata、prefetch 画成旁路/协同路径。
+
+HDV 的主线是：
+
+```text
+S0 Host task accept
+  -> S1 Task schedule
+  -> S2 Local instruction supply
+  -> S3 EP formation
+  -> S4 Hybrid EP split
+       -> S5 Scalar slice execution
+       -> S6 Vector request resolution
+            -> S7 Ara semantic consumption
+            -> S8 Vector execution / VLSU prefetch
+  -> S9 Drain and task completion
+```
+
+更具体地说，HDV 同时有三条相互配合的流：
+
+- **control/task stream**：host 写 CSR，TIU/TSU 建立 active task，task complete/drain 后返回 done/error。
+- **instruction/EP stream**：IPU 本地供给 fetch packet，VLIWPU 形成 EP，HEU 决定前端能否推进。
+- **execution/request stream**：HEU 把 EP 拆成 scalar slice 和 vector slice；scalar backend 执行标量控制和地址更新；VDU 把 vector slice 解析成 Ara request；Ara/VLSU 执行真实 RVV 工作。
+
+这三条流的核心同步点不是“每条 vector 指令完成”，而是 **EP 的前端安全推进点**。HDV 通过 `scalar_ep_done`、`vec_ep_acknowledged`、`heu_top_ep_acknowledged` 把标量版本、vector operand snapshot 和前端推进绑定起来。
+
+从画框图和讲课角度，可以先记住下面这张总表，再进入每一级的细节：
+
+| Stage | 主要模块 | 本级输入 | 本级产物 | 关键反压/正确性点 |
+|---|---|---|---|---|
+| S0 Host task accept | TIU | host CSR start/address | pending task、status | pending task 未被 TSU 接收时不能覆盖 |
+| S1 Task schedule | TSU | pending task、task done/error | single active task | 同一时间只允许一个 active task 占用 HDV 前端状态 |
+| S2 Local instruction supply | IPU | task PC、AXI instruction data、redirect | 128-bit fetch packet、loop replay | VLIWPU not-ready 时 packet 不前进；redirect 只改变取指流 |
+| S3 EP formation | VLIWPU | fetch packet、header、p-bit、hint | execute packet、slot class、EP hint | branch/system/width/p-bit/packet 边界决定 EP 切分 |
+| S4 Hybrid EP split | HEU | execute packet、scalar/vector ready/ack | scalar slice、vector slice、`ep_id` | current/buffer 两级；early issue 受 branch、scalar write、memory-order 限制 |
+| S5 Scalar slice execution | scalar backend | scalar slice、vector wb、VDU operand req | XRF/FRF 更新、branch redirect、operand service | scalar slice done 才允许 EP 前端安全推进 |
+| S6 Vector request resolution | VDU | vector slice、scalar operand、Ara ready | Ara request、command window entry、response metadata | operand snapshot 后普通 vector 可 ack；`vset rd` 需等 scalar-visible 写回 |
+| S7 Ara semantic consumption | dispatcher/sequencer | Ara request + `hdv_meta` | lane/VLSU issue、hazard decision | same-EP bypass 只裁剪软件承诺可并行的保守 hazard |
+| S8 Vector execution/prefetch | Ara lanes/VLSU/addrgen/vldu | issued vector op、prefetch hint | demand AR、prefetch AR、VRF writeback | prefetch 只能在地址精确匹配时替代同一 demand load |
+| S9 Drain and completion | top/VDU/scalar/TIU/TSU | scalar task exit、VDU busy、Ara response | task done/error | task done 必须等待 vector dispatch/response 相关状态 drain |
+
+### 2.1 总体框图层级
+
+建议总框图按下面层级画：
+
+```text
+Host / CSR driver
+  |
+  v
++--------------------+      +--------------------+
+| TIU                | ---> | TSU                |
+| task CSR/status    |      | single active task |
++--------------------+      +--------------------+
+                                |
+                                v
+                         +----------------------+
+                         | IPU                  |
+                         | local I-fetch        |
+                         | loop replay          |
+                         +----------------------+
+                                |
+                         128-bit fetch packet
+                                |
+                                v
+                         +----------------------+
+                         | VLIWPU               |
+                         | header/p-bit/cross   |
+                         | EP formation         |
+                         +----------------------+
+                                |
+                         execute packet + hint
+                                |
+                                v
+                         +----------------------+
+                         | HEU                  |
+                         | scalar/vector split  |
+                         | current/buffer EP    |
+                         +----------------------+
+                           |                  |
+                    scalar slice        vector slice + ep_id
+                           |                  |
+                           v                  v
+              +---------------------+   +----------------------+
+              | HDV scalar backend  |   | VDU                  |
+              | XRF/FRF/branch/LSU  |   | operand snapshot     |
+              | operand service     |   | command window       |
+              +---------------------+   +----------------------+
+                           ^                  |
+                           | scalar operand   | Ara request + hdv_meta
+                           | vset/vector wb   v
+                           |           +----------------------+
+                           |           | Ara dispatcher       |
+                           |           | Ara sequencer        |
+                           |           | lanes / VLSU         |
+                           |           +----------------------+
+                           |                  |
+                           +------- response / scalar-visible writeback
+```
+
+图中应特别标出四类边：
+
+- **EP 边**：VLIWPU 到 HEU，携带 slot valid、PC、32-bit 标记、指令类别和 packet-level prefetch hint。
+- **scalar operand 边**：VDU 到 scalar backend，用于读取 vector base/stride/scalar operand。
+- **HDV metadata 边**：VDU 到 Ara，随每条 vector request 携带 `ep_id` 和 prefetch hint。
+- **ack/drain 边**：scalar backend 与 VDU 回到 HEU/top，用于 EP 推进和 task done。
+
+### 2.2 Stage S0：Host task accept
+
+对应模块：`hdv_task_interface_unit.sv`。
+
+这一段把 host 的 CSR 写入转换成 HDV 内部 task。host 写 `VTASK_ADDR`、`VTASK_PADDR` 和 `VTASK_START`；TIU 保存 task entry、descriptor pointer 和 sticky status。
+
+输入：
+
+- host CSR write/read。
+- TSU ready。
+- 顶层返回的 task done/error。
+
+输出：
+
+- `tiu_tsu_task_valid`
+- task entry PC
+- task descriptor pointer
+- status busy/done/error
+
+关键逻辑：
+
+1. `VTASK_ADDR` 和 `VTASK_PADDR` 写入寄存器。
+2. `VTASK_START.bit0` 产生一次 start pulse。
+3. 若当前没有 pending task，start pulse 把 entry/descriptor 打包成 `task_valid_q`。
+4. 若 pending task 尚未被 TSU 接收又收到新的 start，则置 error，避免覆盖任务。
+5. TSU 接收 task 后，TIU 清 pending valid。
+
+阻塞和边界：
+
+- TIU 本身不反压 CSR，CSR ready 恒为 1。
+- 真正的 backpressure 来自 TSU FIFO full；若 TSU 不 ready，TIU 保留 pending task。
+- TIU 不解释 kernel 指令，也不参与 EP 形成。
+
+画图时可以把 TIU 画成 **Host CSR front-end + task/status registers**。
+
+### 2.3 Stage S1：Task schedule
+
+对应模块：`hdv_task_schedule_unit.sv`。
+
+TSU 把 TIU 提交的 task 排队，并保证当前 HDV 前端一次只执行一个 active task。当前 RTL 支持 task FIFO，但 HDV 执行路径是 single-active-task 语义。
+
+输入：
+
+- TIU task valid。
+- IPU task ready。
+- top/task done/error/flush。
+
+输出：
+
+- `tsu_ipu_task_valid`
+- active task entry/descriptor
+- TIU ready/status
+
+关键逻辑：
+
+1. TIU task 进入 FIFO。
+2. 当 FIFO 非空且 `active_q=0` 时，TSU 把队头 task 发给 IPU。
+3. IPU 接收后，TSU 置 `active_q=1`。
+4. 当前 task done/error 后清 `active_q`，允许下一个 task 出队。
+
+阻塞和边界：
+
+- `active_q` 是 task 所有权标记，防止多个 task 的 IPU buffer、HEU EP、VDU wait table、Ara response 混叠。
+- flush 会清 active 状态和 FIFO，表示放弃排队/执行中的 task。
+
+画图时可以把 TSU 画成 **Task FIFO + single active task latch**。
+
+### 2.4 Stage S2：Local instruction supply
+
+对应模块：`hdv_instruction_prefetch_unit.sv`。
+
+IPU 是 HDV 前端供给的第一段。它从 task entry PC 开始取 128-bit fetch packet，写入本地 ping-pong buffer，并向 VLIWPU 按顺序提供 packet。循环稳定后，IPU 可以从本地 buffer replay loop body，减少重复 instruction memory 访问。
+
+输入：
+
+- active task entry。
+- instruction-memory AXI response。
+- VLIWPU ready。
+- scalar backend branch redirect / loop exit。
+- task complete/flush。
+
+输出：
+
+- `ipu_vliwpu_packet_valid`
+- 128-bit fetch packet
+- packet PC
+- instruction-memory AR
+- `hdv_loop_active`
+
+内部阶段可以理解为：
+
+```text
+IDLE
+  -> FILL first packet
+  -> SERVE active buffer
+       -> optional background fill
+       -> loop replay on backward redirect
+       -> refill or switch buffer on miss/fall-through
+```
+
+关键逻辑：
+
+1. **FILL**：task 启动或 redirect miss 后发 instruction-memory AR，等待首个 packet 返回。
+2. **SERVE**：只要当前 `exec_idx` 对应 packet valid，就向 VLIWPU 输出。
+3. **packet cache/SRAM bypass**：隐藏 SRAM 读延迟，避免每个 packet 都多等一拍。
+4. **loop build/lock**：看到 loop_start/loop_end 后记录 loop body 范围。
+5. **loop replay**：taken backward branch 若命中本地 buffer，直接把 `exec_idx` 跳回 loop head。
+6. **loop exit**：not-taken backward branch 让 IPU 退出 replay，恢复 fall-through。
+
+阻塞和边界：
+
+- VLIWPU 不 ready 时，IPU 保持当前 packet，不跳过。
+- redirect PC 必须按 128-bit fetch packet 对齐。
+- IPU 只供给指令 packet，不形成 EP，也不理解 vector hazard。
+- instruction-memory outstanding 有上限，避免取指淹没数据访存。
+
+画图时可以把 IPU 画成 **Local instruction buffer + loop replay engine**，旁边标出 `redirect` 和 `loop_exit` 控制边。
+
+### 2.5 Stage S3：EP formation
+
+对应模块：`hdv_vliw_pack_unit.sv`。
+
+VLIWPU 把 128-bit 或 256-bit logical packet 扫描成 execute packet。它是 HDV 前端从“指令流”变成“EP 流”的关键模块。
+
+输入：
+
+- IPU fetch packet。
+- packet PC。
+- header/p-bit/prefetch hint。
+- HEU ready。
+
+输出：
+
+- EP slot valid。
+- EP slot halfword。
+- 32-bit 起点/continuation 标记。
+- 每个 slot PC。
+- 每个 slot class：scalar/vector/branch/system。
+- EP-bundled prefetch hint。
+
+内部阶段可以理解为：
+
+```text
+packet latch
+  -> header decode
+  -> slot classify
+  -> issue-mask scan
+  -> optional carry merge
+  -> EP valid to HEU
+  -> head_slot update
+```
+
+关键逻辑：
+
+1. **header decode**：识别 `lui x0, imm20`，提取 p-bit、packet256、cross、loop_start/end、prefetch mode/disable。
+2. **logical packet build**：普通 packet 是 128-bit；`packet256=1` 时拼接两个 128-bit packet。
+3. **slot classify**：按 opcode 粗分类 scalar/vector/branch/system。
+4. **32-bit continuation**：32-bit 指令占两个 16-bit slot，业务计数只按起点算一条。
+5. **issue-mask scan**：从 `head_slot_q` 开始，按 p-bit、dep_break、control boundary、MaxIssueSlots 决定 EP 宽度。
+6. **cross carry**：若 header 允许 cross，packet 尾部 EP 可暂存并与下一 packet 开头合并。
+7. **hint alignment**：prefetch hint 随 EP/carry 一起保存，避免跨 packet 时错配。
+
+阻塞和边界：
+
+- HEU 不 ready 时，VLIWPU 保持当前 EP。
+- branch/system 是硬边界。
+- p-bit 只允许合并，不强制合并；硬件可因资源/边界拆开。
+- VLIWPU 不做完整寄存器 scoreboard；同 EP 依赖安全主要由软件 p-bit 承诺和后端边界共同保证。
+
+画图时可以把 VLIWPU 画成 **Header decoder + EP packer**，输入是 fetch packet，输出是 execute packet。
+
+### 2.6 Stage S4：Hybrid EP split and front-end advance
+
+对应模块：`hdv_hybrid_execution_unit.sv`。
+
+HEU 是 HDV 的分水岭。它不执行指令，而是把同一个 EP 拆成 scalar slice 和 vector slice，并维护 current/buffer 两个 EP 上下文。它决定前端什么时候可以接收下一 EP，也决定 buffered vector 是否可以安全提前发给 VDU。
+
+输入：
+
+- VLIWPU EP。
+- scalar backend ready/done。
+- VDU ready/acknowledge。
+- backend error/flush。
+
+输出：
+
+- scalar slice 到 scalar backend。
+- vector slice 到 VDU。
+- `ep_id`。
+- vector prefetch hint。
+- `heu_top_ep_acknowledged`。
+
+内部阶段可以理解为：
+
+```text
+accept EP
+  -> split scalar/vector slots
+  -> allocate vector ep_id
+  -> send scalar slice
+  -> send vector slice
+  -> wait scalar_ep_done and vector_ep_acknowledged
+  -> acknowledge EP to front-end
+```
+
+current/buffer 行为：
+
+1. 若当前没有 outstanding EP，新 EP 进入 current。
+2. 若 current 仍未完成但 HEU buffer 空，新 EP 进入 buffer。
+3. 若 current 的 scalar slice 卡住，而 buffer 的 vector slice 与 current 没有冲突，则 buffer vector 可 early issue。
+4. current 完成后，buffer 被提升为 current。
+5. 当前最多两个 outstanding vector EP，因此 `ep_id` 用 1 bit 在 0/1 间切换。
+
+early issue 安全条件：
+
+- 不能跨 unresolved branch。
+- 不能让 buffered vector memory 越过 current scalar memory-order op。
+- 不能让 buffered vector 读取 current scalar slice 尚未写回的 GPR/FRF。
+- 不能让 buffered vector 与 current vector 在保守写读关系上出现不安全重叠。
+- vector dispatch 通路必须能接收。
+
+阻塞和边界：
+
+- `heu_vliwpu_execute_ready_o` 受 buffer 和 unresolved branch 控制。
+- `heu_top_ep_acknowledged` 要等 scalar slice done 和 vector slice acknowledged。
+- EP acknowledge 只表示前端安全推进，不表示 vector 指令 retirement。
+
+画图时可以把 HEU 画成 **EP split + current/buffer scheduler**，这是 SEAM-V “hybrid decoupled” 的核心框。
+
+### 2.7 Stage S5：Scalar slice execution
+
+对应模块：`hdv_scalar_backend.sv`。
+
+标量后端执行 EP 中的 scalar slice，维护本地 XRF/FRF，解析分支，提供 vector operand，并处理少量 scalar-visible vector writeback。它不是完整 CVA6，但具备 HDV kernel 所需的标量执行能力。
+
+输入：
+
+- HEU scalar slice。
+- scalar LSU AXI response。
+- VDU operand request。
+- VDU vector writeback / vset writeback。
+- `vec_store_inflight` 和 `vec_vset_inflight`。
+
+输出：
+
+- `scalar_ep_done`。
+- branch redirect / loop exit。
+- scalar AXI load/store request。
+- vector operand rs1/rs2/frs1 data。
+- task complete/error。
+
+内部状态机可以画成：
+
+```text
+IDLE
+  -> EXECUTE
+       -> simple batch
+       -> WAIT_MULT
+       -> WAIT_FPU
+       -> LSU_AR / LSU_R
+       -> LSU_AW / LSU_W / LSU_B
+       -> REDIRECT
+  -> DONE
+```
+
+关键逻辑：
+
+1. **simple batch**：对简单 ALU/地址更新/循环控制类指令做批处理，减少逐条标量供给瓶颈。
+2. **complex lane**：乘法、FPU、复杂指令进入等待状态，完成后写回。
+3. **标量 LSU**：load 可连续发 AR 并按 load queue 写回；store 保守按 AW/W/B 完成。
+4. **branch**：解析 branch target/taken/backward，把 taken redirect 送回 IPU/top。
+5. **operand service**：响应 VDU 对 base/stride/scalar operand 的读取请求。
+6. **vset interlock**：若后续 scalar 读正在飞的 `vset rd`，等待 vector writeback。
+7. **vector store ordering**：若 VDU 表示 vector store inflight，标量 LSU 不发新 memory op。
+
+阻塞和边界：
+
+- scalar slice 完成前，HEU 不会整体 acknowledge 当前 EP。
+- 同 EP 内 scalar 写后 vector 读新值没有自动保证，软件需要切 EP。
+- 后续 EP 的 scalar-to-vector 版本由 HEU/VDU 的 acknowledge 和 early-issue mask 保证。
+
+画图时可以把 scalar backend 画成 **Scalar slice executor + operand server + branch/LSU**。
+
+### 2.8 Stage S6：Vector request resolution
+
+对应模块：`hdv_vec_dispatch_unit.sv`。
+
+VDU 把 HEU 的 vector slice 变成 Ara 能接收的 accelerator request。它是“HDV EP 语义”和“真实 Ara 后端”之间的适配层。
+
+输入：
+
+- HEU vector slice。
+- `ep_id`。
+- EP-bundled prefetch hint。
+- scalar backend operand response。
+- Ara request ready/response。
+
+输出：
+
+- Ara accelerator request。
+- `acc_req_hdv_meta`。
+- `vec_ep_acknowledged`。
+- scalar operand request。
+- vector/scalar-visible writeback。
+- `vec_store_inflight` / `vec_scalar_vset_inflight`。
+
+VDU 内部建议在框图中拆成八个小框：
+
+```text
+EP intake / pending skid
+  -> slot select
+  -> scalar operand request
+  -> operand snapshot
+  -> resolved request generation
+  -> command window push/bypass
+  -> Ara valid/ready
+  -> response metadata / real wait table
+```
+
+关键逻辑：
+
+1. **EP intake**：接收一个 vector slice；若 VDU 正忙，可用 pending skid 暂存后续 EP。
+2. **slot select**：从 vector slot mask 中选择下一条有效 RVV 指令。
+3. **operand detection**：判断该 vector 指令是否需要 scalar rs1/rs2/frs1。
+4. **operand snapshot**：从 scalar backend 读取并固定 operand 值，后续 scalar 修改不会影响这条 request。
+5. **lookahead/bypass**：当前 slot dispatch 时可提前请求下一 slot operand，减少一拍等待。
+6. **request generation**：生成 Ara request，并绑定 `hdv_meta`。
+7. **command window**：Ara 不 ready 时，resolved request 进入 window；window 空且 Ara ready 时可 bypass 直发。
+8. **response metadata**：记录 request 的 scalar-visible writeback、store/vset 属性和 ep_id。
+9. **real wait table**：跟踪最多两个 outstanding vector EP 是否已经达到前端安全 acknowledge 点。
+
+`vec_ep_acknowledged` 的安全条件：
+
+- 该 EP 所有 vector slot 已经被 VDU 消费为 request，或者该 EP 没有 vector slot。
+- 需要的 scalar operand 已经 snapshot。
+- 如果含 `vset rd!=x0`，对应 granted VL 写回已经可见。
+
+阻塞和边界：
+
+- command window full 会阻塞 request resolution。
+- Ara req_ready 低会造成 backpressure，但 VDU 可以用 window 吸收一部分。
+- VDU 不等待普通 vector arithmetic/load/store 完成后才 ack EP。
+- vector store 对后续 scalar memory 的顺序通过 `vec_store_inflight` 保守保证。
+
+画图时可以把 VDU 画成 **Vector request resolver + command window + EP wait table**。
+
+### 2.9 Stage S7：Ara semantic consumption
+
+对应模块：`ara.sv`、`ara_dispatcher.sv`、`ara_sequencer.sv`。
+
+Ara 后端仍是执行 RVV 指令的主体。HDV 不替换 Ara dispatcher/sequencer/lane/VLSU，而是在 request 中携带 metadata，让后端在安全位置消费 EP 语义。
+
+输入：
+
+- VDU accelerator request。
+- `hdv_meta`。
+- Ara 内部 lane/VLSU ready。
+
+输出：
+
+- lane/VLSU issued operations。
+- response。
+- hazard/backpressure 计数。
+
+关键逻辑：
+
+1. `ara_dispatcher` 把 VDU request 解码成 Ara 内部 request，并把 `hdv_meta` 原样绑定到请求。
+2. `ara_sequencer` 按原 Ara 规则建立 read/write hazard 候选。
+3. 若新 request 与 running request 都有有效 HDV metadata 且 `ep_id` 相同，则 same-EP hazard candidate 可被裁剪。
+4. 若不是 same EP，或者任一方没有有效 metadata，原 Ara hazard 规则保持不变。
+5. lane/VLSU 的 ready、queue、operand requester、VRF bank 等压力仍按 Ara 原机制处理。
+
+阻塞和边界：
+
+- same-EP bypass 只裁剪保守 RAW/WAR/WAW 候选，不绕过 lane/VLSU 资源限制。
+- same-EP bypass 依赖软件保证同 EP 内无真实非法 vector 依赖。
+- 跨 EP 依赖仍由 Ara sequencer 正常保护。
+
+画图时可以把 Ara semantic consumption 画成 **Ara dispatcher/sequencer with HDV metadata sideband**，不要画成一个全新的向量后端。
+
+### 2.10 Stage S8：Vector execution and VLSU prefetch
+
+对应模块：Ara lanes、`vlsu.sv`、`addrgen.sv`、`vldu.sv`。
+
+这一段是真正的 vector compute/memory 执行。HDV 对它的新增影响主要是 request-bound prefetch，以及 sequencer 看到 EP metadata 后减少保守 hazard。
+
+输入：
+
+- Ara sequencer issued vector instructions。
+- VLSU memory descriptors。
+- `hdv_meta.prefetch_hint_valid`
+- `hdv_meta.prefetch_disable`
+- `hdv_meta.prefetch_mode`
+- `hdv_loop_active`
+
+输出：
+
+- AXI demand load/store。
+- AXI prefetch AR。
+- lane/VRF writeback。
+- VDU/Ara response。
+
+prefetch 子流水可以画成：
+
+```text
+demand unit-stride load
+  -> compute future prefetch address
+  -> prefetch AR queue
+  -> prefetch ROB / in-flight beats
+  -> lookup FIFO + vldu prefetch buffer
+  -> later demand lookup hit
+  -> demand AR suppressed, data read from prefetch buffer
+```
+
+关键逻辑：
+
+1. 只有带有效 hint 且未 disable 的 unit-stride load 才生成 prefetch。
+2. `prefetch_mode` 描述同一条 load 下一次出现时的地址距离：1X/2X/4X/8X。
+3. Demand AR 优先于 prefetch AR，prefetch 不能抢占可发 demand。
+4. 当前 prefetch 与 demand 共用 `AXI_ID_DEMAND`，用 tag FIFO 标记返回 burst 属于 demand 还是 prefetch。
+5. prefetch 完成后，addrgen 把地址放入 lookup FIFO，vldu 把数据放入 prefetch buffer。
+6. later demand 地址匹配 lookup head 时，demand 不发 AR，直接消费 prefetch buffer。
+7. 若 demand 与 lookup head 不一致，addrgen 触发 stream-break drain/flush，错误 prefetch 被丢弃。
+8. page-cross prefetch 被拆成两个 segment，并用 second-tag 保持 lookup/data 对齐。
+
+阻塞和边界：
+
+- prefetch credit 同时看 VLD premem buffer、lookup FIFO、ROB 和 inflight beats。
+- store-aware pacing 限制 prefetch lead，避免 vector store 被 prefetch 读请求长期饿死。
+- strided/gather/scatter 当前不走有效 prefetch 路径。
+- prefetch 永远不能成为正确性条件；miss、late、unused 只能影响性能。
+
+画图时可以把 VLSU prefetch 画成 **request-bound prefetch path beside demand load path**，注意它不是独立 ISA 指令。
+
+### 2.11 Stage S9：Response, drain and task completion
+
+对应模块：`hdv_vec_dispatch_unit.sv`、`hdv_scalar_backend.sv`、`hdv_top.sv`、TIU/TSU。
+
+HDV task 不能在 scalar code 看到 exit 后立刻结束，因为 vector request 可能还在 VDU command window、Ara response metadata、VLSU 或 lane 中飞行。当前顶层显式等待 vector dispatch drain。
+
+输入：
+
+- scalar backend task complete request。
+- VDU busy。
+- Ara response。
+- pending stale instruction-memory response。
+
+输出：
+
+- TSU task done/error。
+- TIU status done/error。
+- host visible status。
+
+关键逻辑：
+
+1. scalar backend 遇到 task exit/ret/ebreak 或 host complete 条件，产生 `task_complete_request`。
+2. top 若看到 VDU 仍 busy，就锁存 task complete seen。
+3. VDU 继续 drain command window、response metadata、real wait table、vset wait、prefetch/response 相关状态。
+4. VDU busy 清零后，top 才把 task done 送给 TSU/TIU。
+5. 如果 task complete/flush 前有旧 instruction-memory response 未返回，top 用 stale response 机制接收并丢弃，避免 AXI fabric 被旧 response 堵住。
+
+阻塞和边界：
+
+- task done 是整个 HDV task 的完成，不是单个 EP 或单条 vector 指令完成。
+- EP acknowledge 允许前端进入下一 EP，但 task done 必须等 vector side drain。
+- error 会沿 TIU/TSU status 传播，供 host 读回。
+
+画图时可以把这段画成 **Drain/commit controller**，连接 scalar exit、VDU busy、TSU/TIU status。
+
+### 2.12 Stage 间反压关系
+
+为了画清楚整体框图，需要把 ready/valid 反压画出来：
+
+| 上游 | 下游 | 反压条件 | 结果 |
+|---|---|---|---|
+| TIU | TSU | task FIFO full | TIU 保留 pending task，重复 start 报错 |
+| TSU | IPU | active task 未完成 | 后续 task 留在 FIFO |
+| IPU | VLIWPU | VLIWPU not ready、packet invalid、loop_wait | `exec_idx` 不前进 |
+| VLIWPU | HEU | HEU not ready | EP 保持，head_slot 不更新 |
+| HEU | scalar backend | scalar backend not ready | scalar dispatch 保持 |
+| HEU | VDU | VDU not ready | vector dispatch 保持或 buffer 等待 |
+| VDU | Ara | Ara req_ready 低 | request 进入/停留 command window |
+| Ara/VLSU | memory | AXI ready 低、VLSU queue full | Ara 后端 backpressure |
+| VDU/top | task done | VDU busy | task complete 被锁存，等待 drain |
+
+这张表有助于解释 SEAM-V 为什么不是“无限提前发射”：每一级都有明确的 storage 或 ready 边界。
+
+### 2.13 Flush、redirect 与 replay 关系
+
+HDV 里不要把所有 flush 画成一根全局 reset 线。至少应区分四类控制边：
+
+- **task flush**：终止当前 task，清 TIU/TSU active、IPU、VLIWPU、HEU、VDU 前端状态。
+- **branch redirect**：来自 scalar backend 的 taken branch，刷新已基于旧 PC 的前端 packet/EP/vector pending 状态，但 IPU 可尝试本地 loop replay。
+- **loop exit**：not-taken backward branch，告诉 IPU 退出 loop locked/replay 状态，恢复 fall-through。
+- **prefetch stream break**：只作用在 VLSU prefetch lookup/buffer 路径，等待 ROB/inflight drain 后 flush prefetch buffer，不清整个 HDV 前端。
+
+画图时建议用不同颜色或线型区分：
+
+- task/branch control path
+- EP ready/ack path
+- scalar operand path
+- HDV metadata path
+- prefetch side path
+
+### 2.14 教学级讲解顺序
+
+讲 HDV 时可以按下面顺序，而不是按 RTL 文件顺序：
+
+1. 先画 S0-S9 总流水，说明 task、packet、EP、request、response 的粒度不同。
+2. 再讲 S2/S3：为什么本地取指和 EP formation 能提高 instruction supply。
+3. 再讲 S4：为什么 HEU 需要 current/buffer，以及为什么只能安全提前发 buffered vector。
+4. 再讲 S5/S6：scalar slice 和 vector slice 如何通过 operand snapshot 协同。
+5. 再讲 S7：Ara sequencer 如何消费 same-EP metadata。
+6. 再讲 S8：VLSU prefetch 如何把软件 memory intent 转成 request-bound prefetch。
+7. 最后讲 S9：为什么 task done 必须 drain，而 EP ack 不是 vector completion。
+
+如果要把这章变成论文框图，建议主图只放 S0-S9 和五条关键 sideband；细节图再分别放 HEU current/buffer、VDU command window、VLSU prefetch。
+
+## 3. 软件可见格式与硬件解释
 
 HDV kernel 使用一个 RISC-V hint 形式的 header 描述 logical packet。当前 RTL 将 `lui x0, imm20` 识别为 HDV header。VLIWPU 对 header 的解释如下：
 
@@ -189,7 +813,7 @@ HDV kernel 使用一个 RISC-V hint 形式的 header 描述 logical packet。当
 
 这种编码避免把 `00` 同时解释成“关闭”和“1X”。当前 RTL 中 `00` 是 1X，关闭由独立 bit 表示。
 
-## 3. 顶层集成：`hdv_top.sv`
+## 4. 顶层集成：`hdv_top.sv`
 
 `hdv_top` 是当前 HDV 原型的系统级 wrapper。它实例化 HDV 前端、真实标量后端、VDU、Ara 后端，并把 Ara 数据 AXI、标量 LSU AXI、HDV instruction-memory AXI 汇入一个 system AXI mux。
 
@@ -206,13 +830,13 @@ HDV kernel 使用一个 RISC-V hint 形式的 header 描述 logical packet。当
 | `VectorCmdWindowDepth=12` | VDU resolved command window 深度 |
 | `UseCva6HdvScalar=1` | 当前默认使用真实 `hdv_scalar_backend` |
 
-### 3.1 内部数据连接
+### 4.1 内部数据连接
 
 TIU 输出 task entry/descriptor 到 TSU，TSU 一次激活一个 task 给 IPU。IPU 输出 fetch packet 到 VLIWPU。VLIWPU 输出 EP slot、PC、指令类别和 EP-bundled prefetch hint 到 HEU。HEU 分别输出 scalar slice 和 vector slice。
 
 Scalar slice 接入 `hdv_scalar_backend`。Vector slice 接入 `hdv_vec_dispatch_unit`，VDU 再驱动 Ara accelerator request，同时输出 `acc_req_hdv_meta_o` 作为 Ara 后端 HDV metadata sideband。
 
-### 3.2 branch redirect 与 flush
+### 4.2 branch redirect 与 flush
 
 真实标量后端解析分支后输出：
 
@@ -225,17 +849,17 @@ Scalar slice 接入 `hdv_scalar_backend`。Vector slice 接入 `hdv_vec_dispatch
 
 not-taken backward branch 产生 `scalar_loop_exit`，送入 IPU 的 `loop_exit_i`，用于结束 loop-active 状态并恢复顺序取指。
 
-### 3.3 instruction-memory AXI bridge
+### 4.3 instruction-memory AXI bridge
 
 IPU 内部只发 128-bit instruction fetch request。`hdv_top` 把它转换成 AXI AR，并使用 `imem_outstanding_q` 限制 outstanding 数量。发生 dispatch flush 或 task complete 时，桥接逻辑不会让旧 response 堵住 AXI fabric，而是用 `imem_stale_rsp_q` 记录需要 drain 的旧 response，接收后丢弃。
 
 这个限制很重要。IPU buffer 已经放大到 512B，如果让 instruction fetch 无限制提前填充，会和 Ara 数据访存、标量 LSU 争抢同一个 system AXI 端口，严重时会造成 store-heavy kernel 卡住。
 
-### 3.4 task done drain
+### 4.4 task done drain
 
 `task_complete_request` 可以来自 host 或 scalar backend。若它出现时 VDU 仍 busy，`hdv_top` 会锁存 `host_task_complete_seen_q`，等 `vec_dispatch_busy` 清零后才让 TSU 看到 task done。这保证 task 状态不会在 vector request/response 仍未清空时提前结束。
 
-### 3.5 flush 分层
+### 4.5 flush 分层
 
 顶层不是用一个全局 reset 式 flush 简单清所有模块，而是区分几类来源：
 
@@ -245,7 +869,7 @@ IPU 内部只发 128-bit instruction fetch request。`hdv_top` 把它转换成 A
 
 这三类事件对 IPU 的意义不同。task complete/flush 会让 IPU 回到 idle；branch redirect 则可能命中本地 loop buffer，使 IPU 不必重新发 instruction-memory AR。顶层必须保留这种差异，否则会丢掉 loop replay 的性能收益。
 
-### 3.6 system AXI 汇聚
+### 4.6 system AXI 汇聚
 
 当前 `hdv_top` 内部有三类 AXI master：
 
@@ -255,9 +879,9 @@ IPU 内部只发 128-bit instruction fetch request。`hdv_top` 把它转换成 A
 
 这些 master 通过 system AXI mux 汇到外部 memory system。顶层对 IPU 加 `ImemOutstandingDepth=4`，对 task complete/redirect 后旧 instruction response 做 stale drain，是为了避免 instruction fetch 在共享端口上造成不可控反压。标量 LSU 与 Ara 数据访问的顺序关系不靠 AXI mux 推断，而靠 VDU/标量后端之间的 `vec_store_inflight` 等显式互锁。
 
-## 4. 共享定义：`hdv_pkg.sv` 与 `ara_pkg.sv`
+## 5. 共享定义：`hdv_pkg.sv` 与 `ara_pkg.sv`
 
-### 4.1 `hdv_pkg.sv`
+### 5.1 `hdv_pkg.sv`
 
 `hdv_pkg` 定义 HDV 控制面和前端分类所需的公共类型：
 
@@ -269,7 +893,7 @@ IPU 内部只发 128-bit instruction fetch request。`hdv_top` 把它转换成 A
 
 `hdv_inst_class_e` 由 VLIWPU 产生，由 HEU 消费。HEU 当前把 `VECTOR` 送入 vector slice，其余类别进入 scalar slice；SYSTEM 和 BRANCH 作为硬边界影响 VLIWPU 打包。
 
-### 4.2 `ara_pkg.sv`
+### 5.2 `ara_pkg.sv`
 
 当前 Ara package 中新增或扩展的 HDV 相关字段是：
 
@@ -285,9 +909,9 @@ typedef struct packed {
 
 `hdv_meta_t` 进入 Ara request，并最终到 sequencer/VLSU。`ara_pkg` 里仍保留 `AXI_ID_PREFETCH` 常量，但当前 VLSU prefetch AR 实际与 demand 共用 `AXI_ID_DEMAND`，通过独立 tag FIFO 区分 R burst 类型。不要再把当前设计描述成“prefetch 使用独立 AXI ID 返回”。
 
-## 5. 任务控制模块
+## 6. 任务控制模块
 
-### 5.1 TIU：`hdv_task_interface_unit.sv`
+### 6.1 TIU：`hdv_task_interface_unit.sv`
 
 TIU 是 HDV task CSR 前端。它提供一个极简 CSR-like ready/valid 接口，保存 task entry、task descriptor 和 sticky status。
 
@@ -318,7 +942,7 @@ TIU 的组合逻辑优先级可以按下面理解：
 
 这种顺序允许“TSU 同周期接走旧 task，host 同周期 start 新 task”成立；但不允许在 TSU 不 ready 时覆盖已有 pending task。
 
-### 5.2 TSU：`hdv_task_schedule_unit.sv`
+### 6.2 TSU：`hdv_task_schedule_unit.sv`
 
 TSU 是 FIFO-backed task scheduler。它用 `fifo_v3` 保存 host 提交的 task，保证任务按提交顺序进入 IPU。
 
@@ -341,11 +965,11 @@ tsu_ipu_task_valid = !fifo_empty && !active_q
 
 `active_q` 是 TSU 与 IPU/后端之间的任务所有权标记。FIFO 中可以排队多个任务，但只有 `active_q=0` 时才允许下一个任务出队给 IPU。done/error 会清 `active_q` 并置 sticky 状态；`flush_i` 会清 active/done/error，并通过 `fifo_v3` flush 清空排队任务。
 
-## 6. 本地指令供给：`hdv_instruction_prefetch_unit.sv`
+## 7. 本地指令供给：`hdv_instruction_prefetch_unit.sv`
 
 IPU 从 task entry 开始取 128-bit fetch packet，并向 VLIWPU 提供连续 packet。当前顶层配置下，每个 ping-pong buffer 是 512B，即 32 个 128-bit packet；模块自身默认 `BufferBytes=64` 只是 standalone 默认值，不代表当前系统集成值。
 
-### 6.1 状态机
+### 7.1 状态机
 
 IPU 有三个主状态：
 
@@ -367,7 +991,7 @@ SERVE --redirect hit local buffers--> SERVE with exec_idx changed
 
 `ipu_tsu_task_ready_o` 只在 `IDLE` 为 1，所以 IPU 不会在一个 task 尚未结束时接收另一个 task。
 
-### 6.2 packet cache 与 SRAM 读隐藏
+### 7.2 packet cache 与 SRAM 读隐藏
 
 IPU 内部使用 SRAM 保存 fetch packet。为了避免每个顺序 packet 都多等一拍 SRAM 读，IPU 有几类小型 cache/bypass：
 
@@ -378,13 +1002,13 @@ IPU 内部使用 SRAM 保存 fetch packet。为了避免每个顺序 packet 都�
 
 这些结构只用于取指供给，不改变软件语义。
 
-### 6.3 background fill 与带宽约束
+### 7.3 background fill 与带宽约束
 
 在 SERVE 状态，IPU 可以填充 background buffer。但当前设计不会盲目把 512B buffer 后续地址全部填满。若 loop body 已经通过 `loop_start/loop_end` 标记识别，IPU 会在 loop-end packet 已取到后停止继续填充剩余空间。这样避免把 kernel 后的数据区当指令继续读入，抢占 Ara 数据访存带宽。
 
 `hdv_top` 还通过 `ImemOutstandingDepth=4` 限制 instruction fetch outstanding 数量。IPU 本地 buffer 变大后，这个限制是防止共享 AXI 被 instruction fetch 淹没的关键。
 
-### 6.4 loop build、lock 与 replay
+### 7.4 loop build、lock 与 replay
 
 IPU 使用以下状态跟踪循环：
 
@@ -398,11 +1022,11 @@ IPU 使用以下状态跟踪循环：
 
 若 backward branch 最终 not-taken，标量后端产生 `loop_exit_i`。IPU 退出 `auto_loop_lock/loop_locked` 状态，恢复 fall-through 路径。如果 fall-through packet 因 loop-end cap 没有继续填充，IPU 会重新打开必要填充，而不是死在 replay 状态。
 
-### 6.5 redirect 对齐约束
+### 7.5 redirect 对齐约束
 
 IPU 要求 redirect PC 按 fetch packet 宽度对齐。当前 `FetchPacketWidth=128`，所以 redirect PC 必须 16B 对齐。仿真中若 `redirect_valid_i` 非对齐，会触发 fatal。这一约束要求 HDV kernel 中 loop label 适当 `.balign 16`，否则 branch target 无法作为 fetch packet head replay。
 
-### 6.6 memory request/response 与 buffer 角色
+### 7.6 memory request/response 与 buffer 角色
 
 IPU 内部有 active buffer 和 fill buffer 两个角色，物理上对应 A/B ping-pong buffer。active buffer 给 VLIWPU 服务 packet；fill buffer 接收 instruction-memory response。两者可以相同，也可以不同：
 
@@ -412,7 +1036,7 @@ IPU 内部有 active buffer 和 fill buffer 两个角色，物理上对应 A/B p
 
 `fill_req_idx_q` 表示已经发出到内存的 packet index，`fill_rsp_idx_q` 表示已经收到并写入 SRAM/valid bit 的 index。请求发出和响应返回分离后，IPU 用 valid bit 判断某个 packet 是否真的可服务，不能只看地址范围。
 
-### 6.7 packet 输出和反压
+### 7.7 packet 输出和反压
 
 `ipu_vliwpu_packet_valid_o` 的核心条件是：
 
@@ -426,7 +1050,7 @@ state_q == SERVE
 
 VLIWPU 不 ready 时，IPU 保持当前 `exec_idx_q`，不会跳过 packet。VLIWPU 接收后，IPU 才根据顺序路径、loop wait、buffer 边界或 redirect 更新 `exec_idx_q`。这样取指端是严格按 packet 顺序推进的；所有“跨 packet”并行只发生在 VLIWPU 的显式 carry 逻辑里。
 
-## 7. EP 形成：`hdv_vliw_pack_unit.sv`
+## 8. EP 形成：`hdv_vliw_pack_unit.sv`
 
 VLIWPU 把 IPU 的 fetch packet 转成 HEU 可消费的 execute packet。它不是通用 decoder，而是一个保守 packet scanner。
 
@@ -440,7 +1064,7 @@ VLIWPU 内部没有多级流水线，核心状态是：
 
 理解这个模块时可以把它看成“一个带 head pointer 的 packet scanner”。它每次从 `head_slot_q` 开始向后扫，形成一个 `issue_mask`，成功交给 HEU 后把 `head_slot_q` 推到下一条未处理 slot。
 
-### 7.1 logical packet
+### 8.1 logical packet
 
 普通情况下，一个 128-bit fetch packet 包含：
 
@@ -457,11 +1081,11 @@ VLIWPU 内部没有多级流水线，核心状态是：
 
 此时 slot 数从 6 扩大到 14。注意 packet256 扩大的是扫描窗口，不扩大 HEU 单个 EP 的最大 slot 数。
 
-### 7.2 32-bit 指令与 continuation slot
+### 8.2 32-bit 指令与 continuation slot
 
 VLIWPU 用指令 halfword 低两位判断 32-bit 指令起点。若一个 slot 是 32-bit 指令起点，下一个 slot 被标记为 continuation。打包时 continuation slot 会随起点一起输出，但 HEU 只在起点位置组装完整 32-bit 指令，避免把同一条 32-bit 指令当作两条业务指令。
 
-### 7.3 指令分类
+### 8.3 指令分类
 
 VLIWPU 用轻量 opcode 判断 slot 类型：
 
@@ -472,7 +1096,7 @@ VLIWPU 用轻量 opcode 判断 slot 类型：
 
 SYSTEM 和 BRANCH 都是硬边界：形成 EP 时遇到它们会停止继续 pack，避免控制流或系统语义被跨越。
 
-### 7.4 p-bit 与 issue mask
+### 8.4 p-bit 与 issue mask
 
 `p_bits` 描述 logical packet 内相邻 slot 是否允许连接。VLIWPU 从 `head_slot_q` 开始扫描，生成 `issue_mask`。扫描停止条件包括：
 
@@ -486,7 +1110,7 @@ SYSTEM 和 BRANCH 都是硬边界：形成 EP 时遇到它们会停止继续 pac
 
 `issue_mask` 里会同时包含 32-bit 指令的起始 slot 和 continuation slot。后续输出到 HEU 时，continuation slot 用来恢复完整 32-bit 指令，但不会作为单独业务指令参与分类和 slice split。
 
-### 7.5 cross-packet carry
+### 8.5 cross-packet carry
 
 若当前 logical packet 尾部 EP 满足以下条件：
 
@@ -507,7 +1131,7 @@ carry buffer 保存的不只是 slot 数据，还包括：
 
 所以跨包 EP 在 HEU 看来和普通 EP 一样完整，不需要回头查上一 packet 的 header 或 PC。
 
-### 7.6 prefetch hint 随 EP 对齐
+### 8.6 prefetch hint 随 EP 对齐
 
 VLIWPU 输出：
 
@@ -517,7 +1141,7 @@ VLIWPU 输出：
 
 跨包 carry 时，这些 hint 会随 carry 一起保存。这样 HEU 和 VDU 看到的是 EP-bundled hint，而不是已经前移到下一 packet 的瞬时 header。这个细节保证 packet256/cross 下 prefetch hint 不错配。
 
-### 7.7 ready/valid 与 head 更新
+### 8.7 ready/valid 与 head 更新
 
 VLIWPU 接收 IPU packet 的条件是 `vliwpu_ipu_packet_ready_o=1`。它在以下情况下可以接收新 packet：
 
@@ -528,7 +1152,7 @@ VLIWPU 接收 IPU packet 的条件是 `vliwpu_ipu_packet_ready_o=1`。它在以�
 
 VLIWPU 输出 EP 的握手是 `vliwpu_heu_execute_valid_o & heu_vliwpu_execute_ready_i`。只有握手成功后，`head_slot_q` 才移动或清零。若 HEU 反压，VLIWPU 保持 held packet/carry 不变，IPU 也会因为 packet_ready 下降而停住。
 
-### 7.8 正确性不变量
+### 8.8 正确性不变量
 
 这个模块需要维持几条不变量：
 
@@ -538,13 +1162,13 @@ VLIWPU 输出 EP 的握手是 `vliwpu_heu_execute_valid_o & heu_vliwpu_execute_r
 - packet256 只改变 logical packet 长度，不改变 HEU/VDU 每个 EP 最大 slot 数。
 - carry 中的 prefetch hint 必须跟随原 tail EP，而不是使用下一 packet header。
 
-## 8. 混合执行：`hdv_hybrid_execution_unit.sv`
+## 9. 混合执行：`hdv_hybrid_execution_unit.sv`
 
 HEU 接收 VLIWPU 输出的 EP，把其中的指令按类别分成 scalar slice 和 vector slice，并管理 EP acknowledge。
 
 HEU 是前端保序的核心。它自己不执行 scalar 或 vector 指令，但决定什么时候可以接收下一个 EP、什么时候可以让 buffered vector 提前发给 VDU，以及什么时候告诉上游“当前 EP 已安全交付”。
 
-### 8.1 slice split
+### 9.1 slice split
 
 HEU 对每个非 continuation slot 组装 32-bit 指令，并根据 VLIWPU 的 class 生成：
 
@@ -555,7 +1179,7 @@ HEU 对每个非 continuation slot 组装 32-bit 指令，并根据 VLIWPU 的 c
 
 非 vector 指令都进入 scalar slice。vector 指令进入 vector slice。
 
-### 8.2 current EP 与 buffered EP
+### 9.2 current EP 与 buffered EP
 
 HEU 维护一个 current EP 和一个 buffered EP。当前 EP 正在等待 scalar/vector slice 完成时，如果 VLIWPU 又给出一个 EP，HEU 可以把它放入 buffer。buffer 满时，HEU 才反压 VLIWPU。
 
@@ -569,7 +1193,7 @@ heu_vliwpu_execute_ready = !buffer_valid && !(outstanding && current_has_branch)
 
 也就是说，如果 current EP 还没完成但没有 unresolved branch，HEU 允许再收一个 EP 放进 buffer；如果 current EP 含 branch/control，则不再接收后续 EP，防止错误路径上的 packet 进入 buffer。
 
-### 8.3 EP acknowledge
+### 9.3 EP acknowledge
 
 Current EP 完成条件：
 
@@ -589,7 +1213,7 @@ current 提升/清除时，HEU 同步更新：
 
 这些状态必须一起切换，否则 VDU 返回的 `vec_ep_acknowledged_id` 可能被错配到已经提升的 EP。
 
-### 8.4 buffered vector early issue
+### 9.4 buffered vector early issue
 
 如果 current EP 的 scalar side 卡住，而 buffer 中有 vector slice，HEU 可以提前把 buffered vector slice 发给 VDU。这个优化只提前 vector slice，不提前 scalar slice。
 
@@ -631,7 +1255,7 @@ HEU 为 early issue 维护几类 mask：
 
 这组逻辑说明 HEU 的职责不是算出所有 RVV 寄存器依赖，而是保护标量状态版本、控制流和 scalar/vector memory-order 边界。真正的 vector register hazard 仍在 Ara sequencer 层处理，或者被 same-EP 软件承诺裁剪。
 
-## 9. 真实标量后端：`hdv_scalar_backend.sv`
+## 10. 真实标量后端：`hdv_scalar_backend.sv`
 
 `hdv_scalar_backend` 是 HDV 专用标量后端，不是完整 CVA6 core。它复用 CVA6 的 decode/branch/FPU/mult 等部件思想，提供 HDV scalar slice 所需功能：寄存器文件、简单整数指令、多周期复杂指令、分支解析、标量 LSU、向量操作数服务、向量写回接收和 task exit。
 
@@ -656,13 +1280,13 @@ HEU 为 early issue 维护几类 mask：
 
 `scalar_ready_o` 只在 `IDLE` 为 1，HEU 不会在标量后端还没完成上一个 scalar slice 时覆盖它。
 
-### 9.1 寄存器与初始化
+### 10.1 寄存器与初始化
 
 标量后端维护本地 XRF/FRF。`hdv_top` 通过参数提供 `InitialRa`、`InitialA0` 到 `InitialA7`、`InitialFa0` 等初始值。HDV kernel 的 task 参数通常通过这些初始寄存器注入。
 
 后端还维护必要 CSR stub，例如 `vl` 状态，用于记录 Ara 返回的 granted VL。
 
-### 9.2 simple batch
+### 10.2 simple batch
 
 Simple batch 识别可在同周期完成的简单整数/地址类指令。它对 EP 内 slot 从低到高扫描，最多选择 `SimpleAluIssueWidth` 条 simple ALU 指令。选择时检查：
 
@@ -677,7 +1301,7 @@ simple batch 的关键点是“只选择确定能无等待完成且不会破坏�
 
 可以把 simple batch 理解为“EP 内标量轻量并行提交”。它不是完整乱序执行，因为选择 batch 前会做本 batch 内的 RAW/WAW/order 检查。若一条 simple 指令读取另一条 simple 指令同周期才写的 rd，就不会被放进同一个 batch 里同时执行；若某条指令可能影响顺序，例如 memory、branch、复杂运算，则转到 complex lane 或形成 order barrier。
 
-### 9.3 complex lane
+### 10.3 complex lane
 
 Complex lane 处理不能 simple batch 完成的指令，包括：
 
@@ -693,7 +1317,7 @@ Complex lane 处理不能 simple batch 完成的指令，包括：
 
 这意味着 scalar backend 的正确性边界比较保守：复杂指令不在 EP 内乱序穿越；连续 scalar load 可以流水发 AR，但写回仍按 load queue 顺序；store 则一次一个等待 B response。这样做会牺牲一部分标量吞吐，但让 vector operand snapshot 更容易定义：当 scalar slice done 后，相关标量寄存器已经是确定版本。
 
-### 9.4 分支解析与 loop 控制
+### 10.4 分支解析与 loop 控制
 
 标量后端执行 branch 后输出精确分支事件。Taken branch 通过 `hdv_top` redirect IPU；not-taken backward branch 产生 loop exit。Backward 判定在标量后端内部完成，顶层不再基于 PC/target 重新推断。
 
@@ -701,7 +1325,7 @@ Complex lane 处理不能 simple batch 完成的指令，包括：
 
 Taken branch 的处理分两步：`EXECUTE` 中解析出 `branch_target` 并锁存 `redirect_pending_q`，EP 进入 `DONE` 后再进入 `REDIRECT` 输出一拍 `redirect_valid_o/redirect_pc_o`。这样 branch redirect 与 scalar slice done 保持清晰边界，HEU/IPU 不会在 scalar 状态还没提交时看到 redirect。
 
-### 9.5 标量 LSU 与 vector store ordering
+### 10.5 标量 LSU 与 vector store ordering
 
 标量后端有自己的 AXI master，经 `hdv_top` system AXI mux 接入内存。Load 侧使用小型 load queue，当前深度为 4。Store 按 AW/W/B 顺序推进。
 
@@ -711,7 +1335,7 @@ load queue 的实际逻辑是：在 `LSU_AR` 状态下，对 EP 内连续 load s
 
 store 不做类似 queue，而是走 `LSU_AW -> LSU_W -> LSU_B`。这是更保守的选择，因为 store 的可见顺序比 load 更容易影响后续 scalar/vector memory 行为。
 
-### 9.6 vset RAW interlock
+### 10.6 vset RAW interlock
 
 `vsetvli/vsetivli/vsetvl` 被分类为 vector 指令，进入 Ara。若 `rd!=x0`，Ara response 会把 granted VL 写回标量后端。为了防止后续标量指令在写回前读取旧 `rd`，VDU 输出：
 
@@ -720,7 +1344,7 @@ store 不做类似 queue，而是走 `LSU_AW -> LSU_W -> LSU_B`。这是更保�
 
 标量后端在 simple batch 和 complex lane 两处都检查这个 hazard。若当前标量指令读取该 rd，就等待写回。
 
-### 9.7 向量操作数服务
+### 10.7 向量操作数服务
 
 VDU 发 vector request 前需要读取标量 rs1/rs2/frs1。标量后端提供组合式 operand service：
 
@@ -731,7 +1355,7 @@ VDU 发 vector request 前需要读取标量 rs1/rs2/frs1。标量后端提供�
 
 当前 `vec_operand_req_ready_o=1`，VDU 可以在需要时读取 XRF/FRF 中的值。VDU 捕获这些值后，即使后续标量 EP 修改寄存器，也不会影响已经形成的 vector request。
 
-### 9.8 向量到标量写回
+### 10.8 向量到标量写回
 
 VDU 接收 Ara response 后，若该 vector 指令产生 scalar-visible writeback，就通过：
 
@@ -745,11 +1369,11 @@ VDU 接收 Ara response 后，若该 vector 指令产生 scalar-visible writebac
 
 vector writeback 与 simple/complex scalar 写回在同一个 `p_next` 里合并到 XRF/FRF。若 `vec_wb_valid_i` 写同一个 rd，它代表 Ara response 的 scalar-visible 结果，后续 scalar 指令读取该 rd 时应看到最新值。`vec_vset_inflight` 则负责防止写回到来前提前读。
 
-### 9.9 task exit 与边界
+### 10.9 task exit 与边界
 
 当前后端支持把 `ret` 或 `ebreak` 解释为 task exit，具体由参数控制。它不是完整 CVA6 commit pipeline，也没有完整异常/CSR/特权级实现。它的设计目标是服务 HDV kernel 的 scalar slice，而不是运行任意用户态程序。
 
-### 9.10 指令覆盖和保守处理
+### 10.10 指令覆盖和保守处理
 
 标量后端覆盖 HDV kernel 常见的 RV64I 地址/计数更新、branch/jump、M 扩展、F/D 浮点、标量 load/store、必要 CSR stub。它明确不是完整 Linux 用户态 core：
 
@@ -760,7 +1384,7 @@ vector writeback 与 simple/complex scalar 写回在同一个 `p_next` 里合并
 
 这种取舍使标量后端面积和复杂度低于完整 CVA6，同时保留 HDV kernel 需要的真实分支、真实寄存器值和真实标量访存。
 
-## 10. 向量请求适配：`hdv_vec_dispatch_unit.sv`
+## 11. 向量请求适配：`hdv_vec_dispatch_unit.sv`
 
 VDU 把 HEU 的多 slot vector slice 变成 Ara 接口的一条条 accelerator request。它是 HDV 前端与 Ara 后端之间最关键的语义桥。
 
@@ -771,7 +1395,7 @@ VDU 可以按四层来理解：
 3. **resolved command window 层**：保存已经拿到 operand、可以送 Ara 的 request。
 4. **response/ack 层**：用 response metadata FIFO、real wait table 和 vset writeback 生成 scalar writeback 与 EP acknowledge。
 
-### 10.1 输入 EP 与 slot 选择
+### 11.1 输入 EP 与 slot 选择
 
 VDU 接收：
 
@@ -793,7 +1417,7 @@ VDU 状态机包括：
 
 如果 VDU 不在 `IDLE` 但 HEU 又送来一个 vector EP，只要 `pending_valid_q=0` 且 real wait table 允许，就会进入 pending skid。这样 HEU 的 buffered vector early issue 不会因为 VDU 正在处理前一个 EP 而立即丢失机会。
 
-### 10.2 标量操作数捕获
+### 11.2 标量操作数捕获
 
 VDU 判断当前 vector 指令是否需要标量操作数：
 
@@ -815,7 +1439,7 @@ operand 有三种来源：
 
 IDLE 同周期接收新 EP 时，VDU 不直接组合 bypass 新 EP 的 operand，而是至少经过当前 timing 规则允许的 capture 路径，避免跨 EP 的 scalar write/read 时序被同周期旁路破坏。进入 `DISPATCH` 后，组合读口可以为当前 slot 直接 bypass，减少等待。
 
-### 10.3 resolved command window
+### 11.3 resolved command window
 
 VDU 在 FSM request 与 Ara `req_ready` 之间有一个顺序 command window。顶层当前传入深度为 12。每个 entry 是结构化 `vq_entry_t`，包含：
 
@@ -842,7 +1466,7 @@ vq_push    = fsm_req_valid && !(bypass and accepted) && (!vq_full || vq_pop)
 
 这个 window 解决的是 Ara backpressure，不是指令重排。进入 window 的 request 已经完成三件事：选中具体 vector slot、捕获必要 scalar operand、绑定 HDV metadata。window 只允许在 Ara 暂时不 ready 时继续吸收后续 resolved request。服务端始终先送 head entry，因此不会因为 bypass 把后一条 vector request 送到前一条之前。
 
-### 10.4 HDV metadata 形成
+### 11.4 HDV metadata 形成
 
 VDU 为每条 vector request 生成：
 
@@ -856,7 +1480,7 @@ prefetch_mode      = selected_prefetch_mode
 
 这些 metadata 随 command window entry 保存，也随 Ara request sideband 送入后端。VDU 同时把 `trans_id[0]` 设置为 `ep_id`，用于 response routing；`trans_id[1]` 标记 `vset* rd!=x0`，用于精确识别 vset writeback response。
 
-### 10.5 response metadata 与 scalar-visible writeback
+### 11.5 response metadata 与 scalar-visible writeback
 
 每条送往 Ara 的 request 都会在 response metadata FIFO 中记录：
 
@@ -871,7 +1495,7 @@ Ara response 返回时，VDU 根据 metadata 判断是否写回标量后端、�
 
 response metadata FIFO 是必须的，因为 Ara response 只回传 `trans_id` 和结果，不携带“这条指令是否是 store、是否写 FPR、rd 是谁”等完整上下文。VDU 在 request 被 Ara 接收时把这些 side-effect 信息入队，response 返回时从队头取出对应信息。由于 request 顺序保持不乱，FIFO 顺序和 response 顺序匹配。
 
-### 10.6 real wait table 与 EP acknowledge
+### 11.6 real wait table 与 EP acknowledge
 
 真实标量模式下，VDU 使用两项 wait table 跟踪 current/buffered vector EP：
 
@@ -907,7 +1531,7 @@ wait table 是理解 VDU acknowledge 的关键。每个有效项代表一个已�
 
 这个定义让 HDV 可以提前推进下一 EP，同时仍避免后续标量代码读到旧的 `vl` 或让后续 scalar 修改污染已经形成的 vector request。
 
-### 10.7 vector store 与 vset 互锁输出
+### 11.7 vector store 与 vset 互锁输出
 
 `vec_store_inflight_o` 覆盖两类 store：
 
@@ -920,7 +1544,7 @@ wait table 是理解 VDU acknowledge 的关键。每个有效项代表一个已�
 
 `vec_scalar_vset_inflight_o` 从含 `vset rd!=x0` 的 EP 出现开始置位，到对应 vset response 返回后清除。标量后端用它阻止后续标量指令读取旧 granted VL。
 
-### 10.8 VDU 为什么不等普通 vector 完成
+### 11.8 VDU 为什么不等普通 vector 完成
 
 VDU 若等待每条 vector arithmetic/load 完成才 acknowledge EP，会把 HDV 前端退化成“标量核逐条等向量完成”，失去 decoupling。当前 acknowledge 选择的是 operand-safety 边界：
 
@@ -930,9 +1554,9 @@ VDU 若等待每条 vector arithmetic/load 完成才 acknowledge EP，会把 HDV
 
 这不等于 VDU 证明同 EP 内所有 vector 指令之间都无真实依赖。VDU 只保证 scalar operand 版本已经固定、scalar-visible side effect 有互锁；vector register 之间是否允许被 same-EP hazard bypass 加速，取决于软件 p-bit 对同 EP 的承诺和 Ara sequencer 的 EP-aware 规则。若两条 vector 指令存在必须串行的真实寄存器依赖，就不应放在同一个 EP。
 
-## 11. Ara 后端 HDV 扩展
+## 12. Ara 后端 HDV 扩展
 
-### 11.1 `ara.sv`
+### 12.1 `ara.sv`
 
 Ara 顶层增加两个 HDV 输入：
 
@@ -943,13 +1567,13 @@ Ara 顶层增加两个 HDV 输入：
 
 Ara 顶层不解释 HDV header，也不重新计算 EP。它只把 VDU 已经形成的 `hdv_meta` 与当前 accelerator request 绑定。这样 metadata 的生命周期与指令生命周期一致：VDU 发哪条 RVV 指令，Ara 内部的 dispatcher/sequencer/VLSU 就看到同一条指令的 HDV 语义。
 
-### 11.2 `ara_dispatcher.sv`
+### 12.2 `ara_dispatcher.sv`
 
 Ara dispatcher 接收 VDU 的 accelerator request，同时接收 `hdv_meta_i`。在生成内部 `ara_req` 时，它把 metadata 原样放入 `ara_req.hdv_meta`。这一步保持 HDV 语义与具体 vector instruction 对齐。
 
 dispatcher 的主要职责仍是原 Ara 的 RVV 指令解码、VFU 选择、源/目的寄存器字段解析、`vl/vtype` 相关控制等。HDV 修改只是在 request 结构中加 sideband，不改变 dispatcher 对普通 RVV 语义的解释。也就是说，如果同一条 RVV 指令在非 HDV 模式进入 Ara，后端依赖逻辑仍能按原路径工作。
 
-### 11.3 `ara_sequencer.sv`
+### 12.3 `ara_sequencer.sv`
 
 Sequencer 对每个 running vector instruction slot 记录：
 
@@ -971,11 +1595,11 @@ Sequencer 对每个 running vector instruction slot 记录：
 - 它不把 slide/特殊指令的额外限制全部取消。
 - 它依赖 HEU/VDU 保证当前最多两个 outstanding EP，且 `ep_id` 不会在仍有同 ID running instruction 时被第三个 EP 复用。
 
-## 12. VLSU prefetch 设计
+## 13. VLSU prefetch 设计
 
 VLSU prefetch 是当前 HDV 后端协同中最复杂的部分。它由 `addrgen.sv`、`vldu.sv` 和 `vlsu.sv` 协同完成。
 
-### 12.1 当前 prefetch 启用条件
+### 13.1 当前 prefetch 启用条件
 
 `addrgen` 根据 `pe_req_d.hdv_meta` 计算 prefetch 状态：
 
@@ -997,7 +1621,7 @@ VLSU prefetch 是当前 HDV 后端协同中最复杂的部分。它由 `addrgen.
 
 这样区分后，调 kernel 时可以知道是“软件没标注”还是“软件故意关掉”。
 
-### 12.2 地址距离
+### 13.2 地址距离
 
 对一次 demand unit-stride load，addrgen 使用本次逻辑访问长度 `vreq_blen_d` 计算未来地址：
 
@@ -1029,7 +1653,7 @@ AVL >= VL + (VL << prefetch_mul)
 
 因此，mode 不等于 LMUL，也不等于 kernel 里有几条 load。它只描述“这一条 request 自己的未来地址距离”。同一个 kernel 中，不同 packet 可以因为 load 流不同而使用不同 hint，或者对不稳定流显式 `prefetch_disable=1`。
 
-### 12.3 demand 优先与 same-id prefetch
+### 13.3 demand 优先与 same-id prefetch
 
 Demand AR 始终优先使用 AXI read address 通道。Prefetch AR 只有在本周期没有 demand AR、AXI ready、队列/ROB/lookup 有空间、credit 允许、没有 flush pending 时才能发出。
 
@@ -1037,7 +1661,7 @@ Demand AR 始终优先使用 AXI read address 通道。Prefetch AR 只有在本�
 
 same-id 设计的好处是 AXI 返回天然按同 ID 顺序，不需要在 vldu 里对 demand/prefetch R beat 做跨 ID reorder。代价是必须维护额外 burst tag，并且 prefetch 不能压住 demand：只要 demand AR 本周期可发，就优先 demand。这样即使 prefetch 失配或被限流，程序也能退回 demand-driven。
 
-### 12.4 credit 与 store-aware pacing
+### 13.4 credit 与 store-aware pacing
 
 addrgen 使用两个关键常量：
 
@@ -1061,13 +1685,13 @@ credit 分两层：
 
 两层都满足才发 prefetch AR。只看 buffer 空间不够，因为 lookup FIFO 满时数据虽然进了 buffer，却没有可匹配的地址标签；只看 lookup 也不够，因为 R beat 返回时可能反压 data channel。
 
-### 12.5 page-cross split
+### 13.5 page-cross split
 
 若 prefetch burst 跨 4KB page，addrgen 会生成第一段，并暂存第二段信息到 `second_prefetch_*`。第二段稍后入 prefetch AR queue。addrgen 同时记录 segment tag，prefetch 完成后 lookup FIFO 和 second-segment FIFO 同步 push/pop，保证跨页命中时 lookup 顺序正确。
 
 page-cross 的难点不是发两个 AR，而是后续 demand hit 的描述符消费。一个逻辑 prefetch 可能对应两个 AXI burst，lookup FIFO 必须知道第二段是否属于同一次逻辑预取。否则 demand 命中第一段后，第二段 lookup 可能变成“孤儿标签”，后续 demand 会误匹配或被错误阻塞。
 
-### 12.6 lookup、hit 与 demand 等待
+### 13.6 lookup、hit 与 demand 等待
 
 Prefetch 完成后，addrgen 把 prefetch address 推入 lookup FIFO。后续 demand load 到来时，如果 demand 地址匹配 lookup FIFO head，则认为 prefetch hit：
 
@@ -1075,21 +1699,24 @@ Prefetch 完成后，addrgen 把 prefetch address 推入 lookup FIFO。后续 de
 - ldu addrgen queue entry 标记 `is_prefetch_hit`。
 - vldu 从 prefetch buffer 取数据送入 result queue。
 
-如果 demand 地址正好匹配还在 queue/ROB 中的 prefetch，demand 可以短暂等待对应 prefetch 完成。RTL 中有 demand-wait watchdog，若等待过长会 fatal，避免隐藏死锁。
+如果 demand 地址正好匹配已经进入 ROB/in-flight/return path 的 prefetch，demand 可以短暂等待对应 prefetch 完成。RTL 中有 demand-wait watchdog，若等待过长会 fatal，避免隐藏死锁。
+
+这里要特别区分 **prefetch AR queue** 和 **prefetch ROB/in-flight**。AR queue 只是“准备发出的 prefetch 请求”，它还可能被 credit、lookup FIFO、ROB 空间或 store-aware pacing 卡住。当前 RTL 不会因为 demand 匹配一个仅在 AR queue 中的 prefetch 就阻塞 demand；否则 demand 可能被一个尚未真正进入内存系统的请求反向卡死。这个 queue match 仍会被计数/探针记录，用来诊断 prefetch 太晚，但它不是严格的 demand 等待条件。
 
 因此 demand 到来时有几种情况：
 
 | 情况 | 行为 |
 |---|---|
 | lookup head 地址等于 demand 地址 | 直接 hit，pop lookup，vldu 走 prefetch buffer |
-| lookup FIFO 空，但 prefetch queue/ROB 中有同地址 | demand 等待短时间，等 prefetch 完成变成 hit |
+| lookup FIFO 空，但同地址 prefetch 已进入 ROB/in-flight/return path | demand 等待短时间，等 prefetch 完成变成 hit |
+| lookup FIFO 空，但同地址 prefetch 仅在 AR queue 中 | 不等待该 prefetch，demand 正常发 AR；若 prefetch 后续变 stale，由 stream-break/flush 处理 |
 | lookup head 是比 demand 未来更远的近地址 | 暂时保留，避免把即将使用的数据错误 flush |
 | lookup head 与 demand 明显分叉 | 触发 stream break，drain 后 flush lookup/buffer |
 | 没有可用 prefetch | 发普通 demand AR |
 
 这个策略是“优先使用确定匹配的预取；不确定时宁可退回 demand 或 flush”，避免把错误数据送进 VRF。
 
-### 12.7 stream-break recovery
+### 13.7 stream-break recovery
 
 如果 demand stream 与 lookup FIFO head 明显不匹配，说明预取流和真实 demand 流分叉。例如 GEMM 重新回到同一 B 行开头，而 FIFO head 还保存上一段 over-prefetch tail。此时 addrgen：
 
@@ -1102,7 +1729,7 @@ Prefetch 完成后，addrgen 把 prefetch address 推入 lookup FIFO。后续 de
 
 stream-break 常见于软件访问流重启、矩阵 kernel 回到行首、或 prefetch mode 过大导致 tail 预取超过下一轮 demand。flush 之前必须等 ROB/in-flight beat 排空，是因为 vldu buffer 与 lookup FIFO 只保存“已经完成且可消费”的数据；如果还有 R beat 正在返回，同周期 flush 可能丢失后续 tag/data 对齐。
 
-### 12.8 `vldu.sv` prefetch buffer
+### 13.8 `vldu.sv` prefetch buffer
 
 vldu 保存 prefetch R data。当前 buffer 是 64 个 256-bit word，使用 SRAM 宏或等价 tc_sram 实现。由于 AXI R beat 是 128-bit，vldu 使用 low-half latch，把两个 128-bit beat 组装成一个 256-bit word 写入 prefetch SRAM。
 
@@ -1117,7 +1744,7 @@ vldu 并不重新判断“这次是不是 hit”。这个判断来自 addrgen de
 
 也就是说，addrgen 负责地址和时序正确性，vldu 负责数据保存和按 descriptor 消费。
 
-### 12.9 `vlsu.sv` wrapper
+### 13.9 `vlsu.sv` wrapper
 
 `vlsu` 负责把 addrgen 与 vldu 的 prefetch sideband 接起来：
 
@@ -1131,7 +1758,7 @@ vldu 并不重新判断“这次是不是 hit”。这个判断来自 addrgen de
 
 它本身不决定 prefetch 策略，策略在 addrgen，数据保存与消费在 vldu。
 
-## 13. 仿真与 mock host
+## 14. 仿真与 mock host
 
 `hdv_mock_host_core.sv` 主要服务早期 bring-up 和仿真。它可以自动写 task CSR、模拟 scalar/vector latency、输出 mock branch redirect、统计 EP acknowledge，并提供 watchdog。当前完整路径默认使用真实 `hdv_scalar_backend` 和内部 VDU 到 Ara，不再依赖 mock host 模拟 vector backend 语义。
 
@@ -1143,36 +1770,53 @@ Mock host 仍有价值：
 
 但论文或当前设计说明不应把 mock host 当作真实执行路径。
 
-## 14. 性能计数器与调试探针
+## 15. 性能计数器与调试探针
 
 当前仿真中常用日志包括：
 
-- `[HDV-PERF]`：VDU 计数器，覆盖 vector slots、command window、Ara backpressure、operand wait、EP acknowledge。
+- `[PERF-HEU-EP]`：HEU 接收的 EP 数、EP 宽度、scalar/vector 指令数、混合 EP 数、issue slot 数和 prefetch hint 分布。
+- `[PERF-HEU-FE]`：HEU 前端 valid/ready、buffer、branch、current/buffer outstanding 的周期级压力。
+- `[PERF-HEU-OVLP]`：buffered vector early issue 的 attempt/grant/block 原因，以及 cross-EP inflight/overlap 周期。
+- `[PERF-VDU-CMD]`：VDU 到 Ara 的 command valid/fire/blocked、command window occupancy、window full/empty。
+- `[PERF-VDU-OPERAND]`：VDU scalar operand capture/bypass/lookahead、vector EP enqueue、vset visible wait。
 - `[IPU-PERF]`：IPU fetch/serve/loop 相关计数。
 - `[PERF-SEQ]`：sequencer block/hazard 相关计数。
 - `[PERF-ADDRGEN]`：demand/prefetch AR、hit、bytes、load/store 计数。
-- `[PERF-ADDRGEN-PF]`：prefetch 被禁用、page cross、queue full、AVL low、ROB/lookup/pending 阻塞等原因。
+- `[PERF-ADDRGEN-PF]` / `[PERF-ADDRGEN-PF2]`：prefetch 被禁用、page cross、queue full、AVL low、ROB/lookup/pending 阻塞、late/unused/throttle 等原因。
 
-VDU 的 `FOR_VERIFY` 计数器包括：
+这些日志分两类使用：
+
+- **严格语义指标**：可以直接进入论文表格或图，例如 `task_cycles`、EP 数/宽度、vector command fire、demand/prefetch AR、prefetch hit、same-EP hazard bypass、vset visible wait。
+- **诊断/压力指标**：用于解释瓶颈，但不要写成严格 stall breakdown，例如 queue full cycles、ready block cycles、early issue blocked reason、stream-break、future-keep、queue-match cycles。这些信号通常反映某个局部门禁在某周期为真，不一定互斥，也不一定能相加等于总停顿。
+
+HDV 当前最有用的一组模块级指标如下：
 
 | 计数器 | 含义 |
 |---|---|
-| `dispatch_slot` | VDU 消费的 vector slot 数 |
-| `vq_push` | 进入 command window 的 request 数 |
-| `vq_bypass` | bypass window 直发 Ara 的 request 数 |
-| `vq_pop` | Ara 从 command window 接收的 request 数 |
-| `vq_full_stall` | command window 满导致 FSM 卡住 |
-| `ara_backpressure` | window 有请求但 Ara 不 ready |
-| `operand_wait` | 等待标量 operand 的周期 |
-| `ep_acknowledged` | 返回 HEU 的 vector EP acknowledge 数 |
-| `ep_vset_acknowledged` | 因 vset 写回参与 acknowledge 的 EP 数 |
-| `real_wait_full_stall` | two-entry wait table 满导致不能接收新 EP |
-| `vq_max_occupancy` | command window 峰值占用 |
-| `resp_meta_max` | response metadata FIFO 峰值占用 |
+| `accept` (`[PERF-HEU-EP]`) | HEU 实际接收并推进的 EP 数，可作为 `ep_count` |
+| `width_sum` | 所有 EP 的有效业务指令数总和，可计算 `avg_EP_width` |
+| `scalar_inst` / `vector_inst` | EP 中标量/向量业务指令数，用于 instruction supply 和 EP 组成 |
+| `width_gt1` / `mixed` | 宽度大于 1 的 EP 数、同时含 scalar/vector 的 EP 数 |
+| `issue_slots` | HEU 统计的可用 issue slot 数，用于 slot utilization |
+| `early_attempt` / `early_grant` | buffered vector early issue 的机会数和成功数 |
+| `early_blk_dispatch` | HEU 已有 vector dispatch 正在占用输出通路，但 VDU 当前 ready，可以理解为 dispatch slot 被占用 |
+| `early_blk_queue` | HEU 已有 vector dispatch 待发且 VDU 接收侧 not-ready；它说明 early issue 被 VDU/后端反压阻止，但不单独证明具体哪个队列满 |
+| `early_blk_branch` / `early_blk_scalar_mem` | branch 未解析或 scalar memory-order 约束导致 early issue 被阻止 |
+| `early_blk_gpr_dep` / `early_blk_fpr_dep` / `early_blk_vec_dep` | current 与 buffered EP 间寄存器/向量依赖约束导致 early issue 被阻止 |
+| `cross_ep_cyc` / `overlap_cyc` | 多 EP 同时在后端管理域、scalar/vector outstanding 重叠的周期 |
+| `vector_cmd_valid` / `vector_cmd_fire` / `vector_cmd_blocked` | VDU 到 Ara request 接口的 valid、握手和 backpressure 周期 |
+| `cmd_window_sum_occ` / `cmd_window_sample_cyc` | command window 平均占用的分子/分母 |
+| `cmd_window_full_cyc` / `cmd_window_empty_cyc` | command window 满/空周期；空周期只表示 VDU window 为空，不等价于整个向量后端空闲 |
+| `scalar_operand_capture` / `scalar_operand_bypass` | VDU 捕获标量操作数、通过 bypass/lookahead 命中的次数 |
+| `vset_visible_wait_cycles` | 因等待 `vset/vl` 标量可见结果导致 EP acknowledge 或 VDU 推进受限的周期 |
+| `demand_ar` / `pf_ar` / `pf_hit` | demand 读请求、prefetch 读请求、prefetch 命中次数 |
+| `pf_late` | demand 到来时存在同地址 in-flight prefetch 但尚未 ready 的次数 |
+| `pf_unused` | prefetch entry 被 stream-break/drain 或任务结束清理时仍未被 demand 消费的数量 |
+| `pf_throttle_cyc` | prefetch 因 credit、队列、pending 或 pacing 等局部门禁被抑制的周期 |
 
 调 prefetch 时，`+HDV_PF_PROBE` 会打开多处 `$display`，包括 HEU/VDU/scalar/addrgen/vldu 的周期级事件。该探针用于定位真实原因，不能作为最终论文数据。
 
-### 14.1 累积式消融开关
+### 15.1 累积式消融开关
 
 当前 RTL 支持用 `hdv_ablation` 编译期开关跑 5.3 的累积式消融。默认值是 `full`，不改变当前仿真行为；只有显式设置其它模式才会加 disable define，并使用独立仿真目录。
 
@@ -1225,9 +1869,9 @@ HDV_ABLATION_MODES="base pf_only haz pf_haz" ./kernel_ablation.sh --parallel --s
 
 这些开关的目的是关闭“后端对 EP metadata 的性能化消费”，不是移除 HDV 程序运行所需的最小 dispatch plumbing。尤其 `H_base` 仍保留 HEU/VDU、基本 operand snapshot、EP acknowledge 和 command window，否则 HDV kernel 无法通过 Ara 执行。当前实验拆法不强行把所有机制排成单一路径，而是先分别测两个主要后端消费路径：`H_pf_only` 观察 request-bound prefetch 的独立贡献，`H_haz` 观察 same-EP hazard handling 的独立贡献，`H_pf_haz` 观察二者叠加后的效果。`H_full` 相比 `H_pf_haz` 继续打开 buffered vector early issue 和 VDU scalar-operand lookahead/bypass；后者指 VDU 在当前 vector slot 发射时提前读取下一 slot 的标量操作数，以及 DISPATCH 阶段的同周期 operand bypass。
 
-## 15. 学习与教学路线
+## 16. 学习与教学路线
 
-如果把这份设计讲给没有读过代码的人，建议不要从每个 RTL 文件逐个讲起，而是按四层递进：
+如果把这份设计讲给没有读过代码的人，建议不要从每个 RTL 文件逐个讲起，而是先用第 2 章的 S0-S9 端到端流水线建立全局图，再按四层递进：
 
 1. **先讲任务和 EP**：host 只提交 task，IPU/VLIWPU 把 instruction stream 变成 EP。重点讲清 `task done`、`scalar_ep_done`、`vec_ep_acknowledged`、`heu_top_ep_acknowledged` 不是同一个事件。
 2. **再讲前端如何安全推进**：HEU 拆 scalar/vector slice，current EP 和 buffered EP 最多两个 outstanding。early issue 只提前 buffered vector，并受 branch、scalar write mask、vset write mask、memory-order mask 约束。
@@ -1255,7 +1899,25 @@ HDV_ABLATION_MODES="base pf_only haz pf_haz" ./kernel_ablation.sh --parallel --s
 | Ara dispatcher/sequencer | 原 RVV 后端入口，消费 HDV metadata 做 same-EP hazard handling |
 | VLSU addrgen/vldu | 发 demand/prefetch AR，匹配 lookup，保存/消费 prefetched data |
 
-## 16. 当前设计边界
+画 SEAM-V 框图前，建议检查图中是否已经包含下面这些元素：
+
+| 框图元素 | 必须表达的含义 |
+|---|---|
+| Task 控制面 | host 只提交 task，不逐条驱动 RVV 指令 |
+| Local instruction supply | IPU 本地 fetch buffer 和 loop replay 是前端供给增强来源 |
+| EP formation | VLIWPU 根据 header/p-bit/packet256/cross 形成 EP |
+| Hybrid split | HEU 把同一 EP 拆成 scalar slice 和 vector slice |
+| Scalar backend | 执行地址更新、循环控制、分支、标量 LSU，并服务 vector operand |
+| Vector request resolution | VDU snapshot scalar operand，把 vector slice 变成 resolved Ara request |
+| Command window | 吸收 Ara backpressure，把前端 request 生成与后端 ready 解耦 |
+| HDV metadata sideband | `ep_id` 和 prefetch hint 随每条 vector request 进入 Ara |
+| Ara semantic consumption | sequencer 用 same-EP metadata 裁剪保守 hazard，但 Ara 仍负责真实后端执行 |
+| VLSU prefetch path | demand load 触发 request-bound prefetch，lookup hit 后替代同地址 demand |
+| Ack/drain path | EP ack 只推进前端；task done 必须等待 VDU/Ara 相关状态 drain |
+
+如果图中只画了“前端 -> Ara”一条粗箭头，而没有画 scalar operand、HDV metadata、EP ack 和 prefetch side path，就还不能准确表达 SEAM-V 的前后端协同。
+
+## 17. 当前设计边界
 
 当前 HDV RTL 已经打通真实标量后端、VDU 到 Ara、sequencer EP-aware handling 和 VLSU request-bound prefetch，但仍有明确边界：
 
@@ -1269,7 +1931,7 @@ HDV_ABLATION_MODES="base pf_only haz pf_haz" ./kernel_ablation.sh --parallel --s
 - 同 EP 内真实 vector RAW/WAR/WAW、同 EP scalar 写后 vector 读新值、同 EP 必须保序 memory 关系都必须由软件拆 EP 表达。
 - `AXI_ID_PREFETCH` 常量虽然存在，当前 prefetch 数据路径采用 same-id demand/prefetch 加 tag 区分。
 
-## 17. 阅读 RTL 的建议顺序
+## 18. 阅读 RTL 的建议顺序
 
 建议按下面顺序读代码：
 
