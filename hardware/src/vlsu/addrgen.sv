@@ -199,6 +199,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [3:0] prefetch_bad_cnt_d, prefetch_bad_cnt_q;
   logic       prefetch_adaptive_throttle;
   logic [$clog2((2 * VaddrgenInsnQueueDepth) + 1)-1:0] prefetch_lookup_entry_use;
+  logic [$clog2(VaddrgenInsnQueueDepth + 1)-1:0] prefetch_lookup_valid_use;
   logic       prefetch_lookup_entry_credit;
   assign prefetch_adaptive_throttle = (prefetch_bad_cnt_q >= PrefetchBadThresh[3:0]);
 
@@ -722,9 +723,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   always_comb begin
     prefetch_lookup_entry_use = '0;
+    prefetch_lookup_valid_use = '0;
     for (int unsigned i = 0; i < VaddrgenInsnQueueDepth; i++) begin
       prefetch_lookup_entry_use += prefetch_axi_addr_lookup_fifo_vld[i];
       prefetch_lookup_entry_use += prefetch_axi_ar_rob_vld[i];
+      prefetch_lookup_valid_use += prefetch_axi_addr_lookup_fifo_vld[i];
     end
   end
 
@@ -1851,6 +1854,21 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // Other
   logic [63:0] cnt_pf_second_issued; // second (page-cross) prefetch issued
   logic [63:0] cnt_demand_rob_block; // demand AR blocked by ROB match (events)
+  logic [63:0] cnt_pf_throttled_cycles; // adaptive throttle active while prefetch enabled
+  logic [63:0] cnt_pf_wait_match_cycles; // demand waiting for queued/ROB/page-cross prefetch
+  logic [63:0] cnt_pf_wait_match_events; // distinct demand wait-match episodes
+  logic [63:0] cnt_pf_queue_valid_cycles; // queued prefetch present
+  logic [63:0] cnt_pf_queue_block_cycles; // queued prefetch present but not issued
+  logic [63:0] cnt_pf_lookup_full_cycles; // lookup FIFO full pressure
+  logic [63:0] cnt_pf_rob_full_cycles; // prefetch ROB full pressure
+  logic [63:0] cnt_pf_pending_cycles; // prefetch_pending_d pressure
+  logic [63:0] cnt_pf_stream_break; // demand stream changed away from lookup head
+  logic [63:0] cnt_pf_future_keep; // lookup head kept as a near-future prefetch
+  logic [63:0] cnt_pf_queue_match_cycles; // demand matched queued prefetch
+  logic [63:0] cnt_pf_rob_match_cycles; // demand matched in-flight/completed ROB prefetch
+  logic [63:0] cnt_pf_page_wait_cycles; // demand waiting for second page-cross prefetch
+  logic [63:0] cnt_pf_late; // demand arrived while same-address prefetch was issued but not ready
+  logic [63:0] cnt_pf_unused; // issued/completed prefetch entries discarded without demand hit
   logic        demand_rob_blocked_q;  // debounce: demand was ROB-blocked last cycle
   localparam int unsigned DemandPrefetchWaitWatchdogCycles = 20000;
   localparam int unsigned DemandPrefetchWaitCounterWidth =
@@ -1869,6 +1887,21 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       cnt_pf_ar_rob_full <= '0; cnt_pf_ar_lookup_full <= '0;
       cnt_pf_ar_pending_block <= '0; cnt_pf_ar_disabled <= '0;
       cnt_pf_second_issued <= '0; cnt_demand_rob_block <= '0;
+      cnt_pf_throttled_cycles <= '0;
+      cnt_pf_wait_match_cycles <= '0;
+      cnt_pf_wait_match_events <= '0;
+      cnt_pf_queue_valid_cycles <= '0;
+      cnt_pf_queue_block_cycles <= '0;
+      cnt_pf_lookup_full_cycles <= '0;
+      cnt_pf_rob_full_cycles <= '0;
+      cnt_pf_pending_cycles <= '0;
+      cnt_pf_stream_break <= '0;
+      cnt_pf_future_keep <= '0;
+      cnt_pf_queue_match_cycles <= '0;
+      cnt_pf_rob_match_cycles <= '0;
+      cnt_pf_page_wait_cycles <= '0;
+      cnt_pf_late <= '0;
+      cnt_pf_unused <= '0;
       demand_rob_blocked_q <= 1'b0;
       demand_pf_wait_cnt_q <= '0;
       demand_pf_wait_addr_q <= '0;
@@ -1893,6 +1926,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         cnt_load_vinsn <= cnt_load_vinsn + 1;
       if (prefetch_en)
         cnt_prefetch_en <= cnt_prefetch_en + 1;
+      if (prefetch_en && prefetch_adaptive_throttle)
+        cnt_pf_throttled_cycles <= cnt_pf_throttled_cycles + 1;
+      if (prefetch_axi_ar_queue_valid)
+        cnt_pf_queue_valid_cycles <= cnt_pf_queue_valid_cycles + 1;
+      if (prefetch_axi_ar_queue_valid && !prefetch_axi_ar_queue_pop)
+        cnt_pf_queue_block_cycles <= cnt_pf_queue_block_cycles + 1;
+      if (prefetch_axi_addr_lookup_fifo_full)
+        cnt_pf_lookup_full_cycles <= cnt_pf_lookup_full_cycles + 1;
+      if (prefetch_axi_ar_rob_full)
+        cnt_pf_rob_full_cycles <= cnt_pf_rob_full_cycles + 1;
+      if (prefetch_pending_d)
+        cnt_pf_pending_cycles <= cnt_pf_pending_cycles + 1;
       if (axi_aw_valid_o && axi_aw_ready_i)
         cnt_demand_aw <= cnt_demand_aw + 1;
 
@@ -1927,8 +1972,27 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
       // Demand blocked by prefetch ROB match (distinct events, not cycles)
       demand_rob_blocked_q <= vreq_is_vld && vreq_is_load_d && prefetch_wait_match;
-      if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match && !demand_rob_blocked_q)
+      if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match && !demand_rob_blocked_q) begin
         cnt_demand_rob_block <= cnt_demand_rob_block + 1;
+        cnt_pf_wait_match_events <= cnt_pf_wait_match_events + 1;
+        cnt_pf_late <= cnt_pf_late + 1;
+      end
+      if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match) begin
+        cnt_pf_wait_match_cycles <= cnt_pf_wait_match_cycles + 1;
+        if (prefetch_axi_ar_queue_match)
+          cnt_pf_queue_match_cycles <= cnt_pf_queue_match_cycles + 1;
+        if (prefetch_axi_ar_rob_match)
+          cnt_pf_rob_match_cycles <= cnt_pf_rob_match_cycles + 1;
+        if (prefetch_page_cross_wait_match)
+          cnt_pf_page_wait_cycles <= cnt_pf_page_wait_cycles + 1;
+      end
+      if (stream_break)
+        cnt_pf_stream_break <= cnt_pf_stream_break + 1;
+      if (prefetch_lookup_head_future_near)
+        cnt_pf_future_keep <= cnt_pf_future_keep + 1;
+      if (prefetch_flush_now) begin
+        cnt_pf_unused <= cnt_pf_unused + 64'(prefetch_lookup_valid_use);
+      end
 
       // Demand should only wait for a matching prefetch briefly.  A long wait means
       // the matching lookup/ROB entry is no longer making forward progress.
@@ -2042,6 +2106,15 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     $display("[PERF-ADDRGEN-PF] pf_ar_rob_full=%0d pf_ar_lkup_full=%0d pf_ar_pending=%0d pf_ar_dis=%0d pf_2nd=%0d dem_rob_block=%0d",
              cnt_pf_ar_rob_full, cnt_pf_ar_lookup_full, cnt_pf_ar_pending_block,
              cnt_pf_ar_disabled, cnt_pf_second_issued, cnt_demand_rob_block);
+    $display("[PERF-ADDRGEN-PF2] pf_throttle_cyc=%0d pf_late=%0d pf_unused=%0d pf_wait_match_cyc=%0d pf_wait_match_evt=%0d pf_queue_valid_cyc=%0d pf_queue_block_cyc=%0d pf_lkup_full_cyc=%0d pf_rob_full_cyc=%0d pf_pending_cyc=%0d pf_stream_break=%0d pf_future_keep=%0d pf_queue_match_cyc=%0d pf_rob_match_cyc=%0d pf_page_wait_cyc=%0d",
+             cnt_pf_throttled_cycles, cnt_pf_late,
+             cnt_pf_unused + 64'(prefetch_lookup_entry_use),
+             cnt_pf_wait_match_cycles, cnt_pf_wait_match_events,
+             cnt_pf_queue_valid_cycles,
+             cnt_pf_queue_block_cycles, cnt_pf_lookup_full_cycles,
+             cnt_pf_rob_full_cycles, cnt_pf_pending_cycles, cnt_pf_stream_break,
+             cnt_pf_future_keep, cnt_pf_queue_match_cycles, cnt_pf_rob_match_cycles,
+             cnt_pf_page_wait_cycles);
   end
   `endif
 

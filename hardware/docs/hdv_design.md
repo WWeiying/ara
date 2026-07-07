@@ -1789,34 +1789,396 @@ Mock host 仍有价值：
 - **严格语义指标**：可以直接进入论文表格或图，例如 `task_cycles`、EP 数/宽度、vector command fire、demand/prefetch AR、prefetch hit、same-EP hazard bypass、vset visible wait。
 - **诊断/压力指标**：用于解释瓶颈，但不要写成严格 stall breakdown，例如 queue full cycles、ready block cycles、early issue blocked reason、stream-break、future-keep、queue-match cycles。这些信号通常反映某个局部门禁在某周期为真，不一定互斥，也不一定能相加等于总停顿。
 
-HDV 当前最有用的一组模块级指标如下：
+当前 sweep 汇总脚本会把各模块日志统一成 `paper_data.md` 中的字段。下面按 CSV 字段名列出含义；带 `ratio`、`per_cycle`、`avg`、`over` 或 `speedup` 的字段通常是脚本派生值，不是 RTL 中独立累加器。
 
-| 计数器 | 含义 |
-|---|---|
-| `accept` (`[PERF-HEU-EP]`) | HEU 实际接收并推进的 EP 数，可作为 `ep_count` |
-| `width_sum` | 所有 EP 的有效业务指令数总和，可计算 `avg_EP_width` |
-| `scalar_inst` / `vector_inst` | EP 中标量/向量业务指令数，用于 instruction supply 和 EP 组成 |
-| `width_gt1` / `mixed` | 宽度大于 1 的 EP 数、同时含 scalar/vector 的 EP 数 |
-| `issue_slots` | HEU 统计的可用 issue slot 数，用于 slot utilization |
-| `early_attempt` / `early_grant` | buffered vector early issue 的机会数和成功数 |
-| `early_blk_dispatch` | HEU 已有 vector dispatch 正在占用输出通路，但 VDU 当前 ready，可以理解为 dispatch slot 被占用 |
-| `early_blk_queue` | HEU 已有 vector dispatch 待发且 VDU 接收侧 not-ready；它说明 early issue 被 VDU/后端反压阻止，但不单独证明具体哪个队列满 |
-| `early_blk_branch` / `early_blk_scalar_mem` | branch 未解析或 scalar memory-order 约束导致 early issue 被阻止 |
-| `early_blk_gpr_dep` / `early_blk_fpr_dep` / `early_blk_vec_dep` | current 与 buffered EP 间寄存器/向量依赖约束导致 early issue 被阻止 |
-| `cross_ep_cyc` / `overlap_cyc` | 多 EP 同时在后端管理域、scalar/vector outstanding 重叠的周期 |
-| `vector_cmd_valid` / `vector_cmd_fire` / `vector_cmd_blocked` | VDU 到 Ara request 接口的 valid、握手和 backpressure 周期 |
-| `cmd_window_sum_occ` / `cmd_window_sample_cyc` | command window 平均占用的分子/分母 |
-| `cmd_window_full_cyc` / `cmd_window_empty_cyc` | command window 满/空周期；空周期只表示 VDU window 为空，不等价于整个向量后端空闲 |
-| `scalar_operand_capture` / `scalar_operand_bypass` | VDU 捕获标量操作数、通过 bypass/lookahead 命中的次数 |
-| `vset_visible_wait_cycles` | 因等待 `vset/vl` 标量可见结果导致 EP acknowledge 或 VDU 推进受限的周期 |
-| `demand_ar` / `pf_ar` / `pf_hit` | demand 读请求、prefetch 读请求、prefetch 命中次数 |
-| `pf_late` | demand 到来时存在同地址 in-flight prefetch 但尚未 ready 的次数 |
-| `pf_unused` | prefetch entry 被 stream-break/drain 或任务结束清理时仍未被 demand 消费的数量 |
-| `pf_throttle_cyc` | prefetch 因 credit、队列、pending 或 pacing 等局部门禁被抑制的周期 |
+### 15.1 汇总与性能对照字段
+
+- `dataset`：数据集名称，例如 main real、main ideal 或 HDV representative metrics。
+- `source`：生成该表的数据文件路径。
+- `rows`：该数据源中的数据行数。
+- `columns`：该数据源中的列数。
+- `mtime`：源文件最后修改时间，用于追溯数据版本。
+- `data`：`paper_data.md` 中代表点章节的列表容器，下面每个 `row_xx` 对应源 CSV 的一行。
+- `kernel`：kernel 名称；在 HDV 表中是 HDV kernel 名，在对照表中是归一化后的显示名。
+- `config`：代表点配置，例如 `AVL=1024`、`LMUL=4,N=128`。
+- `main_real_cycles`：紧耦合 main real 模式的总周期，来自 main 分支 representative real CSV。
+- `main_ideal_cycles`：main ideal 模式的总 RVV 周期，来自 main 分支 representative ideal CSV。
+- `hdv_cycles`：HDV 本次代表点的 `task_cycles`。
+- `hdv_result`：HDV 仿真结果，通常为 `PASSED`、`FAILED` 或没有对应新指标行。
+- `speedup_vs_real`：`main_real_cycles / hdv_cycles` 的派生加速比。
+- `speedup_vs_ideal`：`main_ideal_cycles / hdv_cycles` 的派生加速比。
+- `hdv_over_real`：`hdv_cycles / main_real_cycles` 的派生归一化周期，越小越好。
+- `hdv_over_ideal`：`hdv_cycles / main_ideal_cycles` 的派生归一化周期，越小越好。
+- `raw_hdv_columns`：HDV 原始 CSV header 中的字段总数，用于检查文档和数据覆盖完整性。
+- `covered_raw_columns`：已被 `paper_data.md` 分类表纳入展示的 HDV 原始字段数。
+- `missing_raw_columns`：尚未被分类表覆盖的 HDV 原始字段名；为 `NONE` 时表示无遗漏。
+
+### 15.2 HDV 顶层与旧有汇总字段
+
+- `group`：sweep 分组，例如 `avl`、`blas`、`fixed`。
+- `tag`：单点标签；BLAS/GEMM 点通常用于区分 LMUL、rows、N 等配置。
+- `avl`：AVL sweep 点的向量长度；非 AVL sweep 时为 `NA`。
+- `size`：固定规模或矩阵规模字段，具体含义由 kernel 决定。
+- `rows`：GEMM/BLAS 类点中的行组数或 rows 配置。
+- `n`：BLAS/GEMM 类点中的 N 维度。
+- `result`：该 HDV 点的仿真结果。
+- `task_cycles`：从任务开始到任务完成的总执行周期，是大多数归一化指标的分母。
+- `cyc_per_elem`：脚本从 `task_cycles` 和元素数派生的每元素周期。
+- `cyc_per_macc`：脚本从 `task_cycles` 和 MAC 数派生的每 MAC 周期。
+- `wall_cycles`：仿真日志中任务外层观测到的 wall-clock cycle 计数，通常包含少量包装开销。
+- `eps`：旧汇总字段中的 EP 数，保留用于兼容早期表格；新分析优先使用 `ep_count`。
+- `vec_busy`：旧汇总中的向量忙碌计数；它是诊断信号，不应单独解释成完整后端利用率。
+- `imem_outstanding`：IPU/取指侧观测到的 outstanding 取指请求或相关压力计数。
+- `ep_ack`：HEU/VDU 路径收到的 EP acknowledge 计数。
+- `ep_vset_ack`：与 vset/vl 可见性相关的 EP acknowledge 计数。
+- `vq_push`：旧向量请求队列 push 次数。
+- `vq_pop`：旧向量请求队列 pop 次数。
+- `vq_max_occ`：旧向量请求队列最大占用。
+- `vq_bypass`：旧向量请求队列 bypass 次数。
+- `vq_full_stall`：旧向量请求队列 full 相关阻塞计数；是局部压力指标。
+- `dispatch_slots`：VDU/dispatch 路径消耗的 dispatch slot 次数。
+- `dispatch_cycles`：dispatch 路径处于相关状态的周期数。
+- `fsm_could_bypass`：VDU FSM 观察到可走 bypass 路径的机会数。
+- `operand_wait_cycles_raw`：早期 operand wait 原始计数，保留作兼容；严格语义优先看 `scalar_operand_wait_cycles`。
+- `ara_backpressure_cycles`：Ara 后端对 VDU/HDV 请求路径施加 backpressure 的周期数；它是压力签名，不和其它 stall 项互斥。
+- `real_wait_stall`：旧汇总中真实等待相关 stall 计数，主要用于调试。
+- `resp_meta_stall`：VDU response metadata 资源导致的局部 stall 周期。
+- `resp_meta_max`：response metadata 队列最大占用。
+
+### 15.3 EP 形成与指令供给字段
+
+- `ep_count`：HEU 实际接收并推进的 EP 数量。
+- `packed_inst_count`：被打包进入 EP 的有效业务指令总数，不包含 HINT header、NOP 或无效 slot。
+- `packed_scalar_inst_count`：EP 中的标量业务指令数，包括地址更新、循环控制、标量计算和分支等。
+- `packed_vector_inst_count`：EP 中的向量业务指令数，即后续可能进入 VDU/Ara 的 vector slice 数。
+- `ep_width_sum`：所有 EP 的有效业务指令数总和，用于派生平均 EP 宽度。
+- `ep_width_gt1_count`：宽度大于 1 的 EP 数量，用于判断是否退化为逐条执行。
+- `ep_scalar_vector_count`：同时含 scalar slice 和 vector slice 的 EP 数量。
+- `used_issue_slots`：EP 中被有效业务指令占用的 issue slot 总数。
+- `available_issue_slots`：这些 EP 在硬件最大宽度下理论可用的 issue slot 总数。
+- `avg_ep_width`：`ep_width_sum / ep_count` 的派生平均 EP 宽度。
+- `non_singleton_ep_ratio`：`ep_width_gt1_count / ep_count` 的派生宽 EP 占比。
+- `mixed_ep_ratio`：`ep_scalar_vector_count / ep_count` 的派生混合 EP 占比。
+- `slot_utilization`：`used_issue_slots / available_issue_slots` 的派生 slot 利用率。
+- `packed_inst_per_cycle`：`packed_inst_count / task_cycles` 的派生前端有效指令供给吞吐。
+
+### 15.4 HEU、prefetch hint 分布与跨 EP 重叠字段
+
+- `heu_to_current`：HEU 将新 EP 放入 current 执行槽的次数。
+- `heu_to_buffer`：HEU 将新 EP 放入 buffered EP 槽的次数。
+- `heu_scalar_only`：只包含 scalar-side work 的 EP 数。
+- `heu_vector_only`：只包含 vector-side work 的 EP 数。
+- `heu_pf_hint_ep`：带有效 prefetch hint 的 EP 数。
+- `heu_pf_disable_ep`：软件显式关闭 prefetch 的 EP 数。
+- `heu_pf_mode_1x`：prefetch hint 选择 1X 距离的 EP 数。
+- `heu_pf_mode_2x`：prefetch hint 选择 2X 距离的 EP 数。
+- `heu_pf_mode_4x`：prefetch hint 选择 4X 距离的 EP 数。
+- `heu_pf_mode_8x`：prefetch hint 选择 8X 距离的 EP 数。
+- `heu_valid_cyc`：HEU 前端 valid 或内部有待推进 EP 的周期数。
+- `heu_ready_block_cyc`：HEU valid 但下游或内部条件使其不能推进的周期数；是局部压力指标。
+- `heu_block_buffer_cyc`：buffered EP 槽占用导致 HEU 不能接收/推进的周期数。
+- `heu_block_branch_cyc`：未解析分支或控制边界导致 HEU 不能推进的周期数。
+- `heu_current_busy_cyc`：current EP 槽仍忙的周期数。
+- `heu_buffer_valid_cyc`：buffered EP 槽有效的周期数。
+- `heu_scalar_out_cyc`：HEU scalar-side 输出路径活跃或待发的周期数。
+- `heu_vector_out_cyc`：HEU vector-side 输出路径活跃或待发的周期数。
+- `early_issue_attempts`：buffered vector early issue 被考虑尝试的次数。
+- `early_issue_grants`：通过安全检查并实际允许 buffered vector early issue 的次数。
+- `early_issue_blocked_by_dispatch`：已有 vector dispatch 占用输出路径导致 early issue 未发出；它不是队列满语义。
+- `early_issue_blocked_by_queue`：因 command window、VDU 接收侧、后端 ready 或 vector queue 资源不足导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_branch`：因前序 EP 存在未解析 branch/control 不确定性导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_scalar_mem`：因 scalar memory 或 memory-order 约束导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_dependency`：因跨 EP 依赖汇总条件导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_gpr_dependency`：因 GPR 相关性导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_fpr_dependency`：因 FPR 相关性导致 early issue 被阻止的次数。
+- `early_issue_blocked_by_vector_dependency`：因 vector/config 相关性导致 early issue 被阻止的次数。
+- `cross_ep_inflight_cycles`：多个 EP 同时处于 HEU/VDU 后端管理域的周期数。
+- `overlap_cycles`：标量侧 outstanding 与向量侧 outstanding 在同周期重叠的周期数。
+
+### 15.5 VDU command window、队列压力与标量操作数字段
+
+- `vector_cmd_valid_cycles`：VDU 有有效 vector command 等待发送到 Ara 的周期数。
+- `vector_cmd_fire_count`：VDU 与 Ara 后端完成 valid/ready 握手的 vector command 数量。
+- `vector_cmd_blocked_cycles`：VDU 有有效 vector command 但 Ara/下游未 ready 的周期数。
+- `vector_cmd_per_cycle`：`vector_cmd_fire_count / task_cycles` 的派生向量命令投放吞吐。
+- `cmd_window_avg_occ`：`cmd_window_sum_occ / cmd_window_sample_cycles` 的派生 command window 平均占用。
+- `cmd_window_sum_occ`：command window 占用采样值之和。
+- `cmd_window_sample_cycles`：command window occupancy 的采样周期数。
+- `cmd_window_max_occ`：command window 最大占用。
+- `cmd_window_full_cycles`：command window 满的周期数；它表示窗口资源压力，不等价于全系统 stall。
+- `cmd_window_empty_cycles`：command window 为空的周期数；它只描述 VDU window，不等价于整个向量后端空闲。
+- `cmd_window_full_ratio`：`cmd_window_full_cycles / task_cycles` 的派生窗口满占比。
+- `vq_avg_occ`：向量请求队列平均占用；脚本从队列 occupancy 采样派生。
+- `vq_empty_cycles`：向量请求队列为空的周期数，是供给连续性的诊断信号。
+- `vq_full_cycles`：向量请求队列满的周期数，是后端消费压力诊断信号。
+- `vq_full_ratio`：`vq_full_cycles / task_cycles` 的派生队列满占比。
+- `resp_meta_sum_occ`：VDU response metadata 队列 occupancy 采样值之和。
+- `resp_meta_sample_cycles`：response metadata occupancy 的采样周期数。
+- `scalar_operand_capture_count`：VDU 成功捕获 vector slice 所需标量操作数的次数。
+- `scalar_operand_bypass_hit`：标量操作数通过 lookahead/bypass 提前命中的次数。
+- `scalar_operand_wait_cycles`：因标量操作数尚未就绪导致 VDU 不能推进当前 vector command 的周期数。
+- `vset_visible_wait_cycles`：因等待 `vset/vl` 标量可见结果导致前端/VDU 不能推进的周期数。
+- `scalar_operand_bypass`：VDU dispatch 阶段使用同周期标量 bypass 的次数。
+- `scalar_operand_lookahead_req`：VDU 发起 next-slot scalar operand lookahead 读取的次数。
+- `scalar_operand_lookahead_hit`：next-slot scalar operand lookahead 被后续 vector slot 使用的次数。
+- `scalar_operand_port_busy`：标量 operand 读端口或服务路径忙导致的局部压力计数。
+- `vector_ep_enqueue`：vector EP 被放入 VDU 处理路径的次数。
+- `vector_ep_pending_enqueue`：vector EP 因 pending 条件进入等待/挂起路径的次数。
+- `vector_ep_ready_block`：vector EP 因 VDU 接收侧 not-ready 被阻止入队或推进的次数。
+- `ipu_ready_cyc`：IPU/前端供给路径 ready 的周期数。
+- `ipu_ready_stall`：IPU/前端 ready 相关阻塞周期。
+- `ipu_sram_stall`：IPU SRAM 访问或取指 buffer 相关阻塞周期。
+- `ipu_serve_cyc`：IPU 向后级提供 instruction packet 的周期数。
+
+### 15.6 VLSU demand、prefetch 与 memory 诊断字段
+
+- `packets`：addrgen/VLSU 侧观测到的访存 packet 或请求片段数量。
+- `bypass_hits`：VLSU/addrgen 局部 bypass 或快速路径命中的次数。
+- `demand_reads`：真实 demand read 数据返回或消费相关计数。
+- `avg_cyc_per_pkt`：脚本从周期和 packet 数派生的每 packet 周期。
+- `demand_ar`：demand load 产生的真实 AXI AR 请求数。
+- `pf_ar`：prefetch 产生并被接受的 AXI AR 请求数。
+- `pf_hit`：后续 demand request 命中已完成或可等待 prefetch 的次数。
+- `loads`：向量 load 指令或 load 请求相关计数。
+- `pf_hit_rate`：`pf_hit / pf_ar` 的派生命中率；`pf_ar=0` 时为 `NA`。
+- `pf_coverage`：`pf_hit / demand_ar` 的派生覆盖率；它表示 demand AR 中有多少被 prefetch 覆盖。
+- `pf_late`：demand 到来时存在同地址 prefetch 已发出但数据尚未 ready 的次数。
+- `pf_late_rate`：`pf_late / pf_ar` 的派生 late 占比。
+- `pf_unused`：prefetch 发出后到 stream-break、drain、entry 清理或任务结束仍未被 demand 使用的 entry 数。
+- `pf_unused_rate`：`pf_unused / pf_ar` 的派生未使用占比。
+- `pf_en_cyc`：addrgen 判断当前上下文 prefetch enable 的周期数。
+- `demand_aw`：demand store 产生的 AXI AW 请求数。
+- `demand_B`：demand 访存字节数或 beat 字节量累计，具体来自 addrgen 统计口径。
+- `pf_B`：prefetch 访存字节数或 beat 字节量累计。
+- `pf_ar_rob_full`：prefetch 因 ROB 没有可用 entry 而不能发 AR 的事件或周期计数。
+- `pf_ar_lkup_full`：prefetch 因 lookup FIFO 没有可用 entry 而不能发 AR 的事件或周期计数。
+- `pf_ar_pending`：prefetch 因已有同流 pending/in-flight 状态而不能发 AR 的计数。
+- `pf_ar_dis`：prefetch 因软件关闭、模式不适配或门禁条件关闭而未发 AR 的计数。
+- `pf_2nd`：page-cross 或 split prefetch 的第二段请求计数。
+- `dem_rob_block`：demand 侧因 ROB/相关资源不可用被阻塞的计数。
+- `pf_disabled`：prefetch 被显式关闭或未启用的次数。
+- `pf_page_cross`：prefetch 地址跨 4KB page 需要拆分处理的次数。
+- `pf_queue_full`：prefetch AR queue 满导致不能接收新 prefetch 的计数。
+- `pf_avl_low`：剩余 AVL 不足以保证未来同流 demand，因而抑制 prefetch 的计数。
+- `pf_throttled_cycles`：prefetch 因 credit、队列、pending、store pacing 等局部门禁被抑制的周期数。
+- `pf_wait_match_cyc`：demand 等待同地址 in-flight prefetch 变为可命中的周期数。
+- `pf_wait_match_evt`：demand 进入等待同地址 in-flight prefetch 的事件数。
+- `pf_queue_valid_cyc`：prefetch AR queue 有有效请求的周期数。
+- `pf_queue_block_cyc`：prefetch AR queue 有请求但受下游门禁不能发出的周期数。
+- `pf_lkup_full_cyc`：lookup FIFO full 造成 prefetch 受限的周期数。
+- `pf_rob_full_cyc`：prefetch ROB full 造成 prefetch 受限的周期数。
+- `pf_pending_cyc`：prefetch pending/in-flight 限制为真的周期数。
+- `pf_stream_break`：addrgen 判断 prefetch stream 与 demand stream 分叉并触发清理的次数。
+- `pf_future_keep`：addrgen 判断 prefetch 仍可能被未来 demand 使用而保留的次数。
+- `pf_queue_match_cyc`：demand 地址与 prefetch AR queue 中尚未发出的请求匹配的周期数；它只说明 prefetch 太晚或仍在队列中，不会单独让 demand 等待。
+- `pf_rob_match_cyc`：demand 地址与 prefetch ROB/in-flight entry 匹配的周期数。
+- `pf_page_wait_cyc`：page-cross 或分段 prefetch 相关等待周期。
+
+### 15.7 Sequencer 与 hazard 语义消费字段
+
+- `seq_issue`：Ara sequencer 成功 issue 的 vector instruction/request 数。
+- `seq_blocked_cycles`：sequencer 处于 blocked 状态的周期数；包含多类局部原因，不是互斥 stall breakdown。
+- `seq_blocked_ratio`：`seq_blocked_cycles / task_cycles` 的派生阻塞占比。
+- `seq_raw_cycles`：RAW 候选相关阻塞条件为真的周期数。
+- `seq_war_cycles`：WAR 候选相关阻塞条件为真的周期数。
+- `seq_waw_cycles`：WAW 候选相关阻塞条件为真的周期数。
+- `seq_waw_block`：WAW block 条件触发或保持的计数。
+- `seq_ep_bypass`：same-EP hazard bypass 生效的次数。
+- `seq_full`：sequencer 或后端队列 full 相关局部压力计数。
+- `hazard_check_count`：sequencer 执行相关性检查的总次数。
+- `same_ep_hazard_candidate`：候选 hazard 中属于同一 EP、可能被 EP-aware 规则裁剪的数量。
+- `hazard_pruned_by_ep`：利用 same-EP metadata 被裁剪掉的保守 hazard 数量。
+- `seq_true_hazard_stall`：被归类为真实依赖或不能被 EP 语义裁剪的 hazard stall 计数。
+- `seq_false_hazard_stall`：被归类为保守/假相关导致的 stall 计数。
+- `seq_queue_full_stall`：sequencer/后端队列 full 导致的 stall 计数。
+- `seq_lane_desync_stall`：lane 同步或 lane desync 相关条件导致的 stall 计数。
+- `seq_operand_req_stall`：operand request 或 operand 服务路径导致 sequencer 受限的计数。
+- `seq_wait_state_cyc`：sequencer wait state 持续周期。
+- `seq_mem_wait_cyc`：sequencer 因 memory wait 状态受限的周期数。
+
+### 15.8 Main real/ideal baseline 字段
+
+这些字段来自 `/home/wangwy/openproject/ara_main/hardware/kernel_sweep_out_representative/` 下的 main real/ideal CSV。它们用于和 HDV 代表点做性能与后端压力对照；其中 lane/bank 类字段是 Ara 后端诊断计数，和 HDV counter 不构成逐项一一对应。
+
+- `blas_lmul`：main BLAS kernel 编译/运行使用的 LMUL 配置。
+- `gemm_rows`：main GEMM kernel 的 row blocking/row group 配置。
+- `status`：main representative 仿真状态，通常为 `OK`。
+- `IPC`：main real 模式中统计得到的 scalar core IPC。
+- `ara_req_blocked_cycles`：main 中 Ara 请求接口 valid 但未被后端接受的周期数。
+- `ara_req_fire_count`：main 中 Ara 请求接口完成 valid/ready 握手的请求数。
+- `ara_req_valid_cycles`：main 中 Ara 请求接口 valid 为真的周期数。
+- `cva6-d$-stalls`：CVA6 数据 cache stall 计数。
+- `cva6-i$-stalls`：CVA6 指令 cache stall 计数。
+- `cva6-sb-full`：CVA6 store buffer full 相关 stall 计数。
+- `duration`：仿真输出的 wall-clock 仿真时间字符串。
+- `hw-cycles`：main representative 日志中的硬件周期数。
+- `lane utilization`：Ara lane 平均利用率。
+- `lane0 bank0_conflict_ratio`：lane 0 中 bank 0 的 bank conflict ratio。
+- `lane0 bank0_total_conflicts`：lane 0 中 bank 0 的 bank conflict 总次数。
+- `lane0 bank0_total_requests`：lane 0 中 bank 0 的 bank request 总次数。
+- `lane0 bank1_conflict_ratio`：lane 0 中 bank 1 的 bank conflict ratio。
+- `lane0 bank1_total_conflicts`：lane 0 中 bank 1 的 bank conflict 总次数。
+- `lane0 bank1_total_requests`：lane 0 中 bank 1 的 bank request 总次数。
+- `lane0 bank2_conflict_ratio`：lane 0 中 bank 2 的 bank conflict ratio。
+- `lane0 bank2_total_conflicts`：lane 0 中 bank 2 的 bank conflict 总次数。
+- `lane0 bank2_total_requests`：lane 0 中 bank 2 的 bank request 总次数。
+- `lane0 bank3_conflict_ratio`：lane 0 中 bank 3 的 bank conflict ratio。
+- `lane0 bank3_total_conflicts`：lane 0 中 bank 3 的 bank conflict 总次数。
+- `lane0 bank3_total_requests`：lane 0 中 bank 3 的 bank request 总次数。
+- `lane0 bank4_conflict_ratio`：lane 0 中 bank 4 的 bank conflict ratio。
+- `lane0 bank4_total_conflicts`：lane 0 中 bank 4 的 bank conflict 总次数。
+- `lane0 bank4_total_requests`：lane 0 中 bank 4 的 bank request 总次数。
+- `lane0 bank5_conflict_ratio`：lane 0 中 bank 5 的 bank conflict ratio。
+- `lane0 bank5_total_conflicts`：lane 0 中 bank 5 的 bank conflict 总次数。
+- `lane0 bank5_total_requests`：lane 0 中 bank 5 的 bank request 总次数。
+- `lane0 bank6_conflict_ratio`：lane 0 中 bank 6 的 bank conflict ratio。
+- `lane0 bank6_total_conflicts`：lane 0 中 bank 6 的 bank conflict 总次数。
+- `lane0 bank6_total_requests`：lane 0 中 bank 6 的 bank request 总次数。
+- `lane0 bank7_conflict_ratio`：lane 0 中 bank 7 的 bank conflict ratio。
+- `lane0 bank7_total_conflicts`：lane 0 中 bank 7 的 bank conflict 总次数。
+- `lane0 bank7_total_requests`：lane 0 中 bank 7 的 bank request 总次数。
+- `lane0 hp_block_lp`：lane 0 中 high-priority request 阻塞 low-priority request 的计数。
+- `lane0 total_bank_conflicts`：lane 0 所有 bank conflict 总次数。
+- `lane0 total_bank_requests`：lane 0 所有 bank request 总次数。
+- `lane0 total_hp_bank_conflicts`：lane 0 high-priority bank conflict 总次数。
+- `lane0 total_hp_bank_requests`：lane 0 high-priority bank request 总次数。
+- `lane0 total_lp_bank_conflicts`：lane 0 low-priority bank conflict 总次数。
+- `lane0 total_lp_bank_requests`：lane 0 low-priority bank request 总次数。
+- `lane1 bank0_conflict_ratio`：lane 1 中 bank 0 的 bank conflict ratio。
+- `lane1 bank0_total_conflicts`：lane 1 中 bank 0 的 bank conflict 总次数。
+- `lane1 bank0_total_requests`：lane 1 中 bank 0 的 bank request 总次数。
+- `lane1 bank1_conflict_ratio`：lane 1 中 bank 1 的 bank conflict ratio。
+- `lane1 bank1_total_conflicts`：lane 1 中 bank 1 的 bank conflict 总次数。
+- `lane1 bank1_total_requests`：lane 1 中 bank 1 的 bank request 总次数。
+- `lane1 bank2_conflict_ratio`：lane 1 中 bank 2 的 bank conflict ratio。
+- `lane1 bank2_total_conflicts`：lane 1 中 bank 2 的 bank conflict 总次数。
+- `lane1 bank2_total_requests`：lane 1 中 bank 2 的 bank request 总次数。
+- `lane1 bank3_conflict_ratio`：lane 1 中 bank 3 的 bank conflict ratio。
+- `lane1 bank3_total_conflicts`：lane 1 中 bank 3 的 bank conflict 总次数。
+- `lane1 bank3_total_requests`：lane 1 中 bank 3 的 bank request 总次数。
+- `lane1 bank4_conflict_ratio`：lane 1 中 bank 4 的 bank conflict ratio。
+- `lane1 bank4_total_conflicts`：lane 1 中 bank 4 的 bank conflict 总次数。
+- `lane1 bank4_total_requests`：lane 1 中 bank 4 的 bank request 总次数。
+- `lane1 bank5_conflict_ratio`：lane 1 中 bank 5 的 bank conflict ratio。
+- `lane1 bank5_total_conflicts`：lane 1 中 bank 5 的 bank conflict 总次数。
+- `lane1 bank5_total_requests`：lane 1 中 bank 5 的 bank request 总次数。
+- `lane1 bank6_conflict_ratio`：lane 1 中 bank 6 的 bank conflict ratio。
+- `lane1 bank6_total_conflicts`：lane 1 中 bank 6 的 bank conflict 总次数。
+- `lane1 bank6_total_requests`：lane 1 中 bank 6 的 bank request 总次数。
+- `lane1 bank7_conflict_ratio`：lane 1 中 bank 7 的 bank conflict ratio。
+- `lane1 bank7_total_conflicts`：lane 1 中 bank 7 的 bank conflict 总次数。
+- `lane1 bank7_total_requests`：lane 1 中 bank 7 的 bank request 总次数。
+- `lane1 hp_block_lp`：lane 1 中 high-priority request 阻塞 low-priority request 的计数。
+- `lane1 total_bank_conflicts`：lane 1 所有 bank conflict 总次数。
+- `lane1 total_bank_requests`：lane 1 所有 bank request 总次数。
+- `lane1 total_hp_bank_conflicts`：lane 1 high-priority bank conflict 总次数。
+- `lane1 total_hp_bank_requests`：lane 1 high-priority bank request 总次数。
+- `lane1 total_lp_bank_conflicts`：lane 1 low-priority bank conflict 总次数。
+- `lane1 total_lp_bank_requests`：lane 1 low-priority bank request 总次数。
+- `lane2 bank0_conflict_ratio`：lane 2 中 bank 0 的 bank conflict ratio。
+- `lane2 bank0_total_conflicts`：lane 2 中 bank 0 的 bank conflict 总次数。
+- `lane2 bank0_total_requests`：lane 2 中 bank 0 的 bank request 总次数。
+- `lane2 bank1_conflict_ratio`：lane 2 中 bank 1 的 bank conflict ratio。
+- `lane2 bank1_total_conflicts`：lane 2 中 bank 1 的 bank conflict 总次数。
+- `lane2 bank1_total_requests`：lane 2 中 bank 1 的 bank request 总次数。
+- `lane2 bank2_conflict_ratio`：lane 2 中 bank 2 的 bank conflict ratio。
+- `lane2 bank2_total_conflicts`：lane 2 中 bank 2 的 bank conflict 总次数。
+- `lane2 bank2_total_requests`：lane 2 中 bank 2 的 bank request 总次数。
+- `lane2 bank3_conflict_ratio`：lane 2 中 bank 3 的 bank conflict ratio。
+- `lane2 bank3_total_conflicts`：lane 2 中 bank 3 的 bank conflict 总次数。
+- `lane2 bank3_total_requests`：lane 2 中 bank 3 的 bank request 总次数。
+- `lane2 bank4_conflict_ratio`：lane 2 中 bank 4 的 bank conflict ratio。
+- `lane2 bank4_total_conflicts`：lane 2 中 bank 4 的 bank conflict 总次数。
+- `lane2 bank4_total_requests`：lane 2 中 bank 4 的 bank request 总次数。
+- `lane2 bank5_conflict_ratio`：lane 2 中 bank 5 的 bank conflict ratio。
+- `lane2 bank5_total_conflicts`：lane 2 中 bank 5 的 bank conflict 总次数。
+- `lane2 bank5_total_requests`：lane 2 中 bank 5 的 bank request 总次数。
+- `lane2 bank6_conflict_ratio`：lane 2 中 bank 6 的 bank conflict ratio。
+- `lane2 bank6_total_conflicts`：lane 2 中 bank 6 的 bank conflict 总次数。
+- `lane2 bank6_total_requests`：lane 2 中 bank 6 的 bank request 总次数。
+- `lane2 bank7_conflict_ratio`：lane 2 中 bank 7 的 bank conflict ratio。
+- `lane2 bank7_total_conflicts`：lane 2 中 bank 7 的 bank conflict 总次数。
+- `lane2 bank7_total_requests`：lane 2 中 bank 7 的 bank request 总次数。
+- `lane2 hp_block_lp`：lane 2 中 high-priority request 阻塞 low-priority request 的计数。
+- `lane2 total_bank_conflicts`：lane 2 所有 bank conflict 总次数。
+- `lane2 total_bank_requests`：lane 2 所有 bank request 总次数。
+- `lane2 total_hp_bank_conflicts`：lane 2 high-priority bank conflict 总次数。
+- `lane2 total_hp_bank_requests`：lane 2 high-priority bank request 总次数。
+- `lane2 total_lp_bank_conflicts`：lane 2 low-priority bank conflict 总次数。
+- `lane2 total_lp_bank_requests`：lane 2 low-priority bank request 总次数。
+- `lane3 bank0_conflict_ratio`：lane 3 中 bank 0 的 bank conflict ratio。
+- `lane3 bank0_total_conflicts`：lane 3 中 bank 0 的 bank conflict 总次数。
+- `lane3 bank0_total_requests`：lane 3 中 bank 0 的 bank request 总次数。
+- `lane3 bank1_conflict_ratio`：lane 3 中 bank 1 的 bank conflict ratio。
+- `lane3 bank1_total_conflicts`：lane 3 中 bank 1 的 bank conflict 总次数。
+- `lane3 bank1_total_requests`：lane 3 中 bank 1 的 bank request 总次数。
+- `lane3 bank2_conflict_ratio`：lane 3 中 bank 2 的 bank conflict ratio。
+- `lane3 bank2_total_conflicts`：lane 3 中 bank 2 的 bank conflict 总次数。
+- `lane3 bank2_total_requests`：lane 3 中 bank 2 的 bank request 总次数。
+- `lane3 bank3_conflict_ratio`：lane 3 中 bank 3 的 bank conflict ratio。
+- `lane3 bank3_total_conflicts`：lane 3 中 bank 3 的 bank conflict 总次数。
+- `lane3 bank3_total_requests`：lane 3 中 bank 3 的 bank request 总次数。
+- `lane3 bank4_conflict_ratio`：lane 3 中 bank 4 的 bank conflict ratio。
+- `lane3 bank4_total_conflicts`：lane 3 中 bank 4 的 bank conflict 总次数。
+- `lane3 bank4_total_requests`：lane 3 中 bank 4 的 bank request 总次数。
+- `lane3 bank5_conflict_ratio`：lane 3 中 bank 5 的 bank conflict ratio。
+- `lane3 bank5_total_conflicts`：lane 3 中 bank 5 的 bank conflict 总次数。
+- `lane3 bank5_total_requests`：lane 3 中 bank 5 的 bank request 总次数。
+- `lane3 bank6_conflict_ratio`：lane 3 中 bank 6 的 bank conflict ratio。
+- `lane3 bank6_total_conflicts`：lane 3 中 bank 6 的 bank conflict 总次数。
+- `lane3 bank6_total_requests`：lane 3 中 bank 6 的 bank request 总次数。
+- `lane3 bank7_conflict_ratio`：lane 3 中 bank 7 的 bank conflict ratio。
+- `lane3 bank7_total_conflicts`：lane 3 中 bank 7 的 bank conflict 总次数。
+- `lane3 bank7_total_requests`：lane 3 中 bank 7 的 bank request 总次数。
+- `lane3 hp_block_lp`：lane 3 中 high-priority request 阻塞 low-priority request 的计数。
+- `lane3 total_bank_conflicts`：lane 3 所有 bank conflict 总次数。
+- `lane3 total_bank_requests`：lane 3 所有 bank request 总次数。
+- `lane3 total_hp_bank_conflicts`：lane 3 high-priority bank conflict 总次数。
+- `lane3 total_hp_bank_requests`：lane 3 high-priority bank request 总次数。
+- `lane3 total_lp_bank_conflicts`：lane 3 low-priority bank conflict 总次数。
+- `lane3 total_lp_bank_requests`：lane 3 low-priority bank request 总次数。
+- `main_vector_req_blocked_ratio`：`ara_req_blocked_cycles / ara_req_valid_cycles` 的派生 blocked ratio。
+- `main_vector_req_per_cycle`：`ara_req_fire_count / total_cycles` 或 ideal 中对应 RVV 周期的派生请求投放吞吐。
+- `rvv_axi_ar_count`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_axi_aw_count`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_axi_b_count`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_axi_r_count`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_axi_w_count`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_op`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_op_fd`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_op_fs1`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_op_load`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `rvv_op_store`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `seq_block_cycles`：main/Ara sequencer block 周期数。
+- `seq_false_hazard_cycles`：main/Ara sequencer 中被归类为 false/conservative hazard 的周期数。
+- `seq_raw_hazard_cycles`：main/Ara sequencer RAW hazard 相关周期数。
+- `seq_war_hazard_cycles`：main/Ara sequencer WAR hazard 相关周期数。
+- `seq_waw_hazard_cycles`：main/Ara sequencer WAW hazard 相关周期数。
+- `total_cycles`：main real 模式的总执行周期。
+- `total_insns`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `total_rvv_cycles`：main ideal 模式的总 RVV 执行周期。
+- `total_rvv_lane_cycles`：main ideal 中所有 lane 活跃周期的聚合计数。
+- `total_rvv_load_lane_cycles`：main ideal 中 load lane 活跃周期计数。
+- `total_rvv_load_only_cycles`：main ideal 中仅 load 路径活跃的周期计数。
+- `total_rvv_mem_lane_cycles`：main ideal 中 memory lane 活跃周期计数。
+- `total_rvv_mem_only_cycles`：main ideal 中仅 memory 路径活跃的周期计数。
+- `total_rvv_store_lane_cycles`：main ideal 中 store lane 活跃周期计数。
+- `total_rvv_store_only_cycles`：main ideal 中仅 store 路径活跃的周期计数。
+- `total_vector_insns`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `vector inst rate`：main representative CSV 中的原始指标字段；用于 baseline 诊断和对照。
+- `lane0 compute utilization`：lane 0 的 compute utilization。
+- `lane0 conflict_ratio`：lane 0 聚合 bank conflict ratio。
+- `lane1 compute utilization`：lane 1 的 compute utilization。
+- `lane2 compute utilization`：lane 2 的 compute utilization。
+- `lane3 compute utilization`：lane 3 的 compute utilization。
+- `total_rvv_lane0_compute_cycles`：main ideal 中 lane 0 的 RVV compute cycle 计数。
+- `total_rvv_lane1_compute_cycles`：main ideal 中 lane 1 的 RVV compute cycle 计数。
+- `total_rvv_lane2_compute_cycles`：main ideal 中 lane 2 的 RVV compute cycle 计数。
+- `total_rvv_lane3_compute_cycles`：main ideal 中 lane 3 的 RVV compute cycle 计数。
 
 调 prefetch 时，`+HDV_PF_PROBE` 会打开多处 `$display`，包括 HEU/VDU/scalar/addrgen/vldu 的周期级事件。该探针用于定位真实原因，不能作为最终论文数据。
 
-### 15.1 累积式消融开关
+### 15.9 累积式消融开关
 
 当前 RTL 支持用 `hdv_ablation` 编译期开关跑 5.3 的累积式消融。默认值是 `full`，不改变当前仿真行为；只有显式设置其它模式才会加 disable define，并使用独立仿真目录。
 

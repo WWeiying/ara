@@ -60,6 +60,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   `ifdef FOR_VERIFY
   logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
   logic same_ep_bypass_event;
+  logic [3:0] same_ep_bypass_count;
   `endif
   ///////////////////////////////////
   //  Running vector instructions  //
@@ -411,6 +412,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     false_hazard = '0;
     sequencer_block = '0;
     same_ep_bypass_event = '0;
+    same_ep_bypass_count = '0;
     `endif
 
     case (state_q)
@@ -449,22 +451,27 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             end
 
             `ifdef FOR_VERIFY
-            same_ep_bypass_event =
-              (ara_req_i.use_vs1 &&
-               same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid] &&
-               write_list_d[ara_req_i.vs1].valid) ||
-              (ara_req_i.use_vs2 &&
-               same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid] &&
-               write_list_d[ara_req_i.vs2].valid) ||
-              (!ara_req_i.vm &&
-               same_ep_vid_mask[write_list_d[VMASK].vid] &&
-               write_list_d[VMASK].valid) ||
-              (ara_req_i.use_vd &&
-               same_ep_vid_mask[read_list_d[ara_req_i.vd].vid] &&
-               read_list_d[ara_req_i.vd].valid) ||
-              (ara_req_i.use_vd &&
-               same_ep_vid_mask[write_list_d[ara_req_i.vd].vid] &&
-               write_list_d[ara_req_i.vd].valid);
+            if (ara_req_i.use_vs1 &&
+                same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid] &&
+                write_list_d[ara_req_i.vs1].valid)
+              same_ep_bypass_count++;
+            if (ara_req_i.use_vs2 &&
+                same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid] &&
+                write_list_d[ara_req_i.vs2].valid)
+              same_ep_bypass_count++;
+            if (!ara_req_i.vm &&
+                same_ep_vid_mask[write_list_d[VMASK].vid] &&
+                write_list_d[VMASK].valid)
+              same_ep_bypass_count++;
+            if (ara_req_i.use_vd &&
+                same_ep_vid_mask[read_list_d[ara_req_i.vd].vid] &&
+                read_list_d[ara_req_i.vd].valid)
+              same_ep_bypass_count++;
+            if (ara_req_i.use_vd &&
+                same_ep_vid_mask[write_list_d[ara_req_i.vd].vid] &&
+                write_list_d[ara_req_i.vd].valid)
+              same_ep_bypass_count++;
+            same_ep_bypass_event = (same_ep_bypass_count != '0);
             `endif
 
             if (ara_req_i.use_vs1 && !same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid])
@@ -790,25 +797,67 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [63:0] cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw;
   logic [63:0] cnt_seq_ep_bypass, cnt_seq_full;
   logic [63:0] cnt_seq_waw_block;  // WAW actually blocked issue (no RAW also blocking)
+  logic [63:0] cnt_seq_hazard_check;
+  logic [63:0] cnt_seq_same_ep_candidate;
+  logic [63:0] cnt_seq_hazard_pruned_by_ep;
+  logic [63:0] cnt_seq_true_hazard_stall;
+  logic [63:0] cnt_seq_false_hazard_stall;
+  logic [63:0] cnt_seq_queue_full_stall;
+  logic [63:0] cnt_seq_lane_desync_stall;
+  logic [63:0] cnt_seq_operand_req_stall;
+  logic [63:0] cnt_seq_wait_state_cycles;
+  logic [63:0] cnt_seq_mem_wait_cycles;
   logic [31:0] pf_probe_seq_block_cycles_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       cnt_seq_issue <= '0; cnt_seq_blocked <= '0; cnt_seq_raw <= '0;
       cnt_seq_war <= '0; cnt_seq_waw <= '0; cnt_seq_ep_bypass <= '0; cnt_seq_full <= '0;
       cnt_seq_waw_block <= '0;
+      cnt_seq_hazard_check <= '0;
+      cnt_seq_same_ep_candidate <= '0;
+      cnt_seq_hazard_pruned_by_ep <= '0;
+      cnt_seq_true_hazard_stall <= '0;
+      cnt_seq_false_hazard_stall <= '0;
+      cnt_seq_queue_full_stall <= '0;
+      cnt_seq_lane_desync_stall <= '0;
+      cnt_seq_operand_req_stall <= '0;
+      cnt_seq_wait_state_cycles <= '0;
+      cnt_seq_mem_wait_cycles <= '0;
       pf_probe_seq_block_cycles_q <= '0;
     end else begin
+      if (ara_req_valid_i && (state_q == IDLE) &&
+          (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full))
+        cnt_seq_hazard_check <= cnt_seq_hazard_check + 1;
       if (pe_req_valid_o && (&pe_req_ready_i)) cnt_seq_issue <= cnt_seq_issue + 1;
       if (ara_req_valid_i && !ara_req_ready_o) cnt_seq_blocked <= cnt_seq_blocked + 1;
       if (raw_hazard)         cnt_seq_raw   <= cnt_seq_raw + 1;
       if (war_hazard)         cnt_seq_war   <= cnt_seq_war + 1;
       if (waw_hazard)         cnt_seq_waw   <= cnt_seq_waw + 1;
       if (vinsn_running_full) cnt_seq_full  <= cnt_seq_full + 1;
+      if (ara_req_valid_i && (same_ep_bypass_count != '0)) begin
+        cnt_seq_same_ep_candidate <= cnt_seq_same_ep_candidate + same_ep_bypass_count;
+        cnt_seq_hazard_pruned_by_ep <= cnt_seq_hazard_pruned_by_ep + same_ep_bypass_count;
+      end
       if (same_ep_bypass_event && ara_req_valid_i && ara_req_ready_o)
         cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
       // WAW-only block: no RAW, only WAW preventing issue
       if (waw_hazard && !raw_hazard && ara_req_valid_i && !ara_req_ready_o)
         cnt_seq_waw_block <= cnt_seq_waw_block + 1;
+      if (raw_hazard && ara_req_valid_i && !ara_req_ready_o)
+        cnt_seq_true_hazard_stall <= cnt_seq_true_hazard_stall + 1;
+      if (!raw_hazard && (war_hazard || waw_hazard) && ara_req_valid_i && !ara_req_ready_o)
+        cnt_seq_false_hazard_stall <= cnt_seq_false_hazard_stall + 1;
+      if (ara_req_valid_i && !ara_req_ready_o && vinsn_running_full)
+        cnt_seq_queue_full_stall <= cnt_seq_queue_full_stall + 1;
+      if (ara_req_valid_i && !ara_req_ready_o && stall_lanes_desynch)
+        cnt_seq_lane_desync_stall <= cnt_seq_lane_desync_stall + 1;
+      if (pe_req_valid_o && !(&operand_requester_ready || no_src_vrf(pe_req_o)))
+        cnt_seq_operand_req_stall <= cnt_seq_operand_req_stall + 1;
+      if (state_q == WAIT) begin
+        cnt_seq_wait_state_cycles <= cnt_seq_wait_state_cycles + 1;
+        if ((is_load(pe_req_d.op) || is_store(pe_req_d.op)) && !addrgen_ack_i)
+          cnt_seq_mem_wait_cycles <= cnt_seq_mem_wait_cycles + 1;
+      end
       if ($test$plusargs("HDV_PF_PROBE") && ara_req_valid_i && !ara_req_ready_o) begin
         pf_probe_seq_block_cycles_q <= pf_probe_seq_block_cycles_q + 32'd1;
         if ((pf_probe_seq_block_cycles_q <= 32'd8) ||
@@ -834,6 +883,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     $display("[PERF-SEQ] issue=%0d blocked=%0d raw=%0d war=%0d waw=%0d waw_block=%0d ep_bypass=%0d full=%0d",
              cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw,
              cnt_seq_waw_block, cnt_seq_ep_bypass, cnt_seq_full);
+    $display("[PERF-SEQ-HDV] hazard_check=%0d same_ep_candidate=%0d hazard_pruned=%0d true_hazard_stall=%0d false_hazard_stall=%0d queue_full_stall=%0d lane_desync_stall=%0d operand_req_stall=%0d wait_state_cyc=%0d mem_wait_cyc=%0d",
+             cnt_seq_hazard_check, cnt_seq_same_ep_candidate,
+             cnt_seq_hazard_pruned_by_ep, cnt_seq_true_hazard_stall,
+             cnt_seq_false_hazard_stall, cnt_seq_queue_full_stall,
+             cnt_seq_lane_desync_stall, cnt_seq_operand_req_stall,
+             cnt_seq_wait_state_cycles, cnt_seq_mem_wait_cycles);
   end
   `endif
 endmodule : ara_sequencer

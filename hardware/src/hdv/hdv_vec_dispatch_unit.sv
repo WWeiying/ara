@@ -760,6 +760,24 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
 	  logic [63:0] cnt_vq_max_occupancy;      // peak command-window occupancy (1-cycle)
 	  logic [63:0] cnt_resp_meta_max;         // peak resp_meta FIFO occupancy (1-cycle)
 	  logic [63:0] cnt_dispatch_total_cycles; // total cycles spent in DISPATCH state
+  logic [63:0] cnt_vector_cmd_valid_cycles;  // cycles with a valid Ara command
+  logic [63:0] cnt_vector_cmd_fire;          // Ara command valid/ready handshakes
+  logic [63:0] cnt_vector_cmd_blocked_cycles;// valid Ara command blocked by req_ready=0
+  logic [63:0] cnt_cmd_window_sum_occ;       // sum of command-window occupancy samples
+  logic [63:0] cnt_cmd_window_sample_cycles; // number of occupancy samples
+  logic [63:0] cnt_cmd_window_full_cycles;   // command window full cycles
+  logic [63:0] cnt_cmd_window_empty_cycles;  // active cycles with empty command window
+  logic [63:0] cnt_resp_meta_sum_occ;        // response-metadata FIFO occupancy samples
+  logic [63:0] cnt_resp_meta_sample_cycles;  // response-metadata sample count
+  logic [63:0] cnt_scalar_operand_capture;   // primary scalar operand port captures
+  logic [63:0] cnt_scalar_operand_bypass;    // scalar operand bypasses into request
+  logic [63:0] cnt_scalar_operand_lookahead_req; // next-slot operand prefetch requests
+  logic [63:0] cnt_scalar_operand_lookahead_hit; // prefetched operand consumed
+  logic [63:0] cnt_scalar_operand_port_busy; // cycles requesting scalar operand port
+  logic [63:0] cnt_vector_ep_enqueue;        // accepted vector EP slices
+  logic [63:0] cnt_vector_ep_pending_enqueue;// accepted while VDU already busy
+  logic [63:0] cnt_vector_ep_ready_block;    // HEU presented vector EP but VDU not ready
+  logic [63:0] cnt_vset_visible_wait_cycles; // EP ready except for vset/vl scalar visibility
 	  logic [31:0] pf_probe_stall_cycles_q;
 	  `endif
 
@@ -940,6 +958,24 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       cnt_vq_max_occupancy     <= '0;
       cnt_resp_meta_max        <= '0;
       cnt_dispatch_total_cycles <= '0;
+      cnt_vector_cmd_valid_cycles <= '0;
+      cnt_vector_cmd_fire <= '0;
+      cnt_vector_cmd_blocked_cycles <= '0;
+      cnt_cmd_window_sum_occ <= '0;
+      cnt_cmd_window_sample_cycles <= '0;
+      cnt_cmd_window_full_cycles <= '0;
+      cnt_cmd_window_empty_cycles <= '0;
+      cnt_resp_meta_sum_occ <= '0;
+      cnt_resp_meta_sample_cycles <= '0;
+      cnt_scalar_operand_capture <= '0;
+      cnt_scalar_operand_bypass <= '0;
+      cnt_scalar_operand_lookahead_req <= '0;
+      cnt_scalar_operand_lookahead_hit <= '0;
+      cnt_scalar_operand_port_busy <= '0;
+      cnt_vector_ep_enqueue <= '0;
+      cnt_vector_ep_pending_enqueue <= '0;
+      cnt_vector_ep_ready_block <= '0;
+      cnt_vset_visible_wait_cycles <= '0;
     end else begin
       // ── Slot throughput ──────────────────────────────────────────────
       if (accept_insn) begin
@@ -1015,7 +1051,82 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       if (state_q == DISPATCH) begin
         cnt_dispatch_total_cycles <= cnt_dispatch_total_cycles + 64'd1;
       end
+
+      // ── Ara command interface and window pressure ────────────────────
+      if (acc_req_o.acc_req.req_valid) begin
+        cnt_vector_cmd_valid_cycles <= cnt_vector_cmd_valid_cycles + 64'd1;
+      end
+      if (ara_acc) begin
+        cnt_vector_cmd_fire <= cnt_vector_cmd_fire + 64'd1;
+      end
+      if (acc_req_o.acc_req.req_valid && !acc_resp_i.acc_resp.req_ready) begin
+        cnt_vector_cmd_blocked_cycles <= cnt_vector_cmd_blocked_cycles + 64'd1;
+      end
+      if ((state_q != IDLE) || pending_valid_q || heu_vec_valid_i || vq_serving ||
+          fsm_req_valid || acc_req_o.acc_req.req_valid) begin
+        cnt_cmd_window_sum_occ <= cnt_cmd_window_sum_occ + 64'(vq_count_q);
+        cnt_cmd_window_sample_cycles <= cnt_cmd_window_sample_cycles + 64'd1;
+        cnt_resp_meta_sum_occ <= cnt_resp_meta_sum_occ + 64'(resp_meta_count_q);
+        cnt_resp_meta_sample_cycles <= cnt_resp_meta_sample_cycles + 64'd1;
+        if (vq_count_q == '0) begin
+          cnt_cmd_window_empty_cycles <= cnt_cmd_window_empty_cycles + 64'd1;
+        end
+      end
+      if (vq_full) begin
+        cnt_cmd_window_full_cycles <= cnt_cmd_window_full_cycles + 64'd1;
+      end
+
+      // ── Scalar operand cooperation ───────────────────────────────────
+      if (capture_operand) begin
+        cnt_scalar_operand_capture <= cnt_scalar_operand_capture + 64'd1;
+      end
+      if (accept_insn && selected_operand_bypass) begin
+        cnt_scalar_operand_bypass <= cnt_scalar_operand_bypass + 64'd1;
+      end
+      if (prefetch_operand_req) begin
+        cnt_scalar_operand_lookahead_req <= cnt_scalar_operand_lookahead_req + 64'd1;
+      end
+      if (accept_insn && selected_has_next_operand) begin
+        cnt_scalar_operand_lookahead_hit <= cnt_scalar_operand_lookahead_hit + 64'd1;
+      end
+      if (selected_operand_port_busy) begin
+        cnt_scalar_operand_port_busy <= cnt_scalar_operand_port_busy + 64'd1;
+      end
+
+      // ── Vector EP intake pressure ────────────────────────────────────
+      if (enqueue_ep) begin
+        cnt_vector_ep_enqueue <= cnt_vector_ep_enqueue + 64'd1;
+      end
+      if (enqueue_to_pending) begin
+        cnt_vector_ep_pending_enqueue <= cnt_vector_ep_pending_enqueue + 64'd1;
+      end
+      if (heu_vec_valid_i && !vec_ep_ready_o) begin
+        cnt_vector_ep_ready_block <= cnt_vector_ep_ready_block + 64'd1;
+      end
+      if ((!UseVTraceScalar &&
+           (((real_wait_valid_q[0] && real_wait_has_vset_q[0] &&
+              real_ep_operands_captured_q[0] && !real_ep_vset_wb_done_q[0]) ||
+             (real_wait_valid_q[1] && real_wait_has_vset_q[1] &&
+              real_ep_operands_captured_q[1] && !real_ep_vset_wb_done_q[1])))) ||
+          (UseVTraceScalar && (vset_accept_wait_q != '0))) begin
+        cnt_vset_visible_wait_cycles <= cnt_vset_visible_wait_cycles + 64'd1;
+      end
     end
+  end
+
+  final begin : p_vdu_perf_report
+    $display("[PERF-VDU-CMD] vector_cmd_valid=%0d vector_cmd_fire=%0d vector_cmd_blocked=%0d cmd_window_sum_occ=%0d cmd_window_sample_cyc=%0d cmd_window_full_cyc=%0d cmd_window_empty_cyc=%0d resp_meta_sum_occ=%0d resp_meta_sample_cyc=%0d",
+             cnt_vector_cmd_valid_cycles, cnt_vector_cmd_fire,
+             cnt_vector_cmd_blocked_cycles, cnt_cmd_window_sum_occ,
+             cnt_cmd_window_sample_cycles, cnt_cmd_window_full_cycles,
+             cnt_cmd_window_empty_cycles, cnt_resp_meta_sum_occ,
+             cnt_resp_meta_sample_cycles);
+    $display("[PERF-VDU-OPERAND] scalar_operand_capture=%0d scalar_operand_bypass=%0d scalar_operand_lookahead_req=%0d scalar_operand_lookahead_hit=%0d scalar_operand_port_busy=%0d vector_ep_enqueue=%0d vector_ep_pending_enqueue=%0d vector_ep_ready_block=%0d vset_visible_wait_cycles=%0d",
+             cnt_scalar_operand_capture, cnt_scalar_operand_bypass,
+             cnt_scalar_operand_lookahead_req, cnt_scalar_operand_lookahead_hit,
+             cnt_scalar_operand_port_busy, cnt_vector_ep_enqueue,
+             cnt_vector_ep_pending_enqueue, cnt_vector_ep_ready_block,
+             cnt_vset_visible_wait_cycles);
   end
   `endif
 

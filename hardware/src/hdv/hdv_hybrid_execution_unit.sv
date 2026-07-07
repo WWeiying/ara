@@ -432,6 +432,75 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     end
   end
 
+`ifdef FOR_VERIFY
+  logic [63:0] ep_width_count;
+  logic [63:0] ep_scalar_count;
+  logic [63:0] ep_vector_count;
+  logic        early_issue_candidate;
+  logic        early_block_scalar_gpr_dep;
+  logic        early_block_scalar_fpr_dep;
+  logic        early_block_vector_dep;
+  logic [63:0] cnt_heu_accept;
+  logic [63:0] cnt_heu_accept_to_current;
+  logic [63:0] cnt_heu_accept_to_buffer;
+  logic [63:0] cnt_heu_frontend_valid_cycles;
+  logic [63:0] cnt_heu_frontend_ready_block_cycles;
+  logic [63:0] cnt_heu_ready_block_buffer_cycles;
+  logic [63:0] cnt_heu_ready_block_branch_cycles;
+  logic [63:0] cnt_heu_current_busy_cycles;
+  logic [63:0] cnt_heu_buffer_valid_cycles;
+  logic [63:0] cnt_heu_scalar_outstanding_cycles;
+  logic [63:0] cnt_heu_vector_outstanding_cycles;
+  logic [63:0] cnt_heu_ep_width_sum;
+  logic [63:0] cnt_heu_ep_scalar_inst_sum;
+  logic [63:0] cnt_heu_ep_vector_inst_sum;
+  logic [63:0] cnt_heu_ep_width_gt1;
+  logic [63:0] cnt_heu_ep_mixed;
+  logic [63:0] cnt_heu_ep_scalar_only;
+  logic [63:0] cnt_heu_ep_vector_only;
+  logic [63:0] cnt_heu_issue_slots;
+  logic [63:0] cnt_heu_pf_hint_ep;
+  logic [63:0] cnt_heu_pf_disable_ep;
+  logic [63:0] cnt_heu_pf_mode_1x;
+  logic [63:0] cnt_heu_pf_mode_2x;
+  logic [63:0] cnt_heu_pf_mode_4x;
+  logic [63:0] cnt_heu_pf_mode_8x;
+  logic [63:0] cnt_heu_early_attempt;
+  logic [63:0] cnt_heu_early_grant;
+  logic [63:0] cnt_heu_early_blk_dispatch;
+  logic [63:0] cnt_heu_early_blk_queue;
+  logic [63:0] cnt_heu_early_blk_branch;
+  logic [63:0] cnt_heu_early_blk_scalar_mem;
+  logic [63:0] cnt_heu_early_blk_gpr_dep;
+  logic [63:0] cnt_heu_early_blk_fpr_dep;
+  logic [63:0] cnt_heu_early_blk_vec_dep;
+  logic [63:0] cnt_heu_cross_ep_inflight_cycles;
+  logic [63:0] cnt_heu_overlap_cycles;
+
+  always_comb begin : p_perf_ep_width_count
+    ep_width_count = '0;
+    ep_scalar_count = '0;
+    ep_vector_count = '0;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      logic is_continuation;
+
+      is_continuation = 1'b0;
+      if (i > 0) begin
+        is_continuation = vliwpu_heu_execute_slot_is_32b_i[i-1];
+      end
+
+      if (vliwpu_heu_execute_slot_valid_i[i] && !is_continuation) begin
+        ep_width_count++;
+        if (vliwpu_heu_execute_class_i[i] == HDV_INST_VECTOR) begin
+          ep_vector_count++;
+        end else begin
+          ep_scalar_count++;
+        end
+      end
+    end
+  end
+`endif
+
   assign heu_scalar_valid_o        = scalar_dispatch_valid_q;
   assign heu_vector_valid_o        = vector_dispatch_valid_q;
   assign heu_scalar_insn_valid_o   = scalar_insn_valid_q;
@@ -484,6 +553,22 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
                                      ((current_vector_write_mask_q == 32'b0) ||
                                       (buffer_vector_write_mask_q == 32'b0))));
   assign buffer_vector_issue_fire = buffer_vector_can_issue;
+
+`ifdef FOR_VERIFY
+  assign early_issue_candidate = EnableBufferedVectorEarlyIssue &
+                                 buffer_valid_q & buffer_has_vector_q &
+                                 !buffer_vector_sent_q;
+  assign early_block_scalar_gpr_dep =
+      scalar_slice_outstanding_q &&
+      ((buffer_vector_read_mask_q & current_scalar_write_mask_q) != 32'b0);
+  assign early_block_scalar_fpr_dep =
+      scalar_slice_outstanding_q &&
+      ((buffer_vector_fpr_read_mask_q & current_scalar_fpr_write_mask_q) != 32'b0);
+  assign early_block_vector_dep =
+      vector_slice_outstanding_q &&
+      (((buffer_vector_read_mask_q & current_vector_write_mask_q) != 32'b0) ||
+       ((current_vector_write_mask_q != 32'b0) && (buffer_vector_write_mask_q != 32'b0)));
+`endif
 
   always_comb begin : p_next
     outstanding_d = outstanding_q;
@@ -862,6 +947,161 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       next_vector_id_q <= next_vector_id_d;
     end
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_heu_perf_counters
+    if (!rst_ni) begin
+      cnt_heu_accept <= '0;
+      cnt_heu_accept_to_current <= '0;
+      cnt_heu_accept_to_buffer <= '0;
+      cnt_heu_frontend_valid_cycles <= '0;
+      cnt_heu_frontend_ready_block_cycles <= '0;
+      cnt_heu_ready_block_buffer_cycles <= '0;
+      cnt_heu_ready_block_branch_cycles <= '0;
+      cnt_heu_current_busy_cycles <= '0;
+      cnt_heu_buffer_valid_cycles <= '0;
+      cnt_heu_scalar_outstanding_cycles <= '0;
+      cnt_heu_vector_outstanding_cycles <= '0;
+      cnt_heu_ep_width_sum <= '0;
+      cnt_heu_ep_scalar_inst_sum <= '0;
+      cnt_heu_ep_vector_inst_sum <= '0;
+      cnt_heu_ep_width_gt1 <= '0;
+      cnt_heu_ep_mixed <= '0;
+      cnt_heu_ep_scalar_only <= '0;
+      cnt_heu_ep_vector_only <= '0;
+      cnt_heu_issue_slots <= '0;
+      cnt_heu_pf_hint_ep <= '0;
+      cnt_heu_pf_disable_ep <= '0;
+      cnt_heu_pf_mode_1x <= '0;
+      cnt_heu_pf_mode_2x <= '0;
+      cnt_heu_pf_mode_4x <= '0;
+      cnt_heu_pf_mode_8x <= '0;
+      cnt_heu_early_attempt <= '0;
+      cnt_heu_early_grant <= '0;
+      cnt_heu_early_blk_dispatch <= '0;
+      cnt_heu_early_blk_queue <= '0;
+      cnt_heu_early_blk_branch <= '0;
+      cnt_heu_early_blk_scalar_mem <= '0;
+      cnt_heu_early_blk_gpr_dep <= '0;
+      cnt_heu_early_blk_fpr_dep <= '0;
+      cnt_heu_early_blk_vec_dep <= '0;
+      cnt_heu_cross_ep_inflight_cycles <= '0;
+      cnt_heu_overlap_cycles <= '0;
+    end else begin
+      if (vliwpu_heu_execute_valid_i) begin
+        cnt_heu_frontend_valid_cycles <= cnt_heu_frontend_valid_cycles + 64'd1;
+        if (!heu_vliwpu_execute_ready_o) begin
+          cnt_heu_frontend_ready_block_cycles <= cnt_heu_frontend_ready_block_cycles + 64'd1;
+        end
+        if (buffer_valid_q) begin
+          cnt_heu_ready_block_buffer_cycles <= cnt_heu_ready_block_buffer_cycles + 64'd1;
+        end
+        if (outstanding_q && current_has_branch_q) begin
+          cnt_heu_ready_block_branch_cycles <= cnt_heu_ready_block_branch_cycles + 64'd1;
+        end
+      end
+      if (outstanding_q) begin
+        cnt_heu_current_busy_cycles <= cnt_heu_current_busy_cycles + 64'd1;
+      end
+      if (buffer_valid_q) begin
+        cnt_heu_buffer_valid_cycles <= cnt_heu_buffer_valid_cycles + 64'd1;
+      end
+      if (scalar_slice_outstanding_q) begin
+        cnt_heu_scalar_outstanding_cycles <= cnt_heu_scalar_outstanding_cycles + 64'd1;
+      end
+      if (vector_slice_outstanding_q || buffer_vector_slice_outstanding_q) begin
+        cnt_heu_vector_outstanding_cycles <= cnt_heu_vector_outstanding_cycles + 64'd1;
+      end
+
+      if (accept_packet) begin
+        cnt_heu_accept <= cnt_heu_accept + 64'd1;
+        cnt_heu_ep_width_sum <= cnt_heu_ep_width_sum + ep_width_count;
+        cnt_heu_ep_scalar_inst_sum <= cnt_heu_ep_scalar_inst_sum + ep_scalar_count;
+        cnt_heu_ep_vector_inst_sum <= cnt_heu_ep_vector_inst_sum + ep_vector_count;
+        cnt_heu_issue_slots <= cnt_heu_issue_slots + NumSlots;
+        if (accept_to_current) begin
+          cnt_heu_accept_to_current <= cnt_heu_accept_to_current + 64'd1;
+        end
+        if (accept_to_buffer) begin
+          cnt_heu_accept_to_buffer <= cnt_heu_accept_to_buffer + 64'd1;
+        end
+        if (ep_width_count > 64'd1) begin
+          cnt_heu_ep_width_gt1 <= cnt_heu_ep_width_gt1 + 64'd1;
+        end
+        if ((ep_scalar_count != 64'd0) && (ep_vector_count != 64'd0)) begin
+          cnt_heu_ep_mixed <= cnt_heu_ep_mixed + 64'd1;
+        end else if (ep_scalar_count != 64'd0) begin
+          cnt_heu_ep_scalar_only <= cnt_heu_ep_scalar_only + 64'd1;
+        end else if (ep_vector_count != 64'd0) begin
+          cnt_heu_ep_vector_only <= cnt_heu_ep_vector_only + 64'd1;
+        end
+        if (vliwpu_heu_execute_prefetch_hint_valid_i) begin
+          cnt_heu_pf_hint_ep <= cnt_heu_pf_hint_ep + 64'd1;
+          if (vliwpu_heu_execute_prefetch_disable_i) begin
+            cnt_heu_pf_disable_ep <= cnt_heu_pf_disable_ep + 64'd1;
+          end
+          unique case (vliwpu_heu_execute_prefetch_mode_i)
+            2'b00: cnt_heu_pf_mode_1x <= cnt_heu_pf_mode_1x + 64'd1;
+            2'b01: cnt_heu_pf_mode_2x <= cnt_heu_pf_mode_2x + 64'd1;
+            2'b10: cnt_heu_pf_mode_4x <= cnt_heu_pf_mode_4x + 64'd1;
+            2'b11: cnt_heu_pf_mode_8x <= cnt_heu_pf_mode_8x + 64'd1;
+            default: ;
+          endcase
+        end
+      end
+
+      if (early_issue_candidate) begin
+        cnt_heu_early_attempt <= cnt_heu_early_attempt + 64'd1;
+        if (buffer_vector_issue_fire) begin
+          cnt_heu_early_grant <= cnt_heu_early_grant + 64'd1;
+        end else if (vector_dispatch_valid_q && !vector_heu_ready_i) begin
+          cnt_heu_early_blk_queue <= cnt_heu_early_blk_queue + 64'd1;
+        end else if (vector_dispatch_valid_q) begin
+          cnt_heu_early_blk_dispatch <= cnt_heu_early_blk_dispatch + 64'd1;
+        end else if (current_has_branch_q) begin
+          cnt_heu_early_blk_branch <= cnt_heu_early_blk_branch + 64'd1;
+        end else if (current_has_scalar_mem_order_q) begin
+          cnt_heu_early_blk_scalar_mem <= cnt_heu_early_blk_scalar_mem + 64'd1;
+        end else if (early_block_scalar_gpr_dep) begin
+          cnt_heu_early_blk_gpr_dep <= cnt_heu_early_blk_gpr_dep + 64'd1;
+        end else if (early_block_scalar_fpr_dep) begin
+          cnt_heu_early_blk_fpr_dep <= cnt_heu_early_blk_fpr_dep + 64'd1;
+        end else if (early_block_vector_dep) begin
+          cnt_heu_early_blk_vec_dep <= cnt_heu_early_blk_vec_dep + 64'd1;
+        end
+      end
+
+      if (buffer_vector_slice_outstanding_q && outstanding_q) begin
+        cnt_heu_cross_ep_inflight_cycles <= cnt_heu_cross_ep_inflight_cycles + 64'd1;
+      end
+      if (buffer_vector_slice_outstanding_q &&
+          (scalar_slice_outstanding_q || vector_slice_outstanding_q)) begin
+        cnt_heu_overlap_cycles <= cnt_heu_overlap_cycles + 64'd1;
+      end
+    end
+  end
+
+  final begin : p_heu_perf_report
+    $display("[PERF-HEU-EP] accept=%0d to_current=%0d to_buffer=%0d width_sum=%0d scalar_inst=%0d vector_inst=%0d width_gt1=%0d mixed=%0d scalar_only=%0d vector_only=%0d issue_slots=%0d pf_hint_ep=%0d pf_disable_ep=%0d pf_mode_1x=%0d pf_mode_2x=%0d pf_mode_4x=%0d pf_mode_8x=%0d",
+             cnt_heu_accept, cnt_heu_accept_to_current, cnt_heu_accept_to_buffer,
+             cnt_heu_ep_width_sum, cnt_heu_ep_scalar_inst_sum,
+             cnt_heu_ep_vector_inst_sum, cnt_heu_ep_width_gt1, cnt_heu_ep_mixed,
+             cnt_heu_ep_scalar_only, cnt_heu_ep_vector_only, cnt_heu_issue_slots,
+             cnt_heu_pf_hint_ep, cnt_heu_pf_disable_ep, cnt_heu_pf_mode_1x,
+             cnt_heu_pf_mode_2x, cnt_heu_pf_mode_4x, cnt_heu_pf_mode_8x);
+    $display("[PERF-HEU-FE] valid_cyc=%0d ready_block_cyc=%0d block_buffer_cyc=%0d block_branch_cyc=%0d current_busy_cyc=%0d buffer_valid_cyc=%0d scalar_out_cyc=%0d vector_out_cyc=%0d",
+             cnt_heu_frontend_valid_cycles, cnt_heu_frontend_ready_block_cycles,
+             cnt_heu_ready_block_buffer_cycles, cnt_heu_ready_block_branch_cycles,
+             cnt_heu_current_busy_cycles, cnt_heu_buffer_valid_cycles,
+             cnt_heu_scalar_outstanding_cycles, cnt_heu_vector_outstanding_cycles);
+    $display("[PERF-HEU-OVLP] early_attempt=%0d early_grant=%0d early_blk_dispatch=%0d early_blk_queue=%0d early_blk_branch=%0d early_blk_scalar_mem=%0d early_blk_gpr_dep=%0d early_blk_fpr_dep=%0d early_blk_vec_dep=%0d cross_ep_cyc=%0d overlap_cyc=%0d",
+             cnt_heu_early_attempt, cnt_heu_early_grant, cnt_heu_early_blk_dispatch,
+             cnt_heu_early_blk_queue, cnt_heu_early_blk_branch, cnt_heu_early_blk_scalar_mem,
+             cnt_heu_early_blk_gpr_dep, cnt_heu_early_blk_fpr_dep,
+             cnt_heu_early_blk_vec_dep, cnt_heu_cross_ep_inflight_cycles,
+             cnt_heu_overlap_cycles);
+  end
+`endif
 
 `ifdef FOR_VERIFY
   always_ff @(posedge clk_i) begin : p_pf_probe_heu
