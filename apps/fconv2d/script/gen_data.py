@@ -16,7 +16,9 @@
 
 #!/usr/bin/env python3
 
-# arg1: image size, arg2: filter size
+# arg1: image rows
+# arg2: image columns or filter size
+# arg3: (optional) filter size
 
 import numpy as np
 import sys
@@ -68,21 +70,37 @@ def emit(name, array, alignment='8'):
 		print("    .word 0x%s" % s)
 
 # Define the filter size and the matrix dimension (max, for now, is 128 64-bit elements)
-if len(sys.argv) > 1:
+if len(sys.argv) == 2:
 	matrix_width = int(sys.argv[1])
-	assert(matrix_width <= 128), "The width of the image cannot be greater than 128 64-bit \
-	                                  elements. If this is not enough, modify the algorithm."
+	matrix_height = matrix_width
+	f = 3
+elif len(sys.argv) == 3:
+	matrix_width = int(sys.argv[1])
+	matrix_height = matrix_width
 	f = int(sys.argv[2])
-	# Filter size must be odd
-	assert(f % 2 == 1), "The filter size must be an odd integer number"
+elif len(sys.argv) == 4:
+	matrix_height = int(sys.argv[1])
+	matrix_width = int(sys.argv[2])
+	f = int(sys.argv[3])
 else:
 	matrix_width = 64
+	matrix_height = 64
 	f = 3
+
+assert(matrix_width <= 128), "The width of the image cannot be greater than 128 64-bit \
+                                  elements. If this is not enough, modify the algorithm."
+assert(matrix_height <= 128), "The height of the image cannot be greater than 128 64-bit \
+                                  elements. If this is not enough, modify the algorithm."
+assert(matrix_width % 4 == 0), "Output image width must be divisible by 4, pad the input image accordingly"
+assert(matrix_height % 4 == 0), "Output image height must be divisible by 4, pad the input image accordingly"
+
+# Filter size must be odd
+assert(f % 2 == 1), "The filter size must be an odd integer number"
 
 dtype=np.float64
 
 # Input image. Take a square image
-M = matrix_width
+M = matrix_height
 N = matrix_width
 padding = int(f/2)
 M_pad = M + 2*padding

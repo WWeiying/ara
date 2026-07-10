@@ -3,7 +3,8 @@
 # kernel_sweep.sh — batch-run the tightly-coupled *_asm kernels on the MAIN branch
 # (standard cva6+Ara) across AVL / LMUL, in BOTH performance modes, → CSV.
 #
-#   ./kernel_sweep.sh [1d|blas|gemm|fixed|all]     (default: all)
+#   ./kernel_sweep.sh [1d|blas|gemm|fixed|blas_groups|all]     (default: all)
+#   ./kernel_sweep.sh blas_groups "128" "2 4 8" "4"
 #
 # TWO-PHASE for speed:
 #   * REAL phase (non-ideal): the RTL is identical across every point, so it is
@@ -29,6 +30,7 @@
 #   POINT_FILTER="app:tag ..."       exact points only, e.g. vstrsm_asm:m2_avl32
 #   APP_FILTER="app ..."             exact apps only
 #   TAG_FILTER="tag ..."             exact tags only
+#   OUT_DIR=kernel_sweep_out_name    output directory (default kernel_sweep_out)
 #
 # Problem size / variant is compile-time; passed via ENV_DEFINES (NOT DEFINES=,
 # which would drop -DNR_LANES/-DVLEN).  `make` can't see -D changes, so stale
@@ -95,7 +97,12 @@ run_sim() {                             # run_sim <logfile> <cmd...>
 
   wait "$pid"
 }
-OUT="$HW/kernel_sweep_out"; mkdir -p "$OUT"
+OUT="${OUT_DIR:-$HW/kernel_sweep_out}"
+case "$OUT" in
+  /*) ;;
+  *) OUT="$HW/$OUT" ;;
+esac
+mkdir -p "$OUT"
 BUILDLOG="$OUT/build.log"; : > "$BUILDLOG"
 HDR="kernel,tag,avl,blas_lmul,gemm_rows,ideal_rvv_cycles,ideal_lane_util,real_total_cycles,real_rvv_cycles,real_vector_insns,real_insns,real_ipc,hw_cycles,dcache_stalls,icache_stalls,sb_full,axi_ar,axi_r,axi_aw,axi_w,axi_b"
 
@@ -107,12 +114,15 @@ AVLS_1D="${AVLS_1D:-32 64 128 256 512 1024 2048 4096}"
 AVLS_BLAS="${AVLS_BLAS:-32 64 128}"
 BLAS_LMULS="${BLAS_LMULS:-2 4 8}"          # m2/m4/m8; m1 (fixed 32x32) added per kernel
 GEMM_ROWS_L="${GEMM_ROWS_L:-1 2 4}"
+BLAS_GROUP_N="${2:-${BLAS_GROUP_N:-128}}"
+BLAS_GROUPS="${3:-${BLAS_GROUPS:-2 4 8}}"
+BLAS_GROUP_LMULS="${4:-${BLAS_GROUP_LMULS:-4}}"
 
 # ---- point list: app|tag|avl|bl|gr|defs (defs may contain spaces; last field) ----
 gen_points() {
-  local g=$1 k a L r
+  local g=$1 k a L r n groups total vlmax
   if [ "$g" = 1d ] || [ "$g" = all ]; then
-    for k in ${KERNELS_1D:-vsaxpy vscopy vsswap vsdot vsscal vvaddint32 vmc vsdwt}; do
+    for k in ${KERNELS_1D:-vsaxpy vscopy vsswap vsdot vsscal vvaddint32 vmc vsdwt vstencil3 vfir5}; do
       for a in $AVLS_1D; do echo "${k}_asm|avl${a}|$a|||-DASM_AVL=$a"; done
     done
   fi
@@ -125,14 +135,37 @@ gen_points() {
     done
     for a in 32 64 128; do echo "vsger_asm|n${a}|$a|||-DASM_AVL=$a"; done
   fi
+  if [ "$g" = blas_groups ] || [ "$g" = all ]; then
+    for k in ${KERNELS_BLAS_GROUPS:-vsgemv vssymv}; do
+      for L in $BLAS_GROUP_LMULS; do
+        vlmax=$((L * 32))
+        for n in $BLAS_GROUP_N; do
+          if [ "$n" -gt "$vlmax" ]; then
+            echo "error: ${k}_asm m${L} N=${n} exceeds VLMAX=${vlmax}" >&2
+            continue
+          fi
+          for groups in $BLAS_GROUPS; do
+            total=$((n * groups))
+            echo "${k}_asm|m${L}_n${n}_g${groups}|$n|$L|$groups|-DBLAS_LMUL=$L -DASM_AVL=$total"
+          done
+        done
+      done
+    done
+  fi
   if [ "$g" = gemm ] || [ "$g" = all ]; then
     for r in $GEMM_ROWS_L; do echo "vsgemm_asm|m1_${r}row|32|1|$r|-DGEMM_LMUL=1 -DGEMM_ROWS=$r"; done
+    echo "vsgemm_asm|m1_4row_n64|64|1|4|-DGEMM_LMUL=1 -DGEMM_ROWS=4 -DGEMM_SIZE=64"
+    echo "vsgemm_asm|m1_4row_n128|128|1|4|-DGEMM_LMUL=1 -DGEMM_ROWS=4 -DGEMM_SIZE=128"
     for r in $GEMM_ROWS_L; do for a in $AVLS_BLAS; do
       echo "vsgemm_asm|m4_${r}row_avl${a}|$a|4|$r|-DGEMM_LMUL=4 -DGEMM_ROWS=$r -DASM_AVL=$a"
     done; done
   fi
   if [ "$g" = fixed ] || [ "$g" = all ]; then
     echo "vsspmv_asm|fixed32|1024|||"
+    echo "fconv2d_asm|r64_c32_f3|2048|||"
+    echo "jacobi2d_asm|r128_c64|8192|||"
+    echo "lavamd_asm|npar256|256|||"
+    echo "softmax_asm|ch3_inner256|768|||"
   fi
 }
 
@@ -235,7 +268,7 @@ if [ "$MODES" = both ] || [ "$MODES" = ideal ]; then
       echo "BUILD_FAIL ideal $app [$tag]" >"$ilog"
       IDEALD["$app|$tag"]="BUILD_FAIL,NA"; continue
     fi
-    run_sim "$ilog" bash -c "cd '$HW' && make -B sim app='$app' ideal_dispatcher=1 fail_on_assert=1"
+    run_sim "$ilog" bash -c "cd '$HW' && make -B sim app='$app' ideal_dispatcher=1 fail_on_assert=1 no_fsdb=1"
     if [ $? -ne 0 ]; then
       echo "    *** TIMEOUT/FAIL ideal $app [$tag]" | tee -a "$ilog"
       IDEALD["$app|$tag"]="TIMEOUT,NA"; continue
