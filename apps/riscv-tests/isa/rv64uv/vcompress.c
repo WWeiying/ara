@@ -176,8 +176,10 @@ void TEST_CASE2() {
 int main(void) {
   INIT_CHECK();
   enable_vec();
+  PERF_BEGIN();
   enable_fp();
   TEST_CASE1();
   TEST_CASE2();
+  PERF_END();
   EXIT_CHECK();
 }

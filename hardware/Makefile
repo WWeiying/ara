@@ -93,6 +93,12 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
+# Legacy report code names lane 2/3 hierarchically.  The parameterized
+# execution monitor remains the authoritative all-lane, ROI-scoped report.
+ifneq ($(nr_lanes),2)
+  bender_defs += --define ARA_HAS_LANE_2_3=1
+endif
+
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
@@ -138,7 +144,7 @@ ifeq ($(no_fsdb), 1)
 APP += +NO_FSDB
 endif
 
-.PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
+.PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara analyze_perf analyze_perf_suite compare_perf
 
 # Bender
 bender: $(BENDER)
@@ -181,6 +187,30 @@ verify:
 	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
 	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
 #	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --dest-only --log-file sim/regdump_compare.log
+
+analyze_perf:
+	@$(if $(strip $(log)),,$(error Usage: make analyze_perf log=<path_to_perf_log> [md=1] [json_out=<path>] [require_ready=1]))
+	@python3 scripts/analyze_perf_bottleneck.py $(log) \
+		$(if $(strip $(top_n)),--top-n $(top_n),) \
+		$(if $(strip $(json_out)),--json-out $(json_out),) \
+		$(if $(strip $(require_ready)),--require-ready,) \
+		$(if $(strip $(md)),--md,)
+
+analyze_perf_suite:
+	@$(if $(strip $(logs)),,$(error Usage: make analyze_perf_suite logs="<perf1.log> <perf2.log> ..." [require_complete=1] [json_out=<path>]))
+	@python3 scripts/analyze_perf_suite.py $(logs) \
+		$(if $(strip $(json_out)),--json-out $(json_out),) \
+		$(if $(strip $(require_complete)),--require-complete,)
+
+compare_perf:
+	@$(if $(strip $(baseline)),,$(error Usage: make compare_perf baseline=<before.log> candidate=<after.log> [require_ready=1] [require_equivalent=1] [fail_regression_pct=1.0]))
+	@$(if $(strip $(candidate)),,$(error candidate=<after.log> is required))
+	@python3 scripts/compare_perf_reports.py $(baseline) $(candidate) \
+		$(if $(strip $(top_n)),--top-n $(top_n),) \
+		$(if $(strip $(json_out)),--json-out $(json_out),) \
+		$(if $(strip $(require_ready)),--require-ready,) \
+		$(if $(strip $(require_equivalent)),--require-equivalent,) \
+		$(if $(strip $(fail_regression_pct)),--fail-regression-pct $(fail_regression_pct),)
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *

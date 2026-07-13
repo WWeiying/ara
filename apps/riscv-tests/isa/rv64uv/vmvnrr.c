@@ -135,6 +135,7 @@ void TEST_CASE5(void) {
 int main(void) {
   INIT_CHECK();
   enable_vec();
+  PERF_BEGIN();
 
   TEST_CASE1();
   TEST_CASE2();
@@ -142,5 +143,6 @@ int main(void) {
   TEST_CASE4();
   TEST_CASE5();
 
+  PERF_END();
   EXIT_CHECK();
 }

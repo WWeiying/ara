@@ -222,11 +222,14 @@ void TEST_CASE4(void) {
 int main(void) {
   INIT_CHECK();
   enable_vec();
+  PERF_BEGIN();
 
   TEST_CASE1();
   TEST_CASE2();
   TEST_CASE3();
   TEST_CASE4();
+
+  PERF_END();
 
   EXIT_CHECK();
 }

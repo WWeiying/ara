@@ -40,7 +40,6 @@ int main() {
 
   printf("Running Dropout with %d elements.\n", N);
 
-  // Call the main kernel, and measure cycles
   start_timer();
   dropout_vec(N, I, SCALE, SEL, o);
   stop_timer();

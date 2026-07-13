@@ -27,6 +27,17 @@
 #define enable_fp()
 #endif
 
+// Ara testbench ROI markers.  Reading cycle into x0 is architecturally
+// side-effect free; the FOR_VERIFY monitor recognizes the pair and emits one
+// focused PERF report.  Spike builds keep the ISA tests unchanged.
+#ifdef __SPIKE__
+#define PERF_BEGIN() do { } while (0)
+#define PERF_END()   do { } while (0)
+#else
+#define PERF_BEGIN() do { asm volatile ("fence; rdcycle zero" ::: "memory"); } while (0)
+#define PERF_END()   do { asm volatile ("fence; rdcycle zero" ::: "memory"); } while (0)
+#endif
+
 /**************
  *  Counters  *
  **************/

@@ -502,6 +502,10 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
   // Sequential indicator to track that end of the vcompress issue phase
   logic vcompress_issue_end_d, vcompress_issue_end_q;
+  // The normal last-index marker travels only with selected indices.  When
+  // the final mask bit is zero no FIFO entry can carry that marker, so latch
+  // this special scan completion and terminate after both gather FIFOs drain.
+  logic vcompress_scan_end_d, vcompress_scan_end_q;
 
   // How many elements will the current vcompress write?
   vlen_t vcompress_cnt_d, vcompress_cnt_q;
@@ -1116,6 +1120,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     vcompress_last_idx_d = 1'b0;
 
     vcompress_issue_end_d = vcompress_issue_end_q;
+    vcompress_scan_end_d = vcompress_scan_end_q;
 
     vcompress_cnt_d = vcompress_cnt_q;
 
@@ -1214,11 +1219,23 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         if (vrgat_cnt_q == (vinsn_issue.vl - 1)) begin
           vrgat_cnt_d = '0;
           vcompress_last_idx_d = (vinsn_issue.op == VCOMPRESS);
+          // A selected final element already carries vcompress_last_idx_d
+          // through the index FIFO and must use the normal completion path,
+          // which also flushes its final partial output word.  The independent
+          // fallback is needed only when the final mask bit is clear.
+          if (vinsn_issue.op == VCOMPRESS && !vcompress_bit)
+            vcompress_scan_end_d = 1'b1;
           // End of the pre-issue phase
           vrgat_req_is_last_req_d = 1'b1;
         end
       end
     end
+
+    // All selected indices have now been consumed in the special case where
+    // the final VL element was not selected and no FIFO payload could carry
+    // vcompress_last_idx_q.
+    if (vcompress_scan_end_q && vrgat_idx_fifo_empty && vrgat_req_fifo_empty)
+      vcompress_issue_end_d = 1'b1;
 
     ///////////////////////
     // MASKU ALU Control //
@@ -1472,6 +1489,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
         // Clear the vcompress end indicator
         vcompress_issue_end_d = 1'b0;
+        vcompress_scan_end_d = 1'b0;
 
         // Update the commit counters and pointers
         vinsn_queue_d.commit_cnt -= 1;
@@ -1657,6 +1675,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       vrgat_req_valid_mask_q  <= '0;
       vrgat_cnt_q             <= '0;
       vcompress_issue_end_q   <= '0;
+      vcompress_scan_end_q    <= '0;
       vcompress_cnt_q         <= '0;
     end else begin
       vinsn_running_q         <= vinsn_running_d;
@@ -1681,6 +1700,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       vrgat_req_valid_mask_q  <= vrgat_req_valid_mask_d;
       vrgat_cnt_q             <= vrgat_cnt_d;
       vcompress_issue_end_q   <= vcompress_issue_end_d;
+      vcompress_scan_end_q    <= vcompress_scan_end_d;
       vcompress_cnt_q         <= vcompress_cnt_d;
     end
   end
