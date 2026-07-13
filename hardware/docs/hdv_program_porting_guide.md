@@ -194,14 +194,16 @@ VLSU 会自动检测 loop 内的 unit-stride load，提前发射"下一轮"数�
 
 - 典型流式内核（每迭代一个向量、unit-stride）：保持默认 `prefetch_mode=0`（1X）。
 - 跨步访问（列遍历、隔块）：按 `S/B` 选 2X/4X/8X。
-- gather/scatter、非 unit-stride、或重叠窗口（stencil）：用 `prefetch_disable=1` 关闭，或者只给稳定单调前进的 load packet 开启。
+- gather/scatter、非 unit-stride、短尾阶段或无法用固定 `S/B` 描述的访问：用 `prefetch_disable=1` 关闭。
+- 多 load 或重叠窗口内核不要简单地“一律开”或“一律关”。当前 `vstencil3_hdv`、`vfir5_hdv` 这类 kernel 的经验是：对稳定单调前进、下一次同一条 load 地址可预测的 packet 开启 1X；对会重启、重叠、跨边界或可能污染 lookup FIFO 的 packet 显式关闭。
+- GEMM/TRSM/SYRK 一类计算或后端压力主导点，若当前代表实现没有稳定 request-bound prefetch 流，可以显式关闭 prefetch，让性能分析集中在 EP supply、hazard handling、VDU queue/backpressure 上。
 
 ## 4. Fetch Packet 布局
 
 普通 128-bit packet 推荐写法：
 
 ```asm
-HDV_HINT <pbits>, <packet256>, <cross>, <loop_start>, <loop_end>
+HDV_HINT <pbits>, <packet256>, <cross>, <loop_start>, <loop_end>, <prefetch_mode>, <prefetch_disable>
 inst0
 inst1
 inst2
@@ -212,6 +214,10 @@ inst2
 ```text
 32-bit header + 3 * 32-bit instruction = 128 bit
 ```
+
+如果一个 logical packet 需要覆盖两个连续 128-bit fetch beat，可以设置 `packet256=1`。这会减少 header 密度，但不表示 6 条业务指令必须形成一个 EP；VLIWPU 仍会按照 p-bit、控制边界、依赖边界和硬件 issue width 切分 EP。
+
+`cross=1` 允许当前 logical packet 尾部 EP 在安全条件满足时跨到下一个 logical packet 开头继续打包。它适合减少 packet 边界造成的人工切断，但不应跨过真实依赖、未解析控制流或必须保序的 memory 边界。
 
 当前手写规则建议：
 
@@ -432,6 +438,14 @@ __attribute__((naked, aligned(16), section(".hdv_task"),
 
 TB 中 `AutoExpectedEpAcknowledges`（原名 `AutoExpectedEpAccepts`）用来判断测试是否通过。若 task 自然执行到 `ret` 或 `ebreak`，expected 应包含直到 task-end 指令为止的 EP 数，不应包含其后的 padding/data。
 
+当前回归和 sweep 更推荐让 task 自然执行到 `ret`，并在仿真 plusargs 中给一个足够大的上限，例如：
+
+```sh
++HDV_EXPECTED_EP=8000000
+```
+
+这样可以避免 AVL、N 或 packet 布局变化后 expected EP 偏小导致任务被提前截断。手算 expected 仍然有价值，主要用于小 kernel bring-up、检查 p-bit 是否按预期切分 EP，以及定位 task 是否越过 `ret` 继续执行。
+
 以当前 `vsaxpy_hdv` 为例：
 
 ```text
@@ -446,7 +460,7 @@ fall-through ret = 1 EP
 expected = 32 * 4 + 1 = 129
 ```
 
-如果改了 p-bit、packet 布局、`TOTAL_ELEMENTS`、VLEN 或 SEW，就必须重新计算 expected。
+如果仍使用精确 expected，那么改了 p-bit、packet 布局、`TOTAL_ELEMENTS`、VLEN、SEW、AVL 或矩阵维度后，就必须重新计算 expected。
 
 ## 10. 检查 Dump
 
@@ -592,4 +606,22 @@ void kernel_hdv(long n, float a, const float *in, float *out) {
 3. 先用保守 p-bit，每条关键指令拆成较小 EP，确认功能。
 4. 再逐步增大 p-bit 并合并 EP。
 5. 最后尝试 `cross=1` 跨 packet 合并尾部 EP。
-6. 每次改 packet 布局后同步 expected EP 数和注释。
+6. 给 unit-stride load packet 设置合适的 `prefetch_mode`，给不稳定或不规则 packet 设置 `prefetch_disable=1`。
+7. 每次改 packet 布局后同步注释；若仍使用精确 expected，也同步 expected EP 数。
+8. 用统一脚本跑单点并从 log 汇总：
+
+```sh
+cd hardware
+KERNEL_SWEEP_OUT=kernel_sweep_out_debug ./kernel_sweep.sh --append point <kernel> <size-or-avl>
+./kernel_sweep_sum.sh kernel_sweep_out_debug
+```
+
+常见例子：
+
+```sh
+KERNEL_SWEEP_OUT=kernel_sweep_out_debug ./kernel_sweep.sh --append point vsaxpy_hdv 1024
+KERNEL_SWEEP_OUT=kernel_sweep_out_debug ./kernel_sweep.sh --append point vsger_hdv 128
+KERNEL_SWEEP_OUT=kernel_sweep_out_debug ./kernel_sweep.sh --append point vsgemm_m4_4r 128
+```
+
+`kernel_sweep_sum.sh` 只从 log 重建 CSV，不读取旧 per-kernel CSV。因此如果要保留多轮实验，应使用不同 `KERNEL_SWEEP_OUT` 目录，而不是手工混放日志。
