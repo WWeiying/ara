@@ -84,6 +84,8 @@ typedef struct {
   logic [NrRedStreamClasses-1:0][63:0] root_occupancy_lane_sum;
   logic [NrRedStreamClasses-1:0][63:0] root_push_lane_sample;
   logic [NrRedStreamClasses-1:0][63:0] root_pop_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] slack_defer_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] slack_score_lane_sum;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -554,6 +556,10 @@ function automatic red_stream_perf_t red_stream_perf_delta(
     start_count.root_push_lane_sample;
   delta.root_pop_lane_sample = end_count.root_pop_lane_sample -
     start_count.root_pop_lane_sample;
+  delta.slack_defer_lane_sample = end_count.slack_defer_lane_sample -
+    start_count.slack_defer_lane_sample;
+  delta.slack_score_lane_sum = end_count.slack_score_lane_sum -
+    start_count.slack_score_lane_sum;
   return delta;
 endfunction
 
@@ -620,6 +626,10 @@ function automatic void print_red_stream_report(
         stats.root_push_lane_sample[c]);
       $display("[PERF] red_stream_%s_root_pop_lane_samples: %0d", name,
         stats.root_pop_lane_sample[c]);
+      $display("[PERF] red_stream_%s_slack_defer_lane_samples: %0d", name,
+        stats.slack_defer_lane_sample[c]);
+      $display("[PERF] red_stream_%s_slack_score_lane_sum: %0d", name,
+        stats.slack_score_lane_sum[c]);
       $display("[PERF] red_stream_%s_candidate_partition_consistent: %0d", name,
         candidate_outcomes == stats.candidate_lane_sample[c]);
     end else begin
@@ -684,6 +694,12 @@ function automatic void print_red_stream_report(
       $fwrite(file_handle,
         "[PERF] red_stream_%s_root_pop_lane_samples: %0d\n", name,
         stats.root_pop_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_slack_defer_lane_samples: %0d\n", name,
+        stats.slack_defer_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_slack_score_lane_sum: %0d\n", name,
+        stats.slack_score_lane_sum[c]);
       $fwrite(file_handle,
         "[PERF] red_stream_%s_candidate_partition_consistent: %0d\n", name,
         candidate_outcomes == stats.candidate_lane_sample[c]);
@@ -6433,6 +6449,8 @@ module ara_tb;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0][2:0] red_stream_root_occupancy;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_push;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_pop;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_slack_defer;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0][2:0] red_stream_slack_score;
   red_stream_perf_t red_stream_perf_counters;
 
   // Observe lane-local VALU/VMFPU progress and backpressure. OR-reduction in
@@ -6558,6 +6576,8 @@ module ara_tb;
       red_stream_root_occupancy[l] = '0;
       red_stream_root_push[l] = '0;
       red_stream_root_pop[l] = '0;
+      red_stream_slack_defer[l] = '0;
+      red_stream_slack_score[l] = '0;
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
       red_stream_window[l][RedStreamValu] = valu_window;
@@ -6721,6 +6741,24 @@ module ara_tb;
           red_stream_root_read_pnt_d !=
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           red_stream_root_read_pnt_q;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+      red_stream_slack_defer[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_slack_defer_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_slack_defer_cycles_q;
+      red_stream_slack_defer[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_slack_defer_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_slack_defer_cycles_q;
+      red_stream_slack_score[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_slack_score_q;
+      red_stream_slack_score[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_slack_score_q;
+`endif
 `endif
     end
 
@@ -6935,6 +6973,8 @@ module ara_tb;
         automatic logic [63:0] root_occupancy_inc = '0;
         automatic logic [63:0] root_push_inc = '0;
         automatic logic [63:0] root_pop_inc = '0;
+        automatic logic [63:0] slack_defer_inc = '0;
+        automatic logic [63:0] slack_score_inc = '0;
         for (int unsigned l = 0; l < NrLanes; l++) begin
           window_inc += red_stream_window[l][c];
           no_candidate_inc += red_stream_no_candidate[l][c];
@@ -6959,6 +6999,8 @@ module ara_tb;
           root_occupancy_inc += red_stream_root_occupancy[l][c];
           root_push_inc += red_stream_root_push[l][c];
           root_pop_inc += red_stream_root_pop[l][c];
+          slack_defer_inc += red_stream_slack_defer[l][c];
+          slack_score_inc += red_stream_slack_score[l][c];
         end
         red_stream_perf_counters.window_lane_sample[c] <=
           red_stream_perf_counters.window_lane_sample[c] + window_inc;
@@ -7015,6 +7057,10 @@ module ara_tb;
           red_stream_perf_counters.root_push_lane_sample[c] + root_push_inc;
         red_stream_perf_counters.root_pop_lane_sample[c] <=
           red_stream_perf_counters.root_pop_lane_sample[c] + root_pop_inc;
+        red_stream_perf_counters.slack_defer_lane_sample[c] <=
+          red_stream_perf_counters.slack_defer_lane_sample[c] + slack_defer_inc;
+        red_stream_perf_counters.slack_score_lane_sum[c] <=
+          red_stream_perf_counters.slack_score_lane_sum[c] + slack_score_inc;
       end
     end
   end

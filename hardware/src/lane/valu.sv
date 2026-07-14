@@ -381,6 +381,13 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                                                    red_stream_root_count_q;
   logic [idx_width(VInsnQueueDepth+1)-1:0] red_stream_prefetched_count_d,
                                                  red_stream_prefetched_count_q;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+  // A tiny online confidence counter admits deeper prefetch only when recent
+  // contexts have actually reached the root FIFO before foreground promotion.
+  logic [2:0] red_stream_slack_score_d, red_stream_slack_score_q;
+  logic [31:0] red_stream_slack_defer_cycles_d,
+               red_stream_slack_defer_cycles_q;
+`endif
 
   logic [31:0] red_stream_bg_issue_cycles_d, red_stream_bg_issue_cycles_q;
   logic [31:0] red_stream_overlap_cycles_d, red_stream_overlap_cycles_q;
@@ -556,6 +563,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     red_stream_root_read_pnt_d          = red_stream_root_read_pnt_q;
     red_stream_root_count_d             = red_stream_root_count_q;
     red_stream_prefetched_count_d       = red_stream_prefetched_count_q;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+    red_stream_slack_score_d            = red_stream_slack_score_q;
+    red_stream_slack_defer_cycles_d     = red_stream_slack_defer_cycles_q;
+`endif
     red_stream_bg_issue_cycles_d        = red_stream_bg_issue_cycles_q;
     red_stream_overlap_cycles_d         = red_stream_overlap_cycles_q;
     red_stream_primary_conflict_cycles_d =
@@ -875,8 +886,30 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
       automatic vfu_operation_t next_issue =
         vinsn_queue_q.vinsn[next_issue_pnt];
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+      automatic logic [7:0] next_local_words;
+      automatic logic [7:0] predicted_idle_slots =
+        {5'b0, sldu_transactions_cnt_q} << 1;
+      automatic logic slack_admit;
 
-      if (red_stream_compatible(vinsn_commit, next_issue)) begin
+      unique case (next_issue.vtype.vsew)
+        EW8 : next_local_words = (next_issue.vl + 31) >> 5;
+        EW16: next_local_words = (next_issue.vl + 15) >> 4;
+        EW32: next_local_words = (next_issue.vl + 7)  >> 3;
+        default: next_local_words = (next_issue.vl + 3) >> 2;
+      endcase
+      if (alu_state_q == SIMD_REDUCTION)
+        predicted_idle_slots += simd_red_cnt_max_q - simd_red_cnt_q + 1'b1;
+      slack_admit = (red_stream_prefetched_count_q == '0) ||
+        ((red_stream_slack_score_q >= 3) &&
+         (next_local_words <= predicted_idle_slots + 2));
+`endif
+
+      if (red_stream_compatible(vinsn_commit, next_issue)
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+          && slack_admit
+`endif
+      ) begin
         vinsn_queue_d.issue_cnt = vinsn_queue_q.issue_cnt - 1'b1;
         vinsn_queue_d.issue_pnt = next_issue_pnt;
         issue_cnt_d             = next_issue.vl;
@@ -889,6 +922,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         red_stream_bg_result_d           = '0;
         red_stream_prefetched_count_d    =
           red_stream_prefetched_count_q + 1'b1;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+      end else if (red_stream_compatible(vinsn_commit, next_issue) &&
+                   !slack_admit) begin
+        red_stream_slack_defer_cycles_d =
+          red_stream_slack_defer_cycles_q + 1'b1;
+`endif
       end
     end
 
@@ -1061,6 +1100,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         red_stream_root_read_pnt_d       = '0;
         red_stream_root_count_d          = '0;
         red_stream_prefetched_count_d    = '0;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+        red_stream_slack_score_d         = 3;
+        red_stream_slack_defer_cycles_d  = '0;
+`endif
 `endif
 
         issue_cnt_d = vfu_operation_i.vl;
@@ -1112,6 +1155,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           alu_state_d = INTRA_LANE_REDUCTION;
           red_stream_bg_active_d = 1'b0;
           red_stream_bg_first_d = 1'b0;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+          red_stream_slack_score_d = (red_stream_slack_score_q > 1)
+            ? red_stream_slack_score_q - 2 : '0;
+`endif
         end
 
         red_stream_prefetched_count_d = red_stream_prefetched_count_d - 1'b1;
@@ -1126,6 +1173,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           (red_stream_root_write_pnt_q == RedStreamRootDepth-1)
             ? '0 : red_stream_root_write_pnt_q + 1'b1;
         red_stream_bg_complete_d = 1'b0;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+        if (red_stream_slack_score_q != 3'b111)
+          red_stream_slack_score_d = red_stream_slack_score_q + 1'b1;
+`endif
       end
       if (pop_root)
         red_stream_root_read_pnt_d =
@@ -1174,6 +1225,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_root_read_pnt_q           <= '0;
       red_stream_root_count_q              <= '0;
       red_stream_prefetched_count_q        <= '0;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+      red_stream_slack_score_q             <= 3;
+      red_stream_slack_defer_cycles_q      <= '0;
+`endif
       red_stream_bg_issue_cycles_q         <= '0;
       red_stream_overlap_cycles_q          <= '0;
       red_stream_primary_conflict_cycles_q <= '0;
@@ -1202,6 +1257,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_root_read_pnt_q           <= red_stream_root_read_pnt_d;
       red_stream_root_count_q              <= red_stream_root_count_d;
       red_stream_prefetched_count_q        <= red_stream_prefetched_count_d;
+`ifdef ARA_RED_SLACK_SCHED_4LANE
+      red_stream_slack_score_q             <= red_stream_slack_score_d;
+      red_stream_slack_defer_cycles_q      <= red_stream_slack_defer_cycles_d;
+`endif
       red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
       red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
       red_stream_primary_conflict_cycles_q <=
