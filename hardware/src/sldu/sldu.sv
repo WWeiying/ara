@@ -293,6 +293,18 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic [idx_width(NrLanes)-1:0] red_stride_cnt_d, red_stride_cnt_q;
   logic [idx_width(NrLanes):0] red_stride_cnt_d_wide;
 
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+  // Empty-queue fall-through for an unordered reduction tree stage.  The
+  // permutation result is captured directly by each lane's existing input
+  // spill register; only lanes that cannot accept in the current cycle are
+  // materialized in the generic SLDU result queue.  This turns the SLDU queue
+  // into an elastic fallback instead of a mandatory pipeline stage.
+  logic                tree_route_bypass_active;
+  logic [NrLanes-1:0] tree_route_valid;
+  elen_t [NrLanes-1:0] tree_route_data;
+  strb_t [NrLanes-1:0] tree_route_be;
+`endif
+
 `ifdef ARA_RED_ROUTE_BYPASS
   // Combinational one-hop route used only by ordered reductions.  Keeping
   // these signals separate from the normal result queue makes this mechanism
@@ -431,6 +443,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     osum_route_valid = '0;
     osum_route_data  = '0;
     osum_route_be    = '0;
+`endif
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+    tree_route_bypass_active = 1'b0;
+    tree_route_valid         = '0;
+    tree_route_data          = '0;
+    tree_route_be            = '0;
 `endif
 
     p2_stride_gen_stride_d = '0;
@@ -573,6 +591,24 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + vrf_pnt_q;
           end
 
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+          if ((NrLanes == 4) && result_queue_empty && vinsn_commit_valid &&
+              (vinsn_issue_q.id == vinsn_commit.id) &&
+              ((vinsn_issue_q.vfu == VFU_Alu) ||
+               ((vinsn_issue_q.vfu == VFU_MFpu) &&
+                (vinsn_queue_q.issue_cnt == 1) &&
+                (vinsn_queue_q.commit_cnt == 1)))) begin
+            tree_route_bypass_active = 1'b1;
+            tree_route_valid = '1;
+            for (int lane = 0; lane < NrLanes; lane++) begin
+              tree_route_data[lane] =
+                result_queue_d[result_queue_write_pnt_q][lane].wdata;
+              tree_route_be[lane] =
+                result_queue_d[result_queue_write_pnt_q][lane].be;
+            end
+          end
+`endif
+
           // Bump pointers (reductions always finish in one shot)
           in_pnt_d    = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? NrLanes * 8                  : in_pnt_q  + byte_count;
           out_pnt_d   = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? NrLanes * 8                  : out_pnt_q + byte_count;
@@ -641,12 +677,31 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             // Increment VRF address
             vrf_pnt_d = vrf_pnt_q + 1;
 
-            // Send result to the VRF
-            result_queue_cnt_d += 1;
-            result_queue_valid_d[result_queue_write_pnt_q] = '1;
-            result_queue_write_pnt_d                       = result_queue_write_pnt_q + 1;
-            if (result_queue_write_pnt_q == ResultQueueDepth-1)
-              result_queue_write_pnt_d = '0;
+            // Send result to the VRF/FUs.  A pipelined tree stage queues only
+            // the lanes whose consumer spill could not capture the direct
+            // route; ordinary slides and non-bypassed reductions retain the
+            // original all-lane queue transaction.
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+            if (tree_route_bypass_active) begin
+              for (int lane = 0; lane < NrLanes; lane++)
+                result_queue_valid_d[result_queue_write_pnt_q][lane] =
+                  !sldu_result_gnt_i[lane];
+              if (|result_queue_valid_d[result_queue_write_pnt_q]) begin
+                result_queue_cnt_d += 1;
+                result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+                if (result_queue_write_pnt_q == ResultQueueDepth-1)
+                  result_queue_write_pnt_d = '0;
+              end
+            end else begin
+`endif
+              result_queue_cnt_d += 1;
+              result_queue_valid_d[result_queue_write_pnt_q] = '1;
+              result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+              if (result_queue_write_pnt_q == ResultQueueDepth-1)
+                result_queue_write_pnt_d = '0;
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+            end
+`endif
 
             if (state_q == SLIDE_NP2_COMMIT) state_d = SLIDE_NP2_WAIT;
           end
@@ -836,6 +891,14 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         sldu_result_be_o[lane]    = osum_route_be[lane];
       end
 `endif
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+      if (tree_route_bypass_active) begin
+        sldu_result_req_o[lane]   = 1'b0;
+        sldu_red_valid_o[lane]    = tree_route_valid[lane];
+        sldu_result_wdata_o[lane] = tree_route_data[lane];
+        sldu_result_be_o[lane]    = tree_route_be[lane];
+      end
+`endif
 
       // Update the final gnt vector
       result_final_gnt_d[lane] |= sldu_result_final_gnt_i[lane];
@@ -849,6 +912,30 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         result_final_gnt_d[lane] = 1'b0;
       end
     end: result_write
+
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+    if (tree_route_bypass_active) begin
+      assert (result_queue_empty &&
+              vinsn_commit_valid &&
+              (vinsn_issue_q.id == vinsn_commit.id) &&
+              ((vinsn_issue_q.vfu == VFU_Alu) ||
+               ((vinsn_issue_q.vfu == VFU_MFpu) &&
+                (vinsn_queue_q.issue_cnt == 1) &&
+                (vinsn_queue_q.commit_cnt == 1))))
+        else $error("unordered reduction tree bypass violated queue ordering");
+
+      // A tree packet normally retires from commit_cnt when its result-queue
+      // entry drains.  A fully accepted fall-through packet never allocates
+      // such an entry, so account for that packet here.  A partial grant must
+      // wait for the elastic fallback entry below; this preserves the rule
+      // that one cross-lane tree level decrements commit_cnt exactly once.
+      if (&(tree_route_valid & sldu_result_gnt_i)) begin
+        commit_cnt_d = commit_cnt_q - NrLanes * 8;
+        if (commit_cnt_q < (NrLanes * 8))
+          commit_cnt_d = '0;
+      end
+    end
+`endif
 
     // All lanes accepted the VRF request
     // If this was the last request, wait for all the final grants!

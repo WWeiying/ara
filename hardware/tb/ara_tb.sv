@@ -86,6 +86,9 @@ typedef struct {
   logic [NrRedStreamClasses-1:0][63:0] root_pop_lane_sample;
   logic [NrRedStreamClasses-1:0][63:0] slack_defer_lane_sample;
   logic [NrRedStreamClasses-1:0][63:0] slack_score_lane_sum;
+  logic [63:0] tree_stage_bypass_cycles;
+  logic [63:0] tree_stage_direct_lane_handshakes;
+  logic [63:0] tree_stage_fallback_lane_samples;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -560,6 +563,14 @@ function automatic red_stream_perf_t red_stream_perf_delta(
     start_count.slack_defer_lane_sample;
   delta.slack_score_lane_sum = end_count.slack_score_lane_sum -
     start_count.slack_score_lane_sum;
+  delta.tree_stage_bypass_cycles = end_count.tree_stage_bypass_cycles -
+    start_count.tree_stage_bypass_cycles;
+  delta.tree_stage_direct_lane_handshakes =
+    end_count.tree_stage_direct_lane_handshakes -
+    start_count.tree_stage_direct_lane_handshakes;
+  delta.tree_stage_fallback_lane_samples =
+    end_count.tree_stage_fallback_lane_samples -
+    start_count.tree_stage_fallback_lane_samples;
   return delta;
 endfunction
 
@@ -704,6 +715,23 @@ function automatic void print_red_stream_report(
         "[PERF] red_stream_%s_candidate_partition_consistent: %0d\n", name,
         candidate_outcomes == stats.candidate_lane_sample[c]);
     end
+  end
+  if (file_handle == 0) begin
+    $display("[PERF] red_tree_stage_bypass_cycles: %0d",
+      stats.tree_stage_bypass_cycles);
+    $display("[PERF] red_tree_stage_direct_lane_handshakes: %0d",
+      stats.tree_stage_direct_lane_handshakes);
+    $display("[PERF] red_tree_stage_fallback_lane_samples: %0d",
+      stats.tree_stage_fallback_lane_samples);
+  end else begin
+    $fwrite(file_handle, "[PERF] red_tree_stage_bypass_cycles: %0d\n",
+      stats.tree_stage_bypass_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_tree_stage_direct_lane_handshakes: %0d\n",
+      stats.tree_stage_direct_lane_handshakes);
+    $fwrite(file_handle,
+      "[PERF] red_tree_stage_fallback_lane_samples: %0d\n",
+      stats.tree_stage_fallback_lane_samples);
   end
 endfunction
 
@@ -7072,6 +7100,21 @@ module ara_tb;
         red_stream_perf_counters.slack_score_lane_sum[c] <=
           red_stream_perf_counters.slack_score_lane_sum[c] + slack_score_inc;
       end
+`ifdef ARA_RED_TREE_STAGE_PIPE_4LANE
+      red_stream_perf_counters.tree_stage_bypass_cycles <=
+        red_stream_perf_counters.tree_stage_bypass_cycles +
+        ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.tree_route_bypass_active;
+      red_stream_perf_counters.tree_stage_direct_lane_handshakes <=
+        red_stream_perf_counters.tree_stage_direct_lane_handshakes +
+        $countones(
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.tree_route_valid &
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.sldu_result_gnt_i);
+      red_stream_perf_counters.tree_stage_fallback_lane_samples <=
+        red_stream_perf_counters.tree_stage_fallback_lane_samples +
+        $countones(
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.tree_route_valid &
+          ~ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.sldu_result_gnt_i);
+`endif
     end
   end
 

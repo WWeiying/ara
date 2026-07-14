@@ -108,6 +108,7 @@ reduction_context_stream     ?= 0
 reduction_slack_schedule     ?= 0
 reduction_heterogeneous_stream ?= 0
 reduction_masked_stream       ?= 0
+reduction_tree_stage_pipeline ?= 0
 
 # Masked-off token relay uses the direct VMFPU output protocol and the
 # mask-decoupled return credit.  Make those prerequisites explicit so a skip
@@ -170,6 +171,12 @@ ifeq ($(reduction_masked_stream),1)
     $(error reduction_masked_stream requires reduction_context_stream=1)
   endif
   bender_defs += --define ARA_RED_MASKED_STREAM_4LANE=1
+endif
+ifeq ($(reduction_tree_stage_pipeline),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_tree_stage_pipeline currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_TREE_STAGE_PIPE_4LANE=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
   bender_defs += --define ARA_RED_INPUT_BYPASS=1
