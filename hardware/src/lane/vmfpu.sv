@@ -763,7 +763,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     red_context_eligible = (NrLanes == 4) &&
       (vinsn.op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) &&
       (vinsn.vtype.vsew == EW32) &&
-      vinsn.vm && (vinsn.vl >= 8);
+`ifndef ARA_RED_MASKED_STREAM_4LANE
+      vinsn.vm &&
+`endif
+      (vinsn.vl >= 8);
   endfunction : red_context_eligible
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
@@ -776,6 +779,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic red_stream_bg_complete_d, red_stream_bg_complete_q;
   logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
   logic red_stream_bg_exec;
+  logic red_stream_retire_current;
   elen_t red_stream_bg_result_d, red_stream_bg_result_q;
 
   // The four-entry VMFPU instruction queue provides one architectural
@@ -810,6 +814,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   );
     red_stream_compatible = red_context_eligible(foreground) &&
       red_context_eligible(background)
+`ifdef ARA_RED_MASKED_STREAM_4LANE
+      // fpnew return timing is lane-role dependent during the cross-lane
+      // phase.  Without a tagged MASKU rendezvous that can desynchronize
+      // speculative mask words, so masked FP reductions use the accelerated
+      // foreground context DAG but are not speculatively advanced here.
+      && foreground.vm && background.vm
+`endif
 `ifndef ARA_RED_HETERO_STREAM_4LANE
       &&
       (foreground.op == background.op) &&
@@ -1753,6 +1764,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     red_stream_bg_complete_d            = red_stream_bg_complete_q;
     red_stream_foreground_advanced_d    = red_stream_foreground_advanced_q;
     red_stream_bg_exec                  = 1'b0;
+    red_stream_retire_current           = 1'b0;
     red_stream_bg_result_d              = red_stream_bg_result_q;
     red_stream_root_data_d              = red_stream_root_data_q;
     red_stream_root_write_pnt_d         = red_stream_root_write_pnt_q;
@@ -2064,15 +2076,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               // Keep four independent feedback chains in flight.  The return
               // above is intentionally processed first, providing a same-cycle
               // bypass when the round-robin pointer wraps after four cycles.
-              operand_a = processed_red_operand(mfpu_operand_i[1], 1'b0,
+              operand_a = processed_red_operand(mfpu_operand_i[1],
+                                                ~vinsn_issue_q.vm,
                                                 mask_i, issue_element_cnt, ntr_val);
-              operand_c = processed_red_operand(mfpu_operand_i[2], 1'b0,
+              operand_c = processed_red_operand(mfpu_operand_i[2],
+                                                ~vinsn_issue_q.vm,
                                                 mask_i, issue_element_cnt, ntr_val);
               operand_b = first_op_q
                         ? (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0])
                         : red_context_data_d[red_context_issue_q];
 
               operands_valid = source_word_valid &&
+                (mask_valid_i || vinsn_issue_q.vm) &&
                 red_context_valid_d[red_context_issue_q] &&
                 !red_context_pending_d[red_context_issue_q] &&
                 (!first_op_q || mfpu_operand_valid_i[0]);
@@ -2093,6 +2108,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                   mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
                                        ? {2'b10, first_op_q}
                                        : {2'b01, first_op_q};
+                  mask_ready_o = !vinsn_issue_q.vm;
                   first_op_d = 1'b0;
                 end
               // As soon as source issue is complete, pair 0/1 can enter the
@@ -2893,10 +2909,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
         unique case (red_context_phase_q)
           RED_CTX_ACCUMULATE: begin
-            operand_a = processed_red_operand(mfpu_operand_i[1], 1'b0,
+            operand_a = processed_red_operand(mfpu_operand_i[1],
+                                              ~vinsn_issue_q.vm,
                                               mask_i, bg_issue_element_cnt,
                                               ntr_val);
-            operand_c = processed_red_operand(mfpu_operand_i[2], 1'b0,
+            operand_c = processed_red_operand(mfpu_operand_i[2],
+                                              ~vinsn_issue_q.vm,
                                               mask_i, bg_issue_element_cnt,
                                               ntr_val);
             operand_b = first_op_q
@@ -2905,6 +2923,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                       : red_context_data_d[red_context_issue_q];
 
             operands_valid = bg_source_word_valid &&
+              (mask_valid_i || vinsn_issue_q.vm) &&
+              // Mask words are a four-lane rendezvous.  The tree RX/SIMD
+              // roles are intentionally asymmetric, therefore only consume
+              // a speculative masked source word in the common TX slot.
+              (vinsn_issue_q.vm ||
+               (mfpu_state_q == INTER_LANES_REDUCTION_TX)) &&
               red_context_valid_d[red_context_issue_q] &&
               !red_context_pending_d[red_context_issue_q] &&
               (!first_op_q || mfpu_operand_valid_i[0]);
@@ -2925,6 +2949,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
                                      ? {2'b10, first_op_q}
                                      : {2'b01, first_op_q};
+                mask_ready_o = !vinsn_issue_q.vm;
                 first_op_d = 1'b0;
                 red_stream_bg_issue_cycles_d =
                   red_stream_bg_issue_cycles_q + 1'b1;
@@ -3134,6 +3159,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       // Tell the SLDU/ADDRGEN arbiter that we are over with this reduction
       if (is_reduction(vinsn_commit.op)) begin
         fpu_red_complete_d = 1'b1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+        red_stream_retire_current = 1'b1;
+`endif
       end
 
       // If we are reducing now, we will change state in MFPU_WAIT state during the next cycle
@@ -3211,6 +3239,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       if (vinsn_queue_d.issue_cnt == '0 && !prevent_commit
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           && (red_stream_prefetched_count_q == '0)
+          // The issue side may be empty while the last promoted streamed
+          // root is still in the cross-lane tree.  Accepting a later FP
+          // instruction must not clear that live tree state.  A zero commit
+          // count identifies the actual final-retirement cycle, where normal
+          // same-cycle reinitialization remains legal.
+          && ((mfpu_state_q == NO_REDUCTION) || red_stream_retire_current)
 `endif
       ) begin
         // Don't start a new reduction if the unit is not completely idle

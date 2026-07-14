@@ -363,6 +363,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   logic red_stream_bg_first_d, red_stream_bg_first_q;
   logic red_stream_bg_exec;
   logic red_stream_retire_foreground;
+  logic red_stream_retire_current;
   elen_t red_stream_bg_acc_d, red_stream_bg_acc_q;
   elen_t red_stream_bg_result_d, red_stream_bg_result_q;
 
@@ -396,7 +397,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   function automatic logic red_stream_eligible(vfu_operation_t vinsn);
     red_stream_eligible = (NrLanes == 4) && is_reduction(vinsn.op) &&
-      vinsn.vm && (vinsn.vl >= 8);
+`ifndef ARA_RED_MASKED_STREAM_4LANE
+      vinsn.vm &&
+`endif
+      (vinsn.vl >= 8);
   endfunction : red_stream_eligible
 
   function automatic logic red_stream_compatible(
@@ -592,6 +596,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_primary_conflict_cycles_q;
     red_stream_bg_exec                  = 1'b0;
     red_stream_retire_foreground        = 1'b0;
+    red_stream_retire_current           = 1'b0;
 `endif
 
     // Inform our status to the lane controller
@@ -964,17 +969,26 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       end else begin
         if (bg_element_cnt > issue_cnt_q)
           bg_element_cnt = issue_cnt_q;
-        bg_red_mask = be(bg_element_cnt, vinsn_issue_q.vtype.vsew);
+        bg_red_mask = be(bg_element_cnt, vinsn_issue_q.vtype.vsew) &
+          (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
 
         red_stream_bg_exec = 1'b1;
         if ((alu_operand_valid_i[1] || !vinsn_issue_q.use_vs2) &&
             (alu_operand_valid_i[0] || !vinsn_issue_q.use_vs1 ||
              !red_stream_bg_first_q) &&
+            (mask_valid_i || vinsn_issue_q.vm) &&
+            // MASKU advances each lane independently but retires a mask word
+            // only after all four lanes have consumed it.  Lane roles differ
+            // in RX/SIMD phases, so masked speculative consumption is limited
+            // to the TX phase where every lane has the same idle slot.
+            (vinsn_issue_q.vm ||
+             (alu_state_q == INTER_LANES_REDUCTION_TX)) &&
             (issue_cnt_q != '0)) begin
           valu_valid = 1'b1;
           alu_operand_ready_o = {vinsn_issue_q.use_vs2,
                                  vinsn_issue_q.use_vs1 &
                                    red_stream_bg_first_q};
+          mask_ready_o = !vinsn_issue_q.vm;
 
           for (int b = 0; b < 8; b++) begin
             red_stream_bg_acc_d[8*b +: 8] = bg_red_mask[b]
@@ -1057,7 +1071,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         commit_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt].vl;
 
       // If this was a reduction, clean the Lane SLDU/ADDRGEN arbiter
-      if (is_reduction(vinsn_commit.op)) alu_red_complete_d = 1'b1;
+      if (is_reduction(vinsn_commit.op)) begin
+        alu_red_complete_d = 1'b1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+        red_stream_retire_current = 1'b1;
+`endif
+      end
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
       if (is_reduction(vinsn_commit.op) &&
@@ -1099,6 +1118,14 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       if ((vinsn_queue_d.issue_cnt == '0) && !prevent_commit
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           && (red_stream_prefetched_count_q == '0)
+          // A streamed reduction can have no remaining issue-side entry
+          // while its promoted root is still traversing the cross-lane tree.
+          // Do not let an independently accepted successor reinitialize the
+          // shared reduction state in that interval.  The final-retirement
+          // cycle is safe because the current reduction has made commit_cnt
+          // zero and the normal commit logic intentionally selects the next
+          // state in the same cycle.
+          && ((alu_state_q == NO_REDUCTION) || red_stream_retire_current)
 `endif
       ) begin
         // INTRA_LANE_REDUCTION state needs the result queue

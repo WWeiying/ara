@@ -6592,8 +6592,10 @@ module ara_tb;
         if (!(valu_fg_op inside {[VREDSUM:VWREDSUM]}) ||
             !(valu_next_op inside {[VREDSUM:VWREDSUM]}))
           red_stream_reject_unsupported[l][RedStreamValu] = 1'b1;
+`ifndef ARA_RED_MASKED_STREAM_4LANE
         else if (!valu_fg_vm || !valu_next_vm)
           red_stream_reject_mask[l][RedStreamValu] = 1'b1;
+`endif
         else if (valu_fg_vl < 8 || valu_next_vl < 8)
           red_stream_reject_short_vl[l][RedStreamValu] = 1'b1;
 `ifndef ARA_RED_HETERO_STREAM_4LANE
@@ -6609,8 +6611,10 @@ module ara_tb;
         if (!(fp_fg_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) ||
             !(fp_next_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}))
           red_stream_reject_unsupported[l][RedStreamFp] = 1'b1;
+`ifndef ARA_RED_MASKED_STREAM_4LANE
         else if (!fp_fg_vm || !fp_next_vm)
           red_stream_reject_mask[l][RedStreamFp] = 1'b1;
+`endif
         else if (fp_fg_vl < 8 || fp_next_vl < 8)
           red_stream_reject_short_vl[l][RedStreamFp] = 1'b1;
 `ifndef ARA_RED_HETERO_STREAM_4LANE
