@@ -102,6 +102,7 @@ reduction_mask_skip     ?= 0
 reduction_dense_input_bypass ?= 0
 reduction_tree_input_bypass  ?= 0
 reduction_terminal_fusion    ?= 0
+reduction_context_flow       ?= 0
 
 # Masked-off token relay uses the direct VMFPU output protocol and the
 # mask-decoupled return credit.  Make those prerequisites explicit so a skip
@@ -131,6 +132,12 @@ ifeq ($(reduction_tree_input_bypass),1)
 endif
 ifeq ($(reduction_terminal_fusion),1)
   bender_defs += --define ARA_RED_VMFPU_TERMINAL_FUSION=1
+endif
+ifeq ($(reduction_context_flow),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_context_flow currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_CONTEXT_FLOW_4LANE=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
   bender_defs += --define ARA_RED_INPUT_BYPASS=1

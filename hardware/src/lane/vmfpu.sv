@@ -716,6 +716,50 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // e.g. assume EEW=16, there are four elements in the operand data (4 * 16bits = 64 bits), the osum_issue_cnt counts from 0 to 3
   logic [3:0] osum_issue_cnt_d, osum_issue_cnt_q;
 
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+  // Four independent EW32 partials match the four-cycle fpnew ADD latency.
+  // The first prototype deliberately keeps the architectural SLDU interface
+  // unchanged: it replaces only the fragile implicit neutral-fill merge with
+  // an explicit, tagged, balanced local DAG.  Later tree-flow stages can reuse
+  // the same context representation without changing numerical pairings.
+  localparam int unsigned RedContextCount = 4;
+  localparam int unsigned RedContextIdxW  = 2;
+  typedef logic [RedContextIdxW-1:0] red_context_idx_t;
+  typedef enum logic [1:0] {
+    RED_CTX_ACCUMULATE,
+    RED_CTX_MERGE_PAIRS,
+    RED_CTX_MERGE_ROOT,
+    RED_CTX_PUBLISH
+  } red_context_phase_e;
+
+  elen_t [RedContextCount-1:0] red_context_data_d, red_context_data_q;
+  logic  [RedContextCount-1:0] red_context_valid_d, red_context_valid_q;
+  logic  [RedContextCount-1:0] red_context_pending_d, red_context_pending_q;
+  red_context_idx_t            red_context_issue_d, red_context_issue_q;
+  logic [1:0]                  red_context_pair_issue_d, red_context_pair_issue_q;
+  red_context_phase_e          red_context_phase_d, red_context_phase_q;
+
+  logic red_context_enabled_d, red_context_enabled_q;
+  logic red_context_two_way_d, red_context_two_way_q;
+  logic red_context_flow_active;
+  assign red_context_flow_active = red_context_enabled_q &&
+    (mfpu_state_q == INTRA_LANE_REDUCTION);
+
+  function automatic logic red_context_eligible(vfu_operation_t vinsn);
+    red_context_eligible = (NrLanes == 4) &&
+      (vinsn.op == VFREDUSUM) && (vinsn.vtype.vsew == EW32) &&
+      vinsn.vm && (vinsn.vl >= 8);
+  endfunction : red_context_eligible
+
+  // Tag layout for context-flow fpnew requests.  Bit 7 separates these tags
+  // from the legacy neutral indicators 0/1/2.  Bits 5:4 identify the fixed
+  // DAG level and bits 1:0 identify the destination context.
+  localparam logic [7:0] RedContextTagMarker = 8'h80;
+  localparam logic [7:0] RedContextTagAccum  = 8'h00;
+  localparam logic [7:0] RedContextTagPair   = 8'h10;
+  localparam logic [7:0] RedContextTagRoot   = 8'h20;
+`endif
+
 `ifdef ARA_RED_OUTPUT_BYPASS
   logic osum_output_bypass_active;
 `ifdef ARA_RED_MASK_FASTPATH
@@ -1522,6 +1566,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `else
     vfpu_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VFADD:VMFGE]});
 `endif
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+    // Context responses retire into dedicated slots, not the two-entry generic
+    // result queue.  Every tagged request owns one slot until its response, so
+    // this path cannot overflow and may keep fpnew's output ready asserted.
+    if (vfpu_out_valid && vfpu_tag_out[7])
+      vfpu_out_ready = 1'b1;
+`endif
 
     // Valid of the unit in use (i.e., result queue input valid) is not asserted by default
     unit_out_valid  = 1'b0;
@@ -1601,6 +1652,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     intra_op_rx_cnt_en      = 1'b0;
 
     osum_issue_cnt_d        = osum_issue_cnt_q;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+    red_context_data_d       = red_context_data_q;
+    red_context_valid_d      = red_context_valid_q;
+    red_context_pending_d    = red_context_pending_q;
+    red_context_issue_d      = red_context_issue_q;
+    red_context_pair_issue_d = red_context_pair_issue_q;
+    red_context_phase_d      = red_context_phase_q;
+    red_context_enabled_d    = red_context_enabled_q;
+    red_context_two_way_d    = red_context_two_way_q;
+`endif
 `ifdef ARA_RED_MASK_SKIP
     osum_mask_skip_active   = 1'b0;
 `endif
@@ -1867,6 +1928,149 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Give the correct be signal to the divider/FPU
         issue_be = be(issue_element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
 
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+        if (red_context_flow_active) begin
+          automatic red_context_idx_t response_context =
+            red_context_idx_t'(vfpu_tag_out[RedContextIdxW-1:0]);
+          automatic logic source_word_valid =
+            (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
+                                           : mfpu_operand_valid_i[1]);
+
+          // Responses are routed by their fixed-DAG tag.  A context has one
+          // owner and at most one request in flight, so completion is a direct
+          // indexed write without associative lookup or reordering.
+          if (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7]) begin
+            red_context_data_d[response_context]    = vfpu_processed_result;
+            red_context_valid_d[response_context]   = 1'b1;
+            red_context_pending_d[response_context] = 1'b0;
+          end
+
+          unique case (red_context_phase_q)
+            RED_CTX_ACCUMULATE: begin
+              // Keep four independent feedback chains in flight.  The return
+              // above is intentionally processed first, providing a same-cycle
+              // bypass when the round-robin pointer wraps after four cycles.
+              operand_a = processed_red_operand(mfpu_operand_i[1], 1'b0,
+                                                mask_i, issue_element_cnt, ntr_val);
+              operand_c = processed_red_operand(mfpu_operand_i[2], 1'b0,
+                                                mask_i, issue_element_cnt, ntr_val);
+              operand_b = first_op_q
+                        ? (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0])
+                        : red_context_data_d[red_context_issue_q];
+
+              operands_valid = source_word_valid &&
+                red_context_valid_d[red_context_issue_q] &&
+                !red_context_pending_d[red_context_issue_q] &&
+                (!first_op_q || mfpu_operand_valid_i[0]);
+
+              if (issue_cnt_q != '0 && operands_valid && vinsn_issue_q_valid) begin
+                vfpu_tag_in = strb_t'(RedContextTagMarker |
+                  RedContextTagAccum | red_context_issue_q);
+                vfpu_in_valid = 1'b1;
+                if (vfpu_in_ready) begin
+                  red_context_valid_d[red_context_issue_q]   = 1'b0;
+                  red_context_pending_d[red_context_issue_q] = 1'b1;
+                  red_context_issue_d = red_context_two_way_q
+                                      ? {1'b0, ~red_context_issue_q[0]}
+                                      : red_context_issue_q + 1'b1;
+
+                  issue_cnt_d = issue_cnt_q - issue_element_cnt;
+                  intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+                  mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
+                                       ? {2'b10, first_op_q}
+                                       : {2'b01, first_op_q};
+                  first_op_d = 1'b0;
+                end
+              // As soon as source issue is complete, pair 0/1 can enter the
+              // merge tree without waiting for the unrelated 2/3 response.
+              // This is the first return-driven cut in the fixed DAG.
+              end else if (issue_cnt_q == '0 &&
+                           red_context_valid_d[0] && red_context_valid_d[1] &&
+                           !red_context_pending_d[0]) begin
+                issue_be = '1;
+                operand_b = red_context_data_d[0];
+                operand_c = red_context_data_d[1];
+                vfpu_tag_in = strb_t'(RedContextTagMarker |
+                  (red_context_two_way_q ? RedContextTagRoot : RedContextTagPair));
+                vfpu_in_valid = 1'b1;
+                if (vfpu_in_ready) begin
+                  red_context_valid_d[0]   = 1'b0;
+                  red_context_valid_d[1]   = 1'b0;
+                  red_context_pending_d[0] = 1'b1;
+                  red_context_pair_issue_d = 1;
+                  red_context_phase_d      = red_context_two_way_q
+                                           ? RED_CTX_MERGE_ROOT
+                                           : RED_CTX_MERGE_PAIRS;
+                end
+              end
+            end
+
+            RED_CTX_MERGE_PAIRS: begin
+              // Pair 0/1 and 2/3 are independent and may enter fpnew in
+              // consecutive cycles.  Their results occupy contexts 0 and 1.
+              issue_be = '1;
+              if (red_context_pair_issue_q == 1 &&
+                           red_context_valid_d[2] && red_context_valid_d[3] &&
+                           !red_context_pending_d[1]) begin
+                operand_b = red_context_data_d[2];
+                operand_c = red_context_data_d[3];
+                vfpu_tag_in = strb_t'(RedContextTagMarker |
+                  RedContextTagPair | 8'h01);
+                vfpu_in_valid = 1'b1;
+                if (vfpu_in_ready) begin
+                  red_context_valid_d[2]   = 1'b0;
+                  red_context_valid_d[3]   = 1'b0;
+                  red_context_pending_d[1] = 1'b1;
+                  red_context_pair_issue_d = 2;
+                end
+              end
+
+              // The indexed return write above is a same-cycle bypass.  Once
+              // both pair roots are present, launch the root immediately
+              // instead of spending a phase-transition bubble.
+              if (red_context_pair_issue_d == 2 &&
+                  !red_context_pending_d[0] && !red_context_pending_d[1] &&
+                  red_context_valid_d[0] && red_context_valid_d[1]) begin
+                issue_be = '1;
+                operand_b = red_context_data_d[0];
+                operand_c = red_context_data_d[1];
+                vfpu_tag_in = strb_t'(RedContextTagMarker |
+                  RedContextTagRoot);
+                vfpu_in_valid = 1'b1;
+                if (vfpu_in_ready) begin
+                  red_context_valid_d[0]   = 1'b0;
+                  red_context_valid_d[1]   = 1'b0;
+                  red_context_pending_d[0] = 1'b1;
+                  red_context_pair_issue_d = 1;
+                  red_context_phase_d      = RED_CTX_MERGE_ROOT;
+                end
+              end
+            end
+
+            RED_CTX_MERGE_ROOT: begin
+              // Root completion rejoins the legacy tree in the return cycle;
+              // there is no dedicated publish state or extra queue bubble.
+              if (red_context_pair_issue_q == 1 &&
+                  !red_context_pending_d[0] && red_context_valid_d[0]) begin
+                result_queue_d[result_queue_write_pnt_q].wdata = red_context_data_d[0];
+                result_queue_d[result_queue_write_pnt_q].addr  =
+                  vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+                result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
+                result_queue_d[result_queue_write_pnt_q].be    =
+                  be(1, vinsn_processing_q.vtype.vsew);
+                result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+                to_process_cnt_d = '0;
+                red_context_phase_d = RED_CTX_PUBLISH;
+                mfpu_state_d = INTER_LANES_REDUCTION_TX;
+              end
+            end
+
+            RED_CTX_PUBLISH: red_context_phase_d = RED_CTX_ACCUMULATE;
+
+            default: red_context_phase_d = RED_CTX_ACCUMULATE;
+          endcase
+        end else begin
+`endif
         // Stall only if this is the first operation for this reduction instruction and the result queue is full
         if (!(first_op_q && result_queue_full)) begin
           // =======================================================
@@ -2006,6 +2210,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             end
           end
         end
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+        end
+`endif
       end
       INTER_LANES_REDUCTION_TX: begin
         // If the workload is unbalanced and some lanes already have commit_cnt == '0,
@@ -2401,6 +2608,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           first_result_op_valid_d = 1'b0;
           intra_op_rx_cnt_d       = '0;
           osum_issue_cnt_d        = '0;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+          red_context_data_d       = '0;
+          red_context_valid_d      = '1;
+          red_context_pending_d    = '0;
+          red_context_issue_d      = '0;
+          red_context_pair_issue_d = '0;
+          red_context_phase_d      = RED_CTX_ACCUMULATE;
+          red_context_enabled_d    = red_context_eligible(vinsn_issue_d);
+          red_context_two_way_d    = (vinsn_issue_d.vl <= 8);
+`endif
         end
       end
       default:;
@@ -2495,6 +2712,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           first_result_op_valid_d = 1'b0;
           intra_op_rx_cnt_d       = '0;
           osum_issue_cnt_d        = '0;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+          red_context_data_d       = '0;
+          red_context_valid_d      = '1;
+          red_context_pending_d    = '0;
+          red_context_issue_d      = '0;
+          red_context_pair_issue_d = '0;
+          red_context_phase_d      = RED_CTX_ACCUMULATE;
+          red_context_enabled_d    = red_context_eligible(
+            vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt]);
+          red_context_two_way_d    =
+            (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl <= 8);
+`endif
 
           mfpu_state_d = next_mfpu_state(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op);
         end else begin
@@ -2538,6 +2767,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         first_result_op_valid_d = 1'b0;
         intra_op_rx_cnt_d       = '0;
         osum_issue_cnt_d        = '0;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+        red_context_data_d       = '0;
+        red_context_valid_d      = '1;
+        red_context_pending_d    = '0;
+        red_context_issue_d      = '0;
+        red_context_pair_issue_d = '0;
+        red_context_phase_d      = RED_CTX_ACCUMULATE;
+        red_context_enabled_d    = red_context_eligible(vfu_operation_i);
+        red_context_two_way_d    = (vfu_operation_i.vl <= 8);
+`endif
         issue_cnt_d             = vfu_operation_i.vl;
       end
       if (vinsn_queue_d.processing_cnt == '0) to_process_cnt_d = vfu_operation_i.vl;
@@ -2607,6 +2846,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       intra_issued_op_cnt_q   <= '0;
       intra_op_rx_cnt_q       <= '0;
       osum_issue_cnt_q        <= '0;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+      red_context_data_q       <= '0;
+      red_context_valid_q      <= '0;
+      red_context_pending_q    <= '0;
+      red_context_issue_q      <= '0;
+      red_context_pair_issue_q <= '0;
+      red_context_phase_q      <= RED_CTX_ACCUMULATE;
+      red_context_enabled_q    <= 1'b0;
+      red_context_two_way_q    <= 1'b0;
+`endif
       mfpu_vxsat_q            <= '0;
       clkgate_en_q            <= 1'b0;
     end else begin
@@ -2631,6 +2880,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       intra_issued_op_cnt_q   <= intra_issued_op_cnt_d;
       intra_op_rx_cnt_q       <= intra_op_rx_cnt_d;
       osum_issue_cnt_q        <= osum_issue_cnt_d;
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+      red_context_data_q       <= red_context_data_d;
+      red_context_valid_q      <= red_context_valid_d;
+      red_context_pending_q    <= red_context_pending_d;
+      red_context_issue_q      <= red_context_issue_d;
+      red_context_pair_issue_q <= red_context_pair_issue_d;
+      red_context_phase_q      <= red_context_phase_d;
+      red_context_enabled_q    <= red_context_enabled_d;
+      red_context_two_way_q    <= red_context_two_way_d;
+`endif
       mfpu_vxsat_q            <= mfpu_vxsat_d;
       clkgate_en_q            <= clkgate_en_d;
     end
@@ -2652,6 +2911,48 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       (osum_mask_skip_active && !mfpu_red_ready_i) |=>
         $stable({issue_cnt_q, to_process_cnt_q, osum_issue_cnt_q, first_op_q})
   ) else $error("masked-off token relay advanced while downstream was stalled");
+`endif
+`endif
+
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+`ifndef SYNTHESIS
+  // A slot is either a resident partial or owned by one fpnew request.  The
+  // states are deliberately disjoint so a tagged return cannot overwrite a
+  // value that is still available to the scheduler.
+  a_red_context_single_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      !(|(red_context_valid_q & red_context_pending_q))
+  ) else $error("reduction context has both resident and in-flight owners");
+
+  // Tags are allocated only after setting the corresponding pending bit.
+  // This catches stale, duplicated, or misrouted fpnew completions.
+  a_red_context_response_has_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7]) |->
+        red_context_pending_q[
+          red_context_idx_t'(vfpu_tag_out[RedContextIdxW-1:0])]
+  ) else $error("tagged reduction response has no owning context");
+
+  a_red_context_shape_is_legal: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_context_flow_active |->
+        (NrLanes == 4 && vinsn_issue_q.op == VFREDUSUM &&
+         vinsn_issue_q.vtype.vsew == EW32 && vinsn_issue_q.vm)
+  ) else $error("4-lane context flow selected for an unsupported reduction");
+
+  a_red_context_two_way_pointer_range: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (red_context_flow_active && red_context_two_way_q &&
+       red_context_phase_q == RED_CTX_ACCUMULATE) |->
+        (red_context_issue_q < 2)
+  ) else $error("two-way reduction scheduler selected context 2 or 3");
+
+  a_red_context_root_has_one_request: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (red_context_flow_active && red_context_phase_q == RED_CTX_MERGE_ROOT) |->
+        (red_context_pair_issue_q == 1 &&
+         (red_context_pending_q[0] || red_context_valid_q[0]))
+  ) else $error("reduction root phase lost its only in-flight/result owner");
 `endif
 `endif
 

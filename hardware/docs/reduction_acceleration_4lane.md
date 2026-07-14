@@ -436,4 +436,53 @@ widening 时，default 和 optimized 都可能停在结果读取或后续 `vsetv
 
 尚不能直接宣称最终论文级 PPA 优势：组合 ready 路径被拉长，必须补综合后的 Fmax、面积和功耗；也尚未按要求开展 2/8/16-lane 实验。论文必须把周期改善换算成 `cycles × clock_period`，并报告面积/能量代价。
 
-下一阶段最有研究价值的方向是 context-interleaved accumulators：为多个独立规约上下文保存累加 token，在保持单上下文严格顺序的同时，用上下文轮转隐藏 FPU feedback latency。随后可加入可配置 elastic cut，联合搜索“recurrence cycles × clock period”，避免只减少周期却损失 Fmax。
+## 15. 自适应反馈上下文与返回驱动 DAG
+
+在上述稳定版本之上，新增了一个默认关闭的 4-lane 实验开关：
+
+```text
+reduction_context_flow=1
+```
+
+Makefile 会在 `nr_lanes!=4` 时直接拒绝该配置，避免把尚未验证的拓扑静默推广到其它 lane 数。RTL 目前只选择 unmasked、e32、lane-local VL 不小于 8 的 `vfredusum`；其它 SEW、mask、opcode 和短 workload 完整回退到原状态机。
+
+该机制不是简单增加一个 accumulator。VMFPU 内保存四个带 `valid/pending/data` 的显式反馈上下文，每个 fpnew 请求携带“DAG 层级 + 目标上下文”tag。返回值按 tag 直接写回唯一 owner；返回处理位于同拍发射判断之前，因此上下文完成当拍即可再次被调度。局部合并采用固定的 `4→2→1` 平衡 DAG，并采用返回驱动调度：0/1 最终就绪后即可先发射第一对，不等待无关的 2/3；两个 pair root 就绪的当拍立即发射总 root；总 root 返回当拍直接进入已有跨-lane tree，不再经过 publish 状态。
+
+关键的新策略是按 lane-local 工作量选择反馈宽度，而不是固定追求最大并行度：
+
+- lane-local VL=8（e32 时为 4 个 64-bit source word）使用 2-context，反馈指针只在 0/1 间轮转，最后直接执行 `2→1`；
+- lane-local VL>8 使用 4-context，以四条反馈链覆盖 fpnew ADD latency，再执行 `4→2→1`；
+- lane-local VL<8 使用旧路径，避免为极短向量支付上下文启动成本。
+
+固定 4-context 对短 workload 虽能填满输入流水线，却需要三次尾部合并，实测没有胜过原最优路径。2-context 会在反馈未返回时产生少量空拍，但少做两次尾部合并，关键路径反而更短。这说明最优上下文数由“输入阶段吞吐”和“尾部 DAG 深度”共同决定，不能简单设成 FPU latency。当前阈值是 4-lane/e32 的实测落点，后续应推广成由 `source_words`、FPU latency 和 merge depth 共同决定的参数化选择器。
+
+### 15.1 增量消融结果
+
+条件与第 10 节一致：4 lanes、VLEN=1024、e32/m1、architectural VL=32；每 lane 实际处理 VL=8。比较对象是已经启用 tree input cut 和 terminal fusion 的上一版最优候选，不是最初 baseline。
+
+| 版本 | `vfredusum` latency | active cycles | ROI total cycles | 定向结果 |
+|---|---:|---:|---:|:---:|
+| 上一版最优候选 | 45 | 44 | 308 | PASS |
+| 固定 4-context、分阶段控制 | 49 | 48 | 312 | PASS |
+| 4-context、返回驱动流式 DAG | 45 | 44 | 308 | PASS |
+| 自适应 2/4-context | **43** | **42** | **306** | PASS |
+
+最终自适应版本相对上一版最优候选将目标指令再降低 2 cycles，即 4.44%；相对第 10 节最初 49-cycle control 共降低 6 cycles，即 12.24%。整个混合 ROI 只含一条 `vfredusum`，因此总周期只下降 0.65%，不能把该数字当作纯 `vfredusum` kernel 的收益。
+
+### 15.2 可执行不变量和回归
+
+新增五条局部断言：context 的 resident owner 与 in-flight owner 必须互斥；每个 tagged response 必须命中 pending owner；只允许 4-lane/e32/unmasked `vfredusum` 进入新路径；2-context 指针不得访问 2/3；root 阶段必须始终保有唯一 pending/result owner。带断言的定向探针结果为：
+
+```text
+integer=20 unordered=20 ordered=20 odd=1f masked=10 masked16=8 transition=0/1 (PASSED)
+Core Test *** SUCCESS ***
+vfredusum average execution latency: 43 cycles
+```
+
+官方 `rv64uv-ara-vfredusum` 的 17 项中通过 16 项，失败集合与上一版最优候选逐项相同：仍只有第 4 项超出本配置 e32/m1 VLMAX 的既有配置问题。该回归覆盖未选择新路径的 e16/e64/masked/短 e32，以及实际 VLMAX=32 的 2-context e32。另用 e32/m2、architectural VL=64 的定向程序让每 lane 实际处理 16 个元素，强制 4-context 指针完成二次回绕；结果为 64，测试通过且五条 context 断言均未触发。
+
+### 15.3 当前论文边界
+
+本节已经证明“上下文数自适应 + tagged fixed-DAG + return-driven scheduling”在当前 4-lane 短归约上可以胜过固定宽度上下文，并给出了固定 4-context 的负消融。它比单纯多 accumulator 更适合作为论文机制的一部分，但目前仍只是单条 unordered 指令内部的反馈上下文，尚不是跨多条独立指令的 context interleaving。
+
+下一阶段最有研究价值的方向仍是跨指令/跨 tree stage 的 context-interleaved accumulators：在保持每个 ordered context 严格顺序的同时，让不同规约上下文轮转占用 FPU 和 SLDU 空槽。随后应加入参数化上下文选择、综合后的 Fmax/面积/功耗以及不同 VL 分布，联合搜索 `cycles × clock_period × energy`，避免只减少周期却损失 PPA。
