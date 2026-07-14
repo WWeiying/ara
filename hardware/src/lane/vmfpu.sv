@@ -110,6 +110,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic vinsn_queue_full;
   assign vinsn_queue_full = (vinsn_queue_q.commit_cnt == VInsnQueueDepth);
 
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+  logic [VInsnQueueDepth-1:0] ordered_alias_d, ordered_alias_q;
+  logic ordered_memo_valid_d, ordered_memo_valid_q;
+  elen_t ordered_memo_data_d, ordered_memo_data_q;
+  logic [4:0] ordered_memo_fflags_d, ordered_memo_fflags_q;
+  logic ordered_alias_drain_beat;
+  logic ordered_alias_publish;
+  logic ordered_alias_flags_replay;
+`endif
+
   // Do we have a vector instruction ready to be issued?
   vfu_operation_t vinsn_issue_d, vinsn_issue_q;
   logic           vinsn_issue_d_valid, vinsn_issue_q_valid;
@@ -683,10 +693,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   `FF(fpu_red_complete_o, fpu_red_complete_d, 1'b0, clk_i, rst_ni);
 
   // Signal to indicate the state of the MFPU
-  typedef enum logic [2:0] {
+  typedef enum logic [3:0] {
     NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_TX,
     INTER_LANES_REDUCTION_RX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION,
     OSUM_REDUCTION, MFPU_WAIT
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    , OSUM_ALIAS_DRAIN
+`endif
   } mfpu_state_e;
   mfpu_state_e mfpu_state_d, mfpu_state_q;
 
@@ -715,6 +728,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // The ordered sum issue counter indicates how many elements in the operand data (64 bits) have been issued
   // e.g. assume EEW=16, there are four elements in the operand data (4 * 16bits = 64 bits), the osum_issue_cnt counts from 0 to 3
   logic [3:0] osum_issue_cnt_d, osum_issue_cnt_q;
+
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+  // One-beat look-ahead for an independent ordered successor.  The current
+  // recurrence has already consumed all of its VRF operands when it reaches
+  // MFPU_WAIT, but its final token/writeback can still occupy several cycles.
+  // Use that otherwise dead interval to acquire the next seed and first source
+  // beat.  The credit remains owned by this context until every element in the
+  // beat is issued, so no live operand-queue entry can be acknowledged twice.
+  logic ordered_prefetch_valid_d, ordered_prefetch_valid_q;
+  elen_t ordered_prefetch_seed_d, ordered_prefetch_seed_q;
+  elen_t ordered_prefetch_source_d, ordered_prefetch_source_q;
+  logic ordered_prefetch_capture;
+  logic ordered_prefetch_use;
+`endif
 
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
   // Four independent EW32 partials match the four-cycle fpnew ADD latency.
@@ -1579,8 +1606,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     end
 
     // Stabilize signals regardless of FPU latency (signals to CVA6)
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    // An alias replays both the data result and the exception contribution of
+    // its leader.  This remains correct even if software clears fflags between
+    // the two vector instructions.
+    assign fflags_ex_d = ordered_alias_flags_replay
+                       ? ordered_memo_fflags_q : vfpu_ex_flag;
+    assign fflags_ex_valid_d = ordered_alias_flags_replay |
+                               (vfpu_out_valid & vfpu_out_ready);
+`else
     assign fflags_ex_d       = vfpu_ex_flag;
     assign fflags_ex_valid_d = vfpu_out_valid & vfpu_out_ready;
+`endif
   end else begin : no_fpu_gen // The FPU is disabled
     assign vfpu_in_ready     = 1'b0;
     assign vfpu_result       = '0;
@@ -1750,6 +1787,22 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     intra_op_rx_cnt_en      = 1'b0;
 
     osum_issue_cnt_d        = osum_issue_cnt_q;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    ordered_alias_d          = ordered_alias_q;
+    ordered_memo_valid_d     = ordered_memo_valid_q;
+    ordered_memo_data_d      = ordered_memo_data_q;
+    ordered_memo_fflags_d    = ordered_memo_fflags_q;
+    ordered_alias_drain_beat = 1'b0;
+    ordered_alias_publish    = 1'b0;
+    ordered_alias_flags_replay = 1'b0;
+`endif
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+    ordered_prefetch_valid_d  = ordered_prefetch_valid_q;
+    ordered_prefetch_seed_d   = ordered_prefetch_seed_q;
+    ordered_prefetch_source_d = ordered_prefetch_source_q;
+    ordered_prefetch_capture  = 1'b0;
+    ordered_prefetch_use      = 1'b0;
+`endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
     red_context_data_d       = red_context_data_q;
     red_context_valid_d      = red_context_valid_q;
@@ -2513,18 +2566,50 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 `endif
         // Short Note: Only one lane is allowed to be active (only one lane has all operands valid)
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+        ordered_prefetch_use = ordered_prefetch_valid_q &&
+          vinsn_issue_q.vm && (vinsn_issue_q.vtype.vsew == EW32);
+        operand_c = processed_osum_operand(
+          ordered_prefetch_use ? ordered_prefetch_source_q
+                               : mfpu_operand_i[2],
+          osum_issue_cnt_q, vinsn_issue_q.vtype.vsew,
+          ~vinsn_issue_q.vm, mask_i, ntr_val);
+`else
         operand_c = processed_osum_operand(mfpu_operand_i[2], osum_issue_cnt_q, vinsn_issue_q.vtype.vsew, ~vinsn_issue_q.vm, mask_i, ntr_val);
+`endif
         operand_b = (first_op_q && (lane_id_i == '0)) ?
-                    (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0]) :
+                    (vinsn_issue_q.use_scalar_op ? scalar_op :
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+                     (ordered_prefetch_use ? ordered_prefetch_seed_q :
+`endif
+                      mfpu_operand_i[0]
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+                     )
+`endif
+                    ) :
                     sldu_operand_q;
 
-        if (mfpu_operand_valid_i[2] && (mask_valid_i || vinsn_issue_q.vm)) begin
+        if (
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+            (ordered_prefetch_use || mfpu_operand_valid_i[2]) &&
+`else
+            mfpu_operand_valid_i[2] &&
+`endif
+            (mask_valid_i || vinsn_issue_q.vm)) begin
           if (first_op_q) begin
             if (lane_id_i == '0)
-              operands_valid = mfpu_operand_valid_i[0];
+              operands_valid =
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+                ordered_prefetch_use ||
+`endif
+                mfpu_operand_valid_i[0];
             else
               // Also check op_b, because it needs to be acknowledged
-              operands_valid = mfpu_operand_valid_i[0] && sldu_mfpu_valid_q;
+              operands_valid = (
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+                ordered_prefetch_use ||
+`endif
+                mfpu_operand_valid_i[0]) && sldu_mfpu_valid_q;
           end else begin
             operands_valid = sldu_mfpu_valid_q;
           end
@@ -2582,10 +2667,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             osum_issue_cnt_d = osum_issue_cnt_q + 1;
             if (osum_issue_cnt_d == num_element || issue_cnt_q == 1) begin
               osum_issue_cnt_d = '0;
-              mfpu_operand_ready_o[2] = 1'b1;
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+              if (ordered_prefetch_use)
+                ordered_prefetch_valid_d = 1'b0;
+              else
+`endif
+                mfpu_operand_ready_o[2] = 1'b1;
               mask_ready_o = 1'b1;
             end
-            if (first_op_q) mfpu_operand_ready_o[0] = 1'b1;
+            if (first_op_q) begin
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+              if (!ordered_prefetch_use)
+`endif
+                mfpu_operand_ready_o[0] = 1'b1;
+            end
             sldu_mfpu_ready_d = 1'b1;
             issue_cnt_d = issue_cnt_q - 1;
             first_op_d = 1'b0;
@@ -2597,7 +2692,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           if (vfpu_in_ready) begin
             // The number of elements to be issued in one 64-bit data
             automatic logic [3:0] num_element = (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
-
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+            // Begin a fresh exception signature with the leader's first
+            // arithmetic operation.  Alias chains leave this memo untouched.
+            if (first_op_q && (vinsn_issue_q.op == VFREDOSUM))
+              ordered_memo_fflags_d = '0;
+`endif
             osum_issue_cnt_d = osum_issue_cnt_q + 1;
             if (osum_issue_cnt_d == num_element || issue_cnt_q == 1) begin
               // All elements in one 64-bit data have been issued
@@ -2605,13 +2705,23 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               // Ackownledge the operand_c, ready to receive the next
               // operand from operand queue
               //mfpu_operand_ready_o = operands_ready;
-              mfpu_operand_ready_o[2] = 1'b1;
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+              if (ordered_prefetch_use)
+                ordered_prefetch_valid_d = 1'b0;
+              else
+`endif
+                mfpu_operand_ready_o[2] = 1'b1;
               // Acknowledge the mask operands
               mask_ready_o = ~vinsn_issue_q.vm;
             end
 
             // Acknowledge scalar operand_b
-            if (first_op_q) mfpu_operand_ready_o[0] = 1'b1;
+            if (first_op_q) begin
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+              if (!ordered_prefetch_use)
+`endif
+                mfpu_operand_ready_o[0] = 1'b1;
+            end
 
             // Acknowledge operand_c from the slide unit
             // Note: Also ack even if this is the first operation in lane 0
@@ -2684,6 +2794,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_processing_q.vtype.vsew);
           result_queue_d[result_queue_write_pnt_q].mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
           result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+          ordered_memo_data_d  = sldu_operand_q;
+          ordered_memo_valid_d = 1'b1;
+`endif
 
           // Bump pointers and counters of the result queue
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -2697,7 +2811,93 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           mfpu_state_d = MFPU_WAIT;
         end
       end
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      OSUM_ALIAS_DRAIN: begin
+        // Exact duplicates reuse the leader's strictly ordered result.  Their
+        // already-created operand requests are drained at one complete source
+        // beat per cycle so queue ownership and hazard release remain exactly
+        // as in ordinary execution, but no redundant FP recurrence or SLDU
+        // token traversal is generated.
+        automatic logic [3:0] elements_per_beat =
+          (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+        automatic logic drain_prefetch = ordered_prefetch_valid_q;
+        automatic logic can_drain = drain_prefetch ||
+          (mfpu_operand_valid_i[2] &&
+           (!first_op_q || mfpu_operand_valid_i[0]));
+
+        if (can_drain && issue_cnt_q != '0) begin
+          if (drain_prefetch)
+            ordered_prefetch_valid_d = 1'b0;
+          else begin
+            mfpu_operand_ready_o[2] = 1'b1;
+            if (first_op_q) mfpu_operand_ready_o[0] = 1'b1;
+          end
+          first_op_d = 1'b0;
+          ordered_alias_drain_beat = 1'b1;
+          issue_cnt_d = (issue_cnt_q <= elements_per_beat)
+            ? '0 : issue_cnt_q - elements_per_beat;
+        end
+
+        if (issue_cnt_d == '0 &&
+            ((lane_id_i != '0) ||
+             (ordered_memo_valid_q && !result_queue_full))) begin
+          to_process_cnt_d = '0;
+          ordered_alias_flags_replay = 1'b1;
+          if (lane_id_i == '0) begin
+            result_queue_d[result_queue_write_pnt_q].addr =
+              vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+            result_queue_d[result_queue_write_pnt_q].id =
+              vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].be =
+              be(1, vinsn_processing_q.vtype.vsew);
+            result_queue_d[result_queue_write_pnt_q].mask = 1'b0;
+            result_queue_d[result_queue_write_pnt_q].wdata =
+              ordered_memo_data_q;
+            result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+            result_queue_cnt_d += 1;
+            result_queue_write_pnt_d =
+              (result_queue_write_pnt_q == ResultQueueDepth-1)
+                ? '0 : result_queue_write_pnt_q + 1'b1;
+            ordered_alias_publish = 1'b1;
+          end
+          mfpu_state_d = MFPU_WAIT;
+        end
+      end
+`endif
       MFPU_WAIT: begin
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+        // All source beats of the current ordered instruction are already
+        // acknowledged before MFPU_WAIT.  If the queued successor is a safe
+        // unmasked EW32 ordered context, consume exactly its seed and first
+        // source beat into the look-ahead credit while final-token/writeback
+        // retirement proceeds independently below.
+        if (!ordered_prefetch_valid_q &&
+            (vinsn_processing_q.op inside {VFREDOSUM, VFWREDOSUM}) &&
+            vinsn_processing_q.vm && (vinsn_queue_q.issue_cnt > 1) &&
+            mfpu_operand_valid_i[0] && mfpu_operand_valid_i[2]) begin
+          automatic logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt =
+            (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+              ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+          automatic vfu_operation_t next_issue =
+            vinsn_queue_q.vinsn[next_issue_pnt];
+          if ((next_issue.op inside {VFREDOSUM, VFWREDOSUM}) &&
+              next_issue.vm && (next_issue.vtype.vsew == EW32) &&
+              // Keep look-ahead inside one homogeneous stream context.  A
+              // VL/vtype transition is a synchronization boundary across
+              // the four independently backpressured lane queues.
+              (next_issue.op == vinsn_processing_q.op) &&
+              (next_issue.vl == vinsn_processing_q.vl) &&
+              (next_issue.vstart == vinsn_processing_q.vstart) &&
+              (next_issue.vtype == vinsn_processing_q.vtype)) begin
+            ordered_prefetch_seed_d   = mfpu_operand_i[0];
+            ordered_prefetch_source_d = mfpu_operand_i[2];
+            ordered_prefetch_valid_d  = 1'b1;
+            ordered_prefetch_capture  = 1'b1;
+            mfpu_operand_ready_o[0]    = 1'b1;
+            mfpu_operand_ready_o[2]    = 1'b1;
+          end
+        end
+`endif
         // If lane 0, wait for the grant before starting a new instructions and overwriting the commit counter
         if (lane_id_i == '0) begin
           if (mfpu_result_gnt_i)
@@ -2733,7 +2933,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           if (vinsn_queue_d.issue_cnt != 0) issue_cnt_d =
             vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
 
-          mfpu_state_d = (vinsn_queue_d.issue_cnt != 0) ? next_mfpu_state(vinsn_issue_d.op) : NO_REDUCTION;
+          mfpu_state_d = (vinsn_queue_d.issue_cnt != 0)
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+            ? (ordered_alias_d[vinsn_queue_d.issue_pnt]
+                ? OSUM_ALIAS_DRAIN : next_mfpu_state(vinsn_issue_d.op))
+`else
+            ? next_mfpu_state(vinsn_issue_d.op)
+`endif
+            : NO_REDUCTION;
 
           // The next will be the first operation of this instruction
           // This information is useful for reduction operation
@@ -3146,6 +3353,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     if (vinsn_commit_valid && (commit_cnt_d == '0) && !prevent_commit) begin
       // Mark the vector instruction as being done
       mfpu_vinsn_done_o[vinsn_commit.id] = 1'b1;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_d[vinsn_queue_q.commit_pnt] = 1'b0;
+`endif
 
       // Update the commit counters and pointers
       vinsn_queue_d.commit_cnt -= 1;
@@ -3212,7 +3422,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 `endif
 
-          mfpu_state_d = next_mfpu_state(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op);
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+          // A duplicated ordered reduction does not enter the arithmetic
+          // recurrence.  Its source operands still have to be drained so
+          // that the lane operand queues remain aligned with the sequencer.
+          mfpu_state_d = ordered_alias_d[vinsn_queue_d.issue_pnt]
+                       ? OSUM_ALIAS_DRAIN
+                       : next_mfpu_state(
+                           vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op);
+`else
+          mfpu_state_d = next_mfpu_state(
+            vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op);
+`endif
         end else begin
           mfpu_state_d = NO_REDUCTION;
         end
@@ -3234,6 +3455,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].use_vd_op = vfu_operation_i.op inside {[VMFEQ:VMFGE]}
                                                               ? 1'b0
                                                               : vfu_operation_i.use_vd_op;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      begin : p_mark_ordered_alias
+        ordered_alias_d[vinsn_queue_q.accept_pnt] =
+          vfu_operation_i.ordered_source_alias;
+      end
+`endif
 
       // Initialize counters
       if (vinsn_queue_d.issue_cnt == '0 && !prevent_commit
@@ -3249,7 +3476,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       ) begin
         // Don't start a new reduction if the unit is not completely idle
         if (!is_reduction(vfu_operation_i.op) || (vinsn_queue_d.commit_cnt == '0)) begin
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+          // The queue can be empty when an alias is accepted.  Use the
+          // just-computed d-side tag; otherwise this lane would start a
+          // normal OSUM and wait forever for tokens that the SLDU skips.
+          mfpu_state_d = ordered_alias_d[vinsn_queue_q.accept_pnt]
+                       ? OSUM_ALIAS_DRAIN
+                       : next_mfpu_state(vfu_operation_i.op);
+`else
           mfpu_state_d = next_mfpu_state(vfu_operation_i.op);
+`endif
         end
         // The next will be the first operation of this instruction
         // This information is useful for reduction operation
@@ -3334,6 +3570,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       vinsn_queue_d.processing_cnt += 1;
       vinsn_queue_d.commit_cnt += 1;
     end
+
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    // Record every exception contribution generated by the ordered leader.
+    // The exact duplicate will pulse the same per-lane union when it retires.
+    if ((vinsn_processing_q.op == VFREDOSUM) &&
+        vfpu_out_valid && vfpu_out_ready)
+      ordered_memo_fflags_d |= vfpu_ex_flag;
+`endif
   end: p_vmfpu
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -3348,6 +3592,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       latency_problem_q       <= 1'b0;
       simd_red_cnt_q          <= '0;
       mfpu_state_q            <= NO_REDUCTION;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_q          <= '0;
+      ordered_memo_valid_q     <= 1'b0;
+      ordered_memo_data_q      <= '0;
+      ordered_memo_fflags_q    <= '0;
+`endif
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+      ordered_prefetch_valid_q  <= 1'b0;
+      ordered_prefetch_seed_q   <= '0;
+      ordered_prefetch_source_q <= '0;
+`endif
       reduction_rx_cnt_q      <= '0;
       first_op_q              <= 1'b0;
       sldu_transactions_cnt_q <= '0;
@@ -3400,6 +3655,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       latency_problem_q       <= latency_problem_d;
       simd_red_cnt_q          <= simd_red_cnt_d;
       mfpu_state_q            <= mfpu_state_d;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_q          <= ordered_alias_d;
+      ordered_memo_valid_q     <= ordered_memo_valid_d;
+      ordered_memo_data_q      <= ordered_memo_data_d;
+      ordered_memo_fflags_q    <= ordered_memo_fflags_d;
+`endif
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+      ordered_prefetch_valid_q  <= ordered_prefetch_valid_d;
+      ordered_prefetch_seed_q   <= ordered_prefetch_seed_d;
+      ordered_prefetch_source_q <= ordered_prefetch_source_d;
+`endif
       reduction_rx_cnt_q      <= reduction_rx_cnt_d;
       first_op_q              <= first_op_d;
       sldu_transactions_cnt_q <= sldu_transactions_cnt_d;

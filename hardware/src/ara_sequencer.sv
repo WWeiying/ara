@@ -152,6 +152,32 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   pe_req_t pe_req_d;
   logic    pe_req_valid_d;
 
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+  logic ordered_last_issue_valid_d, ordered_last_issue_valid_q;
+  ara_req_t ordered_last_issue_d, ordered_last_issue_q;
+
+  function automatic logic ordered_source_duplicate(
+    ara_req_t leader, ara_req_t candidate
+  );
+    ordered_source_duplicate =
+      (NrLanes == 4) &&
+      (leader.op == VFREDOSUM) && (candidate.op == VFREDOSUM) &&
+      leader.vm && candidate.vm &&
+      (leader.vtype.vsew == EW32) &&
+      (candidate.vtype.vsew == EW32) &&
+      (leader.vtype == candidate.vtype) &&
+      (leader.vl == candidate.vl) &&
+      (leader.vstart == candidate.vstart) &&
+      (leader.vs1 == candidate.vs1) &&
+      (leader.vs2 == candidate.vs2) &&
+      (leader.use_vs1 == candidate.use_vs1) &&
+      (leader.use_vs2 == candidate.use_vs2) &&
+      (leader.use_scalar_op == candidate.use_scalar_op) &&
+      (leader.scalar_op == candidate.scalar_op) &&
+      (leader.fp_rm == candidate.fp_rm);
+  endfunction : ordered_source_duplicate
+`endif
+
   // Some units outside the lanes, e.g., the store unit, always need
   // to receive operands from all the lanes. For this reason,
   // we need to know if each lane will need to fetch one operand
@@ -366,6 +392,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Maintain request
     pe_req_d       = '0;
     pe_req_valid_d = 1'b0;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    ordered_last_issue_valid_d = ordered_last_issue_valid_q;
+    ordered_last_issue_d       = ordered_last_issue_q;
+`endif
 
     // No response
     ara_resp_o       = '0;
@@ -495,6 +525,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               hazard_vs2    : pe_req_d.hazard_vs2,
               default       : '0
             };
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+            pe_req_d.ordered_source_alias =
+              ordered_last_issue_valid_q &&
+              ordered_source_duplicate(ordered_last_issue_q, ara_req_i);
+`endif
 
             // Populate the global hazard table
             global_hazard_table_d[vinsn_id_n] = pe_req_d.hazard_vd  | pe_req_d.hazard_vm |
@@ -538,6 +573,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
               // Issue the instruction
               pe_req_valid_d = 1'b1;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+              // Update only when a new architectural vector instruction is
+              // issued.  Requests held in WAIT retain their original tag and
+              // cannot advance this adjacency tracker more than once.
+              ordered_last_issue_d       = ara_req_i;
+              ordered_last_issue_valid_d = 1'b1;
+`endif
 
               // Mark that this vector instruction is writing to vector vd
               if (ara_req_i.use_vd) write_list_d[ara_req_i.vd] = '{vid: vinsn_id_n, valid: 1'b1};
@@ -609,6 +651,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       pe_req_o       <= '0;
       pe_req_valid_o <= 1'b0;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_last_issue_valid_q <= 1'b0;
+      ordered_last_issue_q       <= '0;
+`endif
 
       ara_req_token_q <= 1'b1;
       gold_ticket_q   <= 1'b0;
@@ -624,6 +670,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       pe_req_o       <= pe_req_d;
       pe_req_valid_o <= pe_req_valid_d;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_last_issue_valid_q <= ordered_last_issue_valid_d;
+      ordered_last_issue_q       <= ordered_last_issue_d;
+`endif
 
       ara_req_token_q <= ara_req_token_d;
       gold_ticket_q   <= gold_ticket_d;

@@ -86,6 +86,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // Is the vector instruction queue full?
   logic vinsn_queue_full;
   assign vinsn_queue_full = (vinsn_queue_q.commit_cnt == VInsnQueueDepth);
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+  logic [VInsnQueueDepth-1:0] ordered_alias_d, ordered_alias_q;
+  logic ordered_alias_skip;
+`endif
 
   // Do we have a vector instruction ready to be issued?
   `FF(vinsn_issue_q, vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt], '0)
@@ -305,6 +309,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   strb_t [NrLanes-1:0] tree_route_be;
 `endif
 
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+  // Pulses when the last token of one ordered FP reduction retires while the
+  // next independent ordered reduction is armed in the same cycle.  The
+  // arithmetic recurrences remain strictly ordered within each instruction;
+  // only the old WAIT/IDLE control bubbles are overlapped with final-token
+  // delivery and commit bookkeeping.
+  logic ordered_successor_prearm;
+`endif
+
 `ifdef ARA_RED_ROUTE_BYPASS
   // Combinational one-hop route used only by ordered reductions.  Keeping
   // these signals separate from the normal result queue makes this mechanism
@@ -450,6 +463,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     tree_route_data          = '0;
     tree_route_be            = '0;
 `endif
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+    ordered_successor_prearm = 1'b0;
+`endif
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+    ordered_alias_d    = ordered_alias_q;
+    ordered_alias_skip = 1'b0;
+`endif
 
     p2_stride_gen_stride_d = '0;
     p2_stride_gen_valid_d  = 1'b0;
@@ -481,6 +501,19 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     unique case (state_q)
       SLIDE_IDLE: begin
         if (vinsn_issue_valid_q) begin
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+          if (ordered_alias_q[vinsn_queue_q.issue_pnt]) begin
+            // The lane VMFPUs drain the duplicate operand requests and replay
+            // the memoized architectural result.  SLDU therefore owns no token
+            // work for this alias and may complete its participant locally.
+            vinsn_queue_d.issue_cnt -= 1'b1;
+            vinsn_queue_d.issue_pnt =
+              (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+                ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+            commit_cnt_d = '0;
+            ordered_alias_skip = 1'b1;
+          end else begin
+`endif
           state_d   = vinsn_issue_q.is_stride_np2 ? SLIDE_NP2_SETUP : SLIDE_RUN;
           vrf_pnt_d = '0;
 
@@ -547,6 +580,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               issue_cnt_d  = (NrLanes * ($clog2(NrLanes) + 1)) << EW64;
             end
           endcase
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+          end
+`endif
         end
       end
 
@@ -814,6 +850,42 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           // Increment vector instruction queue pointers and counters
           vinsn_queue_d.issue_pnt += 1;
           vinsn_queue_d.issue_cnt -= 1;
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+          // The final accumulator token has already completed its end-to-end
+          // route handshake above.  If a second unmasked ordered reduction is
+          // resident, retire the current SLDU context and pre-arm its successor
+          // immediately.  The next context cannot consume a token until its
+          // lanes present valid data, while the just-routed final token remains
+          // owned by lane 0's input spill; the two phases therefore overlap
+          // without mixing arithmetic state.
+          if ((NrLanes == 4) && vinsn_issue_q.vm &&
+              (vinsn_queue_d.issue_cnt != '0) &&
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+              !ordered_alias_d[vinsn_queue_d.issue_pnt] &&
+`endif
+              (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op inside
+                {VFREDOSUM, VFWREDOSUM}) &&
+              vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vm &&
+              // Pre-arm only a homogeneous stream context.  In particular,
+              // do not bridge a VL/vtype boundary: participant queues can
+              // observe such a boundary in different cycles, and retiring
+              // the SLDU side early would permit an instruction ID to be
+              // reused before every lane has crossed the same boundary.
+              (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op ==
+                vinsn_issue_q.op) &&
+              (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl ==
+                vinsn_issue_q.vl) &&
+              (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart ==
+                vinsn_issue_q.vstart) &&
+              (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype ==
+                vinsn_issue_q.vtype)) begin
+            state_d      = SLIDE_RUN_OSUM;
+            issue_cnt_d  =
+              vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
+            commit_cnt_d = '0;
+            ordered_successor_prearm = 1'b1;
+          end
+`endif
         end
       end
       SLIDE_WAIT_OSUM: begin
@@ -964,6 +1036,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     if (vinsn_commit_valid && commit_cnt_d == '0) begin
       // Mark the vector instruction as being done
       pe_resp.vinsn_done[vinsn_commit.id] = 1'b1;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_d[vinsn_queue_q.commit_pnt] = 1'b0;
+`endif
 
       // Update the commit counters and pointers
       vinsn_queue_d.commit_cnt -= 1;
@@ -992,6 +1067,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       (pe_req_i.vfu == VFU_SlideUnit || pe_req_i.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      begin : p_mark_ordered_alias
+        ordered_alias_d[vinsn_queue_q.accept_pnt] =
+          pe_req_i.ordered_source_alias;
+      end
+`endif
 
       // Calculate the slide offset inside the vector register
       if (pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN})
@@ -1029,6 +1110,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       vrf_pnt_q             <= '0;
       output_limit_q        <= '0;
       state_q               <= SLIDE_IDLE;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_q       <= '0;
+`endif
       pe_resp_o             <= '0;
       result_final_gnt_q    <= '0;
       red_stride_cnt_q      <= 1;
@@ -1043,6 +1127,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       vrf_pnt_q             <= vrf_pnt_d;
       output_limit_q        <= output_limit_d;
       state_q               <= state_d;
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      ordered_alias_q       <= ordered_alias_d;
+`endif
       pe_resp_o             <= pe_resp;
       result_final_gnt_q    <= result_final_gnt_d;
       red_stride_cnt_q      <= red_stride_cnt_d;

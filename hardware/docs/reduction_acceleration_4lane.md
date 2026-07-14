@@ -621,3 +621,53 @@ VMFPU 原有 tagged fixed-DAG 只允许 `vfredusum`，其 context 清零恰好�
 仓库官方回归结果为：`vfredmin` 17/17、`vfredmax` 17/17、`vredsum` 20/20，`vredand`、`vredor`、`vredxor` 的全部测试项通过。新增的整数断言保证后台 context 始终与前台同构、后台 ALU issue 只出现在允许重叠的 tree/commit 状态、完成结果在提升前保持稳定。
 
 目前可以声称的是：同一前台/后台 context-interleaving 机制已覆盖 unordered FP sum/min/max 和全部整数规约，并在两个连续流 probe 上得到约 23% 的总周期下降。尚未覆盖 masked stream、ordered FP、不同 opcode/SEW 混合流和多 lane 数；也尚未给出综合后的 Fmax、面积和功耗。尤其 VALU 新增了 mux、shadow accumulator 和控制比较，论文结论必须在综合后用 `cycles × clock period` 复核，不能默认周期收益等于实际执行时间收益。
+
+## 18. 第二阶段 1～8 项机制的最终实现状态
+
+本阶段的八项工作不是八套彼此独立的数据通路，而是从“能观察”到“能重叠”、再到“能消除重复工作”的递进结构：第 1 项建立调度归因；第 2～4 项增加 root 缓冲、自适应 slack 和异构控制调度；第 5 项处理 ordered recurrence 的跨指令控制空隙；第 6 项把 context stream 扩展到 masked 路径；第 7 项消除 unordered tree 的固定队列级；第 8 项在严格门禁下复用完全重复的 ordered 结果。
+
+| 项 | 机制 | 实现位置 | 当前作用 |
+|---:|---|---|---|
+| 1 | stream 调度与瓶颈计数 | `ara_tb.sv` | 区分前台/后台、root 生产/消费、defer 和队列压力 |
+| 2 | prefetched-root FIFO | `vmfpu.sv` | tree 忙时保存已完成 local root，避免重新计算或丢失 owner |
+| 3 | slack-adaptive prefetch | `vmfpu.sv` | 依据 root 队列余量和 defer 历史动态决定后台发射 |
+| 4 | heterogeneous control interleave | `vmfpu.sv` | 在可证明兼容的控制组合间复用空槽，同时保持 context tag 隔离 |
+| 5 | ordered successor pre-arm 与首 beat look-ahead | `sldu.sv`、`vmfpu.sv` | 消除 `WAIT_OSUM`/`IDLE` 控制槽，并预取后继 seed/source |
+| 6 | masked context stream | `valu.sv`、`vmfpu.sv` | mask token 与算术 owner 解耦，允许 masked 后继参与 context overlap |
+| 7 | 4-lane tree-stage fall-through | `sldu.sv` | 空队列时把 tree packet 直接送入 lane spill，队列仅作弹性 fallback |
+| 8 | exact ordered-source fusion | `ara_sequencer.sv`、`sldu.sv`、`vmfpu.sv` | 对严格相邻且完整指纹相同的 `vfredosum` 排空 operands、跳过重复 recurrence、回放结果与 `fflags` |
+
+### 18.1 第 5 项：控制重叠的收益边界
+
+ordered interleave 仅允许 4-lane、unmasked、e32、相同 opcode/VL/vstart/vtype 的同构后继。SLDU 在前一条最终 token 完成端到端握手时直接预置下一条 `SLIDE_RUN_OSUM`；VMFPU 在前一条 `MFPU_WAIT` 中取得下一条 seed 和第一个 source beat。预取 credit 在整个 beat 发射完成前保持 owner，不会重复确认 operand queue。
+
+8 条 VL=32 `vfredosum` 的独立消融结果为 1316 cycles；关闭第 8 项时，第 5 项命中 7 次 pre-arm、消除 14 个显式控制槽，并完成 28 个 lane 预取事件，但总周期仍为 1316。原因是 ordered FP add 的数据相关 recurrence 比两个控制槽更长，控制空隙被主瓶颈完全遮蔽。因此第 5 项是第 8 项的 feeder 和协议基础，不能单独宣称端到端加速。
+
+### 18.2 第 7 项：tree 队列从必经级变为弹性后备
+
+unordered tree packet 在目标 lane spill 可接收且 issue/commit owner 一致时组合直达；只有部分 lane backpressure 时，未完成部分才落入原 result queue。直达包必须在所有目标握手后一次性扣减 tree commit count，不能同时由普通队列退休逻辑再次扣减。为了避免不同 VMFPU lane 的指令队列位置不一致，FP 直达还要求 SLDU issue/commit 均只有一个 owner。
+
+4-lane 回归中，混合规约由 290 降到 283 cycles，masked 流由 452 降到 432 cycles，浮点 min/max 流由 267 降到 261 cycles；三组结果检查均通过。这个收益来自删除固定 staging，而非减少规约元素数。
+
+### 18.3 第 8 项：中央证明标签、协议化排空和结果回放
+
+融合门禁由中央 `ara_sequencer` 产生，不能由 SLDU 和各 lane 根据自己的过滤队列分别推测。当前完整条件是：两条指令在架构向量指令流中立即相邻，均为 4-lane、unmasked、e32 `vfredosum`，并且 `vtype`、VL、vstart、vs1、vs2、source-use、scalar seed 和 FP rounding mode 全部相同。任何中间 load、VALU、slide、mask 或 `vmv` 都会更新中央“上一条指令”，从而使 alias 标签失效。
+
+这个中央标签修复了一个重要的 lane-local 假等价问题：全局 VL=32 在四个 lane 中分解为 8/8/8/8，而 VL=31 分解为 8/8/8/7；若只比较 local VL，前三个 lane 会误判 alias，lane3 却执行正常 recurrence，最终等待永远不会到达的 token。现在 SLDU 和所有 lane 接收同一个中央标签，且标签使用全局 VL/vstart 生成。
+
+alias 指令仍然拥有正常 operand request 和 hazard 生命周期。每个 VMFPU lane 进入 `OSUM_ALIAS_DRAIN`，以完整 source beat 为单位确认 operand queue；lane0 在排空完成后把 leader memoized result 写入 alias 的 destination，SLDU 同步跳过该指令的 token traversal。leader 每个 lane 产生的 FP exception flag 会做 OR 归并，alias 退休时重新产生相同的 `fflags` 脉冲，因此即使软件在两条向量指令之间清除 sticky flags，也不会因数值回放而漏掉异常贡献。
+
+专项探针的 measured region 包含 8 条完全相同的 VL=32 `vfredosum`：
+
+| 指标 | 第 5 项、关闭融合 | 第 5+8 项 | 改善 |
+|---|---:|---:|---:|
+| ROI total cycles | 1316 | **219** | **83.36%** |
+| alias instructions | 0 | **7** | 7/7 后继命中 |
+| drained lane beats | 0 | **112** | 7×4 lanes×4 beats |
+| result replays | 0 | **7** | 与 alias 数一致 |
+
+专项在 ROI 外还验证三种不命中情形：不同 source、不同 seed，以及 source 寄存器名称相同但中间被 `vmv` 改写；所有结果均正确。另用 signaling NaN 让 leader 产生 NV，等待 leader 完成、清除 `fflags` 后执行 alias，并确认 alias 重新置位 NV，覆盖 exception memo/replay。混合、masked、min/max、整数、widening 和原 stream 六类回归也全部通过，混合探针中的 VL32→VL31 边界专门防止 lane-local 指纹问题复现。
+
+### 18.4 论文表述边界
+
+83.36% 是“连续完全重复 ordered reduction”这一可复用工作负载上的结果，不是任意 `vfredosum` 的平均加速。第 8 项当前没有覆盖不同 destination 之外还存在数值变化的情况，也没有覆盖 masked、其它 SEW、`vfwredosum`、min/max 或整数规约。论文应把 exact-alias hit rate、operand drain 成本和 memo 生命周期作为独立参数，并同时报告第 5 项关闭/开启与第 8 项关闭/开启的消融。面积、Fmax、功耗和更多 lane 数仍需综合与后续试验，周期结果不能直接替代物理实现结论。

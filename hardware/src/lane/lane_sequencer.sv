@@ -339,6 +339,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         use_vs1        : pe_req.use_vs1,
         // vrgather/vcompress request vs2 in a non-conventional way from MaskB, not ALU
         use_vs2        : pe_req.use_vs2 && !(pe_req.op inside {[VRGATHER:VCOMPRESS]}),
+        ordered_source_alias : pe_req.ordered_source_alias,
         use_vd_op      : pe_req.use_vd_op,
         scalar_op      : pe_req.scalar_op,
         use_scalar_op  : pe_req.use_scalar_op,

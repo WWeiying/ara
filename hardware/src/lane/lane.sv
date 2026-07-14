@@ -163,6 +163,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     logic use_vs1;   // This operation uses vs1
     logic use_vs2;   // This operation uses vs1
     logic use_vd_op; // This operation uses vd as an operand as well
+    logic ordered_source_alias;
 
     elen_t scalar_op;    // Scalar operand
     logic use_scalar_op; // This operation uses the scalar operand

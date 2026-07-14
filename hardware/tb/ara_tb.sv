@@ -89,6 +89,13 @@ typedef struct {
   logic [63:0] tree_stage_bypass_cycles;
   logic [63:0] tree_stage_direct_lane_handshakes;
   logic [63:0] tree_stage_fallback_lane_samples;
+  logic [63:0] ordered_successor_prearm_events;
+  logic [63:0] ordered_control_bubbles_elided;
+  logic [63:0] ordered_prefetch_lane_events;
+  logic [63:0] ordered_prefetch_use_lane_cycles;
+  logic [63:0] source_fusion_alias_insns;
+  logic [63:0] source_fusion_drain_lane_beats;
+  logic [63:0] source_fusion_result_replays;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -571,6 +578,27 @@ function automatic red_stream_perf_t red_stream_perf_delta(
   delta.tree_stage_fallback_lane_samples =
     end_count.tree_stage_fallback_lane_samples -
     start_count.tree_stage_fallback_lane_samples;
+  delta.ordered_successor_prearm_events =
+    end_count.ordered_successor_prearm_events -
+    start_count.ordered_successor_prearm_events;
+  delta.ordered_control_bubbles_elided =
+    end_count.ordered_control_bubbles_elided -
+    start_count.ordered_control_bubbles_elided;
+  delta.ordered_prefetch_lane_events =
+    end_count.ordered_prefetch_lane_events -
+    start_count.ordered_prefetch_lane_events;
+  delta.ordered_prefetch_use_lane_cycles =
+    end_count.ordered_prefetch_use_lane_cycles -
+    start_count.ordered_prefetch_use_lane_cycles;
+  delta.source_fusion_alias_insns =
+    end_count.source_fusion_alias_insns -
+    start_count.source_fusion_alias_insns;
+  delta.source_fusion_drain_lane_beats =
+    end_count.source_fusion_drain_lane_beats -
+    start_count.source_fusion_drain_lane_beats;
+  delta.source_fusion_result_replays =
+    end_count.source_fusion_result_replays -
+    start_count.source_fusion_result_replays;
   return delta;
 endfunction
 
@@ -723,6 +751,20 @@ function automatic void print_red_stream_report(
       stats.tree_stage_direct_lane_handshakes);
     $display("[PERF] red_tree_stage_fallback_lane_samples: %0d",
       stats.tree_stage_fallback_lane_samples);
+    $display("[PERF] red_ordered_successor_prearm_events: %0d",
+      stats.ordered_successor_prearm_events);
+    $display("[PERF] red_ordered_control_bubbles_elided: %0d",
+      stats.ordered_control_bubbles_elided);
+    $display("[PERF] red_ordered_prefetch_lane_events: %0d",
+      stats.ordered_prefetch_lane_events);
+    $display("[PERF] red_ordered_prefetch_use_lane_cycles: %0d",
+      stats.ordered_prefetch_use_lane_cycles);
+    $display("[PERF] red_source_fusion_alias_insns: %0d",
+      stats.source_fusion_alias_insns);
+    $display("[PERF] red_source_fusion_drain_lane_beats: %0d",
+      stats.source_fusion_drain_lane_beats);
+    $display("[PERF] red_source_fusion_result_replays: %0d",
+      stats.source_fusion_result_replays);
   end else begin
     $fwrite(file_handle, "[PERF] red_tree_stage_bypass_cycles: %0d\n",
       stats.tree_stage_bypass_cycles);
@@ -732,6 +774,27 @@ function automatic void print_red_stream_report(
     $fwrite(file_handle,
       "[PERF] red_tree_stage_fallback_lane_samples: %0d\n",
       stats.tree_stage_fallback_lane_samples);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_successor_prearm_events: %0d\n",
+      stats.ordered_successor_prearm_events);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_control_bubbles_elided: %0d\n",
+      stats.ordered_control_bubbles_elided);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_prefetch_lane_events: %0d\n",
+      stats.ordered_prefetch_lane_events);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_prefetch_use_lane_cycles: %0d\n",
+      stats.ordered_prefetch_use_lane_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_source_fusion_alias_insns: %0d\n",
+      stats.source_fusion_alias_insns);
+    $fwrite(file_handle,
+      "[PERF] red_source_fusion_drain_lane_beats: %0d\n",
+      stats.source_fusion_drain_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_source_fusion_result_replays: %0d\n",
+      stats.source_fusion_result_replays);
   end
 endfunction
 
@@ -7114,6 +7177,58 @@ module ara_tb;
         $countones(
           ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.tree_route_valid &
           ~ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.sldu_result_gnt_i);
+`endif
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+      red_stream_perf_counters.ordered_successor_prearm_events <=
+        red_stream_perf_counters.ordered_successor_prearm_events +
+        ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+          ordered_successor_prearm;
+      // The original transition consumed SLIDE_WAIT_OSUM and the following
+      // SLIDE_IDLE setup cycle.  Count the two removed control slots explicitly
+      // rather than inferring them from total runtime.
+      red_stream_perf_counters.ordered_control_bubbles_elided <=
+        red_stream_perf_counters.ordered_control_bubbles_elided +
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+          ordered_successor_prearm ? 2 : 0);
+      red_stream_perf_counters.ordered_prefetch_lane_events <=
+        red_stream_perf_counters.ordered_prefetch_lane_events + $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_capture,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_capture,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_capture,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_capture});
+      red_stream_perf_counters.ordered_prefetch_use_lane_cycles <=
+        red_stream_perf_counters.ordered_prefetch_use_lane_cycles + $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_use,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_use,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_use,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.ordered_prefetch_use});
+`endif
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+      red_stream_perf_counters.source_fusion_alias_insns <=
+        red_stream_perf_counters.source_fusion_alias_insns +
+        ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.ordered_alias_skip;
+      red_stream_perf_counters.source_fusion_drain_lane_beats <=
+        red_stream_perf_counters.source_fusion_drain_lane_beats + $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.ordered_alias_drain_beat,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.ordered_alias_drain_beat,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.ordered_alias_drain_beat,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.ordered_alias_drain_beat});
+      red_stream_perf_counters.source_fusion_result_replays <=
+        red_stream_perf_counters.source_fusion_result_replays +
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+          i_vmfpu.ordered_alias_publish;
 `endif
     end
   end

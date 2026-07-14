@@ -12,6 +12,12 @@ typedef struct packed {
 
   ara_op_e op; // Operation
 
+  // Central-sequencer proof that this instruction is an exact, immediately
+  // adjacent duplicate of the preceding ordered reduction.  Producing the
+  // tag centrally keeps the SLDU and every lane in agreement and prevents an
+  // intervening vector write from being hidden by their filtered queues.
+  logic ordered_source_alias;
+
   // Mask vector register operand
   logic vm;
   rvv_pkg::vew_e eew_vmask;
