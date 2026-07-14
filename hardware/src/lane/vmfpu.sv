@@ -777,6 +777,23 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
   elen_t red_stream_bg_result_d, red_stream_bg_result_q;
 
+  // The four-entry VMFPU instruction queue provides one architectural
+  // foreground plus up to three prefetched contexts.  Completed lane-local
+  // roots wait here while a newer context keeps the tagged fpnew DAG busy.
+  localparam int unsigned RedStreamRootDepth = VInsnQueueDepth - 1;
+  typedef logic [idx_width(RedStreamRootDepth)-1:0] red_stream_root_ptr_t;
+  elen_t [RedStreamRootDepth-1:0] red_stream_root_data_d,
+                                        red_stream_root_data_q;
+  red_stream_root_ptr_t red_stream_root_write_pnt_d,
+                        red_stream_root_write_pnt_q;
+  red_stream_root_ptr_t red_stream_root_read_pnt_d,
+                        red_stream_root_read_pnt_q;
+  logic [idx_width(RedStreamRootDepth+1)-1:0] red_stream_root_count_d,
+                                                   red_stream_root_count_q;
+  logic [idx_width(VInsnQueueDepth+1)-1:0] red_stream_prefetched_count_d,
+                                                 red_stream_prefetched_count_q;
+  logic red_stream_promote_foreground;
+
   logic [31:0] red_stream_bg_issue_cycles_d, red_stream_bg_issue_cycles_q;
   logic [31:0] red_stream_overlap_cycles_d, red_stream_overlap_cycles_q;
   logic [31:0] red_stream_primary_conflict_cycles_d,
@@ -1709,6 +1726,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     red_stream_bg_complete_d            = red_stream_bg_complete_q;
     red_stream_foreground_advanced_d    = red_stream_foreground_advanced_q;
     red_stream_bg_result_d              = red_stream_bg_result_q;
+    red_stream_root_data_d              = red_stream_root_data_q;
+    red_stream_root_write_pnt_d         = red_stream_root_write_pnt_q;
+    red_stream_root_read_pnt_d          = red_stream_root_read_pnt_q;
+    red_stream_root_count_d             = red_stream_root_count_q;
+    red_stream_prefetched_count_d       = red_stream_prefetched_count_q;
+    red_stream_promote_foreground       = 1'b0;
     red_stream_bg_issue_cycles_d        = red_stream_bg_issue_cycles_q;
     red_stream_overlap_cycles_d         = red_stream_overlap_cycles_q;
     red_stream_primary_conflict_cycles_d = red_stream_primary_conflict_cycles_q;
@@ -2688,34 +2711,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           red_context_enabled_d    = red_context_eligible(vinsn_issue_d);
           red_context_two_way_d    = (vinsn_issue_d.vl <= 8);
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
-          red_stream_bg_active_d           = 1'b0;
-          red_stream_bg_complete_d         = 1'b0;
-          red_stream_foreground_advanced_d = 1'b0;
           if (red_stream_foreground_advanced_q) begin
-            // The issue pointer already names the next processing instruction.
-            // If its local root is ready, seed the old inter-lane protocol
-            // directly; otherwise promote the live background DAG to the
-            // foreground INTRA state without resetting any feedback owner.
-            red_stream_foreground_advanced_d = 1'b0;
+            red_stream_promote_foreground = 1'b1;
+            red_stream_prefetched_count_d =
+              red_stream_prefetched_count_d - 1'b1;
+            red_stream_foreground_advanced_d =
+              (red_stream_prefetched_count_d != '0);
 
-            if (red_stream_bg_complete_q) begin
-              result_queue_d[result_queue_write_pnt_q].wdata =
-                red_stream_bg_result_q;
-              result_queue_d[result_queue_write_pnt_q].addr =
-                vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
-              result_queue_d[result_queue_write_pnt_q].id =
-                vinsn_processing_d.id;
-              result_queue_d[result_queue_write_pnt_q].be =
-                be(1, vinsn_processing_d.vtype.vsew);
-              result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
-
-              to_process_cnt_d              = '0;
-              first_op_d                    = 1'b0;
-              red_context_enabled_d         = 1'b0;
-              red_stream_bg_complete_d      = 1'b0;
-              red_stream_bg_active_d        = 1'b0;
-              mfpu_state_d                  = INTER_LANES_REDUCTION_TX;
-            end else if (red_stream_bg_active_q) begin
+            // Preserve a newer live DAG while an older queued root occupies
+            // the inter-lane tree.  The global issue-side registers belong to
+            // that live DAG, whereas processing_d names the root promoted in
+            // architectural order.
+            if (red_stream_bg_active_q) begin
               issue_cnt_d                   = issue_cnt_q;
               first_op_d                    = first_op_q;
               intra_op_rx_cnt_d             = intra_op_rx_cnt_q;
@@ -2727,6 +2734,31 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               red_context_phase_d           = red_context_phase_q;
               red_context_enabled_d         = 1'b1;
               red_context_two_way_d         = red_context_two_way_q;
+            end
+
+            if ((red_stream_root_count_q != '0) ||
+                red_stream_bg_complete_q) begin
+              result_queue_d[result_queue_write_pnt_q].wdata =
+                (red_stream_root_count_q != '0)
+                  ? red_stream_root_data_q[red_stream_root_read_pnt_q]
+                  : red_stream_bg_result_q;
+              result_queue_d[result_queue_write_pnt_q].addr =
+                vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
+              result_queue_d[result_queue_write_pnt_q].id =
+                vinsn_processing_d.id;
+              result_queue_d[result_queue_write_pnt_q].be =
+                be(1, vinsn_processing_d.vtype.vsew);
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+
+              to_process_cnt_d              = '0;
+              if (!red_stream_bg_active_q) begin
+                first_op_d            = 1'b0;
+                red_context_enabled_d = 1'b0;
+              end
+              if (red_stream_root_count_q == '0)
+                red_stream_bg_complete_d = 1'b0;
+              mfpu_state_d                  = INTER_LANES_REDUCTION_TX;
+            end else if (red_stream_bg_active_q) begin
               red_stream_bg_active_d        = 1'b0;
               mfpu_state_d                  = INTRA_LANE_REDUCTION;
             end
@@ -2745,8 +2777,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     if ((mfpu_state_q inside {INTER_LANES_REDUCTION_TX,
                               INTER_LANES_REDUCTION_RX,
                               SIMD_REDUCTION}) &&
-        !red_stream_foreground_advanced_q &&
         !red_stream_bg_active_q && !red_stream_bg_complete_q &&
+        (red_stream_root_count_q < RedStreamRootDepth) &&
         (vinsn_queue_q.issue_cnt > 1)) begin
       automatic logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt =
         (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
@@ -2774,6 +2806,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         red_stream_bg_active_d           = 1'b1;
         red_stream_bg_complete_d         = 1'b0;
         red_stream_foreground_advanced_d = 1'b1;
+        red_stream_prefetched_count_d    =
+          red_stream_prefetched_count_q + 1'b1;
       end
     end
 
@@ -2913,6 +2947,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         endcase
       end
     end
+
+    // Drain a completed live DAG into the in-order root FIFO unless the same
+    // root is being promoted directly.  Push and pop may coincide, keeping
+    // the FIFO full without creating a scheduler bubble.
+    begin : p_red_stream_root_fifo
+      automatic logic pop_root = red_stream_promote_foreground &&
+        (red_stream_root_count_q != '0);
+      automatic logic direct_complete = red_stream_promote_foreground &&
+        (red_stream_root_count_q == '0) && red_stream_bg_complete_q;
+      automatic logic push_root = red_stream_bg_complete_q && !direct_complete &&
+        ((red_stream_root_count_q < RedStreamRootDepth) || pop_root);
+
+      if (push_root) begin
+        red_stream_root_data_d[red_stream_root_write_pnt_q] =
+          red_stream_bg_result_q;
+        red_stream_root_write_pnt_d =
+          (red_stream_root_write_pnt_q == RedStreamRootDepth-1)
+            ? '0 : red_stream_root_write_pnt_q + 1'b1;
+        red_stream_bg_complete_d = 1'b0;
+      end
+      if (pop_root)
+        red_stream_root_read_pnt_d =
+          (red_stream_root_read_pnt_q == RedStreamRootDepth-1)
+            ? '0 : red_stream_root_read_pnt_q + 1'b1;
+
+      unique case ({push_root, pop_root})
+        2'b10: red_stream_root_count_d = red_stream_root_count_q + 1'b1;
+        2'b01: red_stream_root_count_d = red_stream_root_count_q - 1'b1;
+        default:;
+      endcase
+    end
 `endif
 
     //////////////////////////////////
@@ -3022,6 +3087,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           red_stream_bg_complete_d         = 1'b0;
           red_stream_foreground_advanced_d = 1'b0;
           red_stream_bg_result_d           = '0;
+          red_stream_root_data_d           = '0;
+          red_stream_root_write_pnt_d      = '0;
+          red_stream_root_read_pnt_d       = '0;
+          red_stream_root_count_d          = '0;
+          red_stream_prefetched_count_d    = '0;
 `endif
 `endif
 
@@ -3082,6 +3152,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         red_stream_bg_complete_d         = 1'b0;
         red_stream_foreground_advanced_d = 1'b0;
         red_stream_bg_result_d           = '0;
+        red_stream_root_data_d           = '0;
+        red_stream_root_write_pnt_d      = '0;
+        red_stream_root_read_pnt_d       = '0;
+        red_stream_root_count_d          = '0;
+        red_stream_prefetched_count_d    = '0;
 `endif
 `endif
         issue_cnt_d             = vfu_operation_i.vl;
@@ -3167,6 +3242,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_stream_bg_complete_q             <= 1'b0;
       red_stream_foreground_advanced_q     <= 1'b0;
       red_stream_bg_result_q               <= '0;
+      red_stream_root_data_q               <= '0;
+      red_stream_root_write_pnt_q          <= '0;
+      red_stream_root_read_pnt_q           <= '0;
+      red_stream_root_count_q              <= '0;
+      red_stream_prefetched_count_q        <= '0;
       red_stream_bg_issue_cycles_q         <= '0;
       red_stream_overlap_cycles_q          <= '0;
       red_stream_primary_conflict_cycles_q <= '0;
@@ -3210,6 +3290,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_stream_bg_complete_q             <= red_stream_bg_complete_d;
       red_stream_foreground_advanced_q     <= red_stream_foreground_advanced_d;
       red_stream_bg_result_q               <= red_stream_bg_result_d;
+      red_stream_root_data_q               <= red_stream_root_data_d;
+      red_stream_root_write_pnt_q          <= red_stream_root_write_pnt_d;
+      red_stream_root_read_pnt_q           <= red_stream_root_read_pnt_d;
+      red_stream_root_count_q              <= red_stream_root_count_d;
+      red_stream_prefetched_count_q        <= red_stream_prefetched_count_d;
       red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
       red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
       red_stream_primary_conflict_cycles_q <= red_stream_primary_conflict_cycles_d;
@@ -3308,6 +3393,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7]) |->
         (red_context_flow_active || red_stream_bg_active_q)
   ) else $error("tagged reduction response escaped both context schedulers");
+
+  a_red_stream_root_fifo_never_overflows: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_root_count_q <= RedStreamRootDepth
+  ) else $error("FP reduction root FIFO overflowed");
+
+  a_red_stream_context_accounting_is_exact: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_prefetched_count_q ==
+        (red_stream_root_count_q + red_stream_bg_active_q +
+         red_stream_bg_complete_q)
+  ) else $error("FP reduction stream context accounting diverged");
+
+  a_red_stream_advance_flag_matches_contexts: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_foreground_advanced_q ==
+        (red_stream_prefetched_count_q != '0)
+  ) else $error("FP reduction stream issue-pointer state diverged");
 `endif
 `endif
 `endif

@@ -79,6 +79,11 @@ typedef struct {
   logic [NrRedStreamClasses-1:0][63:0] complete_wait_lane_sample;
   logic [NrRedStreamClasses-1:0][63:0] full_promotion_lane_sample;
   logic [NrRedStreamClasses-1:0][63:0] partial_promotion_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] root_nonempty_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] root_full_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] root_occupancy_lane_sum;
+  logic [NrRedStreamClasses-1:0][63:0] root_push_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] root_pop_lane_sample;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -539,6 +544,16 @@ function automatic red_stream_perf_t red_stream_perf_delta(
     start_count.full_promotion_lane_sample;
   delta.partial_promotion_lane_sample = end_count.partial_promotion_lane_sample -
     start_count.partial_promotion_lane_sample;
+  delta.root_nonempty_lane_sample = end_count.root_nonempty_lane_sample -
+    start_count.root_nonempty_lane_sample;
+  delta.root_full_lane_sample = end_count.root_full_lane_sample -
+    start_count.root_full_lane_sample;
+  delta.root_occupancy_lane_sum = end_count.root_occupancy_lane_sum -
+    start_count.root_occupancy_lane_sum;
+  delta.root_push_lane_sample = end_count.root_push_lane_sample -
+    start_count.root_push_lane_sample;
+  delta.root_pop_lane_sample = end_count.root_pop_lane_sample -
+    start_count.root_pop_lane_sample;
   return delta;
 endfunction
 
@@ -595,6 +610,16 @@ function automatic void print_red_stream_report(
         stats.full_promotion_lane_sample[c]);
       $display("[PERF] red_stream_%s_partial_promotion_lane_samples: %0d", name,
         stats.partial_promotion_lane_sample[c]);
+      $display("[PERF] red_stream_%s_root_nonempty_lane_samples: %0d", name,
+        stats.root_nonempty_lane_sample[c]);
+      $display("[PERF] red_stream_%s_root_full_lane_samples: %0d", name,
+        stats.root_full_lane_sample[c]);
+      $display("[PERF] red_stream_%s_root_occupancy_lane_sum: %0d", name,
+        stats.root_occupancy_lane_sum[c]);
+      $display("[PERF] red_stream_%s_root_push_lane_samples: %0d", name,
+        stats.root_push_lane_sample[c]);
+      $display("[PERF] red_stream_%s_root_pop_lane_samples: %0d", name,
+        stats.root_pop_lane_sample[c]);
       $display("[PERF] red_stream_%s_candidate_partition_consistent: %0d", name,
         candidate_outcomes == stats.candidate_lane_sample[c]);
     end else begin
@@ -644,6 +669,21 @@ function automatic void print_red_stream_report(
       $fwrite(file_handle,
         "[PERF] red_stream_%s_partial_promotion_lane_samples: %0d\n", name,
         stats.partial_promotion_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_root_nonempty_lane_samples: %0d\n", name,
+        stats.root_nonempty_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_root_full_lane_samples: %0d\n", name,
+        stats.root_full_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_root_occupancy_lane_sum: %0d\n", name,
+        stats.root_occupancy_lane_sum[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_root_push_lane_samples: %0d\n", name,
+        stats.root_push_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_root_pop_lane_samples: %0d\n", name,
+        stats.root_pop_lane_sample[c]);
       $fwrite(file_handle,
         "[PERF] red_stream_%s_candidate_partition_consistent: %0d\n", name,
         candidate_outcomes == stats.candidate_lane_sample[c]);
@@ -6388,6 +6428,11 @@ module ara_tb;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_complete_wait;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_full_promotion;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_partial_promotion;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_nonempty;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_full;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0][2:0] red_stream_root_occupancy;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_push;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_pop;
   red_stream_perf_t red_stream_perf_counters;
 
   // Observe lane-local VALU/VMFPU progress and backpressure. OR-reduction in
@@ -6468,20 +6513,20 @@ module ara_tb;
         (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           alu_state_q inside {3'd2, 3'd3, 3'd5}) &&
         !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
-          red_stream_foreground_advanced_q &&
-        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           red_stream_bg_active_q &&
         !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
-          red_stream_bg_complete_q;
+          red_stream_bg_complete_q &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_count_q < ValuInsnQueueDepth-1);
       automatic logic fp_window =
         (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           mfpu_state_q inside {3'd2, 3'd3, 3'd5}) &&
         !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
-          red_stream_foreground_advanced_q &&
-        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           red_stream_bg_active_q &&
         !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
-          red_stream_bg_complete_q;
+          red_stream_bg_complete_q &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_count_q < MfpuInsnQueueDepth-1);
       automatic logic valu_candidate = valu_window &&
         (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           vinsn_queue_q.issue_cnt > 1);
@@ -6508,6 +6553,11 @@ module ara_tb;
       red_stream_complete_wait[l] = '0;
       red_stream_full_promotion[l] = '0;
       red_stream_partial_promotion[l] = '0;
+      red_stream_root_nonempty[l] = '0;
+      red_stream_root_full[l] = '0;
+      red_stream_root_occupancy[l] = '0;
+      red_stream_root_push[l] = '0;
+      red_stream_root_pop[l] = '0;
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
       red_stream_window[l][RedStreamValu] = valu_window;
@@ -6607,11 +6657,15 @@ module ara_tb;
       red_stream_full_promotion[l][RedStreamValu] =
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           red_stream_retire_foreground &&
-        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
-          red_stream_bg_complete_q;
+        ((ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_count_q != '0) ||
+         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_q);
       red_stream_partial_promotion[l][RedStreamValu] =
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           red_stream_retire_foreground &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_count_q == '0) &&
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
           red_stream_bg_active_q;
       red_stream_full_promotion[l][RedStreamFp] =
@@ -6619,15 +6673,54 @@ module ara_tb;
           mfpu_state_q == 3'd7) &&
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           red_stream_foreground_advanced_q &&
-        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
-          red_stream_bg_complete_q;
+        ((ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_count_q != '0) ||
+         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_q);
       red_stream_partial_promotion[l][RedStreamFp] =
         (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           mfpu_state_q == 3'd7) &&
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           red_stream_foreground_advanced_q &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_count_q == '0) &&
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           red_stream_bg_active_q;
+
+      red_stream_root_occupancy[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_count_q;
+      red_stream_root_occupancy[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_count_q;
+      red_stream_root_nonempty[l][RedStreamValu] =
+        red_stream_root_occupancy[l][RedStreamValu] != '0;
+      red_stream_root_nonempty[l][RedStreamFp] =
+        red_stream_root_occupancy[l][RedStreamFp] != '0;
+      red_stream_root_full[l][RedStreamValu] =
+        red_stream_root_occupancy[l][RedStreamValu] == ValuInsnQueueDepth-1;
+      red_stream_root_full[l][RedStreamFp] =
+        red_stream_root_occupancy[l][RedStreamFp] == MfpuInsnQueueDepth-1;
+      red_stream_root_push[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_write_pnt_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_write_pnt_q;
+      red_stream_root_push[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_write_pnt_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_write_pnt_q;
+      red_stream_root_pop[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_read_pnt_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_root_read_pnt_q;
+      red_stream_root_pop[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_read_pnt_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_root_read_pnt_q;
 `endif
     end
 
@@ -6837,6 +6930,11 @@ module ara_tb;
         automatic logic [63:0] complete_wait_inc = '0;
         automatic logic [63:0] full_promotion_inc = '0;
         automatic logic [63:0] partial_promotion_inc = '0;
+        automatic logic [63:0] root_nonempty_inc = '0;
+        automatic logic [63:0] root_full_inc = '0;
+        automatic logic [63:0] root_occupancy_inc = '0;
+        automatic logic [63:0] root_push_inc = '0;
+        automatic logic [63:0] root_pop_inc = '0;
         for (int unsigned l = 0; l < NrLanes; l++) begin
           window_inc += red_stream_window[l][c];
           no_candidate_inc += red_stream_no_candidate[l][c];
@@ -6856,6 +6954,11 @@ module ara_tb;
           complete_wait_inc += red_stream_complete_wait[l][c];
           full_promotion_inc += red_stream_full_promotion[l][c];
           partial_promotion_inc += red_stream_partial_promotion[l][c];
+          root_nonempty_inc += red_stream_root_nonempty[l][c];
+          root_full_inc += red_stream_root_full[l][c];
+          root_occupancy_inc += red_stream_root_occupancy[l][c];
+          root_push_inc += red_stream_root_push[l][c];
+          root_pop_inc += red_stream_root_pop[l][c];
         end
         red_stream_perf_counters.window_lane_sample[c] <=
           red_stream_perf_counters.window_lane_sample[c] + window_inc;
@@ -6900,6 +7003,18 @@ module ara_tb;
         red_stream_perf_counters.partial_promotion_lane_sample[c] <=
           red_stream_perf_counters.partial_promotion_lane_sample[c] +
           partial_promotion_inc;
+        red_stream_perf_counters.root_nonempty_lane_sample[c] <=
+          red_stream_perf_counters.root_nonempty_lane_sample[c] +
+          root_nonempty_inc;
+        red_stream_perf_counters.root_full_lane_sample[c] <=
+          red_stream_perf_counters.root_full_lane_sample[c] + root_full_inc;
+        red_stream_perf_counters.root_occupancy_lane_sum[c] <=
+          red_stream_perf_counters.root_occupancy_lane_sum[c] +
+          root_occupancy_inc;
+        red_stream_perf_counters.root_push_lane_sample[c] <=
+          red_stream_perf_counters.root_push_lane_sample[c] + root_push_inc;
+        red_stream_perf_counters.root_pop_lane_sample[c] <=
+          red_stream_perf_counters.root_pop_lane_sample[c] + root_pop_inc;
       end
     end
   end

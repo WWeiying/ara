@@ -366,6 +366,22 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   elen_t red_stream_bg_acc_d, red_stream_bg_acc_q;
   elen_t red_stream_bg_result_d, red_stream_bg_result_q;
 
+  // Up to three completed lane-local roots can wait behind the foreground
+  // tree.  Together with the foreground this exposes all four instruction
+  // queue entries as independent contexts without replicating the ALU.
+  localparam int unsigned RedStreamRootDepth = VInsnQueueDepth - 1;
+  typedef logic [idx_width(RedStreamRootDepth)-1:0] red_stream_root_ptr_t;
+  elen_t [RedStreamRootDepth-1:0] red_stream_root_data_d,
+                                        red_stream_root_data_q;
+  red_stream_root_ptr_t red_stream_root_write_pnt_d,
+                        red_stream_root_write_pnt_q;
+  red_stream_root_ptr_t red_stream_root_read_pnt_d,
+                        red_stream_root_read_pnt_q;
+  logic [idx_width(RedStreamRootDepth+1)-1:0] red_stream_root_count_d,
+                                                   red_stream_root_count_q;
+  logic [idx_width(VInsnQueueDepth+1)-1:0] red_stream_prefetched_count_d,
+                                                 red_stream_prefetched_count_q;
+
   logic [31:0] red_stream_bg_issue_cycles_d, red_stream_bg_issue_cycles_q;
   logic [31:0] red_stream_overlap_cycles_d, red_stream_overlap_cycles_q;
   logic [31:0] red_stream_primary_conflict_cycles_d,
@@ -535,6 +551,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     red_stream_bg_first_d               = red_stream_bg_first_q;
     red_stream_bg_acc_d                 = red_stream_bg_acc_q;
     red_stream_bg_result_d              = red_stream_bg_result_q;
+    red_stream_root_data_d              = red_stream_root_data_q;
+    red_stream_root_write_pnt_d         = red_stream_root_write_pnt_q;
+    red_stream_root_read_pnt_d          = red_stream_root_read_pnt_q;
+    red_stream_root_count_d             = red_stream_root_count_q;
+    red_stream_prefetched_count_d       = red_stream_prefetched_count_q;
     red_stream_bg_issue_cycles_d        = red_stream_bg_issue_cycles_q;
     red_stream_overlap_cycles_d         = red_stream_overlap_cycles_q;
     red_stream_primary_conflict_cycles_d =
@@ -846,8 +867,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     if ((alu_state_q inside {INTER_LANES_REDUCTION_TX,
                              INTER_LANES_REDUCTION_RX,
                              SIMD_REDUCTION}) &&
-        !red_stream_foreground_advanced_q &&
         !red_stream_bg_active_q && !red_stream_bg_complete_q &&
+        (red_stream_root_count_q < RedStreamRootDepth) &&
         (vinsn_queue_q.issue_cnt > 1)) begin
       automatic logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt =
         (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
@@ -866,6 +887,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         red_stream_bg_first_d            = 1'b1;
         red_stream_bg_acc_d              = '0;
         red_stream_bg_result_d           = '0;
+        red_stream_prefetched_count_d    =
+          red_stream_prefetched_count_q + 1'b1;
       end
     end
 
@@ -1033,6 +1056,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         red_stream_bg_first_d            = 1'b0;
         red_stream_bg_acc_d              = '0;
         red_stream_bg_result_d           = '0;
+        red_stream_root_data_d           = '0;
+        red_stream_root_write_pnt_d      = '0;
+        red_stream_root_read_pnt_d       = '0;
+        red_stream_root_count_d          = '0;
+        red_stream_prefetched_count_d    = '0;
 `endif
 
         issue_cnt_d = vfu_operation_i.vl;
@@ -1047,31 +1075,68 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     end
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
-    // Once the foreground commits, attach the preserved background context to
-    // the ordinary result-queue slot.  A completed local root can enter the
-    // SLDU tree immediately; a partial root resumes in the legacy INTRA state.
-    if (red_stream_retire_foreground) begin
-      result_queue_d[result_queue_write_pnt_d].wdata =
-        red_stream_bg_complete_d ? red_stream_bg_result_d
-                                 : red_stream_bg_acc_d;
-      result_queue_d[result_queue_write_pnt_d].addr =
-        vaddr(vinsn_issue_q.vd, NrLanes, VLEN);
-      result_queue_d[result_queue_write_pnt_d].id = vinsn_issue_q.id;
-      result_queue_d[result_queue_write_pnt_d].be =
-        be(1, vinsn_issue_q.vtype.vsew);
+    // Completed roots are queued independently of the live local accumulator.
+    // This lets B enter the tree while C/D continue consuming ALU idle slots.
+    begin : p_red_stream_root_fifo
+      automatic logic pop_root = red_stream_retire_foreground &&
+        (red_stream_root_count_q != '0);
+      automatic logic direct_complete = red_stream_retire_foreground &&
+        (red_stream_root_count_q == '0) && red_stream_bg_complete_q;
+      automatic logic push_root = red_stream_bg_complete_q && !direct_complete &&
+        ((red_stream_root_count_q < RedStreamRootDepth) || pop_root);
+      automatic vfu_operation_t next_foreground =
+        vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt];
 
-      if (red_stream_bg_complete_d) begin
-        first_op_d = 1'b0;
-        alu_state_d = INTER_LANES_REDUCTION_TX;
-      end else begin
-        first_op_d = red_stream_bg_first_d;
-        alu_state_d = INTRA_LANE_REDUCTION;
+      // Promote the oldest prefetched instruction in architectural order.
+      if (red_stream_retire_foreground) begin
+        result_queue_d[result_queue_write_pnt_d].addr =
+          vaddr(next_foreground.vd, NrLanes, VLEN);
+        result_queue_d[result_queue_write_pnt_d].id = next_foreground.id;
+        result_queue_d[result_queue_write_pnt_d].be =
+          be(1, next_foreground.vtype.vsew);
+
+        if (pop_root) begin
+          result_queue_d[result_queue_write_pnt_d].wdata =
+            red_stream_root_data_q[red_stream_root_read_pnt_q];
+          first_op_d = 1'b0;
+          alu_state_d = INTER_LANES_REDUCTION_TX;
+        end else if (red_stream_bg_complete_q) begin
+          result_queue_d[result_queue_write_pnt_d].wdata =
+            red_stream_bg_result_q;
+          first_op_d = 1'b0;
+          alu_state_d = INTER_LANES_REDUCTION_TX;
+          red_stream_bg_complete_d = 1'b0;
+        end else begin
+          result_queue_d[result_queue_write_pnt_d].wdata = red_stream_bg_acc_q;
+          first_op_d = red_stream_bg_first_q;
+          alu_state_d = INTRA_LANE_REDUCTION;
+          red_stream_bg_active_d = 1'b0;
+          red_stream_bg_first_d = 1'b0;
+        end
+
+        red_stream_prefetched_count_d = red_stream_prefetched_count_d - 1'b1;
+        red_stream_foreground_advanced_d =
+          (red_stream_prefetched_count_d != '0);
       end
 
-      red_stream_bg_active_d           = 1'b0;
-      red_stream_bg_complete_d         = 1'b0;
-      red_stream_foreground_advanced_d = 1'b0;
-      red_stream_bg_first_d            = 1'b0;
+      if (push_root) begin
+        red_stream_root_data_d[red_stream_root_write_pnt_q] =
+          red_stream_bg_result_q;
+        red_stream_root_write_pnt_d =
+          (red_stream_root_write_pnt_q == RedStreamRootDepth-1)
+            ? '0 : red_stream_root_write_pnt_q + 1'b1;
+        red_stream_bg_complete_d = 1'b0;
+      end
+      if (pop_root)
+        red_stream_root_read_pnt_d =
+          (red_stream_root_read_pnt_q == RedStreamRootDepth-1)
+            ? '0 : red_stream_root_read_pnt_q + 1'b1;
+
+      unique case ({push_root, pop_root})
+        2'b10: red_stream_root_count_d = red_stream_root_count_q + 1'b1;
+        2'b01: red_stream_root_count_d = red_stream_root_count_q - 1'b1;
+        default:;
+      endcase
     end
 `endif
 
@@ -1104,6 +1169,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_bg_first_q                <= 1'b0;
       red_stream_bg_acc_q                  <= '0;
       red_stream_bg_result_q               <= '0;
+      red_stream_root_data_q               <= '0;
+      red_stream_root_write_pnt_q          <= '0;
+      red_stream_root_read_pnt_q           <= '0;
+      red_stream_root_count_q              <= '0;
+      red_stream_prefetched_count_q        <= '0;
       red_stream_bg_issue_cycles_q         <= '0;
       red_stream_overlap_cycles_q          <= '0;
       red_stream_primary_conflict_cycles_q <= '0;
@@ -1127,6 +1197,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_bg_first_q                <= red_stream_bg_first_d;
       red_stream_bg_acc_q                  <= red_stream_bg_acc_d;
       red_stream_bg_result_q               <= red_stream_bg_result_d;
+      red_stream_root_data_q               <= red_stream_root_data_d;
+      red_stream_root_write_pnt_q          <= red_stream_root_write_pnt_d;
+      red_stream_root_read_pnt_q           <= red_stream_root_read_pnt_d;
+      red_stream_root_count_q              <= red_stream_root_count_d;
+      red_stream_prefetched_count_q        <= red_stream_prefetched_count_d;
       red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
       red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
       red_stream_primary_conflict_cycles_q <=
@@ -1159,6 +1234,24 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       (red_stream_bg_complete_q && !red_stream_retire_foreground) |=>
         $stable(red_stream_bg_result_q)
   ) else $error("completed integer reduction context changed before promotion");
+
+  a_integer_stream_root_fifo_never_overflows: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_root_count_q <= RedStreamRootDepth
+  ) else $error("integer reduction root FIFO overflowed");
+
+  a_integer_stream_context_accounting_is_exact: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_prefetched_count_q ==
+        (red_stream_root_count_q + red_stream_bg_active_q +
+         red_stream_bg_complete_q)
+  ) else $error("integer reduction stream context accounting diverged");
+
+  a_integer_stream_advance_flag_matches_contexts: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_foreground_advanced_q ==
+        (red_stream_prefetched_count_q != '0)
+  ) else $error("integer reduction stream issue-pointer state diverged");
 `endif
 `endif
 
