@@ -49,6 +49,37 @@ localparam int unsigned NrMfpuSubunits = 3;    // packed multiplier, serial divi
 localparam int unsigned NrValuStates = 6;
 localparam int unsigned NrMfpuStates = 8;
 localparam int unsigned NrSlduStates = 9;
+localparam int unsigned NrRedStreamClasses = 2;
+
+typedef enum logic {
+  RedStreamValu,
+  RedStreamFp
+} red_stream_class_e;
+
+// Reduction-stream diagnostics are lane samples.  This is intentional: a
+// context may be eligible in three lanes while a fourth lane is still blocked,
+// and a wall-cycle OR would hide exactly the desynchronization that constrains
+// promotion.  Candidate outcome counters form a priority partition.
+typedef struct {
+  logic [NrRedStreamClasses-1:0][63:0] window_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] no_candidate_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] candidate_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] eligible_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_unsupported_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_mask_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_short_vl_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_opcode_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_sew_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] reject_rounding_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] start_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] active_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] background_issue_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] primary_conflict_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] complete_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] complete_wait_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] full_promotion_lane_sample;
+  logic [NrRedStreamClasses-1:0][63:0] partial_promotion_lane_sample;
+} red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
 typedef enum logic {
@@ -466,6 +497,158 @@ endfunction
 
 function automatic real perf_ratio(logic [63:0] numerator, logic [63:0] denominator);
   perf_ratio = denominator == '0 ? 0.0 : real'(numerator) / real'(denominator);
+endfunction
+
+function automatic red_stream_perf_t red_stream_perf_delta(
+  red_stream_perf_t end_count, red_stream_perf_t start_count
+);
+  red_stream_perf_t delta;
+  delta.window_lane_sample =
+    end_count.window_lane_sample - start_count.window_lane_sample;
+  delta.no_candidate_lane_sample =
+    end_count.no_candidate_lane_sample - start_count.no_candidate_lane_sample;
+  delta.candidate_lane_sample =
+    end_count.candidate_lane_sample - start_count.candidate_lane_sample;
+  delta.eligible_lane_sample =
+    end_count.eligible_lane_sample - start_count.eligible_lane_sample;
+  delta.reject_unsupported_lane_sample = end_count.reject_unsupported_lane_sample -
+    start_count.reject_unsupported_lane_sample;
+  delta.reject_mask_lane_sample =
+    end_count.reject_mask_lane_sample - start_count.reject_mask_lane_sample;
+  delta.reject_short_vl_lane_sample = end_count.reject_short_vl_lane_sample -
+    start_count.reject_short_vl_lane_sample;
+  delta.reject_opcode_lane_sample =
+    end_count.reject_opcode_lane_sample - start_count.reject_opcode_lane_sample;
+  delta.reject_sew_lane_sample =
+    end_count.reject_sew_lane_sample - start_count.reject_sew_lane_sample;
+  delta.reject_rounding_lane_sample = end_count.reject_rounding_lane_sample -
+    start_count.reject_rounding_lane_sample;
+  delta.start_lane_sample =
+    end_count.start_lane_sample - start_count.start_lane_sample;
+  delta.active_lane_sample =
+    end_count.active_lane_sample - start_count.active_lane_sample;
+  delta.background_issue_lane_sample = end_count.background_issue_lane_sample -
+    start_count.background_issue_lane_sample;
+  delta.primary_conflict_lane_sample = end_count.primary_conflict_lane_sample -
+    start_count.primary_conflict_lane_sample;
+  delta.complete_lane_sample =
+    end_count.complete_lane_sample - start_count.complete_lane_sample;
+  delta.complete_wait_lane_sample = end_count.complete_wait_lane_sample -
+    start_count.complete_wait_lane_sample;
+  delta.full_promotion_lane_sample = end_count.full_promotion_lane_sample -
+    start_count.full_promotion_lane_sample;
+  delta.partial_promotion_lane_sample = end_count.partial_promotion_lane_sample -
+    start_count.partial_promotion_lane_sample;
+  return delta;
+endfunction
+
+function automatic void print_red_stream_report(
+  input integer file_handle,
+  input red_stream_perf_t stats
+);
+  for (int unsigned c = 0; c < NrRedStreamClasses; c++) begin
+    automatic string name = c == RedStreamValu ? "valu" : "fp";
+    automatic logic [63:0] candidate_outcomes =
+      stats.eligible_lane_sample[c] +
+      stats.reject_unsupported_lane_sample[c] +
+      stats.reject_mask_lane_sample[c] +
+      stats.reject_short_vl_lane_sample[c] +
+      stats.reject_opcode_lane_sample[c] +
+      stats.reject_sew_lane_sample[c] +
+      stats.reject_rounding_lane_sample[c];
+    if (file_handle == 0) begin
+      $display("[PERF] red_stream_%s_window_lane_samples: %0d", name,
+        stats.window_lane_sample[c]);
+      $display("[PERF] red_stream_%s_no_candidate_lane_samples: %0d", name,
+        stats.no_candidate_lane_sample[c]);
+      $display("[PERF] red_stream_%s_candidate_lane_samples: %0d", name,
+        stats.candidate_lane_sample[c]);
+      $display("[PERF] red_stream_%s_eligible_lane_samples: %0d", name,
+        stats.eligible_lane_sample[c]);
+      $display("[PERF] red_stream_%s_hit_ratio: %0.6f", name,
+        perf_ratio(stats.eligible_lane_sample[c], stats.candidate_lane_sample[c]));
+      $display("[PERF] red_stream_%s_reject_unsupported_lane_samples: %0d", name,
+        stats.reject_unsupported_lane_sample[c]);
+      $display("[PERF] red_stream_%s_reject_mask_lane_samples: %0d", name,
+        stats.reject_mask_lane_sample[c]);
+      $display("[PERF] red_stream_%s_reject_short_vl_lane_samples: %0d", name,
+        stats.reject_short_vl_lane_sample[c]);
+      $display("[PERF] red_stream_%s_reject_opcode_lane_samples: %0d", name,
+        stats.reject_opcode_lane_sample[c]);
+      $display("[PERF] red_stream_%s_reject_sew_lane_samples: %0d", name,
+        stats.reject_sew_lane_sample[c]);
+      $display("[PERF] red_stream_%s_reject_rounding_lane_samples: %0d", name,
+        stats.reject_rounding_lane_sample[c]);
+      $display("[PERF] red_stream_%s_start_lane_samples: %0d", name,
+        stats.start_lane_sample[c]);
+      $display("[PERF] red_stream_%s_active_lane_samples: %0d", name,
+        stats.active_lane_sample[c]);
+      $display("[PERF] red_stream_%s_background_issue_lane_samples: %0d", name,
+        stats.background_issue_lane_sample[c]);
+      $display("[PERF] red_stream_%s_primary_conflict_lane_samples: %0d", name,
+        stats.primary_conflict_lane_sample[c]);
+      $display("[PERF] red_stream_%s_complete_lane_samples: %0d", name,
+        stats.complete_lane_sample[c]);
+      $display("[PERF] red_stream_%s_complete_wait_lane_samples: %0d", name,
+        stats.complete_wait_lane_sample[c]);
+      $display("[PERF] red_stream_%s_full_promotion_lane_samples: %0d", name,
+        stats.full_promotion_lane_sample[c]);
+      $display("[PERF] red_stream_%s_partial_promotion_lane_samples: %0d", name,
+        stats.partial_promotion_lane_sample[c]);
+      $display("[PERF] red_stream_%s_candidate_partition_consistent: %0d", name,
+        candidate_outcomes == stats.candidate_lane_sample[c]);
+    end else begin
+      $fwrite(file_handle, "[PERF] red_stream_%s_window_lane_samples: %0d\n", name,
+        stats.window_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_no_candidate_lane_samples: %0d\n", name,
+        stats.no_candidate_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_candidate_lane_samples: %0d\n", name,
+        stats.candidate_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_eligible_lane_samples: %0d\n", name,
+        stats.eligible_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_hit_ratio: %0.6f\n", name,
+        perf_ratio(stats.eligible_lane_sample[c], stats.candidate_lane_sample[c]));
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_reject_unsupported_lane_samples: %0d\n", name,
+        stats.reject_unsupported_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_reject_mask_lane_samples: %0d\n", name,
+        stats.reject_mask_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_reject_short_vl_lane_samples: %0d\n", name,
+        stats.reject_short_vl_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_reject_opcode_lane_samples: %0d\n", name,
+        stats.reject_opcode_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_reject_sew_lane_samples: %0d\n", name,
+        stats.reject_sew_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_reject_rounding_lane_samples: %0d\n", name,
+        stats.reject_rounding_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_start_lane_samples: %0d\n", name,
+        stats.start_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_active_lane_samples: %0d\n", name,
+        stats.active_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_background_issue_lane_samples: %0d\n", name,
+        stats.background_issue_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_primary_conflict_lane_samples: %0d\n", name,
+        stats.primary_conflict_lane_sample[c]);
+      $fwrite(file_handle, "[PERF] red_stream_%s_complete_lane_samples: %0d\n", name,
+        stats.complete_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_complete_wait_lane_samples: %0d\n", name,
+        stats.complete_wait_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_full_promotion_lane_samples: %0d\n", name,
+        stats.full_promotion_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_partial_promotion_lane_samples: %0d\n", name,
+        stats.partial_promotion_lane_sample[c]);
+      $fwrite(file_handle,
+        "[PERF] red_stream_%s_candidate_partition_consistent: %0d\n", name,
+        candidate_outcomes == stats.candidate_lane_sample[c]);
+    end
+  end
 endfunction
 
 function automatic string exec_class_name(input exec_class_e class_id);
@@ -4395,6 +4578,7 @@ typedef struct {
   frontend_perf_t frontend;
   memory_perf_t memory;
   vfu_queue_perf_t vfu_queue;
+  red_stream_perf_t red_stream;
 `ifdef FOR_VERIFY
   logic [63:0] seq_raw_hazard_cycle;
   logic [63:0] seq_war_hazard_cycle;
@@ -4435,6 +4619,7 @@ function automatic perf_t get_perf_counters();
     counters.frontend = ara_tb.frontend_perf_counters;
     counters.memory = ara_tb.memory_perf_counters;
     counters.vfu_queue = ara_tb.vfu_queue_perf_counters;
+    counters.red_stream = ara_tb.red_stream_perf_counters;
 `ifdef FOR_VERIFY
     counters.seq_raw_hazard_cycle   = ara_tb.seq_raw_hazard_cycle;
     counters.seq_war_hazard_cycle   = ara_tb.seq_war_hazard_cycle;
@@ -4475,6 +4660,7 @@ function void print_perf_report();
       frontend_perf_t total_frontend;
       memory_perf_t total_memory;
       vfu_queue_perf_t total_vfu_queue;
+      red_stream_perf_t total_red_stream;
 `ifdef FOR_VERIFY
       int total_seq_raw_hazard_cycle;
       int total_seq_war_hazard_cycle;
@@ -4526,6 +4712,9 @@ function void print_perf_report();
       total_vfu_queue = vfu_queue_perf_delta(
         ara_tb.perf_end_n.vfu_queue, ara_tb.perf_start_n.vfu_queue
       );
+      total_red_stream = red_stream_perf_delta(
+        ara_tb.perf_end_n.red_stream, ara_tb.perf_start_n.red_stream
+      );
 `ifdef FOR_VERIFY
       total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
       total_seq_war_hazard_cycle   = ara_tb.perf_end_n.seq_war_hazard_cycle   - ara_tb.perf_start_n.seq_war_hazard_cycle;
@@ -4566,6 +4755,7 @@ function void print_perf_report();
       print_opcode_report(0, total_frontend, total_exec, total_rvv_cycles);
       print_global_bottleneck_summary(0, total_exec, total_frontend);
       print_vfu_queue_report(0, total_vfu_queue);
+      print_red_stream_report(0, total_red_stream);
       print_deep_exec_report(0, total_exec, total_rvv_cycles);
       $display("[PERF] ==== Backend Instruction / Micro-op Execution ====");
       print_exec_class_report(0, "valu",  ExecValu,  total_exec, total_rvv_cycles);
@@ -4622,6 +4812,7 @@ function void print_perf_report();
       print_opcode_report(file_handle, total_frontend, total_exec, total_rvv_cycles);
       print_global_bottleneck_summary(file_handle, total_exec, total_frontend);
       print_vfu_queue_report(file_handle, total_vfu_queue);
+      print_red_stream_report(file_handle, total_red_stream);
       print_deep_exec_report(file_handle, total_exec, total_rvv_cycles);
       $fwrite(file_handle, "[PERF] ==== Backend Instruction / Micro-op Execution ====\n");
       print_exec_class_report(file_handle, "valu",  ExecValu,  total_exec, total_rvv_cycles);
@@ -4809,6 +5000,7 @@ typedef struct {
   frontend_perf_t frontend;
   memory_perf_t memory;
   vfu_queue_perf_t vfu_queue;
+  red_stream_perf_t red_stream;
 `ifdef FOR_VERIFY
   logic [63:0] seq_raw_hazard_cycle;
   logic [63:0] seq_war_hazard_cycle;
@@ -4845,6 +5037,7 @@ function automatic perf_t get_perf_counters();
     counters.frontend = ara_tb.frontend_perf_counters;
     counters.memory = ara_tb.memory_perf_counters;
     counters.vfu_queue = ara_tb.vfu_queue_perf_counters;
+    counters.red_stream = ara_tb.red_stream_perf_counters;
 `ifdef FOR_VERIFY
     counters.seq_raw_hazard_cycle   = ara_tb.seq_raw_hazard_cycle;
     counters.seq_war_hazard_cycle   = ara_tb.seq_war_hazard_cycle;
@@ -4871,6 +5064,7 @@ function void print_perf_report();
       frontend_perf_t total_frontend;
       memory_perf_t total_memory;
       vfu_queue_perf_t total_vfu_queue;
+      red_stream_perf_t total_red_stream;
 `ifdef FOR_VERIFY
       int total_seq_raw_hazard_cycle;
       int total_seq_war_hazard_cycle;
@@ -4910,6 +5104,9 @@ function void print_perf_report();
       total_vfu_queue = vfu_queue_perf_delta(
         ara_tb.perf_end_n.vfu_queue, ara_tb.perf_start_n.vfu_queue
       );
+      total_red_stream = red_stream_perf_delta(
+        ara_tb.perf_end_n.red_stream, ara_tb.perf_start_n.red_stream
+      );
 
 `ifdef FOR_VERIFY
       total_seq_raw_hazard_cycle   = ara_tb.perf_end_n.seq_raw_hazard_cycle   - ara_tb.perf_start_n.seq_raw_hazard_cycle;
@@ -4947,6 +5144,7 @@ function void print_perf_report();
       print_opcode_report(0, total_frontend, total_exec, total_rvv_cycles);
       print_global_bottleneck_summary(0, total_exec, total_frontend);
       print_vfu_queue_report(0, total_vfu_queue);
+      print_red_stream_report(0, total_red_stream);
       print_deep_exec_report(0, total_exec, total_rvv_cycles);
       $display("[PERF] ==== Backend Instruction / Micro-op Execution ====");
       print_exec_class_report(0, "valu",  ExecValu,  total_exec, total_rvv_cycles);
@@ -5005,6 +5203,7 @@ function void print_perf_report();
       print_opcode_report(file_handle, total_frontend, total_exec, total_rvv_cycles);
       print_global_bottleneck_summary(file_handle, total_exec, total_frontend);
       print_vfu_queue_report(file_handle, total_vfu_queue);
+      print_red_stream_report(file_handle, total_red_stream);
       print_deep_exec_report(file_handle, total_exec, total_rvv_cycles);
       $fwrite(file_handle, "[PERF] ==== Backend Instruction / Micro-op Execution ====\n");
       print_exec_class_report(file_handle, "valu",  ExecValu,  total_exec, total_rvv_cycles);
@@ -6171,9 +6370,267 @@ module ara_tb;
   exec_event_t                exec_event;
   exec_perf_t                 exec_perf_counters;
 
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_window;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_no_candidate;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_candidate;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_eligible;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_unsupported;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_mask;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_short_vl;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_opcode;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_sew;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_reject_rounding;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_start;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_active;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_background_issue;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_primary_conflict;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_complete;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_complete_wait;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_full_promotion;
+  logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_partial_promotion;
+  red_stream_perf_t red_stream_perf_counters;
+
   // Observe lane-local VALU/VMFPU progress and backpressure. OR-reduction in
   // the central block turns simultaneous lane events into one wall-clock cycle.
   for (genvar l = 0; l < NrLanes; l++) begin : gen_exec_perf_lane_events
+    // Stream opportunity and rejection attribution.  Keep the outcome
+    // partition in the observer rather than the scheduler so the experiment
+    // can evolve without turning performance accounting into functional RTL.
+    always_comb begin : p_red_stream_lane_events
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      automatic int unsigned valu_next_pnt =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.issue_pnt == ValuInsnQueueDepth-1
+          ? 0
+          : ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+              vinsn_queue_q.issue_pnt + 1;
+      automatic int unsigned fp_next_pnt =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.issue_pnt == MfpuInsnQueueDepth-1
+          ? 0
+          : ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+              vinsn_queue_q.issue_pnt + 1;
+      automatic ara_op_e valu_fg_op =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_commit.op;
+      automatic ara_op_e valu_next_op =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.vinsn[valu_next_pnt].op;
+      automatic logic valu_fg_vm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_commit.vm;
+      automatic logic valu_next_vm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.vinsn[valu_next_pnt].vm;
+      automatic int unsigned valu_fg_vl =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_commit.vl;
+      automatic int unsigned valu_next_vl =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.vinsn[valu_next_pnt].vl;
+      automatic rvv_pkg::vew_e valu_fg_sew =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_commit.vtype.vsew;
+      automatic rvv_pkg::vew_e valu_next_sew =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.vinsn[valu_next_pnt].vtype.vsew;
+      automatic ara_op_e fp_fg_op =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.op;
+      automatic ara_op_e fp_next_op =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.vinsn[fp_next_pnt].op;
+      automatic logic fp_fg_vm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.vm;
+      automatic logic fp_next_vm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.vinsn[fp_next_pnt].vm;
+      automatic int unsigned fp_fg_vl =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.vl;
+      automatic int unsigned fp_next_vl =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.vinsn[fp_next_pnt].vl;
+      automatic rvv_pkg::vew_e fp_fg_sew =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.vtype.vsew;
+      automatic rvv_pkg::vew_e fp_next_sew =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.vinsn[fp_next_pnt].vtype.vsew;
+      automatic fpnew_pkg::roundmode_e fp_fg_rm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.fp_rm;
+      automatic fpnew_pkg::roundmode_e fp_next_rm =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.vinsn[fp_next_pnt].fp_rm;
+      automatic logic valu_window =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          alu_state_q inside {3'd2, 3'd3, 3'd5}) &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_foreground_advanced_q &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_active_q &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_q;
+      automatic logic fp_window =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q inside {3'd2, 3'd3, 3'd5}) &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_foreground_advanced_q &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_active_q &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_q;
+      automatic logic valu_candidate = valu_window &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          vinsn_queue_q.issue_cnt > 1);
+      automatic logic fp_candidate = fp_window &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_queue_q.issue_cnt > 1);
+`endif
+
+      red_stream_window[l] = '0;
+      red_stream_no_candidate[l] = '0;
+      red_stream_candidate[l] = '0;
+      red_stream_eligible[l] = '0;
+      red_stream_reject_unsupported[l] = '0;
+      red_stream_reject_mask[l] = '0;
+      red_stream_reject_short_vl[l] = '0;
+      red_stream_reject_opcode[l] = '0;
+      red_stream_reject_sew[l] = '0;
+      red_stream_reject_rounding[l] = '0;
+      red_stream_start[l] = '0;
+      red_stream_active[l] = '0;
+      red_stream_background_issue[l] = '0;
+      red_stream_primary_conflict[l] = '0;
+      red_stream_complete[l] = '0;
+      red_stream_complete_wait[l] = '0;
+      red_stream_full_promotion[l] = '0;
+      red_stream_partial_promotion[l] = '0;
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      red_stream_window[l][RedStreamValu] = valu_window;
+      red_stream_window[l][RedStreamFp] = fp_window;
+      red_stream_no_candidate[l][RedStreamValu] = valu_window && !valu_candidate;
+      red_stream_no_candidate[l][RedStreamFp] = fp_window && !fp_candidate;
+      red_stream_candidate[l][RedStreamValu] = valu_candidate;
+      red_stream_candidate[l][RedStreamFp] = fp_candidate;
+
+      // Priority-partition every candidate into one terminal outcome.
+      if (valu_candidate) begin
+        if (!(valu_fg_op inside {[VREDSUM:VWREDSUM]}) ||
+            !(valu_next_op inside {[VREDSUM:VWREDSUM]}))
+          red_stream_reject_unsupported[l][RedStreamValu] = 1'b1;
+        else if (!valu_fg_vm || !valu_next_vm)
+          red_stream_reject_mask[l][RedStreamValu] = 1'b1;
+        else if (valu_fg_vl < 8 || valu_next_vl < 8)
+          red_stream_reject_short_vl[l][RedStreamValu] = 1'b1;
+        else if (valu_fg_op != valu_next_op)
+          red_stream_reject_opcode[l][RedStreamValu] = 1'b1;
+        else if (valu_fg_sew != valu_next_sew)
+          red_stream_reject_sew[l][RedStreamValu] = 1'b1;
+        else
+          red_stream_eligible[l][RedStreamValu] = 1'b1;
+      end
+      if (fp_candidate) begin
+        if (!(fp_fg_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) ||
+            !(fp_next_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}))
+          red_stream_reject_unsupported[l][RedStreamFp] = 1'b1;
+        else if (!fp_fg_vm || !fp_next_vm)
+          red_stream_reject_mask[l][RedStreamFp] = 1'b1;
+        else if (fp_fg_vl < 8 || fp_next_vl < 8)
+          red_stream_reject_short_vl[l][RedStreamFp] = 1'b1;
+        else if (fp_fg_op != fp_next_op)
+          red_stream_reject_opcode[l][RedStreamFp] = 1'b1;
+        else if (fp_fg_sew != rvv_pkg::EW32 || fp_next_sew != rvv_pkg::EW32 ||
+                 fp_fg_sew != fp_next_sew)
+          red_stream_reject_sew[l][RedStreamFp] = 1'b1;
+        else if (fp_fg_rm != fp_next_rm)
+          red_stream_reject_rounding[l][RedStreamFp] = 1'b1;
+        else
+          red_stream_eligible[l][RedStreamFp] = 1'b1;
+      end
+
+      red_stream_start[l][RedStreamValu] =
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_active_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_active_d;
+      red_stream_start[l][RedStreamFp] =
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_active_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_active_d;
+      red_stream_active[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_active_q;
+      red_stream_active[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_active_q;
+      red_stream_background_issue[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_issue_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_issue_cycles_q;
+      red_stream_background_issue[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_issue_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_issue_cycles_q;
+      red_stream_primary_conflict[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_primary_conflict_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_primary_conflict_cycles_q;
+      red_stream_primary_conflict[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_primary_conflict_cycles_d !=
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_primary_conflict_cycles_q;
+      red_stream_complete[l][RedStreamValu] =
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_d;
+      red_stream_complete[l][RedStreamFp] =
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_d;
+      red_stream_complete_wait[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_q;
+      red_stream_complete_wait[l][RedStreamFp] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_q;
+      red_stream_full_promotion[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_retire_foreground &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_complete_q;
+      red_stream_partial_promotion[l][RedStreamValu] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_retire_foreground &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.
+          red_stream_bg_active_q;
+      red_stream_full_promotion[l][RedStreamFp] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 3'd7) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_foreground_advanced_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_complete_q;
+      red_stream_partial_promotion[l][RedStreamFp] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 3'd7) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_foreground_advanced_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          red_stream_bg_active_q;
+`endif
+    end
+
     assign lane_exec_event[l].issue_progress =
       (classify_exec_op(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.vinsn_issue_q.op) &
        {NrExecClasses{ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_valu.valu_valid}}) |
@@ -6353,6 +6810,96 @@ module ara_tb;
               ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
                 result_queue_q[slot].id][c];
         end
+      end
+    end
+  end
+
+  always_ff @(posedge clk or negedge rst_n) begin : p_red_stream_perf_counters
+    if (!rst_n) begin
+      red_stream_perf_counters <= '{default: '0};
+    end else begin
+      for (int unsigned c = 0; c < NrRedStreamClasses; c++) begin
+        automatic logic [63:0] window_inc = '0;
+        automatic logic [63:0] no_candidate_inc = '0;
+        automatic logic [63:0] candidate_inc = '0;
+        automatic logic [63:0] eligible_inc = '0;
+        automatic logic [63:0] reject_unsupported_inc = '0;
+        automatic logic [63:0] reject_mask_inc = '0;
+        automatic logic [63:0] reject_short_vl_inc = '0;
+        automatic logic [63:0] reject_opcode_inc = '0;
+        automatic logic [63:0] reject_sew_inc = '0;
+        automatic logic [63:0] reject_rounding_inc = '0;
+        automatic logic [63:0] start_inc = '0;
+        automatic logic [63:0] active_inc = '0;
+        automatic logic [63:0] background_issue_inc = '0;
+        automatic logic [63:0] primary_conflict_inc = '0;
+        automatic logic [63:0] complete_inc = '0;
+        automatic logic [63:0] complete_wait_inc = '0;
+        automatic logic [63:0] full_promotion_inc = '0;
+        automatic logic [63:0] partial_promotion_inc = '0;
+        for (int unsigned l = 0; l < NrLanes; l++) begin
+          window_inc += red_stream_window[l][c];
+          no_candidate_inc += red_stream_no_candidate[l][c];
+          candidate_inc += red_stream_candidate[l][c];
+          eligible_inc += red_stream_eligible[l][c];
+          reject_unsupported_inc += red_stream_reject_unsupported[l][c];
+          reject_mask_inc += red_stream_reject_mask[l][c];
+          reject_short_vl_inc += red_stream_reject_short_vl[l][c];
+          reject_opcode_inc += red_stream_reject_opcode[l][c];
+          reject_sew_inc += red_stream_reject_sew[l][c];
+          reject_rounding_inc += red_stream_reject_rounding[l][c];
+          start_inc += red_stream_start[l][c];
+          active_inc += red_stream_active[l][c];
+          background_issue_inc += red_stream_background_issue[l][c];
+          primary_conflict_inc += red_stream_primary_conflict[l][c];
+          complete_inc += red_stream_complete[l][c];
+          complete_wait_inc += red_stream_complete_wait[l][c];
+          full_promotion_inc += red_stream_full_promotion[l][c];
+          partial_promotion_inc += red_stream_partial_promotion[l][c];
+        end
+        red_stream_perf_counters.window_lane_sample[c] <=
+          red_stream_perf_counters.window_lane_sample[c] + window_inc;
+        red_stream_perf_counters.no_candidate_lane_sample[c] <=
+          red_stream_perf_counters.no_candidate_lane_sample[c] + no_candidate_inc;
+        red_stream_perf_counters.candidate_lane_sample[c] <=
+          red_stream_perf_counters.candidate_lane_sample[c] + candidate_inc;
+        red_stream_perf_counters.eligible_lane_sample[c] <=
+          red_stream_perf_counters.eligible_lane_sample[c] + eligible_inc;
+        red_stream_perf_counters.reject_unsupported_lane_sample[c] <=
+          red_stream_perf_counters.reject_unsupported_lane_sample[c] +
+          reject_unsupported_inc;
+        red_stream_perf_counters.reject_mask_lane_sample[c] <=
+          red_stream_perf_counters.reject_mask_lane_sample[c] + reject_mask_inc;
+        red_stream_perf_counters.reject_short_vl_lane_sample[c] <=
+          red_stream_perf_counters.reject_short_vl_lane_sample[c] +
+          reject_short_vl_inc;
+        red_stream_perf_counters.reject_opcode_lane_sample[c] <=
+          red_stream_perf_counters.reject_opcode_lane_sample[c] + reject_opcode_inc;
+        red_stream_perf_counters.reject_sew_lane_sample[c] <=
+          red_stream_perf_counters.reject_sew_lane_sample[c] + reject_sew_inc;
+        red_stream_perf_counters.reject_rounding_lane_sample[c] <=
+          red_stream_perf_counters.reject_rounding_lane_sample[c] +
+          reject_rounding_inc;
+        red_stream_perf_counters.start_lane_sample[c] <=
+          red_stream_perf_counters.start_lane_sample[c] + start_inc;
+        red_stream_perf_counters.active_lane_sample[c] <=
+          red_stream_perf_counters.active_lane_sample[c] + active_inc;
+        red_stream_perf_counters.background_issue_lane_sample[c] <=
+          red_stream_perf_counters.background_issue_lane_sample[c] +
+          background_issue_inc;
+        red_stream_perf_counters.primary_conflict_lane_sample[c] <=
+          red_stream_perf_counters.primary_conflict_lane_sample[c] +
+          primary_conflict_inc;
+        red_stream_perf_counters.complete_lane_sample[c] <=
+          red_stream_perf_counters.complete_lane_sample[c] + complete_inc;
+        red_stream_perf_counters.complete_wait_lane_sample[c] <=
+          red_stream_perf_counters.complete_wait_lane_sample[c] + complete_wait_inc;
+        red_stream_perf_counters.full_promotion_lane_sample[c] <=
+          red_stream_perf_counters.full_promotion_lane_sample[c] +
+          full_promotion_inc;
+        red_stream_perf_counters.partial_promotion_lane_sample[c] <=
+          red_stream_perf_counters.partial_promotion_lane_sample[c] +
+          partial_promotion_inc;
       end
     end
   end
