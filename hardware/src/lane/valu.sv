@@ -244,6 +244,41 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // but does has negligible impact on long vectors
   elen_t sldu_operand_q;
   logic  sldu_alu_valid_q, sldu_alu_ready_d;
+`ifdef ARA_RED_TREE_INPUT_BYPASS
+  elen_t sldu_operand_spill;
+  logic  sldu_alu_valid_spill, sldu_alu_ready_spill;
+  logic  tree_input_bypass_request, tree_input_bypass_active;
+
+  // Only integer-reduction opcodes enable this path.  Outside the RX phase
+  // consumer ready is low, so a token is captured in the original spill;
+  // transparency can fire only when RX asserts ready in the same cycle.
+  assign tree_input_bypass_request =
+    (vinsn_issue_q.op inside {[VREDSUM:VWREDSUM]});
+  assign tree_input_bypass_active =
+    tree_input_bypass_request && !sldu_alu_valid_spill;
+
+  assign sldu_operand_q = sldu_alu_valid_spill ? sldu_operand_spill
+                                               : sldu_operand_i;
+  assign sldu_alu_valid_q = sldu_alu_valid_spill ||
+    (tree_input_bypass_request && sldu_alu_valid_i);
+  assign sldu_alu_ready_o = tree_input_bypass_active
+    ? (sldu_alu_ready_d || sldu_alu_ready_spill)
+    : sldu_alu_ready_spill;
+
+  spill_register #(
+    .T(elen_t)
+  ) i_alu_reduction_spill_register (
+    .clk_i  (clk_i                                                        ),
+    .rst_ni (rst_ni                                                       ),
+    .valid_i(sldu_alu_valid_i &&
+             !(tree_input_bypass_active && sldu_alu_ready_d)             ),
+    .ready_o(sldu_alu_ready_spill                                         ),
+    .data_i (sldu_operand_i                                               ),
+    .valid_o(sldu_alu_valid_spill                                         ),
+    .ready_i(sldu_alu_ready_d                                             ),
+    .data_o (sldu_operand_spill                                           )
+  );
+`else
   spill_register #(
     .T(elen_t)
   ) i_alu_reduction_spill_register (
@@ -256,6 +291,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     .ready_i(sldu_alu_ready_d),
     .data_o (sldu_operand_q  )
   );
+`endif
 
   // This function returns 1'b1 if `op` is a reduction instruction, i.e.,
   // it must accumulate the result (intra-lane reduction) before sending it to the
@@ -870,5 +906,23 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       alu_vxsat_q             <= alu_vxsat_d;
     end
   end
+
+`ifdef ARA_RED_TREE_INPUT_BYPASS
+`ifndef SYNTHESIS
+  a_tree_input_bypass_phase_is_safe: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      tree_input_bypass_active |->
+        (tree_input_bypass_request && !sldu_alu_valid_spill)
+  ) else $error("integer tree input bypass crossed an unsafe phase boundary");
+
+  a_tree_input_bypass_stall_holds_state: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (tree_input_bypass_active && sldu_alu_valid_i &&
+       !sldu_alu_ready_d) |=>
+        $stable({sldu_transactions_cnt_q, reduction_rx_cnt_q,
+                 simd_red_cnt_q, first_op_q})
+  ) else $error("integer tree input bypass advanced while stalled");
+`endif
+`endif
 
 endmodule : valu

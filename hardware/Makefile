@@ -93,6 +93,49 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
+# Reduction-acceleration ablation switches.  Keep the baseline behavior unless
+# explicitly enabled so each mechanism can be measured independently.
+reduction_output_bypass ?= 0
+reduction_route_bypass  ?= 0
+reduction_mask_fastpath ?= 0
+reduction_mask_skip     ?= 0
+reduction_dense_input_bypass ?= 0
+reduction_tree_input_bypass  ?= 0
+reduction_terminal_fusion    ?= 0
+
+# Masked-off token relay uses the direct VMFPU output protocol and the
+# mask-decoupled return credit.  Make those prerequisites explicit so a skip
+# experiment cannot accidentally be built with an incompatible handshake.
+ifeq ($(reduction_mask_skip),1)
+  reduction_output_bypass := 1
+  reduction_mask_fastpath := 1
+endif
+
+ifeq ($(reduction_output_bypass),1)
+  bender_defs += --define ARA_RED_OUTPUT_BYPASS=1
+endif
+ifeq ($(reduction_route_bypass),1)
+  bender_defs += --define ARA_RED_ROUTE_BYPASS=1
+endif
+ifeq ($(reduction_mask_fastpath),1)
+  bender_defs += --define ARA_RED_MASK_FASTPATH=1
+endif
+ifeq ($(reduction_mask_skip),1)
+  bender_defs += --define ARA_RED_MASK_SKIP=1
+endif
+ifeq ($(reduction_dense_input_bypass),1)
+  bender_defs += --define ARA_RED_DENSE_INPUT_BYPASS=1
+endif
+ifeq ($(reduction_tree_input_bypass),1)
+  bender_defs += --define ARA_RED_TREE_INPUT_BYPASS=1
+endif
+ifeq ($(reduction_terminal_fusion),1)
+  bender_defs += --define ARA_RED_VMFPU_TERMINAL_FUSION=1
+endif
+ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
+  bender_defs += --define ARA_RED_INPUT_BYPASS=1
+endif
+
 # Legacy report code names lane 2/3 hierarchically.  The parameterized
 # execution monitor remains the authoritative all-lane, ROI-scoped report.
 ifneq ($(nr_lanes),2)

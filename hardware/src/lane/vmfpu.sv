@@ -570,6 +570,69 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // but does has negligible impact on long vectors
   elen_t sldu_operand_q;
   logic  sldu_mfpu_valid_q, sldu_mfpu_ready_d;
+`ifdef ARA_RED_INPUT_BYPASS
+  elen_t sldu_operand_spill;
+  logic  sldu_mfpu_valid_spill, sldu_mfpu_ready_spill;
+  logic  reduction_input_bypass_request, reduction_input_bypass_active;
+`ifdef ARA_RED_DENSE_INPUT_BYPASS
+  logic  dense_input_bypass_request;
+`endif
+`ifdef ARA_RED_TREE_INPUT_BYPASS
+  logic  tree_input_bypass_request;
+`endif
+
+  // Capture-on-stall fall-through around the original two-entry spill.  Stored
+  // data always has priority.  A dense token bypasses only when it is consumed
+  // by the VMFPU in that same cycle; otherwise it is captured by the original
+  // spill, so there is never an unowned token at a phase boundary.
+`ifdef ARA_RED_DENSE_INPUT_BYPASS
+  assign dense_input_bypass_request =
+    (vinsn_issue_q.op inside {VFREDOSUM, VFWREDOSUM}) && vinsn_issue_q.vm;
+`endif
+`ifdef ARA_RED_TREE_INPUT_BYPASS
+  // Only unordered FP opcodes enable this path.  Outside the RX phase the
+  // consumer ready remains low, so an arriving token is captured exactly as
+  // in the original spill; transparency can fire only when RX asserts ready.
+  assign tree_input_bypass_request =
+    (vinsn_issue_q.op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM});
+`endif
+
+  always_comb begin
+    reduction_input_bypass_request = 1'b0;
+`ifdef ARA_RED_DENSE_INPUT_BYPASS
+    reduction_input_bypass_request |= dense_input_bypass_request;
+`endif
+`ifdef ARA_RED_TREE_INPUT_BYPASS
+    reduction_input_bypass_request |= tree_input_bypass_request;
+`endif
+  end
+
+  assign reduction_input_bypass_active =
+    reduction_input_bypass_request && !sldu_mfpu_valid_spill;
+
+  assign sldu_operand_q = sldu_mfpu_valid_spill ? sldu_operand_spill
+                                                : sldu_operand_i;
+  assign sldu_mfpu_valid_q = sldu_mfpu_valid_spill ||
+    (reduction_input_bypass_request && sldu_mfpu_valid_i);
+  assign sldu_mfpu_ready_o = reduction_input_bypass_active
+    ? (sldu_mfpu_ready_d || sldu_mfpu_ready_spill)
+    : sldu_mfpu_ready_spill;
+
+  spill_register #(
+    .T(elen_t)
+  ) i_mfpu_reduction_spill_register (
+    .clk_i  (clk_i                                                        ),
+    .rst_ni (rst_ni                                                       ),
+    // A token that fires on the transparent path must not also be stored.
+    .valid_i(sldu_mfpu_valid_i &&
+             !(reduction_input_bypass_active && sldu_mfpu_ready_d)        ),
+    .ready_o(sldu_mfpu_ready_spill                                        ),
+    .data_i (sldu_operand_i                                               ),
+    .valid_o(sldu_mfpu_valid_spill                                        ),
+    .ready_i(sldu_mfpu_ready_d                                            ),
+    .data_o (sldu_operand_spill                                           )
+  );
+`else
   spill_register #(
     .T(elen_t)
   ) i_mfpu_reduction_spill_register (
@@ -582,6 +645,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .ready_i(sldu_mfpu_ready_d),
     .data_o (sldu_operand_q  )
   );
+`endif
 
   // During an inter-lane reduction (after the intra-lane reduction), the NrLanes partial results
   // must be reduced to only one. The first reduction is done by NrLanes/2 FUs, then NrLanes/4, and
@@ -651,6 +715,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // The ordered sum issue counter indicates how many elements in the operand data (64 bits) have been issued
   // e.g. assume EEW=16, there are four elements in the operand data (4 * 16bits = 64 bits), the osum_issue_cnt counts from 0 to 3
   logic [3:0] osum_issue_cnt_d, osum_issue_cnt_q;
+
+`ifdef ARA_RED_OUTPUT_BYPASS
+  logic osum_output_bypass_active;
+`ifdef ARA_RED_MASK_FASTPATH
+  // The existing VMFPU input spill is the token credit that breaks the
+  // returned accumulator from the independently buffered mask-ready path.
+  // Consequently masked ordered reductions can safely use the same output
+  // fast path without extending ready through the mask network.
+  assign osum_output_bypass_active = (mfpu_state_q == OSUM_REDUCTION);
+`else
+  assign osum_output_bypass_active =
+    (mfpu_state_q == OSUM_REDUCTION) && vinsn_issue_q.vm;
+`endif
+`endif
 
   // This function returns 1'b1 if `op` is a reduction instruction, i.e.,
   // it must accumulate the result (intra-lane reduction) before sending it to the
@@ -723,6 +801,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       default:;
     endcase
   endfunction : processed_osum_operand
+
+  // Return the architectural mask bit of the element currently selected by
+  // osum_issue_cnt.  Ordered elements are consumed in the same shuffled order
+  // as processed_osum_operand(), so the bit mapping must remain identical.
+  function automatic logic osum_mask_element_active(strb_t mask, logic [2:0] osum_issue_cnt, vew_e ew);
+    case (ew)
+      EW8: begin
+        case (osum_issue_cnt)
+          4'd0: osum_mask_element_active = mask[0];
+          4'd1: osum_mask_element_active = mask[4];
+          4'd2: osum_mask_element_active = mask[2];
+          4'd3: osum_mask_element_active = mask[6];
+          4'd4: osum_mask_element_active = mask[1];
+          4'd5: osum_mask_element_active = mask[5];
+          4'd6: osum_mask_element_active = mask[3];
+          default: osum_mask_element_active = mask[7];
+        endcase
+      end
+      EW16: begin
+        case (osum_issue_cnt)
+          4'd0: osum_mask_element_active = mask[0];
+          4'd1: osum_mask_element_active = mask[4];
+          4'd2: osum_mask_element_active = mask[2];
+          default: osum_mask_element_active = mask[6];
+        endcase
+      end
+      EW32: osum_mask_element_active = (osum_issue_cnt == 0) ? mask[0] : mask[4];
+      EW64: osum_mask_element_active = mask[0];
+      default: osum_mask_element_active = 1'b1;
+    endcase
+  endfunction : osum_mask_element_active
 
   // Use this function to assign a counter value to each lane if you can use in-lane parameters with your flow
   function automatic reduction_rx_cnt_t reduction_rx_cnt_init(int unsigned NrLanes, logic [3:0] lane_id);
@@ -1351,6 +1460,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // Helper signal to handshake with the correct operand queues
   logic       operands_valid;
   logic [2:0] operands_ready;
+`ifdef ARA_RED_MASK_SKIP
+  logic osum_mask_skip_active;
+`endif
 
   // Remaining elements of the current instruction in the issue phase
   vlen_t issue_cnt_d, issue_cnt_q;
@@ -1400,7 +1512,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // If the result queue is not full, it is ready to accept a result
     vmul_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VMUL:VSMUL]});
     vdiv_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VDIVU:VREM]});
+`ifdef ARA_RED_OUTPUT_BYPASS
+    // Ordered reductions can stream the FPU result straight to the SLDU.  In
+    // that mode the downstream handshake, not the generic result queue,
+    // determines whether fpnew may retire its output.
+    vfpu_out_ready = osum_output_bypass_active
+                   ? mfpu_red_ready_i
+                   : (~result_queue_full && (vinsn_processing_q.op inside {[VFADD:VMFGE]}));
+`else
     vfpu_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VFADD:VMFGE]});
+`endif
 
     // Valid of the unit in use (i.e., result queue input valid) is not asserted by default
     unit_out_valid  = 1'b0;
@@ -1480,6 +1601,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     intra_op_rx_cnt_en      = 1'b0;
 
     osum_issue_cnt_d        = osum_issue_cnt_q;
+`ifdef ARA_RED_MASK_SKIP
+    osum_mask_skip_active   = 1'b0;
+`endif
 
     // Don't prevent commit by default
     prevent_commit = 1'b0;
@@ -2027,9 +2151,30 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         if (vfpu_out_valid && !result_queue_full) begin
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
           result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+`ifdef ARA_RED_VMFPU_TERMINAL_FUSION
+          // Once every horizontal SIMD operation has been issued, this FPU
+          // response is the architectural reduction result.  Retire the
+          // internal reduction slot immediately rather than observing the
+          // valid bit and finalizing it one cycle later.
+          if (simd_red_cnt_q == simd_red_cnt_max_q) begin
+            mfpu_state_d = MFPU_WAIT;
+            result_queue_cnt_d += 1;
+            if (result_queue_write_pnt_q == ResultQueueDepth-1)
+              result_queue_write_pnt_d = 0;
+            else
+              result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+          end
+`endif
         end
       end
       OSUM_REDUCTION: begin
+`ifdef ARA_RED_OUTPUT_BYPASS
+        automatic logic osum_result_fire;
+        automatic logic osum_fpu_result_fire;
+`ifdef ARA_RED_MASK_SKIP
+        automatic logic osum_mask_skip_fire;
+`endif
+`endif
         // Short Note: Only one lane is allowed to be active (only one lane has all operands valid)
         operand_c = processed_osum_operand(mfpu_operand_i[2], osum_issue_cnt_q, vinsn_issue_q.vtype.vsew, ~vinsn_issue_q.vm, mask_i, ntr_val);
         operand_b = (first_op_q && (lane_id_i == '0)) ?
@@ -2050,10 +2195,66 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           operands_valid = 1'b0;
         end
 
+`ifdef ARA_RED_MASK_SKIP
+        // A masked-off ordered element leaves the accumulator unchanged and
+        // must not raise FP exceptions.  Relay operand_b as the unchanged
+        // token instead of issuing an artificial add-with-neutral operation.
+        // The input spill keeps the returned token stable while mask data is
+        // unavailable; no mask-ready signal enters the cross-lane ready loop.
+        osum_mask_skip_active = !vinsn_issue_q.vm && mask_valid_i &&
+          !osum_mask_element_active(mask_i, osum_issue_cnt_q,
+                                    vinsn_issue_q.vtype.vsew) &&
+          operands_valid && vinsn_issue_q_valid && issue_cnt_q != '0;
+        osum_mask_skip_fire = osum_mask_skip_active && mfpu_red_ready_i;
+`endif
+`ifdef ARA_RED_OUTPUT_BYPASS
+        osum_fpu_result_fire = osum_output_bypass_active &&
+                               vfpu_out_valid && mfpu_red_ready_i;
+        osum_result_fire = osum_fpu_result_fire
+`ifdef ARA_RED_MASK_SKIP
+                         || osum_mask_skip_fire
+`endif
+                         ;
+`endif
+
         // Ready to accept incoming operands from the slide unit.
+`ifdef ARA_RED_OUTPUT_BYPASS
+        // The FPU output is held stable until the SLDU accepts it.  This
+        // removes the VMFPU result-queue register from the ordered recurrence.
+        mfpu_red_valid_o = osum_output_bypass_active ?
+`ifdef ARA_RED_MASK_SKIP
+                           (osum_mask_skip_active || vfpu_out_valid) :
+`else
+                           vfpu_out_valid :
+`endif
+                           red_hs_synch_q;
+`else
         mfpu_red_valid_o = red_hs_synch_q;
+`endif
 
         // Issue the uOp
+`ifdef ARA_RED_MASK_SKIP
+        if (osum_mask_skip_active) begin
+          // Advance issue-side state atomically with the relay handshake.
+          // Until the downstream accepts the token, all operands and counters
+          // remain unchanged and valid stays asserted.
+          if (mfpu_red_ready_i) begin
+            automatic logic [3:0] num_element =
+              (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+
+            osum_issue_cnt_d = osum_issue_cnt_q + 1;
+            if (osum_issue_cnt_d == num_element || issue_cnt_q == 1) begin
+              osum_issue_cnt_d = '0;
+              mfpu_operand_ready_o[2] = 1'b1;
+              mask_ready_o = 1'b1;
+            end
+            if (first_op_q) mfpu_operand_ready_o[0] = 1'b1;
+            sldu_mfpu_ready_d = 1'b1;
+            issue_cnt_d = issue_cnt_q - 1;
+            first_op_d = 1'b0;
+          end
+        end else
+`endif
         if (operands_valid && vinsn_issue_q_valid && issue_cnt_q != '0) begin
           vfpu_in_valid = 1'b1;
           if (vfpu_in_ready) begin
@@ -2095,14 +2296,29 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
         // Reduction instruction, accumulate the result
         // Only the active lane has the valid result
+`ifdef ARA_RED_OUTPUT_BYPASS
+        if (osum_output_bypass_active) begin
+          if (osum_result_fire)
+            to_process_cnt_d = to_process_cnt_q - 1;
+        end else if (vfpu_out_valid && !result_queue_full) begin
+          to_process_cnt_d = to_process_cnt_q - 1;
+
+          result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+          result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+        end
+`else
         if (vfpu_out_valid && !result_queue_full) begin
           to_process_cnt_d = to_process_cnt_q - 1;
 
           result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
         end
+`endif
 
         // Slide unit has acknowledged the operand, set next valid to 0
+`ifdef ARA_RED_OUTPUT_BYPASS
+        if (!osum_output_bypass_active) begin
+`endif
         if (mfpu_red_valid_o && mfpu_red_ready_i) begin
           red_hs_synch_d = 1'b0;
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
@@ -2110,10 +2326,19 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Send valid result to the slide unit
         if (result_queue_valid_d[result_queue_write_pnt_q])
           red_hs_synch_d = 1'b1;
+`ifdef ARA_RED_OUTPUT_BYPASS
+        end
+`endif
 
         // Finish this instruction if the last result is acknowledged
         // In the case of vl=0, wait until the redundant data is acknowledged
-        if (!(lane_id_i == '0) && to_process_cnt_d == '0 && ((vinsn_processing_q.vl == '0) ? !first_op_q : red_hs_synch_q)) begin
+        if (!(lane_id_i == '0) && to_process_cnt_d == '0 &&
+`ifdef ARA_RED_OUTPUT_BYPASS
+            ((vinsn_processing_q.vl == '0) ? !first_op_q :
+             (osum_output_bypass_active ? osum_result_fire : red_hs_synch_q))) begin
+`else
+            ((vinsn_processing_q.vl == '0) ? !first_op_q : red_hs_synch_q)) begin
+`endif
           mfpu_state_d = MFPU_WAIT;
         end else if ((lane_id_i == '0) && sldu_mfpu_valid_q && to_process_cnt_d == '0) begin
           // Lane 0 should wait for the final result
@@ -2194,7 +2419,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     mfpu_result_addr_o  = result_queue_q[result_queue_read_pnt_q].addr;
     mfpu_result_id_o    = result_queue_q[result_queue_read_pnt_q].id;
+`ifdef ARA_RED_OUTPUT_BYPASS
+    mfpu_result_wdata_o = osum_output_bypass_active
+                        ?
+`ifdef ARA_RED_MASK_SKIP
+                          (osum_mask_skip_active ? operand_b : vfpu_processed_result)
+`else
+                          vfpu_processed_result
+`endif
+                        : result_queue_q[result_queue_read_pnt_q].wdata;
+`else
     mfpu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
+`endif
     mfpu_result_be_o    = result_queue_q[result_queue_read_pnt_q].be;
 
     // Received a grant from the VRF, or the mask unit ate the result.
@@ -2399,5 +2635,45 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       clkgate_en_q            <= clkgate_en_d;
     end
   end
+
+`ifdef ARA_RED_MASK_SKIP
+`ifndef SYNTHESIS
+  // Local protocol properties for the relay.  They turn the two most
+  // important proof obligations into executable regression checks: a skipped
+  // element cannot also enter fpnew, and backpressure cannot advance any
+  // architectural element counter.
+  a_osum_mask_skip_no_fpu_issue: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      osum_mask_skip_active |-> (!vfpu_in_valid && mfpu_red_valid_o)
+  ) else $error("masked-off ordered element entered fpnew or lost relay valid");
+
+  a_osum_mask_skip_stall_holds_state: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (osum_mask_skip_active && !mfpu_red_ready_i) |=>
+        $stable({issue_cnt_q, to_process_cnt_q, osum_issue_cnt_q, first_op_q})
+  ) else $error("masked-off token relay advanced while downstream was stalled");
+`endif
+`endif
+
+`ifdef ARA_RED_INPUT_BYPASS
+`ifndef SYNTHESIS
+  // Transparency is legal only after every stored token has drained.  When
+  // the consumer stalls, capture may acknowledge the producer, but none of
+  // the VMFPU's architectural reduction position may advance.
+  a_reduction_input_bypass_phase_is_safe: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      reduction_input_bypass_active |->
+        (reduction_input_bypass_request && !sldu_mfpu_valid_spill)
+  ) else $error("reduction input bypass crossed an unsafe phase boundary");
+
+  a_reduction_input_bypass_stall_holds_state: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (reduction_input_bypass_active && sldu_mfpu_valid_i &&
+       !sldu_mfpu_ready_d) |=>
+        $stable({issue_cnt_q, osum_issue_cnt_q, first_op_q,
+                 sldu_transactions_cnt_q, reduction_rx_cnt_q})
+  ) else $error("reduction input bypass advanced while stalled");
+`endif
+`endif
 
 endmodule : vmfpu

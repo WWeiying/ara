@@ -293,6 +293,21 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic [idx_width(NrLanes)-1:0] red_stride_cnt_d, red_stride_cnt_q;
   logic [idx_width(NrLanes):0] red_stride_cnt_d_wide;
 
+`ifdef ARA_RED_ROUTE_BYPASS
+  // Combinational one-hop route used only by ordered reductions.  Keeping
+  // these signals separate from the normal result queue makes this mechanism
+  // independently switchable for ablation studies.
+  logic  [NrLanes-1:0] osum_route_valid;
+  elen_t [NrLanes-1:0] osum_route_data;
+  strb_t [NrLanes-1:0] osum_route_be;
+  logic                osum_route_bypass_active;
+`ifdef ARA_RED_MASK_FASTPATH
+  assign osum_route_bypass_active = 1'b1;
+`else
+  assign osum_route_bypass_active = vinsn_issue_q.vm;
+`endif
+`endif
+
   logic is_issue_reduction, is_issue_alu_reduction, is_issue_vmfpu_reduction;
 
   assign is_issue_alu_reduction   = vinsn_issue_valid_q & (vinsn_issue_q.vfu == VFU_Alu);
@@ -411,6 +426,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     sldu_operand_ready = '0;
 
     red_stride_cnt_d = red_stride_cnt_q;
+
+`ifdef ARA_RED_ROUTE_BYPASS
+    osum_route_valid = '0;
+    osum_route_data  = '0;
+    osum_route_be    = '0;
+`endif
 
     p2_stride_gen_stride_d = '0;
     p2_stride_gen_valid_d  = 1'b0;
@@ -686,7 +707,31 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       SLIDE_RUN_OSUM: begin
         // Short Note: For ordered sum reduction instruction, only one lane has a valid data, and it is sent to the next lane
         // Don't wait for mask bits
+`ifdef ARA_RED_ROUTE_BYPASS
+        if (osum_route_bypass_active) begin
+          // Route the ordered accumulator directly to its next owner.  Masked
+          // instructions enter here only when ARA_RED_MASK_FASTPATH is set;
+          // their mask/token decoupling is provided by the lane input spills.
+          // Progress is counted only on an end-to-end handshake, so
+          // backpressure cannot duplicate or drop the token.
+          for (int lane = 0; lane < NrLanes; lane++) begin
+            if (sldu_operand_valid[lane]) begin
+              automatic int tgt_lane = (lane == NrLanes - 1) ? 0 : lane + 1;
+              if (issue_cnt_q == 1) tgt_lane = 0;
+
+              osum_route_valid[tgt_lane] = 1'b1;
+              osum_route_data[tgt_lane]  = sldu_operand[lane];
+              osum_route_be[tgt_lane]    = '1;
+              sldu_operand_ready[lane]   = sldu_result_gnt_i[tgt_lane];
+
+              if (sldu_result_gnt_i[tgt_lane])
+                issue_cnt_d = issue_cnt_q - 1;
+            end
+          end
+        end else if (!result_queue_full) begin
+`else
         if (!result_queue_full) begin
+`endif
           for (int lane = 0; lane < NrLanes; lane++) begin
             if (sldu_operand_valid[lane]) begin
               automatic int tgt_lane = (lane == NrLanes - 1) ? 0 : lane + 1;
@@ -782,6 +827,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       sldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id;
       sldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata;
       sldu_result_be_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].be;
+
+`ifdef ARA_RED_ROUTE_BYPASS
+      if (state_q == SLIDE_RUN_OSUM && osum_route_bypass_active) begin
+        sldu_result_req_o[lane]   = 1'b0;
+        sldu_red_valid_o[lane]    = osum_route_valid[lane];
+        sldu_result_wdata_o[lane] = osum_route_data[lane];
+        sldu_result_be_o[lane]    = osum_route_be[lane];
+      end
+`endif
 
       // Update the final gnt vector
       result_final_gnt_d[lane] |= sldu_result_final_gnt_i[lane];

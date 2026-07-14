@@ -1,0 +1,439 @@
+# 4-lane 规约加速原型：ordered 递归环与 tree reduction 数据通路压缩
+
+本文记录 4-lane 规约优化的设计、消融开关、正确性边界和实测结果。方案同时覆盖 ordered token 递归环压缩、mask/token 解耦、masked-off 浮点运算消除，以及整数/无序浮点 tree reduction 的跨模块输入直通和无序浮点末级完成融合。当前只对 `NR_LANES=4`、`VLEN=1024` 给出性能结论，没有进行多 lane 扩展性实验。
+
+## 1. 瓶颈与优化目标
+
+`vfredosum` 必须严格保持元素顺序，因此它不能像 unordered reduction 那样构造并行规约树。当前 Ara 实现让一个累加 token 按元素、按 lane 循环，每个新元素都依赖前一个浮点结果。
+
+原始 ordered 递归环可简化为：
+
+```text
+VMFPU/FPU
+   │
+   ▼
+VMFPU result queue       固定 1 cycle/element
+   │
+   ▼
+SLDU result queue        固定 1 cycle/element
+   │
+   ▼
+next-lane VMFPU input spill
+   │
+   └──────────────► 下一次浮点累加
+```
+
+队列原本用于切断组合路径、吸收背压，是正确且保守的通用设计；但 ordered reduction 只有一个在途递归 token，中间两次完整入队/出队会直接增加 recurrence interval。VL 越长，这部分开销越接近 `2 × VL`，而不是一次性的启动延迟。
+
+本原型保留 VMFPU 输入 spill，把它重新解释为隔离 mask-ready 与跨 lane token-ready 的弹性 credit；在此基础上压缩中间两段队列，并让 masked-off 元素直接转发累加 token。各机制可独立消融。
+
+## 2. 机制一：VMFPU ordered output bypass
+
+开关：`reduction_output_bypass=1`
+
+宏：`ARA_RED_OUTPUT_BYPASS`
+
+实现位置：`hardware/src/lane/vmfpu.sv`
+
+在 `OSUM_REDUCTION` 状态时，基础开关只作用于无 mask 指令；启用 mask fastpath 后作用于全部 ordered reduction：
+
+- `vfpu_processed_result` 直接成为送往 SLDU 的规约数据；
+- `vfpu_out_valid` 直接成为 `mfpu_red_valid_o`；
+- `mfpu_red_ready_i` 直接控制 fpnew 输出端是否退休；
+- `to_process_cnt` 只在 `valid && ready` 的端到端握手发生时递减；
+- 非 lane 0 只在最后一个输出确实被 SLDU 接受后进入 `MFPU_WAIT`。
+
+因此，下游背压时 fpnew 保持 valid 和结果数据，计数器、状态机和 token 所有权都不前进，不会发生“结果只看见一次却没有被接收”的丢 token 问题。
+
+最终结果仍回到 lane 0，并通过原有正式 result queue 写回 VRF。旁路只作用于中间递归 token，不改变体系结构提交点。
+
+mask fastpath 没有把 mask-ready 组合接入 fpnew/SLDU ready 链。返回 token 先进入原有 VMFPU input spill，mask word 也已由 lane 内独立 spill 缓冲，因此二者可以分别等待；只有 VMFPU 同时观察到 token、源数据和 mask valid 才消费元素。
+
+## 3. 机制二：SLDU ordered one-hop route
+
+开关：`reduction_route_bypass=1`
+
+宏：`ARA_RED_ROUTE_BYPASS`
+
+实现位置：`hardware/src/sldu/sldu.sv`
+
+在 `SLIDE_RUN_OSUM` 时，基础开关只优化 `vm=1`；启用 mask fastpath 后，masked token 也不再先写入通用 result queue，而是组合路由到下一个 owner lane：
+
+```text
+source VMFPU valid
+        │
+        ▼
+SLDU one-hop route ──► target VMFPU valid
+        ▲                    │
+        └──── source ready ◄─┘ target ready
+```
+
+核心约束如下：
+
+- 普通 token 的 target 是 `(source_lane + 1) mod NrLanes`；
+- `issue_cnt == 1` 时强制把最终 token 送回 lane 0；
+- source ready 只等于目标 lane 的 grant；
+- `issue_cnt` 只在目标 grant 成立时递减；
+- valid 被阻塞时，source VMFPU 保持数据，路由和计数器均保持不变。
+
+这使传输仍具有端到端原子性，只去掉中间存储周期。未启用 mask fastpath 时，masked ordered 自动回退到原 SLDU result queue。
+
+## 4. 机制三：mask-decoupled fast loop
+
+开关：`reduction_mask_fastpath=1`
+
+宏：`ARA_RED_MASK_FASTPATH`
+
+该机制必须与 output 或 route bypass 配合。它利用两个已经存在的弹性资源：
+
+1. lane 内 mask spill 保存当前 mask word；
+2. VMFPU input spill 保存跨 lane 返回的 accumulator token。
+
+token-ready 只终止在 VMFPU input spill，mask-ready 只终止在 mask spill，两者之间没有组合环。VMFPU 在 `OSUM_REDUCTION` 内做 join：源向量、mask 和 accumulator 三者同时 valid 后才发射下一步。由此，masked ordered 可以安全使用 output/route 快速环，而无需增加专用 mask FIFO。
+
+与简单地删除 input spill 不同，本机制保留一个 token credit。开发中的反例表明，这个 credit 是连续 ordered 和 masked e16 能够保持进度性的必要边界。
+
+## 5. 机制四：masked-off accumulator token relay
+
+开关：`reduction_mask_skip=1`
+
+宏：`ARA_RED_MASK_SKIP`
+
+RVV 语义规定 masked-off 元素不参加规约，也不应产生该元素的浮点异常。原实现仍把它替换成 neutral value 并执行一次 FPU 累加，因此执行时间和能量基本不随 mask 密度下降。
+
+token relay 检查 `osum_issue_cnt` 对应的真实 mask bit。元素 inactive 时：
+
+- 不拉高 `vfpu_in_valid`；
+- 将当前 accumulator（`operand_b`）原样作为 VMFPU 输出；
+- 只有 `mfpu_red_valid_o && mfpu_red_ready_i` 成立时，才同时消费输入 token、当前元素和 mask；
+- 同一握手中递减 `issue_cnt` 与 `to_process_cnt`；
+- 一个 64-bit operand 内仍按原 shuffled element 顺序推进 `osum_issue_cnt`；
+- mask word 的最后一个元素完成后才拉高 `mask_ready_o`。
+
+因此 stall 时 token、源操作数、mask 和所有计数器保持不变；fire 时它们原子前进。active 元素继续严格按原顺序经过 FPU，inactive 元素只是不进入运算序列，符合 ordered reduction 语义。
+
+`reduction_mask_skip=1` 会自动启用 output bypass 和 mask fastpath，防止生成握手前提不完整的配置；route bypass 仍可独立消融。
+
+## 6. 机制五：capture-on-stall dense input cut
+
+开关：`reduction_dense_input_bypass=1`
+
+宏：`ARA_RED_DENSE_INPUT_BYPASS`
+
+无 mask ordered reduction 不依赖 mask-ready，因此可以进一步压缩 SLDU→VMFPU 的 input spill 周期。但不能简单在 transparent/stored 两条独立路径间切换，否则指令边界会出现 token 所有权歧义。
+
+最终机制保留原始双项 spill，并把它改造成 capture-on-stall fall-through cut：
+
+- spill 内已有 token 时，stored token 始终优先；
+- 仅当当前指令是 unmasked ordered 且 spill 为空时，允许 direct valid/data；
+- direct token 只有在 VMFPU 同周期 ready 时才真正旁路；
+- VMFPU 不 ready 时，token 自动捕获进原双项 spill；
+- masked、unordered 和边界阶段的 valid/ready 行为与原 spill 完全相同。
+
+因此任意 token 只有两种互斥所有权：已经由 VMFPU 当周期消费，或已经被 spill 接收。模式切换不需要 flush，也不会把 stored token 隐藏在 mux 后面。
+
+## 7. 机制六：tree reduction capture-on-stall input cut
+
+开关：`reduction_tree_input_bypass=1`
+
+宏：`ARA_RED_TREE_INPUT_BYPASS`，并与 dense 开关共同生成内部总开关 `ARA_RED_INPUT_BYPASS`
+
+实现位置：`hardware/src/lane/valu.sv`、`hardware/src/lane/vmfpu.sv`
+
+整数规约和无序浮点规约使用 SLDU 构造跨 lane 规约树。原实现中，SLDU 每次把局部结果送回 VALU/VMFPU 前都必须经过接收端 spill；即使接收状态机当拍空闲，也会固定多出一拍。tree input cut 把第 6 节已经验证过的 capture-on-stall 所有权规则推广到两条 tree 接收路径：
+
+- VALU 只对 `[VREDSUM:VWREDSUM]` 的规约 opcode 开放 direct input；
+- VMFPU 只对 `VFREDUSUM/VFREDMIN/VFREDMAX/VFWREDUSUM` 开放 direct input；
+- stored token 永远优先，spill 非空时完全保持旧行为；
+- direct token 遇到接收状态机 ready 时当拍消费；
+- direct token 遇到 stall 时自动捕获进原 spill，生产者仍获得一个弹性 credit；
+- ordered `VFREDOSUM/VFWREDOSUM` 不满足 tree 条件，继续走 dense/ordered 条件或原始路径。
+
+tree 条件只按 opcode 判断，不额外把状态机枚举拉进 spill 前端。原因是 RX 之外的状态本来就不拉高 consumer ready：提前到达的 token 会自然捕获进 spill，只有真正进入 RX 且 ready 后才会 direct fire。这样既避免跨层状态组合路径，又保留完整的 phase safety。
+
+RTL 断言检查两个核心不变量：direct active 时 spill 必须为空；direct valid 被 stall 时，跨-lane transaction、RX 次数、SIMD 次数和 first-op 状态必须稳定。
+
+## 8. 机制七：无序浮点 terminal-result fusion
+
+开关：`reduction_terminal_fusion=1`
+
+宏：`ARA_RED_VMFPU_TERMINAL_FUSION`
+
+实现位置：`hardware/src/lane/vmfpu.sv`
+
+无序浮点规约完成跨 lane 合并后，lane 0 还要根据 SEW 在 `SIMD_REDUCTION` 中横向折叠一个 64-bit word。原状态机在最后一次 fpnew 结果返回时只设置内部 valid，下一拍再次观察该 valid 后才进入 `MFPU_WAIT`、增加正式 result-queue count 并推进写指针。
+
+融合机制利用 `simd_red_cnt_q == simd_red_cnt_max_q` 判断当前 fpnew response 已经是最终体系结构结果。在同一个 response valid 周期中完成以下动作：
+
+- 把 `vfpu_processed_result` 写入原 result queue slot；
+- 设置 slot valid；
+- 增加正式 result-queue count；
+- 推进 result-queue write pointer；
+- 状态直接进入 `MFPU_WAIT`。
+
+它没有旁路体系结构写回队列，只融合“内部最终结果返回”和“结果正式发布”两个相邻状态，因此 VRF grant、尾部策略和提交顺序仍走原路径。该条件只位于 `SIMD_REDUCTION`，不会作用于 ordered `OSUM_REDUCTION`。
+
+## 9. 被否决的原型
+
+开发过程中评估了两个更简单的 input bypass 原型，它们都没有保留在最终设计中：
+
+- 独立 direct/spill mux：短微基准通过，但官方回归在长 unmasked→masked 边界（用例4→5）活锁；
+- 单项 mode-switchable buffer：解决了第一个边界，却在全 mask-off e16→masked e32（用例15→16）停滞，说明 masked 协议需要原双项容量和完全切断的 ready 路径。
+
+根因不是简单的数值错误，而是同一返回端口在 transparent/stored 两种握手语义间切换时，SLDU 同步 dummy token、指令完成脉冲和下一指令 token 可能跨越边界。局部 flush 也不能证明所有状态组合安全。
+
+最终 capture-on-stall 方案保留原双项 spill，只允许“同周期被消费”的 token 直通。这个负结果链说明：优化递归环时必须同时证明 token 生命周期、缓冲容量和进度性，不能只验证一条指令的数值结果。
+
+本轮还尝试过整数 VALU 的 terminal-result fusion。第一版在最后一次组合 ALU fold 当拍同时推进指令队列、提交计数和结果队列；定向探针出现不终止。二分后确认，提前一拍完成会与下一条指令的同拍接收及 `SIMD_REDUCTION` 完成条件竞争，单纯增加 wait state仍不足以闭合所有队列元数据时序。因此该整数融合没有保留。当前整数收益只来自已经通过完整回归的 tree input cut，避免为了少一拍引入难以证明的提交协议风险。
+
+## 10. 编译开关与消融配置
+
+所有开关默认都是 0，普通构建保持原始微架构。
+
+```bash
+# clean baseline
+make compile sim_dir=sim_red_base no_fsdb=1
+
+# 只旁路 VMFPU ordered result queue
+make compile sim_dir=sim_red_output \
+  reduction_output_bypass=1 no_fsdb=1
+
+# 只旁路 SLDU ordered result queue
+make compile sim_dir=sim_red_route \
+  reduction_route_bypass=1 no_fsdb=1
+
+# 两项组合
+make compile sim_dir=sim_red_opt \
+  reduction_output_bypass=1 \
+  reduction_route_bypass=1 no_fsdb=1
+
+# masked ordered 也进入两段快速环
+make compile sim_dir=sim_red_maskfast \
+  reduction_output_bypass=1 \
+  reduction_route_bypass=1 \
+  reduction_mask_fastpath=1 no_fsdb=1
+
+# 完整方案：快速环 + masked-off token relay
+make compile sim_dir=sim_red_maskskip \
+  reduction_route_bypass=1 \
+  reduction_mask_skip=1 no_fsdb=1
+
+# 完整方案再加入 dense capture-on-stall input cut
+make compile sim_dir=sim_red_dense \
+  reduction_route_bypass=1 \
+  reduction_mask_skip=1 \
+  reduction_dense_input_bypass=1 no_fsdb=1
+
+# 在 ordered 完整方案上加入整数/无序浮点 tree input cut
+make compile sim_dir=sim_red_tree \
+  reduction_route_bypass=1 \
+  reduction_mask_skip=1 \
+  reduction_dense_input_bypass=1 \
+  reduction_tree_input_bypass=1 no_fsdb=1
+
+# 4-lane 当前最终候选：再加入无序浮点末级完成融合
+make compile sim_dir=sim_red_tree_fusion \
+  reduction_route_bypass=1 \
+  reduction_mask_skip=1 \
+  reduction_dense_input_bypass=1 \
+  reduction_tree_input_bypass=1 \
+  reduction_terminal_fusion=1 no_fsdb=1
+```
+
+## 11. 无 mask 4-lane 性能实测
+
+条件：`NR_LANES=4`、`VLEN=1024`、`SEW=32`、`LMUL=1`、`VL=32`。`perf_reduction_probe` 的同一个 ROI 包含四类整数规约、三类 unordered FP 规约和一条 ordered FP sum。末尾以 `vmv.x.s` 建立真实结果依赖，确保窗口不会在 Ara 后端完成前关闭。下表是第一阶段六项正确性探针的逐项消融数据；最终八项探针因新增 phase-boundary 检查而在 ROI 外多 1 cycle，但目标指令延迟不变。
+
+| 配置 | ROI cycles | `VFREDOSUM` latency | ordered 相对 clean 改善 |
+|---|---:|---:|---:|
+| clean | 424 | 287 | - |
+| output bypass | 392 | 255 | 11.15% |
+| route bypass | 392 | 255 | 11.15% |
+| output + route bypass | 360 | 223 | 22.30% |
+
+output-only 和 route-only 都恰好节省 32 cycles；两项组合可叠加为 64 cycles。由于实验 `VL=32`，两项结果分别对应消除一个 `1 cycle/element` 的队列开销，而不是偶然减少固定启动时间。route-only 也独立通过当时的六项正确性测试，证明第二个开关不依赖第一个开关才能工作。
+
+在两项组合上继续加入 capture-on-stall input cut，`VFREDOSUM` 从 223 降到 191，又减少 32 cycles。三个 cut 各自稳定消除 `1 cycle/element`：
+
+| 对比 | `VFREDOSUM` latency | 增量改善 |
+|---|---:|---:|
+| clean | 287 | - |
+| output + route | 223 | 22.30% |
+| output + route + dense input cut | 191 | 33.45%（相对 clean） |
+
+使用包含新增 phase-boundary 定向检查的最终探针，ROI 总周期为 425→329，改善 22.59%；dense input cut 相对两项组合的指令延迟为 223→191，增量改善 14.35%。两组报告的 ready 与 workload-equivalent 门禁均通过。
+
+第一阶段 output + route 组合的 ROI 从 424 降到 360，改善 15.09%。加入 dense input cut 后，最终八项探针得到 425→329。各指令对比如下：
+
+| 指令 | clean latency | 组合 latency | 变化 |
+|---|---:|---:|---:|
+| `vredsum` | 24 | 24 | 0 |
+| `vredand` | 40 | 40 | 0 |
+| `vredor` | 39 | 39 | 0 |
+| `vredxor` | 39 | 39 | 0 |
+| `vfredusum` | 49 | 49 | 0 |
+| `vfredmin` | 55 | 55 | 0 |
+| `vfredmax` | 55 | 55 | 0 |
+| `vfredosum` | 287 | 191 | **-96 cycles / 33.45%** |
+
+非目标指令完全不变，说明收益来自 ordered token 环压缩，而不是 workload、前端发射或计数窗口变化。
+
+### 11.1 整数与无序浮点 tree 路径
+
+以下数据来自同一份最终八项 `perf_reduction_probe`，control 与 candidate 的 ready、workload-equivalent 门禁均为 true。control 已开启 ordered 的 output/route/mask/dense 机制，但关闭本节新增的 tree input cut 和 terminal fusion，因此是严格增量消融，而不是拿不同功能配置比较。
+
+| 指令 | tree control | + tree input cut | + FP terminal fusion | 最终相对 control |
+|---|---:|---:|---:|---:|
+| `vredsum` | 24 | 21 | 21 | 12.50% |
+| `vredand` | 31 | 25 | 25 | 19.35% |
+| `vredor` | 39 | 32 | 32 | 17.95% |
+| `vredxor` | 39 | 32 | 32 | 17.95% |
+| `vfredusum` | 49 | 46 | 45 | 8.16% |
+| `vfredmin` | 55 | 51 | 49 | 10.91% |
+| `vfredmax` | 55 | 47 | 44 | 20.00% |
+| ROI total cycles | 329 | 311 | 308 | 6.38% |
+
+tree input cut 单独把 ROI 从 329 降到 311，改善 5.47%。整数四类降低 12.5%–19.35%，无序浮点三类降低 6.12%–14.55%。terminal fusion 在其上再把 ROI 从 311 降到 308，三条无序浮点分别继续减少 1/2/3 cycles；它是固定尾部开销优化，因此短 VL 下相对比例更明显，长 VL 下绝对收益保持近似常数。
+
+探针是顺序指令流，前一条指令提前完成会让后续指令的观测 latency 也发生少量变化。`vfredosum` 在 tree/fusion 版本中也从 191 变为 186/184，但新增条件明确排除了 ordered opcode，因此不能把这 5/7 cycles 写成 ordered 数据通路自身的直接收益；这是 ROI 内前序指令缩短带来的调度上下文效应。
+
+第一阶段 output + route 性能比较门禁结果：
+
+```text
+baseline ready       : true
+candidate ready      : true
+workload equivalent  : true
+total cycles         : 424 -> 360 (+15.094%)
+VFREDOSUM latency    : 287 -> 223 (+22.300%)
+```
+
+### 11.2 ordered widening 路径
+
+`perf_widening_reduction_probe` 单独测量 e16→e32、VL=32 的
+`vfwredosum.vs`。源元素均为 FP16 1.0，FP32 seed 为 0；目标寄存器使用满足
+widening group 对齐约束的偶数编号。默认版和完整优化版都得到
+`0x42000000`（FP32 32.0），且 `fflags=0`。
+
+| 配置 | ROI cycles | `VFWREDOSUM` latency | 相对默认改善 |
+|---|---:|---:|---:|
+| default | 278 | 264 | - |
+| 完整优化 | 182 | 168 | **36.36%** |
+
+两者相差 96 cycles，与普通 ordered sum 的三个 cut 各减少
+`1 cycle/element` 完全一致。性能比较的 baseline/candidate ready 均为 true，
+workload-equivalent 为 true，ROI 总周期改善 34.53%。这证明三个弹性 cut
+不仅在 opcode 条件上包含 `VFWREDOSUM`，而且确实覆盖了 e16→e32 的实际
+ordered widening recurrence。
+
+## 12. mask 密度响应
+
+`perf_reduction_mask_probe` 每次只测量一条 e32、VL=32 的 masked `vfredosum`。源元素均为 1.0，mask 分别选择 32/16/8/0 个元素。原始实现的 FPU issue 数和延迟与 active density 无关；完整方案只对 active 元素发射 FPU 运算。
+
+| Active density | 原始 latency | mask fast-loop | fast-loop + relay | 完整方案相对原始改善 | FPU issues（原始→完整） |
+|---:|---:|---:|---:|---:|---:|
+| 100% | 268 | 204 | 204 | 23.88% | 32→32 |
+| 50% | 268 | 204 | 140 | 47.76% | 32→16 |
+| 25% | 268 | 204 | 108 | 59.70% | 32→8 |
+| 0% | 268 | 204 | 74 | 72.39% | 32→0 |
+
+固定的 mask fast-loop 贡献 64 cycles。对于 100%→25% 区间，每增加一个 skipped element，relay 再减少约 4 cycles；0% 情况还消除了最后一次 FPU drain，实测比线性模型再少 2 cycles。
+
+在本 4-lane、e32、VL=32 配置下，可用以下经验模型描述完整方案，其中 `S` 是 masked-off 元素数：
+
+```text
+L_base = 268
+L_fast = L_base - 2 × VL = 204
+L_relay ≈ L_fast - 4 × S
+```
+
+该模型的前两项对应两个被旁路队列，第三项对应被消除的 FPU feedback。全 mask-off 的最终 drain 特例为实测 74 cycles。FPU 动态运算次数则从固定 `VL` 变为 `active_count`，可以作为综合功耗数据出来前的结构性能耗代理，但不能替代真实功耗分析。
+
+ROI 总周期及报告门禁：
+
+| Active density | 原始 total cycles | 完整方案 | 改善 | workload equivalent |
+|---:|---:|---:|---:|:---:|
+| 100% | 282 | 218 | 22.70% | 是 |
+| 50% | 281 | 153 | 45.55% | 是 |
+| 25% | 281 | 121 | 56.94% | 是 |
+| 0% | 282 | 82 | 70.92% | 是 |
+
+四组 baseline/candidate 的单日志 ready 门禁均为 true。该曲线同时证明两类收益：快速环提供与密度无关的 recurrence 缩短，token relay 提供与稀疏度相关的无效运算消除。
+
+## 13. 正确性与进度性验证
+
+`apps/perf_reduction_probe/main.c` 在 ROI 外执行八个精确检查：
+
+- integer `vredsum`，e32、VL=32；
+- unordered `vfredusum`，e32、VL=32；
+- unmasked `vfredosum`，e32、VL=32；
+- odd `vfredosum`，e32、VL=31；
+- masked `vfredosum`，e32、VL=31、mask=`0x55555555`，预期 16 个 active elements；
+- masked `vfredosum`，e16、VL=16、mask=`0x5555`，预期 8 个 active elements；
+- masked `vfredosum`，e16、VL=7、全 mask-off；
+- 紧接上一条执行 e32、VL=1、单元素 active，专门覆盖 opaque phase 切换。
+
+组合版本结果：
+
+```text
+integer=20 unordered=20 ordered=20 odd=1f masked=10 masked16=8 transition=0/1 (PASSED)
+Core Test *** SUCCESS ***
+```
+
+mask 密度探针的 100%/50%/25%/0% 四种结果分别为 32/16/8/0，全部通过；0% active 时 FPU issue 为 0，仍能完成最终 lane-0 归集和 VRF 写回。这是 relay 自身终止能力的极端进度性测试。
+
+0% 探针还把所有源元素替换为 signaling NaN，并在指令前清空 `fflags`。baseline 与完整方案都得到 seed 结果且 `fflags=0`；完整方案同时观测到 FPU issue=0，说明 inactive NaN 没有误入 fpnew。
+
+RTL 内加入六条协议断言：
+
+- skip active 时必须 `mfpu_red_valid_o=1` 且 `vfpu_in_valid=0`；
+- skip valid 被 downstream stall 时，`issue_cnt/to_process_cnt/osum_issue_cnt/first_op` 必须跨周期稳定；
+- dense bypass 只能在 unmasked ordered 请求且 spill 为空时激活；
+- dense direct input 被 stall 时，issue-side 位置必须保持。
+- integer tree direct input 只能在请求有效且 spill 为空时激活；
+- integer/FP tree direct input 被 stall 时，跨-lane与 SIMD 位置必须保持。
+
+带断言的混合 e16/e32 微基准通过，没有触发协议错误。
+
+官方 `rv64uv-ara-vfredosum` 回归共 17 项：优化版本通过 16 项，并完整运行到测试结束，没有 masked/连续 ordered 活锁。唯一失败与 clean baseline 完全一致：测试用 `VSET(64, e32, m1)` 并硬编码 64 元素期望值，但本配置 `VLEN=1024` 时 e32/m1 的 VLMAX=32。clean 与 optimized 都得到前 32 元素结果 `0x43110000`，测试期望 64 元素的 `0x43908000`。这是测试与配置不匹配，不是优化差异。
+
+官方 `rv64uv-ara-vfwredosum` 回归在 default 和完整优化配置下均为
+12/12 通过。它覆盖 e16→e32、e32→e64、masked、奇数 VL 和
+tail-undisturbed，因此 widening 正确性不再只是从共享 `OSUM_REDUCTION`
+状态推断。
+
+本轮最终候选还执行了仓库中现有的全部 9 个规约官方二进制：
+
+- `vredsum` 20/20、`vredand` 8/8、`vredor` 8/8、`vredxor` 4/4；
+- `vfredmin` 17/17、`vfredmax` 17/17；
+- `vfwredosum` 12/12；
+- `vfredusum` 16/17、`vfredosum` 16/17。
+
+后两者唯一失败均是各自第 4 项的 `VSET(64, e32, m1)` 长向量测试，并且关闭 tree input cut 与 terminal fusion 的 control 得到相同失败。`vfredosum` 的 control/candidate 都只能按本配置 e32/m1 的 VLMAX=32 规约；`vfredusum` 的 control/candidate 都得到 0。因而它们应记录为既有测试/配置问题，不能计作候选通过，也不能归因于本轮优化。除这两个共同失败外，候选未新增官方用例差异。
+
+补充探针开发中还观察到一个未完成最小化的问题：使用 `vmv` 紧邻地产生
+active masked widening 的 source/mask，并以很短间隔连续发射 ordered
+widening 时，default 和 optimized 都可能停在结果读取或后续 `vsetvli`；
+改用与官方回归相同的 `vle8/vle16/vle32` producer 后可以继续执行。该现象
+目前只应标记为原路径的 producer-consumer/retire 进度性疑点，不能归因于
+本轮旁路，也不能在没有独立最小复现和协议波形前写成已确认 RTL bug。
+
+## 14. 当前结论与论文边界
+
+当前数据能够支持以下结论：
+
+- 三段弹性延迟确实处在 ordered recurrence critical loop 中；
+- 每压缩一段，4-lane、VL=32 实测稳定减少 32 cycles；
+- valid/ready 端到端握手保持数值正确性和连续指令进度性；
+- VMFPU input spill 作为 token credit，使 masked fast loop 不产生 mask-ready 组合环；
+- masked-off relay 让实际 FPU 运算数从 VL 降为 active element count；
+- capture-on-stall input cut 将 dense ordered 延迟进一步降到 191 cycles；
+- 同一 capture-on-stall 原则推广到 integer/unordered-FP tree 接收路径后，目标指令降低 6.12%–19.35%；
+- 无序浮点 terminal-result fusion 在 tree cut 之上再消除 1–3 cycles；
+- 延迟收益随 mask 稀疏度从 23.88% 扩展到 72.39%，具备可建模的参数化趋势；
+- 默认开关关闭，不影响原微架构。
+
+当前已经形成比“普通队列旁路”更完整的论文基本方案：recurrence-aware elastic compression、capture-on-stall phase-safe input cut、mask/token decoupling 和 predicate-aware operation elimination 四部分有明确依赖关系，并有独立消融与密度曲线。
+
+尚不能直接宣称最终论文级 PPA 优势：组合 ready 路径被拉长，必须补综合后的 Fmax、面积和功耗；也尚未按要求开展 2/8/16-lane 实验。论文必须把周期改善换算成 `cycles × clock_period`，并报告面积/能量代价。
+
+下一阶段最有研究价值的方向是 context-interleaved accumulators：为多个独立规约上下文保存累加 token，在保持单上下文严格顺序的同时，用上下文轮转隐藏 FPU feedback latency。随后可加入可配置 elastic cut，联合搜索“recurrence cycles × clock period”，避免只减少周期却损失 Fmax。
