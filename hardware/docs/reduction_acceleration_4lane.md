@@ -486,3 +486,57 @@ vfredusum average execution latency: 43 cycles
 本节已经证明“上下文数自适应 + tagged fixed-DAG + return-driven scheduling”在当前 4-lane 短归约上可以胜过固定宽度上下文，并给出了固定 4-context 的负消融。它比单纯多 accumulator 更适合作为论文机制的一部分，但目前仍只是单条 unordered 指令内部的反馈上下文，尚不是跨多条独立指令的 context interleaving。
 
 下一阶段最有研究价值的方向仍是跨指令/跨 tree stage 的 context-interleaved accumulators：在保持每个 ordered context 严格顺序的同时，让不同规约上下文轮转占用 FPU 和 SLDU 空槽。随后应加入参数化上下文选择、综合后的 Fmax/面积/功耗以及不同 VL 分布，联合搜索 `cycles × clock_period × energy`，避免只减少周期却损失 PPA。
+
+## 16. 前台 tree / 后台 local 双上下文流
+
+单条 `vfredusum` 从 45 降到 43 cycles 后，继续压缩局部 DAG 的空间已经很小。16 条相互独立的 e32/m1、VL=32 `vfredusum` 流显示，上一版虽然每条局部计算只有约 14 cycles，但 local、跨-lane tree、SIMD 和提交仍由一个全局 FSM 完全串行，总共需要 612 cycles，平均启动间隔为 38.25 cycles。因此新增第二个默认关闭的实验开关：
+
+```text
+reduction_context_flow=1
+reduction_context_stream=1
+```
+
+`reduction_context_stream` 依赖前一节的 tagged context，并继续限制为 4 lanes。第一版只重叠算术配置相同的 unmasked e32 `vfredusum`，要求 opcode、SEW、`vm` 和 rounding mode 相同；不满足条件时不提前移动 issue pointer，完整回退原顺序路径。
+
+### 16.1 状态解耦
+
+实现将原来绑定在同一条指令上的三个位置拆开：
+
+- processing/commit pointer 始终指向前台指令 A，A 按原协议经过 SLDU tree、lane-0 SIMD 和顺序提交；
+- issue pointer 可以提前移动到独立的后继指令 B，B 使用 tagged 2/4-context DAG 消费自己的 operand queue；
+- B 的局部 root 暂存在专用 64-bit background result 中，不允许越过 A 写回；A 完成后，B 的 root 才注入原 `INTER_LANES_REDUCTION_TX`，processing pointer 同时按程序顺序推进。
+
+这不是新增第二套 FPU。调度器采用 foreground-first、work-conserving 仲裁：如果当前周期 tree/SIMD 必须占用 fpnew，则 B 保持 context；否则 B 使用该空闲输入槽。tagged B response 可以与 A 的 untagged tree response交错返回，前者按 context ID 写回，后者仍进入 A 的临时 result slot。A 完成、B 升为前台后，队列释放出的下一条 C 又可成为新的后台，从而形成稳定的跨指令 wavefront。
+
+### 16.2 连续规约实测
+
+条件：4 lanes、VLEN=1024、e32/m1、VL=32，16 条无数据依赖的 `vfredusum`，相同 source/seed、不同 destination。control 是第 15 节已经达到 43-cycle 单指令延迟的自适应 context 版本；candidate 仅额外开启 context stream。
+
+| 指标 | control | context stream | 改善 |
+|---|---:|---:|---:|
+| 16 条 ROI total cycles | 612 | **402** | **34.31%** |
+| 平均启动间隔（ROI/16） | 38.250 | **25.125** | **34.31%** |
+| `vfredusum` active cycles | 597 | **387** | **35.18%** |
+| 平均 execution latency | 77.000 | **51.625** | **32.95%** |
+| 平均 dispatch wait | 30.750 | **19.375** | **36.99%** |
+| operand-wait cycles | 492 | **282** | **42.68%** |
+| INTRA lane samples | 904 | **64** | **92.92%** |
+| TX/RX lane samples | 192/1076 | **192/1076** | tree 工作量不变 |
+
+总吞吐为 control 的 1.522 倍。TX/RX 样本完全不变而显式 INTRA 样本从 904 降为 64，说明收益不是少算了 tree，也不是改变 workload，而是除第一条以外的大部分 local 阶段都被隐藏在前一条指令的 global 阶段中。
+
+### 16.3 正确性和协议门禁
+
+连续流执行了三层检查：
+
+1. 16 个 destination 全部逐个读回，均为预期的 32，而不是只检查最后一条；
+2. 另一个 8 指令探针给每条规约配置不同 seed，使期望结果依次为 32～39，最终 mismatch 为 0，验证 context result、instruction ID 和 destination 没有串线；
+3. 原混合规约探针仍为 306 cycles，并通过 integer/unordered/ordered/odd/masked/phase-transition 全部检查，说明非同构后继没有错误进入 stream。
+
+在第 15 节五条 context 断言之上新增四条 stream 断言：后台只能在 issue/processing pointer 已解耦时存活；前后台算术配置必须相容；complete context 必须没有 pending fpnew owner；任何 tagged response 必须属于前台 context scheduler 或后台 scheduler。带九条相关断言的连续流、不同 seed 流和混合探针均未触发错误。
+
+官方 `rv64uv-ara-vfredusum` 仍为 16/17，通过/失败集合与 control 完全一致；唯一失败仍是第 4 项超过 e32/m1 VLMAX 的既有测试配置问题。
+
+### 16.4 当前边界
+
+34.31% 是独立同构规约流的吞吐收益，不应写成任意程序或单条规约的加速比。当前 stream 尚未覆盖 masked、其它 SEW、min/max、整数规约、ordered FP 或不同 rounding mode 的混合流；也还没有综合后的 Fmax/面积/功耗。论文中应同时报告单条 latency 与 steady-state initiation interval，并把“同构流命中率”作为工作负载参数。下一步应先扩展 unordered min/max 和整数规约，再研究 ordered context 的 per-context strict-order token，而不是放宽相容性检查后直接共享算术控制。

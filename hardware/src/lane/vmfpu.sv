@@ -751,6 +751,34 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       vinsn.vm && (vinsn.vl >= 8);
   endfunction : red_context_eligible
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+  // One context remains attached to the foreground inter-lane tree while the
+  // explicit feedback slots below accumulate the next independent reduction.
+  // The first implementation intentionally accepts homogeneous streams only:
+  // tree and background operations may coexist in fpnew, so their arithmetic
+  // format and rounding control must be interchangeable at every return.
+  logic red_stream_bg_active_d, red_stream_bg_active_q;
+  logic red_stream_bg_complete_d, red_stream_bg_complete_q;
+  logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
+  elen_t red_stream_bg_result_d, red_stream_bg_result_q;
+
+  logic [31:0] red_stream_bg_issue_cycles_d, red_stream_bg_issue_cycles_q;
+  logic [31:0] red_stream_overlap_cycles_d, red_stream_overlap_cycles_q;
+  logic [31:0] red_stream_primary_conflict_cycles_d,
+               red_stream_primary_conflict_cycles_q;
+
+  function automatic logic red_stream_compatible(
+    vfu_operation_t foreground, vfu_operation_t background
+  );
+    red_stream_compatible = red_context_eligible(foreground) &&
+      red_context_eligible(background) &&
+      (foreground.op == background.op) &&
+      (foreground.vtype.vsew == background.vtype.vsew) &&
+      (foreground.fp_rm == background.fp_rm) &&
+      (foreground.vm == background.vm);
+  endfunction : red_stream_compatible
+`endif
+
   // Tag layout for context-flow fpnew requests.  Bit 7 separates these tags
   // from the legacy neutral indicators 0/1/2.  Bits 5:4 identify the fixed
   // DAG level and bits 1:0 identify the destination context.
@@ -1661,6 +1689,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     red_context_phase_d      = red_context_phase_q;
     red_context_enabled_d    = red_context_enabled_q;
     red_context_two_way_d    = red_context_two_way_q;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+    red_stream_bg_active_d              = red_stream_bg_active_q;
+    red_stream_bg_complete_d            = red_stream_bg_complete_q;
+    red_stream_foreground_advanced_d    = red_stream_foreground_advanced_q;
+    red_stream_bg_result_d              = red_stream_bg_result_q;
+    red_stream_bg_issue_cycles_d        = red_stream_bg_issue_cycles_q;
+    red_stream_overlap_cycles_d         = red_stream_overlap_cycles_q;
+    red_stream_primary_conflict_cycles_d = red_stream_primary_conflict_cycles_q;
+`endif
 `endif
 `ifdef ARA_RED_MASK_SKIP
     osum_mask_skip_active   = 1'b0;
@@ -1668,6 +1705,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     // Don't prevent commit by default
     prevent_commit = 1'b0;
+
+`ifdef ARA_RED_CONTEXT_FLOW_4LANE
+    // Tagged feedback responses can return while another reduction occupies
+    // the inter-lane state machine.  Route them before foreground scheduling
+    // so the completed slot is available to a same-cycle background issue.
+    if (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7] &&
+        (red_context_flow_active
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+         || red_stream_bg_active_q
+`endif
+        )) begin
+      automatic red_context_idx_t response_context =
+        red_context_idx_t'(vfpu_tag_out[RedContextIdxW-1:0]);
+      red_context_data_d[response_context]    = vfpu_processed_result;
+      red_context_valid_d[response_context]   = 1'b1;
+      red_context_pending_d[response_context] = 1'b0;
+    end
+`endif
 
     //////////////////////////////////////////////////////////////////
     //  Issue the instruction and Write data into the result queue  //
@@ -1930,20 +1985,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
         if (red_context_flow_active) begin
-          automatic red_context_idx_t response_context =
-            red_context_idx_t'(vfpu_tag_out[RedContextIdxW-1:0]);
           automatic logic source_word_valid =
             (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
                                            : mfpu_operand_valid_i[1]);
-
-          // Responses are routed by their fixed-DAG tag.  A context has one
-          // owner and at most one request in flight, so completion is a direct
-          // indexed write without associative lookup or reordering.
-          if (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7]) begin
-            red_context_data_d[response_context]    = vfpu_processed_result;
-            red_context_valid_d[response_context]   = 1'b1;
-            red_context_pending_d[response_context] = 1'b0;
-          end
 
           unique case (red_context_phase_q)
             RED_CTX_ACCUMULATE: begin
@@ -2299,7 +2343,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
         // If we have a valid result from the FPU,
         // write it in the queue and send it to the SLDU
-        if (vfpu_out_valid && !result_queue_full) begin
+        if (vfpu_out_valid && !vfpu_tag_out[7] && !result_queue_full) begin
           result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
           mfpu_state_d = INTER_LANES_REDUCTION_TX;
@@ -2355,7 +2399,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
 
         // Accumulate the result
-        if (vfpu_out_valid && !result_queue_full) begin
+        if (vfpu_out_valid && !vfpu_tag_out[7] && !result_queue_full) begin
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
           result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
 `ifdef ARA_RED_VMFPU_TERMINAL_FUSION
@@ -2585,10 +2629,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           if (vinsn_queue_d.processing_cnt != 0) to_process_cnt_d =
             vinsn_queue_q.vinsn[vinsn_queue_d.processing_pnt].vl;
 
-          // Bump issue counter and pointers
-          vinsn_queue_d.issue_cnt -= 1;
-          if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1) vinsn_queue_d.issue_pnt = '0;
-          else vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+          // Bump issue counter and pointers.  A streamed foreground was
+          // removed from the issue side when its background successor began,
+          // so it must not be consumed a second time here.
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          if (!red_stream_foreground_advanced_q) begin
+`endif
+            vinsn_queue_d.issue_cnt -= 1;
+            if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+              vinsn_queue_d.issue_pnt = '0;
+            else
+              vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          end
+`endif
 
           if (vinsn_queue_d.issue_cnt != 0) issue_cnt_d =
             vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
@@ -2617,11 +2671,232 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           red_context_phase_d      = RED_CTX_ACCUMULATE;
           red_context_enabled_d    = red_context_eligible(vinsn_issue_d);
           red_context_two_way_d    = (vinsn_issue_d.vl <= 8);
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          red_stream_bg_active_d           = 1'b0;
+          red_stream_bg_complete_d         = 1'b0;
+          red_stream_foreground_advanced_d = 1'b0;
+          if (red_stream_foreground_advanced_q) begin
+            // The issue pointer already names the next processing instruction.
+            // If its local root is ready, seed the old inter-lane protocol
+            // directly; otherwise promote the live background DAG to the
+            // foreground INTRA state without resetting any feedback owner.
+            red_stream_foreground_advanced_d = 1'b0;
+
+            if (red_stream_bg_complete_q) begin
+              result_queue_d[result_queue_write_pnt_q].wdata =
+                red_stream_bg_result_q;
+              result_queue_d[result_queue_write_pnt_q].addr =
+                vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
+              result_queue_d[result_queue_write_pnt_q].id =
+                vinsn_processing_d.id;
+              result_queue_d[result_queue_write_pnt_q].be =
+                be(1, vinsn_processing_d.vtype.vsew);
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+
+              to_process_cnt_d              = '0;
+              first_op_d                    = 1'b0;
+              red_context_enabled_d         = 1'b0;
+              red_stream_bg_complete_d      = 1'b0;
+              red_stream_bg_active_d        = 1'b0;
+              mfpu_state_d                  = INTER_LANES_REDUCTION_TX;
+            end else if (red_stream_bg_active_q) begin
+              issue_cnt_d                   = issue_cnt_q;
+              first_op_d                    = first_op_q;
+              intra_op_rx_cnt_d             = intra_op_rx_cnt_q;
+              red_context_data_d            = red_context_data_q;
+              red_context_valid_d           = red_context_valid_q;
+              red_context_pending_d         = red_context_pending_q;
+              red_context_issue_d           = red_context_issue_q;
+              red_context_pair_issue_d      = red_context_pair_issue_q;
+              red_context_phase_d           = red_context_phase_q;
+              red_context_enabled_d         = 1'b1;
+              red_context_two_way_d         = red_context_two_way_q;
+              red_stream_bg_active_d        = 1'b0;
+              mfpu_state_d                  = INTRA_LANE_REDUCTION;
+            end
+          end
+`endif
 `endif
         end
       end
       default:;
     endcase
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+    // Decouple the next homogeneous reduction from the foreground tree.  The
+    // architectural processing/commit pointers stay on the foreground; only
+    // the operand-issue pointer advances to the background context.
+    if ((mfpu_state_q inside {INTER_LANES_REDUCTION_TX,
+                              INTER_LANES_REDUCTION_RX,
+                              SIMD_REDUCTION}) &&
+        !red_stream_foreground_advanced_q &&
+        !red_stream_bg_active_q && !red_stream_bg_complete_q &&
+        (vinsn_queue_q.issue_cnt > 1)) begin
+      automatic logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt =
+        (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+          ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+      automatic vfu_operation_t next_issue =
+        vinsn_queue_q.vinsn[next_issue_pnt];
+
+      if (red_stream_compatible(vinsn_processing_q, next_issue)) begin
+        vinsn_queue_d.issue_cnt = vinsn_queue_q.issue_cnt - 1'b1;
+        vinsn_queue_d.issue_pnt = next_issue_pnt;
+        issue_cnt_d             = next_issue.vl;
+        first_op_d              = 1'b1;
+        intra_op_rx_cnt_d       = '0;
+
+        red_context_data_d       = '0;
+        red_context_valid_d      = '1;
+        red_context_pending_d    = '0;
+        red_context_issue_d      = '0;
+        red_context_pair_issue_d = '0;
+        red_context_phase_d      = RED_CTX_ACCUMULATE;
+        red_context_enabled_d    = 1'b1;
+        red_context_two_way_d    = (next_issue.vl <= 8);
+
+        red_stream_bg_active_d           = 1'b1;
+        red_stream_bg_complete_d         = 1'b0;
+        red_stream_foreground_advanced_d = 1'b1;
+      end
+    end
+
+    // Work-conserving background scheduler.  Foreground tree/SIMD requests
+    // keep priority; otherwise the next reduction consumes the idle fpnew
+    // input slot using the same tagged 2/4-context DAG as the foreground path.
+    if (red_stream_bg_active_q && !red_stream_bg_complete_q) begin
+      automatic logic [3:0] bg_issue_element_cnt =
+        (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+      automatic logic bg_source_word_valid =
+        (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
+                                       : mfpu_operand_valid_i[1]);
+
+      red_stream_overlap_cycles_d = red_stream_overlap_cycles_q + 1'b1;
+      if (vfpu_in_valid) begin
+        red_stream_primary_conflict_cycles_d =
+          red_stream_primary_conflict_cycles_q + 1'b1;
+      end else begin
+        if (bg_issue_element_cnt > issue_cnt_q)
+          bg_issue_element_cnt = issue_cnt_q;
+        issue_be = be(bg_issue_element_cnt, vinsn_issue_q.vtype.vsew);
+
+        unique case (red_context_phase_q)
+          RED_CTX_ACCUMULATE: begin
+            operand_a = processed_red_operand(mfpu_operand_i[1], 1'b0,
+                                              mask_i, bg_issue_element_cnt,
+                                              ntr_val);
+            operand_c = processed_red_operand(mfpu_operand_i[2], 1'b0,
+                                              mask_i, bg_issue_element_cnt,
+                                              ntr_val);
+            operand_b = first_op_q
+                      ? (vinsn_issue_q.use_scalar_op ? scalar_op
+                                                     : mfpu_operand_i[0])
+                      : red_context_data_d[red_context_issue_q];
+
+            operands_valid = bg_source_word_valid &&
+              red_context_valid_d[red_context_issue_q] &&
+              !red_context_pending_d[red_context_issue_q] &&
+              (!first_op_q || mfpu_operand_valid_i[0]);
+
+            if (issue_cnt_q != '0 && operands_valid &&
+                vinsn_issue_q_valid) begin
+              vfpu_tag_in = strb_t'(RedContextTagMarker |
+                RedContextTagAccum | red_context_issue_q);
+              vfpu_in_valid = 1'b1;
+              if (vfpu_in_ready) begin
+                red_context_valid_d[red_context_issue_q]   = 1'b0;
+                red_context_pending_d[red_context_issue_q] = 1'b1;
+                red_context_issue_d = red_context_two_way_q
+                                    ? {1'b0, ~red_context_issue_q[0]}
+                                    : red_context_issue_q + 1'b1;
+                issue_cnt_d = issue_cnt_q - bg_issue_element_cnt;
+                intra_op_rx_cnt_d = intra_op_rx_cnt_q + bg_issue_element_cnt;
+                mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
+                                     ? {2'b10, first_op_q}
+                                     : {2'b01, first_op_q};
+                first_op_d = 1'b0;
+                red_stream_bg_issue_cycles_d =
+                  red_stream_bg_issue_cycles_q + 1'b1;
+              end
+            end else if (issue_cnt_q == '0 &&
+                         red_context_valid_d[0] &&
+                         red_context_valid_d[1] &&
+                         !red_context_pending_d[0]) begin
+              issue_be = '1;
+              operand_b = red_context_data_d[0];
+              operand_c = red_context_data_d[1];
+              vfpu_tag_in = strb_t'(RedContextTagMarker |
+                (red_context_two_way_q ? RedContextTagRoot
+                                       : RedContextTagPair));
+              vfpu_in_valid = 1'b1;
+              if (vfpu_in_ready) begin
+                red_context_valid_d[0]   = 1'b0;
+                red_context_valid_d[1]   = 1'b0;
+                red_context_pending_d[0] = 1'b1;
+                red_context_pair_issue_d = 1;
+                red_context_phase_d = red_context_two_way_q
+                                    ? RED_CTX_MERGE_ROOT
+                                    : RED_CTX_MERGE_PAIRS;
+                red_stream_bg_issue_cycles_d =
+                  red_stream_bg_issue_cycles_q + 1'b1;
+              end
+            end
+          end
+
+          RED_CTX_MERGE_PAIRS: begin
+            issue_be = '1;
+            if (red_context_pair_issue_q == 1 &&
+                red_context_valid_d[2] && red_context_valid_d[3] &&
+                !red_context_pending_d[1]) begin
+              operand_b = red_context_data_d[2];
+              operand_c = red_context_data_d[3];
+              vfpu_tag_in = strb_t'(RedContextTagMarker |
+                RedContextTagPair | 8'h01);
+              vfpu_in_valid = 1'b1;
+              if (vfpu_in_ready) begin
+                red_context_valid_d[2]   = 1'b0;
+                red_context_valid_d[3]   = 1'b0;
+                red_context_pending_d[1] = 1'b1;
+                red_context_pair_issue_d = 2;
+                red_stream_bg_issue_cycles_d =
+                  red_stream_bg_issue_cycles_q + 1'b1;
+              end
+            end
+
+            if (red_context_pair_issue_d == 2 &&
+                !red_context_pending_d[0] && !red_context_pending_d[1] &&
+                red_context_valid_d[0] && red_context_valid_d[1]) begin
+              operand_b = red_context_data_d[0];
+              operand_c = red_context_data_d[1];
+              vfpu_tag_in = strb_t'(RedContextTagMarker |
+                RedContextTagRoot);
+              vfpu_in_valid = 1'b1;
+              if (vfpu_in_ready) begin
+                red_context_valid_d[0]   = 1'b0;
+                red_context_valid_d[1]   = 1'b0;
+                red_context_pending_d[0] = 1'b1;
+                red_context_pair_issue_d = 1;
+                red_context_phase_d      = RED_CTX_MERGE_ROOT;
+                red_stream_bg_issue_cycles_d =
+                  red_stream_bg_issue_cycles_q + 1'b1;
+              end
+            end
+          end
+
+          RED_CTX_MERGE_ROOT: begin
+            if (red_context_pair_issue_q == 1 &&
+                !red_context_pending_d[0] && red_context_valid_d[0]) begin
+              red_stream_bg_result_d   = red_context_data_d[0];
+              red_stream_bg_complete_d = 1'b1;
+              red_stream_bg_active_d   = 1'b0;
+              red_context_phase_d      = RED_CTX_PUBLISH;
+            end
+          end
+
+          default:;
+        endcase
+      end
+    end
+`endif
 
     //////////////////////////////////
     //  Write results into the VRF  //
@@ -2723,6 +2998,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt]);
           red_context_two_way_d    =
             (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl <= 8);
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          red_stream_bg_active_d           = 1'b0;
+          red_stream_bg_complete_d         = 1'b0;
+          red_stream_foreground_advanced_d = 1'b0;
+          red_stream_bg_result_d           = '0;
+`endif
 `endif
 
           mfpu_state_d = next_mfpu_state(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op);
@@ -2776,6 +3057,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         red_context_phase_d      = RED_CTX_ACCUMULATE;
         red_context_enabled_d    = red_context_eligible(vfu_operation_i);
         red_context_two_way_d    = (vfu_operation_i.vl <= 8);
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+        red_stream_bg_active_d           = 1'b0;
+        red_stream_bg_complete_d         = 1'b0;
+        red_stream_foreground_advanced_d = 1'b0;
+        red_stream_bg_result_d           = '0;
+`endif
 `endif
         issue_cnt_d             = vfu_operation_i.vl;
       end
@@ -2855,6 +3142,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_context_phase_q      <= RED_CTX_ACCUMULATE;
       red_context_enabled_q    <= 1'b0;
       red_context_two_way_q    <= 1'b0;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      red_stream_bg_active_q               <= 1'b0;
+      red_stream_bg_complete_q             <= 1'b0;
+      red_stream_foreground_advanced_q     <= 1'b0;
+      red_stream_bg_result_q               <= '0;
+      red_stream_bg_issue_cycles_q         <= '0;
+      red_stream_overlap_cycles_q          <= '0;
+      red_stream_primary_conflict_cycles_q <= '0;
+`endif
 `endif
       mfpu_vxsat_q            <= '0;
       clkgate_en_q            <= 1'b0;
@@ -2889,6 +3185,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_context_phase_q      <= red_context_phase_d;
       red_context_enabled_q    <= red_context_enabled_d;
       red_context_two_way_q    <= red_context_two_way_d;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      red_stream_bg_active_q               <= red_stream_bg_active_d;
+      red_stream_bg_complete_q             <= red_stream_bg_complete_d;
+      red_stream_foreground_advanced_q     <= red_stream_foreground_advanced_d;
+      red_stream_bg_result_q               <= red_stream_bg_result_d;
+      red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
+      red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
+      red_stream_primary_conflict_cycles_q <= red_stream_primary_conflict_cycles_d;
+`endif
 `endif
       mfpu_vxsat_q            <= mfpu_vxsat_d;
       clkgate_en_q            <= clkgate_en_d;
@@ -2953,6 +3258,38 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         (red_context_pair_issue_q == 1 &&
          (red_context_pending_q[0] || red_context_valid_q[0]))
   ) else $error("reduction root phase lost its only in-flight/result owner");
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+  a_red_stream_background_is_decoupled: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_bg_active_q |->
+        (red_stream_foreground_advanced_q &&
+         (vinsn_queue_q.issue_pnt != vinsn_queue_q.processing_pnt) &&
+         (mfpu_state_q inside {INTER_LANES_REDUCTION_TX,
+                               INTER_LANES_REDUCTION_RX,
+                               LN0_REDUCTION_COMMIT,
+                               SIMD_REDUCTION, MFPU_WAIT}))
+  ) else $error("background reduction is not decoupled from a foreground tree");
+
+  a_red_stream_background_shape_matches: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_bg_active_q |->
+        red_stream_compatible(vinsn_processing_q, vinsn_issue_q)
+  ) else $error("background reduction arithmetic differs from foreground");
+
+  a_red_stream_completed_context_is_quiescent: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_bg_complete_q |->
+        (red_stream_foreground_advanced_q && !red_stream_bg_active_q &&
+         red_context_pending_q == '0)
+  ) else $error("completed background context still owns an fpnew request");
+
+  a_red_stream_tag_has_live_scheduler: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (vfpu_out_valid && vfpu_out_ready && vfpu_tag_out[7]) |->
+        (red_context_flow_active || red_stream_bg_active_q)
+  ) else $error("tagged reduction response escaped both context schedulers");
+`endif
 `endif
 `endif
 
