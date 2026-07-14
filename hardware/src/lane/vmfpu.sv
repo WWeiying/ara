@@ -775,6 +775,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic red_stream_bg_active_d, red_stream_bg_active_q;
   logic red_stream_bg_complete_d, red_stream_bg_complete_q;
   logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
+  logic red_stream_bg_exec;
   elen_t red_stream_bg_result_d, red_stream_bg_result_q;
 
   // The four-entry VMFPU instruction queue provides one architectural
@@ -808,11 +809,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     vfu_operation_t foreground, vfu_operation_t background
   );
     red_stream_compatible = red_context_eligible(foreground) &&
-      red_context_eligible(background) &&
+      red_context_eligible(background)
+`ifndef ARA_RED_HETERO_STREAM_4LANE
+      &&
       (foreground.op == background.op) &&
       (foreground.vtype.vsew == background.vtype.vsew) &&
       (foreground.fp_rm == background.fp_rm) &&
-      (foreground.vm == background.vm);
+      (foreground.vm == background.vm)
+`endif
+      ;
   endfunction : red_stream_compatible
 `endif
 
@@ -1045,8 +1050,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // 1: only one of the operands is neutral value,
   // 2: both operands are neutral values
   strb_t vfpu_tag_in, vfpu_tag_out;
+  vfu_operation_t vfpu_exec_vinsn;
 
   assign vfpu_mask = vfpu_tag_out;
+
+  always_comb begin : p_vfpu_exec_control
+    vfpu_exec_vinsn = vinsn_issue_q;
+`ifdef ARA_RED_HETERO_STREAM_4LANE
+    if (!red_stream_bg_exec &&
+        (mfpu_state_q inside {INTER_LANES_REDUCTION_TX,
+                              INTER_LANES_REDUCTION_RX,
+                              SIMD_REDUCTION}))
+      vfpu_exec_vinsn = vinsn_processing_q;
+`endif
+  end
 
   // neutral value for Intraline reduction optimization
   elen_t         ntr_val;
@@ -1099,7 +1116,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // FPU preprocessing stage
     always_comb begin: fpu_operand_preprocessing_p
       // Default rounding-mode from fcsr.rm
-      fp_rm      = vinsn_issue_q.fp_rm;
+      fp_rm      = vfpu_exec_vinsn.fp_rm;
       fp_op      = ADD;
       fp_opmod   = 1'b0;
       fp_src_fmt = FP64;
@@ -1110,7 +1127,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       // Default neutral value
       ntr_val    = '0;
 
-      unique case (vinsn_issue_q.op)
+      unique case (vfpu_exec_vinsn.op)
         // Addition is between operands B and C, A was moved to C in the lane_sequencer
         VFADD: fp_op = ADD;
         VFSUB: begin
@@ -1130,14 +1147,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         VFMSAC,
         VFMSUB: begin
           fp_op      = FMADD;
-          fp_sign[2] = (vinsn_issue_q.op == VFMSAC) | (vinsn_issue_q.op == VFMSUB);
+          fp_sign[2] = (vfpu_exec_vinsn.op == VFMSAC) |
+                       (vfpu_exec_vinsn.op == VFMSUB);
         end
         VFNMACC,
         VFNMSAC,
         VFNMADD,
         VFNMSUB: begin
           fp_op      = FNMSUB;
-          fp_sign[2] = (vinsn_issue_q.op == VFNMACC) | (vinsn_issue_q.op == VFNMADD);
+          fp_sign[2] = (vfpu_exec_vinsn.op == VFNMACC) |
+                       (vfpu_exec_vinsn.op == VFNMADD);
         end
         VFMIN: begin
           fp_op = MINMAX;
@@ -1224,7 +1243,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           fp_op = MINMAX;
           fp_rm = RNE;
           // positive infinity
-          case (vinsn_issue_q.vtype.vsew)
+          case (vfpu_exec_vinsn.vtype.vsew)
             EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'h78}};
             EW16: ntr_val = {4{16'h7c00}};
             EW32: ntr_val = {2{32'h7f800000}};
@@ -1236,7 +1255,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           fp_op = MINMAX;
           fp_rm = RTZ;
           // negative infinity
-          case (vinsn_issue_q.vtype.vsew)
+          case (vfpu_exec_vinsn.vtype.vsew)
             EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'hf8}};
             EW16: ntr_val = {4{16'hfc00}};
             EW32: ntr_val = {2{32'hff800000}};
@@ -1249,34 +1268,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
       // vtype.vsew encodes the destination format
       // cvt_resize is reused as neutral value for reductions
-      unique case (vinsn_issue_q.vtype.vsew)
+      unique case (vfpu_exec_vinsn.vtype.vsew)
         EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) begin
-          fp_src_fmt = (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op)) ? FP16 : FP8;
+          fp_src_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_NARROW &&
+                        !is_reduction(vfpu_exec_vinsn.op)) ? FP16 : FP8;
           fp_dst_fmt = FP8;
-          fp_int_fmt = (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT16 : INT8;
+          fp_int_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_NARROW &&
+                        !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F)
+                     ? INT16 : INT8;
         end
         EW16: begin
           fp_src_fmt = !(RVVB(FPUSupport) || RVVBA(FPUSupport))
-                     ? (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op)) ? FP32 : FP16
-                     : (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op)) ? FP8 :
-            ((vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op)) ? FP32 : FP16);
+                     ? (vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op)) ? FP32 : FP16
+                     : (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op)) ? FP8 :
+            ((vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op)) ? FP32 : FP16);
           fp_dst_fmt = FP16;
           fp_int_fmt = !(RVVB(FPUSupport) || RVVBA(FPUSupport))
-                     ? (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT32 : INT16
-                     : (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT8 :
-            ((vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT32 : INT16);
+                     ? (vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT32 : INT16
+                     : (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT8 :
+            ((vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT32 : INT16);
         end
         EW32: begin
-          fp_src_fmt = (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op)) ? FP16 :
-            ((vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op)) ? FP64 : FP32);
+          fp_src_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op)) ? FP16 :
+            ((vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op)) ? FP64 : FP32);
           fp_dst_fmt = FP32;
-          fp_int_fmt = (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT16 :
-            ((vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT64 : INT32);
+          fp_int_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT16 :
+            ((vfpu_exec_vinsn.cvt_resize == CVT_NARROW && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT64 : INT32);
         end
         EW64: begin
-          fp_src_fmt = (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op)) ? FP32 : FP64;
+          fp_src_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op)) ? FP32 : FP64;
           fp_dst_fmt = FP64;
-          fp_int_fmt = (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT32 : INT64;
+          fp_int_fmt = (vfpu_exec_vinsn.cvt_resize == CVT_WIDE && !is_reduction(vfpu_exec_vinsn.op) && fp_op == I2F) ? INT32 : INT64;
         end
         default:;
       endcase
@@ -1730,6 +1752,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     red_stream_bg_active_d              = red_stream_bg_active_q;
     red_stream_bg_complete_d            = red_stream_bg_complete_q;
     red_stream_foreground_advanced_d    = red_stream_foreground_advanced_q;
+    red_stream_bg_exec                  = 1'b0;
     red_stream_bg_result_d              = red_stream_bg_result_q;
     red_stream_root_data_d              = red_stream_root_data_q;
     red_stream_root_write_pnt_d         = red_stream_root_write_pnt_q;
@@ -2863,6 +2886,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         red_stream_primary_conflict_cycles_d =
           red_stream_primary_conflict_cycles_q + 1'b1;
       end else begin
+        red_stream_bg_exec = 1'b1;
         if (bg_issue_element_cnt > issue_cnt_q)
           bg_issue_element_cnt = issue_cnt_q;
         issue_be = be(bg_issue_element_cnt, vinsn_issue_q.vtype.vsew);
@@ -2992,13 +3016,33 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       automatic logic pop_root = red_stream_promote_foreground &&
         (red_stream_root_count_q != '0);
       automatic logic direct_complete = red_stream_promote_foreground &&
-        (red_stream_root_count_q == '0) && red_stream_bg_complete_q;
-      automatic logic push_root = red_stream_bg_complete_q && !direct_complete &&
+        (red_stream_root_count_q == '0) && red_stream_bg_complete_d;
+      automatic logic push_root = red_stream_bg_complete_d && !direct_complete &&
         ((red_stream_root_count_q < RedStreamRootDepth) || pop_root);
+
+      // A tagged root may return in the exact cycle in which MFPU_WAIT tries
+      // to promote a still-live DAG.  Convert that speculative partial
+      // promotion into a completed-root promotion atomically.
+      if (direct_complete) begin
+        result_queue_d[result_queue_write_pnt_q].wdata =
+          red_stream_bg_result_d;
+        result_queue_d[result_queue_write_pnt_q].addr =
+          vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
+        result_queue_d[result_queue_write_pnt_q].id = vinsn_processing_d.id;
+        result_queue_d[result_queue_write_pnt_q].be =
+          be(1, vinsn_processing_d.vtype.vsew);
+        result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+        to_process_cnt_d          = '0;
+        first_op_d                = 1'b0;
+        red_context_enabled_d     = 1'b0;
+        red_stream_bg_active_d    = 1'b0;
+        red_stream_bg_complete_d  = 1'b0;
+        mfpu_state_d              = INTER_LANES_REDUCTION_TX;
+      end
 
       if (push_root) begin
         red_stream_root_data_d[red_stream_root_write_pnt_q] =
-          red_stream_bg_result_q;
+          red_stream_bg_result_d;
         red_stream_root_write_pnt_d =
           (red_stream_root_write_pnt_q == RedStreamRootDepth-1)
             ? '0 : red_stream_root_write_pnt_q + 1'b1;
@@ -3164,7 +3208,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                                               : vfu_operation_i.use_vd_op;
 
       // Initialize counters
-      if (vinsn_queue_d.issue_cnt == '0 && !prevent_commit) begin
+      if (vinsn_queue_d.issue_cnt == '0 && !prevent_commit
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          && (red_stream_prefetched_count_q == '0)
+`endif
+      ) begin
         // Don't start a new reduction if the unit is not completely idle
         if (!is_reduction(vfu_operation_i.op) || (vinsn_queue_d.commit_cnt == '0)) begin
           mfpu_state_d = next_mfpu_state(vfu_operation_i.op);
@@ -3432,11 +3480,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                SIMD_REDUCTION, MFPU_WAIT}))
   ) else $error("background reduction is not decoupled from a foreground tree");
 
-  a_red_stream_background_shape_matches: assert property (
+  a_red_stream_background_shape_is_compatible: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       red_stream_bg_active_q |->
         red_stream_compatible(vinsn_processing_q, vinsn_issue_q)
-  ) else $error("background reduction arithmetic differs from foreground");
+  ) else $error("background reduction controls are incompatible");
 
   a_red_stream_completed_context_is_quiescent: assert property (
     @(posedge clk_i) disable iff (!rst_ni)

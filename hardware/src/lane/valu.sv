@@ -403,10 +403,14 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     vfu_operation_t foreground, vfu_operation_t background
   );
     red_stream_compatible = red_stream_eligible(foreground) &&
-      red_stream_eligible(background) &&
+      red_stream_eligible(background)
+`ifndef ARA_RED_HETERO_STREAM_4LANE
+      &&
       (foreground.op == background.op) &&
       (foreground.vtype.vsew == background.vtype.vsew) &&
-      (foreground.vm == background.vm);
+      (foreground.vm == background.vm)
+`endif
+      ;
   endfunction : red_stream_compatible
 `endif
 
@@ -432,6 +436,21 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // For lane[0], the scalar value is actually a value. For the other lanes the value is a neutral one.
   elen_t alu_operand_a;
   elen_t alu_operand_b;
+  vfu_operation_t alu_exec_vinsn;
+
+  // Once issue has advanced into a heterogeneous background instruction, the
+  // foreground tree must take its opcode/SEW from the architectural commit
+  // entry.  Background local slots continue to use the issue entry.
+  always_comb begin : p_alu_exec_control
+    alu_exec_vinsn = vinsn_issue_q;
+`ifdef ARA_RED_HETERO_STREAM_4LANE
+    if (!red_stream_bg_exec &&
+        (alu_state_q inside {INTER_LANES_REDUCTION_TX,
+                             INTER_LANES_REDUCTION_RX,
+                             SIMD_REDUCTION}))
+      alu_exec_vinsn = vinsn_commit;
+`endif
+  end
 
   // Main Alu input MUXes
   // Operands can come from the input queues, from the other lanes, or from the reduction accumulator
@@ -439,14 +458,14 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
                           red_stream_bg_exec
                         ? (red_stream_bg_first_q
-                            ? (vinsn_issue_q.use_scalar_op ? scalar_op
+                            ? (alu_exec_vinsn.use_scalar_op ? scalar_op
                                                            : alu_operand_i[0])
                             : red_stream_bg_acc_q)
                         :
 `endif
                           (alu_state_q inside {INTER_LANES_REDUCTION_RX, SIMD_REDUCTION, INTRA_LANE_REDUCTION} && !first_op_q)
                         ? result_queue_q[result_queue_write_pnt_q].wdata
-                        : vinsn_issue_q.use_scalar_op ? scalar_op : alu_operand_i[0];
+                        : alu_exec_vinsn.use_scalar_op ? scalar_op : alu_operand_i[0];
   assign alu_operand_b  =
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
                           red_stream_bg_exec ? alu_operand_i[1] :
@@ -467,8 +486,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       .operand_a_i (alu_operand_a           ),
       .operand_b_i (alu_operand_b           ),
       .valid_i     (valu_valid              ),
-      .op_i        (vinsn_issue_q.op        ),
-      .vew_i       (vinsn_issue_q.vtype.vsew),
+      .op_i        (alu_exec_vinsn.op        ),
+      .vew_i       (alu_exec_vinsn.vtype.vsew),
       .vxrm_i      (alu_vxrm_i              ),
       .r_o         (r                       )
     );
@@ -493,11 +512,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     .operand_a_i       (alu_operand_a                                                   ),
     .operand_b_i       (alu_operand_b                                                   ),
     .valid_i           (valu_valid                                                      ),
-    .vm_i              (vinsn_issue_q.vm                                                ),
-    .mask_i            ((mask_valid_i && !vinsn_issue_q.vm) ? mask_i : {StrbWidth{1'b1}}),
+    .vm_i              (alu_exec_vinsn.vm                                                ),
+    .mask_i            ((mask_valid_i && !alu_exec_vinsn.vm) ? mask_i : {StrbWidth{1'b1}}),
     .narrowing_select_i(narrowing_select_q                                              ),
-    .op_i              (vinsn_issue_q.op                                                ),
-    .vew_i             (vinsn_issue_q.vtype.vsew                                        ),
+    .op_i              (alu_exec_vinsn.op                                                ),
+    .vew_i             (alu_exec_vinsn.vtype.vsew                                        ),
     .vxsat_o           (alu_vxsat                                                       ),
     .vxrm_i            (alu_vxrm_i                                                      ),
     .rm                (r                                                               ),
@@ -1077,7 +1096,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       // Initialize counters and alu state if the instruction queue was empty
       // and the lane is not reducing
-      if ((vinsn_queue_d.issue_cnt == '0) && !prevent_commit) begin
+      if ((vinsn_queue_d.issue_cnt == '0) && !prevent_commit
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          && (red_stream_prefetched_count_q == '0)
+`endif
+      ) begin
         // INTRA_LANE_REDUCTION state needs the result queue
         // Start the reduction only if the commit queue (so, the result queue, too) is empty
         alu_state_d = is_reduction(vfu_operation_i.op) && (vinsn_queue_d.commit_cnt == '0) ? INTRA_LANE_REDUCTION : NO_REDUCTION;
@@ -1124,8 +1147,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       automatic logic pop_root = red_stream_retire_foreground &&
         (red_stream_root_count_q != '0);
       automatic logic direct_complete = red_stream_retire_foreground &&
-        (red_stream_root_count_q == '0) && red_stream_bg_complete_q;
-      automatic logic push_root = red_stream_bg_complete_q && !direct_complete &&
+        (red_stream_root_count_q == '0) && red_stream_bg_complete_d;
+      automatic logic push_root = red_stream_bg_complete_d && !direct_complete &&
         ((red_stream_root_count_q < RedStreamRootDepth) || pop_root);
       automatic vfu_operation_t next_foreground =
         vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt];
@@ -1143,15 +1166,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
             red_stream_root_data_q[red_stream_root_read_pnt_q];
           first_op_d = 1'b0;
           alu_state_d = INTER_LANES_REDUCTION_TX;
-        end else if (red_stream_bg_complete_q) begin
+        end else if (red_stream_bg_complete_d) begin
           result_queue_d[result_queue_write_pnt_d].wdata =
-            red_stream_bg_result_q;
+            red_stream_bg_result_d;
           first_op_d = 1'b0;
           alu_state_d = INTER_LANES_REDUCTION_TX;
           red_stream_bg_complete_d = 1'b0;
         end else begin
-          result_queue_d[result_queue_write_pnt_d].wdata = red_stream_bg_acc_q;
-          first_op_d = red_stream_bg_first_q;
+          result_queue_d[result_queue_write_pnt_d].wdata = red_stream_bg_acc_d;
+          first_op_d = red_stream_bg_first_d;
           alu_state_d = INTRA_LANE_REDUCTION;
           red_stream_bg_active_d = 1'b0;
           red_stream_bg_first_d = 1'b0;
@@ -1168,7 +1191,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       if (push_root) begin
         red_stream_root_data_d[red_stream_root_write_pnt_q] =
-          red_stream_bg_result_q;
+          red_stream_bg_result_d;
         red_stream_root_write_pnt_d =
           (red_stream_root_write_pnt_q == RedStreamRootDepth-1)
             ? '0 : red_stream_root_write_pnt_q + 1'b1;
@@ -1271,12 +1294,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
 `ifndef SYNTHESIS
-  a_integer_stream_keeps_homogeneous_controls: assert property (
+  a_integer_stream_keeps_compatible_controls: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       (red_stream_bg_active_q || red_stream_bg_complete_q) |->
         (red_stream_foreground_advanced_q &&
          red_stream_compatible(vinsn_commit, vinsn_issue_q))
-  ) else $error("integer reduction stream mixed incompatible controls");
+  ) else $error("integer reduction stream selected incompatible controls");
 
   a_integer_stream_exec_owns_background: assert property (
     @(posedge clk_i) disable iff (!rst_ni)

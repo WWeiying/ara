@@ -6596,10 +6596,12 @@ module ara_tb;
           red_stream_reject_mask[l][RedStreamValu] = 1'b1;
         else if (valu_fg_vl < 8 || valu_next_vl < 8)
           red_stream_reject_short_vl[l][RedStreamValu] = 1'b1;
+`ifndef ARA_RED_HETERO_STREAM_4LANE
         else if (valu_fg_op != valu_next_op)
           red_stream_reject_opcode[l][RedStreamValu] = 1'b1;
         else if (valu_fg_sew != valu_next_sew)
           red_stream_reject_sew[l][RedStreamValu] = 1'b1;
+`endif
         else
           red_stream_eligible[l][RedStreamValu] = 1'b1;
       end
@@ -6611,13 +6613,17 @@ module ara_tb;
           red_stream_reject_mask[l][RedStreamFp] = 1'b1;
         else if (fp_fg_vl < 8 || fp_next_vl < 8)
           red_stream_reject_short_vl[l][RedStreamFp] = 1'b1;
+`ifndef ARA_RED_HETERO_STREAM_4LANE
         else if (fp_fg_op != fp_next_op)
           red_stream_reject_opcode[l][RedStreamFp] = 1'b1;
+`endif
         else if (fp_fg_sew != rvv_pkg::EW32 || fp_next_sew != rvv_pkg::EW32 ||
                  fp_fg_sew != fp_next_sew)
           red_stream_reject_sew[l][RedStreamFp] = 1'b1;
+`ifndef ARA_RED_HETERO_STREAM_4LANE
         else if (fp_fg_rm != fp_next_rm)
           red_stream_reject_rounding[l][RedStreamFp] = 1'b1;
+`endif
         else
           red_stream_eligible[l][RedStreamFp] = 1'b1;
       end
