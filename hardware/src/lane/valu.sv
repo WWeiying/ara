@@ -351,6 +351,42 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // the operation is performed between the first vector element and the scalar.
   logic first_op_d, first_op_q;
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+  // Integer reductions use a single-cycle ALU, so they do not need the tagged
+  // multi-context feedback DAG used by fpnew.  They can still exploit the same
+  // inter-instruction decoupling: keep the current reduction in the SLDU tree
+  // while an independent shadow accumulator consumes the next reduction's
+  // local operands in otherwise idle ALU cycles.
+  logic red_stream_bg_active_d, red_stream_bg_active_q;
+  logic red_stream_bg_complete_d, red_stream_bg_complete_q;
+  logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
+  logic red_stream_bg_first_d, red_stream_bg_first_q;
+  logic red_stream_bg_exec;
+  logic red_stream_retire_foreground;
+  elen_t red_stream_bg_acc_d, red_stream_bg_acc_q;
+  elen_t red_stream_bg_result_d, red_stream_bg_result_q;
+
+  logic [31:0] red_stream_bg_issue_cycles_d, red_stream_bg_issue_cycles_q;
+  logic [31:0] red_stream_overlap_cycles_d, red_stream_overlap_cycles_q;
+  logic [31:0] red_stream_primary_conflict_cycles_d,
+               red_stream_primary_conflict_cycles_q;
+
+  function automatic logic red_stream_eligible(vfu_operation_t vinsn);
+    red_stream_eligible = (NrLanes == 4) && is_reduction(vinsn.op) &&
+      vinsn.vm && (vinsn.vl >= 8);
+  endfunction : red_stream_eligible
+
+  function automatic logic red_stream_compatible(
+    vfu_operation_t foreground, vfu_operation_t background
+  );
+    red_stream_compatible = red_stream_eligible(foreground) &&
+      red_stream_eligible(background) &&
+      (foreground.op == background.op) &&
+      (foreground.vtype.vsew == background.vtype.vsew) &&
+      (foreground.vm == background.vm);
+  endfunction : red_stream_compatible
+`endif
+
   // The ALU has completed a reduction
   logic alu_red_complete_d;
   `FF(alu_red_complete_o, alu_red_complete_d, 1'b0, clk_i, rst_ni);
@@ -376,10 +412,23 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   // Main Alu input MUXes
   // Operands can come from the input queues, from the other lanes, or from the reduction accumulator
-  assign alu_operand_a  = (alu_state_q inside {INTER_LANES_REDUCTION_RX, SIMD_REDUCTION, INTRA_LANE_REDUCTION} && !first_op_q)
+  assign alu_operand_a  =
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+                          red_stream_bg_exec
+                        ? (red_stream_bg_first_q
+                            ? (vinsn_issue_q.use_scalar_op ? scalar_op
+                                                           : alu_operand_i[0])
+                            : red_stream_bg_acc_q)
+                        :
+`endif
+                          (alu_state_q inside {INTER_LANES_REDUCTION_RX, SIMD_REDUCTION, INTRA_LANE_REDUCTION} && !first_op_q)
                         ? result_queue_q[result_queue_write_pnt_q].wdata
                         : vinsn_issue_q.use_scalar_op ? scalar_op : alu_operand_i[0];
-  assign alu_operand_b  = (alu_state_q inside {INTER_LANES_REDUCTION_RX, SIMD_REDUCTION})
+  assign alu_operand_b  =
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+                          red_stream_bg_exec ? alu_operand_i[1] :
+`endif
+                          (alu_state_q inside {INTER_LANES_REDUCTION_RX, SIMD_REDUCTION})
                         ? alu_state_q == SIMD_REDUCTION ? simd_red_operand : sldu_operand_q
                         : alu_operand_i[1];
 
@@ -478,6 +527,21 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     // Do not issue any operations
     valu_valid  = 1'b0;
     alu_state_d = alu_state_q;
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+    red_stream_bg_active_d              = red_stream_bg_active_q;
+    red_stream_bg_complete_d            = red_stream_bg_complete_q;
+    red_stream_foreground_advanced_d    = red_stream_foreground_advanced_q;
+    red_stream_bg_first_d               = red_stream_bg_first_q;
+    red_stream_bg_acc_d                 = red_stream_bg_acc_q;
+    red_stream_bg_result_d              = red_stream_bg_result_q;
+    red_stream_bg_issue_cycles_d        = red_stream_bg_issue_cycles_q;
+    red_stream_overlap_cycles_d         = red_stream_overlap_cycles_q;
+    red_stream_primary_conflict_cycles_d =
+      red_stream_primary_conflict_cycles_q;
+    red_stream_bg_exec                  = 1'b0;
+    red_stream_retire_foreground        = 1'b0;
+`endif
 
     // Inform our status to the lane controller
     alu_ready_o      = !vinsn_queue_full;
@@ -704,12 +768,19 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           // Lanes != 0 commit here after a reduction
           prevent_commit = 1'b0;
 
-          // Bump issue counter and pointers
-          vinsn_queue_d.issue_cnt -= 1;
-          if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
-            vinsn_queue_d.issue_pnt = '0;
-          else
-            vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+          // Bump issue counter and pointers.  A streamed foreground was
+          // already removed when its background successor started.
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          if (!red_stream_foreground_advanced_q) begin
+`endif
+            vinsn_queue_d.issue_cnt -= 1;
+            if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+              vinsn_queue_d.issue_pnt = '0;
+            else
+              vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          end
+`endif
 
           // Assign vector length for next instruction in the instruction queue
           if (vinsn_queue_d.issue_cnt != 0)
@@ -734,11 +805,17 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
             end else begin
               // Bump issue counter and pointers
-              vinsn_queue_d.issue_cnt -= 1;
-              if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
-                vinsn_queue_d.issue_pnt = '0;
-              else
-                vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+              if (!red_stream_foreground_advanced_q) begin
+`endif
+                vinsn_queue_d.issue_cnt -= 1;
+                if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+                  vinsn_queue_d.issue_pnt = '0;
+                else
+                  vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+              end
+`endif
 
               // Assign vector length for next instruction in the instruction queue
               if (vinsn_queue_d.issue_cnt != 0)
@@ -761,11 +838,94 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       endcase
     end
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+    // Move the operand-issue pointer to the next homogeneous reduction while
+    // the architectural commit pointer remains attached to the foreground
+    // tree.  This creates a private local-reduction context without relaxing
+    // in-order visibility at the VRF interface.
+    if ((alu_state_q inside {INTER_LANES_REDUCTION_TX,
+                             INTER_LANES_REDUCTION_RX,
+                             SIMD_REDUCTION}) &&
+        !red_stream_foreground_advanced_q &&
+        !red_stream_bg_active_q && !red_stream_bg_complete_q &&
+        (vinsn_queue_q.issue_cnt > 1)) begin
+      automatic logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt =
+        (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+          ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+      automatic vfu_operation_t next_issue =
+        vinsn_queue_q.vinsn[next_issue_pnt];
+
+      if (red_stream_compatible(vinsn_commit, next_issue)) begin
+        vinsn_queue_d.issue_cnt = vinsn_queue_q.issue_cnt - 1'b1;
+        vinsn_queue_d.issue_pnt = next_issue_pnt;
+        issue_cnt_d             = next_issue.vl;
+
+        red_stream_bg_active_d           = 1'b1;
+        red_stream_bg_complete_d         = 1'b0;
+        red_stream_foreground_advanced_d = 1'b1;
+        red_stream_bg_first_d            = 1'b1;
+        red_stream_bg_acc_d              = '0;
+        red_stream_bg_result_d           = '0;
+      end
+    end
+
+    // The foreground SLDU receive and final SIMD folds have priority.  Every
+    // other cycle is offered to the background local reduction, making the
+    // scheduler work-conserving without adding a second integer ALU.
+    if (red_stream_bg_active_q && !red_stream_bg_complete_q) begin
+      automatic logic [6:0] bg_element_cnt = element_cnt_issue;
+      automatic strb_t bg_red_mask;
+
+      red_stream_overlap_cycles_d = red_stream_overlap_cycles_q + 1'b1;
+      if (valu_valid) begin
+        red_stream_primary_conflict_cycles_d =
+          red_stream_primary_conflict_cycles_q + 1'b1;
+      end else begin
+        if (bg_element_cnt > issue_cnt_q)
+          bg_element_cnt = issue_cnt_q;
+        bg_red_mask = be(bg_element_cnt, vinsn_issue_q.vtype.vsew);
+
+        red_stream_bg_exec = 1'b1;
+        if ((alu_operand_valid_i[1] || !vinsn_issue_q.use_vs2) &&
+            (alu_operand_valid_i[0] || !vinsn_issue_q.use_vs1 ||
+             !red_stream_bg_first_q) &&
+            (issue_cnt_q != '0)) begin
+          valu_valid = 1'b1;
+          alu_operand_ready_o = {vinsn_issue_q.use_vs2,
+                                 vinsn_issue_q.use_vs1 &
+                                   red_stream_bg_first_q};
+
+          for (int b = 0; b < 8; b++) begin
+            red_stream_bg_acc_d[8*b +: 8] = bg_red_mask[b]
+              ? valu_result[8*b +: 8] : alu_operand_a[8*b +: 8];
+          end
+
+          red_stream_bg_first_d = 1'b0;
+          issue_cnt_d = issue_cnt_q - bg_element_cnt;
+          red_stream_bg_issue_cycles_d =
+            red_stream_bg_issue_cycles_q + 1'b1;
+
+          if (issue_cnt_q <= bg_element_cnt) begin
+            red_stream_bg_result_d   = red_stream_bg_acc_d;
+            red_stream_bg_complete_d = 1'b1;
+            red_stream_bg_active_d   = 1'b0;
+          end
+        end
+      end
+    end
+`endif
+
     //////////////////////////////////
     //  Write results into the VRF  //
     //////////////////////////////////
 
-    alu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
+    // The SLDU consumes the live reduction accumulator, which belongs to the
+    // write-side context.  Normally read_pnt == write_pnt during a reduction;
+    // a streamed successor is the important exception because the preceding
+    // architectural result may still be waiting at read_pnt.
+    alu_result_wdata_o = alu_red_valid_o
+                       ? result_queue_q[result_queue_write_pnt_q].wdata
+                       : result_queue_q[result_queue_read_pnt_q].wdata;
     if (alu_state_q == NO_REDUCTION || (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
       alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] & ((alu_state_q == SIMD_REDUCTION) || !result_queue_q[result_queue_read_pnt_q].mask);
     end else begin
@@ -818,6 +978,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       // If this was a reduction, clean the Lane SLDU/ADDRGEN arbiter
       if (is_reduction(vinsn_commit.op)) alu_red_complete_d = 1'b1;
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      if (is_reduction(vinsn_commit.op) &&
+          red_stream_foreground_advanced_q)
+        red_stream_retire_foreground = 1'b1;
+`endif
+
       // Initialize counters and alu state if needed by the next instruction
       // After a reduction, the next instructions starts after the reduction commits
       if (is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op) && (vinsn_queue_d.issue_cnt != '0)) begin
@@ -860,6 +1026,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
         sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+        red_stream_bg_active_d           = 1'b0;
+        red_stream_bg_complete_d         = 1'b0;
+        red_stream_foreground_advanced_d = 1'b0;
+        red_stream_bg_first_d            = 1'b0;
+        red_stream_bg_acc_d              = '0;
+        red_stream_bg_result_d           = '0;
+`endif
+
         issue_cnt_d = vfu_operation_i.vl;
       end
       if (vinsn_queue_d.commit_cnt == '0)
@@ -870,6 +1045,35 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       vinsn_queue_d.issue_cnt += 1;
       vinsn_queue_d.commit_cnt += 1;
     end
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+    // Once the foreground commits, attach the preserved background context to
+    // the ordinary result-queue slot.  A completed local root can enter the
+    // SLDU tree immediately; a partial root resumes in the legacy INTRA state.
+    if (red_stream_retire_foreground) begin
+      result_queue_d[result_queue_write_pnt_d].wdata =
+        red_stream_bg_complete_d ? red_stream_bg_result_d
+                                 : red_stream_bg_acc_d;
+      result_queue_d[result_queue_write_pnt_d].addr =
+        vaddr(vinsn_issue_q.vd, NrLanes, VLEN);
+      result_queue_d[result_queue_write_pnt_d].id = vinsn_issue_q.id;
+      result_queue_d[result_queue_write_pnt_d].be =
+        be(1, vinsn_issue_q.vtype.vsew);
+
+      if (red_stream_bg_complete_d) begin
+        first_op_d = 1'b0;
+        alu_state_d = INTER_LANES_REDUCTION_TX;
+      end else begin
+        first_op_d = red_stream_bg_first_d;
+        alu_state_d = INTRA_LANE_REDUCTION;
+      end
+
+      red_stream_bg_active_d           = 1'b0;
+      red_stream_bg_complete_d         = 1'b0;
+      red_stream_foreground_advanced_d = 1'b0;
+      red_stream_bg_first_d            = 1'b0;
+    end
+`endif
 
     ///////////
     // Clear //
@@ -893,6 +1097,17 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       sldu_transactions_cnt_q <= '0;
       simd_red_cnt_max_q      <= '0;
       alu_vxsat_q             <= '0;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      red_stream_bg_active_q               <= 1'b0;
+      red_stream_bg_complete_q             <= 1'b0;
+      red_stream_foreground_advanced_q     <= 1'b0;
+      red_stream_bg_first_q                <= 1'b0;
+      red_stream_bg_acc_q                  <= '0;
+      red_stream_bg_result_q               <= '0;
+      red_stream_bg_issue_cycles_q         <= '0;
+      red_stream_overlap_cycles_q          <= '0;
+      red_stream_primary_conflict_cycles_q <= '0;
+`endif
     end else begin
       issue_cnt_q             <= issue_cnt_d;
       commit_cnt_q            <= commit_cnt_d;
@@ -904,8 +1119,48 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       sldu_transactions_cnt_q <= sldu_transactions_cnt_d;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
       alu_vxsat_q             <= alu_vxsat_d;
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+      red_stream_bg_active_q               <= red_stream_bg_active_d;
+      red_stream_bg_complete_q             <= red_stream_bg_complete_d;
+      red_stream_foreground_advanced_q     <=
+        red_stream_foreground_advanced_d;
+      red_stream_bg_first_q                <= red_stream_bg_first_d;
+      red_stream_bg_acc_q                  <= red_stream_bg_acc_d;
+      red_stream_bg_result_q               <= red_stream_bg_result_d;
+      red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
+      red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
+      red_stream_primary_conflict_cycles_q <=
+        red_stream_primary_conflict_cycles_d;
+`endif
     end
   end
+
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+`ifndef SYNTHESIS
+  a_integer_stream_keeps_homogeneous_controls: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (red_stream_bg_active_q || red_stream_bg_complete_q) |->
+        (red_stream_foreground_advanced_q &&
+         red_stream_compatible(vinsn_commit, vinsn_issue_q))
+  ) else $error("integer reduction stream mixed incompatible controls");
+
+  a_integer_stream_exec_owns_background: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      red_stream_bg_exec |->
+        (red_stream_bg_active_q &&
+         (alu_state_q inside {INTER_LANES_REDUCTION_TX,
+                              INTER_LANES_REDUCTION_RX,
+                              LN0_REDUCTION_COMMIT,
+                              SIMD_REDUCTION}))
+  ) else $error("integer reduction background ALU issue escaped tree overlap");
+
+  a_integer_stream_completed_context_is_stable: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (red_stream_bg_complete_q && !red_stream_retire_foreground) |=>
+        $stable(red_stream_bg_result_q)
+  ) else $error("completed integer reduction context changed before promotion");
+`endif
+`endif
 
 `ifdef ARA_RED_TREE_INPUT_BYPASS
 `ifndef SYNTHESIS

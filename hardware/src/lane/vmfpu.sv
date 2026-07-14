@@ -745,9 +745,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   assign red_context_flow_active = red_context_enabled_q &&
     (mfpu_state_q == INTRA_LANE_REDUCTION);
 
+  // Each independent feedback context must start from the identity of the
+  // reduction that owns it.  Zero is correct for sum, while min/max need the
+  // IEEE infinities used by the legacy neutral-fill path.  Keeping this as an
+  // instruction-derived value also makes a foreground/background hand-off
+  // independent of whichever instruction currently drives ntr_val.
+  function automatic elen_t red_context_neutral(vfu_operation_t vinsn);
+    red_context_neutral = '0;
+    unique case (vinsn.op)
+      VFREDMIN: red_context_neutral = {2{32'h7f800000}};
+      VFREDMAX: red_context_neutral = {2{32'hff800000}};
+      default:;
+    endcase
+  endfunction : red_context_neutral
+
   function automatic logic red_context_eligible(vfu_operation_t vinsn);
     red_context_eligible = (NrLanes == 4) &&
-      (vinsn.op == VFREDUSUM) && (vinsn.vtype.vsew == EW32) &&
+      (vinsn.op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) &&
+      (vinsn.vtype.vsew == EW32) &&
       vinsn.vm && (vinsn.vl >= 8);
   endfunction : red_context_eligible
 
@@ -2663,7 +2678,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           intra_op_rx_cnt_d       = '0;
           osum_issue_cnt_d        = '0;
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
-          red_context_data_d       = '0;
+          red_context_data_d       = {RedContextCount{
+            red_context_neutral(vinsn_issue_d)}};
           red_context_valid_d      = '1;
           red_context_pending_d    = '0;
           red_context_issue_d      = '0;
@@ -2745,7 +2761,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         first_op_d              = 1'b1;
         intra_op_rx_cnt_d       = '0;
 
-        red_context_data_d       = '0;
+        red_context_data_d       = {RedContextCount{
+          red_context_neutral(next_issue)}};
         red_context_valid_d      = '1;
         red_context_pending_d    = '0;
         red_context_issue_d      = '0;
@@ -2988,7 +3005,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           intra_op_rx_cnt_d       = '0;
           osum_issue_cnt_d        = '0;
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
-          red_context_data_d       = '0;
+          red_context_data_d       = {RedContextCount{
+            red_context_neutral(
+              vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt])}};
           red_context_valid_d      = '1;
           red_context_pending_d    = '0;
           red_context_issue_d      = '0;
@@ -3049,7 +3068,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         intra_op_rx_cnt_d       = '0;
         osum_issue_cnt_d        = '0;
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
-        red_context_data_d       = '0;
+        red_context_data_d       = {RedContextCount{
+          red_context_neutral(vfu_operation_i)}};
         red_context_valid_d      = '1;
         red_context_pending_d    = '0;
         red_context_issue_d      = '0;
@@ -3241,8 +3261,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   a_red_context_shape_is_legal: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       red_context_flow_active |->
-        (NrLanes == 4 && vinsn_issue_q.op == VFREDUSUM &&
-         vinsn_issue_q.vtype.vsew == EW32 && vinsn_issue_q.vm)
+        red_context_eligible(vinsn_issue_q)
   ) else $error("4-lane context flow selected for an unsupported reduction");
 
   a_red_context_two_way_pointer_range: assert property (

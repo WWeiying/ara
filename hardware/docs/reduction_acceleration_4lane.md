@@ -496,7 +496,7 @@ reduction_context_flow=1
 reduction_context_stream=1
 ```
 
-`reduction_context_stream` 依赖前一节的 tagged context，并继续限制为 4 lanes。第一版只重叠算术配置相同的 unmasked e32 `vfredusum`，要求 opcode、SEW、`vm` 和 rounding mode 相同；不满足条件时不提前移动 issue pointer，完整回退原顺序路径。
+`reduction_context_stream` 依赖前一节的 tagged context，并继续限制为 4 lanes。本节记录的第一版只重叠算术配置相同的 unmasked e32 `vfredusum`，要求 opcode、SEW、`vm` 和 rounding mode 相同；不满足条件时不提前移动 issue pointer，完整回退原顺序路径。第 17 节在不改变该门禁原则的前提下继续扩展了适用 opcode。
 
 ### 16.1 状态解耦
 
@@ -539,4 +539,85 @@ reduction_context_stream=1
 
 ### 16.4 当前边界
 
-34.31% 是独立同构规约流的吞吐收益，不应写成任意程序或单条规约的加速比。当前 stream 尚未覆盖 masked、其它 SEW、min/max、整数规约、ordered FP 或不同 rounding mode 的混合流；也还没有综合后的 Fmax/面积/功耗。论文中应同时报告单条 latency 与 steady-state initiation interval，并把“同构流命中率”作为工作负载参数。下一步应先扩展 unordered min/max 和整数规约，再研究 ordered context 的 per-context strict-order token，而不是放宽相容性检查后直接共享算术控制。
+34.31% 是独立同构规约流的吞吐收益，不应写成任意程序或单条规约的加速比。本节版本尚未覆盖 masked、其它 SEW、min/max、整数规约、ordered FP 或不同 rounding mode 的混合流；其中 unordered min/max 和整数规约已由下一节补齐。整个工作仍没有综合后的 Fmax/面积/功耗。论文中应同时报告单条 latency 与 steady-state initiation interval，并把“同构流命中率”作为工作负载参数。后续对 ordered context 应引入 per-context strict-order token，而不是放宽相容性检查后直接共享算术控制。
+
+## 17. 将双上下文流扩展到浮点 min/max 和整数规约
+
+这一轮没有为每类 opcode 复制一套状态机，而是保留第 16 节的共同抽象：前台 context 负责跨 lane tree、最终 SIMD fold 和顺序提交；后台 context 在前台不占用本执行单元的周期中提前完成下一条独立同构规约的 lane-local 部分。两类执行单元的算术延迟不同，因此共享的是 context 解耦和调度原则，而不是强行共享同一种微结构。
+
+### 17.1 `vfredmin/vfredmax`：带运算单位元的 tagged context
+
+VMFPU 原有 tagged fixed-DAG 只允许 `vfredusum`，其 context 清零恰好等价于加法单位元。直接把 opcode 门禁放宽会令 min/max 的每个独立 context 从 0.0 开始，导致全正数的 `vfredmin` 或全负数的 `vfredmax` 得到错误结果。因此新增由 context owner 指令决定的单位元函数：
+
+- `vfredusum` 使用 `+0.0`；
+- `vfredmin` 使用 `+infinity`，IEEE-754 e32 编码为 `0x7f800000`；
+- `vfredmax` 使用 `-infinity`，IEEE-754 e32 编码为 `0xff800000`。
+
+所有 context 创建位置——新指令入队、普通后继切换、stream 后台启动和外部 issue 初始化——都使用拥有者自己的 opcode 生成单位元，不能使用当前前台的组合控制。这样即使 A 正在提交而 B 被提升，B 的 tagged accumulator 也不会继承 A 的运算身份。新路径仍只选择 4-lane、unmasked、e32、VL≥8 的 `vfredmin/vfredmax`；opcode、SEW、`vm` 和 rounding mode 不同的后继继续走原串行路径。
+
+### 17.2 整数规约：单 shadow accumulator 的 work-conserving 流
+
+整数规约位于 VALU，其 `simd_alu` 是单周期组合数据通路，不存在 fpnew 那种多周期返回和乱序 tag 匹配问题。因此整数路径没有照搬多个 tagged accumulator，而是增加一个后台 shadow context：
+
+- `bg_acc` 保存后继指令已经完成的 lane-local 部分；
+- `bg_first` 区分第一次操作需要读取标量 seed，还是后续操作应把 `bg_acc` 反馈到 operand A；
+- `bg_active/bg_complete` 区分仍需消费 operand queue 与本地结果已经冻结；
+- `foreground_advanced` 记录 issue pointer 已经提前越过前台，防止前台在 TX/SIMD 完成时再次递减 issue count。
+
+启动条件是前台已经进入 TX、RX 或 SIMD，队列中至少还有一条指令，且前后台都是 4-lane、unmasked、VL≥8、相同 opcode 和相同 SEW 的规约。启动只移动 operand issue pointer，architectural commit pointer 仍停在前台，因此后台不能越序写回。
+
+调度采用前台优先：SLDU RX 和最终 SIMD fold 若需要 VALU，本周期完全归前台；否则后台读取下一条指令的 operand queue，依据本周期有效 element 数形成 byte enable，用 `valu_result` 更新 shadow accumulator。若前台比后台先完成，后台的部分 accumulator 被复制到普通 result queue，并回到既有 `INTRA_LANE_REDUCTION` 继续执行；若后台先完成，其结果被冻结，等前台提交后直接进入 `INTER_LANES_REDUCTION_TX`。因此机制不要求后台一定能完全隐藏，只要存在空槽就能取得部分收益。
+
+覆盖的整数 opcode 为：
+
+| 类别 | 指令 |
+|---|---|
+| 加法 | `vredsum.vs` |
+| 位逻辑 | `vredand.vs`、`vredor.vs`、`vredxor.vs` |
+| 无符号比较 | `vredminu.vs`、`vredmaxu.vs` |
+| 有符号比较 | `vredmin.vs`、`vredmax.vs` |
+| widening 加法 | `vwredsumu.vs`、`vwredsum.vs` |
+
+### 17.3 result queue 所有权修正
+
+扩展过程中发现一个只在跨指令 context 重叠时暴露的所有权问题：原 `alu_result_wdata_o` 始终读取 result queue 的 read pointer。在普通串行规约中 read/write pointer 通常相等，所以问题被掩盖；当前台最终结果仍等待写回、后台已经成为 SLDU 输入时，后台 accumulator 实际属于 write pointer。继续读 read pointer 会把前一条指令的最终值当成下一条的 tree partial，产生随指令序号递增的错误结果。
+
+现在仅当 `alu_red_valid_o` 表示向 SLDU 发送 live reduction accumulator 时选择 write pointer；普通 VRF 写回仍选择 read pointer。这个选择显式编码了“SLDU 消费正在构造的 context，VRF 消费最老的已完成 context”，也使后续增加更多 context 时所有权关系可检查。
+
+### 17.4 4-lane 实测
+
+配置保持 4 lanes、VLEN=1024、e32/m1、VL=32。control 打开第 15 节 context flow、关闭 context stream；candidate 仅额外打开同一个 `reduction_context_stream` 开关。
+
+浮点探针包含 8 条连续 `vfredmin` 和 8 条连续 `vfredmax`，每个 destination 都逐一读回验证：
+
+| 指标 | control | candidate | 改善 |
+|---|---:|---:|---:|
+| ROI total cycles | 351 | **267** | **23.93%** |
+| total RVV cycles | 336 | **252** | **25.00%** |
+| FP active cycles | 333 | **249** | **25.23%** |
+| FP avg execution latency | 41.375 | **31.625** | **23.56%** |
+| FP dispatch-wait cycles | 231 | **171** | **25.97%** |
+| FP operand-wait cycles | 225 | **141** | **37.33%** |
+
+总吞吐提升为 1.315 倍。该 ROI 还包含两条用于切换 min/max 数据的向量广播，但 A/B workload 完全相同，因此总周期比较有效；它不应被表述成单条 `vfredmin/max` 的 latency 加速比。
+
+整数吞吐探针包含 16 条连续独立 `vredsum.vs`，同样逐一检查 16 个 destination：
+
+| 指标 | control | candidate | 改善 |
+|---|---:|---:|---:|
+| ROI total cycles | 261 | **201** | **22.99%** |
+| total RVV cycles | 245 | **185** | **24.49%** |
+| VALU active cycles | 245 | **185** | **24.49%** |
+| VALU avg execution latency | 31.438 | **24.188** | **23.06%** |
+| VALU dispatch-wait cycles | 189 | **137** | **27.51%** |
+| VALU operand-wait cycles | 144 | **84** | **41.67%** |
+
+总吞吐提升为 1.299 倍。operand wait 在两类数据通路都下降最多，符合“后台先消费后继本地 operands、前台继续执行 tree”的设计目标。
+
+### 17.5 正确性、断言和当前边界
+
+整数综合探针以四条连续指令为一组，覆盖上表全部 10 个 opcode，并检查每个目的寄存器；浮点探针覆盖正数 min、负数 max 和 seed 参与；原混合探针继续覆盖 integer/unordered/ordered/odd/masked/e16/phase transition。最终编译后这三组探针全部通过，且 context/stream 断言均未触发。
+
+仓库官方回归结果为：`vfredmin` 17/17、`vfredmax` 17/17、`vredsum` 20/20，`vredand`、`vredor`、`vredxor` 的全部测试项通过。新增的整数断言保证后台 context 始终与前台同构、后台 ALU issue 只出现在允许重叠的 tree/commit 状态、完成结果在提升前保持稳定。
+
+目前可以声称的是：同一前台/后台 context-interleaving 机制已覆盖 unordered FP sum/min/max 和全部整数规约，并在两个连续流 probe 上得到约 23% 的总周期下降。尚未覆盖 masked stream、ordered FP、不同 opcode/SEW 混合流和多 lane 数；也尚未给出综合后的 Fmax、面积和功耗。尤其 VALU 新增了 mux、shadow accumulator 和控制比较，论文结论必须在综合后用 `cycles × clock period` 复核，不能默认周期收益等于实际执行时间收益。

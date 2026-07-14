@@ -94,7 +94,8 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
 # Reduction-acceleration ablation switches.  Keep the baseline behavior unless
-# explicitly enabled so each mechanism can be measured independently.
+# explicitly enabled so each mechanism can be measured independently.  The
+# context stream switch covers both VMFPU and VALU reduction pipelines.
 reduction_output_bypass ?= 0
 reduction_route_bypass  ?= 0
 reduction_mask_fastpath ?= 0
