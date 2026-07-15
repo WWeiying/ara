@@ -1141,6 +1141,27 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       PipeConfig: DISTRIBUTED
     };
 
+`ifdef ARA_RED_ORDERED_FAST_4LANE
+    // The recurrence slice implements ADD only.  Disabling the unused groups
+    // avoids duplicating division, conversion, classify, and dot-product
+    // hardware while a single BEFORE register satisfies the SLDU protocol.
+    localparam fpu_implementation_t OrderedFastImplementation = '{
+      PipeRegs: '{
+        '{default: 1},
+        '{default: 0},
+        '{default: 0},
+        '{default: 0},
+        '{default: 0}},
+      UnitTypes: '{
+        '{default: PARALLEL},
+        '{default: DISABLED},
+        '{default: DISABLED},
+        '{default: DISABLED},
+        '{default: DISABLED}},
+      PipeConfig: BEFORE
+    };
+`endif
+
     // Don't compress classify result
     localparam int unsigned TrueSIMDClass  = 1;
     localparam int unsigned EnableSIMDMask = 1;
@@ -1362,6 +1383,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         assign vfpu_simd_mask[b] = issue_be[2*b];
     end: gen_vfpu_simd_mask
 
+    // The bulk pipeline is kept unchanged for throughput-oriented vector
+    // operations.  Under the ordered-fast experiment its external handshake
+    // is mediated below so a strictly ordered recurrence can use a dedicated
+    // single-register add slice without changing any non-reduction path.
+    elen_t bulk_vfpu_result;
+    status_t bulk_vfpu_ex_flag;
+    strb_t bulk_vfpu_tag_out;
+    logic bulk_vfpu_in_valid, bulk_vfpu_in_ready;
+    logic bulk_vfpu_out_valid, bulk_vfpu_out_ready;
+
     fpnew_top #(
       .Features      (FPUFeatures      ),
       .Implementation(FPUImplementation),
@@ -1384,15 +1415,90 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .src_fmt_i     (fp_src_fmt     ),
       .dst_fmt_i     (fp_dst_fmt     ),
       .int_fmt_i     (fp_int_fmt     ),
-      .in_valid_i    (vfpu_in_valid  ),
-      .in_ready_o    (vfpu_in_ready  ),
-      .result_o      (vfpu_result    ),
-      .status_o      (vfpu_ex_flag_fn),
-      .tag_o         (vfpu_tag_out   ),
-      .out_valid_o   (vfpu_out_valid ),
-      .out_ready_i   (vfpu_out_ready ),
+      .in_valid_i    (bulk_vfpu_in_valid ),
+      .in_ready_o    (bulk_vfpu_in_ready ),
+      .result_o      (bulk_vfpu_result   ),
+      .status_o      (bulk_vfpu_ex_flag  ),
+      .tag_o         (bulk_vfpu_tag_out  ),
+      .out_valid_o   (bulk_vfpu_out_valid),
+      .out_ready_i   (bulk_vfpu_out_ready),
       .busy_o        (/* Unused */   )
     );
+
+`ifdef ARA_RED_ORDERED_FAST_4LANE
+    elen_t ordered_fast_result;
+    status_t ordered_fast_ex_flag;
+    strb_t ordered_fast_tag_out;
+    logic ordered_fast_in_valid, ordered_fast_in_ready;
+    logic ordered_fast_out_valid, ordered_fast_out_ready;
+    logic ordered_fast_select;
+
+    // A one-register fpnew ADD preserves the architectural recurrence:
+    // element i+1 still consumes the rounded result of element i.  It merely
+    // reduces the four registered EW32 stages to one.  The remaining register
+    // is required by the SLDU token protocol, which assumes that a result
+    // cannot return in the same cycle as its request.  A pending bulk response
+    // has priority, making the mux safe at an instruction-class boundary.
+    assign ordered_fast_select = (NrLanes == 4) &&
+      (mfpu_state_q == OSUM_REDUCTION) &&
+      (vinsn_issue_q.op inside {VFREDOSUM, VFWREDOSUM});
+    assign bulk_vfpu_in_valid = vfpu_in_valid && !ordered_fast_select;
+    assign ordered_fast_in_valid = vfpu_in_valid && ordered_fast_select &&
+                                   !bulk_vfpu_out_valid;
+    assign vfpu_in_ready = ordered_fast_select
+                         ? (ordered_fast_in_ready && !bulk_vfpu_out_valid)
+                         : bulk_vfpu_in_ready;
+
+    assign vfpu_out_valid = bulk_vfpu_out_valid || ordered_fast_out_valid;
+    assign vfpu_result = bulk_vfpu_out_valid
+                       ? bulk_vfpu_result : ordered_fast_result;
+    assign vfpu_ex_flag_fn = bulk_vfpu_out_valid
+                           ? bulk_vfpu_ex_flag : ordered_fast_ex_flag;
+    assign vfpu_tag_out = bulk_vfpu_out_valid
+                        ? bulk_vfpu_tag_out : ordered_fast_tag_out;
+    assign bulk_vfpu_out_ready = vfpu_out_ready;
+    assign ordered_fast_out_ready = vfpu_out_ready && !bulk_vfpu_out_valid;
+
+    fpnew_top #(
+      .Features      (FPUFeatures               ),
+      .Implementation(OrderedFastImplementation),
+      .DivSqrtSel    (DivSqrtSel                ),
+      .TagType       (strb_t                    ),
+      .TrueSIMDClass (TrueSIMDClass             ),
+      .EnableSIMDMask(EnableSIMDMask            )
+    ) i_fpnew_ordered_fast (
+      .clk_i         (clk_i                  ),
+      .rst_ni        (rst_ni                 ),
+      .hart_id_i     ('0                     ),
+      .flush_i       (1'b0                   ),
+      .rnd_mode_i    (fp_rm                  ),
+      .op_i          (fp_op                  ),
+      .op_mod_i      (fp_opmod               ),
+      .vectorial_op_i(1'b1                   ),
+      .operands_i    (vfpu_operands          ),
+      .tag_i         (vfpu_tag_in            ),
+      .simd_mask_i   (vfpu_simd_mask         ),
+      .src_fmt_i     (fp_src_fmt             ),
+      .dst_fmt_i     (fp_dst_fmt             ),
+      .int_fmt_i     (fp_int_fmt             ),
+      .in_valid_i    (ordered_fast_in_valid  ),
+      .in_ready_o    (ordered_fast_in_ready  ),
+      .result_o      (ordered_fast_result    ),
+      .status_o      (ordered_fast_ex_flag   ),
+      .tag_o         (ordered_fast_tag_out   ),
+      .out_valid_o   (ordered_fast_out_valid ),
+      .out_ready_i   (ordered_fast_out_ready ),
+      .busy_o        (/* Unused */           )
+    );
+`else
+    assign bulk_vfpu_in_valid  = vfpu_in_valid;
+    assign vfpu_in_ready       = bulk_vfpu_in_ready;
+    assign vfpu_result         = bulk_vfpu_result;
+    assign vfpu_ex_flag_fn     = bulk_vfpu_ex_flag;
+    assign vfpu_tag_out        = bulk_vfpu_tag_out;
+    assign vfpu_out_valid      = bulk_vfpu_out_valid;
+    assign bulk_vfpu_out_ready = vfpu_out_ready;
+`endif
 
     ////////////////////////
     // VFREC7 & VFRSQRT7 //

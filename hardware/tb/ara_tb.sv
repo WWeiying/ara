@@ -93,6 +93,9 @@ typedef struct {
   logic [63:0] ordered_control_bubbles_elided;
   logic [63:0] ordered_prefetch_lane_events;
   logic [63:0] ordered_prefetch_use_lane_cycles;
+  logic [63:0] ordered_fast_input_lane_fires;
+  logic [63:0] ordered_fast_output_lane_fires;
+  logic [63:0] ordered_fast_bulk_priority_stall_lane_cycles;
   logic [63:0] source_fusion_alias_insns;
   logic [63:0] source_fusion_drain_lane_beats;
   logic [63:0] source_fusion_result_replays;
@@ -590,6 +593,15 @@ function automatic red_stream_perf_t red_stream_perf_delta(
   delta.ordered_prefetch_use_lane_cycles =
     end_count.ordered_prefetch_use_lane_cycles -
     start_count.ordered_prefetch_use_lane_cycles;
+  delta.ordered_fast_input_lane_fires =
+    end_count.ordered_fast_input_lane_fires -
+    start_count.ordered_fast_input_lane_fires;
+  delta.ordered_fast_output_lane_fires =
+    end_count.ordered_fast_output_lane_fires -
+    start_count.ordered_fast_output_lane_fires;
+  delta.ordered_fast_bulk_priority_stall_lane_cycles =
+    end_count.ordered_fast_bulk_priority_stall_lane_cycles -
+    start_count.ordered_fast_bulk_priority_stall_lane_cycles;
   delta.source_fusion_alias_insns =
     end_count.source_fusion_alias_insns -
     start_count.source_fusion_alias_insns;
@@ -759,6 +771,12 @@ function automatic void print_red_stream_report(
       stats.ordered_prefetch_lane_events);
     $display("[PERF] red_ordered_prefetch_use_lane_cycles: %0d",
       stats.ordered_prefetch_use_lane_cycles);
+    $display("[PERF] red_ordered_fast_input_lane_fires: %0d",
+      stats.ordered_fast_input_lane_fires);
+    $display("[PERF] red_ordered_fast_output_lane_fires: %0d",
+      stats.ordered_fast_output_lane_fires);
+    $display("[PERF] red_ordered_fast_bulk_priority_stall_lane_cycles: %0d",
+      stats.ordered_fast_bulk_priority_stall_lane_cycles);
     $display("[PERF] red_source_fusion_alias_insns: %0d",
       stats.source_fusion_alias_insns);
     $display("[PERF] red_source_fusion_drain_lane_beats: %0d",
@@ -786,6 +804,15 @@ function automatic void print_red_stream_report(
     $fwrite(file_handle,
       "[PERF] red_ordered_prefetch_use_lane_cycles: %0d\n",
       stats.ordered_prefetch_use_lane_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_fast_input_lane_fires: %0d\n",
+      stats.ordered_fast_input_lane_fires);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_fast_output_lane_fires: %0d\n",
+      stats.ordered_fast_output_lane_fires);
+    $fwrite(file_handle,
+      "[PERF] red_ordered_fast_bulk_priority_stall_lane_cycles: %0d\n",
+      stats.ordered_fast_bulk_priority_stall_lane_cycles);
     $fwrite(file_handle,
       "[PERF] red_source_fusion_alias_insns: %0d\n",
       stats.source_fusion_alias_insns);
@@ -7210,6 +7237,71 @@ module ara_tb;
             i_vmfpu.ordered_prefetch_use,
           ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
             i_vmfpu.ordered_prefetch_use});
+`endif
+`ifdef ARA_RED_ORDERED_FAST_4LANE
+      red_stream_perf_counters.ordered_fast_input_lane_fires <=
+        red_stream_perf_counters.ordered_fast_input_lane_fires + $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_in_ready});
+      red_stream_perf_counters.ordered_fast_output_lane_fires <=
+        red_stream_perf_counters.ordered_fast_output_lane_fires + $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_ready,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_out_ready});
+      red_stream_perf_counters.ordered_fast_bulk_priority_stall_lane_cycles <=
+        red_stream_perf_counters.ordered_fast_bulk_priority_stall_lane_cycles +
+        $countones({
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_select &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.vfpu_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.bulk_vfpu_out_valid,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_select &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.vfpu_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.bulk_vfpu_out_valid,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_select &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.vfpu_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.bulk_vfpu_out_valid,
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.ordered_fast_select &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.vfpu_in_valid &&
+          ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+            i_vmfpu.fpu_gen.bulk_vfpu_out_valid});
 `endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       red_stream_perf_counters.source_fusion_alias_insns <=
