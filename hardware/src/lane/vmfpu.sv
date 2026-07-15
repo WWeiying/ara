@@ -780,20 +780,36 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   function automatic elen_t red_context_neutral(vfu_operation_t vinsn);
     red_context_neutral = '0;
     unique case (vinsn.op)
-      VFREDMIN: red_context_neutral = {2{32'h7f800000}};
-      VFREDMAX: red_context_neutral = {2{32'hff800000}};
+      VFREDMIN: begin
+        unique case (vinsn.vtype.vsew)
+          EW16: red_context_neutral = {4{16'h7c00}};
+          EW32: red_context_neutral = {2{32'h7f800000}};
+          EW64: red_context_neutral = 64'h7ff0000000000000;
+          default:;
+        endcase
+      end
+      VFREDMAX: begin
+        unique case (vinsn.vtype.vsew)
+          EW16: red_context_neutral = {4{16'hfc00}};
+          EW32: red_context_neutral = {2{32'hff800000}};
+          EW64: red_context_neutral = 64'hfff0000000000000;
+          default:;
+        endcase
+      end
       default:;
     endcase
   endfunction : red_context_neutral
 
   function automatic logic red_context_eligible(vfu_operation_t vinsn);
     red_context_eligible = (NrLanes == 4) &&
-      (vinsn.op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM}) &&
-      (vinsn.vtype.vsew == EW32) &&
+      (((vinsn.op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) &&
+        (vinsn.vtype.vsew inside {EW16, EW32})) ||
+       ((vinsn.op == VFWREDUSUM) &&
+        (vinsn.vtype.vsew inside {EW16, EW32}))) &&
 `ifndef ARA_RED_MASKED_STREAM_4LANE
       vinsn.vm &&
 `endif
-      (vinsn.vl >= 8);
+      (vinsn.vl >= 1);
   endfunction : red_context_eligible
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
@@ -2930,6 +2946,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         automatic logic drain_prefetch = ordered_prefetch_valid_q;
         automatic logic can_drain = drain_prefetch ||
           (mfpu_operand_valid_i[2] &&
+           (vinsn_issue_q.vm || mask_valid_i) &&
            (!first_op_q || mfpu_operand_valid_i[0]));
 
         if (can_drain && issue_cnt_q != '0) begin
@@ -2938,6 +2955,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           else begin
             mfpu_operand_ready_o[2] = 1'b1;
             if (first_op_q) mfpu_operand_ready_o[0] = 1'b1;
+            // Alias execution skips arithmetic, not architectural operand
+            // ownership.  Consume one predicate word with each complete
+            // source beat so MASKU observes the same credit sequence as a
+            // normally executed ordered reduction.
+            mask_ready_o = !vinsn_issue_q.vm;
           end
           first_op_d = 1'b0;
           ordered_alias_drain_beat = 1'b1;
@@ -3833,6 +3855,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       (osum_mask_skip_active && !mfpu_red_ready_i) |=>
         $stable({issue_cnt_q, to_process_cnt_q, osum_issue_cnt_q, first_op_q})
   ) else $error("masked-off token relay advanced while downstream was stalled");
+`endif
+`endif
+
+`ifdef ARA_RED_SOURCE_FUSION_4LANE
+`ifndef SYNTHESIS
+  a_masked_alias_credit_is_atomic: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (ordered_alias_drain_beat && !vinsn_issue_q.vm) |->
+        (mask_valid_i && mask_ready_o)
+  ) else $error("masked ordered alias drained source without MASKU credit");
 `endif
 `endif
 

@@ -633,7 +633,7 @@ VMFPU 原有 tagged fixed-DAG 只允许 `vfredusum`，其 context 清零恰好�
 | 3 | slack-adaptive prefetch | `vmfpu.sv` | 依据 root 队列余量和 defer 历史动态决定后台发射 |
 | 4 | heterogeneous control interleave | `vmfpu.sv` | 在可证明兼容的控制组合间复用空槽，同时保持 context tag 隔离 |
 | 5 | ordered successor pre-arm 与首 beat look-ahead | `sldu.sv`、`vmfpu.sv` | 消除 `WAIT_OSUM`/`IDLE` 控制槽，并预取后继 seed/source |
-| 6 | masked context stream | `valu.sv`、`vmfpu.sv` | mask token 与算术 owner 解耦，允许 masked 后继参与 context overlap |
+| 6 | masked context 前台加速与安全门禁 | `valu.sv`、`vmfpu.sv` | masked 指令使用加速的前台 DAG；FP 后台 overlap 在无 tag 的 MASKU 接口上保持关闭 |
 | 7 | 4-lane tree-stage fall-through | `sldu.sv` | 空队列时把 tree packet 直接送入 lane spill，队列仅作弹性 fallback |
 | 8 | exact ordered-source fusion | `ara_sequencer.sv`、`sldu.sv`、`vmfpu.sv` | 对严格相邻且完整指纹相同的 `vfredosum` 排空 operands、跳过重复 recurrence、回放结果与 `fflags` |
 
@@ -651,7 +651,7 @@ unordered tree packet 在目标 lane spill 可接收且 issue/commit owner 一�
 
 ### 18.3 第 8 项：中央证明标签、协议化排空和结果回放
 
-融合门禁由中央 `ara_sequencer` 产生，不能由 SLDU 和各 lane 根据自己的过滤队列分别推测。当前完整条件是：两条指令在架构向量指令流中立即相邻，均为 4-lane、unmasked、e32 `vfredosum`，并且 `vtype`、VL、vstart、vs1、vs2、source-use、scalar seed 和 FP rounding mode 全部相同。任何中间 load、VALU、slide、mask 或 `vmv` 都会更新中央“上一条指令”，从而使 alias 标签失效。
+融合门禁由中央 `ara_sequencer` 产生，不能由 SLDU 和各 lane 根据自己的过滤队列分别推测。当前完整条件是：两条指令在架构向量指令流中立即相邻，均为 4-lane、e32 `vfredosum`，`vm` 必须相同，并且 `vtype`、VL、vstart、vs1、vs2、source-use、scalar seed 和 FP rounding mode 全部相同。masked 情况下两条指令都隐式读取 v0，原 hazard table 保证任何 v0 生产者不能穿越 leader/candidate。任何中间 load、VALU、slide、mask 或 `vmv` 都会更新中央“上一条指令”，从而使 alias 标签失效。
 
 这个中央标签修复了一个重要的 lane-local 假等价问题：全局 VL=32 在四个 lane 中分解为 8/8/8/8，而 VL=31 分解为 8/8/8/7；若只比较 local VL，前三个 lane 会误判 alias，lane3 却执行正常 recurrence，最终等待永远不会到达的 token。现在 SLDU 和所有 lane 接收同一个中央标签，且标签使用全局 VL/vstart 生成。
 
@@ -670,4 +670,43 @@ alias 指令仍然拥有正常 operand request 和 hazard 生命周期。每个 
 
 ### 18.4 论文表述边界
 
-83.36% 是“连续完全重复 ordered reduction”这一可复用工作负载上的结果，不是任意 `vfredosum` 的平均加速。第 8 项当前没有覆盖不同 destination 之外还存在数值变化的情况，也没有覆盖 masked、其它 SEW、`vfwredosum`、min/max 或整数规约。论文应把 exact-alias hit rate、operand drain 成本和 memo 生命周期作为独立参数，并同时报告第 5 项关闭/开启与第 8 项关闭/开启的消融。面积、Fmax、功耗和更多 lane 数仍需综合与后续试验，周期结果不能直接替代物理实现结论。
+83.36% 是“连续完全重复 ordered reduction”这一可复用工作负载上的结果，不是任意 `vfredosum` 的平均加速。第 8 项当前覆盖 vm 相同的 unmasked/masked e32 exact alias；它没有覆盖不同 destination 之外还存在数值变化的情况，也没有覆盖其它 SEW、min/max 或整数规约。论文应把 exact-alias hit rate、operand drain 成本和 memo 生命周期作为独立参数，并同时报告第 5 项关闭/开启与第 8 项关闭/开启的消融。面积、Fmax、功耗和更多 lane 数仍需综合与后续试验，周期结果不能直接替代物理实现结论。
+
+## 19. 后续四项补齐：widening、非重复 ordered、masked exact stream 与格式/VL
+
+本节对应第二阶段之后继续要求完成的四项。所有 candidate 均使用同一个 4-lane、VLEN=1024 最终构建；每个数字来自 `rdcycle zero` 标出的相同 ROI，且所有 destination 都做位级结果检查。周期下降只表示 RTL 仿真的 cycle count，尚未包含综合后的 Fmax、面积和功耗。
+
+### 19.1 Widening FP reduction
+
+exact-source 识别和 ordered memo/replay 已同时覆盖 `vfwredosum`，unordered context 门禁覆盖 `vfwredusum`。widening destination 使用 EMUL=2，专项程序只使用偶数目的寄存器组，避免非法重叠把性能问题伪装成寄存器配置问题。
+
+| workload | control | candidate | 改善 | 结果 |
+|---|---:|---:|---:|:---:|
+| 8× `vfwredusum`, e16→e32, VL=32 | 329 | **215** | **34.65%** | PASS |
+| 8× exact `vfwredosum`, e16→e32, VL=32 | 1316 | **220** | **83.28%** | PASS |
+
+ordered widening 流命中 7 个 alias，排空 112 个 lane source beats，并回放 7 次结果；因此其大收益仍属于 exact-reuse workload，而不是一般 widening 规约的平均值。
+
+### 19.2 非重复 `vfredosum` 的 recurrence cut
+
+exact alias 对 source/seed 真正变化的 ordered 流没有帮助。为此保留 bulk fpnew 供吞吐型指令使用，并增加一条仅服务 4-lane `vfredosum/vfwredosum` 的单寄存器 ADD slice。一个寄存器是 SLDU token 协议允许的最短反馈距离；零寄存器原型会在 lane 边界漏掉元素，已作为负结果删除。bulk response 始终拥有返回仲裁优先级，避免指令类别边界串线。
+
+8 条交替 source/seed、alias 命中为 0 的 e32 `vfredosum` 从 1317 降到 **549 cycles**，改善 **58.31%**，256 次输入和 256 次输出握手完全匹配，bulk-priority stall 为 0。重复 source 流在 recurrence cut 与 exact fusion 同时开启时为 123 cycles；这个值不能与只开启 fusion 的 219 cycles 混为单机制消融。
+
+### 19.3 Masked ordered exact stream
+
+直接让 masked FP 后继进入后台 context 的两个原型均被删除。第一个允许各 lane 异步移动 issue pointer，第二个增加全-lane barrier；两者都能在 `perf_masked_reduction_stream_probe` 中复现 context root 永久 pending。根因是原 MASKU 广播只有 valid/ready、没有 instruction tag，而前台 tree 的 lane 角色又不是同周期结束。没有 owner tag 时，barrier 只能证明“都有 mask”，不能证明“mask 属于同一个 successor”。最终 RTL 因此继续禁止 masked FP background context，不以死锁风险换取表面重叠。
+
+保留的优化是 masked exact ordered fusion。中央比较器允许 leader/candidate 的 `vm` 同为 0，其他完整指纹仍必须相等；alias 状态跳过重复 FP recurrence 和 SLDU traversal，但每排空一个完整 source beat就同步拉高 `mask_ready`，所以 MASKU credit 数与正常执行一致。4 条连续 masked e32/VL=32 `vfredosum` 在旧路径上超时，最终路径为 **135 cycles、3/3 alias 命中、结果 PASS**。原 8 条 masked unordered 流仍为 432 cycles、结果 PASS，说明安全门禁没有误把 unordered 指令送入 alias 路径。
+
+### 19.4 e16、e64 与短 VL
+
+unordered context DAG 的中性元现在按 SEW 编码：e16 min/max 使用 `0x7c00/0xfc00`，e32 使用 `0x7f800000/0xff800000`；sum 使用 +0。选择门槛由 VL≥8 降为 VL≥1，并允许 e16/e32 普通 unordered FP reduction 以及合法 widening 格式。e64 unordered context 原型会在最终 `4→2→1` root 上丢失部分 lane 的返回 tag，因此没有保留；e64 unordered 继续走已验证 legacy path，e64 ordered 则由上一节的短 recurrence slice 加速。
+
+| workload | control | candidate | 改善 | 结果 |
+|---|---:|---:|---:|:---:|
+| 8× e16 `vfredusum`, VL=16 | 240 | **215** | **10.42%** | PASS |
+| 8× e32 `vfredusum`, VL=4 | 240 | **209** | **12.92%** | PASS |
+| 8× e64 `vfredosum`, VL=16 | 804 | **292** | **63.68%** | PASS |
+
+e64 专项还在 ROI 外执行一条 unordered e64 `vfredusum` 并做位级检查，用来保证未选择 context DAG 的 fallback 正确。最终关键回归保持：masked unordered 432 cycles、非重复 ordered e32 549 cycles、widening unordered 215 cycles、混合规约 187 cycles，全部 PASS。

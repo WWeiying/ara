@@ -163,7 +163,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       (NrLanes == 4) &&
       (leader.op inside {VFREDOSUM, VFWREDOSUM}) &&
       (candidate.op == leader.op) &&
-      leader.vm && candidate.vm &&
+      // Masked duplicates are exact as well: RVV predicates through v0, and
+      // the normal hazard table prevents a v0 producer from crossing either
+      // member.  Equality keeps masked/unmasked streams from aliasing.
+      (leader.vm == candidate.vm) &&
       (leader.vtype.vsew == EW32) &&
       (candidate.vtype.vsew == EW32) &&
       (leader.vtype == candidate.vtype) &&
