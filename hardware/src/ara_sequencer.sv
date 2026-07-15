@@ -161,7 +161,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   );
     ordered_source_duplicate =
       (NrLanes == 4) &&
-      (leader.op == VFREDOSUM) && (candidate.op == VFREDOSUM) &&
+      (leader.op inside {VFREDOSUM, VFWREDOSUM}) &&
+      (candidate.op == leader.op) &&
       leader.vm && candidate.vm &&
       (leader.vtype.vsew == EW32) &&
       (candidate.vtype.vsew == EW32) &&

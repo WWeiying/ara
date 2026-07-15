@@ -6699,8 +6699,8 @@ module ara_tb;
           red_stream_eligible[l][RedStreamValu] = 1'b1;
       end
       if (fp_candidate) begin
-        if (!(fp_fg_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}) ||
-            !(fp_next_op inside {VFREDUSUM, VFREDMIN, VFREDMAX}))
+        if (!(fp_fg_op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM}) ||
+            !(fp_next_op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM}))
           red_stream_reject_unsupported[l][RedStreamFp] = 1'b1;
 `ifndef ARA_RED_MASKED_STREAM_4LANE
         else if (!fp_fg_vm || !fp_next_vm)
