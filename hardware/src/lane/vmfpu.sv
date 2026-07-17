@@ -1142,7 +1142,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   assign exact_sum_out_fire = exact_sum_out_valid && exact_sum_out_ready;
 
-  fp32_exact_reduction_accum i_fp32_exact_reduction_accum (
+  fp32_exact_reduction_accum #(
+`ifdef ARA_RED_EXACT_SEGMENTED_4LANE
+    .ExponentSegmented (1'b1)
+`else
+    .ExponentSegmented (1'b0)
+`endif
+  ) i_fp32_exact_reduction_accum (
     .clk_i        (clk_i),
     .rst_ni       (rst_ni),
     .start_i      (exact_sum_start),

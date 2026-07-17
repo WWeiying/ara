@@ -13,7 +13,12 @@
 module fp32_exact_reduction_accum #(
   // 288 bits cover 256 binary32 vector elements plus the scalar seed.  The
   // sign bit and three spare magnitude bits also cover worst-case carry-out.
-  parameter integer AccWidth = 288
+  parameter integer AccWidth = 288,
+  // Replace the four full-width temporal banks with sixteen exponent-local
+  // bins.  The bins are normalized in place during the existing 4->2->1
+  // merge slots, so this mode preserves latency while reducing finite-state
+  // storage from 4*288 to 16*49 bits and narrowing the active feedback adder.
+  parameter bit ExponentSegmented = 1'b0
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -38,6 +43,12 @@ module fp32_exact_reduction_accum #(
 );
 
   typedef logic signed [AccWidth-1:0] accumulator_t;
+  localparam integer SegmentCount    = 16;
+  localparam integer SegmentBits     = 16;
+  localparam integer SegmentBinWidth = 49;
+  localparam integer ChunkWidth      = 98;
+  typedef logic signed [SegmentBinWidth-1:0] segment_bin_t;
+  typedef logic signed [ChunkWidth-1:0] normalization_chunk_t;
   typedef struct packed {
     logic nan;
     logic invalid;
@@ -57,6 +68,7 @@ module fp32_exact_reduction_accum #(
   state_e state_d, state_q;
 
   accumulator_t [3:0] bank_d, bank_q;
+  segment_bin_t [SegmentCount-1:0] segment_bin_d, segment_bin_q;
   special_t [3:0] bank_special_d, bank_special_q;
   logic [1:0] bank_index_d, bank_index_q;
 
@@ -72,23 +84,23 @@ module fp32_exact_reduction_accum #(
   logic [4:0]  status_d, status_q;
 
   function automatic logic fp32_is_nan(input logic [31:0] value);
-    return (&value[30:23]) && (|value[22:0]);
+    fp32_is_nan = (&value[30:23]) && (|value[22:0]);
   endfunction
 
   function automatic logic fp32_is_snan(input logic [31:0] value);
-    return fp32_is_nan(value) && !value[22];
+    fp32_is_snan = fp32_is_nan(value) && !value[22];
   endfunction
 
   function automatic logic fp32_is_inf(input logic [31:0] value);
-    return (&value[30:23]) && !(|value[22:0]);
+    fp32_is_inf = (&value[30:23]) && !(|value[22:0]);
   endfunction
 
   function automatic logic fp32_is_zero(input logic [31:0] value);
-    return !(|value[30:0]);
+    fp32_is_zero = !(|value[30:0]);
   endfunction
 
   function automatic logic fp32_is_finite_nonzero(input logic [31:0] value);
-    return !(&value[30:23]) && (|value[30:0]);
+    fp32_is_finite_nonzero = !(&value[30:23]) && (|value[30:0]);
   endfunction
 
   function automatic special_t fp32_special(input logic [31:0] value);
@@ -102,7 +114,7 @@ module fp32_exact_reduction_accum #(
         decoded.pos_inf = !value[31];
         decoded.neg_inf = value[31];
       end
-      return decoded;
+      fp32_special = decoded;
     end
   endfunction
 
@@ -128,7 +140,7 @@ module fp32_exact_reduction_accum #(
         merged.pos_inf = left.pos_inf | right.pos_inf;
         merged.neg_inf = left.neg_inf | right.neg_inf;
       end
-      return merged;
+      merge_special = merged;
     end
   endfunction
 
@@ -145,11 +157,75 @@ module fp32_exact_reduction_accum #(
         magnitude[22:0] = value[22:0];
       end else if (value[30:23] != 8'hff) begin
         significand = {1'b1, value[22:0]};
-        shift = int'(value[30:23]) - 1;
-        magnitude = accumulator_t'(significand);
+        shift = value[30:23] - 1'b1;
+        magnitude = significand;
         magnitude = magnitude <<< shift;
       end
       fp32_to_fixed = value[31] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  // Divide the binary32 exponent range into sixteen 16-bit fixed-point
+  // windows.  Segment zero also contains subnormals, whose significand is
+  // already expressed in units of 2^-149.
+  function automatic logic [3:0] fp32_segment_index(
+    input logic [31:0] value
+  );
+    logic [7:0] unbiased_shift;
+    begin
+      unbiased_shift = (value[30:23] == 8'h00)
+                     ? 8'h00 : value[30:23] - 1'b1;
+      fp32_segment_index = unbiased_shift[7:4];
+    end
+  endfunction
+
+  // Convert one finite binary32 value into the coordinate system of its
+  // exponent segment.  At most 257 inputs can contribute to a reduction in
+  // the supported configuration, so 49 signed bits cover a 24-bit
+  // significand, a 15-bit local shift and all population carry bits.
+  function automatic segment_bin_t fp32_to_segment(
+    input logic [31:0] value
+  );
+    segment_bin_t magnitude;
+    logic [23:0] significand;
+    logic [3:0] local_shift;
+    begin
+      magnitude = '0;
+      if (value[30:23] == 8'h00) begin
+        magnitude[22:0] = value[22:0];
+      end else if (value[30:23] != 8'hff) begin
+        significand = {1'b1, value[22:0]};
+        local_shift = (value[30:23] - 1'b1) & 8'h0f;
+        magnitude = significand;
+        magnitude = magnitude <<< local_shift;
+      end
+      fp32_to_segment = value[31] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  // Compose four adjacent exponent bins into one base-2^16 normalization
+  // chunk.  A carry from the lower 64-bit chunk is expressed in the current
+  // chunk's units.  Balanced pair sums keep the widest combinational adders
+  // below one hundred bits.
+  function automatic normalization_chunk_t compose_segment_chunk(
+    input segment_bin_t bin0,
+    input segment_bin_t bin1,
+    input segment_bin_t bin2,
+    input segment_bin_t bin3,
+    input segment_bin_t carry
+  );
+    normalization_chunk_t pair_lo, pair_hi, carry_ext;
+    normalization_chunk_t bin0_ext, bin1_ext, bin2_ext, bin3_ext;
+    begin
+      bin0_ext = bin0;
+      bin1_ext = bin1;
+      bin2_ext = bin2;
+      bin3_ext = bin3;
+      pair_lo = bin0_ext + (bin1_ext <<< SegmentBits);
+      pair_hi = (bin2_ext <<< (2*SegmentBits)) +
+                (bin3_ext <<< (3*SegmentBits));
+      carry_ext = carry;
+      compose_segment_chunk = pair_lo + pair_hi + carry_ext;
     end
   endfunction
 
@@ -227,7 +303,7 @@ module fp32_exact_reduction_accum #(
           flags[2] = 1'b1; // OF
           flags[0] = 1'b1; // NX
         end else begin
-          significand = accumulator_t'(magnitude >>> shift);
+          significand = magnitude >>> shift;
           guard_bit = 1'b0;
           sticky_bit = 1'b0;
           if (shift > 0)
@@ -283,9 +359,15 @@ module fp32_exact_reduction_accum #(
   always_comb begin : p_next
     logic [36:0] rounded;
     logic [31:0] element;
+    logic [3:0] element_segment;
+    accumulator_t exact_root;
+    normalization_chunk_t chunk0, chunk1;
+    segment_bin_t chunk_carry;
+    special_t root_special;
 
     state_d               = state_q;
     bank_d                = bank_q;
+    segment_bin_d         = segment_bin_q;
     bank_special_d        = bank_special_q;
     bank_index_d          = bank_index_q;
     rnd_mode_d            = rnd_mode_q;
@@ -297,6 +379,13 @@ module fp32_exact_reduction_accum #(
     neg_zero_seen_d       = neg_zero_seen_q;
     result_d              = result_q;
     status_d              = status_q;
+    rounded               = '0;
+    element               = '0;
+    element_segment       = '0;
+    chunk0                = '0;
+    chunk1                = '0;
+    chunk_carry           = '0;
+    root_special          = bank_special_q[0];
 
     in_ready_o  = (state_q == ACCUMULATE) ||
                   ((state_q == IDLE) && start_i);
@@ -305,11 +394,26 @@ module fp32_exact_reduction_accum #(
     status_o    = status_q;
     busy_o      = (state_q != IDLE);
 
+    // Reconstruct the normalized base-2^16 digits only for the final rounding
+    // cycle.  The upper 32 bits share segment 15's otherwise unused high
+    // storage, so segmented mode needs no 288-bit root register.
+    exact_root = bank_q[0];
+    if (ExponentSegmented) begin
+      exact_root = '0;
+      for (int segment = 0; segment < SegmentCount; segment++)
+        exact_root[SegmentBits*segment +: SegmentBits] =
+          segment_bin_q[segment][SegmentBits-1:0];
+      exact_root[AccWidth-1:256] =
+        {(AccWidth-256){segment_bin_q[15][47]}};
+      exact_root[287:256] = segment_bin_q[15][47:16];
+    end
+
     unique case (state_q)
       IDLE: begin
         if (start_i) begin
           state_d               = ACCUMULATE;
           bank_d                = '0;
+          segment_bin_d         = '0;
           bank_special_d        = '0;
           bank_index_d          = '0;
           rnd_mode_d            = rnd_mode_i;
@@ -328,8 +432,13 @@ module fp32_exact_reduction_accum #(
           if (seed_valid_i)
             bank_special_d[0] = fp32_special(seed_i);
           if (seed_valid_i && !fp32_is_nan(seed_i) &&
-              !fp32_is_inf(seed_i))
-            bank_d[0] = fp32_to_fixed(seed_i);
+              !fp32_is_inf(seed_i)) begin
+            if (ExponentSegmented)
+              segment_bin_d[fp32_segment_index(seed_i)] =
+                fp32_to_segment(seed_i);
+            else
+              bank_d[0] = fp32_to_fixed(seed_i);
+          end
 
           // Start and the first source beat may handshake together.  This
           // avoids a setup bubble at the VMFPU instruction boundary.
@@ -343,8 +452,15 @@ module fp32_exact_reduction_accum #(
                 finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
                 pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
                 neg_zero_seen_d |= fp32_is_zero(element) && element[31];
-                if (!fp32_is_nan(element) && !fp32_is_inf(element))
-                  bank_d[0] += fp32_to_fixed(element);
+                if (!fp32_is_nan(element) && !fp32_is_inf(element)) begin
+                  if (ExponentSegmented) begin
+                    element_segment = fp32_segment_index(element);
+                    segment_bin_d[element_segment] +=
+                      fp32_to_segment(element);
+                  end else begin
+                    bank_d[0] += fp32_to_fixed(element);
+                  end
+                end
               end
             end
             bank_index_d = 2'd1;
@@ -366,8 +482,15 @@ module fp32_exact_reduction_accum #(
               finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
               pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
               neg_zero_seen_d |= fp32_is_zero(element) && element[31];
-              if (!fp32_is_nan(element) && !fp32_is_inf(element))
-                bank_d[bank_index_q] += fp32_to_fixed(element);
+              if (!fp32_is_nan(element) && !fp32_is_inf(element)) begin
+                if (ExponentSegmented) begin
+                  element_segment = fp32_segment_index(element);
+                  segment_bin_d[element_segment] +=
+                    fp32_to_segment(element);
+                end else begin
+                  bank_d[bank_index_q] += fp32_to_fixed(element);
+                end
+              end
             end
           end
           bank_index_d = bank_index_q + 1'b1;
@@ -377,8 +500,30 @@ module fp32_exact_reduction_accum #(
       end
 
       MERGE_PAIRS: begin
-        bank_d[0] = bank_q[0] + bank_q[1];
-        bank_d[1] = bank_q[2] + bank_q[3];
+        if (ExponentSegmented) begin
+          // Normalize the lower eight exponent windows into eight base-2^16
+          // digits.  Consumed bins are overwritten in place; bin zero's high
+          // bits temporarily carry the signed value entering segment eight.
+          chunk0 = compose_segment_chunk(
+            segment_bin_q[0], segment_bin_q[1],
+            segment_bin_q[2], segment_bin_q[3], '0);
+          chunk_carry = chunk0 >>> 64;
+          chunk1 = compose_segment_chunk(
+            segment_bin_q[4], segment_bin_q[5],
+            segment_bin_q[6], segment_bin_q[7], chunk_carry);
+          for (int digit = 0; digit < 4; digit++) begin
+            segment_bin_d[digit] = '0;
+            segment_bin_d[digit][15:0] =
+              chunk0[SegmentBits*digit +: SegmentBits];
+            segment_bin_d[digit+4] = '0;
+            segment_bin_d[digit+4][15:0] =
+              chunk1[SegmentBits*digit +: SegmentBits];
+          end
+          segment_bin_d[0][48:16] = chunk1[96:64];
+        end else begin
+          bank_d[0] = bank_q[0] + bank_q[1];
+          bank_d[1] = bank_q[2] + bank_q[3];
+        end
         bank_special_d[0] =
           merge_special(bank_special_q[0], bank_special_q[1]);
         bank_special_d[1] =
@@ -387,7 +532,29 @@ module fp32_exact_reduction_accum #(
       end
 
       MERGE_ROOT: begin
-        bank_d[0] = bank_q[0] + bank_q[1];
+        if (ExponentSegmented) begin
+          // Finish the upper eight windows.  The final signed carry occupies
+          // segment 15's high bits and becomes exact_root[287:256].
+          chunk_carry = $signed(segment_bin_q[0][48:16]);
+          chunk0 = compose_segment_chunk(
+            segment_bin_q[8], segment_bin_q[9],
+            segment_bin_q[10], segment_bin_q[11], chunk_carry);
+          chunk_carry = chunk0 >>> 64;
+          chunk1 = compose_segment_chunk(
+            segment_bin_q[12], segment_bin_q[13],
+            segment_bin_q[14], segment_bin_q[15], chunk_carry);
+          for (int digit = 0; digit < 4; digit++) begin
+            segment_bin_d[digit+8] = '0;
+            segment_bin_d[digit+8][15:0] =
+              chunk0[SegmentBits*digit +: SegmentBits];
+            segment_bin_d[digit+12] = '0;
+            segment_bin_d[digit+12][15:0] =
+              chunk1[SegmentBits*digit +: SegmentBits];
+          end
+          segment_bin_d[15][48:16] = chunk1[96:64];
+        end else begin
+          bank_d[0] = bank_q[0] + bank_q[1];
+        end
         bank_special_d[0] =
           merge_special(bank_special_q[0], bank_special_q[1]);
         state_d = ROUND_RESULT;
@@ -401,15 +568,15 @@ module fp32_exact_reduction_accum #(
           // additive identity selected by the rounding direction.
           result_d = seed_valid_q ? seed_raw_q
                                   : {(rnd_mode_q != 3'b010), 31'b0};
-        end else if (bank_special_q[0].nan) begin
+        end else if (root_special.nan) begin
           result_d = 32'h7fc00000;
-          status_d[4] = bank_special_q[0].invalid;
-        end else if (bank_special_q[0].pos_inf) begin
+          status_d[4] = root_special.invalid;
+        end else if (root_special.pos_inf) begin
           result_d = 32'h7f800000;
-        end else if (bank_special_q[0].neg_inf) begin
+        end else if (root_special.neg_inf) begin
           result_d = 32'hff800000;
         end else begin
-          rounded = round_fixed(bank_q[0], rnd_mode_q,
+          rounded = round_fixed(exact_root, rnd_mode_q,
                                 finite_nonzero_seen_q,
                                 pos_zero_seen_q, neg_zero_seen_q);
           status_d = rounded[36:32];
@@ -431,6 +598,7 @@ module fp32_exact_reduction_accum #(
     if (!rst_ni) begin
       state_q               <= IDLE;
       bank_q                <= '0;
+      segment_bin_q         <= '0;
       bank_special_q        <= '0;
       bank_index_q          <= '0;
       rnd_mode_q            <= '0;
@@ -445,6 +613,7 @@ module fp32_exact_reduction_accum #(
     end else begin
       state_q               <= state_d;
       bank_q                <= bank_d;
+      segment_bin_q         <= segment_bin_d;
       bank_special_q        <= bank_special_d;
       bank_index_q          <= bank_index_d;
       rnd_mode_q            <= rnd_mode_d;

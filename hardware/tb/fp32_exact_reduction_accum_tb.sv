@@ -1,6 +1,8 @@
 // Directed differential checks for fp32_exact_reduction_accum.
 
-module fp32_exact_reduction_accum_tb;
+module fp32_exact_reduction_accum_tb #(
+  parameter bit ExponentSegmented = 1'b0
+);
   logic clk;
   logic rst_n;
   logic start;
@@ -20,7 +22,9 @@ module fp32_exact_reduction_accum_tb;
 
   int unsigned checks;
 
-  fp32_exact_reduction_accum i_dut (
+  fp32_exact_reduction_accum #(
+    .ExponentSegmented (ExponentSegmented)
+  ) i_dut (
     .clk_i        (clk),
     .rst_ni       (rst_n),
     .start_i      (start),
@@ -182,6 +186,16 @@ module fp32_exact_reduction_accum_tb;
     push_beat(32'h80000000, 32'h00000000, 2'b11, 1'b1);
     expect_result(32'h80000000, 5'b00000, "mixed zero under RDN");
 
+    // Segment zero contains both subnormals and the lowest normal window.
+    // These cases check exact carry propagation across that boundary.
+    start_case(1'b1, 32'h00000000, 3'b000);
+    push_beat(32'h00000001, 32'h00000001, 2'b11, 1'b1);
+    expect_result(32'h00000002, 5'b00000, "minimum subnormal pair");
+
+    start_case(1'b1, 32'h00000000, 3'b000);
+    push_beat(32'h00000001, 32'h007fffff, 2'b11, 1'b1);
+    expect_result(32'h00800000, 5'b00000, "subnormal to normal carry");
+
     start_case(1'b0, 32'h00000000, 3'b010);
     push_beat(32'h00000000, 32'h00000000, 2'b00, 1'b1);
     expect_result(32'h00000000, 5'b00000, "empty RDN identity");
@@ -210,4 +224,129 @@ module fp32_exact_reduction_accum_tb;
     $finish;
   end
 
+endmodule
+
+// A second top runs the same directed suite against the exponent-segmented
+// implementation, making flat-versus-segmented differential regressions a
+// one-command elaboration choice.
+module fp32_segmented_reduction_accum_tb;
+  fp32_exact_reduction_accum_tb #(
+    .ExponentSegmented (1'b1)
+  ) i_segmented_tb ();
+endmodule
+
+module fp32_exact_segmented_diff_tb;
+  logic clk;
+  logic rst_n;
+  logic start;
+  logic [2:0] rnd_mode;
+  logic seed_valid;
+  logic [31:0] seed;
+  logic [63:0] data;
+  logic [1:0] active;
+  logic last;
+  logic in_valid;
+  logic flat_in_ready, segmented_in_ready;
+  logic [31:0] flat_result, segmented_result;
+  logic [4:0] flat_status, segmented_status;
+  logic flat_out_valid, segmented_out_valid;
+  logic out_ready;
+  logic flat_busy, segmented_busy;
+
+  fp32_exact_reduction_accum #(
+    .ExponentSegmented (1'b0)
+  ) i_flat (
+    .clk_i(clk), .rst_ni(rst_n), .start_i(start),
+    .rnd_mode_i(rnd_mode), .seed_valid_i(seed_valid), .seed_i(seed),
+    .data_i(data), .active_i(active), .last_i(last),
+    .in_valid_i(in_valid), .in_ready_o(flat_in_ready),
+    .result_o(flat_result), .status_o(flat_status),
+    .out_valid_o(flat_out_valid), .out_ready_i(out_ready),
+    .busy_o(flat_busy)
+  );
+
+  fp32_exact_reduction_accum #(
+    .ExponentSegmented (1'b1)
+  ) i_segmented (
+    .clk_i(clk), .rst_ni(rst_n), .start_i(start),
+    .rnd_mode_i(rnd_mode), .seed_valid_i(seed_valid), .seed_i(seed),
+    .data_i(data), .active_i(active), .last_i(last),
+    .in_valid_i(in_valid), .in_ready_o(segmented_in_ready),
+    .result_o(segmented_result), .status_o(segmented_status),
+    .out_valid_o(segmented_out_valid), .out_ready_i(out_ready),
+    .busy_o(segmented_busy)
+  );
+
+  always #5 clk = ~clk;
+
+  always @(posedge clk) begin
+    if (rst_n) begin
+      if (flat_in_ready !== segmented_in_ready ||
+          flat_out_valid !== segmented_out_valid ||
+          flat_busy !== segmented_busy)
+        $fatal(1, "flat/segmented handshake state diverged");
+      if (flat_out_valid &&
+          ({flat_status, flat_result} !==
+           {segmented_status, segmented_result}))
+        $fatal(1,
+          "flat/segmented result diverged: %02x/%08x versus %02x/%08x",
+          flat_status, flat_result, segmented_status, segmented_result);
+    end
+  end
+
+  initial begin
+    clk        = 1'b0;
+    rst_n      = 1'b0;
+    start      = 1'b0;
+    rnd_mode   = '0;
+    seed_valid = 1'b0;
+    seed       = '0;
+    data       = '0;
+    active     = '0;
+    last       = 1'b0;
+    in_valid   = 1'b0;
+    out_ready  = 1'b1;
+
+    repeat (3) @(posedge clk);
+    rst_n = 1'b1;
+
+    for (int test = 0; test < 1000; test++) begin
+      int unsigned beat_count;
+      wait (!flat_busy && !segmented_busy);
+      @(negedge clk);
+      rnd_mode   = $urandom_range(0, 4);
+      seed_valid = $urandom_range(0, 1);
+      seed       = $urandom;
+      start      = 1'b1;
+      @(negedge clk);
+      start      = 1'b0;
+      seed_valid = 1'b0;
+      seed       = '0;
+
+      beat_count = $urandom_range(1, 20);
+      for (int beat = 0; beat < beat_count; beat++) begin
+        wait (flat_in_ready && segmented_in_ready);
+        @(negedge clk);
+        data     = {$urandom, $urandom};
+        active   = $urandom_range(0, 3);
+        last     = (beat == beat_count-1);
+        in_valid = 1'b1;
+        @(negedge clk);
+        in_valid = 1'b0;
+        data     = '0;
+        active   = '0;
+        last     = 1'b0;
+      end
+
+      wait (flat_out_valid && segmented_out_valid);
+      #1;
+      if ({flat_status, flat_result} !==
+          {segmented_status, segmented_result})
+        $fatal(1, "random differential failure at test %0d", test);
+      @(posedge clk);
+    end
+
+    $display("PASS: flat/segmented random differential (1000 reductions)");
+    $finish;
+  end
 endmodule

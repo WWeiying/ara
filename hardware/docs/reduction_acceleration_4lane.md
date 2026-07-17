@@ -760,7 +760,7 @@ root 仍进入原来的 in-order root FIFO，processing/commit pointer 不提前
 
 ### 20.3 定向验证和增量结果
 
-独立 testbench 共 17 组检查，覆盖基本求和、`1e20 + 1 - 1e20` 精确抵消、
+独立 testbench 共 19 组检查，覆盖基本求和、`1e20 + 1 - 1e20` 精确抵消、
 半 ULP 舍入、正负定向舍入、overflow、sNaN/qNaN、相反无穷、符号零、空
 子树、inactive seed copy、四 bank 回绕和 output backpressure，全部 PASS。
 
@@ -793,3 +793,93 @@ VL=64 而当前 VLEN=1024 的实际 VLMAX=32；失败值和既有 control 日志
 协议，使四个 lane 的精确状态在最终舍入前合并。随后再扩展 masked EW32、
 e16/e64 和 widening，并分别报告数值可重复性、误差、周期和 PPA，而不是只把
 更多 opcode 静默加入门禁。
+
+## 21. 指数分段原位归一化：第二阶段
+
+第一阶段的四个 288-bit temporal bank 能打断浮点反馈，但每次有限数输入仍可能
+激活全宽加法器，且仅有限数状态就需要 `4×288=1152` bit。第二阶段增加另一个
+默认关闭、依赖 `reduction_exact_sum=1` 的消融开关：
+
+```text
+reduction_exact_segmented=1
+```
+
+这个开关不改变 VMFPU/SLDU 接口、opcode 门禁和最终舍入语义，只替换 lane-local
+有限数累加表示；flat 后端仍保留，便于在同一份 RTL 中做周期、数值和 PPA
+差分。
+
+### 21.1 十六个指数窗
+
+binary32 从最低 subnormal 到最大 finite 的定点移位范围为 0 到 253。分段模式
+将它划为 16 个窗口，每个窗口覆盖 16 个相邻移位：
+
+```text
+segment = (exp_field == 0) ? 0 : (exp_field - 1) >> 4
+offset  = (exp_field == 0) ? 0 : (exp_field - 1) & 15
+```
+
+输入的 24-bit significand 只在命中窗口内部左移 0 到 15 位。当前支持配置最多
+有 256 个向量元素和一个 seed，因此每个窗口使用 49-bit 有符号累加器：
+24-bit significand、15-bit 局部移位、9-bit population carry 和符号位。有限数
+状态从 1152 bit 降为 `16×49=784` bit，减少 **31.94%**；稳态反馈加法宽度从
+288 bit 收窄到 49 bit。两个 FP32 元素若命中不同窗口则更新不同状态，命中同一
+窗口时在该窗口内合并，不影响精确性。
+
+NaN/Inf 没有放进指数窗。它们继续使用四个轻量 special bank，并按原固定
+`4→2→1` 树合并。这样既缩窄有限数数据通路，也保留第一阶段已经验证的
+qNaN/sNaN、相反无穷和 NV 产生顺序。
+
+### 21.2 复用原 merge 时隙进行原位归一化
+
+分段模式没有增加状态机阶段。原 `MERGE_PAIRS` 周期一次处理窗口 0 到 7：
+每四个窗口组成一个小于 100 bit 的 base-`2^16` chunk，输出低 64 bit 作为
+四个规范化 digit；第二个 chunk 的有符号 carry 暂存在已经消费完的窗口 0
+高位。原 `MERGE_ROOT` 周期用该 carry 处理窗口 8 到 15，并把最终高 32 bit
+暂存在窗口 15 高位。
+
+因此 16 个窗口自身同时充当“累加存储”和“归一化 digit 存储”，没有另加
+288-bit root 寄存器。`ROUND_RESULT` 只把 16 个低 16-bit digit 和窗口 15 的
+高 carry 组合成原精确整数，复用同一最终舍入函数。flat 与 segmented 的
+start/input/output ready-valid 时序完全一致。
+
+### 21.3 正确性、整机周期和结构消融
+
+同一个定向 testbench 分别对 flat 和 segmented 跑 19 项检查；新增最小
+subnormal 相加与 subnormal 到最小 normal 的进位边界。双实例随机差分另外
+执行 1000 条规约，每条随机选择 seed、1 到 20 个 64-bit source beat、
+active pattern 和五种标准 rounding mode，并逐周期比较 ready/valid/busy，
+逐条比较 result 与 fflags，结果为 1000/1000 PASS。
+
+4-lane 完整优化配置打开 segmented 后，VCS 整机编译为 0 error，结果如下：
+
+| workload / 检查 | flat exact | segmented exact | 结果 |
+|---|---:|---:|---|
+| 混合规约 ROI cycles | 181 | **181** | PASS |
+| 16× `vfredusum` stream cycles | 393 | **393** | PASS |
+| 不同 seed/destination tag mismatch | 0 | **0** | PASS |
+
+模块级使用同一版本 Yosys、同一 `synth` 流程做 generic gate 相对消融。该结果
+不是 28nm 签核 PPA，但可以验证参数常量传播后 flat 数据通路确实被裁掉：
+
+| 结构指标 | flat | segmented | 改善 |
+|---|---:|---:|---:|
+| 有限累加状态位 | 1152 | **784** | **31.94%** |
+| generic DFFE bit | 1235 | **867** | **29.80%** |
+| generic cells | 64651 | **49192** | **23.91%** |
+| CMOS transistor estimate | 490596+ | **375324+** | **23.50%** |
+| longest topological path length | 919 | **919** | 无新增级数 |
+
+本机 Design Compiler T-2022.03-SP2 与当前 glibc 的 `libpthread/GLIBC_PRIVATE`
+接口不兼容，因而尚未取得 TSMC28 标准单元面积、真实 slack 和功耗报告。仓库
+保留了独立 DC 脚本，待兼容运行环境恢复后必须补测；论文数据应以同一 PVT、
+同一时钟约束、同一 activity 输入下的 DC/PrimeTime/功耗结果为准，不能把
+generic cell 数当作最终面积。
+
+### 21.4 下一阶段
+
+当前优化解决的是 lane-local 精确后端的宽状态和宽反馈问题，跨 lane 仍把每个
+局部 root 先舍入为 FP32，再通过原 64-bit SLDU tree 合并。下一步真正影响
+“全向量数值可重复性”的机制，是把指数窗归一化后的有效区间、special/empty
+metadata 和 carry 作为 tagged packet 分拍通过 SLDU，使四个 lane 在唯一一次
+最终舍入前完成精确合并。实现时必须同时给 legacy 64-bit packet 保留旁路，
+并用序号和 root FIFO 证明多个在途规约不会串 tag。
