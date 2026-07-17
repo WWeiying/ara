@@ -18,7 +18,11 @@ module fp32_exact_reduction_accum #(
   // bins.  The bins are normalized in place during the existing 4->2->1
   // merge slots, so this mode preserves latency while reducing finite-state
   // storage from 4*288 to 16*49 bits and narrowing the active feedback adder.
-  parameter bit ExponentSegmented = 1'b0
+  parameter bit ExponentSegmented = 1'b0,
+  // A global packet merger can consume the exact state directly.  Disabling
+  // the lane-local final result lets synthesis prune four redundant rounders
+  // while preserving the same state-ready handshake.
+  parameter bit EmitRoundedResult = 1'b1
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -39,7 +43,19 @@ module fp32_exact_reduction_accum #(
   output logic [4:0]            status_o,
   output logic                  out_valid_o,
   input  logic                  out_ready_i,
-  output logic                  busy_o
+  output logic                  busy_o,
+
+  // Stable while out_valid_o is asserted.  These ports are the serialization
+  // boundary used by the 64-bit tagged cross-lane exact protocol.
+  output logic [AccWidth-1:0]   exact_value_o,
+  output logic [3:0]            special_o,
+  output logic                  source_seen_o,
+  output logic                  finite_nonzero_seen_o,
+  output logic                  pos_zero_seen_o,
+  output logic                  neg_zero_seen_o,
+  output logic                  seed_valid_o,
+  output logic [31:0]           seed_o,
+  output logic [2:0]            rnd_mode_o
 );
 
   typedef logic signed [AccWidth-1:0] accumulator_t;
@@ -408,6 +424,16 @@ module fp32_exact_reduction_accum #(
       exact_root[287:256] = segment_bin_q[15][47:16];
     end
 
+    exact_value_o          = exact_root;
+    special_o              = root_special;
+    source_seen_o          = source_seen_q;
+    finite_nonzero_seen_o  = finite_nonzero_seen_q;
+    pos_zero_seen_o        = pos_zero_seen_q;
+    neg_zero_seen_o        = neg_zero_seen_q;
+    seed_valid_o           = seed_valid_q;
+    seed_o                 = seed_raw_q;
+    rnd_mode_o             = rnd_mode_q;
+
     unique case (state_q)
       IDLE: begin
         if (start_i) begin
@@ -562,7 +588,11 @@ module fp32_exact_reduction_accum #(
 
       ROUND_RESULT: begin
         status_d = '0;
-        if (!source_seen_q) begin
+        if (!EmitRoundedResult) begin
+          // The exact state is consumed by the global packet merger.  Keep a
+          // deterministic local payload, but do not build a second rounder.
+          result_d = '0;
+        end else if (!source_seen_q) begin
           // RVV requires an all-inactive reduction to copy the scalar seed
           // without raising exceptions.  An empty non-seed subtree uses the
           // additive identity selected by the rounding direction.

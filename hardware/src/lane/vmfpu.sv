@@ -697,6 +697,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_TX,
     INTER_LANES_REDUCTION_RX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION,
     OSUM_REDUCTION, MFPU_WAIT
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    , EXACT_GLOBAL_TX, EXACT_GLOBAL_WINDOW_RX, EXACT_GLOBAL_RX
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
     , OSUM_ALIAS_DRAIN
 `endif
@@ -872,7 +875,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   function automatic logic red_stream_local_eligible(vfu_operation_t vinsn);
     red_stream_local_eligible = red_context_eligible(vinsn)
 `ifdef ARA_RED_EXACT_SUM_4LANE
+`ifndef ARA_RED_EXACT_GLOBAL_4LANE
                               || red_exact_sum_eligible(vinsn)
+`endif
 `endif
                               ;
   endfunction : red_stream_local_eligible
@@ -1139,14 +1144,87 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic        exact_sum_out_ready;
   logic        exact_sum_busy;
   logic        exact_sum_out_fire;
+  logic [287:0] exact_sum_value;
+  logic [3:0]   exact_sum_special;
+  logic         exact_sum_source_seen;
+  logic         exact_sum_finite_nonzero_seen;
+  logic         exact_sum_pos_zero_seen;
+  logic         exact_sum_neg_zero_seen;
+  logic         exact_sum_state_seed_valid;
+  logic [31:0]  exact_sum_state_seed;
+  logic [2:0]   exact_sum_state_rnd_mode;
+
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+  logic [2:0]  exact_packet_beat_d, exact_packet_beat_q;
+  logic [2:0]  exact_limb_count_d, exact_limb_count_q;
+  logic [2:0]  exact_local_limb_count;
+  logic [63:0] exact_packet_word;
+  logic        exact_global_result_fire;
+  logic [4:0]  exact_global_status;
+
+  always_comb begin : p_exact_packet
+    logic [63:0] sign_fill;
+
+    exact_packet_word = '0;
+    sign_fill = {64{exact_sum_value[287]}};
+
+    // Send through the highest non-sign-extension limb plus one guard limb
+    // for carry/sign resolution.  Small-magnitude FP32 reductions therefore
+    // need only two of the five fixed-width limbs.
+    exact_local_limb_count = 3'd2;
+    if ({{32{exact_sum_value[287]}}, exact_sum_value[287:256]} !=
+        sign_fill)
+      exact_local_limb_count = 3'd5;
+    else if (exact_sum_value[255:192] != sign_fill)
+      exact_local_limb_count = 3'd5;
+    else if (exact_sum_value[191:128] != sign_fill)
+      exact_local_limb_count = 3'd4;
+    else if (exact_sum_value[127:64] != sign_fill)
+      exact_local_limb_count = 3'd3;
+
+    unique case (exact_packet_beat_q)
+      3'd0: begin
+        // One self-describing header precedes the active exact-state window.
+        // The instruction/lane tags make cross-context or cross-lane mixing
+        // observable instead of relying only on implicit queue ordering.
+        exact_packet_word[63:32] = exact_sum_state_seed;
+        exact_packet_word[31:28] = 4'he;
+        exact_packet_word[27:26] = lane_id_i[1:0];
+        exact_packet_word[25:22] = exact_sum_special;
+        exact_packet_word[21]    = exact_sum_source_seen;
+        exact_packet_word[20]    = exact_sum_finite_nonzero_seen;
+        exact_packet_word[19]    = exact_sum_pos_zero_seen;
+        exact_packet_word[18]    = exact_sum_neg_zero_seen;
+        exact_packet_word[17]    = exact_sum_state_seed_valid;
+        exact_packet_word[16:14] = exact_sum_state_rnd_mode;
+        exact_packet_word[13:11] = exact_local_limb_count;
+        exact_packet_word[7:0]   = 8'(vinsn_processing_q.id);
+      end
+      3'd1: exact_packet_word = exact_sum_value[63:0];
+      3'd2: exact_packet_word = exact_sum_value[127:64];
+      3'd3: exact_packet_word = exact_sum_value[191:128];
+      3'd4: exact_packet_word = exact_sum_value[255:192];
+      default:
+        exact_packet_word = {{32{exact_sum_value[287]}},
+                             exact_sum_value[287:256]};
+    endcase
+  end
+
+  assign exact_global_status = sldu_operand_q[36:32];
+`endif
 
   assign exact_sum_out_fire = exact_sum_out_valid && exact_sum_out_ready;
 
   fp32_exact_reduction_accum #(
 `ifdef ARA_RED_EXACT_SEGMENTED_4LANE
-    .ExponentSegmented (1'b1)
+    .ExponentSegmented (1'b1),
 `else
-    .ExponentSegmented (1'b0)
+    .ExponentSegmented (1'b0),
+`endif
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    .EmitRoundedResult (1'b0)
+`else
+    .EmitRoundedResult (1'b1)
 `endif
   ) i_fp32_exact_reduction_accum (
     .clk_i        (clk_i),
@@ -1164,7 +1242,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .status_o     (exact_sum_status),
     .out_valid_o  (exact_sum_out_valid),
     .out_ready_i  (exact_sum_out_ready),
-    .busy_o       (exact_sum_busy)
+    .busy_o       (exact_sum_busy),
+    .exact_value_o(exact_sum_value),
+    .special_o    (exact_sum_special),
+    .source_seen_o(exact_sum_source_seen),
+    .finite_nonzero_seen_o(exact_sum_finite_nonzero_seen),
+    .pos_zero_seen_o(exact_sum_pos_zero_seen),
+    .neg_zero_seen_o(exact_sum_neg_zero_seen),
+    .seed_valid_o (exact_sum_state_seed_valid),
+    .seed_o       (exact_sum_state_seed),
+    .rnd_mode_o   (exact_sum_state_rnd_mode)
   );
 `endif
 
@@ -1806,23 +1893,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                        ? ordered_memo_fflags_q : vfpu_ex_flag)
 `ifdef ARA_RED_EXACT_SUM_4LANE
                        | (exact_sum_out_fire ? exact_sum_status : '0)
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+                       | (exact_global_result_fire
+                          ? exact_global_status : '0)
+`endif
 `endif
                        ;
     assign fflags_ex_valid_d = ordered_alias_flags_replay |
                                (vfpu_out_valid & vfpu_out_ready)
 `ifdef ARA_RED_EXACT_SUM_4LANE
                                | exact_sum_out_fire
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+                               | exact_global_result_fire
+`endif
 `endif
                                ;
 `else
     assign fflags_ex_d       = vfpu_ex_flag
 `ifdef ARA_RED_EXACT_SUM_4LANE
                              | (exact_sum_out_fire ? exact_sum_status : '0)
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+                             | (exact_global_result_fire
+                                ? exact_global_status : '0)
+`endif
 `endif
                              ;
     assign fflags_ex_valid_d = (vfpu_out_valid & vfpu_out_ready)
 `ifdef ARA_RED_EXACT_SUM_4LANE
                              | exact_sum_out_fire
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+                             | exact_global_result_fire
+`endif
 `endif
                              ;
 `endif
@@ -1905,6 +2006,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     exact_sum_last       = 1'b0;
     exact_sum_in_valid   = 1'b0;
     exact_sum_out_ready  = 1'b0;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    exact_global_result_fire = 1'b0;
+`endif
 `endif
 
     // If the result queue is not full, it is ready to accept a result
@@ -2006,6 +2110,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     intra_op_rx_cnt_en      = 1'b0;
 
     osum_issue_cnt_d        = osum_issue_cnt_q;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    exact_packet_beat_d     = exact_packet_beat_q;
+    exact_limb_count_d      = exact_limb_count_q;
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
     ordered_alias_d          = ordered_alias_q;
     ordered_memo_valid_d     = ordered_memo_valid_q;
@@ -2345,8 +2453,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
             (!first_op_q || mfpu_operand_valid_i[0]);
+`ifndef ARA_RED_EXACT_GLOBAL_4LANE
           automatic logic [31:0] empty_subtree_identity =
             (vinsn_issue_q.fp_rm == RDN) ? 32'h00000000 : 32'h80000000;
+`endif
 
           // The exact backend consumes the same 64-bit VRF beat as the legacy
           // SIMD fpnew path, but classifies and inserts its two binary32
@@ -2363,7 +2473,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           exact_sum_in_valid   = (issue_cnt_q != '0) &&
                                  exact_operands_valid;
           exact_sum_start      = first_op_q && exact_sum_in_valid;
+`ifndef ARA_RED_EXACT_GLOBAL_4LANE
           exact_sum_out_ready  = !result_queue_full;
+`endif
 
           if (exact_sum_in_valid && exact_sum_in_ready) begin
             issue_cnt_d       = issue_cnt_q - issue_element_cnt;
@@ -2374,9 +2486,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             first_op_d = 1'b0;
           end
 
-          // Keep the existing SLDU tree unchanged in this first stage.  The
-          // exact local root occupies the low SIMD element; the high element
-          // carries the rounding-mode-correct empty-subtree identity.
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+          // Do not acknowledge the exact state here.  It remains stable in
+          // the accumulator's HOLD state while the six-word packet is sent.
+          if (exact_sum_out_valid) begin
+            exact_packet_beat_d = '0;
+            to_process_cnt_d    = '0;
+            mfpu_state_d        = EXACT_GLOBAL_TX;
+          end
+`else
+          // Local-only ablation: round each lane and use the legacy FP tree.
           if (exact_sum_out_fire) begin
             result_queue_d[result_queue_write_pnt_q].wdata =
               {empty_subtree_identity, exact_sum_result};
@@ -2390,6 +2509,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             to_process_cnt_d = '0;
             mfpu_state_d = INTER_LANES_REDUCTION_TX;
           end
+`endif
         end else begin
 `endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
@@ -2674,6 +2794,70 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
 `endif
       end
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+      EXACT_GLOBAL_TX: begin
+        // Every lane emits the same packet beat number.  The SLDU input
+        // spills absorb independent backpressure; a lane advances only after
+        // its own word is owned by the network.
+        prevent_commit   = 1'b1;
+        mfpu_red_valid_o = exact_sum_out_valid;
+        if (exact_sum_out_valid && mfpu_red_ready_i) begin
+          if (exact_packet_beat_q == 3'd0) begin
+            mfpu_state_d = EXACT_GLOBAL_WINDOW_RX;
+          end else if (exact_packet_beat_q == exact_limb_count_q) begin
+            mfpu_state_d = EXACT_GLOBAL_RX;
+          end else begin
+            exact_packet_beat_d = exact_packet_beat_q + 1'b1;
+          end
+        end
+      end
+
+      EXACT_GLOBAL_WINDOW_RX: begin
+        // The SLDU returns the maximum active-window length reported by the
+        // four headers.  All lanes then serialize the same limb schedule, so
+        // the merger remains lockstep without five permanently reserved beats.
+        prevent_commit = 1'b1;
+        if (sldu_mfpu_valid_q &&
+            (sldu_operand_q[63:56] == 8'he8) &&
+            (sldu_operand_q[13:11] inside {[3'd2:3'd5]}) &&
+            (sldu_operand_q[7:0] == 8'(vinsn_processing_q.id))) begin
+          sldu_mfpu_ready_d   = 1'b1;
+          exact_limb_count_d  = sldu_operand_q[13:11];
+          exact_packet_beat_d = 3'd1;
+          mfpu_state_d        = EXACT_GLOBAL_TX;
+        end
+      end
+
+      EXACT_GLOBAL_RX: begin
+        // The SLDU broadcasts one completion token.  Only lane zero allocates
+        // the architectural result; every lane consumes the token before its
+        // local exact-state owner is released.
+        prevent_commit = 1'b1;
+        if (sldu_mfpu_valid_q &&
+            ((lane_id_i != '0) || !result_queue_full)) begin
+          sldu_mfpu_ready_d       = 1'b1;
+          exact_sum_out_ready     = 1'b1;
+          exact_global_result_fire = 1'b1;
+          mfpu_state_d            = MFPU_WAIT;
+          if (lane_id_i == '0) begin
+            result_queue_d[result_queue_write_pnt_q].wdata =
+              {32'b0, sldu_operand_q[31:0]};
+            result_queue_d[result_queue_write_pnt_q].addr =
+              vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+            result_queue_d[result_queue_write_pnt_q].id =
+              vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].be =
+              be(1, vinsn_processing_q.vtype.vsew);
+            result_queue_d[result_queue_write_pnt_q].mask = 1'b0;
+            result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+            result_queue_cnt_d += 1'b1;
+            result_queue_write_pnt_d =
+              (result_queue_write_pnt_q == ResultQueueDepth-1)
+                ? '0 : result_queue_write_pnt_q + 1'b1;
+          end
+        end
+      end
+`endif
       INTER_LANES_REDUCTION_TX: begin
         // If the workload is unbalanced and some lanes already have commit_cnt == '0,
         // delay the commit until we are over with the inter-lanes phase
@@ -3393,6 +3577,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_stream_overlap_cycles_d = red_stream_overlap_cycles_q + 1'b1;
 
 `ifdef ARA_RED_EXACT_SUM_4LANE
+`ifndef ARA_RED_EXACT_GLOBAL_4LANE
       if (red_exact_sum_eligible(vinsn_issue_q)) begin
         automatic logic bg_exact_operands_valid =
           bg_source_word_valid && vinsn_issue_q_valid &&
@@ -3435,6 +3620,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           red_stream_bg_active_d   = 1'b0;
         end
       end else begin
+`endif
 `endif
       if (vfpu_in_valid) begin
         red_stream_primary_conflict_cycles_d =
@@ -3569,7 +3755,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         endcase
       end
 `ifdef ARA_RED_EXACT_SUM_4LANE
+`ifndef ARA_RED_EXACT_GLOBAL_4LANE
       end
+`endif
 `endif
     end
 
@@ -3653,6 +3841,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                         : result_queue_q[result_queue_read_pnt_q].wdata;
 `else
     mfpu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
+`endif
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    if (mfpu_state_q == EXACT_GLOBAL_TX)
+      mfpu_result_wdata_o = exact_packet_word;
 `endif
     mfpu_result_be_o    = result_queue_q[result_queue_read_pnt_q].be;
 
@@ -3946,6 +4138,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       intra_issued_op_cnt_q   <= '0;
       intra_op_rx_cnt_q       <= '0;
       osum_issue_cnt_q        <= '0;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+      exact_packet_beat_q     <= '0;
+      exact_limb_count_q      <= 3'd5;
+`endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
       red_context_data_q       <= '0;
       red_context_valid_q      <= '0;
@@ -4009,6 +4205,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       intra_issued_op_cnt_q   <= intra_issued_op_cnt_d;
       intra_op_rx_cnt_q       <= intra_op_rx_cnt_d;
       osum_issue_cnt_q        <= osum_issue_cnt_d;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+      exact_packet_beat_q     <= exact_packet_beat_d;
+      exact_limb_count_q      <= exact_limb_count_d;
+`endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
       red_context_data_q       <= red_context_data_d;
       red_context_valid_q      <= red_context_valid_d;
@@ -4084,11 +4284,47 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       exact_sum_out_valid |->
         (red_exact_sum_eligible(vinsn_issue_q) &&
          ((mfpu_state_q == INTRA_LANE_REDUCTION)
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+          || (mfpu_state_q inside {EXACT_GLOBAL_TX,
+                                   EXACT_GLOBAL_WINDOW_RX,
+                                   EXACT_GLOBAL_RX})
+`endif
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           || red_stream_bg_active_q
 `endif
          ))
   ) else $error("exact FP reduction output escaped its foreground/background owner");
+
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+  a_exact_packet_holds_state_under_backpressure: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (mfpu_state_q == EXACT_GLOBAL_TX && mfpu_red_valid_o &&
+       !mfpu_red_ready_i) |=>
+        $stable({exact_packet_beat_q, exact_packet_word})
+  ) else $error("exact reduction packet changed under backpressure");
+
+  a_exact_global_result_is_tagged: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_global_result_fire |-> (sldu_operand_q[63:56] == 8'hf7)
+  ) else $error("exact reduction accepted an untagged global result");
+
+  a_exact_global_window_is_legal: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (mfpu_state_q == EXACT_GLOBAL_TX &&
+       exact_packet_beat_q != 0) |->
+        (exact_limb_count_q inside {[3'd2:3'd5]} &&
+         exact_packet_beat_q <= exact_limb_count_q)
+  ) else $error("exact reduction active window is malformed");
+
+  a_exact_global_window_token_is_tagged: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (mfpu_state_q == EXACT_GLOBAL_WINDOW_RX &&
+       sldu_mfpu_valid_q) |->
+        (sldu_operand_q[63:56] == 8'he8 &&
+         sldu_operand_q[13:11] inside {[3'd2:3'd5]} &&
+         sldu_operand_q[7:0] == 8'(vinsn_processing_q.id))
+  ) else $error("exact reduction active-window token is malformed");
+`endif
 `endif
 `endif
 

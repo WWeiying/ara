@@ -883,3 +883,192 @@ generic cell 数当作最终面积。
 metadata 和 carry 作为 tagged packet 分拍通过 SLDU，使四个 lane 在唯一一次
 最终舍入前完成精确合并。实现时必须同时给 legacy 64-bit packet 保留旁路，
 并用序号和 root FIFO 证明多个在途规约不会串 tag。
+
+## 22. Tagged active-window 全局精确规约：第三阶段
+
+第三阶段增加默认关闭、依赖前两阶段的 4-lane 实验开关：
+
+```text
+reduction_exact_sum=1
+reduction_exact_segmented=1
+reduction_exact_global=1
+```
+
+它改变的不只是 lane-local 算法，而是跨 lane 规约的数值与通信边界。四个
+lane 不再分别把局部精确和舍入成 FP32；它们把精确根、特殊值语义和 seed
+所有权作为带指令标签的状态包送到 SLDU。SLDU 先合并四个精确根，再由唯一的
+中央 finalizer 舍入一次。因而对于当前门禁覆盖的无 mask、EW32
+`vfredusum`，整个向量只有一个舍入点。
+
+### 22.1 为什么不能直接发送固定五拍
+
+288-bit 根需要五个 64-bit beat。如果每个 lane 无条件发送五拍，四 lane
+共享接口会为大量为零或纯符号扩展的高位付出固定通信成本。实际规约数据通常
+只占精确定点域的低若干 limb，因此每个 lane 先计算一个局部活动窗口：
+
+```text
+local_limb_count =
+  最高的“不是其上一位符号扩展”的 64-bit limb
+  + 一个符号/进位保护 limb
+```
+
+合法值为 2 到 5。四个 lane 先只发送 header；SLDU 取四个局部窗口的最大值，
+广播 `E8` window token，然后所有 lane 按相同的全局窗口发送 limb。常见小数
+值只发送两个 limb，而极大指数或宽抵消仍自动扩展到五个。多发一个保护 limb
+很关键：它使四路有符号相加产生的最高进位不会落到被省略区间，剩余高位可以
+安全地由保护 limb 的符号位恢复。
+
+因此，这一机制不是无损压缩某个 FP32 结果，而是对“精确规约状态的有效指数
+跨度”做运行时协商。协议开销是一拍 header 和一拍 window token，换取每条
+指令 0 到 3 拍的高位传输消除；当数据动态范围很大时退化为固定五 limb，
+不会改变结果。
+
+### 22.2 自描述 header 与 seed 单一所有权
+
+header 的 64-bit 布局如下：
+
+| bit | 含义 |
+|---:|---|
+| 63:32 | lane 0 携带的原始 FP32 scalar seed |
+| 31:28 | header magic `E` |
+| 27:26 | lane id |
+| 25:22 | NaN、invalid、正无穷、负无穷摘要 |
+| 21 | 至少看见一个 active source |
+| 20 | 至少看见一个有限非零值 |
+| 19:18 | 看见正零、负零 |
+| 17 | seed valid，仅允许 lane 0 置位 |
+| 16:14 | rounding mode |
+| 13:11 | 局部 limb 数 |
+| 7:0 | vector instruction id |
+
+seed 不复制到四个 lane 的精确数中：lane 0 是唯一 seed owner，其余 lane 的
+header 必须声明 seed invalid。这样跨 lane 相加时 seed 恰好出现一次。所有
+header 还必须具有相同 instruction id 和 rounding mode；断言会检查 lane id、
+limb 范围、seed 所有权和 packet backpressure 稳定性。
+
+SLDU 的输入 spill 可能残留上一条规约给 inactive lane 产生的 dummy zero。
+真实整机仿真中，这会表现为 lane 0 先看见旧 token，而其余 lane 已经送来新
+header。新的 rendezvous 不会清空整组输入，也不会把两条指令拼接：它只丢弃
+标签不匹配的单 lane stale token，保留已经匹配的 header，直至四个 lane
+形成同一 instruction id 的集合。这个按 lane 重同步机制是现有共享规约链路
+上实现可靠宽状态包的必要部分。
+
+### 22.3 四路精确 limb 合并
+
+收到活动窗口后，SLDU 对每个 little-endian limb 执行固定 `4→2→1` 合并：
+
+```text
+pair_lo = limb_lane0 + limb_lane1
+pair_hi = limb_lane2 + limb_lane3
+root    = pair_lo + pair_hi + carry_from_lower_limb
+```
+
+内部运算保留 66 bit，低 64 bit 写入全局 root，高位作为下一 limb 的二进制补码
+carry。某 lane 的局部窗口短于全局窗口时，它发送其最高位的符号扩展，而不是
+零；否则负数会在拼接处被错误截断。收到最后一个协商 limb 后，未传输的根高位
+由保护 limb 符号扩展到 288 bit。
+
+特殊值不进入定点加法器。NaN/sNaN、相反无穷、正负无穷按同样的固定
+`4→2→1` 语义树合并；finite/zero/source-seen metadata 做 OR 归约。中央
+`fp32_exact_reduction_finalize` 随后联合检查特殊值、inactive seed-copy、
+符号零以及精确有限根，执行 RNE/RTZ/RDN/RUP/RMM/ROD 舍入，并产生
+`NV/OF/NX`。最终 `F7` token 把 `{fflags, result}` 广播给所有 lane：lane 0
+写回架构结果，四个 lane 同时释放本地精确状态，因此不会提前覆盖尚未被 SLDU
+消费的根。
+
+### 22.4 数值性质
+
+在门禁范围内，结果等价于：
+
+```text
+round_rm(seed + x[0] + x[1] + ... + x[vl-1])
+```
+
+其中括号内在 `2^-149` 整数域精确计算，最后仅执行一次 binary32 舍入。它消除
+了 lane 分区和局部树形状引入的中间舍入差异。定向反例
+`[+1e20, +1, -1e20, 0]` 在旧的 lane-local exact 路径得到 `0.0`，全局路径
+得到精确期望 `1.0`。这不是仅靠重排普通 FP 加法树能保证的性质。
+
+这一结论当前只覆盖 4-lane、unmasked、非 widening、EW32 `vfredusum`。有序
+`vfredosum` 必须保留规范规定的元素顺序，不能直接改成此交换结合树；masked、
+EW16/EW64 和 widening 需要分别扩展有效性 metadata 与定点格式，尚不能宣称
+已经覆盖。
+
+### 22.5 公平性能对照
+
+control 是第 21 节 segmented exact 完整优化配置；candidate 仅增加全局精确
+协议。二者均为 4 lane、相同 VLEN、相同完整优化开关和同一 VCS 仿真环境。
+
+| workload / 指标 | segmented local | global active-window | 改善 |
+|---|---:|---:|---:|
+| 混合规约 ROI total cycles | 181 | **173** | **4.42%** |
+| 其中 `vfredusum` execution latency | 38 | **24** | **36.84%** |
+| 16× `vfredusum` stream cycles | 393 | **308** | **21.63%** |
+| stream 平均 execution latency | 50.688 | **35.812** | **29.35%** |
+
+混合探针全部结果 PASS，16 条不同 destination 的连续流全部 PASS，精确抵消
+探针得到 `0x3f800000`。同一抵消探针在旧路径得到 `0x00000000`，因此本轮同时
+给出了性能收益和可观察的数值语义收益。普通整数规约、有序浮点规约和 min/max
+仍走 legacy 路径；混合回归验证新 token 没有污染它们。
+
+中央 finalizer 的整机定向探针还逐项检查了相反无穷与 sNaN 的 `NV`、qNaN
+不置 `NV`、正 overflow 的 `OF|NX`、半 ULP ties-to-even 的 `NX`，以及精确
+subnormal 不置异常；七组 result/fflags 全部 PASS。
+
+### 22.6 初步结构面积预算
+
+为了避免新增 exact-state 输出被 synthesis top 当成永远可观察端口，使用两个
+专用 wrapper 分别只保留 lane-local rounded 接口和 global exact-state 接口。
+Yosys 版本、参数和 `synth` 流程相同：
+
+| generic-cell 结构 | cells |
+|---|---:|
+| segmented local accumulator，含本地 finalizer，每 lane | 49,155 |
+| segmented exact-state exporter，不含本地 finalizer，每 lane | 39,681 |
+| 独立中央 finalizer，一份 | 16,567 |
+| 4× local accumulator | 196,620 |
+| 4× exporter + 1× central finalizer | **175,291** |
+
+在尚未计入 SLDU limb merger、288-bit root 寄存器和协议 FSM 时，共享 finalizer
+给全局方案留下 21,329 generic cells、即 local 总量 10.85% 的打平余量。这组
+结果证明“去掉四份本地舍入器、只保留一份中央舍入器”确实被常量传播实现，
+但不能据此宣称整机面积已经下降：只有把新增 SLDU 逻辑一起 flatten 并做标准
+单元映射后，才能报告净面积。两个 wrapper 保存在
+`hardware/tb/fp32_exact_reduction_synth_wrappers.sv`，使这个结构消融可复现。
+
+### 22.7 创新性与论文完成度的诚实评估
+
+若只把“宽定点累加”或“树形规约”单独作为贡献，创新性仍然有限。当前可形成
+论文主线的是三个机制的组合：
+
+1. lane 内指数分段、低宽度反馈的精确状态；
+2. 面向共享窄链路的 tagged active-window 精确状态传输；
+3. 跨 lane 精确合并、唯一最终舍入，并在旧规约协议残留 token 下按 lane
+   自恢复。
+
+以“已经有 RTL、整机回归和周期数据，但尚无签核 PPA/形式证明”的状态评估：
+
+| 维度 | 当前评价 |
+|---|---:|
+| 微架构方案新颖性 | **7.5/10** |
+| 可实现性与现有 Ara 融合度 | **8/10** |
+| 功能验证完整度 | **7/10** |
+| 论文实验完整度 | **6.5/10** |
+| 综合论文竞争力 | **约 7/10** |
+
+这已经明显超过常规的 tree/pipeline/bypass 优化，可以支撑论文基本方案，但
+还不能直接写成“成熟的 8/10 论文结果”。提升到稳定 8/10 至少还需要：
+
+- 把 header/merge/window 参数化到 2/4/8 lane，验证结果与 lane 数无关；
+- 扩展 masked EW32，或给出为何选择性不扩展的面积/流量边界；
+- 用随机高精度软件 oracle 覆盖 NaN、Inf、subnormal、五种标准舍入和 fflags；
+- 对 packet tag、无丢包/无串包、唯一 seed 和一次舍入性质做形式验证；
+- 在同一工艺、PVT、时钟和 activity 下报告面积、Fmax、能量，以及
+  `cycles × clock_period`；
+- 与普通 FP tree、lane-local exact、固定五 limb global exact 做完整消融，
+  分别量化分段、活动窗口、中央舍入和重同步逻辑的贡献。
+
+当前最大的工程风险是 SLDU 中新增 finalizer 和 limb merge 对时序/面积的影响，
+其次是精确状态导出可能增加 lane-local 选择网络。Yosys generic cell 只能用作
+结构筛查，不能替代标准单元映射；在取得映射后 PPA 前，不应把周期改善直接写成
+同等比例的执行时间或能耗改善。
