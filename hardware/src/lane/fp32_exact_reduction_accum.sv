@@ -1,0 +1,481 @@
+// Copyright 2026
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+//
+// Exact, throughput-oriented backend for unordered binary32 reductions.
+//
+// Every finite binary32 input is an integer multiple of 2^-149.  The four
+// banks below therefore accumulate signed fixed-point integers without any
+// intermediate rounding.  Consecutive 64-bit source beats use different
+// banks, removing the floating-point recurrence while retaining one-beat-per-
+// cycle input throughput.  The banks are merged exactly and rounded once.
+
+module fp32_exact_reduction_accum #(
+  // 288 bits cover 256 binary32 vector elements plus the scalar seed.  The
+  // sign bit and three spare magnitude bits also cover worst-case carry-out.
+  parameter integer AccWidth = 288
+) (
+  input  logic                  clk_i,
+  input  logic                  rst_ni,
+
+  input  logic                  start_i,
+  input  logic [2:0]            rnd_mode_i,
+  input  logic                  seed_valid_i,
+  input  logic [31:0]           seed_i,
+
+  input  logic [63:0]           data_i,
+  input  logic [1:0]            active_i,
+  input  logic                  last_i,
+  input  logic                  in_valid_i,
+  output logic                  in_ready_o,
+
+  output logic [31:0]           result_o,
+  // RISC-V fflags order: {NV, DZ, OF, UF, NX}.
+  output logic [4:0]            status_o,
+  output logic                  out_valid_o,
+  input  logic                  out_ready_i,
+  output logic                  busy_o
+);
+
+  typedef logic signed [AccWidth-1:0] accumulator_t;
+  typedef struct packed {
+    logic nan;
+    logic invalid;
+    logic pos_inf;
+    logic neg_inf;
+  } special_t;
+
+  typedef enum logic [2:0] {
+    IDLE,
+    ACCUMULATE,
+    MERGE_PAIRS,
+    MERGE_ROOT,
+    ROUND_RESULT,
+    HOLD_RESULT
+  } state_e;
+
+  state_e state_d, state_q;
+
+  accumulator_t [3:0] bank_d, bank_q;
+  special_t [3:0] bank_special_d, bank_special_q;
+  logic [1:0] bank_index_d, bank_index_q;
+
+  logic [2:0] rnd_mode_d, rnd_mode_q;
+  logic       seed_valid_d, seed_valid_q;
+  logic [31:0] seed_raw_d, seed_raw_q;
+  logic       source_seen_d, source_seen_q;
+  logic       finite_nonzero_seen_d, finite_nonzero_seen_q;
+  logic       pos_zero_seen_d, pos_zero_seen_q;
+  logic       neg_zero_seen_d, neg_zero_seen_q;
+
+  logic [31:0] result_d, result_q;
+  logic [4:0]  status_d, status_q;
+
+  function automatic logic fp32_is_nan(input logic [31:0] value);
+    return (&value[30:23]) && (|value[22:0]);
+  endfunction
+
+  function automatic logic fp32_is_snan(input logic [31:0] value);
+    return fp32_is_nan(value) && !value[22];
+  endfunction
+
+  function automatic logic fp32_is_inf(input logic [31:0] value);
+    return (&value[30:23]) && !(|value[22:0]);
+  endfunction
+
+  function automatic logic fp32_is_zero(input logic [31:0] value);
+    return !(|value[30:0]);
+  endfunction
+
+  function automatic logic fp32_is_finite_nonzero(input logic [31:0] value);
+    return !(&value[30:23]) && (|value[30:0]);
+  endfunction
+
+  function automatic special_t fp32_special(input logic [31:0] value);
+    special_t decoded;
+    begin
+      decoded = '0;
+      if (fp32_is_nan(value)) begin
+        decoded.nan = 1'b1;
+        decoded.invalid = fp32_is_snan(value);
+      end else if (fp32_is_inf(value)) begin
+        decoded.pos_inf = !value[31];
+        decoded.neg_inf = value[31];
+      end
+      return decoded;
+    end
+  endfunction
+
+  // This is the special-value behavior of one exact IEEE addition node.
+  // Keeping it per bank (and merging banks in a fixed 4->2->1 tree) is
+  // important: a pre-existing qNaN suppresses a later infinity conflict,
+  // whereas an sNaN always contributes NV.
+  function automatic special_t merge_special(
+    input special_t left,
+    input special_t right
+  );
+    special_t merged;
+    begin
+      merged = '0;
+      merged.invalid = left.invalid | right.invalid;
+      if (left.nan || right.nan) begin
+        merged.nan = 1'b1;
+      end else if ((left.pos_inf && right.neg_inf) ||
+                   (left.neg_inf && right.pos_inf)) begin
+        merged.nan = 1'b1;
+        merged.invalid = 1'b1;
+      end else begin
+        merged.pos_inf = left.pos_inf | right.pos_inf;
+        merged.neg_inf = left.neg_inf | right.neg_inf;
+      end
+      return merged;
+    end
+  endfunction
+
+  // Convert a finite binary32 number into a signed integer whose bit zero has
+  // weight 2^-149.  For normals, the required shift is simply exp_field-1:
+  //   (1.fraction) * 2^(exp-127) / 2^23 * 2^149.
+  function automatic accumulator_t fp32_to_fixed(input logic [31:0] value);
+    accumulator_t magnitude;
+    logic [23:0] significand;
+    int unsigned shift;
+    begin
+      magnitude = '0;
+      if (value[30:23] == 8'h00) begin
+        magnitude[22:0] = value[22:0];
+      end else if (value[30:23] != 8'hff) begin
+        significand = {1'b1, value[22:0]};
+        shift = int'(value[30:23]) - 1;
+        magnitude = accumulator_t'(significand);
+        magnitude = magnitude <<< shift;
+      end
+      fp32_to_fixed = value[31] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  function automatic logic [31:0] overflow_result(
+    input logic sign,
+    input logic [2:0] round_mode
+  );
+    logic round_to_infinity;
+    begin
+      unique case (round_mode)
+        3'b001: round_to_infinity = 1'b0;  // RTZ
+        3'b010: round_to_infinity = sign;  // RDN
+        3'b011: round_to_infinity = !sign; // RUP
+        3'b101: round_to_infinity = 1'b0;  // ROD
+        default: round_to_infinity = 1'b1; // RNE/RMM
+      endcase
+      overflow_result = round_to_infinity
+                      ? {sign, 8'hff, 23'h0}
+                      : {sign, 8'hfe, 23'h7fffff};
+    end
+  endfunction
+
+  // Round an exact signed fixed-point sum to binary32.  A subnormal result is
+  // always exact because the accumulator quantum equals the binary32 minimum
+  // subnormal; only normal significand truncation can set NX.
+  function automatic logic [36:0] round_fixed(
+    input accumulator_t exact_value,
+    input logic [2:0] round_mode,
+    input logic finite_nonzero_seen,
+    input logic pos_zero_seen,
+    input logic neg_zero_seen
+  );
+    accumulator_t magnitude;
+    logic sign;
+    logic zero_sign;
+    logic [23:0] significand;
+    logic [24:0] rounded_significand;
+    logic guard_bit, sticky_bit, inexact, increment;
+    logic [7:0] encoded_exponent;
+    logic [31:0] result;
+    logic [4:0] flags;
+    int msb;
+    int shift;
+    int exponent;
+    begin
+      result = '0;
+      flags  = '0;
+      sign = exact_value[AccWidth-1];
+      magnitude = sign ? -exact_value : exact_value;
+
+      msb = -1;
+      for (int i = 0; i < AccWidth; i++)
+        if (magnitude[i])
+          msb = i;
+
+      if (msb < 0) begin
+        // Same-sign signed zeros retain their sign.  An exact cancellation or
+        // mixed-sign zero sum follows IEEE-754's rounding-direction rule.
+        if (!finite_nonzero_seen && neg_zero_seen && !pos_zero_seen)
+          zero_sign = 1'b1;
+        else if (!finite_nonzero_seen && pos_zero_seen && !neg_zero_seen)
+          zero_sign = 1'b0;
+        else
+          zero_sign = (round_mode == 3'b010);
+        result = {zero_sign, 31'b0};
+      end else if (msb < 23) begin
+        // Exact subnormal: accumulator bit 0 is binary32's 2^-149 bit.
+        result = {sign, 8'h00, magnitude[22:0]};
+      end else begin
+        exponent = msb - 149;
+        shift = msb - 23;
+
+        if (exponent > 127) begin
+          result = overflow_result(sign, round_mode);
+          flags[2] = 1'b1; // OF
+          flags[0] = 1'b1; // NX
+        end else begin
+          significand = accumulator_t'(magnitude >>> shift);
+          guard_bit = 1'b0;
+          sticky_bit = 1'b0;
+          if (shift > 0)
+            guard_bit = magnitude[shift-1];
+          for (int i = 0; i < AccWidth; i++)
+            if (i < (shift-1))
+              sticky_bit |= magnitude[i];
+          inexact = guard_bit | sticky_bit;
+
+          unique case (round_mode)
+            3'b000: increment = guard_bit &&
+                               (sticky_bit || significand[0]); // RNE
+            3'b001: increment = 1'b0;                         // RTZ
+            3'b010: increment = sign && inexact;              // RDN
+            3'b011: increment = !sign && inexact;             // RUP
+            3'b100: increment = guard_bit;                    // RMM
+            default: increment = 1'b0;
+          endcase
+
+          rounded_significand = {1'b0, significand};
+          if (round_mode == 3'b101) begin
+            // fpnew's non-standard round-to-odd mode is useful for widening
+            // experiments even though this first integration targets only
+            // non-widening RVV sums.
+            if (inexact)
+              rounded_significand[0] = 1'b1;
+          end else begin
+            rounded_significand += increment;
+          end
+
+          if (rounded_significand[24]) begin
+            significand = rounded_significand[24:1];
+            exponent += 1;
+          end else begin
+            significand = rounded_significand[23:0];
+          end
+
+          if (exponent > 127) begin
+            result = overflow_result(sign, round_mode);
+            flags[2] = 1'b1; // OF
+            flags[0] = 1'b1; // NX
+          end else begin
+            encoded_exponent = exponent + 127;
+            result = {sign, encoded_exponent, significand[22:0]};
+            flags[0] = inexact; // NX
+          end
+        end
+      end
+      round_fixed = {flags, result};
+    end
+  endfunction
+
+  always_comb begin : p_next
+    logic [36:0] rounded;
+    logic [31:0] element;
+
+    state_d               = state_q;
+    bank_d                = bank_q;
+    bank_special_d        = bank_special_q;
+    bank_index_d          = bank_index_q;
+    rnd_mode_d            = rnd_mode_q;
+    seed_valid_d          = seed_valid_q;
+    seed_raw_d            = seed_raw_q;
+    source_seen_d         = source_seen_q;
+    finite_nonzero_seen_d = finite_nonzero_seen_q;
+    pos_zero_seen_d       = pos_zero_seen_q;
+    neg_zero_seen_d       = neg_zero_seen_q;
+    result_d              = result_q;
+    status_d              = status_q;
+
+    in_ready_o  = (state_q == ACCUMULATE) ||
+                  ((state_q == IDLE) && start_i);
+    out_valid_o = (state_q == HOLD_RESULT);
+    result_o    = result_q;
+    status_o    = status_q;
+    busy_o      = (state_q != IDLE);
+
+    unique case (state_q)
+      IDLE: begin
+        if (start_i) begin
+          state_d               = ACCUMULATE;
+          bank_d                = '0;
+          bank_special_d        = '0;
+          bank_index_d          = '0;
+          rnd_mode_d            = rnd_mode_i;
+          seed_valid_d          = seed_valid_i;
+          seed_raw_d            = seed_i;
+          source_seen_d         = 1'b0;
+          finite_nonzero_seen_d = seed_valid_i &&
+                                  fp32_is_finite_nonzero(seed_i);
+          pos_zero_seen_d       = seed_valid_i && fp32_is_zero(seed_i) &&
+                                  !seed_i[31];
+          neg_zero_seen_d       = seed_valid_i && fp32_is_zero(seed_i) &&
+                                  seed_i[31];
+          result_d              = '0;
+          status_d              = '0;
+
+          if (seed_valid_i)
+            bank_special_d[0] = fp32_special(seed_i);
+          if (seed_valid_i && !fp32_is_nan(seed_i) &&
+              !fp32_is_inf(seed_i))
+            bank_d[0] = fp32_to_fixed(seed_i);
+
+          // Start and the first source beat may handshake together.  This
+          // avoids a setup bubble at the VMFPU instruction boundary.
+          if (in_valid_i) begin
+            for (int e = 0; e < 2; e++) begin
+              element = data_i[32*e +: 32];
+              if (active_i[e]) begin
+                source_seen_d = 1'b1;
+                bank_special_d[0] =
+                  merge_special(bank_special_d[0], fp32_special(element));
+                finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
+                pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
+                neg_zero_seen_d |= fp32_is_zero(element) && element[31];
+                if (!fp32_is_nan(element) && !fp32_is_inf(element))
+                  bank_d[0] += fp32_to_fixed(element);
+              end
+            end
+            bank_index_d = 2'd1;
+            if (last_i)
+              state_d = MERGE_PAIRS;
+          end
+        end
+      end
+
+      ACCUMULATE: begin
+        if (in_valid_i) begin
+          for (int e = 0; e < 2; e++) begin
+            element = data_i[32*e +: 32];
+            if (active_i[e]) begin
+              source_seen_d = 1'b1;
+              bank_special_d[bank_index_q] =
+                merge_special(bank_special_d[bank_index_q],
+                              fp32_special(element));
+              finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
+              pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
+              neg_zero_seen_d |= fp32_is_zero(element) && element[31];
+              if (!fp32_is_nan(element) && !fp32_is_inf(element))
+                bank_d[bank_index_q] += fp32_to_fixed(element);
+            end
+          end
+          bank_index_d = bank_index_q + 1'b1;
+          if (last_i)
+            state_d = MERGE_PAIRS;
+        end
+      end
+
+      MERGE_PAIRS: begin
+        bank_d[0] = bank_q[0] + bank_q[1];
+        bank_d[1] = bank_q[2] + bank_q[3];
+        bank_special_d[0] =
+          merge_special(bank_special_q[0], bank_special_q[1]);
+        bank_special_d[1] =
+          merge_special(bank_special_q[2], bank_special_q[3]);
+        state_d = MERGE_ROOT;
+      end
+
+      MERGE_ROOT: begin
+        bank_d[0] = bank_q[0] + bank_q[1];
+        bank_special_d[0] =
+          merge_special(bank_special_q[0], bank_special_q[1]);
+        state_d = ROUND_RESULT;
+      end
+
+      ROUND_RESULT: begin
+        status_d = '0;
+        if (!source_seen_q) begin
+          // RVV requires an all-inactive reduction to copy the scalar seed
+          // without raising exceptions.  An empty non-seed subtree uses the
+          // additive identity selected by the rounding direction.
+          result_d = seed_valid_q ? seed_raw_q
+                                  : {(rnd_mode_q != 3'b010), 31'b0};
+        end else if (bank_special_q[0].nan) begin
+          result_d = 32'h7fc00000;
+          status_d[4] = bank_special_q[0].invalid;
+        end else if (bank_special_q[0].pos_inf) begin
+          result_d = 32'h7f800000;
+        end else if (bank_special_q[0].neg_inf) begin
+          result_d = 32'hff800000;
+        end else begin
+          rounded = round_fixed(bank_q[0], rnd_mode_q,
+                                finite_nonzero_seen_q,
+                                pos_zero_seen_q, neg_zero_seen_q);
+          status_d = rounded[36:32];
+          result_d = rounded[31:0];
+        end
+        state_d = HOLD_RESULT;
+      end
+
+      HOLD_RESULT: begin
+        if (out_ready_i)
+          state_d = IDLE;
+      end
+
+      default: state_d = IDLE;
+    endcase
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
+    if (!rst_ni) begin
+      state_q               <= IDLE;
+      bank_q                <= '0;
+      bank_special_q        <= '0;
+      bank_index_q          <= '0;
+      rnd_mode_q            <= '0;
+      seed_valid_q          <= 1'b0;
+      seed_raw_q            <= '0;
+      source_seen_q         <= 1'b0;
+      finite_nonzero_seen_q <= 1'b0;
+      pos_zero_seen_q       <= 1'b0;
+      neg_zero_seen_q       <= 1'b0;
+      result_q              <= '0;
+      status_q              <= '0;
+    end else begin
+      state_q               <= state_d;
+      bank_q                <= bank_d;
+      bank_special_q        <= bank_special_d;
+      bank_index_q          <= bank_index_d;
+      rnd_mode_q            <= rnd_mode_d;
+      seed_valid_q          <= seed_valid_d;
+      seed_raw_q            <= seed_raw_d;
+      source_seen_q         <= source_seen_d;
+      finite_nonzero_seen_q <= finite_nonzero_seen_d;
+      pos_zero_seen_q       <= pos_zero_seen_d;
+      neg_zero_seen_q       <= neg_zero_seen_d;
+      result_q              <= result_d;
+      status_q              <= status_d;
+    end
+  end
+
+`ifndef SYNTHESIS
+  initial begin
+    assert (AccWidth >= 288)
+      else $fatal(1, "binary32 exact reduction accumulator is too narrow");
+  end
+
+  a_result_stable_under_backpressure: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (out_valid_o && !out_ready_i) |=>
+        $stable({result_o, status_o})
+  ) else $error("exact reduction result changed under backpressure");
+
+  a_input_only_while_accumulating: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (in_valid_i && in_ready_o) |->
+        (state_q == ACCUMULATE || (state_q == IDLE && start_i))
+  ) else $error("exact reduction input accepted outside accumulation");
+`endif
+
+endmodule

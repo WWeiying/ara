@@ -743,6 +743,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic ordered_prefetch_use;
 `endif
 
+`ifdef ARA_RED_EXACT_SUM_4LANE
+  // The first exact-backend integration is intentionally narrow.  Ordered
+  // sums must retain their element-by-element architectural rounding, while
+  // widening and masked sums need different source/metadata formats.  Keeping
+  // those cases on the existing paths makes this switch a clean ablation.
+  function automatic logic red_exact_sum_eligible(vfu_operation_t vinsn);
+    red_exact_sum_eligible = (NrLanes == 4) &&
+      (vinsn.op == VFREDUSUM) &&
+      (vinsn.vtype.vsew == EW32) &&
+      vinsn.vm &&
+      (vinsn.vl >= 1);
+  endfunction : red_exact_sum_eligible
+`endif
+
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
   // Four independent EW32 partials match the four-cycle fpnew ADD latency.
   // The first prototype deliberately keeps the architectural SLDU interface
@@ -806,6 +820,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         (vinsn.vtype.vsew inside {EW16, EW32})) ||
        ((vinsn.op == VFWREDUSUM) &&
         (vinsn.vtype.vsew inside {EW16, EW32}))) &&
+`ifdef ARA_RED_EXACT_SUM_4LANE
+      !red_exact_sum_eligible(vinsn) &&
+`endif
 `ifndef ARA_RED_MASKED_STREAM_4LANE
       vinsn.vm &&
 `endif
@@ -852,11 +869,19 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [31:0] red_stream_primary_conflict_cycles_d,
                red_stream_primary_conflict_cycles_q;
 
+  function automatic logic red_stream_local_eligible(vfu_operation_t vinsn);
+    red_stream_local_eligible = red_context_eligible(vinsn)
+`ifdef ARA_RED_EXACT_SUM_4LANE
+                              || red_exact_sum_eligible(vinsn)
+`endif
+                              ;
+  endfunction : red_stream_local_eligible
+
   function automatic logic red_stream_compatible(
     vfu_operation_t foreground, vfu_operation_t background
   );
-    red_stream_compatible = red_context_eligible(foreground) &&
-      red_context_eligible(background)
+    red_stream_compatible = red_stream_local_eligible(foreground) &&
+      red_stream_local_eligible(background)
 `ifdef ARA_RED_MASKED_STREAM_4LANE
       // fpnew return timing is lane-role dependent during the cross-lane
       // phase.  Without a tagged MASKU rendezvous that can desynchronize
@@ -1097,6 +1122,45 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic          vfpu_out_ready;
   logic          fflags_ex_valid_d, fflags_ex_valid_q;
   logic    [4:0] fflags_ex_d, fflags_ex_q;
+
+`ifdef ARA_RED_EXACT_SUM_4LANE
+  logic        exact_sum_start;
+  logic [2:0]  exact_sum_rnd_mode;
+  logic        exact_sum_seed_valid;
+  logic [31:0] exact_sum_seed;
+  logic [63:0] exact_sum_data;
+  logic [1:0]  exact_sum_active;
+  logic        exact_sum_last;
+  logic        exact_sum_in_valid;
+  logic        exact_sum_in_ready;
+  logic [31:0] exact_sum_result;
+  logic [4:0]  exact_sum_status;
+  logic        exact_sum_out_valid;
+  logic        exact_sum_out_ready;
+  logic        exact_sum_busy;
+  logic        exact_sum_out_fire;
+
+  assign exact_sum_out_fire = exact_sum_out_valid && exact_sum_out_ready;
+
+  fp32_exact_reduction_accum i_fp32_exact_reduction_accum (
+    .clk_i        (clk_i),
+    .rst_ni       (rst_ni),
+    .start_i      (exact_sum_start),
+    .rnd_mode_i   (exact_sum_rnd_mode),
+    .seed_valid_i (exact_sum_seed_valid),
+    .seed_i       (exact_sum_seed),
+    .data_i       (exact_sum_data),
+    .active_i     (exact_sum_active),
+    .last_i       (exact_sum_last),
+    .in_valid_i   (exact_sum_in_valid),
+    .in_ready_o   (exact_sum_in_ready),
+    .result_o     (exact_sum_result),
+    .status_o     (exact_sum_status),
+    .out_valid_o  (exact_sum_out_valid),
+    .out_ready_i  (exact_sum_out_ready),
+    .busy_o       (exact_sum_busy)
+  );
+`endif
 
   // In floating-point comparisons the tag is used as mask,
   // In unordered reductions the tag is used as ntr indicator.
@@ -1732,13 +1796,29 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // An alias replays both the data result and the exception contribution of
     // its leader.  This remains correct even if software clears fflags between
     // the two vector instructions.
-    assign fflags_ex_d = ordered_alias_flags_replay
-                       ? ordered_memo_fflags_q : vfpu_ex_flag;
+    assign fflags_ex_d = (ordered_alias_flags_replay
+                       ? ordered_memo_fflags_q : vfpu_ex_flag)
+`ifdef ARA_RED_EXACT_SUM_4LANE
+                       | (exact_sum_out_fire ? exact_sum_status : '0)
+`endif
+                       ;
     assign fflags_ex_valid_d = ordered_alias_flags_replay |
-                               (vfpu_out_valid & vfpu_out_ready);
+                               (vfpu_out_valid & vfpu_out_ready)
+`ifdef ARA_RED_EXACT_SUM_4LANE
+                               | exact_sum_out_fire
+`endif
+                               ;
 `else
-    assign fflags_ex_d       = vfpu_ex_flag;
-    assign fflags_ex_valid_d = vfpu_out_valid & vfpu_out_ready;
+    assign fflags_ex_d       = vfpu_ex_flag
+`ifdef ARA_RED_EXACT_SUM_4LANE
+                             | (exact_sum_out_fire ? exact_sum_status : '0)
+`endif
+                             ;
+    assign fflags_ex_valid_d = (vfpu_out_valid & vfpu_out_ready)
+`ifdef ARA_RED_EXACT_SUM_4LANE
+                             | exact_sum_out_fire
+`endif
+                             ;
 `endif
   end else begin : no_fpu_gen // The FPU is disabled
     assign vfpu_in_ready     = 1'b0;
@@ -1809,6 +1889,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     vmul_in_valid = 1'b0;
     vdiv_in_valid = 1'b0;
     vfpu_in_valid = 1'b0;
+`ifdef ARA_RED_EXACT_SUM_4LANE
+    exact_sum_start      = 1'b0;
+    exact_sum_rnd_mode   = vinsn_issue_q.fp_rm;
+    exact_sum_seed_valid = 1'b0;
+    exact_sum_seed       = '0;
+    exact_sum_data       = '0;
+    exact_sum_active     = '0;
+    exact_sum_last       = 1'b0;
+    exact_sum_in_valid   = 1'b0;
+    exact_sum_out_ready  = 1'b0;
+`endif
 
     // If the result queue is not full, it is ready to accept a result
     vmul_out_ready = ~result_queue_full && (vinsn_processing_q.op inside {[VMUL:VSMUL]});
@@ -2240,6 +2331,61 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Give the correct be signal to the divider/FPU
         issue_be = be(issue_element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
 
+`ifdef ARA_RED_EXACT_SUM_4LANE
+        if (red_exact_sum_eligible(vinsn_issue_q)) begin
+          automatic logic source_word_valid =
+            (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
+                                           : mfpu_operand_valid_i[1]);
+          automatic logic exact_operands_valid =
+            source_word_valid && vinsn_issue_q_valid &&
+            (!first_op_q || mfpu_operand_valid_i[0]);
+          automatic logic [31:0] empty_subtree_identity =
+            (vinsn_issue_q.fp_rm == RDN) ? 32'h00000000 : 32'h80000000;
+
+          // The exact backend consumes the same 64-bit VRF beat as the legacy
+          // SIMD fpnew path, but classifies and inserts its two binary32
+          // elements into alternating fixed-point banks.
+          exact_sum_rnd_mode   = vinsn_issue_q.fp_rm;
+          exact_sum_seed       = vinsn_issue_q.use_scalar_op
+                               ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
+          exact_sum_seed_valid = (lane_id_i == '0);
+          exact_sum_data       = vinsn_issue_q.swap_vs2_vd_op
+                               ? mfpu_operand_i[2] : mfpu_operand_i[1];
+          exact_sum_active[0]  = (issue_element_cnt >= 1);
+          exact_sum_active[1]  = (issue_element_cnt >= 2);
+          exact_sum_last       = (issue_cnt_q <= issue_element_cnt);
+          exact_sum_in_valid   = (issue_cnt_q != '0) &&
+                                 exact_operands_valid;
+          exact_sum_start      = first_op_q && exact_sum_in_valid;
+          exact_sum_out_ready  = !result_queue_full;
+
+          if (exact_sum_in_valid && exact_sum_in_ready) begin
+            issue_cnt_d       = issue_cnt_q - issue_element_cnt;
+            intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+            mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
+                                 ? {2'b10, first_op_q}
+                                 : {2'b01, first_op_q};
+            first_op_d = 1'b0;
+          end
+
+          // Keep the existing SLDU tree unchanged in this first stage.  The
+          // exact local root occupies the low SIMD element; the high element
+          // carries the rounding-mode-correct empty-subtree identity.
+          if (exact_sum_out_fire) begin
+            result_queue_d[result_queue_write_pnt_q].wdata =
+              {empty_subtree_identity, exact_sum_result};
+            result_queue_d[result_queue_write_pnt_q].addr =
+              vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+            result_queue_d[result_queue_write_pnt_q].id =
+              vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].be =
+              be(1, vinsn_processing_q.vtype.vsew);
+            result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+            to_process_cnt_d = '0;
+            mfpu_state_d = INTER_LANES_REDUCTION_TX;
+          end
+        end else begin
+`endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
         if (red_context_flow_active) begin
           automatic logic source_word_valid =
@@ -2516,6 +2662,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
         end
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
+        end
+`endif
+`ifdef ARA_RED_EXACT_SUM_4LANE
         end
 `endif
       end
@@ -3116,7 +3265,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               red_context_issue_d           = red_context_issue_q;
               red_context_pair_issue_d      = red_context_pair_issue_q;
               red_context_phase_d           = red_context_phase_q;
-              red_context_enabled_d         = 1'b1;
+              red_context_enabled_d         = red_context_enabled_q;
               red_context_two_way_d         = red_context_two_way_q;
             end
 
@@ -3206,7 +3355,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         red_context_issue_d      = '0;
         red_context_pair_issue_d = '0;
         red_context_phase_d      = RED_CTX_ACCUMULATE;
-        red_context_enabled_d    = 1'b1;
+        red_context_enabled_d    = red_context_eligible(next_issue);
         red_context_two_way_d    = (next_issue.vl <= 8);
 
         red_stream_bg_active_d           = 1'b1;
@@ -3233,14 +3382,59 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
                                        : mfpu_operand_valid_i[1]);
 
+      if (bg_issue_element_cnt > issue_cnt_q)
+        bg_issue_element_cnt = issue_cnt_q;
       red_stream_overlap_cycles_d = red_stream_overlap_cycles_q + 1'b1;
+
+`ifdef ARA_RED_EXACT_SUM_4LANE
+      if (red_exact_sum_eligible(vinsn_issue_q)) begin
+        automatic logic bg_exact_operands_valid =
+          bg_source_word_valid && vinsn_issue_q_valid &&
+          (!first_op_q || mfpu_operand_valid_i[0]);
+        automatic logic [31:0] bg_empty_subtree_identity =
+          (vinsn_issue_q.fp_rm == RDN) ? 32'h00000000 : 32'h80000000;
+
+        // Unlike the tagged fpnew DAG below, this backend owns a separate
+        // arithmetic datapath.  It can therefore consume a background source
+        // beat even when the foreground tree issues fpnew in the same cycle.
+        exact_sum_rnd_mode   = vinsn_issue_q.fp_rm;
+        exact_sum_seed       = vinsn_issue_q.use_scalar_op
+                             ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
+        exact_sum_seed_valid = (lane_id_i == '0);
+        exact_sum_data       = vinsn_issue_q.swap_vs2_vd_op
+                             ? mfpu_operand_i[2] : mfpu_operand_i[1];
+        exact_sum_active[0]  = (bg_issue_element_cnt >= 1);
+        exact_sum_active[1]  = (bg_issue_element_cnt >= 2);
+        exact_sum_last       = (issue_cnt_q <= bg_issue_element_cnt);
+        exact_sum_in_valid   = (issue_cnt_q != '0) &&
+                               bg_exact_operands_valid;
+        exact_sum_start      = first_op_q && exact_sum_in_valid;
+        exact_sum_out_ready  = 1'b1;
+
+        if (exact_sum_in_valid && exact_sum_in_ready) begin
+          issue_cnt_d = issue_cnt_q - bg_issue_element_cnt;
+          intra_op_rx_cnt_d = intra_op_rx_cnt_q + bg_issue_element_cnt;
+          mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
+                               ? {2'b10, first_op_q}
+                               : {2'b01, first_op_q};
+          first_op_d = 1'b0;
+          red_stream_bg_issue_cycles_d =
+            red_stream_bg_issue_cycles_q + 1'b1;
+        end
+
+        if (exact_sum_out_fire) begin
+          red_stream_bg_result_d =
+            {bg_empty_subtree_identity, exact_sum_result};
+          red_stream_bg_complete_d = 1'b1;
+          red_stream_bg_active_d   = 1'b0;
+        end
+      end else begin
+`endif
       if (vfpu_in_valid) begin
         red_stream_primary_conflict_cycles_d =
           red_stream_primary_conflict_cycles_q + 1'b1;
       end else begin
         red_stream_bg_exec = 1'b1;
-        if (bg_issue_element_cnt > issue_cnt_q)
-          bg_issue_element_cnt = issue_cnt_q;
         issue_be = be(bg_issue_element_cnt, vinsn_issue_q.vtype.vsew);
 
         unique case (red_context_phase_q)
@@ -3368,6 +3562,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           default:;
         endcase
       end
+`ifdef ARA_RED_EXACT_SUM_4LANE
+      end
+`endif
     end
 
     // Drain a completed live DAG into the in-order root FIFO unless the same
@@ -3865,6 +4062,27 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       (ordered_alias_drain_beat && !vinsn_issue_q.vm) |->
         (mask_valid_i && mask_ready_o)
   ) else $error("masked ordered alias drained source without MASKU credit");
+`endif
+`endif
+
+`ifdef ARA_RED_EXACT_SUM_4LANE
+`ifndef SYNTHESIS
+  a_exact_sum_start_has_clean_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_sum_start |->
+        (red_exact_sum_eligible(vinsn_issue_q) && !exact_sum_busy)
+  ) else $error("exact FP reduction started without an idle eligible owner");
+
+  a_exact_sum_output_has_live_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_sum_out_valid |->
+        (red_exact_sum_eligible(vinsn_issue_q) &&
+         ((mfpu_state_q == INTRA_LANE_REDUCTION)
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          || red_stream_bg_active_q
+`endif
+         ))
+  ) else $error("exact FP reduction output escaped its foreground/background owner");
 `endif
 `endif
 

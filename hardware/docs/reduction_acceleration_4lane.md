@@ -710,3 +710,86 @@ unordered context DAG 的中性元现在按 SEW 编码：e16 min/max 使用 `0x7
 | 8× e64 `vfredosum`, VL=16 | 804 | **292** | **63.68%** | PASS |
 
 e64 专项还在 ROI 外执行一条 unordered e64 `vfredusum` 并做位级检查，用来保证未选择 context DAG 的 fallback 正确。最终关键回归保持：masked unordered 432 cycles、非重复 ordered e32 549 cycles、widening unordered 215 cycles、混合规约 187 cycles，全部 PASS。
+
+## 20. 语义感知精确累加后端：第一阶段
+
+在原 tagged fpnew context DAG 之外，新增默认关闭的实验开关：
+
+```text
+reduction_exact_sum=1
+```
+
+Makefile 当前只允许在 4-lane 配置下打开。第一阶段门禁进一步限定为
+unmasked、EW32、非 widening 的 `vfredusum`；ordered sum、min/max、masked、
+e16/e64 和 widening 均走原有已验证路径。这样可以独立测量新数据通路，而不把
+MASKU/SLDU 协议扩展混入第一份消融。
+
+### 20.1 从浮点反馈到四上下文精确整数域
+
+每个有限 binary32 数都是 `2^-149` 的整数倍。新模块
+`fp32_exact_reduction_accum` 将每个输入解码为以 `2^-149` 为最低位权的
+288-bit 有符号定点数。连续 64-bit source beat 轮转写入四个独立 bank；
+每拍可以同时接收两个 FP32 元素，且同一 bank 的反馈距离为四拍。最后执行
+`4→2→1` 精确合并，只在 lane-local root 处按 RVV rounding mode 舍入一次。
+
+288-bit 宽度覆盖当前 VLEN=1024、4-lane 配置下的最坏 EW32 局部元素数和
+scalar seed，并留有符号及进位余量。模块另外显式跟踪：
+
+- qNaN/sNaN、正负无穷及 `+Inf + -Inf`；
+- 正零、负零、非零有限数和空 source；
+- RNE/RTZ/RDN/RUP/RMM，另保留 fpnew 使用的 ROD；
+- `NV/OF/NX`，以及 RVV 全 inactive 时原样复制 seed、不得产生异常的语义。
+
+有限输入的精确和仍是 `2^-149` 的整数倍，因此最终 subnormal 不需要额外截断；
+普通 `UF` 不会由这条精确路径产生。normal 的 guard/sticky、tie-to-even、
+定向舍入和 overflow-to-infinity/max-finite 均在最终舍入器中完成。
+
+### 20.2 与现有 tree/stream 的组合
+
+第一阶段没有改动 64-bit SLDU 接口。每个 lane 把精确局部 root 放入低 EW32
+元素，高 EW32 元素填入由舍入模式决定的空子树加法单位元，随后复用既有
+跨-lane tree 和 lane-0 SIMD 收尾。因而当前是“lane 内精确、lane 间合法
+SEW 精度树”，不是全向量 Kulisch 累加；后者需要在 SLDU 上传递更宽的精确
+状态和 empty/special metadata。
+
+连续规约流中，精确后端是独立于 fpnew 的算术域。前台指令在 SLDU tree 使用
+fpnew 时，后台 successor 可以同拍读取 source beat 并更新精确 bank；局部
+root 仍进入原来的 in-order root FIFO，processing/commit pointer 不提前，
+因此保留了既有 context-stream 的顺序提交和目的寄存器隔离。这个并行关系是
+第一阶段的主要性能来源，而不只是把一个多 accumulator 换成更宽的 accumulator。
+
+### 20.3 定向验证和增量结果
+
+独立 testbench 共 17 组检查，覆盖基本求和、`1e20 + 1 - 1e20` 精确抵消、
+半 ULP 舍入、正负定向舍入、overflow、sNaN/qNaN、相反无穷、符号零、空
+子树、inactive seed copy、四 bank 回绕和 output backpressure，全部 PASS。
+
+整机使用与第 19 节相同的 4-lane 完整优化配置，仅增加
+`reduction_exact_sum=1`：
+
+| workload / 指标 | 第 19 节 control | exact backend | 改善 |
+|---|---:|---:|---:|
+| 混合规约 ROI total cycles | 187 | **181** | **3.21%** |
+| 单条 `vfredusum` execution latency | 44 | **38** | **13.64%** |
+| 单条 `vfredusum` active cycles | 43 | **37** | **13.95%** |
+| 16× `vfredusum` stream | 399 | **393** | **1.50%** |
+
+混合探针的八个结果全部通过；16 个独立 destination 的连续流全部通过；不同
+seed 的 tag probe 得到 mismatch=0。所有 context/root FIFO 断言均未触发。
+官方 `rv64uv-ara-vfredusum` 仍为 16/17，唯一失败仍是测试请求 e32/m1、
+VL=64 而当前 VLEN=1024 的实际 VLMAX=32；失败值和既有 control 日志相同，
+不是新后端引入的回归。关闭新开关的默认整机配置也已重新编译通过。
+
+### 20.4 当前边界与下一步
+
+这份结果证明了“RVV 语义门禁 + 精确 banked accumulation + 与近似 tree
+并行的双算术域”可以在现有 Ara 控制和 64-bit SLDU 接口上形成可工作的最小
+闭环，但不能据此宣称论文 PPA 已完成。每 lane 四组 288-bit bank 和宽加法器
+面积较大，优先级编码/最终舍入也可能降低 Fmax；必须综合后报告
+`cycles × clock_period`、面积和能量。
+
+下一阶段应把单块宽加法改成 exponent-segmented carry-save bins，只在被命中
+的指数段传播局部进位；同时为 SLDU 增加 tagged empty/special/exact-state
+协议，使四个 lane 的精确状态在最终舍入前合并。随后再扩展 masked EW32、
+e16/e64 和 widening，并分别报告数值可重复性、误差、周期和 PPA，而不是只把
+更多 opcode 静默加入门禁。
