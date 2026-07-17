@@ -10,7 +10,7 @@ module fp32_exact_reduction_accum_tb #(
   logic seed_valid;
   logic [31:0] seed;
   logic [63:0] data;
-  logic [1:0] active;
+  logic [3:0] active;
   logic last;
   logic in_valid;
   logic in_ready;
@@ -29,6 +29,7 @@ module fp32_exact_reduction_accum_tb #(
     .rst_ni       (rst_n),
     .start_i      (start),
     .rnd_mode_i   (rnd_mode),
+    .format_fp16_i(1'b0),
     .seed_valid_i (seed_valid),
     .seed_i       (seed),
     .data_i       (data),
@@ -74,7 +75,7 @@ module fp32_exact_reduction_accum_tb #(
       wait (in_ready);
       @(negedge clk);
       data     = {high, low};
-      active   = element_active;
+      active   = {2'b0, element_active};
       last     = is_last;
       in_valid = 1'b1;
       @(negedge clk);
@@ -243,7 +244,7 @@ module fp32_exact_segmented_diff_tb;
   logic seed_valid;
   logic [31:0] seed;
   logic [63:0] data;
-  logic [1:0] active;
+  logic [3:0] active;
   logic last;
   logic in_valid;
   logic flat_in_ready, segmented_in_ready;
@@ -257,7 +258,8 @@ module fp32_exact_segmented_diff_tb;
     .ExponentSegmented (1'b0)
   ) i_flat (
     .clk_i(clk), .rst_ni(rst_n), .start_i(start),
-    .rnd_mode_i(rnd_mode), .seed_valid_i(seed_valid), .seed_i(seed),
+    .rnd_mode_i(rnd_mode), .format_fp16_i(1'b0),
+    .seed_valid_i(seed_valid), .seed_i(seed),
     .data_i(data), .active_i(active), .last_i(last),
     .in_valid_i(in_valid), .in_ready_o(flat_in_ready),
     .result_o(flat_result), .status_o(flat_status),
@@ -269,7 +271,8 @@ module fp32_exact_segmented_diff_tb;
     .ExponentSegmented (1'b1)
   ) i_segmented (
     .clk_i(clk), .rst_ni(rst_n), .start_i(start),
-    .rnd_mode_i(rnd_mode), .seed_valid_i(seed_valid), .seed_i(seed),
+    .rnd_mode_i(rnd_mode), .format_fp16_i(1'b0),
+    .seed_valid_i(seed_valid), .seed_i(seed),
     .data_i(data), .active_i(active), .last_i(last),
     .in_valid_i(in_valid), .in_ready_o(segmented_in_ready),
     .result_o(segmented_result), .status_o(segmented_status),

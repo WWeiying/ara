@@ -99,6 +99,34 @@ typedef struct {
   logic [63:0] source_fusion_alias_insns;
   logic [63:0] source_fusion_drain_lane_beats;
   logic [63:0] source_fusion_result_replays;
+  logic [63:0] exact_header_lane_fires;
+  logic [63:0] exact_limb_lane_fires;
+  logic [63:0] exact_window_lane_fires;
+  logic [63:0] exact_final_lane_fires;
+  logic [63:0] exact_tx_backpressure_lane_cycles;
+  logic [63:0] exact_window_wait_lane_cycles;
+  logic [63:0] exact_final_wait_lane_cycles;
+  logic [63:0] exact_advertised_limb_sum;
+  logic [63:0] exact_limb2_lane_headers;
+  logic [63:0] exact_limb3_lane_headers;
+  logic [63:0] exact_limb4_lane_headers;
+  logic [63:0] exact_limb5_lane_headers;
+  logic [63:0] exact_header_merges;
+  logic [63:0] exact_global_limb2_packets;
+  logic [63:0] exact_global_limb3_packets;
+  logic [63:0] exact_global_limb4_packets;
+  logic [63:0] exact_global_limb5_packets;
+  logic [63:0] exact_implicit_sign_lane_limbs;
+  logic [63:0] exact_masked_lane_headers;
+  logic [63:0] exact_fp16_lane_headers;
+  logic [63:0] exact_fp32_lane_headers;
+  logic [63:0] exact_input_lane_beats;
+  logic [63:0] exact_active_element_lane_samples;
+  logic [63:0] exact_rendezvous_wait_cycles;
+  logic [63:0] exact_stale_token_drops;
+  logic [63:0] exact_merge_limb_cycles;
+  logic [63:0] exact_window_broadcasts;
+  logic [63:0] exact_final_broadcasts;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -611,6 +639,67 @@ function automatic red_stream_perf_t red_stream_perf_delta(
   delta.source_fusion_result_replays =
     end_count.source_fusion_result_replays -
     start_count.source_fusion_result_replays;
+  delta.exact_header_lane_fires = end_count.exact_header_lane_fires -
+    start_count.exact_header_lane_fires;
+  delta.exact_limb_lane_fires = end_count.exact_limb_lane_fires -
+    start_count.exact_limb_lane_fires;
+  delta.exact_window_lane_fires = end_count.exact_window_lane_fires -
+    start_count.exact_window_lane_fires;
+  delta.exact_final_lane_fires = end_count.exact_final_lane_fires -
+    start_count.exact_final_lane_fires;
+  delta.exact_tx_backpressure_lane_cycles =
+    end_count.exact_tx_backpressure_lane_cycles -
+    start_count.exact_tx_backpressure_lane_cycles;
+  delta.exact_window_wait_lane_cycles =
+    end_count.exact_window_wait_lane_cycles -
+    start_count.exact_window_wait_lane_cycles;
+  delta.exact_final_wait_lane_cycles =
+    end_count.exact_final_wait_lane_cycles -
+    start_count.exact_final_wait_lane_cycles;
+  delta.exact_advertised_limb_sum = end_count.exact_advertised_limb_sum -
+    start_count.exact_advertised_limb_sum;
+  delta.exact_limb2_lane_headers = end_count.exact_limb2_lane_headers -
+    start_count.exact_limb2_lane_headers;
+  delta.exact_limb3_lane_headers = end_count.exact_limb3_lane_headers -
+    start_count.exact_limb3_lane_headers;
+  delta.exact_limb4_lane_headers = end_count.exact_limb4_lane_headers -
+    start_count.exact_limb4_lane_headers;
+  delta.exact_limb5_lane_headers = end_count.exact_limb5_lane_headers -
+    start_count.exact_limb5_lane_headers;
+  delta.exact_header_merges = end_count.exact_header_merges -
+    start_count.exact_header_merges;
+  delta.exact_global_limb2_packets = end_count.exact_global_limb2_packets -
+    start_count.exact_global_limb2_packets;
+  delta.exact_global_limb3_packets = end_count.exact_global_limb3_packets -
+    start_count.exact_global_limb3_packets;
+  delta.exact_global_limb4_packets = end_count.exact_global_limb4_packets -
+    start_count.exact_global_limb4_packets;
+  delta.exact_global_limb5_packets = end_count.exact_global_limb5_packets -
+    start_count.exact_global_limb5_packets;
+  delta.exact_implicit_sign_lane_limbs =
+    end_count.exact_implicit_sign_lane_limbs -
+    start_count.exact_implicit_sign_lane_limbs;
+  delta.exact_masked_lane_headers = end_count.exact_masked_lane_headers -
+    start_count.exact_masked_lane_headers;
+  delta.exact_fp16_lane_headers = end_count.exact_fp16_lane_headers -
+    start_count.exact_fp16_lane_headers;
+  delta.exact_fp32_lane_headers = end_count.exact_fp32_lane_headers -
+    start_count.exact_fp32_lane_headers;
+  delta.exact_input_lane_beats = end_count.exact_input_lane_beats -
+    start_count.exact_input_lane_beats;
+  delta.exact_active_element_lane_samples =
+    end_count.exact_active_element_lane_samples -
+    start_count.exact_active_element_lane_samples;
+  delta.exact_rendezvous_wait_cycles = end_count.exact_rendezvous_wait_cycles -
+    start_count.exact_rendezvous_wait_cycles;
+  delta.exact_stale_token_drops = end_count.exact_stale_token_drops -
+    start_count.exact_stale_token_drops;
+  delta.exact_merge_limb_cycles = end_count.exact_merge_limb_cycles -
+    start_count.exact_merge_limb_cycles;
+  delta.exact_window_broadcasts = end_count.exact_window_broadcasts -
+    start_count.exact_window_broadcasts;
+  delta.exact_final_broadcasts = end_count.exact_final_broadcasts -
+    start_count.exact_final_broadcasts;
   return delta;
 endfunction
 
@@ -783,6 +872,79 @@ function automatic void print_red_stream_report(
       stats.source_fusion_drain_lane_beats);
     $display("[PERF] red_source_fusion_result_replays: %0d",
       stats.source_fusion_result_replays);
+    $display("[PERF] red_exact_header_lane_fires: %0d",
+      stats.exact_header_lane_fires);
+    $display("[PERF] red_exact_limb_lane_fires: %0d",
+      stats.exact_limb_lane_fires);
+    $display("[PERF] red_exact_window_lane_fires: %0d",
+      stats.exact_window_lane_fires);
+    $display("[PERF] red_exact_final_lane_fires: %0d",
+      stats.exact_final_lane_fires);
+    $display("[PERF] red_exact_tx_backpressure_lane_cycles: %0d",
+      stats.exact_tx_backpressure_lane_cycles);
+    $display("[PERF] red_exact_window_wait_lane_cycles: %0d",
+      stats.exact_window_wait_lane_cycles);
+    $display("[PERF] red_exact_final_wait_lane_cycles: %0d",
+      stats.exact_final_wait_lane_cycles);
+    $display("[PERF] red_exact_advertised_limb_sum: %0d",
+      stats.exact_advertised_limb_sum);
+    $display("[PERF] red_exact_avg_advertised_limbs: %0.6f",
+      perf_ratio(stats.exact_advertised_limb_sum,
+                 stats.exact_header_lane_fires));
+    $display("[PERF] red_exact_limb2_lane_headers: %0d",
+      stats.exact_limb2_lane_headers);
+    $display("[PERF] red_exact_limb3_lane_headers: %0d",
+      stats.exact_limb3_lane_headers);
+    $display("[PERF] red_exact_limb4_lane_headers: %0d",
+      stats.exact_limb4_lane_headers);
+    $display("[PERF] red_exact_limb5_lane_headers: %0d",
+      stats.exact_limb5_lane_headers);
+    $display("[PERF] red_exact_header_merges: %0d",
+      stats.exact_header_merges);
+    $display("[PERF] red_exact_global_limb2_packets: %0d",
+      stats.exact_global_limb2_packets);
+    $display("[PERF] red_exact_global_limb3_packets: %0d",
+      stats.exact_global_limb3_packets);
+    $display("[PERF] red_exact_global_limb4_packets: %0d",
+      stats.exact_global_limb4_packets);
+    $display("[PERF] red_exact_global_limb5_packets: %0d",
+      stats.exact_global_limb5_packets);
+    $display("[PERF] red_exact_implicit_sign_lane_limbs: %0d",
+      stats.exact_implicit_sign_lane_limbs);
+    $display("[PERF] red_exact_masked_lane_headers: %0d",
+      stats.exact_masked_lane_headers);
+    $display("[PERF] red_exact_fp16_lane_headers: %0d",
+      stats.exact_fp16_lane_headers);
+    $display("[PERF] red_exact_fp32_lane_headers: %0d",
+      stats.exact_fp32_lane_headers);
+    $display("[PERF] red_exact_input_lane_beats: %0d",
+      stats.exact_input_lane_beats);
+    $display("[PERF] red_exact_active_element_lane_samples: %0d",
+      stats.exact_active_element_lane_samples);
+    $display("[PERF] red_exact_rendezvous_wait_cycles: %0d",
+      stats.exact_rendezvous_wait_cycles);
+    $display("[PERF] red_exact_stale_token_drops: %0d",
+      stats.exact_stale_token_drops);
+    $display("[PERF] red_exact_merge_limb_cycles: %0d",
+      stats.exact_merge_limb_cycles);
+    $display("[PERF] red_exact_window_broadcasts: %0d",
+      stats.exact_window_broadcasts);
+    $display("[PERF] red_exact_final_broadcasts: %0d",
+      stats.exact_final_broadcasts);
+    $display("[PERF] red_exact_header_hist_consistent: %0d",
+      stats.exact_header_lane_fires ==
+        stats.exact_limb2_lane_headers + stats.exact_limb3_lane_headers +
+        stats.exact_limb4_lane_headers + stats.exact_limb5_lane_headers);
+    $display("[PERF] red_exact_format_hist_consistent: %0d",
+      stats.exact_header_lane_fires ==
+        stats.exact_fp16_lane_headers + stats.exact_fp32_lane_headers);
+    $display("[PERF] red_exact_global_hist_consistent: %0d",
+      stats.exact_header_merges ==
+        stats.exact_global_limb2_packets + stats.exact_global_limb3_packets +
+        stats.exact_global_limb4_packets + stats.exact_global_limb5_packets);
+    $display("[PERF] red_exact_sparse_limb_accounting_consistent: %0d",
+      stats.exact_limb_lane_fires + stats.exact_implicit_sign_lane_limbs ==
+        4 * stats.exact_merge_limb_cycles);
   end else begin
     $fwrite(file_handle, "[PERF] red_tree_stage_bypass_cycles: %0d\n",
       stats.tree_stage_bypass_cycles);
@@ -822,6 +984,82 @@ function automatic void print_red_stream_report(
     $fwrite(file_handle,
       "[PERF] red_source_fusion_result_replays: %0d\n",
       stats.source_fusion_result_replays);
+    $fwrite(file_handle, "[PERF] red_exact_header_lane_fires: %0d\n",
+      stats.exact_header_lane_fires);
+    $fwrite(file_handle, "[PERF] red_exact_limb_lane_fires: %0d\n",
+      stats.exact_limb_lane_fires);
+    $fwrite(file_handle, "[PERF] red_exact_window_lane_fires: %0d\n",
+      stats.exact_window_lane_fires);
+    $fwrite(file_handle, "[PERF] red_exact_final_lane_fires: %0d\n",
+      stats.exact_final_lane_fires);
+    $fwrite(file_handle,
+      "[PERF] red_exact_tx_backpressure_lane_cycles: %0d\n",
+      stats.exact_tx_backpressure_lane_cycles);
+    $fwrite(file_handle, "[PERF] red_exact_window_wait_lane_cycles: %0d\n",
+      stats.exact_window_wait_lane_cycles);
+    $fwrite(file_handle, "[PERF] red_exact_final_wait_lane_cycles: %0d\n",
+      stats.exact_final_wait_lane_cycles);
+    $fwrite(file_handle, "[PERF] red_exact_advertised_limb_sum: %0d\n",
+      stats.exact_advertised_limb_sum);
+    $fwrite(file_handle, "[PERF] red_exact_avg_advertised_limbs: %0.6f\n",
+      perf_ratio(stats.exact_advertised_limb_sum,
+                 stats.exact_header_lane_fires));
+    $fwrite(file_handle, "[PERF] red_exact_limb2_lane_headers: %0d\n",
+      stats.exact_limb2_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_limb3_lane_headers: %0d\n",
+      stats.exact_limb3_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_limb4_lane_headers: %0d\n",
+      stats.exact_limb4_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_limb5_lane_headers: %0d\n",
+      stats.exact_limb5_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_header_merges: %0d\n",
+      stats.exact_header_merges);
+    $fwrite(file_handle, "[PERF] red_exact_global_limb2_packets: %0d\n",
+      stats.exact_global_limb2_packets);
+    $fwrite(file_handle, "[PERF] red_exact_global_limb3_packets: %0d\n",
+      stats.exact_global_limb3_packets);
+    $fwrite(file_handle, "[PERF] red_exact_global_limb4_packets: %0d\n",
+      stats.exact_global_limb4_packets);
+    $fwrite(file_handle, "[PERF] red_exact_global_limb5_packets: %0d\n",
+      stats.exact_global_limb5_packets);
+    $fwrite(file_handle, "[PERF] red_exact_implicit_sign_lane_limbs: %0d\n",
+      stats.exact_implicit_sign_lane_limbs);
+    $fwrite(file_handle, "[PERF] red_exact_masked_lane_headers: %0d\n",
+      stats.exact_masked_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_fp16_lane_headers: %0d\n",
+      stats.exact_fp16_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_fp32_lane_headers: %0d\n",
+      stats.exact_fp32_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_input_lane_beats: %0d\n",
+      stats.exact_input_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_exact_active_element_lane_samples: %0d\n",
+      stats.exact_active_element_lane_samples);
+    $fwrite(file_handle, "[PERF] red_exact_rendezvous_wait_cycles: %0d\n",
+      stats.exact_rendezvous_wait_cycles);
+    $fwrite(file_handle, "[PERF] red_exact_stale_token_drops: %0d\n",
+      stats.exact_stale_token_drops);
+    $fwrite(file_handle, "[PERF] red_exact_merge_limb_cycles: %0d\n",
+      stats.exact_merge_limb_cycles);
+    $fwrite(file_handle, "[PERF] red_exact_window_broadcasts: %0d\n",
+      stats.exact_window_broadcasts);
+    $fwrite(file_handle, "[PERF] red_exact_final_broadcasts: %0d\n",
+      stats.exact_final_broadcasts);
+    $fwrite(file_handle, "[PERF] red_exact_header_hist_consistent: %0d\n",
+      stats.exact_header_lane_fires ==
+        stats.exact_limb2_lane_headers + stats.exact_limb3_lane_headers +
+        stats.exact_limb4_lane_headers + stats.exact_limb5_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_format_hist_consistent: %0d\n",
+      stats.exact_header_lane_fires ==
+        stats.exact_fp16_lane_headers + stats.exact_fp32_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_global_hist_consistent: %0d\n",
+      stats.exact_header_merges ==
+        stats.exact_global_limb2_packets + stats.exact_global_limb3_packets +
+        stats.exact_global_limb4_packets + stats.exact_global_limb5_packets);
+    $fwrite(file_handle,
+      "[PERF] red_exact_sparse_limb_accounting_consistent: %0d\n",
+      stats.exact_limb_lane_fires + stats.exact_implicit_sign_lane_limbs ==
+        4 * stats.exact_merge_limb_cycles);
   end
 endfunction
 
@@ -6569,11 +6807,90 @@ module ara_tb;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_root_pop;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0] red_stream_slack_defer;
   logic [NrLanes-1:0][NrRedStreamClasses-1:0][2:0] red_stream_slack_score;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+  logic [NrLanes-1:0] exact_header_fire;
+  logic [NrLanes-1:0] exact_limb_fire;
+  logic [NrLanes-1:0] exact_window_fire;
+  logic [NrLanes-1:0] exact_final_fire;
+  logic [NrLanes-1:0] exact_tx_backpressure;
+  logic [NrLanes-1:0] exact_window_wait;
+  logic [NrLanes-1:0] exact_final_wait;
+  logic [NrLanes-1:0][2:0] exact_advertised_limbs;
+  logic [NrLanes-1:0] exact_header_masked;
+  logic [NrLanes-1:0] exact_header_fp16;
+  logic [NrLanes-1:0] exact_input_fire;
+  logic [NrLanes-1:0][2:0] exact_active_elements;
+`endif
   red_stream_perf_t red_stream_perf_counters;
 
   // Observe lane-local VALU/VMFPU progress and backpressure. OR-reduction in
   // the central block turns simultaneous lane events into one wall-clock cycle.
   for (genvar l = 0; l < NrLanes; l++) begin : gen_exec_perf_lane_events
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    // Keep lane-array XMRs inside the generate scope.  Some simulators do not
+    // permit a procedural loop variable to index a generated hierarchy.
+    always_comb begin : p_exact_protocol_lane_events
+      exact_header_fire[l] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd8) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_valid_o &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_ready_i &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_packet_beat_q == 0);
+      exact_limb_fire[l] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd8) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_valid_o &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_ready_i &&
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_packet_beat_q != 0);
+      exact_window_fire[l] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd9) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          sldu_mfpu_valid_q &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          sldu_mfpu_ready_d;
+      exact_final_fire[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_global_result_fire;
+      exact_tx_backpressure[l] =
+        (ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd8) &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_valid_o &&
+        !ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_red_ready_i;
+      exact_window_wait[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd9;
+      exact_final_wait[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          mfpu_state_q == 4'd10;
+      exact_advertised_limbs[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_packet_word[13:11];
+      exact_header_masked[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_packet_word[9];
+      exact_header_fp16[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_packet_word[10];
+      exact_input_fire[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_sum_in_valid &&
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_sum_in_ready;
+      exact_active_elements[l] = 3'($countones(
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          exact_sum_active));
+    end
+`endif
+
     // Stream opportunity and rejection attribution.  Keep the outcome
     // partition in the observer rather than the scheduler so the experiment
     // can evolve without turning performance accounting into functional RTL.
@@ -7321,6 +7638,133 @@ module ara_tb;
         red_stream_perf_counters.source_fusion_result_replays +
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
           i_vmfpu.ordered_alias_publish;
+`endif
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+      begin : p_exact_protocol_counters
+        automatic logic [63:0] limb_sum = '0;
+        automatic logic [63:0] limb2_headers = '0;
+        automatic logic [63:0] limb3_headers = '0;
+        automatic logic [63:0] limb4_headers = '0;
+        automatic logic [63:0] limb5_headers = '0;
+        automatic logic [63:0] active_element_sum = '0;
+
+        for (int unsigned l = 0; l < NrLanes; l++) begin
+          if (exact_header_fire[l]) begin
+            limb_sum += exact_advertised_limbs[l];
+            unique case (exact_advertised_limbs[l])
+              3'd2: limb2_headers += 1;
+              3'd3: limb3_headers += 1;
+              3'd4: limb4_headers += 1;
+              3'd5: limb5_headers += 1;
+              default: ;
+            endcase
+          end
+          if (exact_input_fire[l])
+            active_element_sum += exact_active_elements[l];
+        end
+
+        red_stream_perf_counters.exact_header_lane_fires <=
+          red_stream_perf_counters.exact_header_lane_fires +
+          $countones(exact_header_fire);
+        red_stream_perf_counters.exact_limb_lane_fires <=
+          red_stream_perf_counters.exact_limb_lane_fires +
+          $countones(exact_limb_fire);
+        red_stream_perf_counters.exact_window_lane_fires <=
+          red_stream_perf_counters.exact_window_lane_fires +
+          $countones(exact_window_fire);
+        red_stream_perf_counters.exact_final_lane_fires <=
+          red_stream_perf_counters.exact_final_lane_fires +
+          $countones(exact_final_fire);
+        red_stream_perf_counters.exact_tx_backpressure_lane_cycles <=
+          red_stream_perf_counters.exact_tx_backpressure_lane_cycles +
+          $countones(exact_tx_backpressure);
+        red_stream_perf_counters.exact_window_wait_lane_cycles <=
+          red_stream_perf_counters.exact_window_wait_lane_cycles +
+          $countones(exact_window_wait);
+        red_stream_perf_counters.exact_final_wait_lane_cycles <=
+          red_stream_perf_counters.exact_final_wait_lane_cycles +
+          $countones(exact_final_wait);
+        red_stream_perf_counters.exact_advertised_limb_sum <=
+          red_stream_perf_counters.exact_advertised_limb_sum + limb_sum;
+        red_stream_perf_counters.exact_limb2_lane_headers <=
+          red_stream_perf_counters.exact_limb2_lane_headers + limb2_headers;
+        red_stream_perf_counters.exact_limb3_lane_headers <=
+          red_stream_perf_counters.exact_limb3_lane_headers + limb3_headers;
+        red_stream_perf_counters.exact_limb4_lane_headers <=
+          red_stream_perf_counters.exact_limb4_lane_headers + limb4_headers;
+        red_stream_perf_counters.exact_limb5_lane_headers <=
+          red_stream_perf_counters.exact_limb5_lane_headers + limb5_headers;
+        red_stream_perf_counters.exact_header_merges <=
+          red_stream_perf_counters.exact_header_merges +
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+            exact_header_merge_fire;
+        red_stream_perf_counters.exact_global_limb2_packets <=
+          red_stream_perf_counters.exact_global_limb2_packets +
+          (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_merge_fire &&
+           ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_global_limb_count == 3'd2);
+        red_stream_perf_counters.exact_global_limb3_packets <=
+          red_stream_perf_counters.exact_global_limb3_packets +
+          (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_merge_fire &&
+           ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_global_limb_count == 3'd3);
+        red_stream_perf_counters.exact_global_limb4_packets <=
+          red_stream_perf_counters.exact_global_limb4_packets +
+          (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_merge_fire &&
+           ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_global_limb_count == 3'd4);
+        red_stream_perf_counters.exact_global_limb5_packets <=
+          red_stream_perf_counters.exact_global_limb5_packets +
+          (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_merge_fire &&
+           ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_header_global_limb_count == 3'd5);
+        red_stream_perf_counters.exact_implicit_sign_lane_limbs <=
+          red_stream_perf_counters.exact_implicit_sign_lane_limbs +
+          (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+             exact_limb_merge_fire
+             ? ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+                 exact_implicit_sign_lane_count
+             : 0);
+        red_stream_perf_counters.exact_masked_lane_headers <=
+          red_stream_perf_counters.exact_masked_lane_headers +
+          $countones(exact_header_fire & exact_header_masked);
+        red_stream_perf_counters.exact_fp16_lane_headers <=
+          red_stream_perf_counters.exact_fp16_lane_headers +
+          $countones(exact_header_fire & exact_header_fp16);
+        red_stream_perf_counters.exact_fp32_lane_headers <=
+          red_stream_perf_counters.exact_fp32_lane_headers +
+          $countones(exact_header_fire & ~exact_header_fp16);
+        red_stream_perf_counters.exact_input_lane_beats <=
+          red_stream_perf_counters.exact_input_lane_beats +
+          $countones(exact_input_fire);
+        red_stream_perf_counters.exact_active_element_lane_samples <=
+          red_stream_perf_counters.exact_active_element_lane_samples +
+          active_element_sum;
+        red_stream_perf_counters.exact_rendezvous_wait_cycles <=
+          red_stream_perf_counters.exact_rendezvous_wait_cycles +
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+            exact_header_rendezvous_wait;
+        red_stream_perf_counters.exact_stale_token_drops <=
+          red_stream_perf_counters.exact_stale_token_drops +
+          $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+            exact_stale_token_drop);
+        red_stream_perf_counters.exact_merge_limb_cycles <=
+          red_stream_perf_counters.exact_merge_limb_cycles +
+          ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+            exact_limb_merge_fire;
+        red_stream_perf_counters.exact_window_broadcasts <=
+          red_stream_perf_counters.exact_window_broadcasts +
+          ((ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.state_q == 4'd10) &&
+           !ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.result_queue_full);
+        red_stream_perf_counters.exact_final_broadcasts <=
+          red_stream_perf_counters.exact_final_broadcasts +
+          ((ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.state_q == 4'd11) &&
+           !ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.result_queue_full);
+      end
 `endif
     end
   end

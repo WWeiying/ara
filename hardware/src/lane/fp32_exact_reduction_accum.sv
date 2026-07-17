@@ -29,11 +29,15 @@ module fp32_exact_reduction_accum #(
 
   input  logic                  start_i,
   input  logic [2:0]            rnd_mode_i,
+  // Binary16 inputs are embedded in the same 2^-149 fixed-point domain.
+  // This mode is used only with the global finalizer; binary32 remains the
+  // lane-local rounded-interface format.
+  input  logic                  format_fp16_i,
   input  logic                  seed_valid_i,
   input  logic [31:0]           seed_i,
 
   input  logic [63:0]           data_i,
-  input  logic [1:0]            active_i,
+  input  logic [3:0]            active_i,
   input  logic                  last_i,
   input  logic                  in_valid_i,
   output logic                  in_ready_o,
@@ -55,7 +59,8 @@ module fp32_exact_reduction_accum #(
   output logic                  neg_zero_seen_o,
   output logic                  seed_valid_o,
   output logic [31:0]           seed_o,
-  output logic [2:0]            rnd_mode_o
+  output logic [2:0]            rnd_mode_o,
+  output logic                  format_fp16_o
 );
 
   typedef logic signed [AccWidth-1:0] accumulator_t;
@@ -89,6 +94,7 @@ module fp32_exact_reduction_accum #(
   logic [1:0] bank_index_d, bank_index_q;
 
   logic [2:0] rnd_mode_d, rnd_mode_q;
+  logic       format_fp16_d, format_fp16_q;
   logic       seed_valid_d, seed_valid_q;
   logic [31:0] seed_raw_d, seed_raw_q;
   logic       source_seen_d, source_seen_q;
@@ -119,6 +125,26 @@ module fp32_exact_reduction_accum #(
     fp32_is_finite_nonzero = !(&value[30:23]) && (|value[30:0]);
   endfunction
 
+  function automatic logic fp16_is_nan(input logic [15:0] value);
+    fp16_is_nan = (&value[14:10]) && (|value[9:0]);
+  endfunction
+
+  function automatic logic fp16_is_snan(input logic [15:0] value);
+    fp16_is_snan = fp16_is_nan(value) && !value[9];
+  endfunction
+
+  function automatic logic fp16_is_inf(input logic [15:0] value);
+    fp16_is_inf = (&value[14:10]) && !(|value[9:0]);
+  endfunction
+
+  function automatic logic fp16_is_zero(input logic [15:0] value);
+    fp16_is_zero = !(|value[14:0]);
+  endfunction
+
+  function automatic logic fp16_is_finite_nonzero(input logic [15:0] value);
+    fp16_is_finite_nonzero = !(&value[14:10]) && (|value[14:0]);
+  endfunction
+
   function automatic special_t fp32_special(input logic [31:0] value);
     special_t decoded;
     begin
@@ -132,6 +158,69 @@ module fp32_exact_reduction_accum #(
       end
       fp32_special = decoded;
     end
+  endfunction
+
+  function automatic special_t fp16_special(input logic [15:0] value);
+    special_t decoded;
+    begin
+      decoded = '0;
+      if (fp16_is_nan(value)) begin
+        decoded.nan = 1'b1;
+        decoded.invalid = fp16_is_snan(value);
+      end else if (fp16_is_inf(value)) begin
+        decoded.pos_inf = !value[15];
+        decoded.neg_inf = value[15];
+      end
+      fp16_special = decoded;
+    end
+  endfunction
+
+  function automatic logic value_is_nan(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_nan = format_fp16 ? fp16_is_nan(value[15:0])
+                               : fp32_is_nan(value);
+  endfunction
+
+  function automatic logic value_is_inf(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_inf = format_fp16 ? fp16_is_inf(value[15:0])
+                               : fp32_is_inf(value);
+  endfunction
+
+  function automatic logic value_is_zero(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_zero = format_fp16 ? fp16_is_zero(value[15:0])
+                                : fp32_is_zero(value);
+  endfunction
+
+  function automatic logic value_is_finite_nonzero(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_finite_nonzero =
+      format_fp16 ? fp16_is_finite_nonzero(value[15:0])
+                  : fp32_is_finite_nonzero(value);
+  endfunction
+
+  function automatic logic value_sign(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_sign = format_fp16 ? value[15] : value[31];
+  endfunction
+
+  function automatic special_t value_special(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_special = format_fp16 ? fp16_special(value[15:0])
+                                : fp32_special(value);
   endfunction
 
   // This is the special-value behavior of one exact IEEE addition node.
@@ -181,6 +270,36 @@ module fp32_exact_reduction_accum #(
     end
   endfunction
 
+  // Binary16's minimum subnormal is 2^-24, which is bit 125 of the
+  // binary32-oriented 2^-149 accumulator.  Mapping both formats into one
+  // coordinate system lets them reuse the packet merger unchanged.
+  function automatic accumulator_t fp16_to_fixed(input logic [15:0] value);
+    accumulator_t magnitude;
+    logic [10:0] significand;
+    int unsigned shift;
+    begin
+      magnitude = '0;
+      if (value[14:10] == 5'h00) begin
+        magnitude = value[9:0];
+        magnitude = magnitude <<< 125;
+      end else if (value[14:10] != 5'h1f) begin
+        significand = {1'b1, value[9:0]};
+        shift = value[14:10] + 124;
+        magnitude = significand;
+        magnitude = magnitude <<< shift;
+      end
+      fp16_to_fixed = value[15] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  function automatic accumulator_t value_to_fixed(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_to_fixed = format_fp16 ? fp16_to_fixed(value[15:0])
+                                 : fp32_to_fixed(value);
+  endfunction
+
   // Divide the binary32 exponent range into sixteen 16-bit fixed-point
   // windows.  Segment zero also contains subnormals, whose significand is
   // already expressed in units of 2^-149.
@@ -193,6 +312,26 @@ module fp32_exact_reduction_accum #(
                      ? 8'h00 : value[30:23] - 1'b1;
       fp32_segment_index = unbiased_shift[7:4];
     end
+  endfunction
+
+  function automatic logic [3:0] fp16_segment_index(
+    input logic [15:0] value
+  );
+    logic [7:0] absolute_shift;
+    begin
+      absolute_shift = (value[14:10] == 5'h00)
+                     ? 8'd125 : value[14:10] + 8'd124;
+      fp16_segment_index = absolute_shift[7:4];
+    end
+  endfunction
+
+  function automatic logic [3:0] value_segment_index(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_segment_index =
+      format_fp16 ? fp16_segment_index(value[15:0])
+                  : fp32_segment_index(value);
   endfunction
 
   // Convert one finite binary32 value into the coordinate system of its
@@ -216,6 +355,64 @@ module fp32_exact_reduction_accum #(
         magnitude = magnitude <<< local_shift;
       end
       fp32_to_segment = value[31] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  function automatic segment_bin_t fp16_to_segment(
+    input logic [15:0] value
+  );
+    segment_bin_t magnitude;
+    logic [10:0] significand;
+    logic [7:0] absolute_shift;
+    logic [3:0] local_shift;
+    begin
+      magnitude = '0;
+      absolute_shift = (value[14:10] == 5'h00)
+                     ? 8'd125 : value[14:10] + 8'd124;
+      local_shift = absolute_shift[3:0];
+      if (value[14:10] == 5'h00) begin
+        magnitude = value[9:0];
+        magnitude = magnitude <<< local_shift;
+      end else if (value[14:10] != 5'h1f) begin
+        significand = {1'b1, value[9:0]};
+        magnitude = significand;
+        magnitude = magnitude <<< local_shift;
+      end
+      fp16_to_segment = value[15] ? -magnitude : magnitude;
+    end
+  endfunction
+
+  function automatic segment_bin_t value_to_segment(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_to_segment = format_fp16 ? fp16_to_segment(value[15:0])
+                                   : fp32_to_segment(value);
+  endfunction
+
+  function automatic logic [31:0] input_element(
+    input logic [63:0] word,
+    input int unsigned index,
+    input logic format_fp16
+  );
+    logic [31:0] selected;
+    begin
+      selected = '0;
+      if (format_fp16) begin
+        unique case (index)
+          0: selected[15:0] = word[15:0];
+          1: selected[15:0] = word[31:16];
+          2: selected[15:0] = word[47:32];
+          default: selected[15:0] = word[63:48];
+        endcase
+      end else begin
+        unique case (index)
+          0: selected = word[31:0];
+          1: selected = word[63:32];
+          default: selected = '0;
+        endcase
+      end
+      input_element = selected;
     end
   endfunction
 
@@ -387,6 +584,7 @@ module fp32_exact_reduction_accum #(
     bank_special_d        = bank_special_q;
     bank_index_d          = bank_index_q;
     rnd_mode_d            = rnd_mode_q;
+    format_fp16_d         = format_fp16_q;
     seed_valid_d          = seed_valid_q;
     seed_raw_d            = seed_raw_q;
     source_seen_d         = source_seen_q;
@@ -433,6 +631,7 @@ module fp32_exact_reduction_accum #(
     seed_valid_o           = seed_valid_q;
     seed_o                 = seed_raw_q;
     rnd_mode_o             = rnd_mode_q;
+    format_fp16_o          = format_fp16_q;
 
     unique case (state_q)
       IDLE: begin
@@ -443,48 +642,57 @@ module fp32_exact_reduction_accum #(
           bank_special_d        = '0;
           bank_index_d          = '0;
           rnd_mode_d            = rnd_mode_i;
+          format_fp16_d         = format_fp16_i;
           seed_valid_d          = seed_valid_i;
           seed_raw_d            = seed_i;
           source_seen_d         = 1'b0;
           finite_nonzero_seen_d = seed_valid_i &&
-                                  fp32_is_finite_nonzero(seed_i);
-          pos_zero_seen_d       = seed_valid_i && fp32_is_zero(seed_i) &&
-                                  !seed_i[31];
-          neg_zero_seen_d       = seed_valid_i && fp32_is_zero(seed_i) &&
-                                  seed_i[31];
+            value_is_finite_nonzero(seed_i, format_fp16_i);
+          pos_zero_seen_d       = seed_valid_i &&
+            value_is_zero(seed_i, format_fp16_i) &&
+            !value_sign(seed_i, format_fp16_i);
+          neg_zero_seen_d       = seed_valid_i &&
+            value_is_zero(seed_i, format_fp16_i) &&
+            value_sign(seed_i, format_fp16_i);
           result_d              = '0;
           status_d              = '0;
 
           if (seed_valid_i)
-            bank_special_d[0] = fp32_special(seed_i);
-          if (seed_valid_i && !fp32_is_nan(seed_i) &&
-              !fp32_is_inf(seed_i)) begin
+            bank_special_d[0] = value_special(seed_i, format_fp16_i);
+          if (seed_valid_i && !value_is_nan(seed_i, format_fp16_i) &&
+              !value_is_inf(seed_i, format_fp16_i)) begin
             if (ExponentSegmented)
-              segment_bin_d[fp32_segment_index(seed_i)] =
-                fp32_to_segment(seed_i);
+              segment_bin_d[value_segment_index(seed_i, format_fp16_i)] =
+                value_to_segment(seed_i, format_fp16_i);
             else
-              bank_d[0] = fp32_to_fixed(seed_i);
+              bank_d[0] = value_to_fixed(seed_i, format_fp16_i);
           end
 
           // Start and the first source beat may handshake together.  This
           // avoids a setup bubble at the VMFPU instruction boundary.
           if (in_valid_i) begin
-            for (int e = 0; e < 2; e++) begin
-              element = data_i[32*e +: 32];
+            for (int e = 0; e < 4; e++) begin
+              element = input_element(data_i, e, format_fp16_i);
               if (active_i[e]) begin
                 source_seen_d = 1'b1;
                 bank_special_d[0] =
-                  merge_special(bank_special_d[0], fp32_special(element));
-                finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
-                pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
-                neg_zero_seen_d |= fp32_is_zero(element) && element[31];
-                if (!fp32_is_nan(element) && !fp32_is_inf(element)) begin
+                  merge_special(bank_special_d[0],
+                                value_special(element, format_fp16_i));
+                finite_nonzero_seen_d |=
+                  value_is_finite_nonzero(element, format_fp16_i);
+                pos_zero_seen_d |= value_is_zero(element, format_fp16_i) &&
+                                   !value_sign(element, format_fp16_i);
+                neg_zero_seen_d |= value_is_zero(element, format_fp16_i) &&
+                                   value_sign(element, format_fp16_i);
+                if (!value_is_nan(element, format_fp16_i) &&
+                    !value_is_inf(element, format_fp16_i)) begin
                   if (ExponentSegmented) begin
-                    element_segment = fp32_segment_index(element);
+                    element_segment =
+                      value_segment_index(element, format_fp16_i);
                     segment_bin_d[element_segment] +=
-                      fp32_to_segment(element);
+                      value_to_segment(element, format_fp16_i);
                   end else begin
-                    bank_d[0] += fp32_to_fixed(element);
+                    bank_d[0] += value_to_fixed(element, format_fp16_i);
                   end
                 end
               end
@@ -498,23 +706,29 @@ module fp32_exact_reduction_accum #(
 
       ACCUMULATE: begin
         if (in_valid_i) begin
-          for (int e = 0; e < 2; e++) begin
-            element = data_i[32*e +: 32];
+          for (int e = 0; e < 4; e++) begin
+            element = input_element(data_i, e, format_fp16_q);
             if (active_i[e]) begin
               source_seen_d = 1'b1;
               bank_special_d[bank_index_q] =
                 merge_special(bank_special_d[bank_index_q],
-                              fp32_special(element));
-              finite_nonzero_seen_d |= fp32_is_finite_nonzero(element);
-              pos_zero_seen_d |= fp32_is_zero(element) && !element[31];
-              neg_zero_seen_d |= fp32_is_zero(element) && element[31];
-              if (!fp32_is_nan(element) && !fp32_is_inf(element)) begin
+                              value_special(element, format_fp16_q));
+              finite_nonzero_seen_d |=
+                value_is_finite_nonzero(element, format_fp16_q);
+              pos_zero_seen_d |= value_is_zero(element, format_fp16_q) &&
+                                 !value_sign(element, format_fp16_q);
+              neg_zero_seen_d |= value_is_zero(element, format_fp16_q) &&
+                                 value_sign(element, format_fp16_q);
+              if (!value_is_nan(element, format_fp16_q) &&
+                  !value_is_inf(element, format_fp16_q)) begin
                 if (ExponentSegmented) begin
-                  element_segment = fp32_segment_index(element);
+                  element_segment =
+                    value_segment_index(element, format_fp16_q);
                   segment_bin_d[element_segment] +=
-                    fp32_to_segment(element);
+                    value_to_segment(element, format_fp16_q);
                 end else begin
-                  bank_d[bank_index_q] += fp32_to_fixed(element);
+                  bank_d[bank_index_q] +=
+                    value_to_fixed(element, format_fp16_q);
                 end
               end
             end
@@ -632,6 +846,7 @@ module fp32_exact_reduction_accum #(
       bank_special_q        <= '0;
       bank_index_q          <= '0;
       rnd_mode_q            <= '0;
+      format_fp16_q         <= 1'b0;
       seed_valid_q          <= 1'b0;
       seed_raw_q            <= '0;
       source_seen_q         <= 1'b0;
@@ -647,6 +862,7 @@ module fp32_exact_reduction_accum #(
       bank_special_q        <= bank_special_d;
       bank_index_q          <= bank_index_d;
       rnd_mode_q            <= rnd_mode_d;
+      format_fp16_q         <= format_fp16_d;
       seed_valid_q          <= seed_valid_d;
       seed_raw_q            <= seed_raw_d;
       source_seen_q         <= source_seen_d;
@@ -675,6 +891,22 @@ module fp32_exact_reduction_accum #(
       (in_valid_i && in_ready_o) |->
         (state_q == ACCUMULATE || (state_q == IDLE && start_i))
   ) else $error("exact reduction input accepted outside accumulation");
+
+  a_fp16_requires_global_finalizer: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (start_i && format_fp16_i) |-> !EmitRoundedResult
+  ) else $error("binary16 exact reduction requires the global finalizer");
+
+  a_format_is_owned_for_whole_reduction: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (state_q != IDLE && !start_i) |=> $stable(format_fp16_q)
+  ) else $error("exact reduction format changed while state was live");
+
+  a_fp16_uses_shared_exact_quantum: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (out_valid_o && format_fp16_o) |->
+        (exact_value_o[124:0] == '0)
+  ) else $error("binary16 exact state is not aligned to accumulator bit 125");
 `endif
 
 endmodule

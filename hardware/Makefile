@@ -115,6 +115,8 @@ reduction_ordered_fast        ?= 0
 reduction_exact_sum           ?= 0
 reduction_exact_segmented     ?= 0
 reduction_exact_global        ?= 0
+reduction_exact_fixed_window  ?= 0
+reduction_exact_fp16          ?= 0
 
 # Masked-off token relay uses the direct VMFPU output protocol and the
 # mask-decoupled return credit.  Make those prerequisites explicit so a skip
@@ -231,6 +233,18 @@ ifeq ($(reduction_exact_global),1)
     $(error reduction_exact_global currently requires nr_lanes=4)
   endif
   bender_defs += --define ARA_RED_EXACT_GLOBAL_4LANE=1
+endif
+ifeq ($(reduction_exact_fixed_window),1)
+  ifneq ($(reduction_exact_global),1)
+    $(error reduction_exact_fixed_window requires reduction_exact_global=1)
+  endif
+  bender_defs += --define ARA_RED_EXACT_FIXED_WINDOW_4LANE=1
+endif
+ifeq ($(reduction_exact_fp16),1)
+  ifneq ($(reduction_exact_global),1)
+    $(error reduction_exact_fp16 requires reduction_exact_global=1)
+  endif
+  bender_defs += --define ARA_RED_EXACT_FP16_4LANE=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
   bender_defs += --define ARA_RED_INPUT_BYPASS=1

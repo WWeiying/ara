@@ -67,6 +67,55 @@ static const reduction_case_t __attribute__((aligned(32))) cases[] = {
     },
 };
 
+typedef struct {
+  reduction_case_t reduction;
+  uint32_t mask;
+} masked_reduction_case_t;
+
+static const masked_reduction_case_t
+    __attribute__((aligned(32))) masked_cases[] = {
+        {
+            {
+                "masked cross-lane cancellation",
+                {0x60ad78ec, 0x3f800000, 0xe0ad78ec, 0x00000000},
+                0x00000000,
+                0x3f800000,
+                0x00,
+            },
+            0x00000002,
+        },
+        {
+            {
+                "masked signaling NaN",
+                {0x7f800001, 0x3f800000, 0x00000000, 0x00000000},
+                0x00000000,
+                0x3f800000,
+                0x00,
+            },
+            0x00000002,
+        },
+        {
+            {
+                "all-masked seed copy",
+                {0x7f800000, 0xff800000, 0x7f800001, 0x7fc12345},
+                0x7f800001,
+                0x7f800001,
+                0x00,
+            },
+            0x00000000,
+        },
+        {
+            {
+                "masked infinity conflict",
+                {0x7f800000, 0xff800000, 0x00000000, 0x00000000},
+                0x00000000,
+                0x7f800000,
+                0x00,
+            },
+            0x00000001,
+        },
+};
+
 static void run_reduction(const reduction_case_t *test, uint64_t *result,
                           uint64_t *fflags) {
   const uint64_t seed = test->seed;
@@ -89,6 +138,28 @@ static void run_reduction(const reduction_case_t *test, uint64_t *result,
       : "t0", "memory");
 }
 
+static void run_masked_reduction(const masked_reduction_case_t *test,
+                                 uint64_t *result, uint64_t *fflags) {
+  const uint64_t seed = test->reduction.seed;
+  const uint64_t mask = test->mask;
+
+  asm volatile(
+      "li t0, 4\n"
+      "vsetvli t0, t0, e32, m1, ta, ma\n"
+      "vle32.v v1, (%[src])\n"
+      "vmv.s.x v2, %[seed]\n"
+      "vmv.s.x v0, %[mask]\n"
+      "csrwi frm, 0\n"
+      "csrw fflags, zero\n"
+      "vfredusum.vs v3, v1, v2, v0.t\n"
+      "vmv.x.s %[dst], v3\n"
+      "csrr %[flags], fflags\n"
+      : [dst] "=&r"(*result), [flags] "=&r"(*fflags)
+      : [src] "r"(test->reduction.input), [seed] "r"(seed),
+        [mask] "r"(mask)
+      : "t0", "memory");
+}
+
 int main(void) {
   uint64_t mismatch = 0;
 
@@ -102,6 +173,20 @@ int main(void) {
     printf("global exact %s: result=%lx/%x fflags=%lx/%x (%s)\n",
            cases[i].name, result, cases[i].expected, fflags,
            cases[i].expected_fflags, failed ? "FAILED" : "PASSED");
+  }
+
+  for (unsigned i = 0; i < sizeof(masked_cases) / sizeof(masked_cases[0]);
+       ++i) {
+    uint64_t result;
+    uint64_t fflags;
+    run_masked_reduction(&masked_cases[i], &result, &fflags);
+    const reduction_case_t *test = &masked_cases[i].reduction;
+    const int failed = (uint32_t)result != test->expected ||
+                       (uint32_t)fflags != test->expected_fflags;
+    mismatch |= failed;
+    printf("global exact %s: result=%lx/%x fflags=%lx/%x (%s)\n",
+           test->name, result, test->expected, fflags,
+           test->expected_fflags, failed ? "FAILED" : "PASSED");
   }
 
   return mismatch != 0;

@@ -747,15 +747,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 
 `ifdef ARA_RED_EXACT_SUM_4LANE
-  // The first exact-backend integration is intentionally narrow.  Ordered
-  // sums must retain their element-by-element architectural rounding, while
-  // widening and masked sums need different source/metadata formats.  Keeping
-  // those cases on the existing paths makes this switch a clean ablation.
+  // Ordered sums must retain their element-by-element architectural rounding.
+  // The exact backend accepts masked unordered sums because mask activity is
+  // attached to the source beat before any value enters the exact state.
   function automatic logic red_exact_sum_eligible(vfu_operation_t vinsn);
     red_exact_sum_eligible = (NrLanes == 4) &&
       (vinsn.op == VFREDUSUM) &&
-      (vinsn.vtype.vsew == EW32) &&
-      vinsn.vm &&
+      ((vinsn.vtype.vsew == EW32)
+`ifdef ARA_RED_EXACT_FP16_4LANE
+       || (vinsn.vtype.vsew == EW16)
+`endif
+      ) &&
       (vinsn.vl >= 1);
   endfunction : red_exact_sum_eligible
 `endif
@@ -1131,10 +1133,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_SUM_4LANE
   logic        exact_sum_start;
   logic [2:0]  exact_sum_rnd_mode;
+  logic        exact_sum_format_fp16;
   logic        exact_sum_seed_valid;
   logic [31:0] exact_sum_seed;
   logic [63:0] exact_sum_data;
-  logic [1:0]  exact_sum_active;
+  logic [3:0]  exact_sum_active;
   logic        exact_sum_last;
   logic        exact_sum_in_valid;
   logic        exact_sum_in_ready;
@@ -1153,6 +1156,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic         exact_sum_state_seed_valid;
   logic [31:0]  exact_sum_state_seed;
   logic [2:0]   exact_sum_state_rnd_mode;
+  logic         exact_sum_state_format_fp16;
 
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
   logic [2:0]  exact_packet_beat_d, exact_packet_beat_q;
@@ -1171,6 +1175,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // Send through the highest non-sign-extension limb plus one guard limb
     // for carry/sign resolution.  Small-magnitude FP32 reductions therefore
     // need only two of the five fixed-width limbs.
+`ifdef ARA_RED_EXACT_FIXED_WINDOW_4LANE
+    exact_local_limb_count = 3'd5;
+`else
     exact_local_limb_count = 3'd2;
     if ({{32{exact_sum_value[287]}}, exact_sum_value[287:256]} !=
         sign_fill)
@@ -1181,6 +1188,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       exact_local_limb_count = 3'd4;
     else if (exact_sum_value[127:64] != sign_fill)
       exact_local_limb_count = 3'd3;
+`endif
 
     unique case (exact_packet_beat_q)
       3'd0: begin
@@ -1198,6 +1206,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         exact_packet_word[17]    = exact_sum_state_seed_valid;
         exact_packet_word[16:14] = exact_sum_state_rnd_mode;
         exact_packet_word[13:11] = exact_local_limb_count;
+        exact_packet_word[10]    = exact_sum_state_format_fp16;
+        exact_packet_word[9]     = !vinsn_processing_q.vm;
+        // A lane that advertises a shorter active window stops transmitting
+        // after its last limb.  The SLDU reconstructs omitted high limbs from
+        // this two's-complement sign, avoiding a global-window feedback token.
+        exact_packet_word[8]     = exact_sum_value[287];
         exact_packet_word[7:0]   = 8'(vinsn_processing_q.id);
       end
       3'd1: exact_packet_word = exact_sum_value[63:0];
@@ -1231,6 +1245,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .rst_ni       (rst_ni),
     .start_i      (exact_sum_start),
     .rnd_mode_i   (exact_sum_rnd_mode),
+    .format_fp16_i(exact_sum_format_fp16),
     .seed_valid_i (exact_sum_seed_valid),
     .seed_i       (exact_sum_seed),
     .data_i       (exact_sum_data),
@@ -1251,7 +1266,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .neg_zero_seen_o(exact_sum_neg_zero_seen),
     .seed_valid_o (exact_sum_state_seed_valid),
     .seed_o       (exact_sum_state_seed),
-    .rnd_mode_o   (exact_sum_state_rnd_mode)
+    .rnd_mode_o   (exact_sum_state_rnd_mode),
+    .format_fp16_o(exact_sum_state_format_fp16)
   );
 `endif
 
@@ -1999,6 +2015,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_SUM_4LANE
     exact_sum_start      = 1'b0;
     exact_sum_rnd_mode   = vinsn_issue_q.fp_rm;
+    exact_sum_format_fp16 = 1'b0;
     exact_sum_seed_valid = 1'b0;
     exact_sum_seed       = '0;
     exact_sum_data       = '0;
@@ -2452,6 +2469,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                            : mfpu_operand_valid_i[1]);
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
+            (mask_valid_i || vinsn_issue_q.vm) &&
             (!first_op_q || mfpu_operand_valid_i[0]);
 `ifndef ARA_RED_EXACT_GLOBAL_4LANE
           automatic logic [31:0] empty_subtree_identity =
@@ -2459,16 +2477,37 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 
           // The exact backend consumes the same 64-bit VRF beat as the legacy
-          // SIMD fpnew path, but classifies and inserts its two binary32
-          // elements into alternating fixed-point banks.
+          // SIMD fpnew path.  Binary16 and binary32 values share one 2^-149
+          // exact coordinate system; the active vector follows the current
+          // element width and the expanded MASKU byte-enable layout.
           exact_sum_rnd_mode   = vinsn_issue_q.fp_rm;
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          exact_sum_format_fp16 = (vinsn_issue_q.vtype.vsew == EW16);
+`endif
           exact_sum_seed       = vinsn_issue_q.use_scalar_op
                                ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
           exact_sum_seed_valid = (lane_id_i == '0);
           exact_sum_data       = vinsn_issue_q.swap_vs2_vd_op
                                ? mfpu_operand_i[2] : mfpu_operand_i[1];
-          exact_sum_active[0]  = (issue_element_cnt >= 1);
-          exact_sum_active[1]  = (issue_element_cnt >= 2);
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          if (vinsn_issue_q.vtype.vsew == EW16) begin
+            exact_sum_active[0] = (issue_element_cnt >= 1) &&
+                                  (vinsn_issue_q.vm || mask_i[0]);
+            exact_sum_active[1] = (issue_element_cnt >= 2) &&
+                                  (vinsn_issue_q.vm || mask_i[2]);
+            exact_sum_active[2] = (issue_element_cnt >= 3) &&
+                                  (vinsn_issue_q.vm || mask_i[4]);
+            exact_sum_active[3] = (issue_element_cnt >= 4) &&
+                                  (vinsn_issue_q.vm || mask_i[6]);
+          end else begin
+`endif
+            exact_sum_active[0] = (issue_element_cnt >= 1) &&
+                                  (vinsn_issue_q.vm || mask_i[0]);
+            exact_sum_active[1] = (issue_element_cnt >= 2) &&
+                                  (vinsn_issue_q.vm || mask_i[4]);
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          end
+`endif
           exact_sum_last       = (issue_cnt_q <= issue_element_cnt);
           exact_sum_in_valid   = (issue_cnt_q != '0) &&
                                  exact_operands_valid;
@@ -2483,6 +2522,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
                                  ? {2'b10, first_op_q}
                                  : {2'b01, first_op_q};
+            mask_ready_o = !vinsn_issue_q.vm;
             first_op_d = 1'b0;
           end
 
@@ -2803,7 +2843,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         mfpu_red_valid_o = exact_sum_out_valid;
         if (exact_sum_out_valid && mfpu_red_ready_i) begin
           if (exact_packet_beat_q == 3'd0) begin
-            mfpu_state_d = EXACT_GLOBAL_WINDOW_RX;
+            // Every lane follows its own advertised schedule.  The SLDU
+            // substitutes sign extension for lanes whose windows end early,
+            // so no max-window round trip is needed before limb one.
+            exact_limb_count_d  = exact_local_limb_count;
+            exact_packet_beat_d = 3'd1;
           end else if (exact_packet_beat_q == exact_limb_count_q) begin
             mfpu_state_d = EXACT_GLOBAL_RX;
           end else begin
@@ -4324,6 +4368,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
          sldu_operand_q[13:11] inside {[3'd2:3'd5]} &&
          sldu_operand_q[7:0] == 8'(vinsn_processing_q.id))
   ) else $error("exact reduction active-window token is malformed");
+
+  a_exact_masked_input_has_mask_credit: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (exact_sum_in_valid && exact_sum_in_ready &&
+       !vinsn_processing_q.vm) |->
+        (mask_valid_i && mask_ready_o)
+  ) else $error("masked exact reduction consumed data without MASKU credit");
+
+  a_exact_header_matches_element_format: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (mfpu_state_q == EXACT_GLOBAL_TX &&
+       exact_packet_beat_q == 0 && mfpu_red_valid_o) |->
+`ifdef ARA_RED_EXACT_FP16_4LANE
+        (exact_packet_word[10] ==
+          (vinsn_processing_q.vtype.vsew == rvv_pkg::EW16))
+`else
+        !exact_packet_word[10]
+`endif
+  ) else $error("exact reduction header format disagrees with instruction SEW");
 `endif
 `endif
 `endif

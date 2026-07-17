@@ -99,8 +99,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   function automatic logic exact_global_eligible(input pe_req_t vinsn);
     exact_global_eligible = (NrLanes == 4) &&
       (vinsn.op == VFREDUSUM) &&
-      (vinsn.vtype.vsew == EW32) &&
-      vinsn.vm && (vinsn.vl >= 1);
+      ((vinsn.vtype.vsew == EW32)
+`ifdef ARA_RED_EXACT_FP16_4LANE
+       || (vinsn.vtype.vsew == EW16)
+`endif
+      ) &&
+      (vinsn.vl >= 1);
   endfunction
 `endif
 
@@ -420,6 +424,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
   logic [2:0]   exact_packet_beat_d, exact_packet_beat_q;
   logic [2:0]   exact_limb_count_d, exact_limb_count_q;
+  logic [NrLanes-1:0][2:0] exact_lane_limb_count_d, exact_lane_limb_count_q;
+  logic [NrLanes-1:0]      exact_lane_sign_d, exact_lane_sign_q;
   logic [287:0] exact_root_d, exact_root_q;
   logic [1:0]   exact_carry_d, exact_carry_q;
   logic [3:0]   exact_special_d, exact_special_q;
@@ -430,8 +436,17 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic         exact_seed_valid_d, exact_seed_valid_q;
   logic [31:0]  exact_seed_d, exact_seed_q;
   logic [2:0]   exact_rnd_mode_d, exact_rnd_mode_q;
+  logic         exact_format_fp16_d, exact_format_fp16_q;
   logic [31:0]  exact_final_result;
   logic [4:0]   exact_final_status;
+  // Simulation-visible protocol events.  They are not architectural outputs
+  // and are pruned when no monitor observes them.
+  logic [NrLanes-1:0] exact_stale_token_drop;
+  logic               exact_header_rendezvous_wait;
+  logic               exact_header_merge_fire;
+  logic [2:0]         exact_header_global_limb_count;
+  logic               exact_limb_merge_fire;
+  logic [2:0]         exact_implicit_sign_lane_count;
 
   // Merge the metadata of two exact IEEE addition subtrees.  Its fixed
   // 4->2->1 use below matches the arithmetic hierarchy and deterministically
@@ -468,6 +483,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     .seed_valid_i          (exact_seed_valid_q),
     .seed_i                (exact_seed_q),
     .rnd_mode_i            (exact_rnd_mode_q),
+    .format_fp16_i         (exact_format_fp16_q),
     .result_o              (exact_final_result),
     .status_o              (exact_final_status)
   );
@@ -546,6 +562,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     exact_global_d                 = exact_global_q;
     exact_packet_beat_d            = exact_packet_beat_q;
     exact_limb_count_d             = exact_limb_count_q;
+    exact_lane_limb_count_d        = exact_lane_limb_count_q;
+    exact_lane_sign_d              = exact_lane_sign_q;
     exact_root_d                   = exact_root_q;
     exact_carry_d                  = exact_carry_q;
     exact_special_d                = exact_special_q;
@@ -556,6 +574,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     exact_seed_valid_d             = exact_seed_valid_q;
     exact_seed_d                   = exact_seed_q;
     exact_rnd_mode_d               = exact_rnd_mode_q;
+    exact_format_fp16_d            = exact_format_fp16_q;
+    exact_stale_token_drop         = '0;
+    exact_header_rendezvous_wait   = 1'b0;
+    exact_header_merge_fire        = 1'b0;
+    exact_header_global_limb_count = '0;
+    exact_limb_merge_fire          = 1'b0;
+    exact_implicit_sign_lane_count = '0;
 `endif
 
     p2_stride_gen_stride_d = '0;
@@ -616,6 +641,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             exact_seed_valid_d             = 1'b0;
             exact_seed_d                   = '0;
             exact_rnd_mode_d               = '0;
+            exact_format_fp16_d            = 1'b0;
           end else begin
 `endif
           state_d   = vinsn_issue_q.is_stride_np2 ? SLIDE_NP2_SETUP : SLIDE_RUN;
@@ -698,12 +724,16 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         logic [65:0] chunk_sum;
         logic [3:0] special_pair_lo, special_pair_hi;
         logic [NrLanes-1:0] header_match;
+        logic [NrLanes-1:0] limb_available;
+        logic [NrLanes-1:0][63:0] limb_operand;
         logic [2:0] header_limb_count;
 
         chunk_sum = '0;
         special_pair_lo = '0;
         special_pair_hi = '0;
         header_match = '0;
+        limb_available = '0;
+        limb_operand = '0;
         header_limb_count = 3'd2;
 
         if (exact_packet_beat_q == 3'd0) begin
@@ -718,12 +748,17 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               (sldu_operand[lane][7:0] == 8'(vinsn_issue_q.id));
             if (sldu_operand_valid[lane] && !header_match[lane])
               sldu_operand_ready[lane] = 1'b1;
+            exact_stale_token_drop[lane] =
+              sldu_operand_valid[lane] && !header_match[lane];
             if (header_match[lane] &&
                 sldu_operand[lane][13:11] > header_limb_count)
               header_limb_count = sldu_operand[lane][13:11];
           end
+          exact_header_rendezvous_wait = !(&header_match);
 
           if (&header_match) begin
+            exact_header_merge_fire = 1'b1;
+            exact_header_global_limb_count = header_limb_count;
             sldu_operand_ready = '1;
             special_pair_lo = exact_merge_special(
               sldu_operand[0][25:22], sldu_operand[1][25:22]);
@@ -746,17 +781,24 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             exact_seed_valid_d = sldu_operand[0][17];
             exact_seed_d       = sldu_operand[0][63:32];
             exact_rnd_mode_d   = sldu_operand[0][16:14];
+            exact_format_fp16_d = sldu_operand[0][10];
             exact_limb_count_d = header_limb_count;
+            for (int lane = 0; lane < NrLanes; lane++) begin
+              exact_lane_limb_count_d[lane] = sldu_operand[lane][13:11];
+              exact_lane_sign_d[lane] = sldu_operand[lane][8];
+            end
             exact_root_d       = '0;
             exact_carry_d      = '0;
             exact_packet_beat_d = 3'd1;
-            state_d = SLIDE_SEND_EXACT_WINDOW;
+            state_d = SLIDE_RUN_EXACT;
 
 `ifndef SYNTHESIS
             for (int lane = 0; lane < NrLanes; lane++) begin
               assert (sldu_operand[lane][16:14] ==
                       sldu_operand[0][16:14])
                 else $error("exact reduction packet disagrees on rounding mode");
+              assert (sldu_operand[lane][10] == sldu_operand[0][10])
+                else $error("exact reduction packet disagrees on FP format");
               assert (sldu_operand[lane][13:11] inside {[3'd2:3'd5]})
                 else $error("exact reduction packet advertises an invalid active window");
             end
@@ -769,46 +811,65 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                           sldu_operand[2], sldu_operand[3]);
 `endif
           end
-        end else if (&sldu_operand_valid) begin
-          // Root limbs have an implicit beat number once the tagged header
-          // rendezvous has completed.
-          sldu_operand_ready = '1;
-          // Four unsigned limb additions plus the carry from the previous
-          // little-endian limb implement one 288-bit two's-complement sum.
-          // The 4->2->1 grouping is explicit for timing and maps naturally
-          // onto a parameterized hierarchical merger.
-          chunk_sum =
-            ({2'b0, sldu_operand[0]} + {2'b0, sldu_operand[1]}) +
-            ({2'b0, sldu_operand[2]} + {2'b0, sldu_operand[3]}) +
-            {{64{1'b0}}, exact_carry_q};
-          exact_carry_d = chunk_sum[65:64];
+        end else begin
+          // Lane windows may end at different limbs.  A finished lane has no
+          // physical token to wait for; its omitted high limbs are the sign
+          // extension advertised in the header.  Required lane tokens retain
+          // normal ready/valid backpressure.
+          for (int lane = 0; lane < NrLanes; lane++) begin
+            if (exact_packet_beat_q <= exact_lane_limb_count_q[lane]) begin
+              limb_available[lane] = sldu_operand_valid[lane];
+              limb_operand[lane] = sldu_operand[lane];
+            end else begin
+              limb_available[lane] = 1'b1;
+              limb_operand[lane] = {64{exact_lane_sign_q[lane]}};
+              exact_implicit_sign_lane_count += 1'b1;
+            end
+          end
+          if (&limb_available) begin
+            exact_limb_merge_fire = 1'b1;
+            // Root limbs have an implicit beat number once the tagged header
+            // rendezvous has completed.
+            for (int lane = 0; lane < NrLanes; lane++)
+              sldu_operand_ready[lane] =
+                exact_packet_beat_q <= exact_lane_limb_count_q[lane];
+            // Four unsigned limb additions plus the carry from the previous
+            // little-endian limb implement one 288-bit two's-complement sum.
+            // The 4->2->1 grouping is explicit for timing and maps naturally
+            // onto a parameterized hierarchical merger.
+            chunk_sum =
+              ({2'b0, limb_operand[0]} + {2'b0, limb_operand[1]}) +
+              ({2'b0, limb_operand[2]} + {2'b0, limb_operand[3]}) +
+              {{64{1'b0}}, exact_carry_q};
+            exact_carry_d = chunk_sum[65:64];
 
-          unique case (exact_packet_beat_q)
-            3'd1: exact_root_d[63:0]    = chunk_sum[63:0];
-            3'd2: begin
-              exact_root_d[127:64] = chunk_sum[63:0];
-              if (exact_limb_count_q == 3'd2)
-                exact_root_d[287:128] = {160{chunk_sum[63]}};
-            end
-            3'd3: begin
-              exact_root_d[191:128] = chunk_sum[63:0];
-              if (exact_limb_count_q == 3'd3)
-                exact_root_d[287:192] = {96{chunk_sum[63]}};
-            end
-            3'd4: begin
-              exact_root_d[255:192] = chunk_sum[63:0];
-              if (exact_limb_count_q == 3'd4)
-                exact_root_d[287:256] = {32{chunk_sum[63]}};
-            end
-            default: exact_root_d[287:256] = chunk_sum[31:0];
-          endcase
+            unique case (exact_packet_beat_q)
+              3'd1: exact_root_d[63:0]    = chunk_sum[63:0];
+              3'd2: begin
+                exact_root_d[127:64] = chunk_sum[63:0];
+                if (exact_limb_count_q == 3'd2)
+                  exact_root_d[287:128] = {160{chunk_sum[63]}};
+              end
+              3'd3: begin
+                exact_root_d[191:128] = chunk_sum[63:0];
+                if (exact_limb_count_q == 3'd3)
+                  exact_root_d[287:192] = {96{chunk_sum[63]}};
+              end
+              3'd4: begin
+                exact_root_d[255:192] = chunk_sum[63:0];
+                if (exact_limb_count_q == 3'd4)
+                  exact_root_d[287:256] = {32{chunk_sum[63]}};
+              end
+              default: exact_root_d[287:256] = chunk_sum[31:0];
+            endcase
 
-          if (exact_packet_beat_q == exact_limb_count_q) begin
-            state_d = SLIDE_WAIT_EXACT;
-            vinsn_queue_d.issue_pnt += 1'b1;
-            vinsn_queue_d.issue_cnt -= 1'b1;
-          end else begin
-            exact_packet_beat_d = exact_packet_beat_q + 1'b1;
+            if (exact_packet_beat_q == exact_limb_count_q) begin
+              state_d = SLIDE_WAIT_EXACT;
+              vinsn_queue_d.issue_pnt += 1'b1;
+              vinsn_queue_d.issue_cnt -= 1'b1;
+            end else begin
+              exact_packet_beat_d = exact_packet_beat_q + 1'b1;
+            end
           end
         end
       end
@@ -1329,7 +1390,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_queue_d.commit_cnt != '0) begin
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
         if (exact_global_q[vinsn_queue_d.commit_pnt])
-          commit_cnt_d = 2 * NrLanes * 8;
+          commit_cnt_d = NrLanes * 8;
         else
 `endif
         commit_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt].op inside {VSLIDEUP, VSLIDEDOWN}
@@ -1372,7 +1433,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_queue_d.commit_cnt == '0) begin
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
         if (exact_global_eligible(pe_req_i))
-          commit_cnt_d = 2 * NrLanes * 8;
+          commit_cnt_d = NrLanes * 8;
         else
 `endif
         commit_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
@@ -1409,6 +1470,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_global_q                  <= '0;
       exact_packet_beat_q             <= '0;
       exact_limb_count_q              <= 3'd5;
+      exact_lane_limb_count_q         <= '0;
+      exact_lane_sign_q               <= '0;
       exact_root_q                    <= '0;
       exact_carry_q                   <= '0;
       exact_special_q                 <= '0;
@@ -1419,6 +1482,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_seed_valid_q              <= 1'b0;
       exact_seed_q                    <= '0;
       exact_rnd_mode_q                <= '0;
+      exact_format_fp16_q             <= 1'b0;
 `endif
       pe_resp_o             <= '0;
       result_final_gnt_q    <= '0;
@@ -1441,6 +1505,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_global_q                  <= exact_global_d;
       exact_packet_beat_q             <= exact_packet_beat_d;
       exact_limb_count_q              <= exact_limb_count_d;
+      exact_lane_limb_count_q         <= exact_lane_limb_count_d;
+      exact_lane_sign_q               <= exact_lane_sign_d;
       exact_root_q                    <= exact_root_d;
       exact_carry_q                   <= exact_carry_d;
       exact_special_q                 <= exact_special_d;
@@ -1451,6 +1517,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_seed_valid_q              <= exact_seed_valid_d;
       exact_seed_q                    <= exact_seed_d;
       exact_rnd_mode_q                <= exact_rnd_mode_d;
+      exact_format_fp16_q             <= exact_format_fp16_d;
 `endif
       pe_resp_o             <= pe_resp;
       result_final_gnt_q    <= result_final_gnt_d;
@@ -1459,5 +1526,39 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       slide_np2_buf_valid_q <= slide_np2_buf_valid_d;
     end
   end
+
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+`ifndef SYNTHESIS
+  a_exact_fp16_root_has_shared_quantum: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (state_q == SLIDE_WAIT_EXACT && exact_format_fp16_q) |->
+        (exact_root_q[124:0] == '0)
+  ) else $error("SLDU binary16 exact root is not aligned to bit 125");
+
+  a_exact_limb_schedule_is_bounded: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (state_q == SLIDE_RUN_EXACT && exact_packet_beat_q != 0) |->
+        (exact_limb_count_q inside {[3'd2:3'd5]} &&
+         exact_packet_beat_q <= exact_limb_count_q)
+  ) else $error("SLDU exact reduction limb schedule is malformed");
+
+  for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_exact_sparse_assertions
+    a_finished_lane_sends_no_high_limb: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        (state_q == SLIDE_RUN_EXACT && exact_packet_beat_q != 0 &&
+         exact_packet_beat_q > exact_lane_limb_count_q[lane]) |->
+          !sldu_operand_valid[lane]
+    ) else $error("finished exact lane sent a redundant high limb");
+
+    a_last_sparse_limb_matches_header_sign: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        (state_q == SLIDE_RUN_EXACT &&
+         exact_packet_beat_q == exact_lane_limb_count_q[lane] &&
+         sldu_operand_valid[lane]) |->
+          (sldu_operand[lane][63] == exact_lane_sign_q[lane])
+    ) else $error("exact lane header sign disagrees with its guard limb");
+  end
+`endif
+`endif
 
 endmodule: sldu
