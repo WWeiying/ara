@@ -3,7 +3,7 @@
 // accumulator and the central one-shot finalizer together.
 
 module fp_exact_reduction_oracle_tb;
-  localparam int unsigned VectorCount = 600;
+  localparam int unsigned VectorCount = 900;
   localparam int unsigned VectorWidth = 141;
 
   logic clk;
@@ -129,7 +129,7 @@ module fp_exact_reduction_oracle_tb;
       @(posedge clk);
     end
 
-    $display("PASS: exact integer oracle (%0d FP32/FP16 reductions)",
+    $display("PASS: exact integer oracle (%0d FP32/FP16/widening reductions)",
              VectorCount);
     $finish;
   end

@@ -1159,11 +1159,14 @@ binary16 unit = 2^-24 = accumulator bit 125
 ```
 
 随后做无损整数求和，再独立实现 RNE、RTZ、RDN、RUP、RMM 的 guard/sticky、
-进位、overflow 和 `OF/NX`。固定随机种子生成 300 条 FP32 和 300 条 FP16
-向量，覆盖随机 exponent edge、sign、subnormal、mask active pattern 和五种
-舍入模式。`fp_exact_reduction_oracle_tb.sv` 联合实例化 segmented accumulator
-与 central finalizer，600/600 PASS。NaN、sNaN、正负 Inf 和 inactive seed
-由整机定向测试补充，因为这些值的 tree-node 异常优先级不是纯整数求和模型。
+进位、overflow 和 `OF/NX`。固定随机种子生成 300 条 FP32、300 条 FP16 和
+300 条 FP16→FP32 widening 向量。widening oracle 先逐位完成 binary16 到
+binary32 的精确重编码，再与任意 binary32 seed 在统一的 `2^-149` 整数域中
+求和；三组向量均覆盖随机 exponent edge、sign、subnormal、mask active
+pattern 和五种舍入模式。`fp_exact_reduction_oracle_tb.sv` 联合实例化
+segmented accumulator 与 central finalizer，900/900 PASS。NaN、sNaN、
+正负 Inf 和 inactive seed 由整机定向测试补充，因为这些值的 tree-node
+异常优先级不是纯整数求和模型。
 
 ### 23.3 运行时协议断言
 
@@ -1189,14 +1192,141 @@ binary16 unit = 2^-24 = accumulator bit 125
 | VCS 4-lane 完整配置编译 | 0 error |
 | FP32 global exact 定向（含 masked） | 11/11 PASS |
 | FP16 global exact 定向（含 masked） | 8/8 PASS |
-| Python integer oracle | 600/600 PASS |
+| FP16→FP32 widening 定向（含 active/masked sNaN） | 5/5 PASS |
+| Python integer oracle | 900/900 PASS |
 | 混合整数/ordered/unordered/masked fallback | PASS，170 ROI cycles |
-| 16× FP32 unordered stream | PASS，260 ROI cycles |
+| 16× FP32 unordered stream | PASS，215 ROI cycles；无 early-release 时 260 |
+| 8× FP16→FP32 unordered widening stream（另含 4× masked 功能尾段） | PASS，135 ROI cycles；无 early-release 时 156 |
+| 8× masked FP32 unordered stream | PASS，254 ROI cycles；无 early-release 时 275 |
+| 官方 `rv64uv-ara-vfwredosum` | 全部 PASS |
+| EW64 ordered stream + unordered fallback | PASS，292 ROI cycles |
 | 异构 sparse-window stream | PASS，79 ROI cycles |
 | fixed5 消融 stream | PASS，308 ROI cycles |
 
-结论可以写为：在当前 4-lane Ara、EW16/EW32 非 widening unordered sum
-范围内，方案不受当前四路元素分区的中间舍入影响，并通过 tagged per-lane
-sparse-window 降低共享 64-bit 规约链路的物理传输和端到端周期。不能写成：
-已经覆盖 EW64/widening/ordered sum、已经完成多 lane 可扩展性证明，或 generic
-cell 已等价于 28nm 签核 PPA。
+结论可以写为：在当前 4-lane Ara、EW16/EW32 `vfredusum` 以及
+FP16→FP32 `vfwredusum` 范围内，方案不受当前四路元素分区的中间舍入影响，
+并通过 tagged per-lane sparse-window 降低共享 64-bit 规约链路的物理传输
+和端到端周期。不能写成：已经覆盖 EW64 exact、用交换结合树替代 ordered
+sum、已经完成多 lane 可扩展性证明，或 generic cell 已等价于 28nm 签核 PPA。
+
+## 24. 覆盖补齐与 exact packet early-release
+
+本节完成此前缺口中的第 1 项“安全扩展指令覆盖”和第 5 项“连续 exact packet
+并发”。新增机制由独立开关控制：
+
+```make
+reduction_exact_stream=1
+```
+
+它要求 `reduction_exact_global=1`，只在 4-lane 全局精确路径内生效。关闭该
+开关即得到数值算法和 sparse-window 协议完全相同、但不跨指令重叠的严格
+control。
+
+### 24.1 FP16→FP32 widening 为什么可以复用 288-bit 状态
+
+`vfwredusum` 的 FP16 source 在 operand queue 中被精确扩展为 FP32，scalar
+seed 和最终 destination 本来就是 FP32。binary16 的最小非零量为 `2^-24`，
+它在 FP32 精确累加域中对应 bit 125；因此所有 FP16 finite source、FP32 seed
+和精确结果都已包含在现有以 `2^-149` 为最低位权的 288-bit 状态中，不需要
+近似截断，也不需要新的舍入点。
+
+VMFPU 与 SLDU 使用同一门禁：普通 `VFREDUSUM` 保持 EW16/EW32 覆盖，同时
+新增 destination EW32 的 `VFWREDUSUM`。header 中的 format 描述累加/舍入
+域，所以 widening 包被正确标为 FP32，而性能监视器另用
+`red_exact_widening_lane_headers` 区分“原生 FP32”和“FP16→FP32”工作量。
+
+实现中还修正了 widening re-encoder 的异常语义：`fp32_from_fp16` 和
+`fp64_from_fp32` 不再提前把 sNaN 改成 qNaN，而是保留 quiet/signaling 类别，
+让真正执行算术和生成异常 sideband 的下游 FPU 观察 sNaN、置 `NV`，之后再
+完成 canonicalization。定向测试证明 active FP16 sNaN 得到 canonical FP32
+NaN 和 `NV=1`，masked-off sNaN 不置标志；官方 ordered widening 回归也全部
+通过。
+
+### 24.2 单累加器、双所有权窗口
+
+原协议直到 packet N 的最终结果从 SLDU 返回 lane 后才释放 lane-local
+accumulator。此时 N 的精确 limbs 早已全部交给 SLDU，后续的 rendezvous、
+全局合并、central finalizer 和返回占用的周期并不再读取该 accumulator，
+所以等待返回造成的是纯生命周期空洞。
+
+early-release 把生命周期边界移动到“最后一个 limb 被 SLDU 接受”的握手点：
+
+```text
+packet N   : local accumulate -> header/limbs -> SLDU merge/finalize/return
+packet N+1 :                                  -> local accumulate -> header/limbs
+                                                ^ overlap window ^
+```
+
+这里没有复制第二个 288-bit accumulator。packet N 的数值状态已经由 SLDU
+持有，lane 仅把同一个 accumulator 重新分配给 N+1；与此同时
+`processing_pnt` 仍指向 N，`issue_pnt` 只前移一项，形成一个有界的双所有权
+窗口：
+
+- SLDU/processing owner 是尚未架构退休的 N；
+- lane accumulator/issue owner 是最多一个后台后继 N+1；
+- N+1 即使已完成局部累加，也必须等待 N 的 final token 被接受；
+- N 进入 `MFPU_WAIT` 并按序退休后，才 promotion N+1 并发送其 header。
+
+这种做法重叠的是“下一条的局部输入”和“上一条的中央完成”，没有让两个
+packet 同时占用 SLDU finalizer，也没有改变写回顺序。
+
+### 24.3 同构门禁和协议不变量
+
+后继只有在两条指令均满足 exact eligibility，且 opcode、完整 vtype、VL、
+vstart、vm、rounding mode 和 resize 控制全部相同时才可 launch；source 和
+destination 寄存器允许不同。这个完整指纹保证四个独立 lane 即使 operand
+queue backpressure 不同，也会对 stream 边界作出一致判断。opcode/SEW/VL、
+mask 或舍入模式变化时自动回到原串行路径。
+
+运行时断言进一步约束：
+
+- early-release 必须同时满足 TX 状态、最后 limb、valid/ready 握手；
+- look-ahead 生效时 issue/processing pointer 必须分离且 successor 仍 eligible；
+- 后台输入只能发生在 packet N 的 global-RX 窗口；
+- promotion 只能发生在 N 的 `MFPU_WAIT`，禁止越序发布；
+- masked 后台 beat 仍必须同步消费 MASKU credit。
+
+因此“launch 数等于 promotion 数”不只是性能统计，也是一项端到端 owner
+守恒检查。
+
+### 24.4 4-lane 严格消融
+
+下表 control 与 candidate 使用同一 RTL、同一 workload 和同一全局精确数值
+算法，只改变 `reduction_exact_stream`：
+
+| workload | control cycles | early-release cycles | 改善 |
+|---|---:|---:|---:|
+| 16× EW32 `vfredusum`, unmasked | 260 | **215** | **17.31%** |
+| 8× FP16→FP32 `vfwredusum`, unmasked | 156 | **135** | **13.46%** |
+| 8× EW32 `vfredusum`, masked | 275 | **254** | **7.64%** |
+
+最终 candidate 的内部证据为：
+
+| workload | headers | successor launch/promote | 后台输入 beats | overlap lane-cycles |
+|---|---:|---:|---:|---:|
+| FP32 16× | 64 | 60 / 60 | 180 | 240 |
+| widening 8× | 32（widening=32） | 28 / 28 | 84 | 112 |
+| masked FP32 8× | 32（masked=32） | 28 / 28 | 84 | 112 |
+
+首条指令没有前驱，最后一条没有后继，因此 16 条流理论上恰有
+`15 × 4 = 60` 个 lane launch，8 条流恰有 `7 × 4 = 28` 个；实测完全匹配。
+FP32 流的 256 个总 input beats 中有 180 个在后台完成，masked/widening 的
+128 个总 beats 中有 84 个在后台完成。剩余 beat 在 promotion 后继续，不会
+因为 overlap 窗口较短而丢失。widening 专项还在计时区外连续执行四条
+all-active masked `vfwredusum`，四个独立 destination 均为 FP32 32.0，
+证明 widening look-ahead 同样正确消费 MASKU credit。
+
+### 24.5 仍然保留的语义边界
+
+ordered `vfredosum/vfwredosum` 要求按元素顺序逐次舍入，不能合法改成跨 lane
+交换结合的 exact sum；它们继续使用已经验证的短 recurrence slice、pre-arm
+和 exact-source fusion。EW64 unordered exact 需要约 2100-bit 的 binary64
+superaccumulator，现有 288-bit 状态在指数范围上根本不够，不能只放宽门禁；
+EW64 继续走通过回归的 legacy fallback。整数规约和 FP min/max 已由前述
+context/stream 机制优化，但不属于本 exact-sum 数据域。
+
+因此本轮“覆盖补齐”准确含义是：补齐现有 288-bit exact family 中可无损复用
+的 widening 类别，并让 masked/unmasked、FP16/FP32/widening 的同构连续包均
+能形成真实输入/完成重叠；它不是对所有 RVV reduction opcode 的统一 exact
+化。下一步若继续做论文级扩展，应把 packet ownership 协议参数化到 2/8 lane，
+并为 binary64 设计分块或分层 accumulator，而不是在当前门禁上做不安全扩张。

@@ -120,6 +120,7 @@ typedef struct {
   logic [63:0] exact_masked_lane_headers;
   logic [63:0] exact_fp16_lane_headers;
   logic [63:0] exact_fp32_lane_headers;
+  logic [63:0] exact_widening_lane_headers;
   logic [63:0] exact_input_lane_beats;
   logic [63:0] exact_active_element_lane_samples;
   logic [63:0] exact_rendezvous_wait_cycles;
@@ -127,6 +128,11 @@ typedef struct {
   logic [63:0] exact_merge_limb_cycles;
   logic [63:0] exact_window_broadcasts;
   logic [63:0] exact_final_broadcasts;
+  logic [63:0] exact_stream_early_release_lane_events;
+  logic [63:0] exact_stream_successor_launch_lane_events;
+  logic [63:0] exact_stream_background_input_lane_beats;
+  logic [63:0] exact_stream_overlap_lane_cycles;
+  logic [63:0] exact_stream_promote_lane_events;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -685,6 +691,9 @@ function automatic red_stream_perf_t red_stream_perf_delta(
     start_count.exact_fp16_lane_headers;
   delta.exact_fp32_lane_headers = end_count.exact_fp32_lane_headers -
     start_count.exact_fp32_lane_headers;
+  delta.exact_widening_lane_headers =
+    end_count.exact_widening_lane_headers -
+    start_count.exact_widening_lane_headers;
   delta.exact_input_lane_beats = end_count.exact_input_lane_beats -
     start_count.exact_input_lane_beats;
   delta.exact_active_element_lane_samples =
@@ -700,6 +709,21 @@ function automatic red_stream_perf_t red_stream_perf_delta(
     start_count.exact_window_broadcasts;
   delta.exact_final_broadcasts = end_count.exact_final_broadcasts -
     start_count.exact_final_broadcasts;
+  delta.exact_stream_early_release_lane_events =
+    end_count.exact_stream_early_release_lane_events -
+    start_count.exact_stream_early_release_lane_events;
+  delta.exact_stream_successor_launch_lane_events =
+    end_count.exact_stream_successor_launch_lane_events -
+    start_count.exact_stream_successor_launch_lane_events;
+  delta.exact_stream_background_input_lane_beats =
+    end_count.exact_stream_background_input_lane_beats -
+    start_count.exact_stream_background_input_lane_beats;
+  delta.exact_stream_overlap_lane_cycles =
+    end_count.exact_stream_overlap_lane_cycles -
+    start_count.exact_stream_overlap_lane_cycles;
+  delta.exact_stream_promote_lane_events =
+    end_count.exact_stream_promote_lane_events -
+    start_count.exact_stream_promote_lane_events;
   return delta;
 endfunction
 
@@ -917,6 +941,8 @@ function automatic void print_red_stream_report(
       stats.exact_fp16_lane_headers);
     $display("[PERF] red_exact_fp32_lane_headers: %0d",
       stats.exact_fp32_lane_headers);
+    $display("[PERF] red_exact_widening_lane_headers: %0d",
+      stats.exact_widening_lane_headers);
     $display("[PERF] red_exact_input_lane_beats: %0d",
       stats.exact_input_lane_beats);
     $display("[PERF] red_exact_active_element_lane_samples: %0d",
@@ -931,6 +957,19 @@ function automatic void print_red_stream_report(
       stats.exact_window_broadcasts);
     $display("[PERF] red_exact_final_broadcasts: %0d",
       stats.exact_final_broadcasts);
+    $display("[PERF] red_exact_stream_early_release_lane_events: %0d",
+      stats.exact_stream_early_release_lane_events);
+    $display("[PERF] red_exact_stream_successor_launch_lane_events: %0d",
+      stats.exact_stream_successor_launch_lane_events);
+    $display("[PERF] red_exact_stream_background_input_lane_beats: %0d",
+      stats.exact_stream_background_input_lane_beats);
+    $display("[PERF] red_exact_stream_overlap_lane_cycles: %0d",
+      stats.exact_stream_overlap_lane_cycles);
+    $display("[PERF] red_exact_stream_promote_lane_events: %0d",
+      stats.exact_stream_promote_lane_events);
+    $display("[PERF] red_exact_stream_launch_promote_consistent: %0d",
+      stats.exact_stream_successor_launch_lane_events ==
+        stats.exact_stream_promote_lane_events);
     $display("[PERF] red_exact_header_hist_consistent: %0d",
       stats.exact_header_lane_fires ==
         stats.exact_limb2_lane_headers + stats.exact_limb3_lane_headers +
@@ -1030,6 +1069,8 @@ function automatic void print_red_stream_report(
       stats.exact_fp16_lane_headers);
     $fwrite(file_handle, "[PERF] red_exact_fp32_lane_headers: %0d\n",
       stats.exact_fp32_lane_headers);
+    $fwrite(file_handle, "[PERF] red_exact_widening_lane_headers: %0d\n",
+      stats.exact_widening_lane_headers);
     $fwrite(file_handle, "[PERF] red_exact_input_lane_beats: %0d\n",
       stats.exact_input_lane_beats);
     $fwrite(file_handle,
@@ -1045,6 +1086,25 @@ function automatic void print_red_stream_report(
       stats.exact_window_broadcasts);
     $fwrite(file_handle, "[PERF] red_exact_final_broadcasts: %0d\n",
       stats.exact_final_broadcasts);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_early_release_lane_events: %0d\n",
+      stats.exact_stream_early_release_lane_events);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_successor_launch_lane_events: %0d\n",
+      stats.exact_stream_successor_launch_lane_events);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_background_input_lane_beats: %0d\n",
+      stats.exact_stream_background_input_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_overlap_lane_cycles: %0d\n",
+      stats.exact_stream_overlap_lane_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_promote_lane_events: %0d\n",
+      stats.exact_stream_promote_lane_events);
+    $fwrite(file_handle,
+      "[PERF] red_exact_stream_launch_promote_consistent: %0d\n",
+      stats.exact_stream_successor_launch_lane_events ==
+        stats.exact_stream_promote_lane_events);
     $fwrite(file_handle, "[PERF] red_exact_header_hist_consistent: %0d\n",
       stats.exact_header_lane_fires ==
         stats.exact_limb2_lane_headers + stats.exact_limb3_lane_headers +
@@ -6818,6 +6878,7 @@ module ara_tb;
   logic [NrLanes-1:0][2:0] exact_advertised_limbs;
   logic [NrLanes-1:0] exact_header_masked;
   logic [NrLanes-1:0] exact_header_fp16;
+  logic [NrLanes-1:0] exact_header_widening;
   logic [NrLanes-1:0] exact_input_fire;
   logic [NrLanes-1:0][2:0] exact_active_elements;
 `endif
@@ -6880,6 +6941,9 @@ module ara_tb;
       exact_header_fp16[l] =
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           exact_packet_word[10];
+      exact_header_widening[l] =
+        ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
+          vinsn_processing_q.op == VFWREDUSUM;
       exact_input_fire[l] =
         ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[l].i_lane.i_vfus.i_vmfpu.
           exact_sum_in_valid &&
@@ -7738,6 +7802,9 @@ module ara_tb;
         red_stream_perf_counters.exact_fp32_lane_headers <=
           red_stream_perf_counters.exact_fp32_lane_headers +
           $countones(exact_header_fire & ~exact_header_fp16);
+        red_stream_perf_counters.exact_widening_lane_headers <=
+          red_stream_perf_counters.exact_widening_lane_headers +
+          $countones(exact_header_fire & exact_header_widening);
         red_stream_perf_counters.exact_input_lane_beats <=
           red_stream_perf_counters.exact_input_lane_beats +
           $countones(exact_input_fire);
@@ -7764,6 +7831,63 @@ module ara_tb;
           red_stream_perf_counters.exact_final_broadcasts +
           ((ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.state_q == 4'd11) &&
            !ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.result_queue_full);
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+        red_stream_perf_counters.exact_stream_early_release_lane_events <=
+          red_stream_perf_counters.exact_stream_early_release_lane_events +
+          $countones({
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+              i_vmfpu.exact_stream_early_release,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+              i_vmfpu.exact_stream_early_release,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+              i_vmfpu.exact_stream_early_release,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+              i_vmfpu.exact_stream_early_release});
+        red_stream_perf_counters.exact_stream_successor_launch_lane_events <=
+          red_stream_perf_counters.exact_stream_successor_launch_lane_events +
+          $countones({
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+              i_vmfpu.exact_stream_successor_launch,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+              i_vmfpu.exact_stream_successor_launch,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+              i_vmfpu.exact_stream_successor_launch,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+              i_vmfpu.exact_stream_successor_launch});
+        red_stream_perf_counters.exact_stream_background_input_lane_beats <=
+          red_stream_perf_counters.exact_stream_background_input_lane_beats +
+          $countones({
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+              i_vmfpu.exact_stream_background_input_fire,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+              i_vmfpu.exact_stream_background_input_fire,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+              i_vmfpu.exact_stream_background_input_fire,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+              i_vmfpu.exact_stream_background_input_fire});
+        red_stream_perf_counters.exact_stream_overlap_lane_cycles <=
+          red_stream_perf_counters.exact_stream_overlap_lane_cycles +
+          $countones({
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+              i_vmfpu.exact_stream_foreground_advanced_q,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+              i_vmfpu.exact_stream_foreground_advanced_q,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+              i_vmfpu.exact_stream_foreground_advanced_q,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+              i_vmfpu.exact_stream_foreground_advanced_q});
+        red_stream_perf_counters.exact_stream_promote_lane_events <=
+          red_stream_perf_counters.exact_stream_promote_lane_events +
+          $countones({
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.i_vfus.
+              i_vmfpu.exact_stream_promote,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.i_vfus.
+              i_vmfpu.exact_stream_promote,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.i_vfus.
+              i_vmfpu.exact_stream_promote,
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.i_vfus.
+              i_vmfpu.exact_stream_promote});
+`endif
       end
 `endif
     end

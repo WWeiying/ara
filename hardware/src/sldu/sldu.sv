@@ -98,12 +98,14 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
   function automatic logic exact_global_eligible(input pe_req_t vinsn);
     exact_global_eligible = (NrLanes == 4) &&
-      (vinsn.op == VFREDUSUM) &&
-      ((vinsn.vtype.vsew == EW32)
+      (((vinsn.op == VFREDUSUM) &&
+        ((vinsn.vtype.vsew == EW32)
 `ifdef ARA_RED_EXACT_FP16_4LANE
-       || (vinsn.vtype.vsew == EW16)
+         || (vinsn.vtype.vsew == EW16)
 `endif
-      ) &&
+        )) ||
+       ((vinsn.op == VFWREDUSUM) &&
+        (vinsn.vtype.vsew == EW32))) &&
       (vinsn.vl >= 1);
   endfunction
 `endif

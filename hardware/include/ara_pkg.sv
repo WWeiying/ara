@@ -319,11 +319,13 @@ typedef struct packed {
       default: fp32.e = 8'd112 + {3'd0, fp16.e}; // Normal
     endcase
 
-    // Wide mantissa
-    // If the input is NaN, output a quiet NaN mantissa.
-    // Otherwise, append trailing zeros to the mantissa.
+    // Wide mantissa.  Preserve the NaN quiet/signaling class while widening.
+    // This combinational re-encoder has no exception sideband; prematurely
+    // quieting an sNaN here would make the downstream arithmetic unit lose
+    // the architecturally required NV flag.  The FPU canonicalizes the final
+    // NaN after it observes the signaling input.
     fp16_temp.m = ((fp16.e == '0) && (fp16.m != '0)) ? (fp16.m << 1) << fp16_m_lzc : fp16.m;
-    fp32.m = ((fp16.e == '1) && (fp16.m != '0) ) ? {1'b1, 22'b0} : {fp16_temp.m, 13'b0};
+    fp32.m = {fp16_temp.m, 13'b0};
 
     fp32_from_fp16 = fp32;
   endfunction
@@ -343,11 +345,10 @@ typedef struct packed {
       default: fp64.e = 11'd896 + {3'd0, fp32.e}; // Normal
     endcase
 
-    // Wide mantissa
-    // If the input is NaN, output a quiet NaN mantissa.
-    // Otherwise, append trailing zeros to the mantissa.
+    // Preserve the NaN quiet/signaling class for the same reason as the
+    // binary16-to-binary32 re-encoder above.
     fp32_temp.m = ((fp32.e == '0) && (fp32.m != '0)) ? (fp32.m << 1) << fp32_m_lzc : fp32.m;
-    fp64.m = ((fp32.e == '1) && (fp32.m != '0)) ? {1'b1, 51'b0} : {fp32_temp.m, 29'b0};
+    fp64.m = {fp32_temp.m, 29'b0};
 
     fp64_from_fp32 = fp64;
   endfunction

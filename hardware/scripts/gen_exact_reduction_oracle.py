@@ -147,6 +147,30 @@ def round_fixed(
     return result, int(inexact)
 
 
+def pack_vector(
+    fp16: bool,
+    rm: int,
+    seed_word: int,
+    data: int,
+    active: int,
+    expected_word: int,
+    status: int,
+) -> int:
+    fields = [
+        (int(fp16), 1),
+        (rm, 3),
+        (seed_word, 32),
+        (data, 64),
+        (active, 4),
+        (expected_word, 32),
+        (status, 5),
+    ]
+    packed = 0
+    for value, width in fields:
+        packed = (packed << width) | (value & ((1 << width) - 1))
+    return packed
+
+
 def make_vector(rng: random.Random, fp16: bool, rm: int) -> int:
     count = 4 if fp16 else 2
     values = [finite_value(rng, fp16) for _ in range(count)]
@@ -185,19 +209,65 @@ def make_vector(rng: random.Random, fp16: bool, rm: int) -> int:
         seed_word = seed
         expected_word = expected
 
-    fields = [
-        (int(fp16), 1),
-        (rm, 3),
-        (seed_word, 32),
-        (data, 64),
-        (active, 4),
-        (expected_word, 32),
-        (status, 5),
-    ]
-    packed = 0
-    for value, width in fields:
-        packed = (packed << width) | (value & ((1 << width) - 1))
-    return packed
+    return pack_vector(
+        fp16, rm, seed_word, data, active, expected_word, status
+    )
+
+
+def fp16_to_fp32_bits(bits: int) -> int:
+    """Exact format widening with NaN quiet/signaling class preservation."""
+    sign = (bits >> 15) & 1
+    exponent = (bits >> 10) & 0x1F
+    fraction = bits & 0x3FF
+    if exponent == 0:
+        if fraction == 0:
+            exponent32 = 0
+            fraction32 = 0
+        else:
+            leading = fraction.bit_length() - 1
+            exponent32 = leading - 24 + 127
+            fraction32 = (fraction ^ (1 << leading)) << (23 - leading)
+    elif exponent == 0x1F:
+        exponent32 = 0xFF
+        fraction32 = fraction << 13
+    else:
+        exponent32 = exponent + 112
+        fraction32 = fraction << 13
+    return (sign << 31) | (exponent32 << 23) | fraction32
+
+
+def make_widening_vector(rng: random.Random, rm: int) -> int:
+    """Model FP16 source conversion followed by one FP32 exact reduction."""
+    source = [finite_value(rng, True) for _ in range(2)]
+    widened = [fp16_to_fp32_bits(value) for value in source]
+    active = rng.randrange(4)
+    seed = finite_value(rng, False)
+
+    exact = decode_fixed(seed, False)
+    finite_nonzero_seen = not is_zero(seed, False)
+    pos_zero_seen = is_zero(seed, False) and not sign_bit(seed, False)
+    neg_zero_seen = is_zero(seed, False) and bool(sign_bit(seed, False))
+    for index, value in enumerate(source):
+        if active & (1 << index):
+            exact += decode_fixed(value, True)
+            finite_nonzero_seen |= not is_zero(value, True)
+            pos_zero_seen |= is_zero(value, True) and not sign_bit(value, True)
+            neg_zero_seen |= is_zero(value, True) and bool(sign_bit(value, True))
+
+    if active == 0:
+        expected, status = seed, 0
+    else:
+        expected, status = round_fixed(
+            exact,
+            rm,
+            False,
+            finite_nonzero_seen,
+            pos_zero_seen,
+            neg_zero_seen,
+        )
+
+    data = widened[0] | (widened[1] << 32)
+    return pack_vector(False, rm, seed, data, active, expected, status)
 
 
 def main() -> None:
@@ -218,6 +288,8 @@ def main() -> None:
     for fp16 in (False, True):
         for index in range(args.count_per_format):
             vectors.append(make_vector(rng, fp16, index % 5))
+    for index in range(args.count_per_format):
+        vectors.append(make_widening_vector(rng, index % 5))
 
     digits = (VECTOR_WIDTH + 3) // 4
     args.output.write_text(
@@ -225,7 +297,8 @@ def main() -> None:
         encoding="ascii",
     )
     print(
-        f"wrote {len(vectors)} exact integer-oracle vectors to {args.output} "
+        f"wrote {len(vectors)} FP32/FP16/widening integer-oracle vectors "
+        f"to {args.output} "
         f"(seed={args.seed:#x})"
     )
 

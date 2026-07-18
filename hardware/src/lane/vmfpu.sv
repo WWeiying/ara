@@ -750,16 +750,43 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // Ordered sums must retain their element-by-element architectural rounding.
   // The exact backend accepts masked unordered sums because mask activity is
   // attached to the source beat before any value enters the exact state.
+  // FP16->FP32 VFWREDUSUM is also safe here: the operand queue first converts
+  // every binary16 source exactly into binary32, so the accumulator sees the
+  // same FP32 packs and FP32 scalar seed as a non-widening EW32 reduction.
   function automatic logic red_exact_sum_eligible(vfu_operation_t vinsn);
     red_exact_sum_eligible = (NrLanes == 4) &&
-      (vinsn.op == VFREDUSUM) &&
-      ((vinsn.vtype.vsew == EW32)
+      (((vinsn.op == VFREDUSUM) &&
+        ((vinsn.vtype.vsew == EW32)
 `ifdef ARA_RED_EXACT_FP16_4LANE
-       || (vinsn.vtype.vsew == EW16)
+         || (vinsn.vtype.vsew == EW16)
 `endif
-      ) &&
+        )) ||
+       ((vinsn.op == VFWREDUSUM) &&
+        (vinsn.vtype.vsew == EW32))) &&
       (vinsn.vl >= 1);
   endfunction : red_exact_sum_eligible
+
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+  // The early-release stream path advances only across a homogeneous exact
+  // run.  Every lane must make the same decision despite independently
+  // backpressured operand queues, so all protocol-shaping fields are part of
+  // the compatibility relation.  Source/destination registers may differ.
+  function automatic logic red_exact_stream_compatible(
+    vfu_operation_t foreground,
+    vfu_operation_t successor
+  );
+    red_exact_stream_compatible =
+      red_exact_sum_eligible(foreground) &&
+      red_exact_sum_eligible(successor) &&
+      (successor.op == foreground.op) &&
+      (successor.vtype == foreground.vtype) &&
+      (successor.vl == foreground.vl) &&
+      (successor.vstart == foreground.vstart) &&
+      (successor.vm == foreground.vm) &&
+      (successor.fp_rm == foreground.fp_rm) &&
+      (successor.cvt_resize == foreground.cvt_resize);
+  endfunction : red_exact_stream_compatible
+`endif
 `endif
 
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
@@ -1165,6 +1192,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [63:0] exact_packet_word;
   logic        exact_global_result_fire;
   logic [4:0]  exact_global_status;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+  logic        exact_stream_foreground_advanced_d;
+  logic        exact_stream_foreground_advanced_q;
+  logic        exact_stream_early_release;
+  logic        exact_stream_successor_launch;
+  logic        exact_stream_background_input_fire;
+  logic        exact_stream_promote;
+`endif
 
   always_comb begin : p_exact_packet
     logic [63:0] sign_fill;
@@ -2025,6 +2060,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     exact_sum_out_ready  = 1'b0;
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
     exact_global_result_fire = 1'b0;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+    exact_stream_foreground_advanced_d =
+      exact_stream_foreground_advanced_q;
+    exact_stream_early_release         = 1'b0;
+    exact_stream_successor_launch      = 1'b0;
+    exact_stream_background_input_fire = 1'b0;
+    exact_stream_promote               = 1'b0;
+`endif
 `endif
 `endif
 
@@ -2850,6 +2893,35 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             exact_packet_beat_d = 3'd1;
           end else if (exact_packet_beat_q == exact_limb_count_q) begin
             mfpu_state_d = EXACT_GLOBAL_RX;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+            // The complete exact state is now owned by the SLDU.  Releasing
+            // the lane accumulator here, rather than after the final result
+            // returns, creates a second bounded context: packet N is being
+            // finalized while the same accumulator consumes packet N+1.
+            exact_sum_out_ready    = 1'b1;
+            exact_stream_early_release = 1'b1;
+
+            if (!exact_stream_foreground_advanced_q &&
+                (vinsn_queue_q.issue_cnt > 1)) begin
+              automatic logic [idx_width(VInsnQueueDepth)-1:0]
+                next_issue_pnt =
+                  (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+                    ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+              automatic vfu_operation_t next_issue =
+                vinsn_queue_q.vinsn[next_issue_pnt];
+
+              if (red_exact_stream_compatible(vinsn_issue_q, next_issue)) begin
+                vinsn_queue_d.issue_cnt =
+                  vinsn_queue_q.issue_cnt - 1'b1;
+                vinsn_queue_d.issue_pnt = next_issue_pnt;
+                issue_cnt_d             = next_issue.vl;
+                first_op_d              = 1'b1;
+                intra_op_rx_cnt_d       = '0;
+                exact_stream_foreground_advanced_d = 1'b1;
+                exact_stream_successor_launch = 1'b1;
+              end
+            end
+`endif
           end else begin
             exact_packet_beat_d = exact_packet_beat_q + 1'b1;
           end
@@ -2877,10 +2949,80 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // the architectural result; every lane consumes the token before its
         // local exact-state owner is released.
         prevent_commit = 1'b1;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+        // While packet N is in the centralized finalizer/return path, consume
+        // packet N+1 into the accumulator that was released after N's last
+        // limb.  The successor remains local and cannot publish a header
+        // until N retires, preserving architectural ordering with one bounded
+        // look-ahead context.
+        if (exact_stream_foreground_advanced_q &&
+            red_exact_sum_eligible(vinsn_issue_q) &&
+            !exact_sum_out_valid) begin : p_exact_stream_background
+          automatic logic [3:0] issue_element_cnt =
+            (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+          automatic logic source_word_valid =
+            (vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2]
+                                           : mfpu_operand_valid_i[1]);
+          automatic logic exact_operands_valid =
+            source_word_valid && vinsn_issue_q_valid &&
+            (mask_valid_i || vinsn_issue_q.vm) &&
+            (!first_op_q || mfpu_operand_valid_i[0]);
+
+          if (issue_element_cnt > issue_cnt_q)
+            issue_element_cnt = issue_cnt_q;
+
+          exact_sum_rnd_mode = vinsn_issue_q.fp_rm;
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          exact_sum_format_fp16 =
+            (vinsn_issue_q.vtype.vsew == EW16);
+`endif
+          exact_sum_seed = vinsn_issue_q.use_scalar_op
+                         ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
+          exact_sum_seed_valid = (lane_id_i == '0);
+          exact_sum_data = vinsn_issue_q.swap_vs2_vd_op
+                         ? mfpu_operand_i[2] : mfpu_operand_i[1];
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          if (vinsn_issue_q.vtype.vsew == EW16) begin
+            exact_sum_active[0] = (issue_element_cnt >= 1) &&
+                                  (vinsn_issue_q.vm || mask_i[0]);
+            exact_sum_active[1] = (issue_element_cnt >= 2) &&
+                                  (vinsn_issue_q.vm || mask_i[2]);
+            exact_sum_active[2] = (issue_element_cnt >= 3) &&
+                                  (vinsn_issue_q.vm || mask_i[4]);
+            exact_sum_active[3] = (issue_element_cnt >= 4) &&
+                                  (vinsn_issue_q.vm || mask_i[6]);
+          end else begin
+`endif
+            exact_sum_active[0] = (issue_element_cnt >= 1) &&
+                                  (vinsn_issue_q.vm || mask_i[0]);
+            exact_sum_active[1] = (issue_element_cnt >= 2) &&
+                                  (vinsn_issue_q.vm || mask_i[4]);
+`ifdef ARA_RED_EXACT_FP16_4LANE
+          end
+`endif
+          exact_sum_last = (issue_cnt_q <= issue_element_cnt);
+          exact_sum_in_valid = (issue_cnt_q != '0) &&
+                               exact_operands_valid;
+          exact_sum_start = first_op_q && exact_sum_in_valid;
+
+          if (exact_sum_in_valid && exact_sum_in_ready) begin
+            issue_cnt_d = issue_cnt_q - issue_element_cnt;
+            intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+            mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
+                                 ? {2'b10, first_op_q}
+                                 : {2'b01, first_op_q};
+            mask_ready_o = !vinsn_issue_q.vm;
+            first_op_d = 1'b0;
+            exact_stream_background_input_fire = 1'b1;
+          end
+        end
+`endif
         if (sldu_mfpu_valid_q &&
             ((lane_id_i != '0) || !result_queue_full)) begin
           sldu_mfpu_ready_d       = 1'b1;
+`ifndef ARA_RED_EXACT_STREAM_4LANE
           exact_sum_out_ready     = 1'b1;
+`endif
           exact_global_result_fire = 1'b1;
           mfpu_state_d            = MFPU_WAIT;
           if (lane_id_i == '0) begin
@@ -3433,11 +3575,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           if (!red_stream_foreground_advanced_q) begin
 `endif
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+          if (!exact_stream_foreground_advanced_q) begin
+`endif
             vinsn_queue_d.issue_cnt -= 1;
             if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
               vinsn_queue_d.issue_pnt = '0;
             else
               vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+          end
+`endif
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           end
 `endif
@@ -3535,6 +3683,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             end
           end
 `endif
+`endif
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+          if (exact_stream_foreground_advanced_q) begin
+            // The issue-side registers already belong to the exact successor
+            // accumulated during packet N's finalizer/return interval.  Move
+            // only the architectural processing pointer, preserve that live
+            // accumulator state, and publish it as soon as normalization is
+            // complete.
+            exact_stream_promote = 1'b1;
+            exact_stream_foreground_advanced_d = 1'b0;
+            issue_cnt_d       = issue_cnt_q;
+            first_op_d        = first_op_q;
+            intra_op_rx_cnt_d = intra_op_rx_cnt_q;
+            exact_packet_beat_d = '0;
+            to_process_cnt_d  = '0;
+            mfpu_state_d = exact_sum_out_valid
+                         ? EXACT_GLOBAL_TX : INTRA_LANE_REDUCTION;
+          end
 `endif
         end
       end
@@ -4185,6 +4351,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
       exact_packet_beat_q     <= '0;
       exact_limb_count_q      <= 3'd5;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+      exact_stream_foreground_advanced_q <= 1'b0;
+`endif
 `endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
       red_context_data_q       <= '0;
@@ -4252,6 +4421,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
       exact_packet_beat_q     <= exact_packet_beat_d;
       exact_limb_count_q      <= exact_limb_count_d;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+      exact_stream_foreground_advanced_q <=
+        exact_stream_foreground_advanced_d;
+`endif
 `endif
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
       red_context_data_q       <= red_context_data_d;
@@ -4387,6 +4560,38 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         !exact_packet_word[10]
 `endif
   ) else $error("exact reduction header format disagrees with instruction SEW");
+
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+  a_exact_stream_release_owns_last_limb: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_stream_early_release |->
+        (mfpu_state_q == EXACT_GLOBAL_TX &&
+         exact_packet_beat_q == exact_limb_count_q &&
+         exact_sum_out_valid && exact_sum_out_ready &&
+         mfpu_red_ready_i)
+  ) else $error("exact stream released accumulator before packet ownership transfer");
+
+  a_exact_stream_background_is_decoupled: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_stream_foreground_advanced_q |->
+        (vinsn_queue_q.issue_pnt != vinsn_queue_q.processing_pnt &&
+         red_exact_sum_eligible(vinsn_issue_q))
+  ) else $error("exact stream look-ahead lost issue/processing separation");
+
+  a_exact_stream_background_fire_has_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_stream_background_input_fire |->
+        (mfpu_state_q == EXACT_GLOBAL_RX &&
+         exact_stream_foreground_advanced_q)
+  ) else $error("exact stream consumed a successor outside the overlap window");
+
+  a_exact_stream_promote_is_in_order: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      exact_stream_promote |->
+        (mfpu_state_q == MFPU_WAIT &&
+         exact_stream_foreground_advanced_q)
+  ) else $error("exact stream promoted without retiring its foreground");
+`endif
 `endif
 `endif
 `endif
