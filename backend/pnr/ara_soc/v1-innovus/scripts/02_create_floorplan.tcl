@@ -26,8 +26,8 @@ foreach lib_cell $dontuse_cell {
 
 
 #====== floorplan setting ========
-set CORE_W 2100
-set CORE_H 2206
+set CORE_W 2008
+set CORE_H 2008
 
 set CORE_to_DIE "1 1 1 1"
 

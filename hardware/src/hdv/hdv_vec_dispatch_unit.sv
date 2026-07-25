@@ -17,8 +17,9 @@
 //           vector instruction.  This is the precondition for acknowledging
 //           the EP back to HEU so the frontend can advance.
 //  Level 3 — vec_ep_acknowledged_o (EP acknowledged):
-//           Every vector slot in this EP has reached Level 2 AND any
-//           scalar-visible vset (rd!=x0) writeback has been received.
+//           Every vector slot in this EP has reached Level 2 AND every
+//           scalar-visible vector writeback has been received.  This includes
+//           vset with rd!=x0, vmv.x.s/vcpop/vfirst, and vfmv.f.s.
 //           HEU uses this to advance to the next EP.  THIS DOES NOT IMPLY
 //           THAT ANY VECTOR INSTRUCTION HAS COMPLETED EXECUTION.
 //  Level 4 — Ara response (acc_resp.resp_valid):
@@ -92,7 +93,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
 
   // ── EP acknowledged pulse back to HEU (1-cycle) ───────────────────────────
   // vec_ep_acknowledged_o fires when all vector slots in this EP have reached
-  // operand-safety (Level 2) and any vset rd!=x0 writeback has been received.
+  // operand-safety (Level 2) and all scalar-visible writebacks have returned.
   // THIS DOES NOT MEAN VECTOR EXECUTION IS COMPLETE — see module header.
   output logic                              vec_ep_acknowledged_o,
   output logic                              vec_ep_acknowledged_id_o,
@@ -263,6 +264,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic [RealWaitDepth-1:0]      real_wait_has_vset_d, real_wait_has_vset_q;
   logic [RealWaitDepth-1:0]      real_ep_operands_captured_d, real_ep_operands_captured_q;
   logic [RealWaitDepth-1:0]      real_ep_vset_wb_done_d, real_ep_vset_wb_done_q;
+  logic [RealWaitDepth-1:0][CountW-1:0]
+                                 real_ep_scalar_wb_pending_d,
+                                 real_ep_scalar_wb_pending_q;
   // Per-ep_id latch for a vsetvli writeback that arrives (immediate Ara response)
   // BEFORE its owning EP is enqueued into real_wait; consumed at enqueue.
   logic [1:0]                   vset_wb_pending_d, vset_wb_pending_q;
@@ -280,10 +284,12 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   logic                        vtrace_mismatch;
   logic                        vtrace_empty_error;
   logic                        ara_exception_error;
+  logic                        dispatch_stop;
   logic                        resp_meta_full;
   logic                        resp_meta_can_push;
   logic                        input_ep_has_vset_wb;
   logic [4:0]                  input_vset_rd;
+  logic [CountW-1:0]           input_ep_scalar_wb_count;
   logic                        resp_is_scalar_wb;
   logic                        real_wait_full;
   logic                        real_ep_can_acknowledge;
@@ -484,7 +490,12 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign enqueue_ep = heu_vec_valid_i & vec_ep_ready_o;
   assign enqueue_to_pending = enqueue_ep & (state_q != IDLE);
   assign resp_meta_full = (resp_meta_count_q == RespMetaCountW'(RespMetaDepth));
-  assign resp_meta_can_push = !resp_meta_full || resp_valid;
+  // Do not use a same-cycle Ara response to reopen a full metadata FIFO.
+  // Ara can generate resp_valid combinationally from the current request, so
+  // feeding it back into req_valid creates a request/response timing loop.
+  // RespMetaDepth covers all supported outstanding requests; in the rare full
+  // case, waiting one cycle for the registered pop is both safe and bounded.
+  assign resp_meta_can_push = !resp_meta_full;
   assign capture_operand = selected_slot_found && !UseVTraceScalar &&
                            selected_needs_operand &&
                            !operand_valid_q && !selected_has_next_operand &&
@@ -504,7 +515,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // True owning ep_id of the responding instruction (echoed by Ara, reorder-proof).
   assign resp_ep_id_from_trans = acc_resp_i.acc_resp.trans_id[0];
   assign resp_vset_wb_from_trans = acc_resp_i.acc_resp.trans_id[1];
-  assign resp_is_scalar_wb    = resp_valid && resp_meta_wb_valid && (resp_meta_rd != 5'd0);
+  // x0 discards integer results, but f0 is a real architectural FP register.
+  assign resp_is_scalar_wb    = resp_valid && resp_meta_wb_valid &&
+                                (resp_meta_is_fpr || (resp_meta_rd != 5'd0));
   assign vset_accept_enqueue  = enqueue_ep && input_ep_has_vset_wb;
   assign vset_accept_ack      = resp_is_vset_wb &&
                                 ((vset_accept_wait_q != '0) || vset_accept_enqueue);
@@ -571,7 +584,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   always_comb begin
     input_ep_has_vset_wb = 1'b0;
     input_vset_rd        = 5'd0;
+    input_ep_scalar_wb_count = '0;
     for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (heu_vec_insn_valid_i[i] && is_vector_scalar_wb(heu_vec_insn_i[i]) &&
+          (is_vector_fp_scalar_wb(heu_vec_insn_i[i]) ||
+           (heu_vec_insn_i[i][11:7] != 5'd0))) begin
+        input_ep_scalar_wb_count++;
+      end
       if (heu_vec_insn_valid_i[i] &&
           (heu_vec_insn_i[i][6:0] == 7'b1010111) &&
           (heu_vec_insn_i[i][14:12] == 3'b111) &&
@@ -588,10 +607,6 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
                                      (next_operand_slot_idx_q == slot_idx);
 `ifdef HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
   assign prefetch_operand_req = 1'b0;
-`else
-  assign prefetch_operand_req = (state_q == DISPATCH) && accept_insn && next_slot_found &&
-                                next_needs_operand && !UseVTraceScalar &&
-                                !next_operand_valid_q && !selected_operand_port_busy;
 `endif
 
   assign vec_scalar_operand_req_valid_o = selected_operand_port_busy ||
@@ -629,21 +644,24 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
 
   // ── In-flight vset tracking (A2 RAW interlock hint) ───────────────────────
   // Level signal covering the whole window from "vset EP presented" to "VL
-  // writeback".  The combinational `heu_vec_valid_i & input_ep_has_vset_wb`
-  // term covers the presentation cycle even before vec_dispatch latches the EP,
-  // so a fast scalar backend cannot read the rd before the hint is visible.
+  // writeback".  HEU presents its scalar and vector slices from registers.  A
+  // scalar slice can only start executing after the same edge on which this
+  // register captures the vector-side vset, so no live HEU instruction bits
+  // need to feed the scalar interlock combinationally.
   logic       vset_inflight_valid_d, vset_inflight_valid_q;
   logic [4:0] vset_inflight_rd_d,    vset_inflight_rd_q;
 
   always_comb begin
     vset_inflight_valid_d = vset_inflight_valid_q;
     vset_inflight_rd_d    = vset_inflight_rd_q;
+    if (resp_valid && resp_vset_wb_from_trans) begin
+      vset_inflight_valid_d = 1'b0;
+    end
+    // A newly presented vset wins over an older vset response in the same
+    // cycle; otherwise the new dependency window would be lost.
     if (heu_vec_valid_i && input_ep_has_vset_wb) begin
       vset_inflight_valid_d = 1'b1;
       vset_inflight_rd_d    = input_vset_rd;
-    end
-    if (resp_valid && resp_vset_wb_from_trans) begin
-      vset_inflight_valid_d = 1'b0;
     end
     if (flush_i) begin
       vset_inflight_valid_d = 1'b0;
@@ -660,10 +678,8 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     end
   end
 
-  assign vec_scalar_vset_inflight_o    = vset_inflight_valid_q ||
-                                         (heu_vec_valid_i && input_ep_has_vset_wb);
-  assign vec_scalar_vset_inflight_rd_o = vset_inflight_valid_q ? vset_inflight_rd_q
-                                                               : input_vset_rd;
+  assign vec_scalar_vset_inflight_o    = vset_inflight_valid_q;
+  assign vec_scalar_vset_inflight_rd_o = vset_inflight_rd_q;
 
   assign vtrace_empty_error = UseVTraceScalar &&
                               selected_slot_found &&
@@ -673,8 +689,13 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
                               vtrace_available &&
                               (vtrace_insn != selected_insn);
   assign ara_exception_error = resp_valid && acc_resp_i.acc_resp.exception.valid;
-  assign vec_ep_error_o      = error_sticky_q | vtrace_empty_error |
-                               vtrace_mismatch | ara_exception_error;
+  // Ara responses must not feed combinationally into the global task flush or
+  // back into acc_req.req_valid.  Capture exceptions in error_sticky_q and
+  // report them on the following cycle.  Local VTrace errors may stop an
+  // unissued request immediately because they do not originate at Ara.
+  assign vec_ep_error_o = error_sticky_q;
+  assign dispatch_stop  = error_sticky_q | flush_i |
+                          vtrace_empty_error | vtrace_mismatch;
 
   // ── FSM-intended vector request (before the resolved-request buffer) ───────
   // This is the single request the issue FSM wants to send to Ara this cycle,
@@ -693,7 +714,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     fsm_req_rs2     = '0;
     fsm_req_is_last = 1'b0;
     if (selected_slot_found) begin
-      fsm_req_valid = !(vtrace_empty_error | vtrace_mismatch) &&
+      fsm_req_valid = !dispatch_stop &&
                       (UseVTraceScalar || !selected_needs_operand ||
                        operand_valid_q || selected_has_next_operand ||
                        selected_operand_bypass) &&
@@ -727,7 +748,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     end
   end
 
-  // ── Resolved command window with bypass (vector early issue) ───────────────
+  // ── Registered resolved command window (vector early issue) ───────────────
   // Decouples the FSM's "request produced" event (operand snapshotted) from
   // Ara's "request accepted" (req_ready).  When Ara back-pressures, the FSM can
   // keep snapshotting operands of following EP slots into this window, so
@@ -747,9 +768,9 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   `ifdef FOR_VERIFY
   logic [63:0] cnt_dispatch_slot;         // total vector slots consumed
   logic [63:0] cnt_vq_push;               // requests that entered the window
-  logic [63:0] cnt_vq_bypass;             // requests that bypassed straight to Ara
+  logic [63:0] cnt_vq_bypass;             // requests bypassed directly to Ara
   logic [63:0] cnt_vq_full_stall;         // fsm_req_valid but vq_full blocked push
-  logic [63:0] cnt_ara_backpressure;      // vq_serving & !ara_acc : Ara not ready
+  logic [63:0] cnt_ara_backpressure;      // cycles Ara not ready while VQ non-empty
   logic [63:0] cnt_vq_pop;                // requests popped from window (Ara took)
   logic [63:0] cnt_fsm_idle_could_dispatch; // fsm_req_valid but window empty: bypass possible
   logic [63:0] cnt_ep_acknowledged;       // EPs acknowledged back to HEU
@@ -788,7 +809,24 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign vq_serving = (vq_count_q != '0);     // head present -> drain window first
   assign vq_full    = (vq_count_q == CmdWindowCountW'(CmdWindowDepth));
 
-  // Drive Ara from the window head, or bypass the FSM request when window empty.
+`ifndef HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+  // A non-full command window guarantees that the current FSM request is
+  // consumed this cycle: it either bypasses to Ara or is stored in the window.
+  // Using this registered-capacity condition instead of accept_insn avoids a
+  // req_ready -> operand address -> scalar RF -> Ara request feedback loop.
+  // When the window is full but also pops, lookahead is conservatively skipped;
+  // the next slot can still use the normal scalar-operand bypass on the next
+  // cycle, so correctness is unchanged and only that corner loses lookahead.
+  assign prefetch_operand_req = (state_q == DISPATCH) && fsm_req_valid && !vq_full &&
+                                next_slot_found && next_needs_operand &&
+                                !UseVTraceScalar && !next_operand_valid_q &&
+                                !selected_operand_port_busy;
+`endif
+
+  // Drive Ara only from the registered command-window head.  Even when the
+  // window is empty, the FSM request is first captured in vq_q.  This keeps the
+  // instruction, scalar operands, transaction tag, and HDV metadata aligned at
+  // one register boundary before they enter Ara.
   // ── HDV → Ara metadata ─────────────────────────────────────────────────
   //  trans_id[0] = response-routing ep_id. trans_id[1] = scalar-visible vset
   //  marker (vset* with rd!=x0). Ara echoes these bits back, so vset writeback
@@ -811,7 +849,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     acc_req_o.acc_req.inval_ready = 1'b1; // always consume cache-line invalidations
     acc_req_o.acc_req.frm         = fpnew_pkg::RNE;
     if (vq_serving) begin
-      acc_req_o.acc_req.req_valid     = resp_meta_can_push;
+      acc_req_o.acc_req.req_valid     = resp_meta_can_push && !dispatch_stop;
       acc_req_o.acc_req.insn          = vq_q[0].insn;
       acc_req_o.acc_req.rs1           = vq_q[0].rs1;
       acc_req_o.acc_req.rs2           = vq_q[0].rs2;
@@ -820,24 +858,14 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       acc_req_o.acc_req.trans_id[1]   = (vq_q[0].cmd_class == VQ_CMD_CONFIG) &&
                                         (vq_q[0].insn[11:7] != 5'd0);
       acc_req_hdv_meta_o              = vq_q[0].hdv_meta;
-    end else begin
-      acc_req_o.acc_req.req_valid     = fsm_req_valid && resp_meta_can_push; // bypass: empty buffer
-      acc_req_o.acc_req.insn          = fsm_req_insn;
-      acc_req_o.acc_req.rs1           = fsm_req_rs1;
-      acc_req_o.acc_req.rs2           = fsm_req_rs2;
-      acc_req_o.acc_req.trans_id      = '0;
-      acc_req_o.acc_req.trans_id[0]   = selected_ep_id;
-      acc_req_o.acc_req.trans_id[1]   = selected_is_vset && (selected_insn[11:7] != 5'd0);
-      acc_req_hdv_meta_o              = selected_hdv_meta;
     end
   end
 
   assign ara_acc   = acc_req_o.acc_req.req_valid & acc_resp_i.acc_resp.req_ready;
-  assign vq_bypass = !vq_serving & fsm_req_valid;
+  assign vq_bypass = 1'b0;
   assign vq_pop    = vq_serving & ara_acc;                 // Ara took window head
-  // FSM request advances when it bypassed straight to Ara, or got stored.
-  assign vq_push   = fsm_req_valid & !(vq_bypass & ara_acc) & (!vq_full | vq_pop);
-  assign accept_insn = (vq_bypass & ara_acc) | vq_push;    // FSM "request consumed"
+  assign vq_push   = fsm_req_valid & (!vq_full | vq_pop);
+  assign accept_insn = vq_push; // FSM advances only after registered capture.
 
 `ifdef FOR_VERIFY
   logic acc_req_stalled_q;
@@ -1000,7 +1028,6 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       if (fsm_req_valid && (vq_full && !vq_pop)) begin
         cnt_vq_full_stall <= cnt_vq_full_stall + 64'd1;
       end
-      // Ara backpressure: window has entries but Ara isn't taking them.
       if (vq_serving && !ara_acc) begin
         cnt_ara_backpressure <= cnt_ara_backpressure + 64'd1;
       end
@@ -1163,6 +1190,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
                     resp_meta_count_q, RespMetaDepth);
     end
   end
+
   `endif
 
   // ── Performance-counter readout mux (FOR_VERIFY only) ──────────────────
@@ -1196,6 +1224,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     for (int unsigned i = 0; i < RealWaitDepth; i++) begin
       real_ep_safe[i] = real_wait_valid_q[i] &&
                            real_ep_operands_captured_q[i] &&
+                           (real_ep_scalar_wb_pending_q[i] == '0) &&
                            (!real_wait_has_vset_q[i] || real_ep_vset_wb_done_q[i]);
     end
   end
@@ -1205,7 +1234,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   assign vec_ep_ready_o = !pending_valid_q && (UseVTraceScalar || real_ep_can_acknowledge);
   // In real-scalar mode the EP-acknowledge pulse is driven combinationally from
   // real_ep_safe: that signal depends only on registered wait-table state
-  // (operands_captured / valid / vset_wb_done), so there is no combinational
+  // (operands captured and scalar-visible writebacks complete), so there is no combinational
   // loop through HEU.  Routing it through ep_acknowledged_q added an extra
   // register stage, delaying the acknowledge one cycle past the EP operand-capture
   // (vs. the baseline state==DONE acknowledge) and serializing the vsetvli→sub→bnez
@@ -1258,6 +1287,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     real_wait_has_vset_d = real_wait_has_vset_q;
     real_ep_operands_captured_d = real_ep_operands_captured_q;
     real_ep_vset_wb_done_d = real_ep_vset_wb_done_q;
+    real_ep_scalar_wb_pending_d = real_ep_scalar_wb_pending_q;
     operand_valid_d = operand_valid_q;
     operand_rs1_d = operand_rs1_q;
     operand_rs2_d = operand_rs2_q;
@@ -1267,10 +1297,6 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
     next_operand_rs2_d = next_operand_rs2_q;
     next_operand_slot_idx_d = next_operand_slot_idx_q;
 
-    if (vtrace_empty_error | vtrace_mismatch | ara_exception_error) begin
-      error_sticky_d = 1'b1;
-    end
-
     if (!UseVTraceScalar) begin
       if (real_ep_safe[0]) begin
         ep_acknowledged_d = 1'b1;
@@ -1279,6 +1305,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
         real_wait_has_vset_d[0] = 1'b0;
         real_ep_operands_captured_d[0] = 1'b0;
         real_ep_vset_wb_done_d[0] = 1'b0;
+        real_ep_scalar_wb_pending_d[0] = '0;
       end else if (real_ep_safe[1]) begin
         ep_acknowledged_d = 1'b1;
         ep_acknowledged_id_d = real_wait_id_q[1];
@@ -1286,6 +1313,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
         real_wait_has_vset_d[1] = 1'b0;
         real_ep_operands_captured_d[1] = 1'b0;
         real_ep_vset_wb_done_d[1] = 1'b0;
+        real_ep_scalar_wb_pending_d[1] = '0;
       end
     end
 
@@ -1300,6 +1328,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
           real_wait_id_d[0] = heu_vec_ep_id_i;
           real_wait_has_vset_d[0] = input_ep_has_vset_wb;
           real_ep_operands_captured_d[0] = 1'b0;
+          real_ep_scalar_wb_pending_d[0] = input_ep_scalar_wb_count;
           // Consume an early-arrived vset writeback latched for this ep_id.
           real_ep_vset_wb_done_d[0] = input_ep_has_vset_wb && vset_wb_pending_q[heu_vec_ep_id_i];
         end else begin
@@ -1307,6 +1336,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
           real_wait_id_d[1] = heu_vec_ep_id_i;
           real_wait_has_vset_d[1] = input_ep_has_vset_wb;
           real_ep_operands_captured_d[1] = 1'b0;
+          real_ep_scalar_wb_pending_d[1] = input_ep_scalar_wb_count;
           real_ep_vset_wb_done_d[1] = input_ep_has_vset_wb && vset_wb_pending_q[heu_vec_ep_id_i];
         end
         if (input_ep_has_vset_wb)
@@ -1396,6 +1426,18 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
         // enqueue consumes it.
         if (!vwb_matched && resp_is_vset_wb)
           vset_wb_pending_d[resp_ep_id_from_trans] = 1'b1;
+      end
+      if (!UseVTraceScalar && resp_is_scalar_wb) begin
+        logic scalar_wb_matched;
+        scalar_wb_matched = 1'b0;
+        for (int unsigned i = 0; i < RealWaitDepth; i++) begin
+          if (!scalar_wb_matched && real_wait_valid_d[i] &&
+              (real_wait_id_d[i] == resp_ep_id_from_trans) &&
+              (real_ep_scalar_wb_pending_d[i] != '0)) begin
+            real_ep_scalar_wb_pending_d[i]--;
+            scalar_wb_matched = 1'b1;
+          end
+        end
       end
     end
 
@@ -1529,6 +1571,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_d = '0;
       real_ep_operands_captured_d = '0;
       real_ep_vset_wb_done_d = '0;
+      real_ep_scalar_wb_pending_d = '0;
       vset_wb_pending_d = '0;   // drop early-arrival latches so a stale bit can't satisfy a post-flush EP
       operand_valid_d = 1'b0;
       operand_rs1_d = '0;
@@ -1537,6 +1580,8 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       next_operand_rs1_d = '0;
       next_operand_rs2_d = '0;
       next_operand_slot_idx_d = '0;
+    end else if (vtrace_empty_error | vtrace_mismatch | ara_exception_error) begin
+      error_sticky_d = 1'b1;
     end
   end
 
@@ -1558,6 +1603,14 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
   // Runtime (clocked) sim-only assertions: exclude from synthesis.
   always_ff @(posedge clk_i) begin : p_error_report
     if (rst_ni) begin
+      if ($past(rst_ni) && $past(ara_exception_error && !flush_i)) begin
+        assert (error_sticky_q)
+          else $fatal(1, "[HDV] Ara exception was not captured in error_sticky_q");
+      end
+      if (dispatch_stop) begin
+        assert (!acc_req_o.acc_req.req_valid)
+          else $fatal(1, "[HDV] vector request issued while dispatch was stopped");
+      end
       if (vtrace_empty_error) begin
         $error("[HDV] vtrace exhausted before vector instruction 0x%08h", selected_insn);
       end
@@ -1678,6 +1731,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_q <= '0;
       real_ep_operands_captured_q <= '0;
       real_ep_vset_wb_done_q <= '0;
+      real_ep_scalar_wb_pending_q <= '0;
       vset_wb_pending_q <= '0;
       operand_valid_q <= 1'b0;
       operand_rs1_q <= '0;
@@ -1719,6 +1773,7 @@ module hdv_vec_dispatch_unit import hdv_pkg::*; #(
       real_wait_has_vset_q <= real_wait_has_vset_d;
       real_ep_operands_captured_q <= real_ep_operands_captured_d;
       real_ep_vset_wb_done_q <= real_ep_vset_wb_done_d;
+      real_ep_scalar_wb_pending_q <= real_ep_scalar_wb_pending_d;
       vset_wb_pending_q <= vset_wb_pending_d;
       operand_valid_q <= operand_valid_d;
       operand_rs1_q <= operand_rs1_d;

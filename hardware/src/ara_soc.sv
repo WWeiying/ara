@@ -172,6 +172,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   soc_wide_resp_t   [NrAXISlaves-1:0] periph_wide_axi_resp;
   soc_narrow_req_t  [NrAXISlaves-1:0] periph_narrow_axi_req;
   soc_narrow_resp_t [NrAXISlaves-1:0] periph_narrow_axi_resp;
+  soc_narrow_req_t                    ctrl_narrow_axi_req_uncut;
+  soc_narrow_resp_t                   ctrl_narrow_axi_resp_uncut;
 
   ////////////////
   //  Crossbar  //
@@ -482,6 +484,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   logic        hdv_csr_ready;
   logic [63:0] hdv_csr_rdata;
   logic        hdv_csr_error;
+  logic        soc_hdv_csr_ready;
+  logic [63:0] soc_hdv_csr_rdata;
+  logic        soc_hdv_csr_error;
   logic        hdv_task_busy;
   logic        hdv_task_done;
   logic        hdv_task_error;
@@ -491,14 +496,55 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
   logic        soc_hdv_csr_write;
   logic [11:0] soc_hdv_csr_addr;
   logic [63:0] soc_hdv_csr_wdata;
+  logic        host_hdv_csr_pending_q;
+  logic        host_hdv_csr_write_q;
+  logic [11:0] host_hdv_csr_addr_q;
+  logic [63:0] host_hdv_csr_wdata_q;
+  logic [HdvNumSlots-2:0] hdv_dep_break_q;
 
-  assign soc_hdv_csr_valid = hdv_host_csr_valid_i ? hdv_host_csr_valid_i : hdv_csr_valid;
-  assign soc_hdv_csr_write = hdv_host_csr_valid_i ? hdv_host_csr_write_i : hdv_csr_write;
-  assign soc_hdv_csr_addr  = hdv_host_csr_valid_i ? hdv_host_csr_addr_i  : hdv_csr_addr;
-  assign soc_hdv_csr_wdata = hdv_host_csr_valid_i ? hdv_host_csr_wdata_i : hdv_csr_wdata;
-  assign hdv_host_csr_ready_o = hdv_host_csr_valid_i & hdv_csr_ready;
-  assign hdv_host_csr_rdata_o = hdv_csr_rdata;
-  assign hdv_host_csr_error_o = hdv_host_csr_valid_i & hdv_csr_error;
+  // Register the testbench/host CSR request before it enters the internal CSR
+  // mux.  This removes the top-level valid -> CSR decode -> response
+  // combinational path while preserving an ordinary valid/ready transaction.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_host_hdv_csr_request
+    if (!rst_ni) begin
+      host_hdv_csr_pending_q <= 1'b0;
+      host_hdv_csr_write_q   <= 1'b0;
+      host_hdv_csr_addr_q    <= '0;
+      host_hdv_csr_wdata_q   <= '0;
+    end else begin
+      if (host_hdv_csr_pending_q && soc_hdv_csr_ready) begin
+        host_hdv_csr_pending_q <= 1'b0;
+      end else if (!host_hdv_csr_pending_q && hdv_host_csr_valid_i) begin
+        host_hdv_csr_pending_q <= 1'b1;
+        host_hdv_csr_write_q   <= hdv_host_csr_write_i;
+        host_hdv_csr_addr_q    <= hdv_host_csr_addr_i;
+        host_hdv_csr_wdata_q   <= hdv_host_csr_wdata_i;
+      end
+    end
+  end
+
+  // dep_break is a task configuration, not a cycle-by-cycle control signal.
+  // Sample it only while HDV is idle so one task observes one stable policy.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_hdv_dep_break_config
+    if (!rst_ni) begin
+      hdv_dep_break_q <= '0;
+    end else if (!hdv_task_busy) begin
+      hdv_dep_break_q <= hdv_dep_break_i;
+    end
+  end
+
+  assign soc_hdv_csr_valid = host_hdv_csr_pending_q ? 1'b1 : hdv_csr_valid;
+  assign soc_hdv_csr_write = host_hdv_csr_pending_q ? host_hdv_csr_write_q : hdv_csr_write;
+  assign soc_hdv_csr_addr  = host_hdv_csr_pending_q ? host_hdv_csr_addr_q  : hdv_csr_addr;
+  assign soc_hdv_csr_wdata = host_hdv_csr_pending_q ? host_hdv_csr_wdata_q : hdv_csr_wdata;
+  // Qualify the shared response so the internal AXI-Lite requester cannot
+  // consume the host request's completion when both sources are active.
+  assign hdv_csr_ready = !host_hdv_csr_pending_q & soc_hdv_csr_ready;
+  assign hdv_csr_rdata = soc_hdv_csr_rdata;
+  assign hdv_csr_error = !host_hdv_csr_pending_q & soc_hdv_csr_error;
+  assign hdv_host_csr_ready_o = host_hdv_csr_pending_q & soc_hdv_csr_ready;
+  assign hdv_host_csr_rdata_o = soc_hdv_csr_rdata;
+  assign hdv_host_csr_error_o = host_hdv_csr_pending_q & soc_hdv_csr_error;
   assign hdv_task_busy_o      = hdv_task_busy;
   assign hdv_task_done_o      = hdv_task_done;
   assign hdv_task_error_o     = hdv_task_error;
@@ -578,8 +624,28 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .rst_ni    (rst_ni                      ),
     .slv_req_i (periph_wide_axi_req[CTRL]   ),
     .slv_resp_o(periph_wide_axi_resp[CTRL]  ),
-    .mst_req_o (periph_narrow_axi_req[CTRL] ),
-    .mst_resp_i(periph_narrow_axi_resp[CTRL])
+    .mst_req_o (ctrl_narrow_axi_req_uncut   ),
+    .mst_resp_i(ctrl_narrow_axi_resp_uncut  )
+  );
+
+  // The downsizer and AXI-to-AXI-Lite converter both contain non-trivial
+  // channel control.  Register every channel between them so their ready and
+  // valid logic cannot form one cross-module timing path.
+  axi_cut #(
+    .aw_chan_t (soc_narrow_aw_chan_t),
+    .w_chan_t  (soc_narrow_w_chan_t ),
+    .b_chan_t  (soc_narrow_b_chan_t ),
+    .ar_chan_t (soc_narrow_ar_chan_t),
+    .r_chan_t  (soc_narrow_r_chan_t ),
+    .axi_req_t (soc_narrow_req_t    ),
+    .axi_resp_t(soc_narrow_resp_t   )
+  ) i_ctrl_axi_cut (
+    .clk_i     (clk_i                           ),
+    .rst_ni    (rst_ni                          ),
+    .slv_req_i (ctrl_narrow_axi_req_uncut       ),
+    .slv_resp_o(ctrl_narrow_axi_resp_uncut      ),
+    .mst_req_o (periph_narrow_axi_req[CTRL]     ),
+    .mst_resp_i(periph_narrow_axi_resp[CTRL]    )
   );
 
   //////////////
@@ -695,9 +761,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .host_hdv_csr_write_i       (soc_hdv_csr_write          ),
     .host_hdv_csr_addr_i        (soc_hdv_csr_addr           ),
     .host_hdv_csr_wdata_i       (soc_hdv_csr_wdata          ),
-    .hdv_host_csr_ready_o       (hdv_csr_ready              ),
-    .hdv_host_csr_rdata_o       (hdv_csr_rdata              ),
-    .hdv_host_csr_error_o       (hdv_csr_error              ),
+    .hdv_host_csr_ready_o       (soc_hdv_csr_ready          ),
+    .hdv_host_csr_rdata_o       (soc_hdv_csr_rdata          ),
+    .hdv_host_csr_error_o       (soc_hdv_csr_error          ),
     .hdv_imem_req_valid_o       (/* Unconnected */          ),
     .imem_hdv_req_ready_i       (1'b0                       ),
     .hdv_imem_req_addr_o        (/* Unconnected */          ),
@@ -707,7 +773,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; import hdv_pkg::*; #(
     .ctrl_hdv_redirect_valid_i  (hdv_redirect_valid_i       ),
     .ctrl_hdv_redirect_pc_i     (hdv_redirect_pc_i          ),
     .ctrl_hdv_loop_lock_i       (hdv_loop_lock_i            ),
-    .ctrl_hdv_dep_break_i       (hdv_dep_break_i            ),
+    .ctrl_hdv_dep_break_i       (hdv_dep_break_q            ),
     .host_hdv_task_complete_i   (hdv_task_complete_i        ),
     .host_hdv_task_error_i      (hdv_task_error_i           ),
     .hdv_host_active_task_desc_o(hdv_active_task_desc_o     ),

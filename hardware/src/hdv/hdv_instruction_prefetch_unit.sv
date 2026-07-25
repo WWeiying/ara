@@ -1071,6 +1071,8 @@ module hdv_instruction_prefetch_unit #(
   int unsigned ipu_perf_packets_served;  // total packets taken by VLIWPU
   int unsigned ipu_perf_bypass_hits;     // sram_bypass_hit was the sole hit source
   int unsigned ipu_perf_demand_reads;    // demand_read_req asserted (cache miss)
+  int unsigned ipu_perf_task_ifetch_packets;
+  int unsigned ipu_perf_hint_instructions;
 
   // Critical-path metric: cycles the consumer (VLIWPU) is ready for a packet but
   // the IPU cannot present one (i.e. the IPU itself is the bottleneck), and how
@@ -1078,12 +1080,15 @@ module hdv_instruction_prefetch_unit #(
   int unsigned ipu_perf_ready_cyc;      // SERVE cycles with consumer ready
   int unsigned ipu_perf_ready_stall;    // ready but no valid packet from IPU
   int unsigned ipu_perf_stall_demand;   // ready-stall coincident with a demand SRAM read
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_ipu_perf
     if (!rst_ni) begin
       ipu_perf_serve_cycles  <= 0;
       ipu_perf_packets_served <= 0;
       ipu_perf_bypass_hits   <= 0;
       ipu_perf_demand_reads  <= 0;
+      ipu_perf_task_ifetch_packets <= 0;
+      ipu_perf_hint_instructions <= 0;
       ipu_perf_ready_cyc     <= 0;
       ipu_perf_ready_stall   <= 0;
       ipu_perf_stall_demand  <= 0;
@@ -1096,6 +1101,10 @@ module hdv_instruction_prefetch_unit #(
         ipu_perf_bypass_hits <= ipu_perf_bypass_hits + 1;
       if (demand_read_req)
         ipu_perf_demand_reads <= ipu_perf_demand_reads + 1;
+      if (accept_req)
+        ipu_perf_task_ifetch_packets <= ipu_perf_task_ifetch_packets + 1;
+      if (take_packet && served_header_is_lui_hint)
+        ipu_perf_hint_instructions <= ipu_perf_hint_instructions + 1;
       if ((state_q == SERVE) && vliwpu_ipu_packet_ready_i) begin
         ipu_perf_ready_cyc <= ipu_perf_ready_cyc + 1;
         if (!ipu_vliwpu_packet_valid_o) begin
@@ -1104,6 +1113,7 @@ module hdv_instruction_prefetch_unit #(
             ipu_perf_stall_demand <= ipu_perf_stall_demand + 1;
         end
       end
+
     end
   end
 
@@ -1116,6 +1126,13 @@ module hdv_instruction_prefetch_unit #(
              ipu_perf_ready_cyc, ipu_perf_ready_stall,
              ipu_perf_ready_cyc > 0 ? 100*ipu_perf_ready_stall/ipu_perf_ready_cyc : 0,
              ipu_perf_stall_demand);
+    $display("[IPU-PERF] task_ifetch_packets=%0d seamv_ifetch_bytes=%0d",
+             ipu_perf_task_ifetch_packets,
+             ipu_perf_task_ifetch_packets * PacketBytes);
+    $display("[IPU-PERF] hint_instruction_count=%0d hint_bytes=%0d tc_equiv_ifetch_bytes=%0d",
+             ipu_perf_hint_instructions,
+             ipu_perf_hint_instructions * 4,
+             ipu_perf_packets_served * PacketBytes - ipu_perf_hint_instructions * 4);
   end
 `endif
 

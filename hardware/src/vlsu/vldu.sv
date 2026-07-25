@@ -126,9 +126,17 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
   // We store a certain number of in-flight vector instructions
   localparam VInsnQueueDepth = VlduInsnQueueDepth;
+  localparam int unsigned VrfWordByteIdxWidth = $clog2(NrLanes * DataWidthB);
+  typedef logic [VrfWordByteIdxWidth-1:0] vrf_word_start_byte_t;
+  typedef logic [VrfWordByteIdxWidth:0] first_payload_byte_t;
 
   struct packed {
     pe_req_t [VInsnQueueDepth-1:0] vinsn;
+    // Precompute the vstart-dependent alignment metadata at accept time.  It
+    // then travels with the queue entry and does not sit behind the long
+    // issue-complete -> next-pointer selection path.
+    vrf_word_start_byte_t [VInsnQueueDepth-1:0] vrf_word_start_byte;
+    first_payload_byte_t  [VInsnQueueDepth-1:0] first_payload_byte;
 
     // Each instruction can be in one of the three execution phases.
     // - Being accepted (i.e., it is being stored for future execution in this
@@ -521,7 +529,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
   // - A pointer to which byte in the full VRF word we are writing data into.
   logic [idx_width(DataWidth*NrLanes/8):0] vrf_word_byte_pnt_d, vrf_word_byte_pnt_q;
   // - A pointer that indicates the start byte in the vrf word.
-  logic [$clog2(8*NrLanes)-1:0] vrf_word_start_byte;
+  vrf_word_start_byte_t vrf_word_start_byte;
 
   // A counter that follows the vrf_word_byte_pnt pointer, but without the vstart information
   // We can compare this counter witht the issue_cnt_bytes counter to find the last byte in
@@ -530,12 +538,18 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
 
   // When vstart > 0, the very first payload written to the VRF contains less than
   // (8 * NrLanes) bytes.
-  logic [$clog2(8*NrLanes):0] first_payload_byte_d, first_payload_byte_q;
-  logic [$clog2(8*NrLanes):0] vrf_eff_write_bytes;
+  first_payload_byte_t issue_first_payload_byte;
+  first_payload_byte_t commit_first_payload_byte;
+  first_payload_byte_t vrf_eff_write_bytes;
   // Same thing, but for the commit (resqueue -> VRF)
   // Track if this VRF write is the first one for this instruction
   logic first_result_queue_read_d, first_result_queue_read_q;
-  logic [$clog2(8*NrLanes):0] res_queue_eff_write_bytes;
+  first_payload_byte_t res_queue_eff_write_bytes;
+
+  assign issue_first_payload_byte =
+      vinsn_queue_q.first_payload_byte[vinsn_queue_q.issue_pnt];
+  assign commit_first_payload_byte =
+      vinsn_queue_q.first_payload_byte[vinsn_queue_q.commit_pnt];
 
   // Signal that the current burst is having an exception
   logic ldu_current_burst_exception_d;
@@ -589,7 +603,6 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     result_final_gnt_d       = result_final_gnt_q;
 
     seq_word_wr_offset_d = seq_word_wr_offset_q;
-    first_payload_byte_d = first_payload_byte_q;
     vrf_word_byte_cnt_d  = vrf_word_byte_cnt_q;
 
     axi_addrgen_req_d       = axi_addrgen_req_q;
@@ -764,7 +777,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
           vrf_eff_write_bytes = (NrLanes * DataWidthB);
         end else begin
           // First payload of the vector instruction
-          vrf_eff_write_bytes = first_payload_byte_q;
+          vrf_eff_write_bytes = issue_first_payload_byte;
         end
 
         if (issue_cnt_bytes_q < vrf_eff_write_bytes) begin : issue_cnt_bytes_overflow
@@ -812,12 +825,11 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
                                 - vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart
                               ) << unsigned'(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype.vsew);
           // Prepare the VRF start pointer
-          vrf_word_start_byte  = vinsn_issue_d.vstart[$clog2(8*NrLanes)-1:0] << vinsn_issue_d.vtype.vsew;
+          vrf_word_start_byte  =
+              vinsn_queue_q.vrf_word_start_byte[vinsn_queue_d.issue_pnt];
           vrf_word_byte_pnt_d  = {1'b0, vrf_word_start_byte[$clog2(8*NrLanes)-1:0]};
           vrf_word_byte_cnt_d  = '0;
           seq_word_wr_offset_d = '0;
-          // The first payload byte width for this vload
-          first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
         end : issue_cnt_bytes_update
       end : vrf_results_finish
 
@@ -893,7 +905,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
         if (seq_word_wr_offset_q) begin
           vrf_eff_write_bytes = (NrLanes * DataWidthB);
         end else begin
-          vrf_eff_write_bytes = first_payload_byte_q;
+          vrf_eff_write_bytes = issue_first_payload_byte;
         end
 
         if (issue_cnt_bytes_q < vrf_eff_write_bytes) begin : prefetch_issue_cnt_bytes_overflow
@@ -962,11 +974,11 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
                                 vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl
                                 - vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart
                               ) << unsigned'(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype.vsew);
-          vrf_word_start_byte  = vinsn_issue_d.vstart[$clog2(8*NrLanes)-1:0] << vinsn_issue_d.vtype.vsew;
+          vrf_word_start_byte  =
+              vinsn_queue_q.vrf_word_start_byte[vinsn_queue_d.issue_pnt];
           vrf_word_byte_pnt_d  = {1'b0, vrf_word_start_byte[$clog2(8*NrLanes)-1:0]};
           vrf_word_byte_cnt_d  = '0;
           seq_word_wr_offset_d = '0;
-          first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
         end : prefetch_issue_cnt_bytes_update
       end : prefetch_vrf_results_finish
 
@@ -999,7 +1011,7 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     // How many result bytes can possibly be committed this cycle?
     // If vstart > 0, the first payload can contain less than (NrLanes * DataWidthB) Bytes
     if (first_result_queue_read_q) begin
-      res_queue_eff_write_bytes = first_payload_byte_q;
+      res_queue_eff_write_bytes = commit_first_payload_byte;
     end
     else begin
       res_queue_eff_write_bytes = (NrLanes * DataWidthB);
@@ -1146,6 +1158,11 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     if (pe_req_valid_i && pe_req_ready_o && !vinsn_running_q[pe_req_i.id] &&
       pe_req_i.vfu == VFU_LoadUnit) begin : accept_new_instr
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
+      vinsn_queue_d.vrf_word_start_byte[vinsn_queue_q.accept_pnt] =
+          pe_req_i.vstart[VrfWordByteIdxWidth-1:0] << unsigned'(pe_req_i.vtype.vsew);
+      vinsn_queue_d.first_payload_byte[vinsn_queue_q.accept_pnt] =
+          (NrLanes * DataWidthB) -
+          (pe_req_i.vstart[VrfWordByteIdxWidth-1:0] << unsigned'(pe_req_i.vtype.vsew));
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
 
       // Initialize counters
@@ -1159,12 +1176,11 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
 
       // New instruction with new vstart. Initialize the vrf byte ptr
       if (vinsn_queue_d.issue_cnt == '0) begin
-        vrf_word_start_byte  = pe_req_i.vstart[$clog2(8*NrLanes)-1:0] << pe_req_i.vtype.vsew;
+        vrf_word_start_byte  =
+            vinsn_queue_d.vrf_word_start_byte[vinsn_queue_q.accept_pnt];
         vrf_word_byte_pnt_d  = {1'b0, vrf_word_start_byte[$clog2(8*NrLanes)-1:0]};
         vrf_word_byte_cnt_d  = '0;
         seq_word_wr_offset_d = '0;
-        // The first payload byte width for this vload
-        first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
       end
 
       // Bump pointers and counters of the vector instruction queue
@@ -1247,7 +1263,6 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       pe_resp_o                     <= '0;
       result_final_gnt_q            <= '0;
       seq_word_wr_offset_q          <= '0;
-      first_payload_byte_q          <= '0;
       vrf_word_byte_cnt_q           <= '0;
       lsu_ex_flush_q                <= 1'b0;
       ldu_current_burst_exception_o <= 1'b0;
@@ -1267,7 +1282,6 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       pe_resp_o                     <= pe_resp_d;
       result_final_gnt_q            <= result_final_gnt_d;
       seq_word_wr_offset_q          <= seq_word_wr_offset_d;
-      first_payload_byte_q          <= first_payload_byte_d;
       vrf_word_byte_cnt_q           <= vrf_word_byte_cnt_d;
       lsu_ex_flush_q                <= lsu_ex_flush_i;
       ldu_current_burst_exception_o <= ldu_current_burst_exception_d;

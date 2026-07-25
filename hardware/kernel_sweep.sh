@@ -177,13 +177,13 @@ KERNEL_H_HEU_FE="heu_valid_cyc,heu_ready_block_cyc,heu_block_buffer_cyc,heu_bloc
 KERNEL_H_HEU_OVLP="early_issue_attempts,early_issue_grants,early_issue_blocked_by_dispatch,early_issue_blocked_by_queue,early_issue_blocked_by_branch,early_issue_blocked_by_scalar_mem,early_issue_blocked_by_dependency,early_issue_blocked_by_gpr_dependency,early_issue_blocked_by_fpr_dependency,early_issue_blocked_by_vector_dependency,cross_ep_inflight_cycles,overlap_cycles"
 KERNEL_H_VDU_CMD="vector_cmd_valid_cycles,vector_cmd_fire_count,vector_cmd_blocked_cycles,cmd_window_avg_occ,cmd_window_sum_occ,cmd_window_sample_cycles,cmd_window_max_occ,cmd_window_full_cycles,cmd_window_empty_cycles,vq_avg_occ,vq_empty_cycles,vq_full_cycles,resp_meta_sum_occ,resp_meta_sample_cycles"
 KERNEL_H_VDU_OPERAND="scalar_operand_capture_count,scalar_operand_bypass_hit,scalar_operand_wait_cycles,vset_visible_wait_cycles,scalar_operand_bypass,scalar_operand_lookahead_req,scalar_operand_lookahead_hit,scalar_operand_port_busy,vector_ep_enqueue,vector_ep_pending_enqueue,vector_ep_ready_block"
-KERNEL_H_IPU="ipu_ready_cyc,ipu_ready_stall,ipu_sram_stall,ipu_serve_cyc,packets,bypass_hits,demand_reads,avg_cyc_per_pkt"
+KERNEL_H_IPU="ipu_ready_cyc,ipu_ready_stall,ipu_sram_stall,ipu_serve_cyc,packets,bypass_hits,demand_reads,avg_cyc_per_pkt,task_ifetch_packets,seamv_ifetch_bytes,hint_instruction_count,hint_bytes,tc_equiv_ifetch_bytes"
 KERNEL_H_AG="demand_ar,pf_ar,pf_hit,loads,pf_en_cyc,demand_aw,demand_B,pf_B"
 KERNEL_H_AGPF="pf_ar_rob_full,pf_ar_lkup_full,pf_ar_pending,pf_ar_dis,pf_2nd,dem_rob_block,pf_disabled,pf_page_cross,pf_queue_full,pf_avl_low"
 KERNEL_H_AGPF2="pf_throttled_cycles,pf_late,pf_unused,pf_wait_match_cyc,pf_wait_match_evt,pf_queue_valid_cyc,pf_queue_block_cyc,pf_lkup_full_cyc,pf_rob_full_cyc,pf_pending_cyc,pf_stream_break,pf_future_keep,pf_queue_match_cyc,pf_rob_match_cyc,pf_page_wait_cyc"
 KERNEL_H_SEQ="seq_issue,seq_blocked_cycles,seq_raw_cycles,seq_war_cycles,seq_waw_cycles,seq_waw_block,seq_ep_bypass,seq_full"
 KERNEL_H_SEQHDV="hazard_check_count,same_ep_hazard_candidate,hazard_pruned_by_ep,seq_true_hazard_stall,seq_false_hazard_stall,seq_queue_full_stall,seq_lane_desync_stall,seq_operand_req_stall,seq_wait_state_cyc,seq_mem_wait_cyc"
-KERNEL_H_DERIV="pf_hit_rate"
+KERNEL_H_DERIV="pf_hit_rate,seamv_tc_ifetch_ratio"
 KERNEL_ROWHDR="$KERNEL_H_ID,$KERNEL_H_HDV,$KERNEL_H_HEU_EP,$KERNEL_H_HEU_FE,$KERNEL_H_HEU_OVLP,$KERNEL_H_VDU_CMD,$KERNEL_H_VDU_OPERAND,$KERNEL_H_IPU,$KERNEL_H_AG,$KERNEL_H_AGPF,$KERNEL_H_AGPF2,$KERNEL_H_SEQ,$KERNEL_H_SEQHDV,$KERNEL_H_DERIV"
 
 write_kernel_csv_row() {
@@ -252,11 +252,16 @@ write_kernel_csv_row() {
   vep_b=$(kv 'PERF-VDU-OPERAND' 'vector_ep_ready_block')
   vsetw=$(kv 'PERF-VDU-OPERAND' 'vset_visible_wait_cycles')
 
-  local irc irs isr isc pk byh dmr acp
+  local irc irs isr isc pk byh dmr acp tip sib hic hib tib
   irc=$(kv 'IPU-PERF' 'ready_cyc'); irs=$(kv 'IPU-PERF' 'ready_stall')
   isr=$(kv 'IPU-PERF' 'stall_due_to_sram'); isc=$(kv 'IPU-PERF' 'serve_cycles')
   pk=$(kv 'IPU-PERF' 'packets'); byh=$(kv 'IPU-PERF' 'bypass_hits')
   dmr=$(kv 'IPU-PERF' 'demand_reads'); acp=$(kv 'IPU-PERF' 'avg_cycles_per_pkt')
+  tip=$(kv 'IPU-PERF' 'task_ifetch_packets')
+  sib=$(kv 'IPU-PERF' 'seamv_ifetch_bytes')
+  hic=$(kv 'IPU-PERF' 'hint_instruction_count')
+  hib=$(kv 'IPU-PERF' 'hint_bytes')
+  tib=$(kv 'IPU-PERF' 'tc_equiv_ifetch_bytes')
 
   local dar pfa pfh lds pfen daw dB pfB
   dar=$(kv 'PERF-ADDRGEN\]' 'demand_ar'); pfa=$(kv 'PERF-ADDRGEN\]' 'pf_ar')
@@ -293,9 +298,12 @@ write_kernel_csv_row() {
   slds=$(kv 'PERF-SEQ-HDV' 'lane_desync_stall'); sors=$(kv 'PERF-SEQ-HDV' 'operand_req_stall')
   swsc=$(kv 'PERF-SEQ-HDV' 'wait_state_cyc'); smwc=$(kv 'PERF-SEQ-HDV' 'mem_wait_cyc')
 
-  local pfhr=""
+  local pfhr="" stir=""
   if [ -n "$pfa" ] && [ "$pfa" -gt 0 ] 2>/dev/null; then
     pfhr=$(echo "scale=3; ${pfh:-0}/$pfa" | bc)
+  fi
+  if [ -n "$tib" ] && [ "$tib" -gt 0 ] 2>/dev/null; then
+    stir=$(echo "scale=6; ${sib:-0}/$tib" | bc)
   fi
   local depblk="" sbph="" cmdavg="" vqavg=""
   if [ -n "$hegd" ] || [ -n "$hefd" ] || [ -n "$hevd" ]; then
@@ -316,12 +324,12 @@ write_kernel_csv_row() {
   row="$row,${hea:-},${heg:-},${hebd:-},${hebq:-},${hebb:-},${hebm:-},${depblk:-},${hegd:-},${hefd:-},${hevd:-},${hcross:-},${hover:-}"
   row="$row,${vcv:-},${vcf:-},${vcb:-},${cmdavg:-},${vcso:-},${vcsc:-},${vqmax:-},${vcfc:-},${vcec:-},${vqavg:-},${vcec:-},${vcfc:-},${vrso:-},${vrsc:-}"
   row="$row,${soc:-},${sbph:-},${owc:-},${vsetw:-},${sob:-},${solr:-},${solh:-},${sopb:-},${vep:-},${vep_p:-},${vep_b:-}"
-  row="$row,${irc:-},${irs:-},${isr:-},${isc:-},${pk:-},${byh:-},${dmr:-},${acp:-}"
+  row="$row,${irc:-},${irs:-},${isr:-},${isc:-},${pk:-},${byh:-},${dmr:-},${acp:-},${tip:-},${sib:-},${hic:-},${hib:-},${tib:-}"
   row="$row,${dar:-},${pfa:-},${pfh:-},${lds:-},${pfen:-},${daw:-},${dB:-},${pfB:-}"
   row="$row,${parf:-},${palf:-},${pap:-},${pad:-},${p2nd:-},${drb:-},${pdis:-},${ppc:-},${pqf:-},${pal:-}"
   row="$row,${pth:-},${plt:-},${pun:-},${pwm:-},${pwe:-},${pqvc:-},${pqbc:-},${plfc:-},${prfc:-},${ppc2:-},${psb:-},${pfk:-},${pqmc:-},${prmc:-},${ppwc:-}"
   row="$row,${sissue:-},${sblk:-},${sraw:-},${swar:-},${swaw:-},${swawb:-},${sepb:-},${sfull:-}"
-  row="$row,${shc:-},${ssec:-},${shpr:-},${sth:-},${sfh:-},${sqfs:-},${slds:-},${sors:-},${swsc:-},${smwc:-},$pfhr"
+  row="$row,${shc:-},${ssec:-},${shpr:-},${sth:-},${sfh:-},${sqfs:-},${slds:-},${sors:-},${swsc:-},${smwc:-},$pfhr,$stir"
 
   echo "$row" >> "$csv"
 }

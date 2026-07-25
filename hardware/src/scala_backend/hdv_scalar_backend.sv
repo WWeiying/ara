@@ -104,7 +104,9 @@ module hdv_scalar_backend
     LSU_W     = 4'd7,
     LSU_B     = 4'd8,
     DONE      = 4'd9,
-    REDIRECT  = 4'd10
+    REDIRECT  = 4'd10,
+    COMPLEX_ISSUE = 4'd11,
+    COMPLEX_EXEC  = 4'd12
   } state_e;
 
   localparam type branchpredict_sbe_t = struct packed {
@@ -222,6 +224,13 @@ module hdv_scalar_backend
   logic        curr_is_32b;
   addr_t       curr_pc;
   logic [15:0] curr_cinsn;
+  logic [4:0]  serial_slot_idx;
+  logic        serial_slot_found;
+  logic [31:0] serial_insn;
+  logic        serial_is_32b;
+  logic [31:0] serial_dec_instr;
+  logic        serial_illegal_compressed;
+  logic [31:0] serial_decoder_instr;
 
   logic [31:0] cva6_dec_instr;
   logic        cva6_illegal_compressed;
@@ -250,10 +259,69 @@ module hdv_scalar_backend
   bp_resolve_t             cva6_resolved_branch;
   logic                    cva6_resolve_branch;
   exception_t              cva6_branch_exception;
+  logic                    fast_branch_valid;
+  logic                    fast_branch_taken;
+  addr_t                   fast_branch_target;
+  logic                    fast_task_exit;
+
+  // Non-simple scalar instructions cross a registered issue boundary before
+  // entering the execution units.  Besides shortening the execution path,
+  // keeping the decoded metadata here makes completion independent of the
+  // live priority encoder while the instruction is in flight.
+  logic              issue_valid_d, issue_valid_q;
+  logic [4:0]        issue_slot_idx_d, issue_slot_idx_q;
+  logic [31:0]       issue_insn_d, issue_insn_q;
+  logic              issue_is_32b_d, issue_is_32b_q;
+  addr_t             issue_pc_d, issue_pc_q;
+  logic [31:0]       issue_decoder_instr_d, issue_decoder_instr_q;
+  scoreboard_entry_t issue_decoded_d, issue_decoded_q;
+  fu_data_t          issue_fu_data_d, issue_fu_data_q;
+  logic              issue_mult_ready_d, issue_mult_ready_q;
+
+  logic              exec_slot_found;
+  addr_t             exec_pc;
+  logic [31:0]       exec_decoder_instr;
+  scoreboard_entry_t exec_decoded;
+  fu_data_t          exec_fu_data;
+  fu_data_t          issue_operand_fu_data;
+  logic [XLEN-1:0]   issue_operand_a;
+  logic [XLEN-1:0]   issue_operand_b;
+  logic [XLEN-1:0]   issue_operand_c;
+  logic              scalar_mult_issue;
+  logic              cva6_mult_issue;
+  logic              local_mul_issue;
+  logic              local_mul_valid;
+  logic [XLEN-1:0]   local_mul_result;
+  logic              scalar_mult_valid;
+  logic [XLEN-1:0]   scalar_mult_result;
+
+  // The stock CVA6 multiplier performs a full XLEN x XLEN multiply between
+  // issue_fu_data_q and its result register.  Split ordinary integer
+  // multiplication into smaller partial products and a registered adder tree.
+  // The active RVB=0 configuration instantiates only the serial divider for
+  // non-local MULT operations.  An RVB build retains the CVA6 unit for CLMUL.
+  localparam int unsigned MulHalfW = XLEN / 2;
+  localparam int unsigned MulCrossW = XLEN + 2;
+  localparam int unsigned MulAccumW = 2 * XLEN + 2;
+  logic                    local_mul_s1_valid_q;
+  logic                    local_mul_s2_valid_q;
+  fu_op                    local_mul_s1_op_q;
+  fu_op                    local_mul_s2_op_q;
+  logic [XLEN-1:0]         local_mul_ll_d, local_mul_ll_q;
+  logic signed [MulCrossW-1:0]
+                           local_mul_hl_d, local_mul_hl_q;
+  logic signed [MulCrossW-1:0]
+                           local_mul_lh_d, local_mul_lh_q;
+  logic signed [MulCrossW-1:0]
+                           local_mul_hh_d, local_mul_hh_q;
+  logic signed [MulAccumW-1:0]
+                           local_mul_pair_lo_d, local_mul_pair_lo_q;
+  logic signed [MulAccumW-1:0]
+                           local_mul_pair_hi_d, local_mul_pair_hi_q;
+  logic signed [MulAccumW-1:0] local_mul_product;
 
   logic [4:0]  rs1_addr;
   logic [4:0]  rs2_addr;
-  logic [4:0]  rd_addr;
   logic [XLEN-1:0] rs1_data;
   logic [XLEN-1:0] rs2_data;
   logic [XLEN-1:0] rs3_data;
@@ -286,6 +354,13 @@ module hdv_scalar_backend
   logic [XLEN-1:0] lsu_load_data;
   logic lsu_resp_error;
   logic lsu_is_fp;
+  logic live_lsu_misaligned;
+  logic issue_lsu_misaligned;
+  logic serial_lsu_supported;
+  logic serial_lsu_encoding_valid;
+  logic serial_load_base_raw;
+  logic [4:0] serial_lsu_rd;
+  logic [4:0] serial_lsu_rs2;
   logic fpu_issue;
   logic fpu_writes_fpr;
   logic fpu_writes_xrf;
@@ -309,13 +384,16 @@ module hdv_scalar_backend
   } simple_alu_dec_t;
 
   logic [NumSlots-1:0]       simple_batch_mask;
+  logic [NumSlots-1:0]       simple_class_valid;
   logic [NumSlots-1:0]       simple_batch_wb_en;
   logic [NumSlots-1:0][4:0]  simple_batch_rd;
   logic [NumSlots-1:0][XLEN-1:0] simple_batch_result;
+  logic [NumSlots-1:0][XLEN-1:0] simple_lane_result;
   logic                      simple_batch_valid;
   logic [31:0]               simple_batch_write_mask;
   logic [31:0]               curr_int_read_mask;
   logic                      complex_simple_raw_stall;
+  logic                      complex_prefix_ready;
 
   // ── Pipelined (non-blocking) scalar load queue ─────────────────────────────
   // The original LSU blocks one load per EP (IDLE->EXECUTE->LSU_AR->LSU_R), so a
@@ -338,6 +416,18 @@ module hdv_scalar_backend
   localparam logic [LdQPtrW:0]       LdQDepthC = LdQDepth;
   logic                             ldq_full, ldq_empty;
   logic                             ld_ar_valid, ld_ar_fire, ld_r_fire;
+  logic                             ld_req_enter, ld_req_capture;
+  logic                             ld_req_valid_d, ld_req_valid_q;
+  addr_t                            ld_req_addr_d, ld_req_addr_q;
+  logic [1:0]                       ld_req_size_d, ld_req_size_q;
+  logic [4:0]                       ld_req_rd_d, ld_req_rd_q;
+  logic                             ld_req_is_fpr_d, ld_req_is_fpr_q;
+  logic [ByteOffW-1:0]              ld_req_off_d, ld_req_off_q;
+  logic [2:0]                       ld_req_ext_d, ld_req_ext_q;
+  addr_t                            live_lsu_addr;
+  logic [1:0]                       live_lsu_size;
+  logic [2:0]                       live_lsu_ext;
+  logic                             live_lsu_is_fpr;
   logic                             curr_is_load;
   logic [2:0]                        curr_ld_ext;
   logic [XLEN-1:0]                   ldq_pop_data;
@@ -358,6 +448,20 @@ module hdv_scalar_backend
       3'd6: ld_extend = {{(XLEN-32){1'b1}},    raw[31:0]};
       default: ld_extend = raw[XLEN-1:0];
     endcase
+  endfunction
+
+  function automatic logic addr_is_misaligned(input addr_t addr,
+                                               input logic [1:0] size);
+    unique case (size)
+      2'b11: addr_is_misaligned = |addr[2:0];
+      2'b10: addr_is_misaligned = |addr[1:0];
+      2'b01: addr_is_misaligned = addr[0];
+      default: addr_is_misaligned = 1'b0;
+    endcase
+  endfunction
+
+  function automatic logic is_local_mul_op(input fu_op operation);
+    is_local_mul_op = operation inside {MUL, MULH, MULHU, MULHSU, MULW};
   endfunction
 
   function automatic logic [XLEN-1:0] sext32(input logic [31:0] value);
@@ -534,6 +638,80 @@ module hdv_scalar_backend
     return dec;
   endfunction
 
+  // Keep the simple-lane classifier independent of the 64-bit result datapath.
+  // The complex decoder can then select the first intrinsically non-simple slot
+  // without waiting for the simple batch's prefix hazard scan to finish.
+  function automatic logic simple_alu_encoding_valid(input logic        is_32b,
+                                                      input logic [31:0] insn);
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    automatic logic [6:0] funct7;
+    begin
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      funct7 = insn[31:25];
+      simple_alu_encoding_valid = 1'b0;
+
+      if (is_32b) begin
+        unique case (opcode)
+          7'b0110111, // LUI
+          7'b0010111: // AUIPC
+            simple_alu_encoding_valid = 1'b1;
+
+          7'b0010011: begin // OP-IMM
+            unique case (funct3)
+              3'b000, 3'b010, 3'b011, 3'b100, 3'b110, 3'b111:
+                simple_alu_encoding_valid = 1'b1;
+              3'b001:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000);
+              3'b101:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000) ||
+                                            (funct7 == 7'b0100000);
+              default: ;
+            endcase
+          end
+
+          7'b0011011: begin // OP-IMM-32
+            unique case (funct3)
+              3'b000:
+                simple_alu_encoding_valid = 1'b1;
+              3'b001:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000);
+              3'b101:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000) ||
+                                            (funct7 == 7'b0100000);
+              default: ;
+            endcase
+          end
+
+          7'b0110011: begin // OP
+            unique case (funct3)
+              3'b000, 3'b101:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000) ||
+                                            (funct7 == 7'b0100000);
+              3'b001, 3'b010, 3'b011, 3'b100, 3'b110, 3'b111:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000);
+              default: ;
+            endcase
+          end
+
+          7'b0111011: begin // OP-32
+            unique case (funct3)
+              3'b000, 3'b101:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000) ||
+                                            (funct7 == 7'b0100000);
+              3'b001:
+                simple_alu_encoding_valid = (funct7 == 7'b0000000);
+              default: ;
+            endcase
+          end
+
+          default: ;
+        endcase
+      end
+    end
+  endfunction
+
   function automatic logic [31:0] simple_alu_read_mask(input logic        is_32b,
                                                        input logic [31:0] insn);
     automatic logic [31:0] mask;
@@ -606,13 +784,44 @@ module hdv_scalar_backend
     end
   endfunction
 
-  always_comb begin : p_find_slot
+  always_comb begin : p_simple_predecode
+    automatic simple_alu_dec_t dec;
+    automatic logic [XLEN-1:0] lane_rs1;
+    automatic logic [XLEN-1:0] lane_rs2;
+
+    simple_class_valid = '0;
+    simple_lane_result = '0;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      simple_class_valid[i] = simple_alu_encoding_valid(insn_is_32b_q[i], insn_q[i]);
+      lane_rs1 = (insn_q[i][19:15] == 5'd0) ? '0 : xrf_q[insn_q[i][19:15]];
+      lane_rs2 = (insn_q[i][24:20] == 5'd0) ? '0 : xrf_q[insn_q[i][24:20]];
+      dec = decode_simple_alu(insn_is_32b_q[i], insn_q[i], insn_pc_q[i], lane_rs1, lane_rs2);
+      simple_lane_result[i] = dec.result;
+    end
+  end
+
+  // Select the first intrinsically non-simple instruction independently from
+  // the simple batch result and prefix-hazard chain.  complex_prefix_ready below
+  // prevents it from being captured until every older valid simple slot was
+  // actually consumed, preserving the original in-order semantics.
+  always_comb begin : p_find_execute_slot
     curr_slot_found = 1'b0;
     curr_slot_idx   = '0;
     for (int unsigned i = 0; i < NumSlots; i++) begin
-      if (insn_valid_q[i] && !simple_batch_mask[i] && !curr_slot_found) begin
+      if (insn_valid_q[i] && !simple_class_valid[i] && !curr_slot_found) begin
         curr_slot_found = 1'b1;
         curr_slot_idx   = 5'(i);
+      end
+    end
+  end
+
+  always_comb begin : p_find_serial_slot
+    serial_slot_found = 1'b0;
+    serial_slot_idx   = '0;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (insn_valid_q[i] && !serial_slot_found) begin
+        serial_slot_found = 1'b1;
+        serial_slot_idx   = 5'(i);
       end
     end
   end
@@ -621,6 +830,43 @@ module hdv_scalar_backend
   assign curr_is_32b = insn_is_32b_q[curr_slot_idx];
   assign curr_pc     = insn_pc_q[curr_slot_idx];
   assign curr_cinsn  = curr_insn[15:0];
+  assign serial_insn   = insn_q[serial_slot_idx];
+  assign serial_is_32b = insn_is_32b_q[serial_slot_idx];
+
+  // Conditional branches dominate the scalar complex-instruction traffic in
+  // HDV loops.  Decode them directly from the registered packet so they retain
+  // the original one-cycle execution behavior.  Less common complex classes
+  // still use the registered CVA6 decode stage below to break the long generic
+  // decode/execute path.
+  always_comb begin : p_fast_branch
+    automatic logic [XLEN-1:0] lhs;
+    automatic logic [XLEN-1:0] rhs;
+    automatic logic [XLEN-1:0] branch_imm;
+
+    lhs = (curr_insn[19:15] == 5'd0) ? '0 : xrf_q[curr_insn[19:15]];
+    rhs = (curr_insn[24:20] == 5'd0) ? '0 : xrf_q[curr_insn[24:20]];
+    branch_imm = {{(XLEN-13){curr_insn[31]}}, curr_insn[31], curr_insn[7],
+                  curr_insn[30:25], curr_insn[11:8], 1'b0};
+
+    fast_branch_valid = curr_slot_found && curr_is_32b &&
+                        (curr_insn[6:0] == 7'b1100011);
+    fast_branch_taken = 1'b0;
+    unique case (curr_insn[14:12])
+      3'b000: fast_branch_taken = (lhs == rhs);                    // BEQ
+      3'b001: fast_branch_taken = (lhs != rhs);                    // BNE
+      3'b100: fast_branch_taken = ($signed(lhs) < $signed(rhs));   // BLT
+      3'b101: fast_branch_taken = ($signed(lhs) >= $signed(rhs));  // BGE
+      3'b110: fast_branch_taken = (lhs < rhs);                     // BLTU
+      3'b111: fast_branch_taken = (lhs >= rhs);                    // BGEU
+      default: fast_branch_valid = 1'b0;
+    endcase
+
+    fast_branch_target = fast_branch_taken ? addr_t'(curr_pc + branch_imm) :
+                                             addr_t'(curr_pc + XLEN'(4));
+    fast_task_exit = curr_slot_found && curr_is_32b &&
+                     ((TreatRetAsTaskExit && (curr_insn == 32'h00008067)) ||
+                      (TreatEbreakAsTaskExit && (curr_insn == 32'h00100073)));
+  end
 
   always_comb begin : p_simple_batch
     automatic int unsigned issued;
@@ -629,11 +875,10 @@ module hdv_scalar_backend
     automatic logic [31:0] prior_write_mask;
     automatic logic [31:0] read_mask;
     automatic logic [31:0] write_mask;
-    automatic simple_alu_dec_t dec;
-    automatic logic [XLEN-1:0] lane_rs1;
-    automatic logic [XLEN-1:0] lane_rs2;
     automatic logic lane_vset_raw_stall;
     automatic logic lane_order_hazard;
+    automatic logic lane_wb_en;
+    automatic logic [4:0] lane_rd;
 
     simple_batch_mask   = '0;
     simple_batch_wb_en  = '0;
@@ -646,45 +891,55 @@ module hdv_scalar_backend
     prior_write_mask     = '0;
 
     for (int unsigned i = 0; i < NumSlots; i++) begin
-      lane_rs1 = (insn_q[i][19:15] == 5'd0) ? '0 : xrf_q[insn_q[i][19:15]];
-      lane_rs2 = (insn_q[i][24:20] == 5'd0) ? '0 : xrf_q[insn_q[i][24:20]];
-      dec = decode_simple_alu(insn_is_32b_q[i], insn_q[i], insn_pc_q[i], lane_rs1, lane_rs2);
+      lane_rd = insn_q[i][11:7];
+      lane_wb_en = simple_class_valid[i] && (lane_rd != 5'd0);
       read_mask = simple_alu_read_mask(insn_is_32b_q[i], insn_q[i]);
       write_mask = scalar_write_mask_conservative(insn_is_32b_q[i], insn_q[i]);
       lane_vset_raw_stall = vec_vset_inflight_i && (vec_vset_inflight_rd_i != 5'd0) &&
                              ((insn_q[i][19:15] == vec_vset_inflight_rd_i) ||
                               (insn_q[i][24:20] == vec_vset_inflight_rd_i));
       lane_order_hazard = ((read_mask & prior_write_mask) != 32'b0) ||
-                          (dec.wb_en && prior_write_mask[dec.rd]);
+                          (lane_wb_en && prior_write_mask[lane_rd]);
 
       if (insn_valid_q[i] && !stop_scan) begin
-        if ((issued < EffectiveSimpleAluIssueWidth) && dec.valid && !lane_vset_raw_stall &&
+        if ((issued < EffectiveSimpleAluIssueWidth) && simple_class_valid[i] &&
+            !lane_vset_raw_stall &&
             !lane_order_hazard &&
-            (!dec.wb_en || !used_rd[dec.rd])) begin
+            (!lane_wb_en || !used_rd[lane_rd])) begin
           simple_batch_mask[i]   = 1'b1;
-          simple_batch_wb_en[i]  = dec.wb_en;
-          simple_batch_rd[i]     = dec.rd;
-          simple_batch_result[i] = dec.result;
-          if (dec.wb_en) begin
-            used_rd[dec.rd] = 1'b1;
-            simple_batch_write_mask[dec.rd] = 1'b1;
+          simple_batch_wb_en[i]  = lane_wb_en;
+          simple_batch_rd[i]     = lane_rd;
+          simple_batch_result[i] = simple_lane_result[i];
+          if (lane_wb_en) begin
+            used_rd[lane_rd] = 1'b1;
+            simple_batch_write_mask[lane_rd] = 1'b1;
           end
           issued++;
         end else if ((issued >= EffectiveSimpleAluIssueWidth) ||
-                     (dec.valid && lane_vset_raw_stall) ||
-                     (dec.valid && lane_order_hazard) ||
-                     (dec.valid && dec.wb_en && used_rd[dec.rd])) begin
+                     (simple_class_valid[i] && lane_vset_raw_stall) ||
+                     (simple_class_valid[i] && lane_order_hazard) ||
+                     (lane_wb_en && used_rd[lane_rd])) begin
           stop_scan = 1'b1;
         end
 
         prior_write_mask |= write_mask;
-        if (!dec.valid && scalar_order_barrier(insn_is_32b_q[i], insn_q[i])) begin
+        if (!simple_class_valid[i] &&
+            scalar_order_barrier(insn_is_32b_q[i], insn_q[i])) begin
           stop_scan = 1'b1;
         end
       end
     end
 
     simple_batch_valid = |simple_batch_mask;
+  end
+
+  always_comb begin : p_complex_prefix_ready
+    complex_prefix_ready = curr_slot_found;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if ((i < curr_slot_idx) && insn_valid_q[i] && !simple_batch_mask[i]) begin
+        complex_prefix_ready = 1'b0;
+      end
+    end
   end
 
   always_comb begin : p_complex_read_hazard
@@ -715,7 +970,19 @@ module hdv_scalar_backend
     .is_zcmt_instr_o  (cva6_is_zcmt_instr)
   );
 
+  compressed_decoder #(
+    .CVA6Cfg(CVA6Cfg)
+  ) i_serial_compressed_decoder (
+    .instr_i          (serial_insn),
+    .instr_o          (serial_dec_instr),
+    .illegal_instr_o  (serial_illegal_compressed),
+    .is_macro_instr_o (),
+    .is_compressed_o  (),
+    .is_zcmt_instr_o  ()
+  );
+
   assign cva6_decoder_instr = curr_is_32b ? curr_insn : cva6_dec_instr;
+  assign serial_decoder_instr = serial_is_32b ? serial_insn : serial_dec_instr;
 
   decoder #(
     .CVA6Cfg(CVA6Cfg),
@@ -763,7 +1030,6 @@ module hdv_scalar_backend
 
   assign rs1_addr = cva6_decoded.rs1;
   assign rs2_addr = cva6_decoded.rs2;
-  assign rd_addr  = cva6_decoded.rd;
 
   // A2 RAW interlock: stall a scalar that reads an integer register still
   // awaiting an in-flight vset VL writeback.  FP-source reads (frs1/frs2) target
@@ -811,6 +1077,158 @@ module hdv_scalar_backend
     cva6_fu_data.trans_id  = cva6_decoded.trans_id;
   end
 
+  // Decode and register-file access are separate pipeline stages.  The full
+  // CVA6 decoder feeds issue_decoded_q first; this block then reads the scalar
+  // register files and builds the execution-unit payload in COMPLEX_ISSUE.
+  always_comb begin : p_issue_operands
+    issue_operand_a = (CVA6Cfg.FpPresent &&
+                       ariane_pkg::is_rs1_fpr(issue_decoded_q.op)) ?
+                      frf_q[issue_decoded_q.rs1] :
+                      ((issue_decoded_q.rs1 == 5'd0) ? '0 :
+                       xrf_q[issue_decoded_q.rs1]);
+    issue_operand_b = (CVA6Cfg.FpPresent &&
+                       ariane_pkg::is_rs2_fpr(issue_decoded_q.op)) ?
+                      frf_q[issue_decoded_q.rs2] :
+                      ((issue_decoded_q.rs2 == 5'd0) ? '0 :
+                       xrf_q[issue_decoded_q.rs2]);
+    issue_operand_c = frf_q[issue_decoded_q.result[4:0]];
+
+    if (issue_decoded_q.use_pc) begin
+      issue_operand_a =
+          {{(XLEN-CVA6Cfg.VLEN){issue_decoded_q.pc[CVA6Cfg.VLEN-1]}},
+           issue_decoded_q.pc};
+    end
+    if (issue_decoded_q.use_zimm) begin
+      issue_operand_a = {{(XLEN-5){1'b0}}, issue_decoded_q.rs1};
+    end
+    if (issue_decoded_q.use_imm &&
+        (issue_decoded_q.fu != STORE) &&
+        (issue_decoded_q.fu != CTRL_FLOW) &&
+        (issue_decoded_q.fu != ACCEL)) begin
+      issue_operand_b = issue_decoded_q.result;
+    end
+
+    issue_operand_fu_data.fu        = issue_decoded_q.fu;
+    issue_operand_fu_data.operation = issue_decoded_q.op;
+    issue_operand_fu_data.operand_a = issue_operand_a;
+    issue_operand_fu_data.operand_b = issue_operand_b;
+    issue_operand_fu_data.imm       =
+        (CVA6Cfg.FpPresent && ariane_pkg::is_imm_fpr(issue_decoded_q.op)) ?
+        issue_operand_c : issue_decoded_q.result;
+    issue_operand_fu_data.trans_id  = issue_decoded_q.trans_id;
+  end
+
+  // Execution units consume only registered issue context.  Live slot decode
+  // is used exclusively to classify and capture a candidate in EXECUTE; it has
+  // no combinational path into ALU/branch/CSR results or redirect generation.
+  assign exec_slot_found    = issue_valid_q;
+  assign exec_pc            = issue_pc_q;
+  assign exec_decoder_instr = issue_decoder_instr_q;
+  assign exec_decoded       = issue_decoded_q;
+  assign exec_fu_data       = issue_fu_data_q;
+
+  // The CVA6 serial divider deasserts ready combinationally when valid rises.
+  // Qualify the request with ready sampled in the preceding issue stage so
+  // valid never depends on the current ready value and is emitted for one cycle.
+  assign scalar_mult_issue = (state_q == COMPLEX_EXEC) && issue_valid_q &&
+                             (issue_decoded_q.fu == MULT) &&
+                             !issue_decoded_q.ex.valid && issue_mult_ready_q;
+  assign local_mul_issue = scalar_mult_issue &&
+                           is_local_mul_op(issue_decoded_q.op);
+  assign cva6_mult_issue = scalar_mult_issue &&
+                           !is_local_mul_op(issue_decoded_q.op);
+  assign scalar_mult_valid = local_mul_valid | cva6_mult_valid;
+  assign scalar_mult_result = local_mul_valid ? local_mul_result :
+                                                cva6_mult_result;
+
+  always_comb begin : p_local_mul_partial_products
+    automatic logic sign_a;
+    automatic logic sign_b;
+    automatic logic [MulHalfW-1:0] a_lo;
+    automatic logic [MulHalfW-1:0] b_lo;
+    automatic logic signed [MulHalfW:0] a_hi;
+    automatic logic signed [MulHalfW:0] b_hi;
+    automatic logic signed [MulAccumW-1:0] term_ll;
+    automatic logic signed [MulAccumW-1:0] term_hl;
+    automatic logic signed [MulAccumW-1:0] term_lh;
+    automatic logic signed [MulAccumW-1:0] term_hh;
+
+    sign_a = issue_fu_data_q.operation inside {MULH, MULHSU};
+    sign_b = issue_fu_data_q.operation == MULH;
+    a_lo = issue_fu_data_q.operand_a[MulHalfW-1:0];
+    b_lo = issue_fu_data_q.operand_b[MulHalfW-1:0];
+    a_hi = $signed({sign_a & issue_fu_data_q.operand_a[XLEN-1],
+                    issue_fu_data_q.operand_a[XLEN-1:MulHalfW]});
+    b_hi = $signed({sign_b & issue_fu_data_q.operand_b[XLEN-1],
+                    issue_fu_data_q.operand_b[XLEN-1:MulHalfW]});
+
+    local_mul_ll_d = a_lo * b_lo;
+    local_mul_hl_d = a_hi * $signed({1'b0, b_lo});
+    local_mul_lh_d = $signed({1'b0, a_lo}) * b_hi;
+    local_mul_hh_d = a_hi * b_hi;
+
+    term_ll = $signed({{(MulAccumW-XLEN){1'b0}}, local_mul_ll_q});
+    term_hl = $signed({{(MulAccumW-MulCrossW){local_mul_hl_q[MulCrossW-1]}},
+                       local_mul_hl_q}) <<< MulHalfW;
+    term_lh = $signed({{(MulAccumW-MulCrossW){local_mul_lh_q[MulCrossW-1]}},
+                       local_mul_lh_q}) <<< MulHalfW;
+    term_hh = $signed({{(MulAccumW-MulCrossW){local_mul_hh_q[MulCrossW-1]}},
+                       local_mul_hh_q}) <<< XLEN;
+
+    local_mul_pair_lo_d = term_ll + term_hl;
+    local_mul_pair_hi_d = term_lh + term_hh;
+    local_mul_product = local_mul_pair_lo_q + local_mul_pair_hi_q;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_local_mul_pipeline
+    if (!rst_ni) begin
+      local_mul_s1_valid_q <= 1'b0;
+      local_mul_s2_valid_q <= 1'b0;
+      local_mul_valid      <= 1'b0;
+      local_mul_s1_op_q    <= MUL;
+      local_mul_s2_op_q    <= MUL;
+      local_mul_ll_q       <= '0;
+      local_mul_hl_q       <= '0;
+      local_mul_lh_q       <= '0;
+      local_mul_hh_q       <= '0;
+      local_mul_pair_lo_q  <= '0;
+      local_mul_pair_hi_q  <= '0;
+      local_mul_result     <= '0;
+    end else if (flush_i) begin
+      local_mul_s1_valid_q <= 1'b0;
+      local_mul_s2_valid_q <= 1'b0;
+      local_mul_valid      <= 1'b0;
+    end else begin
+      local_mul_s1_valid_q <= local_mul_issue;
+      local_mul_s2_valid_q <= local_mul_s1_valid_q;
+      local_mul_valid      <= local_mul_s2_valid_q;
+
+      if (local_mul_issue) begin
+        local_mul_s1_op_q <= issue_fu_data_q.operation;
+        local_mul_ll_q    <= local_mul_ll_d;
+        local_mul_hl_q    <= local_mul_hl_d;
+        local_mul_lh_q    <= local_mul_lh_d;
+        local_mul_hh_q    <= local_mul_hh_d;
+      end
+      if (local_mul_s1_valid_q) begin
+        local_mul_s2_op_q   <= local_mul_s1_op_q;
+        local_mul_pair_lo_q <= local_mul_pair_lo_d;
+        local_mul_pair_hi_q <= local_mul_pair_hi_d;
+      end
+      if (local_mul_s2_valid_q) begin
+        unique case (local_mul_s2_op_q)
+          MULH, MULHU, MULHSU:
+            local_mul_result <= local_mul_product[2*XLEN-1:XLEN];
+          MULW:
+            local_mul_result <=
+                {{(XLEN-32){local_mul_product[31]}}, local_mul_product[31:0]};
+          default:
+            local_mul_result <= local_mul_product[XLEN-1:0];
+        endcase
+      end
+    end
+  end
+
   alu #(
     .CVA6Cfg(CVA6Cfg),
     .HasBranch(1'b1),
@@ -818,7 +1236,7 @@ module hdv_scalar_backend
   ) i_alu (
     .clk_i              (clk_i),
     .rst_ni             (rst_ni),
-    .fu_data_i          (cva6_fu_data),
+    .fu_data_i          (exec_fu_data),
     .result_o           (cva6_alu_result),
     .alu_branch_res_o   (cva6_alu_branch_res)
   );
@@ -834,35 +1252,98 @@ module hdv_scalar_backend
     .rst_ni                   (rst_ni),
     .v_i                      (1'b0),
     .debug_mode_i             (1'b0),
-    .fu_data_i                (cva6_fu_data),
-    .pc_i                     (cva6_decoded.pc),
-    .is_zcmt_i                (cva6_decoded.is_zcmt),
-    .is_compressed_instr_i    (cva6_decoded.is_compressed),
-    .branch_valid_i           (curr_slot_found && (cva6_decoded.fu == CTRL_FLOW)),
+    .fu_data_i                (exec_fu_data),
+    .pc_i                     (exec_decoded.pc),
+    .is_zcmt_i                (exec_decoded.is_zcmt),
+    .is_compressed_instr_i    (exec_decoded.is_compressed),
+    .branch_valid_i           ((state_q == COMPLEX_EXEC) && issue_valid_q &&
+                               (issue_decoded_q.fu == CTRL_FLOW)),
     .branch_comp_res_i        (cva6_alu_branch_res),
     .branch_result_o          (cva6_branch_result),
-    .branch_predict_i         (cva6_decoded.bp),
+    .branch_predict_i         (exec_decoded.bp),
     .resolved_branch_o        (cva6_resolved_branch),
     .resolve_branch_o         (cva6_resolve_branch),
     .branch_exception_o       (cva6_branch_exception)
   );
 
-  mult #(
-    .CVA6Cfg(CVA6Cfg),
-    .fu_data_t(fu_data_t)
-  ) i_mult (
-    .clk_i           (clk_i),
-    .rst_ni          (rst_ni),
-    .flush_i         (flush_i),
-    .fu_data_i       (cva6_fu_data),
-    .mult_valid_i    ((state_q == EXECUTE) && curr_slot_found &&
-                      (cva6_decoded.fu == MULT) && !cva6_decoded.ex.valid &&
-                      cva6_mult_ready),
-    .result_o        (cva6_mult_result),
-    .mult_valid_o    (cva6_mult_valid),
-    .mult_ready_o    (cva6_mult_ready),
-    .mult_trans_id_o (cva6_mult_trans_id)
-  );
+  if (CVA6Cfg.RVB) begin : gen_cva6_clmul_div
+    mult #(
+      .CVA6Cfg(CVA6Cfg),
+      .fu_data_t(fu_data_t)
+    ) i_mult (
+      .clk_i           (clk_i),
+      .rst_ni          (rst_ni),
+      .flush_i         (flush_i),
+      .fu_data_i       (issue_fu_data_q),
+      .mult_valid_i    (cva6_mult_issue),
+      .result_o        (cva6_mult_result),
+      .mult_valid_o    (cva6_mult_valid),
+      .mult_ready_o    (cva6_mult_ready),
+      .mult_trans_id_o (cva6_mult_trans_id)
+    );
+  end else begin : gen_cva6_div_only
+    logic [XLEN-1:0] div_operand_a;
+    logic [XLEN-1:0] div_operand_b;
+    logic [XLEN-1:0] div_result;
+    logic            div_signed;
+    logic            div_remainder;
+    logic            div_word_op;
+    logic            div_word_op_q;
+
+    assign div_signed = issue_fu_data_q.operation inside {DIV, DIVW, REM, REMW};
+    assign div_remainder =
+        issue_fu_data_q.operation inside {REM, REMU, REMW, REMUW};
+    assign div_word_op =
+        CVA6Cfg.IS_XLEN64 &&
+        (issue_fu_data_q.operation inside {DIVW, DIVUW, REMW, REMUW});
+
+    always_comb begin
+      div_operand_a = issue_fu_data_q.operand_a;
+      div_operand_b = issue_fu_data_q.operand_b;
+      if (div_word_op) begin
+        if (div_signed) begin
+          div_operand_a = sext32to64(issue_fu_data_q.operand_a[31:0]);
+          div_operand_b = sext32to64(issue_fu_data_q.operand_b[31:0]);
+        end else begin
+          div_operand_a = {{(XLEN-32){1'b0}}, issue_fu_data_q.operand_a[31:0]};
+          div_operand_b = {{(XLEN-32){1'b0}}, issue_fu_data_q.operand_b[31:0]};
+        end
+      end
+    end
+
+    serdiv #(
+      .CVA6Cfg(CVA6Cfg),
+      .WIDTH  (XLEN)
+    ) i_div (
+      .clk_i    (clk_i),
+      .rst_ni   (rst_ni),
+      .id_i     (issue_fu_data_q.trans_id),
+      .op_a_i   (div_operand_a),
+      .op_b_i   (div_operand_b),
+      .opcode_i ({div_remainder, div_signed}),
+      .in_vld_i (cva6_mult_issue),
+      .in_rdy_o (cva6_mult_ready),
+      .flush_i  (flush_i),
+      .out_vld_o(cva6_mult_valid),
+      .out_rdy_i(1'b1),
+      .id_o     (cva6_mult_trans_id),
+      .res_o    (div_result)
+    );
+
+    assign cva6_mult_result =
+        (CVA6Cfg.IS_XLEN64 && div_word_op_q) ?
+        sext32to64(div_result[31:0]) : div_result;
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        div_word_op_q <= 1'b0;
+      end else if (flush_i) begin
+        div_word_op_q <= 1'b0;
+      end else if (cva6_mult_issue) begin
+        div_word_op_q <= div_word_op;
+      end
+    end
+  end
 
   fpu_wrap #(
     .CVA6Cfg(CVA6Cfg),
@@ -872,11 +1353,11 @@ module hdv_scalar_backend
     .clk_i          (clk_i),
     .rst_ni         (rst_ni),
     .flush_i        (flush_i),
-    .fpu_valid_i    ((state_q == EXECUTE) && curr_slot_found && fpu_issue),
+    .fpu_valid_i    ((state_q == COMPLEX_EXEC) && issue_valid_q && fpu_issue),
     .fpu_ready_o    (cva6_fpu_ready),
-    .fu_data_i      (cva6_fu_data),
-    .fpu_fmt_i      (cva6_decoder_instr[26:25]),
-    .fpu_rm_i       (cva6_decoder_instr[14:12]),
+    .fu_data_i      (issue_fu_data_q),
+    .fpu_fmt_i      (issue_decoder_instr_q[26:25]),
+    .fpu_rm_i       (issue_decoder_instr_q[14:12]),
     .fpu_frm_i      (csr_frm_q),
     .fpu_prec_i     ('0),
     .fpu_trans_id_o (cva6_fpu_trans_id),
@@ -888,7 +1369,7 @@ module hdv_scalar_backend
   always_comb begin : p_execute_decode
     wb_en           = 1'b0;
     wb_is_fpr       = 1'b0;
-    wb_addr         = rd_addr;
+    wb_addr         = exec_decoded.rd;
     wb_data         = '0;
     unsupported     = 1'b0;
     branch_resolved = 1'b0;
@@ -901,23 +1382,23 @@ module hdv_scalar_backend
     hdv_task_ret    = 1'b0;
     hdv_task_ebreak = 1'b0;
 
-    if (curr_slot_found) begin
-      unsupported = cva6_decoded.ex.valid;
+    if (exec_slot_found) begin
+      unsupported = exec_decoded.ex.valid;
       hdv_task_ret = TreatRetAsTaskExit &&
-                     (cva6_decoder_instr == 32'h00008067);
+                     (exec_decoder_instr == 32'h00008067);
       hdv_task_ebreak = TreatEbreakAsTaskExit &&
-                        (cva6_decoder_instr == 32'h00100073);
+                        (exec_decoder_instr == 32'h00100073);
 
       // FENCE / FENCE.I (opcode 0x0F): architecturally a NOP in a single-core
       // in-order HDV system.  Treat as no-op to avoid spurious unsupported errors.
       // VLIWPU already classifies FENCE as HDV_INST_SYSTEM (hard EP boundary).
-      if (cva6_decoder_instr[6:0] == 7'b0001111) begin
+      if (exec_decoder_instr[6:0] == 7'b0001111) begin
         wb_en          = 1'b0;
         unsupported    = 1'b0;
         branch_resolved = 1'b0;
       end else begin
 
-      unique case (cva6_decoded.fu)
+      unique case (exec_decoded.fu)
         ALU: begin
           wb_en   = !unsupported;
           wb_data = cva6_alu_result;
@@ -936,11 +1417,11 @@ module hdv_scalar_backend
           // from the B-type immediate sign (insn[31] = imm[12]) for conditional
           // branches; keep the target-vs-pc test for jumps (always taken).
           branch_backward = branch_resolved &&
-                            (ariane_pkg::op_is_branch(cva6_decoded.op)
-                               ? cva6_decoder_instr[31]
-                               : (addr_t'(cva6_resolved_branch.target_address) < curr_pc));
-          wb_en           = branch_resolved && (cva6_decoded.rd != 5'd0) &&
-                            !ariane_pkg::op_is_branch(cva6_decoded.op);
+                            (ariane_pkg::op_is_branch(exec_decoded.op)
+                               ? exec_decoder_instr[31]
+                               : (addr_t'(cva6_resolved_branch.target_address) < exec_pc));
+          wb_en           = branch_resolved && (exec_decoded.rd != 5'd0) &&
+                            !ariane_pkg::op_is_branch(exec_decoded.op);
           wb_data         = {{(XLEN-CVA6Cfg.VLEN){cva6_branch_result[CVA6Cfg.VLEN-1]}},
                              cva6_branch_result};
           unsupported     = unsupported || (cva6_branch_exception.valid && !hdv_task_ret);
@@ -950,8 +1431,8 @@ module hdv_scalar_backend
           if (csr_supported) begin
             wb_en   = !unsupported;
             wb_data = csr_rdata;
-          end else if (cva6_decoder_instr == 32'h00000013 ||
-                       cva6_decoder_instr == 32'h00100073) begin
+          end else if (exec_decoder_instr == 32'h00000013 ||
+                       exec_decoder_instr == 32'h00100073) begin
             wb_en = 1'b0;
           end else begin
             unsupported = 1'b1;
@@ -960,8 +1441,8 @@ module hdv_scalar_backend
 
         FPU: begin
           fpu_issue      = !unsupported;
-          fpu_writes_fpr = ariane_pkg::is_rd_fpr(cva6_decoded.op);
-          fpu_writes_xrf = !fpu_writes_fpr && (cva6_decoded.rd != 5'd0);
+          fpu_writes_fpr = ariane_pkg::is_rd_fpr(exec_decoded.op);
+          fpu_writes_xrf = !fpu_writes_fpr && (exec_decoded.rd != 5'd0);
         end
 
         FPU_VEC,
@@ -973,15 +1454,15 @@ module hdv_scalar_backend
 
         LOAD,
         STORE: begin
-          unsupported = cva6_decoded.ex.valid || lsu_misaligned;
+          unsupported = exec_decoded.ex.valid || issue_lsu_misaligned;
         end
 
         MULT: begin
-          unsupported = cva6_decoded.ex.valid;
+          unsupported = exec_decoded.ex.valid;
         end
 
         NONE: begin
-          unsupported = (cva6_decoder_instr != 32'h00000013);
+          unsupported = (exec_decoder_instr != 32'h00000013);
         end
 
         default: begin
@@ -1013,44 +1494,44 @@ module hdv_scalar_backend
   assign scalar_axi_req_o        = scalar_axi_req;
 
   always_comb begin : p_csr_stub
-    csr_addr      = cva6_decoder_instr[31:20];
+    csr_addr      = exec_decoder_instr[31:20];
     csr_op_supported = 1'b0;
     csr_addr_supported = 1'b0;
     csr_supported = 1'b0;
     csr_write     = 1'b0;
     csr_rdata     = '0;
-    csr_wdata     = rs1_data;
-    csr_wmask     = rs1_data;
+    csr_wdata     = exec_fu_data.operand_a;
+    csr_wmask     = exec_fu_data.operand_a;
 
-    unique case (cva6_decoder_instr[14:12])
+    unique case (exec_decoder_instr[14:12])
       riscv::CSRRW: begin
         csr_op_supported = 1'b1;
         csr_write     = 1'b1;
-        csr_wdata     = rs1_data;
+        csr_wdata     = exec_fu_data.operand_a;
       end
       riscv::CSRRS: begin
         csr_op_supported = 1'b1;
-        csr_write     = (rs1_addr != 5'd0);
+        csr_write     = (exec_decoded.rs1 != 5'd0);
       end
       riscv::CSRRC: begin
         csr_op_supported = 1'b1;
-        csr_write     = (rs1_addr != 5'd0);
+        csr_write     = (exec_decoded.rs1 != 5'd0);
       end
       riscv::CSRRWI: begin
         csr_op_supported = 1'b1;
         csr_write     = 1'b1;
-        csr_wdata     = {{(XLEN-5){1'b0}}, rs1_addr};
+        csr_wdata     = {{(XLEN-5){1'b0}}, exec_decoded.rs1};
         csr_wmask     = csr_wdata;
       end
       riscv::CSRRSI: begin
         csr_op_supported = 1'b1;
-        csr_write     = (rs1_addr != 5'd0);
-        csr_wmask     = {{(XLEN-5){1'b0}}, rs1_addr};
+        csr_write     = (exec_decoded.rs1 != 5'd0);
+        csr_wmask     = {{(XLEN-5){1'b0}}, exec_decoded.rs1};
       end
       riscv::CSRRCI: begin
         csr_op_supported = 1'b1;
-        csr_write     = (rs1_addr != 5'd0);
-        csr_wmask     = {{(XLEN-5){1'b0}}, rs1_addr};
+        csr_write     = (exec_decoded.rs1 != 5'd0);
+        csr_wmask     = {{(XLEN-5){1'b0}}, exec_decoded.rs1};
       end
       default: csr_op_supported = 1'b0;
     endcase
@@ -1095,42 +1576,116 @@ module hdv_scalar_backend
     csr_supported = csr_op_supported && csr_addr_supported;
   end
 
-  always_comb begin : p_lsu_decode
+  // The live candidate alignment check is used only while deciding whether an
+  // instruction can enter the LSU.  Once in an LSU state, request generation
+  // is driven exclusively by the oldest valid serial slot below.
+  always_comb begin : p_live_lsu_alignment
+    automatic addr_t live_addr;
+    automatic addr_t issued_addr;
+    automatic logic [1:0] live_size;
+    automatic logic [1:0] issued_size;
+
+    live_addr = addr_t'(cva6_fu_data.operand_a + cva6_fu_data.imm);
+    live_size = ariane_pkg::extract_transfer_size(cva6_decoded.op);
+    live_lsu_addr = live_addr;
+    live_lsu_size = live_size;
+    live_lsu_is_fpr =
+        cva6_decoded.op inside {FLD, FLW, FLH, FLB, FSD, FSW, FSH, FSB};
+    unique case (cva6_decoded.op)
+      LB:      live_lsu_ext = 3'd0;
+      LBU:     live_lsu_ext = 3'd1;
+      LH:      live_lsu_ext = 3'd2;
+      LHU:     live_lsu_ext = 3'd3;
+      LW:      live_lsu_ext = 3'd4;
+      LWU:     live_lsu_ext = 3'd5;
+      FLW:     live_lsu_ext = 3'd6;
+      default: live_lsu_ext = 3'd7;
+    endcase
+    live_lsu_misaligned = curr_slot_found &&
+                          (cva6_decoded.fu inside {LOAD, STORE}) &&
+                          addr_is_misaligned(live_addr, live_size);
+
+    issued_addr = addr_t'(issue_fu_data_q.operand_a + issue_fu_data_q.imm);
+    issued_size = ariane_pkg::extract_transfer_size(issue_decoded_q.op);
+    issue_lsu_misaligned = issue_valid_q &&
+                           (issue_decoded_q.fu inside {LOAD, STORE}) &&
+                           addr_is_misaligned(issued_addr, issued_size);
+  end
+
+  always_comb begin : p_serial_lsu_decode
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    automatic logic [XLEN-1:0] imm;
+    automatic logic [XLEN-1:0] base_operand;
+    automatic logic [XLEN-1:0] store_operand;
     automatic int unsigned byte_offset;
     automatic int unsigned transfer_bytes;
-    automatic logic [AxiDataWidth-1:0] raw_load_shifted;
-    automatic logic [XLEN-1:0] store_operand;
 
-    lsu_is_load = (cva6_decoded.fu == LOAD);
-    lsu_is_fp = cva6_decoded.op inside {FLD, FLW, FLH, FLB, FSD, FSW, FSH, FSB};
-    lsu_addr = addr_t'(cva6_fu_data.operand_a + cva6_fu_data.imm);
-    lsu_size = ariane_pkg::extract_transfer_size(cva6_decoded.op);
-    lsu_misaligned = 1'b0;
-    unique case (lsu_size)
-      2'b11: lsu_misaligned = |lsu_addr[2:0];
-      2'b10: lsu_misaligned = |lsu_addr[1:0];
-      2'b01: lsu_misaligned = lsu_addr[0];
-      default: lsu_misaligned = 1'b0;
+    opcode = serial_decoder_instr[6:0];
+    funct3 = serial_decoder_instr[14:12];
+    serial_lsu_rd  = serial_decoder_instr[11:7];
+    serial_lsu_rs2 = serial_decoder_instr[24:20];
+    serial_lsu_encoding_valid = 1'b0;
+    unique case (opcode)
+      7'b0000011: serial_lsu_encoding_valid = funct3 != 3'b111;
+      7'b0100011: serial_lsu_encoding_valid = funct3 inside {
+          3'b000, 3'b001, 3'b010, 3'b011
+        };
+      // CVA6 defines byte/half/single/double scalar FP memory operations.
+      7'b0000111,
+      7'b0100111: serial_lsu_encoding_valid = funct3 inside {
+          3'b000, 3'b001, 3'b010, 3'b011
+        };
+      default: serial_lsu_encoding_valid = 1'b0;
     endcase
+    lsu_is_load = serial_slot_found &&
+                  (opcode inside {7'b0000011, 7'b0000111});
+    lsu_is_fp = opcode inside {7'b0000111, 7'b0100111};
+    serial_lsu_supported = serial_slot_found &&
+        serial_lsu_encoding_valid &&
+        (serial_is_32b || !serial_illegal_compressed);
 
-    byte_offset = lsu_addr[$clog2(AxiDataWidth/8)-1:0];
+    if (opcode inside {7'b0000011, 7'b0000111}) begin
+      imm = {{(XLEN-12){serial_decoder_instr[31]}}, serial_decoder_instr[31:20]};
+    end else begin
+      imm = {{(XLEN-12){serial_decoder_instr[31]}},
+             serial_decoder_instr[31:25], serial_decoder_instr[11:7]};
+    end
+    base_operand = (serial_decoder_instr[19:15] == 5'd0) ? '0 :
+                   xrf_q[serial_decoder_instr[19:15]];
+    lsu_addr = addr_t'(base_operand + imm);
+
+    unique case (funct3)
+      3'b000, 3'b100: lsu_size = 2'b00;
+      3'b001, 3'b101: lsu_size = 2'b01;
+      3'b010, 3'b110: lsu_size = 2'b10;
+      default:        lsu_size = 2'b11;
+    endcase
+    lsu_misaligned = serial_lsu_supported && addr_is_misaligned(lsu_addr, lsu_size);
+
+    if (opcode == 7'b0000111) begin
+      curr_ld_ext = (funct3 == 3'b010) ? 3'd6 : 3'd7;
+    end else begin
+      unique case (funct3)
+        3'b000: curr_ld_ext = 3'd0;
+        3'b100: curr_ld_ext = 3'd1;
+        3'b001: curr_ld_ext = 3'd2;
+        3'b101: curr_ld_ext = 3'd3;
+        3'b010: curr_ld_ext = 3'd4;
+        3'b110: curr_ld_ext = 3'd5;
+        default: curr_ld_ext = 3'd7;
+      endcase
+    end
+
+    byte_offset = lsu_addr[ByteOffW-1:0];
     transfer_bytes = 1 << lsu_size;
-    store_operand = lsu_is_fp ? frf_q[rs2_addr] : cva6_fu_data.operand_b;
-    lsu_store_strb = (({(AxiDataWidth/8){1'b0}} | ((1 << transfer_bytes) - 1)) << byte_offset);
+    store_operand = lsu_is_fp ? frf_q[serial_lsu_rs2] :
+                    ((serial_lsu_rs2 == 5'd0) ? '0 : xrf_q[serial_lsu_rs2]);
+    lsu_store_strb = (({(AxiDataWidth/8){1'b0}} |
+                       ((1 << transfer_bytes) - 1)) << byte_offset);
     lsu_store_data = AxiDataWidth'(store_operand) << (8 * byte_offset);
-
-    raw_load_shifted = scalar_axi_resp_i.r.data >> (8 * byte_offset);
-    unique case (cva6_decoded.op)
-      LB:  lsu_load_data = {{(XLEN-8){raw_load_shifted[7]}}, raw_load_shifted[7:0]};
-      LBU: lsu_load_data = {{(XLEN-8){1'b0}}, raw_load_shifted[7:0]};
-      LH:  lsu_load_data = {{(XLEN-16){raw_load_shifted[15]}}, raw_load_shifted[15:0]};
-      LHU: lsu_load_data = {{(XLEN-16){1'b0}}, raw_load_shifted[15:0]};
-      LW:  lsu_load_data = {{(XLEN-32){raw_load_shifted[31]}}, raw_load_shifted[31:0]};
-      LWU: lsu_load_data = {{(XLEN-32){1'b0}}, raw_load_shifted[31:0]};
-      FLW: lsu_load_data = {{(XLEN-32){1'b1}}, raw_load_shifted[31:0]};
-      FLD: lsu_load_data = raw_load_shifted[XLEN-1:0];
-      default: lsu_load_data = raw_load_shifted[XLEN-1:0];
-    endcase
+    lsu_load_data = ld_extend(scalar_axi_resp_i.r.data,
+                              lsu_addr[ByteOffW-1:0], curr_ld_ext);
 
     lsu_resp_error = 1'b0;
     if (state_q == LSU_R) begin
@@ -1141,24 +1696,71 @@ module hdv_scalar_backend
   end
 
   always_comb begin : p_ldq_ctrl
-    curr_is_load = curr_slot_found && (cva6_decoded.fu == LOAD) && !unsupported;
-    case (cva6_decoded.op)
-      LB:      curr_ld_ext = 3'd0;
-      LBU:     curr_ld_ext = 3'd1;
-      LH:      curr_ld_ext = 3'd2;
-      LHU:     curr_ld_ext = 3'd3;
-      LW:      curr_ld_ext = 3'd4;
-      LWU:     curr_ld_ext = 3'd5;
-      FLW:     curr_ld_ext = 3'd6;
-      default: curr_ld_ext = 3'd7;
-    endcase
+    serial_load_base_raw = 1'b0;
+    for (int unsigned i = 0; i < LdQDepth; i++) begin
+      if ((i < ldq_count_q) &&
+          !ldq_is_fpr_q[ldq_head_q + LdQPtrW'(i)] &&
+          (ldq_rd_q[ldq_head_q + LdQPtrW'(i)] != 5'd0) &&
+          (serial_decoder_instr[19:15] ==
+           ldq_rd_q[ldq_head_q + LdQPtrW'(i)])) begin
+        serial_load_base_raw = 1'b1;
+      end
+    end
+    curr_is_load = serial_lsu_supported && lsu_is_load && !lsu_misaligned &&
+                   !serial_load_base_raw;
     ldq_full     = (ldq_count_q == LdQDepthC);
     ldq_empty    = (ldq_count_q == '0);
-    ld_ar_valid  = (state_q == LSU_AR) && curr_is_load && !vec_store_inflight_i && !ldq_full;
+    ld_req_enter = (state_q == EXECUTE) && curr_slot_found &&
+                   complex_prefix_ready && !vset_raw_stall &&
+                   !complex_simple_raw_stall &&
+                   (cva6_decoded.fu == LOAD) && !cva6_decoded.ex.valid &&
+                   !live_lsu_misaligned && !vec_store_inflight_i && !flush_i;
+    ld_ar_valid  = (state_q == LSU_AR) && ld_req_valid_q &&
+                   !vec_store_inflight_i && !ldq_full;
     ld_ar_fire   = ld_ar_valid && scalar_axi_resp_i.ar_ready && !flush_i;
     ld_r_fire    = (state_q == LSU_AR) && !ldq_empty && scalar_axi_resp_i.r_valid && !flush_i;
+    ld_req_capture = ld_req_enter ||
+                     ((state_q == LSU_AR) && (!ld_req_valid_q || ld_ar_fire) &&
+                      curr_is_load && !vec_store_inflight_i && !flush_i);
     ldq_pop_data = ld_extend(scalar_axi_resp_i.r.data, ldq_off_q[ldq_head_q], ldq_ext_q[ldq_head_q]);
     ldq_pop_err  = ld_r_fire && (scalar_axi_resp_i.r.resp != axi_pkg::RESP_OKAY);
+  end
+
+  // Register the decoded load request before it reaches the shared AXI
+  // interconnect.  On a handshake the next load can replace the current entry
+  // in the same edge, preserving one request per cycle after the initial fill.
+  always_comb begin : p_ld_req_update
+    ld_req_valid_d = ld_req_valid_q;
+    ld_req_addr_d = ld_req_addr_q;
+    ld_req_size_d = ld_req_size_q;
+    ld_req_rd_d = ld_req_rd_q;
+    ld_req_is_fpr_d = ld_req_is_fpr_q;
+    ld_req_off_d = ld_req_off_q;
+    ld_req_ext_d = ld_req_ext_q;
+
+    if (ld_ar_fire) begin
+      ld_req_valid_d = 1'b0;
+    end
+    if (ld_req_enter) begin
+      ld_req_valid_d = 1'b1;
+      ld_req_addr_d = live_lsu_addr;
+      ld_req_size_d = live_lsu_size;
+      ld_req_rd_d = cva6_decoded.rd;
+      ld_req_is_fpr_d = live_lsu_is_fpr;
+      ld_req_off_d = live_lsu_addr[ByteOffW-1:0];
+      ld_req_ext_d = live_lsu_ext;
+    end else if (ld_req_capture) begin
+      ld_req_valid_d = 1'b1;
+      ld_req_addr_d = lsu_addr;
+      ld_req_size_d = lsu_size;
+      ld_req_rd_d = serial_lsu_rd;
+      ld_req_is_fpr_d = lsu_is_fp;
+      ld_req_off_d = lsu_addr[ByteOffW-1:0];
+      ld_req_ext_d = curr_ld_ext;
+    end
+    if (flush_i) begin
+      ld_req_valid_d = 1'b0;
+    end
   end
 
   always_comb begin : p_ldq_update
@@ -1170,10 +1772,10 @@ module hdv_scalar_backend
     ldq_tail_d   = ldq_tail_q;
     ldq_count_d  = ldq_count_q;
     if (ld_ar_fire) begin
-      ldq_rd_d[ldq_tail_q]     = rd_addr;
-      ldq_is_fpr_d[ldq_tail_q] = lsu_is_fp;
-      ldq_off_d[ldq_tail_q]    = lsu_addr[ByteOffW-1:0];
-      ldq_ext_d[ldq_tail_q]    = curr_ld_ext;
+      ldq_rd_d[ldq_tail_q]     = ld_req_rd_q;
+      ldq_is_fpr_d[ldq_tail_q] = ld_req_is_fpr_q;
+      ldq_off_d[ldq_tail_q]    = ld_req_off_q;
+      ldq_ext_d[ldq_tail_q]    = ld_req_ext_q;
       ldq_tail_d               = ldq_tail_q + 1'b1;
     end
     if (ld_r_fire) begin
@@ -1194,9 +1796,9 @@ module hdv_scalar_backend
   always_comb begin : p_scalar_axi_req
     scalar_axi_req = '0;
     scalar_axi_req.ar.id     = '0;
-    scalar_axi_req.ar.addr   = lsu_addr;
+    scalar_axi_req.ar.addr   = ld_req_addr_q;
     scalar_axi_req.ar.len    = '0;
-    scalar_axi_req.ar.size   = {1'b0, lsu_size};
+    scalar_axi_req.ar.size   = {1'b0, ld_req_size_q};
     scalar_axi_req.ar.burst  = axi_pkg::BURST_INCR;
     scalar_axi_req.ar.lock   = 1'b0;
     scalar_axi_req.ar.cache  = axi_pkg::CACHE_MODIFIABLE;
@@ -1244,6 +1846,15 @@ module hdv_scalar_backend
     csr_vl_d = csr_vl_q;
     csr_vtype_d = csr_vtype_q;
     csr_frm_d = csr_frm_q;
+    issue_valid_d = issue_valid_q;
+    issue_slot_idx_d = issue_slot_idx_q;
+    issue_insn_d = issue_insn_q;
+    issue_is_32b_d = issue_is_32b_q;
+    issue_pc_d = issue_pc_q;
+    issue_decoder_instr_d = issue_decoder_instr_q;
+    issue_decoded_d = issue_decoded_q;
+    issue_fu_data_d = issue_fu_data_q;
+    issue_mult_ready_d = issue_mult_ready_q;
     branch_resolved_pulse_d = 1'b0;
     branch_taken_d = branch_taken_q;
     branch_pc_d = branch_pc_q;
@@ -1256,7 +1867,7 @@ module hdv_scalar_backend
       frf_d[i] = frf_q[i];
     end
 
-    if (vec_wb_valid_i && (vec_wb_rd_i != 5'd0)) begin
+    if (vec_wb_valid_i && (vec_wb_is_fpr_i || (vec_wb_rd_i != 5'd0))) begin
       if (vec_wb_is_fpr_i) begin
         frf_d[vec_wb_rd_i] = vec_wb_data_i;
       end else begin
@@ -1269,6 +1880,7 @@ module hdv_scalar_backend
 
     unique case (state_q)
       IDLE: begin
+        issue_valid_d = 1'b0;
         redirect_pending_d = 1'b0;
         error_seen_d = 1'b0;
         task_complete_pending_d = 1'b0;
@@ -1296,117 +1908,51 @@ module hdv_scalar_backend
           remaining_slots = insn_valid_q;
         end
 
-        if (vset_raw_stall || complex_simple_raw_stall) begin
+        if ((curr_slot_found && !complex_prefix_ready) ||
+            vset_raw_stall || complex_simple_raw_stall) begin
           // Hold only the non-ALU lane: independent simple ALU slots selected
           // above have already been consumed and written back this cycle.
           state_d = EXECUTE;
         end else if (curr_slot_found) begin
-          if ((cva6_decoded.fu == MULT) && !unsupported) begin
-            if (cva6_mult_ready) begin
-              insn_valid_d = remaining_slots;
-              state_d = WAIT_MULT;
+          if (fast_branch_valid) begin
+            remaining_slots[curr_slot_idx] = 1'b0;
+            insn_valid_d = remaining_slots;
+            branch_resolved_pulse_d = 1'b1;
+            branch_taken_d = fast_branch_taken;
+            branch_pc_d = curr_pc;
+            branch_target_d = fast_branch_target;
+            branch_backward_d = curr_insn[31];
+            if (fast_branch_taken) begin
+              redirect_pending_d = 1'b1;
+              redirect_pc_d = fast_branch_target;
             end
-          end else if ((cva6_decoded.fu == FPU) && !unsupported) begin
-            if (cva6_fpu_ready) begin
-              insn_valid_d = remaining_slots;
-              state_d = WAIT_FPU;
-            end
-          end else if ((cva6_decoded.fu inside {LOAD, STORE}) && !unsupported) begin
+            state_d = (|remaining_slots) ? EXECUTE : DONE;
+          end else if (fast_task_exit) begin
+            remaining_slots[curr_slot_idx] = 1'b0;
+            insn_valid_d = remaining_slots;
+            task_complete_pending_d = 1'b1;
+            state_d = (|remaining_slots) ? EXECUTE : DONE;
+          end else if ((cva6_decoded.fu inside {LOAD, STORE}) &&
+              !cva6_decoded.ex.valid && !live_lsu_misaligned) begin
             if (vec_store_inflight_i) begin
               state_d = EXECUTE;
             end else begin
+              if (cva6_decoded.fu == LOAD) begin
+                remaining_slots[curr_slot_idx] = 1'b0;
+              end
               insn_valid_d = remaining_slots;
               state_d = (cva6_decoded.fu == LOAD) ? LSU_AR : LSU_AW;
             end
           end else begin
-            remaining_slots[curr_slot_idx] = 1'b0;
             insn_valid_d = remaining_slots;
-
-            if (wb_en && !unsupported && (wb_addr != 5'd0)) begin
-              if (wb_is_fpr) begin
-                frf_d[wb_addr] = wb_data;
-              end else begin
-                xrf_d[wb_addr] = wb_data;
-              end
-            end
-
-            if (!unsupported && (cva6_decoded.fu == CSR) && csr_write) begin
-              unique case (csr_addr)
-                riscv::CSR_FRM: begin
-                  unique case (cva6_decoder_instr[14:12])
-                    riscv::CSRRW,
-                    riscv::CSRRWI: csr_frm_d = csr_wdata[2:0];
-                    riscv::CSRRS,
-                    riscv::CSRRSI: csr_frm_d = csr_frm_q | csr_wmask[2:0];
-                    riscv::CSRRC,
-                    riscv::CSRRCI: csr_frm_d = csr_frm_q & ~csr_wmask[2:0];
-                    default: ;
-                  endcase
-                end
-                riscv::CSR_FCSR: begin
-                  unique case (cva6_decoder_instr[14:12])
-                    riscv::CSRRW,
-                    riscv::CSRRWI: csr_frm_d = csr_wdata[7:5];
-                    riscv::CSRRS,
-                    riscv::CSRRSI: csr_frm_d = csr_frm_q | csr_wmask[7:5];
-                    riscv::CSRRC,
-                    riscv::CSRRCI: csr_frm_d = csr_frm_q & ~csr_wmask[7:5];
-                    default: ;
-                  endcase
-                end
-                riscv::CSR_VL: begin
-                  unique case (cva6_decoder_instr[14:12])
-                    riscv::CSRRW,
-                    riscv::CSRRWI: csr_vl_d = csr_wdata;
-                    riscv::CSRRS,
-                    riscv::CSRRSI: csr_vl_d = csr_vl_q | csr_wmask;
-                    riscv::CSRRC,
-                    riscv::CSRRCI: csr_vl_d = csr_vl_q & ~csr_wmask;
-                    default: ;
-                  endcase
-                end
-                riscv::CSR_VTYPE: begin
-                  unique case (cva6_decoder_instr[14:12])
-                    riscv::CSRRW,
-                    riscv::CSRRWI: csr_vtype_d = csr_wdata;
-                    riscv::CSRRS,
-                    riscv::CSRRSI: csr_vtype_d = csr_vtype_q | csr_wmask;
-                    riscv::CSRRC,
-                    riscv::CSRRCI: csr_vtype_d = csr_vtype_q & ~csr_wmask;
-                    default: ;
-                  endcase
-                end
-                default: ;
-              endcase
-            end
-
-            if (branch_resolved) begin
-              branch_resolved_pulse_d = 1'b1;
-              branch_taken_d = branch_taken;
-              branch_pc_d = curr_pc;
-              branch_target_d = branch_target;
-              branch_backward_d = branch_backward;
-              if (branch_taken) begin
-                redirect_pending_d = 1'b1;
-                redirect_pc_d = branch_target;
-              end
-            end
-
-            // A zero instruction word (0x00000000) is the reset/empty-slot value,
-            // not real code: it can momentarily appear when insn_valid races ahead
-            // of the insn_q latch.  cva6 decodes it as an illegal instruction, so
-            // guard against raising a spurious task error for it (treat as no-op).
-            if (unsupported && (cva6_decoder_instr != 32'h00000000)) begin
-              error_seen_d = 1'b1;
-            end
-            if (!unsupported && hdv_task_ret) begin
-              task_complete_pending_d = 1'b1;
-            end
-            if (!unsupported && hdv_task_ebreak) begin
-              task_complete_pending_d = 1'b1;
-            end
-
-            state_d = (|remaining_slots) ? EXECUTE : DONE;
+            issue_valid_d = 1'b1;
+            issue_slot_idx_d = curr_slot_idx;
+            issue_insn_d = curr_insn;
+            issue_is_32b_d = curr_is_32b;
+            issue_pc_d = curr_pc;
+            issue_decoder_instr_d = cva6_decoder_instr;
+            issue_decoded_d = cva6_decoded;
+            state_d = COMPLEX_ISSUE;
           end
         end else if (simple_batch_valid) begin
           state_d = (|remaining_slots) ? EXECUTE : DONE;
@@ -1415,13 +1961,131 @@ module hdv_scalar_backend
         end
       end
 
-      WAIT_MULT: begin
-        if (cva6_mult_valid) begin
+      COMPLEX_ISSUE: begin
+        if (!issue_valid_q) begin
+          state_d = EXECUTE;
+        end else if ((issue_decoded_q.fu == MULT) &&
+                     !issue_decoded_q.ex.valid &&
+                     !is_local_mul_op(issue_decoded_q.op) &&
+                     !cva6_mult_ready) begin
+          // DIV/REM use the serial CVA6 unit.  Wait before registering the
+          // operand payload so COMPLEX_EXEC can emit a one-cycle request
+          // without a valid/ready combinational dependency.
+          state_d = COMPLEX_ISSUE;
+        end else begin
+          issue_fu_data_d = issue_operand_fu_data;
+          issue_mult_ready_d = is_local_mul_op(issue_decoded_q.op) ?
+                               1'b1 : cva6_mult_ready;
+          state_d = COMPLEX_EXEC;
+        end
+      end
+
+      COMPLEX_EXEC: begin
+        if (!issue_valid_q) begin
+          state_d = EXECUTE;
+        end else if ((issue_decoded_q.fu == MULT) && !unsupported) begin
+          if (issue_mult_ready_q) begin
+            state_d = WAIT_MULT;
+          end
+        end else if ((issue_decoded_q.fu == FPU) && !unsupported) begin
+          if (cva6_fpu_ready) begin
+            state_d = WAIT_FPU;
+          end
+        end else begin
           remaining_slots = insn_valid_q;
-          remaining_slots[curr_slot_idx] = 1'b0;
+          remaining_slots[issue_slot_idx_q] = 1'b0;
           insn_valid_d = remaining_slots;
-          if (cva6_decoded.rd != 5'd0) begin
-            xrf_d[cva6_decoded.rd] = cva6_mult_result;
+          issue_valid_d = 1'b0;
+
+          if (wb_en && !unsupported && (wb_addr != 5'd0)) begin
+            if (wb_is_fpr) begin
+              frf_d[wb_addr] = wb_data;
+            end else begin
+              xrf_d[wb_addr] = wb_data;
+            end
+          end
+
+          if (!unsupported && (issue_decoded_q.fu == CSR) && csr_write) begin
+            unique case (csr_addr)
+              riscv::CSR_FRM: begin
+                unique case (issue_decoder_instr_q[14:12])
+                  riscv::CSRRW,
+                  riscv::CSRRWI: csr_frm_d = csr_wdata[2:0];
+                  riscv::CSRRS,
+                  riscv::CSRRSI: csr_frm_d = csr_frm_q | csr_wmask[2:0];
+                  riscv::CSRRC,
+                  riscv::CSRRCI: csr_frm_d = csr_frm_q & ~csr_wmask[2:0];
+                  default: ;
+                endcase
+              end
+              riscv::CSR_FCSR: begin
+                unique case (issue_decoder_instr_q[14:12])
+                  riscv::CSRRW,
+                  riscv::CSRRWI: csr_frm_d = csr_wdata[7:5];
+                  riscv::CSRRS,
+                  riscv::CSRRSI: csr_frm_d = csr_frm_q | csr_wmask[7:5];
+                  riscv::CSRRC,
+                  riscv::CSRRCI: csr_frm_d = csr_frm_q & ~csr_wmask[7:5];
+                  default: ;
+                endcase
+              end
+              riscv::CSR_VL: begin
+                unique case (issue_decoder_instr_q[14:12])
+                  riscv::CSRRW,
+                  riscv::CSRRWI: csr_vl_d = csr_wdata;
+                  riscv::CSRRS,
+                  riscv::CSRRSI: csr_vl_d = csr_vl_q | csr_wmask;
+                  riscv::CSRRC,
+                  riscv::CSRRCI: csr_vl_d = csr_vl_q & ~csr_wmask;
+                  default: ;
+                endcase
+              end
+              riscv::CSR_VTYPE: begin
+                unique case (issue_decoder_instr_q[14:12])
+                  riscv::CSRRW,
+                  riscv::CSRRWI: csr_vtype_d = csr_wdata;
+                  riscv::CSRRS,
+                  riscv::CSRRSI: csr_vtype_d = csr_vtype_q | csr_wmask;
+                  riscv::CSRRC,
+                  riscv::CSRRCI: csr_vtype_d = csr_vtype_q & ~csr_wmask;
+                  default: ;
+                endcase
+              end
+              default: ;
+            endcase
+          end
+
+          if (branch_resolved) begin
+            branch_resolved_pulse_d = 1'b1;
+            branch_taken_d = branch_taken;
+            branch_pc_d = issue_pc_q;
+            branch_target_d = branch_target;
+            branch_backward_d = branch_backward;
+            if (branch_taken) begin
+              redirect_pending_d = 1'b1;
+              redirect_pc_d = branch_target;
+            end
+          end
+
+          if (unsupported && (issue_decoder_instr_q != 32'h00000000)) begin
+            error_seen_d = 1'b1;
+          end
+          if (!unsupported && (hdv_task_ret || hdv_task_ebreak)) begin
+            task_complete_pending_d = 1'b1;
+          end
+
+          state_d = (|remaining_slots) ? EXECUTE : DONE;
+        end
+      end
+
+      WAIT_MULT: begin
+        if (scalar_mult_valid) begin
+          remaining_slots = insn_valid_q;
+          remaining_slots[issue_slot_idx_q] = 1'b0;
+          insn_valid_d = remaining_slots;
+          issue_valid_d = 1'b0;
+          if (issue_decoded_q.rd != 5'd0) begin
+            xrf_d[issue_decoded_q.rd] = scalar_mult_result;
           end
           state_d = (|remaining_slots) ? EXECUTE : DONE;
         end
@@ -1430,13 +2094,15 @@ module hdv_scalar_backend
       WAIT_FPU: begin
         if (cva6_fpu_valid) begin
           remaining_slots = insn_valid_q;
-          remaining_slots[curr_slot_idx] = 1'b0;
+          remaining_slots[issue_slot_idx_q] = 1'b0;
           insn_valid_d = remaining_slots;
-          if (!cva6_fpu_exception.valid && (cva6_decoded.rd != 5'd0)) begin
+          issue_valid_d = 1'b0;
+          if (!cva6_fpu_exception.valid &&
+              (fpu_writes_fpr || (issue_decoded_q.rd != 5'd0))) begin
             if (fpu_writes_fpr) begin
-              frf_d[cva6_decoded.rd] = XLEN'(cva6_fpu_result);
+              frf_d[issue_decoded_q.rd] = XLEN'(cva6_fpu_result);
             end else if (fpu_writes_xrf) begin
-              xrf_d[cva6_decoded.rd] = XLEN'(cva6_fpu_result);
+              xrf_d[issue_decoded_q.rd] = XLEN'(cva6_fpu_result);
             end
           end
           if (cva6_fpu_exception.valid) begin
@@ -1453,12 +2119,13 @@ module hdv_scalar_backend
         // every outstanding R has drained, so scalar_ep_done (=> a dependent
         // vfmacc's operand read) observes the written value.
         remaining_slots = insn_valid_q;
-        if (ld_ar_fire) begin
-          remaining_slots[curr_slot_idx] = 1'b0;
+        if (ld_req_capture) begin
+          remaining_slots[serial_slot_idx] = 1'b0;
           insn_valid_d = remaining_slots;
         end
         if (ld_r_fire) begin
-          if (!ldq_pop_err && (ldq_rd_q[ldq_head_q] != 5'd0)) begin
+          if (!ldq_pop_err &&
+              (ldq_is_fpr_q[ldq_head_q] || (ldq_rd_q[ldq_head_q] != 5'd0))) begin
             if (ldq_is_fpr_q[ldq_head_q]) begin
               frf_d[ldq_rd_q[ldq_head_q]] = ldq_pop_data;
             end else begin
@@ -1471,7 +2138,7 @@ module hdv_scalar_backend
         end
         // Leave once no further load AR can be issued and the queue has drained
         // (this cycle's pop empties it).
-        if (!curr_is_load &&
+        if (!curr_is_load && !ld_req_valid_q &&
             ((ldq_count_q == '0) || (ld_r_fire && (ldq_count_q == 'd1)))) begin
           state_d = (|insn_valid_d) ? EXECUTE : DONE;
         end
@@ -1480,9 +2147,9 @@ module hdv_scalar_backend
       LSU_R: begin
         if (scalar_axi_resp_i.r_valid) begin
           remaining_slots = insn_valid_q;
-          remaining_slots[curr_slot_idx] = 1'b0;
+          remaining_slots[serial_slot_idx] = 1'b0;
           insn_valid_d = remaining_slots;
-          if (!lsu_resp_error && (cva6_decoded.rd != 5'd0)) begin
+          if (!lsu_resp_error && (lsu_is_fp || (cva6_decoded.rd != 5'd0))) begin
             if (lsu_is_fp) begin
               frf_d[cva6_decoded.rd] = lsu_load_data;
             end else begin
@@ -1511,7 +2178,7 @@ module hdv_scalar_backend
       LSU_B: begin
         if (scalar_axi_resp_i.b_valid) begin
           remaining_slots = insn_valid_q;
-          remaining_slots[curr_slot_idx] = 1'b0;
+          remaining_slots[serial_slot_idx] = 1'b0;
           insn_valid_d = remaining_slots;
           if (lsu_resp_error) begin
             error_seen_d = 1'b1;
@@ -1538,6 +2205,7 @@ module hdv_scalar_backend
     if (flush_i) begin
       state_d = IDLE;
       insn_valid_d = '0;
+      issue_valid_d = 1'b0;
       redirect_pending_d = 1'b0;
       error_seen_d = 1'b0;
       task_complete_pending_d = 1'b0;
@@ -1573,6 +2241,15 @@ module hdv_scalar_backend
       insn_q <= '0;
       insn_is_32b_q <= '0;
       insn_pc_q <= '0;
+      issue_valid_q <= 1'b0;
+      issue_slot_idx_q <= '0;
+      issue_insn_q <= '0;
+      issue_is_32b_q <= 1'b0;
+      issue_pc_q <= '0;
+      issue_decoder_instr_q <= '0;
+      issue_decoded_q <= '0;
+      issue_fu_data_q <= '0;
+      issue_mult_ready_q <= 1'b0;
       cycle_q <= 64'd0;
       redirect_pending_q <= 1'b0;
       redirect_pc_q <= '0;
@@ -1593,6 +2270,13 @@ module hdv_scalar_backend
       ldq_head_q <= '0;
       ldq_tail_q <= '0;
       ldq_count_q <= '0;
+      ld_req_valid_q <= 1'b0;
+      ld_req_addr_q <= '0;
+      ld_req_size_q <= '0;
+      ld_req_rd_q <= '0;
+      ld_req_is_fpr_q <= 1'b0;
+      ld_req_off_q <= '0;
+      ld_req_ext_q <= '0;
       for (int unsigned i = 0; i < 32; i++) begin
         xrf_q[i] <= '0;
         frf_q[i] <= '0;
@@ -1627,6 +2311,15 @@ module hdv_scalar_backend
       insn_q <= insn_d;
       insn_is_32b_q <= insn_is_32b_d;
       insn_pc_q <= insn_pc_d;
+      issue_valid_q <= issue_valid_d;
+      issue_slot_idx_q <= issue_slot_idx_d;
+      issue_insn_q <= issue_insn_d;
+      issue_is_32b_q <= issue_is_32b_d;
+      issue_pc_q <= issue_pc_d;
+      issue_decoder_instr_q <= issue_decoder_instr_d;
+      issue_decoded_q <= issue_decoded_d;
+      issue_fu_data_q <= issue_fu_data_d;
+      issue_mult_ready_q <= issue_mult_ready_d;
       cycle_q <= cycle_d;
       redirect_pending_q <= redirect_pending_d;
       redirect_pc_q <= redirect_pc_d;
@@ -1647,6 +2340,13 @@ module hdv_scalar_backend
       ldq_head_q <= ldq_head_d;
       ldq_tail_q <= ldq_tail_d;
       ldq_count_q <= ldq_count_d;
+      ld_req_valid_q <= ld_req_valid_d;
+      ld_req_addr_q <= ld_req_addr_d;
+      ld_req_size_q <= ld_req_size_d;
+      ld_req_rd_q <= ld_req_rd_d;
+      ld_req_is_fpr_q <= ld_req_is_fpr_d;
+      ld_req_off_q <= ld_req_off_d;
+      ld_req_ext_q <= ld_req_ext_d;
       for (int unsigned i = 0; i < 32; i++) begin
         xrf_q[i] <= xrf_d[i];
         frf_q[i] <= frf_d[i];
@@ -1655,11 +2355,82 @@ module hdv_scalar_backend
   end
 
   always_ff @(posedge clk_i) begin : p_unsupported_report
-    if (rst_ni && (state_q == EXECUTE) && curr_slot_found && unsupported) begin
+    if (rst_ni && (state_q == COMPLEX_EXEC) && issue_valid_q && unsupported) begin
       $warning("[HDV] hdv_scalar_backend unsupported scalar instruction pc=0x%016h insn=0x%08h is32=%0b",
-               curr_pc, curr_insn, curr_is_32b);
+               issue_pc_q, issue_insn_q, issue_is_32b_q);
     end
   end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin : p_issue_assertions
+    automatic simple_alu_dec_t verify_simple_dec;
+    if (rst_ni && !flush_i) begin
+      if (state_q == EXECUTE) begin
+        for (int unsigned i = 0; i < NumSlots; i++) begin
+          if (insn_valid_q[i]) begin
+            verify_simple_dec = decode_simple_alu(
+                insn_is_32b_q[i], insn_q[i], insn_pc_q[i],
+                (insn_q[i][19:15] == 5'd0) ? '0 : xrf_q[insn_q[i][19:15]],
+                (insn_q[i][24:20] == 5'd0) ? '0 : xrf_q[insn_q[i][24:20]]);
+            assert (simple_class_valid[i] == verify_simple_dec.valid)
+              else $error("[HDV] lightweight simple-ALU classifier disagrees with full decode");
+            if (simple_batch_mask[i]) begin
+              assert (simple_class_valid[i])
+                else $error("[HDV] non-simple scalar instruction selected by simple batch");
+            end
+          end
+        end
+      end
+      if (state_q inside {COMPLEX_ISSUE, COMPLEX_EXEC, WAIT_MULT, WAIT_FPU}) begin
+        assert (issue_valid_q)
+          else $error("[HDV] complex scalar state lost its registered issue context");
+      end
+      if (scalar_mult_issue) begin
+        assert (issue_mult_ready_q)
+          else $error("[HDV] MULT/DIV issued without a prechecked ready token");
+        assert (state_d == WAIT_MULT)
+          else $error("[HDV] MULT/DIV issue did not advance to WAIT_MULT");
+      end
+      if ((state_q == COMPLEX_EXEC) && issue_valid_q) begin
+        assert (!(issue_decoded_q.fu inside {LOAD, STORE}) || unsupported)
+          else $error("[HDV] supported scalar LOAD/STORE incorrectly entered complex issue stage");
+      end
+      if ((state_q == LSU_AR) && ld_req_capture) begin
+        assert (serial_slot_found && serial_lsu_supported && lsu_is_load &&
+                !lsu_misaligned && !serial_load_base_raw)
+          else $error("[HDV] scalar load request was not captured from the oldest valid load slot");
+        for (int unsigned i = 0; i < NumSlots; i++) begin
+          if (i < serial_slot_idx) begin
+            assert (!insn_valid_q[i])
+              else $error("[HDV] scalar LSU skipped an older uncommitted slot");
+          end
+        end
+      end
+      if ((state_q == LSU_AR) && ld_ar_fire) begin
+        assert (ld_req_valid_q)
+          else $error("[HDV] scalar load AR fired without a registered request");
+      end
+      if (state_q inside {LSU_AW, LSU_W, LSU_B}) begin
+        assert (serial_slot_found && serial_lsu_supported && !lsu_is_load)
+          else $error("[HDV] scalar store state lost its oldest-slot context");
+      end
+      if ((state_q == EXECUTE) && vec_vset_inflight_i &&
+          (vec_vset_inflight_rd_i != 5'd0)) begin
+        for (int unsigned i = 0; i < NumSlots; i++) begin
+          if (simple_batch_mask[i]) begin
+            assert ((insn_q[i][19:15] != vec_vset_inflight_rd_i) &&
+                    (insn_q[i][24:20] != vec_vset_inflight_rd_i))
+              else $error("[HDV] simple scalar lane consumed an in-flight vset result");
+          end
+        end
+      end
+      if ((state_q == EXECUTE) && curr_slot_found && fast_branch_valid) begin
+        assert ((cva6_decoded.fu == CTRL_FLOW) && !cva6_decoded.ex.valid)
+          else $error("[HDV] lightweight branch classifier disagrees with CVA6 decode");
+      end
+    end
+  end
+`endif
 
 `ifdef FOR_VERIFY
   always_ff @(posedge clk_i) begin : p_pf_probe_scalar
@@ -1685,11 +2456,11 @@ module hdv_scalar_backend
           end
         end
 
-        if (curr_slot_found && wb_en && !unsupported &&
+        if ((state_q == COMPLEX_EXEC) && issue_valid_q && wb_en && !unsupported &&
             ((wb_addr == 5'd5) || (wb_addr == 5'd6) || (wb_addr == 5'd7) ||
              (wb_addr == 5'd10) || (wb_addr == 5'd11) || (wb_addr == 5'd12))) begin
           $display("[PFPROBE-SCALAR] cyc=%0d ev=complex_wb slot=%0d pc=0x%0h insn=0x%08h rd=x%0d data=0x%0h before_a0=0x%0h before_a1=0x%0h before_x5=0x%0h before_x6=0x%0h before_x7=0x%0h",
-                   cycle_q, curr_slot_idx, curr_pc, curr_insn, wb_addr, wb_data,
+                   cycle_q, issue_slot_idx_q, issue_pc_q, issue_insn_q, wb_addr, wb_data,
                    xrf_q[10], xrf_q[11], xrf_q[5], xrf_q[6], xrf_q[7]);
         end
       end

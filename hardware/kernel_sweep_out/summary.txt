@@ -345,3 +345,31 @@ vsgemm_m1_4r       64    4     PASSED  54054    .2061     11161   10      2048->
   -> kernel_sweep_out/kernel_all.csv
 
 ==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  54119    .2064     11161   10      2048->2016 39504
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  54119    .2064     11161   10      2048->2016 39504
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  53207    .2029     11161   10      2048->2016 38544
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====
+########## Single vsgemm point: vsgemm_m1_4r N=64 ##########
+==================== vsgemm single point ====================
+tag                N     rows  result  cycles   cyc/macc  EPs     vq_max  pf_ar->hit seq_blk
+vsgemm_m1_4r       64    4     PASSED  53207    .2029     11161   10      2048->2016 38544
+  -> kernel_sweep_out/kernel_all.csv
+
+==== output -> kernel_sweep_out/ ====

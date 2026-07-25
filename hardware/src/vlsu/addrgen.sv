@@ -252,8 +252,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic pe_req_valid_i_msk;
   logic en_sync_mask_d, en_sync_mask_q;
 
-  pe_req_t pe_req, pe_req_d, pe_req_q;
+  pe_req_t pe_req, pe_req_fifo_data;
+  pe_req_t pe_req_stage_d, pe_req_stage_q;
+  pe_req_t pe_req_d, pe_req_q;
+  axi_addr_t pe_req_unit_stride_addr_stage_d;
+  axi_addr_t pe_req_unit_stride_addr_stage_q;
   logic    pe_req_valid;
+  logic    pe_req_stage_valid_d, pe_req_stage_valid_q;
+  logic    pe_req_stage_consume;
   logic    addrgen_ack;
   logic    pe_req_fifo_full;
   logic    pe_req_fifo_empty;
@@ -261,9 +267,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    pe_req_fifo_pop;
 
   assign pe_req_fifo_push = pe_req_valid_i_msk && !pe_req_fifo_full;
-  assign pe_req_fifo_pop  = addrgen_ack && !pe_req_fifo_empty;
+  assign pe_req_fifo_pop  = (!pe_req_stage_valid_q || pe_req_stage_consume) &&
+                            !pe_req_fifo_empty;
   assign addrgen_ack_o    = !pe_req_fifo_full;
-  assign pe_req_valid     = !pe_req_fifo_empty;
+  assign pe_req_valid     = pe_req_stage_valid_q;
+  assign pe_req           = pe_req_stage_q;
 
   fifo_v3 #(
     .dtype(pe_req_t),
@@ -276,11 +284,51 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .data_i    (pe_req_i          ),
     .push_i    (pe_req_fifo_push  ),
     .full_o    (pe_req_fifo_full  ),
-    .data_o    (pe_req            ),
+    .data_o    (pe_req_fifo_data  ),
     .pop_i     (pe_req_fifo_pop   ),
     .empty_o   (pe_req_fifo_empty ),
     .usage_o   (/* Unused */      )
   );
+
+  // Register the FIFO head before address and prefetch generation.  The fifo_v3
+  // head is selected by its read pointer; using it directly made that pointer
+  // feed the stride, page-cross and burst-length cones in the same cycle.  This
+  // elastic stage can consume and refill on one edge, so queued requests retain
+  // one-request-per-cycle handoff while the FIFO pointer is removed from those
+  // arithmetic paths.
+  always_comb begin : p_pe_req_stage
+    pe_req_stage_d                  = pe_req_stage_q;
+    pe_req_unit_stride_addr_stage_d = pe_req_unit_stride_addr_stage_q;
+    pe_req_stage_valid_d            = pe_req_stage_valid_q;
+
+    if (pe_req_stage_consume) begin
+      pe_req_stage_valid_d = 1'b0;
+    end
+    if (pe_req_fifo_pop) begin
+      pe_req_stage_d = pe_req_fifo_data;
+      pe_req_unit_stride_addr_stage_d =
+          pe_req_fifo_data.scalar_op +
+          (pe_req_fifo_data.vstart <<
+           unsigned'(pe_req_fifo_data.vtype.vsew));
+      pe_req_stage_valid_d = 1'b1;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_pe_req_stage_regs
+    if (!rst_ni) begin
+      pe_req_stage_q                  <= '0;
+      pe_req_unit_stride_addr_stage_q <= '0;
+      pe_req_stage_valid_q            <= 1'b0;
+    end else if (lsu_ex_flush_d) begin
+      pe_req_stage_q                  <= '0;
+      pe_req_unit_stride_addr_stage_q <= '0;
+      pe_req_stage_valid_q            <= 1'b0;
+    end else begin
+      pe_req_stage_q                  <= pe_req_stage_d;
+      pe_req_unit_stride_addr_stage_q <= pe_req_unit_stride_addr_stage_d;
+      pe_req_stage_valid_q            <= pe_req_stage_valid_d;
+    end
+  end
 
   `ifdef FOR_VERIFY
   riscv::instruction_t vlsu_addrgen_instr;
@@ -798,6 +846,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [12:0]             num_bytes;
   vlen_t                   remaining_bytes;
   axi_addr_t               paddr;
+  axi_addr_t               unit_stride_vaddr;
+  axi_addr_t               unit_stride_paddr;
   logic [31:0]             num_beats;
   logic [31:0]             burst_length;
   logic [NrLanes-1:0]      addrgen_operand_valid;
@@ -816,8 +866,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [31:0]             prefetch_required_avl;
   logic                    prefetch_avl_enough;
   axi_addr_t               prefetch_aligned_start_addr;
-  axi_addr_t               prefetch_aligned_end_addr;
-  axi_addr_t               prefetch_aligned_next_start_addr;
   
   logic [($bits(axi_addr_t) - 12)-1:0] prefetch_next_2page_msb;
   
@@ -890,7 +938,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end
   endfunction
 
-  assign axi_addr_misalignment = vreq_addr_d[clog2_AxiStrobeWidth-1:0];
+  // Unit-stride burst and prefetch generation must not share the indexed
+  // operand address cone.  In IDLE, use the lookahead address captured with
+  // the staged PE request; once running, use the registered request address.
+  // This preserves the existing same-cycle first request while preventing an
+  // impossible indexed-operand -> unit-prefetch STA path.
+  assign unit_stride_vaddr =
+      (state_q == IDLE) ? pe_req_unit_stride_addr_stage_q : vreq_addr_q;
+
+  assign unit_stride_paddr = en_ld_st_translation_i ? mmu_paddr_i
+                                                     : unit_stride_vaddr;
+  assign axi_addr_misalignment =
+      unit_stride_vaddr[clog2_AxiStrobeWidth-1:0];
 
   lzc #(
     .WIDTH(clog2_AxiStrobeWidth),
@@ -952,6 +1011,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     vreq_is_vld           = 1'b0;
     addrgen_ack           = 1'b0;
+    pe_req_stage_consume  = 1'b0;
     vreq_addr_d           = vreq_addr_q;
     vreq_blen_d           = vreq_blen_q;
     vreq_is_load_d        = vreq_is_load_q;
@@ -1036,8 +1096,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_avl_enough              = 1'b0;
     prefetch_num_bytes               = '0;
     prefetch_aligned_start_addr      = '0;
-    prefetch_aligned_end_addr        = '0;
-    prefetch_aligned_next_start_addr = '0;
     prefetch_next_2page_msb          = '0;
 
     second_prefetch_vld_d         = second_prefetch_vld_q;
@@ -1051,6 +1109,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         pe_req_d                     = pe_req;
         vinsn_running_d[pe_req_d.id] = 1'b1;
         addrgen_ack                  = 1'b1;
+        pe_req_stage_consume         = 1'b1;
 
         vreq_is_vld           = 1'b1;
         vreq_is_load_d        = is_load(pe_req_d.op);
@@ -1223,14 +1282,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : addrgen_state_WAIT_LAST_TRANSLATION
     endcase
 
-    for (int i = 0; i < VaddrgenInsnQueueDepth; i++) begin
-      if (prefetch_axi_ar_rob_vld[i] &&
-          (prefetch_axi_ar_rob_mem[i].addr  == vreq_addr_d)) begin
-        prefetch_axi_ar_rob_match = 1'b1;
+    if (vreq_is_load_d && vreq_is_unit_stride_d) begin
+      for (int i = 0; i < VaddrgenInsnQueueDepth; i++) begin
+        if (prefetch_axi_ar_rob_vld[i] &&
+            (prefetch_axi_ar_rob_mem[i].addr == unit_stride_paddr)) begin
+          prefetch_axi_ar_rob_match = 1'b1;
+        end
       end
     end
     prefetch_axi_ar_queue_match =
-        prefetch_axi_ar_queue_valid && (prefetch_axi_ar_data.addr == vreq_addr_d);
+        vreq_is_load_d && vreq_is_unit_stride_d &&
+        prefetch_axi_ar_queue_valid &&
+        (prefetch_axi_ar_data.addr == unit_stride_paddr);
     if ((prefetch_seg_rob_data && prefetch_axi_ar_rob_pop) && prefetch_axi_ar_rob_pop_done_counter_q) begin
       second_prefetch_vld_compare_d = '0;
     end
@@ -1247,21 +1310,25 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     // path run so stream-break/flush can discard stale prefetch state instead of
     // waiting forever behind unrelated queued prefetch work.
     prefetch_page_cross_wait_match =
+        vreq_is_load_d &&
+        vreq_is_unit_stride_d &&
         prefetch_axi_ar_rob_pop_done_counter_d &&
-        (prefetch_axi_ar_rob_pop_done_addr_d == vreq_addr_d) &&
+        (prefetch_axi_ar_rob_pop_done_addr_d == unit_stride_paddr) &&
         !prefetch_axi_addr_lookup_fifo_empty &&
         !prefetch_axi_addr_lookup_second_empty &&
-        (prefetch_axi_addr_lookup_fifo_data == vreq_addr_d);
+        (prefetch_axi_addr_lookup_fifo_data == unit_stride_paddr);
     // Only wait for a matching prefetch once it has actually entered the
     // in-flight/return path.  A prefetch that is merely queued can be blocked by
     // prefetch credit pressure; holding the demand behind that queue entry can
     // deadlock because the demand itself is often what drains the pipeline.  If
     // the queued prefetch is late, issue the demand normally and let the stale
     // prefetch entry be handled by the existing stream-break flush path.
-    prefetch_wait_match = (prefetch_axi_ar_rob_match &&
-                           !prefetch_axi_addr_lookup_fifo_full &&
-                           !prefetch_axi_addr_lookup_second_full) ||
-                          prefetch_page_cross_wait_match;
+    prefetch_wait_match =
+        vreq_is_load_d && vreq_is_unit_stride_d &&
+        ((prefetch_axi_ar_rob_match &&
+          !prefetch_axi_addr_lookup_fifo_full &&
+          !prefetch_axi_addr_lookup_second_full) ||
+         prefetch_page_cross_wait_match);
 
     // A page-crossing prefetch retires as two lookup entries.  When the matching
     // demand hits the first entry, the vldu drains the prefetched vector
@@ -1294,7 +1361,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         !second_prefetch_vld_q &&
         !prefetch_drop_second_lookup_now) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
-        paddr = (en_ld_st_translation_i) ? mmu_paddr_i : vreq_addr_d;
+        paddr = vreq_is_unit_stride_d
+              ? unit_stride_paddr
+              : (en_ld_st_translation_i ? mmu_paddr_i : vreq_addr_d);
 
         // Prefetch-hit detection. MUST be gated on vreq_is_load_d: the data prefetcher
         // is read-only, so only a LOAD can legitimately hit it. An in-place STORE
@@ -1308,10 +1377,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             !prefetch_axi_addr_lookup_fifo_empty &&
             !prefetch_axi_addr_lookup_second_empty &&
             vreq_is_unit_stride_d) begin
-          prefetch_lookup_head_match = (paddr == prefetch_axi_addr_lookup_fifo_data);
+          prefetch_lookup_head_match =
+              (unit_stride_paddr == prefetch_axi_addr_lookup_fifo_data);
           for (int unsigned i = 0; i < VaddrgenInsnQueueDepth; i++) begin
             if (prefetch_axi_addr_lookup_fifo_vld[i] &&
-                (prefetch_axi_addr_lookup_fifo_mem[i] == paddr)) begin
+                (prefetch_axi_addr_lookup_fifo_mem[i] == unit_stride_paddr)) begin
               prefetch_lookup_match = 1'b1;
             end
           end
@@ -1321,9 +1391,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             prefetch_axi_addr_lookup_fifo_pop   = 1'b1;
             prefetch_axi_addr_lookup_second_pop = 1'b1;
           end else if ($unsigned(prefetch_axi_addr_lookup_fifo_data) >
-                       $unsigned(paddr)) begin
+                       $unsigned(unit_stride_paddr)) begin
             prefetch_lookup_head_delta =
-                prefetch_axi_addr_lookup_fifo_data - paddr;
+                prefetch_axi_addr_lookup_fifo_data - unit_stride_paddr;
             prefetch_lookup_head_future_near =
                 ($unsigned(prefetch_lookup_head_delta) <=
                  ($unsigned(vreq_blen_d) + 32));
@@ -1351,12 +1421,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         end else begin
           if (vreq_is_unit_stride_d) begin : unit_stride_req
 
-            aligned_start_addr_d = aligned_addr(paddr, clog2_AxiStrobeWidth);
+            aligned_start_addr_d =
+                aligned_addr(unit_stride_paddr, clog2_AxiStrobeWidth);
             next_2page_msb_d     = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
             set_end_addr (
               next_2page_msb_d,
               vreq_blen_d,
-              paddr,
+              unit_stride_paddr,
               AxiDataWidth/8,
               clog2_AxiStrobeWidth,
               aligned_start_addr_d,
@@ -1368,7 +1439,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             if (pe_req_d.vstart != 0 && !vreq_is_load_d) begin
               eff_axi_dw_d     = 1 << pe_req_d.vtype.vsew[1:0];
               eff_axi_dw_log_d = pe_req_d.vtype.vsew[1:0];
-            end else if ((paddr[clog2_AxiStrobeWidth-1:0] != '0) && !vreq_is_load_d) begin
+            end else if ((unit_stride_paddr[clog2_AxiStrobeWidth-1:0] != '0) &&
+                         !vreq_is_load_d) begin
               eff_axi_dw_d     = {1'b0, narrow_axi_data_bwidth};
               eff_axi_dw_log_d = zeroes_cnt;
             end else begin
@@ -1377,9 +1449,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
 
             if (curr_req_page_crossed) begin
-              num_bytes = 13'h1000 - paddr[11:0];
+              num_bytes = 13'h1000 - unit_stride_paddr[11:0];
             end else begin
-              num_bytes = aligned_end_addr_d[11:0] - paddr[11:0] + 1;
+              num_bytes =
+                  aligned_end_addr_d[11:0] - unit_stride_paddr[11:0] + 1;
             end
   
             if (vreq_blen_d < num_bytes) begin
@@ -1395,7 +1468,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             if (vreq_is_load_d) begin
               axi_ar_o = '{
                 id     : AXI_ID_DEMAND,
-                addr   : paddr,
+                addr   : unit_stride_paddr,
                 len    : burst_length - 1,
                 size   : eff_axi_dw_log_d,
                 cache  : CACHE_MODIFIABLE,
@@ -1423,42 +1496,38 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 // unaligned loads expand to aligned bus beats and would otherwise
                 // overstep the next iteration's real demand address.
                 prefetch_logical_stride_bytes = axi_addr_t'(vreq_blen_d) << prefetch_mul;
-                prefetch_addr = paddr + prefetch_logical_stride_bytes;
+                prefetch_addr =
+                    unit_stride_paddr + prefetch_logical_stride_bytes;
                 prefetch_num_bytes = vreq_blen_d;
 
-                prefetch_aligned_start_addr = aligned_addr(prefetch_addr, eff_axi_dw_log_d);
-                // MSB of the page that follows the prefetch start. The demand
-                // path computes its next_2page_msb the same way; the prefetch
-                // path left it at 0, so a page-crossing prefetch sent its second
-                // segment to address {0,12'h0}=0 and the page-crossing iteration
-                // missed (and issued a bogus read to address 0).
+                // A load prefetch always uses the full AXI data width.  Compute
+                // its page-local beat counts directly instead of routing it
+                // through the variable-width misaligned-store/LZC cone.
+                prefetch_aligned_start_addr =
+                    aligned_addr(prefetch_addr, clog2_AxiStrobeWidth);
                 prefetch_next_2page_msb = prefetch_aligned_start_addr[AxiAddrWidth-1:12] + 1'b1;
-
-                set_end_addr (
-                  prefetch_next_2page_msb,
-                  vreq_blen_d,
-                  prefetch_addr,
-                  eff_axi_dw_d,
-                  eff_axi_dw_log_d,
-                  prefetch_aligned_start_addr,
-                  prefetch_aligned_end_addr,
-                  prefetch_aligned_next_start_addr,
-                  prefetch_req_page_crossed
-                );
-              
-                prefetch_num_beats = ((prefetch_aligned_end_addr[11:0] - prefetch_aligned_start_addr[11:0]) >> eff_axi_dw_log_d) + 1;
                 prefetch_total_beats =
-                    (($unsigned(prefetch_addr - prefetch_aligned_start_addr) +
-                      prefetch_num_bytes + $unsigned(eff_axi_dw_d) - 1) >>
-                     eff_axi_dw_log_d);
-                prefetch_burst_length = (prefetch_num_beats < 256) ? prefetch_num_beats : 256;
+                    (($unsigned(prefetch_addr[clog2_AxiStrobeWidth-1:0]) +
+                      $unsigned(prefetch_num_bytes) + (AxiDataWidth/8) - 1) >>
+                     clog2_AxiStrobeWidth);
+                prefetch_num_beats =
+                    (32'd4096 -
+                     $unsigned(prefetch_aligned_start_addr[11:0])) >>
+                    clog2_AxiStrobeWidth;
+                prefetch_burst_length =
+                    (prefetch_total_beats < prefetch_num_beats)
+                    ? prefetch_total_beats : prefetch_num_beats;
+                if (prefetch_burst_length > 256)
+                  prefetch_burst_length = 256;
+                prefetch_req_page_crossed =
+                    prefetch_total_beats > prefetch_num_beats;
               
                 if (prefetch_burst_length != 0) begin
                   prefetch_axi_ar_queue_datain = '{
                     id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
                     addr   : prefetch_addr,
                     len    : prefetch_burst_length - 1,
-                    size   : eff_axi_dw_log_d,
+                    size   : clog2_AxiStrobeWidth,
                     cache  : CACHE_MODIFIABLE,
                     burst  : BURST_INCR,
                     default: '0
@@ -1475,7 +1544,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   prefetch_second_beats = prefetch_total_beats - prefetch_burst_length;
                   second_prefetch_vld_d   = 1'b1;
                   second_prefetch_vld_compare_d = 1'b1;
-                  second_prefetch_paddr_d = prefetch_aligned_next_start_addr;
+                  second_prefetch_paddr_d = {prefetch_next_2page_msb, 12'h000};
                   second_prefetch_burst_len_d = prefetch_second_beats - 1;
                 end
               end : first_prefetch
@@ -1484,7 +1553,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             else begin
               axi_aw_o = '{
                 id     : AXI_ID_DEMAND,
-                addr   : paddr,
+                addr   : unit_stride_paddr,
                 len    : burst_length - 1,
                 size   : eff_axi_dw_log_d,
                 cache  : CACHE_MODIFIABLE,
@@ -1494,7 +1563,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end
 
             axi_addrgen_queue = '{
-              addr            : paddr,
+              addr            : unit_stride_paddr,
               len             : burst_length - 1,
               size            : eff_axi_dw_log_d,
               is_load         : vreq_is_load_d,
@@ -1676,7 +1745,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
           addr   : second_prefetch_paddr_d,
           len    : second_prefetch_burst_len_d,
-          size   : eff_axi_dw_log_d,
+          size   : clog2_AxiStrobeWidth,
           cache  : CACHE_MODIFIABLE,
           burst  : BURST_INCR,
           default: '0
