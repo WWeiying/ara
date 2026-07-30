@@ -60,9 +60,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   `ifdef FOR_VERIFY
   logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
   logic [NrVInsn-1:0] war_candidate, war_arrival_pruned;
+  logic [NrVInsn-1:0] war_arrival_effective_pruned;
   logic sequencer_issue_event;
   logic [NrVInsn-1:0] src_release_event;
   logic [NrVInsn-1:0][NrVInsn-1:0] war_release_edge_event;
+  logic [NrVInsn-1:0] war_relaxed_cmd_event;
+  logic [NrVInsn-1:0] war_relaxed_cmd_seen_q;
   `endif
   ///////////////////////////////////
   //  Running vector instructions  //
@@ -393,9 +396,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `ifdef FOR_VERIFY
     war_candidate         = '0;
     war_arrival_pruned    = '0;
+    war_arrival_effective_pruned = '0;
     sequencer_issue_event = 1'b0;
     src_release_event     = '0;
     war_release_edge_event = '0;
+    war_relaxed_cmd_event = '0;
 `endif
 
     // Maintain request
@@ -511,6 +516,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               waw_dependency[write_list_d[ara_req_i.vd].vid] |=
                 write_list_d[ara_req_i.vd].valid;
             end
+`ifdef FOR_VERIFY
+            // Count only WAR bits whose removal really shrinks the combined
+            // hazard set; a coincident RAW or WAW still keeps that predecessor.
+            war_arrival_effective_pruned =
+                war_arrival_pruned & vinsn_running_d &
+                ~(raw_dependency | waw_dependency);
+`endif
 
             `ifdef FOR_VERIFY
             raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
@@ -693,10 +705,15 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // capture; mixed RAW/WAR or WAW/WAR edges remain until full completion.
 `ifdef FOR_VERIFY
     src_release_event = src_released_d & ~src_released_q;
-    for (int id = 0; id < NrVInsn; id++)
+    for (int id = 0; id < NrVInsn; id++) begin
       war_release_edge_event[id] = war_only_hazard_table_d[id] &
           src_release_event & vinsn_running_d &
           {NrVInsn{vinsn_running_d[id]}};
+      if ((|war_release_edge_event[id]) && !war_relaxed_cmd_seen_q[id])
+        war_relaxed_cmd_event[id] = 1'b1;
+    end
+    if (sequencer_issue_event && (|war_arrival_effective_pruned))
+      war_relaxed_cmd_event[vinsn_id_n] = 1'b1;
 `endif
     for (int id = 0; id < NrVInsn; id++) begin
       if (!vinsn_running_d[id]) begin
@@ -900,6 +917,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [63:0] cnt_war_arrival_pruned;
   logic [63:0] cnt_war_release_edge;
   logic [63:0] cnt_war_pruned;
+  logic [63:0] cnt_war_relaxed_cmd;
+  logic [63:0] cnt_war_cmd_total;
   logic [63:0] cnt_release_lead_vid_cycles;
   logic [31:0] pf_probe_seq_block_cycles_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -920,6 +939,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       cnt_war_arrival_pruned <= '0;
       cnt_war_release_edge <= '0;
       cnt_war_pruned <= '0;
+      cnt_war_relaxed_cmd <= '0;
+      cnt_war_cmd_total <= '0;
+      war_relaxed_cmd_seen_q <= '0;
       cnt_release_lead_vid_cycles <= '0;
       pf_probe_seq_block_cycles_q <= '0;
     end else begin
@@ -954,6 +976,17 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       cnt_war_release_edge <= cnt_war_release_edge + $countones(war_release_edge_event);
       cnt_war_pruned <= cnt_war_pruned + $countones(war_release_edge_event) +
           (sequencer_issue_event ? $countones(war_arrival_pruned) : 0);
+      cnt_war_relaxed_cmd <= cnt_war_relaxed_cmd + $countones(war_relaxed_cmd_event);
+      if (sequencer_issue_event)
+        cnt_war_cmd_total <= cnt_war_cmd_total + 1;
+      for (int unsigned id = 0; id < NrVInsn; id++) begin
+        if (!vinsn_running_d[id])
+          war_relaxed_cmd_seen_q[id] <= 1'b0;
+        else if (war_relaxed_cmd_event[id])
+          war_relaxed_cmd_seen_q[id] <= 1'b1;
+      end
+      if (sequencer_issue_event && !(|war_arrival_effective_pruned))
+        war_relaxed_cmd_seen_q[vinsn_id_n] <= 1'b0;
       cnt_release_lead_vid_cycles <= cnt_release_lead_vid_cycles +
           $countones(src_released_q & vinsn_running_q);
       if (sequencer_issue_event) begin
@@ -991,9 +1024,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
              cnt_seq_false_hazard_stall, cnt_seq_queue_full_stall,
              cnt_seq_lane_desync_stall, cnt_seq_operand_req_stall,
              cnt_seq_wait_state_cycles, cnt_seq_mem_wait_cycles);
-    $display("[PERF-SEQ-LIFETIME] src_capture_done=%0d war_candidate=%0d war_pruned=%0d war_arrival_pruned=%0d war_release_edge=%0d release_lead_vid_cyc=%0d",
+    $display("[PERF-SEQ-LIFETIME] src_capture_done=%0d war_candidate=%0d war_pruned=%0d war_arrival_pruned=%0d war_release_edge=%0d war_relaxed_cmd=%0d war_cmd_total=%0d release_lead_vid_cyc=%0d",
              cnt_src_capture_done, cnt_war_candidate, cnt_war_pruned,
              cnt_war_arrival_pruned, cnt_war_release_edge,
+             cnt_war_relaxed_cmd, cnt_war_cmd_total,
              cnt_release_lead_vid_cycles);
   end
   `endif

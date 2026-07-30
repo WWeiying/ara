@@ -183,8 +183,8 @@ KERNEL_H_AGPF="pf_ar_rob_full,pf_ar_lkup_full,pf_ar_pending,pf_ar_dis,pf_2nd,dem
 KERNEL_H_AGPF2="pf_throttled_cycles,pf_late,pf_unused,pf_wait_match_cyc,pf_wait_match_evt,pf_queue_valid_cyc,pf_queue_block_cyc,pf_lkup_full_cyc,pf_rob_full_cyc,pf_pending_cyc,pf_stream_break,pf_future_keep,pf_queue_match_cyc,pf_rob_match_cyc,pf_page_wait_cyc"
 KERNEL_H_SEQ="seq_issue,seq_blocked_cycles,seq_raw_cycles,seq_war_cycles,seq_waw_cycles,seq_waw_block,seq_full"
 KERNEL_H_SEQHDV="hazard_check_count,seq_true_hazard_stall,seq_false_hazard_stall,seq_queue_full_stall,seq_lane_desync_stall,seq_operand_req_stall,seq_wait_state_cyc,seq_mem_wait_cyc"
-KERNEL_H_SEQLIFETIME="src_capture_done_count,war_candidate_count,war_pruned_count,war_arrival_pruned_count,war_release_edge_count,release_lead_vid_cycles"
-KERNEL_H_DERIV="pf_hit_rate,seamv_tc_ifetch_ratio,war_prune_rate,backend_backpressure_ratio,scalar_operand_wait_ratio"
+KERNEL_H_SEQLIFETIME="src_capture_done_count,war_candidate_count,war_pruned_count,war_arrival_pruned_count,war_release_edge_count,war_relaxed_cmd_count,war_cmd_total_count,release_lead_vid_cycles"
+KERNEL_H_DERIV="pf_hit_rate,seamv_tc_ifetch_ratio,war_prune_rate,war_relaxed_cmd_ratio,backend_backpressure_ratio,scalar_operand_wait_ratio"
 KERNEL_ROWHDR="$KERNEL_H_ID,$KERNEL_H_HDV,$KERNEL_H_HEU_EP,$KERNEL_H_HEU_FE,$KERNEL_H_HEU_OVLP,$KERNEL_H_VDU_CMD,$KERNEL_H_VDU_OPERAND,$KERNEL_H_IPU,$KERNEL_H_AG,$KERNEL_H_AGPF,$KERNEL_H_AGPF2,$KERNEL_H_SEQ,$KERNEL_H_SEQHDV,$KERNEL_H_SEQLIFETIME,$KERNEL_H_DERIV"
 
 write_kernel_csv_row() {
@@ -301,15 +301,17 @@ write_kernel_csv_row() {
   slds=$(kv 'PERF-SEQ-HDV' 'lane_desync_stall'); sors=$(kv 'PERF-SEQ-HDV' 'operand_req_stall')
   swsc=$(kv 'PERF-SEQ-HDV' 'wait_state_cyc'); smwc=$(kv 'PERF-SEQ-HDV' 'mem_wait_cyc')
 
-  local srcdone warcand warpruned wararrival warrelease warlead
+  local srcdone warcand warpruned wararrival warrelease warrelaxed warcmdtotal warlead
   srcdone=$(kv 'PERF-SEQ-LIFETIME' 'src_capture_done')
   warcand=$(kv 'PERF-SEQ-LIFETIME' 'war_candidate')
   warpruned=$(kv 'PERF-SEQ-LIFETIME' 'war_pruned')
   wararrival=$(kv 'PERF-SEQ-LIFETIME' 'war_arrival_pruned')
   warrelease=$(kv 'PERF-SEQ-LIFETIME' 'war_release_edge')
+  warrelaxed=$(kv 'PERF-SEQ-LIFETIME' 'war_relaxed_cmd')
+  warcmdtotal=$(kv 'PERF-SEQ-LIFETIME' 'war_cmd_total')
   warlead=$(kv 'PERF-SEQ-LIFETIME' 'release_lead_vid_cyc')
 
-  local pfhr="" stir="" warpr="" bpr="" sowr=""
+  local pfhr="" stir="" warpr="" warrcr="" bpr="" sowr=""
   if [ -n "$pfa" ] && [ "$pfa" -gt 0 ] 2>/dev/null; then
     pfhr=$(echo "scale=3; ${pfh:-0}/$pfa" | bc)
   fi
@@ -318,6 +320,9 @@ write_kernel_csv_row() {
   fi
   if [ -n "$warcand" ] && [ "$warcand" -gt 0 ] 2>/dev/null; then
     warpr=$(echo "scale=3; ${warpruned:-0}/$warcand" | bc)
+  fi
+  if [ -n "$warcmdtotal" ] && [ "$warcmdtotal" -gt 0 ] 2>/dev/null; then
+    warrcr=$(echo "scale=6; ${warrelaxed:-0}/$warcmdtotal" | bc)
   fi
   if [ -n "$tc" ] && [ "$tc" -gt 0 ] 2>/dev/null; then
     [ -n "$vcb" ] && bpr=$(echo "scale=6; $vcb/$tc" | bc)
@@ -348,7 +353,7 @@ write_kernel_csv_row() {
   row="$row,${pth:-},${plt:-},${pun:-},${pwm:-},${pwe:-},${pqvc:-},${pqbc:-},${plfc:-},${prfc:-},${ppc2:-},${psb:-},${pfk:-},${pqmc:-},${prmc:-},${ppwc:-}"
   row="$row,${sissue:-},${sblk:-},${sraw:-},${swar:-},${swaw:-},${swawb:-},${sfull:-}"
   row="$row,${shc:-},${sth:-},${sfh:-},${sqfs:-},${slds:-},${sors:-},${swsc:-},${smwc:-}"
-  row="$row,${srcdone:-},${warcand:-},${warpruned:-},${wararrival:-},${warrelease:-},${warlead:-},$pfhr,$stir,$warpr,$bpr,$sowr"
+  row="$row,${srcdone:-},${warcand:-},${warpruned:-},${wararrival:-},${warrelease:-},${warrelaxed:-},${warcmdtotal:-},${warlead:-},$pfhr,$stir,$warpr,$warrcr,$bpr,$sowr"
 
   echo "$row" >> "$csv"
 }

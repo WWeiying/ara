@@ -1781,12 +1781,13 @@ Mock host 仍有价值：
 - `[PERF-VDU-OPERAND]`：VDU scalar operand capture/bypass/lookahead、vector EP enqueue、vset visible wait。
 - `[IPU-PERF]`：IPU fetch/serve/loop 相关计数。
 - `[PERF-SEQ]`：sequencer block/hazard 相关计数。
+- `[PERF-SEQ-LIFETIME]`：source-lifetime WAR 候选、边级释放和按命令去重的有效 relaxation 计数。
 - `[PERF-ADDRGEN]`：demand/prefetch AR、hit、bytes、load/store 计数。
 - `[PERF-ADDRGEN-PF]` / `[PERF-ADDRGEN-PF2]`：prefetch 被禁用、page cross、queue full、AVL low、ROB/lookup/pending 阻塞、late/unused/throttle 等原因。
 
 这些日志分两类使用：
 
-- **严格语义指标**：可以直接进入论文表格或图，例如 `task_cycles`、EP 数/宽度、vector command fire、demand/prefetch AR、prefetch hit、same-EP hazard bypass、vset visible wait。
+- **严格语义指标**：可以直接进入论文表格或图，例如 `task_cycles`、EP 数/宽度、vector command fire、demand/prefetch AR、prefetch hit、`war_relaxed_cmd_ratio`、vset visible wait。
 - **诊断/压力指标**：用于解释瓶颈，但不要写成严格 stall breakdown，例如 queue full cycles、ready block cycles、early issue blocked reason、stream-break、future-keep、queue-match cycles。这些信号通常反映某个局部门禁在某周期为真，不一定互斥，也不一定能相加等于总停顿。
 
 当前 sweep 汇总脚本会把各模块日志统一成 `paper_data.md` 中的字段。下面按 CSV 字段名列出含义；带 `ratio`、`per_cycle`、`avg`、`over` 或 `speedup` 的字段通常是脚本派生值，不是 RTL 中独立累加器。
@@ -1983,18 +1984,25 @@ Mock host 仍有价值：
 - `seq_war_cycles`：WAR 候选相关阻塞条件为真的周期数。
 - `seq_waw_cycles`：WAW 候选相关阻塞条件为真的周期数。
 - `seq_waw_block`：WAW block 条件触发或保持的计数。
-- `seq_ep_bypass`：same-EP hazard bypass 生效的次数。
 - `seq_full`：sequencer 或后端队列 full 相关局部压力计数。
 - `hazard_check_count`：sequencer 执行相关性检查的总次数。
-- `same_ep_hazard_candidate`：候选 hazard 中属于同一 EP、可能被 EP-aware 规则裁剪的数量。
-- `hazard_pruned_by_ep`：利用 same-EP metadata 被裁剪掉的保守 hazard 数量。
-- `seq_true_hazard_stall`：被归类为真实依赖或不能被 EP 语义裁剪的 hazard stall 计数。
-- `seq_false_hazard_stall`：被归类为保守/假相关导致的 stall 计数。
+- `seq_true_hazard_stall`：请求未获接受且存在 RAW 条件的周期数；它可能与其它局部阻塞原因重叠。
+- `seq_false_hazard_stall`：请求未获接受、没有 RAW、但存在 WAR 或 WAW 条件的周期数。字段名为兼容旧数据保留；它不证明该相关一定是“假相关”。
 - `seq_queue_full_stall`：sequencer/后端队列 full 导致的 stall 计数。
 - `seq_lane_desync_stall`：lane 同步或 lane desync 相关条件导致的 stall 计数。
 - `seq_operand_req_stall`：operand request 或 operand 服务路径导致 sequencer 受限的计数。
 - `seq_wait_state_cyc`：sequencer wait state 持续周期。
 - `seq_mem_wait_cyc`：sequencer 因 memory wait 状态受限的周期数。
+- `src_capture_done_count`：所有 lane 均完成某条 eligible vector instruction 的源操作数读取后，source-lifetime 状态转为 released 的指令数。
+- `war_candidate_count`：新 writer 到达时，其目的寄存器在 read list 中对应的在飞 reader 边数。该计数按边累计。
+- `war_pruned_count`：source-lifetime 在 writer 到达时省去的 WAR 候选边，加上 writer 在飞期间被释放的 WAR-only 边。该计数按边累计；同一 writer 可贡献多次。
+- `war_arrival_pruned_count`：新 writer 到达时，因对应 reader 已完成源读取而未形成的 WAR 边数。若同一前驱仍构成 RAW/WAW，旧调试字段仍会累计该 WAR 分量。
+- `war_release_edge_count`：writer 在飞期间，reader 完成全部源读取后从 global hazard row 清除的纯 WAR 边数；RAW/WAW 与 WAR 重合的边不在此列。
+- `war_relaxed_cmd_count`：source-lifetime 至少一次真正缩小有效 predecessor hazard 集合的 sequencer command 数，每条 command 最多计一次。到达时只有未被同一前驱 RAW/WAW 覆盖且前驱仍在飞的剪除才有效；运行期只接受纯 WAR 边释放。
+- `war_cmd_total_count`：sequencer 接收并分配 `vid` 的 command 总数，是 `war_relaxed_cmd_ratio` 的严格分母。
+- `war_relaxed_cmd_ratio`：`war_relaxed_cmd_count / war_cmd_total_count`。图中可简写为 **WAR-Relaxed Cmds**；它表示 source-lifetime 机制触及并有效缩小 hazard 集合的命令占比，不等价于周期收益或 stall reduction。没有有效剪除时取 0，而不是 `NA`。
+- `release_lead_vid_cycles`：source 已 released 但对应 vector instruction 仍在飞的 `vid × cycle` 累计值，用于观察 source completion 与整条指令完成之间的时间窗口。
+- `war_prune_rate`：`war_pruned_count / war_candidate_count` 的旧边级诊断比率。它衡量候选 WAR 边被处理的比例，可能因 fanout 和重复边累计而饱和；`war_candidate_count=0` 时为 `NA`，不建议作为主图唯一指标。
 
 ### 15.8 Main real/ideal baseline 字段
 

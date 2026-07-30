@@ -4,6 +4,9 @@
 # Full paper point set:
 #   HDV_ABLATION=full ./strict_ep_representative.sh all
 #
+# Figure 5.5 twelve-point microarchitecture set:
+#   HDV_ABLATION=full ./strict_ep_representative.sh metrics-5.5
+#
 # Seven-point paper ablation set for one hardware configuration:
 #   HDV_ABLATION=base|pf|haz|pf_haz ./strict_ep_representative.sh ablation
 set -uo pipefail
@@ -263,6 +266,16 @@ run_short() {
   run_nonlong_representatives
 }
 
+run_metrics_55() {
+  run_1d_points "1024"
+  run_ger_point
+  run_spmv_point
+  run_jacobi2d_point
+  run_gemm_ablation_point
+  run_syrk_point
+  run_trsm_point
+}
+
 run_paper_short() {
   run_1d_points "$PAPER_AVLS"
   run_nonlong_representatives
@@ -307,7 +320,7 @@ run_long_rest() {
 }
 
 launch_worker() {
-  local worker=$1 session=$2 runner_log=$3 command
+  local worker=$1 session=$2 runner_log=$3 session_file=${4:-long_runner.session} command
 
   if tmux has-session -t "$session" 2>/dev/null; then
     echo "[long] already running in tmux session: $session"
@@ -319,7 +332,7 @@ launch_worker() {
     "$PWD" "$HDV_ABLATION" "$HDV_SRC_LIFETIME" "$OUT" "$SIM_DIR" \
     "$SCRIPT" "$worker" "$OUT/$runner_log"
   tmux new-session -d -s "$session" "$command"
-  printf '%s\n' "$session" > "$OUT/long_runner.session"
+  printf '%s\n' "$session" > "$OUT/$session_file"
   echo "[long] started in tmux session: $session"
   echo "       log: $OUT/$runner_log"
 }
@@ -338,6 +351,12 @@ launch_ablation_gemm() {
   launch_worker ablation-gemm-worker \
     "${STRICT_EP_TMUX_SESSION:-hdv1_paper_${HDV_ABLATION}_gemm}" \
     ablation_gemm_runner.log
+}
+
+launch_metrics_55() {
+  launch_worker metrics-5.5-worker \
+    "${STRICT_EP_TMUX_SESSION:-hdv1_metrics_55}" \
+    metrics_55_runner.log metrics_55_runner.session
 }
 
 list_points() {
@@ -459,6 +478,15 @@ case "$MODE" in
     run_gemm_ablation_point
     ./kernel_sweep_sum.sh "$OUT"
     ;;
+  metrics-5.5)
+    launch_metrics_55
+    ;;
+  metrics-5.5-worker)
+    prepare_apps || { echo "app preparation failed"; exit 1; }
+    prepare_sim || { echo "RTL compile failed: $OUT/build_sim.log"; exit 1; }
+    run_metrics_55
+    ./kernel_sweep_sum.sh "$OUT"
+    ;;
   all)
     prepare_apps || { echo "app preparation failed"; exit 1; }
     prepare_sim || { echo "RTL compile failed: $OUT/build_sim.log"; exit 1; }
@@ -488,7 +516,7 @@ case "$MODE" in
     run_remaining_shard syrk
     ;;
   *)
-    echo "usage: $0 {build-only|short|sweep-1d|paper-short|long|long-rest|ablation|all|list|sum|remaining-a|remaining-b|remaining-c|remaining-trsm|remaining-syrk}" >&2
+    echo "usage: $0 {build-only|short|sweep-1d|paper-short|metrics-5.5|long|long-rest|ablation|all|list|sum|remaining-a|remaining-b|remaining-c|remaining-trsm|remaining-syrk}" >&2
     exit 2
     ;;
 esac
