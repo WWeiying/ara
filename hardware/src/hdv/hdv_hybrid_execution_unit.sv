@@ -29,6 +29,7 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   parameter int unsigned NumSlots      = 8,
   parameter int unsigned SlotWidth     = 16,
   parameter bit          EnableBufferedVectorEarlyIssue = 1'b1,
+  parameter bit          UseCompletionAwareScalarStatus = 1'b1,
   parameter type addr_t = logic [XLEN-1:0]
 ) (
   input  logic                               clk_i,
@@ -73,11 +74,18 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   // scalar_ep_done_i: scalar backend has finished executing all instructions
   // in this EP's scalar slice and committed results to XRF/FRF.
   input  logic                               scalar_ep_done_i,
+  // Completion-aware dependency summary for the current scalar slice.
+  input  logic [31:0]                        scalar_pending_gpr_read_mask_i,
+  input  logic [31:0]                        scalar_pending_gpr_write_mask_i,
+  input  logic [31:0]                        scalar_pending_fpr_read_mask_i,
+  input  logic [31:0]                        scalar_pending_fpr_write_mask_i,
+  input  logic                               scalar_mem_order_pending_i,
   // vector_ep_acknowledged_i: vector dispatch has captured all scalar operands
   // for this EP's vector slice (and any vset rd!=x0 writeback has been received).
   // THIS DOES NOT IMPLY VECTOR EXECUTION IS COMPLETE.
   input  logic                               vector_ep_acknowledged_i,
   input  logic                               vector_ep_acknowledged_id_i,
+  input  logic [$clog2(NumSlots+1)-1:0]      vector_early_issue_credit_i,
   input  logic                               backend_heu_error_i,
   output logic                               heu_top_busy_o,
   // EP acknowledged: both scalar and vector slices have been safely handed off
@@ -147,10 +155,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   // is blocked to prevent the buffered EP's vector memory ops from
   // overtaking the current EP's scalar memory ops.
   logic current_has_scalar_mem_order_d, current_has_scalar_mem_order_q;
+  logic current_scalar_mem_order_live_d, current_scalar_mem_order_live_q;
   logic [31:0] current_scalar_read_mask_d, current_scalar_read_mask_q;
   logic [31:0] current_scalar_write_mask_d, current_scalar_write_mask_q;
   logic [31:0] current_scalar_fpr_read_mask_d, current_scalar_fpr_read_mask_q;
   logic [31:0] current_scalar_fpr_write_mask_d, current_scalar_fpr_write_mask_q;
+  logic [31:0] current_scalar_live_read_mask_d, current_scalar_live_read_mask_q;
+  logic [31:0] current_scalar_live_write_mask_d, current_scalar_live_write_mask_q;
+  logic [31:0] current_scalar_live_fpr_read_mask_d, current_scalar_live_fpr_read_mask_q;
+  logic [31:0] current_scalar_live_fpr_write_mask_d, current_scalar_live_fpr_write_mask_q;
   logic [31:0] current_vector_write_mask_d, current_vector_write_mask_q;
   logic [31:0] current_vector_read_mask_d, current_vector_read_mask_q;
   logic [31:0] current_vector_fpr_write_mask_d, current_vector_fpr_write_mask_q;
@@ -180,8 +193,14 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic [31:0] vector_fpr_read_mask_in;
   logic early_scalar_gpr_hazard;
   logic early_scalar_fpr_hazard;
+  logic early_scalar_static_gpr_hazard;
+  logic early_scalar_static_fpr_hazard;
   logic early_vector_gpr_hazard;
   logic early_vector_fpr_hazard;
+  logic memory_release_active;
+  logic completion_release_required;
+  logic completion_credit_ok;
+  logic [$clog2(NumSlots+1)-1:0] buffer_vector_cmd_count;
 
   function automatic logic is_scalar_control_flow(input logic [31:0] insn,
                                                   input logic        is_32b);
@@ -230,10 +249,16 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
           7'b0110011, // OP
           7'b0111011, // OP-32
           7'b0101111, // AMO
-          7'b1010011, // scalar FPU may write integer rd (fcvt/fclass/fcmp)
           7'b0001111, // FENCE rd is architecturally unused, but keep conservative
           7'b1110011: // SYSTEM/CSR
             mask[rd] = 1'b1;
+          7'b1010011: begin
+            // Only FP compare, FP-to-integer conversion, FMV.X.*, and FCLASS
+            // target the integer register file.
+            if (insn[31:27] inside {5'b10100, 5'b11000, 5'b11100}) begin
+              mask[rd] = 1'b1;
+            end
+          end
           default: mask = '0;
         endcase
       end
@@ -341,7 +366,11 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
               mask[rd] = 1'b1;
             end
           end
-          7'b1010011,
+          7'b1010011: begin
+            if (!(insn[31:27] inside {5'b10100, 5'b11000, 5'b11100})) begin
+              mask[rd] = 1'b1;
+            end
+          end
           7'b1000011,
           7'b1000111,
           7'b1001011,
@@ -563,11 +592,17 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 `ifndef SYNTHESIS
   always_ff @(posedge clk_i) begin : p_early_issue_order_assertions
     if (rst_ni && !flush_i && buffer_vector_issue_fire) begin
-      assert (!current_has_branch_q && !current_has_scalar_mem_order_q)
+      assert (!current_has_branch_q && !current_scalar_mem_order_live_q)
         else $error("[HDV] buffered vector issue crossed a control or scalar-memory boundary");
+      if (current_has_scalar_mem_order_q) begin
+        assert (!scalar_mem_order_pending_i)
+          else $error("[HDV] scalar memory boundary released before backend completion");
+      end
       assert (!(early_scalar_gpr_hazard || early_scalar_fpr_hazard ||
                 early_vector_gpr_hazard || early_vector_fpr_hazard))
         else $error("[HDV] buffered vector issue crossed a scalar-visible RAW/WAR/WAW hazard");
+      assert (completion_credit_ok)
+        else $error("[HDV] completion-aware early issue exceeded reserved VDU credit");
     end
   end
 `endif
@@ -616,6 +651,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
   logic [63:0] cnt_heu_early_blk_vec_dep;
   logic [63:0] cnt_heu_cross_ep_inflight_cycles;
   logic [63:0] cnt_heu_overlap_cycles;
+  logic [63:0] cnt_heu_scalar_mem_pending_cycles;
+  logic [63:0] cnt_heu_scalar_mem_release_window_cycles;
+  logic [63:0] cnt_heu_early_grant_after_mem_release;
 
   always_comb begin : p_perf_ep_width_count
     ep_width_count = '0;
@@ -673,17 +711,26 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
 
   // Buffered vector early issue is blocked when the current EP contains:
   //  · a not-yet-resolved branch (control-flow boundary)
-  //  · a scalar memory-ordering instruction (load/store/FENCE/AMO/FP-mem)
-  //    — the buffered EP's vector memory ops must not overtake these.
-  //  · a scalar-visible GPR/FPR RAW, WAR or WAW conflict with the older EP.
+  //  · a scalar memory-ordering instruction that has not completed
+  //  · a still-live scalar-visible GPR/FPR RAW, WAR or WAW conflict.
+  // Completed scalar instructions are removed from the backend-provided live
+  // masks, so they no longer hold a younger independent vector slice.
   // The buffered vector slice is younger.  It may read older results only
   // after those writes complete, and it may not write a scalar register before
   // an older scalar/vector slice has performed its read or write.
   assign early_scalar_gpr_hazard = scalar_slice_outstanding_q &&
+      ((((buffer_vector_read_mask_q & current_scalar_live_write_mask_q) != 32'b0)) ||
+       (((buffer_vector_write_mask_q & current_scalar_live_read_mask_q) != 32'b0)) ||
+       (((buffer_vector_write_mask_q & current_scalar_live_write_mask_q) != 32'b0)));
+  assign early_scalar_fpr_hazard = scalar_slice_outstanding_q &&
+      ((((buffer_vector_fpr_read_mask_q & current_scalar_live_fpr_write_mask_q) != 32'b0)) ||
+       (((buffer_vector_fpr_write_mask_q & current_scalar_live_fpr_read_mask_q) != 32'b0)) ||
+       (((buffer_vector_fpr_write_mask_q & current_scalar_live_fpr_write_mask_q) != 32'b0)));
+  assign early_scalar_static_gpr_hazard = scalar_slice_outstanding_q &&
       ((((buffer_vector_read_mask_q & current_scalar_write_mask_q) != 32'b0)) ||
        (((buffer_vector_write_mask_q & current_scalar_read_mask_q) != 32'b0)) ||
        (((buffer_vector_write_mask_q & current_scalar_write_mask_q) != 32'b0)));
-  assign early_scalar_fpr_hazard = scalar_slice_outstanding_q &&
+  assign early_scalar_static_fpr_hazard = scalar_slice_outstanding_q &&
       ((((buffer_vector_fpr_read_mask_q & current_scalar_fpr_write_mask_q) != 32'b0)) ||
        (((buffer_vector_fpr_write_mask_q & current_scalar_fpr_read_mask_q) != 32'b0)) ||
        (((buffer_vector_fpr_write_mask_q & current_scalar_fpr_write_mask_q) != 32'b0)));
@@ -695,17 +742,41 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       ((((buffer_vector_fpr_read_mask_q & current_vector_fpr_write_mask_q) != 32'b0)) ||
        (((buffer_vector_fpr_write_mask_q & current_vector_fpr_read_mask_q) != 32'b0)) ||
        (((buffer_vector_fpr_write_mask_q & current_vector_fpr_write_mask_q) != 32'b0)));
+  assign memory_release_active = scalar_slice_outstanding_q &&
+                                 current_has_scalar_mem_order_q &&
+                                 !current_scalar_mem_order_live_q;
+
+  always_comb begin : p_buffer_vector_cmd_count
+    buffer_vector_cmd_count = '0;
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (buffer_vector_insn_valid_q[i]) begin
+        buffer_vector_cmd_count++;
+      end
+    end
+  end
+
+  // Preserve early-issue opportunities that were already legal before
+  // completion-aware release. Only an opportunity unlocked by a cleared scalar
+  // dependency or completed scalar-memory boundary consumes speculative
+  // command-window credit.
+  assign completion_release_required = early_scalar_static_gpr_hazard |
+                                       early_scalar_static_fpr_hazard |
+                                       memory_release_active;
+  assign completion_credit_ok = !completion_release_required ||
+                                (buffer_vector_cmd_count <=
+                                 vector_early_issue_credit_i);
 
   assign buffer_vector_can_issue = EnableBufferedVectorEarlyIssue &
                                    buffer_valid_q & buffer_has_vector_q &
                                    !buffer_vector_sent_q &
                                    !vector_dispatch_valid_q &
                                    !current_has_branch_q &
-                                   !current_has_scalar_mem_order_q &
+                                   !current_scalar_mem_order_live_q &
                                    !early_scalar_gpr_hazard &
                                    !early_scalar_fpr_hazard &
                                    !early_vector_gpr_hazard &
-                                   !early_vector_fpr_hazard;
+                                   !early_vector_fpr_hazard &
+                                   completion_credit_ok;
   assign buffer_vector_issue_fire = buffer_vector_can_issue;
 
 `ifdef FOR_VERIFY
@@ -767,16 +838,37 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
     error_d       = error_q;
     current_has_branch_d = current_has_branch_q;
     current_has_scalar_mem_order_d = current_has_scalar_mem_order_q;
+    current_scalar_mem_order_live_d = current_scalar_mem_order_live_q;
     current_scalar_read_mask_d = current_scalar_read_mask_q;
     current_scalar_write_mask_d = current_scalar_write_mask_q;
     current_scalar_fpr_read_mask_d = current_scalar_fpr_read_mask_q;
     current_scalar_fpr_write_mask_d = current_scalar_fpr_write_mask_q;
+    current_scalar_live_read_mask_d = current_scalar_live_read_mask_q;
+    current_scalar_live_write_mask_d = current_scalar_live_write_mask_q;
+    current_scalar_live_fpr_read_mask_d = current_scalar_live_fpr_read_mask_q;
+    current_scalar_live_fpr_write_mask_d = current_scalar_live_fpr_write_mask_q;
     current_vector_write_mask_d = current_vector_write_mask_q;
     current_vector_read_mask_d = current_vector_read_mask_q;
     current_vector_fpr_write_mask_d = current_vector_fpr_write_mask_q;
     current_vector_fpr_read_mask_d = current_vector_fpr_read_mask_q;
     current_vector_id_d = current_vector_id_q;
     next_vector_id_d = next_vector_id_q;
+
+    if (UseCompletionAwareScalarStatus && scalar_slice_outstanding_q &&
+        !scalar_dispatch_valid_q) begin
+      current_scalar_live_read_mask_d &=
+        scalar_pending_gpr_read_mask_i;
+      current_scalar_live_write_mask_d &=
+        scalar_pending_gpr_write_mask_i;
+      current_scalar_live_fpr_read_mask_d &=
+        scalar_pending_fpr_read_mask_i;
+      current_scalar_live_fpr_write_mask_d &=
+        scalar_pending_fpr_write_mask_i;
+      if (current_scalar_mem_order_live_q &&
+          !scalar_mem_order_pending_i) begin
+        current_scalar_mem_order_live_d = 1'b0;
+      end
+    end
 
     if (scalar_dispatch_valid_q && scalar_heu_ready_i) begin
       scalar_dispatch_valid_d = 1'b0;
@@ -820,10 +912,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       end
       current_has_branch_d    = 1'b0;
       current_has_scalar_mem_order_d = has_scalar_mem_order;
+      current_scalar_mem_order_live_d = has_scalar_mem_order;
       current_scalar_read_mask_d = scalar_read_mask_in;
       current_scalar_write_mask_d = scalar_write_mask_in;
       current_scalar_fpr_read_mask_d = scalar_fpr_read_mask_in;
       current_scalar_fpr_write_mask_d = scalar_fpr_write_mask_in;
+      current_scalar_live_read_mask_d = scalar_read_mask_in;
+      current_scalar_live_write_mask_d = scalar_write_mask_in;
+      current_scalar_live_fpr_read_mask_d = scalar_fpr_read_mask_in;
+      current_scalar_live_fpr_write_mask_d = scalar_fpr_write_mask_in;
       current_vector_write_mask_d = vector_write_mask_in;
       current_vector_read_mask_d = vector_read_mask_in;
       current_vector_fpr_write_mask_d = vector_fpr_write_mask_in;
@@ -952,10 +1049,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         current_vector_id_d = buffer_vector_id_d;
         current_has_branch_d = buffer_has_branch_d;
         current_has_scalar_mem_order_d = buffer_has_scalar_mem_order_d;
+        current_scalar_mem_order_live_d = buffer_has_scalar_mem_order_d;
         current_scalar_read_mask_d = buffer_scalar_read_mask_d;
         current_scalar_write_mask_d = buffer_scalar_write_mask_d;
         current_scalar_fpr_read_mask_d = buffer_scalar_fpr_read_mask_d;
         current_scalar_fpr_write_mask_d = buffer_scalar_fpr_write_mask_d;
+        current_scalar_live_read_mask_d = buffer_scalar_read_mask_d;
+        current_scalar_live_write_mask_d = buffer_scalar_write_mask_d;
+        current_scalar_live_fpr_read_mask_d = buffer_scalar_fpr_read_mask_d;
+        current_scalar_live_fpr_write_mask_d = buffer_scalar_fpr_write_mask_d;
         current_vector_write_mask_d = buffer_vector_write_mask_d;
         current_vector_read_mask_d = buffer_vector_read_mask_d;
         current_vector_fpr_write_mask_d = buffer_vector_fpr_write_mask_d;
@@ -977,10 +1079,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         outstanding_d = 1'b0;
         current_has_branch_d = 1'b0;
         current_has_scalar_mem_order_d = 1'b0;
+        current_scalar_mem_order_live_d = 1'b0;
         current_scalar_read_mask_d = '0;
         current_scalar_write_mask_d = '0;
         current_scalar_fpr_read_mask_d = '0;
         current_scalar_fpr_write_mask_d = '0;
+        current_scalar_live_read_mask_d = '0;
+        current_scalar_live_write_mask_d = '0;
+        current_scalar_live_fpr_read_mask_d = '0;
+        current_scalar_live_fpr_write_mask_d = '0;
         current_vector_write_mask_d = '0;
         current_vector_read_mask_d = '0;
         current_vector_fpr_write_mask_d = '0;
@@ -1011,10 +1118,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       error_d       = 1'b0;
       current_has_branch_d = 1'b0;
       current_has_scalar_mem_order_d = 1'b0;
+      current_scalar_mem_order_live_d = 1'b0;
       current_scalar_read_mask_d = '0;
       current_scalar_write_mask_d = '0;
       current_scalar_fpr_read_mask_d = '0;
       current_scalar_fpr_write_mask_d = '0;
+      current_scalar_live_read_mask_d = '0;
+      current_scalar_live_write_mask_d = '0;
+      current_scalar_live_fpr_read_mask_d = '0;
+      current_scalar_live_fpr_write_mask_d = '0;
       current_vector_write_mask_d = '0;
       current_vector_read_mask_d = '0;
       current_vector_fpr_write_mask_d = '0;
@@ -1075,10 +1187,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       error_q       <= 1'b0;
       current_has_branch_q <= 1'b0;
       current_has_scalar_mem_order_q <= 1'b0;
+      current_scalar_mem_order_live_q <= 1'b0;
       current_scalar_read_mask_q <= '0;
       current_scalar_write_mask_q <= '0;
       current_scalar_fpr_read_mask_q <= '0;
       current_scalar_fpr_write_mask_q <= '0;
+      current_scalar_live_read_mask_q <= '0;
+      current_scalar_live_write_mask_q <= '0;
+      current_scalar_live_fpr_read_mask_q <= '0;
+      current_scalar_live_fpr_write_mask_q <= '0;
       current_vector_write_mask_q <= '0;
       current_vector_read_mask_q <= '0;
       current_vector_fpr_write_mask_q <= '0;
@@ -1135,10 +1252,15 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       error_q       <= error_d;
       current_has_branch_q <= current_has_branch_d;
       current_has_scalar_mem_order_q <= current_has_scalar_mem_order_d;
+      current_scalar_mem_order_live_q <= current_scalar_mem_order_live_d;
       current_scalar_read_mask_q <= current_scalar_read_mask_d;
       current_scalar_write_mask_q <= current_scalar_write_mask_d;
       current_scalar_fpr_read_mask_q <= current_scalar_fpr_read_mask_d;
       current_scalar_fpr_write_mask_q <= current_scalar_fpr_write_mask_d;
+      current_scalar_live_read_mask_q <= current_scalar_live_read_mask_d;
+      current_scalar_live_write_mask_q <= current_scalar_live_write_mask_d;
+      current_scalar_live_fpr_read_mask_q <= current_scalar_live_fpr_read_mask_d;
+      current_scalar_live_fpr_write_mask_q <= current_scalar_live_fpr_write_mask_d;
       current_vector_write_mask_q <= current_vector_write_mask_d;
       current_vector_read_mask_q <= current_vector_read_mask_d;
       current_vector_fpr_write_mask_q <= current_vector_fpr_write_mask_d;
@@ -1187,6 +1309,9 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       cnt_heu_early_blk_vec_dep <= '0;
       cnt_heu_cross_ep_inflight_cycles <= '0;
       cnt_heu_overlap_cycles <= '0;
+      cnt_heu_scalar_mem_pending_cycles <= '0;
+      cnt_heu_scalar_mem_release_window_cycles <= '0;
+      cnt_heu_early_grant_after_mem_release <= '0;
     end else begin
       if (vliwpu_heu_execute_valid_i) begin
         cnt_heu_frontend_valid_cycles <= cnt_heu_frontend_valid_cycles + 64'd1;
@@ -1208,6 +1333,13 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
       end
       if (scalar_slice_outstanding_q) begin
         cnt_heu_scalar_outstanding_cycles <= cnt_heu_scalar_outstanding_cycles + 64'd1;
+        if (current_scalar_mem_order_live_q) begin
+          cnt_heu_scalar_mem_pending_cycles <=
+              cnt_heu_scalar_mem_pending_cycles + 64'd1;
+        end else if (current_has_scalar_mem_order_q) begin
+          cnt_heu_scalar_mem_release_window_cycles <=
+              cnt_heu_scalar_mem_release_window_cycles + 64'd1;
+        end
       end
       if (vector_slice_outstanding_q || buffer_vector_slice_outstanding_q) begin
         cnt_heu_vector_outstanding_cycles <= cnt_heu_vector_outstanding_cycles + 64'd1;
@@ -1254,13 +1386,17 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
         cnt_heu_early_attempt <= cnt_heu_early_attempt + 64'd1;
         if (buffer_vector_issue_fire) begin
           cnt_heu_early_grant <= cnt_heu_early_grant + 64'd1;
+          if (memory_release_active) begin
+            cnt_heu_early_grant_after_mem_release <=
+                cnt_heu_early_grant_after_mem_release + 64'd1;
+          end
         end else if (vector_dispatch_valid_q && !vector_heu_ready_i) begin
           cnt_heu_early_blk_queue <= cnt_heu_early_blk_queue + 64'd1;
         end else if (vector_dispatch_valid_q) begin
           cnt_heu_early_blk_dispatch <= cnt_heu_early_blk_dispatch + 64'd1;
         end else if (current_has_branch_q) begin
           cnt_heu_early_blk_branch <= cnt_heu_early_blk_branch + 64'd1;
-        end else if (current_has_scalar_mem_order_q) begin
+        end else if (current_scalar_mem_order_live_q) begin
           cnt_heu_early_blk_scalar_mem <= cnt_heu_early_blk_scalar_mem + 64'd1;
         end else if (early_block_scalar_gpr_dep) begin
           cnt_heu_early_blk_gpr_dep <= cnt_heu_early_blk_gpr_dep + 64'd1;
@@ -1268,6 +1404,8 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
           cnt_heu_early_blk_fpr_dep <= cnt_heu_early_blk_fpr_dep + 64'd1;
         end else if (early_block_vector_dep) begin
           cnt_heu_early_blk_vec_dep <= cnt_heu_early_blk_vec_dep + 64'd1;
+        end else if (!completion_credit_ok) begin
+          cnt_heu_early_blk_queue <= cnt_heu_early_blk_queue + 64'd1;
         end
       end
 
@@ -1294,12 +1432,14 @@ module hdv_hybrid_execution_unit import hdv_pkg::*; #(
              cnt_heu_ready_block_buffer_cycles, cnt_heu_ready_block_branch_cycles,
              cnt_heu_current_busy_cycles, cnt_heu_buffer_valid_cycles,
              cnt_heu_scalar_outstanding_cycles, cnt_heu_vector_outstanding_cycles);
-    $display("[PERF-HEU-OVLP] early_attempt=%0d early_grant=%0d early_blk_dispatch=%0d early_blk_queue=%0d early_blk_branch=%0d early_blk_scalar_mem=%0d early_blk_gpr_dep=%0d early_blk_fpr_dep=%0d early_blk_vec_dep=%0d cross_ep_cyc=%0d overlap_cyc=%0d",
+    $display("[PERF-HEU-OVLP] early_attempt=%0d early_grant=%0d early_blk_dispatch=%0d early_blk_queue=%0d early_blk_branch=%0d early_blk_scalar_mem=%0d early_blk_gpr_dep=%0d early_blk_fpr_dep=%0d early_blk_vec_dep=%0d cross_ep_cyc=%0d overlap_cyc=%0d scalar_mem_pending_cyc=%0d scalar_mem_release_window_cyc=%0d early_grant_after_mem_release=%0d",
              cnt_heu_early_attempt, cnt_heu_early_grant, cnt_heu_early_blk_dispatch,
              cnt_heu_early_blk_queue, cnt_heu_early_blk_branch, cnt_heu_early_blk_scalar_mem,
              cnt_heu_early_blk_gpr_dep, cnt_heu_early_blk_fpr_dep,
              cnt_heu_early_blk_vec_dep, cnt_heu_cross_ep_inflight_cycles,
-             cnt_heu_overlap_cycles);
+             cnt_heu_overlap_cycles, cnt_heu_scalar_mem_pending_cycles,
+             cnt_heu_scalar_mem_release_window_cycles,
+             cnt_heu_early_grant_after_mem_release);
   end
 `endif
 

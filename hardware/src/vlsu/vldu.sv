@@ -48,10 +48,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     //prefetch
     input  logic                           prefetch_axi_ar_hit_i,
     // Stream-break recovery: empty the prefetch R buffer (addrgen pulses this in
-    // lockstep with flushing its lookup FIFO; only when nothing is in flight, so
-    // no landing R beat is lost).  See addrgen prefetch_buf_flush_o.
+    // lockstep with flushing its lookup FIFO; addrgen waits for both returning
+    // data and active prefetch-hit consumption to finish first.
     input  logic                           prefetch_buf_flush_i,
+    output logic                           prefetch_buf_busy_o,
     input  axi_ar_t                        axi_addrgen_prefetch_req_i,
+    input  vlen_t                          prefetch_logical_bytes_i,
     input  logic                           axi_addrgen_prefetch_req_valid_i,
     output logic                           axi_addrgen_prefetch_req_ready_o,
     // Resident occupancy of the prefetch R buffer (256-bit words). Drives the
@@ -194,7 +196,20 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   logic   prefetch_axi_r_queue1_push, prefetch_axi_r_queue1_pop;
   logic   prefetch_axi_r_queue1_full, prefetch_axi_r_queue1_empty;
 
-  logic                            prefetch_axi_r_queue_pnt;
+  // Repack only the logical bytes of each prefetch request. Unaligned AXI
+  // bursts include leading/trailing coverage bytes which must not occupy the
+  // logical prefetch FIFO or shift the following stream's data.
+  logic [255:0]                    prefetch_pack_data_d, prefetch_pack_data_q;
+  logic [5:0]                      prefetch_pack_byte_count_d, prefetch_pack_byte_count_q;
+  vlen_t                           prefetch_logical_remaining_d, prefetch_logical_remaining_q;
+  logic                            prefetch_pack_finalize_d, prefetch_pack_finalize_q;
+  logic [383:0]                    prefetch_pack_merge;
+  logic [5:0]                      prefetch_pack_start_byte;
+  logic [5:0]                      prefetch_pack_available_bytes;
+  logic [5:0]                      prefetch_pack_take_bytes;
+  logic [6:0]                      prefetch_pack_total_bytes;
+  logic [255:0]                    prefetch_axi_r_word_wdata;
+  logic                            prefetch_axi_r_word_push;
   // Counts R beats received for the current prefetch burst, compared against
   // (axi_addrgen_prefetch_req_i.len + 1) to detect burst completion. Was [4:0]
   // (max 31) -- fine for m1(8)/m2(16) beats but it WRAPPED for m4(32)/m8(64)
@@ -222,25 +237,21 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 `endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      prefetch_axi_r_queue_pnt <= 1'b0;
-    end
-    else if (axi_r_valid_i && axi_r_ready_o
-                           && (prefetch_axi_r_queue_pnt ? (!prefetch_axi_r_queue1_full)
-                                                        : (!prefetch_axi_r_queue0_full))
-                           && cur_burst_is_prefetch) begin
-      prefetch_axi_r_queue_pnt <= ~prefetch_axi_r_queue_pnt;
-    end
-  end
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
+    if (!rst_ni || prefetch_buf_flush_i) begin
       prefetch_axi_r_queue_len_q <= '0;
-      prefetch_axi_ar_hit_cnt_q <= '0;
+      prefetch_axi_ar_hit_cnt_q  <= '0;
+      prefetch_pack_data_q       <= '0;
+      prefetch_pack_byte_count_q <= '0;
+      prefetch_logical_remaining_q <= '0;
+      prefetch_pack_finalize_q   <= 1'b0;
     end
     else begin
       prefetch_axi_r_queue_len_q <= prefetch_axi_r_queue_len_d;
-      prefetch_axi_ar_hit_cnt_q <= prefetch_axi_ar_hit_cnt_d;
+      prefetch_axi_ar_hit_cnt_q  <= prefetch_axi_ar_hit_cnt_d;
+      prefetch_pack_data_q       <= prefetch_pack_data_d;
+      prefetch_pack_byte_count_q <= prefetch_pack_byte_count_d;
+      prefetch_logical_remaining_q <= prefetch_logical_remaining_d;
+      prefetch_pack_finalize_q   <= prefetch_pack_finalize_d;
     end
   end
 
@@ -297,8 +308,6 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   typedef logic [idx_width(PrefetchQueueDepth)-1:0] prefetch_queue_ptr_t;
 
   logic [255:0] prefetch_axi_r_head_d, prefetch_axi_r_head_q;
-  logic [127:0] prefetch_axi_r_low_half_d, prefetch_axi_r_low_half_q;
-  logic         prefetch_axi_r_low_half_valid_d, prefetch_axi_r_low_half_valid_q;
   logic [255:0] prefetch_axi_r_mem_wdata, prefetch_axi_r_mem_rdata;
   logic         prefetch_axi_r_mem_req, prefetch_axi_r_mem_we;
   logic [31:0]  prefetch_axi_r_mem_be;
@@ -310,8 +319,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
   // Resident words for the addrgen prefetch credit (zero-extended to the port).
   assign prefetch_buf_occupancy_o    = prefetch_axi_r_word_cnt_q;
-  assign prefetch_axi_r_queue0_full  = (prefetch_axi_r_word_cnt_q == PrefetchQueueDepth) || prefetch_axi_r_low_half_valid_q;
-  assign prefetch_axi_r_queue1_full  = !prefetch_axi_r_low_half_valid_q;
+  assign prefetch_buf_busy_o         = (|prefetch_axi_ar_hit_cnt_q) ||
+                                       prefetch_axi_ar_hit_i;
+  assign prefetch_axi_r_queue0_full  = (prefetch_axi_r_word_cnt_q == PrefetchQueueDepth);
+  assign prefetch_axi_r_queue1_full  = prefetch_axi_r_queue0_full;
   assign prefetch_axi_r_queue0_empty = (prefetch_axi_r_word_cnt_q == '0);
   assign prefetch_axi_r_queue1_empty = (prefetch_axi_r_word_cnt_q == '0);
   assign prefetch_axi_r_mem_be       = '1;
@@ -323,32 +334,28 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_axi_r_queue0_data = prefetch_axi_r_head_q[127:0];
     prefetch_axi_r_queue1_data = prefetch_axi_r_head_q[255:128];
 
-    prefetch_axi_r_head_d           = prefetch_axi_r_head_q;
-    prefetch_axi_r_low_half_d       = prefetch_axi_r_low_half_q;
-    prefetch_axi_r_low_half_valid_d = prefetch_axi_r_low_half_valid_q;
-    prefetch_axi_r_word_cnt_d       = prefetch_axi_r_word_cnt_q;
-    prefetch_axi_r_word_rd_ptr_d    = prefetch_axi_r_word_rd_ptr_q;
-    prefetch_axi_r_word_wr_ptr_d    = prefetch_axi_r_word_wr_ptr_q;
-    prefetch_axi_r_mem_req          = (prefetch_axi_r_word_cnt_q > 1);
-    prefetch_axi_r_mem_we           = 1'b0;
-    prefetch_axi_r_mem_addr         = (prefetch_axi_r_word_rd_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_rd_ptr_q + 1'b1;
-    prefetch_axi_r_mem_wdata        = '0;
+    prefetch_axi_r_head_d        = prefetch_axi_r_head_q;
+    prefetch_axi_r_word_cnt_d    = prefetch_axi_r_word_cnt_q;
+    prefetch_axi_r_word_rd_ptr_d = prefetch_axi_r_word_rd_ptr_q;
+    prefetch_axi_r_word_wr_ptr_d = prefetch_axi_r_word_wr_ptr_q;
+    prefetch_axi_r_mem_req       = (prefetch_axi_r_word_cnt_q > 1);
+    prefetch_axi_r_mem_we        = 1'b0;
+    prefetch_axi_r_mem_addr      =
+        (prefetch_axi_r_word_rd_ptr_q == PrefetchQueueDepth-1)
+        ? '0 : prefetch_axi_r_word_rd_ptr_q + 1'b1;
+    prefetch_axi_r_mem_wdata     = '0;
 
-    if (prefetch_axi_r_queue0_push && !prefetch_axi_r_queue0_full) begin
-      prefetch_axi_r_low_half_d       = prefetch_axi_r_queue0;
-      prefetch_axi_r_low_half_valid_d = 1'b1;
-    end
-
-    if (prefetch_axi_r_queue1_push && !prefetch_axi_r_queue1_full) begin
-      prefetch_axi_r_mem_req          = 1'b1;
-      prefetch_axi_r_mem_we           = 1'b1;
-      prefetch_axi_r_mem_addr         = prefetch_axi_r_word_wr_ptr_q;
-      prefetch_axi_r_mem_wdata        = {prefetch_axi_r_queue1, prefetch_axi_r_low_half_q};
-      prefetch_axi_r_low_half_valid_d = 1'b0;
-      prefetch_axi_r_word_cnt_d       = prefetch_axi_r_word_cnt_q + 1'b1;
-      prefetch_axi_r_word_wr_ptr_d    = (prefetch_axi_r_word_wr_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_wr_ptr_q + 1'b1;
+    if (prefetch_axi_r_word_push && !prefetch_axi_r_queue0_full) begin
+      prefetch_axi_r_mem_req       = 1'b1;
+      prefetch_axi_r_mem_we        = 1'b1;
+      prefetch_axi_r_mem_addr      = prefetch_axi_r_word_wr_ptr_q;
+      prefetch_axi_r_mem_wdata     = prefetch_axi_r_word_wdata;
+      prefetch_axi_r_word_cnt_d    = prefetch_axi_r_word_cnt_d + 1'b1;
+      prefetch_axi_r_word_wr_ptr_d =
+          (prefetch_axi_r_word_wr_ptr_q == PrefetchQueueDepth-1)
+          ? '0 : prefetch_axi_r_word_wr_ptr_q + 1'b1;
       if (prefetch_axi_r_word_cnt_q == '0) begin
-        prefetch_axi_r_head_d = {prefetch_axi_r_queue1, prefetch_axi_r_low_half_q};
+        prefetch_axi_r_head_d = prefetch_axi_r_word_wdata;
       end
     end
 
@@ -357,6 +364,11 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       prefetch_axi_r_word_rd_ptr_d = (prefetch_axi_r_word_rd_ptr_q == PrefetchQueueDepth-1) ? '0 : prefetch_axi_r_word_rd_ptr_q + 1'b1;
       if (prefetch_axi_r_word_cnt_q > 1) begin
         prefetch_axi_r_head_d = prefetch_axi_r_mem_rdata;
+      end else if (prefetch_axi_r_word_push) begin
+        // Simultaneous pop of the sole resident word and push of its successor.
+        prefetch_axi_r_head_d = prefetch_axi_r_word_wdata;
+      end else begin
+        prefetch_axi_r_head_d = '0;
       end
     end
   end
@@ -408,8 +420,6 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       prefetch_axi_r_head_q           <= '0;
-      prefetch_axi_r_low_half_q       <= '0;
-      prefetch_axi_r_low_half_valid_q <= 1'b0;
       prefetch_axi_r_word_cnt_q       <= '0;
       prefetch_axi_r_word_rd_ptr_q    <= '0;
       prefetch_axi_r_word_wr_ptr_q    <= '0;
@@ -418,15 +428,11 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       // are being flushed the same cycle, so they stay consistent.  Safe because
       // the addrgen only pulses this with no prefetch in flight.
       prefetch_axi_r_head_q           <= '0;
-      prefetch_axi_r_low_half_q       <= '0;
-      prefetch_axi_r_low_half_valid_q <= 1'b0;
       prefetch_axi_r_word_cnt_q       <= '0;
       prefetch_axi_r_word_rd_ptr_q    <= '0;
       prefetch_axi_r_word_wr_ptr_q    <= '0;
     end else begin
       prefetch_axi_r_head_q           <= prefetch_axi_r_head_d;
-      prefetch_axi_r_low_half_q       <= prefetch_axi_r_low_half_d;
-      prefetch_axi_r_low_half_valid_q <= prefetch_axi_r_low_half_valid_d;
       prefetch_axi_r_word_cnt_q       <= prefetch_axi_r_word_cnt_d;
       prefetch_axi_r_word_rd_ptr_q    <= prefetch_axi_r_word_rd_ptr_d;
       prefetch_axi_r_word_wr_ptr_q    <= prefetch_axi_r_word_wr_ptr_d;
@@ -654,6 +660,17 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     prefetch_axi_r_queue1_pop        = '0;
     prefetch_axi_r_queue_len_d       = prefetch_axi_r_queue_len_q;
     axi_addrgen_prefetch_req_ready_o = '0;
+    prefetch_pack_data_d             = prefetch_pack_data_q;
+    prefetch_pack_byte_count_d       = prefetch_pack_byte_count_q;
+    prefetch_logical_remaining_d     = prefetch_logical_remaining_q;
+    prefetch_pack_finalize_d         = prefetch_pack_finalize_q;
+    prefetch_pack_merge              = '0;
+    prefetch_pack_start_byte         = '0;
+    prefetch_pack_available_bytes    = '0;
+    prefetch_pack_take_bytes         = '0;
+    prefetch_pack_total_bytes        = '0;
+    prefetch_axi_r_word_wdata        = '0;
+    prefetch_axi_r_word_push         = 1'b0;
     prefetch_axi_ar_hit_cnt_d        = prefetch_axi_ar_hit_cnt_q;
     if (prefetch_axi_ar_hit_i) begin
       prefetch_axi_ar_hit_cnt_d = prefetch_axi_ar_hit_cnt_q + 1;
@@ -669,7 +686,8 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     // - There is place in the result queue to write the data read from the R channel
     // - This request did not generate an exception
     if (cur_burst_is_demand && axi_r_valid_i && axi_addrgen_req_valid_q
-        && axi_addrgen_req_q.is_load && !axi_addrgen_req_q.is_exception
+        && axi_addrgen_req_q.is_load && !axi_addrgen_req_q.is_prefetch_hit
+        && !axi_addrgen_req_q.is_exception
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
       // If non-unit strided load, we do not progress within the beat
@@ -1189,31 +1207,91 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
       vinsn_queue_d.commit_cnt += 1;
     end : accept_new_instr
 
-    if (axi_r_valid_i && cur_burst_is_prefetch &&
-        (!prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue0_full) &&
-        axi_addrgen_prefetch_req_valid_i) begin
-      prefetch_axi_r_queue0_push = 1'b1;
-      prefetch_axi_r_queue0      = axi_r_i.data;
-      axi_r_ready_o              = 1'b1;
-      prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
-      if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
-        prefetch_axi_r_queue_len_d       = '0;
-        axi_addrgen_prefetch_req_ready_o = 1'b1;
-      end
+    // A final partial logical word may need one SRAM write after the last AXI
+    // beat. Keep the ROB/tag at the same request until that padded word lands.
+    if (prefetch_pack_finalize_q && !prefetch_axi_r_queue0_full) begin
+      prefetch_axi_r_word_push         = 1'b1;
+      prefetch_axi_r_word_wdata        = prefetch_pack_data_q;
+      prefetch_pack_data_d             = '0;
+      prefetch_pack_byte_count_d       = '0;
+      prefetch_pack_finalize_d         = 1'b0;
+      axi_addrgen_prefetch_req_ready_o = 1'b1;
     end
 
     if (axi_r_valid_i && cur_burst_is_prefetch &&
-        (prefetch_axi_r_queue_pnt && !prefetch_axi_r_queue1_full) &&
-        axi_addrgen_prefetch_req_valid_i) begin
-      prefetch_axi_r_queue1_push = 1'b1;
-      prefetch_axi_r_queue1      = axi_r_i.data;
-      axi_r_ready_o              = 1'b1;
-      prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_d + 1;
-      if ($unsigned(prefetch_axi_r_queue_len_d) == ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
-        prefetch_axi_r_queue_len_d       = '0;
-        axi_addrgen_prefetch_req_ready_o = 1'b1;
+        !prefetch_pack_finalize_q &&
+        !prefetch_axi_r_queue0_full &&
+        axi_addrgen_prefetch_req_valid_i) begin : prefetch_r_repack
+      if (prefetch_axi_r_queue_len_q == '0) begin
+        prefetch_logical_remaining_d = prefetch_logical_bytes_i;
+        prefetch_pack_start_byte =
+            axi_addrgen_prefetch_req_i.addr[$clog2(AxiDataWidth/8)-1:0];
       end
-    end
+
+      prefetch_pack_available_bytes =
+          (AxiDataWidth/8) - prefetch_pack_start_byte;
+      prefetch_pack_take_bytes =
+          ($unsigned(prefetch_logical_remaining_d) <
+           $unsigned(prefetch_pack_available_bytes))
+          ? prefetch_logical_remaining_d
+          : prefetch_pack_available_bytes;
+
+      // Append the valid portion of this AXI beat after the current partial word.
+      prefetch_pack_merge[255:0] = prefetch_pack_data_q;
+      for (int unsigned r_byte = 0; r_byte < AxiDataWidth/8; r_byte++) begin
+        if ((r_byte >= prefetch_pack_start_byte) &&
+            (r_byte < (prefetch_pack_start_byte + prefetch_pack_take_bytes))) begin
+          prefetch_pack_merge[
+              8 * ($unsigned(prefetch_pack_byte_count_q) +
+                   r_byte - $unsigned(prefetch_pack_start_byte)) +: 8] =
+              axi_r_i.data[8*r_byte +: 8];
+        end
+      end
+
+      prefetch_pack_total_bytes =
+          prefetch_pack_byte_count_q + prefetch_pack_take_bytes;
+      prefetch_logical_remaining_d =
+          prefetch_logical_remaining_d - prefetch_pack_take_bytes;
+
+      if (prefetch_pack_total_bytes >= (NrLanes * DataWidthB)) begin
+        prefetch_axi_r_word_push   = 1'b1;
+        prefetch_axi_r_word_wdata  = prefetch_pack_merge[255:0];
+        prefetch_pack_data_d       = '0;
+        prefetch_pack_byte_count_d =
+            prefetch_pack_total_bytes - (NrLanes * DataWidthB);
+        for (int unsigned pack_byte = 0;
+             pack_byte < (NrLanes * DataWidthB); pack_byte++) begin
+          if (pack_byte < (prefetch_pack_total_bytes -
+                           (NrLanes * DataWidthB))) begin
+            prefetch_pack_data_d[8*pack_byte +: 8] =
+                prefetch_pack_merge[8*(pack_byte + NrLanes*DataWidthB) +: 8];
+          end
+        end
+      end else begin
+        prefetch_pack_data_d       = prefetch_pack_merge[255:0];
+        prefetch_pack_byte_count_d = prefetch_pack_total_bytes;
+      end
+
+      axi_r_ready_o              = 1'b1;
+      prefetch_axi_r_queue_len_d = prefetch_axi_r_queue_len_q + 1'b1;
+
+      if ($unsigned(prefetch_axi_r_queue_len_d) ==
+          ($unsigned(axi_addrgen_prefetch_req_i.len) + 1)) begin
+        prefetch_axi_r_queue_len_d   = '0;
+        prefetch_logical_remaining_d = '0;
+        if (prefetch_pack_byte_count_d == '0) begin
+          axi_addrgen_prefetch_req_ready_o = 1'b1;
+        end else if (!prefetch_axi_r_word_push) begin
+          prefetch_axi_r_word_push         = 1'b1;
+          prefetch_axi_r_word_wdata        = prefetch_pack_data_d;
+          prefetch_pack_data_d             = '0;
+          prefetch_pack_byte_count_d       = '0;
+          axi_addrgen_prefetch_req_ready_o = 1'b1;
+        end else begin
+          prefetch_pack_finalize_d = 1'b1;
+        end
+      end
+    end : prefetch_r_repack
 
   end: p_vldu
 
@@ -1224,28 +1302,55 @@ TS1N28HPCPUHDSVTB64X256M1SWBSO i_prefetch_axi_r_sram (
     end else if ($test$plusargs("HDV_PF_PROBE") &&
                  (vldu_pf_probe_events_q < VlduPfProbeMaxEvents)) begin
       if (prefetch_axi_ar_hit_i || prefetch_hit_desc_consume ||
-          prefetch_hit_cnt_wrap_risk || prefetch_axi_r_queue0_push ||
-          prefetch_axi_r_queue1_push || axi_addrgen_prefetch_req_ready_o) begin
+          prefetch_hit_cnt_wrap_risk || prefetch_axi_r_word_push ||
+          axi_addrgen_prefetch_req_ready_o) begin
         vldu_pf_probe_events_q <= vldu_pf_probe_events_q + 1'b1;
-        $display("[PFPROBE-VLDU] time=%0t hit=%0d consume=%0d wrap_risk=%0d hit_cnt_q=%0d hit_cnt_d=%0d desc_v=%0d desc_ready=%0d desc_addr=0x%0h desc_len=%0d burst_bytes_q=%0d burst_bytes_d=%0d issue_bytes_q=%0d issue_bytes_d=%0d pf_len_q=%0d pf_len_d=%0d q0_push=%0d q1_push=%0d q0_pop=%0d q1_pop=%0d word_cnt=%0d low_half=%0d r_valid=%0d r_ready=%0d pf_req_v=%0d pf_req_ready=%0d pf_req_addr=0x%0h pf_req_len=%0d tag_empty=%0d tag_head=%0d cur_pf=%0d cur_dem=%0d result_full=%0d issue_cnt=%0d commit_cnt=%0d",
+        $display("[PFPROBE-VLDU] time=%0t hit=%0d consume=%0d wrap_risk=%0d hit_cnt_q=%0d hit_cnt_d=%0d desc_v=%0d desc_ready=%0d desc_addr=0x%0h desc_len=%0d burst_bytes_q=%0d burst_bytes_d=%0d issue_bytes_q=%0d issue_bytes_d=%0d pf_len_q=%0d pf_len_d=%0d word_push=%0d q0_pop=%0d q1_pop=%0d word_cnt=%0d pack_bytes=%0d logical_rem=%0d finalize=%0d r_valid=%0d r_ready=%0d pf_req_v=%0d pf_req_ready=%0d pf_req_addr=0x%0h pf_req_len=%0d logical_bytes=%0d tag_empty=%0d tag_head=%0d cur_pf=%0d cur_dem=%0d result_full=%0d issue_cnt=%0d commit_cnt=%0d",
                  $time, prefetch_axi_ar_hit_i, prefetch_hit_desc_consume,
                  prefetch_hit_cnt_wrap_risk, prefetch_axi_ar_hit_cnt_q,
                  prefetch_axi_ar_hit_cnt_d, axi_addrgen_req_valid_q,
                  axi_addrgen_req_ready_o, axi_addrgen_req_q.addr,
                  axi_addrgen_req_q.len, prefetch_burst_bytes_q,
                  prefetch_burst_bytes_d, issue_cnt_bytes_q, issue_cnt_bytes_d,
-                 prefetch_len_q, prefetch_len_d, prefetch_axi_r_queue0_push,
-                 prefetch_axi_r_queue1_push, prefetch_axi_r_queue0_pop,
-                 prefetch_axi_r_queue1_pop, prefetch_axi_r_word_cnt_q,
-                 prefetch_axi_r_low_half_valid_q, axi_r_valid_i, axi_r_ready_o,
+                 prefetch_len_q, prefetch_len_d, prefetch_axi_r_word_push,
+                 prefetch_axi_r_queue0_pop, prefetch_axi_r_queue1_pop,
+                 prefetch_axi_r_word_cnt_q, prefetch_pack_byte_count_q,
+                 prefetch_logical_remaining_q, prefetch_pack_finalize_q,
+                 axi_r_valid_i, axi_r_ready_o,
                  axi_addrgen_prefetch_req_valid_i,
                  axi_addrgen_prefetch_req_ready_o,
                  axi_addrgen_prefetch_req_i.addr,
-                 axi_addrgen_prefetch_req_i.len, prefetch_tag_empty_i,
+                 axi_addrgen_prefetch_req_i.len, prefetch_logical_bytes_i,
+                 prefetch_tag_empty_i,
                  prefetch_tag_head_i, cur_burst_is_prefetch,
                  cur_burst_is_demand, result_queue_full,
                  vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt);
       end
+    end
+  end
+
+  always_ff @(posedge clk_i) begin : p_vldu_pf_flush_assert
+    if (rst_ni && prefetch_buf_flush_i) begin
+      assert (!prefetch_buf_busy_o)
+        else $fatal(1, "[VLDU] prefetch buffer flushed while hit data was active");
+    end
+    if (rst_ni && axi_r_valid_i && axi_r_ready_o &&
+        cur_burst_is_prefetch && axi_r_i.last) begin
+      assert (prefetch_logical_remaining_d == '0)
+        else $fatal(1, "[VLDU] prefetch burst ended before all logical bytes arrived");
+    end
+    if (rst_ni && prefetch_axi_r_word_push) begin
+      assert (!prefetch_axi_r_queue0_full)
+        else $fatal(1, "[VLDU] logical prefetch word overflow");
+    end
+    if (rst_ni && cur_burst_is_demand && axi_r_valid_i &&
+        axi_addrgen_req_valid_q && axi_addrgen_req_q.is_prefetch_hit) begin
+      assert (!axi_r_ready_o)
+        else $fatal(1, "[VLDU] demand R beat consumed by a prefetch-hit descriptor");
+    end
+    if (rst_ni && prefetch_hit_desc_consume) begin
+      assert ((|prefetch_axi_ar_hit_cnt_q) || prefetch_axi_ar_hit_i)
+        else $fatal(1, "[VLDU] prefetch-hit descriptor consumed without a hit token");
     end
   end
 `endif

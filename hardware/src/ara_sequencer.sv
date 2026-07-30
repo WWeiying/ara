@@ -59,8 +59,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   `ifdef FOR_VERIFY
   logic raw_hazard, war_hazard, waw_hazard, false_hazard, sequencer_block;
-  logic same_ep_bypass_event;
-  logic [3:0] same_ep_bypass_count;
+  logic [NrVInsn-1:0] war_candidate, war_arrival_pruned;
+  logic sequencer_issue_event;
+  logic [NrVInsn-1:0] src_release_event;
+  logic [NrVInsn-1:0][NrVInsn-1:0] war_release_edge_event;
   `endif
   ///////////////////////////////////
   //  Running vector instructions  //
@@ -73,10 +75,6 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
   vid_t               vinsn_id_n;
   logic               vinsn_running_full;
-  // HDV ep_id per vid slot.  Used by the rollback experiment below to suppress
-  // hazards between instructions that carry the same frontend EP tag.
-  logic [NrVInsn-1:0] vid_ep_id_d, vid_ep_id_q;
-  logic [NrVInsn-1:0] vid_hdv_valid_d, vid_hdv_valid_q;
 
   // NrLanes bits that indicate if the sequencer must stall because of a lane desynchronization.
   logic [NrVInsn-1:0] stall_lanes_desynch_vec;
@@ -102,13 +100,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     if (!rst_ni) begin
       vinsn_running_q    <= '0;
       pe_vinsn_running_q <= '0;
-      vid_ep_id_q        <= '0;
-      vid_hdv_valid_q    <= '0;
     end else begin
       vinsn_running_q    <= vinsn_running_d;
       pe_vinsn_running_q <= pe_vinsn_running_d;
-      vid_ep_id_q        <= vid_ep_id_d;
-      vid_hdv_valid_q    <= vid_hdv_valid_d;
     end
   end
 
@@ -155,6 +149,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // This information is forwarded to the operand requesters of each lane
 
   logic [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_d;
+  logic [NrVInsn-1:0][NrVInsn-1:0] war_only_hazard_table_d, war_only_hazard_table_q;
 
   ////////////////////////
   // Start and End lane //
@@ -247,8 +242,23 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     vid_t vid;
     logic valid;
   } vreg_access_t;
-  vreg_access_t [31:0] read_list_d, read_list_q;
   vreg_access_t [31:0] write_list_d, write_list_q;
+  // Track every in-flight reader of each architectural vector register. The
+  // original single-owner read list is insufficient once WAR lifetime can end
+  // before full instruction completion: an older reader must never be hidden
+  // by a newer reader that captures its operands first.
+  logic [31:0][NrVInsn-1:0] vreg_readers_d, vreg_readers_q;
+
+  // Source lifetime is tracked independently from instruction completion.
+  // Each lane reports only after every architectural source requester used by
+  // the vid has completed. The sequencer releases WAR state after all lanes
+  // report, while RAW/WAW state remains tied to normal result completion.
+  logic [NrVInsn-1:0][NrLanes-1:0] src_lane_seen_d, src_lane_seen_q;
+  logic [NrVInsn-1:0]              src_released_d, src_released_q;
+  logic [NrVInsn-1:0]              src_release_eligible_d, src_release_eligible_q;
+  logic [NrVInsn-1:0]              raw_dependency;
+  logic [NrVInsn-1:0]              war_dependency;
+  logic [NrVInsn-1:0]              waw_dependency;
 
   // This function determines the VFU responsible for handling this operation.
   function automatic vfu_e vfu(ara_op_e op`ifndef SYNTHESIS = VADD `endif);
@@ -370,9 +380,23 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Default assignments
     state_d               = state_q;
     pe_vinsn_running_d    = pe_vinsn_running_q;
-    read_list_d           = read_list_q;
+    vreg_readers_d        = vreg_readers_q;
     write_list_d          = write_list_q;
     global_hazard_table_d = global_hazard_table_o;
+    war_only_hazard_table_d = war_only_hazard_table_q;
+    src_lane_seen_d       = src_lane_seen_q;
+    src_released_d        = src_released_q;
+    src_release_eligible_d = src_release_eligible_q;
+    raw_dependency        = '0;
+    war_dependency        = '0;
+    waw_dependency        = '0;
+`ifdef FOR_VERIFY
+    war_candidate         = '0;
+    war_arrival_pruned    = '0;
+    sequencer_issue_event = 1'b0;
+    src_release_event     = '0;
+    war_release_edge_event = '0;
+`endif
 
     // Maintain request
     pe_req_d       = '0;
@@ -388,31 +412,38 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Not ready by default
     pe_scalar_resp_ready_o = 1'b0;
 
-    // Update vector register's access list
+    // Accumulate one-cycle completion pulses from all lanes. A vid slot cannot
+    // be reused while it is running; clearing inactive slots prevents a late
+    // pulse from a flushed owner from leaking into the next owner.
+    for (int unsigned vid = 0; vid < NrVInsn; vid++) begin
+      if (!vinsn_running_q[vid]) begin
+        src_lane_seen_d[vid] = '0;
+        src_released_d[vid]  = 1'b0;
+        src_release_eligible_d[vid] = 1'b0;
+      end else if (src_release_eligible_q[vid] && !src_released_q[vid]) begin
+        for (int unsigned lane = 0; lane < NrLanes; lane++)
+          src_lane_seen_d[vid][lane] |= lane_src_read_done_i[lane][vid];
+        if (&src_lane_seen_d[vid])
+          src_released_d[vid] = 1'b1;
+      end
+    end
+
+    // Keep every reader visible until full completion. Source release gates WAR
+    // generation separately, which also makes every suppressed edge observable.
     for (int unsigned v = 0; v < 32; v++) begin
-      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid] ;
+      vreg_readers_d[v] &= vinsn_running_q;
       write_list_d[v].valid &= vinsn_running_q[write_list_q[v].vid];
     end
 
     // Update the running vector instructions
-    vid_ep_id_d = vid_ep_id_q;
-    vid_hdv_valid_d = vid_hdv_valid_q;
-    for (int pe = 0; pe < NrPEs; pe++) begin
+    for (int pe = 0; pe < NrPEs; pe++)
       pe_vinsn_running_d[pe] &= ~pe_resp_i[pe].vinsn_done;
-      // Clear HDV tracking for completed vids.
-      for (int unsigned v = 0; v < NrVInsn; v++) begin
-        if (pe_resp_i[pe].vinsn_done[v]) vid_ep_id_d[v] = 1'b0;
-        if (pe_resp_i[pe].vinsn_done[v]) vid_hdv_valid_d[v] = 1'b0;
-      end
-    end
     `ifdef FOR_VERIFY
     raw_hazard = '0;
     war_hazard = '0;
     waw_hazard = '0;
     false_hazard = '0;
     sequencer_block = '0;
-    same_ep_bypass_event = '0;
-    same_ep_bypass_count = '0;
     `endif
 
     case (state_q)
@@ -439,68 +470,53 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             ///////////////
             //  Hazards  //
             ///////////////
-            logic [NrVInsn-1:0] same_ep_vid_mask;
-            for (int unsigned v = 0; v < NrVInsn; v++) begin
-`ifdef HDV_ABLATION_NO_SAME_EP_BYPASS
-              same_ep_vid_mask[v] = 1'b0;
-`else
-              same_ep_vid_mask[v] = vid_hdv_valid_q[v] &&
-                                    ara_req_i.hdv_meta.hdv_valid &&
-                                    (vid_ep_id_q[v] == ara_req_i.hdv_meta.ep_id);
+
+            // RAW
+            if (ara_req_i.use_vs1)
+              pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
+                write_list_d[ara_req_i.vs1].valid;
+            if (ara_req_i.use_vs1)
+              raw_dependency[write_list_d[ara_req_i.vs1].vid] |=
+                write_list_d[ara_req_i.vs1].valid;
+            if (ara_req_i.use_vs2)
+              pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
+                write_list_d[ara_req_i.vs2].valid;
+            if (ara_req_i.use_vs2)
+              raw_dependency[write_list_d[ara_req_i.vs2].vid] |=
+                write_list_d[ara_req_i.vs2].valid;
+            if (!ara_req_i.vm)
+              pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
+                write_list_d[VMASK].valid;
+            if (!ara_req_i.vm)
+              raw_dependency[write_list_d[VMASK].vid] |=
+                write_list_d[VMASK].valid;
+
+            // WAR
+            if (ara_req_i.use_vd) begin
+              war_dependency |= vreg_readers_d[ara_req_i.vd] & ~src_released_d;
+              pe_req_d.hazard_vs1 |= war_dependency;
+              pe_req_d.hazard_vs2 |= war_dependency;
+              pe_req_d.hazard_vm  |= war_dependency;
+`ifdef FOR_VERIFY
+              war_candidate = vreg_readers_d[ara_req_i.vd];
+              war_arrival_pruned =
+                  vreg_readers_d[ara_req_i.vd] & src_released_d;
 `endif
             end
 
-            `ifdef FOR_VERIFY
-            if (ara_req_i.use_vs1 &&
-                same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid] &&
-                write_list_d[ara_req_i.vs1].valid)
-              same_ep_bypass_count++;
-            if (ara_req_i.use_vs2 &&
-                same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid] &&
-                write_list_d[ara_req_i.vs2].valid)
-              same_ep_bypass_count++;
-            if (!ara_req_i.vm &&
-                same_ep_vid_mask[write_list_d[VMASK].vid] &&
-                write_list_d[VMASK].valid)
-              same_ep_bypass_count++;
-            if (ara_req_i.use_vd &&
-                same_ep_vid_mask[read_list_d[ara_req_i.vd].vid] &&
-                read_list_d[ara_req_i.vd].valid)
-              same_ep_bypass_count++;
-            if (ara_req_i.use_vd &&
-                same_ep_vid_mask[write_list_d[ara_req_i.vd].vid] &&
-                write_list_d[ara_req_i.vd].valid)
-              same_ep_bypass_count++;
-            same_ep_bypass_event = (same_ep_bypass_count != '0);
-            `endif
-
-            if (ara_req_i.use_vs1 && !same_ep_vid_mask[write_list_d[ara_req_i.vs1].vid])
-              pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
-                write_list_d[ara_req_i.vs1].valid;
-            if (ara_req_i.use_vs2 && !same_ep_vid_mask[write_list_d[ara_req_i.vs2].vid])
-              pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
-                write_list_d[ara_req_i.vs2].valid;
-            if (!ara_req_i.vm && !same_ep_vid_mask[write_list_d[VMASK].vid])
-              pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
-                write_list_d[VMASK].valid;
-
+            // WAW
             if (ara_req_i.use_vd) begin
-              if (!same_ep_vid_mask[read_list_d[ara_req_i.vd].vid]) begin
-                pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
-                pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
-                pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid] |= read_list_d[ara_req_i.vd].valid;
-              end
-            end
-
-            if (ara_req_i.use_vd && !same_ep_vid_mask[write_list_d[ara_req_i.vd].vid])
               pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
                 write_list_d[ara_req_i.vd].valid;
+              waw_dependency[write_list_d[ara_req_i.vd].vid] |=
+                write_list_d[ara_req_i.vd].valid;
+            end
 
             `ifdef FOR_VERIFY
             raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
                          (ara_req_i.use_vs2 && pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid]) ||
                          ((!ara_req_i.vm) && pe_req_d.hazard_vm[write_list_d[VMASK].vid]);
-            war_hazard = ara_req_i.use_vd && (pe_req_d.hazard_vs1[read_list_d[ara_req_i.vd].vid] || pe_req_d.hazard_vs2[read_list_d[ara_req_i.vd].vid]|| pe_req_d.hazard_vm[read_list_d[ara_req_i.vd].vid]);
+            war_hazard = ara_req_i.use_vd && (|war_dependency);
             waw_hazard = (ara_req_i.use_vd) && pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid];
             false_hazard = war_hazard || waw_hazard;
             sequencer_block = (!(|{ara_req_i.use_vs1, ara_req_i.use_vs2, ara_req_i.use_vd_op, !ara_req_i.vm}) &&
@@ -558,8 +574,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             };
 
             // Populate the global hazard table
-            global_hazard_table_d[vinsn_id_n] = pe_req_d.hazard_vd  | pe_req_d.hazard_vm |
-                                                pe_req_d.hazard_vs1 | pe_req_d.hazard_vs2;
+            global_hazard_table_d[vinsn_id_n] =
+                raw_dependency | war_dependency | waw_dependency;
+            war_only_hazard_table_d[vinsn_id_n] =
+                war_dependency & ~(raw_dependency | waw_dependency);
 
             // We only issue instructions that take no operands if they have no hazards.
             // Moreover, SLIDE instructions cannot be always chained
@@ -574,10 +592,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             end else begin
               // Acknowledge instruction
               ara_req_ready_o = 1'b1;
+`ifdef FOR_VERIFY
+              sequencer_issue_event = 1'b1;
+`endif
 
-              // Record HDV metadata for rollback bypass visibility.
-              vid_ep_id_d[vinsn_id_n] = ara_req_i.hdv_meta.ep_id;
-              vid_hdv_valid_d[vinsn_id_n] = ara_req_i.hdv_meta.hdv_valid;
+              // A recycled vid starts with no source-completion history.
+              src_lane_seen_d[vinsn_id_n] = '0;
+              src_released_d[vinsn_id_n]  = 1'b0;
+              src_release_eligible_d[vinsn_id_n] =
+                  ara_req_i.hdv_meta.hdv_valid &&
+                  !(ara_req_i.op inside {[VRGATHER:VCOMPRESS]});
+`ifdef HDV_ABLATION_NO_SRC_LIFETIME
+              src_release_eligible_d[vinsn_id_n] = 1'b0;
+`endif
 
               // Remember that the vector instruction is running
               unique case (vfu(ara_req_i.op))
@@ -608,9 +635,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               if (ara_req_i.use_vd) write_list_d[ara_req_i.vd] = '{vid: vinsn_id_n, valid: 1'b1};
 
               // Mark that this loop is reading vs
-              if (ara_req_i.use_vs1) read_list_d[ara_req_i.vs1] = '{vid: vinsn_id_n, valid: 1'b1};
-              if (ara_req_i.use_vs2) read_list_d[ara_req_i.vs2] = '{vid: vinsn_id_n, valid: 1'b1};
-              if (!ara_req_i.vm) read_list_d[VMASK]             = '{vid: vinsn_id_n, valid: 1'b1};
+              if (ara_req_i.use_vs1) vreg_readers_d[ara_req_i.vs1][vinsn_id_n] = 1'b1;
+              if (ara_req_i.use_vs2) vreg_readers_d[ara_req_i.vs2][vinsn_id_n] = 1'b1;
+              if (!ara_req_i.vm) vreg_readers_d[VMASK][vinsn_id_n]             = 1'b1;
             end
           end else ara_req_ready_o = 1'b0; // Wait until the PEs are ready
         end
@@ -661,16 +688,74 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       end
     endcase
 
-    // Update the global hazard table
-    for (int id = 0; id < NrVInsn; id++) global_hazard_table_d[id] &= vinsn_running_d;
+    // The main table retains original RAW/WAR/WAW behavior. The compact
+    // WAR-only classifier identifies bits that may be cleared after source
+    // capture; mixed RAW/WAR or WAW/WAR edges remain until full completion.
+`ifdef FOR_VERIFY
+    src_release_event = src_released_d & ~src_released_q;
+    for (int id = 0; id < NrVInsn; id++)
+      war_release_edge_event[id] = war_only_hazard_table_d[id] &
+          src_release_event & vinsn_running_d &
+          {NrVInsn{vinsn_running_d[id]}};
+`endif
+    for (int id = 0; id < NrVInsn; id++) begin
+      if (!vinsn_running_d[id]) begin
+        global_hazard_table_d[id] = '0;
+        war_only_hazard_table_d[id] = '0;
+      end else begin
+        global_hazard_table_d[id] &= vinsn_running_d;
+        global_hazard_table_d[id] &=
+            ~(war_only_hazard_table_d[id] & src_released_d);
+        war_only_hazard_table_d[id] &=
+            vinsn_running_d & ~src_released_d;
+      end
+    end
   end : p_sequencer
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin : p_source_release_assert
+    if (rst_ni) begin
+      for (int unsigned vid = 0; vid < NrVInsn; vid++) begin
+        if (src_released_d[vid] && !src_released_q[vid]) begin
+          assert (vinsn_running_q[vid])
+            else $error("source lifetime released for inactive vid %0d", vid);
+          assert (src_release_eligible_q[vid])
+            else $error("source lifetime released for ineligible vid %0d", vid);
+          assert (&src_lane_seen_d[vid])
+            else $error("source lifetime released before every lane completed vid %0d", vid);
+        end
+        if (src_released_q[vid])
+          assert (src_release_eligible_q[vid])
+            else $error("released source lifetime lost eligibility for vid %0d", vid);
+      end
+      for (int unsigned consumer = 0; consumer < NrVInsn; consumer++) begin
+        assert ((war_only_hazard_table_q[consumer] &
+                 ~global_hazard_table_o[consumer]) == '0)
+          else $error("WAR-only table escaped global hazard table for vid %0d", consumer);
+        for (int unsigned reader = 0; reader < NrVInsn; reader++) begin
+          if (global_hazard_table_o[consumer][reader] &&
+              !global_hazard_table_d[consumer][reader] &&
+              vinsn_running_d[consumer] && vinsn_running_d[reader]) begin
+            assert (war_only_hazard_table_q[consumer][reader] &&
+                    src_released_d[reader])
+              else $error("non-WAR hazard cleared before completion: consumer=%0d reader=%0d",
+                          consumer, reader);
+          end
+        end
+      end
+    end
+  end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_sequencer_ff
     if (!rst_ni) begin
       state_q <= IDLE;
 
-      read_list_q  <= '0;
+      vreg_readers_q <= '0;
       write_list_q <= '0;
+      src_lane_seen_q <= '0;
+      src_released_q  <= '0;
+      src_release_eligible_q <= '0;
 
       pe_req_o       <= '0;
       pe_req_valid_o <= 1'b0;
@@ -679,13 +764,17 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       gold_ticket_q   <= 1'b0;
 
       global_hazard_table_o <= '0;
+      war_only_hazard_table_q <= '0;
 
       running_mask_insn_q <= 1'b0;
     end else begin
       state_q <= state_d;
 
-      read_list_q  <= read_list_d;
+      vreg_readers_q <= vreg_readers_d;
       write_list_q <= write_list_d;
+      src_lane_seen_q <= src_lane_seen_d;
+      src_released_q  <= src_released_d;
+      src_release_eligible_q <= src_release_eligible_d;
 
       pe_req_o       <= pe_req_d;
       pe_req_valid_o <= pe_req_valid_d;
@@ -694,6 +783,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       gold_ticket_q   <= gold_ticket_d;
 
       global_hazard_table_o <= global_hazard_table_d;
+      war_only_hazard_table_q <= war_only_hazard_table_d;
 
       running_mask_insn_q <= running_mask_insn_d;
     end
@@ -795,11 +885,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   `ifdef FOR_VERIFY
   logic [63:0] cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw;
-  logic [63:0] cnt_seq_ep_bypass, cnt_seq_full;
+  logic [63:0] cnt_seq_full;
   logic [63:0] cnt_seq_waw_block;  // WAW actually blocked issue (no RAW also blocking)
   logic [63:0] cnt_seq_hazard_check;
-  logic [63:0] cnt_seq_same_ep_candidate;
-  logic [63:0] cnt_seq_hazard_pruned_by_ep;
   logic [63:0] cnt_seq_true_hazard_stall;
   logic [63:0] cnt_seq_false_hazard_stall;
   logic [63:0] cnt_seq_queue_full_stall;
@@ -807,15 +895,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [63:0] cnt_seq_operand_req_stall;
   logic [63:0] cnt_seq_wait_state_cycles;
   logic [63:0] cnt_seq_mem_wait_cycles;
+  logic [63:0] cnt_src_capture_done;
+  logic [63:0] cnt_war_candidate;
+  logic [63:0] cnt_war_arrival_pruned;
+  logic [63:0] cnt_war_release_edge;
+  logic [63:0] cnt_war_pruned;
+  logic [63:0] cnt_release_lead_vid_cycles;
   logic [31:0] pf_probe_seq_block_cycles_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       cnt_seq_issue <= '0; cnt_seq_blocked <= '0; cnt_seq_raw <= '0;
-      cnt_seq_war <= '0; cnt_seq_waw <= '0; cnt_seq_ep_bypass <= '0; cnt_seq_full <= '0;
+      cnt_seq_war <= '0; cnt_seq_waw <= '0; cnt_seq_full <= '0;
       cnt_seq_waw_block <= '0;
       cnt_seq_hazard_check <= '0;
-      cnt_seq_same_ep_candidate <= '0;
-      cnt_seq_hazard_pruned_by_ep <= '0;
       cnt_seq_true_hazard_stall <= '0;
       cnt_seq_false_hazard_stall <= '0;
       cnt_seq_queue_full_stall <= '0;
@@ -823,6 +915,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       cnt_seq_operand_req_stall <= '0;
       cnt_seq_wait_state_cycles <= '0;
       cnt_seq_mem_wait_cycles <= '0;
+      cnt_src_capture_done <= '0;
+      cnt_war_candidate <= '0;
+      cnt_war_arrival_pruned <= '0;
+      cnt_war_release_edge <= '0;
+      cnt_war_pruned <= '0;
+      cnt_release_lead_vid_cycles <= '0;
       pf_probe_seq_block_cycles_q <= '0;
     end else begin
       if (ara_req_valid_i && (state_q == IDLE) &&
@@ -834,12 +932,6 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       if (war_hazard)         cnt_seq_war   <= cnt_seq_war + 1;
       if (waw_hazard)         cnt_seq_waw   <= cnt_seq_waw + 1;
       if (vinsn_running_full) cnt_seq_full  <= cnt_seq_full + 1;
-      if (ara_req_valid_i && (same_ep_bypass_count != '0)) begin
-        cnt_seq_same_ep_candidate <= cnt_seq_same_ep_candidate + same_ep_bypass_count;
-        cnt_seq_hazard_pruned_by_ep <= cnt_seq_hazard_pruned_by_ep + same_ep_bypass_count;
-      end
-      if (same_ep_bypass_event && ara_req_valid_i && ara_req_ready_o)
-        cnt_seq_ep_bypass <= cnt_seq_ep_bypass + 1;
       // WAW-only block: no RAW, only WAW preventing issue
       if (waw_hazard && !raw_hazard && ara_req_valid_i && !ara_req_ready_o)
         cnt_seq_waw_block <= cnt_seq_waw_block + 1;
@@ -857,6 +949,17 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         cnt_seq_wait_state_cycles <= cnt_seq_wait_state_cycles + 1;
         if ((is_load(pe_req_d.op) || is_store(pe_req_d.op)) && !addrgen_ack_i)
           cnt_seq_mem_wait_cycles <= cnt_seq_mem_wait_cycles + 1;
+      end
+      cnt_src_capture_done <= cnt_src_capture_done + $countones(src_release_event);
+      cnt_war_release_edge <= cnt_war_release_edge + $countones(war_release_edge_event);
+      cnt_war_pruned <= cnt_war_pruned + $countones(war_release_edge_event) +
+          (sequencer_issue_event ? $countones(war_arrival_pruned) : 0);
+      cnt_release_lead_vid_cycles <= cnt_release_lead_vid_cycles +
+          $countones(src_released_q & vinsn_running_q);
+      if (sequencer_issue_event) begin
+        cnt_war_candidate <= cnt_war_candidate + $countones(war_candidate);
+        cnt_war_arrival_pruned <= cnt_war_arrival_pruned +
+            $countones(war_arrival_pruned);
       end
       if ($test$plusargs("HDV_PF_PROBE") && ara_req_valid_i && !ara_req_ready_o) begin
         pf_probe_seq_block_cycles_q <= pf_probe_seq_block_cycles_q + 32'd1;
@@ -880,15 +983,18 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     end
   end
   final begin
-    $display("[PERF-SEQ] issue=%0d blocked=%0d raw=%0d war=%0d waw=%0d waw_block=%0d ep_bypass=%0d full=%0d",
+    $display("[PERF-SEQ] issue=%0d blocked=%0d raw=%0d war=%0d waw=%0d waw_block=%0d full=%0d",
              cnt_seq_issue, cnt_seq_blocked, cnt_seq_raw, cnt_seq_war, cnt_seq_waw,
-             cnt_seq_waw_block, cnt_seq_ep_bypass, cnt_seq_full);
-    $display("[PERF-SEQ-HDV] hazard_check=%0d same_ep_candidate=%0d hazard_pruned=%0d true_hazard_stall=%0d false_hazard_stall=%0d queue_full_stall=%0d lane_desync_stall=%0d operand_req_stall=%0d wait_state_cyc=%0d mem_wait_cyc=%0d",
-             cnt_seq_hazard_check, cnt_seq_same_ep_candidate,
-             cnt_seq_hazard_pruned_by_ep, cnt_seq_true_hazard_stall,
+             cnt_seq_waw_block, cnt_seq_full);
+    $display("[PERF-SEQ-HDV] hazard_check=%0d true_hazard_stall=%0d false_hazard_stall=%0d queue_full_stall=%0d lane_desync_stall=%0d operand_req_stall=%0d wait_state_cyc=%0d mem_wait_cyc=%0d",
+             cnt_seq_hazard_check, cnt_seq_true_hazard_stall,
              cnt_seq_false_hazard_stall, cnt_seq_queue_full_stall,
              cnt_seq_lane_desync_stall, cnt_seq_operand_req_stall,
              cnt_seq_wait_state_cycles, cnt_seq_mem_wait_cycles);
+    $display("[PERF-SEQ-LIFETIME] src_capture_done=%0d war_candidate=%0d war_pruned=%0d war_arrival_pruned=%0d war_release_edge=%0d release_lead_vid_cyc=%0d",
+             cnt_src_capture_done, cnt_war_candidate, cnt_war_pruned,
+             cnt_war_arrival_pruned, cnt_war_release_edge,
+             cnt_release_lead_vid_cycles);
   end
   `endif
 endmodule : ara_sequencer

@@ -1,0 +1,121 @@
+#include <stdint.h>
+#include <string.h>
+
+#include "runtime.h"
+#include "util.h"
+
+#ifdef SPIKE
+#include <stdio.h>
+#elif defined ARA_LINUX
+#include <stdio.h>
+#else
+#include "printf.h"
+#endif
+
+#define TOTAL_ELEMENTS 16384
+
+#ifndef VSSYMV_HDV_TASK_ENTRY
+#define VSSYMV_HDV_TASK_ENTRY 0x80001000UL
+#endif
+
+// ── Variant selector: BLAS_LMUL ─────────────────────────────────────────────
+// BLAS_LMUL=1 : original m1 kernel, fixed 32x32 (VLMAX=32). default, validated.
+// BLAS_LMUL=4 : unified m4 kernel, runtime dim N<=VLMAX (a3, +HDV_A3=N), sweepable.
+// Optional HDV a4/+HDV_A4 repeats consecutive rows; 0 keeps the legacy one-row task.
+// Only ONE compiles into .hdv_task (it becomes the entry).  Makefile: blas_lmul.
+#ifndef BLAS_LMUL
+#define BLAS_LMUL 1
+#endif
+
+extern float src1[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src1")));
+extern float src2[TOTAL_ELEMENTS] __attribute__((aligned(4), section(".data.src2")));
+
+extern const uint32_t _src1_size;
+extern const uint32_t _src2_size;
+
+// m1 (original, fixed 32x32) and m4 (unified, runtime N).
+void vssymv_f32_32x32(const float *A, const float *x, float *y,
+                      const float alpha, const float beta);
+void vssymv_f32(const float *A, const float *x, float *y, int n, int groups,
+                const float alpha, const float beta);
+
+int main() {
+#if BLAS_LMUL == 1
+    vssymv_f32_32x32(src1, src2, src1, 1.0f, 1.0f);
+#else
+    vssymv_f32(src1, src2, src1, 32, 1, 1.0f, 1.0f);
+#endif
+    return 0;
+}
+
+#if BLAS_LMUL == 1
+#include "vssymv_m1.inc"
+#else
+#include "blas_lmul.h"
+
+__attribute__((naked, aligned(16), section(".hdv_task"),
+               target("arch=rv64gcv_zfh_zvfh")))
+void vssymv_f32(const float *A, const float *x, float *y, int n, int groups,
+                const float alpha, const float beta) {
+    // ── Prefetch-enabled m{2,4,8} form (parameterized original m1 strip-mine) ──
+    // ABI: a0=A, a1=x, a2=y, a3=N, a4=groups, fa0=alpha, fa1=beta.
+    // +HDV_A4=0 means one group.
+    //
+    // The in-loop `vsetvli s0, a3` re-establishes VL for each repeated group at
+    // the runtime row length N.  Per group i: A[i,:]*x, reduction, then
+    // alpha*dot + beta*y[i].  vregs are LMUL-aligned (BL_G*).
+    __asm__ volatile (
+    ".option push\n"
+    ".option norvc\n"
+    ".option norelax\n"
+    ".macro HDV_HINT pbits=0x1f, packet256=0, cross=0, loop_start=0, loop_end=0, prefetch_mode=0, prefetch_disable=0\n"
+    "  lui x0, (((\\pbits) & 0x1fff) | (((\\packet256) & 1) << 13) | (((\\cross) & 1) << 14) | (((\\loop_start) & 1) << 15) | (((\\loop_end) & 1) << 16) | (((\\prefetch_mode) & 3) << 17) | (((\\prefetch_disable) & 1) << 19))\n"
+    ".endm\n"
+    ".balign 16\n"
+    "vssymv_hdv_task_start:\n"
+
+    // setup: config VL=VLMAX, load x; zero seed, n/groups -> counters, A/y bases.
+    "HDV_HINT 0x00\n"
+    "li t3, " BL_STR(BLAS_LMUL) "*32\n"
+    "vsetvli zero, t3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
+    "vle32.v v0, (a1)\n"
+    "HDV_HINT 0x0a\n"
+    "fmv.w.x ft0, zero\n"
+    "mv t0, a4\n"
+    "sltiu t5, t0, 1\n"
+    "HDV_HINT 0x0a\n"
+    "add t0, t0, t5\n"
+    "mv t1, a0\n"
+    "mv t2, a2\n"
+
+    // row loop top: one dot product per group.  a3 is the row length (N<=VLMAX).
+    ".balign 16\n"
+    "row_loop:\n"
+    // Fourteen useful instructions fill two 256-bit packets exactly.
+    "HDV_HINT 0x022, 1, 0, 1, 0, " BL_STR(BL_PFM) "\n"
+    "vsetvli s0, a3, e32, m" BL_STR(BLAS_LMUL) ", ta, ma\n"
+    "vle32.v v" BL_STR(BL_G1) ", (t1)\n"
+    "vfmul.vv v" BL_STR(BL_G2) ", v" BL_STR(BL_G1) ", v0\n"
+    "vfmv.v.f v" BL_STR(BL_G3) ", ft0\n"
+    "vfredusum.vs v" BL_STR(BL_G3) ", v" BL_STR(BL_G2) ", v" BL_STR(BL_G3) "\n"
+    "vfmv.f.s ft1, v" BL_STR(BL_G3) "\n"
+    "flw ft2, 0(t2)\n"
+
+    "HDV_HINT 0x280, 1, 0, 0, 1\n"
+    "fmul.s ft2, ft2, fa1\n"
+    "fmadd.s ft2, ft1, fa0, ft2\n"
+    "fsw ft2, 0(t2)\n"
+    "addi t1, t1, " BL_STR(BLAS_LMUL) "*128\n"
+    "addi t2, t2, 4\n"
+    "addi t0, t0, -1\n"
+    "bnez t0, row_loop\n"
+
+    "HDV_HINT\n"
+    "ret\n"
+    "nop\n"
+    "nop\n"
+    ".purgem HDV_HINT\n"
+    ".option pop\n"
+    );
+}
+#endif

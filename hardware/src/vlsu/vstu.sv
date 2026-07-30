@@ -558,4 +558,17 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     end
   end
 
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin : p_store_burst_completion_assertion
+    if (rst_ni && vinsn_issue_valid && (issue_cnt_bytes_q != '0) &&
+        (issue_cnt_bytes_d == '0) && axi_addrgen_req_valid_i &&
+        !axi_addrgen_req_i.is_exception) begin
+      assert (axi_addrgen_req_ready_o)
+        else $fatal(1,
+          "[VSTU] payload ended before the current AW burst: addr=0x%0h len=%0d axi_beat=%0d",
+          axi_addrgen_req_i.addr, axi_addrgen_req_i.len, axi_len_q);
+    end
+  end
+`endif
+
 endmodule : vstu

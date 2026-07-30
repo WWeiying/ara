@@ -49,6 +49,14 @@ module hdv_scalar_backend
   input  logic [NumSlots-1:0]          scalar_insn_is_32b_i,
   input  addr_t [NumSlots-1:0]         scalar_insn_pc_i,
   output logic                         scalar_ep_done_o,
+  output logic [31:0]                  scalar_pending_gpr_read_mask_o,
+  output logic [31:0]                  scalar_pending_gpr_write_mask_o,
+  output logic [31:0]                  scalar_pending_fpr_read_mask_o,
+  output logic [31:0]                  scalar_pending_fpr_write_mask_o,
+  // Asserted while the active scalar EP still has an unexecuted or in-flight
+  // memory-ordering operation. Loads remain pending through their R response;
+  // stores remain pending through their B response.
+  output logic                         scalar_mem_order_pending_o,
   output logic                         scalar_error_o,
 
   output logic                         redirect_valid_o,
@@ -79,11 +87,11 @@ module hdv_scalar_backend
   input  logic                         vec_wb_is_fpr_i,
   input  logic                         vec_wb_is_vset_i,
 
-  // In-flight vset (rd!=x0) hazard hint: a vector vsetvli whose VL writeback to
-  // vec_vset_inflight_rd_i has not landed yet.  A scalar that reads this rd must
-  // stall until the writeback (A2 RAW interlock).
-  input  logic                         vec_vset_inflight_i,
-  input  logic [4:0]                   vec_vset_inflight_rd_i,
+  // In-flight vset (rd!=x0) hazard hints, one per outstanding vector EP.  A
+  // scalar that reads either destination must wait for the corresponding VL
+  // writeback.
+  input  logic [1:0]                   vec_vset_inflight_valid_i,
+  input  logic [1:0][4:0]              vec_vset_inflight_rd_i,
   input  logic                         vec_store_inflight_i,
 
   output axi_req_t                     scalar_axi_req_o,
@@ -92,6 +100,8 @@ module hdv_scalar_backend
 
   localparam int unsigned EffectiveSimpleAluIssueWidth =
       (SimpleAluIssueWidth < ScalarIssueWidth) ? SimpleAluIssueWidth : ScalarIssueWidth;
+  localparam int unsigned SlotIdxWidth =
+      (NumSlots > 1) ? $clog2(NumSlots) : 1;
 
   typedef enum logic [3:0] {
     IDLE      = 4'd0,
@@ -208,6 +218,17 @@ module hdv_scalar_backend
   logic [NumSlots-1:0]       insn_is_32b_d, insn_is_32b_q;
   addr_t [NumSlots-1:0]      insn_pc_d, insn_pc_q;
   logic [NumSlots-1:0]       remaining_slots;
+  logic [31:0] pending_gpr_read_mask_d;
+  logic [31:0] pending_gpr_write_mask_d;
+  logic [31:0] pending_fpr_read_mask_d;
+  logic [31:0] pending_fpr_write_mask_d;
+  logic        scalar_mem_order_pending_d, scalar_mem_order_pending_q;
+  logic        scalar_mem_release_forbidden_d, scalar_mem_release_forbidden_q;
+  logic        scalar_input_has_mem_order;
+  logic        scalar_input_has_nonreleasable_order;
+  logic        scalar_remaining_releasable_mem;
+  logic        scalar_remaining_nonreleasable_order;
+  logic        scalar_mem_inflight_d;
 
   logic [XLEN-1:0] xrf_d [32];
   logic [XLEN-1:0] xrf_q [32];
@@ -218,13 +239,13 @@ module hdv_scalar_backend
   logic [XLEN-1:0] csr_vtype_d, csr_vtype_q;
   logic [2:0]      csr_frm_d, csr_frm_q;
 
-  logic [4:0] curr_slot_idx;
+  logic [SlotIdxWidth-1:0] curr_slot_idx;
   logic       curr_slot_found;
   logic [31:0] curr_insn;
   logic        curr_is_32b;
   addr_t       curr_pc;
   logic [15:0] curr_cinsn;
-  logic [4:0]  serial_slot_idx;
+  logic [SlotIdxWidth-1:0] serial_slot_idx;
   logic        serial_slot_found;
   logic [31:0] serial_insn;
   logic        serial_is_32b;
@@ -269,7 +290,7 @@ module hdv_scalar_backend
   // keeping the decoded metadata here makes completion independent of the
   // live priority encoder while the instruction is in flight.
   logic              issue_valid_d, issue_valid_q;
-  logic [4:0]        issue_slot_idx_d, issue_slot_idx_q;
+  logic [SlotIdxWidth-1:0] issue_slot_idx_d, issue_slot_idx_q;
   logic [31:0]       issue_insn_d, issue_insn_q;
   logic              issue_is_32b_d, issue_is_32b_q;
   addr_t             issue_pc_d, issue_pc_q;
@@ -737,34 +758,56 @@ module hdv_scalar_backend
     end
   endfunction
 
+  function automatic logic scalar_opfp_writes_gpr(input logic [31:0] insn);
+    begin
+      unique case (insn[31:27])
+        5'b10100, // FEQ/FLT/FLE
+        5'b11000, // FCVT integer <- floating point
+        5'b11100: // FMV.X.* / FCLASS
+          scalar_opfp_writes_gpr = 1'b1;
+        default:
+          scalar_opfp_writes_gpr = 1'b0;
+      endcase
+    end
+  endfunction
+
+  function automatic logic scalar_32b_writes_gpr(input logic [31:0] insn);
+    automatic logic [6:0] opcode;
+    begin
+      opcode = insn[6:0];
+      unique case (opcode)
+        7'b0110111, // LUI
+        7'b0010111, // AUIPC
+        7'b1101111, // JAL
+        7'b1100111, // JALR
+        7'b0000011, // LOAD
+        7'b0010011, // OP-IMM
+        7'b0011011, // OP-IMM-32
+        7'b0110011, // OP
+        7'b0111011, // OP-32
+        7'b0101111, // AMO
+        7'b1110011: // SYSTEM/CSR
+          scalar_32b_writes_gpr = 1'b1;
+        7'b1010011:
+          scalar_32b_writes_gpr = scalar_opfp_writes_gpr(insn);
+        default:
+          scalar_32b_writes_gpr = 1'b0;
+      endcase
+    end
+  endfunction
+
   function automatic logic [31:0] scalar_write_mask_conservative(input logic        is_32b,
                                                                  input logic [31:0] insn);
     automatic logic [31:0] mask;
-    automatic logic [6:0] opcode;
     automatic logic [4:0] rd;
     begin
       mask = '0;
-      opcode = insn[6:0];
       rd = insn[11:7];
       if (!is_32b) begin
         // Do not speculate across an unexpanded compressed instruction.
         mask = 32'hffff_ffff;
-      end else if (rd != 5'd0) begin
-        unique case (opcode)
-          7'b0110111, // LUI
-          7'b0010111, // AUIPC
-          7'b1101111, // JAL
-          7'b1100111, // JALR
-          7'b0000011, // LOAD
-          7'b0010011, // OP-IMM
-          7'b0011011, // OP-IMM-32
-          7'b0110011, // OP
-          7'b0111011, // OP-32
-          7'b0001111, // FENCE
-          7'b1110011: // CSR/SYSTEM
-            mask[rd] = 1'b1;
-          default: mask = '0;
-        endcase
+      end else if ((rd != 5'd0) && scalar_32b_writes_gpr(insn)) begin
+        mask[rd] = 1'b1;
       end
       scalar_write_mask_conservative = mask;
     end
@@ -783,6 +826,199 @@ module hdv_scalar_backend
                              (opcode == 7'b1110011);   // CSR/SYSTEM
     end
   endfunction
+
+  function automatic logic [31:0] pending_gpr_read_mask(input logic        is_32b,
+                                                        input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else begin
+        unique case (opcode)
+          7'b1100111,
+          7'b0000011,
+          7'b0000111,
+          7'b0010011,
+          7'b0011011: begin
+            if (insn[19:15] != 5'd0) mask[insn[19:15]] = 1'b1;
+          end
+          7'b1100011,
+          7'b0100011,
+          7'b0110011,
+          7'b0111011,
+          7'b0101111: begin
+            if (insn[19:15] != 5'd0) mask[insn[19:15]] = 1'b1;
+            if (insn[24:20] != 5'd0) mask[insn[24:20]] = 1'b1;
+          end
+          7'b0100111,
+          7'b1010011: begin
+            if (insn[19:15] != 5'd0) mask[insn[19:15]] = 1'b1;
+          end
+          7'b1110011: begin
+            if ((funct3 inside {3'b001, 3'b010, 3'b011}) &&
+                (insn[19:15] != 5'd0)) begin
+              mask[insn[19:15]] = 1'b1;
+            end
+          end
+          default: mask = '0;
+        endcase
+      end
+      pending_gpr_read_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] pending_gpr_write_mask(input logic        is_32b,
+                                                         input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [4:0] rd;
+    begin
+      mask = '0;
+      rd = insn[11:7];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else if ((rd != 5'd0) && scalar_32b_writes_gpr(insn)) begin
+        mask[rd] = 1'b1;
+      end
+      pending_gpr_write_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] pending_fpr_read_mask(input logic        is_32b,
+                                                        input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else begin
+        unique case (opcode)
+          7'b0100111: mask[insn[24:20]] = 1'b1;
+          7'b1010011: begin
+            mask[insn[19:15]] = 1'b1;
+            mask[insn[24:20]] = 1'b1;
+          end
+          7'b1000011,
+          7'b1000111,
+          7'b1001011,
+          7'b1001111: begin
+            mask[insn[19:15]] = 1'b1;
+            mask[insn[24:20]] = 1'b1;
+            mask[insn[31:27]] = 1'b1;
+          end
+          default: mask = '0;
+        endcase
+      end
+      pending_fpr_read_mask = mask;
+    end
+  endfunction
+
+  function automatic logic [31:0] pending_fpr_write_mask(input logic        is_32b,
+                                                         input logic [31:0] insn);
+    automatic logic [31:0] mask;
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    begin
+      mask = '0;
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      if (!is_32b) begin
+        mask = 32'hffff_ffff;
+      end else begin
+        unique case (opcode)
+          7'b0000111: begin
+            if (funct3 inside {3'b010, 3'b011}) begin
+              mask[insn[11:7]] = 1'b1;
+            end
+          end
+          7'b1010011: begin
+            if (!scalar_opfp_writes_gpr(insn)) begin
+              mask[insn[11:7]] = 1'b1;
+            end
+          end
+          7'b1000011,
+          7'b1000111,
+          7'b1001011,
+          7'b1001111: mask[insn[11:7]] = 1'b1;
+          default: mask = '0;
+        endcase
+      end
+      pending_fpr_write_mask = mask;
+    end
+  endfunction
+
+  function automatic logic is_releasable_scalar_mem_op(input logic        is_32b,
+                                                        input logic [31:0] insn);
+    automatic logic [6:0] opcode;
+    automatic logic [2:0] funct3;
+    begin
+      opcode = insn[6:0];
+      funct3 = insn[14:12];
+      is_releasable_scalar_mem_op = is_32b &&
+          ((opcode == 7'b0000011) ||  // integer load
+           (opcode == 7'b0100011) ||  // integer store
+           (opcode == 7'b0000111 && (funct3 inside {3'b010, 3'b011})) || // FLW/FLD
+           (opcode == 7'b0100111 && (funct3 inside {3'b010, 3'b011})));  // FSW/FSD
+    end
+  endfunction
+
+  function automatic logic is_nonreleasable_scalar_order_op(input logic        is_32b,
+                                                             input logic [31:0] insn);
+    automatic logic [6:0] opcode;
+    begin
+      opcode = insn[6:0];
+      // Keep compressed instructions and architectural ordering/system
+      // operations as EP-wide boundaries. Their completion/exception semantics
+      // are intentionally not speculated across by this optimization.
+      is_nonreleasable_scalar_order_op = !is_32b ||
+          (opcode == 7'b0001111) ||  // FENCE/FENCE.I
+          (opcode == 7'b0101111) ||  // AMO
+          (opcode == 7'b1110011);    // SYSTEM/CSR
+    end
+  endfunction
+
+  always_comb begin : p_scalar_mem_order_summary
+    scalar_input_has_mem_order = 1'b0;
+    scalar_input_has_nonreleasable_order = 1'b0;
+    scalar_remaining_releasable_mem = 1'b0;
+    scalar_remaining_nonreleasable_order = 1'b0;
+
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (scalar_insn_valid_i[i]) begin
+        scalar_input_has_mem_order |=
+            is_releasable_scalar_mem_op(scalar_insn_is_32b_i[i],
+                                        scalar_insn_i[i]) |
+            is_nonreleasable_scalar_order_op(scalar_insn_is_32b_i[i],
+                                              scalar_insn_i[i]);
+        scalar_input_has_nonreleasable_order |=
+            is_nonreleasable_scalar_order_op(scalar_insn_is_32b_i[i],
+                                              scalar_insn_i[i]);
+      end
+      if (insn_valid_d[i]) begin
+        scalar_remaining_releasable_mem |=
+            is_releasable_scalar_mem_op(insn_is_32b_d[i], insn_d[i]);
+        scalar_remaining_nonreleasable_order |=
+            is_nonreleasable_scalar_order_op(insn_is_32b_d[i], insn_d[i]);
+      end
+    end
+
+    scalar_mem_inflight_d = ld_req_valid_d || (ldq_count_d != '0) ||
+        (state_d inside {LSU_AR, LSU_R, LSU_AW, LSU_W, LSU_B});
+  end
+
+  // These are next-state summaries.  HEU registers them into its existing
+  // current-EP masks; they never feed its issue gate combinationally.
+  assign scalar_pending_gpr_read_mask_o = pending_gpr_read_mask_d;
+  assign scalar_pending_gpr_write_mask_o = pending_gpr_write_mask_d;
+  assign scalar_pending_fpr_read_mask_o = pending_fpr_read_mask_d;
+  assign scalar_pending_fpr_write_mask_o = pending_fpr_write_mask_d;
+  assign scalar_mem_order_pending_o = scalar_mem_order_pending_d;
 
   always_comb begin : p_simple_predecode
     automatic simple_alu_dec_t dec;
@@ -810,7 +1046,7 @@ module hdv_scalar_backend
     for (int unsigned i = 0; i < NumSlots; i++) begin
       if (insn_valid_q[i] && !simple_class_valid[i] && !curr_slot_found) begin
         curr_slot_found = 1'b1;
-        curr_slot_idx   = 5'(i);
+        curr_slot_idx   = SlotIdxWidth'(i);
       end
     end
   end
@@ -821,7 +1057,7 @@ module hdv_scalar_backend
     for (int unsigned i = 0; i < NumSlots; i++) begin
       if (insn_valid_q[i] && !serial_slot_found) begin
         serial_slot_found = 1'b1;
-        serial_slot_idx   = 5'(i);
+        serial_slot_idx   = SlotIdxWidth'(i);
       end
     end
   end
@@ -872,10 +1108,11 @@ module hdv_scalar_backend
     automatic int unsigned issued;
     automatic logic stop_scan;
     automatic logic [31:0] used_rd;
+    automatic logic [31:0] prior_read_mask;
     automatic logic [31:0] prior_write_mask;
     automatic logic [31:0] read_mask;
     automatic logic [31:0] write_mask;
-    automatic logic lane_vset_raw_stall;
+    automatic logic lane_vset_hazard_stall;
     automatic logic lane_order_hazard;
     automatic logic lane_wb_en;
     automatic logic [4:0] lane_rd;
@@ -888,6 +1125,7 @@ module hdv_scalar_backend
     issued              = 0;
     stop_scan           = 1'b0;
     used_rd             = '0;
+    prior_read_mask      = '0;
     prior_write_mask     = '0;
 
     for (int unsigned i = 0; i < NumSlots; i++) begin
@@ -895,15 +1133,22 @@ module hdv_scalar_backend
       lane_wb_en = simple_class_valid[i] && (lane_rd != 5'd0);
       read_mask = simple_alu_read_mask(insn_is_32b_q[i], insn_q[i]);
       write_mask = scalar_write_mask_conservative(insn_is_32b_q[i], insn_q[i]);
-      lane_vset_raw_stall = vec_vset_inflight_i && (vec_vset_inflight_rd_i != 5'd0) &&
-                             ((insn_q[i][19:15] == vec_vset_inflight_rd_i) ||
-                              (insn_q[i][24:20] == vec_vset_inflight_rd_i));
+      lane_vset_hazard_stall = 1'b0;
+      for (int unsigned v = 0; v < 2; v++) begin
+        if (vec_vset_inflight_valid_i[v] &&
+            (vec_vset_inflight_rd_i[v] != 5'd0)) begin
+          lane_vset_hazard_stall |=
+              read_mask[vec_vset_inflight_rd_i[v]] ||
+              write_mask[vec_vset_inflight_rd_i[v]];
+        end
+      end
       lane_order_hazard = ((read_mask & prior_write_mask) != 32'b0) ||
-                          (lane_wb_en && prior_write_mask[lane_rd]);
+                          ((write_mask & prior_write_mask) != 32'b0) ||
+                          ((write_mask & prior_read_mask) != 32'b0);
 
       if (insn_valid_q[i] && !stop_scan) begin
         if ((issued < EffectiveSimpleAluIssueWidth) && simple_class_valid[i] &&
-            !lane_vset_raw_stall &&
+            !lane_vset_hazard_stall &&
             !lane_order_hazard &&
             (!lane_wb_en || !used_rd[lane_rd])) begin
           simple_batch_mask[i]   = 1'b1;
@@ -916,12 +1161,14 @@ module hdv_scalar_backend
           end
           issued++;
         end else if ((issued >= EffectiveSimpleAluIssueWidth) ||
-                     (simple_class_valid[i] && lane_vset_raw_stall) ||
+                     (simple_class_valid[i] && lane_vset_hazard_stall) ||
                      (simple_class_valid[i] && lane_order_hazard) ||
                      (lane_wb_en && used_rd[lane_rd])) begin
           stop_scan = 1'b1;
         end
 
+        prior_read_mask |=
+          pending_gpr_read_mask(insn_is_32b_q[i], insn_q[i]);
         prior_write_mask |= write_mask;
         if (!simple_class_valid[i] &&
             scalar_order_barrier(insn_is_32b_q[i], insn_q[i])) begin
@@ -1031,17 +1278,29 @@ module hdv_scalar_backend
   assign rs1_addr = cva6_decoded.rs1;
   assign rs2_addr = cva6_decoded.rs2;
 
-  // A2 RAW interlock: stall a scalar that reads an integer register still
-  // awaiting an in-flight vset VL writeback.  FP-source reads (frs1/frs2) target
-  // the FRF, not the integer rd, so they are excluded.  The window is already
-  // covered by the EP's vector-side wait, so this does not extend EP latency.
-  logic vset_raw_stall;
-  assign vset_raw_stall = vec_vset_inflight_i && (vec_vset_inflight_rd_i != 5'd0) &&
-                          curr_slot_found &&
-    ((!(CVA6Cfg.FpPresent && ariane_pkg::is_rs1_fpr(cva6_decoded.op)) &&
-      (rs1_addr == vec_vset_inflight_rd_i)) ||
-     (!(CVA6Cfg.FpPresent && ariane_pkg::is_rs2_fpr(cva6_decoded.op)) &&
-      (rs2_addr == vec_vset_inflight_rd_i)));
+  // Stall integer RAW and WAW conflicts against an older in-flight vset VL
+  // writeback. FP-source reads target the FRF and are excluded.
+  logic vset_gpr_hazard_stall;
+  always_comb begin : p_vset_gpr_hazard_stall
+    automatic logic [31:0] curr_write_mask;
+
+    curr_write_mask = curr_slot_found
+                    ? scalar_write_mask_conservative(curr_is_32b, curr_insn)
+                    : '0;
+    vset_gpr_hazard_stall = 1'b0;
+    for (int unsigned v = 0; v < 2; v++) begin
+      if (vec_vset_inflight_valid_i[v] &&
+          (vec_vset_inflight_rd_i[v] != 5'd0) &&
+          curr_slot_found) begin
+        vset_gpr_hazard_stall |=
+          (!(CVA6Cfg.FpPresent && ariane_pkg::is_rs1_fpr(cva6_decoded.op)) &&
+           (rs1_addr == vec_vset_inflight_rd_i[v])) ||
+          (!(CVA6Cfg.FpPresent && ariane_pkg::is_rs2_fpr(cva6_decoded.op)) &&
+           (rs2_addr == vec_vset_inflight_rd_i[v])) ||
+          curr_write_mask[vec_vset_inflight_rd_i[v]];
+      end
+    end
+  end
   assign rs1_data = (rs1_addr == 5'd0) ? '0 : xrf_q[rs1_addr];
   assign rs2_data = (rs2_addr == 5'd0) ? '0 : xrf_q[rs2_addr];
   assign rs3_data = frf_q[cva6_decoded.result[4:0]];
@@ -1711,7 +1970,7 @@ module hdv_scalar_backend
     ldq_full     = (ldq_count_q == LdQDepthC);
     ldq_empty    = (ldq_count_q == '0);
     ld_req_enter = (state_q == EXECUTE) && curr_slot_found &&
-                   complex_prefix_ready && !vset_raw_stall &&
+                   complex_prefix_ready && !vset_gpr_hazard_stall &&
                    !complex_simple_raw_stall &&
                    (cva6_decoded.fu == LOAD) && !cva6_decoded.ex.valid &&
                    !live_lsu_misaligned && !vec_store_inflight_i && !flush_i;
@@ -1855,6 +2114,8 @@ module hdv_scalar_backend
     issue_decoded_d = issue_decoded_q;
     issue_fu_data_d = issue_fu_data_q;
     issue_mult_ready_d = issue_mult_ready_q;
+    scalar_mem_order_pending_d = scalar_mem_order_pending_q;
+    scalar_mem_release_forbidden_d = scalar_mem_release_forbidden_q;
     branch_resolved_pulse_d = 1'b0;
     branch_taken_d = branch_taken_q;
     branch_pc_d = branch_pc_q;
@@ -1884,11 +2145,16 @@ module hdv_scalar_backend
         redirect_pending_d = 1'b0;
         error_seen_d = 1'b0;
         task_complete_pending_d = 1'b0;
+        scalar_mem_order_pending_d = 1'b0;
+        scalar_mem_release_forbidden_d = 1'b0;
         if (scalar_valid_i) begin
           insn_valid_d = scalar_insn_valid_i;
           insn_d = scalar_insn_i;
           insn_is_32b_d = scalar_insn_is_32b_i;
           insn_pc_d = scalar_insn_pc_i;
+          scalar_mem_order_pending_d = scalar_input_has_mem_order;
+          scalar_mem_release_forbidden_d =
+              scalar_input_has_nonreleasable_order;
           state_d = (|scalar_insn_valid_i) ? EXECUTE : DONE;
         end
       end
@@ -1909,7 +2175,7 @@ module hdv_scalar_backend
         end
 
         if ((curr_slot_found && !complex_prefix_ready) ||
-            vset_raw_stall || complex_simple_raw_stall) begin
+            vset_gpr_hazard_stall || complex_simple_raw_stall) begin
           // Hold only the non-ALU lane: independent simple ALU slots selected
           // above have already been consumed and written back this cycle.
           state_d = EXECUTE;
@@ -2189,16 +2455,37 @@ module hdv_scalar_backend
 
       DONE: begin
         task_complete_pending_d = 1'b0;
+        scalar_mem_order_pending_d = 1'b0;
+        scalar_mem_release_forbidden_d = 1'b0;
         state_d = redirect_pending_q ? REDIRECT : IDLE;
       end
 
       REDIRECT: begin
         redirect_pending_d = 1'b0;
+        scalar_mem_order_pending_d = 1'b0;
+        scalar_mem_release_forbidden_d = 1'b0;
         state_d = IDLE;
       end
 
       default: state_d = IDLE;
     endcase
+
+    // Clear the live memory-order boundary only after every supported scalar
+    // load/store in this EP has completed.  This also covers the transition
+    // into DONE: the response/data side effects commit at that edge, so the
+    // buffered vector slice may start in the following cycle without waiting
+    // for HEU's whole-EP completion observation. A request handshake alone is
+    // not a completion point: loads remain covered by ld_req/ldq and stores by
+    // LSU_AW/W/B.
+    if (scalar_mem_order_pending_q &&
+        !scalar_mem_release_forbidden_q &&
+        !scalar_remaining_releasable_mem &&
+        !scalar_remaining_nonreleasable_order &&
+        !scalar_mem_inflight_d &&
+        !error_seen_d &&
+        !(state_d inside {IDLE, REDIRECT})) begin
+      scalar_mem_order_pending_d = 1'b0;
+    end
 
     xrf_d[0] = '0;
 
@@ -2209,7 +2496,50 @@ module hdv_scalar_backend
       redirect_pending_d = 1'b0;
       error_seen_d = 1'b0;
       task_complete_pending_d = 1'b0;
+      scalar_mem_order_pending_d = 1'b0;
+      scalar_mem_release_forbidden_d = 1'b0;
       branch_resolved_pulse_d = 1'b0;
+    end
+  end
+
+  // Build the next-state dependency summary captured by HEU.  Loads leave
+  // insn_valid_d when their request is captured, so their destination remains
+  // pending through the request register and load-response queue.
+  always_comb begin : p_pending_dependency_masks
+    pending_gpr_read_mask_d = '0;
+    pending_gpr_write_mask_d = '0;
+    pending_fpr_read_mask_d = '0;
+    pending_fpr_write_mask_d = '0;
+
+    for (int unsigned i = 0; i < NumSlots; i++) begin
+      if (insn_valid_d[i]) begin
+        pending_gpr_read_mask_d |=
+          pending_gpr_read_mask(insn_is_32b_d[i], insn_d[i]);
+        pending_gpr_write_mask_d |=
+          pending_gpr_write_mask(insn_is_32b_d[i], insn_d[i]);
+        pending_fpr_read_mask_d |=
+          pending_fpr_read_mask(insn_is_32b_d[i], insn_d[i]);
+        pending_fpr_write_mask_d |=
+          pending_fpr_write_mask(insn_is_32b_d[i], insn_d[i]);
+      end
+    end
+
+    if (ld_req_valid_d) begin
+      if (ld_req_is_fpr_d) begin
+        pending_fpr_write_mask_d[ld_req_rd_d] = 1'b1;
+      end else if (ld_req_rd_d != 5'd0) begin
+        pending_gpr_write_mask_d[ld_req_rd_d] = 1'b1;
+      end
+    end
+
+    for (int unsigned i = 0; i < LdQDepth; i++) begin
+      if (i < ldq_count_d) begin
+        if (ldq_is_fpr_d[ldq_head_d + LdQPtrW'(i)]) begin
+          pending_fpr_write_mask_d[ldq_rd_d[ldq_head_d + LdQPtrW'(i)]] = 1'b1;
+        end else if (ldq_rd_d[ldq_head_d + LdQPtrW'(i)] != 5'd0) begin
+          pending_gpr_write_mask_d[ldq_rd_d[ldq_head_d + LdQPtrW'(i)]] = 1'b1;
+        end
+      end
     end
   end
 
@@ -2250,6 +2580,8 @@ module hdv_scalar_backend
       issue_decoded_q <= '0;
       issue_fu_data_q <= '0;
       issue_mult_ready_q <= 1'b0;
+      scalar_mem_order_pending_q <= 1'b0;
+      scalar_mem_release_forbidden_q <= 1'b0;
       cycle_q <= 64'd0;
       redirect_pending_q <= 1'b0;
       redirect_pc_q <= '0;
@@ -2320,6 +2652,8 @@ module hdv_scalar_backend
       issue_decoded_q <= issue_decoded_d;
       issue_fu_data_q <= issue_fu_data_d;
       issue_mult_ready_q <= issue_mult_ready_d;
+      scalar_mem_order_pending_q <= scalar_mem_order_pending_d;
+      scalar_mem_release_forbidden_q <= scalar_mem_release_forbidden_d;
       cycle_q <= cycle_d;
       redirect_pending_q <= redirect_pending_d;
       redirect_pc_q <= redirect_pc_d;
@@ -2364,10 +2698,18 @@ module hdv_scalar_backend
 `ifndef SYNTHESIS
   always_ff @(posedge clk_i) begin : p_issue_assertions
     automatic simple_alu_dec_t verify_simple_dec;
+    automatic logic [31:0] verify_prior_read_mask;
+    automatic logic [31:0] verify_read_mask;
+    automatic logic [31:0] verify_write_mask;
     if (rst_ni && !flush_i) begin
       if (state_q == EXECUTE) begin
+        verify_prior_read_mask = '0;
         for (int unsigned i = 0; i < NumSlots; i++) begin
           if (insn_valid_q[i]) begin
+            verify_read_mask =
+              simple_alu_read_mask(insn_is_32b_q[i], insn_q[i]);
+            verify_write_mask =
+              scalar_write_mask_conservative(insn_is_32b_q[i], insn_q[i]);
             verify_simple_dec = decode_simple_alu(
                 insn_is_32b_q[i], insn_q[i], insn_pc_q[i],
                 (insn_q[i][19:15] == 5'd0) ? '0 : xrf_q[insn_q[i][19:15]],
@@ -2377,7 +2719,13 @@ module hdv_scalar_backend
             if (simple_batch_mask[i]) begin
               assert (simple_class_valid[i])
                 else $error("[HDV] non-simple scalar instruction selected by simple batch");
+              if (simple_batch_wb_en[i]) begin
+                assert (!verify_prior_read_mask[simple_batch_rd[i]])
+                  else $error("[HDV] younger simple scalar write crossed an older scalar read");
+              end
             end
+            verify_prior_read_mask |=
+              pending_gpr_read_mask(insn_is_32b_q[i], insn_q[i]);
           end
         end
       end
@@ -2414,19 +2762,51 @@ module hdv_scalar_backend
         assert (serial_slot_found && serial_lsu_supported && !lsu_is_load)
           else $error("[HDV] scalar store state lost its oldest-slot context");
       end
-      if ((state_q == EXECUTE) && vec_vset_inflight_i &&
-          (vec_vset_inflight_rd_i != 5'd0)) begin
+      if (state_q == EXECUTE) begin
         for (int unsigned i = 0; i < NumSlots; i++) begin
           if (simple_batch_mask[i]) begin
-            assert ((insn_q[i][19:15] != vec_vset_inflight_rd_i) &&
-                    (insn_q[i][24:20] != vec_vset_inflight_rd_i))
-              else $error("[HDV] simple scalar lane consumed an in-flight vset result");
+            verify_read_mask =
+              simple_alu_read_mask(insn_is_32b_q[i], insn_q[i]);
+            verify_write_mask =
+              scalar_write_mask_conservative(insn_is_32b_q[i], insn_q[i]);
+            for (int unsigned v = 0; v < 2; v++) begin
+              if (vec_vset_inflight_valid_i[v] &&
+                  (vec_vset_inflight_rd_i[v] != 5'd0)) begin
+                assert (!verify_read_mask[vec_vset_inflight_rd_i[v]])
+                  else $error("[HDV] simple scalar lane consumed an in-flight vset result");
+                assert (!verify_write_mask[vec_vset_inflight_rd_i[v]])
+                  else $error("[HDV] simple scalar lane crossed an in-flight vset writer");
+              end
+            end
           end
         end
       end
       if ((state_q == EXECUTE) && curr_slot_found && fast_branch_valid) begin
         assert ((cva6_decoded.fu == CTRL_FLOW) && !cva6_decoded.ex.valid)
           else $error("[HDV] lightweight branch classifier disagrees with CVA6 decode");
+      end
+      if ((state_q != IDLE) && !scalar_mem_order_pending_q &&
+          !(state_q inside {DONE, REDIRECT})) begin
+        assert (!scalar_mem_order_pending_d)
+          else $error("[HDV] scalar memory-order pending reasserted within one EP");
+      end
+      if (ld_req_valid_d || (ldq_count_d != '0) ||
+          (state_d inside {LSU_AR, LSU_R, LSU_AW, LSU_W, LSU_B})) begin
+        assert (scalar_mem_order_pending_d)
+          else $error("[HDV] scalar memory-order boundary cleared with LSU work in flight");
+      end
+      if (scalar_mem_order_pending_q && !scalar_mem_order_pending_d &&
+          !(state_q inside {IDLE, DONE, REDIRECT})) begin
+        assert (!scalar_mem_release_forbidden_q &&
+                !scalar_remaining_releasable_mem &&
+                !scalar_remaining_nonreleasable_order &&
+                !scalar_mem_inflight_d && !error_seen_d &&
+                !(state_d inside {IDLE, REDIRECT}))
+          else $error("[HDV] scalar memory-order boundary released before strict completion");
+      end
+      if (scalar_ep_done_o) begin
+        assert (!scalar_mem_order_pending_o)
+          else $error("[HDV] completed scalar EP still reports pending memory ordering");
       end
     end
   end

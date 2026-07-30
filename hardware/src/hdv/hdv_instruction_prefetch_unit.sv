@@ -221,7 +221,7 @@ module hdv_instruction_prefetch_unit #(
   assign fill_buf_protected = fill_buf_q ? loop_protect_q[1] : loop_protect_q[0];
   assign active_buf_protected = active_buf_q ? loop_protect_q[1] : loop_protect_q[0];
 
-  assign ipu_tsu_task_ready_o = (state_q == IDLE);
+  assign ipu_tsu_task_ready_o = (state_q == IDLE) && !flush_i;
   assign ipu_top_busy_o       = (state_q != IDLE);
   // Active while a backward-branch loop body is locked in the fetch buffers.
   assign ipu_top_loop_active_o = auto_loop_lock_q | loop_locked_q;

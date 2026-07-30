@@ -216,7 +216,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic dispatch_flush;
   logic heu_flush;
   logic task_complete_request;
+  logic task_completion_drain;
+  logic task_termination_drain;
   logic host_task_complete_seen_d, host_task_complete_seen_q;
+  logic task_error_request;
+  logic task_error_pending_d, task_error_pending_q;
   logic task_done_to_tsu;
   logic task_error_to_tsu;
   logic auto_loop_exit;
@@ -235,6 +239,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic                         scalar_ep_done;
   logic                         scalar_backend_ready;
   logic                         scalar_backend_ep_done;
+  logic [31:0]                  scalar_backend_pending_gpr_read_mask;
+  logic [31:0]                  scalar_backend_pending_gpr_write_mask;
+  logic [31:0]                  scalar_backend_pending_fpr_read_mask;
+  logic [31:0]                  scalar_backend_pending_fpr_write_mask;
+  logic                         scalar_backend_mem_order_pending;
   logic                         scalar_backend_error;
   logic                         scalar_backend_task_complete;
   logic                         scalar_backend_redirect_valid;
@@ -261,14 +270,16 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic [XLEN-1:0]              vec_scalar_wb_data;
   logic                         vec_scalar_wb_is_fpr;
   logic                         vec_scalar_wb_is_vset;
-  logic                         vec_scalar_vset_inflight;
-  logic [4:0]                   vec_scalar_vset_inflight_rd;
+  logic [1:0]                   vec_scalar_vset_inflight_valid;
+  logic [1:0][4:0]              vec_scalar_vset_inflight_rd;
   logic                         vec_store_inflight;
+  logic                         ara_backend_idle;
 
   // ─── Vector dispatch (HEU → vec_dispatch_unit → Ara) ─────────────────────
 
   logic        heu_vec_valid;
   logic        vec_ep_ready;
+  logic [$clog2(NumSlots+1)-1:0] vec_early_issue_credit;
   logic        vec_ep_acknowledged;
   logic        heu_vec_ep_id;
   logic        vliwpu_prefetch_hint_valid;
@@ -283,7 +294,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic [NumSlots-1:0]        heu_vec_insn_valid;
   logic [NumSlots-1:0][31:0]  heu_vec_insn;
   logic [NumSlots-1:0]        unused_heu_vec_insn_is_32b;
-  addr_t [NumSlots-1:0]       unused_heu_vec_insn_pc;
+  addr_t [NumSlots-1:0]       heu_vec_insn_pc;
   addr_t                      unused_heu_vec_pc;
 
   // ─── AXI wires ────────────────────────────────────────────────────────────
@@ -314,8 +325,13 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   logic imem_outstanding_full;
   logic imem_outstanding_nonzero;
   logic imem_stale_rsp_nonzero;
+  logic imem_ar_hold_d, imem_ar_hold_q;
+  logic imem_ar_hold_stale_d, imem_ar_hold_stale_q;
+  logic [AxiAddrWidth-1:0] imem_ar_hold_addr_d, imem_ar_hold_addr_q;
+  logic imem_direct_ar_valid;
   logic imem_ar_accept;
   logic imem_r_accept;
+  logic imem_r_counted_accept;
   logic imem_r_drop;
   logic imem_rsp_to_ipu;
 
@@ -327,7 +343,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   // ─── Combinatorial assignments ────────────────────────────────────────────
 
   assign task_busy                   = tsu_top_busy | ipu_top_busy | heu_top_busy |
-                                       vec_dispatch_busy;
+                                       vec_dispatch_busy | !ara_backend_idle;
   assign hdv_host_task_busy_o        = task_busy;
   assign hdv_host_task_done_o        = tsu_top_done;
   assign hdv_host_task_error_o       = tsu_top_error;
@@ -364,20 +380,44 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign hdv_host_ep_acknowledged_o  = heu_top_ep_acknowledged;
   assign hdv_host_ep_error_o = heu_top_ep_error;
 
-  assign task_error_to_tsu = host_hdv_task_error_i | heu_top_ep_error | vec_ep_error;
-  assign task_flush     = flush_i | task_error_to_tsu | tsu_top_error;
+  assign task_error_request = host_hdv_task_error_i | heu_top_ep_error | vec_ep_error;
+  assign task_error_to_tsu = (task_error_request | task_error_pending_q) &
+                             !vec_dispatch_busy & ara_backend_idle;
+  assign task_flush     = flush_i | task_error_request | task_error_pending_q |
+                          tsu_top_error;
   assign task_complete_request = host_hdv_task_complete_i | scalar_backend_task_complete;
-  assign task_done_to_tsu = (task_complete_request | host_task_complete_seen_q) &
-                            !vec_dispatch_busy;
+  assign task_completion_drain = task_complete_request | host_task_complete_seen_q;
+  assign task_termination_drain = task_completion_drain | task_error_request |
+                                  task_error_pending_q;
+  assign task_done_to_tsu = task_completion_drain &
+                            !(task_error_request | task_error_pending_q) &
+                            !vec_dispatch_busy & ara_backend_idle;
 
 `ifdef FOR_VERIFY
   always_ff @(posedge clk_i) begin : p_pf_probe_task_error
-    if (rst_ni && $test$plusargs("HDV_PF_PROBE") && task_error_to_tsu) begin
+    if (rst_ni && $test$plusargs("HDV_PF_PROBE") && task_error_request) begin
       $display("[PFPROBE-TOP] time=%0t task_error_to_tsu host=%0d heu=%0d vec=%0d scalar=%0d tsu_error=%0d vec_busy=%0d heu_busy=%0d vec_ack=%0d vec_ack_id=%0d",
                $time, host_hdv_task_error_i, heu_top_ep_error, vec_ep_error,
                (UseCva6HdvScalar ? scalar_backend_error : 1'b0), tsu_top_error,
                vec_dispatch_busy, heu_top_busy, vec_ep_acknowledged,
                vec_ep_acknowledged_id);
+    end
+  end
+`endif
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin : p_task_completion_assertions
+    if (rst_ni && task_done_to_tsu) begin
+      assert (ara_backend_idle)
+        else $error("[HDV] task completed while Ara still had vector work in flight");
+      assert (!vec_dispatch_busy)
+        else $error("[HDV] task completed while vector dispatch still had pending work");
+    end
+    if (rst_ni && task_error_to_tsu) begin
+      assert (ara_backend_idle)
+        else $error("[HDV] task error reported while Ara still had work in flight");
+      assert (!vec_dispatch_busy)
+        else $error("[HDV] task error reported while vector dispatch still had pending work");
     end
   end
 `endif
@@ -428,27 +468,35 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   assign imem_outstanding_full    = imem_outstanding_q == ImemOutstandingCntWidth'(ImemOutstandingDepth);
   assign imem_outstanding_nonzero = imem_outstanding_q != '0;
   assign imem_stale_rsp_nonzero   = imem_stale_rsp_q != '0;
+  assign imem_direct_ar_valid = ipu_mem_req_valid & !dispatch_flush &
+                                !imem_outstanding_full;
   assign mem_ipu_req_ready    = !dispatch_flush & !imem_outstanding_full &
-                                hdv_imem_axi_resp.ar_ready;
+                                hdv_imem_axi_resp.ar_ready &
+                                (!imem_ar_hold_q | !imem_ar_hold_stale_q);
   assign hdv_imem_req_addr_o  = ipu_mem_req_addr;
   assign hdv_imem_rsp_ready_o = ipu_mem_rsp_ready;
   assign imem_rsp_to_ipu      = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid &
                                 !dispatch_flush & !imem_stale_rsp_nonzero &
+                                !task_termination_drain &
                                 ipu_mem_rsp_ready;
   assign mem_ipu_rsp_valid    = imem_rsp_to_ipu;
   assign mem_ipu_rsp_data     = hdv_imem_axi_resp.r.data[FetchPacketWidth-1:0];
 
-  assign imem_ar_accept = ipu_mem_req_valid & mem_ipu_req_ready;
-  assign imem_r_drop    = imem_outstanding_nonzero & hdv_imem_axi_resp.r_valid &
-                          (dispatch_flush | imem_stale_rsp_nonzero);
+  assign imem_ar_accept = hdv_imem_axi_req.ar_valid & hdv_imem_axi_resp.ar_ready;
+  assign imem_r_drop    = hdv_imem_axi_resp.r_valid &
+                          (task_termination_drain |
+                           (imem_outstanding_nonzero &
+                            (dispatch_flush | imem_stale_rsp_nonzero)));
   assign imem_r_accept  = imem_rsp_to_ipu | imem_r_drop;
+  assign imem_r_counted_accept = imem_r_accept &
+                                 (imem_outstanding_nonzero | imem_ar_accept);
 
   always_comb begin : p_imem_axi_req
     hdv_imem_axi_req = '0;
-    hdv_imem_axi_req.ar_valid      = ipu_mem_req_valid & !dispatch_flush &
-                                     !imem_outstanding_full;
+    hdv_imem_axi_req.ar_valid      = imem_ar_hold_q | imem_direct_ar_valid;
     hdv_imem_axi_req.ar.id         = '0;
-    hdv_imem_axi_req.ar.addr       = AxiAddrWidth'(ipu_mem_req_addr);
+    hdv_imem_axi_req.ar.addr       = imem_ar_hold_q ? imem_ar_hold_addr_q :
+                                                         AxiAddrWidth'(ipu_mem_req_addr);
     hdv_imem_axi_req.ar.len        = '0;
     hdv_imem_axi_req.ar.size       = axi_pkg::size_t'($clog2(FetchPacketWidth / 8));
     hdv_imem_axi_req.ar.burst      = axi_pkg::BURST_INCR;
@@ -460,15 +508,41 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     hdv_imem_axi_req.ar.user       = '0;
     // Drain stale post-redirect responses even when IPU is not ready, but keep
     // normal responses back-pressured by IPU readiness.
-    hdv_imem_axi_req.r_ready       = imem_outstanding_nonzero &
-                                     (dispatch_flush | imem_stale_rsp_nonzero |
-                                      ipu_mem_rsp_ready);
+    hdv_imem_axi_req.r_ready       = task_termination_drain |
+                                     (imem_outstanding_nonzero &
+                                      (dispatch_flush | imem_stale_rsp_nonzero |
+                                       ipu_mem_rsp_ready));
+  end
+
+  always_comb begin : p_imem_ar_hold
+    imem_ar_hold_d       = imem_ar_hold_q;
+    imem_ar_hold_stale_d = imem_ar_hold_stale_q;
+    imem_ar_hold_addr_d  = imem_ar_hold_addr_q;
+
+    // AXI requires VALID and its payload to remain stable until READY.  Keep a
+    // backpressured IPU request alive even if a redirect/task flush arrives.
+    if (!imem_ar_hold_q && imem_direct_ar_valid &&
+        !hdv_imem_axi_resp.ar_ready) begin
+      imem_ar_hold_d       = 1'b1;
+      imem_ar_hold_stale_d = 1'b0;
+      imem_ar_hold_addr_d  = AxiAddrWidth'(ipu_mem_req_addr);
+    end
+
+    if (dispatch_flush && imem_ar_hold_d) begin
+      imem_ar_hold_stale_d = 1'b1;
+    end
+
+    if (imem_ar_hold_q && hdv_imem_axi_resp.ar_ready) begin
+      imem_ar_hold_d       = 1'b0;
+      imem_ar_hold_stale_d = 1'b0;
+    end
   end
 
   always_comb begin : p_imem_state
     imem_outstanding_d = imem_outstanding_q;
     imem_stale_rsp_d = imem_stale_rsp_q;
-    unique case ({imem_ar_accept, imem_r_accept & hdv_imem_axi_resp.r.last})
+    unique case ({imem_ar_accept,
+                  imem_r_counted_accept & hdv_imem_axi_resp.r.last})
       2'b10: imem_outstanding_d = imem_outstanding_q + 1'b1;
       2'b01: imem_outstanding_d = imem_outstanding_q - 1'b1;
       default: begin
@@ -478,7 +552,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
       imem_stale_rsp_d = imem_stale_rsp_q - 1'b1;
     end
     if (dispatch_flush) begin
-      imem_stale_rsp_d = imem_outstanding_d;
+      imem_stale_rsp_d =
+          imem_outstanding_d +
+          ImemOutstandingCntWidth'(imem_ar_hold_q && !imem_ar_accept);
     end
   end
 
@@ -487,9 +563,15 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     if (!rst_ni) begin
       imem_outstanding_q <= '0;
       imem_stale_rsp_q   <= '0;
+      imem_ar_hold_q       <= 1'b0;
+      imem_ar_hold_stale_q <= 1'b0;
+      imem_ar_hold_addr_q  <= '0;
     end else begin
       imem_outstanding_q <= imem_outstanding_d;
       imem_stale_rsp_q   <= imem_stale_rsp_d;
+      imem_ar_hold_q       <= imem_ar_hold_d;
+      imem_ar_hold_stale_q <= imem_ar_hold_stale_d;
+      imem_ar_hold_addr_q  <= imem_ar_hold_addr_d;
     end
   end
 
@@ -540,6 +622,11 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .scalar_insn_is_32b_i          (heu_scalar_insn_is_32b      ),
     .scalar_insn_pc_i              (heu_scalar_insn_pc          ),
     .scalar_ep_done_o              (scalar_backend_ep_done     ),
+    .scalar_pending_gpr_read_mask_o(scalar_backend_pending_gpr_read_mask),
+    .scalar_pending_gpr_write_mask_o(scalar_backend_pending_gpr_write_mask),
+    .scalar_pending_fpr_read_mask_o(scalar_backend_pending_fpr_read_mask),
+    .scalar_pending_fpr_write_mask_o(scalar_backend_pending_fpr_write_mask),
+    .scalar_mem_order_pending_o (scalar_backend_mem_order_pending),
     .scalar_error_o                (scalar_backend_error        ),
     .redirect_valid_o              (scalar_backend_redirect_valid),
     .redirect_pc_o                 (scalar_backend_redirect_pc   ),
@@ -562,7 +649,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_wb_data_i                 (vec_scalar_wb_data          ),
     .vec_wb_is_fpr_i               (vec_scalar_wb_is_fpr        ),
     .vec_wb_is_vset_i              (vec_scalar_wb_is_vset       ),
-    .vec_vset_inflight_i           (vec_scalar_vset_inflight    ),
+    .vec_vset_inflight_valid_i     (vec_scalar_vset_inflight_valid),
     .vec_vset_inflight_rd_i        (vec_scalar_vset_inflight_rd ),
     .vec_store_inflight_i          (vec_store_inflight    ),
     .scalar_axi_req_o              (scalar_axi_req              ),
@@ -603,6 +690,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_ep_ready_o     (vec_ep_ready   ),
     .heu_vec_insn_valid_i(heu_vec_insn_valid),
     .heu_vec_insn_i      (heu_vec_insn    ),
+    .heu_vec_insn_pc_i   (heu_vec_insn_pc ),
     .heu_vec_ep_id_i     (heu_vec_ep_id   ),
     .heu_vec_prefetch_hint_valid_i(heu_vec_prefetch_hint_valid),
     .heu_vec_prefetch_disable_i(heu_vec_prefetch_disable),
@@ -611,6 +699,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_ep_acknowledged_id_o   (vec_ep_acknowledged_id ),
     .vec_ep_error_o     (vec_ep_error   ),
     .vec_dispatch_busy_o (vec_dispatch_busy),
+    .vec_early_issue_credit_o(vec_early_issue_credit),
     .vec_scalar_operand_req_valid_o(vec_scalar_operand_req_valid),
     .scalar_vec_operand_req_ready_i(scalar_vec_operand_req_ready),
     .vec_scalar_rs1_addr_o(vec_scalar_rs1_addr),
@@ -624,8 +713,8 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .vec_scalar_wb_data_o(vec_scalar_wb_data),
     .vec_scalar_wb_is_fpr_o(vec_scalar_wb_is_fpr),
     .vec_scalar_wb_is_vset_o(vec_scalar_wb_is_vset),
-    .vec_scalar_vset_inflight_o(vec_scalar_vset_inflight),
-    .vec_scalar_vset_inflight_rd_o(vec_scalar_vset_inflight_rd),
+    .vec_scalar_vset_inflight_valid_o(vec_scalar_vset_inflight_valid),
+    .vec_scalar_vset_inflight_rd_o   (vec_scalar_vset_inflight_rd),
     .vec_store_inflight_o(vec_store_inflight),
     .acc_req_o           (acc_req         ),
     .acc_resp_i          (ara_acc_resp_pack),
@@ -675,7 +764,9 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .axi_req_o              (ara_axi_req             ),
     .axi_resp_i             (ara_axi_resp             ),
     .hdv_loop_active_i      (hdv_ara_loop_active_o    ),
-    .hdv_meta_i             (ara_req_hdv_meta          )
+    .hdv_task_end_i         (task_termination_drain   ),
+    .hdv_meta_i             (ara_req_hdv_meta          ),
+    .ara_idle_o             (ara_backend_idle          )
   );
 
   axi_inval_filter #(
@@ -816,7 +907,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .redirect_pc_i             (hdv_ctrl_redirect_pc   ),
     .loop_lock_i               (ctrl_hdv_loop_lock_i    ),
     .loop_exit_i               (auto_loop_exit          ),
-    .top_ipu_task_complete_i   (task_complete_request | host_hdv_task_error_i),
+    .top_ipu_task_complete_i   (task_complete_request | task_error_request),
     .ipu_top_busy_o            (ipu_top_busy            )
   );
 
@@ -862,6 +953,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
 `else
     .EnableBufferedVectorEarlyIssue(1'b1),
 `endif
+    .UseCompletionAwareScalarStatus(UseCva6HdvScalar),
     .addr_t    (addr_t    )
   ) i_hybrid_execution_unit (
     .clk_i                          (clk_i                    ),
@@ -892,7 +984,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vector_insn_valid_o        (heu_vec_insn_valid       ),
     .heu_vector_insn_o              (heu_vec_insn             ),
     .heu_vector_insn_is_32b_o       (unused_heu_vec_insn_is_32b),
-    .heu_vector_insn_pc_o           (unused_heu_vec_insn_pc   ),
+    .heu_vector_insn_pc_o           (heu_vec_insn_pc          ),
     .heu_vector_pc_o                (unused_heu_vec_pc        ),
     .heu_vector_ep_id_o             (heu_vec_ep_id            ),
     .heu_vector_prefetch_hint_valid_o(heu_vec_prefetch_hint_valid),
@@ -900,8 +992,19 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     .heu_vector_prefetch_mode_o     (heu_vec_prefetch_mode    ),
     // Done / error from backends
     .scalar_ep_done_i              (scalar_ep_done          ),
+    .scalar_pending_gpr_read_mask_i(UseCva6HdvScalar ?
+                                    scalar_backend_pending_gpr_read_mask : '1),
+    .scalar_pending_gpr_write_mask_i(UseCva6HdvScalar ?
+                                     scalar_backend_pending_gpr_write_mask : '1),
+    .scalar_pending_fpr_read_mask_i(UseCva6HdvScalar ?
+                                    scalar_backend_pending_fpr_read_mask : '1),
+    .scalar_pending_fpr_write_mask_i(UseCva6HdvScalar ?
+                                     scalar_backend_pending_fpr_write_mask : '1),
+    .scalar_mem_order_pending_i  (UseCva6HdvScalar ?
+                                  scalar_backend_mem_order_pending : 1'b1),
     .vector_ep_acknowledged_i          (vec_ep_acknowledged             ),
     .vector_ep_acknowledged_id_i       (vec_ep_acknowledged_id          ),
+    .vector_early_issue_credit_i       (vec_early_issue_credit           ),
     .backend_heu_error_i            (backend_hdv_error_i | vec_ep_error |
                                      (UseCva6HdvScalar ? scalar_backend_error : 1'b0)),
     .heu_top_busy_o                 (heu_top_busy             ),
@@ -912,7 +1015,7 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
   always_comb begin : p_task_done_drain
     host_task_complete_seen_d = host_task_complete_seen_q;
 
-    if (task_complete_request && vec_dispatch_busy) begin
+    if (task_complete_request && (vec_dispatch_busy || !ara_backend_idle)) begin
       host_task_complete_seen_d = 1'b1;
     end
 
@@ -921,11 +1024,24 @@ module hdv_top import hdv_pkg::*; import ara_pkg::*; import axi_pkg::*; #(
     end
   end
 
+  always_comb begin : p_task_error_drain
+    task_error_pending_d = task_error_pending_q;
+
+    if (task_error_request) begin
+      task_error_pending_d = 1'b1;
+    end
+    if (task_error_to_tsu || flush_i) begin
+      task_error_pending_d = 1'b0;
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_task_done_drain_regs
     if (!rst_ni) begin
       host_task_complete_seen_q <= 1'b0;
+      task_error_pending_q <= 1'b0;
     end else begin
       host_task_complete_seen_q <= host_task_complete_seen_d;
+      task_error_pending_q <= task_error_pending_d;
     end
   end
 

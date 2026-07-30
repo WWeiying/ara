@@ -64,6 +64,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output logic                    addrgen_operand_ready_o,
     input  logic                    block_load_addr_i,
     input  logic                    hdv_loop_active_i,
+    input  logic                    hdv_task_end_i,
+    output logic                    prefetch_task_clean_o,
 
     // STU exception support
     input  logic                    lsu_ex_flush_i,
@@ -111,6 +113,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_axi_ar_hit;
   logic    prefetch_buf_flush;  // addrgen -> vldu: stream-break prefetch buffer flush
   axi_ar_t axi_addrgen_prefetch_req;
+  vlen_t   prefetch_logical_bytes;
   logic    axi_addrgen_prefetch_req_valid;
   logic    axi_addrgen_prefetch_req_ready;
   logic [7:0] prefetch_buf_occupancy;
@@ -118,6 +121,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic       prefetch_tag_head;
   logic       prefetch_tag_empty;
   logic       prefetch_tag_pop;
+  logic       prefetch_buf_busy;
   logic       stu_store_pending; // vstu store-in-flight -> addrgen prefetch pacing
   assign store_pending_o = stu_store_pending;
 
@@ -221,15 +225,19 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .prefetch_axi_ar_hit_o           (prefetch_axi_ar_hit),
     .prefetch_buf_flush_o            (prefetch_buf_flush),
     .axi_addrgen_prefetch_req_o      (axi_addrgen_prefetch_req),
+    .prefetch_logical_bytes_o        (prefetch_logical_bytes),
     .axi_addrgen_prefetch_req_valid_o(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_i(axi_addrgen_prefetch_req_ready),
     .prefetch_buf_occupancy_i        (prefetch_buf_occupancy),
     .prefetch_tag_head_o             (prefetch_tag_head),
     .prefetch_tag_empty_o            (prefetch_tag_empty),
     .prefetch_tag_pop_i              (prefetch_tag_pop),
+    .prefetch_buf_busy_i              (prefetch_buf_busy),
     .store_pending_i                 (stu_store_pending),
     .block_load_addr_i               (block_load_addr_i),
     .hdv_loop_active_i               (hdv_loop_active_i),
+    .hdv_task_end_i                  (hdv_task_end_i),
+    .prefetch_task_clean_o           (prefetch_task_clean_o),
 
     // CSR input
     .en_ld_st_translation_i,
@@ -281,7 +289,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .addrgen_illegal_load_i (addrgen_illegal_load      ),
     .prefetch_axi_ar_hit_i           (prefetch_axi_ar_hit),
     .prefetch_buf_flush_i            (prefetch_buf_flush),
+    .prefetch_buf_busy_o             (prefetch_buf_busy),
     .axi_addrgen_prefetch_req_i      (axi_addrgen_prefetch_req),
+    .prefetch_logical_bytes_i        (prefetch_logical_bytes),
     .axi_addrgen_prefetch_req_valid_i(axi_addrgen_prefetch_req_valid),
     .axi_addrgen_prefetch_req_ready_o(axi_addrgen_prefetch_req_ready),
     .prefetch_buf_occupancy_o        (prefetch_buf_occupancy),

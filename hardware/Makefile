@@ -53,9 +53,13 @@ spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpu
 
 mc ?= 0
 hdv_ablation ?= full
-HDV_ABLATION_MODES := full base vdu ovlp pf pf_only haz pf_haz
+hdv_src_lifetime ?= 1
+HDV_ABLATION_MODES := full base vdu pf pf_only ovlp haz pf_haz
 ifeq ($(filter $(hdv_ablation),$(HDV_ABLATION_MODES)),)
   $(error Invalid hdv_ablation=$(hdv_ablation). Use one of: $(HDV_ABLATION_MODES))
+endif
+ifeq ($(filter $(hdv_src_lifetime),0 1),)
+  $(error Invalid hdv_src_lifetime=$(hdv_src_lifetime). Use 0 or 1)
 endif
 
 define generate_sram
@@ -108,27 +112,33 @@ endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 
+# Request-bound source-lifetime cooperation is active in full and in the two
+# explicit hazard configurations. hdv_src_lifetime=0 remains an override for
+# an otherwise identical control build.
+ifeq ($(hdv_src_lifetime),0)
+  bender_defs += --define HDV_ABLATION_NO_SRC_LIFETIME
+else ifeq ($(filter full haz pf_haz,$(hdv_ablation)),)
+  bender_defs += --define HDV_ABLATION_NO_SRC_LIFETIME
+endif
+
 ifeq ($(hdv_ablation),base)
   bender_defs += --define HDV_ABLATION_NO_PREFETCH
   bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
-  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
   bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
 endif
 ifeq ($(hdv_ablation),vdu)
   bender_defs += --define HDV_ABLATION_NO_PREFETCH
   bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
-  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
-endif
-ifeq ($(hdv_ablation),ovlp)
-  bender_defs += --define HDV_ABLATION_NO_PREFETCH
-  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
 endif
 ifeq ($(hdv_ablation),pf)
-  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+  bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
 endif
 ifeq ($(hdv_ablation),pf_only)
   bender_defs += --define HDV_ABLATION_NO_EARLY_ISSUE
-  bender_defs += --define HDV_ABLATION_NO_SAME_EP_BYPASS
+  bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
+endif
+ifeq ($(hdv_ablation),ovlp)
   bender_defs += --define HDV_ABLATION_NO_VEC_OPERAND_LOOKAHEAD
 endif
 ifeq ($(hdv_ablation),haz)
@@ -297,7 +307,12 @@ else
   sim_dir_default := sim
 endif
 ifeq ($(hdv_ablation),full)
-  sim_dir ?= $(sim_dir_default)
+  ifeq ($(hdv_src_lifetime),1)
+    sim_dir ?= $(sim_dir_default)
+  else
+    sim_dir ?= $(sim_dir_default)_src_lifetime_off
+    vcs_library := $(buildpath)/vcs_src_lifetime_off
+  endif
 else
   sim_dir ?= $(sim_dir_default)_$(hdv_ablation)
   vcs_library := $(buildpath)/vcs_$(hdv_ablation)
@@ -347,7 +362,7 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 
 compile: bender dpi ../Bender.yml
 	@mkdir -p $(vcs_library)
-	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen) HDV_ABLATION=$(hdv_ablation)"
+	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen) HDV_ABLATION=$(hdv_ablation) HDV_SRC_LIFETIME=$(hdv_src_lifetime)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_VERIFY  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db

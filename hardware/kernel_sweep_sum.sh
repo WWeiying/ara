@@ -31,17 +31,18 @@ KERNEL_H_ID="group,kernel,tag,avl,size,rows,n,result,task_cycles,cyc_per_elem,cy
 KERNEL_H_HDV="ep_ack,ep_vset_ack,vq_push,vq_pop,vq_max_occ,vq_bypass,vq_full_stall,dispatch_slots,dispatch_cycles,fsm_could_bypass,operand_wait_cycles_raw,ara_backpressure_cycles,real_wait_stall,resp_meta_stall,resp_meta_max"
 KERNEL_H_HEU_EP="ep_count,packed_inst_count,packed_scalar_inst_count,packed_vector_inst_count,ep_width_sum,ep_width_gt1_count,ep_scalar_vector_count,used_issue_slots,available_issue_slots,heu_to_current,heu_to_buffer,heu_scalar_only,heu_vector_only,heu_pf_hint_ep,heu_pf_disable_ep,heu_pf_mode_1x,heu_pf_mode_2x,heu_pf_mode_4x,heu_pf_mode_8x"
 KERNEL_H_HEU_FE="heu_valid_cyc,heu_ready_block_cyc,heu_block_buffer_cyc,heu_block_branch_cyc,heu_current_busy_cyc,heu_buffer_valid_cyc,heu_scalar_out_cyc,heu_vector_out_cyc"
-KERNEL_H_HEU_OVLP="early_issue_attempts,early_issue_grants,early_issue_blocked_by_dispatch,early_issue_blocked_by_queue,early_issue_blocked_by_branch,early_issue_blocked_by_scalar_mem,early_issue_blocked_by_dependency,early_issue_blocked_by_gpr_dependency,early_issue_blocked_by_fpr_dependency,early_issue_blocked_by_vector_dependency,cross_ep_inflight_cycles,overlap_cycles"
+KERNEL_H_HEU_OVLP="early_issue_attempts,early_issue_grants,early_issue_blocked_by_dispatch,early_issue_blocked_by_queue,early_issue_blocked_by_branch,early_issue_blocked_by_scalar_mem,early_issue_blocked_by_dependency,early_issue_blocked_by_gpr_dependency,early_issue_blocked_by_fpr_dependency,early_issue_blocked_by_vector_dependency,cross_ep_inflight_cycles,overlap_cycles,scalar_mem_pending_cycles,scalar_mem_release_window_cycles,early_issue_grants_after_mem_release"
 KERNEL_H_VDU_CMD="vector_cmd_valid_cycles,vector_cmd_fire_count,vector_cmd_blocked_cycles,cmd_window_avg_occ,cmd_window_sum_occ,cmd_window_sample_cycles,cmd_window_max_occ,cmd_window_full_cycles,cmd_window_empty_cycles,vq_avg_occ,vq_empty_cycles,vq_full_cycles,resp_meta_sum_occ,resp_meta_sample_cycles"
 KERNEL_H_VDU_OPERAND="scalar_operand_capture_count,scalar_operand_bypass_hit,scalar_operand_wait_cycles,vset_visible_wait_cycles,scalar_operand_bypass,scalar_operand_lookahead_req,scalar_operand_lookahead_hit,scalar_operand_port_busy,vector_ep_enqueue,vector_ep_pending_enqueue,vector_ep_ready_block"
 KERNEL_H_IPU="ipu_ready_cyc,ipu_ready_stall,ipu_sram_stall,ipu_serve_cyc,packets,bypass_hits,demand_reads,avg_cyc_per_pkt,task_ifetch_packets,seamv_ifetch_bytes,hint_instruction_count,hint_bytes,tc_equiv_ifetch_bytes"
 KERNEL_H_AG="demand_ar,pf_ar,pf_hit,loads,pf_en_cyc,demand_aw,demand_B,pf_B"
 KERNEL_H_AGPF="pf_ar_rob_full,pf_ar_lkup_full,pf_ar_pending,pf_ar_dis,pf_2nd,dem_rob_block,pf_disabled,pf_page_cross,pf_queue_full,pf_avl_low"
 KERNEL_H_AGPF2="pf_throttled_cycles,pf_late,pf_unused,pf_wait_match_cyc,pf_wait_match_evt,pf_queue_valid_cyc,pf_queue_block_cyc,pf_lkup_full_cyc,pf_rob_full_cyc,pf_pending_cyc,pf_stream_break,pf_future_keep,pf_queue_match_cyc,pf_rob_match_cyc,pf_page_wait_cyc"
-KERNEL_H_SEQ="seq_issue,seq_blocked_cycles,seq_raw_cycles,seq_war_cycles,seq_waw_cycles,seq_waw_block,seq_ep_bypass,seq_full"
-KERNEL_H_SEQHDV="hazard_check_count,same_ep_hazard_candidate,hazard_pruned_by_ep,seq_true_hazard_stall,seq_false_hazard_stall,seq_queue_full_stall,seq_lane_desync_stall,seq_operand_req_stall,seq_wait_state_cyc,seq_mem_wait_cyc"
-KERNEL_H_DERIV="pf_hit_rate,seamv_tc_ifetch_ratio"
-KERNEL_ROWHDR="$KERNEL_H_ID,$KERNEL_H_HDV,$KERNEL_H_HEU_EP,$KERNEL_H_HEU_FE,$KERNEL_H_HEU_OVLP,$KERNEL_H_VDU_CMD,$KERNEL_H_VDU_OPERAND,$KERNEL_H_IPU,$KERNEL_H_AG,$KERNEL_H_AGPF,$KERNEL_H_AGPF2,$KERNEL_H_SEQ,$KERNEL_H_SEQHDV,$KERNEL_H_DERIV"
+KERNEL_H_SEQ="seq_issue,seq_blocked_cycles,seq_raw_cycles,seq_war_cycles,seq_waw_cycles,seq_waw_block,seq_full"
+KERNEL_H_SEQHDV="hazard_check_count,seq_true_hazard_stall,seq_false_hazard_stall,seq_queue_full_stall,seq_lane_desync_stall,seq_operand_req_stall,seq_wait_state_cyc,seq_mem_wait_cyc"
+KERNEL_H_SEQLIFETIME="src_capture_done_count,war_candidate_count,war_pruned_count,war_arrival_pruned_count,war_release_edge_count,release_lead_vid_cycles"
+KERNEL_H_DERIV="pf_hit_rate,seamv_tc_ifetch_ratio,war_prune_rate,backend_backpressure_ratio,scalar_operand_wait_ratio"
+KERNEL_ROWHDR="$KERNEL_H_ID,$KERNEL_H_HDV,$KERNEL_H_HEU_EP,$KERNEL_H_HEU_FE,$KERNEL_H_HEU_OVLP,$KERNEL_H_VDU_CMD,$KERNEL_H_VDU_OPERAND,$KERNEL_H_IPU,$KERNEL_H_AG,$KERNEL_H_AGPF,$KERNEL_H_AGPF2,$KERNEL_H_SEQ,$KERNEL_H_SEQHDV,$KERNEL_H_SEQLIFETIME,$KERNEL_H_DERIV"
 
 write_kernel_csv_row() {
   local group=$1 kernel=$2 tag=$3 avl=$4 size=$5 rows=$6 n=$7 elem_work=$8 macc_work=$9 csv=${10}
@@ -83,13 +84,16 @@ write_kernel_csv_row() {
   hcb=$(kv 'PERF-HEU-FE' 'current_busy_cyc'); hbv=$(kv 'PERF-HEU-FE' 'buffer_valid_cyc')
   hso_c=$(kv 'PERF-HEU-FE' 'scalar_out_cyc'); hvo_c=$(kv 'PERF-HEU-FE' 'vector_out_cyc')
 
-  local hea heg hebd hebq hebb hebm hegd hefd hevd hcross hover
+  local hea heg hebd hebq hebb hebm hegd hefd hevd hcross hover hsmp hsmr hegm
   hea=$(kv 'PERF-HEU-OVLP' 'early_attempt'); heg=$(kv 'PERF-HEU-OVLP' 'early_grant')
   hebd=$(kv 'PERF-HEU-OVLP' 'early_blk_dispatch'); hebq=$(kv 'PERF-HEU-OVLP' 'early_blk_queue')
   hebb=$(kv 'PERF-HEU-OVLP' 'early_blk_branch')
   hebm=$(kv 'PERF-HEU-OVLP' 'early_blk_scalar_mem'); hegd=$(kv 'PERF-HEU-OVLP' 'early_blk_gpr_dep')
   hefd=$(kv 'PERF-HEU-OVLP' 'early_blk_fpr_dep'); hevd=$(kv 'PERF-HEU-OVLP' 'early_blk_vec_dep')
   hcross=$(kv 'PERF-HEU-OVLP' 'cross_ep_cyc'); hover=$(kv 'PERF-HEU-OVLP' 'overlap_cyc')
+  hsmp=$(kv 'PERF-HEU-OVLP' 'scalar_mem_pending_cyc')
+  hsmr=$(kv 'PERF-HEU-OVLP' 'scalar_mem_release_window_cyc')
+  hegm=$(kv 'PERF-HEU-OVLP' 'early_grant_after_mem_release')
 
   local vcv vcf vcb vcso vcsc vcfc vcec vrso vrsc
   vcv=$(kv 'PERF-VDU-CMD' 'vector_cmd_valid'); vcf=$(kv 'PERF-VDU-CMD' 'vector_cmd_fire')
@@ -143,24 +147,38 @@ write_kernel_csv_row() {
   pqmc=$(kv 'PERF-ADDRGEN-PF2' 'pf_queue_match_cyc'); prmc=$(kv 'PERF-ADDRGEN-PF2' 'pf_rob_match_cyc')
   ppwc=$(kv 'PERF-ADDRGEN-PF2' 'pf_page_wait_cyc')
 
-  local sissue sblk sraw swar swaw swawb sepb sfull
+  local sissue sblk sraw swar swaw swawb sfull
   sissue=$(kv 'PERF-SEQ' 'issue'); sblk=$(kv 'PERF-SEQ' 'blocked')
   sraw=$(kv 'PERF-SEQ' 'raw'); swar=$(kv 'PERF-SEQ' 'war'); swaw=$(kv 'PERF-SEQ' 'waw')
-  swawb=$(kv 'PERF-SEQ' 'waw_block'); sepb=$(kv 'PERF-SEQ' 'ep_bypass'); sfull=$(kv 'PERF-SEQ' 'full')
+  swawb=$(kv 'PERF-SEQ' 'waw_block'); sfull=$(kv 'PERF-SEQ' 'full')
 
-  local shc ssec shpr sth sfh sqfs slds sors swsc smwc
-  shc=$(kv 'PERF-SEQ-HDV' 'hazard_check'); ssec=$(kv 'PERF-SEQ-HDV' 'same_ep_candidate')
-  shpr=$(kv 'PERF-SEQ-HDV' 'hazard_pruned'); sth=$(kv 'PERF-SEQ-HDV' 'true_hazard_stall')
+  local shc sth sfh sqfs slds sors swsc smwc
+  shc=$(kv 'PERF-SEQ-HDV' 'hazard_check'); sth=$(kv 'PERF-SEQ-HDV' 'true_hazard_stall')
   sfh=$(kv 'PERF-SEQ-HDV' 'false_hazard_stall'); sqfs=$(kv 'PERF-SEQ-HDV' 'queue_full_stall')
   slds=$(kv 'PERF-SEQ-HDV' 'lane_desync_stall'); sors=$(kv 'PERF-SEQ-HDV' 'operand_req_stall')
   swsc=$(kv 'PERF-SEQ-HDV' 'wait_state_cyc'); smwc=$(kv 'PERF-SEQ-HDV' 'mem_wait_cyc')
 
-  local pfhr="" stir=""
+  local srcdone warcand warpruned wararrival warrelease warlead
+  srcdone=$(kv 'PERF-SEQ-LIFETIME' 'src_capture_done')
+  warcand=$(kv 'PERF-SEQ-LIFETIME' 'war_candidate')
+  warpruned=$(kv 'PERF-SEQ-LIFETIME' 'war_pruned')
+  wararrival=$(kv 'PERF-SEQ-LIFETIME' 'war_arrival_pruned')
+  warrelease=$(kv 'PERF-SEQ-LIFETIME' 'war_release_edge')
+  warlead=$(kv 'PERF-SEQ-LIFETIME' 'release_lead_vid_cyc')
+
+  local pfhr="" stir="" warpr="" bpr="" sowr=""
   if [ -n "$pfa" ] && [ "$pfa" -gt 0 ] 2>/dev/null; then
     pfhr=$(echo "scale=3; ${pfh:-0}/$pfa" | bc)
   fi
   if [ -n "$tib" ] && [ "$tib" -gt 0 ] 2>/dev/null; then
     stir=$(echo "scale=6; ${sib:-0}/$tib" | bc)
+  fi
+  if [ -n "$warcand" ] && [ "$warcand" -gt 0 ] 2>/dev/null; then
+    warpr=$(echo "scale=3; ${warpruned:-0}/$warcand" | bc)
+  fi
+  if [ -n "$tc" ] && [ "$tc" -gt 0 ] 2>/dev/null; then
+    [ -n "$vcb" ] && bpr=$(echo "scale=6; $vcb/$tc" | bc)
+    [ -n "$owc" ] && sowr=$(echo "scale=6; $owc/$tc" | bc)
   fi
   local depblk="" sbph="" cmdavg="" vqavg=""
   if [ -n "$hegd" ] || [ -n "$hefd" ] || [ -n "$hevd" ]; then
@@ -178,15 +196,16 @@ write_kernel_csv_row() {
   row="$row,${ep_ack:-},${ep_vack:-},${vqpush:-},${vqpop:-},${vqmax:-},${vqbyp:-},${vqfs:-},${dslots:-},${dcyc:-},${fbyp:-},${owc:-},${abp:-},${rwfs:-},${rmfs:-},${rmmax:-}"
   row="$row,${hacc:-},${hws:-},${hsc:-},${hvc:-},${hws:-},${hwgt:-},${hm:-},${hws:-},${his:-},${hcur:-},${hbuf:-},${hso:-},${hvo:-},${hpfh:-},${hpfd:-},${hpf1:-},${hpf2:-},${hpf4:-},${hpf8:-}"
   row="$row,${hfv:-},${hfb:-},${hbb:-},${hbr:-},${hcb:-},${hbv:-},${hso_c:-},${hvo_c:-}"
-  row="$row,${hea:-},${heg:-},${hebd:-},${hebq:-},${hebb:-},${hebm:-},${depblk:-},${hegd:-},${hefd:-},${hevd:-},${hcross:-},${hover:-}"
+  row="$row,${hea:-},${heg:-},${hebd:-},${hebq:-},${hebb:-},${hebm:-},${depblk:-},${hegd:-},${hefd:-},${hevd:-},${hcross:-},${hover:-},${hsmp:-},${hsmr:-},${hegm:-}"
   row="$row,${vcv:-},${vcf:-},${vcb:-},${cmdavg:-},${vcso:-},${vcsc:-},${vqmax:-},${vcfc:-},${vcec:-},${vqavg:-},${vcec:-},${vcfc:-},${vrso:-},${vrsc:-}"
   row="$row,${soc:-},${sbph:-},${owc:-},${vsetw:-},${sob:-},${solr:-},${solh:-},${sopb:-},${vep:-},${vep_p:-},${vep_b:-}"
   row="$row,${irc:-},${irs:-},${isr:-},${isc:-},${pk:-},${byh:-},${dmr:-},${acp:-},${tip:-},${sib:-},${hic:-},${hib:-},${tib:-}"
   row="$row,${dar:-},${pfa:-},${pfh:-},${lds:-},${pfen:-},${daw:-},${dB:-},${pfB:-}"
   row="$row,${parf:-},${palf:-},${pap:-},${pad:-},${p2nd:-},${drb:-},${pdis:-},${ppc:-},${pqf:-},${pal:-}"
   row="$row,${pth:-},${plt:-},${pun:-},${pwm:-},${pwe:-},${pqvc:-},${pqbc:-},${plfc:-},${prfc:-},${ppc2:-},${psb:-},${pfk:-},${pqmc:-},${prmc:-},${ppwc:-}"
-  row="$row,${sissue:-},${sblk:-},${sraw:-},${swar:-},${swaw:-},${swawb:-},${sepb:-},${sfull:-}"
-  row="$row,${shc:-},${ssec:-},${shpr:-},${sth:-},${sfh:-},${sqfs:-},${slds:-},${sors:-},${swsc:-},${smwc:-},$pfhr,$stir"
+  row="$row,${sissue:-},${sblk:-},${sraw:-},${swar:-},${swaw:-},${swawb:-},${sfull:-}"
+  row="$row,${shc:-},${sth:-},${sfh:-},${sqfs:-},${slds:-},${sors:-},${swsc:-},${smwc:-}"
+  row="$row,${srcdone:-},${warcand:-},${warpruned:-},${wararrival:-},${warrelease:-},${warlead:-},$pfhr,$stir,$warpr,$bpr,$sowr"
 
   LAST_ROW="$row"
   echo "$row" >> "$csv"
@@ -216,7 +235,7 @@ while IFS= read -r log; do
   stem=${base%.log}
 
   case "$base" in
-    build_*.log)
+    build_*.log|log_probe_*.log|log_test_*.log|log_regress_*.log|log_point_*.log)
       continue
       ;;
     log_avl_*.log)
@@ -237,6 +256,13 @@ while IFS= read -r log; do
         macc=$((n*n))
       fi
       if [[ "$tag" =~ ^vsgemm_m([0-9]+)_([0-9]+)r$ ]]; then
+        rows="${BASH_REMATCH[2]}"
+        if [ "${BASH_REMATCH[1]}" = "1" ] && [ "$rows" != "4" ]; then
+          macc=32768
+        else
+          macc=$((n*n*n))
+        fi
+      elif [[ "$tag" =~ ^vsgemm_hdv_1_m([0-9]+)_([0-9]+)r$ ]]; then
         rows="${BASH_REMATCH[2]}"
         if [ "${BASH_REMATCH[1]}" = "1" ] && [ "$rows" != "4" ]; then
           macc=32768
@@ -268,6 +294,9 @@ while IFS= read -r log; do
       fi
       ;;
     vssyrk_m1_fix.log|vstrsm_m1_fix.log|vsspmv_fix.log|fconv2d_fix.log|jacobi2d_fix.log|lavamd_fix.log|softmax_fix.log)
+      append_log_row "fixed" "$stem" "$stem" "" "" "" "" 0 0
+      ;;
+    *_hdv_1_fix.log)
       append_log_row "fixed" "$stem" "$stem" "" "" "" "" 0 0
       ;;
     *_fix.log)

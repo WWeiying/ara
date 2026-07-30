@@ -5,6 +5,7 @@
 | 文档 | 内容 |
 |---|---|
 | `hdv_design.md` | **当前 HDV RTL 权威设计说明**。合并原 full mechanism、module walkthrough、prefetch config、scalar backend comparison、EP demand analysis、bug roadmap 六份文档，并按当前 RTL 重新整理。推荐先读这个。 |
+| `hdv_dependency_and_kernel_guide.md` | **当前相关性、EP/p-bit 契约与 kernel 编写准则**。逐模块说明 scalar/vector/访存/控制相关由谁处理，给出 p-bit 编码、kernel 改写流程和现有 kernel 实例，并说明当前 same-EP suppression 与现有 kernel 的不一致。依赖与 p-bit 主题以此文档为准。 |
 | `hdv_program_porting_guide.md` | **HDV 程序移植指南**。普通 RVV kernel 改造成 HDV task 的规则：`.hdv_task`、task entry、`lui x0, imm20` HINT、p-bit、`packet256`/`cross`、loop flags、`prefetch_mode`/`prefetch_disable`、task-end 和 sweep 验证。 |
 | `paper_ch3_seamv_hardware_architecture.md` | 论文第三章硬件架构草稿，偏论文正文风格，不替代 RTL 设计说明。 |
 
@@ -37,7 +38,8 @@
 ## 阅读顺序
 
 1. `hdv_design.md` - 建立当前 RTL 全局理解，并按模块查具体逻辑
-2. `hdv_program_porting_guide.md` - 改写新 app
-3. `kernel_sweep.sh` / `kernel_sweep_sum.sh` - 跑单点、sweep 和汇总
-4. `paper_ch3_seamv_hardware_architecture.md` - 写论文架构章节时参考
-5. `paper_data.md` - 查当前实验数据
+2. `hdv_dependency_and_kernel_guide.md` - 理解实际相关性处理、EP/p-bit 契约和 kernel 安全边界
+3. `hdv_program_porting_guide.md` - 按格式改写新 app；涉及依赖判断时以上一份文档为准
+4. `kernel_sweep.sh` / `kernel_sweep_sum.sh` - 跑单点、sweep 和汇总
+5. `paper_ch3_seamv_hardware_architecture.md` - 写论文架构章节时参考
+6. `paper_data.md` - 查当前实验数据

@@ -27,6 +27,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  operand_request_cmd_t [NrOperandQueues-1:0] operand_request_i,
     input  logic                 [NrOperandQueues-1:0] operand_request_valid_i,
     output logic                 [NrOperandQueues-1:0] operand_request_ready_o,
+    // One-cycle completion pulse per requester and vid. A pulse is emitted only
+    // for architectural source requests explicitly marked for lifetime tracking.
+    output logic [NrOperandQueues-1:0][NrVInsn-1:0]    operand_read_done_o,
     // Support for store exception flush
     input  logic                                       lsu_ex_flush_i,
     output logic                                       lsu_ex_flush_o,
@@ -253,6 +256,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     // In case of a WAW with a previous instruction,
     // read once every two writes of the previous instruction
     logic is_widening;
+    // Exclude requester traffic that is not part of the original instruction's
+    // architectural source set (for example, ad-hoc VRGATHER requests).
+    logic track_src_completion;
     // One-bit counters
     logic [NrVInsn-1:0] waw_hazard_counter;
   } requester_metadata_t;
@@ -311,6 +317,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
       // Do not acknowledge any operand requester_index commands
       operand_request_ready_o[requester_index] = 1'b0;
+      operand_read_done_o[requester_index]      = '0;
 
       // Do not send any operand conversion commands
       operand_queue_cmd_o[requester_index]       = '0;
@@ -352,6 +359,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         vew         : operand_request_i[requester_index].eew,
         hazard      : operand_request_i[requester_index].hazard,
         is_widening : operand_request_i[requester_index].cvt_resize == CVT_WIDE,
+        track_src_completion : operand_request_i[requester_index].track_src_completion,
         default: '0
       };
       operand_queue_cmd_tmp = '{
@@ -393,6 +401,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             if (operand_request_i[requester_index].vl == '0) begin : zero_vl
               state_d[requester_index]                              = IDLE;
               operand_queue_cmd_valid_o[requester_index] = 1'b0;
+              if (operand_request_i[requester_index].track_src_completion)
+                operand_read_done_o[requester_index]
+                                   [operand_request_i[requester_index].id] = 1'b1;
             end : zero_vl
           end : op_req_valid
         end : state_q_IDLE
@@ -438,6 +449,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
             // Finished requesting all the elements
             if (requester_metadata_d[requester_index].len == '0) begin : finish_request
+              if (requester_metadata_q[requester_index].track_src_completion)
+                operand_read_done_o[requester_index]
+                                   [requester_metadata_q[requester_index].id] = 1'b1;
               state_d[requester_index] = IDLE;
 
               // Accept a new instruction
@@ -467,6 +481,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
                 if (operand_request_i[requester_index].vl == '0) begin
                   state_d[requester_index]                   = IDLE;
                   operand_queue_cmd_valid_o[requester_index] = 1'b0;
+                  if (operand_request_i[requester_index].track_src_completion)
+                    operand_read_done_o[requester_index]
+                                       [operand_request_i[requester_index].id] = 1'b1;
                 end
               end : accept_a_new_inst
             end : finish_request
@@ -487,6 +504,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         requester_metadata_d[requester_index] = '0;
         // Flush this request
         lane_operand_req_transposed[requester_index][bank] = '0;
+        // A flushed read was not captured for architectural execution.
+        operand_read_done_o[requester_index] = '0;
       end : vlsu_exception_idle
     end : operand_requester
 

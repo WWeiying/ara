@@ -77,6 +77,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     // flight (ROB empty + 0 in-flight beats), so it never races landing R beats.
     output logic                           prefetch_buf_flush_o,
     output axi_ar_t                        axi_addrgen_prefetch_req_o,
+    output vlen_t                          prefetch_logical_bytes_o,
     output logic                           axi_addrgen_prefetch_req_valid_o,
     input  logic                           axi_addrgen_prefetch_req_ready_i,
     // Resident occupancy of the vldu prefetch R buffer, in 256-bit words.
@@ -86,11 +87,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output logic                           prefetch_tag_head_o,
     output logic                           prefetch_tag_empty_o,
     input  logic                           prefetch_tag_pop_i,
+    input  logic                           prefetch_buf_busy_i,
     // High while the store unit has a vector store instruction in flight. Used to
     // gate the prefetch's inter-iteration drain ONLY when a store is actually stuck.
     input  logic                           store_pending_i,
     input  logic                           block_load_addr_i,
     input  logic                           hdv_loop_active_i,
+    input  logic                           hdv_task_end_i,
+    output logic                           prefetch_task_clean_o,
     // Interface with the lanes (for scatter/gather operations)
     input  elen_t            [NrLanes-1:0] addrgen_operand_i,
     input  logic             [NrLanes-1:0] addrgen_operand_valid_i,
@@ -111,8 +115,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [1:0] prefetch_mul;
   logic       prefetch_en;
 
-  // HDV prefetch hint from the request metadata. loop_active falling edge
-  // clears internal state via loop_active_fall to drain queues on loop exit.
+  // HDV prefetch hint from the request metadata. A loop-active falling edge
+  // suppresses new generation for that cycle; task-end performs the precise
+  // queue/ROB/buffer cleanup after accepted memory traffic has drained.
   logic loop_active_q;
   wire  loop_active_fall = loop_active_q && !hdv_loop_active_i;
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -132,6 +137,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic stream_break;        // demand diverged from the prefetch FIFO order
   logic flush_pending_q;     // a break was seen; draining before the flush
   logic prefetch_flush_now;  // do the flush this cycle (drain complete)
+  logic prefetch_demand_path_idle;
+  logic task_end_cleaned_q;
   assign prefetch_buf_flush_o = prefetch_flush_now;
   // prefetch_flush_now / flush_pending_q logic is below, after the in-flight and
   // ROB-empty signals it depends on are declared.
@@ -149,8 +156,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     endcase
     if (!pe_req_d.hdv_meta.prefetch_hint_valid || pe_req_d.hdv_meta.prefetch_disable)
       prefetch_info = PF_DEN;
-    // On loop exit, disable prefetch to drain queues
-    if (loop_active_fall) prefetch_info = PF_DEN;
+    // Do not create speculative work while a loop edge or task end is observed.
+    if (loop_active_fall || hdv_task_end_i) prefetch_info = PF_DEN;
 `ifdef HDV_ABLATION_NO_PREFETCH
     prefetch_info = PF_DEN;
 `endif
@@ -175,14 +182,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // R channel into deadlock -- for ANY LMUL and ANY number of load streams K.
   // Over-budget bursts simply wait (or the loop runs demand-only), never wedge.
   localparam int unsigned PrefetchBufBeats = 128;
-  // Store-aware BOUNDED-LEAD prefetch budget. When a store is starved
-  // (store_stuck) the prefetch no longer drains to empty between iterations
-  // (which collapsed the distance-1 pipeline -> low hit rate on vsaxpy); instead
-  // it keeps at most this many beats of lead (resident + in-flight) ahead of the
-  // demand, then pauses to yield the single port to the store. ~1.5 iterations
-  // of a 2-stream e32/m1 loop (2*8 beats) -> enough to stay one iteration ahead
-  // (100% hit) yet shallow enough that the store still gets its port turns.
-  localparam int unsigned PrefetchLeadBeats = 32;
+  // Store-aware BOUNDED-LEAD prefetch budget. A fixed 32-beat allowance covers
+  // two e32/m1 streams but can collapse a 3+ stream distance-1 pipeline before
+  // every stream has one future request resident. Track a small set of static
+  // load stream IDs and grant 16 beats per active stream, with the established
+  // 32-beat floor for one/two-stream loops and a 96-beat ceiling that always
+  // leaves part of the 128-beat buffer budget for demand/store progress.
+  localparam int unsigned PrefetchBaseLeadBeats = 32;
+  localparam int unsigned PrefetchLeadPerStream = 16;
+  localparam int unsigned PrefetchMaxLeadBeats  = 96;
+  localparam int unsigned PrefetchTrackedStreams = 8;
   localparam int unsigned PrefetchBadThresh = 4;
   // Keep a few completed/in-flight prefetch address slots free.  The data-buffer
   // credit below bounds beats, but dense multi-stream kernels can fill the
@@ -190,12 +199,17 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // Once lookup is full, completed prefetches cannot retire from the ROB, so a
   // stream-break flush can wait forever for "in-flight" work that already landed.
   localparam int unsigned PrefetchLookupEntryReserve = 1;
+  localparam int unsigned PrefetchBeatCountWidth =
+      $clog2(PrefetchBufBeats + 1);
+  localparam int unsigned PrefetchLeadCalcWidth =
+      $clog2((PrefetchTrackedStreams * PrefetchLeadPerStream) + 1);
 
 
   // In-flight prefetch beats: issued (ROB-pushed) but not yet landed in the
   // buffer (ROB-popped on the burst's last R beat). Added to the vldu's
   // resident occupancy to get the total beats committed to the buffer.
-  logic [9:0] prefetch_inflight_beats_d, prefetch_inflight_beats_q;
+  logic [PrefetchBeatCountWidth-1:0]
+      prefetch_inflight_beats_d, prefetch_inflight_beats_q;
   logic [3:0] prefetch_bad_cnt_d, prefetch_bad_cnt_q;
   logic       prefetch_adaptive_throttle;
   logic [$clog2((2 * VaddrgenInsnQueueDepth) + 1)-1:0] prefetch_lookup_entry_use;
@@ -438,19 +452,79 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_pending_d;
   axi_ar_t prefetch_axi_ar_queue_datain, prefetch_axi_ar_data;
   logic    prefetch_axi_ar_queue_push, prefetch_axi_ar_queue_pop;
+  logic    prefetch_axi_ar_queue_cancel;
   logic    prefetch_axi_ar_queue_valid;
   logic    prefetch_axi_ar_queue_not_full;
   logic    prefetch_axi_ar_queue_full;
   logic    prefetch_axi_ar_queue_empty;
   logic    prefetch_axi_ar_queue_push_safe;
   logic    prefetch_axi_ar_queue_pop_safe;
+  hdv_pf_stream_id_t prefetch_stream_queue_datain, prefetch_stream_at_issue;
+  logic              prefetch_stream_queue_full, prefetch_stream_queue_empty;
+  vlen_t              prefetch_bytes_queue_datain, prefetch_bytes_at_issue;
+  logic               prefetch_bytes_queue_full, prefetch_bytes_queue_empty;
+  hdv_pf_stream_id_t prefetch_active_stream_id_q[PrefetchTrackedStreams];
+  logic [PrefetchTrackedStreams-1:0] prefetch_active_stream_vld_q;
+  logic [$clog2(PrefetchTrackedStreams + 1)-1:0] prefetch_active_stream_count_q;
+  logic prefetch_stream_track_seen, prefetch_stream_track_free;
+  logic [$clog2(PrefetchTrackedStreams)-1:0] prefetch_stream_track_free_idx;
+  logic [PrefetchLeadCalcWidth-1:0] prefetch_lead_beats;
+
+  typedef struct packed {
+    axi_addr_t         addr;
+    vlen_t             logical_bytes;
+    hdv_pf_stream_id_t stream_id;
+  } prefetch_lookup_t;
 
   assign prefetch_axi_ar_queue_push_safe = prefetch_axi_ar_queue_push &&
                                            !prefetch_axi_ar_queue_full;
-  assign prefetch_axi_ar_queue_pop_safe  = prefetch_axi_ar_queue_pop &&
-                                           !prefetch_axi_ar_queue_empty;
+  assign prefetch_axi_ar_queue_pop_safe  =
+      (prefetch_axi_ar_queue_pop || prefetch_axi_ar_queue_cancel) &&
+      !prefetch_axi_ar_queue_empty;
   assign prefetch_axi_ar_queue_not_full  = !prefetch_axi_ar_queue_full;
   assign prefetch_axi_ar_queue_valid     = !prefetch_axi_ar_queue_empty;
+
+  always_comb begin
+    prefetch_stream_track_seen     = 1'b0;
+    prefetch_stream_track_free     = 1'b0;
+    prefetch_stream_track_free_idx = '0;
+    for (int unsigned i = 0; i < PrefetchTrackedStreams; i++) begin
+      if (prefetch_active_stream_vld_q[i] &&
+          (prefetch_active_stream_id_q[i] == prefetch_stream_queue_datain)) begin
+        prefetch_stream_track_seen = 1'b1;
+      end
+      if (!prefetch_active_stream_vld_q[i] && !prefetch_stream_track_free) begin
+        prefetch_stream_track_free     = 1'b1;
+        prefetch_stream_track_free_idx = i;
+      end
+    end
+
+    prefetch_lead_beats = PrefetchBaseLeadBeats;
+    if (prefetch_active_stream_count_q > 2) begin
+      prefetch_lead_beats =
+          PrefetchLeadCalcWidth'(prefetch_active_stream_count_q) *
+          PrefetchLeadPerStream;
+      if (prefetch_lead_beats > PrefetchMaxLeadBeats)
+        prefetch_lead_beats = PrefetchMaxLeadBeats;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni || lsu_ex_flush_d || prefetch_flush_now || hdv_task_end_i) begin
+      prefetch_active_stream_vld_q   <= '0;
+      prefetch_active_stream_count_q <= '0;
+      for (int unsigned i = 0; i < PrefetchTrackedStreams; i++) begin
+        prefetch_active_stream_id_q[i] <= '0;
+      end
+    end else if (prefetch_axi_ar_queue_push_safe &&
+                 !prefetch_stream_track_seen &&
+                 prefetch_stream_track_free) begin
+      prefetch_active_stream_vld_q[prefetch_stream_track_free_idx] <= 1'b1;
+      prefetch_active_stream_id_q[prefetch_stream_track_free_idx]  <=
+          prefetch_stream_queue_datain;
+      prefetch_active_stream_count_q <= prefetch_active_stream_count_q + 1'b1;
+    end
+  end
 
   fifo_v3 #(
     .dtype(axi_ar_t),
@@ -458,7 +532,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   ) i_prefetch_axi_ar_queue (
     .clk_i     (clk_i                         ),
     .rst_ni    (rst_ni                        ),
-    .flush_i   (lsu_ex_flush_d                ),
+    .flush_i   (lsu_ex_flush_d | prefetch_flush_now),
     .testmode_i(1'b0                          ),
     .data_i    (prefetch_axi_ar_queue_datain  ),
     .push_i    (prefetch_axi_ar_queue_push_safe),
@@ -467,6 +541,40 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .pop_i     (prefetch_axi_ar_queue_pop_safe),
     .empty_o   (prefetch_axi_ar_queue_empty   ),
     .usage_o   (/* Unused */                  )
+  );
+
+  fifo_v3 #(
+    .dtype(hdv_pf_stream_id_t),
+    .DEPTH(VaddrgenInsnQueueDepth)
+  ) i_prefetch_stream_queue (
+    .clk_i     (clk_i                           ),
+    .rst_ni    (rst_ni                          ),
+    .flush_i   (lsu_ex_flush_d | prefetch_flush_now),
+    .testmode_i(1'b0                            ),
+    .data_i    (prefetch_stream_queue_datain    ),
+    .push_i    (prefetch_axi_ar_queue_push_safe ),
+    .full_o    (prefetch_stream_queue_full      ),
+    .data_o    (prefetch_stream_at_issue        ),
+    .pop_i     (prefetch_axi_ar_queue_pop_safe  ),
+    .empty_o   (prefetch_stream_queue_empty     ),
+    .usage_o   (/* Unused */                    )
+  );
+
+  fifo_v3 #(
+    .dtype(vlen_t),
+    .DEPTH(VaddrgenInsnQueueDepth)
+  ) i_prefetch_bytes_queue (
+    .clk_i     (clk_i                           ),
+    .rst_ni    (rst_ni                          ),
+    .flush_i   (lsu_ex_flush_d | prefetch_flush_now),
+    .testmode_i(1'b0                            ),
+    .data_i    (prefetch_bytes_queue_datain     ),
+    .push_i    (prefetch_axi_ar_queue_push_safe ),
+    .full_o    (prefetch_bytes_queue_full       ),
+    .data_o    (prefetch_bytes_at_issue         ),
+    .pop_i     (prefetch_axi_ar_queue_pop_safe  ),
+    .empty_o   (prefetch_bytes_queue_empty      ),
+    .usage_o   (/* Unused */                    )
   );
 
   assign prefetch_axi_ar_hit_o = prefetch_axi_ar_hit;
@@ -479,49 +587,63 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic    prefetch_axi_ar_rob_pop;
   logic    prefetch_axi_ar_rob_full;
   logic    prefetch_axi_ar_rob_empty;
-  // Stream-break flush: fire only once everything in flight has landed, so the
-  // lookup FIFO + vldu buffer (both holding only completed data) flush race-free.
-  assign prefetch_flush_now = flush_pending_q && (prefetch_inflight_beats_q == '0)
-                                              && prefetch_axi_ar_rob_empty;
+  // Recovery flush: wait until demand-side vector memory work, every prefetch
+  // return, and any VLDu hit consumption have drained. Then clear queued,
+  // lookup, and buffered prefetch state together.
+  assign prefetch_flush_now =
+      (flush_pending_q || (hdv_task_end_i && !task_end_cleaned_q))
+                           && (prefetch_inflight_beats_q == '0)
+                           && prefetch_axi_ar_rob_empty
+                           && prefetch_tag_empty_o
+                           && !prefetch_buf_busy_i
+                           && prefetch_demand_path_idle;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni)                 flush_pending_q <= 1'b0;
     else if (prefetch_flush_now) flush_pending_q <= 1'b0;
-    else if (stream_break)       flush_pending_q <= 1'b1;
+    else if (stream_break || lsu_ex_flush_d ||
+             (hdv_task_end_i && !task_end_cleaned_q))
+                                    flush_pending_q <= 1'b1;
   end
-  axi_addr_t prefetch_axi_ar_rob_pop_done_addr_d, prefetch_axi_ar_rob_pop_done_addr_q;
-  logic    prefetch_axi_ar_rob_pop_done_counter_d, prefetch_axi_ar_rob_pop_done_counter_q;
-  // Declared here (ahead of its later siblings) so the pop_done_counter always_comb
-  // below can gate on it; it marks an in-flight page-cross prefetch window.
-  logic    second_prefetch_vld_compare_d, second_prefetch_vld_compare_q;
-
-  axi_addr_t prefetch_axi_addr_lookup_fifo_datain, prefetch_axi_addr_lookup_fifo_data;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni)                    task_end_cleaned_q <= 1'b0;
+    else if (!hdv_task_end_i)       task_end_cleaned_q <= 1'b0;
+    else if (prefetch_flush_now)    task_end_cleaned_q <= 1'b1;
+  end
+  prefetch_lookup_t prefetch_axi_addr_lookup_fifo_datain, prefetch_axi_addr_lookup_fifo_data;
   logic      prefetch_axi_addr_lookup_fifo_push;
   logic      prefetch_axi_addr_lookup_fifo_pop;
   logic      prefetch_axi_addr_lookup_fifo_full;
   logic      prefetch_axi_addr_lookup_fifo_empty;
-  logic      prefetch_axi_addr_lookup_second_datain, prefetch_axi_addr_lookup_second_data;
-  logic      prefetch_axi_addr_lookup_second_push;
-  logic      prefetch_axi_addr_lookup_second_pop;
-  logic      prefetch_axi_addr_lookup_second_full;
-  logic      prefetch_axi_addr_lookup_second_empty;
-  axi_addr_t prefetch_axi_addr_lookup_fifo_mem[VaddrgenInsnQueueDepth];
-  logic      prefetch_axi_addr_lookup_fifo_vld[VaddrgenInsnQueueDepth];
-  logic      prefetch_axi_addr_lookup_second_mem[VaddrgenInsnQueueDepth];
-  logic      prefetch_axi_addr_lookup_second_vld[VaddrgenInsnQueueDepth];
-  logic      prefetch_drop_second_lookup_d, prefetch_drop_second_lookup_q;
-  axi_addr_t prefetch_drop_second_lookup_addr_d, prefetch_drop_second_lookup_addr_q;
-  logic      prefetch_drop_second_lookup_now;
+  prefetch_lookup_t prefetch_axi_addr_lookup_fifo_mem[VaddrgenInsnQueueDepth];
+  localparam int unsigned PrefetchLookupPtrWidth =
+      (VaddrgenInsnQueueDepth > 1) ? $clog2(VaddrgenInsnQueueDepth) : 1;
+  logic [VaddrgenInsnQueueDepth-1:0] prefetch_lookup_slot_valid_q;
+  logic [PrefetchLookupPtrWidth-1:0] prefetch_lookup_wr_ptr_q;
+  logic [PrefetchLookupPtrWidth-1:0] prefetch_lookup_rd_ptr_q;
   
   axi_ar_t   prefetch_axi_ar_rob_mem[VaddrgenInsnQueueDepth];
   logic      prefetch_axi_ar_rob_vld[VaddrgenInsnQueueDepth];
   logic      prefetch_axi_ar_rob_match;
   logic      prefetch_axi_ar_queue_match;
+  logic      prefetch_queue_hard_resources_ready;
+  logic      prefetch_queue_speculative_issue_allowed;
+  logic      prefetch_queue_issue_resources_ready;
+  logic      prefetch_queue_promote;
   logic      prefetch_wait_match;
-  logic      prefetch_page_cross_wait_match;
   logic      prefetch_lookup_match;
   logic      prefetch_lookup_head_match;
   logic      prefetch_lookup_head_future_near;
   axi_addr_t prefetch_lookup_head_delta;
+  logic      prefetch_lookup_head_same_stream;
+
+  // Static load-PC provenance and the logical byte footprint follow every
+  // prefetch AR in lockstep. Exact address + footprint is the data-hit key, so
+  // unrolled copies of one logical stream may consume each other's prefetches.
+  // Stream identity remains a recovery key for detecting divergence within one
+  // static load without flushing useful entries owned by other loads.
+  hdv_pf_stream_id_t prefetch_stream_rob_data;
+  vlen_t              prefetch_bytes_rob_data;
+  vlen_t              prefetch_bytes_rob_mem[VaddrgenInsnQueueDepth];
 
   fifo_v5 #(
     .DEPTH(VaddrgenInsnQueueDepth),
@@ -542,103 +664,50 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .usage_o   (/* Unused */             )
   );
 
-  // ── Page-cross segment tag, carried in lockstep with the prefetch AR ───────
-  // A prefetch burst that crosses a page is split into two short segments (the
-  // in-page 1st part + the next-page 2nd part). The page-cross pairing logic
-  // below must know which completing ROB entries are such segments. The old
-  // test `len != 7` inferred that from the m1 full-burst length (8 beats) and
-  // mis-classified any LMUL>1 full burst (len 15/31/63) as a segment, wrongly
-  // toggling the pairing counter when a full burst completed inside a crossing
-  // window. Instead tag each AR at generation (1st segment = page-crossed,
-  // 2nd segment = 1, full burst = 0) and carry the tag through a queue + ROB
-  // mirroring the AR's, so the pairing keys off the real flag for any LMUL.
-  logic prefetch_seg_queue_datain, prefetch_seg_at_issue, prefetch_seg_rob_data;
-  logic prefetch_seg_queue_full, prefetch_seg_queue_empty;
-
-  fifo_v3 #(
-    .dtype(logic),
-    .DEPTH(VaddrgenInsnQueueDepth)
-  ) i_prefetch_seg_queue (
+  fifo_v5 #(
+    .DEPTH(VaddrgenInsnQueueDepth),
+    .dtype(vlen_t                 )
+  ) i_prefetch_bytes_rob (
     .clk_i     (clk_i                       ),
     .rst_ni    (rst_ni                      ),
-    .flush_i   (lsu_ex_flush_d              ),
+    .flush_i   (1'b0                        ),
     .testmode_i(1'b0                        ),
-    .data_i    (prefetch_seg_queue_datain   ),
-    .push_i    (prefetch_axi_ar_queue_push_safe),
-    .full_o    (prefetch_seg_queue_full     ),
-    .data_o    (prefetch_seg_at_issue       ),
-    .pop_i     (prefetch_axi_ar_queue_pop_safe),
-    .empty_o   (prefetch_seg_queue_empty    ),
-    .usage_o   (/* Unused */                )
+    .data_i    (prefetch_bytes_at_issue     ),
+    .push_i    (prefetch_axi_ar_rob_push    ),
+    .full_o    (                            ),
+    .data_o    (prefetch_bytes_rob_data     ),
+    .pop_i     (prefetch_axi_ar_rob_pop     ),
+    .empty_o   (                            ),
+    .mem_o     (prefetch_bytes_rob_mem      ),
+    .vld_o     (                            ),
+    .usage_o   (                            )
   );
 
   fifo_v5 #(
     .DEPTH(VaddrgenInsnQueueDepth),
-    .dtype(logic                 )
-  ) i_prefetch_seg_rob (
-    .clk_i     (clk_i                     ),
-    .rst_ni    (rst_ni                    ),
-    .flush_i   (1'b0                      ),
-    .testmode_i(1'b0                      ),
-    .data_i    (prefetch_seg_at_issue     ),
-    .push_i    (prefetch_axi_ar_rob_push  ),
-    .full_o    (                          ),
-    .data_o    (prefetch_seg_rob_data     ),
-    .pop_i     (prefetch_axi_ar_rob_pop   ),
-    .empty_o   (                          ),
-    .mem_o     (                          ),
-    .vld_o     (                          ),
-    .usage_o   (                          )
+    .dtype(hdv_pf_stream_id_t    )
+  ) i_prefetch_stream_rob (
+    .clk_i     (clk_i                       ),
+    .rst_ni    (rst_ni                      ),
+    .flush_i   (1'b0                        ),
+    .testmode_i(1'b0                        ),
+    .data_i    (prefetch_stream_at_issue    ),
+    .push_i    (prefetch_axi_ar_rob_push    ),
+    .full_o    (                            ),
+    .data_o    (prefetch_stream_rob_data    ),
+    .pop_i     (prefetch_axi_ar_rob_pop     ),
+    .empty_o   (                            ),
+    .mem_o     (                            ),
+    .vld_o     (                            ),
+    .usage_o   (                            )
   );
 
   assign axi_addrgen_prefetch_req_valid_o = !prefetch_axi_ar_rob_empty &&
-                                            !prefetch_axi_addr_lookup_fifo_full &&
-                                            !prefetch_axi_addr_lookup_second_full;
+                                            !prefetch_axi_addr_lookup_fifo_full;
   assign axi_addrgen_prefetch_req_o       = prefetch_axi_ar_rob_data;
+  assign prefetch_logical_bytes_o         = prefetch_bytes_rob_data;
   assign prefetch_axi_ar_rob_pop          = axi_addrgen_prefetch_req_valid_o &&
                                             axi_addrgen_prefetch_req_ready_i;
-
-  always_comb begin
-    prefetch_axi_ar_rob_pop_done_counter_d = prefetch_axi_ar_rob_pop_done_counter_q;
-    prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_pop_done_addr_q;
-    // The page-cross pairing counter must only respond to genuine page-cross
-    // prefetch segments, NOT to full (non-crossing) bursts. prefetch_seg_rob_data
-    // is the per-ROB-entry tag (1 = page-cross 1st/2nd segment, 0 = full burst),
-    // replacing the old `len != 7` which assumed an 8-beat m1 full burst and
-    // mis-tagged any LMUL>1 full burst (len 15/31/63) as a segment. It is further
-    // gated by second_prefetch_vld_compare_q, asserted exactly across a page-cross
-    // window (set when the crossing prefetch is generated, cleared when its 2nd
-    // segment completes); the two segments are adjacent in the in-order ROB.
-    // Without the seg tag a full burst completing inside the window would toggle
-    // the counter with no partner, wedging the demand path or truncating a load.
-    if (prefetch_seg_rob_data && prefetch_axi_ar_rob_pop
-        && second_prefetch_vld_compare_q) begin
-      prefetch_axi_ar_rob_pop_done_counter_d = ~prefetch_axi_ar_rob_pop_done_counter_q;
-    end
-    if (prefetch_axi_ar_rob_pop_done_counter_d) begin
-      prefetch_axi_ar_rob_pop_done_addr_d = prefetch_axi_ar_rob_data.addr;
-    end
-  end
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      prefetch_axi_ar_rob_pop_done_counter_q <= '0;
-      prefetch_axi_ar_rob_pop_done_addr_q    <= '0;
-    end else begin
-      prefetch_axi_ar_rob_pop_done_counter_q <= prefetch_axi_ar_rob_pop_done_counter_d;
-      prefetch_axi_ar_rob_pop_done_addr_q    <= prefetch_axi_ar_rob_pop_done_addr_d;
-    end
-  end
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      prefetch_drop_second_lookup_q      <= 1'b0;
-      prefetch_drop_second_lookup_addr_q <= '0;
-    end else begin
-      prefetch_drop_second_lookup_q      <= prefetch_drop_second_lookup_d;
-      prefetch_drop_second_lookup_addr_q <= prefetch_drop_second_lookup_addr_d;
-    end
-  end
 
   // ── Prefetch in-flight beat accounting (credit flow control) ──────────────
   // Beats issued to the AXI AR but not yet landed in the vldu buffer:
@@ -733,7 +802,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   fifo_v5 #(
     .DEPTH(VaddrgenInsnQueueDepth),
-    .dtype(axi_addr_t            )
+    .dtype(prefetch_lookup_t     )
   ) i_prefetch_axi_addr_lookup_fifo (
     .clk_i     (clk_i                      ),
     .rst_ni    (rst_ni                     ),
@@ -746,36 +815,40 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     .pop_i     (prefetch_axi_addr_lookup_fifo_pop  ),
     .empty_o   (prefetch_axi_addr_lookup_fifo_empty),
     .mem_o     (prefetch_axi_addr_lookup_fifo_mem  ),
-    .vld_o     (prefetch_axi_addr_lookup_fifo_vld  ),
+    .vld_o     (/* Unused */                       ),
     .usage_o   (/* Unused */                       )
   );
 
-  fifo_v5 #(
-    .DEPTH(VaddrgenInsnQueueDepth),
-    .dtype(logic                 )
-  ) i_prefetch_axi_addr_lookup_second_fifo (
-    .clk_i     (clk_i                                ),
-    .rst_ni    (rst_ni                               ),
-    .flush_i   (prefetch_flush_now                   ),
-    .testmode_i(1'b0                                 ),
-    .data_i    (prefetch_axi_addr_lookup_second_datain),
-    .push_i    (prefetch_axi_addr_lookup_second_push ),
-    .full_o    (prefetch_axi_addr_lookup_second_full ),
-    .data_o    (prefetch_axi_addr_lookup_second_data ),
-    .pop_i     (prefetch_axi_addr_lookup_second_pop  ),
-    .empty_o   (prefetch_axi_addr_lookup_second_empty),
-    .mem_o     (prefetch_axi_addr_lookup_second_mem  ),
-    .vld_o     (prefetch_axi_addr_lookup_second_vld  ),
-    .usage_o   (/* Unused */                         )
-  );
+  // fifo_v5 exposes per-slot valid bits, but its flush only resets pointers and
+  // occupancy. Keep a local validity mirror whose epoch is explicitly cleared
+  // with the lookup FIFO so non-head searches can never observe stale slots
+  // after stream recovery or a task boundary.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni || prefetch_flush_now) begin
+      prefetch_lookup_slot_valid_q <= '0;
+      prefetch_lookup_wr_ptr_q     <= '0;
+      prefetch_lookup_rd_ptr_q     <= '0;
+    end else begin
+      if (prefetch_axi_addr_lookup_fifo_push &&
+          !prefetch_axi_addr_lookup_fifo_full) begin
+        prefetch_lookup_slot_valid_q[prefetch_lookup_wr_ptr_q] <= 1'b1;
+        prefetch_lookup_wr_ptr_q <= prefetch_lookup_wr_ptr_q + 1'b1;
+      end
+      if (prefetch_axi_addr_lookup_fifo_pop &&
+          !prefetch_axi_addr_lookup_fifo_empty) begin
+        prefetch_lookup_slot_valid_q[prefetch_lookup_rd_ptr_q] <= 1'b0;
+        prefetch_lookup_rd_ptr_q <= prefetch_lookup_rd_ptr_q + 1'b1;
+      end
+    end
+  end
 
   always_comb begin
     prefetch_lookup_entry_use = '0;
     prefetch_lookup_valid_use = '0;
     for (int unsigned i = 0; i < VaddrgenInsnQueueDepth; i++) begin
-      prefetch_lookup_entry_use += prefetch_axi_addr_lookup_fifo_vld[i];
+      prefetch_lookup_entry_use += prefetch_lookup_slot_valid_q[i];
       prefetch_lookup_entry_use += prefetch_axi_ar_rob_vld[i];
-      prefetch_lookup_valid_use += prefetch_axi_addr_lookup_fifo_vld[i];
+      prefetch_lookup_valid_use += prefetch_lookup_slot_valid_q[i];
     end
   end
 
@@ -829,6 +902,17 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     WAIT_LAST_TRANSLATION
   } state_q, state_d;
 
+  // Do not discard a completed prefetch while an already-accepted demand may
+  // still consume it. Queued speculative ARs are intentionally excluded: they
+  // are cleared by prefetch_flush_now and have not reached memory.
+  assign prefetch_demand_path_idle =
+      (state_q == IDLE) &&
+      pe_req_fifo_empty &&
+      !pe_req_stage_valid_q &&
+      ldu_axi_addrgen_queue_empty &&
+      stu_axi_addrgen_queue_empty &&
+      !(|vinsn_running_d);
+
   axi_addr_t lookahead_addr_e_d, lookahead_addr_e_q;
   axi_addr_t lookahead_addr_se_d, lookahead_addr_se_q;
   vlen_t lookahead_len_d, lookahead_len_q;
@@ -858,20 +942,22 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [31:0]             prefetch_num_bytes;
   logic [31:0]             prefetch_burst_length;
   logic [31:0]             prefetch_total_beats;
-  logic [31:0]             prefetch_second_beats;
   logic                    prefetch_req_page_crossed;
   axi_addr_t               prefetch_addr;
   axi_addr_t               prefetch_logical_stride_bytes;
   logic [31:0]             prefetch_vl_ext;
   logic [31:0]             prefetch_required_avl;
   logic                    prefetch_avl_enough;
+  vlen_t                    prefetch_logical_load_bytes;
+  logic                     prefetch_first_logical_chunk;
   axi_addr_t               prefetch_aligned_start_addr;
   
-  logic [($bits(axi_addr_t) - 12)-1:0] prefetch_next_2page_msb;
-  
-  logic second_prefetch_vld_d, second_prefetch_vld_q;
-  logic [31:0] second_prefetch_burst_len_d, second_prefetch_burst_len_q;
-  axi_addr_t   second_prefetch_paddr_d, second_prefetch_paddr_q;
+  // A completed task may leave speculative data resident after all
+  // architectural vector instructions have retired. The task is clean either
+  // after its one cleanup pulse, or in that pulse's cycle: all accepted AXI
+  // traffic has drained and local speculative state clears at the same edge.
+  assign prefetch_task_clean_o =
+      !hdv_task_end_i || task_end_cleaned_q || prefetch_flush_now;
 
   axi_addr_t    aligned_start_addr_d, aligned_start_addr_q;
   axi_addr_t    aligned_next_start_addr_d, aligned_next_start_addr_q, aligned_next_start_addr_temp;
@@ -1053,33 +1139,28 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_pending_d         = '0;
     prefetch_bad_cnt_d         = prefetch_bad_cnt_q;
     prefetch_axi_ar_queue_datain = '0;
-    prefetch_seg_queue_datain  = 1'b0;
+    prefetch_stream_queue_datain = '0;
+    prefetch_bytes_queue_datain = '0;
     prefetch_axi_ar_queue_push = '0;
     prefetch_axi_ar_queue_pop  = '0;
+    prefetch_axi_ar_queue_cancel = '0;
     prefetch_iter_avl_d        = prefetch_iter_avl_q; // hold the prefetched iteration
 
     prefetch_axi_ar_rob_push             = '0;
     prefetch_axi_ar_rob_datain           = '0;
     prefetch_axi_ar_rob_match            = 1'b0;
     prefetch_axi_ar_queue_match          = 1'b0;
+    prefetch_queue_issue_resources_ready = 1'b0;
+    prefetch_queue_promote               = 1'b0;
     prefetch_wait_match                  = 1'b0;
-    prefetch_page_cross_wait_match       = 1'b0;
     prefetch_lookup_match                = 1'b0;
     prefetch_lookup_head_match           = 1'b0;
     prefetch_lookup_head_future_near     = 1'b0;
     prefetch_lookup_head_delta           = '0;
+    prefetch_lookup_head_same_stream     = 1'b0;
     prefetch_axi_addr_lookup_fifo_push   = '0;
     prefetch_axi_addr_lookup_fifo_pop    = '0;
     prefetch_axi_addr_lookup_fifo_datain = '0;
-    prefetch_axi_addr_lookup_second_push   = '0;
-    prefetch_axi_addr_lookup_second_pop    = '0;
-    prefetch_axi_addr_lookup_second_datain = '0;
-    prefetch_drop_second_lookup_d          = prefetch_drop_second_lookup_q;
-    prefetch_drop_second_lookup_addr_d     = prefetch_drop_second_lookup_addr_q;
-    prefetch_drop_second_lookup_now        = 1'b0;
-    if (prefetch_flush_now) begin
-      prefetch_drop_second_lookup_d = 1'b0;
-    end
 
     curr_req_page_crossed                = '0;
     curr_req_page_crossed_next           = '0;
@@ -1087,21 +1168,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     prefetch_num_beats               = '0;
     prefetch_burst_length            = '0;
     prefetch_total_beats             = '0;
-    prefetch_second_beats            = '0;
     prefetch_req_page_crossed        = 1'b0;
     prefetch_addr                    = '0;
     prefetch_logical_stride_bytes    = '0;
     prefetch_vl_ext                  = '0;
     prefetch_required_avl            = '0;
     prefetch_avl_enough              = 1'b0;
+    prefetch_logical_load_bytes      = '0;
+    prefetch_first_logical_chunk     = 1'b0;
     prefetch_num_bytes               = '0;
     prefetch_aligned_start_addr      = '0;
-    prefetch_next_2page_msb          = '0;
-
-    second_prefetch_vld_d         = second_prefetch_vld_q;
-    second_prefetch_vld_compare_d = second_prefetch_vld_compare_q;
-    second_prefetch_burst_len_d   = second_prefetch_burst_len_q;
-    second_prefetch_paddr_d       = second_prefetch_paddr_q;
 
     case(state_q)
     IDLE: begin : addrgen_state_IDLE
@@ -1282,84 +1358,95 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     end : addrgen_state_WAIT_LAST_TRANSLATION
     endcase
 
-    if (vreq_is_load_d && vreq_is_unit_stride_d) begin
+    prefetch_logical_load_bytes =
+        (pe_req_d.vl - pe_req_d.vstart) <<
+        unsigned'(pe_req_d.vtype.vsew[1:0]);
+    prefetch_first_logical_chunk =
+        vreq_blen_d == prefetch_logical_load_bytes;
+
+    // A logical unit-stride load may be split into multiple AXI descriptors at
+    // a page boundary. Only its first descriptor may consume or wait for a
+    // whole-load prefetch. A later tail can start at the same address as an
+    // unrelated full prefetch and must remain on the demand path.
+    if (vreq_is_load_d && vreq_is_unit_stride_d &&
+        prefetch_first_logical_chunk) begin
       for (int i = 0; i < VaddrgenInsnQueueDepth; i++) begin
         if (prefetch_axi_ar_rob_vld[i] &&
-            (prefetch_axi_ar_rob_mem[i].addr == unit_stride_paddr)) begin
+            (prefetch_axi_ar_rob_mem[i].addr == unit_stride_paddr) &&
+            (prefetch_bytes_rob_mem[i] ==
+             prefetch_logical_load_bytes)) begin
           prefetch_axi_ar_rob_match = 1'b1;
         end
+        if (prefetch_lookup_slot_valid_q[i] &&
+            (prefetch_axi_addr_lookup_fifo_mem[i].addr == unit_stride_paddr) &&
+            (prefetch_axi_addr_lookup_fifo_mem[i].logical_bytes ==
+             prefetch_logical_load_bytes)) begin
+          prefetch_lookup_match = 1'b1;
+        end
+      end
+      if (!prefetch_axi_addr_lookup_fifo_empty) begin
+        prefetch_lookup_head_same_stream =
+            prefetch_axi_addr_lookup_fifo_data.stream_id ==
+            pe_req_d.hdv_meta.prefetch_stream_id;
+        prefetch_lookup_head_match =
+            (prefetch_axi_addr_lookup_fifo_data.addr == unit_stride_paddr) &&
+            (prefetch_axi_addr_lookup_fifo_data.logical_bytes ==
+             prefetch_logical_load_bytes);
       end
     end
     prefetch_axi_ar_queue_match =
         vreq_is_load_d && vreq_is_unit_stride_d &&
+        prefetch_first_logical_chunk &&
         prefetch_axi_ar_queue_valid &&
-        (prefetch_axi_ar_data.addr == unit_stride_paddr);
-    if ((prefetch_seg_rob_data && prefetch_axi_ar_rob_pop) && prefetch_axi_ar_rob_pop_done_counter_q) begin
-      second_prefetch_vld_compare_d = '0;
-    end
+        !prefetch_stream_queue_empty &&
+        (prefetch_axi_ar_data.addr == unit_stride_paddr) &&
+        !prefetch_bytes_queue_empty &&
+        (prefetch_bytes_at_issue == prefetch_logical_load_bytes);
 
-    // Hold a demand only when it is the first segment of the same page-cross
-    // prefetch whose second segment is still outstanding.  The older global
-    // second_prefetch_vld_compare_q block stalled unrelated later streams
-    // (lavamd's bq load at 0x...2340) behind a different page-cross prefetch,
-    // preventing the prefetch buffer from draining and causing a watchdog hang.
-    // Wait for a page-crossing prefetch only while its first-segment lookup is
-    // already the consumable FIFO head for this demand.  If the lookup has not
-    // reached the head, or an older stale lookup is at the head, this demand
-    // cannot safely consume the page-cross prefetch yet; let the normal demand
-    // path run so stream-break/flush can discard stale prefetch state instead of
-    // waiting forever behind unrelated queued prefetch work.
-    prefetch_page_cross_wait_match =
-        vreq_is_load_d &&
-        vreq_is_unit_stride_d &&
-        prefetch_axi_ar_rob_pop_done_counter_d &&
-        (prefetch_axi_ar_rob_pop_done_addr_d == unit_stride_paddr) &&
-        !prefetch_axi_addr_lookup_fifo_empty &&
-        !prefetch_axi_addr_lookup_second_empty &&
-        (prefetch_axi_addr_lookup_fifo_data == unit_stride_paddr);
-    // Only wait for a matching prefetch once it has actually entered the
-    // in-flight/return path.  A prefetch that is merely queued can be blocked by
-    // prefetch credit pressure; holding the demand behind that queue entry can
-    // deadlock because the demand itself is often what drains the pipeline.  If
-    // the queued prefetch is late, issue the demand normally and let the stale
-    // prefetch entry be handled by the existing stream-break flush path.
+    // Queue entries were authorized when their request-bound hint generated them.
+    // Their later drain must not depend on the metadata of whichever scalar,
+    // arithmetic, or store instruction happens to be current at that cycle.
+    // Keep hard capacity/order checks separate from speculative lead control so
+    // an exact demand match can coalesce with a queued AR without being mistaken
+    // for additional speculative traffic.
+    prefetch_queue_hard_resources_ready =
+        axi_ar_ready_i &&
+        prefetch_axi_ar_queue_valid &&
+        !prefetch_stream_queue_empty &&
+        !prefetch_bytes_queue_empty &&
+        !prefetch_axi_ar_rob_full &&
+        !prefetch_axi_addr_lookup_fifo_full &&
+        prefetch_lookup_entry_credit &&
+        !flush_pending_q && !hdv_task_end_i &&
+        ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q
+          + $unsigned(prefetch_axi_ar_data.len) + 1) <= PrefetchBufBeats);
+    prefetch_queue_speculative_issue_allowed =
+        !prefetch_adaptive_throttle &&
+        (!store_stuck ||
+         (pe_req_d.avl == prefetch_iter_avl_q) ||
+         ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q)
+          <= prefetch_lead_beats));
+    prefetch_queue_issue_resources_ready =
+        prefetch_queue_hard_resources_ready &&
+        prefetch_queue_speculative_issue_allowed;
+    prefetch_queue_promote =
+        vreq_is_vld &&
+        prefetch_axi_ar_queue_match &&
+        !prefetch_pending_d && !axi_ar_valid_o &&
+        prefetch_queue_issue_resources_ready;
+
+    // Wait for a matching in-flight prefetch, or for an exact queue-head match
+    // that is guaranteed to issue in this cycle. Page-crossing prefetch
+    // candidates are never enqueued.
     prefetch_wait_match =
         vreq_is_load_d && vreq_is_unit_stride_d &&
         ((prefetch_axi_ar_rob_match &&
-          !prefetch_axi_addr_lookup_fifo_full &&
-          !prefetch_axi_addr_lookup_second_full) ||
-         prefetch_page_cross_wait_match);
-
-    // A page-crossing prefetch retires as two lookup entries.  When the matching
-    // demand hits the first entry, the vldu drains the prefetched vector
-    // contiguously from the data buffer and addrgen skips the second demand
-    // descriptor.  The second lookup entry is then only an address tag with no
-    // future demand start, so discard it once it reaches the FIFO head.  Do this
-    // after the real first-segment hit, not at prefetch completion, because a
-    // prefetched page-cross burst that is never consumed must keep its tags in
-    // lockstep with the data buffer.
-    if (prefetch_drop_second_lookup_q &&
-        !prefetch_axi_addr_lookup_fifo_empty &&
-        !prefetch_axi_addr_lookup_second_empty &&
-        prefetch_axi_addr_lookup_second_data &&
-        (prefetch_axi_addr_lookup_fifo_data == prefetch_drop_second_lookup_addr_q)) begin
-      prefetch_axi_addr_lookup_fifo_pop   = 1'b1;
-      prefetch_axi_addr_lookup_second_pop = 1'b1;
-      prefetch_drop_second_lookup_d       = 1'b0;
-      prefetch_drop_second_lookup_now     = 1'b1;
-    end else if (prefetch_drop_second_lookup_q &&
-                 !prefetch_axi_addr_lookup_fifo_empty &&
-                 !prefetch_axi_addr_lookup_second_empty &&
-                 (!prefetch_axi_addr_lookup_second_data ||
-                  (prefetch_axi_addr_lookup_fifo_data != prefetch_drop_second_lookup_addr_q))) begin
-      prefetch_drop_second_lookup_d = 1'b0;
-    end
+          !prefetch_axi_addr_lookup_fifo_full) ||
+         prefetch_queue_promote);
 
     if (vreq_is_vld &&
         //!(vreq_is_load_d && block_load_addr_i) &&
-        !(vreq_is_load_d && prefetch_wait_match) &&
-        !second_prefetch_vld_q &&
-        !prefetch_drop_second_lookup_now) begin : demand_req
+        !(vreq_is_load_d && prefetch_wait_match)) begin : demand_req
       if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
         paddr = vreq_is_unit_stride_d
               ? unit_stride_paddr
@@ -1375,39 +1462,24 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // (vsswap@4096). Loads keep the original behavior unchanged -> performance-neutral.
         if (vreq_is_load_d &&
             !prefetch_axi_addr_lookup_fifo_empty &&
-            !prefetch_axi_addr_lookup_second_empty &&
             vreq_is_unit_stride_d) begin
-          prefetch_lookup_head_match =
-              (unit_stride_paddr == prefetch_axi_addr_lookup_fifo_data);
-          for (int unsigned i = 0; i < VaddrgenInsnQueueDepth; i++) begin
-            if (prefetch_axi_addr_lookup_fifo_vld[i] &&
-                (prefetch_axi_addr_lookup_fifo_mem[i] == unit_stride_paddr)) begin
-              prefetch_lookup_match = 1'b1;
-            end
-          end
-
           if (prefetch_lookup_head_match) begin
             prefetch_axi_ar_hit                 = 1'b1;
             prefetch_axi_addr_lookup_fifo_pop   = 1'b1;
-            prefetch_axi_addr_lookup_second_pop = 1'b1;
-          end else if ($unsigned(prefetch_axi_addr_lookup_fifo_data) >
-                       $unsigned(unit_stride_paddr)) begin
+          end else if (prefetch_lookup_head_same_stream &&
+                       ($unsigned(prefetch_axi_addr_lookup_fifo_data.addr) >
+                        $unsigned(unit_stride_paddr))) begin
             prefetch_lookup_head_delta =
-                prefetch_axi_addr_lookup_fifo_data - unit_stride_paddr;
+                prefetch_axi_addr_lookup_fifo_data.addr - unit_stride_paddr;
             prefetch_lookup_head_future_near =
                 ($unsigned(prefetch_lookup_head_delta) <=
                  ($unsigned(vreq_blen_d) + 32));
             if (!prefetch_lookup_head_future_near) begin
               stream_break = 1'b1;
             end
-          end else begin
-            // Completed prefetch data is held in-order in vldu, so a non-head CAM
-            // match cannot be consumed directly. A head that is slightly ahead of
-            // the current demand is a valid sliding-window case (e.g. FIR/stencil:
-            // future-iteration prefetch arrives while same-iteration neighboring
-            // loads are still issuing), so keep it. Older or far-future heads are
-            // treated as stale stream breaks and flushed after in-flight prefetches
-            // drain.
+          end else if (prefetch_lookup_head_same_stream) begin
+            // This static load has moved past its completed prefetch head, so the
+            // stream diverged. Other static loads do not trigger this recovery.
             stream_break = 1'b1;
           end
         end
@@ -1419,23 +1491,18 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
           addrgen_exception_o.tval  = '0;
         end else begin
+          // The matching prefetch is queued but cannot be promoted this cycle.
+          // Remove it before issuing the demand, otherwise it would return later
+          // as an obsolete entry and could flush unrelated streams.
+          if (vreq_is_load_d && vreq_is_unit_stride_d &&
+              prefetch_axi_ar_queue_match) begin
+            prefetch_axi_ar_queue_cancel = 1'b1;
+          end
+
           if (vreq_is_unit_stride_d) begin : unit_stride_req
+            automatic logic [clog2_AxiStrobeWidth:0] bytes_to_bus_alignment;
 
-            aligned_start_addr_d =
-                aligned_addr(unit_stride_paddr, clog2_AxiStrobeWidth);
-            next_2page_msb_d     = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
-            set_end_addr (
-              next_2page_msb_d,
-              vreq_blen_d,
-              unit_stride_paddr,
-              AxiDataWidth/8,
-              clog2_AxiStrobeWidth,
-              aligned_start_addr_d,
-              aligned_end_addr_d,
-              aligned_next_start_addr_d,
-              curr_req_page_crossed
-            );
-
+            bytes_to_bus_alignment = '0;
             if (pe_req_d.vstart != 0 && !vreq_is_load_d) begin
               eff_axi_dw_d     = 1 << pe_req_d.vtype.vsew[1:0];
               eff_axi_dw_log_d = pe_req_d.vtype.vsew[1:0];
@@ -1446,6 +1513,47 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             end else begin
               eff_axi_dw_d     = AxiDataWidth/8;
               eff_axi_dw_log_d = clog2_AxiStrobeWidth;
+            end
+
+            // Select the effective store beat width before deriving the aligned
+            // range.  Mixing a full-bus aligned range with a narrowed beat size
+            // overstates AW.len for unaligned stores (for example 62 e64
+            // elements became 64 beats), leaving VSTU waiting for padding beats
+            // that do not exist.
+            aligned_start_addr_d =
+                aligned_addr(unit_stride_paddr, eff_axi_dw_log_d);
+            next_2page_msb_d = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
+            set_end_addr (
+              next_2page_msb_d,
+              vreq_blen_d,
+              unit_stride_paddr,
+              eff_axi_dw_d,
+              eff_axi_dw_log_d,
+              aligned_start_addr_d,
+              aligned_end_addr_d,
+              aligned_next_start_addr_d,
+              curr_req_page_crossed
+            );
+
+            // Use narrow beats only for the unaligned head. Once the request
+            // reaches a full-bus boundary, the next AddrGen iteration widens
+            // back to AxiDataWidth. Keeping the entire request narrow is legal
+            // but needlessly turns a long vector store into one beat per
+            // element.
+            if (!vreq_is_load_d &&
+                (unit_stride_paddr[clog2_AxiStrobeWidth-1:0] != '0)) begin
+              bytes_to_bus_alignment =
+                  (AxiDataWidth/8) -
+                  unit_stride_paddr[clog2_AxiStrobeWidth-1:0];
+              if (vreq_blen_d > bytes_to_bus_alignment) begin
+                aligned_end_addr_d =
+                    unit_stride_paddr + bytes_to_bus_alignment - 1'b1;
+                aligned_next_start_addr_d =
+                    unit_stride_paddr + bytes_to_bus_alignment;
+                curr_req_page_crossed =
+                    aligned_next_start_addr_d[AxiAddrWidth-1:12] !=
+                    unit_stride_paddr[AxiAddrWidth-1:12];
+              end
             end
 
             if (curr_req_page_crossed) begin
@@ -1487,8 +1595,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                                       $unsigned(prefetch_required_avl));
               if (prefetch_avl_enough &&
                   prefetch_axi_ar_queue_not_full &&
+                  !prefetch_stream_queue_full &&
+                  !prefetch_bytes_queue_full &&
                   prefetch_lookup_entry_credit &&
-                  prefetch_en && !prefetch_adaptive_throttle && !flush_pending_q &&
+                  prefetch_en && !prefetch_adaptive_throttle &&
+                  !flush_pending_q && !hdv_task_end_i &&
+                  prefetch_first_logical_chunk &&
                   !curr_req_page_crossed) begin : first_prefetch
                 // Prefetch the same unit-stride stream in a future strip-mined
                 // iteration.  The address distance must be the logical vector
@@ -1505,7 +1617,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 // through the variable-width misaligned-store/LZC cone.
                 prefetch_aligned_start_addr =
                     aligned_addr(prefetch_addr, clog2_AxiStrobeWidth);
-                prefetch_next_2page_msb = prefetch_aligned_start_addr[AxiAddrWidth-1:12] + 1'b1;
                 prefetch_total_beats =
                     (($unsigned(prefetch_addr[clog2_AxiStrobeWidth-1:0]) +
                       $unsigned(prefetch_num_bytes) + (AxiDataWidth/8) - 1) >>
@@ -1522,7 +1633,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 prefetch_req_page_crossed =
                     prefetch_total_beats > prefetch_num_beats;
               
-                if (prefetch_burst_length != 0) begin
+                // Do not enqueue a page-crossing candidate. The global prefetch
+                // data FIFO and address-only lookup cannot safely let a short
+                // next-page tail share an address with another stream's full
+                // request. Skip only this boundary candidate; the first demand
+                // wholly inside the next page re-establishes the same stream.
+                if ((prefetch_burst_length != 0) &&
+                    !prefetch_req_page_crossed) begin
                   prefetch_axi_ar_queue_datain = '{
                     id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
                     addr   : prefetch_addr,
@@ -1534,18 +1651,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   };
               
                   prefetch_axi_ar_queue_push = 1'b1;
-                  // This AR is a page-cross 1st segment iff the prefetch crosses
-                  // a page; otherwise it is a full (non-segment) burst.
-                  prefetch_seg_queue_datain  = prefetch_req_page_crossed;
+                  prefetch_stream_queue_datain =
+                      pe_req_d.hdv_meta.prefetch_stream_id;
+                  prefetch_bytes_queue_datain = vlen_t'(prefetch_num_bytes);
                   prefetch_pending_d         = 1'b1;
-                end
-
-                if (prefetch_req_page_crossed) begin
-                  prefetch_second_beats = prefetch_total_beats - prefetch_burst_length;
-                  second_prefetch_vld_d   = 1'b1;
-                  second_prefetch_vld_compare_d = 1'b1;
-                  second_prefetch_paddr_d = {prefetch_next_2page_msb, 12'h000};
-                  second_prefetch_burst_len_d = prefetch_second_beats - 1;
                 end
               end : first_prefetch
 
@@ -1738,62 +1847,17 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         end
       end : start_req
     end : demand_req
-    else if (second_prefetch_vld_q) begin : second_prefetch
-
-      if (prefetch_axi_ar_queue_not_full) begin
-        prefetch_axi_ar_queue_datain = '{
-          id     : AXI_ID_DEMAND,   // same-id: prefetch shares demand id
-          addr   : second_prefetch_paddr_d,
-          len    : second_prefetch_burst_len_d,
-          size   : clog2_AxiStrobeWidth,
-          cache  : CACHE_MODIFIABLE,
-          burst  : BURST_INCR,
-          default: '0
-        };
-
-        prefetch_axi_ar_queue_push = 1'b1;
-        prefetch_seg_queue_datain  = 1'b1; // 2nd (next-page) segment of a crossing
-        prefetch_pending_d         = 1'b1;
-        second_prefetch_vld_d      = 1'b0;
-      end
-    end : second_prefetch
-
-
     // Demand AR has priority on the single AR port. The demand path above may
     // already be driving axi_ar_valid_o this cycle; the prefetch drain must NOT
     // override it (that would silently drop the demand AR while its
     // ldu_addrgen_queue entry still waits for id=DEMAND R beats). Prefetch ARs
     // only fill the cycles where demand is not using the bus.
-    if (axi_ar_ready_i &&
-        !axi_ar_valid_o &&
-        prefetch_axi_ar_queue_valid &&
-        !prefetch_axi_ar_rob_full &&
-        !prefetch_axi_addr_lookup_fifo_full &&
-        !prefetch_axi_addr_lookup_second_full &&
-        prefetch_lookup_entry_credit &&
-        !prefetch_pending_d
-        && prefetch_en && !prefetch_adaptive_throttle && !flush_pending_q
-        // Credit: only issue if the buffer can still absorb this burst on top of
-        // what is already resident (occupancy*2 beats) and in flight. Guarantees
-        // the landing R beats never overflow / back-pressure into deadlock.
-        && ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q
-             + $unsigned(prefetch_axi_ar_data.len) + 1) <= PrefetchBufBeats)
-        // Wait-per-iteration pacing: issue freely while still in the current iteration
-        // (avl unchanged), but on a NEW iteration (avl differs) wait until the previous
-        // iteration's prefetch beats have fully drained (in-flight == 0). The drain
-        // gap frees the single memory port for demand stores (vsaxpy).
-        // Store-aware BOUNDED-LEAD pacing: only pace the prefetch while a store is
-        // STARVED; otherwise run free so store-light loops (vvaddint32) pay no
-        // penalty. When starved, instead of draining to empty between iterations
-        // (== 0, which left the prefetch 0-ahead -> demand missed), keep a small
-        // lead (resident*2 + in-flight <= PrefetchLeadBeats) so the next iteration's
-        // data is already prefetched (100% hit) while the bounded depth still yields
-        // the single port to the demand store.
-        && (!store_stuck
-            || (pe_req_d.avl == prefetch_iter_avl_q)
-            || ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q)
-                <= PrefetchLeadBeats))
-    ) begin : prefetch_req
+    // Hard queue/ROB/buffer checks are shared with queue promotion above.
+    // Speculative prefetches additionally obey loop, throttle, and bounded-lead
+    // pacing. An exact promoted request is no longer speculative: it supplies the
+    // demand currently at the head and may bypass only those lead controls.
+    if (!axi_ar_valid_o && !prefetch_pending_d &&
+        (prefetch_queue_issue_resources_ready || prefetch_queue_promote)) begin : prefetch_req
       prefetch_axi_ar_queue_pop  = 1'b1;
       prefetch_axi_ar_rob_push   = 1'b1;
       prefetch_axi_ar_rob_datain = prefetch_axi_ar_data;
@@ -1802,19 +1866,20 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       prefetch_iter_avl_d        = pe_req_d.avl; // mark the iteration we prefetched
     end : prefetch_req
 
-    // Record each completed prefetch burst and whether it is the second segment
-    // of a page-cross split.  The lookup address and second-segment tag FIFOs are
-    // pushed/popped together so completed data and future hit tags stay ordered.
+    // Record each completed non-page-crossing prefetch burst.
     if (prefetch_axi_ar_rob_pop) begin : prefetch_data_complete
       prefetch_axi_addr_lookup_fifo_push     = 1'b1;
-      prefetch_axi_addr_lookup_fifo_datain   = prefetch_axi_ar_rob_data.addr;
-      prefetch_axi_addr_lookup_second_push   = 1'b1;
-      prefetch_axi_addr_lookup_second_datain =
-          prefetch_seg_rob_data && prefetch_axi_ar_rob_pop_done_counter_q;
+      prefetch_axi_addr_lookup_fifo_datain   = '{
+        addr      : prefetch_axi_ar_rob_data.addr,
+        logical_bytes : prefetch_bytes_rob_data,
+        stream_id : prefetch_stream_rob_data
+      };
     end : prefetch_data_complete
 
-    if (prefetch_flush_now || loop_active_fall || !prefetch_en) begin
+    if (prefetch_flush_now || hdv_task_end_i || loop_active_fall || !prefetch_en) begin
       prefetch_bad_cnt_d = '0;
+      if (prefetch_flush_now || hdv_task_end_i)
+        prefetch_iter_avl_d = '0;
     end else if (prefetch_axi_ar_hit && (prefetch_bad_cnt_d != '0)) begin
       prefetch_bad_cnt_d = prefetch_bad_cnt_d - 1'b1;
     end else if (stream_break && (prefetch_bad_cnt_d != 4'hf)) begin
@@ -1864,10 +1929,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       vreq_is_unit_stride_q      <= '0;
       vreq_is_stride_q           <= '0;
       vreq_is_index_q            <= '0;
-      second_prefetch_vld_q      <= '0;
-      second_prefetch_vld_compare_q <= '0;
-      second_prefetch_burst_len_q <= '0;
-      second_prefetch_paddr_q    <= '0;
     end else begin
       state_q                    <= state_d;
       pe_req_q                   <= pe_req_d;
@@ -1888,10 +1949,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       vreq_is_unit_stride_q      <= vreq_is_unit_stride_d;
       vreq_is_stride_q           <= vreq_is_stride_d;
       vreq_is_index_q            <= vreq_is_index_d;
-      second_prefetch_vld_q      <= second_prefetch_vld_d;
-      second_prefetch_vld_compare_q <= second_prefetch_vld_compare_d;
-      second_prefetch_burst_len_q<= second_prefetch_burst_len_d;
-      second_prefetch_paddr_q    <= second_prefetch_paddr_d;
     end
   end
 
@@ -1939,6 +1996,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [63:0] cnt_pf_late; // demand arrived while same-address prefetch was issued but not ready
   logic [63:0] cnt_pf_unused; // issued/completed prefetch entries discarded without demand hit
   logic        demand_rob_blocked_q;  // debounce: demand was ROB-blocked last cycle
+  logic        demand_pf_late_counted_q;
+  logic [$bits(vreq_addr_d)-1:0] demand_pf_late_addr_q;
+  logic        demand_pf_promoted_q;
+  logic [$bits(vreq_addr_d)-1:0] demand_pf_promoted_addr_q;
   localparam int unsigned DemandPrefetchWaitWatchdogCycles = 20000;
   localparam int unsigned DemandPrefetchWaitCounterWidth =
       $clog2(DemandPrefetchWaitWatchdogCycles + 1);
@@ -1972,6 +2033,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       cnt_pf_late <= '0;
       cnt_pf_unused <= '0;
       demand_rob_blocked_q <= 1'b0;
+      demand_pf_late_counted_q <= 1'b0;
+      demand_pf_late_addr_q <= '0;
+      demand_pf_promoted_q <= 1'b0;
+      demand_pf_promoted_addr_q <= '0;
       demand_pf_wait_cnt_q <= '0;
       demand_pf_wait_addr_q <= '0;
     end else begin
@@ -1999,7 +2064,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         cnt_pf_throttled_cycles <= cnt_pf_throttled_cycles + 1;
       if (prefetch_axi_ar_queue_valid)
         cnt_pf_queue_valid_cycles <= cnt_pf_queue_valid_cycles + 1;
-      if (prefetch_axi_ar_queue_valid && !prefetch_axi_ar_queue_pop)
+      if (prefetch_axi_ar_queue_valid &&
+          !(prefetch_axi_ar_queue_pop || prefetch_axi_ar_queue_cancel))
         cnt_pf_queue_block_cycles <= cnt_pf_queue_block_cycles + 1;
       if (prefetch_axi_addr_lookup_fifo_full)
         cnt_pf_lookup_full_cycles <= cnt_pf_lookup_full_cycles + 1;
@@ -2036,15 +2102,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           cnt_pf_ar_disabled <= cnt_pf_ar_disabled + 1;
       end
 
-      if (second_prefetch_vld_d && !second_prefetch_vld_q)
-        cnt_pf_second_issued <= cnt_pf_second_issued + 1;
-
       // Demand blocked by prefetch ROB match (distinct events, not cycles)
       demand_rob_blocked_q <= vreq_is_vld && vreq_is_load_d && prefetch_wait_match;
       if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match && !demand_rob_blocked_q) begin
         cnt_demand_rob_block <= cnt_demand_rob_block + 1;
         cnt_pf_wait_match_events <= cnt_pf_wait_match_events + 1;
-        cnt_pf_late <= cnt_pf_late + 1;
       end
       if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match) begin
         cnt_pf_wait_match_cycles <= cnt_pf_wait_match_cycles + 1;
@@ -2052,8 +2114,31 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           cnt_pf_queue_match_cycles <= cnt_pf_queue_match_cycles + 1;
         if (prefetch_axi_ar_rob_match)
           cnt_pf_rob_match_cycles <= cnt_pf_rob_match_cycles + 1;
-        if (prefetch_page_cross_wait_match)
-          cnt_pf_page_wait_cycles <= cnt_pf_page_wait_cycles + 1;
+      end
+      if (prefetch_queue_promote) begin
+        demand_pf_promoted_q <= 1'b1;
+        demand_pf_promoted_addr_q <= vreq_addr_d;
+      end else if (!(vreq_is_vld && vreq_is_load_d && prefetch_wait_match)) begin
+        demand_pf_promoted_q <= 1'b0;
+        demand_pf_promoted_addr_q <= '0;
+      end
+      // Strict late event: the exact prefetch was already issued before this
+      // demand began waiting, but its complete data is not yet consumable.
+      // A request issued only because this demand promoted it is coalescing, not
+      // a late prefetch.
+      if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match &&
+          prefetch_axi_ar_rob_match &&
+          !(demand_pf_promoted_q &&
+            (demand_pf_promoted_addr_q == vreq_addr_d))) begin
+        if (!demand_pf_late_counted_q ||
+            (demand_pf_late_addr_q != vreq_addr_d)) begin
+          cnt_pf_late <= cnt_pf_late + 1;
+          demand_pf_late_counted_q <= 1'b1;
+          demand_pf_late_addr_q <= vreq_addr_d;
+        end
+      end else if (!(vreq_is_vld && vreq_is_load_d && prefetch_wait_match)) begin
+        demand_pf_late_counted_q <= 1'b0;
+        demand_pf_late_addr_q <= '0;
       end
       if (stream_break)
         cnt_pf_stream_break <= cnt_pf_stream_break + 1;
@@ -2061,6 +2146,50 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         cnt_pf_future_keep <= cnt_pf_future_keep + 1;
       if (prefetch_flush_now) begin
         cnt_pf_unused <= cnt_pf_unused + 64'(prefetch_lookup_valid_use);
+      end
+
+      assert (prefetch_axi_ar_queue_empty == prefetch_stream_queue_empty)
+        else $fatal(1, "[ADDRGEN] prefetch AR/stream queue desynchronized");
+      assert (prefetch_axi_ar_queue_empty == prefetch_bytes_queue_empty)
+        else $fatal(1, "[ADDRGEN] prefetch AR/byte-count queue desynchronized");
+      assert (prefetch_axi_addr_lookup_fifo_empty ==
+              !(|prefetch_lookup_slot_valid_q))
+        else $fatal(1, "[ADDRGEN] prefetch lookup validity mirror desynchronized");
+      assert (!(prefetch_axi_ar_queue_pop && prefetch_axi_ar_queue_cancel))
+        else $fatal(1, "[ADDRGEN] prefetch queue issued and cancelled simultaneously");
+      assert (!(prefetch_tag_full && axi_ar_valid_o && axi_ar_ready_i))
+        else $fatal(1, "[ADDRGEN] accepted an AXI AR while the response tag FIFO was full");
+      if ($past(rst_ni && prefetch_flush_now)) begin
+        assert (prefetch_axi_ar_queue_empty &&
+                prefetch_stream_queue_empty &&
+                prefetch_bytes_queue_empty)
+          else $fatal(1, "[ADDRGEN] queued prefetch state survived a recovery flush");
+        assert (prefetch_axi_addr_lookup_fifo_empty &&
+                (prefetch_lookup_slot_valid_q == '0) &&
+                (prefetch_buf_occupancy_i == '0))
+          else $fatal(1, "[ADDRGEN] completed prefetch state survived a recovery flush");
+      end
+      if ($past(rst_ni && prefetch_flush_now && hdv_task_end_i)) begin
+        assert (task_end_cleaned_q)
+          else $fatal(1, "[ADDRGEN] task-end prefetch cleanup did not latch");
+      end
+      if (prefetch_axi_ar_queue_cancel) begin
+        assert (prefetch_axi_ar_queue_valid &&
+                prefetch_axi_ar_queue_match)
+          else $fatal(1, "[ADDRGEN] invalid prefetch queue cancellation");
+      end
+      if (prefetch_queue_promote) begin
+        assert (prefetch_axi_ar_queue_pop && prefetch_axi_ar_rob_push &&
+                axi_ar_valid_o && !prefetch_axi_ar_queue_cancel)
+          else $fatal(1, "[ADDRGEN] promoted prefetch did not issue atomically");
+      end
+      if (prefetch_axi_ar_hit) begin
+        assert (prefetch_first_logical_chunk &&
+                (prefetch_axi_addr_lookup_fifo_data.addr ==
+                 unit_stride_paddr) &&
+                (prefetch_axi_addr_lookup_fifo_data.logical_bytes ==
+                 prefetch_logical_load_bytes))
+          else $fatal(1, "[ADDRGEN] prefetch hit did not cover the whole logical load");
       end
 
       // Demand should only wait for a matching prefetch briefly.  A long wait means
@@ -2076,11 +2205,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           end
           assert (demand_pf_wait_cnt_q <
                   DemandPrefetchWaitCounterWidth'(DemandPrefetchWaitWatchdogCycles - 1))
-            else $fatal(1, "[ADDRGEN] demand stuck waiting for prefetch: vaddr=0x%0h avl=%0d vl=%0d wait_cycles=%0d queue_match=%0d rob_match=%0d page_wait=%0d q_valid=%0d q_addr=0x%0h pending=%0d lookup_full=%0d",
+            else $fatal(1, "[ADDRGEN] demand stuck waiting for prefetch: vaddr=0x%0h avl=%0d vl=%0d wait_cycles=%0d queue_match=%0d rob_match=%0d q_valid=%0d q_addr=0x%0h pending=%0d lookup_full=%0d",
                         vreq_addr_d, pe_req_d.avl, pe_req_d.vl, demand_pf_wait_cnt_q,
                         prefetch_axi_ar_queue_match, prefetch_axi_ar_rob_match,
-                        prefetch_page_cross_wait_match, prefetch_axi_ar_queue_valid,
-                        prefetch_axi_ar_data.addr, prefetch_pending_d,
+                        prefetch_axi_ar_queue_valid, prefetch_axi_ar_data.addr,
+                        prefetch_pending_d,
                         prefetch_axi_addr_lookup_fifo_full);
         end
       end else begin
@@ -2091,27 +2220,26 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       if ($test$plusargs("HDV_PF_PROBE") && (cnt_pf_probe_events < PfProbeMaxEvents)) begin
         if (vreq_is_vld && vreq_is_load_d && vreq_is_unit_stride_d &&
             !axi_addrgen_queue_full && axi_ax_ready &&
-            !(prefetch_wait_match || prefetch_axi_ar_rob_pop_done_counter_d) &&
-            !second_prefetch_vld_q) begin
+            !prefetch_wait_match) begin
           $display("[PFPROBE] cyc=%0d ev=demand_load paddr=0x%0h avl=%0d vl=%0d blen=%0d hit=%0d lkup_empty=%0d lkup_head=0x%0h q_valid=%0d q_head=0x%0h wait_match=%0d pending=%0d flush_pending=%0d throttle=%0d bad=%0d",
                    cnt_pf_probe_cycle, paddr, pe_req_d.avl, pe_req_d.vl, vreq_blen_d,
                    prefetch_axi_ar_hit, prefetch_axi_addr_lookup_fifo_empty,
-                   prefetch_axi_addr_lookup_fifo_data, prefetch_axi_ar_queue_valid,
+                   prefetch_axi_addr_lookup_fifo_data.addr, prefetch_axi_ar_queue_valid,
                    prefetch_axi_ar_data.addr, prefetch_wait_match,
                    prefetch_pending_d, flush_pending_q, prefetch_adaptive_throttle,
                    prefetch_bad_cnt_q);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (vreq_is_vld && vreq_is_load_d && prefetch_wait_match) begin
-          $display("[PFPROBE] cyc=%0d ev=demand_wait_pf vaddr=0x%0h avl=%0d vl=%0d queue_match=%0d rob_match=%0d page_wait=%0d",
+          $display("[PFPROBE] cyc=%0d ev=demand_wait_pf vaddr=0x%0h avl=%0d vl=%0d queue_match=%0d rob_match=%0d",
                    cnt_pf_probe_cycle, vreq_addr_d, pe_req_d.avl, pe_req_d.vl,
-                   prefetch_axi_ar_queue_match, prefetch_axi_ar_rob_match,
-                   prefetch_page_cross_wait_match);
+                   prefetch_axi_ar_queue_match, prefetch_axi_ar_rob_match);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (prefetch_axi_ar_queue_push) begin
-          $display("[PFPROBE] cyc=%0d ev=pf_gen demand=0x%0h pf_addr=0x%0h avl=%0d vl=%0d stride_bytes=%0d q_not_full=%0d page_cross=%0d",
-                   cnt_pf_probe_cycle, paddr, prefetch_addr, pe_req_d.avl, pe_req_d.vl,
+          $display("[PFPROBE] cyc=%0d ev=pf_gen demand=0x%0h pf_addr=0x%0h stream=0x%0h avl=%0d vl=%0d stride_bytes=%0d q_not_full=%0d page_cross=%0d",
+                   cnt_pf_probe_cycle, paddr, prefetch_addr,
+                   pe_req_d.hdv_meta.prefetch_stream_id, pe_req_d.avl, pe_req_d.vl,
                    prefetch_logical_stride_bytes, prefetch_axi_ar_queue_not_full,
                    prefetch_req_page_crossed);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
@@ -2123,43 +2251,52 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                    store_stuck);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
-        if (prefetch_axi_ar_queue_valid && !prefetch_axi_ar_queue_pop) begin
-          $display("[PFPROBE] cyc=%0d ev=pf_block q_addr=0x%0h q_len=%0d avl=%0d iter_avl=%0d ready=%0d demand_ar=%0d rob_full=%0d lkup_full=%0d lkup2_full=%0d pending=%0d pf_en=%0d throttle=%0d flush=%0d credit_ok=%0d store_stuck=%0d same_iter=%0d lead_ok=%0d inflight=%0d buf_occ=%0d",
+        if (prefetch_axi_ar_queue_cancel) begin
+          $display("[PFPROBE] cyc=%0d ev=pf_queue_cancel addr=0x%0h stream=0x%0h avl=%0d vl=%0d",
+                   cnt_pf_probe_cycle, prefetch_axi_ar_data.addr,
+                   prefetch_stream_at_issue, pe_req_d.avl, pe_req_d.vl);
+          cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
+        end
+        if (prefetch_axi_ar_queue_valid &&
+            !(prefetch_axi_ar_queue_pop || prefetch_axi_ar_queue_cancel)) begin
+          $display("[PFPROBE] cyc=%0d ev=pf_block q_addr=0x%0h q_len=%0d avl=%0d iter_avl=%0d ready=%0d demand_ar=%0d rob_full=%0d lkup_full=%0d pending=%0d pf_en=%0d throttle=%0d flush=%0d credit_ok=%0d store_stuck=%0d same_iter=%0d lead_ok=%0d streams=%0d lead_budget=%0d inflight=%0d buf_occ=%0d",
                    cnt_pf_probe_cycle, prefetch_axi_ar_data.addr,
                    prefetch_axi_ar_data.len, pe_req_d.avl, prefetch_iter_avl_q,
                    axi_ar_ready_i, axi_ar_valid_o, prefetch_axi_ar_rob_full,
-                   prefetch_axi_addr_lookup_fifo_full,
-                   prefetch_axi_addr_lookup_second_full, prefetch_pending_d,
+                   prefetch_axi_addr_lookup_fifo_full, prefetch_pending_d,
                    prefetch_en, prefetch_adaptive_throttle, flush_pending_q,
                    ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q
                      + $unsigned(prefetch_axi_ar_data.len) + 1) <= PrefetchBufBeats),
                    store_stuck, (pe_req_d.avl == prefetch_iter_avl_q),
                    ((({2'b0, prefetch_buf_occupancy_i} << 1) + prefetch_inflight_beats_q)
-                    <= PrefetchLeadBeats),
+                    <= prefetch_lead_beats),
+                   prefetch_active_stream_count_q, prefetch_lead_beats,
                    prefetch_inflight_beats_q, prefetch_buf_occupancy_i);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (prefetch_axi_addr_lookup_fifo_push) begin
-          $display("[PFPROBE] cyc=%0d ev=pf_done_lkup addr=0x%0h len=%0d lkup_full=%0d inflight=%0d",
-                   cnt_pf_probe_cycle, prefetch_axi_addr_lookup_fifo_datain,
+          $display("[PFPROBE] cyc=%0d ev=pf_done_lkup addr=0x%0h stream=0x%0h len=%0d lkup_full=%0d inflight=%0d",
+                   cnt_pf_probe_cycle, prefetch_axi_addr_lookup_fifo_datain.addr,
+                   prefetch_axi_addr_lookup_fifo_datain.stream_id,
                    prefetch_axi_ar_rob_data.len, prefetch_axi_addr_lookup_fifo_full,
                    prefetch_inflight_beats_q);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (prefetch_axi_ar_hit) begin
-          $display("[PFPROBE] cyc=%0d ev=pf_hit paddr=0x%0h avl=%0d vl=%0d",
-                   cnt_pf_probe_cycle, paddr, pe_req_d.avl, pe_req_d.vl);
+          $display("[PFPROBE] cyc=%0d ev=pf_hit paddr=0x%0h stream=0x%0h avl=%0d vl=%0d",
+                   cnt_pf_probe_cycle, paddr, pe_req_d.hdv_meta.prefetch_stream_id,
+                   pe_req_d.avl, pe_req_d.vl);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (prefetch_lookup_head_future_near) begin
           $display("[PFPROBE] cyc=%0d ev=lookup_future_keep paddr=0x%0h lkup_head=0x%0h delta=%0d avl=%0d vl=%0d",
-                   cnt_pf_probe_cycle, paddr, prefetch_axi_addr_lookup_fifo_data,
+                   cnt_pf_probe_cycle, paddr, prefetch_axi_addr_lookup_fifo_data.addr,
                    prefetch_lookup_head_delta, pe_req_d.avl, pe_req_d.vl);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end
         if (stream_break) begin
           $display("[PFPROBE] cyc=%0d ev=stream_break paddr=0x%0h lkup_head=0x%0h lkup_match=%0d avl=%0d vl=%0d",
-                   cnt_pf_probe_cycle, paddr, prefetch_axi_addr_lookup_fifo_data,
+                   cnt_pf_probe_cycle, paddr, prefetch_axi_addr_lookup_fifo_data.addr,
                    prefetch_lookup_match, pe_req_d.avl, pe_req_d.vl);
           cnt_pf_probe_events <= cnt_pf_probe_events + 1'b1;
         end

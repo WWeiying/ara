@@ -44,6 +44,13 @@ apps/*
 !apps/*_hdv/*.h
 !apps/*_hdv/Makefile
 apps/*_hdv/*.dump
+!apps/*_hdv_1/
+!apps/*_hdv_1/*.S
+!apps/*_hdv_1/*.c
+!apps/*_hdv_1/*.h
+!apps/*_hdv_1/*.inc
+!apps/*_hdv_1/Makefile
+apps/*_hdv_1/*.dump
 cheshire/
 Makefile_backup
 debug/
@@ -58,3 +65,4 @@ apps/*_hdv/*.o
 apps/*_hdv/*.spike
 apps/*_hdv/*.o.spike
 apps/*_hdv/data.S.o
+apps/*_hdv_1/*.o

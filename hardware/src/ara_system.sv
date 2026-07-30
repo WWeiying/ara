@@ -258,7 +258,9 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .axi_req_o       (ara_axi_req   ),
     .axi_resp_i      (ara_axi_resp  ),
     .hdv_loop_active_i(1'b0         ),
-    .hdv_meta_i      ('0            )
+    .hdv_task_end_i  (1'b0          ),
+    .hdv_meta_i      ('0            ),
+    .ara_idle_o      (/* Unused */   )
   );
 
   axi_mux #(

@@ -61,7 +61,9 @@ module ara import ara_pkg::*; #(
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i,
     input  logic              hdv_loop_active_i,
-    input  hdv_meta_t         hdv_meta_i
+    input  logic              hdv_task_end_i,
+    input  hdv_meta_t         hdv_meta_i,
+    output logic              ara_idle_o
   );
 
   `include "common_cells/registers.svh"
@@ -194,6 +196,11 @@ module ara import ara_pkg::*; #(
   ara_resp_t                    ara_resp;
   logic                         ara_resp_valid;
   logic                         ara_idle;
+  logic                         prefetch_task_clean;
+  logic                         vlsu_task_end;
+  assign vlsu_task_end = hdv_task_end_i && ara_idle;
+  assign ara_idle_o = ara_idle &&
+                      (!hdv_task_end_i || prefetch_task_clean);
   // Interface with the VSTU
   logic                         core_st_pending;
   logic                         load_complete;
@@ -281,7 +288,6 @@ module ara import ara_pkg::*; #(
 
   // Source operand read completion signals from lanes
   logic [NrLanes-1:0][NrVInsn-1:0] lane_src_read_done;
-  assign lane_src_read_done = '0; // tie-off: HDV lane.sv lacks this port
 
   // Mask unit scalar result variables
   elen_t     result_scalar;
@@ -420,6 +426,7 @@ module ara import ara_pkg::*; #(
       .pe_resp_o                       (pe_resp[lane]                       ),
       .alu_vinsn_done_o                (alu_vinsn_done[lane]                ),
       .mfpu_vinsn_done_o               (mfpu_vinsn_done[lane]               ),
+      .lane_src_read_done_o            (lane_src_read_done[lane]            ),
       .global_hazard_table_i           (global_hazard_table                 ),
       // Interface with the slide unit
       .sldu_result_req_i               (sldu_result_req[lane]               ),
@@ -572,6 +579,8 @@ module ara import ara_pkg::*; #(
     .addrgen_operand_ready_o    (addrgen_operand_ready                                 ),
     .block_load_addr_i          (1'b0                                                   ),
     .hdv_loop_active_i          (hdv_loop_active_i                                      ),
+    .hdv_task_end_i             (vlsu_task_end                                          ),
+    .prefetch_task_clean_o      (prefetch_task_clean                                    ),
     // CSR input
     .en_ld_st_translation_i     (acc_mmu_en_q                                          ),
     // Interface with CVA6's sv39 MMU

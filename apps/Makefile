@@ -111,6 +111,32 @@ bin/vssyrk_hdv: DEFINES += -DVSSYRK_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LM
 bin/vstrsm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vstrsm_hdv: DEFINES += -DVSTRSM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
 
+# Suffixed HDV regression variants.  These build from separate *_hdv_1
+# directories but intentionally reuse the original entry-point symbols.
+HDV_SUFFIX_APPS := vsaxpy_hdv_1 vsdot_hdv_1 vsswap_hdv_1 vsdwt_hdv_1 \
+	vstencil3_hdv_1 vfir5_hdv_1 vstrsm_hdv_1 vsger_hdv_1 vsgemv_hdv_1 \
+	vssymv_hdv_1 vsgemm_hdv_1 vssyrk_hdv_1 jacobi2d_hdv_1 fconv2d_hdv_1 \
+	vsspmv_hdv_1 lavamd_hdv_1 softmax_hdv_1
+$(addprefix bin/,$(HDV_SUFFIX_APPS)): RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
+
+bin/vsaxpy_hdv_1: DEFINES += -DVSAXPY_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsdot_hdv_1: DEFINES += -DVSDOT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsswap_hdv_1: DEFINES += -DVSSWAP_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsdwt_hdv_1: DEFINES += -DVSDWT_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vstencil3_hdv_1: DEFINES += -DVSTENCIL3_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vfir5_hdv_1: DEFINES += -DVFIR5_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vstrsm_hdv_1: DEFINES += -DVSTRSM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
+bin/vsger_hdv_1: DEFINES += -DVSGER_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsgemv_hdv_1: DEFINES += -DVSGEMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
+bin/vssymv_hdv_1: DEFINES += -DVSSYMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
+bin/vsgemm_hdv_1: DEFINES += -DVSGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DGEMM_LMUL=$(gemm_lmul) -DGEMM_ROWS=$(gemm_rows) -DGEMM_N=$(gemm_n)
+bin/vssyrk_hdv_1: DEFINES += -DVSSYRK_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL -DBLAS_LMUL=$(blas_lmul)
+bin/jacobi2d_hdv_1: DEFINES += -DJACOBI2D_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/fconv2d_hdv_1: DEFINES += -DFCONV2D_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/vsspmv_hdv_1: DEFINES += -DVSSPMV_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/lavamd_hdv_1: DEFINES += -DLAVAMD_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+bin/softmax_hdv_1: DEFINES += -DSOFTMAX_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
+
 bin/vgemm_hdv: RISCV_LDFLAGS += -Wl,--defsym=HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)
 bin/vgemm_hdv: DEFINES += -DVGEMM_HDV_TASK_ENTRY=$(HDV_TASK_ENTRY)UL
 

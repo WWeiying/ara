@@ -32,6 +32,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     output operand_request_cmd_t [NrOperandQueues-1:0]    operand_request_o,
     output logic                 [NrOperandQueues-1:0]    operand_request_valid_o,
     input  logic                 [NrOperandQueues-1:0]    operand_request_ready_i,
+    input  logic [NrOperandQueues-1:0][NrVInsn-1:0]       operand_read_done_i,
+    output logic                 [NrVInsn-1:0]            lane_src_read_done_o,
     output logic                                          alu_vinsn_done_o,
     output logic                                          mfpu_vinsn_done_o,
     // Interface with the Operand Queue (MaskB - for VRGATHER)
@@ -137,6 +139,15 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
   operand_request_cmd_t [NrOperandQueues-1:0] operand_request_d;
   logic                 [NrOperandQueues-1:0] operand_request_valid_d;
+
+  // A vid is complete only after every requester used by that instruction has
+  // fetched its complete source stream into the lane's operand queues.
+  logic [NrVInsn-1:0][NrOperandQueues-1:0] src_pending_d, src_pending_q;
+  logic [NrVInsn-1:0]                     src_tracking_d, src_tracking_q;
+  logic [NrVInsn-1:0]                     src_read_done_d;
+  logic [NrOperandQueues-1:0]              new_src_request_mask;
+  logic                                     new_vinsn_accept;
+  logic                                     source_lifetime_track;
 
   always_comb begin: p_operand_request
     for (int queue = 0; queue < NrOperandQueues; queue++) begin
@@ -280,6 +291,13 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     // Make no requests to the operand requester
     operand_request    = '0;
     operand_request_push = '0;
+    new_src_request_mask = '0;
+    new_vinsn_accept = 1'b0;
+    source_lifetime_track = pe_req.hdv_meta.hdv_valid &&
+                            !(pe_req.op inside {[VRGATHER:VCOMPRESS]});
+`ifdef HDV_ABLATION_NO_SRC_LIFETIME
+    source_lifetime_track = 1'b0;
+`endif
 
     // Make no requests to the lane's VFUs
     vfu_operation_d       = '0;
@@ -330,6 +348,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
     // We received a new vector instruction
     if (pe_req_valid && pe_req_ready && !vinsn_running_d[pe_req.id]) begin : lane_received_vinst
+      new_vinsn_accept = 1'b1;
+
       // Populate the VFU request
       vfu_operation_d = '{
         id             : pe_req.id,
@@ -940,6 +960,16 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
         default:;
       endcase
+
+      // Mark only the requests generated from this instruction's decoded source
+      // set. Instructions with dynamic requester traffic (VRGATHER/VCOMPRESS)
+      // retain the conventional full-instruction lifetime.
+      for (int unsigned queue = 0; queue < NrOperandQueues; queue++) begin
+        if (operand_request_push[queue] && source_lifetime_track)
+          operand_request[queue].track_src_completion = 1'b1;
+      end
+      if (source_lifetime_track)
+        new_src_request_mask = operand_request_push;
     end : lane_received_vinst
 
     // VRGATHER and VCOMPRESS access the opreq with ad-hoc requests
@@ -958,6 +988,70 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       operand_request_push[MaskB] = masku_vrgat_req_ready_d;
     end
   end: sequencer
+
+  always_comb begin : p_source_lifetime
+    src_pending_d   = src_pending_q;
+    src_tracking_d  = src_tracking_q;
+    src_read_done_d = '0;
+
+    for (int unsigned vid = 0; vid < NrVInsn; vid++) begin
+      // Discard state for a completed or flushed instruction before its vid can
+      // be reused.
+      if (!pe_vinsn_running_i[vid] &&
+          !(new_vinsn_accept && (pe_req.id == vid_t'(vid)))) begin
+        src_pending_d[vid]  = '0;
+        src_tracking_d[vid] = 1'b0;
+      end
+
+      for (int unsigned queue = 0; queue < NrOperandQueues; queue++) begin
+        if (operand_read_done_i[queue][vid])
+          src_pending_d[vid][queue] = 1'b0;
+      end
+
+      if (src_tracking_d[vid] && (src_pending_d[vid] == '0)) begin
+        src_read_done_d[vid] = 1'b1;
+        src_tracking_d[vid]  = 1'b0;
+      end
+    end
+
+    // The lane sequencer creates all source commands atomically. Initialize
+    // tracking after stale-completion cleanup so a recycled vid cannot inherit
+    // a completion pulse from its previous owner.
+    if (new_vinsn_accept) begin
+      src_pending_d[pe_req.id]  = new_src_request_mask;
+      src_tracking_d[pe_req.id] = |new_src_request_mask;
+      // A recycled vid belongs to the new owner from this point onward. Any
+      // same-cycle pulse from the previous owner is no longer relevant.
+      src_read_done_d[pe_req.id] = 1'b0;
+    end
+  end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin : p_source_lifetime_assert
+    if (rst_ni) begin
+      for (int unsigned vid = 0; vid < NrVInsn; vid++) begin
+        if (src_read_done_d[vid]) begin
+          assert (src_tracking_q[vid])
+            else $error("source lifetime completed without an active tracker for vid %0d", vid);
+          assert (src_pending_d[vid] == '0)
+            else $error("source lifetime completed with pending requesters for vid %0d", vid);
+        end
+      end
+    end
+  end
+`endif
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_source_lifetime_ff
+    if (!rst_ni) begin
+      src_pending_q        <= '0;
+      src_tracking_q       <= '0;
+      lane_src_read_done_o <= '0;
+    end else begin
+      src_pending_q        <= src_pending_d;
+      src_tracking_q       <= src_tracking_d;
+      lane_src_read_done_o <= src_read_done_d;
+    end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_sequencer_ff
     if (!rst_ni) begin

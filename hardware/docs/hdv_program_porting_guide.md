@@ -278,11 +278,10 @@ inst2
 
 重要限制：
 
-- p-bit 是“允许并行”的软件承诺，不是强制并行。
+- p-bit 是前端分组许可，不表示 EP 内指令天然无相关，也不保证同时执行。
 - VLIWPU 仍会因为 branch/system、issue width、32-bit 指令边界、硬件依赖断点等条件提前切 EP。
-- 同一 EP 内的指令应由软件保证没有非法 RAW/WAW/资源冲突。
-- 同一 EP 内的向量指令会携带相同 `ep_id`，当前 sequencer 会裁剪 same-EP RAW/WAR/WAW hazard 候选；因此真实需要串行的向量寄存器依赖必须用 p-bit 切到不同 EP。
-- 向量指令之间的数据相关由 Ara 后端处理，但标量操作数 snapshot、`vset rd` 写回、branch/ret、scalar/vector memory 顺序等仍需要按当前 HDV 规则保守安排。
+- 同一 EP 内的向量指令仍由 Ara sequencer 执行常规 RAW/WAR/WAW 检查，不因 `ep_id` 相同而豁免。
+- 向量指令之间的数据相关由 Ara 后端处理；标量操作数 snapshot、`vset rd` 写回、branch/ret、scalar/vector memory 顺序等跨后端约束仍需要按当前 HDV 规则保守安排。
 
 ## 6. 跨 Packet 打包
 

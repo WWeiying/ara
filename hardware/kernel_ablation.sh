@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PARALLEL=0
-MODES="${HDV_ABLATION_MODES:-base pf_only haz pf_haz}"
+MODES="${HDV_ABLATION_MODES:-base pf haz pf_haz}"
 OUT_PREFIX="${HDV_ABLATION_OUT_PREFIX:-kernel_sweep_out_ablate}"
 SIM_PREFIX_BASE="${HDV_ABLATION_SIM_PREFIX:-sim_ablate}"
 
@@ -13,9 +13,9 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   echo "usage: $0 [--parallel] [kernel_sweep.sh args]"
   echo "       $0 --parallel --skip-long all"
   echo "       $0 --skip-long all"
-  echo "       HDV_ABLATION_MODES=\"base pf_only haz pf_haz\" $0 --parallel --skip-long all"
-  echo "       HDV_ABLATION_MODES=\"base pf_only haz pf_haz\" $0 --parallel point vsaxpy_hdv 1024"
-  echo "default modes: base pf_only haz pf_haz"
+  echo "       HDV_ABLATION_MODES=\"base pf haz pf_haz\" $0 --parallel --skip-long all"
+  echo "       HDV_ABLATION_MODES=\"base pf haz pf_haz\" $0 --parallel point vsaxpy_hdv 1024"
+  echo "default modes: base pf haz pf_haz"
   echo "outputs: \${HDV_ABLATION_OUT_PREFIX:-kernel_sweep_out_ablate}_<mode>"
   echo "sim dirs: \${HDV_ABLATION_SIM_PREFIX:-sim_ablate}_<mode> (or sim_mc_ablate_<mode> when mc=1)"
   echo "logs: ablation_<mode>.log in parallel mode"
@@ -45,9 +45,9 @@ fi
 validate_mode() {
   local mode=$1
   case "$mode" in
-    full|base|vdu|ovlp|pf|pf_only|haz|pf_haz) ;;
+    full|base|vdu|pf|pf_only|ovlp|haz|pf_haz) ;;
     *)
-      echo "ERROR: invalid ablation mode '$mode' (use full|base|vdu|ovlp|pf|pf_only|haz|pf_haz)" >&2
+      echo "ERROR: invalid ablation mode '$mode' (use full|base|vdu|pf|pf_only|ovlp|haz|pf_haz)" >&2
       exit 2
       ;;
   esac

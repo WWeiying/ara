@@ -60,6 +60,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output `STRUCT_PORT_BITS(pe_resp_t_bits)               pe_resp_o,
     output logic                                           alu_vinsn_done_o,
     output logic                                           mfpu_vinsn_done_o,
+    output logic     [NrVInsn-1:0]                         lane_src_read_done_o,
     input  logic                [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_i,
     // Interface with the Store unit
     output elen_t                                          stu_operand_o,
@@ -142,6 +143,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     // Hazards
     logic [NrVInsn-1:0] hazard;
+
+    // This command belongs to the architectural source set of the instruction
+    // and must contribute to source-lifetime completion.
+    logic track_src_completion;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -213,6 +218,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   operand_request_cmd_t [NrOperandQueues-1:0] operand_request;
   logic                 [NrOperandQueues-1:0] operand_request_valid;
   logic                 [NrOperandQueues-1:0] operand_request_ready;
+  logic [NrOperandQueues-1:0][NrVInsn-1:0]    operand_read_done;
   // Interface with the vector functional units
   vfu_operation_t                             vfu_operation;
   logic                                       vfu_operation_valid;
@@ -258,6 +264,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_o      (operand_request      ),
     .operand_request_valid_o(operand_request_valid),
     .operand_request_ready_i(operand_request_ready),
+    .operand_read_done_i     (operand_read_done     ),
+    .lane_src_read_done_o    (lane_src_read_done_o  ),
     .alu_vinsn_done_o       (alu_vinsn_done_o     ),
     .mfpu_vinsn_done_o      (mfpu_vinsn_done_o    ),
     // Interface with the Operand Queue
@@ -328,6 +336,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_i        (operand_request         ),
     .operand_request_valid_i  (operand_request_valid   ),
     .operand_request_ready_o  (operand_request_ready   ),
+    .operand_read_done_o      (operand_read_done       ),
     // Support for store exception flush
     .lsu_ex_flush_i           (lsu_ex_flush_op_req_q   ),
     .lsu_ex_flush_o           (lsu_ex_flush_op_queues_d),

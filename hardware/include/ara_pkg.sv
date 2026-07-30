@@ -121,12 +121,16 @@ package ara_pkg;
   typedef logic [$clog2(NrVInsn)-1:0] vid_t;
   typedef logic [ELEN-1:0] elen_t;
 
+  localparam int unsigned HdvPrefetchStreamIdWidth = 8;
+  typedef logic [HdvPrefetchStreamIdWidth-1:0] hdv_pf_stream_id_t;
+
   typedef struct packed {
-    logic       hdv_valid;
-    logic       ep_id;
-    logic       prefetch_hint_valid;
-    logic       prefetch_disable;
-    logic [1:0] prefetch_mode;
+    logic              hdv_valid;
+    logic              ep_id;
+    logic              prefetch_hint_valid;
+    logic              prefetch_disable;
+    logic [1:0]        prefetch_mode;
+    hdv_pf_stream_id_t prefetch_stream_id;
   } hdv_meta_t;
 
   //////////////////
