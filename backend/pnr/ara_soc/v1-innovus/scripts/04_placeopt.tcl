@@ -87,17 +87,17 @@ saveDesign ../save/placement.enc
 
 timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS -outDir ../reports
 
-#setOptMode -fixDrc true -fixFanoutLoad true
-#optDesign -preCTS -drv
-#optDesign -preCTS
+setOptMode -fixDrc true -fixFanoutLoad true
+optDesign -preCTS -drv
+optDesign -preCTS
 
 
-#timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt -outDir ../report
+timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt -outDir ../reports
 
-#setOptMode -fixDrc true -fixFanoutLoad true
-#optDesign -preCTS -incr
+setOptMode -fixDrc true -fixFanoutLoad true
+optDesign -preCTS -incr
 
-#timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt_incr -outDir ../report
+timeDesign -preCTS -idealClock -pathReports -drvReports -slackReports -numPaths 50 -prefix preCTS_opt_incr -outDir ../reports
 
 
 saveDesign ../save/preCTS.enc

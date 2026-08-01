@@ -237,7 +237,15 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 `endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni || prefetch_buf_flush_i) begin
+    if (!rst_ni) begin
+      prefetch_axi_r_queue_len_q <= '0;
+      prefetch_axi_ar_hit_cnt_q  <= '0;
+      prefetch_pack_data_q       <= '0;
+      prefetch_pack_byte_count_q <= '0;
+      prefetch_logical_remaining_q <= '0;
+      prefetch_pack_finalize_q   <= 1'b0;
+    end
+    else if (prefetch_buf_flush_i) begin
       prefetch_axi_r_queue_len_q <= '0;
       prefetch_axi_ar_hit_cnt_q  <= '0;
       prefetch_pack_data_q       <= '0;
