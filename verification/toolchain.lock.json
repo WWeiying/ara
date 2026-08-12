@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "riscv-dv-rvv1": {
+      "url": "https://github.com/chipsalliance/riscv-dv.git",
+      "fetch_ref": "refs/pull/1010/head",
+      "revision": "a9e723ba921aee0cd2aea7999d92859f2a2f088e",
+      "path": "verification/tools/riscv-dv-rvv1"
+    }
+  }
+}

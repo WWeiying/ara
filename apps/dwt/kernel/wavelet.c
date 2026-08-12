@@ -20,10 +20,8 @@
 #include "wavelet.h"
 #include <stdio.h>
 
-// Reduce scalar code overhead for problems that can fit with LMUL == 4.
-// The worst case if with 2 lanes, in which the problem size should be lower
-// than 2k float numbers.
-#define SMALL_PROBLEM
+// Keep the general strip-mined path. The bundled 512-sample input does not fit
+// in one e32,m4 register group when VLEN is 1024 bits.
 
 extern int64_t event_trigger;
 

@@ -281,7 +281,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     shuffled_word = addrgen_operand_i;
     // Deshuffle the whole NrLanes * 8 Byte word
     for (int unsigned b = 0; b < 8*NrLanes; b++) begin
-      automatic shortint unsigned b_shuffled = shuffle_index(b, NrLanes, pe_req_q.eew_vs2);
+      automatic shortint unsigned b_shuffled =
+          shuffle_index(b, NrLanes, pe_req_q.old_eew_vs2);
       deshuffled_word[8*b +: 8] = shuffled_word[8*b_shuffled +: 8];
     end
 
@@ -399,12 +400,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       ADDRGEN_IDX_OP: begin
-        // NOTE: vstart is not supported for indexed operations
-        //       the logic shuld be introduced:
-        //       1. in the addrgen_operand_i operand read
-        //       2. in idx_vaddr computation
-        automatic logic [NrLanes-1:0] addrgen_operand_valid;
-
         // Stall the interface until the operation is over to catch possible exceptions
 
         // Every address can generate an exception
@@ -421,23 +416,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         };
         addrgen_req_valid = 1'b1;
 
-        // Adjust valid signals to the next block "operands_ready"
-        addrgen_operand_valid = addrgen_operand_valid_i;
-        for (int unsigned lane = 0; lane < NrLanes; lane++) begin : adjust_operand_valid
-          // - We are left with less byte than the maximim to issue,
-          //    this means that at least one lane is not going to push us any operand anymore
-          // - For the lanes which index % NrLanes != 0
-          if (((idx_op_cnt_q << pe_req_q.vtype.vsew) < (NrLanes * DataWidthB))
-               && (lane < pe_req_q.vstart[idx_width(NrLanes)-1:0])) begin : vstart_lane_adjust
-            addrgen_operand_valid[lane] |= 1'b1;
-          end : vstart_lane_adjust
-        end : adjust_operand_valid
-        // TODO: apply the same vstart logic also to mask_valid_i
-
         // Handle handshake and data between VRF and spill register
-        // We accept all the incoming data, without any checks
-        // since Ara stalls on an indexed memory operation
-        if (&addrgen_operand_valid) begin
+        // Lane sequencers provide aligned aggregate words, so all lane words
+        // are present even when vstart or vl falls in the middle of a word.
+        if (&addrgen_operand_valid_i) begin
 
           // Valid data for the spill register
           idx_vaddr_valid_d = 1'b1;
@@ -1167,5 +1149,47 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       next_2page_msb_q          <= next_2page_msb_d;
     end
   end
+
+`ifdef FOR_VERIFY
+  longint unsigned debug_addrgen_cycle_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_addrgen_cycle_q <= '0;
+    end else begin
+      debug_addrgen_cycle_q <= debug_addrgen_cycle_q + 1'b1;
+      if ($test$plusargs("ARA_DEBUG_VSTU_STALL") &&
+          ((pe_req_valid_i && pe_req_i.vstart != '0) || pe_req_q.vstart != '0) &&
+          debug_addrgen_cycle_q % 1000 == 0) begin
+        $display("[ARA_ADDRGEN_STATE] %m t=%0t cyc=%0d state=%0d req_v=%0b req_id=%0d req_op=%0d req_vstart=%0d running=%b held_id=%0d held_op=%0d held_vstart=%0d ag_req_v=%0b ag_req_r=%0b axi_state=%0d axi_len=%0d idx_cnt=%0d idx_lane=%0d idx_elm=%0d idx_in_v=%b idx_in_r=%0b idx_spill_v=%0b idx_spill_r=%0b core_st=%0b q_empty=%0b q_full=%0b q_push=%0b q_pop=%0b ax_rdy=%0b",
+                 $time, debug_addrgen_cycle_q, state_q, pe_req_valid_i,
+                 pe_req_i.id, pe_req_i.op, pe_req_i.vstart, vinsn_running_q,
+                 pe_req_q.id, pe_req_q.op, pe_req_q.vstart,
+                 addrgen_req_valid, addrgen_req_ready, axi_addrgen_state_q,
+                 axi_addrgen_q.len, idx_op_cnt_q, word_lane_ptr_q, elm_ptr_q,
+                 addrgen_operand_valid_i, addrgen_operand_ready_o,
+                 idx_vaddr_valid_q, idx_vaddr_ready_d,
+                 core_st_pending_i, axi_addrgen_queue_empty,
+                 axi_addrgen_queue_full, axi_addrgen_queue_push,
+                 axi_addrgen_queue_pop,
+                 (axi_addrgen_q.is_load && axi_ar_ready_i) ||
+                 (!axi_addrgen_q.is_load && axi_aw_ready_i));
+      end
+      if ($test$plusargs("ARA_DEBUG_VSTU_STALL") &&
+          state_q == ADDRGEN_IDX_OP &&
+          ((|addrgen_operand_valid_i) || addrgen_operand_ready_o ||
+           idx_vaddr_valid_q || idx_op_cnt_d != idx_op_cnt_q)) begin
+        $display("[ARA_ADDRGEN_IDX_EVENT] %m t=%0t id=%0d vstart=%0d vl=%0d cnt=%0d->%0d lane=%0d->%0d elm=%0d->%0d in_v=%b in_r=%0b spill_v=%0b spill_r=%0b req_r=%0b state_d=%0d operands=%h reduced=%h index=%h final=%h",
+                 $time, pe_req_q.id, pe_req_q.vstart, pe_req_q.vl,
+                 idx_op_cnt_q, idx_op_cnt_d,
+                 word_lane_ptr_q, word_lane_ptr_d, elm_ptr_q, elm_ptr_d,
+                 addrgen_operand_valid_i, addrgen_operand_ready_o,
+                 idx_vaddr_valid_q, idx_vaddr_ready_d,
+                 addrgen_req_ready, state_d, addrgen_operand_i, reduced_word,
+                 idx_vaddr, idx_final_vaddr_d);
+      end
+    end
+  end
+`endif
 
 endmodule : addrgen

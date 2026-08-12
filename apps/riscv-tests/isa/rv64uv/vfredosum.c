@@ -38,10 +38,12 @@ void TEST_CASE1(void) {
   asm volatile("vfredosum.vs v1, v2, v3");
   VCMP_U64(3, v1, 0x4052400000000000);
 
-  // Super lang vector length
-  VSET(64, e32, m1);
+  // Reduction spanning two physical vector registers.
+  VSET(1, e32, m1);
+  VLOAD_32(v3, 0x3F800000);
+  VSET(64, e32, m2);
   VLOAD_32(
-      v2, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
+      v4, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
       0x40C00000, 0x40E00000, 0x41000000, 0x3F800000, 0x40000000, 0x40400000,
       0x40800000, 0x40A00000, 0x40C00000, 0x40E00000, 0x41000000,
 
@@ -56,8 +58,8 @@ void TEST_CASE1(void) {
       0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000, 0x40C00000,
       0x40E00000, 0x41000000, 0x3F800000, 0x40000000, 0x40400000, 0x40800000,
       0x40A00000, 0x40C00000, 0x40E00000, 0x41000000);
-  VLOAD_32(v3, 0x3F800000);
-  asm volatile("vfredosum.vs v1, v2, v3");
+  asm volatile("vfredosum.vs v1, v4, v3");
+  VSET(1, e32, m1);
   VCMP_U32(4, v1, 0x43908000);
 }
 
@@ -212,6 +214,14 @@ void TEST_CASE4(void) {
            0x4000000000000000, 0x4008000000000000, 0x4010000000000000,
            0x4014000000000000, 0x4018000000000000, 0x401C000000000000,
            0x4020000000000000);
+
+  // An ordered reduction with VL < NrLanes leaves lane 3 inactive. Its lane
+  // selector must not retain a non-existent FPU reduction stream and block
+  // the next SLDU command.
+  VSET(3, e64, m1);
+  asm volatile("vslidedown.vi v4, v2, 0");
+  VCMP_U64(18, v4, 0x3FF0000000000000, 0x4000000000000000,
+           0x4008000000000000);
 
   VSET(7, e64, m1);
   VLOAD_64(v2, 0x3FF0000000000000, 0x4000000000000000, 0x4008000000000000,

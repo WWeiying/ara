@@ -627,6 +627,39 @@ void TEST_CASE14(void) {
            0x40b21f36e0000000);
 };
 
+// Widening conversion must preserve infinities for every rounding mode.
+void TEST_CASE15(void) {
+  VSET(4, e32, m1);
+  VLOAD_32(v2, 0x7f800000, 0xff800000, 0x00000000, 0x80000000);
+
+  CHANGE_RM(RM_RNE);
+  asm volatile("vfwcvt.f.f.v v4, v2");
+  VCMP_U64(29, v4, 0x7ff0000000000000, 0xfff0000000000000,
+           0x0000000000000000, 0x8000000000000000);
+
+  CHANGE_RM(RM_RTZ);
+  asm volatile("vfwcvt.f.f.v v4, v2");
+  VCMP_U64(30, v4, 0x7ff0000000000000, 0xfff0000000000000,
+           0x0000000000000000, 0x8000000000000000);
+
+  CHANGE_RM(RM_RDN);
+  asm volatile("vfwcvt.f.f.v v4, v2");
+  VCMP_U64(31, v4, 0x7ff0000000000000, 0xfff0000000000000,
+           0x0000000000000000, 0x8000000000000000);
+
+  CHANGE_RM(RM_RUP);
+  asm volatile("vfwcvt.f.f.v v4, v2");
+  VCMP_U64(32, v4, 0x7ff0000000000000, 0xfff0000000000000,
+           0x0000000000000000, 0x8000000000000000);
+
+  CHANGE_RM(RM_RMM);
+  asm volatile("vfwcvt.f.f.v v4, v2");
+  VCMP_U64(33, v4, 0x7ff0000000000000, 0xfff0000000000000,
+           0x0000000000000000, 0x8000000000000000);
+
+  CHANGE_RM(RM_RNE);
+};
+
 int main(void) {
   enable_vec();
   enable_fp();
@@ -651,6 +684,7 @@ int main(void) {
 
   TEST_CASE13();
   TEST_CASE14();
+  TEST_CASE15();
 
   EXIT_CHECK();
 }

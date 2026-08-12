@@ -38,10 +38,12 @@ void TEST_CASE1(void) {
   asm volatile("vfredsum.vs v1, v2, v3");
   VCMP_F64(3, v1, 0x4052400000000000);
 
-  // Super lang vector length
-  VSET(64, e32, m1);
+  // Reduction spanning two physical vector registers.
+  VSET(1, e32, m1);
+  VLOAD_32(v3, 0x3F800000);
+  VSET(64, e32, m2);
   VLOAD_32(
-      v2, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
+      v4, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
       0x40C00000, 0x40E00000, 0x41000000, 0x3F800000, 0x40000000, 0x40400000,
       0x40800000, 0x40A00000, 0x40C00000, 0x40E00000, 0x41000000,
 
@@ -56,8 +58,8 @@ void TEST_CASE1(void) {
       0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000, 0x40C00000,
       0x40E00000, 0x41000000, 0x3F800000, 0x40000000, 0x40400000, 0x40800000,
       0x40A00000, 0x40C00000, 0x40E00000, 0x41000000);
-  VLOAD_32(v3, 0x3F800000);
-  asm volatile("vfredsum.vs v1, v2, v3");
+  asm volatile("vfredsum.vs v1, v4, v3");
+  VSET(1, e32, m1);
   VCMP_F32(4, v1, 0x43908000);
 }
 

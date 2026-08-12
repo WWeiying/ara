@@ -40,6 +40,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the operand queues
     input  logic                 [NrOperandQueues-1:0] operand_queue_ready_i,
     output logic                 [NrOperandQueues-1:0] operand_issued_o,
+    output logic                 [NrOperandQueues-1:0] source_snapshot_replay_valid_o,
+    output logic [NrOperandQueues-1:0][$clog2(8*VLEN/(NrLanes*$bits(elen_t)))-1:0]
+                                                         source_snapshot_replay_index_o,
     output operand_queue_cmd_t   [NrOperandQueues-1:0] operand_queue_cmd_o,
     output logic                 [NrOperandQueues-1:0] operand_queue_cmd_valid_o,
     // Interface with the VFUs
@@ -81,6 +84,13 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t                                      ldu_result_be_i,
     output logic                                       ldu_result_gnt_o,
     output logic                                       ldu_result_final_gnt_o
+`ifdef FOR_VERIFY
+    ,output logic [4:0]                                verify_wb_valid_o
+    ,output vid_t [4:0]                                verify_wb_id_o
+    ,output vaddr_t [4:0]                              verify_wb_addr_o
+    ,output elen_t [4:0]                               verify_wb_wdata_o
+    ,output strb_t [4:0]                               verify_wb_be_o
+`endif
   );
 
   import cf_math_pkg::idx_width;
@@ -156,19 +166,53 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     .ready_i   (masku_result_gnt                                                                 )
   );
 
-  // The very last grant must happen when the instruction actually write in the VRF
-  // Otherwise the dependency is freed in advance
-  always_ff @(posedge clk_i or negedge rst_ni) begin : p_final_gnts
-    if (!rst_ni) begin
-      ldu_result_final_gnt_o   <= 1'b0;
-      sldu_result_final_gnt_o  <= 1'b0;
-      masku_result_final_gnt_o <= 1'b0;
-    end else begin
-      ldu_result_final_gnt_o   <= ldu_result_gnt;
-      sldu_result_final_gnt_o  <= sldu_result_gnt;
-      masku_result_final_gnt_o <= masku_result_gnt;
+  // The arbiter grant and the SRAM write occur on the same edge.  Forward the
+  // grant without another register: a delayed, untagged pulse can otherwise be
+  // mistaken for the next beat when a stream register pops and refills together.
+  assign ldu_result_final_gnt_o   = ldu_result_gnt;
+  assign sldu_result_final_gnt_o  = sldu_result_gnt;
+  assign masku_result_final_gnt_o = masku_result_gnt;
+
+`ifdef FOR_VERIFY
+  // Observe the write only after the source-specific request wins VRF arbitration.
+  // The fixed source order is ALU, MFPU, MASKU, SLDU, VLDU.
+  always_comb begin : p_verify_wb
+    verify_wb_valid_o = {
+      ldu_result_gnt, sldu_result_gnt, masku_result_gnt,
+      mfpu_result_gnt_o, alu_result_gnt_o
+    };
+    verify_wb_id_o[0]    = alu_result_id_i;
+    verify_wb_addr_o[0]  = alu_result_addr_i;
+    verify_wb_wdata_o[0] = alu_result_wdata_i;
+    verify_wb_be_o[0]    = alu_result_be_i;
+    verify_wb_id_o[1]    = mfpu_result_id_i;
+    verify_wb_addr_o[1]  = mfpu_result_addr_i;
+    verify_wb_wdata_o[1] = mfpu_result_wdata_i;
+    verify_wb_be_o[1]    = mfpu_result_be_i;
+    verify_wb_id_o[2]    = masku_result_id;
+    verify_wb_addr_o[2]  = masku_result_addr;
+    verify_wb_wdata_o[2] = masku_result_wdata;
+    verify_wb_be_o[2]    = masku_result_be;
+    verify_wb_id_o[3]    = sldu_result_id;
+    verify_wb_addr_o[3]  = sldu_result_addr;
+    verify_wb_wdata_o[3] = sldu_result_wdata;
+    verify_wb_be_o[3]    = sldu_result_be;
+    verify_wb_id_o[4]    = ldu_result_id;
+    verify_wb_addr_o[4]  = ldu_result_addr;
+    verify_wb_wdata_o[4] = ldu_result_wdata;
+    verify_wb_be_o[4]    = ldu_result_be;
+  end
+`endif
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_LDU") && ldu_result_gnt) begin
+      $display("[ARA_LDU_WB] t=%0t path=%m id=%0d addr=%0d be=%02h data=%016h",
+               $time, ldu_result_id, ldu_result_addr, ldu_result_be,
+               ldu_result_wdata);
     end
   end
+`endif
 
   ///////////////////////
   //  Stall mechanism  //
@@ -248,11 +292,15 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
     // Hazards between vector instructions
     logic [NrVInsn-1:0] hazard;
+    logic [NrVInsn-1:0] hazard_source_lifetime;
+    logic [NrVInsn-1:0] hazard_wait_complete;
 
     // Widening instructions produces two writes of every read
     // In case of a WAW with a previous instruction,
     // read once every two writes of the previous instruction
     logic is_widening;
+    logic source_snapshot_replay;
+    logic [$clog2(8*VLEN/(NrLanes*$bits(elen_t)))-1:0] source_snapshot_index;
     // One-bit counters
     logic [NrVInsn-1:0] waw_hazard_counter;
   } requester_metadata_t;
@@ -271,8 +319,34 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   requester_metadata_t [NrOperandQueues-1:0] requester_metadata_d;
   requester_metadata_t [NrOperandQueues-1:0] requester_metadata_q;
 
+  // A source remains live from the time its command is pending at the lane
+  // boundary until every lane-local operand requester carrying that vid has
+  // issued its final VRF word (or snapshot word). Younger writers may then
+  // proceed without waiting for the older instruction's result path.
+  logic [NrVInsn-1:0] source_lifetime_active;
+  always_comb begin
+    source_lifetime_active = '0;
+    for (int unsigned q = 0; q < NrOperandQueues; q++) begin
+      if (operand_request_valid_i[q])
+        source_lifetime_active[operand_request_i[q].id] = 1'b1;
+      if (state_q[q] == REQUESTING)
+        source_lifetime_active[requester_metadata_q[q].id] = 1'b1;
+    end
+  end
+
   logic [NrOperandQueues-1:0] stall;
   logic [NrOperandQueues-1:0][NrBanks-1:0] operand_requester_gnt;
+
+`ifdef FOR_VERIFY
+  longint unsigned debug_addr_opreq_cycle_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni)
+      debug_addr_opreq_cycle_q <= '0;
+    else
+      debug_addr_opreq_cycle_q <= debug_addr_opreq_cycle_q + 1'b1;
+  end
+`endif
 
   for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
 
@@ -282,7 +356,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
 
     // Did we issue a word to this operand queue?
-    assign operand_issued_o[requester_index] = |(operand_requester_gnt[requester_index]);
+    assign operand_issued_o[requester_index] =
+        |(operand_requester_gnt[requester_index]) |
+        source_snapshot_replay_valid_o[requester_index];
 
     always_comb begin: operand_requester
       // Helper local variables
@@ -315,6 +391,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       // Do not send any operand conversion commands
       operand_queue_cmd_o[requester_index]       = '0;
       operand_queue_cmd_valid_o[requester_index] = 1'b0;
+      source_snapshot_replay_valid_o[requester_index] = 1'b0;
+      source_snapshot_replay_index_o[requester_index] =
+          requester_metadata_q[requester_index].source_snapshot_index;
 
       // Count the number of packets to fetch if we need to deshuffle.
       // Slide operations use the vstart signal, which does NOT correspond to the architectural
@@ -351,7 +430,21 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         len         : effective_vector_body_length,
         vew         : operand_request_i[requester_index].eew,
         hazard      : operand_request_i[requester_index].hazard,
+        hazard_source_lifetime:
+                      operand_request_i[requester_index].hazard_source_lifetime &
+                      operand_request_i[requester_index].hazard,
+        hazard_wait_complete:
+                      operand_request_i[requester_index].hazard_wait_complete,
         is_widening : operand_request_i[requester_index].cvt_resize == CVT_WIDE,
+        source_snapshot_replay: operand_request_i[requester_index].source_snapshot_replay,
+        // The snapshot stores the source group in lane-local VRF-word order.
+        // Sequential replays normally start at zero; ad-hoc gather requests
+        // start at the word containing their requested source element.
+        source_snapshot_index:
+            operand_request_i[requester_index].source_snapshot_replay
+                ? operand_request_i[requester_index].vstart >>
+                    (unsigned'(EW64) - unsigned'(operand_request_i[requester_index].eew))
+                : '0,
         default: '0
       };
       operand_queue_cmd_tmp = '{
@@ -400,8 +493,17 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         REQUESTING: begin : state_q_REQUESTING
           // Is there a hazard during this cycle?
           //logic stall;
-          stall[requester_index] = |(requester_metadata_q[requester_index].hazard & ~(vinsn_result_written_q &
-            (~{NrVInsn{requester_metadata_q[requester_index].is_widening}} | requester_metadata_q[requester_index].waw_hazard_counter)));
+          stall[requester_index] =
+              |((requester_metadata_q[requester_index].hazard &
+                 ~requester_metadata_q[requester_index].hazard_source_lifetime &
+                 ~requester_metadata_q[requester_index].hazard_wait_complete) &
+                ~(vinsn_result_written_q &
+                  (~{NrVInsn{requester_metadata_q[requester_index].is_widening}} |
+                   requester_metadata_q[requester_index].waw_hazard_counter))) ||
+              |(requester_metadata_q[requester_index].hazard_source_lifetime &
+                source_lifetime_active) ||
+              |(requester_metadata_q[requester_index].hazard_wait_complete &
+                global_hazard_table_i[requester_metadata_q[requester_index].id]);
 
           // Update waw counters
           for (int b = 0; b < NrVInsn; b++) begin : waw_counters_update
@@ -413,18 +515,29 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           if (operand_queue_ready_i[requester_index]) begin : operand_queue_ready
             automatic vlen_t num_elements;
 
-            // Operand request
-            lane_operand_req_transposed[requester_index][bank] = !stall[requester_index] ;
-            operand_payload[requester_index]   = '{
-              addr   : requester_metadata_q[requester_index].addr >> $clog2(NrBanks),
-              opqueue: opqueue_e'(requester_index),
-              default: '0 // this is a read operation
-            };
+            if (requester_metadata_q[requester_index].source_snapshot_replay) begin
+              source_snapshot_replay_valid_o[requester_index] =
+                  !stall[requester_index];
+              source_snapshot_replay_index_o[requester_index] =
+                  requester_metadata_q[requester_index].source_snapshot_index;
+            end else begin
+              // Operand request
+              lane_operand_req_transposed[requester_index][bank] =
+                  !stall[requester_index];
+              operand_payload[requester_index] = '{
+                addr   : requester_metadata_q[requester_index].addr >> $clog2(NrBanks),
+                opqueue: opqueue_e'(requester_index),
+                default: '0 // this is a read operation
+              };
+            end
 
-            // Received a grant.
-            if (|operand_requester_gnt[requester_index]) begin : op_req_grant
+            // Received a VRF grant or issued one snapshot word.
+            if (|(operand_requester_gnt[requester_index]) ||
+                source_snapshot_replay_valid_o[requester_index]) begin : op_req_grant
               // Bump the address pointer
               requester_metadata_d[requester_index].addr = requester_metadata_q[requester_index].addr + 1'b1;
+              requester_metadata_d[requester_index].source_snapshot_index =
+                  requester_metadata_q[requester_index].source_snapshot_index + 1'b1;
 
               // We read less than 64 bits worth of elements
               num_elements = ( 1 << ( unsigned'(EW64) - unsigned'(requester_metadata_q[requester_index].vew) ) );
@@ -476,6 +589,10 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
       // Always keep the hazard bits up to date with the global hazard table
       requester_metadata_d[requester_index].hazard &= global_hazard_table_i[requester_metadata_d[requester_index].id];
+      requester_metadata_d[requester_index].hazard_source_lifetime &=
+          global_hazard_table_i[requester_metadata_d[requester_index].id];
+      requester_metadata_d[requester_index].hazard_wait_complete &=
+          global_hazard_table_i[requester_metadata_d[requester_index].id];
 
       // Kill all store-unit, idx, and mem-masked requests in case of exceptions
       if (lsu_ex_flush_o && (requester_index == StA || requester_index == SlideAddrGenA || requester_index == MaskM)) begin : vlsu_exception_idle
@@ -499,6 +616,274 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         requester_metadata_q[requester_index] <= requester_metadata_d[requester_index];
       end
     end
+
+`ifdef FOR_VERIFY
+    logic debug_maskb_target_q;
+    logic debug_group_hazard_q;
+    logic debug_vfmvfs416_q;
+    logic debug_vzext_reshuffle_q;
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        debug_maskb_target_q <= 1'b0;
+        debug_group_hazard_q <= 1'b0;
+        debug_vfmvfs416_q <= 1'b0;
+        debug_vzext_reshuffle_q <= 1'b0;
+      end else if ($test$plusargs("ARA_DEBUG_VZEXT_RESHUFFLE") &&
+                   requester_index == SlideAddrGenA) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index] &&
+            operand_request_i[requester_index].id == 3 &&
+            operand_request_i[requester_index].vs == 5'd19 &&
+            operand_request_i[requester_index].vl == 16 &&
+            operand_request_i[requester_index].eew == EW32 &&
+            operand_request_i[requester_index].vtype.vsew == EW16) begin
+          debug_vzext_reshuffle_q <= 1'b1;
+        end else if (debug_vzext_reshuffle_q &&
+                     state_d[requester_index] == IDLE) begin
+          debug_vzext_reshuffle_q <= 1'b0;
+        end
+      end else if ($test$plusargs("ARA_DEBUG_MASKB") && requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index] &&
+            operand_request_i[requester_index].id == '0 &&
+            operand_request_i[requester_index].vs inside {5'd2, 5'd24}) begin
+          debug_maskb_target_q <= 1'b1;
+        end else if (debug_maskb_target_q && state_d[requester_index] == IDLE) begin
+          debug_maskb_target_q <= 1'b0;
+        end
+      end else if ($test$plusargs("ARA_DEBUG_GROUP_HAZARD") && requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index] &&
+            operand_request_i[requester_index].id == 1 &&
+            operand_request_i[requester_index].vs == 5'd11) begin
+          debug_group_hazard_q <= 1'b1;
+        end else if (debug_group_hazard_q && state_d[requester_index] == IDLE) begin
+          debug_group_hazard_q <= 1'b0;
+        end
+      end else if ($test$plusargs("ARA_DEBUG_VFMVFS416") && requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index] &&
+            operand_request_i[requester_index].vs == 5'd17 &&
+            operand_request_i[requester_index].vl == 1) begin
+          debug_vfmvfs416_q <= 1'b1;
+        end else if (debug_vfmvfs416_q && state_d[requester_index] == IDLE) begin
+          debug_vfmvfs416_q <= 1'b0;
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && debug_vzext_reshuffle_q && requester_index == SlideAddrGenA) begin
+        $display("[ARA_VZEXT_RESHUFFLE_REQ] %m t=%0t state=%0d addr=%0d len=%0d qready=%0b req=%b gnt=%b issued=%0b",
+                 $time, state_q[requester_index],
+                 requester_metadata_q[requester_index].addr,
+                 requester_metadata_q[requester_index].len,
+                 operand_queue_ready_i[requester_index],
+                 lane_operand_req_transposed[requester_index],
+                 operand_requester_gnt[requester_index],
+                 operand_issued_o[requester_index]);
+      end
+    end
+
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_VFMVFS416") &&
+          requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_i[requester_index].vs == 5'd17 &&
+            operand_request_i[requester_index].vl == 1) begin
+          $display("[ARA_VFMVFS416_CMD] t=%0t path=%m state=%0d ready=%0b id=%0d vs=%0d eew=%0d vl=%0d vstart=%0d hazard=%b",
+                   $time, state_q[requester_index],
+                   operand_request_ready_o[requester_index],
+                   operand_request_i[requester_index].id,
+                   operand_request_i[requester_index].vs,
+                   operand_request_i[requester_index].eew,
+                   operand_request_i[requester_index].vl,
+                   operand_request_i[requester_index].vstart,
+                   operand_request_i[requester_index].hazard);
+        end
+        if (debug_vfmvfs416_q) begin
+          $display("[ARA_VFMVFS416_REQ] t=%0t path=%m state=%0d addr=%0d len=%0d req=%b gnt=%b issued=%0b vrf_word_addr=%0d",
+                   $time, state_q[requester_index],
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].len,
+                   lane_operand_req_transposed[requester_index],
+                   operand_requester_gnt[requester_index],
+                   operand_issued_o[requester_index],
+                   operand_payload[requester_index].addr);
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_MASKB") && requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_i[requester_index].id == '0 &&
+            operand_request_i[requester_index].vs inside {5'd2, 5'd24}) begin
+          $display("[ARA_MASKB_CMD] t=%0t path=%m state=%0d ready=%0b vs=%0d vl=%0d vstart=%0d hazard=%b wait=%b",
+                   $time, state_q[requester_index],
+                   operand_request_ready_o[requester_index],
+                   operand_request_i[requester_index].vs,
+                   operand_request_i[requester_index].vl,
+                   operand_request_i[requester_index].vstart,
+                   operand_request_i[requester_index].hazard,
+                   operand_request_i[requester_index].hazard_wait_complete);
+        end
+        if (debug_maskb_target_q) begin
+          $display("[ARA_MASKB_REQ] t=%0t path=%m state=%0d addr=%0d len=%0d hazard=%b wait=%b global=%b stall=%0b qready=%0b req=%b gnt=%b issued=%0b",
+                   $time, state_q[requester_index],
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].len,
+                   requester_metadata_q[requester_index].hazard,
+                   requester_metadata_q[requester_index].hazard_wait_complete,
+                   global_hazard_table_i[requester_metadata_q[requester_index].id],
+                   stall[requester_index], operand_queue_ready_i[requester_index],
+                   lane_operand_req_transposed[requester_index],
+                   operand_requester_gnt[requester_index],
+                   operand_issued_o[requester_index]);
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_FIXED") &&
+          (requester_index inside {AluA, AluB}) &&
+          (|operand_requester_gnt[requester_index])) begin
+        $display("[ARA_OPREQ] t=%0t queue=%0d id=%0d addr=%0d bank=%0d len=%0d",
+                 $time, requester_index,
+                 requester_metadata_q[requester_index].id,
+                 requester_metadata_q[requester_index].addr,
+                 requester_metadata_q[requester_index].addr[idx_width(NrBanks)-1:0],
+                 requester_metadata_q[requester_index].len);
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_MULTI_READER_WAR") &&
+          debug_addr_opreq_cycle_q > 65000 &&
+          debug_addr_opreq_cycle_q % 50 == 0 &&
+          state_q[requester_index] == REQUESTING &&
+          requester_metadata_q[requester_index].id inside {4, 5, 6}) begin
+        $display("[ARA_MULTI_READER_REQ] t=%0t path=%m q=%0d id=%0d state=%0d addr=%0d len=%0d hazard=%b wait=%b global=%b written=%b stall=%0b qready=%0b req=%b gnt=%b",
+                 $time, requester_index,
+                 requester_metadata_q[requester_index].id,
+                 state_q[requester_index],
+                 requester_metadata_q[requester_index].addr,
+                 requester_metadata_q[requester_index].len,
+                 requester_metadata_q[requester_index].hazard,
+                 requester_metadata_q[requester_index].hazard_wait_complete,
+                 global_hazard_table_i[requester_metadata_q[requester_index].id],
+                 vinsn_result_written_q, stall[requester_index],
+                 operand_queue_ready_i[requester_index],
+                 lane_operand_req_transposed[requester_index],
+                 operand_requester_gnt[requester_index]);
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_SEGMENT_MASK") &&
+          requester_index == MaskM) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index]) begin
+          $display("[ARA_SEG_MASK_OPREQ] %m t=%0t id=%0d vs=%0d vl=%0d vstart=%0d eew=%0d vsew=%0d",
+                   $time, operand_request_i[requester_index].id,
+                   operand_request_i[requester_index].vs,
+                   operand_request_i[requester_index].vl,
+                   operand_request_i[requester_index].vstart,
+                   operand_request_i[requester_index].eew,
+                   operand_request_i[requester_index].vtype.vsew);
+        end
+        if (|operand_requester_gnt[requester_index]) begin
+          $display("[ARA_SEG_MASK_VRF_REQ] %m t=%0t id=%0d addr=%0d bank=%0d len=%0d",
+                   $time, requester_metadata_q[requester_index].id,
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].addr[idx_width(NrBanks)-1:0],
+                   requester_metadata_q[requester_index].len);
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_ADDR_OPREQ") &&
+          requester_index == SlideAddrGenA) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index]) begin
+          $display("[ARA_ADDR_OPREQ_CMD] %m t=%0t id=%0d vs=%0d vl=%0d vstart=%0d eew=%0d vsew=%0d scale=%0b hazard=%b",
+                   $time, operand_request_i[requester_index].id,
+                   operand_request_i[requester_index].vs,
+                   operand_request_i[requester_index].vl,
+                   operand_request_i[requester_index].vstart,
+                   operand_request_i[requester_index].eew,
+                   operand_request_i[requester_index].vtype.vsew,
+                   operand_request_i[requester_index].scale_vl,
+                   operand_request_i[requester_index].hazard);
+        end
+        if (state_q[requester_index] == REQUESTING &&
+            debug_addr_opreq_cycle_q % 1000 == 0) begin
+          $display("[ARA_ADDR_OPREQ_STATE] %m t=%0t id=%0d addr=%0d len=%0d hazard=%b global=%b stall=%0b qready=%0b req=%b gnt=%b",
+                   $time, requester_metadata_q[requester_index].id,
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].len,
+                   requester_metadata_q[requester_index].hazard,
+                   global_hazard_table_i[requester_metadata_q[requester_index].id],
+                   stall[requester_index], operand_queue_ready_i[requester_index],
+                   lane_operand_req_transposed[requester_index],
+                   operand_requester_gnt[requester_index]);
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && $test$plusargs("ARA_DEBUG_DEP_CHAIN") &&
+          requester_index inside {AluA, AluB, MulFPUA, MulFPUB, MulFPUC}) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_ready_o[requester_index]) begin
+          $display("[ARA_DEP_CMD] %m t=%0t q=%0d id=%0d vs=%0d eew=%0d vsew=%0d wide=%0b hazard=%b",
+                   $time, requester_index, operand_request_i[requester_index].id,
+                   operand_request_i[requester_index].vs,
+                   operand_request_i[requester_index].eew,
+                   operand_request_i[requester_index].vtype.vsew,
+                   operand_request_i[requester_index].cvt_resize == CVT_WIDE,
+                   operand_request_i[requester_index].hazard);
+        end
+        if (|operand_requester_gnt[requester_index]) begin
+          $display("[ARA_DEP_READ] %m t=%0t q=%0d id=%0d addr=%0d len=%0d hazard=%b written=%b stall=%0b",
+                   $time, requester_index,
+                   requester_metadata_q[requester_index].id,
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].len,
+                   requester_metadata_q[requester_index].hazard,
+                   vinsn_result_written_q, stall[requester_index]);
+        end
+      end
+      if (rst_ni && $test$plusargs("ARA_DEBUG_GROUP_HAZARD") &&
+          requester_index == MaskB) begin
+        if (operand_request_valid_i[requester_index] &&
+            operand_request_i[requester_index].id == 1 &&
+            operand_request_i[requester_index].vs == 5'd11) begin
+          $display("[ARA_GROUP_MASKB_CMD] t=%0t path=%m state=%0d ready=%0b vl=%0d vstart=%0d hazard=%b",
+                   $time, state_q[requester_index],
+                   operand_request_ready_o[requester_index],
+                   operand_request_i[requester_index].vl,
+                   operand_request_i[requester_index].vstart,
+                   operand_request_i[requester_index].hazard);
+        end
+        if (debug_group_hazard_q) begin
+          $display("[ARA_GROUP_MASKB_REQ] t=%0t path=%m state=%0d addr=%0d len=%0d hazard=%b global=%b stall=%0b qready=%0b req=%b gnt=%b issued=%0b",
+                   $time, state_q[requester_index],
+                   requester_metadata_q[requester_index].addr,
+                   requester_metadata_q[requester_index].len,
+                   requester_metadata_q[requester_index].hazard,
+                   global_hazard_table_i[requester_metadata_q[requester_index].id],
+                   stall[requester_index], operand_queue_ready_i[requester_index],
+                   lane_operand_req_transposed[requester_index],
+                   operand_requester_gnt[requester_index],
+                   operand_issued_o[requester_index]);
+        end
+      end
+    end
+`endif
   end : gen_operand_requester
 
   ////////////////
@@ -709,5 +1094,47 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     assign bank_wr_vid[bank] = {bank_wr_vld[bank], {5{bank_wr_vld[bank]}} & 5'({vrf_addr_o[bank], 3'(bank)} >> 2)};
   `endif
   end : gen_vrf_arbiters
+
+`ifdef FOR_VERIFY
+  longint unsigned debug_mfpu_cycle_q;
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_DEP_CHAIN")) begin
+      if (alu_result_gnt_o)
+        $display("[ARA_DEP_ALU_WB] %m t=%0t id=%0d addr=%0d be=%02h data=%016h",
+                 $time, alu_result_id_i, alu_result_addr_i,
+                 alu_result_be_i, alu_result_wdata_i);
+      if (mfpu_result_gnt_o)
+        $display("[ARA_DEP_MFPU_WB] %m t=%0t id=%0d addr=%0d be=%02h data=%016h",
+                 $time, mfpu_result_id_i, mfpu_result_addr_i,
+                 mfpu_result_be_i, mfpu_result_wdata_i);
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_mfpu_cycle_q <= '0;
+    end else begin
+      debug_mfpu_cycle_q <= debug_mfpu_cycle_q + 1'b1;
+      if ($test$plusargs("ARA_DEBUG_MFPU_STALL") &&
+          debug_mfpu_cycle_q != 0 && debug_mfpu_cycle_q % 10000 == 0) begin
+        $display("[ARA_MFPU_OPREQ] %m t=%0t cyc=%0d A=%0d/id%0d/len%0d/h%b/s%0b/q%0b B=%0d/id%0d/len%0d/h%b/s%0b/q%0b C=%0d/id%0d/len%0d/h%b/s%0b/q%0b",
+                 $time, debug_mfpu_cycle_q,
+                 state_q[MulFPUA], requester_metadata_q[MulFPUA].id,
+                 requester_metadata_q[MulFPUA].len,
+                 requester_metadata_q[MulFPUA].hazard, stall[MulFPUA],
+                 operand_queue_ready_i[MulFPUA],
+                 state_q[MulFPUB], requester_metadata_q[MulFPUB].id,
+                 requester_metadata_q[MulFPUB].len,
+                 requester_metadata_q[MulFPUB].hazard, stall[MulFPUB],
+                 operand_queue_ready_i[MulFPUB],
+                 state_q[MulFPUC], requester_metadata_q[MulFPUC].id,
+                 requester_metadata_q[MulFPUC].len,
+                 requester_metadata_q[MulFPUC].hazard, stall[MulFPUC],
+                 operand_queue_ready_i[MulFPUC]);
+      end
+    end
+  end
+`endif
 
 endmodule : operand_requester

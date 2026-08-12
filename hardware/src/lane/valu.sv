@@ -140,6 +140,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     vaddr_t addr;
     elen_t wdata;
     strb_t be;
+    vxsat_t vxsat;
     logic mask;
   } payload_t;
 
@@ -232,6 +233,18 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       narrowing = 1'b1;
   endfunction : narrowing
 
+  function automatic strb_t active_from_vstart(
+      vlen_t first_element, vlen_t vstart, vew_e vsew
+  );
+    active_from_vstart = '0;
+    for (int unsigned logical_byte = 0; logical_byte < StrbWidth; logical_byte++) begin
+      automatic int unsigned element_offset = logical_byte >> unsigned'(vsew);
+      automatic int unsigned physical_byte = shuffle_index(logical_byte, 1, vsew);
+      active_from_vstart[physical_byte] =
+          unsigned'(first_element) + element_offset >= unsigned'(vstart);
+    end
+  endfunction : active_from_vstart
+
   // If this is a narrowing instruction, point to which half of the
   // output EEW word we are producing.
   logic narrowing_select_d, narrowing_select_q;
@@ -244,6 +257,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // but does has negligible impact on long vectors
   elen_t sldu_operand_q;
   logic  sldu_alu_valid_q, sldu_alu_ready_d;
+
   spill_register #(
     .T(elen_t)
   ) i_alu_reduction_spill_register (
@@ -375,9 +389,40 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   ///////////////////////
 
   elen_t  valu_result;
-  vxsat_t alu_vxsat, alu_vxsat_q, alu_vxsat_d;
+  vxsat_t alu_vxsat;
 
-  assign alu_vxsat_d = alu_vxsat;
+  // source_snapshot_replay_vs1 passes a narrow source through the normal
+  // zero-extension path. Recover its original low SEW bits in their final
+  // narrowing positions so prestart and masked-off old-vd elements can be
+  // written back in the correct physical layout.
+  elen_t masked_narrow_preserve_data;
+  strb_t masked_narrow_preserve_be;
+  always_comb begin
+    masked_narrow_preserve_data = '0;
+    masked_narrow_preserve_be   = '0;
+    unique case (vinsn_issue_q.vtype.vsew)
+      EW8: begin
+        for (int unsigned e = 0; e < 4; e++) begin
+          automatic int unsigned dst = 2 * e + narrowing_select_q;
+          masked_narrow_preserve_data[8*dst +: 8] = alu_operand_a[16*e +: 8];
+          masked_narrow_preserve_be[dst] = 1'b1;
+        end
+      end
+      EW16: begin
+        for (int unsigned e = 0; e < 2; e++) begin
+          automatic int unsigned dst = 2 * e + narrowing_select_q;
+          masked_narrow_preserve_data[16*dst +: 16] = alu_operand_a[32*e +: 16];
+          masked_narrow_preserve_be[2*dst +: 2] = '1;
+        end
+      end
+      EW32: begin
+        automatic int unsigned dst = narrowing_select_q;
+        masked_narrow_preserve_data[32*dst +: 32] = alu_operand_a[31:0];
+        masked_narrow_preserve_be[4*dst +: 4] = '1;
+      end
+      default:;
+    endcase
+  end
 
   simd_alu #(
     .FixPtSupport      (FixPtSupport                                                    )
@@ -410,6 +455,365 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   logic [1:0] issue_effective_eew, commit_effective_eew;
   logic [6:0] element_cnt_issue;
   logic [6:0] element_cnt_commit;
+
+`ifdef FOR_VERIFY
+  logic [9:0] reduction_debug_quiet_q;
+  logic [5:0] debug_vadd_vl1_cycle_q;
+  logic       debug_vadd_vl1_wait_q;
+  logic [6:0] debug_vadd_vl1_wait_cycle_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_vadd_vl1_cycle_q <= '0;
+    end else if (!(vinsn_issue_valid && vinsn_issue_q.op == VADD &&
+                   vinsn_issue_q.vd == 5'd8 && vinsn_issue_q.vl == 1)) begin
+      debug_vadd_vl1_cycle_q <= '0;
+    end else if (debug_vadd_vl1_cycle_q != '1) begin
+      debug_vadd_vl1_cycle_q <= debug_vadd_vl1_cycle_q + 1'b1;
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_vadd_vl1_wait_q       <= 1'b0;
+      debug_vadd_vl1_wait_cycle_q <= '0;
+    end else begin
+      if (vfu_operation_valid_i && vfu_operation_i.op == VADD &&
+          vfu_operation_i.vd == 5'd8 && vfu_operation_i.vl == 1) begin
+        debug_vadd_vl1_wait_q       <= 1'b1;
+        debug_vadd_vl1_wait_cycle_q <= '0;
+      end else if (debug_vadd_vl1_wait_q &&
+                   debug_vadd_vl1_wait_cycle_q != 7'h7f) begin
+        debug_vadd_vl1_wait_cycle_q <= debug_vadd_vl1_wait_cycle_q + 1'b1;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VADD_VL1") && lane_id_i == '0 &&
+        debug_vadd_vl1_wait_q && debug_vadd_vl1_wait_cycle_q < 7'd64) begin
+      $display("[ARA_VADD_VL1_HEAD] t=%0t age=%0d q=%0d/%0d p=%0d/%0d head=id%0d/op%0d/vd%0d/vl%0d rem=%0d->%0d op_v=%b op_r=%b mask=%0b/%0b valu=%0b rq=%0d/%0b state=%0d",
+               $time, debug_vadd_vl1_wait_cycle_q,
+               vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt,
+               vinsn_queue_q.issue_pnt, vinsn_queue_q.commit_pnt,
+               vinsn_issue_q.id, vinsn_issue_q.op, vinsn_issue_q.vd,
+               vinsn_issue_q.vl, issue_cnt_q, issue_cnt_d,
+               alu_operand_valid_i, alu_operand_ready_o,
+               mask_valid_i, mask_ready_o, valu_valid,
+               result_queue_cnt_q, result_queue_full, alu_state_q);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMNAND_MASK") && valu_valid &&
+        vinsn_issue_q.op == VMNAND && vinsn_issue_q.vd == 5'd30) begin
+      $display("[ARA_VMNAND_MASK] t=%0t lane=%0d id=%0d vl=%0d rem=%0d a=%016h b=%016h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.vl,
+               issue_cnt_q, alu_operand_a, alu_operand_b, valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VADD_VL1") && lane_id_i == '0 &&
+        vinsn_issue_valid && vinsn_issue_q.op == VADD &&
+        vinsn_issue_q.vd == 5'd8 && vinsn_issue_q.vl == 1 &&
+        debug_vadd_vl1_cycle_q < 6'd32) begin
+      $display("[ARA_VADD_VL1_VALU] t=%0t age=%0d id=%0d issue=%0d->%0d q=%0d/%0d op_v=%b op_r=%b mask=%0b/%0b valu=%0b rq=%0d/%0b state=%0d",
+               $time, debug_vadd_vl1_cycle_q, vinsn_issue_q.id,
+               issue_cnt_q, issue_cnt_d, vinsn_queue_q.issue_cnt,
+               vinsn_queue_q.commit_cnt, alu_operand_valid_i,
+               alu_operand_ready_o, mask_valid_i, mask_ready_o, valu_valid,
+               result_queue_cnt_q, result_queue_full, alu_state_q);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMUL402")) begin
+      if (!vinsn_queue_full && vfu_operation_valid_i &&
+          vfu_operation_i.op == VMUL && vfu_operation_i.vd == 5'd8 &&
+          vfu_operation_i.vl == 11 && vfu_operation_i.vtype.vsew == EW64)
+        $display("[ARA_VMUL402_VALU_ACCEPT] t=%0t lane=%0d id=%0d use_scalar=%0b scalar=%h",
+                 $time, lane_id_i, vfu_operation_i.id,
+                 vfu_operation_i.use_scalar_op, vfu_operation_i.scalar_op);
+      if (vinsn_issue_valid && vinsn_issue_q.op == VMUL &&
+          vinsn_issue_q.vd == 5'd8 && vinsn_issue_q.vl == 11 &&
+          vinsn_issue_q.vtype.vsew == EW64 &&
+          valu_valid)
+        $display("[ARA_VMUL402_VALU] t=%0t lane=%0d id=%0d rem=%0d use_scalar=%0b scalar_raw=%h scalar_mux=%h vec=%h result=%h",
+                 $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+                 vinsn_issue_q.use_scalar_op, vinsn_issue_q.scalar_op,
+                 alu_operand_a, alu_operand_b, valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_LAYOUT428_DATA")) begin
+      if (!vinsn_queue_full && vfu_operation_valid_i &&
+          vfu_operation_i.vd == 5'd8 && vfu_operation_i.vtype.vsew == EW8)
+        $display("[ARA_LAYOUT428_VALU_ACCEPT] t=%0t lane=%0d id=%0d op=%0d vl=%0d scalar=%0b/%016h",
+                 $time, lane_id_i, vfu_operation_i.id, vfu_operation_i.op,
+                 vfu_operation_i.vl, vfu_operation_i.use_scalar_op,
+                 vfu_operation_i.scalar_op);
+      if (vinsn_issue_valid && vinsn_issue_q.vd == 5'd8 &&
+          vinsn_issue_q.vtype.vsew == EW8 && valu_valid)
+        $display("[ARA_LAYOUT428_VALU] t=%0t lane=%0d id=%0d op=%0d vl=%0d rem=%0d a=%016h b=%016h mask=%02h result=%016h be=%02h",
+                 $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+                 vinsn_issue_q.vl, issue_cnt_q, alu_operand_a, alu_operand_b,
+                 mask_i, valu_result,
+                 result_queue_d[result_queue_write_pnt_q].be);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_FIXED") && valu_valid &&
+        vinsn_issue_q.op inside {VSSRA, VSSRL, VNCLIP, VNCLIPU}) begin
+      $display("[ARA_FIXED] t=%0t lane=%0d id=%0d op=%0d sew=%0d rem=%0d opa=%016h opb=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+               vinsn_issue_q.vtype.vsew, issue_cnt_q, alu_operand_a,
+               alu_operand_b, mask_i, valu_result);
+    end
+
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VNSRL_OVERLAP") && valu_valid &&
+        vinsn_issue_q.op == VNSRL && vinsn_issue_q.vd == 5'd24 &&
+        vinsn_issue_q.vtype.vsew == EW8) begin
+      $display("[ARA_VNSRL_OVERLAP] t=%0t lane=%0d id=%0d rem=%0d sel=%0b opa=%016h opb=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               narrowing_select_q, alu_operand_a, alu_operand_b, mask_i,
+               valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VXSAT_FLOW")) begin
+      if (valu_valid && |alu_vxsat)
+        $display("[ARA_VXSAT_VALU_GEN] t=%0t lane=%0d id=%0d op=%0d sew=%0d rem=%0d raw=%02h be=%02h mask=%02h",
+                 $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+                 vinsn_issue_q.vtype.vsew, issue_cnt_q, alu_vxsat,
+                 result_queue_d[result_queue_write_pnt_q].be, mask_i);
+      if (vxsat_flag_o)
+        $display("[ARA_VXSAT_VALU_OUT] t=%0t lane=%0d id=%0d raw=%02h be=%02h valid=%b rp=%0d",
+                 $time, lane_id_i,
+                 result_queue_q[result_queue_read_pnt_q].id,
+                 result_queue_q[result_queue_read_pnt_q].vxsat,
+                 result_queue_q[result_queue_read_pnt_q].be,
+                 result_queue_valid_q, result_queue_read_pnt_q);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VNCLIP") && valu_valid &&
+        vinsn_issue_q.op inside {VNCLIP, VNCLIPU}) begin
+      $display("[ARA_VNCLIP] t=%0t lane=%0d id=%0d op=%0d rem=%0d sel=%0b sew=%0d opa=%016h opb=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+               issue_cnt_q, narrowing_select_q, vinsn_issue_q.vtype.vsew,
+               alu_operand_a, alu_operand_b, mask_i, valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_NARROW_CHAIN") && valu_valid &&
+        vinsn_issue_q.op == VNSRA) begin
+      $display("[ARA_NARROW_VALU] t=%0t lane=%0d id=%0d rem=%0d sel=%0b sew=%0d opa=%016h opb=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               narrowing_select_q, vinsn_issue_q.vtype.vsew, alu_operand_a,
+               alu_operand_b, mask_i, valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_XOR_CHAIN") && valu_valid &&
+        vinsn_issue_q.op == VXOR) begin
+      $display("[ARA_XOR_VALU] t=%0t lane=%0d id=%0d rem=%0d sew=%0d opa=%016h opb=%016h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               vinsn_issue_q.vtype.vsew, alu_operand_a, alu_operand_b,
+               valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VXOR297") &&
+        vinsn_issue_q.op == VXOR && vinsn_issue_q.vd == 5'd31 &&
+        (valu_valid || mask_valid_i)) begin
+      $display("[ARA_VXOR297_VALU] t=%0t lane=%0d id=%0d rem=%0d sew=%0d vm=%0b mask_valid=%0b mask=%02h valu=%0b a=%016h b=%016h result=%016h be=%02h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               vinsn_issue_q.vtype.vsew, vinsn_issue_q.vm, mask_valid_i,
+               mask_i, valu_valid, alu_operand_a, alu_operand_b, valu_result,
+               result_queue_d[result_queue_write_pnt_q].be);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VREDXOR") &&
+        (vinsn_issue_q.op inside {VSBC, VREDXOR} ||
+         vinsn_commit.op inside {VSBC, VREDXOR})) begin
+      $display("[ARA_VREDXOR] t=%0t lane=%0d state=%0d->%0d q=%0d/%0d p=%0d/%0d issue=id%0d/op%0d/vl%0d/rem%0d->%0d commit=id%0d/op%0d/vl%0d/rem%0d->%0d rq=%0d->%0d rp=%0d wp=%0d head=id%0d/addr%0d/v%0b result=%0b/%0b valu=%0b first=%0b a=%016h b=%016h out=%016h done=%b",
+               $time, lane_id_i, alu_state_q, alu_state_d,
+               vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt,
+               vinsn_queue_q.issue_pnt, vinsn_queue_q.commit_pnt,
+               vinsn_issue_q.id, vinsn_issue_q.op, vinsn_issue_q.vl,
+               issue_cnt_q, issue_cnt_d,
+               vinsn_commit.id, vinsn_commit.op, vinsn_commit.vl,
+               commit_cnt_q, commit_cnt_d,
+               result_queue_cnt_q, result_queue_cnt_d,
+               result_queue_read_pnt_q, result_queue_write_pnt_q,
+               result_queue_q[result_queue_read_pnt_q].id,
+               result_queue_q[result_queue_read_pnt_q].addr,
+               result_queue_valid_q[result_queue_read_pnt_q],
+               alu_result_req_o, alu_result_gnt_i, valu_valid, first_op_q,
+               alu_operand_a, alu_operand_b, valu_result, alu_vinsn_done_o);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VREDMIN") &&
+        vinsn_issue_valid && vinsn_issue_q.op == VREDMIN &&
+        vinsn_issue_q.vd == 5'd19 &&
+        (valu_valid || alu_red_valid_o || sldu_alu_valid_q)) begin
+      $display("[ARA_VREDMIN] t=%0t lane=%0d id=%0d state=%0d rem=%0d a=%016h b=%016h mask_v=%0b mask=%02h red_mask=%02h result=%016h tx=%0b/%0b rx=%0b/%0b rx_data=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, alu_state_q, issue_cnt_q,
+               alu_operand_a, alu_operand_b, mask_valid_i, mask_i, red_mask,
+               valu_result, alu_red_valid_o, alu_red_ready_i,
+               sldu_alu_valid_q, sldu_alu_ready_d, sldu_operand_q);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VREDMAX_VL1") &&
+        vinsn_issue_valid && vinsn_issue_q.op == VREDMAX &&
+        vinsn_issue_q.vd == 5'd22 &&
+        (valu_valid || alu_red_valid_o || sldu_alu_valid_q ||
+         alu_result_req_o)) begin
+      $display("[ARA_VREDMAX_VL1] t=%0t lane=%0d id=%0d state=%0d rem=%0d first=%0b a=%016h b=%016h op_v=%b op_r=%b mask_v=%0b mask=%02h red_mask=%02h result=%016h tx=%0b/%0b rx=%0b/%0b rx_data=%016h wb=%0b/%0b wb_data=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, alu_state_q, issue_cnt_q,
+               first_op_q, alu_operand_a, alu_operand_b,
+               alu_operand_valid_i, alu_operand_ready_o,
+               mask_valid_i, mask_i, red_mask, valu_result,
+               alu_red_valid_o, alu_red_ready_i,
+               sldu_alu_valid_q, sldu_alu_ready_d, sldu_operand_q,
+               alu_result_req_o, alu_result_gnt_i, alu_result_wdata_o);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VWREDSUM_OVERLAP") &&
+        vinsn_issue_valid && vinsn_issue_q.op == VWREDSUM &&
+        vinsn_issue_q.vd == 5'd7 && vinsn_issue_q.vtype.vsew == EW64 &&
+        (valu_valid || alu_red_valid_o || sldu_alu_valid_q ||
+         alu_result_req_o || (|alu_operand_ready_o))) begin
+      $display("[ARA_VWREDSUM_OVERLAP] t=%0t lane=%0d id=%0d state=%0d->%0d rem=%0d->%0d first=%0b a=%016h b=%016h op_v=%b op_r=%b mask_v=%0b mask=%02h red_mask=%02h result=%016h tx=%0b/%0b rx=%0b/%0b rx_data=%016h wb=%0b/%0b wb_data=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, alu_state_q, alu_state_d,
+               issue_cnt_q, issue_cnt_d, first_op_q, alu_operand_a,
+               alu_operand_b, alu_operand_valid_i, alu_operand_ready_o,
+               mask_valid_i, mask_i, red_mask, valu_result,
+               alu_red_valid_o, alu_red_ready_i,
+               sldu_alu_valid_q, sldu_alu_ready_d, sldu_operand_q,
+               alu_result_req_o, alu_result_gnt_i, alu_result_wdata_o);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMSLEU14") && valu_valid &&
+        vinsn_issue_q.op == VMSLEU && vinsn_issue_q.vd == 5'd7) begin
+      $display("[ARA_VMSLEU14_VALU] t=%0t lane=%0d id=%0d rem=%0d sew=%0d scalar=%016h src=%016h result=%016h be=%02h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               vinsn_issue_q.vtype.vsew, alu_operand_a, alu_operand_b,
+               valu_result, result_queue_d[result_queue_write_pnt_q].be);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMSOF_STALL") &&
+        (vinsn_issue_q.op == VMSOF || vinsn_commit.op == VMSOF)) begin
+      $display("[ARA_VMSOF_VALU] t=%0t lane=%0d state=%0d q=%0d/%0d p=%0d/%0d issue=id%0d/op%0d/rem%0d->%0d commit=id%0d/op%0d/rem%0d->%0d op=%b/%b mask=%0b alu=%0b result=%0b/%0b rq=%0d->%0d done=%b",
+               $time, lane_id_i, alu_state_q,
+               vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt,
+               vinsn_queue_q.issue_pnt, vinsn_queue_q.commit_pnt,
+               vinsn_issue_q.id, vinsn_issue_q.op, issue_cnt_q, issue_cnt_d,
+               vinsn_commit.id, vinsn_commit.op, commit_cnt_q, commit_cnt_d,
+               alu_operand_valid_i, alu_operand_ready_o, mask_valid_i,
+               valu_valid, alu_result_req_o, alu_result_gnt_i,
+               result_queue_cnt_q, result_queue_cnt_d, alu_vinsn_done_o);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMINU") && valu_valid &&
+        vinsn_issue_q.op == VMINU) begin
+      $display("[ARA_VMINU] t=%0t lane=%0d id=%0d rem=%0d scalar=%016h src=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               alu_operand_a, alu_operand_b, mask_i, valu_result);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_DEP_CHAIN") && valu_valid &&
+        vinsn_issue_q.op == VSRL) begin
+      $display("[ARA_DEP_VSRL] %m t=%0t lane=%0d id=%0d rem=%0d sew=%0d a=%016h b=%016h mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               vinsn_issue_q.vtype.vsew, alu_operand_a, alu_operand_b,
+               mask_i, valu_result);
+    end
+  end
+
+  always @(negedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_AVERAGE") && valu_valid &&
+        vinsn_issue_q.op inside {VAADD, VAADDU, VASUB, VASUBU}) begin
+      $display("[ARA_AVERAGE] t=%0t lane=%0d id=%0d op=%0d sew=%0d rem=%0d opa=%016h opb=%016h vm=%0b mask_valid=%0b mask=%02h result=%016h",
+               $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+               vinsn_issue_q.vtype.vsew, issue_cnt_q, alu_operand_a,
+               alu_operand_b, vinsn_issue_q.vm, mask_valid_i, mask_i,
+               valu_result);
+    end
+  end
+
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      reduction_debug_quiet_q <= '0;
+    end else if ($test$plusargs("ARA_DEBUG_REDUCTION")) begin
+      if (vfu_operation_valid_i && is_reduction(vfu_operation_i.op)) begin
+        $display("[ARA_RED_ACCEPT] t=%0t lane=%0d id=%0d op=%0d vl=%0d vm=%0b vd=%0d q_issue=%0d q_commit=%0d",
+                 $time, lane_id_i, vfu_operation_i.id, vfu_operation_i.op,
+                 vfu_operation_i.vl, vfu_operation_i.vm, vfu_operation_i.vd,
+                 vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt);
+      end
+
+      if ((vinsn_issue_valid && is_reduction(vinsn_issue_q.op)) ||
+          (alu_state_q != NO_REDUCTION)) begin
+        automatic logic reduction_event;
+        reduction_event = (alu_state_q != alu_state_d) ||
+                          (issue_cnt_q != issue_cnt_d) ||
+                          (commit_cnt_q != commit_cnt_d) ||
+                          (|alu_operand_ready_o) || alu_red_valid_o ||
+                          alu_red_ready_i || sldu_alu_valid_q ||
+                          sldu_alu_ready_d || alu_result_req_o ||
+                          alu_result_gnt_i || (|alu_vinsn_done_o);
+        if (reduction_event || (&reduction_debug_quiet_q)) begin
+          $display("[ARA_RED_STATE] t=%0t lane=%0d id=%0d op=%0d state=%0d->%0d issue=%0d->%0d commit=%0d->%0d first=%0b->%0b rx=%0d->%0d trans=%0d->%0d simd=%0d/%0d q=%0d/%0d rq=%0d op_v=%b op_r=%b mask_v=%0b red_tx=%0b/%0b red_rx=%0b/%0b result=%0b/%0b done=%b",
+                   $time, lane_id_i, vinsn_issue_q.id, vinsn_issue_q.op,
+                   alu_state_q, alu_state_d, issue_cnt_q, issue_cnt_d,
+                   commit_cnt_q, commit_cnt_d, first_op_q, first_op_d,
+                   reduction_rx_cnt_q, reduction_rx_cnt_d,
+                   sldu_transactions_cnt_q, sldu_transactions_cnt_d,
+                   simd_red_cnt_q, simd_red_cnt_max_q,
+                   vinsn_queue_q.issue_cnt, vinsn_queue_q.commit_cnt,
+                   result_queue_cnt_q, alu_operand_valid_i,
+                   alu_operand_ready_o, mask_valid_i, alu_red_valid_o,
+                   alu_red_ready_i, sldu_alu_valid_q, sldu_alu_ready_d,
+                   alu_result_req_o, alu_result_gnt_i, alu_vinsn_done_o);
+          reduction_debug_quiet_q <= '0;
+        end else begin
+          reduction_debug_quiet_q <= reduction_debug_quiet_q + 1'b1;
+        end
+      end else begin
+        reduction_debug_quiet_q <= '0;
+      end
+
+    end else begin
+      reduction_debug_quiet_q <= '0;
+    end
+  end
+`endif
 
   always_comb begin: p_valu
     // Maintain state
@@ -494,11 +898,41 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
               // Store the result in the result queue
               result_queue_d[result_queue_write_pnt_q].wdata = result_queue_q[result_queue_write_pnt_q].wdata | valu_result;
+              if (vinsn_issue_q.preserve_narrow_vd) begin
+                automatic strb_t narrow_active_be =
+                    active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
+                                       vinsn_issue_q.vstart,
+                                       vinsn_issue_q.vtype.vsew);
+                automatic strb_t narrow_execute_be = narrow_active_be &
+                    (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
+                for (int unsigned b = 0; b < StrbWidth; b++) begin
+                  if (masked_narrow_preserve_be[b] && !narrow_execute_be[b])
+                    result_queue_d[result_queue_write_pnt_q].wdata[8*b +: 8] =
+                        masked_narrow_preserve_data[8*b +: 8];
+                end
+              end
+              result_queue_d[result_queue_write_pnt_q].vxsat =
+                  result_queue_q[result_queue_write_pnt_q].vxsat |
+                  (alu_vxsat & (vinsn_issue_q.preserve_narrow_vd
+                      ? (active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
+                                            vinsn_issue_q.vstart,
+                                            vinsn_issue_q.vtype.vsew) &
+                         (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i))
+                      : {StrbWidth{1'b1}}));
               result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + ((vinsn_issue_q.vl - issue_cnt_q) >> (unsigned'(EW64) - unsigned'(vinsn_issue_q.vtype.vsew)));
               result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
               result_queue_d[result_queue_write_pnt_q].mask  = vinsn_issue_q.vfu == VFU_MaskUnit;
               if (!narrowing(vinsn_issue_q.op) || !narrowing_select_q)
-                result_queue_d[result_queue_write_pnt_q].be = be(element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm || vinsn_issue_q.op inside {VMERGE, VADC, VSBC} ? {StrbWidth{1'b1}} : mask_i);
+                result_queue_d[result_queue_write_pnt_q].be =
+                    be(element_cnt, vinsn_issue_q.vtype.vsew) &
+                    (vinsn_issue_q.preserve_narrow_vd
+                     ? {StrbWidth{1'b1}}
+                     : active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
+                                          vinsn_issue_q.vstart,
+                                          vinsn_issue_q.vtype.vsew)) &
+                    (vinsn_issue_q.vm || vinsn_issue_q.preserve_narrow_vd ||
+                     vinsn_issue_q.op inside {VMERGE, VADC, VSBC}
+                     ? {StrbWidth{1'b1}} : mask_i);
 
               // Is this a narrowing instruction?
               if (narrowing(vinsn_issue_q.op)) begin
@@ -668,19 +1102,21 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           // Lanes != 0 commit here after a reduction
           prevent_commit = 1'b0;
 
-          // Bump issue counter and pointers
-          vinsn_queue_d.issue_cnt -= 1;
-          if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
-            vinsn_queue_d.issue_pnt = '0;
-          else
-            vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
+          // Completion can be delayed while an older queued result drains.
+          // Finalize the reduction issue entry only once; after the pointer
+          // advances it may already name a younger instruction.
+          if (vinsn_issue_valid && vinsn_issue_q.id == vinsn_commit.id) begin
+            vinsn_queue_d.issue_cnt -= 1;
+            if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+              vinsn_queue_d.issue_pnt = '0;
+            else
+              vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt + 1;
 
-          // Assign vector length for next instruction in the instruction queue
-          if (vinsn_queue_d.issue_cnt != 0)
-            issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
+            if (vinsn_queue_d.issue_cnt != 0)
+              issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
 
-          // Give the done to the main sequencer
-          commit_cnt_d = '0;
+            commit_cnt_d = '0;
+          end
         end
         SIMD_REDUCTION: begin
           if (lane_id_i == '0) begin
@@ -696,7 +1132,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
             if (simd_red_cnt_q != simd_red_cnt_max_q) begin
               simd_red_cnt_d = simd_red_cnt_q + 1;
               result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
-            end else begin
+            end else if (vinsn_issue_valid &&
+                         vinsn_issue_q.id == vinsn_commit.id) begin
+              // The reduction result may need an extra cycle to drain from
+              // the result queue.  Do not repeat these finalization side
+              // effects while waiting, or a younger issue entry is consumed.
               // Bump issue counter and pointers
               vinsn_queue_d.issue_cnt -= 1;
               if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
@@ -741,7 +1181,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
     // alu saturation calculation
     if (|result_queue_valid_q)
-      vxsat_flag_o = |(alu_vxsat_q & result_queue_q[result_queue_read_pnt_q].be);
+      vxsat_flag_o = |(result_queue_q[result_queue_read_pnt_q].vxsat &
+                       result_queue_q[result_queue_read_pnt_q].be);
 
     // Received a grant from the VRF or MASKU.
     // Deactivate the request.
@@ -765,8 +1206,25 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       end
     end
 
-    // Finished committing the results of a vector instruction
-    if (vinsn_commit_valid && (commit_cnt_d == '0) && !prevent_commit) begin
+    // Finished committing the results of a vector instruction.  The element
+    // counter alone is insufficient when the last result is produced in the
+    // same cycle as the preceding result wins VRF arbitration: in that case a
+    // result for the current vid still remains in the queue.  Keep the vid
+    // live until issue is complete and every queued result has been accepted.
+    begin : commit_completion
+      logic commit_still_issuing;
+      logic commit_result_pending;
+
+      commit_still_issuing = (vinsn_queue_d.issue_cnt != '0) &&
+          (vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt].id == vinsn_commit.id);
+      commit_result_pending = 1'b0;
+      for (int unsigned i = 0; i < ResultQueueDepth; i++) begin
+        commit_result_pending |= result_queue_valid_d[i] &&
+                                 (result_queue_d[i].id == vinsn_commit.id);
+      end
+
+    if (vinsn_commit_valid && (commit_cnt_d == '0) && !prevent_commit &&
+        !commit_still_issuing && !commit_result_pending) begin
       // Mark the vector instruction as being done
       alu_vinsn_done_o[vinsn_commit.id] = 1'b1;
 
@@ -782,9 +1240,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       // If this was a reduction, clean the Lane SLDU/ADDRGEN arbiter
       if (is_reduction(vinsn_commit.op)) alu_red_complete_d = 1'b1;
 
-      // Initialize counters and alu state if needed by the next instruction
-      // After a reduction, the next instructions starts after the reduction commits
-      if (is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op) && (vinsn_queue_d.issue_cnt != '0)) begin
+      // Initialize counters and alu state if needed by the next instruction.
+      // The reduction datapath shares the result and commit state with normal
+      // VALU instructions, so a queued reduction may start only after every
+      // older, already-issued instruction has committed.  Equal queue counts
+      // mean that no entry exists between the commit and issue pointers.
+      if ((vinsn_queue_d.issue_cnt != '0) &&
+          (vinsn_queue_d.commit_cnt == vinsn_queue_d.issue_cnt) &&
+          (result_queue_cnt_d == '0) &&
+          is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op)) begin
         // Initialize reduction-related sequential elements
         first_op_d              = 1'b1;
         reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
@@ -795,13 +1259,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         alu_state_d = NO_REDUCTION;
       end
     end
+    end : commit_completion
 
     //////////////////////////////
     //  Accept new instruction  //
     //////////////////////////////
 
     if (!vinsn_queue_full && vfu_operation_valid_i &&
-      (vfu_operation_i.vfu == VFU_Alu || vfu_operation_i.op inside {[VMSEQ:VCOMPRESS]})) begin
+      (vfu_operation_i.vfu == VFU_Alu ||
+       (vfu_operation_i.op inside {[VMSEQ:VCOMPRESS]} && vfu_operation_i.op != VID))) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = vfu_operation_i;
       // Do not wait for masks if, during a reduction, this lane is just a pass-through
       // The only valid instructions here with vl == '0 are reductions
@@ -816,7 +1282,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       if ((vinsn_queue_d.issue_cnt == '0) && !prevent_commit) begin
         // INTRA_LANE_REDUCTION state needs the result queue
         // Start the reduction only if the commit queue (so, the result queue, too) is empty
-        alu_state_d = is_reduction(vfu_operation_i.op) && (vinsn_queue_d.commit_cnt == '0) ? INTRA_LANE_REDUCTION : NO_REDUCTION;
+        alu_state_d = is_reduction(vfu_operation_i.op) &&
+                      (vinsn_queue_d.commit_cnt == '0) &&
+                      (result_queue_cnt_d == '0)
+                      ? INTRA_LANE_REDUCTION : NO_REDUCTION;
         // The next will be the first operation of this instruction
         // This information is useful for reduction operation
         // Initialize reduction-related sequential elements
@@ -856,7 +1325,6 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       first_op_q              <= 1'b0;
       sldu_transactions_cnt_q <= '0;
       simd_red_cnt_max_q      <= '0;
-      alu_vxsat_q             <= '0;
     end else begin
       issue_cnt_q             <= issue_cnt_d;
       commit_cnt_q            <= commit_cnt_d;
@@ -867,7 +1335,6 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       first_op_q              <= first_op_d;
       sldu_transactions_cnt_q <= sldu_transactions_cnt_d;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
-      alu_vxsat_q             <= alu_vxsat_d;
     end
   end
 

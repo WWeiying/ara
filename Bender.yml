@@ -8,9 +8,10 @@ package:
     - "Paul Scheffler <paulsc@iis.ee.ethz.ch>"
 
 dependencies:
-  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.1 }
-  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.22.1 }
-  cva6:               { git: "https://github.com/pulp-platform/cva6.git",               rev: pulp-v2    }
+  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.10 }
+  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.38.0 }
+  cva6:               { git: "git@github.com:WWeiying/cva6.git",                        rev: b29fd3cf906e7f4c71da4c2f46451c4c60a4487f }
+  fpu_div_sqrt_mvp:   { git: "https://github.com/pulp-platform/fpu_div_sqrt_mvp.git",   version: 1.0.4 }
   tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13 }
   apb:                { git: "https://github.com/pulp-platform/apb.git",                version: 0.2.4  }
 
@@ -30,6 +31,9 @@ sources:
     - hardware/include/ara_pkg.sv
 
     # Sources
+    # Compatibility primitive required by the current lane sequencer.
+    - hardware/src/common_cells_compat/fall_through_register_v1.sv
+
     # Level 0
     - hardware/src/segment_sequencer.sv
     # Level 1
@@ -73,6 +77,9 @@ sources:
 
     - target: ara_test
       files:
+        # Verification-only retirement and accelerator-interface tracing
+        - hardware/deps/cva6/core/cva6_rvfi.sv
+        - hardware/tb/ara_commit_monitor.sv
         # Level 1
         - hardware/deps/cva6/corev_apu/tb/common/mock_uart.sv
         - hardware/tb/ara_testharness.sv

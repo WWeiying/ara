@@ -44,6 +44,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Interface with the lane
     output logic                              alu_red_complete_o,
     output logic                              fpu_red_complete_o,
+    output logic                              mfpu_reduction_any_active_o,
+    input  logic                              mfpu_reduction_global_any_active_i,
     // Interface with the operand queues
     input  elen_t          [1:0]              alu_operand_i,
     input  logic           [1:0]              alu_operand_valid_i,
@@ -79,22 +81,17 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     output elen_t          [NrMaskFUnits-1:0] mask_operand_o,
     output logic           [NrMaskFUnits-1:0] mask_operand_valid_o,
     input  logic           [NrMaskFUnits-1:0] mask_operand_ready_i,
-    input  strb_t                             mask_i,
-    input  logic                              mask_valid_i,
-    output logic                              mask_ready_o
+    input  strb_t                             alu_mask_i,
+    input  logic                              alu_mask_valid_i,
+    output logic                              alu_mask_ready_o,
+    input  strb_t                             mfpu_mask_i,
+    input  logic                              mfpu_mask_valid_i,
+    output logic                              mfpu_mask_ready_o
   );
 
   ///////////////
   //  Signals  //
   ///////////////
-
-  // If the mask unit has instruction queue depth > 1, change the following lines.
-  // If we have concurrent masked MUL and ADD operations, mask_i and mask_valid_i are
-  // erroneously broadcasted and accepted to/by both the units. The mask unit must tag its
-  // broadcasted signals if more masked instructions can be in different units at the same time.
-  logic alu_mask_ready;
-  logic mfpu_mask_ready;
-  assign mask_ready_o = alu_mask_ready | mfpu_mask_ready;
 
   // saturation selection
   logic alu_vxsat, mfpu_vxsat;
@@ -146,9 +143,9 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mask_operand_o       (mask_operand_o[MaskFUAlu]      ),
     .mask_operand_valid_o (mask_operand_valid_o[MaskFUAlu]),
     .mask_operand_ready_i (mask_operand_ready_i[MaskFUAlu]),
-    .mask_i               (mask_i                         ),
-    .mask_valid_i         (mask_valid_i                   ),
-    .mask_ready_o         (alu_mask_ready                 )
+    .mask_i               (alu_mask_i                     ),
+    .mask_valid_i         (alu_mask_valid_i               ),
+    .mask_ready_o         (alu_mask_ready_o               )
   );
 
   ///////////////////
@@ -181,6 +178,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mfpu_vinsn_done_o    (mfpu_vinsn_done_o               ),
     // Interface with the lane
     .fpu_red_complete_o   (fpu_red_complete_o              ),
+    .reduction_any_active_o(mfpu_reduction_any_active_o     ),
+    .reduction_global_any_active_i(mfpu_reduction_global_any_active_i),
     // Interface with the operand queues
     .mfpu_operand_i       (mfpu_operand_i                  ),
     .mfpu_operand_valid_i (mfpu_operand_valid_i            ),
@@ -202,9 +201,9 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mask_operand_o       (mask_operand_o[MaskFUMFpu]      ),
     .mask_operand_valid_o (mask_operand_valid_o[MaskFUMFpu]),
     .mask_operand_ready_i (mask_operand_ready_i[MaskFUMFpu]),
-    .mask_i               (mask_i                          ),
-    .mask_valid_i         (mask_valid_i                    ),
-    .mask_ready_o         (mfpu_mask_ready                 )
+    .mask_i               (mfpu_mask_i                     ),
+    .mask_valid_i         (mfpu_mask_valid_i               ),
+    .mask_ready_o         (mfpu_mask_ready_o               )
   );
 
 endmodule : vector_fus_stage

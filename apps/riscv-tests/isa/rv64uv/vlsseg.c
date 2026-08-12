@@ -1026,6 +1026,7 @@ void TEST_CASE1_64(void) {
   VCLEAR(v1);
   VCLEAR(v2);
   stride = 16;
+#if VLEN >= 2048
   VSET(32, e64, m1);
   asm volatile("vlsseg2e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(145, v1, 0xfa3a99086b4b64aa, 0xbb8df43b65bac0d2, 0x511e175802d24608,
@@ -1050,11 +1051,13 @@ void TEST_CASE1_64(void) {
            0x53112b0cc2123035, 0xce4722d4b56cd330, 0x928220385ce8c56d,
            0x180002d7d73b1ae2, 0xd13e73308658ad1f, 0x23def41d77db2d38,
            0xa311951efe71188d, 0xb0899dfea0b44c26);
+#endif
 
   VSET(-1, e64, m1);
   VCLEAR(v1);
   VCLEAR(v2);
   stride = 24;
+#if VLEN >= 2048
   VSET(22, e64, m1);
   asm volatile("vlsseg2e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(149, v1, 0xfa3a99086b4b64aa, 0xa41351c301c72b5b, 0xbf1d53ca3e3c6bf7,
@@ -1072,6 +1075,7 @@ void TEST_CASE1_64(void) {
            0x9ef5b07ca6742028, 0x5428920ecca684b1, 0x4a2bb5a96b1f24f5,
            0x89f5805801f25a66, 0x53112b0cc2123035, 0x14041ab000c9c396,
            0x180002d7d73b1ae2, 0x5142eb4c19644e7d, 0xa311951efe71188d);
+#endif
 
   VSET(-1, e64, m1);
   VCLEAR(v1);
@@ -1124,6 +1128,7 @@ void TEST_CASE2_64(void) {
   VCLEAR(v2);
   VCLEAR(v3);
   stride = 16;
+#if VLEN >= 2048
   VSET(32, e64, m1);
   asm volatile("vlsseg3e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(153, v1, 0xfa3a99086b4b64aa, 0xbb8df43b65bac0d2, 0x511e175802d24608,
@@ -1159,11 +1164,13 @@ void TEST_CASE2_64(void) {
            0x8ec585926ed7af58, 0x14041ab000c9c396, 0xdb402f4b0fd38776,
            0x76c882042e57f707, 0x5142eb4c19644e7d, 0x34affa8555d23fd9,
            0xf96089370f7fa0a7);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);
   VCLEAR(v3);
   stride = 24;
+#if VLEN >= 2048
   VSET(22, e64, m1);
   asm volatile("vlsseg3e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(156, v1, 0xfa3a99086b4b64aa, 0xa41351c301c72b5b, 0xbf1d53ca3e3c6bf7,
@@ -1188,6 +1195,7 @@ void TEST_CASE2_64(void) {
            0x2d52c2213e1497ab, 0xc826aff176ba9a29, 0x8aac4c04213d26aa,
            0xbad7cab9c4062ffc, 0x8ec585926ed7af58, 0x928220385ce8c56d,
            0x76c882042e57f707, 0x23def41d77db2d38, 0xf96089370f7fa0a7);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);
@@ -1247,6 +1255,7 @@ void TEST_CASE3_64(void) {
   VCLEAR(v3);
   VCLEAR(v4);
   stride = 16;
+#if VLEN >= 2048
   VSET(32, e64, m1);
   asm volatile("vlsseg4e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(162, v1, 0xfa3a99086b4b64aa, 0xbb8df43b65bac0d2, 0x511e175802d24608,
@@ -1293,12 +1302,14 @@ void TEST_CASE3_64(void) {
            0xce4722d4b56cd330, 0x928220385ce8c56d, 0x180002d7d73b1ae2,
            0xd13e73308658ad1f, 0x23def41d77db2d38, 0xa311951efe71188d,
            0xb0899dfea0b44c26);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);
   VCLEAR(v3);
   VCLEAR(v4);
   stride = 24;
+#if VLEN >= 2048
   VSET(22, e64, m1);
   asm volatile("vlsseg4e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(166, v1, 0xfa3a99086b4b64aa, 0xa41351c301c72b5b, 0xbf1d53ca3e3c6bf7,
@@ -1330,6 +1341,7 @@ void TEST_CASE3_64(void) {
            0x201b60e0fbbc4acd, 0x6f8c8820840f716e, 0xecd584f402152e19,
            0xb6715b7275106bc1, 0xce4722d4b56cd330, 0xdb402f4b0fd38776,
            0xd13e73308658ad1f, 0x34affa8555d23fd9, 0xb0899dfea0b44c26);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);
@@ -1400,6 +1412,7 @@ void TEST_CASE4_64(void) {
   VCLEAR(v7);
   VCLEAR(v8);
   stride = 16;
+#if VLEN >= 2048
   VSET(32, e64, m1);
   asm volatile("vlsseg8e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(174, v1, 0xfa3a99086b4b64aa, 0xbb8df43b65bac0d2, 0x511e175802d24608,
@@ -1486,6 +1499,7 @@ void TEST_CASE4_64(void) {
            0x53112b0cc2123035, 0xce4722d4b56cd330, 0x928220385ce8c56d,
            0x180002d7d73b1ae2, 0xd13e73308658ad1f, 0x23def41d77db2d38,
            0xa311951efe71188d, 0xb0899dfea0b44c26);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);
@@ -1496,6 +1510,7 @@ void TEST_CASE4_64(void) {
   VCLEAR(v7);
   VCLEAR(v8);
   stride = 24;
+#if VLEN >= 2048
   VSET(22, e64, m1);
   asm volatile("vlsseg8e64.v v1, (%0), %1" ::"r"(INP1), "r"(stride));
   VCMP_U64(182, v1, 0xfa3a99086b4b64aa, 0xa41351c301c72b5b, 0xbf1d53ca3e3c6bf7,
@@ -1555,6 +1570,7 @@ void TEST_CASE4_64(void) {
            0x4a2bb5a96b1f24f5, 0x89f5805801f25a66, 0x53112b0cc2123035,
            0x14041ab000c9c396, 0x180002d7d73b1ae2, 0x5142eb4c19644e7d,
            0xa311951efe71188d);
+#endif
 
   VCLEAR(v1);
   VCLEAR(v2);

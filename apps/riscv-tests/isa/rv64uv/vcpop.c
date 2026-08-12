@@ -50,7 +50,9 @@ void TEST_CASE2(void) {
                "sw %[A], (%1) \n"
                :
                : [A] "r"(scalar), "r"(OUP));
-  XCMP(3, OUP[0], 40);
+  // VLEN=1024, SEW=32 and LMUL=2 cap vl at VLMAX=64. The first 64
+  // mask bits contain 34 set bits; the requested AVL of 128 is not vl.
+  XCMP(3, OUP[0], 34);
 
   VSET(8, e32, m1);
   VLOAD_32(v0, 0xFFFFFFF7FFFFFFFF, 0x88, 0x1, 0x1F, 0xFFFFFFF7FFFFFFFF, 0x88,
@@ -81,7 +83,8 @@ void TEST_CASE2(void) {
                "sw %[A], (%1) \n"
                :
                : [A] "r"(scalar), "r"(OUP));
-  XCMP(6, OUP[0], 80);
+  // With e8,m1, VLMAX is 128 rather than the requested AVL of 256.
+  XCMP(6, OUP[0], 40);
 
   VSET(2, e32, m1);
   VLOAD_8(v2, 0xFF, 0x88);
@@ -99,6 +102,17 @@ void TEST_CASE2(void) {
                :
                : [A] "r"(scalar), "r"(OUP));
   XCMP(8, OUP[0], 4);
+
+  // The final 16-bit popcount slice contains one tail bit. It must not
+  // contribute even when the physical bit in the mask register is set.
+  VSET(80, e8, m1);
+  asm volatile("vmv.v.i v2, -1");
+  VSET(79, e16, m4);
+  asm volatile("vcpop.m %[A], v2 \n"
+               "sw %[A], (%1) \n"
+               :
+               : [A] "r"(scalar), "r"(OUP));
+  XCMP(9, OUP[0], 79);
 }
 
 int main(void) {

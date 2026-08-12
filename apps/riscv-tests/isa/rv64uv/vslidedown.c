@@ -32,6 +32,7 @@ void TEST_CASE1() {
   asm volatile("vslidedown.vi v1, v2, 5");
   VCMP_U32(3, v1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21);
 
+#if VLEN >= 2048
   VSET(32, e64, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
            19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
@@ -39,6 +40,7 @@ void TEST_CASE1() {
   VLOAD_64(v1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
   asm volatile("vslidedown.vi v1, v2, 6");
   VCMP_U64(4, v1, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22);
+#endif
 }
 
 void TEST_CASE2() {
@@ -67,6 +69,7 @@ void TEST_CASE2() {
   asm volatile("vslidedown.vi v1, v2, 5, v0.t");
   VCMP_U32(7, v1, -1, 7, -1, 9, -1, 11, -1, 13, -1, 15, -1, 17, -1, 19, -1, 21);
 
+#if VLEN >= 2048
   VSET(32, e64, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
            19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
@@ -75,6 +78,7 @@ void TEST_CASE2() {
   asm volatile("vslidedown.vi v1, v2, 6, v0.t");
   VCMP_U64(8, v1, -1, 8, -1, 10, -1, 12, -1, 14, -1, 16, -1, 18, -1, 20, -1,
            22);
+#endif
 }
 
 void TEST_CASE3() {
@@ -104,6 +108,7 @@ void TEST_CASE3() {
   asm volatile("vslidedown.vx v1, v2, %[A]" ::[A] "r"(scalar));
   VCMP_U32(11, v1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
 
+#if VLEN >= 2048
   VSET(32, e64, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
            19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
@@ -111,6 +116,7 @@ void TEST_CASE3() {
   VLOAD_64(v1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1);
   asm volatile("vslidedown.vx v1, v2, %[A]" ::[A] "r"(scalar));
   VCMP_U64(12, v1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19);
+#endif
 }
 
 void TEST_CASE4() {
@@ -143,6 +149,7 @@ void TEST_CASE4() {
   asm volatile("vslidedown.vx v1, v2, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U32(15, v1, -1, 5, -1, 7, -1, 9, -1, 11, -1, 13, -1, 15, -1, 17, -1, 19);
 
+#if VLEN >= 2048
   VSET(32, e64, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
            19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
@@ -151,6 +158,7 @@ void TEST_CASE4() {
   VLOAD_8(v0, 0xAA, 0xAA);
   asm volatile("vslidedown.vx v1, v2, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U64(16, v1, -1, 5, -1, 7, -1, 9, -1, 11, -1, 13, -1, 15, -1, 17, -1, 19);
+#endif
 }
 
 // Corner case: NrLanes divides vl, but the stride requires the operand

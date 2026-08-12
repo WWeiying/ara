@@ -55,10 +55,23 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
   alu_sat_operand_t sat_sum, sat_sub;
   vxsat_t     vxsat;
   vxrm_t      vxrm;
-  logic       r;
 
   assign vxrm = vxrm_i;
   assign vxsat_o = vxsat;
+
+  function automatic logic average_rounding_increment(
+    input logic retained_lsb,
+    input logic rounding_bit,
+    input vxrm_t mode
+  );
+    unique case (mode)
+      2'b00: average_rounding_increment = rounding_bit;
+      2'b01: average_rounding_increment = rounding_bit & retained_lsb;
+      2'b10: average_rounding_increment = 1'b0;
+      2'b11: average_rounding_increment = rounding_bit & ~retained_lsb;
+    endcase
+  endfunction : average_rounding_increment
+
   ///////////////////
   //  Comparisons  //
   ///////////////////
@@ -185,44 +198,48 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VAADD, VAADDU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-              automatic logic [ 8:0] sum = opa.w8 [b] + opb.w8 [b];
-                unique case (vxrm)
-                  2'b00: r = sum[0];
-                  2'b01: r = &sum[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sum[1] & (sum[0]!=0);
-                endcase
-                res.w8[b] = (op_i == VAADDU) ? sum[8:1] + r : {sum[7], sum[7:1]} + r;
+                automatic logic        [8:0] sum_u = {1'b0, opb.w8[b]} +
+                                                     {1'b0, opa.w8[b]};
+                automatic logic signed [8:0] sum_s =
+                    $signed({opb.w8[b][7], opb.w8[b]}) +
+                    $signed({opa.w8[b][7], opa.w8[b]});
+                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
+                res.w8[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
+                                              : (sum_s >>> 1) + round_s;
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] sum = opa.w16[b] + opb.w16[b];
-                unique case (vxrm)
-                  2'b00: r = sum[0];
-                  2'b01: r = &sum[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sum[1] & (sum[0]!=0);
-                endcase
-                res.w16[b] = (op_i == VAADDU) ? sum[16:1] + r : {sum[15], sum[15:1]} + r;
+                automatic logic        [16:0] sum_u = {1'b0, opb.w16[b]} +
+                                                      {1'b0, opa.w16[b]};
+                automatic logic signed [16:0] sum_s =
+                    $signed({opb.w16[b][15], opb.w16[b]}) +
+                    $signed({opa.w16[b][15], opa.w16[b]});
+                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
+                res.w16[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
+                                               : (sum_s >>> 1) + round_s;
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] sum = opa.w32[b] + opb.w32[b];
-                unique case (vxrm)
-                  2'b00: r = sum[0];
-                  2'b01: r = &sum[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sum[1] & (sum[0]!=0);
-                endcase
-                res.w32[b] = (op_i == VAADDU) ? sum[32:1] + r : {sum[31], sum[31:1]} + r;
+                automatic logic        [32:0] sum_u = {1'b0, opb.w32[b]} +
+                                                      {1'b0, opa.w32[b]};
+                automatic logic signed [32:0] sum_s =
+                    $signed({opb.w32[b][31], opb.w32[b]}) +
+                    $signed({opa.w32[b][31], opa.w32[b]});
+                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
+                res.w32[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
+                                               : (sum_s >>> 1) + round_s;
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] sum = opa.w64[b] + opb.w64[b];
-                unique case (vxrm)
-                  2'b00: r = sum[0];
-                  2'b01: r = &sum[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sum[1] & (sum[0]!=0);
-                endcase
-                res.w64[b] = (op_i == VAADDU) ? sum[64:1] + r : {sum[63], sum[63:1]} + r;
+                automatic logic        [64:0] sum_u = {1'b0, opb.w64[b]} +
+                                                      {1'b0, opa.w64[b]};
+                automatic logic signed [64:0] sum_s =
+                    $signed({opb.w64[b][63], opb.w64[b]}) +
+                    $signed({opa.w64[b][63], opa.w64[b]});
+                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
+                res.w64[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
+                                               : (sum_s >>> 1) + round_s;
               end
           endcase
         VADD, VADC, VMADC, VREDSUM, VWREDSUMU, VWREDSUM: unique case (vew_i)
@@ -325,44 +342,48 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VASUB, VASUBU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [ 8:0] sub = opb.w8 [b] - opa.w8 [b];
-                unique case (vxrm)
-                  2'b00: r = sub[0];
-                  2'b01: r = &sub[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sub[1] & (sub[0]!=0);
-                endcase
-                res.w8[b] = (op_i == VASUBU) ? (sub[7:0] >> 1) + r : ($signed(sub[7:0]) >>> 1) + r;
+                automatic logic        [8:0] sub_u = {1'b0, opb.w8[b]} -
+                                                     {1'b0, opa.w8[b]};
+                automatic logic signed [8:0] sub_s =
+                    $signed({opb.w8[b][7], opb.w8[b]}) -
+                    $signed({opa.w8[b][7], opa.w8[b]});
+                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
+                res.w8[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
+                                              : (sub_s >>> 1) + round_s;
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [ 16:0] sub = opb.w16[b] - opa.w16[b];
-                unique case (vxrm)
-                  2'b00: r = sub[0];
-                  2'b01: r = &sub[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sub[1] & (sub[0]!=0);
-                endcase
-                res.w16[b] = (op_i == VASUBU) ? (sub[15:0] >> 1) + r : ($signed(sub[15:0]) >>> 1) + r;
+                automatic logic        [16:0] sub_u = {1'b0, opb.w16[b]} -
+                                                      {1'b0, opa.w16[b]};
+                automatic logic signed [16:0] sub_s =
+                    $signed({opb.w16[b][15], opb.w16[b]}) -
+                    $signed({opa.w16[b][15], opa.w16[b]});
+                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
+                res.w16[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
+                                               : (sub_s >>> 1) + round_s;
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [ 32:0] sub = opb.w32[b] - opa.w32[b];
-                unique case (vxrm)
-                  2'b00: r = sub[0];
-                  2'b01: r = &sub[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sub[1] & (sub[0]!=0);
-                endcase
-                res.w32[b] = (op_i == VASUBU) ? (sub[31:0] >> 1) + r : ($signed(sub[31:0]) >>> 1) + r;
+                automatic logic        [32:0] sub_u = {1'b0, opb.w32[b]} -
+                                                      {1'b0, opa.w32[b]};
+                automatic logic signed [32:0] sub_s =
+                    $signed({opb.w32[b][31], opb.w32[b]}) -
+                    $signed({opa.w32[b][31], opa.w32[b]});
+                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
+                res.w32[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
+                                               : (sub_s >>> 1) + round_s;
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [ 64:0] sub = opb.w64[b] - opa.w64[b];
-                unique case (vxrm)
-                  2'b00: r = sub[0];
-                  2'b01: r = &sub[1:0];
-                  2'b10: r = 1'b0;
-                  2'b11: r = !sub[1] & (sub[0]!=0);
-                endcase
-                res.w64[b] = (op_i == VASUBU) ? (sub[63:0] >> 1) + r : ($signed(sub[63:0]) >>> 1) + r;
+                automatic logic        [64:0] sub_u = {1'b0, opb.w64[b]} -
+                                                      {1'b0, opa.w64[b]};
+                automatic logic signed [64:0] sub_s =
+                    $signed({opb.w64[b][63], opb.w64[b]}) -
+                    $signed({opa.w64[b][63], opa.w64[b]});
+                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
+                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
+                res.w64[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
+                                               : (sub_s >>> 1) + round_s;
               end
           endcase
 
@@ -423,19 +444,19 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VSSRL: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [8:0] srl = opb.w8 [b] >> opa.w8 [b];
+                automatic logic [8:0] srl = opb.w8 [b] >> opa.w8 [b][2:0];
                 res.w8[b] = srl + rm[b];
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [16:0] srl = opb.w16[b] >> opa.w16[b];
+                automatic logic [16:0] srl = opb.w16[b] >> opa.w16[b][3:0];
                 res.w16[b] = srl + rm[b];
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [32:0] srl = opb.w32[b] >> opa.w32[b];
+                automatic logic [32:0] srl = opb.w32[b] >> opa.w32[b][4:0];
                 res.w32[b] = srl + rm[b];
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [64:0] srl = opb.w64[b] >> opa.w64[b];
+                automatic logic [64:0] srl = opb.w64[b] >> opa.w64[b][5:0];
                 res.w64[b] = srl + rm[b];
               end
           endcase
@@ -443,36 +464,57 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
         // Fixed point clip instructions
         VNCLIP: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8 : for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] clip = $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-                vxsat.w8[b]   = |clip[15:8];
-                res.w8 [2*b + narrowing_select_i] = ($signed(opb.w16[b]) >>> opa.w16[b][3:0]) + rm[b];
+                automatic logic signed [15:0] shifted =
+                    $signed(opb.w16[b]) >>> opa.w16[b][3:0];
+                automatic logic signed [16:0] rounded =
+                    $signed({shifted[15], shifted}) + $signed({16'b0, rm[b]});
+                automatic logic sat = rounded[16:8] != {9{rounded[7]}};
+                vxsat.w8[2*b + narrowing_select_i] = sat;
+                res.w8[2*b + narrowing_select_i] = sat
+                    ? (rounded[16] ? 8'h80 : 8'h7f) : rounded[7:0];
               end
             EW16: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] clip = $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-                vxsat.w8[b]   = |clip[31:16];
-                res.w16[2*b + narrowing_select_i] = ($signed(opb.w32[b]) >>> opa.w32[b][4:0]) + rm[b];
+                automatic logic signed [31:0] shifted =
+                    $signed(opb.w32[b]) >>> opa.w32[b][4:0];
+                automatic logic signed [32:0] rounded =
+                    $signed({shifted[31], shifted}) + $signed({32'b0, rm[b]});
+                automatic logic sat = rounded[32:16] != {17{rounded[15]}};
+                vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
+                res.w16[2*b + narrowing_select_i] = sat
+                    ? (rounded[32] ? 16'h8000 : 16'h7fff) : rounded[15:0];
               end
             EW32: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] clip = $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-                vxsat.w8[b]   = |clip[63:32];
-                res.w32[2*b + narrowing_select_i] = ($signed(opb.w64[b]) >>> opa.w64[b][5:0]) + rm[b];
+                automatic logic signed [63:0] shifted =
+                    $signed(opb.w64[b]) >>> opa.w64[b][5:0];
+                automatic logic signed [64:0] rounded =
+                    $signed({shifted[63], shifted}) + $signed({64'b0, rm[b]});
+                automatic logic sat = rounded[64:32] != {33{rounded[31]}};
+                vxsat.w32[narrowing_select_i] = {4{sat}};
+                res.w32[narrowing_select_i] = sat
+                    ? (rounded[64] ? 32'h80000000 : 32'h7fffffff) : rounded[31:0];
               end
           endcase
         VNCLIPU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8 : for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] clipu = opb.w16[b] >> opa.w16[b][3:0];
-                vxsat.w8[b]   = |clipu[15:8];
-                res.w8 [2*b + narrowing_select_i] = (opb.w16[b] >> opa.w16[b][3:0]) + rm[b];
+                automatic logic [15:0] rounded =
+                    (opb.w16[b] >> opa.w16[b][3:0]) + rm[b];
+                automatic logic sat = |rounded[15:8];
+                vxsat.w8[2*b + narrowing_select_i] = sat;
+                res.w8[2*b + narrowing_select_i] = sat ? 8'hff : rounded[7:0];
               end
             EW16: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] clipu = opb.w32[b] >> opa.w32[b][4:0];
-                vxsat.w8[b]   = |clipu[31:16];
-                res.w16[2*b + narrowing_select_i] = (opb.w32[b] >> opa.w32[b][4:0]) + rm[b];
+                automatic logic [31:0] rounded =
+                    (opb.w32[b] >> opa.w32[b][4:0]) + rm[b];
+                automatic logic sat = |rounded[31:16];
+                vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
+                res.w16[2*b + narrowing_select_i] = sat ? 16'hffff : rounded[15:0];
               end
             EW32: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] clipu = opb.w64[b] >> opa.w64[b][5:0];
-                vxsat.w8[b]   = |clipu[63:32];
-                res.w32[2*b + narrowing_select_i] = (opb.w64[b] >> opa.w64[b][5:0]) + rm[b];
+                automatic logic [63:0] rounded =
+                    (opb.w64[b] >> opa.w64[b][5:0]) + rm[b];
+                automatic logic sat = |rounded[63:32];
+                vxsat.w32[narrowing_select_i] = {4{sat}};
+                res.w32[narrowing_select_i] = sat ? 32'hffffffff : rounded[31:0];
               end
           endcase
 

@@ -202,7 +202,29 @@ rvv-bench:
 	&& m4 gen.S > rvv/gen.S
 
 # Helper targets
-.PHONY: clean
+.PHONY: clean verify-deps verify-doctor verify-list verify-smoke verify-rvv verify-rvv1-generate verify-rvv1-run
+
+verify-deps:
+	python3 verification/verify.py deps
+
+verify-doctor:
+	python3 verification/verify.py doctor
+
+verify-list:
+	python3 verification/verify.py list --suites
+
+verify-smoke:
+	python3 verification/verify.py run smoke
+
+verify-rvv:
+	python3 verification/verify.py run rvv-directed
+
+verify-rvv1-generate:
+	python3 verification/verify.py generate-rvv
+
+verify-rvv1-run:
+	@test -n "$(simv)" || (echo "usage: make verify-rvv1-run simv=/path/to/simv"; exit 2)
+	python3 verification/verify.py run-rvv --simv "$(simv)"
 
 clean:
 	rm -rf $(INSTALL_DIR)

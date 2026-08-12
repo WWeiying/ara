@@ -401,17 +401,23 @@ void TEST_CASE26(void) {
 }
 
 void TEST_CASE27(void) {
-  uint64_t avl, vtype, vl;
+  uint64_t rd_vl, vtype, vl;
   uint64_t vlmul = 7;
   uint64_t vsew = 2;
   uint64_t vta = 1;
   uint64_t vma = 1;
   uint64_t golden_vtype;
   vtype(golden_vtype, vlmul, vsew, vta, vma);
-  __asm__ volatile("vsetivli %[A], 20, e32, mf2,ta,ma" : [A] "=r"(avl));
+  __asm__ volatile("vsetivli %[A], 20, e32, mf2,ta,ma"
+                   : [A] "=r"(rd_vl));
   read_vtype(vtype);
   read_vl(vl);
-  check_vtype_vl(27, vtype, golden_vtype, avl, vl, vsew, vlmul);
+  if (rd_vl != vl) {
+    printf("FAILED. vsetivli rd = %lx, vl CSR = %lx.\n", rd_vl, vl);
+    num_failed++;
+    return;
+  }
+  check_vtype_vl(27, vtype, golden_vtype, 20, vl, vsew, vlmul);
 }
 
 void TEST_CASE28(void) {

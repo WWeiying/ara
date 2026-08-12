@@ -278,30 +278,26 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             unique case (cmd.eew)
               EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) begin
                 unique case (cmd.ntr_red)
-                  2'b01: ntr.w64 = {8{16'h78}};
-                  2'b10: ntr.w64 = {8{16'hf8}};
+                  2'b01, 2'b10: ntr.w64 = {8{8'h7c}};
                   default:;
                 endcase
               end
               EW16: begin
                 unique case (cmd.ntr_red)
-                  2'b01: ntr.w64 = {4{16'h7c00}};
-                  2'b10: ntr.w64 = {4{16'hfc00}};
+                  2'b01, 2'b10: ntr.w64 = {4{16'h7e00}};
                   default:;
                 endcase
               end
               EW32: begin
                 unique case (cmd.ntr_red)
-                  2'b01: ntr.w64 = {2{32'h7f800000}};
-                  2'b10: ntr.w64 = {2{32'hff800000}};
+                  2'b01, 2'b10: ntr.w64 = {2{32'h7fc00000}};
                   default:;
                 endcase
               end
               // Add EW64 for convenience of coding
               default: begin
                 unique case (cmd.ntr_red)
-                  2'b01: ntr.w64 = {1{64'h7ff0000000000000}};
-                  2'b10: ntr.w64 = {1{64'hfff0000000000000}};
+                  2'b01, 2'b10: ntr.w64 = 64'h7ff8000000000000;
                   default:;
                 endcase
               end

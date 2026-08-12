@@ -10,6 +10,7 @@
 
 module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width; #(
     parameter int unsigned NrLanes               = 0,
+    parameter int unsigned VLEN                  = 0,
     parameter type         pe_req_t              = logic,
     parameter type         pe_resp_t             = logic,
     parameter type         operand_request_cmd_t = logic,
@@ -175,6 +176,39 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     end
   end
 
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_SLIDE_MASK")) begin
+      if (pe_req_valid && pe_req_ready && pe_req.op inside {VSLIDEUP, VSLIDEDOWN}) begin
+        $display("[ARA_SLIDE_REQ] t=%0t id=%0d vl=%0d stride=%0d vm=%0b vsew=%0d vstart=%0d mask_busy=%0b mask_ready=%0b mask_push=%0b mask_vl=%0d mask_vstart=%0d",
+                 $time, pe_req.id, pe_req.vl, pe_req.stride, pe_req.vm,
+                 pe_req.vtype.vsew, pe_req.vstart, operand_request_valid_o[MaskM],
+                 operand_request_ready_i[MaskM], operand_request_push[MaskM],
+                 operand_request[MaskM].vl, operand_request[MaskM].vstart);
+      end
+      if (operand_request_valid_o[MaskM] && operand_request_ready_i[MaskM] &&
+          operand_request_o[MaskM].is_slide) begin
+        $display("[ARA_SLIDE_MASK_OPREQ] t=%0t id=%0d vl_words=%0d vstart=%0d",
+                 $time, operand_request_o[MaskM].id,
+                 operand_request_o[MaskM].vl, operand_request_o[MaskM].vstart);
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_LANE_REQ") && pe_req_valid &&
+        pe_req.op == VMSBC && pe_req.vd == 5'd24) begin
+      $display("[ARA_LANE_REQ] t=%0t lane=%0d id=%0d ready=%0b global_run=%b maskb_valid=%0b maskb_ready=%0b push=%0b use_vd_op=%0b hazard=%b wait=%b",
+               $time, lane_id_i, pe_req.id, pe_req_ready,
+               pe_vinsn_running_i,
+               operand_request_valid_o[MaskB], operand_request_ready_i[MaskB],
+               operand_request_push[MaskB], pe_req.use_vd_op,
+               pe_req.hazard_vd, pe_req.hazard_wait_complete);
+    end
+  end
+
+`endif
+
   ////////////////////
   //  VRGATHER FSM  //
   ////////////////////
@@ -186,6 +220,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
   logic masku_vrgat_req_ready_d, masku_vrgat_req_valid_q;
 
   logic [idx_width(VrgatherOpQueueBufDepth):0] vrgat_cmd_req_cnt_d, vrgat_cmd_req_cnt_q;
+  logic [NrVInsn-1:0] vrgat_source_hazard_d, vrgat_source_hazard_q;
+  logic [NrVInsn-1:0] vrgat_source_wait_complete_d, vrgat_source_wait_complete_q;
+  logic vrgat_source_snapshot_replay_d, vrgat_source_snapshot_replay_q;
 
   spill_register #(
     .T       ( vrgat_req_t )
@@ -216,12 +253,15 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
       end
       REQUESTING: begin
-        // Pop if the operand requester and the queue are ready to accept requests
-        masku_vrgat_req_ready_d = masku_vrgat_req_valid_q & !(operand_request_valid_o[MaskB])
-                                & (vrgat_cmd_req_cnt_q != (VrgatherOpQueueBufDepth-1));
+        // A no-data token terminates the stream without allocating a MaskB
+        // command. Other requests wait for both requester and queue capacity.
+        masku_vrgat_req_ready_d = masku_vrgat_req_valid_q &
+                                  (masku_vrgat_req_q.no_data ||
+                                   (!(operand_request_valid_o[MaskB]) &&
+                                    (vrgat_cmd_req_cnt_q != (VrgatherOpQueueBufDepth-1))));
 
         // Increase the counter if we handshake
-        if (masku_vrgat_req_ready_d)
+        if (masku_vrgat_req_ready_d && !masku_vrgat_req_q.no_data)
           vrgat_cmd_req_cnt_d = vrgat_cmd_req_cnt_q + 1;
         // Decrease the counter if the MaskB opqueue popped a cmd
         if (mask_b_cmd_pop_i)
@@ -286,6 +326,10 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     vfu_operation_valid_d = 1'b0;
     vfu_ready_d = vfu_ready(pe_req.vfu, alu_ready_i, mfpu_ready_i);
 
+    vrgat_source_hazard_d = vrgat_source_hazard_q;
+    vrgat_source_wait_complete_d = vrgat_source_wait_complete_q;
+    vrgat_source_snapshot_replay_d = vrgat_source_snapshot_replay_q;
+
     // If the operand requesters are busy, abort the request and wait for another cycle.
     if (pe_req_valid) begin
       unique case (pe_req.vfu)
@@ -305,7 +349,10 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                          (!(pe_req.op == VLXE) || (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]));
         end
         VFU_SlideUnit: begin
-          pe_req_ready = (!operand_request_valid_o[SlideAddrGenA] || operand_request_ready_i[SlideAddrGenA]);
+          pe_req_ready = (!operand_request_valid_o[SlideAddrGenA] ||
+                          operand_request_ready_i[SlideAddrGenA]) &&
+                         (pe_req.vm || !operand_request_valid_o[MaskM] ||
+                          operand_request_ready_i[MaskM]);
         end
         VFU_StoreUnit: begin
           pe_req_ready = (!operand_request_valid_o[StA] || operand_request_ready_i[StA]) &&
@@ -318,7 +365,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                          (!operand_request_valid_o[MulFPUA] || operand_request_ready_i[MulFPUA]) &&
                          (!operand_request_valid_o[MulFPUB] || operand_request_ready_i[MulFPUB]) &&
                          (!operand_request_valid_o[MaskB] || operand_request_ready_i[MaskB]) &&
-                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]);
+                         (!operand_request_valid_o[MaskM] || operand_request_ready_i[MaskM]) &&
+                         !(vrgat_state_q == REQUESTING && masku_vrgat_req_valid_q);
         end
         VFU_None : begin
           // VRGATHER/VCOMPRESS use the MaskB opqueue with non-traditional request scheme
@@ -340,6 +388,13 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         // vrgather/vcompress request vs2 in a non-conventional way from MaskB, not ALU
         use_vs2        : pe_req.use_vs2 && !(pe_req.op inside {[VRGATHER:VCOMPRESS]}),
         use_vd_op      : pe_req.use_vd_op,
+        preserve_narrow_vd:
+            pe_req.source_snapshot_replay_vs1 &&
+            pe_req.use_vd && pe_req.use_vs1 && pe_req.use_vs2 &&
+            pe_req.vd == pe_req.vs1 && pe_req.vd == pe_req.vs2 &&
+            pe_req.eew_vs1 == pe_req.vtype.vsew &&
+            unsigned'(pe_req.eew_vs2) > unsigned'(pe_req.vtype.vsew) &&
+            pe_req.op inside {VNSRL, VNSRA, VNCLIP, VNCLIPU},
         scalar_op      : pe_req.scalar_op,
         use_scalar_op  : pe_req.use_scalar_op,
         vd             : pe_req.vd,
@@ -352,7 +407,23 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         default        : '0
       };
       vfu_operation_d.vtype.vsew = pe_req.op inside {[VMFEQ:VMSGT]} ? pe_req.eew_vs2 : pe_req.vtype.vsew;
+      // Mask-logical sources may have different historical VRF layouts. Pass
+      // vs2 through the lane ALU and deliver vs1 separately on MaskM so MASKU
+      // can deshuffle both operands before applying the boolean operation.
+      if (pe_req.op inside {[VMANDNOT:VMXNOR]}) begin
+        vfu_operation_d.op            = VMOR;
+        vfu_operation_d.use_vs1       = 1'b0;
+        vfu_operation_d.use_scalar_op = 1'b1;
+        vfu_operation_d.scalar_op     = '0;
+      end
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
+
+      if (pe_req.op inside {[VRGATHER:VCOMPRESS]}) begin
+        vrgat_source_hazard_d = pe_req.hazard_vs2;
+        vrgat_source_wait_complete_d =
+            pe_req.hazard_wait_complete & pe_req.hazard_vs2;
+        vrgat_source_snapshot_replay_d = pe_req.source_snapshot_replay_vs2;
+      end
 
       // Vector length calculation
       vfu_operation_d.vl = pe_req.vl / NrLanes;
@@ -361,23 +432,57 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       if (lane_id_i < pe_req.vl[idx_width(NrLanes)-1:0] || (|pe_req.vl[idx_width(NrLanes)-1:0] && pe_req.op inside {[VMFEQ:VCOMPRESS]}))
         vfu_operation_d.vl += 1;
 
+      // Ordered floating-point reductions skip lanes beyond VL instead of
+      // injecting a neutral lane result. Keep the VMFPU control request, but
+      // do not reserve a selector entry for an SLDU operand that cannot exist.
+      // Unordered reductions still need every lane's neutral contribution.
+      if (vfu_operation_d.vl == '0 &&
+          pe_req.op inside {VFREDOSUM, VFWREDOSUM})
+        vfu_operation_d.skip_sldu_operand = 1'b1;
+
       // Calculate the start element for Lane[i]. This will be forwarded to both opqueues
       // and operand requesters, with some light modification in the case of a vslide.
       // Regardless of the EW, the start element of Lane[i] is "vstart / NrLanes".
       // If vstart deos not divide NrLanes perfectly, some low-index lanes will send
       // mock data to balance the payload.
       vfu_operation_d.vstart = pe_req.vstart / NrLanes;
+      if (pe_req.vfu == VFU_Alu &&
+          !(pe_req.op inside {[VREDSUM:VWREDSUM]}) &&
+          lane_id_i < pe_req.vstart[idx_width(NrLanes)-1:0])
+        vfu_operation_d.vstart += 1'b1;
 
       // Mark the vector instruction as running
       vinsn_running_d[pe_req.id] = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
 
       // Mute request if the instruction runs in the lane and the vl is zero.
-      // Exception: during a reduction, all the lanes must cooperate anyway.
-      if (vfu_operation_d.vl == '0 && (vfu_operation_d.vfu inside {VFU_Alu, VFU_MFpu}) && !(vfu_operation_d.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) begin
+      // Reductions keep their control request: integer reductions inject a
+      // neutral lane result, while floating-point reductions mark the absent
+      // SLDU stream above.
+      if (vfu_operation_d.vl == '0 &&
+          (vfu_operation_d.vfu inside {VFU_Alu, VFU_MFpu, VFU_MaskUnit}) &&
+          !(vfu_operation_d.op inside {[VREDSUM:VWREDSUM],
+                                       [VFREDUSUM:VFWREDOSUM]})) begin
         vfu_operation_valid_d = 1'b0;
         // We are already done with this instruction
         vinsn_done_d[pe_req.id] |= 1'b1;
         vinsn_running_d[pe_req.id] = 1'b0;
+
+        // The main sequencer reserves every preprocessing FU named by
+        // target_vfus(), even when vl is zero.  Since no VALU/VMFPU entry is
+        // created in this fast-completion path, return the matching queue
+        // credit explicitly instead of waiting for a completion that cannot
+        // occur.
+        unique case (vfu_operation_d.vfu)
+          VFU_Alu : alu_vinsn_done_d  = 1'b1;
+          VFU_MFpu: mfpu_vinsn_done_d = 1'b1;
+          VFU_MaskUnit: begin
+            if (vfu_operation_d.op inside {[VMFEQ:VMFGE]})
+              mfpu_vinsn_done_d = 1'b1;
+            else if (vfu_operation_d.op != VID)
+              alu_vinsn_done_d = 1'b1;
+          end
+          default:;
+        endcase
       end
 
       ////////////////////////
@@ -397,10 +502,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype      : pe_req.vtype,
             // In case of reduction, AluA opqueue will keep the scalar element
             vl         : (pe_req.op inside {[VREDSUM:VWREDSUM]}) ? 1 : vfu_operation_d.vl,
-            vstart     : vfu_operation_d.vstart,
+            vstart     : pe_req.op inside {[VREDSUM:VWREDSUM]}
+                         ? vfu_operation_d.vstart : '0,
             hazard     : pe_req.hazard_vs1 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VREDSUM:VWREDSUM]} ? 1'b1 : 0,
             target_fu  : ALU_SLDU,
+            source_snapshot_replay: pe_req.source_snapshot_replay_vs1,
             default    : '0
           };
           operand_request_push[AluA] = pe_req.use_vs1;
@@ -418,10 +525,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VREDSUM:VWREDSUM]} && vfu_operation_d.vl == '0)
                          ? 1 : vfu_operation_d.vl,
-            vstart     : vfu_operation_d.vstart,
+            vstart     : pe_req.op inside {[VREDSUM:VWREDSUM]}
+                         ? vfu_operation_d.vstart : '0,
             hazard     : pe_req.hazard_vs2 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VREDSUM:VWREDSUM]} ? 1'b1 : 0,
             target_fu  : ALU_SLDU,
+            source_snapshot_replay: pe_req.source_snapshot_replay_vs2,
             default    : '0
           };
           operand_request_push[AluB] = pe_req.use_vs2;
@@ -434,7 +543,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype  : pe_req.vtype,
             vl     : pe_req.vl / NrLanes / ELEN,
             cvt_resize : pe_req.cvt_resize,
-            vstart : vfu_operation_d.vstart,
+            vstart : pe_req.op inside {[VREDSUM:VWREDSUM]}
+                     ? vfu_operation_d.vstart : '0,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
@@ -463,6 +573,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             hazard     : pe_req.hazard_vs1 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            source_snapshot_replay: pe_req.source_snapshot_replay_vs1,
             default    : '0
           };
           operand_request_push[MulFPUA] = pe_req.use_vs1;
@@ -485,6 +596,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             pe_req.hazard_vd : (pe_req.hazard_vs2 | pe_req.hazard_vd)),
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            source_snapshot_replay: pe_req.swap_vs2_vd_op
+                                      ? 1'b0 : pe_req.source_snapshot_replay_vs2,
             default: '0
           };
           operand_request_push[MulFPUB] = pe_req.swap_vs2_vd_op ?
@@ -507,6 +620,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             (pe_req.hazard_vs2 | pe_req.hazard_vd) : pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            source_snapshot_replay: pe_req.swap_vs2_vd_op
+                                      ? pe_req.source_snapshot_replay_vs2 : 1'b0,
             default : '0
           };
           operand_request_push[MulFPUC] = pe_req.swap_vs2_vd_op ?
@@ -533,6 +648,11 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request_push[MaskM] = !pe_req.vm;
         end
         VFU_LoadUnit : begin
+          automatic int unsigned idx_elems_per_lane_word;
+          automatic int unsigned idx_elems_per_aggregate_word;
+          automatic int unsigned idx_first_aggregate_word;
+          automatic int unsigned idx_aggregate_word_count;
+
           // This vector instruction uses masks
           operand_request[MaskM] = '{
             id     : pe_req.id,
@@ -560,22 +680,41 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             eew      : pe_req.eew_vs2,
             conv     : pe_req.conversion_vs2,
             target_fu: MFPU_ADDRGEN,
-            vl       : pe_req.vl / NrLanes,
-            scale_vl : pe_req.scale_vl,
-            vstart   : vfu_operation_d.vstart,
+            vl       : '0,
+            scale_vl : 1'b1,
+            vstart   : '0,
             vtype    : pe_req.vtype,
             hazard   : pe_req.hazard_vs2 | pe_req.hazard_vd,
             cvt_resize: CVT_SAME,
+            source_snapshot_replay: pe_req.source_snapshot_replay_vs2,
             default  : '0
           };
-          // Since this request goes outside of the lane, we might need to request an
-          // extra operand regardless of whether it is valid in this lane or not.
-          if (operand_request[SlideAddrGenA].vl * NrLanes != pe_req.vl)
-            operand_request[SlideAddrGenA].vl += 1;
+          // Indexed offsets are consumed as aggregate VRF words. Every lane
+          // fetches the same aligned word range, including inactive elements
+          // around vstart and vl in the boundary words.
+          idx_elems_per_lane_word      = 8 >> unsigned'(pe_req.eew_vs2);
+          idx_elems_per_aggregate_word = NrLanes * idx_elems_per_lane_word;
+          idx_first_aggregate_word     = pe_req.vstart / idx_elems_per_aggregate_word;
+          idx_aggregate_word_count     =
+              ((pe_req.vl + idx_elems_per_aggregate_word - 1) /
+               idx_elems_per_aggregate_word) - idx_first_aggregate_word;
+          idx_elems_per_lane_word = 8 >> unsigned'(pe_req.old_eew_vs2);
+          operand_request[SlideAddrGenA].eew = pe_req.old_eew_vs2;
+          operand_request[SlideAddrGenA].vtype.vsew = pe_req.old_eew_vs2;
+          operand_request[SlideAddrGenA].vstart =
+              idx_first_aggregate_word * idx_elems_per_lane_word;
+          operand_request[SlideAddrGenA].vl =
+              (idx_first_aggregate_word + idx_aggregate_word_count) *
+              idx_elems_per_lane_word;
           operand_request_push[SlideAddrGenA] = pe_req.op == VLXE;
         end
 
         VFU_StoreUnit : begin
+          automatic int unsigned idx_elems_per_lane_word;
+          automatic int unsigned idx_elems_per_aggregate_word;
+          automatic int unsigned idx_first_aggregate_word;
+          automatic int unsigned idx_aggregate_word_count;
+
           // vstart is supported here
           operand_request[StA] = '{
             id      : pe_req.id,
@@ -620,29 +759,70 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request_push[MaskM] = !pe_req.vm;
 
           // Store indexed
-          // TODO: add vstart support here
           operand_request[SlideAddrGenA] = '{
             id       : pe_req.id,
             vs       : pe_req.vs2,
             eew      : pe_req.eew_vs2,
             conv     : pe_req.conversion_vs2,
             target_fu: MFPU_ADDRGEN,
-            vl       : pe_req.vl / NrLanes,
-            scale_vl : pe_req.scale_vl,
-            vstart   : vfu_operation_d.vstart,
+            vl       : '0,
+            scale_vl : 1'b1,
+            vstart   : '0,
             vtype    : pe_req.vtype,
             hazard   : pe_req.hazard_vs2 | pe_req.hazard_vd,
             cvt_resize: CVT_SAME,
             default  : '0
           };
-          // Since this request goes outside of the lane, we might need to request an
-          // extra operand regardless of whether it is valid in this lane or not.
-          if (operand_request[SlideAddrGenA].vl * NrLanes != pe_req.vl)
-            operand_request[SlideAddrGenA].vl += 1;
+          idx_elems_per_lane_word      = 8 >> unsigned'(pe_req.eew_vs2);
+          idx_elems_per_aggregate_word = NrLanes * idx_elems_per_lane_word;
+          idx_first_aggregate_word     = pe_req.vstart / idx_elems_per_aggregate_word;
+          idx_aggregate_word_count     =
+              ((pe_req.vl + idx_elems_per_aggregate_word - 1) /
+               idx_elems_per_aggregate_word) - idx_first_aggregate_word;
+          idx_elems_per_lane_word = 8 >> unsigned'(pe_req.old_eew_vs2);
+          operand_request[SlideAddrGenA].eew = pe_req.old_eew_vs2;
+          operand_request[SlideAddrGenA].vtype.vsew = pe_req.old_eew_vs2;
+          operand_request[SlideAddrGenA].vstart =
+              idx_first_aggregate_word * idx_elems_per_lane_word;
+          operand_request[SlideAddrGenA].vl =
+              (idx_first_aggregate_word + idx_aggregate_word_count) *
+              idx_elems_per_lane_word;
           operand_request_push[SlideAddrGenA] = pe_req.op == VSXE;
         end
 
         VFU_SlideUnit: begin
+          automatic int unsigned slide_vlmax;
+          automatic logic slide_down_source_oor;
+          automatic logic slide_down_source_empty;
+          automatic logic slide_up_source_empty;
+
+          slide_vlmax = (VLEN / 8) >> pe_req.vtype.vsew;
+          unique case (pe_req.vtype.vlmul)
+            LMUL_1  : slide_vlmax <<= 0;
+            LMUL_2  : slide_vlmax <<= 1;
+            LMUL_4  : slide_vlmax <<= 2;
+            LMUL_8  : slide_vlmax <<= 3;
+            LMUL_1_2: slide_vlmax >>= 1;
+            LMUL_1_4: slide_vlmax >>= 2;
+            LMUL_1_8: slide_vlmax >>= 3;
+            default:;
+          endcase
+          slide_down_source_oor = pe_req.op == VSLIDEDOWN &&
+                                  !pe_req.use_scalar_op &&
+                                  pe_req.stride >= slide_vlmax;
+          // vslide1down with VL=1 writes only the scalar tail element.  Issuing
+          // a vs2 request here leaves an unconsumed, untagged SLDU operand that
+          // can be mistaken for the following slide's source aggregate.
+          slide_down_source_empty = pe_req.op == VSLIDEDOWN &&
+                                    pe_req.use_scalar_op &&
+                                    pe_req.vl <= 1;
+          slide_up_source_empty = pe_req.op == VSLIDEUP &&
+                                  pe_req.stride >= pe_req.vl;
+
+          vfu_operation_d.skip_sldu_operand = slide_down_source_oor ||
+                                              slide_down_source_empty ||
+                                              slide_up_source_empty;
+
           operand_request[SlideAddrGenA] = '{
             id       : pe_req.id,
             vs       : pe_req.vs2,
@@ -650,6 +830,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             conv     : pe_req.conversion_vs2,
             target_fu: ALU_SLDU,
             is_slide : 1'b1,
+            source_snapshot_capture: pe_req.source_snapshot_capture,
             scale_vl : pe_req.scale_vl,
             vtype    : pe_req.vtype,
             vstart   : vfu_operation_d.vstart,
@@ -657,7 +838,10 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             cvt_resize: CVT_SAME,
             default  : '0
           };
-          operand_request_push[SlideAddrGenA] = pe_req.use_vs2;
+          operand_request_push[SlideAddrGenA] = pe_req.use_vs2 &&
+                                                !slide_down_source_oor &&
+                                                !slide_down_source_empty &&
+                                                !slide_up_source_empty;
 
           unique case (pe_req.op)
             VSLIDEUP: begin
@@ -676,7 +860,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
               // We need to trim full words from the start of the vector that are not used
               // as operands by the slide unit.
-              operand_request[SlideAddrGenA].vstart = pe_req.stride / NrLanes;
+              operand_request[SlideAddrGenA].vstart = slide_down_source_oor
+                                                    ? '0
+                                                    : pe_req.stride / NrLanes;
 
               // The stride move the initial address in boundaries of 8*NrLanes Byte.
               // If the stride is not multiple of a full VRF word (8*NrLanes Byte),
@@ -698,9 +884,13 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                 vl_tot += extra_stride;
 
               // Ask the elements, and ask one more if we do not perfectly divide NrLanes
-              operand_request[SlideAddrGenA].vl = vl_tot / NrLanes;
-              if (operand_request[SlideAddrGenA].vl * NrLanes != vl_tot)
-                operand_request[SlideAddrGenA].vl += 1;
+              if (slide_down_source_oor) begin
+                operand_request[SlideAddrGenA].vl = '0;
+              end else begin
+                operand_request[SlideAddrGenA].vl = vl_tot / NrLanes;
+                if (operand_request[SlideAddrGenA].vl * NrLanes != vl_tot)
+                  operand_request[SlideAddrGenA].vl += 1;
+              end
             end
             default:;
           endcase
@@ -722,20 +912,18 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request_push[MaskM] = !pe_req.vm;
 
           case (pe_req.op)
-            VSLIDEUP: begin
-              // We need to trim full words from the end of the vector that are not used
-              // as operands by the slide unit.
-              operand_request[MaskM].vl = (pe_req.vl - pe_req.stride) / NrLanes / ELEN;
-
-              // Since this request goes outside of the lane, we might need to request an
-              // extra operand regardless of whether it is valid in this lane or not.
-              if ((operand_request[MaskM].vl) * NrLanes * ELEN != + pe_req.stride)
-                operand_request[MaskM].vl += 1;
-
-              // SLIDEUP only uses mask bits whose indices are > stride
-              // Don't send the previous (unused) ones to the MASKU
-              if (pe_req.stride >= NrLanes * 64)
-                operand_request[MaskM].vstart += ((pe_req.stride >> NrLanes * ELEN) << NrLanes * ELEN) / 8;
+            VSLIDEUP: begin : slideup_mask_request
+              // A lane beat carries NrLanes*ELEN consecutive mask bits. Skip
+              // complete beats before the slide offset, then fetch enough beats
+              // to cover the residual offset and every active destination bit.
+              logic [$bits(pe_req.vl)-1:0] mask_word_base;
+              logic [$bits(pe_req.vl)-1:0] mask_span;
+              mask_word_base = (pe_req.stride / (NrLanes * ELEN)) *
+                               (NrLanes * ELEN);
+              mask_span = pe_req.vl - mask_word_base;
+              operand_request[MaskM].vl =
+                  (mask_span + (NrLanes * ELEN) - 1) / (NrLanes * ELEN);
+              operand_request[MaskM].vstart = pe_req.stride / (NrLanes * ELEN);
             end
             VSLIDEDOWN: begin
               // Since this request goes outside of the lane, we might need to request an
@@ -761,6 +949,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
             cvt_resize: CVT_SAME,
+            source_snapshot_replay: pe_req.source_snapshot_replay_vs1,
             default : '0
           };
           // Since this request goes outside of the lane, we might need to request an
@@ -777,10 +966,13 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // These source regs contain mask vectors.
             operand_request[AluA].eew = EW64;
             operand_request[AluA].vl  = pe_req.vl / NrLanes / ELEN;
+            if (pe_req.op inside {[VMANDNOT:VMXNOR]})
+              operand_request[AluA].vstart = '0;
             if (operand_request[AluA].vl * NrLanes * ELEN != pe_req.vl)
               operand_request[AluA].vl += 1;
           end
-          operand_request_push[AluA] = pe_req.use_vs1 && !(pe_req.op inside {[VMFEQ:VMFGE]});
+          operand_request_push[AluA] = pe_req.use_vs1 &&
+              !(pe_req.op inside {[VMFEQ:VMFGE], [VMANDNOT:VMXNOR]});
 
           // Mask logical, integer comparisons, VIOTA, VID, VMSBF, VMSIF, VMSOF, VCPOP, VFIRST
           operand_request[AluB] = '{
@@ -810,6 +1002,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // These source regs contain mask vectors.
             operand_request[AluB].eew = EW64;
             operand_request[AluB].vl  = pe_req.vl / NrLanes / ELEN;
+            if (pe_req.op inside {[VMANDNOT:VMXNOR]})
+              operand_request[AluB].vstart = '0;
             if (operand_request[AluB].vl * NrLanes * ELEN != pe_req.vl)
               operand_request[AluB].vl += 1;
           end
@@ -891,6 +1085,11 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // Mask layout
             operand_request[MaskB].eew = EW64;
             operand_request[MaskB].vl  = (pe_req.vl / NrLanes / ELEN);
+            // A restarted mask-logical instruction preserves all destination bits below
+            // architectural vstart. Fetch old vd from the first mask word; starting at
+            // the generic per-lane vstart would skip the prefix that MASKU must merge.
+            if (pe_req.op inside {[VMANDNOT:VMXNOR], [VMADC:VMSBC]})
+              operand_request[MaskB].vstart = '0;
             // Request a balanced load from every lane despite it being active or not.
             // Since this request goes outside of the lane, we might need to request an
             // extra operand regardless of whether it is valid in this lane or not.
@@ -906,20 +1105,35 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vs     : VMASK,
             eew    : EW64,
             vtype  : pe_req.vtype,
-            vl     : (pe_req.vl / NrLanes / ELEN),
-            vstart : vfu_operation_d.vstart,
+            vl     : '0,
+            // Mask operands are packed bits.  Skip only complete aggregate
+            // mask words; MASKU handles the offset inside the first word.
+            vstart : pe_req.vstart / (NrLanes * ELEN),
             hazard : pe_req.hazard_vm,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
             cvt_resize: CVT_SAME,
             default: '0
           };
-          // Request a balanced load from every lane despite it being active or not.
-          // Since this request goes outside of the lane, we might need to request an
-          // extra operand regardless of whether it is valid in this lane or not.
-          if ((operand_request[MaskM].vl * NrLanes * ELEN) != pe_req.vl)
-            operand_request[MaskM].vl += 1;
+          // Start at the aggregate mask word containing vstart and request only
+          // the words that cover the remaining active range.
+          if (pe_req.vstart < pe_req.vl) begin
+            operand_request[MaskM].vl =
+                (pe_req.vl - ((pe_req.vstart / (NrLanes * ELEN)) *
+                 (NrLanes * ELEN)) + (NrLanes * ELEN) - 1) /
+                (NrLanes * ELEN);
+          end
           operand_request_push[MaskM] = !pe_req.vm;
+          if (pe_req.op inside {[VMANDNOT:VMXNOR]}) begin
+            operand_request[MaskM].vs      = pe_req.vs1;
+            operand_request[MaskM].eew     = EW64;
+            operand_request[MaskM].vstart  = '0;
+            operand_request[MaskM].hazard  = pe_req.hazard_vs1;
+            operand_request[MaskM].vl      = pe_req.vl / NrLanes / ELEN;
+            if (operand_request[MaskM].vl * NrLanes * ELEN != pe_req.vl)
+              operand_request[MaskM].vl += 1;
+            operand_request_push[MaskM] = pe_req.use_vs1;
+          end
         end
         VFU_None: begin
           operand_request[MaskB] = '{
@@ -940,22 +1154,87 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         end
         default:;
       endcase
+
+      // A zero-length MASKU request has no lane operand payload. MASKU handles
+      // its architectural no-op or scalar result without ALU preprocessing.
+      if (pe_req.vl == '0 && pe_req.vfu == VFU_MaskUnit)
+        operand_request_push = '0;
+
+`ifdef FOR_VERIFY
+      if ($test$plusargs("ARA_DEBUG_VADD_VL1") && lane_id_i == '0 &&
+          pe_req_valid && pe_req.op == VADD && pe_req.vd == 5'd8 && pe_req.vl == 1) begin
+        $display("[ARA_VADD_VL1_LSEQ] t=%0t ready=%0b id=%0d global=%b local=%b->%b vfu=%0b opq_v=%b opq_r=%b push=%b hazards=%b/%b/%b/%b wait=%b",
+                 $time, pe_req_ready, pe_req.id, pe_vinsn_running_i,
+                 vinsn_running_q, vinsn_running_d, vfu_operation_valid_d,
+                 operand_request_valid_o, operand_request_ready_i,
+                 operand_request_push, pe_req.hazard_vs1, pe_req.hazard_vs2,
+                 pe_req.hazard_vm, pe_req.hazard_vd,
+                 pe_req.hazard_wait_complete);
+      end
+
+      if ($test$plusargs("ARA_DEBUG_VFMVFS416") &&
+          pe_req.op == VFMVFS && pe_req.vs2 == 5'd17) begin
+        $display("[ARA_VFMVFS416_LSEQ] t=%0t lane=%m id=%0d push=%0b ready=%0b vs=%0d eew=%0d vl=%0d vstart=%0d hazard=%b",
+                 $time, pe_req.id, operand_request_push[MaskB],
+                 operand_request_ready_i[MaskB], operand_request[MaskB].vs,
+                 operand_request[MaskB].eew, operand_request[MaskB].vl,
+                 operand_request[MaskB].vstart, operand_request[MaskB].hazard);
+      end
+
+      if ($test$plusargs("ARA_DEBUG_VXOR297") && pe_req_valid_i &&
+          pe_req.op == VXOR && pe_req.id == vid_t'(1) &&
+          pe_req.vd == 5'd31 && pe_req.vl == 19 &&
+          pe_req.vtype.vsew == EW16) begin
+        $display("[ARA_VXOR297_MASK_REQ] t=%0t lane=%m id=%0d op=%0d vl=%0d vstart=%0d sew=%0d mask_eew=%0d push=%0b ready=%0b req_eew=%0d req_vl=%0d req_vstart=%0d",
+                 $time, pe_req.id, pe_req.op, pe_req.vl, pe_req.vstart,
+                 pe_req.vtype.vsew, pe_req.eew_vmask,
+                 operand_request_push[MaskM], operand_request_ready_i[MaskM],
+                 operand_request[MaskM].eew, operand_request[MaskM].vl,
+                 operand_request[MaskM].vstart);
+      end
+`endif
+
+      // A register-group overlap that starts at a different physical
+      // register cannot use the normal word-for-word chaining rule.
+      for (int unsigned q = 0; q < NrOperandQueues; q++) begin
+        operand_request[q].hazard_source_lifetime =
+            pe_req.hazard_source_lifetime;
+        operand_request[q].hazard_wait_complete = pe_req.hazard_wait_complete;
+      end
+
+      // Predication masks are packed bits, irrespective of the data SEW.
+      // Keep their aggregate-word address calculation identical for every
+      // execution unit. Slides use a separate stride-based mask request.
+      if (operand_request_push[MaskM] && pe_req.vfu != VFU_SlideUnit) begin
+        operand_request[MaskM].vstart = pe_req.vstart / (NrLanes * ELEN);
+        operand_request[MaskM].vl = '0;
+        if (pe_req.vstart < pe_req.vl) begin
+          operand_request[MaskM].vl =
+              (pe_req.vl - ((pe_req.vstart / (NrLanes * ELEN)) *
+               (NrLanes * ELEN)) + (NrLanes * ELEN) - 1) /
+              (NrLanes * ELEN);
+        end
+      end
     end : lane_received_vinst
 
     // VRGATHER and VCOMPRESS access the opreq with ad-hoc requests
-    if (vrgat_state_q == REQUESTING) begin
+    if (vrgat_state_q == REQUESTING && masku_vrgat_req_valid_q) begin
       // Here, we are sure the MaskB operand_request is free
       operand_request[MaskB] = '{
+        id         : masku_vrgat_req_q.id,
         vs         : masku_vrgat_req_q.vs,
         eew        : masku_vrgat_req_q.eew,
         scale_vl   : 1'b0,
         cvt_resize : pe_req.cvt_resize,
         vl         : 1,
         vstart     : masku_vrgat_req_q.idx,
-        hazard     : '0,
+        hazard     : vrgat_source_hazard_q,
+        hazard_wait_complete: vrgat_source_wait_complete_q,
+        source_snapshot_replay: vrgat_source_snapshot_replay_q,
         default    : '0
       };
-      operand_request_push[MaskB] = masku_vrgat_req_ready_d;
+      operand_request_push[MaskB] = masku_vrgat_req_ready_d &&
+                                    !masku_vrgat_req_q.no_data;
     end
   end: sequencer
 
@@ -972,6 +1251,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
       vrgat_state_q       <= IDLE;
       vrgat_cmd_req_cnt_q <= '0;
+      vrgat_source_hazard_q <= '0;
+      vrgat_source_wait_complete_q <= '0;
+      vrgat_source_snapshot_replay_q <= 1'b0;
     end else begin
       vinsn_done_q    <= vinsn_done_d;
       vinsn_running_q <= vinsn_running_d;
@@ -984,6 +1266,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
       vrgat_state_q       <= vrgat_state_d;
       vrgat_cmd_req_cnt_q <= vrgat_cmd_req_cnt_d;
+      vrgat_source_hazard_q <= vrgat_source_hazard_d;
+      vrgat_source_wait_complete_q <= vrgat_source_wait_complete_d;
+      vrgat_source_snapshot_replay_q <= vrgat_source_snapshot_replay_d;
     end
   end
 

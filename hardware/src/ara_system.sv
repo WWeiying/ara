@@ -6,6 +6,8 @@
 // Description:
 // Ara's System, containing Ariane and Ara.
 
+`include "rvfi_types.svh"
+
 module ara_system import axi_pkg::*; import ara_pkg::*; #(
     // RVV Parameters
     parameter int                      unsigned NrLanes            = 0,                               // Number of parallel vector lanes.
@@ -94,6 +96,33 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   logic                                 inval_valid;
   logic                                 inval_ready;
 
+`ifdef FOR_VERIFY
+  localparam type rvfi_instr_t = `RVFI_INSTR_T(CVA6Cfg);
+  localparam type rvfi_csr_elmt_t = `RVFI_CSR_ELMT_T(CVA6Cfg);
+  localparam type rvfi_csr_t = `RVFI_CSR_T(CVA6Cfg, rvfi_csr_elmt_t);
+  localparam type rvfi_to_iti_t = `RVFI_TO_ITI_T(CVA6Cfg);
+  localparam type rvfi_probes_instr_t = `RVFI_PROBES_INSTR_T(CVA6Cfg);
+  localparam type rvfi_probes_csr_t = `RVFI_PROBES_CSR_T(CVA6Cfg);
+  localparam type rvfi_probes_t = struct packed {
+    rvfi_probes_csr_t   csr;
+    rvfi_probes_instr_t instr;
+  };
+
+  rvfi_probes_t rvfi_probes;
+  rvfi_instr_t [CVA6Cfg.NrCommitPorts-1:0] rvfi_instr;
+  rvfi_csr_t rvfi_csr;
+  rvfi_to_iti_t rvfi_to_iti;
+
+  localparam int unsigned VerifyVAddrWidth =
+      cf_math_pkg::idx_width((VLEN / 8 / NrLanes) * 32);
+  logic [NrLanes-1:0][4:0] verify_wb_valid;
+  vid_t [NrLanes-1:0][4:0] verify_wb_id;
+  logic [NrLanes-1:0][4:0][VerifyVAddrWidth-1:0] verify_wb_addr;
+  elen_t [NrLanes-1:0][4:0] verify_wb_wdata;
+  logic [NrLanes-1:0][4:0][7:0] verify_wb_be;
+
+`endif
+
   // Support max 8 cores, for now
   logic [63:0] hart_id;
   assign hart_id = {'0, hart_id_i};
@@ -136,6 +165,11 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .accelerator_resp_t(accelerator_resp_t),
     .acc_mmu_req_t     (acc_mmu_req_t),
     .acc_mmu_resp_t    (acc_mmu_resp_t)
+`ifdef FOR_VERIFY
+    ,.rvfi_probes_instr_t(rvfi_probes_instr_t)
+    ,.rvfi_probes_csr_t  (rvfi_probes_csr_t  )
+    ,.rvfi_probes_t      (rvfi_probes_t      )
+`endif
   ) i_ariane (
     .clk_i            (clk_i                   ),
     .rst_ni           (rst_ni                  ),
@@ -153,13 +187,78 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .clic_irq_ready_o (/* empty */             ),
     .clic_kill_req_i  ('0                      ),
     .clic_kill_ack_o  (/* empty */             ),
+`ifdef FOR_VERIFY
+    .rvfi_probes_o    (rvfi_probes             ),
+`else
     .rvfi_probes_o    (/* empty */             ),
+`endif
     // Accelerator ports
     .cvxif_req_o      (acc_req                 ),
     .cvxif_resp_i     (acc_resp_pack           ),
     .noc_req_o        (ariane_narrow_axi_req   ),
     .noc_resp_i       (ariane_narrow_axi_resp  )
   );
+
+`ifdef FOR_VERIFY
+  for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_verify_wb
+    assign verify_wb_valid[lane] = i_ara.gen_lanes[lane].i_lane.verify_wb_valid_o;
+    assign verify_wb_id[lane]    = i_ara.gen_lanes[lane].i_lane.verify_wb_id_o;
+    assign verify_wb_addr[lane]  = i_ara.gen_lanes[lane].i_lane.verify_wb_addr_o;
+    assign verify_wb_wdata[lane] = i_ara.gen_lanes[lane].i_lane.verify_wb_wdata_o;
+    assign verify_wb_be[lane]    = i_ara.gen_lanes[lane].i_lane.verify_wb_be_o;
+  end
+
+  cva6_rvfi #(
+    .CVA6Cfg            (CVA6Cfg            ),
+    .rvfi_instr_t       (rvfi_instr_t       ),
+    .rvfi_csr_t         (rvfi_csr_t         ),
+    .rvfi_probes_instr_t(rvfi_probes_instr_t),
+    .rvfi_probes_csr_t  (rvfi_probes_csr_t  ),
+    .rvfi_probes_t      (rvfi_probes_t      ),
+    .rvfi_to_iti_t      (rvfi_to_iti_t      )
+  ) i_cva6_rvfi (
+    .clk_i         (clk_i       ),
+    .rst_ni        (rst_ni      ),
+    .rvfi_probes_i (rvfi_probes),
+    .rvfi_instr_o  (rvfi_instr ),
+    .rvfi_to_iti_o (rvfi_to_iti),
+    .rvfi_csr_o    (rvfi_csr   )
+  );
+
+  ara_commit_monitor #(
+    .NrCommitPorts    (CVA6Cfg.NrCommitPorts),
+    .NrVInsn          (NrVInsn                 ),
+    .TransIdWidth     (CVA6Cfg.TRANS_ID_BITS   ),
+    .NrLanes          (NrLanes                  ),
+    .VLEN             (VLEN                     ),
+    .VAddrWidth       (VerifyVAddrWidth         ),
+    .rvfi_instr_t     (rvfi_instr_t          ),
+    .accelerator_req_t(accelerator_req_t     ),
+    .accelerator_resp_t(accelerator_resp_t   )
+  ) i_ara_commit_monitor (
+    .clk_i       (clk_i            ),
+    .rst_ni      (rst_ni           ),
+    .rvfi_instr_i(rvfi_instr       ),
+    .acc_req_i   (acc_req.acc_req  ),
+    .acc_resp_i  (acc_resp.acc_resp),
+    .backend_alloc_i   (i_ara.i_sequencer.verify_vinsn_alloc),
+    .backend_alloc_id_i(i_ara.i_sequencer.vinsn_id_n),
+    .backend_arch_seq_i(i_ara.ara_req.verify_arch_seq),
+    .backend_arch_insn_i(i_ara.ara_req.verify_arch_insn),
+    .backend_trans_id_i(i_ara.ara_req.verify_trans_id),
+    .backend_done_i    (i_ara.i_sequencer.verify_vinsn_done),
+    .backend_use_vd_i  (i_ara.ara_req.use_vd),
+    .backend_vd_i      (i_ara.ara_req.vd),
+    .backend_eew_i     (i_ara.ara_req.vtype.vsew),
+    .backend_vl_i      (i_ara.ara_req.vl),
+    .backend_vstart_i  (i_ara.ara_req.vstart),
+    .wb_valid_i        (verify_wb_valid),
+    .wb_id_i           (verify_wb_id),
+    .wb_addr_i         (verify_wb_addr),
+    .wb_wdata_i        (verify_wb_wdata),
+    .wb_be_i           (verify_wb_be)
+  );
+`endif
 `endif
 
   axi_dw_converter #(

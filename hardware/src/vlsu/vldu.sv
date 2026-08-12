@@ -333,6 +333,18 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       automatic logic [idx_width(AxiDataWidth/8)-1:0] upper_byte = beat_upper_byte(axi_addrgen_req_i.addr,
         axi_addrgen_req_i.size, axi_addrgen_req_i.len, BURST_INCR, AxiDataWidth/8, axi_len_q);
 
+`ifdef FOR_VERIFY
+      if ($test$plusargs("ARA_DEBUG_VLDU_INDEXED") &&
+          vinsn_issue_valid && vinsn_issue_q.op == VLXE &&
+          vinsn_issue_q.vstart != '0) begin
+        $display("[ARA_VLDU_INDEXED_R] %m t=%0t id=%0d addr=%h data=%h size=%0d lower=%0d upper=%0d rptr=%0d vrf_ptr=%0d vrf_cnt=%0d issue=%0d",
+                 $time, vinsn_issue_q.id, axi_addrgen_req_i.addr,
+                 axi_r_i.data, axi_addrgen_req_i.size, lower_byte, upper_byte,
+                 axi_r_byte_pnt_q, vrf_word_byte_pnt_q,
+                 vrf_word_byte_cnt_q, issue_cnt_bytes_q);
+      end
+`endif
+
       // Is there a vector instruction ready to be issued?
       // Do we have the operands for it?
       if (vinsn_issue_valid && (vinsn_issue_q.vm || (|mask_valid_q))) begin : operands_valid
@@ -347,7 +359,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
         // How many bytes are we committing?
         automatic logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
-        valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB)) ? vinsn_valid_bytes : vrf_valid_bytes;
+        valid_bytes = (vinsn_valid_bytes < vrf_valid_bytes) ? vinsn_valid_bytes : vrf_valid_bytes;
         valid_bytes = (valid_bytes       < axi_valid_bytes       ) ? valid_bytes       : axi_valid_bytes;
 
         // Bump R beat and VRF word pointers
@@ -485,8 +497,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
     for (int unsigned lane = 0; lane < NrLanes; lane++) begin: vrf_result_write
       ldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane];
-      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr  & {$bits(vid_t  ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
-      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id    & {$bits(vaddr_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr  & {$bits(vaddr_t){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
+      ldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id    & {$bits(vid_t  ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
       ldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata & {$bits(elen_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
       ldu_result_be_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].be    & {$bits(strb_t ){result_queue_valid_q[result_queue_read_pnt_q][lane]}};
 
@@ -532,7 +544,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
         // Decrement the counter of remaining vector elements waiting to be written
         commit_cnt_bytes_d = commit_cnt_bytes_q - res_queue_eff_write_bytes;
-        if (commit_cnt_bytes_q < (NrLanes * DataWidthB)) begin : commit_cnt_bytes_overflow
+        if (commit_cnt_bytes_q < res_queue_eff_write_bytes) begin : commit_cnt_bytes_overflow
           commit_cnt_bytes_d = '0;
         end : commit_cnt_bytes_overflow
       end : result_available

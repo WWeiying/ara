@@ -61,12 +61,31 @@ void TEST_CASE2() {
   XCMP(7, scalar_64b, 55 << 30);
 }
 
+void TEST_CASE3() {
+  uint64_t lhs = 0x6000;
+  uint64_t rhs = 0x4a10;
+  uint64_t vl = 79;
+
+  scalar_64b = 0;
+  asm volatile(
+      "vsetvli zero, %[vl], e16, m4, tu, mu\n"
+      "vmv.v.x v28, %[lhs]\n"
+      "vmv.v.x v8, %[rhs]\n"
+      "vwadd.vv v0, v28, v8\n"
+      "vmv.x.s %[result], v0\n"
+      : [result] "=r"(scalar_64b)
+      : [vl] "r"(vl), [lhs] "r"(lhs), [rhs] "r"(rhs)
+      : "memory");
+  XCMP(8, scalar_64b, 0xffffffffffffaa10ull);
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
 
   TEST_CASE1();
   TEST_CASE2();
+  TEST_CASE3();
 
   EXIT_CHECK();
 }

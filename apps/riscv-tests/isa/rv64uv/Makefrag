@@ -7,6 +7,30 @@
 
 rv64uv_sc_tests = vaadd \
                   vaaddu\
+                  vasub \
+                  vasubu \
+                  vaverage_matrix \
+                  vmask_carry_tail_edges \
+                  vmask_compare_edges \
+                  vmask_logical_matrix \
+                  vmask_mem_emul_edges \
+                  vmask_scalar_handoff \
+                  vid_queue_edges \
+                  vrepair_edges \
+                  vwiden_lmul4_edges \
+                  vwiden_overlap_edges \
+                  vreduction_lmul_edges \
+                  vreduction_overlap_edges \
+                  vslide_mask_edges \
+                  vrgather_edges \
+                  vsegment_emul_edges \
+                  villegal_segment_recovery \
+                  vindexed_vstart_edges \
+                  vunit_vstart_edges \
+                  vwhole_vstart_edges \
+                  vwar_pending_source_edges \
+                  vstore_signature \
+                  vstore_mask_tail_edges \
                   vsadd \
                   vsaddu \
                   vsmul \
@@ -14,6 +38,7 @@ rv64uv_sc_tests = vaadd \
                   vssrl \
                   vnclip \
                   vnclipu \
+                  vnclip_edges \
                   vadd \
                   vsub \
                   vrsub \
@@ -86,6 +111,7 @@ rv64uv_sc_tests = vaadd \
                   vfadd \
                   vfsub \
                   vfrsub \
+                  vfrsub_pipeline_edges \
                   vfwadd \
                   vfwsub \
                   vfmul \
@@ -181,7 +207,8 @@ rv64uv_sc_tests = vaadd \
                   vfrec7 \
                   vfrsqrt7 \
                   vrgather \
-                  vcompress
+                  vcompress \
+                  vcompress_edges
 
 rv64uv_p_tests = $(addprefix rv64uv-p-, $(rv64uv_sc_tests))
 

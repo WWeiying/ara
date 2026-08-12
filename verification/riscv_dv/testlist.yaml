@@ -1,0 +1,239 @@
+# RVV 1.0 random-generation profiles for Ara DSA bring-up.
+
+- test: ara_dsa_rvv1_signature_smoke
+  description: Short deterministic-state RVV stream for full vector signature checking
+  iterations: 1
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=10
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_VMV
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_checkpoint_regression
+  description: Ten-seed deterministic RVV stream for per-instruction vector and memory checking
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=10
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_VMV
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +directed_instr_0=riscv_vector_load_store_instr_stream,5
+    +mem_region_size=4096
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_smoke
+  description: Short integer-vector generator and assembler bring-up test
+  iterations: 1
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=200
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_arithmetic
+  description: Mixed scalar and RVV 1.0 arithmetic stream
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=2000
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_load_store
+  description: RVV 1.0 unit-stride, strided, and indexed memory stream
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=2000
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,10
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_integer_stress
+  description: Long integer RVV stream covering arithmetic, masks, permutations, and configuration churn
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=5000
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_fp32
+  description: RVV FP32 arithmetic, conversion, reduction, and mixed integer-vector stream
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=3000
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64f
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_fp64
+  description: RVV FP64 arithmetic, conversion, reduction, and widening/narrowing stream
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=3000
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_vtype_churn
+  description: RVV stream biased toward vset configuration changes and policy transitions
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=3000
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +dist_control_mode=1
+    +dist_csr=20
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_load_store_slide
+  description: RVV load/store stream using slide-built index vectors and randomized vstart
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=3000
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_SLIDE
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,10
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_mixed_control
+  description: Mixed scalar/RVV stream with branches and subprogram boundaries
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=5000
+    +num_of_sub_program=5
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_nightly
+  description: Long mixed RVV regression intended for broad multi-seed overnight checking
+  iterations: 50
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=10000
+    +num_of_sub_program=5
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,10
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test

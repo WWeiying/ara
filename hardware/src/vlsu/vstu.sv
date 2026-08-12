@@ -315,7 +315,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       // How many bytes are valid in this AXI word
       axi_valid_bytes   = upper_byte - lower_byte + 1;
 
-      valid_bytes = (issue_cnt_bytes_q < (NrLanes * DataWidthB)) ? vinsn_valid_bytes : vrf_valid_bytes;
+      valid_bytes = (vinsn_valid_bytes < vrf_valid_bytes) ? vinsn_valid_bytes : vrf_valid_bytes;
       valid_bytes = (valid_bytes       < axi_valid_bytes       ) ? valid_bytes       : axi_valid_bytes;
 
       // TODO: apply the same vstart logic also to mask_valid_q
@@ -344,10 +344,18 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
               automatic int unsigned vrf_offset = vrf_byte[2:0];
               // automatic logic [$clog2(NrLanes)-1:0] vrf_lane = (vrf_byte >> 3) + vinsn_issue_q.vstart[idx_width(NrLanes)-1:0];
               automatic int unsigned vrf_lane = (vrf_byte >> 3);
+              // Store data can still use the source register's old EEW layout,
+              // while MASKU emits predicate strobes in the current store EEW
+              // layout. Keep the two physical indices independent.
+              automatic int unsigned mask_byte =
+                  shuffle_index(vrf_seq_byte, NrLanes, vinsn_issue_q.vtype.vsew);
+              automatic int unsigned mask_offset = mask_byte[2:0];
+              automatic int unsigned mask_lane = (mask_byte >> 3);
 
               // Copy data
               axi_w_o.data[8*axi_byte +: 8] = stu_operand[vrf_lane][8*vrf_offset +: 8];
-              axi_w_o.strb[axi_byte]        = vinsn_issue_q.vm || mask_q[vrf_lane][vrf_offset];
+              axi_w_o.strb[axi_byte]        =
+                  vinsn_issue_q.vm || mask_q[mask_lane][mask_offset];
             end
           end
         end : stu_operand_to_axi_w
@@ -556,5 +564,47 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       stu_current_burst_exception_o <= stu_current_burst_exception_d;
     end
   end
+
+`ifdef FOR_VERIFY
+  longint unsigned debug_vstu_cycle_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_vstu_cycle_q <= '0;
+    end else begin
+      debug_vstu_cycle_q <= debug_vstu_cycle_q + 1'b1;
+      if ($test$plusargs("ARA_DEBUG_VSTU_STALL")) begin
+        if (pe_req_valid_i && pe_req_ready_o && pe_req_i.vfu == VFU_StoreUnit &&
+            pe_req_i.vstart != '0) begin
+          $display("[ARA_VSTU_ACCEPT] %m t=%0t cyc=%0d id=%0d op=%0d vl=%0d vstart=%0d vsew=%0d eew=%0d vm=%0b",
+                   $time, debug_vstu_cycle_q, pe_req_i.id, pe_req_i.op,
+                   pe_req_i.vl, pe_req_i.vstart, pe_req_i.vtype.vsew,
+                   pe_req_i.old_eew_vs1, pe_req_i.vm);
+        end
+        if (vinsn_issue_valid && vinsn_issue_q.vstart != '0 &&
+            debug_vstu_cycle_q % 1000 == 0) begin
+          $display("[ARA_VSTU_STATE] %m t=%0t cyc=%0d id=%0d op=%0d rem=%0d vstart=%0d vrf_pnt=%0d vrf_cnt=%0d first=%0b data_v=%b data_r=%b mask_v=%b mask_r=%0b ag_v=%0b ag_r=%0b aw_addr=%h aw_len=%0d w_v=%0b w_r=%0b",
+                   $time, debug_vstu_cycle_q, vinsn_issue_q.id,
+                   vinsn_issue_q.op, issue_cnt_bytes_q, vinsn_issue_q.vstart,
+                   vrf_pnt_q, vrf_cnt_q, first_lane_payload_q,
+                   stu_operand_valid, stu_operand_ready, mask_valid_q,
+                   mask_ready_d, axi_addrgen_req_valid_i,
+                   axi_addrgen_req_ready_o, axi_addrgen_req_i.addr,
+                   axi_addrgen_req_i.len, axi_w_valid_o, axi_w_ready_i);
+        end
+      end
+      if ($test$plusargs("ARA_DEBUG_VSTU_DATA") && axi_w_valid_o &&
+          axi_w_ready_i) begin
+        $display("[ARA_VSTU_DATA] %m t=%0t cyc=%0d id=%0d op=%0d vd=%0d vl=%0d vstart=%0d req_addr=%h req_len=%0d beat=%0d last=%0b strb=%h data=%h vrf_pnt=%0d vrf_cnt=%0d vrf_seq=%0d vrf_byte=%0d mask=%p",
+                 $time, debug_vstu_cycle_q, vinsn_issue_q.id,
+                 vinsn_issue_q.op, vinsn_issue_q.vd, vinsn_issue_q.vl,
+                 vinsn_issue_q.vstart, axi_addrgen_req_i.addr,
+                 axi_addrgen_req_i.len, axi_len_q, axi_w_o.last,
+                 axi_w_o.strb, axi_w_o.data, vrf_pnt_q, vrf_cnt_q,
+                 vrf_seq_byte, vrf_byte, mask_q);
+      end
+    end
+  end
+`endif
 
 endmodule : vstu

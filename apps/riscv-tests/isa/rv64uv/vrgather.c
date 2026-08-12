@@ -20,6 +20,7 @@ void TEST_CASE1() {
   asm volatile("vrgather.vv v2, v4, v6");
   VCMP_U8(2, v2, 20, 20);
 
+#if VLEN >= 2048
   VSET(256, e32, m4);
   VLOAD_32(
       v24, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
@@ -128,6 +129,7 @@ void TEST_CASE1() {
       55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38,
       37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20,
       19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 467);
+#endif
 }
 
 void TEST_CASE2() {
@@ -176,6 +178,7 @@ void TEST_CASE2() {
            14, 13, 12, 11, 10, 9, 8, 7, 0xffffffff, 0xffffffff, 0xffffffff, 3,
            2, 1, 0);
 
+#if VLEN >= 2048
   VSET(4, e64, m4);
   VLOAD_64(v0, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff,
            0xffffffffffffffff);
@@ -291,6 +294,7 @@ void TEST_CASE2() {
            35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19,
            18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 0xffffffff, 0xffffffff,
            0xffffffff, 3, 2, 1);
+#endif
 }
 
 void TEST_CASE3() {

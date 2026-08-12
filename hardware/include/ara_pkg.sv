@@ -1012,10 +1012,12 @@ typedef struct packed {
 
   // During VRGATHER/VCOMPRESS, the MASKU asks for operands to the lanes
   typedef struct packed {
+    vid_t id;
     max_vlen_t idx;
     rvv_pkg::vew_e eew;
     logic [4:0] vs;
     logic is_last_req;
+    logic no_data;
   } vrgat_req_t;
 
   ////////////////////////

@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
   uint64_t warm_iter;
   uint64_t check;
 
+#ifdef ARA_LINUX
   if (argc != 6) {
     printf("Error: please, specify matrix size (MK * KN = MN, i.e., K is the "
            "reduction dim), number of warm-up iterations, and check.\n");
@@ -86,22 +87,21 @@ int main(int argc, char **argv) {
     printf("Example: ./fmamtul-loop 128 128 128 3 1\n");
     return -1;
   } else {
-#ifdef ARA_LINUX
     sizeM = atoi(argv[1]);
     sizeN = atoi(argv[2]);
     sizeK = atoi(argv[3]);
     warm_iter = atoi(argv[4]);
     check = atoi(argv[5]);
-#else
-    printf("Error: please, specify matrix size (MK * KN = MN, i.e., K is the "
-           "reduction dim), number of warm-up iterations, and check.\n");
-    sizeM = M;
-    sizeN = P;
-    sizeK = N;
-    warm_iter = 3;
-    check = 1;
-#endif
   }
+#else
+  (void)argc;
+  (void)argv;
+  sizeM = M;
+  sizeN = P;
+  sizeK = N;
+  warm_iter = 0;
+  check = 1;
+#endif
 
   // Measure only the full-size matmul
   printf("\n");

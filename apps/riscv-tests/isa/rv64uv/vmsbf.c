@@ -43,6 +43,7 @@ void TEST_CASE3() {
   VSET(2, e8, m1);
   VCMP_U8(5, v2, 0x07, 0x00);
 
+#if VLEN >= 2048
   VSET(8, e64, m2);
   VLOAD_64(v4, 0, 0, 0, 0, 0, 1, 0, 0);
   VSET(512, e8, m2);
@@ -52,6 +53,9 @@ void TEST_CASE3() {
            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0, 0, 0,
            0, 0, 0);
 
+#endif
+
+#if VLEN >= 4096
   VSET(16, e64, m2);
   VLOAD_64(v4, 0, 0, 0, 0, 0, 1, 0, 0, 1685, 0, 0, 1, 0, 0, 0, 0);
   VSET(1024, e8, m2);
@@ -60,6 +64,7 @@ void TEST_CASE3() {
   VCMP_U32(7, v2, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0, 0, 0,
            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+#endif
 }
 
 void TEST_CASE4() {

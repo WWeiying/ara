@@ -113,6 +113,7 @@ module ara import ara_pkg::*; #(
     logic use_vs2;
     opqueue_conversion_e conversion_vs2;
     rvv_pkg::vew_e eew_vs2;
+    rvv_pkg::vew_e old_eew_vs2;
 
     // Use vd as an operand as well (e.g., vmacc)
     logic use_vd_op;
@@ -150,10 +151,29 @@ module ara import ara_pkg::*; #(
     // Resizing of FP conversions
     resize_e cvt_resize;
 
+    // Internal widening-overlap repair protocol. A single aggregate VRF word
+    // is captured before the architectural operation and may be replayed by a
+    // later partial reshuffle to preserve undisturbed destination elements.
+    logic overlap_capture;
+    logic overlap_use_snapshot;
+    vlen_t overlap_snapshot_word;
+
+    logic source_snapshot_capture;
+    logic source_snapshot_replay_vs1;
+    logic source_snapshot_replay_vs2;
+
     // Vector machine metadata
     vlen_t vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+
+`ifdef FOR_VERIFY
+    // Keep the architectural request identity attached to any backend uops
+    // introduced by reshuffling or segment-memory sequencing.
+    logic [63:0] verify_arch_seq;
+    logic [31:0] verify_arch_insn;
+    logic [CVA6Cfg.TRANS_ID_BITS-1:0] verify_trans_id;
+`endif
 
     // Request token, for registration in the sequencer
     logic token;
@@ -184,6 +204,8 @@ module ara import ara_pkg::*; #(
   ara_resp_t                    ara_resp;
   logic                         ara_resp_valid;
   logic                         ara_idle;
+  logic                         sldu_idle;
+  logic                         sldu_drain;
   // Interface with the VSTU
   logic                         core_st_pending;
   logic                         load_complete;
@@ -221,6 +243,8 @@ module ara import ara_pkg::*; #(
     .ara_resp_i        (ara_resp        ),
     .ara_resp_valid_i  (ara_resp_valid  ),
     .ara_idle_i        (ara_idle        ),
+    .sldu_idle_i       (sldu_idle       ),
+    .sldu_drain_o      (sldu_drain      ),
     // Interface with the lanes
     .vxsat_flag_i      (vxsat_flag      ),
     .alu_vxrm_o        (alu_vxrm        ),
@@ -244,6 +268,9 @@ module ara import ara_pkg::*; #(
   pe_req_t                         pe_req;
   logic                            pe_req_valid;
   logic              [NrPEs-1:0]   pe_req_ready;
+  logic                            pe_req_broadcast_valid;
+  logic                            lane_requesters_ready;
+  logic                            slide_requester_ready;
   logic              [NrVInsn-1:0] pe_vinsn_running;
   pe_resp_t          [NrPEs-1:0]   pe_resp;
   // Interface with the address generator
@@ -262,11 +289,27 @@ module ara import ara_pkg::*; #(
   // Mask unit operands
   elen_t     [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand;
   logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_valid;
+  logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_valid_masku;
   logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_ready_masku, masku_operand_ready_lane;
   strb_t     [NrLanes-1:0]                     mask;
   logic      [NrLanes-1:0]                     mask_valid;
   logic                                        mask_valid_lane;
+  vfu_e                                         mask_target_fu;
   logic      [NrLanes-1:0]                     lane_mask_ready;
+
+  // A request with more than one PE consumer must be accepted atomically. If
+  // MASKU or SLDU is still draining an older context, hold valid away from
+  // every PE so another consumer cannot capture the new request early.
+  assign lane_requesters_ready = &pe_req_ready[NrLanes-1:0] ||
+      ((pe_req.op == VLE || pe_req.op == VLSE) && pe_req.vm);
+  assign slide_requester_ready =
+      !((pe_req.vfu == VFU_SlideUnit) ||
+        (pe_req.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) ||
+      pe_req_ready[NrLanes+OffsetSlide];
+  assign pe_req_broadcast_valid = pe_req_valid &&
+      slide_requester_ready &&
+      ((pe_req.vm && pe_req.vfu != VFU_MaskUnit) ||
+       (lane_requesters_ready && pe_req_ready[NrLanes+OffsetMask]));
 
   // Mask unit scalar result variables
   elen_t     result_scalar;
@@ -314,10 +357,31 @@ module ara import ara_pkg::*; #(
 
   // Scalar move support
   always_comb begin
+    masku_operand_valid_masku = masku_operand_valid;
     masku_operand_ready_lane = masku_operand_ready_masku;
     // The scalar move fetches the data from lane 0 - MaskB OpQueue (idx == 1)
     masku_operand_ready_lane[0][1] = masku_operand_ready_masku[0][1] | pe_scalar_resp_ready;
+
+    // VMVXS/VFMVFS return lane 0's MaskB word directly to the scalar core.  Do
+    // not let MASKU's old-vd spill register consume the same handshake.
+    if (pe_req.op inside {[VMVXS:VFMVFS]}) begin
+      masku_operand_valid_masku[0][1] = 1'b0;
+    end
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VFMVFS416") &&
+        ((pe_req_valid && pe_req.op == VFMVFS) ||
+         pe_scalar_resp_ready || masku_operand_valid[0][1])) begin
+      $display("[ARA_VFMVFS416_TOP] t=%0t pe=%0b op=%0d id=%0d vs2=%0d vl=%0d maskb=%0b/%0b data=%h scalar_ready=%0b masku_ready=%0b",
+               $time, pe_req_valid, pe_req.op, pe_req.id, pe_req.vs2, pe_req.vl,
+               masku_operand_valid[0][1], masku_operand_ready_lane[0][1],
+               masku_operand[0][1], pe_scalar_resp_ready,
+               masku_operand_ready_masku[0][1]);
+    end
+  end
+`endif
 
   /////////////
   //  Lanes  //
@@ -331,11 +395,15 @@ module ara import ara_pkg::*; #(
   // Slide unit/address generation operands
   elen_t     [NrLanes-1:0]                     sldu_addrgen_operand;
   logic      [NrLanes-1:0]                     sldu_operand_valid;
+  logic      [NrLanes-1:0]                     sldu_operand_reduction;
   logic      [NrLanes-1:0]                     addrgen_operand_valid;
   logic      [NrLanes-1:0]                     sldu_operand_ready;
   sldu_mux_e                                   sldu_mux_sel;
   logic                                        addrgen_operand_ready;
   logic      [NrLanes-1:0]                     sldu_red_valid;
+  logic      [NrLanes-1:0]                     mfpu_reduction_any_active;
+  logic                                        mfpu_reduction_global_any_active;
+  assign mfpu_reduction_global_any_active = |mfpu_reduction_any_active;
 
   // Results
   // Load Unit
@@ -393,13 +461,15 @@ module ara import ara_pkg::*; #(
       .lsu_ex_flush_o                  (lsu_ex_flush_stu[lane]              ),
       // Interface with the sequencer
       .pe_req_i                        (pe_req                              ),
-      .pe_req_valid_i                  (pe_req_valid                        ),
+      .pe_req_valid_i                  (pe_req_broadcast_valid              ),
       .pe_vinsn_running_i              (pe_vinsn_running                    ),
       .pe_req_ready_o                  (pe_req_ready[lane]                  ),
       .pe_resp_o                       (pe_resp[lane]                       ),
       .alu_vinsn_done_o                (alu_vinsn_done[lane]                ),
       .mfpu_vinsn_done_o               (mfpu_vinsn_done[lane]               ),
       .global_hazard_table_i           (global_hazard_table                 ),
+      .mfpu_reduction_any_active_o      (mfpu_reduction_any_active[lane]     ),
+      .mfpu_reduction_global_any_active_i(mfpu_reduction_global_any_active   ),
       // Interface with the slide unit
       .sldu_result_req_i               (sldu_result_req[lane]               ),
       .sldu_result_addr_i              (sldu_result_addr[lane]              ),
@@ -423,6 +493,7 @@ module ara import ara_pkg::*; #(
       // Interface with the slide/address generation unit
       .sldu_addrgen_operand_o          (sldu_addrgen_operand[lane]          ),
       .sldu_operand_valid_o            (sldu_operand_valid[lane]            ),
+      .sldu_operand_reduction_o        (sldu_operand_reduction[lane]        ),
       .addrgen_operand_valid_o         (addrgen_operand_valid[lane]         ),
       .addrgen_operand_ready_i         (addrgen_operand_ready               ),
       .sldu_mux_sel_i                  (sldu_mux_sel                        ),
@@ -444,6 +515,7 @@ module ara import ara_pkg::*; #(
       .masku_vrgat_req_i               (masku_vrgat_req                     ),
       .mask_i                          (mask[lane]                          ),
       .mask_valid_i                    (mask_valid[lane] & mask_valid_lane  ),
+      .mask_target_fu_i                (mask_target_fu                     ),
       .mask_ready_o                    (lane_mask_ready[lane]               )
     );
   end: gen_lanes
@@ -526,7 +598,7 @@ module ara import ara_pkg::*; #(
     .lsu_ex_flush_done_o        (lsu_ex_flush_done                                     ),
     // Interface with the sequencer
     .pe_req_i                   (pe_req                                                ),
-    .pe_req_valid_i             (pe_req_valid                                          ),
+    .pe_req_valid_i             (pe_req_broadcast_valid                                ),
     .pe_vinsn_running_i         (pe_vinsn_running                                      ),
     .pe_req_ready_o             (pe_req_ready[NrLanes+OffsetStore : NrLanes+OffsetLoad]),
     .pe_resp_o                  (pe_resp[NrLanes+OffsetStore : NrLanes+OffsetLoad]     ),
@@ -538,6 +610,7 @@ module ara import ara_pkg::*; #(
     // Interface with the Mask unit
     .mask_i                     (mask                                                  ),
     .mask_valid_i               (mask_valid                                            ),
+    .mask_target_fu_i           (mask_target_fu                                        ),
     .vldu_mask_ready_o          (vldu_mask_ready                                       ),
     .vstu_mask_ready_o          (vstu_mask_ready                                       ),
     // Interface with the lanes
@@ -589,13 +662,16 @@ module ara import ara_pkg::*; #(
     .rst_ni                  (rst_ni                           ),
     // Interface with the main sequencer
     .pe_req_i                (pe_req                           ),
-    .pe_req_valid_i          (pe_req_valid                     ),
+    .pe_req_valid_i          (pe_req_broadcast_valid           ),
     .pe_vinsn_running_i      (pe_vinsn_running                 ),
     .pe_req_ready_o          (pe_req_ready[NrLanes+OffsetSlide]),
     .pe_resp_o               (pe_resp[NrLanes+OffsetSlide]     ),
+    .idle_o                  (sldu_idle                         ),
+    .maintenance_drain_i     (sldu_drain                        ),
     // Interface with the lanes
     .sldu_operand_i          (sldu_addrgen_operand             ),
     .sldu_operand_valid_i    (sldu_operand_valid               ),
+    .sldu_operand_reduction_i(sldu_operand_reduction           ),
     .sldu_operand_ready_o    (sldu_operand_ready               ),
     .sldu_result_req_o       (sldu_result_req                  ),
     .sldu_result_addr_o      (sldu_result_addr                 ),
@@ -627,7 +703,7 @@ module ara import ara_pkg::*; #(
     .rst_ni                  (rst_ni                          ),
     // Interface with the main sequencer
     .pe_req_i                (pe_req                          ),
-    .pe_req_valid_i          (pe_req_valid                    ),
+    .pe_req_valid_i          (pe_req_broadcast_valid          ),
     .pe_vinsn_running_i      (pe_vinsn_running                ),
     .pe_req_ready_o          (pe_req_ready[NrLanes+OffsetMask]),
     .pe_resp_o               (pe_resp[NrLanes+OffsetMask]     ),
@@ -635,7 +711,7 @@ module ara import ara_pkg::*; #(
     .result_scalar_valid_o   (result_scalar_valid             ),
     // Interface with the lanes
     .masku_operand_i         (masku_operand                   ),
-    .masku_operand_valid_i   (masku_operand_valid             ),
+    .masku_operand_valid_i   (masku_operand_valid_masku       ),
     .masku_operand_ready_o   (masku_operand_ready_masku       ),
     .masku_result_req_o      (masku_result_req                ),
     .masku_result_addr_o     (masku_result_addr               ),
@@ -651,6 +727,7 @@ module ara import ara_pkg::*; #(
     .mask_o                  (mask                            ),
     .mask_valid_o            (mask_valid                      ),
     .mask_valid_lane_o       (mask_valid_lane                 ),
+    .mask_target_fu_o        (mask_target_fu                  ),
     .lane_mask_ready_i       (lane_mask_ready                 ),
     .vldu_mask_ready_i       (vldu_mask_ready                 ),
     .vstu_mask_ready_i       (vstu_mask_ready                 ),

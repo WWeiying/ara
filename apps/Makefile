@@ -20,6 +20,7 @@ ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 APPS_DIR := $(ROOT_DIR)
 COMMON_DIR := $(ROOT_DIR)/common
 TESTS_DIR := $(ROOT_DIR)/riscv-tests/isa
+RVTEST_MACRO_HEADERS := $(shell find $(TESTS_DIR)/macros -type f)
 
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(COMMON_DIR)/runtime.mk
@@ -76,7 +77,13 @@ else
 define app_gen_data_template
 .PHONY: $1/data.S
 $1/data.S:
-	cd $1 && if [ -d script ]; then ${PYTHON} script/gen_data.py $(subst ",,$(def_args_$1)) > data.S ; else touch data.S; fi
+	cd $1 && if [ -d script ]; then \
+		${PYTHON} script/gen_data.py $(subst ",,$(def_args_$1)) > data.S; \
+	elif [ "$1" = vmc ] || [ "$1" = vvaddint32 ]; then \
+		cp ../vvaddint32_asm/data.S data.S; \
+	else \
+		touch data.S; \
+	fi
 endef
 $(foreach app,$(APPS),$(eval $(call app_gen_data_template,$(app))))
 endif
@@ -124,7 +131,7 @@ riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)
 define rvtest_compile_template
 TESTS_$(1) := $(addprefix bin/, $($(addsuffix _ara_tests, $1)))
 
-bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_GCC) linker_script
+bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_GCC) $(RVTEST_MACRO_HEADERS) linker_script
 	mkdir -p bin/
 	$$(RISCV_CC_GCC) -Iinclude -I$$(TESTS_DIR)/macros/scalar -I$$(TESTS_DIR)/macros/vector $$(RISCV_CCFLAGS_GCC) $$(RISCV_LDFLAGS_GCC) -o $$@ $$< $(RUNTIME_GCC)
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
@@ -134,7 +141,7 @@ endef
 define rvtest_compile_template_c
 TESTS_$(1) := $(addprefix bin/, $($(addsuffix _ara_tests, $1)))
 
-bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_LLVM) linker_script
+bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_LLVM) $(RVTEST_MACRO_HEADERS) linker_script
 	mkdir -p bin/
 	$$(RISCV_CC) -Iinclude -I$$(TESTS_DIR)/macros/scalar -I$$(TESTS_DIR)/macros/vector $$(RISCV_CCFLAGS) $$(RISCV_LDFLAGS) -o $$@ $$< $(RUNTIME_LLVM)
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump

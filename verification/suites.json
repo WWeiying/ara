@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "timeout_s": 300
+  },
+  "catalogs": {
+    "apps": {
+      "kind": "app",
+      "root": "apps",
+      "exclude": [
+        "benchmarks"
+      ]
+    },
+    "rvv": {
+      "kind": "rvv",
+      "makefrag": "apps/riscv-tests/isa/rv64uv/Makefrag",
+      "variable": "rv64uv_sc_tests"
+    }
+  },
+  "suites": {
+    "smoke": {
+      "description": "Fast, stable scalar/vector integration gate.",
+      "tests": [
+        "app:hello_world",
+        "app:vsaxpy"
+      ]
+    },
+    "rvv-diagnostic": {
+      "description": "Directed RVV probes currently used to diagnose legacy test failures.",
+      "tests": [
+        "rvv:vadd",
+        "rvv:vle32",
+        "rvv:vse32"
+      ]
+    },
+    "rvv-directed": {
+      "description": "All directed rv64uv architectural tests already carried by Ara.",
+      "include": [
+        "rvv:*"
+      ]
+    },
+    "rvv-corners": {
+      "description": "Focused RVV matrices and regression tests for repaired edge cases.",
+      "tests": [
+        "rvv:vaadd",
+        "rvv:vaaddu",
+        "rvv:vasub",
+        "rvv:vasubu",
+        "rvv:vaverage_matrix",
+        "rvv:vmask_carry_tail_edges",
+        "rvv:vmask_compare_edges",
+        "rvv:vmask_logical_matrix",
+        "rvv:vmask_mem_emul_edges",
+        "rvv:vmask_scalar_handoff",
+        "rvv:vcpop",
+        "rvv:vfirst",
+        "rvv:vid_queue_edges",
+        "rvv:vrepair_edges",
+        "rvv:vwiden_lmul4_edges",
+        "rvv:vwiden_overlap_edges",
+        "rvv:vreduction_lmul_edges",
+        "rvv:vreduction_overlap_edges",
+        "rvv:vnclip_edges",
+        "rvv:vslide_mask_edges",
+        "rvv:vrgather_edges",
+        "rvv:vcompress_edges",
+        "rvv:vsegment_emul_edges",
+        "rvv:vindexed_vstart_edges",
+        "rvv:vunit_vstart_edges",
+        "rvv:vwhole_vstart_edges",
+        "rvv:vwar_pending_source_edges",
+        "rvv:vstore_signature",
+        "rvv:vstore_mask_tail_edges"
+      ]
+    },
+    "rvv-failure-regression": {
+      "description": "Directed tests that failed or timed out in the first full Ara DSA campaign.",
+      "tests": [
+        "rvv:vslidedown",
+        "rvv:vssseg",
+        "rvv:vsetvli",
+        "rvv:vsetvl",
+        "rvv:vmsbf",
+        "rvv:vmsif",
+        "rvv:viota",
+        "rvv:vrgather",
+        "rvv:vcompress",
+        "rvv:vnsrl",
+        "rvv:vnsra",
+        "rvv:vfwadd",
+        "rvv:vlsseg",
+        "rvv:vcompress_edges"
+      ]
+    },
+    "rvv-reductions": {
+      "description": "Directed integer and widening reduction coverage across SEW and mask variants.",
+      "tests": [
+        "rvv:vredsum",
+        "rvv:vredmaxu",
+        "rvv:vredmax",
+        "rvv:vredminu",
+        "rvv:vredmin",
+        "rvv:vredand",
+        "rvv:vredor",
+        "rvv:vredxor",
+        "rvv:vwredsumu",
+        "rvv:vwredsum",
+        "rvv:vfredusum",
+        "rvv:vfredosum",
+        "rvv:vfredmin",
+        "rvv:vfredmax",
+        "rvv:vfwredusum",
+        "rvv:vfwredosum",
+        "rvv:vreduction_lmul_edges",
+        "rvv:vreduction_overlap_edges"
+      ]
+    },
+    "applications": {
+      "description": "All buildable Ara applications discovered below apps/.",
+      "include": [
+        "app:*"
+      ]
+    },
+    "full": {
+      "description": "All application and directed RVV tests.",
+      "include": [
+        "app:*",
+        "rvv:*"
+      ]
+    }
+  }
+}

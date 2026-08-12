@@ -33,6 +33,7 @@ typedef struct {
   logic [63:0] rvv_op_fd;
   logic [63:0] rvv_op_load;
   logic [63:0] rvv_op_store;
+  logic [63:0] tc_executed_ifetch_bytes;
   logic [63:0] rvv_axi_aw_count;
   logic [63:0] rvv_axi_w_count;
   logic [63:0] rvv_axi_b_count;
@@ -69,6 +70,7 @@ function automatic perf_t get_perf_counters();
     counters.rvv_op_fd    = ara_tb.rvv_op_fd   ;
     counters.rvv_op_load  = ara_tb.rvv_op_load ;
     counters.rvv_op_store = ara_tb.rvv_op_store;
+    counters.tc_executed_ifetch_bytes = ara_tb.tc_executed_ifetch_bytes;
     counters.rvv_axi_aw_count = ara_tb.rvv_axi_aw_count;
     counters.rvv_axi_w_count  = ara_tb.rvv_axi_w_count ;
     counters.rvv_axi_b_count  = ara_tb.rvv_axi_b_count ;
@@ -105,6 +107,7 @@ function void print_perf_report();
       int total_rvv_op_fd   ;
       int total_rvv_op_load ;
       int total_rvv_op_store;
+      int total_tc_executed_ifetch_bytes;
       int total_rvv_axi_aw_count;
       int total_rvv_axi_w_count ;
       int total_rvv_axi_b_count ;
@@ -124,6 +127,7 @@ function void print_perf_report();
       real ipc;
       real lane_utilization;
       real vecinst_rate;
+      real main_vector_inst_per_cycle;
       real main_vector_req_per_cycle;
       real main_vector_req_blocked_ratio;
       int file_handle;
@@ -148,6 +152,9 @@ function void print_perf_report();
       total_rvv_op_fd    = ara_tb.perf_end_n.rvv_op_fd    - ara_tb.perf_start_n.rvv_op_fd   ;
       total_rvv_op_load  = ara_tb.perf_end_n.rvv_op_load  - ara_tb.perf_start_n.rvv_op_load ;
       total_rvv_op_store = ara_tb.perf_end_n.rvv_op_store - ara_tb.perf_start_n.rvv_op_store;
+      total_tc_executed_ifetch_bytes =
+          ara_tb.perf_end_n.tc_executed_ifetch_bytes -
+          ara_tb.perf_start_n.tc_executed_ifetch_bytes;
       total_rvv_axi_aw_count = ara_tb.perf_end_n.rvv_axi_aw_count - ara_tb.perf_start_n.rvv_axi_aw_count;
       total_rvv_axi_w_count  = ara_tb.perf_end_n.rvv_axi_w_count  - ara_tb.perf_start_n.rvv_axi_w_count ;
       total_rvv_axi_b_count  = ara_tb.perf_end_n.rvv_axi_b_count  - ara_tb.perf_start_n.rvv_axi_b_count ;
@@ -167,6 +174,7 @@ function void print_perf_report();
       ipc = real'(total_insns) / total_cycles;
       lane_utilization = real'(total_rvv_lane_cycles) / total_cycles;
       vecinst_rate = real'(total_vector_insns) / total_insns;
+      main_vector_inst_per_cycle = real'(total_vector_insns) / total_cycles;
       main_vector_req_per_cycle = real'(total_ara_req_fire_count) / total_cycles;
       main_vector_req_blocked_ratio = real'(total_ara_req_blocked_cycles) / total_cycles;
       file_handle = $fopen($sformatf("perf_report_%s.log", testcase), "a");
@@ -184,9 +192,11 @@ function void print_perf_report();
       $display("[PERF] total_rvv_store_only_cycles: %0d", total_rvv_store_only_cycles);
       $display("[PERF] total_rvv_store_lane_cycles: %0d", total_rvv_store_lane_cycles);
       $display("[PERF] total_vector_insns         : %0d", total_vector_insns);
+      $display("[PERF] tc_executed_ifetch_bytes   : %0d", total_tc_executed_ifetch_bytes);
       $display("[PERF] IPC                        : %0.3f", ipc);
       $display("[PERF] lane utilization           : %0.3f", lane_utilization);
       $display("[PERF] vector inst rate           : %0.3f", vecinst_rate);
+      $display("[PERF] main_vector_inst_per_cycle : %0.6f", main_vector_inst_per_cycle);
       $display("[PERF] ara_req_valid_cycles       : %0d", total_ara_req_valid_cycles);
       $display("[PERF] ara_req_fire_count         : %0d", total_ara_req_fire_count);
       $display("[PERF] ara_req_blocked_cycles     : %0d", total_ara_req_blocked_cycles);
@@ -220,9 +230,11 @@ function void print_perf_report();
       $fwrite(file_handle, "[PERF] total_rvv_store_only_cycles: %0d\n", total_rvv_store_only_cycles);
       $fwrite(file_handle, "[PERF] total_rvv_store_lane_cycles: %0d\n", total_rvv_store_lane_cycles);
       $fwrite(file_handle, "[PERF] total_vector_insns         : %0d\n", total_vector_insns);
+      $fwrite(file_handle, "[PERF] tc_executed_ifetch_bytes   : %0d\n", total_tc_executed_ifetch_bytes);
       $fwrite(file_handle, "[PERF] IPC                        : %0.3f\n", ipc);
       $fwrite(file_handle, "[PERF] lane utilization           : %0.3f\n", lane_utilization);
       $fwrite(file_handle, "[PERF] vector inst rate           : %0.3f\n", vecinst_rate);
+      $fwrite(file_handle, "[PERF] main_vector_inst_per_cycle : %0.6f\n", main_vector_inst_per_cycle);
       $fwrite(file_handle, "[PERF] ara_req_valid_cycles       : %0d\n", total_ara_req_valid_cycles);
       $fwrite(file_handle, "[PERF] ara_req_fire_count         : %0d\n", total_ara_req_fire_count);
       $fwrite(file_handle, "[PERF] ara_req_blocked_cycles     : %0d\n", total_ara_req_blocked_cycles);
@@ -829,6 +841,7 @@ module ara_tb;
   logic [63:0] rvv_op_fd   ;
   logic [63:0] rvv_op_load ;
   logic [63:0] rvv_op_store;
+  logic [63:0] tc_executed_ifetch_bytes;
   logic [63:0] rvv_axi_aw_count;
   logic [63:0] rvv_axi_w_count;
   logic [63:0] rvv_axi_b_count;
@@ -1516,6 +1529,21 @@ module ara_tb;
     end
   end
 `endif
+
+  always_ff @(posedge clk, negedge rst_n) begin
+    if(!rst_n) begin
+      tc_executed_ifetch_bytes <= '0;
+    end
+    else begin
+      tc_executed_ifetch_bytes <= tc_executed_ifetch_bytes +
+        (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_macro_ack_o[0] ?
+          (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].is_compressed ?
+            64'd2 : 64'd4) : 64'd0) +
+        (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_macro_ack_o[1] ?
+          (ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].is_compressed ?
+            64'd2 : 64'd4) : 64'd0);
+    end
+  end
 
   always_ff @(posedge clk, negedge rst_n) begin
     if(!rst_n) begin

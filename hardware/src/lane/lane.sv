@@ -61,6 +61,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           alu_vinsn_done_o,
     output logic                                           mfpu_vinsn_done_o,
     input  logic                [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_i,
+    output logic                                           mfpu_reduction_any_active_o,
+    input  logic                                           mfpu_reduction_global_any_active_i,
     // Interface with the Store unit
     output elen_t                                          stu_operand_o,
     output logic                                           stu_operand_valid_o,
@@ -68,6 +70,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the Slide/Address Generation unit
     output elen_t                                          sldu_addrgen_operand_o,
     output logic                                           sldu_operand_valid_o,
+    output logic                                           sldu_operand_reduction_o,
     output logic                                           addrgen_operand_valid_o,
     input  logic                                           sldu_operand_ready_i,
     input  sldu_mux_e                                      sldu_mux_sel_i,
@@ -106,7 +109,15 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface between the Mask unit and the VFUs
     input  strb_t                                          mask_i,
     input  logic                                           mask_valid_i,
+    input  vfu_e                                           mask_target_fu_i,
     output logic                                           mask_ready_o
+`ifdef FOR_VERIFY
+    ,output logic [4:0]                                    verify_wb_valid_o
+    ,output vid_t [4:0]                                    verify_wb_id_o
+    ,output vaddr_t [4:0]                                  verify_wb_addr_o
+    ,output elen_t [4:0]                                   verify_wb_wdata_o
+    ,output strb_t [4:0]                                   verify_wb_be_o
+`endif
   );
 
   `include "common_cells/registers.svh"
@@ -129,6 +140,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     logic is_reduct; // Is this a reduction?
     logic is_slide; // Is this a slide?
+    logic source_snapshot_capture;
+    logic source_snapshot_replay;
 
     rvv_pkg::vew_e eew;        // Effective element width
     opqueue_conversion_e conv; // Type conversion
@@ -142,6 +155,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     // Hazards
     logic [NrVInsn-1:0] hazard;
+    logic [NrVInsn-1:0] hazard_source_lifetime;
+    logic [NrVInsn-1:0] hazard_wait_complete;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -163,9 +178,13 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     logic use_vs1;   // This operation uses vs1
     logic use_vs2;   // This operation uses vs1
     logic use_vd_op; // This operation uses vd as an operand as well
+    // A narrowing instruction may replay an aliased narrow vs1/old-vd after
+    // the physical destination group was converted for its wide vs2.
+    logic preserve_narrow_vd;
 
     elen_t scalar_op;    // Scalar operand
     logic use_scalar_op; // This operation uses the scalar operand
+    logic skip_sldu_operand; // SLDU operation completes without the shared operand stream
 
     vfu_e vfu; // VFU responsible for this instruction
 
@@ -189,20 +208,41 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   /////////////////
 
   // Cut the mask_ready_o timing-critical path
-  strb_t mask;
-  logic  mask_valid, mask_ready;
+  strb_t alu_mask, mfpu_mask;
+  logic  alu_mask_valid, alu_mask_ready;
+  logic  mfpu_mask_valid, mfpu_mask_ready;
+  logic  alu_mask_input_ready, mfpu_mask_input_ready;
+
+  assign mask_ready_o = (mask_target_fu_i inside {VFU_Alu, VFU_MaskUnit})
+                      ? alu_mask_input_ready
+                      : (mask_target_fu_i == VFU_MFpu)
+                        ? mfpu_mask_input_ready : 1'b0;
 
   spill_register #(
     .T(strb_t)
-  ) i_mask_ready_spill_register (
+  ) i_alu_mask_ready_spill_register (
     .clk_i  (clk_i       ),
     .rst_ni (rst_ni      ),
-    .valid_i(mask_valid_i),
-    .ready_o(mask_ready_o),
-    .data_i (mask_i      ),
-    .valid_o(mask_valid  ),
-    .ready_i(mask_ready  ),
-    .data_o (mask        )
+    .valid_i(mask_valid_i &&
+             (mask_target_fu_i inside {VFU_Alu, VFU_MaskUnit})),
+    .ready_o(alu_mask_input_ready),
+    .data_i (mask_i       ),
+    .valid_o(alu_mask_valid),
+    .ready_i(alu_mask_ready),
+    .data_o (alu_mask     )
+  );
+
+  spill_register #(
+    .T(strb_t)
+  ) i_mfpu_mask_ready_spill_register (
+    .clk_i  (clk_i       ),
+    .rst_ni (rst_ni      ),
+    .valid_i(mask_valid_i && mask_target_fu_i == VFU_MFpu),
+    .ready_o(mfpu_mask_input_ready),
+    .data_i (mask_i       ),
+    .valid_o(mfpu_mask_valid),
+    .ready_i(mfpu_mask_ready),
+    .data_o (mfpu_mask    )
   );
 
   /////////////////
@@ -237,6 +277,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   lane_sequencer #(
     .NrLanes              (NrLanes              ),
+    .VLEN                 (VLEN                 ),
     .pe_req_t             (pe_req_t             ),
     .pe_resp_t            (pe_resp_t            ),
     .operand_request_cmd_t(operand_request_cmd_t),
@@ -289,6 +330,11 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Interface with the operand queues
   logic               [NrOperandQueues-1:0]   operand_queue_ready;
   logic               [NrOperandQueues-1:0]   operand_issued;
+  localparam int unsigned SourceSnapshotWords = 8*VLEN/(NrLanes*DataWidth);
+  localparam int unsigned SourceSnapshotIdxWidth = $clog2(SourceSnapshotWords);
+  logic               [NrOperandQueues-1:0]   source_snapshot_replay_valid;
+  logic [NrOperandQueues-1:0][SourceSnapshotIdxWidth-1:0]
+                                                 source_snapshot_replay_index;
   operand_queue_cmd_t [NrOperandQueues-1:0]   operand_queue_cmd;
   logic               [NrOperandQueues-1:0]   operand_queue_cmd_valid;
   // Interface with the VFUs
@@ -340,6 +386,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .vrf_tgt_opqueue_o        (vrf_tgt_opqueue         ),
     // Interface with the operand queues
     .operand_issued_o         (operand_issued          ),
+    .source_snapshot_replay_valid_o(source_snapshot_replay_valid),
+    .source_snapshot_replay_index_o(source_snapshot_replay_index),
     .operand_queue_ready_i    (operand_queue_ready     ),
     .operand_queue_cmd_o      (operand_queue_cmd       ),
     .operand_queue_cmd_valid_o(operand_queue_cmd_valid ),
@@ -382,6 +430,13 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .ldu_result_be_i          (ldu_result_be_i         ),
     .ldu_result_gnt_o         (ldu_result_gnt_o        ),
     .ldu_result_final_gnt_o   (ldu_result_final_gnt_o  )
+`ifdef FOR_VERIFY
+    ,.verify_wb_valid_o       (verify_wb_valid_o       )
+    ,.verify_wb_id_o          (verify_wb_id_o          )
+    ,.verify_wb_addr_o        (verify_wb_addr_o        )
+    ,.verify_wb_wdata_o       (verify_wb_wdata_o       )
+    ,.verify_wb_be_o          (verify_wb_be_o          )
+`endif
   );
 
   ////////////////////////////
@@ -391,6 +446,13 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Interface with the operand queues
   elen_t [NrOperandQueues-1:0] vrf_operand;
   logic  [NrOperandQueues-1:0] vrf_operand_valid;
+  elen_t [NrOperandQueues-1:0] operand_queue_input;
+  logic  [NrOperandQueues-1:0] operand_queue_input_valid;
+
+  elen_t [SourceSnapshotWords-1:0] source_snapshot_q;
+  logic source_snapshot_capture_q;
+  logic [SourceSnapshotIdxWidth-1:0] source_snapshot_capture_index_q;
+  logic [SourceSnapshotIdxWidth-1:0] source_snapshot_capture_last_q;
 
   vector_regfile #(
     .VRFSize(VRFSizePerLane   ),
@@ -410,6 +472,138 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_o      (vrf_operand      ),
     .operand_valid_o(vrf_operand_valid)
   );
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VMSLEU14_VRF") && lane_id_i == 1) begin
+      for (int bank = 0; bank < NrVRFBanksPerLane; bank++) begin
+        if (vrf_req[bank] && vrf_addr[bank] == vaddr_t'(7)) begin
+          $display("[ARA_VMSLEU14_VRF_PORT] t=%0t lane=%0d bank=%0d wen=%0b addr=%0d tgt=%0d be=%02h wdata=%016h",
+                   $time, lane_id_i, bank, vrf_wen[bank], vrf_addr[bank],
+                   vrf_tgt_opqueue[bank], vrf_be[bank], vrf_wdata[bank]);
+        end
+      end
+      if (vrf_operand_valid[AluB]) begin
+        $display("[ARA_VMSLEU14_VRF_RETURN] t=%0t lane=%0d q=%0d data=%016h replay=%0b",
+                 $time, lane_id_i, AluB, vrf_operand[AluB],
+                 source_snapshot_replay_valid[AluB]);
+      end
+    end
+  end
+`endif
+
+  always_comb begin
+    operand_queue_input = vrf_operand;
+    operand_queue_input_valid = vrf_operand_valid;
+    for (int q = 0; q < NrOperandQueues; q++) begin
+      if (source_snapshot_replay_valid[q]) begin
+        operand_queue_input[q] = source_snapshot_q[source_snapshot_replay_index[q]];
+        operand_queue_input_valid[q] = 1'b1;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      source_snapshot_q <= '0;
+      source_snapshot_capture_q <= 1'b0;
+      source_snapshot_capture_index_q <= '0;
+      source_snapshot_capture_last_q <= '0;
+    end else begin
+      if (operand_request_valid[SlideAddrGenA] &&
+          operand_request_ready[SlideAddrGenA] &&
+          operand_request[SlideAddrGenA].source_snapshot_capture) begin
+        automatic int unsigned snapshot_bytes;
+        automatic int unsigned snapshot_words;
+        snapshot_bytes = unsigned'(operand_request[SlideAddrGenA].vl) <<
+                         unsigned'(operand_request[SlideAddrGenA].eew);
+        // operand_request.vl is already lane-local.  Convert its byte count
+        // directly to lane words; dividing by NrLanes again truncates the
+        // captured source and makes the replay read uninitialized entries.
+        snapshot_words = (snapshot_bytes + DataWidth/8 - 1) / (DataWidth/8);
+`ifdef FOR_VERIFY
+        assert (snapshot_words <= SourceSnapshotWords)
+          else $error("source snapshot requires %0d words, capacity is %0d",
+                      snapshot_words, SourceSnapshotWords);
+`endif
+        source_snapshot_capture_q <= snapshot_words != 0;
+        source_snapshot_capture_index_q <= '0;
+        source_snapshot_capture_last_q <=
+            SourceSnapshotIdxWidth'(snapshot_words == 0 ? 0 : snapshot_words - 1);
+      end
+
+      if (source_snapshot_capture_q && vrf_operand_valid[SlideAddrGenA]) begin
+        source_snapshot_q[source_snapshot_capture_index_q] <=
+            vrf_operand[SlideAddrGenA];
+`ifdef FOR_VERIFY
+        if ($test$plusargs("ARA_DEBUG_SOURCE_SNAPSHOT"))
+          $display("[ARA_SOURCE_CAPTURE] %m t=%0t lane=%0d idx=%0d/%0d data=%016h",
+                   $time, lane_id_i, source_snapshot_capture_index_q,
+                   source_snapshot_capture_last_q, vrf_operand[SlideAddrGenA]);
+`endif
+        if (source_snapshot_capture_index_q == source_snapshot_capture_last_q)
+          source_snapshot_capture_q <= 1'b0;
+        else
+          source_snapshot_capture_index_q <= source_snapshot_capture_index_q + 1'b1;
+      end
+
+    end
+  end
+
+`ifdef FOR_VERIFY
+  logic debug_vrem_overlap_active_q;
+  vid_t debug_vrem_overlap_id_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_vrem_overlap_active_q <= 1'b0;
+      debug_vrem_overlap_id_q <= '0;
+    end else begin
+      if (pe_req_valid_i && pe_req_ready_o && pe_req.op == VREMU &&
+          pe_req.vd == 5'd8 && pe_req.vtype.vsew == EW8 &&
+          pe_req.vtype.vlmul == LMUL_8) begin
+        debug_vrem_overlap_active_q <= 1'b1;
+        debug_vrem_overlap_id_q <= pe_req.id;
+        if ($test$plusargs("ARA_DEBUG_VREM_OVERLAP"))
+          $display("[ARA_VREM_ACCEPT] %m t=%0t lane=%0d id=%0d vd=v%0d vl=%0d",
+                   $time, lane_id_i, pe_req.id, pe_req.vd, pe_req.vl);
+      end
+      if (debug_vrem_overlap_active_q &&
+          mfpu_vinsn_done[debug_vrem_overlap_id_q])
+        debug_vrem_overlap_active_q <= 1'b0;
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VREM_OVERLAP") &&
+        debug_vrem_overlap_active_q) begin
+      for (int bank = 0; bank < NrVRFBanksPerLane; bank++) begin
+        if (vrf_req[bank] && !vrf_wen[bank] &&
+            vrf_tgt_opqueue[bank] inside {MulFPUA, MulFPUB})
+          $display("[ARA_VREM_VRF_READ] %m t=%0t lane=%0d bank=%0d q=%0d addr=%0d",
+                   $time, lane_id_i, bank, vrf_tgt_opqueue[bank], vrf_addr[bank]);
+      end
+      if (vrf_operand_valid[MulFPUA])
+        $display("[ARA_VREM_VRF_RETURN] %m t=%0t lane=%0d q=A data=%016h",
+                 $time, lane_id_i, vrf_operand[MulFPUA]);
+      if (vrf_operand_valid[MulFPUB])
+        $display("[ARA_VREM_VRF_RETURN] %m t=%0t lane=%0d q=B data=%016h",
+                 $time, lane_id_i, vrf_operand[MulFPUB]);
+      if (mfpu_result_req && mfpu_result_id == debug_vrem_overlap_id_q)
+        $display("[ARA_VREM_WRITE] %m t=%0t lane=%0d gnt=%0b addr=%0d be=%02h data=%016h",
+                 $time, lane_id_i, mfpu_result_gnt, mfpu_result_addr,
+                 mfpu_result_be, mfpu_result_wdata);
+    end
+    if (rst_ni && $test$plusargs("ARA_DEBUG_SOURCE_SNAPSHOT")) begin
+      for (int q = 0; q < NrOperandQueues; q++) begin
+        if (source_snapshot_replay_valid[q])
+          $display("[ARA_SOURCE_REPLAY] %m t=%0t lane=%0d q=%0d idx=%0d data=%016h",
+                   $time, lane_id_i, q, source_snapshot_replay_index[q],
+                   source_snapshot_q[source_snapshot_replay_index[q]]);
+      end
+    end
+  end
+`endif
 
   //////////////////////
   //  Operand queues  //
@@ -442,8 +636,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .rst_ni                           (rst_ni                             ),
     .lane_id_i                        (lane_id_i                          ),
     // Interface with the Vector Register File
-    .operand_i                        (vrf_operand                        ),
-    .operand_valid_i                  (vrf_operand_valid                  ),
+    .operand_i                        (operand_queue_input                 ),
+    .operand_valid_i                  (operand_queue_input_valid           ),
     // Interface with the operand requester
     .operand_issued_i                 (operand_issued                     ),
     .operand_queue_ready_o            (operand_queue_ready                ),
@@ -520,6 +714,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the SLDU/ADDRGEN arbiter
     .alu_red_complete_o   (alu_red_complete                       ),
     .fpu_red_complete_o   (fpu_red_complete                       ),
+    .mfpu_reduction_any_active_o(mfpu_reduction_any_active_o      ),
+    .mfpu_reduction_global_any_active_i(mfpu_reduction_global_any_active_i),
     // Interface with the operand requester
     // ALU
     .alu_result_req_o     (alu_result_req                         ),
@@ -558,9 +754,12 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .mask_operand_o       (mask_operand_o[2 +: NrMaskFUnits]      ),
     .mask_operand_valid_o (mask_operand_valid_o[2 +: NrMaskFUnits]),
     .mask_operand_ready_i (mask_operand_ready_i[2 +: NrMaskFUnits]),
-    .mask_i               (mask                                   ),
-    .mask_valid_i         (mask_valid                             ),
-    .mask_ready_o         (mask_ready                             )
+    .alu_mask_i           (alu_mask                               ),
+    .alu_mask_valid_i     (alu_mask_valid                         ),
+    .alu_mask_ready_o     (alu_mask_ready                         ),
+    .mfpu_mask_i          (mfpu_mask                              ),
+    .mfpu_mask_valid_i    (mfpu_mask_valid                        ),
+    .mfpu_mask_ready_o    (mfpu_mask_ready                        )
   );
 
   /******************************
@@ -588,7 +787,39 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   ara_op_e vfu_operation_op_q;
   logic vfu_operation_valid_q;
+  logic vfu_operation_skip_sldu_operand_q;
   logic sldu_operand_opqueues_valid;
+
+  assign sldu_operand_reduction_o =
+      sldu_addrgen_sel_q inside {ALU_RED_SEL, FPU_RED_SEL};
+
+`ifdef FOR_VERIFY
+  logic debug_vzext_reshuffle_lane_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_vzext_reshuffle_lane_q <= 1'b0;
+    end else if ($test$plusargs("ARA_DEBUG_VZEXT_RESHUFFLE")) begin
+      if (vfu_operation_valid && vfu_operation.id == 3 &&
+          vfu_operation.op == VSLIDEDOWN && vfu_operation.vl == 16 &&
+          vfu_operation.vtype.vsew == EW16) begin
+        debug_vzext_reshuffle_lane_q <= 1'b1;
+      end else if (debug_vzext_reshuffle_lane_q && sldu_addrgen_cmd_pop) begin
+        debug_vzext_reshuffle_lane_q <= 1'b0;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && debug_vzext_reshuffle_lane_q) begin
+      $display("[ARA_VZEXT_RESHUFFLE_QUEUE] %m t=%0t lane=%0d issued=%0b vrf_valid=%0b oq_valid=%0b oq_ready=%0b cmd_pop=%0b",
+               $time, lane_id_i, operand_issued[SlideAddrGenA],
+               operand_queue_input_valid[SlideAddrGenA],
+               sldu_addrgen_operand_opqueues_valid,
+               sldu_addrgen_opqueue_ready, sldu_addrgen_cmd_pop);
+    end
+  end
+`endif
 
   // Selector FIFO to enforce instruction order
   fifo_v3 #(
@@ -611,6 +842,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Break timing path
   `FF(vfu_operation_valid_q, vfu_operation_valid, 1'b0, clk_i, rst_ni);
   `FF(vfu_operation_op_q, vfu_operation.op, VADD, clk_i, rst_ni);
+  `FF(vfu_operation_skip_sldu_operand_q, vfu_operation.skip_sldu_operand,
+      1'b0, clk_i, rst_ni);
 
   always_comb begin
     sldu_addrgen_sel_d = SLDU_SEL;
@@ -623,7 +856,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
       case (vfu_operation_op_q) inside
         VSLIDEUP, VSLIDEDOWN: begin
           sldu_addrgen_sel_d = SLDU_SEL;
-          sldu_addrgen_arbiter_push = 1'b1;
+          sldu_addrgen_arbiter_push = !vfu_operation_skip_sldu_operand_q;
         end
         VLXE, VSXE: begin
           sldu_addrgen_sel_d = ADDRGEN_SEL;
@@ -635,7 +868,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
         end
         [VFREDUSUM:VFWREDOSUM]: begin
           sldu_addrgen_sel_d = FPU_RED_SEL;
-          sldu_addrgen_arbiter_push = 1'b1;
+          sldu_addrgen_arbiter_push = !vfu_operation_skip_sldu_operand_q;
         end
         default:;
       endcase
@@ -667,6 +900,30 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
       default: sldu_addrgen_mux_sel = MUX_OPQUEUE_SEL;
     endcase
   end
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_REDUCTION") &&
+        (sldu_addrgen_arbiter_push || sldu_addrgen_arbiter_pop ||
+         sldu_addrgen_operand_opqueues_valid || sldu_alu_req_valid_o ||
+         sldu_mfpu_req_valid_o || sldu_mfpu_valid ||
+         alu_red_complete || fpu_red_complete)) begin
+      $display("[ARA_LANE_RED_ARB] t=%0t lane=%0d sel=%0d empty=%0b push=%0b push_sel=%0d pop=%0b op_valid=%0b op=%0d oq_v=%0b oq_target=%0d oq_ready=%0b ag_v=%0b ag_r=%0b alu_tx=%0b/%0b fpu_tx=%0b/%0b fpu_rx=%0b/%0b alu_done=%0b fpu_done=%0b sldu_ready=%0b",
+               $time, lane_id_i, sldu_addrgen_sel_q,
+               sldu_addrgen_arbiter_empty, sldu_addrgen_arbiter_push,
+               sldu_addrgen_sel_d, sldu_addrgen_arbiter_pop,
+               vfu_operation_valid_q, vfu_operation_op_q,
+               sldu_addrgen_operand_opqueues_valid,
+               sldu_addrgen_operand_target_fu,
+               sldu_addrgen_opqueue_ready,
+               addrgen_operand_valid_o, addrgen_operand_ready_i,
+               sldu_alu_req_valid_o, sldu_alu_gnt,
+               sldu_mfpu_req_valid_o, sldu_mfpu_gnt,
+               sldu_mfpu_valid, sldu_mfpu_ready,
+               alu_red_complete, fpu_red_complete, sldu_operand_ready_i);
+    end
+  end
+`endif
 
   // Stream MUX to select the transmitter
   stream_mux #(

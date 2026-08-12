@@ -224,6 +224,7 @@ void TEST_CASE1_64(void) {
   asm volatile("vssseg2e64.v v1, (%0), %1" ::"r"(ALIGNED_O64), "r"(stride));
   VVCMP_U64(7, ALIGNED_O64, 0xfa3a99086b4b64aa, 0x57bb4a671118fdc0, 0, 0, 0, 0);
 
+#if VLEN >= 2048
   VSET(-1, e64, m1);
   VCLEAR(v1);
   VCLEAR(v2);
@@ -253,6 +254,7 @@ void TEST_CASE1_64(void) {
             0x76c882042e57f707, 0xd13e73308658ad1f, 0x5142eb4c19644e7d,
             0x23def41d77db2d38, 0x34affa8555d23fd9, 0xa311951efe71188d,
             0xf96089370f7fa0a7, 0xb0899dfea0b44c26);
+#endif
 }
 
 // Segment-8

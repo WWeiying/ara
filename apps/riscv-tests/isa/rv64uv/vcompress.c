@@ -24,6 +24,7 @@ void TEST_CASE2() {
   asm volatile("vcompress.vm v2, v4, v0");
   VCMP_U8(2, v2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 16, 0, 0, 0, 0);
 
+#if VLEN >= 2048
   VSET(257, e16, m4);
   VLOAD_16(
       v28, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
@@ -171,6 +172,7 @@ void TEST_CASE2() {
       0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
       0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
       0xffff, 0xffff, 0xffff, 0xffff);
+#endif
 }
 
 int main(void) {

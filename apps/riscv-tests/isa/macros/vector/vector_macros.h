@@ -51,19 +51,41 @@ int test_case;
 // Checking vtype and vl value which is set by configuration setting instructions
 // by comparing with golden_vtype value used as a reference. Also check for
 // illegal values of vlmul and vsew which violtate: ELEN >= SEW/LMUL
-#define check_vtype_vl(casenum, vtype, golden_vtype, avl, vl, vsew, vlmul)                                                     \
-  printf("Checking vtype and vl #%d...\n", casenum); \
-  if((vlmul==5 && (vsew == 1 || vsew == 2 || vsew ==3)) || (vlmul==6 && (vsew == 2 || vsew ==3)) || (vlmul==7 && vsew==3)){   \
-  if((vtype != 0x8000000000000000) || (vl != 0)){    \
-  printf("FAILED. Got vtype = %lx, expected vtype = 8000000000000000. avl = %lx, vl = %lx.\n", vtype,avl, vl);     \
-  return;                                                  \
-  }}                                                        \
-  else if (vtype != golden_vtype || avl != vl) {                                                                        \
-    printf("FAILED. Got vtype = %lx, expected vtype = %lx. avl = %lx, vl = %lx.\n", vtype, golden_vtype, avl, vl); \
-    num_failed++;                                                                                                  \
-    return;                                                                                                        \
-  }                                                                                                                \
-  printf("PASSED.\n");
+#define check_vtype_vl(casenum, vtype, golden_vtype, avl, vl, vsew, vlmul)             \
+  do {                                                                                 \
+    uint64_t _vlmax = (uint64_t)VLEN >> (3 + (vsew));                                  \
+    int _legal_vl = 0;                                                                 \
+    if ((vlmul) <= 3)                                                                  \
+      _vlmax <<= (vlmul);                                                              \
+    else                                                                               \
+      _vlmax >>= (8 - (vlmul));                                                        \
+    printf("Checking vtype and vl #%d...\n", (casenum));                                \
+    if (((vlmul) == 5 && ((vsew) == 1 || (vsew) == 2 || (vsew) == 3)) ||              \
+        ((vlmul) == 6 && ((vsew) == 2 || (vsew) == 3)) ||                              \
+        ((vlmul) == 7 && (vsew) == 3)) {                                               \
+      if ((vtype) != UINT64_C(0x8000000000000000) || (vl) != 0) {                      \
+        printf("FAILED. Got vtype = %lx, expected vtype = 8000000000000000. "          \
+               "avl = %lx, vl = %lx.\n", (vtype), (avl), (vl));                        \
+        num_failed++;                                                                  \
+        return;                                                                        \
+      }                                                                                \
+    } else {                                                                           \
+      if ((avl) <= _vlmax)                                                             \
+        _legal_vl = ((vl) == (avl));                                                   \
+      else if ((avl) >= 2 * _vlmax)                                                    \
+        _legal_vl = ((vl) == _vlmax);                                                  \
+      else                                                                             \
+        _legal_vl = ((vl) >= ((avl) + 1) / 2 && (vl) <= _vlmax);                       \
+      if ((vtype) != (golden_vtype) || !_legal_vl) {                                   \
+        printf("FAILED. Got vtype = %lx, expected vtype = %lx. "                       \
+               "avl = %lx, vl = %lx, vlmax = %lx.\n",                                 \
+               (vtype), (golden_vtype), (avl), (vl), _vlmax);                          \
+        num_failed++;                                                                  \
+        return;                                                                        \
+      }                                                                                \
+    }                                                                                  \
+    printf("PASSED.\n");                                                              \
+  } while (0)
 
 #define check_vxsat(casenum, vxsat, golden_vxsat)                                                                  \
   printf("Checking vxsat #%d...\n", casenum);                                                               \
@@ -74,10 +96,9 @@ int test_case;
   }                                                                                                                \
   printf("PASSED.\n");
 
-// In order to avoid that scalar loads run ahead of vector stores,
-// we use an instruction to ensure that all vector stores have been
-// committed before continuing with scalar memory operations.
-#define MEMORY_BARRIER // asm volatile ("fence");
+// A vector CSR access waits for Ara to become idle. Use that architectural
+// boundary before scalar code observes memory written by a vector store.
+#define MEMORY_BARRIER asm volatile ("fence; csrr zero, vl" ::: "memory")
 
 // Zero-initialized variables can be problematic on bare-metal.
 // Therefore, initialize them during runtime.
@@ -164,7 +185,7 @@ int test_case;
 // Don't use this to set VL == 0 since the compiler puts rs1 == x0
 #define VSET(VLEN,VTYPE,LMUL)                                                          \
   do {                                                                                 \
-  asm volatile ("vsetvli t0, %[A]," #VTYPE "," #LMUL ", ta, ma \n" :: [A] "r" (VLEN)); \
+  asm volatile ("vsetvli t0, %[A]," #VTYPE "," #LMUL ", tu, mu \n" :: [A] "r" (VLEN)); \
   } while(0)
 
 // Macros to set vector length equal to zero
@@ -172,13 +193,13 @@ int test_case;
   do {                                                                                     \
     int vset_zero_buf;                                                                     \
     asm volatile("li %0, 0" : "=r" (vset_zero_buf));                                       \
-    asm volatile("vsetvli x0, %0," #VTYPE "," #LMUL ", ta, ma \n" :: "r" (vset_zero_buf)); \
+  asm volatile("vsetvli x0, %0," #VTYPE "," #LMUL ", tu, mu \n" :: "r" (vset_zero_buf)); \
   } while(0)
 
 #define VSETMAX(VTYPE,LMUL)                                                            \
   do {                                                                                 \
   int64_t scalar = -1;                                                                 \
-  asm volatile ("vsetvli t1, %[A]," #VTYPE "," #LMUL", ta, ma \n":: [A] "r" (scalar)); \
+  asm volatile ("vsetvli t1, %[A]," #VTYPE "," #LMUL", tu, mu \n":: [A] "r" (scalar)); \
   } while(0)
 
 // Macro to load a vector register with data from the stack
@@ -186,14 +207,22 @@ int test_case;
   do {                                                                      \
     volatile datatype V ##vreg[] = {vec};                                   \
     MEMORY_BARRIER;                                                         \
-    asm volatile ("vl"#loadtype".v "#vreg", (%0)  \n":: [V] "r"(V ##vreg)); \
+    asm volatile ("vl"#loadtype".v "#vreg", (%0)  \n"                   \
+                  :: [V] "r"(V ##vreg) : "memory");                       \
+    MEMORY_BARRIER;                                                         \
   } while(0)
 
 // Macro to store a vector register into the pointer vec
 #define VSTORE(T, storetype, vreg, vec)                                   \
   do {                                                                    \
-    T* vec ##_t = (T*) vec;                                               \
-    asm volatile ("vs"#storetype".v "#vreg", (%0)\n" : "+r" (vec ##_t));  \
+    volatile T* vec ##_t = (volatile T*) vec;                             \
+    uint64_t vec ##_vl;                                                   \
+    asm volatile ("csrr %0, vl" : "=r" (vec ##_vl));                    \
+    for (uint64_t vec ##_i = 0; vec ##_i < vec ##_vl; ++vec ##_i)         \
+      vec ##_t[vec ##_i] = 0;                                             \
+    MEMORY_BARRIER;                                                       \
+    asm volatile ("vs"#storetype".v "#vreg", (%0)\n"                   \
+                  :: "r" (vec ##_t) : "memory");                        \
     MEMORY_BARRIER;                                                       \
   } while(0)
 
