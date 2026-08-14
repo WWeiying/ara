@@ -1,5 +1,112 @@
 # RVV 1.0 差分验证缺陷报告
 
+> 本表是当前报告的权威缺陷索引。`R-*` 表示处理器 RTL 缺陷，`E-*` 表示验证器、
+> 激励或参考模型缺陷，`A-*` 表示应用程序缺陷。后文 `V-*`、`Legacy-E-*` 和 `P-*`
+> 仅保留历史阶段编号，不再用于统计最终缺陷总数。
+
+## 缺陷总表
+
+| 编号 | 类别 | 缺陷 | 修复状态 | 详细章节 |
+|---|---|---|---|---|
+| R-01 | Decode | widening `.vx` 标量未按窄源 SEW 截断 | 已修、定向通过 | 4 |
+| R-02 | Decode | mask 目的错误继承数据 LMUL 合法性约束 | 已修、定向通过 | 5 |
+| R-03 | Mask | mask 结果未只合并活动元素 | 已修、定向通过 | 6、16.1 |
+| R-04 | Reduction | reduction seed 错误继承数据 LMUL | 已修、定向通过 | 7 |
+| R-05 | Fixed-point | shift/round/narrow 的舍入与饱和语义错误 | 已修、矩阵通过 | 8、21.2 |
+| R-06 | Layout | LMUL 组 EEW 检查只覆盖组基址 | 已修、回归通过 | 9、20.1 |
+| R-07 | Fixed-point | averaging add/sub 丢失 `SEW+1` 中间位 | 已修、矩阵通过 | 10 |
+| R-08 | Mask | mask logical 错误使用数据 LMUL | 已修、矩阵通过 | 11、17.1 |
+| R-09 | Mask | `VMADC/VMSBC` restart/tail 的 old-vd 合并错误 | 已修、定向通过 | 16.1 |
+| R-10 | Mask | `vcpop/vfirst` 把最后一片 tail 位计入 | 已修、定向通过 | 16.2 |
+| R-11 | Memory | mask load/store 的 EVL 与 no-op 判定错误 | 已修、定向通过 | 17.3 |
+| R-12 | Mask | `VID/VIOTA/VCOMPRESS` 混淆数据 EMUL 与 mask LMUL | 已修、定向通过 | 17.1 |
+| R-13 | Configuration | `vsetvl*` 的 VLMAX 使用 ELEN 而非 VLEN | 已修、定向通过 | 17.2、50 |
+| R-14 | Segment | segment 首 micro-op 的 VL 和字段步长错误 | 已修、定向通过 | 18.1 |
+| R-15 | Indexed memory | 非零 `vstart` 的聚合边界字请求不一致 | 已修、定向通过 | 18.2 |
+| R-16 | Slide | OOR `vslidedown` 等待不存在的源流 | 已修、定向通过 | 19.1 |
+| R-17 | Gather/compress | no-data 终止 token 不完整 | 已修、定向通过 | 19.2 |
+| R-18 | Scalar return | `VMVXS/VFMVFS` 与 MASKU 同时消费 MaskB | 已修、回归通过 | 16.3 |
+| R-19 | MFPU | 不同 SEW 相邻 multiply 的可变延迟越序 | 已修、定向通过 | 21.1 |
+| R-20 | Layout | widening/narrowing 合法重叠破坏源或 old-vd | 已修、边界回归通过 | 20.2 |
+| R-21 | Layout | widening MAC 高半区重叠未转换 accumulator 前缀 | 已修、固定 ELF 越过 | 14 |
+| R-22 | Reduction | widening reduction 重叠与 tail 布局损坏 | 已修、随机回归通过 | 25.1 |
+| R-23 | FP reduction | 空活动集合和跨 lane 活动生命周期错误 | 已修、严格验证 | 25.2 |
+| R-24 | Layout | 全长 RMW 错误跳过 mixed-EEW 目的组重排 | 已修、严格验证 | 27 |
+| R-25 | Vector FP | PULP DivSqrt overflow/舍入结果错误 | 已切换 THMULTI、严格验证 | 29 |
+| R-26 | SLDU | 部分 result entry 的逻辑进度错误 | 已修、随机回归通过 | 30 |
+| R-27 | Sequencer | `WAIT` 误把残留 MaskB valid 当作 store 标量响应 | 已修、随机回归通过 | 45 |
+| R-28 | Memory handshake | AddrGen、lane、MASKU 分离握手历史丢失 | 已修、随机回归通过 | 45 |
+| R-29 | Store | masked store 用数据旧 EEW 索引 predicate | 已修、10 seeds 通过 | 55.1 |
+| R-30 | Segment | unit-stride segment restart 沿用普通地址公式 | 已修、严格验证 | 55.2 |
+| R-31 | Store | restarted store 从非活动组头取得布局标签 | 已修、严格验证 | 55.3 |
+| R-32 | Exception | 非法向量访存未平衡 CVA6 pending-memory 记账 | 已修、异常恢复通过 | 56 |
+| R-33 | Scalar FP | CVA6 PULP `fdiv/fsqrt` 与 Spike 相差 1 ULP | 已切换 THMULTI、重放通过 | 58 |
+| R-34 | Unit-stride memory | 非零 `vstart` 跨 VRF word 时过量消费 AXI byte | 已修、nightly 通过 | 59 |
+| R-35 | Indexed store | 位域去重误删 mixed-layout 源重排 | 已修、nightly 通过 | 60 |
+| R-36 | MASKU | 零 VL 请求泄漏预处理队列配额 | 已修、随机回归通过 | 32 |
+| R-37 | Decode/layout | `vmv.v.v` 唯一源被误判为重复操作数 | 已修、随机回归通过 | 33 |
+| R-38 | Gather | `vrgatherei16` 重叠只读源快照未按 `vstart` 回放 | 已修、严格验证 | 34 |
+| R-39 | Slide | masked `vslide1up` 提前释放 MASKU 上下文 | 已修、严格验证 | 35 |
+| R-40 | Gather | 同一寄存器的数据/索引视图回放范围不完整 | 已修、严格验证 | 36 |
+| R-41 | Narrowing | old-vd 快照同时作为窄 `vs1` 时被错误转换 | 已修、严格验证 | 37 |
+| R-42 | Slide | 零长度源请求污染后继 SLDU 请求 | 已修、严格验证 | 38 |
+| R-43 | MASKU | scalar-return 请求的分离接收记账不原子 | 已修、严格验证 | 39 |
+| R-44 | Compress | 不规则目的流破坏传递 WAW 顺序 | 已修、定向通过 | 40 |
+| R-45 | Gather | 重叠双源的不同 EEW 布局互相覆盖 | 已修、定向通过 | 41 |
+| R-46 | Overlap | 零 VL widening overlap 进入无消费者等待 | 已修、定向通过 | 42 |
+| R-47 | Widening | `.wv` 双重合法重叠形成双 EEW 布局循环 | 已修、随机重放通过 | 44 |
+| R-48 | Source lifetime | 待接收 lane 边界命令未计入 source lifetime | 已修、定向通过 | 46 |
+| R-49 | Narrowing | 三重别名下 old-vd、`vstart`、`vxsat` 不一致 | 已修、严格验证 | 47 |
+| R-50 | FPNew | operation group 跨界导致结果归属错位 | 已修、随机回归通过 | 51 |
+| R-51 | Hazard | `vslidedown` 目的 WAW 漏检，年轻写者提前越过 | 已修、随机回归通过 | 52 |
+| R-52 | Cleaner | narrowing overlap 清洗器漏识别静态 `vsetvl*` | 已修、定向通过 | 54 |
+| R-53 | Source identity | VCOMPRESS/VRGATHER ad-hoc 请求复用 `vid` | 已修、nightly 通过 | 62 |
+| R-54 | Ordered reduction | 小 VL 遗留无消费者 lane selector | 已修、严格验证 | 64 |
+| R-55 | Ordered reduction | 空 lane 完成脉冲误退后继 selector | 已修、18 项 reduction 通过 | 67 |
+| R-56 | Legality | 不可重启向量操作缺少非零 `vstart` 非法检查 | 已修、30 项 corner 通过 | 72.2 |
+| R-57 | VALU restart | predicate stream 与 element-0 issue stream 长度不一致 | 已修、nightly 通过 | 75 |
+| R-58 | MFPU restart | lane-local `vstart`、执行有效位和写回有效位不一致 | 已修、定向通过 | 76.1--76.2 |
+| R-59 | FP narrowing | 第二个 packed result beat 的 BE 未合并 | 已修、`vfncvt` 通过 | 76.3 |
+| R-60 | Integer divide | divider 有效 BE 未随结果返回 | 已修、随机重放通过 | 77 |
+| R-61 | Narrowing mask | 第二半 packed predicate 使用错误半字坐标 | 已修、随机重放通过 | 78 |
+| E-01 | 检查点 | 整寄存器 store 后立即标量读回产生 `X` | 验证环境已修 | 3 |
+| E-02 | Knownness | non-bit-exact reduction 的不确定性未传播 | 比较器已修 | 26 |
+| E-03 | 结束条件 | 成功 `ecall` 在 trap handler 中重复执行 `test_done` | 监视器已修 | 28 |
+| E-04 | 写回检查 | 只检查已观察写回，漏报“应写但完全未写” | 比较器已修 | 31 |
+| E-05 | Trap 映射 | 已 trap 请求错误消耗下一条向量退休记录 | 比较器已修 | 56.2 |
+| E-06 | Mask knownness | mask destination 的 `tu` tail 被误认为确定值 | 比较器已修 | 61 |
+| E-07 | Mask knownness | agnostic 数据进入 mask 运算后未传播未知性 | 比较器已修 | 63 |
+| E-08 | 随机激励 | indexed store 生成双 EEW 源物理重叠保留编码 | 生成器已修 | 68 |
+| E-09 | 标量比较 | 不可观测 vector-to-scalar 值分叉后仍比较 GPR | 比较器已修 | 69 |
+| E-10 | Spike | 通用可重启 ALU 被错误限制为 `vstart=0` | 参考模型补丁已修 | 72.1 |
+| E-11 | Spike | `vssra.vi` 把 `uimm5` 当作有符号立即数 | 参考模型补丁已修 | 72.1 |
+| E-12 | Mask-to-scalar | `vcpop/vfirst` 对未知 mask 的可观测性判断过粗 | 比较器已修 | 73 |
+| E-13 | 测试程序 | `fflags` 在包含 `printf` 的比较宏后读取 | 测试顺序已修 | 76.3 |
+| A-01 | DWT kernel | strip-mining 的 `vl` 遮蔽导致 AVL 扣减与指针推进不一致 | 已修、完整 VCS 数值对比通过 | 79 |
+
+### 代码对照阅读规则
+
+后文的“原逻辑”均以基线提交 `77eb36a7` 或触发该缺陷的中间版本为准；“现逻辑”以
+当前 worktree 为准。代码块只保留导致错误和完成修复的最小逻辑，不复制与缺陷无关的
+流水线、trace 或断言。对于跨模块协议缺陷，报告分别给出生产端和消费端的契约变化，
+不能把单个赋值语句脱离握手上下文理解。
+
+当前最完整的统一 campaign 共 399 项：207 项 directed RVV、142 项随机程序和 50 项
+应用。该 campaign 中 389 项 PASS、9 个大型应用达到 1800 秒墙钟上限、DWT 为唯一
+数值 FAIL；修复 A-01 后，DWT 使用同一 `simv` 独立完整重跑为 PASS。因统一 campaign
+记录了源码快照漂移，且 9 个超时项没有在本轮延长时限重跑，严格结论是“所有已完成的
+随机和 directed RVV 项通过，DWT 原失败已闭合”，而不是宣称当前源码快照 399/399。
+九个 timeout 分别是 `dtype-conv3d`、`dtype-matmul`、`fconv3d`、`fmatmul`、
+`fmatmul-loop`、`imatmul`、`jacobi2d`、`pathfinder` 和 `vsgemm`；它们的日志没有
+failure marker，本报告不把墙钟超时自动归类为 RTL 缺陷。
+
+需要查看未裁剪的逐行源码差异时，以以下命令为准：
+
+```bash
+git diff 77eb36a7 -- hardware/src hardware/deps/cva6/core/fpu_wrap.sv
+git diff 77eb36a7 -- verification apps/dwt/kernel/wavelet.c
+```
+
 ## 1. 验证范围与方法
 
 本文记录 Ara 与 Spike 进行 RVV 1.0 差分验证时发现的架构状态差异、根因和
@@ -51,7 +158,11 @@ directed matrix 与短随机严格检查已经越过该指令。报告保留第 
 根因。后续验证已改用非侵入式 accepted-VRF 写回轨迹；第 24 节以后记录该环境和
 更晚的随机回归。
 
-## 2. 当前结论
+## 2. 历史阶段性索引
+
+本节是早期调试阶段形成的 `V-*` 编号，最多更新到当时已确认的 V-36，并保留了两个
+尚未证实的观察项 P-01/P-02。它用于理解后文原始定位时间线，不用于统计当前缺陷数量；
+最终分类、状态和章节映射以前文“缺陷总表”为准。
 
 | 编号 | 缺陷或异常 | 状态 | 主要源码 |
 |---|---|---|---|
@@ -91,13 +202,13 @@ directed matrix 与短随机严格检查已经越过该指令。报告保留第 
 | V-34 | CVA6 标量 `fdiv/fsqrt` 的 PULP DivSqrt 结果与 Spike 相差 1 ULP | 已切换 THMULTI，原首错由 mixed-control 与 nightly 回放越过 | `hardware/deps/cva6/core/fpu_wrap.sv` |
 | V-35 | 非零 `vstart` 的 unit-stride 尾部跨 VRF word 时过量消费 AXI byte | 已修，定向 load/store 与 nightly seeds 21/22 严格通过 | `hardware/src/vlsu/vldu.sv`、`hardware/src/vlsu/vstu.sv` |
 | V-36 | indexed store 的算术位域去重误删 mixed-layout 数据源重排 | 已修，定向内存签名与 nightly seed 1 严格通过 | `hardware/src/ara_dispatcher.sv`、`apps/riscv-tests/isa/rv64uv/vstore_signature.c` |
-| E-01 | non-bit-exact reduction 的不确定性未传播到后续结果 | 验证环境已修 | `verification/ara_verify/vector_commit.py` |
-| E-02 | 严格 signature 的成功 `ecall` 在 RTL 中进入 trap handler 后重复执行 `test_done` | 验证环境已修 | `ara_commit_monitor.sv`、`random_rvv.py`、`rvv_replay.py` |
-| E-03 | 逐向量比较器只检查已观察写回，漏掉部分目的字节完全未写 | 验证环境已修并新增单元测试 | `vector_commit.py`、`test_vector_commit.py` |
-| E-04 | 已 trap 的 CVX 请求错误消耗下一条正常向量退休记录 | 验证环境已修并离线/在线严格验证 | `vector_commit.py`、`test_vector_commit.py` |
-| E-05 | mask destination tail 在 `tu` 下被比较器误认为确定值 | 已修 knownness 传播，nightly seed 15 离线严格重算通过 | `vector_commit.py`、`test_vector_commit.py` |
-| E-06 | 随机流生成 indexed store 的双 EEW 物理源重叠保留编码 | 验证环境已修；原 seed 16 合法化后严格通过 | `random_rvv.py`、`test_random_rvv.py` |
-| E-07 | 不可观测 vector-to-scalar 返回仅跳过本条值比较，后续仍比较已分叉 GPR 状态 | 验证环境已修；nightly seed 5 离线重算通过 | `vector_commit.py`、`spike_trace.py` 及对应测试 |
+| Legacy-E-01 | non-bit-exact reduction 的不确定性未传播到后续结果 | 验证环境已修 | `verification/ara_verify/vector_commit.py` |
+| Legacy-E-02 | 严格 signature 的成功 `ecall` 在 RTL 中进入 trap handler 后重复执行 `test_done` | 验证环境已修 | `ara_commit_monitor.sv`、`random_rvv.py`、`rvv_replay.py` |
+| Legacy-E-03 | 逐向量比较器只检查已观察写回，漏掉部分目的字节完全未写 | 验证环境已修并新增单元测试 | `vector_commit.py`、`test_vector_commit.py` |
+| Legacy-E-04 | 已 trap 的 CVX 请求错误消耗下一条正常向量退休记录 | 验证环境已修并离线/在线严格验证 | `vector_commit.py`、`test_vector_commit.py` |
+| Legacy-E-05 | mask destination tail 在 `tu` 下被比较器误认为确定值 | 已修 knownness 传播，nightly seed 15 离线严格重算通过 | `vector_commit.py`、`test_vector_commit.py` |
+| Legacy-E-06 | 随机流生成 indexed store 的双 EEW 物理源重叠保留编码 | 验证环境已修；原 seed 16 合法化后严格通过 | `random_rvv.py`、`test_random_rvv.py` |
+| Legacy-E-07 | 不可观测 vector-to-scalar 返回仅跳过本条值比较，后续仍比较已分叉 GPR 状态 | 验证环境已修；nightly seed 5 离线重算通过 | `vector_commit.py`、`spike_trace.py` 及对应测试 |
 | P-01 | `vcpop.m t2,v20` 为 37，Spike 为 41 | 待定位，可能是更早 mask 生产者 | 尚未修改 |
 | P-02 | source 600 检查点出现跨目的组布局式差异 | 待区分 RTL 与检查器扰动 | 尚未修改 |
 
@@ -2705,3 +2816,407 @@ ELF 或比较结果。VCS 可执行文件运行时还依赖同目录的 `vcs_sim
 Python 单元测试通过，其中新增测试覆盖运行时数据库链接、缺失和冲突三种情况。统一
 396 项 campaign 尚未结束，因此本节只证明生成器复用路径正确，不把它扩张为全局
 回归通过结论。
+
+## 72. 非零 `vstart` 的参考模型边界与 RTL 合法性
+
+### 72.1 旧随机首错的共同模式
+
+统一归档回归中的多项首错并非数据计算差异，而是控制流在非零 `vstart` 后立即分叉。
+例如 nightly seed 41 在 `vstart=21` 后执行普通 `vdiv.vx`，seed 42 在
+`vstart=2` 后执行 `vmflt.vf`；旧 Spike 直接进入 illegal-instruction handler，Ara
+则继续执行该向量指令。nightly seeds 38/39 等旧失败也具有同一模式。RVV 允许大多数
+向量算术指令从非零 `vstart` 恢复执行，因此这些位置的 Ara 行为不是非法执行。
+
+根因在参考模型配置。所用 Spike 源码将 `VU.vstart_alu` 默认设为 0，使通用
+`require_vector(true)` 对所有向量 ALU 指令附加 `vstart==0` 条件。验证专用 Spike
+补丁将该能力位设为 1，使普通算术、比较、除法等可重启指令按 RVV 语义执行；归约、
+`vcpop.m`、`vfirst.m`、`vmsbf.m/vmsof.m/vmsif.m`、`viota.m` 和 `vcompress.vm`
+仍由各自实现中的显式 `require(vstart==0)` 保持非法检查。补丁还把 `vssra.vi` 的移位
+量从有符号立即数修正为 RVV 定义的 `uimm5`。当前补丁保存在
+`verification/patches/riscv-isa-sim-ara.patch`，完整 campaign 强制显式传入 Spike
+可执行文件，并在元数据中记录路径和 SHA-256，避免再次静默使用主机默认版本。
+
+### 72.2 Ara 的真实合法性缺口
+
+修正参考模型后反向检查 Ara，确认 RTL 原先对不可重启操作缺少统一的非零 `vstart`
+拒绝条件。若直接启用 Spike 的可重启 ALU 支持而不修 Ara，随机程序会把这些真正非法
+的操作当作正常请求送入后端，参考模型和 RTL 仍不具备相同的架构边界。
+
+`hardware/src/ara_dispatcher.sv` 新增 `requires_zero_vstart()`，覆盖全部整数和浮点
+归约以及上述 mask scan/count、iota 和 compress 操作。illegal-instruction 组合逻辑
+直接检查架构 CSR `csr_vstart_q`，而不是可能已被内部展开路径归一化的请求字段；命中
+时沿现有 CVXIF exception 路径返回非法指令，不向向量后端建立请求。普通向量 ALU、
+load/store、slide 和 whole-register 操作不受该条件影响，继续保留非零 `vstart`
+恢复语义。
+
+新增 `villegal_vstart_ops.c` 固定设置 `vstart=1`，分别执行归约、`vcpop`、`vfirst`、
+三种 mask scan、`viota` 和 `vcompress`，逐项检查恰好产生一次 `mcause=2`，并确认 trap
+入口观察到的 `vstart` 仍为 1。该测试已纳入 `rvv-corners` 和完整 campaign 的不可缺失
+集合。修复版 `rvv-corners` 30 项全部通过，包含可重启 unit-stride、indexed、
+whole-register 和 mask/tail 边界，因此合法性收紧没有破坏原有 restart 路径。
+
+## 73. Mask-to-scalar 不可观测结果的严格比较
+
+### 73.1 Nightly seed 13 的假阳性
+
+修复版 nightly seed 13 最初在 `vcpop.m a5,v24,v0.t` 报告 Spike=1、RTL=3。回溯逐向量
+写回后，`v24` 的源 mask 位和 `v0` 的 predicate 位均包含由 agnostic policy 传播的
+架构不确定值；两个 population count 都是合法实现结果，不能据此判定 RTL 错误。
+旧 knownness 跟踪只完整处理 `vmv.x.s/vfmv.f.s` 的 element 0，并且当后续控制流因
+不可观测标量值分叉、完整 Spike-to-Ara 映射失败时，会丢弃此前已确认的未知信息，最终
+把合法分叉误报为 GPR mismatch。
+
+比较器现在分别建模四类 vector-to-scalar 操作。`vmv.x.s/vfmv.f.s` 只检查 element 0
+的有效位；`vcpop.m` 检查 VL 范围内 source 与 predicate 合取后可能改变计数的位；
+`vfirst.m` 只检查第一个确定置位以前、可能改变首置位位置的未知有效位，忽略其后的无关
+不确定性。mask 为确定 0 时会屏蔽对应 source unknown，反之亦然，避免把“源中存在
+unknown”近似成“标量结果必然 unknown”。
+
+一旦这类结果确实不可逐位观测，scalar 比较仍严格核对到产生该结果的动态指令，然后以
+带 PC、指令和停止原因的 `PREFIX` 结束；vector writeback 比较使用同一个 Spike 动态
+索引作为上界。只有 scalar 和 vector 同时为 `PREFIX`、RTL 正常退出且完整请求/uop
+trace 有效时才可判为 PASS。scalar 为完整 `MATCH` 时绝不接受 vector `PREFIX`，因此
+该规则不能掩盖可观测区域的向量差异。在线随机运行、失败重放和已有 artifact 离线重算
+三条路径现已使用同一规则。
+
+nightly seed 13 的最终独立重放正常退出，scalar 严格匹配 778 条指令后在上述
+`vcpop.m` 形成可解释前缀；vector 侧在此前比较 198 个有目的请求和 8308 个确定 byte，
+`first_mismatch` 为空，8772 个架构向量请求与 13049 个后端 uop 全部闭合。新增的
+`vcpop` 定向序列还覆盖 `vfirst -> masked mask compare -> scalar remu -> masked
+vcpop` 的连续交接，并已在修复版 RTL 上通过。
+
+## 74. 本轮修复版回归状态
+
+当前 catalog 为 205 个 directed RVV 测试、50 个应用和 12 个 profile 共 142 个随机
+程序，合计 397 项。完整 campaign 的数量门禁已从 200 收紧到 205 个 directed RVV，
+并继续逐名要求 30 个 corner 测试和全部随机 profile/语义覆盖，不能再用额外普通测试
+替代丢失的边界激励。
+
+基于同一个修复版 `simv` 和显式修补 Spike，历史失败重放中的 nightly seeds
+0、5、10、21、24、27、31、36 均为 PASS；seed 13 使用修正后的严格前缀比较独立重放
+为 PASS。新增归档失败 seed 41/42 也分别在 995.72 秒和 554.53 秒后正常退出并为 PASS，
+验证了普通整数除法和浮点比较的非零 `vstart` 恢复路径。修复版 `rvv-corners` 30/30
+通过，总仿真时间 1046.54 秒；验证框架 132 项 Python 单元测试全部通过。
+
+上述结果闭合了本轮已知非零 `vstart` 首错和比较器假阳性，但仍不等价于同一源码快照
+下 397 项统一 campaign 全部通过。早先启动的归档 campaign 使用旧 RTL、旧 Spike 和旧
+比较器，保留其输出仅用于持续发现测试位置，不作为最终通过统计；未完成部分继续运行，
+其新增非通过项必须在修复版环境中独立复核后才能分类。
+
+## 75. Masked VALU 非零 `vstart` 的掩码流长度不一致
+
+### 75.1 随机回归症状
+
+启用可重启 ALU 语义的 Spike 后，nightly seeds 45 和 47 均在 masked widening
+extension 附近失去前进性。seed 45 的最后一条主执行 uop 是
+`vzext.vf8 v8,v14,v0.t`，配置为 e64、VL=14、`vstart=5`；seed 47 对应
+`vsext.vf8 v2,v16,v0.t`，配置为 e64、VL=32、`vstart=14`。两条指令都先完成窄源
+重排预处理，再在整数 VALU 主 uop 等待掩码。提高 watchdog 只会延后报告时间，不能
+恢复握手，因此该现象按真实 RTL stall 调试，而不是按仿真超时处理。
+
+### 75.2 周期探针与根因
+
+为隔离 seed 45 的最小形态，`vzext` 定向测试使用 e64,m2、VL=14、`vstart=5`，并同时
+记录 lane sequencer、operand requester、Mask Unit 和 VALU 的 accept/flow 事件。
+Mask Unit 接受请求时记录到 `aligned_vstart=4`、`read=10`、`issue=14`、
+`commit=10`、`mask_pnt=4`。四条 lane 的本地 VL 分别为 4、4、3、3，本地 `vstart`
+分别为 2、1、1、1。旧逻辑从包含 element 4 的 aggregate mask word 开始，只为
+`VL-aligned_vstart=10` 个元素产生三个跨 lane 掩码节拍；但整数 VALU 仍从各 lane 的
+element 0 执行完整本地 VL，并依赖结果 byte-enable 屏蔽 prestart 元素。lane 0 和
+lane 1 因此各需要四个掩码节拍。三个节拍完成后，两条 lane 的 `issue_cnt` 均停在 1，
+源操作数仍有效而 `mask_valid=0`，形成不会自行解除的等待环。
+
+根因不是 extension 转换本身，而是两个模块对 `vstart` 的责任划分不一致：Mask Unit
+把 prestart 元素从 predicate stream 中删除，VALU 却保留完整的 element-0-based
+issue stream，并在写回端使用 lane-local `vstart` 保护旧目的值。二者分别单看都能
+解释，但组合后的节拍数不再相等。
+
+### 75.3 最小 RTL 修复和正确性边界
+
+`hardware/src/masku/masku.sv` 的 read/commit 初始化现在仅对非 Mask Unit、非 VALU 的
+执行路径按 aligned `vstart` 裁剪。对于 `VFU_Alu`，Mask Unit 从 element 0 提供覆盖
+完整 VL 的 predicate stream；VALU 已有的 `active_from_vstart()` 再将写回
+byte-enable 与 lane-local `vstart` 相交，因此 prestart 元素不会更新，masked-off 元素
+也仍由 predicate bit 抑制。修复不改变 unmasked 或 `vstart=0` 请求，也不改变 load、
+store、slide、MFPU 和 Mask Unit 自身原有的裁剪行为。
+
+这一修改的安全性依赖一个明确契约：整数 VALU 的运算节拍始终以本地 VL 从 element 0
+计数，架构 restart 语义由写使能而不是缩短输入流实现。若未来让 VALU 的 operand 和
+issue counter 都从 `vstart` 开始，则应同时恢复相应的掩码裁剪，不能只改其中一侧。
+
+### 75.4 定向与随机验证证据
+
+`vzext.c` 和 `vsext.c` 新增 e64,m2、VL=14、`vstart=5` 的 masked vf8 用例。目的向量
+先填入 sentinel，mask 使用交替的 `0xaa,0xaa`，因此一个测试同时检查 prestart 保持、
+mask-off 保持和活动元素的零/符号扩展结果。修复后的两项定向仿真均正常退出并通过；
+临时周期探针随后已从最终 RTL 源码移除。
+
+同一修复版 `simv` 对原 nightly seed 45 的严格重放在 282.421 秒后 PASS，对 seed 47
+的重放在 618.352 秒后 PASS。两项 scalar 比较都在架构不可观测的 vector-to-scalar
+结果处形成有解释的 PREFIX；完整请求/uop trace 均为 VALID。逐向量提交比较的
+`first_mismatch` 均为空，分别比较 12093 和 16348 个确定 byte，并显式跳过 5443 和
+13988 个 agnostic 派生 byte。该结果证明旧 stall 已被消除，同时没有把不可观测状态
+强行当作逐位等价。
+
+### 75.5 新增浮点 restart 覆盖
+
+代码审计还发现 directed suite 没有固定覆盖 masked 浮点运算与非 lane 对齐
+`vstart` 的组合。新增 `vfp_vstart_edges.c` 使用精确可表示的 FP32/FP64 加法，在 m2
+下分别设置非零 `vstart` 和交替 mask，并逐元素检查 prestart、mask-off 与活动结果。
+该测试用于验证 MFPU 自身的 operand、mask 和 issue 计数契约，不预设其与本次 VALU
+缺陷相同。它已加入 `rvv-corners`、完整 directed catalog 和强制名称门禁；因此当前
+campaign 清单为 206 个 directed RVV、50 个应用和 142 个随机程序，共 398 项。
+
+## 76. MFPU 非零 `vstart` 的执行掩码贯通
+
+### 76.1 严格定向测试暴露的两层缺陷
+
+`vfp_vstart_edges.c` 首先使用 masked FP32、e32,m2、VL=14、`vstart=5` 复现错误。
+目的向量预填 `0x42c60000`，活动元素应写入 3.0；旧实现却把 element 1 改写为 3.0，
+说明 prestart 元素未保持。周期探针进一步确认四条 lane 接收的本地 VL 为 4、4、3、3，
+但本地 `vstart` 被统一计算为 1、1、1、1；lane 0 正确值应为 2。与此同时，operand
+requester 和 Mask Unit 已从非零 `vstart` 后提供缩短的输入流，而 MFPU 的 issue/result
+地址仍从 element 0 开始，导致后缀数据被写回目的前缀。
+
+第一层修复把 MFPU 与已有 VALU 契约统一：operand 和 predicate stream 从 element 0
+覆盖完整本地 VL，lane sequencer 为低编号余数 lane 计算正确的本地 `vstart`，MFPU 在
+每个 issue beat 上以全局元素位置生成 restart byte-enable。该版本使 masked 结果检查
+通过，但更严格的 unmasked 用例仍把 prestart 的 `+Inf + -Inf` 结果 NaN 写入 element 0。
+根因是第二层有效性丢失：fpnew 的异常 `flag_mask` 已使用 restart byte-enable，result
+tag 的 control 字段也已携带该值，但 result queue 对 `vm=1` 请求再次强制使用全有效
+byte-enable；整数乘法流水线也仍传播原始 `mask_i`，没有传播 tail/restart 门控。
+
+### 76.2 最终 RTL 契约
+
+`lane_sequencer.sv` 现在对 `VFU_MFpu` 应用与 `VFU_Alu` 相同的 lane-local `vstart`
+余数修正，并让 MFPU 的 A/B/C 和 mask operand request 从本地 element 0 读取完整流。
+`masku.sv` 不再为 MFPU 单独裁剪 predicate stream。`vmfpu.sv` 依据
+`first_element = vl - issue_cnt`、架构 `vstart`、SEW、tail 和 predicate 形成统一的
+`issue_be`；该信号同时门控 fpnew 的 SIMD 异常、随 tag 穿过 fpnew、控制 result queue
+写回，并作为整数乘法流水线传播的有效字节。这样 operand、issue、异常和 writeback
+使用同一 element-0-based 坐标，不会在模块边界重复或遗漏 `vstart` 偏移。
+
+该修改只对 `VFU_MFpu` 的普通可重启操作启用 restart 门控。浮点比较经
+`VFU_MaskUnit` 返回 mask，保留原有路径；归约由 dispatcher 强制要求 `vstart=0`，不
+依赖这套恢复语义。prestart 元素可以进入执行单元以保持固定节拍，但其异常位和写回
+byte 均被 `issue_be` 抑制，因此不会改变目的寄存器或 `fflags`。
+
+### 76.3 当前验证证据与剩余门禁
+
+正式的 `vfp_vstart_edges.c` 已扩展为九组检查，覆盖 masked FP32、masked FP64、
+unmasked FP32，以及 `vfmul`、`vfdiv`、`vfsqrt`、同宽转换、宽化转换和窄化转换。
+各组均使用非零且不与 lane 边界对齐的 `vstart`；prestart 输入放置 `Inf*0`、`0/0`、
+负数开方或 signaling NaN，活动输入使用精确可表示值。测试在读取任何打印路径之前立即
+检查 `fflags`，随后逐元素检查 prestart sentinel、mask-off sentinel 和活动结果。
+
+这一检查顺序是必要的。临时矩阵最初在 `VCMP_U64` 之后读取 `fflags`，而 `VCMP_U64`
+内部包含 `printf`，导致被测 `vfdiv` 与后续打印路径的浮点状态混在一起。把
+`CHECK_FFLAGS` 移到向量指令之后、任何比较或打印之前后，六组临时矩阵全部通过；因此
+该现象被归类为测试环境假阳性，没有据此增加 div/sqrt 数据通路逻辑。
+
+更完整的原有 `vfncvt` 回归随后暴露出另一处真实缺陷。窄化转换的两个 fpnew 结果拍
+共同填充一个 result-queue word；旧修复只在第一拍建立 write byte-enable，第二拍虽然
+写入了 packed data，却没有把该拍有效位合并进队列表项。波形显示第二拍数据正确，
+但对应目标 byte 的 BE 为零，因而活动元素保持旧值。最终实现让 fpnew tag 携带每拍
+`issue_be`，按 e8/e16/e32 的窄化 packed 布局将第二拍有效位分别移动 1/2/4 byte，
+再与 `narrowing_shuffle_be` 相交，并在第二拍 OR 入第一拍队列表项。完整 `vfncvt`
+在该实现上通过，耗时 110.750 秒；九组 `vfp_vstart_edges` 也全部通过。
+
+验证框架 134 项 Python 单元测试全部通过，`git diff --check` 无错误。上述结果闭合了
+当前 MFPU 定向首错，但不替代最终全局回归。历史 nightly seeds 45/47 在较早 MFPU
+快照上已从 stall 推进到 `vrem.vv` 的逐向量状态首错，仍须使用包含最终窄化修复的
+同源码快照 `simv` 重放；最终 398 项 campaign 也必须通过结果数量、动态 trace、
+逐向量比较和源码快照门禁后，才能声明全局收敛。
+
+## 77. Integer divider 有效 byte-enable 未随结果返回
+
+### 77.1 同快照随机首错
+
+包含第 76 节 MFPU restart 和窄化修复的同快照 campaign 在多个 profile 中稳定出现
+整数除余首错。代表位置包括 `vremu.vv v15,v30,v30`、
+`vrem.vv v22,v14,v6` 和 `vrem.vx v0,v8,s2`。第一条指令的两项源操作数完全相同，
+其所有活动 unsigned remainder 必须为零；RTL 的 divider result data 已包含零值，
+但逐向量 trace 中对应写事件的 byte-enable 为 `00`，严格比较器因此正确报告
+`missing_changed_vrf_write` 或保留旧目的值。nightly seeds 45/47 使用同一最终窄化
+simv 重放后也分别在 `vrem.vv` 处复现，不属于旧 artifact 或比较器误关联。
+
+根因是 MFPU result queue 的有效性契约升级不完整。普通 multiplier 和 fpnew 已让
+tail、predicate 与 restart 共同形成的 `issue_be` 随结果返回；serial divider 却仍让
+`mask_o` 只透传原始 `mask_i`。旧 result queue 对 unmasked 请求强制生成全有效 BE，
+所以这一差异原先不可见；第 76 节改为统一消费 `unit_out_mask` 后，unmasked divider
+把无意义的 predicate 输入当作有效 byte-enable，最终以 `be=0` 丢弃正确结果。
+
+### 77.2 严格接口修复
+
+`simd_div.sv` 现在输出与输入 word 同时锁存的 `be_o`。该值就是 divider 内部用于跳过
+无效 element 的 `be_q`，已包含 partial tail、masked-off element 和 prestart element
+门控；它和 result 一起保持到 output handshake。`vmfpu.sv` 在选择 VDIVU 至 VREM 的
+结果时使用 `vdiv_be` 作为 `unit_out_mask`，因此 result data 和有效字节来自同一请求。
+
+原有 `mask_i/mask_o` 在 divider 中仅做寄存器透传，既不参与串行运算控制，也没有第二个
+消费者；predicate 已在生成 `be_i` 时合入。最终结构删除这组冗余端口和状态，只保留
+`be_i -> be_o` 的严格请求关联，避免继续维护两个语义近似但不等价的有效性通道。
+
+### 77.3 定向激励与当前证据
+
+新增 `vdiv_vstart_edges.c` 覆盖 unmasked `vremu.vv`、masked `vrem.vv`、
+unmasked `vdivu.vx` 和 masked `vdiv.vx`，跨 e8/e16/e32/e64，并为每组设置非零
+`vstart` 和目的 sentinel。它逐元素检查 prestart、masked-off、active 和 tail 区域，
+已加入完整 campaign 的强制 directed 名称门禁。该测试在缺陷 simv 上于 16.29 秒
+明确 FAIL，在删除冗余 mask 状态后的新 simv 上于 33.45 秒 PASS，证明测试对本缺陷
+具有正反敏感性。
+
+最终清理版 simv 上，原有 `vdivu`、`vdiv`、`vremu`、`vrem` 与新增 restart 测试共
+5 项全部通过；同一 simv 对原失败 `smoke_0`、`arithmetic_1` 和 `load_store_0` 的
+严格重放也全部 PASS，scalar/vector 比较均无首错。保留冗余 mask 透传但功能等价的
+前一验证版还使 nightly seeds 45/47 分别在 288.56 秒和 534.95 秒后 PASS。删除冗余
+状态后的最终结构仍需完成这两个长点及完整统一 campaign，才能将本节状态提升为全局
+回归闭环。
+
+## 78. Masked narrowing 的半字 predicate 坐标错误
+
+### 78.1 独立随机首错
+
+排除第 77 节 divider 影响后，`ara_dsa_rvv1_fp64_1` 仍在 e32,mf2、VL=15 的
+`vfncvt.f.x.w v24,v10,v0.t` 出现确定差异。首错为 `v24` byte 28 未更新，属于 lane 3
+第一目标字的第二个 e32 element。逐向量 trace 显示该 lane 第一目标字写回 BE 为 `00`，
+下一目标字为正确的 `0f`；Spike 则要求前者的高 4 byte 更新。
+
+周期探针给出直接原因。Narrowing 每两个 fpnew result beat 合并为一个目标 lane word，
+Mask Unit 在两半期间保持同一个 packed mask beat。以 EW32 为例，第一半使用低 4 byte，
+第二半使用高 4 byte。本例 lane 3 的 `mask_i=f0`，表示第一半 mask-off、第二半 mask-on；
+旧逻辑却让两半都直接与低半基准 `be(1,EW32)=0f` 相交，因此得到 `00/00`。EW16 和
+EW8 的等价 packed 半区分别是 `33/cc` 和 `55/aa`，具有相同坐标问题。
+
+### 78.2 修复契约
+
+新增 `narrowing_input_mask()`，在第二半 issue 时按目标 SEW 将 packed mask 右移：EW8、
+EW16、EW32 分别移动 1、2、4 byte，再与该拍基准 BE、tail 和 restart mask 相交。这样
+送入 multiplier/fpnew tag 的有效位始终位于第一半规范坐标。结果返回后，已有
+`packed_narrowing_be()` 做严格逆变换，将第二半有效位左移相同距离并与
+`narrowing_shuffle_be` 相交，最后 OR 入同一 result-queue entry。第一半、unmasked
+请求和非 narrowing 请求不改变。
+
+### 78.3 验证
+
+包含该修复的 simv 对原 `fp64_1` ELF 严格重放为 PASS，scalar/vector 均在可观测前缀
+内无差异，完整请求生命周期有效。共享 narrowing 路径的 `vfncvt`、`vfp_vstart_edges`、
+`vnclip`、`vnclipu` 和 `vnclip_edges` 也全部通过。定位用的组合探针已从最终源码移除；
+无探针最终 simv 重跑 `fp64_1`、`vfncvt` 和 `vfp_vstart_edges` 仍全部通过。该修复现与
+第 77 节 divider 修复共同进入新的统一 campaign。
+
+## 79. DWT strip-mining 的处理量与 AVL 记账不一致
+
+### 79.1 失败现象
+
+399 项统一 campaign 中，207 项 directed RVV 和 142 项随机程序全部通过；应用类唯一
+确定的数值失败是 `app:dwt`。仿真能够进入向量 DWT，但随后输出大量损坏浮点值并以
+`Core Test *** FAILED *** (tohost = 1)` 结束。与此同时，同一 campaign 中
+`app:vsdwt_asm` 已通过，这说明故障不符合“DWT 所需某条 RVV 指令普遍计算错误”的模式，
+必须先审查 C kernel 自身的 strip-mining。
+
+被测配置为 `VLEN=1024`、`SEW=32`、`LMUL=4`，所以 `e32,m4` 的 VLMAX 为 128。DWT
+每个输出点消费一个偶数样本和一个奇数样本，因此一轮产生 128 个输出时应消费 256 个
+输入。
+
+### 79.2 原代码
+
+原循环同时存在外层和内层两个同名 `vl`：
+
+```c
+size_t avl = n;
+
+for (size_t vl = __riscv_vsetvl_e32m4(avl); avl > 0; avl -= vl) {
+  size_t vl = __riscv_vsetvl_e32m4(avl);
+  if (avl >= 2 * vl)
+    vl *= 2;
+
+  sample_vec_0 = __riscv_vlse32_v_f32m4(samples_r, stride, vl / 2);
+  sample_vec_1 = __riscv_vlse32_v_f32m4(samples_r + 1, stride, vl / 2);
+  __riscv_vse32_v_f32m4(samples_w, g_vec, vl / 2);
+  __riscv_vse32_v_f32m4(buf_w, h_vec, vl / 2);
+
+  samples_r += vl;
+  samples_w += vl / 2;
+  buf_w += vl / 2;
+}
+```
+
+内层声明遮蔽了 `for` 初始化器中的外层变量。以 `n=512` 为例：
+
+| 轮次 | 外层更新使用的 `vl` | 内层实际使用的 `vl` | 实际消费输入 | `avl` 扣减 | 结果 |
+|---|---:|---:|---:|---:|---|
+| 1 | 128 | 256 | 256 | 128 | 指针和 AVL 开始失配 |
+| 2 | 128 | 256 | 256 | 128 | 输入指针已到数组末尾 |
+| 3 | 128 | 256 | 256 | 128 | 越界读取并污染结果 |
+
+所以失败不是向量浮点、strided load 或 VLSU 的 RTL 问题，而是循环用“输入元素数”和
+“输出元素数”复用了同一个变量，并让 `for` 更新表达式引用了被遮蔽的另一个对象。
+
+后半段把高频系数从临时缓冲区复制回样本数组的循环还有一个较弱的通用性问题：它只在
+进入 `for` 时计算一次 `vl`，而标准 strip-mining 应在每轮根据剩余 AVL 重新计算。当前
+512 点幂次规模恰好整除 VLMAX，不一定触发该问题，但修复时一并消除了该隐患。
+
+### 79.3 现代码
+
+修复后分别使用 `output_vl` 和 `input_count` 表达两种单位，并在同一循环体内完成所有
+记账：
+
+```c
+while (avl > 0) {
+  size_t output_vl = __riscv_vsetvl_e32m4(avl / 2);
+  size_t input_count = 2 * output_vl;
+
+  sample_vec_0 =
+      __riscv_vlse32_v_f32m4(samples_r, stride, output_vl);
+  sample_vec_1 =
+      __riscv_vlse32_v_f32m4(samples_r + 1, stride, output_vl);
+  __riscv_vse32_v_f32m4(samples_w, g_vec, output_vl);
+  __riscv_vse32_v_f32m4(buf_w, h_vec, output_vl);
+
+  samples_r += input_count;
+  samples_w += output_vl;
+  buf_w += output_vl;
+  avl -= input_count;
+}
+
+avl = n / 2;
+while (avl > 0) {
+  size_t vl = __riscv_vsetvl_e32m4(avl);
+  h_vec = __riscv_vle32_v_f32m4(buf_r, vl);
+  __riscv_vse32_v_f32m4(samples_w, h_vec, vl);
+  buf_r += vl;
+  samples_w += vl;
+  avl -= vl;
+}
+```
+
+这个修复建立了四个必须同时成立的不变量：
+
+1. 本轮产生的低频和高频输出都为 `output_vl` 个元素；
+2. 本轮两个 strided load 合计消费 `2 * output_vl` 个输入；
+3. 输入、输出和临时缓冲区指针分别按其真实元素数推进；
+4. `avl` 只按已经消费的输入元素数扣减。
+
+### 79.4 验证证据
+
+修改后先用项目 LLVM RVV 工具链重新生成 `apps/bin/dwt`，然后复用最终 campaign 的
+同一个 VCS `simv` 在独立目录完整运行 `app:dwt`。结果为：
+
+```text
+Scalar DWT: 17030 cycles
+Vector DWT: 3305 cycles
+[PASS] app:dwt
+elapsed: 144.07 s
+returncode: 0
+```
+
+证据目录为：
+
+```text
+verification/out/dwt-stripmine-fix-20260813/
+```
+
+该运行执行了应用自带的标量参考与向量结果逐元素数值检查，没有错误打印，最终正常写入
+成功状态。修复只修改 `apps/dwt/kernel/wavelet.c`，没有为了通过 DWT 改动 RTL 或放宽
+比较器，因此 A-01 应归类为应用 kernel bug，而不是处理器 bug。

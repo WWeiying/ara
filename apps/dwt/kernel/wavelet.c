@@ -96,23 +96,19 @@ static inline void dwt_step_vector(const gsl_wavelet *w, float *samples,
   float *buf_r = buf;
   float *buf_w = buf;
 
-  // Strip-Mining loop
-#ifndef SMALL_PROBLEM
-  for (size_t vl = __riscv_vsetvl_e32m4(avl); avl > 0; avl -= vl) {
-#endif
-    size_t vl = __riscv_vsetvl_e32m4(avl);
-    // If we have enough samples, fill the vector registers!
-    if (avl >= 2 * vl)
-      vl *= 2;
+  // Each output consumes one even/odd input pair.
+  while (avl > 0) {
+    size_t output_vl = __riscv_vsetvl_e32m4(avl / 2);
+    size_t input_count = 2 * output_vl;
 #ifdef SEGMENT
-    // Segment load the vectors. ToDo: check if vl/2 is correct
-    __riscv_vlseg2e32_v_f32m4(sample_vec_0, sample_vec_1, samples_r, vl / 2);
+    __riscv_vlseg2e32_v_f32m4(sample_vec_0, sample_vec_1, samples_r,
+                              output_vl);
 #else
-  // Strided load (inefficient!)
-  sample_vec_0 =
-      __riscv_vlse32_v_f32m4(samples_r, 2 * sizeof(*samples_r), vl / 2);
-  sample_vec_1 =
-      __riscv_vlse32_v_f32m4(samples_r + 1, 2 * sizeof(*samples_r), vl / 2);
+    // Strided load (inefficient!)
+    sample_vec_0 = __riscv_vlse32_v_f32m4(
+        samples_r, 2 * sizeof(*samples_r), output_vl);
+    sample_vec_1 = __riscv_vlse32_v_f32m4(
+        samples_r + 1, 2 * sizeof(*samples_r), output_vl);
 #endif
 
     // First implementation
@@ -120,37 +116,34 @@ static inline void dwt_step_vector(const gsl_wavelet *w, float *samples,
 
     // Generate the g vector and store it back
     // Generate the h vector and store it back
-    g_vec = __riscv_vfmul_vf_f32m4(sample_vec_0, w->g1[0], vl / 2);
-    h_vec = __riscv_vfmul_vf_f32m4(sample_vec_0, w->h1[0], vl / 2);
+    g_vec = __riscv_vfmul_vf_f32m4(sample_vec_0, w->g1[0], output_vl);
+    h_vec = __riscv_vfmul_vf_f32m4(sample_vec_0, w->h1[0], output_vl);
 
-    g_vec = __riscv_vfmacc_vf_f32m4(g_vec, w->g1[1], sample_vec_1, vl / 2);
-    h_vec = __riscv_vfmacc_vf_f32m4(h_vec, w->h1[1], sample_vec_1, vl / 2);
+    g_vec =
+        __riscv_vfmacc_vf_f32m4(g_vec, w->g1[1], sample_vec_1, output_vl);
+    h_vec =
+        __riscv_vfmacc_vf_f32m4(h_vec, w->h1[1], sample_vec_1, output_vl);
 
-    __riscv_vse32_v_f32m4(samples_w, g_vec, vl / 2);
-    __riscv_vse32_v_f32m4(buf_w, h_vec, vl / 2);
+    __riscv_vse32_v_f32m4(samples_w, g_vec, output_vl);
+    __riscv_vse32_v_f32m4(buf_w, h_vec, output_vl);
 
     // Bump pointers
-    samples_r += vl;
-    samples_w += vl / 2;
-    buf_w += vl / 2;
-#ifndef SMALL_PROBLEM
+    samples_r += input_count;
+    samples_w += output_vl;
+    buf_w += output_vl;
+    avl -= input_count;
   }
-#endif
 
   // Memcpy h_vec to the samples vector
   avl = n / 2;
-#ifndef SMALL_PROBLEM
-  for (size_t vl = __riscv_vsetvl_e32m4(avl); avl > 0; avl -= vl) {
-#else
-  vl = __riscv_vsetvl_e32m4(avl);
-#endif
+  while (avl > 0) {
+    size_t vl = __riscv_vsetvl_e32m4(avl);
     h_vec = __riscv_vle32_v_f32m4(buf_r, vl);
     __riscv_vse32_v_f32m4(samples_w, h_vec, vl);
     buf_r += vl;
     samples_w += vl;
-#ifndef SMALL_PROBLEM
+    avl -= vl;
   }
-#endif
 }
 
 // The signal should be already padded
