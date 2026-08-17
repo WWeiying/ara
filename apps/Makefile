@@ -22,6 +22,18 @@ COMMON_DIR := $(ROOT_DIR)/common
 TESTS_DIR := $(ROOT_DIR)/riscv-tests/isa
 RVTEST_MACRO_HEADERS := $(shell find $(TESTS_DIR)/macros -type f)
 
+sim_l2_mb ?= 1
+valid_sim_l2_mb := 1 2 4 8 16 32 64
+ifeq ($(filter $(sim_l2_mb),$(valid_sim_l2_mb)),)
+$(error sim_l2_mb must be one of: $(valid_sim_l2_mb))
+endif
+
+ifeq ($(sim_l2_mb),1)
+LINKER_SCRIPT := $(COMMON_DIR)/link.ld
+else
+LINKER_SCRIPT := $(COMMON_DIR)/link_sim_$(sim_l2_mb)m.ld
+endif
+
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(COMMON_DIR)/runtime.mk
 include $(COMMON_DIR)/riscv_tests.mk
@@ -29,6 +41,8 @@ include $(COMMON_DIR)/default_args.mk
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
 APPS += $(patsubst $(APPS_DIR)/%/main.cpp,%,$(shell find $(APPS_DIR) -name "main.cpp"))
+LLAMA_QWEN25_APPS := $(filter llama_qwen25_%,$(APPS))
+LLAMA_QWEN25_COMMON := $(shell find llama_qwen25_real/common -type f 2>/dev/null)
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
 BINARIES := $(filter-out bin/benchmarks bin/rivec-bmarks% bin/_%, $(addprefix bin/,$(APPS)))
 
@@ -58,8 +72,13 @@ all: $(BINARIES)
 .PHONY: linker_script
 linker_script: $(COMMON_DIR)/script/align_sections.sh $(ROOT_DIR)/../../config/$(config).mk
 	chmod +x $(COMMON_DIR)/script/align_sections.sh
-	rm -f $(COMMON_DIR)/link.ld && cp $(COMMON_DIR)/arch.link.ld $(COMMON_DIR)/link.ld
-	$(COMMON_DIR)/script/align_sections.sh $(nr_lanes) $(COMMON_DIR)/link.ld
+	rm -f $(LINKER_SCRIPT) && cp $(COMMON_DIR)/arch.link.ld $(LINKER_SCRIPT)
+	@if [ "$(sim_l2_mb)" != "1" ]; then \
+		bytes=$$(( $(sim_l2_mb) * 1024 * 1024 )); \
+		hex=$$(printf '0x%08x' $$bytes); \
+		sed -i "s/LENGTH = 0x00100000/LENGTH = $$hex/" $(LINKER_SCRIPT); \
+	fi
+	$(COMMON_DIR)/script/align_sections.sh $(nr_lanes) $(LINKER_SCRIPT)
 
 # Make all applications
 $(APPS): % : bin/% $(APPS_DIR)/Makefile $(shell find common -type f)
@@ -114,6 +133,8 @@ bin/$1.spike: $1/data.S.o.spike $(addsuffix .o.spike, $(shell find $(1) -name "*
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template_spike,$(app))))
 
+$(addsuffix /main.c.o.spike,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
+
 define app_compile_template
 bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) linker_script
 	mkdir -p bin/
@@ -124,6 +145,8 @@ bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c
 	$$(RISCV_CC) $(RISCV_CCFLAGS) -dM -E - < /dev/null > compiler_macros.h
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
+
+$(addsuffix /main.c.o,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
 
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)

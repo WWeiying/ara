@@ -20,8 +20,31 @@ endif
 include $(ARA_DIR)/config/$(config).mk
 include $(ARA_DIR)/config/sram.mk
 
+# Optional behavioral memory expansion for large application replay. This is
+# intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
+mc ?= 0
+sim_l2_mb ?= 1
+large_l2_mb ?= 16
+valid_sim_l2_mb := 1 2 4 8 16 32 64
+ifeq ($(filter $(sim_l2_mb),$(valid_sim_l2_mb)),)
+$(error sim_l2_mb must be one of: $(valid_sim_l2_mb))
+endif
+ifneq ($(sim_l2_mb),1)
+  ifeq ($(mc),1)
+    $(error simulation-only L2 expansion cannot be combined with mc=1)
+  endif
+  ifneq ($(filter dc sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
+    $(error simulation-only L2 expansion cannot be used by synthesis, SRAM generation, or SAIF targets)
+  endif
+  sim_l2_bytes := $(shell echo $$(( $(sim_l2_mb) * 1024 * 1024 )))
+endif
+
 # build path
+ifeq ($(sim_l2_mb),1)
 buildpath      ?= $(ARA_DIR)/hardware/build
+else
+buildpath      ?= $(ARA_DIR)/hardware/build_sim_l2_$(sim_l2_mb)m
+endif
 resultpath     ?= results
 # questa library
 library        ?= work
@@ -40,8 +63,6 @@ dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dp
 sram_techlib_path := /home/wangwy/ara/backend/library/mem
 spsram127_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpd127spsram_20120200_180a/AN61001_20180416/tsn28hpcpd127spsram_20120200_180a/TSMCHOME/sram/Compiler/tsn28hpcpd127spsram_20120200_180a/tsn28hpcpd127spsram_20120200_180a
 spsram_techlib_path := /home/wangwy/technical_library/tsmc28nm/Memory/tsn28hpcpuhdspsram_20120200_170a/AN61001_20180125/tsn28hpcpuhdspsram_20120200_170a/TSMCHOME/sram/Compiler/tsn28hpcpuhdspsram_20120200_170a/tsn28hpcpuhdspsram_20120200_170a
-
-mc ?= 0
 
 define generate_sram
   > $(1)/config.txt
@@ -92,6 +113,9 @@ ifeq ($(ideal_dispatcher), 1)
 endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+ifneq ($(sim_l2_mb),1)
+bender_defs += --define SIM_L2_SIZE_BYTES=$(sim_l2_bytes)
+endif
 
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
@@ -109,6 +133,8 @@ endif
 
 ifeq ($(mc), 1)
   sim_dir ?= sim_mc
+else ifneq ($(sim_l2_mb),1)
+  sim_dir ?= sim_l2_$(sim_l2_mb)m
 else
   sim_dir ?= sim
 endif
@@ -138,7 +164,7 @@ ifeq ($(no_fsdb), 1)
 APP += +NO_FSDB
 endif
 
-.PHONY: bender compile sim verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara
+.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum
 
 # Bender
 bender: $(BENDER)
@@ -166,6 +192,9 @@ compile: bender dpi ../Bender.yml
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 
+compile_large:
+	@$(MAKE) compile sim_l2_mb=$(large_l2_mb)
+
 ifeq ($(ideal_dispatcher), 1)
 sim_log = "perf_report_$(app)_ideal.log"
 else
@@ -177,10 +206,82 @@ sim: compile
 	@rm ./$(sim_dir)/perf*.log
 	@cd ./$(sim_dir) && ./simv -l run.vcs.log $(SIMV_POWER_OPT) $(APP)
 	@cp ./$(sim_dir)/$(sim_log) ./$(sim_dir)/perf.log
+
+sim_large:
+	@test -n "$(app)" || { echo "usage: make sim_large app=<app> [large_l2_mb=16]" >&2; exit 2; }
+	@$(MAKE) -C ../apps $(app) sim_l2_mb=$(large_l2_mb)
+	@$(MAKE) sim app=$(app) sim_l2_mb=$(large_l2_mb)
 verify: 
 	@cd ../apps && $(MAKE) $(app) && $(MAKE) bin/$(app).ideal
 	@$(MAKE) sim app=$(app) verify=1 ideal_dispatcher=1
 #	@./regdump_compare.py sim/regdump.ideal sim/regdump.real --trace --trace-reg --dest-only --log-file sim/regdump_compare.log
+
+llama_spike_build:
+	@./scripts/llama_q4km_extract/build-spike.sh
+
+llama_spike_list:
+	@./scripts/llama_q4km_extract/run-case.sh
+
+llama_spike_check: llama_spike_build
+	@./scripts/llama_q4km_extract/cases.py verify-data
+	@LLAMA_SPIKE_TIMEOUT=$${LLAMA_SPIKE_TIMEOUT:-300} \
+		./scripts/llama_q4km_extract/run-case-spike.sh \
+		micro/q4_k_x_q8_k_dot_n1536_nrc1
+
+llama_spike:
+	@test -n "$(case)" || { \
+		echo "usage: make llama_spike case=<case-id>" >&2; \
+		echo "list cases: ./scripts/llama_q4km_extract/run-case.sh" >&2; \
+		exit 2; \
+	}
+	@$(MAKE) llama_spike_build
+	@LLAMA_SPIKE_TIMEOUT=$${LLAMA_SPIKE_TIMEOUT:-3600} \
+		./scripts/llama_q4km_extract/run-case-spike.sh "$(case)"
+
+llama_real_list:
+	@printf '%s\n' \
+		decode_attn_q decode_ffn_gate decode_ffn_down \
+		prefill_attn_q prefill_ffn_gate prefill_ffn_down
+
+llama_real_build:
+	@test -f "../apps/llama_qwen25_$(case)/case.json" || { \
+		echo "usage: make llama_real_build case=<case from llama_real_list>" >&2; \
+		exit 2; \
+	}
+	@$(MAKE) -C ../apps "llama_qwen25_$(case)" sim_l2_mb=$(large_l2_mb)
+
+llama_real_spike:
+	@test -f "../apps/llama_qwen25_$(case)/case.json" || { \
+		echo "usage: make llama_real_spike case=<case from llama_real_list>" >&2; \
+		exit 2; \
+	}
+	@$(MAKE) -C ../apps "spike-run-llama_qwen25_$(case)"
+
+llama_real_sim:
+	@test -f "../apps/llama_qwen25_$(case)/case.json" || { \
+		echo "usage: make llama_real_sim case=<case from llama_real_list>" >&2; \
+		exit 2; \
+	}
+	@$(MAKE) sim_large app="llama_qwen25_$(case)" \
+		large_l2_mb=$(large_l2_mb) no_fsdb=$(no_fsdb)
+
+llama_real_sum:
+	@test -n "$(run_log)" -a -n "$(perf_log)" || { \
+		echo "usage: make llama_real_sum run_log=<run.vcs.log> perf_log=<perf_report.log> [output=result.csv]" >&2; \
+		exit 2; \
+	}
+	@./scripts/llama_qwen25_real/summarize.py \
+		--run-log "$(run_log)" --perf-log "$(perf_log)" \
+		--output "$(or $(output),llama_real_result.csv)"
+
+llama_real_metrics_sum:
+	@test -n "$(metrics_log)" || { \
+		echo "usage: make llama_real_metrics_sum metrics_log=<llm_perf_report.log> [output=metrics.csv]" >&2; \
+		exit 2; \
+	}
+	@./scripts/llama_qwen25_real/summarize_llm_perf.py \
+		--metrics-log "$(metrics_log)" \
+		--output "$(or $(output),llama_real_metrics.csv)"
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *

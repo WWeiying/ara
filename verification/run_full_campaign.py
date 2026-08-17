@@ -5,6 +5,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from collections import Counter
@@ -25,13 +26,15 @@ CHECKPOINT_PROFILES = {
     "ara_dsa_rvv1_signature_smoke",
     "ara_dsa_rvv1_checkpoint_regression",
 }
-MINIMUM_CAMPAIGN_INVENTORY = {"rvv": 200, "app": 50, "random": 142}
+MINIMUM_CAMPAIGN_INVENTORY = {"rvv": 207, "app": 50, "random": 142}
 REQUIRED_DIRECTED_TESTS = {
     "rvv:vaadd",
     "rvv:vaaddu",
     "rvv:vasub",
     "rvv:vasubu",
     "rvv:vaverage_matrix",
+    "rvv:vdiv_vstart_edges",
+    "rvv:vfp_vstart_edges",
     "rvv:vmask_carry_tail_edges",
     "rvv:vmask_compare_edges",
     "rvv:vmask_logical_matrix",
@@ -51,6 +54,7 @@ REQUIRED_DIRECTED_TESTS = {
     "rvv:vcompress_edges",
     "rvv:vsegment_emul_edges",
     "rvv:villegal_segment_recovery",
+    "rvv:villegal_vstart_ops",
     "rvv:vindexed_vstart_edges",
     "rvv:vunit_vstart_edges",
     "rvv:vwhole_vstart_edges",
@@ -87,7 +91,9 @@ REQUIRED_RANDOM_COVERAGE = {
     "tail_policy": {"ta", "tu"},
     "mask_policy": {"ma", "mu"},
 }
-SOURCE_SUFFIXES = {".c", ".h", ".json", ".py", ".sv", ".svh", ".yaml", ".yml"}
+SOURCE_SUFFIXES = {
+    ".c", ".h", ".json", ".patch", ".py", ".sv", ".svh", ".yaml", ".yml"
+}
 SOURCE_EXCLUDE_DIRS = {
     ".git", "__pycache__", "build", "deps", "install", "out", "sim", "third-party", "tools"
 }
@@ -102,6 +108,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--generator-simv", type=Path,
         help="reuse one precompiled VCS riscv-dv generator for every random profile",
+    )
+    parser.add_argument(
+        "--spike", type=Path, required=True,
+        help="explicit Ara-compatible Spike executable used by every random profile",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=8)
@@ -141,6 +151,21 @@ def source_snapshot() -> Dict[str, object]:
             digest.update(path.read_bytes())
             digest.update(b"\0")
     return {"sha256": digest.hexdigest(), "file_count": len(files)}
+
+
+def record_completed_source_snapshot(
+    metadata: Dict[str, object], components: Dict[str, int], completed: Dict[str, object]
+) -> None:
+    metadata["completed_source_snapshot"] = completed
+    if completed == metadata["source_snapshot"]:
+        components["source_snapshot"] = 0
+        metadata.pop("source_snapshot_drift", None)
+        return
+    components["source_snapshot"] = 1
+    metadata["source_snapshot_drift"] = {
+        "started": metadata["source_snapshot"],
+        "completed": completed,
+    }
 
 
 def random_profiles() -> List[Tuple[str, int]]:
@@ -228,6 +253,8 @@ def random_command(
     ]
     if getattr(args, "generator_simv", None) is not None:
         command.extend(["--generator-simv", args.generator_simv])
+    if getattr(args, "spike", None) is not None:
+        command.extend(["--spike", args.spike])
     if profile in CHECKPOINT_PROFILES:
         command.append("--vector-checkpoints")
     else:
@@ -461,6 +488,12 @@ def main() -> int:
     if generator_simv is not None and not generator_simv.is_file():
         raise FileNotFoundError(generator_simv)
     args.generator_simv = generator_simv
+    spike = args.spike.resolve()
+    if not spike.is_file():
+        raise FileNotFoundError(spike)
+    if not os.access(spike, os.X_OK):
+        raise PermissionError(f"Spike is not executable: {spike}")
+    args.spike = spike
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
 
@@ -490,6 +523,8 @@ def main() -> int:
         },
         "simv": str(simv),
         "simv_sha256": sha256_file(simv),
+        "spike": str(spike),
+        "spike_sha256": sha256_file(spike),
         "generator_simv": str(generator_simv) if generator_simv is not None else None,
         "generator_simv_sha256": (
             sha256_file(generator_simv) if generator_simv is not None else None
@@ -557,6 +592,8 @@ def main() -> int:
     (output / "random_stimulus_coverage.json").write_text(
         json.dumps(coverage, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+
+    record_completed_source_snapshot(metadata, components, source_snapshot())
 
     rows = collect_results(output, profiles)
     all_pass = write_summary(output, rows, expected, components)

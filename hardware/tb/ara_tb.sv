@@ -754,6 +754,12 @@ module ara_tb;
   localparam AxiWideBeWidth    = AxiWideDataWidth / 8;
   localparam AxiWideByteOffset = $clog2(AxiWideBeWidth);
 
+  `ifdef SIM_L2_SIZE_BYTES
+  localparam int unsigned L2SizeBytes = `SIM_L2_SIZE_BYTES;
+  `else
+  localparam int unsigned L2SizeBytes = 1 << 20;
+  `endif
+
   localparam DRAMAddrBase = 64'h8000_0000;
   localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
 
@@ -915,6 +921,7 @@ module ara_tb;
     .VLEN        (VLEN            ),
     .AxiAddrWidth(AxiAddrWidth    ),
     .AxiDataWidth(AxiWideDataWidth),
+    .L2SizeBytes (L2SizeBytes     ),
     .AxiRespDelay(AxiRespDelay    )
   ) dut (
     .clk_i (clk  ),
@@ -1793,6 +1800,105 @@ module ara_tb;
     print_perf_csv();
   end
 
+`endif
+`endif
+
+`ifndef SAIF
+`ifndef IDEAL_DISPATCHER
+  logic [NrLanes-1:0][1:0] llm_alu_operand_fire;
+  logic [NrLanes-1:0][2:0] llm_mfpu_operand_fire;
+
+  for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_llm_lane_activity
+    assign llm_alu_operand_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_valid_i &
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_ready_o;
+    assign llm_mfpu_operand_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.mfpu_operand_valid_i &
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.mfpu_operand_ready_o;
+  end
+
+  llm_perf_monitor #(
+    .NrLanes       (NrLanes),
+    .NrVFUs        (ara_pkg::NrVFUs),
+    .NrVInsn       (ara_pkg::NrVInsn),
+    .VLenWidth     ($clog2(VLEN + 1)),
+    .AxiDataWidth  (AxiWideDataWidth),
+    .QueueCountWidth(cf_math_pkg::idx_width(ara_pkg::MaxVInsnQueueDepth + 1))
+  ) i_llm_perf_monitor (
+    .clk_i          (clk),
+    .rst_ni         (rst_n),
+    .active_i       (perf_time_q),
+    .phase_i        (dut.i_ara_soc.hw_cnt_en_o[15:8]),
+    .retired_inst_count_i($countones(
+      dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0])),
+    .retired_vector_inst_count_i($countones({
+      dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] &&
+        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010,
+      dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] &&
+        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010})),
+    .req_valid_i    (dut.i_ara_soc.i_system.i_ara.ara_req_valid),
+    .req_ready_i    (dut.i_ara_soc.i_system.i_ara.ara_req_ready),
+    .req_op_i       (dut.i_ara_soc.i_system.i_ara.ara_req.op),
+    .req_vl_i       (dut.i_ara_soc.i_system.i_ara.ara_req.vl),
+    .req_vsew_i     (dut.i_ara_soc.i_system.i_ara.ara_req.vtype.vsew),
+    .req_cvt_resize_i(dut.i_ara_soc.i_system.i_ara.ara_req.cvt_resize),
+    .req_vm_i       (dut.i_ara_soc.i_system.i_ara.ara_req.vm),
+    .req_nf_i       (dut.i_ara_soc.i_system.i_ara.ara_req.nf),
+    .ara_idle_i     (dut.i_ara_soc.i_system.i_ara.ara_idle),
+    .lane_active_i  (rvv_lane_en),
+    .lane_alu_operand_fire_i (llm_alu_operand_fire),
+    .lane_mfpu_operand_fire_i(llm_mfpu_operand_fire),
+    .queue_occ_i    (dut.i_ara_soc.i_system.i_ara.i_sequencer.insn_queue_cnt_q),
+    .queue_ready_i  (dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_queue_ready),
+    .vinsn_running_i(dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_q),
+    .queue_resource_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      !(&dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_queue_issue)),
+    .no_vid_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_full),
+    .lane_desync_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.stall_lanes_desynch),
+    .operand_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      !(&dut.i_ara_soc.i_system.i_ara.i_sequencer.operand_requester_ready)),
+    .mask_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      !dut.i_ara_soc.i_system.i_ara.i_sequencer.mask_requester_ready),
+    .slide_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      !dut.i_ara_soc.i_system.i_ara.i_sequencer.slide_requester_ready),
+    .hazard_block_i(
+      dut.i_ara_soc.i_system.i_ara.ara_req_valid &&
+      !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.multi_reader_war),
+    .scalar_result_wait_i(
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_scalar_resp_ready_o &&
+      !dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_scalar_resp_valid_i),
+    .axi_ar_valid_i(dut.i_ara_soc.i_system.i_ara.axi_req_o.ar_valid),
+    .axi_ar_ready_i(dut.i_ara_soc.i_system.i_ara.axi_resp_i.ar_ready),
+    .axi_ar_len_i  (dut.i_ara_soc.i_system.i_ara.axi_req_o.ar.len),
+    .axi_ar_size_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.ar.size),
+    .axi_r_valid_i (dut.i_ara_soc.i_system.i_ara.axi_resp_i.r_valid),
+    .axi_r_ready_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.r_ready),
+    .axi_r_last_i  (dut.i_ara_soc.i_system.i_ara.axi_resp_i.r.last),
+    .axi_aw_valid_i(dut.i_ara_soc.i_system.i_ara.axi_req_o.aw_valid),
+    .axi_aw_ready_i(dut.i_ara_soc.i_system.i_ara.axi_resp_i.aw_ready),
+    .axi_aw_len_i  (dut.i_ara_soc.i_system.i_ara.axi_req_o.aw.len),
+    .axi_aw_size_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.aw.size),
+    .axi_w_valid_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.w_valid),
+    .axi_w_ready_i (dut.i_ara_soc.i_system.i_ara.axi_resp_i.w_ready),
+    .axi_w_strb_i  (dut.i_ara_soc.i_system.i_ara.axi_req_o.w.strb),
+    .axi_b_valid_i (dut.i_ara_soc.i_system.i_ara.axi_resp_i.b_valid),
+    .axi_b_ready_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.b_ready)
+  );
 `endif
 `endif
 

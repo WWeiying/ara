@@ -267,18 +267,27 @@ def _spike_from_entry(path: Path, entry: int) -> List[SpikeCommit]:
 
 
 def _map_spike_commits(
-    arch_mapping: Dict[int, VectorRetire], commits: List[SpikeCommit]
+    arch_mapping: Dict[int, VectorRetire],
+    commits: List[SpikeCommit],
+    *,
+    allow_incomplete_tail: bool = False,
+    stop_spike_index: Optional[int] = None,
 ) -> Dict[int, int]:
     mapping: Dict[int, int] = {}
     cursor = 0
+    limit = len(commits)
+    if stop_spike_index is not None:
+        limit = min(limit, stop_spike_index + 1)
     for arch_seq, retire in sorted(arch_mapping.items()):
-        while cursor < len(commits):
+        while cursor < limit:
             commit = commits[cursor]
             cursor += 1
             if commit.pc == retire.pc and commit.instruction == retire.instruction:
                 mapping[arch_seq] = cursor - 1
                 break
         else:
+            if allow_incomplete_tail:
+                break
             raise VectorCommitComparisonError(
                 f"cannot find Spike commit for architecture request {arch_seq} at "
                 f"pc=0x{retire.pc:016x} insn=0x{retire.instruction:08x}"
@@ -287,19 +296,59 @@ def _map_spike_commits(
 
 
 def _vector_scalar_source_unknown(
-    commit: SpikeCommit, unknown_state: Dict[int, int]
+    commit: SpikeCommit,
+    unknown_state: Dict[int, int],
+    expected_state: Optional[Dict[int, int]] = None,
 ) -> bool:
-    """Return whether a vector-to-scalar result consumes an unknown element 0."""
+    """Return whether a vector-to-scalar result consumes unknown vector bits."""
     instruction = commit.instruction
     opcode = instruction & 0x7F
     funct3 = (instruction >> 12) & 0x7
     funct6 = (instruction >> 26) & 0x3F
-    # vmv.x.s and vfmv.f.s share funct6=010000 and read element 0 of vs2.
+    # These scalar-result operations share funct6=010000. The vs1 field
+    # distinguishes element-zero moves from mask population/first-set scans.
     if opcode != 0x57 or funct6 != 0x10 or funct3 not in {0x1, 0x2}:
         return False
-    if commit.vector_sew not in {8, 16, 32, 64}:
-        return False
     vs2 = (instruction >> 20) & 0x1F
+    vs1 = (instruction >> 15) & 0x1F
+    if vs1 in {0x10, 0x11} and funct3 == 0x2:  # vcpop.m / vfirst.m
+        if commit.vector_vl is None:
+            return bool(unknown_state.get(vs2, 0) or unknown_state.get(0, 0))
+        active_mask = (1 << commit.vector_vl) - 1
+        source_unknown = unknown_state.get(vs2, 0) & active_mask
+        masked = ((instruction >> 25) & 1) == 0
+        predicate_unknown = (
+            unknown_state.get(0, 0) & active_mask if masked else 0
+        )
+        if expected_state is None:
+            return bool(source_unknown or predicate_unknown)
+
+        source_value = expected_state.get(vs2, 0) & active_mask
+        source_known_one = source_value & ~source_unknown
+        source_may_be_one = source_value | source_unknown
+        if masked:
+            predicate_value = expected_state.get(0, 0) & active_mask
+            predicate_known_one = predicate_value & ~predicate_unknown
+            predicate_may_be_one = predicate_value | predicate_unknown
+        else:
+            predicate_known_one = active_mask
+            predicate_may_be_one = active_mask
+
+        definite_one = source_known_one & predicate_known_one
+        possible_one = source_may_be_one & predicate_may_be_one
+        uncertain_effective_bits = possible_one & ~definite_one
+        if vs1 == 0x10:  # vcpop.m: every active effective bit contributes.
+            return bool(uncertain_effective_bits)
+
+        # vfirst.m only depends on bits through the first definite one. Unknown
+        # effective bits after that position cannot change the scalar result.
+        if definite_one:
+            first_definite = (definite_one & -definite_one).bit_length() - 1
+            relevant_mask = (1 << first_definite) - 1
+            return bool(uncertain_effective_bits & relevant_mask)
+        return bool(uncertain_effective_bits)
+    if vs1 != 0 or commit.vector_sew not in {8, 16, 32, 64}:
+        return False
     element_mask = (1 << commit.vector_sew) - 1
     return bool(unknown_state.get(vs2, 0) & element_mask)
 
@@ -314,7 +363,12 @@ def unobservable_vector_scalar_write_indices(
         starts, retires, trapped_arch_sequences, allow_incomplete_tail=True
     )
     commits = _spike_from_entry(spike_log, entry)
-    spike_mapping = _map_spike_commits(arch_retires, commits)
+    # An architecturally unknown vector-to-scalar result may legitimately make
+    # RTL and Spike follow different control flow. Preserve the strict mapped
+    # prefix instead of discarding all observability information at that point.
+    spike_mapping = _map_spike_commits(
+        arch_retires, commits, allow_incomplete_tail=True
+    )
     activity_by_spike = {
         spike_mapping[arch_seq]: activities[arch_seq]
         for arch_seq in activities
@@ -329,7 +383,7 @@ def unobservable_vector_scalar_write_indices(
         # Vector-to-scalar moves have no VRF destination activity. Their source
         # observability still depends on the vector state produced by preceding
         # requests, so do not gate this check on a writeback activity record.
-        if _vector_scalar_source_unknown(commit, unknown_state):
+        if _vector_scalar_source_unknown(commit, unknown_state, expected_state):
             unobservable.add(index)
         pre_state = dict(expected_state)
         for register, value in commit.vector_writes.items():
@@ -800,6 +854,7 @@ def compare_vector_commits(
     vector_trace: Path,
     entry: int,
     selected_index: Optional[int] = None,
+    stop_spike_index: Optional[int] = None,
 ) -> Dict[str, object]:
     """Compare non-intrusively observed VRF writebacks with Spike post-state.
 
@@ -815,11 +870,20 @@ def compare_vector_commits(
         starts, retires, trapped_arch_sequences, allow_incomplete_tail=True
     )
     commits = _spike_from_entry(spike_log, entry)
-    spike_mapping = _map_spike_commits(arch_retires, commits)
+    spike_mapping = _map_spike_commits(
+        arch_retires,
+        commits,
+        allow_incomplete_tail=stop_spike_index is not None,
+        stop_spike_index=stop_spike_index,
+    )
 
-    all_candidates = [
+    complete_stream_candidates = [
         arch_seq for arch_seq, activity in sorted(activities.items())
         if activity.use_vd or activity.writes
+    ]
+    all_candidates = [
+        arch_seq for arch_seq in complete_stream_candidates
+        if stop_spike_index is None or arch_seq in spike_mapping
     ]
     incomplete_requests = [
         arch_seq for arch_seq in all_candidates
@@ -996,6 +1060,8 @@ def compare_vector_commits(
     status = "PASS"
     if first_mismatch is not None:
         status = "MISMATCH"
+    elif stop_spike_index is not None:
+        status = "PREFIX"
     elif incomplete_requests or unretired_requests:
         status = "PREFIX"
     elif not records or compared_bytes == 0:
@@ -1009,7 +1075,9 @@ def compare_vector_commits(
         "nr_lanes": nr_lanes,
         "vlen_bits": vlen_bits,
         "selected_index": selected_index,
-        "vector_destination_requests": len(all_candidates),
+        "vector_destination_requests": len(complete_stream_candidates),
+        "prefix_vector_destination_requests": len(all_candidates),
+        "stopped_at_spike_index": stop_spike_index,
         "compared_instructions": len(records),
         "compared_bytes": compared_bytes,
         "skipped_unknown_bytes": skipped_bytes,

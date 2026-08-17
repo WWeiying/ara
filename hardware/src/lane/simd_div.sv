@@ -19,12 +19,11 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
     input  logic    rst_ni,
     input  elen_t   operand_a_i,
     input  elen_t   operand_b_i,
-    input  strb_t   mask_i,
     input  ara_op_e op_i,
     input  strb_t   be_i,
     input  vew_e    vew_i,
     output elen_t   result_o,
-    output strb_t   mask_o,
+    output strb_t   be_o,
     input  logic    valid_i,
     output logic    ready_o,
     input  logic    ready_i,
@@ -67,12 +66,10 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
   vew_e     vew_d, vew_q;
   ara_op_e  op_d, op_q;
   strb_t    be_d, be_q;
+  assign be_o = be_q;
   // Output buffer, directly linked to result_o
   elen_t    result_d, result_q;
   assign result_o = result_q;
-  // Mask buffer, directly linked to mask_o
-  strb_t mask_d, mask_q;
-  assign mask_o = mask_q;
 
   // Counters
   logic       load_cnt, issue_cnt_en, commit_cnt_en;
@@ -98,7 +95,6 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
   assign vew_d  = (valid_i && ready_o) ? vew_i       : vew_q;
   assign op_d   = (valid_i && ready_o) ? op_i        : op_q;
   assign be_d   = (valid_i && ready_o) ? be_i        : be_q;
-  assign mask_d = (valid_i && ready_o) ? mask_i      : mask_q;
 
   ///////////////
   //  Control  //
@@ -374,7 +370,6 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
       vew_q    <= EW8;
       op_q     <= VDIV;
       be_q     <= '0;
-      mask_q   <= '0;
       result_q <= '0;
 
       issue_cnt_q  <= '0;
@@ -388,7 +383,6 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
       vew_q    <= vew_d;
       op_q     <= op_d;
       be_q     <= be_d;
-      mask_q   <= mask_d;
       result_q <= result_d;
 
       issue_cnt_q  <= issue_cnt_d;

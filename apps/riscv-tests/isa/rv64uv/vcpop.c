@@ -115,11 +115,39 @@ void TEST_CASE2(void) {
   XCMP(9, OUP[0], 79);
 }
 
+// Back-to-back scalar mask operations must not share accumulator state.
+void TEST_CASE3(void) {
+  VSET(1, e8, m1);
+  VLOAD_8(v11, 0x01);
+  VLOAD_8(v24, 0x08);
+  VLOAD_8(v0, 0x08);
+  VLOAD_8(v19, 0x00);
+
+  uint64_t first;
+  uint64_t count;
+  uint64_t scratch;
+  const uint64_t compare = 0;
+  asm volatile(
+      "vsetivli zero, 7, e8, mf8, tu, mu\n"
+      "vfirst.m %[first], v11\n"
+      "vmsleu.vx v5, v19, %[compare], v0.t\n"
+      "remu %[scratch], %[first], %[divisor]\n"
+      "vcpop.m %[count], v24, v0.t\n"
+      : [first] "=&r"(first), [count] "=&r"(count),
+        [scratch] "=&r"(scratch)
+      : [compare] "r"(compare), [divisor] "r"(UINT64_C(3))
+      : "memory");
+
+  XCMP(10, first, 0);
+  XCMP(11, count, 1);
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
   enable_fp();
   TEST_CASE1();
   TEST_CASE2();
+  TEST_CASE3();
   EXIT_CHECK();
 }

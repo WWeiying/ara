@@ -16,6 +16,9 @@ module ara_testharness #(
     parameter int unsigned AxiIdWidth   = 5,
     parameter int unsigned AxiAddrWidth = 64,
     parameter int unsigned AxiDataWidth = 64*NrLanes/2,
+    // Behavioral main-memory capacity. The synthesized ara_soc keeps its own
+    // L2NumWords default; this parameter is only driven by simulation tops.
+    parameter int unsigned L2SizeBytes  = 1 << 20,
     // AXI Resp Delay [ps] for gate-level simulation
     parameter int unsigned AxiRespDelay = 200
   ) (
@@ -73,6 +76,7 @@ module ara_testharness #(
     .AxiDataWidth(AxiDataWidth ),
     .AxiIdWidth  (AxiIdWidth   ),
     .AxiUserWidth(AxiUserWidth ),
+    .L2NumWords  (L2SizeBytes / (AxiDataWidth / 8)),
     .AxiRespDelay(AxiRespDelay )
   ) i_ara_soc (
     .clk_i         (clk_i       ),

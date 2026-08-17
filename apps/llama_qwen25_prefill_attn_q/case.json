@@ -1,0 +1,9 @@
+{
+  "case_id": "prefill_attn_q",
+  "phase": "prefill",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q4_K",
+  "k": 1536,
+  "rows": 1536,
+  "inputs": 15
+}

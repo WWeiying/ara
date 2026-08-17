@@ -1,8 +1,9 @@
 # RVV 1.0 差分验证缺陷报告
 
 > 本表是当前报告的权威缺陷索引。`R-*` 表示处理器 RTL 缺陷，`E-*` 表示验证器、
-> 激励或参考模型缺陷，`A-*` 表示应用程序缺陷。后文 `V-*`、`Legacy-E-*` 和 `P-*`
-> 仅保留历史阶段编号，不再用于统计最终缺陷总数。
+> 激励或参考模型缺陷，`A-*` 表示应用程序缺陷。`N-*` 表示审计中确认的非缺陷变更，
+> 不计入缺陷总数。后文 `V-*`、`Legacy-E-*` 和 `P-*` 仅保留历史阶段编号，不再用于
+> 统计最终缺陷总数。
 
 ## 缺陷总表
 
@@ -25,7 +26,7 @@
 | R-15 | Indexed memory | 非零 `vstart` 的聚合边界字请求不一致 | 已修、定向通过 | 18.2 |
 | R-16 | Slide | OOR `vslidedown` 等待不存在的源流 | 已修、定向通过 | 19.1 |
 | R-17 | Gather/compress | no-data 终止 token 不完整 | 已修、定向通过 | 19.2 |
-| R-18 | Scalar return | `VMVXS/VFMVFS` 与 MASKU 同时消费 MaskB | 已修、回归通过 | 16.3 |
+| R-18 | Scalar return | MaskB 无请求归属，scalar extract 可与 MASKU 竞争或取得旧 payload | 已修、回归通过 | 16.3 |
 | R-19 | MFPU | 不同 SEW 相邻 multiply 的可变延迟越序 | 已修、定向通过 | 21.1 |
 | R-20 | Layout | widening/narrowing 合法重叠破坏源或 old-vd | 已修、边界回归通过 | 20.2 |
 | R-21 | Layout | widening MAC 高半区重叠未转换 accumulator 前缀 | 已修、固定 ELF 越过 | 14 |
@@ -69,6 +70,27 @@
 | R-59 | FP narrowing | 第二个 packed result beat 的 BE 未合并 | 已修、`vfncvt` 通过 | 76.3 |
 | R-60 | Integer divide | divider 有效 BE 未随结果返回 | 已修、随机重放通过 | 77 |
 | R-61 | Narrowing mask | 第二半 packed predicate 使用错误半字坐标 | 已修、随机重放通过 | 78 |
+| R-62 | Fixed-point multiply | `VSMUL` 最小负数乘法未饱和，EW16 结果移位量错误 | 已修、`rvv:vsmul` 通过 | 80 |
+| R-63 | Sequencer hazard | RAW/WAR/WAW 只检查 LMUL 组基址，漏掉组内物理寄存器 | 已修、定向与随机回归通过 | 81 |
+| R-64 | Mask routing | 单一 mask valid 被非目标 VFU 观察并可能错误消费 | 已修、mask/memory 回归通过 | 82 |
+| R-65 | FP conversion | 输入无穷与有限 overflow 共用舍入路径，定向舍入可产生错误有限值 | 已修、尚缺独立 pre-fix 重放 | 83.1 |
+| R-66 | FP DivSqrt | `HOLD` 周期未强制选择保持寄存器结果 | 已修、尚缺独立 pre-fix 重放 | 83.2 |
+| R-67 | CVA6 accelerator | flush、commit bypass 与 load/store dispatched 记账未绑定真实 queue pop | 已修、统一回归覆盖 | 84.1 |
+| R-68 | CVA6 CSR | `mstatus.SD` 未反映同周期更新后的 vector `VS=Dirty` | 已修、尚缺独立 CSR directed test | 84.2 |
+| R-69 | Scalar FP NaN-box | 未正确 NaN-box 的窄精度 div/sqrt 操作数未转为 canonical NaN | 已修、`app:fp_nanbox_div` 通过 | 84.3 |
+| R-70 | Decode immediate | VI gather、slide、shift/clip 的无符号立即数被统一符号扩展 | 已修、directed 与随机覆盖 | 85 |
+| R-71 | Whole-register move | `vmv<n>r.v` 源组错误继承当前 `vtype` 的 LMUL | 已修、`rvv:vmvnrr` 通过 | 86 |
+| R-72 | Whole-register memory | load/store 的架构 `vstart` 未按编码 EEW 转为内部 byte offset | 已修、`rvv:vwhole_vstart_edges` 通过 | 87 |
+| R-73 | Slide1up | `VL=1` 的 `vslide1up/vfslide1up` 被普通 slideup 空操作规则吞掉 | 已修、两项 directed 通过 | 88 |
+| R-74 | Segment legality | `nf` 与 fractional/integer EMUL 的寄存器跨度计算错误 | 已修、`rvv:vsegment_emul_edges` 通过 | 89 |
+| R-75 | VALU reduction | 延迟结果排空期间重复推进 issue/commit，且可过早释放 vid | 已修、reduction 与随机回归通过 | 90 |
+| R-76 | VID routing | `VID` 被区间判断误送入 VALU，形成无操作数伪队列项 | 已修、`rvv:vid_queue_edges` 通过 | 91 |
+| R-77 | VRF result grant | 延迟且无 tag 的 final-grant 脉冲可被后继结果 beat 误认 | 已修、slide/随机回归覆盖 | 92 |
+| R-78 | SLDU context | 无 tag 的 lane/selector/result 流缺少跨 slide/reduction 上下文隔离 | 已修、slide/reduction/随机回归覆盖 | 93 |
+| R-79 | FP estimate | `vfrec7/vfrsqrt7` 辅助操作数和异常 mask 未随 FPNew 弹性流水对齐 | 已修、两项 directed 与随机覆盖 | 94 |
+| R-80 | Ordered FP reduction | masked-off 元素仍以 neutral 值参与 ordered reduction 并可能置异常 | 已修、reduction 专项通过 | 95 |
+| R-81 | MASKU scalar lifecycle | `VFIRST` 提前命中后未排空剩余 operand stream 即返回结果 | 已修、scalar-mask 与随机回归通过 | 39.4 |
+| R-82 | Gather/compress handshake | 广播请求对各 lane 的接受历史不粘滞，可重复投递同一 FIFO 项 | 已修、gather/compress 回归覆盖 | 19.3 |
 | E-01 | 检查点 | 整寄存器 store 后立即标量读回产生 `X` | 验证环境已修 | 3 |
 | E-02 | Knownness | non-bit-exact reduction 的不确定性未传播 | 比较器已修 | 26 |
 | E-03 | 结束条件 | 成功 `ecall` 在 trap handler 中重复执行 `test_done` | 监视器已修 | 28 |
@@ -83,6 +105,18 @@
 | E-12 | Mask-to-scalar | `vcpop/vfirst` 对未知 mask 的可观测性判断过粗 | 比较器已修 | 73 |
 | E-13 | 测试程序 | `fflags` 在包含 `printf` 的比较宏后读取 | 测试顺序已修 | 76.3 |
 | A-01 | DWT kernel | strip-mining 的 `vl` 遮蔽导致 AVL 扣减与指针推进不一致 | 已修、完整 VCS 数值对比通过 | 79 |
+
+### 非缺陷变更索引
+
+| 编号 | 类型 | 变更 | 审计结论 | 详细章节 |
+|---|---|---|---|---|
+| N-01 | 性能机制 | source-lifetime-aware WAR release | 有意新增机制；R-48/R-53 是其实现缺陷，不把机制本身计作 bug | 46、81、96 |
+| N-02 | 修复基础设施 | lane-local source snapshot/replay 与 overlap repair | 为 R-20--R-22、R-38--R-49 等合法重叠修复提供稳定源视图 | 14、20、25、34--47 |
+| N-03 | 验证基础设施 | RVFI/向量请求/VRF 写回 monitor 和 `FOR_VERIFY` 探针 | 非综合或条件编译逻辑，不改变正常 RTL 行为 | 24、96 |
+| N-04 | 仿真配置 | testbench 可配置 simulation-only L2 容量 | 只改变仿真存储容量，不进入处理器综合 | 96 |
+| N-05 | 构建兼容 | 本地 `fall_through_register_v1` 兼容实现 | 补齐依赖版本间的模块可见性，不是数据通路修复 | 96 |
+| N-06 | 依赖更新 | CVA6、AXI、common_cells、common_verification、tech_cells revision 更新 | 上游版本迁移，按 revision 审计，不冒充本项目发现的 RTL 缺陷 | 96 |
+| N-07 | 性能观测 | TC executed-IFetch byte 统计 | testbench 统计口径扩展，不参与架构执行 | 96 |
 
 ### 代码对照阅读规则
 
@@ -100,12 +134,25 @@
 `fmatmul-loop`、`imatmul`、`jacobi2d`、`pathfinder` 和 `vsgemm`；它们的日志没有
 failure marker，本报告不把墙钟超时自动归类为 RTL 缺陷。
 
-需要查看未裁剪的逐行源码差异时，以以下命令为准：
+需要查看未裁剪的逐行源码差异时，以以下命令为准。第一条覆盖父仓库管理的 Ara
+RTL/TB；后三条覆盖 Bender 拉取但由独立 Git 工作区管理的本地 RTL 覆盖层：
 
 ```bash
-git diff 77eb36a7 -- hardware/src hardware/deps/cva6/core/fpu_wrap.sv
+git diff 77eb36a7 -- hardware/src hardware/tb
+git -C hardware/deps/cva6 diff b29fd3cf -- \
+  core/acc_dispatcher.sv core/csr_regfile.sv core/fpu_wrap.sv
+git -C hardware/deps/fpnew diff e5aa6a01 -- \
+  src/fpnew_cast_multi.sv src/fpnew_divsqrt_multi.sv
+git -C hardware/deps/fpu_div_sqrt_mvp diff 86e1f558 -- hdl
 git diff 77eb36a7 -- verification apps/dwt/kernel/wavelet.c
 ```
+
+本次归档快照中，父仓库 RTL/TB 差异为 27 个文件、665 个零上下文原始 hunk，SHA-256
+为 `7e5a708f8962ba6698f0cd4edf375d1d291fdd030431be4879e4b555b1fb05b1`。三个
+嵌套 RTL 覆盖层合计 10 个文件、26 个原始 hunk，串接 diff 的 SHA-256 为
+`67ecfa93ad9fb925b13705b87ad8e17a477e161a0c6697762f2346e8049b26a3`。第 96 节
+给出逐文件 hunk 对账；若 worktree 继续变化，必须重新生成 digest，不能沿用本节的
+“全量”结论。
 
 ## 1. 验证范围与方法
 
@@ -712,31 +759,56 @@ vcpop.m t2, v20
 
 ## 15. 已修改源码总览
 
-当前 worktree 不只包含功能修复，也包含验证 trace 和新激励。下表区分各文件的
-主要职责；`FOR_VERIFY` 下的 `$display` 探针不参与综合，也不应被当成功能修复。
+当前 worktree 不只包含功能修复，也包含新增调度机制、验证 trace、仿真配置和依赖
+迁移。下表覆盖父仓库中全部 27 个 RTL/TB 差异文件，以及三个嵌套依赖工作区中全部
+10 个本地 RTL 覆盖文件。`FOR_VERIFY` 下的 `$display`、monitor 端口和 checker 不参与
+正常综合，不应被当成功能修复。
 
-| 文件 | 已完成的功能修改 | 验证相关修改 |
+| 文件 | 综合或仿真行为变化 | 归档 |
 |---|---|---|
-| `hardware/src/ara_dispatcher.sv` | 指令合法性、每操作数 LMUL/EMUL、VLMAX、mask memory EVL、EEW group reshuffle、widen/narrow overlap 协议 | 架构请求序号与可选 decode/reshuffle/overlap trace |
-| `hardware/src/ara.sv` | `VMVXS/VFMVFS` 的 MaskB 单一消费者仲裁 | 无 |
-| `hardware/src/segment_sequencer.sv` | segment 字段寄存器步长及非零 `vstart` 首 micro-op | 无 |
-| `hardware/src/lane/fixed_p_rounding.sv` | RVV 四种 `vxrm` 舍入增量 | 无 |
-| `hardware/src/lane/simd_alu.sv` | narrowing saturation 与 averaging `SEW+1` 中间结果 | 定点运算 trace |
-| `hardware/src/lane/lane_sequencer.sv` | mask/索引边界字请求、slide OOR no-source、gather/compress no-data token | slide、mask、indexed 请求 trace |
-| `hardware/src/lane/lane.sv` | no-source slide 不向共享 SLDU/AddrGen 仲裁器压入空操作数 | lane 状态 trace |
-| `hardware/src/lane/vmfpu.sv` | 不同 SEW multiply 的可变有效延迟互锁 | multiply/widening MAC trace |
-| `hardware/src/masku/masku.sv` | mask 活动范围、carry old-vd、`vcpop/vfirst` tail、VID/VIOTA/compress/gather 数据路径 | 多组可选 MASKU trace |
-| `hardware/src/sldu/sldu.sv` | OOR slide 零源生成、部分 EEW 修复和 overlap snapshot | slide/overlap trace |
-| `hardware/src/vlsu/addrgen.sv` | indexed 操作按 lane sequencer 提供的聚合边界字消费 | indexed 地址 trace |
-| `hardware/src/vlsu/vstu.sv` | mixed-EEW masked store 的数据/predicate 独立物理索引 | 可选 store data/stall trace |
-| `verification/ara_verify/vector_signature.py` | 插入完整 VRF/CSR/memory signature 与选择性检查点 | 检查点元数据 |
-| `verification/ara_verify/vector_commit.py` | 非侵入式逐写回严格比较、未知传播及 trapped request 映射 | 首错、未完成与异常请求报告 |
-| `verification/ara_verify/random_rvv.py` | 生成、Spike/RTL 运行、严格比较及首错归属 | JSON 报告与重放信息 |
-| `apps/riscv-tests/isa/rv64uv/*.c` | 新增和补强 directed edge tests | 软件自检 oracle |
+| `hardware/src/ara.sv` | 多 PE 原子广播、overlap/snapshot 元数据、MaskB 单消费者、mask 目标路由和 SLDU drain 的顶层连接 | R-18、R-21--R-23、R-28、R-38--R-49、R-64、R-78；N-02 |
+| `hardware/src/ara_dispatcher.sv` | decode 合法性、独立 LMUL/EMUL、VLMAX、memory EVL、EEW reshuffle、合法 overlap/snapshot、异常记账和非零 `vstart` 检查 | R-01--R-17、R-20--R-24、R-29--R-32、R-37--R-49、R-52、R-56、R-70--R-74、R-78；N-02/N-03 |
+| `hardware/src/ara_sequencer.sv` | 完整寄存器组 hazard、多 reader 跟踪、source-lifetime WAR、MaskB 排他时序、分离请求握手和 VID 路由 | R-18、R-27、R-28、R-44、R-48、R-51、R-53、R-63、R-76；N-01/N-03 |
+| `hardware/src/ara_system.sv` | 仅 `FOR_VERIFY` 下连接 CVA6 RVFI、Ara 请求和 commit monitor | N-03 |
+| `hardware/src/common_cells_compat/fall_through_register_v1.sv` | ready 路径 fall-through register 的本地兼容实现 | N-05 |
+| `hardware/src/lane/fixed_p_rounding.sv` | RVV 四种 `vxrm` 的统一 guard/round/sticky 判定 | R-05 |
+| `hardware/src/lane/lane.sv` | mask 按目标 ALU/MFPU 分流、source snapshot、结果写回观察和共享 SLDU/AddrGen 约束 | R-18、R-20--R-23、R-28、R-38--R-49、R-54、R-55、R-64、R-78；N-02/N-03 |
+| `hardware/src/lane/lane_sequencer.sv` | operand 请求边界、no-data token、ordered reduction 空 lane、restart/mixed-EEW、slide 空源和 hazard 元数据传播 | R-14--R-17、R-26、R-30、R-31、R-38--R-48、R-51、R-53--R-55、R-58、R-73、R-78；N-01/N-03 |
+| `hardware/src/lane/operand_queue.sv` | 空活动 FP reduction 的 neutral operand 改为 canonical qNaN | R-23 |
+| `hardware/src/lane/operand_requester.sv` | source-lifetime/wait-complete hazard、snapshot 回放、请求身份、final grant 和逐写回验证接口 | R-38--R-49、R-53、R-63、R-77；N-01--N-03 |
+| `hardware/src/lane/simd_alu.sv` | 定点舍入、averaging 中间宽度、narrowing 饱和与 `vxsat` | R-05、R-07、R-49 |
+| `hardware/src/lane/simd_div.sv` | integer divider 的 byte-enable 与数据一同流水返回 | R-60 |
+| `hardware/src/lane/simd_mul.sv` | `VSMUL` 特例饱和、EW16 缩放和 `vxsat` | R-62 |
+| `hardware/src/lane/valu.sv` | active-from-`vstart`、masked narrowing old-vd/BE、`vxsat`、reduction 生命周期和 VID 路由 | R-03、R-05、R-07、R-09、R-49、R-57、R-75、R-76；N-03 |
+| `hardware/src/lane/vector_fus_stage.sv` | ALU/MFPU mask 流拆分、FP reduction activity 和执行 mask 连接 | R-23、R-58、R-64 |
+| `hardware/src/lane/vmfpu.sv` | 可变延迟互锁、FP reduction 生命周期、FPNew group/sideband 归属、restart/BE 和 DivSqrt 选择 | R-19、R-23、R-25、R-49、R-50、R-54、R-55、R-58、R-59、R-78--R-80；N-03 |
+| `hardware/src/masku/masku.sv` | mask 活动窗口、old-vd、tail、目标 VFU 队列、scalar/gather/compress 生命周期、逐 lane 广播接受和 restart | R-03、R-08--R-12、R-17、R-18、R-23、R-36、R-39、R-43--R-45、R-54、R-55、R-57、R-64、R-73、R-81、R-82；N-03 |
+| `hardware/src/masku/masku_operands.sv` | mask logical 两个源分别按其历史 EEW 反 shuffle | R-08、R-45 |
+| `hardware/src/segment_sequencer.sv` | segment 字段寄存器步长和 restart 首 micro-op | R-14、R-30、R-31 |
+| `hardware/src/sldu/sldu.sv` | OOR/no-source slide、result progress、mixed-EEW overlap、snapshot/replay、final grant 和无 tag 流上下文隔离 | R-16、R-17、R-20--R-22、R-26、R-38--R-49、R-51、R-54、R-55、R-73、R-77、R-78；N-02/N-03 |
+| `hardware/src/vlsu/addrgen.sv` | indexed 聚合边界、分离接受和异常响应 | R-15、R-28 |
+| `hardware/src/vlsu/vldu.sv` | unit-stride restart 的首/末 AXI byte 门控 | R-34 |
+| `hardware/src/vlsu/vlsu.sv` | load/store 仅接收目标为自身的 mask stream | R-64 |
+| `hardware/src/vlsu/vstu.sv` | masked/restarted store 的 predicate 与数据布局、segment 地址 | R-29、R-30、R-31、R-34、R-35 |
+| `hardware/tb/ara_commit_monitor.sv` | 向量请求、vid 生命周期和 VRF 写回的非侵入式提交观察 | N-03 |
+| `hardware/tb/ara_tb.sv` | commit monitor/RVFI 连接、executed-IFetch 统计、可配置仿真 L2 | N-03、N-04、N-07 |
+| `hardware/tb/ara_testharness.sv` | 仅仿真的 L2 容量参数向下传递 | N-04 |
+| `hardware/deps/cva6/core/acc_dispatcher.sv` | accelerator speculative/committed 状态在 flush、queue pop 和 load/store 记账上的一致性 | R-67 |
+| `hardware/deps/cva6/core/csr_regfile.sv` | `mstatus.SD` 使用 next-state 并计入 vector `VS` | R-68 |
+| `hardware/deps/cva6/core/fpu_wrap.sv` | scalar NaN-box canonicalization 与 THMULTI DivSqrt | R-33、R-69 |
+| `hardware/deps/fpnew/src/fpnew_cast_multi.sv` | 输入无穷与有限 overflow 的舍入路径分离 | R-65 |
+| `hardware/deps/fpnew/src/fpnew_divsqrt_multi.sv` | `HOLD` 状态强制输出 held result/status | R-66 |
+| `hardware/deps/fpu_div_sqrt_mvp/hdl/control_mvp.sv` | 保留 quotient 以下的 remainder nonzero 信息 | R-25 |
+| `hardware/deps/fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv` | 修正 RDN/RUP 编码并补 RMM | R-25 |
+| `hardware/deps/fpu_div_sqrt_mvp/hdl/div_sqrt_top_mvp.sv` | remainder nonzero 信号贯通 | R-25 |
+| `hardware/deps/fpu_div_sqrt_mvp/hdl/norm_div_sqrt_mvp.sv` | directed overflow、sticky 和 RMM 舍入 | R-25 |
+| `hardware/deps/fpu_div_sqrt_mvp/hdl/nrbd_nrsc_mvp.sv` | remainder nonzero 信号贯通 | R-25 |
 
-功能代码中仍存在若干 `FOR_VERIFY` 调试块，尤其是 dispatcher、MASKU、SLDU、
-operand requester 和 VMFPU 中的可选 plusarg trace。它们用于继续定位 P-01/P-02，
-不改变非 `FOR_VERIFY` 综合逻辑；最终合入前应单独审查并删除不再需要的临时探针。
+功能代码中仍存在较多 `FOR_VERIFY` 调试块，尤其是 dispatcher、sequencer、MASKU、
+SLDU、operand requester、VALU 和 VMFPU 中的可选 plusarg trace。它们不改变非
+`FOR_VERIFY` 综合逻辑；本报告按 N-03 统一归档，但不会把探针行数计入任何 RTL bug 的
+修复规模。验证工具和 directed app 的文件级清单继续由第 22、24、43、48--50、53、
+57、70--74 节维护，第 96 节只对 RTL/TB hunk 做完整对账。
 
 ## 16. Mask 语义相关修复
 
@@ -781,7 +853,7 @@ end
 这项修改由 `vcpop` 和 `vfirst` 的尾部边界 directed test 验证。它不能直接解释
 当前 P-01，因为 P-01 的差值也可能来自 `v20` 更早的生产者。
 
-### 16.3 MaskB 的单一消费者
+### 16.3 MaskB 的消费者归属与 scalar extract 排他时序
 
 `VMVXS/VFMVFS` 从 lane 0 的 MaskB 队列把元素 0 返回标量核。原连接同时允许
 MASKU old-vd spill register 接收同一 valid/ready 事件，导致一个 payload 被两个
@@ -799,6 +871,27 @@ if (pe_req.op inside {[VMVXS:VFMVFS]})
 
 标量返回仍参与原 ready 合并，但 MASKU 不再错误截获该字。相关 scalar handoff 与
 mask corner regression 已通过。
+
+上述门控只解决“当前 MaskB payload 被两个消费者同时接受”，还不能解决“payload
+属于哪条请求”。lane 到 MASKU/scalar-return 的 MaskB 接口没有携带 `vid` 或目标标签；
+若较老向量请求尚可能产生 MaskB，而年轻的 `VMVXS/VFMVFS` 已进入 scalar-return
+状态，年轻请求会把较老 payload 当成自己的返回值。当前 sequencer 因此把 scalar
+extract 保持在所有较老向量请求之后，并在 mask-result 请求进入 sequencer 时立即置
+`pending_mask_insn`，而不是等到 MASKU 真正开始执行后才占用这条无标签路径：
+
+```systemverilog
+if (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full &&
+    !((ara_req_i.op inside {[VMVXS:VFMVFS]}) &&
+      ((|vinsn_running_q) || pending_mask_insn_q || running_mask_insn_q))) begin
+  // issue request
+end
+```
+
+这是一条保守但正确的归属规则：它没有给 MaskB 补 tag，因此不能只等待“较老 MASKU
+请求”，而必须等待所有可能在 lane 0 留下 MaskB payload 的较老向量请求。该限制只
+作用于 scalar extract，不把普通向量请求全局串行化。`rvv:vmask_scalar_handoff` 和
+统一随机回归覆盖了修复后的路径；本报告没有保留单独关闭该排他条件的 pre-fix 日志，
+所以性能代价和最小必要等待范围尚未独立量化。
 
 ## 17. LMUL、EMUL 与配置状态修复
 
@@ -936,12 +1029,56 @@ SLDU 在此模式下把源字置零，并在结果队列可接收时推进，不
 `sldu_operand_valid`。`vslide_mask_edges` 已通过 offset、mask、tail 与边界组合。
 P-02 的原地 `vslidedown.vi v16,v16,7` 并非 OOR，不能由本项已修事实推出结论。
 
+同一根因还包含“请求区间部分越过 VLMAX”的情况。`vslidedown` 的合法读取上界是源
+寄存器组的 VLMAX，不是当前 VL；当 `vl+offset` 只在末拍越过 VLMAX 时，前半拍仍需
+读取，越界 byte 则必须变成 0。dispatcher 以 LMUL/SEW 夹紧源区间，SLDU 在聚合字内
+再次按源元素位置清零越界 byte。前者避免请求不存在的 VRF word，后者处理一个实际
+VRF word 同时包含组内和组外 byte 的边界，二者不能只保留其一。
+
 ### 19.2 Gather/compress 的 no-data token
 
 out-of-range gather 元素以及 compress 的结束标志可能没有对应 VRF 数据请求，但
 下游仍需要一个顺序 token 来推进 FIFO 和结束检测。当前请求结构保留 `no_data`
 属性：索引 FIFO 始终推进，只有真实数据项增加源请求计数；末尾 OOR 项显式发送
 no-data 终止 token。`vrgather_edges` 与 `vcompress_edges` 已通过。
+
+### 19.3 广播请求的逐 lane 接受状态必须粘滞
+
+MASKU 从同一个 `vrgat_req_fifo` 队首向全部 lane 广播一条 VRGATHER/VCOMPRESS 源请求，
+但各 lane 可以在不同周期拉高 `ready`。因此，该接口不是“所有 lane 同周期握手”的
+普通广播，而是“一条逻辑请求必须分别被每个 lane 恰好接受一次”的多接收者事务。
+
+main 中的 `vrgat_req_valid_mask_d[lane]` 每周期直接赋成该 lane 当前的 `ready` 电平。
+某 lane 已在周期 N 接受队首请求、但在周期 N+1 等待其他 lane 时撤销 `ready`，其已接受
+状态也随之丢失；MASKU 会重新向该 lane 拉高 `valid`。结果是同一 FIFO 项可能被一个快
+lane 接受两次，或者不同 lane 实际接受到的请求次数失配，最终表现为重复源读取、请求
+计数偏移、FIFO 队首无法按同一事务一致推进，甚至把后继 gather/compress 数据解释为
+当前元素。
+
+当前实现把 `vrgat_req_valid_mask_q` 定义为当前 FIFO 队首的逐 lane accepted bitmap：
+
+```systemverilog
+vrgat_req_accepted = vrgat_req_valid_mask_q;
+for (int lane = 0; lane < NrLanes; lane++) begin
+  masku_vrgat_req_valid_o[lane] =
+      !vrgat_req_fifo_empty && !vrgat_req_valid_mask_q[lane];
+  if (masku_vrgat_req_valid_o[lane] && masku_vrgat_req_ready_i[lane])
+    vrgat_req_accepted[lane] = 1'b1;
+end
+vrgat_req_valid_mask_d = vrgat_req_accepted;
+if (!vrgat_req_fifo_empty && &vrgat_req_accepted) begin
+  vrgat_req_fifo_pop = 1'b1;
+  vrgat_req_valid_mask_d = '0;
+end
+```
+
+bitmap 在当前队首存续期间只能由 0 变 1；已接受 lane 的 `valid` 保持关闭，直到所有 lane
+都接受同一项后才原子 pop 并为下一项清零。这里记录的是请求接受，不是
+`masku_result_final_gnt_i` 的 VRF 写回完成；后者在 main 与当前版本之间没有对应修改，
+不能并入本缺陷。R-17 解决无源元素仍需顺序 token 的问题，R-53 解决请求携带错误
+producer `id` 的问题，R-82 则保证一条带正确身份的 token 对每个 lane 只投递一次。
+`vrgather_edges`、`vcompress_edges` 与最终随机回归覆盖当前握手，但没有保留只撤销
+sticky bitmap 的独立 pre-fix 波形，因此状态标为整体回归覆盖，而非单项 A/B 证明。
 
 ## 20. EEW 布局与重叠修复协议
 
@@ -1124,6 +1261,14 @@ lane 的活动标志求 OR；lane 0 同时保存首次接收的 seed。仅当操
 写回数据切换为保存的 seed。ordered reduction 不使用该计数，因而不进入覆盖路径。
 正确 ELF 的结束仿真时刻与修复前一致，并打印 `Core Test SUCCESS`；原全掩码首错消失。
 
+`operand_queue.sv` 的 neutral operand 也属于同一修复链路。基线在 reduction 的空
+操作数位置注入正/负无穷；这对 min/max 的普通中性元素成立，却不能表达“本 lane 没有
+任何活动元素”，并可能在后续树形组合中掩盖空集合。当前 EW8/16/32/64 分别注入
+canonical qNaN `0x7c`、`0x7e00`、`0x7fc00000` 和
+`0x7ff8000000000000`，再由全局 activity epoch 决定最终是采用正常归约结果还是原样
+返回 seed。qNaN 本身不是空集合语义的最终答案，二者必须配套；只改 neutral operand
+而不做 activity/seed 选择仍会错误 canonicalize 原始 NaN payload。
+
 activity 标志必须覆盖完整的跨 lane 归约生命周期，而不能在各 lane 局部完成时清零。
 seed 3 的 `vfredmin.vs v10,v30,v13,v0.t` 中，lane 2/3 已分别看到有效 mask 字节，
 但它们早于 lane 0 完成；旧实现使顶层 OR 在最终写回前退回 0，并把 result queue 中
@@ -1248,6 +1393,12 @@ result entry 并不总与一个输入拍一一对应：输入边界和输出边�
 直接成为 head 时已有 `!use_scalar_op` 条件。两条初始化路径现已统一，避免最后残留
 一个 scalar element、result queue 已空但 `commit_cnt` 永不归零。
 
+`vslide1down` 的 scalar 位于目的 element `vl-1`，可能与最后一个向量源 aggregate
+共享物理字，也可能正好落到下一物理字；在 `VL=1` 时它还是唯一结果。当前 SLDU 不再
+把 scalar 强塞进最后一个普通数据 entry，而是生成一个带精确 sparse BE 和一个元素
+逻辑进度的独立 result entry。这样数据 entry 是否 partial、scalar 是否跨 word 都不
+会改变 commit 计数，也不要求同周期分配两个 queue entry。
+
 ### 30.2 修复证据
 
 修复后的原动态 `vslideup` 在两个 result entry 中完成：第一个 entry 写回跨界的
@@ -1308,6 +1459,11 @@ vcpop.m  t1, v0, v0.t
 和预处理目标同步产生队列完成事件：普通 ALU/MFPU 请求分别归还对应信用；MASKU
 整数/掩码预处理归还 ALU 信用，浮点比较归还 MFPU 信用；完全不经过 lane ALU 的
 `VID` 不产生伪完成。非零 VL 的 issue、operand、result 和 completion 路径不变。
+
+零 VL 的 scalar mask 操作还没有可触发普通结果路径的 operand slice。MASKU 因此在
+接收 `VCPOP/VFIRST` 时直接形成架构结果：`VCPOP=0`、`VFIRST=-1`，同时不向 lane
+operand queue 发请求。credit 归还和 scalar value 生成必须同时存在；只修前者会解除
+死锁，却可能把旧 accumulator 当成当前结果返回。
 
 修复后的 seed 4 完整运行到 `Core Test SUCCESS`。提交轨迹包含 4992 次向量请求和
 4992 次响应，后端 8317 个 uop 的 alloc/done 完全配对；原 `vmv8r` 停顿不再出现，
@@ -1643,6 +1799,22 @@ if (!ara_req_i.use_vd && !is_store(ara_req_i.op) &&
 `rvv:vreduction_overlap_edges` 全部通过。长随机防回归 seed 3 与 seed 5 也再次完整
 通过：seed 3 比较 4517 条向量目的请求、606452 个确定字节；seed 5 比较 4515 条
 向量目的请求、510576 个确定字节，两者均无向量差异且后端 alloc/done 完全配对。
+
+### 39.4 `VFIRST` 提前命中后的 operand 排空（R-81）
+
+`VFIRST` 可以在尚未扫描完整个 mask 时确定最终索引，但 lane 已按请求范围把后续
+AluB/MaskM words 排入无 tag 的 MASKU 输入流。main 在发现第一个 set bit 后即可置
+scalar output valid；若 sequencer 据此切换到下一 MASKU 请求，旧请求尚未消费的 word
+会被新 context 解释，造成错误结果或计数停顿。这与 39.1 的问题方向相反：39.1 是请求
+尚未被 MASKU 接受就被 sequencer 撤销，R-81 是 MASKU 已接受请求却过早宣告执行完成。
+
+当前 MASKU 可以在首次命中时冻结 scalar accumulator，但只有 `issue_cnt_d==0`、即本次
+请求的全部 operand words 已握手消费后，才产生 `out_scalar_valid` 并释放 context。
+接收新 MASKU 请求还要求旧 `mask_queue_empty`，并在真正建立新 context 时统一复位
+slice counters，防止 `VFIRST/VCOMPRESS` 等早结束路径遗漏局部清理。`rvv:vfirst`、
+`rvv:vcpop`、scalar handoff 测试和最终随机回归均通过；没有保留单独恢复 early-valid
+条件的 pre-fix artifact，因此该项的根因来自逐 hunk 生命周期审计，验证结论限定为
+当前完整协议覆盖。
 
 ## 40. VCOMPRESS 不规则目的流破坏传递 WAW 顺序
 
@@ -2047,6 +2219,13 @@ seed 2 的严格重放完整通过：4983 个架构向量请求全部响应，82
 请求均为空。使用最新构建的 `rvv-corners` 26 项全部通过；其中 `vnclip_edges`、
 `vindexed_vstart_edges`、`vsegment_emul_edges` 和 `vwar_pending_source_edges` 分别
 用时 78.89、12.05、12.55 和 43.76 秒。
+
+`vxsat` 还必须和产生它的 result-queue entry 同步。基线只寄存最近一个 ALU/MFPU
+周期的 saturation 向量；若该结果因 VRF 仲裁停在队列中，后继 issue beat 会覆盖
+寄存器，提交时便可能把另一拍的 `vxsat` 归给当前写回。当前 VALU/VMFPU payload 均
+携带逐 byte `vxsat`，在多拍 narrowing 合并时 OR 入同一 entry，最终只用该 entry 的
+`vxsat & be` 更新架构 sticky 位。这样既满足本节 inactive-element 门控，也保证数据、
+BE 与异常状态属于同一动态结果。
 
 同一最新构建随后严格重放 integer-stress seeds 1--10，十例全部为
 `PREFIX/VALID/PASS`。合计匹配 74330 条标量提交，逐条向量写回比较覆盖 44971 条
@@ -3220,3 +3399,574 @@ verification/out/dwt-stripmine-fix-20260813/
 该运行执行了应用自带的标量参考与向量结果逐元素数值检查，没有错误打印，最终正常写入
 成功状态。修复只修改 `apps/dwt/kernel/wavelet.c`，没有为了通过 DWT 改动 RTL 或放宽
 比较器，因此 A-01 应归类为应用 kernel bug，而不是处理器 bug。
+
+## 80. `VSMUL` 饱和特例和 EW16 缩放
+
+### 80.1 基线缺陷
+
+有符号饱和分数乘法先形成双宽乘积，再右移 `SEW-1` 位并按 `vxrm` 舍入。两个最小
+负数相乘是唯一超出目标 Q1.(SEW-1) 正数范围的输入组合：数学结果为 `+1.0`，目标格式
+只能表示到 `0x7f...ff`，因此必须饱和并置 `vxsat`。基线用“最终结果符号与双宽乘积
+符号不同”推断饱和；该判断依赖已经截断/舍入的结果，不能可靠表达规范中的唯一特例。
+此外 EW16 分支错误右移 16 位，而 EW8/32/64 分支按 `SEW-1` 分别右移 7/31/63 位，
+使普通 EW16 `VSMUL` 也缩小一倍。
+
+### 80.2 修复
+
+当前 `simd_mul.sv` 对四种 SEW 都直接检测 `min_signed * min_signed`。命中特例时返回
+最大正数，并把该元素对应的所有 byte `vxsat` 位置 1；其他输入仍走原双宽乘积与
+`vxrm` 舍入。EW16 的普通路径同步改为右移 15 位：
+
+```systemverilog
+if (opa.w16[l] == 16'h8000 && opb.w16[l] == 16'h8000)
+  result_o[16*l +: 16] = 16'h7fff;
+else
+  result_o[16*l +: 16] = (mul_res.w32[l] >> 15) + r[l];
+```
+
+`rvv:vsmul` 在 399 项统一 campaign 中为 PASS，覆盖该指令的 directed oracle；
+fixed-point 随机 profile 也纳入同一严格比较。该修复与第 21.1 节的 multiply 流水互锁
+不同：R-19 解决相邻请求的结果归属，R-62 解决单个 `VSMUL` 的数值和 sticky CSR。
+
+## 81. 完整 LMUL 寄存器组 hazard 与 source lifetime
+
+### 81.1 基线缺陷
+
+基线 sequencer 的 `read_list`/`write_list` 查询只索引 `vs1`、`vs2`、`vd` 的架构基址。
+例如较老 `m4` 指令写 `v8-v11`，年轻请求读 `v11` 时，查询 `write_list[11]` 看不到只
+记录在 `write_list[8]` 的写者，RAW 可以漏检；WAR/WAW 对组内非基址寄存器有同样问题。
+这不是 dispatcher 的 R-06：R-06 检查“组内寄存器的 EEW 布局是否需要 reshuffle”，
+R-63 检查“组内物理寄存器是否仍被在飞请求读写”。
+
+单个 `read_list[reg]` 还只能保存一个 reader。两个不同在飞请求同时读取同一寄存器时，
+只保留最新 reader 会使年轻 writer 漏掉更老 reader 的 WAR；如果直接要求多个 reader
+按同一结果脉冲推进，又会把“结果产生”误当成“源已经捕获”，在 backpressure 下仍可
+提前覆盖后续尚未读取的源字。
+
+### 81.2 当前契约
+
+sequencer 先按操作类型、LMUL/EMUL 和每个源 EEW 计算 `vd_regs`、`vs1_regs`、
+`vs2_regs`。mask operand 和 reduction seed/result 固定一寄存器，indexed source 按
+`LMUL * EEW_index / SEW`，widen/narrow source 再按其真实宽度调整。随后在最多八个
+物理寄存器上分别构造 RAW、WAR、WAW：
+
+```systemverilog
+for (int unsigned i = 0; i < 8; i++) begin
+  if (ara_req_i.use_vs2 && i < vs2_regs)
+    raw_hazard_vec[write_list_d[ara_req_i.vs2 + i].vid] |=
+        write_list_d[ara_req_i.vs2 + i].valid;
+
+  if (ara_req_i.use_vd && i < vd_regs) begin
+    readers = read_mask_d[ara_req_i.vd + i];
+    war_hazard_vec |= readers;
+    waw_hazard_vec[write_list_d[ara_req_i.vd + i].vid] |=
+        write_list_d[ara_req_i.vd + i].valid;
+  end
+end
+```
+
+`read_mask[32][NrVInsn]` 保存每个物理寄存器的全部在飞 reader，`read_list` 仅保留最新
+reader 的可链式推进元数据。若 WAR 只有一个 reader、访问顺序规则且没有同时发生
+RAW/WAW，则 `hazard_source_lifetime` 允许 operand requester 在确认该 reader 的全部源
+字已经捕获后释放依赖，这就是 N-01。若访问重排、来源身份不完整、存在多个 reader，
+或操作属于 gather/compress/slide 等不能用顺序源进度证明安全的情况，则
+`hazard_wait_complete` 保持到相关请求完成。R-48 修的是 N-01 起点漏掉待接收命令，
+R-53 修的是 ad-hoc 请求身份复用；二者不能反过来证明任意 WAR 都可提前释放。
+
+### 81.3 验证边界
+
+`rvv:vwar_pending_source_edges`、`rvv:vle_vse_hazards` 和统一随机 profile 均通过，
+并覆盖 source backpressure、组内地址和多请求交叠。当前报告没有保留一个仅关闭
+“组内循环”而保留其他修复的独立二分 simv，因此 R-63 的根因由基线/现逻辑逐 hunk
+对照确认，回归证据证明当前整体契约，不单独量化每一类 RAW/WAR/WAW 的命中数。
+
+## 82. Mask stream 的目标 VFU 路由
+
+### 82.1 基线问题
+
+MASKU 生成的 predicate beat 原先只携带 `mask` 和 `valid`，同一 valid 同时可见于 lane
+内 ALU/MFPU mask spill register、VLDU 和 VSTU。各消费者有独立 ready，且可能仍在排空
+不同请求；没有目标信息时，非目标消费者可能先接受该 beat，使真正目标看到错误 ready
+组合或在后续请求中使用陈旧 predicate。R-18 处理的是 lane MaskB operand 到
+MASKU/scalar-return 的归属；R-64 处理的是反方向的 MASKU predicate 到执行单元归属，
+二者不能合并为同一个握手问题。
+
+### 82.2 当前路由
+
+MASKU 的 mask queue 现在随每个请求保存 `vinsn_issue.vfu`，队首导出
+`mask_target_fu_o`。Ara 顶层把该字段与 mask beat 同步送到 lanes 和 VLSU：
+
+```systemverilog
+mask_valid_lane_o = mask_target_fu_o inside {VFU_Alu, VFU_MFpu, VFU_MaskUnit};
+
+// lane
+mask_ready_o = (mask_target_fu_i inside {VFU_Alu, VFU_MaskUnit})
+             ? alu_mask_input_ready
+             : (mask_target_fu_i == VFU_MFpu) ? mfpu_mask_input_ready : 1'b0;
+
+// VLSU
+vldu_mask_valid = mask_valid_i & {NrLanes{mask_target_fu_i == VFU_LoadUnit}};
+vstu_mask_valid = mask_valid_i & {NrLanes{mask_target_fu_i == VFU_StoreUnit}};
+```
+
+lane 侧拆成独立 ALU/MFPU spill register，避免一个单槽 mask register 在两个不同延迟
+执行管线间形成隐式共享。MASKU 只在目标消费者 ready 时推进队首，非目标 ready 不参与
+该 beat 的完成。`rvv:vmask_compare_edges`、`rvv:vmask_logical_matrix`、
+`rvv:vstore_mask_tail_edges`、`rvv:vslide_mask_edges` 和随机回归均通过。没有保留单独的
+pre-fix mask-target 日志，因此本节不虚构某一动态 PC；缺陷归类来自接口契约和直接
+源码差异，验证证据用于确认修复后的综合行为。
+
+## 83. FPNew 本地覆盖层遗漏项
+
+### 83.1 输入无穷与有限 overflow（R-65）
+
+`fpnew_cast_multi.sv` 基线把“输入本来是 infinity”和“有限输入转换后指数 overflow”
+合并为一个分支：先构造最大有限值和全 1 round/sticky，再依赖 rounding mode 决定是否
+进位到 infinity。该方法适用于有限 overflow，却会让输入 infinity 在 RTZ 或背离符号
+方向的定向舍入下错误变成最大有限值。当前先识别 `info_q.is_inf`，直接输出对应格式的
+infinity；只有有限 overflow 才构造最大有限值并进入舍入选择。
+
+这 1 个 hunk 位于独立 `fpnew` 工作区，原报告没有列出。它已包含在最终统一 campaign
+所使用的源码时间线中，但未保留能单独触发旧分支的 pre-fix directed artifact，因此
+状态不能写成“独立重放闭环”。后续应增加 FP16/32/64、正负 infinity 与 RNE/RTZ/RDN/
+RUP/RMM 的 conversion matrix。
+
+### 83.2 DivSqrt HOLD 输出选择（R-66）
+
+`fpnew_divsqrt_multi.sv` 的输出在 `unit_done_q` 为 1 时选择 `held_result_q/status_q`，其他
+周期选择组合的 `adjusted_result/unit_status`。`unit_done_q` 是完成脉冲；若下游反压令
+状态机进入并停留于 `HOLD`，后续周期脉冲已经撤销，旧逻辑会重新选择可能变化的 live
+结果。当前条件改为 `unit_done_q || state_q == HOLD`，整个保持期间数据和 status 都来自
+同一寄存器。该修复有 2 个原始 hunk，其中第二个只是文件尾格式变化；功能变化集中在
+输出 mux。最终 campaign 覆盖了向量和标量 div/sqrt，但没有专门控制下游 ready 复现
+多周期 HOLD，故仍需一项握手 directed test 才能形成独立闭环。
+
+第 29/58 节所述 THMULTI 选择不使这些覆盖层自动变成无关：R-65 属于共享 cast 单元；
+R-66 属于所选 DivSqrt wrapper 的 backpressure 契约。另有 15 个
+`fpu_div_sqrt_mvp` hunk 修正旧 PULP backend 的 RDN/RUP 编码、RMM、remainder sticky
+和 directed overflow，统一归入 R-25；当前 Ara/CVA6 已选择 THMULTI，因此这些 hunk
+不是当前默认执行路径的正确性前提，但仍是当前工作区真实存在的 RTL 修改。
+
+## 84. CVA6 本地 RTL 覆盖层
+
+### 84.1 Accelerator queue、flush 与 dispatched 记账（R-67）
+
+基线 `acc_dispatcher` 有三个互相关联的问题。第一，`flush_ex_i` 只清
+`insn_pending`，不清 `insn_ready`；transaction ID 重用后，年轻指令可继承旧 ready。
+第二，同周期 commit bypass 只判断“某个 pending ID 被 commit”，没有要求该 ID 等于
+当前 queue head 的 `trans_id`，可能令另一条 accelerator 指令越过 commit 门槛。第三，
+load/store dispatched 和 ready-bit 清除依据 `acc_req_valid`，而不是
+`acc_insn_queue_pop = valid && ready`；下游反压时可重复记账尚未离队的请求。
+
+当前 flush 同时清 pending/ready；commit bypass 比较 queue-head ID；ready 清除和
+load/store dispatched 都绑定真实 queue pop。修改后的逻辑还明确了 pop 之后请求由
+非 flushable output spill register 持有。最终统一 campaign 的全部已完成 directed、
+random 和应用项都经过该 CVA6-Ara dispatch 路径，未观察到 pending-memory 或错误重发；
+但报告没有保留只触发 transaction-ID reuse 的小型 pre-fix directed test，后续仍应补
+flush + backpressure + ID wrap 的协议断言。
+
+### 84.2 `mstatus.SD` 与 vector dirty 状态（R-68）
+
+基线只在 `RVS || RVF` 时更新 `mstatus.SD`，并从 `mstatus_q.xs/fs` 计算，不包含 RVV 的
+`vs`，也看不到同周期写入 `mstatus_d` 的新 dirty 状态。因此纯 RVV 配置或第一次令
+`VS=Dirty` 的周期可能仍报告 `SD=0`。当前在条件中加入 `CVA6Cfg.RVV`，并从
+`mstatus_d.xs/fs/vs` 计算 summary dirty：
+
+```systemverilog
+if (CVA6Cfg.RVS || CVA6Cfg.RVF || CVA6Cfg.RVV)
+  mstatus_d.sd = (mstatus_d.xs == riscv::Dirty) |
+                 (mstatus_d.fs == riscv::Dirty) |
+                 (mstatus_d.vs == riscv::Dirty);
+```
+
+这是 CSR 架构状态修复，不会被只比较向量 VRF 写回的 checker 自动充分覆盖。当前统一
+回归能证明该改动未破坏已有程序，但没有专门读回 `mstatus.SD/VS` 的 directed oracle；
+因此权威表明确标为“尚缺独立 CSR directed test”，不能把普通应用 PASS 当作严格闭环。
+
+### 84.3 Scalar DivSqrt 的 NaN-box 输入（R-69）
+
+RV64 上的 FP32/FP16 等窄精度标量值必须在更宽浮点寄存器中 NaN-box；若高位不是全 1，
+消费者必须把该输入视为 canonical NaN。基线 `fpu_wrap` 把 `operand_a/b/c` 原样送入
+FPNew，PULP 或 THMULTI 的选择都不能修复非法 box 的架构解释。当前只在 scalar
+`DIV`/`SQRT` 路径检查源格式以上的高位：正确 box 保留原值，错误 box 替换为该格式的
+canonical qNaN；vector FP 不经过这个 scalar gate。
+
+```systemverilog
+if (!fpu_vec_op && (fpu_op == fpnew_pkg::DIV)) begin
+  fpu_operands[0] = canonicalize_unboxed(operand_a, fpu_srcfmt);
+  fpu_operands[1] = canonicalize_unboxed(operand_b, fpu_srcfmt);
+end else if (!fpu_vec_op && (fpu_op == fpnew_pkg::SQRT)) begin
+  fpu_operands[0] = canonicalize_unboxed(operand_a, fpu_srcfmt);
+end
+```
+
+`app:fp_nanbox_div` 在最终 399 项 campaign 中为 PASS。R-69 修复输入解释，R-33 修复
+合法数值的 DivSqrt 舍入实现；即使两者位于同一 `fpu_wrap.sv`，也必须作为两个根因
+归档。
+
+## 85. VI 无符号立即数的 decode 边界
+
+### 85.1 main 中的错误
+
+dispatcher 的 VI 公共入口先把立即数字段作为有符号值扩展。该规则只适用于使用
+`simm5` 的算术/比较形式，不能覆盖 RVV 明确定义为 `uimm5` 的操作：
+`vrgather.vi` 的元素索引、`vslideup.vi/vslidedown.vi` 的偏移，以及
+`vsll/vsrl/vsra/vssrl/vssra/vnsrl/vnsra/vnclip/vnclipu` 的移位量。立即数 bit 4
+为 1 时，错误符号扩展会把 16--31 解释成一个很大的 XLEN 值；slide 可能被误判为空
+操作，gather 可能变成越界索引，shift/clip 则依赖下游截断而得到不一致行为。
+
+### 85.2 当前修复
+
+decode 保留公共路径对真正 `simm5` 的符号扩展，只在确定 opcode 后覆盖上述无符号
+字段：
+
+```systemverilog
+if (ara_req.op inside {
+      VSLL, VSRL, VSRA, VSSRL, VSSRA,
+      VNSRL, VNSRA, VNCLIP, VNCLIPU
+    })
+  ara_req.scalar_op = elen_t'(insn.varith_type.rs1);
+```
+
+`VRGATHER.VI` 以同样方式设置无符号 index，两个 slide VI form 则把该值写入
+`stride`。修复位于操作已经解码之后，因此不会把 `vadd.vi`、`vand.vi` 等有符号立即数
+错误改成零扩展。
+
+### 85.3 证据边界
+
+最终 directed catalog 中 `vslide_mask_edges` 使用偏移 20/23 并通过，`vssra`、
+`vnclip`、`vrgather` 及其边界测试也通过；最终随机覆盖记录还包含 1233 条
+`vrgather.vi`、1287 条 `vssra.vi` 和 931 条 `vnclip.wi`。这些结果证明当前统一
+decode 可工作，但没有为上述每一个 opcode 都保存“只撤销零扩展”后的独立 pre-fix
+artifact，因此不把随机出现次数等同于逐 opcode 的 A/B 根因证明。
+
+## 86. Whole-register move 的源组来自编码而非当前 LMUL
+
+`vmv1r/2r/4r/8r.v` 的寄存器组大小由指令编码决定，与当前 `vtype.vlmul` 无关。main
+虽然为 whole-register move 设置了编码对应的 `ara_req.emul` 和完整传输长度，但
+reshuffle/source-group 检查仍沿用当前 `lmul_vs1`。当编码组跨多个寄存器且成员 EEW
+元数据不一致时，只检查或转换了错误数量的源寄存器，复制出的位值或后续布局解释会
+错误。
+
+当前 decode 在识别 whole-register move 后执行：
+
+```systemverilog
+lmul_vs1 = ara_req.emul;
+```
+
+因此源布局检查、活动组范围、reshuffle 计数和 snapshot 都使用编码组宽；复制的数据
+SEW 仍取源组实际 EEW，保持 whole-register move 的 bit-preserving 语义。最终
+`rvv:vmvnrr` 在同一 campaign 中 PASS，并覆盖多种组宽和 EEW 转换；该修复与 R-06
+“普通 LMUL 组成员的 EEW 检查”共享基础函数，但触发组宽的来源不同，故单独归档。
+
+## 87. Whole-register memory 的 `vstart` 单位转换
+
+### 87.1 错误契约
+
+whole-register load/store 的 `vstart` 以指令编码的 EEW 元素计数。Ara VLSU 为复用
+unit-stride byte stream，会在 decode 后把内部 `vsew` 覆盖为 EW8、把 EVL 改成
+`NFIELDS*VLENB`。main 没有先换算 `vstart`，于是例如 `vl1re32.v` 的架构
+`vstart=2` 被当成跳过 2 byte，而正确值应为 8 byte。
+
+### 87.2 修复和空重启
+
+当前 load/store 都在覆盖 EEW 前执行：
+
+```systemverilog
+ara_req.vstart = csr_vstart_q << unsigned'(ara_req.vtype.vsew);
+ara_req.vtype.vsew = EW8;
+```
+
+转换后的 byte offset 与内部 EVL 比较；若 `vstart >= evl`，请求作为合法空操作在
+dispatcher 完成，不进入 VLSU。这个门控不仅是优化：VLSU 中无符号的剩余 byte
+减法在空重启下会下溢并形成超长请求。
+
+`rvv:vwhole_vstart_edges` 分别检查 `vl1re16/32/64` 的 prefix 保持、`vs1r` 的
+store prefix 保持，以及 `vstart==EVL` 的空 load，最终全部 PASS；普通 `vl1r`、
+`vs1r` 也在同一 catalog 中 PASS。R-72 只讨论 whole-register byte-stream 单位，
+不与 R-34 普通 unit-stride 首末 AXI byte 门控混为一项。
+
+## 88. `VL=1` 的 scalar slide1up 不是空操作
+
+普通 `vslideup` 在 `offset>=vl` 时没有活动源和目的更新；main 把这条 null 规则也用于
+`vslide1up.vx` 与 `vfslide1up.vf`。但 slide1up 的 element 0 来自 scalar operand，
+所以 `VL=1, offset=1` 时仍必须写 element 0。错误 null 判定会直接确认请求，目的元素
+保持旧值；即使请求未被吞掉，按普通 slideup 从 offset 开始的 predicate stream 也会
+漏掉 element 0。
+
+当前 dispatcher 不再对 scalar slide1up 设置 `null_vslideup`。lane sequencer 可以
+跳过空的 `vs2` 源区间，SLDU 单独生成 scalar 首元素；MASKU 对 `use_scalar_op` 的
+slideup 从目的 element 0 提供 predicate 覆盖，而普通 slideup 仍从 offset 后开始。
+这样只恢复 scalar 写入，不会读取不存在的向量源，也不会改变普通 slideup 的空操作
+规则。
+
+最终 `rvv:vslide1up` 与 `rvv:vfslide1up` 分别 PASS；随机覆盖包含 3839 条
+`vslide1up.vx` 和 1178 条 `vfslide1up.vf`。R-73 与 R-42 的区别是：R-73 修正
+slide1up 的架构写入，R-42 修正 slide1down 在 scalar-only 场景留下的无消费者源流。
+
+## 89. Segment 寄存器跨度的 `nf/EMUL` 计算
+
+`nf` 编码的是字段数减一。每个字段的寄存器起点按 EMUL 前进：integer EMUL 字段占
+`EMUL` 个连续寄存器，fractional EMUL 虽然字段数据不足一个寄存器，下一字段仍从下一
+个架构寄存器开始。main 的合法性检查直接移位原始 `nf`，既遗漏 `+1`，也在
+fractional EMUL 下得到错误跨度，因此可能放行越过 `v31` 的编码，或拒绝本来合法的
+编码。
+
+当前统一使用：
+
+```systemverilog
+segment_register_count = (unsigned'(nf) + 1) * lmul_register_count(emul);
+```
+
+load/store 合法性、字段组 reshuffle 范围和内部计数都使用同一结果，并分别检查总跨度
+不超过 8 个寄存器以及 `base+span<=32`。segment sequencer 的字段起点仍按
+`field_index * register_count(EMUL)` 推进；R-14 记录的首 micro-op VL/字段地址修复
+因此和这里的静态合法性形成一致契约。`rvv:vsegment_emul_edges` 最终 PASS，覆盖
+integer EMUL、多字段、非零 `vstart` 和 mixed-layout 场景。
+
+## 90. VALU reduction 的 issue、result 与 commit 生命周期
+
+### 90.1 main 中的三个竞争窗口
+
+VALU reduction 复用普通指令队列和 result queue。main 在 reduction 最后一个局部
+步骤结束时立即推进 issue pointer；若旧结果仍等待 VRF grant，状态机会在后续周期
+再次执行同一 finalization，从而重复减 `issue_cnt` 并消费年轻 entry。另一方面，
+commit 只检查 `commit_cnt==0`，最后一个结果刚进入队列但尚未写回时就可能释放 vid。
+最后，年轻 reduction 仅依据 commit queue 的名义计数启动，可能与 older normal
+result 共用 reduction 状态和队列。
+
+### 90.2 当前不变量
+
+finalization 只在 issue-head 与 commit-head 的 `id` 相同时执行一次；完成检测遍历
+result queue，直到当前 vid 不再处于 issue head 且没有 pending result 才产生 done。
+新的 reduction 只有在 issue/commit 计数表明中间无已发射 entry、result queue 为空时
+才能切入 reduction 状态：
+
+```systemverilog
+done = commit_cnt_zero && !commit_still_issuing && !commit_result_pending;
+start_reduction = queue_counts_equal && result_queue_empty;
+```
+
+这些条件不是额外的架构串行化，而是补齐现有无 ROB、按序 result queue 所必需的
+ownership。reduction 专项 18 项、`vreduction_overlap_edges`、`vid_queue_edges`
+以及最终随机 campaign 均通过；没有保留只撤销该组生命周期门控的独立 simv，所以
+证据强度标为“directed/随机整体覆盖”，不声称每个竞争窗口各有独立 A/B。
+
+## 91. `VID` 不应占用 VALU issue queue
+
+`VID` 的结果完全由 MASKU 按元素序号生成，不需要 lane ALU operand 或 VALU result。
+main 用连续 enum 区间 `[VMSEQ:VCOMPRESS]` 判断哪些 mask 操作还需进入 VALU，`VID`
+恰好落在该区间内，于是它同时进入 MASKU 和 VALU。后者得不到相应 operand，却占用
+issue/commit entry；在队列接近满、EEW 切换或紧随 dependent VALU 指令时可造成停顿
+或伪完成归属。
+
+当前接受条件显式排除 `VID`：
+
+```systemverilog
+vfu == VFU_Alu ||
+  (op inside {[VMSEQ:VCOMPRESS]} && op != VID)
+```
+
+lane sequencer 对零 VL 的完成路径也保持相同所有权：`VID` 由 MASKU 完成，不伪造 ALU
+done。`rvv:vid_queue_edges` 专门构造 `VID` 后跟满 VALU 队列和 EEW 转换，最终 PASS；
+`viota` 仍按其真实 ALU/MASKU 双路径执行，未被这个排除条件影响。
+
+## 92. VRF final grant 必须与当前结果 beat 同周期
+
+operand requester 原先把各结果源的 `final_gnt` 再寄存一拍后返回。grant 本身没有
+`vid` 或 beat tag；当 stream register 在同一周期弹出旧 beat 并装入后继 beat时，延迟
+脉冲可能被后继结果误认为自己的最终 VRF 接受。SLDU 随后提前推进 result entry 或
+宣布指令完成，最后一次写回尚未真正发生。
+
+当前 `*_result_final_gnt_o` 直接组合连接当周期该源赢得 VRF 仲裁的 grant。用于验证的
+写回 monitor 也只在同一真实 SRAM write edge 采样 `vid/address/be/data`，因此观察
+接口和功能完成条件共享一个事件。R-77 不改变仲裁优先级或 ready/valid 缓冲深度，只
+消除无 tag 延时脉冲。slide directed、SLDU 边界测试和最终随机回归均通过；未保留只
+恢复寄存器一拍的独立 pre-fix artifact。
+
+## 93. SLDU 无 tag 流的跨上下文隔离
+
+SLDU 的 lane operand、mask、selector 和 result entry 并非每条通路都携带 producer
+`vid`。main 在单一稳态 slide 上可工作，但相邻 slide、NP2 slide 与 reduction 交替时，
+独立 spill/FIFO 的相对深度会改变，旧数据可成为下一上下文的首拍。当前修改按同一个
+根因归档，但需区分四个子场景：
+
+1. 非 2 的幂偏移需要多次 permutation。中间 aggregate 现在保存在专用原子 feedback
+   register，不再分散回灌到各 lane spill，避免不同 lane 混入外部流的新旧 word。
+2. lane data 与“最后一个 partial aggregate 中哪些 lane 有效”进入同一个 aggregate
+   FIFO；两者不再独立排队，mask replacement 也在当前 masked slide 消费并同时装入
+   后继 masked slide 时保留。
+3. reduction 启动时，source-class bit 只清除可证明属于旧 non-reduction stream 的
+   word；清理期间反压输入。maintenance idle 还必须等待旧 operand、selector、command
+   和 result 全部排空，不能仅看 command queue。
+4. result entry 没有 producer class，输出路由由 commit head 选择。因此 slide 可以
+   与 slide 流水，但 reduction 不得与 older slide 或 younger slide 交叠；ordered
+   reduction 的 lane token 也只允许当前 owner 推进。
+
+这些约束共同保证“无 tag 通路一次只解释一个可证明的上下文”，而不是用清空所有 FIFO
+掩盖问题。R-26 仍负责单 entry 的逻辑 byte 进度，R-42 负责不产生多余 scalar-only
+源请求，R-77 负责最终 VRF grant；R-78 负责它们之间的上下文边界。`vslide_mask_edges`、
+`vslide1up/vslide1down`、18 项 reduction 专项和最终随机 profile 均通过，但四个子场景
+未分别保存最小 pre-fix 波形，故报告不虚构独立 A/B 数据。
+
+## 94. `vfrec7/vfrsqrt7` 的弹性流水 sideband 对齐
+
+FPNew 对 `vfrec7/vfrsqrt7` 返回的是中间估计信息，Ara 还要结合原输入的符号、指数、
+leading-zero 信息和逐 SIMD-lane 有效 mask 构造最终值与异常。main 用固定长度 shift
+register 延迟 `operand_a` 和 flag mask；FPNew 主流水却是 elastic ready/valid，在 bubble
+或 output backpressure 下停顿。固定延迟 sideband 因而可能与另一动态 beat 的结果
+组合，造成数值、NaN/Inf 特例或 `fflags` 错归属。
+
+当前把原 operand 和 flag mask 放入 FPNew 的 tag，与数据通过同一 elastic pipeline：
+
+```systemverilog
+vfpu_tag_in.operand_a = operand_a;
+vfpu_tag_in.flag_mask = vfpu_simd_mask;
+operand_a_delay       = vfpu_tag_out.operand_a;
+vfpu_flag_mask        = vfpu_tag_out.flag_mask;
+```
+
+tag 还携带仅用于仿真的 `vid/op`，在接受输出时断言其与 processing head 一致；综合功能
+只依赖 operand/mask 字段。最终 `rvv:vfrec7`、`rvv:vfrsqrt7` 均 PASS，随机覆盖分别
+执行 1152/1154 条。现有证据没有人为注入 backpressure 并单独撤销 tag 的 A/B 用例，
+因此 directed 证明架构功能，随机压力提供弹性路径覆盖，二者的证明范围分开表述。
+
+## 95. Ordered FP reduction 必须跳过 inactive 元素
+
+ordered reduction 的语义是按元素顺序只对 active source 更新 accumulator。main 对
+masked-off 元素仍向 FPNew 发起一次“accumulator 与 neutral 值”的运算。这对普通有限
+加法看似等价，但并非 bit-exact identity：它可能 canonicalize NaN payload、改变有符号
+零的选择，或让本应不执行的元素产生浮点异常。
+
+当前 `osum_element_active()` 按 SEW 和 lane shuffle 从 mask beat 选择当前元素。active
+元素才向 FPNew 握手；inactive 元素不执行 FP 运算，而是在 result queue 中原样转发
+accumulator，并按同一顺序推进 issue/processing 计数。若最后一个元素 inactive，仍需
+等待 result queue 可接收，防止“跳过运算”同时跳过状态更新。该路径与 R-23 不同：
+R-23 解决 unordered reduction 的全局空活动集合和 seed；R-80 解决 ordered reduction
+逐元素 inactive 的严格恒等语义。
+
+`vreduction_overlap_edges` 及完整 18 项 reduction 专项均 PASS，最终随机覆盖包含
+1189 条 `vfredosum.vs`。报告未保存一个只恢复 neutral 运算的独立 pre-fix artifact，
+所以把结果归为当前契约验证，而不单独量化 NaN、signed-zero 和 exception 三类触发率。
+
+## 96. 从 main 到当前 RTL 的逐 hunk 审计台账
+
+### 96.1 审计边界和方法
+
+父仓库基线为 `77eb36a7`，比较对象是本报告修改前的当前 worktree，而不只是 `HEAD`。
+采用 `git diff --unified=0`，每个 `@@` 记为一个原始 hunk；审阅时逐 hunk 判断其属于
+R-01--R-82、N-01--N-07、纯 trace/格式，或跨模块接口连接。相邻 hunk 若共同实现一个
+协议，只在正文合并叙述，但台账仍保留原始数量，避免“大段功能描述”掩盖未审阅差异。
+
+每个 R 条目还按同一完整性标准复核：必须能够区分 main 的旧逻辑、可触发该逻辑的
+边界/并发条件、错误传播到架构状态或停顿的因果链、当前 RTL 建立的新不变量，以及验证
+证据的实际强度。只有整体回归覆盖、没有单项 pre-fix A/B artifact 的条目必须明确写出
+这一限制；不能仅凭当前 PASS 反推旧逻辑的独立根因，也不能把同一文件中的相邻修改自动
+合并成一个 bug。R-82 正是按该反向检查从 R-17/R-53 的相邻 hunk 中重新拆出的独立
+多接收者握手缺陷。
+
+嵌套依赖分成两层：Bender revision 更新属于 N-06；在当前 pin 上的未提交 RTL diff
+属于本项目本地覆盖层，必须逐 hunk 归入 R 条目。这样既不会把上游版本更新冒充本项目
+发现的 82 个 bug，也不会漏掉 `git status` 在父仓库中不可见的本地依赖修改。
+
+版本状态同样属于归档边界。父仓库当前 `HEAD` 为 `0d0b9ec5`，但审计对象还包括尚未
+提交的 `ara_dispatcher.sv`、`lane_sequencer.sv`、`simd_div.sv`、`vmfpu.sv`、
+`masku.sv`、`ara_tb.sv` 和 `ara_testharness.sv`。三个嵌套工作区的 10 个覆盖文件
+也均为各自 pin 之上的未提交修改。因此，本节证明的是“该 worktree 快照已经全量
+分类”，不是“远端 `origin/ara_dsa` 已包含全部 R-01--R-82”。在这些 RTL 和报告一起
+提交前，不能从远端 commit 单独重建本节快照。
+
+### 96.2 父仓库 RTL/TB：665 hunk 对账
+
+审阅过程以每个 `@@` 的删除行、增加行和相邻状态机上下文为检查单位，而不是用文件名
+或关键词自动套类别。下表为便于阅读，将同一文件中已经逐项检查的 hunk 压缩成一行；
+“完整分类”列列出该文件实际出现的全部根因/非缺陷类别，不表示表中一个范围编号可以
+不经检查地覆盖该文件所有 hunk。hunk 是 diff 的排版单位，不是 bug 数量单位：同一
+协议修复可跨多个 hunk/文件，一个大 hunk 也可能同时包含功能连接和 N-03 trace。
+
+| 文件 | 原始 hunk | 完整分类 |
+|---|---:|---|
+| `hardware/src/ara.sv` | 26 | R-18、R-21--R-23、R-28、R-38--R-49、R-64、R-78；N-02/N-03 的接口连接 |
+| `hardware/src/ara_dispatcher.sv` | 150 | R-01--R-17、R-20--R-24、R-29--R-32、R-37--R-49、R-52、R-56、R-70--R-74、R-78；N-02/N-03 |
+| `hardware/src/ara_sequencer.sv` | 53 | R-18、R-27、R-28、R-44、R-48、R-51、R-53、R-63、R-76；N-01/N-03 |
+| `hardware/src/ara_system.sv` | 6 | N-03，全部在 `FOR_VERIFY` 接口/monitor 连接 |
+| `hardware/src/common_cells_compat/fall_through_register_v1.sv` | 1 | N-05，完整新增兼容模块 |
+| `hardware/src/lane/fixed_p_rounding.sv` | 8 | R-05 |
+| `hardware/src/lane/lane.sv` | 26 | R-18、R-20--R-23、R-28、R-38--R-49、R-54/R-55、R-64、R-78；N-02/N-03 |
+| `hardware/src/lane/lane_sequencer.sv` | 56 | R-14--R-17、R-26、R-30/R-31、R-38--R-48、R-51、R-53--R-55、R-58、R-73、R-78；N-01/N-03 |
+| `hardware/src/lane/operand_queue.sv` | 4 | R-23，四种 EEW 的 qNaN neutral operand |
+| `hardware/src/lane/operand_requester.sv` | 18 | R-38--R-49、R-53、R-63、R-77；N-01--N-03 |
+| `hardware/src/lane/simd_alu.sv` | 20 | R-05、R-07、R-49；全部为定点数据/舍入/饱和功能逻辑 |
+| `hardware/src/lane/simd_div.sv` | 7 | R-60；其中声明/流水连接与结果选择共同构成 BE 契约 |
+| `hardware/src/lane/simd_mul.sv` | 8 | R-62，EW8/16/32/64 各两组修改 |
+| `hardware/src/lane/valu.sv` | 19 | R-03、R-05、R-07、R-09、R-49、R-57、R-75、R-76；N-03 |
+| `hardware/src/lane/vector_fus_stage.sv` | 6 | R-23、R-58、R-64 的接口和 mask/activity 连接 |
+| `hardware/src/lane/vmfpu.sv` | 77 | R-19、R-23、R-25、R-49、R-50、R-54/R-55、R-58/R-59、R-78--R-80；N-03 |
+| `hardware/src/masku/masku.sv` | 70 | R-03、R-08--R-12、R-17/R-18、R-23、R-36、R-39、R-43--R-45、R-54/R-55、R-57、R-64、R-73、R-81/R-82；N-03 |
+| `hardware/src/masku/masku_operands.sv` | 1 | R-08/R-45 |
+| `hardware/src/segment_sequencer.sv` | 9 | R-14、R-30、R-31 |
+| `hardware/src/sldu/sldu.sv` | 67 | R-16/R-17、R-20--R-22、R-26、R-38--R-49、R-51、R-54/R-55、R-73、R-77/R-78；N-02/N-03 |
+| `hardware/src/vlsu/addrgen.sv` | 5 | R-15、R-28；indexed trace 归 N-03 |
+| `hardware/src/vlsu/vldu.sv` | 4 | R-34 |
+| `hardware/src/vlsu/vlsu.sv` | 3 | R-64 的端口、load gate、store gate |
+| `hardware/src/vlsu/vstu.sv` | 4 | R-29--R-31、R-34/R-35；store trace 归 N-03 |
+| `hardware/tb/ara_commit_monitor.sv` | 1 | N-03，完整新增 monitor |
+| `hardware/tb/ara_tb.sv` | 14 | N-03、N-04、N-07 |
+| `hardware/tb/ara_testharness.sv` | 2 | N-04 |
+| **合计** | **665** | 与 `/tmp/ara_dsa_main_to_worktree_rtl.diff` 的全部 `@@` 数一致 |
+
+### 96.3 嵌套依赖本地覆盖层：26 hunk 对账
+
+| 工作区与文件 | 比较基线 | 原始 hunk | 完整分类 |
+|---|---|---:|---|
+| CVA6 `core/acc_dispatcher.sv` | `b29fd3cf` | 4 | R-67 |
+| CVA6 `core/csr_regfile.sv` | `b29fd3cf` | 1 | R-68 |
+| CVA6 `core/fpu_wrap.sv` | `b29fd3cf` | 3 | R-33：THMULTI 选择；R-69：NaN-box helper 与 operand gate |
+| FPNew `src/fpnew_cast_multi.sv` | `e5aa6a01` | 1 | R-65 |
+| FPNew `src/fpnew_divsqrt_multi.sv` | `e5aa6a01` | 2 | R-66；1 个功能 hunk、1 个空白 hunk |
+| PULP DivSqrt `hdl/control_mvp.sv` | `86e1f558` | 2 | R-25：remainder sticky 生成/端口 |
+| PULP DivSqrt `hdl/defs_div_sqrt_mvp.sv` | `86e1f558` | 1 | R-25：round-mode 编码 |
+| PULP DivSqrt `hdl/div_sqrt_top_mvp.sv` | `86e1f558` | 3 | R-25：remainder sticky 贯通 |
+| PULP DivSqrt `hdl/norm_div_sqrt_mvp.sv` | `86e1f558` | 7 | R-25：overflow、sticky、RMM；含 1 个缩进 hunk |
+| PULP DivSqrt `hdl/nrbd_nrsc_mvp.sv` | `86e1f558` | 2 | R-25：remainder sticky 贯通 |
+| **合计** |  | **26** | 与三个嵌套工作区 local diff 的全部 `@@` 数一致 |
+
+### 96.4 Bender revision 差异
+
+`Bender.lock` 从 main 更新了 CVA6、AXI、common_cells、common_verification 和
+tech_cells_generic。下表只统计这些 pin 之间的 Verilog/SystemVerilog 差异，不把它们
+加入 R-01--R-82；这些是可复现的上游 revision delta，而不是本地逐项修 bug 记录。
+
+| 依赖 | main revision -> 当前 revision | RTL 文件 | 原始 hunk | `+/-` 行 |
+|---|---|---:|---:|---:|
+| CVA6 | `99eac9a6` -> `b29fd3cf` | 67 | 433 | 2483/625 |
+| AXI | `853ede23` -> `a8c53cee` | 40 | 268 | 3175/1099 |
+| common_cells | `c27bce39` -> `12815456` | 48 | 213 | 718/516 |
+| common_verification | `9c07fa86` -> `fb1885f4` | 1 | 1 | 1/1 |
+| tech_cells_generic | `7968dd6e` -> `3a3de736` | 7 | 18 | 163/21 |
+
+对“本项目发现并修复了什么”作结论时，应使用第 96.2/96.3 节；对“从 main checkout
+得到的最终源码树有哪些变化”作复现时，还必须连同本节 pin 一起使用。把 933 个上游
+hunk逐条改写成 Ara 缺陷会错误归因，因此本报告按 N-06 以 revision 边界归档。若论文
+或 release 需要供应链级审计，应另生成各依赖的 upstream changelog/SBOM，不应扩充本
+缺陷报告的 R 编号。
+
+### 96.5 完整性结论与剩余证据缺口
+
+本轮逐 hunk 审计新增了原报告遗漏的 R-62--R-82，并补全 R-16、R-18、R-23、R-25、R-33、R-36、R-49
+所涉及的跨模块/嵌套依赖逻辑。父仓库 665 个 hunk和本地依赖覆盖层 26 个 hunk均已在
+表中对账，没有未分类 hunk。报告现在包含 82 个 RTL 缺陷、13 个验证/参考模型缺陷和
+1 个应用缺陷；N-01--N-07 是非缺陷变更，不混入这个数量。
+
+反向遗漏检查分成三组：R-62--R-69 来自原报告没有展开的乘法、完整寄存器组 hazard
+和嵌套依赖覆盖；R-70--R-74 来自 dispatcher 中此前被“大类 decode/segment/slide”
+描述吞掉的独立架构语义；R-75--R-82 来自 VALU、operand requester、SLDU、VMFPU 与 MASKU
+中此前只作为配套 wiring 出现、实际却拥有独立失效条件的生命周期/sideband 缺陷。
+R-16 的 VLMAX 边界清零和 R-49 的 per-entry `vxsat` 已补入原条目，因与原根因共享
+同一请求/结果所有权，不另造重复编号。
+
+“已归档”不等于“每项均已有同强度验证”。R-65、R-66、R-68 缺少能够单独触发旧逻辑
+并证明新逻辑的最小 directed test；R-63、R-64、R-70、R-75、R-77--R-82 有 directed
+或统一回归覆盖，但没有为每个子条件保留只撤销该单项修复的 pre-fix 二分 artifact；
+九个大型应用仍只有 timeout 证据。上述边界
+已在权威表和对应章节明确写出，避免用统一 campaign 的整体 PASS 覆盖单项证据缺口。

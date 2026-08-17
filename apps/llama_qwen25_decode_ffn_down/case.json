@@ -1,0 +1,9 @@
+{
+  "case_id": "decode_ffn_down",
+  "phase": "decode",
+  "operator": "blk_0_ffn_down_weight",
+  "weight_type": "q6_K",
+  "k": 8960,
+  "rows": 1536,
+  "inputs": 1
+}

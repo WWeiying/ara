@@ -152,6 +152,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     };
   endfunction : widening_reduction
 
+  function automatic logic requires_zero_vstart(ara_op_e op);
+    requires_zero_vstart = reduction_result(op) || op inside {
+      VCPOP, VFIRST, VMSBF, VMSOF, VMSIF, VIOTA, VCOMPRESS
+    };
+  endfunction : requires_zero_vstart
+
   function automatic logic single_register_result(ara_op_e op);
     single_register_result = mask_result(op) || reduction_result(op);
   endfunction : single_register_result
@@ -4667,6 +4673,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
       // Check that we have we have vfrec7, vfrsqrt7
       if (ara_req_valid && (ara_req.op inside {VFREC7, VFRSQRT7}) && (FPExtSupport == FPExtSupportDisable))
+        illegal_insn = 1'b1;
+
+      // RVV requires these non-restartable operations to begin at element 0.
+      // Check the architectural CSR because some decode paths normalize the
+      // internal request's vstart before sending it to the backend.
+      if (ara_req_valid && (csr_vstart_q != '0) && requires_zero_vstart(ara_req.op))
         illegal_insn = 1'b1;
 
       // Raise an illegal instruction exception

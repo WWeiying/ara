@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,7 +12,9 @@ from run_full_campaign import (
     REQUIRED_RANDOM_COVERAGE,
     REQUIRED_RANDOM_PROFILES,
     directed_command,
+    parse_args,
     random_command,
+    record_completed_source_snapshot,
     source_snapshot,
     validate_inventory,
     validate_random_stimulus_coverage,
@@ -22,9 +25,17 @@ from run_full_campaign import (
 
 
 class FullCampaignCommandTests(unittest.TestCase):
+    def test_full_campaign_requires_explicit_spike(self):
+        argv = ["run_full_campaign.py", "--simv", "simv", "--output", "out"]
+        with mock.patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+            parse_args()
+
     def test_current_inventory_and_whole_register_corner_are_mandatory(self):
-        self.assertEqual(MINIMUM_CAMPAIGN_INVENTORY["rvv"], 200)
+        self.assertEqual(MINIMUM_CAMPAIGN_INVENTORY["rvv"], 207)
+        self.assertIn("rvv:vdiv_vstart_edges", REQUIRED_DIRECTED_TESTS)
+        self.assertIn("rvv:vfp_vstart_edges", REQUIRED_DIRECTED_TESTS)
         self.assertIn("rvv:vwhole_vstart_edges", REQUIRED_DIRECTED_TESTS)
+        self.assertIn("rvv:villegal_vstart_ops", REQUIRED_DIRECTED_TESTS)
 
     def test_source_snapshot_ignores_generated_compiler_macros(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -33,6 +44,7 @@ class FullCampaignCommandTests(unittest.TestCase):
             (root / "apps").mkdir()
             (root / "verification").mkdir()
             (root / "hardware/design.sv").write_text("module design; endmodule\n")
+            (root / "verification/reference.patch").write_text("reference-model patch\n")
             generated = root / "apps/compiler_macros.h"
             generated.write_text("#define VLEN 1024\n")
 
@@ -42,7 +54,32 @@ class FullCampaignCommandTests(unittest.TestCase):
                 after = source_snapshot()
 
             self.assertEqual(before, after)
-            self.assertEqual(before["file_count"], 1)
+            self.assertEqual(before["file_count"], 2)
+
+    def test_completed_source_snapshot_detects_drift(self):
+        started = {"sha256": "start", "file_count": 10}
+        completed = {"sha256": "finish", "file_count": 10}
+        metadata = {"source_snapshot": started}
+        components = {}
+
+        record_completed_source_snapshot(metadata, components, completed)
+
+        self.assertEqual(components["source_snapshot"], 1)
+        self.assertEqual(metadata["completed_source_snapshot"], completed)
+        self.assertEqual(
+            metadata["source_snapshot_drift"],
+            {"started": started, "completed": completed},
+        )
+
+    def test_completed_source_snapshot_accepts_identical_sources(self):
+        snapshot = {"sha256": "same", "file_count": 10}
+        metadata = {"source_snapshot": snapshot, "source_snapshot_drift": {}}
+        components = {}
+
+        record_completed_source_snapshot(metadata, components, dict(snapshot))
+
+        self.assertEqual(components["source_snapshot"], 0)
+        self.assertNotIn("source_snapshot_drift", metadata)
 
     def test_directed_command_propagates_campaign_timeout(self):
         args = SimpleNamespace(jobs=8, seed=1, timeout=900)
@@ -80,7 +117,7 @@ class FullCampaignCommandTests(unittest.TestCase):
     def test_random_profile_reuses_shared_generator(self):
         args = SimpleNamespace(
             seed=1, timeout=900, spike_timeout=300, watchdog_cycles=100000,
-            generator_simv=Path("shared/vcs_simv"),
+            generator_simv=Path("shared/vcs_simv"), spike=Path("tools/spike"),
         )
 
         command = random_command(
@@ -89,11 +126,13 @@ class FullCampaignCommandTests(unittest.TestCase):
 
         index = command.index("--generator-simv")
         self.assertEqual(command[index + 1], Path("shared/vcs_simv"))
+        spike_index = command.index("--spike")
+        self.assertEqual(command[spike_index + 1], Path("tools/spike"))
 
     def test_inventory_allows_added_tests_but_rejects_lost_coverage(self):
-        validate_inventory({"rvv": 201, "app": 51, "random": 150, "total": 402})
+        validate_inventory({"rvv": 207, "app": 51, "random": 150, "total": 408})
         with self.assertRaisesRegex(RuntimeError, "below required coverage"):
-            validate_inventory({"rvv": 198, "app": 50, "random": 142, "total": 390})
+            validate_inventory({"rvv": 204, "app": 50, "random": 142, "total": 396})
 
     def test_required_directed_coverage_cannot_be_replaced_by_test_count(self):
         validate_required_directed_tests(set(REQUIRED_DIRECTED_TESTS))

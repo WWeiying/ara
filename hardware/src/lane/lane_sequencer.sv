@@ -446,7 +446,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       // If vstart deos not divide NrLanes perfectly, some low-index lanes will send
       // mock data to balance the payload.
       vfu_operation_d.vstart = pe_req.vstart / NrLanes;
-      if (pe_req.vfu == VFU_Alu &&
+      if (pe_req.vfu inside {VFU_Alu, VFU_MFpu} &&
           !(pe_req.op inside {[VREDSUM:VWREDSUM]}) &&
           lane_id_i < pe_req.vstart[idx_width(NrLanes)-1:0])
         vfu_operation_d.vstart += 1'b1;
@@ -569,7 +569,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // If reductions and vl == 0, we must replace the operands with neutral
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]}) ? 1 : vfu_operation_d.vl,
-            vstart     : vfu_operation_d.vstart,
+            vstart     : '0,
             hazard     : pe_req.hazard_vs1 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
@@ -591,7 +591,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} && vfu_operation_d.vl == '0)
                         ? 1 : vfu_operation_d.vl,
-            vstart     : vfu_operation_d.vstart,
+            vstart     : '0,
             hazard     : (pe_req.swap_vs2_vd_op ?
             pe_req.hazard_vd : (pe_req.hazard_vs2 | pe_req.hazard_vd)),
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
@@ -614,7 +614,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} && vfu_operation_d.vl == '0)
                         ? 1 : vfu_operation_d.vl,
-            vstart     : vfu_operation_d.vstart,
+            vstart     : '0,
             vtype      : pe_req.vtype,
             hazard     : pe_req.swap_vs2_vd_op ?
             (pe_req.hazard_vs2 | pe_req.hazard_vd) : pe_req.hazard_vd,
@@ -634,7 +634,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             eew    : EW64,
             vtype  : pe_req.vtype,
             vl     : pe_req.vl / NrLanes / ELEN,
-            vstart : vfu_operation_d.vstart,
+            vstart : '0,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,

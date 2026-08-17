@@ -1,2 +1,3 @@
 bin
 common/link.ld
+common/link_sim_*m.ld

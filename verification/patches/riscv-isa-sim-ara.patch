@@ -1,0 +1,29 @@
+diff --git a/riscv/insns/vssra_vi.h b/riscv/insns/vssra_vi.h
+index cbdf47ae..8db69fa0 100644
+--- a/riscv/insns/vssra_vi.h
++++ b/riscv/insns/vssra_vi.h
+@@ -1,8 +1,8 @@
+-// vssra.vi vd, vs2, simm5
++// vssra.vi vd, vs2, uimm5
+ VI_VI_LOOP
+ ({
+   VRM xrm = P.VU.get_vround_mode();
+-  int sh = simm5 & (sew - 1);
++  int sh = insn.v_zimm5() & (sew - 1);
+   int128_t val = vs2;
+
+   INT_ROUNDING(val, xrm, sh);
+diff --git a/riscv/processor.cc b/riscv/processor.cc
+index cc868e84..bb52cb61 100644
+--- a/riscv/processor.cc
++++ b/riscv/processor.cc
+@@ -59,7 +59,8 @@ processor_t::processor_t(const char* isa_str, const char* priv_str,
+   VU.VLEN = isa.get_vlen();
+   VU.ELEN = isa.get_elen();
+   VU.vlenb = isa.get_vlen() / 8;
+-  VU.vstart_alu = 0;
++  // Ara implements restartable vector ALU execution from a nonzero vstart.
++  VU.vstart_alu = 1;
+
+   register_base_instructions();
+   mmu = new mmu_t(sim, cfg->endianness, this);

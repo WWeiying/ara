@@ -994,9 +994,15 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         vector_commit: Dict[str, object] = {"status": "DISABLED"}
         if options.vector_commit_compare:
             try:
+                vector_stop_index = (
+                    min(unobservable_register_values)
+                    if comparison.get("status") == "PREFIX" and
+                    unobservable_register_values else None
+                )
                 vector_commit = compare_vector_commits(
                     spike_log, ara_trace, vector_trace, entry,
                     selected_index=options.vector_commit_index,
+                    stop_spike_index=vector_stop_index,
                 )
             except (CommitComparisonError, VectorCommitComparisonError) as error:
                 vector_commit = {"status": "ERROR", "reason": str(error)}
@@ -1017,7 +1023,12 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
             status = "MISMATCH"
         elif trace_summary.get("status") != "VALID":
             status = "TRACE_FAIL"
-        elif options.vector_commit_compare and vector_commit.get("status") != "PASS":
+        elif options.vector_commit_compare and (
+            vector_commit.get("status") != "PASS" and not (
+                comparison.get("status") == "PREFIX" and
+                vector_commit.get("status") == "PREFIX"
+            )
+        ):
             status = "VECTOR_MISMATCH"
         else:
             status = "PASS"

@@ -189,7 +189,11 @@ values, and SEW 8/16/32/64. `vmask_logical_matrix` covers all eight mask
 logical operations under varied VL, LMUL, nonzero `vstart`, and policy
 encodings. `vmask_compare_edges` checks integer and floating comparison masks
 plus mask-scan results with an unaligned mask destination and byte-exact guard
-registers. `vrepair_edges` targets widening, narrowing saturation/rounding,
+registers. `vfp_vstart_edges` checks masked FP32/FP64 arithmetic at unaligned
+nonzero `vstart` values, including preservation of prestart and masked-off
+destination elements. `vdiv_vstart_edges` checks masked and unmasked integer
+divide/remainder restart across SEW 8/16/32/64, including request-bound write
+byte-enables. `vrepair_edges` targets widening, narrowing saturation/rounding,
 EEW reshuffling, and reduction register-group boundaries.
 `vwiden_overlap_edges` exercises the legal case where a narrow widening source
 overlaps the high-numbered half of the wider destination register group,
@@ -223,18 +227,41 @@ new invocation in the same output directory invalidates stale summary/CSV/JUnit
 reports but preserves case logs, so an old dry-run summary cannot be mistaken
 for live results.
 
-Run the complete directed, application, and 12-profile random campaign with:
+Run the complete directed, application, and 12-profile random campaign with an
+explicit Ara-compatible Spike executable:
 
 ```bash
 python3 verification/run_full_campaign.py \
   --simv verification/out/<final-build>/_build/vcs/simv \
+  --spike /path/to/ara-compatible-spike \
   --output verification/out/<full-campaign> \
   --jobs 8 --random-jobs 4 --timeout 900
 ```
 
-The current minimum inventory is 199 directed RVV tests, 50 applications, and
-142 generated random programs. In addition to these counts, the campaign
-requires all 27 `rvv-corners` tests by name and requires all 12 random profiles
+`--spike` is mandatory for the complete campaign. Random profiles that enable
+nonzero `vstart` require a Spike build configured
+to execute restartable vector ALU instructions from nonzero `vstart`.  The
+reference model must still trap for the RVV operations that architecturally
+require `vstart=0`, including reductions, mask scans, `vcpop`, `vfirst`,
+`viota`, and `vcompress`.  Pass that executable explicitly with `--spike` so a
+campaign does not silently depend on a host-local default Spike configuration.
+
+The validated reference build uses riscv-isa-sim commit `488e07d7` plus
+`verification/patches/riscv-isa-sim-ara.patch`:
+
+```bash
+git -C /path/to/riscv-isa-sim checkout 488e07d7
+git -C /path/to/riscv-isa-sim apply \
+  "$PWD/verification/patches/riscv-isa-sim-ara.patch"
+mkdir -p /path/to/riscv-isa-sim/build
+cd /path/to/riscv-isa-sim/build
+../configure --prefix="$PWD/install"
+make -j8 spike
+```
+
+The current inventory is 207 directed RVV tests, 50 applications, and 142
+generated random programs. In addition to the minimum count gates, the campaign
+requires all 32 `rvv-corners` tests by name and requires all 12 random profiles
 at their configured minimum seed counts. After generation it merges the 12
 `stimulus_coverage.json` files and checks that every expected source exists and
 that all required instruction families, memory modes, SEW/LMUL values,
@@ -246,7 +273,9 @@ comparison; checkpoint profiles additionally compare full vector state after
 each generated RVV instruction. `campaign_summary.json` reports collection
 completeness as `status` and functional success as `verdict`. The command exits
 successfully only when every expected, uniquely identified result is present,
-all component commands return zero, and every result status is `PASS`.
+all component commands return zero, every result status is `PASS`, and the
+managed RTL, application, and verification source snapshot is unchanged from
+campaign start to completion.
 
 The default `smoke` suite remains a deliberately small integration gate;
 architectural coverage belongs to `rvv-directed` and `rvv-corners`.
@@ -294,6 +323,16 @@ they are counted separately and make a selected request unobservable if no
 known byte remains. The current path strictly checks accepted write values and
 detects a wholly missing destination write. Complete active-byte coverage and
 vector-store memory effects remain separate checks.
+
+The comparator also propagates architecturally agnostic vector bits. If
+`vmv.x.s`, `vfmv.f.s`, `vcpop.m`, or `vfirst.m` has an unknown relevant source
+bit that can change its scalar result, that result is not bit-exact across
+implementations and may change later control flow. In that case scalar
+retirement and vector writebacks remain strictly checked through the first such
+result, then both comparisons end with an explicit `PREFIX` status. A case
+accepts this boundary only when both sides agree on the prefix, the RTL program
+exits successfully, and the complete RTL request/uop trace is valid; a scalar
+`MATCH` never accepts a vector `PREFIX`.
 
 ## Planned stage
 

@@ -25,6 +25,12 @@
         "app:vsaxpy"
       ]
     },
+    "llama-micro": {
+      "description": "Qwen2.5 Q4_K_M quantization and quantized-dot microkernel replay.",
+      "tests": [
+        "app:llama_q4km_micro"
+      ]
+    },
     "rvv-diagnostic": {
       "description": "Directed RVV probes currently used to diagnose legacy test failures.",
       "tests": [
@@ -47,6 +53,8 @@
         "rvv:vasub",
         "rvv:vasubu",
         "rvv:vaverage_matrix",
+        "rvv:vdiv_vstart_edges",
+        "rvv:vfp_vstart_edges",
         "rvv:vmask_carry_tail_edges",
         "rvv:vmask_compare_edges",
         "rvv:vmask_logical_matrix",
@@ -65,6 +73,7 @@
         "rvv:vrgather_edges",
         "rvv:vcompress_edges",
         "rvv:vsegment_emul_edges",
+        "rvv:villegal_vstart_ops",
         "rvv:vindexed_vstart_edges",
         "rvv:vunit_vstart_edges",
         "rvv:vwhole_vstart_edges",

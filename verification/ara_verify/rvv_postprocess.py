@@ -103,7 +103,15 @@ def postprocess_existing_case(case: Path, readelf: Path) -> Dict[str, object]:
     vector: Dict[str, object] = {"status": "DISABLED"}
     if vector_expected:
         try:
-            vector = compare_vector_commits(spike_log, ara_trace, vector_trace, entry)
+            vector_stop_index = (
+                min(unobservable_register_values)
+                if comparison.get("status") == "PREFIX" and
+                unobservable_register_values else None
+            )
+            vector = compare_vector_commits(
+                spike_log, ara_trace, vector_trace, entry,
+                stop_spike_index=vector_stop_index,
+            )
         except (CommitComparisonError, VectorCommitComparisonError, OSError) as error:
             vector = _error(str(error))
         (case / "vector_commit_comparison.json").write_text(
@@ -116,7 +124,10 @@ def postprocess_existing_case(case: Path, readelf: Path) -> Dict[str, object]:
         status = "MISMATCH"
     elif trace.get("status") != "VALID":
         status = "TRACE_FAIL"
-    elif vector_expected and vector.get("status") != "PASS":
+    elif vector_expected and vector.get("status") != "PASS" and not (
+        comparison.get("status") == "PREFIX" and
+        vector.get("status") == "PREFIX"
+    ):
         status = "VECTOR_MISMATCH"
     else:
         status = "PASS"

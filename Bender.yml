@@ -80,6 +80,7 @@ sources:
         # Verification-only retirement and accelerator-interface tracing
         - hardware/deps/cva6/core/cva6_rvfi.sv
         - hardware/tb/ara_commit_monitor.sv
+        - hardware/tb/llm_perf_monitor.sv
         # Level 1
         - hardware/deps/cva6/corev_apu/tb/common/mock_uart.sv
         - hardware/tb/ara_testharness.sv

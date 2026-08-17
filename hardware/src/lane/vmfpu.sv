@@ -306,6 +306,40 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       narrowing = 1'b1;
   endfunction: narrowing
 
+  function automatic strb_t active_from_vstart(
+      vlen_t first_element, vlen_t vstart, vew_e vsew
+  );
+    active_from_vstart = '0;
+    for (int unsigned logical_byte = 0; logical_byte < StrbWidth; logical_byte++) begin
+      automatic int unsigned element_offset = logical_byte >> unsigned'(vsew);
+      automatic int unsigned physical_byte = shuffle_index(logical_byte, 1, vsew);
+      active_from_vstart[physical_byte] =
+          unsigned'(first_element) + element_offset >= unsigned'(vstart);
+    end
+  endfunction : active_from_vstart
+
+  function automatic strb_t packed_narrowing_be(
+      strb_t source_be, vew_e vsew, logic second_half
+  );
+    unique case (vsew)
+      EW8:  packed_narrowing_be = second_half ? source_be << 1 : source_be;
+      EW16: packed_narrowing_be = second_half ? source_be << 2 : source_be;
+      EW32: packed_narrowing_be = second_half ? source_be << 4 : source_be;
+      default: packed_narrowing_be = source_be;
+    endcase
+  endfunction : packed_narrowing_be
+
+  function automatic strb_t narrowing_input_mask(
+      strb_t packed_mask, vew_e vsew, logic second_half
+  );
+    unique case (vsew)
+      EW8:  narrowing_input_mask = second_half ? packed_mask >> 1 : packed_mask;
+      EW16: narrowing_input_mask = second_half ? packed_mask >> 2 : packed_mask;
+      EW32: narrowing_input_mask = second_half ? packed_mask >> 4 : packed_mask;
+      default: narrowing_input_mask = packed_mask;
+    endcase
+  endfunction : narrowing_input_mask
+
   // If this is a narrowing instruction, point to which half of the
   // output EEW word we are producing.
   // Input selector, used to acknowledge the mask operands once every two cycles
@@ -316,6 +350,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   elen_t narrowing_shuffled_result;
   // Helper signal to shuffle the narrowed result
   logic [7:0] narrowing_shuffle_be;
+  // Effective byte enables reshuffled into the packed narrowing result.
+  strb_t narrowing_result_be;
+  // Effective bytes for this issue beat after tail, predicate, and vstart gating.
+  strb_t issue_be;
 
   //////////////////
   //  Multiplier  //
@@ -374,7 +412,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     gate_ff_en, gate_ff_clr, '0, clk_i_gated, rst_ni);
   `FFLARNC(vmul_simd_op_c_q, mfpu_operand_i[2],
     gate_ff_en, gate_ff_clr, '0, clk_i_gated, rst_ni);
-  `FFLARNC(vmul_simd_mask_q, mask_i,
+  `FFLARNC(vmul_simd_mask_q, issue_be,
     gate_ff_en, gate_ff_clr, '0, clk_i_gated, rst_ni);
   `FFLARNC(vmul_simd_op_q, vinsn_issue_q.op,
     gate_ff_en, gate_ff_clr, ara_op_e'('0), clk_i_gated, rst_ni);
@@ -559,18 +597,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   ///////////////
 
   elen_t vdiv_result;
-  // Short circuit to invalid input elements with a mask
-  strb_t issue_be;
-
   logic vdiv_in_valid;
   logic vdiv_out_valid;
   logic vdiv_in_ready;
   logic vdiv_out_ready;
 
-  // We let the mask percolate throughout the pipeline to have the mask unit synchronized with the
-  // operand queues. Another choice would be to delay the mask grant when the vdiv_result is
-  // committed.
-  strb_t vdiv_mask;
+  // Effective byte enables accepted with this divider word, including
+  // predicate, tail, and restart suppression.
+  strb_t vdiv_be;
 
   simd_div # (
     .CVA6Cfg(CVA6Cfg)
@@ -579,12 +613,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .rst_ni     (rst_ni                                                     ),
     .operand_a_i(mfpu_operand_i[1]                                          ),
     .operand_b_i(vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0]),
-    .mask_i     (mask_i                                                     ),
     .op_i       (vinsn_issue_q.op                                           ),
     .be_i       (issue_be                                                   ),
     .vew_i      (vinsn_issue_q.vtype.vsew                                   ),
     .result_o   (vdiv_result                                                ),
-    .mask_o     (vdiv_mask                                                  ),
+    .be_o       (vdiv_be                                                    ),
     .valid_i    (vdiv_in_valid                                              ),
     .ready_o    (vdiv_in_ready                                              ),
     .ready_i    (vdiv_out_ready                                             ),
@@ -1386,12 +1419,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           vfpu_ex_flag          = vfrsqrt7_ex_flag;
         end else begin
           vfpu_processed_result = vfpu_result;
-          vfpu_ex_flag          = vfpu_ex_flag_fn;
+          vfpu_ex_flag          = vfpu_ex_flag_fn & {5{|vfpu_tag_out.flag_mask}};
         end
       end else begin
         // NO vfrec7, vfrsqrt7
         vfpu_processed_result = vfpu_result;
-        vfpu_ex_flag          = vfpu_ex_flag_fn;
+        vfpu_ex_flag          = vfpu_ex_flag_fn & {5{|vfpu_tag_out.flag_mask}};
       end
 
       // After a comparison, send the mask back to the mask unit
@@ -1509,6 +1542,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     unit_out_valid  = 1'b0;
     unit_out_result = vmul_result;
     unit_out_mask   = vmul_mask;
+    narrowing_result_be = '0;
 
     // Mask not granted by default
     mask_ready_o = 1'b0;
@@ -1702,9 +1736,21 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               issue_cnt_d = (narrowing(vinsn_issue_q.cvt_resize)) ? (issue_cnt_q - issue_element_cnt_narrow) : (issue_cnt_q - issue_element_cnt);
 
               // Give the correct be signal to the divider/FPU
-              issue_be = narrowing(vinsn_issue_q.cvt_resize) ?
-                be(issue_element_cnt_narrow, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i) :
-                be(issue_element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
+              issue_be = (narrowing(vinsn_issue_q.cvt_resize) ?
+                be(issue_element_cnt_narrow, vinsn_issue_q.vtype.vsew) :
+                be(issue_element_cnt, vinsn_issue_q.vtype.vsew)) &
+                (vinsn_issue_q.vfu == VFU_MFpu
+                 ? active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
+                                      vinsn_issue_q.vstart,
+                                      vinsn_issue_q.vtype.vsew)
+                 : {StrbWidth{1'b1}}) &
+                (vinsn_issue_q.vm ? {StrbWidth{1'b1}} :
+                 (narrowing(vinsn_issue_q.cvt_resize) ?
+                  narrowing_input_mask(mask_i, vinsn_issue_q.vtype.vsew,
+                                       narrowing_select_in_q) : mask_i));
+              // Carry the same execution mask through fpnew to the result
+              // queue. This includes tail, predicate, and restart suppression.
+              vfpu_control_in = issue_be;
             end
 
             // Update the narrowing selector and acknowledge the mask operatnds if needed
@@ -1751,7 +1797,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           [VDIVU:VREM]: begin
             unit_out_valid  = vdiv_out_valid;
             unit_out_result = vdiv_result;
-            unit_out_mask   = vdiv_mask;
+            unit_out_mask   = vdiv_be;
           end
           [VFADD:VMFGE]: begin
             unit_out_valid  = vfpu_out_valid;
@@ -1796,6 +1842,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             narrowing_shuffle_be             = !narrowing_select_out_q ? 8'b00110011 : 8'b11001100;
           end
         endcase
+
+        narrowing_result_be = packed_narrowing_be(
+            unit_out_mask, vinsn_processing_q.vtype.vsew, narrowing_select_out_q
+        ) & narrowing_shuffle_be;
 
         // Check if we have a valid result and we can add it to the result queue
         if (unit_out_valid && !result_queue_full) begin
@@ -1844,10 +1894,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end else begin
             result_queue_d[result_queue_write_pnt_q].wdata = unit_out_result;
           end
-          if (!narrowing(vinsn_processing_q.cvt_resize) || !narrowing_select_out_q)
+          if (narrowing(vinsn_processing_q.cvt_resize)) begin
+            if (!narrowing_select_out_q)
+              result_queue_d[result_queue_write_pnt_q].be = narrowing_result_be;
+            else
+              result_queue_d[result_queue_write_pnt_q].be |= narrowing_result_be;
+          end else begin
             result_queue_d[result_queue_write_pnt_q].be =
               be(processed_element_cnt, vinsn_processing_q.vtype.vsew) &
-                (vinsn_processing_q.vm ? {StrbWidth{1'b1}} : unit_out_mask);
+                (vinsn_processing_q.vfu == VFU_MFpu ? unit_out_mask :
+                 (vinsn_processing_q.vm ? {StrbWidth{1'b1}} : unit_out_mask));
+          end
 
           result_queue_d[result_queue_write_pnt_q].mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
 

@@ -120,6 +120,21 @@ void TEST_CASE7(void) {
            8);
 }
 
+void TEST_CASE8(void) {
+  VSET(14, e64, m2);
+  VLOAD_8(v14, 1, 2, 0x83, 4, 5, 6, 0x87, 8, 9, 10, 0x8b, 12, 13, 14);
+  VLOAD_8(v0, 0xaa, 0xaa);
+  VLOAD_64(v8, 0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x107,
+           0x108, 0x109, 0x10a, 0x10b, 0x10c, 0x10d, 0x10e);
+  asm volatile(
+      "li t1, 5\n"
+      "csrw vstart, t1\n"
+      "vzext.vf8 v8, v14, v0.t\n"
+      ::: "t1");
+  VCMP_U64(16, v8, 0x101, 0x102, 0x103, 0x104, 0x105, 6, 0x107, 8,
+           0x109, 10, 0x10b, 12, 0x10d, 14);
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
@@ -131,6 +146,7 @@ int main(void) {
   TEST_CASE5();
   TEST_CASE6();
   TEST_CASE7();
+  TEST_CASE8();
 
   EXIT_CHECK();
 }

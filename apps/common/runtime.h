@@ -43,6 +43,11 @@ inline int64_t perf_time() {
 // will start counting, but simply that it will be able to start.
 #define HW_CNT_READY hw_cnt_en_reg = 1;
 #define HW_CNT_NOT_READY hw_cnt_en_reg = 0;
+#define HW_CNT_PHASE(phase)                                                   \
+  do {                                                                        \
+    hw_cnt_en_reg = 1ull | ((uint64_t)(phase) << 8);                          \
+    asm volatile("fence ow, ow" ::: "memory");                              \
+  } while (0)
 // Start and stop the counter
 inline void start_timer() { timer = -get_cycle_count(); }
 inline void stop_timer() { timer += get_cycle_count(); }
@@ -59,6 +64,7 @@ inline int64_t get_instret_counter() { return instret_counter; }
 #else
 #define HW_CNT_READY ;
 #define HW_CNT_NOT_READY ;
+#define HW_CNT_PHASE(phase) do { (void)(phase); } while (0)
 // Start and stop the counter
 inline void start_timer() {
   while (0)

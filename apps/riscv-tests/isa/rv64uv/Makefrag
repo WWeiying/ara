@@ -10,6 +10,8 @@ rv64uv_sc_tests = vaadd \
                   vasub \
                   vasubu \
                   vaverage_matrix \
+                  vfp_vstart_edges \
+                  vdiv_vstart_edges \
                   vmask_carry_tail_edges \
                   vmask_compare_edges \
                   vmask_logical_matrix \
@@ -25,6 +27,7 @@ rv64uv_sc_tests = vaadd \
                   vrgather_edges \
                   vsegment_emul_edges \
                   villegal_segment_recovery \
+                  villegal_vstart_ops \
                   vindexed_vstart_edges \
                   vunit_vstart_edges \
                   vwhole_vstart_edges \

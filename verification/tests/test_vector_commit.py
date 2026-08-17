@@ -6,10 +6,13 @@ from unittest import mock
 from ara_verify.spike_trace import SpikeCommit
 from ara_verify.vector_commit import (
     ArchActivity,
+    VectorCommitComparisonError,
+    VectorRetire,
     _advance_unknown_state,
     _architectural_compare_mask,
     _deshuffle_byte,
     _is_non_bit_exact_vector_result,
+    _map_spike_commits,
     _vector_scalar_source_unknown,
     compare_vector_commits,
     unobservable_vector_scalar_write_indices,
@@ -17,6 +20,71 @@ from ara_verify.vector_commit import (
 
 
 class VectorCommitComparisonTests(unittest.TestCase):
+    def test_spike_mapping_can_preserve_a_strict_prefix(self):
+        commits = [
+            SpikeCommit(
+                pc=0, instruction=0x57, gpr_writes={}, fpr_writes={},
+                vector_writes={}, csr_writes={}, memory_accesses=(),
+            )
+        ]
+        retires = {
+            1: VectorRetire(pc=0, instruction=0x57),
+            2: VectorRetire(pc=4, instruction=0x57),
+        }
+        with self.assertRaises(VectorCommitComparisonError):
+            _map_spike_commits(retires, commits)
+        self.assertEqual(
+            _map_spike_commits(retires, commits, allow_incomplete_tail=True),
+            {1: 0},
+        )
+
+    def test_vcpop_unknown_checks_only_active_source_and_predicate_bits(self):
+        commit = SpikeCommit(
+            pc=0, instruction=0x418827D7, gpr_writes={15: 0}, fpr_writes={},
+            vector_writes={}, csr_writes={}, memory_accesses=(), vector_sew=8,
+            vector_lmul="mf8", vector_vl=7, vector_vstart=0, vector_vtype=5,
+            vector_tail_agnostic=False, vector_mask_agnostic=False,
+        )
+        self.assertTrue(_vector_scalar_source_unknown(commit, {24: 1 << 3}))
+        self.assertTrue(_vector_scalar_source_unknown(commit, {0: 1 << 2}))
+        self.assertFalse(_vector_scalar_source_unknown(commit, {24: 1 << 7}))
+        self.assertFalse(
+            _vector_scalar_source_unknown(
+                commit, {24: 1 << 3}, {24: 0, 0: 0}
+            )
+        )
+        self.assertTrue(
+            _vector_scalar_source_unknown(
+                commit, {24: 1 << 3}, {24: 0, 0: 1 << 3}
+            )
+        )
+        unmasked = SpikeCommit(
+            **{**commit.__dict__, "instruction": commit.instruction | (1 << 25)}
+        )
+        self.assertFalse(_vector_scalar_source_unknown(unmasked, {0: 1 << 2}))
+
+    def test_vfirst_ignores_unknown_bits_after_a_definite_first_bit(self):
+        commit = SpikeCommit(
+            pc=0, instruction=0x4188A0D7, gpr_writes={1: 0}, fpr_writes={},
+            vector_writes={}, csr_writes={}, memory_accesses=(), vector_sew=8,
+            vector_lmul="mf8", vector_vl=7, vector_vstart=0, vector_vtype=5,
+            vector_tail_agnostic=False, vector_mask_agnostic=False,
+        )
+        # Source and predicate are definitely one at bit 0, so uncertainty at
+        # later bits cannot alter vfirst's scalar result.
+        self.assertFalse(
+            _vector_scalar_source_unknown(
+                commit, {24: 1 << 3}, {24: 1, 0: (1 << 0) | (1 << 3)}
+            )
+        )
+        # An uncertain effective bit before the first definite one can become
+        # the first match and therefore makes the result unobservable.
+        self.assertTrue(
+            _vector_scalar_source_unknown(
+                commit, {24: 1 << 1}, {24: 1 << 3, 0: (1 << 1) | (1 << 3)}
+            )
+        )
+
     def test_vector_scalar_unknown_is_checked_without_vrf_write_activity(self):
         producer = SpikeCommit(
             pc=0, instruction=0x57, gpr_writes={}, fpr_writes={},

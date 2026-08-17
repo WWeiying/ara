@@ -141,16 +141,16 @@ ifeq ($(LINUX),1)
 else
   ifeq ($(vec),1)
     RISCV_CCFLAGS  = $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dvec 
-    RISCV_LDFLAGS  = -static -nostdlib -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+    RISCV_LDFLAGS  = -static -nostdlib -nostartfiles -lm -Wl,--gc-sections -T$(LINKER_SCRIPT) \
     	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
   else
     ifeq ($(manual),1)
       RISCV_CCFLAGS  = $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99 -Dmanual
-      RISCV_LDFLAGS  = -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+      RISCV_LDFLAGS  = -static -nostartfiles -lm -Wl,--gc-sections -T$(LINKER_SCRIPT) \
       	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
     else
       RISCV_CCFLAGS  = $(RISCV_FLAGS) -ffunction-sections -fdata-sections -std=gnu99
-      RISCV_LDFLAGS  = -static -nostartfiles -lm -Wl,--gc-sections -T$(CURDIR)/common/link.ld \
+      RISCV_LDFLAGS  = -static -nostartfiles -lm -Wl,--gc-sections -T$(LINKER_SCRIPT) \
       	 -L/home/wangwy/openproject/ara/install/riscv-llvm/lib/generic/ -lclang_rt.builtins-riscv64
     endif
   endif
@@ -173,7 +173,7 @@ RISCV_CXXFLAGS = $(RISCV_FLAGS) -ffunction-sections -fdata-sections
 RISCV_FLAGS_GCC    = -mcmodel=medany -march=$(RISCV_ARCH) -mabi=$(RISCV_ABI) -I$(CURDIR)/common -static -O3 -ffast-math -fno-common -fno-builtin-printf $(DEFINES) $(RISCV_WARNINGS)
 RISCV_CCFLAGS_GCC  = $(RISCV_FLAGS_GCC) -std=gnu99
 RISCV_CXXFLAGS_GCC = $(RISCV_FLAGS_GCC)
-RISCV_LDFLAGS_GCC  = -static -nostartfiles -lm -lgcc $(RISCV_FLAGS_GCC) -std=gnu99 -T$(CURDIR)/common/link.ld
+RISCV_LDFLAGS_GCC  = -static -nostartfiles -lm -lgcc $(RISCV_FLAGS_GCC) -std=gnu99 -T$(LINKER_SCRIPT)
 
 ifeq ($(COMPILER),gcc)
 	RISCV_OBJDUMP_FLAGS =

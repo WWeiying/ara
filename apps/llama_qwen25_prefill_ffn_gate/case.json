@@ -1,0 +1,9 @@
+{
+  "case_id": "prefill_ffn_gate",
+  "phase": "prefill",
+  "operator": "blk_0_ffn_gate_weight",
+  "weight_type": "q4_K",
+  "k": 1536,
+  "rows": 8960,
+  "inputs": 15
+}

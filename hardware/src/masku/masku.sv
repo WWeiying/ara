@@ -1750,7 +1750,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           result_scalar_valid_d = 1'b1;
         end
 
-        if (!pe_req_i.vm && pe_req_i.vfu != VFU_MaskUnit &&
+        if (!pe_req_i.vm &&
+            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu}) &&
             pe_req_i.vstart != '0) begin
           read_cnt_d = (pe_req_i.vstart >= pe_req_i.vl)
                      ? '0
@@ -1863,7 +1864,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       end
       if (vinsn_queue_d.commit_cnt == '0) begin
         commit_cnt_d = pe_req_i.vl;
-        if (!pe_req_i.vm && pe_req_i.vfu != VFU_MaskUnit &&
+        if (!pe_req_i.vm &&
+            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu}) &&
             pe_req_i.vstart != '0) begin
           commit_cnt_d = (pe_req_i.vstart >= pe_req_i.vl)
                        ? '0

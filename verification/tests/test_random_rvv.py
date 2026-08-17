@@ -354,6 +354,10 @@ class RandomRvvCommandTests(unittest.TestCase):
              "TRACE_FAIL"),
             ("vector mismatch", 0, False, 0, False, "success", "MATCH", "valid",
              "MISMATCH", "VECTOR_MISMATCH"),
+            ("matched scalar cannot accept vector prefix", 0, False, 0, False,
+             "success", "MATCH", "valid", "PREFIX", "VECTOR_MISMATCH"),
+            ("shared unobservable prefix", 0, False, 0, False, "success", "PREFIX",
+             "valid", "PREFIX", "PASS"),
             ("all gates pass", 0, False, 0, False, "success", "MATCH", "valid", "PASS",
              "PASS"),
         ]
