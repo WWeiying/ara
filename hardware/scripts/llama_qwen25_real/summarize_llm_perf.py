@@ -36,7 +36,7 @@ def parse_rows(text: str) -> list[dict[str, str]]:
     return sorted(selected.values(), key=lambda row: PHASE_ORDER[row["phase"]])
 
 
-def ratio(numerator: str, denominator: str) -> str:
+def ratio(numerator: str | int, denominator: str | int) -> str:
     den = int(denominator)
     return "NA" if den == 0 else f"{int(numerator) / den:.9g}"
 
@@ -45,11 +45,53 @@ def add_derived(row: dict[str, str]) -> None:
     cycles = row["cycles"]
     row["req_per_cycle"] = ratio(row["req_fire_count"], cycles)
     row["elements_per_cycle"] = ratio(row["vector_element_count"], cycles)
+    # Legacy occupancy signal: at least one lane owns an in-flight instruction.
     row["lane_active_ratio"] = ratio(row["lane_active_cycles"], cycles)
     row["req_blocked_ratio"] = ratio(row["req_blocked_cycles"], cycles)
     row["avg_queue_occ"] = ratio(row["queue_occ_sum"], cycles)
     row["avg_inflight"] = ratio(row["inflight_occ_sum"], cycles)
     row["avg_read_outstanding"] = ratio(row["read_outstanding_occ_sum"], cycles)
+    if "lane_inflight_slot_cycles" not in row:
+        return
+
+    nr_lanes = int(row["nr_lanes"])
+    row["lane_any_inflight_ratio"] = row["lane_active_ratio"]
+    row["lane_inflight_slot_utilization"] = ratio(
+        row["lane_inflight_slot_cycles"], int(cycles) * nr_lanes
+    )
+    row["compute_active_ratio"] = ratio(row["compute_active_cycles"], cycles)
+    row["compute_lane_utilization"] = ratio(
+        row["compute_lane_slot_fires"], int(cycles) * nr_lanes
+    )
+    row["compute_unit_issues_per_cycle"] = ratio(row["compute_unit_lane_fires"], cycles)
+    row["alu_issue_utilization"] = ratio(
+        row["alu_exec_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["mfpu_issue_utilization"] = ratio(
+        row["mfpu_exec_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["int_mul_issue_utilization"] = ratio(
+        row["int_mul_exec_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["int_mac_issue_utilization"] = ratio(
+        row["int_mac_exec_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["fp_issue_utilization"] = ratio(
+        row["fp_exec_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["int_mac_elements_per_cycle"] = ratio(row["int_mac_element_count"], cycles)
+    row["int8_mac_peak_utilization"] = ratio(
+        row["int_mac_element_count"], int(cycles) * nr_lanes * 8
+    )
+    row["alu_result_writeback_utilization"] = ratio(
+        row["alu_result_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["mfpu_result_writeback_utilization"] = ratio(
+        row["mfpu_result_lane_fires"], int(cycles) * nr_lanes
+    )
+    row["compute_result_active_bytes_per_cycle"] = ratio(
+        int(row["alu_result_active_bytes"]) + int(row["mfpu_result_active_bytes"]), cycles
+    )
 
 
 def main() -> None:
@@ -63,8 +105,21 @@ def main() -> None:
         add_derived(row)
 
     preferred = [
-        "case", "phase", "cycles", "backend_busy_cycles", "lane_active_cycles",
-        "lane_active_ratio", "req_valid_cycles", "req_fire_count", "req_per_cycle",
+        "case", "phase", "nr_lanes", "cycles", "backend_busy_cycles", "lane_active_cycles",
+        "lane_active_ratio", "lane_any_inflight_ratio", "lane_inflight_slot_cycles",
+        "lane_inflight_slot_utilization", "compute_active_cycles", "compute_active_ratio",
+        "compute_lane_slot_fires", "compute_lane_utilization",
+        "compute_unit_lane_fires", "compute_unit_issues_per_cycle",
+        "alu_exec_active_cycles", "alu_exec_lane_fires", "alu_issue_utilization",
+        "mfpu_exec_active_cycles", "mfpu_exec_lane_fires", "mfpu_issue_utilization",
+        "int_mul_exec_lane_fires", "int_mul_issue_utilization",
+        "int_mac_exec_lane_fires", "int_mac_issue_utilization", "int_mac_element_count",
+        "int_mac_elements_per_cycle", "int8_mac_peak_utilization",
+        "int_div_exec_lane_fires", "fp_exec_lane_fires", "fp_issue_utilization",
+        "alu_result_lane_fires", "alu_result_writeback_utilization",
+        "mfpu_result_lane_fires", "mfpu_result_writeback_utilization",
+        "alu_result_active_bytes", "mfpu_result_active_bytes",
+        "compute_result_active_bytes_per_cycle", "req_valid_cycles", "req_fire_count", "req_per_cycle",
         "req_blocked_cycles", "req_blocked_ratio", "vector_element_count",
         "elements_per_cycle", "retired_inst_count", "retired_vector_inst_count",
         "retired_scalar_inst_count", "load_count", "load_unit_count", "load_strided_count",

@@ -1,0 +1,584 @@
+{
+  "name": "Ara request-to-execution diagnostic trace",
+  "clock": "/ara_tb/clk",
+  "edge": "posedge",
+  "raw_time_unit": "100fs",
+  "parameters": {
+    "lane": "0"
+  },
+  "default_groups": [
+    "control",
+    "sequencer",
+    "lane",
+    "compute",
+    "memory",
+    "monitor"
+  ],
+  "signals": [
+    {
+      "alias": "rst_n",
+      "path": "/ara_tb/rst_n",
+      "format": "b",
+      "required": false,
+      "group": "control"
+    },
+    {
+      "alias": "exit",
+      "path": "/ara_tb/exit",
+      "format": "h",
+      "required": true,
+      "group": "control"
+    },
+    {
+      "alias": "ara_req_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/ara_req_valid",
+      "format": "b",
+      "required": true,
+      "groups": ["sequencer", "monitor"]
+    },
+    {
+      "alias": "ara_req_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/ara_req_ready",
+      "format": "b",
+      "required": true,
+      "groups": ["sequencer", "monitor"]
+    },
+    {
+      "alias": "ara_idle",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/ara_idle",
+      "format": "b",
+      "required": false,
+      "groups": ["sequencer", "monitor"]
+    },
+    {
+      "alias": "sequencer_state",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/state_q",
+      "format": "b",
+      "required": false,
+      "groups": ["sequencer", "monitor"]
+    },
+    {
+      "alias": "pe_req_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/pe_req_valid",
+      "format": "b",
+      "required": true,
+      "group": "sequencer"
+    },
+    {
+      "alias": "pe_req_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/pe_req_ready",
+      "format": "b",
+      "required": false,
+      "group": "sequencer"
+    },
+    {
+      "alias": "hazard_table",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/global_hazard_table",
+      "format": "h",
+      "required": false,
+      "group": "sequencer"
+    },
+    {
+      "alias": "vinsn_running",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/vinsn_running_q",
+      "format": "b",
+      "required": false,
+      "group": "sequencer"
+    },
+    {
+      "alias": "vinsn_slots_full",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/vinsn_running_full",
+      "format": "b",
+      "required": false,
+      "group": "sequencer"
+    },
+    {
+      "alias": "lane_desync_stall",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/stall_lanes_desynch",
+      "format": "b",
+      "required": false,
+      "group": "sequencer"
+    },
+    {
+      "alias": "lane_pe_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_lane_sequencer/pe_req_valid",
+      "format": "b",
+      "required": false,
+      "group": "lane"
+    },
+    {
+      "alias": "lane_pe_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_lane_sequencer/pe_req_ready",
+      "format": "b",
+      "required": false,
+      "group": "lane"
+    },
+    {
+      "alias": "operand_req_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_lane_sequencer/operand_request_valid_o",
+      "format": "b",
+      "required": false,
+      "group": "lane"
+    },
+    {
+      "alias": "operand_req_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_lane_sequencer/operand_request_ready_i",
+      "format": "b",
+      "required": false,
+      "group": "lane"
+    },
+    {
+      "alias": "alu_operand_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/alu_operand_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "alu_operand_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/alu_operand_ready",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mfpu_operand_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/mfpu_operand_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mfpu_operand_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/mfpu_operand_ready",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "alu_exec_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_valu/valu_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mul_exec_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vmul_in_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mul_exec_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vmul_in_ready",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "div_exec_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vdiv_in_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "div_exec_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vdiv_in_ready",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "fp_exec_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vfpu_in_valid",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "fp_exec_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/i_vfus/i_vmfpu/vfpu_in_ready",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "alu_result_req",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/alu_result_req",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "alu_result_gnt",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/alu_result_gnt",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mfpu_result_req",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/mfpu_result_req",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "mfpu_result_gnt",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/gen_lanes[{lane}]/i_lane/mfpu_result_gnt",
+      "format": "b",
+      "required": false,
+      "group": "compute"
+    },
+    {
+      "alias": "addrgen_req_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/axi_addrgen_req_valid",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "ld_addrgen_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/ldu_axi_addrgen_req_ready",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "st_addrgen_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/stu_axi_addrgen_req_ready",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "axi_ar_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/i_addrgen/axi_ar_valid_o",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "axi_ar_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/i_addrgen/axi_ar_ready_i",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "axi_aw_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/i_addrgen/axi_aw_valid_o",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "axi_aw_ready",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/i_addrgen/axi_aw_ready_i",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "axi_r_valid",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_vlsu/i_vldu/axi_r_valid_i",
+      "format": "b",
+      "required": false,
+      "group": "memory"
+    },
+    {
+      "alias": "perf_active",
+      "path": "/ara_tb/i_llm_perf_monitor/active_i",
+      "format": "b",
+      "required": true,
+      "group": "monitor"
+    },
+    {
+      "alias": "phase",
+      "path": "/ara_tb/i_llm_perf_monitor/phase_i",
+      "format": "h",
+      "required": true,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_op",
+      "path": "/ara_tb/i_llm_perf_monitor/req_op_i",
+      "format": "h",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vl",
+      "path": "/ara_tb/i_llm_perf_monitor/req_vl_i",
+      "format": "u",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vsew",
+      "path": "/ara_tb/i_llm_perf_monitor/req_vsew_i",
+      "format": "u",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vd",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.vd[4:0]",
+      "format": "u",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vs1",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.vs1[4:0]",
+      "format": "u",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vs2",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.vs2[4:0]",
+      "format": "u",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_use_vs1",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.use_vs1",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_use_vs2",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.use_vs2",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_use_vd",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.use_vd",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_use_vd_op",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.use_vd_op",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_vm",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.vm",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "req_arch_insn",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/ara_req_i.verify_arch_insn[31:0]",
+      "format": "h",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "raw_hazard",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/raw_hazard",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "war_hazard",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/war_hazard",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "waw_hazard",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/waw_hazard",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "sequencer_hazard_block",
+      "path": "/ara_tb/dut/i_ara_soc/i_system/i_ara/i_sequencer/sequencer_block",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "queue_occ",
+      "path": "/ara_tb/i_llm_perf_monitor/queue_occ_i",
+      "format": "h",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "queue_ready",
+      "path": "/ara_tb/i_llm_perf_monitor/queue_ready_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "monitor_vinsn_running",
+      "path": "/ara_tb/i_llm_perf_monitor/vinsn_running_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "lane_inflight",
+      "path": "/ara_tb/i_llm_perf_monitor/lane_inflight_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "alu_exec_fire_vec",
+      "path": "/ara_tb/i_llm_perf_monitor/alu_exec_fire_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "int_mac_fire_vec",
+      "path": "/ara_tb/i_llm_perf_monitor/int_mac_exec_fire_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "fp_exec_fire_vec",
+      "path": "/ara_tb/i_llm_perf_monitor/fp_exec_fire_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "alu_result_fire_vec",
+      "path": "/ara_tb/i_llm_perf_monitor/alu_result_fire_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "mfpu_result_fire_vec",
+      "path": "/ara_tb/i_llm_perf_monitor/mfpu_result_fire_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "queue_resource_block",
+      "path": "/ara_tb/i_llm_perf_monitor/queue_resource_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "no_vid_block",
+      "path": "/ara_tb/i_llm_perf_monitor/no_vid_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "lane_desync_block",
+      "path": "/ara_tb/i_llm_perf_monitor/lane_desync_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "operand_block",
+      "path": "/ara_tb/i_llm_perf_monitor/operand_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "mask_block",
+      "path": "/ara_tb/i_llm_perf_monitor/mask_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "slide_block",
+      "path": "/ara_tb/i_llm_perf_monitor/slide_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "hazard_block",
+      "path": "/ara_tb/i_llm_perf_monitor/hazard_block_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    },
+    {
+      "alias": "scalar_result_wait",
+      "path": "/ara_tb/i_llm_perf_monitor/scalar_result_wait_i",
+      "format": "b",
+      "required": false,
+      "group": "monitor"
+    }
+  ],
+  "derived": [
+    {
+      "alias": "ara_req_fire",
+      "op": "and",
+      "inputs": ["ara_req_valid", "ara_req_ready"]
+    },
+    {
+      "alias": "lane_pe_fire",
+      "op": "and",
+      "inputs": ["lane_pe_valid", "lane_pe_ready"]
+    },
+    {
+      "alias": "mul_exec_fire",
+      "op": "and",
+      "inputs": ["mul_exec_valid", "mul_exec_ready"]
+    },
+    {
+      "alias": "div_exec_fire",
+      "op": "and",
+      "inputs": ["div_exec_valid", "div_exec_ready"]
+    },
+    {
+      "alias": "fp_exec_fire",
+      "op": "and",
+      "inputs": ["fp_exec_valid", "fp_exec_ready"]
+    },
+    {
+      "alias": "alu_result_fire",
+      "op": "and",
+      "inputs": ["alu_result_req", "alu_result_gnt"]
+    },
+    {
+      "alias": "mfpu_result_fire",
+      "op": "and",
+      "inputs": ["mfpu_result_req", "mfpu_result_gnt"]
+    },
+    {
+      "alias": "axi_ar_fire",
+      "op": "and",
+      "inputs": ["axi_ar_valid", "axi_ar_ready"]
+    },
+    {
+      "alias": "axi_aw_fire",
+      "op": "and",
+      "inputs": ["axi_aw_valid", "axi_aw_ready"]
+    }
+  ]
+}

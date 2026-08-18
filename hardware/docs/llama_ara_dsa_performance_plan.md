@@ -20,6 +20,29 @@
 - `attn_q` 和 `ffn_gate` 使用 Q4_K 权重；`ffn_down` 使用 Q6_K 权重。
 - 输入、权重、输出和 golden 均来自真实 QEMU/llama.cpp 捕获，而不是随机生成。
 
+### 1.1 技术实施大纲
+
+LLM 的主要计算负载是量化矩阵计算：Decode 以矩阵乘向量（GEMV）为主，Prefill 以矩阵乘矩阵（GEMM）为主。Ara 上的 DSA 优化按以下顺序推进：
+
+1. 用真实 Qwen2.5 数据建立 Q4_K/Q6_K GEMV、GEMM 的标准 RVV 基线。
+2. 先完成面向 `VLEN=1024` 的软件优化，包括权重 repack、多输出 GEMV 和多输入 GEMM，确定标准 RVV 的性能上限。
+3. 利用分阶段计数器判断主要开销来自量化解包、低位宽乘加、归约、缩放、重复读取还是内存等待。
+4. 首先设计最小且可复用的量化融合运算，融合 Q4_K/Q6_K 解包、Q8 乘加和 INT32 累加，不把完整 GGML 数据结构固化进 ISA。
+5. 在此基础上增加多输出 tile：一份 activation 同时服务多行权重，并在 DSA 内保持多个累加器，优先加速 Decode GEMV。
+6. 将同一 tile 数据通路扩展为多输入、多输出计算，通过复用权重支持 Prefill GEMM。
+7. 配套设计权重与 activation 缓冲、元数据解析、缩放、连续 burst、双缓冲和结果写回。
+8. 通过自定义指令或命令接口接入 Ara，明确 backpressure、完成、异常和内存顺序；不支持的形状和类型继续走标准 RVV。
+9. 在 ggml 模型加载阶段执行权重 repack，运行时依据量化类型与 M/N/K 选择 RVV 或 DSA kernel。
+10. 使用相同真实输入和 golden 比较原始 RVV、`VLEN=1024` RVV、多输出 RVV 与 DSA，并同时报告周期、总线流量、利用率、面积和功耗。
+
+首个硬件目标应为 `Q4_K x Q8_K` 多输出 Decode GEMV，其核心路径为：
+
+```text
+读取量化块 -> 解包 -> 低位宽乘加 -> 多输出累加 -> 缩放/反量化 -> 写回
+```
+
+完成该路径并确认收益后，再补充 Q6_K 和 Prefill GEMM，避免在缺少基线数据时直接设计过大的专用引擎。
+
 ## 2. 从进迭时空实现得到的约束
 
 进迭时空的主要优化层级不是单独替换 `ggml_vec_dot_q4_K_q8_K()`，而是替换完整的 `GGML_OP_MUL_MAT` 执行路径：
@@ -74,7 +97,7 @@ llm_perf_report_<TESTCASE>.log
 
 - `cycles`：该观测区间的周期数。
 - `backend_busy_cycles`：Ara sequencer 非 idle 的周期数。
-- `lane_active_cycles`：至少一个 lane 的 ALU/MFPU operand handshake 活跃的周期数。
+- `lane_active_cycles`：至少一个 lane 持有尚未完成的向量指令的周期数。该计数包含执行、等待操作数和等待写回等状态，是在飞占用而非计算利用率。
 - `req_valid_cycles`：dispatcher 对 sequencer 保持有效请求的周期数。
 - `req_fire_count`：dispatcher 与 sequencer 完成握手的请求数。该数不包含只在 CVA6 内完成的 `vset*`。
 - `req_blocked_cycles`：请求有效但 sequencer 未接收的周期数。
@@ -88,11 +111,51 @@ llm_perf_report_<TESTCASE>.log
 ```text
 req_per_cycle       = req_fire_count / cycles
 elements_per_cycle  = vector_element_count / cycles
-lane_active_ratio   = lane_active_cycles / cycles
+lane_any_inflight_ratio = lane_active_cycles / cycles
 req_blocked_ratio   = req_blocked_cycles / cycles
 ```
 
-### 4.2 向量操作类别
+旧 CSV 字段 `lane_active_ratio` 为兼容已有数据而保留，其严格含义与
+`lane_any_inflight_ratio` 相同，不能解释为 ALU、MFPU 或全部 lane 的真实计算利用率。
+
+### 4.2 Lane 执行和结果写回
+
+以下计数直接来自功能单元的执行或结果握手，不由“指令仍在飞”近似：
+
+- `lane_inflight_slot_cycles`：逐周期活跃 lane 数之和；一个周期四个 lane 均有在飞指令时累加 4。
+- `compute_active_cycles`：至少一个 lane 的 ALU、整数乘除或 FP pipeline 真正发射微操作的周期数。
+- `compute_lane_slot_fires`：每周期至少发射一个计算微操作的 lane 数之和；同一 lane 同周期 ALU 和 MFPU 都发射时仍只计一个 lane slot。
+- `compute_unit_lane_fires`：所有 ALU/MFPU 执行发射数之和；同一 lane 同周期两个单元均发射时计 2。
+- `alu_exec_active_cycles/alu_exec_lane_fires`：ALU 至少一个 lane 发射的周期数，以及所有 lane 的64-bit ALU微操作发射总数。事件为 `valu_valid`，此时完整操作数和必要 mask 已经就绪，ALU 正在计算。
+- `mfpu_exec_active_cycles/mfpu_exec_lane_fires`：MFPU 至少一个 lane 发射的周期数，以及整数乘法、整数除法和 FP pipeline 输入握手的总数。
+- `int_mul_exec_lane_fires`：整数乘法流水线的 `valid && ready` 输入握手数，包括普通乘法与整数 MAC。
+- `int_mac_exec_lane_fires`：上述整数乘法发射中操作为 `VMACC/VNMSAC/VMADD/VNMSUB` 的子集。
+- `int_mac_element_count`：整数 MAC 发射时根据实际 `issue_be` 和 SEW 计算的有效元素数，已经排除 tail、predicate 和 `vstart` 抑制的元素。
+- `int_div_exec_lane_fires/fp_exec_lane_fires`：整数除法与 FP pipeline 的真实输入握手数。
+- `alu_result_lane_fires/mfpu_result_lane_fires`：ALU/MFPU 结果请求被 VRF 写回端接受的 lane 次数；mask-unit 内部结果不属于 VRF 写回，不计入该项。
+- `alu_result_active_bytes/mfpu_result_active_bytes`：上述成功写回结果中 byte enable 置位数之和。
+
+推荐派生：
+
+```text
+lane_inflight_slot_utilization = lane_inflight_slot_cycles / (cycles * NrLanes)
+compute_active_ratio           = compute_active_cycles / cycles
+compute_lane_utilization       = compute_lane_slot_fires / (cycles * NrLanes)
+alu_issue_utilization          = alu_exec_lane_fires / (cycles * NrLanes)
+mfpu_issue_utilization         = mfpu_exec_lane_fires / (cycles * NrLanes)
+int_mac_issue_utilization      = int_mac_exec_lane_fires / (cycles * NrLanes)
+int_mac_elements_per_cycle     = int_mac_element_count / cycles
+int8_mac_peak_utilization      = int_mac_element_count / (cycles * NrLanes * 8)
+compute_result_active_bytes_per_cycle =
+    (alu_result_active_bytes + mfpu_result_active_bytes) / cycles
+```
+
+`compute_lane_utilization` 是通用的“lane 正在真实发射计算”比例；
+`int_mac_issue_utilization` 是整数 MAC 流水线 lane-slot 利用率；
+`int8_mac_peak_utilization` 则以每个64-bit lane 每周期最多处理8个 INT8 元素为峰值。
+后者适合 INT8 MAC 主导区间，不应拿去描述 FP32、不同 SEW 混合或非 MAC 工作负载。
+
+### 4.3 向量操作类别
 
 以下计数均以 Ara request fire 为事件，统计后端实际接受的请求：
 
@@ -114,7 +177,7 @@ req_blocked_ratio   = req_blocked_cycles / cycles
 
 注意：`bitwise_count` 和 `shift_count` 只能说明低比特解包相关操作的活动强度，不能严格命名为 “Q4 unpack 指令数”。相同操作也可能服务于量化、地址处理或其他算法。
 
-### 4.3 向量访存和 AXI
+### 4.4 向量访存和 AXI
 
 - `unit_load_span_bytes/unit_store_span_bytes`：已接收 unit-stride 请求的 `vl × element_bytes × (nf+1)` 之和。
 - `masked_mem_count`：`vm=0` 的向量访存请求数。
@@ -129,7 +192,7 @@ req_blocked_ratio   = req_blocked_cycles / cycles
 
 `unit_*_span_bytes` 是架构访问跨度，不是 masked load/store 的精确有效字节；`axi_r_bus_bytes` 是总线槽位流量，也不等于 cache line 中被算法真正使用的字节。两者结合使用可以识别过取数和布局浪费。
 
-### 4.4 队列和在飞请求
+### 4.5 队列和在飞请求
 
 - `queue_occ_sum/queue_occ_max`：七类 VFU instruction queue 占用总和的周期积分和峰值。
 - `queue_full_cycles`：至少一个 VFU queue 达到容量的周期数。
@@ -145,7 +208,7 @@ avg_inflight   = inflight_occ_sum / cycles
 
 operand handshake 反映执行端口消费输入的活动量，不等价于完成的向量元素数或 MAC 数。
 
-### 4.5 阻塞活动签名
+### 4.6 阻塞活动签名
 
 - `queue_resource_block_cycles`：请求未接收且目标 VFU queue 不能 issue。
 - `no_vid_block_cycles`：没有可分配 vector instruction ID。
@@ -190,8 +253,35 @@ Prefill 的 M>1，优先观察：
 - `pack_cycles` 相对总周期的比例；
 - 同一 weight tile 是否被多个输入复用；
 - 单位输出的 `axi_r_bus_bytes` 是否下降；
-- 32×4 内核的 lane active ratio 和 MFPU operand fires 是否提升；
+- 32×4 内核的 `compute_lane_utilization`、`int_mac_issue_utilization` 和实际 MAC 元素吞吐是否提升；
 - M 继续增大时，是算力、寄存器压力还是内存带宽先饱和。
+
+### 5.4 RTL 快速相对评估集
+
+完整 `M=15` Prefill 和 Q6_K FFN-down 在 RTL 仿真中的墙钟时间过长。日常 DSA
+迭代使用下列真实数据子矩阵，完整规模只用于最终确认：
+
+| case | M | N（输出行） | K | 权重量化 | 保留机制 |
+| --- | ---: | ---: | ---: | --- | --- |
+| `decode_attn_q_eval` | 1 | 1536 | 1536 | Q4_K | 完整 Attention-Q Decode GEMV |
+| `decode_ffn_gate_eval` | 1 | 4096 | 1536 | Q4_K | 32-output Decode GEMV 与 FFN 宽输出 |
+| `decode_ffn_down_eval` | 1 | 256 | 8960 | Q6_K | 完整长 K、Q6 解包与单输出归约 |
+| `prefill_attn_q_eval` | 4 | 1536 | 1536 | Q4_K | 一个完整 `32x4` GEMM 输入 tile |
+| `prefill_ffn_gate_eval` | 4 | 4096 | 1536 | Q4_K | 32x4 GEMM 与较宽 FFN 输出 |
+| `prefill_ffn_down_eval` | 4 | 64 | 8960 | Q6_K | 长 K、四输入及两个 32-row 输出组 |
+
+裁剪只作用于彼此独立的输入 token 和输出行，K、量化 block、scale/metadata、内核
+控制流和真实数值均保持不变。Q4_K 的 N 始终为 32 的整数倍，Prefill 的 M 固定为
+4，以完整覆盖当前 repacked `32x4` 路径。生成器先校验完整 capture，再分别裁剪：
+
+- 权重取原始矩阵前 N 行，然后执行 Q4_K x32 repack；
+- activation 取前 M 个完整 K 向量；
+- golden 按原始 N stride 对每个 token 独立提取前 N 个结果，不能直接截取文件前缀；
+- `provenance.json` 保存原始 `capture_rows/capture_inputs`、评估 slice、字节数与 SHA-256。
+
+该评估集用于比较相同 shape 下的 `cycles/output`、`cycles/MAC`、总线字节、请求数、
+利用率和 DSA speedup。它不应直接替代完整模型端到端延迟；在 DSA 方案确定后，仍需
+用至少一个完整规模点检查固定开销和线性外推。
 
 ## 6. 用数据选择硬件方向
 
@@ -224,7 +314,7 @@ Prefill 的 M>1，优先观察：
 
 - `axi_r_bus_bytes` 仍明显高于理论权重和 activation 流量；
 - AR stall 高或 outstanding 深度不足；
-- lane active ratio 低但 backend busy 高；
+- `compute_lane_utilization` 低但 `backend_busy_cycles/cycles` 高；
 
 则应先优化 repack、burst、双缓冲或局部 SRAM/TCM，而不是增加 MAC。局部存储需要分别统计 weight bytes、activation bytes、metadata bytes、scratchpad hit/miss 和 DMA stall，不能只看总 AXI 字节。
 
@@ -299,4 +389,24 @@ make llama_real_sum \
   output=llama_qwen25_decode_attn_q.result.csv
 ```
 
-阶段 CSV 一行对应一个 phase，并自动给出 `req_per_cycle`、`elements_per_cycle`、`lane_active_ratio`、`avg_queue_occ`、`avg_inflight` 和 `avg_read_outstanding`。分析时应始终保留原始计数，避免只凭归一化比例下结论。
+阶段 CSV 一行对应一个 phase，并自动给出请求吞吐、在飞占用、真实计算发射、整数 MAC、结果写回、队列占用和 AXI outstanding 等派生比例。分析时应始终保留原始计数，避免只凭归一化比例下结论；尤其不能把兼容字段 `lane_active_ratio` 当成功能单元利用率。
+
+快速评估集使用一份仿真模板和六个独立运行目录：
+
+```bash
+cd /home/wangwy/openproject/ara_dsa
+
+# 列出、构建并在 Spike 上验证单个 eval case
+make -C hardware llama_real_eval_list
+make -C hardware llama_real_build case=decode_attn_q_eval
+make -C hardware llama_real_spike case=decode_attn_q_eval
+
+# RTL 只编译一次，然后六路独立后台运行
+make -C hardware llama_real_eval_compile
+make -C hardware llama_real_eval_parallel
+make -C hardware llama_real_eval_status
+```
+
+最新运行目录由 `hardware/llama_eval_runs/latest` 指向。每个 case 独立保存
+`run.vcs.log`、`perf_report_*`、`llm_perf_report_*`、`result.csv`、`metrics.csv`、
+`exit_code` 和 `status`，不会复用或覆盖 `hardware/sim_l2_16m` 中的旧结果。

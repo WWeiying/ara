@@ -33,6 +33,44 @@ def link_or_copy(source: Path, destination: Path) -> None:
         shutil.copy2(source, destination)
 
 
+def copy_prefix(source: Path, destination: Path, size: int) -> None:
+    if source.stat().st_size == size:
+        link_or_copy(source, destination)
+        return
+    destination.unlink(missing_ok=True)
+    with source.open("rb") as source_handle, destination.open("wb") as destination_handle:
+        remaining = size
+        while remaining:
+            chunk = source_handle.read(min(remaining, 1024 * 1024))
+            if not chunk:
+                raise SystemExit(f"short source while cropping {source}")
+            destination_handle.write(chunk)
+            remaining -= len(chunk)
+
+
+def crop_golden(
+    source: Path,
+    destination: Path,
+    rows: int,
+    inputs: int,
+    capture_rows: int,
+    capture_inputs: int,
+) -> None:
+    if rows == capture_rows and inputs == capture_inputs:
+        link_or_copy(source, destination)
+        return
+    destination.unlink(missing_ok=True)
+    source_row_bytes = capture_rows * 4
+    output_row_bytes = rows * 4
+    with source.open("rb") as source_handle, destination.open("wb") as destination_handle:
+        for input_index in range(inputs):
+            source_handle.seek(input_index * source_row_bytes)
+            chunk = source_handle.read(output_row_bytes)
+            if len(chunk) != output_row_bytes:
+                raise SystemExit(f"short golden tensor while cropping {source}")
+            destination_handle.write(chunk)
+
+
 def require_tensor(path: Path, expected_bytes: int) -> dict:
     meta_path = path.with_suffix(".json")
     if not path.is_file() or not meta_path.is_file():
@@ -45,6 +83,17 @@ def require_tensor(path: Path, expected_bytes: int) -> dict:
             f"expected={expected_bytes}"
         )
     return meta
+
+
+def require_shape(name: str, metadata: dict, expected: tuple[int, int]) -> None:
+    shape = metadata.get("shape")
+    if not isinstance(shape, list) or len(shape) < 2:
+        raise SystemExit(f"missing shape metadata for {name}")
+    actual = (int(shape[0]), int(shape[1]))
+    if actual != expected:
+        raise SystemExit(
+            f"shape mismatch for {name}: actual={actual}, expected={expected}"
+        )
 
 
 def repack_q4_x32(source: Path, destination: Path, k: int, rows: int) -> None:
@@ -99,29 +148,51 @@ def main() -> None:
     k = int(spec["k"])
     rows = int(spec["rows"])
     inputs = int(spec["inputs"])
+    capture_rows = int(spec.get("capture_rows", rows))
+    capture_inputs = int(spec.get("capture_inputs", inputs))
     weight_type = spec["weight_type"]
+    if k <= 0 or k % QK_K != 0:
+        raise SystemExit(f"K must be a positive multiple of {QK_K}: {k}")
+    if rows <= 0 or rows > capture_rows:
+        raise SystemExit(f"invalid row slice: rows={rows}, capture_rows={capture_rows}")
+    if inputs <= 0 or inputs > capture_inputs:
+        raise SystemExit(
+            f"invalid input slice: inputs={inputs}, capture_inputs={capture_inputs}"
+        )
+    if weight_type == "q4_K" and rows % 32 != 0:
+        raise SystemExit("Q4_K evaluation rows must be a multiple of 32")
     weight_name = f"weight_{weight_type}.bin"
     weight_path = source_dir / weight_name
     activation_path = source_dir / "activation_f32.bin"
     golden_path = source_dir / "output_f32.bin"
 
     weight_block_bytes = 144 if weight_type == "q4_K" else 210
-    weight_bytes = rows * (k // QK_K) * weight_block_bytes
+    row_weight_bytes = (k // QK_K) * weight_block_bytes
+    capture_weight_bytes = capture_rows * row_weight_bytes
+    capture_activation_bytes = capture_inputs * k * 4
+    capture_golden_bytes = capture_inputs * capture_rows * 4
+    weight_bytes = rows * row_weight_bytes
     activation_bytes = inputs * k * 4
     golden_bytes = inputs * rows * 4
     metadata = {
-        "weight": require_tensor(weight_path, weight_bytes),
-        "activation": require_tensor(activation_path, activation_bytes),
-        "golden": require_tensor(golden_path, golden_bytes),
+        "weight": require_tensor(weight_path, capture_weight_bytes),
+        "activation": require_tensor(activation_path, capture_activation_bytes),
+        "golden": require_tensor(golden_path, capture_golden_bytes),
     }
+    require_shape("weight", metadata["weight"], (k, capture_rows))
+    require_shape("activation", metadata["activation"], (k, capture_inputs))
+    require_shape("golden", metadata["golden"], (capture_rows, capture_inputs))
 
-    materialized = {
-        "source_weight.bin": weight_path,
-        "activation_f32.bin": activation_path,
-        "golden_f32.bin": golden_path,
-    }
-    for name, source in materialized.items():
-        link_or_copy(source, generated / name)
+    copy_prefix(weight_path, generated / "source_weight.bin", weight_bytes)
+    copy_prefix(activation_path, generated / "activation_f32.bin", activation_bytes)
+    crop_golden(
+        golden_path,
+        generated / "golden_f32.bin",
+        rows,
+        inputs,
+        capture_rows,
+        capture_inputs,
+    )
 
     embedded_weight = generated / "embedded_weight.bin"
     if weight_type == "q4_K":
@@ -144,6 +215,12 @@ def main() -> None:
         "k": k,
         "rows": rows,
         "inputs": inputs,
+        "capture_rows": capture_rows,
+        "capture_inputs": capture_inputs,
+        "evaluation_slice": {
+            "output_rows": [0, rows],
+            "input_rows": [0, inputs],
+        },
         "embedded_weight_layout": embedded_layout,
         "runtime_timed_region": "F32_to_Q8_K_plus_quantized_matmul",
         "runtime_setup_cycles": 0,
@@ -154,7 +231,7 @@ def main() -> None:
         "tensors": {},
         "captured_metadata": metadata,
     }
-    for name in materialized:
+    for name in ("source_weight.bin", "activation_f32.bin", "golden_f32.bin"):
         path = generated / name
         provenance["tensors"][name] = {
             "bytes": path.stat().st_size,

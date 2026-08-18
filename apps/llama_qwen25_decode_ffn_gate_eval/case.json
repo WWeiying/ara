@@ -1,0 +1,11 @@
+{
+  "case_id": "decode_ffn_gate_eval",
+  "phase": "decode",
+  "operator": "blk_0_ffn_gate_weight",
+  "weight_type": "q4_K",
+  "k": 1536,
+  "rows": 4096,
+  "inputs": 1,
+  "capture_rows": 8960,
+  "capture_inputs": 1
+}

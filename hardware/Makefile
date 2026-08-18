@@ -164,7 +164,7 @@ ifeq ($(no_fsdb), 1)
 APP += +NO_FSDB
 endif
 
-.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum
+.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum
 
 # Bender
 bender: $(BENDER)
@@ -242,6 +242,21 @@ llama_real_list:
 	@printf '%s\n' \
 		decode_attn_q decode_ffn_gate decode_ffn_down \
 		prefill_attn_q prefill_ffn_gate prefill_ffn_down
+
+llama_real_eval_list:
+	@printf '%s\n' \
+		decode_attn_q_eval decode_ffn_gate_eval decode_ffn_down_eval \
+		prefill_attn_q_eval prefill_ffn_gate_eval prefill_ffn_down_eval
+
+llama_real_eval_compile:
+	@$(MAKE) compile sim_l2_mb=$(large_l2_mb) \
+		sim_dir=sim_llama_eval_$(large_l2_mb)m_template no_fsdb=1
+
+llama_real_eval_parallel:
+	@./scripts/llama_qwen25_real/run_eval_parallel.sh
+
+llama_real_eval_status:
+	@./scripts/llama_qwen25_real/eval_status.sh
 
 llama_real_build:
 	@test -f "../apps/llama_qwen25_$(case)/case.json" || { \

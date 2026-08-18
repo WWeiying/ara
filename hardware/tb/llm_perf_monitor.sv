@@ -28,8 +28,19 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
 
     input logic ara_idle_i,
     input logic lane_active_i,
+    input logic [NrLanes-1:0] lane_inflight_i,
     input logic [NrLanes-1:0][1:0] lane_alu_operand_fire_i,
     input logic [NrLanes-1:0][2:0] lane_mfpu_operand_fire_i,
+    input logic [NrLanes-1:0] alu_exec_fire_i,
+    input logic [NrLanes-1:0] int_mul_exec_fire_i,
+    input logic [NrLanes-1:0] int_mac_exec_fire_i,
+    input logic [NrLanes-1:0][3:0] int_mul_exec_elements_i,
+    input logic [NrLanes-1:0] int_div_exec_fire_i,
+    input logic [NrLanes-1:0] fp_exec_fire_i,
+    input logic [NrLanes-1:0] alu_result_fire_i,
+    input logic [NrLanes-1:0] mfpu_result_fire_i,
+    input logic [NrLanes-1:0][7:0] alu_result_be_i,
+    input logic [NrLanes-1:0][7:0] mfpu_result_be_i,
 
     input logic [NrVFUs-1:0][QueueCountWidth-1:0] queue_occ_i,
     input logic [NrVFUs-1:0] queue_ready_i,
@@ -133,6 +144,23 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
     logic [63:0] scalar_result_wait_cycles;
     logic [63:0] lane_alu_operand_fires;
     logic [63:0] lane_mfpu_operand_fires;
+    logic [63:0] lane_inflight_slot_cycles;
+    logic [63:0] compute_active_cycles;
+    logic [63:0] compute_lane_slot_fires;
+    logic [63:0] compute_unit_lane_fires;
+    logic [63:0] alu_exec_active_cycles;
+    logic [63:0] alu_exec_lane_fires;
+    logic [63:0] mfpu_exec_active_cycles;
+    logic [63:0] mfpu_exec_lane_fires;
+    logic [63:0] int_mul_exec_lane_fires;
+    logic [63:0] int_mac_exec_lane_fires;
+    logic [63:0] int_mac_element_count;
+    logic [63:0] int_div_exec_lane_fires;
+    logic [63:0] fp_exec_lane_fires;
+    logic [63:0] alu_result_lane_fires;
+    logic [63:0] mfpu_result_lane_fires;
+    logic [63:0] alu_result_active_bytes;
+    logic [63:0] mfpu_result_active_bytes;
   } llm_perf_t;
 
   llm_perf_t stats_q [NumPhases];
@@ -175,6 +203,20 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
     logic [63:0] inflight_occ;
     logic [63:0] alu_fires;
     logic [63:0] mfpu_fires;
+    logic [63:0] lane_inflight_slots;
+    logic [63:0] alu_exec_fires;
+    logic [63:0] int_mul_exec_fires;
+    logic [63:0] int_mac_exec_fires;
+    logic [63:0] int_mac_elements;
+    logic [63:0] int_div_exec_fires;
+    logic [63:0] fp_exec_fires;
+    logic [NrLanes-1:0] mfpu_exec_fire;
+    logic [NrLanes-1:0] compute_lane_fire;
+    logic [63:0] mfpu_exec_fires;
+    logic [63:0] alu_result_fires;
+    logic [63:0] mfpu_result_fires;
+    logic [63:0] alu_result_bytes;
+    logic [63:0] mfpu_result_bytes;
     logic [63:0] memory_span;
     logic [63:0] read_outstanding_next;
 
@@ -190,6 +232,28 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
     inflight_occ = $countones(vinsn_running_i);
     alu_fires = $countones(lane_alu_operand_fire_i);
     mfpu_fires = $countones(lane_mfpu_operand_fire_i);
+    lane_inflight_slots = $countones(lane_inflight_i);
+    alu_exec_fires = $countones(alu_exec_fire_i);
+    int_mul_exec_fires = $countones(int_mul_exec_fire_i);
+    int_mac_exec_fires = $countones(int_mac_exec_fire_i);
+    int_div_exec_fires = $countones(int_div_exec_fire_i);
+    fp_exec_fires = $countones(fp_exec_fire_i);
+    mfpu_exec_fire = int_mul_exec_fire_i | int_div_exec_fire_i | fp_exec_fire_i;
+    compute_lane_fire = alu_exec_fire_i | mfpu_exec_fire;
+    mfpu_exec_fires = $countones(mfpu_exec_fire);
+    alu_result_fires = $countones(alu_result_fire_i);
+    mfpu_result_fires = $countones(mfpu_result_fire_i);
+    int_mac_elements = '0;
+    alu_result_bytes = '0;
+    mfpu_result_bytes = '0;
+    for (int unsigned lane = 0; lane < NrLanes; lane++) begin
+      if (int_mac_exec_fire_i[lane])
+        int_mac_elements += int_mul_exec_elements_i[lane];
+      if (alu_result_fire_i[lane])
+        alu_result_bytes += $countones(alu_result_be_i[lane]);
+      if (mfpu_result_fire_i[lane])
+        mfpu_result_bytes += $countones(mfpu_result_be_i[lane]);
+    end
     memory_span = (64'(req_vl_i) << unsigned'(req_vsew_i)) *
                   (64'(req_nf_i) + 1'b1);
     read_outstanding_next = read_outstanding_q;
@@ -225,6 +289,23 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
     next.scalar_result_wait_cycles += scalar_result_wait_i;
     next.lane_alu_operand_fires += alu_fires;
     next.lane_mfpu_operand_fires += mfpu_fires;
+    next.lane_inflight_slot_cycles += lane_inflight_slots;
+    next.compute_active_cycles += |compute_lane_fire;
+    next.compute_lane_slot_fires += $countones(compute_lane_fire);
+    next.compute_unit_lane_fires += alu_exec_fires + mfpu_exec_fires;
+    next.alu_exec_active_cycles += |alu_exec_fire_i;
+    next.alu_exec_lane_fires += alu_exec_fires;
+    next.mfpu_exec_active_cycles += |mfpu_exec_fire;
+    next.mfpu_exec_lane_fires += mfpu_exec_fires;
+    next.int_mul_exec_lane_fires += int_mul_exec_fires;
+    next.int_mac_exec_lane_fires += int_mac_exec_fires;
+    next.int_mac_element_count += int_mac_elements;
+    next.int_div_exec_lane_fires += int_div_exec_fires;
+    next.fp_exec_lane_fires += fp_exec_fires;
+    next.alu_result_lane_fires += alu_result_fires;
+    next.mfpu_result_lane_fires += mfpu_result_fires;
+    next.alu_result_active_bytes += alu_result_bytes;
+    next.mfpu_result_active_bytes += mfpu_result_bytes;
 
     next.axi_ar_count += ar_fire;
     if (ar_fire) next.axi_ar_bytes +=
@@ -293,8 +374,18 @@ module llm_perf_monitor import ara_pkg::*; import rvv_pkg::*; #(
   task automatic print_row(input string testcase, input string phase,
                            input llm_perf_t value, input integer fd);
     $fdisplay(fd,
-      "[LLM_PERF] case=%s phase=%s cycles=%0d backend_busy_cycles=%0d lane_active_cycles=%0d req_valid_cycles=%0d req_fire_count=%0d req_blocked_cycles=%0d vector_element_count=%0d retired_inst_count=%0d retired_vector_inst_count=%0d retired_scalar_inst_count=%0d load_count=%0d load_unit_count=%0d load_strided_count=%0d load_indexed_count=%0d store_count=%0d store_unit_count=%0d store_strided_count=%0d store_indexed_count=%0d bitwise_count=%0d shift_count=%0d int_alu_count=%0d int_mul_count=%0d int_widen_mul_count=%0d int_mac_count=%0d int_widen_mac_count=%0d int_reduction_count=%0d fp_reduction_count=%0d narrow_count=%0d fp_arith_count=%0d permute_count=%0d mask_count=%0d scalar_move_count=%0d other_count=%0d unit_load_span_bytes=%0d unit_store_span_bytes=%0d masked_mem_count=%0d axi_ar_count=%0d axi_ar_bytes=%0d axi_r_beat_count=%0d axi_r_bus_bytes=%0d axi_aw_count=%0d axi_aw_bytes=%0d axi_w_beat_count=%0d axi_w_useful_bytes=%0d axi_b_count=%0d axi_ar_stall_cycles=%0d axi_r_stall_cycles=%0d axi_aw_stall_cycles=%0d axi_w_stall_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d queue_occ_sum=%0d queue_occ_max=%0d queue_full_cycles=%0d inflight_occ_sum=%0d inflight_occ_max=%0d queue_resource_block_cycles=%0d no_vid_block_cycles=%0d lane_desync_block_cycles=%0d operand_block_cycles=%0d mask_block_cycles=%0d slide_block_cycles=%0d hazard_block_cycles=%0d scalar_result_wait_cycles=%0d lane_alu_operand_fires=%0d lane_mfpu_operand_fires=%0d",
-      testcase, phase, value.cycles, value.backend_busy_cycles, value.lane_active_cycles,
+      "[LLM_PERF] case=%s phase=%s nr_lanes=%0d cycles=%0d backend_busy_cycles=%0d lane_active_cycles=%0d lane_inflight_slot_cycles=%0d compute_active_cycles=%0d compute_lane_slot_fires=%0d compute_unit_lane_fires=%0d alu_exec_active_cycles=%0d alu_exec_lane_fires=%0d mfpu_exec_active_cycles=%0d mfpu_exec_lane_fires=%0d int_mul_exec_lane_fires=%0d int_mac_exec_lane_fires=%0d int_mac_element_count=%0d int_div_exec_lane_fires=%0d fp_exec_lane_fires=%0d alu_result_lane_fires=%0d mfpu_result_lane_fires=%0d alu_result_active_bytes=%0d mfpu_result_active_bytes=%0d req_valid_cycles=%0d req_fire_count=%0d req_blocked_cycles=%0d vector_element_count=%0d retired_inst_count=%0d retired_vector_inst_count=%0d retired_scalar_inst_count=%0d load_count=%0d load_unit_count=%0d load_strided_count=%0d load_indexed_count=%0d store_count=%0d store_unit_count=%0d store_strided_count=%0d store_indexed_count=%0d bitwise_count=%0d shift_count=%0d int_alu_count=%0d int_mul_count=%0d int_widen_mul_count=%0d int_mac_count=%0d int_widen_mac_count=%0d int_reduction_count=%0d fp_reduction_count=%0d narrow_count=%0d fp_arith_count=%0d permute_count=%0d mask_count=%0d scalar_move_count=%0d other_count=%0d unit_load_span_bytes=%0d unit_store_span_bytes=%0d masked_mem_count=%0d axi_ar_count=%0d axi_ar_bytes=%0d axi_r_beat_count=%0d axi_r_bus_bytes=%0d axi_aw_count=%0d axi_aw_bytes=%0d axi_w_beat_count=%0d axi_w_useful_bytes=%0d axi_b_count=%0d axi_ar_stall_cycles=%0d axi_r_stall_cycles=%0d axi_aw_stall_cycles=%0d axi_w_stall_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d queue_occ_sum=%0d queue_occ_max=%0d queue_full_cycles=%0d inflight_occ_sum=%0d inflight_occ_max=%0d queue_resource_block_cycles=%0d no_vid_block_cycles=%0d lane_desync_block_cycles=%0d operand_block_cycles=%0d mask_block_cycles=%0d slide_block_cycles=%0d hazard_block_cycles=%0d scalar_result_wait_cycles=%0d lane_alu_operand_fires=%0d lane_mfpu_operand_fires=%0d",
+      testcase, phase, NrLanes, value.cycles, value.backend_busy_cycles,
+      value.lane_active_cycles,
+      value.lane_inflight_slot_cycles, value.compute_active_cycles,
+      value.compute_lane_slot_fires, value.compute_unit_lane_fires,
+      value.alu_exec_active_cycles, value.alu_exec_lane_fires,
+      value.mfpu_exec_active_cycles, value.mfpu_exec_lane_fires,
+      value.int_mul_exec_lane_fires, value.int_mac_exec_lane_fires,
+      value.int_mac_element_count, value.int_div_exec_lane_fires,
+      value.fp_exec_lane_fires, value.alu_result_lane_fires,
+      value.mfpu_result_lane_fires, value.alu_result_active_bytes,
+      value.mfpu_result_active_bytes,
       value.req_valid_cycles, value.req_fire_count, value.req_blocked_cycles,
       value.vector_element_count, value.retired_inst_count,
       value.retired_vector_inst_count, value.retired_scalar_inst_count,

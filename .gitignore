@@ -48,6 +48,14 @@ backend
 apps
 !/apps/
 /apps/*
+!/apps/llama_q4k_repack_bench/
+/apps/llama_q4k_repack_bench/*
+!/apps/llama_q4k_repack_bench/main.c
+!/apps/llama_q4k_repack_bench/repack_kernels.c
+!/apps/llama_q4k_repack_bench/repack_kernels.h
+!/apps/llama_q4k_repack_bench/script/
+/apps/llama_q4k_repack_bench/script/*
+!/apps/llama_q4k_repack_bench/script/gen_data.py
 !/apps/llama_q4km_micro/
 /apps/llama_q4km_micro/data.S
 /apps/llama_q4km_micro/*.dump
@@ -104,6 +112,9 @@ debug/
 /hardware/build_sim_l2_*m/
 /hardware/sim_l2_*m/
 /hardware/llama_benchmark_runs/
+/hardware/llama_eval_runs/
+/hardware/sim_llama_eval_*/
+/hardware/fsdb_traces/
 /fsdb2vcdLog/
 deps/
 gold_results.txt

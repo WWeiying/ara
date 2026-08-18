@@ -1807,14 +1807,54 @@ module ara_tb;
 `ifndef IDEAL_DISPATCHER
   logic [NrLanes-1:0][1:0] llm_alu_operand_fire;
   logic [NrLanes-1:0][2:0] llm_mfpu_operand_fire;
+  logic [NrLanes-1:0] llm_lane_inflight;
+  logic [NrLanes-1:0] llm_alu_exec_fire;
+  logic [NrLanes-1:0] llm_int_mul_exec_fire;
+  logic [NrLanes-1:0] llm_int_mac_exec_fire;
+  logic [NrLanes-1:0][3:0] llm_int_mul_exec_elements;
+  logic [NrLanes-1:0] llm_int_div_exec_fire;
+  logic [NrLanes-1:0] llm_fp_exec_fire;
+  logic [NrLanes-1:0] llm_alu_result_fire;
+  logic [NrLanes-1:0] llm_mfpu_result_fire;
+  logic [NrLanes-1:0][7:0] llm_alu_result_be;
+  logic [NrLanes-1:0][7:0] llm_mfpu_result_be;
 
   for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_llm_lane_activity
+    assign llm_lane_inflight[lane] =
+      |dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[lane];
     assign llm_alu_operand_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_valid_i &
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_ready_o;
     assign llm_mfpu_operand_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.mfpu_operand_valid_i &
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.mfpu_operand_ready_o;
+    assign llm_alu_exec_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_valu.valu_valid;
+    assign llm_int_mul_exec_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vmul_in_valid &&
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vmul_in_ready;
+    assign llm_int_mac_exec_fire[lane] = llm_int_mul_exec_fire[lane] &&
+      (dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.op
+       inside {VMACC, VNMSAC, VMADD, VNMSUB});
+    assign llm_int_mul_exec_elements[lane] = llm_int_mul_exec_fire[lane] ?
+      ($countones(dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.issue_be) >>
+       unsigned'(dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew)) : '0;
+    assign llm_int_div_exec_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vdiv_in_valid &&
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vdiv_in_ready;
+    assign llm_fp_exec_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vfpu_in_valid &&
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vfpu_in_ready;
+    assign llm_alu_result_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.alu_result_req &&
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.alu_result_gnt;
+    assign llm_mfpu_result_fire[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.mfpu_result_req &&
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.mfpu_result_gnt;
+    assign llm_alu_result_be[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.alu_result_be;
+    assign llm_mfpu_result_be[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.mfpu_result_be;
   end
 
   llm_perf_monitor #(
@@ -1846,8 +1886,19 @@ module ara_tb;
     .req_nf_i       (dut.i_ara_soc.i_system.i_ara.ara_req.nf),
     .ara_idle_i     (dut.i_ara_soc.i_system.i_ara.ara_idle),
     .lane_active_i  (rvv_lane_en),
+    .lane_inflight_i(llm_lane_inflight),
     .lane_alu_operand_fire_i (llm_alu_operand_fire),
     .lane_mfpu_operand_fire_i(llm_mfpu_operand_fire),
+    .alu_exec_fire_i         (llm_alu_exec_fire),
+    .int_mul_exec_fire_i     (llm_int_mul_exec_fire),
+    .int_mac_exec_fire_i     (llm_int_mac_exec_fire),
+    .int_mul_exec_elements_i (llm_int_mul_exec_elements),
+    .int_div_exec_fire_i     (llm_int_div_exec_fire),
+    .fp_exec_fire_i          (llm_fp_exec_fire),
+    .alu_result_fire_i       (llm_alu_result_fire),
+    .mfpu_result_fire_i      (llm_mfpu_result_fire),
+    .alu_result_be_i         (llm_alu_result_be),
+    .mfpu_result_be_i        (llm_mfpu_result_be),
     .queue_occ_i    (dut.i_ara_soc.i_system.i_ara.i_sequencer.insn_queue_cnt_q),
     .queue_ready_i  (dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_queue_ready),
     .vinsn_running_i(dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_q),
