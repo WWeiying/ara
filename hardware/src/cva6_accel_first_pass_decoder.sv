@@ -7,7 +7,8 @@
 //              instruction, whether it reads scalar registers, and whether
 //              it writes to a destination scalar register
 
-module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
+module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
+  import qbs_pkg::*; #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
     parameter type scoreboard_entry_t = logic
   ) (
@@ -29,6 +30,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
   logic        is_vfp;      // is a vector floating-point instruction
   logic        is_load;
   logic        is_store;
+  logic        is_qbexec;
+  logic        is_qbinfo;
 
   // Cast instruction into the `rvv_instruction_t` struct
   rvv_instruction_t instr;
@@ -53,6 +56,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
     is_vfp   = 1'b0;
     is_load  = instr.i_type.opcode == riscv::OpcodeLoadFp;
     is_store = instr.i_type.opcode == riscv::OpcodeStoreFp;
+    is_qbexec = 1'b0;
+    is_qbinfo = 1'b0;
 
     // Decode based on the opcode
     case (instr.i_type.opcode)
@@ -127,6 +132,27 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
             is_rd    = is_vector_csr(riscv::csr_reg_t'(instr.i_type.imm));
           end
         endcase
+      end
+
+      // QBS-Ara custom instructions. Full field legality is checked in the
+      // Ara dispatcher; first-pass decode only declares scalar dependencies
+      // and CVA6 memory-accounting class.
+      QbsOpcodeCustom2: begin
+        if (QbsEnable) begin
+          is_qbexec = instr.i_type.funct3 == QbsQbexecFunct3;
+          is_qbinfo = instr.i_type.funct3 == QbsQbinfoFunct3;
+          if (is_qbexec) begin
+            is_accel_o = 1'b1;
+            is_rs1     = 1'b1;
+            is_rs2     = 1'b1;
+            is_vfp     = 1'b1;
+            is_load    = 1'b1;
+          end else if (is_qbinfo) begin
+            is_accel_o = 1'b1;
+            is_rs1     = 1'b1;
+            is_rd      = 1'b1;
+          end
+        end
       end
     endcase
   end

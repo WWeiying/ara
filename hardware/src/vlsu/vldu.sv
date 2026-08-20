@@ -56,7 +56,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the Mask unit
     input  strb_t            [NrLanes-1:0] mask_i,
     input  logic             [NrLanes-1:0] mask_valid_i,
-    output logic                           mask_ready_o
+    output logic                           mask_ready_o,
+    // Quiescence indication for exclusive VLSU clients
+    output logic                           idle_o
   );
 
   import cf_math_pkg::idx_width;
@@ -711,5 +713,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       first_result_queue_read_q     <= first_result_queue_read_d;
     end
   end
+
+  assign idle_o = vinsn_queue_q.issue_cnt == '0 &&
+                  vinsn_queue_q.commit_cnt == '0 &&
+                  result_queue_empty && !(|result_queue_valid_q) &&
+                  !(|vinsn_running_q) && issue_cnt_bytes_q == '0 &&
+                  commit_cnt_bytes_q == '0 && axi_len_q == '0 &&
+                  axi_r_byte_pnt_q == '0 && ldu_ex_state_q == IDLE &&
+                  !(|mask_valid_q);
 
 endmodule : vldu

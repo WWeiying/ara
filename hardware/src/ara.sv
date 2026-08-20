@@ -191,6 +191,12 @@ module ara import ara_pkg::*; #(
 
     // New value for vstart
     vlen_t exception_vstart;
+
+    // Command-local floating-point status. Ordinary vector instructions report
+    // lane flags directly; blocking backend commands return their accumulated
+    // flags together with the terminal response.
+    logic [4:0] fflags;
+    logic       fflags_valid;
   } ara_resp_t;
 
   //////////////////
@@ -218,6 +224,8 @@ module ara import ara_pkg::*; #(
   vxrm_t     [NrLanes-1:0]      alu_vxrm;
   // Flush support for store exceptions
   logic lsu_ex_flush_lane, lsu_ex_flush_done;
+  logic [4:0] qbs_fflags;
+  logic       qbs_fflags_valid;
   logic [NrLanes-1:0] lsu_ex_flush_stu;
 
   ara_dispatcher #(
@@ -352,7 +360,9 @@ module ara import ara_pkg::*; #(
     .addrgen_exception_i   (addrgen_exception        ),
     .addrgen_exception_vstart_i(addrgen_exception_vstart),
     .addrgen_fof_exception_i(addrgen_fof_exception),
-    .lsu_current_burst_exception_i(lsu_current_burst_exception)
+    .lsu_current_burst_exception_i(lsu_current_burst_exception),
+    .qbs_fflags_i          (qbs_fflags              ),
+    .qbs_fflags_valid_i    (qbs_fflags_valid        )
   );
 
   // Scalar move support
@@ -641,7 +651,9 @@ module ara import ara_pkg::*; #(
     .ldu_result_wdata_o         (ldu_result_wdata                                      ),
     .ldu_result_be_o            (ldu_result_be                                         ),
     .ldu_result_gnt_i           (ldu_result_gnt                                        ),
-    .ldu_result_final_gnt_i     (ldu_result_final_gnt                                  )
+    .ldu_result_final_gnt_i     (ldu_result_final_gnt                                  ),
+    .qbs_fflags_o               (qbs_fflags                                            ),
+    .qbs_fflags_valid_o         (qbs_fflags_valid                                      )
   );
 
   //////////////////

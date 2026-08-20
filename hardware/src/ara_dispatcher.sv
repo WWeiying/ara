@@ -8,7 +8,7 @@
 // It also acknowledges instructions back to Ariane, perhaps with a
 // response or an error message.
 
-module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
+module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
     parameter int           unsigned NrLanes            = 0,
     parameter int           unsigned VLEN               = 0,
     parameter type                   ara_req_t          = logic,
@@ -4644,6 +4644,93 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             end
           end
 
+          //////////////////////////////////////
+          //  QBS-Ara custom instructions     //
+          //////////////////////////////////////
+          QbsOpcodeCustom2: begin : qbs_custom
+            automatic logic is_qbexec;
+            automatic logic is_qbinfo;
+            automatic logic [6:0] qbs_funct7;
+            automatic int unsigned qbs_m;
+            automatic int unsigned qbs_destination_regs;
+
+            is_qbexec = instr.rtype.funct3 == QbsQbexecFunct3;
+            is_qbinfo = instr.rtype.funct3 == QbsQbinfoFunct3;
+            qbs_funct7 = 7'(instr.rtype.funct7);
+            qbs_m = unsigned'(qbs_funct7[1:0]) + 1;
+            qbs_destination_regs = qbs_m == 1 ? 1 : (qbs_m == 2 ? 2 : 4);
+
+            if (!QbsEnable) begin
+              illegal_insn = 1'b1;
+            end else if (is_qbinfo) begin
+              // qbinfo has no hidden state and does not enter the sequencer.
+              // funct7 and rs2 are reserved in ABI version 1.
+              acc_resp_o.resp_valid = 1'b1;
+              acc_resp_o.result = xlen_t'(
+                  qbs_capability_word(64'(acc_req_i.rs1), VLEN));
+              if (instr.rtype.funct7 != '0 || instr.rtype.rs2 != '0)
+                illegal_insn = 1'b1;
+            end else if (is_qbexec) begin
+              // The blocking command is accounted as an accelerator load until
+              // its atomic VRF commit or terminal exception.
+              // Keep the CVA6 request resident until ara_resp_valid. This is the
+              // same request/response contract used by ordinary vector loads;
+              // accepting it here would discard the transaction identity before
+              // the blocking QBS command can return its terminal response.
+              acc_resp_o.req_ready = 1'b0;
+              acc_resp_o.resp_valid = 1'b0;
+              is_vload = 1'b1;
+              ignore_zero_vl_check = 1'b1;
+              ara_req_valid = 1'b1;
+              ara_req.op = VQBEXEC;
+              ara_req.scalar_op = acc_req_i.rs1;
+              ara_req.stride = acc_req_i.rs2;
+              ara_req.use_scalar_op = 1'b0;
+              ara_req.vd = instr.rtype.rd;
+              ara_req.use_vd = 1'b1;
+              ara_req.vm = 1'b1;
+              ara_req.vtype.vsew = EW32;
+              ara_req.eew_vd_op = EW32;
+              ara_req.vstart = '0;
+              ara_req.vl = vlen_t'(qbs_m * (VLEN / 32));
+              ara_req.fp_rm = acc_req_i.frm;
+              unique case (qbs_m)
+                1: ara_req.emul = LMUL_1;
+                2: ara_req.emul = LMUL_2;
+                default: ara_req.emul = LMUL_4;
+              endcase
+
+              // These checks are intentionally in front of descriptor fetch:
+              // destination reservation cannot depend on unread memory.
+              if (qbs_funct7[6:2] != '0 ||
+                  (unsigned'(instr.rtype.rd) % qbs_destination_regs) != 0 ||
+                  unsigned'(instr.rtype.rd) + qbs_destination_regs > 32 ||
+                  csr_vstart_q != '0 || !acc_req_i.acc_cons_en ||
+                  acc_req_i.rs1[QbsDescriptorAlignmentLog2-1:0] != '0 ||
+                  acc_req_i.rs2[QbsActivationBaseAlignmentLog2-1:0] != '0)
+                illegal_insn = 1'b1;
+
+              // QBS owns the VLSU memory and result interfaces for the complete
+              // command, so issue it only after all older Ara work has drained.
+              if (!ara_idle_i) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b0;
+                state_d = WAIT_IDLE;
+              end
+
+              if (ara_resp_valid) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b1;
+                acc_resp_o.resp_valid = 1'b1;
+                acc_resp_o.exception = ara_resp.exception;
+                acc_resp_o.fflags |= ara_resp.fflags;
+                acc_resp_o.fflags_valid |= ara_resp.fflags_valid;
+              end
+            end else begin
+              illegal_insn = 1'b1;
+            end
+          end
+
           default: begin
             // Trigger an illegal instruction
             illegal_insn = 1'b1;
@@ -4764,7 +4851,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                        vs2_reshuffle_vstart, vs2_reshuffle_vl)) &&
             (in_lane_op || ara_req.op == VCOMPRESS ||
              indexed_mixed_vs2_layout),
-          ara_req.use_vd &&
+          ara_req.use_vd && ara_req.op != VQBEXEC &&
             (is_segment_mem_op && is_vload
                 ? register_span_needs_reshuffle(
                     ara_req.vd,

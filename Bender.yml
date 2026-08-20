@@ -28,6 +28,7 @@ sources:
   files:
     # Packages
     - hardware/include/rvv_pkg.sv
+    - hardware/include/qbs_pkg.sv
     - hardware/include/ara_pkg.sv
 
     # Sources
@@ -57,6 +58,16 @@ sources:
     - hardware/src/vlsu/addrgen.sv
     - hardware/src/vlsu/vldu.sv
     - hardware/src/vlsu/vstu.sv
+    - hardware/src/vlsu/qbs/qbs_profile_decoder.sv
+    - hardware/src/vlsu/qbs/qbs_dot_array.sv
+    - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
+    - hardware/src/vlsu/qbs/qbs_read_engine.sv
+    - hardware/src/vlsu/qbs/qbs_block_adapter.sv
+    - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv
+    - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv
+    - hardware/src/vlsu/qbs/qbs_compute_engine.sv
+    - hardware/src/vlsu/qbs/qbs_commit.sv
+    - hardware/src/vlsu/qbs/qbs_engine.sv
     # Level 2
     - hardware/src/lane/operand_queues_stage.sv
     - hardware/src/lane/valu.sv

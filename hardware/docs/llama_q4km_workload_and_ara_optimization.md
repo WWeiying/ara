@@ -2,7 +2,9 @@
 
 > RTL 分阶段计数器、瓶颈判定方法和后续 DSA/指令扩展路线见
 > `llama_ara_dsa_performance_plan.md`。本文档保留 workload、shape、数据来源和
-> 当前软件 kernel 的说明，二者不要用同名指标表达不同语义。
+> 当前软件 kernel 的说明，二者不要用同名指标表达不同语义。QBS-Ara 的格式、layout、
+> tile、capability 和 fallback 边界见 `ara_llm_kquant_dsa_proposal.md`；本文列出的真实
+> Qwen 点是评测样本，不等于硬件支持列表。
 
 ## 1. 目标与边界
 

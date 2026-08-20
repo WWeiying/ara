@@ -63,7 +63,9 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the Mask unit
     input  strb_t            [NrLanes-1:0] mask_i,
     input  logic             [NrLanes-1:0] mask_valid_i,
-    output logic                           mask_ready_o
+    output logic                           mask_ready_o,
+    // Quiescence indication for exclusive VLSU clients
+    output logic                           idle_o
   );
 
   import cf_math_pkg::idx_width;
@@ -564,6 +566,12 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       stu_current_burst_exception_o <= stu_current_burst_exception_d;
     end
   end
+
+  assign idle_o = vinsn_queue_q.issue_cnt == '0 &&
+                  vinsn_queue_q.commit_cnt == '0 &&
+                  !(|vinsn_running_q) && issue_cnt_bytes_q == '0 &&
+                  axi_len_q == '0 && !(|stu_operand_valid) &&
+                  !(|mask_valid_q);
 
 `ifdef FOR_VERIFY
   longint unsigned debug_vstu_cycle_q;

@@ -1812,6 +1812,7 @@ module ara_tb;
   logic [NrLanes-1:0] llm_int_mul_exec_fire;
   logic [NrLanes-1:0] llm_int_mac_exec_fire;
   logic [NrLanes-1:0][3:0] llm_int_mul_exec_elements;
+  rvv_pkg::vew_e [NrLanes-1:0] llm_int_mul_exec_vsew;
   logic [NrLanes-1:0] llm_int_div_exec_fire;
   logic [NrLanes-1:0] llm_fp_exec_fire;
   logic [NrLanes-1:0] llm_alu_result_fire;
@@ -1821,7 +1822,7 @@ module ara_tb;
 
   for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_llm_lane_activity
     assign llm_lane_inflight[lane] =
-      |dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_d[lane];
+      |dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_vinsn_running_q[lane];
     assign llm_alu_operand_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_valid_i &
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.alu_operand_ready_o;
@@ -1839,6 +1840,8 @@ module ara_tb;
     assign llm_int_mul_exec_elements[lane] = llm_int_mul_exec_fire[lane] ?
       ($countones(dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.issue_be) >>
        unsigned'(dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew)) : '0;
+    assign llm_int_mul_exec_vsew[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vinsn_issue_q.vtype.vsew;
     assign llm_int_div_exec_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vdiv_in_valid &&
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vdiv_in_ready;
@@ -1893,6 +1896,7 @@ module ara_tb;
     .int_mul_exec_fire_i     (llm_int_mul_exec_fire),
     .int_mac_exec_fire_i     (llm_int_mac_exec_fire),
     .int_mul_exec_elements_i (llm_int_mul_exec_elements),
+    .int_mul_exec_vsew_i     (llm_int_mul_exec_vsew),
     .int_div_exec_fire_i     (llm_int_div_exec_fire),
     .fp_exec_fire_i          (llm_fp_exec_fire),
     .alu_result_fire_i       (llm_alu_result_fire),

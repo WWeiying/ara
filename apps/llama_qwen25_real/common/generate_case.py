@@ -15,6 +15,7 @@ DEFAULT_CAPTURE_ROOT = Path(
 )
 QK_K = 256
 Q4_BLOCK_BYTES = 144
+Q6_BLOCK_BYTES = 210
 
 
 def sha256(path: Path) -> str:
@@ -128,6 +129,37 @@ def repack_q4_x32(source: Path, destination: Path, k: int, rows: int) -> None:
     destination.write_bytes(packed)
 
 
+def repack_q6_x32(source: Path, destination: Path, k: int, rows: int) -> None:
+    blocks = k // QK_K
+    row_bytes = blocks * Q6_BLOCK_BYTES
+    raw = source.read_bytes()
+    if rows % 32 != 0 or len(raw) != rows * row_bytes:
+        raise SystemExit("Q6_K x32 repack requires complete groups of 32 rows")
+
+    packed = bytearray(len(raw))
+    cursor = 0
+    for row_group in range(0, rows, 32):
+        for block in range(blocks):
+            block_rows = [
+                memoryview(raw)[
+                    (row_group + row) * row_bytes + block * Q6_BLOCK_BYTES:
+                    (row_group + row) * row_bytes + (block + 1) * Q6_BLOCK_BYTES
+                ]
+                for row in range(32)
+            ]
+            for row in block_rows:
+                packed[cursor:cursor + 2] = row[208:210]
+                cursor += 2
+            for offset, length in ((192, 16), (0, 128), (128, 64)):
+                for byte in range(length):
+                    for row in block_rows:
+                        packed[cursor] = row[offset + byte]
+                        cursor += 1
+    if cursor != len(packed):
+        raise SystemExit("internal Q6_K repack size error")
+    destination.write_bytes(packed)
+
+
 def emit_blob(symbol: str, path: Path) -> None:
     print(".balign 64")
     print(f".global {symbol}_start")
@@ -159,14 +191,14 @@ def main() -> None:
         raise SystemExit(
             f"invalid input slice: inputs={inputs}, capture_inputs={capture_inputs}"
         )
-    if weight_type == "q4_K" and rows % 32 != 0:
-        raise SystemExit("Q4_K evaluation rows must be a multiple of 32")
+    if weight_type in ("q4_K", "q6_K") and rows % 32 != 0:
+        raise SystemExit(f"{weight_type} evaluation rows must be a multiple of 32")
     weight_name = f"weight_{weight_type}.bin"
     weight_path = source_dir / weight_name
     activation_path = source_dir / "activation_f32.bin"
     golden_path = source_dir / "output_f32.bin"
 
-    weight_block_bytes = 144 if weight_type == "q4_K" else 210
+    weight_block_bytes = Q4_BLOCK_BYTES if weight_type == "q4_K" else Q6_BLOCK_BYTES
     row_weight_bytes = (k // QK_K) * weight_block_bytes
     capture_weight_bytes = capture_rows * row_weight_bytes
     capture_activation_bytes = capture_inputs * k * 4
@@ -198,9 +230,12 @@ def main() -> None:
     if weight_type == "q4_K":
         repack_q4_x32(generated / "source_weight.bin", embedded_weight, k, rows)
         embedded_layout = "q4_K_x32_ara"
+    elif inputs >= 4:
+        repack_q6_x32(generated / "source_weight.bin", embedded_weight, k, rows)
+        embedded_layout = "q6_K_x32_ara"
     else:
-        link_or_copy(generated / "source_weight.bin", embedded_weight)
-        embedded_layout = "gguf_row_major"
+        copy_prefix(generated / "source_weight.bin", embedded_weight, weight_bytes)
+        embedded_layout = "q6_K_row_major"
 
     model_path = capture_root / "model.json"
     provenance = {
@@ -224,7 +259,7 @@ def main() -> None:
         "embedded_weight_layout": embedded_layout,
         "runtime_timed_region": "F32_to_Q8_K_plus_quantized_matmul",
         "runtime_setup_cycles": 0,
-        "offline_repack_excluded": weight_type == "q4_K",
+        "offline_repack_excluded": embedded_layout.endswith("_ara"),
         "capture_root": str(capture_root),
         "capture_llama_commit": "316e72d38da2bf9af84f946fb6e99419d80849f9",
         "model_metadata_sha256": sha256(model_path),

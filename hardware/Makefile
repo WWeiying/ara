@@ -23,6 +23,8 @@ include $(ARA_DIR)/config/sram.mk
 # Optional behavioral memory expansion for large application replay. This is
 # intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
 mc ?= 0
+qbs ?= 0
+qbs_perf ?= 0
 sim_l2_mb ?= 1
 large_l2_mb ?= 16
 valid_sim_l2_mb := 1 2 4 8 16 32 64
@@ -113,6 +115,9 @@ ifeq ($(ideal_dispatcher), 1)
 endif
 
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+ifeq ($(qbs),1)
+bender_defs += --define ARA_QBS_ENABLE=1
+endif
 ifneq ($(sim_l2_mb),1)
 bender_defs += --define SIM_L2_SIZE_BYTES=$(sim_l2_bytes)
 endif
@@ -163,8 +168,11 @@ APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 ifeq ($(no_fsdb), 1)
 APP += +NO_FSDB
 endif
+ifeq ($(qbs_perf), 1)
+APP += +QBS_PERF
+endif
 
-.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum
+.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum
 
 # Bender
 bender: $(BENDER)
@@ -297,6 +305,39 @@ llama_real_metrics_sum:
 	@./scripts/llama_qwen25_real/summarize_llm_perf.py \
 		--metrics-log "$(metrics_log)" \
 		--output "$(or $(output),llama_real_metrics.csv)"
+
+llama_qbs_eval_list:
+	@printf '%s\n' \
+		decode_attn_q_qbs decode_ffn_gate_qbs decode_ffn_down_qbs \
+		prefill_attn_q_qbs prefill_ffn_gate_qbs prefill_ffn_down_qbs
+
+llama_qbs_eval_build:
+	@$(MAKE) -C ../verification/qbs generated-check
+	@$(MAKE) -C ../apps \
+		llama_qwen25_decode_attn_q_qbs \
+		llama_qwen25_decode_ffn_gate_qbs \
+		llama_qwen25_decode_ffn_down_qbs \
+		llama_qwen25_prefill_attn_q_qbs \
+		llama_qwen25_prefill_ffn_gate_qbs \
+		llama_qwen25_prefill_ffn_down_qbs \
+		sim_l2_mb=$(large_l2_mb)
+
+llama_qbs_eval_compile:
+	@$(MAKE) compile qbs=1 sim_l2_mb=$(large_l2_mb) \
+		buildpath=$(ARA_DIR)/hardware/build_qbs_llama_eval_$(large_l2_mb)m \
+		sim_dir=sim_qbs_llama_eval_$(large_l2_mb)m_template no_fsdb=1
+
+llama_qbs_eval_parallel:
+	@./scripts/qbs/run_eval_parallel.sh
+
+llama_qbs_eval_status:
+	@./scripts/llama_qwen25_real/eval_status.sh \
+		"$(or $(run_root),$(ROOT_DIR)/qbs_eval_runs/latest)"
+
+llama_qbs_eval_sum:
+	@./scripts/qbs/summarize_qbs_suite.py \
+		--run-root "$(or $(run_root),$(ROOT_DIR)/qbs_eval_runs/latest)" \
+		$(if $(filter 1,$(allow_partial)),--allow-partial,)
 
 clean:
 	@cd ./$(sim_dir) && rm -rf *

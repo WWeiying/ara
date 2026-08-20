@@ -56,7 +56,19 @@ apps
 !/apps/llama_q4k_repack_bench/script/
 /apps/llama_q4k_repack_bench/script/*
 !/apps/llama_q4k_repack_bench/script/gen_data.py
+!/apps/common/qbs_abi.h
+!/apps/qbs_control_smoke/
+!/apps/qbs_control_smoke/**
+/apps/qbs_control_smoke/*.o
+/apps/qbs_control_smoke/*.dump
 !/apps/llama_q4km_micro/
+/verification/qbs/qbs_ref_test
+/verification/qbs/qbs_real_test
+/verification/qbs/qbs_rtl_vectors
+/verification/qbs/qbs_rtl_vectors.txt
+/verification/qbs/rtl_build/
+/hardware/sim_qbs_*/
+/hardware/build_qbs_*/
 /apps/llama_q4km_micro/data.S
 /apps/llama_q4km_micro/*.dump
 /apps/llama_q4km_micro/*.o.spike
@@ -113,6 +125,7 @@ debug/
 /hardware/sim_l2_*m/
 /hardware/llama_benchmark_runs/
 /hardware/llama_eval_runs/
+/hardware/qbs_eval_runs/
 /hardware/sim_llama_eval_*/
 /hardware/fsdb_traces/
 /fsdb2vcdLog/

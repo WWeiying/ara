@@ -80,9 +80,13 @@ def add_derived(row: dict[str, str]) -> None:
         row["fp_exec_lane_fires"], int(cycles) * nr_lanes
     )
     row["int_mac_elements_per_cycle"] = ratio(row["int_mac_element_count"], cycles)
-    row["int8_mac_peak_utilization"] = ratio(
+    row["int8_equivalent_mac_throughput_ratio"] = ratio(
         row["int_mac_element_count"], int(cycles) * nr_lanes * 8
     )
+    if "int_mac_element_capacity" in row:
+        row["int_mac_vector_fill_ratio"] = ratio(
+            row["int_mac_element_count"], row["int_mac_element_capacity"]
+        )
     row["alu_result_writeback_utilization"] = ratio(
         row["alu_result_lane_fires"], int(cycles) * nr_lanes
     )
@@ -114,7 +118,12 @@ def main() -> None:
         "mfpu_exec_active_cycles", "mfpu_exec_lane_fires", "mfpu_issue_utilization",
         "int_mul_exec_lane_fires", "int_mul_issue_utilization",
         "int_mac_exec_lane_fires", "int_mac_issue_utilization", "int_mac_element_count",
-        "int_mac_elements_per_cycle", "int8_mac_peak_utilization",
+        "int_mac_elements_per_cycle", "int_mac_element_capacity", "int_mac_vector_fill_ratio",
+        "int8_equivalent_mac_throughput_ratio",
+        "int_mac_exec_lane_fires_ew8", "int_mac_exec_lane_fires_ew16",
+        "int_mac_exec_lane_fires_ew32", "int_mac_exec_lane_fires_ew64",
+        "int_mac_element_count_ew8", "int_mac_element_count_ew16",
+        "int_mac_element_count_ew32", "int_mac_element_count_ew64",
         "int_div_exec_lane_fires", "fp_exec_lane_fires", "fp_issue_utilization",
         "alu_result_lane_fires", "alu_result_writeback_utilization",
         "mfpu_result_lane_fires", "mfpu_result_writeback_utilization",

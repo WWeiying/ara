@@ -158,23 +158,55 @@ static __attribute__((noinline)) uint64_t benchmark_q4(void) {
 }
 #else
 static __attribute__((noinline)) uint64_t benchmark_q6(void) {
+#if BENCH_GEMM_GROUPS > 0
+  const block_q6_Kx32_ara *weight =
+      (const block_q6_Kx32_ara *)benchmark_weight_start;
+  for (int row_group = 0; row_group < BENCH_ROW_GROUPS; ++row_group) {
+    const block_q6_Kx32_ara *group_weight =
+        weight + row_group * BENCH_BLOCKS;
+    int input = 0;
+#if BENCH_GEMM_GROUPS > 0
+    for (; input + 4 <= BENCH_INPUTS; input += 4) {
+      q6k_gemm_32x4(
+          group_weight, quantized_activation + input * BENCH_BLOCKS,
+          BENCH_BLOCKS, benchmark_output + input * BENCH_ROWS + row_group * 32,
+          BENCH_ROWS, BENCH_K);
+    }
+#endif
+    for (; input < BENCH_INPUTS; ++input) {
+      q6k_gemv_32(group_weight,
+                  quantized_activation + input * BENCH_BLOCKS,
+                  benchmark_output + input * BENCH_ROWS + row_group * 32,
+                  BENCH_K);
+    }
+  }
+  const uint64_t weight_bytes =
+      (uint64_t)(benchmark_weight_end - benchmark_weight_start);
+  const uint64_t activation_bytes =
+      (uint64_t)BENCH_INPUTS * BENCH_BLOCKS * sizeof(block_q8_K);
+  const uint64_t weight_passes = BENCH_GEMM_GROUPS + (BENCH_INPUTS % 4);
+  const uint64_t quantization_input_bytes =
+      (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
+  return quantization_input_bytes + weight_passes * weight_bytes +
+         BENCH_ROW_GROUPS * activation_bytes;
+#else
   const block_q6_K *weight = (const block_q6_K *)benchmark_weight_start;
   for (int input = 0; input < BENCH_INPUTS; ++input) {
     for (int row = 0; row < BENCH_ROWS; ++row) {
-      benchmark_output[input * BENCH_ROWS + row] =
-          q4km_vec_dot_q6_K_q8_K(
-              weight + row * BENCH_BLOCKS,
-              quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q6_K_q8_K(
+          weight + row * BENCH_BLOCKS,
+          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
     }
   }
-  const uint64_t row_weight_bytes =
-      (uint64_t)BENCH_BLOCKS * sizeof(block_q6_K);
-  const uint64_t row_activation_bytes =
+  const uint64_t weight_bytes =
+      (uint64_t)(benchmark_weight_end - benchmark_weight_start);
+  const uint64_t activation_bytes =
       (uint64_t)BENCH_BLOCKS * sizeof(block_q8_K);
   const uint64_t quantization_input_bytes =
       (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
-  return quantization_input_bytes + (uint64_t)BENCH_INPUTS * BENCH_ROWS *
-         (row_weight_bytes + row_activation_bytes);
+  return quantization_input_bytes + BENCH_INPUTS * weight_bytes +
+         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+#endif
 }
 #endif
 

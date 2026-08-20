@@ -8,7 +8,7 @@
 // loads and vector stores. There are no guarantees regarding concurrency
 // and coherence with Ariane's own load/store unit.
 
-module vlsu import ara_pkg::*; import rvv_pkg::*; #(
+module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
     parameter  int  unsigned NrLanes     = 0,
     parameter  int  unsigned VLEN        = 0,
     parameter  type          vaddr_t     = logic,  // Type used to address vector register file elements
@@ -97,14 +97,18 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output elen_t     [NrLanes-1:0] ldu_result_wdata_o,
     output strb_t     [NrLanes-1:0] ldu_result_be_o,
     input  logic      [NrLanes-1:0] ldu_result_gnt_i,
-    input  logic      [NrLanes-1:0] ldu_result_final_gnt_i
+    input  logic      [NrLanes-1:0] ldu_result_final_gnt_i,
+    // Floating-point status from a completed blocking QBS command
+    output logic                    qbs_fflags_valid_o,
+    output logic              [4:0] qbs_fflags_o
   );
 
   `include "common_cells/registers.svh"
 
   logic load_complete, store_complete;
+  logic qbs_terminal;
   logic addrgen_illegal_load, addrgen_illegal_store;
-  assign load_complete_o  = load_complete;
+  assign load_complete_o  = load_complete | qbs_terminal;
   assign store_complete_o = store_complete;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
@@ -122,9 +126,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   //  AXI Cut  //
   ///////////////
 
-  // Internal AXI request signals
+  // The normal VLSU and QBS share one slave side of the AXI cut. Ownership is
+  // exclusive for a complete QBS command, including all read responses.
   axi_req_t  axi_req;
   axi_resp_t axi_resp;
+  axi_req_t  normal_axi_req;
+  axi_resp_t normal_axi_resp;
 
   axi_cut #(
     .ar_chan_t (axi_ar_t  ),
@@ -152,6 +159,16 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   logic             axi_addrgen_req_valid;
   logic             ldu_axi_addrgen_req_ready;
   logic             stu_axi_addrgen_req_ready;
+  logic             addrgen_idle;
+  logic             normal_pe_req_valid;
+  logic             normal_mmu_misaligned_ex;
+  logic             normal_mmu_req;
+  logic [CVA6Cfg.VLEN-1:0] normal_mmu_vaddr;
+  logic             normal_mmu_is_store;
+  logic             normal_addrgen_ack;
+  exception_t       normal_addrgen_exception;
+  vlen_t            normal_addrgen_exception_vstart;
+  logic             normal_addrgen_fof_exception;
 
   addrgen #(
     .NrLanes     (NrLanes     ),
@@ -168,22 +185,22 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i                      (clk_i                      ),
     .rst_ni                     (rst_ni                     ),
     // AXI Memory Interface
-    .axi_aw_o                   (axi_req.aw                 ),
-    .axi_aw_valid_o             (axi_req.aw_valid           ),
-    .axi_aw_ready_i             (axi_resp.aw_ready          ),
-    .axi_ar_o                   (axi_req.ar                 ),
-    .axi_ar_valid_o             (axi_req.ar_valid           ),
-    .axi_ar_ready_i             (axi_resp.ar_ready          ),
+    .axi_aw_o                   (normal_axi_req.aw           ),
+    .axi_aw_valid_o             (normal_axi_req.aw_valid     ),
+    .axi_aw_ready_i             (normal_axi_resp.aw_ready    ),
+    .axi_ar_o                   (normal_axi_req.ar           ),
+    .axi_ar_valid_o             (normal_axi_req.ar_valid     ),
+    .axi_ar_ready_i             (normal_axi_resp.ar_ready    ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer
     .pe_req_i                   (pe_req_i                   ),
-    .pe_req_valid_i             (pe_req_valid_i             ),
+    .pe_req_valid_i             (normal_pe_req_valid        ),
     .pe_vinsn_running_i         (pe_vinsn_running_i         ),
-    .addrgen_ack_o              (addrgen_ack_o              ),
-    .addrgen_exception_o        ( addrgen_exception_o       ),
-    .addrgen_exception_vstart_o ( addrgen_exception_vstart_o),
-    .addrgen_fof_exception_o    ( addrgen_fof_exception_o   ),
+    .addrgen_ack_o              (normal_addrgen_ack              ),
+    .addrgen_exception_o        (normal_addrgen_exception        ),
+    .addrgen_exception_vstart_o (normal_addrgen_exception_vstart ),
+    .addrgen_fof_exception_o    (normal_addrgen_fof_exception    ),
     .addrgen_illegal_load_o     (addrgen_illegal_load       ),
     .addrgen_illegal_store_o    (addrgen_illegal_store      ),
     // Interface with the lanes
@@ -199,20 +216,32 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
     // CSR input
     .en_ld_st_translation_i,
-    .mmu_misaligned_ex_o,
-    .mmu_req_o,
-    .mmu_vaddr_o,
-    .mmu_is_store_o,
+    .mmu_misaligned_ex_o        (normal_mmu_misaligned_ex   ),
+    .mmu_req_o                  (normal_mmu_req             ),
+    .mmu_vaddr_o                (normal_mmu_vaddr           ),
+    .mmu_is_store_o             (normal_mmu_is_store        ),
     .mmu_dtlb_hit_i,
     .mmu_dtlb_ppn_i,
     .mmu_valid_i,
     .mmu_paddr_i,
-    .mmu_exception_i
+    .mmu_exception_i,
+    .idle_o                     (addrgen_idle               )
   );
 
   ////////////////////////
   //  Vector Load Unit  //
   ////////////////////////
+
+  logic [1:0] normal_pe_req_ready;
+  pe_resp_t [1:0] normal_pe_resp;
+  logic vldu_idle;
+  logic [NrLanes-1:0] normal_ldu_result_req;
+  vid_t [NrLanes-1:0] normal_ldu_result_id;
+  vaddr_t [NrLanes-1:0] normal_ldu_result_addr;
+  elen_t [NrLanes-1:0] normal_ldu_result_wdata;
+  strb_t [NrLanes-1:0] normal_ldu_result_be;
+  logic [NrLanes-1:0] normal_ldu_result_gnt;
+  logic [NrLanes-1:0] normal_ldu_result_final_gnt;
 
   vldu #(
     .AxiAddrWidth(AxiAddrWidth),
@@ -227,17 +256,17 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i                  (clk_i                     ),
     .rst_ni                 (rst_ni                    ),
     // AXI Memory Interface
-    .axi_r_i                (axi_resp.r                ),
-    .axi_r_valid_i          (axi_resp.r_valid          ),
-    .axi_r_ready_o          (axi_req.r_ready           ),
+    .axi_r_i                (normal_axi_resp.r         ),
+    .axi_r_valid_i          (normal_axi_resp.r_valid   ),
+    .axi_r_ready_o          (normal_axi_req.r_ready    ),
     // Interface with the dispatcher
     .load_complete_o        (load_complete             ),
     // Interface with the main sequencer
     .pe_req_i               (pe_req_i                  ),
-    .pe_req_valid_i         (pe_req_valid_i            ),
+    .pe_req_valid_i         (normal_pe_req_valid       ),
     .pe_vinsn_running_i     (pe_vinsn_running_i        ),
-    .pe_req_ready_o         (pe_req_ready_o[OffsetLoad]),
-    .pe_resp_o              (pe_resp_o[OffsetLoad]     ),
+    .pe_req_ready_o         (normal_pe_req_ready[OffsetLoad]),
+    .pe_resp_o              (normal_pe_resp[OffsetLoad]),
     .ldu_current_burst_exception_o (ldu_current_burst_exception),
     // Interface with the address generator
     .axi_addrgen_req_i      (axi_addrgen_req           ),
@@ -249,19 +278,22 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .mask_valid_i           (mask_valid_i & {NrLanes{mask_target_fu_i == VFU_LoadUnit}}),
     .mask_ready_o           (vldu_mask_ready_o         ),
     // Interface with the lanes
-    .ldu_result_req_o       (ldu_result_req_o          ),
-    .ldu_result_addr_o      (ldu_result_addr_o         ),
-    .ldu_result_id_o        (ldu_result_id_o           ),
-    .ldu_result_wdata_o     (ldu_result_wdata_o        ),
-    .ldu_result_be_o        (ldu_result_be_o           ),
-    .ldu_result_gnt_i       (ldu_result_gnt_i          ),
-    .ldu_result_final_gnt_i (ldu_result_final_gnt_i    ),
-    .lsu_ex_flush_i         (lsu_ex_flush_i            )
+    .ldu_result_req_o       (normal_ldu_result_req     ),
+    .ldu_result_addr_o      (normal_ldu_result_addr    ),
+    .ldu_result_id_o        (normal_ldu_result_id      ),
+    .ldu_result_wdata_o     (normal_ldu_result_wdata   ),
+    .ldu_result_be_o        (normal_ldu_result_be      ),
+    .ldu_result_gnt_i       (normal_ldu_result_gnt     ),
+    .ldu_result_final_gnt_i (normal_ldu_result_final_gnt),
+    .lsu_ex_flush_i         (lsu_ex_flush_i            ),
+    .idle_o                 (vldu_idle                 )
   );
 
   /////////////////////////
   //  Vector Store Unit  //
   /////////////////////////
+
+  logic vstu_idle;
 
   vstu #(
     .AxiAddrWidth(AxiAddrWidth),
@@ -277,21 +309,21 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i                  (clk_i                      ),
     .rst_ni                 (rst_ni                     ),
     // AXI Memory Interface
-    .axi_w_o                (axi_req.w                  ),
-    .axi_w_valid_o          (axi_req.w_valid            ),
-    .axi_w_ready_i          (axi_resp.w_ready           ),
-    .axi_b_i                (axi_resp.b                 ),
-    .axi_b_valid_i          (axi_resp.b_valid           ),
-    .axi_b_ready_o          (axi_req.b_ready            ),
+    .axi_w_o                (normal_axi_req.w           ),
+    .axi_w_valid_o          (normal_axi_req.w_valid     ),
+    .axi_w_ready_i          (normal_axi_resp.w_ready    ),
+    .axi_b_i                (normal_axi_resp.b          ),
+    .axi_b_valid_i          (normal_axi_resp.b_valid    ),
+    .axi_b_ready_o          (normal_axi_req.b_ready     ),
     // Interface with the dispatcher
     .store_pending_o        (store_pending_o            ),
     .store_complete_o       (store_complete             ),
     // Interface with the main sequencer
     .pe_req_i               (pe_req_i                   ),
-    .pe_req_valid_i         (pe_req_valid_i             ),
+    .pe_req_valid_i         (normal_pe_req_valid        ),
     .pe_vinsn_running_i     (pe_vinsn_running_i         ),
-    .pe_req_ready_o         (pe_req_ready_o[OffsetStore]),
-    .pe_resp_o              (pe_resp_o[OffsetStore]     ),
+    .pe_req_ready_o         (normal_pe_req_ready[OffsetStore]),
+    .pe_resp_o              (normal_pe_resp[OffsetStore]),
     .stu_current_burst_exception_o (stu_current_burst_exception),
     // Interface with the address generator
     .axi_addrgen_req_i      (axi_addrgen_req            ),
@@ -306,12 +338,491 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .stu_operand_i          (stu_operand_i              ),
     .stu_operand_valid_i    (stu_operand_valid_i        ),
     .stu_operand_ready_o    (stu_operand_ready_o        ),
-    .lsu_ex_flush_i         (lsu_ex_flush_i             )
+    .lsu_ex_flush_i         (lsu_ex_flush_i             ),
+    .idle_o                 (vstu_idle                  )
+  );
+
+  //////////////////////////////////////
+  //  Blocking QBS command ownership  //
+  //////////////////////////////////////
+
+  logic qbs_active_d, qbs_active_q;
+  logic qbs_clk, qbs_clk_en;
+  logic qbs_command_valid, qbs_command_ready, qbs_command_fire;
+  logic [2:0] qbs_command_m;
+  vid_t qbs_command_id_q;
+
+  logic qbs_success_valid, qbs_fault_valid;
+  logic [4:0] qbs_result_fflags;
+  logic qbs_fault_is_validation;
+  qbs_validation_error_e qbs_validation_error;
+  qbs_read_fault_e qbs_read_fault_kind;
+  logic [CVA6Cfg.VLEN-1:0] qbs_fault_vaddr;
+  exception_t qbs_fault_mmu_exception;
+  exception_t qbs_terminal_exception;
+
+  logic qbs_mmu_req, qbs_mmu_is_store;
+  logic [CVA6Cfg.VLEN-1:0] qbs_mmu_vaddr;
+  logic qbs_physical_check_valid;
+  logic [AxiAddrWidth-1:0] qbs_physical_check_addr;
+  logic [12:0] qbs_physical_check_bytes;
+  logic qbs_physical_range_allowed;
+
+  axi_ar_t qbs_axi_ar;
+  logic qbs_axi_ar_valid, qbs_axi_ar_ready;
+  axi_r_t qbs_axi_r;
+  logic qbs_axi_r_valid, qbs_axi_r_ready;
+
+  logic [NrLanes-1:0] qbs_ldu_result_req;
+  vid_t [NrLanes-1:0] qbs_ldu_result_id;
+  vaddr_t [NrLanes-1:0] qbs_ldu_result_addr;
+  logic [63:0] qbs_ldu_result_wdata [NrLanes];
+  logic [7:0] qbs_ldu_result_be [NrLanes];
+  logic [NrLanes-1:0] qbs_ldu_result_gnt;
+  logic [NrLanes-1:0] qbs_ldu_result_final_gnt;
+
+  logic qbs_busy;
+  logic [31:0] qbs_command_cycles;
+  logic [31:0] qbs_read_range_count, qbs_read_translation_count;
+  logic [31:0] qbs_read_ar_count, qbs_read_beat_count;
+  logic [31:0] qbs_read_payload_bytes, qbs_read_store_wait_cycles;
+  logic [31:0] qbs_read_backpressure_cycles, qbs_tiles_computed;
+  logic [31:0] qbs_read_outstanding_occupancy_sum;
+  logic [1:0] qbs_read_outstanding_max;
+  logic [31:0] qbs_read_outstanding_full_cycles;
+  logic [31:0] qbs_phase_setup_cycles, qbs_phase_activation_cycles;
+  logic [31:0] qbs_phase_weight_cycles, qbs_phase_compute_cycles;
+  logic [31:0] qbs_phase_overlap_cycles, qbs_phase_drain_cycles;
+  logic [31:0] qbs_phase_scheduler_cycles, qbs_phase_commit_cycles;
+  logic [31:0] qbs_phase_fault_cycles, qbs_phase_terminal_cycles;
+  logic [31:0] qbs_weight_prefetch_wait_cycles;
+  logic [31:0] qbs_weight_bytes, qbs_activation_bytes;
+  logic [31:0] qbs_useful_pairs, qbs_pair_capacity;
+  logic [31:0] qbs_dot_active_cycles, qbs_fp_uop_issue;
+  logic [31:0] qbs_fp_table_occupancy_sum, qbs_fp_table_full_cycles;
+  logic [4:0] qbs_fp_table_occupancy_max;
+  logic [31:0] qbs_accumulator_updates, qbs_commit_word_count;
+  logic [31:0] qbs_commit_backpressure_cycles;
+
+  logic normal_vlsu_idle;
+
+  function automatic logic qbs_range_is_cacheable_idempotent(
+      input logic [AxiAddrWidth-1:0] address,
+      input logic [12:0] bytes
+  );
+    logic [65:0] request_start;
+    logic [65:0] request_end;
+    logic cached;
+    logic nonidempotent;
+
+    request_start = 66'(address);
+    request_end = request_start + 66'(bytes);
+    cached = 1'b0;
+    nonidempotent = 1'b0;
+
+    if (bytes != '0) begin
+      for (int unsigned rule = 0; rule < CVA6Cfg.NrCachedRegionRules; rule++) begin
+        automatic logic [65:0] region_start =
+            66'(CVA6Cfg.CachedRegionAddrBase[rule]);
+        automatic logic [65:0] region_end = region_start +
+            66'(CVA6Cfg.CachedRegionLength[rule]);
+        cached |= request_start >= region_start && request_end <= region_end;
+      end
+      for (int unsigned rule = 0; rule < CVA6Cfg.NrNonIdempotentRules; rule++) begin
+        automatic logic [65:0] region_start =
+            66'(CVA6Cfg.NonIdempotentAddrBase[rule]);
+        automatic logic [65:0] region_end = region_start +
+            66'(CVA6Cfg.NonIdempotentLength[rule]);
+        nonidempotent |= request_start < region_end && request_end > region_start;
+      end
+    end
+
+    return bytes != '0 && cached && !nonidempotent;
+  endfunction
+
+  assign normal_pe_req_valid = pe_req_valid_i &&
+      pe_req_i.op != VQBEXEC && !qbs_active_q;
+
+  // ara_idle is the primary command barrier. These local conditions defend the
+  // ownership transfer against stale queue/cut state and make the handoff
+  // independent of a fixed drain delay.
+  assign normal_vlsu_idle = addrgen_idle && vldu_idle && vstu_idle &&
+      !normal_axi_req.ar_valid && !normal_axi_req.aw_valid &&
+      !normal_axi_req.w_valid && !normal_axi_resp.r_valid &&
+      !normal_axi_resp.b_valid && !axi_req_o.ar_valid &&
+      !axi_req_o.aw_valid && !axi_req_o.w_valid &&
+      !axi_resp_i.r_valid && !axi_resp_i.b_valid;
+
+  always_comb begin
+    qbs_command_m = '0;
+    unique case (pe_req_i.vl)
+      vlen_t'(VLEN / 32)      : qbs_command_m = 3'd1;
+      vlen_t'(2 * VLEN / 32)  : qbs_command_m = 3'd2;
+      vlen_t'(3 * VLEN / 32)  : qbs_command_m = 3'd3;
+      vlen_t'(4 * VLEN / 32)  : qbs_command_m = 3'd4;
+      default                 : qbs_command_m = '0;
+    endcase
+  end
+
+  assign qbs_command_valid = QbsEnable && pe_req_valid_i &&
+      pe_req_i.op == VQBEXEC && !qbs_active_q && normal_vlsu_idle;
+  assign qbs_command_fire = qbs_command_valid && qbs_command_ready;
+  assign qbs_terminal = qbs_active_q &&
+      (qbs_success_valid || qbs_fault_valid);
+  assign qbs_clk_en = qbs_command_valid || qbs_active_q;
+
+  // QBS contains byte-granular block storage, a 16-entry FP scheduler, and an
+  // FP pipeline. None of that state needs a clock while no blocking command is
+  // present. Besides reducing dynamic power, this prevents idle QBS state from
+  // dominating event-driven simulation of ordinary vector code.
+  tc_clk_gating #(
+    .IS_FUNCTIONAL (1'b1)
+  ) i_qbs_clk_gate (
+    .clk_i,
+    .en_i      (qbs_clk_en),
+    .test_en_i (1'b0),
+    .clk_o     (qbs_clk)
+  );
+
+  always_comb begin
+    qbs_active_d = qbs_active_q;
+    if (qbs_command_fire)
+      qbs_active_d = 1'b1;
+    if (qbs_terminal)
+      qbs_active_d = 1'b0;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      qbs_active_q <= 1'b0;
+      qbs_command_id_q <= '0;
+    end else begin
+      qbs_active_q <= qbs_active_d;
+      if (qbs_command_fire)
+        qbs_command_id_q <= pe_req_i.id;
+    end
+  end
+
+  // AXI ownership includes the registered cut. No normal response is exposed
+  // while QBS owns the read channel, and QBS never drives write channels.
+  always_comb begin
+    axi_req = normal_axi_req;
+    normal_axi_resp = axi_resp;
+    qbs_axi_ar_ready = 1'b0;
+    qbs_axi_r = '0;
+    qbs_axi_r_valid = 1'b0;
+
+    if (qbs_active_q) begin
+      axi_req = '0;
+      axi_req.ar = qbs_axi_ar;
+      axi_req.ar_valid = qbs_axi_ar_valid;
+      axi_req.r_ready = qbs_axi_r_ready;
+      normal_axi_resp = '0;
+      qbs_axi_ar_ready = axi_resp.ar_ready;
+      qbs_axi_r = axi_resp.r;
+      qbs_axi_r_valid = axi_resp.r_valid;
+    end
+  end
+
+  // The MMU port follows the same command ownership as AXI.
+  always_comb begin
+    mmu_misaligned_ex_o = normal_mmu_misaligned_ex;
+    mmu_req_o = normal_mmu_req;
+    mmu_vaddr_o = normal_mmu_vaddr;
+    mmu_is_store_o = normal_mmu_is_store;
+    if (qbs_active_q) begin
+      mmu_misaligned_ex_o = 1'b0;
+      mmu_req_o = qbs_mmu_req;
+      mmu_vaddr_o = qbs_mmu_vaddr;
+      mmu_is_store_o = qbs_mmu_is_store;
+    end
+  end
+
+  assign qbs_physical_range_allowed = qbs_range_is_cacheable_idempotent(
+      qbs_physical_check_addr, qbs_physical_check_bytes);
+
+  // QBS and VLDu share the lane result ports. Grant and final-grant feedback
+  // returns only to the current owner.
+  always_comb begin
+    ldu_result_req_o = normal_ldu_result_req;
+    ldu_result_id_o = normal_ldu_result_id;
+    ldu_result_addr_o = normal_ldu_result_addr;
+    ldu_result_wdata_o = normal_ldu_result_wdata;
+    ldu_result_be_o = normal_ldu_result_be;
+    normal_ldu_result_gnt = ldu_result_gnt_i;
+    normal_ldu_result_final_gnt = ldu_result_final_gnt_i;
+    qbs_ldu_result_gnt = '0;
+    qbs_ldu_result_final_gnt = '0;
+
+    if (qbs_active_q) begin
+      ldu_result_req_o = qbs_ldu_result_req;
+      ldu_result_id_o = qbs_ldu_result_id;
+      ldu_result_addr_o = qbs_ldu_result_addr;
+      for (int unsigned lane = 0; lane < NrLanes; lane++) begin
+        ldu_result_wdata_o[lane] = elen_t'(qbs_ldu_result_wdata[lane]);
+        ldu_result_be_o[lane] = strb_t'(qbs_ldu_result_be[lane]);
+      end
+      normal_ldu_result_gnt = '0;
+      normal_ldu_result_final_gnt = '0;
+      qbs_ldu_result_gnt = ldu_result_gnt_i;
+      qbs_ldu_result_final_gnt = ldu_result_final_gnt_i;
+    end
+  end
+
+  always_comb begin
+    pe_req_ready_o = '0;
+    pe_resp_o = normal_pe_resp;
+    if (!qbs_active_q) begin
+      pe_req_ready_o = normal_pe_req_ready;
+      if (pe_req_i.op == VQBEXEC) begin
+        pe_req_ready_o[OffsetLoad] = normal_vlsu_idle && qbs_command_ready;
+        pe_req_ready_o[OffsetStore] = 1'b0;
+      end
+    end else begin
+      pe_resp_o[OffsetLoad] = '0;
+      if (qbs_terminal)
+        pe_resp_o[OffsetLoad].vinsn_done[qbs_command_id_q] = 1'b1;
+    end
+  end
+
+  always_comb begin
+    qbs_terminal_exception = '0;
+    if (qbs_fault_valid) begin
+      if (qbs_read_fault_kind == QBS_READ_FAULT_MMU) begin
+        qbs_terminal_exception = qbs_fault_mmu_exception;
+      end else begin
+        qbs_terminal_exception.valid = 1'b1;
+        qbs_terminal_exception.cause = qbs_fault_is_validation
+            ? riscv::ILLEGAL_INSTR : riscv::LD_ACCESS_FAULT;
+        qbs_terminal_exception.tval = qbs_fault_is_validation
+            ? '0 : qbs_fault_vaddr;
+      end
+    end
+  end
+
+  always_comb begin
+    addrgen_ack_o = 1'b0;
+    addrgen_exception_o = '0;
+    addrgen_exception_vstart_o = '0;
+    addrgen_fof_exception_o = 1'b0;
+    if (qbs_active_q) begin
+      addrgen_ack_o = qbs_terminal;
+      addrgen_exception_o = qbs_terminal_exception;
+    end else begin
+      addrgen_ack_o = normal_addrgen_ack;
+      addrgen_exception_o = normal_addrgen_exception;
+      addrgen_exception_vstart_o = normal_addrgen_exception_vstart;
+      addrgen_fof_exception_o = normal_addrgen_fof_exception;
+    end
+  end
+
+  assign qbs_fflags_valid_o = qbs_active_q && qbs_success_valid;
+  assign qbs_fflags_o = qbs_result_fflags;
+
+  qbs_engine #(
+    .AxiDataWidth(AxiDataWidth),
+    .AxiAddrWidth(AxiAddrWidth),
+    .VAddrWidth(CVA6Cfg.VLEN),
+    .PAddrWidth(CVA6Cfg.PLEN),
+    .NrLanes(NrLanes),
+    .VLEN(VLEN),
+    .vid_t(vid_t),
+    .vaddr_t(vaddr_t),
+    .axi_ar_t(axi_ar_t),
+    .axi_r_t(axi_r_t),
+    .exception_t(exception_t)
+  ) i_qbs_engine (
+    .clk_i(qbs_clk),
+    .rst_ni,
+    .command_valid_i(qbs_command_valid),
+    .command_ready_o(qbs_command_ready),
+    .command_id_i(pe_req_i.id),
+    .command_vd_i(pe_req_i.vd),
+    .command_m_i(qbs_command_m),
+    .command_descriptor_address_i(pe_req_i.scalar_op),
+    .command_activation_base_i(pe_req_i.stride),
+    .command_round_mode_i(pe_req_i.fp_rm),
+    .command_cache_i(axi_pkg::CACHE_MODIFIABLE),
+    .command_prot_i('0),
+    .success_valid_o(qbs_success_valid),
+    .fault_valid_o(qbs_fault_valid),
+    .terminal_ready_i(1'b1),
+    .result_fflags_o(qbs_result_fflags),
+    .fault_is_validation_o(qbs_fault_is_validation),
+    .validation_error_o(qbs_validation_error),
+    .read_fault_kind_o(qbs_read_fault_kind),
+    .fault_vaddr_o(qbs_fault_vaddr),
+    .fault_mmu_exception_o(qbs_fault_mmu_exception),
+    .core_st_pending_i,
+    .en_ld_st_translation_i,
+    .mmu_req_o(qbs_mmu_req),
+    .mmu_vaddr_o(qbs_mmu_vaddr),
+    .mmu_is_store_o(qbs_mmu_is_store),
+    .mmu_valid_i,
+    .mmu_paddr_i,
+    .mmu_exception_valid_i(mmu_exception_i.valid),
+    .mmu_exception_i,
+    .physical_check_valid_o(qbs_physical_check_valid),
+    .physical_check_addr_o(qbs_physical_check_addr),
+    .physical_check_bytes_o(qbs_physical_check_bytes),
+    .physical_range_allowed_i(qbs_physical_range_allowed),
+    .axi_ar_o(qbs_axi_ar),
+    .axi_ar_valid_o(qbs_axi_ar_valid),
+    .axi_ar_ready_i(qbs_axi_ar_ready),
+    .axi_r_i(qbs_axi_r),
+    .axi_r_valid_i(qbs_axi_r_valid),
+    .axi_r_ready_o(qbs_axi_r_ready),
+    .ldu_result_req_o(qbs_ldu_result_req),
+    .ldu_result_id_o(qbs_ldu_result_id),
+    .ldu_result_addr_o(qbs_ldu_result_addr),
+    .ldu_result_wdata_o(qbs_ldu_result_wdata),
+    .ldu_result_be_o(qbs_ldu_result_be),
+    .ldu_result_gnt_i(qbs_ldu_result_gnt),
+    .ldu_result_final_gnt_i(qbs_ldu_result_final_gnt),
+    .busy_o(qbs_busy),
+    .command_cycles_o(qbs_command_cycles),
+    .read_range_count_o(qbs_read_range_count),
+    .read_translation_count_o(qbs_read_translation_count),
+    .read_ar_count_o(qbs_read_ar_count),
+    .read_beat_count_o(qbs_read_beat_count),
+    .read_payload_bytes_o(qbs_read_payload_bytes),
+    .read_store_wait_cycles_o(qbs_read_store_wait_cycles),
+    .read_backpressure_cycles_o(qbs_read_backpressure_cycles),
+    .read_outstanding_occupancy_sum_o(qbs_read_outstanding_occupancy_sum),
+    .read_outstanding_max_o(qbs_read_outstanding_max),
+    .read_outstanding_full_cycles_o(qbs_read_outstanding_full_cycles),
+    .phase_setup_cycles_o(qbs_phase_setup_cycles),
+    .phase_activation_cycles_o(qbs_phase_activation_cycles),
+    .phase_weight_cycles_o(qbs_phase_weight_cycles),
+    .phase_compute_cycles_o(qbs_phase_compute_cycles),
+    .phase_overlap_cycles_o(qbs_phase_overlap_cycles),
+    .phase_drain_cycles_o(qbs_phase_drain_cycles),
+    .phase_scheduler_cycles_o(qbs_phase_scheduler_cycles),
+    .phase_commit_cycles_o(qbs_phase_commit_cycles),
+    .phase_fault_cycles_o(qbs_phase_fault_cycles),
+    .phase_terminal_cycles_o(qbs_phase_terminal_cycles),
+    .weight_prefetch_wait_cycles_o(qbs_weight_prefetch_wait_cycles),
+    .tiles_computed_o(qbs_tiles_computed),
+    .weight_bytes_o(qbs_weight_bytes),
+    .activation_bytes_o(qbs_activation_bytes),
+    .useful_pairs_o(qbs_useful_pairs),
+    .pair_capacity_o(qbs_pair_capacity),
+    .dot_active_cycles_o(qbs_dot_active_cycles),
+    .fp_uop_issue_o(qbs_fp_uop_issue),
+    .fp_table_occupancy_sum_o(qbs_fp_table_occupancy_sum),
+    .fp_table_occupancy_max_o(qbs_fp_table_occupancy_max),
+    .fp_table_full_cycles_o(qbs_fp_table_full_cycles),
+    .accumulator_updates_o(qbs_accumulator_updates),
+    .commit_word_count_o(qbs_commit_word_count),
+    .commit_backpressure_cycles_o(qbs_commit_backpressure_cycles)
   );
 
   //////////////////
   //  Assertions  //
   //////////////////
+
+`ifndef SYNTHESIS
+  if (QbsEnable) begin : gen_qbs_integration_assertions
+    longint unsigned qbs_command_sequence_q;
+
+    always_ff @(posedge clk_i) begin
+      if (!rst_ni) begin
+        qbs_command_sequence_q <= '0;
+      end else begin
+        if (qbs_command_fire)
+          qbs_command_sequence_q <= qbs_command_sequence_q + 1'b1;
+
+        assert (!(qbs_success_valid && qbs_fault_valid))
+          else $fatal(1, "QBS command cannot succeed and fault together");
+        assert (qbs_busy == qbs_active_q)
+          else $fatal(1, "QBS engine activity diverged from VLSU ownership");
+
+        if (qbs_command_fire) begin
+          assert (normal_vlsu_idle && (qbs_command_m inside {[1:4]}))
+            else $fatal(1, "QBS command accepted before a valid ownership handoff");
+        end
+
+        if (qbs_active_q) begin
+          assert (addrgen_idle && vldu_idle && vstu_idle)
+            else $fatal(1, "Normal VLSU state became active during QBS ownership");
+          assert (!(normal_axi_req.ar_valid || normal_axi_req.aw_valid ||
+                    normal_axi_req.w_valid || |normal_ldu_result_req))
+            else $fatal(1, "Normal VLSU issued memory or VRF work during QBS ownership");
+          assert (!(axi_req.aw_valid || axi_req.w_valid || axi_req.b_ready))
+            else $fatal(1, "Read-only QBS ownership drove an AXI write channel");
+          assert (pe_req_ready_o == '0)
+            else $fatal(1, "VLSU accepted another request during blocking QBS execution");
+        end
+
+        if (qbs_axi_ar_valid || qbs_axi_r_ready || qbs_mmu_req ||
+            |qbs_ldu_result_req) begin
+          assert (qbs_active_q)
+            else $fatal(1, "QBS used a shared VLSU interface without ownership");
+        end
+
+        if (|qbs_ldu_result_req) begin
+          assert (!qbs_fault_valid)
+            else $fatal(1, "QBS fault overlapped architectural VRF commit");
+          for (int unsigned lane = 0; lane < NrLanes; lane++) begin
+            if (qbs_ldu_result_req[lane])
+              assert (qbs_ldu_result_id[lane] == qbs_command_id_q)
+                else $fatal(1, "QBS commit used the wrong vector instruction ID");
+          end
+        end
+
+        if (qbs_terminal) begin
+          assert ($onehot({qbs_success_valid, qbs_fault_valid}))
+            else $fatal(1, "QBS terminal response is not a unique outcome");
+          assert (addrgen_ack_o &&
+                  pe_resp_o[OffsetLoad].vinsn_done[qbs_command_id_q])
+            else $fatal(1, "QBS terminal response did not retire its load PE entry");
+
+          if ($test$plusargs("QBS_PERF")) begin
+            $display("[QBS_PERF] seq=%0d id=%0d m=%0d vlen=%0d lanes=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d busy_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d phase_setup_cycles=%0d phase_activation_cycles=%0d phase_weight_cycles=%0d phase_compute_cycles=%0d phase_overlap_cycles=%0d phase_drain_cycles=%0d phase_scheduler_cycles=%0d phase_commit_cycles=%0d phase_fault_cycles=%0d phase_terminal_cycles=%0d weight_prefetch_wait_cycles=%0d tiles=%0d weight_bytes=%0d activation_bytes=%0d useful_pairs=%0d pair_capacity=%0d dot_active_cycles=%0d fp_uop_issue=%0d fp_table_occ_sum=%0d fp_table_occ_max=%0d fp_table_full_cycles=%0d accumulator_updates=%0d commit_groups=%0d commit_backpressure_cycles=%0d",
+                     qbs_command_sequence_q, qbs_command_id_q, qbs_command_m,
+                     VLEN, NrLanes,
+                     qbs_success_valid, qbs_fault_valid,
+                     qbs_fault_is_validation, qbs_validation_error,
+                     qbs_read_fault_kind, qbs_command_cycles + 1'b1,
+                     qbs_read_range_count, qbs_read_translation_count,
+                     qbs_read_ar_count, qbs_read_beat_count,
+                     qbs_read_payload_bytes, qbs_read_store_wait_cycles,
+                     qbs_read_backpressure_cycles,
+                     qbs_read_outstanding_occupancy_sum,
+                     qbs_read_outstanding_max,
+                     qbs_read_outstanding_full_cycles,
+                     qbs_phase_setup_cycles,
+                     qbs_phase_activation_cycles, qbs_phase_weight_cycles,
+                     qbs_phase_compute_cycles, qbs_phase_overlap_cycles,
+                     qbs_phase_drain_cycles, qbs_phase_scheduler_cycles,
+                     qbs_phase_commit_cycles, qbs_phase_fault_cycles,
+                     qbs_phase_terminal_cycles,
+                     qbs_weight_prefetch_wait_cycles, qbs_tiles_computed,
+                     qbs_weight_bytes, qbs_activation_bytes,
+                     qbs_useful_pairs, qbs_pair_capacity,
+                     qbs_dot_active_cycles, qbs_fp_uop_issue,
+                     qbs_fp_table_occupancy_sum,
+                     qbs_fp_table_occupancy_max,
+                     qbs_fp_table_full_cycles, qbs_accumulator_updates,
+                     qbs_commit_word_count,
+                     qbs_commit_backpressure_cycles);
+          end
+        end
+
+        if (!qbs_active_q && pe_req_i.op != VQBEXEC) begin
+          assert (axi_req.ar_valid == normal_axi_req.ar_valid &&
+                  axi_req.aw_valid == normal_axi_req.aw_valid &&
+                  axi_req.w_valid == normal_axi_req.w_valid &&
+                  ldu_result_req_o == normal_ldu_result_req)
+            else $fatal(1, "Idle QBS integration changed the normal VLSU request path");
+          assert (normal_ldu_result_gnt == ldu_result_gnt_i &&
+                  normal_ldu_result_final_gnt == ldu_result_final_gnt_i)
+            else $fatal(1, "Idle QBS integration changed normal VRF grant routing");
+        end
+      end
+    end
+  end
+`endif
 
   if (AxiDataWidth == 0)
     $error("[vlsu] The data width of the AXI bus cannot be zero.");

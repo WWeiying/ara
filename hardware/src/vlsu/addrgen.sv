@@ -71,7 +71,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  logic             [NrLanes-1:0] addrgen_operand_valid_i,
     output logic                           addrgen_operand_ready_o,
     // Indexed LSU exception support
-    input  logic                           lsu_ex_flush_i
+    input  logic                           lsu_ex_flush_i,
+    // Quiescence indication for exclusive VLSU clients
+    output logic                           idle_o
   );
 
   localparam unsigned DataWidth = $bits(elen_t);
@@ -1149,6 +1151,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       next_2page_msb_q          <= next_2page_msb_d;
     end
   end
+
+  assign idle_o = state_q == IDLE &&
+                  axi_addrgen_state_q == AXI_ADDRGEN_IDLE &&
+                  axi_addrgen_queue_empty && !idx_vaddr_valid_q &&
+                  !(|vinsn_running_q);
 
 `ifdef FOR_VERIFY
   longint unsigned debug_addrgen_cycle_q;

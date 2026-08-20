@@ -170,13 +170,15 @@ package ara_pkg;
     VSLIDEUP, VSLIDEDOWN,
     // Load instructions
     VLE, VLSE, VLXE,
+    // QBS-Ara blocking quantized-block command
+    VQBEXEC,
     // Store instructions
     VSE, VSSE, VSXE
   } ara_op_e;
 
   // Return true if op is a load operation
   function automatic logic is_load(ara_op_e op);
-    is_load = op inside {[VLE:VLXE]};
+    is_load = op inside {[VLE:VLXE], VQBEXEC};
   endfunction : is_load
 
   // Return true if op is a store operation

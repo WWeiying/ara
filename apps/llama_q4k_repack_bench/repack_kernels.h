@@ -16,6 +16,13 @@ typedef struct {
 } block_q4_Kx32_ara;
 
 typedef struct {
+  ggml_half d[Q4K_BENCH_ROWS];
+  int8_t scales[(QK_K / 16) * Q4K_BENCH_ROWS];
+  uint8_t ql[(QK_K / 2) * Q4K_BENCH_ROWS];
+  uint8_t qh[(QK_K / 4) * Q4K_BENCH_ROWS];
+} block_q6_Kx32_ara;
+
+typedef struct {
   float d[Q4K_BENCH_INPUTS];
   int8_t qs[QK_K * Q4K_BENCH_INPUTS];
   int16_t bsums[QK_K / 4];
@@ -23,16 +30,23 @@ typedef struct {
 
 _Static_assert(sizeof(block_q4_Kx32_ara) == sizeof(block_q4_K) * 32,
                "invalid Q4_Kx32 layout");
+_Static_assert(sizeof(block_q6_Kx32_ara) == sizeof(block_q6_K) * 32,
+               "invalid Q6_Kx32 layout");
 _Static_assert(sizeof(block_q8_Kx4) == sizeof(block_q8_K) * 4,
                "invalid Q8_Kx4 layout");
 
-float q4k_dot_original(const block_q4_K *weight,
-                       const block_q8_K *activation, int n);
-float q4k_dot_vl1024(const block_q4_K *weight,
-                     const block_q8_K *activation, int n);
-void q4k_gemv_32(const block_q4_Kx32_ara *weight,
-                 const block_q8_K *activation, float *output, int n);
+float q4k_dot_original(const block_q4_K *weight, const block_q8_K *activation,
+                       int n);
+float q4k_dot_vl1024(const block_q4_K *weight, const block_q8_K *activation,
+                     int n);
+void q4k_gemv_32(const block_q4_Kx32_ara *weight, const block_q8_K *activation,
+                 float *output, int n);
 void q4k_gemm_32x4(const block_q4_Kx32_ara *weight,
                    const block_q8_Kx4 *activation, float *output, int n);
+void q6k_gemv_32(const block_q6_Kx32_ara *weight, const block_q8_K *activation,
+                 float *output, int n);
+void q6k_gemm_32x4(const block_q6_Kx32_ara *weight,
+                   const block_q8_K *activation, int activation_stride,
+                   float *output, int output_stride, int n);
 
 #endif

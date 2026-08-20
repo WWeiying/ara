@@ -1,0 +1,52 @@
+{
+  "extension_name": "Xaraqbs",
+  "architecture_version": 1,
+  "numerical_contract_version": 1,
+  "descriptor": {
+    "version": 1,
+    "bytes": 16,
+    "alignment_log2": 4
+  },
+  "instruction": {
+    "opcode": 91,
+    "qbexec_funct3": 0,
+    "qbinfo_funct3": 1
+  },
+  "limits": {
+    "max_m": 4,
+    "max_n": 32,
+    "max_k_blocks": 64,
+    "block_elements": 256,
+    "weight_base_alignment_log2": 1,
+    "activation_base_alignment_log2": 2
+  },
+  "weight_profiles": {
+    "Q4_K": {
+      "id": 1,
+      "block_bytes": 144,
+      "subgroup_count": 8,
+      "subgroup_elements": 32
+    },
+    "Q6_K": {
+      "id": 2,
+      "block_bytes": 210,
+      "subgroup_count": 16,
+      "subgroup_elements": 16
+    }
+  },
+  "activation_profiles": {
+    "Q8_K": {
+      "id": 1,
+      "block_bytes": 292,
+      "bsums_count": 16
+    }
+  },
+  "weight_layouts": {
+    "ROW_MAJOR": 1,
+    "R4_BLOCK_MAJOR": 2
+  },
+  "activation_layouts": {
+    "ROW_MAJOR": 1,
+    "M4_INTERLEAVED": 2
+  }
+}

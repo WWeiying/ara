@@ -2,7 +2,9 @@
 
 ## 1. 目标与方法
 
-本方案面向 Qwen2.5 Q4_K_M 在 `llama.cpp/ggml` 中的真实量化线性层，目标不是只让一个人工点积变快，而是建立以下闭环：
+本方案以 Qwen2.5 Q4_K_M 的真实量化线性层为第一组测量对象，但硬件研究边界是
+`llama.cpp/ggml` 的块量化 `MUL_MAT` 路径，不绑定单个模型或固定 shape。目标不是只让
+一个人工点积变快，而是建立以下闭环：
 
 ```text
 真实模型数据与算子形状
@@ -20,6 +22,10 @@
 - `attn_q` 和 `ffn_gate` 使用 Q4_K 权重；`ffn_down` 使用 Q6_K 权重。
 - 输入、权重、输出和 golden 均来自真实 QEMU/llama.cpp 捕获，而不是随机生成。
 
+六点用于高成本 RTL 性能测量，不是硬件支持列表。完整软件数据集还包括 Attention
+Q/K/V/O 和 FFN gate/up/down 在 Decode/Prefill 下的 14 个量化线性点；格式、M/N/K tail
+和第二模型的通用性由更小的 directed sweep 验证。
+
 ### 1.1 技术实施大纲
 
 LLM 的主要计算负载是量化矩阵计算：Decode 以矩阵乘向量（GEMV）为主，Prefill 以矩阵乘矩阵（GEMM）为主。Ara 上的 DSA 优化按以下顺序推进：
@@ -27,21 +33,40 @@ LLM 的主要计算负载是量化矩阵计算：Decode 以矩阵乘向量（GEM
 1. 用真实 Qwen2.5 数据建立 Q4_K/Q6_K GEMV、GEMM 的标准 RVV 基线。
 2. 先完成面向 `VLEN=1024` 的软件优化，包括权重 repack、多输出 GEMV 和多输入 GEMM，确定标准 RVV 的性能上限。
 3. 利用分阶段计数器判断主要开销来自量化解包、低位宽乘加、归约、缩放、重复读取还是内存等待。
-4. 首先设计最小且可复用的量化融合运算，融合 Q4_K/Q6_K 解包、Q8 乘加和 INT32 累加，不把完整 GGML 数据结构固化进 ISA。
-5. 在此基础上增加多输出 tile：一份 activation 同时服务多行权重，并在 DSA 内保持多个累加器，优先加速 Decode GEMV。
-6. 将同一 tile 数据通路扩展为多输入、多输出计算，通过复用权重支持 Prefill GEMM。
-7. 配套设计权重与 activation 缓冲、元数据解析、缩放、连续 burst、双缓冲和结果写回。
-8. 通过自定义指令或命令接口接入 Ara，明确 backpressure、完成、异常和内存顺序；不支持的形状和类型继续走标准 RVV。
+4. 冻结 format profile、storage layout、M/N/K tile、tail、capability 和 fallback 契约，不把模型名称或固定 shape 固化进 ISA。
+5. 先在 standalone profile engine 中验证 decoder/dot/correction/FP update 的逐 block 正确性和吞吐，不把它伪装成系统级 speedup。
+6. 增加 tagged block request、metadata-bound token 和 command-local accumulator，使压缩数据直接从 VLSU 进入 QBS。
+7. 使用统一 K-block-major controller，由 M/N shape 推导 activation/weight consumer count 和释放时刻，再逐级打开复用与 weight ping-pong。
+8. 将阻塞式 `ara.qbexec` 接入 Ara sequencer、MMU、fault containment、atomic commit 和正常 RVV destination path；不支持的 profile、layout 或 shape 继续走标准 RVV。
 9. 在 ggml 模型加载阶段执行权重 repack，运行时依据量化类型与 M/N/K 选择 RVV 或 DSA kernel。
 10. 使用相同真实输入和 golden 比较原始 RVV、`VLEN=1024` RVV、多输出 RVV 与 DSA，并同时报告周期、总线流量、利用率、面积和功耗。
 
-首个硬件目标应为 `Q4_K x Q8_K` 多输出 Decode GEMV，其核心路径为：
+首个接入目标仍是 `Q4_K x Q8_K` 多输出 Decode GEMV，但它必须使用已经冻结的公共命令和
+profile 接口，其核心路径为：
 
 ```text
 读取量化块 -> 解包 -> 低位宽乘加 -> 多输出累加 -> 缩放/反量化 -> 写回
 ```
 
-完成该路径并确认收益后，再补充 Q6_K 和 Prefill GEMM，避免在缺少基线数据时直接设计过大的专用引擎。
+完成该路径并确认收益后，再在相同框架中补充 Q6_K 和 Prefill GEMM。Q4 是实施顺序，
+不是把首版 ISA 定义为 Q4 专用后再重新设计一次。
+
+### 1.2 DSA 定位与扩展契约
+
+详细 ISA 和微结构定位见 [ara_llm_kquant_dsa_proposal.md](ara_llm_kquant_dsa_proposal.md)。
+性能计划使用同一组边界：
+
+- **format profile** 定义 block payload、metadata、scale 和 correction 数学语义；
+- **storage layout** 定义 row-major 或 repacked block 的地址排列，不改变数学格式；
+- **execution mapping** 定义 M/N/K tile、统一 K-block-major schedule 和 shape-derived token
+  lifetime/reuse，不进入格式编号；
+- 逻辑矩阵尺寸由软件循环平铺，物理 micro-tile 和 4-lane/VLEN=1024 参数不进入 ISA；
+- Q4_K/Q6_K 是首版必须实现的两类 profile，Q2/Q3/Q5 是需要新增 decoder 的自然扩展，
+  IQ/MXFP 只共享块流基础设施，不声称免费支持；
+- unsupported profile、layout、K 对齐或 tile 必须明确回退到标准 RVV。
+
+这套契约先于 RTL 冻结。后续软件优化、QBS-Serial/Reuse/Full 消融都必须使用相同输入、
+输出、tile 语义和 fallback 条件，防止为某个性能点重新定义问题。
 
 ## 2. 从进迭时空实现得到的约束
 
@@ -130,7 +155,7 @@ req_blocked_ratio   = req_blocked_cycles / cycles
 - `mfpu_exec_active_cycles/mfpu_exec_lane_fires`：MFPU 至少一个 lane 发射的周期数，以及整数乘法、整数除法和 FP pipeline 输入握手的总数。
 - `int_mul_exec_lane_fires`：整数乘法流水线的 `valid && ready` 输入握手数，包括普通乘法与整数 MAC。
 - `int_mac_exec_lane_fires`：上述整数乘法发射中操作为 `VMACC/VNMSAC/VMADD/VNMSUB` 的子集。
-- `int_mac_element_count`：整数 MAC 发射时根据实际 `issue_be` 和 SEW 计算的有效元素数，已经排除 tail、predicate 和 `vstart` 抑制的元素。
+- `int_mac_element_count`：整数 MAC 发射时根据实际 `issue_be` 和该 MFPU 请求的有效结果 SEW 计算的 MAC 元素数，已经排除 tail、predicate 和 `vstart` 抑制的元素。对 widening MAC，Ara 在 dispatcher 中已把 `vtype.vsew` 提升为结果宽度，因此该计数按每周期真正被 MFPU 接受的 widened result element 计数，不把原始窄源操作数个数误当成当前流水线容量。
 - `int_div_exec_lane_fires/fp_exec_lane_fires`：整数除法与 FP pipeline 的真实输入握手数。
 - `alu_result_lane_fires/mfpu_result_lane_fires`：ALU/MFPU 结果请求被 VRF 写回端接受的 lane 次数；mask-unit 内部结果不属于 VRF 写回，不计入该项。
 - `alu_result_active_bytes/mfpu_result_active_bytes`：上述成功写回结果中 byte enable 置位数之和。
@@ -145,15 +170,19 @@ alu_issue_utilization          = alu_exec_lane_fires / (cycles * NrLanes)
 mfpu_issue_utilization         = mfpu_exec_lane_fires / (cycles * NrLanes)
 int_mac_issue_utilization      = int_mac_exec_lane_fires / (cycles * NrLanes)
 int_mac_elements_per_cycle     = int_mac_element_count / cycles
-int8_mac_peak_utilization      = int_mac_element_count / (cycles * NrLanes * 8)
+int_mac_vector_fill_ratio      = int_mac_element_count / int_mac_element_capacity
+int8_equivalent_mac_throughput_ratio = int_mac_element_count / (cycles * NrLanes * 8)
 compute_result_active_bytes_per_cycle =
     (alu_result_active_bytes + mfpu_result_active_bytes) / cycles
 ```
 
 `compute_lane_utilization` 是通用的“lane 正在真实发射计算”比例；
 `int_mac_issue_utilization` 是整数 MAC 流水线 lane-slot 利用率；
-`int8_mac_peak_utilization` 则以每个64-bit lane 每周期最多处理8个 INT8 元素为峰值。
-后者适合 INT8 MAC 主导区间，不应拿去描述 FP32、不同 SEW 混合或非 MAC 工作负载。
+`int_mac_vector_fill_ratio` 只考察已经发射的 MAC lane-slot 内有多少元素有效；
+`int8_equivalent_mac_throughput_ratio` 将全部有效 MAC 元素按每个64-bit lane 每周期8个
+INT8 元素归一化，仅用于比较潜在 INT8 点积硬件的等效吞吐，不能解释为当前混合 SEW
+MFPU 的物理利用率。原始计数还按 EW8/EW16/EW32/EW64 分别记录发射次数和有效元素数，
+用于说明工作负载实际使用的数据宽度。
 
 ### 4.3 向量操作类别
 
@@ -294,7 +323,10 @@ Prefill 的 M>1，优先观察：
 - AXI 流量接近理论值，说明主要问题不是布局浪费；
 - queue 和 operand block 表明现有 ALU/MFPU 间的数据传递限制吞吐。
 
-候选语义应是“从标准 Q4_K/Q8_K block 中提取并累加一个可定义的子块”，而不是把完整 GGML 数据结构硬编码进一条不可复用的大指令。指令需明确：输入打包格式、带符号规则、累加宽度、尾部处理、异常与精确状态。
+候选算术语义应是“从标准 Q4_K/Q8_K block 中提取并累加一个可定义的子块”，而不是把
+完整 GGML 数据结构硬编码进一条不可复用的大指令。冻结方案先把该语义实现为 QBS
+profile engine 的内部接口和 standalone 验证边界，不单独发布一个仍需软件显式搬运、
+解包和归约的 fused-dot opcode。
 
 ### 6.2 先做多输出 tile DSA 的条件
 
@@ -316,7 +348,18 @@ Prefill 的 M>1，优先观察：
 - AR stall 高或 outstanding 深度不足；
 - `compute_lane_utilization` 低但 `backend_busy_cycles/cycles` 高；
 
-则应先优化 repack、burst、双缓冲或局部 SRAM/TCM，而不是增加 MAC。局部存储需要分别统计 weight bytes、activation bytes、metadata bytes、scratchpad hit/miss 和 DMA stall，不能只看总 AXI 字节。
+则应先优化 repack、burst、两个有序 outstanding、weight ping-pong 或 block-buffer banking，
+而不是增加 MAC。需要分别统计 weight、activation、descriptor、output bytes、block loads/
+consumer uses 和 read-engine stall，不能只看总 AXI 字节。
+
+### 6.4 当前冻结选择
+
+现有数据同时表现出细粒度解包/归约开销、跨输出/输入复用机会以及普通 RVV 请求和 VRF
+流量膨胀，因此 v1 不在上述三条中只选一条。冻结方案以一个阻塞式 `ara.qbexec` 组织完整
+command tile：profile engine 解决压缩域算术，shape-derived schedule 解决 M/N 复用，
+VLSU block stream 和 weight ping-pong 解决供数。三者使用同一 opcode、descriptor、
+numerical contract 和 reference；`QBS-Serial -> QBS-Reuse -> QBS-Full` 只逐级打开内部
+机制，用于分别归因。
 
 ## 7. 建议的 DSA 分阶段实现
 
@@ -327,47 +370,53 @@ Prefill 的 M>1，优先观察：
 - 验证 32-output repack 是否减少归约和 activation 流量。
 - 以输出 golden 保证所有布局变化保持数值语义。
 
-### 阶段 B：定义最小融合运算
+### 阶段 B：冻结 profile/layout/tile 契约
 
-- 只融合数据解包和 widening MAC 中反复出现、语义稳定的部分。
-- 先做 intrinsic/inline assembly 和指令级 directed test。
-- 保留标准 RVV fallback。
-- 用 `matmul` phase 证明请求数、ALU operand traffic 或周期确实下降。
+- 明确定义 Q4_K/Q6_K weight profile、Q8_K activation profile 和支持的 storage layout。
+- 定义 M/N/K tile、tail、capability negotiation 和标准 RVV fallback。
+- 用 C/Spike functional model 跑 format、shape 和 negative-path directed test。
+- profile/layout/execution 三层冻结后，性能实现不得修改其数学语义。
 
-### 阶段 C：多输出 tile engine
+### 阶段 C：Standalone profile engine
 
-- 增加 tile descriptor 或短命令接口。
-- 让同一 activation block 服务 4/8/16/32 个输出。
-- 逐步扩大 N tile，依据寄存器、SRAM 和带宽数据选择最终宽度。
-- 不直接假设 `n32` 对 Ara 最优；进迭时空的宽度只是参考点。
+- 在独立 unit-test top 中实现 Q4/Q6 profile decoder、32-pair dot、correction、FP update
+  和 accumulator，输入直接使用完整 native block。
+- 逐级比较 decoded quant、group partial、INT32 subtotal、逐 block FP update 和最终 result；
+  单独报告 pair/cycle 与 queue stability，不把它作为完整 GGML kernel 的系统级 speedup。
+- 保留相同 numerical contract 和 golden，不把软件 repack 收益计入硬件贡献。
 
-### 阶段 D：Prefill 多输入支持
+### 阶段 D：QBS block-stream engine
 
-- 在同一 tile engine 上增加 M=2/4。
-- 比较 activation pack 成本与 weight tile 复用收益。
-- 若 pack 成本显著，应将布局转换移到上游或由 DMA/DSA 融合完成。
+- 增加 descriptor-driven `ara.qbinfo/ara.qbexec`、tagged subrequest、token assembly 和
+  command-local accumulator；不引入 `vqbset` 或跨命令隐藏状态。
+- 让 compressed payload/metadata 绕过普通 VRF 中间表示，同时复用 Ara MMU、异常和提交域。
+- 先完成 Q4 Decode，再以同一公共路径加入 Q6 profile。
 
-### 阶段 E：GGML backend 接入
+### 阶段 E：跨 shape 复用与 GGML backend
 
-- 模型加载时 repack 权重并保存 Ara buffer type。
-- runtime 根据 M/N/K、量化类型和硬件能力选择 kernel。
-- unsupported shape/type 回退标准 RVV。
-- 保持 Decode 与 Prefill 共用数据布局和调度框架。
+- Decode 和 Prefill 使用同一 K-block-major controller；activation 跨 N microtile 复用，weight
+  跨 active M context 复用，范围和释放时刻只由 command shape 推导。
+- 模型加载时按受支持 layout 决定是否 repack，并保存 Ara buffer type。
+- runtime 根据 M/N/K、profile、layout 和 capability 选择 QBS 或 RVV kernel。
+- 用七类线性层、M/N/K tail、第二模型和 unsupported case 验证框架边界。
 
-## 8. 后续 DSA 自身必须增加的计数器
+## 8. QBS 自身计数器
 
-DSA RTL 出现后，应在其接口和内部补充严格事件计数：
+当前 `QBS_PERF` 已按命令导出：
 
-- `dsa_cmd_valid_cycles/dsa_cmd_fire_count/dsa_cmd_blocked_cycles`。
-- `dsa_busy_cycles/dsa_tile_count/dsa_k_block_count`。
-- `dsa_useful_mac_count`，按实际执行且属于架构结果的 MAC 定义。
-- `dsa_weight_bytes/dsa_activation_bytes/dsa_metadata_bytes/dsa_output_bytes`。
-- `dsa_input_wait_cycles/dsa_output_wait_cycles`。
-- `dsa_scratchpad_hit_count/miss_count`，若加入局部存储。
-- `dsa_dma_read_bytes/write_bytes/outstanding_max`，若加入 DMA。
-- `dsa_accumulator_spill_count`，判断 tile 是否超过本地累加容量。
+- terminal outcome、`busy_cycles` 和十类严格互斥的 `phase_*_cycles`；十项之和必须等于
+  `busy_cycles`。
+- logical range、translation、AR/R handshake、有效 payload byte 和 R backpressure。
+- `read_outstanding_occ_sum/max/full_cycles`，严格跟踪 AR 到对应 RLAST 的两个有序槽位。
+- weight/activation byte、tile、useful pair、pair capacity 和 dot active cycle。
+- FP update table 占用、uop issue、accumulator update、commit group 和 commit backpressure。
+- `weight_prefetch_wait_cycles`，表示当前 tile 已结束但下一 weight bank 尚未完整的等待。
 
-这些计数器应在接口定义时一并设计。特别是 `useful_mac_count` 和各类 byte counter，必须以明确握手或实际执行事件为准，不能由峰值吞吐乘周期估算。
+这些计数器均以明确握手、状态或实际执行事件为准，不能由峰值吞吐乘周期估算。汇总器会
+拒绝 phase 漏计、outstanding 超过 2、占用积分越界和 prefetch wait 逃逸出 weight phase 的
+日志。尚未单独导出 block load/consumer-use 与 correction-slot stall，因此不得由 byte/tile
+近似命名为严格复用率或 correction stall。严格定义与派生公式以
+[QBS-Ara 方案第 6.10 节](ara_llm_kquant_dsa_proposal.md#610-性能计数器与严格口径)为准。
 
 ## 9. 使用方法
 
@@ -410,3 +459,17 @@ make -C hardware llama_real_eval_status
 最新运行目录由 `hardware/llama_eval_runs/latest` 指向。每个 case 独立保存
 `run.vcs.log`、`perf_report_*`、`llm_perf_report_*`、`result.csv`、`metrics.csv`、
 `exit_code` 和 `status`，不会复用或覆盖 `hardware/sim_l2_16m` 中的旧结果。
+
+QBS-Full 使用独立模板和运行目录：
+
+```bash
+make -C hardware llama_qbs_eval_build
+make -C hardware llama_qbs_eval_compile
+make -C hardware llama_qbs_eval_parallel
+make -C hardware llama_qbs_eval_status
+make -C hardware llama_qbs_eval_sum
+```
+
+每点额外生成 `qbs_perf.csv` 和逐命令 `qbs_commands.csv`。当前 Full 在不改变 payload 和
+数值结果的前提下，用 weight ping-pong 与两个同 ID、有序 read outstanding 覆盖下一
+weight microtile 的取数；物理闭环不属于本阶段。
