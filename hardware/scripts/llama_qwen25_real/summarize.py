@@ -72,6 +72,7 @@ def main() -> None:
     fields = [
         "case", "result", "k", "rows", "inputs", "outputs",
         "setup_cycles", "compute_cycles", "cycles_per_output_x1000",
+        "quantize_cycles", "pack_cycles", "matmul_cycles",
         "logical_read_bytes", "total_cycles", "total_insns",
         "total_vector_insns", "ara_req_fire_count", "rvv_axi_ar_count",
         "rvv_axi_r_count", "rvv_op_load", "rvv_op_store",

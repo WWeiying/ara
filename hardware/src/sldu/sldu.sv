@@ -186,7 +186,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   } sldu_operand_t;
 
   elen_t         [NrLanes-1:0] sldu_operand;
-  sldu_operand_t [NrLanes-1:0] sldu_operand_payload;
+  sldu_operand_t [NrLanes-1:0] sldu_operand_input, sldu_operand_payload;
   logic          [NrLanes-1:0] sldu_operand_valid;
   logic          [NrLanes-1:0] sldu_operand_ready;
   logic          [NrLanes-1:0] reduction_stale_flush;
@@ -215,6 +215,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // Data and handshakes signals are controlled upstream (TX side) so that this Hypotheses hold.
 
   for (genvar l = 0; l < NrLanes; l++) begin
+    assign sldu_operand_input[l].reduction = sldu_operand_reduction_i[l];
+    assign sldu_operand_input[l].data      = sldu_operand_i[l];
+
     spill_register_flushable #(
       .T(sldu_operand_t)
     ) i_sldu_spill_register (
@@ -224,8 +227,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                !reduction_stale_flush[l]                 ),
       .flush_i(reduction_stale_flush[l]                  ),
       .ready_o(sldu_operand_ready_q[l]                   ),
-      .data_i ('{reduction: sldu_operand_reduction_i[l],
-                 data: sldu_operand_i[l]}                ),
+      .data_i (sldu_operand_input[l]                     ),
       .valid_o(sldu_operand_valid[l]                     ),
       .ready_i(sldu_operand_ready[l]                     ),
       .data_o (sldu_operand_payload[l]                   )
@@ -245,7 +247,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     strb_t [NrLanes-1:0] data;
   } mask_operand_t;
 
-  mask_operand_t mask_payload_q;
+  mask_operand_t mask_payload_d, mask_payload_q;
   strb_t [NrLanes-1:0] mask_q;
   logic  [NrLanes-1:0] mask_valid_q;
   logic                mask_ready_d;
@@ -278,6 +280,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // Keep the lane data and its final partial-lane validity in one aggregate
   // FIFO.  Separate lane spills can acquire different depths after a partial
   // word and then combine words from adjacent slide contexts.
+  assign mask_payload_d.lane_valid = mask_valid_i;
+  assign mask_payload_d.data       = mask_i;
+
   spill_register_flushable #(
     .T(mask_operand_t)
   ) i_mask_operand_register (
@@ -287,7 +292,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     .data_o (mask_payload_q                              ),
     .valid_o(mask_spill_valid                            ),
     .ready_i(mask_ready_d                                ),
-    .data_i ('{lane_valid: mask_valid_i, data: mask_i}   ),
+    .data_i (mask_payload_d                               ),
     .valid_i((|mask_valid_i) && mask_input_context_valid),
     .ready_o(mask_spill_ready                            )
   );

@@ -225,6 +225,8 @@ module qbs_engine_tb;
   logic score_reset;
   integer commit_aggregate_words;
   integer unexpected_write_count;
+  bit saw_dual_read_outstanding;
+  bit saw_read_outstanding_full;
 
   function automatic logic [7:0] memory_byte(input logic [63:0] address);
     longint unsigned index;
@@ -246,7 +248,11 @@ module qbs_engine_tb;
     header = '0;
     header[3:0] = version[3:0];
     header[7:4] = profile[3:0];
-    header[11:8] = QBS_ACTIVATION_PROFILE_Q8_K;
+    header[11:8] =
+        profile == QBS_WEIGHT_PROFILE_Q4_0 ||
+                profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+            ? QBS_ACTIVATION_PROFILE_Q8_0
+            : QBS_ACTIVATION_PROFILE_Q8_K;
     header[15:12] = weight_layout[3:0];
     header[19:16] = activation_layout[3:0];
     header[24:20] = (n - 1) & 5'h1f;
@@ -547,6 +553,8 @@ module qbs_engine_tb;
     score_id = 0;
     score_reset = 1'b0;
     total_errors = 0;
+    saw_dual_read_outstanding = 1'b0;
+    saw_read_outstanding_full = 1'b0;
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_command_vectors.txt";
@@ -570,6 +578,7 @@ module qbs_engine_tb;
       integer k_blocks;
       integer expected_flags;
       integer block_bytes;
+      integer activation_block_bytes;
       integer expected_tiles;
       integer expected_weight_bytes;
       integer expected_activation_bytes;
@@ -600,8 +609,12 @@ module qbs_engine_tb;
       descriptor_base = 64'h0000_0000_0000_1000;
       weight_base = 64'h0000_0000_0010_0000;
       activation_base = 64'h0000_0000_0020_0000;
-      block_bytes = profile == QBS_WEIGHT_PROFILE_Q4_K
-          ? QbsQ4KBlockBytes : QbsQ6KBlockBytes;
+      block_bytes = qbs_weight_block_bytes(qbs_weight_profile_e'(profile));
+      activation_block_bytes = qbs_activation_block_bytes(
+          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
+                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+              ? QBS_ACTIVATION_PROFILE_Q8_0
+              : QBS_ACTIVATION_PROFILE_Q8_K);
       install_descriptor(descriptor_base, weight_base, QbsDescriptorVersion,
                          profile, weight_layout, activation_layout, n,
                          k_blocks);
@@ -644,10 +657,11 @@ module qbs_engine_tb;
             rc = $fscanf(fd, "%d %d %h %h", ctx, offset, strb, data);
             if (rc != 4) $fatal(1, "case %0d: bad A beat", case_id);
             if (activation_layout == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED)
-              activation_offset = tile_k * (4 * QbsQ8KBlockBytes) + offset;
+              activation_offset =
+                  tile_k * (4 * activation_block_bytes) + offset;
             else
               activation_offset = (ctx * k_blocks + tile_k) *
-                                  QbsQ8KBlockBytes + offset;
+                                  activation_block_bytes + offset;
             put_beat(activation_base + activation_offset, strb, data);
           end else begin
             $fatal(1, "case %0d: unexpected tile token %s", case_id, token);
@@ -684,6 +698,8 @@ module qbs_engine_tb;
       reset_scoreboard();
       send_command(score_id, score_vd, m, descriptor_base, activation_base);
       wait_success(case_id);
+      saw_dual_read_outstanding |= read_outstanding_max == 2;
+      saw_read_outstanding_full |= read_outstanding_full_cycles != 0;
 
       expected_ranges = 1 +
           (weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
@@ -703,8 +719,6 @@ module qbs_engine_tb;
           read_range_count != expected_ranges ||
           read_payload_bytes != 16 + expected_weight_bytes +
                                 expected_activation_bytes ||
-          read_outstanding_max != 2 ||
-          read_outstanding_full_cycles == 0 ||
           phase_setup_cycles + phase_activation_cycles +
               phase_weight_cycles + phase_compute_cycles +
               phase_overlap_cycles + phase_drain_cycles +
@@ -724,6 +738,15 @@ module qbs_engine_tb;
                  read_range_count, expected_ranges, read_payload_bytes,
                  16 + expected_weight_bytes + expected_activation_bytes,
                  commit_aggregate_words, m * WordsPerRegister);
+        $display("  pairs useful=%0d/%0d capacity=%0d/%0d dot_cycles=%0d/%0d fp_uops=%0d/%0d updates=%0d/%0d",
+                 useful_pairs, expected_useful_pairs, pair_capacity,
+                 expected_pair_capacity, dot_active_cycles,
+                 expected_dot_cycles, fp_uop_issue, expected_fp_uops,
+                 accumulator_updates, expected_updates);
+        $display("  read outstanding max=%0d full_cycles=%0d commit_words=%0d/%0d unexpected=%0d",
+                 read_outstanding_max, read_outstanding_full_cycles,
+                 commit_word_count, m * WordsPerRegister,
+                 unexpected_write_count);
         $display("  phases setup=%0d act=%0d weight=%0d compute=%0d overlap=%0d drain=%0d sched=%0d commit=%0d fault=%0d terminal=%0d prefetch_wait=%0d busy=%0d",
                  phase_setup_cycles, phase_activation_cycles,
                  phase_weight_cycles, phase_compute_cycles,
@@ -811,6 +834,8 @@ module qbs_engine_tb;
 
     if (total_errors != 0)
       $fatal(1, "QBS end-to-end engine failed with %0d errors", total_errors);
+    if (!saw_dual_read_outstanding || !saw_read_outstanding_full)
+      $fatal(1, "QBS end-to-end cases did not exercise the full read window");
     if (mmu_is_store)
       $fatal(1, "QBS requested a store translation");
     $display("QBS engine PASS: %0d functional cases plus four fault classes",

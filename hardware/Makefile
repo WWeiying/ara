@@ -130,10 +130,10 @@ bender_targs_spyglass := $(bender_common_targs) -t spyglass
 
 ifeq ($(mc), 1)
   bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis -t sram_mc
-  bender_targs_dc       := $(bender_common_targs) -t sram_blackbox -t sram_mc
+  bender_targs_dc       := $(bender_common_targs) -t synthesis -t sram_blackbox -t sram_mc -t tech_cells_generic_exclude_tc_sram
 else
 bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test -t notsynthesis
-bender_targs_dc       := $(bender_common_targs) -t sram_blackbox
+bender_targs_dc       := $(bender_common_targs) -t synthesis -t sram_blackbox
 endif
 
 ifeq ($(mc), 1)
@@ -172,7 +172,7 @@ ifeq ($(qbs_perf), 1)
 APP += +QBS_PERF
 endif
 
-.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum
+.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
 
 # Bender
 bender: $(BENDER)
@@ -339,6 +339,53 @@ llama_qbs_eval_sum:
 		--run-root "$(or $(run_root),$(ROOT_DIR)/qbs_eval_runs/latest)" \
 		$(if $(filter 1,$(allow_partial)),--allow-partial,)
 
+llama_format_list:
+	@printf '%s\n' \
+		q3k_decode_attn_q q5k_decode_attn_q \
+		q6k_decode_attn_q q8_0_decode_attn_q
+
+llama_format_build:
+	@$(MAKE) -C ../apps \
+		llama_qwen25_q3k_decode_attn_q_rvv \
+		llama_qwen25_q3k_decode_attn_q_qbs \
+		llama_qwen25_q5k_decode_attn_q_rvv \
+		llama_qwen25_q5k_decode_attn_q_qbs \
+		llama_qwen25_q6k_decode_attn_q_rvv \
+		llama_qwen25_q6k_decode_attn_q_qbs \
+		llama_qwen25_q8_0_decode_attn_q_rvv \
+		llama_qwen25_q8_0_decode_attn_q_qbs sim_l2_mb=1
+
+llama_format_rvv_compile:
+	@$(MAKE) compile qbs=0 sim_l2_mb=1 \
+		buildpath=$(ARA_DIR)/hardware/build_rvv_real_formats_1m \
+		sim_dir=sim_rvv_real_formats_1m_template no_fsdb=1
+
+llama_format_qbs_compile:
+	@$(MAKE) compile qbs=1 sim_l2_mb=1 \
+		buildpath=$(ARA_DIR)/hardware/build_qbs_real_formats_1m \
+		sim_dir=sim_qbs_real_formats_1m_template no_fsdb=1
+
+llama_format_rvv_parallel:
+	@./scripts/llama_qwen25_real/run_format_parallel.sh rvv
+
+llama_format_qbs_parallel:
+	@./scripts/llama_qwen25_real/run_format_parallel.sh qbs
+
+llama_format_status:
+	@test "$(mode)" = rvv -o "$(mode)" = qbs || { \
+		echo "usage: make llama_format_status mode=<rvv|qbs> [run_root=...]" >&2; \
+		exit 2; \
+	}
+	@./scripts/llama_qwen25_real/eval_status.sh \
+		"$(or $(run_root),$(ROOT_DIR)/$(mode)_format_eval_runs/latest)"
+
+llama_format_sum:
+	@./scripts/llama_qwen25_real/summarize_format_closure.py \
+		--rvv-root "$(or $(rvv_root),$(ROOT_DIR)/rvv_format_eval_runs/latest)" \
+		--qbs-root "$(or $(qbs_root),$(ROOT_DIR)/qbs_format_eval_runs/latest)" \
+		--output "$(or $(output),$(ROOT_DIR)/format_closure.csv)" \
+		--markdown-output "$(or $(markdown_output),$(ROOT_DIR)/format_closure.md)"
+
 clean:
 	@cd ./$(sim_dir) && rm -rf *
 	@rm -rf $(buildpath)
@@ -356,7 +403,7 @@ trace:
 
 dc:
 	@echo "1.Generating dc flist"
-	@$(BENDER) script verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
+	@$(BENDER) script --no-default-target verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
 	@cd ../backend/flist && cat ara_soc.f | \
 	grep -v "incdir" | \
 	grep -v "+define"| \

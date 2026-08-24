@@ -42,6 +42,34 @@ FULL_FIELDS = set(PHASE_FIELDS) | {
     "read_outstanding_full_cycles",
     "weight_prefetch_wait_cycles",
 }
+PROBE_FIELDS = {
+    "probe_context_start_blocked_cycles",
+    "probe_compute_without_dot_issue_cycles",
+    "probe_profile_result_blocked_cycles",
+    "probe_fp_slot_blocked_cycles",
+    "probe_fp_accumulator_blocked_cycles",
+    "probe_fp_other_blocked_cycles",
+    "probe_fp_input_blocked_cycles",
+    "probe_fp_no_schedulable_uop_cycles",
+    "probe_fp_busy_cycles",
+    "probe_profile_context_occ_sum",
+    "probe_profile_two_context_cycles",
+    "probe_profile_drain_only_cycles",
+    "probe_profile_correction_pending_cycles",
+    "probe_profile_result_pending_cycles",
+    "probe_read_range_blocked_cycles",
+    "probe_read_range_fifo_blocked_cycles",
+    "probe_read_ar_slot_blocked_cycles",
+    "probe_read_ar_ready_blocked_cycles",
+    "probe_read_response_idle_cycles",
+    "probe_read_data_sink_blocked_cycles",
+    "probe_read_completion_blocked_cycles",
+    "probe_read_translation_wait_cycles",
+    "probe_weight_wait_no_outstanding_cycles",
+    "probe_weight_wait_response_idle_cycles",
+    "probe_weight_wait_r_transfer_cycles",
+    "probe_weight_wait_r_blocked_cycles",
+}
 
 
 def parse_log(path: Path) -> list[dict[str, int]]:
@@ -69,6 +97,11 @@ def validate(records: list[dict[str, int]]) -> list[str]:
         missing = ", ".join(sorted(FULL_FIELDS - keys))
         errors.append(f"incomplete QBS-Full counter schema; missing: {missing}")
     has_full_counters = FULL_FIELDS <= keys
+    probe_fields_present = PROBE_FIELDS & keys
+    if probe_fields_present and probe_fields_present != PROBE_FIELDS:
+        missing = ", ".join(sorted(PROBE_FIELDS - keys))
+        errors.append(f"incomplete QBS probe schema; missing: {missing}")
+    has_probe_counters = PROBE_FIELDS <= keys
     for index, record in enumerate(records, 1):
         if set(record) != keys:
             errors.append(f"command {index}: inconsistent field set")
@@ -142,6 +175,43 @@ def validate(records: list[dict[str, int]]) -> list[str]:
                 errors.append(
                     f"command {index}: dot-active cycles exceed compute-state cycles"
                 )
+        if has_probe_counters:
+            classified_fp_block = sum(
+                record[field]
+                for field in (
+                    "probe_fp_slot_blocked_cycles",
+                    "probe_fp_accumulator_blocked_cycles",
+                    "probe_fp_other_blocked_cycles",
+                )
+            )
+            if classified_fp_block != record["probe_profile_result_blocked_cycles"]:
+                errors.append(
+                    f"command {index}: FP request blocker classification mismatch"
+                )
+            if (
+                record["probe_compute_without_dot_issue_cycles"]
+                > record["phase_compute_cycles"] + record["phase_overlap_cycles"]
+            ):
+                errors.append(
+                    f"command {index}: non-dot compute cycles exceed compute state"
+                )
+            if record["probe_profile_context_occ_sum"] > 2 * record["busy_cycles"]:
+                errors.append(
+                    f"command {index}: profile context occupancy is impossible"
+                )
+            classified_weight_wait = sum(
+                record[field]
+                for field in (
+                    "probe_weight_wait_no_outstanding_cycles",
+                    "probe_weight_wait_response_idle_cycles",
+                    "probe_weight_wait_r_transfer_cycles",
+                    "probe_weight_wait_r_blocked_cycles",
+                )
+            )
+            if classified_weight_wait != record["weight_prefetch_wait_cycles"]:
+                errors.append(
+                    f"command {index}: weight-wait classification mismatch"
+                )
     return errors
 
 
@@ -192,13 +262,34 @@ def aggregate(case: str, records: list[dict[str, int]]) -> dict[str, str | int]:
         result["compute_overlap_ratio"] = ratio(
             int(result["phase_overlap_cycles"]), compute_cycles
         )
-        result["input_wait_ratio"] = ratio(
+        result["input_phase_ratio"] = ratio(
             int(result["phase_activation_cycles"])
             + int(result["phase_weight_cycles"]),
             int(result["busy_cycles"]),
         )
         result["weight_prefetch_wait_ratio"] = ratio(
             int(result["weight_prefetch_wait_cycles"]),
+            int(result["busy_cycles"]),
+        )
+    if PROBE_FIELDS <= records[0].keys():
+        result["profile_result_blocked_ratio"] = ratio(
+            int(result["probe_profile_result_blocked_cycles"]),
+            int(result["busy_cycles"]),
+        )
+        result["context_start_blocked_ratio"] = ratio(
+            int(result["probe_context_start_blocked_cycles"]),
+            int(result["busy_cycles"]),
+        )
+        result["fp_input_blocked_ratio"] = ratio(
+            int(result["probe_fp_input_blocked_cycles"]),
+            int(result["busy_cycles"]),
+        )
+        result["read_response_idle_ratio"] = ratio(
+            int(result["probe_read_response_idle_cycles"]),
+            int(result["busy_cycles"]),
+        )
+        result["profile_context_avg_occupancy"] = ratio(
+            int(result["probe_profile_context_occ_sum"]),
             int(result["busy_cycles"]),
         )
     return result

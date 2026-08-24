@@ -1,0 +1,12 @@
+{
+  "case_id": "q3k_decode_attn_q_rvv",
+  "capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q3_k_m-real-formats-v2",
+  "phase": "decode",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q3_K",
+  "k": 1536,
+  "rows": 256,
+  "inputs": 1,
+  "capture_rows": 1536,
+  "capture_inputs": 1
+}

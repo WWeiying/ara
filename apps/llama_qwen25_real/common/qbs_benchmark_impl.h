@@ -20,23 +20,74 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
     __attribute__((noinline));
 #include "../../llama_q4k_repack_bench/repack_kernels.c"
 
-#define BENCH_BLOCKS (BENCH_K / QK_K)
+#ifndef BENCH_WEIGHT_Q3
+#define BENCH_WEIGHT_Q3 0
+#endif
+#ifndef BENCH_WEIGHT_Q4
+#define BENCH_WEIGHT_Q4 0
+#endif
+#ifndef BENCH_WEIGHT_Q5
+#define BENCH_WEIGHT_Q5 0
+#endif
+#ifndef BENCH_WEIGHT_Q6
+#define BENCH_WEIGHT_Q6 0
+#endif
+#ifndef BENCH_WEIGHT_Q8_0
+#define BENCH_WEIGHT_Q8_0 0
+#endif
+
+// Existing Q6_K apps predate explicit one-hot format macros and only set
+// BENCH_WEIGHT_Q4=0. Preserve that source contract.
+#if !(BENCH_WEIGHT_Q3 || BENCH_WEIGHT_Q4 || BENCH_WEIGHT_Q5 || \
+      BENCH_WEIGHT_Q6 || BENCH_WEIGHT_Q8_0)
+#undef BENCH_WEIGHT_Q6
+#define BENCH_WEIGHT_Q6 1
+#endif
+
+#if (BENCH_WEIGHT_Q3 + BENCH_WEIGHT_Q4 + BENCH_WEIGHT_Q5 + \
+     BENCH_WEIGHT_Q6 + BENCH_WEIGHT_Q8_0) != 1
+#error "select exactly one QBS weight format"
+#endif
+
+#if BENCH_WEIGHT_Q3
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q3_K
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q3_K_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q3_K_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q4
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q4_K
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q4_K_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q4_K_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q5
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q5_K
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q5_K_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q5_K_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q6
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q6_K
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q6_K_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q6_K_BLOCK_ELEMENTS
+#else
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q8_0_WEIGHT_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q8_0_WEIGHT_BLOCK_ELEMENTS
+#endif
+
+#if BENCH_WEIGHT_Q8_0
+typedef block_q8_0 benchmark_activation_block_t;
+#define BENCH_ACTIVATION_PROFILE QBS_ACTIVATION_PROFILE_Q8_0
+#else
+typedef block_q8_K benchmark_activation_block_t;
+#define BENCH_ACTIVATION_PROFILE QBS_ACTIVATION_PROFILE_Q8_K
+#endif
+
+#define BENCH_BLOCKS (BENCH_K / BENCH_BLOCK_ELEMENTS)
 #define BENCH_TILES ((BENCH_ROWS + QBS_MAX_N - 1) / QBS_MAX_N)
 #define BENCH_Q8_BLOCKS (BENCH_INPUTS * BENCH_BLOCKS)
 #define BENCH_OUTPUT_STRIDE (BENCH_INPUTS * QBS_MAX_N)
 #define BENCH_OUTPUT_STORAGE (BENCH_TILES * BENCH_OUTPUT_STRIDE)
 #define BENCH_OUTPUTS (BENCH_INPUTS * BENCH_ROWS)
 
-#if BENCH_WEIGHT_Q4
-#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q4_K
-#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q4_K_BLOCK_BYTES
-#else
-#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q6_K
-#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q6_K_BLOCK_BYTES
-#endif
-
-_Static_assert(BENCH_K > 0 && BENCH_K % QK_K == 0,
-               "QBS K must be a positive multiple of 256");
+_Static_assert(BENCH_K > 0 && BENCH_K % BENCH_BLOCK_ELEMENTS == 0,
+               "QBS K must align to the selected weight block");
 _Static_assert(BENCH_BLOCKS <= QBS_MAX_K_BLOCKS,
                "QBS K block count exceeds the ABI limit");
 _Static_assert(BENCH_ROWS > 0, "QBS requires at least one output row");
@@ -58,7 +109,7 @@ extern const uint8_t benchmark_activation_end[];
 extern const uint8_t benchmark_golden_start[];
 extern const uint8_t benchmark_golden_end[];
 
-static block_q8_K quantized_activation[BENCH_Q8_BLOCKS]
+static benchmark_activation_block_t quantized_activation[BENCH_Q8_BLOCKS]
     __attribute__((aligned(64), section(".bss")));
 static qbs_descriptor_v1_t benchmark_descriptors[BENCH_TILES]
     __attribute__((aligned(64), section(".bss")));
@@ -95,7 +146,7 @@ static void benchmark_setup_descriptors(void) {
     const qbs_descriptor_fields_t fields = {
         .descriptor_version = QBS_DESCRIPTOR_VERSION,
         .weight_profile = BENCH_WEIGHT_PROFILE,
-        .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+        .activation_profile = BENCH_ACTIVATION_PROFILE,
         .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
         .activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
         .n = (uint8_t)tile_n,
@@ -112,9 +163,15 @@ static void benchmark_setup_descriptors(void) {
 static __attribute__((noinline)) void benchmark_quantize(void) {
   const float *activation = (const float *)benchmark_activation_start;
   for (int input = 0; input < BENCH_INPUTS; ++input) {
+#if BENCH_WEIGHT_Q8_0
+    q4km_quantize_row_q8_0(
+        activation + input * BENCH_K,
+        quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+#else
     q4km_quantize_row_q8_K(
         activation + input * BENCH_K,
         quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+#endif
   }
 }
 
@@ -139,7 +196,7 @@ static inline void benchmark_set_qbs_vl(void) {
 }
 
 static inline void benchmark_issue_qbs(const qbs_descriptor_v1_t *descriptor,
-                                       const block_q8_K *activation,
+                                       const benchmark_activation_block_t *activation,
                                        float *output) {
   register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
   register uintptr_t a1 asm("a1") = (uintptr_t)activation;
@@ -177,7 +234,8 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(void) {
   const uint64_t weight_bytes =
       (uint64_t)(benchmark_weight_end - benchmark_weight_start);
   const uint64_t activation_bytes =
-      (uint64_t)BENCH_TILES * BENCH_Q8_BLOCKS * sizeof(block_q8_K);
+      (uint64_t)BENCH_TILES * BENCH_Q8_BLOCKS *
+      sizeof(benchmark_activation_block_t);
   return quantization_input_bytes + descriptor_bytes + weight_bytes +
          activation_bytes;
 }

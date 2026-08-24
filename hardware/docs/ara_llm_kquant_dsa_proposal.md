@@ -415,20 +415,23 @@ decoder。
 ### 3.4 格式扩展层级
 
 llama.cpp 当前 K-quant family 都以 256 个元素为 super-block，但编码和 correction 并不
-相同。首版选择 Q4_K 与 Q6_K，不只是选择两个 bit width，而是覆盖两种主要数据通路：
+相同。实现先以 Q4_K 与 Q6_K 建立两类主要数据通路，随后在不改变 descriptor、token、
+调度和提交协议的前提下扩展到 Q3_K、Q5_K、Q8_0 和 Q4_0：
 
 | 层级 | 格式 | 与首版共享内容 | 需要新增内容 | 承诺范围 |
 | --- | --- | --- | --- | --- |
-| 实现 profile | Q4_K | block stream、Q8_K、dot、affine correction、accumulator | 4-bit payload、packed scale/min decoder | 首版必须实现和验证 |
-| 实现 profile | Q6_K | block stream、Q8_K、dot、signed group scale、accumulator | low4/high2 bit-plane decoder | 首版必须实现和验证 |
-| 自然扩展 | Q2_K/Q5_K | Q4_K 的 affine-min-bsums correction 主路径 | 不同 payload plane 和 scale 解码 | ISA/token 无需改变，但需新增 RTL profile |
-| 自然扩展 | Q3_K | Q6_K 的 signed group-scale 主路径 | low2/high1 bit-plane 和 scale 解码 | ISA/token 无需改变，但需新增 RTL profile |
+| 实现 profile | Q4_K | block stream、Q8_K、dot、affine correction、accumulator | 4-bit payload、packed scale/min decoder | 已实现并验证 |
+| 实现 profile | Q5_K | Q4_K 的 affine-min-bsums correction 主路径 | low4/high1 payload plane 与 scale/min decoder | 已实现并验证 |
+| 实现 profile | Q6_K | block stream、Q8_K、dot、signed group scale、accumulator | low4/high2 bit-plane decoder | 已实现并验证 |
+| 实现 profile | Q3_K | Q6_K 的 signed group-scale 主路径 | low2/high1 bit-plane 与 scale decoder | 已实现并验证 |
+| 实现 profile | Q8_0/Q4_0 | block request、R4 layout、dot、accumulator、atomic commit | 32-element block、Q8_0 activation 与相应 payload decoder | 已实现并验证 |
+| 自然扩展 | Q2_K | Q4_K/Q5_K 的 affine correction 主路径 | 2-bit payload 与 Q2_K scale/min decoder | ISA/token 无需改变，但需新增 RTL profile |
 | 非自然扩展 | IQ family | block request、token、buffer、commit | codebook/LUT、sign grid 和新的 correction datapath | 只保留架构扩展点，不在首版支持声明内 |
 | 非自然扩展 | MXFP/FP4 | block request、token、buffer、commit | shared exponent、低精度浮点乘加和舍入 | 需要新的 arithmetic profile，不称为免费兼容 |
 
-Q8_K 在首版是 activation profile，而不是写死在 weight decoder 中。未来若要直接接收 F32
-并在块流入口动态量化，或者支持其他 activation format，应增加 activation-side profile；
-不能悄悄改变同一 `profile_id` 的数学结果。
+Q8_K 和 Q8_0 是独立 activation profile，而不是写死在 weight decoder 中。F32 到 Q8_K/Q8_0
+的动态量化当前由 GGML CPU 路径完成；若未来把它移入块流入口，必须增加明确的输入或
+activation-side profile，不能悄悄改变同一 `profile_id` 的数学结果。
 
 ### 3.5 数值位宽与结果契约
 
@@ -1474,7 +1477,8 @@ memory banking 和 FP primitive latency，不改变 ISA/descriptor/numerical con
 
 ### 9.8 当前 RTL 检查点与可复现实验
 
-截至 2026-08-19，Phase 0--4 已形成可执行闭环。当前实现已在统一 Q4_K/Q6_K profile
+截至 2026-08-23，Phase 0--4 已形成可执行闭环，Phase 5 的普通 `GGML_OP_MUL_MAT`
+集成已完成端到端功能验证。当前实现已在统一 Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/Q4_0 profile
 datapath、shape-derived reuse 和 atomic commit 之上加入两个 weight bank 与两个有序 AXI
 read outstanding，达到 `QBS-Full` 检查点。inactive weight bank 只预取同一 K-block 的下一
 4-row microtile；当前整数结果全部送入 FP update path 且下一 bank 完整后才切换 bank。K-block
@@ -1485,8 +1489,18 @@ range FIFO 和两项 burst-tag FIFO；所有 AR 使用同一 AXI ID，R 按 tag 
 Standalone 与系统级验证共同覆盖 descriptor validation、MMU/page/burst split、两个同 ID
 outstanding、completion backpressure、先发现年轻 PMA fault 后返回年老 AXI fault、AXI
 RRESP/RLAST、VRF backpressure、M=3 destination reservation、success/fault terminal balance
-以及 fault 前 destination 不可见。96 个 `profile x M x row x pattern` 算术组合、四个端到端
-shape/layout 组合和六个真实软件 reference 点均已通过；物理综合与 P&R 尚未进入本检查点。
+以及 fault 前 destination 不可见。六种 weight profile 均已通过 standalone numerical、
+descriptor/command 和系统级 shape/layout 定向验证；其中 N=35 覆盖 32-row command 加
+3-row R4 尾块，M=8 覆盖两个独立 M4 activation group。Q3_K、Q5_K、Q6_K 和 Q8_0 还使用
+真实 Qwen2.5 权重、activation 与 llama.cpp golden 完成独立 QBS RTL 点验证。物理综合与
+P&R 不属于当前检查点。
+
+整模型验证使用 Qwen2.5-1.5B-Instruct Q4_K_M，在同一 RISC-V QEMU/Linux 环境中分别运行
+普通 RVV 与 QBS correctness emulation。两条路径均完成 10-token prompt 和 2-token greedy
+generation，输出逐字节一致。QBS 路径实际记录到 Q4_K 的 8,032 次 GEMV、2,656 次 GEMM，
+以及 Q6_K 的 1,360 次 GEMV、432 次 GEMM，覆盖 decode M1、prefill M4、持久化 R4 repack
+和格式分派。该 QEMU 结果只验证 GGML 集成、调度和数值语义，不用于性能结论；性能仍来自
+等价真实模型算子的 QBS RTL/RVV 对比。
 
 完整 Decode Attention-Q（Q4_K，M=1，N=1536，K=1536）的最佳正确 RVV baseline 为
 1,495,946 matmul cycles。QBS 首个正确系统闭环为 293,329 cycles；将 R4 四行物理连续数据从
@@ -1523,9 +1537,11 @@ QBS-Full 的 `read_outstanding_max=2`、平均 outstanding 为 0.866，两个槽
 9.21%；compute-state 中 87.19% 的周期同时存在下一 weight range 活动。该点
 `fp_table_full_cycles=0`、read/commit backpressure 均为 0，且 checksum、mismatch 和误差位型
 与 QBS-Reuse 完全一致。相对同一最佳 RVV matmul baseline，单点加速由 6.884x 提升到
-11.175x。六点 Q4/Q6、M1/M4 QBS-Full 套件正在独立目录回归，单点结果不能替代其几何平均。
+11.175x。该历史完整 Attention-Q 点用于解释 QBS-Full 的结构收益；多格式闭环必须另用
+严格配对的当前 RTL、相同输入哈希和同一 llama.cpp golden 形成总表，不能把本单点替代为
+跨格式几何平均。
 
-六点真实 Qwen2.5 回归使用独立目录，应用构建串行以避免共享 linker script 和 common object
+六点 Q4_K/Q6_K 真实 Qwen2.5 回归使用独立目录，应用构建串行以避免共享 linker script 和 common object
 竞争，仿真可六路并行且不会覆盖日志：
 
 ```bash
@@ -1539,6 +1555,20 @@ make -C hardware llama_qbs_eval_sum
 每个 case 分别生成 `result.csv`、`metrics.csv`、`qbs_perf.csv` 和逐命令
 `qbs_commands.csv`；最后一个命令仅在六点均通过时生成套件总表。Q6_K/M1 还包含一个针对
 staging hard-link alias 的生成器回归，保证 R4 输出不会原地改写 row-major source。
+
+多格式闭环另取每种模型的 `blk.0.attn_q.weight` 前 256 个输出行，分别比较标准 RVV 与
+QBS。汇总器要求两条路径的模型元数据、capture commit、shape、source weight、activation
+和 golden 的字节数与 SHA-256 全部一致，并拒绝任一非 PASS 或 mismatch 非零的结果：
+
+```bash
+make -C hardware llama_format_sum \
+  rvv_root=/path/to/rvv_format_eval_runs/TIMESTAMP \
+  qbs_root=/path/to/qbs_format_eval_runs/TIMESTAMP
+```
+
+该表覆盖 Q3_K、Q5_K、Q6_K 和 Q8_0 的真实模型数据；Q4_K/Q6_K 的完整 token generation
+也已通过，用于验证真实模型中 Decode GEMV、Prefill GEMM、持久化 R4 repack 和普通 RVV
+fallback。
 
 ## 10. 最终论文贡献结构
 

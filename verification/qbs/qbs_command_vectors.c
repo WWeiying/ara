@@ -14,8 +14,7 @@ static uint32_t next_random(void) {
 }
 
 static size_t weight_block_bytes(unsigned profile) {
-  return profile == QBS_WEIGHT_PROFILE_Q4_K ? QBS_Q4_K_BLOCK_BYTES
-                                             : QBS_Q6_K_BLOCK_BYTES;
+  return qbs_weight_block_bytes(profile);
 }
 
 static void fill_q4(qbs_block_q4_k_t *block, unsigned row, unsigned kb) {
@@ -23,6 +22,17 @@ static void fill_q4(qbs_block_q4_k_t *block, unsigned row, unsigned kb) {
   block->dmin = (qbs_fp16_t)(UINT16_C(0x2c00) + row * 5u + kb * 2u);
   for (size_t i = 0; i < sizeof(block->scales); ++i)
     block->scales[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+}
+
+static void fill_q5(qbs_block_q5_k_t *block, unsigned row, unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 7u + kb * 3u);
+  block->dmin = (qbs_fp16_t)(UINT16_C(0x2c00) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->scales); ++i)
+    block->scales[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->qh); ++i)
+    block->qh[i] = (uint8_t)next_random();
   for (size_t i = 0; i < sizeof(block->qs); ++i)
     block->qs[i] = (uint8_t)next_random();
 }
@@ -37,6 +47,29 @@ static void fill_q6(qbs_block_q6_k_t *block, unsigned row, unsigned kb) {
     block->scales[i] = (int8_t)((int)(next_random() & 0x1fu) - 16);
 }
 
+static void fill_q3(qbs_block_q3_k_t *block, unsigned row, unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->hmask); ++i)
+    block->hmask[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->scales); ++i)
+    block->scales[i] = (uint8_t)next_random();
+}
+
+static void fill_q8_0_weight(qbs_block_q8_0_t *block, unsigned row,
+                             unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (int8_t)((int)(next_random() & 0xffu) - 128);
+}
+
+static void fill_q4_0(qbs_block_q4_0_t *block, unsigned row, unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+}
+
 static void fill_activation(qbs_block_q8_k_t *block, unsigned ctx,
                             unsigned kb) {
   uint32_t d_bits = UINT32_C(0x3e800000) + (ctx << 18) + (kb << 14);
@@ -49,6 +82,13 @@ static void fill_activation(qbs_block_q8_k_t *block, unsigned ctx,
       sum += block->qs[group * 16u + item];
     block->bsums[group] = (int16_t)sum;
   }
+}
+
+static void fill_activation_q8_0(qbs_block_q8_0_t *block, unsigned ctx,
+                                 unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + ctx * 5u + kb * 2u);
+  for (unsigned i = 0; i < QBS_Q8_0_BLOCK_ELEMENTS; ++i)
+    block->qs[i] = (int8_t)((int)(next_random() & 0xffu) - 128);
 }
 
 static void print_beat(FILE *output, const char *role, unsigned bank,
@@ -81,16 +121,26 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
                      unsigned weight_layout, unsigned activation_layout,
                      unsigned m, unsigned n, unsigned k_blocks) {
   const size_t block_bytes = weight_block_bytes(profile);
+  const unsigned activation_profile =
+      profile == QBS_WEIGHT_PROFILE_Q4_0 ||
+              profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+          ? QBS_ACTIVATION_PROFILE_Q8_0
+          : QBS_ACTIVATION_PROFILE_Q8_K;
+  const size_t activation_block_bytes =
+      qbs_activation_block_bytes(activation_profile);
+  const unsigned block_elements = qbs_weight_block_elements(profile);
   const size_t row_weight_bytes = (size_t)n * k_blocks * block_bytes;
   const size_t layout_weight_bytes = qbs_ref_weight_storage_bytes(
       profile, weight_layout, n, k_blocks);
   const size_t row_activation_blocks = (size_t)m * k_blocks;
-  const size_t layout_activation_bytes = qbs_ref_activation_storage_bytes(
-      activation_layout, m, k_blocks);
+  const size_t row_activation_bytes =
+      row_activation_blocks * activation_block_bytes;
+  const size_t layout_activation_bytes =
+      qbs_ref_activation_storage_bytes_for_profile(
+          activation_profile, activation_layout, m, k_blocks);
   uint8_t *row_weights = calloc(1, row_weight_bytes);
   uint8_t *layout_weights = calloc(1, layout_weight_bytes);
-  qbs_block_q8_k_t *row_activations =
-      calloc(row_activation_blocks, sizeof(*row_activations));
+  uint8_t *row_activations = calloc(1, row_activation_bytes);
   uint8_t *layout_activations = calloc(1, layout_activation_bytes);
   float destination[QBS_MAX_M * 32] = {0};
   qbs_ref_result_t result;
@@ -106,14 +156,32 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
           ((size_t)row * k_blocks + kb) * block_bytes;
       if (profile == QBS_WEIGHT_PROFILE_Q4_K)
         fill_q4((qbs_block_q4_k_t *)address, row, kb);
-      else
+      else if (profile == QBS_WEIGHT_PROFILE_Q5_K)
+        fill_q5((qbs_block_q5_k_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_Q6_K)
         fill_q6((qbs_block_q6_k_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_Q3_K)
+        fill_q3((qbs_block_q3_k_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT)
+        fill_q8_0_weight((qbs_block_q8_0_t *)address, row, kb);
+      else
+        fill_q4_0((qbs_block_q4_0_t *)address, row, kb);
     }
   }
   for (unsigned ctx = 0; ctx < m; ++ctx)
     for (unsigned kb = 0; kb < k_blocks; ++kb)
-      fill_activation(&row_activations[(size_t)ctx * k_blocks + kb], ctx,
-                      kb);
+      if (activation_profile == QBS_ACTIVATION_PROFILE_Q8_K)
+        fill_activation(
+            (qbs_block_q8_k_t *)(row_activations +
+                                 ((size_t)ctx * k_blocks + kb) *
+                                     activation_block_bytes),
+            ctx, kb);
+      else
+        fill_activation_q8_0(
+            (qbs_block_q8_0_t *)(row_activations +
+                                 ((size_t)ctx * k_blocks + kb) *
+                                     activation_block_bytes),
+            ctx, kb);
 
   if (weight_layout == QBS_WEIGHT_LAYOUT_ROW_MAJOR) {
     memcpy(layout_weights, row_weights, row_weight_bytes);
@@ -125,9 +193,9 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
   }
   if (activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR) {
     memcpy(layout_activations, row_activations, layout_activation_bytes);
-  } else if (qbs_ref_pack_activation_m4(
-                 row_activations, row_activation_blocks, k_blocks,
-                 (qbs_block_q8_kx4_t *)layout_activations, k_blocks) !=
+  } else if (qbs_ref_pack_activation_m4_profile(
+                 activation_profile, row_activations, row_activation_bytes,
+                 k_blocks, layout_activations, layout_activation_bytes) !=
              QBS_REF_OK) {
     fprintf(stderr, "activation pack failure for command case %u\n",
             case_id);
@@ -137,11 +205,11 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = (uint8_t)profile,
-      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .activation_profile = (uint8_t)activation_profile,
       .weight_layout = (uint8_t)weight_layout,
       .activation_layout = (uint8_t)activation_layout,
       .n = (uint8_t)n,
-      .k_blocks = (uint8_t)k_blocks,
+      .k_blocks = (uint16_t)k_blocks,
   };
   qbs_descriptor_v1_t descriptor __attribute__((aligned(16))) = {
       .header = qbs_pack_descriptor_header(&fields),
@@ -169,19 +237,19 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
         if (activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR) {
           for (unsigned ctx = 0; ctx < m; ++ctx) {
             const uint8_t *block = layout_activations +
-                ((size_t)ctx * k_blocks + kb) * QBS_Q8_K_BLOCK_BYTES;
-            for (unsigned offset = 0; offset < QBS_Q8_K_BLOCK_BYTES;
+                ((size_t)ctx * k_blocks + kb) * activation_block_bytes;
+            for (unsigned offset = 0; offset < activation_block_bytes;
                  offset += 16)
               print_beat(output, "A", ctx, offset, block,
-                         QBS_Q8_K_BLOCK_BYTES);
+                         (unsigned)activation_block_bytes);
           }
         } else {
           const uint8_t *block = layout_activations +
-              (size_t)kb * 4u * QBS_Q8_K_BLOCK_BYTES;
+              (size_t)kb * 4u * activation_block_bytes;
           for (unsigned offset = 0;
-               offset < 4u * QBS_Q8_K_BLOCK_BYTES; offset += 16)
+               offset < 4u * activation_block_bytes; offset += 16)
             print_beat(output, "A", 0, offset, block,
-                       4u * QBS_Q8_K_BLOCK_BYTES);
+                       (unsigned)(4u * activation_block_bytes));
         }
       }
       for (unsigned row = 0; row < rows; ++row) {
@@ -204,15 +272,15 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
   }
 
   const unsigned k_per = m == 1 ? 8 : (m == 2 ? 4 : 2);
-  const unsigned dot_cycles_per_tile = QBS_BLOCK_ELEMENTS / k_per;
+  const unsigned dot_cycles_per_tile = block_elements / k_per;
   const unsigned tiles = k_blocks * ((n + 3u) / 4u);
   const unsigned uops_per_output =
-      profile == QBS_WEIGHT_PROFILE_Q4_K ? 6 : 3;
+      qbs_weight_correction_mode(profile) == QBS_CORRECTION_AFFINE_MIN ? 6 : 3;
   fprintf(output,
           "C %u %zu %zu %u %u %u %u %u\n",
           tiles, (size_t)n * k_blocks * block_bytes,
-          (size_t)m * k_blocks * QBS_Q8_K_BLOCK_BYTES,
-          m * n * k_blocks * QBS_BLOCK_ELEMENTS,
+          (size_t)m * k_blocks * activation_block_bytes,
+          m * n * k_blocks * block_elements,
           n * k_blocks * dot_cycles_per_tile * 8u,
           tiles * dot_cycles_per_tile,
           m * n * k_blocks * uops_per_output,
@@ -236,7 +304,7 @@ int main(int argc, char **argv) {
     perror(argv[1]);
     return 2;
   }
-  fprintf(output, "QBSCMD1 4\n");
+  fprintf(output, "QBSCMD1 14\n");
   int failed = 0;
   failed |= emit_case(output, 0, QBS_WEIGHT_PROFILE_Q4_K,
                       QBS_WEIGHT_LAYOUT_ROW_MAJOR,
@@ -250,8 +318,40 @@ int main(int argc, char **argv) {
   failed |= emit_case(output, 3, QBS_WEIGHT_PROFILE_Q6_K,
                       QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                       QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 8, 3);
+  // Decode-shaped R4 case: three alternating banks per K-block and a
+  // one-row tail exercise response-owned bank/row metadata.
+  failed |= emit_case(output, 4, QBS_WEIGHT_PROFILE_Q4_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 9, 3);
+  failed |= emit_case(output, 5, QBS_WEIGHT_PROFILE_Q4_0,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 3);
+  failed |= emit_case(output, 6, QBS_WEIGHT_PROFILE_Q4_0,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 4);
+  failed |= emit_case(output, 7, QBS_WEIGHT_PROFILE_Q4_0,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 1, 65);
+  failed |= emit_case(output, 8, QBS_WEIGHT_PROFILE_Q5_K,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 2);
+  failed |= emit_case(output, 9, QBS_WEIGHT_PROFILE_Q5_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 3);
+  failed |= emit_case(output, 10, QBS_WEIGHT_PROFILE_Q3_K,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 2);
+  failed |= emit_case(output, 11, QBS_WEIGHT_PROFILE_Q3_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 3);
+  failed |= emit_case(output, 12, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 3);
+  failed |= emit_case(output, 13, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 4);
   fclose(output);
   if (failed) return 1;
-  printf("wrote 4 QBS command cases to %s\n", argv[1]);
+  printf("wrote 14 QBS command cases to %s\n", argv[1]);
   return 0;
 }

@@ -2,7 +2,8 @@
 
 ## 1. 目标与方法
 
-本方案以 Qwen2.5 Q4_K_M 的真实量化线性层为第一组测量对象，但硬件研究边界是
+本方案以 Qwen2.5 Q4_K_M 的真实量化线性层为第一组测量对象，并以 Q3_K、Q5_K、Q6_K
+和 Q8_0 模型中的真实算子切片检查格式扩展性；硬件研究边界是
 `llama.cpp/ggml` 的块量化 `MUL_MAT` 路径，不绑定单个模型或固定 shape。目标不是只让
 一个人工点积变快，而是建立以下闭环：
 
@@ -48,8 +49,9 @@ profile 接口，其核心路径为：
 读取量化块 -> 解包 -> 低位宽乘加 -> 多输出累加 -> 缩放/反量化 -> 写回
 ```
 
-完成该路径并确认收益后，再在相同框架中补充 Q6_K 和 Prefill GEMM。Q4 是实施顺序，
-不是把首版 ISA 定义为 Q4 专用后再重新设计一次。
+完成该路径并确认收益后，在相同框架中补充 Q6_K 和 Prefill GEMM，再通过新增 profile
+覆盖 Q3_K、Q5_K、Q8_0 与 Q4_0。Q4 是实施顺序，不是把首版 ISA 定义为 Q4 专用后再
+重新设计一次。
 
 ### 1.2 DSA 定位与扩展契约
 
@@ -61,8 +63,8 @@ profile 接口，其核心路径为：
 - **execution mapping** 定义 M/N/K tile、统一 K-block-major schedule 和 shape-derived token
   lifetime/reuse，不进入格式编号；
 - 逻辑矩阵尺寸由软件循环平铺，物理 micro-tile 和 4-lane/VLEN=1024 参数不进入 ISA；
-- Q4_K/Q6_K 是首版必须实现的两类 profile，Q2/Q3/Q5 是需要新增 decoder 的自然扩展，
-  IQ/MXFP 只共享块流基础设施，不声称免费支持；
+- Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/Q4_0 已作为独立 profile 实现；Q2_K 仍是需要新增 decoder
+  的自然扩展，IQ/MXFP 只共享块流基础设施，不声称免费支持；
 - unsupported profile、layout、K 对齐或 tile 必须明确回退到标准 RVV。
 
 这套契约先于 RTL 冻结。后续软件优化、QBS-Serial/Reuse/Full 消融都必须使用相同输入、
@@ -473,3 +475,45 @@ make -C hardware llama_qbs_eval_sum
 每点额外生成 `qbs_perf.csv` 和逐命令 `qbs_commands.csv`。当前 Full 在不改变 payload 和
 数值结果的前提下，用 weight ping-pong 与两个同 ID、有序 read outstanding 覆盖下一
 weight microtile 的取数；物理闭环不属于本阶段。
+
+## 10. 多格式真实模型闭环
+
+当前 Q3_K、Q5_K、Q6_K 和 Q8_0 闭环均取真实 Qwen2.5 Decode Attention-Q 的一个
+activation 和前 256 个输出行。标准 RVV 与 QBS 使用相同 source weight、activation、
+golden、K/N/M 和 capture commit，三类文件的字节数与 SHA-256 均由汇总器严格配对；八个
+执行点全部 `PASS` 且 mismatch 为 0。离线 R4 repack 不计入周期。
+
+| 格式 | KxNxM | RVV/QBS compute cycles | compute 加速 | RVV/QBS matmul cycles | matmul 加速 | 逻辑读取减少 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Q3_K | 1536x256x1 | 1,292,742 / 29,250 | 44.20x | 1,281,131 / 17,614 | 72.73x | 69.7% |
+| Q5_K | 1536x256x1 | 2,023,388 / 33,386 | 60.61x | 2,011,748 / 21,750 | 92.49x | 59.9% |
+| Q6_K | 1536x256x1 | 1,284,870 / 36,756 | 34.96x | 1,273,230 / 25,120 | 50.69x | 55.9% |
+| Q8_0 | 896x256x1 | 553,720 / 31,986 | 17.31x | 548,583 / 26,923 | 20.38x | 48.1% |
+
+四个代表点的 compute 和 matmul 几何平均加速分别为 35.68x 和 51.34x。它们衡量真实数据
+算子切片相对当前标准 RVV 路径的差异，不是完整模型 token/s 加速。完整原始字段、数值误差、
+provenance、QBS phase、outstanding、执行和提交计数位于 `hardware/format_closure.csv`，
+可读摘要位于 `hardware/format_closure.md`。
+
+微结构证据显示，Q3_K 的 dot-active ratio 为 70.7%，且没有 weight-prefetch wait；Q5_K
+和 Q6_K 的该等待分别增至 15.2% 和 25.4%，说明较大 native block 使 weight stream 更容易
+进入关键路径。Q8_0 每个输出包含 28 个 K block，其 profile-result-blocked 与 FP-input-blocked
+活动分别为 23.3% 和 5.8%，而 dot-active ratio 仅 26.9%；该点首先受频繁 block 结果缩放/
+累加及供数间隙限制，不应只扩大 dot array。所有格式的 pair utilization 均为 100%，且
+FP-table-full 和 commit-backpressure 均为 0。上述阻塞信号允许同周期重叠，只作为活动签名，
+不能相加为严格 stall breakdown。
+
+## 11. GGML 整模型功能闭环
+
+QBS 已接入 llama.cpp/GGML 的普通二维 `GGML_OP_MUL_MAT`。模型加载阶段根据 weight type
+和硬件 capability 选择持久化 R4 repack；运行阶段根据 `M/N/K` 自动选择 M1 GEMV、M4
+GEMM、N=32 分块以及 M/N 尾块，unsupported type、shape、alignment 或 capability 保留
+原有 CPU/RVV fallback。Q3_K、Q4_K、Q5_K、Q6_K 使用 Q8_K activation，Q8_0、Q4_0
+使用 Q8_0 activation。
+
+整模型功能测试使用 Qwen2.5-1.5B-Instruct Q4_K_M，对普通 RVV 和 QBS emulation 分别执行
+10-token prompt 与 2-token greedy generation。两者均正常退出且生成文本逐字节相同；QBS
+trace 记录 Q4_K `gemv/gemm=8032/2656`，Q6_K `gemv/gemm=1360/432`，证明 decode、prefill
+和两种真实模型 weight profile 均进入新路径。QEMU emulation 只验证 GGML 图、repack、分块、
+dispatch 和数值语义，不能作为周期或 token/s 结果；RTL 性能结论仍以第 10 节严格配对的真实
+算子切片为准。

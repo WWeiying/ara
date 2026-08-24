@@ -16,6 +16,13 @@ DEFAULT_CAPTURE_ROOT = Path(
 QK_K = 256
 Q4_BLOCK_BYTES = 144
 Q6_BLOCK_BYTES = 210
+WEIGHT_FORMATS = {
+    "q3_K": {"block_elements": 256, "block_bytes": 110},
+    "q4_K": {"block_elements": 256, "block_bytes": Q4_BLOCK_BYTES},
+    "q5_K": {"block_elements": 256, "block_bytes": 176},
+    "q6_K": {"block_elements": 256, "block_bytes": Q6_BLOCK_BYTES},
+    "q8_0": {"block_elements": 32, "block_bytes": 34},
+}
 
 
 def sha256(path: Path) -> str:
@@ -172,7 +179,9 @@ def emit_blob(symbol: str, path: Path) -> None:
 def main() -> None:
     app_dir = Path.cwd()
     spec = json.loads((app_dir / "case.json").read_text(encoding="utf-8"))
-    capture_root = Path(os.environ.get("LLAMA_CAPTURE_ROOT", DEFAULT_CAPTURE_ROOT))
+    capture_root = Path(os.environ.get(
+        "LLAMA_CAPTURE_ROOT", spec.get("capture_root", DEFAULT_CAPTURE_ROOT)
+    ))
     source_dir = capture_root / spec["phase"] / "operators" / spec["operator"]
     generated = app_dir / "generated"
     generated.mkdir(parents=True, exist_ok=True)
@@ -183,8 +192,16 @@ def main() -> None:
     capture_rows = int(spec.get("capture_rows", rows))
     capture_inputs = int(spec.get("capture_inputs", inputs))
     weight_type = spec["weight_type"]
-    if k <= 0 or k % QK_K != 0:
-        raise SystemExit(f"K must be a positive multiple of {QK_K}: {k}")
+    if weight_type not in WEIGHT_FORMATS:
+        raise SystemExit(f"unsupported weight type: {weight_type}")
+    weight_format = WEIGHT_FORMATS[weight_type]
+    block_elements = int(weight_format["block_elements"])
+    weight_block_bytes = int(weight_format["block_bytes"])
+    if k <= 0 or k % block_elements != 0:
+        raise SystemExit(
+            f"K must be a positive multiple of {block_elements} for "
+            f"{weight_type}: {k}"
+        )
     if rows <= 0 or rows > capture_rows:
         raise SystemExit(f"invalid row slice: rows={rows}, capture_rows={capture_rows}")
     if inputs <= 0 or inputs > capture_inputs:
@@ -198,8 +215,7 @@ def main() -> None:
     activation_path = source_dir / "activation_f32.bin"
     golden_path = source_dir / "output_f32.bin"
 
-    weight_block_bytes = Q4_BLOCK_BYTES if weight_type == "q4_K" else Q6_BLOCK_BYTES
-    row_weight_bytes = (k // QK_K) * weight_block_bytes
+    row_weight_bytes = (k // block_elements) * weight_block_bytes
     capture_weight_bytes = capture_rows * row_weight_bytes
     capture_activation_bytes = capture_inputs * k * 4
     capture_golden_bytes = capture_inputs * capture_rows * 4
@@ -211,6 +227,11 @@ def main() -> None:
         "activation": require_tensor(activation_path, capture_activation_bytes),
         "golden": require_tensor(golden_path, capture_golden_bytes),
     }
+    if metadata["weight"].get("type") != weight_type:
+        raise SystemExit(
+            f"weight type mismatch: metadata={metadata['weight'].get('type')}, "
+            f"case={weight_type}"
+        )
     require_shape("weight", metadata["weight"], (k, capture_rows))
     require_shape("activation", metadata["activation"], (k, capture_inputs))
     require_shape("golden", metadata["golden"], (capture_rows, capture_inputs))
@@ -230,23 +251,35 @@ def main() -> None:
     if weight_type == "q4_K":
         repack_q4_x32(generated / "source_weight.bin", embedded_weight, k, rows)
         embedded_layout = "q4_K_x32_ara"
-    elif inputs >= 4:
+    elif weight_type == "q6_K" and inputs >= 4:
         repack_q6_x32(generated / "source_weight.bin", embedded_weight, k, rows)
         embedded_layout = "q6_K_x32_ara"
     else:
         copy_prefix(generated / "source_weight.bin", embedded_weight, weight_bytes)
-        embedded_layout = "q6_K_row_major"
+        embedded_layout = f"{weight_type}_row_major"
 
     model_path = capture_root / "model.json"
+    if not model_path.is_file():
+        raise SystemExit(f"missing capture model metadata: {model_path}")
+    model_metadata = json.loads(model_path.read_text(encoding="utf-8"))
+    gguf_metadata = model_metadata.get("metadata", {})
+    model_name = gguf_metadata.get(
+        "general.name", model_metadata.get("description", spec.get("model", "unknown"))
+    )
     provenance = {
         "case_id": spec["case_id"],
-        "model": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+        "model": model_name,
+        "model_description": model_metadata.get("description", model_name),
         "layer": 0,
         "phase": spec["phase"],
         "operator": spec["operator"],
         "op": "GGML_OP_MUL_MAT",
         "weight_type": weight_type,
-        "activation_quantization": "F32_to_Q8_K_at_runtime",
+        "activation_quantization": (
+            "F32_to_Q8_0_at_runtime"
+            if weight_type == "q8_0"
+            else "F32_to_Q8_K_at_runtime"
+        ),
         "k": k,
         "rows": rows,
         "inputs": inputs,
@@ -257,11 +290,15 @@ def main() -> None:
             "input_rows": [0, inputs],
         },
         "embedded_weight_layout": embedded_layout,
-        "runtime_timed_region": "F32_to_Q8_K_plus_quantized_matmul",
+        "runtime_timed_region": (
+            "F32_to_Q8_0_plus_quantized_matmul"
+            if weight_type == "q8_0"
+            else "F32_to_Q8_K_plus_quantized_matmul"
+        ),
         "runtime_setup_cycles": 0,
         "offline_repack_excluded": embedded_layout.endswith("_ara"),
         "capture_root": str(capture_root),
-        "capture_llama_commit": "316e72d38da2bf9af84f946fb6e99419d80849f9",
+        "capture_llama_commit": model_metadata.get("llama_commit", "unknown"),
         "model_metadata_sha256": sha256(model_path),
         "tensors": {},
         "captured_metadata": metadata,

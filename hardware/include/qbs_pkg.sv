@@ -19,29 +19,91 @@ package qbs_pkg;
 
   localparam int unsigned QbsMaxM = 4;
   localparam int unsigned QbsMaxN = 32;
-  localparam int unsigned QbsMaxKBlocks = 64;
+  localparam int unsigned QbsMaxKBlocks = 256;
+  // Compatibility alias for numerical-contract v1 K-quant profiles.
   localparam int unsigned QbsBlockElements = 256;
   localparam int unsigned QbsWeightBaseAlignmentLog2 = 1;
   localparam int unsigned QbsActivationBaseAlignmentLog2 = 2;
 
+  typedef enum logic [1:0] {
+    QBS_SCALE_INVALID = 2'd0,
+    QBS_SCALE_FP16 = 2'd1,
+    QBS_SCALE_FP32 = 2'd2
+  } qbs_scale_format_e;
+
+  typedef enum logic [1:0] {
+    QBS_CORRECTION_NONE = 2'd0,
+    QBS_CORRECTION_AFFINE_MIN = 2'd1
+  } qbs_correction_mode_e;
+
+  localparam int unsigned QbsMaxWeightBlockBytes = 210;
+  localparam int unsigned QbsMaxActivationBlockBytes = 292;
   localparam int unsigned QbsQ4KBlockBytes = 144;
+  localparam int unsigned QbsQ4KBlockElements = 256;
   localparam int unsigned QbsQ4KSubgroupCount = 8;
   localparam int unsigned QbsQ4KSubgroupElements = 32;
+  localparam qbs_scale_format_e QbsQ4KScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ4KCorrectionMode = QBS_CORRECTION_AFFINE_MIN;
+  localparam int unsigned QbsQ5KBlockBytes = 176;
+  localparam int unsigned QbsQ5KBlockElements = 256;
+  localparam int unsigned QbsQ5KSubgroupCount = 8;
+  localparam int unsigned QbsQ5KSubgroupElements = 32;
+  localparam qbs_scale_format_e QbsQ5KScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ5KCorrectionMode = QBS_CORRECTION_AFFINE_MIN;
   localparam int unsigned QbsQ6KBlockBytes = 210;
+  localparam int unsigned QbsQ6KBlockElements = 256;
   localparam int unsigned QbsQ6KSubgroupCount = 16;
   localparam int unsigned QbsQ6KSubgroupElements = 16;
+  localparam qbs_scale_format_e QbsQ6KScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ6KCorrectionMode = QBS_CORRECTION_NONE;
+  localparam int unsigned QbsQ3KBlockBytes = 110;
+  localparam int unsigned QbsQ3KBlockElements = 256;
+  localparam int unsigned QbsQ3KSubgroupCount = 16;
+  localparam int unsigned QbsQ3KSubgroupElements = 16;
+  localparam qbs_scale_format_e QbsQ3KScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ3KCorrectionMode = QBS_CORRECTION_NONE;
+  localparam int unsigned QbsQ8_0WeightBlockBytes = 34;
+  localparam int unsigned QbsQ8_0WeightBlockElements = 32;
+  localparam int unsigned QbsQ8_0WeightSubgroupCount = 1;
+  localparam int unsigned QbsQ8_0WeightSubgroupElements = 32;
+  localparam qbs_scale_format_e QbsQ8_0WeightScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ8_0WeightCorrectionMode = QBS_CORRECTION_NONE;
+  localparam int unsigned QbsQ4_0BlockBytes = 18;
+  localparam int unsigned QbsQ4_0BlockElements = 32;
+  localparam int unsigned QbsQ4_0SubgroupCount = 1;
+  localparam int unsigned QbsQ4_0SubgroupElements = 32;
+  localparam qbs_scale_format_e QbsQ4_0ScaleFormat = QBS_SCALE_FP16;
+  localparam qbs_correction_mode_e QbsQ4_0CorrectionMode = QBS_CORRECTION_NONE;
   localparam int unsigned QbsQ8KBlockBytes = 292;
+  localparam int unsigned QbsQ8KBlockElements = 256;
+  localparam qbs_scale_format_e QbsQ8KScaleFormat = QBS_SCALE_FP32;
+  localparam int unsigned QbsQ8KScaleBytes = 4;
+  localparam int unsigned QbsQ8KQuantBytes = 256;
+  localparam int unsigned QbsQ8KAuxCount = 16;
+  localparam int unsigned QbsQ8KAuxElementBytes = 2;
   localparam int unsigned QbsQ8KBsumsCount = 16;
+  localparam int unsigned QbsQ8_0BlockBytes = 34;
+  localparam int unsigned QbsQ8_0BlockElements = 32;
+  localparam qbs_scale_format_e QbsQ8_0ScaleFormat = QBS_SCALE_FP16;
+  localparam int unsigned QbsQ8_0ScaleBytes = 2;
+  localparam int unsigned QbsQ8_0QuantBytes = 32;
+  localparam int unsigned QbsQ8_0AuxCount = 0;
+  localparam int unsigned QbsQ8_0AuxElementBytes = 0;
 
   typedef enum logic [3:0] {
     QBS_WEIGHT_PROFILE_INVALID = 4'd0,
     QBS_WEIGHT_PROFILE_Q4_K = 4'd1,
-    QBS_WEIGHT_PROFILE_Q6_K = 4'd2
+    QBS_WEIGHT_PROFILE_Q5_K = 4'd4,
+    QBS_WEIGHT_PROFILE_Q6_K = 4'd2,
+    QBS_WEIGHT_PROFILE_Q3_K = 4'd5,
+    QBS_WEIGHT_PROFILE_Q8_0_WEIGHT = 4'd6,
+    QBS_WEIGHT_PROFILE_Q4_0 = 4'd3
   } qbs_weight_profile_e;
 
   typedef enum logic [3:0] {
     QBS_ACTIVATION_PROFILE_INVALID = 4'd0,
-    QBS_ACTIVATION_PROFILE_Q8_K = 4'd1
+    QBS_ACTIVATION_PROFILE_Q8_K = 4'd1,
+    QBS_ACTIVATION_PROFILE_Q8_0 = 4'd2
   } qbs_activation_profile_e;
 
   typedef enum logic [3:0] {
@@ -56,8 +118,7 @@ package qbs_pkg;
     QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 4'd2
   } qbs_activation_layout_e;
 
-  // Internal validation result. These values are not software-visible ABI;
-  // they make directed RTL checks and command fault attribution unambiguous.
+  // Internal validation result. These values are not software-visible ABI.
   typedef enum logic [4:0] {
     QBS_VALIDATION_OK = 5'd0,
     QBS_VALIDATION_DESCRIPTOR_ALIGNMENT = 5'd1,
@@ -77,9 +138,7 @@ package qbs_pkg;
     QBS_VALIDATION_ACTIVATION_RANGE_OVERFLOW = 5'd15
   } qbs_validation_error_e;
 
-  // Internal read-path fault attribution. These values are not part of the
-  // software ABI; the QBS command controller maps them to architectural
-  // load exceptions only after the current AXI response has been drained.
+  // Internal read-path fault attribution; not software-visible ABI.
   typedef enum logic [2:0] {
     QBS_READ_FAULT_NONE = 3'd0,
     QBS_READ_FAULT_REQUEST = 3'd1,
@@ -102,6 +161,189 @@ package qbs_pkg;
   localparam int unsigned QbsDescNMinus1Lsb = 20;
   localparam int unsigned QbsDescKBlocksMinus1Lsb = 25;
   localparam int unsigned QbsDescReservedLsb = 33;
+
+  function automatic int unsigned qbs_weight_block_bytes(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_block_bytes = '0;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_block_bytes = 144;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_block_bytes = 176;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_block_bytes = 210;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_block_bytes = 110;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_block_bytes = 34;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_block_bytes = 18;
+      default: ;
+    endcase
+  endfunction : qbs_weight_block_bytes
+
+  function automatic int unsigned qbs_weight_block_elements(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_block_elements = '0;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_block_elements = 256;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_block_elements = 256;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_block_elements = 256;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_block_elements = 256;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_block_elements = 32;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_block_elements = 32;
+      default: ;
+    endcase
+  endfunction : qbs_weight_block_elements
+
+  function automatic int unsigned qbs_weight_subgroup_count(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_subgroup_count = '0;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_subgroup_count = 8;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_subgroup_count = 8;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_subgroup_count = 16;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_subgroup_count = 16;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_subgroup_count = 1;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_subgroup_count = 1;
+      default: ;
+    endcase
+  endfunction : qbs_weight_subgroup_count
+
+  function automatic int unsigned qbs_weight_subgroup_elements(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_subgroup_elements = '0;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_subgroup_elements = 32;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_subgroup_elements = 32;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_subgroup_elements = 16;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_subgroup_elements = 16;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_subgroup_elements = 32;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_subgroup_elements = 32;
+      default: ;
+    endcase
+  endfunction : qbs_weight_subgroup_elements
+
+  function automatic qbs_scale_format_e qbs_weight_scale_format(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_scale_format = QBS_SCALE_INVALID;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_scale_format = QBS_SCALE_FP16;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_scale_format = QBS_SCALE_FP16;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_scale_format = QBS_SCALE_FP16;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_scale_format = QBS_SCALE_FP16;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_scale_format = QBS_SCALE_FP16;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_scale_format = QBS_SCALE_FP16;
+      default: ;
+    endcase
+  endfunction : qbs_weight_scale_format
+
+  function automatic qbs_correction_mode_e qbs_weight_correction_mode(
+      input qbs_weight_profile_e profile
+  );
+    qbs_weight_correction_mode = QBS_CORRECTION_NONE;
+    unique case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_weight_correction_mode = QBS_CORRECTION_AFFINE_MIN;
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_weight_correction_mode = QBS_CORRECTION_AFFINE_MIN;
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_weight_correction_mode = QBS_CORRECTION_NONE;
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_weight_correction_mode = QBS_CORRECTION_NONE;
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_weight_correction_mode = QBS_CORRECTION_NONE;
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_weight_correction_mode = QBS_CORRECTION_NONE;
+      default: ;
+    endcase
+  endfunction : qbs_weight_correction_mode
+
+  function automatic int unsigned qbs_activation_block_bytes(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_block_bytes = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_block_bytes = 292;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_block_bytes = 34;
+      default: ;
+    endcase
+  endfunction : qbs_activation_block_bytes
+
+  function automatic int unsigned qbs_activation_block_elements(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_block_elements = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_block_elements = 256;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_block_elements = 32;
+      default: ;
+    endcase
+  endfunction : qbs_activation_block_elements
+
+  function automatic qbs_scale_format_e qbs_activation_scale_format(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_scale_format = QBS_SCALE_INVALID;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_scale_format = QBS_SCALE_FP32;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_scale_format = QBS_SCALE_FP16;
+      default: ;
+    endcase
+  endfunction : qbs_activation_scale_format
+
+  function automatic int unsigned qbs_activation_scale_bytes(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_scale_bytes = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_scale_bytes = 4;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_scale_bytes = 2;
+      default: ;
+    endcase
+  endfunction : qbs_activation_scale_bytes
+
+  function automatic int unsigned qbs_activation_quant_bytes(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_quant_bytes = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_quant_bytes = 256;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_quant_bytes = 32;
+      default: ;
+    endcase
+  endfunction : qbs_activation_quant_bytes
+
+  function automatic int unsigned qbs_activation_aux_count(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_aux_count = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_aux_count = 16;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_aux_count = 0;
+      default: ;
+    endcase
+  endfunction : qbs_activation_aux_count
+
+  function automatic int unsigned qbs_activation_aux_element_bytes(
+      input qbs_activation_profile_e profile
+  );
+    qbs_activation_aux_element_bytes = '0;
+    unique case (profile)
+      QBS_ACTIVATION_PROFILE_Q8_K: qbs_activation_aux_element_bytes = 2;
+      QBS_ACTIVATION_PROFILE_Q8_0: qbs_activation_aux_element_bytes = 0;
+      default: ;
+    endcase
+  endfunction : qbs_activation_aux_element_bytes
+
+  function automatic logic qbs_profiles_compatible(
+      input qbs_weight_profile_e weight_profile,
+      input qbs_activation_profile_e activation_profile
+  );
+    qbs_profiles_compatible = 1'b0;
+    unique case (weight_profile)
+      QBS_WEIGHT_PROFILE_Q4_K: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_K};
+      QBS_WEIGHT_PROFILE_Q5_K: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_K};
+      QBS_WEIGHT_PROFILE_Q6_K: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_K};
+      QBS_WEIGHT_PROFILE_Q3_K: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_K};
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_0};
+      QBS_WEIGHT_PROFILE_Q4_0: qbs_profiles_compatible = activation_profile inside {QBS_ACTIVATION_PROFILE_Q8_0};
+      default: ;
+    endcase
+  endfunction : qbs_profiles_compatible
 
   function automatic logic [63:0] qbs_capability_word(
       input logic [63:0] index,
@@ -135,25 +377,87 @@ package qbs_pkg;
         result[55:48] = 8'(QbsActivationBaseAlignmentLog2);
         result[63:56] = 8'd32;
       end
-      64'h11,
-      64'h12:
+      64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+      end
       64'h21: begin
         result[15:0]  = 16'(QbsQ4KBlockBytes);
-        result[31:16] = 16'(QbsBlockElements);
+        result[31:16] = 16'(QbsQ4KBlockElements);
         result[39:32] = 8'(QbsQ4KSubgroupCount);
         result[47:40] = 8'(QbsQ4KSubgroupElements);
+        result[55:48] = 8'(QbsQ4KScaleFormat);
+        result[63:56] = 8'(QbsQ4KCorrectionMode);
+      end
+      64'h14: begin
+        result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+      end
+      64'h24: begin
+        result[15:0]  = 16'(QbsQ5KBlockBytes);
+        result[31:16] = 16'(QbsQ5KBlockElements);
+        result[39:32] = 8'(QbsQ5KSubgroupCount);
+        result[47:40] = 8'(QbsQ5KSubgroupElements);
+        result[55:48] = 8'(QbsQ5KScaleFormat);
+        result[63:56] = 8'(QbsQ5KCorrectionMode);
+      end
+      64'h12: begin
+        result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
       end
       64'h22: begin
         result[15:0]  = 16'(QbsQ6KBlockBytes);
-        result[31:16] = 16'(QbsBlockElements);
+        result[31:16] = 16'(QbsQ6KBlockElements);
         result[39:32] = 8'(QbsQ6KSubgroupCount);
         result[47:40] = 8'(QbsQ6KSubgroupElements);
+        result[55:48] = 8'(QbsQ6KScaleFormat);
+        result[63:56] = 8'(QbsQ6KCorrectionMode);
+      end
+      64'h15: begin
+        result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+      end
+      64'h25: begin
+        result[15:0]  = 16'(QbsQ3KBlockBytes);
+        result[31:16] = 16'(QbsQ3KBlockElements);
+        result[39:32] = 8'(QbsQ3KSubgroupCount);
+        result[47:40] = 8'(QbsQ3KSubgroupElements);
+        result[55:48] = 8'(QbsQ3KScaleFormat);
+        result[63:56] = 8'(QbsQ3KCorrectionMode);
+      end
+      64'h16: begin
+        result[QBS_ACTIVATION_PROFILE_Q8_0] = 1'b1;
+      end
+      64'h26: begin
+        result[15:0]  = 16'(QbsQ8_0WeightBlockBytes);
+        result[31:16] = 16'(QbsQ8_0WeightBlockElements);
+        result[39:32] = 8'(QbsQ8_0WeightSubgroupCount);
+        result[47:40] = 8'(QbsQ8_0WeightSubgroupElements);
+        result[55:48] = 8'(QbsQ8_0WeightScaleFormat);
+        result[63:56] = 8'(QbsQ8_0WeightCorrectionMode);
+      end
+      64'h13: begin
+        result[QBS_ACTIVATION_PROFILE_Q8_0] = 1'b1;
+      end
+      64'h23: begin
+        result[15:0]  = 16'(QbsQ4_0BlockBytes);
+        result[31:16] = 16'(QbsQ4_0BlockElements);
+        result[39:32] = 8'(QbsQ4_0SubgroupCount);
+        result[47:40] = 8'(QbsQ4_0SubgroupElements);
+        result[55:48] = 8'(QbsQ4_0ScaleFormat);
+        result[63:56] = 8'(QbsQ4_0CorrectionMode);
       end
       64'h31: begin
         result[15:0]  = 16'(QbsQ8KBlockBytes);
-        result[31:16] = 16'(QbsBlockElements);
-        result[39:32] = 8'(QbsQ8KBsumsCount);
+        result[31:16] = 16'(QbsQ8KBlockElements);
+        result[39:32] = 8'(QbsQ8KAuxCount);
+        result[47:40] = 8'(QbsQ8KScaleBytes);
+        result[55:48] = 8'(QbsQ8KAuxElementBytes);
+        result[63:56] = 8'(QbsQ8KScaleFormat);
+      end
+      64'h32: begin
+        result[15:0]  = 16'(QbsQ8_0BlockBytes);
+        result[31:16] = 16'(QbsQ8_0BlockElements);
+        result[39:32] = 8'(QbsQ8_0AuxCount);
+        result[47:40] = 8'(QbsQ8_0ScaleBytes);
+        result[55:48] = 8'(QbsQ8_0AuxElementBytes);
+        result[63:56] = 8'(QbsQ8_0ScaleFormat);
       end
       default: ;
     endcase

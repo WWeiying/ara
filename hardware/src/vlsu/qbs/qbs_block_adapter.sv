@@ -8,6 +8,7 @@ module qbs_block_adapter import qbs_pkg::*; (
   input  logic                    clear_weight_i,
   input  logic                    clear_activation_i,
   input  qbs_weight_profile_e     weight_profile_i,
+  input  qbs_activation_profile_e activation_profile_i,
   input  logic [2:0]              weight_row_count_i,
   input  qbs_activation_layout_e  activation_layout_i,
   input  logic [2:0]              m_i,
@@ -22,16 +23,17 @@ module qbs_block_adapter import qbs_pkg::*; (
   input  logic [127:0]            weight_write_data_i,
   input  logic [15:0]             weight_write_strb_i,
 
-  // Row-major ranges target one context. M4 ranges target the complete
-  // 1168-byte block_q8_Kx4 object and are deinterleaved here.
+  // Row-major ranges target one context. M4 ranges concatenate four scales,
+  // byte-interleave four quant payloads, then element-interleave auxiliary
+  // arrays. The profile metadata determines each region's fixed geometry.
   input  logic                    activation_write_valid_i,
   input  logic [1:0]              activation_write_context_i,
   input  logic [10:0]             activation_write_offset_i,
   input  logic [127:0]            activation_write_data_i,
   input  logic [15:0]             activation_write_strb_i,
 
-  output logic [7:0]              weight_block_o [4][QbsQ6KBlockBytes],
-  output logic [7:0]              activation_block_o [4][QbsQ8KBlockBytes],
+  output logic [7:0]              weight_block_o [4][QbsMaxWeightBlockBytes],
+  output logic [7:0]              activation_block_o [4][QbsMaxActivationBlockBytes],
   output logic [3:0]              weight_complete_o,
   output logic [3:0]              activation_complete_o,
   output logic                    all_weight_complete_o,
@@ -40,19 +42,14 @@ module qbs_block_adapter import qbs_pkg::*; (
   output logic [31:0]             accepted_activation_bytes_o
 );
 
-  localparam int unsigned QbsQ8Kx4BlockBytes = 4 * QbsQ8KBlockBytes;
-  localparam int unsigned QbsQ8Kx4DBytes = 16;
-  localparam int unsigned QbsQ8Kx4QsBytes = 4 * QbsBlockElements;
-  localparam int unsigned QbsQ8Kx4BsumsOffset =
-      QbsQ8Kx4DBytes + QbsQ8Kx4QsBytes;
-
-  logic weight_byte_valid_q [4][QbsQ6KBlockBytes];
-  logic activation_byte_valid_q [4][QbsQ8KBlockBytes];
+  logic weight_byte_valid_q [4][QbsMaxWeightBlockBytes];
+  logic activation_byte_valid_q [4][QbsMaxActivationBlockBytes];
 
   always_comb begin
     int unsigned weight_bytes;
-    weight_bytes = weight_profile_i == QBS_WEIGHT_PROFILE_Q4_K
-        ? QbsQ4KBlockBytes : QbsQ6KBlockBytes;
+    int unsigned activation_bytes;
+    weight_bytes = qbs_weight_block_bytes(weight_profile_i);
+    activation_bytes = qbs_activation_block_bytes(activation_profile_i);
 
     weight_complete_o = '0;
     activation_complete_o = '0;
@@ -62,7 +59,7 @@ module qbs_block_adapter import qbs_pkg::*; (
     for (int row = 0; row < 4; row++) begin
       logic complete;
       complete = row < weight_row_count_i;
-      for (int byte_index = 0; byte_index < QbsQ6KBlockBytes;
+      for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
            byte_index++) begin
         if (byte_index < weight_bytes)
           complete &= weight_byte_valid_q[row][byte_index];
@@ -75,9 +72,11 @@ module qbs_block_adapter import qbs_pkg::*; (
     for (int ctx = 0; ctx < 4; ctx++) begin
       logic complete;
       complete = ctx < m_i;
-      for (int byte_index = 0; byte_index < QbsQ8KBlockBytes;
-           byte_index++)
-        complete &= activation_byte_valid_q[ctx][byte_index];
+      for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
+           byte_index++) begin
+        if (byte_index < activation_bytes)
+          complete &= activation_byte_valid_q[ctx][byte_index];
+      end
       activation_complete_o[ctx] = complete;
       if (ctx < m_i)
         all_activation_complete_o &= complete;
@@ -89,13 +88,13 @@ module qbs_block_adapter import qbs_pkg::*; (
       accepted_weight_bytes_o <= '0;
       accepted_activation_bytes_o <= '0;
       for (int row = 0; row < 4; row++)
-        for (int byte_index = 0; byte_index < QbsQ6KBlockBytes;
+        for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
              byte_index++) begin
           weight_byte_valid_q[row][byte_index] <= 1'b0;
           weight_block_o[row][byte_index] <= '0;
         end
       for (int ctx = 0; ctx < 4; ctx++)
-        for (int byte_index = 0; byte_index < QbsQ8KBlockBytes;
+        for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
              byte_index++) begin
           activation_byte_valid_q[ctx][byte_index] <= 1'b0;
           activation_block_o[ctx][byte_index] <= '0;
@@ -104,14 +103,14 @@ module qbs_block_adapter import qbs_pkg::*; (
       if (clear_weight_i) begin
         accepted_weight_bytes_o <= '0;
         for (int row = 0; row < 4; row++)
-          for (int byte_index = 0; byte_index < QbsQ6KBlockBytes;
+          for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
                byte_index++)
             weight_byte_valid_q[row][byte_index] <= 1'b0;
       end
       if (clear_activation_i) begin
         accepted_activation_bytes_o <= '0;
         for (int ctx = 0; ctx < 4; ctx++)
-          for (int byte_index = 0; byte_index < QbsQ8KBlockBytes;
+          for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
                byte_index++)
             activation_byte_valid_q[ctx][byte_index] <= 1'b0;
       end
@@ -126,8 +125,7 @@ module qbs_block_adapter import qbs_pkg::*; (
           automatic int unsigned block_bytes;
           automatic logic mapping_valid;
 
-          block_bytes = weight_profile_i == QBS_WEIGHT_PROFILE_Q4_K
-              ? QbsQ4KBlockBytes : QbsQ6KBlockBytes;
+          block_bytes = qbs_weight_block_bytes(weight_profile_i);
           target_row = unsigned'(weight_write_row_i);
           target_offset = source_offset;
 
@@ -170,35 +168,63 @@ module qbs_block_adapter import qbs_pkg::*; (
               unsigned'(activation_write_offset_i) + beat_byte;
           automatic int unsigned target_context;
           automatic int unsigned target_offset;
+          automatic int unsigned block_bytes;
+          automatic int unsigned scale_bytes;
+          automatic int unsigned quant_bytes;
+          automatic int unsigned aux_count;
+          automatic int unsigned aux_element_bytes;
           automatic logic mapping_valid;
 
+          block_bytes = qbs_activation_block_bytes(activation_profile_i);
+          scale_bytes = qbs_activation_scale_bytes(activation_profile_i);
+          quant_bytes = qbs_activation_quant_bytes(activation_profile_i);
+          aux_count = qbs_activation_aux_count(activation_profile_i);
+          aux_element_bytes =
+              qbs_activation_aux_element_bytes(activation_profile_i);
           target_context = unsigned'(activation_write_context_i);
           target_offset = source_offset;
-          mapping_valid = source_offset < QbsQ8KBlockBytes;
+          mapping_valid = source_offset < block_bytes;
 
           if (activation_layout_i ==
               QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) begin
-            mapping_valid = source_offset < QbsQ8Kx4BlockBytes;
-            if (source_offset < QbsQ8Kx4DBytes) begin
-              target_context = source_offset / 4;
-              target_offset = source_offset % 4;
-            end else if (source_offset < QbsQ8Kx4BsumsOffset) begin
+            automatic int unsigned scale_region_bytes = 4 * scale_bytes;
+            automatic int unsigned quant_region_end =
+                scale_region_bytes + 4 * quant_bytes;
+            mapping_valid = source_offset < 4 * block_bytes;
+            if (source_offset < scale_region_bytes) begin
+              // Supported activation scales are two or four bytes. Keeping
+              // both mappings explicit avoids a variable divider in RTL.
+              if (scale_bytes == 2) begin
+                target_context = source_offset >> 1;
+                target_offset = source_offset & 1;
+              end else begin
+                target_context = source_offset >> 2;
+                target_offset = source_offset & 3;
+              end
+            end else if (source_offset < quant_region_end) begin
               automatic int unsigned packed_qs =
-                  source_offset - QbsQ8Kx4DBytes;
-              target_context = packed_qs % 4;
-              target_offset = 4 + packed_qs / 4;
+                  source_offset - scale_region_bytes;
+              target_context = packed_qs & 3;
+              target_offset = scale_bytes + (packed_qs >> 2);
             end else begin
-              automatic int unsigned packed_bsum_byte =
-                  source_offset - QbsQ8Kx4BsumsOffset;
-              automatic int unsigned packed_bsum = packed_bsum_byte / 2;
-              target_context = packed_bsum % 4;
-              target_offset = 260 + (packed_bsum / 4) * 2 +
-                              packed_bsum_byte % 2;
+              automatic int unsigned packed_aux_byte =
+                  source_offset - quant_region_end;
+              automatic int unsigned packed_aux;
+              if (aux_element_bytes == 2) begin
+                packed_aux = packed_aux_byte >> 1;
+                target_context = packed_aux & 3;
+                target_offset = scale_bytes + quant_bytes +
+                    (packed_aux >> 2) * 2 + (packed_aux_byte & 1);
+              end else begin
+                mapping_valid = 1'b0;
+              end
+              mapping_valid &= packed_aux_byte <
+                  4 * aux_count * aux_element_bytes;
             end
           end
 
           if (activation_write_strb_i[beat_byte] && mapping_valid &&
-              target_context < 4 && target_offset < QbsQ8KBlockBytes) begin
+              target_context < 4 && target_offset < block_bytes) begin
             activation_block_o[target_context][target_offset] <=
                 activation_write_data_i[beat_byte * 8 +: 8];
             if (!activation_byte_valid_q[target_context][target_offset])
@@ -218,8 +244,7 @@ module qbs_block_adapter import qbs_pkg::*; (
         for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
           if (weight_write_strb_i[beat_byte]) begin
             automatic int unsigned block_bytes =
-                weight_profile_i == QBS_WEIGHT_PROFILE_Q4_K
-                    ? QbsQ4KBlockBytes : QbsQ6KBlockBytes;
+                qbs_weight_block_bytes(weight_profile_i);
             if (weight_write_group_i)
               assert (unsigned'(weight_write_offset_i) + beat_byte <
                       unsigned'(weight_row_count_i) * block_bytes)

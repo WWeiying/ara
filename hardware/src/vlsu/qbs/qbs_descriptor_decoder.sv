@@ -18,8 +18,9 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
   output qbs_weight_layout_e       weight_layout_o,
   output qbs_activation_layout_e   activation_layout_o,
   output logic [5:0]               n_o,
-  output logic [6:0]               k_blocks_o,
+  output logic [8:0]               k_blocks_o,
   output logic [15:0]              weight_block_bytes_o,
+  output logic [15:0]              activation_block_bytes_o,
   output logic [63:0]              weight_storage_bytes_o,
   output logic [63:0]              activation_storage_bytes_o,
   output logic [63:0]              weight_last_address_o,
@@ -47,8 +48,9 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
     n_o = {1'b0, descriptor_header_i[24:20]} + 1'b1;
     k_blocks_o = {1'b0, descriptor_header_i[32:25]} + 1'b1;
 
-    weight_block_bytes_o = weight_profile_o == QBS_WEIGHT_PROFILE_Q4_K
-        ? 16'(QbsQ4KBlockBytes) : 16'(QbsQ6KBlockBytes);
+    weight_block_bytes_o = 16'(qbs_weight_block_bytes(weight_profile_o));
+    activation_block_bytes_o =
+        16'(qbs_activation_block_bytes(activation_profile_o));
     padded_rows = (n_o + 3) & 6'h3c;
     weight_rows = weight_layout_o == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
         ? padded_rows : n_o;
@@ -56,8 +58,8 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
         weight_rows * k_blocks_o * weight_block_bytes_o;
     activation_storage_bytes_o =
         activation_layout_o == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
-            ? k_blocks_o * (4 * QbsQ8KBlockBytes)
-            : m_i * k_blocks_o * QbsQ8KBlockBytes;
+            ? k_blocks_o * (4 * activation_block_bytes_o)
+            : m_i * k_blocks_o * activation_block_bytes_o;
 
     weight_end_extended = {1'b0, descriptor_weight_base_i} +
                           {1'b0, weight_storage_bytes_o} - 1'b1;
@@ -75,10 +77,11 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
       error_o = QBS_VALIDATION_DESCRIPTOR_VERSION;
     else if (descriptor_header_i[63:QbsDescReservedLsb] != '0)
       error_o = QBS_VALIDATION_DESCRIPTOR_RESERVED;
-    else if (!(weight_profile_o inside {
-                 QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q6_K}))
+    else if (weight_block_bytes_o == 0)
       error_o = QBS_VALIDATION_WEIGHT_PROFILE;
-    else if (activation_profile_o != QBS_ACTIVATION_PROFILE_Q8_K)
+    else if (activation_block_bytes_o == 0 ||
+             !qbs_profiles_compatible(weight_profile_o,
+                                      activation_profile_o))
       error_o = QBS_VALIDATION_ACTIVATION_PROFILE;
     else if (!(weight_layout_o inside {
                  QBS_WEIGHT_LAYOUT_ROW_MAJOR,

@@ -126,6 +126,8 @@ module qbs_engine
   typedef struct packed {
     qbs_range_role_e role;
     logic [1:0]      target;
+    logic            weight_bank;
+    logic [2:0]      weight_row_count;
   } qbs_range_tag_t;
 
   typedef enum logic [3:0] {
@@ -176,25 +178,32 @@ module qbs_engine
   qbs_weight_layout_e descriptor_weight_layout;
   qbs_activation_layout_e descriptor_activation_layout;
   logic [5:0] descriptor_n;
-  logic [6:0] descriptor_k_blocks;
+  logic [8:0] descriptor_k_blocks;
   logic [15:0] descriptor_weight_block_bytes;
+  logic [15:0] descriptor_activation_block_bytes;
   logic [63:0] descriptor_weight_storage_bytes;
   logic [63:0] descriptor_activation_storage_bytes;
   logic [63:0] descriptor_weight_last_address;
   logic [63:0] descriptor_activation_last_address;
 
   qbs_weight_profile_e weight_profile_q;
+  qbs_activation_profile_e activation_profile_q;
   qbs_weight_layout_e weight_layout_q;
   qbs_activation_layout_e activation_layout_q;
   logic [5:0] n_q;
-  logic [6:0] k_blocks_q;
+  logic [8:0] k_blocks_q;
   logic [15:0] weight_block_bytes_q;
+  logic [15:0] activation_block_bytes_q;
   logic [63:0] weight_base_q;
 
-  logic [5:0] scheduler_k_q;
+  logic [7:0] scheduler_k_q;
   logic [5:0] scheduler_row_base_q;
   logic [2:0] activation_range_index_q;
   logic [2:0] weight_range_index_q;
+  logic [7:0] weight_issue_k_q;
+  logic [5:0] weight_issue_row_base_q;
+  logic       weight_issue_bank_q;
+  logic [1:0] weight_ranges_pending_q;
 
   logic read_range_valid;
   logic read_range_ready;
@@ -227,9 +236,10 @@ module qbs_engine
   logic compute_weight_write_group;
   logic compute_activation_write_valid;
   logic compute_activation_write_ready;
-  logic [5:0] compute_expected_k;
+  logic [7:0] compute_expected_k;
   logic [5:0] compute_expected_row_base;
   logic [2:0] compute_expected_row_count;
+  logic compute_expected_weight_bank;
   logic compute_activation_needed;
   logic compute_weight_needed;
   logic compute_result_valid;
@@ -285,6 +295,16 @@ module qbs_engine
   logic [31:0] phase_fault_cycles_q;
   logic [31:0] phase_terminal_cycles_q;
 
+`ifndef SYNTHESIS
+  logic [31:0] probe_weight_wait_no_outstanding_cycles_q;
+  logic [31:0] probe_weight_wait_response_idle_cycles_q;
+  logic [31:0] probe_weight_wait_r_transfer_cycles_q;
+  logic [31:0] probe_weight_wait_r_blocked_cycles_q;
+  logic        probe_root_trace_active_q;
+  logic        probe_root_trace_done_q;
+  logic [7:0]  probe_root_trace_cycle_q;
+`endif
+
   logic command_fire;
   logic read_range_fire;
   logic read_data_fire;
@@ -293,6 +313,11 @@ module qbs_engine
   logic scheduler_tuple_current;
   logic [2:0] activation_range_count;
   logic [2:0] weight_range_count;
+  logic weight_lookahead_enabled;
+  logic weight_issue_cursor_current;
+  logic [2:0] weight_issue_row_count;
+  logic lookahead_weight_range_fire;
+  logic lookahead_weight_completion_fire;
 
   assign command_ready_o = state_q == QBS_ENGINE_IDLE;
   assign command_fire = command_valid_i && command_ready_o;
@@ -307,6 +332,26 @@ module qbs_engine
   assign fault_mmu_exception_o = fault_mmu_exception_q;
   assign weight_prefetch_wait_cycles_o = compute_counters_valid_q
       ? compute_weight_prefetch_wait_cycles : '0;
+
+  // Decode-style M=1 R4 commands can keep one current and one future tile in
+  // flight. Larger M values retain the demand-coupled scheduler because their
+  // compute interval is long enough for a third response to reach an active
+  // bank before it is safe to overwrite.
+  assign weight_lookahead_enabled = m_q == 3'd1 &&
+      weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR;
+  assign weight_issue_cursor_current =
+      weight_issue_k_q == compute_expected_k;
+
+  always_comb begin
+    automatic int unsigned remaining_rows;
+    weight_issue_row_count = '0;
+    if (unsigned'(weight_issue_row_base_q) < unsigned'(n_q)) begin
+      remaining_rows = unsigned'(n_q) -
+                       unsigned'(weight_issue_row_base_q);
+      weight_issue_row_count = remaining_rows >= 4
+          ? 3'd4 : 3'(remaining_rows);
+    end
+  end
 
   always_comb begin
     command_phase = QBS_PHASE_NONE;
@@ -361,6 +406,92 @@ module qbs_engine
   assign phase_terminal_cycles_o = phase_terminal_cycles_q +
       (command_phase == QBS_PHASE_TERMINAL ? 32'd1 : 32'd0);
 
+`ifndef SYNTHESIS
+  // This is an exclusive cycle classification of the compute engine's strict
+  // QBS_WAIT_WEIGHT state, not a general read-engine occupancy breakdown.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      probe_weight_wait_no_outstanding_cycles_q <= '0;
+      probe_weight_wait_response_idle_cycles_q <= '0;
+      probe_weight_wait_r_transfer_cycles_q <= '0;
+      probe_weight_wait_r_blocked_cycles_q <= '0;
+    end else if (command_fire) begin
+      probe_weight_wait_no_outstanding_cycles_q <= '0;
+      probe_weight_wait_response_idle_cycles_q <= '0;
+      probe_weight_wait_r_transfer_cycles_q <= '0;
+      probe_weight_wait_r_blocked_cycles_q <= '0;
+    end else if (i_compute_engine.probe_weight_wait_active) begin
+      if (i_read_engine.burst_fifo_count_q == 0) begin
+        probe_weight_wait_no_outstanding_cycles_q <=
+            probe_weight_wait_no_outstanding_cycles_q + 1'b1;
+      end else if (!axi_r_valid_i) begin
+        probe_weight_wait_response_idle_cycles_q <=
+            probe_weight_wait_response_idle_cycles_q + 1'b1;
+      end else if (axi_r_ready_o) begin
+        probe_weight_wait_r_transfer_cycles_q <=
+            probe_weight_wait_r_transfer_cycles_q + 1'b1;
+      end else begin
+        probe_weight_wait_r_blocked_cycles_q <=
+            probe_weight_wait_r_blocked_cycles_q + 1'b1;
+      end
+    end
+  end
+
+  // Bounded event-correlated trace for one real command. It is disabled by
+  // default and intentionally observes only the first 200 cycles beginning at
+  // the first integer-tile launch, which keeps long model runs manageable.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      probe_root_trace_active_q <= 1'b0;
+      probe_root_trace_done_q <= 1'b0;
+      probe_root_trace_cycle_q <= '0;
+    end else if ($test$plusargs("QBS_ROOT_TRACE")) begin
+      if (!probe_root_trace_active_q && !probe_root_trace_done_q &&
+          i_compute_engine.integer_start_fire) begin
+        probe_root_trace_active_q <= 1'b1;
+        probe_root_trace_cycle_q <= '0;
+      end else if (probe_root_trace_active_q) begin
+        $display("[QBS_ROOT] c=%0d cs=%0d k=%0d row=%0d istart=%0d idone=%0d cur_done=%0d next_done=%0d bank=%0d issue_k=%0d issue_row=%0d issue_bank=%0d pending=%0d range=%0d/%0d role=%0d tag_bank=%0d tag_rows=%0d plan=%0d rfifo=%0d bfifo=%0d ar=%0d/%0d r=%0d/%0d data=%0d/%0d off=%0d wait=%0d",
+                 probe_root_trace_cycle_q,
+                 i_compute_engine.state_q,
+                 compute_expected_k,
+                 compute_expected_row_base,
+                 i_compute_engine.integer_start_fire,
+                 i_compute_engine.integer_done,
+                 i_compute_engine.current_weight_complete,
+                 i_compute_engine.load_weight_complete,
+                 i_compute_engine.active_weight_bank_q,
+                 weight_issue_k_q,
+                 weight_issue_row_base_q,
+                 weight_issue_bank_q,
+                 weight_ranges_pending_q,
+                 read_range_valid,
+                 read_range_ready,
+                 read_range_tag.role,
+                 read_range_tag.weight_bank,
+                 read_range_tag.weight_row_count,
+                 i_read_engine.plan_state_q,
+                 i_read_engine.range_fifo_count_q,
+                 i_read_engine.burst_fifo_count_q,
+                 axi_ar_valid_o,
+                 axi_ar_ready_i,
+                 axi_r_valid_i,
+                 axi_r_ready_o,
+                 read_data_valid,
+                 read_data_ready,
+                 read_data_offset,
+                 i_compute_engine.probe_weight_wait_active);
+        if (probe_root_trace_cycle_q == 8'd199) begin
+          probe_root_trace_active_q <= 1'b0;
+          probe_root_trace_done_q <= 1'b1;
+        end else begin
+          probe_root_trace_cycle_q <= probe_root_trace_cycle_q + 1'b1;
+        end
+      end
+    end
+  end
+`endif
+
   // Descriptor faults do not start the compute or commit sub-engines. Keep
   // their retained counters hidden until this command reaches each stage.
   assign tiles_computed_o = compute_counters_valid_q
@@ -394,6 +525,10 @@ module qbs_engine
   assign read_data_fire = read_data_valid && read_data_ready;
   assign read_completion_fire = read_completion_valid && read_completion_ready;
   assign read_fault_fire = read_fault_valid && read_fault_ready;
+  assign lookahead_weight_range_fire = weight_lookahead_enabled &&
+      read_range_fire && read_range_tag.role == QBS_RANGE_WEIGHT;
+  assign lookahead_weight_completion_fire = weight_lookahead_enabled &&
+      read_completion_fire && read_completion_tag.role == QBS_RANGE_WEIGHT;
 
   qbs_descriptor_decoder #(
     .VLEN (VLEN)
@@ -413,6 +548,7 @@ module qbs_engine
     .n_o                          (descriptor_n),
     .k_blocks_o                   (descriptor_k_blocks),
     .weight_block_bytes_o         (descriptor_weight_block_bytes),
+    .activation_block_bytes_o     (descriptor_activation_block_bytes),
     .weight_storage_bytes_o       (descriptor_weight_storage_bytes),
     .activation_storage_bytes_o   (descriptor_activation_storage_bytes),
     .weight_last_address_o        (descriptor_weight_last_address),
@@ -427,7 +563,8 @@ module qbs_engine
     read_range_valid = 1'b0;
     read_range_vaddr = '0;
     read_range_bytes = '0;
-    read_range_tag = '{role: QBS_RANGE_RESERVED, target: '0};
+    read_range_tag = '{role: QBS_RANGE_RESERVED, target: '0,
+                       weight_bank: 1'b0, weight_row_count: '0};
 
     scheduler_tuple_current =
         scheduler_k_q == compute_expected_k &&
@@ -443,27 +580,44 @@ module qbs_engine
       read_range_valid = 1'b1;
       read_range_vaddr = descriptor_address_q;
       read_range_bytes = RangeBytesWidth'(QbsDescriptorBytes);
-      read_range_tag = '{role: QBS_RANGE_DESCRIPTOR, target: '0};
+      read_range_tag = '{role: QBS_RANGE_DESCRIPTOR, target: '0,
+                         weight_bank: 1'b0, weight_row_count: '0};
     end else if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
       if (compute_activation_needed &&
           activation_range_index_q < activation_range_count) begin
         read_range_valid = 1'b1;
         read_range_tag = '{role: QBS_RANGE_ACTIVATION,
-                           target: activation_range_index_q[1:0]};
+                           target: activation_range_index_q[1:0],
+                           weight_bank: 1'b0, weight_row_count: '0};
         if (activation_layout_q ==
             QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) begin
           address_offset = 64'(compute_expected_k) *
-                           (4 * QbsQ8KBlockBytes);
+                           (4 * activation_block_bytes_q);
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
-          read_range_bytes = RangeBytesWidth'(4 * QbsQ8KBlockBytes);
+          read_range_bytes = RangeBytesWidth'(4 * activation_block_bytes_q);
         end else begin
           block_index = 64'(activation_range_index_q) * k_blocks_q +
                         compute_expected_k;
-          address_offset = block_index * QbsQ8KBlockBytes;
+          address_offset = block_index * activation_block_bytes_q;
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
-          read_range_bytes = RangeBytesWidth'(QbsQ8KBlockBytes);
+          read_range_bytes = RangeBytesWidth'(activation_block_bytes_q);
         end
-      end else if (compute_weight_needed &&
+      end else if (weight_lookahead_enabled &&
+                   weight_issue_cursor_current &&
+                   weight_issue_row_base_q < n_q &&
+                   weight_ranges_pending_q < 2) begin
+        logical_row = weight_issue_row_base_q;
+        block_index = ((logical_row >> 2) * k_blocks_q +
+                       weight_issue_k_q) << 2;
+        address_offset = block_index * weight_block_bytes_q;
+        read_range_valid = 1'b1;
+        read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
+        read_range_bytes = RangeBytesWidth'(weight_issue_row_count *
+                                             weight_block_bytes_q);
+        read_range_tag = '{role: QBS_RANGE_WEIGHT, target: '0,
+                           weight_bank: weight_issue_bank_q,
+                           weight_row_count: weight_issue_row_count};
+      end else if (!weight_lookahead_enabled && compute_weight_needed &&
                    weight_range_index_q < weight_range_count) begin
         logical_row = 64'(compute_expected_row_base) +
                       weight_range_index_q;
@@ -482,7 +636,9 @@ module qbs_engine
                                weight_block_bytes_q)
             : RangeBytesWidth'(weight_block_bytes_q);
         read_range_tag = '{role: QBS_RANGE_WEIGHT,
-                           target: weight_range_index_q[1:0]};
+                           target: weight_range_index_q[1:0],
+                           weight_bank: compute_expected_weight_bank,
+                           weight_row_count: compute_expected_row_count};
       end
     end
   end
@@ -598,6 +754,7 @@ module qbs_engine
     .command_valid_i                (compute_command_valid),
     .command_ready_o                (compute_command_ready),
     .command_weight_profile_i       (weight_profile_q),
+    .command_activation_profile_i   (activation_profile_q),
     .command_weight_layout_i        (weight_layout_q),
     .command_activation_layout_i    (activation_layout_q),
     .command_m_i                    (m_q),
@@ -608,6 +765,8 @@ module qbs_engine
     .fault_done_o                   (compute_fault_done),
     .weight_write_valid_i           (compute_weight_write_valid),
     .weight_write_ready_o           (compute_weight_write_ready),
+    .weight_write_bank_i            (read_data_tag.weight_bank),
+    .weight_write_row_count_i       (read_data_tag.weight_row_count),
     .weight_write_group_i           (compute_weight_write_group),
     .weight_write_row_i             (read_data_tag.target),
     .weight_write_offset_i          (read_data_offset[9:0]),
@@ -622,6 +781,7 @@ module qbs_engine
     .expected_k_block_o             (compute_expected_k),
     .expected_row_base_o            (compute_expected_row_base),
     .expected_row_count_o           (compute_expected_row_count),
+    .expected_weight_bank_o         (compute_expected_weight_bank),
     .activation_block_needed_o      (compute_activation_needed),
     .weight_block_needed_o          (compute_weight_needed),
     .result_valid_o                 (compute_result_valid),
@@ -863,16 +1023,22 @@ module qbs_engine
       descriptor_q <= '0;
       descriptor_byte_valid_q <= '0;
       weight_profile_q <= QBS_WEIGHT_PROFILE_INVALID;
+      activation_profile_q <= QBS_ACTIVATION_PROFILE_INVALID;
       weight_layout_q <= QBS_WEIGHT_LAYOUT_INVALID;
       activation_layout_q <= QBS_ACTIVATION_LAYOUT_INVALID;
       n_q <= '0;
       k_blocks_q <= '0;
       weight_block_bytes_q <= '0;
+      activation_block_bytes_q <= '0;
       weight_base_q <= '0;
       scheduler_k_q <= '0;
       scheduler_row_base_q <= '0;
       activation_range_index_q <= '0;
       weight_range_index_q <= '0;
+      weight_issue_k_q <= '0;
+      weight_issue_row_base_q <= '0;
+      weight_issue_bank_q <= 1'b0;
+      weight_ranges_pending_q <= '0;
       fault_is_validation_q <= 1'b0;
       validation_error_q <= QBS_VALIDATION_OK;
       read_fault_kind_q <= QBS_READ_FAULT_NONE;
@@ -907,6 +1073,10 @@ module qbs_engine
         fault_mmu_exception_q <= '0;
         result_fflags_q <= '0;
         command_cycles_o <= '0;
+        weight_issue_k_q <= '0;
+        weight_issue_row_base_q <= '0;
+        weight_issue_bank_q <= 1'b0;
+        weight_ranges_pending_q <= '0;
       end else if (busy_o) begin
         command_cycles_o <= command_cycles_o + 1'b1;
       end
@@ -930,11 +1100,13 @@ module qbs_engine
 
       if (state_q == QBS_ENGINE_VALIDATE && descriptor_valid) begin
         weight_profile_q <= descriptor_weight_profile;
+        activation_profile_q <= descriptor_activation_profile;
         weight_layout_q <= descriptor_weight_layout;
         activation_layout_q <= descriptor_activation_layout;
         n_q <= descriptor_n;
         k_blocks_q <= descriptor_k_blocks;
         weight_block_bytes_q <= descriptor_weight_block_bytes;
+        activation_block_bytes_q <= descriptor_activation_block_bytes;
         weight_base_q <= descriptor_q[127:64];
       end
 
@@ -943,6 +1115,10 @@ module qbs_engine
         scheduler_row_base_q <= '0;
         activation_range_index_q <= '0;
         weight_range_index_q <= '0;
+        weight_issue_k_q <= '0;
+        weight_issue_row_base_q <= '0;
+        weight_issue_bank_q <= 1'b0;
+        weight_ranges_pending_q <= '0;
       end else if (state_q == QBS_ENGINE_RUN) begin
         if (!scheduler_tuple_current) begin
           scheduler_k_q <= compute_expected_k;
@@ -955,6 +1131,27 @@ module qbs_engine
               activation_range_index_q <= activation_range_index_q + 1'b1;
             QBS_RANGE_WEIGHT:
               weight_range_index_q <= weight_range_index_q + 1'b1;
+            default: ;
+          endcase
+        end
+
+        if (weight_lookahead_enabled) begin
+          if (!weight_issue_cursor_current) begin
+            weight_issue_k_q <= compute_expected_k;
+            weight_issue_row_base_q <= '0;
+            weight_issue_bank_q <= 1'b0;
+          end else if (lookahead_weight_range_fire) begin
+            weight_issue_row_base_q <=
+                weight_issue_row_base_q + weight_issue_row_count;
+            weight_issue_bank_q <= ~weight_issue_bank_q;
+          end
+
+          unique case ({lookahead_weight_range_fire,
+                        lookahead_weight_completion_fire})
+            2'b10:
+              weight_ranges_pending_q <= weight_ranges_pending_q + 1'b1;
+            2'b01:
+              weight_ranges_pending_q <= weight_ranges_pending_q - 1'b1;
             default: ;
           endcase
         end
@@ -1005,13 +1202,30 @@ module qbs_engine
           weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)
         assert (compute_expected_row_base[1:0] == 2'b00)
           else $fatal(1, "QBS R4 scheduler row base is not group aligned");
+      if (weight_lookahead_enabled && state_q == QBS_ENGINE_RUN) begin
+        assert (weight_ranges_pending_q <= 2)
+          else $fatal(1, "QBS weight lookahead exceeded its two-bank credit");
+        if (!weight_issue_cursor_current)
+          assert (weight_ranges_pending_q == 0)
+            else $fatal(1, "QBS crossed a K-block with pending weight tiles");
+        if (lookahead_weight_completion_fire)
+          assert (weight_ranges_pending_q != 0)
+            else $fatal(1, "QBS weight lookahead completion underflow");
+        if (lookahead_weight_range_fire) begin
+          assert (read_range_tag.weight_bank == weight_issue_bank_q &&
+                  read_range_tag.weight_row_count ==
+                      weight_issue_row_count &&
+                  weight_issue_row_base_q[1:0] == 2'b00 &&
+                  weight_issue_row_count inside {[1:4]})
+            else $fatal(1, "QBS weight lookahead emitted inconsistent metadata");
+        end
+      end
     end
   end
 `endif
 
   logic unused;
-  assign unused = ^{descriptor_activation_profile,
-                    descriptor_weight_storage_bytes,
+  assign unused = ^{descriptor_weight_storage_bytes,
                     descriptor_activation_storage_bytes,
                     descriptor_weight_last_address,
                     descriptor_activation_last_address,

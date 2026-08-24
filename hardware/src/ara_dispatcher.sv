@@ -459,6 +459,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
   vlen_t overlap_vstart_d, overlap_vstart_q;
   vlen_t overlap_prefix_vl_d, overlap_prefix_vl_q;
   logic [2:0] overlap_reg_index_d, overlap_reg_index_q;
+  logic [4:0] overlap_current_vd_d, overlap_current_vd_q;
+  logic [4:0] overlap_boundary_vd_d, overlap_boundary_vd_q;
+  vlen_t overlap_elements_per_reg_d, overlap_elements_per_reg_q;
+  vlen_t overlap_reg_first_element_d, overlap_reg_first_element_q;
+  vew_e overlap_current_old_eew_d, overlap_current_old_eew_q;
+  vew_e overlap_boundary_old_eew_d, overlap_boundary_old_eew_q;
+  logic overlap_current_old_eew_valid_d, overlap_current_old_eew_valid_q;
   vew_e [7:0] overlap_old_eew_d, overlap_old_eew_q;
   logic [7:0] overlap_old_eew_valid_d, overlap_old_eew_valid_q;
   logic source_snapshot_valid_d, source_snapshot_valid_q;
@@ -536,6 +543,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
       overlap_vstart_q      <= '0;
       overlap_prefix_vl_q   <= '0;
       overlap_reg_index_q   <= '0;
+      overlap_current_vd_q  <= '0;
+      overlap_boundary_vd_q <= '0;
+      overlap_elements_per_reg_q <= '0;
+      overlap_reg_first_element_q <= '0;
+      overlap_current_old_eew_q <= rvv_pkg::EW8;
+      overlap_boundary_old_eew_q <= rvv_pkg::EW8;
+      overlap_current_old_eew_valid_q <= 1'b0;
       overlap_old_eew_q     <= '{default: rvv_pkg::EW8};
       overlap_old_eew_valid_q <= '0;
       source_snapshot_valid_q <= 1'b0;
@@ -585,6 +599,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
       overlap_vstart_q      <= overlap_vstart_d;
       overlap_prefix_vl_q   <= overlap_prefix_vl_d;
       overlap_reg_index_q   <= overlap_reg_index_d;
+      overlap_current_vd_q  <= overlap_current_vd_d;
+      overlap_boundary_vd_q <= overlap_boundary_vd_d;
+      overlap_elements_per_reg_q <= overlap_elements_per_reg_d;
+      overlap_reg_first_element_q <= overlap_reg_first_element_d;
+      overlap_current_old_eew_q <= overlap_current_old_eew_d;
+      overlap_boundary_old_eew_q <= overlap_boundary_old_eew_d;
+      overlap_current_old_eew_valid_q <= overlap_current_old_eew_valid_d;
       overlap_old_eew_q     <= overlap_old_eew_d;
       overlap_old_eew_valid_q <= overlap_old_eew_valid_d;
       source_snapshot_valid_q <= source_snapshot_valid_d;
@@ -729,10 +750,28 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
                ara_req_ready_i, ara_req_valid_o, ara_req.vd, ara_req.vs2,
                ara_req.emul, ara_req.eew_vs2, ara_req.vtype.vsew,
                ara_req.vl, ara_req.vstart, overlap_reg_index_q,
-               overlap_old_eew_valid_q[overlap_reg_index_q],
+               overlap_current_old_eew_valid_q,
                overlap_snapshot_valid_q, overlap_prepared_q);
     end
   end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && state_q inside {OVERLAP_PREFIX_FIXUP, OVERLAP_FIXUP}) begin
+      assert (overlap_current_vd_q == overlap_vd_q + overlap_reg_index_q)
+        else $fatal(1, "Overlap repair destination context is misaligned");
+      assert (overlap_current_old_eew_q == overlap_old_eew_q[overlap_reg_index_q])
+        else $fatal(1, "Overlap repair EEW context is misaligned");
+      assert (overlap_current_old_eew_valid_q ==
+              overlap_old_eew_valid_q[overlap_reg_index_q])
+        else $fatal(1, "Overlap repair EEW-valid context is misaligned");
+      assert (overlap_reg_first_element_q == vlen_t'(
+                  unsigned'(overlap_reg_index_q) *
+                  unsigned'(overlap_elements_per_reg_q)))
+        else $fatal(1, "Overlap repair element context is misaligned");
+    end
+  end
+`endif
 
   always_ff @(posedge clk_i) begin
     if (rst_ni && $test$plusargs("ARA_DEBUG_LAYOUT428") &&
@@ -969,6 +1008,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
     overlap_vstart_d = overlap_vstart_q;
     overlap_prefix_vl_d = overlap_prefix_vl_q;
     overlap_reg_index_d = overlap_reg_index_q;
+    overlap_current_vd_d = overlap_current_vd_q;
+    overlap_boundary_vd_d = overlap_boundary_vd_q;
+    overlap_elements_per_reg_d = overlap_elements_per_reg_q;
+    overlap_reg_first_element_d = overlap_reg_first_element_q;
+    overlap_current_old_eew_d = overlap_current_old_eew_q;
+    overlap_boundary_old_eew_d = overlap_boundary_old_eew_q;
+    overlap_current_old_eew_valid_d = overlap_current_old_eew_valid_q;
     overlap_old_eew_d = overlap_old_eew_q;
     overlap_old_eew_valid_d = overlap_old_eew_valid_q;
     source_snapshot_valid_d = source_snapshot_valid_q;
@@ -1093,27 +1139,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
       end
 
       OVERLAP_PREFIX_FIXUP: begin
-        automatic int unsigned reg_count = lmul_register_count(overlap_lmul_q);
-        automatic int unsigned elements_per_reg =
-            VLENB >> unsigned'(overlap_target_eew_q);
-        automatic int unsigned reg_first_element =
-            unsigned'(overlap_reg_index_q) * elements_per_reg;
-        automatic int unsigned preserved_elements;
+        automatic logic [3:0] reg_count =
+            4'(lmul_register_count(overlap_lmul_q));
+        automatic vlen_t preserved_elements;
         automatic logic needs_fixup;
 
         acc_resp_o.req_ready  = 1'b0;
         acc_resp_o.resp_valid = 1'b0;
 
-        if (unsigned'(overlap_prefix_vl_q) <= reg_first_element)
-          preserved_elements = 0;
-        else if (unsigned'(overlap_prefix_vl_q) >= reg_first_element + elements_per_reg)
-          preserved_elements = elements_per_reg;
+        if (overlap_prefix_vl_q <= overlap_reg_first_element_q)
+          preserved_elements = '0;
+        else if (overlap_prefix_vl_q >=
+                 overlap_reg_first_element_q + overlap_elements_per_reg_q)
+          preserved_elements = overlap_elements_per_reg_q;
         else
-          preserved_elements = unsigned'(overlap_prefix_vl_q) - reg_first_element;
+          preserved_elements = overlap_prefix_vl_q - overlap_reg_first_element_q;
 
         needs_fixup = preserved_elements != 0 &&
-                      overlap_old_eew_valid_q[overlap_reg_index_q] &&
-                      overlap_old_eew_q[overlap_reg_index_q] != overlap_target_eew_q;
+                      overlap_current_old_eew_valid_q &&
+                      overlap_current_old_eew_q != overlap_target_eew_q;
 
         if (needs_fixup) begin
           // Re-encode only a destination prefix known not to contain an
@@ -1122,26 +1166,37 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
           ara_req_valid         = ara_idle_i;
           ara_req.emul          = LMUL_1;
           ara_req.vstart        = '0;
-          ara_req.vs2           = overlap_vd_q + overlap_reg_index_q;
-          ara_req.eew_vs2       = overlap_old_eew_q[overlap_reg_index_q];
+          ara_req.vs2           = overlap_current_vd_q;
+          ara_req.eew_vs2       = overlap_current_old_eew_q;
           ara_req.use_vs2       = 1'b1;
-          ara_req.vd            = overlap_vd_q + overlap_reg_index_q;
+          ara_req.vd            = overlap_current_vd_q;
           ara_req.use_vd        = 1'b1;
           ara_req.op            = ara_pkg::VSLIDEDOWN;
           ara_req.stride        = '0;
           ara_req.use_scalar_op = 1'b0;
           ara_req.vm            = 1'b1;
           ara_req.vtype.vsew    = overlap_target_eew_q;
-          ara_req.vl            = vlen_t'(preserved_elements);
+          ara_req.vl            = preserved_elements;
           ara_req.scale_vl      = 1'b1;
         end
 
         if (!needs_fixup || (ara_idle_i && ara_req_ready_i)) begin
-          if (unsigned'(overlap_reg_index_q) + 1 == reg_count) begin
+          if ({1'b0, overlap_reg_index_q} + 1'b1 == reg_count) begin
             overlap_reg_index_d = '0;
+            overlap_current_vd_d = overlap_vd_q;
+            overlap_reg_first_element_d = '0;
+            overlap_current_old_eew_d = overlap_old_eew_q[0];
+            overlap_current_old_eew_valid_d = overlap_old_eew_valid_q[0];
             state_d = OVERLAP_WAIT_PREFIX_FIXUP;
           end else begin
             overlap_reg_index_d = overlap_reg_index_q + 1'b1;
+            overlap_current_vd_d = overlap_current_vd_q + 1'b1;
+            overlap_reg_first_element_d = overlap_reg_first_element_q +
+                overlap_elements_per_reg_q;
+            overlap_current_old_eew_d =
+                overlap_old_eew_q[overlap_reg_index_q + 1'b1];
+            overlap_current_old_eew_valid_d =
+                overlap_old_eew_valid_q[overlap_reg_index_q + 1'b1];
           end
         end
       end
@@ -1167,10 +1222,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
         ara_req_valid             = ara_idle_i;
         ara_req.emul              = LMUL_1;
         ara_req.vstart            = '0;
-        ara_req.vs2               = overlap_vd_q + overlap_boundary_reg_q;
-        ara_req.eew_vs2           = overlap_old_eew_q[overlap_boundary_reg_q];
+        ara_req.vs2               = overlap_boundary_vd_q;
+        ara_req.eew_vs2           = overlap_boundary_old_eew_q;
         ara_req.use_vs2           = 1'b1;
-        ara_req.vd                = overlap_vd_q + overlap_boundary_reg_q;
+        ara_req.vd                = overlap_boundary_vd_q;
         ara_req.use_vd            = 1'b0;
         ara_req.op                = ara_pkg::VSLIDEDOWN;
         ara_req.stride            = '0;
@@ -1179,7 +1234,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
         // Run the normal reshuffle datapath during capture and retain the
         // selected word already encoded in the destination EEW layout.
         ara_req.vtype.vsew        = overlap_target_eew_q;
-        ara_req.vl                = VLENB >> overlap_target_eew_q;
+        ara_req.vl                = overlap_elements_per_reg_q;
         ara_req.scale_vl          = 1'b1;
         ara_req.overlap_capture   = 1'b1;
         ara_req.overlap_snapshot_word = overlap_snapshot_word_q;
@@ -1210,32 +1265,34 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
 
         if (overlap_original_accepted_q && !ara_req_valid_o && ara_idle_i) begin
           overlap_reg_index_d = '0;
+          overlap_current_vd_d = overlap_vd_q;
+          overlap_reg_first_element_d = '0;
+          overlap_current_old_eew_d = overlap_old_eew_q[0];
+          overlap_current_old_eew_valid_d = overlap_old_eew_valid_q[0];
           state_d = OVERLAP_FIXUP;
         end
       end
 
       OVERLAP_FIXUP: begin
-        automatic int unsigned reg_count = lmul_register_count(overlap_lmul_q);
-        automatic int unsigned elements_per_reg =
-            VLENB >> unsigned'(overlap_target_eew_q);
-        automatic int unsigned reg_first_element =
-            unsigned'(overlap_reg_index_q) * elements_per_reg;
-        automatic int unsigned active_elements;
+        automatic logic [3:0] reg_count =
+            4'(lmul_register_count(overlap_lmul_q));
+        automatic vlen_t active_elements;
         automatic logic needs_fixup;
 
         acc_resp_o.req_ready  = 1'b0;
         acc_resp_o.resp_valid = 1'b0;
 
-        if (unsigned'(overlap_vl_q) <= reg_first_element)
-          active_elements = 0;
-        else if (unsigned'(overlap_vl_q) >= reg_first_element + elements_per_reg)
-          active_elements = elements_per_reg;
+        if (overlap_vl_q <= overlap_reg_first_element_q)
+          active_elements = '0;
+        else if (overlap_vl_q >=
+                 overlap_reg_first_element_q + overlap_elements_per_reg_q)
+          active_elements = overlap_elements_per_reg_q;
         else
-          active_elements = unsigned'(overlap_vl_q) - reg_first_element;
+          active_elements = overlap_vl_q - overlap_reg_first_element_q;
 
-        needs_fixup = active_elements < elements_per_reg &&
-                      overlap_old_eew_valid_q[overlap_reg_index_q] &&
-                      overlap_old_eew_q[overlap_reg_index_q] != overlap_target_eew_q;
+        needs_fixup = active_elements < overlap_elements_per_reg_q &&
+                      overlap_current_old_eew_valid_q &&
+                      overlap_current_old_eew_q != overlap_target_eew_q;
 
         if (needs_fixup) begin
           // Re-encode only destination elements that the widening operation did
@@ -1243,18 +1300,18 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
           // architectural register; the SLDU keeps lower result bytes intact.
           ara_req_valid         = 1'b1;
           ara_req.emul          = LMUL_1;
-          ara_req.vstart        = vlen_t'(active_elements);
-          ara_req.vs2           = overlap_vd_q + overlap_reg_index_q;
-          ara_req.eew_vs2       = overlap_old_eew_q[overlap_reg_index_q];
+          ara_req.vstart        = active_elements;
+          ara_req.vs2           = overlap_current_vd_q;
+          ara_req.eew_vs2       = overlap_current_old_eew_q;
           ara_req.use_vs2       = 1'b1;
-          ara_req.vd            = overlap_vd_q + overlap_reg_index_q;
+          ara_req.vd            = overlap_current_vd_q;
           ara_req.use_vd        = 1'b1;
           ara_req.op            = ara_pkg::VSLIDEDOWN;
           ara_req.stride        = '0;
           ara_req.use_scalar_op = 1'b0;
           ara_req.vm            = 1'b1;
           ara_req.vtype.vsew    = overlap_target_eew_q;
-          ara_req.vl            = vlen_t'(elements_per_reg);
+          ara_req.vl            = overlap_elements_per_reg_q;
           ara_req.scale_vl      = 1'b1;
           ara_req.overlap_use_snapshot = overlap_snapshot_valid_q &&
               overlap_reg_index_q == overlap_boundary_reg_q;
@@ -1262,12 +1319,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
         end
 
         if (!needs_fixup || ara_req_ready_i) begin
-          eew_d[overlap_vd_q + overlap_reg_index_q] = overlap_target_eew_q;
-          eew_valid_d[overlap_vd_q + overlap_reg_index_q] = 1'b1;
-          if (unsigned'(overlap_reg_index_q) + 1 == reg_count) begin
+          eew_d[overlap_current_vd_q] = overlap_target_eew_q;
+          eew_valid_d[overlap_current_vd_q] = 1'b1;
+          if ({1'b0, overlap_reg_index_q} + 1'b1 == reg_count) begin
             state_d = OVERLAP_WAIT_FIXUP;
           end else begin
             overlap_reg_index_d = overlap_reg_index_q + 1'b1;
+            overlap_current_vd_d = overlap_current_vd_q + 1'b1;
+            overlap_reg_first_element_d = overlap_reg_first_element_q +
+                overlap_elements_per_reg_q;
+            overlap_current_old_eew_d =
+                overlap_old_eew_q[overlap_reg_index_q + 1'b1];
+            overlap_current_old_eew_valid_d =
+                overlap_old_eew_valid_q[overlap_reg_index_q + 1'b1];
           end
         end
       end
@@ -5362,6 +5426,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
           overlap_prefix_vl_d  = legal_narrow_overlap &&
               !source_snapshot_preserves_narrow_vd ? ara_req.vstart : '0;
           overlap_reg_index_d  = '0;
+          overlap_current_vd_d = ara_req.vd;
+          overlap_elements_per_reg_d = vlen_t'(elements_per_reg);
+          overlap_reg_first_element_d = '0;
+          overlap_current_old_eew_d = eew_q[ara_req.vd];
+          overlap_current_old_eew_valid_d = eew_valid_q[ara_req.vd];
           for (int unsigned i = 0; i < 8; i++) begin
             if (i < lmul_register_count(
                     single_register_result(ara_req.op) ? LMUL_1 : ara_req.emul) &&
@@ -5385,6 +5454,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
           end
           overlap_snapshot_valid_d = snapshot_needed;
           overlap_boundary_reg_d = 3'(boundary_reg);
+          overlap_boundary_vd_d = ara_req.vd + 5'(boundary_reg);
+          overlap_boundary_old_eew_d = rvv_pkg::EW8;
+          if (snapshot_needed)
+            overlap_boundary_old_eew_d = eew_q[ara_req.vd + boundary_reg];
           overlap_snapshot_word_d = vlen_t'(active_bytes / (NrLanes * 8));
 
           // Widening MACs also read vd as a wide accumulator. If their active

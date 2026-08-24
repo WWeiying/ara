@@ -21,6 +21,7 @@ module qbs_profile_engine_tb;
   logic start_valid;
   logic start_ready;
   qbs_weight_profile_e start_profile;
+  qbs_activation_profile_e start_activation_profile;
   logic [2:0] start_m;
   logic [2:0] start_rows;
   logic busy;
@@ -67,8 +68,8 @@ module qbs_profile_engine_tb;
   logic [4:0] fp_table_occupancy_max;
   logic [31:0] fp_table_full_cycles;
   logic [31:0] fp_accumulator_updates;
-  logic [7:0] adapter_weight_block [4][QbsQ6KBlockBytes];
-  logic [7:0] adapter_activation_block [4][QbsQ8KBlockBytes];
+  logic [7:0] adapter_weight_block [4][QbsMaxWeightBlockBytes];
+  logic [7:0] adapter_activation_block [4][QbsMaxActivationBlockBytes];
   logic [3:0] adapter_weight_complete;
   logic [3:0] adapter_activation_complete;
   logic adapter_all_weight_complete;
@@ -104,6 +105,7 @@ module qbs_profile_engine_tb;
     .clear_weight_i                (block_clear_weight),
     .clear_activation_i            (block_clear_activation),
     .weight_profile_i              (start_profile),
+    .activation_profile_i          (start_activation_profile),
     .weight_row_count_i            (start_rows),
     .activation_layout_i           (QBS_ACTIVATION_LAYOUT_ROW_MAJOR),
     .m_i                           (start_m),
@@ -136,13 +138,19 @@ module qbs_profile_engine_tb;
     .start_valid_i                 (start_valid),
     .start_ready_o                 (start_ready),
     .start_profile_i               (start_profile),
+    .start_activation_profile_i    (start_activation_profile),
     .start_m_i                     (start_m),
     .start_row_count_i             (start_rows),
+    .start_row_base_i              ('0),
+    .start_first_block_i           (1'b1),
     .busy_o                        (busy),
     .done_o                        (done),
     .result_valid_o                (result_valid),
     .result_ready_i                (result_ready),
     .result_stream_o               (result_stream),
+    .result_row_base_o             (),
+    .result_row_count_o            (),
+    .result_first_block_o          (),
     .result_dot_o                  (result_dot),
     .result_aux_o                  (result_aux),
     .result_weight_d_o             (result_weight_d),
@@ -173,6 +181,7 @@ module qbs_profile_engine_tb;
     .request_ready_o               (fp_request_ready),
     .request_slot_i                (result_stream),
     .request_profile_i             (start_profile),
+    .request_activation_profile_i  (start_activation_profile),
     .request_accumulator_index_i   (fp_request_accumulator_index),
     .request_first_block_i         (fp_first_block),
     .request_dot_i                 (result_dot),
@@ -266,6 +275,7 @@ module qbs_profile_engine_tb;
     block_clear_activation = 1'b0;
     start_valid = 1'b0;
     start_profile = QBS_WEIGHT_PROFILE_INVALID;
+    start_activation_profile = QBS_ACTIVATION_PROFILE_INVALID;
     start_m = '0;
     start_rows = '0;
     fp_clear = 1'b0;
@@ -291,14 +301,17 @@ module qbs_profile_engine_tb;
       integer rows;
       integer pattern;
       integer block_bytes;
+      integer block_elements;
       integer weight_beats;
       integer activation_beats;
+      integer activation_block_bytes;
       integer groups;
       integer expected_useful;
       integer expected_capacity;
       integer expected_cycles;
       integer expected_fflags;
       integer expected_repeated_fflags;
+      integer uops_per_output;
       integer case_errors;
       integer monitor_cycles;
       logic [15:0] expected_stream_mask;
@@ -312,6 +325,13 @@ module qbs_profile_engine_tb;
         $fatal(1, "non-sequential case id %0d", case_id);
 
       start_profile = qbs_weight_profile_e'(profile);
+      uops_per_output = qbs_weight_correction_mode(start_profile) ==
+          QBS_CORRECTION_AFFINE_MIN ? 6 : 3;
+      start_activation_profile =
+          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
+                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+              ? QBS_ACTIVATION_PROFILE_Q8_0
+              : QBS_ACTIVATION_PROFILE_Q8_K;
       start_m = m[2:0];
       start_rows = rows[2:0];
       @(negedge clk);
@@ -330,12 +350,13 @@ module qbs_profile_engine_tb;
         end
       end
 
-      block_bytes = profile == QBS_WEIGHT_PROFILE_Q4_K
-          ? QbsQ4KBlockBytes : QbsQ6KBlockBytes;
+      block_bytes = qbs_weight_block_bytes(start_profile);
+      block_elements = qbs_weight_block_elements(start_profile);
       weight_beats = (block_bytes + 15) / 16;
-      activation_beats = (QbsQ8KBlockBytes + 15) / 16;
-      groups = profile == QBS_WEIGHT_PROFILE_Q4_K
-          ? QbsQ4KSubgroupCount : QbsQ6KSubgroupCount;
+      activation_block_bytes =
+          qbs_activation_block_bytes(start_activation_profile);
+      activation_beats = (activation_block_bytes + 15) / 16;
+      groups = qbs_weight_subgroup_count(start_profile);
 
       for (int beat = 0; beat < rows * weight_beats; beat++) begin
         integer row;
@@ -363,7 +384,7 @@ module qbs_profile_engine_tb;
         rc = $fscanf(fd, "%d", record_row);
         if (rc != 1 || record_row != row)
           $fatal(1, "case %0d: bad QW row", case_id);
-        for (int element = 0; element < QbsBlockElements; element++) begin
+        for (int element = 0; element < block_elements; element++) begin
           rc = $fscanf(fd, "%d", expected_weight_quant[row][element]);
           if (rc != 1) $fatal(1, "case %0d: short QW", case_id);
         end
@@ -374,7 +395,7 @@ module qbs_profile_engine_tb;
         rc = $fscanf(fd, "%d", record_ctx);
         if (rc != 1 || record_ctx != ctx)
           $fatal(1, "case %0d: bad QA context", case_id);
-        for (int element = 0; element < QbsBlockElements; element++) begin
+        for (int element = 0; element < block_elements; element++) begin
           rc = $fscanf(fd, "%d", expected_activation_quant[ctx][element]);
           if (rc != 1) $fatal(1, "case %0d: short QA", case_id);
         end
@@ -432,7 +453,7 @@ module qbs_profile_engine_tb;
       if (!adapter_all_weight_complete ||
           !adapter_all_activation_complete ||
           adapter_weight_bytes != rows * block_bytes ||
-          adapter_activation_bytes != m * QbsQ8KBlockBytes)
+          adapter_activation_bytes != m * activation_block_bytes)
         $fatal(1,
                "case %0d: incomplete block assembly w=%b/%0d a=%b/%0d",
                case_id, adapter_all_weight_complete, adapter_weight_bytes,
@@ -455,7 +476,7 @@ module qbs_profile_engine_tb;
 
       monitor_cycles = 0;
       integer_done_seen = 1'b0;
-      while ((!integer_done_seen || fp_busy) && monitor_cycles < 4096) begin
+      while ((!integer_done_seen || busy || fp_busy) && monitor_cycles < 4096) begin
         @(posedge clk);
         #1;
         ++monitor_cycles;
@@ -571,14 +592,13 @@ module qbs_profile_engine_tb;
             dot_active_cycles, expected_cycles), case_id);
         ++case_errors;
       end
-      if (fp_uop_issue != rows * m * (profile == QBS_WEIGHT_PROFILE_Q4_K
-                                      ? 6 : 3) ||
+      if (fp_uop_issue != rows * m * uops_per_output ||
           fp_accumulator_updates != rows * m ||
           fp_fflags != expected_fflags[4:0]) begin
         fail($sformatf(
             "FP counter/flags mismatch uops=%0d/%0d updates=%0d/%0d flags=%h/%h",
             fp_uop_issue,
-            rows * m * (profile == QBS_WEIGHT_PROFILE_Q4_K ? 6 : 3),
+            rows * m * uops_per_output,
             fp_accumulator_updates, rows * m, fp_fflags,
             expected_fflags[4:0]), case_id);
         ++case_errors;
@@ -607,7 +627,7 @@ module qbs_profile_engine_tb;
       start_valid = 1'b0;
       integer_done_seen = 1'b0;
       monitor_cycles = 0;
-      while ((!integer_done_seen || fp_busy) && monitor_cycles < 4096) begin
+      while ((!integer_done_seen || busy || fp_busy) && monitor_cycles < 4096) begin
         @(posedge clk);
         #1;
         ++monitor_cycles;
@@ -617,14 +637,13 @@ module qbs_profile_engine_tb;
         fail("repeated-block timeout", case_id);
         ++case_errors;
       end
-      if (fp_uop_issue != 2 * rows * m *
-              (profile == QBS_WEIGHT_PROFILE_Q4_K ? 6 : 3) ||
+      if (fp_uop_issue != 2 * rows * m * uops_per_output ||
           fp_accumulator_updates != 2 * rows * m ||
           fp_fflags != expected_repeated_fflags[4:0]) begin
         fail($sformatf(
             "repeated FP counter/flags mismatch uops=%0d/%0d updates=%0d/%0d flags=%h/%h",
             fp_uop_issue,
-            2 * rows * m * (profile == QBS_WEIGHT_PROFILE_Q4_K ? 6 : 3),
+            2 * rows * m * uops_per_output,
             fp_accumulator_updates, 2 * rows * m, fp_fflags,
             expected_repeated_fflags[4:0]), case_id);
         ++case_errors;

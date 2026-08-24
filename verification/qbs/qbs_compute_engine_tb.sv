@@ -9,11 +9,12 @@ module qbs_compute_engine_tb;
   logic command_valid;
   logic command_ready;
   qbs_weight_profile_e command_profile;
+  qbs_activation_profile_e command_activation_profile;
   qbs_weight_layout_e command_weight_layout;
   qbs_activation_layout_e command_activation_layout;
   logic [2:0] command_m;
   logic [5:0] command_n;
-  logic [6:0] command_k_blocks;
+  logic [8:0] command_k_blocks;
   logic fault;
   logic fault_done;
   logic weight_valid;
@@ -28,9 +29,10 @@ module qbs_compute_engine_tb;
   logic [10:0] activation_offset;
   logic [127:0] activation_data;
   logic [15:0] activation_strb;
-  logic [5:0] expected_k_block;
+  logic [7:0] expected_k_block;
   logic [5:0] expected_row_base;
   logic [2:0] expected_row_count;
+  logic expected_weight_bank;
   logic activation_needed;
   logic weight_needed;
   logic result_valid;
@@ -63,12 +65,20 @@ module qbs_compute_engine_tb;
   logic [31:0] expected_output [128];
   bit expected_output_valid [128];
 
+  logic probe_clear;
+  integer probe_integer_tail_cycles;
+  integer probe_context_blocked_cycles;
+  integer probe_result_blocked_cycles;
+  integer probe_fp_input_blocked_cycles;
+  integer probe_command_cycles;
+
   qbs_compute_engine dut (
     .clk_i                          (clk),
     .rst_ni                         (rst_n),
     .command_valid_i                (command_valid),
     .command_ready_o                (command_ready),
     .command_weight_profile_i       (command_profile),
+    .command_activation_profile_i   (command_activation_profile),
     .command_weight_layout_i        (command_weight_layout),
     .command_activation_layout_i    (command_activation_layout),
     .command_m_i                    (command_m),
@@ -79,6 +89,8 @@ module qbs_compute_engine_tb;
     .fault_done_o                   (fault_done),
     .weight_write_valid_i           (weight_valid),
     .weight_write_ready_o           (weight_ready),
+    .weight_write_bank_i            (expected_weight_bank),
+    .weight_write_row_count_i       (expected_row_count),
     .weight_write_group_i           (1'b0),
     .weight_write_row_i             (weight_row),
     .weight_write_offset_i          ({2'b0, weight_offset}),
@@ -93,6 +105,7 @@ module qbs_compute_engine_tb;
     .expected_k_block_o             (expected_k_block),
     .expected_row_base_o            (expected_row_base),
     .expected_row_count_o           (expected_row_count),
+    .expected_weight_bank_o         (expected_weight_bank),
     .activation_block_needed_o      (activation_needed),
     .weight_block_needed_o          (weight_needed),
     .result_valid_o                 (result_valid),
@@ -124,6 +137,29 @@ module qbs_compute_engine_tb;
   );
 
   always #5 clk = ~clk;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n || probe_clear) begin
+      probe_integer_tail_cycles <= 0;
+      probe_context_blocked_cycles <= 0;
+      probe_result_blocked_cycles <= 0;
+      probe_fp_input_blocked_cycles <= 0;
+      probe_command_cycles <= 0;
+    end else begin
+      if (busy) probe_command_cycles <= probe_command_cycles + 1;
+      if (dut.i_profile_engine_int.busy_q &&
+          !dut.i_profile_engine_int.issue_active_q)
+        probe_integer_tail_cycles <= probe_integer_tail_cycles + 1;
+      if (dut.integer_start_valid && !dut.integer_start_ready)
+        probe_context_blocked_cycles <= probe_context_blocked_cycles + 1;
+      if (dut.i_profile_engine_int.result_valid_o &&
+          !dut.i_profile_engine_int.result_ready_i)
+        probe_result_blocked_cycles <= probe_result_blocked_cycles + 1;
+      if (dut.i_fp_accumulator.fp_in_valid &&
+          !dut.i_fp_accumulator.fp_in_ready)
+        probe_fp_input_blocked_cycles <= probe_fp_input_blocked_cycles + 1;
+    end
+  end
 
   task automatic send_weight(input integer row, input integer offset,
                              input logic [15:0] strb,
@@ -165,6 +201,7 @@ module qbs_compute_engine_tb;
     rst_n = 1'b0;
     command_valid = 1'b0;
     command_profile = QBS_WEIGHT_PROFILE_INVALID;
+    command_activation_profile = QBS_ACTIVATION_PROFILE_INVALID;
     command_weight_layout = QBS_WEIGHT_LAYOUT_INVALID;
     command_activation_layout = QBS_ACTIVATION_LAYOUT_INVALID;
     command_m = '0;
@@ -184,6 +221,7 @@ module qbs_compute_engine_tb;
     result_consumed = 1'b0;
     result_read_index = '0;
     result_bank_row = '0;
+    probe_clear = 1'b0;
     total_errors = 0;
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
@@ -228,14 +266,24 @@ module qbs_compute_engine_tb;
         expected_output[index] = '0;
       end
 
+      @(negedge clk);
+      probe_clear = 1'b1;
+      @(negedge clk);
+      probe_clear = 1'b0;
+
       while (!command_ready) @(posedge clk);
       @(negedge clk);
       command_profile = qbs_weight_profile_e'(profile);
+      command_activation_profile =
+          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
+                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
+              ? QBS_ACTIVATION_PROFILE_Q8_0
+              : QBS_ACTIVATION_PROFILE_Q8_K;
       command_weight_layout = qbs_weight_layout_e'(weight_layout);
       command_activation_layout = qbs_activation_layout_e'(activation_layout);
       command_m = m[2:0];
       command_n = n[5:0];
-      command_k_blocks = k_blocks[6:0];
+      command_k_blocks = k_blocks[8:0];
       command_valid = 1'b1;
       @(negedge clk);
       command_valid = 1'b0;
@@ -352,6 +400,10 @@ module qbs_compute_engine_tb;
         $display("QBS command case %0d PASS profile=%0d M=%0d N=%0d Kb=%0d layouts=%0d/%0d",
                  case_id, profile, m, n, k_blocks, weight_layout,
                  activation_layout);
+      $display("QBS_DRAIN_PROBE case=%0d command_cycles=%0d integer_tail=%0d context_blocked=%0d result_blocked=%0d fp_input_blocked=%0d",
+               case_id, probe_command_cycles, probe_integer_tail_cycles,
+               probe_context_blocked_cycles,
+               probe_result_blocked_cycles, probe_fp_input_blocked_cycles);
       total_errors += case_errors;
 
       @(negedge clk);
@@ -364,6 +416,7 @@ module qbs_compute_engine_tb;
     while (!command_ready) @(posedge clk);
     @(negedge clk);
     command_profile = QBS_WEIGHT_PROFILE_Q4_K;
+    command_activation_profile = QBS_ACTIVATION_PROFILE_Q8_K;
     command_weight_layout = QBS_WEIGHT_LAYOUT_ROW_MAJOR;
     command_activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR;
     command_m = 1;

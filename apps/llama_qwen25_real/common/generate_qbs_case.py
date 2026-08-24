@@ -65,14 +65,13 @@ def main() -> None:
     generated = app_dir / "generated"
     rows = int(spec["rows"])
     k = int(spec["k"])
-    k_blocks = k // base["QK_K"]
     weight_type = spec["weight_type"]
-    if weight_type == "q4_K":
-        block_bytes = base["Q4_BLOCK_BYTES"]
-    elif weight_type == "q6_K":
-        block_bytes = base["Q6_BLOCK_BYTES"]
-    else:
+    weight_format = base["WEIGHT_FORMATS"].get(weight_type)
+    if weight_format is None:
         raise SystemExit(f"QBS does not support weight type {weight_type}")
+    block_bytes = int(weight_format["block_bytes"])
+    block_elements = int(weight_format["block_elements"])
+    k_blocks = k // block_elements
 
     embedded_weight = generated / "embedded_weight.bin"
     repack_r4(generated / "source_weight.bin", embedded_weight, rows,
@@ -80,22 +79,27 @@ def main() -> None:
 
     provenance_path = generated / "provenance.json"
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-    provenance["embedded_weight_layout"] = "qbs_r4_block_major_v1"
+    layout_name = "qbs_r4_block_major_v1"
+    provenance["embedded_weight_layout"] = layout_name
+    activation_profile = "Q8_0" if weight_type == "q8_0" else "Q8_K"
     provenance["runtime_timed_region"] = (
-        "F32_to_Q8_K_plus_blocking_QBS_quantized_matmul"
+        f"F32_to_{activation_profile}_plus_blocking_QBS_quantized_matmul"
     )
     provenance["offline_repack_excluded"] = True
     provenance["qbs"] = {
         "descriptor_version": 1,
         "weight_layout": "W_R4_BLOCK_MAJOR",
         "activation_layout": "A_ROW_MAJOR",
+        "activation_profile": activation_profile,
+        "weight_profile": weight_type.upper(),
+        "block_elements": block_elements,
         "tile_n": 32,
         "k_blocks": k_blocks,
     }
     provenance["tensors"]["embedded_weight.bin"] = {
         "bytes": embedded_weight.stat().st_size,
         "sha256": base["sha256"](embedded_weight),
-        "layout": "qbs_r4_block_major_v1",
+        "layout": layout_name,
     }
     provenance_path.write_text(
         json.dumps(provenance, indent=2, sort_keys=True) + "\n",

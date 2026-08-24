@@ -19,6 +19,14 @@ typedef struct {
   uint8_t qs[128];
 } qbs_block_q4_k_t;
 
+typedef struct {
+  qbs_fp16_t d;
+  qbs_fp16_t dmin;
+  uint8_t scales[12];
+  uint8_t qh[32];
+  uint8_t qs[128];
+} qbs_block_q5_k_t;
+
 typedef struct __attribute__((packed)) {
   uint8_t ql[128];
   uint8_t qh[64];
@@ -27,16 +35,38 @@ typedef struct __attribute__((packed)) {
 } qbs_block_q6_k_t;
 
 typedef struct {
+  uint8_t hmask[32];
+  uint8_t qs[64];
+  uint8_t scales[12];
+  qbs_fp16_t d;
+} qbs_block_q3_k_t;
+
+typedef struct {
+  qbs_fp16_t d;
+  uint8_t qs[16];
+} qbs_block_q4_0_t;
+
+typedef struct {
   float d;
   int8_t qs[256];
   int16_t bsums[16];
 } qbs_block_q8_k_t;
 
 typedef struct {
+  qbs_fp16_t d;
+  int8_t qs[32];
+} qbs_block_q8_0_t;
+
+typedef struct {
   float d[4];
   int8_t qs[1024];
   int16_t bsums[64];
 } qbs_block_q8_kx4_t;
+
+typedef struct {
+  qbs_fp16_t d[4];
+  int8_t qs[128];
+} qbs_block_q8_0x4_t;
 
 typedef enum {
   QBS_REF_OK = 0,
@@ -102,6 +132,9 @@ size_t qbs_ref_weight_storage_bytes(unsigned weight_profile,
                                     unsigned k_blocks);
 size_t qbs_ref_activation_storage_bytes(unsigned activation_layout,
                                         unsigned m, unsigned k_blocks);
+size_t qbs_ref_activation_storage_bytes_for_profile(
+    unsigned activation_profile, unsigned activation_layout, unsigned m,
+    unsigned k_blocks);
 
 qbs_ref_status_t qbs_ref_validate_descriptor(
     const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,
@@ -115,6 +148,10 @@ qbs_ref_status_t qbs_ref_pack_activation_m4(
     const qbs_block_q8_k_t *row_major, size_t row_major_blocks,
     unsigned k_blocks, qbs_block_q8_kx4_t *interleaved,
     size_t interleaved_blocks);
+qbs_ref_status_t qbs_ref_pack_activation_m4_profile(
+    unsigned activation_profile, const void *row_major,
+    size_t row_major_bytes, unsigned k_blocks, void *interleaved,
+    size_t interleaved_bytes);
 
 qbs_ref_status_t qbs_ref_quantize_q8_k(const float *input,
                                        size_t input_elements,
@@ -123,8 +160,14 @@ qbs_ref_status_t qbs_ref_quantize_q8_k(const float *input,
 
 void qbs_ref_decode_q4_k(const qbs_block_q4_k_t *block, int8_t values[256],
                          uint8_t scales[8], uint8_t mins[8]);
+void qbs_ref_decode_q5_k(const qbs_block_q5_k_t *block, int8_t values[256],
+                         uint8_t scales[8], uint8_t mins[8]);
 void qbs_ref_decode_q6_k(const qbs_block_q6_k_t *block, int8_t values[256],
                          int8_t scales[16]);
+void qbs_ref_decode_q3_k(const qbs_block_q3_k_t *block, int8_t values[256],
+                         int8_t scales[16]);
+void qbs_ref_decode_q8_0(const qbs_block_q8_0_t *block, int8_t values[32]);
+void qbs_ref_decode_q4_0(const qbs_block_q4_0_t *block, int8_t values[32]);
 
 qbs_ref_status_t qbs_ref_execute(
     const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,

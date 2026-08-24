@@ -11,11 +11,12 @@ module qbs_compute_engine
   input  logic                    command_valid_i,
   output logic                    command_ready_o,
   input  qbs_weight_profile_e     command_weight_profile_i,
+  input  qbs_activation_profile_e command_activation_profile_i,
   input  qbs_weight_layout_e      command_weight_layout_i,
   input  qbs_activation_layout_e  command_activation_layout_i,
   input  logic [2:0]              command_m_i,
   input  logic [5:0]              command_n_i,
-  input  logic [6:0]              command_k_blocks_i,
+  input  logic [8:0]              command_k_blocks_i,
   input  roundmode_e              command_round_mode_i,
 
   // A fault stops new work. Work already admitted to the integer/FP pipelines
@@ -25,6 +26,8 @@ module qbs_compute_engine
 
   input  logic                    weight_write_valid_i,
   output logic                    weight_write_ready_o,
+  input  logic                    weight_write_bank_i,
+  input  logic [2:0]              weight_write_row_count_i,
   input  logic                    weight_write_group_i,
   input  logic [1:0]              weight_write_row_i,
   input  logic [9:0]              weight_write_offset_i,
@@ -39,9 +42,10 @@ module qbs_compute_engine
 
   // Logical block requested by the fixed K-block-major scheduler. The future
   // read engine uses these indices plus the command descriptor to form ranges.
-  output logic [5:0]              expected_k_block_o,
+  output logic [7:0]              expected_k_block_o,
   output logic [5:0]              expected_row_base_o,
   output logic [2:0]              expected_row_count_o,
+  output logic                    expected_weight_bank_o,
   output logic                    activation_block_needed_o,
   output logic                    weight_block_needed_o,
 
@@ -92,13 +96,14 @@ module qbs_compute_engine
 
   qbs_compute_state_e state_q, state_d;
   qbs_weight_profile_e weight_profile_q;
+  qbs_activation_profile_e activation_profile_q;
   qbs_weight_layout_e weight_layout_q;
   qbs_activation_layout_e activation_layout_q;
   logic [2:0] m_q;
   logic [5:0] n_q;
-  logic [6:0] k_blocks_q;
+  logic [8:0] k_blocks_q;
   roundmode_e round_mode_q;
-  logic [5:0] k_block_q;
+  logic [7:0] k_block_q;
   logic [5:0] row_base_q;
 
   logic [1:0] clear_weight;
@@ -108,18 +113,20 @@ module qbs_compute_engine
   logic [2:0] load_row_count;
   logic [5:0] load_row_base;
   logic next_row_available;
+  logic [2:0] next_row_count;
   logic active_weight_bank_q;
   logic write_weight_bank;
+  logic weight_write_fire;
   logic current_weight_complete;
   logic load_weight_complete;
   logic integer_start_fire;
   logic advance_prefetched_tile;
 
-  logic [7:0] weight_block [4][QbsQ6KBlockBytes];
-  logic [7:0] weight_block_bank0 [4][QbsQ6KBlockBytes];
-  logic [7:0] weight_block_bank1 [4][QbsQ6KBlockBytes];
-  logic [7:0] activation_block [4][QbsQ8KBlockBytes];
-  logic [7:0] unused_activation_block_bank1 [4][QbsQ8KBlockBytes];
+  logic [7:0] weight_block [4][QbsMaxWeightBlockBytes];
+  logic [7:0] weight_block_bank0 [4][QbsMaxWeightBlockBytes];
+  logic [7:0] weight_block_bank1 [4][QbsMaxWeightBlockBytes];
+  logic [7:0] activation_block [4][QbsMaxActivationBlockBytes];
+  logic [7:0] unused_activation_block_bank1 [4][QbsMaxActivationBlockBytes];
   logic [3:0] weight_complete [2];
   logic [3:0] activation_complete;
   logic [3:0] unused_activation_complete_bank1;
@@ -129,6 +136,7 @@ module qbs_compute_engine
   logic [31:0] adapter_weight_bytes [2];
   logic [31:0] adapter_activation_bytes;
   logic [31:0] unused_adapter_activation_bytes_bank1;
+  logic [2:0] weight_bank_row_count_q [2];
   logic [2:0] bank0_row_count;
   logic [2:0] bank1_row_count;
 
@@ -139,6 +147,9 @@ module qbs_compute_engine
   logic integer_result_valid;
   logic integer_result_ready;
   logic [3:0] integer_result_stream;
+  logic [5:0] integer_result_row_base;
+  logic [2:0] integer_result_row_count;
+  logic integer_result_first_block;
   logic signed [31:0] integer_result_dot;
   logic signed [31:0] integer_result_aux;
   logic [15:0] integer_result_weight_d;
@@ -155,6 +166,26 @@ module qbs_compute_engine
   logic [6:0] fp_update_index;
   logic [31:0] fp_update_data;
 
+`ifndef SYNTHESIS
+  // Observation-only counters. Each blocked counter requires an actual
+  // valid/ready failure; occupancy counters are named separately.
+  logic [31:0] probe_context_start_blocked_cycles_q;
+  logic [31:0] probe_compute_without_dot_issue_cycles_q;
+  logic [31:0] probe_profile_result_blocked_cycles_q;
+  logic [31:0] probe_fp_slot_blocked_cycles_q;
+  logic [31:0] probe_fp_accumulator_blocked_cycles_q;
+  logic [31:0] probe_fp_other_blocked_cycles_q;
+  logic [31:0] probe_fp_input_blocked_cycles_q;
+  logic [31:0] probe_fp_no_schedulable_uop_cycles_q;
+  logic [31:0] probe_fp_busy_cycles_q;
+  logic [31:0] probe_profile_context_occupancy_sum_q;
+  logic [31:0] probe_profile_two_context_cycles_q;
+  logic [31:0] probe_profile_drain_only_cycles_q;
+  logic [31:0] probe_profile_correction_pending_cycles_q;
+  logic [31:0] probe_profile_result_pending_cycles_q;
+  logic probe_weight_wait_active;
+`endif
+
   function automatic logic [2:0] rows_from_base(input logic [5:0] base);
     automatic int unsigned remaining_rows;
     remaining_rows = unsigned'(n_q) - unsigned'(base);
@@ -165,6 +196,8 @@ module qbs_compute_engine
     row_count = rows_from_base(row_base_q);
     next_row_available = unsigned'(row_base_q) + unsigned'(row_count) <
                          unsigned'(n_q);
+    next_row_count = next_row_available
+        ? rows_from_base(row_base_q + row_count) : '0;
     load_row_base = row_base_q;
     if (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
                         QBS_START_WEIGHT} && next_row_available)
@@ -176,8 +209,15 @@ module qbs_compute_engine
                         QBS_START_WEIGHT})
       write_weight_bank = ~active_weight_bank_q;
 
-    bank0_row_count = active_weight_bank_q ? load_row_count : row_count;
-    bank1_row_count = active_weight_bank_q ? row_count : load_row_count;
+    // A response carries its own tile metadata. The live input is selected
+    // while a beat is presented so the first beat is mapped correctly; the
+    // retained value keeps completion detection stable between beats.
+    bank0_row_count = weight_bank_row_count_q[0];
+    bank1_row_count = weight_bank_row_count_q[1];
+    if (weight_write_valid_i && weight_write_bank_i == 1'b0)
+      bank0_row_count = weight_write_row_count_i;
+    if (weight_write_valid_i && weight_write_bank_i == 1'b1)
+      bank1_row_count = weight_write_row_count_i;
   end
 
   assign command_ready_o = state_q == QBS_IDLE;
@@ -186,6 +226,7 @@ module qbs_compute_engine
   assign expected_k_block_o = k_block_q;
   assign expected_row_base_o = load_row_base;
   assign expected_row_count_o = load_row_count;
+  assign expected_weight_bank_o = write_weight_bank;
   assign activation_block_needed_o =
       state_q == QBS_LOAD_TILE && !fault_i && !all_activation_complete;
   assign current_weight_complete = all_weight_complete[active_weight_bank_q];
@@ -194,7 +235,6 @@ module qbs_compute_engine
       !fault_i && ((state_q == QBS_LOAD_TILE && !current_weight_complete) ||
       (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT} &&
        next_row_available && !load_weight_complete));
-  assign weight_write_ready_o = weight_block_needed_o;
   assign activation_write_ready_o = activation_block_needed_o;
 
   always_comb begin
@@ -208,18 +248,43 @@ module qbs_compute_engine
                                             QBS_FAULT_CLEAR};
   assign clear_accumulator = state_q inside {QBS_INIT, QBS_FAULT_CLEAR};
 
+  always_comb begin
+    weight_write_ready_o = 1'b0;
+    if (!fault_i && weight_write_row_count_i inside {[1:4]} &&
+        !clear_weight[weight_write_bank_i]) begin
+      unique case (state_q)
+        QBS_LOAD_TILE: begin
+          if (weight_write_bank_i == active_weight_bank_q)
+            weight_write_ready_o =
+                !all_weight_complete[weight_write_bank_i];
+          else if (next_row_available)
+            weight_write_ready_o =
+                !all_weight_complete[weight_write_bank_i];
+        end
+        QBS_COMPUTE_TILE,
+        QBS_WAIT_WEIGHT: begin
+          if (weight_write_bank_i != active_weight_bank_q)
+            weight_write_ready_o =
+                !all_weight_complete[weight_write_bank_i];
+        end
+        default: ;
+      endcase
+    end
+  end
+  assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
+
   qbs_block_adapter i_block_adapter_bank0 (
     .clk_i,
     .rst_ni,
     .clear_weight_i               (clear_weight[0]),
     .clear_activation_i           (clear_activation),
     .weight_profile_i             (weight_profile_q),
+    .activation_profile_i         (activation_profile_q),
     .weight_row_count_i           (bank0_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
-    .weight_write_valid_i         (weight_write_valid_i &&
-                                   weight_write_ready_o &&
-                                   write_weight_bank == 1'b0),
+    .weight_write_valid_i         (weight_write_fire &&
+                                   weight_write_bank_i == 1'b0),
     .weight_write_group_i,
     .weight_write_row_i,
     .weight_write_offset_i,
@@ -247,12 +312,12 @@ module qbs_compute_engine
     .clear_weight_i               (clear_weight[1]),
     .clear_activation_i           (clear_activation),
     .weight_profile_i             (weight_profile_q),
+    .activation_profile_i         (activation_profile_q),
     .weight_row_count_i           (bank1_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
-    .weight_write_valid_i         (weight_write_valid_i &&
-                                   weight_write_ready_o &&
-                                   write_weight_bank == 1'b1),
+    .weight_write_valid_i         (weight_write_fire &&
+                                   weight_write_bank_i == 1'b1),
     .weight_write_group_i,
     .weight_write_row_i,
     .weight_write_offset_i,
@@ -275,7 +340,7 @@ module qbs_compute_engine
 
   always_comb begin
     for (int row = 0; row < 4; row++)
-      for (int byte_index = 0; byte_index < QbsQ6KBlockBytes;
+      for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
            byte_index++)
         weight_block[row][byte_index] = active_weight_bank_q
             ? weight_block_bank1[row][byte_index]
@@ -299,6 +364,10 @@ module qbs_compute_engine
   assign phase_compute_o = state_q == QBS_COMPUTE_TILE;
   assign phase_drain_o = state_q == QBS_FINAL_DRAIN;
 
+`ifndef SYNTHESIS
+  assign probe_weight_wait_active = state_q == QBS_WAIT_WEIGHT;
+`endif
+
   qbs_profile_engine_int i_profile_engine_int (
     .clk_i,
     .rst_ni,
@@ -307,13 +376,19 @@ module qbs_compute_engine
     .start_valid_i                 (integer_start_valid),
     .start_ready_o                 (integer_start_ready),
     .start_profile_i               (weight_profile_q),
+    .start_activation_profile_i    (activation_profile_q),
     .start_m_i                     (m_q),
     .start_row_count_i             (row_count),
+    .start_row_base_i              (row_base_q),
+    .start_first_block_i           (k_block_q == 0),
     .busy_o                        (integer_busy),
     .done_o                        (integer_done),
     .result_valid_o                (integer_result_valid),
     .result_ready_i                (integer_result_ready),
     .result_stream_o               (integer_result_stream),
+    .result_row_base_o             (integer_result_row_base),
+    .result_row_count_o            (integer_result_row_count),
+    .result_first_block_o          (integer_result_first_block),
     .result_dot_o                  (integer_result_dot),
     .result_aux_o                  (integer_result_aux),
     .result_weight_d_o             (integer_result_weight_d),
@@ -338,7 +413,7 @@ module qbs_compute_engine
 
   assign fp_request_index =
       {integer_result_stream[1:0], 5'b0} +
-      {1'b0, row_base_q} +
+      {1'b0, integer_result_row_base} +
       {5'b0, integer_result_stream[3:2]};
   assign integer_result_ready = fp_request_ready;
 
@@ -350,8 +425,9 @@ module qbs_compute_engine
     .request_ready_o               (fp_request_ready),
     .request_slot_i                (integer_result_stream),
     .request_profile_i             (weight_profile_q),
+    .request_activation_profile_i  (activation_profile_q),
     .request_accumulator_index_i   (fp_request_index),
-    .request_first_block_i         (k_block_q == 0),
+    .request_first_block_i         (integer_result_first_block),
     .request_dot_i                 (integer_result_dot),
     .request_aux_i                 (integer_result_aux),
     .request_weight_d_i            (integer_result_weight_d),
@@ -447,6 +523,7 @@ module qbs_compute_engine
     if (!rst_ni) begin
       state_q <= QBS_IDLE;
       weight_profile_q <= QBS_WEIGHT_PROFILE_INVALID;
+      activation_profile_q <= QBS_ACTIVATION_PROFILE_INVALID;
       weight_layout_q <= QBS_WEIGHT_LAYOUT_INVALID;
       activation_layout_q <= QBS_ACTIVATION_LAYOUT_INVALID;
       m_q <= '0;
@@ -456,6 +533,8 @@ module qbs_compute_engine
       k_block_q <= '0;
       row_base_q <= '0;
       active_weight_bank_q <= 1'b0;
+      weight_bank_row_count_q[0] <= '0;
+      weight_bank_row_count_q[1] <= '0;
       weight_prefetch_wait_cycles_o <= '0;
       tiles_computed_o <= '0;
       weight_bytes_o <= '0;
@@ -468,6 +547,7 @@ module qbs_compute_engine
 
       if (state_q == QBS_IDLE && command_valid_i) begin
         weight_profile_q <= command_weight_profile_i;
+        activation_profile_q <= command_activation_profile_i;
         weight_layout_q <= command_weight_layout_i;
         activation_layout_q <= command_activation_layout_i;
         m_q <= command_m_i;
@@ -477,6 +557,8 @@ module qbs_compute_engine
         k_block_q <= '0;
         row_base_q <= '0;
         active_weight_bank_q <= 1'b0;
+        weight_bank_row_count_q[0] <= '0;
+        weight_bank_row_count_q[1] <= '0;
         weight_prefetch_wait_cycles_o <= '0;
         tiles_computed_o <= '0;
         weight_bytes_o <= '0;
@@ -485,6 +567,14 @@ module qbs_compute_engine
         pair_capacity_o <= '0;
         dot_active_cycles_o <= '0;
       end
+
+      for (int bank = 0; bank < 2; bank++) begin
+        if (clear_weight[bank])
+          weight_bank_row_count_q[bank] <= '0;
+      end
+      if (weight_write_fire)
+        weight_bank_row_count_q[weight_write_bank_i] <=
+            weight_write_row_count_i;
 
       if (integer_start_fire) begin
         weight_bytes_o <=
@@ -520,8 +610,9 @@ module qbs_compute_engine
 
 `ifndef SYNTHESIS
       if (state_q == QBS_IDLE && command_valid_i) begin
-        assert (command_weight_profile_i inside {
-            QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q6_K});
+        assert (qbs_weight_block_bytes(command_weight_profile_i) != 0);
+        assert (qbs_profiles_compatible(command_weight_profile_i,
+                                        command_activation_profile_i));
         assert (command_weight_layout_i inside {
             QBS_WEIGHT_LAYOUT_ROW_MAJOR,
             QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR});
@@ -538,13 +629,21 @@ module qbs_compute_engine
       if (integer_result_valid && fp_request_ready) begin
         assert (unsigned'(fp_request_index) < QbsMaxM * QbsMaxN);
         assert (unsigned'(integer_result_stream[3:2]) <
-                unsigned'(row_count));
+                unsigned'(integer_result_row_count));
         assert (unsigned'(integer_result_stream[1:0]) < unsigned'(m_q));
       end
-      if (weight_write_valid_i && weight_write_ready_o &&
-          state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT}) begin
-        assert (write_weight_bank != active_weight_bank_q)
-          else $fatal(1, "QBS overwrote the active weight bank");
+      if (weight_write_fire) begin
+        assert (weight_write_row_count_i inside {[1:4]})
+          else $fatal(1, "QBS weight response has an invalid row count");
+        if (weight_write_bank_i == active_weight_bank_q) begin
+          assert (state_q == QBS_LOAD_TILE &&
+                  weight_write_row_count_i == row_count)
+            else $fatal(1, "QBS overwrote or mislabeled the active weight bank");
+        end else begin
+          assert (next_row_available &&
+                  weight_write_row_count_i == next_row_count)
+            else $fatal(1, "QBS prefetched weight response has the wrong tile shape");
+        end
       end
       if (state_q == QBS_START_WEIGHT) begin
         assert (current_weight_complete && !clear_weight[active_weight_bank_q])
@@ -560,6 +659,95 @@ module qbs_compute_engine
 `endif
     end
   end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      probe_context_start_blocked_cycles_q <= '0;
+      probe_compute_without_dot_issue_cycles_q <= '0;
+      probe_profile_result_blocked_cycles_q <= '0;
+      probe_fp_slot_blocked_cycles_q <= '0;
+      probe_fp_accumulator_blocked_cycles_q <= '0;
+      probe_fp_other_blocked_cycles_q <= '0;
+      probe_fp_input_blocked_cycles_q <= '0;
+      probe_fp_no_schedulable_uop_cycles_q <= '0;
+      probe_fp_busy_cycles_q <= '0;
+      probe_profile_context_occupancy_sum_q <= '0;
+      probe_profile_two_context_cycles_q <= '0;
+      probe_profile_drain_only_cycles_q <= '0;
+      probe_profile_correction_pending_cycles_q <= '0;
+      probe_profile_result_pending_cycles_q <= '0;
+    end else if (state_q == QBS_IDLE && command_valid_i) begin
+      probe_context_start_blocked_cycles_q <= '0;
+      probe_compute_without_dot_issue_cycles_q <= '0;
+      probe_profile_result_blocked_cycles_q <= '0;
+      probe_fp_slot_blocked_cycles_q <= '0;
+      probe_fp_accumulator_blocked_cycles_q <= '0;
+      probe_fp_other_blocked_cycles_q <= '0;
+      probe_fp_input_blocked_cycles_q <= '0;
+      probe_fp_no_schedulable_uop_cycles_q <= '0;
+      probe_fp_busy_cycles_q <= '0;
+      probe_profile_context_occupancy_sum_q <= '0;
+      probe_profile_two_context_cycles_q <= '0;
+      probe_profile_drain_only_cycles_q <= '0;
+      probe_profile_correction_pending_cycles_q <= '0;
+      probe_profile_result_pending_cycles_q <= '0;
+    end else begin
+      if (integer_start_valid && !integer_start_ready)
+        probe_context_start_blocked_cycles_q <=
+            probe_context_start_blocked_cycles_q + 1'b1;
+      if (state_q == QBS_COMPUTE_TILE &&
+          !i_profile_engine_int.issue_active_q)
+        probe_compute_without_dot_issue_cycles_q <=
+            probe_compute_without_dot_issue_cycles_q + 1'b1;
+
+      if (integer_result_valid && !fp_request_ready) begin
+        probe_profile_result_blocked_cycles_q <=
+            probe_profile_result_blocked_cycles_q + 1'b1;
+        if (i_fp_accumulator.entry_valid_q[integer_result_stream]) begin
+          probe_fp_slot_blocked_cycles_q <=
+              probe_fp_slot_blocked_cycles_q + 1'b1;
+        end else if (i_fp_accumulator.request_accumulator_conflict) begin
+          probe_fp_accumulator_blocked_cycles_q <=
+              probe_fp_accumulator_blocked_cycles_q + 1'b1;
+        end else begin
+          probe_fp_other_blocked_cycles_q <=
+              probe_fp_other_blocked_cycles_q + 1'b1;
+        end
+      end
+
+      if (i_fp_accumulator.fp_in_valid && !i_fp_accumulator.fp_in_ready)
+        probe_fp_input_blocked_cycles_q <=
+            probe_fp_input_blocked_cycles_q + 1'b1;
+      if (i_fp_accumulator.entry_occupancy != 0 &&
+          !i_fp_accumulator.fp_in_valid)
+        probe_fp_no_schedulable_uop_cycles_q <=
+            probe_fp_no_schedulable_uop_cycles_q + 1'b1;
+      if (fp_busy)
+        probe_fp_busy_cycles_q <= probe_fp_busy_cycles_q + 1'b1;
+
+      probe_profile_context_occupancy_sum_q <=
+          probe_profile_context_occupancy_sum_q +
+          {31'b0, i_profile_engine_int.context_valid_q[0]} +
+          {31'b0, i_profile_engine_int.context_valid_q[1]};
+      if (&i_profile_engine_int.context_valid_q)
+        probe_profile_two_context_cycles_q <=
+            probe_profile_two_context_cycles_q + 1'b1;
+      if (!i_profile_engine_int.compute_active_q &&
+          |i_profile_engine_int.context_valid_q)
+        probe_profile_drain_only_cycles_q <=
+            probe_profile_drain_only_cycles_q + 1'b1;
+      if (|i_profile_engine_int.slot_valid_q[0] ||
+          |i_profile_engine_int.slot_valid_q[1])
+        probe_profile_correction_pending_cycles_q <=
+            probe_profile_correction_pending_cycles_q + 1'b1;
+      if (|i_profile_engine_int.result_pending_q[0] ||
+          |i_profile_engine_int.result_pending_q[1])
+        probe_profile_result_pending_cycles_q <=
+            probe_profile_result_pending_cycles_q + 1'b1;
+    end
+  end
+`endif
 
   logic unused;
   assign unused = ^{weight_layout_q, weight_complete[0], weight_complete[1],

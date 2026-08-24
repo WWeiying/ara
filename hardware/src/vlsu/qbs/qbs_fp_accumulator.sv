@@ -17,6 +17,7 @@ module qbs_fp_accumulator
   output logic                 request_ready_o,
   input  logic [3:0]           request_slot_i,
   input  qbs_weight_profile_e  request_profile_i,
+  input  qbs_activation_profile_e request_activation_profile_i,
   input  logic [AccIndexWidth-1:0] request_accumulator_index_i,
   input  logic                 request_first_block_i,
   input  logic signed [31:0]   request_dot_i,
@@ -95,7 +96,7 @@ module qbs_fp_accumulator
 
   logic [NumEntries-1:0] entry_valid_q;
   logic [NumEntries-1:0] entry_inflight_q;
-  qbs_weight_profile_e entry_profile_q [NumEntries];
+  logic entry_affine_q [NumEntries];
   logic [AccIndexWidth-1:0] entry_accumulator_index_q [NumEntries];
   fp_state_e entry_state_q [NumEntries];
   roundmode_e entry_round_mode_q [NumEntries];
@@ -325,7 +326,9 @@ module qbs_fp_accumulator
         if (request_valid_i && request_ready_o) begin
           entry_valid_q[request_slot_i] <= 1'b1;
           entry_inflight_q[request_slot_i] <= 1'b0;
-          entry_profile_q[request_slot_i] <= request_profile_i;
+          entry_affine_q[request_slot_i] <=
+              qbs_weight_correction_mode(request_profile_i) ==
+                  QBS_CORRECTION_AFFINE_MIN;
           entry_accumulator_index_q[request_slot_i] <=
               request_accumulator_index_i;
           entry_state_q[request_slot_i] <= FP_DOT_CONVERT;
@@ -336,7 +339,11 @@ module qbs_fp_accumulator
               fp16_to_fp32(request_weight_d_i);
           entry_weight_dmin_q[request_slot_i] <=
               fp16_to_fp32(request_weight_dmin_i);
-          entry_activation_d_q[request_slot_i] <= request_activation_d_i;
+          entry_activation_d_q[request_slot_i] <=
+              qbs_activation_scale_format(request_activation_profile_i) ==
+                  QBS_SCALE_FP16
+              ? fp16_to_fp32(request_activation_d_i[15:0])
+              : request_activation_d_i;
           entry_accumulator_q[request_slot_i] <= request_first_block_i
               ? '0 : accumulator_data_q[request_accumulator_index_i[2:0]]
                                          [request_accumulator_index_i[6:3]];
@@ -355,7 +362,7 @@ module qbs_fp_accumulator
             FP_DOT_CONVERT: begin
               entry_dot_float_q[fp_tag_out.slot] <= fp_result;
               entry_state_q[fp_tag_out.slot] <=
-                  entry_profile_q[fp_tag_out.slot] == QBS_WEIGHT_PROFILE_Q4_K
+                  entry_affine_q[fp_tag_out.slot]
                       ? FP_AUX_CONVERT : FP_SCALE_MULTIPLY;
             end
             FP_AUX_CONVERT: begin
@@ -365,7 +372,7 @@ module qbs_fp_accumulator
             FP_SCALE_MULTIPLY: begin
               entry_scale_q[fp_tag_out.slot] <= fp_result;
               entry_state_q[fp_tag_out.slot] <=
-                  entry_profile_q[fp_tag_out.slot] == QBS_WEIGHT_PROFILE_Q4_K
+                  entry_affine_q[fp_tag_out.slot]
                       ? FP_MIN_SCALE_MULTIPLY : FP_ACCUMULATE_DOT;
             end
             FP_MIN_SCALE_MULTIPLY: begin
@@ -373,8 +380,7 @@ module qbs_fp_accumulator
               entry_state_q[fp_tag_out.slot] <= FP_ACCUMULATE_DOT;
             end
             FP_ACCUMULATE_DOT: begin
-              if (entry_profile_q[fp_tag_out.slot] ==
-                  QBS_WEIGHT_PROFILE_Q4_K) begin
+              if (entry_affine_q[fp_tag_out.slot]) begin
                 entry_positive_q[fp_tag_out.slot] <= fp_result;
                 entry_state_q[fp_tag_out.slot] <= FP_ACCUMULATE_MIN;
               end else begin
@@ -413,8 +419,9 @@ module qbs_fp_accumulator
         assert (!busy_o)
           else $fatal(1, "QBS accumulator cleared while FP work is active");
       if (request_valid_i && request_ready_o) begin
-        assert (request_profile_i inside {
-            QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q6_K});
+        assert (qbs_weight_block_bytes(request_profile_i) != 0);
+        assert (qbs_profiles_compatible(request_profile_i,
+                                        request_activation_profile_i));
         if (!request_first_block_i)
           assert (accumulator_valid_q[request_accumulator_index_i])
             else $fatal(1, "QBS accumulator continuation without prior value");

@@ -73,7 +73,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   // A set bit indicates that the corresponding vector instruction in running somewhere in Ara.
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
-  logic [NrVInsn-1:0] vinsn_running_prev_q;
+  logic [NrVInsn-1:0] vinsn_running_prev_q, vinsn_retired_q;
   vid_t               vinsn_id_n;
   logic               vinsn_running_full;
 
@@ -101,9 +101,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     if (!rst_ni) begin
       vinsn_running_q    <= '0;
       vinsn_running_prev_q <= '0;
+      vinsn_retired_q    <= '0;
       pe_vinsn_running_q <= '0;
     end else begin
       vinsn_running_prev_q <= vinsn_running_q;
+      vinsn_retired_q    <= vinsn_running_q & ~vinsn_running_d;
       vinsn_running_q    <= vinsn_running_d;
       pe_vinsn_running_q <= pe_vinsn_running_d;
     end
@@ -522,11 +524,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Not ready by default
     pe_scalar_resp_ready_o = 1'b0;
 
-    // Update vector register's access list
+    // Retire access-list entries in the same cycle in which the corresponding
+    // running bit becomes clear, without placing the full running-state fanout
+    // directly on the request-ready hazard path.
     for (int unsigned v = 0; v < 32; v++) begin
-      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid] ;
-      read_mask_d[v]       &= vinsn_running_q;
-      write_list_d[v].valid &= vinsn_running_q[write_list_q[v].vid];
+      read_list_d[v].valid &= ~vinsn_retired_q[read_list_q[v].vid];
+      read_mask_d[v]       &= ~vinsn_retired_q;
+      write_list_d[v].valid &= ~vinsn_retired_q[write_list_q[v].vid];
     end
 
     // Update the running vector instructions
@@ -649,7 +653,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                   pe_req_d.hazard_vm  |= readers;
                   war_hazard_vec      |= readers;
 
-                  if ($onehot(readers)) begin
+                  if ((|readers) && ((readers & (readers - 1'b1)) == '0)) begin
                     if (read_list_d[ara_req_i.vd + i].valid &&
                         readers[read_list_d[ara_req_i.vd + i].vid]) begin
                       if (read_list_d[ara_req_i.vd + i].wait_complete ||
@@ -685,7 +689,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               // reserved operand queues. Keep that writer at the Ara request
               // boundary until no more than one reader remains; the normal
               // single-reader chaining path then applies.
-              multi_reader_war = !$onehot0(war_hazard_vec);
+              multi_reader_war =
+                  |(war_hazard_vec & (war_hazard_vec - 1'b1));
 
               // Result writeback is not a valid proxy for source lifetime:
               // a younger writer can otherwise overwrite a later source word
@@ -874,43 +879,49 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                     ordered_access_wait_complete ||
                     ara_req_i.op inside {VRGATHER, VRGATHEREI16, VCOMPRESS};
 
-                for (int unsigned i = 0; i < 8; i++) begin
-                  if (ara_req_i.use_vd && i < vd_regs &&
-                      (unsigned'(ara_req_i.vd) + i) < 32) begin
-                    write_list_d[ara_req_i.vd + i] =
-                        '{vid: vinsn_id_n, group_offset: i[2:0],
-                          wait_complete: destination_wait_complete, valid: 1'b1};
+                // Unmasked scalar-return requests use VFU_None and hold the
+                // sequencer in WAIT until their source has been consumed. They
+                // do not allocate a vid, so recording them in the access tables
+                // would create an entry that has no retirement event.
+                if (vfu(ara_req_i.op) != VFU_None || !ara_req_i.vm) begin
+                  for (int unsigned i = 0; i < 8; i++) begin
+                    if (ara_req_i.use_vd && i < vd_regs &&
+                        (unsigned'(ara_req_i.vd) + i) < 32) begin
+                      write_list_d[ara_req_i.vd + i] =
+                          '{vid: vinsn_id_n, group_offset: i[2:0],
+                            wait_complete: destination_wait_complete, valid: 1'b1};
+                    end
+                    if (ara_req_i.use_vs1 && i < vs1_regs &&
+                        (unsigned'(ara_req_i.vs1) + i) < 32) begin
+                      read_list_d[ara_req_i.vs1 + i] =
+                          '{vid: vinsn_id_n, group_offset: i[2:0],
+                            wait_complete: ordered_access_wait_complete, valid: 1'b1};
+                      read_mask_d[ara_req_i.vs1 + i][vinsn_id_n] = 1'b1;
+                    end
+                    if (ara_req_i.use_vs2 && i < vs2_regs &&
+                        (unsigned'(ara_req_i.vs2) + i) < 32) begin
+                      read_list_d[ara_req_i.vs2 + i] =
+                          '{vid: vinsn_id_n, group_offset: i[2:0],
+                            wait_complete: vs2_access_wait_complete, valid: 1'b1};
+                      read_mask_d[ara_req_i.vs2 + i][vinsn_id_n] = 1'b1;
+                    end
+                    if (ara_req_i.use_vd_op && i < vd_regs &&
+                        (unsigned'(ara_req_i.vd) + i) < 32) begin
+                      read_list_d[ara_req_i.vd + i] =
+                          '{vid: vinsn_id_n, group_offset: i[2:0],
+                            wait_complete: ordered_access_wait_complete, valid: 1'b1};
+                      read_mask_d[ara_req_i.vd + i][vinsn_id_n] = 1'b1;
+                    end
                   end
-                  if (ara_req_i.use_vs1 && i < vs1_regs &&
-                      (unsigned'(ara_req_i.vs1) + i) < 32) begin
-                    read_list_d[ara_req_i.vs1 + i] =
-                        '{vid: vinsn_id_n, group_offset: i[2:0],
-                          wait_complete: ordered_access_wait_complete, valid: 1'b1};
-                    read_mask_d[ara_req_i.vs1 + i][vinsn_id_n] = 1'b1;
-                  end
-                  if (ara_req_i.use_vs2 && i < vs2_regs &&
-                      (unsigned'(ara_req_i.vs2) + i) < 32) begin
-                    read_list_d[ara_req_i.vs2 + i] =
-                        '{vid: vinsn_id_n, group_offset: i[2:0],
-                          wait_complete: vs2_access_wait_complete, valid: 1'b1};
-                    read_mask_d[ara_req_i.vs2 + i][vinsn_id_n] = 1'b1;
-                  end
-                  if (ara_req_i.use_vd_op && i < vd_regs &&
-                      (unsigned'(ara_req_i.vd) + i) < 32) begin
-                    read_list_d[ara_req_i.vd + i] =
-                        '{vid: vinsn_id_n, group_offset: i[2:0],
-                          wait_complete: ordered_access_wait_complete, valid: 1'b1};
-                    read_mask_d[ara_req_i.vd + i][vinsn_id_n] = 1'b1;
+                  if (!ara_req_i.vm) begin
+                    read_list_d[VMASK] =
+                        '{vid: vinsn_id_n, group_offset: '0,
+                          wait_complete: ara_req_i.op inside {VSLIDEUP, VSLIDEDOWN},
+                          valid: 1'b1};
+                    read_mask_d[VMASK][vinsn_id_n] = 1'b1;
                   end
                 end
               end : group_access_update
-              if (!ara_req_i.vm) begin
-                read_list_d[VMASK] =
-                    '{vid: vinsn_id_n, group_offset: '0,
-                      wait_complete: ara_req_i.op inside {VSLIDEUP, VSLIDEDOWN},
-                      valid: 1'b1};
-                read_mask_d[VMASK][vinsn_id_n] = 1'b1;
-              end
             end
           end else ara_req_ready_o = 1'b0; // Wait until the PEs are ready
         end
@@ -1066,6 +1077,27 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
 `ifdef FOR_VERIFY
   longint unsigned verify_stall_cycle_q;
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni) begin
+      assert (vinsn_retired_q == (vinsn_running_prev_q & ~vinsn_running_q))
+        else $fatal(1, "Vector-instruction retirement pulse is cycle-misaligned");
+      for (int unsigned v = 0; v < 32; v++) begin
+        assert (!(read_list_q[v].valid &&
+                  !vinsn_running_q[read_list_q[v].vid] &&
+                  !vinsn_retired_q[read_list_q[v].vid]))
+          else $fatal(1, "Stale vector read-list entry missed its retirement pulse");
+        assert (!(write_list_q[v].valid &&
+                  !vinsn_running_q[write_list_q[v].vid] &&
+                  !vinsn_retired_q[write_list_q[v].vid]))
+          else $fatal(1, "Stale vector write-list entry missed its retirement pulse");
+        assert ((read_mask_q[v] & ~(vinsn_running_q | vinsn_retired_q)) == '0)
+          else $fatal(1, "Stale vector read-mask entry missed its retirement pulse");
+      end
+    end
+  end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin

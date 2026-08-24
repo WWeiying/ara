@@ -1,0 +1,12 @@
+{
+  "case_id": "q8_0_decode_attn_q_qbs",
+  "capture_root": "/home/wangwy/llama/captures/qwen2.5-0.5b-q8_0-real-formats-v1",
+  "phase": "decode",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q8_0",
+  "k": 896,
+  "rows": 256,
+  "inputs": 1,
+  "capture_rows": 896,
+  "capture_inputs": 1
+}

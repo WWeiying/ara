@@ -198,6 +198,18 @@ module qbs_read_engine import qbs_pkg::*; #(
   logic response_fault_event;
   qbs_read_fault_e response_fault_kind;
 
+`ifndef SYNTHESIS
+  // Strict observation-only blocking counters for root-cause attribution.
+  logic [31:0] probe_range_blocked_cycles_q;
+  logic [31:0] probe_range_fifo_blocked_cycles_q;
+  logic [31:0] probe_ar_slot_blocked_cycles_q;
+  logic [31:0] probe_ar_ready_blocked_cycles_q;
+  logic [31:0] probe_response_idle_cycles_q;
+  logic [31:0] probe_data_sink_blocked_cycles_q;
+  logic [31:0] probe_completion_blocked_cycles_q;
+  logic [31:0] probe_translation_wait_cycles_q;
+`endif
+
   // Do not acknowledge a range in the cycle that either side discovers a
   // command fault. Otherwise the FIFO write pointer can advance while the
   // accepted entry is discarded by the command-wide flush.
@@ -647,6 +659,57 @@ module qbs_read_engine import qbs_pkg::*; #(
   end
 
 `ifndef SYNTHESIS
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      probe_range_blocked_cycles_q <= '0;
+      probe_range_fifo_blocked_cycles_q <= '0;
+      probe_ar_slot_blocked_cycles_q <= '0;
+      probe_ar_ready_blocked_cycles_q <= '0;
+      probe_response_idle_cycles_q <= '0;
+      probe_data_sink_blocked_cycles_q <= '0;
+      probe_completion_blocked_cycles_q <= '0;
+      probe_translation_wait_cycles_q <= '0;
+    end else if (counters_clear_i) begin
+      probe_range_blocked_cycles_q <= '0;
+      probe_range_fifo_blocked_cycles_q <= '0;
+      probe_ar_slot_blocked_cycles_q <= '0;
+      probe_ar_ready_blocked_cycles_q <= '0;
+      probe_response_idle_cycles_q <= '0;
+      probe_data_sink_blocked_cycles_q <= '0;
+      probe_completion_blocked_cycles_q <= '0;
+      probe_translation_wait_cycles_q <= '0;
+    end else begin
+      if (range_valid_i && !range_ready_o) begin
+        probe_range_blocked_cycles_q <= probe_range_blocked_cycles_q + 1'b1;
+        if (range_fifo_count_q == QueueDepth)
+          probe_range_fifo_blocked_cycles_q <=
+              probe_range_fifo_blocked_cycles_q + 1'b1;
+      end
+      if (plan_state_q == QBS_PLAN_AR &&
+          burst_fifo_count_q == ReadOutstanding && !fault_pending_q &&
+          !response_fault_event)
+        probe_ar_slot_blocked_cycles_q <=
+            probe_ar_slot_blocked_cycles_q + 1'b1;
+      if (axi_ar_valid_o && !axi_ar_ready_i)
+        probe_ar_ready_blocked_cycles_q <=
+            probe_ar_ready_blocked_cycles_q + 1'b1;
+      if (burst_fifo_count_q != 0 && !axi_r_valid_i)
+        probe_response_idle_cycles_q <=
+            probe_response_idle_cycles_q + 1'b1;
+      if (data_valid_o && !data_ready_i)
+        probe_data_sink_blocked_cycles_q <=
+            probe_data_sink_blocked_cycles_q + 1'b1;
+      if (completion_valid_o && !completion_ready_i)
+        probe_completion_blocked_cycles_q <=
+            probe_completion_blocked_cycles_q + 1'b1;
+      if (plan_state_q == QBS_PLAN_TRANSLATE &&
+          en_ld_st_translation_i && !mmu_valid_i &&
+          !mmu_exception_valid_i)
+        probe_translation_wait_cycles_q <=
+            probe_translation_wait_cycles_q + 1'b1;
+    end
+  end
+
   initial begin
     assert (AxiDataWidth >= 8 && AxiDataWidth % 8 == 0)
       else $fatal(1, "QBS AXI data width must contain whole bytes");

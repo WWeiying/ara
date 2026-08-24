@@ -15,19 +15,26 @@ module qbs_dot_array (
   output logic signed [17:0] stream_sum_o [16]
 );
 
+  logic signed [15:0] product_d [4][8];
+  logic signed [16:0] pair_sum_d [4][4];
+  logic signed [17:0] quad_sum_d [4][2];
+  logic signed [17:0] oct_sum_d [4];
   logic signed [17:0] stream_sum_d [16];
 
   always_comb begin
-    for (int stream = 0; stream < 16; stream++) stream_sum_d[stream] = '0;
+    product_d = '{default: '0};
+    pair_sum_d = '{default: '0};
+    quad_sum_d = '{default: '0};
+    oct_sum_d = '{default: '0};
+    stream_sum_d = '{default: '0};
 
-    // Four row clusters, each with eight physical low-bit x INT8 pairs.
-    // The slot-to-context mapping changes with M, but the multiplier count
-    // remains exactly 32.
+    // Four row clusters, each with eight physical low-bit x INT8 pairs. Keep
+    // the 32 multipliers, but use a balanced reduction tree rather than the
+    // loop-carried accumulation that synthesized as a serial adder chain.
     for (int row = 0; row < 4; row++) begin
       for (int slot = 0; slot < 8; slot++) begin
         automatic int unsigned ctx;
         automatic int unsigned lane;
-        automatic logic signed [15:0] product;
         ctx = 0;
         lane = slot;
         if (m_i == 2) begin
@@ -37,10 +44,40 @@ module qbs_dot_array (
           ctx = slot >> 1;
           lane = slot & 1;
         end
-        product = weight_quant_i[row][lane] * activation_quant_i[ctx][lane];
-        if (valid_i && row < row_count_i && ctx < m_i)
-          stream_sum_d[row * 4 + ctx] =
-              stream_sum_d[row * 4 + ctx] + product;
+        product_d[row][slot] =
+            weight_quant_i[row][lane] * activation_quant_i[ctx][lane];
+      end
+
+      for (int pair = 0; pair < 4; pair++) begin
+        pair_sum_d[row][pair] =
+            $signed({product_d[row][2 * pair][15],
+                     product_d[row][2 * pair]}) +
+            $signed({product_d[row][2 * pair + 1][15],
+                     product_d[row][2 * pair + 1]});
+      end
+
+      quad_sum_d[row][0] =
+          $signed({pair_sum_d[row][0][16], pair_sum_d[row][0]}) +
+          $signed({pair_sum_d[row][1][16], pair_sum_d[row][1]});
+      quad_sum_d[row][1] =
+          $signed({pair_sum_d[row][2][16], pair_sum_d[row][2]}) +
+          $signed({pair_sum_d[row][3][16], pair_sum_d[row][3]});
+      oct_sum_d[row] = quad_sum_d[row][0] + quad_sum_d[row][1];
+
+      if (valid_i && row < row_count_i) begin
+        unique case (m_i)
+          3'd1: stream_sum_d[row * 4] = oct_sum_d[row];
+          3'd2: begin
+            stream_sum_d[row * 4] = quad_sum_d[row][0];
+            stream_sum_d[row * 4 + 1] = quad_sum_d[row][1];
+          end
+          default: begin
+            for (int ctx = 0; ctx < 4; ctx++) begin
+              if (ctx < m_i)
+                stream_sum_d[row * 4 + ctx] = pair_sum_d[row][ctx];
+            end
+          end
+        endcase
       end
     end
   end

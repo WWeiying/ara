@@ -118,7 +118,7 @@ static void test_abi(void) {
       .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
       .activation_layout = QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
       .n = 32,
-      .k_blocks = 64,
+      .k_blocks = 256,
   };
   const uint64_t header = qbs_pack_descriptor_header(&fields);
   const qbs_descriptor_fields_t decoded =
@@ -173,7 +173,7 @@ static void test_descriptor_validation(void) {
                QBS_REF_DESCRIPTOR_RESERVED);
   invalid = descriptor;
   invalid.header = (invalid.header & ~(UINT64_C(0x0f) << 4)) |
-                   (UINT64_C(3) << 4);
+                   (UINT64_C(15) << 4);
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
                QBS_REF_WEIGHT_PROFILE);
 
@@ -192,9 +192,10 @@ static void test_descriptor_validation(void) {
   invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
                             QBS_ACTIVATION_PROFILE_Q8_K,
                             QBS_WEIGHT_LAYOUT_ROW_MAJOR,
-                            QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 8, 65);
+                            QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 8,
+                            QBS_MAX_K_BLOCKS);
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 0, 1024, 0x2000),
-               QBS_REF_K_RANGE);
+               QBS_REF_OK);
   CHECK_STATUS(qbs_ref_validate_descriptor(&descriptor, 0, 0, 1024, 0x2000),
                QBS_REF_M_RANGE);
   CHECK_STATUS(qbs_ref_validate_descriptor(&descriptor, 1, 0, 1000, 0x2000),
@@ -272,6 +273,52 @@ static void test_q4_decode(void) {
   }
 }
 
+static void test_q5_decode(void) {
+  qbs_block_q5_k_t block;
+  memset(&block, 0, sizeof(block));
+  for (unsigned index = 0; index < sizeof(block.scales); ++index)
+    block.scales[index] = (uint8_t)(index * 19u + 3u);
+
+  int8_t expected[QBS_Q5_K_BLOCK_ELEMENTS];
+  for (unsigned packet = 0; packet < 4; ++packet) {
+    for (unsigned lane = 0; lane < 32; ++lane) {
+      const unsigned low_element = packet * 64u + lane;
+      const unsigned high_element = low_element + 32u;
+      const uint8_t low_value = (uint8_t)((packet * 7u + lane) & 0x1fu);
+      const uint8_t high_value =
+          (uint8_t)((packet * 11u + 31u - lane) & 0x1fu);
+      expected[low_element] = (int8_t)low_value;
+      expected[high_element] = (int8_t)high_value;
+      block.qs[packet * 32u + lane] =
+          (uint8_t)((low_value & 0x0fu) | ((high_value & 0x0fu) << 4));
+      block.qh[lane] |= (uint8_t)(((low_value >> 4) & 1u) << (2u * packet));
+      block.qh[lane] |=
+          (uint8_t)(((high_value >> 4) & 1u) << (2u * packet + 1u));
+    }
+  }
+
+  int8_t actual[QBS_Q5_K_BLOCK_ELEMENTS];
+  uint8_t scales[8];
+  uint8_t mins[8];
+  qbs_ref_decode_q5_k(&block, actual, scales, mins);
+  CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
+  for (unsigned group = 0; group < 8; ++group) {
+    uint8_t expected_scale;
+    uint8_t expected_min;
+    if (group < 4) {
+      expected_scale = block.scales[group] & 0x3fu;
+      expected_min = block.scales[group + 4u] & 0x3fu;
+    } else {
+      expected_scale = (block.scales[group + 4u] & 0x0fu) |
+                       ((block.scales[group - 4u] >> 6) << 4);
+      expected_min = (block.scales[group + 4u] >> 4) |
+                     ((block.scales[group] >> 6) << 4);
+    }
+    CHECK(scales[group] == expected_scale);
+    CHECK(mins[group] == expected_min);
+  }
+}
+
 static void encode_q6(const int8_t values[256], qbs_block_q6_k_t *block) {
   memset(block->ql, 0, sizeof(block->ql));
   memset(block->qh, 0, sizeof(block->qh));
@@ -309,7 +356,81 @@ static void test_q6_decode(void) {
   CHECK(memcmp(scales, block.scales, sizeof(scales)) == 0);
 }
 
+static void set_q3_scale(qbs_block_q3_k_t *block, unsigned group,
+                         int8_t scale) {
+  const unsigned raw = (unsigned)(scale + 32);
+  const unsigned within = group & 3u;
+  const unsigned region = group >> 2;
+  const unsigned low_index = (region & 1u) * 4u + within;
+  if (region < 2u)
+    block->scales[low_index] |= (uint8_t)(raw & 0x0fu);
+  else
+    block->scales[low_index] |= (uint8_t)((raw & 0x0fu) << 4);
+  block->scales[8u + within] |=
+      (uint8_t)(((raw >> 4) & 0x03u) << (2u * region));
+}
+
+static void test_q3_decode(void) {
+  qbs_block_q3_k_t block;
+  memset(&block, 0, sizeof(block));
+  int8_t expected[QBS_Q3_K_BLOCK_ELEMENTS];
+  int8_t expected_scales[16];
+  for (unsigned group = 0; group < 16; ++group) {
+    expected_scales[group] = (int8_t)((int)(group * 4u) - 32);
+    set_q3_scale(&block, group, expected_scales[group]);
+  }
+  for (unsigned packet = 0; packet < 8; ++packet) {
+    for (unsigned lane = 0; lane < 32; ++lane) {
+      const unsigned element = packet * 32u + lane;
+      const int8_t value = (int8_t)((int)((packet + lane) & 7u) - 4);
+      expected[element] = value;
+      const unsigned low = value < 0 ? (unsigned)(value + 4) : (unsigned)value;
+      block.qs[(packet / 4u) * 32u + lane] |=
+          (uint8_t)(low << (2u * (packet & 3u)));
+      if (value >= 0) block.hmask[lane] |= (uint8_t)(1u << packet);
+    }
+  }
+  int8_t actual[QBS_Q3_K_BLOCK_ELEMENTS];
+  int8_t actual_scales[16];
+  qbs_ref_decode_q3_k(&block, actual, actual_scales);
+  CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
+  CHECK(memcmp(actual_scales, expected_scales, sizeof(actual_scales)) == 0);
+}
+
+static void test_q4_0_decode(void) {
+  qbs_block_q4_0_t block = {.d = UINT16_C(0x3c00)};
+  for (unsigned index = 0; index < 16; ++index)
+    block.qs[index] = (uint8_t)(index | ((15u - index) << 4));
+  int8_t values[32];
+  qbs_ref_decode_q4_0(&block, values);
+  for (unsigned index = 0; index < 16; ++index) {
+    CHECK(values[index] == (int8_t)index - 8);
+    CHECK(values[index + 16] == 7 - (int8_t)index);
+  }
+}
+
+static void test_q8_0_decode(void) {
+  qbs_block_q8_0_t block = {.d = UINT16_C(0x3c00)};
+  int8_t expected[QBS_Q8_0_WEIGHT_BLOCK_ELEMENTS];
+  for (unsigned index = 0; index < QBS_Q8_0_WEIGHT_BLOCK_ELEMENTS; ++index) {
+    expected[index] = (int8_t)((int)index - 16);
+    block.qs[index] = expected[index];
+  }
+  int8_t actual[QBS_Q8_0_WEIGHT_BLOCK_ELEMENTS];
+  qbs_ref_decode_q8_0(&block, actual);
+  CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
+}
+
 static void fill_q4_one(qbs_block_q4_k_t *block) {
+  memset(block, 0, sizeof(*block));
+  block->d = UINT16_C(0x3c00);
+  block->dmin = UINT16_C(0x3800);
+  for (unsigned index = 0; index < 8; ++index) block->scales[index] = 1;
+  for (unsigned index = 8; index < 12; ++index) block->scales[index] = 0x11;
+  memset(block->qs, 0x11, sizeof(block->qs));
+}
+
+static void fill_q5_one(qbs_block_q5_k_t *block) {
   memset(block, 0, sizeof(*block));
   block->d = UINT16_C(0x3c00);
   block->dmin = UINT16_C(0x3800);
@@ -323,6 +444,15 @@ static void fill_q6_one(qbs_block_q6_k_t *block) {
   memset(block->ql, 0x11, sizeof(block->ql));
   memset(block->qh, 0xaa, sizeof(block->qh));
   memset(block->scales, 1, sizeof(block->scales));
+  block->d = UINT16_C(0x3c00);
+}
+
+static void fill_q3_one(qbs_block_q3_k_t *block) {
+  memset(block, 0, sizeof(*block));
+  memset(block->hmask, 0xff, sizeof(block->hmask));
+  memset(block->qs, 0x55, sizeof(block->qs));
+  for (unsigned group = 0; group < 16; ++group)
+    set_q3_scale(block, group, 1);
   block->d = UINT16_C(0x3c00);
 }
 
@@ -340,9 +470,7 @@ static void fill_activations(qbs_block_q8_k_t *blocks, unsigned k_blocks) {
 
 static void test_profile_execution(unsigned profile) {
   enum { kN = 5, kBlocks = 2, kElements = 32 };
-  const size_t block_bytes = profile == QBS_WEIGHT_PROFILE_Q4_K
-                                 ? sizeof(qbs_block_q4_k_t)
-                                 : sizeof(qbs_block_q6_k_t);
+  const size_t block_bytes = qbs_weight_block_bytes(profile);
   uint8_t row_weights[kN * kBlocks * sizeof(qbs_block_q6_k_t)];
   memset(row_weights, 0, sizeof(row_weights));
   for (unsigned row = 0; row < kN; ++row) {
@@ -350,6 +478,10 @@ static void test_profile_execution(unsigned profile) {
       uint8_t *address = row_weights + (row * kBlocks + block) * block_bytes;
       if (profile == QBS_WEIGHT_PROFILE_Q4_K) {
         fill_q4_one((qbs_block_q4_k_t *)(void *)address);
+      } else if (profile == QBS_WEIGHT_PROFILE_Q5_K) {
+        fill_q5_one((qbs_block_q5_k_t *)(void *)address);
+      } else if (profile == QBS_WEIGHT_PROFILE_Q3_K) {
+        fill_q3_one((qbs_block_q3_k_t *)(void *)address);
       } else {
         fill_q6_one((qbs_block_q6_k_t *)(void *)address);
       }
@@ -397,12 +529,14 @@ static void test_profile_execution(unsigned profile) {
     CHECK(result.destination_elements_per_register == kElements);
     CHECK(result.active_outputs == m * kN);
     CHECK(result.fflags == 0);
-    const unsigned groups = profile == QBS_WEIGHT_PROFILE_Q4_K ? 8u : 16u;
+    const unsigned groups = qbs_weight_subgroup_count(profile);
     CHECK(trace.groups == m * kN * kBlocks * groups);
     CHECK(trace.blocks == m * kN * kBlocks);
 
-    const float base =
-        profile == QBS_WEIGHT_PROFILE_Q4_K ? 256.0f : 512.0f;
+    const float base = qbs_weight_correction_mode(profile) ==
+                               QBS_CORRECTION_AFFINE_MIN
+                           ? 256.0f
+                           : 512.0f;
     for (unsigned context = 0; context < m; ++context) {
       for (unsigned output = 0; output < kN; ++output)
         CHECK(row_result[context * kElements + output] ==
@@ -457,14 +591,123 @@ static void test_profile_execution(unsigned profile) {
   free(r4_weights);
 }
 
+static void test_q8_0_activation_execution(unsigned weight_profile) {
+  enum { kN = 5, kBlocks = 2, kElements = 32 };
+  const size_t block_bytes = qbs_weight_block_bytes(weight_profile);
+  _Alignas(qbs_block_q8_0_t)
+      uint8_t row_weights[kN * kBlocks * sizeof(qbs_block_q8_0_t)];
+  memset(row_weights, 0, sizeof(row_weights));
+  qbs_block_q8_0_t activations[4 * kBlocks];
+  for (unsigned row = 0; row < kN; ++row) {
+    for (unsigned block = 0; block < kBlocks; ++block) {
+      uint8_t *address = row_weights +
+          ((size_t)row * kBlocks + block) * block_bytes;
+      if (weight_profile == QBS_WEIGHT_PROFILE_Q4_0) {
+        qbs_block_q4_0_t *weight = (qbs_block_q4_0_t *)(void *)address;
+        weight->d = UINT16_C(0x3c00);
+        memset(weight->qs, 0x99, sizeof(weight->qs));
+      } else {
+        qbs_block_q8_0_t *weight = (qbs_block_q8_0_t *)(void *)address;
+        weight->d = UINT16_C(0x3c00);
+        memset(weight->qs, 1, sizeof(weight->qs));
+      }
+    }
+  }
+  for (unsigned context = 0; context < 4; ++context) {
+    for (unsigned block = 0; block < kBlocks; ++block) {
+      qbs_block_q8_0_t *activation =
+          &activations[context * kBlocks + block];
+      activation->d = UINT16_C(0x3c00);
+      memset(activation->qs, (int)(context + 1u), sizeof(activation->qs));
+    }
+  }
+
+  const size_t r4_bytes = qbs_ref_weight_storage_bytes(
+      weight_profile, QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR, kN, kBlocks);
+  uint8_t *r4_weights = malloc(r4_bytes);
+  CHECK(r4_weights != NULL);
+  if (r4_weights == NULL) return;
+  CHECK_STATUS(qbs_ref_repack_weight_r4(
+                   weight_profile, row_weights,
+                   kN * kBlocks * block_bytes, kN, kBlocks, r4_weights,
+                   r4_bytes),
+               QBS_REF_OK);
+
+  qbs_block_q8_0x4_t interleaved[kBlocks];
+  CHECK_STATUS(qbs_ref_pack_activation_m4_profile(
+                   QBS_ACTIVATION_PROFILE_Q8_0, activations,
+                   sizeof(activations), kBlocks, interleaved,
+                   sizeof(interleaved)),
+               QBS_REF_OK);
+
+  for (unsigned m = 1; m <= 4; ++m) {
+    const unsigned vd = m == 1 ? 3 : (m == 2 ? 2 : 4);
+    float row_result[4 * kElements];
+    float packed_result[4 * kElements];
+    for (unsigned index = 0; index < 4 * kElements; ++index) {
+      row_result[index] = 12345.0f;
+      packed_result[index] = 12345.0f;
+    }
+    qbs_descriptor_v1_t descriptor = make_descriptor(
+        weight_profile, QBS_ACTIVATION_PROFILE_Q8_0,
+        QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN,
+        kBlocks);
+    qbs_ref_result_t result = {0};
+    trace_counts_t trace = {0};
+    CHECK_STATUS(qbs_ref_execute(
+                     &descriptor, m, vd, 1024, UINT64_C(0x2000), row_weights,
+                     kN * kBlocks * block_bytes, activations,
+                     m * kBlocks * sizeof(qbs_block_q8_0_t), row_result,
+                     4 * kElements, count_trace, &trace, &result),
+                 QBS_REF_OK);
+    CHECK(trace.groups == m * kN * kBlocks);
+    CHECK(trace.blocks == m * kN * kBlocks);
+    for (unsigned context = 0; context < m; ++context) {
+      for (unsigned output = 0; output < kN; ++output)
+        CHECK(row_result[context * kElements + output] ==
+              64.0f * (float)(context + 1u));
+      for (unsigned output = kN; output < kElements; ++output)
+        CHECK(float_bits(row_result[context * kElements + output]) == 0);
+    }
+
+    descriptor = make_descriptor(
+        weight_profile, QBS_ACTIVATION_PROFILE_Q8_0,
+        QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+        m == 4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+               : QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
+        kN, kBlocks);
+    const void *activation_data =
+        m == 4 ? (const void *)interleaved : (const void *)activations;
+    const size_t activation_bytes = m == 4
+        ? sizeof(interleaved)
+        : m * kBlocks * sizeof(qbs_block_q8_0_t);
+    CHECK_STATUS(qbs_ref_execute(
+                     &descriptor, m, vd, 1024, UINT64_C(0x2000), r4_weights,
+                     r4_bytes, activation_data, activation_bytes,
+                     packed_result, 4 * kElements, NULL, NULL, &result),
+                 QBS_REF_OK);
+    CHECK(memcmp(row_result, packed_result,
+                 m * kElements * sizeof(float)) == 0);
+  }
+  free(r4_weights);
+}
+
 int main(void) {
   test_abi();
   test_descriptor_validation();
   test_q8_quantization();
   test_q4_decode();
+  test_q5_decode();
   test_q6_decode();
+  test_q3_decode();
+  test_q4_0_decode();
+  test_q8_0_decode();
   test_profile_execution(QBS_WEIGHT_PROFILE_Q4_K);
+  test_profile_execution(QBS_WEIGHT_PROFILE_Q5_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q6_K);
+  test_profile_execution(QBS_WEIGHT_PROFILE_Q3_K);
+  test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_Q4_0);
+  test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_Q8_0_WEIGHT);
   if (failures != 0) {
     fprintf(stderr, "qbs_ref_test: %u failure(s)\n", failures);
     return EXIT_FAILURE;

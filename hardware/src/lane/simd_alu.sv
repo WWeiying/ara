@@ -198,48 +198,52 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VAADD, VAADDU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic        [8:0] sum_u = {1'b0, opb.w8[b]} +
-                                                     {1'b0, opa.w8[b]};
-                automatic logic signed [8:0] sum_s =
-                    $signed({opb.w8[b][7], opb.w8[b]}) +
-                    $signed({opa.w8[b][7], opa.w8[b]});
-                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
-                res.w8[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
-                                              : (sum_s >>> 1) + round_s;
+                automatic logic [7:0] half_a =
+                    {(op_i == VAADD) & opa.w8[b][7], opa.w8[b][7:1]};
+                automatic logic [7:0] half_b =
+                    {(op_i == VAADD) & opb.w8[b][7], opb.w8[b][7:1]};
+                automatic logic low_carry = opa.w8[b][0] & opb.w8[b][0];
+                automatic logic retained_lsb =
+                    half_a[0] ^ half_b[0] ^ low_carry;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opa.w8[b][0] ^ opb.w8[b][0], vxrm);
+                res.w8[b] = half_b + half_a + low_carry + round;
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic        [16:0] sum_u = {1'b0, opb.w16[b]} +
-                                                      {1'b0, opa.w16[b]};
-                automatic logic signed [16:0] sum_s =
-                    $signed({opb.w16[b][15], opb.w16[b]}) +
-                    $signed({opa.w16[b][15], opa.w16[b]});
-                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
-                res.w16[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
-                                               : (sum_s >>> 1) + round_s;
+                automatic logic [15:0] half_a =
+                    {(op_i == VAADD) & opa.w16[b][15], opa.w16[b][15:1]};
+                automatic logic [15:0] half_b =
+                    {(op_i == VAADD) & opb.w16[b][15], opb.w16[b][15:1]};
+                automatic logic low_carry = opa.w16[b][0] & opb.w16[b][0];
+                automatic logic retained_lsb =
+                    half_a[0] ^ half_b[0] ^ low_carry;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opa.w16[b][0] ^ opb.w16[b][0], vxrm);
+                res.w16[b] = half_b + half_a + low_carry + round;
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic        [32:0] sum_u = {1'b0, opb.w32[b]} +
-                                                      {1'b0, opa.w32[b]};
-                automatic logic signed [32:0] sum_s =
-                    $signed({opb.w32[b][31], opb.w32[b]}) +
-                    $signed({opa.w32[b][31], opa.w32[b]});
-                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
-                res.w32[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
-                                               : (sum_s >>> 1) + round_s;
+                automatic logic [31:0] half_a =
+                    {(op_i == VAADD) & opa.w32[b][31], opa.w32[b][31:1]};
+                automatic logic [31:0] half_b =
+                    {(op_i == VAADD) & opb.w32[b][31], opb.w32[b][31:1]};
+                automatic logic low_carry = opa.w32[b][0] & opb.w32[b][0];
+                automatic logic retained_lsb =
+                    half_a[0] ^ half_b[0] ^ low_carry;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opa.w32[b][0] ^ opb.w32[b][0], vxrm);
+                res.w32[b] = half_b + half_a + low_carry + round;
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic        [64:0] sum_u = {1'b0, opb.w64[b]} +
-                                                      {1'b0, opa.w64[b]};
-                automatic logic signed [64:0] sum_s =
-                    $signed({opb.w64[b][63], opb.w64[b]}) +
-                    $signed({opa.w64[b][63], opa.w64[b]});
-                automatic logic round_u = average_rounding_increment(sum_u[1], sum_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sum_s[1], sum_s[0], vxrm);
-                res.w64[b] = (op_i == VAADDU) ? (sum_u >> 1) + round_u
-                                               : (sum_s >>> 1) + round_s;
+                automatic logic [63:0] half_a =
+                    {(op_i == VAADD) & opa.w64[b][63], opa.w64[b][63:1]};
+                automatic logic [63:0] half_b =
+                    {(op_i == VAADD) & opb.w64[b][63], opb.w64[b][63:1]};
+                automatic logic low_carry = opa.w64[b][0] & opb.w64[b][0];
+                automatic logic retained_lsb =
+                    half_a[0] ^ half_b[0] ^ low_carry;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opa.w64[b][0] ^ opb.w64[b][0], vxrm);
+                res.w64[b] = half_b + half_a + low_carry + round;
               end
           endcase
         VADD, VADC, VMADC, VREDSUM, VWREDSUMU, VWREDSUM: unique case (vew_i)
@@ -342,48 +346,52 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VASUB, VASUBU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic        [8:0] sub_u = {1'b0, opb.w8[b]} -
-                                                     {1'b0, opa.w8[b]};
-                automatic logic signed [8:0] sub_s =
-                    $signed({opb.w8[b][7], opb.w8[b]}) -
-                    $signed({opa.w8[b][7], opa.w8[b]});
-                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
-                res.w8[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
-                                              : (sub_s >>> 1) + round_s;
+                automatic logic [7:0] half_a =
+                    {(op_i == VASUB) & opa.w8[b][7], opa.w8[b][7:1]};
+                automatic logic [7:0] half_b =
+                    {(op_i == VASUB) & opb.w8[b][7], opb.w8[b][7:1]};
+                automatic logic low_borrow = ~opb.w8[b][0] & opa.w8[b][0];
+                automatic logic retained_lsb =
+                    half_b[0] ^ half_a[0] ^ low_borrow;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opb.w8[b][0] ^ opa.w8[b][0], vxrm);
+                res.w8[b] = half_b - half_a - low_borrow + round;
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic        [16:0] sub_u = {1'b0, opb.w16[b]} -
-                                                      {1'b0, opa.w16[b]};
-                automatic logic signed [16:0] sub_s =
-                    $signed({opb.w16[b][15], opb.w16[b]}) -
-                    $signed({opa.w16[b][15], opa.w16[b]});
-                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
-                res.w16[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
-                                               : (sub_s >>> 1) + round_s;
+                automatic logic [15:0] half_a =
+                    {(op_i == VASUB) & opa.w16[b][15], opa.w16[b][15:1]};
+                automatic logic [15:0] half_b =
+                    {(op_i == VASUB) & opb.w16[b][15], opb.w16[b][15:1]};
+                automatic logic low_borrow = ~opb.w16[b][0] & opa.w16[b][0];
+                automatic logic retained_lsb =
+                    half_b[0] ^ half_a[0] ^ low_borrow;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opb.w16[b][0] ^ opa.w16[b][0], vxrm);
+                res.w16[b] = half_b - half_a - low_borrow + round;
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic        [32:0] sub_u = {1'b0, opb.w32[b]} -
-                                                      {1'b0, opa.w32[b]};
-                automatic logic signed [32:0] sub_s =
-                    $signed({opb.w32[b][31], opb.w32[b]}) -
-                    $signed({opa.w32[b][31], opa.w32[b]});
-                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
-                res.w32[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
-                                               : (sub_s >>> 1) + round_s;
+                automatic logic [31:0] half_a =
+                    {(op_i == VASUB) & opa.w32[b][31], opa.w32[b][31:1]};
+                automatic logic [31:0] half_b =
+                    {(op_i == VASUB) & opb.w32[b][31], opb.w32[b][31:1]};
+                automatic logic low_borrow = ~opb.w32[b][0] & opa.w32[b][0];
+                automatic logic retained_lsb =
+                    half_b[0] ^ half_a[0] ^ low_borrow;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opb.w32[b][0] ^ opa.w32[b][0], vxrm);
+                res.w32[b] = half_b - half_a - low_borrow + round;
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic        [64:0] sub_u = {1'b0, opb.w64[b]} -
-                                                      {1'b0, opa.w64[b]};
-                automatic logic signed [64:0] sub_s =
-                    $signed({opb.w64[b][63], opb.w64[b]}) -
-                    $signed({opa.w64[b][63], opa.w64[b]});
-                automatic logic round_u = average_rounding_increment(sub_u[1], sub_u[0], vxrm);
-                automatic logic round_s = average_rounding_increment(sub_s[1], sub_s[0], vxrm);
-                res.w64[b] = (op_i == VASUBU) ? (sub_u >> 1) + round_u
-                                               : (sub_s >>> 1) + round_s;
+                automatic logic [63:0] half_a =
+                    {(op_i == VASUB) & opa.w64[b][63], opa.w64[b][63:1]};
+                automatic logic [63:0] half_b =
+                    {(op_i == VASUB) & opb.w64[b][63], opb.w64[b][63:1]};
+                automatic logic low_borrow = ~opb.w64[b][0] & opa.w64[b][0];
+                automatic logic retained_lsb =
+                    half_b[0] ^ half_a[0] ^ low_borrow;
+                automatic logic round = average_rounding_increment(
+                    retained_lsb, opb.w64[b][0] ^ opa.w64[b][0], vxrm);
+                res.w64[b] = half_b - half_a - low_borrow + round;
               end
           endcase
 

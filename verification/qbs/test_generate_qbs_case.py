@@ -24,15 +24,21 @@ def load_generator():
 
 def main() -> None:
     generator = load_generator()
-    rows = 4
+    rows = 5
     k_blocks = 2
     block_bytes = 3
     source_bytes = bytes(range(rows * k_blocks * block_bytes))
     expected = bytearray()
-    for block in range(k_blocks):
-        for row in range(rows):
-            offset = (row * k_blocks + block) * block_bytes
-            expected += source_bytes[offset:offset + block_bytes]
+    padded_rows = (rows + 3) & ~3
+    for row_group in range(0, padded_rows, 4):
+        for block in range(k_blocks):
+            for row_offset in range(4):
+                row = row_group + row_offset
+                if row < rows:
+                    offset = (row * k_blocks + block) * block_bytes
+                    expected += source_bytes[offset:offset + block_bytes]
+                else:
+                    expected += bytes(block_bytes)
 
     with tempfile.TemporaryDirectory() as directory:
         source = Path(directory) / "source.bin"
@@ -43,7 +49,7 @@ def main() -> None:
         assert source.read_bytes() == source_bytes
         assert destination.read_bytes() == expected
         assert source.stat().st_ino != destination.stat().st_ino
-    print("QBS R4 hard-link alias regression: PASS")
+    print("QBS R4 padded-tail and hard-link regression: PASS")
 
 
 if __name__ == "__main__":

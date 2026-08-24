@@ -46,3 +46,41 @@ make -C hardware llama_real_build case=decode_attn_q
 make -C hardware llama_real_spike case=decode_attn_q
 make -C hardware llama_real_sim case=decode_attn_q no_fsdb=1
 ```
+
+## 多量化格式闭环
+
+同一套生成器还从真实 Qwen2.5 推理 capture 中提取了四个等价的 layer-0
+`blk.0.attn_q.weight` decode 点，用于比较标准 RVV 和 QBS。每个点均保留完整 K、一个
+真实 activation、前 256 个真实输出行及对应 llama.cpp golden：
+
+| 格式 | 模型 capture | K | N | M | activation |
+| --- | --- | ---: | ---: | ---: | --- |
+| Q3_K | Qwen2.5-1.5B Q3_K_M | 1536 | 256 | 1 | Q8_K |
+| Q5_K | Qwen2.5-1.5B Q5_K_M | 1536 | 256 | 1 | Q8_K |
+| Q6_K | Qwen2.5-1.5B Q6_K | 1536 | 256 | 1 | Q8_K |
+| Q8_0 | Qwen2.5-0.5B Q8_0 | 896 | 256 | 1 | Q8_0 |
+
+离线生成、编译、并行运行和严格配对汇总命令如下：
+
+```bash
+make -C hardware llama_format_build
+make -C hardware llama_format_rvv_compile
+make -C hardware llama_format_qbs_compile
+make -C hardware llama_format_rvv_parallel
+make -C hardware llama_format_qbs_parallel
+make -C hardware llama_format_status mode=rvv
+make -C hardware llama_format_status mode=qbs
+make -C hardware llama_format_sum
+```
+
+RVV 和 QBS 分别写入时间戳目录，原有运行不会被覆盖。运行根目录还记录 Git HEAD、
+dirty 状态、L2 配置、仿真器和各 ELF 的 SHA-256。汇总器要求四组 workload 的
+K/N/M 完全一致、两边均 `PASS`、mismatch 均为 0，并且源权重、activation 和 golden
+的字节数与 SHA-256 完全一致，才生成
+`hardware/format_closure.csv`。CSV 同时包含量化、activation pack、matmul、总计算周期、
+数值误差、逻辑读取量、总线计数，以及 `qbs_perf.csv` 导出的全部原始计数和派生比例。
+汇总时还会再次检查 QBS command/success/fault 终止账目。`input_phase_ratio` 是 activation/weight
+阶段占总 busy 时间的比例，不应解释为严格 stall；等待和受限行为分别参考
+`weight_prefetch_wait_ratio`、`read_response_idle_ratio` 和 `fp_input_blocked_ratio`。
+QEMU emulation 只验证真实 GGML
+派发与数值语义，不用于替代 RTL 性能数据。

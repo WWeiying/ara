@@ -778,7 +778,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
             else $fatal(1, "QBS terminal response did not retire its load PE entry");
 
           if ($test$plusargs("QBS_PERF")) begin
-            $display("[QBS_PERF] seq=%0d id=%0d m=%0d vlen=%0d lanes=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d busy_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d phase_setup_cycles=%0d phase_activation_cycles=%0d phase_weight_cycles=%0d phase_compute_cycles=%0d phase_overlap_cycles=%0d phase_drain_cycles=%0d phase_scheduler_cycles=%0d phase_commit_cycles=%0d phase_fault_cycles=%0d phase_terminal_cycles=%0d weight_prefetch_wait_cycles=%0d tiles=%0d weight_bytes=%0d activation_bytes=%0d useful_pairs=%0d pair_capacity=%0d dot_active_cycles=%0d fp_uop_issue=%0d fp_table_occ_sum=%0d fp_table_occ_max=%0d fp_table_full_cycles=%0d accumulator_updates=%0d commit_groups=%0d commit_backpressure_cycles=%0d",
+            $display("[QBS_PERF] seq=%0d id=%0d m=%0d vlen=%0d lanes=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d busy_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d phase_setup_cycles=%0d phase_activation_cycles=%0d phase_weight_cycles=%0d phase_compute_cycles=%0d phase_overlap_cycles=%0d phase_drain_cycles=%0d phase_scheduler_cycles=%0d phase_commit_cycles=%0d phase_fault_cycles=%0d phase_terminal_cycles=%0d weight_prefetch_wait_cycles=%0d tiles=%0d weight_bytes=%0d activation_bytes=%0d useful_pairs=%0d pair_capacity=%0d dot_active_cycles=%0d fp_uop_issue=%0d fp_table_occ_sum=%0d fp_table_occ_max=%0d fp_table_full_cycles=%0d accumulator_updates=%0d commit_groups=%0d commit_backpressure_cycles=%0d probe_context_start_blocked_cycles=%0d probe_compute_without_dot_issue_cycles=%0d probe_profile_result_blocked_cycles=%0d probe_fp_slot_blocked_cycles=%0d probe_fp_accumulator_blocked_cycles=%0d probe_fp_other_blocked_cycles=%0d probe_fp_input_blocked_cycles=%0d probe_fp_no_schedulable_uop_cycles=%0d probe_fp_busy_cycles=%0d probe_profile_context_occ_sum=%0d probe_profile_two_context_cycles=%0d probe_profile_drain_only_cycles=%0d probe_profile_correction_pending_cycles=%0d probe_profile_result_pending_cycles=%0d probe_read_range_blocked_cycles=%0d probe_read_range_fifo_blocked_cycles=%0d probe_read_ar_slot_blocked_cycles=%0d probe_read_ar_ready_blocked_cycles=%0d probe_read_response_idle_cycles=%0d probe_read_data_sink_blocked_cycles=%0d probe_read_completion_blocked_cycles=%0d probe_read_translation_wait_cycles=%0d probe_weight_wait_no_outstanding_cycles=%0d probe_weight_wait_response_idle_cycles=%0d probe_weight_wait_r_transfer_cycles=%0d probe_weight_wait_r_blocked_cycles=%0d",
                      qbs_command_sequence_q, qbs_command_id_q, qbs_command_m,
                      VLEN, NrLanes,
                      qbs_success_valid, qbs_fault_valid,
@@ -805,7 +805,51 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
                      qbs_fp_table_occupancy_max,
                      qbs_fp_table_full_cycles, qbs_accumulator_updates,
                      qbs_commit_word_count,
-                     qbs_commit_backpressure_cycles);
+                     qbs_commit_backpressure_cycles,
+                     i_qbs_engine.i_compute_engine.
+                         probe_context_start_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_compute_without_dot_issue_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_result_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_fp_slot_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_fp_accumulator_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_fp_other_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_fp_input_blocked_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_fp_no_schedulable_uop_cycles_q,
+                     i_qbs_engine.i_compute_engine.probe_fp_busy_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_context_occupancy_sum_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_two_context_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_drain_only_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_correction_pending_cycles_q,
+                     i_qbs_engine.i_compute_engine.
+                         probe_profile_result_pending_cycles_q,
+                     i_qbs_engine.i_read_engine.probe_range_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.
+                         probe_range_fifo_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.probe_ar_slot_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.
+                         probe_ar_ready_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.probe_response_idle_cycles_q,
+                     i_qbs_engine.i_read_engine.
+                         probe_data_sink_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.
+                         probe_completion_blocked_cycles_q,
+                     i_qbs_engine.i_read_engine.
+                         probe_translation_wait_cycles_q,
+                     i_qbs_engine.probe_weight_wait_no_outstanding_cycles_q,
+                     i_qbs_engine.probe_weight_wait_response_idle_cycles_q,
+                     i_qbs_engine.probe_weight_wait_r_transfer_cycles_q,
+                     i_qbs_engine.probe_weight_wait_r_blocked_cycles_q);
           end
         end
 
