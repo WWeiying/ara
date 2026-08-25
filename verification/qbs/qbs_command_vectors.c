@@ -70,6 +70,34 @@ static void fill_q4_0(qbs_block_q4_0_t *block, unsigned row, unsigned kb) {
     block->qs[i] = (uint8_t)next_random();
 }
 
+static void fill_q2(qbs_block_q2_k_t *block, unsigned row, unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 7u + kb * 3u);
+  block->dmin = (qbs_fp16_t)(UINT16_C(0x2c00) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->scales); ++i)
+    block->scales[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+}
+
+static void fill_q5_0(qbs_block_q5_0_t *block, unsigned row, unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->qh); ++i)
+    block->qh[i] = (uint8_t)next_random();
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+}
+
+static void fill_iq4_nl(qbs_block_iq4_nl_t *block, unsigned row,
+                        unsigned kb) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 5u + kb * 2u);
+  for (size_t i = 0; i < sizeof(block->qs); ++i)
+    block->qs[i] = (uint8_t)next_random();
+}
+
+static unsigned activation_profile_for_weight(unsigned profile) {
+  return qbs_default_activation_profile(profile);
+}
+
 static void fill_activation(qbs_block_q8_k_t *block, unsigned ctx,
                             unsigned kb) {
   uint32_t d_bits = UINT32_C(0x3e800000) + (ctx << 18) + (kb << 14);
@@ -121,11 +149,7 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
                      unsigned weight_layout, unsigned activation_layout,
                      unsigned m, unsigned n, unsigned k_blocks) {
   const size_t block_bytes = weight_block_bytes(profile);
-  const unsigned activation_profile =
-      profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-              profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-          ? QBS_ACTIVATION_PROFILE_Q8_0
-          : QBS_ACTIVATION_PROFILE_Q8_K;
+  const unsigned activation_profile = activation_profile_for_weight(profile);
   const size_t activation_block_bytes =
       qbs_activation_block_bytes(activation_profile);
   const unsigned block_elements = qbs_weight_block_elements(profile);
@@ -164,8 +188,18 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
         fill_q3((qbs_block_q3_k_t *)address, row, kb);
       else if (profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT)
         fill_q8_0_weight((qbs_block_q8_0_t *)address, row, kb);
-      else
+      else if (profile == QBS_WEIGHT_PROFILE_Q4_0)
         fill_q4_0((qbs_block_q4_0_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_Q2_K)
+        fill_q2((qbs_block_q2_k_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_Q5_0)
+        fill_q5_0((qbs_block_q5_0_t *)address, row, kb);
+      else if (profile == QBS_WEIGHT_PROFILE_IQ4_NL)
+        fill_iq4_nl((qbs_block_iq4_nl_t *)address, row, kb);
+      else {
+        fprintf(stderr, "unsupported profile %u\n", profile);
+        return 1;
+      }
     }
   }
   for (unsigned ctx = 0; ctx < m; ++ctx)
@@ -304,7 +338,7 @@ int main(int argc, char **argv) {
     perror(argv[1]);
     return 2;
   }
-  fprintf(output, "QBSCMD1 14\n");
+  fprintf(output, "QBSCMD1 22\n");
   int failed = 0;
   failed |= emit_case(output, 0, QBS_WEIGHT_PROFILE_Q4_K,
                       QBS_WEIGHT_LAYOUT_ROW_MAJOR,
@@ -350,8 +384,33 @@ int main(int argc, char **argv) {
   failed |= emit_case(output, 13, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
                       QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                       QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 4);
+  // GGML prefill tails retain R4 weights but use row-major activations.
+  failed |= emit_case(output, 14, QBS_WEIGHT_PROFILE_Q4_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 2, 3, 2);
+  failed |= emit_case(output, 15, QBS_WEIGHT_PROFILE_Q4_0,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 3, 5, 3);
+  failed |= emit_case(output, 16, QBS_WEIGHT_PROFILE_Q2_K,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 2);
+  failed |= emit_case(output, 17, QBS_WEIGHT_PROFILE_Q2_K,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 3);
+  failed |= emit_case(output, 18, QBS_WEIGHT_PROFILE_Q5_0,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 3);
+  failed |= emit_case(output, 19, QBS_WEIGHT_PROFILE_Q5_0,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 4);
+  failed |= emit_case(output, 20, QBS_WEIGHT_PROFILE_IQ4_NL,
+                      QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 5, 3);
+  failed |= emit_case(output, 21, QBS_WEIGHT_PROFILE_IQ4_NL,
+                      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 4, 7, 4);
   fclose(output);
   if (failed) return 1;
-  printf("wrote 14 QBS command cases to %s\n", argv[1]);
+  printf("wrote 22 QBS command cases to %s\n", argv[1]);
   return 0;
 }

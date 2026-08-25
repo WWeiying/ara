@@ -142,7 +142,6 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   logic signed [47:0] correction_aux [2];
 
   logic [FlatEntries-1:0] correction_pending_flat;
-  logic [FlatEntries-1:0] correction_no_affine_flat;
   logic [FlatEntries-1:0] correction_first_upper_mask;
   logic [FlatEntries-1:0] correction_first_lower_mask;
   logic [FlatEntries-1:0] correction_second_pending;
@@ -222,9 +221,6 @@ module qbs_profile_engine_int import qbs_pkg::*; (
       localparam int unsigned FlatIndex = context_index * NumStreams + stream;
       assign correction_pending_flat[FlatIndex] =
           slot_valid_q[context_index][stream];
-      assign correction_no_affine_flat[FlatIndex] =
-          slot_valid_q[context_index][stream] &&
-          !context_affine_q[context_index];
     end
   end
 
@@ -264,7 +260,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   assign correction_second_start = correction_first_index + 1'b1;
 
   always_comb begin
-    correction_second_pending = correction_no_affine_flat;
+    correction_second_pending = correction_pending_flat;
     if (correction_first_found)
       correction_second_pending[correction_first_index] = 1'b0;
 
@@ -297,7 +293,6 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   );
 
   assign correction_second_found = correction_first_found &&
-      !context_affine_q[correction_first_index[4]] &&
       (!correction_second_upper_empty || !correction_second_lower_empty);
   assign correction_second_index = !correction_second_upper_empty
       ? correction_second_upper_index : correction_second_lower_index;
@@ -330,9 +325,9 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     end
   end
 
-  // Arbitration precedes arithmetic so the implementation contains two
-  // shared correction lanes rather than one multiplier set per queued slot.
-  // Lane 1 is only selected for profiles without an affine correction.
+  // Arbitration precedes arithmetic so two shared correction lanes cover the
+  // worst-case rate of two 16-element groups per cycle. Both lanes implement
+  // affine correction because Q2_K can sustain that rate.
   always_comb begin
     correction_dot = '{default: '0};
     correction_aux = '{default: '0};
@@ -358,6 +353,11 @@ module qbs_profile_engine_int import qbs_pkg::*; (
           $signed(slot_scale_q[correction_context[1]][correction_stream[1]]);
       correction_aux[1] =
           $signed(subtotal_aux_q[correction_context[1]][correction_stream[1]]);
+      if (context_affine_q[correction_context[1]])
+        correction_aux[1] = correction_aux[1] +
+            $signed(slot_aux_q[correction_context[1]][correction_stream[1]]) *
+            $signed({1'b0,
+                slot_min_q[correction_context[1]][correction_stream[1]]});
     end
   end
 

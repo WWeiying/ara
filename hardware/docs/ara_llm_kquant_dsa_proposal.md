@@ -70,21 +70,29 @@ profile 专属部分只负责把一个完整压缩块转换成公共的 group-do
 
 ```text
 cap = ara.qbinfo(...)
+N_cap = cap.max_N if K_blocks <= cap.max_K_blocks else min(4, cap.max_N)
 for m0 in range(0, M_total, min(4, M_total - m0)):
     M_t = min(4, M_total - m0)
-    for n0 in range(0, N_total, min(cap.max_N, N_total - n0)):
-        desc = prebuilt_descriptor(profile, layouts, N_t, K_blocks,
-                                   weight_tile_base)
-        ara.qbexec vd, desc_ptr, activation_tile_base, M_t
-        for m in range(M_t):
-            standard_RVV_store(vd + m, output[m0 + m][n0 : n0 + N_t])
+    for n0 in range(0, N_total, min(N_cap, N_total - n0)):
+        partial = 0
+        for k0 in range(0, K_blocks, cap.max_K_blocks):
+            K_t = min(cap.max_K_blocks, K_blocks - k0)
+            desc = prebuilt_descriptor(profile, layouts, N_t, K_t,
+                                       weight_tile_base(n0, k0))
+            ara.qbexec vd, desc_ptr, activation_tile_base(m0, k0), M_t
+            partial += standard_RVV_read(vd, M_t, N_t)
+        standard_RVV_store(output[m0 : m0 + M_t][n0 : n0 + N_t], partial)
 ```
 
 - `M_total`、`N_total` 不受 `M_t<=4`、`N_t<=32` 限制，较大矩阵由软件平铺为多条命令；
 - K 维以 format 的 block 大小表示，K-quant 首版要求 `K % 256 == 0`，非对齐 K 由 padding
   或标准 RVV fallback 处理；
-- descriptor 编码最多表达 256 个 K-block，但实现只接受 `qbinfo` 报告的上限；首个 RTL
-  冻结为 64 个 block（`K<=16384`），覆盖当前最大 `K=8960`，更长 K 在 v1 走 RVV fallback；
+- descriptor 编码最多表达 256 个 K-block，当前 RTL 的 `qbinfo` 同样报告 256；单命令上限对
+  K-quant 是 `K<=65536`，对 32-element Q4_0/Q8_0 block 是 `K<=8192`。更长但 block-aligned
+  的 K 由 backend 分段发出合法命令并显式累加 FP32 partial，非对齐 K 仍走 padding 或 RVV
+  fallback；
+- 当前 R4 layout 的 K 子区间只在同一四行 weight group 内连续，因此软件长 K 路径把 N tile
+  限制为最多 4；这是无需新增持久化 layout 的功能覆盖方案，不代表长 K 的最终性能设计；
 - `M/N` 尾块是命令的显式有效范围，不能靠读取越界后的零值猜测；
 - `M_t` 由 `ara.qbexec` 的 2-bit 常量编码，使 dispatcher 在读取 descriptor 前就能预留
   正确的 destination group；`N_t`、profile、layout 和 K-block 数来自 descriptor；
@@ -577,8 +585,9 @@ sequencer。`ara.qbexec` 会产生 FP32 运算和 `fflags`，因此与 RVV 浮�
   scalar store 的 pending/issue 顺序，QBS 不能自行恢复该语义。
 
 一条 `ara.qbexec` 只描述一个 command tile，不描述完整模型、完整层或任意大矩阵。tensor
-数据仍在内存，较大的 `M_total/N_total` 由 GGML backend 循环发出多条命令。完整 K 维留在
-单条命令内部，是为了避免部分和跨已退休指令成为隐藏架构状态。
+数据仍在内存，较大的 `M_total/N_total` 由 GGML backend 循环发出多条命令。K 未超过
+capability 时完整留在单条命令内部；长 K 的每条分段命令各自完成并退休，partial 通过普通
+FP32 软件运算显式累加，因此不会形成跨已退休指令的隐藏 QBS 状态。
 
 不采用 `vqbset`。隐藏配置会增加 context-save ABI，而且前一条长命令在飞时还需要配置
 snapshot；把配置保存在命令自己的 immutable descriptor 中可消除这两类状态。首版 descriptor
@@ -608,7 +617,8 @@ offset 0x08, weight_base[63:0]     # virtual address
 | `activation_layout` | `A_ROW_MAJOR` | `A_M4_INTERLEAVED` | unsupported |
 
 profile/layout ID 是版本化 ABI，不复用旧 ID 表示新数学或新 byte mapping。descriptor 字段
-可以表达 256 个 K-block，但实现必须拒绝超过 capability 的值；首个 RTL 的上限为 64。
+可以表达 256 个 K-block，当前 RTL 的 capability 上限也是 256；backend 对更长 K 进行软件
+分段，绝不向硬件提交越界 descriptor。
 
 canonical stride 由 profile、layout 和 K-block 数推导；非 canonical tensor 先 repack 或走
 RVV fallback。descriptor 在命令完成前必须保持不变。实现启动时一次性复制 16 B，不在命令
@@ -1174,15 +1184,15 @@ arrays 必须按真实读取并行度 bank，并优先推断同步 memory；若�
 latch/flop 实现。profile unpack、dot tree、correction multiply 和 FP update 之间分别寄存，
 禁止形成跨四级语义的单周期路径。
 
-首版参数冻结为 `MaxM=4`、`MaxN=32`、`MaxKBlocks=64`、`DotPairs=32`、
+首版参数冻结为 `MaxM=4`、`MaxN=32`、`MaxKBlocks=256`、`DotPairs=32`、
 `ReadOutstanding=2`。后续可以综合/性能 sweep `DotPairs`、buffer 和 outstanding，但不得
 改变 ISA/descriptor。软件 32-row repack 只是 RVV baseline；QBS 使用字节数不变的 R4
 offline repack，并单独报告一次性转换成本和尾行 padding。
 
 最大合法 Q6 命令的原生输入量为
-`32*64*210 + 4*64*292 + 16 = 504848 B`，有效 pair 数为
-`4*32*64*256 = 2097152`。因此在 8 B/cycle 持续读带宽和 32 pair/cycle 下，纯读与纯 dot
-下界分别约 63.1k 和 65.5k cycles；实际 QBS-Full 可部分重叠二者，但还需计入 activation
+`32*256*210 + 4*256*292 + 16 = 2019344 B`，有效 pair 数为
+`4*32*256*256 = 8388608`。因此在 8 B/cycle 持续读带宽和 32 pair/cycle 下，纯读与纯 dot
+下界分别约 252.4k 和 262.1k cycles；实际 QBS-Full 可部分重叠二者，但还需计入 activation
 切换、correction、FP update、commit 和 memory stall。该计算用于给 watchdog、interrupt
 latency 测量和性能 sanity check 定量边界，不是固定周期承诺。
 
@@ -1447,7 +1457,7 @@ weight profile : Q4_K, Q6_K
 layout          : W_ROW_MAJOR, W_R4_BLOCK_MAJOR; A_ROW_MAJOR, A_M4_INTERLEAVED(M=4)
 M               : 1, 2, 3, 4
 N               : 1, 3, 4, 31, 32
-K_blocks        : 1, 2, 6, 35, 64
+K_blocks        : 1, 2, 6, 35, 64, 256
 address         : aligned, beat-misaligned, page-tail
 ```
 

@@ -60,6 +60,33 @@ _Static_assert(offsetof(qbs_block_q4_0_t, d) == 0,
 _Static_assert(offsetof(qbs_block_q4_0_t, qs) == 2,
                "invalid Q4_0 payload offset");
 
+_Static_assert(sizeof(qbs_block_q2_k_t) == QBS_Q2_K_BLOCK_BYTES,
+               "invalid Q2_K block size");
+_Static_assert(offsetof(qbs_block_q2_k_t, scales) == 0,
+               "invalid Q2_K scales offset");
+_Static_assert(offsetof(qbs_block_q2_k_t, qs) == 16,
+               "invalid Q2_K payload offset");
+_Static_assert(offsetof(qbs_block_q2_k_t, d) == 80,
+               "invalid Q2_K d offset");
+_Static_assert(offsetof(qbs_block_q2_k_t, dmin) == 82,
+               "invalid Q2_K dmin offset");
+
+_Static_assert(sizeof(qbs_block_q5_0_t) == QBS_Q5_0_BLOCK_BYTES,
+               "invalid Q5_0 block size");
+_Static_assert(offsetof(qbs_block_q5_0_t, d) == 0,
+               "invalid Q5_0 d offset");
+_Static_assert(offsetof(qbs_block_q5_0_t, qh) == 2,
+               "invalid Q5_0 high-plane offset");
+_Static_assert(offsetof(qbs_block_q5_0_t, qs) == 6,
+               "invalid Q5_0 low-plane offset");
+
+_Static_assert(sizeof(qbs_block_iq4_nl_t) == QBS_IQ4_NL_BLOCK_BYTES,
+               "invalid IQ4_NL block size");
+_Static_assert(offsetof(qbs_block_iq4_nl_t, d) == 0,
+               "invalid IQ4_NL d offset");
+_Static_assert(offsetof(qbs_block_iq4_nl_t, qs) == 2,
+               "invalid IQ4_NL payload offset");
+
 _Static_assert(sizeof(qbs_block_q8_k_t) == QBS_Q8_K_BLOCK_BYTES,
                "invalid Q8_K block size");
 _Static_assert(offsetof(qbs_block_q8_k_t, d) == 0, "invalid Q8_K d offset");
@@ -575,6 +602,44 @@ void qbs_ref_decode_q8_0(const qbs_block_q8_0_t *block, int8_t values[32]) {
   memcpy(values, block->qs, sizeof(block->qs));
 }
 
+void qbs_ref_decode_q2_k(const qbs_block_q2_k_t *block, int8_t values[256],
+                         uint8_t scales[16], uint8_t mins[16]) {
+  for (unsigned group = 0; group < 16; ++group) {
+    scales[group] = block->scales[group] & 0x0fu;
+    mins[group] = block->scales[group] >> 4;
+  }
+  for (unsigned element = 0; element < QBS_Q2_K_BLOCK_ELEMENTS; ++element) {
+    const unsigned half = element / 128u;
+    const unsigned subgroup = (element % 128u) / 16u;
+    const unsigned lane = element % 16u;
+    const unsigned byte = half * 32u + (subgroup & 1u) * 16u + lane;
+    const unsigned shift = 2u * (subgroup / 2u);
+    values[element] = (int8_t)((block->qs[byte] >> shift) & 0x03u);
+  }
+}
+
+void qbs_ref_decode_q5_0(const qbs_block_q5_0_t *block, int8_t values[32]) {
+  for (unsigned element = 0; element < QBS_Q5_0_BLOCK_ELEMENTS; ++element) {
+    const uint8_t packed = block->qs[element % 16u];
+    const unsigned low = element < 16u ? packed & 0x0fu : packed >> 4;
+    const unsigned high = (block->qh[element / 8u] >> (element % 8u)) & 1u;
+    values[element] = (int8_t)(low | (high << 4)) - 16;
+  }
+}
+
+void qbs_ref_decode_iq4_nl(const qbs_block_iq4_nl_t *block,
+                           int8_t values[32]) {
+  static const int8_t table[16] = {
+      -127, -104, -83, -65, -49, -35, -22, -10,
+         1,   13,  25,  38,  53,  69,  89, 113,
+  };
+  for (unsigned element = 0; element < QBS_IQ4_NL_BLOCK_ELEMENTS; ++element) {
+    const uint8_t packed = block->qs[element % 16u];
+    const unsigned index = element < 16u ? packed & 0x0fu : packed >> 4;
+    values[element] = table[index];
+  }
+}
+
 static void read_activation_block(unsigned profile, unsigned layout,
                                   const void *data, unsigned context,
                                   unsigned block, unsigned k_blocks,
@@ -865,20 +930,87 @@ static qbs_ref_status_t accumulate_q3(
   return QBS_REF_OK;
 }
 
-static qbs_ref_status_t accumulate_q4_0(
-    const qbs_block_q4_0_t *weight, const qbs_block_q8_0_t *activation,
+static qbs_ref_status_t accumulate_q2(
+    const qbs_block_q2_k_t *weight, const qbs_block_q8_k_t *activation,
     unsigned context, unsigned output, unsigned block, float *accumulator,
     qbs_trace_callback_t callback, void *opaque) {
-  int8_t values[QBS_Q4_0_BLOCK_ELEMENTS];
-  qbs_ref_decode_q4_0(weight, values);
+  int8_t values[256];
+  uint8_t scales[16];
+  uint8_t mins[16];
+  qbs_ref_decode_q2_k(weight, values, scales, mins);
+  int64_t block_dot = 0;
+  int64_t block_min = 0;
+  for (unsigned group = 0; group < 16; ++group) {
+    int32_t group_dot = 0;
+    for (unsigned item = 0; item < 16; ++item) {
+      const unsigned element = group * 16u + item;
+      group_dot += (int32_t)values[element] * activation->qs[element];
+    }
+    const int32_t group_bsum = activation->bsums[group];
+    block_dot += (int64_t)scales[group] * group_dot;
+    block_min += (int64_t)mins[group] * group_bsum;
+    if (callback != NULL) {
+      const qbs_trace_event_t event = {
+          .kind = QBS_TRACE_GROUP,
+          .weight_profile = QBS_WEIGHT_PROFILE_Q2_K,
+          .context = (uint8_t)context,
+          .output = (uint8_t)output,
+          .group = (uint8_t)group,
+          .k_block = (uint16_t)block,
+          .group_dot = group_dot,
+          .group_aux = group_bsum,
+          .group_scale = scales[group],
+          .group_min = mins[group],
+      };
+      callback(&event, opaque);
+    }
+  }
+
+  int32_t integer_dot;
+  int32_t integer_min;
+  if (!i64_to_i32(block_dot, &integer_dot) ||
+      !i64_to_i32(block_min, &integer_min))
+    return QBS_REF_INTEGER_OVERFLOW;
+
+  const float before = *accumulator;
+  const float dot_f = rounded_i32_to_f32(integer_dot);
+  const float min_f = rounded_i32_to_f32(integer_min);
+  const float sd =
+      rounded_mul(qbs_ref_fp16_to_fp32(weight->d), activation->d);
+  const float sm =
+      rounded_mul(qbs_ref_fp16_to_fp32(weight->dmin), activation->d);
+  const float positive = fmaf(sd, dot_f, before);
+  *accumulator = fmaf(-sm, min_f, positive);
+  if (callback != NULL) {
+    const qbs_trace_event_t event = {
+        .kind = QBS_TRACE_BLOCK,
+        .weight_profile = QBS_WEIGHT_PROFILE_Q2_K,
+        .context = (uint8_t)context,
+        .output = (uint8_t)output,
+        .k_block = (uint16_t)block,
+        .block_dot = integer_dot,
+        .block_aux = integer_min,
+        .accumulator_before = before,
+        .accumulator_after = *accumulator,
+    };
+    callback(&event, opaque);
+  }
+  return QBS_REF_OK;
+}
+
+static qbs_ref_status_t accumulate_scaled_block32(
+    unsigned profile, qbs_fp16_t weight_d, const int8_t values[32],
+    const qbs_block_q8_0_t *activation, unsigned context, unsigned output,
+    unsigned block, float *accumulator, qbs_trace_callback_t callback,
+    void *opaque) {
   int32_t integer_dot = 0;
-  for (unsigned element = 0; element < QBS_Q4_0_BLOCK_ELEMENTS; ++element)
+  for (unsigned element = 0; element < 32; ++element)
     integer_dot += (int32_t)values[element] * activation->qs[element];
 
   if (callback != NULL) {
     const qbs_trace_event_t group_event = {
         .kind = QBS_TRACE_GROUP,
-        .weight_profile = QBS_WEIGHT_PROFILE_Q4_0,
+        .weight_profile = (uint8_t)profile,
         .context = (uint8_t)context,
         .output = (uint8_t)output,
         .group = 0,
@@ -891,13 +1023,13 @@ static qbs_ref_status_t accumulate_q4_0(
 
   const float before = *accumulator;
   const float dot_f = rounded_i32_to_f32(integer_dot);
-  const float sd = rounded_mul(qbs_ref_fp16_to_fp32(weight->d),
+  const float sd = rounded_mul(qbs_ref_fp16_to_fp32(weight_d),
                                qbs_ref_fp16_to_fp32(activation->d));
   *accumulator = fmaf(sd, dot_f, before);
   if (callback != NULL) {
     const qbs_trace_event_t block_event = {
         .kind = QBS_TRACE_BLOCK,
-        .weight_profile = QBS_WEIGHT_PROFILE_Q4_0,
+        .weight_profile = (uint8_t)profile,
         .context = (uint8_t)context,
         .output = (uint8_t)output,
         .k_block = (uint16_t)block,
@@ -908,6 +1040,39 @@ static qbs_ref_status_t accumulate_q4_0(
     callback(&block_event, opaque);
   }
   return QBS_REF_OK;
+}
+
+static qbs_ref_status_t accumulate_q4_0(
+    const qbs_block_q4_0_t *weight, const qbs_block_q8_0_t *activation,
+    unsigned context, unsigned output, unsigned block, float *accumulator,
+    qbs_trace_callback_t callback, void *opaque) {
+  int8_t values[QBS_Q4_0_BLOCK_ELEMENTS];
+  qbs_ref_decode_q4_0(weight, values);
+  return accumulate_scaled_block32(
+      QBS_WEIGHT_PROFILE_Q4_0, weight->d, values, activation, context, output,
+      block, accumulator, callback, opaque);
+}
+
+static qbs_ref_status_t accumulate_q5_0(
+    const qbs_block_q5_0_t *weight, const qbs_block_q8_0_t *activation,
+    unsigned context, unsigned output, unsigned block, float *accumulator,
+    qbs_trace_callback_t callback, void *opaque) {
+  int8_t values[QBS_Q5_0_BLOCK_ELEMENTS];
+  qbs_ref_decode_q5_0(weight, values);
+  return accumulate_scaled_block32(
+      QBS_WEIGHT_PROFILE_Q5_0, weight->d, values, activation, context, output,
+      block, accumulator, callback, opaque);
+}
+
+static qbs_ref_status_t accumulate_iq4_nl(
+    const qbs_block_iq4_nl_t *weight, const qbs_block_q8_0_t *activation,
+    unsigned context, unsigned output, unsigned block, float *accumulator,
+    qbs_trace_callback_t callback, void *opaque) {
+  int8_t values[QBS_IQ4_NL_BLOCK_ELEMENTS];
+  qbs_ref_decode_iq4_nl(weight, values);
+  return accumulate_scaled_block32(
+      QBS_WEIGHT_PROFILE_IQ4_NL, weight->d, values, activation, context,
+      output, block, accumulator, callback, opaque);
 }
 
 static qbs_ref_status_t accumulate_q8_0(
@@ -1062,6 +1227,18 @@ qbs_ref_status_t qbs_ref_execute(
               output, block, accumulator, trace_callback, trace_opaque);
           if (status != QBS_REF_OK) goto done;
         }
+      } else if (fields.weight_profile == QBS_WEIGHT_PROFILE_Q2_K) {
+        qbs_block_q2_k_t weight;
+        memcpy(&weight, address, sizeof(weight));
+        for (unsigned context = 0; context < m; ++context) {
+          float *accumulator =
+              &pending_destination[(size_t)context * elements_per_register +
+                                   output];
+          status = accumulate_q2(
+              &weight, (const qbs_block_q8_k_t *)activation[context], context,
+              output, block, accumulator, trace_callback, trace_opaque);
+          if (status != QBS_REF_OK) goto done;
+        }
       } else if (fields.weight_profile ==
                  QBS_WEIGHT_PROFILE_Q8_0_WEIGHT) {
         qbs_block_q8_0_t weight;
@@ -1071,6 +1248,30 @@ qbs_ref_status_t qbs_ref_execute(
               &pending_destination[(size_t)context * elements_per_register +
                                    output];
           status = accumulate_q8_0(
+              &weight, (const qbs_block_q8_0_t *)activation[context], context,
+              output, block, accumulator, trace_callback, trace_opaque);
+          if (status != QBS_REF_OK) goto done;
+        }
+      } else if (fields.weight_profile == QBS_WEIGHT_PROFILE_Q5_0) {
+        qbs_block_q5_0_t weight;
+        memcpy(&weight, address, sizeof(weight));
+        for (unsigned context = 0; context < m; ++context) {
+          float *accumulator =
+              &pending_destination[(size_t)context * elements_per_register +
+                                   output];
+          status = accumulate_q5_0(
+              &weight, (const qbs_block_q8_0_t *)activation[context], context,
+              output, block, accumulator, trace_callback, trace_opaque);
+          if (status != QBS_REF_OK) goto done;
+        }
+      } else if (fields.weight_profile == QBS_WEIGHT_PROFILE_IQ4_NL) {
+        qbs_block_iq4_nl_t weight;
+        memcpy(&weight, address, sizeof(weight));
+        for (unsigned context = 0; context < m; ++context) {
+          float *accumulator =
+              &pending_destination[(size_t)context * elements_per_register +
+                                   output];
+          status = accumulate_iq4_nl(
               &weight, (const qbs_block_q8_0_t *)activation[context], context,
               output, block, accumulator, trace_callback, trace_opaque);
           if (status != QBS_REF_OK) goto done;

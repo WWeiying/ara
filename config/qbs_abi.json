@@ -80,6 +80,36 @@
       "scale_format": "FP16",
       "correction_mode": "NONE",
       "activation_profiles": ["Q8_0"]
+    },
+    "Q2_K": {
+      "id": 7,
+      "block_bytes": 84,
+      "block_elements": 256,
+      "subgroup_count": 16,
+      "subgroup_elements": 16,
+      "scale_format": "FP16",
+      "correction_mode": "AFFINE_MIN",
+      "activation_profiles": ["Q8_K"]
+    },
+    "Q5_0": {
+      "id": 8,
+      "block_bytes": 22,
+      "block_elements": 32,
+      "subgroup_count": 1,
+      "subgroup_elements": 32,
+      "scale_format": "FP16",
+      "correction_mode": "NONE",
+      "activation_profiles": ["Q8_0"]
+    },
+    "IQ4_NL": {
+      "id": 9,
+      "block_bytes": 18,
+      "block_elements": 32,
+      "subgroup_count": 1,
+      "subgroup_elements": 32,
+      "scale_format": "FP16",
+      "correction_mode": "NONE",
+      "activation_profiles": ["Q8_0"]
     }
   },
   "activation_profiles": {

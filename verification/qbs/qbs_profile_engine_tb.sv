@@ -327,11 +327,8 @@ module qbs_profile_engine_tb;
       start_profile = qbs_weight_profile_e'(profile);
       uops_per_output = qbs_weight_correction_mode(start_profile) ==
           QBS_CORRECTION_AFFINE_MIN ? 6 : 3;
-      start_activation_profile =
-          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-              ? QBS_ACTIVATION_PROFILE_Q8_0
-              : QBS_ACTIVATION_PROFILE_Q8_K;
+      start_activation_profile = qbs_default_activation_profile(
+          qbs_weight_profile_e'(profile));
       start_m = m[2:0];
       start_rows = rows[2:0];
       @(negedge clk);

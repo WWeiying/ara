@@ -421,6 +421,69 @@ static void test_q8_0_decode(void) {
   CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
 }
 
+static void test_q2_decode(void) {
+  qbs_block_q2_k_t block;
+  memset(&block, 0, sizeof(block));
+  for (unsigned group = 0; group < 16; ++group)
+    block.scales[group] = (uint8_t)(group | ((15u - group) << 4));
+  int8_t expected[QBS_Q2_K_BLOCK_ELEMENTS];
+  for (unsigned element = 0; element < QBS_Q2_K_BLOCK_ELEMENTS; ++element) {
+    const unsigned value = (element * 3u + element / 16u) & 3u;
+    const unsigned half = element / 128u;
+    const unsigned subgroup = (element % 128u) / 16u;
+    const unsigned lane = element % 16u;
+    const unsigned byte = half * 32u + (subgroup & 1u) * 16u + lane;
+    const unsigned shift = 2u * (subgroup / 2u);
+    block.qs[byte] |= (uint8_t)(value << shift);
+    expected[element] = (int8_t)value;
+  }
+  int8_t actual[QBS_Q2_K_BLOCK_ELEMENTS];
+  uint8_t scales[16];
+  uint8_t mins[16];
+  qbs_ref_decode_q2_k(&block, actual, scales, mins);
+  CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
+  for (unsigned group = 0; group < 16; ++group) {
+    CHECK(scales[group] == group);
+    CHECK(mins[group] == 15u - group);
+  }
+}
+
+static void test_q5_0_decode(void) {
+  qbs_block_q5_0_t block;
+  memset(&block, 0, sizeof(block));
+  int8_t expected[QBS_Q5_0_BLOCK_ELEMENTS];
+  for (unsigned element = 0; element < QBS_Q5_0_BLOCK_ELEMENTS; ++element) {
+    const unsigned raw = (element * 13u + 7u) & 0x1fu;
+    const unsigned byte = element % 16u;
+    if (element < 16)
+      block.qs[byte] |= (uint8_t)(raw & 0x0fu);
+    else
+      block.qs[byte] |= (uint8_t)((raw & 0x0fu) << 4);
+    block.qh[element / 8u] |=
+        (uint8_t)(((raw >> 4) & 1u) << (element % 8u));
+    expected[element] = (int8_t)raw - 16;
+  }
+  int8_t actual[QBS_Q5_0_BLOCK_ELEMENTS];
+  qbs_ref_decode_q5_0(&block, actual);
+  CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
+}
+
+static void test_iq4_nl_decode(void) {
+  static const int8_t table[16] = {
+      -127, -104, -83, -65, -49, -35, -22, -10,
+         1,   13,  25,  38,  53,  69,  89, 113,
+  };
+  qbs_block_iq4_nl_t block = {.d = UINT16_C(0x3c00)};
+  for (unsigned index = 0; index < 16; ++index)
+    block.qs[index] = (uint8_t)(index | ((15u - index) << 4));
+  int8_t values[QBS_IQ4_NL_BLOCK_ELEMENTS];
+  qbs_ref_decode_iq4_nl(&block, values);
+  for (unsigned index = 0; index < 16; ++index) {
+    CHECK(values[index] == table[index]);
+    CHECK(values[index + 16] == table[15u - index]);
+  }
+}
+
 static void fill_q4_one(qbs_block_q4_k_t *block) {
   memset(block, 0, sizeof(*block));
   block->d = UINT16_C(0x3c00);
@@ -456,6 +519,14 @@ static void fill_q3_one(qbs_block_q3_k_t *block) {
   block->d = UINT16_C(0x3c00);
 }
 
+static void fill_q2_one(qbs_block_q2_k_t *block) {
+  memset(block, 0, sizeof(*block));
+  memset(block->scales, 0x11, sizeof(block->scales));
+  memset(block->qs, 0x55, sizeof(block->qs));
+  block->d = UINT16_C(0x3c00);
+  block->dmin = UINT16_C(0x3800);
+}
+
 static void fill_activations(qbs_block_q8_k_t *blocks, unsigned k_blocks) {
   for (unsigned context = 0; context < 4; ++context) {
     for (unsigned block = 0; block < k_blocks; ++block) {
@@ -482,6 +553,8 @@ static void test_profile_execution(unsigned profile) {
         fill_q5_one((qbs_block_q5_k_t *)(void *)address);
       } else if (profile == QBS_WEIGHT_PROFILE_Q3_K) {
         fill_q3_one((qbs_block_q3_k_t *)(void *)address);
+      } else if (profile == QBS_WEIGHT_PROFILE_Q2_K) {
+        fill_q2_one((qbs_block_q2_k_t *)(void *)address);
       } else {
         fill_q6_one((qbs_block_q6_k_t *)(void *)address);
       }
@@ -606,6 +679,16 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
         qbs_block_q4_0_t *weight = (qbs_block_q4_0_t *)(void *)address;
         weight->d = UINT16_C(0x3c00);
         memset(weight->qs, 0x99, sizeof(weight->qs));
+      } else if (weight_profile == QBS_WEIGHT_PROFILE_Q5_0) {
+        qbs_block_q5_0_t *weight = (qbs_block_q5_0_t *)(void *)address;
+        weight->d = UINT16_C(0x3c00);
+        memset(weight->qh, 0xff, sizeof(weight->qh));
+        memset(weight->qs, 0x11, sizeof(weight->qs));
+      } else if (weight_profile == QBS_WEIGHT_PROFILE_IQ4_NL) {
+        qbs_block_iq4_nl_t *weight =
+            (qbs_block_iq4_nl_t *)(void *)address;
+        weight->d = UINT16_C(0x3c00);
+        memset(weight->qs, 0x88, sizeof(weight->qs));
       } else {
         qbs_block_q8_0_t *weight = (qbs_block_q8_0_t *)(void *)address;
         weight->d = UINT16_C(0x3c00);
@@ -702,12 +785,18 @@ int main(void) {
   test_q3_decode();
   test_q4_0_decode();
   test_q8_0_decode();
+  test_q2_decode();
+  test_q5_0_decode();
+  test_iq4_nl_decode();
   test_profile_execution(QBS_WEIGHT_PROFILE_Q4_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q5_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q6_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q3_K);
+  test_profile_execution(QBS_WEIGHT_PROFILE_Q2_K);
   test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_Q4_0);
   test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_Q8_0_WEIGHT);
+  test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_Q5_0);
+  test_q8_0_activation_execution(QBS_WEIGHT_PROFILE_IQ4_NL);
   if (failures != 0) {
     fprintf(stderr, "qbs_ref_test: %u failure(s)\n", failures);
     return EXIT_FAILURE;

@@ -47,6 +47,24 @@ typedef struct {
 } qbs_block_q4_0_t;
 
 typedef struct {
+  uint8_t scales[16];
+  uint8_t qs[64];
+  qbs_fp16_t d;
+  qbs_fp16_t dmin;
+} qbs_block_q2_k_t;
+
+typedef struct {
+  qbs_fp16_t d;
+  uint8_t qh[4];
+  uint8_t qs[16];
+} qbs_block_q5_0_t;
+
+typedef struct {
+  qbs_fp16_t d;
+  uint8_t qs[16];
+} qbs_block_iq4_nl_t;
+
+typedef struct {
   float d;
   int8_t qs[256];
   int16_t bsums[16];
@@ -168,6 +186,11 @@ void qbs_ref_decode_q3_k(const qbs_block_q3_k_t *block, int8_t values[256],
                          int8_t scales[16]);
 void qbs_ref_decode_q8_0(const qbs_block_q8_0_t *block, int8_t values[32]);
 void qbs_ref_decode_q4_0(const qbs_block_q4_0_t *block, int8_t values[32]);
+void qbs_ref_decode_q2_k(const qbs_block_q2_k_t *block, int8_t values[256],
+                         uint8_t scales[16], uint8_t mins[16]);
+void qbs_ref_decode_q5_0(const qbs_block_q5_0_t *block, int8_t values[32]);
+void qbs_ref_decode_iq4_nl(const qbs_block_iq4_nl_t *block,
+                           int8_t values[32]);
 
 qbs_ref_status_t qbs_ref_execute(
     const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,

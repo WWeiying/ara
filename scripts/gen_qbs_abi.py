@@ -218,6 +218,20 @@ def c_compatibility_switch(spec: dict) -> str:
     return "\n".join(lines)
 
 
+def c_default_activation_switch(spec: dict) -> str:
+    lines = ["  switch (weight_profile) {"]
+    for name, profile in spec["weight_profiles"].items():
+        activation_name = profile["activation_profiles"][0]
+        lines.append(
+            f"    case {profile_const('WEIGHT', name)}: return "
+            f"{profile_const('ACTIVATION', activation_name)};")
+    lines.extend([
+        "    default: return QBS_ACTIVATION_PROFILE_INVALID;",
+        "  }",
+    ])
+    return "\n".join(lines)
+
+
 def c_capability_cases(spec: dict) -> str:
     lines = []
     for name, profile in spec["weight_profiles"].items():
@@ -393,6 +407,11 @@ static inline unsigned qbs_activation_aux_element_bytes(unsigned profile) {{
 static inline int qbs_profiles_compatible(unsigned weight_profile,
                                           unsigned activation_profile) {{
 {c_compatibility_switch(spec)}
+}}
+
+static inline qbs_activation_profile_t qbs_default_activation_profile(
+    unsigned weight_profile) {{
+{c_default_activation_switch(spec)}
 }}
 
 static inline uint64_t qbs_pack_descriptor_header(
@@ -600,6 +619,29 @@ def sv_compatibility_function(spec: dict) -> str:
     return "\n".join(lines)
 
 
+def sv_default_activation_function(spec: dict) -> str:
+    lines = [
+        "  function automatic qbs_activation_profile_e",
+        "      qbs_default_activation_profile(",
+        "          input qbs_weight_profile_e weight_profile",
+        "      );",
+        "    qbs_default_activation_profile = QBS_ACTIVATION_PROFILE_INVALID;",
+        "    unique case (weight_profile)",
+    ]
+    for name, profile in spec["weight_profiles"].items():
+        activation_name = profile["activation_profiles"][0]
+        lines.append(
+            f"      {profile_const('WEIGHT', name)}: "
+            f"qbs_default_activation_profile = "
+            f"{profile_const('ACTIVATION', activation_name)};")
+    lines.extend([
+        "      default: ;",
+        "    endcase",
+        "  endfunction : qbs_default_activation_profile",
+    ])
+    return "\n".join(lines)
+
+
 def sv_capability_cases(spec: dict) -> str:
     lines = []
     for name, profile in spec["weight_profiles"].items():
@@ -771,6 +813,8 @@ package qbs_pkg;
 {sv_switch_function(spec, 'activation', 'aux_element_bytes', 'qbs_activation_aux_element_bytes', 'qbs_activation_profile_e')}
 
 {sv_compatibility_function(spec)}
+
+{sv_default_activation_function(spec)}
 
   function automatic logic [63:0] qbs_capability_word(
       input logic [63:0] index,

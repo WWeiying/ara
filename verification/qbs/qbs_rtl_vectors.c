@@ -17,6 +17,9 @@ typedef union {
   qbs_block_q3_k_t q3[4];
   qbs_block_q8_0_t q8_0_weight[4];
   qbs_block_q4_0_t q4_0[4];
+  qbs_block_q2_k_t q2[4];
+  qbs_block_q5_0_t q5_0[4];
+  qbs_block_iq4_nl_t iq4_nl[4];
   uint8_t bytes[4 * QBS_MAX_WEIGHT_BLOCK_BYTES];
 } weight_storage_t;
 
@@ -242,11 +245,68 @@ static void set_q8_0_weight_pattern(qbs_block_q8_0_t *block,
   }
 }
 
+static void set_q2_pattern(qbs_block_q2_k_t *block, unsigned pattern,
+                           unsigned row, unsigned case_id) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3400) + row * 0x40u + case_id);
+  block->dmin =
+      (qbs_fp16_t)(UINT16_C(0x3000) + row * 0x20u + case_id);
+  for (unsigned i = 0; i < sizeof(block->scales); ++i) {
+    if (pattern == PATTERN_ZERO)
+      block->scales[i] = 0;
+    else if (pattern == PATTERN_EDGE)
+      block->scales[i] = 0xffu;
+    else
+      block->scales[i] = (uint8_t)next_random();
+  }
+  for (unsigned i = 0; i < sizeof(block->qs); ++i) {
+    if (pattern == PATTERN_ZERO)
+      block->qs[i] = 0;
+    else if (pattern == PATTERN_EDGE)
+      block->qs[i] = (i & 1u) != 0 ? 0xffu : 0;
+    else
+      block->qs[i] = (uint8_t)next_random();
+  }
+}
+
+static void set_q5_0_pattern(qbs_block_q5_0_t *block, unsigned pattern,
+                             unsigned row, unsigned case_id) {
+  block->d = (qbs_fp16_t)(UINT16_C(0x3800) + row * 0x40u + case_id);
+  for (unsigned i = 0; i < sizeof(block->qh); ++i) {
+    if (pattern == PATTERN_ZERO)
+      block->qh[i] = 0xffu;
+    else if (pattern == PATTERN_EDGE)
+      block->qh[i] = (i & 1u) != 0 ? 0xffu : 0;
+    else
+      block->qh[i] = (uint8_t)next_random();
+  }
+  for (unsigned i = 0; i < sizeof(block->qs); ++i) {
+    if (pattern == PATTERN_ZERO)
+      block->qs[i] = 0;
+    else if (pattern == PATTERN_EDGE)
+      block->qs[i] = (i & 1u) != 0 ? 0xffu : 0;
+    else
+      block->qs[i] = (uint8_t)next_random();
+  }
+}
+
+static void set_iq4_nl_pattern(qbs_block_iq4_nl_t *block,
+                               unsigned pattern, unsigned row,
+                               unsigned case_id) {
+  block->d = pattern == PATTERN_ZERO
+                 ? 0
+                 : (qbs_fp16_t)(UINT16_C(0x3800) + row * 0x40u + case_id);
+  for (unsigned i = 0; i < sizeof(block->qs); ++i) {
+    if (pattern == PATTERN_ZERO)
+      block->qs[i] = 0x88u;
+    else if (pattern == PATTERN_EDGE)
+      block->qs[i] = (i & 1u) != 0 ? 0xf0u : 0x0fu;
+    else
+      block->qs[i] = (uint8_t)next_random();
+  }
+}
+
 static unsigned activation_profile_for_weight(unsigned profile) {
-  return profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-                 profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-             ? QBS_ACTIVATION_PROFILE_Q8_0
-             : QBS_ACTIVATION_PROFILE_Q8_K;
+  return qbs_default_activation_profile(profile);
 }
 
 static uint8_t *weight_block(weight_storage_t *storage, unsigned profile,
@@ -264,8 +324,41 @@ static uint8_t *weight_block(weight_storage_t *storage, unsigned profile,
       return (uint8_t *)&storage->q8_0_weight[row];
     case QBS_WEIGHT_PROFILE_Q4_0:
       return (uint8_t *)&storage->q4_0[row];
+    case QBS_WEIGHT_PROFILE_Q2_K:
+      return (uint8_t *)&storage->q2[row];
+    case QBS_WEIGHT_PROFILE_Q5_0:
+      return (uint8_t *)&storage->q5_0[row];
+    case QBS_WEIGHT_PROFILE_IQ4_NL:
+      return (uint8_t *)&storage->iq4_nl[row];
     default:
       return NULL;
+  }
+}
+
+static unsigned weight_scale(const weight_storage_t *storage,
+                             unsigned profile, unsigned row) {
+  switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q4_K: return storage->q4[row].d;
+    case QBS_WEIGHT_PROFILE_Q5_K: return storage->q5[row].d;
+    case QBS_WEIGHT_PROFILE_Q6_K: return storage->q6[row].d;
+    case QBS_WEIGHT_PROFILE_Q3_K: return storage->q3[row].d;
+    case QBS_WEIGHT_PROFILE_Q8_0_WEIGHT:
+      return storage->q8_0_weight[row].d;
+    case QBS_WEIGHT_PROFILE_Q4_0: return storage->q4_0[row].d;
+    case QBS_WEIGHT_PROFILE_Q2_K: return storage->q2[row].d;
+    case QBS_WEIGHT_PROFILE_Q5_0: return storage->q5_0[row].d;
+    case QBS_WEIGHT_PROFILE_IQ4_NL: return storage->iq4_nl[row].d;
+    default: return 0;
+  }
+}
+
+static unsigned weight_min_scale(const weight_storage_t *storage,
+                                 unsigned profile, unsigned row) {
+  switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q4_K: return storage->q4[row].dmin;
+    case QBS_WEIGHT_PROFILE_Q5_K: return storage->q5[row].dmin;
+    case QBS_WEIGHT_PROFILE_Q2_K: return storage->q2[row].dmin;
+    default: return 0;
   }
 }
 
@@ -305,8 +398,8 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
   uint8_t repeated_activations[4 * 2 * QBS_MAX_ACTIVATION_BLOCK_BYTES];
   int8_t decoded_weight[4][256];
   int8_t decoded_activation[4][256];
-  uint8_t q4_scales[8];
-  uint8_t q4_mins[8];
+  uint8_t unsigned_scales[16];
+  uint8_t unsigned_mins[16];
   int8_t q6_scales[16];
   trace_expected_t expected;
   trace_expected_t repeated_expected;
@@ -326,12 +419,12 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
   for (unsigned row = 0; row < rows; ++row) {
     if (profile == QBS_WEIGHT_PROFILE_Q4_K) {
       set_q4_pattern(&weights.q4[row], pattern, row, case_id);
-      qbs_ref_decode_q4_k(&weights.q4[row], decoded_weight[row], q4_scales,
-                          q4_mins);
+      qbs_ref_decode_q4_k(&weights.q4[row], decoded_weight[row],
+                          unsigned_scales, unsigned_mins);
     } else if (profile == QBS_WEIGHT_PROFILE_Q5_K) {
       set_q5_pattern(&weights.q5[row], pattern, row, case_id);
-      qbs_ref_decode_q5_k(&weights.q5[row], decoded_weight[row], q4_scales,
-                          q4_mins);
+      qbs_ref_decode_q5_k(&weights.q5[row], decoded_weight[row],
+                          unsigned_scales, unsigned_mins);
     } else if (profile == QBS_WEIGHT_PROFILE_Q6_K) {
       set_q6_pattern(&weights.q6[row], pattern, row, case_id);
       qbs_ref_decode_q6_k(&weights.q6[row], decoded_weight[row], q6_scales);
@@ -342,9 +435,21 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
       set_q8_0_weight_pattern(&weights.q8_0_weight[row], pattern, row,
                               case_id);
       qbs_ref_decode_q8_0(&weights.q8_0_weight[row], decoded_weight[row]);
-    } else {
+    } else if (profile == QBS_WEIGHT_PROFILE_Q4_0) {
       set_q4_0_pattern(&weights.q4_0[row], pattern, row, case_id);
       qbs_ref_decode_q4_0(&weights.q4_0[row], decoded_weight[row]);
+    } else if (profile == QBS_WEIGHT_PROFILE_Q2_K) {
+      set_q2_pattern(&weights.q2[row], pattern, row, case_id);
+      qbs_ref_decode_q2_k(&weights.q2[row], decoded_weight[row],
+                          unsigned_scales, unsigned_mins);
+    } else if (profile == QBS_WEIGHT_PROFILE_Q5_0) {
+      set_q5_0_pattern(&weights.q5_0[row], pattern, row, case_id);
+      qbs_ref_decode_q5_0(&weights.q5_0[row], decoded_weight[row]);
+    } else if (profile == QBS_WEIGHT_PROFILE_IQ4_NL) {
+      set_iq4_nl_pattern(&weights.iq4_nl[row], pattern, row, case_id);
+      qbs_ref_decode_iq4_nl(&weights.iq4_nl[row], decoded_weight[row]);
+    } else {
+      return 1;
     }
   }
   const unsigned activation_profile = activation_profile_for_weight(profile);
@@ -471,22 +576,8 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
               stream);
       return 1;
     }
-    const unsigned weight_d = profile == QBS_WEIGHT_PROFILE_Q4_K
-                                  ? weights.q4[row].d
-                              : profile == QBS_WEIGHT_PROFILE_Q5_K
-                                  ? weights.q5[row].d
-                              : profile == QBS_WEIGHT_PROFILE_Q6_K
-                                  ? weights.q6[row].d
-                              : profile == QBS_WEIGHT_PROFILE_Q3_K
-                                  ? weights.q3[row].d
-                              : profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-                                  ? weights.q8_0_weight[row].d
-                                  : weights.q4_0[row].d;
-    const unsigned weight_dmin = profile == QBS_WEIGHT_PROFILE_Q4_K
-                                     ? weights.q4[row].dmin
-                                 : profile == QBS_WEIGHT_PROFILE_Q5_K
-                                     ? weights.q5[row].dmin
-                                     : 0;
+    const unsigned weight_d = weight_scale(&weights, profile, row);
+    const unsigned weight_dmin = weight_min_scale(&weights, profile, row);
     uint32_t activation_d = 0;
     memcpy(&activation_d,
            activation_block(&activations, activation_profile, ctx),
@@ -526,7 +617,10 @@ int main(int argc, char **argv) {
                                       QBS_WEIGHT_PROFILE_Q6_K,
                                       QBS_WEIGHT_PROFILE_Q3_K,
                                       QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
-                                      QBS_WEIGHT_PROFILE_Q4_0};
+                                      QBS_WEIGHT_PROFILE_Q4_0,
+                                      QBS_WEIGHT_PROFILE_Q2_K,
+                                      QBS_WEIGHT_PROFILE_Q5_0,
+                                      QBS_WEIGHT_PROFILE_IQ4_NL};
   const unsigned case_count =
       (unsigned)(sizeof(profiles) / sizeof(profiles[0])) * 4u * 4u * 3u;
   fprintf(output, "QBSV1 %u\n", case_count);

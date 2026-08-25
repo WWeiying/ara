@@ -23,6 +23,29 @@ module qbs_profile_decoder import qbs_pkg::*; (
   output logic [31:0]         activation_d_o [4]
 );
 
+  function automatic logic signed [7:0] iq4_nl_value(input logic [3:0] index);
+    begin
+      unique case (index)
+        4'h0: iq4_nl_value = -8'sd127;
+        4'h1: iq4_nl_value = -8'sd104;
+        4'h2: iq4_nl_value = -8'sd83;
+        4'h3: iq4_nl_value = -8'sd65;
+        4'h4: iq4_nl_value = -8'sd49;
+        4'h5: iq4_nl_value = -8'sd35;
+        4'h6: iq4_nl_value = -8'sd22;
+        4'h7: iq4_nl_value = -8'sd10;
+        4'h8: iq4_nl_value = 8'sd1;
+        4'h9: iq4_nl_value = 8'sd13;
+        4'ha: iq4_nl_value = 8'sd25;
+        4'hb: iq4_nl_value = 8'sd38;
+        4'hc: iq4_nl_value = 8'sd53;
+        4'hd: iq4_nl_value = 8'sd69;
+        4'he: iq4_nl_value = 8'sd89;
+        default: iq4_nl_value = 8'sd113;
+      endcase
+    end
+  endfunction
+
   function automatic logic signed [7:0] decode_weight_quant(
       input int unsigned row, input int unsigned element);
     int unsigned packet;
@@ -32,6 +55,7 @@ module qbs_profile_decoder import qbs_pkg::*; (
     int unsigned quarter;
     int unsigned half;
     int unsigned lane;
+    int unsigned subgroup;
     logic [7:0] packed_byte;
     logic [7:0] low;
     logic [7:0] high;
@@ -114,6 +138,31 @@ module qbs_profile_decoder import qbs_pkg::*; (
         decode_weight_quant = (element < 16
             ? $signed({4'b0, packed_byte[3:0]})
             : $signed({4'b0, packed_byte[7:4]})) - 8'sd8;
+      end else if (profile_i == QBS_WEIGHT_PROFILE_Q2_K) begin
+        half = element >> 7;
+        subgroup = (element & 8'h7f) >> 4;
+        lane = element & 8'h0f;
+        packed_byte = weight_block_i[row]
+            [16 + half * 32 + ((subgroup & 1) != 0 ? 16 : 0) + lane];
+        unique case (subgroup[2:1])
+          0: decode_weight_quant = $signed({6'b0, packed_byte[1:0]});
+          1: decode_weight_quant = $signed({6'b0, packed_byte[3:2]});
+          2: decode_weight_quant = $signed({6'b0, packed_byte[5:4]});
+          default: decode_weight_quant = $signed({6'b0, packed_byte[7:6]});
+        endcase
+      end else if (profile_i == QBS_WEIGHT_PROFILE_Q5_0) begin
+        packed_byte = weight_block_i[row][6 + (element & 8'h0f)];
+        low = element < 16
+            ? {4'b0, packed_byte[3:0]}
+            : {4'b0, packed_byte[7:4]};
+        high = '0;
+        high[0] = weight_block_i[row][2 + (element >> 3)][element & 7];
+        decode_weight_quant =
+            $signed({3'b000, high[0], low[3:0]}) - 8'sd16;
+      end else if (profile_i == QBS_WEIGHT_PROFILE_IQ4_NL) begin
+        packed_byte = weight_block_i[row][2 + (element & 8'h0f)];
+        decode_weight_quant = iq4_nl_value(
+            element < 16 ? packed_byte[3:0] : packed_byte[7:4]);
       end
     end
   endfunction
@@ -217,8 +266,14 @@ module qbs_profile_decoder import qbs_pkg::*; (
         group_index_o = k_base_i[7:4];
         group_end_o = (k_base_i[3:0] + k_per_context_o) == 16;
       end
+      QBS_WEIGHT_PROFILE_Q2_K: begin
+        group_index_o = k_base_i[7:4];
+        group_end_o = (k_base_i[3:0] + k_per_context_o) == 16;
+      end
       QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
-      QBS_WEIGHT_PROFILE_Q4_0: begin
+      QBS_WEIGHT_PROFILE_Q4_0,
+      QBS_WEIGHT_PROFILE_Q5_0,
+      QBS_WEIGHT_PROFILE_IQ4_NL: begin
         group_index_o = '0;
         group_end_o = (k_base_i[5:0] + k_per_context_o) == 32;
       end
@@ -243,8 +298,16 @@ module qbs_profile_decoder import qbs_pkg::*; (
         QBS_WEIGHT_PROFILE_Q3_K:
           weight_d_o[row] = {weight_block_i[row][109],
                              weight_block_i[row][108]};
+        QBS_WEIGHT_PROFILE_Q2_K: begin
+          weight_d_o[row] = {weight_block_i[row][81],
+                             weight_block_i[row][80]};
+          weight_dmin_o[row] = {weight_block_i[row][83],
+                                weight_block_i[row][82]};
+        end
         QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
-        QBS_WEIGHT_PROFILE_Q4_0:
+        QBS_WEIGHT_PROFILE_Q4_0,
+        QBS_WEIGHT_PROFILE_Q5_0,
+        QBS_WEIGHT_PROFILE_IQ4_NL:
           weight_d_o[row] = {weight_block_i[row][1],
                              weight_block_i[row][0]};
         default: ;
@@ -299,8 +362,16 @@ module qbs_profile_decoder import qbs_pkg::*; (
               weight_block_i[row][192 + group_index_o]);
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q3_K) begin
           group_scale_o[stream] = decode_q3_scale(row, group_index_o);
+        end else if (profile_i == QBS_WEIGHT_PROFILE_Q2_K) begin
+          group_scale_o[stream] = $signed({4'b0,
+              weight_block_i[row][group_index_o][3:0]});
+          group_min_o[stream] = {4'b0,
+              weight_block_i[row][group_index_o][7:4]};
+          group_aux_o[stream] = activation_bsum(ctx, group_index_o);
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT ||
-                     profile_i == QBS_WEIGHT_PROFILE_Q4_0) begin
+                     profile_i == QBS_WEIGHT_PROFILE_Q4_0 ||
+                     profile_i == QBS_WEIGHT_PROFILE_Q5_0 ||
+                     profile_i == QBS_WEIGHT_PROFILE_IQ4_NL) begin
           group_scale_o[stream] = 8'sd1;
         end
       end

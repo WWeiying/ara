@@ -248,11 +248,8 @@ module qbs_engine_tb;
     header = '0;
     header[3:0] = version[3:0];
     header[7:4] = profile[3:0];
-    header[11:8] =
-        profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-                profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-            ? QBS_ACTIVATION_PROFILE_Q8_0
-            : QBS_ACTIVATION_PROFILE_Q8_K;
+    header[11:8] = qbs_default_activation_profile(
+        qbs_weight_profile_e'(profile));
     header[15:12] = weight_layout[3:0];
     header[19:16] = activation_layout[3:0];
     header[24:20] = (n - 1) & 5'h1f;
@@ -611,10 +608,7 @@ module qbs_engine_tb;
       activation_base = 64'h0000_0000_0020_0000;
       block_bytes = qbs_weight_block_bytes(qbs_weight_profile_e'(profile));
       activation_block_bytes = qbs_activation_block_bytes(
-          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-              ? QBS_ACTIVATION_PROFILE_Q8_0
-              : QBS_ACTIVATION_PROFILE_Q8_K);
+          qbs_default_activation_profile(qbs_weight_profile_e'(profile)));
       install_descriptor(descriptor_base, weight_base, QbsDescriptorVersion,
                          profile, weight_layout, activation_layout, n,
                          k_blocks);

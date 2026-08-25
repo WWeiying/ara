@@ -274,11 +274,8 @@ module qbs_compute_engine_tb;
       while (!command_ready) @(posedge clk);
       @(negedge clk);
       command_profile = qbs_weight_profile_e'(profile);
-      command_activation_profile =
-          profile == QBS_WEIGHT_PROFILE_Q4_0 ||
-                  profile == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
-              ? QBS_ACTIVATION_PROFILE_Q8_0
-              : QBS_ACTIVATION_PROFILE_Q8_K;
+      command_activation_profile = qbs_default_activation_profile(
+          qbs_weight_profile_e'(profile));
       command_weight_layout = qbs_weight_layout_e'(weight_layout);
       command_activation_layout = qbs_activation_layout_e'(activation_layout);
       command_m = m[2:0];

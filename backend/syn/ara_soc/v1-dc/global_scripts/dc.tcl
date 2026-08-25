@@ -17,7 +17,7 @@ set hdlin_check_no_latch true
 set compile_seqmap_propagate_constants false
 #set compile_delete_unloaded_sequential_cells false
 set compile_enable_register_merging false
-set compile_register_replication false
+set compile_register_replication true
 set enable_recovery_removal_arcs true
 set report_default_significant_digits 3
 
@@ -180,7 +180,7 @@ check_timing > ../reports/check_timing_pre.rpt
 
 ## Prevent assignment statements in the Verilog netlist
 set_fix_multiple_port_nets -all -buffer_constants
-set_app_var verilogout_no_tri ture
+set_app_var verilogout_no_tri true
 set_host_options -max_cores $GUI_MAX_CPU_NUM
 set_cost_priority -delay
 

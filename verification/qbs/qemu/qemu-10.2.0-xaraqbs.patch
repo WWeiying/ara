@@ -1,0 +1,351 @@
+--- a/target/riscv/cpu_cfg_fields.h.inc
++++ b/target/riscv/cpu_cfg_fields.h.inc
+@@ -135,6 +135,7 @@
+ BOOL_FIELD(ext_ziccrse)
+ 
+ /* Vendor-specific custom extensions */
++BOOL_FIELD(ext_Xaraqbs)
+ BOOL_FIELD(ext_xtheadba)
+ BOOL_FIELD(ext_xtheadbb)
+ BOOL_FIELD(ext_xtheadbs)
+--- a/target/riscv/cpu_cfg.h
++++ b/target/riscv/cpu_cfg.h
+@@ -64,5 +64,6 @@
+ MATERIALISE_EXT_PREDICATE(xtheadmempair)
+ MATERIALISE_EXT_PREDICATE(xtheadsync)
+ MATERIALISE_EXT_PREDICATE(XVentanaCondOps)
++MATERIALISE_EXT_PREDICATE(Xaraqbs)
+ 
+ #endif
+--- a/target/riscv/cpu.c
++++ b/target/riscv/cpu.c
+@@ -233,6 +233,7 @@
+     ISA_EXT_DATA_ENTRY(svrsw60t59b, PRIV_VERSION_1_13_0, ext_svrsw60t59b),
+     ISA_EXT_DATA_ENTRY(svukte, PRIV_VERSION_1_13_0, ext_svukte),
+     ISA_EXT_DATA_ENTRY(svvptc, PRIV_VERSION_1_13_0, ext_svvptc),
++    ISA_EXT_DATA_ENTRY(xaraqbs, PRIV_VERSION_1_12_0, ext_Xaraqbs),
+     ISA_EXT_DATA_ENTRY(xtheadba, PRIV_VERSION_1_11_0, ext_xtheadba),
+     ISA_EXT_DATA_ENTRY(xtheadbb, PRIV_VERSION_1_11_0, ext_xtheadbb),
+     ISA_EXT_DATA_ENTRY(xtheadbs, PRIV_VERSION_1_11_0, ext_xtheadbs),
+@@ -1354,6 +1355,7 @@
+ };
+ 
+ const RISCVCPUMultiExtConfig riscv_cpu_vendor_exts[] = {
++    MULTI_EXT_CFG_BOOL("xaraqbs", ext_Xaraqbs, false),
+     MULTI_EXT_CFG_BOOL("xtheadba", ext_xtheadba, false),
+     MULTI_EXT_CFG_BOOL("xtheadbb", ext_xtheadbb, false),
+     MULTI_EXT_CFG_BOOL("xtheadbs", ext_xtheadbs, false),
+--- a/target/riscv/meson.build
++++ b/target/riscv/meson.build
+@@ -4,6 +4,7 @@
+   decodetree.process('insn32.decode', extra_args: '--static-decode=decode_insn32'),
+   decodetree.process('xthead.decode', extra_args: '--static-decode=decode_xthead'),
+   decodetree.process('XVentanaCondOps.decode', extra_args: '--static-decode=decode_XVentanaCodeOps'),
++  decodetree.process('Xaraqbs.decode', extra_args: '--static-decode=decode_Xaraqbs'),
+ ]
+ 
+ riscv_ss = ss.source_set()
+@@ -19,6 +20,8 @@
+   'fpu_helper.c',
+   'gdbstub.c',
+   'op_helper.c',
++  'qbs_helper.c',
++  'qbs_ref.c',
+   'vector_helper.c',
+   'vector_internals.c',
+   'bitmanip_helper.c',
+--- a/target/riscv/helper.h
++++ b/target/riscv/helper.h
+@@ -1,6 +1,10 @@
+ /* Exceptions */
+ DEF_HELPER_2(raise_exception, noreturn, env, i32)
+ 
++/* Xaraqbs quantized block-stream extension */
++DEF_HELPER_2(qbs_info, tl, env, tl)
++DEF_HELPER_6(qbs_exec, void, env, tl, tl, i32, i32, i32)
++
+ /* Floating Point - rounding mode */
+ DEF_HELPER_FLAGS_2(set_rounding_mode, TCG_CALL_NO_WG, void, env, i32)
+ DEF_HELPER_FLAGS_2(set_rounding_mode_chkfrm, TCG_CALL_NO_WG, void, env, i32)
+--- a/target/riscv/translate.c
++++ b/target/riscv/translate.c
+@@ -1212,6 +1212,8 @@
+ #include "decode-xthead.c.inc"
+ #include "insn_trans/trans_xthead.c.inc"
+ #include "insn_trans/trans_xventanacondops.c.inc"
++#include "decode-Xaraqbs.c.inc"
++#include "insn_trans/trans_xaraqbs.c.inc"
+ 
+ /* Include the auto-generated decoder for 16 bit insn */
+ #include "decode-insn16.c.inc"
+@@ -1229,6 +1231,7 @@
+     { always_true_p, decode_insn32 },
+     { has_xthead_p, decode_xthead},
+     { has_XVentanaCondOps_p, decode_XVentanaCodeOps},
++    { has_Xaraqbs_p, decode_Xaraqbs},
+ };
+ 
+ const size_t decoder_table_size = ARRAY_SIZE(decoder_table);
+--- a/target/riscv/tcg/tcg-cpu.c
++++ b/target/riscv/tcg/tcg-cpu.c
+@@ -700,6 +700,11 @@
+         }
+     }
+ 
++    if (cpu->cfg.ext_Xaraqbs && !cpu->cfg.ext_zve32f) {
++        error_setg(errp, "Xaraqbs extension requires Zve32f extension");
++        return;
++    }
++
+     if (cpu->cfg.ext_zvfhmin && !cpu->cfg.ext_zve32f) {
+         error_setg(errp, "Zvfh/Zvfhmin extensions require Zve32f extension");
+         return;
+--- /dev/null
++++ b/target/riscv/Xaraqbs.decode
+@@ -0,0 +1,15 @@
++# RISC-V translation routines for the Xaraqbs extension.
++
++%rs2 20:5
++%rs1 15:5
++%rd   7:5
++%m   25:2 !function=ex_plus_1
++
++&qbs_info rd rs1
++&qbs_exec rd rs1 rs2 m
++
++@qbs_info ....... ..... ..... ... ..... ....... &qbs_info %rs1 %rd
++@qbs_exec ....... ..... ..... ... ..... ....... &qbs_exec %m %rs2 %rs1 %rd
++
++qbinfo 0000000 00000 ..... 001 ..... 1011011 @qbs_info
++qbexec 00000.. ..... ..... 000 ..... 1011011 @qbs_exec
+--- /dev/null
++++ b/target/riscv/insn_trans/trans_xaraqbs.c.inc
+@@ -0,0 +1,48 @@
++/*
++ * RISC-V translation routines for the Xaraqbs extension.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++static bool trans_qbinfo(DisasContext *ctx, arg_qbinfo *a)
++{
++    TCGv index;
++    TCGv result;
++
++    if (ctx->mstatus_vs == EXT_STATUS_DISABLED ||
++        !ctx->cfg_ptr->ext_zve32f) {
++        return false;
++    }
++
++    index = get_gpr(ctx, a->rs1, EXT_NONE);
++    result = dest_gpr(ctx, a->rd);
++    gen_helper_qbs_info(result, tcg_env, index);
++    gen_set_gpr(ctx, a->rd, result);
++    return true;
++}
++
++static bool trans_qbexec(DisasContext *ctx, arg_qbexec *a)
++{
++    unsigned destination_registers;
++    TCGv descriptor;
++    TCGv activation;
++
++    destination_registers = a->m == 1 ? 1 : (a->m == 2 ? 2 : 4);
++    if (ctx->mstatus_vs == EXT_STATUS_DISABLED ||
++        ctx->mstatus_fs == EXT_STATUS_DISABLED ||
++        !ctx->cfg_ptr->ext_zve32f || !ctx->vstart_eq_zero ||
++        (a->rd % destination_registers) != 0 ||
++        a->rd + destination_registers > 32) {
++        return false;
++    }
++
++    descriptor = get_gpr(ctx, a->rs1, EXT_NONE);
++    activation = get_gpr(ctx, a->rs2, EXT_NONE);
++    gen_helper_qbs_exec(tcg_env, descriptor, activation,
++                        tcg_constant_i32(a->rd), tcg_constant_i32(a->m),
++                        tcg_constant_i32(ctx->opcode));
++    mark_vs_dirty(ctx);
++    mark_fs_dirty(ctx);
++    ctx->vstart_eq_zero = true;
++    return true;
++}
+--- /dev/null
++++ b/target/riscv/qbs_helper.c
+@@ -0,0 +1,177 @@
++/*
++ * QEMU functional model for the Xaraqbs quantized block-stream extension.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "cpu.h"
++#include "internals.h"
++#include "vector_internals.h"
++#include "accel/tcg/cpu-ldst.h"
++#include "accel/tcg/probe.h"
++#include "exec/helper-proto.h"
++#include "exec/target_page.h"
++#include "qbs_ref.h"
++
++static G_NORETURN void qbs_raise_illegal(CPURISCVState *env, uint32_t insn,
++                                         uintptr_t retaddr)
++{
++    env->bins = insn;
++    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, retaddr);
++}
++
++static void qbs_guest_read(CPURISCVState *env, target_ulong guest_address,
++                           void *destination, size_t bytes,
++                           uintptr_t retaddr)
++{
++    CPUState *cs = env_cpu(env);
++    int mmu_index = cpu_mmu_index(cs, false);
++    uint8_t *output = destination;
++
++    while (bytes != 0) {
++        target_ulong address = adjust_addr(env, guest_address);
++        size_t page_bytes = -(address | TARGET_PAGE_MASK);
++        size_t chunk = MIN(bytes, page_bytes);
++        void *host = probe_read(env, address, chunk, mmu_index, retaddr);
++
++        if (host != NULL) {
++            memcpy(output, host, chunk);
++        } else {
++            for (size_t index = 0; index < chunk; ++index) {
++                output[index] = cpu_ldub_mmuidx_ra(env, address + index,
++                                                   mmu_index, retaddr);
++            }
++        }
++        guest_address += chunk;
++        output += chunk;
++        bytes -= chunk;
++    }
++}
++
++static unsigned qbs_destination_registers(unsigned m)
++{
++    return m == 1 ? 1 : (m == 2 ? 2 : 4);
++}
++
++static void qbs_copy_destination_from_env(CPURISCVState *env, unsigned vd,
++                                          unsigned registers,
++                                          float *destination)
++{
++    const unsigned elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
++    uint32_t *vector_words = (uint32_t *)env->vreg;
++
++    for (unsigned reg = 0; reg < registers; ++reg) {
++        for (unsigned element = 0; element < elements; ++element) {
++            uint32_t bits = vector_words[(vd + reg) * elements + H4(element)];
++            memcpy(&destination[reg * elements + element], &bits,
++                   sizeof(bits));
++        }
++    }
++}
++
++static void qbs_commit_destination(CPURISCVState *env, unsigned vd,
++                                   unsigned registers,
++                                   const float *destination)
++{
++    const unsigned elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
++    uint32_t *vector_words = (uint32_t *)env->vreg;
++
++    for (unsigned reg = 0; reg < registers; ++reg) {
++        for (unsigned element = 0; element < elements; ++element) {
++            uint32_t bits;
++            memcpy(&bits, &destination[reg * elements + element],
++                   sizeof(bits));
++            vector_words[(vd + reg) * elements + H4(element)] = bits;
++        }
++    }
++}
++
++target_ulong helper_qbs_info(CPURISCVState *env, target_ulong index)
++{
++#if HOST_BIG_ENDIAN
++    return 0;
++#else
++    return qbs_ref_capability_word(index, riscv_cpu_cfg(env)->vlenb * 8u);
++#endif
++}
++
++void helper_qbs_exec(CPURISCVState *env, target_ulong descriptor_address,
++                     target_ulong activation_address, uint32_t vd,
++                     uint32_t m, uint32_t insn)
++{
++    const uintptr_t retaddr = GETPC();
++    qbs_descriptor_v1_t descriptor QEMU_ALIGNED(16);
++    qbs_descriptor_fields_t fields;
++    qbs_ref_result_t result;
++    qbs_ref_status_t status;
++    size_t weight_bytes;
++    size_t activation_bytes;
++    unsigned registers;
++    unsigned elements;
++    g_autofree uint8_t *weights = NULL;
++    g_autofree uint8_t *activations = NULL;
++    float destination[4 * RV_VLEN_MAX / 32];
++
++#if HOST_BIG_ENDIAN
++    qbs_raise_illegal(env, insn, retaddr);
++#endif
++
++    registers = qbs_destination_registers(m);
++    if (m == 0 || m > QBS_MAX_M || vd >= 32 ||
++        (vd % registers) != 0 || vd + registers > 32 || env->vstart != 0 ||
++        (descriptor_address & (QBS_DESCRIPTOR_BYTES - 1u)) != 0 ||
++        (activation_address &
++         ((UINT64_C(1) << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2) - 1u)) != 0) {
++        qbs_raise_illegal(env, insn, retaddr);
++    }
++
++    descriptor.header = cpu_ldq_le_data_ra(
++        env, adjust_addr(env, descriptor_address), retaddr);
++    descriptor.weight_base = cpu_ldq_le_data_ra(
++        env, adjust_addr(env, descriptor_address + sizeof(uint64_t)), retaddr);
++
++    status = qbs_ref_validate_descriptor(
++        &descriptor, m, vd, riscv_cpu_cfg(env)->vlenb * 8u,
++        activation_address);
++    if (status != QBS_REF_OK) {
++        qbs_raise_illegal(env, insn, retaddr);
++    }
++
++    fields = qbs_unpack_descriptor_header(descriptor.header);
++    weight_bytes = qbs_ref_weight_storage_bytes(
++        fields.weight_profile, fields.weight_layout, fields.n,
++        fields.k_blocks);
++    activation_bytes = qbs_ref_activation_storage_bytes_for_profile(
++        fields.activation_profile, fields.activation_layout, m,
++        fields.k_blocks);
++    if (weight_bytes == 0 || activation_bytes == 0) {
++        qbs_raise_illegal(env, insn, retaddr);
++    }
++
++    weights = g_malloc(weight_bytes);
++    activations = g_malloc(activation_bytes);
++
++    /* RTL fetch order is descriptor, activation stream, then weights. */
++    qbs_guest_read(env, activation_address, activations, activation_bytes,
++                   retaddr);
++    qbs_guest_read(env, descriptor.weight_base, weights, weight_bytes,
++                   retaddr);
++
++    elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
++    qbs_copy_destination_from_env(env, vd, registers, destination);
++    status = qbs_ref_execute(
++        &descriptor, m, vd, riscv_cpu_cfg(env)->vlenb * 8u,
++        activation_address, weights, weight_bytes, activations,
++        activation_bytes, destination, registers * elements, NULL, NULL,
++        &result);
++    if (status != QBS_REF_OK || result.destination_registers != registers ||
++        result.destination_elements_per_register != elements) {
++        qbs_raise_illegal(env, insn, retaddr);
++    }
++
++    qbs_commit_destination(env, vd, registers, destination);
++    riscv_cpu_set_fflags(env,
++        riscv_cpu_get_fflags(env) | (result.fflags & UINT32_C(0x1f)));
++    env->vstart = 0;
++}
