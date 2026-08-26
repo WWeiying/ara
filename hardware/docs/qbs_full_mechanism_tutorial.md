@@ -1,8 +1,9 @@
 # QBS 全机制教学：从 Qwen2.5/llama.cpp 到 RVV 协同执行
 
-> 文档状态：依据 2026-08-25 的 `ara_dsa` RTL、QBS ABI、验证参考模型和本地
-> llama.cpp QBS backend 核查。本文描述的是当前可执行实现；实验性数值顺序和未来扩展会
-> 单独标注，不能视作 v1 已冻结语义。
+> 文档状态：2026-08-26 逐项对照当前 `ara_dsa` RTL、QBS ABI、验证参考模型和本地
+> llama.cpp QBS backend 核查。对应的最新 QBS RTL 基线为提交 `8260b70d`；其后的提交只更新
+> ABI 生成物和本文档。本文描述的是当前可执行实现；实验性数值顺序和未来扩展会单独标注，
+> 不能视作 v1 已冻结语义。
 
 ## 1. 阅读目标与一句话定位
 
@@ -18,8 +19,9 @@
 QBS 不是一种新的模型量化算法，也不是把整个 Transformer graph 固化为硬件。它是一个
 **面向 GGML 块量化线性层的、命令级、profile 驱动的压缩数据流执行路径**：软件描述
 量化格式、数据布局和 `M/N/K` shape，硬件直接读取压缩权重与动态量化激活，在命令内部完成
-解包、整数点积、scale/min correction、FP32 累加，最后把 FP32 输出原子地提交到普通 RVV
-向量寄存器。
+解包、整数点积、scale/min correction、FP32 累加。只有全部潜在故障访问和计算完成后，它才
+通过现有 lane result port 分周期写入普通 RVV 向量寄存器；提交期间 sequencer 仍阻止年轻指令
+观察部分结果，因此保持单条命令的故障原子性。
 
 可以先记住下面这条端到端链路：
 
@@ -30,7 +32,7 @@ GGUF 原始块量化权重
   -> qbinfo 能力检查与 M/N/K 分块
   -> qbexec(descriptor, activation, vd, M)
   -> QBS 读取压缩块、解码、点积、修正、FP32 累加
-  -> 结果写入普通 v8...v11
+  -> 结果写入从 vd 开始的普通向量寄存器组（软件示例使用 v8...v11）
   -> 标准 RVV vse32.v 写回 GGML 输出 tensor
 ```
 
@@ -786,6 +788,33 @@ quantizer 或跨命令复用时，也必须逐条重新证明。
 因此 QBS 的定位应是“带 command-local dataflow 的 RVV 协同执行路径”，而不是泛称为完整
 数据流处理器。
 
+### 3.7 核心设计思想：传递结构化语义，而不是增加一个孤立乘法指令
+
+QBS 的核心不是“把 RVV 的乘法器换成更宽的乘法器”，而是改变软硬件之间的工作划分。普通
+RVV 只看到 load、mask、shift、widening multiply、reduction 和 scalar update 等逐条指令；
+weight block 属于哪种格式、哪些 metadata 共同描述一个 subgroup、同一 activation 将被多少
+output rows 复用，这些信息已经在 GGML kernel 中存在，却在进入硬件前被展开成了长指令流。
+
+QBS 保留这些高层但仍具有通用边界的语义，并通过 profile、layout 和 shape 三层 contract 一次
+交给硬件：
+
+1. **Profile 描述数学**：block bytes、quant 位布局、scale/min correction 和 activation 配对
+   决定每个 block 的严格数值含义；
+2. **Layout 暴露数据邻接**：R4/M4 使硬件知道哪些 weight/activation block 可作为一个连续 tile
+   读取和复用，而不依赖地址流猜测；
+3. **Shape 给出复用边界**：`M/N/K-blocks` 明确一条命令内 activation、weight 和 accumulator
+   的生命周期；
+4. **命令局部数据流执行**：压缩数据从 memory 直接进入 decoder、整数点积、correction 和
+   FP32 accumulator，不先物化完整解量化 tensor；
+5. **标准向量状态收口**：结果仍提交到普通 VRF，异常、`fflags`、依赖和 fallback 仍进入现有
+   RVV 系统边界。
+
+这种设计选择了一个有意受限的抽象层次。它比单条 dot-product 指令更能消除完整 block kernel
+的控制、解包和 reduction 开销，又不像固定 Transformer engine 那样认识 Qwen layer 名称或整张
+graph。新增格式主要扩展 profile decoder 和软件 trait；不支持的格式或 shape 则回到标准 RVV。
+因此 QBS 的通用性来自“可查询、可版本化、可回退的块语义”，而不是声称一条命令能覆盖所有
+LLM 算子。
+
 ## 4. 当前支持的量化 profile
 
 ### 4.1 Profile 总表
@@ -1233,7 +1262,9 @@ sequencer 为命令分配 vid 并保持目标寄存器 hazard 可见。QBS termi
 
 ### 7.3 VLSU 资源所有权
 
-QBS 只在普通 VLSU idle 时接受命令。命令 active 期间：
+dispatcher 只有在 `ara_idle_i` 为真、即全部更老的 Ara 工作已经排空后，才把 `VQBEXEC` 发给
+sequencer；VLSU 还用 `normal_vlsu_idle` 检查本地 address generator、load/store unit、AXI cut
+和 result port 都没有残留活动，随后才接受命令。命令 active 期间：
 
 - MMU request、physical range check 和 AXI read 由 QBS read engine 驱动；
 - QBS 不发 AXI write；
@@ -1251,14 +1282,17 @@ register，又会增加上下文状态。当前设计选择：
 
 ```text
 hidden command-local accumulator
-  -> atomic QBS commit
+  -> fault-free commit phase
   -> existing LDU result interface
-  -> ordinary Ara VRF (v8...v11)
+  -> ordinary Ara VRF (from vd; e.g. v8...v11)
   -> standard RVV store
 ```
 
-因此后续 RVV 指令可以正常消费结果，操作系统看到的仍是标准 vector state。代价是 commit
-受到 LDU result port 和 VRF grant 的带宽约束，但当前计数器可直接观察该 backpressure。
+因此后续 RVV 指令可以正常消费结果，操作系统看到的仍是标准 vector state。这里的“原子”是
+命令级故障可见性：任何写回开始前，所有可能产生 fault 的读取和计算已经完成；真正的 VRF 写回
+仍通过 LDU port 分多个 cycle 完成，年轻消费者在 terminal 前由 sequencer completion gating
+阻塞。代价是 commit 受到 LDU result port 和 VRF grant 的带宽约束，但当前计数器可直接观察该
+backpressure。
 
 ## 8. 一条 `qbexec` 的完整生命周期
 
@@ -1275,11 +1309,14 @@ hidden command-local accumulator
 9. **FP update**：整数 subtotal 转 FP32，乘 block scales，以 contract 顺序 FMA 到 accumulator。
 10. **Tile advance**：遍历 K blocks 和 N microtiles；M=1 时可预取下一 weight tile 到另一 bank。
 11. **Drain**：等待 read、integer pipeline 和 FP table 全部排空。
-12. **Commit**：按 lane/word 映射写满一个 architectural vector register，inactive N 元素清零。
+12. **Commit**：按四 lane 聚合组分周期写满一个 architectural vector register，inactive N
+    元素清零；这一步开始后已不存在尚未决议的 memory/compute fault。
 13. **Terminal**：成功完成 vid；软件恢复 `vl=N`，用 `vse32.v v8` 存结果。
 
-任何 validation、MMU、PMA、AXI response/protocol fault 都会进入 fault drain。架构结果直到 commit
-前不可见，因此不会留下“前半个 tile 已写回”的部分状态。
+不同 fault 的收尾路径并不相同。descriptor read fault 或 validation fault 发生在 compute 启动前，
+read engine 排空已发 burst 后直接进入 terminal fault；payload 的 MMU、PMA、AXI response/protocol
+fault 才会在 read response 排空后进入 compute fault drain，停止新工作并清除隐藏计算状态。
+两类路径都不会启动 commit，因此不会留下“前半个 tile 已写回”的部分状态。
 
 ## 9. RTL 模块逐项讲解
 
@@ -1298,11 +1335,16 @@ IDLE
  -> SUCCESS
 
 fault path:
-VALIDATE/RUN -> COMPUTE_FAULT_DRAIN -> FAULT
+DESCRIPTOR_WAIT/VALIDATE -> FAULT
+RUN payload fault -> COMPUTE_FAULT_DRAIN -> FAULT
 ```
 
 它保存 command id、vd、M、descriptor/activation 地址、round mode、cache/prot 属性；调度 logical
 read ranges；连接 compute 和 commit；保存 fault attribution；导出互斥 phase counter。
+
+图中的直接 `FAULT` 不表示忽略在途 AXI response：`qbs_read_engine.sv` 只有在自身 burst FIFO 已
+排空后才向顶层报告 fault。`COMPUTE_FAULT_DRAIN` 专门处理已经进入整数/FP pipeline 的 payload
+工作，不用于尚未启动 compute 的 descriptor/validation fault。
 
 当前 M=1 且 R4 layout 时启用同 K block、下一 4-row microtile 的 weight lookahead。注释和逻辑
 明确限制在该形态，因为 M>1 的 compute interval 与返回时机不同，未经额外 bank 生命周期保护，
@@ -1424,7 +1466,7 @@ affine block 还执行 aux conversion、`dmin*activation.d` 和第二次 FMA。�
 primitive，并用 tag 将多 entry 的返回值写回正确状态。对同一 accumulator index 的重叠 update
 必须受控，因为 FP 加法不满足任意重排的 bitwise 等价性。
 
-### 9.10 `qbs_commit.sv`：原子地映射到 lane VRF
+### 9.10 `qbs_commit.sv`：故障原子、物理上分周期的 lane VRF 提交
 
 commit 只有在所有读取和计算无 fault 后启动。它按 VLEN 和 4 lanes 将 FP32 accumulator word
 转换为 LDU result request：
@@ -1435,8 +1477,15 @@ commit 只有在所有读取和计算无 fault 后启动。它按 VLEN 和 4 lan
 - `element >= N` 的 inactive output 清零；
 - M=3 不写保留的第四个 destination register。
 
-`commit_word_count` 必须等于 `M * words_per_register`，且每个 active element 在 commit 前已有
-valid accumulator。VRF grant 不足时停在 commit，并计入 backpressure。
+这里一次“word”是四条 lane 各一个 64-bit word 组成的 256-bit aggregate group，共承载八个
+FP32 元素，不是整个 VLEN-bit register 同周期写入。当前计数器 `commit_word_count` 在四条 lane
+均收到 request grant 和 final grant 后加一，最终必须等于 `M * (VLEN/256)`；日志字段仍沿用
+`commit_groups`。每个 active element 在 commit 前都必须已有 valid accumulator。VRF grant 不足
+时状态机停在当前 group，并计入 backpressure。
+
+当前 v1 mapping 由 RTL assertion 明确限制为 4 lanes、128-bit AXI read data，以及 256--1024-bit、
+按 256-bit 整除的 VLEN。结合 RVV 的 VLEN 约束，本项目实际使用 1024-bit VLEN；这些是当前实现
+边界，不是 profile/layout/shape ABI 本身天然要求的通用限制。
 
 ## 10. 正确性、内存顺序和异常
 
@@ -1455,9 +1504,11 @@ QBS 一条命令会产生 M x N 个输出。如果边计算边写 VRF，后续 w
 
 ### 10.2 内存访问属性
 
-QBS 只有读请求，descriptor/weight/activation 都通过同一 MMU 和 physical-range check。当前
-PMA 门控只允许整个请求范围落在 cacheable、idempotent 区域；非幂等 MMIO 或跨越不允许区域的
-请求以 load-access fault 结束，而不会把长 block stream 投向有副作用的设备地址。当前
+QBS 只有读请求，descriptor/weight/activation 都通过同一 MMU 和 physical-range check。logical
+range 会先按 4 KiB page 和 AXI 最大 burst 边界切分；当前 PMA 门控要求每个翻译后的完整 AXI
+burst 覆盖范围落在同一 cacheable region 且不与 non-idempotent region 相交。非幂等 MMIO 或
+跨越不允许区域的子请求以 load-access fault 结束，而不会把长 block stream 投向有副作用的设备
+地址。当前
 软件 wrapper 在命令前执行 `fence rw,rw`，保证先前对 descriptor、activation 和 repacked
 weight 的写入在 QBS 读取前可见。
 
@@ -1537,6 +1588,49 @@ accumulator updates 必须共同解释。
 结果 tile 最终仍走 lane/VRF port。若 `commit_backpressure_cycles` 升高，说明 QBS core 已经
 把瓶颈推到写回；若为零，则扩大 commit 带宽不会改善当前点。
 
+### 11.7 为什么 QBS 相对标准 RVV 会出现数量级加速
+
+第 2.23 节的 `20.38x--92.49x` 是严格配对的真实量化 `MUL_MAT` 切片加速，不是“32 个整数
+乘法器相对 RVV 有几十倍峰值算力”。大幅差异来自下面五项同时作用：
+
+1. **消除整个软件展开序列**。RVV 对每个 output row 显式执行 bit unpack、metadata decode、
+   widening MAC、vector reduction、标量/FP scale update 和循环控制；QBS 用一条 `qbexec` 描述
+   整个 `M x N x K-blocks` tile，再由内部状态机推进。四个多格式点的 timed region 中，QBS
+   侧退休的普通指令数约为 RVV 的 `0.5%--0.7%`，普通向量指令数约为 `0.4%--0.6%`。这些比例
+   表示架构指令流被命令替代，不表示 QBS 内部没有执行等价的 decode、dot 和 FP 工作。
+2. **直接在压缩表示上计算**。QBS 读取 GGUF native block，decoder 只在整数 datapath 的入口
+   恢复 quant 和 metadata，不把完整 FP32/INT8 weight tensor 物化到 memory 或 VRF。四个点的
+   QBS logical reads 仅为 RVV 的 `30.3%--51.9%`。
+3. **在 tile 内摊薄重复工作**。一个 activation block 被 N 个 output rows 共享，一个 weight
+   block 在 Prefill 中被 M 个 activation contexts 共享；subgroup correction 和 128 个 FP32
+   partial sums 都驻留在 command-local state，避免每行重新装载、归约和往返 scalar/VRF。
+4. **让 layout 与事务粒度一致**。R4 把同一 K block 的四个 weight rows 放成连续 range，避免
+   “数据本来连续、软件/硬件却发四个小请求”。完整 Decode Attention-Q 中，仅合并这四个
+   range 就在 payload 和 pair 数不变时把 matmul 从 293,329 降到 217,297 cycles。
+5. **有界覆盖取数延迟**。M1/R4 使用两个 weight banks 和最多两个有序 read outstanding，在
+   当前 tile 计算时读取同 K block 的下一 4-row tile。该点进一步从 217,297 降到 133,861
+   cycles，且数值、payload 和 useful pairs 不变。
+
+Decode Attention-Q 的机制演进可把“专用数据通路收益”和“后续供数优化”分开：
+
+| 等价 Q4_K matmul 路径 | Cycles | 相对同一 RVV baseline |
+| --- | ---: | ---: |
+| 标准 RVV | 1,495,946 | 1.000x |
+| 首个正确 QBS 系统闭环 | 293,329 | 5.100x |
+| + R4 四行 range 合并 | 217,297 | 6.884x |
+| + 双 bank / 双 outstanding lookahead | 133,861 | 11.175x |
+
+这不是可简单相加的 ablation：后两步都改变 memory/compute overlap。但它证明最终加速并非来自
+减少数学工作或放宽精度，而是把 RVV 软件已知的 block/layout/shape 语义保留到硬件后，消除了
+解释性指令流、重复数据移动和细粒度请求，再用受控 buffering 覆盖剩余延迟。
+
+当前四个多格式代表点的 matmul 几何平均为 `51.34x`，但格式间差异不能解释成 bit 数越低就一定
+越快。Q5_K 的标准 RVV unpack/reduction 指令序列比 Q3_K/Q6_K 更重，而 QBS 将差异主要吸收到
+profile decoder，因此该点相对加速最高；Q8_0 block 只有 32 个元素，block-level FP update 更
+频繁，QBS 自身固定成本占比更高，因此相对加速较低。完整模型还包含 activation quantization、
+Attention、Norm、RoPE、KV cache 和 sampling，必须用端到端 Amdahl 比例评价，不能把这里的
+operator speedup 直接当成 token/s speedup。
+
 ## 12. 计数器及其严格含义
 
 ### 12.1 命令和 phase
@@ -1594,7 +1688,7 @@ AR_efficiency       = read_payload_bytes / read_ar_count
 | `fp_uop_issue` | 向 fpnew 发出的转换/乘法/FMA micro-op 数 |
 | `fp_table_occupancy_sum/max/full_cycles` | FP update table 占用积分、峰值和满周期 |
 | `accumulator_updates` | 完成并写回一个 block 对一个 accumulator 的次数 |
-| `commit_word_count` | 实际提交的完整 register words 数 |
+| `commit_word_count` | 四 lane 的 256-bit aggregate group 完成数；日志名为 `commit_groups` |
 | `commit_backpressure_cycles` | commit 请求存在但未获全部所需 grant 的周期 |
 
 常用派生：
@@ -1915,7 +2009,7 @@ perplexity 数据集。
 | C reference | 九种 profile、两种 activation、两类 layout、shape/地址/原子提交 | canonical arithmetic/validation contract 可执行 |
 | Profile RTL | 9 profiles x M1-M4 x row-count 1-4 x 3 data patterns，共 432 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立 |
 | Command RTL | 22 个功能命令，覆盖 M1-M4、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立 |
-| Fault RTL | validation、MMU、PMA、AXI/protocol fault | fault drain 和“失败不提交”成立 |
+| Fault RTL | validation、MMU、PMA、AXI/protocol fault | pre-compute 直接 fault、payload drain 和“失败不提交”均成立 |
 | QEMU directed | 九种 profile、M1-M4、N=35 tail、三 expert `MUL_MAT_ID` | ISA、guest memory、repack、dispatch 与软件 shape 组合成立 |
 | 真实 RTL 数据 | `format_closure.csv` 中 Q3_K/Q5_K/Q6_K/Q8_0 代表点及既有 Q4_K/Q6_K workload | 真实 GGUF bytes、activation 和 golden 可穿过 timing RTL |
 | 模型级 QEMU | 七种 profile 有 68-step teacher-forced 指标；Q4_0/Q5_0 有严格生成回归 | 原生 `qbexec` 能运行真实模型且短片段质量未崩坏 |
@@ -1929,6 +2023,43 @@ perplexity 数据集。
 
 因此“九种 profile 功能闭环”和“九种格式论文级模型质量闭环”是两条不同结论。前者已经具备，
 后者尚未完全具备。
+
+### 13.11 当前测试结果总览
+
+下面汇总的是与本文所核 RTL 对应的当前结果。表中“通过”只对该行列出的证明目标有效，不能跨层
+替代。例如 432 个 profile cases 不能证明 MMU fault，QEMU 模型运行也不能证明 RTL timing。
+
+| 验证层次 | 当前结果 | 覆盖范围 | 可以得出的结论 |
+| --- | --- | --- | --- |
+| ABI/generated check | PASS（2026-08-26 复跑） | JSON 到 C/SV、R4 padded tail、hard-link alias | 软件和 RTL 字段、profile ID 与生成物一致 |
+| Canonical C reference | PASS（2026-08-26 复跑） | descriptor、9 profiles、layout/tail/failure | numerical contract 和 validation 有可执行真源 |
+| Profile RTL | 432/432 PASS | 9 profiles x M1--M4 x row-count 1--4 x 3 patterns | decoder、32-pair integer path、correction 和 FP update 组合成立 |
+| Descriptor/read/commit RTL | 三个 standalone bench 均 PASS | descriptor legality；page/burst/outstanding/fault；4-lane commit/backpressure | 三个接口边界各自满足定向 contract |
+| Compute command RTL | 22/22 PASS，fault discard PASS | 9 profiles、M1--M4、N/K/layout/tail | block adapter 到 hidden accumulator 的命令内路径成立 |
+| End-to-end QBS RTL | 22/22 PASS，加 4 类 atomic-fault PASS | descriptor 到 VRF commit；validation/MMU/AXI/PMA fault | 成功结果可提交，失败命令在提交前不可见 |
+| 真实数据 RTL closure | 4 对 RVV/QBS 点全部 PASS，两侧对同一 golden 的 mismatch 均为 0 | Q3_K/Q5_K/Q6_K 的 1.5B `attn_q`，Q8_0 的 0.5B `attn_q` | 当前 timing RTL 可消费真实 GGUF bytes 和 activation |
+| 整模型 native QEMU | RVV/QBS 均退出 0，10-token prompt + 2-token greedy 输出逐字节一致 | Qwen2.5-1.5B Q4_K_M，Q4_K/Q6_K GEMV/GEMM、R4/M4、fallback | 真实 GGML graph 能发出并执行 native `qbexec`；不代表 RTL speedup |
+| 模型级数值 | 7 profiles 有 68-step teacher-forced；Q4_0/Q5_0 有生成回归 | Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/IQ4_NL logits；其余格式的定向模型回归 | 短固定文本未见分布崩坏；尚不是标准数据集质量结论 |
+
+当前严格配对的四个真实 operator 点如下。`logical read` 是 timed region 中的逻辑 load payload，
+不是 AXI 总线包含对齐、cache line 或 speculative traffic 后的物理字节数：
+
+| Profile | Shape `K x N x M` | RVV/QBS matmul cycles | Speedup | QBS/RVV logical read | QBS/RVV retired instructions |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Q3_K | `1536 x 256 x 1` | 1,281,131 / 17,614 | 72.73x | 30.3% | 0.51% |
+| Q5_K | `1536 x 256 x 1` | 2,011,748 / 21,750 | 92.49x | 40.1% | 0.58% |
+| Q6_K | `1536 x 256 x 1` | 1,273,230 / 25,120 | 50.69x | 44.1% | 0.68% |
+| Q8_0 | `896 x 256 x 1` | 548,583 / 26,923 | 20.38x | 51.9% | 0.49% |
+
+四点 matmul 几何平均为 `51.34x`。所有点的 `useful_pairs == pair_capacity`、
+`read_outstanding_max=2`、`fp_table_full_cycles=0`、`commit_backpressure_cycles=0`，且 source
+weight、activation、golden 和模型 metadata 的 hash 在 RVV/QBS 两侧严格配对。完整原始字段
+位于 `hardware/format_closure.csv`；QBS phase 和 probe 是可重叠活动签名，不能相加成严格 stall
+breakdown。
+
+测试结论的边界同样明确：当前已经证明多格式功能、命令级 fault atomicity、真实算子 RTL 性能
+和短文本模型数值闭环；尚未完成所有九种 profile 的统一 68-step/标准数据集质量、完整模型 RTL
+token/s、跨 4-lane/1024-bit 以外配置、综合后时序、P&R 和功耗闭环。
 
 ## 14. 与相关研究和产品的关系
 
@@ -2073,7 +2204,8 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 - K>256 blocks 依赖软件分段，现有 R4 子段令 N 降为 4；
 - 只覆盖列出的 profile，未覆盖全部 llama.cpp/IQ/TQ/MXFP type；
 - M 最大 4，N 最大受 VLEN/32 和 32 上限约束；
-- v1 commit mapping 固定为 4 lanes；RTL 约束 VLEN 位于 256..1024 且为 256 的整数倍，结合
+- v1 数据接入固定为 128-bit AXI read beat，commit mapping 固定为 4 lanes；RTL 约束 VLEN 位于
+  256..1024 且为 256 的整数倍，结合
   RVV 对 VLEN 为 2 的幂的要求，实际合法配置为 256/512/1024；这不是任意 Ara 配置已经自动
   支持的声明；
 - 当前 ABI JSON、canonical reference 和 QEMU 尚未完整编码上述 `NrLanes/VLEN` 实现约束；reference
