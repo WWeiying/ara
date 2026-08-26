@@ -1,18 +1,19 @@
-# QBS 全机制教学：从 llama.cpp 块量化算子到 Ara/RVV 协同执行
+# QBS 全机制教学：从 Qwen2.5/llama.cpp 到 RVV 协同执行
 
-> 文档状态：依据 2026-08-25 的 `ara_dsa_next` RTL、QBS ABI、验证参考模型和本地
+> 文档状态：依据 2026-08-25 的 `ara_dsa` RTL、QBS ABI、验证参考模型和本地
 > llama.cpp QBS backend 核查。本文描述的是当前可执行实现；实验性数值顺序和未来扩展会
 > 单独标注，不能视作 v1 已冻结语义。
 
 ## 1. 阅读目标与一句话定位
 
-本文希望回答五个连续的问题：
+本文希望回答六个连续的问题：
 
-1. llama.cpp 的块量化线性层到底在计算什么，为什么普通 RVV 仍有明显开销；
-2. QBS（Quantized Block Streams）把哪些软件语义显式交给硬件；
-3. GGML 如何选择、重排、分块并发出 QBS 命令，何时必须回退到标准 RVV；
-4. QBS 如何在不破坏 Ara 普通 RVV 功能的前提下复用其 MMU、AXI、sequencer、VRF 和完成域；
-5. 当前方案与矩阵扩展、外置加速器、商用 CPU AI 扩展以及块量化研究之间是什么关系。
+1. 文本如何经过 Qwen2.5 的 token、Attention、FFN 和 LM head 变成下一 token；
+2. llama.cpp 的块量化线性层到底在计算什么，为什么普通 RVV 仍有明显开销；
+3. QBS（Quantized Block Streams）把哪些软件语义显式交给硬件；
+4. GGML 如何选择、重排、分块并发出 QBS 命令，何时必须回退到标准 RVV；
+5. QBS 如何在不破坏普通 RVV 功能的前提下复用 MMU、AXI、sequencer、VRF 和完成域；
+6. 当前方案与矩阵扩展、外置加速器、商用 CPU AI 扩展以及块量化研究之间是什么关系。
 
 QBS 不是一种新的模型量化算法，也不是把整个 Transformer graph 固化为硬件。它是一个
 **面向 GGML 块量化线性层的、命令级、profile 驱动的压缩数据流执行路径**：软件描述
@@ -33,36 +34,596 @@ GGUF 原始块量化权重
   -> 标准 RVV vse32.v 写回 GGML 输出 tensor
 ```
 
-## 2. 为什么先优化量化线性层
+### 1.1 建议阅读顺序
 
-### 2.1 Transformer 中的主要计算
+如果目标是能够独立修改和验证 QBS，而不只是知道它“能加速量化矩阵乘”，建议按以下顺序阅读：
 
-Transformer 的 Attention 和 FFN 中，大部分乘加工作来自线性映射：
+1. 先读第 2 至 4 节，建立量化数学、profile 和 Q8 activation 的概念；
+2. 再读第 5、6 节，理解软件怎样把一个 GGML operator 转换成 descriptor 和多条命令；
+3. 然后读第 7 至 10 节，沿控制、数据、完成三条路径走完 RTL；
+4. 用第 11、12 节判断性能计数器，而不是从单个 utilization 数字猜瓶颈；
+5. 最后用第 13 至 16 节区分功能证明、模型质量、研究贡献和未来扩展。
+
+读完后至少应能回答四个问题：某个 weight byte 怎样参与一个 FP32 输出；为什么 R4/M4 不改变
+数学结果；为什么 fault 前不能写 VRF；为什么一个不支持的 tensor 会回到普通 RVV，而不是进入
+“近似兼容”的 QBS 路径。
+
+### 1.2 三种“正确”不能混用
+
+本文反复区分三类结论：
+
+| 层次 | 要证明什么 | 主要证据 |
+| --- | --- | --- |
+| 架构正确 | 指令、异常、寄存器和内存可见行为符合 contract | canonical reference、QEMU、RTL command/fault test |
+| 算术正确 | block decode、整数 subtotal 和 FP update 顺序一致 | constructed vectors、逐 accumulator bit comparison |
+| 模型可用 | 合法浮点差异没有造成不可接受的模型质量变化 | logits、KL、PPL、Top-k 和生成回归 |
+
+QEMU 跑通模型不能替代 RTL 算术证明，RTL 与 reference bit-exact 也不能自动证明长文本质量无损。
+同样，microtile 加速不能直接等价为端到端 token/s 加速。
+
+## 2. 从一句自然语言到 QBS：先完整理解 Qwen2.5 推理
+
+QBS 位于一条很长的实现链路底部。若只观察 `Q4_K x Q8_K` 点积，很容易知道硬件“算了什么”，
+却不知道这个数为什么存在、属于模型的哪一步、加速它能影响多少端到端时间。本章因此先从用户
+输入的一句话开始，沿 Qwen2.5、llama.cpp、GGML、量化 kernel 一直走到 QBS。后续章节再展开
+QBS 的 ISA、RTL 和验证细节。
+
+### 2.1 大语言模型在推理时究竟做什么
+
+以聊天为例，用户输入：
 
 ```text
-Attention: Q = X Wq, K = X Wk, V = X Wv, O = Attn(X) Wo
-FFN:       G = X Wgate, U = X Wup, Y = activation(G) .* U, Z = Y Wdown
-Output:    logits = X Wlm_head
+请解释向量处理器。
 ```
 
-在 GGML 中，这些权重矩阵乘通常落到 `GGML_OP_MUL_MAT`。Decode 阶段每次处理很少的 token，
-常见形态接近 GEMV；Prefill 阶段同时处理多行 token，形态接近小 `M` 的 GEMM。RMSNorm、RoPE、
-Softmax、KV-cache 搬运和 Attention score 同样重要，但它们不是当前 QBS 命令的直接覆盖对象。
+模型并不是一次性“理解整句并写出整段答案”。它执行的是**自回归 next-token prediction**：
 
-用统一的矩阵记号：
+1. tokenizer 把文本转换为一串离散 token ID；
+2. 模型根据全部已知 token，计算下一个位置对整个词表的分数 `logits`；
+3. sampling/greedy policy 从 logits 选择一个 token；
+4. 把新 token 追加到输入末尾，再计算下一个 token；
+5. 遇到结束 token 或达到长度上限后停止，tokenizer 再把 token ID 解码为文本。
+
+若已知 token 为 `t[0:S]`，模型实现的抽象函数是：
 
 ```text
-A: M x K，运行时 activation
-B: N x K，模型权重，按输出行存储
-C: M x N，FP32 输出
-C[m,n] = sum_k A[m,k] * B[n,k]
+logits_next = Model(t[0], t[1], ..., t[S-1])
+token_next  = Sample(logits_next)
 ```
 
-- `M`：同时处理的 activation 行数。Decode 通常为 1；当前硬件命令支持 1 到 4。
-- `N`：本条命令计算的输出行数。当前最大为 `min(VLEN/32, 32)`；VLEN=1024 时为 32。
-- `K`：归约维，必须按所选量化 profile 的原生 block 大小整除。
+这里的“知识”主要存储在训练完成后的权重矩阵中。本文讨论的是**推理**：权重固定，不执行
+反向传播，也不更新参数。输入变化时，变化的是 activation、attention score 和 KV cache。
 
-### 2.2 块量化节省容量，却引入执行开销
+#### 2.1.1 这些权重是怎样学到的
+
+预训练时，模型看到海量 token 序列。对每个位置，它只能观察当前位置以前的 token，并预测真实
+的下一个 token。若真实 token 为 `y`，训练目标通常是降低 cross entropy：
+
+```text
+p = softmax(logits)
+loss = -log(p[y])
+```
+
+训练系统把许多 token 的 loss 聚合，通过 backpropagation 求每个 weight 对 loss 的梯度，再用
+optimizer 更新数十亿参数。反复训练后，语言规律、事实关联和推理模式被分布式编码到 embedding、
+attention 和 FFN 权重中。Instruction tuning 再用“指令-回答”数据训练模型遵循对话格式和任务
+要求；偏好优化还可改变模型更倾向输出哪类回答。
+
+训练与本文硬件推理的主要区别是：训练需要保存中间 activation、计算梯度和更新权重，计算/存储
+规模远大于单次前向；推理只加载固定权重并执行 forward pass。QBS 当前是 inference-oriented
+路径，不定义 gradient、optimizer 或 weight update 语义。
+
+#### 2.1.2 从训练模型到本项目 GGUF 的生命周期
+
+把模型“产生”和模型“运行”分开，可以避免把量化误认为训练的一部分：
+
+```text
+原始文本/代码/数学等训练数据
+  -> tokenizer 形成训练 token
+  -> next-token pretraining
+  -> instruction tuning / preference alignment
+  -> BF16/FP16 等高精度发布权重
+  -> 离线 GGUF 转换与 block quantization
+  -> Q4_K_M 等 GGUF 文件
+  -> llama.cpp 加载并执行推理
+  -> 本项目 QBS backend 选择合法的量化 MUL_MAT
+```
+
+Q4_K_M 是部署表示，不表示模型最初用 4-bit 完成训练；`_M` 还表示 llama.cpp quantizer 对不同
+tensor 采用混合精度策略。模型结构决定矩阵 shape，量化方案决定这些矩阵在 GGUF 中的 block
+编码和误差，QBS profile 则决定硬件如何精确消费该编码。这三个层次不能互换。
+
+### 2.2 从字符到 token：模型真正接收的输入
+
+token 不是固定等于一个汉字、一个英文单词或一个字节。Qwen tokenizer 使用词表把常见字符片段、
+子词、标点、空格和控制标记映射为整数 ID。同一段对话还会先经过 chat template，加入“system”、
+“user”、“assistant”等角色边界。概念上：
+
+```text
+messages
+  -> chat template 字符串
+  -> tokenizer
+  -> token IDs [S]
+  -> model
+  -> next-token logits [V]
+  -> selected token ID
+  -> detokenizer
+  -> 新增文本片段
+```
+
+`S` 是当前序列长度，`V` 是词表大小。本机用于 QBS 闭环的
+Qwen2.5-1.5B-Instruct 配置中 `V=151936`。token ID 本身没有可计算的连续数值意义：ID 1000
+不是 ID 500 的“两倍语义”。它只是 embedding table 的行号。
+
+### 2.3 本文贯穿使用的真实 Qwen2.5 配置
+
+本文所有具体 shape 均以本机真实 Qwen2.5-1.5B-Instruct Q4_K_M GGUF 和对应 Qwen2 配置为准，
+而不是用一个虚构的缩小网络。官方配置与本机 GGUF/capture 一致的核心参数如下：
+
+| 符号 | 配置项 | 数值 | 物理含义 |
+| --- | --- | ---: | --- |
+| `L` | `num_hidden_layers` | 28 | 串行执行 28 个 Decoder Transformer Block |
+| `D` | `hidden_size` | 1536 | 每个 token 的内部状态有 1536 个元素 |
+| `F` | `intermediate_size` | 8960 | FFN 中间状态宽度 |
+| `Hq` | `num_attention_heads` | 12 | query head 数 |
+| `Hkv` | `num_key_value_heads` | 2 | 共享的 key/value head 数 |
+| `Dh` | head dimension | 128 | 每个 head 的特征维，`D/Hq=128` |
+| `V` | `vocab_size` | 151936 | 每次预测需要给出的词表 logits 数 |
+| `Smax` | `max_position_embeddings` | 32768 | 该配置声明的最大位置范围 |
+| `eps` | `rms_norm_eps` | `1e-6` | RMSNorm 防止除零的稳定项 |
+| `theta` | `rope_theta` | `1e6` | RoPE 位置旋转的频率基数 |
+
+这是一种 dense、decoder-only、causal Transformer，采用 pre-RMSNorm、RoPE、Grouped-Query
+Attention（GQA）、QKV bias 和 SwiGLU。`tie_word_embeddings=true` 表示输入 embedding 与输出
+词表映射在逻辑模型中共享权重。量化 GGUF 如何物理保存或复制 tensor，应以实际文件为准，不能
+仅凭模型配置推断存储字节数。
+
+### 2.4 先统一 tensor 和矩阵记号
+
+本文用“每个 token 是一行”的数学记号：
+
+```text
+X: [T, D]
+W: [N, K]
+Y: [T, N]
+Y[m,n] = sum_k X[m,k] * W[n,k]
+```
+
+- `T`：本次 graph 中处理的 token 行数；
+- `K`：输入特征/归约维；
+- `N`：输出特征或输出通道数；
+- `D=1536`：模型 hidden width；
+- `F=8960`：FFN width。
+
+GGML 的 `ne[0]` 是最内层连续维，日志常把同一个 tensor 打印为 `[K,T]` 或把 weight 打印为
+`[K,N]`。这与本文数学写法 `[T,K]`、`[N,K]` 只是存储/显示约定不同，不是矩阵形状矛盾。
+后文谈 QBS 时改用 microtile 记号 `A[M,K] x B[N,K] -> C[M,N]`，其中 `M` 就是本次命令
+处理的 token/activation 行数。
+
+### 2.5 Embedding：token ID 如何变成 1536 维状态
+
+模型首先执行 embedding lookup：
+
+```text
+token IDs: [T]
+E:         [V, D] = [151936, 1536]
+X0:        [T, D]
+X0[t,:] = E[token_id[t], :]
+```
+
+这不是普通矩阵乘，而是按 token ID 从大表中取行。在 llama.cpp/GGML 中通常表现为
+`GET_ROWS`。每个取出的 1536 维向量是模型学习到的内部表示。单个坐标通常没有稳定的人工语义，
+不应解释成“第 17 维就是名词”；信息由许多维度的联合方向和后续层共同表达。
+
+从硬件角度看，embedding 的主要行为是离散索引读取；QBS 当前加速的是量化线性
+`MUL_MAT`，不接管 `GET_ROWS`。
+
+### 2.6 一个 Qwen Decoder Block 的全貌
+
+28 层中的每一层都保持外部 shape `[T,1536]`。内部先通过 attention 让 token 从历史上下文取回
+信息，再通过 FFN 对每个 token 的特征做非线性变换：
+
+```text
+X_l [T,1536]
+  -> RMSNorm
+  -> Q/K/V projections
+  -> RoPE(Q,K)
+  -> causal GQA attention
+  -> output projection
+  -> + X_l                         attention residual
+  -> RMSNorm
+  -> gate/up projections
+  -> SiLU(gate) .* up              SwiGLU
+  -> down projection
+  -> + attention residual          FFN residual
+  -> X_(l+1) [T,1536]
+```
+
+“Block 保持 shape 不变”很重要：层与层能直接串联；`256` 维 KV 和 `8960` 维 FFN 都只是层内
+临时展开，最后分别被 attention output 和 FFN down 投影回 1536 维。
+
+### 2.7 RMSNorm：稳定数值尺度而不改变 shape
+
+对一个 token 的 hidden vector `x[0:D]`，RMSNorm 计算：
+
+```text
+rms(x) = sqrt((1/D) * sum_i x[i]^2 + eps)
+y[i]   = weight[i] * x[i] / rms(x)
+```
+
+输入输出都是 `[T,1536]`。它的物理作用不是提取新 token 信息，而是控制进入后续大矩阵乘的
+数值尺度，使不同层、不同 token 的 activation 不因幅值漂移而失稳。Qwen2.5 使用 pre-norm：
+先归一化，再进入 attention/FFN；原始 `X` 保留给 residual。
+
+硬件行为包括逐元素平方、1536 元素归约、标量开方/倒数和逐元素缩放。它是 reduction-heavy
+算子，不属于 QBS 的压缩权重矩阵路径。
+
+### 2.8 Q/K/V 投影：同一个 token 被变成“查询、索引和内容”
+
+归一化后的 `Xn[T,1536]` 分别乘三组训练权重：
+
+```text
+Qflat = Xn * Wq^T + bq : [T,1536] x [1536,1536]^T -> [T,1536]
+Kflat = Xn * Wk^T + bk : [T,1536] x [ 256,1536]^T -> [T, 256]
+Vflat = Xn * Wv^T + bv : [T,1536] x [ 256,1536]^T -> [T, 256]
+
+Q = reshape(Qflat): [T,12,128]
+K = reshape(Kflat): [T, 2,128]
+V = reshape(Vflat): [T, 2,128]
+```
+
+可以用检索系统类比三者，但不要把类比误认为精确定义：
+
+- `Q`（query）描述当前 token 在当前层“希望从历史中匹配什么”；
+- `K`（key）描述一个历史 token 可被匹配的特征；
+- `V`（value）是匹配后真正汇聚回来的内容表示。
+
+Qwen2.5-1.5B 使用 GQA：12 个 Q heads 共享 2 个 K/V heads，即每 6 个 Q heads 共用一组 K/V。
+这样 Q 仍保留 12 组不同关注子空间，但 KV cache 容量和读取带宽相对 12 个独立 KV heads 减少
+6 倍。
+
+这三个 projection 都是量化权重线性层，是 QBS 的直接目标。真实 Q4_K_M 文件中 `attn_q`、
+`attn_k` 为 Q4_K，`attn_v` 为 Q6_K，说明同一模型层内也必须支持多 profile 或可靠 fallback。
+
+### 2.9 RoPE：把位置信息写入 Q/K 的相位
+
+纯点积 attention 若只看 token 内容，无法区分“前一个 token”和“很早以前的 token”。RoPE 将
+Q、K 的相邻特征维组成二维向量，并按 token position 和频率执行旋转：
+
+```text
+[x_2i']     [ cos(theta_i*p)  -sin(theta_i*p) ] [x_2i  ]
+[x_2i+1'] = [ sin(theta_i*p)   cos(theta_i*p) ] [x_2i+1]
+```
+
+shape 不变：Q 仍是 `[T,12,128]`，K 仍是 `[T,2,128]`，V 不旋转。旋转后 Q 与 K 的点积自然
+带有相对位置关系。`rope_theta=1e6` 控制不同维度的频率分布，不是一个直接加到 embedding 上的
+位置编号。
+
+RoPE 主要是三角函数/预计算系数、逐元素乘加和数据布局操作，当前由普通 GGML/RVV 路径执行。
+
+### 2.10 GQA Attention：从历史 token 中按权重取回信息
+
+设本次 query token 数为 `Tq`，当前可见 KV 长度为 `S`。对每个 query head `h`：
+
+```text
+score[h,q,s] = dot(Q[h,q,:], K[kv(h),s,:]) / sqrt(128)
+score shape  = [12, Tq, S]
+```
+
+其中 `kv(h)=floor(h/6)`，把 12 个 Q heads 映射到 2 个 KV heads。之后：
+
+1. causal mask 将未来位置设为不可选；
+2. Softmax 沿 `S` 维把 score 转为非负且和为 1 的权重；
+3. 每个 query 用这些权重对历史 `V` 做加权和；
+4. 12 个 head 的 128 维输出拼接回 1536 维。
+
+```text
+P       = softmax(mask(score))        : [12,Tq,S]
+HeadOut = P * V                       : [12,Tq,128]
+Concat  = reshape/permute(HeadOut)    : [Tq,1536]
+```
+
+Attention 的物理意义是**内容相关的信息路由**：模型不平均读取所有历史 token，而是为当前
+token 动态计算一组权重。score 和 P 都依赖运行时文本，不能像模型权重一样预先存入 GGUF。
+
+随后执行输出投影：
+
+```text
+Aout = Concat * Wo^T : [Tq,1536] x [1536,1536]^T -> [Tq,1536]
+Xatt = X + Aout      : [Tq,1536]
+```
+
+`Wo` 是 QBS 可覆盖的量化线性层；QK score、Softmax 和 P*V 属于动态 attention core，不由
+当前 QBS profile 执行。
+
+### 2.11 KV cache：为什么 Decode 不必重算所有历史 K/V
+
+生成第 `S` 个 token 时，历史 token 的 K/V 不会因新 token 到来而改变。因此每层把已经算出的
+K/V 保存到 KV cache：
+
+```text
+new K/V for one token: [2,128] + [2,128]
+conceptual cache:      [layer, position, kv_head, head_dim]
+```
+
+Decode 每步只为新 token 计算一份 Q/K/V，把新 K/V 追加到 cache，再让新 Q 读取全部历史 cache。
+若 cache 按 FP16 保存：
+
+```text
+每层每 token KV bytes = 2(K/V) * 2 heads * 128 * 2 bytes = 1024 bytes
+28 层每 token         = 28672 bytes = 28 KiB
+32768-token 全 cache  = 939524096 bytes = 896 MiB
+```
+
+这解释了 GQA 的硬件价值，也说明长上下文 Decode 会逐渐从量化权重 GEMV 转向 KV-cache 带宽和
+attention core 压力。上述是按 FP16、单序列、不含 allocator/padding 的理论 payload；实际
+llama.cpp cache type、对齐和多序列调度可能改变物理容量。
+
+### 2.12 SwiGLU FFN：每个 token 独立完成的大型非线性变换
+
+Attention residual `Xatt[T,1536]` 先经第二个 RMSNorm 得到 `Z`，然后执行：
+
+```text
+Gate = Z * Wgate^T : [T,1536] x [8960,1536]^T -> [T,8960]
+Up   = Z * Wup^T   : [T,1536] x [8960,1536]^T -> [T,8960]
+Mid  = SiLU(Gate) .* Up                         -> [T,8960]
+Down = Mid * Wdown^T: [T,8960] x [1536,8960]^T -> [T,1536]
+Xnext = Xatt + Down                             -> [T,1536]
+```
+
+`SiLU(x)=x*sigmoid(x)`；`.*` 是逐元素乘，不是矩阵乘。Gate 分支像一个由输入决定的连续开关，
+控制 Up 分支的哪些特征和幅度通过。FFN 不在 token 间交换信息；每个 token 独立执行同一组权重，
+主要作用是把 attention 取回的信息映射到更宽的特征空间，经非线性组合后压回 hidden space。
+
+三次 FFN projection 占单层固定线性 MAC 的 88.24%，是 QBS 优先覆盖量化线性层的最直接理由。
+`ffn_gate/up` 的真实权重为 Q4_K，`ffn_down` 为 Q6_K；SwiGLU 本身仍走普通 RVV/标量路径。
+
+### 2.13 28 层之后：LM head 如何产生下一个 token
+
+第 28 层输出经最终 RMSNorm 后，最后一个有效 token 的 1536 维 hidden state 被映射到词表：
+
+```text
+h_last: [1,1536]
+W_vocab: [151936,1536]
+logits = h_last * W_vocab^T: [1,151936]
+```
+
+每个 logit 是对应词表 token 的未归一化分数。Sampling 通常还会应用 temperature、top-k、top-p、
+repetition penalty 等策略，再选出 token。这些策略改变“如何从分布选 token”，不改变前面 28 层
+的网络计算。
+
+LM head 在 Decode 每生成一个 token 都要执行一次，理论上有 `1536*151936=233,373,696` MAC。
+逻辑 tied embedding 允许它与输入 embedding 共享参数，但输入阶段是行查找，输出阶段仍是大矩阵
+向量乘，计算量不会因共享权重自动消失。
+
+### 2.14 Prefill 与 Decode：同一个模型的两种硬件形态
+
+推理分为两个阶段：
+
+| 阶段 | 输入 | 主要目的 | 线性层形态 | Attention 特征 |
+| --- | --- | --- | --- | --- |
+| Prefill | 整段 prompt 的 `T>1` tokens | 建立所有层的 prompt KV cache，并得到首个输出分布 | 多 activation rows，GEMM/小 M GEMM | causal attention，计算量随 prompt 长度近似二次增长 |
+| Decode | 每次一个新 token，`Tq=1` | 逐 token 生成 | GEMV，`M=1` | Q 读取不断增长的 KV cache，带宽随上下文增长 |
+
+对某个线性层，weight shape 不变；变化的是 activation 行数：
+
+```text
+Prefill: A[T,K] x W[N,K] -> C[T,N]
+Decode:  A[1,K] x W[N,K] -> C[1,N]
+```
+
+Prefill 能让一块 weight 被多行 activation 复用，算术强度较高；Decode 每个 token 都要重新扫描
+大量权重，通常更受 weight bandwidth 和低比特解码开销影响。QBS 因此同时提供 M1 GEMV 与
+M1..M4 micro-GEMM，而不是只优化一个固定 batch shape。
+
+#### 2.14.1 一层完整 shape ledger
+
+下面把前述步骤压到一张表中。`Tq` 是本次计算的 query token 数，`S` 是加入当前 K/V 后的逻辑
+可见长度。Fresh 15-token Prefill 中 `Tq=15`、最大逻辑 `S=15`，causal mask 让第 `q` 行只看
+`0..q`；Prefill 的最后一行 logits 选出首个新 token，把该 token 作为下一次模型输入时，Decode
+才取 `Tq=1`、`S=16` 并继续预测第二个新 token。
+
+| 阶段 | 数学输入 | 数学输出 | Fresh Prefill 示例 | Decode 示例 | 信息/硬件含义 |
+| --- | --- | --- | --- | --- | --- |
+| Embedding | IDs `[Tq]` | X `[Tq,1536]` | `[15,1536]` | `[1,1536]` | indexed row read |
+| Attention RMSNorm | `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | 1536-element reduction/scale |
+| Q projection | `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | Q4_K linear |
+| Q reshape | `[Tq,1536]` | `[Tq,12,128]` | `[15,12,128]` | `[1,12,128]` | 12 query heads |
+| K projection/reshape | `[Tq,1536]` | `[Tq,2,128]` | `[15,2,128]` | `[1,2,128]` | 2 shared key heads |
+| V projection/reshape | `[Tq,1536]` | `[Tq,2,128]` | `[15,2,128]` | `[1,2,128]` | 2 shared value heads |
+| RoPE | Q/K | 同 shape Q/K | 不变 | 不变 | 写入 position-dependent phase |
+| KV append/view | 新 K/V | K/V `[S,2,128]` | `[15,2,128]` | `[16,2,128]` | persistent cache state |
+| QK score | Q 与 K cache | `[12,Tq,S]` | `[12,15,15]` | `[12,1,16]` | 12 组动态 dot products |
+| Mask/Softmax | score | P `[12,Tq,S]` | 同 shape | 同 shape | causal probability weights |
+| P*V | P 与 V cache | `[Tq,12,128]` | `[15,12,128]` | `[1,12,128]` | history value aggregation |
+| Head concat | `[Tq,12,128]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | layout/reshape |
+| O projection | `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | Q4_K linear |
+| Attention residual | 两个 `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | elementwise add |
+| FFN RMSNorm | `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | reduction/scale |
+| Gate projection | `[Tq,1536]` | `[Tq,8960]` | `[15,8960]` | `[1,8960]` | Q4_K linear |
+| Up projection | `[Tq,1536]` | `[Tq,8960]` | `[15,8960]` | `[1,8960]` | Q4_K linear |
+| SwiGLU | Gate、Up | `[Tq,8960]` | `[15,8960]` | `[1,8960]` | SiLU + elementwise multiply |
+| Down projection | `[Tq,8960]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | Q6_K linear |
+| FFN residual | 两个 `[Tq,1536]` | `[Tq,1536]` | `[15,1536]` | `[1,1536]` | 下一层输入 |
+
+本项目 capture 中 K/V tensor 可显示为 `[128,256,2]`，其中 256 是预分配 view 容量/stride，
+不是每个 case 都有 256 个有效历史 token。有效范围由 cache index 和 mask 决定。做硬件流量分析时，
+必须区分 logical `S`、tensor capacity 和实际发出的 memory transactions。
+
+### 2.15 Qwen2.5-1.5B 的计算量：哪些矩阵真正占大头
+
+下面先只统计**每个 Decode token、每层七个固定 projection 的 MAC**。一个 MAC 是一次乘法加
+一次累加；若论文以 FLOP 计，常近似记为 2 FLOPs/MAC。bias、RMSNorm、RoPE、Softmax、逐元素
+运算和地址/搬运未计入本表。
+
+| Projection | 数学 shape `N x K` | 每层 MAC | 固定线性 MAC 占比 |
+| --- | ---: | ---: | ---: |
+| Q | `1536 x 1536` | 2,359,296 | 5.04% |
+| K | `256 x 1536` | 393,216 | 0.84% |
+| V | `256 x 1536` | 393,216 | 0.84% |
+| Attention output | `1536 x 1536` | 2,359,296 | 5.04% |
+| FFN gate | `8960 x 1536` | 13,762,560 | 29.41% |
+| FFN up | `8960 x 1536` | 13,762,560 | 29.41% |
+| FFN down | `1536 x 8960` | 13,762,560 | 29.41% |
+| **每层合计** | - | **46,792,704** | **100%** |
+
+因此：
+
+```text
+每层 FFN projections       = 41,287,680 MAC = 88.24%
+每层 Attention projections =  5,505,024 MAC = 11.76%
+28 层固定 projections      = 1,310,195,712 MAC/token
+LM head                    =   233,373,696 MAC/token
+二者合计                   = 1,543,569,408 MAC/token
+```
+
+若把 LM head 也放入这个“固定线性 MAC”分母，28 层 FFN、28 层 attention projection、LM head
+分别约占 74.9%、10.0%、15.1%。这不是端到端周期占比：低比特格式每个 MAC 的实际代价不同，
+memory traffic、activation quantization 和非线性算子也会消耗周期。
+
+### 2.16 Attention core 的计算量为什么随上下文变化
+
+Decode 时每层 attention score 和 value aggregation 各约执行 `Hq*S*Dh` MAC，因此：
+
+```text
+Attention core MAC/layer/token ~= 2 * 12 * S * 128 = 3072*S
+```
+
+| 当前上下文 `S` | Attention core MAC/层 | 相对该层固定 projection MAC |
+| ---: | ---: | ---: |
+| 256 | 786,432 | 1.68% |
+| 1024 | 3,145,728 | 6.72% |
+| 4096 | 12,582,912 | 26.89% |
+| 16384 | 50,331,648 | 107.56% |
+| 32768 | 100,663,296 | 215.13% |
+
+这张表解释了两个看似矛盾的判断为何都成立：短上下文时量化 FFN/GEMV 是主要工作，QBS 的目标
+很合理；长上下文时 attention/KV cache 可能成为主要瓶颈，仅优化量化权重线性层不足以保证端到端
+token/s 同比例提高。
+
+Prefill 的 causal attention 对 `T` 个 prompt tokens 访问一个三角区域，QK 与 P*V 的总工作量
+近似按 `O(T^2)` 增长；七个 weight projections 则近似按 `O(T)` 增长。因此任何“算子占比”都必须
+同时报告 prompt 长度、decode context、batch 和线程/后端配置。
+
+### 2.17 参数占比、MAC 占比、时间占比不能混为一谈
+
+硬件分析常见三种“占比”：
+
+| 占比 | 分子/分母 | 能回答的问题 | 不能直接回答的问题 |
+| --- | --- | --- | --- |
+| 参数/权重元素占比 | 某组 weight elements / 全部 parameters | 模型容量主要存在哪里 | 实际运行多久、压缩后占多少 bytes |
+| MAC 占比 | 某算子理论 MAC / 指定范围总 MAC | 理想算术工作量结构 | unpack、cache miss、reduction、频率和并行度 |
+| 实测时间占比 | 某算子周期/时间 / 端到端周期/时间 | 当前平台真正的 Amdahl 比例 | 换 shape、后端或缓存后是否仍相同 |
+
+对这一 Qwen 配置，每层七个 projection 的 weight element 数与每个 Decode token 的 MAC 数相同，
+所以 FFN 在**该局部分母**中的参数元素和 MAC 占比都是 88.24%。但 Q4_K_M 混合使用 Q4_K/Q6_K，
+因此存储字节占比不同；算子运行时间还取决于 profile decode 和内存系统。本文的 88.24% 是解析
+shape 得到的固定 projection MAC 占比，不是 profiler 给出的 88.24% 端到端周期。
+
+### 2.18 llama.cpp 如何把模型公式变成可执行 graph
+
+llama.cpp 不是手写一个 `qwen_forward()` C 循环后立即逐句计算。其主要层次是：
+
+```text
+GGUF loader
+  -> 读取 metadata、tensor type/shape/data
+Qwen2 model implementation
+  -> 根据架构构建 GGML tensor graph
+GGML graph
+  -> operator nodes + tensor views + dependencies
+backend scheduler
+  -> 选择 CPU/accelerator backend，规划 buffer 和执行顺序
+operator implementation
+  -> MUL_MAT / RMS_NORM / ROPE / SOFTMAX / elementwise kernel
+architecture microkernel
+  -> scalar / RVV / QBS backend
+ISA and RTL
+  -> load, vector instructions, qbinfo/qbexec, memory and VRF
+```
+
+本机当前 `src/models/qwen2.cpp` 的实际 graph 构建顺序与第 2.6 节一致：
+
+1. `build_inp_embd()` 构造 token embedding；
+2. 每层 `build_norm(..., LLM_NORM_RMS)`；
+3. `build_qkv()` 分别构造 Q/K/V `MUL_MAT` 和 bias；
+4. `ggml_rope_ext()` 处理 Q/K；
+5. `build_attn()` 处理 KV cache、attention core 和 `Wo`；
+6. `ggml_add()` 形成 attention residual；
+7. 第二个 RMSNorm；
+8. `build_ffn(..., LLM_FFN_SILU, LLM_FFN_PAR)` 形成并行 gate/up、SiLU、逐元素乘和 down；
+9. 第二个 `ggml_add()` 形成 FFN residual；
+10. 最终 RMSNorm 和 `build_lora_mm(output, cur)` 形成 logits。
+
+这里的 graph node 描述“结果依赖谁”，不是 RTL clock cycle。`reshape/view/permute` 可能只是修改
+tensor metadata，也可能因连续性要求引入 copy；是否消耗大量周期取决于 backend 实现。
+
+### 2.19 模型数学到 GGML operator 的对应表
+
+| 模型步骤 | 典型 GGML 行为 | 输入 -> 输出 shape | 主要底层行为 | QBS v1 |
+| --- | --- | --- | --- | --- |
+| Token embedding | `GET_ROWS` | `[T] -> [T,1536]` | indexed gather | 不覆盖 |
+| RMSNorm | `RMS_NORM` + `MUL` | `[T,1536] -> [T,1536]` | square/reduce/scale | 不覆盖 |
+| Q/K/V/O projection | `MUL_MAT`，QKV 后接 `ADD` | `[T,K] -> [T,N]` | quantized GEMV/GEMM | 覆盖合法量化 weight |
+| RoPE | `ROPE` | head tensor -> 同 shape | rotate element pairs | 不覆盖 |
+| QK score | `MUL_MAT`/attention kernel | Q,K -> `[Hq,Tq,S]` | dynamic FP dot | 不覆盖 |
+| Mask/Softmax | mask + `SOFT_MAX` | score -> probability | exp/reduction/divide | 不覆盖 |
+| P*V | `MUL_MAT`/attention kernel | P,V -> head output | dynamic FP matmul | 不覆盖 |
+| Residual | `ADD` | 两个 `[T,1536]` -> 同 shape | elementwise add | 不覆盖 |
+| FFN gate/up/down | `MUL_MAT` | `[T,K] -> [T,N]` | quantized GEMV/GEMM | 覆盖合法量化 weight |
+| SwiGLU | `SILU` + `MUL` | 两个 `[T,8960]` -> `[T,8960]` | nonlinear + elementwise | 不覆盖 |
+| LM head | `MUL_MAT` | `[T,1536] -> [T,V]` | large quantized GEMV/GEMM | type/shape/capability 合法时可覆盖 |
+| Sampling | CPU sampling pipeline | logits `[V]` -> token ID | penalty/top-k/top-p/RNG | 不覆盖 |
+
+“总共有多少算子”没有脱离 graph shape 的固定答案：28 层会重复上述模板，llama.cpp 还可能把
+attention 融合为 flash-attention node、按 microbatch 分图、插入 copy/cont/view，或只对最后
+token 计算 logits。研究时应把**数学算子类别**、**GGML graph node 数**和**底层 kernel 调用数**
+分别统计。
+
+若只按 Qwen 数学模板计数，不考虑 backend fusion 和 view/copy，每次完整 forward 包含：
+
+| 数学操作类别 | 每层次数 | 28 层次数 | 层外次数 | 说明 |
+| --- | ---: | ---: | ---: | --- |
+| 固定权重 projection | 7 | 196 | LM head 1 次 | Q/K/V/O + gate/up/down |
+| RMSNorm | 2 | 56 | final norm 1 次 | 共 57 次 |
+| RoPE | 2 | 56 | 0 | Q 和 K 各一次 |
+| Attention dynamic matmul | 2 | 56 | 0 | QK 与 P*V |
+| Residual add | 2 | 56 | 0 | attention 与 FFN 各一次 |
+| Softmax | 1 | 28 | 0 | 沿可见 KV 序列归一化 |
+| SwiGLU nonlinear | 1 | 28 | 0 | SiLU(gate) 与 up 的逐元素乘 |
+
+一次“数学操作”可能被切成很多底层命令。例如 Decode `ffn_gate` 的 N=8960 会按 N<=32 发出许多
+QBS commands；反过来，flash attention 又可能把 QK、mask、Softmax 和 P*V 融合为较少 kernel。
+所以性能计数必须注明统计层次。
+
+### 2.20 `MUL_MAT` 如何继续下沉为量化 microkernel
+
+以 Decode `ffn_gate` 为例：
+
+```text
+模型语义:
+  [1,1536] F32 activation x [8960,1536] Q4_K weight -> [1,8960] F32
+
+GGML:
+  GGML_OP_MUL_MAT
+  -> 根据 weight type/shape/backend 选择 trait
+  -> activation 从 F32 动态量化为 Q8_K
+  -> 遍历 8960 个 output rows
+
+传统单输出 microkernel:
+  每个 output row 执行 ggml_vec_dot_q4_K_q8_K(K=1536)
+
+QBS backend:
+  模型加载时把 weight 持久化 R4 repack
+  -> 运行时把 M 行 activation 量化/布局
+  -> N<=32、M<=4、K-block 分命令
+  -> qbexec 直接计算 MxN 量化线性 microtile
+```
+
+QBS 不是跳过 GGML，也不是把 Qwen Block 固化进 RTL。它替换的是 `MUL_MAT` 中一段满足
+profile/shape/capability 条件的底层执行路径。RMSNorm、RoPE、attention、SwiGLU、residual 和
+sampling 仍按原 graph 执行，因此普通 RVV 功能和 fallback 始终是完整模型可运行的基础。
+
+### 2.21 块量化为什么不能只看“4-bit 乘 8-bit”
 
 llama.cpp/GGUF 不只保存低比特整数。一个块通常同时包含：
 
@@ -73,11 +634,11 @@ llama.cpp/GGUF 不只保存低比特整数。一个块通常同时包含：
 - 动态激活块的 scale 和辅助和 `bsums`。
 
 因此一个量化点积不是单纯 `int4 * int8`。软件需要读取元数据、拆 bit-plane、恢复有符号值、
-按 subgroup 归约、计算 correction，再把整数结果转换并缩放到浮点累加器。QServe 的公开结果也
-指出，低比特 GEMM 的反量化/修正开销可能占据显著执行时间；这说明“存储位宽低”并不自动
-等于“计算路径高效”。
+按 subgroup 归约、计算 correction，再把整数结果转换并缩放到 FP32 accumulator。低比特权重
+减少模型容量和 weight traffic，却增加 unpack、metadata、correction 和 reduction 工作；“每个
+weight 约 4 bit”不意味着硬件只需一个 4x8 multiplier。
 
-### 2.3 标准 RVV 的价值与边界
+### 2.22 标准 RVV 的价值、开销与 QBS 的切入点
 
 RVV 1.0 提供 VLA（vector-length agnostic）编程模型，软件通过 `vsetvl*` 在不同 VLEN 上
 strip-mine，使用 32 个向量寄存器完成加载、整数运算、归约和浮点运算。它仍是 QBS 的正确性
@@ -96,9 +657,49 @@ packed bytes load
  -> repeat for each output row
 ```
 
-同一 activation 块会被许多输出行重复消费。若每个输出行都从“单点积”开始，权重格式解析、
-activation 递送和 reduction 控制会反复出现。QBS 的优化对象正是这个**完整量化线性 microtile**，
-不是只替换一个乘法器。
+同一 activation block 会被许多输出行重复消费；Prefill 时同一 weight block 又会被多个 token
+rows 消费。若每个输出行都从“单点积”开始，格式解析、activation 递送和 reduction 控制会反复
+出现。QBS 的优化对象正是这个**完整量化线性 microtile**，不是只替换一个乘法器。
+
+### 2.23 当前项目中的真实数据怎样放回这条链路
+
+本项目不只保存了合成 block。真实 Qwen2.5-1.5B Q4_K_M capture 固定了 layer 0 的 Prefill
+`T=15` 和 Decode `T=1` 数据，并拆成 36 个可独立回放的叶子：
+
+| 层次 | 数量 | 内容 |
+| --- | ---: | --- |
+| Micro | 6 | F32->Q8_K 与 Q4_K/Q6_K x Q8_K 点积 |
+| 量化线性 operator | 14 | Prefill/Decode 各 7 个 Q/K/V/O/gate/up/down |
+| 非线性/数据流 operator | 16 | 两阶段各 8 个 norm、RoPE、attention core、residual、SwiGLU |
+
+这 36 个叶子能回答“某个局部 kernel 是否正确”，完整 block suite 能回答“按模型顺序组合后是否
+正确”，整模型 QEMU/llama.cpp 则回答“真实 graph dispatch、fallback 和 token generation 是否
+成立”。三者不能相互替代。
+
+严格配对的真实 Decode `attn_q` 切片还给出了当前标准 RVV 与 QBS 的算子级性能数据。前三行
+来自 1.5B 模型，Q8_0 行来自 hidden size 为 896 的 Qwen2.5-0.5B，因而只用于验证该 profile，
+不能与前三行做同 shape 的格式优劣比较：
+
+| Weight | Model | `K x N x M` | RVV/QBS matmul cycles | Matmul speedup | QBS/RVV 逻辑读取 |
+| --- | --- | --- | ---: | ---: | ---: |
+| Q3_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,281,131 / 17,614 | 72.73x | 30.3% |
+| Q5_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 2,011,748 / 21,750 | 92.49x | 40.1% |
+| Q6_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,273,230 / 25,120 | 50.69x | 44.1% |
+| Q8_0 | Qwen2.5-0.5B | `896 x 256 x 1` | 548,583 / 26,923 | 20.38x | 51.9% |
+
+这些数来自 `hardware/format_closure.csv`，两侧 source weight、activation、golden 和 shape 严格
+配对，全部 PASS 且 mismatch 为 0；离线 R4 repack 不计入周期。它们证明当前 microtile 路径
+确实消除了大量 RVV unpack/reduction 工作，但**不是完整 Qwen token/s 加速比**：表中只取一个
+量化线性算子切片，未包含前述 28 层其余算子、LM head、KV cache、sampling 和软件运行时。
+
+整模型功能闭环中，10-token prompt 加 2-token greedy generation 的 trace 记录到 Q4_K
+`gemv/gemm=8032/2656`、Q6_K `gemv/gemm=1360/432`。这些是 GGML 进入新 backend 的调用证据，
+不是 RTL 周期数据。模型级数值结果和六种 profile 的 PPL/KL/Top-k 数据见第 13.9 节。
+
+到这里，模型侧的因果链已经完整：自然语言变为 token，token 经 28 层 attention/FFN 变为
+logits；七个量化 projection 构成每层固定乘加的主体；GGML 将它们表示为 `MUL_MAT`；量化
+backend 再把 `MUL_MAT` 降为 block dot/microtile。第 3 节开始讨论 QBS 如何在保留这条软件链路
+和普通 RVV fallback 的前提下，把 block 语义安全地交给硬件。
 
 ## 3. QBS 的核心设计原则
 
@@ -140,6 +741,50 @@ RTL 还受 `ARA_QBS_ENABLE` 编译开关控制；关闭时普通 RVV 数据通�
 内部时钟只在 command valid/active 时打开，idle 的 block storage 和 FP scheduler 不持续翻转。
 
 最后一点很重要。当前“合理并存”是**明确仲裁和架构兼容**，不是宣称两条访存路径同时工作。
+
+### 3.4 控制、数据和完成三条路径
+
+理解 QBS 时应把三条路径分开，再观察它们在命令边界处如何汇合：
+
+```text
+控制路径: GGML shape -> descriptor/qbexec -> dispatcher -> sequencer vid -> QBS FSM
+数据路径: weight/activation VA -> MMU/PMA -> AXI -> block adapter -> integer/FP pipeline
+完成路径: hidden accumulators -> atomic commit -> LDU result port -> lane VRF -> vid terminal
+```
+
+- 控制路径决定“允许做什么”，包括 profile、layout、M/N/K 和目的寄存器组；
+- 数据路径决定“实际读到什么”，包括翻译、burst、range tag、block 边界和格式解码；
+- 完成路径决定“程序何时能看见结果”，包括 VRF grant、`fflags`、success 和 fault。
+
+很多错误来自把三者混在一起。例如 descriptor 合法只证明控制路径接受了命令，不证明 payload
+读取成功；FP accumulator 有结果也不意味着架构结果已经可见；AXI 已返回全部数据也不意味着
+整数和 FP pipeline 已经排空。
+
+### 3.5 当前实现必须保持的六条不变量
+
+下面六条比具体状态名更接近 QBS 的设计骨架：
+
+1. **先验证后读 payload**：非法 descriptor 不得触发 weight/activation 越界访问；
+2. **单一资源所有者**：QBS active 时，QBS 与普通 VLSU 不能同时驱动 MMU、AXI 或 result port；
+3. **range 和 response 可归属**：每个返回 beat 必须能映射到已发出的 descriptor、activation 或
+   weight range，并满足 RRESP/RLAST；
+4. **同一 accumulator 更新有序**：不同 block 对同一 FP32 partial sum 的更新不能任意重排；
+5. **fault 前不可见**：任何 payload fault 都只能丢弃 hidden state，不能留下部分 VRF 结果；
+6. **terminal 后才释放命令**：success/fault 被 sequencer 接收后，vid、VLSU 所有权和命令局部
+   buffer 才能回收。
+
+RTL assertion 和验证用例应围绕这些不变量组织。新增 prefetch、更多 outstanding、activation
+quantizer 或跨命令复用时，也必须逐条重新证明。
+
+### 3.6 QBS 是否属于数据流架构
+
+准确说，QBS 在一条命令内部使用**有界的压缩块流数据流**：block 到达后依次经过 decode、整数
+点积、correction、FP update，结果驻留在命令局部 accumulator；调度由数据有效性和资源 ready
+共同推进。但它不是 graph-level dataflow processor，也没有让多个 Transformer operator 以 token
+形式在独立节点间自由流动。命令之间仍由标量软件和 sequencer 按程序顺序组织。
+
+因此 QBS 的定位应是“带 command-local dataflow 的 RVV 协同执行路径”，而不是泛称为完整
+数据流处理器。
 
 ## 4. 当前支持的量化 profile
 
@@ -227,6 +872,45 @@ acc = fma(sd, fp32(D), acc)
 可能分别累计 correction 和 positive contribution，因此不能用一次全局交换假定所有格式都
 bit-identical。若未来更改顺序，必须提升 numerical contract version，并同步参考模型、RTL、
 QEMU、GGML 能力检查和整模型质量验证。
+
+### 4.4 两个最小算术例子
+
+先看没有 correction 的 Q4_0。真实 block 有 32 个元素；下面只展示四个非零位置，其余位置视为
+零，以便看清数据流。假设 nibble 解码并减 8 后得到：
+
+```text
+weight quant      qw = [ 1, -1, 2, 0 ]
+activation quant  qa = [ 3, -2, 1, 4 ]
+weight scale      dw = 0.25
+activation scale  da = 0.50
+```
+
+整数路径先计算：
+
+```text
+D = 1*3 + (-1)*(-2) + 2*1 + 0*4 = 7
+```
+
+FP 路径再做一次 contract update：
+
+```text
+sd  = dw * da = 0.125
+acc = fma(sd, fp32(D), acc)       // acc 初始为 0 时得到 0.875
+```
+
+硬件没有先生成四个 FP32 weight 再相乘；低比特点积在整数域完成，只在 block subtotal 边界进入
+FP pipeline。这是 QBS 减少解量化工作量的核心。
+
+再看 affine profile。假设一个 block 汇总得到 `D=40`、`AUX=6`、`sd=0.125`、`sm=0.03125`：
+
+```text
+acc = fma( sd, 40.0, 0.0) = 5.0000
+acc = fma(-sm,  6.0, acc) = 4.8125
+```
+
+这里 `D` 来自 `quant_weight * quant_activation` 的 group dot，`AUX` 来自 Q8_K `bsums` 与 group
+minimum metadata。第二项不是误差修补，而是 affine weight 表达式本身的一部分。交换两次 FMA
+在实数数学中等价，但在 FP32 舍入下未必 bit-identical，所以执行顺序属于 numerical contract。
 
 ## 5. ISA 与 ABI
 
@@ -422,7 +1106,7 @@ QBS 只有在以下条件同时成立时才接管 tensor：
 - Attention Q/K/V/O projection；
 - FFN gate/up/down projection；
 - 兼容格式的 embedding/output projection；
--普通 2D 以及受 R4 边界约束的 expert/MoE 3D tensor。
+- 普通 2D 以及受 R4 边界约束的 expert/MoE 3D tensor。
 
 它当前不直接执行：
 
@@ -458,6 +1142,72 @@ row-major activation并保留 4-register destination group。每组内部 N 再�
 Q4_K_M 是混合格式模型，名称中的 Q4_K 不意味着所有 tensor 都是 Q4_K。`attn_v` 和
 `ffn_down` 使用 Q6_K 正是多 profile capability 和 fallback 必须在真实模型中验证的原因。
 RMSNorm、RoPE、Attention core、SwiGLU 和 residual 仍由 RVV/标量 GGML kernels 执行。
+
+### 6.10 三层循环怎样映射到软件和硬件
+
+完整执行不是“一条指令计算整个模型矩阵”。它包含三个不同层次的 tiling：
+
+```text
+GGML operator
+  for each input-row group M<=4:                 // software
+    quantize/pack activation rows
+    for each output-row command tile N<=32:      // software
+      qbexec(M, N, all K blocks)
+
+qbexec command
+  for each K block:                              // hardware
+    load this K block of M activation rows once
+    for row_base = 0; row_base < N; row_base += 4:
+      load up to four weight rows, with two-bank lookahead when legal
+      decode and compute up to 4 x M logical streams
+      update hidden accumulators[m][row]
+  drain pipelines and atomically commit M x N results
+```
+
+这段伪代码揭示了两个容易忽略的复用边界：
+
+- **命令内**，一个 activation K block 被该命令的 N 个输出行复用，一个 weight block 被 M 个
+  activation context 复用；
+- **命令间**，hidden accumulator、weight bank 和 activation block storage 都不持久。下一个
+  N tile 会重新读取 activation blocks，但不需要重新执行软件量化，因为量化结果仍在内存中。
+
+因此未来若融合 activation quantization，不能让每条 N-tile 命令重复量化同一 activation。合理
+方向是先建立可复用的 activation context，再让多条 `qbexec` 消费；这属于未来 contract，不是
+当前 v1 已实现行为。
+
+### 6.11 当前覆盖深度，而不只是格式数量
+
+“支持九种格式”只说明 profile decoder 的横向覆盖。当前能力应按以下五层描述：
+
+| 覆盖层 | 当前范围 | 不能据此推导的结论 |
+| --- | --- | --- |
+| Format | 9 组 weight/activation profile | 不等于覆盖全部 GGUF types |
+| Shape | M1-M4、命令 N<=32、K<=256 blocks，软件处理 N/M/K 外层分块 | 不等于所有 shape 都同样高效 |
+| Operator | quantized `GGML_OP_MUL_MAT` 的 GEMV/小 M GEMM | 不等于覆盖完整 Transformer block |
+| Model mapping | Qwen2.5 中主要 Q/K/V/O 和 FFN linear projections | 不等于所有模型家族和 MoE layout 已验证 |
+| Implementation evidence | reference、directed RTL、QEMU native model、部分真实 RTL workload | 不等于完成 P&R、功耗和标准数据集质量闭环 |
+
+对已经隔离测试的目标 profile，`selected_tensors == candidate_tensors` 和
+`selected_elements == candidate_elements` 才表示该 profile 的候选线性层达到 100% 软件选择覆盖。
+这个百分比不能用作“整个模型 100% 被 QBS 加速”，因为非 `MUL_MAT` 算子根本不在分母中。
+
+### 6.12 未覆盖操作是否适合并入 QBS
+
+当前未覆盖操作应按计算结构判断，而不是为了提高算子数量全部塞入同一命令：
+
+| 操作 | 主要行为 | 与 QBS 的合理关系 |
+| --- | --- | --- |
+| FP32 -> Q8_K/Q8_0 动态量化 | abs-max reduction、scale、round/clamp、Q8_K bsums | 与输入准备紧邻，适合未来 context 化和流水化，但必须量化一次供多个 N tile 复用 |
+| RMSNorm/LayerNorm | 平方、sum reduction、rsqrt、scale | 更适合增强 RVV reduction/SFU；除非与下一次量化形成可证明的 fusion |
+| RoPE | 成对旋转、sin/cos 系数和逐元素运算 | 规则 RVV kernel 更自然，不宜改造成 block-matmul profile |
+| Softmax | max/sum reduction、exp、division | 需要 reduction 和特殊函数支持，不属于当前压缩权重点积数据流 |
+| Attention score/value | 动态 Q/K/V 上的矩阵乘和归一化后聚合 | 有独立加速价值，但数据来源、精度和 KV 生命周期不同，应作为新机制而非伪装成 weight profile |
+| KV-cache | token/head 寻址、读写、layout、容量和带宽 | 主要是存储系统问题，适合地址生成、layout、预取或压缩协同 |
+| SiLU/SwiGLU/residual | elementwise 激活、乘法和加法 | 保留普通 RVV；只有实测成为主瓶颈时再考虑 fusion |
+| 其他 GGUF quant | 新的 block 字节布局和数学 | 仅当可复用现有 decoder/dot/correction 主路径且真实模型常用时增加 profile |
+
+由此得到的合理总体架构不是“QBS 执行全部 LLM”：QBS 负责量化线性层，普通 RVV 负责通用
+elementwise/reduction，后续再以实测 Amdahl 比例决定是否增加 activation 或 Attention/KV 协同。
 
 ## 7. QBS 如何接入 Ara
 
@@ -900,7 +1650,292 @@ profile dispatch、GEMV/GEMM 和 fallback。QEMU 通过只能证明 GGML graph �
 若改变 FP 累加顺序，即使数学实数表达式相同，也必须重新完成第 2、3 层，不能把误差简单归为
 “浮点允许不同”。
 
+### 13.5 模型级比较为什么使用 teacher forcing
+
+模型级精度实验需要比较普通 RVV 路径与 QBS 路径在**相同模型、相同权重、相同历史 token**下
+给出的下一个 token 分布。若让两条路径各自自由生成，一旦某一步选择了不同 token，后续上下文
+就不同；之后观察到的 logits 差异同时包含“计算路径误差”和“输入序列已经分叉”两种因素，无法
+继续归因。
+
+当前 `verification/qbs/qemu/qbs_token_init.c` 因此采用 teacher-forced 比较：给定包含 69 个
+token 的固定真实文本，两条路径依次观察相同前缀，并在每个位置预测固定序列中的下一个 token，
+形成 68 条 logits record。每条 record 包含：
+
+```text
+step          当前预测位置
+n_vocab       词表大小
+target_token  固定文本中的真实下一个 token
+RVV logits    普通 RVV 路径给整个词表的未归一化分数
+QBS logits    只启用目标 QBS profile 后给整个词表的未归一化分数
+```
+
+这种方法能把每一步的差异归因到执行路径，但它不直接测量自由生成时误差是否会逐 token 累积。
+完整评价应同时包含：
+
+1. teacher-forced logits/PPL 比较，用于稳定、可重复的数值归因；
+2. free-running generation，用于观察真实解码序列是否分叉；
+3. 标准数据集 perplexity 或下游任务质量，用于论文级模型质量结论。
+
+本测试中的 `QBS_TOKEN_OUTPUT_EQUAL=1` 只表示两次运行打印的 teacher record 文本相同。输入
+token 本来就是固定的，因此它**不表示 RVV 与 QBS logits 逐位相等**。真正的数值判断必须看
+PPL、KL、Top-k、RMSE 和最大误差。
+
+### 13.6 单个预测位置上的 logits 指标
+
+设某一步的词表大小为 `V`，普通 RVV logits 为 `zR[i]`，QBS logits 为 `zQ[i]`。logit 是
+softmax 前的未归一化分数，不是概率。
+
+#### 13.6.1 `mean_abs`：平均绝对 logit 误差
+
+```text
+mean_abs = (1/V) * sum_i abs(zR[i] - zQ[i])
+```
+
+它回答“该位置上一个普通词表元素平均相差多少”。越小越好，但它没有区分误差发生在高概率 token
+还是几乎不可能出现的 token 上，因此不能单独代表生成质量。
+
+#### 13.6.2 `rmse`：logits 均方根误差
+
+```text
+rmse = sqrt((1/V) * sum_i (zR[i] - zQ[i])^2)
+```
+
+RMSE 对较大误差的惩罚强于 `mean_abs`，适合检测系统性数值漂移。它仍是 logit 空间指标：
+例如给所有 logits 加同一个常数不会改变 softmax 概率，却会改变直接 logit 误差，所以必须与
+KL 和 Top-k 一起解释。
+
+#### 13.6.3 `max_abs` 与 `max_index`：最坏单点误差
+
+```text
+max_abs   = max_i abs(zR[i] - zQ[i])
+max_index = 产生该误差的词表索引
+```
+
+它们用于发现局部异常和 decoder/correction 错误。较大的 `max_abs` 可能只来自一个低概率
+token，不等于整个分布都发生同等偏移；反过来，max 很小是较强的数值一致性证据。
+
+#### 13.6.4 Top-1、margin 与 `top_equal`
+
+```text
+rvv_top1 = argmax_i zR[i]
+qbs_top1 = argmax_i zQ[i]
+top_equal = (rvv_top1 == qbs_top1)
+margin = top1_logit - top2_logit
+```
+
+`top_equal=1` 表示两条路径在该位置选择相同的最高分 token。它不是模型对 ground truth 的
+准确率，而是 QBS 对 RVV 决策的保持程度。如果第一、第二名分数非常接近，微小的合法浮点差异
+就可能交换排名。因此 margin 很小时发生 Top-1 交换不一定意味着分布质量明显恶化；margin 很大
+仍发生交换则需要重点排查。
+
+#### 13.6.5 `top5_common`：Top-5 集合交集
+
+```text
+top5_common = |Top5(RVV) intersect Top5(QBS)|
+```
+
+单步取值为 0 到 5。它只看两个候选集合是否包含相同 token，不要求集合内部排序一致。因此它比
+Top-1 更不敏感，适合判断概率质量是否仍集中在相似候选上，但不能发现 Top-5 内部概率重排。
+
+#### 13.6.6 `kl_rvv_qbs`：全词表概率分布差异
+
+程序分别对两组 logits 做稳定 softmax：
+
+```text
+p[i] = softmax(zR)[i]
+q[i] = softmax(zQ)[i]
+KL(RVV || QBS) = sum_i p[i] * log(p[i] / q[i])
+```
+
+当前打印的是非对称的 `KL(RVV || QBS)`：把 RVV 当参考分布，衡量 QBS 对 RVV 认为重要的
+概率质量改变了多少。
+
+- `0` 表示两个概率分布相同；
+- 越小表示越接近；
+- 它观察整个词表，通常比单独 Top-1 更能反映分布质量；
+- `KL(RVV || QBS)` 与 `KL(QBS || RVV)` 不相等，不能交换方向解释。
+
+KL 没有跨模型通用的绝对合格线。必须固定模型、prompt、token policy 和样本数，并与同一软件
+baseline 对照。
+
+#### 13.6.7 `target`、`rvv_nll` 与 `qbs_nll`
+
+`target` 是固定文本中的真实下一个 token。设其索引为 `y`：
+
+```text
+NLL_RVV = logsumexp(zR) - zR[y] = -log(p[y])
+NLL_QBS = logsumexp(zQ) - zQ[y] = -log(q[y])
+```
+
+NLL 越低，表示路径给真实下一个 token 的概率越高。与 Top-1 agreement 不同，NLL 使用
+ground-truth token，而不是把 RVV 的最高分 token 当作正确答案。
+
+### 13.7 聚合到整个模型片段的指标
+
+设有效记录数为 `T`，当前实验 `T=68`。
+
+#### 13.7.1 `records` 与 `target_records`
+
+- `records`：成功成对读取且 step、词表大小、target 都一致的 logits record 数；
+- `target_records`：其中具有合法 ground-truth target、可用于 NLL/PPL 的记录数。
+
+两者均为 68 才说明固定片段完整。记录不足时，即使前几个位置误差很小，也不能宣称模型级实验
+通过。
+
+#### 13.7.2 `rvv_ppl`、`qbs_ppl` 与 `ppl_ratio`
+
+```text
+PPL_RVV = exp((1/T) * sum_t NLL_RVV[t])
+PPL_QBS = exp((1/T) * sum_t NLL_QBS[t])
+ppl_ratio = PPL_QBS / PPL_RVV
+```
+
+perplexity 越低通常越好。对同一模型和同一固定 token 序列：
+
+- `ppl_ratio = 1`：两条路径平均 NLL 相同；
+- `ppl_ratio > 1`：QBS 在该片段上的 PPL 较高；
+- `ppl_ratio < 1`：QBS 在该片段上的 PPL 较低。
+
+这里主要判断 ratio 是否接近 1，而不是比较不同 GGUF 模型的绝对 PPL。不同量化模型、参数规模
+和文本片段的绝对 PPL 不具有直接可比性。68-token 结果是工程回归，不足以替代标准 perplexity
+数据集或下游任务评测。
+
+#### 13.7.3 `mean_kl`
+
+```text
+mean_kl = (1/T) * sum_t KL_t(RVV || QBS)
+```
+
+它衡量整个固定片段上的平均概率分布漂移，越接近 0 越好。它不会指出漂移集中在哪一步，异常时
+仍应回看逐步 KL、margin 和 `max_index`。
+
+#### 13.7.4 `top1_agreement`
+
+```text
+top1_agreement = 相同 Top-1 的记录数 / T
+```
+
+它衡量 QBS 保持 RVV greedy 决策的比例，不是与 ground truth 比较的准确率，也不是自由生成文本
+一致率。低 agreement 配合很低 KL 和较高 Top-5 overlap，通常说明若干位置存在接近候选交换；
+若 KL、RMSE 也同时升高，则更像广泛数值漂移。
+
+#### 13.7.5 `top5_overlap`
+
+```text
+top5_overlap = (1/T) * sum_t (top5_common[t] / 5)
+```
+
+例如 `0.94` 表示每个位置的两个 Top-5 集合平均有约 4.7 个共同 token。它不衡量集合内部排序，
+也不代表“Top-5 accuracy”。
+
+#### 13.7.6 `mean_rmse` 与聚合 `max_abs`
+
+```text
+mean_rmse = (1/T) * sum_t rmse[t]
+max_abs   = max_t max_abs[t]
+```
+
+`mean_rmse` 是先对每条记录算 RMSE、再对记录取平均，不是把全部 token/step 展平后计算一个
+全局 RMSE。最终 `max_abs` 则是全部步骤、全部词表元素中的最坏单点误差。
+
+### 13.8 覆盖与执行指标：证明比较的确使用了 QBS
+
+精度接近并不能自动证明 QBS 被执行；若所有算子都 fallback 到 RVV，两边当然完全相同。因此模型
+精度日志必须同时检查：
+
+| 字段 | 严格含义 |
+| --- | --- |
+| `candidate_tensors` | 类型和基本 shape 使其成为该 profile 候选的 tensor 数 |
+| `selected_tensors` | capability/layout/shape 检查后实际选择 QBS backend 的 tensor 数 |
+| `segmented_tensors` | 因单命令 K 上限而需要软件 K 分段的 tensor 数 |
+| `candidate_elements` | 候选 tensor 包含的权重元素数 |
+| `selected_elements` | 实际由 QBS 覆盖的权重元素数 |
+| `fallback_format_filter` | 因本次格式 allowlist 被明确排除的候选数 |
+| `fallback_capability` | 硬件 capability 不支持导致的回退数 |
+| `fallback_dimensions` | tensor 维度条件不满足导致的回退数 |
+| `fallback_shape` | M/N/K shape 不满足导致的回退数 |
+| `fallback_layout` | 无合法 repack/layout 导致的回退数 |
+| `fallback_profile` | weight/activation profile 不兼容导致的回退数 |
+| `fallback_dispatch` | 运行时派发条件不满足导致的回退数 |
+| `gemv_calls/gemm_calls` | 分别进入 QBS Decode 型和 Prefill 型路径的 GGML 调用数 |
+| `commands_m1..m4` | 实际按 M=1..4 发出的 QBS command 数 |
+| `native_qbexec` | QEMU 实际执行的原生 `qbexec` 指令数 |
+| `emulated_commands` | GGML 内部软件模拟执行的命令数；硬件闭环应为 0 |
+
+单格式隔离实验通过 `GGML_RISCV_QBS_FORMATS` 只允许目标 profile。模型中的其他格式出现
+`fallback_format_filter>0` 是实验设计所致，不是能力失败；目标 profile 自身应满足
+`selected_tensors == candidate_tensors`，且 capability/shape/layout/profile/dispatch
+fallback 为 0。
+
+结束状态也必须同时成立：
+
+```text
+QBS_TOKEN_RUN_EXIT=RVV:0         普通 RVV 模型运行成功
+QBS_TOKEN_RUN_EXIT=QBS_NATIVE:0  QBS 模型运行成功
+QBS_LOGITS_RECORDS=68 status=OK  两组 record 完整且元数据对齐
+LLAMA_GUEST_EXIT=0               guest 总体验证成功
+```
+
+### 13.9 当前真实模型闭环结果及读法
+
+2026-08-25 使用真实 Qwen2.5 GGUF、相同 69-token 文本和 68 个 teacher-forced 检查点完成以下
+单 profile 隔离实验：
+
+| Profile | QBS/RVV PPL | Mean KL | Top-1 agreement | Top-5 overlap | Mean RMSE | Global max abs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q3_K | 1.0012 | 0.00833 | 91.18% | 94.12% | 0.1656 | 1.2151 |
+| Q4_K | 0.9893 | 0.00866 | 89.71% | 92.65% | 0.1715 | 1.1663 |
+| Q5_K | 1.0230 | 0.00905 | 94.12% | 94.71% | 0.1754 | 1.1069 |
+| Q6_K | 0.9855 | 0.00745 | 82.35% | 94.12% | 0.1676 | 1.0965 |
+| Q8_0 | 1.0174 | 0.00235 | 97.06% | 95.59% | 0.0901 | 0.8997 |
+| IQ4_NL | 1.0080 | 0.00217 | 98.53% | 95.00% | 0.0887 | 0.6807 |
+
+这组数据支持以下有限结论：
+
+- 六种目标 profile 均完成 68 条 record，目标 tensor 100% 进入原生 QBS，软件模拟为 0；
+- PPL ratio 位于约 `0.986..1.023`，Mean KL 均低于 `0.01`，未见模型分布整体崩坏；
+- Q8_0/IQ4_NL 的 KL 和 RMSE 最低；Q5_K 在该短片段上的 PPL 增幅最大，约 2.3%；
+- Q6_K Top-1 agreement 最低，但 Top-5 overlap 仍为 94.12%、Mean KL 为 0.00745，说明许多
+  差异更可能是接近候选的排名交换，而不是直接证明功能错误；仍需结合逐步 margin 和长文本回归；
+- 这些数据证明的是当前固定文本上的工程精度闭环，不能表述成标准数据集精度无损，也不能将
+  `ppl_ratio<1` 宣称为 QBS 提高了模型质量。
+
+已有 Q2_K 68-step 实验得到 `ppl_ratio=0.9943`、`mean_kl=0.00352`、Top-1 92.65%、
+Top-5 97.06%；Q4_0/Q5_0 也已有真实模型严格生成输出回归。九种 profile 的算子级 directed
+test 全部通过，但论文级“所有格式质量等价”仍应补充更长文本、多个 prompt/seed 和标准
+perplexity 数据集。
+
+### 13.10 当前验证覆盖清单和剩余空白
+
+截至本文状态，已经形成的验证深度如下：
+
+| 层次 | 已有覆盖 | 主要证明 |
+| --- | --- | --- |
+| ABI 生成 | JSON 到 C/SV 生成物一致性、padded tail/link regression | 软件和 RTL 使用同一字段定义 |
+| C reference | 九种 profile、两种 activation、两类 layout、shape/地址/原子提交 | canonical arithmetic/validation contract 可执行 |
+| Profile RTL | 9 profiles x M1-M4 x row-count 1-4 x 3 data patterns，共 432 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立 |
+| Command RTL | 22 个功能命令，覆盖 M1-M4、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立 |
+| Fault RTL | validation、MMU、PMA、AXI/protocol fault | fault drain 和“失败不提交”成立 |
+| QEMU directed | 九种 profile、M1-M4、N=35 tail、三 expert `MUL_MAT_ID` | ISA、guest memory、repack、dispatch 与软件 shape 组合成立 |
+| 真实 RTL 数据 | `format_closure.csv` 中 Q3_K/Q5_K/Q6_K/Q8_0 代表点及既有 Q4_K/Q6_K workload | 真实 GGUF bytes、activation 和 golden 可穿过 timing RTL |
+| 模型级 QEMU | 七种 profile 有 68-step teacher-forced 指标；Q4_0/Q5_0 有严格生成回归 | 原生 `qbexec` 能运行真实模型且短片段质量未崩坏 |
+
+这仍留下四类空白：
+
+1. Q4_0/Q5_0 尚未达到其余七种 profile 相同的 68-step 指标深度；
+2. 模型质量主要基于 Qwen2.5 和短固定文本，缺少多模型、标准数据集和长上下文；
+3. module-level fault 已覆盖，但长命令中的 reset、interrupt、debug/kill 系统级压力仍需专门闭环；
+4. QEMU 是功能模型，真实 RTL 的全格式、全模型执行成本以及综合/P&R/功耗不能由其替代。
+
+因此“九种 profile 功能闭环”和“九种格式论文级模型质量闭环”是两条不同结论。前者已经具备，
+后者尚未完全具备。
+
 ## 14. 与相关研究和产品的关系
+
+本节是截至 2026-08-25 的研究位置快照。需要先区分成熟度：Intel AMX、Arm SME2 和 NVIDIA
+Blackwell 是已公开的工业 ISA/产品能力；SpacemiT IME 是已经落地的厂商 RISC-V 扩展；RISC-V
+IME/AME 是标准工作组方向，不能写成已经 ratified 的统一矩阵 ISA；MixPE、F-BFQ 和 Gemmini
+属于论文或开源研究平台。它们可以比较设计取舍，但不能把提案能力当作现成产品数据。
 
 ### 14.1 对照总表
 
@@ -908,8 +1943,9 @@ profile dispatch、GEMV/GEMM 和 fallback。QEMU 通过只能证明 GGML graph �
 | --- | --- | --- | --- | --- |
 | 通用 VLA vector | RVV 1.0、Ara | 标准 vector registers | 通用 data parallel | QBS 在其上增加 profile/shape 命令，RVV 保留为 fallback |
 | 集成矩阵扩展 | SpacemiT IME/Zvvm 方向 | 复用 vector registers 表示 2D tile | register-to-register matrix ops | QBS 从 memory 直接流入压缩 blocks，不把完整输入 tile 都架构化 |
-| 独立 tile 扩展 | Intel AMX、RISC-V AME 方向 | 独立 tile registers | dense matrix multiply | QBS 无独立长期 tile state，command-local accumulator 后提交 VRF |
+| 独立/扩展 tile state | Intel AMX、Arm SME2 ZA、RISC-V AME 方向 | 独立或扩展二维矩阵状态 | dense matrix/outer-product | QBS 无长期 tile state，command-local accumulator 后提交 VRF |
 | 软件微内核库 | Arm KleidiAI | 由 NEON/SVE/SME 状态决定 | pack + GEMV/GEMM microkernel | QBS 将 block decode/correction/reuse 下沉到硬件，但同样强调 capability、packing 和 fallback |
+| 原生块缩放 Tensor Core | NVIDIA Blackwell NVFP4 | Tensor Core 原生消费 microscaled FP4 | 大规模 GPU GEMM/训练与推理 | 展示 block scale 已进入商用计算格式；其 FP4 数学、GPU execution model 与 GGUF/QBS 不同 |
 | 外置/生成式加速器 | Gemmini 类 | 常有 scratchpad/DMA/专用 ISA | tile dataflow | QBS 复用 Ara MMU/AXI/异常/VRF，不建立独立 DMA 软件栈 |
 | 量化算法-系统协同 | QServe | GPU kernel/runtime | 降低 W4A8 dequant 开销 | QBS 不提出新量化算法，直接执行现有 GGUF profile |
 | 混合精度 PE | MixPE | 专用 PE | group scale/zero point 与 MAC | QBS 的 profile/correction 思路相近，但强调 llama.cpp ABI、RVV 共存和完整系统闭环 |
@@ -932,6 +1968,10 @@ QBS 没有照搬的部分是 vector-register matrix tile ISA。它选择 memory-
 因为 GGUF 权重本来就以压缩 block 驻留内存，若先用 RVV load/unpack到寄存器再执行矩阵指令，
 会重新引入软件指令和 VRF traffic。
 
+还要注意，当前 upstream llama.cpp 已经持续完善 RISC-V/RVV 的 repack GEMV/GEMM。研究比较不能
+把早期逐行标量或未 repack 实现当作“RVV 上限”；QBS 应对比同一模型、同一量化格式和同等软件
+优化程度的当前 RVV backend，才能把收益归因到 profile-aware hardware execution。
+
 ### 14.3 从 Arm KleidiAI 学到什么
 
 KleidiAI 的 int4 matmul流程明确分为 RHS persistent packing、LHS dynamic quant/packing 和 matmul
@@ -943,6 +1983,11 @@ microkernel，并用 shape/capability 选择 NEON/SVE/SME 变体。这与 QBS �
 - kernel selection 显式检查 type/shape/capability；
 - 优化失败时能回到正确 baseline。
 
+Arm SME2 又提供了另一个硬件参照：它使用可扩展 ZA 二维状态和 outer-product/multi-vector 指令
+提高矩阵密度，KleidiAI 再把 framework operator、packing 和 microkernel 连接起来。QBS 与它
+共享“CPU 内矩阵加速必须有软件库落地”的判断，但不采用可长期观察的 ZA tile，也没有把通用
+dense outer-product 作为 ISA 中心。
+
 ### 14.4 从 Intel AMX 和 RISC-V Matrix 提案看状态成本
 
 AMX 通过八个 1 KiB tile registers 和 TMUL 获得高密度矩阵计算，但 OS 需要管理 tile config 和
@@ -952,6 +1997,11 @@ Attached Matrix Extension（独立 matrix state）。这些方案更适合广泛
 QBS 用较窄的 software contract 换取较小的 architectural surface：没有通用 tile load/store、
 transpose 或持久 tile state，只支持声明的 block profiles 和 M/N/K。其优势是系统接入简单、
 与现有 GGML 语义贴合；限制是不能冒充通用矩阵 ISA。
+
+截至本文状态，RISC-V IME charter 的明确方向是基于现有 vector registers，并先聚焦 INT8、
+BF16、FP32/FP64，后续再考虑 FP8、4-bit block FP 和 sparsity；AME 则定义与 vector state 正交的
+attached matrix state。QBS 与二者都不是包含关系：它更窄地绑定 GGUF block semantics，同时
+更强调 memory-to-VRF stream、异常原子性和现有 RVV fallback。
 
 ### 14.5 与近期块量化硬件研究的重叠边界
 
@@ -969,6 +2019,41 @@ QBS 更可辩护的研究中心是组合关系：
 2. 在 lane-based RVV processor 内，以命令局部状态直接消费 compressed blocks；
 3. 复用普通向量的 MMU、异常、sequencer、VRF 和 fallback，避免独立 accelerator software island；
 4. 用真实模型数据同时闭环多 profile、Decode/Prefill、tail、MoE 边界和模型级数值质量。
+
+### 14.6 工业界正在收敛的共性
+
+虽然 ISA 和产品形态不同，公开实现呈现出四个共同趋势：
+
+1. **低比特只是起点**：scale、zero point/min、lookup table 和 accumulation precision 必须成为
+   kernel 或硬件 contract 的一部分；
+2. **持久权重与动态激活分工**：模型权重适合加载时一次 repack，activation 需要每次运行时量化
+   和 packing；KleidiAI 的三微内核流程是典型软件实例；
+3. **矩阵吞吐依赖数据布局**：AMX/SME/IME、GPU Tensor Core 和 GGML repack 都要求 tile/layout
+   与计算原语配套，单独增加乘法器不能解决小请求、shuffle 和 metadata traffic；
+4. **高性能路径必须可选择**：产品通过 feature discovery、kernel dispatch 和 fallback 保持同一
+   framework 在不同硬件上运行，而不是让模型文件依赖一个不可查询的隐藏实现。
+
+NVIDIA Blackwell 的 NVFP4 进一步说明 microscale/block scale 已经成为商用低精度计算的一部分，
+但其每 16 元素 FP4 microblock 和两级 scale 与 GGUF K-quants 并不相同。它支持的是“块缩放值得
+进入硬件”这一大方向，不能作为 QBS 九种 GGUF profile 已有工业等价实现的证据。
+
+### 14.7 QBS 当前真正占据的位置
+
+可以用两条轴定位现有方案：
+
+```text
+架构状态:  通用 vector state ---- command-local hidden state ---- 独立 tile/scratchpad state
+格式语义:  通用整数/浮点 ---- profile 驱动 block quant ---- 固定模型/固定层数据流
+```
+
+QBS 位于两条轴的中间：比纯 RVV 更理解 GGUF block 和 tile shape，但比独立 NPU/矩阵 ISA 更少
+长期状态；比单一 Q4 加速器覆盖更多 profile，但没有把 Transformer graph 固化。这个位置带来的
+研究价值是系统组合，而不是某个低比特乘法本身。
+
+同时，这个位置也产生必须正面回答的风险：profile 数增加会不会把 decoder 变成面积/时序负担；
+阻塞 VLSU 会不会限制与普通 RVV 的重叠；软件 repack 和动态量化是否吞噬硬件收益；短命令的
+descriptor/translation/commit 固定成本是否过高。论文评价应围绕这些问题给出面积、时序、覆盖率、
+端到端性能和模型质量证据。
 
 ## 15. 当前方案的优势、限制与不能过度声称的内容
 
@@ -991,6 +2076,9 @@ QBS 更可辩护的研究中心是组合关系：
 - v1 commit mapping 固定为 4 lanes；RTL 约束 VLEN 位于 256..1024 且为 256 的整数倍，结合
   RVV 对 VLEN 为 2 的幂的要求，实际合法配置为 256/512/1024；这不是任意 Ara 配置已经自动
   支持的声明；
+- 当前 ABI JSON、canonical reference 和 QEMU 尚未完整编码上述 `NrLanes/VLEN` 实现约束；reference
+  接受的抽象 VLEN 范围比 `qbs_commit.sv` 更宽。VLEN=1024 固定实验不受影响，但在宣称跨配置
+  可移植前，必须让 `qbinfo`、reference、QEMU、软件选择和 RTL 使用同一能力边界；
 - 只直接覆盖 quantized `MUL_MAT`，不覆盖完整 Transformer block；
 - current v1 contract 追求可执行一致性，不等于所有 GGML kernel 的 bitwise 累加顺序；
 - QEMU 是 functional model，不能替代 RTL、综合、P&R 和 power 结果。
@@ -1013,12 +2101,13 @@ capacity、dot active、phase 和 payload/cycle。
 
 ## 16. 合理的扩展路线
 
-### 16.1 近期：完善现有 profile 的模型闭环
+### 16.1 近期：扩大模型级精度样本
 
-- 对每种 profile 用真实 GGUF 权重和真实 activation 验证 GEMV/GEMM；
-- 记录选中 tensor、fallback reason、M/N/K、split-K 和命令覆盖；
-- 用较长 token generation 比较 logits/生成文本，而不只看两 token；
-- 冻结 numerical contract 后再做物理综合。
+- 将九种 profile 的算子级 directed test、七种 profile 的 68-step teacher-forced 比较，以及
+  Q4_0/Q5_0 的严格生成回归保留为固定回归基线；
+- 扩展多个 prompt、seed、上下文长度和生成长度，检查误差是否随序列推进而累积；
+- 在标准 perplexity 数据集上比较 RVV 与 QBS，并同时记录 profile 覆盖率和 fallback 原因；
+- 基于扩展结果冻结 numerical contract，再进行最终物理综合和论文级质量结论。
 
 ### 16.2 中期：减少未覆盖的线性层开销
 
@@ -1043,7 +2132,25 @@ capacity、dot active、phase 和 payload/cycle。
 
 ## 17. 学习和调试方法
 
-### 17.1 从一个命令建立心智模型
+### 17.1 先确认模型侧的心智模型
+
+进入 RTL 前应能独立回答：
+
+1. token ID 为什么不能被当成有连续数值意义的输入？
+2. Embedding lookup 与 LM head 虽可共享逻辑权重，为什么一个是 gather、另一个仍是大 GEMV？
+3. `[T,1536]` 为什么分别变成 Q `[T,12,128]` 和 K/V `[T,2,128]`？
+4. GQA 为什么能把本文单 token、单层 FP16 KV payload 降到 1024 bytes？
+5. 首个输出 token 的 logits 属于 Prefill 还是 Decode？首个 Decode 输入又是什么？
+6. 为什么短上下文时 FFN projection 是主要 MAC，而长上下文时 attention/KV 可能接管瓶颈？
+7. 为什么 88.24% 只能称作每层固定 projection MAC 占比，不能称作端到端时间占比？
+8. `GGML_OP_MUL_MAT`、架构 microkernel 和一条 `qbexec` 为什么不是一一对应？
+9. 哪七个层内 projection 可进入 QBS，哪些 attention/normalization 操作仍必须由普通路径执行？
+10. 一次真实模型生成正确，为什么仍不能替代 profile 算术和 RTL fault/commit 验证？
+
+若这些问题尚不清楚，应回看第 2 节的 shape ledger、计算占比和模型到 GGML 的映射，再进入命令
+状态机。否则很容易把“局部 QBS 加速”“整层加速”和“token/s 加速”混成同一结论。
+
+### 17.2 从一个命令建立心智模型
 
 建议先选 `Q4_K x Q8_K, M=1, N=4, K-blocks=1`：
 
@@ -1057,7 +2164,7 @@ capacity、dot active、phase 和 payload/cycle。
 之后再扩到 M4、N32、多 K blocks 和 R4/M4 tails。直接从完整模型波形开始会把 format、layout、
 memory 和 FP pipeline 四类问题混在一起。
 
-### 17.2 性能问题的证据顺序
+### 17.3 性能问题的证据顺序
 
 ```text
 先确认 workload/shape/profile 和 payload hash
@@ -1072,6 +2179,35 @@ memory 和 FP pipeline 四类问题混在一起。
 
 若需要周期级解释，使用有界 `QBS_ROOT_TRACE` 或 focused FSDB，明确能区分假设的信号；不要通过
 反复改 bank、timeout、profile hint 试出一个偶然更快的点。
+
+### 17.4 从症状定位到哪一层
+
+| 症状 | 优先检查 | 不应先做什么 |
+| --- | --- | --- |
+| 所有格式都错 | descriptor/layout、activation 地址、commit mapping | 先改某个 profile decoder |
+| 只有一种格式错 | ABI block bytes、bit-plane、scale/min、reference trace | 先放大 timeout |
+| 只有 M3/M4 错 | M4 activation layout、vd group、inactive register/row | 假定是浮点误差 |
+| 只有 N tail 错 | logical N、R4 padding、commit zero-fill | 改 dot array 宽度 |
+| 多 K block 才错 | accumulator first/update 顺序、bank clear、K advance | 只看最终最大误差 |
+| fault 后目的寄存器改变 | hidden state 与 commit 门控、fault drain | 用软件重试掩盖 |
+| 数值正确但慢 | phase -> read -> dot -> FP -> commit 逐层计数 | 只按 lane utilization 改硬件 |
+| QEMU 快/对但 RTL 不同 | QEMU 只建模语义，核查 RTL timing/handshake | 用 QEMU 证明 RTL 时序 |
+
+### 17.5 掌握当前机制的自检问题
+
+能够独立回答下面问题，才算建立了完整心智模型：
+
+1. Q4_K 的 `d/dmin`、group scale/min 和 Q8_K `bsums` 分别进入哪一项公式？
+2. `M=4, N=32, K=1536` 在软件、descriptor、hardware row tile 和 accumulator 中分别怎样表示？
+3. 为什么当前 hardware 循环是 K-block major，并在一个 K block 内遍历 N rows？
+4. 为什么 R4 padding 可以多读存储行，却不能多提交 architectural outputs？
+5. 一个 AXI RRESP fault 从 read engine 到 sequencer fault 的过程中，哪些状态需要 drain，哪些结果
+   必须保持不可见？
+6. `pair_utilization=1` 而 `dot_duty` 很低时，为什么不能继续增加 multiplier？
+7. GGML 在哪些检查失败后回退，回退是否发生在 repack 前还是命令执行中？
+8. 为什么 QEMU native QBS 与 GGML emulation 的“参考”含义不同？
+9. 为什么 activation quantization 若按 N tile 重复执行会破坏融合收益？
+10. QBS 与 IME/AME/AMX/SME2/F-BFQ 最核心的 architectural-state 和 software-contract 差异是什么？
 
 ## 18. 当前源码索引
 
@@ -1130,6 +2266,17 @@ memory 和 FP pipeline 四类问题混在一起。
 
 ## 19. 外部资料与延伸阅读
 
+### Qwen、Transformer 与推理基础
+
+1. [Qwen2.5-1.5B-Instruct 官方配置](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct/blob/main/config.json)：本文 `L/D/F/Hq/Hkv/V`、RoPE 和 RMSNorm 参数来源。
+2. [Qwen2.5 Technical Report](https://arxiv.org/abs/2412.15115)：Qwen2.5 模型系列、训练和部署背景。
+3. [Attention Is All You Need](https://arxiv.org/abs/1706.03762)：Transformer、self-attention、multi-head attention 和 FFN 的原始定义。
+4. [RoFormer/RoPE](https://arxiv.org/abs/2104.09864)：通过旋转 Q/K 表示位置和相对距离。
+5. [RMSNorm](https://arxiv.org/abs/1910.07467)：RMS normalization 的定义和动机。
+6. [Grouped-Query Attention](https://arxiv.org/abs/2305.13245)：query heads 分组共享 KV heads，以降低 KV 开销。
+7. [GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202)：SwiGLU 等 gated FFN 变体。
+8. [llama.cpp Qwen2 graph](https://github.com/ggml-org/llama.cpp/blob/master/src/models/qwen2.cpp)：GGUF tensor shape 与 Qwen2 GGML graph 的当前实现入口。
+
 ### 标准和基础架构
 
 1. [RISC-V Vector Extension 1.0](https://docs.riscv.org/reference/isa/unpriv/v-st-ext)：VLA、VLEN、vector state 和精确异常。
@@ -1147,20 +2294,35 @@ memory 和 FP pipeline 四类问题混在一起。
 ### 产品与实现视角
 
 9. [SpacemiT AI Matrix Extension](https://github.com/spacemit-com/docs-ai/blob/main/en/architecture/ime_extension.md)：复用 RVV register file 的矩阵和 block-quant 指令设计。
-10. [Intel AMX overview](https://www.intel.com/content/www/us/en/products/docs/accelerator-engines/what-is-intel-amx.html)：architectural tile registers 与 TMUL。
+10. [SpacemiT IME specification](https://github.com/spacemit-com/riscv-ime-extension-spec)：厂商指令语义、program model 和示例。
+11. [Intel AMX overview](https://www.intel.com/content/www/us/en/products/docs/accelerator-engines/what-is-intel-amx.html)：八个 1 KiB architectural tile registers 与 TMUL。
+12. [Arm SME/SME2 matrix model](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/matrix-matrix-multiplication-neon-sve-and-sme-compared)：ZA 二维状态、outer-product 和 scalable tile。
+13. [NVIDIA NVFP4](https://developer.nvidia.com/blog/?p=102000)：Blackwell Tensor Core 的 16-element microscale FP4 与两级 scale。
 
 ### 块量化和协同加速研究
 
-11. [QServe, MLSys 2025](https://proceedings.mlsys.org/paper_files/paper/2025/hash/fbe2b2f74a2ece8070d8fb073717bda6-Abstract-Conference.html)：低比特服务中 dequantization overhead 与软硬件协同。
-12. [MixPE](https://arxiv.org/abs/2411.16158)：group quantization、mixed-precision PE 和反量化位置。
-13. [F-BFQ](https://arxiv.org/abs/2510.13401)：面向 llama.cpp block quantization 的可切换格式加速器，是 QBS 必须正面对照的相近工作。
-14. [Gemmini](https://arxiv.org/abs/1911.09925)：生成式矩阵加速器的 ISA、scratchpad、软件栈和系统集成视角。
+14. [QServe, MLSys 2025](https://proceedings.mlsys.org/paper_files/paper/2025/hash/fbe2b2f74a2ece8070d8fb073717bda6-Abstract-Conference.html)：低比特服务中 dequantization overhead、KV quantization 与软硬件协同。
+15. [MixPE](https://arxiv.org/abs/2411.16158)：group quantization、mixed-precision PE 和“group dot 后反量化”。
+16. [F-BFQ](https://arxiv.org/abs/2510.13401)：面向 llama.cpp block quantization 的可切换格式加速器，是 QBS 必须正面对照的相近工作。
+17. [Gemmini](https://arxiv.org/abs/1911.09925)：生成式矩阵加速器的 ISA、scratchpad、软件栈和系统集成视角。
 
 ## 20. 术语速查
 
 | 术语 | 含义 |
 | --- | --- |
 | QBS | Quantized Block Streams，量化块流执行机制 |
+| Token | tokenizer 定义的离散文本单元；模型输入和输出使用其整数 ID |
+| Embedding | 把 token ID 查表为 hidden vector；不是普通连续数值转换 |
+| Hidden state | 某个 token 在某层的内部特征向量，本文 Qwen2.5 宽度为 1536 |
+| Activation | 由当前输入运行时产生的中间 tensor，区别于固定模型权重 |
+| Logits | 模型对词表中每个候选 token 给出的未归一化分数 |
+| Head | Attention 中一个独立的 Q 子空间；每个 head 在本文为 128 维 |
+| GQA | 多个 query heads 共享较少的 K/V heads，降低 KV-cache 容量和带宽 |
+| KV cache | 保存历史 token 的 K/V，使 Decode 不必重算历史层状态 |
+| Prefill | 一次处理 prompt 的多个 token，并建立各层 KV cache |
+| Decode | 每次处理一个新 token，读取历史 KV cache 并继续自回归生成 |
+| GGML operator | GGML graph 中带输入、输出和语义的计算节点，例如 `MUL_MAT` |
+| Microkernel | operator 在特定架构、格式和小 tile 上调用的底层计算实现 |
 | Profile | 一种 weight/activation block 数学与字节布局契约 |
 | Native block | GGML 格式定义的最小量化块，当前为 32 或 256 elements |
 | Subgroup | block 内共享局部 scale/min 的元素组 |
@@ -1172,8 +2334,14 @@ memory 和 FP pipeline 四类问题混在一起。
 | `bsums` | Q8_K 每 16 elements 的 int16 activation sum，用于 affine min correction |
 | `qbinfo` | 软件查询 QBS capability 的指令 |
 | `qbexec` | 执行一个 QBS MxNxK-block microtile 的阻塞命令 |
+| Capability discovery | 软件在运行时查询版本、shape、layout 和 profile，而不是按 CPU 名称猜能力 |
+| Command-local dataflow | 数据在一条命令内部按 valid/ready 流过多个阶段，但命令间不保留可见数据流状态 |
 | Hidden accumulator | 命令内部 FP32 部分和，成功前不是架构可见状态 |
 | Atomic commit | 所有访问/计算成功后，才将完整结果写入 VRF |
+| Split-K | 软件把过长 K 分成多条命令，再按原顺序累加 FP32 partial results |
+| Native QBS | guest 实际执行 `qbexec`，区别于 GGML 内部 scalar emulation |
+| Selection coverage | QBS 实际选中的候选 tensor/elements 比例，不包含本就不支持的非线性算子 |
+| Teacher forcing | 两条路径使用相同历史 token，逐位置比较下一 token 分布，避免自由生成分叉干扰归因 |
 | RVV fallback | QBS 不适用时使用标准 RISC-V Vector 实现 |
 
 掌握 QBS 的关键不是记住每个状态名，而是始终把四条线对齐：**量化数学、内存 layout、命令
