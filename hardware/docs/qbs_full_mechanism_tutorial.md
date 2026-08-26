@@ -941,85 +941,411 @@ acc = fma(-sm,  6.0, acc) = 4.8125
 minimum metadata。第二项不是误差修补，而是 affine weight 表达式本身的一部分。交换两次 FMA
 在实数数学中等价，但在 FP32 舍入下未必 bit-identical，所以执行顺序属于 numerical contract。
 
-## 5. ISA 与 ABI
+## 5. 从原 RVV 程序到 QBS 程序：ISA 与 ABI
 
-### 5.1 两条指令
-
-QBS 使用 custom-2 opcode `0x5b`：
-
-| 指令 | funct3 | 作用 |
-| --- | ---: | --- |
-| `qbinfo` | 1 | 查询架构版本、contract、shape 上限、profile/layout 支持和对齐要求 |
-| `qbexec` | 0 | 启动一条阻塞式量化 block-stream 命令 |
-
-当前工具链尚以 raw `.word` 发出 `qbexec`。软件包装器固定使用：
+这一节先回答“原来的程序在做什么”，再解释 QBS 如何表达同一个计算。两条路径的数学目标
+相同。对一个量化线性层，记：
 
 ```text
-rs1 = 16-byte descriptor 地址
-rs2 = activation base 地址
-vd  = FP32 输出向量寄存器组起点
-funct7[1:0] = M - 1
+W: [N_total, K]   静态量化权重
+A: [M_total, K]   运行时 activation，由 F32 量化为 Q8_K 或 Q8_0
+C: [M_total, N_total]
+
+C[m,n] = dot(A[m,:], W[n,:])，并按量化 profile 执行 scale/min correction
 ```
 
-`M=1/2/3/4` 分别占用 1/2/4/4 个 architectural vector registers。`M=3` 仍按 LMUL=4 对齐并
-保留第四个寄存器，但只提交三行有效结果。
+注意 QBS descriptor 中的 `N` 是**一条命令计算的输出行数**，不是 llama.cpp 所有上层函数中
+都使用的同名参数。本文为避免混淆，把完整维度写成 `M_total/N_total/K`，把单条命令的 tile
+写成 `M/N/K-blocks`。
 
-### 5.2 Descriptor v1
+### 5.1 原始标准 RVV 程序是什么样的
 
-descriptor 固定 16 B、16 B 对齐：
+“原 RVV 程序”不是唯一一个固定函数。GGML 会根据量化格式、VLEN、Decode/Prefill shape 和 repack
+能力，选择单输出 `vec_dot`、多输出 GEMV 或多 activation GEMM kernel。当前代码中最容易理解的
+代表是 `ggml_vec_dot_q4_K_q8_K_vl1024()`；当 repack 条件满足时，更高层还可调用一次处理多行的
+`ggml_gemm_q4_K_32x1_q8_K_generic()` 等 kernel。它们的共同点是：量化格式语义已被展开为普通标量
+和 RVV 指令。
+
+以 `Q4_K x Q8_K` 的单个输出为例，等价的软件结构是：
+
+```c
+float sum = 0.0f;
+for (unsigned b = 0; b < K / 256; ++b) {
+    q4_block w = load_q4_k_block(weight_row, b);  // d, dmin, scales, qs
+    q8_block a = load_q8_k_block(activation, b);  // d, qs, bsums
+
+    decode_6bit_scales_and_mins(w.scales, scales, mins);
+
+    int32_t dot = 0;
+    int32_t min_correction = 0;
+    for (unsigned g = 0; g < 8; ++g) {
+        int8_vector q4 = unpack_low_or_high_nibbles(w.qs, g);
+        int8_vector q8 = load_activation_group(a.qs, g);
+        dot += scales[g] * reduce_sum(widen_mul(q4, q8));
+        min_correction += mins[g] * activation_group_sum(a.bsums, g);
+    }
+
+    sum += (fp16_to_fp32(w.d)    * a.d) * dot;
+    sum -= (fp16_to_fp32(w.dmin) * a.d) * min_correction;
+}
+output = sum;
+```
+
+当 `VLEN=1024` 时，当前 Q4_K 专用实现已经做了合理的 RVV 优化：用 32 个 i32 lane 保留中间和，
+用 `vle8` 读取 payload，用 `vand/vsrl` 拆分低、高 nibble，用 `vwmul/vwmacc` 做 widening 乘累加，
+并将原来多次的小归约收紧为最终 i32 reduction。因此本项目的 RVV baseline 不是纯标量或未优化
+参照。即便如此，它仍必须为每个 block/输出 tile 显式执行：
+
+1. 装载量化 payload 和 metadata；
+2. 用 mask/shift/merge 恢复低比特数值和 subgroup scale/min；
+3. 发出 widening integer multiply-accumulate；
+4. 用 reduction 把 vector partial sum 收缩到标量或短向量；
+5. 执行 int-to-FP、scale multiplication、min correction 和 FP accumulation；
+6. 由标量循环维护 block、output row、activation row 和地址。
+
+对 repacked GEMV/GEMM，多行数据已经被软件重排，且 activation 可在软件 tile 内复用；但上述
+unpack、correction、reduction 和控制仍是可退休的普通指令流。这正是 QBS 试图消除的部分，而不是
+重复声称“RVV 未向量化”。
+
+### 5.2 QBS 程序是什么样的
+
+QBS 不修改 GGML graph 中 `MUL_MAT` 的数学语义，也不删除 F32 activation 的动态量化。它改变的是
+量化后的矩阵内核：模型加载时一次性将权重转换为 R4 block-major，运行时把 activation 分成
+Q8_K/Q8_0 blocks，然后将大矩阵切成 `M<=4`、`N<=32`、`K-blocks<=256` 的命令。
+
+当前 GGML backend 的结构可概括为：
+
+```c
+caps = query_qbs_with_qbinfo();
+if (!runtime_enabled || !profile/layout/shape_supported(caps, tensor))
+    return best_standard_rvv_kernel(...);
+
+// 模型加载期：只做一次
+weights_r4 = repack_weight_rows_in_groups_of_four(weights_gguf);
+
+// MUL_MAT 运行期
+activations_q8 = quantize_f32_rows(activations_f32);
+for (unsigned m0 = 0; m0 < M_total; m0 += 4) {
+    unsigned M = min(4, M_total - m0);
+    activation_layout = M == 4 ? M4_INTERLEAVED : ROW_MAJOR;
+
+    for (unsigned n0 = 0; n0 < N_total; n0 += max_N) {
+        unsigned N = min(max_N, N_total - n0);
+        descriptor = {
+            profile and layout IDs,
+            N,
+            K_blocks,
+            &weights_r4[n0, 0]
+        };
+
+        qbexec(vd=v8, rs1=&descriptor,
+               rs2=&activations_q8[m0, 0], M);
+
+        // qbexec 结果已回到普通 VRF，只存实际 M 行
+        for (unsigned context = 0; context < M; ++context)
+            store v[8 + context][0:N]
+                -> C[m0 + context, n0:n0+N];
+    }
+}
+```
+
+实际 wrapper 在指令前用 `fence rw,rw` 确保 descriptor、activation 和 repacked weight 对 QBS 可见；按 M
+设置 e32/m1、m2 或 m4 向量状态；发出 raw `.word`；命令返回后把 `vl` 改成 logical N，用普通
+`vse32.v` 存回结果。例如 M=4 的实际核心序列是：
+
+```asm
+fence    rw, rw
+li       t0, 128
+vsetvli  zero, t0, e32, m4, ta, ma
+.word    0x06b5045b       # qbexec v8, a0, a1, M=4
+mv       t0, n
+vsetvli  zero, t0, e32, m1, ta, ma
+vse32.v  v8,  (out0)
+vse32.v  v9,  (out1)
+vse32.v  v10, (out2)
+vse32.v  v11, (out3)
+```
+
+这里 `a0` 指向 descriptor，`a1` 指向 activation tile；输出地址不是 `qbexec` 的参数，而是后续
+`vse32.v` 的参数。当 K 大于命令上限时，软件按 K 分段发出多条命令，再用 FP32 加法合并
+partial outputs；这是功能 fallback，不是隐含在单条指令中的无限 K。
+
+对照源码时，可按下表跟踪：
+
+| 层次 | 当前源码 | 主要职责 |
+| --- | --- | --- |
+| 标准 RVV 块点积 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quants.c` | 按 VLEN 选择 Q3/Q4/Q6 等 RVV decode/dot/reduction 实现 |
+| 标准 repacked GEMV/GEMM | `llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp` | 选择多行 trait、重排权重/激活并调用 GEMV/GEMM kernel |
+| QBS GGML backend | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | capability、tensor 选择、R4 repack、M/N/K 分块、descriptor 和 wrapper |
+| QBS ABI 真源 | `config/qbs_abi.json` | profile、layout、instruction 和 shape 的版本化定义 |
+| 生成的软件 ABI | `apps/common/qbs_abi.h` | C 宏、descriptor pack/unpack、capability word 和 raw encoding |
+| 生成的 RTL ABI | `hardware/include/qbs_pkg.sv` | 与 C 侧同源的 SystemVerilog 常量、enum 和 capability 函数 |
+
+### 5.3 为什么参数分成指令、descriptor 和 profile
+
+QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意分成三类：
+
+| 载体 | 参数 | 为什么放在这里 |
+| --- | --- | --- |
+| `qbexec` 指令 | descriptor pointer、activation pointer、`vd`、`M` | sequencer 在读 descriptor 之前就必须知道 GPR 依赖、目的 VRF 组和要预留的寄存器数 |
+| 16 B descriptor | weight pointer、profile/layout IDs、`N`、`K-blocks` | 比指令位宽更充足；每条命令拷贝一次，不形成跨指令隐藏配置 |
+| profile capability table | block bytes/elements、scale、subgroup、correction 语义 | 同一 profile ID 只有一套严格数学和 byte mapping，避免软件逐条传递大量固定字段 |
+
+如果 `M` 也只放在 descriptor 中，sequencer 就必须在目的相关性检查前先发起内存读取，这会破坏正常指令
+解码与 hazard 预留边界。反过来，如果把 profile 全部展开到 instruction bits，32-bit 编码无法容纳，也会
+让每种 GGUF 格式变成新 opcode。当前分层既保留了硬件可见依赖，又保留了 profile 扩展性。
+
+### 5.4 `qbexec` 指令的逐位编码
+
+`qbexec` 使用 R-type 形状的 custom-2 编码，但 `rd` 字段在 Ara 中解释为 vector destination `vd`：
+
+```text
+31          27 26 25 24      20 19      15 14   12 11       7 6          0
++--------------+-----+----------+----------+-------+-----------+------------+
+| reserved=00000| M-1 |   rs2    |   rs1    |  000  |    vd     | 1011011    |
++--------------+-----+----------+----------+-------+-----------+------------+
+    funct7[6:2]  [1:0]                       funct3             custom-2
+```
+
+| Bits | 参数 | 严格含义 |
+| --- | --- | --- |
+| 6:0 | opcode=`0x5b` | RISC-V custom-2 major opcode；不是标准 RVV `OP-V` 指令 |
+| 11:7 | `vd` | FP32 结果向量寄存器组起点；虽占用 R-type `rd` 位置，但不写标量 GPR |
+| 14:12 | funct3=`000` | 选择 `qbexec`；`001` 属于 `qbinfo` |
+| 19:15 | `rs1` | 包含 16 B descriptor **虚拟地址**的标量寄存器；地址必须 16 B 对齐 |
+| 24:20 | `rs2` | 包含 activation tile **虚拟地址**的标量寄存器；地址必须 4 B 对齐 |
+| 26:25 | `M-1` | activation context 数减 1；编码 `00/01/10/11` 分别表示 M=1/2/3/4 |
+| 31:27 | reserved | v1 必须全为 0；非零产生 illegal instruction |
+
+`M` 同时决定目的寄存器预留：
+
+| M | `M-1` | 预留组 | `vd` 约束 | 架构结果 |
+| ---: | --- | ---: | --- | --- |
+| 1 | `00` | 1 register | 任意不越界 `vd` | `vd[0:N-1]` 有效，其余 FP32 元素清零 |
+| 2 | `01` | 2 registers | `vd` 必须为 2 的倍数 | `vd` 和 `vd+1` 分别对应两个 activation rows |
+| 3 | `10` | 4 registers | `vd` 必须为 4 的倍数 | 只修改 `vd..vd+2`；`vd+3` 保持原值 |
+| 4 | `11` | 4 registers | `vd` 必须为 4 的倍数 | `vd..vd+3` 分别对应四个 activation rows |
+
+当前 wrapper 固定 `vd=v8`、`rs1=a0`、`rs2=a1`，因而四种裸编码为：
+
+| M | 概念助记符 | Raw word |
+| ---: | --- | --- |
+| 1 | `qbexec v8, a0, a1, 1` | `0x00b5045b` |
+| 2 | `qbexec v8, a0, a1, 2` | `0x02b5045b` |
+| 3 | `qbexec v8, a0, a1, 3` | `0x04b5045b` |
+| 4 | `qbexec v8, a0, a1, 4` | `0x06b5045b` |
+
+概念助记符用于说明语义；当前工具链仍由 `.word` 发出。指令中**没有** weight 地址、profile、
+layout、N、K、输出内存地址、mask 或累加源寄存器；这些要么在 descriptor/profile 中，要么由后续普通
+RVV store 表达。
+
+`qbexec` 还使用以下隐式 architectural context，它们不是 encoding 字段：
+
+- `mstatus.VS` 和 `mstatus.FS` 都必须非 Off；前者允许访问向量状态，后者对应命令内的
+  FP32 update 和 `fflags`；
+- `vstart` 必须为 0；当前命令不支持元素级 restart；
+- CVA6 accelerator-consistent mode 必须开启，否则指令非法；
+- dispatcher 将请求内部固定为 e32，并从 M 合成 LMUL 和 `vl=M*(VLEN/32)`；
+- 软件仍在 wrapper 中设置相容的 e32 向量状态，命令后再设 `vl=N` 存回；
+- 当前 FP rounding mode 由已有 `frm` 随 accelerator request 传给 QBS FP pipeline，命令累计的 `fflags`
+  仅在成功 terminal 返回；
+- 命令被 CVA6 归类为阻塞式 accelerator load，从发出到成功提交或 fault terminal 之间
+  不向标量核报告完成。
+
+### 5.5 Descriptor v1 的每个参数
+
+descriptor 是 little-endian、固定 16 B、16 B 对齐的不可变命令描述：
 
 ```c
 struct qbs_descriptor_v1 {
-    uint64_t header;
-    uint64_t weight_base;
+    uint64_t header;       // offset 0x00
+    uint64_t weight_base;  // offset 0x08
 };
 ```
 
-header 位域：
+header 位域和实际语义如下：
 
-| Bits | 字段 | 编码 |
+| Bits | 字段 | 编码与含义 |
 | --- | --- | --- |
-| 3:0 | descriptor version | 当前为 1 |
-| 7:4 | weight profile | profile ID |
-| 11:8 | activation profile | profile ID |
-| 15:12 | weight layout | row-major 或 R4 block-major |
-| 19:16 | activation layout | row-major 或 M4-interleaved |
-| 24:20 | `N-1` | 1..32 |
-| 32:25 | `K-blocks-1` | 1..256 |
-| 63:33 | reserved | 必须为 0 |
+| 3:0 | `descriptor_version` | 必须为 1；用于防止旧硬件把新字段误解释 |
+| 7:4 | `weight_profile` | 权重块的严格数学/byte-layout ID；当前 ID 见第 4.1 节 |
+| 11:8 | `activation_profile` | activation block ID；Q2/3/4/5/6_K 配 Q8_K，Q4_0/Q5_0/Q8_0/IQ4_NL 配 Q8_0 |
+| 15:12 | `weight_layout` | 1=`ROW_MAJOR`，2=`R4_BLOCK_MAJOR` |
+| 19:16 | `activation_layout` | 1=`ROW_MAJOR`，2=`M4_INTERLEAVED`；后者只允许 M=4 |
+| 24:20 | `N-1` | 命令中的 logical output rows 减 1，因而可表达 1..32 |
+| 32:25 | `K-blocks-1` | reduction 维的 native blocks 数减 1，因而可表达 1..256 |
+| 63:33 | reserved | v1 必须为 0 |
+| 127:64 | `weight_base` | 当前命令权重 tile 的虚拟基地址，至少 2 B 对齐 |
 
-`M` 不放在 descriptor 中，而在指令 encoding 中；activation base 由 `rs2` 传入；目的向量组由
-`vd` 传入。这使 descriptor 可在调用点临时构造，同时让 register dependency 对 sequencer 可见。
+`K-blocks` 的实际元素数由 profile 决定：
 
-### 5.3 `qbinfo` 为什么不可省略
+```text
+K_elements = K_blocks * weight_profile.block_elements
+```
 
-软件不能只凭编译宏假定硬件能力。`qbinfo` 返回：
+因此 Q4_K/Q6_K 等 256-element profile 的单命令 K 上限为 65,536 元素；Q4_0/Q5_0/Q8_0/IQ4_NL
+等 32-element profile 的上限为 8,192 元素。这是当前 ABI/RTL 上限，不表示软件必须发出这么
+长的命令。
 
-- architecture、descriptor、numerical-contract version；
-- descriptor 大小；
-- 最大 M/N/K-blocks；
-- 权重和激活 layout bitmask；
-- descriptor/weight/activation 对齐；
-- 每个 weight profile 可配对的 activation profile；
-- profile 的 block bytes/elements/subgroup/scale/correction 属性。
+硬件不从 descriptor 显式读 stride，而是由 profile、layout、M/N/K-blocks 推导存储范围：
 
-GGML 只有在用户显式启用 QBS 且 capability 完整匹配时才选择 QBS trait。这样同一 binary 能在
-无 QBS 的 RVV 处理器、旧 contract 硬件或只实现部分 profile 的硬件上安全回退。
+```text
+ROW_MAJOR weight bytes = N * K_blocks * weight_block_bytes
+R4 weight bytes        = ceil(N/4) * 4 * K_blocks * weight_block_bytes
 
-### 5.4 合法性与地址检查
+ROW_MAJOR activation bytes = M * K_blocks * activation_block_bytes
+M4 activation bytes        = 4 * K_blocks * activation_block_bytes
+```
 
-descriptor decoder 在发出 payload 访问前检查：
+R4 的 padding row 只为了保证四行物理连续。硬件仍以 logical N 控制 accumulator 和 commit，不会把 padding
+行变成额外输出。descriptor 与其指向的 weight/activation 在命令完成前必须保持不变；硬件在起始
+时读取 descriptor 一次，不在运行中反复解析软件结构。
 
-- descriptor 对齐、version 和 reserved bits；
+### 5.6 `qbinfo` 指令和 capability 参数
+
+`qbinfo` 与 `qbexec` 共用 opcode `0x5b`，但 funct3=`001`：
+
+```text
+31                    25 24      20 19      15 14   12 11       7 6       0
++-----------------------+----------+----------+-------+-----------+---------+
+|      funct7=0000000    | rs2=x0   | index rs1|  001  | scalar rd | 0x5b    |
++-----------------------+----------+----------+-------+-----------+---------+
+```
+
+| 参数 | 含义 |
+| --- | --- |
+| `rs1` | 运行时 capability selector；它是 GPR 中的值，不是指令 immediate |
+| `rd` | 返回 XLEN=64 的 capability word 的标量 GPR |
+| `rs2` | v1 必须为 `x0` |
+| funct7 | v1 必须为 0 |
+
+当前 wrapper 使用 `a0` 同时作为 selector 和结果，即 `.word 0x0005155b`。`qbinfo` 不进入长时延
+sequencer，dispatcher 组合查表后返回标量结果。未知 selector 返回 0。
+`qbinfo` 仍由 accelerator/vector decode 路径识别，因此当前实现要求 `mstatus.VS`
+非 Off；它不执行浮点计算，不像 `qbexec` 那样额外要求 `mstatus.FS` 非 Off。
+
+#### 5.6.1 Selector `0x00`：基本版本、shape 和执行属性
+
+| Bits | 含义 | 当前值 |
+| --- | --- | ---: |
+| 7:0 | QBS architecture version | 1 |
+| 15:8 | descriptor version | 1 |
+| 23:16 | descriptor bytes | 16 |
+| 25:24 | `max_M-1` | 3，即 max M=4 |
+| 30:26 | `max_N-1` | `min(31, VLEN/32-1)`；VLEN=1024 时为 31 |
+| 38:31 | `max_K_blocks-1` | 255，即 256 blocks |
+| 42:39 | numerical-contract version | 1 |
+| 43 | blocking completion | 1；指令到 terminal 前不返回 |
+| 44 | fault-atomic destination | 1；任何可能 fault 的读取完成前不启动 VRF commit |
+| 45 | requires `vstart==0` | 1 |
+| 46 | idempotent normal-memory only | 1；不允许将 block stream 投向非幂等 MMIO |
+| 47 | requires accelerator consistency | 1 |
+| 63:48 | reserved | 0 |
+
+当前 GGML backend 直接检查 version、descriptor bytes、M/N/K 上限，并通过 layout/profile selector 继续
+核验其余能力。Bits 43..47 是当前 contract 已广告的执行属性；不能把某个位为 1 单独解释成
+完整系统证明，具体 fault/order 仍由第 10 和 13 节的 RTL 规则与验证支撑。
+
+#### 5.6.2 Selector `0x01`：layout、对齐与输出粒度
+
+| Bits | 含义 | 当前值 |
+| --- | --- | --- |
+| 15:0 | weight-layout bitmap | bit 1=`ROW_MAJOR`，bit 2=`R4_BLOCK_MAJOR` |
+| 31:16 | activation-layout bitmap | bit 1=`ROW_MAJOR`，bit 2=`M4_INTERLEAVED` |
+| 39:32 | descriptor alignment log2 | 4，即 16 B |
+| 47:40 | weight-base alignment log2 | 1，即 2 B |
+| 55:48 | activation-base alignment log2 | 2，即 4 B |
+| 63:56 | output element bits | 32，即 FP32 |
+
+bitmap 中的 bit 位等于 layout ID，因此值 1 不是“第一个 bit”的序号，而是 `1ULL << 1`。软件
+必须检查目标 layout 对应位，不能只判断整个 word 非零。
+
+#### 5.6.3 Selector `0x10 + weight_profile`：格式配对
+
+返回可与该 weight profile 配对的 activation-profile bitmap。例如：
+
+```text
+qbinfo(0x11)  # weight profile 1 = Q4_K
+              # 返回 bit 1，表示可配 Q8_K(ID=1)
+
+qbinfo(0x13)  # weight profile 3 = Q4_0
+              # 返回 bit 2，表示可配 Q8_0(ID=2)
+```
+
+weight profile ID 不是按格式名字顺序连续分配；软件必须使用 ABI 宏，不能从名称猜数字。
+
+#### 5.6.4 Selector `0x20 + weight_profile`：权重块详细属性
+
+| Bits | 含义 |
+| --- | --- |
+| 15:0 | native weight block bytes |
+| 31:16 | 每块对应的 K elements |
+| 39:32 | subgroup count |
+| 47:40 | subgroup elements |
+| 55:48 | scale format：0=invalid，1=FP16，2=FP32 |
+| 63:56 | correction mode：0=none，1=affine-min |
+
+例如 `qbinfo(0x21)` 查询 Q4_K，返回 `144 B / 256 elements / 8 groups / 32 elements per group /
+FP16 scale / affine-min`。该 word 描述严格格式属性，不是当前周期数或动态性能参数。
+
+#### 5.6.5 Selector `0x30 + activation_profile`：activation 块属性
+
+| Bits | 含义 |
+| --- | --- |
+| 15:0 | activation block bytes |
+| 31:16 | 每块 K elements |
+| 39:32 | auxiliary element count；Q8_K 中即 16 个 `bsums` |
+| 47:40 | scale bytes |
+| 55:48 | 每个 auxiliary element bytes |
+| 63:56 | scale format：1=FP16，2=FP32 |
+
+`qbinfo(0x31)` 对应 Q8_K：292 B、256 elements、16 个 2-byte `bsums`、4-byte FP32 scale。
+`qbinfo(0x32)` 对应 Q8_0：34 B、32 elements、无 aux、2-byte FP16 scale。
+
+### 5.7 一个完整参数展开例子
+
+考虑当前严格配对性能点 `Q4_K x Q8_K, K=1536, N_total=256, M_total=1`：
+
+1. Q4_K 每块 256 个 K elements，因此 `K_blocks=1536/256=6`；
+2. VLEN=1024 且 ABI max N=32，因此 256 个 outputs 分成 8 个 N=32 tiles；
+3. M=1，每条命令只使用 `v8`；
+4. weight profile=Q4_K(ID 1)，activation profile=Q8_K(ID 1)；
+5. weight layout=R4(ID 2)，activation layout=row-major(ID 1)；
+6. 每个 tile 的 descriptor header 为 `0x000000000bf12111`；
+7. 每个 descriptor 的 `weight_base` 指向对应 32 行 R4 tile；`rs2` 指向同一个 6-block Q8_K activation；
+8. 软件循环发出 8 次 `.word 0x00b5045b`，每次存回 32 个 FP32 results。
+
+对每条命令，descriptor 推导的逻辑 payload 为：
+
+```text
+weight     = 32 * 6 * 144 = 27,648 B
+activation =  1 * 6 * 292 =  1,752 B
+output     = 32 * 4       =    128 B   # 通过后续 vse32.v 存储
+```
+
+这个例子展示了各参数的责任边界：`M` 告诉 sequencer 预留几个目的寄存器，`N`
+告诉命令每个 context 生成多少 outputs，`K_blocks` 告诉硬件对每个 output 累加多少块，profile
+告诉 decoder 如何解释 bytes，layout 告诉 read scheduler 如何计算地址。没有任何参数直接写
+“Attention-Q”或“Qwen2.5”，所以同一命令可用于任何满足 profile/layout/shape 契约的量化线性层。
+
+### 5.8 合法性、异常与软件回退
+
+dispatcher 在 descriptor 访存之前检查 encoding reserved bits、`vd` 对齐/越界、`vstart`、
+accelerator-consistent mode、descriptor/activation 地址对齐，并等待更旧 Ara work 排空。descriptor decoder
+在发出 payload 访问前继续检查：
+
+- descriptor version 和 reserved bits；
 - profile 是否存在、weight/activation 是否兼容；
-- layout 是否支持；
+- layout 是否支持，M4-interleaved 是否确实与 M=4 配对；
 - `M/N/K-blocks` 范围；
 - `vd` 对目标寄存器组的对齐；
-- weight/activation base 对齐；
-- 由 block bytes、padded rows 和 K-blocks 计算的末地址是否溢出。
+- weight base 的 2 B 对齐、activation base 的 4 B 对齐；
+- 由 block bytes、padded rows 和 K-blocks 推导的末地址是否 64-bit 溢出。
 
-R4 权重会将 N 向上补齐到 4 行，但 logical N 仍保存在 descriptor 中；padding 只解决存储布局，
-不产生额外 architectural output。
+GGML 只在用户显式启用 QBS，且 `qbinfo`、profile、layout、shape、dimension 和 repack 条件全部满足时
+选择 QBS trait。不支持的 tensor 继续调用当前最优标准 RVV kernel；不会用静默格式转换、越界
+padding 或错误 profile 扩大覆盖率。因此 QBS 是普通 RVV 之上的可查询加速路径，不是替代 RVV 的唯一
+执行模式。
 
 ## 6. llama.cpp/GGML 端完整调用链
 
