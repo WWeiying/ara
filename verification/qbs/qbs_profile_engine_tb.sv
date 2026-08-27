@@ -189,7 +189,6 @@ module qbs_profile_engine_tb;
     .request_weight_d_i            (result_weight_d),
     .request_weight_dmin_i         (result_weight_dmin),
     .request_activation_d_i        (result_activation_d),
-    .request_round_mode_i          (RNE),
     .read_index_i                  (fp_read_index),
     .read_valid_o                  (fp_read_valid),
     .read_data_o                   (fp_read_data),

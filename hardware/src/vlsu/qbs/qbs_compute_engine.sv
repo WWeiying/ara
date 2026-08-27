@@ -17,7 +17,6 @@ module qbs_compute_engine
   input  logic [2:0]              command_m_i,
   input  logic [5:0]              command_n_i,
   input  logic [8:0]              command_k_blocks_i,
-  input  roundmode_e              command_round_mode_i,
 
   // A fault stops new work. Work already admitted to the integer/FP pipelines
   // drains into hidden state before the command-local state is discarded.
@@ -102,7 +101,6 @@ module qbs_compute_engine
   logic [2:0] m_q;
   logic [5:0] n_q;
   logic [8:0] k_blocks_q;
-  roundmode_e round_mode_q;
   logic [7:0] k_block_q;
   logic [5:0] row_base_q;
 
@@ -433,7 +431,6 @@ module qbs_compute_engine
     .request_weight_d_i            (integer_result_weight_d),
     .request_weight_dmin_i         (integer_result_weight_dmin),
     .request_activation_d_i        (integer_result_activation_d),
-    .request_round_mode_i          (round_mode_q),
     .read_index_i                  (result_read_index_i),
     .read_valid_o                  (result_read_valid_o),
     .read_data_o                   (result_read_data_o),
@@ -529,7 +526,6 @@ module qbs_compute_engine
       m_q <= '0;
       n_q <= '0;
       k_blocks_q <= '0;
-      round_mode_q <= RNE;
       k_block_q <= '0;
       row_base_q <= '0;
       active_weight_bank_q <= 1'b0;
@@ -553,7 +549,6 @@ module qbs_compute_engine
         m_q <= command_m_i;
         n_q <= command_n_i;
         k_blocks_q <= command_k_blocks_i;
-        round_mode_q <= command_round_mode_i;
         k_block_q <= '0;
         row_base_q <= '0;
         active_weight_bank_q <= 1'b0;

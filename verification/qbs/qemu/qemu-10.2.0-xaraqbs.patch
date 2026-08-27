@@ -171,7 +171,7 @@
 +}
 --- /dev/null
 +++ b/target/riscv/qbs_helper.c
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,224 @@
 +/*
 + * QEMU functional model for the Xaraqbs quantized block-stream extension.
 + *
@@ -186,6 +186,7 @@
 +#include "accel/tcg/probe.h"
 +#include "exec/helper-proto.h"
 +#include "exec/target_page.h"
++#include "exec/tlb-flags.h"
 +#include "qbs_ref.h"
 +
 +static G_NORETURN void qbs_raise_illegal(CPURISCVState *env, uint32_t insn,
@@ -195,9 +196,58 @@
 +    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, retaddr);
 +}
 +
-+static void qbs_guest_read(CPURISCVState *env, target_ulong guest_address,
-+                           void *destination, size_t bytes,
-+                           uintptr_t retaddr)
++static G_NORETURN void qbs_raise_load_access(CPURISCVState *env,
++                                              target_ulong guest_address,
++                                              size_t bytes,
++                                              uintptr_t retaddr)
++{
++    CPUState *cs = env_cpu(env);
++    int mmu_index = cpu_mmu_index(cs, false);
++
++    riscv_cpu_do_transaction_failed(cs, 0, guest_address,
++                                    MIN(bytes, (size_t)UINT_MAX),
++                                    MMU_DATA_LOAD, mmu_index,
++                                    MEMTXATTRS_UNSPECIFIED, MEMTX_ERROR,
++                                    retaddr);
++    g_assert_not_reached();
++}
++
++static void qbs_guest_ram_probe(CPURISCVState *env,
++                                target_ulong guest_address, size_t bytes,
++                                uintptr_t retaddr)
++{
++    CPUState *cs = env_cpu(env);
++    int mmu_index = cpu_mmu_index(cs, false);
++
++    if (bytes != 0 && (target_ulong)(bytes - 1) >
++            ~(target_ulong)0 - guest_address) {
++        qbs_raise_load_access(env, guest_address, bytes, retaddr);
++    }
++
++    while (bytes != 0) {
++        target_ulong address = adjust_addr(env, guest_address);
++        size_t page_bytes = -(address | TARGET_PAGE_MASK);
++        size_t chunk = MIN(bytes, page_bytes);
++        void *host = NULL;
++        int flags = probe_access_flags(env, address, chunk, MMU_DATA_LOAD,
++                                       mmu_index, false, &host, retaddr);
++
++        /* QBS v1 is stricter than an ordinary scalar load: every byte must
++         * be directly backed by RAM. TLB_MMIO also covers ROM/device
++         * callbacks and other paths that could have read side effects.
++         */
++        if ((flags & TLB_MMIO) != 0 || host == NULL) {
++            qbs_raise_load_access(env, guest_address, chunk, retaddr);
++        }
++        guest_address += chunk;
++        bytes -= chunk;
++    }
++}
++
++static void qbs_guest_ram_copy(CPURISCVState *env,
++                               target_ulong guest_address,
++                               void *destination, size_t bytes,
++                               uintptr_t retaddr)
 +{
 +    CPUState *cs = env_cpu(env);
 +    int mmu_index = cpu_mmu_index(cs, false);
@@ -209,14 +259,9 @@
 +        size_t chunk = MIN(bytes, page_bytes);
 +        void *host = probe_read(env, address, chunk, mmu_index, retaddr);
 +
-+        if (host != NULL) {
-+            memcpy(output, host, chunk);
-+        } else {
-+            for (size_t index = 0; index < chunk; ++index) {
-+                output[index] = cpu_ldub_mmuidx_ra(env, address + index,
-+                                                   mmu_index, retaddr);
-+            }
-+        }
++        /* The complete range was probed while guest execution was stopped. */
++        g_assert(host != NULL);
++        memcpy(output, host, chunk);
 +        guest_address += chunk;
 +        output += chunk;
 +        bytes -= chunk;
@@ -300,10 +345,9 @@
 +        qbs_raise_illegal(env, insn, retaddr);
 +    }
 +
-+    descriptor.header = cpu_ldq_le_data_ra(
-+        env, adjust_addr(env, descriptor_address), retaddr);
-+    descriptor.weight_base = cpu_ldq_le_data_ra(
-+        env, adjust_addr(env, descriptor_address + sizeof(uint64_t)), retaddr);
++    qbs_guest_ram_probe(env, descriptor_address, sizeof(descriptor), retaddr);
++    qbs_guest_ram_copy(env, descriptor_address, &descriptor,
++                       sizeof(descriptor), retaddr);
 +
 +    status = qbs_ref_validate_descriptor(
 +        &descriptor, m, vd, riscv_cpu_cfg(env)->vlenb * 8u,
@@ -323,14 +367,18 @@
 +        qbs_raise_illegal(env, insn, retaddr);
 +    }
 +
++    /* Validate both complete payload ranges before reading either one. */
++    qbs_guest_ram_probe(env, activation_address, activation_bytes, retaddr);
++    qbs_guest_ram_probe(env, descriptor.weight_base, weight_bytes, retaddr);
++
 +    weights = g_malloc(weight_bytes);
 +    activations = g_malloc(activation_bytes);
 +
 +    /* RTL fetch order is descriptor, activation stream, then weights. */
-+    qbs_guest_read(env, activation_address, activations, activation_bytes,
-+                   retaddr);
-+    qbs_guest_read(env, descriptor.weight_base, weights, weight_bytes,
-+                   retaddr);
++    qbs_guest_ram_copy(env, activation_address, activations, activation_bytes,
++                       retaddr);
++    qbs_guest_ram_copy(env, descriptor.weight_base, weights, weight_bytes,
++                       retaddr);
 +
 +    elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
 +    qbs_copy_destination_from_env(env, vd, registers, destination);

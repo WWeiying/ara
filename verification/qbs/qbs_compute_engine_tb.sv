@@ -84,7 +84,6 @@ module qbs_compute_engine_tb;
     .command_m_i                    (command_m),
     .command_n_i                    (command_n),
     .command_k_blocks_i             (command_k_blocks),
-    .command_round_mode_i           (RNE),
     .fault_i                        (fault),
     .fault_done_o                   (fault_done),
     .weight_write_valid_i           (weight_valid),

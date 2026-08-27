@@ -641,7 +641,6 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
     .command_m_i(qbs_command_m),
     .command_descriptor_address_i(pe_req_i.scalar_op),
     .command_activation_base_i(pe_req_i.stride),
-    .command_round_mode_i(pe_req_i.fp_rm),
     .command_cache_i(axi_pkg::CACHE_MODIFIABLE),
     .command_prot_i('0),
     .success_valid_o(qbs_success_valid),

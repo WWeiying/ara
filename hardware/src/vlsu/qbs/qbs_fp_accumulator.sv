@@ -25,7 +25,6 @@ module qbs_fp_accumulator
   input  logic [15:0]          request_weight_d_i,
   input  logic [15:0]          request_weight_dmin_i,
   input  logic [31:0]          request_activation_d_i,
-  input  roundmode_e           request_round_mode_i,
 
   input  logic [AccIndexWidth-1:0] read_index_i,
   output logic                 read_valid_o,
@@ -99,7 +98,6 @@ module qbs_fp_accumulator
   logic entry_affine_q [NumEntries];
   logic [AccIndexWidth-1:0] entry_accumulator_index_q [NumEntries];
   fp_state_e entry_state_q [NumEntries];
-  roundmode_e entry_round_mode_q [NumEntries];
   logic signed [31:0] entry_dot_q [NumEntries];
   logic signed [31:0] entry_aux_q [NumEntries];
   logic [31:0] entry_weight_d_q [NumEntries];
@@ -203,7 +201,7 @@ module qbs_fp_accumulator
     found = 1'b0;
     fp_in_valid = 1'b0;
     fp_operands = '0;
-    fp_round_mode = RNE;
+    fp_round_mode = roundmode_e'(QbsNumericalRoundingMode);
     fp_operation = I2F;
     fp_operation_modifier = 1'b0;
     fp_tag_in = '0;
@@ -213,7 +211,6 @@ module qbs_fp_accumulator
       if (entry_valid_q[entry] && !entry_inflight_q[entry] && !found) begin
         found = 1'b1;
         fp_in_valid = 1'b1;
-        fp_round_mode = entry_round_mode_q[entry];
         fp_tag_in = '{state: entry_state_q[entry], slot: entry};
         unique case (entry_state_q[entry])
           FP_DOT_CONVERT: begin
@@ -332,7 +329,6 @@ module qbs_fp_accumulator
           entry_accumulator_index_q[request_slot_i] <=
               request_accumulator_index_i;
           entry_state_q[request_slot_i] <= FP_DOT_CONVERT;
-          entry_round_mode_q[request_slot_i] <= request_round_mode_i;
           entry_dot_q[request_slot_i] <= request_dot_i;
           entry_aux_q[request_slot_i] <= request_aux_i;
           entry_weight_d_q[request_slot_i] <=

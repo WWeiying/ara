@@ -119,6 +119,22 @@ static uint32_t benchmark_float_bits(float value) {
   return bits;
 }
 
+#ifdef SPIKE
+static void benchmark_spike_hex(const char *label, uint64_t value) {
+  static const char digits[] = "0123456789abcdef";
+  char text[19];
+  text[0] = '0';
+  text[1] = 'x';
+  for (int digit = 0; digit < 16; ++digit) {
+    text[2 + digit] = digits[(value >> (60 - 4 * digit)) & 0xf];
+  }
+  text[18] = '\0';
+  printstr(label);
+  printstr(text);
+  printstr("\n");
+}
+#endif
+
 #if BENCH_WEIGHT_Q4 && BENCH_GEMM_GROUPS > 0
 static void benchmark_pack_q8_x4(const block_q8_K *source,
                                  block_q8_Kx4 *destination) {
@@ -207,7 +223,6 @@ static __attribute__((noinline)) uint64_t benchmark_q4(void) {
 }
 #elif BENCH_WEIGHT_Q6
 static __attribute__((noinline)) uint64_t benchmark_q6(void) {
-#if BENCH_GEMM_GROUPS > 0
   const block_q6_Kx32_ara *weight =
       (const block_q6_Kx32_ara *)benchmark_weight_start;
   for (int row_group = 0; row_group < BENCH_ROW_GROUPS; ++row_group) {
@@ -238,49 +253,35 @@ static __attribute__((noinline)) uint64_t benchmark_q6(void) {
       (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
   return quantization_input_bytes + weight_passes * weight_bytes +
          BENCH_ROW_GROUPS * activation_bytes;
-#else
-  const block_q6_K *weight = (const block_q6_K *)benchmark_weight_start;
-  for (int input = 0; input < BENCH_INPUTS; ++input) {
-    for (int row = 0; row < BENCH_ROWS; ++row) {
-      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q6_K_q8_K(
-          weight + row * BENCH_BLOCKS,
-          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
-    }
-  }
-  const uint64_t weight_bytes =
-      (uint64_t)(benchmark_weight_end - benchmark_weight_start);
-  const uint64_t activation_bytes =
-      (uint64_t)BENCH_BLOCKS * sizeof(block_q8_K);
-  const uint64_t quantization_input_bytes =
-      (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
-  return quantization_input_bytes + BENCH_INPUTS * weight_bytes +
-         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
-#endif
 }
 #else
-static __attribute__((noinline)) uint64_t benchmark_row_major(void) {
+static __attribute__((noinline)) uint64_t benchmark_x32(void) {
 #if BENCH_WEIGHT_Q3
-  const block_q3_K *weight = (const block_q3_K *)benchmark_weight_start;
+  const block_q3_Kx32_ara *weight =
+      (const block_q3_Kx32_ara *)benchmark_weight_start;
 #elif BENCH_WEIGHT_Q5
-  const block_q5_K *weight = (const block_q5_K *)benchmark_weight_start;
+  const block_q5_Kx32_ara *weight =
+      (const block_q5_Kx32_ara *)benchmark_weight_start;
 #else
-  const block_q8_0 *weight = (const block_q8_0 *)benchmark_weight_start;
+  const block_q8_0x32_ara *weight =
+      (const block_q8_0x32_ara *)benchmark_weight_start;
 #endif
 
   for (int input = 0; input < BENCH_INPUTS; ++input) {
-    for (int row = 0; row < BENCH_ROWS; ++row) {
+    for (int row_group = 0; row_group < BENCH_ROW_GROUPS; ++row_group) {
+      const int output_offset = input * BENCH_ROWS + row_group * Q4K_BENCH_ROWS;
 #if BENCH_WEIGHT_Q3
-      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q3_K_q8_K(
-          weight + row * BENCH_BLOCKS,
-          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+      q3k_gemv_32(weight + row_group * BENCH_BLOCKS,
+                  quantized_activation + input * BENCH_BLOCKS,
+                  benchmark_output + output_offset, BENCH_K);
 #elif BENCH_WEIGHT_Q5
-      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q5_K_q8_K(
-          weight + row * BENCH_BLOCKS,
-          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+      q5k_gemv_32(weight + row_group * BENCH_BLOCKS,
+                  quantized_activation + input * BENCH_BLOCKS,
+                  benchmark_output + output_offset, BENCH_K);
 #else
-      benchmark_output[input * BENCH_ROWS + row] = q4km_vec_dot_q8_0_q8_0(
-          weight + row * BENCH_BLOCKS,
-          quantized_activation + input * BENCH_BLOCKS, BENCH_K);
+      q8_0_gemv_32(weight + row_group * BENCH_BLOCKS,
+                   quantized_activation + input * BENCH_BLOCKS,
+                   benchmark_output + output_offset, BENCH_K);
 #endif
     }
   }
@@ -292,7 +293,7 @@ static __attribute__((noinline)) uint64_t benchmark_row_major(void) {
   const uint64_t quantization_input_bytes =
       (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
   return quantization_input_bytes + BENCH_INPUTS * weight_bytes +
-         (uint64_t)BENCH_INPUTS * BENCH_ROWS * activation_bytes;
+         (uint64_t)BENCH_INPUTS * BENCH_ROW_GROUPS * activation_bytes;
 }
 #endif
 
@@ -313,6 +314,11 @@ static __attribute__((noinline)) int benchmark_validate(
   float max_abs = 0.0f;
   float max_rel = 0.0f;
   uint64_t checksum = 1469598103934665603ull;
+#ifdef SPIKE
+  int first_mismatch = -1;
+  uint32_t first_actual = 0;
+  uint32_t first_reference = 0;
+#endif
   for (int input = 0; input < BENCH_INPUTS; ++input) {
     for (int row = 0; row < BENCH_ROWS; ++row) {
       const int index = input * BENCH_ROWS + row;
@@ -324,7 +330,16 @@ static __attribute__((noinline)) int benchmark_validate(
       float relative = absolute / (magnitude > 1.0e-12f ? magnitude : 1.0e-12f);
       if (absolute > max_abs) max_abs = absolute;
       if (relative > max_rel) max_rel = relative;
-      if (absolute > BENCH_ATOL + BENCH_RTOL * magnitude) ++mismatches;
+      if (absolute > BENCH_ATOL + BENCH_RTOL * magnitude) {
+#ifdef SPIKE
+        if (first_mismatch < 0) {
+          first_mismatch = index;
+          first_actual = benchmark_float_bits(actual);
+          first_reference = benchmark_float_bits(reference);
+        }
+#endif
+        ++mismatches;
+      }
       const uint32_t bits = benchmark_float_bits(actual);
       for (int byte = 0; byte < 4; ++byte) {
         checksum ^= (bits >> (8 * byte)) & 0xffu;
@@ -335,6 +350,16 @@ static __attribute__((noinline)) int benchmark_validate(
   *max_abs_out = max_abs;
   *max_rel_out = max_rel;
   *checksum_out = checksum;
+#ifdef SPIKE
+  if (mismatches != 0) {
+    benchmark_spike_hex("mismatches=", (uint64_t)mismatches);
+    benchmark_spike_hex("first_index=", (uint64_t)first_mismatch);
+    benchmark_spike_hex("first_actual=", first_actual);
+    benchmark_spike_hex("first_reference=", first_reference);
+    benchmark_spike_hex("max_abs=", benchmark_float_bits(max_abs));
+    benchmark_spike_hex("max_rel=", benchmark_float_bits(max_rel));
+  }
+#endif
   return mismatches;
 }
 
@@ -374,7 +399,7 @@ int main(void) {
 #elif BENCH_WEIGHT_Q6
   const uint64_t logical_read_bytes = benchmark_q6();
 #else
-  const uint64_t logical_read_bytes = benchmark_row_major();
+  const uint64_t logical_read_bytes = benchmark_x32();
 #endif
   const uint64_t matmul_end = benchmark_cycle();
   const uint64_t quantize_cycles = quantize_end - start;

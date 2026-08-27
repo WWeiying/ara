@@ -450,7 +450,7 @@ activation-side profile，不能悄悄改变同一 `profile_id` 的数学结果�
 
 FP16 super-scale 扩展到 FP32 是精确转换；block 按 K 地址递增顺序更新 FP32 accumulator。
 数值契约 version 1 固定以下逐 output、逐 K-block 的 FP32 操作顺序，其中每个
-`fcvt/fmul/fmadd` 均使用命令接收时的 `frm` 并在每步舍入：
+`fcvt/fmul/fmadd` 均使用固定 RNE 并在每步舍入；动态 `frm` 不参与 QBS v1：
 
 ```text
 Q4_K:

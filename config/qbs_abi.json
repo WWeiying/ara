@@ -2,6 +2,10 @@
   "extension_name": "Xaraqbs",
   "architecture_version": 1,
   "numerical_contract_version": 1,
+  "numerical_contract": {
+    "rounding_mode": "RNE",
+    "uses_dynamic_frm": false
+  },
   "descriptor": {
     "version": 1,
     "bytes": 16,

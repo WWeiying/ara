@@ -9,6 +9,11 @@ package qbs_pkg;
 
   localparam int unsigned QbsArchitectureVersion = 1;
   localparam int unsigned QbsNumericalContractVersion = 1;
+  localparam logic [2:0] QbsRoundingModeRne = 3'd0;
+  localparam logic [2:0] QbsNumericalRoundingMode =
+      QbsRoundingModeRne;
+  localparam bit QbsNumericalUsesDynamicFrm =
+      1'b0;
   localparam int unsigned QbsDescriptorVersion = 1;
   localparam int unsigned QbsDescriptorBytes = 16;
   localparam int unsigned QbsDescriptorAlignmentLog2 = 4;

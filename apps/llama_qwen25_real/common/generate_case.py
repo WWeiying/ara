@@ -104,12 +104,22 @@ def require_shape(name: str, metadata: dict, expected: tuple[int, int]) -> None:
         )
 
 
-def repack_q4_x32(source: Path, destination: Path, k: int, rows: int) -> None:
-    blocks = k // QK_K
-    row_bytes = blocks * Q4_BLOCK_BYTES
+def repack_fields_x32(
+    source: Path,
+    destination: Path,
+    k: int,
+    rows: int,
+    block_elements: int,
+    block_bytes: int,
+    fields: tuple[tuple[int, int, int], ...],
+) -> None:
+    blocks = k // block_elements
+    row_bytes = blocks * block_bytes
     raw = source.read_bytes()
     if rows % 32 != 0 or len(raw) != rows * row_bytes:
-        raise SystemExit("Q4_K x32 repack requires complete groups of 32 rows")
+        raise SystemExit("RVV x32 repack requires complete groups of 32 rows")
+    if sum(length for _, length, _ in fields) != block_bytes:
+        raise SystemExit("RVV x32 field map does not cover one source block")
 
     packed = bytearray(len(raw))
     cursor = 0
@@ -117,54 +127,33 @@ def repack_q4_x32(source: Path, destination: Path, k: int, rows: int) -> None:
         for block in range(blocks):
             block_rows = [
                 memoryview(raw)[
-                    (row_group + row) * row_bytes + block * Q4_BLOCK_BYTES:
-                    (row_group + row) * row_bytes + (block + 1) * Q4_BLOCK_BYTES
+                    (row_group + row) * row_bytes + block * block_bytes:
+                    (row_group + row) * row_bytes + (block + 1) * block_bytes
                 ]
                 for row in range(32)
             ]
-            for offset in (0, 2):
-                for row in block_rows:
-                    packed[cursor:cursor + 2] = row[offset:offset + 2]
-                    cursor += 2
-            for offset, length in ((4, 12), (16, 128)):
-                for byte in range(length):
+            for offset, length, element_bytes in fields:
+                if length % element_bytes != 0:
+                    raise SystemExit("RVV x32 field has a partial element")
+                for element in range(0, length, element_bytes):
                     for row in block_rows:
-                        packed[cursor] = row[offset + byte]
-                        cursor += 1
+                        packed[cursor:cursor + element_bytes] = row[
+                            offset + element:offset + element + element_bytes
+                        ]
+                        cursor += element_bytes
     if cursor != len(packed):
-        raise SystemExit("internal Q4_K repack size error")
+        raise SystemExit("internal RVV x32 repack size error")
     destination.write_bytes(packed)
 
 
-def repack_q6_x32(source: Path, destination: Path, k: int, rows: int) -> None:
-    blocks = k // QK_K
-    row_bytes = blocks * Q6_BLOCK_BYTES
-    raw = source.read_bytes()
-    if rows % 32 != 0 or len(raw) != rows * row_bytes:
-        raise SystemExit("Q6_K x32 repack requires complete groups of 32 rows")
-
-    packed = bytearray(len(raw))
-    cursor = 0
-    for row_group in range(0, rows, 32):
-        for block in range(blocks):
-            block_rows = [
-                memoryview(raw)[
-                    (row_group + row) * row_bytes + block * Q6_BLOCK_BYTES:
-                    (row_group + row) * row_bytes + (block + 1) * Q6_BLOCK_BYTES
-                ]
-                for row in range(32)
-            ]
-            for row in block_rows:
-                packed[cursor:cursor + 2] = row[208:210]
-                cursor += 2
-            for offset, length in ((192, 16), (0, 128), (128, 64)):
-                for byte in range(length):
-                    for row in block_rows:
-                        packed[cursor] = row[offset + byte]
-                        cursor += 1
-    if cursor != len(packed):
-        raise SystemExit("internal Q6_K repack size error")
-    destination.write_bytes(packed)
+RVV_X32_FIELDS = {
+    "q3_K": ((108, 2, 2), (0, 32, 1), (32, 64, 1), (96, 12, 1)),
+    "q4_K": ((0, 2, 2), (2, 2, 2), (4, 12, 1), (16, 128, 1)),
+    "q5_K": ((0, 2, 2), (2, 2, 2), (4, 12, 1), (16, 32, 1),
+              (48, 128, 1)),
+    "q6_K": ((208, 2, 2), (192, 16, 1), (0, 128, 1), (128, 64, 1)),
+    "q8_0": ((0, 2, 2), (2, 32, 1)),
+}
 
 
 def emit_blob(symbol: str, path: Path) -> None:
@@ -208,7 +197,10 @@ def main() -> None:
         raise SystemExit(
             f"invalid input slice: inputs={inputs}, capture_inputs={capture_inputs}"
         )
-    if weight_type in ("q4_K", "q6_K") and rows % 32 != 0:
+    use_rvv_x32 = bool(
+        spec.get("rvv_x32", not spec["case_id"].endswith("_qbs"))
+    )
+    if use_rvv_x32 and rows % 32 != 0:
         raise SystemExit(f"{weight_type} evaluation rows must be a multiple of 32")
     weight_name = f"weight_{weight_type}.bin"
     weight_path = source_dir / weight_name
@@ -248,15 +240,22 @@ def main() -> None:
     )
 
     embedded_weight = generated / "embedded_weight.bin"
-    if weight_type == "q4_K":
-        repack_q4_x32(generated / "source_weight.bin", embedded_weight, k, rows)
-        embedded_layout = "q4_K_x32_ara"
-    elif weight_type == "q6_K" and inputs >= 4:
-        repack_q6_x32(generated / "source_weight.bin", embedded_weight, k, rows)
-        embedded_layout = "q6_K_x32_ara"
+    if use_rvv_x32:
+        repack_fields_x32(
+            generated / "source_weight.bin",
+            embedded_weight,
+            k,
+            rows,
+            block_elements,
+            weight_block_bytes,
+            RVV_X32_FIELDS[weight_type],
+        )
+        embedded_layout = f"{weight_type}_x32_rvv"
     else:
-        copy_prefix(generated / "source_weight.bin", embedded_weight, weight_bytes)
-        embedded_layout = f"{weight_type}_row_major"
+        copy_prefix(
+            generated / "source_weight.bin", embedded_weight, weight_bytes
+        )
+        embedded_layout = f"{weight_type}_row_major_staging"
 
     model_path = capture_root / "model.json"
     if not model_path.is_file():
@@ -296,7 +295,7 @@ def main() -> None:
             else "F32_to_Q8_K_plus_quantized_matmul"
         ),
         "runtime_setup_cycles": 0,
-        "offline_repack_excluded": embedded_layout.endswith("_ara"),
+        "offline_repack_excluded": embedded_layout.endswith("_x32_rvv"),
         "capture_root": str(capture_root),
         "capture_llama_commit": model_metadata.get("llama_commit", "unknown"),
         "model_metadata_sha256": sha256(model_path),

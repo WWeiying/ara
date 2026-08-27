@@ -32,7 +32,6 @@ module qbs_engine
     input  logic [2:0]                   command_m_i,
     input  logic [VAddrWidth-1:0]        command_descriptor_address_i,
     input  logic [VAddrWidth-1:0]        command_activation_base_i,
-    input  roundmode_e                   command_round_mode_i,
     input  axi_pkg::cache_t              command_cache_i,
     input  axi_pkg::prot_t               command_prot_i,
 
@@ -164,7 +163,6 @@ module qbs_engine
   logic [2:0] m_q;
   logic [VAddrWidth-1:0] descriptor_address_q;
   logic [VAddrWidth-1:0] activation_base_q;
-  roundmode_e round_mode_q;
   axi_pkg::cache_t cache_q;
   axi_pkg::prot_t prot_q;
 
@@ -760,7 +758,6 @@ module qbs_engine
     .command_m_i                    (m_q),
     .command_n_i                    (n_q),
     .command_k_blocks_i             (k_blocks_q),
-    .command_round_mode_i           (round_mode_q),
     .fault_i                        (compute_fault),
     .fault_done_o                   (compute_fault_done),
     .weight_write_valid_i           (compute_weight_write_valid),
@@ -1017,7 +1014,6 @@ module qbs_engine
       m_q <= '0;
       descriptor_address_q <= '0;
       activation_base_q <= '0;
-      round_mode_q <= RNE;
       cache_q <= '0;
       prot_q <= '0;
       descriptor_q <= '0;
@@ -1061,7 +1057,6 @@ module qbs_engine
         m_q <= command_m_i;
         descriptor_address_q <= command_descriptor_address_i;
         activation_base_q <= command_activation_base_i;
-        round_mode_q <= command_round_mode_i;
         cache_q <= command_cache_i;
         prot_q <= command_prot_i;
         descriptor_q <= '0;

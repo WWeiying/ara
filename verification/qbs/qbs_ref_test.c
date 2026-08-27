@@ -1,5 +1,6 @@
 #include "qbs_ref.h"
 
+#include <fenv.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -111,6 +112,8 @@ static void llama_quantize_q8_k(const float input[256],
 }
 
 static void test_abi(void) {
+  CHECK(QBS_NUMERICAL_ROUNDING_MODE == QBS_ROUNDING_MODE_RNE);
+  CHECK(QBS_NUMERICAL_USES_DYNAMIC_FRM == 0u);
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = 1,
       .weight_profile = QBS_WEIGHT_PROFILE_Q6_K,
@@ -147,6 +150,42 @@ static void test_abi(void) {
   CHECK(((info0 >> 43) & 0x1fu) == 0x1fu);
   CHECK(qbs_ref_capability_word(0, 256) != info0);
   CHECK(qbs_ref_capability_word(0xff, 1024) == 0);
+}
+
+static void test_fixed_rne_contract(void) {
+  qbs_block_q8_0_t weights[2] = {0};
+  qbs_block_q8_0_t activations[2] = {0};
+  float destination[32] = {0};
+  qbs_ref_result_t result;
+  const qbs_descriptor_v1_t descriptor = make_descriptor(
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT, QBS_ACTIVATION_PROFILE_Q8_0,
+      QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 2);
+
+  weights[0].d = UINT16_C(0x3c00);  // 1.0
+  weights[0].qs[0] = 1;
+  weights[1].d = UINT16_C(0x0001);  // 2^-24, half an FP32 ULP at 1.0
+  weights[1].qs[0] = 1;
+  activations[0].d = UINT16_C(0x3c00);
+  activations[0].qs[0] = 1;
+  activations[1].d = UINT16_C(0x3c00);
+  activations[1].qs[0] = 1;
+
+  const int saved_round = fegetround();
+  CHECK(fesetround(FE_UPWARD) == 0);
+  volatile float one = 1.0f;
+  volatile float half_ulp = 0x1p-24f;
+  volatile float upward_result = one + half_ulp;
+  CHECK(float_bits(upward_result) == UINT32_C(0x3f800001));
+
+  CHECK_STATUS(qbs_ref_execute(
+                   &descriptor, 1, 0, 1024, UINT64_C(0x2000), weights,
+                   sizeof(weights), activations, sizeof(activations),
+                   destination, 32, NULL, NULL, &result),
+               QBS_REF_OK);
+  CHECK(fegetround() == FE_UPWARD);
+  CHECK(float_bits(destination[0]) == UINT32_C(0x3f800000));
+  CHECK((result.fflags & UINT32_C(0x01)) != 0);
+  if (saved_round != -1) CHECK(fesetround(saved_round) == 0);
 }
 
 static void test_descriptor_validation(void) {
@@ -777,6 +816,7 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
 
 int main(void) {
   test_abi();
+  test_fixed_rne_contract();
   test_descriptor_validation();
   test_q8_quantization();
   test_q4_decode();

@@ -55,8 +55,8 @@ def main() -> None:
     common_dir = Path(__file__).resolve().parent
     base = runpy.run_path(str(common_dir / "generate_case.py"))
 
-    # Reuse the existing capture validation and tensor slicing. Its x32 output
-    # is immediately replaced below and is never linked into the QBS app.
+    # Reuse the existing capture validation and tensor slicing. Its row-major
+    # staging output is immediately replaced by the QBS R4 layout below.
     with contextlib.redirect_stdout(io.StringIO()):
         base["main"]()
 

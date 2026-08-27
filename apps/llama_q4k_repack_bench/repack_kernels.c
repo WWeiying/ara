@@ -322,6 +322,178 @@ void q4k_gemm_32x4(const block_q4_Kx32_ara *weights,
   __riscv_vse32_v_f32m1(output + 3 * Q4K_BENCH_ROWS, sumf3, vl);
 }
 
+static inline vint8mf4_t q3k_scale32(const block_q3_Kx32_ara *block,
+                                     int group, size_t vl) {
+  const int within = group & 3;
+  const int region = group >> 2;
+  const vuint8mf4_t low_meta = __riscv_vle8_v_u8mf4(
+      block->scales + ((region & 1) * 4 + within) * Q4K_BENCH_ROWS, vl);
+  const vuint8mf4_t high_meta = __riscv_vle8_v_u8mf4(
+      block->scales + (8 + within) * Q4K_BENCH_ROWS, vl);
+  const vuint8mf4_t low = __riscv_vand_vx_u8mf4(
+      __riscv_vsrl_vx_u8mf4(low_meta, region >= 2 ? 4 : 0, vl), 0x0f, vl);
+  const vuint8mf4_t high = __riscv_vsll_vx_u8mf4(
+      __riscv_vand_vx_u8mf4(
+          __riscv_vsrl_vx_u8mf4(high_meta, 2 * region, vl), 0x03, vl),
+      4, vl);
+  return __riscv_vsub_vx_i8mf4(
+      __riscv_vreinterpret_v_u8mf4_i8mf4(
+          __riscv_vor_vv_u8mf4(low, high, vl)),
+      32, vl);
+}
+
+static inline vint8mf4_t q3k_value32(const block_q3_Kx32_ara *block,
+                                     int element, size_t vl) {
+  const int packet = element / 32;
+  const int lane = element % 32;
+  const vuint8mf4_t packed = __riscv_vle8_v_u8mf4(
+      block->qs + ((packet / 4) * 32 + lane) * Q4K_BENCH_ROWS, vl);
+  const vint8mf4_t low = __riscv_vreinterpret_v_u8mf4_i8mf4(
+      __riscv_vand_vx_u8mf4(
+          __riscv_vsrl_vx_u8mf4(packed, 2 * (packet & 3), vl), 0x03, vl));
+  const vuint8mf4_t high = __riscv_vle8_v_u8mf4(
+      block->hmask + lane * Q4K_BENCH_ROWS, vl);
+  const vbool32_t negative = __riscv_vmseq_vx_u8mf4_b32(
+      __riscv_vand_vx_u8mf4(high, 1 << packet, vl), 0, vl);
+  return __riscv_vsub_vx_i8mf4_mu(negative, low, low, 4, vl);
+}
+
+void q3k_gemv_32(const block_q3_Kx32_ara *weights,
+                 const block_q8_K *activation, float *output, int n) {
+  const int blocks = n / QK_K;
+  const size_t vl = __riscv_vsetvl_e32m1(Q4K_BENCH_ROWS);
+  vfloat32m1_t sumf = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+
+  for (int block = 0; block < blocks; ++block) {
+    vint32m1_t dot = __riscv_vmv_v_x_i32m1(0, vl);
+    for (int group = 0; group < QK_K / 16; ++group) {
+      const vint32m1_t scale =
+          __riscv_vsext_vf4_i32m1(q3k_scale32(&weights[block], group, vl), vl);
+      for (int item = 0; item < 16; ++item) {
+        const int element = group * 16 + item;
+        const vint32m1_t value = __riscv_vsext_vf4_i32m1(
+            q3k_value32(&weights[block], element, vl), vl);
+        const vint32m1_t weighted =
+            __riscv_vmul_vv_i32m1(value, scale, vl);
+        dot = __riscv_vmacc_vx_i32m1(
+            dot, activation[block].qs[element], weighted, vl);
+      }
+    }
+
+    const vfloat32m1_t weight_scale = load_weight_scale(weights[block].d, vl);
+    const vfloat32m1_t dotf = __riscv_vfcvt_f_x_v_f32m1(dot, vl);
+    const vfloat32m1_t scale =
+        __riscv_vfmul_vf_f32m1(weight_scale, activation[block].d, vl);
+    sumf = __riscv_vfmacc_vv_f32m1(sumf, dotf, scale, vl);
+  }
+  __riscv_vse32_v_f32m1(output, sumf, vl);
+}
+
+static inline vuint8mf4_t q5k_scale32(const block_q5_Kx32_ara *block,
+                                      int sub_block, size_t vl) {
+  if (sub_block < 4) {
+    return __riscv_vand_vx_u8mf4(
+        __riscv_vle8_v_u8mf4(block->scales + sub_block * Q4K_BENCH_ROWS, vl),
+        0x3f, vl);
+  }
+  const vuint8mf4_t low = __riscv_vle8_v_u8mf4(
+      block->scales + (sub_block + 4) * Q4K_BENCH_ROWS, vl);
+  const vuint8mf4_t high = __riscv_vle8_v_u8mf4(
+      block->scales + (sub_block - 4) * Q4K_BENCH_ROWS, vl);
+  return __riscv_vor_vv_u8mf4(
+      __riscv_vand_vx_u8mf4(low, 0x0f, vl),
+      __riscv_vsll_vx_u8mf4(__riscv_vsrl_vx_u8mf4(high, 6, vl), 4, vl), vl);
+}
+
+static inline vuint8mf4_t q5k_min32(const block_q5_Kx32_ara *block,
+                                    int sub_block, size_t vl) {
+  if (sub_block < 4) {
+    return __riscv_vand_vx_u8mf4(
+        __riscv_vle8_v_u8mf4(
+            block->scales + (sub_block + 4) * Q4K_BENCH_ROWS, vl),
+        0x3f, vl);
+  }
+  const vuint8mf4_t low = __riscv_vle8_v_u8mf4(
+      block->scales + (sub_block + 4) * Q4K_BENCH_ROWS, vl);
+  const vuint8mf4_t high = __riscv_vle8_v_u8mf4(
+      block->scales + sub_block * Q4K_BENCH_ROWS, vl);
+  return __riscv_vor_vv_u8mf4(
+      __riscv_vsrl_vx_u8mf4(low, 4, vl),
+      __riscv_vsll_vx_u8mf4(__riscv_vsrl_vx_u8mf4(high, 6, vl), 4, vl), vl);
+}
+
+static inline vint8mf4_t q5k_value32(const block_q5_Kx32_ara *block,
+                                     int element, size_t vl) {
+  const int packet = element / 64;
+  const int within = element % 64;
+  const int lane = within % 32;
+  const vuint8mf4_t packed = __riscv_vle8_v_u8mf4(
+      block->qs + (packet * 32 + lane) * Q4K_BENCH_ROWS, vl);
+  const vuint8mf4_t low = within < 32
+      ? __riscv_vand_vx_u8mf4(packed, 0x0f, vl)
+      : __riscv_vsrl_vx_u8mf4(packed, 4, vl);
+  const int high_bit = packet * 2 + (within >= 32);
+  const vuint8mf4_t high = __riscv_vsll_vx_u8mf4(
+      __riscv_vand_vx_u8mf4(
+          __riscv_vsrl_vx_u8mf4(
+              __riscv_vle8_v_u8mf4(
+                  block->qh + lane * Q4K_BENCH_ROWS, vl),
+              high_bit, vl),
+          1, vl),
+      4, vl);
+  return __riscv_vreinterpret_v_u8mf4_i8mf4(
+      __riscv_vor_vv_u8mf4(low, high, vl));
+}
+
+void q5k_gemv_32(const block_q5_Kx32_ara *weights,
+                 const block_q8_K *activation, float *output, int n) {
+  const int blocks = n / QK_K;
+  const size_t vl = __riscv_vsetvl_e32m1(Q4K_BENCH_ROWS);
+  vfloat32m1_t sumf = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+
+  for (int block = 0; block < blocks; ++block) {
+    vint32m1_t dot = __riscv_vmv_v_x_i32m1(0, vl);
+    vint32m1_t min_correction = __riscv_vmv_v_x_i32m1(0, vl);
+    for (int group = 0; group < 8; ++group) {
+      const vint32m1_t scale = __riscv_vsext_vf4_i32m1(
+          __riscv_vreinterpret_v_u8mf4_i8mf4(
+              q5k_scale32(&weights[block], group, vl)),
+          vl);
+      const vint32m1_t min = __riscv_vsext_vf4_i32m1(
+          __riscv_vreinterpret_v_u8mf4_i8mf4(
+              q5k_min32(&weights[block], group, vl)),
+          vl);
+      const int16_t bsum = activation[block].bsums[2 * group] +
+                           activation[block].bsums[2 * group + 1];
+      min_correction =
+          __riscv_vmacc_vx_i32m1(min_correction, bsum, min, vl);
+      for (int item = 0; item < 32; ++item) {
+        const int element = group * 32 + item;
+        const vint32m1_t value = __riscv_vsext_vf4_i32m1(
+            q5k_value32(&weights[block], element, vl), vl);
+        const vint32m1_t weighted =
+            __riscv_vmul_vv_i32m1(value, scale, vl);
+        dot = __riscv_vmacc_vx_i32m1(
+            dot, activation[block].qs[element], weighted, vl);
+      }
+    }
+
+    const vfloat32m1_t weight_scale = load_weight_scale(weights[block].d, vl);
+    const vfloat32m1_t weight_min = load_weight_scale(weights[block].dmin, vl);
+    const vfloat32m1_t dotf = __riscv_vfcvt_f_x_v_f32m1(dot, vl);
+    const vfloat32m1_t minf =
+        __riscv_vfcvt_f_x_v_f32m1(min_correction, vl);
+    const vfloat32m1_t scaled_d =
+        __riscv_vfmul_vf_f32m1(weight_scale, activation[block].d, vl);
+    const vfloat32m1_t scaled_min =
+        __riscv_vfmul_vf_f32m1(weight_min, activation[block].d, vl);
+    sumf = __riscv_vfsub_vv_f32m1(
+        sumf, __riscv_vfmul_vv_f32m1(minf, scaled_min, vl), vl);
+    sumf = __riscv_vfmacc_vv_f32m1(sumf, dotf, scaled_d, vl);
+  }
+  __riscv_vse32_v_f32m1(output, sumf, vl);
+}
+
 static inline vint8mf4_t q6k_value32(const block_q6_Kx32_ara *block,
                                      int element, size_t vl) {
   const int half = element / 128;
@@ -445,4 +617,29 @@ void q6k_gemm_32x4(const block_q6_Kx32_ara *weights,
   __riscv_vse32_v_f32m1(output + output_stride, sumf1, vl);
   __riscv_vse32_v_f32m1(output + 2 * output_stride, sumf2, vl);
   __riscv_vse32_v_f32m1(output + 3 * output_stride, sumf3, vl);
+}
+
+void q8_0_gemv_32(const block_q8_0x32_ara *weights,
+                  const block_q8_0 *activation, float *output, int n) {
+  const int blocks = n / QK8_0;
+  const size_t vl = __riscv_vsetvl_e32m1(Q4K_BENCH_ROWS);
+  vfloat32m1_t sumf = __riscv_vfmv_v_f_f32m1(0.0f, vl);
+
+  for (int block = 0; block < blocks; ++block) {
+    vint32m1_t dot = __riscv_vmv_v_x_i32m1(0, vl);
+    for (int element = 0; element < QK8_0; ++element) {
+      const vint8mf4_t weight = __riscv_vle8_v_i8mf4(
+          weights[block].qs + element * Q4K_BENCH_ROWS, vl);
+      const vint32m1_t weight32 = __riscv_vsext_vf4_i32m1(weight, vl);
+      dot = __riscv_vmacc_vx_i32m1(
+          dot, activation[block].qs[element], weight32, vl);
+    }
+    const vfloat32m1_t weight_scale = load_weight_scale(weights[block].d, vl);
+    const vfloat32m1_t dotf = __riscv_vfcvt_f_x_v_f32m1(dot, vl);
+    const float activation_scale = fp16_to_fp32(activation[block].d);
+    const vfloat32m1_t scale =
+        __riscv_vfmul_vf_f32m1(weight_scale, activation_scale, vl);
+    sumf = __riscv_vfmacc_vv_f32m1(sumf, dotf, scale, vl);
+  }
+  __riscv_vse32_v_f32m1(output, sumf, vl);
 }

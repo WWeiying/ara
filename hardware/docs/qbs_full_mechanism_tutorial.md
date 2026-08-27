@@ -893,8 +893,10 @@ acc = fma(sd, fp32(D), acc)
 
 ### 4.3 当前数值顺序与实验边界
 
-`numerical_contract_version=1` 当前对 affine profile 使用“正 dot 更新在前、min correction 在后”
-的两次 FP32 FMA。`qbs_ref.c`、RTL FP accumulator 和 QEMU canonical model 以此为准。
+`numerical_contract_version=1` 固定使用 round-to-nearest-even（RNE），不读取动态 `frm`；对
+affine profile 使用“正 dot 更新在前、min correction 在后”的两次 FP32 FMA。该固定舍入模式和
+操作顺序均由 `config/qbs_abi.json` 定义，并生成 C/SV 常量；`qbs_ref.c`、RTL FP accumulator 和
+QEMU canonical model 以此为准。
 
 已经进行过让 Q2_K min correction 先执行的实验；短测试显示它可能更接近当前 RVV 的求和顺序，
 但这仍不是生产 contract。不同 profile 的 llama.cpp/RVV 累加组织并不完全相同，例如 Q5_K
@@ -1147,8 +1149,8 @@ RVV store 表达。
 - CVA6 accelerator-consistent mode 必须开启，否则指令非法；
 - dispatcher 将请求内部固定为 e32，并从 M 合成 LMUL 和 `vl=M*(VLEN/32)`；
 - 软件仍在 wrapper 中设置相容的 e32 向量状态，命令后再设 `vl=N` 存回；
-- 当前 FP rounding mode 由已有 `frm` 随 accelerator request 传给 QBS FP pipeline，命令累计的 `fflags`
-  仅在成功 terminal 返回；
+- QBS v1 的 FP rounding mode 固定为 RNE，不继承动态 `frm`；命令累计的 `fflags` 仅在成功
+  terminal 返回；
 - 命令被 CVA6 归类为阻塞式 accelerator load，从发出到成功提交或 fault terminal 之间
   不向标量核报告完成。
 
@@ -1665,7 +1667,7 @@ DESCRIPTOR_WAIT/VALIDATE -> FAULT
 RUN payload fault -> COMPUTE_FAULT_DRAIN -> FAULT
 ```
 
-它保存 command id、vd、M、descriptor/activation 地址、round mode、cache/prot 属性；调度 logical
+它保存 command id、vd、M、descriptor/activation 地址和 cache/prot 属性；调度 logical
 read ranges；连接 compute 和 commit；保存 fault attribution；导出互斥 phase counter。
 
 图中的直接 `FAULT` 不表示忽略在途 AXI response：`qbs_read_engine.sv` 只有在自身 burst FIFO 已
@@ -1777,8 +1779,8 @@ FP accumulator。两 context 的作用是吸收 decode、dot reduction 和 FP co
 ### 9.9 `qbs_fp_accumulator.sv`：共享 FP32 update pipeline
 
 逻辑上最多有 `M*N=4*32=128` 个 FP32 accumulators。物理上按 8 bank x 16 row 组织，另有
-16-entry FP update table。每个 table entry 保存 accumulator index、profile、dot/aux、scale、
-round mode 和中间 FP 值。
+16-entry FP update table。每个 table entry 保存 accumulator index、profile、dot/aux、scale 和
+中间 FP 值；所有 FP primitive 直接使用 ABI 生成的固定 RNE 常量，不保存每请求 rounding mode。
 
 一条非 affine block update 经历：
 
@@ -2055,7 +2057,15 @@ FP_table_avg_occ = fp_table_occupancy_sum / command_cycles
 
 QEMU 10.2.0 `Xaraqbs` model复用生成的 ABI header 和 canonical C reference。它检查 capability、
 vector/FP state、destination alignment、guest memory fault、inactive elements、M=3 保留寄存器和
-`fflags`。这是**架构/软件功能模型，不是 timing model**。
+`fflags`。QEMU 无法精确复现具体 Ara 配置的 PMA，因此采用保守 RAM-only contract：descriptor
+整段必须先验证为直接 RAM-backed 才能读取；解析尺寸后，activation 和 weight 两个完整范围都
+必须先验证为直接 RAM-backed，随后才复制任一 payload。ROM、MMIO/device callback 及其他
+MMIO-like 映射直接产生 load-access fault，不执行逐字节设备读。这是**架构/软件功能模型，不是
+timing model**。
+
+短契约回归还覆盖两类边界：合法 activation/weight range 跨越 4-KiB 页时逐页验证并成功执行；
+range 的前半位于 RAM、尾部进入未映射区时，在修改目的向量前产生 load-access fault。后者同时
+检查目的向量保持原值，避免“先算一部分、后发现范围非法”的非原子行为。
 
 完整模型测试在同一 Qwen2.5 prompt 上分别运行普通 RVV 和 native QBS opcode，检查输出文本、
 profile dispatch、GEMV/GEMM 和 fallback。QEMU 通过只能证明 GGML graph 和命令语义可工作，不能

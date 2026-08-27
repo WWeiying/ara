@@ -42,6 +42,19 @@ descriptor fields, supported profile/layout pairs, and guest-memory faults.
 It reads all inputs before committing the destination vector group, preserves
 the unused fourth destination register for `M=3`, zero-fills inactive output
 elements, and accumulates command floating-point exception flags into `fflags`.
+Numerical-contract v1 always uses round-to-nearest-even (RNE); the dynamic
+`frm` CSR does not affect a QBS command.
+
+QEMU cannot reproduce the implementation-specific Ara PMA map exactly. Its
+functional contract is therefore deliberately conservative: the complete
+descriptor range must be directly RAM-backed before descriptor bytes are
+read, and the complete activation and weight ranges must both be directly
+RAM-backed before either payload is copied. ROM, MMIO/device callbacks, and
+other MMIO-like mappings raise a load-access fault and are never accessed via
+a byte-load fallback. The short `qemu-contract-check` regression covers the
+fixed-RNE rule, descriptor/activation/weight UART-MMIO rejection, legal
+payloads crossing a 4-KiB page, and RAM ranges whose tail enters an unmapped
+region. Faulting cases also verify that the destination vector remains intact.
 
 The nine supported profile pairs are:
 

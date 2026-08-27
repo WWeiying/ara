@@ -8,8 +8,8 @@ It is intentionally independent of the RTL implementation.
   trace events, and atomic result commit. R4 output-row groups are padded to
   four rows; the descriptor retains the logical N and commit ignores padding.
 - `qbs_ref_test.c`: constructed-vector tests for instruction/descriptor ABI,
-  profile decoding, quantization, layout equivalence, M/N tails, and failure
-  behavior.
+  fixed-RNE behavior under a conflicting host rounding mode, profile decoding,
+  quantization, layout equivalence, M/N tails, and failure behavior.
 - `qbs_real_test.c`: tiled execution over the six captured Qwen2.5 workloads.
   It requires bit-identical outputs across supported layouts and compares the
   numerical-contract output with the captured llama.cpp golden result.
@@ -29,3 +29,12 @@ Run the six real-data cases with:
 ```sh
 make -C verification/qbs real-check
 ```
+
+After building the patched QEMU model, run the short ISA-contract regression
+with `QBS_QEMU=/path/to/qemu-system-riscv64 make -C verification/qbs
+qemu-contract-check`. It drives `frm=RUP` through an RNE/RUP-discriminating
+input and checks that QBS still returns the fixed-RNE result. It also requires
+load-access faults, before device reads, when the descriptor, activation, or
+weight range points at the QEMU `virt` UART MMIO region. Legal payloads that
+cross a 4-KiB page must succeed; payloads whose tail crosses from RAM into an
+unmapped region must fault without changing the destination vector group.

@@ -4757,7 +4757,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
               ara_req.eew_vd_op = EW32;
               ara_req.vstart = '0;
               ara_req.vl = vlen_t'(qbs_m * (VLEN / 32));
-              ara_req.fp_rm = acc_req_i.frm;
+              // QBS numerical-contract v1 is independent of the dynamic frm CSR.
+              ara_req.fp_rm = fpnew_pkg::roundmode_e'(QbsNumericalRoundingMode);
               unique case (qbs_m)
                 1: ara_req.emul = LMUL_1;
                 2: ara_req.emul = LMUL_2;

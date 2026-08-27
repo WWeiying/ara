@@ -136,7 +136,6 @@ module qbs_engine_tb;
     .command_m_i                     (command_m),
     .command_descriptor_address_i    (command_descriptor_address),
     .command_activation_base_i       (command_activation_base),
-    .command_round_mode_i            (RNE),
     .command_cache_i                 (CACHE_MODIFIABLE),
     .command_prot_i                  ('0),
     .success_valid_o                 (success_valid),

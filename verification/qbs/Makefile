@@ -82,6 +82,10 @@ check: generated-check qbs_ref_test
 real-check: all
 	./run_real_cases.sh
 
+.PHONY: qemu-contract-check
+qemu-contract-check:
+	./qemu/run_qbs_contract_test.sh
+
 .PHONY: rtl-compile rtl-profile-check rtl-command-compile rtl-command-check \
 	rtl-descriptor-compile rtl-descriptor-check rtl-read-compile \
 	rtl-read-check rtl-commit-compile rtl-commit-check rtl-engine-compile \

@@ -16,6 +16,7 @@ SV_PATH = ROOT / "hardware/include/qbs_pkg.sv"
 
 SCALE_FORMATS = {"FP16": 1, "FP32": 2}
 CORRECTION_MODES = {"NONE": 0, "AFFINE_MIN": 1}
+ROUNDING_MODES = {"RNE": 0}
 
 
 def load_spec() -> dict:
@@ -40,6 +41,12 @@ def profile_const(domain: str, name: str) -> str:
 
 def validate_spec(spec: dict) -> None:
     limits = spec["limits"]
+    numerical_contract = spec["numerical_contract"]
+    if numerical_contract.get("rounding_mode") not in ROUNDING_MODES:
+        raise ValueError("numerical_contract.rounding_mode must be RNE")
+    if numerical_contract.get("uses_dynamic_frm") is not False:
+        raise ValueError(
+            "QBS numerical-contract v1 must not depend on dynamic frm")
     if not 1 <= limits["max_m"] <= 4:
         raise ValueError("limits.max_m must fit the 2-bit M-minus-one field")
     if not 1 <= limits["max_n"] <= 32:
@@ -266,6 +273,7 @@ def c_header(spec: dict) -> str:
     desc = spec["descriptor"]
     insn = spec["instruction"]
     limits = spec["limits"]
+    numerical_contract = spec["numerical_contract"]
     weight_layout_mask = " |\n        ".join(
         f"(UINT64_C(1) << QBS_WEIGHT_LAYOUT_{name})"
         for name in spec["weight_layouts"])
@@ -282,6 +290,9 @@ def c_header(spec: dict) -> str:
 #define QBS_EXTENSION_NAME \"{spec['extension_name']}\"
 #define QBS_ARCH_VERSION {spec['architecture_version']}u
 #define QBS_NUMERICAL_CONTRACT_VERSION {spec['numerical_contract_version']}u
+#define QBS_ROUNDING_MODE_RNE {ROUNDING_MODES['RNE']}u
+#define QBS_NUMERICAL_ROUNDING_MODE QBS_ROUNDING_MODE_{numerical_contract['rounding_mode']}
+#define QBS_NUMERICAL_USES_DYNAMIC_FRM {int(numerical_contract['uses_dynamic_frm'])}u
 #define QBS_DESCRIPTOR_VERSION {desc['version']}u
 #define QBS_DESCRIPTOR_BYTES {desc['bytes']}u
 #define QBS_DESCRIPTOR_ALIGNMENT_LOG2 {desc['alignment_log2']}u
@@ -679,6 +690,7 @@ def sv_package(spec: dict) -> str:
     desc = spec["descriptor"]
     insn = spec["instruction"]
     limits = spec["limits"]
+    numerical_contract = spec["numerical_contract"]
     layout_lines = []
     for name in spec["weight_layouts"]:
         layout_lines.append(
@@ -697,6 +709,11 @@ package qbs_pkg;
 
   localparam int unsigned QbsArchitectureVersion = {spec['architecture_version']};
   localparam int unsigned QbsNumericalContractVersion = {spec['numerical_contract_version']};
+  localparam logic [2:0] QbsRoundingModeRne = 3'd{ROUNDING_MODES['RNE']};
+  localparam logic [2:0] QbsNumericalRoundingMode =
+      QbsRoundingMode{sv_token(numerical_contract['rounding_mode'])};
+  localparam bit QbsNumericalUsesDynamicFrm =
+      1'b{int(numerical_contract['uses_dynamic_frm'])};
   localparam int unsigned QbsDescriptorVersion = {desc['version']};
   localparam int unsigned QbsDescriptorBytes = {desc['bytes']};
   localparam int unsigned QbsDescriptorAlignmentLog2 = {desc['alignment_log2']};
