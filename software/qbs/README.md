@@ -1,0 +1,136 @@
+# QBS Runtime Library
+
+`software/qbs` is the runtime-neutral software contract for the `Xaraqbs`
+extension. It deliberately contains no GGML tensor types, GGUF model names, or
+llama.cpp operator identifiers. llama.cpp is the first adapter, not part of
+the QBS ABI.
+
+## Contract boundary
+
+QBS computes packed quantized matrix products with the mathematical shape
+
+```text
+A[M,K] x W[N,K]^T -> C[M,N]
+```
+
+The descriptor identifies an exact weight profile, activation profile, packed
+layout, and one hardware tile. A profile denotes an exact byte layout and
+numerical formula. A runtime may use a profile in either of two ways:
+
+1. map an exactly compatible native format directly to the profile; or
+2. convert/repack its format into the canonical QBS profile at model-load time.
+
+Matching only bit width or group size is not sufficient. For example, another
+runtime's blockwise INT4 format is not `Q4_K` unless its scale, correction,
+subgroup, and packed-bit semantics are identical.
+
+This gives QBS two distinct kinds of portability:
+
+- **operator and shape portability:** the public operation is a quantized
+  `A[M,K] x W[N,K]^T` tile, independent of model and graph names;
+- **format portability through an explicit contract:** exact formats map
+  directly, while other formats require a runtime-owned, validated load-time
+  conversion. Similar bit width alone never enables a direct path.
+
+The current profiles are canonical GGML-compatible encodings, not a claim that
+all INT4 or INT8 encodings share their byte ABI. Adding another ecosystem does
+not require changing planning or issue code, but it may require a new exact
+profile or a persistent model-load conversion.
+
+The current v1 profiles cover four useful semantic families:
+
+- affine K-block formats: `Q2_K`, `Q4_K`, and `Q5_K`;
+- symmetric K-block formats: `Q3_K` and `Q6_K`;
+- simple 32-element block formats: `Q4_0`, `Q5_0`, and `Q8_0`;
+- nonlinear codebook format: `IQ4_NL`.
+
+They pair with `Q8_K` or `Q8_0` activations. Unsupported formats remain on the
+runtime's ordinary RVV or scalar path.
+
+This is an intentional v1 core rather than an exhaustive quantization list.
+It covers the complete `Q2_K` through `Q6_K` weight family, three simple
+32-element block formats, and one nonlinear codebook format while reusing one
+descriptor and execution path. It does not natively cover `Q4_1`/`Q5_1`, the
+remaining IQ and TQ families, MXFP4/NVFP4, or runtime-specific GPTQ/AWQ block
+layouts. Those formats require measured demand plus either a new exact profile
+or a validated conversion target. The descriptor has a four-bit weight-profile
+field, so profile IDs are a versioned architectural resource, not a substitute
+for a runtime format registry.
+
+## Public layers
+
+| Layer | Public operation | Runtime responsibility |
+|---|---|---|
+| ABI | generated `qbs_abi.h` | use exact profile/layout IDs |
+| Discovery | `qbs_device_query` | call only after ISA/platform discovery proves `Xaraqbs` exists |
+| Metadata | `qbs_*_profile_info` | map or convert a runtime format explicitly |
+| Packing | `qbs_repack_weight_r4`, `qbs_pack_activation_m4` | cache persistent weights and prepare activation groups |
+| Planning | `qbs_plan_create`, `qbs_plan_next` | supply logical M/N/K and source storage layouts |
+| Execution | `qbs_execute` | provide buffers, workspace, and a command executor |
+| Native ISA | `qbs_native_info`, `qbs_native_execute_command` | establish extension presence and handle runtime policy |
+
+The planner owns M1--M4 grouping, N tiles and tails, K segmentation, descriptor
+construction, and split-K accumulation. It supports row-major and R4 weights,
+row-major activations, and the grouped M4 representation used by multi-token
+GEMM. It performs all shape, profile, layout, workspace, and capability checks
+before issuing the first command.
+
+Once `qbs_execute` calls the command executor, a memory or architectural fault
+is an execution fault and must be propagated. A runtime must not silently
+retry the same operation on a fallback path after a possibly visible command.
+
+## Runtime adapter pattern
+
+An adapter for GGML, ONNX Runtime, ExecuTorch, or another engine should remain
+small and follow the same sequence:
+
+```text
+runtime tensor metadata
+  -> exact profile mapping or load-time conversion
+  -> qbs_device_query and qbs_plan_create
+  -> persistent R4 weight cache
+  -> runtime activation quantization / M4 packing
+  -> qbs_execute
+  -> ordinary runtime fallback for any pre-issue rejection
+```
+
+Runtime-specific tracing, allocator integration, thread scheduling, tensor
+lifetime, and fallback selection stay in the adapter. Profile geometry,
+capability parsing, packing, tile planning, and instruction execution stay in
+this library so adapters cannot drift from one another.
+
+`examples/runtime_adapter.c` demonstrates the boundary with fictitious runtime
+metadata. One format is an exact mapping, a same-bit-width foreign INT4 format
+is explicitly marked for load-time conversion, and an unsupported floating
+format remains on fallback. It contains no GGML declarations.
+
+See `PORTING.md` for the exact-mapping checklist, conversion and fallback
+rules, adapter ownership boundary, and the validation required before enabling
+a new runtime or format.
+
+For CMake integration, add this directory and link the namespaced target:
+
+```cmake
+add_subdirectory(path/to/software/qbs qbs-runtime)
+target_link_libraries(runtime_backend PRIVATE qbs::runtime)
+```
+
+An installed library exports the same target through
+`find_package(qbs_runtime CONFIG REQUIRED)`, so an adapter does not need to
+compile QBS sources into its own backend target.
+
+Before calling `qbs_execute`, an adapter supplies actual weight, activation,
+and output capacities. The common layer validates all three before issuing its
+first command. Once issue begins, an architectural or memory fault is returned
+as an execution error and must not be hidden by retrying the operation.
+
+## Building and testing
+
+```sh
+make -C software/qbs check
+```
+
+The host test checks all nine weight profiles, both activation profiles,
+capability-contract decoding, R4 padding, Q8_K/Q8_0 M4 packing, M/N tails,
+mixed M4 plus row-tail storage, split-K command accumulation, explicit buffer
+capacities, and a reduced device that supports only M2 plus row-major layouts.

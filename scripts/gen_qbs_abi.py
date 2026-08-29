@@ -11,7 +11,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = ROOT / "config/qbs_abi.json"
-C_PATH = ROOT / "apps/common/qbs_abi.h"
+C_PATHS = [
+    ROOT / "apps/common/qbs_abi.h",
+    ROOT / "software/qbs/include/qbs/qbs_abi.h",
+]
 SV_PATH = ROOT / "hardware/include/qbs_pkg.sv"
 
 SCALE_FORMATS = {"FP16": 1, "FP32": 2}
@@ -210,6 +213,15 @@ def c_switch_symbol(spec: dict, domain: str, field: str,
     return "\n".join(lines)
 
 
+def c_switch_name(spec: dict, domain: str) -> str:
+    lines = ["  switch (profile) {"]
+    for name in spec[f"{domain}_profiles"]:
+        lines.append(
+            f'    case {profile_const(domain.upper(), name)}: return "{name}";')
+    lines.extend(['    default: return "invalid";', "  }"])
+    return "\n".join(lines)
+
+
 def c_compatibility_switch(spec: dict) -> str:
     lines = ["  switch (weight_profile) {"]
     for name, profile in spec["weight_profiles"].items():
@@ -360,6 +372,14 @@ static_assert(sizeof(qbs_descriptor_v1_t) == QBS_DESCRIPTOR_BYTES,
 _Static_assert(sizeof(qbs_descriptor_v1_t) == QBS_DESCRIPTOR_BYTES,
                "invalid QBS descriptor size");
 #endif
+
+static inline const char *qbs_weight_profile_name(unsigned profile) {{
+{c_switch_name(spec, 'weight')}
+}}
+
+static inline const char *qbs_activation_profile_name(unsigned profile) {{
+{c_switch_name(spec, 'activation')}
+}}
 
 static inline unsigned qbs_weight_block_bytes(unsigned profile) {{
 {c_switch_value(spec, 'weight', 'block_bytes')}
@@ -895,7 +915,7 @@ def main() -> int:
     except (KeyError, TypeError, ValueError) as error:
         print(f"invalid QBS ABI specification: {error}", file=sys.stderr)
         return 2
-    ok = update(C_PATH, c_header(spec), args.check)
+    ok = all(update(path, c_header(spec), args.check) for path in C_PATHS)
     ok &= update(SV_PATH, sv_package(spec), args.check)
     return 0 if ok else 1
 

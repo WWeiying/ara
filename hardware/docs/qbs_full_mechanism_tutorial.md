@@ -1132,40 +1132,36 @@ QBS 不修改 GGML graph 中 `MUL_MAT` 的数学语义，也不删除 F32 activa
 量化后的矩阵内核：模型加载时一次性将权重转换为 R4 block-major，运行时把 activation 分成
 Q8_K/Q8_0 blocks，然后将大矩阵切成 `M<=4`、`N<=32`、`K-blocks<=256` 的命令。
 
-当前 GGML backend 的结构可概括为：
+当前软件被分成“运行时适配器”和“QBS 公共层”。GGML 适配器只解释 tensor type、生命周期、
+allocator、trace 和 fallback；profile 元数据、能力解析、R4/M4 packing、M/N/K 分块、descriptor
+构造和原生指令 wrapper 属于不依赖 GGML 的公共层。调用关系可概括为：
 
 ```c
-caps = query_qbs_with_qbinfo();
-if (!runtime_enabled || !profile/layout/shape_supported(caps, tensor))
+binding = ggml_type_to_exact_qbs_profile(tensor.type);
+device  = qbs_device_query(qbinfo_reader);
+if (!runtime_enabled || !binding.exact ||
+    !ggml_tensor_shape_supported(tensor) ||
+    !qbs_device_supports_profile(device, binding))
     return best_standard_rvv_kernel(...);
 
 // 模型加载期：只做一次
-weights_r4 = repack_weight_rows_in_groups_of_four(weights_gguf);
+weights_r4 = qbs_repack_weight_r4(binding.weight_profile,
+                                  weights_native);
 
 // MUL_MAT 运行期
 activations_q8 = quantize_f32_rows(activations_f32);
-for (unsigned m0 = 0; m0 < M_total; m0 += 4) {
-    unsigned M = min(4, M_total - m0);
-    activation_layout = M == 4 ? M4_INTERLEAVED : ROW_MAJOR;
+problem = {binding, weight_layout, activation_storage,
+           M_total, N_total, K};
+plan = qbs_plan_create(device, problem);
 
-    for (unsigned n0 = 0; n0 < N_total; n0 += max_N) {
-        unsigned N = min(max_N, N_total - n0);
-        descriptor = {
-            profile and layout IDs,
-            N,
-            K_blocks,
-            &weights_r4[n0, 0]
-        };
-
-        qbexec(vd=v8, rs1=&descriptor,
-               rs2=&activations_q8[m0, 0], M);
-
-        // qbexec 结果已回到普通 VRF，只存实际 M 行
-        for (unsigned context = 0; context < M; ++context)
-            store v[8 + context][0:N]
-                -> C[m0 + context, n0:n0+N];
-    }
-}
+// 公共层完成 M1-M4、N tail、split-K 和 descriptor 构造；
+// GGML callback 只负责原生 qbexec 或功能 emulation，以及 trace。
+qbs_execute(plan,
+            weights_r4, weights_bytes,
+            activations_q8, activations_bytes,
+            C, output_capacity, output_stride,
+            workspace, workspace_bytes,
+            ggml_command_executor);
 ```
 
 实际 wrapper 在指令前用 `fence rw,rw` 确保 descriptor、activation 和 repacked weight 对 QBS 可见；按 M
@@ -1195,9 +1191,11 @@ partial outputs；这是功能 fallback，不是隐含在单条指令中的无�
 | --- | --- | --- |
 | 标准 RVV 块点积 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quants.c` | 按 VLEN 选择 Q3/Q4/Q6 等 RVV decode/dot/reduction 实现 |
 | 标准 repacked GEMV/GEMM | `llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp` | 选择多行 trait、重排权重/激活并调用 GEMV/GEMM kernel |
-| QBS GGML backend | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | capability、tensor 选择、R4 repack、M/N/K 分块、descriptor 和 wrapper |
+| QBS 公共运行时 API | `software/qbs/include/qbs/qbs.h` | 与 framework 无关的 profile、capability、problem/plan、buffer 和 executor 契约 |
+| QBS 公共运行时实现 | `software/qbs/src/qbs_runtime.c`、`qbs_native_riscv.c` | capability 核验、R4/M4 packing、M/N/K 分块、tail/split-K、descriptor、容量预检和原生 wrapper |
+| QBS GGML 适配器 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | `ggml_type` 映射、tensor 选择、GGML trace/emulation、fallback 和公共 executor 回调 |
 | QBS ABI 真源 | `config/qbs_abi.json` | profile、layout、instruction 和 shape 的版本化定义 |
-| 生成的软件 ABI | `apps/common/qbs_abi.h` | C 宏、descriptor pack/unpack、capability word 和 raw encoding |
+| 生成的软件 ABI | `apps/common/qbs_abi.h`、`software/qbs/include/qbs/qbs_abi.h` | 同源 C 宏、descriptor pack/unpack、capability word 和 raw encoding |
 | 生成的 RTL ABI | `hardware/include/qbs_pkg.sv` | 与 C 侧同源的 SystemVerilog 常量、enum 和 capability 函数 |
 
 ### 5.3 为什么参数分成指令、descriptor 和 profile
@@ -1361,9 +1359,10 @@ sequencer，dispatcher 组合查表后返回标量结果。未知 selector 返�
 | 47 | requires accelerator consistency | 1 |
 | 63:48 | reserved | 0 |
 
-当前 GGML backend 直接检查 version、descriptor bytes、M/N/K 上限，并通过 layout/profile selector 继续
-核验其余能力。Bits 43..47 是当前 contract 已广告的执行属性；不能把某个位为 1 单独解释成
-完整系统证明，具体 fault/order 仍由第 10 和 13 节的 RTL 规则与验证支撑。
+公共 QBS runtime 检查 version、descriptor bytes、numerical contract、M/N/K 上限和 bits 43..47，
+再通过 layout/profile selector 核验其余能力；GGML 和后续其他运行时共用这一解析，不各自复制
+位域逻辑。Bits 43..47 是当前 contract 已广告的执行属性；不能把某个位为 1 单独解释成完整系统
+证明，具体 fault/order 仍由第 10 和 13 节的 RTL 规则与验证支撑。
 
 #### 5.6.2 Selector `0x01`：layout、对齐与输出粒度
 
@@ -1461,14 +1460,34 @@ accelerator-consistent mode、descriptor/activation 地址对齐，并等待更�
 - weight base 的 2 B 对齐、activation base 的 4 B 对齐；
 - 由 block bytes、padded rows 和 K-blocks 推导的末地址是否 64-bit 溢出。
 
-GGML 只在用户显式启用 QBS，且 `qbinfo`、profile、layout、shape、dimension 和 repack 条件全部满足时
-选择 QBS trait。不支持的 tensor 继续调用当前最优标准 RVV kernel；不会用静默格式转换、越界
-padding 或错误 profile 扩大覆盖率。因此 QBS 是普通 RVV 之上的可查询加速路径，不是替代 RVV 的唯一
-执行模式。
+GGML 只在用户显式启用 QBS，且公共 runtime 的 `qbinfo`、profile、layout、shape 和 buffer 检查，
+以及 GGML 自己的 dimension/repack 检查全部满足时选择 QBS trait。不支持的 tensor 继续调用当前
+最优标准 RVV kernel；不会用静默格式转换、越界 padding 或错误 profile 扩大覆盖率。公共层还要求
+调用者传入 weight、activation 和 output 的真实容量，并在第一条命令投放前完成检查。一旦命令已经
+投放，memory/architectural fault 必须作为执行错误上报，不能静默重跑同一操作。因此 QBS 是普通
+RVV 之上的可查询加速路径，不是替代 RVV 的唯一执行模式。
 
 ## 6. llama.cpp/GGML 端完整调用链
 
-### 6.1 编译和运行开关
+### 6.1 公共运行时边界、编译和运行开关
+
+`software/qbs` 是严格 C11、可单独构建和安装的公共运行时库，不包含 `ggml_type`、GGUF 文件名、
+Qwen layer 名称或 GGML operator ID。它对上层暴露 `qbs::runtime` CMake target，以及下面六层接口：
+
+| 公共层 | 作用 | framework 仍负责什么 |
+| --- | --- | --- |
+| profile metadata | 查询 block bytes/elements、subgroup、scale、correction 和合法 activation 配对 | 把自己的 tensor encoding 显式映射到 profile |
+| capability discovery | 统一解析并核验 `qbinfo` | 先通过 ISA/platform discovery 确认扩展存在 |
+| packing | row-major 到 R4、Q8 row-major 到 M4 | 决定持久缓存和临时 buffer 生命周期 |
+| planning | M1-M4、N tail、K segmentation 和 workspace | 提供逻辑 `M/N/K` 与源 layout |
+| checked execution | 校验输入/输出容量，构造 descriptor，合并 split-K | 提供 allocator、错误传播和 command executor |
+| native ISA | `qbinfo/qbexec` wrapper | 决定何时使用 native、emulation 或普通 fallback |
+
+另一运行时接入时有三种明确结果：若其 native byte layout 和数值公式与某个 profile 完全一致，可
+直接映射；若不一致但允许加载期转换，可由该运行时提供经过数值验证的 converter，再缓存为 canonical
+QBS profile；若两者都不成立，则保持原有 kernel。相同 bit width 或 group size 不能作为直接映射
+依据。例如外部 group-64 INT4 不能因为也是 4 bit 就冒充 Q4_K。当前没有宣称 ONNX Runtime 或
+ExecuTorch 已经完成集成；`software/qbs/examples/runtime_adapter.c` 只用于证明上述接口不依赖 GGML。
 
 当前 backend 由 `GGML_USE_RISCV_QBS` 编译开关接入。运行时关键环境变量包括：
 
@@ -1519,7 +1538,7 @@ activation row 相邻。这样硬件可以在 weight block 保持不变时，把
 
 ### 6.4 GEMV：Decode 的 M=1 路径
 
-`ggml_riscv_qbs_gemv()` 要求输入行数为 1：
+GGML 的 `ggml_riscv_qbs_gemv()` 要求输入行数为 1，公共 planner 随后：
 
 1. 计算 `k_blocks = K / block_elements`；
 2. 按硬件 `max_n` 将输出行分成 N tile，VLEN=1024 时通常 N=32；
@@ -1533,7 +1552,8 @@ lookahead：current bank 计算时，inactive bank 可以预取**同一 K block 
 
 ### 6.5 GEMM：Prefill 的 M=1..4 路径
 
-`ggml_riscv_qbs_gemm()` 将 input rows 每次取最多 4 行：
+GGML 的 `ggml_riscv_qbs_gemm()` 提供完整 input-row 数和 M4 storage 信息，公共 planner 将其每次
+取最多 4 行：
 
 ```text
 for input rows in groups of M<=4:
@@ -1549,7 +1569,7 @@ activation context；读取每个 activation block 后又将它复用到 N 个 o
 
 ### 6.6 长 K 的软件分段
 
-硬件单命令最多 256 个 native K blocks。更长 K 不直接失败，而由 backend 分段：
+硬件单命令最多 256 个 native K blocks。更长 K 不直接失败，而由公共 planner/executor 分段：
 
 1. 每段构造独立 descriptor；
 2. 每段 QBS 输出一个 partial FP32 tile；
@@ -1562,13 +1582,14 @@ activation context；读取每个 activation block 后又将它复用到 N 个 o
 
 ### 6.7 选择条件和 fallback
 
-QBS 只有在以下条件同时成立时才接管 tensor：
+QBS 只有在公共层与 GGML 适配层的条件同时成立时才接管 tensor：
 
 - 用户显式启用，`qbinfo` contract 匹配；
 - weight type 属于九种 profile；
 - tensor 为支持的 2D，或不会跨 expert R4 group 的 3D；
 - K 可被 profile block size 整除，shape 和地址合法；
 - profile、layout、M/N/K 容量均被硬件声明支持。
+- weight、activation、output 和 workspace 的容量在投放前通过公共层检查。
 
 否则 `ggml_repack_get_optimal_repack_type()` 继续选择原来的 RISC-V/RVV 或通用 CPU trait。
 这是 QBS 保持通用性的关键：**新路径是受能力和 shape 约束的优化，不是改变全部 MUL_MAT 的语义。**
@@ -2732,6 +2753,9 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 - 九组 profile 共用 decoder/dot/correction/FP/commit 主路径；
 - M1-M4、N<=32、K 分段和尾块有软件/RTL/QEMU 支撑；
 - GGML 模型加载 repack、运行时 dispatch、普通 RVV fallback 已接通；
+- profile/capability/packing/planning/execution 已抽成独立 C11 runtime，GGML 只保留 framework adapter；
+- 独立测试已覆盖九种 profile、两种 activation、低能力 M2/row-major 设备、M/N tail、split-K 和
+  投放前 buffer 容量拒绝；
 - QBS 与 Ara normal VLSU 有明确互斥和 assertion；
 - fault 前结果不可见，成功后结果进入普通 VRF；
 - 有真实 Qwen2.5 数据、完整 `MUL_MAT`、受约束 `MUL_MAT_ID` 和整模型 QEMU 功能闭环。
@@ -2742,6 +2766,8 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 - dynamic activation quantization 仍在软件/RVV path；
 - K>256 blocks 依赖软件分段，现有 R4 子段令 N 降为 4；
 - 只覆盖列出的 profile，未覆盖全部 llama.cpp/IQ/TQ/MXFP type；
+- 当前九种 canonical profile 的 byte ABI 仍与 GGML/GGUF 一致；其他推理运行时尚无实际 adapter，
+  非严格同构格式需要经过验证的加载期转换或新增 profile；
 - M 最大 4，N 最大受 VLEN/32 和 32 上限约束；
 - v1 数据接入固定为 128-bit AXI read beat，commit mapping 固定为 4 lanes；RTL 约束 VLEN 位于
   256..1024 且为 256 的整数倍，结合
@@ -2922,16 +2948,28 @@ memory 和 FP pipeline 四类问题混在一起。
 - `hardware/src/vlsu/qbs/qbs_fp_accumulator.sv`
 - `hardware/src/vlsu/qbs/qbs_commit.sv`
 
-### 18.3 llama.cpp fork
+### 18.3 QBS 公共软件层
+
+- `software/qbs/README.md`：公共 contract、九种 v1 profile 的覆盖边界和构建入口。
+- `software/qbs/PORTING.md`：其他推理运行时的 exact mapping、加载期转换、fallback 和验证清单。
+- `software/qbs/include/qbs/qbs.h`：运行时无关的 C API。
+- `software/qbs/src/qbs_runtime.c`：profile、capability、packing、planning 和 checked execution。
+- `software/qbs/src/qbs_native_riscv.c`：原生 `qbinfo/qbexec` wrapper。
+- `software/qbs/examples/runtime_adapter.c`：不依赖 GGML 的 adapter 边界示例。
+- `software/qbs/tests/qbs_runtime_test.c`：九 profile、layout/tail/split-K、容量和受限能力测试。
+
+### 18.4 llama.cpp fork
 
 当前本地 GGML 集成位于：
 
 - `/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.h`
 - `/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp`
-- `/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs-layout.h`
 - `/home/wangwy/llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp`
 
-### 18.4 验证
+`qbs-layout.h` 仍被独立历史布局测试使用，但生产 adapter 的 profile、packing 和 planner 已由
+`software/qbs` 提供。
+
+### 18.5 验证
 
 - `verification/qbs/qbs_ref.[ch]`：canonical contract。
 - `verification/qbs/qbs_ref_test.c`：constructed format/shape/layout tests。
@@ -2939,7 +2977,7 @@ memory 和 FP pipeline 四类问题混在一起。
 - `verification/qbs/qbs_*_tb.sv`：standalone/command RTL。
 - `verification/qbs/qemu/`：QEMU `Xaraqbs` functional model 和整模型脚本。
 
-### 18.5 被本文吸收但仍有独立用途的旧文档
+### 18.6 被本文吸收但仍有独立用途的旧文档
 
 - `ara_llm_kquant_dsa_proposal.md`：研究提案、历史检查点和论文实验设计。
 - `llama_ara_dsa_performance_plan.md`：性能计数器、评测命令和多格式闭环。
