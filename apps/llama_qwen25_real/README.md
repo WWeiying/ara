@@ -28,15 +28,27 @@ eval case 的 `capture_rows/capture_inputs` 表示完整 capture 尺寸。生成
 文件构造评估数据。
 
 每个 app 的 `generated/provenance.json` 记录原始 tensor 和嵌入布局的大小、SHA-256、
-shape、量化类型和 capture commit。Q4_K 权重在构建时离线转换为 Ara 的 32-row
-布局；原始 GGUF row-major 字节仍以硬链接或副本保存在同一 `generated` 目录。
-离线 repack 不计入运行时间。
+shape、量化类型和 capture commit。标准 RVV app 在构建时转换为 x32 field-major
+布局，QBS app 转换为 R4 block-major 布局；原始 GGUF row-major 字节仍以硬链接或
+副本保存在同一 `generated` 目录。离线 repack 不计入运行时间。
 
-计时区间只包含动态 `F32 -> Q8_K` 量化以及量化矩阵计算。输入加载、离线权重
-repack、结果校验和打印均不在计时区间内。`logical_read_bytes` 是内核接口层的逻辑
-读取量，包括计时区间内的 F32 量化输入、prefill activation 打包输入以及矩阵内核
-读取；RTL testbench 输出的 `rvv_axi_ar_count/rvv_axi_r_count` 是总线事务实测值，
-二者不能混用。
+默认 QBS 计时遵循 GGML 生产调用路径：动态 `F32 -> Q8_K/Q8_0` 量化，M=4 K-quant
+所需的 `A_M4_INTERLEAVED` activation 重排，每条命令的 16-byte stack descriptor
+构造，`fence/vsetvli`，阻塞 QBS 执行，以及各输出行的普通 RVV store。输入加载、模型
+加载期的持久权重 repack、输出缓冲清零、结果校验和打印不在计时区间内。每个命令都
+现场构造 descriptor，避免把只在 benchmark 中存在的预建 descriptor 误当成生产
+路径。
+
+仅用于摊销消融的 app 可定义 `QBS_BENCH_PREBUILT_DESCRIPTOR=1`，把 immutable
+descriptor 预建到计时区间外；它不是主性能口径。输出中的 `timing_scope` 和
+`setup_included` 区分两种模式。`timed_cycles` 是从动态 activation 量化开始到最后
+一条结果 store 返回的连续区间；当前 `compute_cycles` 为兼容旧汇总字段而记录同一
+区间。descriptor 构造嵌在逐 tile 命令循环中，因此不伪造一个无法独立观测的
+`descriptor_setup_cycles`；其净开销由 production/prebuilt 配对实验测量。
+
+`logical_read_bytes` 是内核接口层的公式化 footprint，包括计时区间内的 F32 量化
+输入、prefill activation pack、descriptor、权重和量化 activation；RTL testbench
+输出的 AXI read counters 才是总线事务实测值，二者不能混用。
 
 常用命令：
 

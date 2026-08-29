@@ -38,30 +38,47 @@ fi
 
 mkdir -p "${run_root}"
 printf 'case\tpid\trun_dir\n' > "${run_root}/manifest.tsv"
-printf 'case\tapp_bin\tsha256\n' > "${run_root}/apps.tsv"
+printf 'case\tapp_bin\tapp_sha256\tprovenance_sha256\n' \
+  > "${run_root}/apps.tsv"
 printf '%s\n' "${sim_template}" > "${run_root}/sim_template"
 printf '%s\n' "${mode}" > "${run_root}/mode"
 printf '%s\n' "${l2_mb}" > "${run_root}/l2_mb"
 git -C "${repo_dir}" rev-parse HEAD > "${run_root}/git_head"
 git -C "${repo_dir}" status --short > "${run_root}/git_status"
+git -C "${repo_dir}" diff --binary > "${run_root}/git_diff.patch"
 sha256sum "${sim_template}/simv" > "${run_root}/simv.sha256"
+find "${sim_template}/simv.daidir" -type f -print0 | sort -z | \
+  xargs -0 sha256sum > "${run_root}/simv_daidir.sha256"
 
 for stem in "${case_stems[@]}"; do
   case_id=${stem}_${mode}
   app_bin=${repo_dir}/apps/bin/llama_qwen25_${case_id}
+  provenance=${repo_dir}/apps/llama_qwen25_${case_id}/generated/provenance.json
   if [[ ! -x "${app_bin}" ]]; then
     echo "missing benchmark ELF: ${app_bin}" >&2
     exit 2
   fi
-  printf '%s\t%s\t%s\n' "${case_id}" "${app_bin}" \
-    "$(sha256sum "${app_bin}" | awk '{print $1}')" >> "${run_root}/apps.tsv"
+  if [[ ! -s "${provenance}" ]]; then
+    echo "missing benchmark provenance: ${provenance}" >&2
+    exit 2
+  fi
 
   run_dir=${run_root}/${case_id}
   mkdir -p "${run_dir}"
   cp -a "${sim_template}/simv" "${run_dir}/simv"
   cp -a "${sim_template}/simv.daidir" "${run_dir}/simv.daidir"
+  cp -a "${app_bin}" "${run_dir}/benchmark.elf"
+  cp -a "${provenance}" "${run_dir}/provenance.json"
+  printf '%s\n' "${app_bin}" > "${run_dir}/app_source"
+  sha256sum "${run_dir}/benchmark.elf" > "${run_dir}/benchmark.elf.sha256"
+  sha256sum "${run_dir}/provenance.json" > "${run_dir}/provenance.json.sha256"
+  printf '%s\t%s\t%s\t%s\n' "${case_id}" "${app_bin}" \
+    "$(sha256sum "${run_dir}/benchmark.elf" | awk '{print $1}')" \
+    "$(sha256sum "${run_dir}/provenance.json" | awk '{print $1}')" \
+    >> "${run_root}/apps.tsv"
 
-  setsid -f "${run_one}" "${case_id}" "${run_dir}" "${app_bin}" \
+  setsid -f "${run_one}" "${case_id}" "${run_dir}" \
+    "${run_dir}/benchmark.elf" \
     > "${run_dir}/driver.log" 2>&1 < /dev/null &
   for _ in {1..50}; do
     [[ -s "${run_dir}/worker_pid" ]] && break

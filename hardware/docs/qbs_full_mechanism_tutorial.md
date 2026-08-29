@@ -1,9 +1,10 @@
 # QBS 全机制教学：从 Qwen2.5/llama.cpp 到 RVV 协同执行
 
-> 文档状态：2026-08-26 逐项对照当前 `ara_dsa` RTL、QBS ABI、验证参考模型和本地
-> llama.cpp QBS backend 核查。对应的最新 QBS RTL 基线为提交 `8260b70d`；其后的提交只更新
-> ABI 生成物和本文档。本文描述的是当前可执行实现；实验性数值顺序和未来扩展会单独标注，
-> 不能视作 v1 已冻结语义。
+> 文档状态：2026-08-29，以提交 `b73af2775728` 为代码锚点，逐项对照 QBS RTL、ABI、验证
+> 参考模型、QEMU functional model 和本地 llama.cpp/GGML QBS backend 核查。归档实验还记录
+> source diff、binary 和输入数据哈希；精确复现应以对应 manifest 为准，而不能只看 Git HEAD。
+> 工作区中的未归档实验、实验性数值顺序和未来扩展会单独标注，不能视作 v1 已冻结语义或已经
+> 完成的物理实现。
 
 ## 1. 阅读目标与一句话定位
 
@@ -132,8 +133,12 @@ attention 和 FFN 权重中。Instruction tuning 再用“指令-回答”数据
 ```
 
 Q4_K_M 是部署表示，不表示模型最初用 4-bit 完成训练；`_M` 还表示 llama.cpp quantizer 对不同
-tensor 采用混合精度策略。模型结构决定矩阵 shape，量化方案决定这些矩阵在 GGUF 中的 block
-编码和误差，QBS profile 则决定硬件如何精确消费该编码。这三个层次不能互换。
+tensor 采用混合精度策略。模型结构决定矩阵 shape，模型级量化配方决定不同 tensor 采用哪些
+encoding，逐 tensor encoding 决定 block 字节和数值公式，QBS profile 则决定硬件如何严格消费
+其中受支持的 encoding。这四个层次不能互换。
+
+关于 llama.cpp/GGML/GGUF 的软件层级、模型级 recipe 与逐 tensor encoding 的区别，以及当前
+格式族的公式，集中见第 2.22 至 2.24 节。这里先继续沿模型前向顺序理解 token 和 Transformer。
 
 ### 2.2 从字符到 token：模型真正接收的输入
 
@@ -503,6 +508,27 @@ Attention core MAC/layer/token ~= 2 * 12 * S * 128 = 3072*S
 很合理；长上下文时 attention/KV cache 可能成为主要瓶颈，仅优化量化权重线性层不足以保证端到端
 token/s 同比例提高。
 
+若只用理论 MAC 估算 QBS 所针对的固定量化线性层在“固定 projections + LM head + dynamic
+attention core”中的比例，可写为：
+
+```text
+QBS-eligible fixed-linear MAC fraction
+  = 1,543,569,408 / (1,543,569,408 + 86,016*S)
+```
+
+| Decode 上下文 `S` | 固定量化线性 MAC 占该 MAC 分母 |
+| ---: | ---: |
+| 256 | 98.6% |
+| 1024 | 94.6% |
+| 4096 | 81.4% |
+| 16384 | 52.3% |
+| 32768 | 35.4% |
+
+这里的“eligible”只表示算术结构可能映射到 QBS，并假定 type/shape/capability 均合法；它不是
+实测 dispatch coverage，更不是端到端周期占比。RMSNorm、RoPE、Softmax、activation quantization、
+KV-cache traffic、sampling 和 runtime 开销均不在该 MAC 分母中。真正的模型覆盖必须把本表与
+第 13.8 节的 tensor selection counter、operator trace 和端到端 profiler 分开报告。
+
 Prefill 的 causal attention 对 `T` 个 prompt tokens 访问一个三角区域，QK 与 P*V 的总工作量
 近似按 `O(T^2)` 增长；七个 weight projections 则近似按 `O(T)` 增长。因此任何“算子占比”都必须
 同时报告 prompt 长度、decode context、batch 和线程/后端配置。
@@ -640,7 +666,95 @@ llama.cpp/GGUF 不只保存低比特整数。一个块通常同时包含：
 减少模型容量和 weight traffic，却增加 unpack、metadata、correction 和 reduction 工作；“每个
 weight 约 4 bit”不意味着硬件只需一个 4x8 multiplier。
 
-### 2.22 标准 RVV 的价值、开销与 QBS 的切入点
+### 2.22 `llama.cpp`、GGML、GGUF 和 backend 分别是什么
+
+“支持模型在硬件上运行”不是某一个文件或库的名称，而是一条软件栈。本文使用以下严格称呼：
+
+| 层次 | 作用 | 与 QBS 的关系 |
+| --- | --- | --- |
+| `llama.cpp` | 完整 LLM 推理 runtime，负责模型加载、graph 构建、KV cache、sampling 和命令行接口 | 端到端模型执行入口 |
+| GGML | tensor、operator、graph、buffer 和 CPU kernel 基础设施 | `MUL_MAT` 选择 QBS 或 RVV kernel 的位置 |
+| GGUF | 模型文件容器，保存 metadata、tensor shape、逐 tensor type 和 payload | QBS 消费的压缩权重来源，但 GGUF 本身不是计算库 |
+| GGML backend | 把 graph operator 映射到某类设备或 ISA 的实现 | 当前是带 QBS capability dispatch 的 RISC-V CPU backend |
+| QEMU `Xaraqbs` model | 执行 `qbinfo/qbexec` 的 ISA/功能模型 | 验证 guest 软件和指令语义，不是 QBS 硬件本体，也不是性能模型 |
+| QBS RTL | 集成在 RVV processor 中的可综合硬件实现 | 真实处理 descriptor、访存、block decode、计算和 VRF commit |
+
+因此，准确的系统级表述是“**QBS-enabled llama.cpp RISC-V CPU backend**”或“端到端
+QBS-enabled llama.cpp inference stack”，而不是把 GGUF、QEMU 或 llama.cpp 本身称为硬件。
+
+### 2.23 文件名、模型量化配方和 tensor encoding 为什么不是一回事
+
+一个 GGUF 模型同时存在三个容易混淆的标识：
+
+| 标识 | 例子 | 严格含义 |
+| --- | --- | --- |
+| 文件名后缀 | `Qwen2.5-1.5B-Instruct-Q4_K_M.gguf` | 发布者采用的命名惯例，可以被任意重命名，不是可信的机器契约 |
+| 模型级 file type/recipe | `LLAMA_FTYPE_MOSTLY_Q4_K_M` | quantizer 如何按 tensor 角色选择混合格式；`S/M/L` 等后缀表示配方档位 |
+| 逐 tensor `ggml_type` | `GGML_TYPE_Q4_K`、`GGML_TYPE_Q6_K` | 该 tensor 在 GGUF 中真实采用的 block ABI、字节数和反量化公式 |
+
+`Q4_K_M` 不是一种名为 `GGML_TYPE_Q4_K_M` 的 block。它通常让大部分矩阵使用 Q4_K，同时把
+部分对质量敏感的矩阵保留为 Q6_K 或其他较高精度类型；具体混合规则还可能随模型架构、quantizer
+版本和 importance matrix 改变。当前完整 Qwen2.5-1.5B Q4_K_M 验证文件的 QBS repack trace 中，
+候选权重实际包含 169 个 Q4_K tensor 和 30 个 Q6_K tensor，正说明不能根据文件名把全部权重
+解释成 Q4_K。这里的“候选”是加载期 repack 选择口径，不等同于这些 tensor 都在运行期执行了
+`MUL_MAT`；实际执行还要检查 operator-call 和 `native_qbexec` counter。
+
+可靠信息来自 GGUF metadata 和每个 tensor 的 type，而不是文件名。加载时可用：
+
+```bash
+./build/bin/llama-cli -m model.gguf -n 0
+```
+
+查看 loader 打印的 type 统计，也可用 `gguf-py` 的 dump 工具检查逐 tensor metadata。论文若写
+“模型为 Q4_K_M”，应同时说明这是模型级配方；若讨论硬件 profile，则必须写实际的 Q4_K、Q6_K
+等 tensor encoding。
+
+### 2.24 llama.cpp 当前主要格式族、名称和数学含义
+
+当前本地 llama.cpp 的 `ggml_type` 可按下表归纳。公式中的 `q_i` 是存储整数或码本索引，`d/D`
+是 block scale，`m` 是 offset/min，`s_g/m_g` 是 subgroup metadata；帽号表示反量化近似值。
+
+| 格式族 | 当前主要 tensor types | 代表性反量化关系 | 设计目的 |
+| --- | --- | --- | --- |
+| 原生数值 | F32、F16、BF16、F64、I8/I16/I32/I64 | 直接按相应数值格式解释 | 高精度 tensor、metadata 或普通整数 |
+| 基础 `_0` | Q1_0、Q2_0、Q4_0、Q5_0、Q8_0 | Q1_0: `x_hat=d*q, q in {-1,+1}`；Q2_0: `d*(q-1)`；Q4_0/Q5_0: `d*(q-8/16)`；Q8_0: `d*q` | 单 scale、规则解码，块大小通常为 32，Q1_0/Q2_0 例外 |
+| 基础 `_1` | Q4_1、Q5_1、Q8_1 | `x_hat=d*q+m`；Q8_1 还保存辅助 block sum | affine block；Q8_1 多用于点积中间表示而非主要模型权重配方 |
+| K-quant | Q2_K、Q3_K、Q4_K、Q5_K、Q6_K、Q8_K | affine Q2/4/5_K 近似 `D*s_g*q-Dmin*m_g`；symmetric Q3/6_K 近似 `D*s_g*q`；Q8_K 为 `d*q` 并保存 `bsums` | 256-element superblock 内再分 subgroup，以 metadata 换取质量 |
+| IQ | IQ1_S/M、IQ2_XXS/XS/S、IQ3_XXS/S、IQ4_NL/XS | `x_hat=d_g*C[index]`，由非线性码本、符号和局部 scale 组合 | importance-aware/codebook quantization，低 bit 下提高质量 |
+| TQ | TQ1_0、TQ2_0 | `x_hat=d*t, t in {-1,0,+1}` | 紧凑 ternary quantization |
+| Microscaling FP | MXFP4 | `x_hat=scale_E8M0*FP4_E2M1(q)` | OCP microscaling FP4，32-element block |
+| NVIDIA FP4 | NVFP4 | 概念上为 `s_global*s_E4M3,g*FP4_E2M1(q)` | 16-element local block scale 加 tensor/global scale |
+
+K-quant 的实际平均位宽必须把 metadata 算入，不能只读名称中的数字。按当前 block ABI，Q2_K、
+Q3_K、Q4_K、Q5_K、Q6_K 分别约为 2.625、3.4375、4.5、5.5、6.5625 bit/weight。`_K` 表示
+K-quant 的 256-element superblock 家族，**不是矩阵乘中的 K 维**；`S/M/L` 和
+`XXS/XS/S/M` 通常是模型级质量/体积配方档位，也不是新的逐 tensor 数学类型。例如
+`Q3_K_M` 可以混用多个 tensor type，却不存在一个同名的 `GGML_TYPE_Q3_K_M`。
+
+Q1_0 每 128 个元素保存 16 B bit payload 和 2 B FP16 scale，约 1.125 bit/weight；Q2_0 每
+64 个元素保存 16 B payload 和 2 B scale，约 2.25 bit/weight。这也说明名称中的“1/2 bit”只指
+核心 quant payload，不能忽略 block metadata。
+
+当前 `llama_ftype` 中仍有效的模型级 recipe 可按下表归类：
+
+| Recipe 家族 | 当前名称 |
+| --- | --- |
+| 原生/高精度 | F32、mostly-F16、mostly-BF16 |
+| 基础 Q | Q1_0、Q2_0、Q4_0、Q4_1、Q5_0、Q5_1、Q8_0 |
+| K-quant | Q2_K、Q2_K_S、Q3_K_S/M/L、Q4_K_S/M、Q5_K_S/M、Q6_K |
+| IQ | IQ1_S/M、IQ2_XXS/XS/S/M、IQ3_XXS/XS/S/M、IQ4_NL/XS |
+| Ternary/FP4 | TQ1_0、TQ2_0、MXFP4_MOE、NVFP4 |
+
+它们是“怎样量化整份模型”的策略，不保证所有 tensor 都使用同名 encoding。Q4/Q5 `_0/_1`、
+K-quant、IQ 和 TQ 的精确 GGUF block ABI 主要由 GGML/llama.cpp 生态定义，虽也被 whisper.cpp
+等同生态项目共享；F16/BF16 等是通用数值格式，MXFP4 来自 OCP 规范，NVFP4 则是 NVIDIA 定义
+的格式。相似的低比特/分组缩放思想很通用，但 byte layout 不能跨生态仅凭名称互换。
+
+QBS v1 并不试图实现上述全部类型。当前严格支持 Q2_K、Q3_K、Q4_K、Q5_K、Q6_K、Q4_0、
+Q5_0、Q8_0 weight 和 IQ4_NL 九种 profile，activation 配对为 Q8_K 或 Q8_0；其余类型必须
+经 capability/format 检查回退。第 4 节给出这九种 profile 的 exact block ABI 和计算公式。
+
+### 2.25 标准 RVV 的价值、开销与 QBS 的切入点
 
 RVV 1.0 提供 VLA（vector-length agnostic）编程模型，软件通过 `vsetvl*` 在不同 VLEN 上
 strip-mine，使用 32 个向量寄存器完成加载、整数运算、归约和浮点运算。它仍是 QBS 的正确性
@@ -663,7 +777,7 @@ packed bytes load
 rows 消费。若每个输出行都从“单点积”开始，格式解析、activation 递送和 reduction 控制会反复
 出现。QBS 的优化对象正是这个**完整量化线性 microtile**，不是只替换一个乘法器。
 
-### 2.23 当前项目中的真实数据怎样放回这条链路
+### 2.26 当前项目中的真实数据怎样放回这条链路
 
 本项目不只保存了合成 block。真实 Qwen2.5-1.5B Q4_K_M capture 固定了 layer 0 的 Prefill
 `T=15` 和 Decode `T=1` 数据，并拆成 36 个可独立回放的叶子：
@@ -682,21 +796,24 @@ rows 消费。若每个输出行都从“单点积”开始，格式解析、act
 来自 1.5B 模型，Q8_0 行来自 hidden size 为 896 的 Qwen2.5-0.5B，因而只用于验证该 profile，
 不能与前三行做同 shape 的格式优劣比较：
 
-| Weight | Model | `K x N x M` | RVV/QBS matmul cycles | Matmul speedup | QBS/RVV 逻辑读取 |
+| Weight | Model | `K x N x M` | RVV/QBS matmul cycles | Matmul speedup | QBS/RVV measured AXI R bytes |
 | --- | --- | --- | ---: | ---: | ---: |
-| Q3_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,281,131 / 17,614 | 72.73x | 30.3% |
-| Q5_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 2,011,748 / 21,750 | 92.49x | 40.1% |
-| Q6_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,273,230 / 25,120 | 50.69x | 44.1% |
-| Q8_0 | Qwen2.5-0.5B | `896 x 256 x 1` | 548,583 / 26,923 | 20.38x | 51.9% |
+| Q3_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 920,462 / 17,614 | 52.26x | 24.6% |
+| Q5_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,354,132 / 21,750 | 62.26x | 36.6% |
+| Q6_K | Qwen2.5-1.5B | `1536 x 256 x 1` | 1,361,692 / 25,120 | 54.21x | 43.6% |
+| Q8_0 | Qwen2.5-0.5B | `896 x 256 x 1` | 163,513 / 26,923 | 6.07x | 110.2% |
 
-这些数来自 `hardware/format_closure.csv`，两侧 source weight、activation、golden 和 shape 严格
-配对，全部 PASS 且 mismatch 为 0；离线 R4 repack 不计入周期。它们证明当前 microtile 路径
-确实消除了大量 RVV unpack/reduction 工作，但**不是完整 Qwen token/s 加速比**：表中只取一个
-量化线性算子切片，未包含前述 28 层其余算子、LM head、KV cache、sampling 和软件运行时。
+这些数来自 `hardware/paper_results/b73af277_20260827/format_closure.csv`，两侧 source weight、
+activation、golden 和 shape 严格配对，全部 PASS 且 mismatch 为 0；离线 R4 repack 不计入周期。
+`AXI R bytes` 是计时区间内在读数据通道实测的 bus bytes，不是公式化 tensor footprint。Q3/5/6_K
+同时减少了指令流和总线读取；Q8_0 的 32-element block 令 QBS 读量略高，仍通过消除软件
+unpack/reduction 和循环控制获得 6.07x matmul 加速。这些数据**不是完整 Qwen token/s 加速比**：
+表中只取一个量化线性算子切片，未包含前述 28 层其余算子、LM head、KV cache、sampling 和
+软件运行时。
 
-整模型功能闭环中，10-token prompt 加 2-token greedy generation 的 trace 记录到 Q4_K
-`gemv/gemm=8032/2656`、Q6_K `gemv/gemm=1360/432`。这些是 GGML 进入新 backend 的调用证据，
-不是 RTL 周期数据。模型级数值结果和六种 profile 的 PPL/KL/Top-k 数据见第 13.9 节。
+当前归档整模型功能闭环记录到 Q4_K `gemv/gemm=2720/5312`、Q6_K
+`gemv/gemm=496/864`，合计执行 92,480 条原生 `qbexec`。这些是 GGML 进入新 backend 的运行期
+调用证据，不是 RTL 周期数据。模型级数值结果和七种 profile 的 PPL/KL/Top-k 数据见第 13.9 节。
 
 到这里，模型侧的因果链已经完整：自然语言变为 token，token 经 28 层 attention/FFN 变为
 logits；七个量化 projection 构成每层固定乘加的主体；GGML 将它们表示为 `MUL_MAT`；量化
@@ -1458,12 +1575,17 @@ QBS 只有在以下条件同时成立时才接管 tensor：
 
 ### 6.8 覆盖哪些模型算子，不覆盖哪些
 
-只要权重格式和 shape 合法，QBS 可以覆盖 `GGML_OP_MUL_MAT` 中的：
+只要权重格式和 shape 合法，QBS 可以覆盖 `GGML_OP_MUL_MAT`，并对满足 R4 expert 边界的
+`GGML_OP_MUL_MAT_ID` 提供受约束路径，包括：
 
 - Attention Q/K/V/O projection；
 - FFN gate/up/down projection；
 - 兼容格式的 embedding/output projection；
-- 普通 2D 以及受 R4 边界约束的 expert/MoE 3D tensor。
+- 普通 2D tensor，以及不会让四行 repack group 跨 expert 的 MoE 3D tensor。
+
+当前三 expert `MUL_MAT_ID` 已在 directed QEMU case 中通过，但尚不能据此声称完整 MoE 模型、
+任意 expert 数和所有 routing/layout 均已闭环。Expert routing、token-to-expert gather/scatter 和
+load balancing 仍由 GGML/runtime 处理，QBS 只接管最终满足条件的量化矩阵 tile。
 
 它当前不直接执行：
 
@@ -1478,9 +1600,9 @@ Amdahl 比例、activation quantization、非线性算子和内存系统仍需�
 
 ### 6.9 用 Qwen2.5-1.5B Q4_K_M 具体理解覆盖范围
 
-当前真实数据集来自 Qwen2.5-1.5B-Instruct Q4_K_M 的第 0 层：28 层、hidden size 1536、
-12 个 query heads、2 个 KV heads、head dimension 128、FFN dimension 8960。该层七个线性
-权重及其 shape 为：
+当前真实 leaf 数据集取自 Qwen2.5-1.5B-Instruct Q4_K_M 的第 0 层；完整模型共有 28 层，
+hidden size 为 1536，包含 12 个 query heads、2 个 KV heads、128 维 head 和 8960 维 FFN。
+第 0 层七个线性权重及其实际 encoding/shape 为：
 
 | GGML tensor | Weight | `K` | `N` | Decode `M` | Prefill capture `M` | 作用 |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -1494,7 +1616,7 @@ Amdahl 比例、activation quantization、非线性算子和内存系统仍需�
 
 表中 weight matrix 按 `N x K` 理解。Decode 的一行 activation 对应 M1 GEMV；Prefill 的
 15 行由 `4+4+4+3` 个 input-row groups 执行，其中 M4 使用 interleaved activation，M3 使用
-row-major activation并保留 4-register destination group。每组内部 N 再按最多 32 行切分。
+row-major activation 并保留 4-register destination group。每组内部 N 再按最多 32 行切分。
 
 Q4_K_M 是混合格式模型，名称中的 Q4_K 不意味着所有 tensor 都是 Q4_K。`attn_v` 和
 `ffn_down` 使用 Q6_K 正是多 profile capability 和 fallback 必须在真实模型中验证的原因。
@@ -1540,13 +1662,14 @@ qbexec command
 | --- | --- | --- |
 | Format | 9 组 weight/activation profile | 不等于覆盖全部 GGUF types |
 | Shape | M1-M4、命令 N<=32、K<=256 blocks，软件处理 N/M/K 外层分块 | 不等于所有 shape 都同样高效 |
-| Operator | quantized `GGML_OP_MUL_MAT` 的 GEMV/小 M GEMM | 不等于覆盖完整 Transformer block |
+| Operator | quantized `GGML_OP_MUL_MAT` 和受约束 `MUL_MAT_ID` 的 GEMV/小 M GEMM | 不等于覆盖完整 Transformer block |
 | Model mapping | Qwen2.5 中主要 Q/K/V/O 和 FFN linear projections | 不等于所有模型家族和 MoE layout 已验证 |
 | Implementation evidence | reference、directed RTL、QEMU native model、部分真实 RTL workload | 不等于完成 P&R、功耗和标准数据集质量闭环 |
 
 对已经隔离测试的目标 profile，`selected_tensors == candidate_tensors` 和
-`selected_elements == candidate_elements` 才表示该 profile 的候选线性层达到 100% 软件选择覆盖。
-这个百分比不能用作“整个模型 100% 被 QBS 加速”，因为非 `MUL_MAT` 算子根本不在分母中。
+`selected_elements == candidate_elements` 只表示该 profile 的候选权重达到 100% **repack trait
+选择覆盖**。它不是 operator-call coverage；还必须检查 `gemv/gemm_calls`、`native_qbexec` 和
+`emulated_commands`。这个百分比不能用作“整个模型 100% 被 QBS 加速”。
 
 ### 6.12 未覆盖操作是否适合并入 QBS
 
@@ -1565,6 +1688,25 @@ qbexec command
 
 由此得到的合理总体架构不是“QBS 执行全部 LLM”：QBS 负责量化线性层，普通 RVV 负责通用
 elementwise/reduction，后续再以实测 Amdahl 比例决定是否增加 activation 或 Attention/KV 协同。
+
+### 6.13 不改硬件时能否迁移到其他模型家族
+
+QBS RTL 不识别 `Qwen`、`Llama`、`Mistral`、layer number 或 `ffn_gate` 等模型名称。只要另一个
+模型的线性算子最终下沉为受支持的 GGML `MUL_MAT`/受约束 `MUL_MAT_ID`，权重采用九种 profile
+之一，shape/layout 能由软件切成合法命令，它就可以复用同一硬件。Dense decoder-only 模型的
+Q/K/V/O、FFN 和 LM head 因而是最直接的可迁移对象。
+
+这种通用性是**contract-level portability**，不是“所有 llama.cpp 模型无需验证即可加速”：
+
+- 模型使用未支持的 IQ/TQ/MXFP/NVFP encoding 时，相应 tensor 自动回退；
+- MoE 模型还受 expert tensor layout 和 R4 边界约束，routing 本身不由 QBS 执行；
+- encoder、multimodal、convolution 或非 GGML backend 可能使用不同 operator/data layout；
+- M/N/K 虽可由软件分块，但极小 tail、长 K segmentation 或频繁短命令可能功能可用而性能不佳；
+- KV-cache、Attention core 和非线性算子仍依赖普通 RVV，因此模型家族变化可能改变端到端 Amdahl
+  比例，即使量化线性层本身完全命中 QBS。
+
+评价“支持一个新模型”至少应同时给出逐 tensor type/shape 清单、selection/fallback counter、
+真实模型数值结果和端到端 operator time；只看到文件名中有 `Q4_K_M` 不足以证明覆盖。
 
 ## 7. QBS 如何接入 Ara
 
@@ -1735,7 +1877,7 @@ activation 跨同 K block 的多个 N tile 复用；weight 跨 M context 复用�
 - 从 low/high plane、mask、nibble 或 IQ table 得到 signed weight quant；
 - 读取 activation int8；
 - 解 subgroup scale/min；
-- 对 affine profile读取相应 Q8_K `bsums`；
+- 对 affine profile 读取相应 Q8_K `bsums`；
 - 提取 weight `d/dmin` 和 activation `d`。
 
 格式差异在这里被规范化为：
@@ -1918,17 +2060,18 @@ accumulator updates 必须共同解释。
 
 ### 11.7 为什么 QBS 相对标准 RVV 会出现数量级加速
 
-第 2.23 节的 `20.38x--92.49x` 是严格配对的真实量化 `MUL_MAT` 切片加速，不是“32 个整数
+第 2.26 节的 `6.07x--62.26x` 是严格配对的真实量化 `MUL_MAT` 切片加速，不是“32 个整数
 乘法器相对 RVV 有几十倍峰值算力”。大幅差异来自下面五项同时作用：
 
 1. **消除整个软件展开序列**。RVV 对每个 output row 显式执行 bit unpack、metadata decode、
    widening MAC、vector reduction、标量/FP scale update 和循环控制；QBS 用一条 `qbexec` 描述
    整个 `M x N x K-blocks` tile，再由内部状态机推进。四个多格式点的 timed region 中，QBS
-   侧退休的普通指令数约为 RVV 的 `0.5%--0.7%`，普通向量指令数约为 `0.4%--0.6%`。这些比例
+   侧退休的普通指令数约为 RVV 的 `0.55%--1.70%`，普通向量指令数约为 `0.43%--1.40%`。这些比例
    表示架构指令流被命令替代，不表示 QBS 内部没有执行等价的 decode、dot 和 FP 工作。
 2. **直接在压缩表示上计算**。QBS 读取 GGUF native block，decoder 只在整数 datapath 的入口
-   恢复 quant 和 metadata，不把完整 FP32/INT8 weight tensor 物化到 memory 或 VRF。四个点的
-   QBS logical reads 仅为 RVV 的 `30.3%--51.9%`。
+   恢复 quant 和 metadata，不把完整 FP32/INT8 weight tensor 物化到 memory 或 VRF。Q3/5/6_K
+   的 QBS/RVV 实测 AXI R bytes 为 `24.6%--43.6%`；Q8_0 则为 `110.2%`，说明该格式的收益主要
+   来自指令/归约消除，而不是总线流量减少。不能把一种格式的 traffic 结论推广到全部 profile。
 3. **在 tile 内摊薄重复工作**。一个 activation block 被 N 个 output rows 共享，一个 weight
    block 在 Prefill 中被 M 个 activation contexts 共享；subgroup correction 和 128 个 FP32
    partial sums 都驻留在 command-local state，避免每行重新装载、归约和往返 scalar/VRF。
@@ -1952,8 +2095,9 @@ Decode Attention-Q 的机制演进可把“专用数据通路收益”和“后�
 减少数学工作或放宽精度，而是把 RVV 软件已知的 block/layout/shape 语义保留到硬件后，消除了
 解释性指令流、重复数据移动和细粒度请求，再用受控 buffering 覆盖剩余延迟。
 
-当前四个多格式代表点的 matmul 几何平均为 `51.34x`，但格式间差异不能解释成 bit 数越低就一定
-越快。Q5_K 的标准 RVV unpack/reduction 指令序列比 Q3_K/Q6_K 更重，而 QBS 将差异主要吸收到
+当前四个多格式代表点的 compute 几何平均为 `22.51x`，matmul 几何平均为 `32.17x`，但不能把
+格式间差异解释为 bit 数越低就一定越快。Q5_K 的标准 RVV unpack/reduction 指令序列比
+Q3_K/Q6_K 更重，而 QBS 将差异主要吸收到
 profile decoder，因此该点相对加速最高；Q8_0 block 只有 32 个元素，block-level FP update 更
 频繁，QBS 自身固定成本占比更高，因此相对加速较低。完整模型还包含 activation quantization、
 Attention、Norm、RoPE、KV cache 和 sampling，必须用端到端 Amdahl 比例评价，不能把这里的
@@ -2275,11 +2419,11 @@ max_abs   = max_t max_abs[t]
 
 | 字段 | 严格含义 |
 | --- | --- |
-| `candidate_tensors` | 类型和基本 shape 使其成为该 profile 候选的 tensor 数 |
-| `selected_tensors` | capability/layout/shape 检查后实际选择 QBS backend 的 tensor 数 |
+| `candidate_tensors` | CPU repack selector 中首次观察到、type 映射到该 QBS trace profile 的唯一 tensor 数；尚不表示运行期执行 |
+| `selected_tensors` | dimension/capability/layout/shape 检查后实际选择 QBS R4 repack trait 的 tensor 数；仍不是 operator 调用数 |
 | `segmented_tensors` | 因单命令 K 上限而需要软件 K 分段的 tensor 数 |
-| `candidate_elements` | 候选 tensor 包含的权重元素数 |
-| `selected_elements` | 实际由 QBS 覆盖的权重元素数 |
+| `candidate_elements` | 上述候选中合法 2D/3D shape 按 `K*rows*matrix_count` 计算的权重元素数 |
+| `selected_elements` | 选择 QBS repack trait 的权重元素数；不表示这些元素已在 timing RTL 执行 |
 | `fallback_format_filter` | 因本次格式 allowlist 被明确排除的候选数 |
 | `fallback_capability` | 硬件 capability 不支持导致的回退数 |
 | `fallback_dimensions` | tensor 维度条件不满足导致的回退数 |
@@ -2297,6 +2441,22 @@ max_abs   = max_t max_abs[t]
 `selected_tensors == candidate_tensors`，且 capability/shape/layout/profile/dispatch
 fallback 为 0。
 
+归档于 `hardware/paper_results/b73af277_20260827/qemu_validation.json` 的完整
+Qwen2.5-1.5B Q4_K_M native-QBS 运行给出如下加载期选择和运行期执行证据：
+
+| Tensor type | Candidate/selected tensors | Candidate/selected elements | GEMV/GEMM calls | Native `qbexec` | Non-filter fallback |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q4_K | `169/169` | `1,114,374,144 / 1,114,374,144` | `2720/5312` | 79,488 | 0 |
+| Q6_K | `30/30` | `664,928,256 / 664,928,256` | `496/864` | 12,992 | 0 |
+| **合计** | **`199/199`** | **`1,779,302,400 / 1,779,302,400`** | **`3216/6176`** | **92,480** | **0** |
+
+这组 `100%` 的严格名称是**该 GGUF 中 Q4_K/Q6_K 候选权重 tensor 的 QBS repack selection
+coverage**。它证明支持检查没有让这些目标格式的权重在加载期回退，但并不单独证明每个 tensor
+都形成了 `MUL_MAT`；后两列的 `gemv/gemm_calls` 和 `native_qbexec` 才证明运行期确实进入 QBS
+operator path。上述分母不含 RMSNorm、RoPE、dynamic attention、KV cache、elementwise 和
+sampling，也不表示这些权重元素已经在 timing RTL 上逐个执行。`emulated_commands=0` 说明命令
+没有在 GGML 内部用软件模拟；QEMU 仍只提供 ISA/功能证据，不能替代 RTL 周期或芯片性能。
+
 结束状态也必须同时成立：
 
 ```text
@@ -2308,32 +2468,36 @@ LLAMA_GUEST_EXIT=0               guest 总体验证成功
 
 ### 13.9 当前真实模型闭环结果及读法
 
-2026-08-25 使用真实 Qwen2.5 GGUF、相同 69-token 文本和 68 个 teacher-forced 检查点完成以下
-单 profile 隔离实验：
+归档于 2026-08-27 的当前基线使用真实 Qwen2.5 GGUF、相同 69-token 文本和 68 个
+teacher-forced 检查点完成以下单 profile 隔离实验：
 
-| Profile | QBS/RVV PPL | Mean KL | Top-1 agreement | Top-5 overlap | Mean RMSE | Global max abs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Q3_K | 1.0012 | 0.00833 | 91.18% | 94.12% | 0.1656 | 1.2151 |
-| Q4_K | 0.9893 | 0.00866 | 89.71% | 92.65% | 0.1715 | 1.1663 |
-| Q5_K | 1.0230 | 0.00905 | 94.12% | 94.71% | 0.1754 | 1.1069 |
-| Q6_K | 0.9855 | 0.00745 | 82.35% | 94.12% | 0.1676 | 1.0965 |
-| Q8_0 | 1.0174 | 0.00235 | 97.06% | 95.59% | 0.0901 | 0.8997 |
-| IQ4_NL | 1.0080 | 0.00217 | 98.53% | 95.00% | 0.0887 | 0.6807 |
+| Profile | Model | QBS/RVV PPL | Mean KL | Top-1 agreement | Top-5 overlap | Mean RMSE | Global max abs |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q2_K | Qwen2.5-0.5B pure Q2_K | 1.0004 | 0.00410 | 89.71% | 96.18% | 0.1102 | 0.8252 |
+| Q3_K | Qwen2.5-1.5B Q3_K_M | 1.0012 | 0.00833 | 91.18% | 94.12% | 0.1656 | 1.2151 |
+| Q4_K | Qwen2.5-1.5B Q4_K_M | 0.9893 | 0.00866 | 89.71% | 92.65% | 0.1715 | 1.1663 |
+| Q5_K | Qwen2.5-1.5B Q5_K_M | 1.0230 | 0.00905 | 94.12% | 94.71% | 0.1754 | 1.1069 |
+| Q6_K | Qwen2.5-1.5B Q6_K | 0.9855 | 0.00745 | 82.35% | 94.12% | 0.1676 | 1.0965 |
+| Q8_0 | Qwen2.5-0.5B Q8_0 | 1.0174 | 0.00235 | 97.06% | 95.59% | 0.0901 | 0.8997 |
+| IQ4_NL | Qwen2.5-0.5B pure IQ4_NL | 1.0080 | 0.00217 | 98.53% | 95.00% | 0.0887 | 0.6807 |
 
 这组数据支持以下有限结论：
 
-- 六种目标 profile 均完成 68 条 record，目标 tensor 100% 进入原生 QBS，软件模拟为 0；
+- 七种目标 profile 均完成 68 条 record，目标 tensor 100% 选择 QBS repack，运行期存在原生
+  `qbexec` 且软件模拟为 0；
 - PPL ratio 位于约 `0.986..1.023`，Mean KL 均低于 `0.01`，未见模型分布整体崩坏；
-- Q8_0/IQ4_NL 的 KL 和 RMSE 最低；Q5_K 在该短片段上的 PPL 增幅最大，约 2.3%；
+- 每一行只比较同一模型文件上的 QBS 与 RVV；0.5B 和 1.5B 行的 logits 尺度、基线 PPL 与 tensor
+  mix 不同，不能据此横向给量化格式做质量排名；
+- Q5_K 在其短片段上的 PPL 增幅最大，约 2.3%；Q8_0/IQ4_NL 在各自 0.5B 模型上的 KL/RMSE
+  较低，但不能与 1.5B 行直接比较；
 - Q6_K Top-1 agreement 最低，但 Top-5 overlap 仍为 94.12%、Mean KL 为 0.00745，说明许多
   差异更可能是接近候选的排名交换，而不是直接证明功能错误；仍需结合逐步 margin 和长文本回归；
 - 这些数据证明的是当前固定文本上的工程精度闭环，不能表述成标准数据集精度无损，也不能将
   `ppl_ratio<1` 宣称为 QBS 提高了模型质量。
 
-已有 Q2_K 68-step 实验得到 `ppl_ratio=0.9943`、`mean_kl=0.00352`、Top-1 92.65%、
-Top-5 97.06%；Q4_0/Q5_0 也已有真实模型严格生成输出回归。九种 profile 的算子级 directed
-test 全部通过，但论文级“所有格式质量等价”仍应补充更长文本、多个 prompt/seed 和标准
-perplexity 数据集。
+Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七种 profile 相同的 68-step 指标深度。
+九种 profile 的算子级 directed test 全部通过，但论文级“所有格式质量等价”仍应补充更长文本、
+多个 prompt/seed 和标准 perplexity 数据集。
 
 ### 13.10 当前验证覆盖清单和剩余空白
 
@@ -2377,21 +2541,22 @@ perplexity 数据集。
 | 整模型 native QEMU | RVV/QBS 均退出 0，10-token prompt + 2-token greedy 输出逐字节一致 | Qwen2.5-1.5B Q4_K_M，Q4_K/Q6_K GEMV/GEMM、R4/M4、fallback | 真实 GGML graph 能发出并执行 native `qbexec`；不代表 RTL speedup |
 | 模型级数值 | 7 profiles 有 68-step teacher-forced；Q4_0/Q5_0 有生成回归 | Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/IQ4_NL logits；其余格式的定向模型回归 | 短固定文本未见分布崩坏；尚不是标准数据集质量结论 |
 
-当前严格配对的四个真实 operator 点如下。`logical read` 是 timed region 中的逻辑 load payload，
-不是 AXI 总线包含对齐、cache line 或 speculative traffic 后的物理字节数：
+当前严格配对的四个真实 operator 点如下。Compute 区间包含动态 activation quantization 和
+matrix phase；matmul 区间只包含量化矩阵阶段。`AXI R bytes` 是 phase-gated 读数据总线实测值：
 
-| Profile | Shape `K x N x M` | RVV/QBS matmul cycles | Speedup | QBS/RVV logical read | QBS/RVV retired instructions |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Q3_K | `1536 x 256 x 1` | 1,281,131 / 17,614 | 72.73x | 30.3% | 0.51% |
-| Q5_K | `1536 x 256 x 1` | 2,011,748 / 21,750 | 92.49x | 40.1% | 0.58% |
-| Q6_K | `1536 x 256 x 1` | 1,273,230 / 25,120 | 50.69x | 44.1% | 0.68% |
-| Q8_0 | `896 x 256 x 1` | 548,583 / 26,923 | 20.38x | 51.9% | 0.49% |
+| Profile | Shape `K x N x M` | RVV/QBS compute cycles | Compute speedup | RVV/QBS matmul cycles | Matmul speedup | QBS/RVV AXI R bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Q3_K | `1536 x 256 x 1` | 932,095 / 29,250 | 31.87x | 920,462 / 17,614 | 52.26x | 24.6% |
+| Q5_K | `1536 x 256 x 1` | 1,365,782 / 33,386 | 40.91x | 1,354,132 / 21,750 | 62.26x | 36.6% |
+| Q6_K | `1536 x 256 x 1` | 1,373,329 / 36,756 | 37.36x | 1,361,692 / 25,120 | 54.21x | 43.6% |
+| Q8_0 | `896 x 256 x 1` | 168,625 / 31,986 | 5.27x | 163,513 / 26,923 | 6.07x | 110.2% |
 
-四点 matmul 几何平均为 `51.34x`。所有点的 `useful_pairs == pair_capacity`、
+四点 compute 和 matmul 几何平均分别为 `22.51x` 和 `32.17x`。所有点的
+`useful_pairs == pair_capacity`、
 `read_outstanding_max=2`、`fp_table_full_cycles=0`、`commit_backpressure_cycles=0`，且 source
 weight、activation、golden 和模型 metadata 的 hash 在 RVV/QBS 两侧严格配对。完整原始字段
-位于 `hardware/format_closure.csv`；QBS phase 和 probe 是可重叠活动签名，不能相加成严格 stall
-breakdown。
+位于 `hardware/paper_results/b73af277_20260827/format_closure.csv`；QBS phase 和 probe 是可重叠
+活动签名，不能相加成严格 stall breakdown。
 
 测试结论的边界同样明确：当前已经证明多格式功能、命令级 fault atomicity、真实算子 RTL 性能
 和短文本模型数值闭环；尚未完成所有九种 profile 的统一 68-step/标准数据集质量、完整模型 RTL
@@ -2399,7 +2564,7 @@ token/s、跨 4-lane/1024-bit 以外配置、综合后时序、P&R 和功耗闭�
 
 ## 14. 与相关研究和产品的关系
 
-本节是截至 2026-08-25 的研究位置快照。需要先区分成熟度：Intel AMX、Arm SME2 和 NVIDIA
+本节是截至 2026-08-29 的研究位置快照。需要先区分成熟度：Intel AMX、Arm SME2 和 NVIDIA
 Blackwell 是已公开的工业 ISA/产品能力；SpacemiT IME 是已经落地的厂商 RISC-V 扩展；RISC-V
 IME/AME 是标准工作组方向，不能写成已经 ratified 的统一矩阵 ISA；MixPE、F-BFQ 和 Gemmini
 属于论文或开源研究平台。它们可以比较设计取舍，但不能把提案能力当作现成产品数据。
@@ -2420,33 +2585,71 @@ IME/AME 是标准工作组方向，不能写成已经 ratified 的统一矩阵 I
 
 ### 14.2 从 SpacemiT/进迭时空学到什么
 
-SpacemiT IME 的公开设计复用 RVV 的 32 个 vector registers 表示二维 tile，提供 int4/int8、
-FP16/BF16、block quant 和 layout transform 类矩阵指令；其 llama.cpp/GGML 集成也强调模型加载
-repack、完整 MUL_MAT kernel、GEMV/GEMM 分流与 RVV fallback。
+SpacemiT IME 不是“给 RVV 多加一条 dot 指令”。公开架构将 32 个 RVV vector registers 重新解释
+为二维 matrix tiles，软件先通过普通 load、TCM/DMA 或 layout transform 准备 tile，再由
+register-to-register matrix instruction 送入专用矩阵执行路径，结果仍回到 vector register tile：
 
-QBS 借鉴的工程原则是：
+```text
+memory / TCM
+  -> RVV-visible vector-register tiles
+  -> IME int4/int8 or FP16/BF16 matrix instruction
+  -> dedicated matrix execution path
+  -> vector-register result tile
+```
 
-- 不停留在单 `vec_dot`；优化完整 quantized linear operator；
-- 存储格式与执行 layout 分离；
-- Decode 和 Prefill 共享机制，但按 M 选择不同 reuse；
-- 标准 RVV 永远作为功能回退。
+公开资料给出了可见 tile 形状：VLEN=256 的 A60 上，INT8 基本形状可表示为
+`4x8 * 8x4 -> 4x4`；VLEN=1024 的 A100 上，INT8 与 INT4 可分别达到
+`8x16 * 16x8 -> 8x8` 和 `8x32 * 32x8 -> 8x8`。IME 还公开支持 block scaling、layout
+transformation、卷积滑窗和 4:2 sparsity 等方向。由这些 ISA 能力可以确认其有区别于普通 RVV
+ALU 的矩阵执行路径，但公开文档没有给出完整 RTL、MAC 数量、端口组织、pipeline depth，或该
+datapath 究竟采用 systolic array 还是 dot-product array；本文不据产品吞吐反推这些未公开细节。
 
-QBS 没有照搬的部分是 vector-register matrix tile ISA。它选择 memory-to-VRF block stream，
-因为 GGUF 权重本来就以压缩 block 驻留内存，若先用 RVV load/unpack到寄存器再执行矩阵指令，
-会重新引入软件指令和 VRF traffic。
+软件侧同样不能把进迭时空概括成“优化 `ggml_vec_dot_*()`”。当前检查的 llama.cpp SpacemiT
+backend 在模型加载时持久 repack，在运行时动态量化 activation，并直接实现完整
+`GGML_OP_MUL_MAT` 和 `GGML_OP_MUL_MAT_ID` 的 tiled GEMV/GEMM。其当前选择路径覆盖 Q2_K、
+Q3_K、Q4_0、Q4_1、Q4_K、Q5_0、Q5_1、Q5_K、Q6_K 和 Q8_0；源码中有 MXFP4 模板但 dispatch
+仍标为 TODO。该 backend 还用 RVV 实现 NORM/RMS_NORM、基础 elementwise、layout/copy 类算子，
+并提供受输入类型、head dimension 和 VLEN 条件约束的 F16 Flash Attention。因此它的软件覆盖面
+目前比只接管量化线性层的 QBS 更宽。
 
-还要注意，当前 upstream llama.cpp 已经持续完善 RISC-V/RVV 的 repack GEMV/GEMM。研究比较不能
-把早期逐行标量或未 repack 实现当作“RVV 上限”；QBS 应对比同一模型、同一量化格式和同等软件
+两条路线在完整 operator 层面已有明显共识：
+
+- 不停留在单输出 `vec_dot`，而是接管完整 quantized `MUL_MAT`；
+- 模型加载时一次性重排静态权重，运行时量化 activation；
+- Decode 使用 GEMV，Prefill 使用可复用多行 activation 的 GEMM；
+- 通过 M/N/K tiling 和多输出 kernel 提高数据复用；
+- 用 capability、type 和 shape 选择高性能路径，并保留标准 RVV fallback。
+
+关键差异不在“有没有做矩阵乘”，而在**压缩数据在哪一层变成硬件执行对象**：
+
+| 维度 | SpacemiT IME | QBS |
+| --- | --- | --- |
+| ISA 抽象 | 通用 register-to-register matrix/tile instruction | profile/layout/shape 驱动的量化 block-stream command |
+| 输入驻留 | 软件把 tile 搬入 RVV-visible register state | VLSU 从 memory 直接读取 native/repacked GGUF blocks |
+| 中间状态 | vector-register tiles，软件显式管理 layout 和生命周期 | command-local hidden accumulator，成功后才写普通 VRF |
+| 格式范围 | INT4/INT8、FP16/BF16、block scaling，并延伸到 conv/sparse | 当前九种 GGML/GGUF weight profile 与两种 Q8 activation |
+| 软件覆盖 | quantized GEMV/GEMM、MoE，另有多类 RVV operator kernel | quantized `MUL_MAT` 与受约束 `MUL_MAT_ID`，其余走 RVV |
+| 主要优势 | 更通用、可组合的矩阵编程模型和成熟产品软件栈 | 减少压缩权重的显式 load/unpack、VRF 中间流量和指令控制 |
+| 主要代价 | tile 装载、layout 和 VRF 占用仍由软件显式组织 | 长命令的 fault/interrupt/preemption、VLSU 互斥和 profile 扩展更复杂 |
+
+所以 QBS 不能以“其他实现只优化单点积、QBS 首次优化完整 `MUL_MAT`”作为贡献。更准确的定位是：
+**GGUF-native、profile-driven quantized block-stream engine embedded in an RVV processor**。它用较窄的
+GGUF 语义换取更少的中间 register traffic 和命令数；IME 用更通用的矩阵 tile ISA 换取更广的格式、
+算子和产品适用范围。长期系统也可以同时包含标准 RVV、通用矩阵能力和 QBS 式块流路径，而不必把
+三者描述为互斥替代。
+
+还要注意，upstream llama.cpp 正持续完善通用 RISC-V/RVV repack GEMV/GEMM。研究比较不能把
+早期逐行标量或未 repack 实现当作“RVV 上限”；QBS 应对比同一模型、同一量化格式和同等软件
 优化程度的当前 RVV backend，才能把收益归因到 profile-aware hardware execution。
 
 ### 14.3 从 Arm KleidiAI 学到什么
 
-KleidiAI 的 int4 matmul流程明确分为 RHS persistent packing、LHS dynamic quant/packing 和 matmul
+KleidiAI 的 int4 matmul 流程明确分为 RHS persistent packing、LHS dynamic quant/packing 和 matmul
 microkernel，并用 shape/capability 选择 NEON/SVE/SME 变体。这与 QBS 的 R4 weight、Q8 activation
 和 M/N tile 层次高度一致。重要启示不是复制 Arm 指令，而是保持：
 
 - packer 与 microkernel layout 契约一致；
-- weight packing 只做一次，activation packing按调用做；
+- weight packing 只做一次，activation packing 按调用做；
 - kernel selection 显式检查 type/shape/capability；
 - 优化失败时能回到正确 baseline。
 
@@ -2527,11 +2730,11 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 ### 15.1 已形成的完整性
 
 - 九组 profile 共用 decoder/dot/correction/FP/commit 主路径；
-- M1-M4、N<=32、K 分段和尾块有软件/RTL/QEMU支撑；
+- M1-M4、N<=32、K 分段和尾块有软件/RTL/QEMU 支撑；
 - GGML 模型加载 repack、运行时 dispatch、普通 RVV fallback 已接通；
 - QBS 与 Ara normal VLSU 有明确互斥和 assertion；
 - fault 前结果不可见，成功后结果进入普通 VRF；
-- 有真实 Qwen2.5 数据、完整 MUL_MAT 和整模型 QEMU 功能闭环。
+- 有真实 Qwen2.5 数据、完整 `MUL_MAT`、受约束 `MUL_MAT_ID` 和整模型 QEMU 功能闭环。
 
 ### 15.2 当前限制
 
@@ -2547,11 +2750,11 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 - 当前 ABI JSON、canonical reference 和 QEMU 尚未完整编码上述 `NrLanes/VLEN` 实现约束；reference
   接受的抽象 VLEN 范围比 `qbs_commit.sv` 更宽。VLEN=1024 固定实验不受影响，但在宣称跨配置
   可移植前，必须让 `qbinfo`、reference、QEMU、软件选择和 RTL 使用同一能力边界；
-- 只直接覆盖 quantized `MUL_MAT`，不覆盖完整 Transformer block；
+- 只直接覆盖 quantized `MUL_MAT` 和受约束 `MUL_MAT_ID`，不覆盖完整 Transformer block；
 - current v1 contract 追求可执行一致性，不等于所有 GGML kernel 的 bitwise 累加顺序；
 - QEMU 是 functional model，不能替代 RTL、综合、P&R 和 power 结果。
 
-### 15.3 三种容易误解的说法
+### 15.3 五种容易误解的说法
 
 **错误：QBS 是把 Qwen 算子写死进硬件。**
 
@@ -2566,6 +2769,21 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 
 正确：decoder、subgroup、M 分配、read wait 和 FP update 都会影响 duty；必须看 useful pairs、
 capacity、dot active、phase 和 payload/cycle。
+
+**错误：候选 tensor 的 repack selection coverage 为 100%，所以整个模型都由 QBS 执行。**
+
+正确：该百分比来自 CPU repack selector，只说明目标格式权重通过了 QBS trait 选择。它不是
+operator-call coverage；必须再用 `gemv/gemm_calls` 和 `native_qbexec` 证明运行期执行。Attention
+core、KV cache、normalization、RoPE、Softmax、elementwise 和 sampling 不在这个分母中，仍由
+普通 RVV/标量路径执行。模型级覆盖还必须报告 operator mix、实际调用次数和端到端周期。
+
+**错误：QBS 已经是一个 ASIC。**
+
+正确：QBS 是领域专用架构机制及其 accelerator IP；当前已有可综合 SystemVerilog RTL、软件栈、
+QEMU 功能模型和验证闭环。只有经过综合才能称为 ASIC-targeted synthesized design，经过布局布线
+才能报告 post-layout ASIC implementation，流片后才能称为 ASIC silicon。论文应按真实完成层级写
+“implemented in synthesizable RTL”，并只在对应版本确有报告时补充“evaluated using a 28-nm ASIC
+synthesis/P&R flow”。DSA 描述专用化程度，ASIC 描述物理实现形态，二者不是同义词。
 
 ## 16. 合理的扩展路线
 
@@ -2755,30 +2973,43 @@ memory 和 FP pipeline 四类问题混在一起。
 
 ### llama.cpp 与软件微内核
 
-6. [llama.cpp Tensor Encoding Schemes](https://github.com/ggml-org/llama.cpp/wiki/Tensor-Encoding-Schemes)：GGUF 量化格式索引；exact 位布局仍应以源码为准。
-7. [llama.cpp CPU repack](https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml-cpu/repack.cpp)：CPU tensor trait、persistent repack 和 GEMV/GEMM 路径。
-8. [Arm KleidiAI int4 matmul guide](https://github.com/ARM-software/kleidiai/blob/main/docs/matmul_qsi4cx/README.md)：LHS dynamic quant/packing、RHS persistent packing 和 microkernel contract。
+6. [GGUF specification](https://github.com/ggml-org/ggml/blob/master/docs/gguf.md)：container header、metadata、tensor info、alignment 与 payload 布局。
+7. [llama.cpp current `ggml_type` block definitions](https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml-common.h)：各 tensor encoding 的 exact C struct、block size 和 metadata；格式细节的首要源码依据。
+8. [llama.cpp quantizer](https://github.com/ggml-org/llama.cpp/blob/master/tools/quantize/quantize.cpp)：模型级 file type/recipe 怎样为不同 tensor 选择实际 encoding。
+9. [llama.cpp Tensor Encoding Schemes](https://github.com/ggml-org/llama.cpp/wiki/Tensor-Encoding-Schemes)：格式族和经验用途索引；exact 位布局仍应以当前源码为准。
+10. [llama.cpp CPU repack](https://github.com/ggml-org/llama.cpp/blob/master/ggml/src/ggml-cpu/repack.cpp)：CPU tensor trait、persistent repack 和 GEMV/GEMM 路径。
+11. [Arm KleidiAI int4 matmul guide](https://github.com/ARM-software/kleidiai/blob/main/docs/matmul_qsi4cx/README.md)：LHS dynamic quant/packing、RHS persistent packing 和 microkernel contract。
 
 ### 产品与实现视角
 
-9. [SpacemiT AI Matrix Extension](https://github.com/spacemit-com/docs-ai/blob/main/en/architecture/ime_extension.md)：复用 RVV register file 的矩阵和 block-quant 指令设计。
-10. [SpacemiT IME specification](https://github.com/spacemit-com/riscv-ime-extension-spec)：厂商指令语义、program model 和示例。
-11. [Intel AMX overview](https://www.intel.com/content/www/us/en/products/docs/accelerator-engines/what-is-intel-amx.html)：八个 1 KiB architectural tile registers 与 TMUL。
-12. [Arm SME/SME2 matrix model](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/matrix-matrix-multiplication-neon-sve-and-sme-compared)：ZA 二维状态、outer-product 和 scalable tile。
-13. [NVIDIA NVFP4](https://developer.nvidia.com/blog/?p=102000)：Blackwell Tensor Core 的 16-element microscale FP4 与两级 scale。
+12. [SpacemiT AI Matrix Extension](https://github.com/spacemit-com/docs-ai/blob/main/en/architecture/ime_extension.md)：复用 RVV register file 的矩阵 tile、INT4/INT8、FP16/BF16、block scaling 和 layout 能力。
+13. [SpacemiT IME specification](https://github.com/spacemit-com/riscv-ime-extension-spec)：厂商指令语义、program model 和示例。
+14. [llama.cpp SpacemiT build guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/build-riscv64-spacemit.md)：IME/RVV backend 的构建、feature selection 和运行入口。
+15. [SpacemiT K3 platform overview](https://github.com/spacemit-com/docs-chip/blob/main/en/key_stone/k3/k3_docs/root_overview.md)：产品级 CPU、TCM/DMA 和 AI 能力背景；不等价于公开 RTL 微结构。
+16. [Intel AMX overview](https://www.intel.com/content/www/us/en/products/docs/accelerator-engines/what-is-intel-amx.html)：八个 1 KiB architectural tile registers 与 TMUL。
+17. [Arm SME/SME2 matrix model](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/matrix-matrix-multiplication-neon-sve-and-sme-compared)：ZA 二维状态、outer-product 和 scalable tile。
+18. [OCP Microscaling Formats MX v1.0](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)：MXFP4 的 FP4 element 与 shared E8M0 scale 标准。
+19. [NVIDIA NVFP4 documentation](https://docs.nvidia.com/deeplearning/transformer-engine-releases/release-2.14/user-guide/features/low_precision_training/nvfp4/nvfp4.html)：16-element local scale 与 tensor/global scale 组成的 NVFP4。
 
 ### 块量化和协同加速研究
 
-14. [QServe, MLSys 2025](https://proceedings.mlsys.org/paper_files/paper/2025/hash/fbe2b2f74a2ece8070d8fb073717bda6-Abstract-Conference.html)：低比特服务中 dequantization overhead、KV quantization 与软硬件协同。
-15. [MixPE](https://arxiv.org/abs/2411.16158)：group quantization、mixed-precision PE 和“group dot 后反量化”。
-16. [F-BFQ](https://arxiv.org/abs/2510.13401)：面向 llama.cpp block quantization 的可切换格式加速器，是 QBS 必须正面对照的相近工作。
-17. [Gemmini](https://arxiv.org/abs/1911.09925)：生成式矩阵加速器的 ISA、scratchpad、软件栈和系统集成视角。
+20. [QServe, MLSys 2025](https://proceedings.mlsys.org/paper_files/paper/2025/hash/fbe2b2f74a2ece8070d8fb073717bda6-Abstract-Conference.html)：低比特服务中 dequantization overhead、KV quantization 与软硬件协同。
+21. [MixPE](https://arxiv.org/abs/2411.16158)：group quantization、mixed-precision PE 和“group dot 后反量化”。
+22. [F-BFQ](https://arxiv.org/abs/2510.13401)：面向 llama.cpp block quantization 的可切换格式加速器，是 QBS 必须正面对照的相近工作。
+23. [Gemmini](https://arxiv.org/abs/1911.09925)：生成式矩阵加速器的 ISA、scratchpad、软件栈和系统集成视角。
 
 ## 20. 术语速查
 
 | 术语 | 含义 |
 | --- | --- |
 | QBS | Quantized Block Streams，量化块流执行机制 |
+| `llama.cpp` | 完整 LLM 推理 runtime；负责模型、graph、KV cache 和 sampling，不是 tensor 文件格式 |
+| GGML | `llama.cpp` 使用的 tensor/operator/graph 与 CPU kernel 基础设施 |
+| GGUF | 模型容器格式；保存 metadata、逐 tensor shape/type 和 payload，本身不执行计算 |
+| GGML backend | 将 GGML operator 映射到 CPU、RVV、QBS 或其他设备实现的执行层 |
+| Model file type/recipe | 整份模型的量化策略，例如 Q4_K_M；可让不同 tensor 使用不同 encoding |
+| Tensor encoding | 单个 tensor 的 exact block ABI，例如 Q4_K 或 Q6_K |
+| bpw | bits per weight，包含 scale/min/codebook 等 metadata 后的平均存储位数 |
 | Token | tokenizer 定义的离散文本单元；模型输入和输出使用其整数 ID |
 | Embedding | 把 token ID 查表为 hidden vector；不是普通连续数值转换 |
 | Hidden state | 某个 token 在某层的内部特征向量，本文 Qwen2.5 宽度为 1536 |
@@ -2808,7 +3039,10 @@ memory 和 FP pipeline 四类问题混在一起。
 | Atomic commit | 所有访问/计算成功后，才将完整结果写入 VRF |
 | Split-K | 软件把过长 K 分成多条命令，再按原顺序累加 FP32 partial results |
 | Native QBS | guest 实际执行 `qbexec`，区别于 GGML 内部 scalar emulation |
-| Selection coverage | QBS 实际选中的候选 tensor/elements 比例，不包含本就不支持的非线性算子 |
+| Repack selection coverage | 目标格式权重中选择 QBS repack trait 的 tensor/elements 比例；不是运行期 operator coverage |
+| IME | Integrated Matrix Extension；本文特指复用 RVV register state 表示 matrix tile 的路线 |
+| DSA | Domain-Specific Architecture/Accelerator，描述面向特定计算域的专用化，不限定物理载体 |
+| ASIC-targeted RTL | 面向 ASIC flow 的可综合 RTL；只有流片后才可称为 ASIC silicon |
 | Teacher forcing | 两条路径使用相同历史 token，逐位置比较下一 token 分布，避免自由生成分叉干扰归因 |
 | RVV fallback | QBS 不适用时使用标准 RISC-V Vector 实现 |
 

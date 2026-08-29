@@ -71,7 +71,10 @@ def main() -> None:
 
     fields = [
         "case", "result", "k", "rows", "inputs", "outputs",
-        "setup_cycles", "compute_cycles", "cycles_per_output_x1000",
+        "tiles", "timing_scope", "setup_included", "timed_cycles",
+        "timed_cycles_per_output_x1000", "descriptor_setup_cycles",
+        "descriptor_setup_cycles_valid", "setup_cycles", "compute_cycles",
+        "cycles_per_output_x1000",
         "quantize_cycles", "pack_cycles", "matmul_cycles",
         "logical_read_bytes", "total_cycles", "total_insns",
         "total_vector_insns", "ara_req_fire_count", "rvv_axi_ar_count",

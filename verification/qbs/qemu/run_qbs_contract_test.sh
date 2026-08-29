@@ -21,4 +21,4 @@ timeout "${QBS_CONTRACT_TIMEOUT:-20}" "${qemu}" \
   -m 128M -smp 1 -bios none -kernel "${build_dir}/qbs_contract_test.elf" \
   -display none -serial none -monitor none
 
-echo "QBS fixed-RNE and RAM-only QEMU contract: PASS"
+echo "QBS capability, shape, tail, fault, fixed-RNE, and fflags contract: PASS"

@@ -1,0 +1,12 @@
+{
+  "case_id": "shape_decode_n32_qbs_prebuilt",
+  "phase": "decode",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q4_K",
+  "k": 1536,
+  "rows": 32,
+  "inputs": 1,
+  "capture_rows": 1536,
+  "capture_inputs": 1,
+  "rvv_x32": false
+}

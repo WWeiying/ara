@@ -171,7 +171,7 @@
 +}
 --- /dev/null
 +++ b/target/riscv/qbs_helper.c
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,225 @@
 +/*
 + * QEMU functional model for the Xaraqbs quantized block-stream extension.
 + *

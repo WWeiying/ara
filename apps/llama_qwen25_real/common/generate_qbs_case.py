@@ -65,6 +65,7 @@ def main() -> None:
     generated = app_dir / "generated"
     rows = int(spec["rows"])
     k = int(spec["k"])
+    inputs = int(spec["inputs"])
     weight_type = spec["weight_type"]
     weight_format = base["WEIGHT_FORMATS"].get(weight_type)
     if weight_format is None:
@@ -79,17 +80,44 @@ def main() -> None:
 
     provenance_path = generated / "provenance.json"
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    main_source = (app_dir / "main.c").read_text(encoding="utf-8")
+    prebuilt_descriptor = (
+        "#define QBS_BENCH_PREBUILT_DESCRIPTOR 1" in main_source
+    )
+    uses_m4_activation_pack = inputs == 4 and weight_type != "q8_0"
     layout_name = "qbs_r4_block_major_v1"
     provenance["embedded_weight_layout"] = layout_name
     activation_profile = "Q8_0" if weight_type == "q8_0" else "Q8_K"
-    provenance["runtime_timed_region"] = (
-        f"F32_to_{activation_profile}_plus_blocking_QBS_quantized_matmul"
+    timed_stages = [f"F32_to_{activation_profile}"]
+    if uses_m4_activation_pack:
+        timed_stages.append("M4_activation_interleave")
+    if not prebuilt_descriptor:
+        timed_stages.append("per_command_descriptor_construction")
+    timed_stages.extend([
+        "command_fence_and_vsetvli",
+        "blocking_QBS_execution",
+        "result_vector_stores",
+    ])
+    provenance["runtime_timed_region"] = "+".join(timed_stages)
+    # The generic generator used a literal zero for a setup quantity that was
+    # not measured. Do not encode an inferred value as an observed counter.
+    provenance.pop("runtime_setup_cycles", None)
+    provenance["qbs_command_setup_in_timed_region"] = not prebuilt_descriptor
+    provenance["qbs_descriptor_mode"] = (
+        "prebuilt_before_timed_region"
+        if prebuilt_descriptor
+        else "per_command_stack_in_timed_region"
+    )
+    provenance["qbs_activation_pack_in_timed_region"] = (
+        uses_m4_activation_pack
     )
     provenance["offline_repack_excluded"] = True
     provenance["qbs"] = {
         "descriptor_version": 1,
         "weight_layout": "W_R4_BLOCK_MAJOR",
-        "activation_layout": "A_ROW_MAJOR",
+        "activation_layout": (
+            "A_M4_INTERLEAVED" if uses_m4_activation_pack else "A_ROW_MAJOR"
+        ),
         "activation_profile": activation_profile,
         "weight_profile": weight_type.upper(),
         "block_elements": block_elements,

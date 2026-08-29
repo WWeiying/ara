@@ -17,9 +17,6 @@ CASES = (
     ("Q6_K", "q6k_decode_attn_q"),
     ("Q8_0", "q8_0_decode_attn_q"),
 )
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-
 def read_one(path: Path) -> dict[str, str]:
     if not path.is_file():
         raise RuntimeError(f"missing result file: {path}")
@@ -28,6 +25,18 @@ def read_one(path: Path) -> dict[str, str]:
     if len(rows) != 1:
         raise RuntimeError(f"expected one row in {path}, found {len(rows)}")
     return rows[0]
+
+
+def read_phase(path: Path, phase: str) -> dict[str, str]:
+    if not path.is_file():
+        raise RuntimeError(f"missing metrics file: {path}")
+    with path.open(newline="", encoding="utf-8") as handle:
+        matches = [row for row in csv.DictReader(handle) if row.get("phase") == phase]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected one {phase} row in {path}, found {len(matches)}"
+        )
+    return matches[0]
 
 
 def read_provenance(path: Path) -> dict[str, object]:
@@ -50,6 +59,16 @@ def require_pass(run_dir: Path) -> None:
     status = run_dir / "status"
     if not status.is_file() or status.read_text().strip() != "PASS":
         raise RuntimeError(f"run is not PASS: {run_dir}")
+
+
+def read_root_value(root: Path, name: str) -> str:
+    path = root / name
+    if not path.is_file():
+        raise RuntimeError(f"missing run metadata: {path}")
+    value = path.read_text(encoding="utf-8").strip()
+    if not value:
+        raise RuntimeError(f"empty run metadata: {path}")
+    return value
 
 
 def number(row: dict[str, str], field: str) -> int:
@@ -103,6 +122,15 @@ def check_qbs_perf(qbs: dict[str, str], perf: dict[str, str]) -> None:
         raise RuntimeError(f"QBS useful pairs exceed capacity: {qbs.get('case')}")
 
 
+def check_metrics(result: dict[str, str], metrics: dict[str, str]) -> None:
+    expected_case = f"llama_qwen25_{result.get('case')}"
+    if metrics.get("case") != expected_case or metrics.get("phase") != "total":
+        raise RuntimeError(
+            f"result/metrics mismatch: {result.get('case')} != "
+            f"{metrics.get('case')}:{metrics.get('phase')}"
+        )
+
+
 def check_provenance_pair(
     rvv: dict[str, object], qbs: dict[str, object]
 ) -> dict[str, str | int]:
@@ -149,12 +177,19 @@ def build_row(
     rvv: dict[str, str],
     qbs: dict[str, str],
     perf: dict[str, str],
+    rvv_metrics: dict[str, str],
+    qbs_metrics: dict[str, str],
     provenance: dict[str, str | int],
+    git_head: str,
     rvv_simv_sha256: str,
     qbs_simv_sha256: str,
+    rvv_elf_sha256: str,
+    qbs_elf_sha256: str,
 ) -> dict[str, str | int]:
     check_pair(rvv, qbs)
     check_qbs_perf(qbs, perf)
+    check_metrics(rvv, rvv_metrics)
+    check_metrics(qbs, qbs_metrics)
     row: dict[str, str | int] = {
         "format": fmt,
         "model": str(provenance["model"]),
@@ -172,8 +207,11 @@ def build_row(
         "rvv_max_rel": rvv.get("max_rel", "NA"),
         "qbs_max_abs": qbs.get("max_abs", "NA"),
         "qbs_max_rel": qbs.get("max_rel", "NA"),
+        "git_head": git_head,
         "rvv_simv_sha256": rvv_simv_sha256,
         "qbs_simv_sha256": qbs_simv_sha256,
+        "rvv_elf_sha256": rvv_elf_sha256,
+        "qbs_elf_sha256": qbs_elf_sha256,
     }
     row.update(provenance)
     for phase in ("compute", "quantize", "pack", "matmul"):
@@ -197,6 +235,24 @@ def build_row(
     ):
         row[f"rvv_{field}"] = rvv.get(field, "NA")
         row[f"qbs_{field}"] = qbs.get(field, "NA")
+    row["rvv_analytical_input_bytes"] = number(rvv, "logical_read_bytes")
+    row["qbs_analytical_input_bytes"] = number(qbs, "logical_read_bytes")
+    for field in (
+        "cycles",
+        "retired_inst_count",
+        "retired_vector_inst_count",
+        "axi_ar_count",
+        "axi_ar_bytes",
+        "axi_r_beat_count",
+        "axi_r_bus_bytes",
+    ):
+        row[f"rvv_metric_{field}"] = rvv_metrics.get(field, "NA")
+        row[f"qbs_metric_{field}"] = qbs_metrics.get(field, "NA")
+    rvv_bus_bytes = number(rvv_metrics, "axi_r_bus_bytes")
+    qbs_bus_bytes = number(qbs_metrics, "axi_r_bus_bytes")
+    row["rvv_axi_r_bus_bytes"] = rvv_bus_bytes
+    row["qbs_axi_r_bus_bytes"] = qbs_bus_bytes
+    row["qbs_to_rvv_axi_r_bus_bytes"] = ratio(qbs_bus_bytes, rvv_bus_bytes)
     # Preserve every strict raw counter and derived ratio emitted by the QBS
     # summarizer. The closure table must not silently narrow the evidence to a
     # hand-picked subset as the RTL counter schema evolves.
@@ -212,29 +268,30 @@ def write_markdown(path: Path, rows: list[dict[str, str | int]]) -> None:
         "",
         "All points use one captured decode activation and the first 256 output "
         "rows of `blk.0.attn_q.weight`. Both paths passed the same llama.cpp "
-        "golden with zero mismatches. Offline weight repacking is excluded.",
+        "golden with zero mismatches. Persistent offline weight repacking is "
+        "excluded from both timed paths.",
+        f"Source commit: `{rows[0]['git_head']}`.",
         f"All RVV points use simulator image `{rows[0]['rvv_simv_sha256']}`; "
         f"all QBS points use `{rows[0]['qbs_simv_sha256']}`.",
         "",
-        "| Format | KxNxM | Compute speedup | Matmul speedup | Logical read reduction | QBS dot active | QBS input phases | QBS read-full | QBS response idle |",
+        "| Format | KxNxM | Compute speedup | Matmul speedup | AXI R bytes RVV | AXI R bytes QBS | QBS/RVV | Analytical input bytes RVV/QBS | QBS dot active |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in rows:
-        rvv_bytes = int(row["rvv_logical_read_bytes"])
-        qbs_bytes = int(row["qbs_logical_read_bytes"])
         display = dict(row)
         display["compute_speedup"] = f"{float(row['compute_speedup']):.2f}"
         display["matmul_speedup"] = f"{float(row['matmul_speedup']):.2f}"
         lines.append(
             "| {format} | {k}x{n}x{m} | {compute_speedup}x | "
-            "{matmul_speedup}x | {read_reduction} | {dot_active} | "
-                "{input_phases} | {read_full} | {response_idle} |".format(
+            "{matmul_speedup}x | {rvv_bus_bytes} | {qbs_bus_bytes} | "
+            "{bus_ratio} | {rvv_footprint}/{qbs_footprint} | {dot_active} |".format(
                 **display,
-                read_reduction=percent(1.0 - qbs_bytes / rvv_bytes),
+                rvv_bus_bytes=int(row["rvv_axi_r_bus_bytes"]),
+                qbs_bus_bytes=int(row["qbs_axi_r_bus_bytes"]),
+                bus_ratio=f"{float(row['qbs_to_rvv_axi_r_bus_bytes']):.3f}",
+                rvv_footprint=int(row["rvv_analytical_input_bytes"]),
+                qbs_footprint=int(row["qbs_analytical_input_bytes"]),
                 dot_active=percent(float(row["qbs_dot_active_ratio"])),
-                input_phases=percent(float(row["qbs_input_phase_ratio"])),
-                read_full=percent(float(row["qbs_read_outstanding_full_ratio"])),
-                response_idle=percent(float(row["qbs_read_response_idle_ratio"])),
             )
         )
 
@@ -249,8 +306,11 @@ def write_markdown(path: Path, rows: list[dict[str, str | int]]) -> None:
         f"Across these four representative points, the geometric-mean speedup "
         f"is {compute_geomean:.2f}x for dynamic quantization plus matrix "
         f"computation and {matmul_geomean:.2f}x for the matrix phase alone. "
-        "These are operator-slice results against the standard RVV path, not "
-        "an end-to-end model speedup.",
+        "These are operator-slice results against an optimized standard-RVV "
+        "x32/M4 benchmark implementation, not an end-to-end model speedup.",
+        "`AXI R bytes` is the phase-gated number of bytes transferred on the "
+        "measured AXI read-data bus. `Analytical input bytes` is a formula-based "
+        "tensor/descriptor footprint and is not treated as measured traffic.",
         "",
         "## Bottleneck evidence",
         "",
@@ -348,6 +408,15 @@ def main() -> None:
 
     rvv_root = args.rvv_root.resolve()
     qbs_root = args.qbs_root.resolve()
+    if read_root_value(rvv_root, "mode") != "rvv":
+        raise RuntimeError(f"not an RVV run root: {rvv_root}")
+    if read_root_value(qbs_root, "mode") != "qbs":
+        raise RuntimeError(f"not a QBS run root: {qbs_root}")
+    if read_root_value(rvv_root, "l2_mb") != read_root_value(qbs_root, "l2_mb"):
+        raise RuntimeError("RVV/QBS L2 size mismatch")
+    git_head = read_root_value(rvv_root, "git_head")
+    if git_head != read_root_value(qbs_root, "git_head"):
+        raise RuntimeError("RVV/QBS source commit mismatch")
     rows: list[dict[str, str | int]] = []
     rvv_simv_sha256: str | None = None
     qbs_simv_sha256: str | None = None
@@ -367,20 +436,8 @@ def main() -> None:
         elif qbs_simv_sha256 != case_qbs_simv_sha256:
             raise RuntimeError(f"mixed QBS simulator images at {qbs_dir}")
         provenance = check_provenance_pair(
-            read_provenance(
-                PROJECT_ROOT
-                / "apps"
-                / f"llama_qwen25_{stem}_rvv"
-                / "generated"
-                / "provenance.json"
-            ),
-            read_provenance(
-                PROJECT_ROOT
-                / "apps"
-                / f"llama_qwen25_{stem}_qbs"
-                / "generated"
-                / "provenance.json"
-            ),
+            read_provenance(rvv_dir / "provenance.json"),
+            read_provenance(qbs_dir / "provenance.json"),
         )
         rows.append(
             build_row(
@@ -388,9 +445,14 @@ def main() -> None:
                 read_one(rvv_dir / "result.csv"),
                 read_one(qbs_dir / "result.csv"),
                 read_one(qbs_dir / "qbs_perf.csv"),
+                read_phase(rvv_dir / "metrics.csv", "total"),
+                read_phase(qbs_dir / "metrics.csv", "total"),
                 provenance,
+                git_head,
                 case_rvv_simv_sha256,
                 case_qbs_simv_sha256,
+                file_sha256(rvv_dir / "benchmark.elf"),
+                file_sha256(qbs_dir / "benchmark.elf"),
             )
         )
 

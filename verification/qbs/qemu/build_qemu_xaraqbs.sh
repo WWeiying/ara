@@ -36,6 +36,10 @@ if [[ "${current_fingerprint}" != "${fingerprint}" ]]; then
     rm -rf "${source_dir}" "${build_dir}"
     tar -xf "${archive}" -C "${work_root}"
     patch -d "${source_dir}" -p1 < "${patch_file}"
+    if [[ $(tail -n 1 "${source_dir}/target/riscv/qbs_helper.c") != '}' ]]; then
+        printf 'error: QBS QEMU patch produced a truncated qbs_helper.c\n' >&2
+        exit 1
+    fi
     cp "${repo_root}/apps/common/qbs_abi.h" \
        "${source_dir}/target/riscv/qbs_abi.h"
     cp "${repo_root}/verification/qbs/qbs_ref.c" \
