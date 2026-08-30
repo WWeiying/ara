@@ -6,12 +6,14 @@ platform_dir=${QBS_PLATFORM_DIR:-${HOME}/llama/platforms/cva6-qemu}
 source "${platform_dir}/env.sh"
 
 qemu_binary=${QBS_QEMU:-${script_dir}/build/qemu-10.2.0-build/qemu-system-riscv64}
+qemu_cpu=${QBS_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,xaraqbs=true}
 llama_binary=${QBS_LLAMA_BINARY:-${LLAMA_SRC}/build-rv64-cva6-qbs-emulate/bin/llama-simple}
 token_count=${QBS_TOKEN_COUNT:-2}
 prompt_text=${QBS_PROMPT:-The quick brown fox jumps over the lazy dog.}
 expected_profiles=${QBS_EXPECTED_PROFILES:-Q4_K Q6_K}
 run_mode=${QBS_RUN_MODE:-compare}
 require_equal=${QBS_REQUIRE_EQUAL:-1}
+require_activation_context=${QBS_REQUIRE_ACTIVATION_CONTEXT:-0}
 qbs_formats=${QBS_FORMATS:-}
 teacher_force=${QBS_TEACHER_FORCE:-0}
 work_dir=${QBS_QWEN_WORK_DIR:-${script_dir}/build/qwen-native-check}
@@ -81,7 +83,7 @@ test -x "${gen_init_cpio}"
 
 "${qemu_binary}" \
   -M virt \
-  -cpu "rv64,v=true,vlen=1024,elen=64,xaraqbs=true" \
+  -cpu "${qemu_cpu}" \
   -smp 1 -m 4G -display none -monitor none -serial stdio \
   -bios "${QEMU_IMAGES}/fw_dynamic.bin" \
   -initrd "${initramfs}" \
@@ -100,6 +102,9 @@ for profile in ${expected_profiles}; do
     grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemm_calls=[1-9]" "${log_file}"
   fi
 done
+if [[ "${require_activation_context}" == "1" ]]; then
+  grep -Eq 'GGML_RISCV_QBS_EXEC type=.* context_reuse=[1-9]' "${log_file}"
+fi
 grep -q 'QBS_TOKEN_RUN_EXIT=QBS_NATIVE:0' "${log_file}"
 if [[ "${run_mode}" == "compare" ]]; then
   grep -q 'QBS_LOGITS_RECORDS=' "${log_file}"

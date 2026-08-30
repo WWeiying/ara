@@ -89,7 +89,13 @@ that both GEMV and GEMM dispatch execute Q4_K and Q6_K QBS commands. The
 default environment is `${HOME}/llama/platforms/cva6-qemu`; override it with
 `QBS_PLATFORM_DIR`. The llama binary, model disk, QEMU binary, work directory,
 and log can be selected with `QBS_LLAMA_BINARY`, `QBS_MODEL_DISK`, `QBS_QEMU`,
-`QBS_QWEN_WORK_DIR`, and `QBS_QWEN_LOG`.
+`QBS_QWEN_WORK_DIR`, and `QBS_QWEN_LOG`. `QBS_QEMU_CPU` overrides the complete
+CPU property string when the selected llama.cpp build requires additional ISA
+extensions. For example, a build containing scalar and vector FP16 operations
+can use `rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true`.
+Set `QBS_REQUIRE_ACTIVATION_CONTEXT=1` to require the native GGML trace to
+contain at least one successful context-reuse command. This distinguishes a
+functional QBS run from one that silently used only DIRECT commands.
 
 Set `QBS_MODEL_FILE` to package a host GGUF into a private model image in the
 selected work directory. In this mode the guest path is derived from the file
