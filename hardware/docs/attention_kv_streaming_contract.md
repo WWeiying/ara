@@ -363,7 +363,14 @@ The llama.cpp/GGML dispatch policy is:
 4. use the standard RVV kernel for every unsupported type, shape, mask policy,
    capability, or command failure recoverable at software level.
 
-For performance attribution, evaluation retains two RVV comparisons: the
+The context ABI can represent D=64 or D=128 and one through eight Q rows. That
+capacity is not itself a claim that a native arithmetic kernel exists for every
+combination. The first GGML kernel has a verified fixed-register plan only for
+D=128 with six Q rows per K/V head. D=64 and other group sizes remain on the
+standard RVV path until they have their own register plan and numerical/RTL
+validation.
+
+For performance attribution, evaluation should retain two RVV comparisons: the
 existing generic path and a multi-row tiled path using software scratch. The
 first measures end-to-end improvement over upstream behavior; the second
 separates AKV's on-path residency benefit from a known software dataflow

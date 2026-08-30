@@ -208,13 +208,13 @@ akv_attention_group_f16_d128_gqa6:
     .section .rodata.akv_exp,"a",@progbits
     .align  2
 .Lakv_exp_constants:
-    .float  0x1.8p23
-    .float  0x1.715476p+0
-    .float  0x1.62e4p-1
-    .float  0x1.7f7d1cp-20
-    .float  0x1.ffffecp-1
-    .float  0x1.fffdb6p-2
-    .float  0x1.555e66p-3
-    .float  0x1.573e2ep-5
-    .float  0x1.0e4020p-7
+    .word   0x4b400000
+    .word   0x3fb8aa3b
+    .word   0x3f317200
+    .word   0x35bfbe8e
+    .word   0x3f7ffff6
+    .word   0x3efffedb
+    .word   0x3e2aaf33
+    .word   0x3d2b9f17
+    .word   0x3c072010
     .float  1.0

@@ -219,7 +219,8 @@ after completion.
 ## 8. Remaining boundary
 
 Milestone 4 establishes functional, fault, scaling, and block-level physical
-evidence for AKV v1. It does not yet establish production runtime usability.
-The next milestone must integrate shape/type/capability selection into the
-GGML RISC-V backend, retain ordinary RVV fallback, compare with a portable
-multi-row tiled-RVV software baseline, and report end-to-end operator coverage.
+evidence for AKV v1. Milestone 5 subsequently integrates strict
+shape/type/capability selection into the GGML RISC-V backend, retains ordinary
+RVV fallback, and reports model-level operator coverage. A portable multi-row
+tiled-RVV software baseline remains necessary for finer performance
+attribution; see `attention_kv_streaming_m5_results.md`.
