@@ -106,6 +106,60 @@ stateful cache append itself is intentionally outside the stateless replay
 suite because a correct standalone case also needs the pre-cache state, write
 indices, current K/V, and expected post-cache state.
 
+The bare-metal Attention-core harness keeps two explicit online-Softmax
+implementations over the same captured Decode tensors. `ref` is a scalar
+functional baseline; `rvv` follows the F16 K/V path in llama.cpp
+`flash_attn_ext_f16_one_chunk`: it converts Q to F16, performs widening F16
+dot products, updates the running maximum and normalization sum, accumulates V
+in F16, and converts the normalized result to F32. Both paths validate after
+the measured region. Phases 1, 2, and 3 in `llm_perf_monitor` correspond to Q
+conversion/accumulator initialization, the online KV loop, and output
+conversion/normalization.
+
+Capture coherent Decode tensors from real Qwen2.5-1.5B Q4_K_M execution at
+effective KV lengths 16, 128, and 256 with:
+
+```bash
+hardware/scripts/llama_q4km_extract/capture-attention-contexts.sh
+```
+
+The capture uses one generated token after prompts of 15, 127, and 255 tokens.
+It restricts the callback to the five Attention-core boundaries Q, K, V, mask,
+and pre-output-projection golden output; model, executable, source, prompt, and
+tensor hashes are recorded beside each case. The `latest` symlink is updated
+only after all three cases pass shape, type, size, mask, and hash checks.
+
+Run one implementation and context with:
+
+```bash
+hardware/scripts/llama_q4km_extract/run-ara-attention-core.sh rvv 128 --all
+```
+
+`--spike-only` and `--ara-only` select the functional or RTL part of the same
+case. Omitting the KV argument preserves the original 16-entry behavior.
+
+Results are written to a timestamped directory below
+`hardware/llama_attention_runs/`; existing QBS and paper result directories
+are not reused. After both `ref` and `rvv` complete, collect their total and
+phase-specific counters with:
+
+```bash
+hardware/scripts/llama_q4km_extract/summarize-ara-attention-core.py
+hardware/scripts/llama_q4km_extract/analyze-attention-baseline.py
+```
+
+For this Attention case, the CSV renames the monitor's generic phase slots as
+`q_convert`, `online_kv`, and `output_norm`; raw log field names and strict
+counter semantics are otherwise preserved. Ara request counters are internal
+request handshakes, not necessarily one-to-one ISA instruction counts.
+`unit_load_span_bytes` and `unit_store_span_bytes` are diagnostic for this
+case: whole-register operations encode register-group size differently from
+ordinary unit-stride operations, so those fields must not be used as strict
+traffic totals. The baseline analyzer derives Q/K/V and accumulator traffic
+from the captured shape and source-level access contract, uses Spike traces for
+dynamic ISA counts, and uses RTL reports for cycles, activity, stalls, and AXI
+handshakes.
+
 Use `status.sh` to inspect a background capture without attaching to QEMU. Ara
 execution is deliberately outside this flow.
 

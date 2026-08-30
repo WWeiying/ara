@@ -1815,6 +1815,7 @@ module ara_tb;
   rvv_pkg::vew_e [NrLanes-1:0] llm_int_mul_exec_vsew;
   logic [NrLanes-1:0] llm_int_div_exec_fire;
   logic [NrLanes-1:0] llm_fp_exec_fire;
+  logic [NrLanes-1:0] llm_fp_reduction_active;
   logic [NrLanes-1:0] llm_alu_result_fire;
   logic [NrLanes-1:0] llm_mfpu_result_fire;
   logic [NrLanes-1:0][7:0] llm_alu_result_be;
@@ -1848,6 +1849,8 @@ module ara_tb;
     assign llm_fp_exec_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vfpu_in_valid &&
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.vfpu_in_ready;
+    assign llm_fp_reduction_active[lane] =
+      dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.i_vfus.i_vmfpu.mfpu_state_q != 3'd0;
     assign llm_alu_result_fire[lane] =
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.alu_result_req &&
       dut.i_ara_soc.i_system.i_ara.gen_lanes[lane].i_lane.alu_result_gnt;
@@ -1876,9 +1879,11 @@ module ara_tb;
       dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0])),
     .retired_vector_inst_count_i($countones({
       dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1] &&
-        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu == 4'b1010,
+        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[1].fu ==
+          ariane_pkg::ACCEL,
       dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[0] &&
-        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu == 4'b1010})),
+        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_instr_i[0].fu ==
+          ariane_pkg::ACCEL})),
     .req_valid_i    (dut.i_ara_soc.i_system.i_ara.ara_req_valid),
     .req_ready_i    (dut.i_ara_soc.i_system.i_ara.ara_req_ready),
     .req_op_i       (dut.i_ara_soc.i_system.i_ara.ara_req.op),
@@ -1899,6 +1904,7 @@ module ara_tb;
     .int_mul_exec_vsew_i     (llm_int_mul_exec_vsew),
     .int_div_exec_fire_i     (llm_int_div_exec_fire),
     .fp_exec_fire_i          (llm_fp_exec_fire),
+    .fp_reduction_active_i    (|llm_fp_reduction_active),
     .alu_result_fire_i       (llm_alu_result_fire),
     .mfpu_result_fire_i      (llm_mfpu_result_fire),
     .alu_result_be_i         (llm_alu_result_be),
@@ -1935,7 +1941,9 @@ module ara_tb;
       !dut.i_ara_soc.i_system.i_ara.ara_req_ready &&
       dut.i_ara_soc.i_system.i_ara.i_sequencer.multi_reader_war),
     .scalar_result_wait_i(
-      dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_scalar_resp_ready_o &&
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.state_q == 1'b1 &&
+      dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_o.op inside
+        {VMVXS, VFMVFS, VCPOP, VFIRST} &&
       !dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_scalar_resp_valid_i),
     .axi_ar_valid_i(dut.i_ara_soc.i_system.i_ara.axi_req_o.ar_valid),
     .axi_ar_ready_i(dut.i_ara_soc.i_system.i_ara.axi_resp_i.ar_ready),

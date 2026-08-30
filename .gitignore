@@ -64,6 +64,13 @@ apps
 /apps/qbs_control_smoke/*.o
 /apps/qbs_control_smoke/*.dump
 !/apps/llama_q4km_micro/
+!/apps/llama_q4km_operator/
+/apps/llama_q4km_operator/*
+!/apps/llama_q4km_operator/main.c
+!/apps/llama_q4km_operator/quant_kernels.c
+!/apps/llama_q4km_operator/script/
+/apps/llama_q4km_operator/script/*
+!/apps/llama_q4km_operator/script/gen_data.py
 /verification/qbs/qbs_ref_test
 /verification/qbs/qbs_real_test
 /verification/qbs/qbs_rtl_vectors
@@ -142,8 +149,10 @@ debug/
 /hardware/sim_l2_*m/
 /hardware/llama_benchmark_runs/
 /hardware/llama_eval_runs/
+/hardware/llama_attention_runs/
 /hardware/qbs_eval_runs/
 /hardware/sim_llama_eval_*/
+/hardware/sim_llama_attention_*/
 /hardware/fsdb_traces/
 /fsdb2vcdLog/
 deps/
