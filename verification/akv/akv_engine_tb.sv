@@ -772,7 +772,24 @@ module akv_engine_tb;
     run_valid_load(AKV_STREAM_V, 7, 64, 8, 4'ha,
                    VBase + 7 * 128, 0);
 
-    $display("AKV engine PASS: D64/D128, refill/replay, validation matrix, descriptor/Q/K/V MMU, PMA, and AXI faults");
+    // Every source base need only be F16-aligned. Offset each stream by two
+    // bytes so compact AXI beats repeatedly cross 32-byte context rows.
+    descriptor = valid_descriptor(64, 12, 3);
+    descriptor.q_base = QBase + 2;
+    descriptor.k_base = KBase + 2;
+    descriptor.v_base = VBase + 2;
+    put_descriptor(DescriptorBase, descriptor);
+    send_command(AKV_COMMAND_FULL, DescriptorBase, 0, 0, 64, 0, 4'hb);
+    wait_success();
+    acknowledge_terminal();
+    run_valid_load(AKV_STREAM_Q, 2, 64, 10, 4'hc,
+                   QBase + 2 + 2 * 128, 0);
+    run_valid_load(AKV_STREAM_K, 7, 64, 12, 4'hd,
+                   KBase + 2 + 7 * 128, 0);
+    run_valid_load(AKV_STREAM_V, 3, 64, 14, 4'he,
+                   VBase + 2 + 3 * 128, 0);
+
+    $display("AKV engine PASS: D64/D128 aligned/unaligned fill, refill/replay, validation matrix, descriptor/Q/K/V MMU, PMA, and AXI faults");
     $finish;
   end
 

@@ -70,6 +70,7 @@ sources:
     - hardware/src/vlsu/qbs/qbs_compute_engine.sv
     - hardware/src/vlsu/qbs/qbs_commit.sv
     - hardware/src/vlsu/qbs/qbs_engine.sv
+    - hardware/src/vlsu/akv/akv_context.sv
     - hardware/src/vlsu/akv/akv_engine.sv
     # Level 2
     - hardware/src/lane/operand_queues_stage.sv

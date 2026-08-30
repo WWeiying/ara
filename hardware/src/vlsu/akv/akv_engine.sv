@@ -101,11 +101,10 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   );
 
   localparam int unsigned RangeBytesWidth = 16;
-  localparam int unsigned ContextBanks = 32;
-  localparam int unsigned ContextBankDepth = AkvContextBytes / ContextBanks;
+  localparam int unsigned ContextBytesPerWord = 32;
   localparam int unsigned SlotBytes = AkvMaxHeadDim * 2;
-  localparam int unsigned RowsPerSlot = SlotBytes / ContextBanks;
-  localparam int unsigned WordsPerRegister = VLEN / 8 / ContextBanks;
+  localparam int unsigned WordsPerRegister =
+      VLEN / 8 / ContextBytesPerWord;
 
   typedef enum logic [1:0] {
     AKV_RANGE_DESCRIPTOR,
@@ -164,11 +163,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [5:0] range_issue_index_q;
   logic [5:0] range_completion_count_q;
 
-  logic [7:0] context_bank_q [ContextBanks][ContextBankDepth];
-
   logic [4:0] replay_slot_q;
   logic [3:0] replay_word_q;
-  logic [7:0] replay_data_q [ContextBanks];
+  logic [255:0] replay_data;
   logic [NrLanes-1:0] replay_accepted_q;
   logic [NrLanes-1:0] replay_final_seen_q;
 
@@ -201,6 +198,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   exception_t read_fault_mmu_exception;
   logic read_busy;
   logic read_range_fire, read_data_fire, read_completion_fire;
+  logic [4:0] context_write_slot;
+  logic context_write_busy;
 
   logic [5:0] payload_range_count;
   logic [15:0] payload_row_bytes;
@@ -390,7 +389,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign payload_complete = state_q == AKV_ENGINE_PAYLOAD &&
       range_issue_index_q == payload_range_count &&
       (range_completion_count_q + read_completion_fire ==
-       payload_range_count);
+       payload_range_count) && !context_write_busy;
 
   qbs_read_engine #(
     .AxiDataWidth    (AxiDataWidth),
@@ -461,6 +460,35 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .busy_o                        (read_busy)
   );
 
+  always_comb begin
+    unique case (read_data_tag.role)
+      AKV_RANGE_Q:
+        context_write_slot = 5'(unsigned'(read_data_tag.index));
+      AKV_RANGE_K:
+        context_write_slot =
+            5'(AkvMaxQRows + unsigned'(read_data_tag.index));
+      default:
+        context_write_slot = 5'(AkvMaxQRows + AkvTileTokens +
+                                unsigned'(read_data_tag.index));
+    endcase
+  end
+
+  akv_context i_context (
+    .clk_i,
+    .rst_ni,
+    .write_valid_i  (read_data_fire &&
+                     read_data_tag.role != AKV_RANGE_DESCRIPTOR),
+    .write_slot_i   (context_write_slot),
+    .write_offset_i (read_data_offset[7:0]),
+    .write_data_i   (read_data),
+    .write_strb_i   (read_data_strb),
+    .write_busy_o   (context_write_busy),
+    .replay_read_i  (state_q == AKV_ENGINE_REPLAY_READ),
+    .replay_slot_i  (replay_slot_q),
+    .replay_word_i  (replay_word_q),
+    .replay_data_o  (replay_data)
+  );
+
   always_comb begin : form_replay_result
     for (int unsigned lane = 0; lane < NrLanes; lane++) begin
       ldu_result_req_o[lane] = state_q == AKV_ENGINE_REPLAY_WRITE &&
@@ -473,13 +501,13 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     end
 
     for (int unsigned logical_byte = 0;
-         logical_byte < ContextBanks; logical_byte++) begin
+         logical_byte < ContextBytesPerWord; logical_byte++) begin
       automatic int unsigned physical_byte =
           shuffle_index(logical_byte, NrLanes, EW16);
       automatic int unsigned lane = physical_byte / 8;
       automatic int unsigned lane_byte = physical_byte % 8;
       ldu_result_wdata_o[lane][lane_byte*8 +: 8] =
-          replay_data_q[logical_byte];
+          replay_data[logical_byte*8 +: 8];
     end
   end
 
@@ -771,30 +799,6 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         else
           kv_external_bytes_o <= kv_external_bytes_o +
               32'($countones(read_data_strb));
-        for (int unsigned byte_lane = 0;
-             byte_lane < AxiDataWidth / 8; byte_lane++) begin
-          automatic int unsigned slot =
-              read_data_tag.role == AKV_RANGE_Q
-                  ? unsigned'(read_data_tag.index)
-                  : (read_data_tag.role == AKV_RANGE_K
-                      ? AkvMaxQRows + unsigned'(read_data_tag.index)
-                      : AkvMaxQRows + AkvTileTokens +
-                        unsigned'(read_data_tag.index));
-          automatic int unsigned global_byte =
-              slot * SlotBytes + unsigned'(read_data_offset) + byte_lane;
-          if (read_data_strb[byte_lane]) begin
-            context_bank_q[global_byte % ContextBanks]
-                          [global_byte / ContextBanks] <=
-                read_data[byte_lane*8 +: 8];
-          end
-        end
-      end
-
-      if (state_q == AKV_ENGINE_REPLAY_READ) begin
-        for (int unsigned bank = 0; bank < ContextBanks; bank++)
-          replay_data_q[bank] <= context_bank_q[bank]
-              [unsigned'(replay_slot_q) * RowsPerSlot +
-               unsigned'(replay_word_q)];
       end
 
       if (state_q == AKV_ENGINE_REPLAY_WRITE) begin
@@ -805,7 +809,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           replay_backpressure_cycles_o <=
               replay_backpressure_cycles_o + 1'b1;
         if (&replay_accepted_next && &replay_final_next) begin
-          replay_bytes_o <= replay_bytes_o + ContextBanks;
+          replay_bytes_o <= replay_bytes_o + ContextBytesPerWord;
           replay_accepted_q <= '0;
           replay_final_seen_q <= '0;
           if (unsigned'(replay_word_q) + 1 != replay_word_count)
@@ -826,8 +830,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         else $fatal(1, "AKV v1 requires a 128-bit AXI read interface");
       assert (VAddrWidth == 64)
         else $fatal(1, "AKV v1 requires 64-bit virtual addresses");
-      assert (AkvContextBytes % ContextBanks == 0);
-      assert (SlotBytes % ContextBanks == 0);
+      assert (AkvContextBytes % ContextBytesPerWord == 0);
+      assert (SlotBytes % ContextBytesPerWord == 0);
     end
   end
 
