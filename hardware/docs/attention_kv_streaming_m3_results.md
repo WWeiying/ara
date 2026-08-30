@@ -15,8 +15,11 @@ milestone 4 and are deliberately not claimed here.
   first eight-token K/V tile through the existing translated VLSU read path.
 - `akvfill.refill` preserves descriptor and Q state while atomically replacing
   the K/V tile. A failed full or refill leaves no valid hidden context.
-- The hidden payload is a 6,144-byte, 32-bank by 192-row byte array. Its current
-  RTL form is a banked register array; SRAM mapping and timing are not assumed.
+- At the milestone-3 commit, the hidden payload was a 6,144-byte, 32-bank by
+  192-row byte register array. Milestone 4 replaces that implementation with
+  the SRAM-backed context documented in
+  `attention_kv_streaming_m4_results.md`; the v1 architecture contract is
+  unchanged.
 - `akvload.v` validates context, selector, D, destination alignment, and register
   span before issuing any write. It replays 128 or 256 bytes through the normal
   LDU result ports, preserving Ara's VRF hazards, byte enables, and completion.
