@@ -276,8 +276,11 @@ At reset the context is empty. Full fill invalidates any old context at
 acceptance. Refill makes the current tile unavailable while preserving Q only
 as implementation-private temporary state; software cannot issue a load until
 the refill commits. Any descriptor, translation, PMA, AXI, protocol, or payload
-fault invalidates the complete context. Retrying after a fault therefore uses
-a full fill, which avoids ambiguous mixtures of old Q and new K/V state.
+fault during full fill or refill invalidates the complete context. Retrying such
+a command uses a full fill, which avoids ambiguous mixtures of old Q and new K/V
+state. A local-load validation fault has no hidden-state or VRF side effect and
+preserves a previously committed context, so software may correct the selector
+or destination and retry the load.
 
 Payload writes during fill are speculative hidden-state writes. The ready bit
 is asserted only after all required bytes arrive and every range completes.
@@ -380,7 +383,9 @@ The RTL milestone is not complete until it proves all of the following:
 - every accepted local load produces exactly the expected LDU result words and
   one sequencer completion;
 - normal VLSU, QBS, and AKV ownership/grant paths are mutually exclusive;
-- reset, release, and every terminal fault invalidate the required state;
+- reset and release invalidate the context; every full-fill, refill, or read
+  terminal fault invalidates it, while a side-effect-free local-load validation
+  fault preserves a previously committed context;
 - no AKV arithmetic path or hidden `fflags` update exists;
 - disabled-AKV representative RVV and QBS regressions remain unchanged; and
 - bounded assertions cover command acceptance, byte counts, range completion,

@@ -622,6 +622,29 @@ module qbs_read_engine_tb;
         payload_byte_count != 0)
       $fatal(1, "ordered fault arbitration accounting mismatch");
 
+    // A younger planner fault waits for an older successful response. Draining
+    // that response must keep burst metadata aligned and preserve the planner
+    // fault instead of fabricating an AXI protocol fault at RLAST.
+    clear_read_counters();
+    hold_axi_responses = 1'b1;
+    physical_range_allowed = 1'b1;
+    ar_base = ar_log_count;
+    begin_score(64'hd000, 256, 17);
+    send_range(64'hd000, 256, 17);
+    while (ar_log_count != ar_base + 1) @(posedge clk);
+    physical_range_allowed = 1'b0;
+    send_range(64'he000, 16, 18);
+    wait (physical_check_valid && physical_check_addr == 64'he000);
+    repeat (2) @(posedge clk);
+    if (fault_valid)
+      $fatal(1, "younger planner fault bypassed an older clean response");
+    hold_axi_responses = 1'b0;
+    wait_fault(QBS_READ_FAULT_PMA, 18, 64'he000);
+    physical_range_allowed = 1'b1;
+    if (ar_log_count != ar_base + 1 || ar_count != 1 ||
+        payload_byte_count != 0)
+      $fatal(1, "clean drain changed planner-fault attribution");
+
     // Exercise the AXI maximum burst length at a page boundary.
     clear_read_counters();
     ar_base = ar_log_count;

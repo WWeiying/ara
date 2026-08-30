@@ -182,6 +182,7 @@ module qbs_read_engine import qbs_pkg::*; #(
   logic burst_pop;
   logic r_fire;
   logic data_fire;
+  logic response_metadata_fire;
   logic range_completion_event;
   logic translation_complete;
 
@@ -327,8 +328,9 @@ module qbs_read_engine import qbs_pkg::*; #(
   assign response_ok = axi_r_i.resp == axi_pkg::RESP_OKAY ||
                        axi_r_i.resp == axi_pkg::RESP_EXOKAY;
   assign response_error = axi_r_valid_i && burst_fifo_count_q != 0 &&
-                          !response_ok;
+                          !response_drain_q && !response_ok;
   assign protocol_error = axi_r_valid_i && burst_fifo_count_q != 0 &&
+                          !response_drain_q &&
                           (axi_r_i.last != expected_last);
   assign response_fault_event = response_error || protocol_error;
   assign response_fault_kind = response_error
@@ -355,6 +357,11 @@ module qbs_read_engine import qbs_pkg::*; #(
 
   assign r_fire = axi_r_valid_i && axi_r_ready_o;
   assign data_fire = data_valid_o && data_ready_i && axi_r_ready_o;
+  // A planner fault stops payload delivery but older AXI responses must still
+  // advance their burst metadata while draining. Otherwise a legal RLAST is
+  // compared against stale beats_left and can fabricate an earlier fault.
+  assign response_metadata_fire = r_fire && !response_fault_event &&
+                                  !response_drain_q;
   assign burst_pop = r_fire && axi_r_i.last;
   assign range_completion_event = data_fire && expected_last && axi_r_i.last &&
                                   response_head.range_last;
@@ -528,7 +535,7 @@ module qbs_read_engine import qbs_pkg::*; #(
         burst_wr_q <= burst_wr_q + 1'b1;
       end
 
-      if (data_fire && !burst_pop) begin
+      if (response_metadata_fire && !burst_pop) begin
         burst_fifo_q[burst_rd_q].bytes_left <=
             response_head.bytes_left - beat_take_bytes;
         burst_fifo_q[burst_rd_q].beats_left <=
