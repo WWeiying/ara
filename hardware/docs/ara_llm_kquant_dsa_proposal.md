@@ -450,7 +450,7 @@ activation-side profile，不能悄悄改变同一 `profile_id` 的数学结果�
 
 FP16 super-scale 扩展到 FP32 是精确转换；block 按 K 地址递增顺序更新 FP32 accumulator。
 数值契约 version 1 固定以下逐 output、逐 K-block 的 FP32 操作顺序，其中每个
-`fcvt/fmul/fmadd` 均使用固定 RNE 并在每步舍入；动态 `frm` 不参与 QBS v1：
+`fcvt/fmul/fmadd` 均使用固定 RNE 并在每步舍入；动态 `frm` 不参与 QBS numerical contract v1：
 
 ```text
 Q4_K:
@@ -839,10 +839,10 @@ A_M4_INTERLEAVED:
   A4(b) = activation_base + b * sizeof(block_q8_Kx4)
 ```
 
-其中 `n` 是命令内输出行，`m` 是 activation context，`b` 是 K-block。
+其中 `n` 是命令内输出行，`m` 是 activation row，`b` 是 K-block。
 `A_M4_INTERLEAVED` 对应 llama.cpp 的 `block_q8_Kx4` 语义：四个 `d`、四路交错的 `qs`
 和四路交错的 `bsums` 总计 1168 B；首版只在 `M=4` 时接受该 layout。非 canonical stride
-需要一次性 repack 或 RVV fallback，不在 v1 descriptor 中增加任意 stride。
+需要一次性 repack 或 RVV fallback，不在 descriptor v2 中增加任意 stride。
 
 `W_R4_BLOCK_MAJOR` 的 final N microtile 必须由软件补齐到四个合法 block，但 hardware 只
 更新 `n<N` 的 accumulator；`W_ROW_MAJOR` 则不读取 inactive row。两种 weight layout 与

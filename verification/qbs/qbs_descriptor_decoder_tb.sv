@@ -15,6 +15,9 @@ module qbs_descriptor_decoder_tb;
   qbs_activation_profile_e activation_profile;
   qbs_weight_layout_e weight_layout;
   qbs_activation_layout_e activation_layout;
+  qbs_activation_access_e activation_access;
+  logic [3:0] context_id;
+  logic [7:0] context_generation;
   logic [5:0] n;
   logic [8:0] k_blocks;
   logic [15:0] weight_block_bytes;
@@ -40,6 +43,9 @@ module qbs_descriptor_decoder_tb;
     .activation_profile_o          (activation_profile),
     .weight_layout_o               (weight_layout),
     .activation_layout_o           (activation_layout),
+    .activation_access_o           (activation_access),
+    .context_id_o                  (context_id),
+    .context_generation_o          (context_generation),
     .n_o                            (n),
     .k_blocks_o                     (k_blocks),
     .weight_block_bytes_o           (weight_block_bytes),
@@ -63,6 +69,9 @@ module qbs_descriptor_decoder_tb;
     .activation_profile_o          (),
     .weight_layout_o               (),
     .activation_layout_o           (),
+    .activation_access_o           (),
+    .context_id_o                  (),
+    .context_generation_o          (),
     .n_o                            (),
     .k_blocks_o                     (),
     .weight_block_bytes_o           (),
@@ -107,7 +116,7 @@ module qbs_descriptor_decoder_tb;
     m = 1;
     vd = 0;
 
-    descriptor_header = make_header(1, 1, 1, 1, 1, 32, 64);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 32, 64);
     check_error(QBS_VALIDATION_OK);
     if (weight_block_bytes != 144 || weight_storage_bytes != 294912 ||
         activation_storage_bytes != 18688 ||
@@ -115,7 +124,7 @@ module qbs_descriptor_decoder_tb;
         activation_last_address != 64'h88ff)
       $fatal(1, "Q4 descriptor derived range mismatch");
 
-    descriptor_header = make_header(1, 2, 1, 2, 2, 31, 35);
+    descriptor_header = make_header(QbsDescriptorVersion, 2, 1, 2, 2, 31, 35);
     m = 4;
     vd = 4;
     check_error(QBS_VALIDATION_OK);
@@ -123,7 +132,7 @@ module qbs_descriptor_decoder_tb;
         activation_storage_bytes != 40880)
       $fatal(1, "Q6 R4/M4 descriptor derived size mismatch");
 
-    descriptor_header = make_header(1, 3, 2, 1, 1, 32, 64);
+    descriptor_header = make_header(QbsDescriptorVersion, 3, 2, 1, 1, 32, 64);
     check_error(QBS_VALIDATION_OK);
     if (weight_block_bytes != 18 || activation_block_bytes != 34 ||
         weight_storage_bytes != 36864 || activation_storage_bytes != 8704 ||
@@ -131,7 +140,7 @@ module qbs_descriptor_decoder_tb;
         activation_last_address != 64'h0000_0000_0000_61ff)
       $fatal(1, "Q4_0/Q8_0 descriptor derived range mismatch");
 
-    descriptor_header = make_header(1, 3, 2, 1, 1, 1, 256);
+    descriptor_header = make_header(QbsDescriptorVersion, 3, 2, 1, 1, 1, 256);
     m = 1;
     vd = 0;
     check_error(QBS_VALIDATION_OK);
@@ -145,33 +154,62 @@ module qbs_descriptor_decoder_tb;
     check_error(QBS_VALIDATION_DESCRIPTOR_ALIGNMENT);
     descriptor_address = 64'h1000;
 
-    descriptor_header = make_header(2, 1, 1, 1, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion + 1,
+                                    1, 1, 1, 1, 4, 2);
     check_error(QBS_VALIDATION_DESCRIPTOR_VERSION);
-    descriptor_header = make_header(1, 1, 1, 1, 1, 4, 2) |
-                        (64'h1 << 33);
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4, 2) |
+                        (64'h1 << 47);
     check_error(QBS_VALIDATION_DESCRIPTOR_RESERVED);
-    descriptor_header = make_header(1, 15, 1, 1, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 15, 1, 1, 1, 4, 2);
     check_error(QBS_VALIDATION_WEIGHT_PROFILE);
-    descriptor_header = make_header(1, 1, 2, 1, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 2, 1, 1, 4, 2);
     check_error(QBS_VALIDATION_ACTIVATION_PROFILE);
-    descriptor_header = make_header(1, 1, 1, 3, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 3, 1, 4, 2);
     check_error(QBS_VALIDATION_WEIGHT_LAYOUT);
-    descriptor_header = make_header(1, 1, 1, 1, 3, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 3, 4, 2);
     check_error(QBS_VALIDATION_ACTIVATION_LAYOUT);
 
-    descriptor_header = make_header(1, 1, 1, 1, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4, 2) |
+                        (64'h1 << QbsDescContextIdLsb);
+    check_error(QBS_VALIDATION_CONTEXT_ENCODING);
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4, 2) |
+                        (64'(QBS_ACTIVATION_ACCESS_FILL) <<
+                         QbsDescActivationAccessLsb) |
+                        (64'h1 << QbsDescContextIdLsb);
+    check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4,
+                                    QbsActivationContextMaxKBlocks) |
+                        (64'(QBS_ACTIVATION_ACCESS_FILL) <<
+                         QbsDescActivationAccessLsb) |
+                        (64'ha5 << QbsDescContextGenerationLsb);
+    check_error(QBS_VALIDATION_OK);
+    if (activation_access != QBS_ACTIVATION_ACCESS_FILL ||
+        context_id != 0 || context_generation != 8'ha5)
+      $fatal(1, "QBS context fields decoded incorrectly");
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4,
+                                    QbsActivationContextMaxKBlocks + 1) |
+                        (64'(QBS_ACTIVATION_ACCESS_FILL) <<
+                         QbsDescActivationAccessLsb);
+    check_error(QBS_VALIDATION_CONTEXT_UNSUPPORTED);
+
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 4, 2);
     m = 0;
     check_error(QBS_VALIDATION_M_RANGE);
     m = 1;
     vd = 0;
-    descriptor_header = make_header(1, 1, 1, 1, 1, 9, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 9, 2);
     #1;
     if (small_valid || small_error != QBS_VALIDATION_N_RANGE)
       $fatal(1, "small-VLEN N limit was not enforced");
 
-    descriptor_header = make_header(1, 1, 1, 1, 1, 4, 256);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 4, 256);
     check_error(QBS_VALIDATION_OK);
-    descriptor_header = make_header(1, 1, 1, 1, 1, 4, 2);
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 1, 1, 4, 2);
     m = 3;
     vd = 2;
     check_error(QBS_VALIDATION_VD_ALIGNMENT);
@@ -190,6 +228,14 @@ module qbs_descriptor_decoder_tb;
     descriptor_weight_base = 64'h2000;
     activation_base = 64'hffff_ffff_ffff_fffc;
     check_error(QBS_VALIDATION_ACTIVATION_RANGE_OVERFLOW);
+
+    descriptor_header = make_header(QbsDescriptorVersion,
+                                    1, 1, 1, 1, 4, 2) |
+                        (64'(QBS_ACTIVATION_ACCESS_REUSE) <<
+                         QbsDescActivationAccessLsb) |
+                        (64'h7 << QbsDescContextGenerationLsb);
+    activation_base = 64'hffff_ffff_ffff_ffff;
+    check_error(QBS_VALIDATION_OK);
 
     $display("QBS descriptor decoder PASS");
     $finish;

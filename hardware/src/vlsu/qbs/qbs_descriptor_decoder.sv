@@ -17,6 +17,9 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
   output qbs_activation_profile_e  activation_profile_o,
   output qbs_weight_layout_e       weight_layout_o,
   output qbs_activation_layout_e   activation_layout_o,
+  output qbs_activation_access_e   activation_access_o,
+  output logic [3:0]               context_id_o,
+  output logic [7:0]               context_generation_o,
   output logic [5:0]               n_o,
   output logic [8:0]               k_blocks_o,
   output logic [15:0]              weight_block_bytes_o,
@@ -45,6 +48,10 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
         qbs_weight_layout_e'(descriptor_header_i[15:12]);
     activation_layout_o =
         qbs_activation_layout_e'(descriptor_header_i[19:16]);
+    activation_access_o =
+        qbs_activation_access_e'(descriptor_header_i[34:33]);
+    context_id_o = descriptor_header_i[38:35];
+    context_generation_o = descriptor_header_i[46:39];
     n_o = {1'b0, descriptor_header_i[24:20]} + 1'b1;
     k_blocks_o = {1'b0, descriptor_header_i[32:25]} + 1'b1;
 
@@ -99,18 +106,33 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
       error_o = QBS_VALIDATION_N_RANGE;
     else if (unsigned'(k_blocks_o) > QbsMaxKBlocks)
       error_o = QBS_VALIDATION_K_RANGE;
+    else if (activation_access_o == QBS_ACTIVATION_ACCESS_DIRECT &&
+             (context_id_o != '0 || context_generation_o != '0))
+      error_o = QBS_VALIDATION_CONTEXT_ENCODING;
+    else if (activation_access_o != QBS_ACTIVATION_ACCESS_DIRECT &&
+             (unsigned'(context_id_o) >= QbsActivationContextCount ||
+              activation_profile_o != QBS_ACTIVATION_PROFILE_Q8_K ||
+              activation_layout_o != QBS_ACTIVATION_LAYOUT_ROW_MAJOR ||
+              unsigned'(m_i) > QbsActivationContextMaxM ||
+              unsigned'(k_blocks_o) > QbsActivationContextMaxKBlocks))
+      error_o = QBS_VALIDATION_CONTEXT_UNSUPPORTED;
     else if ((unsigned'(vd_i) % destination_registers) != 0 ||
              unsigned'(vd_i) + destination_registers > 32)
       error_o = QBS_VALIDATION_VD_ALIGNMENT;
     else if (descriptor_weight_base_i[
                  QbsWeightBaseAlignmentLog2-1:0] != '0)
       error_o = QBS_VALIDATION_WEIGHT_ALIGNMENT;
-    else if (activation_base_i[
+    else if (activation_access_o inside {
+                 QBS_ACTIVATION_ACCESS_DIRECT,
+                 QBS_ACTIVATION_ACCESS_FILL} &&
+             activation_base_i[
                  QbsActivationBaseAlignmentLog2-1:0] != '0)
       error_o = QBS_VALIDATION_ACTIVATION_ALIGNMENT;
     else if (weight_end_extended[64])
       error_o = QBS_VALIDATION_WEIGHT_RANGE_OVERFLOW;
-    else if (activation_end_extended[64])
+    else if (activation_access_o inside {
+                 QBS_ACTIVATION_ACCESS_DIRECT,
+                 QBS_ACTIVATION_ACCESS_FILL} && activation_end_extended[64])
       error_o = QBS_VALIDATION_ACTIVATION_RANGE_OVERFLOW;
 
     valid_o = error_o == QBS_VALIDATION_OK;

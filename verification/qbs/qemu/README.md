@@ -45,6 +45,15 @@ elements, and accumulates command floating-point exception flags into `fflags`.
 Numerical-contract v1 always uses round-to-nearest-even (RNE); the dynamic
 `frm` CSR does not affect a QBS command.
 
+Descriptor v2 also models the explicit Q8_K activation context. `DIRECT`
+retains the original behavior. `FILL` reads the activation payload into a
+temporary snapshot and publishes ID, generation, profile, layout, M, and K
+metadata only after successful execution. `REUSE` executes from that snapshot
+without reading guest activation memory; `RELEASE` does the same and
+invalidates it only after success. Reset, aborted FILL, stale generation, or
+metadata mismatch cannot expose partial or unrelated data. This is an
+architectural state model, not an RTL timing model.
+
 QEMU cannot reproduce the implementation-specific Ara PMA map exactly. Its
 functional contract is therefore deliberately conservative: the complete
 descriptor range must be directly RAM-backed before descriptor bytes are
@@ -55,6 +64,9 @@ a byte-load fallback. The short `qemu-contract-check` regression covers the
 fixed-RNE rule, descriptor/activation/weight UART-MMIO rejection, legal
 payloads crossing a 4-KiB page, and RAM ranges whose tail enters an unmapped
 region. Faulting cases also verify that the destination vector remains intact.
+The same regression checks DIRECT, FILL/REUSE/RELEASE, stale-generation and
+metadata mismatch faults, abort safety, and that successful REUSE does not
+access the guest activation range.
 
 The nine supported profile pairs are:
 

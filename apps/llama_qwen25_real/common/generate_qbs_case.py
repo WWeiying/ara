@@ -113,7 +113,7 @@ def main() -> None:
     )
     provenance["offline_repack_excluded"] = True
     provenance["qbs"] = {
-        "descriptor_version": 1,
+        "descriptor_version": 2,
         "weight_layout": "W_R4_BLOCK_MAJOR",
         "activation_layout": (
             "A_M4_INTERLEAVED" if uses_m4_activation_pack else "A_ROW_MAJOR"

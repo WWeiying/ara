@@ -7,14 +7,14 @@ package qbs_pkg;
   localparam bit QbsEnable = 1'b0;
 `endif
 
-  localparam int unsigned QbsArchitectureVersion = 1;
+  localparam int unsigned QbsArchitectureVersion = 2;
   localparam int unsigned QbsNumericalContractVersion = 1;
   localparam logic [2:0] QbsRoundingModeRne = 3'd0;
   localparam logic [2:0] QbsNumericalRoundingMode =
       QbsRoundingModeRne;
   localparam bit QbsNumericalUsesDynamicFrm =
       1'b0;
-  localparam int unsigned QbsDescriptorVersion = 1;
+  localparam int unsigned QbsDescriptorVersion = 2;
   localparam int unsigned QbsDescriptorBytes = 16;
   localparam int unsigned QbsDescriptorAlignmentLog2 = 4;
 
@@ -29,6 +29,10 @@ package qbs_pkg;
   localparam int unsigned QbsBlockElements = 256;
   localparam int unsigned QbsWeightBaseAlignmentLog2 = 1;
   localparam int unsigned QbsActivationBaseAlignmentLog2 = 2;
+  localparam int unsigned QbsActivationContextCount = 1;
+  localparam int unsigned QbsActivationContextMaxM = 1;
+  localparam int unsigned QbsActivationContextMaxKBlocks = 16;
+  localparam int unsigned QbsActivationContextGenerationBits = 8;
 
   typedef enum logic [1:0] {
     QBS_SCALE_INVALID = 2'd0,
@@ -144,6 +148,13 @@ package qbs_pkg;
     QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 4'd2
   } qbs_activation_layout_e;
 
+  typedef enum logic [1:0] {
+    QBS_ACTIVATION_ACCESS_DIRECT = 2'd0,
+    QBS_ACTIVATION_ACCESS_FILL = 2'd1,
+    QBS_ACTIVATION_ACCESS_REUSE = 2'd2,
+    QBS_ACTIVATION_ACCESS_RELEASE = 2'd3
+  } qbs_activation_access_e;
+
   // Internal validation result. These values are not software-visible ABI.
   typedef enum logic [4:0] {
     QBS_VALIDATION_OK = 5'd0,
@@ -161,7 +172,12 @@ package qbs_pkg;
     QBS_VALIDATION_WEIGHT_ALIGNMENT = 5'd12,
     QBS_VALIDATION_ACTIVATION_ALIGNMENT = 5'd13,
     QBS_VALIDATION_WEIGHT_RANGE_OVERFLOW = 5'd14,
-    QBS_VALIDATION_ACTIVATION_RANGE_OVERFLOW = 5'd15
+    QBS_VALIDATION_ACTIVATION_RANGE_OVERFLOW = 5'd15,
+    QBS_VALIDATION_CONTEXT_ENCODING = 5'd16,
+    QBS_VALIDATION_CONTEXT_UNSUPPORTED = 5'd17,
+    QBS_VALIDATION_CONTEXT_INVALID = 5'd18,
+    QBS_VALIDATION_CONTEXT_GENERATION = 5'd19,
+    QBS_VALIDATION_CONTEXT_METADATA = 5'd20
   } qbs_validation_error_e;
 
   // Internal read-path fault attribution; not software-visible ABI.
@@ -177,7 +193,7 @@ package qbs_pkg;
   typedef struct packed {
     logic [63:0] weight_base;
     logic [63:0] header;
-  } qbs_descriptor_v1_t;
+  } qbs_descriptor_v2_t;
 
   localparam int unsigned QbsDescVersionLsb = 0;
   localparam int unsigned QbsDescWeightProfileLsb = 4;
@@ -186,7 +202,10 @@ package qbs_pkg;
   localparam int unsigned QbsDescActivationLayoutLsb = 16;
   localparam int unsigned QbsDescNMinus1Lsb = 20;
   localparam int unsigned QbsDescKBlocksMinus1Lsb = 25;
-  localparam int unsigned QbsDescReservedLsb = 33;
+  localparam int unsigned QbsDescActivationAccessLsb = 33;
+  localparam int unsigned QbsDescContextIdLsb = 35;
+  localparam int unsigned QbsDescContextGenerationLsb = 39;
+  localparam int unsigned QbsDescReservedLsb = 47;
 
   function automatic int unsigned qbs_weight_block_bytes(
       input qbs_weight_profile_e profile
@@ -442,6 +461,15 @@ package qbs_pkg;
         result[47:40] = 8'(QbsWeightBaseAlignmentLog2);
         result[55:48] = 8'(QbsActivationBaseAlignmentLog2);
         result[63:56] = 8'd32;
+      end
+      64'h02: begin
+        result[3:0] = 4'(QbsActivationContextCount);
+        result[6:4] = 3'(QbsActivationContextMaxM - 1);
+        result[11:7] = 5'(QbsActivationContextMaxKBlocks - 1);
+        result[12 + QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;
+        result[31:28] = 4'b1111;
+        result[39:32] = 8'(QbsActivationContextGenerationBits);
+        result[40 + QBS_ACTIVATION_LAYOUT_ROW_MAJOR] = 1'b1;
       end
       64'h11: begin
         result[QBS_ACTIVATION_PROFILE_Q8_K] = 1'b1;

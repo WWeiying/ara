@@ -42,6 +42,8 @@ const char *qbs_status_string(qbs_status_t status) {
     case QBS_STATUS_PROFILE_PAIR: return "profile_pair";
     case QBS_STATUS_LAYOUT: return "layout";
     case QBS_STATUS_SHAPE: return "shape";
+    case QBS_STATUS_CONTEXT_UNSUPPORTED: return "context_unsupported";
+    case QBS_STATUS_CONTEXT_TOKEN: return "context_token";
     case QBS_STATUS_EXECUTION: return "execution";
   }
   return "unknown";
@@ -155,6 +157,44 @@ qbs_status_t qbs_capabilities_decode(uint64_t info0, uint64_t info1,
   return QBS_STATUS_OK;
 }
 
+static qbs_status_t qbs_context_capabilities_decode(
+    uint64_t info2, qbs_capabilities_t *capabilities) {
+  if (capabilities == NULL) return QBS_STATUS_BAD_ARGUMENT;
+  capabilities->activation_context_count = (uint8_t)(info2 & 0x0fu);
+  capabilities->activation_context_max_m =
+      (uint8_t)(((info2 >> 4) & 0x07u) + 1u);
+  capabilities->activation_context_max_k_blocks =
+      (uint8_t)(((info2 >> 7) & 0x1fu) + 1u);
+  capabilities->activation_context_profiles =
+      (uint16_t)((info2 >> 12) & 0xffffu);
+  capabilities->activation_context_access_modes =
+      (uint8_t)((info2 >> 28) & 0x0fu);
+  capabilities->activation_context_generation_bits =
+      (uint8_t)((info2 >> 32) & 0xffu);
+  capabilities->activation_context_layouts =
+      (uint16_t)((info2 >> 40) & 0xffffu);
+
+  const uint16_t expected_profiles =
+      (uint16_t)(UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);
+  const uint16_t expected_layouts =
+      (uint16_t)(UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+  if (capabilities->activation_context_count !=
+          QBS_ACTIVATION_CONTEXT_COUNT ||
+      capabilities->activation_context_max_m !=
+          QBS_ACTIVATION_CONTEXT_MAX_M ||
+      capabilities->activation_context_max_k_blocks !=
+          QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS ||
+      capabilities->activation_context_generation_bits !=
+          QBS_ACTIVATION_CONTEXT_GENERATION_BITS ||
+      capabilities->activation_context_access_modes != 0x0fu ||
+      capabilities->activation_context_profiles != expected_profiles ||
+      capabilities->activation_context_layouts != expected_layouts ||
+      (info2 >> 56) != 0) {
+    return QBS_STATUS_CAPABILITY;
+  }
+  return QBS_STATUS_OK;
+}
+
 static uint64_t reference_info(void *context, unsigned index) {
   return qbs_capability_word(index, *(const unsigned *)context);
 }
@@ -165,6 +205,9 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
   memset(device, 0, sizeof(*device));
   qbs_status_t status = qbs_capabilities_decode(
       reader(context, 0), reader(context, 1), &device->capabilities);
+  if (status != QBS_STATUS_OK) return status;
+  status = qbs_context_capabilities_decode(reader(context, 2),
+                                           &device->capabilities);
   if (status != QBS_STATUS_OK) return status;
 
   const unsigned vlen_bits = (unsigned)device->capabilities.max_n * 32u;
@@ -496,6 +539,31 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
 
   plan->needs_activation_gather =
       plan_needs_activation_gather(plan, activation.block_bytes);
+  const uint8_t required_context_access_modes =
+      (uint8_t)((UINT8_C(1) << QBS_ACTIVATION_ACCESS_FILL) |
+                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_REUSE) |
+                (UINT8_C(1) << QBS_ACTIVATION_ACCESS_RELEASE));
+  plan->activation_context_count =
+      device->capabilities.activation_context_count;
+  plan->activation_context_generation_bits =
+      device->capabilities.activation_context_generation_bits;
+  plan->activation_context_eligible =
+      problem->m == 1u &&
+      problem->activation_profile == QBS_ACTIVATION_PROFILE_Q8_K &&
+      problem->activation_storage == QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
+      !plan->split_k && !plan->needs_activation_gather &&
+      plan->k_blocks <= device->capabilities.activation_context_max_k_blocks &&
+      device->capabilities.activation_context_max_m >= 1u &&
+      device->capabilities.activation_context_count != 0u &&
+      device->capabilities.activation_context_generation_bits != 0u &&
+      device->capabilities.activation_context_generation_bits <= 8u &&
+      (device->capabilities.activation_context_access_modes &
+       required_context_access_modes) == required_context_access_modes &&
+      (device->capabilities.activation_context_profiles &
+       (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K)) != 0u &&
+      (device->capabilities.activation_context_layouts &
+       (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR)) != 0u &&
+      problem->n > plan->command_n;
   if (plan->split_k) {
     size_t partial_elements;
     size_t partial_bytes;
@@ -517,6 +585,10 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
       return QBS_STATUS_SIZE_OVERFLOW;
   }
   return QBS_STATUS_OK;
+}
+
+int qbs_plan_supports_activation_context(const qbs_plan_t *plan) {
+  return plan != NULL && plan->activation_context_eligible != 0u;
 }
 
 void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor) {
@@ -609,14 +681,13 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
   return QBS_STATUS_OK;
 }
 
-qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
-                         size_t weights_bytes, const void *activations,
-                         size_t activations_bytes, float *output,
-                         size_t output_capacity_elements,
-                         size_t output_stride_elements, void *workspace,
-                         size_t workspace_bytes,
-                         qbs_command_executor_t executor,
-                         void *executor_context) {
+qbs_status_t qbs_execute_with_options(
+    const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
+    const void *activations, size_t activations_bytes, float *output,
+    size_t output_capacity_elements, size_t output_stride_elements,
+    void *workspace, size_t workspace_bytes,
+    const qbs_execution_options_t *options,
+    qbs_command_executor_t executor, void *executor_context) {
   if (plan == NULL || weights == NULL || activations == NULL ||
       output == NULL || executor == NULL ||
       output_stride_elements < plan->problem.n)
@@ -655,6 +726,21 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
       return QBS_STATUS_BUFFER_ALIGNMENT;
   }
 
+  const bool use_activation_context =
+      options != NULL && options->use_activation_context != 0u;
+  if (use_activation_context) {
+    if (!qbs_plan_supports_activation_context(plan))
+      return QBS_STATUS_CONTEXT_UNSUPPORTED;
+    const qbs_activation_context_token_t token =
+        options->activation_context;
+    if (token.context_id >= plan->activation_context_count)
+      return QBS_STATUS_CONTEXT_TOKEN;
+    if (plan->activation_context_generation_bits < 8u &&
+        token.generation >=
+            (UINT16_C(1) << plan->activation_context_generation_bits))
+      return QBS_STATUS_CONTEXT_TOKEN;
+  }
+
   float *partial = (float *)workspace;
   const size_t partial_bytes = plan->split_k
       ? align_up((size_t)max_command_m(plan) * plan->command_n * sizeof(float),
@@ -688,6 +774,16 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
       command_activation = activation_gather;
     }
 
+    uint8_t activation_access = QBS_ACTIVATION_ACCESS_DIRECT;
+    if (use_activation_context) {
+      if (command.output_start == 0u) {
+        activation_access = QBS_ACTIVATION_ACCESS_FILL;
+      } else if (command.output_start + command.n >= plan->problem.n) {
+        activation_access = QBS_ACTIVATION_ACCESS_RELEASE;
+      } else {
+        activation_access = QBS_ACTIVATION_ACCESS_REUSE;
+      }
+    }
     const qbs_descriptor_fields_t fields = {
         .descriptor_version = QBS_DESCRIPTOR_VERSION,
         .weight_profile = plan->problem.weight_profile,
@@ -696,8 +792,13 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
         .activation_layout = command.activation_layout,
         .n = command.n,
         .k_blocks = command.k_blocks,
+        .activation_access = activation_access,
+        .context_id = use_activation_context
+            ? options->activation_context.context_id : 0u,
+        .context_generation = use_activation_context
+            ? options->activation_context.generation : 0u,
     };
-    const qbs_descriptor_v1_t descriptor = {
+    const qbs_descriptor_t descriptor = {
         .header = qbs_pack_descriptor_header(&fields),
         .weight_base = (uintptr_t)((const uint8_t *)weights +
                                   command.weight_offset_bytes),
@@ -724,4 +825,18 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
       }
     }
   }
+}
+
+qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
+                         size_t weights_bytes, const void *activations,
+                         size_t activations_bytes, float *output,
+                         size_t output_capacity_elements,
+                         size_t output_stride_elements, void *workspace,
+                         size_t workspace_bytes,
+                         qbs_command_executor_t executor,
+                         void *executor_context) {
+  return qbs_execute_with_options(
+      plan, weights, weights_bytes, activations, activations_bytes, output,
+      output_capacity_elements, output_stride_elements, workspace,
+      workspace_bytes, NULL, executor, executor_context);
 }

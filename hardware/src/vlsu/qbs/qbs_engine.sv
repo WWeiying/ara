@@ -1,7 +1,7 @@
 // Copyright 2026
 // SPDX-License-Identifier: SHL-0.51
 
-// Command-level controller for the QBS v1 execution path. All descriptor,
+// Command-level controller for the QBS v2 execution path. All descriptor,
 // activation, and weight traffic shares one translated AXI read engine. The
 // compute engine accumulates into hidden state; architectural VRF writes start
 // only after every command read and all arithmetic have completed without a
@@ -110,7 +110,16 @@ module qbs_engine
     output logic [31:0]                  fp_table_full_cycles_o,
     output logic [31:0]                  accumulator_updates_o,
     output logic [31:0]                  commit_word_count_o,
-    output logic [31:0]                  commit_backpressure_cycles_o
+    output logic [31:0]                  commit_backpressure_cycles_o,
+    output qbs_activation_access_e       activation_access_o,
+    output logic [31:0]                  context_fill_count_o,
+    output logic [31:0]                  context_reuse_count_o,
+    output logic [31:0]                  context_reuse_block_count_o,
+    output logic [31:0]                  context_read_bytes_o,
+    output logic [31:0]                  activation_axi_bytes_saved_o,
+    output logic [31:0]                  context_replay_cycles_o,
+    output logic [31:0]                  context_replay_compute_overlap_cycles_o,
+    output logic [31:0]                  context_validation_fault_count_o
   );
 
   localparam int unsigned RangeBytesWidth = 16;
@@ -127,6 +136,7 @@ module qbs_engine
     logic [1:0]      target;
     logic            weight_bank;
     logic [2:0]      weight_row_count;
+    logic [7:0]      k_block;
   } qbs_range_tag_t;
 
   typedef enum logic [3:0] {
@@ -175,6 +185,9 @@ module qbs_engine
   qbs_activation_profile_e descriptor_activation_profile;
   qbs_weight_layout_e descriptor_weight_layout;
   qbs_activation_layout_e descriptor_activation_layout;
+  qbs_activation_access_e descriptor_activation_access;
+  logic [3:0] descriptor_context_id;
+  logic [7:0] descriptor_context_generation;
   logic [5:0] descriptor_n;
   logic [8:0] descriptor_k_blocks;
   logic [15:0] descriptor_weight_block_bytes;
@@ -188,6 +201,9 @@ module qbs_engine
   qbs_activation_profile_e activation_profile_q;
   qbs_weight_layout_e weight_layout_q;
   qbs_activation_layout_e activation_layout_q;
+  qbs_activation_access_e activation_access_q;
+  logic [3:0] context_id_q;
+  logic [7:0] context_generation_q;
   logic [5:0] n_q;
   logic [8:0] k_blocks_q;
   logic [15:0] weight_block_bytes_q;
@@ -265,6 +281,34 @@ module qbs_engine
   logic [31:0] compute_fp_table_full_cycles;
   logic [31:0] compute_accumulator_updates;
 
+  logic context_fill_begin;
+  logic context_fill_write;
+  logic context_fill_block_complete;
+  logic context_fill_commit;
+  logic context_fill_abort;
+  logic context_release;
+  logic context_lookup_valid;
+  logic context_lookup_match;
+  qbs_validation_error_e context_lookup_error;
+  logic context_replay_start_valid;
+  logic context_replay_start_ready;
+  logic context_replay_data_valid;
+  logic context_replay_data_ready;
+  logic [127:0] context_replay_data;
+  logic [15:0] context_replay_strb;
+  logic [10:0] context_replay_offset;
+  logic context_replay_last;
+  logic context_replay_done;
+  logic context_replay_busy;
+  logic context_valid;
+  logic context_fill_in_progress;
+  logic context_fill_ready_to_commit;
+
+  logic [127:0] compute_activation_write_data;
+  logic [15:0] compute_activation_write_strb;
+  logic [10:0] compute_activation_write_offset;
+  logic [1:0] compute_activation_write_context;
+
   logic commit_start_valid;
   logic commit_start_ready;
   logic commit_done_valid;
@@ -323,6 +367,7 @@ module qbs_engine
   assign success_valid_o = state_q == QBS_ENGINE_SUCCESS;
   assign fault_valid_o = state_q == QBS_ENGINE_FAULT;
   assign result_fflags_o = result_fflags_q;
+  assign activation_access_o = activation_access_q;
   assign fault_is_validation_o = fault_is_validation_q;
   assign validation_error_o = validation_error_q;
   assign read_fault_kind_o = read_fault_kind_q;
@@ -543,6 +588,9 @@ module qbs_engine
     .activation_profile_o         (descriptor_activation_profile),
     .weight_layout_o              (descriptor_weight_layout),
     .activation_layout_o          (descriptor_activation_layout),
+    .activation_access_o          (descriptor_activation_access),
+    .context_id_o                 (descriptor_context_id),
+    .context_generation_o         (descriptor_context_generation),
     .n_o                          (descriptor_n),
     .k_blocks_o                   (descriptor_k_blocks),
     .weight_block_bytes_o         (descriptor_weight_block_bytes),
@@ -562,7 +610,8 @@ module qbs_engine
     read_range_vaddr = '0;
     read_range_bytes = '0;
     read_range_tag = '{role: QBS_RANGE_RESERVED, target: '0,
-                       weight_bank: 1'b0, weight_row_count: '0};
+                       weight_bank: 1'b0, weight_row_count: '0,
+                       k_block: '0};
 
     scheduler_tuple_current =
         scheduler_k_q == compute_expected_k &&
@@ -579,14 +628,19 @@ module qbs_engine
       read_range_vaddr = descriptor_address_q;
       read_range_bytes = RangeBytesWidth'(QbsDescriptorBytes);
       read_range_tag = '{role: QBS_RANGE_DESCRIPTOR, target: '0,
-                         weight_bank: 1'b0, weight_row_count: '0};
+                         weight_bank: 1'b0, weight_row_count: '0,
+                         k_block: '0};
     end else if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
       if (compute_activation_needed &&
+          activation_access_q inside {
+              QBS_ACTIVATION_ACCESS_DIRECT,
+              QBS_ACTIVATION_ACCESS_FILL} &&
           activation_range_index_q < activation_range_count) begin
         read_range_valid = 1'b1;
         read_range_tag = '{role: QBS_RANGE_ACTIVATION,
                            target: activation_range_index_q[1:0],
-                           weight_bank: 1'b0, weight_row_count: '0};
+                           weight_bank: 1'b0, weight_row_count: '0,
+                           k_block: compute_expected_k};
         if (activation_layout_q ==
             QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) begin
           address_offset = 64'(compute_expected_k) *
@@ -614,7 +668,8 @@ module qbs_engine
                                              weight_block_bytes_q);
         read_range_tag = '{role: QBS_RANGE_WEIGHT, target: '0,
                            weight_bank: weight_issue_bank_q,
-                           weight_row_count: weight_issue_row_count};
+                           weight_row_count: weight_issue_row_count,
+                           k_block: weight_issue_k_q};
       end else if (!weight_lookahead_enabled && compute_weight_needed &&
                    weight_range_index_q < weight_range_count) begin
         logical_row = 64'(compute_expected_row_base) +
@@ -636,7 +691,8 @@ module qbs_engine
         read_range_tag = '{role: QBS_RANGE_WEIGHT,
                            target: weight_range_index_q[1:0],
                            weight_bank: compute_expected_weight_bank,
-                           weight_row_count: compute_expected_row_count};
+                           weight_row_count: compute_expected_row_count,
+                           k_block: compute_expected_k};
       end
     end
   end
@@ -648,6 +704,9 @@ module qbs_engine
         read_data_ready = state_q == QBS_ENGINE_DESCRIPTOR_WAIT;
       QBS_RANGE_ACTIVATION:
         read_data_ready = state_q == QBS_ENGINE_RUN &&
+                          activation_access_q inside {
+                              QBS_ACTIVATION_ACCESS_DIRECT,
+                              QBS_ACTIVATION_ACCESS_FILL} &&
                           compute_activation_write_ready;
       QBS_RANGE_WEIGHT:
         read_data_ready = state_q == QBS_ENGINE_RUN &&
@@ -661,9 +720,30 @@ module qbs_engine
       state_q == QBS_ENGINE_RUN;
   assign compute_weight_write_group =
       weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR;
-  assign compute_activation_write_valid = read_data_valid &&
-      read_data_tag.role == QBS_RANGE_ACTIVATION &&
-      state_q == QBS_ENGINE_RUN;
+  assign context_replay_data_ready = state_q == QBS_ENGINE_RUN &&
+      compute_activation_write_ready;
+  assign compute_activation_write_valid = state_q == QBS_ENGINE_RUN &&
+      ((read_data_valid && read_data_tag.role == QBS_RANGE_ACTIVATION &&
+        activation_access_q inside {
+            QBS_ACTIVATION_ACCESS_DIRECT,
+            QBS_ACTIVATION_ACCESS_FILL}) ||
+       (context_replay_data_valid && activation_access_q inside {
+            QBS_ACTIVATION_ACCESS_REUSE,
+            QBS_ACTIVATION_ACCESS_RELEASE}));
+  always_comb begin
+    compute_activation_write_context = read_data_tag.target;
+    compute_activation_write_offset = read_data_offset[10:0];
+    compute_activation_write_data = read_data;
+    compute_activation_write_strb = read_data_strb;
+    if (activation_access_q inside {
+          QBS_ACTIVATION_ACCESS_REUSE,
+          QBS_ACTIVATION_ACCESS_RELEASE}) begin
+      compute_activation_write_context = '0;
+      compute_activation_write_offset = context_replay_offset;
+      compute_activation_write_data = context_replay_data;
+      compute_activation_write_strb = context_replay_strb;
+    end
+  end
 
   assign read_completion_ready =
       (state_q == QBS_ENGINE_DESCRIPTOR_WAIT &&
@@ -742,6 +822,79 @@ module qbs_engine
     .busy_o                         (read_busy)
   );
 
+  assign context_lookup_valid = state_q == QBS_ENGINE_VALIDATE &&
+      descriptor_valid && descriptor_activation_access inside {
+          QBS_ACTIVATION_ACCESS_REUSE,
+          QBS_ACTIVATION_ACCESS_RELEASE};
+  assign context_fill_begin = state_q == QBS_ENGINE_VALIDATE &&
+      descriptor_valid &&
+      descriptor_activation_access == QBS_ACTIVATION_ACCESS_FILL;
+  assign context_fill_write = read_data_fire &&
+      read_data_tag.role == QBS_RANGE_ACTIVATION &&
+      activation_access_q == QBS_ACTIVATION_ACCESS_FILL;
+  assign context_fill_block_complete = read_completion_fire &&
+      read_completion_tag.role == QBS_RANGE_ACTIVATION &&
+      activation_access_q == QBS_ACTIVATION_ACCESS_FILL;
+  assign context_fill_commit = state_q == QBS_ENGINE_COMMIT &&
+      commit_done_valid &&
+      activation_access_q == QBS_ACTIVATION_ACCESS_FILL;
+  assign context_fill_abort = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN &&
+      compute_fault_done &&
+      activation_access_q == QBS_ACTIVATION_ACCESS_FILL;
+  assign context_release = state_q == QBS_ENGINE_COMMIT &&
+      commit_done_valid &&
+      activation_access_q == QBS_ACTIVATION_ACCESS_RELEASE;
+  assign context_replay_start_valid = state_q == QBS_ENGINE_RUN &&
+      scheduler_tuple_current && compute_activation_needed &&
+      activation_access_q inside {
+          QBS_ACTIVATION_ACCESS_REUSE,
+          QBS_ACTIVATION_ACCESS_RELEASE};
+
+  qbs_activation_context i_activation_context (
+    .clk_i,
+    .rst_ni,
+    .fill_begin_i              (context_fill_begin),
+    .fill_context_id_i         (descriptor_context_id),
+    .fill_generation_i         (descriptor_context_generation),
+    .fill_profile_i            (descriptor_activation_profile),
+    .fill_layout_i             (descriptor_activation_layout),
+    .fill_m_i                  (m_q),
+    .fill_k_blocks_i           (descriptor_k_blocks),
+    .fill_write_valid_i        (context_fill_write),
+    .fill_write_k_block_i      (read_data_tag.k_block),
+    .fill_write_offset_i       (read_data_offset[10:0]),
+    .fill_write_data_i         (read_data),
+    .fill_write_strb_i         (read_data_strb),
+    .fill_block_complete_i     (context_fill_block_complete),
+    .fill_complete_k_block_i   (read_completion_tag.k_block),
+    .fill_commit_i             (context_fill_commit),
+    .fill_abort_i              (context_fill_abort),
+    .lookup_valid_i            (context_lookup_valid),
+    .lookup_context_id_i       (descriptor_context_id),
+    .lookup_generation_i       (descriptor_context_generation),
+    .lookup_profile_i          (descriptor_activation_profile),
+    .lookup_layout_i           (descriptor_activation_layout),
+    .lookup_m_i                (m_q),
+    .lookup_k_blocks_i         (descriptor_k_blocks),
+    .lookup_match_o            (context_lookup_match),
+    .lookup_error_o            (context_lookup_error),
+    .release_i                 (context_release),
+    .replay_start_valid_i      (context_replay_start_valid),
+    .replay_start_ready_o      (context_replay_start_ready),
+    .replay_k_block_i          (compute_expected_k),
+    .replay_data_valid_o       (context_replay_data_valid),
+    .replay_data_ready_i       (context_replay_data_ready),
+    .replay_data_o             (context_replay_data),
+    .replay_strb_o             (context_replay_strb),
+    .replay_offset_o           (context_replay_offset),
+    .replay_last_o             (context_replay_last),
+    .replay_done_o             (context_replay_done),
+    .replay_busy_o             (context_replay_busy),
+    .context_valid_o           (context_valid),
+    .fill_in_progress_o        (context_fill_in_progress),
+    .fill_ready_to_commit_o    (context_fill_ready_to_commit)
+  );
+
   assign compute_command_valid = state_q == QBS_ENGINE_COMPUTE_START;
   assign compute_fault = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN ||
       (state_q == QBS_ENGINE_RUN && read_fault_valid);
@@ -771,10 +924,10 @@ module qbs_engine
     .weight_write_strb_i            (read_data_strb),
     .activation_write_valid_i       (compute_activation_write_valid),
     .activation_write_ready_o       (compute_activation_write_ready),
-    .activation_write_context_i     (read_data_tag.target),
-    .activation_write_offset_i      (read_data_offset[10:0]),
-    .activation_write_data_i        (read_data),
-    .activation_write_strb_i        (read_data_strb),
+    .activation_write_context_i     (compute_activation_write_context),
+    .activation_write_offset_i      (compute_activation_write_offset),
+    .activation_write_data_i        (compute_activation_write_data),
+    .activation_write_strb_i        (compute_activation_write_strb),
     .expected_k_block_o             (compute_expected_k),
     .expected_row_base_o            (compute_expected_row_base),
     .expected_row_count_o           (compute_expected_row_count),
@@ -951,11 +1104,13 @@ module qbs_engine
       end
 
       QBS_ENGINE_VALIDATE: begin
-        if (descriptor_valid) begin
+        if (descriptor_valid &&
+            (!context_lookup_valid || context_lookup_match)) begin
           state_d = QBS_ENGINE_COMPUTE_START;
         end else begin
           fault_is_validation_d = 1'b1;
-          validation_error_d = descriptor_error;
+          validation_error_d = descriptor_valid
+              ? context_lookup_error : descriptor_error;
           read_fault_kind_d = QBS_READ_FAULT_NONE;
           fault_vaddr_d = descriptor_address_q;
           fault_mmu_exception_d = '0;
@@ -1022,6 +1177,9 @@ module qbs_engine
       activation_profile_q <= QBS_ACTIVATION_PROFILE_INVALID;
       weight_layout_q <= QBS_WEIGHT_LAYOUT_INVALID;
       activation_layout_q <= QBS_ACTIVATION_LAYOUT_INVALID;
+      activation_access_q <= QBS_ACTIVATION_ACCESS_DIRECT;
+      context_id_q <= '0;
+      context_generation_q <= '0;
       n_q <= '0;
       k_blocks_q <= '0;
       weight_block_bytes_q <= '0;
@@ -1042,6 +1200,14 @@ module qbs_engine
       fault_mmu_exception_q <= '0;
       result_fflags_q <= '0;
       command_cycles_o <= '0;
+      context_fill_count_o <= '0;
+      context_reuse_count_o <= '0;
+      context_reuse_block_count_o <= '0;
+      context_read_bytes_o <= '0;
+      activation_axi_bytes_saved_o <= '0;
+      context_replay_cycles_o <= '0;
+      context_replay_compute_overlap_cycles_o <= '0;
+      context_validation_fault_count_o <= '0;
     end else begin
       state_q <= state_d;
       fault_is_validation_q <= fault_is_validation_d;
@@ -1068,6 +1234,17 @@ module qbs_engine
         fault_mmu_exception_q <= '0;
         result_fflags_q <= '0;
         command_cycles_o <= '0;
+        activation_access_q <= QBS_ACTIVATION_ACCESS_DIRECT;
+        context_id_q <= '0;
+        context_generation_q <= '0;
+        context_fill_count_o <= '0;
+        context_reuse_count_o <= '0;
+        context_reuse_block_count_o <= '0;
+        context_read_bytes_o <= '0;
+        activation_axi_bytes_saved_o <= '0;
+        context_replay_cycles_o <= '0;
+        context_replay_compute_overlap_cycles_o <= '0;
+        context_validation_fault_count_o <= '0;
         weight_issue_k_q <= '0;
         weight_issue_row_base_q <= '0;
         weight_issue_bank_q <= 1'b0;
@@ -1098,12 +1275,40 @@ module qbs_engine
         activation_profile_q <= descriptor_activation_profile;
         weight_layout_q <= descriptor_weight_layout;
         activation_layout_q <= descriptor_activation_layout;
+        activation_access_q <= descriptor_activation_access;
+        context_id_q <= descriptor_context_id;
+        context_generation_q <= descriptor_context_generation;
         n_q <= descriptor_n;
         k_blocks_q <= descriptor_k_blocks;
         weight_block_bytes_q <= descriptor_weight_block_bytes;
         activation_block_bytes_q <= descriptor_activation_block_bytes;
         weight_base_q <= descriptor_q[127:64];
+        if (context_lookup_valid && context_lookup_match) begin
+          context_reuse_count_o <= 32'd1;
+          activation_axi_bytes_saved_o <=
+              32'(descriptor_activation_storage_bytes);
+        end else if (context_lookup_valid) begin
+          context_validation_fault_count_o <= 32'd1;
+        end
       end
+
+      if (context_fill_commit)
+        context_fill_count_o <= 32'd1;
+      if (context_replay_done)
+        context_reuse_block_count_o <=
+            context_reuse_block_count_o + 1'b1;
+      if (context_replay_data_valid && context_replay_data_ready) begin
+        automatic int unsigned replay_bytes = 0;
+        for (int unsigned byte_lane = 0; byte_lane < 16; byte_lane++)
+          if (context_replay_strb[byte_lane]) replay_bytes++;
+        context_read_bytes_o <= context_read_bytes_o + replay_bytes;
+      end
+      if (state_q == QBS_ENGINE_RUN && context_replay_busy)
+        context_replay_cycles_o <= context_replay_cycles_o + 1'b1;
+      if (state_q == QBS_ENGINE_RUN && context_replay_busy &&
+          compute_phase_compute)
+        context_replay_compute_overlap_cycles_o <=
+            context_replay_compute_overlap_cycles_o + 1'b1;
 
       if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
         scheduler_k_q <= '0;
@@ -1157,9 +1362,9 @@ module qbs_engine
 `ifndef SYNTHESIS
   initial begin
     assert (AxiDataWidth == 128)
-      else $fatal(1, "QBS v1 block adapter requires a 128-bit read beat");
+      else $fatal(1, "QBS block adapter requires a 128-bit read beat");
     assert (NrLanes == 4)
-      else $fatal(1, "QBS v1 commit requires four Ara lanes");
+      else $fatal(1, "QBS commit requires four vector lanes");
   end
 
   always_ff @(posedge clk_i) begin
@@ -1197,6 +1402,16 @@ module qbs_engine
           weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)
         assert (compute_expected_row_base[1:0] == 2'b00)
           else $fatal(1, "QBS R4 scheduler row base is not group aligned");
+      if (state_q == QBS_ENGINE_RUN && activation_access_q inside {
+            QBS_ACTIVATION_ACCESS_REUSE,
+            QBS_ACTIVATION_ACCESS_RELEASE}) begin
+        assert (!(read_range_valid &&
+                  read_range_tag.role == QBS_RANGE_ACTIVATION))
+          else $fatal(1, "QBS context reuse issued an activation AXI range");
+        assert (!(read_data_valid &&
+                  read_data_tag.role == QBS_RANGE_ACTIVATION))
+          else $fatal(1, "QBS context reuse consumed activation AXI data");
+      end
       if (weight_lookahead_enabled && state_q == QBS_ENGINE_RUN) begin
         assert (weight_ranges_pending_q <= 2)
           else $fatal(1, "QBS weight lookahead exceeded its two-bank credit");

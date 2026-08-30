@@ -52,6 +52,15 @@ static int test_device_and_profiles(void) {
   CHECK(device.capabilities.requires_vstart_zero);
   CHECK(device.capabilities.idempotent_memory_only);
   CHECK(device.capabilities.requires_accelerator_consistency);
+  CHECK(device.capabilities.activation_context_count == 1);
+  CHECK(device.capabilities.activation_context_max_m == 1);
+  CHECK(device.capabilities.activation_context_max_k_blocks == 16);
+  CHECK(device.capabilities.activation_context_generation_bits == 8);
+  CHECK(device.capabilities.activation_context_access_modes == 0x0f);
+  CHECK(device.capabilities.activation_context_profiles ==
+        (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K));
+  CHECK(device.capabilities.activation_context_layouts ==
+        (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
 
   for (size_t index = 0;
        index < sizeof(weight_profiles) / sizeof(weight_profiles[0]); ++index) {
@@ -251,26 +260,48 @@ typedef struct {
   const uint8_t *weights;
   const uint8_t *activations;
   qbs_command_t commands[128];
+  uint8_t observed_activation_access[128];
   size_t command_count;
   size_t next_command;
+  uint8_t expect_activation_context;
+  qbs_activation_context_token_t expected_token;
 } mock_executor_t;
 
 static qbs_status_t mock_execute(
-    void *opaque, const qbs_descriptor_v1_t *descriptor, unsigned m,
+    void *opaque, const qbs_descriptor_t *descriptor, unsigned m,
     const void *activations, float *output, size_t output_stride,
     unsigned n, int segmented) {
   mock_executor_t *mock = (mock_executor_t *)opaque;
   if (mock->next_command >= mock->command_count)
     return QBS_STATUS_EXECUTION;
-  const qbs_command_t *command = &mock->commands[mock->next_command++];
+  const size_t command_index = mock->next_command++;
+  const qbs_command_t *command = &mock->commands[command_index];
   const qbs_descriptor_fields_t fields =
       qbs_unpack_descriptor_header(descriptor->header);
+  uint8_t expected_access = QBS_ACTIVATION_ACCESS_DIRECT;
+  if (mock->expect_activation_context) {
+    if (command->output_start == 0u) {
+      expected_access = QBS_ACTIVATION_ACCESS_FILL;
+    } else if (command->output_start + command->n >=
+               mock->plan->problem.n) {
+      expected_access = QBS_ACTIVATION_ACCESS_RELEASE;
+    } else {
+      expected_access = QBS_ACTIVATION_ACCESS_REUSE;
+    }
+  }
+  mock->observed_activation_access[command_index] = fields.activation_access;
   if (m != command->m || n != command->n ||
+      fields.descriptor_version != QBS_DESCRIPTOR_VERSION ||
       fields.weight_profile != mock->plan->problem.weight_profile ||
       fields.activation_profile != mock->plan->problem.activation_profile ||
       fields.weight_layout != mock->plan->problem.weight_layout ||
       fields.activation_layout != command->activation_layout ||
       fields.k_blocks != command->k_blocks ||
+      fields.activation_access != expected_access ||
+      fields.context_id != (mock->expect_activation_context
+          ? mock->expected_token.context_id : 0u) ||
+      fields.context_generation != (mock->expect_activation_context
+          ? mock->expected_token.generation : 0u) ||
       descriptor->weight_base !=
           (uintptr_t)(mock->weights + command->weight_offset_bytes) ||
       segmented != mock->plan->split_k)
@@ -587,6 +618,114 @@ static int test_plan_and_execute(void) {
   return 0;
 }
 
+static int test_activation_context_execution(void) {
+  qbs_device_t device;
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+
+  const qbs_problem_t problem = {
+      .weight_profile = QBS_WEIGHT_PROFILE_Q4_K,
+      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR,
+      .m = 1,
+      .n = 65,
+      .k_elements = 6u * QBS_Q4_K_BLOCK_ELEMENTS,
+  };
+  qbs_plan_t plan;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(qbs_plan_supports_activation_context(&plan));
+  CHECK(plan.activation_context_count == 1u);
+  CHECK(plan.activation_context_generation_bits == 8u);
+
+  mock_executor_t mock = {
+      .plan = &plan,
+      .expect_activation_context = 1u,
+      .expected_token = {.context_id = 0u, .generation = 0xa5u},
+  };
+  CHECK(collect_commands(&plan, &mock) == 0);
+  CHECK(mock.command_count == 3u);
+  CHECK(mock.commands[0].n == 32u && mock.commands[1].n == 32u &&
+        mock.commands[2].n == 1u);
+
+  const size_t weight_bytes = qbs_weight_storage_bytes(
+      problem.weight_profile, problem.weight_layout, problem.n,
+      plan.k_blocks);
+  const size_t activation_bytes = qbs_activation_storage_bytes(
+      problem.activation_profile, problem.activation_storage, problem.m,
+      plan.k_blocks);
+  uint8_t *weights = (uint8_t *)calloc(1, weight_bytes);
+  uint8_t *activations = (uint8_t *)calloc(1, activation_bytes);
+  float *output = (float *)calloc(problem.n, sizeof(float));
+  CHECK(weights != NULL && activations != NULL && output != NULL);
+  mock.weights = weights;
+  mock.activations = activations;
+
+  const qbs_execution_options_t options = {
+      .use_activation_context = 1u,
+      .activation_context = mock.expected_token,
+  };
+  CHECK(qbs_execute_with_options(
+            &plan, weights, weight_bytes, activations, activation_bytes,
+            output, problem.n, problem.n, NULL, 0u, &options, mock_execute,
+            &mock) == QBS_STATUS_OK);
+  CHECK(mock.next_command == 3u);
+  CHECK(mock.observed_activation_access[0] == QBS_ACTIVATION_ACCESS_FILL);
+  CHECK(mock.observed_activation_access[1] == QBS_ACTIVATION_ACCESS_REUSE);
+  CHECK(mock.observed_activation_access[2] == QBS_ACTIVATION_ACCESS_RELEASE);
+  for (size_t index = 0; index < problem.n; ++index)
+    CHECK(output[index] == 6.0f);
+
+  mock.next_command = 0u;
+  mock.expect_activation_context = 0u;
+  memset(mock.observed_activation_access, 0xff,
+         sizeof(mock.observed_activation_access));
+  CHECK(qbs_execute(&plan, weights, weight_bytes, activations,
+                    activation_bytes, output, problem.n, problem.n, NULL, 0u,
+                    mock_execute, &mock) == QBS_STATUS_OK);
+  CHECK(mock.next_command == 3u);
+  for (size_t index = 0; index < 3u; ++index)
+    CHECK(mock.observed_activation_access[index] ==
+          QBS_ACTIVATION_ACCESS_DIRECT);
+
+  qbs_execution_options_t invalid_options = options;
+  invalid_options.activation_context.context_id = 1u;
+  mock.next_command = 0u;
+  CHECK(qbs_execute_with_options(
+            &plan, weights, weight_bytes, activations, activation_bytes,
+            output, problem.n, problem.n, NULL, 0u, &invalid_options,
+            mock_execute, &mock) == QBS_STATUS_CONTEXT_TOKEN);
+  CHECK(mock.next_command == 0u);
+
+  qbs_plan_t narrow_generation_plan = plan;
+  narrow_generation_plan.activation_context_generation_bits = 4u;
+  invalid_options = options;
+  invalid_options.activation_context.generation = 16u;
+  CHECK(qbs_execute_with_options(
+            &narrow_generation_plan, weights, weight_bytes, activations,
+            activation_bytes, output, problem.n, problem.n, NULL, 0u,
+            &invalid_options, mock_execute, &mock) ==
+        QBS_STATUS_CONTEXT_TOKEN);
+  CHECK(mock.next_command == 0u);
+
+  qbs_problem_t single_tile_problem = problem;
+  single_tile_problem.n = 32u;
+  qbs_plan_t single_tile_plan;
+  CHECK(qbs_plan_create(&device, &single_tile_problem, &single_tile_plan) ==
+        QBS_STATUS_OK);
+  CHECK(!qbs_plan_supports_activation_context(&single_tile_plan));
+  CHECK(qbs_execute_with_options(
+            &single_tile_plan, weights, weight_bytes, activations,
+            activation_bytes, output, problem.n, problem.n, NULL, 0u,
+            &options, mock_execute, &mock) ==
+        QBS_STATUS_CONTEXT_UNSUPPORTED);
+  CHECK(mock.next_command == 0u);
+
+  free(output);
+  free(activations);
+  free(weights);
+  return 0;
+}
+
 static int test_restricted_row_major_device(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -811,6 +950,7 @@ int main(void) {
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_0) == 0);
   CHECK(test_plan_matrix() == 0);
   CHECK(test_plan_and_execute() == 0);
+  CHECK(test_activation_context_execution() == 0);
   CHECK(test_restricted_row_major_device() == 0);
   CHECK(test_non_split_alignment_gather() == 0);
   CHECK(test_workspace_sizing() == 0);

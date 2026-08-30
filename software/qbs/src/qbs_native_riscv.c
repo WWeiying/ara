@@ -15,7 +15,7 @@ uint64_t qbs_native_info(void *context, unsigned index) {
 }
 
 qbs_status_t qbs_native_execute_command(
-    void *context, const qbs_descriptor_v1_t *descriptor, unsigned m,
+    void *context, const qbs_descriptor_t *descriptor, unsigned m,
     const void *activations, float *output, size_t output_stride_elements,
     unsigned n, int segmented) {
   (void)context;

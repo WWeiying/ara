@@ -1,15 +1,23 @@
 {
   "extension_name": "Xaraqbs",
-  "architecture_version": 1,
+  "architecture_version": 2,
   "numerical_contract_version": 1,
   "numerical_contract": {
     "rounding_mode": "RNE",
     "uses_dynamic_frm": false
   },
   "descriptor": {
-    "version": 1,
+    "version": 2,
     "bytes": 16,
     "alignment_log2": 4
+  },
+  "activation_context": {
+    "count": 1,
+    "max_m": 1,
+    "max_k_blocks": 16,
+    "generation_bits": 8,
+    "activation_profiles": ["Q8_K"],
+    "activation_layouts": ["ROW_MAJOR"]
   },
   "instruction": {
     "opcode": 91,

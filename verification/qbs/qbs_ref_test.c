@@ -45,7 +45,7 @@ static void count_trace(const qbs_trace_event_t *event, void *opaque) {
   }
 }
 
-static qbs_descriptor_v1_t make_descriptor(unsigned weight_profile,
+static qbs_descriptor_t make_descriptor(unsigned weight_profile,
                                            unsigned activation_profile,
                                            unsigned weight_layout,
                                            unsigned activation_layout,
@@ -59,7 +59,7 @@ static qbs_descriptor_v1_t make_descriptor(unsigned weight_profile,
       .n = (uint8_t)n,
       .k_blocks = (uint16_t)k_blocks,
   };
-  const qbs_descriptor_v1_t descriptor = {
+  const qbs_descriptor_t descriptor = {
       .header = qbs_pack_descriptor_header(&fields),
       .weight_base = UINT64_C(0x1000),
   };
@@ -115,13 +115,16 @@ static void test_abi(void) {
   CHECK(QBS_NUMERICAL_ROUNDING_MODE == QBS_ROUNDING_MODE_RNE);
   CHECK(QBS_NUMERICAL_USES_DYNAMIC_FRM == 0u);
   const qbs_descriptor_fields_t fields = {
-      .descriptor_version = 1,
+      .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = QBS_WEIGHT_PROFILE_Q6_K,
       .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
       .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
       .activation_layout = QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
       .n = 32,
       .k_blocks = 256,
+      .activation_access = QBS_ACTIVATION_ACCESS_RELEASE,
+      .context_id = 0,
+      .context_generation = 0xa5,
   };
   const uint64_t header = qbs_pack_descriptor_header(&fields);
   const qbs_descriptor_fields_t decoded =
@@ -133,7 +136,10 @@ static void test_abi(void) {
   CHECK(decoded.activation_layout == fields.activation_layout);
   CHECK(decoded.n == fields.n);
   CHECK(decoded.k_blocks == fields.k_blocks);
-  CHECK((header >> 33) == 0);
+  CHECK(decoded.activation_access == fields.activation_access);
+  CHECK(decoded.context_id == fields.context_id);
+  CHECK(decoded.context_generation == fields.context_generation);
+  CHECK((header >> 47) == 0);
 
   CHECK(qbs_encode_qbexec(8, 10, 11, 4) == UINT32_C(0x06b5045b));
   CHECK(qbs_encode_qbexec(1, 2, 3, 1) == UINT32_C(0x003100db));
@@ -149,6 +155,18 @@ static void test_abi(void) {
   CHECK(((info0 >> 39) & 0xfu) == QBS_NUMERICAL_CONTRACT_VERSION);
   CHECK(((info0 >> 43) & 0x1fu) == 0x1fu);
   CHECK(qbs_ref_capability_word(0, 256) != info0);
+  const uint64_t info2 = qbs_ref_capability_word(2, 1024);
+  CHECK(((info2 >> 0) & 0x0fu) == QBS_ACTIVATION_CONTEXT_COUNT);
+  CHECK(((info2 >> 4) & 0x07u) + 1u == QBS_ACTIVATION_CONTEXT_MAX_M);
+  CHECK(((info2 >> 7) & 0x1fu) + 1u ==
+        QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS);
+  CHECK(((info2 >> 12) & 0xffffu) ==
+        (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K));
+  CHECK(((info2 >> 28) & 0x0fu) == 0x0fu);
+  CHECK(((info2 >> 32) & 0xffu) ==
+        QBS_ACTIVATION_CONTEXT_GENERATION_BITS);
+  CHECK(((info2 >> 40) & 0xffffu) ==
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
   CHECK(qbs_ref_capability_word(0xff, 1024) == 0);
 }
 
@@ -157,7 +175,7 @@ static void test_fixed_rne_contract(void) {
   qbs_block_q8_0_t activations[2] = {0};
   float destination[32] = {0};
   qbs_ref_result_t result;
-  const qbs_descriptor_v1_t descriptor = make_descriptor(
+  const qbs_descriptor_t descriptor = make_descriptor(
       QBS_WEIGHT_PROFILE_Q8_0_WEIGHT, QBS_ACTIVATION_PROFILE_Q8_0,
       QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 2);
 
@@ -189,7 +207,7 @@ static void test_fixed_rne_contract(void) {
 }
 
 static void test_descriptor_validation(void) {
-  qbs_descriptor_v1_t descriptor = make_descriptor(
+  qbs_descriptor_t descriptor = make_descriptor(
       QBS_WEIGHT_PROFILE_Q4_K, QBS_ACTIVATION_PROFILE_Q8_K,
       QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 32, 64);
   CHECK_STATUS(qbs_ref_validate_descriptor(&descriptor, 1, 3, 1024, 0x2000),
@@ -198,16 +216,17 @@ static void test_descriptor_validation(void) {
   uint8_t storage[sizeof(descriptor) + QBS_DESCRIPTOR_BYTES];
   memcpy(storage + 1, &descriptor, sizeof(descriptor));
   CHECK_STATUS(qbs_ref_validate_descriptor(
-                   (const qbs_descriptor_v1_t *)(const void *)(storage + 1),
+                   (const qbs_descriptor_t *)(const void *)(storage + 1),
                    1, 3, 1024, 0x2000),
                QBS_REF_DESCRIPTOR_ALIGNMENT);
 
-  qbs_descriptor_v1_t invalid = descriptor;
-  invalid.header = (invalid.header & ~UINT64_C(0x0f)) | 2u;
+  qbs_descriptor_t invalid = descriptor;
+  invalid.header = (invalid.header & ~UINT64_C(0x0f)) |
+                   ((QBS_DESCRIPTOR_VERSION + 1u) & 0x0fu);
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
                QBS_REF_DESCRIPTOR_VERSION);
   invalid = descriptor;
-  invalid.header |= UINT64_C(1) << 33;
+  invalid.header |= UINT64_C(1) << 47;
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
                QBS_REF_DESCRIPTOR_RESERVED);
   invalid = descriptor;
@@ -215,6 +234,35 @@ static void test_descriptor_validation(void) {
                    (UINT64_C(15) << 4);
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
                QBS_REF_WEIGHT_PROFILE);
+
+  invalid = descriptor;
+  invalid.header |= UINT64_C(1) << 35;
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
+               QBS_REF_CONTEXT_ENCODING);
+
+  qbs_descriptor_fields_t context_fields =
+      qbs_unpack_descriptor_header(descriptor.header);
+  context_fields.activation_access = QBS_ACTIVATION_ACCESS_FILL;
+  context_fields.context_id = QBS_ACTIVATION_CONTEXT_COUNT;
+  invalid = descriptor;
+  invalid.header = qbs_pack_descriptor_header(&context_fields);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
+               QBS_REF_CONTEXT_UNSUPPORTED);
+  context_fields.context_id = 0;
+  context_fields.k_blocks = QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS + 1u;
+  invalid.header = qbs_pack_descriptor_header(&context_fields);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2000),
+               QBS_REF_CONTEXT_UNSUPPORTED);
+  context_fields.k_blocks = 1;
+  invalid.header = qbs_pack_descriptor_header(&context_fields);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 2, 2, 1024, 0x2000),
+               QBS_REF_CONTEXT_UNSUPPORTED);
+
+  context_fields.activation_access = QBS_ACTIVATION_ACCESS_REUSE;
+  context_fields.k_blocks = 1;
+  invalid.header = qbs_pack_descriptor_header(&context_fields);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 3, 1024, 0x2001),
+               QBS_REF_OK);
 
   invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
                             QBS_ACTIVATION_PROFILE_Q8_K,
@@ -578,6 +626,139 @@ static void fill_activations(qbs_block_q8_k_t *blocks, unsigned k_blocks) {
   }
 }
 
+static qbs_descriptor_t descriptor_with_context(
+    qbs_descriptor_t descriptor, unsigned access, unsigned context_id,
+    unsigned generation) {
+  qbs_descriptor_fields_t fields =
+      qbs_unpack_descriptor_header(descriptor.header);
+  fields.activation_access = (uint8_t)access;
+  fields.context_id = (uint8_t)context_id;
+  fields.context_generation = (uint8_t)generation;
+  descriptor.header = qbs_pack_descriptor_header(&fields);
+  return descriptor;
+}
+
+static void test_activation_context_contract(void) {
+  enum { kN = 3, kBlocks = 2, kElements = 32, kGeneration = 7 };
+  qbs_block_q4_k_t weights[kN * kBlocks];
+  qbs_block_q8_k_t activations[kBlocks];
+  float direct_result[kElements];
+  float fill_result[kElements];
+  float reuse_result[kElements];
+  float release_result[kElements];
+  qbs_ref_result_t result = {0};
+  qbs_ref_activation_context_t context;
+
+  for (unsigned index = 0; index < kN * kBlocks; ++index)
+    fill_q4_one(&weights[index]);
+  for (unsigned block = 0; block < kBlocks; ++block) {
+    activations[block].d = 1.0f;
+    memset(activations[block].qs, (int)(block + 1u),
+           sizeof(activations[block].qs));
+    for (unsigned subgroup = 0; subgroup < 16; ++subgroup)
+      activations[block].bsums[subgroup] =
+          (int16_t)(16u * (block + 1u));
+  }
+  qbs_ref_activation_context_reset(&context);
+
+  qbs_descriptor_t direct = make_descriptor(
+      QBS_WEIGHT_PROFILE_Q4_K, QBS_ACTIVATION_PROFILE_Q8_K,
+      QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN,
+      kBlocks);
+  CHECK_STATUS(qbs_ref_execute(
+                   &direct, 1, 0, 1024, UINT64_C(0x2000), weights,
+                   sizeof(weights), activations, sizeof(activations),
+                   direct_result, kElements, NULL, NULL, &result),
+               QBS_REF_OK);
+
+  qbs_descriptor_t fill = descriptor_with_context(
+      direct, QBS_ACTIVATION_ACCESS_FILL, 0, kGeneration);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &fill, 1, 0, 1024, UINT64_C(0x2000), weights,
+                   sizeof(weights), activations, sizeof(activations),
+                   fill_result, kElements, NULL, NULL, &result),
+               QBS_REF_OK);
+  CHECK(context.valid == 1);
+  CHECK(context.context_id == 0);
+  CHECK(context.generation == kGeneration);
+  CHECK(context.activation_profile == QBS_ACTIVATION_PROFILE_Q8_K);
+  CHECK(context.activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+  CHECK(context.m == 1);
+  CHECK(context.k_blocks == kBlocks);
+  CHECK(memcmp(context.data, activations, sizeof(activations)) == 0);
+  CHECK(memcmp(fill_result, direct_result, sizeof(direct_result)) == 0);
+
+  qbs_descriptor_t reuse = descriptor_with_context(
+      direct, QBS_ACTIVATION_ACCESS_REUSE, 0, kGeneration);
+  CHECK_STATUS(qbs_ref_execute(
+                   &reuse, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, reuse_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_CONTEXT_INVALID);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &reuse, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, reuse_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_OK);
+  CHECK(memcmp(reuse_result, direct_result, sizeof(direct_result)) == 0);
+
+  qbs_descriptor_t invalid_fill = fill;
+  invalid_fill.header |= UINT64_C(1) << 63;
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &invalid_fill, 1, 0, 1024, UINT64_C(0x2000),
+                   weights, sizeof(weights), activations, sizeof(activations),
+                   fill_result, kElements, NULL, NULL, &result),
+               QBS_REF_DESCRIPTOR_RESERVED);
+  CHECK(context.valid == 1 && context.generation == kGeneration);
+
+  qbs_descriptor_t stale = descriptor_with_context(
+      direct, QBS_ACTIVATION_ACCESS_REUSE, 0, kGeneration + 1);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &stale, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, reuse_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_CONTEXT_GENERATION);
+
+  qbs_descriptor_t different_k = make_descriptor(
+      QBS_WEIGHT_PROFILE_Q4_K, QBS_ACTIVATION_PROFILE_Q8_K,
+      QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN, 1);
+  different_k = descriptor_with_context(
+      different_k, QBS_ACTIVATION_ACCESS_REUSE, 0, kGeneration);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &different_k, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, reuse_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_CONTEXT_METADATA);
+
+  qbs_descriptor_t release = descriptor_with_context(
+      direct, QBS_ACTIVATION_ACCESS_RELEASE, 0, kGeneration);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &release, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, release_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_OK);
+  CHECK(memcmp(release_result, direct_result, sizeof(direct_result)) == 0);
+  CHECK(context.valid == 0);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &reuse, 1, 0, 1024, UINT64_C(1), weights,
+                   sizeof(weights), NULL, 0, reuse_result, kElements, NULL,
+                   NULL, &result),
+               QBS_REF_CONTEXT_INVALID);
+
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &fill, 1, 0, 1024, UINT64_C(0x2000), weights,
+                   sizeof(weights), activations, sizeof(activations),
+                   fill_result, kElements, NULL, NULL, &result),
+               QBS_REF_OK);
+  CHECK(context.valid == 1);
+  CHECK_STATUS(qbs_ref_execute_with_context(
+                   &context, &fill, 1, 0, 1024, UINT64_C(0x2000), weights,
+                   sizeof(weights), activations, 0, fill_result, kElements,
+                   NULL, NULL, &result),
+               QBS_REF_BUFFER_SIZE);
+  CHECK(context.valid == 0);
+}
+
 static void test_profile_execution(unsigned profile) {
   enum { kN = 5, kBlocks = 2, kElements = 32 };
   const size_t block_bytes = qbs_weight_block_bytes(profile);
@@ -625,7 +806,7 @@ static void test_profile_execution(unsigned profile) {
       row_result[index] = 12345.0f;
       r4_result[index] = 12345.0f;
     }
-    qbs_descriptor_v1_t descriptor = make_descriptor(
+    qbs_descriptor_t descriptor = make_descriptor(
         profile, QBS_ACTIVATION_PROFILE_Q8_K,
         QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN,
         kBlocks);
@@ -690,7 +871,7 @@ static void test_profile_execution(unsigned profile) {
       77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f,
       77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f, 77.0f,
   };
-  qbs_descriptor_v1_t descriptor = make_descriptor(
+  qbs_descriptor_t descriptor = make_descriptor(
       profile, QBS_ACTIVATION_PROFILE_Q8_K, QBS_WEIGHT_LAYOUT_ROW_MAJOR,
       QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN, kBlocks);
   qbs_ref_result_t result = {0};
@@ -770,7 +951,7 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
       row_result[index] = 12345.0f;
       packed_result[index] = 12345.0f;
     }
-    qbs_descriptor_v1_t descriptor = make_descriptor(
+    qbs_descriptor_t descriptor = make_descriptor(
         weight_profile, QBS_ACTIVATION_PROFILE_Q8_0,
         QBS_WEIGHT_LAYOUT_ROW_MAJOR, QBS_ACTIVATION_LAYOUT_ROW_MAJOR, kN,
         kBlocks);
@@ -828,6 +1009,7 @@ int main(void) {
   test_q2_decode();
   test_q5_0_decode();
   test_iq4_nl_decode();
+  test_activation_context_contract();
   test_profile_execution(QBS_WEIGHT_PROFILE_Q4_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q5_K);
   test_profile_execution(QBS_WEIGHT_PROFILE_Q6_K);

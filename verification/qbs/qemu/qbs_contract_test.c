@@ -19,7 +19,10 @@ static qbs_block_q8_0_t weights[2] __attribute__((aligned(16)));
 static qbs_block_q8_0_t activations[2] __attribute__((aligned(16)));
 static qbs_block_q8_0_t matrix_weights[32] __attribute__((aligned(16)));
 static qbs_block_q8_0_t matrix_activations[4] __attribute__((aligned(16)));
-static qbs_descriptor_v1_t descriptor __attribute__((aligned(16)));
+static qbs_block_q4_k_t context_weights[2] __attribute__((aligned(16)));
+static qbs_block_q8_k_t context_activations[2]
+    __attribute__((aligned(16)));
+static qbs_descriptor_t descriptor __attribute__((aligned(16)));
 static uint32_t output[4][32] __attribute__((aligned(16)));
 static uint8_t page_crossing_storage[3 * 4096] __attribute__((aligned(4096)));
 
@@ -219,6 +222,24 @@ static void install_descriptor(uint64_t weight_base) {
   descriptor.weight_base = weight_base;
 }
 
+static void install_context_descriptor(unsigned access, unsigned generation,
+                                       unsigned k_blocks) {
+  const qbs_descriptor_fields_t fields = {
+      .descriptor_version = QBS_DESCRIPTOR_VERSION,
+      .weight_profile = QBS_WEIGHT_PROFILE_Q4_K,
+      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .weight_layout = QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+      .activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
+      .n = 1,
+      .k_blocks = (uint16_t)k_blocks,
+      .activation_access = (uint8_t)access,
+      .context_id = 0,
+      .context_generation = (uint8_t)generation,
+  };
+  descriptor.header = qbs_pack_descriptor_header(&fields);
+  descriptor.weight_base = (uintptr_t)context_weights;
+}
+
 static int expect_load_access(uint64_t expected_tval) {
   return qbs_trap_cause == QBS_MCAUSE_LOAD_ACCESS &&
          qbs_trap_tval == expected_tval;
@@ -235,7 +256,8 @@ void qbs_contract_main(void) {
   clear_bytes(output, sizeof(output));
 
   if (run_qbinfo(0) != qbs_capability_word(0, 1024) ||
-      run_qbinfo(1) != qbs_capability_word(1, 1024))
+      run_qbinfo(1) != qbs_capability_word(1, 1024) ||
+      run_qbinfo(2) != qbs_capability_word(2, 1024))
     finish(1);
 
   /* 1.0 + 2^-24 is an FP32 tie. RNE keeps 1.0; RUP increments one ULP. */
@@ -363,6 +385,91 @@ void qbs_contract_main(void) {
       (fflags & (QBS_FFLAG_DZ | QBS_FFLAG_NV)) !=
           (QBS_FFLAG_DZ | QBS_FFLAG_NV))
     finish(17);
+
+  clear_bytes(context_weights, sizeof(context_weights));
+  clear_bytes(context_activations, sizeof(context_activations));
+  context_weights[0].d = UINT16_C(0x3c00);
+  context_weights[0].scales[0] = 1;
+  context_weights[0].qs[0] = 1;
+  context_activations[0].d = 1.0f;
+  context_activations[0].qs[0] = 1;
+  context_activations[0].bsums[0] = 1;
+
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_FILL, 7, 1);
+  clear_trap();
+  run_qbexec(&descriptor, context_activations);
+  const uint32_t fill_result = read_v0_word0();
+  if (qbs_trap_cause != UINT64_MAX || fill_result == 0) finish(18);
+
+  /* REUSE ignores rs2 completely and consumes the per-hart context. */
+  context_activations[0].qs[0] = 17;
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 7, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (qbs_trap_cause != UINT64_MAX || read_v0_word0() != fill_result)
+    finish(19);
+
+  write_v0_word0(QBS_DEST_POISON);
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 8, 1);
+  descriptor.weight_base = QBS_UART_MMIO;
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_illegal(UINT32_C(0x00b5005b)) ||
+      read_v0_word0() != QBS_DEST_POISON)
+    finish(20);
+
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 7, 2);
+  descriptor.weight_base = QBS_UART_MMIO;
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_illegal(UINT32_C(0x00b5005b)) ||
+      read_v0_word0() != QBS_DEST_POISON)
+    finish(21);
+
+  /* Descriptor rejection precedes FILL acceptance and preserves the old
+   * context. A valid FILL that faults later deliberately invalidates it. */
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_FILL, 9,
+                             QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS + 1u);
+  descriptor.weight_base = QBS_UART_MMIO;
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_illegal(UINT32_C(0x00b5005b))) finish(22);
+
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 7, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (qbs_trap_cause != UINT64_MAX || read_v0_word0() != fill_result)
+    finish(23);
+
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_RELEASE, 7, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (qbs_trap_cause != UINT64_MAX || read_v0_word0() != fill_result)
+    finish(24);
+  write_v0_word0(QBS_DEST_POISON);
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 7, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_illegal(UINT32_C(0x00b5005b)) ||
+      read_v0_word0() != QBS_DEST_POISON)
+    finish(25);
+
+  context_activations[0].qs[0] = 1;
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_FILL, 10, 1);
+  clear_trap();
+  run_qbexec(&descriptor, context_activations);
+  if (qbs_trap_cause != UINT64_MAX) finish(26);
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_FILL, 11, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_load_access(QBS_UART_MMIO)) finish(27);
+  write_v0_word0(QBS_DEST_POISON);
+  install_context_descriptor(QBS_ACTIVATION_ACCESS_REUSE, 10, 1);
+  clear_trap();
+  run_qbexec(&descriptor, (const void *)(uintptr_t)QBS_UART_MMIO);
+  if (!expect_illegal(UINT32_C(0x00b5005b)) ||
+      read_v0_word0() != QBS_DEST_POISON)
+    finish(28);
 
   finish(0);
 }

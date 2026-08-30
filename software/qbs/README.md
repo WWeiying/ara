@@ -82,7 +82,7 @@ for a runtime format registry.
 | Metadata | `qbs_*_profile_info` | inspect the resolved canonical profile |
 | Packing | `qbs_repack_weight_r4`, `qbs_pack_activation_m4` | cache persistent weights and prepare activation groups |
 | Planning | `qbs_plan_create`, `qbs_plan_next` | supply logical M/N/K and source storage layouts |
-| Execution | `qbs_execute` | provide buffers, workspace, and a command executor |
+| Execution | `qbs_execute`, `qbs_execute_with_options` | provide buffers/workspace; optionally bind one explicit activation-context token |
 | Native ISA | `qbs_native_info`, `qbs_native_execute_command` | establish extension presence and handle runtime policy |
 
 The planner owns M1--M4 grouping, N tiles and tails, K segmentation, descriptor
@@ -102,6 +102,39 @@ management never add hardware commands.
 Once `qbs_execute` calls the command executor, a memory or architectural fault
 is an execution fault and must be propagated. A runtime must not silently
 retry the same operation on a fallback path after a possibly visible command.
+
+## Explicit activation-context reuse
+
+`qbs_execute()` is the compatibility path and always emits `DIRECT` commands.
+`qbs_execute_with_options()` can eliminate repeated Q8_K activation reads
+between output tiles when `qbs_plan_supports_activation_context()` is true.
+The current device contract is deliberately narrow: one context, `M=1`,
+row-major Q8_K, at most 16 K blocks (`K<=4096`), no split-K or gather, and at
+least two output tiles. An eligible execution emits `FILL`, zero or more
+`REUSE` commands, and a final `RELEASE` command.
+
+The adapter owns the token:
+
+```c
+const qbs_execution_options_t options = {
+    .use_activation_context = 1,
+    .activation_context = {
+        .context_id = 0,
+        .generation = generation,
+    },
+};
+```
+
+Generation is not inferred from addresses. The adapter must assign a new
+generation to a new logical activation and serialize the complete
+`FILL...RELEASE` sequence against other users of the same hardware context.
+Hardware validates ID, generation, activation profile/layout, M, and K-block
+count. A mismatch is an execution-visible context fault, never a silent
+DIRECT fallback. Failed or aborted FILL commands do not publish a context.
+
+Capability or plan rejection occurs before issue and may select DIRECT or the
+runtime's ordinary RVV implementation. Once the first QBS command has issued,
+the adapter must propagate faults rather than retrying partially visible work.
 
 ## Runtime adapter pattern
 
@@ -163,4 +196,6 @@ capability-contract decoding and profile-pair filtering, R4 padding,
 Q8_K/Q8_0 M4 packing, exhaustive representative M/N/K planner combinations,
 mixed M4 plus row-tail storage, bounded gather workspace sizing, split-K command
 accumulation, explicit buffer capacities and alignment, and reduced devices
-with narrower M/N/K capabilities and row-major-only layouts.
+with narrower M/N/K capabilities and row-major-only layouts. It also checks
+activation-context eligibility, FILL/REUSE/RELEASE sequencing, token bounds,
+single-tile rejection, and that the legacy execution API remains DIRECT.

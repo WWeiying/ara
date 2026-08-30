@@ -476,7 +476,7 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
       .n = (uint8_t)rows,
       .k_blocks = 1,
   };
-  qbs_descriptor_v1_t descriptor __attribute__((aligned(16))) = {
+  qbs_descriptor_t descriptor __attribute__((aligned(16))) = {
       .header = qbs_pack_descriptor_header(&fields),
       .weight_base = (uintptr_t)&weights,
   };
@@ -508,7 +508,7 @@ static int emit_case(FILE *output, unsigned case_id, unsigned profile,
 
   qbs_descriptor_fields_t repeated_fields = fields;
   repeated_fields.k_blocks = 2;
-  qbs_descriptor_v1_t repeated_descriptor __attribute__((aligned(16))) = {
+  qbs_descriptor_t repeated_descriptor __attribute__((aligned(16))) = {
       .header = qbs_pack_descriptor_header(&repeated_fields),
       .weight_base = (uintptr_t)repeated_weights,
   };

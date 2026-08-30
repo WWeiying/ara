@@ -24,6 +24,8 @@ typedef enum {
   QBS_STATUS_PROFILE_PAIR,
   QBS_STATUS_LAYOUT,
   QBS_STATUS_SHAPE,
+  QBS_STATUS_CONTEXT_UNSUPPORTED,
+  QBS_STATUS_CONTEXT_TOKEN,
   QBS_STATUS_EXECUTION,
 } qbs_status_t;
 
@@ -77,6 +79,13 @@ typedef struct {
   uint8_t requires_vstart_zero;
   uint8_t idempotent_memory_only;
   uint8_t requires_accelerator_consistency;
+  uint8_t activation_context_count;
+  uint8_t activation_context_max_m;
+  uint8_t activation_context_max_k_blocks;
+  uint8_t activation_context_generation_bits;
+  uint8_t activation_context_access_modes;
+  uint16_t activation_context_profiles;
+  uint16_t activation_context_layouts;
 } qbs_capabilities_t;
 
 typedef struct {
@@ -115,8 +124,21 @@ typedef struct {
   uint8_t command_n;
   uint8_t split_k;
   uint8_t needs_activation_gather;
+  uint8_t activation_context_eligible;
+  uint8_t activation_context_count;
+  uint8_t activation_context_generation_bits;
   size_t workspace_bytes;
 } qbs_plan_t;
+
+typedef struct {
+  uint8_t context_id;
+  uint8_t generation;
+} qbs_activation_context_token_t;
+
+typedef struct {
+  uint8_t use_activation_context;
+  qbs_activation_context_token_t activation_context;
+} qbs_execution_options_t;
 
 typedef struct {
   uint32_t input_start;
@@ -141,7 +163,7 @@ typedef struct {
 } qbs_plan_cursor_t;
 
 typedef qbs_status_t (*qbs_command_executor_t)(
-    void *context, const qbs_descriptor_v1_t *descriptor, unsigned m,
+    void *context, const qbs_descriptor_t *descriptor, unsigned m,
     const void *activations, float *output, size_t output_stride_elements,
     unsigned n, int segmented);
 
@@ -198,6 +220,7 @@ void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor);
 qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
                            qbs_plan_cursor_t *cursor,
                            qbs_command_t *command, int *has_command);
+int qbs_plan_supports_activation_context(const qbs_plan_t *plan);
 
 /* workspace may be NULL only when plan->workspace_bytes is zero. All buffers
    and the plan must remain valid until the blocking executor returns. */
@@ -210,11 +233,24 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
                          qbs_command_executor_t executor,
                          void *executor_context);
 
+/* Context reuse is explicit: the caller owns token generation and must not
+   reuse a generation for a different logical activation. The first output
+   tile fills the context, intermediate tiles reuse it, and the final tile
+   reuses then releases it. Unsupported plans return CONTEXT_UNSUPPORTED;
+   qbs_execute() remains the always-DIRECT fallback. */
+qbs_status_t qbs_execute_with_options(
+    const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
+    const void *activations, size_t activations_bytes, float *output,
+    size_t output_capacity_elements, size_t output_stride_elements,
+    void *workspace, size_t workspace_bytes,
+    const qbs_execution_options_t *options,
+    qbs_command_executor_t executor, void *executor_context);
+
 /* Native helpers do not probe extension presence. Callers must establish that
    Xaraqbs is available before executing qbs_native_info(). */
 uint64_t qbs_native_info(void *context, unsigned index);
 qbs_status_t qbs_native_execute_command(
-    void *context, const qbs_descriptor_v1_t *descriptor, unsigned m,
+    void *context, const qbs_descriptor_t *descriptor, unsigned m,
     const void *activations, float *output, size_t output_stride_elements,
     unsigned n, int segmented);
 

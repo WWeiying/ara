@@ -212,9 +212,9 @@ module qbs_commit import qbs_pkg::*; #(
 `ifndef SYNTHESIS
   initial begin
     assert (NrLanes == 4)
-      else $fatal(1, "QBS v1 commit mapping requires four Ara lanes");
+      else $fatal(1, "QBS commit mapping requires four Ara lanes");
     assert (VLEN >= 256 && VLEN <= 1024 && VLEN % 256 == 0)
-      else $fatal(1, "QBS v1 commit requires 256..1024-bit VLEN");
+      else $fatal(1, "QBS commit requires 256..1024-bit VLEN");
     assert (ElementsPerWord == 8)
       else $fatal(1, "QBS accumulator banking expects eight FP32 values/word");
   end

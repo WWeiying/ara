@@ -103,6 +103,11 @@ typedef enum {
   QBS_REF_VD_ALIGNMENT,
   QBS_REF_BASE_ALIGNMENT,
   QBS_REF_ADDRESS_OVERFLOW,
+  QBS_REF_CONTEXT_ENCODING,
+  QBS_REF_CONTEXT_UNSUPPORTED,
+  QBS_REF_CONTEXT_INVALID,
+  QBS_REF_CONTEXT_GENERATION,
+  QBS_REF_CONTEXT_METADATA,
   QBS_REF_BUFFER_SIZE,
   QBS_REF_OUTPUT_SIZE,
   QBS_REF_INTEGER_OVERFLOW,
@@ -141,6 +146,24 @@ typedef struct {
   uint32_t fflags;
 } qbs_ref_result_t;
 
+enum {
+  QBS_REF_ACTIVATION_CONTEXT_BYTES =
+      QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS * QBS_Q8_K_BLOCK_BYTES,
+};
+
+// Architectural state carried across QBS commands by the stateful reference
+// model. Data becomes valid only after a successful FILL command.
+typedef struct {
+  uint8_t valid;
+  uint8_t context_id;
+  uint8_t generation;
+  uint8_t activation_profile;
+  uint8_t activation_layout;
+  uint8_t m;
+  uint16_t k_blocks;
+  uint8_t data[QBS_REF_ACTIVATION_CONTEXT_BYTES];
+} qbs_ref_activation_context_t;
+
 const char *qbs_ref_status_string(qbs_ref_status_t status);
 float qbs_ref_fp16_to_fp32(qbs_fp16_t value);
 uint64_t qbs_ref_capability_word(unsigned index, unsigned vlen_bits);
@@ -155,7 +178,7 @@ size_t qbs_ref_activation_storage_bytes_for_profile(
     unsigned k_blocks);
 
 qbs_ref_status_t qbs_ref_validate_descriptor(
-    const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
     unsigned vlen_bits, uint64_t activation_base);
 
 qbs_ref_status_t qbs_ref_repack_weight_r4(
@@ -193,7 +216,25 @@ void qbs_ref_decode_iq4_nl(const qbs_block_iq4_nl_t *block,
                            int8_t values[32]);
 
 qbs_ref_status_t qbs_ref_execute(
-    const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
+    unsigned vlen_bits, uint64_t activation_base, const void *weight_data,
+    size_t weight_bytes, const void *activation_data, size_t activation_bytes,
+    float *destination, size_t destination_elements,
+    qbs_trace_callback_t trace_callback, void *trace_opaque,
+    qbs_ref_result_t *result);
+
+void qbs_ref_activation_context_reset(qbs_ref_activation_context_t *context);
+
+/* Call after qbs_ref_validate_descriptor(). This side-effect-free check lets
+   an architectural model reject stale or mismatched context commands before
+   touching any payload memory. */
+qbs_ref_status_t qbs_ref_validate_activation_context(
+    const qbs_ref_activation_context_t *context,
+    const qbs_descriptor_fields_t *fields, unsigned m);
+
+qbs_ref_status_t qbs_ref_execute_with_context(
+    qbs_ref_activation_context_t *context,
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
     unsigned vlen_bits, uint64_t activation_base, const void *weight_data,
     size_t weight_bytes, const void *activation_data, size_t activation_bytes,
     float *destination, size_t destination_elements,

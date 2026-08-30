@@ -66,7 +66,7 @@ static void issue_reserved_qbinfo(uint64_t index) {
   asm volatile(".word 0x0205155b" : "+r"(a0) : : "memory");
 }
 
-static void issue_qbexec_m1(const qbs_descriptor_v1_t *descriptor,
+static void issue_qbexec_m1(const qbs_descriptor_t *descriptor,
                             const void *activation,
                             const uint32_t source[32],
                             uint32_t observed[32]) {
@@ -85,7 +85,7 @@ static void issue_qbexec_m1(const qbs_descriptor_v1_t *descriptor,
                : "t0", "memory");
 }
 
-static void issue_qbexec_m3(const qbs_descriptor_v1_t *descriptor,
+static void issue_qbexec_m3(const qbs_descriptor_t *descriptor,
                             const void *activation,
                             const uint32_t source[128],
                             uint32_t observed[128]) {
@@ -125,7 +125,7 @@ static uint32_t fp32_bits(float value) {
       .bsums = {[0 ... 15] = (int16_t)(16 * (value_))},                     \
   }
 
-static qbs_descriptor_v1_t make_descriptor(const void *weights, unsigned n) {
+static qbs_descriptor_t make_descriptor(const void *weights, unsigned n) {
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = QBS_WEIGHT_PROFILE_Q4_K,
@@ -135,7 +135,7 @@ static qbs_descriptor_v1_t make_descriptor(const void *weights, unsigned n) {
       .n = (uint8_t)n,
       .k_blocks = 1,
   };
-  const qbs_descriptor_v1_t descriptor = {
+  const qbs_descriptor_t descriptor = {
       .header = qbs_pack_descriptor_header(&fields),
       .weight_base = (uintptr_t)weights,
   };
@@ -191,7 +191,7 @@ static int check_m1_execution(void) {
       [0 ... 31] = 0x7fc00000u,
   };
   static uint32_t observed[32] __attribute__((aligned(16)));
-  static qbs_descriptor_v1_t descriptor __attribute__((aligned(16)));
+  static qbs_descriptor_t descriptor __attribute__((aligned(16)));
   int failures = 0;
 
   descriptor = make_descriptor(weights, 5);
@@ -231,7 +231,7 @@ static int check_m3_execution(void) {
       [0 ... 127] = 0x3f000000u,
   };
   static uint32_t observed[128] __attribute__((aligned(16)));
-  static qbs_descriptor_v1_t descriptor __attribute__((aligned(16)));
+  static qbs_descriptor_t descriptor __attribute__((aligned(16)));
   int failures = 0;
 
   descriptor = make_descriptor(weights, 3);
@@ -278,11 +278,13 @@ static int check_validation_fault_is_atomic(void) {
       [0 ... 31] = 0x41000000u,
   };
   static uint32_t observed[32] __attribute__((aligned(16)));
-  static qbs_descriptor_v1_t descriptor __attribute__((aligned(16)));
+  static qbs_descriptor_t descriptor __attribute__((aligned(16)));
   int failures = 0;
 
   descriptor = make_descriptor(&weight, 1);
-  descriptor.header = (descriptor.header & ~UINT64_C(0xf)) | 2u;
+  descriptor.header =
+      (descriptor.header & ~UINT64_C(0xf)) |
+      ((QBS_DESCRIPTOR_VERSION ^ UINT64_C(0xf)) & UINT64_C(0xf));
 
   const uint64_t before = trap_count;
   issue_qbexec_m1(&descriptor, &activation, source, observed);

@@ -8,6 +8,25 @@
  BOOL_FIELD(ext_xtheadba)
  BOOL_FIELD(ext_xtheadbb)
  BOOL_FIELD(ext_xtheadbs)
+--- a/target/riscv/cpu.h
++++ b/target/riscv/cpu.h
+@@ -31,4 +31,5 @@
+ #include "cpu_bits.h"
+ #include "cpu_cfg.h"
++#include "qbs_ref.h"
+ #include "qapi/qapi-types-common.h"
+ #include "cpu-qom.h"
+@@ -226,2 +227,4 @@ struct CPUArchState {
+     target_ulong vtype;
+     bool vill;
++    /* Per-hart architectural state for explicit Xaraqbs activation reuse. */
++    qbs_ref_activation_context_t qbs_activation_context;
+--- a/target/riscv/cpu.c
++++ b/target/riscv/cpu.c
+@@ -780,2 +780,3 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
+     set_float_default_nan_pattern(0b01000000, &env->fp_status);
+     env->vill = true;
++    qbs_ref_activation_context_reset(&env->qbs_activation_context);
 --- a/target/riscv/cpu_cfg.h
 +++ b/target/riscv/cpu_cfg.h
 @@ -64,5 +64,6 @@
@@ -171,7 +190,7 @@
 +}
 --- /dev/null
 +++ b/target/riscv/qbs_helper.c
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,243 @@
 +/*
 + * QEMU functional model for the Xaraqbs quantized block-stream extension.
 + *
@@ -232,7 +251,7 @@
 +        int flags = probe_access_flags(env, address, chunk, MMU_DATA_LOAD,
 +                                       mmu_index, false, &host, retaddr);
 +
-+        /* QBS v1 is stricter than an ordinary scalar load: every byte must
++        /* QBS is stricter than an ordinary scalar load: every byte must
 +         * be directly backed by RAM. TLB_MMIO also covers ROM/device
 +         * callbacks and other paths that could have read side effects.
 +         */
@@ -320,12 +339,13 @@
 +                     uint32_t m, uint32_t insn)
 +{
 +    const uintptr_t retaddr = GETPC();
-+    qbs_descriptor_v1_t descriptor QEMU_ALIGNED(16);
++    qbs_descriptor_t descriptor QEMU_ALIGNED(16);
 +    qbs_descriptor_fields_t fields;
 +    qbs_ref_result_t result;
 +    qbs_ref_status_t status;
 +    size_t weight_bytes;
 +    size_t activation_bytes;
++    bool uses_activation_payload;
 +    unsigned registers;
 +    unsigned elements;
 +    g_autofree uint8_t *weights = NULL;
@@ -339,9 +359,7 @@
 +    registers = qbs_destination_registers(m);
 +    if (m == 0 || m > QBS_MAX_M || vd >= 32 ||
 +        (vd % registers) != 0 || vd + registers > 32 || env->vstart != 0 ||
-+        (descriptor_address & (QBS_DESCRIPTOR_BYTES - 1u)) != 0 ||
-+        (activation_address &
-+         ((UINT64_C(1) << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2) - 1u)) != 0) {
++        (descriptor_address & (QBS_DESCRIPTOR_BYTES - 1u)) != 0) {
 +        qbs_raise_illegal(env, insn, retaddr);
 +    }
 +
@@ -357,6 +375,17 @@
 +    }
 +
 +    fields = qbs_unpack_descriptor_header(descriptor.header);
++    status = qbs_ref_validate_activation_context(
++        &env->qbs_activation_context, &fields, m);
++    if (status != QBS_REF_OK) {
++        qbs_raise_illegal(env, insn, retaddr);
++    }
++    uses_activation_payload =
++        fields.activation_access == QBS_ACTIVATION_ACCESS_DIRECT ||
++        fields.activation_access == QBS_ACTIVATION_ACCESS_FILL;
++    if (fields.activation_access == QBS_ACTIVATION_ACCESS_FILL) {
++        env->qbs_activation_context.valid = 0;
++    }
 +    weight_bytes = qbs_ref_weight_storage_bytes(
 +        fields.weight_profile, fields.weight_layout, fields.n,
 +        fields.k_blocks);
@@ -368,22 +397,30 @@
 +    }
 +
 +    /* Validate both complete payload ranges before reading either one. */
-+    qbs_guest_ram_probe(env, activation_address, activation_bytes, retaddr);
++    if (uses_activation_payload) {
++        qbs_guest_ram_probe(env, activation_address, activation_bytes,
++                            retaddr);
++    }
 +    qbs_guest_ram_probe(env, descriptor.weight_base, weight_bytes, retaddr);
 +
 +    weights = g_malloc(weight_bytes);
-+    activations = g_malloc(activation_bytes);
++    if (uses_activation_payload) {
++        activations = g_malloc(activation_bytes);
++    }
 +
 +    /* RTL fetch order is descriptor, activation stream, then weights. */
-+    qbs_guest_ram_copy(env, activation_address, activations, activation_bytes,
-+                       retaddr);
++    if (uses_activation_payload) {
++        qbs_guest_ram_copy(env, activation_address, activations,
++                           activation_bytes, retaddr);
++    }
 +    qbs_guest_ram_copy(env, descriptor.weight_base, weights, weight_bytes,
 +                       retaddr);
 +
 +    elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
 +    qbs_copy_destination_from_env(env, vd, registers, destination);
-+    status = qbs_ref_execute(
-+        &descriptor, m, vd, riscv_cpu_cfg(env)->vlenb * 8u,
++    status = qbs_ref_execute_with_context(
++        &env->qbs_activation_context, &descriptor, m, vd,
++        riscv_cpu_cfg(env)->vlenb * 8u,
 +        activation_address, weights, weight_bytes, activations,
 +        activation_bytes, destination, registers * elements, NULL, NULL,
 +        &result);

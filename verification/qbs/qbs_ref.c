@@ -210,6 +210,16 @@ const char *qbs_ref_status_string(qbs_ref_status_t status) {
       return "base_alignment";
     case QBS_REF_ADDRESS_OVERFLOW:
       return "address_overflow";
+    case QBS_REF_CONTEXT_ENCODING:
+      return "context_encoding";
+    case QBS_REF_CONTEXT_UNSUPPORTED:
+      return "context_unsupported";
+    case QBS_REF_CONTEXT_INVALID:
+      return "context_invalid";
+    case QBS_REF_CONTEXT_GENERATION:
+      return "context_generation";
+    case QBS_REF_CONTEXT_METADATA:
+      return "context_metadata";
     case QBS_REF_BUFFER_SIZE:
       return "buffer_size";
     case QBS_REF_OUTPUT_SIZE:
@@ -308,7 +318,7 @@ size_t qbs_ref_activation_storage_bytes(unsigned activation_layout,
 }
 
 qbs_ref_status_t qbs_ref_validate_descriptor(
-    const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
     unsigned vlen_bits, uint64_t activation_base) {
   if (descriptor == NULL) return QBS_REF_BAD_ARGUMENT;
   if (((uintptr_t)descriptor &
@@ -323,7 +333,7 @@ qbs_ref_status_t qbs_ref_validate_descriptor(
       qbs_unpack_descriptor_header(descriptor->header);
   if (fields.descriptor_version != QBS_DESCRIPTOR_VERSION)
     return QBS_REF_DESCRIPTOR_VERSION;
-  if ((descriptor->header >> 33) != 0) return QBS_REF_DESCRIPTOR_RESERVED;
+  if ((descriptor->header >> 47) != 0) return QBS_REF_DESCRIPTOR_RESERVED;
   if (qbs_weight_block_bytes(fields.weight_profile) == 0)
     return QBS_REF_WEIGHT_PROFILE;
   if (qbs_activation_block_bytes(fields.activation_profile) == 0 ||
@@ -345,12 +355,25 @@ qbs_ref_status_t qbs_ref_validate_descriptor(
   if (fields.n == 0 || fields.n > max_n) return QBS_REF_N_RANGE;
   if (fields.k_blocks == 0 || fields.k_blocks > QBS_MAX_K_BLOCKS)
     return QBS_REF_K_RANGE;
+  if (fields.activation_access == QBS_ACTIVATION_ACCESS_DIRECT &&
+      (fields.context_id != 0 || fields.context_generation != 0))
+    return QBS_REF_CONTEXT_ENCODING;
+  if (fields.activation_access != QBS_ACTIVATION_ACCESS_DIRECT &&
+      (fields.context_id >= QBS_ACTIVATION_CONTEXT_COUNT ||
+       fields.activation_profile != QBS_ACTIVATION_PROFILE_Q8_K ||
+       fields.activation_layout != QBS_ACTIVATION_LAYOUT_ROW_MAJOR ||
+       m > QBS_ACTIVATION_CONTEXT_MAX_M ||
+       fields.k_blocks > QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS))
+    return QBS_REF_CONTEXT_UNSUPPORTED;
 
   const unsigned registers = destination_register_count(m);
   if ((vd % registers) != 0 || vd + registers > 32u)
     return QBS_REF_VD_ALIGNMENT;
   if ((descriptor->weight_base &
-       ((UINT64_C(1) << QBS_WEIGHT_BASE_ALIGNMENT_LOG2) - 1u)) != 0 ||
+       ((UINT64_C(1) << QBS_WEIGHT_BASE_ALIGNMENT_LOG2) - 1u)) != 0)
+    return QBS_REF_BASE_ALIGNMENT;
+  if ((fields.activation_access == QBS_ACTIVATION_ACCESS_DIRECT ||
+       fields.activation_access == QBS_ACTIVATION_ACCESS_FILL) &&
       (activation_base &
        ((UINT64_C(1) << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2) - 1u)) != 0)
     return QBS_REF_BASE_ALIGNMENT;
@@ -363,7 +386,10 @@ qbs_ref_status_t qbs_ref_validate_descriptor(
           fields.k_blocks);
   if (weight_bytes == 0 || activation_bytes == 0)
     return QBS_REF_ADDRESS_OVERFLOW;
-  if (!address_range_valid(descriptor->weight_base, weight_bytes) ||
+  if (!address_range_valid(descriptor->weight_base, weight_bytes))
+    return QBS_REF_ADDRESS_OVERFLOW;
+  if ((fields.activation_access == QBS_ACTIVATION_ACCESS_DIRECT ||
+       fields.activation_access == QBS_ACTIVATION_ACCESS_FILL) &&
       !address_range_valid(activation_base, activation_bytes))
     return QBS_REF_ADDRESS_OVERFLOW;
   return QBS_REF_OK;
@@ -1119,8 +1145,8 @@ static qbs_ref_status_t accumulate_q8_0(
   return QBS_REF_OK;
 }
 
-qbs_ref_status_t qbs_ref_execute(
-    const qbs_descriptor_v1_t *descriptor, unsigned m, unsigned vd,
+static qbs_ref_status_t qbs_ref_execute_data(
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
     unsigned vlen_bits, uint64_t activation_base, const void *weight_data,
     size_t weight_bytes, const void *activation_data, size_t activation_bytes,
     float *destination, size_t destination_elements,
@@ -1308,4 +1334,104 @@ done:;
   }
   free(pending_destination);
   return status;
+}
+
+void qbs_ref_activation_context_reset(qbs_ref_activation_context_t *context) {
+  if (context != NULL) memset(context, 0, sizeof(*context));
+}
+
+qbs_ref_status_t qbs_ref_validate_activation_context(
+    const qbs_ref_activation_context_t *context,
+    const qbs_descriptor_fields_t *fields, unsigned m) {
+  if (fields == NULL) return QBS_REF_BAD_ARGUMENT;
+  if (fields->activation_access == QBS_ACTIVATION_ACCESS_DIRECT)
+    return QBS_REF_OK;
+  if (context == NULL) return QBS_REF_CONTEXT_INVALID;
+  if (fields->activation_access == QBS_ACTIVATION_ACCESS_FILL)
+    return QBS_REF_OK;
+  if (!context->valid || context->context_id != fields->context_id)
+    return QBS_REF_CONTEXT_INVALID;
+  if (context->generation != fields->context_generation)
+    return QBS_REF_CONTEXT_GENERATION;
+  if (context->activation_profile != fields->activation_profile ||
+      context->activation_layout != fields->activation_layout ||
+      context->m != m || context->k_blocks != fields->k_blocks)
+    return QBS_REF_CONTEXT_METADATA;
+  return QBS_REF_OK;
+}
+
+qbs_ref_status_t qbs_ref_execute_with_context(
+    qbs_ref_activation_context_t *context,
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
+    unsigned vlen_bits, uint64_t activation_base, const void *weight_data,
+    size_t weight_bytes, const void *activation_data, size_t activation_bytes,
+    float *destination, size_t destination_elements,
+    qbs_trace_callback_t trace_callback, void *trace_opaque,
+    qbs_ref_result_t *result) {
+  qbs_ref_status_t status = qbs_ref_validate_descriptor(
+      descriptor, m, vd, vlen_bits, activation_base);
+  if (status != QBS_REF_OK) return status;
+
+  const qbs_descriptor_fields_t fields =
+      qbs_unpack_descriptor_header(descriptor->header);
+  status = qbs_ref_validate_activation_context(context, &fields, m);
+  if (status != QBS_REF_OK) return status;
+  const size_t required_activation =
+      qbs_ref_activation_storage_bytes_for_profile(
+          fields.activation_profile, fields.activation_layout, m,
+          fields.k_blocks);
+
+  if (fields.activation_access == QBS_ACTIVATION_ACCESS_DIRECT) {
+    return qbs_ref_execute_data(
+        descriptor, m, vd, vlen_bits, activation_base, weight_data,
+        weight_bytes, activation_data, activation_bytes, destination,
+        destination_elements, trace_callback, trace_opaque, result);
+  }
+
+  if (fields.activation_access == QBS_ACTIVATION_ACCESS_FILL) {
+    // A new FILL supersedes the old generation as soon as the command is
+    // accepted. Any later read/compute failure therefore leaves no reusable
+    // context, matching the RTL's fill-begin/commit transaction boundary.
+    context->valid = 0;
+    if (activation_data == NULL || activation_bytes < required_activation)
+      return QBS_REF_BUFFER_SIZE;
+
+    status = qbs_ref_execute_data(
+        descriptor, m, vd, vlen_bits, activation_base, weight_data,
+        weight_bytes, activation_data, activation_bytes, destination,
+        destination_elements, trace_callback, trace_opaque, result);
+    if (status != QBS_REF_OK) return status;
+
+    memcpy(context->data, activation_data, required_activation);
+    context->context_id = fields.context_id;
+    context->generation = fields.context_generation;
+    context->activation_profile = fields.activation_profile;
+    context->activation_layout = fields.activation_layout;
+    context->m = (uint8_t)m;
+    context->k_blocks = fields.k_blocks;
+    context->valid = 1;
+    return QBS_REF_OK;
+  }
+
+  status = qbs_ref_execute_data(
+      descriptor, m, vd, vlen_bits, activation_base, weight_data,
+      weight_bytes, context->data, required_activation, destination,
+      destination_elements, trace_callback, trace_opaque, result);
+  if (status == QBS_REF_OK &&
+      fields.activation_access == QBS_ACTIVATION_ACCESS_RELEASE)
+    context->valid = 0;
+  return status;
+}
+
+qbs_ref_status_t qbs_ref_execute(
+    const qbs_descriptor_t *descriptor, unsigned m, unsigned vd,
+    unsigned vlen_bits, uint64_t activation_base, const void *weight_data,
+    size_t weight_bytes, const void *activation_data, size_t activation_bytes,
+    float *destination, size_t destination_elements,
+    qbs_trace_callback_t trace_callback, void *trace_opaque,
+    qbs_ref_result_t *result) {
+  return qbs_ref_execute_with_context(
+      NULL, descriptor, m, vd, vlen_bits, activation_base, weight_data,
+      weight_bytes, activation_data, activation_bytes, destination,
+      destination_elements, trace_callback, trace_opaque, result);
 }

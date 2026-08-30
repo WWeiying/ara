@@ -43,10 +43,27 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
 #ifndef QBS_BENCH_PREBUILT_DESCRIPTOR
 #define QBS_BENCH_PREBUILT_DESCRIPTOR 0
 #endif
+#ifndef QBS_BENCH_ACTIVATION_CONTEXT
+#define QBS_BENCH_ACTIVATION_CONTEXT 0
+#endif
+#ifndef QBS_BENCH_CONTEXT_KEEP_VALID
+#define QBS_BENCH_CONTEXT_KEEP_VALID 0
+#endif
+#ifndef QBS_BENCH_CONTEXT_GENERATION
+#define QBS_BENCH_CONTEXT_GENERATION 1
+#endif
 
 #if QBS_BENCH_PREBUILT_DESCRIPTOR != 0 && \
     QBS_BENCH_PREBUILT_DESCRIPTOR != 1
 #error "QBS_BENCH_PREBUILT_DESCRIPTOR must be 0 or 1"
+#endif
+#if QBS_BENCH_ACTIVATION_CONTEXT != 0 && \
+    QBS_BENCH_ACTIVATION_CONTEXT != 1
+#error "QBS_BENCH_ACTIVATION_CONTEXT must be 0 or 1"
+#endif
+#if QBS_BENCH_CONTEXT_KEEP_VALID != 0 && \
+    QBS_BENCH_CONTEXT_KEEP_VALID != 1
+#error "QBS_BENCH_CONTEXT_KEEP_VALID must be 0 or 1"
 #endif
 
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
@@ -120,6 +137,16 @@ _Static_assert(BENCH_INPUTS >= 1 && BENCH_INPUTS <= QBS_MAX_M,
                "QBS M must be in [1,4]");
 _Static_assert(VLEN >= QBS_MAX_N * 32,
                "this benchmark requires 32 FP32 results per context");
+#if QBS_BENCH_ACTIVATION_CONTEXT
+_Static_assert(BENCH_INPUTS == 1,
+               "activation context supports only M=1");
+_Static_assert(BENCH_ACTIVATION_PROFILE == QBS_ACTIVATION_PROFILE_Q8_K,
+               "activation context supports only Q8_K");
+_Static_assert(BENCH_BLOCKS <= QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS,
+               "activation context K exceeds context capacity");
+_Static_assert(BENCH_TILES >= 2,
+               "activation context requires at least two output tiles");
+#endif
 
 enum benchmark_phase {
   BENCH_PHASE_QUANTIZE = 1,
@@ -141,7 +168,7 @@ static block_q8_Kx4 packed_activation[BENCH_BLOCKS]
     __attribute__((aligned(64), section(".bss")));
 #endif
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
-static qbs_descriptor_v1_t benchmark_descriptors[BENCH_TILES]
+static qbs_descriptor_t benchmark_descriptors[BENCH_TILES]
     __attribute__((aligned(64), section(".bss")));
 #endif
 static float benchmark_output[BENCH_OUTPUTS]
@@ -169,10 +196,20 @@ static uint32_t benchmark_float_bits(float value) {
   return bits;
 }
 
-static inline qbs_descriptor_v1_t benchmark_make_descriptor(unsigned tile) {
+static inline qbs_descriptor_t benchmark_make_descriptor(unsigned tile) {
   const unsigned first_row = tile * QBS_MAX_N;
   const unsigned remaining = BENCH_ROWS - first_row;
   const unsigned tile_n = remaining < QBS_MAX_N ? remaining : QBS_MAX_N;
+  unsigned activation_access = QBS_ACTIVATION_ACCESS_DIRECT;
+#if QBS_BENCH_ACTIVATION_CONTEXT
+  if (tile == 0) {
+    activation_access = QBS_ACTIVATION_ACCESS_FILL;
+  } else if (!QBS_BENCH_CONTEXT_KEEP_VALID && tile + 1 == BENCH_TILES) {
+    activation_access = QBS_ACTIVATION_ACCESS_RELEASE;
+  } else {
+    activation_access = QBS_ACTIVATION_ACCESS_REUSE;
+  }
+#endif
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = BENCH_WEIGHT_PROFILE,
@@ -181,8 +218,12 @@ static inline qbs_descriptor_v1_t benchmark_make_descriptor(unsigned tile) {
       .activation_layout = BENCH_ACTIVATION_LAYOUT,
       .n = (uint8_t)tile_n,
       .k_blocks = BENCH_BLOCKS,
+      .activation_access = (uint8_t)activation_access,
+      .context_id = 0,
+      .context_generation = QBS_BENCH_ACTIVATION_CONTEXT
+          ? QBS_BENCH_CONTEXT_GENERATION : 0,
   };
-  const qbs_descriptor_v1_t descriptor = {
+  const qbs_descriptor_t descriptor = {
       .header = qbs_pack_descriptor_header(&fields),
       .weight_base =
           (uintptr_t)benchmark_weight_start +
@@ -239,7 +280,7 @@ static __attribute__((noinline)) void benchmark_pack_activation(void) {
 }
 #endif
 
-static inline void benchmark_issue_qbs(const qbs_descriptor_v1_t *descriptor,
+static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
                                        const void *activation, float *output,
                                        unsigned output_stride, unsigned n) {
 #if BENCH_INPUTS == 1
@@ -314,11 +355,11 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(void) {
     const unsigned remaining = BENCH_ROWS - first_row;
     const unsigned tile_n = remaining < QBS_MAX_N ? remaining : QBS_MAX_N;
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
-    const qbs_descriptor_v1_t *descriptor = &benchmark_descriptors[tile];
+    const qbs_descriptor_t *descriptor = &benchmark_descriptors[tile];
 #else
-    const qbs_descriptor_v1_t descriptor_value __attribute__((aligned(16))) =
+    const qbs_descriptor_t descriptor_value __attribute__((aligned(16))) =
         benchmark_make_descriptor(tile);
-    const qbs_descriptor_v1_t *descriptor = &descriptor_value;
+    const qbs_descriptor_t *descriptor = &descriptor_value;
 #endif
 #if BENCH_USE_M4_INTERLEAVED
     const void *activation = packed_activation;
@@ -332,7 +373,7 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(void) {
   const uint64_t quantization_input_bytes =
       (uint64_t)BENCH_INPUTS * BENCH_K * sizeof(float);
   const uint64_t descriptor_bytes =
-      (uint64_t)BENCH_TILES * sizeof(qbs_descriptor_v1_t);
+      (uint64_t)BENCH_TILES * sizeof(qbs_descriptor_t);
   const uint64_t weight_bytes =
       (uint64_t)(benchmark_weight_end - benchmark_weight_start);
 #if BENCH_USE_M4_INTERLEAVED
@@ -340,7 +381,8 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(void) {
       (uint64_t)BENCH_TILES * BENCH_BLOCKS * sizeof(block_q8_Kx4);
 #else
   const uint64_t activation_bytes =
-      (uint64_t)BENCH_TILES * BENCH_Q8_BLOCKS *
+      (uint64_t)(QBS_BENCH_ACTIVATION_CONTEXT ? 1 : BENCH_TILES) *
+      BENCH_Q8_BLOCKS *
       sizeof(benchmark_activation_block_t);
 #endif
   return quantization_input_bytes + descriptor_bytes + weight_bytes +
@@ -437,6 +479,7 @@ int main(void) {
   BENCH_REPORT(
       "QBS_REAL_BENCH case=%s result=%s k=%d rows=%d inputs=%d outputs=%d "
       "tiles=%d timing_scope=%s setup_included=%d timed_cycles=%lu "
+      "activation_context=%d context_generation=%d "
       "timed_cycles_per_output_x1000=%lu descriptor_setup_cycles=0 "
       "descriptor_setup_cycles_valid=0 compute_cycles=%lu "
       "cycles_per_output_x1000=%lu quantize_cycles=%lu pack_cycles=%lu "
@@ -447,6 +490,8 @@ int main(void) {
       BENCH_ROWS, BENCH_INPUTS, BENCH_OUTPUTS, BENCH_TILES,
       QBS_BENCH_TIMING_SCOPE, !QBS_BENCH_PREBUILT_DESCRIPTOR,
       (unsigned long)compute_cycles,
+      QBS_BENCH_ACTIVATION_CONTEXT,
+      QBS_BENCH_ACTIVATION_CONTEXT ? QBS_BENCH_CONTEXT_GENERATION : 0,
       (unsigned long)(compute_cycles * 1000 / BENCH_OUTPUTS),
       (unsigned long)compute_cycles,
       (unsigned long)(compute_cycles * 1000 / BENCH_OUTPUTS),

@@ -587,7 +587,7 @@ tensor metadata，也可能因连续性要求引入 copy；是否消耗大量周
 
 ### 2.19 模型数学到 GGML operator 的对应表
 
-| 模型步骤 | 典型 GGML 行为 | 输入 -> 输出 shape | 主要底层行为 | QBS v1 |
+| 模型步骤 | 典型 GGML 行为 | 输入 -> 输出 shape | 主要底层行为 | 当前 QBS |
 | --- | --- | --- | --- | --- |
 | Token embedding | `GET_ROWS` | `[T] -> [T,1536]` | indexed gather | 不覆盖 |
 | RMSNorm | `RMS_NORM` + `MUL` | `[T,1536] -> [T,1536]` | square/reduce/scale | 不覆盖 |
@@ -750,7 +750,7 @@ K-quant、IQ 和 TQ 的精确 GGUF block ABI 主要由 GGML/llama.cpp 生态定�
 等同生态项目共享；F16/BF16 等是通用数值格式，MXFP4 来自 OCP 规范，NVFP4 则是 NVIDIA 定义
 的格式。相似的低比特/分组缩放思想很通用，但 byte layout 不能跨生态仅凭名称互换。
 
-QBS v1 并不试图实现上述全部类型。当前严格支持 Q2_K、Q3_K、Q4_K、Q5_K、Q6_K、Q4_0、
+当前 QBS 并不试图实现上述全部类型。它严格支持 Q2_K、Q3_K、Q4_K、Q5_K、Q6_K、Q4_0、
 Q5_0、Q8_0 weight 和 IQ4_NL 九种 profile，activation 配对为 Q8_K 或 Q8_0；其余类型必须
 经 capability/format 检查回退。第 4 节给出这九种 profile 的 exact block ABI 和计算公式。
 
@@ -1253,7 +1253,7 @@ QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意�
 | 14:12 | funct3=`000` | 选择 `qbexec`；`001` 属于 `qbinfo` |
 | 19:15 | `rs1` | 包含 16 B descriptor **虚拟地址**的标量寄存器；地址必须 16 B 对齐 |
 | 24:20 | `rs2` | 包含 activation tile **虚拟地址**的标量寄存器；地址必须 4 B 对齐 |
-| 26:25 | `M-1` | activation context 数减 1；编码 `00/01/10/11` 分别表示 M=1/2/3/4 |
+| 26:25 | `M-1` | activation/input row 数减 1；编码 `00/01/10/11` 分别表示 M=1/2/3/4 |
 | 31:27 | reserved | v1 必须全为 0；非零产生 illegal instruction |
 
 `M` 同时决定目的寄存器预留：
@@ -1286,17 +1286,17 @@ RVV store 表达。
 - CVA6 accelerator-consistent mode 必须开启，否则指令非法；
 - dispatcher 将请求内部固定为 e32，并从 M 合成 LMUL 和 `vl=M*(VLEN/32)`；
 - 软件仍在 wrapper 中设置相容的 e32 向量状态，命令后再设 `vl=N` 存回；
-- QBS v1 的 FP rounding mode 固定为 RNE，不继承动态 `frm`；命令累计的 `fflags` 仅在成功
+- QBS numerical contract v1 的 FP rounding mode 固定为 RNE，不继承动态 `frm`；命令累计的 `fflags` 仅在成功
   terminal 返回；
 - 命令被 CVA6 归类为阻塞式 accelerator load，从发出到成功提交或 fault terminal 之间
   不向标量核报告完成。
 
-### 5.5 Descriptor v1 的每个参数
+### 5.5 Descriptor v2 的每个参数
 
 descriptor 是 little-endian、固定 16 B、16 B 对齐的不可变命令描述：
 
 ```c
-struct qbs_descriptor_v1 {
+struct qbs_descriptor {
     uint64_t header;       // offset 0x00
     uint64_t weight_base;  // offset 0x08
 };
@@ -1306,14 +1306,17 @@ header 位域和实际语义如下：
 
 | Bits | 字段 | 编码与含义 |
 | --- | --- | --- |
-| 3:0 | `descriptor_version` | 必须为 1；用于防止旧硬件把新字段误解释 |
+| 3:0 | `descriptor_version` | 必须为 2；用于防止旧硬件把新字段误解释 |
 | 7:4 | `weight_profile` | 权重块的严格数学/byte-layout ID；当前 ID 见第 4.1 节 |
 | 11:8 | `activation_profile` | activation block ID；Q2/3/4/5/6_K 配 Q8_K，Q4_0/Q5_0/Q8_0/IQ4_NL 配 Q8_0 |
 | 15:12 | `weight_layout` | 1=`ROW_MAJOR`，2=`R4_BLOCK_MAJOR` |
 | 19:16 | `activation_layout` | 1=`ROW_MAJOR`，2=`M4_INTERLEAVED`；后者只允许 M=4 |
 | 24:20 | `N-1` | 命令中的 logical output rows 减 1，因而可表达 1..32 |
 | 32:25 | `K-blocks-1` | reduction 维的 native blocks 数减 1，因而可表达 1..256 |
-| 63:33 | reserved | v1 必须为 0 |
+| 34:33 | `activation_access` | 0=`DIRECT`，1=`FILL`，2=`REUSE`，3=`RELEASE` |
+| 38:35 | `context_id` | 显式 activation context ID；当前仅允许 0 |
+| 46:39 | `context_generation` | 调用者分配的 8-bit generation；不得按地址推断 |
+| 63:47 | reserved | v2 必须为 0 |
 | 127:64 | `weight_base` | 当前命令权重 tile 的虚拟基地址，至少 2 B 对齐 |
 
 `K-blocks` 的实际元素数由 profile 决定：
@@ -1464,7 +1467,7 @@ output     = 32 * 4       =    128 B   # 通过后续 vse32.v 存储
 ```
 
 这个例子展示了各参数的责任边界：`M` 告诉 sequencer 预留几个目的寄存器，`N`
-告诉命令每个 context 生成多少 outputs，`K_blocks` 告诉硬件对每个 output 累加多少块，profile
+告诉命令每个 activation row 生成多少 outputs，`K_blocks` 告诉硬件对每个 output 累加多少块，profile
 告诉 decoder 如何解释 bytes，layout 告诉 read scheduler 如何计算地址。没有任何参数直接写
 “Attention-Q”或“Qwen2.5”，所以同一命令可用于任何满足 profile/layout/shape 契约的量化线性层。
 
@@ -1559,7 +1562,7 @@ GGML 的量化 matmul path 先把 FP32 activation 动态量化：
 - `_0`/IQ4_NL 路径使用 Q8_0 activation；每 32 元素有 FP16 scale 和 32 个 int8。
 
 `M<4` 使用 row-major activation；`M=4` 使用 `M4_INTERLEAVED`，即同一 K block 的四个
-activation row 相邻。这样硬件可以在 weight block 保持不变时，把同一权重用于四个 context。
+activation row 相邻。这样硬件可以在 weight block 保持不变时，把同一权重用于四个 activation row。
 
 ### 6.4 GEMV：Decode 的 M=1 路径
 
@@ -1589,7 +1592,7 @@ for input rows in groups of M<=4:
 ```
 
 一条 M4 命令形成 4 x N 个 FP32 accumulator。硬件读取每个 weight block 后将它复用到四个
-activation context；读取每个 activation block 后又将它复用到 N 个 output rows。复用范围
+activation row；读取每个 activation block 后又将它复用到 N 个 output rows。复用范围
 完全由 descriptor shape 推导，没有由地址预测产生的隐式流状态。
 
 ### 6.6 长 K 的软件分段
@@ -1695,13 +1698,16 @@ qbexec command
 这段伪代码揭示了两个容易忽略的复用边界：
 
 - **命令内**，一个 activation K block 被该命令的 N 个输出行复用，一个 weight block 被 M 个
-  activation context 复用；
-- **命令间**，hidden accumulator、weight bank 和 activation block storage 都不持久。下一个
-  N tile 会重新读取 activation blocks，但不需要重新执行软件量化，因为量化结果仍在内存中。
+  activation row 复用；
+- **命令间**，hidden accumulator 和 weight bank 不持久；ABI v2 可由软件显式选择 activation
+  context，使首个 N tile 以 `FILL` 建立 Q8_K 快照，中间 tile 以 `REUSE` 消费，最后一个 tile
+  以 `RELEASE` 消费并释放。未选择该选项的 `qbs_execute()` 仍为逐命令 `DIRECT`。
 
-因此未来若融合 activation quantization，不能让每条 N-tile 命令重复量化同一 activation。合理
-方向是先建立可复用的 activation context，再让多条 `qbexec` 消费；这属于未来 contract，不是
-当前 v1 已实现行为。
+当前 context 实现只覆盖一个 `M=1`、row-major Q8_K context，最多 16 个 K blocks。token 的
+ID/generation、profile、layout、M 和 K 必须全部匹配；硬件不按地址隐式命中，也不在失配时
+静默回退。`FILL` 只有在整条命令成功 commit 后才有效，故障和 reset 会阻止半有效快照被后续
+命令观察。该机制解决同一矩阵多个 N tile 的重复 Q8_K 读取，但尚未跨 Q/K/V 或 gate/up 共享
+F32-to-Q8 动态量化结果；跨 operator 扩展还需要绑定 tensor identity 与 graph execution epoch。
 
 ### 6.11 当前覆盖深度，而不只是格式数量
 
@@ -1947,15 +1953,15 @@ weight 原始位宽可为 2/3/4/5/6/8 bit，decoder 先扩展为 signed int8，�
 M 改变每个 row cluster 的并行分配：
 
 - M=1：每行 8 pair，形成一个 8 项和；
-- M=2：每个 context 4 pair；
-- M=3/4：每个 context 2 pair。
+- M=2：每个 activation row 4 pair；
+- M=3/4：每个 activation row 2 pair。
 
-因此物理 pair capacity 固定，而 M/N shape 决定 pair 在 output-row 和 activation-context 间的
+因此物理 pair capacity 固定，而 M/N shape 决定 pair 在 output row 和 activation row 间的
 分配。balanced reduction tree 避免综合成串行加法链。
 
 ### 9.8 `qbs_profile_engine_int.sv`：整数流水与结果整形
 
-该模块包含两个内部 context 和 16 个 logical streams（4 weight rows x 4 activation contexts）。
+该模块包含两个内部流水槽位和 16 个 logical streams（4 weight rows x 4 activation rows）。
 它将 decoder 输出送入 dot array，按 subgroup 累计 partial dot，再应用 integer scale/min：
 
 ```text
@@ -2122,7 +2128,7 @@ accumulator updates 必须共同解释。
    的 QBS/RVV 实测 AXI R bytes 为 `24.6%--43.6%`；Q8_0 则为 `110.2%`，说明该格式的收益主要
    来自指令/归约消除，而不是总线流量减少。不能把一种格式的 traffic 结论推广到全部 profile。
 3. **在 tile 内摊薄重复工作**。一个 activation block 被 N 个 output rows 共享，一个 weight
-   block 在 Prefill 中被 M 个 activation contexts 共享；subgroup correction 和 128 个 FP32
+   block 在 Prefill 中被 M 个 activation rows 共享；subgroup correction 和 128 个 FP32
    partial sums 都驻留在 command-local state，避免每行重新装载、归约和往返 scalar/VRF。
 4. **让 layout 与事务粒度一致**。R4 把同一 K block 的四个 weight rows 放成连续 range，避免
    “数据本来连续、软件/硬件却发四个小请求”。完整 Decode Attention-Q 中，仅合并这四个

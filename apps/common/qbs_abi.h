@@ -6,12 +6,12 @@
 #include <stdint.h>
 
 #define QBS_EXTENSION_NAME "Xaraqbs"
-#define QBS_ARCH_VERSION 1u
+#define QBS_ARCH_VERSION 2u
 #define QBS_NUMERICAL_CONTRACT_VERSION 1u
 #define QBS_ROUNDING_MODE_RNE 0u
 #define QBS_NUMERICAL_ROUNDING_MODE QBS_ROUNDING_MODE_RNE
 #define QBS_NUMERICAL_USES_DYNAMIC_FRM 0u
-#define QBS_DESCRIPTOR_VERSION 1u
+#define QBS_DESCRIPTOR_VERSION 2u
 #define QBS_DESCRIPTOR_BYTES 16u
 #define QBS_DESCRIPTOR_ALIGNMENT_LOG2 4u
 
@@ -26,6 +26,10 @@
 #define QBS_BLOCK_ELEMENTS 256u
 #define QBS_WEIGHT_BASE_ALIGNMENT_LOG2 1u
 #define QBS_ACTIVATION_BASE_ALIGNMENT_LOG2 2u
+#define QBS_ACTIVATION_CONTEXT_COUNT 1u
+#define QBS_ACTIVATION_CONTEXT_MAX_M 1u
+#define QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS 16u
+#define QBS_ACTIVATION_CONTEXT_GENERATION_BITS 8u
 
 typedef enum {
   QBS_SCALE_INVALID = 0,
@@ -159,10 +163,19 @@ typedef enum {
   QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 2,
 } qbs_activation_layout_t;
 
+typedef enum {
+  QBS_ACTIVATION_ACCESS_DIRECT = 0,
+  QBS_ACTIVATION_ACCESS_FILL = 1,
+  QBS_ACTIVATION_ACCESS_REUSE = 2,
+  QBS_ACTIVATION_ACCESS_RELEASE = 3,
+} qbs_activation_access_t;
+
 typedef struct __attribute__((aligned(16))) {
   uint64_t header;
   uint64_t weight_base;
-} qbs_descriptor_v1_t;
+} qbs_descriptor_v2_t;
+
+typedef qbs_descriptor_v2_t qbs_descriptor_t;
 
 typedef struct {
   uint8_t descriptor_version;
@@ -172,13 +185,16 @@ typedef struct {
   uint8_t activation_layout;
   uint8_t n;
   uint16_t k_blocks;
+  uint8_t activation_access;
+  uint8_t context_id;
+  uint8_t context_generation;
 } qbs_descriptor_fields_t;
 
 #if defined(__cplusplus)
-static_assert(sizeof(qbs_descriptor_v1_t) == QBS_DESCRIPTOR_BYTES,
+static_assert(sizeof(qbs_descriptor_t) == QBS_DESCRIPTOR_BYTES,
               "invalid QBS descriptor size");
 #else
-_Static_assert(sizeof(qbs_descriptor_v1_t) == QBS_DESCRIPTOR_BYTES,
+_Static_assert(sizeof(qbs_descriptor_t) == QBS_DESCRIPTOR_BYTES,
                "invalid QBS descriptor size");
 #endif
 
@@ -473,7 +489,10 @@ static inline uint64_t qbs_pack_descriptor_header(
          ((uint64_t)(fields->weight_layout & 0x0fu) << 12) |
          ((uint64_t)(fields->activation_layout & 0x0fu) << 16) |
          ((uint64_t)((fields->n - 1u) & 0x1fu) << 20) |
-         ((uint64_t)((fields->k_blocks - 1u) & 0xffu) << 25);
+         ((uint64_t)((fields->k_blocks - 1u) & 0xffu) << 25) |
+         ((uint64_t)(fields->activation_access & 0x03u) << 33) |
+         ((uint64_t)(fields->context_id & 0x0fu) << 35) |
+         ((uint64_t)fields->context_generation << 39);
 }
 
 static inline qbs_descriptor_fields_t qbs_unpack_descriptor_header(
@@ -486,6 +505,9 @@ static inline qbs_descriptor_fields_t qbs_unpack_descriptor_header(
   fields.activation_layout = (uint8_t)((header >> 16) & 0x0fu);
   fields.n = (uint8_t)(((header >> 20) & 0x1fu) + 1u);
   fields.k_blocks = (uint16_t)(((header >> 25) & 0xffu) + 1u);
+  fields.activation_access = (uint8_t)((header >> 33) & 0x03u);
+  fields.context_id = (uint8_t)((header >> 35) & 0x0fu);
+  fields.context_generation = (uint8_t)((header >> 39) & 0xffu);
   return fields;
 }
 
@@ -518,6 +540,19 @@ static inline uint64_t qbs_capability_word(unsigned index,
            ((uint64_t)QBS_WEIGHT_BASE_ALIGNMENT_LOG2 << 40) |
            ((uint64_t)QBS_ACTIVATION_BASE_ALIGNMENT_LOG2 << 48) |
            (UINT64_C(32) << 56);
+  }
+  if (index == 0x02u) {
+    const uint64_t context_profiles =
+        (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);
+    const uint64_t context_layouts =
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+    return ((uint64_t)QBS_ACTIVATION_CONTEXT_COUNT << 0) |
+           ((uint64_t)(QBS_ACTIVATION_CONTEXT_MAX_M - 1u) << 4) |
+           ((uint64_t)(QBS_ACTIVATION_CONTEXT_MAX_K_BLOCKS - 1u) << 7) |
+           (context_profiles << 12) |
+           (UINT64_C(0x0f) << 28) |
+           ((uint64_t)QBS_ACTIVATION_CONTEXT_GENERATION_BITS << 32) |
+           (context_layouts << 40);
   }
   if (index == 0x11u)
     return (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K);

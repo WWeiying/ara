@@ -113,6 +113,15 @@ module qbs_engine_tb;
   logic [31:0] accumulator_updates;
   logic [31:0] commit_word_count;
   logic [31:0] commit_backpressure_cycles;
+  qbs_activation_access_e activation_access;
+  logic [31:0] context_fill_count;
+  logic [31:0] context_reuse_count;
+  logic [31:0] context_reuse_block_count;
+  logic [31:0] context_read_bytes;
+  logic [31:0] activation_axi_bytes_saved;
+  logic [31:0] context_replay_cycles;
+  logic [31:0] context_replay_compute_overlap_cycles;
+  logic [31:0] context_validation_fault_count;
 
   qbs_engine #(
     .AxiDataWidth (AxiDataWidth),
@@ -208,12 +217,23 @@ module qbs_engine_tb;
     .fp_table_full_cycles_o          (fp_table_full_cycles),
     .accumulator_updates_o           (accumulator_updates),
     .commit_word_count_o             (commit_word_count),
-    .commit_backpressure_cycles_o    (commit_backpressure_cycles)
+    .commit_backpressure_cycles_o    (commit_backpressure_cycles),
+    .activation_access_o             (activation_access),
+    .context_fill_count_o            (context_fill_count),
+    .context_reuse_count_o           (context_reuse_count),
+    .context_reuse_block_count_o     (context_reuse_block_count),
+    .context_read_bytes_o            (context_read_bytes),
+    .activation_axi_bytes_saved_o    (activation_axi_bytes_saved),
+    .context_replay_cycles_o         (context_replay_cycles),
+    .context_replay_compute_overlap_cycles_o(
+        context_replay_compute_overlap_cycles),
+    .context_validation_fault_count_o(context_validation_fault_count)
   );
 
   always #5 clk = ~clk;
 
   byte unsigned memory [longint unsigned];
+  logic [31:0] memory_epoch;
   logic [31:0] expected_output [128];
   bit expected_output_valid [128];
   logic score_commit;
@@ -226,6 +246,10 @@ module qbs_engine_tb;
   integer unexpected_write_count;
   bit saw_dual_read_outstanding;
   bit saw_read_outstanding_full;
+  logic activation_ar_monitor;
+  logic [63:0] monitored_activation_base;
+  logic [63:0] monitored_activation_end;
+  integer activation_ar_count;
 
   function automatic logic [7:0] memory_byte(input logic [63:0] address);
     longint unsigned index;
@@ -233,6 +257,14 @@ module qbs_engine_tb;
     if (memory.exists(index))
       return memory[index];
     return 8'h00;
+  endfunction
+
+  function automatic logic [63:0] memory_u64(input logic [63:0] address);
+    logic [63:0] value;
+    value = '0;
+    for (int unsigned byte_lane = 0; byte_lane < 8; byte_lane++)
+      value[byte_lane*8 +: 8] = memory_byte(address + byte_lane);
+    return value;
   endfunction
 
   function automatic logic [63:0] descriptor_header(
@@ -256,10 +288,30 @@ module qbs_engine_tb;
     return header;
   endfunction
 
+  function automatic logic [63:0] context_descriptor_header(
+      input integer profile,
+      input integer weight_layout,
+      input integer activation_layout,
+      input integer n,
+      input integer k_blocks,
+      input qbs_activation_access_e access,
+      input integer context_id,
+      input integer generation
+  );
+    logic [63:0] header;
+    header = descriptor_header(QbsDescriptorVersion, profile, weight_layout,
+                               activation_layout, n, k_blocks);
+    header[QbsDescActivationAccessLsb +: 2] = access;
+    header[QbsDescContextIdLsb +: 4] = context_id[3:0];
+    header[QbsDescContextGenerationLsb +: 8] = generation[7:0];
+    return header;
+  endfunction
+
   task automatic put_u64(input logic [63:0] address,
                          input logic [63:0] value);
     for (int unsigned byte_lane = 0; byte_lane < 8; byte_lane++)
       memory[longint'(address + byte_lane)] = value[byte_lane*8 +: 8];
+    memory_epoch++;
   endtask
 
   task automatic install_descriptor(
@@ -278,6 +330,25 @@ module qbs_engine_tb;
     put_u64(descriptor_base + 8, weight_base);
   endtask
 
+  task automatic install_context_descriptor(
+      input logic [63:0] descriptor_base,
+      input logic [63:0] weight_base,
+      input integer profile,
+      input integer weight_layout,
+      input integer activation_layout,
+      input integer n,
+      input integer k_blocks,
+      input qbs_activation_access_e access,
+      input integer context_id,
+      input integer generation
+  );
+    put_u64(descriptor_base,
+            context_descriptor_header(profile, weight_layout,
+                                      activation_layout, n, k_blocks, access,
+                                      context_id, generation));
+    put_u64(descriptor_base + 8, weight_base);
+  endtask
+
   task automatic put_beat(input logic [63:0] address,
                           input logic [15:0] strb,
                           input logic [127:0] data);
@@ -285,6 +356,7 @@ module qbs_engine_tb;
       if (strb[byte_lane])
         memory[longint'(address + byte_lane)] = data[byte_lane*8 +: 8];
     end
+    memory_epoch++;
   endtask
 
   // One-cycle identity translation, with address-selective fault injection.
@@ -322,6 +394,20 @@ module qbs_engine_tb;
     end
   end
 
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      activation_ar_count <= 0;
+    end else begin
+      if (!activation_ar_monitor)
+        activation_ar_count <= 0;
+      else if (axi_ar_valid && axi_ar_ready &&
+               axi_ar.addr < monitored_activation_end &&
+               axi_ar.addr + (64'(axi_ar.len) + 1) * BeatBytes >
+                   monitored_activation_base)
+        activation_ar_count <= activation_ar_count + 1;
+    end
+  end
+
   assign mmu_exception_valid = mmu_exception.valid;
 
   logic inject_pma_fault;
@@ -348,6 +434,9 @@ module qbs_engine_tb;
 
   always_comb begin
     axi_r = '0;
+    // Associative-array writes are not inferred in VCS always_comb
+    // sensitivity, so explicitly observe the epoch before reading memory.
+    axi_r.data = {128{memory_epoch[0]}};
     for (int unsigned byte_lane = 0; byte_lane < BeatBytes; byte_lane++)
       axi_r.data[byte_lane*8 +: 8] =
           memory_byte(response_addr[response_rd] +
@@ -507,12 +596,19 @@ module qbs_engine_tb;
     if (!fault_valid || fault_is_validation != expected_validation ||
         validation_error != expected_validation_error ||
         read_fault_kind != expected_read_fault ||
-        fault_vaddr != expected_vaddr)
+        fault_vaddr != expected_vaddr) begin
+      $display("descriptor observed header=%h access=%0d generation=%h k_blocks=%0d; context valid=%0b generation=%h k_blocks=%0d",
+               dut.descriptor_q[63:0], dut.descriptor_activation_access,
+               dut.descriptor_context_generation, dut.descriptor_k_blocks,
+               dut.i_activation_context.context_valid_q,
+               dut.i_activation_context.context_generation_q,
+               dut.i_activation_context.context_k_blocks_q);
       $fatal(1,
              "fault mismatch valid=%0b validation=%0b/%0b verr=%0d/%0d read=%0d/%0d vaddr=%h/%h",
              fault_valid, fault_is_validation, expected_validation,
              validation_error, expected_validation_error, read_fault_kind,
              expected_read_fault, fault_vaddr, expected_vaddr);
+    end
     if (commit_aggregate_words != 0 || unexpected_write_count != 0)
       $fatal(1, "faulting QBS command modified the VRF");
     acknowledge_terminal();
@@ -534,6 +630,7 @@ module qbs_engine_tb;
     command_m = '0;
     command_descriptor_address = '0;
     command_activation_base = '0;
+    memory_epoch = '0;
     terminal_ready = 1'b0;
     core_st_pending = 1'b0;
     translation_enable = 1'b0;
@@ -551,6 +648,9 @@ module qbs_engine_tb;
     total_errors = 0;
     saw_dual_read_outstanding = 1'b0;
     saw_read_outstanding_full = 1'b0;
+    activation_ar_monitor = 1'b0;
+    monitored_activation_base = '0;
+    monitored_activation_end = '0;
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_command_vectors.txt";
@@ -721,6 +821,11 @@ module qbs_engine_tb;
           (n > 4 && phase_overlap_cycles == 0) ||
           commit_word_count != m * WordsPerRegister ||
           commit_aggregate_words != m * WordsPerRegister ||
+          activation_access != QBS_ACTIVATION_ACCESS_DIRECT ||
+          context_fill_count != 0 || context_reuse_count != 0 ||
+          context_reuse_block_count != 0 || context_read_bytes != 0 ||
+          activation_axi_bytes_saved != 0 ||
+          context_validation_fault_count != 0 ||
           unexpected_write_count != 0) begin
         $error("case %0d: end-to-end counter/commit mismatch", case_id);
         $display("  flags %0h/%0h tiles %0d/%0d W %0d/%0d A %0d/%0d",
@@ -755,6 +860,172 @@ module qbs_engine_tb;
                  activation_layout, command_cycles);
       total_errors += case_errors;
       acknowledge_terminal();
+
+      if (ordinal == 0) begin
+        const integer context_generation = 8'h35;
+        const integer expected_weight_ranges =
+            weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+                ? ((n + 3) / 4) * k_blocks : n * k_blocks;
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_FILL, 0,
+            context_generation);
+        monitored_activation_base = activation_base;
+        monitored_activation_end = activation_base + expected_activation_bytes;
+        activation_ar_monitor = 1'b1;
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base,
+                     activation_base);
+        wait_success(100);
+        if (activation_access != QBS_ACTIVATION_ACCESS_FILL ||
+            context_fill_count != 1 || context_reuse_count != 0 ||
+            context_read_bytes != 0 || activation_axi_bytes_saved != 0 ||
+            activation_ar_count != k_blocks ||
+            commit_aggregate_words != m * WordsPerRegister ||
+            unexpected_write_count != 0)
+          $fatal(1, "QBS FILL counters or result mismatch");
+        acknowledge_terminal();
+        activation_ar_monitor = 1'b0;
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, QbsActivationContextMaxKBlocks + 1,
+            QBS_ACTIVATION_ACCESS_FILL, 0, context_generation + 1);
+        score_commit = 1'b0;
+        reset_scoreboard();
+        send_command(13, score_vd, m, descriptor_base,
+                     64'hffff_ffff_ffff_ffff);
+        expect_fault(1'b1, QBS_VALIDATION_CONTEXT_UNSUPPORTED,
+                     QBS_READ_FAULT_NONE, descriptor_base);
+        if (read_range_count != 1 || context_validation_fault_count != 0)
+          $fatal(1, "invalid FILL accessed payload or changed lookup counters");
+        if (!dut.i_activation_context.context_valid_q ||
+            dut.i_activation_context.context_generation_q !==
+                context_generation[7:0] ||
+            dut.i_activation_context.context_k_blocks_q !== k_blocks[8:0])
+          $fatal(1, "invalid FILL changed the committed activation context");
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE, 0,
+            context_generation + 1);
+        score_commit = 1'b0;
+        reset_scoreboard();
+        send_command(13, score_vd, m, descriptor_base, 64'hffff_ffff_ffff_ffff);
+        expect_fault(1'b1, QBS_VALIDATION_CONTEXT_GENERATION,
+                     QBS_READ_FAULT_NONE, descriptor_base);
+        if (context_validation_fault_count != 1 || read_range_count != 1)
+          $fatal(1, "stale context fault accessed payload or was not counted");
+        if (!dut.i_activation_context.context_valid_q ||
+            dut.i_activation_context.context_generation_q !==
+                context_generation[7:0] ||
+            dut.i_activation_context.context_k_blocks_q !== k_blocks[8:0])
+          $fatal(1, "stale REUSE changed the committed activation context");
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks - 1,
+            QBS_ACTIVATION_ACCESS_REUSE, 0, context_generation);
+        if (memory_u64(descriptor_base) !== context_descriptor_header(
+                profile, weight_layout, activation_layout, n, k_blocks - 1,
+                QBS_ACTIVATION_ACCESS_REUSE, 0, context_generation))
+          $fatal(1, "metadata-mismatch descriptor was not installed exactly");
+        reset_scoreboard();
+        send_command(13, score_vd, m, descriptor_base,
+                     64'hffff_ffff_ffff_ffff);
+        expect_fault(1'b1, QBS_VALIDATION_CONTEXT_METADATA,
+                     QBS_READ_FAULT_NONE, descriptor_base);
+        if (context_validation_fault_count != 1 || read_range_count != 1)
+          $fatal(1, "metadata mismatch accessed payload or was not counted");
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE, 0,
+            context_generation);
+        score_commit = 1'b1;
+        monitored_activation_base = activation_base;
+        monitored_activation_end = activation_base + expected_activation_bytes;
+        activation_ar_monitor = 1'b1;
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base,
+                     activation_base);
+        wait_success(101);
+        if (activation_access != QBS_ACTIVATION_ACCESS_REUSE ||
+            context_reuse_count != 1 ||
+            context_reuse_block_count != k_blocks ||
+            context_read_bytes != expected_activation_bytes ||
+            activation_axi_bytes_saved != expected_activation_bytes ||
+            activation_ar_count != 0 ||
+            read_range_count != 1 + expected_weight_ranges ||
+            read_payload_bytes != 16 + expected_weight_bytes ||
+            commit_aggregate_words != m * WordsPerRegister ||
+            unexpected_write_count != 0)
+          $fatal(1, "QBS REUSE did not eliminate activation AXI traffic");
+        acknowledge_terminal();
+        activation_ar_monitor = 1'b0;
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_RELEASE, 0,
+            context_generation);
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base,
+                     activation_base);
+        wait_success(102);
+        if (activation_access != QBS_ACTIVATION_ACCESS_RELEASE ||
+            context_reuse_count != 1 ||
+            context_reuse_block_count != k_blocks ||
+            commit_aggregate_words != m * WordsPerRegister)
+          $fatal(1, "QBS RELEASE did not consume the context correctly");
+        acknowledge_terminal();
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE, 0,
+            context_generation);
+        score_commit = 1'b0;
+        reset_scoreboard();
+        send_command(0, score_vd, m, descriptor_base, activation_base);
+        expect_fault(1'b1, QBS_VALIDATION_CONTEXT_INVALID,
+                     QBS_READ_FAULT_NONE, descriptor_base);
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_FILL, 0,
+            8'h40);
+        score_commit = 1'b1;
+        reset_scoreboard();
+        send_command(score_id, score_vd, m, descriptor_base,
+                     activation_base);
+        wait_success(103);
+        acknowledge_terminal();
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_FILL, 0,
+            8'h41);
+        score_commit = 1'b0;
+        inject_axi_fault = 1'b1;
+        inject_fault_start = activation_base;
+        inject_fault_end = activation_base + expected_activation_bytes;
+        reset_scoreboard();
+        send_command(0, score_vd, m, descriptor_base, activation_base);
+        expect_fault(1'b0, QBS_VALIDATION_OK,
+                     QBS_READ_FAULT_AXI_RESPONSE, activation_base);
+        inject_axi_fault = 1'b0;
+
+        install_context_descriptor(
+            descriptor_base, weight_base, profile, weight_layout,
+            activation_layout, n, k_blocks, QBS_ACTIVATION_ACCESS_REUSE, 0,
+            8'h40);
+        reset_scoreboard();
+        send_command(0, score_vd, m, descriptor_base, activation_base);
+        expect_fault(1'b1, QBS_VALIDATION_CONTEXT_INVALID,
+                     QBS_READ_FAULT_NONE, descriptor_base);
+        $display("QBS activation context FILL/REUSE/RELEASE PASS");
+      end
+
       score_commit = 1'b0;
       repeat (2) @(posedge clk);
     end
@@ -763,7 +1034,8 @@ module qbs_engine_tb;
 
     // Descriptor validation failure: no compute or VRF activity may occur.
     memory.delete();
-    install_descriptor(64'h3000, 64'h0010_0000, 2,
+    install_descriptor(64'h3000, 64'h0010_0000,
+                       QbsDescriptorVersion + 1,
                        QBS_WEIGHT_PROFILE_Q4_K,
                        QBS_WEIGHT_LAYOUT_ROW_MAJOR,
                        QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 1, 1);

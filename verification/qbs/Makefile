@@ -13,6 +13,8 @@ RTL_DESCRIPTOR_BUILD := rtl_descriptor_build
 RTL_READ_BUILD := rtl_read_build
 RTL_COMMIT_BUILD := rtl_commit_build
 RTL_ENGINE_BUILD := rtl_engine_build
+RTL_CONTEXT_BUILD := rtl_context_build
+RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
 RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
@@ -37,6 +39,8 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_dot_array.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
+	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \
@@ -49,8 +53,18 @@ RTL_DESCRIPTOR_SOURCES := $(RTL_SOURCES) $(abspath qbs_descriptor_decoder_tb.sv)
 RTL_READ_SOURCES := $(RTL_SOURCES) $(abspath qbs_read_engine_tb.sv)
 RTL_COMMIT_SOURCES := $(RTL_SOURCES) $(abspath qbs_commit_tb.sv)
 RTL_ENGINE_SOURCES := $(RTL_SOURCES) $(abspath qbs_engine_tb.sv)
+RTL_CONTEXT_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_context_tb.sv)
+RTL_CONTEXT_MACRO_SOURCES := \
+	$(ROOT)/hardware/include/qbs_pkg.sv \
+	$(abspath qbs_context_sram_macro_model.sv) \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(abspath qbs_activation_context_tb.sv)
 
-.PHONY: all clean check generated-check real-check
+.PHONY: all clean check generated-check real-check activation-context-evidence-check
 
 all: $(TARGETS)
 
@@ -82,6 +96,12 @@ check: generated-check qbs_ref_test
 real-check: all
 	./run_real_cases.sh
 
+ACTIVATION_CONTEXT_EVIDENCE ?= $(ROOT)/hardware/qbs_activation_context_evidence
+activation-context-evidence-check:
+	python3 check_activation_context_evidence.py \
+		--direct $(ACTIVATION_CONTEXT_EVIDENCE)/direct/console.log \
+		--context $(ACTIVATION_CONTEXT_EVIDENCE)/context/console.log
+
 .PHONY: qemu-contract-check
 qemu-contract-check:
 	./qemu/run_qbs_contract_test.sh
@@ -89,7 +109,7 @@ qemu-contract-check:
 .PHONY: rtl-compile rtl-profile-check rtl-command-compile rtl-command-check \
 	rtl-descriptor-compile rtl-descriptor-check rtl-read-compile \
 	rtl-read-check rtl-commit-compile rtl-commit-check rtl-engine-compile \
-	rtl-engine-check rtl-check
+	rtl-engine-check rtl-context-compile rtl-context-check rtl-check
 rtl-compile: qbs_rtl_vectors.txt $(RTL_PROFILE_SOURCES)
 	mkdir -p $(RTL_BUILD)
 	cd $(RTL_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
@@ -147,11 +167,32 @@ rtl-engine-check: rtl-engine-compile
 	cd $(RTL_ENGINE_BUILD) && ./simv -l run.log \
 		+QBS_COMMAND_VECTOR_FILE=$(RTL_COMMAND_VECTOR_FILE)
 
+rtl-context-compile: $(RTL_CONTEXT_SOURCES)
+	mkdir -p $(RTL_CONTEXT_BUILD)
+	cd $(RTL_CONTEXT_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+lint=TFIPC-L -l compile.log $(RTL_CONTEXT_SOURCES) \
+		-top qbs_activation_context_tb -o simv
+
+rtl-context-check: rtl-context-compile
+	cd $(RTL_CONTEXT_BUILD) && ./simv -l run.log
+
+.PHONY: rtl-context-macro-compile rtl-context-macro-check
+rtl-context-macro-compile: $(RTL_CONTEXT_MACRO_SOURCES)
+	mkdir -p $(RTL_CONTEXT_MACRO_BUILD)
+	cd $(RTL_CONTEXT_MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
+		+define+TARGET_SRAM_MC +lint=TFIPC-L -l compile.log \
+		$(RTL_CONTEXT_MACRO_SOURCES) -top qbs_activation_context_tb -o simv
+
+rtl-context-macro-check: rtl-context-macro-compile
+	cd $(RTL_CONTEXT_MACRO_BUILD) && ./simv -l run.log
+
 rtl-check: rtl-profile-check rtl-command-check rtl-descriptor-check \
-	rtl-read-check rtl-commit-check rtl-engine-check
+	rtl-read-check rtl-commit-check rtl-context-check rtl-context-macro-check \
+	rtl-engine-check
 
 clean:
 	rm -f $(TARGETS) *.o qbs_rtl_vectors.txt
 	rm -f qbs_command_vectors.txt
 	rm -rf $(RTL_BUILD) $(RTL_COMMAND_BUILD) $(RTL_DESCRIPTOR_BUILD) \
-		$(RTL_READ_BUILD) $(RTL_COMMIT_BUILD) $(RTL_ENGINE_BUILD)
+		$(RTL_READ_BUILD) $(RTL_COMMIT_BUILD) $(RTL_ENGINE_BUILD) \
+		$(RTL_CONTEXT_BUILD) $(RTL_CONTEXT_MACRO_BUILD)

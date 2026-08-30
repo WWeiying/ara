@@ -62,6 +62,7 @@ sources:
     - hardware/src/vlsu/qbs/qbs_dot_array.sv
     - hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv
     - hardware/src/vlsu/qbs/qbs_read_engine.sv
+    - hardware/src/vlsu/qbs/qbs_activation_context.sv
     - hardware/src/vlsu/qbs/qbs_block_adapter.sv
     - hardware/src/vlsu/qbs/qbs_profile_engine_int.sv
     - hardware/src/vlsu/qbs/qbs_fp_accumulator.sv

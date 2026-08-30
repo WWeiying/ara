@@ -62,7 +62,7 @@ static unsigned parse_profile(const char *text) {
   return QBS_WEIGHT_PROFILE_INVALID;
 }
 
-static qbs_descriptor_v1_t make_descriptor(unsigned profile,
+static qbs_descriptor_t make_descriptor(unsigned profile,
                                            unsigned weight_layout,
                                            unsigned activation_layout,
                                            unsigned n, unsigned k_blocks) {
@@ -75,7 +75,7 @@ static qbs_descriptor_v1_t make_descriptor(unsigned profile,
       .n = (uint8_t)n,
       .k_blocks = (uint16_t)k_blocks,
   };
-  const qbs_descriptor_v1_t descriptor = {
+  const qbs_descriptor_t descriptor = {
       .header = qbs_pack_descriptor_header(&fields),
       .weight_base = UINT64_C(0x1000),
   };
@@ -125,7 +125,7 @@ static int execute_layout(const case_config_t *config, const void *weights,
       weight_tile = repacked;
     }
 
-    qbs_descriptor_v1_t descriptor = make_descriptor(
+    qbs_descriptor_t descriptor = make_descriptor(
         config->profile, weight_layout, activation_layout, tile_n, k_blocks);
     float destination[QBS_MAX_M * QBS_MAX_N];
     for (unsigned index = 0; index < QBS_MAX_M * QBS_MAX_N; ++index)
