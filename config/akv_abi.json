@@ -1,0 +1,33 @@
+{
+  "architecture_version": 1,
+  "descriptor": {
+    "version": 1,
+    "bytes": 64,
+    "alignment_log2": 6
+  },
+  "instruction": {
+    "opcode": "0x5b",
+    "fill_funct3": 2,
+    "load_funct3": 3,
+    "info_funct3": 4,
+    "release_funct3": 5
+  },
+  "limits": {
+    "context_count": 1,
+    "max_q_rows": 8,
+    "tile_tokens": 8,
+    "head_dims": [64, 128]
+  },
+  "element_formats": {
+    "F16": 1
+  },
+  "streams": {
+    "Q": 0,
+    "K": 1,
+    "V": 2
+  },
+  "fill_modes": {
+    "FULL": 0,
+    "REFILL": 1
+  }
+}

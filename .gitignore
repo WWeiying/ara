@@ -58,6 +58,7 @@ apps
 !/apps/llama_q4k_repack_bench/script/gen_data.py
 !/apps/common/
 /apps/common/*
+!/apps/common/akv_abi.h
 !/apps/common/qbs_abi.h
 !/apps/qbs_control_smoke/
 !/apps/qbs_control_smoke/**
