@@ -110,6 +110,24 @@ typedef enum {
 #define QBS_Q8_0_AUX_COUNT 0u
 #define QBS_Q8_0_AUX_ELEMENT_BYTES 0u
 
+/* Stable software format contracts. These IDs are independent of the 4-bit hardware profile encoding. */
+#define QBS_WEIGHT_ENCODING_Q4_K UINT64_C(0x5142535701000001)
+#define QBS_WEIGHT_ENCODING_Q5_K UINT64_C(0x5142535701000002)
+#define QBS_WEIGHT_ENCODING_Q6_K UINT64_C(0x5142535701000003)
+#define QBS_WEIGHT_ENCODING_Q3_K UINT64_C(0x5142535701000004)
+#define QBS_WEIGHT_ENCODING_Q8_0_WEIGHT UINT64_C(0x5142535701000005)
+#define QBS_WEIGHT_ENCODING_S8_B32_F16_TWOS_COMPLEMENT QBS_WEIGHT_ENCODING_Q8_0_WEIGHT
+#define QBS_WEIGHT_ENCODING_Q4_0 UINT64_C(0x5142535701000006)
+#define QBS_WEIGHT_ENCODING_S4_B32_F16_SPLIT_NIBBLE_OFFSET8 QBS_WEIGHT_ENCODING_Q4_0
+#define QBS_WEIGHT_ENCODING_Q2_K UINT64_C(0x5142535701000007)
+#define QBS_WEIGHT_ENCODING_Q5_0 UINT64_C(0x5142535701000008)
+#define QBS_WEIGHT_ENCODING_S5_B32_F16_NIBBLE_HIGHBIT_OFFSET16 QBS_WEIGHT_ENCODING_Q5_0
+#define QBS_WEIGHT_ENCODING_IQ4_NL UINT64_C(0x5142535701000009)
+#define QBS_ACTIVATION_ENCODING_Q8_K UINT64_C(0x5142534101000001)
+#define QBS_ACTIVATION_ENCODING_S8_B256_F32_BSUM16_I16 QBS_ACTIVATION_ENCODING_Q8_K
+#define QBS_ACTIVATION_ENCODING_Q8_0 UINT64_C(0x5142534101000002)
+#define QBS_ACTIVATION_ENCODING_S8_B32_F16_TWOS_COMPLEMENT QBS_ACTIVATION_ENCODING_Q8_0
+
 typedef enum {
   QBS_WEIGHT_PROFILE_INVALID = 0,
   QBS_WEIGHT_PROFILE_Q4_K = 1,
@@ -184,6 +202,77 @@ static inline const char *qbs_activation_profile_name(unsigned profile) {
     case QBS_ACTIVATION_PROFILE_Q8_K: return "Q8_K";
     case QBS_ACTIVATION_PROFILE_Q8_0: return "Q8_0";
     default: return "invalid";
+  }
+}
+
+static inline uint64_t qbs_weight_encoding_id(unsigned profile) {
+  switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q4_K: return QBS_WEIGHT_ENCODING_Q4_K;
+    case QBS_WEIGHT_PROFILE_Q5_K: return QBS_WEIGHT_ENCODING_Q5_K;
+    case QBS_WEIGHT_PROFILE_Q6_K: return QBS_WEIGHT_ENCODING_Q6_K;
+    case QBS_WEIGHT_PROFILE_Q3_K: return QBS_WEIGHT_ENCODING_Q3_K;
+    case QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return QBS_WEIGHT_ENCODING_Q8_0_WEIGHT;
+    case QBS_WEIGHT_PROFILE_Q4_0: return QBS_WEIGHT_ENCODING_Q4_0;
+    case QBS_WEIGHT_PROFILE_Q2_K: return QBS_WEIGHT_ENCODING_Q2_K;
+    case QBS_WEIGHT_PROFILE_Q5_0: return QBS_WEIGHT_ENCODING_Q5_0;
+    case QBS_WEIGHT_PROFILE_IQ4_NL: return QBS_WEIGHT_ENCODING_IQ4_NL;
+    default: return UINT64_C(0);
+  }
+}
+
+static inline uint64_t qbs_activation_encoding_id(unsigned profile) {
+  switch (profile) {
+    case QBS_ACTIVATION_PROFILE_Q8_K: return QBS_ACTIVATION_ENCODING_Q8_K;
+    case QBS_ACTIVATION_PROFILE_Q8_0: return QBS_ACTIVATION_ENCODING_Q8_0;
+    default: return UINT64_C(0);
+  }
+}
+
+static inline const char *qbs_weight_encoding_name(unsigned profile) {
+  switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q4_K: return "qbs.weight.ggml.q4_k.v1";
+    case QBS_WEIGHT_PROFILE_Q5_K: return "qbs.weight.ggml.q5_k.v1";
+    case QBS_WEIGHT_PROFILE_Q6_K: return "qbs.weight.ggml.q6_k.v1";
+    case QBS_WEIGHT_PROFILE_Q3_K: return "qbs.weight.ggml.q3_k.v1";
+    case QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return "qbs.weight.s8.b32.fp16.twos_complement.v1";
+    case QBS_WEIGHT_PROFILE_Q4_0: return "qbs.weight.s4.b32.fp16.split_nibble_offset8.v1";
+    case QBS_WEIGHT_PROFILE_Q2_K: return "qbs.weight.ggml.q2_k.v1";
+    case QBS_WEIGHT_PROFILE_Q5_0: return "qbs.weight.s5.b32.fp16.nibble_highbit_offset16.v1";
+    case QBS_WEIGHT_PROFILE_IQ4_NL: return "qbs.weight.ggml.iq4_nl.v1";
+    default: return "invalid";
+  }
+}
+
+static inline const char *qbs_activation_encoding_name(unsigned profile) {
+  switch (profile) {
+    case QBS_ACTIVATION_PROFILE_Q8_K: return "qbs.activation.s8.b256.fp32.bsum16_i16.v1";
+    case QBS_ACTIVATION_PROFILE_Q8_0: return "qbs.activation.s8.b32.fp16.twos_complement.v1";
+    default: return "invalid";
+  }
+}
+
+static inline qbs_weight_profile_t qbs_weight_profile_from_encoding(
+    uint64_t encoding_id) {
+  switch (encoding_id) {
+    case QBS_WEIGHT_ENCODING_Q4_K: return QBS_WEIGHT_PROFILE_Q4_K;
+    case QBS_WEIGHT_ENCODING_Q5_K: return QBS_WEIGHT_PROFILE_Q5_K;
+    case QBS_WEIGHT_ENCODING_Q6_K: return QBS_WEIGHT_PROFILE_Q6_K;
+    case QBS_WEIGHT_ENCODING_Q3_K: return QBS_WEIGHT_PROFILE_Q3_K;
+    case QBS_WEIGHT_ENCODING_Q8_0_WEIGHT: return QBS_WEIGHT_PROFILE_Q8_0_WEIGHT;
+    case QBS_WEIGHT_ENCODING_Q4_0: return QBS_WEIGHT_PROFILE_Q4_0;
+    case QBS_WEIGHT_ENCODING_Q2_K: return QBS_WEIGHT_PROFILE_Q2_K;
+    case QBS_WEIGHT_ENCODING_Q5_0: return QBS_WEIGHT_PROFILE_Q5_0;
+    case QBS_WEIGHT_ENCODING_IQ4_NL: return QBS_WEIGHT_PROFILE_IQ4_NL;
+    default: return QBS_WEIGHT_PROFILE_INVALID;
+  }
+}
+
+static inline qbs_activation_profile_t qbs_activation_profile_from_encoding(
+    uint64_t encoding_id) {
+  switch (encoding_id) {
+    case QBS_ACTIVATION_ENCODING_Q8_K: return QBS_ACTIVATION_PROFILE_Q8_K;
+    case QBS_ACTIVATION_ENCODING_Q8_0: return QBS_ACTIVATION_PROFILE_Q8_0;
+    default: return QBS_ACTIVATION_PROFILE_INVALID;
   }
 }
 

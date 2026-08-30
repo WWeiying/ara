@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 
 
@@ -20,6 +21,10 @@ SV_PATH = ROOT / "hardware/include/qbs_pkg.sv"
 SCALE_FORMATS = {"FP16": 1, "FP32": 2}
 CORRECTION_MODES = {"NONE": 0, "AFFINE_MIN": 1}
 ROUNDING_MODES = {"RNE": 0}
+ENCODING_PREFIXES = {
+    "weight": 0x51425357,      # "QBSW"
+    "activation": 0x51425341,  # "QBSA"
+}
 
 
 def load_spec() -> dict:
@@ -42,6 +47,20 @@ def profile_const(domain: str, name: str) -> str:
     return f"QBS_{domain}_PROFILE_{name}"
 
 
+def encoding_const(domain: str, name: str) -> str:
+    return f"QBS_{domain}_ENCODING_{name}"
+
+
+def parse_u64(value: object, field: str) -> int:
+    try:
+        parsed = int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{field} must be an integer or integer string") from error
+    if not 1 <= parsed <= 0xffffffffffffffff:
+        raise ValueError(f"{field} must be a nonzero 64-bit value")
+    return parsed
+
+
 def validate_spec(spec: dict) -> None:
     limits = spec["limits"]
     numerical_contract = spec["numerical_contract"]
@@ -58,9 +77,12 @@ def validate_spec(spec: dict) -> None:
         raise ValueError(
             "limits.max_k_blocks must fit the 8-bit K-block-minus-one field")
 
+    encoding_ids = set()
+    encoding_names = set()
     for domain in ("weight", "activation"):
         profiles = spec[f"{domain}_profiles"]
         ids = set()
+        public_names = set(profiles)
         for name, profile in profiles.items():
             if name != name.upper():
                 raise ValueError(f"{domain} profile name must be uppercase: {name}")
@@ -71,6 +93,38 @@ def validate_spec(spec: dict) -> None:
             if profile_id in ids:
                 raise ValueError(f"duplicate {domain} profile id {profile_id}")
             ids.add(profile_id)
+            encoding_id = parse_u64(
+                profile.get("encoding_id"),
+                f"{domain} profile {name} encoding_id")
+            if encoding_id >> 32 != ENCODING_PREFIXES[domain]:
+                raise ValueError(
+                    f"{domain} profile {name} encoding_id has the wrong "
+                    "namespace")
+            if encoding_id in encoding_ids:
+                raise ValueError(f"duplicate encoding_id for {domain} profile {name}")
+            encoding_ids.add(encoding_id)
+            encoding_name = profile.get("encoding_name")
+            name_pattern = (
+                rf"qbs\.{domain}\.[a-z0-9]+(?:[._][a-z0-9]+)*"
+                r"\.v[1-9][0-9]*")
+            if (not isinstance(encoding_name, str) or
+                    re.fullmatch(name_pattern, encoding_name) is None):
+                raise ValueError(
+                    f"{domain} profile {name} has invalid encoding_name")
+            if encoding_name in encoding_names:
+                raise ValueError(
+                    f"duplicate encoding_name for {domain} profile {name}")
+            encoding_names.add(encoding_name)
+            for alias in profile.get("encoding_aliases", []):
+                if (not isinstance(alias, str) or
+                        re.fullmatch(r"[A-Z][A-Z0-9_]*", alias) is None):
+                    raise ValueError(
+                        f"invalid encoding alias for {domain} profile {name}: "
+                        f"{alias}")
+                if alias in public_names:
+                    raise ValueError(
+                        f"duplicate encoding symbol for {domain}: {alias}")
+                public_names.add(alias)
             if not 1 <= profile["block_bytes"] <= 0xffff:
                 raise ValueError(f"invalid block_bytes for {domain} profile {name}")
             if not 1 <= profile["block_elements"] <= 0xffff:
@@ -176,6 +230,25 @@ def c_profile_defines(spec: dict) -> str:
     return "\n".join(lines)
 
 
+def c_encoding_defines(spec: dict) -> str:
+    lines = [
+        "/* Stable software format contracts. These IDs are independent of "
+        "the 4-bit hardware profile encoding. */",
+    ]
+    for domain in ("weight", "activation"):
+        upper = domain.upper()
+        for name, profile in spec[f"{domain}_profiles"].items():
+            identifier = parse_u64(
+                profile["encoding_id"], f"{domain} profile {name} encoding_id")
+            primary = encoding_const(upper, name)
+            lines.append(
+                f"#define {primary} UINT64_C(0x{identifier:016x})")
+            for alias in profile.get("encoding_aliases", []):
+                lines.append(
+                    f"#define {encoding_const(upper, alias)} {primary}")
+    return "\n".join(lines)
+
+
 def c_enum(spec: dict, domain: str) -> str:
     entries = [f"  QBS_{domain}_PROFILE_INVALID = 0,"]
     entries.extend(
@@ -219,6 +292,39 @@ def c_switch_name(spec: dict, domain: str) -> str:
         lines.append(
             f'    case {profile_const(domain.upper(), name)}: return "{name}";')
     lines.extend(['    default: return "invalid";', "  }"])
+    return "\n".join(lines)
+
+
+def c_switch_encoding_id(spec: dict, domain: str) -> str:
+    lines = ["  switch (profile) {"]
+    for name in spec[f"{domain}_profiles"]:
+        lines.append(
+            f"    case {profile_const(domain.upper(), name)}: return "
+            f"{encoding_const(domain.upper(), name)};")
+    lines.extend(["    default: return UINT64_C(0);", "  }"])
+    return "\n".join(lines)
+
+
+def c_switch_encoding_name(spec: dict, domain: str) -> str:
+    lines = ["  switch (profile) {"]
+    for name, profile in spec[f"{domain}_profiles"].items():
+        lines.append(
+            f'    case {profile_const(domain.upper(), name)}: return '
+            f'"{profile["encoding_name"]}";')
+    lines.extend(['    default: return "invalid";', "  }"])
+    return "\n".join(lines)
+
+
+def c_switch_profile_from_encoding(spec: dict, domain: str) -> str:
+    lines = ["  switch (encoding_id) {"]
+    for name in spec[f"{domain}_profiles"]:
+        lines.append(
+            f"    case {encoding_const(domain.upper(), name)}: return "
+            f"{profile_const(domain.upper(), name)};")
+    lines.extend([
+        f"    default: return QBS_{domain.upper()}_PROFILE_INVALID;",
+        "  }",
+    ])
     return "\n".join(lines)
 
 
@@ -334,6 +440,8 @@ typedef enum {{
 
 {c_profile_defines(spec)}
 
+{c_encoding_defines(spec)}
+
 typedef enum {{
 {c_enum(spec, 'WEIGHT')}
 }} qbs_weight_profile_t;
@@ -379,6 +487,32 @@ static inline const char *qbs_weight_profile_name(unsigned profile) {{
 
 static inline const char *qbs_activation_profile_name(unsigned profile) {{
 {c_switch_name(spec, 'activation')}
+}}
+
+static inline uint64_t qbs_weight_encoding_id(unsigned profile) {{
+{c_switch_encoding_id(spec, 'weight')}
+}}
+
+static inline uint64_t qbs_activation_encoding_id(unsigned profile) {{
+{c_switch_encoding_id(spec, 'activation')}
+}}
+
+static inline const char *qbs_weight_encoding_name(unsigned profile) {{
+{c_switch_encoding_name(spec, 'weight')}
+}}
+
+static inline const char *qbs_activation_encoding_name(unsigned profile) {{
+{c_switch_encoding_name(spec, 'activation')}
+}}
+
+static inline qbs_weight_profile_t qbs_weight_profile_from_encoding(
+    uint64_t encoding_id) {{
+{c_switch_profile_from_encoding(spec, 'weight')}
+}}
+
+static inline qbs_activation_profile_t qbs_activation_profile_from_encoding(
+    uint64_t encoding_id) {{
+{c_switch_profile_from_encoding(spec, 'activation')}
 }}
 
 static inline unsigned qbs_weight_block_bytes(unsigned profile) {{

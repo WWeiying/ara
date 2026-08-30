@@ -27,6 +27,9 @@
   "weight_profiles": {
     "Q4_K": {
       "id": 1,
+      "encoding_id": "0x5142535701000001",
+      "encoding_name": "qbs.weight.ggml.q4_k.v1",
+      "encoding_aliases": [],
       "block_bytes": 144,
       "block_elements": 256,
       "subgroup_count": 8,
@@ -37,6 +40,9 @@
     },
     "Q5_K": {
       "id": 4,
+      "encoding_id": "0x5142535701000002",
+      "encoding_name": "qbs.weight.ggml.q5_k.v1",
+      "encoding_aliases": [],
       "block_bytes": 176,
       "block_elements": 256,
       "subgroup_count": 8,
@@ -47,6 +53,9 @@
     },
     "Q6_K": {
       "id": 2,
+      "encoding_id": "0x5142535701000003",
+      "encoding_name": "qbs.weight.ggml.q6_k.v1",
+      "encoding_aliases": [],
       "block_bytes": 210,
       "block_elements": 256,
       "subgroup_count": 16,
@@ -57,6 +66,9 @@
     },
     "Q3_K": {
       "id": 5,
+      "encoding_id": "0x5142535701000004",
+      "encoding_name": "qbs.weight.ggml.q3_k.v1",
+      "encoding_aliases": [],
       "block_bytes": 110,
       "block_elements": 256,
       "subgroup_count": 16,
@@ -67,6 +79,9 @@
     },
     "Q8_0_WEIGHT": {
       "id": 6,
+      "encoding_id": "0x5142535701000005",
+      "encoding_name": "qbs.weight.s8.b32.fp16.twos_complement.v1",
+      "encoding_aliases": ["S8_B32_F16_TWOS_COMPLEMENT"],
       "block_bytes": 34,
       "block_elements": 32,
       "subgroup_count": 1,
@@ -77,6 +92,9 @@
     },
     "Q4_0": {
       "id": 3,
+      "encoding_id": "0x5142535701000006",
+      "encoding_name": "qbs.weight.s4.b32.fp16.split_nibble_offset8.v1",
+      "encoding_aliases": ["S4_B32_F16_SPLIT_NIBBLE_OFFSET8"],
       "block_bytes": 18,
       "block_elements": 32,
       "subgroup_count": 1,
@@ -87,6 +105,9 @@
     },
     "Q2_K": {
       "id": 7,
+      "encoding_id": "0x5142535701000007",
+      "encoding_name": "qbs.weight.ggml.q2_k.v1",
+      "encoding_aliases": [],
       "block_bytes": 84,
       "block_elements": 256,
       "subgroup_count": 16,
@@ -97,6 +118,9 @@
     },
     "Q5_0": {
       "id": 8,
+      "encoding_id": "0x5142535701000008",
+      "encoding_name": "qbs.weight.s5.b32.fp16.nibble_highbit_offset16.v1",
+      "encoding_aliases": ["S5_B32_F16_NIBBLE_HIGHBIT_OFFSET16"],
       "block_bytes": 22,
       "block_elements": 32,
       "subgroup_count": 1,
@@ -107,6 +131,9 @@
     },
     "IQ4_NL": {
       "id": 9,
+      "encoding_id": "0x5142535701000009",
+      "encoding_name": "qbs.weight.ggml.iq4_nl.v1",
+      "encoding_aliases": [],
       "block_bytes": 18,
       "block_elements": 32,
       "subgroup_count": 1,
@@ -119,6 +146,9 @@
   "activation_profiles": {
     "Q8_K": {
       "id": 1,
+      "encoding_id": "0x5142534101000001",
+      "encoding_name": "qbs.activation.s8.b256.fp32.bsum16_i16.v1",
+      "encoding_aliases": ["S8_B256_F32_BSUM16_I16"],
       "block_bytes": 292,
       "block_elements": 256,
       "scale_format": "FP32",
@@ -130,6 +160,9 @@
     },
     "Q8_0": {
       "id": 2,
+      "encoding_id": "0x5142534101000002",
+      "encoding_name": "qbs.activation.s8.b32.fp16.twos_complement.v1",
+      "encoding_aliases": ["S8_B32_F16_TWOS_COMPLEMENT"],
       "block_bytes": 34,
       "block_elements": 32,
       "scale_format": "FP16",

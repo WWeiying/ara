@@ -28,6 +28,16 @@ following are true:
 QBS does not recognize model names, graph node names, framework tensor enums,
 or quantization recipe filenames. Those remain adapter concerns.
 
+It also separates two identifiers that must not be conflated:
+
+- a 64-bit **encoding ID** is a stable software contract for exact bytes and
+  numerical semantics and is what framework adapters exchange;
+- a 4-bit **profile ID** is the compact device ABI used in descriptors and is
+  obtained through `qbs_device_bind_encodings`.
+
+This lets a future architecture version assign a different compact profile
+number without making every framework treat that number as its format enum.
+
 ## 2. Classify the format relationship
 
 Every runtime format must be classified into exactly one category.
@@ -101,17 +111,27 @@ if (!platform_has_xaraqbs() ||
     qbs_device_query(qbs_native_info, NULL, &device) != QBS_STATUS_OK)
     return runtime_default_kernel(...);
 
-if (!qbs_device_supports_profile(&device, binding.weight_profile,
-                                  binding.activation_profile))
+qbs_profile_binding_t resolved;
+if (qbs_device_bind_encodings(&device,
+                              binding.canonical_weight_encoding_id,
+                              binding.canonical_activation_encoding_id,
+                              &resolved) != QBS_STATUS_OK)
     return runtime_default_kernel(...);
 
 qbs_repack_weight_r4(...);          // persistent model-load cache
 runtime_quantize_activation(...);   // exact Q8_K or Q8_0 blocks
 
-qbs_problem_t problem = {...};
+qbs_problem_t problem = {
+    .weight_profile = resolved.weight_profile,
+    .activation_profile = resolved.activation_profile,
+    ...
+};
 qbs_plan_t plan;
 if (qbs_plan_create(&device, &problem, &plan) != QBS_STATUS_OK)
     return runtime_default_kernel(...);
+
+// Cache an immutable plan and reusable workspace for recurring shapes when
+// the runtime's ownership and threading model permits it.
 
 status = qbs_execute(&plan,
                      weights, weights_bytes,
@@ -127,12 +147,20 @@ The fallback decision is made before `qbs_execute`. Once its executor callback
 has issued a native command, a fault must be propagated; the adapter must not
 silently execute the complete operation a second time.
 
+The capacity fields are not inferred allocation sizes: pass the actual bytes
+or elements available to each buffer. Keep packing-helper source and
+destination ranges distinct, satisfy the queried base alignments, and keep the
+plan, buffers, workspace, and callback context alive until the blocking call
+returns. Do not modify a plan after `qbs_plan_create`; recreate it when shape or
+device capability changes.
+
 ## 5. Framework-specific mapping expectations
 
 | Runtime style | Likely adapter action |
 |---|---|
-| GGML/GGUF with one of the nine exact encodings | direct profile map, then persistent R4 repack |
-| Runtime importing the same GGUF block ABI | verify ABI fields explicitly; do not map by enum name alone |
+| GGML/GGUF with one of the nine exact encodings | submit its canonical encoding IDs, bind, then persistently R4-repack |
+| Runtime importing the same GGUF block ABI | verify ABI fields, then reuse the same encoding IDs; do not map by enum name alone |
+| Exact S4/S5/S8 block-32 storage | use the precise framework-neutral encoding alias only when scale and bit-plane order also match |
 | Generic groupwise INT4/INT8 with scale/zero point | usually a new profile or validated load-time conversion |
 | QDQ or dynamically described quantization graph | fold constants and inspect exact quantization parameters before selecting QBS |
 | Delegate-based mobile runtime | keep graph partitioning in the delegate; pass only eligible linear tiles to QBS |

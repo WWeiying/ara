@@ -24,6 +24,21 @@ Matching only bit width or group size is not sufficient. For example, another
 runtime's blockwise INT4 format is not `Q4_K` unless its scale, correction,
 subgroup, and packed-bit semantics are identical.
 
+Framework adapters do not need to embed the compact hardware profile numbers.
+They name an exact canonical byte/numerical contract with a stable 64-bit
+`QBS_*_ENCODING_*` ID and call `qbs_device_bind_encodings`. The common runtime
+then resolves that software encoding pair to the profile IDs implemented by
+the queried device. Encoding IDs never enter a descriptor or instruction, so
+this indirection has no command-stream or hardware-cycle cost.
+
+The simple block contracts also expose framework-neutral aliases whose names
+state the relevant layout, for example
+`S4_B32_F16_SPLIT_NIBBLE_OFFSET8` and
+`S8_B32_F16_TWOS_COMPLEMENT`. These aliases mean exact byte compatibility, not
+"any symmetric INT4/INT8." The K-quant and nonlinear-codebook encodings retain
+their GGML-specific contract names because relabeling them as generic would be
+unsafe; GGUF is a common container for these blocks, not their numerical ABI.
+
 This gives QBS two distinct kinds of portability:
 
 - **operator and shape portability:** the public operation is a quantized
@@ -61,9 +76,10 @@ for a runtime format registry.
 
 | Layer | Public operation | Runtime responsibility |
 |---|---|---|
-| ABI | generated `qbs_abi.h` | use exact profile/layout IDs |
+| ABI | generated `qbs_abi.h` | use stable encoding IDs; pass resolved profile/layout IDs only to the common planner |
 | Discovery | `qbs_device_query` | call only after ISA/platform discovery proves `Xaraqbs` exists |
-| Metadata | `qbs_*_profile_info` | map or convert a runtime format explicitly |
+| Encoding binding | `qbs_device_bind_encodings` | assert an exact source/converted encoding ID pair |
+| Metadata | `qbs_*_profile_info` | inspect the resolved canonical profile |
 | Packing | `qbs_repack_weight_r4`, `qbs_pack_activation_m4` | cache persistent weights and prepare activation groups |
 | Planning | `qbs_plan_create`, `qbs_plan_next` | supply logical M/N/K and source storage layouts |
 | Execution | `qbs_execute` | provide buffers, workspace, and a command executor |
@@ -74,6 +90,14 @@ construction, and split-K accumulation. It supports row-major and R4 weights,
 row-major activations, and the grouped M4 representation used by multi-token
 GEMM. It performs all shape, profile, layout, workspace, and capability checks
 before issuing the first command.
+
+A successful `qbs_plan_t` is immutable and can be cached for repeated calls
+with the same shape and device contract. `plan.workspace_bytes` is a validated
+scratch-capacity upper bound for that plan. Runtimes should reuse scratch
+storage where their allocator model permits it; partial-only split-K plans need
+only a small accumulator tile, while activation gather space is reserved only
+when at least one command can actually require a copy. Planning and scratch
+management never add hardware commands.
 
 Once `qbs_execute` calls the command executor, a memory or architectural fault
 is an execution fault and must be propagated. A runtime must not silently
@@ -86,8 +110,9 @@ small and follow the same sequence:
 
 ```text
 runtime tensor metadata
-  -> exact profile mapping or load-time conversion
-  -> qbs_device_query and qbs_plan_create
+  -> exact canonical encoding ID or load-time conversion target
+  -> qbs_device_query and qbs_device_bind_encodings
+  -> qbs_plan_create with the resolved device profile pair
   -> persistent R4 weight cache
   -> runtime activation quantization / M4 packing
   -> qbs_execute
@@ -123,6 +148,9 @@ Before calling `qbs_execute`, an adapter supplies actual weight, activation,
 and output capacities. The common layer validates all three before issuing its
 first command. Once issue begins, an architectural or memory fault is returned
 as an execution error and must not be hidden by retrying the operation.
+Weight and activation bases must meet the queried alignment contract, output
+and workspace must be naturally aligned for `float`, and packing-helper source
+and destination ranges must not overlap.
 
 ## Building and testing
 
@@ -131,6 +159,8 @@ make -C software/qbs check
 ```
 
 The host test checks all nine weight profiles, both activation profiles,
-capability-contract decoding, R4 padding, Q8_K/Q8_0 M4 packing, M/N tails,
-mixed M4 plus row-tail storage, split-K command accumulation, explicit buffer
-capacities, and a reduced device that supports only M2 plus row-major layouts.
+capability-contract decoding and profile-pair filtering, R4 padding,
+Q8_K/Q8_0 M4 packing, exhaustive representative M/N/K planner combinations,
+mixed M4 plus row-tail storage, bounded gather workspace sizing, split-K command
+accumulation, explicit buffer capacities and alignment, and reduced devices
+with narrower M/N/K capabilities and row-major-only layouts.

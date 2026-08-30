@@ -13,6 +13,33 @@
     }                                                                       \
   } while (0)
 
+static const unsigned weight_profiles[] = {
+    QBS_WEIGHT_PROFILE_Q2_K,   QBS_WEIGHT_PROFILE_Q3_K,
+    QBS_WEIGHT_PROFILE_Q4_K,   QBS_WEIGHT_PROFILE_Q5_K,
+    QBS_WEIGHT_PROFILE_Q6_K,   QBS_WEIGHT_PROFILE_Q4_0,
+    QBS_WEIGHT_PROFILE_Q5_0,   QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+    QBS_WEIGHT_PROFILE_IQ4_NL,
+};
+
+static int test_size_mul(size_t lhs, size_t rhs, size_t *result) {
+  if (lhs != 0 && rhs > SIZE_MAX / lhs) return 0;
+  *result = lhs * rhs;
+  return 1;
+}
+
+typedef struct {
+  unsigned vlen_bits;
+  unsigned overridden_index;
+  uint64_t overridden_value;
+} capability_reader_t;
+
+static uint64_t capability_reader(void *opaque, unsigned index) {
+  const capability_reader_t *reader = (const capability_reader_t *)opaque;
+  return index == reader->overridden_index
+             ? reader->overridden_value
+             : qbs_capability_word(index, reader->vlen_bits);
+}
+
 static int test_device_and_profiles(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -26,38 +53,84 @@ static int test_device_and_profiles(void) {
   CHECK(device.capabilities.idempotent_memory_only);
   CHECK(device.capabilities.requires_accelerator_consistency);
 
-  const unsigned profiles[] = {
-      QBS_WEIGHT_PROFILE_Q2_K,
-      QBS_WEIGHT_PROFILE_Q3_K,
-      QBS_WEIGHT_PROFILE_Q4_K,
-      QBS_WEIGHT_PROFILE_Q5_K,
-      QBS_WEIGHT_PROFILE_Q6_K,
-      QBS_WEIGHT_PROFILE_Q4_0,
-      QBS_WEIGHT_PROFILE_Q5_0,
-      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
-      QBS_WEIGHT_PROFILE_IQ4_NL,
-  };
-  for (size_t index = 0; index < sizeof(profiles) / sizeof(profiles[0]);
-       ++index) {
+  for (size_t index = 0;
+       index < sizeof(weight_profiles) / sizeof(weight_profiles[0]); ++index) {
     qbs_weight_profile_info_t weight;
-    CHECK(qbs_weight_profile_info(profiles[index], &weight) == QBS_STATUS_OK);
+    CHECK(qbs_weight_profile_info(weight_profiles[index], &weight) ==
+          QBS_STATUS_OK);
     const unsigned activation = qbs_default_activation_profile(weight.id);
     qbs_activation_profile_info_t activation_info;
     CHECK(qbs_activation_profile_info(activation, &activation_info) ==
           QBS_STATUS_OK);
+    const uint64_t weight_encoding_id = qbs_weight_encoding_id(weight.id);
+    const uint64_t activation_encoding_id =
+        qbs_activation_encoding_id(activation_info.id);
+    CHECK(weight_encoding_id != 0 && activation_encoding_id != 0);
+    CHECK(qbs_weight_profile_from_encoding(weight_encoding_id) == weight.id);
+    CHECK(qbs_activation_profile_from_encoding(activation_encoding_id) ==
+          activation_info.id);
+    CHECK(strcmp(qbs_weight_encoding_name(weight.id), "invalid") != 0);
+    CHECK(strcmp(qbs_activation_encoding_name(activation_info.id),
+                 "invalid") != 0);
     CHECK(weight.block_elements == activation_info.block_elements);
     CHECK(strcmp(qbs_weight_profile_name(weight.id), "invalid") != 0);
     CHECK(strcmp(qbs_activation_profile_name(activation), "invalid") != 0);
     CHECK((weight.compatible_activation_profiles &
            (UINT16_C(1) << activation)) != 0);
     CHECK(qbs_device_supports_profile(&device, weight.id, activation));
+    qbs_profile_binding_t binding;
+    CHECK(qbs_device_bind_encodings(&device, weight_encoding_id,
+                                    activation_encoding_id,
+                                    &binding) == QBS_STATUS_OK);
+    CHECK(binding.weight_profile == weight.id);
+    CHECK(binding.activation_profile == activation_info.id);
+    CHECK(binding.weight_encoding_id == weight_encoding_id);
+    CHECK(binding.activation_encoding_id == activation_encoding_id);
+    for (size_t other = 0; other < index; ++other) {
+      CHECK(weight_encoding_id !=
+            qbs_weight_encoding_id(weight_profiles[other]));
+    }
   }
+  CHECK(QBS_WEIGHT_ENCODING_S4_B32_F16_SPLIT_NIBBLE_OFFSET8 ==
+        QBS_WEIGHT_ENCODING_Q4_0);
+  CHECK(QBS_WEIGHT_ENCODING_S5_B32_F16_NIBBLE_HIGHBIT_OFFSET16 ==
+        QBS_WEIGHT_ENCODING_Q5_0);
+  CHECK(QBS_WEIGHT_ENCODING_S8_B32_F16_TWOS_COMPLEMENT ==
+        QBS_WEIGHT_ENCODING_Q8_0_WEIGHT);
+  CHECK(QBS_ACTIVATION_ENCODING_S8_B32_F16_TWOS_COMPLEMENT ==
+        QBS_ACTIVATION_ENCODING_Q8_0);
+  CHECK(QBS_ACTIVATION_ENCODING_S8_B256_F32_BSUM16_I16 ==
+        QBS_ACTIVATION_ENCODING_Q8_K);
   CHECK(strcmp(qbs_weight_profile_name(15), "invalid") == 0);
   CHECK(strcmp(qbs_activation_profile_name(15), "invalid") == 0);
   CHECK(qbs_weight_profile_info(15, &(qbs_weight_profile_info_t){0}) ==
         QBS_STATUS_PROFILE);
   CHECK(!qbs_device_supports_profile(
       &device, QBS_WEIGHT_PROFILE_Q4_K, QBS_ACTIVATION_PROFILE_Q8_0));
+
+  qbs_profile_binding_t binding = {.weight_profile = 0xffu};
+  CHECK(qbs_device_bind_encodings(NULL, QBS_WEIGHT_ENCODING_Q4_K,
+                                  QBS_ACTIVATION_ENCODING_Q8_K,
+                                  &binding) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_device_bind_encodings(&device, 0,
+                                  QBS_ACTIVATION_ENCODING_Q8_K,
+                                  &binding) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_device_bind_encodings(&device, QBS_WEIGHT_ENCODING_Q4_K,
+                                  QBS_ACTIVATION_ENCODING_Q8_K,
+                                  NULL) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(qbs_device_bind_encodings(&device, UINT64_C(0xdeadbeef),
+                                  QBS_ACTIVATION_ENCODING_Q8_K,
+                                  &binding) == QBS_STATUS_PROFILE);
+  CHECK(binding.weight_profile == 0);
+  CHECK(qbs_device_bind_encodings(&device, QBS_WEIGHT_ENCODING_Q4_K,
+                                  QBS_ACTIVATION_ENCODING_Q8_0,
+                                  &binding) == QBS_STATUS_PROFILE_PAIR);
+  qbs_device_t restricted = device;
+  restricted.weight_profiles &=
+      (uint16_t)~(UINT16_C(1) << QBS_WEIGHT_PROFILE_Q4_K);
+  CHECK(qbs_device_bind_encodings(&restricted, QBS_WEIGHT_ENCODING_Q4_K,
+                                  QBS_ACTIVATION_ENCODING_Q8_K,
+                                  &binding) == QBS_STATUS_CAPABILITY);
 
   qbs_capabilities_t caps;
   uint64_t info0 = qbs_capability_word(0, 1024);
@@ -66,6 +139,24 @@ static int test_device_and_profiles(void) {
   info0 &= ~(UINT64_C(1) << 44);
   CHECK(qbs_capabilities_decode(info0, info1, &caps) ==
         QBS_STATUS_CAPABILITY);
+
+  capability_reader_t reader = {
+      .vlen_bits = 1024,
+      .overridden_index = 0x10u + QBS_WEIGHT_PROFILE_Q4_K,
+      .overridden_value = UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_0,
+  };
+  CHECK(qbs_device_query(capability_reader, &reader, &device) == QBS_STATUS_OK);
+  CHECK(!qbs_device_supports_profile(&device, QBS_WEIGHT_PROFILE_Q4_K,
+                                     QBS_ACTIVATION_PROFILE_Q8_K));
+  CHECK(!qbs_device_supports_profile(&device, QBS_WEIGHT_PROFILE_Q4_K,
+                                     QBS_ACTIVATION_PROFILE_Q8_0));
+  reader.overridden_value = (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_K) |
+                            (UINT64_C(1) << QBS_ACTIVATION_PROFILE_Q8_0);
+  CHECK(qbs_device_query(capability_reader, &reader, &device) == QBS_STATUS_OK);
+  CHECK(qbs_device_supports_profile(&device, QBS_WEIGHT_PROFILE_Q4_K,
+                                    QBS_ACTIVATION_PROFILE_Q8_K));
+  CHECK(!qbs_device_supports_profile(&device, QBS_WEIGHT_PROFILE_Q4_K,
+                                     QBS_ACTIVATION_PROFILE_Q8_0));
   return 0;
 }
 
@@ -80,14 +171,14 @@ static int test_weight_repack(void) {
   CHECK(source_bytes == n * k_blocks * block_bytes);
   CHECK(destination_bytes == 8u * k_blocks * block_bytes);
 
-  uint8_t *source = (uint8_t *)malloc(source_bytes);
+  uint8_t *source = (uint8_t *)malloc(source_bytes + 7u);
   uint8_t *destination = (uint8_t *)malloc(destination_bytes);
   CHECK(source != NULL && destination != NULL);
   for (size_t block = 0; block < n * k_blocks; ++block)
     memset(source + block * block_bytes, (int)(block + 1u), block_bytes);
-  CHECK(qbs_repack_weight_r4(QBS_WEIGHT_PROFILE_Q4_0, source, source_bytes,
-                             n, k_blocks, destination, destination_bytes) ==
-        QBS_STATUS_OK);
+  CHECK(qbs_repack_weight_r4(QBS_WEIGHT_PROFILE_Q4_0, source, source_bytes + 7u,
+                             n, k_blocks, destination,
+                             destination_bytes) == QBS_STATUS_OK);
   for (size_t row = 0; row < n; ++row) {
     for (size_t block = 0; block < k_blocks; ++block) {
       const size_t destination_index =
@@ -221,6 +312,199 @@ static int collect_commands(const qbs_plan_t *plan, mock_executor_t *mock) {
   return 0;
 }
 
+static int validate_plan_commands(const qbs_plan_t *plan) {
+  const size_t weight_block_bytes =
+      qbs_weight_block_bytes(plan->problem.weight_profile);
+  const size_t activation_block_bytes =
+      qbs_activation_block_bytes(plan->problem.activation_profile);
+  const size_t weight_bytes = qbs_weight_storage_bytes(
+      plan->problem.weight_profile, plan->problem.weight_layout,
+      plan->problem.n, plan->k_blocks);
+  const size_t activation_bytes = qbs_activation_storage_bytes(
+      plan->problem.activation_profile, plan->problem.activation_storage,
+      plan->problem.m, plan->k_blocks);
+  const size_t activation_alignment = (size_t)1u
+                                      << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2;
+  const size_t weight_alignment = (size_t)1u
+                                  << QBS_WEIGHT_BASE_ALIGNMENT_LOG2;
+  const unsigned largest_command_m =
+      plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+              plan->problem.m >= 4u
+          ? 4u
+          : (plan->problem.m < plan->command_m ? (unsigned)plan->problem.m
+                                                : plan->command_m);
+  const size_t partial_bytes = plan->split_k
+      ? (size_t)largest_command_m * plan->command_n * sizeof(float)
+      : 0u;
+  size_t max_gather_bytes = 0;
+  qbs_plan_cursor_t cursor;
+  qbs_plan_cursor_reset(&cursor);
+  int saw_gather = 0;
+
+  for (uint32_t input = 0; input < plan->problem.m;) {
+    const uint32_t remaining = plan->problem.m - input;
+    const unsigned m =
+        plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+                remaining >= 4u
+            ? 4u
+            : (remaining < plan->command_m ? (unsigned)remaining
+                                           : plan->command_m);
+    const int m4 =
+        plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+        m == 4u;
+    for (uint16_t k_start = 0;;) {
+      const unsigned k_blocks =
+          plan->k_blocks - k_start < plan->command_k_blocks
+              ? plan->k_blocks - k_start
+              : plan->command_k_blocks;
+      for (uint32_t output = 0; output < plan->problem.n;) {
+        const unsigned n = plan->problem.n - output < plan->command_n
+                               ? (unsigned)(plan->problem.n - output)
+                               : plan->command_n;
+        qbs_command_t command;
+        int has_command = 0;
+        CHECK(qbs_plan_next(plan, &cursor, &command, &has_command) ==
+              QBS_STATUS_OK);
+        CHECK(has_command);
+        CHECK(command.input_start == input);
+        CHECK(command.output_start == output);
+        CHECK(command.k_block_start == k_start);
+        CHECK(command.m == m && command.n == n);
+        CHECK(command.k_blocks == k_blocks);
+        CHECK(command.accumulate == (plan->split_k && k_start != 0));
+        CHECK(command.activation_layout ==
+              (m4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+                  : QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
+
+        const size_t weight_block_index =
+            plan->problem.weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+                ? (size_t)output * plan->k_blocks + (size_t)k_start * 4u
+                : (size_t)output * plan->k_blocks + k_start;
+        size_t activation_block_index = (size_t)input * plan->k_blocks;
+        if (plan->split_k) {
+          activation_block_index += m4 ? (size_t)k_start * 4u : k_start;
+        }
+        const size_t activation_offset =
+            activation_block_index * activation_block_bytes;
+        const int gather =
+            !m4 && ((plan->split_k && m > 1u) ||
+                    (activation_offset & (activation_alignment - 1u)) != 0);
+        CHECK(command.gather_activation == gather);
+        CHECK(command.weight_offset_bytes ==
+              weight_block_index * weight_block_bytes);
+        CHECK(command.activation_offset_bytes == activation_offset);
+        CHECK(command.output_offset_elements ==
+              (size_t)input * plan->problem.n + output);
+        CHECK(command.weight_offset_bytes < weight_bytes);
+        CHECK(command.activation_offset_bytes < activation_bytes);
+        CHECK(command.weight_offset_bytes % weight_alignment == 0);
+        size_t command_weight_rows = command.n;
+        if (plan->problem.weight_layout ==
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) {
+          command_weight_rows = (command_weight_rows + 3u) & ~(size_t)3u;
+        }
+        size_t command_weight_bytes;
+        CHECK(test_size_mul(command_weight_rows, command.k_blocks,
+                            &command_weight_bytes));
+        CHECK(test_size_mul(command_weight_bytes, weight_block_bytes,
+                            &command_weight_bytes));
+        CHECK(command_weight_bytes <=
+              weight_bytes - command.weight_offset_bytes);
+        if (!gather) {
+          size_t directly_addressed_bytes;
+          CHECK(command.activation_offset_bytes % activation_alignment == 0);
+          CHECK(test_size_mul(command.m, command.k_blocks,
+                              &directly_addressed_bytes));
+          CHECK(test_size_mul(directly_addressed_bytes,
+                              activation_block_bytes,
+                              &directly_addressed_bytes));
+          CHECK(directly_addressed_bytes <=
+                activation_bytes - command.activation_offset_bytes);
+        } else {
+          size_t gather_bytes;
+          CHECK(test_size_mul(command.m, command.k_blocks, &gather_bytes));
+          CHECK(test_size_mul(gather_bytes, activation_block_bytes,
+                              &gather_bytes));
+          if (gather_bytes > max_gather_bytes) max_gather_bytes = gather_bytes;
+          for (unsigned row = 0; row < command.m; ++row) {
+            const size_t source_block =
+                (size_t)(command.input_start + row) * plan->k_blocks +
+                command.k_block_start;
+            CHECK(source_block <= SIZE_MAX / activation_block_bytes);
+            const size_t source_offset = source_block * activation_block_bytes;
+            const size_t row_bytes =
+                (size_t)command.k_blocks * activation_block_bytes;
+            CHECK(source_offset <= activation_bytes);
+            CHECK(row_bytes <= activation_bytes - source_offset);
+          }
+        }
+        saw_gather |= gather;
+        output += n;
+      }
+      if (!plan->split_k) break;
+      k_start = (uint16_t)(k_start + k_blocks);
+      if (k_start >= plan->k_blocks) break;
+    }
+    input += m;
+  }
+
+  qbs_command_t command;
+  int has_command = 1;
+  CHECK(qbs_plan_next(plan, &cursor, &command, &has_command) == QBS_STATUS_OK);
+  CHECK(!has_command);
+  CHECK((plan->needs_activation_gather != 0) == (saw_gather != 0));
+  CHECK(plan->workspace_bytes >= partial_bytes + max_gather_bytes);
+  if (!saw_gather) CHECK(plan->workspace_bytes == partial_bytes);
+  return 0;
+}
+
+static int test_plan_matrix(void) {
+  const uint32_t m_values[] = {1, 2, 3, 4, 5, 7, 8, 9};
+  const uint32_t n_values[] = {1, 3, 4, 31, 32, 33, 35, 64};
+  const uint32_t k_block_values[] = {1, 2, 255, 256, 257, 511};
+  qbs_device_t device;
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+
+  for (size_t profile_index = 0;
+       profile_index < sizeof(weight_profiles) / sizeof(weight_profiles[0]);
+       ++profile_index) {
+    const unsigned weight_profile = weight_profiles[profile_index];
+    const unsigned activation_profile =
+        qbs_default_activation_profile(weight_profile);
+    const uint32_t block_elements = qbs_weight_block_elements(weight_profile);
+    for (unsigned weight_layout = QBS_WEIGHT_LAYOUT_ROW_MAJOR;
+         weight_layout <= QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR; ++weight_layout) {
+      for (unsigned activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR;
+           activation_storage <= QBS_ACTIVATION_STORAGE_M4_GROUPED;
+           ++activation_storage) {
+        for (size_t m_index = 0;
+             m_index < sizeof(m_values) / sizeof(m_values[0]); ++m_index) {
+          for (size_t n_index = 0;
+               n_index < sizeof(n_values) / sizeof(n_values[0]); ++n_index) {
+            for (size_t k_index = 0;
+                 k_index < sizeof(k_block_values) / sizeof(k_block_values[0]);
+                 ++k_index) {
+              const qbs_problem_t problem = {
+                  .weight_profile = (uint8_t)weight_profile,
+                  .activation_profile = (uint8_t)activation_profile,
+                  .weight_layout = (uint8_t)weight_layout,
+                  .activation_storage = (uint8_t)activation_storage,
+                  .m = m_values[m_index],
+                  .n = n_values[n_index],
+                  .k_elements = k_block_values[k_index] * block_elements,
+              };
+              qbs_plan_t plan;
+              CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+              CHECK(validate_plan_commands(&plan) == 0);
+            }
+          }
+        }
+      }
+    }
+  }
+  return 0;
+}
+
 static int test_plan_and_execute(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -255,7 +539,10 @@ static int test_plan_and_execute(void) {
   qbs_plan_t plan;
   CHECK(qbs_plan_create(&device, &split, &plan) == QBS_STATUS_OK);
   CHECK(plan.split_k && plan.command_k_blocks == 256);
-  CHECK(plan.command_n == 4 && plan.workspace_bytes > 0);
+  CHECK(plan.command_n == 4);
+  CHECK(plan.workspace_bytes ==
+        QBS_MAX_M * 4u * sizeof(float) +
+            2u * QBS_MAX_K_BLOCKS * QBS_Q8_0_BLOCK_BYTES);
 
   mock_executor_t mock = {.plan = &plan};
   CHECK(collect_commands(&plan, &mock) == 0);
@@ -326,6 +613,8 @@ static int test_restricted_row_major_device(void) {
   CHECK(plan.command_n == 1);
   CHECK(plan.command_k_blocks == 3);
   CHECK(plan.split_k && plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes ==
+        2u * sizeof(float) + 2u * 3u * QBS_Q8_0_BLOCK_BYTES);
 
   mock_executor_t mock = {.plan = &plan};
   CHECK(collect_commands(&plan, &mock) == 0);
@@ -385,6 +674,15 @@ static int test_restricted_row_major_device(void) {
                     workspace, plan.workspace_bytes, mock_execute, &mock) ==
         QBS_STATUS_BUFFER_ALIGNMENT);
   CHECK(mock.next_command == 0);
+  uint8_t *misaligned_output =
+      (uint8_t *)malloc(output_elements * sizeof(float) + _Alignof(float));
+  CHECK(misaligned_output != NULL);
+  CHECK(qbs_execute(&plan, weights, weight_bytes, activations, activation_bytes,
+                    (float *)(void *)(misaligned_output + 1u), output_elements,
+                    problem.n, workspace, plan.workspace_bytes, mock_execute,
+                    &mock) == QBS_STATUS_BUFFER_ALIGNMENT);
+  CHECK(mock.next_command == 0);
+  free(misaligned_output);
   CHECK(qbs_execute(&plan, weights, weight_bytes, activations,
                     activation_bytes, output, output_elements, problem.n,
                     workspace, plan.workspace_bytes, mock_execute, &mock) ==
@@ -397,6 +695,57 @@ static int test_restricted_row_major_device(void) {
   free(output);
   free(activations);
   free(weights);
+  return 0;
+}
+
+static int test_workspace_sizing(void) {
+  qbs_device_t device;
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+
+  qbs_problem_t problem = {
+      .weight_profile = QBS_WEIGHT_PROFILE_Q4_K,
+      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = QBS_ACTIVATION_STORAGE_ROW_MAJOR,
+      .m = 1,
+      .n = 35,
+      .k_elements = 300u * QBS_Q4_K_BLOCK_ELEMENTS,
+  };
+  qbs_plan_t plan;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(plan.split_k && !plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes == 4u * sizeof(float));
+
+  problem.activation_storage = QBS_ACTIVATION_STORAGE_M4_GROUPED;
+  problem.m = 4;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(plan.split_k && !plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes == QBS_MAX_M * 4u * sizeof(float));
+
+  problem.m = 5;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(plan.split_k && !plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes == QBS_MAX_M * 4u * sizeof(float));
+
+  problem.m = 6;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes ==
+        QBS_MAX_M * 4u * sizeof(float) +
+            2u * QBS_MAX_K_BLOCKS * QBS_Q8_K_BLOCK_BYTES);
+
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+  device.capabilities.max_m = 1;
+  problem.weight_profile = QBS_WEIGHT_PROFILE_Q4_0;
+  problem.activation_profile = QBS_ACTIVATION_PROFILE_Q8_0;
+  problem.weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR;
+  problem.activation_storage = QBS_ACTIVATION_STORAGE_M4_GROUPED;
+  problem.m = 3;
+  problem.n = 4;
+  problem.k_elements = QBS_Q4_0_BLOCK_ELEMENTS;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(!plan.split_k && plan.needs_activation_gather);
+  CHECK(plan.workspace_bytes == QBS_Q8_0_BLOCK_BYTES);
   return 0;
 }
 
@@ -460,9 +809,11 @@ int main(void) {
   CHECK(test_weight_repack() == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_K) == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_0) == 0);
+  CHECK(test_plan_matrix() == 0);
   CHECK(test_plan_and_execute() == 0);
   CHECK(test_restricted_row_major_device() == 0);
   CHECK(test_non_split_alignment_gather() == 0);
+  CHECK(test_workspace_sizing() == 0);
   puts("QBS runtime-neutral profile, layout, planner, and executor: PASS");
   return 0;
 }

@@ -175,7 +175,9 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
     const uint64_t contract = qbs_capability_word(0x20u + profile, vlen_bits);
     if (implementation == 0 || implementation != contract) continue;
     const uint16_t compatible =
-        (uint16_t)reader(context, 0x10u + profile);
+        (uint16_t)reader(context, 0x10u + profile) &
+        (uint16_t)qbs_capability_word(0x10u + profile, vlen_bits);
+    if (compatible == 0) continue;
     device->weight_profiles |= (uint16_t)(UINT16_C(1) << profile);
     device->compatible_activation_profiles[profile] = compatible;
   }
@@ -187,6 +189,13 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
     if (implementation != 0 && implementation == contract) {
       device->activation_profiles |=
           (uint16_t)(UINT16_C(1) << profile);
+    }
+  }
+  for (unsigned profile = 1; profile < 16; ++profile) {
+    device->compatible_activation_profiles[profile] &=
+        device->activation_profiles;
+    if (device->compatible_activation_profiles[profile] == 0) {
+      device->weight_profiles &= (uint16_t)~(UINT16_C(1) << profile);
     }
   }
   return device->weight_profiles != 0 && device->activation_profiles != 0
@@ -211,6 +220,36 @@ int qbs_device_supports_profile(const qbs_device_t *device,
        (UINT16_C(1) << activation_profile)) != 0 &&
       (device->compatible_activation_profiles[weight_profile] &
        (UINT16_C(1) << activation_profile)) != 0;
+}
+
+qbs_status_t qbs_device_bind_encodings(
+    const qbs_device_t *device, uint64_t weight_encoding_id,
+    uint64_t activation_encoding_id, qbs_profile_binding_t *binding) {
+  if (device == NULL || binding == NULL || weight_encoding_id == 0 ||
+      activation_encoding_id == 0)
+    return QBS_STATUS_BAD_ARGUMENT;
+  memset(binding, 0, sizeof(*binding));
+
+  const qbs_weight_profile_t weight_profile =
+      qbs_weight_profile_from_encoding(weight_encoding_id);
+  const qbs_activation_profile_t activation_profile =
+      qbs_activation_profile_from_encoding(activation_encoding_id);
+  if (weight_profile == QBS_WEIGHT_PROFILE_INVALID ||
+      activation_profile == QBS_ACTIVATION_PROFILE_INVALID)
+    return QBS_STATUS_PROFILE;
+  if (!qbs_profiles_compatible(weight_profile, activation_profile))
+    return QBS_STATUS_PROFILE_PAIR;
+  if (!device->capabilities.valid ||
+      !qbs_device_supports_profile(device, weight_profile, activation_profile))
+    return QBS_STATUS_CAPABILITY;
+
+  *binding = (qbs_profile_binding_t) {
+      .weight_encoding_id = weight_encoding_id,
+      .activation_encoding_id = activation_encoding_id,
+      .weight_profile = (uint8_t)weight_profile,
+      .activation_profile = (uint8_t)activation_profile,
+  };
+  return QBS_STATUS_OK;
 }
 
 size_t qbs_weight_storage_bytes(unsigned weight_profile,
@@ -263,7 +302,7 @@ qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
   if (block_bytes == 0) return QBS_STATUS_PROFILE;
   if (source_bytes == 0 || destination_bytes == 0)
     return QBS_STATUS_SIZE_OVERFLOW;
-  if (row_major_bytes != source_bytes || r4_bytes < destination_bytes)
+  if (row_major_bytes < source_bytes || r4_bytes < destination_bytes)
     return QBS_STATUS_BUFFER_TOO_SMALL;
 
   memset(r4, 0, destination_bytes);
@@ -321,6 +360,60 @@ qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
     }
   }
   return QBS_STATUS_OK;
+}
+
+static unsigned max_command_m(const qbs_plan_t *plan) {
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+      plan->problem.m >= 4u) {
+    return 4u;
+  }
+  return plan->problem.m < plan->command_m ? (unsigned)plan->problem.m
+                                            : plan->command_m;
+}
+
+static unsigned max_non_m4_command_m(const qbs_plan_t *plan) {
+  uint32_t rows = plan->problem.m;
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED) {
+    rows %= 4u;
+  }
+  return rows < plan->command_m ? (unsigned)rows : plan->command_m;
+}
+
+static bool block_offset_aligned(size_t factor_a, size_t factor_b,
+                                 size_t block_bytes, size_t alignment) {
+  size_t remainder = (factor_a % alignment) * (factor_b % alignment);
+  remainder = (remainder % alignment) * (block_bytes % alignment);
+  return remainder % alignment == 0;
+}
+
+static bool plan_needs_activation_gather(const qbs_plan_t *plan,
+                                         size_t activation_block_bytes) {
+  const unsigned gather_rows = max_non_m4_command_m(plan);
+  if (gather_rows == 0) return false;
+  if (plan->split_k && gather_rows > 1u) return true;
+
+  const size_t alignment = (size_t)1u << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2;
+  if (plan->split_k &&
+      !block_offset_aligned(plan->command_k_blocks, 1u, activation_block_bytes,
+                            alignment)) {
+    return true;
+  }
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_ROW_MAJOR) {
+    return plan->problem.m > plan->command_m &&
+           !block_offset_aligned(plan->command_m, plan->k_blocks,
+                                 activation_block_bytes, alignment);
+  }
+
+  if (plan->problem.m < 4u) {
+    return plan->problem.m > plan->command_m &&
+           !block_offset_aligned(plan->command_m, plan->k_blocks,
+                                 activation_block_bytes, alignment);
+  }
+
+  const uint32_t tail_start = plan->problem.m - plan->problem.m % 4u;
+  return tail_start != 0 &&
+         !block_offset_aligned(tail_start, plan->k_blocks,
+                               activation_block_bytes, alignment);
 }
 
 qbs_status_t qbs_plan_create(const qbs_device_t *device,
@@ -402,28 +495,25 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
   if (plan->command_n == 0) return QBS_STATUS_CAPABILITY;
 
   plan->needs_activation_gather =
-      (problem->activation_storage == QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
-       (plan->split_k || problem->m > plan->command_m)) ||
-      (problem->activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
-       plan->split_k && problem->m % 4u != 0);
+      plan_needs_activation_gather(plan, activation.block_bytes);
   if (plan->split_k) {
     size_t partial_elements;
     size_t partial_bytes;
-    if (!size_mul(plan->command_m, plan->command_n, &partial_elements) ||
+    if (!size_mul(max_command_m(plan), plan->command_n, &partial_elements) ||
         !size_mul(partial_elements, sizeof(float), &partial_bytes))
       return QBS_STATUS_SIZE_OVERFLOW;
     plan->workspace_bytes = align_up(partial_bytes, 4u);
     if (plan->workspace_bytes == 0) return QBS_STATUS_SIZE_OVERFLOW;
   }
   if (plan->needs_activation_gather) {
+    const unsigned gather_rows = max_non_m4_command_m(plan);
     const size_t gather_k_blocks = plan->split_k
         ? plan->command_k_blocks : plan->k_blocks;
     size_t gather_blocks;
     size_t gather_bytes;
-    if (!size_mul(plan->command_m, gather_k_blocks, &gather_blocks) ||
+    if (!size_mul(gather_rows, gather_k_blocks, &gather_blocks) ||
         !size_mul(gather_blocks, activation.block_bytes, &gather_bytes) ||
-        !size_add(plan->workspace_bytes, gather_bytes,
-                  &plan->workspace_bytes))
+        !size_add(plan->workspace_bytes, gather_bytes, &plan->workspace_bytes))
       return QBS_STATUS_SIZE_OVERFLOW;
   }
   return QBS_STATUS_OK;
@@ -555,7 +645,8 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
   const uintptr_t activation_alignment =
       (uintptr_t)1u << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2;
   if (((uintptr_t)weights & (weight_alignment - 1u)) != 0 ||
-      ((uintptr_t)activations & (activation_alignment - 1u)) != 0)
+      ((uintptr_t)activations & (activation_alignment - 1u)) != 0 ||
+      ((uintptr_t)output & (_Alignof(float) - 1u)) != 0)
     return QBS_STATUS_BUFFER_ALIGNMENT;
   if (plan->workspace_bytes != 0) {
     if (workspace == NULL || workspace_bytes < plan->workspace_bytes)
@@ -566,7 +657,7 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
 
   float *partial = (float *)workspace;
   const size_t partial_bytes = plan->split_k
-      ? align_up((size_t)plan->command_m * plan->command_n * sizeof(float),
+      ? align_up((size_t)max_command_m(plan) * plan->command_n * sizeof(float),
                  4u)
       : 0;
   uint8_t *activation_gather = plan->workspace_bytes != 0

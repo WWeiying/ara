@@ -86,6 +86,15 @@ typedef struct {
   uint16_t compatible_activation_profiles[16];
 } qbs_device_t;
 
+/* Frameworks identify an exact, versioned byte/numerical encoding. The common
+   runtime resolves it to this device's compact hardware profile IDs. */
+typedef struct {
+  uint64_t weight_encoding_id;
+  uint64_t activation_encoding_id;
+  uint8_t weight_profile;
+  uint8_t activation_profile;
+} qbs_profile_binding_t;
+
 typedef uint64_t (*qbs_info_reader_t)(void *context, unsigned index);
 
 typedef struct {
@@ -152,6 +161,11 @@ qbs_status_t qbs_device_init_reference(unsigned vlen_bits,
 int qbs_device_supports_profile(const qbs_device_t *device,
                                 unsigned weight_profile,
                                 unsigned activation_profile);
+/* This is exact matching, not geometry matching. Unknown encodings require an
+   adapter-owned validated conversion or ordinary fallback. */
+qbs_status_t qbs_device_bind_encodings(
+    const qbs_device_t *device, uint64_t weight_encoding_id,
+    uint64_t activation_encoding_id, qbs_profile_binding_t *binding);
 
 size_t qbs_weight_storage_bytes(unsigned weight_profile,
                                 unsigned weight_layout, size_t n,
@@ -160,17 +174,23 @@ size_t qbs_activation_storage_bytes(unsigned activation_profile,
                                     unsigned activation_storage, size_t m,
                                     size_t k_blocks);
 
+/* Byte arguments are buffer capacities. Source and destination storage must
+   not overlap; R4 padding is initialized but is never a logical output row. */
 qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
                                   const void *row_major,
                                   size_t row_major_bytes, size_t n,
                                   size_t k_blocks, void *r4,
                                   size_t r4_bytes);
+/* Packs exactly four complete row-major activation rows. A runtime appends a
+   final 1--3-row tail unchanged, as specified by M4_GROUPED storage. */
 qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                     const void *row_major,
                                     size_t row_major_bytes, size_t k_blocks,
                                     void *interleaved,
                                     size_t interleaved_bytes);
 
+/* A successful plan is immutable and may be reused for the same device
+   contract and logical problem. Only qbs_plan_create may initialize it. */
 qbs_status_t qbs_plan_create(const qbs_device_t *device,
                              const qbs_problem_t *problem,
                              qbs_plan_t *plan);
@@ -179,6 +199,8 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
                            qbs_plan_cursor_t *cursor,
                            qbs_command_t *command, int *has_command);
 
+/* workspace may be NULL only when plan->workspace_bytes is zero. All buffers
+   and the plan must remain valid until the blocking executor returns. */
 qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
                          size_t weights_bytes, const void *activations,
                          size_t activations_bytes, float *output,

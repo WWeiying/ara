@@ -932,6 +932,11 @@ graph。新增格式主要扩展 profile decoder 和软件 trait；不支持的�
 因此 QBS 的通用性来自“可查询、可版本化、可回退的块语义”，而不是声称一条命令能覆盖所有
 LLM 算子。
 
+这里的“profile”是硬件执行契约，不应直接充当某个框架的 tensor enum。软件接口在 profile 前增加
+一层稳定的 64-bit canonical encoding ID：GGML、ONNX Runtime 或其他 adapter 先声明自己持有或
+转换得到的精确 encoding，公共运行时再依据 `qbinfo` 将它绑定到当前设备的 4-bit profile ID。
+encoding ID 不进入 descriptor 和指令，因此这种解耦不会增加硬件命令或执行周期。
+
 ## 4. 当前支持的量化 profile
 
 ### 4.1 Profile 总表
@@ -958,7 +963,23 @@ ABI v1 支持九组严格的权重/激活配对：
 | Q8_0 | 34 | 32 | FP16, 2 B | 32 signed bytes | none |
 
 这些字节数和配对来自当前 `qbs_abi.json`，而不是根据格式名字推断。新增 profile 必须同时更新
-ABI 生成物、参考模型、RTL decoder、QEMU、GGML trait 和验证向量。
+ABI 生成物、参考模型、RTL decoder、QEMU、至少一个实际运行时 adapter 和验证向量。
+
+软件 encoding ID 与表中的 profile ID 有不同职责：前者跨运行时稳定地标识完整 byte/numerical
+contract，后者只是在当前硬件 ABI 中压缩到 4 bit 的 selector。`qbs_device_bind_encodings()` 负责
+严格的一一映射并同时检查 weight/activation 配对和设备能力。当前三个简单 block profile 还提供
+精确的框架无关别名：
+
+| Canonical alias | 对应 profile | 别名严格包含的语义 |
+| --- | --- | --- |
+| `S4_B32_F16_SPLIT_NIBBLE_OFFSET8` | Q4_0 | 32 元素、FP16 scale、前后半区分置于低/高 nibble、解码减 8 |
+| `S5_B32_F16_NIBBLE_HIGHBIT_OFFSET16` | Q5_0 | 32 元素、FP16 scale、低 4-bit nibble 加独立高位平面、解码减 16 |
+| `S8_B32_F16_TWOS_COMPLEMENT` | Q8_0 weight/activation | 32 个 signed int8 和一个 FP16 block scale |
+| `S8_B256_F32_BSUM16_I16` | Q8_K activation | 256 个 signed int8、FP32 scale 和 16 个 int16 block sums |
+
+这些名称使其他软件生态无需借用 `GGML_TYPE_*` 名字，但绝不表示任意 group-32 INT4 都能直接映射。
+K-quant 和 IQ4_NL 的 packed scale/min/codebook 仍具有明确的 GGML/GGUF 契约，因此保留专用 encoding 名称。
+外部格式若不同，只能由 adapter 在加载期显式转换并验证，或继续使用普通 RVV fallback。
 
 ### 4.2 三类数学模板
 
@@ -1191,11 +1212,11 @@ partial outputs；这是功能 fallback，不是隐含在单条指令中的无�
 | --- | --- | --- |
 | 标准 RVV 块点积 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quants.c` | 按 VLEN 选择 Q3/Q4/Q6 等 RVV decode/dot/reduction 实现 |
 | 标准 repacked GEMV/GEMM | `llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp` | 选择多行 trait、重排权重/激活并调用 GEMV/GEMM kernel |
-| QBS 公共运行时 API | `software/qbs/include/qbs/qbs.h` | 与 framework 无关的 profile、capability、problem/plan、buffer 和 executor 契约 |
+| QBS 公共运行时 API | `software/qbs/include/qbs/qbs.h` | 与 framework 无关的 encoding binding、profile、capability、problem/plan、buffer 和 executor 契约 |
 | QBS 公共运行时实现 | `software/qbs/src/qbs_runtime.c`、`qbs_native_riscv.c` | capability 核验、R4/M4 packing、M/N/K 分块、tail/split-K、descriptor、容量预检和原生 wrapper |
 | QBS GGML 适配器 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | `ggml_type` 映射、tensor 选择、GGML trace/emulation、fallback 和公共 executor 回调 |
-| QBS ABI 真源 | `config/qbs_abi.json` | profile、layout、instruction 和 shape 的版本化定义 |
-| 生成的软件 ABI | `apps/common/qbs_abi.h`、`software/qbs/include/qbs/qbs_abi.h` | 同源 C 宏、descriptor pack/unpack、capability word 和 raw encoding |
+| QBS ABI 真源 | `config/qbs_abi.json` | canonical encoding、profile、layout、instruction 和 shape 的版本化定义 |
+| 生成的软件 ABI | `apps/common/qbs_abi.h`、`software/qbs/include/qbs/qbs_abi.h` | 同源 encoding ID、C 宏、descriptor pack/unpack、capability word 和 raw instruction encoding |
 | 生成的 RTL ABI | `hardware/include/qbs_pkg.sv` | 与 C 侧同源的 SystemVerilog 常量、enum 和 capability 函数 |
 
 ### 5.3 为什么参数分成指令、descriptor 和 profile
@@ -1211,6 +1232,7 @@ QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意�
 如果 `M` 也只放在 descriptor 中，sequencer 就必须在目的相关性检查前先发起内存读取，这会破坏正常指令
 解码与 hazard 预留边界。反过来，如果把 profile 全部展开到 instruction bits，32-bit 编码无法容纳，也会
 让每种 GGUF 格式变成新 opcode。当前分层既保留了硬件可见依赖，又保留了 profile 扩展性。
+软件 canonical encoding ID 仅在模型加载/dispatch 时用于绑定 profile，不随每条 `qbexec` 传输。
 
 ### 5.4 `qbexec` 指令的逐位编码
 
@@ -1476,18 +1498,21 @@ Qwen layer 名称或 GGML operator ID。它对上层暴露 `qbs::runtime` CMake 
 
 | 公共层 | 作用 | framework 仍负责什么 |
 | --- | --- | --- |
-| profile metadata | 查询 block bytes/elements、subgroup、scale、correction 和合法 activation 配对 | 把自己的 tensor encoding 显式映射到 profile |
+| encoding binding | 用稳定 encoding ID 严格绑定当前设备的 profile pair | 核实 native bytes，或提供经过验证的加载期 converter |
+| profile metadata | 查询 block bytes/elements、subgroup、scale、correction 和合法 activation 配对 | 使用绑定结果构造 framework tensor cache |
 | capability discovery | 统一解析并核验 `qbinfo` | 先通过 ISA/platform discovery 确认扩展存在 |
 | packing | row-major 到 R4、Q8 row-major 到 M4 | 决定持久缓存和临时 buffer 生命周期 |
 | planning | M1-M4、N tail、K segmentation 和 workspace | 提供逻辑 `M/N/K` 与源 layout |
 | checked execution | 校验输入/输出容量，构造 descriptor，合并 split-K | 提供 allocator、错误传播和 command executor |
 | native ISA | `qbinfo/qbexec` wrapper | 决定何时使用 native、emulation 或普通 fallback |
 
-另一运行时接入时有三种明确结果：若其 native byte layout 和数值公式与某个 profile 完全一致，可
-直接映射；若不一致但允许加载期转换，可由该运行时提供经过数值验证的 converter，再缓存为 canonical
-QBS profile；若两者都不成立，则保持原有 kernel。相同 bit width 或 group size 不能作为直接映射
-依据。例如外部 group-64 INT4 不能因为也是 4 bit 就冒充 Q4_K。当前没有宣称 ONNX Runtime 或
-ExecuTorch 已经完成集成；`software/qbs/examples/runtime_adapter.c` 只用于证明上述接口不依赖 GGML。
+另一运行时接入时有三种明确结果：若其 native byte layout 和数值公式与某个 canonical encoding
+完全一致，提交对应 encoding ID 并由公共层绑定；若不一致但允许加载期转换，可由该运行时提供经过
+数值验证的 converter，再以转换目标的 encoding ID 绑定并缓存；若两者都不成立，则保持原有 kernel。
+相同 bit width 或 group size 不能作为直接映射依据。例如外部 group-64 INT4 不能因为也是 4 bit
+就冒充 Q4_K。当前 llama.cpp adapter 已改为 encoding-ID binding，不再把 `ggml_type` 直接解释为
+硬件 profile 编号。当前没有宣称 ONNX Runtime 或 ExecuTorch 已经完成集成；
+`software/qbs/examples/runtime_adapter.c` 只用于证明上述接口不依赖 GGML。
 
 当前 backend 由 `GGML_USE_RISCV_QBS` 编译开关接入。运行时关键环境变量包括：
 
@@ -1576,9 +1601,12 @@ activation context；读取每个 activation block 后又将它复用到 N 个 o
 3. 软件按 K 段顺序累加 partial results。
 
 现有 R4 layout 的任意 K 子段只在单个四行组内连续，因此 split-K functional path 将 N 限制
-为最多 4。M<4 时还需复制出 row-major activation segment。这保证功能覆盖，但不是长 K 的
-最终高性能布局；若它成为常见路径，应设计 segment-friendly layout 或扩展 descriptor，而不是
-隐藏不连续性。
+为最多 4。M=4 的 interleaved segment 和满足基址对齐的 M=1 row-major segment 可直接引用原
+activation buffer；只有 M=2/3 的跨行 K 子段，或少数起始地址不满足 ABI 对齐的 row-major 子段，
+才复制到连续的 gather workspace。公共 planner 只在至少一条命令确实需要复制时预留这部分空间；
+split-K partial tile 则始终使用独立的小型 FP32 workspace。该路径保证长 K 的功能覆盖，但 R4 下
+N 最多为 4 仍不是最终高性能布局；若长 K 成为常见路径，应设计 segment-friendly layout 或扩展
+descriptor，而不是隐藏不连续性。
 
 ### 6.7 选择条件和 fallback
 
