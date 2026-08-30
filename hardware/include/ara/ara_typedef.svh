@@ -87,6 +87,9 @@ typedef struct packed {
 
   logic fault_only_first;
 
+  // Attention/KV fill mode. Meaningful only for VAKVFILL.
+  logic akv_refill;
+
   // Hazards
   logic [NrVInsn-1:0] hazard_vs1;
   logic [NrVInsn-1:0] hazard_vs2;

@@ -24,6 +24,7 @@ include $(ARA_DIR)/config/sram.mk
 # intentionally separate from the synthesized 1 MiB L2 and SRAM-macro flow.
 mc ?= 0
 qbs ?= 0
+akv ?= 0
 qbs_perf ?= 0
 sim_l2_mb ?= 1
 large_l2_mb ?= 16
@@ -117,6 +118,9 @@ endif
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
 ifeq ($(qbs),1)
 bender_defs += --define ARA_QBS_ENABLE=1
+endif
+ifeq ($(akv),1)
+bender_defs += --define ARA_AKV_ENABLE=1
 endif
 ifneq ($(sim_l2_mb),1)
 bender_defs += --define SIM_L2_SIZE_BYTES=$(sim_l2_bytes)

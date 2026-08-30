@@ -13,6 +13,7 @@ CAPTURE_ROOT = Path(os.environ.get(
 ))
 MAGIC = 0x514B4D4F
 ATTENTION_RVV = 1 << 0
+ATTENTION_AKV = 1 << 1
 
 KIND = {
     "linear_q4": 1,
@@ -117,9 +118,11 @@ def make_spec(case_id, implementation):
         elif kind == "attention_core":
             if implementation == "rvv":
                 flags |= ATTENTION_RVV
+            elif implementation == "akv":
+                flags |= ATTENTION_AKV
             elif implementation != "ref":
                 raise SystemExit(
-                    "attention implementation must be 'ref' or 'rvv'"
+                    "attention implementation must be 'ref', 'rvv', or 'akv'"
                 )
             blobs["input_b"] = ref("key")
             blobs["input_c"] = ref("value")

@@ -64,11 +64,15 @@ apps
 !/apps/qbs_control_smoke/**
 /apps/qbs_control_smoke/*.o
 /apps/qbs_control_smoke/*.dump
+!/apps/akv_context_smoke/
+/apps/akv_context_smoke/*
+!/apps/akv_context_smoke/main.c
 !/apps/llama_q4km_micro/
 !/apps/llama_q4km_operator/
 /apps/llama_q4km_operator/*
 !/apps/llama_q4km_operator/main.c
 !/apps/llama_q4km_operator/quant_kernels.c
+!/apps/llama_q4km_operator/akv_attention.S
 !/apps/llama_q4km_operator/script/
 /apps/llama_q4km_operator/script/*
 !/apps/llama_q4km_operator/script/gen_data.py

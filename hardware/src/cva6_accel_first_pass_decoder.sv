@@ -8,7 +8,7 @@
 //              it writes to a destination scalar register
 
 module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
-  import qbs_pkg::*; #(
+  import qbs_pkg::*; import akv_pkg::*; #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
     parameter type scoreboard_entry_t = logic
   ) (
@@ -32,6 +32,10 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
   logic        is_store;
   logic        is_qbexec;
   logic        is_qbinfo;
+  logic        is_akvfill;
+  logic        is_akvload;
+  logic        is_akvinfo;
+  logic        is_akvrelease;
 
   // Cast instruction into the `rvv_instruction_t` struct
   rvv_instruction_t instr;
@@ -58,6 +62,10 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
     is_store = instr.i_type.opcode == riscv::OpcodeStoreFp;
     is_qbexec = 1'b0;
     is_qbinfo = 1'b0;
+    is_akvfill = 1'b0;
+    is_akvload = 1'b0;
+    is_akvinfo = 1'b0;
+    is_akvrelease = 1'b0;
 
     // Decode based on the opcode
     case (instr.i_type.opcode)
@@ -134,7 +142,7 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
         endcase
       end
 
-      // QBS-Ara custom instructions. Full field legality is checked in the
+      // QBS and AKV custom instructions. Full field legality is checked in the
       // Ara dispatcher; first-pass decode only declares scalar dependencies
       // and CVA6 memory-accounting class.
       QbsOpcodeCustom2: begin
@@ -151,6 +159,29 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
             is_accel_o = 1'b1;
             is_rs1     = 1'b1;
             is_rd      = 1'b1;
+          end
+        end
+        if (AkvEnable) begin
+          is_akvfill = instr.i_type.funct3 == AkvFillFunct3;
+          is_akvload = instr.i_type.funct3 == AkvLoadFunct3;
+          is_akvinfo = instr.i_type.funct3 == AkvInfoFunct3;
+          is_akvrelease = instr.i_type.funct3 == AkvReleaseFunct3;
+          if (is_akvfill) begin
+            is_accel_o = 1'b1;
+            is_rs1 = instruction_i[25] == AKV_FILL_FULL;
+            is_rs2 = 1'b1;
+            is_load = 1'b1;
+          end else if (is_akvload) begin
+            is_accel_o = 1'b1;
+            is_rs1 = 1'b1;
+            is_load = 1'b1;
+          end else if (is_akvinfo) begin
+            is_accel_o = 1'b1;
+            is_rs1 = 1'b1;
+            is_rd = 1'b1;
+          end else if (is_akvrelease) begin
+            is_accel_o = 1'b1;
+            is_load = 1'b1;
           end
         end
       end

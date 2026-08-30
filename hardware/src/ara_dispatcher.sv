@@ -8,7 +8,8 @@
 // It also acknowledges instructions back to Ariane, perhaps with a
 // response or an error message.
 
-module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #(
+module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
+  import akv_pkg::*; #(
     parameter int           unsigned NrLanes            = 0,
     parameter int           unsigned VLEN               = 0,
     parameter type                   ara_req_t          = logic,
@@ -4709,24 +4710,39 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
           end
 
           //////////////////////////////////////
-          //  QBS-Ara custom instructions     //
+          //  QBS and AKV custom instructions //
           //////////////////////////////////////
-          QbsOpcodeCustom2: begin : qbs_custom
+          QbsOpcodeCustom2: begin : custom2
             automatic logic is_qbexec;
             automatic logic is_qbinfo;
+            automatic logic is_akvfill;
+            automatic logic is_akvload;
+            automatic logic is_akvinfo;
+            automatic logic is_akvrelease;
             automatic logic [6:0] qbs_funct7;
+            automatic logic [6:0] akv_funct7;
             automatic int unsigned qbs_m;
             automatic int unsigned qbs_destination_regs;
+            automatic int unsigned akv_head_dim;
+            automatic logic akv_implementation_supported;
 
             is_qbexec = instr.rtype.funct3 == QbsQbexecFunct3;
             is_qbinfo = instr.rtype.funct3 == QbsQbinfoFunct3;
+            is_akvfill = instr.rtype.funct3 == AkvFillFunct3;
+            is_akvload = instr.rtype.funct3 == AkvLoadFunct3;
+            is_akvinfo = instr.rtype.funct3 == AkvInfoFunct3;
+            is_akvrelease = instr.rtype.funct3 == AkvReleaseFunct3;
             qbs_funct7 = 7'(instr.rtype.funct7);
+            akv_funct7 = 7'(instr.rtype.funct7);
             qbs_m = unsigned'(qbs_funct7[1:0]) + 1;
             qbs_destination_regs = qbs_m == 1 ? 1 : (qbs_m == 2 ? 2 : 4);
+            akv_head_dim = akv_funct7[0] ? 128 : 64;
+            akv_implementation_supported =
+                AkvEnable && NrLanes == 4 && VLEN == 1024;
 
-            if (!QbsEnable) begin
-              illegal_insn = 1'b1;
-            end else if (is_qbinfo) begin
+            if (is_qbinfo) begin
+              if (!QbsEnable)
+                illegal_insn = 1'b1;
               // qbinfo has no hidden state and does not enter the sequencer.
               // funct7 and rs2 are reserved in ABI version 1.
               acc_resp_o.resp_valid = 1'b1;
@@ -4735,6 +4751,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
               if (instr.rtype.funct7 != '0 || instr.rtype.rs2 != '0)
                 illegal_insn = 1'b1;
             end else if (is_qbexec) begin
+              if (!QbsEnable)
+                illegal_insn = 1'b1;
               // The blocking command is accounted as an accelerator load until
               // its atomic VRF commit or terminal exception.
               // Keep the CVA6 request resident until ara_resp_valid. This is the
@@ -4790,6 +4808,119 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*; #
                 acc_resp_o.exception = ara_resp.exception;
                 acc_resp_o.fflags |= ara_resp.fflags;
                 acc_resp_o.fflags_valid |= ara_resp.fflags_valid;
+              end
+            end else if (is_akvinfo) begin
+              if (!akv_implementation_supported)
+                illegal_insn = 1'b1;
+              acc_resp_o.resp_valid = 1'b1;
+              acc_resp_o.result = xlen_t'(akv_capability_word(
+                  64'(acc_req_i.rs1), akv_implementation_supported));
+              if (akv_funct7 != '0 || instr.rtype.rs2 != '0)
+                illegal_insn = 1'b1;
+            end else if (is_akvfill) begin
+              acc_resp_o.req_ready = 1'b0;
+              acc_resp_o.resp_valid = 1'b0;
+              is_vload = 1'b1;
+              ignore_zero_vl_check = 1'b1;
+              ara_req_valid = 1'b1;
+              ara_req.op = VAKVFILL;
+              ara_req.scalar_op = acc_req_i.rs1;
+              ara_req.stride = acc_req_i.rs2;
+              ara_req.use_scalar_op = 1'b0;
+              ara_req.akv_refill = akv_funct7[0];
+              ara_req.vm = 1'b1;
+              ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
+                                vsew: EW16, vlmul: LMUL_1};
+              ara_req.emul = LMUL_1;
+              ara_req.vstart = '0;
+              ara_req.vl = vlen_t'(1);
+
+              if (!akv_implementation_supported ||
+                  akv_funct7[6:1] != '0 || instr.rtype.rd != '0 ||
+                  (akv_funct7[0] && instr.rtype.rs1 != '0) ||
+                  (!akv_funct7[0] &&
+                   acc_req_i.rs1[AkvDescriptorAlignmentLog2-1:0] != '0) ||
+                  csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
+                illegal_insn = 1'b1;
+
+              // Fill and refill replace hidden state and may fault, so they
+              // begin only after all older vector work has drained.
+              if (!ara_idle_i) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b0;
+                state_d = WAIT_IDLE;
+              end
+
+              if (ara_resp_valid) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b1;
+                acc_resp_o.resp_valid = 1'b1;
+                acc_resp_o.exception = ara_resp.exception;
+              end
+            end else if (is_akvload) begin
+              acc_resp_o.req_ready = 1'b0;
+              acc_resp_o.resp_valid = 1'b0;
+              is_vload = 1'b1;
+              ignore_zero_vl_check = 1'b1;
+              ara_req_valid = 1'b1;
+              ara_req.op = VAKVLOAD;
+              ara_req.scalar_op = acc_req_i.rs1;
+              ara_req.use_scalar_op = 1'b0;
+              ara_req.vd = instr.rtype.rd;
+              ara_req.use_vd = 1'b1;
+              ara_req.vm = 1'b1;
+              ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
+                                vsew: EW16,
+                                vlmul: akv_funct7[0] ? LMUL_2 : LMUL_1};
+              ara_req.eew_vd_op = EW16;
+              ara_req.vstart = '0;
+              ara_req.vl = vlen_t'(akv_head_dim);
+              ara_req.emul = akv_funct7[0] ? LMUL_2 : LMUL_1;
+
+              if (!akv_implementation_supported ||
+                  akv_funct7[6:1] != '0 || instr.rtype.rs2 != '0 ||
+                  (akv_funct7[0] &&
+                   (instr.rtype.rd[7] || instr.rtype.rd > 5'd30)) ||
+                  csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
+                illegal_insn = 1'b1;
+
+              if (ara_resp_valid) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b1;
+                acc_resp_o.resp_valid = 1'b1;
+                acc_resp_o.exception = ara_resp.exception;
+              end
+            end else if (is_akvrelease) begin
+              acc_resp_o.req_ready = 1'b0;
+              acc_resp_o.resp_valid = 1'b0;
+              is_vload = 1'b1;
+              ignore_zero_vl_check = 1'b1;
+              ara_req_valid = 1'b1;
+              ara_req.op = VAKVRELEASE;
+              ara_req.vm = 1'b1;
+              ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
+                                vsew: EW16, vlmul: LMUL_1};
+              ara_req.emul = LMUL_1;
+              ara_req.vstart = '0;
+              ara_req.vl = vlen_t'(1);
+
+              if (!akv_implementation_supported || akv_funct7 != '0 ||
+                  instr.rtype.rd != '0 || instr.rtype.rs1 != '0 ||
+                  instr.rtype.rs2 != '0 || csr_vstart_q != '0 ||
+                  !acc_req_i.acc_cons_en)
+                illegal_insn = 1'b1;
+
+              if (!ara_idle_i) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b0;
+                state_d = WAIT_IDLE;
+              end
+
+              if (ara_resp_valid) begin
+                ara_req_valid = 1'b0;
+                acc_resp_o.req_ready = 1'b1;
+                acc_resp_o.resp_valid = 1'b1;
+                acc_resp_o.exception = ara_resp.exception;
               end
             end else begin
               illegal_insn = 1'b1;

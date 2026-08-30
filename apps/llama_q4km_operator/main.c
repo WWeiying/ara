@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "akv_abi.h"
 #include "runtime.h"
 
 #ifdef SPIKE
@@ -26,6 +27,7 @@ enum {
 
 enum {
   CASE_FLAG_ATTENTION_RVV = 1u << 0,
+  CASE_FLAG_ATTENTION_AKV = 1u << 1,
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
@@ -62,6 +64,11 @@ static float attention_output[MAX_ATTENTION_DIM * MAX_ATTENTION_TOKENS *
                               MAX_ATTENTION_HEADS];
 static _Float16 attention_query_f16[MAX_ATTENTION_DIM];
 static _Float16 attention_accum_f16[MAX_ATTENTION_DIM];
+static _Float16 attention_query_group_f16[AKV_MAX_Q_ROWS *
+                                          MAX_ATTENTION_DIM]
+    __attribute__((aligned(64)));
+static akv_descriptor_t attention_akv_descriptor
+    __attribute__((aligned(AKV_DESCRIPTOR_BYTES)));
 
 static inline uint64_t read_cycle(void) {
 #ifdef SPIKE
@@ -92,7 +99,8 @@ static float negative_infinity_f32(void) {
   return value;
 }
 
-static vfloat32m2_t vector_expf(vfloat32m2_t x, size_t vl) {
+static __attribute__((always_inline)) inline vfloat32m2_t vector_expf(
+    vfloat32m2_t x, size_t vl) {
   const vfloat32m2_t r = __riscv_vfmv_v_f_f32m2(0x1.8p23f, vl);
   const vfloat32m2_t z = __riscv_vfmacc_vf_f32m2(r, 0x1.715476p+0f, x, vl);
   const vfloat32m2_t n = __riscv_vfsub_vv_f32m2(z, r, vl);
@@ -361,12 +369,13 @@ static float dot_f16_rvv(const _Float16 *lhs, const _Float16 *rhs, int count) {
   return __riscv_vfmv_f_s_f32m1_f32(reduced);
 }
 
-static void convert_query_f32_to_f16_rvv(const float *query, int count) {
+static void convert_f32_to_f16_rvv(_Float16 *destination, const float *source,
+                                   int count) {
   for (int offset = 0; offset < count;) {
     const size_t vl = __riscv_vsetvl_e32m4(count - offset);
-    const vfloat32m4_t values = __riscv_vle32_v_f32m4(query + offset, vl);
+    const vfloat32m4_t values = __riscv_vle32_v_f32m4(source + offset, vl);
     __riscv_vse16_v_f16m2(
-        attention_query_f16 + offset,
+        destination + offset,
         __riscv_vfncvt_f_f_w_f16m2(values, vl), vl);
     offset += (int)vl;
   }
@@ -421,6 +430,75 @@ static void store_attention_output_rvv(float *output, float factor, int count) {
   }
 }
 
+static int attention_active_prefix(const uint16_t *mask, int kvlen) {
+  int active = 0;
+  while (active < kvlen && mask[active] != 0xfc00u) ++active;
+  for (int sequence = active; sequence < kvlen; ++sequence) {
+    if (mask[sequence] != 0xfc00u) return -1;
+  }
+  return active;
+}
+
+extern void attention_akv_group_asm(const akv_descriptor_t *descriptor,
+                                    const uint16_t *mask, float *output,
+                                    float scale);
+
+// Returns zero when the shape or mask is outside the version-1 AKV contract;
+// the caller then executes the unchanged standard RVV implementation.
+static int run_attention_akv(const case_config_t *cfg) {
+  const float *query = (const float *)llama_input_a_start;
+  const _Float16 *key = (const _Float16 *)llama_input_b_start;
+  const _Float16 *value = (const _Float16 *)llama_input_c_start;
+  const uint16_t *mask = (const uint16_t *)llama_input_d_start;
+  const int dim = cfg->args[0];
+  const int tokens = cfg->args[1];
+  const int qheads = cfg->args[2];
+  const int physical_kvlen = cfg->args[3];
+  const int kvheads = cfg->args[4];
+  const int heads_per_kv = qheads / kvheads;
+  const int active_kv = attention_active_prefix(mask, physical_kvlen);
+
+  if (dim != AKV_HEAD_DIM_128 || tokens != 1 ||
+      heads_per_kv != 6 || active_kv <= 0 || active_kv > UINT16_MAX)
+    return 0;
+
+  for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
+    const int first_qhead = kvhead * heads_per_kv;
+    HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
+    for (int head = 0; head < heads_per_kv; ++head) {
+      convert_f32_to_f16_rvv(
+          attention_query_group_f16 + (size_t)head * dim,
+          query + (size_t)(first_qhead + head) * dim, dim);
+    }
+
+    attention_akv_descriptor = (akv_descriptor_t){
+        .version = AKV_DESCRIPTOR_VERSION,
+        .element_format = AKV_ELEMENT_FORMAT_F16,
+        .q_rows = (uint8_t)heads_per_kv,
+        .flags = 0,
+        .head_dim = (uint16_t)dim,
+        .kv_length = (uint16_t)active_kv,
+        .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+        .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+        .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+        .reserved0 = 0,
+        .q_base = (uint64_t)(uintptr_t)attention_query_group_f16,
+        .k_base = (uint64_t)(uintptr_t)(
+            key + (size_t)kvhead * physical_kvlen * dim),
+        .v_base = (uint64_t)(uintptr_t)(
+            value + (size_t)kvhead * physical_kvlen * dim),
+        .reserved1 = 0,
+        .reserved2 = 0,
+    };
+
+    HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+    attention_akv_group_asm(
+        &attention_akv_descriptor, mask,
+        attention_output + (size_t)first_qhead * dim, cfg->params[2]);
+  }
+  return 1;
+}
+
 static void run_attention_rvv(const case_config_t *cfg) {
   const float *query = (const float *)llama_input_a_start;
   const _Float16 *key = (const _Float16 *)llama_input_b_start;
@@ -438,7 +516,7 @@ static void run_attention_rvv(const case_config_t *cfg) {
     for (int token = 0; token < tokens; ++token) {
       const float *q = query + ((size_t)qhead * tokens + token) * dim;
       HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
-      convert_query_f32_to_f16_rvv(q, dim);
+      convert_f32_to_f16_rvv(attention_query_f16, q, dim);
       clear_attention_accum_rvv(dim);
 
       float sum_weights = 0.0f;
@@ -502,7 +580,9 @@ int main(void) {
     case CASE_RMS_NORM: failures = run_rms_norm(cfg); break;
     case CASE_ROPE: failures = run_rope(cfg); break;
     case CASE_ATTENTION:
-      if ((cfg->flags & CASE_FLAG_ATTENTION_RVV) != 0) {
+      if ((cfg->flags & CASE_FLAG_ATTENTION_AKV) != 0) {
+        if (!run_attention_akv(cfg)) run_attention_rvv(cfg);
+      } else if ((cfg->flags & CASE_FLAG_ATTENTION_RVV) != 0) {
         run_attention_rvv(cfg);
       } else {
         run_attention_reference(cfg);

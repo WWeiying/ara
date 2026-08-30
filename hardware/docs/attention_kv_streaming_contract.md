@@ -69,12 +69,13 @@ initialize packed vector-domain M and S state for all Q rows
 
 akvfill.full(descriptor, tile_start = 0)
 for each KV tile:
-    for each register-feasible Q-row batch:
-        akvload Q rows once
-        for each valid token in the tile:
-            akvload K[token] and V[token]
+    for each valid token in the tile:
+        akvload K[token] once
+        for each Q row in the GQA group:
+            akvload Q[row]
             score = reduce(FP32(K * Q))
-            update M, S, weight, and output entirely with RVV values
+        akvload V[token] once
+        update packed M/S and all output rows with RVV operations
     if another tile exists:
         akvfill.refill(tile_start += 8)
 
@@ -82,13 +83,16 @@ normalize and store output vectors
 akvrelease
 ```
 
-K and V may be replayed internally for several Q-row batches, but each source
-K/V vector is fetched from architectural memory only once per tile. Q is
-fetched once per full context. Output accumulators remain in vector registers
-across all tiles. The running maxima and sums can be packed into two short
-vector registers, one element per query row. The reduction result remains in a
-vector element; vector compare, exp approximation, merge, and broadcast avoid
-the former per-dot vector-to-scalar control dependency.
+Each K/V vector is fetched from architectural memory only once per tile and is
+loaded into the VRF once per token before it is shared by the GQA query rows. Q
+is fetched once per full context and replayed locally for each dot product.
+Output accumulators remain in vector registers across all tiles. Running maxima,
+sums, and dot results are packed in vector registers, one element per query row,
+so no score is returned to scalar control between dot products. The current
+four-lane implementation extracts two per-row update factors into FP scalar
+operands for `vfmul.vf` and `vfmacc.vf`; those values do not drive control flow
+or return to memory. This avoids the much more expensive full-group `vrgather`
+path while preserving ordinary RVV arithmetic semantics.
 
 The v1 storage is row-major because the first implementation preserves the
 current D-axis dot-product mapping. A future token-axis mode may add an on-fill
@@ -112,12 +116,12 @@ is inactive. Supporting eight rows costs little and covers common GQA group
 sizes without hard-coding the mechanism to one model.
 
 At `VLEN=1024`, one D=128 F16 vector occupies an LMUL=2 register group. A
-Qwen group can retain six output vectors in 12 registers. Two packed M/S
-registers, one two-row Q batch, K, V, one LMUL=4 FP32 dot accumulator, and a
-small temporary group fit within 32 architectural vector registers when the
-compiler uses a fixed kernel register plan. This is why v1 chooses an
-eight-token context and batched Q replay instead of trying to retain every Q,
-K, V, score, and output vector simultaneously.
+Qwen group can retain six output vectors in 12 registers. Packed M/S and score
+registers, one replayed Q row, K, V, one LMUL=2 FP32 dot accumulator, and the
+temporary groups fit within 32 architectural vector registers when software
+uses a fixed register plan. This is why v1 chooses an eight-token hidden
+context and sequential Q replay instead of trying to retain every Q, K, V,
+score, and output vector simultaneously.
 
 The RTL may implement the 6 KiB payload as a banked register array or SRAM, but
 the storage choice is not architectural. A 256-bit internal row corresponds to
@@ -296,7 +300,10 @@ non-idempotent regions fail with load access fault. A translation exception
 retains the MMU-provided cause and reports the detected faulting virtual address
 in `tval`; PMA, AXI response, and protocol failures report load access fault.
 Descriptor legality and hidden-context misuse report illegal instruction with
-no destination write.
+no destination write. As with the existing QBS back-end validation path,
+software must accept either zero or the faulting instruction bits in `tval`;
+the architectural contract does not require a nonzero illegal-instruction
+`tval`.
 
 The command has snapshot semantics. Successful completion means the hidden
 context contains the bytes returned by its reads. Later stores to Q/K/V memory
@@ -339,7 +346,7 @@ ownership in the same manner as QBS; arbitration must ensure that at most one
 special engine owns MMU/AXI or LDU result routing. `akvload.v` uses explicit
 result arbitration and cannot consume a normal VLDu grant unless selected.
 
-When `AKV_ENABLE` is absent, all four encodings are illegal and no AKV state is
+When `ARA_AKV_ENABLE` is absent, all four encodings are illegal and no AKV state is
 clocked. Normal RVV and QBS behavior must be bit- and cycle-equivalent apart
 from physically unavoidable decode fanout, which is checked in synthesis.
 

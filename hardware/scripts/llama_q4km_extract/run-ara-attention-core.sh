@@ -14,7 +14,11 @@ elif [[ -n ${2:-} ]]; then
   kvlen=$2
   execution=${3:---all}
 fi
-sim_dir=${LLAMA_ATTN_SIM_DIR:-${repo_root}/hardware/sim_llama_attention_16m_template}
+default_sim_dir=${repo_root}/hardware/sim_llama_attention_16m_template
+if [[ ${implementation} == akv ]]; then
+  default_sim_dir=${repo_root}/hardware/sim_akv_m3_compile
+fi
+sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
 simv=${sim_dir}/simv
 run_root=${LLAMA_ATTN_RUN_ROOT:-${repo_root}/hardware/llama_attention_runs}
 spike=${SPIKE:-${repo_root}/install/riscv-isa-sim/bin/spike}
@@ -37,8 +41,9 @@ stamp=$(date +%Y%m%d_%H%M%S)
 run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 
-if [[ ${implementation} != ref && ${implementation} != rvv ]]; then
-  echo "usage: $0 [ref|rvv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+if [[ ${implementation} != ref && ${implementation} != rvv &&
+      ${implementation} != akv ]]; then
+  echo "usage: $0 [ref|rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
@@ -47,7 +52,11 @@ if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  exit 2
+fi
+if [[ ${implementation} == akv && ${execution} != --ara-only ]]; then
+  echo "AKV custom instructions currently require --ara-only; use ref or rvv for Spike" >&2
   exit 2
 fi
 if [[ ! -x ${spike} ]]; then
@@ -98,13 +107,19 @@ if [[ ${execution} != --ara-only ]]; then
 fi
 
 if [[ ${execution} != --spike-only ]]; then
+  sim_args=(
+    -l vcs.log
+    "+PRELOAD=${run_dir}/${app}.${implementation}.elf"
+    "+TESTCASE=${testcase}"
+    +NO_FSDB
+  )
+  if [[ ${implementation} == akv ]]; then
+    sim_args+=(+AKV_PERF)
+  fi
   (
     cd "${run_dir}"
     timeout --foreground "${ara_timeout}" "${simv}" \
-      -l vcs.log \
-      "+PRELOAD=${run_dir}/${app}.${implementation}.elf" \
-      "+TESTCASE=${testcase}" +NO_FSDB \
-      > ara.log 2>&1
+      "${sim_args[@]}" > ara.log 2>&1
   )
   grep -q 'Core Test \*\*\* SUCCESS' "${run_dir}/ara.log"
   grep -q "LLAMA_OPERATOR ${case_id}/${implementation} PASS" \

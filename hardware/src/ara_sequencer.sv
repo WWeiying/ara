@@ -285,7 +285,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       [VADD:VWREDSUM]      : vfu = VFU_Alu;
       [VMUL:VFWREDOSUM]    : vfu = VFU_MFpu;
       [VMFEQ:VCOMPRESS]    : vfu = VFU_MaskUnit;
-      [VLE:VLXE], VQBEXEC  : vfu = VFU_LoadUnit;
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE:
+          vfu = VFU_LoadUnit;
       [VSE:VSXE]           : vfu = VFU_StoreUnit;
       [VSLIDEUP:VSLIDEDOWN]: vfu = VFU_SlideUnit;
       [VMVXS:VFMVFS]       : vfu = VFU_None;
@@ -323,7 +324,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       [VMFEQ:VMFGE]:
         for (int i = 0; i < NrVFUs; i++)
           if (i == VFU_MFpu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
-      [VLE:VLXE], VQBEXEC:
+      [VLE:VLXE], VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE:
         for (int i = 0; i < NrVFUs; i++)
           if (i == VFU_LoadUnit) target_vfus[i] = 1'b1;
       [VSE:VSXE]:
@@ -341,7 +342,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // Determine if the request does not need source operands from the VRF
   function automatic logic no_src_vrf(pe_req_t pe_req);
     no_src_vrf = (((pe_req.op == VLE || pe_req.op == VLSE) && pe_req.vm) ||
-                  pe_req.op == VQBEXEC);
+                  pe_req.op inside {
+                    VQBEXEC, VAKVFILL, VAKVLOAD, VAKVRELEASE
+                  });
   endfunction
 
   function automatic logic mask_result(ara_op_e op);
@@ -780,6 +783,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vl            : ara_req_i.vl,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
+              akv_refill    : ara_req_i.akv_refill,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
