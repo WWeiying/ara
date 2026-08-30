@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "akv_abi.h"
+#include "../../software/akv/include/akv/akv.h"
 #include "runtime.h"
 
 #ifdef SPIKE
@@ -67,8 +67,8 @@ static _Float16 attention_accum_f16[MAX_ATTENTION_DIM];
 static _Float16 attention_query_group_f16[AKV_MAX_Q_ROWS *
                                           MAX_ATTENTION_DIM]
     __attribute__((aligned(64)));
-static akv_descriptor_t attention_akv_descriptor
-    __attribute__((aligned(AKV_DESCRIPTOR_BYTES)));
+static akv_device_t attention_akv_device;
+static akv_attention_plan_t attention_akv_plan;
 
 static inline uint64_t read_cycle(void) {
 #ifdef SPIKE
@@ -439,10 +439,6 @@ static int attention_active_prefix(const uint16_t *mask, int kvlen) {
   return active;
 }
 
-extern void attention_akv_group_asm(const akv_descriptor_t *descriptor,
-                                    const uint16_t *mask, float *output,
-                                    float scale);
-
 // Returns zero when the shape or mask is outside the version-1 AKV contract;
 // the caller then executes the unchanged standard RVV implementation.
 static int run_attention_akv(const case_config_t *cfg) {
@@ -471,30 +467,31 @@ static int run_attention_akv(const case_config_t *cfg) {
           query + (size_t)(first_qhead + head) * dim, dim);
     }
 
-    attention_akv_descriptor = (akv_descriptor_t){
-        .version = AKV_DESCRIPTOR_VERSION,
-        .element_format = AKV_ELEMENT_FORMAT_F16,
-        .q_rows = (uint8_t)heads_per_kv,
-        .flags = 0,
-        .head_dim = (uint16_t)dim,
-        .kv_length = (uint16_t)active_kv,
+    const akv_attention_problem_t problem = {
+        .query = (const uint16_t *)attention_query_group_f16,
+        .key = (const uint16_t *)(
+            key + (size_t)kvhead * physical_kvlen * dim),
+        .value = (const uint16_t *)(
+            value + (size_t)kvhead * physical_kvlen * dim),
+        .mask = mask,
+        .output = attention_output + (size_t)first_qhead * dim,
         .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
         .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
         .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-        .reserved0 = 0,
-        .q_base = (uint64_t)(uintptr_t)attention_query_group_f16,
-        .k_base = (uint64_t)(uintptr_t)(
-            key + (size_t)kvhead * physical_kvlen * dim),
-        .v_base = (uint64_t)(uintptr_t)(
-            value + (size_t)kvhead * physical_kvlen * dim),
-        .reserved1 = 0,
-        .reserved2 = 0,
+        .output_row_stride_bytes = (uint32_t)dim * sizeof(float),
+        .q_rows = (uint32_t)heads_per_kv,
+        .head_dim = (uint32_t)dim,
+        .kv_length = (uint32_t)active_kv,
+        .scale = cfg->params[2],
     };
+    if (akv_attention_plan_create(&attention_akv_device, &problem,
+                                  &attention_akv_plan) !=
+            AKV_STATUS_OK)
+      return 0;
 
     HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
-    attention_akv_group_asm(
-        &attention_akv_descriptor, mask,
-        attention_output + (size_t)first_qhead * dim, cfg->params[2]);
+    if (akv_attention_execute_native(&attention_akv_plan) != AKV_STATUS_OK)
+      return 0;
   }
   return 1;
 }
@@ -568,6 +565,10 @@ int main(void) {
   const case_config_t *cfg = &llama_case_config;
   if (cfg->magic != 0x514b4d4f || cfg->version != 1) return 1;
   if (cfg->kind == CASE_ATTENTION && !attention_shape_is_supported(cfg)) return 1;
+  if (cfg->kind == CASE_ATTENTION &&
+      (cfg->flags & CASE_FLAG_ATTENTION_AKV) != 0 &&
+      akv_device_init_reference(&attention_akv_device) != AKV_STATUS_OK)
+    return 1;
   HW_CNT_READY;
   perf_time();
   const uint64_t start = read_cycle();

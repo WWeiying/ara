@@ -148,6 +148,18 @@ $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
 
 $(addsuffix /main.c.o,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
 
+AKV_RUNTIME_C_SOURCES := \
+	$(ARA_DIR)/software/akv/include/akv/akv.h \
+	$(ARA_DIR)/software/akv/include/akv/akv_abi.h \
+	$(ARA_DIR)/software/akv/src/akv_runtime.c \
+	$(ARA_DIR)/software/akv/src/akv_native_riscv.c
+AKV_RUNTIME_ASM_SOURCE := $(ARA_DIR)/software/akv/src/akv_attention_rvv.S
+
+llama_q4km_operator/akv_runtime.c.o \
+llama_q4km_operator/akv_runtime.c.o.spike: $(AKV_RUNTIME_C_SOURCES)
+llama_q4km_operator/akv_attention.S.o \
+llama_q4km_operator/akv_attention.S.o.spike: $(AKV_RUNTIME_ASM_SOURCE)
+
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)
 
