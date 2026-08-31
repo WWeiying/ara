@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
+number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
+grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
+  printf 'invalid AKV_LOGITS_MAX_ABS_TOLERANCE: %s\n' "${max_abs_tolerance}" >&2
+  exit 2
+}
+
 validate_log() {
   local log_file=$1
   local result_file=$2
   local coverage_line
   local max_abs
-  local max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
 
   coverage_line=$(grep -E 'GGML_RISCV_AKV_COVERAGE .*executed_ops=[1-9][0-9]*' "${log_file}" | tail -n 1)
   grep -Eq 'executed_ops=[1-9][0-9]*' <<< "${coverage_line}"
@@ -17,8 +23,7 @@ validate_log() {
   grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
 
   max_abs=$(sed -n 's/^AKV_LOGITS_MAX_ABS=//p' "${log_file}" | tr -d '\r' | tail -n 1)
-  grep -Eq '^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$' <<< "${max_abs}"
-  grep -Eq '^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$' <<< "${max_abs_tolerance}"
+  grep -Eq "${number_re}" <<< "${max_abs}"
   awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
     'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
 
@@ -65,6 +70,7 @@ result_file="${run_dir}/result.txt"
 
 "${CROSS_BIN}/riscv64-linux-gcc" \
   -march=rv64gc -mabi=lp64d -O2 -static \
+  "-DAKV_LOGITS_MAX_ABS_TOLERANCE=${max_abs_tolerance}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
   -o "${init_binary}"
 

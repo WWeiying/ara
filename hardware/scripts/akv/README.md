@@ -41,8 +41,10 @@ hardware/scripts/akv/run-qemu-model-check.sh --check-log path/to/qemu.log
 ```
 
 The optional `AKV_LOGITS_MAX_ABS_TOLERANCE` environment variable changes the
-default threshold only for experiments with a separately justified numerical
-contract.
+threshold only for experiments with a separately justified numerical contract.
+For a new run, the script compiles the selected threshold into the guest checker
+and applies the same value again during host log validation, so
+`LLAMA_GUEST_EXIT=0` and the final host verdict have the same numerical meaning.
 
 The emulation path validates GGML graph selection, shape/layout checks, shared
 runtime planning, and model-level numerical behavior. Its query-key dot,

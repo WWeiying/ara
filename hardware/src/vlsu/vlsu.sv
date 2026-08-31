@@ -1178,6 +1178,11 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         if (akv_command_fire) begin
           assert (normal_vlsu_idle && !qbs_active_q)
             else $fatal(1, "AKV command accepted before VLSU ownership handoff");
+          if (akv_command == AKV_COMMAND_LOAD &&
+              pe_req_i.vl == vlen_t'(128)) begin
+            assert (!pe_req_i.vd[0] && pe_req_i.vd <= 5'd30)
+              else $fatal(1, "Illegal D128 AKV destination reached the VLSU");
+          end
         end
 
         if (akv_command_early_ack) begin
