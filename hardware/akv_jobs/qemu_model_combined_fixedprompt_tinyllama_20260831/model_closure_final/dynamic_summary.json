@@ -1,0 +1,191 @@
+{
+  "provenance": {
+    "tool": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/scripts/akv/summarize-model-closure.py",
+      "sha256": "ae560da0d6d259b6b01b716232480cb402e961d48d4c40d3d92397ea8b31f1d8",
+      "projection_method_version": 1
+    },
+    "dynamic_log": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/qemu.log",
+      "sha256": "16729863a210b06a307793651a08b2405333d15caff6adf9d763e7aaacb107f4"
+    },
+    "qbs_abi": {
+      "path": "/home/wangwy/openproject/ara_dsa/config/qbs_abi.json",
+      "sha256": "b70836b84701270d6f140436f0e6ce53c40c53026c2d843ff9d6ae8d76aed3fe",
+      "architecture_version": 2
+    },
+    "run_manifest": {
+      "MODEL_MODE": "combined",
+      "ARA_REVISION": "f98aabbf5a2c06b90cc6d63a21b1e30d2ddfcd62",
+      "LLAMA_REVISION": "c455aa019b1ebda0b4cda82768c2bd3d14f8caf1",
+      "LLAMA_BINARY": "/home/wangwy/llama/llama.cpp/build-rv64-cva6-akv-static/bin/llama-simple",
+      "LLAMA_BINARY_SHA256": "47680bfca2b53b8c6fa17771d6512b70fe4e81849d0e8cb12ae2249b5434abf0",
+      "QEMU_BINARY": "/home/wangwy/llama/platforms/cva6-qemu/build/qemu-10.2.0-build/qemu-system-riscv64",
+      "QEMU_BINARY_SHA256": "9d169e77ca41001943053bf5ce8b893dd900dc9b17612286667afa6e04d436ef",
+      "QEMU_CPU": "rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true",
+      "MODEL_DISK": "/home/wangwy/llama/platforms/cva6-qemu/images/tinyllama-q4km.ext4",
+      "MODEL_DISK_SHA256": "2db524183ce7fcf01b42aee916dd36518953d4005cb409229fd72f211c7278bf",
+      "MODEL_GUEST_PATH": "/model/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "MODEL_TOKENS": "2",
+      "MODEL_PROMPT": "The quick brown fox jumps over the lazy dog.",
+      "LOGITS_MAX_ABS_TOLERANCE": "0.001"
+    }
+  },
+  "functional": {
+    "guest_exit": 0,
+    "output_equal": true,
+    "logits_top1_equal": "1",
+    "logits_max_abs": "0",
+    "qbs_rvv": {
+      "QBS_RVV_LOGITS_RECORDS": "2",
+      "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "2",
+      "QBS_RVV_LOGITS_MAX_ABS": "0.512689114",
+      "QBS_RVV_LOGITS_MAX_REL": "16383.5029",
+      "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+      "QBS_RVV_TOKEN_OUTPUT_EQUAL": "1"
+    }
+  },
+  "graphs": {
+    "prefill": 1,
+    "decode": 1
+  },
+  "qbs": {
+    "nodes": 310,
+    "call_chunks": 461,
+    "unique_activation_elements": 5406720,
+    "output_elements": 5423616,
+    "dot_elements": 13280215040,
+    "per_operation_quantized_activation_bytes": 6167040,
+    "weight_payload_bytes": 1816313856,
+    "weight_payload_bytes_by_phase": {
+      "prefill": 1186467840,
+      "decode": 629846016
+    },
+    "weight_payload_bytes_by_profile": {
+      "Q4_K": 1412038656,
+      "Q6_K": 404275200
+    },
+    "coverage": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "candidate_tensors": "135",
+        "selected_tensors": "135",
+        "segmented_tensors": "0",
+        "candidate_elements": "852492288",
+        "selected_elements": "852492288",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "candidate_tensors": "22",
+        "selected_tensors": "22",
+        "segmented_tensors": "0",
+        "candidate_elements": "251658240",
+        "selected_elements": "251658240",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      }
+    },
+    "execution": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "gemv_calls": "268",
+        "gemm_calls": "131",
+        "input_rows": "1840",
+        "output_rows": "1100288",
+        "activation_elements": "4327424",
+        "output_elements": "5037056",
+        "dot_elements": "11460935680",
+        "split_calls": "0",
+        "commands_m1": "23200",
+        "commands_m2": "0",
+        "commands_m3": "0",
+        "commands_m4": "33552",
+        "native_qbexec": "56752",
+        "emulated_commands": "0",
+        "command_dot_elements": "11460935680",
+        "segmented_commands": "0",
+        "context_fill": "187",
+        "context_reuse": "21290",
+        "context_release": "187"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "gemv_calls": "42",
+        "gemm_calls": "20",
+        "input_rows": "282",
+        "output_rows": "133120",
+        "activation_elements": "1079296",
+        "output_elements": "386560",
+        "dot_elements": "1819279360",
+        "split_calls": "0",
+        "commands_m1": "3440",
+        "commands_m2": "0",
+        "commands_m3": "0",
+        "commands_m4": "2160",
+        "native_qbexec": "5600",
+        "emulated_commands": "0",
+        "command_dot_elements": "1819279360",
+        "segmented_commands": "0",
+        "context_fill": "12",
+        "context_reuse": "2136",
+        "context_release": "12"
+      }
+    },
+    "activation_lifetime": null
+  },
+  "akv_v2": {
+    "calls": 22,
+    "attention_macs": 1261568,
+    "query_payload_bytes": 90112,
+    "kv_payload_bytes": 315392,
+    "shapes": [
+      {
+        "graph_id": 1,
+        "phase": "decode",
+        "kernel": "v2",
+        "kv_heads": 4,
+        "q_rows": 32,
+        "gqa_rows": 8,
+        "head_dim": 64,
+        "active_kv": 14,
+        "calls": 22,
+        "query_payload_bytes": 90112,
+        "kv_payload_bytes": 315392,
+        "attention_macs": 1261568
+      }
+    ],
+    "coverage": {
+      "candidate_ops": "44",
+      "executed_ops": "22",
+      "groups": "88",
+      "executed_v1": "0",
+      "executed_v2": "22",
+      "groups_v1": "0",
+      "groups_v2": "88",
+      "kv_group_tokens": "1232",
+      "attention_macs": "1261568",
+      "fallback_runtime": "0",
+      "fallback_capability": "0",
+      "fallback_threading": "0",
+      "fallback_feature": "0",
+      "fallback_shape": "22",
+      "fallback_layout": "0",
+      "fallback_mask": "0"
+    }
+  },
+  "model_nodes": 758
+}

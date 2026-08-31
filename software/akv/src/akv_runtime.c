@@ -149,6 +149,13 @@ static int ranges_overlap(uintptr_t lhs_first, uintptr_t lhs_last,
   return lhs_first <= rhs_last && rhs_first <= lhs_last;
 }
 
+int akv_attention_v2_shape_supported(uint32_t q_rows, uint32_t head_dim) {
+  const int q_rows_supported = q_rows == 1u || q_rows == 4u ||
+                               q_rows == 6u || q_rows == 8u;
+  return q_rows_supported &&
+         (head_dim == AKV_HEAD_DIM_64 || head_dim == AKV_HEAD_DIM_128);
+}
+
 static akv_status_t attention_plan_create(
     const akv_device_t *device, const akv_attention_problem_t *problem,
     uint32_t kernel_version, akv_attention_plan_t *plan) {
@@ -158,16 +165,25 @@ static akv_status_t attention_plan_create(
 
   const akv_capabilities_t *caps = &device->capabilities;
   if (!caps->valid || !caps->enabled || !caps->f16_payload ||
-      !caps->head_dim_128 || caps->max_q_rows < AKV_ATTENTION_KERNEL_Q_ROWS ||
       caps->context_count == 0u)
     return AKV_STATUS_CAPABILITY;
   if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
       (!caps->token_axis_valid || !caps->token_axis_enabled ||
        !caps->token_axis_tail || !caps->token_axis_row_view))
     return AKV_STATUS_CAPABILITY;
-  if (problem->q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
-      problem->head_dim != AKV_HEAD_DIM_128 || problem->kv_length == 0u ||
-      problem->kv_length > UINT16_MAX)
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V1) {
+    if (problem->q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
+        problem->head_dim != AKV_HEAD_DIM_128)
+      return AKV_STATUS_SHAPE;
+  } else if (!akv_attention_v2_shape_supported(problem->q_rows,
+                                                problem->head_dim)) {
+    return AKV_STATUS_SHAPE;
+  }
+  const int head_dim_capable = problem->head_dim == AKV_HEAD_DIM_64
+      ? caps->head_dim_64 : caps->head_dim_128;
+  if (!head_dim_capable || caps->max_q_rows < problem->q_rows)
+    return AKV_STATUS_CAPABILITY;
+  if (problem->kv_length == 0u || problem->kv_length > UINT16_MAX)
     return AKV_STATUS_SHAPE;
   if (problem->query == NULL || problem->key == NULL ||
       problem->value == NULL || problem->mask == NULL ||
@@ -277,9 +293,13 @@ static akv_status_t attention_execute(const akv_attention_plan_t *plan,
            : !akv_descriptor_is_valid(&plan->descriptor)) ||
       plan->mask == NULL ||
       plan->output == NULL ||
-      plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
-      plan->descriptor.head_dim != AKV_HEAD_DIM_128 ||
-      plan->output_row_stride_bytes < AKV_HEAD_DIM_128 * sizeof(float) ||
+      (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V1
+           ? (plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
+              plan->descriptor.head_dim != AKV_HEAD_DIM_128)
+           : !akv_attention_v2_shape_supported(plan->descriptor.q_rows,
+                                               plan->descriptor.head_dim)) ||
+      plan->output_row_stride_bytes <
+          (size_t)plan->descriptor.head_dim * sizeof(float) ||
       !finite_positive_f32(plan->scale))
     return AKV_STATUS_BAD_ARGUMENT;
   return executor(executor_context, &plan->descriptor, plan->mask, plan->output,

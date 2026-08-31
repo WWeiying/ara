@@ -3,6 +3,10 @@ set -euo pipefail
 
 max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
 model_mode=${AKV_MODEL_MODE:-akv-v1}
+default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
+model_tokens=${AKV_MODEL_TOKENS:-2}
+model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
 ara_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
 grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
@@ -18,6 +22,24 @@ validate_log() {
   local executed_ops
   local accounted_ops
   local max_abs
+  local expected_runs
+  local prompt_token_count
+  local -a prompt_token_counts=()
+  local -a qbs_profiles=()
+
+  case ${model_mode} in
+    combined|combined-fallback) expected_runs=3 ;;
+    akv-v1|qbs-lifetime) expected_runs=2 ;;
+  esac
+  mapfile -t prompt_token_counts < <(
+    sed -n 's/.*prompt eval time.*\/[[:space:]]*\([0-9][0-9]*\)[[:space:]]*tokens.*/\1/p' \
+      "${log_file}"
+  )
+  (( ${#prompt_token_counts[@]} == expected_runs ))
+  prompt_token_count=${prompt_token_counts[0]}
+  for value in "${prompt_token_counts[@]}"; do
+    [[ ${value} == "${prompt_token_count}" ]]
+  done
 
   if [[ ${model_mode} == qbs-lifetime ]]; then
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_CONTEXT_BASELINE:0' "${log_file}"
@@ -40,32 +62,50 @@ validate_log() {
     grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
     grep -E '^(GGML_RISCV_QBS_(LIFETIME|LIFETIME_SUMMARY|CROSS_OP|COMMAND|COVERAGE|EXEC)|QBS_CROSS_OP_|AKV_TOKEN_RUN_(BEGIN|EXIT)|LLAMA_GUEST_EXIT)' \
       "${log_file}" | tr -d '\r' > "${result_file}"
+    printf 'AKV_MODEL_PROMPT_TOKENS=%s\n' "${prompt_token_count}" >> "${result_file}"
     python3 "${ara_root}/hardware/scripts/qbs/compare_activation_lifetime_runs.py" \
       "${log_file}" --output "$(dirname -- "${log_file}")/qbs_cross_operator_summary.json"
     return
   fi
 
-  coverage_line=$(grep -E 'GGML_RISCV_AKV_COVERAGE .*executed_ops=[1-9][0-9]*' "${log_file}" | tail -n 1)
-  grep -Eq 'executed_ops=[1-9][0-9]*' <<< "${coverage_line}"
+  if [[ ${model_mode} == combined-fallback ]]; then
+    coverage_line=$(grep -E 'GGML_RISCV_AKV_COVERAGE .*candidate_ops=[1-9][0-9]*' "${log_file}" | tail -n 1)
+  else
+    coverage_line=$(grep -E 'GGML_RISCV_AKV_COVERAGE .*executed_ops=[1-9][0-9]*' "${log_file}" | tail -n 1)
+    grep -Eq 'executed_ops=[1-9][0-9]*' <<< "${coverage_line}"
+  fi
   grep -Eq 'fallback_threading=0([[:space:]]|$)' <<< "${coverage_line}"
-  if [[ ${model_mode} == combined ]]; then
+  if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
     grep -q 'AKV_TOKEN_RUN_EXIT=RVV:0' "${log_file}"
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_ONLY:0' "${log_file}"
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_AKV_V2:0' "${log_file}"
     grep -Eq 'QBS_RVV_LOGITS_RECORDS=[1-9][0-9]*' "${log_file}"
     grep -Eq 'QBS_RVV_LOGITS_COMPARABLE_RECORDS=[1-9][0-9]*' "${log_file}"
     grep -Eq 'executed_v1=0([[:space:]]|$)' <<< "${coverage_line}"
-    grep -Eq 'executed_v2=[1-9][0-9]*' <<< "${coverage_line}"
     grep -Eq 'groups_v1=0([[:space:]]|$)' <<< "${coverage_line}"
-    grep -Eq 'groups_v2=[1-9][0-9]*' <<< "${coverage_line}"
-    grep -Eq 'kv_group_tokens=[1-9][0-9]*' <<< "${coverage_line}"
-    grep -Eq 'attention_macs=[1-9][0-9]*' <<< "${coverage_line}"
     grep -Eq 'fallback_capability=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'fallback_feature=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'fallback_layout=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'fallback_mask=0([[:space:]]|$)' <<< "${coverage_line}"
+    if [[ ${model_mode} == combined ]]; then
+      grep -Eq 'executed_v2=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'groups_v2=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'kv_group_tokens=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'attention_macs=[1-9][0-9]*' <<< "${coverage_line}"
+    else
+      grep -Eq 'executed_ops=0([[:space:]]|$)' <<< "${coverage_line}"
+      grep -Eq 'executed_v2=0([[:space:]]|$)' <<< "${coverage_line}"
+      grep -Eq 'groups_v2=0([[:space:]]|$)' <<< "${coverage_line}"
+      grep -Eq 'kv_group_tokens=0([[:space:]]|$)' <<< "${coverage_line}"
+      grep -Eq 'attention_macs=0([[:space:]]|$)' <<< "${coverage_line}"
+    fi
 
-    for profile in Q4_K Q6_K; do
+    mapfile -t qbs_profiles < <(
+      sed -n 's/^GGML_RISCV_QBS_COVERAGE type=\([^[:space:]]\+\) .*/\1/p' \
+        "${log_file}" | sort -u
+    )
+    (( ${#qbs_profiles[@]} > 0 ))
+    for profile in "${qbs_profiles[@]}"; do
       local qbs_coverage
       local qbs_exec
       local candidate_tensors
@@ -107,8 +147,16 @@ validate_log() {
       }
       print total;
     }')
-    [[ ${candidate_ops} =~ ^[1-9][0-9]*$ && ${executed_ops} =~ ^[1-9][0-9]*$ ]]
+    [[ ${candidate_ops} =~ ^[1-9][0-9]*$ && ${executed_ops} =~ ^[0-9][0-9]*$ ]]
+    if [[ ${model_mode} == combined ]]; then
+      [[ ${executed_ops} =~ ^[1-9][0-9]*$ ]]
+    fi
     (( candidate_ops == executed_ops + accounted_ops ))
+    if [[ ${model_mode} == combined-fallback ]]; then
+      local fallback_shape
+      fallback_shape=$(sed -n 's/.*fallback_shape=\([0-9][0-9]*\).*/\1/p' <<< "${coverage_line}")
+      (( candidate_ops == fallback_shape ))
+    fi
   else
     grep -Eq 'executed_v1=[1-9][0-9]*' <<< "${coverage_line}"
     grep -Eq 'executed_v2=0([[:space:]]|$)' <<< "${coverage_line}"
@@ -126,6 +174,7 @@ validate_log() {
 
   grep -E '^(GGML_RISCV_(QBS_(COVERAGE|EXEC)|AKV_(COVERAGE|EXEC))|QBS_RVV_|AKV_LOGITS_|AKV_TOKEN_(RUN_EXIT|OUTPUT_EQUAL)|LLAMA_GUEST_EXIT)' \
     "${log_file}" | tr -d '\r' > "${result_file}"
+  printf 'AKV_MODEL_PROMPT_TOKENS=%s\n' "${prompt_token_count}" >> "${result_file}"
 }
 
 write_manifest() {
@@ -146,17 +195,36 @@ write_manifest() {
     printf 'QEMU_CPU=%s\n' "${qemu_cpu}"
     printf 'MODEL_DISK=%s\n' "${model_disk}"
     printf 'MODEL_DISK_SHA256=%s\n' "$(sha256sum "${model_disk}" | awk '{print $1}')"
+    printf 'MODEL_GUEST_PATH=%s\n' "${model_guest_path}"
+    printf 'MODEL_TOKENS=%s\n' "${model_tokens}"
+    printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
   } > "${manifest_file}"
 }
 
 case ${model_mode} in
-  akv-v1|combined|qbs-lifetime) ;;
+  akv-v1|combined|combined-fallback|qbs-lifetime) ;;
   *)
-    printf 'invalid AKV_MODEL_MODE: %s (expected akv-v1, combined, or qbs-lifetime)\n' "${model_mode}" >&2
+    printf 'invalid AKV_MODEL_MODE: %s (expected akv-v1, combined, combined-fallback, or qbs-lifetime)\n' "${model_mode}" >&2
     exit 2
     ;;
 esac
+[[ ${model_guest_path} =~ ^/[A-Za-z0-9._/-]+$ ]] || {
+  printf 'invalid AKV_MODEL_GUEST_PATH: %s\n' "${model_guest_path}" >&2
+  exit 2
+}
+[[ ${model_tokens} =~ ^[1-9][0-9]*$ ]] || {
+  printf 'invalid AKV_MODEL_TOKENS: %s\n' "${model_tokens}" >&2
+  exit 2
+}
+[[ ${model_prompt} != *$'\n'* && ${model_prompt} != *$'\r'* ]] || {
+  printf 'AKV_MODEL_PROMPT must be one line\n' >&2
+  exit 2
+}
+[[ ${model_prompt} != *'"'* && ${model_prompt} != *'\'* ]] || {
+  printf 'AKV_MODEL_PROMPT cannot contain a quote or backslash\n' >&2
+  exit 2
+}
 
 if [[ ${1:-} == --check-log ]]; then
   if [[ $# -ne 2 ]]; then
@@ -168,7 +236,12 @@ if [[ ${1:-} == --check-log ]]; then
   test -s "${log_file}"
   validate_log "${log_file}" "${result_file}"
   if [[ ${model_mode} == combined ]]; then
-    "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" "${log_file}"
+    summary_args=("${log_file}")
+    if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
+      summary_args+=(--dynamic-only)
+    fi
+    "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \
+      "${summary_args[@]}"
   fi
   printf 'AKV model log passed: %s\n' "${log_file}"
   exit 0
@@ -186,7 +259,8 @@ run_dir=${AKV_RUN_DIR:-${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_${
 
 source "${platform}/env.sh"
 
-if [[ ${model_mode} == combined || ${model_mode} == qbs-lifetime ]]; then
+if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ||
+      ${model_mode} == qbs-lifetime ]]; then
   qemu_binary=${AKV_QEMU_BINARY:-${platform}/build/qemu-10.2.0-build/qemu-system-riscv64}
   qemu_cpu=${AKV_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true}
 else
@@ -208,7 +282,7 @@ result_file="${run_dir}/result.txt"
 manifest_file="${run_dir}/manifest.txt"
 
 init_defines=()
-if [[ ${model_mode} == combined ]]; then
+if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
   init_defines+=(-DAKV_MODEL_QBS_AKV_V2=1)
 elif [[ ${model_mode} == qbs-lifetime ]]; then
   init_defines+=(-DAKV_MODEL_QBS_LIFETIME=1)
@@ -217,6 +291,9 @@ fi
 "${CROSS_BIN}/riscv64-linux-gcc" \
   -march=rv64gc -mabi=lp64d -O2 -static \
   "-DAKV_LOGITS_MAX_ABS_TOLERANCE=${max_abs_tolerance}" \
+  "-DAKV_MODEL_GUEST_PATH=\"${model_guest_path}\"" \
+  "-DAKV_MODEL_TOKENS=\"${model_tokens}\"" \
+  "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
   -o "${init_binary}"
@@ -267,7 +344,12 @@ write_manifest "${manifest_file}"
 
 validate_log "${log_file}" "${result_file}"
 if [[ ${model_mode} == combined ]]; then
-  "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" "${log_file}"
+  summary_args=("${log_file}")
+  if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
+    summary_args+=(--dynamic-only)
+  fi
+  "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \
+    "${summary_args[@]}"
 fi
 ln -sfn "${run_dir}" \
   "${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_latest"

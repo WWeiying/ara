@@ -1,0 +1,546 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "scope": "functional, numerical, coverage, traffic, and RTL-cycle closure; no physical closure",
+  "qbs_abi": {
+    "architecture_version": 2,
+    "weight_profiles": [
+      "Q4_K",
+      "Q5_K",
+      "Q6_K",
+      "Q3_K",
+      "Q8_0_WEIGHT",
+      "Q4_0",
+      "Q2_K",
+      "Q5_0",
+      "IQ4_NL"
+    ]
+  },
+  "akv_shape_matrix": {
+    "cases": 56,
+    "modes": 2,
+    "results": 112,
+    "status": "PASS",
+    "artifact": "hardware/akv_v2_shape_spike_matrix_20260831_managed/summary.json"
+  },
+  "models": [
+    {
+      "model": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+      "qbs_profiles": "Q4_K/Q6_K",
+      "qbs_nodes": 394,
+      "qbs_weight_bytes": 2720342016,
+      "qbs_activation_bytes": 6265444,
+      "akv_candidates": 56,
+      "akv_executed": 28,
+      "akv_fallbacks": 28,
+      "akv_q_bytes": 86016,
+      "akv_kv_bytes": 315392,
+      "status": "PASS",
+      "artifact": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json"
+    },
+    {
+      "model": "TinyLlama-1.1B-Chat-Q4_K_M",
+      "qbs_profiles": "Q4_K/Q6_K",
+      "qbs_nodes": 310,
+      "qbs_weight_bytes": 1816313856,
+      "qbs_activation_bytes": 6167040,
+      "akv_candidates": 44,
+      "akv_executed": 22,
+      "akv_fallbacks": 22,
+      "akv_q_bytes": 90112,
+      "akv_kv_bytes": 315392,
+      "status": "PASS",
+      "artifact": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json"
+    },
+    {
+      "model": "SmolLM2-135M-Instruct-Q4_K_M",
+      "qbs_profiles": "Q4_K/Q5_0/Q6_K/Q8_0",
+      "qbs_nodes": 422,
+      "qbs_weight_bytes": 278788608,
+      "qbs_activation_bytes": 1764360,
+      "akv_candidates": 60,
+      "akv_executed": 0,
+      "akv_fallbacks": 60,
+      "akv_q_bytes": 0,
+      "akv_kv_bytes": 0,
+      "status": "PASS",
+      "artifact": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json"
+    }
+  ],
+  "qbs_activation_lifetime": {
+    "model_quantizations_before": 394,
+    "model_quantizations_after": 309,
+    "model_quantizations_saved": 85,
+    "model_f32_bytes_saved": 522240,
+    "model_q8_bytes_saved": 148920,
+    "rtl_quantizations_before": 3,
+    "rtl_quantizations_after": 1,
+    "rtl_f32_bytes_saved": 12288,
+    "rtl_q8_bytes_saved": 3504,
+    "rtl_cycles_before": 48634,
+    "rtl_cycles_after": 25480,
+    "rtl_speedup": 1.908712715855573,
+    "status": "PASS"
+  },
+  "qbs_representative_points": [
+    {
+      "point": "Q4_K decode attn_q context",
+      "baseline_cycles": 119883,
+      "current_cycles": 119894,
+      "regression": 9.175612889222862e-05,
+      "context": 1,
+      "status": "PASS"
+    },
+    {
+      "point": "Q6_K decode ffn_down",
+      "baseline_cycles": 208863,
+      "current_cycles": 208863,
+      "regression": 0.0,
+      "context": 0,
+      "status": "PASS"
+    }
+  ],
+  "qbs_rtl_tests": [
+    {
+      "test": "profiles",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "test": "commands",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_command_build/run.log"
+    },
+    {
+      "test": "descriptor",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_descriptor_build/run.log"
+    },
+    {
+      "test": "read",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_read_build/run.log"
+    },
+    {
+      "test": "commit",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_commit_build/run.log"
+    },
+    {
+      "test": "context",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_context_build/run.log"
+    },
+    {
+      "test": "context_macro",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_context_macro_build/run.log"
+    },
+    {
+      "test": "end_to_end",
+      "status": "PASS",
+      "artifact": "verification/qbs/rtl_engine_build/run.log"
+    }
+  ],
+  "ordinary_rvv": {
+    "case": "operator/decode/attention_core/rvv",
+    "cycles": 121512,
+    "status": "PASS"
+  },
+  "akv_rtl_points": [
+    {
+      "case": "akv-v2/derived-real/d64-g8-kv64",
+      "head_dim": 64,
+      "gqa_rows": 8,
+      "kv_length": 64,
+      "cycles": 43353,
+      "commands": 1026,
+      "q_bytes": 1024,
+      "kv_bytes": 16384,
+      "read_payload_bytes": 17472,
+      "replay_bytes": 131072,
+      "status": "PASS",
+      "artifact": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log"
+    },
+    {
+      "case": "akv-v2/derived-real/d128-g6-kv128",
+      "head_dim": 128,
+      "gqa_rows": 6,
+      "kv_length": 128,
+      "cycles": 52984,
+      "commands": 387,
+      "q_bytes": 1536,
+      "kv_bytes": 65536,
+      "read_payload_bytes": 67136,
+      "replay_bytes": 65536,
+      "status": "PASS",
+      "artifact": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log"
+    },
+    {
+      "case": "akv-v2/derived-real/d128-g4-kv63",
+      "head_dim": 128,
+      "gqa_rows": 4,
+      "kv_length": 63,
+      "cycles": 37129,
+      "commands": 766,
+      "q_bytes": 1024,
+      "kv_bytes": 32256,
+      "read_payload_bytes": 33344,
+      "replay_bytes": 129024,
+      "status": "PASS",
+      "artifact": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log"
+    },
+    {
+      "case": "akv-v2/derived-real/d64-g1-kv65",
+      "head_dim": 64,
+      "gqa_rows": 1,
+      "kv_length": 65,
+      "cycles": 12742,
+      "commands": 196,
+      "q_bytes": 128,
+      "kv_bytes": 16640,
+      "read_payload_bytes": 16832,
+      "replay_bytes": 16640,
+      "status": "PASS",
+      "artifact": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log"
+    }
+  ],
+  "decode_cycle_projection": [
+    {
+      "category": "akv_v2",
+      "instances": 28,
+      "projected_cycles": 862958,
+      "share": 0.0084921112319571,
+      "decode_total": 101618782
+    },
+    {
+      "category": "qbs",
+      "instances": 197,
+      "projected_cycles": 97055000,
+      "share": 0.9550891881384683,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_activation",
+      "instances": 28,
+      "projected_cycles": 1306788,
+      "share": 0.01285970933995253,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_bias",
+      "instances": 84,
+      "projected_cycles": 62272,
+      "share": 0.0006128001022488146,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_cache_update",
+      "instances": 56,
+      "projected_cycles": 18760,
+      "share": 0.00018461154159474182,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_norm",
+      "instances": 57,
+      "projected_cycles": 1193466,
+      "share": 0.011744541476594357,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_residual",
+      "instances": 56,
+      "projected_cycles": 80528,
+      "share": 0.0007924519307857872,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_rope",
+      "instances": 56,
+      "projected_cycles": 1015868,
+      "share": 0.00999685274716243,
+      "decode_total": 101618782
+    },
+    {
+      "category": "rvv_row_gather",
+      "instances": 3,
+      "projected_cycles": 23142,
+      "share": 0.00022773349123590166,
+      "decode_total": 101618782
+    }
+  ],
+  "qbs_lifetime_ablation": {
+    "cycles_before": 102585188,
+    "cycles_after": 101618782,
+    "cycles_saved": 966406,
+    "cycle_reduction": 0.009420521800866612,
+    "speedup": 1.0095101120184653
+  },
+  "support_matrix": [
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q4_K",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_K",
+      "model_evidence": "Qwen2.5-1.5B-Instruct-Q4_K_M;TinyLlama-1.1B-Chat-Q4_K_M;SmolLM2-135M-Instruct-Q4_K_M",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q5_K",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_K",
+      "model_evidence": "not observed in selected models",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q6_K",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_K",
+      "model_evidence": "Qwen2.5-1.5B-Instruct-Q4_K_M;TinyLlama-1.1B-Chat-Q4_K_M;SmolLM2-135M-Instruct-Q4_K_M",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q3_K",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_K",
+      "model_evidence": "not observed in selected models",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q8_0_WEIGHT",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_0",
+      "model_evidence": "SmolLM2-135M-Instruct-Q4_K_M",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q4_0",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_0",
+      "model_evidence": "not observed in selected models",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q2_K",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_K",
+      "model_evidence": "not observed in selected models",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:Q5_0",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_0",
+      "model_evidence": "SmolLM2-135M-Instruct-Q4_K_M",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "weight_profile:IQ4_NL",
+      "disposition": "implemented",
+      "verified_scope": "RTL profile regression",
+      "boundary": "activation=Q8_0",
+      "model_evidence": "not observed in selected models",
+      "evidence": "verification/qbs/rtl_build/run.log"
+    },
+    {
+      "mechanism": "QBS",
+      "capability": "activation_context",
+      "disposition": "implemented",
+      "verified_scope": "Qwen trace plus controlled RTL",
+      "boundary": "count=1; M<=1; K_blocks<=16; profiles=Q8_K; layouts=ROW_MAJOR",
+      "model_evidence": "Qwen attention_qkv and ffn_gate_up",
+      "evidence": "hardware/qbs_cross_op_rtl_ablation_20260831/summary.json"
+    },
+    {
+      "mechanism": "AKV-v2",
+      "capability": "tested_shape_matrix",
+      "disposition": "admitted",
+      "verified_scope": "scalar-reference and RVV functional matrix",
+      "boundary": "D=64/128; GQA=1/4/6/8; KV=16/63/64/65/128/256/1024",
+      "model_evidence": "Qwen D128/G6; TinyLlama D64/G8",
+      "evidence": "hardware/akv_v2_shape_spike_matrix_20260831_managed/summary.json"
+    },
+    {
+      "mechanism": "AKV-v2",
+      "capability": "GQA=3",
+      "disposition": "ordinary_RVV_fallback",
+      "verified_scope": "real model Prefill+Decode",
+      "boundary": "unsupported GQA ratio; no partial AKV execution",
+      "model_evidence": "60 candidates, 60 fallbacks",
+      "evidence": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json"
+    },
+    {
+      "mechanism": "AKV-v2",
+      "capability": "Prefill",
+      "disposition": "ordinary_RVV_fallback",
+      "verified_scope": "real model execution",
+      "boundary": "current AKV-v2 profile admits Decode only",
+      "model_evidence": "Qwen2.5-1.5B-Instruct-Q4_K_M:28;TinyLlama-1.1B-Chat-Q4_K_M:22",
+      "evidence": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json;hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json"
+    },
+    {
+      "mechanism": "RVV",
+      "capability": "fallback_path",
+      "disposition": "preserved",
+      "verified_scope": "representative RTL leaf",
+      "boundary": "used whenever QBS/AKV capability or full contract is not admitted",
+      "model_evidence": "operator/decode/attention_core/rvv zero-mismatch PASS",
+      "evidence": "hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/ara.log"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "config/qbs_abi.json",
+      "sha256": "b70836b84701270d6f140436f0e6ce53c40c53026c2d843ff9d6ae8d76aed3fe"
+    },
+    {
+      "path": "hardware/akv_v2_shape_spike_matrix_20260831_managed/summary.json",
+      "sha256": "bcbf4e4906b0071db4570266124283f15b06f83c50ba805e7c4a5c76c789284f"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_qbs_lifetime_fixedprompt_qwen_20260831/qbs_cross_operator_summary.json",
+      "sha256": "53466c53d19157a8c112750b871f403cec15d1fd463e6d351f5a36aaa0ea3f78"
+    },
+    {
+      "path": "hardware/qbs_cross_op_rtl_ablation_20260831/summary.json",
+      "sha256": "abeca09cc1acd1b9c360976a2e3418a8d4fd51d81c63dfddab67027029a5d4da"
+    },
+    {
+      "path": "hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/ara.log",
+      "sha256": "ce4b0a8191629e255bfa7a451468fdfca15c0714517be33cf9ef2395b76fcce6"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json",
+      "sha256": "be8ee32671fa29a65450c7d2b595d1ee6d9d46657dde2f1a9e5b4dc7e976d4b9"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json",
+      "sha256": "56f179a5aa47b79140083b9ae03d274fd7378bab0e27340fbc3407fdbb94e001"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json",
+      "sha256": "b1404d1c9f7a481777a29830a64a261a60671d4484b87f343e157865294d63f6"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/cycle_projection_summary.csv",
+      "sha256": "23b0ccdd842dc663667398c8a5ecadf56b52bcc3eec53ed8631abe1a3d7092d6"
+    },
+    {
+      "path": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure/cycle_projection_summary.csv",
+      "sha256": "055bcb0b1aa06c62945208fe7fcc4ae814439a27cb0de69296b9a65ccc6446e2"
+    },
+    {
+      "path": "hardware/qbs_akv_goal_final_q4k_context_20260831_082621/result.csv",
+      "sha256": "626ac321b99175519beb8ebe7a7c2921e31e0d44eebb07bc925d36064f517d27"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q4k_context_20260831_153548/result.csv",
+      "sha256": "60c994971189fbf14c760019f64f78698ef6a33f804fa6f70588bc50490cae40"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q4k_context_20260831_153548/qbs_perf.csv",
+      "sha256": "74da45ef795e92e4cf11da66d9d310fe6ba833ebff2d3ef492386ff579a538c0"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q4k_context_20260831_153548/console.log",
+      "sha256": "8cb8664d56539b594cf69792acf45832e34399b9162f3ad523833ad94124299b"
+    },
+    {
+      "path": "hardware/qbs_akv_goal_final_q6k_direct_20260831_082808/result.csv",
+      "sha256": "e4fe7cb60675f21081287e61e03085a011941d7b1ea5dd09df82ba6af6cf119b"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q6k_20260831_133629/result.csv",
+      "sha256": "e4fe7cb60675f21081287e61e03085a011941d7b1ea5dd09df82ba6af6cf119b"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q6k_20260831_133629/qbs_perf.csv",
+      "sha256": "fbacdd288f3d56c5fa4395f957e4c887d99f2555763f34e404bad01840060f3c"
+    },
+    {
+      "path": "hardware/qbs_akv_current_q6k_20260831_133629/console.log",
+      "sha256": "18b322441129054da3e45c8aafc891e5b07246b5f82d7f69d91cf51673173fa0"
+    },
+    {
+      "path": "verification/qbs/rtl_build/run.log",
+      "sha256": "bda41c6434b4b5bf5a61924501001474672f88475273dfb132f55e1e3ecb31aa"
+    },
+    {
+      "path": "verification/qbs/rtl_command_build/run.log",
+      "sha256": "41e452cefb35fe12b0b3815b86c960c3588af4fb52409c0d27fb3002bf7e5122"
+    },
+    {
+      "path": "verification/qbs/rtl_descriptor_build/run.log",
+      "sha256": "811d9dcfcfd66ae16cc514df13894df021eb1885b47fe838b0e41504e8573046"
+    },
+    {
+      "path": "verification/qbs/rtl_read_build/run.log",
+      "sha256": "a0e807821441f7c6665ab39387ee403014d07e0df6040b74ca51730edfda29c2"
+    },
+    {
+      "path": "verification/qbs/rtl_commit_build/run.log",
+      "sha256": "a9064ecaf0d70ee3bacc2d7f64f27c24e14b58c0240b04ee6ce9a01828c3b1bd"
+    },
+    {
+      "path": "verification/qbs/rtl_context_build/run.log",
+      "sha256": "528c99c24d0842b6c8c4e5ea9805a88c8128c2b171114db15edf2a48ac04a6fd"
+    },
+    {
+      "path": "verification/qbs/rtl_context_macro_build/run.log",
+      "sha256": "bb519a31cd5f067a8ed9805e84994b0c0586a944a12f1bedad2dcb31cca9f44c"
+    },
+    {
+      "path": "verification/qbs/rtl_engine_build/run.log",
+      "sha256": "fb68ff052bc89d5e4f6c7073bc3bde3b1c00b80a1a7ee8a0dd2b0b1d0d065511"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/run.conf",
+      "sha256": "dd5f63afafd4c5e148b47fc48e76226a518de2c20f7c440a66b125e949ac8b6c"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log",
+      "sha256": "97bd606664482fafaaf5eba80ca8b74408b50209c1e7675a2da09b18f9bd4f5e"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/run.conf",
+      "sha256": "5de9ee6253c5806ac50cd7fe74b4971de2b9694d1591f87886df5cab3ca53cef"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log",
+      "sha256": "4f1eaf876f3f77670aded78dd6d611731f09bd31422169024c87c2c36fec8252"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/run.conf",
+      "sha256": "3a2b4c184c893199d892544bc6788c4ee351c7aab55d34a6b78df80d9e56b06a"
+    },
+    {
+      "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log",
+      "sha256": "8b5484a58b9f04ea2e671284123d487e1bfa59e7c09239ea6788675a6ede50a9"
+    },
+    {
+      "path": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/run.conf",
+      "sha256": "b94309c44ee5def8986a62adbf44bcf461ff924dfcf7d8511cf4801b65914845"
+    },
+    {
+      "path": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log",
+      "sha256": "4ac8d0ae9518e92dafa3b28f086e81f9690c7e4f5359e62057aabef306a52f06"
+    }
+  ]
+}

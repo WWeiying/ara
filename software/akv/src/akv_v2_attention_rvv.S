@@ -168,3 +168,89 @@ akv_v2_update_outputs_f16_d128_gqa6:
 
     .size akv_v2_update_outputs_f16_d128_gqa6, \
           .-akv_v2_update_outputs_f16_d128_gqa6
+
+    .globl  akv_v2_compute_scores_f16_generic
+    .type   akv_v2_compute_scores_f16_generic,@function
+
+// a0: F16 Query rows, a1: F32 score rows (64-element stride)
+// a2: active tokens, a3: Query stride, a4: Q rows, a5: head dimension
+akv_v2_compute_scores_f16_generic:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    mv              t5, a5
+.Lakv_v2_generic_score_head:
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vsetvli         zero, t2, e16, m1, ta, ma
+    mv              a6, t0
+    li              a7, 0
+.Lakv_v2_generic_score_dimension:
+    mv              a0, a7
+    .word           0x0005745b  // vakv2kcol v8, dimension(a0)
+    flh             ft0, 0(a6)
+    vfwmacc.vf      v0, ft0, v8
+    addi            a6, a6, 2
+    addi            a7, a7, 1
+    bltu            a7, t5, .Lakv_v2_generic_score_dimension
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vse32.v         v0, (t1)
+    add             t0, t0, t3
+    addi            t1, t1, 256
+    addi            t4, t4, -1
+    bnez            t4, .Lakv_v2_generic_score_head
+    ret
+
+    .size akv_v2_compute_scores_f16_generic, \
+          .-akv_v2_compute_scores_f16_generic
+
+    .globl  akv_v2_update_outputs_f16_generic
+    .type   akv_v2_update_outputs_f16_generic,@function
+
+// a0: F32 softmax rows, a1: F16 accumulators, a2: old scales
+// a3: active tokens, a4: Q rows, a5: head dimension
+akv_v2_update_outputs_f16_generic:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    mv              t5, a5
+.Lakv_v2_generic_output_head:
+    vsetvli         zero, t5, e16, m2, ta, ma
+    vle16.v         v0, (t1)
+    flw             ft0, 0(t2)
+    fcvt.h.s        ft0, ft0
+    vfmul.vf        v0, v0, ft0
+    mv              a7, t0
+    li              a6, 0
+.Lakv_v2_generic_value_token:
+    flw             ft0, 0(a7)
+    fcvt.h.s        ft0, ft0
+    slli            a0, a6, 2
+    ori             a0, a0, 2
+    li              a1, 64
+    beq             t5, a1, .Lakv_v2_generic_load_d64
+    .word           0x0205345b  // vakvload.d128 v8:v9, V selector(a0)
+    j               .Lakv_v2_generic_value_loaded
+.Lakv_v2_generic_load_d64:
+    .word           0x0005345b  // vakvload.d64 v8, V selector(a0)
+.Lakv_v2_generic_value_loaded:
+    vfmacc.vf       v0, ft0, v8
+    addi            a7, a7, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_v2_generic_value_token
+    vse16.v         v0, (t1)
+    // Workspace accumulators are declared [AKV_MAX_Q_ROWS][D128], so their
+    // physical row stride remains 256 bytes even for a D64 operation.
+    addi            t1, t1, 256
+    addi            t0, t0, 256
+    addi            t2, t2, 4
+    addi            t4, t4, -1
+    bnez            t4, .Lakv_v2_generic_output_head
+    ret
+
+    .size akv_v2_update_outputs_f16_generic, \
+          .-akv_v2_update_outputs_f16_generic

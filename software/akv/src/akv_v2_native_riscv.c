@@ -13,6 +13,12 @@ extern void akv_v2_compute_scores_f16_d128_gqa6(
 extern void akv_v2_update_outputs_f16_d128_gqa6(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens);
+extern void akv_v2_compute_scores_f16_generic(
+    const uint16_t *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes, uint32_t q_rows, uint32_t head_dim);
+extern void akv_v2_update_outputs_f16_generic(
+    const float *score, uint16_t *accumulator, const float *old_scale,
+    uint32_t tile_tokens, uint32_t q_rows, uint32_t head_dim);
 
 static inline float negative_infinity_f32(void) {
   const uint32_t bits = UINT32_C(0xff800000);
@@ -22,6 +28,13 @@ static inline float negative_infinity_f32(void) {
 }
 
 static inline vfloat32m2_t vector_expf(vfloat32m2_t x, size_t vl) {
+  // The exponent-bit approximation below only represents normal F32 values.
+  // Softmax terms below ln(FLT_MIN) are negligible; clamp them while forming
+  // the approximation and explicitly return zero to avoid exponent wraparound.
+  const float minimum_normal_log = -0x1.5d58ap+6f;
+  const vbool16_t underflow =
+      __riscv_vmflt_vf_f32m2_b16(x, minimum_normal_log, vl);
+  x = __riscv_vfmax_vf_f32m2(x, minimum_normal_log, vl);
   const vfloat32m2_t r = __riscv_vfmv_v_f_f32m2(0x1.8p23f, vl);
   const vfloat32m2_t z = __riscv_vfmacc_vf_f32m2(r, 0x1.715476p+0f, x, vl);
   const vfloat32m2_t n = __riscv_vfsub_vv_f32m2(z, r, vl);
@@ -44,7 +57,8 @@ static inline vfloat32m2_t vector_expf(vfloat32m2_t x, size_t vl) {
               0x1.0e4020p-7f, b, vl),
           u, vl),
       u, vl);
-  return __riscv_vfmacc_vv_f32m2(k, j, k, vl);
+  const vfloat32m2_t result = __riscv_vfmacc_vv_f32m2(k, j, k, vl);
+  return __riscv_vfmerge_vfm_f32m2(result, 0.0f, underflow, vl);
 }
 
 static inline float reduce_max_f32m2(vfloat32m2_t values, size_t vl) {
@@ -79,13 +93,14 @@ static inline void issue_release(void) {
   __asm__ volatile(".word 0x0000505b" : : : "memory");
 }
 
-static void initialize_workspace(akv_attention_v2_workspace_t *workspace) {
+static void initialize_workspace(akv_attention_v2_workspace_t *workspace,
+                                 uint32_t q_rows, uint32_t head_dim) {
   const float negative_infinity = negative_infinity_f32();
 #pragma clang loop unroll(disable)
-  for (uint32_t head = 0; head < AKV_ATTENTION_KERNEL_Q_ROWS; ++head) {
+  for (uint32_t head = 0; head < q_rows; ++head) {
     size_t offset = 0;
-    while (offset < AKV_HEAD_DIM_128) {
-      const size_t vl = __riscv_vsetvl_e16m2(AKV_HEAD_DIM_128 - offset);
+    while (offset < head_dim) {
+      const size_t vl = __riscv_vsetvl_e16m2(head_dim - offset);
       __riscv_vse16_v_u16m2(
           workspace->accumulator[head] + offset,
           __riscv_vmv_v_x_u16m2(0u, vl), vl);
@@ -100,7 +115,7 @@ static void initialize_workspace(akv_attention_v2_workspace_t *workspace) {
 static __attribute__((noinline)) void apply_scale_mask_and_softmax(
     const uint16_t *mask_bits, float scale,
     akv_attention_v2_workspace_t *workspace, uint32_t tile_start,
-    uint32_t tile_tokens) {
+    uint32_t tile_tokens, uint32_t q_rows) {
   const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
   const vfloat32m2_t mask = __riscv_vfwcvt_f_f_v_f32m2(
       __riscv_vle16_v_f16m1(
@@ -108,7 +123,7 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
       vl);
 
 #pragma clang loop unroll(disable)
-  for (uint32_t head = 0; head < AKV_ATTENTION_KERNEL_Q_ROWS; ++head) {
+  for (uint32_t head = 0; head < q_rows; ++head) {
     vfloat32m2_t score =
         __riscv_vle32_v_f32m2(workspace->score[head], vl);
     score = __riscv_vfadd_vv_f32m2(
@@ -132,16 +147,17 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
 
 static __attribute__((noinline)) void store_outputs(
     float *output_base, size_t output_row_stride_bytes,
-    const akv_attention_v2_workspace_t *workspace) {
+    const akv_attention_v2_workspace_t *workspace, uint32_t q_rows,
+    uint32_t head_dim) {
 #pragma clang loop unroll(disable)
-  for (uint32_t head = 0; head < AKV_ATTENTION_KERNEL_Q_ROWS; ++head) {
+  for (uint32_t head = 0; head < q_rows; ++head) {
     const float inverse =
         workspace->sum[head] == 0.0f ? 0.0f : 1.0f / workspace->sum[head];
     float *output = (float *)((uint8_t *)output_base +
                              head * output_row_stride_bytes);
     size_t offset = 0;
-    while (offset < AKV_HEAD_DIM_128) {
-      const size_t vl = __riscv_vsetvl_e16m2(AKV_HEAD_DIM_128 - offset);
+    while (offset < head_dim) {
+      const size_t vl = __riscv_vsetvl_e16m2(head_dim - offset);
       const vfloat16m2_t accumulator = __riscv_vle16_v_f16m2(
           (const _Float16 *)workspace->accumulator[head] + offset, vl);
       __riscv_vse32_v_f32m4(
@@ -162,9 +178,10 @@ akv_status_t akv_attention_execute_v2_native(
       plan->kernel_version != AKV_ATTENTION_KERNEL_VERSION_V2 ||
       !akv_v2_descriptor_is_valid(&plan->descriptor) || plan->mask == NULL ||
       plan->output == NULL ||
-      plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
-      plan->descriptor.head_dim != AKV_HEAD_DIM_128 ||
-      plan->output_row_stride_bytes < AKV_HEAD_DIM_128 * sizeof(float) ||
+      !akv_attention_v2_shape_supported(plan->descriptor.q_rows,
+                                        plan->descriptor.head_dim) ||
+      plan->output_row_stride_bytes <
+          (size_t)plan->descriptor.head_dim * sizeof(float) ||
       ((uintptr_t)workspace & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
     return AKV_STATUS_BAD_ARGUMENT;
 
@@ -179,11 +196,13 @@ akv_status_t akv_attention_execute_v2_native(
   float *const output = plan->output;
   const uint32_t query_row_stride_bytes =
       plan->descriptor.q_row_stride_bytes;
+  const uint32_t q_rows = plan->descriptor.q_rows;
+  const uint32_t head_dim = plan->descriptor.head_dim;
   const uint32_t kv_length = plan->descriptor.kv_length;
   const size_t output_row_stride_bytes = plan->output_row_stride_bytes;
   const float scale = plan->scale;
 
-  initialize_workspace(workspace);
+  initialize_workspace(workspace, q_rows, head_dim);
   for (uint32_t tile_start = 0; tile_start < kv_length;
        tile_start += AKV_V2_TILE_TOKENS) {
     const uint32_t tile_tokens =
@@ -193,17 +212,31 @@ akv_status_t akv_attention_execute_v2_native(
     else
       issue_refill(tile_start);
 
-    akv_v2_compute_scores_f16_d128_gqa6(
-        query, &workspace->score[0][0], tile_tokens,
-        query_row_stride_bytes);
+    if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
+        head_dim == AKV_HEAD_DIM_128) {
+      akv_v2_compute_scores_f16_d128_gqa6(
+          query, &workspace->score[0][0], tile_tokens,
+          query_row_stride_bytes);
+    } else {
+      akv_v2_compute_scores_f16_generic(
+          query, &workspace->score[0][0], tile_tokens,
+          query_row_stride_bytes, q_rows, head_dim);
+    }
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
-                                 tile_tokens);
-    akv_v2_update_outputs_f16_d128_gqa6(
-        &workspace->score[0][0], &workspace->accumulator[0][0],
-        workspace->old_scale, tile_tokens);
+                                 tile_tokens, q_rows);
+    if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
+        head_dim == AKV_HEAD_DIM_128) {
+      akv_v2_update_outputs_f16_d128_gqa6(
+          &workspace->score[0][0], &workspace->accumulator[0][0],
+          workspace->old_scale, tile_tokens);
+    } else {
+      akv_v2_update_outputs_f16_generic(
+          &workspace->score[0][0], &workspace->accumulator[0][0],
+          workspace->old_scale, tile_tokens, q_rows, head_dim);
+    }
   }
   issue_release();
-  store_outputs(output, output_row_stride_bytes, workspace);
+  store_outputs(output, output_row_stride_bytes, workspace, q_rows, head_dim);
   return AKV_STATUS_OK;
 #else
   return AKV_STATUS_RUNTIME_UNAVAILABLE;

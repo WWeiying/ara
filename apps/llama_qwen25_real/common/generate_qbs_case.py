@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 import runpy
 from pathlib import Path
 
@@ -51,6 +52,12 @@ def emit_blob(symbol: str, path: Path) -> None:
     print(f"{symbol}_end:")
 
 
+def source_define(source: str, name: str, default: int) -> int:
+    match = re.search(rf"^\s*#define\s+{re.escape(name)}\s+(\d+)\s*$",
+                      source, re.MULTILINE)
+    return int(match.group(1)) if match is not None else default
+
+
 def main() -> None:
     common_dir = Path(__file__).resolve().parent
     base = runpy.run_path(str(common_dir / "generate_case.py"))
@@ -85,6 +92,14 @@ def main() -> None:
         "#define QBS_BENCH_PREBUILT_DESCRIPTOR 1" in main_source
     )
     uses_m4_activation_pack = inputs == 4 and weight_type != "q8_0"
+    operations = source_define(main_source, "QBS_BENCH_OPERATIONS", 1)
+    cross_op_reuse = bool(
+        source_define(main_source, "QBS_BENCH_CROSS_OP_REUSE", 0)
+    )
+    activation_context = bool(
+        source_define(main_source, "QBS_BENCH_ACTIVATION_CONTEXT", 0)
+    )
+    quantizations = 1 if cross_op_reuse else operations
     layout_name = "qbs_r4_block_major_v1"
     provenance["embedded_weight_layout"] = layout_name
     activation_profile = "Q8_0" if weight_type == "q8_0" else "Q8_K"
@@ -123,6 +138,13 @@ def main() -> None:
         "block_elements": block_elements,
         "tile_n": 32,
         "k_blocks": k_blocks,
+        "activation_context": activation_context,
+        "operation_chain": {
+            "operations": operations,
+            "cross_operator_reuse": cross_op_reuse,
+            "runtime_quantizations": quantizations,
+            "controlled_weight_replay": operations > 1,
+        },
     }
     provenance["tensors"]["embedded_weight.bin"] = {
         "bytes": embedded_weight.stat().st_size,

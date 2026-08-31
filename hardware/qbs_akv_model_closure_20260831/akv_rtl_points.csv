@@ -1,0 +1,5 @@
+case,head_dim,gqa_rows,kv_length,cycles,commands,q_bytes,kv_bytes,read_payload_bytes,replay_bytes,status,artifact
+akv-v2/derived-real/d64-g8-kv64,64,8,64,43353,1026,1024,16384,17472,131072,PASS,hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log
+akv-v2/derived-real/d128-g6-kv128,128,6,128,52984,387,1536,65536,67136,65536,PASS,hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log
+akv-v2/derived-real/d128-g4-kv63,128,4,63,37129,766,1024,32256,33344,129024,PASS,hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log
+akv-v2/derived-real/d64-g1-kv65,64,1,65,12742,196,128,16640,16832,16640,PASS,hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log

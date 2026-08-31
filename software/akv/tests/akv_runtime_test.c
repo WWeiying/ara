@@ -6,17 +6,16 @@
 
 enum {
   TEST_KV_LENGTH = 16,
+  MAX_TEST_KV_LENGTH = 1024,
   V2_TEST_KV_LENGTH = 65,
   TEST_ROW_ELEMENTS = AKV_HEAD_DIM_128,
 };
 
-static _Alignas(
-    64) uint16_t query[AKV_ATTENTION_KERNEL_Q_ROWS * TEST_ROW_ELEMENTS];
-static _Alignas(64) uint16_t key[TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
-static _Alignas(64) uint16_t value[TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
-static _Alignas(64) uint16_t mask[TEST_KV_LENGTH];
-static _Alignas(
-    64) float output[AKV_ATTENTION_KERNEL_Q_ROWS * TEST_ROW_ELEMENTS];
+static _Alignas(64) uint16_t query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
+static _Alignas(64) uint16_t key[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
+static _Alignas(64) uint16_t value[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
+static _Alignas(64) uint16_t mask[MAX_TEST_KV_LENGTH];
+static _Alignas(64) float output[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t
     v2_key[V2_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t
@@ -63,6 +62,17 @@ static akv_attention_problem_t valid_problem(void) {
       .kv_length = TEST_KV_LENGTH,
       .scale = 0.0883883476f,
   };
+}
+
+static void expect_v2_plan_rejection(const akv_device_t *device,
+                                     const akv_attention_problem_t *problem,
+                                     akv_status_t expected) {
+  akv_attention_plan_t plan;
+  const uint8_t *bytes = (const uint8_t *)&plan;
+  memset(&plan, 0xa5, sizeof(plan));
+  assert(akv_attention_plan_create_v2(device, problem, &plan) == expected);
+  for (size_t index = 0; index < sizeof(plan); ++index)
+    assert(bytes[index] == 0u);
 }
 
 static void test_capabilities(void) {
@@ -237,6 +247,86 @@ static void test_plan_and_execute(void) {
          AKV_STATUS_BAD_ARGUMENT);
 }
 
+static void test_v2_shape_matrix(void) {
+  static const uint32_t q_rows[] = {1u, 4u, 6u, 8u};
+  static const uint32_t head_dims[] = {AKV_HEAD_DIM_64, AKV_HEAD_DIM_128};
+  static const uint32_t kv_lengths[] = {
+      16u, 63u, 64u, 65u, 128u, 256u, 1024u,
+  };
+  akv_device_t device;
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+
+  for (size_t q = 0; q < sizeof(q_rows) / sizeof(q_rows[0]); ++q) {
+    for (size_t d = 0; d < sizeof(head_dims) / sizeof(head_dims[0]); ++d) {
+      for (size_t k = 0; k < sizeof(kv_lengths) / sizeof(kv_lengths[0]); ++k) {
+        akv_attention_problem_t problem = valid_problem();
+        problem.q_rows = q_rows[q];
+        problem.head_dim = head_dims[d];
+        problem.kv_length = kv_lengths[k];
+        problem.q_row_stride_bytes = head_dims[d] * sizeof(uint16_t);
+        problem.k_token_stride_bytes = head_dims[d] * sizeof(uint16_t);
+        problem.v_token_stride_bytes = head_dims[d] * sizeof(uint16_t);
+        problem.output_row_stride_bytes = head_dims[d] * sizeof(float);
+        akv_attention_plan_t plan;
+        assert(akv_attention_v2_shape_supported(problem.q_rows,
+                                                problem.head_dim));
+        assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+               AKV_STATUS_OK);
+        assert(plan.descriptor.q_rows == q_rows[q]);
+        assert(plan.descriptor.head_dim == head_dims[d]);
+        assert(plan.descriptor.kv_length == kv_lengths[k]);
+        executor_capture_t capture;
+        memset(&capture, 0, sizeof(capture));
+        assert(akv_attention_execute_v2(&plan, capture_executor, &capture) ==
+               AKV_STATUS_OK);
+        assert(capture.calls == 1u);
+      }
+    }
+  }
+
+  assert(!akv_attention_v2_shape_supported(2u, AKV_HEAD_DIM_128));
+  assert(!akv_attention_v2_shape_supported(6u, 96u));
+}
+
+static void test_v2_unsupported_matrix(void) {
+  static const uint32_t unsupported_q_rows[] = {0u, 2u, 3u, 5u, 7u, 9u};
+  static const uint32_t unsupported_head_dims[] = {0u, 32u, 96u, 256u};
+  akv_device_t device;
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+
+  for (size_t index = 0;
+       index < sizeof(unsupported_q_rows) / sizeof(unsupported_q_rows[0]);
+       ++index) {
+    akv_attention_problem_t problem = valid_problem();
+    problem.q_rows = unsupported_q_rows[index];
+    assert(!akv_attention_v2_shape_supported(problem.q_rows,
+                                             problem.head_dim));
+    expect_v2_plan_rejection(&device, &problem, AKV_STATUS_SHAPE);
+  }
+
+  for (size_t index = 0;
+       index < sizeof(unsupported_head_dims) /
+                   sizeof(unsupported_head_dims[0]);
+       ++index) {
+    akv_attention_problem_t problem = valid_problem();
+    problem.head_dim = unsupported_head_dims[index];
+    assert(!akv_attention_v2_shape_supported(problem.q_rows,
+                                             problem.head_dim));
+    expect_v2_plan_rejection(&device, &problem, AKV_STATUS_SHAPE);
+  }
+
+  akv_attention_problem_t problem = valid_problem();
+  problem.kv_length = 0u;
+  expect_v2_plan_rejection(&device, &problem, AKV_STATUS_SHAPE);
+  problem.kv_length = (size_t)UINT16_MAX + 1u;
+  expect_v2_plan_rejection(&device, &problem, AKV_STATUS_SHAPE);
+
+  problem = valid_problem();
+  problem.q_rows = AKV_MAX_Q_ROWS;
+  device.capabilities.max_q_rows = AKV_MAX_Q_ROWS - 1u;
+  expect_v2_plan_rejection(&device, &problem, AKV_STATUS_CAPABILITY);
+}
+
 static void test_rejections(void) {
   akv_device_t device;
   akv_attention_plan_t plan;
@@ -246,10 +336,14 @@ static void test_rejections(void) {
   problem.q_rows = 5u;
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
          AKV_STATUS_SHAPE);
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_SHAPE);
   problem = valid_problem();
   problem.head_dim = AKV_HEAD_DIM_64;
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
          AKV_STATUS_SHAPE);
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_OK);
   problem = valid_problem();
   problem.mask = NULL;
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
@@ -275,6 +369,16 @@ static void test_rejections(void) {
   problem = valid_problem();
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
          AKV_STATUS_CAPABILITY);
+  problem.head_dim = AKV_HEAD_DIM_64;
+  problem.q_row_stride_bytes = AKV_HEAD_DIM_64 * sizeof(uint16_t);
+  problem.k_token_stride_bytes = AKV_HEAD_DIM_64 * sizeof(uint16_t);
+  problem.v_token_stride_bytes = AKV_HEAD_DIM_64 * sizeof(uint16_t);
+  problem.output_row_stride_bytes = AKV_HEAD_DIM_64 * sizeof(float);
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_OK);
+  device.capabilities.head_dim_64 = 0u;
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_CAPABILITY);
 
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
   problem = valid_problem();
@@ -295,6 +399,8 @@ static void test_rejections(void) {
 int main(void) {
   test_capabilities();
   test_plan_and_execute();
+  test_v2_shape_matrix();
+  test_v2_unsupported_matrix();
   test_rejections();
   test_v2_reference_context();
   assert(strcmp(akv_status_string(AKV_STATUS_LAYOUT), "layout") == 0);

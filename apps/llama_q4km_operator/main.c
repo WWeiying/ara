@@ -10,6 +10,10 @@
 
 #ifdef SPIKE
 #define REPORT(...) do { } while (0)
+#ifdef SPIKE_DIAGNOSTICS
+extern void printhex(uint64_t value);
+extern void printstr(const char *text);
+#endif
 #else
 #include "printf.h"
 #define REPORT(...) printf(__VA_ARGS__)
@@ -39,7 +43,7 @@ enum {
   MAX_ATTENTION_DIM = 128,
   MAX_ATTENTION_TOKENS = 15,
   MAX_ATTENTION_HEADS = 12,
-  MAX_ATTENTION_KV = 256,
+  MAX_ATTENTION_KV = 1024,
   MAX_OPERATOR_ELEMENTS = 8960 * 17,
   MAX_CACHE_WIDTH = 256,
   MAX_CACHE_ROWS = 256,
@@ -925,8 +929,10 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
   const int heads_per_kv = qheads / kvheads;
   const int active_kv = attention_active_prefix(mask, physical_kvlen);
 
-  if (dim != AKV_HEAD_DIM_128 || tokens != 1 ||
-      heads_per_kv != TILED_RVV_Q_ROWS || active_kv <= 0 ||
+  if (tokens != 1 ||
+      !akv_attention_v2_shape_supported((uint32_t)heads_per_kv,
+                                        (uint32_t)dim) ||
+      active_kv <= 0 ||
       active_kv > UINT16_MAX ||
       !attention_akv_device.capabilities.token_axis_valid)
     return 0;
@@ -936,12 +942,12 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
     HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
     for (int head = 0; head < heads_per_kv; ++head) {
       convert_f32_to_f16_rvv(
-          attention_tiled_query[head],
+          attention_query_group_f16 + (size_t)head * dim,
           query + (size_t)(first_qhead + head) * dim, dim);
     }
 
     const akv_attention_problem_t problem = {
-        .query = (const uint16_t *)attention_tiled_query,
+        .query = (const uint16_t *)attention_query_group_f16,
         .key = (const uint16_t *)(
             key + (size_t)kvhead * physical_kvlen * dim),
         .value = (const uint16_t *)(
@@ -1042,6 +1048,19 @@ static int check_attention(const case_config_t *cfg) {
                "actual=0x%08x golden=0x%08x\n",
                (unsigned long)item, (unsigned long)head,
                (unsigned long)(item % cfg->args[0]), actual_bits, golden_bits);
+#if defined(SPIKE) && defined(SPIKE_DIAGNOSTICS)
+        printstr("ATTENTION_MISMATCH item=0x");
+        printhex(item);
+        printstr(" head=0x");
+        printhex(head);
+        printstr(" element=0x");
+        printhex(item % cfg->args[0]);
+        printstr(" actual=0x");
+        printhex(actual_bits);
+        printstr(" golden=0x");
+        printhex(golden_bits);
+        printstr("\n");
+#endif
       }
       ++failures_by_head[head];
       ++failures;

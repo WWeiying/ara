@@ -21,8 +21,9 @@ Qwen2.5-1.5B-Instruct Q4_K_M Layer 0 Decode capture 中，`attn_q` 的逻辑矩�
 “后续 output tile 仍消费同一 activation”的软件语义。
 
 Q/K/V projection 还共享同一个 Attention RMSNorm 输出，gate/up projection 共享同一个
-FFN RMSNorm 输出。当前实现先解决**单个矩阵内部多个 output tile 的重复 Q8_K 读取**；
-跨 GGML operator 的 F32-to-Q8 动态量化复用仍属于后续工作。
+FFN RMSNorm 输出。当前实现分两层保留这一语义：单次矩阵执行内部由 output tiles 共享
+context；真实 GGML Decode 图中相邻且满足严格身份条件的 Q/K/V 或 gate/up operator 还能
+跨调用延长同一 context 生命周期，同时跳过重复 F32-to-Q8_K 量化。
 
 ## 2. 为什么不能按地址隐式命中
 
@@ -82,10 +83,18 @@ typedef struct {
 typedef struct {
   uint8_t use_activation_context;
   qbs_activation_context_token_t activation_context;
+  uint8_t activation_context_scope;
 } qbs_execution_options_t;
 ```
 
-`qbs_execute_with_options()` 在一个已验证 plan 内自动生成：
+`activation_context_scope` 有四种软件生命周期：
+
+- `OPERATION`：保持原有单次调用内的 `FILL ... RELEASE`；
+- `FILL_KEEP`：首个 output tile 执行 `FILL`，其余 tile 执行 `REUSE`，调用结束后保留；
+- `REUSE_KEEP`：整次调用均执行 `REUSE`，调用结束后仍保留；
+- `REUSE_RELEASE`：整次调用复用，最后一个 output tile 执行 `RELEASE`。
+
+因此，普通 `OPERATION` 在一个已验证 plan 内自动生成：
 
 ```text
 第一个 output tile       FILL(id, generation)
@@ -95,9 +104,31 @@ typedef struct {
 
 `qbs_execute()` 保持 ABI 兼容并等价于 options 为 `NULL`，所有命令均为 `DIRECT`。
 runtime 不隐藏 token 分配器：调用者必须保证 generation 对应同一逻辑 activation，并保证
-同一个单 context 的 `FILL...RELEASE` 序列不被其他线程插入。GGML adapter 因此对整个序列
-加 mutex，并在每次新执行时推进 generation；环境变量
-`GGML_RISCV_QBS_ACTIVATION_CONTEXT=0` 可退回 DIRECT。
+同一个单 context 的生命周期不被其他线程插入。GGML adapter 因此在跨 operator 链开始时
+预留唯一 context，持有语义 owner 与 generation；不属于该链的调用等待 reservation 释放。
+执行失败、最终 `REUSE_RELEASE` 或 graph end 都会撤销 reservation 并唤醒等待者。
+环境变量 `GGML_RISCV_QBS_ACTIVATION_CONTEXT=0` 可退回 DIRECT，
+`GGML_RISCV_QBS_CROSS_OP_CONTEXT=0` 则只关闭跨 operator 延寿而保留单次调用内复用。
+
+### 4.1 GGML 身份与生命周期
+
+跨 operator 复用不是根据 activation 地址猜测。运行时 identity 由以下字段共同构成：
+
+```text
+graph_epoch
+source ggml_tensor identity
+source data object
+activation profile
+activation rows M
+K elements
+```
+
+adapter 从当前 graph node 向后寻找下一条可用 QBS `MUL_MAT`；只有下一消费者 identity
+完全相同，当前调用才使用 `FILL_KEEP/REUSE_KEEP`，最后一个消费者使用
+`REUSE_RELEASE`。不同 identity 在同一 graph 中出现时会终止旧 reservation，而不会把
+相同地址解释成相同对象。trace 模式额外保存量化字节、计算 digest，并用完整 `memcmp`
+验证记录间确实 byte-identical；这些昂贵检查只用于形成证据，不是正常执行路径的隐式命中
+条件。
 
 ## 5. RTL 数据与控制路径
 
@@ -198,6 +229,49 @@ task 级收益被启动、数据初始化和校验代码稀释；机制判断应
 AXI payload 为主。该测试还要求第二条命令的 range 列表中不存在 activation role，不能只
 依据计数器恰好为零推断“未读取”。
 
+### 8.1 跨 operator 受控 RTL 消融
+
+受控 workload 使用同一份真实 Qwen2.5 Layer 0 Q4_K `attn_q` 权重和 activation，连续执行
+三次 `M=1, K=1536, N=64` 运算。重复同一权重是为了固定矩阵工作，只隔离 context 生命周期；
+它不是把真实 Q/K/V 三个不同权重误写成相同权重。每次输出独立保存，并逐项比较全部 192 个
+结果。
+
+| 指标 | 每次调用释放 | 跨调用复用 | 变化 |
+| --- | ---: | ---: | ---: |
+| 量化次数 | 3 | 1 | -2 |
+| context 序列 | `F,R,F,R,F,R` | `F,U,U,U,U,R` | 生命周期延长 |
+| task timed cycles | 48,634 | 25,480 | -47.61% |
+| quantize cycles | 34,476 | 11,588 | -22,888 |
+| matmul cycles | 14,158 | 13,892 | -266 |
+| F32 量化输入读取 | 18,432 B | 6,144 B | -12,288 B |
+| Q8_K activation AXI payload | 5,256 B | 1,752 B | -3,504 B |
+| checksum | `0xb461384a0265bc12` | `0xb461384a0265bc12` | 相同 |
+
+其中 `F/U/R` 分别表示 `FILL/REUSE/RELEASE`。总逻辑读取减少 15,792 B，正好等于 F32 输入
+与 Q8_K payload 两部分之和。两侧命令数、tile 数、权重读取、dot 工作和 commit group 均
+相同，因此周期差不能由少算矩阵工作解释。
+
+### 8.2 模型级严格配对
+
+模型级检查在同一 Qwen GGUF、同一 llama binary、同一 QEMU、同一 prompt 和 token 数下
+分别运行 per-operation 与 cross-operator 两种模式。checker 要求 QBS 语义命令流逐条相同，
+每条 context 链各有一个 fill/release，量化减少量与复用记录严格相等，并把每个被消除量化
+保留为 `op/type/M/N/K` 明细。最终模型闭环仅在这些 provenance 字段与 QBS+AKV 运行全部
+一致时接纳该结果；否则拒绝合并，而不是按比例套用旧数据。
+
+固定 prompt 的 Qwen2.5-1.5B 运行记录了一个 Prefill graph 和一个 Decode
+graph。严格配对结果为：量化次数从 394 降至 309，删除 85 次重复量化；F32
+量化输入读取从 21,971,968 B 降至 21,449,728 B，Q8_K activation 结果从
+6,265,444 B 降至 6,116,524 B。28 组 Q/K/V 链删除 56 次量化，29 组
+gate/up 链删除 29 次量化。每条被删除记录都保留 graph epoch、tensor/op
+identity、profile、M/N/K、输入字节和量化字节，不能仅由地址相同得到。
+
+受控三算子 RTL 点有 `1.91x` 局部加速，但完整 Decode 校准投影只从
+102,585,188 降至 101,618,782 周期，即约 `0.94%`。原因是重复量化只占当前
+QBS 主体工作的一小部分，权重读取和 dot-product 工作没有减少。因此该机制
+是严格成立的局部优化和软件/硬件生命周期契约，但不应被表述为模型级主要
+加速来源。
+
 ## 9. 综合风险
 
 独立 DC 使用 TSMC 28 nm TT 0.9 V 25 C、1.0 ns clock、0.15 ns uncertainty，并显式链接
@@ -257,13 +331,13 @@ bash verification/qbs/synthesis/run_activation_context_dc.sh
 
 ## 11. 当前边界与下一阶段
 
-当前机制只消除**同一次 M1 Q8_K matmul 的 N tiles 之间**的 activation 重读。它没有：
+当前机制消除两类重复工作：同一次 M1 Q8_K matmul 的 N tiles 之间的 Q8_K 重读，以及满足
+严格 GGML identity/lifetime 的相邻 Q/K/V、gate/up operator 之间的重复量化与重读。它没有：
 
-- 跨 Q/K/V 或 gate/up operator 复用动态量化结果；
 - 覆盖 M2-M4、Q8_0 或 split-K；
 - 消除 context SRAM replay 本身；
+- 支持多个并发 context 或跨 graph 生命周期；
 - 证明完整 Qwen token/s、P&R、功耗或多 context 调度。
 
-下一阶段若扩展跨 operator 复用，token 必须绑定 GGML tensor identity、shape、量化 profile
-和 graph execution epoch，不能只绑定 data pointer。只有真实模型 trace 证明量化或 replay
-成为新的关键路径后，才应扩展 context 数量或把量化流水化。
+下一阶段只有在真实模型 trace 证明 M2-M4、Q8_0、split-K 或并发 context 成为关键路径后，
+才应扩大 context profile。任何扩展仍必须绑定语义对象与 graph epoch，不能退化为地址命中。

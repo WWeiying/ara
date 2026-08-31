@@ -1,0 +1,11 @@
+{
+  "case_id": "decode_attn_q_qbs_chain3_crossop",
+  "phase": "decode",
+  "operator": "blk_0_attn_q_weight",
+  "weight_type": "q4_K",
+  "k": 1536,
+  "rows": 64,
+  "inputs": 1,
+  "capture_rows": 1536,
+  "capture_inputs": 1
+}

@@ -270,12 +270,13 @@ compiled legacy image. The original RVV and AKV-v1 KV=16 binaries retain their
 exact 121,338- and 52,318-cycle results with zero mismatches; AKV-v1 emits no
 v2 command. A QBS/AKV-v2 coexistence image executes the QBS control smoke test,
 including successful legal commands and the expected atomic validation fault.
-On the same final image, the real Qwen Q4_K Decode-Attention projection leaf
-completes all 48 native QBS commands in 125,278 measured cycles with zero
-faults and zero numerical mismatches. Its result differs by only 0.06% from
-the 125,351-cycle result on the earlier QBS image. Enabling the production
-FILL/REUSE/RELEASE sequence on this full 48-command leaf reduces the current
-result further to 119,883 cycles. The matching current Q6_K Decode leaf
+On the same final image, a direct-activation diagnostic executes the real Qwen
+Q4_K Decode-Attention leaf in 125,278 cycles. That number is not the Full-QBS
+regression point because it omits the production activation context. Rebuilding
+the formal representative app with the required `FILL/REUSE/RELEASE` sequence
+completes all 48 native commands in 119,894 cycles with zero faults and zero
+numerical mismatches. This differs by only 11 cycles (`+0.009%`) from the
+119,883-cycle context baseline. The matching current Q6_K Decode leaf
 completes in 208,863 cycles with zero mismatches; it deliberately uses DIRECT
 activation reads and is therefore conservative for model calls whose software
 K segmentation can reuse one context per segment.
@@ -294,13 +295,15 @@ all pass. The engine tests run with both generic SRAM and the SRAM macro model
 and cover v1 D64/D128, v2 D64/D128, a 64-token tile, one- and five-token tails,
 row/column ordering, byte enables, validation atomicity, and read faults.
 
-The model-level integration executes ordinary RVV, QBS-only, and QBS plus
-AKV-v2 in one Qwen2.5-1.5B Q4_K_M QEMU guest. QBS-only and QBS+AKV-v2 produce
-identical text, top-1 tokens, and both recorded logits tensors. Across Prefill
-and Decode, 394 high-level quantized `MUL_MAT` nodes execute through QBS with
-23,389,667,328 exact dot elements and no QBS fallback. All 28 Decode
-`FLASH_ATTN_EXT` nodes execute AKV-v2, covering 1,548,288 attention MACs; the
-other 28 candidates are Prefill nodes and are reported as shape fallbacks.
+The corrected model-level integration executes ordinary RVV, QBS-only, and
+QBS plus AKV-v2 in one Qwen2.5-1.5B Q4_K_M QEMU guest. Its manifest records the
+literal prompt, and all three executions report the same ten prompt tokens.
+QBS-only and QBS+AKV-v2 produce identical text, top-1 tokens, and both recorded
+logits tensors. Across one Prefill and one Decode graph, 394 high-level
+quantized `MUL_MAT` nodes execute through QBS with 14,507,311,104 exact dot
+elements and no QBS fallback. All 28 Decode `FLASH_ATTN_EXT` nodes execute
+AKV-v2 at `D128/GQA6/active-KV=11`, covering 946,176 attention MACs; the other
+28 candidates are Prefill nodes and are explicitly reported as shape fallback.
 No runtime, capability, threading, feature, layout, or mask fallback is hidden.
 
 The same trace closes one complete Decode graph, not only the accelerated
@@ -311,25 +314,36 @@ projection:
 
 | Component | Dynamic instances | Projected cycles | Share of calibrated Decode cycles |
 |---|---:|---:|---:|
-| QBS quantized `MUL_MAT` | 197 | 81,978,147 | 94.54% |
-| AKV-v2 `FLASH_ATTN_EXT` | 28 | 1,031,518 | 1.19% |
-| Remaining ordinary RVV | 340 | 3,700,824 | 4.27% |
-| Total | 565 | 86,710,489 | 100.00% |
+| QBS quantized `MUL_MAT` | 197 | 97,055,000 | 95.51% |
+| AKV-v2 `FLASH_ATTN_EXT` | 28 | 862,958 | 0.85% |
+| Remaining ordinary RVV | 340 | 3,700,824 | 3.64% |
+| Total | 565 | 101,618,782 | 100.00% |
 
-QBS projection uses unique activation work plus exact dot-element work with the
-current-image Q4_K context and Q6_K direct rates above. AKV-v2 uses active-KV
-interpolation between the measured KV=16 and KV=128 points, and the remaining
+This is the final cross-operator-adjusted projection. The paired lifetime trace
+matches each of the 85 eliminated quantizations to its concrete high-level
+node; matrix work remains unchanged. Relative to the per-operation
+quantization projection of 102,585,188 cycles, activation lifetime reuse removes
+966,406 projected Decode cycles (`0.94%`). QBS projection otherwise uses per-node activation work plus exact
+dot-element work with the current-image Q4_K context and Q6_K direct rates
+above. AKV-v2 uses active-KV interpolation between measured RTL points, and the remaining
 categories use exact Decode node multiplicities with type/shape-matched RTL
 leaves. This is a reproducible RTL-calibrated cycle attribution, not QEMU wall
 time and not a claim that the whole model was simulated in RTL. In particular,
 the Q6_K rate is a conservative representative rate rather than a cycle-exact
 model of every segmented context reuse.
 The single Prefill graph is retained in the dynamic record: its 197 QBS nodes
-project to 303,368,891 cycles, but its non-QBS operators are deliberately not
+project to 186,458,166 cycles for this prompt, but its non-QBS operators are deliberately not
 included in the share table because no complete Prefill leaf calibration was
 performed. The provenance snapshot records the dynamic log, run manifest,
 source revisions, binaries, calibration logs, hashes, and projection-method
 version.
+
+The machine-checkable closure is defined by
+`hardware/scripts/akv/goal-closure-manifest.json` and executed by
+`hardware/scripts/akv/check-goal-closure.py`. It rejects incomplete shape
+matrices, hidden model fallbacks, QBS command-work mismatches, unbalanced
+activation-lifetime accounting, representative regressions above 1%, failed
+RTL leaves, and AKV command or byte totals that violate the D/GQA/KV formulas.
 
 Integration exposed one interface bug not visible in the isolated engine: the
 sequencer can hold a blocking PE request through the engine's terminal cycle,
@@ -344,19 +358,29 @@ cycle.
 ## 8. Integration decision
 
 AKV-v2 is now a real llama.cpp/GGML RISC-V backend route rather than an
-application-local operator experiment. The route is intentionally narrow:
-Decode, F32 Query, F16 K/V and mask, F32 output, D128, GQA6, one batch, the
-supported stride/layout contract, and no sinks, ALiBi, or softcap. It selects
-the shared version-2 planner and native kernel only when capability discovery
-and every condition agree. Any unsupported shape or feature returns before
-hidden context state changes and executes the existing GGML RVV implementation.
+application-local operator experiment. The route remains deliberately bounded:
+Decode, F32 Query, F16 K/V and mask, F32 output, one batch, `D64/D128`, GQA
+ratios `1/4/6/8`, the supported stride/layout contract, and no sinks, ALiBi, or
+softcap. KV is tiled in groups of at most 64 tokens, including arbitrary final
+tails. It selects the shared version-2 planner and native kernel only when
+capability discovery and every condition agree. Any unsupported shape or
+feature returns before hidden context state changes and executes the existing
+GGML RVV implementation.
 
 The QEMU emulation route validates graph dispatch, planning, fallback, and
 model-level numerical behavior; it is not a cycle model. Native performance is
-established separately with real-model RTL leaves and strict AKV counters. D64,
-additional GQA ratios, arbitrary GGML strides, and trap-safe capability probing
-on an unknown processor remain extension work, not implied coverage of the
-current profile.
+established separately with real-model RTL leaves and strict AKV counters. The
+derived-real matrix passes `112/112` scalar-reference/RVV executions over
+`D64/D128`, GQA `1/4/6/8`, and KV `16/63/64/65/128/256/1024`. Representative
+RTL leaves pass with zero mismatches at `D64/GQA8/KV64` (43,353 cycles),
+`D128/GQA6/KV128` (52,984), `D128/GQA4/KV63` (37,129), and
+`D64/GQA1/KV65` (12,742). The `D128/GQA6` arithmetic path is specialized
+assembly; other admitted shapes use generic RVV arithmetic over the same v2
+context, so the matrix proves correctness and selection breadth rather than
+uniform speedup. Arbitrary GGML strides, GQA ratios outside the admitted set,
+and trap-safe capability probing on an unknown processor remain outside the
+current profile. A real SmolLM2 `GQA=3` run confirms explicit `fallback_shape`
+rather than hidden partial execution.
 
 ## 9. Stop conditions
 

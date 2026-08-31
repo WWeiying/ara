@@ -5,5 +5,6 @@
 #define BENCH_WEIGHT_Q4 1
 #define BENCH_ATOL 2.0e-3f
 #define BENCH_RTOL 2.0e-3f
+#define QBS_BENCH_ACTIVATION_CONTEXT 1
 
 #include "../llama_qwen25_real/common/qbs_benchmark_impl.h"

@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "qbs_abi": "config/qbs_abi.json",
+  "shape_matrix": {
+    "summary": "hardware/akv_v2_shape_spike_matrix_20260831_managed/summary.json",
+    "head_dims": [64, 128],
+    "gqa_rows": [1, 4, 6, 8],
+    "kv_lengths": [16, 63, 64, 65, 128, 256, 1024],
+    "modes": ["ref", "rvv"]
+  },
+  "models": [
+    {
+      "name": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+      "summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json",
+      "cycle_projection_no_lifetime": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure/cycle_projection_summary.csv",
+      "cycle_projection": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/cycle_projection_summary.csv",
+      "model_guest_path": "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "qbs_profiles": ["Q4_K", "Q6_K"],
+      "qbs_nodes": 394,
+      "akv_candidate_ops": 56,
+      "akv_executed_ops": 28,
+      "akv_fallback_shape": 28,
+      "akv_shape": {"head_dim": 128, "gqa_rows": 6, "active_kv": 11}
+    },
+    {
+      "name": "TinyLlama-1.1B-Chat-Q4_K_M",
+      "summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json",
+      "model_guest_path": "/model/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "qbs_profiles": ["Q4_K", "Q6_K"],
+      "qbs_nodes": 310,
+      "akv_candidate_ops": 44,
+      "akv_executed_ops": 22,
+      "akv_fallback_shape": 22,
+      "akv_shape": {"head_dim": 64, "gqa_rows": 8, "active_kv": 14}
+    },
+    {
+      "name": "SmolLM2-135M-Instruct-Q4_K_M",
+      "summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json",
+      "model_guest_path": "/model/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "qbs_profiles": ["Q4_K", "Q5_0", "Q6_K", "Q8_0"],
+      "qbs_nodes": 422,
+      "akv_candidate_ops": 60,
+      "akv_executed_ops": 0,
+      "akv_fallback_shape": 60
+    }
+  ],
+  "qbs_lifetime": {
+    "summary": "hardware/akv_jobs/qemu_model_qbs_lifetime_fixedprompt_qwen_20260831/qbs_cross_operator_summary.json",
+    "controlled_rtl": "hardware/qbs_cross_op_rtl_ablation_20260831/summary.json"
+  },
+  "qbs_representative_points": [
+    {
+      "name": "Q4_K decode attn_q context",
+      "baseline": "hardware/qbs_akv_goal_final_q4k_context_20260831_082621/result.csv",
+      "current": "hardware/qbs_akv_current_q4k_context_20260831_153548/result.csv",
+      "current_perf": "hardware/qbs_akv_current_q4k_context_20260831_153548/qbs_perf.csv",
+      "current_console": "hardware/qbs_akv_current_q4k_context_20260831_153548/console.log",
+      "required_context": true,
+      "max_regression": 0.01
+    },
+    {
+      "name": "Q6_K decode ffn_down",
+      "baseline": "hardware/qbs_akv_goal_final_q6k_direct_20260831_082808/result.csv",
+      "current": "hardware/qbs_akv_current_q6k_20260831_133629/result.csv",
+      "current_perf": "hardware/qbs_akv_current_q6k_20260831_133629/qbs_perf.csv",
+      "current_console": "hardware/qbs_akv_current_q6k_20260831_133629/console.log",
+      "required_context": false,
+      "max_regression": 0.01
+    }
+  ],
+  "qbs_rtl_tests": [
+    {"name": "profiles", "log": "verification/qbs/rtl_build/run.log", "marker": "QBS profile engine PASS: 432 cases"},
+    {"name": "commands", "log": "verification/qbs/rtl_command_build/run.log", "marker": "QBS command engine PASS: 22 functional cases"},
+    {"name": "descriptor", "log": "verification/qbs/rtl_descriptor_build/run.log", "marker": "QBS descriptor decoder PASS"},
+    {"name": "read", "log": "verification/qbs/rtl_read_build/run.log", "marker": "QBS read engine PASS"},
+    {"name": "commit", "log": "verification/qbs/rtl_commit_build/run.log", "marker": "QBS commit PASS"},
+    {"name": "context", "log": "verification/qbs/rtl_context_build/run.log", "marker": "QBS activation context PASS"},
+    {"name": "context_macro", "log": "verification/qbs/rtl_context_macro_build/run.log", "marker": "QBS activation context PASS"},
+    {"name": "end_to_end", "log": "verification/qbs/rtl_engine_build/run.log", "marker": "QBS engine PASS: 22 functional cases plus four fault classes"}
+  ],
+  "ordinary_rvv": {
+    "log": "hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/ara.log",
+    "case": "operator/decode/attention_core/rvv"
+  },
+  "akv_rtl_points": [
+    {
+      "case": "akv-v2/derived-real/d64-g8-kv64",
+      "run_conf": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/run.conf",
+      "log": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log",
+      "head_dim": 64, "gqa_rows": 8, "kv_length": 64,
+      "shared_k_across_gqa": false
+    },
+    {
+      "case": "akv-v2/derived-real/d128-g6-kv128",
+      "run_conf": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/run.conf",
+      "log": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log",
+      "head_dim": 128, "gqa_rows": 6, "kv_length": 128,
+      "shared_k_across_gqa": true
+    },
+    {
+      "case": "akv-v2/derived-real/d128-g4-kv63",
+      "run_conf": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/run.conf",
+      "log": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log",
+      "head_dim": 128, "gqa_rows": 4, "kv_length": 63,
+      "shared_k_across_gqa": false
+    },
+    {
+      "case": "akv-v2/derived-real/d64-g1-kv65",
+      "run_conf": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/run.conf",
+      "log": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log",
+      "head_dim": 64, "gqa_rows": 1, "kv_length": 65,
+      "shared_k_across_gqa": false
+    }
+  ]
+}

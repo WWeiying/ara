@@ -100,7 +100,7 @@ shared assembly kernel on the real-model RTL operator benchmark.
 
 ## Combined QBS + AKV-v2 model closure
 
-The combined check executes one Qwen2.5-1.5B Q4_K_M prompt in three modes
+The combined check executes one model and one explicitly recorded prompt in three modes
 inside the same QEMU guest:
 
 1. ordinary RVV;
@@ -112,6 +112,11 @@ Run it with:
 ```bash
 hardware/scripts/akv/run-qemu-combined-model-check.sh
 ```
+
+Override `AKV_MODEL_DISK`, `AKV_MODEL_GUEST_PATH`, and `AKV_MODEL_PROMPT` to
+run another GGUF image. The manifest records the exact prompt, token count,
+model image, llama binary, QEMU binary, revisions, and hashes. Host validation
+rejects a run when the three child executions tokenize the prompt differently.
 
 `QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Their text,
 top-1 token, and logits must match exactly, which isolates AKV-v2 from the
@@ -146,13 +151,25 @@ The output snapshot records hashes for the attribution tool, dynamic log, run
 manifest, model and QEMU binaries, source revisions, and every RTL calibration
 log, together with an explicit projection-method version.
 
-For the closed Qwen run, the calibrated Decode-token projection is 81,978,147
-QBS cycles (94.54%), 1,031,518 AKV-v2 cycles (1.19%), and 3,700,824 remaining
-ordinary-RVV cycles (4.27%). The QBS table uses a current-image Q4_K
-FILL/REUSE/RELEASE point and a conservative current-image Q6_K DIRECT point.
-These percentages are not QEMU time samples. The
-single Prefill graph remains in the dynamic trace, but its non-QBS nodes are
-outside the current complete calibration and therefore outside this share.
+Do not copy a percentage from an older run. Use the generated
+`model_closure.md` and `calibration_snapshot.json`: the projection changes with
+the prompt's Prefill length, active KV length, lifetime accounting, and selected
+RTL calibrations. These percentages are never QEMU time samples. Prefill nodes
+without matching RTL leaves remain outside complete-phase share tables.
+
+The final goal-level audit consumes all model, shape-matrix, QBS regression,
+ordinary-RVV, and representative AKV RTL artifacts through one manifest:
+
+```bash
+python3 hardware/scripts/akv/check-goal-closure.py
+```
+
+It writes `hardware/qbs_akv_model_closure_20260831/`. The checker verifies the
+exact shape Cartesian product, model execution/fallback partition, QBS command
+work, activation-lifetime byte accounting, the 1% representative regression
+gate, and AKV command/traffic formulas. `artifacts.csv` hashes every consumed
+raw artifact. This audit contains no synthesis, PPA, place-and-route, or
+full-model RTL timing claim.
 
 ## QBS cross-operator activation lifetime
 
@@ -170,9 +187,25 @@ AKV_MODEL_MODE=qbs-lifetime hardware/scripts/akv/run-qemu-model-check.sh \
 `compare_activation_lifetime_runs.py` rejects the pair unless the semantic QBS
 command stream is unchanged, every baseline reuse group has one balanced
 fill/release chain, and the reductions in quantization count and activation
-bytes exactly equal the recorded reuse counters. The generated
+bytes exactly equal the recorded reuse counters. It records both the removed
+F32 quantization-input bytes and the removed Q8_K output bytes; these are
+different traffic quantities. The generated
 `qbs_cross_operator_summary.json` labels QEMU host quantization time as a
 diagnostic only; it is not an RTL cycle measurement.
+
+To incorporate lifetime data into model-level cycle attribution, pass the
+paired summary explicitly:
+
+```bash
+hardware/scripts/akv/summarize-model-closure.py combined/qemu.log \
+  --qbs-lifetime-summary lifetime/qbs_cross_operator_summary.json \
+  --output-dir combined/model_closure_lifetime
+```
+
+The summarizer accepts the pair only when model path, model image, prompt,
+token count, llama binary, QEMU binary, and source revision match. It then
+matches each eliminated quantization to a concrete `op/type/M/N/K` node;
+unmatched records are an error rather than a global proportional estimate.
 
 ## Runtime selection
 
@@ -181,11 +214,20 @@ diagnostic only; it is not an RTL cycle measurement.
 - `GGML_RISCV_AKV=1`: native capability query and AKV instruction execution;
 - `GGML_RISCV_AKV_TRACE=1`: candidate, execution, group, and fallback counts.
 
-The current native profile is deliberately strict: Decode only, F32 query,
-F16 K/V/mask, F32 output, D=128, GQA ratio 6, one batch, no attention sinks,
-no ALiBi bias, no softcap, and a finite active mask prefix followed only by
-exact F16 negative infinity. GGML may use multiple CPU workers, but AKV v1 has
-one hidden context: all workers select the same path, worker zero executes the
-AKV groups, and the others wait at GGML's normal node barrier. Any unsupported
-feature, shape, layout, capability, or invalid worker state remains on the
-standard RVV path.
+The current AKV-v2 native profile is deliberately strict: Decode only, F32
+query, F16 K/V/mask, F32 output, one batch, `D=64/128`, and GQA ratio
+`1/4/6/8`. Positive KV lengths are processed in 64-token tiles, including
+one-token and non-multiple-of-64 tails. The specialized assembly path is
+`D128/GQA6`; other admitted combinations use generic RVV arithmetic over the
+same AKV-v2 token-axis context and commands. Attention sinks, ALiBi bias,
+softcap, unsupported GQA ratios, incompatible layouts, and malformed masks
+fall back before hidden context state changes. In particular, the current
+SmolLM2 `GQA=3` model test exercises this fallback rather than being silently
+forced through AKV.
+
+The derived-real shape matrix covers both `D64` and `D128`, all four admitted
+GQA ratios, and KV lengths `16/63/64/65/128/256/1024` through scalar reference
+and RVV execution. This proves shape and numerical behavior, not equal RTL
+performance for every point. Representative RTL leaves separately cover
+`D64/GQA8/KV64`, `D128/GQA6/KV128`, `D128/GQA4/KV63`, and
+`D64/GQA1/KV65`.

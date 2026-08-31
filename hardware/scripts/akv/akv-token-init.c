@@ -14,6 +14,18 @@
 #define AKV_LOGITS_MAX_ABS_TOLERANCE 0.001
 #endif
 
+#ifndef AKV_MODEL_GUEST_PATH
+#define AKV_MODEL_GUEST_PATH "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+#endif
+
+#ifndef AKV_MODEL_PROMPT
+#define AKV_MODEL_PROMPT "The quick brown fox jumps over the lazy dog."
+#endif
+
+#ifndef AKV_MODEL_TOKENS
+#define AKV_MODEL_TOKENS "2"
+#endif
+
 struct logits_dump_record {
     uint32_t magic;
     uint32_t version;
@@ -267,9 +279,9 @@ static struct run_result run_variant(const char * label,
         setenv("LLAMA_SIMPLE_LOGITS_FILE", logits_path, 1);
 
         execl("/run/llama-simple", "/run/llama-simple",
-              "-m", "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-              "-n", "2", "-ngl", "0", "-t", "1", "-tb", "1",
-              "The quick brown fox jumps over the lazy dog.", NULL);
+              "-m", AKV_MODEL_GUEST_PATH,
+              "-n", AKV_MODEL_TOKENS, "-ngl", "0", "-t", "1",
+              "-tb", "1", AKV_MODEL_PROMPT, NULL);
         perror("exec llama-simple");
         _exit(127);
     }

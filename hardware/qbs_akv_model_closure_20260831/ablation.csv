@@ -1,0 +1,5 @@
+scope,configuration,cycles,quantizations,cycles_saved,f32_input_bytes_saved,q8_activation_bytes_saved,speedup,evidence
+controlled_qbs_chain3_rtl,per_operation,48634,3,0,0,0,1.0,hardware/qbs_cross_op_rtl_ablation_20260831/summary.json
+controlled_qbs_chain3_rtl,cross_operator,25480,1,23154,12288,3504,1.908712715855573,hardware/qbs_cross_op_rtl_ablation_20260831/summary.json
+qwen_decode_projection,per_operation,102585188,394,0,0,0,1.0,matched no-lifetime Decode projection
+qwen_decode_projection,cross_operator,101618782,309,966406,522240,148920,1.0095101120184653,hardware/akv_jobs/qemu_model_qbs_lifetime_fixedprompt_qwen_20260831/qbs_cross_operator_summary.json

@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 apps_dir=${repo_root}/apps
 app=llama_q4km_operator
-case_id=operator/decode/attention_core
+case_id=${LLAMA_ATTN_CASE_ID:-operator/decode/attention_core}
 implementation=${1:-rvv}
 kvlen=16
 execution=--all
@@ -54,16 +54,18 @@ testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 if [[ ${implementation} != ref && ${implementation} != rvv &&
       ${implementation} != tiled_rvv && ${implementation} != akv &&
       ${implementation} != akv_v2 ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|63|64|65|128|256|1024] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
-if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
+if [[ ${kvlen} != 16 && ${kvlen} != 63 && ${kvlen} != 64 &&
+      ${kvlen} != 65 && ${kvlen} != 128 && ${kvlen} != 256 &&
+      ${kvlen} != 1024 ]]; then
   echo "unsupported effective KV length: ${kvlen}" >&2
   exit 2
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|63|64|65|128|256|1024] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ (${implementation} == akv || ${implementation} == akv_v2) &&

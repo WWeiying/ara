@@ -1,0 +1,70 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Notice: timing checks disabled with +notimingcheck at compile-time
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Aug 31 14:55 2026
+Dump results on ../gold_results.txt
+
+Warning-[RT-NCMUCS] No condition matches in statement
+/home/wangwy/openproject/ara_dsa/hardware/src/axi_inval_filter.sv, 85
+  No condition matches in 'unique case' statement. 'default' specification is 
+  missing, inside ara_tb.dut.i_ara_soc.i_system.i_axi_inval_filter.inval_fsm, 
+  at time 0fs.
+
+Loading ELF file /home/wangwy/openproject/ara_dsa/hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/llama_q4km_operator.rvv.elf
+Loading section 0000000080000000 of length 0000000000005e84
+Loading section 0000000080005e90 of length 0000000000000008
+Loading section 0000000080005ec0 of length 0000000000043d40
+Loading section 0000000080049c00 of length 00000000000d8d98
+[TRACER] Output filename is: trace_hart_0.log
+
+[PERF] ==== Performance Report Start ====
+[PERF] duration                   : 1215470000 x100fs
+[PERF] total_cycles               : 121547
+[PERF] total_insns                : 39788
+[PERF] total_rvv_cycles           : 69291
+[PERF] total_rvv_lane_cycles      : 32396
+[PERF] total_rvv_mem_only_cycles  : 27235
+[PERF] total_rvv_mem_lane_cycles  : 13073
+[PERF] total_rvv_load_only_cycles : 22421
+[PERF] total_rvv_load_lane_cycles : 10554
+[PERF] total_rvv_store_only_cycles: 4814
+[PERF] total_rvv_store_lane_cycles: 9926
+[PERF] total_vector_insns         : 4694
+[PERF] tc_executed_ifetch_bytes   : 137222
+[PERF] IPC                        : 0.327
+[PERF] lane utilization           : 0.267
+[PERF] vector inst rate           : 0.118
+[PERF] main_vector_inst_per_cycle : 0.038619
+[PERF] ara_req_valid_cycles       : 40715
+[PERF] ara_req_fire_count         : 4253
+[PERF] ara_req_blocked_cycles     : 36462
+[PERF] main_vector_req_per_cycle  : 0.035
+[PERF] main_vector_req_blocked_ratio: 0.300
+[PERF] rvv_op                     : 2278
+[PERF] rvv_op_fs1                 : 281
+[PERF] rvv_op_fd                  : 192
+[PERF] rvv_op_load                : 1637
+[PERF] rvv_op_store               : 306
+[PERF] seq_raw_hazard_cycles      : 1175
+[PERF] seq_war_hazard_cycles      : 10217
+[PERF] seq_waw_hazard_cycles      : 8723
+[PERF] seq_false_hazard_cycles    : 14524
+[PERF] seq_block_cycles           : 14051
+[PERF] ==== Performance Report End ====
+
+[LLM_PERF] wrote llm_perf_report_llama_q4km_decode_attention_core_rvv_kv16.log
+LLAMA_OPERATOR operator/decode/attention_core/rvv PASS cycles=121512 mismatches=0
+[hw-cycles]:      121162
+[cva6-d$-stalls]:         424
+[cva6-i$-stalls]:          60
+[cva6-sb-full]:       25538
+Info: "/home/wangwy/openproject/ara_dsa/hardware/tb/ara_tb.sv", 1291: ara_tb: at time 161520500000 fs
+Core Test *** SUCCESS *** (tohost = 0)
+$finish called from file "/home/wangwy/openproject/ara_dsa/hardware/tb/ara_tb.sv", line 1302.
+$finish at simulation time           1615205000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 161520500000 fs
+CPU Time:    269.900 seconds;       Data structure size:  39.4Mb
+Mon Aug 31 15:00:13 2026

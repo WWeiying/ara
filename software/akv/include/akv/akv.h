@@ -83,11 +83,11 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
 } akv_attention_plan_t;
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
-  uint16_t accumulator[AKV_ATTENTION_KERNEL_Q_ROWS][AKV_HEAD_DIM_128];
-  float score[AKV_ATTENTION_KERNEL_Q_ROWS][AKV_V2_TILE_TOKENS];
-  float maximum[AKV_ATTENTION_KERNEL_Q_ROWS];
-  float sum[AKV_ATTENTION_KERNEL_Q_ROWS];
-  float old_scale[AKV_ATTENTION_KERNEL_Q_ROWS];
+  uint16_t accumulator[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_128];
+  float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+  float maximum[AKV_MAX_Q_ROWS];
+  float sum[AKV_MAX_Q_ROWS];
+  float old_scale[AKV_MAX_Q_ROWS];
 } akv_attention_v2_workspace_t;
 
 typedef akv_status_t (*akv_attention_executor_t)(
@@ -119,6 +119,9 @@ akv_status_t akv_capabilities_decode_extended(
 akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device);
 akv_status_t akv_device_init_reference(akv_device_t *device);
+
+/* AKV-v2 arithmetic kernels are validated for common GQA ratios only. */
+int akv_attention_v2_shape_supported(uint32_t q_rows, uint32_t head_dim);
 
 akv_status_t akv_attention_plan_create(const akv_device_t *device,
                                        const akv_attention_problem_t *problem,

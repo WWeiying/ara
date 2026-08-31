@@ -1,0 +1,3 @@
+point,baseline_cycles,current_cycles,regression,context,status
+Q4_K decode attn_q context,119883,119894,9.175612889222862e-05,1,PASS
+Q6_K decode ffn_down,208863,208863,0.0,0,PASS

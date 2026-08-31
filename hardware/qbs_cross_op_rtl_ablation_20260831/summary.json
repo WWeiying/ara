@@ -1,0 +1,43 @@
+{
+  "activation_axi_bytes_saved": 3504,
+  "baseline_cycles": 48634,
+  "baseline_matmul_cycles": 14158,
+  "baseline_quantizations": 3,
+  "baseline_quantize_cycles": 34476,
+  "case": "Qwen2.5_blk0_attn_q_Q4_K_K1536_N64_M1_chain3",
+  "checksum": "0xb461384a0265bc12",
+  "commands": 6,
+  "cross_op_access_sequence": [
+    1,
+    2,
+    2,
+    2,
+    2,
+    3
+  ],
+  "cross_op_cycles": 25480,
+  "cross_op_matmul_cycles": 13892,
+  "cross_op_quantizations": 1,
+  "cross_op_quantize_cycles": 11588,
+  "cross_op_run": "/home/wangwy/openproject/ara_dsa/hardware/qbs_cross_op_rtl_crossop_20260831",
+  "cycle_reduction": 0.4760866883250401,
+  "cycles_saved": 23154,
+  "logical_read_bytes_saved": 15792,
+  "matmul_cycles_saved": 266,
+  "operation_access_sequence": [
+    1,
+    3,
+    1,
+    3,
+    1,
+    3
+  ],
+  "operation_run": "/home/wangwy/openproject/ara_dsa/hardware/qbs_cross_op_rtl_operation_20260831",
+  "operations": 3,
+  "quantization_input_bytes_saved": 12288,
+  "quantizations_eliminated": 2,
+  "quantize_cycles_saved": 22888,
+  "result_count": 192,
+  "speedup": 1.908712715855573,
+  "status": "PASS"
+}

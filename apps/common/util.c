@@ -20,7 +20,8 @@
 
 #include "util.h"
 
-int *__dummy__errno__ptr__;
+static int dummy_errno_storage;
+int *__dummy__errno__ptr__ = &dummy_errno_storage;
 
 unsigned long int timer;
 unsigned long int instret_counter;

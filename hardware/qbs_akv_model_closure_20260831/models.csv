@@ -1,0 +1,4 @@
+model,qbs_profiles,qbs_nodes,qbs_weight_bytes,qbs_activation_bytes,akv_candidates,akv_executed,akv_fallbacks,akv_q_bytes,akv_kv_bytes,status,artifact
+Qwen2.5-1.5B-Instruct-Q4_K_M,Q4_K/Q6_K,394,2720342016,6265444,56,28,28,86016,315392,PASS,hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json
+TinyLlama-1.1B-Chat-Q4_K_M,Q4_K/Q6_K,310,1816313856,6167040,44,22,22,90112,315392,PASS,hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json
+SmolLM2-135M-Instruct-Q4_K_M,Q4_K/Q5_0/Q6_K/Q8_0,422,278788608,1764360,60,0,60,0,0,PASS,hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json

@@ -664,6 +664,90 @@ module akv_engine_tb;
       $fatal(1, "descriptor validation fault retained a ready context");
   endtask
 
+  task automatic run_v2_shape_traffic(
+      input logic [15:0] head_dim,
+      input logic [15:0] kv_length,
+      input logic [7:0] q_rows
+  );
+    akv_descriptor_v1_t descriptor;
+    int unsigned tile_start;
+    int unsigned tile_count;
+    int unsigned row_bytes;
+    int unsigned expected_ranges;
+
+    descriptor = valid_descriptor(head_dim, kv_length, q_rows);
+    put_descriptor(DescriptorBase, descriptor);
+    row_bytes = head_dim * 2;
+    tile_start = 0;
+    while (tile_start < kv_length) begin
+      tile_count = kv_length - tile_start;
+      if (tile_count > AkvV2TileTokens)
+        tile_count = AkvV2TileTokens;
+      if (tile_start == 0)
+        send_command(AKV_COMMAND_V2_FULL, DescriptorBase, 0, 0,
+                     head_dim, 0, 4'h2);
+      else
+        send_command(AKV_COMMAND_V2_REFILL, 0, tile_start, 0,
+                     head_dim, 0, 4'h3);
+      wait_success();
+      // The read engine sees one range per logical row.  FULL additionally
+      // fetches the descriptor; REFILL contains only K and V token rows.
+      expected_ranges = 2 * tile_count;
+      if (tile_start == 0)
+        expected_ranges += 1 + q_rows;
+      if (!context_ready || dut.context_tile_count_q != tile_count ||
+          q_external_bytes != (tile_start == 0 ? q_rows * row_bytes : 0) ||
+          kv_external_bytes != 2 * tile_count * row_bytes ||
+          read_range_count != expected_ranges ||
+          v2_bank_conflict_cycles != 0 ||
+          (tile_start == 0 ? v2_full_count != 1 : v2_refill_count != 1))
+        $fatal(1,
+               "AKV-v2 shape traffic mismatch D=%0d GQA=%0d KV=%0d tile=%0d count=%0d q_bytes=%0d kv_bytes=%0d ranges=%0d",
+               head_dim, q_rows, kv_length, tile_start, tile_count,
+               q_external_bytes, kv_external_bytes, read_range_count);
+      acknowledge_terminal();
+      tile_start += tile_count;
+    end
+    send_command(AKV_COMMAND_RELEASE, 0, 0, 0, 0, 0, 4'h4);
+    wait_success();
+    acknowledge_terminal();
+    if (context_ready)
+      $fatal(1, "AKV-v2 shape matrix release retained context");
+  endtask
+
+  task automatic run_v2_shape_matrix;
+    int unsigned q_index;
+    int unsigned d_index;
+    int unsigned kv_index;
+    logic [7:0] q_rows;
+    logic [15:0] head_dim;
+    logic [15:0] kv_length;
+
+    for (q_index = 0; q_index < 4; q_index++) begin
+      case (q_index)
+        0: q_rows = 1;
+        1: q_rows = 4;
+        2: q_rows = 6;
+        default: q_rows = 8;
+      endcase
+      for (d_index = 0; d_index < 2; d_index++) begin
+        head_dim = d_index == 0 ? 64 : 128;
+        for (kv_index = 0; kv_index < 7; kv_index++) begin
+          case (kv_index)
+            0: kv_length = 16;
+            1: kv_length = 63;
+            2: kv_length = 64;
+            3: kv_length = 65;
+            4: kv_length = 128;
+            5: kv_length = 256;
+            default: kv_length = 1024;
+          endcase
+          run_v2_shape_traffic(head_dim, kv_length, q_rows);
+        end
+      end
+    end
+  endtask
+
   initial begin : run_tests
     akv_descriptor_v1_t descriptor;
     integer writes_before;
@@ -969,6 +1053,10 @@ module akv_engine_tb;
     run_valid_load(AKV_STREAM_V, 0, 64, 26, 4'h0,
                    VBase + 64 * 128, 0);
     run_valid_v2_column(31, 1, 64, 64, 27, 4'h1, 0);
+
+    // The software-supported AKV-v2 matrix must obey the same FULL/REFILL,
+    // byte, range, and tail identities for every advertised shape.
+    run_v2_shape_matrix();
 
     // A final v1 command proves that v2 state did not change the legacy
     // descriptor, tile-eight, and unaligned-row contract.

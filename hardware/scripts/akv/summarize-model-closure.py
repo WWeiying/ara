@@ -37,6 +37,65 @@ SUPPORTED_QBS_TYPES = {
     "IQ4_NL",
 }
 PROJECTION_METHOD_VERSION = 1
+QBS_ABI_PATH = Path(__file__).resolve().parents[3] / "config/qbs_abi.json"
+QBS_TRACE_TO_ABI_PROFILE = {"Q8_0": "Q8_0_WEIGHT"}
+F16_BYTES = 2
+
+
+def load_qbs_abi(path: Path = QBS_ABI_PATH) -> dict[str, object]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data.get("weight_profiles"), dict) or not isinstance(
+        data.get("activation_profiles"), dict
+    ):
+        raise ValueError(f"malformed QBS ABI description: {path}")
+    return data
+
+
+QBS_ABI = load_qbs_abi()
+
+
+def qbs_profile_geometry(profile: str, kind: str = "weight") -> tuple[int, int]:
+    if kind == "weight":
+        profile = QBS_TRACE_TO_ABI_PROFILE.get(profile, profile)
+        profiles = QBS_ABI["weight_profiles"]
+    elif kind == "activation":
+        profiles = QBS_ABI["activation_profiles"]
+    else:
+        raise ValueError(f"unsupported QBS profile kind: {kind}")
+    record = profiles.get(profile)
+    if not isinstance(record, dict):
+        raise ValueError(f"missing QBS {kind} profile geometry for {profile}")
+    block_bytes = int(record.get("block_bytes", 0))
+    block_elements = int(record.get("block_elements", 0))
+    if block_bytes <= 0 or block_elements <= 0:
+        raise ValueError(f"invalid QBS {kind} profile geometry for {profile}")
+    return block_bytes, block_elements
+
+
+def qbs_activation_profile(weight_profile: str) -> str:
+    abi_profile = QBS_TRACE_TO_ABI_PROFILE.get(weight_profile, weight_profile)
+    record = QBS_ABI["weight_profiles"].get(abi_profile)
+    activations = record.get("activation_profiles", []) if isinstance(record, dict) else []
+    if not isinstance(activations, list) or len(activations) != 1:
+        raise ValueError(f"QBS weight profile {weight_profile} has no unique activation profile")
+    return str(activations[0])
+
+
+def blocked_payload_bytes(
+    elements_per_row: int,
+    rows: int,
+    calls: int,
+    block_bytes: int,
+    block_elements: int,
+    label: str,
+) -> int:
+    if min(elements_per_row, rows, calls, block_bytes, block_elements) <= 0:
+        raise ValueError(f"{label} has a non-positive payload dimension")
+    if elements_per_row % block_elements != 0:
+        raise ValueError(
+            f"{label} K={elements_per_row} is not divisible by block size {block_elements}"
+        )
+    return calls * rows * (elements_per_row // block_elements) * block_bytes
 
 
 def fields(line: str) -> dict[str, str]:
@@ -64,6 +123,79 @@ def read_manifest(path: Path) -> dict[str, str]:
         if separator and key:
             values[key] = value
     return values
+
+
+LIFETIME_MANIFEST_KEYS = (
+    "LLAMA_REVISION",
+    "LLAMA_BINARY_SHA256",
+    "QEMU_BINARY_SHA256",
+    "MODEL_DISK_SHA256",
+    "MODEL_GUEST_PATH",
+    "MODEL_TOKENS",
+    "MODEL_PROMPT",
+)
+
+
+def load_qbs_lifetime_summary(
+    path: Path | None,
+    model_manifest: dict[str, str],
+) -> dict[str, object] | None:
+    if path is None:
+        return None
+    if not path.is_file():
+        raise ValueError(f"QBS lifetime summary does not exist: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("semantic_command_stream_equal") is not True:
+        raise ValueError("QBS lifetime summary does not preserve the semantic command stream")
+    baseline = data.get("baseline", {})
+    optimized = data.get("cross_operator", {})
+    eliminated = data.get("eliminated_quantizations", [])
+    if not isinstance(baseline, dict) or not isinstance(optimized, dict) or not isinstance(eliminated, list):
+        raise ValueError("QBS lifetime summary has malformed work sections")
+    required_positive = (
+        (baseline, "quantizations"),
+        (baseline, "activation_bytes"),
+        (baseline, "quantization_input_elements"),
+        (optimized, "quantizations"),
+        (optimized, "activation_bytes"),
+        (optimized, "quantizations_eliminated"),
+        (optimized, "activation_bytes_eliminated"),
+        (optimized, "quantization_input_elements_eliminated"),
+    )
+    for section, key in required_positive:
+        if int(section.get(key, 0)) <= 0:
+            raise ValueError(f"QBS lifetime summary has invalid {key}")
+    if int(baseline["quantizations"]) - int(optimized["quantizations"]) != int(
+        optimized["quantizations_eliminated"]
+    ):
+        raise ValueError("QBS lifetime quantization totals are inconsistent")
+    if len(eliminated) != int(optimized["quantizations_eliminated"]):
+        raise ValueError("QBS lifetime detail count does not match eliminated quantizations")
+    if sum(int(record["quantized_bytes"]) for record in eliminated) != int(
+        optimized["activation_bytes_eliminated"]
+    ):
+        raise ValueError("QBS lifetime detail bytes do not match eliminated activation bytes")
+    if sum(int(record["input_elements"]) for record in eliminated) != int(
+        optimized["quantization_input_elements_eliminated"]
+    ):
+        raise ValueError("QBS lifetime detail elements do not match eliminated input elements")
+
+    provenance = data.get("provenance", {})
+    lifetime_manifest = provenance.get("manifest", {}).get("values", {}) \
+        if isinstance(provenance, dict) else {}
+    if not isinstance(lifetime_manifest, dict) or not lifetime_manifest:
+        raise ValueError("QBS lifetime summary lacks run-manifest provenance")
+    for key in LIFETIME_MANIFEST_KEYS:
+        if not model_manifest.get(key) or lifetime_manifest.get(key) != model_manifest.get(key):
+            raise ValueError(f"QBS lifetime run differs from model run in {key}")
+
+    return {
+        "source": {
+            "path": str(path.resolve()),
+            "sha256": sha256(path),
+        },
+        **data,
+    }
 
 
 def normalized_qbs_type(value: str) -> str:
@@ -292,16 +424,35 @@ def validate_dynamic(run: ParsedRun) -> None:
                 raise ValueError("AKV call/model-node association is inconsistent")
             called_nodes[node_index] += 1
             akv_calls.append(call)
-        if eligible_nodes != set(called_nodes) or any(
+        if not set(called_nodes).issubset(eligible_nodes) or any(
             count != 1 for count in called_nodes.values()
         ):
             raise ValueError(
                 f"AKV graph coverage mismatch for graph {graph.graph_id}: "
                 f"eligible={sorted(eligible_nodes)} called={dict(sorted(called_nodes.items()))}"
             )
-    if not akv_calls or any(call.get("kernel") != "v2" for call in akv_calls):
-        raise ValueError("AKV-v2 did not execute for every accelerated attention call")
+    if any(call.get("kernel") != "v2" for call in akv_calls):
+        raise ValueError("an accelerated attention call did not use AKV-v2")
+    for call in akv_calls:
+        kv_heads = integer(call, "kv_heads")
+        q_heads = integer(call, "q_rows")
+        gqa_rows = integer(call, "gqa_rows")
+        head_dim = integer(call, "head_dim")
+        active_kv = integer(call, "active_kv")
+        expected_macs = 2 * kv_heads * gqa_rows * head_dim * active_kv
+        if min(kv_heads, q_heads, gqa_rows, head_dim, active_kv) <= 0:
+            raise ValueError("AKV call has a non-positive shape field")
+        if q_heads != kv_heads * gqa_rows:
+            raise ValueError("AKV q-head/GQA identity is inconsistent")
+        if integer(call, "attention_macs") != expected_macs:
+            raise ValueError("AKV call MAC count is inconsistent with its shape")
+
     akv_macs = sum(integer(call, "attention_macs") for call in akv_calls)
+    akv_groups = sum(integer(call, "kv_heads") for call in akv_calls)
+    akv_group_tokens = sum(
+        integer(call, "kv_heads") * integer(call, "active_kv")
+        for call in akv_calls
+    )
     if integer(run.akv_coverage, "attention_macs") != akv_macs:
         raise ValueError("AKV call/coverage MAC count mismatch")
     if integer(run.akv_coverage, "executed_v1") != 0:
@@ -310,6 +461,10 @@ def validate_dynamic(run: ParsedRun) -> None:
        integer(run.akv_coverage, "executed_ops") != len(akv_calls) or \
        integer(run.akv_coverage, "executed_v2") != len(akv_calls):
         raise ValueError("AKV candidate/execution coverage is inconsistent with traced graph nodes")
+    if integer(run.akv_coverage, "groups") != akv_groups or \
+       integer(run.akv_coverage, "groups_v2") != akv_groups or \
+       integer(run.akv_coverage, "kv_group_tokens") != akv_group_tokens:
+        raise ValueError("AKV coverage traffic is inconsistent with per-call shapes")
     akv_fallbacks = sum(
         integer(run.akv_coverage, key)
         for key in run.akv_coverage
@@ -384,6 +539,8 @@ def dynamic_rows(run: ParsedRun):
                 call["kernel"],
                 integer(call, "kv_heads"),
                 integer(call, "q_rows"),
+                integer(call, "gqa_rows"),
+                integer(call, "head_dim"),
                 integer(call, "active_kv"),
                 integer(call, "attention_macs"),
             )
@@ -410,6 +567,11 @@ def dynamic_rows(run: ParsedRun):
     qbs_rows = []
     for key, count in sorted(qbs_groups.items()):
         graph_id, phase, node_index, node_name, profile, mode, k, input_rows, output_rows, split_k = key
+        weight_block_bytes, weight_block_elements = qbs_profile_geometry(profile)
+        activation_profile = qbs_activation_profile(profile)
+        activation_block_bytes, activation_block_elements = qbs_profile_geometry(
+            activation_profile, "activation"
+        )
         qbs_rows.append(
             {
                 "graph_id": graph_id,
@@ -423,8 +585,25 @@ def dynamic_rows(run: ParsedRun):
                 "output_rows": output_rows,
                 "split_k": split_k,
                 "calls": count,
+                "activation_profile": activation_profile,
                 "activation_row_uses": count * input_rows,
                 "activation_element_uses": count * k * input_rows,
+                "quantized_activation_bytes": blocked_payload_bytes(
+                    k,
+                    input_rows,
+                    count,
+                    activation_block_bytes,
+                    activation_block_elements,
+                    f"QBS {profile} activation",
+                ),
+                "weight_payload_bytes": blocked_payload_bytes(
+                    k,
+                    output_rows,
+                    count,
+                    weight_block_bytes,
+                    weight_block_elements,
+                    f"QBS {profile} weight",
+                ),
                 "output_elements": count * input_rows * output_rows,
                 "dot_elements": count * k * input_rows * output_rows,
             }
@@ -465,6 +644,22 @@ def dynamic_rows(run: ParsedRun):
                     f"QBS node work mismatch for graph {graph.graph_id} node {node_index}: "
                     f"output {output_elements}/{expected_output_elements}, dot {dot_elements}/{k * expected_output_elements}"
                 )
+            weight_block_bytes, weight_block_elements = qbs_profile_geometry(profile)
+            activation_profile = qbs_activation_profile(profile)
+            activation_block_bytes, activation_block_elements = qbs_profile_geometry(
+                activation_profile, "activation"
+            )
+            weight_payload_bytes = sum(
+                blocked_payload_bytes(
+                    integer(call, "k"),
+                    integer(call, "output_rows"),
+                    1,
+                    weight_block_bytes,
+                    weight_block_elements,
+                    f"QBS {profile} weight",
+                )
+                for call in calls
+            )
             qbs_node_rows.append(
                 {
                     "graph_id": graph.graph_id,
@@ -477,14 +672,25 @@ def dynamic_rows(run: ParsedRun):
                     "input_rows": input_rows,
                     "output_rows": output_rows,
                     "call_chunks": len(calls),
+                    "activation_profile": activation_profile,
                     "activation_elements": k * input_rows,
+                    "quantized_activation_bytes": blocked_payload_bytes(
+                        k,
+                        input_rows,
+                        1,
+                        activation_block_bytes,
+                        activation_block_elements,
+                        f"QBS {profile} activation",
+                    ),
+                    "weight_payload_bytes": weight_payload_bytes,
                     "output_elements": output_elements,
                     "dot_elements": dot_elements,
                 }
             )
     akv_rows = []
     for key, count in sorted(akv_groups.items()):
-        graph_id, phase, kernel, kv_heads, q_rows, active_kv, attention_macs = key
+        (graph_id, phase, kernel, kv_heads, q_rows, gqa_rows, head_dim,
+         active_kv, attention_macs) = key
         akv_rows.append(
             {
                 "graph_id": graph_id,
@@ -492,8 +698,14 @@ def dynamic_rows(run: ParsedRun):
                 "kernel": kernel,
                 "kv_heads": kv_heads,
                 "q_rows": q_rows,
+                "gqa_rows": gqa_rows,
+                "head_dim": head_dim,
                 "active_kv": active_kv,
                 "calls": count,
+                "query_payload_bytes": count * q_rows * head_dim * F16_BYTES,
+                "kv_payload_bytes": (
+                    count * 2 * kv_heads * active_kv * head_dim * F16_BYTES
+                ),
                 "attention_macs": count * attention_macs,
             }
         )
@@ -710,15 +922,42 @@ def cycle_projection(
     qbs_points: list[dict[str, object]],
     akv_points: list[dict[str, int]],
     rvv_points: dict[str, int],
+    qbs_lifetime: dict[str, object] | None = None,
 ):
     rows: list[dict[str, object]] = []
     akv_calibration = describe_akv_calibration(akv_points)
+    eliminated = Counter()
+    if qbs_lifetime is not None:
+        for record in qbs_lifetime["eliminated_quantizations"]:
+            eliminated[
+                (
+                    str(record["op"]),
+                    normalized_qbs_type(str(record["weight_type"])),
+                    int(record["m"]),
+                    int(record["n"]),
+                    int(record["k"]),
+                )
+            ] += 1
     for node in qbs_node_rows:
         point = nearest_qbs_point(node, qbs_points)
-        cycles = (
-            int(node["activation_elements"]) * float(point["quant_cycles_per_element"])
-            + int(node["dot_elements"]) * float(point["matmul_cycles_per_dot"])
+        signature = (
+            str(node["node_name"]),
+            normalized_qbs_type(str(node["type"])),
+            int(node["input_rows"]),
+            int(node["output_rows"]),
+            int(node["k"]),
         )
+        quantization_applied = 1
+        if eliminated[signature]:
+            eliminated[signature] -= 1
+            quantization_applied = 0
+        quantize_cycles = (
+            quantization_applied
+            * int(node["activation_elements"])
+            * float(point["quant_cycles_per_element"])
+        )
+        matmul_cycles = int(node["dot_elements"]) * float(point["matmul_cycles_per_dot"])
+        cycles = quantize_cycles + matmul_cycles
         rows.append(
             {
                 "phase": node["phase"],
@@ -726,17 +965,30 @@ def cycle_projection(
                 "detail": f"{node['node_name']} {node['type']} {node['mode']} K{node['k']} M{node['input_rows']} N{node['output_rows']}",
                 "instances": 1,
                 "projected_cycles": round(cycles),
+                "quantization_applied": quantization_applied,
+                "quantize_projected_cycles": round(quantize_cycles),
+                "matmul_projected_cycles": round(matmul_cycles),
                 "calibration": point["case"],
-                "basis": "unique activation plus exact dot work x representative RTL rates",
+                "basis": (
+                    "exact lifetime quantization decision plus exact dot work x representative RTL rates"
+                    if qbs_lifetime is not None
+                    else "per-node activation plus exact dot work x representative RTL rates"
+                ),
             }
         )
+    unmatched = {signature: count for signature, count in eliminated.items() if count}
+    if unmatched:
+        raise ValueError(f"QBS lifetime eliminations do not match dynamic model nodes: {unmatched}")
     for call in akv_rows:
         per_call = interpolate_akv_cycles(int(call["active_kv"]), akv_points)
         rows.append(
             {
                 "phase": call["phase"],
                 "category": "akv_v2",
-                "detail": f"KV{call['active_kv']} Hq{call['q_rows']} Hkv{call['kv_heads']}",
+                "detail": (
+                    f"D{call['head_dim']} KV{call['active_kv']} "
+                    f"Hq{call['q_rows']} Hkv{call['kv_heads']} GQA{call['gqa_rows']}"
+                ),
                 "instances": call["calls"],
                 "projected_cycles": round(per_call * int(call["calls"])),
                 "calibration": akv_calibration,
@@ -842,6 +1094,173 @@ def aggregate_components(rows: list[dict[str, object]]) -> list[dict[str, object
     ]
 
 
+def make_dynamic_summary(
+    log: Path,
+    run: ParsedRun,
+    qbs_call_rows: list[dict[str, object]],
+    qbs_node_rows: list[dict[str, object]],
+    akv_rows: list[dict[str, object]],
+    node_rows: list[dict[str, object]],
+    qbs_lifetime: dict[str, object] | None,
+) -> dict[str, object]:
+    return {
+        "provenance": {
+            "tool": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": sha256(Path(__file__).resolve()),
+                "projection_method_version": PROJECTION_METHOD_VERSION,
+            },
+            "dynamic_log": {
+                "path": str(log.resolve()),
+                "sha256": sha256(log),
+            },
+            "qbs_abi": {
+                "path": str(QBS_ABI_PATH.resolve()),
+                "sha256": sha256(QBS_ABI_PATH),
+                "architecture_version": QBS_ABI.get("architecture_version"),
+            },
+            "run_manifest": read_manifest(log.parent / "manifest.txt"),
+        },
+        "functional": {
+            "guest_exit": run.guest_exit,
+            "output_equal": run.output_equal,
+            "logits_top1_equal": run.logits.get("AKV_LOGITS_TOP1_EQUAL"),
+            "logits_max_abs": run.logits.get("AKV_LOGITS_MAX_ABS"),
+            "qbs_rvv": run.qbs_rvv,
+        },
+        "graphs": dict(Counter(graph.phase for graph in run.graphs)),
+        "qbs": {
+            "nodes": len(qbs_node_rows),
+            "call_chunks": sum(int(row["calls"]) for row in qbs_call_rows),
+            "unique_activation_elements": sum(
+                int(row["activation_elements"]) for row in qbs_node_rows
+            ),
+            "output_elements": sum(int(row["output_elements"]) for row in qbs_node_rows),
+            "dot_elements": sum(int(row["dot_elements"]) for row in qbs_node_rows),
+            "per_operation_quantized_activation_bytes": sum(
+                int(row["quantized_activation_bytes"]) for row in qbs_node_rows
+            ),
+            "weight_payload_bytes": sum(
+                int(row["weight_payload_bytes"]) for row in qbs_call_rows
+            ),
+            "weight_payload_bytes_by_phase": {
+                phase: sum(
+                    int(row["weight_payload_bytes"])
+                    for row in qbs_call_rows
+                    if row["phase"] == phase
+                )
+                for phase in ("prefill", "decode")
+            },
+            "weight_payload_bytes_by_profile": {
+                profile: sum(
+                    int(row["weight_payload_bytes"])
+                    for row in qbs_call_rows
+                    if row["type"] == profile
+                )
+                for profile in sorted({str(row["type"]) for row in qbs_call_rows})
+            },
+            "coverage": run.qbs_coverage,
+            "execution": run.qbs_exec,
+            "activation_lifetime": qbs_lifetime,
+        },
+        "akv_v2": {
+            "calls": sum(int(row["calls"]) for row in akv_rows),
+            "attention_macs": sum(int(row["attention_macs"]) for row in akv_rows),
+            "query_payload_bytes": sum(
+                int(row["query_payload_bytes"]) for row in akv_rows
+            ),
+            "kv_payload_bytes": sum(
+                int(row["kv_payload_bytes"]) for row in akv_rows
+            ),
+            "shapes": akv_rows,
+            "coverage": run.akv_coverage,
+        },
+        "model_nodes": sum(int(row["count"]) for row in node_rows),
+    }
+
+
+def write_dynamic_markdown(
+    path: Path,
+    run: ParsedRun,
+    qbs_call_rows: list[dict[str, object]],
+    qbs_node_rows: list[dict[str, object]],
+    akv_rows: list[dict[str, object]],
+    manifest: dict[str, str],
+    qbs_lifetime: dict[str, object] | None,
+) -> None:
+    lines = [
+        "# QBS + AKV-v2 Dynamic Model Closure",
+        "",
+        f"Model: `{manifest.get('MODEL_GUEST_PATH', 'unknown')}`",
+        "",
+        "All counts below come from the traced guest execution. No QEMU wall time",
+        "or shape-mismatched RTL calibration is interpreted as hardware cycles.",
+        "",
+        "| Phase | Graphs | QBS nodes | QBS chunks | QBS weight bytes | QBS dot elements | AKV calls | AKV Q bytes | AKV K/V bytes | AKV MACs |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for phase in ("prefill", "decode"):
+        graphs = [graph for graph in run.graphs if graph.phase == phase]
+        lines.append(
+            f"| {phase} | {len(graphs)} | "
+            f"{sum(row['phase'] == phase for row in qbs_node_rows)} | "
+            f"{sum(int(row['calls']) for row in qbs_call_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['weight_payload_bytes']) for row in qbs_call_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['dot_elements']) for row in qbs_node_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['calls']) for row in akv_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['query_payload_bytes']) for row in akv_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['kv_payload_bytes']) for row in akv_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['attention_macs']) for row in akv_rows if row['phase'] == phase)} |"
+        )
+    lines.extend(
+        [
+            "",
+            "| Phase | Kernel | D | GQA | Q heads | KV heads | Active KV | Calls | Q bytes | K/V bytes | MACs |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in akv_rows:
+        lines.append(
+            f"| {row['phase']} | {row['kernel']} | {row['head_dim']} | "
+            f"{row['gqa_rows']} | {row['q_rows']} | {row['kv_heads']} | "
+            f"{row['active_kv']} | {row['calls']} | {row['query_payload_bytes']} | "
+            f"{row['kv_payload_bytes']} | {row['attention_macs']} |"
+        )
+    if qbs_lifetime is not None:
+        baseline = qbs_lifetime["baseline"]
+        optimized = qbs_lifetime["cross_operator"]
+        lines.extend(
+            [
+                "",
+                "Exact QBS activation-lifetime accounting:",
+                "",
+                "| Metric | Per-operation | Cross-operator | Eliminated |",
+                "|---|---:|---:|---:|",
+                f"| Quantizations | {baseline['quantizations']} | {optimized['quantizations']} | {optimized['quantizations_eliminated']} |",
+                f"| Quantized activation bytes | {baseline['activation_bytes']} | {optimized['activation_bytes']} | {optimized['activation_bytes_eliminated']} |",
+                f"| F32 quantization-input bytes | {baseline['quantization_input_bytes']} | {optimized['quantization_input_bytes']} | {optimized['quantization_input_bytes_eliminated']} |",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Functional gates:",
+            "",
+            f"- guest exit: `{run.guest_exit}`",
+            f"- output equal: `{int(run.output_equal)}`",
+            f"- logits top-1 equal: `{run.logits.get('AKV_LOGITS_TOP1_EQUAL', 'missing')}`",
+            f"- logits max absolute difference: `{run.logits.get('AKV_LOGITS_MAX_ABS', 'missing')}`",
+            "",
+            "This artifact proves dynamic selection, numerical behavior, and work/traffic",
+            "identities. Weight and Q/K/V byte counts are logical payload bytes from the",
+            "QBS ABI and AKV F16 contract; descriptor, cache-line overfetch, and output traffic",
+            "are not included. This artifact deliberately omits a cycle projection until matching RTL shape",
+            "calibration exists.",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_markdown(
     path: Path,
     run: ParsedRun,
@@ -851,15 +1270,23 @@ def write_markdown(
     component_summary: list[dict[str, object]],
     projection_summary: list[dict[str, object]],
     projection_rows: list[dict[str, object]],
+    qbs_lifetime: dict[str, object] | None,
 ) -> None:
     qbs_work = Counter()
     qbs_activation_work = Counter()
+    qbs_weight_bytes = Counter()
     for row in qbs_node_rows:
         qbs_work[str(row["phase"])] += int(row["dot_elements"])
         qbs_activation_work[str(row["phase"])] += int(row["activation_elements"])
     akv_work = Counter()
+    akv_query_bytes = Counter()
+    akv_kv_bytes = Counter()
+    for row in qbs_call_rows:
+        qbs_weight_bytes[str(row["phase"])] += int(row["weight_payload_bytes"])
     for row in akv_rows:
         akv_work[str(row["phase"])] += int(row["attention_macs"])
+        akv_query_bytes[str(row["phase"])] += int(row["query_payload_bytes"])
+        akv_kv_bytes[str(row["phase"])] += int(row["kv_payload_bytes"])
     missing = Counter()
     for row in projection_rows:
         if row["category"] == "uncalibrated":
@@ -873,16 +1300,34 @@ def write_markdown(
         "",
         "## Dynamic execution",
         "",
-        "| Phase | Graphs | QBS nodes | QBS chunks | Unique activation elements | QBS dot elements | AKV-v2 calls | AKV attention MACs |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Phase | Graphs | QBS nodes | QBS chunks | Unique activation elements | QBS weight bytes | QBS dot elements | AKV-v2 calls | AKV Q bytes | AKV K/V bytes | AKV attention MACs |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for phase in ("prefill", "decode"):
         graphs = [graph for graph in run.graphs if graph.phase == phase]
         lines.append(
             f"| {phase} | {len(graphs)} | {sum(1 for row in qbs_node_rows if row['phase'] == phase)} | "
             f"{sum(int(row['calls']) for row in qbs_call_rows if row['phase'] == phase)} | "
-            f"{qbs_activation_work[phase]} | {qbs_work[phase]} | "
-            f"{sum(len(graph.akv_calls) for graph in graphs)} | {akv_work[phase]} |"
+            f"{qbs_activation_work[phase]} | {qbs_weight_bytes[phase]} | {qbs_work[phase]} | "
+            f"{sum(len(graph.akv_calls) for graph in graphs)} | {akv_query_bytes[phase]} | "
+            f"{akv_kv_bytes[phase]} | {akv_work[phase]} |"
+        )
+    if qbs_lifetime is not None:
+        baseline = qbs_lifetime["baseline"]
+        optimized = qbs_lifetime["cross_operator"]
+        lines.extend(
+            [
+                "",
+                "## Exact activation-lifetime accounting",
+                "",
+                "| Metric | Per-operation | Cross-operator | Eliminated |",
+                "|---|---:|---:|---:|",
+                f"| Quantizations | {baseline['quantizations']} | {optimized['quantizations']} | {optimized['quantizations_eliminated']} |",
+                f"| Quantized activation bytes | {baseline['activation_bytes']} | {optimized['activation_bytes']} | {optimized['activation_bytes_eliminated']} |",
+                f"| F32 quantization-input bytes | {baseline['quantization_input_bytes']} | {optimized['quantization_input_bytes']} | {optimized['quantization_input_bytes_eliminated']} |",
+                "",
+                "The lifetime run is accepted only when its model, prompt, token count, llama binary, model image, and QEMU binary match this combined run.",
+            ]
         )
     lines.extend(
         [
@@ -929,7 +1374,12 @@ def write_markdown(
             "## Interpretation constraints",
             "",
             "- `QBS_CALL` counts execution chunks; `qbs_nodes.csv` reconstructs their owning high-level `MUL_MAT` nodes.",
-            "- Activation quantization is charged once per high-level QBS node, not once per output-row chunk.",
+            "- QBS weight and AKV Q/K/V traffic are exact logical payload bytes. They exclude descriptors, cache-line overfetch, writeback, and local context replay.",
+            (
+                "- Activation quantization follows the exact cross-operator lifetime trace; eliminated nodes retain their matrix work but carry zero quantization cost."
+                if qbs_lifetime is not None
+                else "- Activation quantization is charged once per high-level QBS node, not once per output-row chunk."
+            ),
             "- QBS/RVV is a numerical-quality observation. After a free-running Top-1 divergence, later logits use different contexts and are excluded from its error extrema.",
             "- AKV equivalence is strict: QBS-only and QBS+AKV-v2 use the same generated context and must retain equal output, Top-1, and bounded logits error.",
             "- QBS dot elements and AKV MACs are exact dynamic work counts, but they are not mutually comparable cycle units.",
@@ -967,6 +1417,16 @@ def main() -> None:
         default=["decode"],
         help="fail when a phase still contains an uncalibrated traced compute node",
     )
+    parser.add_argument(
+        "--dynamic-only",
+        action="store_true",
+        help="write measured coverage/work artifacts without applying RTL cycle calibration",
+    )
+    parser.add_argument(
+        "--qbs-lifetime-summary",
+        type=Path,
+        help="strict paired QBS lifetime summary from the same model, prompt, binaries, and QEMU",
+    )
     args = parser.parse_args()
     output = args.output_dir or args.log.parent / "model_closure"
     output.mkdir(parents=True, exist_ok=True)
@@ -974,6 +1434,60 @@ def main() -> None:
     run = parse_log(args.log)
     validate_dynamic(run)
     qbs_call_rows, qbs_node_rows, akv_rows, node_rows = dynamic_rows(run)
+    model_manifest = read_manifest(args.log.parent / "manifest.txt")
+    qbs_lifetime = load_qbs_lifetime_summary(args.qbs_lifetime_summary, model_manifest)
+
+    write_csv(
+        output / "qbs_calls.csv",
+        qbs_call_rows,
+        (
+            "graph_id", "phase", "node_index", "node_name", "type", "mode",
+            "k", "input_rows", "output_rows", "calls", "activation_profile",
+            "quantized_activation_bytes", "weight_payload_bytes",
+        ),
+    )
+    write_csv(
+        output / "qbs_nodes.csv",
+        qbs_node_rows,
+        (
+            "graph_id", "phase", "node_index", "node_name", "type", "mode",
+            "k", "input_rows", "output_rows", "call_chunks", "activation_profile",
+            "quantized_activation_bytes", "weight_payload_bytes",
+        ),
+    )
+    write_csv(
+        output / "akv_calls.csv",
+        akv_rows,
+        (
+            "graph_id", "phase", "kernel", "head_dim", "gqa_rows",
+            "active_kv", "kv_heads", "q_rows", "calls", "query_payload_bytes",
+            "kv_payload_bytes",
+        ),
+    )
+    write_csv(
+        output / "model_nodes.csv",
+        node_rows,
+        ("graph_id", "phase", "semantic", "op", "type", "name", "count"),
+    )
+    dynamic_summary = make_dynamic_summary(
+        args.log, run, qbs_call_rows, qbs_node_rows, akv_rows, node_rows, qbs_lifetime
+    )
+    (output / "dynamic_summary.json").write_text(
+        json.dumps(dynamic_summary, indent=2) + "\n"
+    )
+    if args.dynamic_only:
+        write_dynamic_markdown(
+            output / "model_closure.md",
+            run,
+            qbs_call_rows,
+            qbs_node_rows,
+            akv_rows,
+            model_manifest,
+            qbs_lifetime,
+        )
+        print(output)
+        return
+
     qbs_points = load_qbs_calibration(args.qbs_calibration)
     akv_points = load_akv_calibration(args.akv_calibration)
     rvv_directories = args.rvv_calibration_dir or default_rvv_calibration_dirs(root)
@@ -985,6 +1499,7 @@ def main() -> None:
         qbs_points,
         akv_points,
         rvv_points,
+        qbs_lifetime,
     )
     incomplete = {
         str(row["phase"])
@@ -1001,51 +1516,13 @@ def main() -> None:
     component_summary = aggregate_components(projection_rows)
 
     write_csv(
-        output / "qbs_calls.csv",
-        qbs_call_rows,
-        (
-            "graph_id",
-            "phase",
-            "node_index",
-            "node_name",
-            "type",
-            "mode",
-            "k",
-            "input_rows",
-            "output_rows",
-            "calls",
-        ),
-    )
-    write_csv(
-        output / "qbs_nodes.csv",
-        qbs_node_rows,
-        (
-            "graph_id",
-            "phase",
-            "node_index",
-            "node_name",
-            "type",
-            "mode",
-            "k",
-            "input_rows",
-            "output_rows",
-            "call_chunks",
-        ),
-    )
-    write_csv(
-        output / "akv_calls.csv",
-        akv_rows,
-        ("graph_id", "phase", "kernel", "active_kv", "kv_heads", "q_rows", "calls"),
-    )
-    write_csv(
-        output / "model_nodes.csv",
-        node_rows,
-        ("graph_id", "phase", "semantic", "op", "type", "name", "count"),
-    )
-    write_csv(
         output / "cycle_projection_detail.csv",
         projection_rows,
-        ("phase", "category", "detail", "instances", "projected_cycles", "calibration", "basis"),
+        (
+            "phase", "category", "detail", "instances", "projected_cycles",
+            "quantization_applied", "quantize_projected_cycles",
+            "matmul_projected_cycles", "calibration", "basis",
+        ),
     )
     write_csv(
         output / "cycle_projection_summary.csv",
@@ -1057,47 +1534,6 @@ def main() -> None:
         component_summary,
         ("phase", "component", "instances", "projected_cycles", "share_of_phase_cycles"),
     )
-
-    dynamic_summary = {
-        "provenance": {
-            "tool": {
-                "path": str(Path(__file__).resolve()),
-                "sha256": sha256(Path(__file__).resolve()),
-                "projection_method_version": PROJECTION_METHOD_VERSION,
-            },
-            "dynamic_log": {
-                "path": str(args.log.resolve()),
-                "sha256": sha256(args.log),
-            },
-            "run_manifest": read_manifest(args.log.parent / "manifest.txt"),
-        },
-        "functional": {
-            "guest_exit": run.guest_exit,
-            "output_equal": run.output_equal,
-            "logits_top1_equal": run.logits.get("AKV_LOGITS_TOP1_EQUAL"),
-            "logits_max_abs": run.logits.get("AKV_LOGITS_MAX_ABS"),
-            "qbs_rvv": run.qbs_rvv,
-        },
-        "graphs": Counter(graph.phase for graph in run.graphs),
-        "qbs": {
-            "nodes": len(qbs_node_rows),
-            "call_chunks": sum(int(row["calls"]) for row in qbs_call_rows),
-            "unique_activation_elements": sum(
-                int(row["activation_elements"]) for row in qbs_node_rows
-            ),
-            "output_elements": sum(int(row["output_elements"]) for row in qbs_node_rows),
-            "dot_elements": sum(int(row["dot_elements"]) for row in qbs_node_rows),
-            "coverage": run.qbs_coverage,
-            "execution": run.qbs_exec,
-        },
-        "akv_v2": {
-            "calls": sum(int(row["calls"]) for row in akv_rows),
-            "attention_macs": sum(int(row["attention_macs"]) for row in akv_rows),
-            "coverage": run.akv_coverage,
-        },
-        "model_nodes": sum(int(row["count"]) for row in node_rows),
-    }
-    (output / "dynamic_summary.json").write_text(json.dumps(dynamic_summary, indent=2) + "\n")
 
     calibration_snapshot = {
         "projection_method_version": PROJECTION_METHOD_VERSION,
@@ -1136,6 +1572,7 @@ def main() -> None:
         component_summary,
         projection_summary,
         projection_rows,
+        qbs_lifetime,
     )
     print(output)
 

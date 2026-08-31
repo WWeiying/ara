@@ -1,0 +1,38 @@
+Command: /home/wangwy/openproject/ara_dsa/verification/qbs/rtl_engine_build/./simv -l run.log +QBS_COMMAND_VECTOR_FILE=/home/wangwy/openproject/ara_dsa/verification/qbs/qbs_command_vectors.txt
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Aug 31 15:57 2026
+QBS end-to-end case 0 PASS profile=1 M=1 N=5 Kb=2 layouts=1/1 cycles=302
+QBS activation context FILL/REUSE/RELEASE PASS
+QBS end-to-end case 1 PASS profile=1 M=4 N=7 Kb=2 layouts=2/2 cycles=864
+QBS end-to-end case 2 PASS profile=2 M=3 N=3 Kb=2 layouts=1/1 cycles=529
+QBS end-to-end case 3 PASS profile=2 M=4 N=8 Kb=3 layouts=2/2 cycles=1272
+QBS end-to-end case 4 PASS profile=1 M=1 N=9 Kb=3 layouts=2/1 cycles=547
+QBS end-to-end case 5 PASS profile=3 M=1 N=5 Kb=3 layouts=1/1 cycles=156
+QBS end-to-end case 6 PASS profile=3 M=4 N=7 Kb=4 layouts=2/2 cycles=414
+QBS end-to-end case 7 PASS profile=3 M=1 N=1 Kb=65 layouts=1/1 cycles=1389
+QBS end-to-end case 8 PASS profile=4 M=1 N=5 Kb=2 layouts=1/1 cycles=318
+QBS end-to-end case 9 PASS profile=4 M=4 N=7 Kb=3 layouts=2/2 cycles=1269
+QBS end-to-end case 10 PASS profile=5 M=1 N=5 Kb=2 layouts=1/1 cycles=284
+QBS end-to-end case 11 PASS profile=5 M=4 N=7 Kb=3 layouts=2/2 cycles=1185
+QBS end-to-end case 12 PASS profile=6 M=1 N=5 Kb=3 layouts=1/1 cycles=161
+QBS end-to-end case 13 PASS profile=6 M=4 N=7 Kb=4 layouts=2/2 cycles=418
+QBS end-to-end case 14 PASS profile=1 M=2 N=3 Kb=2 layouts=2/1 cycles=338
+QBS end-to-end case 15 PASS profile=3 M=3 N=5 Kb=3 layouts=2/1 cycles=246
+QBS end-to-end case 16 PASS profile=7 M=1 N=5 Kb=2 layouts=1/1 cycles=278
+QBS end-to-end case 17 PASS profile=7 M=4 N=7 Kb=3 layouts=2/2 cycles=1200
+QBS end-to-end case 18 PASS profile=8 M=1 N=5 Kb=3 layouts=1/1 cycles=158
+QBS end-to-end case 19 PASS profile=8 M=4 N=7 Kb=4 layouts=2/2 cycles=415
+QBS end-to-end case 20 PASS profile=9 M=1 N=5 Kb=3 layouts=1/1 cycles=156
+QBS end-to-end case 21 PASS profile=9 M=4 N=7 Kb=4 layouts=2/2 cycles=414
+QBS validation atomic-fault PASS
+QBS MMU atomic-fault PASS
+QBS AXI atomic-fault PASS
+QBS PMA atomic-fault PASS
+QBS engine PASS: 22 functional cases plus four fault classes
+$finish called from file "/home/wangwy/openproject/ara_dsa/verification/qbs/qbs_engine_tb.sv", line 1108.
+$finish at simulation time            138480000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 138480000 ps
+CPU Time:      1.730 seconds;       Data structure size:   0.9Mb
+Mon Aug 31 15:57:18 2026
