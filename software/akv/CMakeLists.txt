@@ -6,6 +6,7 @@ include(GNUInstallDirs)
 add_library(akv_runtime STATIC
     src/akv_runtime.c
     src/akv_native_riscv.c
+    src/akv_v2_native_riscv.c
     src/akv_v2_reference.c)
 add_library(akv::runtime ALIAS akv_runtime)
 target_include_directories(akv_runtime PUBLIC
@@ -23,7 +24,9 @@ endif()
 option(AKV_BUILD_NATIVE_KERNEL "Build the native RVV AKV attention kernel" ${AKV_NATIVE_KERNEL_DEFAULT})
 if (AKV_BUILD_NATIVE_KERNEL)
     enable_language(ASM)
-    target_sources(akv_runtime PRIVATE src/akv_attention_rvv.S)
+    target_sources(akv_runtime PRIVATE
+        src/akv_attention_rvv.S
+        src/akv_v2_attention_rvv.S)
 endif()
 
 install(TARGETS akv_runtime EXPORT akvRuntimeTargets

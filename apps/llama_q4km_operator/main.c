@@ -86,33 +86,7 @@ static float attention_tiled_sum[TILED_RVV_Q_ROWS];
 static float attention_tiled_old_scale[TILED_RVV_Q_ROWS];
 static akv_device_t attention_akv_device;
 static akv_attention_plan_t attention_akv_plan;
-
-extern void akv_v2_compute_scores_f16_d128_gqa6(
-    const _Float16 query[TILED_RVV_Q_ROWS][MAX_ATTENTION_DIM],
-    float score[TILED_RVV_Q_ROWS][TILED_RVV_KV_TILE], int tile_tokens);
-extern void akv_v2_update_outputs_f16_d128_gqa6(
-    const float score[TILED_RVV_Q_ROWS][TILED_RVV_KV_TILE],
-    _Float16 accum[TILED_RVV_Q_ROWS][MAX_ATTENTION_DIM],
-    const float old_scale[TILED_RVV_Q_ROWS], int tile_tokens);
-
-static inline void issue_akv_v2_full(const akv_descriptor_t *descriptor,
-                                     uint64_t tile_start) {
-  register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
-  register uint64_t a1 asm("a1") = tile_start;
-  asm volatile("fence rw, rw\n.word 0x00b5605b"
-               : "+r"(a0), "+r"(a1)
-               :
-               : "memory");
-}
-
-static inline void issue_akv_v2_refill(uint64_t tile_start) {
-  register uint64_t a0 asm("a0") = tile_start;
-  asm volatile(".word 0x02a0605b" : "+r"(a0) : : "memory");
-}
-
-static inline void issue_akv_release(void) {
-  asm volatile(".word 0x0000505b" : : : "memory");
-}
+static akv_attention_v2_workspace_t attention_akv_v2_workspace;
 
 static inline uint64_t read_cycle(void) {
 #ifdef SPIKE
@@ -824,7 +798,11 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
   for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
     const int first_qhead = kvhead * heads_per_kv;
     HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
-    prepare_tiled_query_rvv(query + (size_t)first_qhead * dim, dim);
+    for (int head = 0; head < heads_per_kv; ++head) {
+      convert_f32_to_f16_rvv(
+          attention_tiled_query[head],
+          query + (size_t)(first_qhead + head) * dim, dim);
+    }
 
     const akv_attention_problem_t problem = {
         .query = (const uint16_t *)attention_tiled_query,
@@ -843,48 +821,15 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
         .kv_length = (uint32_t)active_kv,
         .scale = cfg->params[2],
     };
-    if (akv_attention_plan_create(&attention_akv_device, &problem,
-                                  &attention_akv_plan) != AKV_STATUS_OK ||
-        !akv_v2_descriptor_is_valid(&attention_akv_plan.descriptor))
+    if (akv_attention_plan_create_v2(&attention_akv_device, &problem,
+                                     &attention_akv_plan) != AKV_STATUS_OK)
       return 0;
 
-    for (int tile_start = 0; tile_start < active_kv;
-         tile_start += AKV_V2_TILE_TOKENS) {
-      int tile_tokens = active_kv - tile_start;
-      if (tile_tokens > (int)AKV_V2_TILE_TOKENS)
-        tile_tokens = (int)AKV_V2_TILE_TOKENS;
-
-      HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
-      if (tile_start == 0)
-        issue_akv_v2_full(&attention_akv_plan.descriptor, 0);
-      else
-        issue_akv_v2_refill((uint64_t)tile_start);
-
-      HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
-      akv_v2_compute_scores_f16_d128_gqa6(
-          attention_tiled_query, attention_tiled_score, tile_tokens);
-      for (int head = 0; head < TILED_RVV_Q_ROWS; ++head) {
-        const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
-        const vfloat32m2_t mask_f32 = __riscv_vfwcvt_f_f_v_f32m2(
-            __riscv_vle16_v_f16m1(
-                (const _Float16 *)mask + tile_start, vl), vl);
-        vfloat32m2_t score = __riscv_vle32_v_f32m2(
-            attention_tiled_score[head], vl);
-        score = __riscv_vfadd_vv_f32m2(
-            __riscv_vfmul_vf_f32m2(score, cfg->params[2], vl),
-            mask_f32, vl);
-        __riscv_vse32_v_f32m2(attention_tiled_score[head], score, vl);
-      }
-      softmax_tiled_scores_rvv(tile_tokens);
-      akv_v2_update_outputs_f16_d128_gqa6(
-          attention_tiled_score, attention_tiled_accum,
-          attention_tiled_old_scale, tile_tokens);
-    }
-
-    issue_akv_release();
-    HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
-    store_tiled_outputs_rvv(
-        attention_output + (size_t)first_qhead * dim, dim);
+    HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+    if (akv_attention_execute_v2_native(&attention_akv_plan,
+                                        &attention_akv_v2_workspace) !=
+        AKV_STATUS_OK)
+      return 0;
   }
   return 1;
 }

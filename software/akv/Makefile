@@ -3,7 +3,8 @@ CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -Wall -Wextra -Werror -Iinclude
 
 BUILD := build
-SOURCES := src/akv_runtime.c src/akv_native_riscv.c src/akv_v2_reference.c
+SOURCES := src/akv_runtime.c src/akv_native_riscv.c \
+	src/akv_v2_native_riscv.c src/akv_v2_reference.c
 OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 .PHONY: all check clean

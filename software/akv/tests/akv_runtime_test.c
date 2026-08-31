@@ -228,8 +228,13 @@ static void test_plan_and_execute(void) {
          AKV_STATUS_BAD_ARGUMENT);
 #if !defined(__riscv)
   assert(akv_attention_execute_native(&plan) == AKV_STATUS_RUNTIME_UNAVAILABLE);
+  akv_attention_v2_workspace_t workspace;
+  assert(akv_attention_execute_v2_native(&v2_plan, &workspace) ==
+         AKV_STATUS_RUNTIME_UNAVAILABLE);
 #endif
   assert(akv_attention_execute_native(NULL) == AKV_STATUS_BAD_ARGUMENT);
+  assert(akv_attention_execute_v2_native(NULL, NULL) ==
+         AKV_STATUS_BAD_ARGUMENT);
 }
 
 static void test_rejections(void) {

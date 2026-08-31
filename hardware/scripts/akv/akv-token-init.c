@@ -189,7 +189,11 @@ static void append_output(struct run_result * result, const char * data,
     result->output_size = required;
 }
 
-static struct run_result run_variant(const char * label, int emulate) {
+static struct run_result run_variant(const char * label,
+                                     const char * logits_path,
+                                     int enable_qbs,
+                                     const char * akv_kernel,
+                                     int enable_trace) {
     struct run_result result = { .exit_code = 127 };
     int output_pipe[2];
     if (pipe(output_pipe) != 0) {
@@ -212,18 +216,32 @@ static struct run_result run_variant(const char * label, int emulate) {
         unsetenv("GGML_RISCV_QBS");
         unsetenv("GGML_RISCV_QBS_EMULATE");
         unsetenv("GGML_RISCV_QBS_TRACE");
+        unsetenv("GGML_RISCV_QBS_TRACE_CALLS");
+        unsetenv("GGML_RISCV_MODEL_TRACE");
         unsetenv("GGML_RISCV_AKV");
         unsetenv("GGML_RISCV_AKV_EMULATE");
-        setenv("GGML_RISCV_AKV_TRACE", "1", 1);
-        if (emulate) {
-            setenv("GGML_RISCV_AKV_EMULATE", "1", 1);
+        unsetenv("GGML_RISCV_AKV_KERNEL");
+        unsetenv("GGML_RISCV_AKV_TRACE");
+        if (enable_qbs) {
+            setenv("GGML_RISCV_QBS", "1", 1);
         }
-        setenv("LLAMA_SIMPLE_LOGITS_FILE",
-               emulate ? "/akv-emulate.logits" : "/rvv.logits", 1);
+        if (enable_trace) {
+            if (enable_qbs) {
+                setenv("GGML_RISCV_QBS_TRACE", "1", 1);
+                setenv("GGML_RISCV_QBS_TRACE_CALLS", "1", 1);
+            }
+            setenv("GGML_RISCV_MODEL_TRACE", "1", 1);
+            setenv("GGML_RISCV_AKV_TRACE", "1", 1);
+        }
+        if (akv_kernel != NULL) {
+            setenv("GGML_RISCV_AKV_EMULATE", "1", 1);
+            setenv("GGML_RISCV_AKV_KERNEL", akv_kernel, 1);
+        }
+        setenv("LLAMA_SIMPLE_LOGITS_FILE", logits_path, 1);
 
         execl("/run/llama-simple", "/run/llama-simple",
               "-m", "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-              "-n", "2", "-ngl", "0",
+              "-n", "2", "-ngl", "0", "-t", "1", "-tb", "1",
               "The quick brown fox jumps over the lazy dog.", NULL);
         perror("exec llama-simple");
         _exit(127);
@@ -273,6 +291,15 @@ static struct run_result run_variant(const char * label, int emulate) {
     return result;
 }
 
+static int output_equal(const struct run_result * lhs,
+                        const struct run_result * rhs) {
+    return !lhs->capture_failed && !rhs->capture_failed &&
+           lhs->exit_code == 0 && rhs->exit_code == 0 &&
+           lhs->output_size == rhs->output_size &&
+           (lhs->output_size == 0 ||
+            memcmp(lhs->output, rhs->output, lhs->output_size) == 0);
+}
+
 int main(void) {
     if (mount("devtmpfs", "/dev", "devtmpfs", 0, NULL) != 0) {
         perror("mount devtmpfs");
@@ -291,28 +318,65 @@ int main(void) {
     }
 
     unlink("/rvv.logits");
-    unlink("/akv-emulate.logits");
-    const struct run_result rvv = run_variant("RVV", 0);
-    const struct run_result akv = run_variant("AKV_EMULATE", 1);
-    const struct logits_comparison logits =
-        compare_logits("/rvv.logits", "/akv-emulate.logits");
-    const int text_equal = !rvv.capture_failed && !akv.capture_failed &&
-                           rvv.exit_code == 0 && akv.exit_code == 0 &&
-                           rvv.output_size == akv.output_size &&
-                           (rvv.output_size == 0 ||
-                            memcmp(rvv.output, akv.output, rvv.output_size) == 0);
-    const int passed = text_equal && logits.valid && logits.top1_equal &&
-                       logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
-    printf("AKV_LOGITS_RECORDS=%u\n", logits.records);
-    printf("AKV_LOGITS_MAX_ABS=%.9g\n", logits.max_abs);
-    printf("AKV_LOGITS_MAX_REL=%.9g\n", logits.max_rel);
+    unlink("/qbs.logits");
+    unlink("/optimized.logits");
+    const struct run_result rvv =
+        run_variant("RVV", "/rvv.logits", 0, NULL, 0);
+#if defined(AKV_MODEL_QBS_AKV_V2)
+    const struct run_result qbs =
+        run_variant("QBS_ONLY", "/qbs.logits", 1, NULL, 0);
+    const struct run_result optimized =
+        run_variant("QBS_AKV_V2", "/optimized.logits", 1, "v2", 1);
+    const struct logits_comparison qbs_rvv_logits =
+        compare_logits("/rvv.logits", "/qbs.logits");
+    const struct logits_comparison akv_logits =
+        compare_logits("/qbs.logits", "/optimized.logits");
+    const int qbs_rvv_text_equal = output_equal(&rvv, &qbs);
+    const int akv_text_equal = output_equal(&qbs, &optimized);
+    const int passed = qbs_rvv_text_equal && qbs_rvv_logits.valid &&
+                       qbs_rvv_logits.top1_equal && akv_text_equal &&
+                       akv_logits.valid && akv_logits.top1_equal &&
+                       akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
+
+    printf("QBS_RVV_LOGITS_RECORDS=%u\n", qbs_rvv_logits.records);
+    printf("QBS_RVV_LOGITS_MAX_ABS=%.9g\n", qbs_rvv_logits.max_abs);
+    printf("QBS_RVV_LOGITS_MAX_REL=%.9g\n", qbs_rvv_logits.max_rel);
+    printf("QBS_RVV_LOGITS_TOP1_EQUAL=%d\n",
+           qbs_rvv_logits.valid && qbs_rvv_logits.top1_equal);
+    printf("QBS_RVV_TOKEN_OUTPUT_EQUAL=%d\n", qbs_rvv_text_equal);
+    printf("AKV_LOGITS_RECORDS=%u\n", akv_logits.records);
+    printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
+    printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
            (double) AKV_LOGITS_MAX_ABS_TOLERANCE);
-    printf("AKV_LOGITS_TOP1_EQUAL=%d\n", logits.valid && logits.top1_equal);
-    printf("AKV_TOKEN_OUTPUT_EQUAL=%d\n", text_equal);
+    printf("AKV_LOGITS_TOP1_EQUAL=%d\n",
+           akv_logits.valid && akv_logits.top1_equal);
+    printf("AKV_TOKEN_OUTPUT_EQUAL=%d\n", akv_text_equal);
     printf("LLAMA_GUEST_EXIT=%d\n", passed ? 0 : 1);
-    free(rvv.output);
+    free(qbs.output);
+    free(optimized.output);
+#else
+    const struct run_result akv =
+        run_variant("AKV_V1_EMULATE", "/optimized.logits", 0, "v1", 1);
+    const struct logits_comparison akv_logits =
+        compare_logits("/rvv.logits", "/optimized.logits");
+    const int akv_text_equal = output_equal(&rvv, &akv);
+    const int passed = akv_text_equal && akv_logits.valid &&
+                       akv_logits.top1_equal &&
+                       akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
+
+    printf("AKV_LOGITS_RECORDS=%u\n", akv_logits.records);
+    printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
+    printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
+    printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
+           (double) AKV_LOGITS_MAX_ABS_TOLERANCE);
+    printf("AKV_LOGITS_TOP1_EQUAL=%d\n",
+           akv_logits.valid && akv_logits.top1_equal);
+    printf("AKV_TOKEN_OUTPUT_EQUAL=%d\n", akv_text_equal);
+    printf("LLAMA_GUEST_EXIT=%d\n", passed ? 0 : 1);
     free(akv.output);
+#endif
+    free(rvv.output);
     fflush(NULL);
     sync();
     reboot(RB_POWER_OFF);

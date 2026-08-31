@@ -82,6 +82,14 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
   uint32_t kernel_version;
 } akv_attention_plan_t;
 
+typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
+  uint16_t accumulator[AKV_ATTENTION_KERNEL_Q_ROWS][AKV_HEAD_DIM_128];
+  float score[AKV_ATTENTION_KERNEL_Q_ROWS][AKV_V2_TILE_TOKENS];
+  float maximum[AKV_ATTENTION_KERNEL_Q_ROWS];
+  float sum[AKV_ATTENTION_KERNEL_Q_ROWS];
+  float old_scale[AKV_ATTENTION_KERNEL_Q_ROWS];
+} akv_attention_v2_workspace_t;
+
 typedef akv_status_t (*akv_attention_executor_t)(
     void *context, const akv_descriptor_t *descriptor, const uint16_t *mask,
     float *output, size_t output_row_stride_bytes, float scale);
@@ -142,6 +150,9 @@ void akv_v2_reference_release(akv_v2_reference_context_t *context);
 
 /* Execute an immutable plan returned by akv_attention_plan_create(). */
 akv_status_t akv_attention_execute_native(const akv_attention_plan_t *plan);
+akv_status_t akv_attention_execute_v2_native(
+    const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace);
 
 /* Call akv_native_info only after a trap-safe platform capability check. */
 uint64_t akv_native_info(void *context, unsigned index);
