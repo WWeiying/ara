@@ -116,17 +116,24 @@ whole-register save/restore operations occur once per tile around the scalar
 `expf` call and vector-exponential temporaries. This compiler artifact was
 removed before collecting the RTL baseline.
 
-The focused KV=16 RTL run produced the following result:
+The focused KV=16 RTL run produced the following whole-operator result. Every
+microarchitectural field in this table comes from the `total` counter row; the
+phase-only values in Section 1 are not mixed into this comparison.
 
 | Implementation | Cycles | Scalar inst. | Vector inst. | FP reductions | Compute-active | AXI read bytes |
 |---|---:|---:|---:|---:|---:|---:|
-| Original RVV | 130,344 | 33,969 | 4,532 | 192 | 6.7% | 325,072 |
-| AKV | 46,295 | 1,142 | 5,428 | 192 | 25.4% | 19,584 |
+| Original RVV | 137,961 | 34,769 | 4,691 | 192 | 6.8% | 334,480 |
+| AKV | 50,881 | 2,728 | 5,578 | 192 | 24.2% | 25,728 |
 | Tiled RVV | 41,293 | 7,410 | 3,662 | 24 | 14.7% | 67,904 |
 
-The measured reduction count exactly matches H1. Tiled RVV is 3.16x faster
-than the original RVV path and 10.8% faster than AKV at this short point, while
-using 3.47x the AKV external read traffic. The result establishes that the
+The measured reduction count exactly matches H1. Tiled RVV is 3.34x faster
+than the original RVV path and 1.23x faster than AKV at this short point, while
+using 2.64x the AKV AXI read traffic. The result establishes that the
 current AKV speedup is real but is not yet competitive with a strong
 token-axis software dataflow. KV=128 and 256 determine whether that conclusion
 persists after amortizing setup and tile packing.
+
+The tiled path also checks that `e16,m1` can hold all 64 token lanes before it
+executes. A shorter implementation therefore takes the unchanged one-row RVV
+fallback instead of silently processing a partial tile; this fallback passes a
+separate VLEN=512 Spike run.
