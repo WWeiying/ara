@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "05ac96ca86e130972ba0378352a5d86b2c5deb82",
+  "kv_lengths": [16, 128, 512, 1024],
+  "models": [
+    {
+      "id": "qwen25_1p5b_q4km",
+      "name": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+      "model": "/home/wangwy/llama/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json"
+    },
+    {
+      "id": "tinyllama_1p1b_q4km",
+      "name": "TinyLlama-1.1B-Chat-Q4_K_M",
+      "model": "/home/wangwy/llama/models/tinyllama-hf/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json"
+    },
+    {
+      "id": "smollm2_135m_q4km",
+      "name": "SmolLM2-135M-Instruct-Q4_K_M",
+      "model": "/home/wangwy/llama/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json"
+    }
+  ]
+}
