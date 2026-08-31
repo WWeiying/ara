@@ -25,7 +25,8 @@ AKV_TOKEN_RUN_EXIT=QBS_ONLY:0
 AKV_TOKEN_RUN_BEGIN=QBS_AKV_V2
 GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2
 GGML_RISCV_MODEL_NODE op=MUL_MAT type=f32 ne0=8 ne1=4 ne2=1 ne3=1 src0=q4_K src1=f32 fused_followers=0 fused_next=NONE name=blk.0.attn_q
-GGML_RISCV_QBS_CALL type=q4_K mode=gemm k=8 input_rows=4 output_rows=8 split_k=0
+GGML_RISCV_QBS_CALL type=q4_K mode=gemm k=8 input_rows=4 output_rows=4 split_k=0
+GGML_RISCV_QBS_CALL type=q4_K mode=gemm k=8 input_rows=4 output_rows=4 split_k=0
 GGML_RISCV_MODEL_GRAPH_END id=0
 GGML_RISCV_MODEL_GRAPH_BEGIN id=1 nodes=2
 GGML_RISCV_MODEL_NODE op=MUL_MAT type=f32 ne0=8 ne1=1 ne2=1 ne3=1 src0=q4_K src1=f32 fused_followers=0 fused_next=NONE name=blk.0.attn_q
@@ -34,10 +35,11 @@ GGML_RISCV_MODEL_NODE op=FLASH_ATTN_EXT type=f32 ne0=8 ne1=1 ne2=1 ne3=1 src0=f3
 GGML_RISCV_AKV_EXEC kernel=v2 kv_heads=1 q_rows=6 active_kv=4 attention_macs=384
 GGML_RISCV_MODEL_GRAPH_END id=1
 GGML_RISCV_QBS_COVERAGE type=Q4_K candidate_tensors=1 selected_tensors=1 candidate_elements=64 selected_elements=64 fallback_runtime=0 fallback_format_filter=0 fallback_capability=0 fallback_dimensions=0 fallback_shape=0 fallback_layout=0 fallback_profile=0 fallback_dispatch=0
-GGML_RISCV_QBS_EXEC type=Q4_K gemv_calls=1 gemm_calls=1 input_rows=5 output_rows=16 activation_elements=40 output_elements=40 dot_elements=320 split_calls=0 commands_m1=1 commands_m2=0 commands_m3=0 commands_m4=1 native_qbexec=2 emulated_commands=0 command_dot_elements=320 segmented_commands=0 context_fill=2 context_reuse=0 context_release=2
+GGML_RISCV_QBS_EXEC type=Q4_K gemv_calls=1 gemm_calls=1 input_rows=5 output_rows=16 activation_elements=40 output_elements=40 dot_elements=320 split_calls=0 commands_m1=1 commands_m2=0 commands_m3=0 commands_m4=1 native_qbexec=3 emulated_commands=0 command_dot_elements=320 segmented_commands=0 context_fill=2 context_reuse=0 context_release=2
 GGML_RISCV_AKV_COVERAGE candidate_ops=2 executed_ops=1 groups=1 executed_v1=0 executed_v2=1 groups_v1=0 groups_v2=1 kv_group_tokens=4 attention_macs=384 fallback_runtime=0 fallback_capability=0 fallback_threading=0 fallback_feature=0 fallback_shape=1 fallback_layout=0 fallback_mask=0
 AKV_TOKEN_RUN_EXIT=QBS_AKV_V2:0
 QBS_RVV_LOGITS_RECORDS=1
+QBS_RVV_LOGITS_COMPARABLE_RECORDS=1
 QBS_RVV_LOGITS_MAX_ABS=0.25
 QBS_RVV_LOGITS_MAX_REL=0.5
 QBS_RVV_LOGITS_TOP1_EQUAL=1
@@ -52,9 +54,13 @@ LLAMA_GUEST_EXIT=0
             path.write_text(trace)
             run = MODULE.parse_log(path)
         MODULE.validate_dynamic(run)
-        qbs_rows, akv_rows, node_rows = MODULE.dynamic_rows(run)
+        qbs_call_rows, qbs_node_rows, akv_rows, node_rows = MODULE.dynamic_rows(run)
         self.assertEqual([graph.phase for graph in run.graphs], ["prefill", "decode"])
-        self.assertEqual(sum(row["dot_elements"] for row in qbs_rows), 320)
+        self.assertEqual(sum(row["calls"] for row in qbs_call_rows), 3)
+        self.assertEqual(sum(row["dot_elements"] for row in qbs_call_rows), 320)
+        self.assertEqual(len(qbs_node_rows), 2)
+        self.assertEqual(sum(row["activation_elements"] for row in qbs_node_rows), 40)
+        self.assertEqual(sum(row["dot_elements"] for row in qbs_node_rows), 320)
         self.assertEqual(sum(row["attention_macs"] for row in akv_rows), 384)
         self.assertEqual(sum(row["count"] for row in node_rows), 3)
 
@@ -76,6 +82,39 @@ LLAMA_GUEST_EXIT=0
         self.assertEqual(MODULE.node_semantic(nodes, 5), "ffn_activation")
         self.assertEqual(MODULE.node_semantic(nodes, 6), "ffn_residual")
         self.assertEqual(MODULE.node_semantic(nodes, 7), "final_norm")
+
+    def test_prefill_tail_is_one_high_level_qbs_node(self):
+        graph = MODULE.Graph(
+            graph_id=0,
+            declared_nodes=1,
+            nodes=[
+                {
+                    "op": "MUL_MAT",
+                    "type": "f32",
+                    "ne0": "8",
+                    "ne1": "5",
+                    "ne2": "1",
+                    "ne3": "1",
+                    "src0": "q4_K",
+                    "src1": "f32",
+                    "name": "blk.0.attn_q",
+                }
+            ],
+            qbs_calls=[
+                {"_node_index": "0", "type": "q4_K", "mode": "gemm", "k": "8", "input_rows": "4", "output_rows": "4", "split_k": "0"},
+                {"_node_index": "0", "type": "q4_K", "mode": "gemm", "k": "8", "input_rows": "4", "output_rows": "4", "split_k": "0"},
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "8", "input_rows": "1", "output_rows": "4", "split_k": "0"},
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "8", "input_rows": "1", "output_rows": "4", "split_k": "0"},
+            ],
+            closed=True,
+        )
+        run = MODULE.ParsedRun([graph], {}, {}, {}, {}, {}, False, 0, 0)
+        qbs_call_rows, qbs_node_rows, _, _ = MODULE.dynamic_rows(run)
+        self.assertEqual(sum(row["calls"] for row in qbs_call_rows), 4)
+        self.assertEqual(len(qbs_node_rows), 1)
+        self.assertEqual(qbs_node_rows[0]["mode"], "gemm+gemv_tail")
+        self.assertEqual(qbs_node_rows[0]["activation_elements"], 40)
+        self.assertEqual(qbs_node_rows[0]["dot_elements"], 320)
 
 
 if __name__ == "__main__":

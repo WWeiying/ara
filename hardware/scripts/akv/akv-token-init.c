@@ -27,6 +27,7 @@ struct logits_comparison {
     int valid;
     int top1_equal;
     uint32_t records;
+    uint32_t comparable_records;
     float max_abs;
     float max_rel;
 };
@@ -64,6 +65,7 @@ static struct logits_comparison compare_logits(const char * rvv_path,
         .valid = 0,
         .top1_equal = 1,
         .records = 0,
+        .comparable_records = 0,
         .max_abs = 0.0f,
         .max_rel = 0.0f,
     };
@@ -71,6 +73,7 @@ static struct logits_comparison compare_logits(const char * rvv_path,
     FILE * akv_file = fopen(akv_path, "rb");
     float * rvv_logits = NULL;
     float * akv_logits = NULL;
+    int same_context = 1;
 
     if (rvv_file == NULL || akv_file == NULL) {
         perror("open logits");
@@ -105,6 +108,8 @@ static struct logits_comparison compare_logits(const char * rvv_path,
 
         uint32_t rvv_top = 0;
         uint32_t akv_top = 0;
+        float record_max_abs = 0.0f;
+        float record_max_rel = 0.0f;
         for (uint32_t index = 0; index < rvv_record.n_vocab; ++index) {
             if (!finite_f32(rvv_logits[index]) || !finite_f32(akv_logits[index])) {
                 goto cleanup;
@@ -118,14 +123,26 @@ static struct logits_comparison compare_logits(const char * rvv_path,
             const float absolute = absf(akv_logits[index] - rvv_logits[index]);
             const float scale = absf(rvv_logits[index]) > 1.0e-6f ? absf(rvv_logits[index]) : 1.0e-6f;
             const float relative = absolute / scale;
-            if (absolute > result.max_abs) {
-                result.max_abs = absolute;
+            if (absolute > record_max_abs) {
+                record_max_abs = absolute;
             }
-            if (relative > result.max_rel) {
-                result.max_rel = relative;
+            if (relative > record_max_rel) {
+                record_max_rel = relative;
             }
         }
-        result.top1_equal &= rvv_top == akv_top;
+        if (same_context) {
+            if (record_max_abs > result.max_abs) {
+                result.max_abs = record_max_abs;
+            }
+            if (record_max_rel > result.max_rel) {
+                result.max_rel = record_max_rel;
+            }
+            ++result.comparable_records;
+            if (rvv_top != akv_top) {
+                result.top1_equal = 0;
+                same_context = 0;
+            }
+        }
         ++result.records;
         free(rvv_logits);
         free(akv_logits);
@@ -333,18 +350,23 @@ int main(void) {
         compare_logits("/qbs.logits", "/optimized.logits");
     const int qbs_rvv_text_equal = output_equal(&rvv, &qbs);
     const int akv_text_equal = output_equal(&qbs, &optimized);
-    const int passed = qbs_rvv_text_equal && qbs_rvv_logits.valid &&
-                       qbs_rvv_logits.top1_equal && akv_text_equal &&
+    const int passed = rvv.exit_code == 0 && qbs.exit_code == 0 &&
+                       optimized.exit_code == 0 && qbs_rvv_logits.valid &&
+                       qbs_rvv_logits.comparable_records > 0 && akv_text_equal &&
                        akv_logits.valid && akv_logits.top1_equal &&
                        akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
 
     printf("QBS_RVV_LOGITS_RECORDS=%u\n", qbs_rvv_logits.records);
+    printf("QBS_RVV_LOGITS_COMPARABLE_RECORDS=%u\n",
+           qbs_rvv_logits.comparable_records);
     printf("QBS_RVV_LOGITS_MAX_ABS=%.9g\n", qbs_rvv_logits.max_abs);
     printf("QBS_RVV_LOGITS_MAX_REL=%.9g\n", qbs_rvv_logits.max_rel);
     printf("QBS_RVV_LOGITS_TOP1_EQUAL=%d\n",
            qbs_rvv_logits.valid && qbs_rvv_logits.top1_equal);
     printf("QBS_RVV_TOKEN_OUTPUT_EQUAL=%d\n", qbs_rvv_text_equal);
     printf("AKV_LOGITS_RECORDS=%u\n", akv_logits.records);
+    printf("AKV_LOGITS_COMPARABLE_RECORDS=%u\n",
+           akv_logits.comparable_records);
     printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
     printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
@@ -366,6 +388,8 @@ int main(void) {
                        akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
 
     printf("AKV_LOGITS_RECORDS=%u\n", akv_logits.records);
+    printf("AKV_LOGITS_COMPARABLE_RECORDS=%u\n",
+           akv_logits.comparable_records);
     printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
     printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",

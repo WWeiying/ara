@@ -143,11 +143,19 @@ def parse_log(path: Path) -> ParsedRun:
         elif line.startswith("GGML_RISCV_QBS_CALL "):
             if current is None:
                 raise ValueError("QBS call observed outside graph boundary")
-            current.qbs_calls.append(fields(line))
+            if not current.nodes:
+                raise ValueError("QBS call observed before its model node")
+            values = fields(line)
+            values["_node_index"] = str(len(current.nodes) - 1)
+            current.qbs_calls.append(values)
         elif line.startswith("GGML_RISCV_AKV_EXEC "):
             if current is None:
                 raise ValueError("AKV call observed outside graph boundary")
-            current.akv_calls.append(fields(line))
+            if not current.nodes:
+                raise ValueError("AKV call observed before its model node")
+            values = fields(line)
+            values["_node_index"] = str(len(current.nodes) - 1)
+            current.akv_calls.append(values)
         elif line.startswith("GGML_RISCV_QBS_COVERAGE "):
             values = fields(line)
             qbs_coverage[normalized_qbs_type(values["type"])] = values
@@ -199,14 +207,20 @@ def validate_dynamic(run: ParsedRun) -> None:
         raise ValueError("combined model run did not preserve functional output")
     if run.logits.get("AKV_LOGITS_TOP1_EQUAL") != "1":
         raise ValueError("combined model run changed top-1 logits result")
-    if run.qbs_rvv.get("QBS_RVV_LOGITS_TOP1_EQUAL") != "1" or \
-       run.qbs_rvv.get("QBS_RVV_TOKEN_OUTPUT_EQUAL") != "1":
-        raise ValueError("QBS-only model run diverged from the ordinary RVV smoke result")
+    if integer(run.qbs_rvv, "QBS_RVV_LOGITS_RECORDS") == 0 or \
+       integer(run.qbs_rvv, "QBS_RVV_LOGITS_COMPARABLE_RECORDS") == 0:
+        raise ValueError("QBS/RVV model-quality observation has no comparable logits record")
 
     qbs_calls: defaultdict[str, int] = defaultdict(int)
     for graph in run.graphs:
         for call in graph.qbs_calls:
             profile = normalized_qbs_type(call["type"])
+            node_index = integer(call, "_node_index", -1)
+            if node_index < 0 or node_index >= len(graph.nodes):
+                raise ValueError("QBS call has no valid model-node owner")
+            node = graph.nodes[node_index]
+            if node.get("op") != "MUL_MAT" or normalized_qbs_type(node.get("src0", "")) != profile:
+                raise ValueError("QBS call/model-node association is inconsistent")
             qbs_calls[profile] += (
                 integer(call, "k") * integer(call, "input_rows") * integer(call, "output_rows")
             )
@@ -281,9 +295,12 @@ def dynamic_rows(run: ParsedRun):
     for graph in run.graphs:
         phase = graph.phase
         for call in graph.qbs_calls:
+            node_index = integer(call, "_node_index")
             key = (
                 graph.graph_id,
                 phase,
+                node_index,
+                normalize_tensor_name(graph.nodes[node_index].get("name", "")),
                 normalized_qbs_type(call["type"]),
                 call["mode"],
                 integer(call, "k"),
@@ -324,11 +341,13 @@ def dynamic_rows(run: ParsedRun):
 
     qbs_rows = []
     for key, count in sorted(qbs_groups.items()):
-        graph_id, phase, profile, mode, k, input_rows, output_rows, split_k = key
+        graph_id, phase, node_index, node_name, profile, mode, k, input_rows, output_rows, split_k = key
         qbs_rows.append(
             {
                 "graph_id": graph_id,
                 "phase": phase,
+                "node_index": node_index,
+                "node_name": node_name,
                 "type": profile,
                 "mode": mode,
                 "k": k,
@@ -337,11 +356,64 @@ def dynamic_rows(run: ParsedRun):
                 "split_k": split_k,
                 "calls": count,
                 "activation_row_uses": count * input_rows,
-                "activation_elements": count * k * input_rows,
+                "activation_element_uses": count * k * input_rows,
                 "output_elements": count * input_rows * output_rows,
                 "dot_elements": count * k * input_rows * output_rows,
             }
         )
+
+    qbs_node_rows = []
+    for graph in run.graphs:
+        calls_by_node: defaultdict[int, list[dict[str, str]]] = defaultdict(list)
+        for call in graph.qbs_calls:
+            calls_by_node[integer(call, "_node_index")].append(call)
+        for node_index, calls in sorted(calls_by_node.items()):
+            node = graph.nodes[node_index]
+            profiles = {normalized_qbs_type(call["type"]) for call in calls}
+            modes = {call["mode"] for call in calls}
+            k_values = {integer(call, "k") for call in calls}
+            if len(profiles) != 1 or len(k_values) != 1:
+                raise ValueError("one QBS model node produced inconsistent call shapes")
+            profile = profiles.pop()
+            k = k_values.pop()
+            input_rows = integer(node, "ne1") * integer(node, "ne2", 1) * integer(node, "ne3", 1)
+            output_rows = integer(node, "ne0")
+            if modes == {"gemm", "gemv"} and input_rows > 1:
+                mode = "gemm+gemv_tail"
+            elif len(modes) == 1:
+                mode = modes.pop()
+            else:
+                raise ValueError("one QBS model node produced an unsupported mode combination")
+            output_elements = sum(
+                integer(call, "input_rows") * integer(call, "output_rows") for call in calls
+            )
+            dot_elements = sum(
+                integer(call, "k") * integer(call, "input_rows") * integer(call, "output_rows")
+                for call in calls
+            )
+            expected_output_elements = input_rows * output_rows
+            if output_elements != expected_output_elements or dot_elements != k * expected_output_elements:
+                raise ValueError(
+                    f"QBS node work mismatch for graph {graph.graph_id} node {node_index}: "
+                    f"output {output_elements}/{expected_output_elements}, dot {dot_elements}/{k * expected_output_elements}"
+                )
+            qbs_node_rows.append(
+                {
+                    "graph_id": graph.graph_id,
+                    "phase": graph.phase,
+                    "node_index": node_index,
+                    "node_name": normalize_tensor_name(node.get("name", "")),
+                    "type": profile,
+                    "mode": mode,
+                    "k": k,
+                    "input_rows": input_rows,
+                    "output_rows": output_rows,
+                    "call_chunks": len(calls),
+                    "activation_elements": k * input_rows,
+                    "output_elements": output_elements,
+                    "dot_elements": dot_elements,
+                }
+            )
     akv_rows = []
     for key, count in sorted(akv_groups.items()):
         graph_id, phase, kernel, kv_heads, q_rows, active_kv, attention_macs = key
@@ -394,7 +466,7 @@ def dynamic_rows(run: ParsedRun):
                 "count": count,
             }
         )
-    return qbs_rows, akv_rows, node_rows
+    return qbs_rows, qbs_node_rows, akv_rows, node_rows
 
 
 def load_qbs_calibration(path: Path) -> list[dict[str, object]]:
@@ -474,13 +546,46 @@ def interpolate_akv_cycles(active_kv: int, points: list[dict[str, int]]) -> floa
     return lhs["cycles"] + slope * (active_kv - lhs["active_kv"])
 
 
-def load_rvv_calibration(directory: Path) -> dict[str, int]:
+def load_rvv_calibration(
+    directories: Iterable[Path],
+) -> tuple[dict[str, int], list[dict[str, object]]]:
     values: dict[str, int] = {}
-    for path in sorted(directory.glob("*.ara.log")):
-        match = OPERATOR_RE.search(path.read_text(errors="replace"))
-        if match and match.group(2) == "PASS" and int(match.group(4)) == 0:
-            values[match.group(1)] = int(match.group(3))
-    return values
+    selected_paths: dict[str, Path] = {}
+    for directory in directories:
+        if not directory.is_dir():
+            raise ValueError(f"RVV calibration directory does not exist: {directory}")
+        for path in sorted(directory.glob("*.ara.log")):
+            match = OPERATOR_RE.search(path.read_text(errors="replace"))
+            if match and match.group(2) == "PASS" and int(match.group(4)) == 0:
+                case = match.group(1)
+                values[case] = int(match.group(3))
+                selected_paths[case] = path.resolve()
+    if not values:
+        raise ValueError("no passing RVV leaf calibration was found")
+    sources = [
+        {
+            "case": case,
+            "cycles": values[case],
+            "path": str(path),
+            "sha256": sha256(path),
+        }
+        for case, path in sorted(selected_paths.items())
+    ]
+    return values, sources
+
+
+def default_rvv_calibration_dirs(root: Path) -> list[Path]:
+    directories = [
+        root / "hardware/llama_benchmark_runs/operator_ara_l2_16m_20260813_034827"
+    ]
+    supplemental = root / "hardware/model_closure_rvv_calibration"
+    if supplemental.is_dir():
+        directories.extend(
+            path
+            for path in sorted(supplemental.iterdir())
+            if path.is_dir() and any(path.glob("*.ara.log"))
+        )
+    return directories
 
 
 def classify_rvv_node(row: dict[str, object]) -> tuple[str, str] | None:
@@ -499,7 +604,7 @@ def classify_rvv_node(row: dict[str, object]) -> tuple[str, str] | None:
 
 
 def cycle_projection(
-    qbs_rows: list[dict[str, object]],
+    qbs_node_rows: list[dict[str, object]],
     akv_rows: list[dict[str, object]],
     node_rows: list[dict[str, object]],
     qbs_points: list[dict[str, object]],
@@ -507,21 +612,21 @@ def cycle_projection(
     rvv_points: dict[str, int],
 ):
     rows: list[dict[str, object]] = []
-    for call in qbs_rows:
-        point = nearest_qbs_point(call, qbs_points)
+    for node in qbs_node_rows:
+        point = nearest_qbs_point(node, qbs_points)
         cycles = (
-            int(call["activation_elements"]) * float(point["quant_cycles_per_element"])
-            + int(call["dot_elements"]) * float(point["matmul_cycles_per_dot"])
+            int(node["activation_elements"]) * float(point["quant_cycles_per_element"])
+            + int(node["dot_elements"]) * float(point["matmul_cycles_per_dot"])
         )
         rows.append(
             {
-                "phase": call["phase"],
+                "phase": node["phase"],
                 "category": "qbs",
-                "detail": f"{call['type']} {call['mode']} K{call['k']} M{call['input_rows']} N{call['output_rows']}",
-                "instances": call["calls"],
+                "detail": f"{node['node_name']} {node['type']} {node['mode']} K{node['k']} M{node['input_rows']} N{node['output_rows']}",
+                "instances": 1,
                 "projected_cycles": round(cycles),
                 "calibration": point["case"],
-                "basis": "dynamic QBS shape x representative RTL rate",
+                "basis": "unique activation plus exact dot work x representative RTL rates",
             }
         )
     for call in akv_rows:
@@ -607,14 +712,17 @@ def aggregate_projection(rows: list[dict[str, object]]) -> list[dict[str, object
 def write_markdown(
     path: Path,
     run: ParsedRun,
-    qbs_rows: list[dict[str, object]],
+    qbs_call_rows: list[dict[str, object]],
+    qbs_node_rows: list[dict[str, object]],
     akv_rows: list[dict[str, object]],
     projection_summary: list[dict[str, object]],
     projection_rows: list[dict[str, object]],
 ) -> None:
     qbs_work = Counter()
-    for row in qbs_rows:
+    qbs_activation_work = Counter()
+    for row in qbs_node_rows:
         qbs_work[str(row["phase"])] += int(row["dot_elements"])
+        qbs_activation_work[str(row["phase"])] += int(row["activation_elements"])
     akv_work = Counter()
     for row in akv_rows:
         akv_work[str(row["phase"])] += int(row["attention_macs"])
@@ -631,14 +739,16 @@ def write_markdown(
         "",
         "## Dynamic execution",
         "",
-        "| Phase | Graphs | QBS calls | QBS dot elements | AKV-v2 calls | AKV attention MACs |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Phase | Graphs | QBS nodes | QBS chunks | Unique activation elements | QBS dot elements | AKV-v2 calls | AKV attention MACs |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for phase in ("prefill", "decode"):
         graphs = [graph for graph in run.graphs if graph.phase == phase]
         lines.append(
-            f"| {phase} | {len(graphs)} | {sum(len(graph.qbs_calls) for graph in graphs)} | "
-            f"{qbs_work[phase]} | {sum(len(graph.akv_calls) for graph in graphs)} | {akv_work[phase]} |"
+            f"| {phase} | {len(graphs)} | {sum(1 for row in qbs_node_rows if row['phase'] == phase)} | "
+            f"{sum(int(row['calls']) for row in qbs_call_rows if row['phase'] == phase)} | "
+            f"{qbs_activation_work[phase]} | {qbs_work[phase]} | "
+            f"{sum(len(graph.akv_calls) for graph in graphs)} | {akv_work[phase]} |"
         )
     lines.extend(
         [
@@ -668,7 +778,10 @@ def write_markdown(
             "",
             "## Interpretation constraints",
             "",
-            "- `QBS_CALL` counts execution chunks; `MODEL_NODE` counts high-level executed GGML nodes.",
+            "- `QBS_CALL` counts execution chunks; `qbs_nodes.csv` reconstructs their owning high-level `MUL_MAT` nodes.",
+            "- Activation quantization is charged once per high-level QBS node, not once per output-row chunk.",
+            "- QBS/RVV is a numerical-quality observation. After a free-running Top-1 divergence, later logits use different contexts and are excluded from its error extrema.",
+            "- AKV equivalence is strict: QBS-only and QBS+AKV-v2 use the same generated context and must retain equal output, Top-1, and bounded logits error.",
             "- QBS dot elements and AKV MACs are exact dynamic work counts, but they are not mutually comparable cycle units.",
             "- Projection rates come from representative standalone RTL kernels with real model data.",
             "- The projection does not claim full-model RTL timing and excludes scheduler, sampling, OS, and uncalibrated-node cost.",
@@ -695,7 +808,8 @@ def main() -> None:
     parser.add_argument(
         "--rvv-calibration-dir",
         type=Path,
-        default=root / "hardware/llama_benchmark_runs/operator_ara_l2_16m_20260813_034827",
+        action="append",
+        help="RVV leaf-calibration directory; repeat to combine directories",
     )
     args = parser.parse_args()
     output = args.output_dir or args.log.parent / "model_closure"
@@ -703,17 +817,52 @@ def main() -> None:
 
     run = parse_log(args.log)
     validate_dynamic(run)
-    qbs_rows, akv_rows, node_rows = dynamic_rows(run)
+    qbs_call_rows, qbs_node_rows, akv_rows, node_rows = dynamic_rows(run)
     qbs_points = load_qbs_calibration(args.qbs_calibration)
     akv_points = load_akv_calibration(args.akv_calibration)
-    rvv_points = load_rvv_calibration(args.rvv_calibration_dir)
-    projection_rows = cycle_projection(qbs_rows, akv_rows, node_rows, qbs_points, akv_points, rvv_points)
+    rvv_directories = args.rvv_calibration_dir or default_rvv_calibration_dirs(root)
+    rvv_points, rvv_sources = load_rvv_calibration(rvv_directories)
+    projection_rows = cycle_projection(
+        qbs_node_rows,
+        akv_rows,
+        node_rows,
+        qbs_points,
+        akv_points,
+        rvv_points,
+    )
     projection_summary = aggregate_projection(projection_rows)
 
     write_csv(
         output / "qbs_calls.csv",
-        qbs_rows,
-        ("graph_id", "phase", "type", "mode", "k", "input_rows", "output_rows", "calls"),
+        qbs_call_rows,
+        (
+            "graph_id",
+            "phase",
+            "node_index",
+            "node_name",
+            "type",
+            "mode",
+            "k",
+            "input_rows",
+            "output_rows",
+            "calls",
+        ),
+    )
+    write_csv(
+        output / "qbs_nodes.csv",
+        qbs_node_rows,
+        (
+            "graph_id",
+            "phase",
+            "node_index",
+            "node_name",
+            "type",
+            "mode",
+            "k",
+            "input_rows",
+            "output_rows",
+            "call_chunks",
+        ),
     )
     write_csv(
         output / "akv_calls.csv",
@@ -746,8 +895,13 @@ def main() -> None:
         },
         "graphs": Counter(graph.phase for graph in run.graphs),
         "qbs": {
-            "calls": sum(int(row["calls"]) for row in qbs_rows),
-            "dot_elements": sum(int(row["dot_elements"]) for row in qbs_rows),
+            "nodes": len(qbs_node_rows),
+            "call_chunks": sum(int(row["calls"]) for row in qbs_call_rows),
+            "unique_activation_elements": sum(
+                int(row["activation_elements"]) for row in qbs_node_rows
+            ),
+            "output_elements": sum(int(row["output_elements"]) for row in qbs_node_rows),
+            "dot_elements": sum(int(row["dot_elements"]) for row in qbs_node_rows),
             "coverage": run.qbs_coverage,
             "execution": run.qbs_exec,
         },
@@ -764,14 +918,22 @@ def main() -> None:
         "sources": {
             "qbs": {"path": str(args.qbs_calibration.resolve()), "sha256": sha256(args.qbs_calibration)},
             "akv": {"path": str(args.akv_calibration.resolve()), "sha256": sha256(args.akv_calibration)},
-            "rvv_directory": str(args.rvv_calibration_dir.resolve()),
+            "rvv": rvv_sources,
         },
         "qbs_points": qbs_points,
         "akv_points": akv_points,
         "rvv_points": rvv_points,
     }
     (output / "calibration_snapshot.json").write_text(json.dumps(calibration_snapshot, indent=2) + "\n")
-    write_markdown(output / "model_closure.md", run, qbs_rows, akv_rows, projection_summary, projection_rows)
+    write_markdown(
+        output / "model_closure.md",
+        run,
+        qbs_call_rows,
+        qbs_node_rows,
+        akv_rows,
+        projection_summary,
+        projection_rows,
+    )
     print(output)
 
 

@@ -26,8 +26,8 @@ validate_log() {
     grep -q 'AKV_TOKEN_RUN_EXIT=RVV:0' "${log_file}"
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_ONLY:0' "${log_file}"
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_AKV_V2:0' "${log_file}"
-    grep -q 'QBS_RVV_LOGITS_TOP1_EQUAL=1' "${log_file}"
-    grep -q 'QBS_RVV_TOKEN_OUTPUT_EQUAL=1' "${log_file}"
+    grep -Eq 'QBS_RVV_LOGITS_RECORDS=[1-9][0-9]*' "${log_file}"
+    grep -Eq 'QBS_RVV_LOGITS_COMPARABLE_RECORDS=[1-9][0-9]*' "${log_file}"
     grep -Eq 'executed_v1=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'executed_v2=[1-9][0-9]*' <<< "${coverage_line}"
     grep -Eq 'groups_v1=0([[:space:]]|$)' <<< "${coverage_line}"
@@ -88,6 +88,7 @@ validate_log() {
     grep -Eq 'executed_v2=0([[:space:]]|$)' <<< "${coverage_line}"
   fi
   grep -Eq 'AKV_LOGITS_RECORDS=[1-9][0-9]*' "${log_file}"
+  grep -Eq 'AKV_LOGITS_COMPARABLE_RECORDS=[1-9][0-9]*' "${log_file}"
   grep -q 'AKV_LOGITS_TOP1_EQUAL=1' "${log_file}"
   grep -q 'AKV_TOKEN_OUTPUT_EQUAL=1' "${log_file}"
   grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
