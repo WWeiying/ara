@@ -68,13 +68,30 @@ if [[ ${execution} != --spike-only && ! -x ${simv} ]]; then
   exit 1
 fi
 
+source_commit=$(git -C "${repo_root}" rev-parse HEAD)
+source_dirty=false
+if ! git -C "${repo_root}" diff-index --quiet HEAD --; then
+  source_dirty=true
+fi
+capture_manifest_sha256=missing
+if [[ -f ${capture_root}/tensor.sha256 ]]; then
+  capture_manifest_sha256=$(sha256sum -- "${capture_root}/tensor.sha256" | awk '{print $1}')
+fi
+simv_sha256=not-applicable
+if [[ ${execution} != --spike-only ]]; then
+  simv_sha256=$(sha256sum -- "${simv}" | awk '{print $1}')
+fi
+
 mkdir -p "${run_dir}"
 ln -sfn "${run_dir}" "${run_root}/decode_attention_core_${implementation}_latest"
 ln -sfn "${run_dir}" "${run_root}/decode_attention_core_${implementation}_kv${kvlen}_latest"
 printf 'implementation=%s\ncase_id=%s\nsimv=%s\n' \
   "${implementation}" "${case_id}" "${simv}" > "${run_dir}/run.conf"
-printf 'effective_kv=%s\ncapture_root=%s\n' \
-  "${kvlen}" "${capture_root}" >> "${run_dir}/run.conf"
+printf 'effective_kv=%s\ncapture_root=%s\nsource_commit=%s\nsource_dirty=%s\n' \
+  "${kvlen}" "${capture_root}" "${source_commit}" "${source_dirty}" \
+  >> "${run_dir}/run.conf"
+printf 'capture_manifest_sha256=%s\nsimv_sha256=%s\n' \
+  "${capture_manifest_sha256}" "${simv_sha256}" >> "${run_dir}/run.conf"
 
 # Data generation and application objects are shared by all invocations. Keep
 # this section atomic so ref and RVV simulations may run concurrently without
@@ -88,6 +105,9 @@ printf 'effective_kv=%s\ncapture_root=%s\n' \
     "${run_dir}/${app}.${implementation}.spike"
   cp "${apps_dir}/bin/${app}.spike.dump" \
     "${run_dir}/${app}.${implementation}.spike.dump"
+  printf 'spike_elf_sha256=%s\n' \
+    "$(sha256sum -- "${run_dir}/${app}.${implementation}.spike" | awk '{print $1}')" \
+    >> "${run_dir}/run.conf"
 
   if [[ ${execution} != --spike-only ]]; then
     make -C "${apps_dir}" "${app}" sim_l2_mb=16 \
@@ -96,6 +116,9 @@ printf 'effective_kv=%s\ncapture_root=%s\n' \
     cp "${apps_dir}/bin/${app}" "${run_dir}/${app}.${implementation}.elf"
     cp "${apps_dir}/${app}/${app}.dump" \
       "${run_dir}/${app}.${implementation}.dump"
+    printf 'ara_elf_sha256=%s\n' \
+      "$(sha256sum -- "${run_dir}/${app}.${implementation}.elf" | awk '{print $1}')" \
+      >> "${run_dir}/run.conf"
   fi
 ) 9> "${run_root}/.attention-build.lock"
 

@@ -15,6 +15,16 @@ PHASE_NAMES = {
     "pack": "online_kv",
     "matmul": "output_norm",
 }
+RUN_CONFIG_FIELDS = (
+    "capture_root",
+    "source_commit",
+    "source_dirty",
+    "capture_manifest_sha256",
+    "simv",
+    "simv_sha256",
+    "spike_elf_sha256",
+    "ara_elf_sha256",
+)
 
 
 def newest_complete_run(root: Path, implementation: str, effective_kv: int):
@@ -64,7 +74,7 @@ def parse_run(implementation: str, effective_kv: int, run, ara_log: Path, perf_l
             {
                 "implementation": implementation,
                 "effective_kv": effective_kv,
-                "capture_root": run_config.get("capture_root", ""),
+                **{key: run_config.get(key, "") for key in RUN_CONFIG_FIELDS},
                 "run_dir": str(run),
                 "status": status,
                 "kernel_cycles": kernel_cycles,
@@ -99,7 +109,7 @@ def main():
     leading = [
         "implementation",
         "effective_kv",
-        "capture_root",
+        *RUN_CONFIG_FIELDS,
         "run_dir",
         "status",
         "kernel_cycles",
