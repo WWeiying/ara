@@ -14,6 +14,7 @@ CAPTURE_ROOT = Path(os.environ.get(
 MAGIC = 0x514B4D4F
 ATTENTION_RVV = 1 << 0
 ATTENTION_AKV = 1 << 1
+ATTENTION_TILED_RVV = 1 << 2
 
 KIND = {
     "linear_q4": 1,
@@ -120,9 +121,12 @@ def make_spec(case_id, implementation):
                 flags |= ATTENTION_RVV
             elif implementation == "akv":
                 flags |= ATTENTION_AKV
+            elif implementation == "tiled_rvv":
+                flags |= ATTENTION_TILED_RVV
             elif implementation != "ref":
                 raise SystemExit(
-                    "attention implementation must be 'ref', 'rvv', or 'akv'"
+                    "attention implementation must be 'ref', 'rvv', "
+                    "'tiled_rvv', or 'akv'"
                 )
             blobs["input_b"] = ref("key")
             blobs["input_c"] = ref("value")
@@ -139,7 +143,9 @@ def make_spec(case_id, implementation):
 
 def main():
     if len(sys.argv) not in (2, 3):
-        raise SystemExit("usage: gen_data.py CASE_ID [ref|rvv]")
+        raise SystemExit(
+            "usage: gen_data.py CASE_ID [ref|rvv|tiled_rvv|akv]"
+        )
     case_id = sys.argv[1]
     implementation = sys.argv[2] if len(sys.argv) == 3 else "ref"
     kind, flags, args, params, blobs = make_spec(case_id, implementation)

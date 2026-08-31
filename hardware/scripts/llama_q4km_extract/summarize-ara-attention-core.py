@@ -88,7 +88,7 @@ def main():
     output = args.output or args.run_root / "attention_core_summary.csv"
 
     rows = []
-    for implementation in ("ref", "rvv"):
+    for implementation in ("ref", "rvv", "tiled_rvv", "akv"):
         for effective_kv in (16, 128, 256):
             selected = newest_complete_run(args.run_root, implementation, effective_kv)
             if selected is not None:

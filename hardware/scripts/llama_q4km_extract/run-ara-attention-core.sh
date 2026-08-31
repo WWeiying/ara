@@ -42,8 +42,8 @@ run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 
 if [[ ${implementation} != ref && ${implementation} != rvv &&
-      ${implementation} != akv ]]; then
-  echo "usage: $0 [ref|rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+      ${implementation} != tiled_rvv && ${implementation} != akv ]]; then
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
@@ -52,7 +52,7 @@ if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ${implementation} == akv && ${execution} != --ara-only ]]; then

@@ -99,3 +99,34 @@ The implementation advances only if all of the following hold:
 
 No RTL or synthesis change is part of this baseline node. A later AKV change
 requires the measured comparison to identify a specific critical mechanism.
+
+## 5. Implemented checkpoint
+
+The portable path is implemented in `apps/llama_q4km_operator/main.c` and is
+selected with the `tiled_rvv` implementation name. It uses only standard RVV
+instructions and falls back to the existing one-row RVV path when the strict
+D128/GQA6/decode shape contract is not met. Spike validation passes with the
+same captured outputs at effective KV lengths 16, 128, and 256.
+
+The first optimized build exposed compiler-generated whole-vector spills: `-O3`
+fully unrolled the six-head softmax loop after inlining the vector exponential.
+Keeping that loop as a non-inlined, non-unrolled function removed all
+whole-register spill traffic from the main tiled loop; the remaining ten
+whole-register save/restore operations occur once per tile around the scalar
+`expf` call and vector-exponential temporaries. This compiler artifact was
+removed before collecting the RTL baseline.
+
+The focused KV=16 RTL run produced the following result:
+
+| Implementation | Cycles | Scalar inst. | Vector inst. | FP reductions | Compute-active | AXI read bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| Original RVV | 130,344 | 33,969 | 4,532 | 192 | 6.7% | 325,072 |
+| AKV | 46,295 | 1,142 | 5,428 | 192 | 25.4% | 19,584 |
+| Tiled RVV | 41,293 | 7,410 | 3,662 | 24 | 14.7% | 67,904 |
+
+The measured reduction count exactly matches H1. Tiled RVV is 3.16x faster
+than the original RVV path and 10.8% faster than AKV at this short point, while
+using 3.47x the AKV external read traffic. The result establishes that the
+current AKV speedup is real but is not yet competitive with a strong
+token-axis software dataflow. KV=128 and 256 determine whether that conclusion
+persists after amortizing setup and tile packing.

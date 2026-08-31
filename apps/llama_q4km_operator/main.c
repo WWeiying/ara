@@ -28,6 +28,7 @@ enum {
 enum {
   CASE_FLAG_ATTENTION_RVV = 1u << 0,
   CASE_FLAG_ATTENTION_AKV = 1u << 1,
+  CASE_FLAG_ATTENTION_TILED_RVV = 1u << 2,
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
@@ -35,6 +36,8 @@ enum {
   MAX_ATTENTION_TOKENS = 15,
   MAX_ATTENTION_HEADS = 12,
   MAX_ATTENTION_KV = 256,
+  TILED_RVV_Q_ROWS = 6,
+  TILED_RVV_KV_TILE = 64,
 };
 
 typedef struct {
@@ -67,6 +70,19 @@ static _Float16 attention_accum_f16[MAX_ATTENTION_DIM];
 static _Float16 attention_query_group_f16[AKV_MAX_Q_ROWS *
                                           MAX_ATTENTION_DIM]
     __attribute__((aligned(64)));
+static _Float16 attention_tiled_query[TILED_RVV_Q_ROWS][MAX_ATTENTION_DIM]
+    __attribute__((aligned(64)));
+static _Float16 attention_tiled_accum[TILED_RVV_Q_ROWS][MAX_ATTENTION_DIM]
+    __attribute__((aligned(64)));
+static _Float16 attention_tiled_key[MAX_ATTENTION_DIM][TILED_RVV_KV_TILE]
+    __attribute__((aligned(64)));
+static _Float16 attention_tiled_value[TILED_RVV_KV_TILE][MAX_ATTENTION_DIM]
+    __attribute__((aligned(64)));
+static float attention_tiled_score[TILED_RVV_Q_ROWS][TILED_RVV_KV_TILE]
+    __attribute__((aligned(64)));
+static float attention_tiled_maximum[TILED_RVV_Q_ROWS];
+static float attention_tiled_sum[TILED_RVV_Q_ROWS];
+static float attention_tiled_old_scale[TILED_RVV_Q_ROWS];
 static akv_device_t attention_akv_device;
 static akv_attention_plan_t attention_akv_plan;
 
@@ -439,6 +455,262 @@ static int attention_active_prefix(const uint16_t *mask, int kvlen) {
   return active;
 }
 
+static float reduce_max_f32m2(vfloat32m2_t values, size_t vl) {
+  const vfloat32m1_t initial =
+      __riscv_vfmv_v_f_f32m1(negative_infinity_f32(), 1);
+  const vfloat32m1_t reduced =
+      __riscv_vfredmax_vs_f32m2_f32m1(values, initial, vl);
+  return __riscv_vfmv_f_s_f32m1_f32(reduced);
+}
+
+static float reduce_sum_f32m2(vfloat32m2_t values, size_t vl) {
+  const vfloat32m1_t initial = __riscv_vfmv_v_f_f32m1(0.0f, 1);
+  const vfloat32m1_t reduced =
+      __riscv_vfredusum_vs_f32m2_f32m1(values, initial, vl);
+  return __riscv_vfmv_f_s_f32m1_f32(reduced);
+}
+
+static void prepare_tiled_query_rvv(const float *query, int dim) {
+  for (int head = 0; head < TILED_RVV_Q_ROWS; ++head) {
+    convert_f32_to_f16_rvv(attention_tiled_query[head],
+                           query + (size_t)head * dim, dim);
+    for (int offset = 0; offset < dim;) {
+      const size_t vl = __riscv_vsetvl_e16m2(dim - offset);
+      __riscv_vse16_v_f16m2(
+          attention_tiled_accum[head] + offset,
+          __riscv_vfmv_v_f_f16m2((_Float16)0.0f, vl), vl);
+      offset += (int)vl;
+    }
+    attention_tiled_maximum[head] = negative_infinity_f32();
+    attention_tiled_sum[head] = 0.0f;
+  }
+}
+
+static void pack_tiled_kv_rvv(const _Float16 *key, const _Float16 *value,
+                              int dim, int tile_tokens) {
+  const ptrdiff_t key_stride =
+      (ptrdiff_t)TILED_RVV_KV_TILE * (ptrdiff_t)sizeof(_Float16);
+  for (int token = 0; token < tile_tokens; ++token) {
+    for (int offset = 0; offset < dim;) {
+      const size_t vl = __riscv_vsetvl_e16m2(dim - offset);
+      const vfloat16m2_t key_values =
+          __riscv_vle16_v_f16m2(key + (size_t)token * dim + offset, vl);
+      const vfloat16m2_t value_values =
+          __riscv_vle16_v_f16m2(value + (size_t)token * dim + offset, vl);
+      __riscv_vsse16_v_f16m2(
+          &attention_tiled_key[offset][token], key_stride, key_values, vl);
+      __riscv_vse16_v_f16m2(
+          &attention_tiled_value[token][offset], value_values, vl);
+      offset += (int)vl;
+    }
+  }
+}
+
+static void compute_tiled_scores4_rvv(float scale, const _Float16 *mask,
+                                      int dim, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m1(tile_tokens);
+  vfloat32m2_t score0 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score1 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score2 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score3 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+
+  for (int item = 0; item < dim; ++item) {
+    const vfloat16m1_t key =
+        __riscv_vle16_v_f16m1(attention_tiled_key[item], vl);
+    score0 = __riscv_vfwmacc_vf_f32m2(
+        score0, attention_tiled_query[0][item], key, vl);
+    score1 = __riscv_vfwmacc_vf_f32m2(
+        score1, attention_tiled_query[1][item], key, vl);
+    score2 = __riscv_vfwmacc_vf_f32m2(
+        score2, attention_tiled_query[2][item], key, vl);
+    score3 = __riscv_vfwmacc_vf_f32m2(
+        score3, attention_tiled_query[3][item], key, vl);
+  }
+
+  const vfloat32m2_t mask_f32 = __riscv_vfwcvt_f_f_v_f32m2(
+      __riscv_vle16_v_f16m1(mask, vl), vl);
+  score0 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score0, scale, vl), mask_f32, vl);
+  score1 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score1, scale, vl), mask_f32, vl);
+  score2 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score2, scale, vl), mask_f32, vl);
+  score3 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score3, scale, vl), mask_f32, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[0], score0, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[1], score1, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[2], score2, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[3], score3, vl);
+}
+
+static void compute_tiled_scores2_rvv(float scale, const _Float16 *mask,
+                                      int dim, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m1(tile_tokens);
+  vfloat32m2_t score4 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score5 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+
+  for (int item = 0; item < dim; ++item) {
+    const vfloat16m1_t key =
+        __riscv_vle16_v_f16m1(attention_tiled_key[item], vl);
+    score4 = __riscv_vfwmacc_vf_f32m2(
+        score4, attention_tiled_query[4][item], key, vl);
+    score5 = __riscv_vfwmacc_vf_f32m2(
+        score5, attention_tiled_query[5][item], key, vl);
+  }
+
+  const vfloat32m2_t mask_f32 = __riscv_vfwcvt_f_f_v_f32m2(
+      __riscv_vle16_v_f16m1(mask, vl), vl);
+  score4 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score4, scale, vl), mask_f32, vl);
+  score5 = __riscv_vfadd_vv_f32m2(
+      __riscv_vfmul_vf_f32m2(score5, scale, vl), mask_f32, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[4], score4, vl);
+  __riscv_vse32_v_f32m2(attention_tiled_score[5], score5, vl);
+}
+
+static __attribute__((noinline)) void softmax_tiled_scores_rvv(
+    int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
+#pragma clang loop unroll(disable)
+  for (int head = 0; head < TILED_RVV_Q_ROWS; ++head) {
+    vfloat32m2_t scores =
+        __riscv_vle32_v_f32m2(attention_tiled_score[head], vl);
+    const float tile_maximum = reduce_max_f32m2(scores, vl);
+    const float old_maximum = attention_tiled_maximum[head];
+    const float new_maximum =
+        tile_maximum > old_maximum ? tile_maximum : old_maximum;
+    const float old_scale = old_maximum == negative_infinity_f32()
+                                ? 0.0f
+                                : expf(old_maximum - new_maximum);
+    scores = vector_expf(
+        __riscv_vfsub_vf_f32m2(scores, new_maximum, vl), vl);
+    attention_tiled_sum[head] =
+        attention_tiled_sum[head] * old_scale +
+        reduce_sum_f32m2(scores, vl);
+    attention_tiled_maximum[head] = new_maximum;
+    attention_tiled_old_scale[head] = old_scale;
+    __riscv_vse32_v_f32m2(attention_tiled_score[head], scores, vl);
+  }
+}
+
+static void update_tiled_outputs_rvv(int dim, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m2(dim);
+  vfloat16m2_t accum0 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[0], vl),
+      (_Float16)attention_tiled_old_scale[0], vl);
+  vfloat16m2_t accum1 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[1], vl),
+      (_Float16)attention_tiled_old_scale[1], vl);
+  vfloat16m2_t accum2 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[2], vl),
+      (_Float16)attention_tiled_old_scale[2], vl);
+  vfloat16m2_t accum3 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[3], vl),
+      (_Float16)attention_tiled_old_scale[3], vl);
+  vfloat16m2_t accum4 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[4], vl),
+      (_Float16)attention_tiled_old_scale[4], vl);
+  vfloat16m2_t accum5 = __riscv_vfmul_vf_f16m2(
+      __riscv_vle16_v_f16m2(attention_tiled_accum[5], vl),
+      (_Float16)attention_tiled_old_scale[5], vl);
+
+  for (int token = 0; token < tile_tokens; ++token) {
+    const vfloat16m2_t value =
+        __riscv_vle16_v_f16m2(attention_tiled_value[token], vl);
+    accum0 = __riscv_vfmacc_vf_f16m2(
+        accum0, (_Float16)attention_tiled_score[0][token], value, vl);
+    accum1 = __riscv_vfmacc_vf_f16m2(
+        accum1, (_Float16)attention_tiled_score[1][token], value, vl);
+    accum2 = __riscv_vfmacc_vf_f16m2(
+        accum2, (_Float16)attention_tiled_score[2][token], value, vl);
+    accum3 = __riscv_vfmacc_vf_f16m2(
+        accum3, (_Float16)attention_tiled_score[3][token], value, vl);
+    accum4 = __riscv_vfmacc_vf_f16m2(
+        accum4, (_Float16)attention_tiled_score[4][token], value, vl);
+    accum5 = __riscv_vfmacc_vf_f16m2(
+        accum5, (_Float16)attention_tiled_score[5][token], value, vl);
+  }
+
+  __riscv_vse16_v_f16m2(attention_tiled_accum[0], accum0, vl);
+  __riscv_vse16_v_f16m2(attention_tiled_accum[1], accum1, vl);
+  __riscv_vse16_v_f16m2(attention_tiled_accum[2], accum2, vl);
+  __riscv_vse16_v_f16m2(attention_tiled_accum[3], accum3, vl);
+  __riscv_vse16_v_f16m2(attention_tiled_accum[4], accum4, vl);
+  __riscv_vse16_v_f16m2(attention_tiled_accum[5], accum5, vl);
+}
+
+static void store_tiled_outputs_rvv(float *output, int dim) {
+  for (int head = 0; head < TILED_RVV_Q_ROWS; ++head) {
+    const float inverse = attention_tiled_sum[head] == 0.0f
+                              ? 0.0f
+                              : 1.0f / attention_tiled_sum[head];
+    for (int offset = 0; offset < dim;) {
+      const size_t vl = __riscv_vsetvl_e16m2(dim - offset);
+      const vfloat16m2_t accum = __riscv_vle16_v_f16m2(
+          attention_tiled_accum[head] + offset, vl);
+      const vfloat32m4_t result = __riscv_vfmul_vf_f32m4(
+          __riscv_vfwcvt_f_f_v_f32m4(accum, vl), inverse, vl);
+      __riscv_vse32_v_f32m4(
+          output + (size_t)head * dim + offset, result, vl);
+      offset += (int)vl;
+    }
+  }
+}
+
+// Returns zero for shapes outside this deliberately strict strong-baseline
+// profile. The caller then preserves the standard one-row RVV fallback.
+static int run_attention_tiled_rvv(const case_config_t *cfg) {
+  const float *query = (const float *)llama_input_a_start;
+  const _Float16 *key = (const _Float16 *)llama_input_b_start;
+  const _Float16 *value = (const _Float16 *)llama_input_c_start;
+  const uint16_t *mask_bits = (const uint16_t *)llama_input_d_start;
+  const _Float16 *mask = (const _Float16 *)llama_input_d_start;
+  const int dim = cfg->args[0];
+  const int tokens = cfg->args[1];
+  const int qheads = cfg->args[2];
+  const int physical_kvlen = cfg->args[3];
+  const int kvheads = cfg->args[4];
+  const int heads_per_kv = qheads / kvheads;
+  const int active_kv = attention_active_prefix(mask_bits, physical_kvlen);
+
+  if (dim != MAX_ATTENTION_DIM || tokens != 1 ||
+      heads_per_kv != TILED_RVV_Q_ROWS || active_kv <= 0)
+    return 0;
+
+  for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
+    const int first_qhead = kvhead * heads_per_kv;
+    HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
+    prepare_tiled_query_rvv(
+        query + (size_t)first_qhead * dim, dim);
+
+    for (int tile_start = 0; tile_start < active_kv;
+         tile_start += TILED_RVV_KV_TILE) {
+      int tile_tokens = active_kv - tile_start;
+      if (tile_tokens > TILED_RVV_KV_TILE)
+        tile_tokens = TILED_RVV_KV_TILE;
+
+      const size_t kv_base =
+          ((size_t)kvhead * physical_kvlen + tile_start) * dim;
+      HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+      pack_tiled_kv_rvv(key + kv_base, value + kv_base,
+                        dim, tile_tokens);
+
+      HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
+      compute_tiled_scores4_rvv(cfg->params[2], mask + tile_start,
+                                dim, tile_tokens);
+      compute_tiled_scores2_rvv(cfg->params[2], mask + tile_start,
+                                dim, tile_tokens);
+      softmax_tiled_scores_rvv(tile_tokens);
+      update_tiled_outputs_rvv(dim, tile_tokens);
+    }
+
+    HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
+    store_tiled_outputs_rvv(
+        attention_output + (size_t)first_qhead * dim, dim);
+  }
+  return 1;
+}
+
 // Returns zero when the shape or mask is outside the version-1 AKV contract;
 // the caller then executes the unchanged standard RVV implementation.
 static int run_attention_akv(const case_config_t *cfg) {
@@ -583,6 +855,8 @@ int main(void) {
     case CASE_ATTENTION:
       if ((cfg->flags & CASE_FLAG_ATTENTION_AKV) != 0) {
         if (!run_attention_akv(cfg)) run_attention_rvv(cfg);
+      } else if ((cfg->flags & CASE_FLAG_ATTENTION_TILED_RVV) != 0) {
+        if (!run_attention_tiled_rvv(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_RVV) != 0) {
         run_attention_rvv(cfg);
       } else {
