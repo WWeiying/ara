@@ -17,6 +17,8 @@ fi
 default_sim_dir=${repo_root}/hardware/sim_llama_attention_16m_template
 if [[ ${implementation} == akv ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_m3_compile
+elif [[ ${implementation} == akv_v2 ]]; then
+  default_sim_dir=${repo_root}/hardware/sim_akv_v2_compile
 fi
 sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
 simv=${sim_dir}/simv
@@ -42,8 +44,9 @@ run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 
 if [[ ${implementation} != ref && ${implementation} != rvv &&
-      ${implementation} != tiled_rvv && ${implementation} != akv ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+      ${implementation} != tiled_rvv && ${implementation} != akv &&
+      ${implementation} != akv_v2 ]]; then
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|128|256] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
@@ -52,10 +55,11 @@ if [[ ${kvlen} != 16 && ${kvlen} != 128 && ${kvlen} != 256 ]]; then
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv] [16|128|256] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|128|256] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
-if [[ ${implementation} == akv && ${execution} != --ara-only ]]; then
+if [[ (${implementation} == akv || ${implementation} == akv_v2) &&
+      ${execution} != --ara-only ]]; then
   echo "AKV custom instructions currently require --ara-only; use ref or rvv for Spike" >&2
   exit 2
 fi
@@ -136,7 +140,7 @@ if [[ ${execution} != --spike-only ]]; then
     "+TESTCASE=${testcase}"
     +NO_FSDB
   )
-  if [[ ${implementation} == akv ]]; then
+  if [[ ${implementation} == akv || ${implementation} == akv_v2 ]]; then
     sim_args+=(+AKV_PERF)
   fi
   (

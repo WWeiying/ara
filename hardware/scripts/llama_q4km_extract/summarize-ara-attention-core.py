@@ -25,6 +25,20 @@ RUN_CONFIG_FIELDS = (
     "spike_elf_sha256",
     "ara_elf_sha256",
 )
+AKV_PERF_SUM_FIELDS = (
+    "busy_cycles",
+    "v2_full",
+    "v2_refill",
+    "v2_row_load",
+    "v2_column_load",
+    "v2_k_view_bank_cycles",
+    "v2_bank_conflict_cycles",
+    "v2_rejected",
+    "q_external_bytes",
+    "kv_external_bytes",
+    "replay_bytes",
+    "replay_backpressure_cycles",
+)
 
 
 def newest_complete_run(root: Path, implementation: str, effective_kv: int):
@@ -63,6 +77,15 @@ def parse_run(implementation: str, effective_kv: int, run, ara_log: Path, perf_l
     status = match.group(1) if match else "UNKNOWN"
     kernel_cycles = match.group(2) if match else ""
     mismatches = match.group(3) if match else ""
+    akv_perf = {f"akv_{key}": 0 for key in AKV_PERF_SUM_FIELDS}
+    akv_perf["akv_command_count"] = 0
+    for line in log_text.splitlines():
+        if not line.startswith("[AKV_PERF]"):
+            continue
+        values = parse_key_values(line)
+        akv_perf["akv_command_count"] += 1
+        for key in AKV_PERF_SUM_FIELDS:
+            akv_perf[f"akv_{key}"] += int(values.get(key, "0"))
     rows = []
     for line in perf_log.read_text(errors="replace").splitlines():
         if not line.startswith("[LLM_PERF]"):
@@ -79,6 +102,7 @@ def parse_run(implementation: str, effective_kv: int, run, ara_log: Path, perf_l
                 "status": status,
                 "kernel_cycles": kernel_cycles,
                 "mismatches": mismatches,
+                **akv_perf,
                 "phase": phase,
                 **values,
             }
@@ -98,7 +122,7 @@ def main():
     output = args.output or args.run_root / "attention_core_summary.csv"
 
     rows = []
-    for implementation in ("ref", "rvv", "tiled_rvv", "akv"):
+    for implementation in ("ref", "rvv", "tiled_rvv", "akv", "akv_v2"):
         for effective_kv in (16, 128, 256):
             selected = newest_complete_run(args.run_root, implementation, effective_kv)
             if selected is not None:

@@ -15,6 +15,7 @@ MAGIC = 0x514B4D4F
 ATTENTION_RVV = 1 << 0
 ATTENTION_AKV = 1 << 1
 ATTENTION_TILED_RVV = 1 << 2
+ATTENTION_AKV_V2 = 1 << 3
 
 KIND = {
     "linear_q4": 1,
@@ -123,10 +124,12 @@ def make_spec(case_id, implementation):
                 flags |= ATTENTION_AKV
             elif implementation == "tiled_rvv":
                 flags |= ATTENTION_TILED_RVV
+            elif implementation == "akv_v2":
+                flags |= ATTENTION_AKV_V2
             elif implementation != "ref":
                 raise SystemExit(
                     "attention implementation must be 'ref', 'rvv', "
-                    "'tiled_rvv', or 'akv'"
+                    "'tiled_rvv', 'akv', or 'akv_v2'"
                 )
             blobs["input_b"] = ref("key")
             blobs["input_c"] = ref("value")
@@ -144,7 +147,7 @@ def make_spec(case_id, implementation):
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(
-            "usage: gen_data.py CASE_ID [ref|rvv|tiled_rvv|akv]"
+            "usage: gen_data.py CASE_ID [ref|rvv|tiled_rvv|akv|akv_v2]"
         )
     case_id = sys.argv[1]
     implementation = sys.argv[2] if len(sys.argv) == 3 else "ref"
