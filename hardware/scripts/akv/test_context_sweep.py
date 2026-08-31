@@ -55,8 +55,9 @@ class ContextSweepTest(unittest.TestCase):
             "src3=f16 src3_ne0=256 src3_ne1=1 src3_ne2=1 src3_ne3=1 "
             "fused_followers=0 fused_next=NONE name=attention"
         )
+        prefill_attention = attention.replace("src0_ne1=1", "src0_ne1=8", 1)
         log = self.write_log("\n".join([
-            "GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2", matmul, attention,
+            "GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2", matmul, prefill_attention,
             "GGML_RISCV_MODEL_GRAPH_END id=0",
             "GGML_RISCV_MODEL_GRAPH_BEGIN id=1 nodes=2", matmul, attention,
             "GGML_RISCV_MODEL_GRAPH_END id=1",
@@ -73,11 +74,17 @@ class ContextSweepTest(unittest.TestCase):
         reference = {
             "qbs": {"nodes": 2, "coverage": {"Q4_K": {}}},
             "akv_v2": {
+                "calls": 1,
                 "coverage": {"candidate_ops": "2"},
                 "shapes": [{"head_dim": 128, "q_rows": 12, "kv_heads": 2, "gqa_rows": 6}],
             },
         }
-        validate_reference(summary, reference)
+        expectation = {
+            "qbs_candidate_compute_nodes": 1,
+            "attention_candidate_compute_nodes": 1,
+            "qbs_profiles": ["Q4_K"],
+        }
+        validate_reference(summary, reference, expectation)
 
     def test_unsupported_gqa_stays_on_rvv(self):
         matmul = node("MUL_MAT", "q4_K", 64, 1, (256, 64, 1, 1), "ffn")
@@ -89,8 +96,9 @@ class ContextSweepTest(unittest.TestCase):
             "src3=f16 src3_ne0=128 src3_ne1=1 src3_ne2=1 src3_ne3=1 "
             "fused_followers=0 fused_next=NONE name=attention"
         )
+        prefill_attention = attention.replace("src0_ne1=1", "src0_ne1=8", 1)
         log = self.write_log("\n".join([
-            "GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2", matmul, attention,
+            "GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2", matmul, prefill_attention,
             "GGML_RISCV_MODEL_GRAPH_END id=0",
             "GGML_RISCV_MODEL_GRAPH_BEGIN id=1 nodes=2", matmul, attention,
             "GGML_RISCV_MODEL_GRAPH_END id=1",

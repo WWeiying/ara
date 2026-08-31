@@ -158,7 +158,7 @@ def main() -> int:
                 )
             graphs = parse_graphs(log_path)
             summary = summarize_graphs(graphs, effective_kv, abi)
-            validate_reference(summary, reference)
+            validate_reference(summary, reference, spec["decode_expectation"])
             summary["model_id"] = model_id
             summary["model_name"] = spec["name"]
             summary["prompt_tokens"] = observed_prompt_tokens

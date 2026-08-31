@@ -7,19 +7,34 @@
       "id": "qwen25_1p5b_q4km",
       "name": "Qwen2.5-1.5B-Instruct-Q4_K_M",
       "model": "/home/wangwy/llama/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
-      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json"
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 197,
+        "attention_candidate_compute_nodes": 28,
+        "qbs_profiles": ["Q4_K", "Q6_K"]
+      }
     },
     {
       "id": "tinyllama_1p1b_q4km",
       "name": "TinyLlama-1.1B-Chat-Q4_K_M",
       "model": "/home/wangwy/llama/models/tinyllama-hf/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json"
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 155,
+        "attention_candidate_compute_nodes": 22,
+        "qbs_profiles": ["Q4_K", "Q6_K"]
+      }
     },
     {
       "id": "smollm2_135m_q4km",
       "name": "SmolLM2-135M-Instruct-Q4_K_M",
       "model": "/home/wangwy/llama/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
-      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json"
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_smollm2_20260831/model_closure_final/dynamic_summary.json",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 211,
+        "attention_candidate_compute_nodes": 30,
+        "qbs_profiles": ["Q4_K", "Q5_0", "Q6_K", "Q8_0"]
+      }
     }
   ]
 }

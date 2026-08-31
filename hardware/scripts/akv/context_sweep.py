@@ -215,9 +215,16 @@ def attention_shape(node: dict[str, str], effective_kv: int) -> dict[str, int | 
 def summarize_graphs(
     graphs: list[Graph], effective_kv: int, abi: dict[str, object]
 ) -> dict[str, object]:
-    if len(graphs) != 2:
-        raise ValueError(f"expected one Prefill and one Decode graph, found {len(graphs)}")
-    decode = graphs[-1]
+    if len(graphs) < 2:
+        raise ValueError(f"expected Prefill graph(s) and one Decode graph, found {len(graphs)}")
+    decode_candidates = []
+    for graph in graphs:
+        candidates = attention_nodes(graph)
+        if candidates and all(node_shape(node, "src0_")[1] == 1 for node in candidates):
+            decode_candidates.append(graph)
+    if len(decode_candidates) != 1 or decode_candidates[0] is not graphs[-1]:
+        raise ValueError("trace does not end in exactly one one-token Decode graph")
+    decode = decode_candidates[0]
     qbs_decode = [qbs_payload(node, abi) | {"name": node.get("name", "")}
                   for node in qbs_nodes(decode)]
     attention_decode = [attention_shape(node, effective_kv) for node in attention_nodes(decode)]
@@ -230,6 +237,7 @@ def summarize_graphs(
     all_attention = [node for graph in graphs for node in attention_nodes(graph)]
     return {
         "graphs": len(graphs),
+        "prefill_graphs": len(graphs) - 1,
         "graph_declared_node_counts": [graph.declared_nodes for graph in graphs],
         "graph_executed_compute_node_counts": [len(graph.nodes) for graph in graphs],
         "all_graph_qbs_candidate_compute_nodes": len(all_qbs),
@@ -265,23 +273,38 @@ def summarize_graphs(
     }
 
 
-def validate_reference(summary: dict[str, object], reference: dict[str, object]) -> None:
-    expected_qbs_nodes = int(reference["qbs"]["nodes"])
-    if int(summary["all_graph_qbs_candidate_compute_nodes"]) != expected_qbs_nodes:
+def validate_reference(
+    summary: dict[str, object],
+    reference: dict[str, object],
+    decode_expectation: dict[str, object],
+) -> None:
+    expected_qbs_nodes = int(decode_expectation["qbs_candidate_compute_nodes"])
+    observed_qbs_nodes = int(summary["decode"]["qbs_candidate_compute_nodes"])
+    if observed_qbs_nodes != expected_qbs_nodes:
         raise ValueError(
-            "host/QEMU QBS candidate mismatch: "
-            f"{summary['all_graph_qbs_candidate_compute_nodes']} != {expected_qbs_nodes}"
+            f"Decode QBS candidate mismatch: {observed_qbs_nodes} != {expected_qbs_nodes}"
         )
     observed_profiles = set(summary["decode"]["qbs_profiles"])
-    expected_profiles = set(reference["qbs"]["coverage"])
+    expected_profiles = set(decode_expectation["qbs_profiles"])
     if observed_profiles != expected_profiles:
-        raise ValueError(f"host/QEMU QBS profile mismatch: {observed_profiles} != {expected_profiles}")
-    expected_candidates = int(reference["akv_v2"]["coverage"]["candidate_ops"])
-    if int(summary["all_graph_attention_candidate_compute_nodes"]) != expected_candidates:
+        raise ValueError(f"Decode QBS profile mismatch: {observed_profiles} != {expected_profiles}")
+    if set(reference["qbs"]["coverage"]) != expected_profiles:
+        raise ValueError("manifest QBS profiles disagree with the RISC-V QEMU reference")
+    if int(reference["qbs"]["nodes"]) != 2 * expected_qbs_nodes:
+        raise ValueError("fixed-prompt QEMU reference does not contain one Prefill and one Decode QBS graph")
+
+    expected_candidates = int(decode_expectation["attention_candidate_compute_nodes"])
+    observed_candidates = int(summary["decode"]["akv_candidate_compute_nodes"])
+    if observed_candidates != expected_candidates:
         raise ValueError(
-            "host/QEMU attention candidate mismatch: "
-            f"{summary['all_graph_attention_candidate_compute_nodes']} != {expected_candidates}"
+            f"Decode attention candidate mismatch: {observed_candidates} != {expected_candidates}"
         )
+    if int(reference["akv_v2"]["coverage"]["candidate_ops"]) != 2 * expected_candidates:
+        raise ValueError("fixed-prompt QEMU reference does not contain one Prefill and one Decode attention graph")
+    if int(reference["akv_v2"]["calls"]) != int(
+        summary["decode"]["akv_shape_eligible_compute_nodes"]
+    ):
+        raise ValueError("AKV shape eligibility disagrees with the RISC-V QEMU executed-call count")
     shapes = reference["akv_v2"].get("shapes", [])
     if shapes:
         observed = summary["decode"]["attention_shapes"]
