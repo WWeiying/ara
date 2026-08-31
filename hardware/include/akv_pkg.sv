@@ -7,6 +7,12 @@ package akv_pkg;
   localparam bit AkvEnable = 1'b0;
 `endif
 
+`ifdef ARA_AKV_V2_ENABLE
+  localparam bit AkvV2Enable = 1'b1;
+`else
+  localparam bit AkvV2Enable = 1'b0;
+`endif
+
   localparam int unsigned AkvArchitectureVersion = 1;
   localparam int unsigned AkvDescriptorVersion = 1;
   localparam int unsigned AkvDescriptorBytes = 64;
@@ -16,12 +22,20 @@ package akv_pkg;
   localparam logic [2:0] AkvLoadFunct3 = 3'd3;
   localparam logic [2:0] AkvInfoFunct3 = 3'd4;
   localparam logic [2:0] AkvReleaseFunct3 = 3'd5;
+  localparam int unsigned AkvV2ProfileVersion = 2;
+  localparam int unsigned AkvV2TileTokens = 64;
+  localparam int unsigned AkvV2TokenBanks = 8;
+  localparam int unsigned AkvV2SelectorIndexBits = 6;
+  localparam logic [2:0] AkvV2FillFunct3 = 3'd6;
+  localparam logic [2:0] AkvV2ColumnLoadFunct3 = 3'd7;
   localparam int unsigned AkvContextCount = 1;
   localparam int unsigned AkvMaxQRows = 8;
   localparam int unsigned AkvTileTokens = 8;
   localparam int unsigned AkvMaxHeadDim = 128;
   localparam int unsigned AkvContextBytes =
       (AkvMaxQRows + 2 * AkvTileTokens) * AkvMaxHeadDim * 2;
+  localparam int unsigned AkvV2ContextBytes =
+      (AkvMaxQRows + 2 * AkvV2TileTokens) * AkvMaxHeadDim * 2;
 
   typedef enum logic [7:0] {
     AKV_ELEMENT_FORMAT_INVALID = 8'd0,
@@ -39,11 +53,14 @@ package akv_pkg;
     AKV_FILL_REFILL = 1'b1
   } akv_fill_mode_e;
 
-  typedef enum logic [1:0] {
+  typedef enum logic [2:0] {
     AKV_COMMAND_FULL,
     AKV_COMMAND_REFILL,
     AKV_COMMAND_LOAD,
-    AKV_COMMAND_RELEASE
+    AKV_COMMAND_RELEASE,
+    AKV_COMMAND_V2_FULL,
+    AKV_COMMAND_V2_REFILL,
+    AKV_COMMAND_V2_COLUMN_LOAD
   } akv_command_e;
 
   typedef enum logic [4:0] {
@@ -114,5 +131,28 @@ package akv_pkg;
       default: ;
     endcase
   endfunction : akv_capability_word
+
+  function automatic logic [63:0] akv_v2_capability_word(
+      input logic [63:0] index, input bit enabled
+  );
+    akv_v2_capability_word = '0;
+    unique case (index)
+      64'd2: akv_v2_capability_word =
+          64'(2) |
+          (64'(64) << 8) |
+          (64'(8) << 16) |
+          (64'(6) << 24) |
+          (64'(enabled) << 32) |
+          (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
+          (64'd1 << 36) | (64'd1 << 37);
+      64'd3: akv_v2_capability_word =
+          64'(AkvOpcodeCustom2) |
+          (64'(AkvV2FillFunct3) << 8) |
+          (64'(AkvV2ColumnLoadFunct3) << 11) |
+          (64'(AkvMaxHeadDim) << 16) |
+          (64'd1 << 24);
+      default: ;
+    endcase
+  endfunction : akv_v2_capability_word
 
 endpackage : akv_pkg

@@ -17,6 +17,12 @@
 #define AKV_CONTEXT_COUNT 1u
 #define AKV_MAX_Q_ROWS 8u
 #define AKV_TILE_TOKENS 8u
+#define AKV_V2_PROFILE_VERSION 2u
+#define AKV_V2_TILE_TOKENS 64u
+#define AKV_V2_TOKEN_BANKS 8u
+#define AKV_V2_SELECTOR_INDEX_BITS 6u
+#define AKV_V2_FILL_FUNCT3 6u
+#define AKV_V2_COLUMN_LOAD_FUNCT3 7u
 #define AKV_HEAD_DIM_64 64u
 #define AKV_HEAD_DIM_128 128u
 #define AKV_HEAD_DIM_CODE_64 0u
@@ -88,6 +94,13 @@ static inline uint32_t akv_tile_length(uint32_t kv_length,
   return remaining < AKV_TILE_TOKENS ? remaining : AKV_TILE_TOKENS;
 }
 
+static inline uint32_t akv_v2_tile_length(uint32_t kv_length,
+                                          uint32_t tile_start) {
+  if (tile_start >= kv_length) return 0u;
+  const uint32_t remaining = kv_length - tile_start;
+  return remaining < AKV_V2_TILE_TOKENS ? remaining : AKV_V2_TILE_TOKENS;
+}
+
 static inline uint32_t akv_selector(akv_stream_t stream, uint32_t index) {
   if ((uint32_t)stream > (uint32_t)AKV_STREAM_V || index >= 8u)
     return UINT32_MAX;
@@ -100,6 +113,17 @@ static inline uint32_t akv_selector_stream(uint32_t selector) {
 
 static inline uint32_t akv_selector_index(uint32_t selector) {
   return (selector >> 2) & 0x7u;
+}
+
+static inline uint32_t akv_v2_selector(akv_stream_t stream, uint32_t index) {
+  if ((uint32_t)stream > (uint32_t)AKV_STREAM_V ||
+      index >= AKV_V2_TILE_TOKENS)
+    return UINT32_MAX;
+  return (uint32_t)stream | (index << 2);
+}
+
+static inline uint32_t akv_v2_selector_index(uint32_t selector) {
+  return (selector >> 2) & ((1u << AKV_V2_SELECTOR_INDEX_BITS) - 1u);
 }
 
 static inline int akv_range_fits(uint64_t base, uint32_t stride,
@@ -156,6 +180,29 @@ static inline int akv_load_selector_is_valid(const akv_descriptor_t *descriptor,
   return 0;
 }
 
+static inline int akv_v2_row_selector_is_valid(
+    const akv_descriptor_t *descriptor, uint32_t tile_length,
+    uint32_t selector) {
+  if (!akv_descriptor_is_valid(descriptor) ||
+      (selector >> (2u + AKV_V2_SELECTOR_INDEX_BITS)) != 0u ||
+      tile_length == 0u || tile_length > AKV_V2_TILE_TOKENS)
+    return 0;
+  const uint32_t stream = akv_selector_stream(selector);
+  const uint32_t index = akv_v2_selector_index(selector);
+  if (stream == AKV_STREAM_Q) return index < descriptor->q_rows;
+  if (stream == AKV_STREAM_K || stream == AKV_STREAM_V)
+    return index < tile_length;
+  return 0;
+}
+
+static inline int akv_v2_column_is_valid(
+    const akv_descriptor_t *descriptor, uint32_t tile_length,
+    uint32_t dimension) {
+  return akv_descriptor_is_valid(descriptor) && tile_length != 0u &&
+         tile_length <= AKV_V2_TILE_TOKENS &&
+         dimension < descriptor->head_dim;
+}
+
 static inline uint64_t akv_capability_word(uint64_t index, int enabled) {
   if (index == 0u)
     return (uint64_t)AKV_ARCHITECTURE_VERSION |
@@ -174,6 +221,25 @@ static inline uint64_t akv_capability_word(uint64_t index, int enabled) {
            ((uint64_t)AKV_INFO_FUNCT3 << 14) |
            ((uint64_t)AKV_RELEASE_FUNCT3 << 17) |
            ((uint64_t)AKV_DESCRIPTOR_ALIGNMENT_LOG2 << 20);
+  return UINT64_C(0);
+}
+
+static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {
+  if (index == 2u)
+    return (uint64_t)AKV_V2_PROFILE_VERSION |
+           ((uint64_t)AKV_V2_TILE_TOKENS << 8) |
+           ((uint64_t)AKV_V2_TOKEN_BANKS << 16) |
+           ((uint64_t)AKV_V2_SELECTOR_INDEX_BITS << 24) |
+           ((uint64_t)(enabled != 0) << 32) |
+           (UINT64_C(1) << 33) | (UINT64_C(1) << 34) |
+           (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
+           (UINT64_C(1) << 37);
+  if (index == 3u)
+    return (uint64_t)AKV_OPCODE_CUSTOM2 |
+           ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |
+           ((uint64_t)AKV_V2_COLUMN_LOAD_FUNCT3 << 11) |
+           ((uint64_t)AKV_HEAD_DIM_128 << 16) |
+           (UINT64_C(1) << 24);
   return UINT64_C(0);
 }
 
@@ -204,6 +270,19 @@ static inline uint32_t akv_encode_info(uint32_t rd, uint32_t index_rs1) {
 
 static inline uint32_t akv_encode_release(void) {
   return akv_encode_r(AKV_RELEASE_FUNCT3, 0u, 0u, 0u, 0u);
+}
+
+static inline uint32_t akv_encode_v2_fill(uint32_t descriptor_rs1,
+                                          uint32_t tile_start_rs2,
+                                          akv_fill_mode_t mode) {
+  return akv_encode_r(AKV_V2_FILL_FUNCT3, (uint32_t)mode, 0u,
+                      descriptor_rs1, tile_start_rs2);
+}
+
+static inline uint32_t akv_encode_v2_column_load(uint32_t vd,
+                                                 uint32_t dimension_rs1) {
+  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3, 0u, vd,
+                      dimension_rs1, 0u);
 }
 
 #endif

@@ -68,18 +68,56 @@ akv_status_t akv_capabilities_decode(uint64_t info0, uint64_t info1,
   return AKV_STATUS_OK;
 }
 
+akv_status_t akv_capabilities_decode_extended(
+    uint64_t info0, uint64_t info1, uint64_t info2, uint64_t info3,
+    akv_capabilities_t *capabilities) {
+  const akv_status_t base_status =
+      akv_capabilities_decode(info0, info1, capabilities);
+  if (base_status != AKV_STATUS_OK)
+    return base_status;
+
+  if (info2 == 0u && info3 == 0u)
+    return AKV_STATUS_OK;
+  if (info2 == 0u || info3 == 0u)
+    return AKV_STATUS_ABI_MISMATCH;
+
+  capabilities->token_axis_profile_version = (uint8_t)(info2 & 0xffu);
+  capabilities->token_axis_tile_tokens = (uint8_t)((info2 >> 8) & 0xffu);
+  capabilities->token_axis_banks = (uint8_t)((info2 >> 16) & 0xffu);
+  capabilities->token_axis_selector_index_bits =
+      (uint8_t)((info2 >> 24) & 0xffu);
+  capabilities->token_axis_enabled = (uint8_t)((info2 >> 32) & 1u);
+  capabilities->token_axis_tail = (uint8_t)((info2 >> 35) & 1u);
+  capabilities->token_axis_row_view = (uint8_t)((info2 >> 36) & 1u);
+
+  if (info2 != akv_v2_capability_word(
+                   2u, capabilities->token_axis_enabled != 0u) ||
+      info3 != akv_v2_capability_word(3u, 1) ||
+      capabilities->token_axis_profile_version != AKV_V2_PROFILE_VERSION ||
+      capabilities->token_axis_tile_tokens != AKV_V2_TILE_TOKENS ||
+      capabilities->token_axis_banks != AKV_V2_TOKEN_BANKS ||
+      capabilities->token_axis_selector_index_bits !=
+          AKV_V2_SELECTOR_INDEX_BITS)
+    return AKV_STATUS_ABI_MISMATCH;
+
+  capabilities->token_axis_valid = capabilities->token_axis_enabled;
+  return AKV_STATUS_OK;
+}
+
 akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device) {
   if (reader == NULL || device == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
   memset(device, 0, sizeof(*device));
-  return akv_capabilities_decode(reader(context, 0u), reader(context, 1u),
-                                 &device->capabilities);
+  return akv_capabilities_decode_extended(
+      reader(context, 0u), reader(context, 1u), reader(context, 2u),
+      reader(context, 3u), &device->capabilities);
 }
 
 static uint64_t reference_info(void *context, unsigned index) {
   (void)context;
-  return akv_capability_word(index, 1);
+  const uint64_t base = akv_capability_word(index, 1);
+  return base != 0u ? base : akv_v2_capability_word(index, 1);
 }
 
 akv_status_t akv_device_init_reference(akv_device_t *device) {

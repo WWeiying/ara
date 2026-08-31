@@ -57,10 +57,18 @@ int main(void) {
   CHECK(akv_encode_load(8, 10, AKV_HEAD_DIM_128) == UINT32_C(0x0205345b));
   CHECK(akv_encode_info(10, 10) == UINT32_C(0x0005455b));
   CHECK(akv_encode_release() == UINT32_C(0x0000505b));
+  CHECK(akv_encode_v2_fill(10, 11, AKV_FILL_FULL) == UINT32_C(0x00b5605b));
+  CHECK(akv_encode_v2_fill(10, 11, AKV_FILL_REFILL) ==
+        UINT32_C(0x02b5605b));
+  CHECK(akv_encode_v2_column_load(8, 10) == UINT32_C(0x0005745b));
 
   CHECK(akv_capability_word(0, 1) == UINT64_C(0x000f010808400101));
   CHECK(akv_capability_word(1, 1) == UINT64_C(0x00000000006b1a5b));
   CHECK(akv_capability_word(2, 1) == 0u);
+  CHECK(akv_v2_capability_word(2, 1) ==
+        UINT64_C(0x0000003f06084002));
+  CHECK(akv_v2_capability_word(3, 1) == UINT64_C(0x0000000001803e5b));
+  CHECK(akv_v2_capability_word(4, 1) == 0u);
   CHECK(akv_head_dim_code(64) == AKV_HEAD_DIM_CODE_64);
   CHECK(akv_head_dim_code(128) == AKV_HEAD_DIM_CODE_128);
   CHECK(akv_head_dim_code(96) == AKV_HEAD_DIM_CODE_INVALID);
@@ -71,11 +79,18 @@ int main(void) {
   CHECK(akv_tile_length(256, 248) == 8u);
   CHECK(akv_tile_length(253, 248) == 5u);
   CHECK(akv_tile_length(253, 253) == 0u);
+  CHECK(akv_v2_tile_length(256, 0) == 64u);
+  CHECK(akv_v2_tile_length(256, 192) == 64u);
+  CHECK(akv_v2_tile_length(253, 192) == 61u);
+  CHECK(akv_v2_tile_length(253, 253) == 0u);
   CHECK(akv_selector(AKV_STREAM_Q, 5) == 20u);
   CHECK(akv_selector(AKV_STREAM_K, 7) == 29u);
   CHECK(akv_selector(AKV_STREAM_V, 7) == 30u);
   CHECK(akv_selector(AKV_STREAM_V, 8) == UINT32_MAX);
   CHECK(akv_selector((akv_stream_t)3, 0) == UINT32_MAX);
+  CHECK(akv_v2_selector(AKV_STREAM_K, 63) == 253u);
+  CHECK(akv_v2_selector(AKV_STREAM_V, 63) == 254u);
+  CHECK(akv_v2_selector(AKV_STREAM_V, 64) == UINT32_MAX);
 
   CHECK(akv_range_fits(UINT64_MAX - 255u, 256u, 1u, 256u));
   CHECK(!akv_range_fits(UINT64_MAX - 254u, 256u, 1u, 256u));
@@ -94,6 +109,17 @@ int main(void) {
   CHECK(!akv_load_selector_is_valid(
       &descriptor, 5, akv_selector(AKV_STREAM_V, 5)));
   CHECK(!akv_load_selector_is_valid(&descriptor, 8, 32u));
+  CHECK(akv_v2_row_selector_is_valid(
+      &descriptor, 64, akv_v2_selector(AKV_STREAM_Q, 5)));
+  CHECK(!akv_v2_row_selector_is_valid(
+      &descriptor, 64, akv_v2_selector(AKV_STREAM_Q, 6)));
+  CHECK(akv_v2_row_selector_is_valid(
+      &descriptor, 64, akv_v2_selector(AKV_STREAM_K, 63)));
+  CHECK(!akv_v2_row_selector_is_valid(
+      &descriptor, 61, akv_v2_selector(AKV_STREAM_V, 61)));
+  CHECK(akv_v2_column_is_valid(&descriptor, 64, 127));
+  CHECK(!akv_v2_column_is_valid(&descriptor, 64, 128));
+  CHECK(!akv_v2_column_is_valid(&descriptor, 0, 0));
 
   descriptor.flags = 1;
   CHECK(!akv_descriptor_is_valid(&descriptor));

@@ -5,7 +5,8 @@ include(GNUInstallDirs)
 
 add_library(akv_runtime STATIC
     src/akv_runtime.c
-    src/akv_native_riscv.c)
+    src/akv_native_riscv.c
+    src/akv_v2_reference.c)
 add_library(akv::runtime ALIAS akv_runtime)
 target_include_directories(akv_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

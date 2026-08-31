@@ -29,5 +29,13 @@
   "fill_modes": {
     "FULL": 0,
     "REFILL": 1
+  },
+  "token_axis_profile": {
+    "version": 2,
+    "tile_tokens": 64,
+    "token_banks": 8,
+    "selector_index_bits": 6,
+    "fill_funct3": 6,
+    "column_load_funct3": 7
   }
 }

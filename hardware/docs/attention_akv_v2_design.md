@@ -125,6 +125,43 @@ The contract must define:
 - strict counters for v2 fill bytes, K-column commands, K-view bank cycles,
   row commands, replay bytes, conflict cycles, and rejected commands.
 
+The implemented ABI keeps the v1 architecture and descriptor words byte-for-
+byte unchanged. `AKVINFO(0)` and `AKVINFO(1)` therefore retain their old values.
+`AKVINFO(2)` advertises token-axis profile version 2, a 64-token maximum, eight
+token banks, six selector-index bits, tail support, row-view support, and an
+enable bit. `AKVINFO(3)` publishes the two new instruction encodings. Hardware
+without the profile returns zero for both extension words, which remains a
+valid AKV-v1 device.
+
+The two extension instructions use the remaining custom-2 function classes:
+
+- `vakv2fill` uses `funct3=6`. Its FULL and REFILL forms retain the v1 operand
+  convention: FULL takes the unchanged 64-byte descriptor in `rs1` and
+  `tile_start` in `rs2`; REFILL reserves `rs1=x0` and takes `tile_start` in
+  `rs2`. A successful command installs 1..64 active tokens.
+- `vakv2kcol` uses `funct3=7`, writes one `e16,m1` destination, and takes the
+  dimension index in `rs1`. Only the first `tile_count` elements are valid.
+  Existing `vakvload` remains the row-load command; under a v2 context its row
+  selector uses six index bits so V0..V63 and K0..K63 are addressable.
+
+The descriptor still describes row-major Q, K, and V model tensors. The v2
+profile changes only hidden-context organization and local views; software does
+not pretranspose K and no reserved descriptor field is reinterpreted. Mask data
+is deliberately not copied into hidden context. Software loads the active
+1..64-element mask through ordinary RVV and uses exactly `tile_count` as VL, so
+tail validity has one source of truth and masked values retain standard RVV
+semantics.
+
+`software/akv/src/akv_v2_reference.c` implements these visible semantics. It
+copies row-major Q/K/V, exposes row and K-column views, checks a one-token tail,
+and guarantees that selector, dimension, capacity, or tile-range validation
+fails before changing the destination or the previously valid reference
+context. A payload memory fault is a different class in RTL: partially written
+hidden storage is never made ready, and the failed context is invalidated.
+`akv_attention_plan_create()` intentionally continues to select kernel version
+1 at this checkpoint; capability and reference support do not silently route a
+real model through unfinished RTL.
+
 ## 6. Falsifiable implementation checks
 
 Before changing RTL, the implementation hypothesis is:

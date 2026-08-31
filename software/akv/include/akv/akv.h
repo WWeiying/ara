@@ -39,6 +39,14 @@ typedef struct {
   uint8_t f16_payload;
   uint8_t head_dim_64;
   uint8_t head_dim_128;
+  uint8_t token_axis_valid;
+  uint8_t token_axis_enabled;
+  uint8_t token_axis_profile_version;
+  uint8_t token_axis_tile_tokens;
+  uint8_t token_axis_banks;
+  uint8_t token_axis_selector_index_bits;
+  uint8_t token_axis_tail;
+  uint8_t token_axis_row_view;
 } akv_capabilities_t;
 
 typedef struct {
@@ -76,10 +84,28 @@ typedef akv_status_t (*akv_attention_executor_t)(
     void *context, const akv_descriptor_t *descriptor, const uint16_t *mask,
     float *output, size_t output_row_stride_bytes, float scale);
 
+/*
+ * Functional AKV-v2 context model.  It models visible command semantics and
+ * element ordering, not memory latency or implementation banking.
+ */
+typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
+  akv_descriptor_t descriptor;
+  uint16_t query[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_128];
+  uint16_t key[AKV_V2_TILE_TOKENS][AKV_HEAD_DIM_128];
+  uint16_t value[AKV_V2_TILE_TOKENS][AKV_HEAD_DIM_128];
+  uint16_t tile_start;
+  uint16_t tile_count;
+  uint8_t ready;
+  uint8_t reserved[3];
+} akv_v2_reference_context_t;
+
 const char *akv_status_string(akv_status_t status);
 
 akv_status_t akv_capabilities_decode(uint64_t info0, uint64_t info1,
                                      akv_capabilities_t *capabilities);
+akv_status_t akv_capabilities_decode_extended(
+    uint64_t info0, uint64_t info1, uint64_t info2, uint64_t info3,
+    akv_capabilities_t *capabilities);
 akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device);
 akv_status_t akv_device_init_reference(akv_device_t *device);
@@ -90,6 +116,21 @@ akv_status_t akv_attention_plan_create(const akv_device_t *device,
 akv_status_t akv_attention_execute(const akv_attention_plan_t *plan,
                                    akv_attention_executor_t executor,
                                    void *executor_context);
+
+void akv_v2_reference_init(akv_v2_reference_context_t *context);
+akv_status_t akv_v2_reference_full(akv_v2_reference_context_t *context,
+                                   const akv_descriptor_t *descriptor,
+                                   uint32_t tile_start);
+akv_status_t akv_v2_reference_refill(akv_v2_reference_context_t *context,
+                                     uint32_t tile_start);
+akv_status_t akv_v2_reference_load_row(
+    const akv_v2_reference_context_t *context, uint32_t selector,
+    uint16_t *destination, size_t destination_elements);
+akv_status_t akv_v2_reference_load_k_column(
+    const akv_v2_reference_context_t *context, uint32_t dimension,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements);
+void akv_v2_reference_release(akv_v2_reference_context_t *context);
 
 /* Execute an immutable plan returned by akv_attention_plan_create(). */
 akv_status_t akv_attention_execute_native(const akv_attention_plan_t *plan);
