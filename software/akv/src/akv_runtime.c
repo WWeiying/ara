@@ -149,9 +149,9 @@ static int ranges_overlap(uintptr_t lhs_first, uintptr_t lhs_last,
   return lhs_first <= rhs_last && rhs_first <= lhs_last;
 }
 
-akv_status_t akv_attention_plan_create(const akv_device_t *device,
-                                       const akv_attention_problem_t *problem,
-                                       akv_attention_plan_t *plan) {
+static akv_status_t attention_plan_create(
+    const akv_device_t *device, const akv_attention_problem_t *problem,
+    uint32_t kernel_version, akv_attention_plan_t *plan) {
   if (device == NULL || problem == NULL || plan == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
   memset(plan, 0, sizeof(*plan));
@@ -160,6 +160,10 @@ akv_status_t akv_attention_plan_create(const akv_device_t *device,
   if (!caps->valid || !caps->enabled || !caps->f16_payload ||
       !caps->head_dim_128 || caps->max_q_rows < AKV_ATTENTION_KERNEL_Q_ROWS ||
       caps->context_count == 0u)
+    return AKV_STATUS_CAPABILITY;
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+      (!caps->token_axis_valid || !caps->token_axis_enabled ||
+       !caps->token_axis_tail || !caps->token_axis_row_view))
     return AKV_STATUS_CAPABILITY;
   if (problem->q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
       problem->head_dim != AKV_HEAD_DIM_128 || problem->kv_length == 0u ||
@@ -238,17 +242,40 @@ akv_status_t akv_attention_plan_create(const akv_device_t *device,
   plan->output = problem->output;
   plan->output_row_stride_bytes = problem->output_row_stride_bytes;
   plan->scale = problem->scale;
-  plan->kernel_version = AKV_ATTENTION_KERNEL_VERSION;
+  plan->kernel_version = kernel_version;
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+      !akv_v2_descriptor_is_valid(&plan->descriptor)) {
+    memset(plan, 0, sizeof(*plan));
+    return AKV_STATUS_LAYOUT;
+  }
   return AKV_STATUS_OK;
 }
 
-akv_status_t akv_attention_execute(const akv_attention_plan_t *plan,
-                                   akv_attention_executor_t executor,
-                                   void *executor_context) {
+akv_status_t akv_attention_plan_create(const akv_device_t *device,
+                                       const akv_attention_problem_t *problem,
+                                       akv_attention_plan_t *plan) {
+  return attention_plan_create(device, problem,
+                               AKV_ATTENTION_KERNEL_VERSION_V1, plan);
+}
+
+akv_status_t akv_attention_plan_create_v2(
+    const akv_device_t *device, const akv_attention_problem_t *problem,
+    akv_attention_plan_t *plan) {
+  return attention_plan_create(device, problem,
+                               AKV_ATTENTION_KERNEL_VERSION_V2, plan);
+}
+
+static akv_status_t attention_execute(const akv_attention_plan_t *plan,
+                                      uint32_t kernel_version,
+                                      akv_attention_executor_t executor,
+                                      void *executor_context) {
   if (plan == NULL || executor == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
-  if (plan->kernel_version != AKV_ATTENTION_KERNEL_VERSION ||
-      !akv_descriptor_is_valid(&plan->descriptor) || plan->mask == NULL ||
+  if (plan->kernel_version != kernel_version ||
+      (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2
+           ? !akv_v2_descriptor_is_valid(&plan->descriptor)
+           : !akv_descriptor_is_valid(&plan->descriptor)) ||
+      plan->mask == NULL ||
       plan->output == NULL ||
       plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
       plan->descriptor.head_dim != AKV_HEAD_DIM_128 ||
@@ -257,4 +284,18 @@ akv_status_t akv_attention_execute(const akv_attention_plan_t *plan,
     return AKV_STATUS_BAD_ARGUMENT;
   return executor(executor_context, &plan->descriptor, plan->mask, plan->output,
                   plan->output_row_stride_bytes, plan->scale);
+}
+
+akv_status_t akv_attention_execute(const akv_attention_plan_t *plan,
+                                   akv_attention_executor_t executor,
+                                   void *executor_context) {
+  return attention_execute(plan, AKV_ATTENTION_KERNEL_VERSION_V1, executor,
+                           executor_context);
+}
+
+akv_status_t akv_attention_execute_v2(const akv_attention_plan_t *plan,
+                                      akv_attention_executor_t executor,
+                                      void *executor_context) {
+  return attention_execute(plan, AKV_ATTENTION_KERNEL_VERSION_V2, executor,
+                           executor_context);
 }

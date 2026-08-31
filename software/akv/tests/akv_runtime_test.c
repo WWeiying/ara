@@ -192,6 +192,7 @@ static void test_v2_reference_context(void) {
 static void test_plan_and_execute(void) {
   akv_device_t device;
   akv_attention_plan_t plan;
+  akv_attention_plan_t v2_plan;
   akv_attention_problem_t problem = valid_problem();
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
   assert(akv_attention_plan_create(&device, &problem, &plan) == AKV_STATUS_OK);
@@ -200,6 +201,11 @@ static void test_plan_and_execute(void) {
   assert(plan.descriptor.kv_length == TEST_KV_LENGTH);
   assert(plan.descriptor.q_rows == AKV_ATTENTION_KERNEL_Q_ROWS);
   assert(akv_descriptor_is_valid(&plan.descriptor));
+  assert(plan.kernel_version == AKV_ATTENTION_KERNEL_VERSION_V1);
+  assert(akv_attention_plan_create_v2(&device, &problem, &v2_plan) ==
+         AKV_STATUS_OK);
+  assert(v2_plan.kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2);
+  assert(akv_v2_descriptor_is_valid(&v2_plan.descriptor));
 
   executor_capture_t capture;
   memset(&capture, 0, sizeof(capture));
@@ -211,6 +217,15 @@ static void test_plan_and_execute(void) {
   assert(capture.output == output);
   assert(capture.output_stride == TEST_ROW_ELEMENTS * sizeof(float));
   assert(capture.scale == problem.scale);
+  memset(&capture, 0, sizeof(capture));
+  assert(akv_attention_execute_v2(&v2_plan, capture_executor, &capture) ==
+         AKV_STATUS_OK);
+  assert(capture.calls == 1u);
+  assert(capture.descriptor == &v2_plan.descriptor);
+  assert(akv_attention_execute(&v2_plan, capture_executor, &capture) ==
+         AKV_STATUS_BAD_ARGUMENT);
+  assert(akv_attention_execute_v2(&plan, capture_executor, &capture) ==
+         AKV_STATUS_BAD_ARGUMENT);
 #if !defined(__riscv)
   assert(akv_attention_execute_native(&plan) == AKV_STATUS_RUNTIME_UNAVAILABLE);
 #endif
@@ -254,6 +269,21 @@ static void test_rejections(void) {
   device.capabilities.head_dim_128 = 0u;
   problem = valid_problem();
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
+         AKV_STATUS_CAPABILITY);
+
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  problem = valid_problem();
+  problem.query++;
+  assert(akv_attention_plan_create(&device, &problem, &plan) == AKV_STATUS_OK);
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_LAYOUT);
+
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1), 0u, 0u,
+             &device.capabilities) == AKV_STATUS_OK);
+  problem = valid_problem();
+  assert(akv_attention_plan_create(&device, &problem, &plan) == AKV_STATUS_OK);
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
          AKV_STATUS_CAPABILITY);
 }
 

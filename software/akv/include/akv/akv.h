@@ -10,7 +10,9 @@
 extern "C" {
 #endif
 
-#define AKV_ATTENTION_KERNEL_VERSION 1u
+#define AKV_ATTENTION_KERNEL_VERSION_V1 1u
+#define AKV_ATTENTION_KERNEL_VERSION_V2 2u
+#define AKV_ATTENTION_KERNEL_VERSION AKV_ATTENTION_KERNEL_VERSION_V1
 #define AKV_ATTENTION_KERNEL_Q_ROWS 6u
 
 typedef enum {
@@ -113,9 +115,15 @@ akv_status_t akv_device_init_reference(akv_device_t *device);
 akv_status_t akv_attention_plan_create(const akv_device_t *device,
                                        const akv_attention_problem_t *problem,
                                        akv_attention_plan_t *plan);
+akv_status_t akv_attention_plan_create_v2(
+    const akv_device_t *device, const akv_attention_problem_t *problem,
+    akv_attention_plan_t *plan);
 akv_status_t akv_attention_execute(const akv_attention_plan_t *plan,
                                    akv_attention_executor_t executor,
                                    void *executor_context);
+akv_status_t akv_attention_execute_v2(const akv_attention_plan_t *plan,
+                                      akv_attention_executor_t executor,
+                                      void *executor_context);
 
 void akv_v2_reference_init(akv_v2_reference_context_t *context);
 akv_status_t akv_v2_reference_full(akv_v2_reference_context_t *context,
