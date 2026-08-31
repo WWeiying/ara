@@ -23,6 +23,7 @@ fi
 sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
 simv=${sim_dir}/simv
 run_root=${LLAMA_ATTN_RUN_ROOT:-${repo_root}/hardware/llama_attention_runs}
+build_lock=${apps_dir}/bin/.llama-q4km-operator-build.lock
 spike=${SPIKE:-${repo_root}/install/riscv-isa-sim/bin/spike}
 spike_timeout=${LLAMA_ATTN_SPIKE_TIMEOUT:-600}
 ara_timeout=${LLAMA_ATTN_ARA_TIMEOUT:-14400}
@@ -39,6 +40,13 @@ if [[ -z ${capture_root} ]]; then
   fi
 fi
 export Q4KM_CAPTURE_ROOT=${capture_root}
+if [[ -f ${capture_root}/run.conf ]]; then
+  captured_kv=$(sed -n 's/^effective_kv=//p' "${capture_root}/run.conf" | tail -n 1)
+  if [[ -n ${captured_kv} && ${captured_kv} != "${kvlen}" ]]; then
+    echo "capture effective KV ${captured_kv} does not match requested KV ${kvlen}: ${capture_root}" >&2
+    exit 2
+  fi
+fi
 stamp=$(date +%Y%m%d_%H%M%S)
 run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
@@ -86,7 +94,7 @@ if [[ ${execution} != --spike-only ]]; then
   simv_sha256=$(sha256sum -- "${simv}" | awk '{print $1}')
 fi
 
-mkdir -p "${run_dir}"
+mkdir -p "${run_dir}" "${apps_dir}/bin"
 ln -sfn "${run_dir}" "${run_root}/decode_attention_core_${implementation}_latest"
 ln -sfn "${run_dir}" "${run_root}/decode_attention_core_${implementation}_kv${kvlen}_latest"
 printf 'implementation=%s\ncase_id=%s\nsimv=%s\n' \
@@ -124,7 +132,7 @@ printf 'capture_manifest_sha256=%s\nsimv_sha256=%s\n' \
       "$(sha256sum -- "${run_dir}/${app}.${implementation}.elf" | awk '{print $1}')" \
       >> "${run_dir}/run.conf"
   fi
-) 9> "${run_root}/.attention-build.lock"
+) 9> "${build_lock}"
 
 if [[ ${execution} != --ara-only ]]; then
   timeout --foreground "${spike_timeout}" "${spike}" \
@@ -153,4 +161,5 @@ if [[ ${execution} != --spike-only ]]; then
     "${run_dir}/ara.log"
 fi
 
+: > "${run_dir}/complete"
 echo "results: ${run_dir}"

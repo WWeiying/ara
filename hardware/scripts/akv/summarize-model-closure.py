@@ -36,6 +36,7 @@ SUPPORTED_QBS_TYPES = {
     "Q8_0",
     "IQ4_NL",
 }
+PROJECTION_METHOD_VERSION = 1
 
 
 def fields(line: str) -> dict[str, str]:
@@ -52,6 +53,17 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def read_manifest(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    values = {}
+    for line in path.read_text(errors="replace").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key:
+            values[key] = value
+    return values
 
 
 def normalized_qbs_type(value: str) -> str:
@@ -213,6 +225,13 @@ def validate_dynamic(run: ParsedRun) -> None:
 
     qbs_calls: defaultdict[str, int] = defaultdict(int)
     for graph in run.graphs:
+        qbs_nodes = {
+            index
+            for index, node in enumerate(graph.nodes)
+            if node.get("op") == "MUL_MAT"
+            and normalized_qbs_type(node.get("src0", "")) in SUPPORTED_QBS_TYPES
+        }
+        called_qbs_nodes: set[int] = set()
         for call in graph.qbs_calls:
             profile = normalized_qbs_type(call["type"])
             node_index = integer(call, "_node_index", -1)
@@ -221,8 +240,14 @@ def validate_dynamic(run: ParsedRun) -> None:
             node = graph.nodes[node_index]
             if node.get("op") != "MUL_MAT" or normalized_qbs_type(node.get("src0", "")) != profile:
                 raise ValueError("QBS call/model-node association is inconsistent")
+            called_qbs_nodes.add(node_index)
             qbs_calls[profile] += (
                 integer(call, "k") * integer(call, "input_rows") * integer(call, "output_rows")
+            )
+        if qbs_nodes != called_qbs_nodes:
+            raise ValueError(
+                f"QBS graph coverage mismatch for graph {graph.graph_id}: "
+                f"eligible={sorted(qbs_nodes)} called={sorted(called_qbs_nodes)}"
             )
     for profile, dot_elements in qbs_calls.items():
         summary = run.qbs_exec.get(profile)
@@ -240,8 +265,40 @@ def validate_dynamic(run: ParsedRun) -> None:
             )
         if integer(summary, "native_qbexec") == 0 or integer(summary, "emulated_commands") != 0:
             raise ValueError(f"{profile} did not execute natively")
+        coverage = run.qbs_coverage.get(profile)
+        if coverage is None:
+            raise ValueError(f"missing QBS coverage summary for {profile}")
+        if integer(coverage, "candidate_tensors") != integer(coverage, "selected_tensors") or \
+           integer(coverage, "candidate_elements") != integer(coverage, "selected_elements"):
+            raise ValueError(f"{profile} did not select every candidate tensor and element")
+        if any(integer(coverage, key) for key in coverage if key.startswith("fallback_")):
+            raise ValueError(f"{profile} unexpectedly used a QBS fallback")
 
-    akv_calls = [call for graph in run.graphs for call in graph.akv_calls]
+    akv_calls = []
+    flash_nodes = 0
+    for graph in run.graphs:
+        eligible_nodes = {
+            index
+            for index, node in enumerate(graph.nodes)
+            if graph.phase == "decode" and node.get("op") == "FLASH_ATTN_EXT"
+        }
+        flash_nodes += sum(node.get("op") == "FLASH_ATTN_EXT" for node in graph.nodes)
+        called_nodes: Counter[int] = Counter()
+        for call in graph.akv_calls:
+            node_index = integer(call, "_node_index", -1)
+            if node_index < 0 or node_index >= len(graph.nodes):
+                raise ValueError("AKV call has no valid model-node owner")
+            if graph.phase != "decode" or graph.nodes[node_index].get("op") != "FLASH_ATTN_EXT":
+                raise ValueError("AKV call/model-node association is inconsistent")
+            called_nodes[node_index] += 1
+            akv_calls.append(call)
+        if eligible_nodes != set(called_nodes) or any(
+            count != 1 for count in called_nodes.values()
+        ):
+            raise ValueError(
+                f"AKV graph coverage mismatch for graph {graph.graph_id}: "
+                f"eligible={sorted(eligible_nodes)} called={dict(sorted(called_nodes.items()))}"
+            )
     if not akv_calls or any(call.get("kernel") != "v2" for call in akv_calls):
         raise ValueError("AKV-v2 did not execute for every accelerated attention call")
     akv_macs = sum(integer(call, "attention_macs") for call in akv_calls)
@@ -249,6 +306,17 @@ def validate_dynamic(run: ParsedRun) -> None:
         raise ValueError("AKV call/coverage MAC count mismatch")
     if integer(run.akv_coverage, "executed_v1") != 0:
         raise ValueError("combined run unexpectedly executed AKV-v1")
+    if integer(run.akv_coverage, "candidate_ops") != flash_nodes or \
+       integer(run.akv_coverage, "executed_ops") != len(akv_calls) or \
+       integer(run.akv_coverage, "executed_v2") != len(akv_calls):
+        raise ValueError("AKV candidate/execution coverage is inconsistent with traced graph nodes")
+    akv_fallbacks = sum(
+        integer(run.akv_coverage, key)
+        for key in run.akv_coverage
+        if key.startswith("fallback_")
+    )
+    if akv_fallbacks != flash_nodes - len(akv_calls):
+        raise ValueError("AKV fallback count does not explain every non-executed candidate")
 
 
 def write_csv(path: Path, rows: list[dict[str, object]], leading: Iterable[str]) -> None:
@@ -546,6 +614,11 @@ def interpolate_akv_cycles(active_kv: int, points: list[dict[str, int]]) -> floa
     return lhs["cycles"] + slope * (active_kv - lhs["active_kv"])
 
 
+def describe_akv_calibration(points: list[dict[str, int]]) -> str:
+    kv_points = "/".join(f"KV{point['active_kv']}" for point in points)
+    return f"piecewise AKV-v2 {kv_points} RTL"
+
+
 def load_rvv_calibration(
     directories: Iterable[Path],
 ) -> tuple[dict[str, int], list[dict[str, object]]]:
@@ -575,6 +648,12 @@ def load_rvv_calibration(
 
 
 def default_rvv_calibration_dirs(root: Path) -> list[Path]:
+    compute_only = (
+        root
+        / "hardware/model_closure_rvv_calibration_compute_only_full_v2/operator_ara_latest"
+    )
+    if compute_only.is_dir() and (compute_only / "complete").is_file():
+        return [compute_only]
     directories = [
         root / "hardware/llama_benchmark_runs/operator_ara_l2_16m_20260813_034827"
     ]
@@ -590,17 +669,38 @@ def default_rvv_calibration_dirs(root: Path) -> list[Path]:
 
 def classify_rvv_node(row: dict[str, object]) -> tuple[str, str] | None:
     semantic = str(row.get("semantic", ""))
+    phase = str(row.get("phase", ""))
+    op = str(row.get("op", "")).upper()
+    shape = tuple(int(row.get(f"ne{axis}", 0)) for axis in range(4))
+    result_type = normalized_qbs_type(str(row.get("type", "")))
+    src0 = normalized_qbs_type(str(row.get("src0", "")))
+    src1 = normalized_qbs_type(str(row.get("src1", "")))
     mapping = {
-        "attention_norm": ("rvv_norm", "operator/decode/attention_norm"),
-        "ffn_norm": ("rvv_norm", "operator/decode/ffn_norm"),
-        "final_norm": ("rvv_norm", "operator/decode/attention_norm"),
-        "rope_q": ("rvv_rope", "operator/decode/rope_q"),
-        "rope_k": ("rvv_rope", "operator/decode/rope_k"),
-        "attention_residual": ("rvv_residual", "operator/decode/attention_residual"),
-        "ffn_residual": ("rvv_residual", "operator/decode/ffn_residual"),
-        "ffn_activation": ("rvv_activation", "operator/decode/ffn_activation"),
+        "attention_norm": ((1536, 1, 1, 1), "rvv_norm", f"operator/{phase}/attention_norm"),
+        "ffn_norm": ((1536, 1, 1, 1), "rvv_norm", f"operator/{phase}/ffn_norm"),
+        "final_norm": ((1536, 1, 1, 1), "rvv_norm", "operator/decode/attention_norm"),
+        "rope_q": ((128, 12, 1, 1), "rvv_rope", f"operator/{phase}/rope_q"),
+        "rope_k": ((128, 2, 1, 1), "rvv_rope", f"operator/{phase}/rope_k"),
+        "attention_residual": ((1536, 1, 1, 1), "rvv_residual", f"operator/{phase}/attention_residual"),
+        "ffn_residual": ((1536, 1, 1, 1), "rvv_residual", f"operator/{phase}/ffn_residual"),
+        "ffn_activation": ((8960, 1, 1, 1), "rvv_activation", f"operator/{phase}/ffn_activation"),
     }
-    return mapping.get(semantic)
+    if semantic in mapping:
+        expected_shape, category, case_id = mapping[semantic]
+        if result_type == "F32" and shape == expected_shape:
+            return category, case_id
+        return None
+    if (phase == "decode" and op == "ADD" and result_type == "F32" and
+            src0 == "F32" and src1 == "F32" and shape in ((256, 1, 1, 1), (1536, 1, 1, 1))):
+        return ("rvv_bias", f"calibration/decode/qkv_bias_{shape[0]}")
+    if (phase == "decode" and op == "SET_ROWS" and result_type == "F16" and
+            src0 == "F32" and src1 == "I64" and shape == (256, 256, 1, 1)):
+        return ("rvv_cache_update", "calibration/decode/cache_set_rows_f32_f16")
+    if (phase == "decode" and op == "GET_ROWS" and result_type == "F32" and
+            src0 in ("F32", "Q4_K") and src1 == "I32" and shape == (1536, 1, 1, 1)):
+        case = "get_rows_q4_k" if src0 == "Q4_K" else "get_rows_f32"
+        return ("rvv_row_gather", f"calibration/decode/{case}")
+    return None
 
 
 def cycle_projection(
@@ -612,6 +712,7 @@ def cycle_projection(
     rvv_points: dict[str, int],
 ):
     rows: list[dict[str, object]] = []
+    akv_calibration = describe_akv_calibration(akv_points)
     for node in qbs_node_rows:
         point = nearest_qbs_point(node, qbs_points)
         cycles = (
@@ -638,7 +739,7 @@ def cycle_projection(
                 "detail": f"KV{call['active_kv']} Hq{call['q_rows']} Hkv{call['kv_heads']}",
                 "instances": call["calls"],
                 "projected_cycles": round(per_call * int(call["calls"])),
-                "calibration": "piecewise AKV-v2 KV16/KV128/KV256 RTL",
+                "calibration": akv_calibration,
                 "basis": "dynamic active-KV x RTL interpolation",
             }
         )
@@ -709,12 +810,45 @@ def aggregate_projection(rows: list[dict[str, object]]) -> list[dict[str, object
     ]
 
 
+def aggregate_components(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    incomplete_phases = {
+        str(row["phase"])
+        for row in rows
+        if row["category"] == "uncalibrated"
+    }
+    totals: defaultdict[tuple[str, str], dict[str, int]] = defaultdict(
+        lambda: {"instances": 0, "cycles": 0}
+    )
+    phase_cycles: Counter[str] = Counter()
+    for row in rows:
+        phase = str(row["phase"])
+        if phase in incomplete_phases or row["projected_cycles"] == "":
+            continue
+        category = str(row["category"])
+        component = category if category in {"qbs", "akv_v2"} else "rvv_remaining"
+        key = (phase, component)
+        totals[key]["instances"] += int(row["instances"])
+        totals[key]["cycles"] += int(row["projected_cycles"])
+        phase_cycles[phase] += int(row["projected_cycles"])
+    return [
+        {
+            "phase": phase,
+            "component": component,
+            "instances": values["instances"],
+            "projected_cycles": values["cycles"],
+            "share_of_phase_cycles": values["cycles"] / phase_cycles[phase],
+        }
+        for (phase, component), values in sorted(totals.items())
+    ]
+
+
 def write_markdown(
     path: Path,
     run: ParsedRun,
     qbs_call_rows: list[dict[str, object]],
     qbs_node_rows: list[dict[str, object]],
     akv_rows: list[dict[str, object]],
+    component_summary: list[dict[str, object]],
     projection_summary: list[dict[str, object]],
     projection_rows: list[dict[str, object]],
 ) -> None:
@@ -749,6 +883,22 @@ def write_markdown(
             f"{sum(int(row['calls']) for row in qbs_call_rows if row['phase'] == phase)} | "
             f"{qbs_activation_work[phase]} | {qbs_work[phase]} | "
             f"{sum(len(graph.akv_calls) for graph in graphs)} | {akv_work[phase]} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Complete-phase component attribution",
+            "",
+            "Only phases with no uncalibrated traced compute node appear here.",
+            "",
+            "| Phase | Component | Instances | Projected cycles | Share of phase cycles |",
+            "|---|---|---:|---:|---:|",
+        ]
+    )
+    for row in component_summary:
+        lines.append(
+            f"| {row['phase']} | {row['component']} | {row['instances']} | "
+            f"{row['projected_cycles']} | {100.0 * float(row['share_of_phase_cycles']):.2f}% |"
         )
     lines.extend(
         [
@@ -811,6 +961,12 @@ def main() -> None:
         action="append",
         help="RVV leaf-calibration directory; repeat to combine directories",
     )
+    parser.add_argument(
+        "--require-complete-phase",
+        action="append",
+        default=["decode"],
+        help="fail when a phase still contains an uncalibrated traced compute node",
+    )
     args = parser.parse_args()
     output = args.output_dir or args.log.parent / "model_closure"
     output.mkdir(parents=True, exist_ok=True)
@@ -830,7 +986,19 @@ def main() -> None:
         akv_points,
         rvv_points,
     )
+    incomplete = {
+        str(row["phase"])
+        for row in projection_rows
+        if row["category"] == "uncalibrated"
+    }
+    missing_required = sorted(set(args.require_complete_phase) & incomplete)
+    if missing_required:
+        raise ValueError(
+            "uncalibrated compute nodes remain in required phase(s): "
+            + ", ".join(missing_required)
+        )
     projection_summary = aggregate_projection(projection_rows)
+    component_summary = aggregate_components(projection_rows)
 
     write_csv(
         output / "qbs_calls.csv",
@@ -884,8 +1052,25 @@ def main() -> None:
         projection_summary,
         ("phase", "category", "instances", "projected_cycles", "share_of_calibrated_cycles"),
     )
+    write_csv(
+        output / "cycle_projection_components.csv",
+        component_summary,
+        ("phase", "component", "instances", "projected_cycles", "share_of_phase_cycles"),
+    )
 
     dynamic_summary = {
+        "provenance": {
+            "tool": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": sha256(Path(__file__).resolve()),
+                "projection_method_version": PROJECTION_METHOD_VERSION,
+            },
+            "dynamic_log": {
+                "path": str(args.log.resolve()),
+                "sha256": sha256(args.log),
+            },
+            "run_manifest": read_manifest(args.log.parent / "manifest.txt"),
+        },
         "functional": {
             "guest_exit": run.guest_exit,
             "output_equal": run.output_equal,
@@ -915,7 +1100,24 @@ def main() -> None:
     (output / "dynamic_summary.json").write_text(json.dumps(dynamic_summary, indent=2) + "\n")
 
     calibration_snapshot = {
+        "projection_method_version": PROJECTION_METHOD_VERSION,
+        "required_complete_phases": args.require_complete_phase,
         "sources": {
+            "tool": {
+                "path": str(Path(__file__).resolve()),
+                "sha256": sha256(Path(__file__).resolve()),
+            },
+            "dynamic_log": {
+                "path": str(args.log.resolve()),
+                "sha256": sha256(args.log),
+            },
+            "run_manifest": {
+                "path": str((args.log.parent / "manifest.txt").resolve()),
+                "sha256": sha256(args.log.parent / "manifest.txt")
+                if (args.log.parent / "manifest.txt").is_file()
+                else None,
+                "values": read_manifest(args.log.parent / "manifest.txt"),
+            },
             "qbs": {"path": str(args.qbs_calibration.resolve()), "sha256": sha256(args.qbs_calibration)},
             "akv": {"path": str(args.akv_calibration.resolve()), "sha256": sha256(args.akv_calibration)},
             "rvv": rvv_sources,
@@ -931,6 +1133,7 @@ def main() -> None:
         qbs_call_rows,
         qbs_node_rows,
         akv_rows,
+        component_summary,
         projection_summary,
         projection_rows,
     )

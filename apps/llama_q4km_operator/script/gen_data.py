@@ -25,6 +25,9 @@ KIND = {
     "rms_norm": 5,
     "rope": 6,
     "attention_core": 7,
+    "set_rows_f32_f16": 8,
+    "get_rows_f32": 9,
+    "get_rows_q4_k": 10,
 }
 
 
@@ -53,8 +56,8 @@ def resolve_case(case_id):
     if len(matches) != 1:
         raise SystemExit(f"unknown or non-leaf case: {case_id}")
     entry = matches[0]
-    if entry["level"] not in ("operator", "operator-leaf"):
-        raise SystemExit(f"case is not one of the 30 operator leaves: {case_id}")
+    if entry["level"] not in ("operator", "operator-leaf", "operator-calibration"):
+        raise SystemExit(f"case is not an operator or calibration leaf: {case_id}")
     return entry
 
 
@@ -138,6 +141,14 @@ def make_spec(case_id, implementation):
             kshape = blobs["input_b"]["shape"]
             args[:5] = [qshape[0], qshape[1], qshape[2], kshape[1], kshape[2]]
             params[2:4] = [case["scale"], case.get("max_bias", 0.0)]
+        elif kind == "set_rows_f32_f16":
+            blobs["input_b"] = ref("index")
+            width = blobs["input_a"]["shape"][0] * blobs["input_a"]["shape"][1]
+            rows = blobs["golden"]["nbytes"] // (2 * width)
+            args[:3] = [width, rows, case["destination_rows"]]
+        elif kind in ("get_rows_f32", "get_rows_q4_k"):
+            blobs["input_b"] = ref("index")
+            args[:2] = [blobs["golden"]["shape"][0], blobs["golden"]["shape"][1]]
         else:
             raise SystemExit(f"unsupported operator kind: {kind}")
 

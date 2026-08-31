@@ -89,6 +89,7 @@ qbs_command_vectors.txt: qbs_command_vectors
 generated-check:
 	python3 $(ROOT)/scripts/gen_qbs_abi.py --check
 	python3 test_generate_qbs_case.py
+	python3 test_summarize_qbs_perf.py
 
 check: generated-check qbs_ref_test
 	./qbs_ref_test

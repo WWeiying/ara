@@ -41,18 +41,30 @@ AKV_PERF_SUM_FIELDS = (
 )
 
 
-def newest_complete_run(root: Path, implementation: str, effective_kv: int):
-    candidates = list(
-        root.glob(f"decode_attention_core_{implementation}_kv{effective_kv}_20*")
-    )
-    if effective_kv == 16:
-        candidates.extend(root.glob(f"decode_attention_core_{implementation}_20*"))
+def newest_complete_run(roots: list[Path], implementation: str, effective_kv: int):
+    candidates = []
+    for root in roots:
+        candidates.extend(
+            root.glob(f"decode_attention_core_{implementation}_kv{effective_kv}_20*")
+        )
+        if effective_kv == 16:
+            candidates.extend(root.glob(f"decode_attention_core_{implementation}_20*"))
     candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     for candidate in candidates:
         ara_log = candidate / "ara.log"
+        config_path = candidate / "run.conf"
         perf_logs = list(candidate.glob("llm_perf_report_*.log"))
-        if (ara_log.is_file() and perf_logs and
-                OPERATOR_RE.search(ara_log.read_text(errors="replace"))):
+        if (not (candidate / "complete").is_file() or not config_path.is_file() or
+                not ara_log.is_file() or not perf_logs or not perf_logs[0].stat().st_size):
+            continue
+        run_config = parse_key_values(config_path.read_text(errors="replace").replace("\n", " "))
+        if (run_config.get("implementation") != implementation or
+                int(run_config.get("effective_kv", -1)) != effective_kv):
+            continue
+        log_text = ara_log.read_text(errors="replace")
+        match = OPERATOR_RE.search(log_text)
+        if (match and match.group(1) == "PASS" and int(match.group(3)) == 0 and
+                "Core Test *** SUCCESS" in log_text):
             return candidate, ara_log, perf_logs[0]
     return None
 
@@ -115,16 +127,20 @@ def main():
     parser.add_argument(
         "--run-root",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "llama_attention_runs",
+        action="append",
+        help="Attention run root; repeat to combine independent run directories",
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    output = args.output or args.run_root / "attention_core_summary.csv"
+    run_roots = args.run_root or [
+        Path(__file__).resolve().parents[2] / "llama_attention_runs"
+    ]
+    output = args.output or run_roots[0] / "attention_core_summary.csv"
 
     rows = []
     for implementation in ("ref", "rvv", "tiled_rvv", "akv", "akv_v2"):
         for effective_kv in (16, 128, 256):
-            selected = newest_complete_run(args.run_root, implementation, effective_kv)
+            selected = newest_complete_run(run_roots, implementation, effective_kv)
             if selected is not None:
                 rows.extend(parse_run(implementation, effective_kv, *selected))
     if not rows:

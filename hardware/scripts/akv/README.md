@@ -59,7 +59,7 @@ AKV requires `Zfh` and `Zvfh` because its strict profile consumes F16 Q/K/V
 data and performs F16/F32 conversion. QBS remains independently selected by
 its own runtime capability and shape checks.
 
-## Model-level functional check
+## Isolated AKV model check
 
 The QEMU check runs the same Qwen2.5-1.5B Q4_K_M model and prompt twice. The
 first execution leaves AKV disabled and follows the standard RVV path. The
@@ -97,6 +97,62 @@ cycle-accurate model nor an instruction-order numerical model of the native
 assembly because the native kernel uses its own vector exponential
 approximation. Native numerical error and performance are measured with the
 shared assembly kernel on the real-model RTL operator benchmark.
+
+## Combined QBS + AKV-v2 model closure
+
+The combined check executes one Qwen2.5-1.5B Q4_K_M prompt in three modes
+inside the same QEMU guest:
+
+1. ordinary RVV;
+2. native QBS with ordinary RVV Attention; and
+3. the same native QBS path with AKV-v2 Decode Attention.
+
+Run it with:
+
+```bash
+hardware/scripts/akv/run-qemu-combined-model-check.sh
+```
+
+`QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Their text,
+top-1 token, and logits must match exactly, which isolates AKV-v2 from the
+known numerical-order difference between QBS and the ordinary RVV baseline.
+Graph tracing associates every QBS and AKV call with its owning GGML node. The
+closure checker rejects a run unless every supported `MUL_MAT` node has a QBS
+call, every Decode `FLASH_ATTN_EXT` node has exactly one AKV-v2 call, QBS has no
+fallback, and every non-executed AKV candidate is explained by an explicit
+fallback counter. Prefill Attention remains a deliberate shape fallback.
+
+After the guest run, combine exact dynamic work with representative real-model
+RTL leaf measurements:
+
+```bash
+run=hardware/akv_jobs/qemu_model_combined_latest
+hardware/scripts/akv/summarize-model-closure.py "$run/qemu.log" \
+  --qbs-calibration \
+    hardware/qbs_akv_goal_final_calibration_20260831/results.csv \
+  --akv-calibration "$run/akv_v2_rtl_calibration_final.csv" \
+  --rvv-calibration-dir \
+    hardware/model_closure_rvv_calibration_compute_only_full_v2/operator_ara_latest \
+  --output-dir "$run/model_closure_final"
+```
+
+The generated `dynamic_summary.json` and call/node CSVs contain exact model
+execution counts. `cycle_projection_{detail,summary}.csv` is a calibrated
+projection: QBS uses unique activation and dot work, AKV-v2 uses active-KV
+interpolation, and remaining Decode nodes use compute-only RVV leaves. It is
+not QEMU wall time or a claim of full-model RTL simulation. Decode completeness
+is enforced by default; uncalibrated Prefill nodes remain explicitly listed.
+The output snapshot records hashes for the attribution tool, dynamic log, run
+manifest, model and QEMU binaries, source revisions, and every RTL calibration
+log, together with an explicit projection-method version.
+
+For the closed Qwen run, the calibrated Decode-token projection is 81,978,147
+QBS cycles (94.54%), 1,031,518 AKV-v2 cycles (1.19%), and 3,700,824 remaining
+ordinary-RVV cycles (4.27%). The QBS table uses a current-image Q4_K
+FILL/REUSE/RELEASE point and a conservative current-image Q6_K DIRECT point.
+These percentages are not QEMU time samples. The
+single Prefill graph remains in the dynamic trace, but its non-QBS nodes are
+outside the current complete calibration and therefore outside this share.
 
 ## Runtime selection
 

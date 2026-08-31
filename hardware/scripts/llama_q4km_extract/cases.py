@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +30,247 @@ def relative(source: Path, destination_dir: Path) -> str:
 
 def tensor_meta(root: Path, phase: str, name: str) -> Path:
     return root / phase / "block" / f"{name}-0.json"
+
+
+def read_tensor(meta_path: Path, expected_type: str | None = None) -> tuple[dict, bytes]:
+    meta = load_json(meta_path)
+    if expected_type is not None and meta["type"].lower() != expected_type.lower():
+        raise RuntimeError(
+            f"unexpected tensor type: {meta_path}: {meta['type']} != {expected_type}"
+        )
+    payload = meta_path.with_suffix(".bin").read_bytes()
+    if len(payload) != int(meta["nbytes"]):
+        raise RuntimeError(f"invalid tensor payload: {meta_path}")
+    return meta, payload
+
+
+def write_derived_tensor(
+    replay: Path,
+    name: str,
+    tensor_type: str,
+    shape: list[int],
+    payload: bytes,
+    strides: list[int],
+) -> Path:
+    directory = replay / "derived" / "model_closure"
+    directory.mkdir(parents=True, exist_ok=True)
+    meta_path = directory / f"{name}.json"
+    data_path = meta_path.with_suffix(".bin")
+    data_path.write_bytes(payload)
+    meta_path.write_text(
+        json.dumps(
+            {
+                "role": "derived_model_closure_calibration",
+                "tensor_name": name,
+                "type": tensor_type,
+                "shape": shape,
+                "strides": strides,
+                "nbytes": len(payload),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return meta_path
+
+
+def unpack_f32(payload: bytes) -> tuple[float, ...]:
+    if len(payload) % 4 != 0:
+        raise RuntimeError("F32 payload size is not a multiple of four")
+    return struct.unpack(f"<{len(payload) // 4}f", payload)
+
+
+def pack_f32(values) -> bytes:
+    values = tuple(values)
+    return struct.pack(f"<{len(values)}f", *values)
+
+
+def get_scale_min_k4(index: int, scales: bytes) -> tuple[int, int]:
+    if index < 4:
+        return scales[index] & 63, scales[index + 4] & 63
+    scale = (scales[index + 4] & 0x0F) | ((scales[index - 4] >> 6) << 4)
+    minimum = (scales[index + 4] >> 4) | ((scales[index] >> 6) << 4)
+    return scale, minimum
+
+
+def dequantize_q4_k_row(row: bytes) -> list[float]:
+    qk_k = 256
+    block_bytes = 144
+    if len(row) % block_bytes != 0:
+        raise RuntimeError("invalid Q4_K row size")
+    output: list[float] = []
+    for offset in range(0, len(row), block_bytes):
+        block = row[offset : offset + block_bytes]
+        d, dmin = struct.unpack_from("<ee", block)
+        scales = block[4:16]
+        quants = block[16:]
+        scale_index = 0
+        quant_offset = 0
+        for _ in range(0, qk_k, 64):
+            scale0, min0 = get_scale_min_k4(scale_index, scales)
+            scale1, min1 = get_scale_min_k4(scale_index + 1, scales)
+            output.extend(
+                float(d) * scale0 * (quants[quant_offset + item] & 0x0F)
+                - float(dmin) * min0
+                for item in range(32)
+            )
+            output.extend(
+                float(d) * scale1 * (quants[quant_offset + item] >> 4)
+                - float(dmin) * min1
+                for item in range(32)
+            )
+            quant_offset += 32
+            scale_index += 2
+    return output
+
+
+def build_decode_calibration_specs(root: Path, replay: Path, strict: bool) -> dict[str, dict]:
+    block = root / "decode" / "block"
+    operators = root / "decode" / "operators"
+    required = {
+        "q_before": operators / "blk_0_attn_q_weight" / "output_f32.json",
+        "k_before": operators / "blk_0_attn_k_weight" / "output_f32.json",
+        "q_after": block / "q4km_Qraw-0.json",
+        "k_after": block / "q4km_Kraw-0.json",
+        "k_rope": block / "q4km_Krope-0.json",
+        "position": block / "q4km_position-0.json",
+        "l_in": block / "l_in-0.json",
+        "attn_norm": block / "attn_norm-0.json",
+        "q4_weight": operators / "blk_0_attn_q_weight" / "weight_q4_K.json",
+    }
+    missing = [str(path) for path in required.values() if not path.is_file()]
+    if missing:
+        if strict:
+            raise RuntimeError(f"decode model-closure calibration missing files: {missing}")
+        return {}
+
+    derived: dict[str, Path] = {}
+    for prefix in ("q", "k"):
+        before_meta, before_bytes = read_tensor(required[f"{prefix}_before"], "f32")
+        after_meta, after_bytes = read_tensor(required[f"{prefix}_after"], "f32")
+        before = unpack_f32(before_bytes)
+        after = unpack_f32(after_bytes)
+        if len(before) != len(after):
+            raise RuntimeError(f"{prefix.upper()} bias tensors have different element counts")
+        bias = pack_f32(aft - bef for aft, bef in zip(after, before))
+        width = len(after)
+        derived[f"{prefix}_bias"] = write_derived_tensor(
+            replay,
+            f"decode_{prefix}_bias_f32",
+            "f32",
+            [width, 1, 1, 1],
+            bias,
+            [4, 4 * width, 4 * width, 4 * width],
+        )
+
+    position_meta, position_bytes = read_tensor(required["position"], "i32")
+    positions = struct.unpack(f"<{len(position_bytes) // 4}i", position_bytes)
+    position_i64 = struct.pack(f"<{len(positions)}q", *positions)
+    derived["position_i64"] = write_derived_tensor(
+        replay,
+        "decode_position_i64",
+        "i64",
+        [len(positions), 1, 1, 1],
+        position_i64,
+        [8, 8 * len(positions), 8 * len(positions), 8 * len(positions)],
+    )
+
+    k_rope_meta, k_rope_bytes = read_tensor(required["k_rope"], "f32")
+    k_values = unpack_f32(k_rope_bytes)
+    cache_width = int(k_rope_meta["shape"][0]) * int(k_rope_meta["shape"][1])
+    cache_rows = len(k_values) // cache_width
+    if cache_rows != len(positions) or any(pos < 0 or pos >= 256 for pos in positions):
+        raise RuntimeError("decode SET_ROWS capture has inconsistent positions")
+    cache_half = b"".join(struct.pack("<e", value) for value in k_values)
+    derived["cache_half"] = write_derived_tensor(
+        replay,
+        "decode_cache_rows_f16",
+        "f16",
+        [cache_width, cache_rows, 1, 1],
+        cache_half,
+        [2, 2 * cache_width, 2 * cache_width * cache_rows, 2 * cache_width * cache_rows],
+    )
+
+    l_in_meta, l_in_bytes = read_tensor(required["l_in"], "f32")
+    norm_meta, norm_bytes = read_tensor(required["attn_norm"], "f32")
+    if l_in_meta["shape"] != norm_meta["shape"] or int(l_in_meta["shape"][1]) != 1:
+        raise RuntimeError("decode F32 GET_ROWS sources have incompatible shapes")
+    gather_width = int(l_in_meta["shape"][0])
+    derived["f32_rows"] = write_derived_tensor(
+        replay,
+        "decode_get_rows_f32_source",
+        "f32",
+        [gather_width, 2, 1, 1],
+        l_in_bytes + norm_bytes,
+        [4, 4 * gather_width, 8 * gather_width, 8 * gather_width],
+    )
+    derived["index_one_i32"] = write_derived_tensor(
+        replay,
+        "decode_index_one_i32",
+        "i32",
+        [1, 1, 1, 1],
+        struct.pack("<i", 1),
+        [4, 4, 4, 4],
+    )
+
+    q4_meta, q4_bytes = read_tensor(required["q4_weight"], "q4_K")
+    q4_width = int(q4_meta["shape"][0])
+    q4_row_bytes = int(q4_meta["strides"][1])
+    q4_rows = q4_bytes[: 2 * q4_row_bytes]
+    if len(q4_rows) != 2 * q4_row_bytes:
+        raise RuntimeError("Q4_K source does not contain two complete rows")
+    derived["q4_rows"] = write_derived_tensor(
+        replay,
+        "decode_get_rows_q4_k_source",
+        "q4_K",
+        [q4_width, 2, 1, 1],
+        q4_rows,
+        [144, q4_row_bytes, 2 * q4_row_bytes, 2 * q4_row_bytes],
+    )
+    q4_golden = pack_f32(dequantize_q4_k_row(q4_rows[q4_row_bytes:]))
+    derived["q4_golden"] = write_derived_tensor(
+        replay,
+        "decode_get_rows_q4_k_golden",
+        "f32",
+        [q4_width, 1, 1, 1],
+        q4_golden,
+        [4, 4 * q4_width, 4 * q4_width, 4 * q4_width],
+    )
+
+    return {
+        "qkv_bias_1536": {
+            "kind": "add",
+            "input_a": required["q_before"],
+            "input_b": derived["q_bias"],
+            "golden": required["q_after"],
+        },
+        "qkv_bias_256": {
+            "kind": "add",
+            "input_a": required["k_before"],
+            "input_b": derived["k_bias"],
+            "golden": required["k_after"],
+        },
+        "cache_set_rows_f32_f16": {
+            "kind": "set_rows_f32_f16",
+            "input_a": required["k_rope"],
+            "index": derived["position_i64"],
+            "golden": derived["cache_half"],
+            "destination_rows": 256,
+        },
+        "get_rows_f32": {
+            "kind": "get_rows_f32",
+            "input_a": derived["f32_rows"],
+            "index": derived["index_one_i32"],
+            "golden": required["attn_norm"],
+        },
+        "get_rows_q4_k": {
+            "kind": "get_rows_q4_k",
+            "input_a": derived["q4_rows"],
+            "index": derived["index_one_i32"],
+            "golden": derived["q4_golden"],
+        },
+    }
 
 
 def validate_tensors(root: Path) -> list[dict]:
@@ -321,6 +563,46 @@ def build_manifest(root: Path, strict: bool) -> dict:
             }
         )
 
+    calibration_ids = []
+    for name, spec in build_decode_calibration_specs(root, replay, strict).items():
+        case_dir = write_leaf(root, "calibration", "decode", name, spec)
+        case_id = f"calibration/decode/{name}"
+        calibration_ids.append(case_id)
+        cases.append(
+            {
+                "id": case_id,
+                "level": "operator-calibration",
+                "kind": spec["kind"],
+                "path": str(case_dir.relative_to(root)),
+            }
+        )
+    if calibration_ids:
+        cases.append(
+            {
+                "id": "calibration/decode/all",
+                "level": "suite",
+                "kind": "suite",
+                "children": calibration_ids,
+            }
+        )
+        cases.append(
+            {
+                "id": "calibration/decode/model_remainder",
+                "level": "suite",
+                "kind": "suite",
+                "children": [
+                    "operator/decode/attention_norm",
+                    "operator/decode/ffn_norm",
+                    "operator/decode/rope_q",
+                    "operator/decode/rope_k",
+                    "operator/decode/attention_residual",
+                    "operator/decode/ffn_activation",
+                    "operator/decode/ffn_residual",
+                    *calibration_ids,
+                ],
+            }
+        )
+
     cases.extend(
         [
             {
@@ -406,6 +688,11 @@ def run_case(root: Path, runner: Path, case_id: str, manifest: dict) -> int:
             print(f"== {child} ==", flush=True)
             status |= run_case(root, runner, child, manifest)
         return status
+    if case["level"] == "operator-calibration":
+        raise RuntimeError(
+            f"{case_id} is a Spike/Ara cycle-calibration leaf; "
+            "use run-ara-operators.sh"
+        )
     level = "block-leaf" if case["level"] == "operator-leaf" else case["level"]
     return subprocess.run([str(runner), level, str(root / case["path"])], check=False).returncode
 

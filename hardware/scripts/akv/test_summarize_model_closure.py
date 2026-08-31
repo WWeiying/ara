@@ -27,6 +27,7 @@ GGML_RISCV_MODEL_GRAPH_BEGIN id=0 nodes=2
 GGML_RISCV_MODEL_NODE op=MUL_MAT type=f32 ne0=8 ne1=4 ne2=1 ne3=1 src0=q4_K src1=f32 fused_followers=0 fused_next=NONE name=blk.0.attn_q
 GGML_RISCV_QBS_CALL type=q4_K mode=gemm k=8 input_rows=4 output_rows=4 split_k=0
 GGML_RISCV_QBS_CALL type=q4_K mode=gemm k=8 input_rows=4 output_rows=4 split_k=0
+GGML_RISCV_MODEL_NODE op=FLASH_ATTN_EXT type=f32 ne0=8 ne1=4 ne2=1 ne3=1 src0=f32 src1=f16 fused_followers=0 fused_next=NONE name=blk.0.attn
 GGML_RISCV_MODEL_GRAPH_END id=0
 GGML_RISCV_MODEL_GRAPH_BEGIN id=1 nodes=2
 GGML_RISCV_MODEL_NODE op=MUL_MAT type=f32 ne0=8 ne1=1 ne2=1 ne3=1 src0=q4_K src1=f32 fused_followers=0 fused_next=NONE name=blk.0.attn_q
@@ -62,7 +63,34 @@ LLAMA_GUEST_EXIT=0
         self.assertEqual(sum(row["activation_elements"] for row in qbs_node_rows), 40)
         self.assertEqual(sum(row["dot_elements"] for row in qbs_node_rows), 320)
         self.assertEqual(sum(row["attention_macs"] for row in akv_rows), 384)
-        self.assertEqual(sum(row["count"] for row in node_rows), 3)
+        self.assertEqual(sum(row["count"] for row in node_rows), 4)
+
+        saved_akv_calls = run.graphs[1].akv_calls
+        run.graphs[1].akv_calls = []
+        with self.assertRaisesRegex(ValueError, "AKV graph coverage mismatch"):
+            MODULE.validate_dynamic(run)
+        run.graphs[1].akv_calls = saved_akv_calls
+
+        run.graphs[1].akv_calls = saved_akv_calls * 2
+        with self.assertRaisesRegex(ValueError, "AKV graph coverage mismatch"):
+            MODULE.validate_dynamic(run)
+        run.graphs[1].akv_calls = saved_akv_calls
+
+        run.graphs[1].nodes.append(
+            {
+                "op": "MUL_MAT",
+                "type": "f32",
+                "ne0": "8",
+                "ne1": "1",
+                "ne2": "1",
+                "ne3": "1",
+                "src0": "q4_K",
+                "src1": "f32",
+                "name": "blk.0.uncalled",
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "QBS graph coverage mismatch"):
+            MODULE.validate_dynamic(run)
 
     def test_node_semantics_follow_graph_order(self):
         nodes = [
@@ -115,6 +143,100 @@ LLAMA_GUEST_EXIT=0
         self.assertEqual(qbs_node_rows[0]["mode"], "gemm+gemv_tail")
         self.assertEqual(qbs_node_rows[0]["activation_elements"], 40)
         self.assertEqual(qbs_node_rows[0]["dot_elements"], 320)
+
+    def test_decode_remainder_uses_type_and_shape_specific_calibrations(self):
+        common = {
+            "phase": "decode",
+            "semantic": "",
+            "type": "f32",
+            "ne1": "1",
+            "ne2": "1",
+            "ne3": "1",
+            "src1": "i32",
+        }
+        cases = [
+            (
+                {**common, "op": "ADD", "ne0": "1536", "src0": "f32", "src1": "f32"},
+                ("rvv_bias", "calibration/decode/qkv_bias_1536"),
+            ),
+            (
+                {**common, "op": "ADD", "ne0": "256", "src0": "f32", "src1": "f32"},
+                ("rvv_bias", "calibration/decode/qkv_bias_256"),
+            ),
+            (
+                {
+                    **common,
+                    "op": "SET_ROWS",
+                    "type": "f16",
+                    "ne0": "256",
+                    "ne1": "256",
+                    "src0": "f32",
+                    "src1": "i64",
+                },
+                ("rvv_cache_update", "calibration/decode/cache_set_rows_f32_f16"),
+            ),
+            (
+                {**common, "op": "GET_ROWS", "ne0": "1536", "src0": "f32"},
+                ("rvv_row_gather", "calibration/decode/get_rows_f32"),
+            ),
+            (
+                {**common, "op": "GET_ROWS", "ne0": "1536", "src0": "q4_K"},
+                ("rvv_row_gather", "calibration/decode/get_rows_q4_k"),
+            ),
+        ]
+        for row, expected in cases:
+            with self.subTest(row=row):
+                self.assertEqual(MODULE.classify_rvv_node(row), expected)
+
+        wrong_shape = {**common, "op": "GET_ROWS", "ne0": "1536", "ne1": "2", "src0": "f32"}
+        self.assertIsNone(MODULE.classify_rvv_node(wrong_shape))
+
+    def test_akv_calibration_description_uses_loaded_points(self):
+        points = [
+            {"active_kv": 16, "cycles": 100},
+            {"active_kv": 128, "cycles": 500},
+        ]
+        self.assertEqual(
+            MODULE.describe_akv_calibration(points),
+            "piecewise AKV-v2 KV16/KV128 RTL",
+        )
+
+    def test_component_shares_exclude_an_incomplete_phase(self):
+        rows = [
+            {
+                "phase": "decode",
+                "category": "qbs",
+                "instances": 2,
+                "projected_cycles": 75,
+            },
+            {
+                "phase": "decode",
+                "category": "rvv_norm",
+                "instances": 1,
+                "projected_cycles": 25,
+            },
+            {
+                "phase": "prefill",
+                "category": "qbs",
+                "instances": 2,
+                "projected_cycles": 200,
+            },
+            {
+                "phase": "prefill",
+                "category": "uncalibrated",
+                "instances": 1,
+                "projected_cycles": "",
+            },
+        ]
+        summary = MODULE.aggregate_components(rows)
+        self.assertEqual(
+            [(row["phase"], row["component"]) for row in summary],
+            [("decode", "qbs"), ("decode", "rvv_remaining")],
+        )
+        self.assertEqual(
+            [row["share_of_phase_cycles"] for row in summary],
+            [0.75, 0.25],
+        )
 
 
 if __name__ == "__main__":

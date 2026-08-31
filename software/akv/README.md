@@ -24,9 +24,14 @@ AKV-v2 adds a 64-token row/column-view contract without changing the v1
 descriptor or instruction encodings. `akv_v2_reference_*()` defines FULL,
 REFILL, row-load, K-column-load, tail, validation, and release semantics. The
 generic `akv_attention_plan_create()` and `akv_attention_execute_native()` path
-deliberately remains version 1 until D64, additional GQA ratios, arbitrary
-strides, worker ownership, and trap-safe capability routing are closed. A v2
-capability bit therefore does not silently select the experimental kernel.
+remains version 1 for source compatibility. A caller that has already selected
+the token-axis profile uses `akv_attention_plan_create_v2()` followed by
+`akv_attention_execute_v2_native()` and supplies the explicit workspace needed
+by the six-row schedule. The llama.cpp/GGML RISC-V backend uses this path only
+after strict Decode D128/GQA6 capability, shape, layout, mask, and worker checks;
+D64, other GQA ratios, arbitrary strides, or unsupported states retain the
+ordinary RVV fallback. A v2 capability bit alone therefore never changes an
+otherwise unsupported call.
 
 Run the host contract tests with:
 

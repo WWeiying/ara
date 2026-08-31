@@ -165,9 +165,11 @@ and guarantees that selector, dimension, capacity, or tile-range validation
 fails before changing the destination or the previously valid reference
 context. A payload memory fault is a different class in RTL: partially written
 hidden storage is never made ready, and the failed context is invalidated.
-`akv_attention_plan_create()` intentionally continues to select kernel version
-1 at this checkpoint; capability and reference support do not silently route a
-real model through unfinished RTL.
+The generic `akv_attention_plan_create()` remains the version-1 compatibility
+entry point. Version 2 is selected explicitly through
+`akv_attention_plan_create_v2()` and `akv_attention_execute_v2_native()` only
+after a backend has checked the token-axis capability and the complete software
+shape contract; capability discovery alone does not reroute a model call.
 
 ## 6. Falsifiable implementation checks
 
@@ -196,6 +198,8 @@ background directories.
 
 ## 7. Measured RTL closure
 
+### 7.1 Design-stage mechanism characterization
+
 The focused implementation follows the modeled organization directly. Eight
 single-port 256-bit SRAM banks store row-major K and V payloads, with token
 index modulo eight selecting the bank. `vakv2kcol` gathers one F16 element from
@@ -205,9 +209,10 @@ accumulators consume each K column once. FULL and REFILL use the existing
 translated read engine; software supplies row-major model tensors and performs
 no K transpose or K/V scratch packing.
 
-The controlled runs use the real Qwen2.5-1.5B Q4_K_M D128/GQA6 capture and the
-same output tolerance as the RVV, tiled-RVV, and AKV-v1 baselines. Kernel cycles
-are the application's measured interval. The AKV-v2 runs use source commit
+The controlled design-stage runs use the real Qwen2.5-1.5B Q4_K_M D128/GQA6
+capture and the same output tolerance as the RVV, tiled-RVV, and AKV-v1
+baselines. Kernel cycles are the application's measured interval. These
+three-point AKV-v2 measurements use source commit
 `b57f11b0d40a58a76c8fa7423047dfdc1106d00f` and simulator SHA-256
 `e5e340f3d616d4343420744971596850d19d5cb47808d2b1e6abf7f6efdc958a`.
 
@@ -238,28 +243,120 @@ equal two reductions per Query row and tile. These independent counts exclude
 skipped Query work, duplicated model reads, hidden software packing, and stale
 tail lanes as explanations for the cycle result.
 
+### 7.2 Integration-current RTL regression
+
+The final coexistence image is identified by simulator SHA-256
+`f21553f480d15f89b138c729cad17a8e359bc77691b12b032ae573e958f86cad`.
+The held-request fix described below was therefore exercised together with
+QBS, AKV-v2, the ordinary VLSU, and the 16 MiB simulation-only L2 configuration,
+rather than inferred from the earlier mechanism image. The current real-model
+AKV-v2 points are:
+
+| Effective KV | Kernel cycles | FULL | REFILL | K columns | V rows | K bank cycles | Q bytes | K/V bytes | Replay bytes | Conflict / rejected |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 35,636 | 2 | 0 | 256 | 32 | 512 | 3,072 | 16,384 | 16,384 | 0 / 0 |
+| 128 | 103,055 | 2 | 2 | 512 | 256 | 4,096 | 3,072 | 131,072 | 131,072 | 0 / 0 |
+
+Both points report `PASS`, zero output mismatches, `Core Test *** SUCCESS`, and
+the exact command/traffic identities shown above. Their run manifests bind the
+capture manifest, Spike ELF, RTL ELF, and simulator hashes. The aggregation
+tool accepts a point only after the runner has emitted a completion marker and
+the implementation, effective-KV, result, mismatch count, terminal marker, and
+performance-log checks all agree; an interrupted or mislabeled run cannot be
+selected silently.
+
 Compatibility checks use the AKV-v2-enabled RTL rather than a separately
 compiled legacy image. The original RVV and AKV-v1 KV=16 binaries retain their
 exact 121,338- and 52,318-cycle results with zero mismatches; AKV-v1 emits no
 v2 command. A QBS/AKV-v2 coexistence image executes the QBS control smoke test,
 including successful legal commands and the expected atomic validation fault.
+On the same final image, the real Qwen Q4_K Decode-Attention projection leaf
+completes all 48 native QBS commands in 125,278 measured cycles with zero
+faults and zero numerical mismatches. Its result differs by only 0.06% from
+the 125,351-cycle result on the earlier QBS image. Enabling the production
+FILL/REUSE/RELEASE sequence on this full 48-command leaf reduces the current
+result further to 119,883 cycles. The matching current Q6_K Decode leaf
+completes in 208,863 cycles with zero mismatches; it deliberately uses DIRECT
+activation reads and is therefore conservative for model calls whose software
+K segmentation can reuse one context per segment.
+
+This regression must use an ELF built against QBS descriptor version 2. An
+older descriptor-version-1 ELF was initially observed to stall on the current
+image, while that exact ELF completed on its matching older image. Rebuilding
+the unchanged model case against the current generated ABI removed the stall
+without an RTL change. The QBS suite launcher now rejects an ELF older than
+the generated ABI, shared ABI headers, or benchmark command source before
+starting simulation and records hashes of those ABI inputs in the run
+manifest.
+
 The C reference, generated ABI, QBS reference/repack tests, and AKV engine tests
 all pass. The engine tests run with both generic SRAM and the SRAM macro model
 and cover v1 D64/D128, v2 D64/D128, a 64-token tile, one- and five-token tails,
 row/column ordering, byte enables, validation atomicity, and read faults.
 
+The model-level integration executes ordinary RVV, QBS-only, and QBS plus
+AKV-v2 in one Qwen2.5-1.5B Q4_K_M QEMU guest. QBS-only and QBS+AKV-v2 produce
+identical text, top-1 tokens, and both recorded logits tensors. Across Prefill
+and Decode, 394 high-level quantized `MUL_MAT` nodes execute through QBS with
+23,389,667,328 exact dot elements and no QBS fallback. All 28 Decode
+`FLASH_ATTN_EXT` nodes execute AKV-v2, covering 1,548,288 attention MACs; the
+other 28 candidates are Prefill nodes and are reported as shape fallbacks.
+No runtime, capability, threading, feature, layout, or mask fallback is hidden.
+
+The same trace closes one complete Decode graph, not only the accelerated
+nodes. Exact node/type/shape matching maps every remaining Decode operation to
+a compute-only real-model RVV RTL leaf. Combining that dynamic work with the
+representative RTL calibration gives the following model-level Decode-token
+projection:
+
+| Component | Dynamic instances | Projected cycles | Share of calibrated Decode cycles |
+|---|---:|---:|---:|
+| QBS quantized `MUL_MAT` | 197 | 81,978,147 | 94.54% |
+| AKV-v2 `FLASH_ATTN_EXT` | 28 | 1,031,518 | 1.19% |
+| Remaining ordinary RVV | 340 | 3,700,824 | 4.27% |
+| Total | 565 | 86,710,489 | 100.00% |
+
+QBS projection uses unique activation work plus exact dot-element work with the
+current-image Q4_K context and Q6_K direct rates above. AKV-v2 uses active-KV
+interpolation between the measured KV=16 and KV=128 points, and the remaining
+categories use exact Decode node multiplicities with type/shape-matched RTL
+leaves. This is a reproducible RTL-calibrated cycle attribution, not QEMU wall
+time and not a claim that the whole model was simulated in RTL. In particular,
+the Q6_K rate is a conservative representative rate rather than a cycle-exact
+model of every segmented context reuse.
+The single Prefill graph is retained in the dynamic record: its 197 QBS nodes
+project to 303,368,891 cycles, but its non-QBS operators are deliberately not
+included in the share table because no complete Prefill leaf calibration was
+performed. The provenance snapshot records the dynamic log, run manifest,
+source revisions, binaries, calibration logs, hashes, and projection-method
+version.
+
+Integration exposed one interface bug not visible in the isolated engine: the
+sequencer can hold a blocking PE request through the engine's terminal cycle,
+so VLSU ownership becoming idle could accept that same level-valid request a
+second time. VLSU now records that the held request has fired and suppresses a
+second command until the upstream request is withdrawn. A simulation-only
+assertion requires every field of the held request to remain stable during this
+interval. This follows the sequencer's registered `WAIT` contract and still
+permits the next AKV instruction after the mandatory valid-low withdrawal
+cycle.
+
 ## 8. Integration decision
 
-AKV-v2 remains a real-model operator experiment rather than a generic GGML
-backend route at this checkpoint. The application-local helpers and RTL prove
-the D128/GQA6 token-axis mechanism and retain ordinary RVV arithmetic, but a
-production route still needs measured D64, additional GQA ratios, arbitrary
-GGML strides, worker-local ownership, and native trap-safe capability discovery.
-The current benchmark's `akv_device_init_reference()` is appropriate only for
-an image built for known AKV hardware; it is not presented as runtime discovery
-on an unknown processor. Until those selection contracts are implemented,
-unsupported software remains on the existing RVV or AKV-v1 paths and the v2
-kernel is not silently selected by `akv_attention_plan_create()`.
+AKV-v2 is now a real llama.cpp/GGML RISC-V backend route rather than an
+application-local operator experiment. The route is intentionally narrow:
+Decode, F32 Query, F16 K/V and mask, F32 output, D128, GQA6, one batch, the
+supported stride/layout contract, and no sinks, ALiBi, or softcap. It selects
+the shared version-2 planner and native kernel only when capability discovery
+and every condition agree. Any unsupported shape or feature returns before
+hidden context state changes and executes the existing GGML RVV implementation.
+
+The QEMU emulation route validates graph dispatch, planning, fallback, and
+model-level numerical behavior; it is not a cycle model. Native performance is
+established separately with real-model RTL leaves and strict AKV counters. D64,
+additional GQA ratios, arbitrary GGML strides, and trap-safe capability probing
+on an unknown processor remain extension work, not implied coverage of the
+current profile.
 
 ## 9. Stop conditions
 

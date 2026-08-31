@@ -10,6 +10,12 @@ legacy_template="${hardware_dir}/sim_qbs_llama_${large_l2_mb}m"
 sim_template=${QBS_EVAL_SIM_TEMPLATE:-"${default_template}"}
 timestamp=$(date +%Y%m%d_%H%M%S)
 run_root=${QBS_EVAL_RUN_ROOT:-"${hardware_dir}/qbs_eval_runs/${timestamp}"}
+abi_sources=(
+  "${repo_dir}/config/qbs_abi.json"
+  "${repo_dir}/apps/common/qbs_abi.h"
+  "${repo_dir}/software/qbs/include/qbs/qbs_abi.h"
+  "${repo_dir}/apps/llama_qwen25_real/common/qbs_benchmark_impl.h"
+)
 
 cases=(
   decode_attn_q_qbs
@@ -31,6 +37,29 @@ if [[ ! -x "${sim_template}/simv" || ! -d "${sim_template}/simv.daidir" ]]; then
   fi
 fi
 
+for case_id in "${cases[@]}"; do
+  app_bin="${repo_dir}/apps/bin/llama_qwen25_${case_id}"
+  app_dir="${repo_dir}/apps/llama_qwen25_${case_id}"
+  provenance="${app_dir}/generated/provenance.json"
+  if [[ ! -x "${app_bin}" ]]; then
+    echo "missing benchmark ELF: ${app_bin}" >&2
+    exit 2
+  fi
+  if [[ ! -s "${provenance}" ]]; then
+    echo "missing benchmark provenance: ${provenance}" >&2
+    exit 2
+  fi
+  for source in "${abi_sources[@]}" "${app_dir}/main.c" \
+      "${app_dir}/data.S" "${provenance}"; do
+    if [[ "${app_bin}" -ot "${source}" ]]; then
+      echo "stale QBS benchmark ELF: ${app_bin}" >&2
+      echo "newer ABI, kernel, or generated input: ${source}" >&2
+      echo "run: make -C ${hardware_dir} llama_qbs_eval_build" >&2
+      exit 2
+    fi
+  done
+done
+
 mkdir -p "${run_root}"
 printf 'case\tpid\trun_dir\n' > "${run_root}/manifest.tsv"
 printf 'case\tapp_bin\tapp_sha256\tprovenance_sha256\n' \
@@ -41,20 +70,13 @@ printf '%s\n' "${large_l2_mb}" > "${run_root}/l2_mb"
 git -C "${repo_dir}" rev-parse HEAD > "${run_root}/git_head"
 git -C "${repo_dir}" status --short > "${run_root}/git_status"
 git -C "${repo_dir}" diff --binary > "${run_root}/git_diff.patch"
+sha256sum "${abi_sources[@]}" > "${run_root}/qbs_abi_sources.sha256"
 sha256sum "${sim_template}/simv" > "${run_root}/simv.sha256"
 find "${sim_template}/simv.daidir" -type f -print0 | sort -z | \
   xargs -0 sha256sum > "${run_root}/simv_daidir.sha256"
 for case_id in "${cases[@]}"; do
   app_bin="${repo_dir}/apps/bin/llama_qwen25_${case_id}"
   provenance="${repo_dir}/apps/llama_qwen25_${case_id}/generated/provenance.json"
-  if [[ ! -x "${app_bin}" ]]; then
-    echo "missing benchmark ELF: ${app_bin}" >&2
-    exit 2
-  fi
-  if [[ ! -s "${provenance}" ]]; then
-    echo "missing benchmark provenance: ${provenance}" >&2
-    exit 2
-  fi
 
   run_dir="${run_root}/${case_id}"
   mkdir -p "${run_dir}"

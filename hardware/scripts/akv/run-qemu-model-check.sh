@@ -232,4 +232,6 @@ validate_log "${log_file}" "${result_file}"
 if [[ ${model_mode} == combined ]]; then
   "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" "${log_file}"
 fi
+ln -sfn "${run_dir}" \
+  "${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_latest"
 printf 'AKV model check passed: %s\n' "${run_dir}"

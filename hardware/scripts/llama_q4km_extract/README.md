@@ -85,7 +85,9 @@ to override the default one-hour per-leaf timeout.
 The aggregate selectors are `micro/all`, `operator/prefill/all`,
 `operator/decode/all`, `operator/all`, `block/{prefill,decode}/attention`,
 `block/{prefill,decode}/ffn`, `block/{prefill,decode}/all`, `block/all`, and
-`all`. A Block selector runs its independently captured operators in model
+`all`. Decode cycle attribution additionally uses `calibration/decode/all` and
+`calibration/decode/model_remainder`; these calibration suites are deliberately
+not children of `operator/all`. A Block selector runs its independently captured operators in model
 execution order. It does not silently substitute synthetic inputs: each
 operator reads the real QEMU input and golden captured at its own boundary.
 
@@ -102,9 +104,12 @@ hardware/scripts/llama_q4km_extract/run-case.sh block/decode/all
 ```
 
 The attention leaf consumes the captured post-update KV-cache view. The
-stateful cache append itself is intentionally outside the stateless replay
-suite because a correct standalone case also needs the pre-cache state, write
-indices, current K/V, and expected post-cache state.
+ordinary stateless replay suite excludes cache append. The separate
+`calibration/decode/cache_set_rows_f32_f16` leaf derives the current K row,
+write index, and expected F16 row from the same coherent Decode capture, so its
+measured interval covers only the real F32-to-F16 cache write. The companion
+bias and row-gather leaves similarly derive their operands and goldens from
+captured tensors rather than synthetic values.
 
 The bare-metal Attention-core harness keeps two explicit online-Softmax
 implementations over the same captured Decode tensors. `ref` is a scalar
@@ -148,6 +153,13 @@ hardware/scripts/llama_q4km_extract/summarize-ara-attention-core.py
 hardware/scripts/llama_q4km_extract/analyze-attention-baseline.py
 ```
 
+Long calibration points may be launched under separate run roots. Repeat
+`--run-root` when summarizing them; the tool selects the newest complete match
+across all supplied roots, so no result copying or manual symlink merge is
+required. A selectable run must contain the runner's `complete` marker, a
+matching implementation/effective-KV `run.conf`, a passing zero-mismatch
+operator record, `Core Test *** SUCCESS`, and a nonempty performance log.
+
 For this Attention case, the CSV renames the monitor's generic phase slots as
 `q_convert`, `online_kv`, and `output_norm`; raw log field names and strict
 counter semantics are otherwise preserved. Ara request counters are internal
@@ -165,13 +177,19 @@ execution is deliberately outside this flow.
 
 ## Validation status
 
-The strict manifest contains 48 selectable IDs backed by 86 captured tensors:
-six microkernel leaves, seven quantized linear leaves per phase, eight
-non-linear/dataflow leaves per phase, natural Attention/FFN sub-block suites,
-and aggregate suites. `run-case.sh all` passes on the host. Independently
+The strict manifest contains 55 selectable IDs backed by 94 integrity-checked
+tensors. The original 48 IDs still cover six microkernel leaves, seven
+quantized linear leaves per phase, eight non-linear/dataflow leaves per phase,
+natural Attention/FFN sub-block suites, and aggregate suites. Five additional
+Decode calibration leaves cover Q/K/V bias ADD, F32-to-F16 `SET_ROWS`, F32
+`GET_ROWS`, and Q4_K `GET_ROWS`; two selectors collect those leaves and the
+remaining Decode operators. `run-case.sh all` passes on the host. Independently
 selected microkernel, generated RMSNorm, and real Q4_K linear leaves also pass
 under RV64GCV QEMU with exact results and propagated process statuses of zero.
 The patched Ara differential-reference Spike additionally passes all six Micro
 leaves, Decode Attention RMSNorm, and the Decode Attention-K Q4_K linear
-operator. Spike replay is statically linked and fixed to one GGML execution
-thread to match capture conditions and the proxy-kernel runtime.
+operator. The five calibration leaves pass both Spike and RTL. Every ordinary
+RVV leaf stores its result during the measured interval and performs golden
+comparison afterward; validation cost is therefore never charged to the
+projected hardware cycles. Spike replay is statically linked and fixed to one
+GGML execution thread to match capture conditions and the proxy-kernel runtime.

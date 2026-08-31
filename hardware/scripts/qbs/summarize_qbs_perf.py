@@ -123,8 +123,16 @@ def validate(records: list[dict[str, int]]) -> list[str]:
                     f"command {index}: commit_groups={record['commit_groups']}, "
                     f"expected {expected_groups}"
                 )
+            activation_bytes_saved = record.get("activation_axi_bytes_saved", 0)
+            if activation_bytes_saved > record["activation_bytes"]:
+                errors.append(
+                    f"command {index}: saved activation bytes exceed logical bytes"
+                )
             if record["payload_bytes"] != (
-                16 + record["weight_bytes"] + record["activation_bytes"]
+                16
+                + record["weight_bytes"]
+                + record["activation_bytes"]
+                - activation_bytes_saved
             ):
                 errors.append(
                     f"command {index}: successful payload byte accounting mismatch"

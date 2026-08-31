@@ -8,13 +8,14 @@ app=llama_q4km_operator
 case_tool=${repo_root}/hardware/scripts/llama_q4km_extract/cases.py
 capture_root=${Q4KM_CAPTURE_ROOT:-/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m}
 spike=${SPIKE:-${repo_root}/install/riscv-isa-sim/bin/spike}
-sim_dir=${repo_root}/hardware/sim_l2_16m
+sim_dir=${LLAMA_ARA_SIM_DIR:-${repo_root}/hardware/sim_l2_16m}
 simv=${sim_dir}/simv
 mode=${1:---all}
 selection=${2:-operator/all}
 spike_timeout=${LLAMA_SPIKE_TIMEOUT:-3600}
 ara_timeout=${LLAMA_ARA_TIMEOUT:-86400}
 run_root=${LLAMA_ARA_RUN_ROOT:-${repo_root}/hardware/llama_benchmark_runs}
+build_lock=${apps_dir}/bin/.llama-q4km-operator-build.lock
 stamp=$(date +%Y%m%d_%H%M%S)
 run_dir=${run_root}/operator_ara_l2_16m_${stamp}
 
@@ -32,7 +33,7 @@ if [[ ${mode} != --spike-only && ! -x ${simv} ]]; then
   exit 1
 fi
 
-mkdir -p "${run_dir}"
+mkdir -p "${run_dir}" "${apps_dir}/bin"
 ln -sfn "${run_dir}" "${run_root}/operator_ara_latest"
 printf 'case_id\tspike\tara\telf_bytes\tlog\n' > "${run_dir}/summary.tsv"
 
@@ -101,18 +102,23 @@ for leaf in "${leaves[@]}"; do
   spike_log=${run_dir}/${prefix}.spike.log
   ara_log=${run_dir}/${prefix}.ara.log
   vcs_log=${run_dir}/${prefix}.vcs.log
+  spike_elf=${run_dir}/${prefix}.spike.elf
+  ara_elf=${run_dir}/${prefix}.ara.elf
   spike_status=SKIP
   ara_status=SKIP
   elf_bytes=0
 
   echo "== ${case_id} =="
-  clean_case
-
   if [[ ${mode} != --ara-only ]]; then
-    if build_spike "${case_id}" >"${build_log}" 2>&1; then
+    if (
+      flock 9
+      clean_case
+      build_spike "${case_id}"
+      cp "${apps_dir}/bin/${app}.spike" "${spike_elf}"
+    ) 9>"${build_lock}" >"${build_log}" 2>&1; then
       if timeout --foreground "${spike_timeout}" "${spike}" \
           --isa=rv64gcv_zfh --varch="vlen:1024,elen:64" \
-          "${apps_dir}/bin/${app}.spike" >"${spike_log}" 2>&1; then
+          "${spike_elf}" >"${spike_log}" 2>&1; then
         spike_status=PASS
       else
         rc=$?
@@ -126,12 +132,16 @@ for leaf in "${leaves[@]}"; do
   fi
 
   if [[ ${mode} != --spike-only && (${mode} == --ara-only || ${spike_status} == PASS) ]]; then
-    rm -f "${app_dir}/data.S.o" "${apps_dir}/bin/${app}"
-    if build_ara "${case_id}" >>"${build_log}" 2>&1; then
-      elf_bytes=$(stat -c %s "${apps_dir}/bin/${app}")
+    if (
+      flock 9
+      clean_case
+      build_ara "${case_id}"
+      cp "${apps_dir}/bin/${app}" "${ara_elf}"
+    ) 9>"${build_lock}" >>"${build_log}" 2>&1; then
+      elf_bytes=$(stat -c %s "${ara_elf}")
       if timeout --foreground "${ara_timeout}" "${simv}" \
           -l "${vcs_log}" +fsdb+power +fsdb+all \
-          +PRELOAD="${apps_dir}/bin/${app}" +TESTCASE="${app}" +NO_FSDB \
+          +PRELOAD="${ara_elf}" +TESTCASE="${app}" +NO_FSDB \
           >"${ara_log}" 2>&1; then
         if grep -q 'Core Test \*\*\* SUCCESS' "${ara_log}" &&
            grep -q "LLAMA_OPERATOR ${case_id} PASS" "${ara_log}"; then
@@ -158,5 +168,8 @@ for leaf in "${leaves[@]}"; do
   index=$((index + 1))
 done
 
+if [[ ${overall} -eq 0 ]]; then
+  : > "${run_dir}/complete"
+fi
 echo "results: ${run_dir}"
 exit "${overall}"

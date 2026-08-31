@@ -421,6 +421,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic akv_command_valid, akv_command_ready, akv_command_fire;
   logic akv_command_early_ack;
   logic akv_command_early_acked_q;
+  logic akv_request_consumed_q;
   logic pe_req_is_akv;
   akv_command_e akv_command;
   akv_command_e akv_command_q;
@@ -566,7 +567,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   end
 
   assign akv_command_valid = AkvEnable && pe_req_valid_i &&
-      pe_req_is_akv && !akv_active_q && !qbs_active_q && normal_vlsu_idle;
+      pe_req_is_akv && !akv_request_consumed_q && !akv_active_q &&
+      !qbs_active_q && normal_vlsu_idle;
   assign akv_command_fire = akv_command_valid && akv_command_ready;
   assign akv_terminal = akv_active_q &&
       (akv_success_valid || akv_fault_valid);
@@ -627,12 +629,16 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       akv_command_id_q <= '0;
       akv_command_q <= AKV_COMMAND_FULL;
       akv_command_early_acked_q <= 1'b0;
+      akv_request_consumed_q <= 1'b0;
     end else begin
       akv_active_q <= akv_active_d;
+      if (!pe_req_valid_i || !pe_req_is_akv)
+        akv_request_consumed_q <= 1'b0;
       if (akv_command_fire) begin
         akv_command_id_q <= pe_req_i.id;
         akv_command_q <= akv_command;
         akv_command_early_acked_q <= akv_command_early_ack;
+        akv_request_consumed_q <= 1'b1;
       end else if (akv_terminal) begin
         akv_command_early_acked_q <= 1'b0;
       end
@@ -1178,13 +1184,17 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   if (AkvEnable) begin : gen_akv_integration_assertions
     longint unsigned akv_command_sequence_q;
+    pe_req_t akv_consumed_request_q;
 
     always_ff @(posedge clk_i) begin
       if (!rst_ni) begin
         akv_command_sequence_q <= '0;
+        akv_consumed_request_q <= '0;
       end else begin
-        if (akv_command_fire)
+        if (akv_command_fire) begin
           akv_command_sequence_q <= akv_command_sequence_q + 1'b1;
+          akv_consumed_request_q <= pe_req_i;
+        end
 
         assert (!(qbs_active_q && akv_active_q))
           else $fatal(1, "QBS and AKV cannot own the VLSU together");
@@ -1193,7 +1203,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         assert (akv_busy == akv_active_q)
           else $fatal(1, "AKV engine activity diverged from VLSU ownership");
 
+        if (akv_request_consumed_q && pe_req_valid_i && pe_req_is_akv) begin
+          assert (pe_req_i == akv_consumed_request_q)
+            else $fatal(1, "Held AKV PE request changed before withdrawal");
+        end
+
         if (akv_command_fire) begin
+          assert (!akv_request_consumed_q)
+            else $fatal(1, "AKV accepted one held PE request more than once");
           assert (normal_vlsu_idle && !qbs_active_q)
             else $fatal(1, "AKV command accepted before VLSU ownership handoff");
           if (akv_command == AKV_COMMAND_LOAD &&
