@@ -672,9 +672,12 @@ static int run_attention_tiled_rvv(const case_config_t *cfg) {
   const int kvheads = cfg->args[4];
   const int heads_per_kv = qheads / kvheads;
   const int active_kv = attention_active_prefix(mask_bits, physical_kvlen);
+  const size_t token_tile_vl =
+      __riscv_vsetvl_e16m1(TILED_RVV_KV_TILE);
 
   if (dim != MAX_ATTENTION_DIM || tokens != 1 ||
-      heads_per_kv != TILED_RVV_Q_ROWS || active_kv <= 0)
+      heads_per_kv != TILED_RVV_Q_ROWS || active_kv <= 0 ||
+      token_tile_vl != TILED_RVV_KV_TILE)
     return 0;
 
   for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
