@@ -728,6 +728,14 @@ qbs_status_t qbs_execute_with_options(
 
   const bool use_activation_context =
       options != NULL && options->use_activation_context != 0u;
+  const uint8_t activation_context_scope = use_activation_context
+      ? options->activation_context_scope
+      : QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION;
+  if ((!use_activation_context && options != NULL &&
+       options->activation_context_scope !=
+           QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION) ||
+      activation_context_scope > QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE)
+    return QBS_STATUS_BAD_ARGUMENT;
   if (use_activation_context) {
     if (!qbs_plan_supports_activation_context(plan))
       return QBS_STATUS_CONTEXT_UNSUPPORTED;
@@ -776,12 +784,31 @@ qbs_status_t qbs_execute_with_options(
 
     uint8_t activation_access = QBS_ACTIVATION_ACCESS_DIRECT;
     if (use_activation_context) {
-      if (command.output_start == 0u) {
-        activation_access = QBS_ACTIVATION_ACCESS_FILL;
-      } else if (command.output_start + command.n >= plan->problem.n) {
-        activation_access = QBS_ACTIVATION_ACCESS_RELEASE;
-      } else {
-        activation_access = QBS_ACTIVATION_ACCESS_REUSE;
+      const bool first_output_tile = command.output_start == 0u;
+      const bool final_output_tile =
+          command.output_start + command.n >= plan->problem.n;
+      switch (activation_context_scope) {
+        case QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION:
+          activation_access = first_output_tile
+              ? QBS_ACTIVATION_ACCESS_FILL
+              : (final_output_tile ? QBS_ACTIVATION_ACCESS_RELEASE
+                                   : QBS_ACTIVATION_ACCESS_REUSE);
+          break;
+        case QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP:
+          activation_access = first_output_tile
+              ? QBS_ACTIVATION_ACCESS_FILL
+              : QBS_ACTIVATION_ACCESS_REUSE;
+          break;
+        case QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_KEEP:
+          activation_access = QBS_ACTIVATION_ACCESS_REUSE;
+          break;
+        case QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE:
+          activation_access = final_output_tile
+              ? QBS_ACTIVATION_ACCESS_RELEASE
+              : QBS_ACTIVATION_ACCESS_REUSE;
+          break;
+        default:
+          return QBS_STATUS_BAD_ARGUMENT;
       }
     }
     const qbs_descriptor_fields_t fields = {

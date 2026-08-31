@@ -264,6 +264,7 @@ typedef struct {
   size_t command_count;
   size_t next_command;
   uint8_t expect_activation_context;
+  uint8_t activation_context_scope;
   qbs_activation_context_token_t expected_token;
 } mock_executor_t;
 
@@ -280,13 +281,28 @@ static qbs_status_t mock_execute(
       qbs_unpack_descriptor_header(descriptor->header);
   uint8_t expected_access = QBS_ACTIVATION_ACCESS_DIRECT;
   if (mock->expect_activation_context) {
-    if (command->output_start == 0u) {
-      expected_access = QBS_ACTIVATION_ACCESS_FILL;
-    } else if (command->output_start + command->n >=
-               mock->plan->problem.n) {
-      expected_access = QBS_ACTIVATION_ACCESS_RELEASE;
-    } else {
-      expected_access = QBS_ACTIVATION_ACCESS_REUSE;
+    const int first = command->output_start == 0u;
+    const int final = command->output_start + command->n >=
+        mock->plan->problem.n;
+    switch (mock->activation_context_scope) {
+      case QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION:
+        expected_access = first ? QBS_ACTIVATION_ACCESS_FILL
+            : (final ? QBS_ACTIVATION_ACCESS_RELEASE
+                     : QBS_ACTIVATION_ACCESS_REUSE);
+        break;
+      case QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP:
+        expected_access = first ? QBS_ACTIVATION_ACCESS_FILL
+                                : QBS_ACTIVATION_ACCESS_REUSE;
+        break;
+      case QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_KEEP:
+        expected_access = QBS_ACTIVATION_ACCESS_REUSE;
+        break;
+      case QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE:
+        expected_access = final ? QBS_ACTIVATION_ACCESS_RELEASE
+                                : QBS_ACTIVATION_ACCESS_REUSE;
+        break;
+      default:
+        return QBS_STATUS_EXECUTION;
     }
   }
   mock->observed_activation_access[command_index] = fields.activation_access;
@@ -675,8 +691,44 @@ static int test_activation_context_execution(void) {
   for (size_t index = 0; index < problem.n; ++index)
     CHECK(output[index] == 6.0f);
 
+  static const uint8_t expected_scoped_access[3][3] = {
+      {QBS_ACTIVATION_ACCESS_FILL, QBS_ACTIVATION_ACCESS_REUSE,
+       QBS_ACTIVATION_ACCESS_REUSE},
+      {QBS_ACTIVATION_ACCESS_REUSE, QBS_ACTIVATION_ACCESS_REUSE,
+       QBS_ACTIVATION_ACCESS_REUSE},
+      {QBS_ACTIVATION_ACCESS_REUSE, QBS_ACTIVATION_ACCESS_REUSE,
+       QBS_ACTIVATION_ACCESS_RELEASE},
+  };
+  for (uint8_t scope = QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP;
+       scope <= QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE; ++scope) {
+    qbs_execution_options_t scoped_options = options;
+    scoped_options.activation_context_scope = scope;
+    mock.next_command = 0u;
+    mock.activation_context_scope = scope;
+    memset(mock.observed_activation_access, 0xff,
+           sizeof(mock.observed_activation_access));
+    CHECK(qbs_execute_with_options(
+              &plan, weights, weight_bytes, activations, activation_bytes,
+              output, problem.n, problem.n, NULL, 0u, &scoped_options,
+              mock_execute, &mock) == QBS_STATUS_OK);
+    CHECK(mock.next_command == 3u);
+    for (size_t index = 0; index < 3u; ++index)
+      CHECK(mock.observed_activation_access[index] ==
+            expected_scoped_access[scope - 1u][index]);
+  }
+
+  qbs_execution_options_t bad_scope_options = options;
+  bad_scope_options.activation_context_scope = 4u;
+  mock.next_command = 0u;
+  CHECK(qbs_execute_with_options(
+            &plan, weights, weight_bytes, activations, activation_bytes,
+            output, problem.n, problem.n, NULL, 0u, &bad_scope_options,
+            mock_execute, &mock) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(mock.next_command == 0u);
+
   mock.next_command = 0u;
   mock.expect_activation_context = 0u;
+  mock.activation_context_scope = QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION;
   memset(mock.observed_activation_access, 0xff,
          sizeof(mock.observed_activation_access));
   CHECK(qbs_execute(&plan, weights, weight_bytes, activations,

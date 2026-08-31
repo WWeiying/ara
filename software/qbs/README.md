@@ -110,8 +110,15 @@ retry the same operation on a fallback path after a possibly visible command.
 between output tiles when `qbs_plan_supports_activation_context()` is true.
 The current device contract is deliberately narrow: one context, `M=1`,
 row-major Q8_K, at most 16 K blocks (`K<=4096`), no split-K or gather, and at
-least two output tiles. An eligible execution emits `FILL`, zero or more
-`REUSE` commands, and a final `RELEASE` command.
+least two output tiles. By default, one eligible execution emits `FILL`, zero
+or more `REUSE` commands, and a final `RELEASE` command.
+`activation_context_scope` can instead make that lifetime explicit across
+serialized executions:
+
+- `OPERATION` preserves the per-execution sequence;
+- `FILL_KEEP` fills on the first output tile and leaves the context resident;
+- `REUSE_KEEP` consumes a resident context without releasing it; and
+- `REUSE_RELEASE` releases it on the final output tile.
 
 The adapter owns the token:
 
@@ -122,12 +129,16 @@ const qbs_execution_options_t options = {
         .context_id = 0,
         .generation = generation,
     },
+    .activation_context_scope = QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION,
 };
 ```
 
 Generation is not inferred from addresses. The adapter must assign a new
-generation to a new logical activation and serialize the complete
-`FILL...RELEASE` sequence against other users of the same hardware context.
+generation to a new logical activation and serialize the complete lifetime
+against other users of the same hardware context. A cross-operation adapter
+must establish semantic identity from its graph and tensor contract, not from
+address equality alone, and must eventually issue `REUSE_RELEASE` or supersede
+the context with a new `FILL` generation.
 Hardware validates ID, generation, activation profile/layout, M, and K-block
 count. A mismatch is an execution-visible context fault, never a silent
 DIRECT fallback. Failed or aborted FILL commands do not publish a context.

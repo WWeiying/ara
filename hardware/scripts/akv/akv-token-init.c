@@ -210,7 +210,8 @@ static struct run_result run_variant(const char * label,
                                      const char * logits_path,
                                      int enable_qbs,
                                      const char * akv_kernel,
-                                     int enable_trace) {
+                                     int enable_trace,
+                                     int qbs_cross_op_context) {
     struct run_result result = { .exit_code = 127 };
     int output_pipe[2];
     if (pipe(output_pipe) != 0) {
@@ -234,6 +235,8 @@ static struct run_result run_variant(const char * label,
         unsetenv("GGML_RISCV_QBS_EMULATE");
         unsetenv("GGML_RISCV_QBS_TRACE");
         unsetenv("GGML_RISCV_QBS_TRACE_CALLS");
+        unsetenv("GGML_RISCV_QBS_TRACE_LIFETIME");
+        unsetenv("GGML_RISCV_QBS_CROSS_OP_CONTEXT");
         unsetenv("GGML_RISCV_MODEL_TRACE");
         unsetenv("GGML_RISCV_AKV");
         unsetenv("GGML_RISCV_AKV_EMULATE");
@@ -241,11 +244,18 @@ static struct run_result run_variant(const char * label,
         unsetenv("GGML_RISCV_AKV_TRACE");
         if (enable_qbs) {
             setenv("GGML_RISCV_QBS", "1", 1);
+            if (qbs_cross_op_context >= 0) {
+                setenv("GGML_RISCV_QBS_CROSS_OP_CONTEXT",
+                       qbs_cross_op_context ? "1" : "0", 1);
+            }
         }
         if (enable_trace) {
             if (enable_qbs) {
                 setenv("GGML_RISCV_QBS_TRACE", "1", 1);
                 setenv("GGML_RISCV_QBS_TRACE_CALLS", "1", 1);
+#if defined(AKV_MODEL_QBS_LIFETIME)
+                setenv("GGML_RISCV_QBS_TRACE_LIFETIME", "1", 1);
+#endif
             }
             setenv("GGML_RISCV_MODEL_TRACE", "1", 1);
             setenv("GGML_RISCV_AKV_TRACE", "1", 1);
@@ -337,13 +347,41 @@ int main(void) {
     unlink("/rvv.logits");
     unlink("/qbs.logits");
     unlink("/optimized.logits");
+#if defined(AKV_MODEL_QBS_LIFETIME)
+    const struct run_result baseline =
+        run_variant("QBS_CONTEXT_BASELINE", "/qbs-baseline.logits",
+                    1, NULL, 1, 0);
+    const struct run_result optimized =
+        run_variant("QBS_CROSS_OP", "/qbs-cross-op.logits",
+                    1, NULL, 1, 1);
+    const struct logits_comparison comparison =
+        compare_logits("/qbs-baseline.logits", "/qbs-cross-op.logits");
+    const int text_equal = output_equal(&baseline, &optimized);
+    const int passed = baseline.exit_code == 0 && optimized.exit_code == 0 &&
+                       comparison.valid && comparison.comparable_records > 0 &&
+                       comparison.top1_equal &&
+                       comparison.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE &&
+                       text_equal;
+
+    printf("QBS_CROSS_OP_LOGITS_RECORDS=%u\n", comparison.records);
+    printf("QBS_CROSS_OP_LOGITS_COMPARABLE_RECORDS=%u\n",
+           comparison.comparable_records);
+    printf("QBS_CROSS_OP_LOGITS_MAX_ABS=%.9g\n", comparison.max_abs);
+    printf("QBS_CROSS_OP_LOGITS_MAX_REL=%.9g\n", comparison.max_rel);
+    printf("QBS_CROSS_OP_LOGITS_TOP1_EQUAL=%d\n",
+           comparison.valid && comparison.top1_equal);
+    printf("QBS_CROSS_OP_TOKEN_OUTPUT_EQUAL=%d\n", text_equal);
+    printf("LLAMA_GUEST_EXIT=%d\n", passed ? 0 : 1);
+    free(baseline.output);
+    free(optimized.output);
+#else
     const struct run_result rvv =
-        run_variant("RVV", "/rvv.logits", 0, NULL, 0);
+        run_variant("RVV", "/rvv.logits", 0, NULL, 0, -1);
 #if defined(AKV_MODEL_QBS_AKV_V2)
     const struct run_result qbs =
-        run_variant("QBS_ONLY", "/qbs.logits", 1, NULL, 0);
+        run_variant("QBS_ONLY", "/qbs.logits", 1, NULL, 0, -1);
     const struct run_result optimized =
-        run_variant("QBS_AKV_V2", "/optimized.logits", 1, "v2", 1);
+        run_variant("QBS_AKV_V2", "/optimized.logits", 1, "v2", 1, -1);
     const struct logits_comparison qbs_rvv_logits =
         compare_logits("/rvv.logits", "/qbs.logits");
     const struct logits_comparison akv_logits =
@@ -379,7 +417,7 @@ int main(void) {
     free(optimized.output);
 #else
     const struct run_result akv =
-        run_variant("AKV_V1_EMULATE", "/optimized.logits", 0, "v1", 1);
+        run_variant("AKV_V1_EMULATE", "/optimized.logits", 0, "v1", 1, -1);
     const struct logits_comparison akv_logits =
         compare_logits("/rvv.logits", "/optimized.logits");
     const int akv_text_equal = output_equal(&rvv, &akv);
@@ -401,6 +439,7 @@ int main(void) {
     free(akv.output);
 #endif
     free(rvv.output);
+#endif
     fflush(NULL);
     sync();
     reboot(RB_POWER_OFF);

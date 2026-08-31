@@ -19,6 +19,32 @@ validate_log() {
   local accounted_ops
   local max_abs
 
+  if [[ ${model_mode} == qbs-lifetime ]]; then
+    grep -q 'AKV_TOKEN_RUN_EXIT=QBS_CONTEXT_BASELINE:0' "${log_file}"
+    grep -q 'AKV_TOKEN_RUN_EXIT=QBS_CROSS_OP:0' "${log_file}"
+    grep -Eq 'GGML_RISCV_QBS_LIFETIME_SUMMARY quantizations=[1-9][0-9]* .*exact_reuse_candidates=[1-9][0-9]*' \
+      "${log_file}"
+    grep -Eq 'GGML_RISCV_QBS_LIFETIME_SUMMARY .*graph_epochs=[1-9][0-9]*' "${log_file}"
+    grep -Eq 'GGML_RISCV_QBS_LIFETIME_SUMMARY .*cross_op_quantization_skips=[1-9][0-9]*' "${log_file}"
+    grep -Eq 'GGML_RISCV_QBS_CROSS_OP .*quantization_skipped=1' "${log_file}"
+    grep -Eq 'GGML_RISCV_QBS_COMMAND .*linked=1' "${log_file}"
+    ! grep -Eq 'GGML_RISCV_QBS_COMMAND .*linked=0' "${log_file}"
+    grep -Eq 'QBS_CROSS_OP_LOGITS_RECORDS=[1-9][0-9]*' "${log_file}"
+    grep -Eq 'QBS_CROSS_OP_LOGITS_COMPARABLE_RECORDS=[1-9][0-9]*' "${log_file}"
+    grep -q 'QBS_CROSS_OP_LOGITS_TOP1_EQUAL=1' "${log_file}"
+    grep -q 'QBS_CROSS_OP_TOKEN_OUTPUT_EQUAL=1' "${log_file}"
+    max_abs=$(sed -n 's/^QBS_CROSS_OP_LOGITS_MAX_ABS=//p' "${log_file}" | tr -d '\r' | tail -n 1)
+    grep -Eq "${number_re}" <<< "${max_abs}"
+    awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
+      'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
+    grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
+    grep -E '^(GGML_RISCV_QBS_(LIFETIME|LIFETIME_SUMMARY|CROSS_OP|COMMAND|COVERAGE|EXEC)|QBS_CROSS_OP_|AKV_TOKEN_RUN_(BEGIN|EXIT)|LLAMA_GUEST_EXIT)' \
+      "${log_file}" | tr -d '\r' > "${result_file}"
+    python3 "${ara_root}/hardware/scripts/qbs/compare_activation_lifetime_runs.py" \
+      "${log_file}" --output "$(dirname -- "${log_file}")/qbs_cross_operator_summary.json"
+    return
+  fi
+
   coverage_line=$(grep -E 'GGML_RISCV_AKV_COVERAGE .*executed_ops=[1-9][0-9]*' "${log_file}" | tail -n 1)
   grep -Eq 'executed_ops=[1-9][0-9]*' <<< "${coverage_line}"
   grep -Eq 'fallback_threading=0([[:space:]]|$)' <<< "${coverage_line}"
@@ -125,9 +151,9 @@ write_manifest() {
 }
 
 case ${model_mode} in
-  akv-v1|combined) ;;
+  akv-v1|combined|qbs-lifetime) ;;
   *)
-    printf 'invalid AKV_MODEL_MODE: %s (expected akv-v1 or combined)\n' "${model_mode}" >&2
+    printf 'invalid AKV_MODEL_MODE: %s (expected akv-v1, combined, or qbs-lifetime)\n' "${model_mode}" >&2
     exit 2
     ;;
 esac
@@ -160,7 +186,7 @@ run_dir=${AKV_RUN_DIR:-${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_${
 
 source "${platform}/env.sh"
 
-if [[ ${model_mode} == combined ]]; then
+if [[ ${model_mode} == combined || ${model_mode} == qbs-lifetime ]]; then
   qemu_binary=${AKV_QEMU_BINARY:-${platform}/build/qemu-10.2.0-build/qemu-system-riscv64}
   qemu_cpu=${AKV_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true}
 else
@@ -184,6 +210,8 @@ manifest_file="${run_dir}/manifest.txt"
 init_defines=()
 if [[ ${model_mode} == combined ]]; then
   init_defines+=(-DAKV_MODEL_QBS_AKV_V2=1)
+elif [[ ${model_mode} == qbs-lifetime ]]; then
+  init_defines+=(-DAKV_MODEL_QBS_LIFETIME=1)
 fi
 
 "${CROSS_BIN}/riscv64-linux-gcc" \
@@ -205,9 +233,18 @@ printf '%s\n' \
   'dir /model 755 0 0' \
   "file /init ${init_binary} 755 0 0" > "${initramfs_list}"
 
-gen_init_cpio=$(find "${CVA6_SDK}/buildroot/output/build" \
-  -path '*/usr/gen_init_cpio' -type f -print -quit)
-test -x "${gen_init_cpio}"
+gen_init_cpio=${AKV_GEN_INIT_CPIO:-}
+if [[ -z ${gen_init_cpio} ]]; then
+  gen_init_cpio=$(find "${CVA6_SDK}/buildroot/output/build" \
+    -path '*/usr/gen_init_cpio' -type f -print -quit 2>/dev/null || true)
+fi
+if [[ -z ${gen_init_cpio} ]]; then
+  gen_init_cpio=$(command -v gen_init_cpio || true)
+fi
+if [[ ! -x ${gen_init_cpio} ]]; then
+  printf 'gen_init_cpio not found; set AKV_GEN_INIT_CPIO to an executable Linux gen_init_cpio\n' >&2
+  exit 2
+fi
 "${gen_init_cpio}" "${initramfs_list}" > "${initramfs}"
 
 write_manifest "${manifest_file}"

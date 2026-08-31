@@ -154,6 +154,26 @@ These percentages are not QEMU time samples. The
 single Prefill graph remains in the dynamic trace, but its non-QBS nodes are
 outside the current complete calibration and therefore outside this share.
 
+## QBS cross-operator activation lifetime
+
+The lifetime check runs the same real Qwen prompt twice with native QBS. The
+baseline retains per-operation activation quantization; the second run reuses
+one byte-identical Q8_K activation across eligible Q/K/V and gate/up matrix
+operations. Run or recheck it with:
+
+```bash
+AKV_MODEL_MODE=qbs-lifetime hardware/scripts/akv/run-qemu-model-check.sh
+AKV_MODEL_MODE=qbs-lifetime hardware/scripts/akv/run-qemu-model-check.sh \
+  --check-log path/to/qemu.log
+```
+
+`compare_activation_lifetime_runs.py` rejects the pair unless the semantic QBS
+command stream is unchanged, every baseline reuse group has one balanced
+fill/release chain, and the reductions in quantization count and activation
+bytes exactly equal the recorded reuse counters. The generated
+`qbs_cross_operator_summary.json` labels QEMU host quantization time as a
+diagnostic only; it is not an RTL cycle measurement.
+
 ## Runtime selection
 
 - no AKV environment variable: standard RVV fallback;

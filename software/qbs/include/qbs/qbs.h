@@ -135,9 +135,21 @@ typedef struct {
   uint8_t generation;
 } qbs_activation_context_token_t;
 
+typedef enum {
+  /* Preserve the original per-execution FILL ... RELEASE behavior. */
+  QBS_ACTIVATION_CONTEXT_SCOPE_OPERATION = 0,
+  /* Fill a new logical activation and leave it resident after this call. */
+  QBS_ACTIVATION_CONTEXT_SCOPE_FILL_KEEP = 1,
+  /* Reuse an already resident activation and leave it resident. */
+  QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_KEEP = 2,
+  /* Reuse an already resident activation and release it on the final tile. */
+  QBS_ACTIVATION_CONTEXT_SCOPE_REUSE_RELEASE = 3,
+} qbs_activation_context_scope_t;
+
 typedef struct {
   uint8_t use_activation_context;
   qbs_activation_context_token_t activation_context;
+  uint8_t activation_context_scope;
 } qbs_execution_options_t;
 
 typedef struct {
@@ -234,10 +246,12 @@ qbs_status_t qbs_execute(const qbs_plan_t *plan, const void *weights,
                          void *executor_context);
 
 /* Context reuse is explicit: the caller owns token generation and must not
-   reuse a generation for a different logical activation. The first output
-   tile fills the context, intermediate tiles reuse it, and the final tile
-   reuses then releases it. Unsupported plans return CONTEXT_UNSUPPORTED;
-   qbs_execute() remains the always-DIRECT fallback. */
+   reuse a generation for a different logical activation. OPERATION preserves
+   the original per-call FILL ... RELEASE scope. The KEEP scopes allow a
+   serialized adapter to span one activation across multiple calls; that
+   adapter must eventually use REUSE_RELEASE or supersede the generation with
+   a new FILL. Unsupported plans return CONTEXT_UNSUPPORTED; qbs_execute()
+   remains the always-DIRECT fallback. */
 qbs_status_t qbs_execute_with_options(
     const qbs_plan_t *plan, const void *weights, size_t weights_bytes,
     const void *activations, size_t activations_bytes, float *output,
