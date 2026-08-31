@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "05ac96ca86e130972ba0378352a5d86b2c5deb82",
+  "scope": "one-token Decode; equal weight per model; no cross-operator activation reuse credited",
+  "coverage_target": 0.95,
+  "minimum_sensitivity_coverage": 0.90,
+  "sensitivity": {
+    "profile": "Q5_0",
+    "total_cycle_multipliers": [0.5, 1.0, 2.0, 4.0]
+  },
+  "profiles": {
+    "Q4_K": {
+      "matmul_cycles": 108309,
+      "matmul_weight_logical_bytes": 1327104,
+      "quantize_cycles": 11574,
+      "quantize_activation_elements": 1536,
+      "calibration_kind": "measured",
+      "source": {
+        "path": "hardware/qbs_akv_goal_final_calibration_20260831/results.csv",
+        "sha256": "de66f36107c335113a047fb221bc0115a860e3e125fec0f8e5561cd07c053f29",
+        "case": "decode_attn_q_qbs"
+      }
+    },
+    "Q6_K": {
+      "matmul_cycles": 144195,
+      "matmul_weight_logical_bytes": 1881600,
+      "quantize_cycles": 64668,
+      "quantize_activation_elements": 8960,
+      "calibration_kind": "measured",
+      "source": {
+        "path": "hardware/qbs_akv_goal_final_calibration_20260831/results.csv",
+        "sha256": "de66f36107c335113a047fb221bc0115a860e3e125fec0f8e5561cd07c053f29",
+        "case": "decode_ffn_down_qbs"
+      }
+    },
+    "Q5_0": {
+      "matmul_cycles": 21750,
+      "matmul_weight_logical_bytes": 270336,
+      "quantize_cycles": 5030,
+      "quantize_activation_elements": 896,
+      "calibration_kind": "Q5_K matmul proxy plus measured Q8_0 activation quantization",
+      "source": {
+        "matmul_path": "hardware/qbs_format_eval_runs/paper_fair_b73af277_20260827_110849/q5k_decode_attn_q_qbs/result.csv",
+        "matmul_sha256": "a93ba440800f779ed1d22586bb2bed737a84b8acdd4851132a4647083ff95235",
+        "matmul_case": "q5k_decode_attn_q_qbs",
+        "quantize_path": "hardware/qbs_format_eval_runs/paper_fair_b73af277_20260827_110849/q8_0_decode_attn_q_qbs/result.csv",
+        "quantize_sha256": "48973c39e9b6d501d870f6448433eddaed04efb0d6fbd6ec5b025c9459d361e1",
+        "quantize_case": "q8_0_decode_attn_q_qbs"
+      }
+    },
+    "Q8_0": {
+      "matmul_cycles": 26923,
+      "matmul_weight_logical_bytes": 243712,
+      "quantize_cycles": 5030,
+      "quantize_activation_elements": 896,
+      "calibration_kind": "measured",
+      "source": {
+        "path": "hardware/qbs_format_eval_runs/paper_fair_b73af277_20260827_110849/q8_0_decode_attn_q_qbs/result.csv",
+        "sha256": "48973c39e9b6d501d870f6448433eddaed04efb0d6fbd6ec5b025c9459d361e1",
+        "case": "q8_0_decode_attn_q_qbs"
+      }
+    }
+  }
+}
