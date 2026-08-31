@@ -99,7 +99,10 @@ static inline void issue_akv_v2_full(const akv_descriptor_t *descriptor,
                                      uint64_t tile_start) {
   register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
   register uint64_t a1 asm("a1") = tile_start;
-  asm volatile(".word 0x00b5605b" : "+r"(a0), "+r"(a1) : : "memory");
+  asm volatile("fence rw, rw\n.word 0x00b5605b"
+               : "+r"(a0), "+r"(a1)
+               :
+               : "memory");
 }
 
 static inline void issue_akv_v2_refill(uint64_t tile_start) {
