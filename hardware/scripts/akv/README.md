@@ -3,6 +3,16 @@
 This directory contains the reproducible software-side validation for the
 Attention/KV streaming (AKV) mechanism. It does not run synthesis.
 
+The AKV-v2 token-axis design-space model is independent of simulation and also
+does not invoke synthesis, area, or timing tools:
+
+```bash
+hardware/scripts/akv/akv_v2_design_model.py
+```
+
+Its exact structural counts and the interpretation boundary for projected
+cycles are documented in `hardware/docs/attention_akv_v2_design.md`.
+
 ## Build
 
 Build a static RV64GCV `llama-simple` with ordinary RVV, QBS, and AKV compiled
