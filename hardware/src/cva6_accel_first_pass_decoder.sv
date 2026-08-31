@@ -36,6 +36,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
   logic        is_akvload;
   logic        is_akvinfo;
   logic        is_akvrelease;
+  logic        is_akv2fill;
+  logic        is_akv2column;
 
   // Cast instruction into the `rvv_instruction_t` struct
   rvv_instruction_t instr;
@@ -66,6 +68,8 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
     is_akvload = 1'b0;
     is_akvinfo = 1'b0;
     is_akvrelease = 1'b0;
+    is_akv2fill = 1'b0;
+    is_akv2column = 1'b0;
 
     // Decode based on the opcode
     case (instr.i_type.opcode)
@@ -181,6 +185,20 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
             is_rd = 1'b1;
           end else if (is_akvrelease) begin
             is_accel_o = 1'b1;
+            is_load = 1'b1;
+          end
+        end
+        if (AkvV2Enable) begin
+          is_akv2fill = instr.i_type.funct3 == AkvV2FillFunct3;
+          is_akv2column = instr.i_type.funct3 == AkvV2ColumnLoadFunct3;
+          if (is_akv2fill) begin
+            is_accel_o = 1'b1;
+            is_rs1 = instruction_i[25] == AKV_FILL_FULL;
+            is_rs2 = 1'b1;
+            is_load = 1'b1;
+          end else if (is_akv2column) begin
+            is_accel_o = 1'b1;
+            is_rs1 = 1'b1;
             is_load = 1'b1;
           end
         end

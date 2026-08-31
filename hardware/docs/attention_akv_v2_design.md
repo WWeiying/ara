@@ -152,6 +152,13 @@ is deliberately not copied into hidden context. Software loads the active
 tail validity has one source of truth and masked values retain standard RVV
 semantics.
 
+The v1 descriptor permits any F16-aligned base and stride. The v2 token-bank
+profile additionally requires Q, K, and V bases and row/token strides to be
+32-byte aligned. This keeps each 128-bit fill beat within one 256-bit bank row
+and makes the single-port bank-write contract explicit. The separate
+`akv_v2_descriptor_is_valid()` check enforces this extension constraint without
+weakening or silently changing the v1 layout contract.
+
 `software/akv/src/akv_v2_reference.c` implements these visible semantics. It
 copies row-major Q/K/V, exposes row and K-column views, checks a one-token tail,
 and guarantees that selector, dimension, capacity, or tile-range validation

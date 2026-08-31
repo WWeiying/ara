@@ -14,7 +14,7 @@ static akv_status_t validate_fill(const akv_descriptor_t *descriptor,
                                   uint32_t *tile_count) {
   if (descriptor == NULL || tile_count == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
-  if (!akv_descriptor_is_valid(descriptor))
+  if (!akv_v2_descriptor_is_valid(descriptor))
     return AKV_STATUS_LAYOUT;
   const uint32_t count = akv_v2_tile_length(descriptor->kv_length, tile_start);
   if (count == 0u)

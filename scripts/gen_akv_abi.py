@@ -245,6 +245,17 @@ static inline int akv_descriptor_is_valid(const void *descriptor_address) {{
                         descriptor->kv_length, row_bytes);
 }}
 
+static inline int akv_v2_descriptor_is_valid(
+    const void *descriptor_address) {{
+  if (!akv_descriptor_is_valid(descriptor_address)) return 0;
+  const akv_descriptor_t *descriptor =
+      (const akv_descriptor_t *)descriptor_address;
+  return ((descriptor->q_base | descriptor->k_base | descriptor->v_base |
+           descriptor->q_row_stride_bytes |
+           descriptor->k_token_stride_bytes |
+           descriptor->v_token_stride_bytes) & UINT64_C(31)) == 0u;
+}}
+
 static inline int akv_load_selector_is_valid(const akv_descriptor_t *descriptor,
                                               uint32_t tile_length,
                                               uint32_t selector) {{

@@ -144,8 +144,10 @@ module ara import ara_pkg::*; #(
     // Is this a fault-only-first load?
     logic fault_only_first;
 
-    // Attention/KV fill mode. Meaningful only for VAKVFILL.
+    // Attention/KV command metadata. Meaningful only for VAKVFILL/VAKVLOAD.
     logic akv_refill;
+    logic akv_v2;
+    logic akv_column;
 
     // Rounding-Mode for FP operations
     fpnew_pkg::roundmode_e fp_rm;

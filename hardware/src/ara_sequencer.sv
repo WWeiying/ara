@@ -784,6 +784,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
               akv_refill    : ara_req_i.akv_refill,
+              akv_v2        : ara_req_i.akv_v2,
+              akv_column    : ara_req_i.akv_column,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,

@@ -92,6 +92,13 @@ module akv_engine_tb;
   logic [31:0] refill_count;
   logic [31:0] load_count;
   logic [31:0] release_count;
+  logic [31:0] v2_full_count;
+  logic [31:0] v2_refill_count;
+  logic [31:0] v2_row_load_count;
+  logic [31:0] v2_column_load_count;
+  logic [31:0] v2_k_view_bank_cycles;
+  logic [31:0] v2_bank_conflict_cycles;
+  logic [31:0] v2_rejected_count;
   logic [31:0] q_external_bytes;
   logic [31:0] kv_external_bytes;
   logic [31:0] replay_bytes;
@@ -175,6 +182,13 @@ module akv_engine_tb;
     .refill_count_o                     (refill_count),
     .load_count_o                       (load_count),
     .release_count_o                    (release_count),
+    .v2_full_count_o                    (v2_full_count),
+    .v2_refill_count_o                  (v2_refill_count),
+    .v2_row_load_count_o                (v2_row_load_count),
+    .v2_column_load_count_o             (v2_column_load_count),
+    .v2_k_view_bank_cycles_o            (v2_k_view_bank_cycles),
+    .v2_bank_conflict_cycles_o          (v2_bank_conflict_cycles),
+    .v2_rejected_count_o                (v2_rejected_count),
     .q_external_bytes_o                 (q_external_bytes),
     .kv_external_bytes_o                (kv_external_bytes),
     .replay_bytes_o                     (replay_bytes),
@@ -351,8 +365,11 @@ module akv_engine_tb;
   assign ldu_result_final_gnt = grant_replay ? ldu_result_req : '0;
 
   logic score_replay;
+  logic score_column;
   logic [63:0] score_source_base;
   logic [15:0] score_bytes;
+  logic [31:0] score_source_stride;
+  logic [6:0] score_column_dimension;
   logic [4:0] score_vd;
   vid_t score_id;
   integer replay_word_seen;
@@ -376,15 +393,13 @@ module akv_engine_tb;
           if (ldu_result_id[lane] != score_id ||
               ldu_result_addr[lane] !=
                   vaddr_t'(unsigned'(score_vd) * WordsPerRegister +
-                           replay_word_seen) ||
-              ldu_result_be[lane] != 8'hff)
+                           replay_word_seen))
             $fatal(1,
-                   "AKV replay metadata mismatch word=%0d lane=%0d id=%0d/%0d addr=%0d/%0d be=%h/ff",
+                   "AKV replay metadata mismatch word=%0d lane=%0d id=%0d/%0d addr=%0d/%0d",
                    replay_word_seen, lane, ldu_result_id[lane], score_id,
                    ldu_result_addr[lane],
                    vaddr_t'(unsigned'(score_vd) * WordsPerRegister +
-                            replay_word_seen),
-                   ldu_result_be[lane]);
+                            replay_word_seen));
         end
         for (int unsigned logical_byte = 0; logical_byte < 32;
              logical_byte++) begin
@@ -394,14 +409,24 @@ module akv_engine_tb;
           automatic int unsigned lane_byte = physical_byte % 8;
           automatic int unsigned source_offset =
               replay_word_seen * 32 + logical_byte;
-          if (source_offset < score_bytes &&
+          automatic logic expected_enable = source_offset < score_bytes;
+          automatic logic [63:0] expected_address = score_column
+              ? score_source_base + (source_offset / 2) * score_source_stride +
+                    unsigned'(score_column_dimension) * 2 + source_offset[0]
+              : score_source_base + source_offset;
+          if (ldu_result_be[lane][lane_byte] != expected_enable)
+            $fatal(1,
+                   "AKV replay byte-enable mismatch word=%0d byte=%0d got=%0b expected=%0b",
+                   replay_word_seen, logical_byte,
+                   ldu_result_be[lane][lane_byte], expected_enable);
+          if (expected_enable &&
               ldu_result_wdata[lane][lane_byte*8 +: 8] !=
-                  memory_byte(score_source_base + source_offset))
+                  memory_byte(expected_address))
             $fatal(1,
                    "AKV replay data mismatch word=%0d byte=%0d got=%h expected=%h",
                    replay_word_seen, logical_byte,
                    ldu_result_wdata[lane][lane_byte*8 +: 8],
-                   memory_byte(score_source_base + source_offset));
+                   memory_byte(expected_address));
         end
         replay_word_seen <= replay_word_seen + 1;
         aggregate_write_count <= aggregate_write_count + 1;
@@ -523,7 +548,7 @@ module akv_engine_tb;
   endtask
 
   task automatic run_valid_load(input akv_stream_e stream,
-                                input logic [2:0] index,
+                                input logic [5:0] index,
                                 input logic [15:0] head_dim,
                                 input logic [4:0] vd,
                                 input vid_t id,
@@ -531,14 +556,17 @@ module akv_engine_tb;
                                 input integer stall_cycles);
     integer ack_before;
     score_replay = 1'b1;
+    score_column = 1'b0;
     score_source_base = source_base;
     score_bytes = head_dim * 2;
+    score_source_stride = '0;
+    score_column_dimension = '0;
     score_vd = vd;
     score_id = id;
     replay_word_seen = 0;
     ack_before = early_ack_count;
     send_command(AKV_COMMAND_LOAD, 0, 0,
-                 {59'b0, index, stream}, head_dim, vd, id);
+                 {56'b0, index, stream}, head_dim, vd, id);
     if (stall_cycles != 0) begin
       grant_replay = 1'b0;
       repeat (stall_cycles) @(posedge clk);
@@ -556,6 +584,69 @@ module akv_engine_tb;
       $fatal(1, "AKV replay backpressure was not observed");
     acknowledge_terminal();
     score_replay = 1'b0;
+  endtask
+
+  task automatic run_valid_v2_full(input logic [15:0] head_dim,
+                                   input logic [15:0] kv_length,
+                                   input logic [7:0] q_rows,
+                                   input logic [63:0] tile_start);
+    akv_descriptor_v1_t descriptor;
+    descriptor = valid_descriptor(head_dim, kv_length, q_rows);
+    put_descriptor(DescriptorBase, descriptor);
+    send_command(AKV_COMMAND_V2_FULL, DescriptorBase, tile_start, 0,
+                 head_dim, 0, 4'h2);
+    wait_success();
+    if (!context_ready || v2_full_count != 1 ||
+        v2_bank_conflict_cycles != 0)
+      $fatal(1, "successful AKV-v2 full did not commit a conflict-free context");
+    acknowledge_terminal();
+  endtask
+
+  task automatic run_valid_v2_column(
+      input logic [6:0] dimension,
+      input logic [6:0] tile_count,
+      input logic [63:0] tile_start,
+      input logic [15:0] head_dim,
+      input logic [4:0] vd,
+      input vid_t id,
+      input integer stall_cycles
+  );
+    integer ack_before;
+    score_replay = 1'b1;
+    score_column = 1'b1;
+    score_source_base = KBase + tile_start * head_dim * 2;
+    score_bytes = tile_count * 2;
+    score_source_stride = head_dim * 2;
+    score_column_dimension = dimension;
+    score_vd = vd;
+    score_id = id;
+    replay_word_seen = 0;
+    ack_before = early_ack_count;
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, dimension,
+                 head_dim, vd, id);
+    if (stall_cycles != 0) begin
+      grant_replay = 1'b0;
+      repeat (stall_cycles) @(posedge clk);
+      @(negedge clk);
+      grant_replay = 1'b1;
+    end
+    wait_success();
+    if (early_ack_count != ack_before + 1)
+      $fatal(1, "valid AKV-v2 column did not produce exactly one early ack");
+    if (replay_word_seen != 4 || replay_bytes != tile_count * 2)
+      $fatal(1,
+             "AKV-v2 column replay mismatch words=%0d bytes=%0d expected_bytes=%0d",
+             replay_word_seen, replay_bytes, tile_count * 2);
+    if (v2_column_load_count != 1 ||
+        v2_k_view_bank_cycles != (tile_count + 7) / 8 ||
+        v2_bank_conflict_cycles != 0)
+      $fatal(1,
+             "AKV-v2 column accounting mismatch commands=%0d bank_cycles=%0d conflicts=%0d",
+             v2_column_load_count, v2_k_view_bank_cycles,
+             v2_bank_conflict_cycles);
+    acknowledge_terminal();
+    score_replay = 1'b0;
+    score_column = 1'b0;
   endtask
 
   task automatic run_descriptor_validation(
@@ -598,15 +689,18 @@ module akv_engine_tb;
     inject_fault_end = '0;
     grant_replay = 1'b1;
     score_replay = 1'b0;
+    score_column = 1'b0;
     score_source_base = '0;
     score_bytes = '0;
+    score_source_stride = '0;
+    score_column_dimension = '0;
     score_vd = '0;
     score_id = '0;
     memory_epoch = '0;
 
     fill_pattern(QBase, 8 * 256, 8'h31);
-    fill_pattern(KBase, 12 * 256, 8'h52);
-    fill_pattern(VBase, 12 * 256, 8'h94);
+    fill_pattern(KBase, 80 * 256, 8'h52);
+    fill_pattern(VBase, 80 * 256, 8'h94);
 
     repeat (5) @(posedge clk);
     rst_n = 1'b1;
@@ -789,7 +883,100 @@ module akv_engine_tb;
     run_valid_load(AKV_STREAM_V, 3, 64, 14, 4'he,
                    VBase + 2 + 3 * 128, 0);
 
-    $display("AKV engine PASS: D64/D128 aligned/unaligned fill, refill/replay, validation matrix, descriptor/Q/K/V MMU, PMA, and AXI faults");
+    // AKV-v2 keeps row-major model storage, exposes 64-token K/V rows, and
+    // gathers a K dimension across token banks without software packing.
+    run_valid_v2_full(128, 69, 6, 0);
+    if (q_external_bytes != 6 * 256 ||
+        kv_external_bytes != 2 * 64 * 256 || read_range_count != 135)
+      $fatal(1,
+             "AKV-v2 D128 full accounting mismatch q=%0d/1536 kv=%0d/32768 ranges=%0d/135 tile_count=%0d",
+             q_external_bytes, kv_external_bytes, read_range_count,
+             dut.context_tile_count_q);
+    run_valid_load(AKV_STREAM_Q, 5, 128, 8, 4'h1,
+                   QBase + 5 * 256, 0);
+    if (v2_row_load_count != 1)
+      $fatal(1, "AKV-v2 Q row was not counted");
+    run_valid_load(AKV_STREAM_K, 63, 128, 10, 4'h2,
+                   KBase + 63 * 256, 0);
+    if (v2_row_load_count != 1)
+      $fatal(1, "AKV-v2 K row was not counted");
+    run_valid_load(AKV_STREAM_V, 63, 128, 12, 4'h3,
+                   VBase + 63 * 256, 0);
+    run_valid_v2_column(0, 64, 0, 128, 14, 4'h4, 0);
+    run_valid_v2_column(17, 64, 0, 128, 16, 4'h5, 2);
+    run_valid_v2_column(127, 64, 0, 128, 18, 4'h6, 0);
+
+    // Refill the five-token tail. Inactive destination bytes must remain
+    // disabled; stale values from the preceding full tile cannot escape.
+    send_command(AKV_COMMAND_V2_REFILL, 0, 64, 0, 128, 0, 4'h7);
+    wait_success();
+    if (!context_ready || v2_refill_count != 1 || q_external_bytes != 0 ||
+        kv_external_bytes != 2 * 5 * 256 || read_range_count != 10)
+      $fatal(1, "AKV-v2 tail refill accounting mismatch");
+    acknowledge_terminal();
+    run_valid_load(AKV_STREAM_V, 4, 128, 20, 4'h8,
+                   VBase + 68 * 256, 0);
+    run_valid_v2_column(63, 5, 64, 128, 22, 4'h9, 0);
+
+    // Local validation is atomic: invalid row and dimension commands neither
+    // write the VRF nor destroy the valid tail context.
+    writes_before = aggregate_write_count;
+    ack_before = early_ack_count;
+    send_command(AKV_COMMAND_LOAD, 0, 0,
+                 {56'b0, 6'd5, AKV_STREAM_V}, 128, 24, 4'ha);
+    expect_validation_fault(AKV_VALIDATION_SELECTOR, 0, writes_before);
+    if (!context_ready || early_ack_count != ack_before ||
+        v2_rejected_count != 1)
+      $fatal(1, "invalid AKV-v2 row changed context or accounting");
+
+    writes_before = aggregate_write_count;
+    ack_before = early_ack_count;
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, 128,
+                 128, 24, 4'hb);
+    expect_validation_fault(AKV_VALIDATION_SELECTOR, 0, writes_before);
+    if (!context_ready || early_ack_count != ack_before ||
+        v2_rejected_count != 1)
+      $fatal(1, "invalid AKV-v2 column changed context or accounting");
+
+    // The token-banked write path has a 32-byte row contract. Reject an
+    // incompatible layout before issuing any payload range.
+    descriptor = valid_descriptor(128, 69, 6);
+    descriptor.q_base = QBase + 2;
+    put_descriptor(DescriptorBase, descriptor);
+    writes_before = aggregate_write_count;
+    send_command(AKV_COMMAND_V2_FULL, DescriptorBase, 0, 0,
+                 128, 0, 4'hc);
+    expect_validation_fault(AKV_VALIDATION_STRIDE, DescriptorBase,
+                            writes_before);
+    if (context_ready || v2_rejected_count != 1)
+      $fatal(1, "invalid AKV-v2 layout retained a context");
+
+    // D64 and the minimum one-token tail exercise the other supported row
+    // width and the narrowest legal column byte-enable mask.
+    run_valid_v2_full(64, 65, 2, 0);
+    if (q_external_bytes != 2 * 128 ||
+        kv_external_bytes != 2 * 64 * 128 || read_range_count != 131)
+      $fatal(1, "AKV-v2 D64 full accounting mismatch");
+    run_valid_load(AKV_STREAM_K, 63, 64, 24, 4'hd,
+                   KBase + 63 * 128, 0);
+    run_valid_v2_column(63, 64, 0, 64, 25, 4'he, 0);
+    send_command(AKV_COMMAND_V2_REFILL, 0, 64, 0, 64, 0, 4'hf);
+    wait_success();
+    if (!context_ready || v2_refill_count != 1 ||
+        kv_external_bytes != 2 * 128 || read_range_count != 2)
+      $fatal(1, "AKV-v2 one-token refill accounting mismatch");
+    acknowledge_terminal();
+    run_valid_load(AKV_STREAM_V, 0, 64, 26, 4'h0,
+                   VBase + 64 * 128, 0);
+    run_valid_v2_column(31, 1, 64, 64, 27, 4'h1, 0);
+
+    // A final v1 command proves that v2 state did not change the legacy
+    // descriptor, tile-eight, and unaligned-row contract.
+    run_valid_full(64, 12, 3, 0);
+    run_valid_load(AKV_STREAM_K, 7, 64, 26, 4'hd,
+                   KBase + 7 * 128, 0);
+
+    $display("AKV engine PASS: v1 D64/D128 compatibility plus v2 64-token row/column views, five-token tail, counters, validation, and faults");
     $finish;
   end
 

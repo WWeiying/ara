@@ -124,6 +124,7 @@ static void test_v2_reference_context(void) {
          AKV_STATUS_OK);
   assert(v2_context.ready == 1u);
   assert(v2_context.tile_count == AKV_V2_TILE_TOKENS);
+  assert(akv_v2_descriptor_is_valid(&plan.descriptor));
 
   uint16_t observed[AKV_HEAD_DIM_128];
   uint16_t sentinel[AKV_HEAD_DIM_128];
@@ -163,6 +164,15 @@ static void test_v2_reference_context(void) {
 
   const uint16_t old_tile_start = v2_context.tile_start;
   assert(akv_v2_reference_refill(&v2_context, 65u) == AKV_STATUS_RANGE);
+  assert(v2_context.ready == 1u);
+  assert(v2_context.tile_start == old_tile_start);
+
+  akv_descriptor_t misaligned = plan.descriptor;
+  misaligned.q_base += 2u;
+  assert(akv_descriptor_is_valid(&misaligned));
+  assert(!akv_v2_descriptor_is_valid(&misaligned));
+  assert(akv_v2_reference_full(&v2_context, &misaligned, 0u) ==
+         AKV_STATUS_LAYOUT);
   assert(v2_context.ready == 1u);
   assert(v2_context.tile_start == old_tile_start);
 

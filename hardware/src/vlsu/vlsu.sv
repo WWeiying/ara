@@ -460,6 +460,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [31:0] akv_command_cycles;
   logic [31:0] akv_full_count, akv_refill_count;
   logic [31:0] akv_load_count, akv_release_count;
+  logic [31:0] akv_v2_full_count, akv_v2_refill_count;
+  logic [31:0] akv_v2_row_load_count, akv_v2_column_load_count;
+  logic [31:0] akv_v2_k_view_bank_cycles;
+  logic [31:0] akv_v2_bank_conflict_cycles, akv_v2_rejected_count;
   logic [31:0] akv_q_external_bytes, akv_kv_external_bytes;
   logic [31:0] akv_replay_bytes, akv_replay_backpressure_cycles;
   logic [31:0] akv_read_range_count, akv_read_translation_count;
@@ -544,9 +548,16 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   always_comb begin
     akv_command = AKV_COMMAND_FULL;
     unique case (pe_req_i.op)
-      VAKVFILL: akv_command = pe_req_i.akv_refill
-          ? AKV_COMMAND_REFILL : AKV_COMMAND_FULL;
-      VAKVLOAD: akv_command = AKV_COMMAND_LOAD;
+      VAKVFILL: begin
+        if (pe_req_i.akv_v2)
+          akv_command = pe_req_i.akv_refill
+              ? AKV_COMMAND_V2_REFILL : AKV_COMMAND_V2_FULL;
+        else
+          akv_command = pe_req_i.akv_refill
+              ? AKV_COMMAND_REFILL : AKV_COMMAND_FULL;
+      end
+      VAKVLOAD: akv_command = pe_req_i.akv_column
+          ? AKV_COMMAND_V2_COLUMN_LOAD : AKV_COMMAND_LOAD;
       VAKVRELEASE: akv_command = AKV_COMMAND_RELEASE;
       default: ;
     endcase
@@ -980,6 +991,13 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .refill_count_o                (akv_refill_count),
     .load_count_o                  (akv_load_count),
     .release_count_o               (akv_release_count),
+    .v2_full_count_o               (akv_v2_full_count),
+    .v2_refill_count_o             (akv_v2_refill_count),
+    .v2_row_load_count_o           (akv_v2_row_load_count),
+    .v2_column_load_count_o        (akv_v2_column_load_count),
+    .v2_k_view_bank_cycles_o       (akv_v2_k_view_bank_cycles),
+    .v2_bank_conflict_cycles_o     (akv_v2_bank_conflict_cycles),
+    .v2_rejected_count_o           (akv_v2_rejected_count),
     .q_external_bytes_o            (akv_q_external_bytes),
     .kv_external_bytes_o           (akv_kv_external_bytes),
     .replay_bytes_o                (akv_replay_bytes),
@@ -1186,7 +1204,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         end
 
         if (akv_command_early_ack) begin
-          assert (akv_command_fire && akv_command == AKV_COMMAND_LOAD)
+          assert (akv_command_fire && akv_command inside {
+                      AKV_COMMAND_LOAD, AKV_COMMAND_V2_COLUMN_LOAD})
             else $fatal(1, "AKV early acknowledgment was not a local load acceptance");
         end
 
@@ -1230,14 +1249,19 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             else $fatal(1, "AKV scalar acknowledgment occurred at the wrong boundary");
 
           if ($test$plusargs("AKV_PERF")) begin
-            $display("[AKV_PERF] seq=%0d id=%0d command=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d context_ready=%0d busy_cycles=%0d full=%0d refill=%0d load=%0d release=%0d q_external_bytes=%0d kv_external_bytes=%0d replay_bytes=%0d replay_backpressure_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d read_payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d",
+            $display("[AKV_PERF] seq=%0d id=%0d command=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d context_ready=%0d busy_cycles=%0d full=%0d refill=%0d load=%0d release=%0d v2_full=%0d v2_refill=%0d v2_row_load=%0d v2_column_load=%0d v2_k_view_bank_cycles=%0d v2_bank_conflict_cycles=%0d v2_rejected=%0d q_external_bytes=%0d kv_external_bytes=%0d replay_bytes=%0d replay_backpressure_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d read_payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d",
                      akv_command_sequence_q, akv_command_id_q, akv_command_q,
                      akv_success_valid, akv_fault_valid,
                      akv_fault_is_validation, akv_validation_error,
                      akv_read_fault_kind, akv_context_ready,
                      akv_command_cycles + 1'b1,
                      akv_full_count, akv_refill_count, akv_load_count,
-                     akv_release_count, akv_q_external_bytes,
+                     akv_release_count, akv_v2_full_count,
+                     akv_v2_refill_count, akv_v2_row_load_count,
+                     akv_v2_column_load_count,
+                     akv_v2_k_view_bank_cycles,
+                     akv_v2_bank_conflict_cycles, akv_v2_rejected_count,
+                     akv_q_external_bytes,
                      akv_kv_external_bytes, akv_replay_bytes,
                      akv_replay_backpressure_cycles,
                      akv_read_range_count, akv_read_translation_count,

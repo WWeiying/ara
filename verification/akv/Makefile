@@ -12,7 +12,8 @@ BENDER_TARGETS := --no-default-target -t rtl -t cv64a6_imafdcv_sv39 \
 	-t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
 BENDER_DEFINES := --define NR_LANES=4 --define VLEN=1024 \
 	--define ARIANE_ACCELERATOR_PORT=1 --define ARA_QBS_ENABLE=1 \
-	--define ARA_AKV_ENABLE=1 --define COMMON_CELLS_ASSERTS_OFF
+	--define ARA_AKV_ENABLE=1 --define ARA_AKV_V2_ENABLE=1 \
+	--define COMMON_CELLS_ASSERTS_OFF
 
 .PHONY: check contract-check rtl-compile rtl-check rtl-macro-compile \
 	rtl-macro-check context-synth clean
@@ -34,7 +35,8 @@ $(MACRO_FILELIST): $(ROOT)/Bender.yml Makefile
 
 rtl-compile: $(FILELIST) $(TB)
 	cd $(BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
-		+define+ARA_AKV_ENABLE=1 +lint=TFIPC-L -l compile.log \
+		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
+		+lint=TFIPC-L -l compile.log \
 		-f $(FILELIST) $(TB) -top akv_engine_tb -o simv
 
 rtl-check: rtl-compile
@@ -43,7 +45,8 @@ rtl-check: rtl-compile
 
 rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
 	cd $(MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
-		+define+ARA_AKV_ENABLE=1 +define+TARGET_SRAM_MC +lint=TFIPC-L \
+		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
+		+define+TARGET_SRAM_MC +lint=TFIPC-L \
 		-l compile.log -f $(MACRO_FILELIST) $(MACRO_MODEL) $(TB) \
 		-top akv_engine_tb -o simv
 

@@ -25,6 +25,7 @@ include $(ARA_DIR)/config/sram.mk
 mc ?= 0
 qbs ?= 0
 akv ?= 0
+akv_v2 ?= 0
 qbs_perf ?= 0
 sim_l2_mb ?= 1
 large_l2_mb ?= 16
@@ -121,6 +122,9 @@ bender_defs += --define ARA_QBS_ENABLE=1
 endif
 ifeq ($(akv),1)
 bender_defs += --define ARA_AKV_ENABLE=1
+endif
+ifeq ($(akv_v2),1)
+bender_defs += --define ARA_AKV_ENABLE=1 --define ARA_AKV_V2_ENABLE=1
 endif
 ifneq ($(sim_l2_mb),1)
 bender_defs += --define SIM_L2_SIZE_BYTES=$(sim_l2_bytes)
