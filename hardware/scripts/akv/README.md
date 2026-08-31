@@ -13,6 +13,39 @@ hardware/scripts/akv/akv_v2_design_model.py
 Its exact structural counts and the interpretation boundary for projected
 cycles are documented in `hardware/docs/attention_akv_v2_design.md`.
 
+## AKV-v2 RTL operator check
+
+The token-axis implementation is measured with real Qwen Attention captures;
+it does not use synthetic K/V values or software K packing. Build one reusable
+simulation image and run each context length in its own result directory:
+
+```bash
+make -C hardware compile akv_v2=1 no_fsdb=1 \
+  buildpath="$PWD/hardware/build_akv_v2_compile" \
+  sim_dir=sim_akv_v2_compile
+
+LLAMA_ATTN_RUN_ROOT="$PWD/hardware/llama_attention_runs_akv_v2" \
+LLAMA_ATTN_SIM_DIR="$PWD/hardware/sim_akv_v2_compile" \
+  hardware/scripts/llama_q4km_extract/run-ara-attention-core.sh \
+  akv_v2 16 --ara-only
+```
+
+Use the same command with `128` or `256` for the long points. Launch any run
+expected to exceed ten minutes in the background and do not poll it. Aggregate
+only completed runs with:
+
+```bash
+hardware/scripts/llama_q4km_extract/summarize-ara-attention-core.py \
+  --run-root hardware/llama_attention_runs_akv_v2 \
+  --output hardware/llama_attention_runs_akv_v2/attention_core_summary.csv
+```
+
+The summary reads `[AKV_PERF]` records directly from `ara.log`. It therefore
+preserves FULL/REFILL, K-column and V-row command counts, K-view bank cycles,
+conflicts, rejected commands, external Q/K/V bytes, and local replay bytes in
+addition to the whole-operator LLM counters. `run.conf` records source, capture,
+ELF, and simulator provenance.
+
 ## Build
 
 Build a static RV64GCV `llama-simple` with ordinary RVV, QBS, and AKV compiled

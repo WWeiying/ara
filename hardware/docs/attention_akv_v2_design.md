@@ -56,11 +56,11 @@ The alternatives have distinct, testable costs:
   the phase boundary, so this alternative adds two fill phases and explicit
   score spill traffic.
 
-## 3. Selected candidate
+## 3. Selected and implemented candidate
 
-The first RTL candidate is `token_banked8`, `tile=64`, and a six-Query score
-group. This is the only modeled point that simultaneously provides all of the
-following without an unmodeled transform:
+The implemented RTL candidate is `token_banked8`, `tile=64`, and a six-Query
+score group. This is the only modeled point that simultaneously provides all
+of the following without an unmodeled transform:
 
 1. 24, 48, and 96 reductions at KV=16, 128, and 256;
 2. one row-major model read of each K and V element;
@@ -191,10 +191,77 @@ Required cycle-level signals are command valid/ready/type, context mode and
 tile count, K dimension and bank-group counters, per-bank request/address/data,
 gather-buffer valid mask, replay word and lane grants, range issue/completion,
 fault state, and final vector-instruction completion. Only after these signals
-agree with the strict counters will KV=128 and KV=256 run in independent
+agreed with the strict counters were KV=128 and KV=256 launched in independent
 background directories.
 
-## 7. Stop conditions
+## 7. Measured RTL closure
+
+The focused implementation follows the modeled organization directly. Eight
+single-port 256-bit SRAM banks store row-major K and V payloads, with token
+index modulo eight selecting the bank. `vakv2kcol` gathers one F16 element from
+each bank per bank cycle and returns an `e16,m1` token vector through the normal
+VRF result path. Existing row replay supplies V, while six standard-RVV
+accumulators consume each K column once. FULL and REFILL use the existing
+translated read engine; software supplies row-major model tensors and performs
+no K transpose or K/V scratch packing.
+
+The controlled runs use the real Qwen2.5-1.5B Q4_K_M D128/GQA6 capture and the
+same output tolerance as the RVV, tiled-RVV, and AKV-v1 baselines. Kernel cycles
+are the application's measured interval. The AKV-v2 runs use source commit
+`b57f11b0d40a58a76c8fa7423047dfdc1106d00f` and simulator SHA-256
+`e5e340f3d616d4343420744971596850d19d5cb47808d2b1e6abf7f6efdc958a`.
+
+| Effective KV | RVV cycles | AKV-v1 cycles | Tiled-RVV cycles | AKV-v2 cycles | RVV / v2 | AKV-v1 / v2 | Tiled / v2 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 121,338 | 52,318 | 41,293 | 33,799 | 3.59x | 1.55x | 1.22x |
+| 128 | 725,838 | 383,502 | 157,400 | 100,530 | 7.22x | 3.81x | 1.57x |
+| 256 | 1,413,791 | 761,933 | 309,540 | 193,369 | 7.31x | 3.94x | 1.60x |
+
+All three points report `PASS` with zero output mismatches. Across the three
+lengths, AKV-v2 is 5.74x faster than original RVV, 2.85x faster than AKV-v1,
+and 1.45x faster than the strong tiled-RVV baseline by geometric mean. The
+following strict counter equalities establish that the speedup comes from the
+intended view and reuse behavior rather than an omitted computation:
+
+| Effective KV | FULL | REFILL | K columns | V rows | K bank cycles | FP reductions | Q bytes | K/V bytes | Replay bytes | Conflict / rejected |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 2 | 0 | 256 | 32 | 512 | 24 | 3,072 | 16,384 | 16,384 | 0 / 0 |
+| 128 | 2 | 2 | 512 | 256 | 4,096 | 48 | 3,072 | 131,072 | 131,072 | 0 / 0 |
+| 256 | 2 | 6 | 1,024 | 512 | 8,192 | 96 | 3,072 | 262,144 | 262,144 | 0 / 0 |
+
+For KV=16, 256 K-column commands are exactly two KV heads times 128
+dimensions, rather than six commands per Query row. The 32 V-row commands are
+exactly two heads times 16 tokens. KV=128 and KV=256 preserve the same
+invariants over two and four tiles per head. External K/V bytes equal one read
+of every active row-major K and V element, and the 24/48/96 reduction counts
+equal two reductions per Query row and tile. These independent counts exclude
+skipped Query work, duplicated model reads, hidden software packing, and stale
+tail lanes as explanations for the cycle result.
+
+Compatibility checks use the AKV-v2-enabled RTL rather than a separately
+compiled legacy image. The original RVV and AKV-v1 KV=16 binaries retain their
+exact 121,338- and 52,318-cycle results with zero mismatches; AKV-v1 emits no
+v2 command. A QBS/AKV-v2 coexistence image executes the QBS control smoke test,
+including successful legal commands and the expected atomic validation fault.
+The C reference, generated ABI, QBS reference/repack tests, and AKV engine tests
+all pass. The engine tests run with both generic SRAM and the SRAM macro model
+and cover v1 D64/D128, v2 D64/D128, a 64-token tile, one- and five-token tails,
+row/column ordering, byte enables, validation atomicity, and read faults.
+
+## 8. Integration decision
+
+AKV-v2 remains a real-model operator experiment rather than a generic GGML
+backend route at this checkpoint. The application-local helpers and RTL prove
+the D128/GQA6 token-axis mechanism and retain ordinary RVV arithmetic, but a
+production route still needs measured D64, additional GQA ratios, arbitrary
+GGML strides, worker-local ownership, and native trap-safe capability discovery.
+The current benchmark's `akv_device_init_reference()` is appropriate only for
+an image built for known AKV hardware; it is not presented as runtime discovery
+on an unknown processor. Until those selection contracts are implemented,
+unsupported software remains on the existing RVV or AKV-v1 paths and the v2
+kernel is not silently selected by `akv_attention_plan_create()`.
+
+## 9. Stop conditions
 
 The implementation stops rather than growing a dedicated Attention engine if
 any of the following is measured:
@@ -210,3 +277,7 @@ any of the following is measured:
 Such a result would reject the current banked-view hypothesis and must be
 documented before considering a physical transpose, local score store, or
 dedicated arithmetic extension.
+
+None of these stop conditions triggered: the measured long points beat the
+tiled baseline and the explicit 130,000/250,000-cycle targets, all structural
+counts match, and the representative compatibility regressions pass.
