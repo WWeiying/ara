@@ -318,7 +318,7 @@ then requires current generalized QEMU runs for SmolLM2 GQA3 and Phi-3.5 D96.
 The latter two runs prove that the newly admitted shapes execute rather than
 silently retaining their former fallback disposition.
 
-The current non-physical audit reports 34 passing requirements, zero failures,
+The current non-physical audit reports 35 passing requirements, zero failures,
 and one pending requirement. The sole pending item is the explicitly deferred
 TSMC28 1 GHz physical closure; it is not treated as a functional pass. All six
 integrated QBS representatives, including the long Prefill FFN-gate point, have
@@ -343,6 +343,10 @@ baseline and enforces the 1% maximum-regression gate. Before any point starts,
 the worker also checks the VCS filelist and refuses a `simv` that predates an
 RTL/build input. Each accepted result must record the same simulator path and
 SHA-256 as the current binary, so an old executable cannot satisfy the gate.
+The simulator freshness set uses the generated filelist, all listed RTL,
+required defines, Bender metadata, configuration files, and DPI object. It does
+not use the whole Makefile timestamp because synthesis-only target edits do not
+change an already generated VCS image.
 
 ## QBS cross-operator activation lifetime
 
@@ -459,3 +463,21 @@ The future standalone report separates logic area from the 20 instantiated
 reports both overall and register-to-register setup slack. The older
 `context-synth` target measures only the v1 resident context and is not a
 substitute for complete AKV-v2 area or timing.
+
+Both synthesis launchers run `collect-synthesis-results.py` only after DC exits
+successfully. The collector rejects reports older than any current RTL, header,
+constraint, flow, filelist, or physical-library input; checks the 20 = 4 + 16
+macro partition; reconciles logic plus macro area with `report_area`; records
+timing slack; and hashes all inputs, reports, netlists, and DDC. Consequently,
+old reports or reports from a different RTL or library image cannot close the
+physical gate.
+
+The integrated collector is enabled only for `mc=1 qbs=1 akv_v2=1`. Other
+`make dc` configurations retain the ordinary Ara synthesis behavior and do not
+fail merely because the AKV-specific 20-macro contract is absent.
+
+The integrated input set includes the automatic `.synopsys_dc.setup` startup
+chain, GUI/environment/main setup Tcl, `dc_dont_use.tcl`, the launch script,
+constraints, and the report-generating Tcl. The startup and launch files live
+under the otherwise ignored backend work tree but are intentionally tracked so
+a fresh checkout does not depend on undocumented local files.

@@ -119,6 +119,42 @@ class SynthesisPreflightTest(unittest.TestCase):
         )
         MODULE.audit(self.options())
 
+    def test_integrated_flow_requires_pipefail(self) -> None:
+        self.write_filelist()
+        startup = self.root / ".synopsys_dc.setup"
+        gui = self.root / "setup.gui"
+        main = self.root / "setup.main"
+        dc_script = self.root / "dc.tcl"
+        runner = self.root / "run.cmd"
+        startup.write_text(
+            "source ../global_scripts/synopsys_dc.setup.gui\n"
+            "source ../global_scripts/synopsys_dc.setup.env\n"
+            "source -e -v ../global_scripts/synopsys_dc.setup.main\n"
+        )
+        gui.write_text(
+            'set GUI_VCS_OPTION "-f ../../../../flist/${GUI_DESIGN_NAME}_dc.f"\n'
+            'set GUI_SDC_FILE "$GUI_WORK_DIR/local_scripts/$GUI_DESIGN_NAME.sdc"\n'
+            'set GUI_PVT "tc"\n'
+        )
+        main.write_text("source -e -v $GUI_DONTUSE_FILE\n")
+        dc_script.write_text(
+            "analyze -format sverilog -vcs $GUI_VCS_OPTION\n"
+            "foreach constraint_file $GUI_SDC_FILE { source -echo -verbose $constraint_file }\n"
+        )
+        runner.write_text("dc_shell-t -64bit -f ../global_scripts/dc.tcl | tee dc.log\n")
+        options = MODULE.Options(
+            **{
+                **vars(self.options()),
+                "dc_startup": startup,
+                "dc_gui_setup": gui,
+                "dc_main_setup": main,
+                "dc_script": dc_script,
+                "dc_runner": runner,
+            }
+        )
+        with self.assertRaisesRegex(MODULE.PreflightError, "failure propagation"):
+            MODULE.audit(options)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,14 +2,14 @@
   "schema_version": 1,
   "status": "PENDING",
   "counts": {
-    "PASS": 34,
+    "PASS": 35,
     "PENDING": 1,
     "FAIL": 0
   },
   "scope": "AKV area-controlled generalization functional/performance/physical completion audit",
   "manifest": {
     "path": "hardware/scripts/akv/generalization-closure-manifest.json",
-    "sha256": "7e5b0a611845c44dd71d6cf507cd604712b60e085e246710b335b0849a6be042"
+    "sha256": "f76f7b3e3484a4ad15a8bef931ff2c58f38f760005b0186db65cc93a3ac3910e"
   },
   "checks": [
     {
@@ -645,10 +645,66 @@
       ]
     },
     {
+      "name": "synthesis_preflight",
+      "category": "physical_preflight",
+      "status": "PASS",
+      "detail": "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, and 1 GHz/0.15 ns constraints verified",
+      "artifacts": [
+        {
+          "path": "backend/flist/ara_soc_dc.f",
+          "sha256": "7b1e5be27766c61250fcf9972a38c20974c2dc80b11d459f2f33dcf56ff881cc"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc",
+          "sha256": "3da021f177cc9c3ab0de94bd332dc29426820910453d173ef167d6cbb7035a77"
+        },
+        {
+          "path": "verification/akv/synthesis/akv_engine.sdc",
+          "sha256": "3c62a6c4c4ff03193273c98a1a3d875ce6ea40a922c2e9e1376f3b272b77ba8d"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env",
+          "sha256": "616df37e3238aa36d24d84efc66d29fd15054c92f44ca767d1c5d0ceb51e11af"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/run/.synopsys_dc.setup",
+          "sha256": "dd626457663548f17702b8d8db5fc9c80b3cf683a73176d1cce409a08fd32155"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.gui",
+          "sha256": "cd4c23e6f5ce5e5f1d3f6e9f4145e952dd977a5688f0c35979fc27b73ba16cab"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.main",
+          "sha256": "6e20ff116d9792678b72ef2890e60c2fc0991dbfb955c3c5573c70b6e3e429ef"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl",
+          "sha256": "8bb5695727b2f140a5618a100e9691c680a88df49ed5e770855cc2f03e5b1f57"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/run/run.cmd",
+          "sha256": "146274935cb412fc8ef0fd351658da8ebdae438ba501a687e7a005eb5e79cee1"
+        },
+        {
+          "path": "backend/syn/ara_soc/v1-dc/global_scripts/dc_dont_use.tcl",
+          "sha256": "e49d2108834e94cdaf12549b596a1f78b2aeef6f0156f8e4aa59d56b58490746"
+        },
+        {
+          "path": "verification/akv/synthesis/akv_engine_dc.tcl",
+          "sha256": "2441de98a42889cafa9b6b07d99e2a72a46ef34db5b89e9af0f4b3331c042b27"
+        },
+        {
+          "path": "verification/akv/synthesis/run_engine_dc.sh",
+          "sha256": "c291ea8873cc9ce9f9eada079a051d13d6e0118527d5304756026bb51630f5da"
+        }
+      ]
+    },
+    {
       "name": "physical_closure",
       "category": "physical",
       "status": "PENDING",
-      "detail": "deferred_by_user: TSMC28_1GHz_setup_uncertainty_0.15ns",
+      "detail": "deferred_by_user: missing verification/akv/synthesis/akv_engine_dc_out/synthesis_summary.json, backend/syn/ara_soc/v1-dc/reports/synthesis_summary.json; corner=TSMC28_1GHz_setup_uncertainty_0.15ns",
       "artifacts": []
     }
   ]

@@ -442,6 +442,11 @@ dc_preflight: dc_flist
 dc: dc_preflight
 	@echo "2.Synthesis"
 	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
+	@if [ "$(mc)" = "1" ] && [ "$(qbs)" = "1" ] && [ "$(akv_v2)" = "1" ]; then \
+		python3 scripts/akv/collect-synthesis-results.py --mode integrated; \
+	else \
+		echo "AKV physical result collection skipped (requires mc=1 qbs=1 akv_v2=1)"; \
+	fi
 
 sram:
 	@$(call generate_sram, $(spsram127_techlib_path), $(L2_SRAM_CONFIGS))

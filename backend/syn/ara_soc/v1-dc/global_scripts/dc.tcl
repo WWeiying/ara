@@ -220,6 +220,36 @@ report_hierarchy -noleaf > ../reports/hierarchy.rpt
 if { $GUI_DCG_MODE } { set report_area_phy_opt "-physical" }
 eval report_area $report_area_phy_opt $hierarchy_opt > ../reports/area.rpt
 
+set akv_macro_ref TS1N28HPCPUHDSVTB64X256M1SWBSO
+set akv_context_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == $akv_macro_ref && full_name =~ */i_akv_engine/*"]
+set akv_v1_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == $akv_macro_ref && full_name =~ */i_akv_engine/i_context/*"]
+set akv_v2_macros [get_cells -quiet -hierarchical -filter \
+    "ref_name == $akv_macro_ref && full_name =~ */i_akv_engine/i_v2_context/*"]
+set akv_macro_count [sizeof_collection $akv_context_macros]
+set akv_v1_macro_count [sizeof_collection $akv_v1_macros]
+set akv_v2_macro_count [sizeof_collection $akv_v2_macros]
+set design_total_area [get_attribute [current_design] area]
+set worst_setup_path [get_timing_paths -delay_type max -max_paths 1]
+set worst_reg_path [get_timing_paths -delay_type max -from [all_registers] \
+    -to [all_registers] -max_paths 1]
+set worst_setup_slack [get_attribute $worst_setup_path slack]
+set worst_reg_slack [get_attribute $worst_reg_path slack]
+
+set physical_summary [open ../reports/physical_summary.rpt w]
+puts $physical_summary "scope=ara_soc_integrated"
+puts $physical_summary "clock_period_ns=1.0"
+puts $physical_summary "clock_uncertainty_ns=0.15"
+puts $physical_summary "akv_sram_macro_count=$akv_macro_count"
+puts $physical_summary "akv_v1_sram_macro_count=$akv_v1_macro_count"
+puts $physical_summary "akv_v2_sram_macro_count=$akv_v2_macro_count"
+puts $physical_summary "physical_sram_capacity_bits=[expr {$akv_macro_count * 64 * 256}]"
+puts $physical_summary "design_total_area_um2=$design_total_area"
+puts $physical_summary "worst_setup_slack_ns=$worst_setup_slack"
+puts $physical_summary "worst_reg_to_reg_setup_slack_ns=$worst_reg_slack"
+close $physical_summary
+
 foreach key [array names STD_LIBRARY_NAME] {
     set lib_type [lindex [split $key ,] 0]
     set lib_pvt  [lindex [split $key ,] 1]

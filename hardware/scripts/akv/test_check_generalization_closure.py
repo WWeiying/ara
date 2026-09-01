@@ -134,6 +134,12 @@ class CheckGeneralizationClosureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "native QBS model work"):
             MODULE.validate_frozen_qemu(summary, self.manifest)
 
+    def test_current_physical_gate_distinguishes_preflight_from_results(self):
+        checks = {check["name"]: check for check in MODULE.audit(self.manifest)}
+        self.assertEqual(checks["synthesis_preflight"]["status"], "PASS")
+        self.assertEqual(checks["physical_closure"]["status"], "PENDING")
+        self.assertIn("synthesis_summary.json", checks["physical_closure"]["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -176,7 +176,6 @@
     "run_complete": "hardware/akv_generalization_regress_20260901/complete",
     "metadata_sources": [
       "Bender.yml",
-      "hardware/Makefile",
       "hardware/build_akv_generalized_qbs_20260901/work-dpi/elfloader.o",
       "config/default.mk",
       "config/sram.mk"
@@ -184,6 +183,29 @@
   },
   "physical_closure": {
     "status": "deferred_by_user",
-    "required_corner": "TSMC28_1GHz_setup_uncertainty_0.15ns"
+    "required_corner": "TSMC28_1GHz_setup_uncertainty_0.15ns",
+    "preflight": {
+      "filelist": "backend/flist/ara_soc_dc.f",
+      "integrated_sdc": "backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc",
+      "standalone_sdc": "verification/akv/synthesis/akv_engine.sdc",
+      "setup": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env",
+      "flow": {
+        "dc_startup": "backend/syn/ara_soc/v1-dc/run/.synopsys_dc.setup",
+        "dc_gui_setup": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.gui",
+        "dc_main_setup": "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.main",
+        "dc_script": "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl",
+        "dc_runner": "backend/syn/ara_soc/v1-dc/run/run.cmd"
+      },
+      "other_flow_inputs": [
+        "backend/syn/ara_soc/v1-dc/global_scripts/dc_dont_use.tcl",
+        "verification/akv/synthesis/akv_engine_dc.tcl",
+        "verification/akv/synthesis/run_engine_dc.sh"
+      ],
+      "sram_db": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db",
+      "nr_lanes": 4,
+      "vlen": 1024
+    },
+    "standalone_summary": "verification/akv/synthesis/akv_engine_dc_out/synthesis_summary.json",
+    "integrated_summary": "backend/syn/ara_soc/v1-dc/reports/synthesis_summary.json"
   }
 }

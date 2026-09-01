@@ -372,6 +372,16 @@ def load_qemu_checker():
     return module.qemu_metrics
 
 
+def load_script_module(filename: str, module_name: str):
+    script = Path(__file__).with_name(filename)
+    spec = importlib.util.spec_from_file_location(module_name, script)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
     checks: list[dict[str, object]] = []
 
@@ -598,7 +608,108 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
             checks.append(result(spec["name"], "full_model_qemu", "FAIL", str(error), [summary_path]))
 
     physical = manifest["physical_closure"]
-    checks.append(result("physical_closure", "physical", "PENDING", f"{physical['status']}: {physical['required_corner']}"))
+    preflight = physical["preflight"]
+    filelist_path = path(preflight["filelist"])
+    integrated_sdc_path = path(preflight["integrated_sdc"])
+    standalone_sdc_path = path(preflight["standalone_sdc"])
+    setup_path = path(preflight["setup"])
+    flow_paths = {name: path(item) for name, item in preflight["flow"].items()}
+    preflight_paths = [
+        filelist_path,
+        integrated_sdc_path,
+        standalone_sdc_path,
+        setup_path,
+        *flow_paths.values(),
+        *(path(item) for item in preflight["other_flow_inputs"]),
+    ]
+    if not all(item.is_file() for item in preflight_paths):
+        checks.append(result(
+            "synthesis_preflight",
+            "physical_preflight",
+            "PENDING",
+            "run make -C hardware dc_preflight mc=1 qbs=1 akv_v2=1",
+            preflight_paths,
+        ))
+    else:
+        try:
+            checker = load_script_module(
+                "check-synthesis-preflight.py", "akv_synthesis_preflight_checker"
+            )
+            common = {
+                "filelist": filelist_path,
+                "setup": setup_path,
+                "sram_db": Path(preflight["sram_db"]),
+                **flow_paths,
+                "require_qbs": True,
+                "require_akv": True,
+                "require_akv_v2": True,
+                "require_macro_sram": True,
+                "nr_lanes": int(preflight["nr_lanes"]),
+                "vlen": int(preflight["vlen"]),
+            }
+            checker.audit(checker.Options(sdc=integrated_sdc_path, **common))
+            checker.audit(checker.Options(sdc=standalone_sdc_path, **common))
+            checks.append(result(
+                "synthesis_preflight",
+                "physical_preflight",
+                "PASS",
+                "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, and 1 GHz/0.15 ns constraints verified",
+                preflight_paths,
+            ))
+        except Exception as error:
+            checks.append(result(
+                "synthesis_preflight",
+                "physical_preflight",
+                "FAIL",
+                str(error),
+                preflight_paths,
+            ))
+
+    standalone_summary = path(physical["standalone_summary"])
+    integrated_summary = path(physical["integrated_summary"])
+    if not standalone_summary.is_file() or not integrated_summary.is_file():
+        missing = [
+            relative for relative, summary_path in (
+                (physical["standalone_summary"], standalone_summary),
+                (physical["integrated_summary"], integrated_summary),
+            ) if not summary_path.is_file()
+        ]
+        checks.append(result(
+            "physical_closure",
+            "physical",
+            "PENDING",
+            f"{physical['status']}: missing {', '.join(missing)}; corner={physical['required_corner']}",
+            [standalone_summary, integrated_summary],
+        ))
+    else:
+        try:
+            collector = load_script_module(
+                "collect-synthesis-results.py", "akv_synthesis_result_collector"
+            )
+            standalone = collector.validate_summary(standalone_summary, "standalone", ROOT)
+            integrated = collector.validate_summary(integrated_summary, "integrated", ROOT)
+            standalone_metrics = standalone["metrics"]
+            integrated_metrics = integrated["metrics"]
+            checks.append(result(
+                "physical_closure",
+                "physical",
+                "PASS",
+                "standalone area={:.3f} um^2, reg2reg slack={:.3f} ns; integrated area={:.3f} um^2, reg2reg slack={:.3f} ns; AKV SRAM=20 (4+16)".format(
+                    standalone_metrics["design_total_area_um2"],
+                    standalone_metrics["worst_reg_to_reg_setup_slack_ns"],
+                    integrated_metrics["design_total_area_um2"],
+                    integrated_metrics["worst_reg_to_reg_setup_slack_ns"],
+                ),
+                [standalone_summary, integrated_summary],
+            ))
+        except Exception as error:
+            checks.append(result(
+                "physical_closure",
+                "physical",
+                "FAIL",
+                str(error),
+                [standalone_summary, integrated_summary],
+            ))
     return checks
 
 

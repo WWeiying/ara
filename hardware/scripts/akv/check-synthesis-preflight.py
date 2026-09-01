@@ -17,6 +17,15 @@ DEFAULT_SDC = ROOT / "backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc"
 DEFAULT_SETUP = (
     ROOT / "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env"
 )
+DEFAULT_DC_STARTUP = ROOT / "backend/syn/ara_soc/v1-dc/run/.synopsys_dc.setup"
+DEFAULT_DC_GUI_SETUP = (
+    ROOT / "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.gui"
+)
+DEFAULT_DC_MAIN_SETUP = (
+    ROOT / "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.main"
+)
+DEFAULT_DC_SCRIPT = ROOT / "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl"
+DEFAULT_DC_RUNNER = ROOT / "backend/syn/ara_soc/v1-dc/run/run.cmd"
 DEFAULT_AKV_SRAM_DB = Path(
     "/home/wangwy/ara/backend/library/mem/"
     "ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
@@ -65,6 +74,11 @@ class Options:
     sdc: Path
     setup: Path
     sram_db: Path
+    dc_startup: Path | None = None
+    dc_gui_setup: Path | None = None
+    dc_main_setup: Path | None = None
+    dc_script: Path | None = None
+    dc_runner: Path | None = None
     require_qbs: bool = False
     require_akv: bool = False
     require_akv_v2: bool = False
@@ -141,6 +155,68 @@ def _check_sdc(text: str) -> None:
         raise PreflightError("SDC is missing the required " + ", ".join(missing))
 
 
+def _require_patterns(text: str, required: dict[str, str], label: str) -> None:
+    missing = [name for name, pattern in required.items() if not re.search(pattern, text)]
+    if missing:
+        raise PreflightError(f"{label} is missing " + ", ".join(missing))
+
+
+def _check_integrated_flow(options: Options) -> None:
+    paths = {
+        "DC startup": options.dc_startup,
+        "DC GUI setup": options.dc_gui_setup,
+        "DC main setup": options.dc_main_setup,
+        "DC script": options.dc_script,
+        "DC runner": options.dc_runner,
+    }
+    configured = [path is not None for path in paths.values()]
+    if not any(configured):
+        return
+    if not all(configured):
+        raise PreflightError("integrated DC flow inputs must be specified together")
+    texts = {label: _read(path, label) for label, path in paths.items() if path is not None}
+
+    _require_patterns(
+        texts["DC startup"],
+        {
+            "GUI setup source": r"(?m)^\s*source\s+\.\./global_scripts/synopsys_dc\.setup\.gui\s*$",
+            "environment setup source": r"(?m)^\s*source\s+\.\./global_scripts/synopsys_dc\.setup\.env\s*$",
+            "main setup source": r"(?m)^\s*source\s+-e\s+-v\s+\.\./global_scripts/synopsys_dc\.setup\.main\s*$",
+        },
+        "DC startup",
+    )
+    _require_patterns(
+        texts["DC GUI setup"],
+        {
+            "generated DC filelist route": r"GUI_VCS_OPTION\s+\"-f\s+\.\./\.\./\.\./\.\./flist/\$\{GUI_DESIGN_NAME\}_dc\.f\"",
+            "project SDC route": r"GUI_SDC_FILE\s+\"\$GUI_WORK_DIR/local_scripts/\$GUI_DESIGN_NAME\.sdc\"",
+            "typical corner selection": r"(?m)^\s*set\s+GUI_PVT\s+\"tc\"\s*$",
+        },
+        "DC GUI setup",
+    )
+    _require_patterns(
+        texts["DC main setup"],
+        {"dont-use source": r"(?m)^\s*source\s+-e\s+-v\s+\$GUI_DONTUSE_FILE\s*$"},
+        "DC main setup",
+    )
+    _require_patterns(
+        texts["DC script"],
+        {
+            "VCS filelist analysis": r"analyze\s+-format\s+sverilog\s+-vcs\s+\$GUI_VCS_OPTION",
+            "project SDC source": r"foreach\s+constraint_file\s+\$GUI_SDC_FILE\s+\{\s*source\s+-echo\s+-verbose\s+\$constraint_file\s*\}",
+        },
+        "DC script",
+    )
+    _require_patterns(
+        texts["DC runner"],
+        {
+            "pipeline failure propagation": r"(?m)^\s*set\s+-o\s+pipefail\s*$",
+            "tracked DC invocation": r"(?m)^\s*dc_shell-t\s+-64bit\s+-f\s+\.\./global_scripts/dc\.tcl\s*\|\s*tee\s+dc\.log\s*$",
+        },
+        "DC runner",
+    )
+
+
 def audit(options: Options) -> dict[str, int | str]:
     filelist_text = _read(options.filelist, "DC filelist")
     sdc_text = _read(options.sdc, "SDC")
@@ -204,6 +280,7 @@ def audit(options: Options) -> dict[str, int | str]:
             raise PreflightError("DC setup does not include the AKV 64x256 SRAM DB")
 
     _check_sdc(sdc_text)
+    _check_integrated_flow(options)
     return {
         "filelist": str(options.filelist),
         "defines": len(defines),
@@ -218,6 +295,11 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser.add_argument("--filelist", type=Path, default=DEFAULT_FILELIST)
     parser.add_argument("--sdc", type=Path, default=DEFAULT_SDC)
     parser.add_argument("--setup", type=Path, default=DEFAULT_SETUP)
+    parser.add_argument("--dc-startup", type=Path, default=DEFAULT_DC_STARTUP)
+    parser.add_argument("--dc-gui-setup", type=Path, default=DEFAULT_DC_GUI_SETUP)
+    parser.add_argument("--dc-main-setup", type=Path, default=DEFAULT_DC_MAIN_SETUP)
+    parser.add_argument("--dc-script", type=Path, default=DEFAULT_DC_SCRIPT)
+    parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
     parser.add_argument("--require-qbs", action="store_true")
     parser.add_argument("--require-akv", action="store_true")
