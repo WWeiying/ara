@@ -64,6 +64,8 @@ def validate_spec(spec: dict) -> None:
         raise ValueError("AKV-v2 token-axis profile fixes eight token banks")
     if token["selector_index_bits"] != 6:
         raise ValueError("AKV-v2 row selector uses a six-bit index")
+    if token["payload_alignment_log2"] != 5:
+        raise ValueError("AKV-v2 payload rows require 32-byte alignment")
     if token["head_dims"] != [64, 96, 128] or not token["d_axis_tail"]:
         raise ValueError("AKV-v2 supports D64/D96/D128 with D-axis tails")
     if (token["segmented_head_dims"] != [256] or
@@ -109,6 +111,7 @@ def c_header(spec: dict) -> str:
 #define AKV_V2_TILE_TOKENS {token['tile_tokens']}u
 #define AKV_V2_TOKEN_BANKS {token['token_banks']}u
 #define AKV_V2_SELECTOR_INDEX_BITS {token['selector_index_bits']}u
+#define AKV_V2_PAYLOAD_ALIGNMENT_LOG2 {token['payload_alignment_log2']}u
 #define AKV_V2_FILL_FUNCT3 {token['fill_funct3']}u
 #define AKV_V2_COLUMN_LOAD_FUNCT3 {token['column_load_funct3']}u
 #define AKV_HEAD_DIM_64 64u
@@ -294,13 +297,14 @@ static inline int akv_v2_descriptor_is_valid(
   return ((descriptor->q_base | descriptor->k_base | descriptor->v_base |
            descriptor->q_row_stride_bytes |
            descriptor->k_token_stride_bytes |
-           descriptor->v_token_stride_bytes) & UINT64_C(31)) == 0u;
+           descriptor->v_token_stride_bytes) &
+          ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) == 0u;
 }}
 
 static inline int akv_v2_query_base_is_valid(
     const akv_descriptor_t *descriptor, uint64_t query_base) {{
   if (!akv_v2_descriptor_is_valid(descriptor) || query_base == 0u ||
-      (query_base & UINT64_C(31)) != 0u)
+      (query_base & ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) != 0u)
     return 0;
   return akv_range_fits(query_base, descriptor->q_row_stride_bytes,
                         descriptor->q_rows,
@@ -471,6 +475,8 @@ package akv_pkg;
   localparam int unsigned AkvV2TileTokens = {token['tile_tokens']};
   localparam int unsigned AkvV2TokenBanks = {token['token_banks']};
   localparam int unsigned AkvV2SelectorIndexBits = {token['selector_index_bits']};
+  localparam int unsigned AkvV2PayloadAlignmentLog2 =
+      {token['payload_alignment_log2']};
   localparam logic [2:0] AkvV2FillFunct3 = 3'd{token['fill_funct3']};
   localparam logic [2:0] AkvV2ColumnLoadFunct3 = 3'd{token['column_load_funct3']};
   localparam int unsigned AkvHeadDim64 = 64;

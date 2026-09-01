@@ -96,6 +96,8 @@ module akv_engine_synth_wrapper import akv_engine_synth_types_pkg::*; (
     output logic [31:0]                  release_count_o,
     output logic [31:0]                  v2_full_count_o,
     output logic [31:0]                  v2_refill_count_o,
+    output logic [31:0]                  v2_query_update_count_o,
+    output logic [31:0]                  v2_query_update_fault_count_o,
     output logic [31:0]                  v2_row_load_count_o,
     output logic [31:0]                  v2_column_load_count_o,
     output logic [31:0]                  v2_k_view_bank_cycles_o,

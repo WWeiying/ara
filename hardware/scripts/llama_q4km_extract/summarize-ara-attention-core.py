@@ -29,6 +29,8 @@ AKV_PERF_SUM_FIELDS = (
     "busy_cycles",
     "v2_full",
     "v2_refill",
+    "v2_query_update",
+    "v2_query_update_fault",
     "v2_row_load",
     "v2_column_load",
     "v2_k_view_bank_cycles",

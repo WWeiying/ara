@@ -172,8 +172,9 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
           is_akvrelease = instr.i_type.funct3 == AkvReleaseFunct3;
           if (is_akvfill) begin
             is_accel_o = 1'b1;
-            is_rs1 = instruction_i[25] == AKV_FILL_FULL;
-            is_rs2 = 1'b1;
+            is_rs1 = instruction_i[31:25] == 7'(AKV_FILL_FULL);
+            is_rs2 = instruction_i[31:25] inside {
+                7'(AKV_FILL_FULL), 7'(AKV_FILL_REFILL)};
             is_load = 1'b1;
           end else if (is_akvload) begin
             is_accel_o = 1'b1;
@@ -193,8 +194,10 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*;
           is_akv2column = instr.i_type.funct3 == AkvV2ColumnLoadFunct3;
           if (is_akv2fill) begin
             is_accel_o = 1'b1;
-            is_rs1 = instruction_i[25] == AKV_FILL_FULL;
-            is_rs2 = 1'b1;
+            is_rs1 = instruction_i[31:25] inside {
+                7'(AKV_FILL_FULL), 7'(AKV_FILL_QUERY_UPDATE)};
+            is_rs2 = instruction_i[31:25] inside {
+                7'(AKV_FILL_FULL), 7'(AKV_FILL_REFILL)};
             is_load = 1'b1;
           end else if (is_akv2column) begin
             is_accel_o = 1'b1;

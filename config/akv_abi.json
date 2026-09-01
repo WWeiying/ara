@@ -36,6 +36,7 @@
     "tile_tokens": 64,
     "token_banks": 8,
     "selector_index_bits": 6,
+    "payload_alignment_log2": 5,
     "head_dims": [64, 96, 128],
     "segmented_head_dims": [256],
     "column_segment_bit": 7,

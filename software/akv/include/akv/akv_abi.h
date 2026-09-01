@@ -21,6 +21,7 @@
 #define AKV_V2_TILE_TOKENS 64u
 #define AKV_V2_TOKEN_BANKS 8u
 #define AKV_V2_SELECTOR_INDEX_BITS 6u
+#define AKV_V2_PAYLOAD_ALIGNMENT_LOG2 5u
 #define AKV_V2_FILL_FUNCT3 6u
 #define AKV_V2_COLUMN_LOAD_FUNCT3 7u
 #define AKV_HEAD_DIM_64 64u
@@ -206,13 +207,14 @@ static inline int akv_v2_descriptor_is_valid(
   return ((descriptor->q_base | descriptor->k_base | descriptor->v_base |
            descriptor->q_row_stride_bytes |
            descriptor->k_token_stride_bytes |
-           descriptor->v_token_stride_bytes) & UINT64_C(31)) == 0u;
+           descriptor->v_token_stride_bytes) &
+          ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) == 0u;
 }
 
 static inline int akv_v2_query_base_is_valid(
     const akv_descriptor_t *descriptor, uint64_t query_base) {
   if (!akv_v2_descriptor_is_valid(descriptor) || query_base == 0u ||
-      (query_base & UINT64_C(31)) != 0u)
+      (query_base & ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) != 0u)
     return 0;
   return akv_range_fits(query_base, descriptor->q_row_stride_bytes,
                         descriptor->q_rows,

@@ -26,6 +26,8 @@ package akv_pkg;
   localparam int unsigned AkvV2TileTokens = 64;
   localparam int unsigned AkvV2TokenBanks = 8;
   localparam int unsigned AkvV2SelectorIndexBits = 6;
+  localparam int unsigned AkvV2PayloadAlignmentLog2 =
+      5;
   localparam logic [2:0] AkvV2FillFunct3 = 3'd6;
   localparam logic [2:0] AkvV2ColumnLoadFunct3 = 3'd7;
   localparam int unsigned AkvHeadDim64 = 64;

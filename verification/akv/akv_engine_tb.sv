@@ -16,6 +16,7 @@ module akv_engine_tb;
   localparam int unsigned WordsPerRegister = VLEN / 8 / (NrLanes * 8);
   localparam logic [63:0] DescriptorBase = 64'h0000_0000_0000_4000;
   localparam logic [63:0] QBase = 64'h0000_0000_0010_0000;
+  localparam logic [63:0] UpdatedQBase = 64'h0000_0000_0018_0000;
   localparam logic [63:0] KBase = 64'h0000_0000_0020_0000;
   localparam logic [63:0] VBase = 64'h0000_0000_0030_0000;
 
@@ -94,6 +95,8 @@ module akv_engine_tb;
   logic [31:0] release_count;
   logic [31:0] v2_full_count;
   logic [31:0] v2_refill_count;
+  logic [31:0] v2_query_update_count;
+  logic [31:0] v2_query_update_fault_count;
   logic [31:0] v2_row_load_count;
   logic [31:0] v2_column_load_count;
   logic [31:0] v2_k_view_bank_cycles;
@@ -184,6 +187,8 @@ module akv_engine_tb;
     .release_count_o                    (release_count),
     .v2_full_count_o                    (v2_full_count),
     .v2_refill_count_o                  (v2_refill_count),
+    .v2_query_update_count_o            (v2_query_update_count),
+    .v2_query_update_fault_count_o      (v2_query_update_fault_count),
     .v2_row_load_count_o                (v2_row_load_count),
     .v2_column_load_count_o             (v2_column_load_count),
     .v2_k_view_bank_cycles_o            (v2_k_view_bank_cycles),
@@ -602,6 +607,100 @@ module akv_engine_tb;
     acknowledge_terminal();
   endtask
 
+  task automatic run_valid_v2_query_update(
+      input logic [15:0] head_dim,
+      input logic [7:0] q_rows,
+      input logic [5:0] replay_row
+  );
+    logic [63:0] old_k_base;
+    logic [63:0] old_v_base;
+    logic [15:0] old_tile_start;
+    logic [6:0] old_tile_count;
+
+    old_k_base = dut.context_k_base_q;
+    old_v_base = dut.context_v_base_q;
+    old_tile_start = dut.fill_tile_start_q;
+    old_tile_count = dut.context_tile_count_q;
+    send_command(AKV_COMMAND_V2_QUERY_UPDATE, UpdatedQBase, 0, 0,
+                 head_dim, 0, 4'h3);
+    wait_success();
+    if (!context_ready || v2_query_update_count != 1 ||
+        v2_query_update_fault_count != 0 ||
+        q_external_bytes != q_rows * head_dim * 2 ||
+        kv_external_bytes != 0 || read_range_count != q_rows ||
+        dut.context_q_base_q != UpdatedQBase ||
+        dut.context_k_base_q != old_k_base ||
+        dut.context_v_base_q != old_v_base ||
+        dut.fill_tile_start_q != old_tile_start ||
+        dut.context_tile_count_q != old_tile_count)
+      $fatal(1,
+             "AKV-v2 Query update violated atomic traffic/context contract q=%0d kv=%0d ranges=%0d tile=%0d/%0d",
+             q_external_bytes, kv_external_bytes, read_range_count,
+             dut.fill_tile_start_q, dut.context_tile_count_q);
+    acknowledge_terminal();
+    run_valid_load(AKV_STREAM_Q, replay_row, head_dim, 8, 4'h4,
+                   UpdatedQBase + replay_row * head_dim * 2, 0);
+    run_valid_load(AKV_STREAM_K, 0, head_dim, 10, 4'h5,
+                   old_k_base + old_tile_start * head_dim * 2, 0);
+    run_valid_load(AKV_STREAM_V, old_tile_count - 1'b1, head_dim, 12, 4'h6,
+                   old_v_base +
+                       (old_tile_start + old_tile_count - 1'b1) *
+                           head_dim * 2, 0);
+  endtask
+
+  task automatic run_v2_query_update_faults(
+      input logic [15:0] head_dim,
+      input logic [15:0] kv_length,
+      input logic [7:0] q_rows
+  );
+    integer writes_before;
+    logic [63:0] old_k_base;
+    logic [63:0] old_v_base;
+    logic [15:0] old_tile_start;
+    logic [6:0] old_tile_count;
+
+    old_k_base = dut.context_k_base_q;
+    old_v_base = dut.context_v_base_q;
+    old_tile_start = dut.fill_tile_start_q;
+    old_tile_count = dut.context_tile_count_q;
+    writes_before = aggregate_write_count;
+    send_command(AKV_COMMAND_V2_QUERY_UPDATE, UpdatedQBase + 2, 0, 0,
+                 head_dim, 0, 4'h5);
+    expect_validation_fault(AKV_VALIDATION_STRIDE, UpdatedQBase + 2,
+                            writes_before);
+    if (context_ready || v2_query_update_count != 1 ||
+        v2_query_update_fault_count != 1 || v2_rejected_count != 1 ||
+        dut.context_k_base_q != old_k_base ||
+        dut.context_v_base_q != old_v_base ||
+        dut.fill_tile_start_q != old_tile_start ||
+        dut.context_tile_count_q != old_tile_count)
+      $fatal(1, "rejected AKV-v2 Query update changed K/V context");
+
+    run_valid_v2_full(head_dim, kv_length, q_rows, old_tile_start);
+    old_k_base = dut.context_k_base_q;
+    old_v_base = dut.context_v_base_q;
+    old_tile_count = dut.context_tile_count_q;
+    translation_enable = 1'b1;
+    inject_mmu_fault = 1'b1;
+    inject_fault_start = UpdatedQBase;
+    inject_fault_end = UpdatedQBase + q_rows * head_dim * 2;
+    writes_before = aggregate_write_count;
+    send_command(AKV_COMMAND_V2_QUERY_UPDATE, UpdatedQBase, 0, 0,
+                 head_dim, 0, 4'h6);
+    expect_read_fault(QBS_READ_FAULT_MMU, UpdatedQBase, writes_before);
+    inject_mmu_fault = 1'b0;
+    translation_enable = 1'b0;
+    if (context_ready || v2_query_update_count != 1 ||
+        v2_query_update_fault_count != 1 ||
+        dut.context_k_base_q != old_k_base ||
+        dut.context_v_base_q != old_v_base ||
+        dut.fill_tile_start_q != old_tile_start ||
+        dut.context_tile_count_q != old_tile_count)
+      $fatal(1, "faulting AKV-v2 Query update exposed mixed context state");
+
+    run_valid_v2_full(head_dim, kv_length, q_rows, old_tile_start);
+  endtask
+
   task automatic run_valid_v2_column_mapped(
       input logic [7:0] selector,
       input logic [6:0] tile_count,
@@ -799,6 +898,7 @@ module akv_engine_tb;
     memory_epoch = '0;
 
     fill_pattern(QBase, 8 * 256, 8'h31);
+    fill_pattern(UpdatedQBase, 8 * 256, 8'he7);
     fill_pattern(KBase, 80 * 256, 8'h52);
     fill_pattern(VBase, 80 * 256, 8'h94);
 
@@ -992,6 +1092,8 @@ module akv_engine_tb;
              "AKV-v2 D128 full accounting mismatch q=%0d/1536 kv=%0d/32768 ranges=%0d/135 tile_count=%0d",
              q_external_bytes, kv_external_bytes, read_range_count,
              dut.context_tile_count_q);
+    run_valid_v2_query_update(128, 6, 5);
+    run_v2_query_update_faults(128, 69, 6);
     run_valid_load(AKV_STREAM_Q, 5, 128, 8, 4'h1,
                    QBase + 5 * 256, 0);
     if (v2_row_load_count != 1)

@@ -159,11 +159,13 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         log = "\n".join(
             [
                 "[AKV_PERF] seq=0 success=1 fault=0 busy_cycles=10 "
-                "v2_full=1 v2_refill=0 v2_row_load=0 v2_column_load=0 "
+                "v2_full=1 v2_refill=0 v2_query_update=0 "
+                "v2_query_update_fault=0 v2_row_load=0 v2_column_load=0 "
                 "release=0 q_external_bytes=64 kv_external_bytes=128 "
                 "replay_bytes=0 read_outstanding_max=2",
                 "[AKV_PERF] seq=1 success=1 fault=0 busy_cycles=3 "
-                "v2_full=0 v2_refill=0 v2_row_load=1 v2_column_load=0 "
+                "v2_full=0 v2_refill=0 v2_query_update=1 "
+                "v2_query_update_fault=0 v2_row_load=1 v2_column_load=0 "
                 "release=0 q_external_bytes=0 kv_external_bytes=0 "
                 "replay_bytes=32 read_outstanding_max=1",
             ]
@@ -172,6 +174,8 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertEqual(counters["records"], 2)
         self.assertEqual(counters["busy_cycles"], 13)
         self.assertEqual(counters["v2_full"], 1)
+        self.assertEqual(counters["v2_query_update"], 1)
+        self.assertEqual(counters["v2_query_update_fault"], 0)
         self.assertEqual(counters["v2_row_load"], 1)
         self.assertEqual(counters["q_external_bytes"], 64)
         self.assertEqual(counters["kv_external_bytes"], 128)

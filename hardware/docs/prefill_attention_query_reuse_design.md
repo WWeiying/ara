@@ -2,9 +2,9 @@
 
 ## 1. Design question
 
-This note defines the mechanism to test after the Stage-2 baselines are
-frozen. It is intentionally a falsifiable design contract rather than an RTL
-change log.
+This note records the falsifiable design contract and implementation status of
+the mechanism selected after the Stage-2 baselines were frozen. It is organized
+around externally testable behavior rather than an RTL change log.
 
 The question is whether the existing AKV-v2 resident 64-token K/V tile can be
 reused across multiple Prefill Query groups while all arithmetic continues to
@@ -21,15 +21,16 @@ execute on the standard RVV lanes. The mechanism must:
 It does not add an Attention MAC array. K-column dot products, exponentiation,
 reductions, and weighted V accumulation remain standard RVV work.
 
-## 2. Current path and its limitation
+## 2. Frozen pre-update path and its limitation
 
-AKV-v2 currently has two physically distinct payload stores:
+Before the Query-update node, AKV-v2 had two physically distinct payload
+stores:
 
 - `akv_context` stores the Query rows used by a context;
 - `akv_v2_context` stores one 64-token K/V tile in eight token banks and
   provides row and token-axis column views.
 
-The visible commands are:
+The visible commands were:
 
 - `V2_FULL(descriptor,tile_start)`: fetch descriptor, Query rows, and K/V;
 - `V2_REFILL(tile_start)`: retain descriptor and Query metadata, replace K/V;
@@ -37,8 +38,8 @@ The visible commands are:
   path into architectural vector registers; and
 - `RELEASE`: invalidate the context.
 
-There is no inverse of REFILL: software cannot replace Query rows while
-retaining K/V. The current Prefill compatibility loop therefore creates one
+There was no inverse of REFILL: software could not replace Query rows while
+retaining K/V. The frozen Prefill compatibility loop therefore created one
 complete context for each `(Query token, KV head)` pair. GQA rows share a fill,
 but the same K/V prefixes are fetched again for the next Query token.
 
@@ -76,8 +77,8 @@ traffic, reductions, or backend backpressure.
 
 ## 4. Query-update command contract
 
-The first implementation should reuse the AKV-v2 fill instruction class with
-a distinct reserved fill mode. It does not require another custom opcode.
+The implemented command reuses the AKV-v2 fill instruction class with a
+distinct reserved fill mode. It does not consume another custom opcode.
 
 The concrete extension keeps token-axis profile version 2 and adds capability
 bit 40. `V2_FILL` uses `funct7=0` for FULL, `funct7=1` for REFILL, and
@@ -178,14 +179,17 @@ reported alongside external bytes.
 The retained implementation must add or preserve counters with literal
 semantics:
 
-- `v2_full_count`, `v2_refill_count`, `v2_query_update_count`, and
-  `release_count` count accepted commands by type;
+- engine outputs `v2_full_count_o`, `v2_refill_count_o`,
+  `v2_query_update_count_o`, and `release_count_o` count accepted commands by
+  type; their log fields are `v2_full`, `v2_refill`, `v2_query_update`, and
+  `release`;
 - `q_external_bytes` counts accepted Query payload bytes only;
 - `kv_external_bytes` counts accepted K/V payload bytes only;
 - `v2_column_load_count` and `v2_row_load_count` count accepted local replay
   commands;
 - `replay_bytes` counts bytes accepted by the lane result path;
-- `query_update_fault_count` counts terminal Query-update faults;
+- engine output `v2_query_update_fault_count_o`, logged as
+  `v2_query_update_fault`, counts terminal Query-update faults;
 - `read_*` counters retain their existing translated read-engine meaning;
 - software phase counters separately record state load/store, QK, softmax,
   PV, and final-normalization cycles and bytes; and
@@ -237,15 +241,18 @@ RVV path. Selection happens before hidden state is changed; a fault after a
 command starts invalidates AKV and returns through the existing exception
 contract rather than silently recomputing partial output.
 
-## 10. Implementation order
+## 10. Implementation status and order
 
-1. Freeze strict Stage-2 numerical and strongest-RVV baselines.
-2. Add ABI/reference-model Query-update semantics and negative tests.
-3. Add the engine command with atomic context invalidation and strict counters.
-4. Prove command behavior in focused context and engine RTL tests.
-5. Convert the shared AKV workspace and RVV helpers to F32 numerator state.
-6. Implement the K/V-outer software schedule with real captured tensors.
-7. Measure one short discriminating point, then P0/M512 RTL if the hypothesis
+1. Completed: freeze strict Stage-2 numerical and strongest-RVV baselines.
+2. Completed: add ABI/reference-model Query-update semantics and negative tests.
+3. Completed: add the engine command with atomic context invalidation and
+   strict counters.
+4. Completed: prove command behavior with generic SRAM, target macro SRAM,
+   synthesis-wrapper, and complete `ara_tb` elaboration checks.
+5. Next: convert the shared AKV workspace and RVV helpers to F32 numerator
+   state.
+6. Next: implement the K/V-outer software schedule with real captured tensors.
+7. Then measure one short discriminating point and P0/M512 RTL if the hypothesis
    survives.
-8. Regress Decode AKV, nine QBS profiles, ordinary RVV, tails, faults, and all
-   supported D/GQA shapes before GGML selector integration.
+8. Finally regress Decode AKV, nine QBS profiles, ordinary RVV, tails, faults,
+   and all supported D/GQA shapes before GGML selector integration.

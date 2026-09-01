@@ -91,6 +91,7 @@ typedef struct packed {
   logic akv_refill;
   logic akv_v2;
   logic akv_column;
+  logic akv_query_update;
 
   // Hazards
   logic [NrVInsn-1:0] hazard_vs1;

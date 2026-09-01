@@ -29,6 +29,8 @@ AKV_SUM_FIELDS = (
     "release",
     "v2_full",
     "v2_refill",
+    "v2_query_update",
+    "v2_query_update_fault",
     "v2_row_load",
     "v2_column_load",
     "q_external_bytes",

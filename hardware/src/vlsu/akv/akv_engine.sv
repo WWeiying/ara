@@ -86,6 +86,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     output logic [31:0]                  release_count_o,
     output logic [31:0]                  v2_full_count_o,
     output logic [31:0]                  v2_refill_count_o,
+    output logic [31:0]                  v2_query_update_count_o,
+    output logic [31:0]                  v2_query_update_fault_count_o,
     output logic [31:0]                  v2_row_load_count_o,
     output logic [31:0]                  v2_column_load_count_o,
     output logic [31:0]                  v2_k_view_bank_cycles_o,
@@ -239,6 +241,10 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [6:0] replay_word_bytes;
   logic active_command_is_full;
   logic active_command_is_v2;
+  logic active_command_has_q;
+  logic active_command_has_kv;
+  akv_validation_error_e command_query_update_error;
+  logic command_query_update_valid;
   logic v2_column_start;
 
   assign command_ready_o = state_q == AKV_ENGINE_IDLE;
@@ -256,7 +262,37 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       AKV_COMMAND_FULL, AKV_COMMAND_V2_FULL};
   assign active_command_is_v2 = active_command_q inside {
       AKV_COMMAND_V2_FULL, AKV_COMMAND_V2_REFILL,
-      AKV_COMMAND_V2_COLUMN_LOAD};
+      AKV_COMMAND_V2_QUERY_UPDATE, AKV_COMMAND_V2_COLUMN_LOAD};
+  assign active_command_has_q = active_command_is_full ||
+      active_command_q == AKV_COMMAND_V2_QUERY_UPDATE;
+  assign active_command_has_kv = active_command_q inside {
+      AKV_COMMAND_FULL, AKV_COMMAND_REFILL,
+      AKV_COMMAND_V2_FULL, AKV_COMMAND_V2_REFILL};
+
+  always_comb begin : validate_query_update_command
+    automatic logic [64:0] query_last;
+
+    command_query_update_error = AKV_VALIDATION_OK;
+    query_last = '0;
+    if (!context_ready_q || !context_v2_q)
+      command_query_update_error = AKV_VALIDATION_CONTEXT;
+    else if (command_tile_start_i != '0)
+      command_query_update_error = AKV_VALIDATION_COMMAND;
+    else if (command_descriptor_address_i == '0 ||
+             command_descriptor_address_i[
+                 AkvV2PayloadAlignmentLog2-1:0] != '0)
+      command_query_update_error = AKV_VALIDATION_STRIDE;
+    else begin
+      query_last = 65'(command_descriptor_address_i) +
+          65'(context_q_stride_q) *
+              65'(unsigned'(context_q_rows_q) - 1) +
+          (65'(context_head_dim_q) << 1) - 1'b1;
+      if (query_last[64])
+        command_query_update_error = AKV_VALIDATION_RANGE_OVERFLOW;
+    end
+  end
+  assign command_query_update_valid =
+      command_query_update_error == AKV_VALIDATION_OK;
 
   always_comb begin : validate_load_command
     automatic logic [1:0] stream;
@@ -369,12 +405,15 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
              descriptor.reserved1 != 0 || descriptor.reserved2 != 0)
       descriptor_error = AKV_VALIDATION_RESERVED;
     else if (active_command_q == AKV_COMMAND_V2_FULL &&
-             (descriptor.q_row_stride_bytes[4:0] != '0 ||
-              descriptor.k_token_stride_bytes[4:0] != '0 ||
-              descriptor.v_token_stride_bytes[4:0] != '0 ||
-              descriptor.q_base[4:0] != '0 ||
-              descriptor.k_base[4:0] != '0 ||
-              descriptor.v_base[4:0] != '0))
+             (descriptor.q_row_stride_bytes[
+                  AkvV2PayloadAlignmentLog2-1:0] != '0 ||
+              descriptor.k_token_stride_bytes[
+                  AkvV2PayloadAlignmentLog2-1:0] != '0 ||
+              descriptor.v_token_stride_bytes[
+                  AkvV2PayloadAlignmentLog2-1:0] != '0 ||
+              descriptor.q_base[AkvV2PayloadAlignmentLog2-1:0] != '0 ||
+              descriptor.k_base[AkvV2PayloadAlignmentLog2-1:0] != '0 ||
+              descriptor.v_base[AkvV2PayloadAlignmentLog2-1:0] != '0))
       descriptor_error = AKV_VALIDATION_STRIDE;
     else if (descriptor.q_row_stride_bytes[0] ||
              descriptor.k_token_stride_bytes[0] ||
@@ -393,9 +432,13 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   assign descriptor_valid = descriptor_error == AKV_VALIDATION_OK;
   assign payload_row_bytes = context_head_dim_q << 1;
-  assign payload_range_count = active_command_is_full
-      ? 8'(unsigned'(context_q_rows_q) + 2 * unsigned'(fill_tile_count_q))
-      : 8'(2 * unsigned'(fill_tile_count_q));
+  always_comb begin
+    payload_range_count = '0;
+    if (active_command_has_q)
+      payload_range_count += 8'(context_q_rows_q);
+    if (active_command_has_kv)
+      payload_range_count += 8'(2 * unsigned'(fill_tile_count_q));
+  end
 
   always_comb begin : form_read_range
     automatic int unsigned logical_index;
@@ -419,13 +462,15 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                  range_issue_index_q < payload_range_count) begin
       read_range_valid = 1'b1;
       read_range_bytes = RangeBytesWidth'(payload_row_bytes);
-      if (active_command_is_full &&
+      if (active_command_has_q &&
           logical_index < unsigned'(context_q_rows_q)) begin
         read_range_tag = '{role: AKV_RANGE_Q, index: 6'(logical_index)};
         byte_offset = 64'(logical_index) * context_q_stride_q;
-        read_range_vaddr = VAddrWidth'(context_q_base_q + byte_offset);
+        read_range_vaddr = VAddrWidth'(
+            (active_command_q == AKV_COMMAND_V2_QUERY_UPDATE
+                 ? descriptor_address_q : context_q_base_q) + byte_offset);
       end else begin
-        if (active_command_is_full)
+        if (active_command_has_q)
           logical_index -= unsigned'(context_q_rows_q);
         if (logical_index < unsigned'(fill_tile_count_q)) begin
           token_index = 64'(fill_tile_start_q) + 64'(logical_index);
@@ -669,6 +714,12 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               else
                 state_d = AKV_ENGINE_PAYLOAD;
             end
+            AKV_COMMAND_V2_QUERY_UPDATE: begin
+              if (command_query_update_valid)
+                state_d = AKV_ENGINE_PAYLOAD;
+              else
+                state_d = AKV_ENGINE_FAULT;
+            end
             AKV_COMMAND_LOAD: begin
               if (command_load_valid)
                 state_d = AKV_ENGINE_REPLAY_READ;
@@ -790,6 +841,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       release_count_o <= '0;
       v2_full_count_o <= '0;
       v2_refill_count_o <= '0;
+      v2_query_update_count_o <= '0;
+      v2_query_update_fault_count_o <= '0;
       v2_row_load_count_o <= '0;
       v2_column_load_count_o <= '0;
       v2_k_view_bank_cycles_o <= '0;
@@ -829,6 +882,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         release_count_o <= command_i == AKV_COMMAND_RELEASE;
         v2_full_count_o <= command_i == AKV_COMMAND_V2_FULL;
         v2_refill_count_o <= command_i == AKV_COMMAND_V2_REFILL;
+        v2_query_update_count_o <=
+            command_i == AKV_COMMAND_V2_QUERY_UPDATE;
+        v2_query_update_fault_count_o <= '0;
         v2_row_load_count_o <=
             command_i == AKV_COMMAND_LOAD && context_v2_q;
         v2_column_load_count_o <=
@@ -881,6 +937,16 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                                ? AkvV2TileTokens : AkvTileTokens)
                       : 7'(unsigned'(context_kv_length_q) -
                            unsigned'(command_tile_start_i));
+            end
+          end
+          AKV_COMMAND_V2_QUERY_UPDATE: begin
+            context_ready_q <= 1'b0;
+            if (!command_query_update_valid) begin
+              fault_is_validation_q <= 1'b1;
+              validation_error_q <= command_query_update_error;
+              fault_vaddr_q <= command_descriptor_address_i;
+              v2_query_update_fault_count_o <= 32'd1;
+              v2_rejected_count_o <= 32'd1;
             end
           end
           AKV_COMMAND_LOAD: begin
@@ -977,7 +1043,10 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           range_completion_count_q <= range_completion_count_q + 1'b1;
         if (payload_complete) begin
           context_ready_q <= 1'b1;
-          context_tile_count_q <= fill_tile_count_q;
+          if (active_command_q == AKV_COMMAND_V2_QUERY_UPDATE)
+            context_q_base_q <= descriptor_address_q;
+          else
+            context_tile_count_q <= fill_tile_count_q;
         end
       end
 
@@ -988,6 +1057,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         read_fault_kind_q <= read_fault_kind;
         fault_vaddr_q <= read_fault_vaddr;
         fault_mmu_exception_q <= read_fault_mmu_exception;
+        if (active_command_q == AKV_COMMAND_V2_QUERY_UPDATE)
+          v2_query_update_fault_count_o <= 32'd1;
       end else if (state_q == AKV_ENGINE_DESCRIPTOR_WAIT &&
                    read_completion_valid && !&descriptor_byte_valid_q) begin
         context_ready_q <= 1'b0;
@@ -1094,6 +1165,25 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       if (active_command_q == AKV_COMMAND_V2_COLUMN_LOAD &&
           state_q == AKV_ENGINE_REPLAY_WRITE)
         assert (v2_column_valid);
+      if (active_command_q == AKV_COMMAND_V2_QUERY_UPDATE &&
+          state_q == AKV_ENGINE_PAYLOAD) begin
+        assert (active_command_has_q && !active_command_has_kv);
+        assert (payload_range_count == 8'(context_q_rows_q));
+        assert (!v2_context_write_valid);
+        if (read_range_fire)
+          assert (read_range_tag.role == AKV_RANGE_Q);
+        if (read_data_fire)
+          assert (read_data_tag.role == AKV_RANGE_Q);
+      end
+      if (active_command_q == AKV_COMMAND_V2_QUERY_UPDATE &&
+          state_q == AKV_ENGINE_SUCCESS) begin
+        assert (context_ready_q && context_v2_q);
+        assert (context_q_base_q == descriptor_address_q);
+        assert (q_external_bytes_o ==
+                32'(unsigned'(context_q_rows_q) *
+                    unsigned'(payload_row_bytes)));
+        assert (kv_external_bytes_o == 0);
+      end
     end
   end
 `endif
