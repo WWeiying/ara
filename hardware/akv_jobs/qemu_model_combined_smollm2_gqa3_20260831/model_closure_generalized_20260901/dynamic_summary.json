@@ -1,0 +1,280 @@
+{
+  "provenance": {
+    "tool": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/scripts/akv/summarize-model-closure.py",
+      "sha256": "269eab626bff3328e7bce2ae31920929618d4e74deb0ace00da16ee9f61d6220",
+      "projection_method_version": 1
+    },
+    "dynamic_log": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/akv_jobs/qemu_model_combined_smollm2_gqa3_20260831/qemu.log",
+      "sha256": "8a083fff340e9c24becc988d05c74d8889b9f5e1f9be029de46241cab23ae02a"
+    },
+    "qbs_abi": {
+      "path": "/home/wangwy/openproject/ara_dsa/config/qbs_abi.json",
+      "sha256": "b70836b84701270d6f140436f0e6ce53c40c53026c2d843ff9d6ae8d76aed3fe",
+      "architecture_version": 2
+    },
+    "run_manifest": {
+      "MODEL_MODE": "combined",
+      "ARA_REVISION": "1f0f7e090e0de8a8351ea03f4f74a91fb041a76e",
+      "LLAMA_REVISION": "853fa38a5b2b0ac1b5dea0b6706fa2bf955bac5d",
+      "LLAMA_BINARY": "/home/wangwy/llama/llama.cpp/build-rv64-cva6-akv-static/bin/llama-simple",
+      "LLAMA_BINARY_SHA256": "62b10e6fb65c721c07fb51d461071c7999e5a518dbde207fe92ccc9e790ad862",
+      "QEMU_BINARY": "/home/wangwy/llama/platforms/cva6-qemu/build/qemu-10.2.0-build/qemu-system-riscv64",
+      "QEMU_BINARY_SHA256": "9d169e77ca41001943053bf5ce8b893dd900dc9b17612286667afa6e04d436ef",
+      "QEMU_CPU": "rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true",
+      "QEMU_MEMORY": "4G",
+      "MODEL_DISK": "/home/wangwy/llama/platforms/cva6-qemu/images/smollm2-q4km.ext4",
+      "MODEL_DISK_SHA256": "cdcfde87b3e1ace02c02d3ffa49f85ff59b946ceda5821a6f77ec0225edc82e0",
+      "MODEL_GUEST_PATH": "/model/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "MODEL_TOKENS": "2",
+      "MODEL_PROMPT": "The quick brown fox jumps over the lazy dog.",
+      "LOGITS_MAX_ABS_TOLERANCE": "0.001"
+    }
+  },
+  "functional": {
+    "guest_exit": 0,
+    "output_equal": true,
+    "logits_top1_equal": "1",
+    "logits_max_abs": "0",
+    "qbs_rvv": {
+      "QBS_RVV_LOGITS_RECORDS": "2",
+      "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "2",
+      "QBS_RVV_LOGITS_MAX_ABS": "0.939908028",
+      "QBS_RVV_LOGITS_MAX_REL": "311.093475",
+      "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+      "QBS_RVV_TOKEN_OUTPUT_EQUAL": "1"
+    }
+  },
+  "graphs": {
+    "prefill": 1,
+    "decode": 1
+  },
+  "qbs": {
+    "nodes": 422,
+    "operations": {
+      "MUL_MAT": 422
+    },
+    "call_chunks": 629,
+    "unique_activation_elements": 2212608,
+    "output_elements": 2383680,
+    "dot_elements": 1614643200,
+    "per_operation_quantized_activation_bytes": 2403336,
+    "activation_accounting": {
+      "complete": true,
+      "known_unique_activation_elements": 2212608,
+      "known_per_operation_quantized_activation_bytes": 2403336,
+      "unresolved_nodes": 0,
+      "unresolved_operations": {}
+    },
+    "weight_payload_bytes": 278788608,
+    "weight_payload_bytes_by_phase": {
+      "prefill": 175260672,
+      "decode": 103527936
+    },
+    "weight_payload_bytes_by_profile": {
+      "Q4_K": 23390208,
+      "Q5_0": 159819264,
+      "Q6_K": 30481920,
+      "Q8_0": 65097216
+    },
+    "coverage": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "candidate_tensors": "16",
+        "selected_tensors": "16",
+        "segmented_tensors": "0",
+        "candidate_elements": "14155776",
+        "selected_elements": "14155776",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "candidate_tensors": "14",
+        "selected_tensors": "14",
+        "segmented_tensors": "0",
+        "candidate_elements": "12386304",
+        "selected_elements": "12386304",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q8_0": {
+        "type": "Q8_0",
+        "candidate_tensors": "16",
+        "selected_tensors": "16",
+        "segmented_tensors": "0",
+        "candidate_elements": "58171392",
+        "selected_elements": "58171392",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q5_0": {
+        "type": "Q5_0",
+        "candidate_tensors": "167",
+        "selected_tensors": "167",
+        "segmented_tensors": "0",
+        "candidate_elements": "78409728",
+        "selected_elements": "78409728",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      }
+    },
+    "execution": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "gemv_calls": "17",
+        "gemm_calls": "30",
+        "input_rows": "227",
+        "output_rows": "27072",
+        "activation_elements": "348672",
+        "output_elements": "130752",
+        "dot_elements": "200835072",
+        "split_calls": "0",
+        "commands_m1": "306",
+        "commands_m2": "270",
+        "commands_m3": "0",
+        "commands_m4": "810",
+        "native_qbexec": "1386",
+        "emulated_commands": "0",
+        "command_dot_elements": "200835072",
+        "segmented_commands": "0",
+        "context_fill": "17",
+        "context_reuse": "272",
+        "context_release": "17"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "gemv_calls": "14",
+        "gemm_calls": "28",
+        "input_rows": "210",
+        "output_rows": "24192",
+        "activation_elements": "322560",
+        "output_elements": "120960",
+        "dot_elements": "185794560",
+        "split_calls": "0",
+        "commands_m1": "252",
+        "commands_m2": "252",
+        "commands_m3": "0",
+        "commands_m4": "756",
+        "native_qbexec": "1260",
+        "emulated_commands": "0",
+        "command_dot_elements": "185794560",
+        "segmented_commands": "0",
+        "context_fill": "14",
+        "context_reuse": "224",
+        "context_release": "14"
+      },
+      "Q8_0": {
+        "type": "Q8_0",
+        "gemv_calls": "16",
+        "gemm_calls": "28",
+        "input_rows": "212",
+        "output_rows": "106368",
+        "activation_elements": "122112",
+        "output_elements": "138624",
+        "dot_elements": "79847424",
+        "split_calls": "0",
+        "commands_m1": "3156",
+        "commands_m2": "84",
+        "commands_m3": "0",
+        "commands_m4": "252",
+        "native_qbexec": "3492",
+        "emulated_commands": "0",
+        "command_dot_elements": "79847424",
+        "segmented_commands": "0",
+        "context_fill": "0",
+        "context_reuse": "0",
+        "context_release": "0"
+      },
+      "Q5_0": {
+        "type": "Q5_0",
+        "gemv_calls": "168",
+        "gemm_calls": "328",
+        "input_rows": "2464",
+        "output_rows": "403584",
+        "activation_elements": "1419264",
+        "output_elements": "1993344",
+        "dot_elements": "1148166144",
+        "split_calls": "0",
+        "commands_m1": "4332",
+        "commands_m2": "4140",
+        "commands_m3": "0",
+        "commands_m4": "12420",
+        "native_qbexec": "20892",
+        "emulated_commands": "0",
+        "command_dot_elements": "1148166144",
+        "segmented_commands": "0",
+        "context_fill": "0",
+        "context_reuse": "0",
+        "context_release": "0"
+      }
+    },
+    "activation_lifetime": null
+  },
+  "akv_v2": {
+    "calls": 30,
+    "attention_macs": 518400,
+    "query_payload_bytes": 34560,
+    "kv_payload_bytes": 345600,
+    "shapes": [
+      {
+        "graph_id": 1,
+        "phase": "decode",
+        "kernel": "v2",
+        "kv_heads": 3,
+        "q_rows": 9,
+        "gqa_rows": 3,
+        "head_dim": 64,
+        "active_kv": 15,
+        "calls": 30,
+        "query_payload_bytes": 34560,
+        "kv_payload_bytes": 345600,
+        "attention_macs": 518400
+      }
+    ],
+    "coverage": {
+      "candidate_ops": "60",
+      "executed_ops": "30",
+      "groups": "90",
+      "executed_v1": "0",
+      "executed_v2": "30",
+      "groups_v1": "0",
+      "groups_v2": "90",
+      "kv_group_tokens": "1350",
+      "attention_macs": "518400",
+      "fallback_runtime": "0",
+      "fallback_capability": "0",
+      "fallback_threading": "0",
+      "fallback_feature": "0",
+      "fallback_shape": "30",
+      "fallback_layout": "0",
+      "fallback_mask": "0"
+    }
+  },
+  "model_nodes": 1030
+}

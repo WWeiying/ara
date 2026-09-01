@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "baseline_commit": "05ac96ca86e130972ba0378352a5d86b2c5deb82",
-  "scope": "one-token Decode; equal weight per model; no cross-operator activation reuse credited",
+  "scope": "pooled one-token Decode work; one graph per model; no cross-operator activation reuse credited",
   "coverage_target": 0.95,
   "minimum_sensitivity_coverage": 0.90,
   "sensitivity": {
@@ -31,6 +31,18 @@
         "path": "hardware/qbs_akv_goal_final_calibration_20260831/results.csv",
         "sha256": "de66f36107c335113a047fb221bc0115a860e3e125fec0f8e5561cd07c053f29",
         "case": "decode_ffn_down_qbs"
+      }
+    },
+    "Q5_K": {
+      "matmul_cycles": 21750,
+      "matmul_weight_logical_bytes": 270336,
+      "quantize_cycles": 11585,
+      "quantize_activation_elements": 1536,
+      "calibration_kind": "measured",
+      "source": {
+        "path": "hardware/qbs_format_eval_runs/paper_fair_b73af277_20260827_110849/q5k_decode_attn_q_qbs/result.csv",
+        "sha256": "a93ba440800f779ed1d22586bb2bed737a84b8acdd4851132a4647083ff95235",
+        "case": "q5k_decode_attn_q_qbs"
       }
     },
     "Q5_0": {

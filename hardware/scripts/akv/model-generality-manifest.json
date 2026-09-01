@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "05ac96ca86e130972ba0378352a5d86b2c5deb82",
+  "kv_lengths": [16, 128, 512, 1024],
+  "models": [
+    {
+      "id": "qwen25_1p5b_q4km",
+      "name": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+      "architecture": "qwen2",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "expected_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/qwen2.5-q4km-capture.ext4",
+        "disk_sha256": "d57a6ef763a0b8d997c875cf43aeccb6a1bd1935dc2acb4075ad9c1059e908ee",
+        "guest_path": "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
+        "file": "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+      },
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json",
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 197,
+        "attention_candidate_compute_nodes": 28,
+        "qbs_profiles": ["Q4_K", "Q6_K"],
+        "qbs_operations": {"MUL_MAT": 197}
+      }
+    },
+    {
+      "id": "tinyllama_1p1b_q4km",
+      "name": "TinyLlama-1.1B-Chat-Q4_K_M",
+      "architecture": "llama",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/tinyllama-hf/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "expected_sha256": "9fecc3b3cd76bba89d504f29b616eedf7da85b96540e490ca5824d3f7d2776a0",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/tinyllama-q4km.ext4",
+        "disk_sha256": "2db524183ce7fcf01b42aee916dd36518953d4005cb409229fd72f211c7278bf",
+        "guest_path": "/model/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+        "revision": "52e7645ba7c309695bec7ac98f4f005b139cf465",
+        "file": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+      },
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json",
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 155,
+        "attention_candidate_compute_nodes": 22,
+        "qbs_profiles": ["Q4_K", "Q6_K"],
+        "qbs_operations": {"MUL_MAT": 155}
+      }
+    },
+    {
+      "id": "smollm2_135m_q4km",
+      "name": "SmolLM2-135M-Instruct-Q4_K_M",
+      "architecture": "llama",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+      "expected_sha256": "2e8040ceae7815abe0dcb3540b9995eaa1fa0d2ca9e797d0a635ae4433c68c2d",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/smollm2-q4km.ext4",
+        "disk_sha256": "cdcfde87b3e1ace02c02d3ffa49f85ff59b946ceda5821a6f77ec0225edc82e0",
+        "guest_path": "/model/models/SmolLM2-135M-Instruct-Q4_K_M.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "bartowski/SmolLM2-135M-Instruct-GGUF",
+        "revision": "09816acd5d99df7be770d85ea30822623dab342c",
+        "file": "SmolLM2-135M-Instruct-Q4_K_M.gguf"
+      },
+      "reference_summary": "hardware/akv_jobs/qemu_model_combined_smollm2_gqa3_20260831/model_closure_generalized_20260901/dynamic_summary.json",
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 211,
+        "attention_candidate_compute_nodes": 30,
+        "qbs_profiles": ["Q4_K", "Q5_0", "Q6_K", "Q8_0"],
+        "qbs_operations": {"MUL_MAT": 211}
+      }
+    },
+    {
+      "id": "llama32_1b_q4km",
+      "name": "Llama-3.2-1B-Instruct-Q4_K_M",
+      "architecture": "llama",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/generality_20260831/llama32/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      "expected_sha256": "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/llama32_1b_q4km.ext4",
+        "disk_sha256": "15582144633eef48f83a69aa14f25daacc3be695b5adddfb1ae7ceb345f426b1",
+        "guest_path": "/model/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+        "revision": "067b946cf014b7c697f3654f621d577a3e3afd1c",
+        "file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+      },
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 113,
+        "attention_candidate_compute_nodes": 16,
+        "qbs_profiles": ["Q4_K", "Q6_K"],
+        "qbs_operations": {"MUL_MAT": 113}
+      }
+    },
+    {
+      "id": "gemma3_1b_q4km",
+      "name": "Gemma-3-1B-IT-Q4_K_M",
+      "architecture": "gemma3",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/generality_20260831/gemma3/gemma-3-1b-it-Q4_K_M.gguf",
+      "expected_sha256": "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/gemma3_1b_q4km.ext4",
+        "disk_sha256": "9826ada3980c067a5a5796f2e1fecc24d71e12a6faf1608e790707fb23ca3f58",
+        "guest_path": "/model/models/gemma-3-1b-it-Q4_K_M.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "ggml-org/gemma-3-1b-it-GGUF",
+        "revision": "f9c28bcd85737ffc5aef028638d3341d49869c27",
+        "file": "gemma-3-1b-it-Q4_K_M.gguf"
+      },
+      "akv_disposition": "fallback_shape",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 183,
+        "attention_candidate_compute_nodes": 26,
+        "qbs_profiles": ["Q4_K", "Q5_0", "Q6_K", "Q8_0"],
+        "qbs_operations": {"MUL_MAT": 183}
+      }
+    },
+    {
+      "id": "phi35_mini_q4km",
+      "name": "Phi-3.5-Mini-Instruct-Q4_K_M",
+      "architecture": "phi3",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/generality_20260831/phi35/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "expected_sha256": "e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/phi35_mini_q4km.ext4",
+        "disk_sha256": "6a0ed9fe8487d20ea695fb5037ae409df8dbff70dc71c449126aa1f30328e19b",
+        "guest_path": "/model/models/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        "memory": "8G"
+      },
+      "source": {
+        "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+        "revision": "6d70da17e749a471ccb62ade694486011a75cda3",
+        "file": "Phi-3.5-mini-instruct-Q4_K_M.gguf"
+      },
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 129,
+        "attention_candidate_compute_nodes": 32,
+        "qbs_profiles": ["Q4_K", "Q5_K", "Q6_K"],
+        "qbs_operations": {"MUL_MAT": 129}
+      }
+    },
+    {
+      "id": "olmoe_1b7b_q4km",
+      "name": "OLMoE-1B-7B-0924-Instruct-Q4_K_M",
+      "architecture": "olmoe",
+      "topology": "moe",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/generality_20260831/olmoe/olmoe-1b-7b-0924-instruct-q4_k_m.gguf",
+      "expected_sha256": "8c310f1435a1222338fd2d3d974975be9cd908180b644bab0c2a94da1ac32f3f",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/olmoe_1b7b_q4km.ext4",
+        "disk_sha256": "572828c777c3293fbba30540a5e32bdd2091c45176ddf034a78a472b7235b8c0",
+        "guest_path": "/model/models/olmoe-1b-7b-0924-instruct-q4_k_m.gguf",
+        "memory": "12G"
+      },
+      "source": {
+        "repo": "allenai/OLMoE-1B-7B-0924-Instruct-GGUF",
+        "revision": "02ab6ea6894a8418eb14f6d8ee1bfb08bd298080",
+        "file": "olmoe-1b-7b-0924-instruct-q4_k_m.gguf"
+      },
+      "akv_disposition": "execute",
+      "decode_expectation": {
+        "qbs_candidate_compute_nodes": 113,
+        "attention_candidate_compute_nodes": 16,
+        "qbs_profiles": ["Q4_K", "Q6_K"],
+        "qbs_operations": {"MUL_MAT": 65, "MUL_MAT_ID": 48}
+      }
+    }
+  ]
+}

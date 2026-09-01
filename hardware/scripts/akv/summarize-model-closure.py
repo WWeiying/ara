@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Summarize one combined QBS + AKV-v2 Qwen model run.
+"""Summarize one combined QBS + AKV-v2 llama.cpp model run.
 
 Dynamic coverage is measured directly from the guest log. Cycle attribution is
 an explicitly labelled projection that weights representative RTL measurements
@@ -36,6 +36,7 @@ SUPPORTED_QBS_TYPES = {
     "Q8_0",
     "IQ4_NL",
 }
+SUPPORTED_QBS_OPS = {"MUL_MAT", "MUL_MAT_ID"}
 PROJECTION_METHOD_VERSION = 1
 QBS_ABI_PATH = Path(__file__).resolve().parents[3] / "config/qbs_abi.json"
 QBS_TRACE_TO_ABI_PROFILE = {"Q8_0": "Q8_0_WEIGHT"}
@@ -360,7 +361,7 @@ def validate_dynamic(run: ParsedRun) -> None:
         qbs_nodes = {
             index
             for index, node in enumerate(graph.nodes)
-            if node.get("op") == "MUL_MAT"
+            if node.get("op") in SUPPORTED_QBS_OPS
             and normalized_qbs_type(node.get("src0", "")) in SUPPORTED_QBS_TYPES
         }
         called_qbs_nodes: set[int] = set()
@@ -370,7 +371,9 @@ def validate_dynamic(run: ParsedRun) -> None:
             if node_index < 0 or node_index >= len(graph.nodes):
                 raise ValueError("QBS call has no valid model-node owner")
             node = graph.nodes[node_index]
-            if node.get("op") != "MUL_MAT" or normalized_qbs_type(node.get("src0", "")) != profile:
+            if node.get("op") not in SUPPORTED_QBS_OPS or normalized_qbs_type(
+                node.get("src0", "")
+            ) != profile:
                 raise ValueError("QBS call/model-node association is inconsistent")
             called_qbs_nodes.add(node_index)
             qbs_calls[profile] += (
@@ -524,6 +527,7 @@ def dynamic_rows(run: ParsedRun):
                 phase,
                 node_index,
                 normalize_tensor_name(graph.nodes[node_index].get("name", "")),
+                graph.nodes[node_index].get("op", ""),
                 normalized_qbs_type(call["type"]),
                 call["mode"],
                 integer(call, "k"),
@@ -566,7 +570,10 @@ def dynamic_rows(run: ParsedRun):
 
     qbs_rows = []
     for key, count in sorted(qbs_groups.items()):
-        graph_id, phase, node_index, node_name, profile, mode, k, input_rows, output_rows, split_k = key
+        (
+            graph_id, phase, node_index, node_name, operation, profile,
+            mode, k, input_rows, output_rows, split_k,
+        ) = key
         weight_block_bytes, weight_block_elements = qbs_profile_geometry(profile)
         activation_profile = qbs_activation_profile(profile)
         activation_block_bytes, activation_block_elements = qbs_profile_geometry(
@@ -578,6 +585,7 @@ def dynamic_rows(run: ParsedRun):
                 "phase": phase,
                 "node_index": node_index,
                 "node_name": node_name,
+                "operation": operation,
                 "type": profile,
                 "mode": mode,
                 "k": k,
@@ -624,6 +632,28 @@ def dynamic_rows(run: ParsedRun):
             profile = profiles.pop()
             k = k_values.pop()
             input_rows = integer(node, "ne1") * integer(node, "ne2", 1) * integer(node, "ne3", 1)
+            operation = node.get("op", "")
+            if operation not in SUPPORTED_QBS_OPS:
+                raise ValueError(f"unsupported QBS model operation: {operation}")
+            activation_rows = input_rows
+            activation_accounting = "exact_output_rows"
+            if operation == "MUL_MAT_ID":
+                source_shape_fields = ("src1_ne1", "src1_ne2", "src1_ne3")
+                if all(field in node for field in source_shape_fields):
+                    activation_rows = (
+                        integer(node, "src1_ne1")
+                        * integer(node, "src1_ne2")
+                        * integer(node, "src1_ne3")
+                    )
+                    if activation_rows <= 0 or input_rows % activation_rows:
+                        raise ValueError("MUL_MAT_ID activation/output row topology is inconsistent")
+                    activation_accounting = "exact_source_shape"
+                else:
+                    # Legacy guest traces omit src1_ne*. Calls still prove
+                    # routed matrix work, but they cannot distinguish a shared
+                    # gate/up activation from per-route down activations.
+                    activation_rows = None
+                    activation_accounting = "unavailable_legacy_source_shape"
             output_rows = integer(node, "ne0")
             if modes == {"gemm", "gemv"} and input_rows > 1:
                 mode = "gemm+gemv_tail"
@@ -660,28 +690,37 @@ def dynamic_rows(run: ParsedRun):
                 )
                 for call in calls
             )
+            activation_elements = k * activation_rows if activation_rows is not None else None
+            quantized_activation_bytes = (
+                blocked_payload_bytes(
+                    k,
+                    activation_rows,
+                    1,
+                    activation_block_bytes,
+                    activation_block_elements,
+                    f"QBS {profile} activation",
+                )
+                if activation_rows is not None
+                else None
+            )
             qbs_node_rows.append(
                 {
                     "graph_id": graph.graph_id,
                     "phase": graph.phase,
                     "node_index": node_index,
                     "node_name": normalize_tensor_name(node.get("name", "")),
+                    "operation": operation,
                     "type": profile,
                     "mode": mode,
                     "k": k,
                     "input_rows": input_rows,
+                    "activation_rows": activation_rows,
+                    "activation_accounting": activation_accounting,
                     "output_rows": output_rows,
                     "call_chunks": len(calls),
                     "activation_profile": activation_profile,
-                    "activation_elements": k * input_rows,
-                    "quantized_activation_bytes": blocked_payload_bytes(
-                        k,
-                        input_rows,
-                        1,
-                        activation_block_bytes,
-                        activation_block_elements,
-                        f"QBS {profile} activation",
-                    ),
+                    "activation_elements": activation_elements,
+                    "quantized_activation_bytes": quantized_activation_bytes,
                     "weight_payload_bytes": weight_payload_bytes,
                     "output_elements": output_elements,
                     "dot_elements": dot_elements,
@@ -939,6 +978,11 @@ def cycle_projection(
                 )
             ] += 1
     for node in qbs_node_rows:
+        if node["activation_elements"] is None:
+            raise ValueError(
+                "RTL cycle projection requires exact per-node activation rows; "
+                "the guest trace omits MUL_MAT_ID source shapes"
+            )
         point = nearest_qbs_point(node, qbs_points)
         signature = (
             str(node["node_name"]),
@@ -1103,6 +1147,25 @@ def make_dynamic_summary(
     node_rows: list[dict[str, object]],
     qbs_lifetime: dict[str, object] | None,
 ) -> dict[str, object]:
+    unresolved_activation_nodes = [
+        row for row in qbs_node_rows if row["activation_elements"] is None
+    ]
+    known_activation_nodes = [
+        row for row in qbs_node_rows if row["activation_elements"] is not None
+    ]
+    activation_accounting = {
+        "complete": not unresolved_activation_nodes,
+        "known_unique_activation_elements": sum(
+            int(row["activation_elements"]) for row in known_activation_nodes
+        ),
+        "known_per_operation_quantized_activation_bytes": sum(
+            int(row["quantized_activation_bytes"]) for row in known_activation_nodes
+        ),
+        "unresolved_nodes": len(unresolved_activation_nodes),
+        "unresolved_operations": dict(Counter(
+            str(row["operation"]) for row in unresolved_activation_nodes
+        )),
+    }
     return {
         "provenance": {
             "tool": {
@@ -1131,15 +1194,19 @@ def make_dynamic_summary(
         "graphs": dict(Counter(graph.phase for graph in run.graphs)),
         "qbs": {
             "nodes": len(qbs_node_rows),
+            "operations": dict(Counter(str(row["operation"]) for row in qbs_node_rows)),
             "call_chunks": sum(int(row["calls"]) for row in qbs_call_rows),
-            "unique_activation_elements": sum(
-                int(row["activation_elements"]) for row in qbs_node_rows
+            "unique_activation_elements": (
+                activation_accounting["known_unique_activation_elements"]
+                if activation_accounting["complete"] else None
             ),
             "output_elements": sum(int(row["output_elements"]) for row in qbs_node_rows),
             "dot_elements": sum(int(row["dot_elements"]) for row in qbs_node_rows),
-            "per_operation_quantized_activation_bytes": sum(
-                int(row["quantized_activation_bytes"]) for row in qbs_node_rows
+            "per_operation_quantized_activation_bytes": (
+                activation_accounting["known_per_operation_quantized_activation_bytes"]
+                if activation_accounting["complete"] else None
             ),
+            "activation_accounting": activation_accounting,
             "weight_payload_bytes": sum(
                 int(row["weight_payload_bytes"]) for row in qbs_call_rows
             ),
@@ -1441,7 +1508,7 @@ def main() -> None:
         output / "qbs_calls.csv",
         qbs_call_rows,
         (
-            "graph_id", "phase", "node_index", "node_name", "type", "mode",
+            "graph_id", "phase", "node_index", "node_name", "operation", "type", "mode",
             "k", "input_rows", "output_rows", "calls", "activation_profile",
             "quantized_activation_bytes", "weight_payload_bytes",
         ),
@@ -1450,8 +1517,9 @@ def main() -> None:
         output / "qbs_nodes.csv",
         qbs_node_rows,
         (
-            "graph_id", "phase", "node_index", "node_name", "type", "mode",
-            "k", "input_rows", "output_rows", "call_chunks", "activation_profile",
+            "graph_id", "phase", "node_index", "node_name", "operation", "type", "mode",
+            "k", "input_rows", "activation_rows", "activation_accounting", "output_rows",
+            "call_chunks", "activation_profile",
             "quantized_activation_bytes", "weight_payload_bytes",
         ),
     )

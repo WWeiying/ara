@@ -2,7 +2,7 @@
   "provenance": {
     "tool": {
       "path": "/home/wangwy/openproject/ara_dsa/hardware/scripts/akv/summarize-model-closure.py",
-      "sha256": "ae560da0d6d259b6b01b716232480cb402e961d48d4c40d3d92397ea8b31f1d8",
+      "sha256": "269eab626bff3328e7bce2ae31920929618d4e74deb0ace00da16ee9f61d6220",
       "projection_method_version": 1
     },
     "dynamic_log": {
@@ -51,11 +51,21 @@
   },
   "qbs": {
     "nodes": 310,
+    "operations": {
+      "MUL_MAT": 310
+    },
     "call_chunks": 461,
     "unique_activation_elements": 5406720,
     "output_elements": 5423616,
     "dot_elements": 13280215040,
     "per_operation_quantized_activation_bytes": 6167040,
+    "activation_accounting": {
+      "complete": true,
+      "known_unique_activation_elements": 5406720,
+      "known_per_operation_quantized_activation_bytes": 6167040,
+      "unresolved_nodes": 0,
+      "unresolved_operations": {}
+    },
     "weight_payload_bytes": 1816313856,
     "weight_payload_bytes_by_phase": {
       "prefill": 1186467840,

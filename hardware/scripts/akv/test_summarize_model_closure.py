@@ -257,6 +257,65 @@ LLAMA_GUEST_EXIT=0
         self.assertEqual(qbs_node_rows[0]["dot_elements"], 10240)
         self.assertEqual(qbs_node_rows[0]["weight_payload_bytes"], 2304)
 
+    def test_mul_mat_id_counts_routed_work_but_one_source_activation(self):
+        graph = MODULE.Graph(
+            graph_id=0,
+            declared_nodes=1,
+            nodes=[
+                {
+                    "op": "MUL_MAT_ID",
+                    "type": "f32",
+                    "ne0": "64",
+                    "ne1": "2",
+                    "ne2": "1",
+                    "ne3": "1",
+                    "src0": "q4_K",
+                    "src1": "f32",
+                    "src1_ne1": "1",
+                    "src1_ne2": "1",
+                    "src1_ne3": "1",
+                    "name": "blk.0.ffn_gate_exps",
+                }
+            ],
+            qbs_calls=[
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "256", "input_rows": "1", "output_rows": "64", "split_k": "0"},
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "256", "input_rows": "1", "output_rows": "64", "split_k": "0"},
+            ],
+            closed=True,
+        )
+        run = MODULE.ParsedRun([graph], {}, {}, {}, {}, {}, False, 0, 0)
+        qbs_call_rows, qbs_node_rows, _, _ = MODULE.dynamic_rows(run)
+        self.assertEqual(qbs_node_rows[0]["operation"], "MUL_MAT_ID")
+        self.assertEqual(qbs_node_rows[0]["input_rows"], 2)
+        self.assertEqual(qbs_node_rows[0]["activation_rows"], 1)
+        self.assertEqual(qbs_node_rows[0]["activation_accounting"], "exact_source_shape")
+        self.assertEqual(qbs_node_rows[0]["activation_elements"], 256)
+        self.assertEqual(qbs_node_rows[0]["dot_elements"], 32768)
+        self.assertEqual(sum(row["weight_payload_bytes"] for row in qbs_call_rows), 18432)
+
+    def test_mul_mat_id_legacy_trace_does_not_guess_activation_rows(self):
+        graph = MODULE.Graph(
+            graph_id=0,
+            declared_nodes=1,
+            nodes=[{
+                "op": "MUL_MAT_ID", "type": "f32", "ne0": "64", "ne1": "2",
+                "ne2": "1", "ne3": "1", "src0": "q4_K", "src1": "f32",
+                "name": "blk.0.ffn_gate_exps",
+            }],
+            qbs_calls=[
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "256", "input_rows": "1", "output_rows": "64", "split_k": "0"},
+                {"_node_index": "0", "type": "q4_K", "mode": "gemv", "k": "256", "input_rows": "1", "output_rows": "64", "split_k": "0"},
+            ],
+            closed=True,
+        )
+        run = MODULE.ParsedRun([graph], {}, {}, {}, {}, {}, False, 0, 0)
+        _, qbs_node_rows, _, _ = MODULE.dynamic_rows(run)
+        row = qbs_node_rows[0]
+        self.assertIsNone(row["activation_rows"])
+        self.assertIsNone(row["activation_elements"])
+        self.assertIsNone(row["quantized_activation_bytes"])
+        self.assertEqual(row["activation_accounting"], "unavailable_legacy_source_shape")
+
     def test_qbs_payload_accounting_rejects_partial_blocks(self):
         with self.assertRaisesRegex(ValueError, "not divisible"):
             MODULE.blocked_payload_bytes(255, 1, 1, 144, 256, "Q4_K weight")

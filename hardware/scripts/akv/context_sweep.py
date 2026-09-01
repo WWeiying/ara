@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[3]
+AKV_ABI_PATH = ROOT / "config/akv_abi.json"
+AKV_ABI = json.loads(AKV_ABI_PATH.read_text(encoding="utf-8"))
 FIELD_RE = re.compile(r"([A-Za-z0-9_]+)=([^\s]+)")
 TOKEN_COUNT_RE = re.compile(r"Total number of tokens:\s*(\d+)")
 PROMPT_EVAL_RE = re.compile(r"prompt eval time\s*=.*?/\s*(\d+)\s+tokens")
@@ -21,8 +24,8 @@ SUPPORTED_QBS_TYPES = {
     "Q4_0", "Q5_0", "Q8_0", "IQ4_NL",
 }
 QBS_TRACE_TO_ABI = {"Q8_0": "Q8_0_WEIGHT"}
-SUPPORTED_AKV_D = {64, 128}
-SUPPORTED_AKV_GQA = {1, 4, 6, 8}
+SUPPORTED_AKV_D = set(AKV_ABI["token_axis_profile"]["head_dims"])
+SUPPORTED_AKV_GQA = set(range(1, int(AKV_ABI["limits"]["max_q_rows"]) + 1))
 BASE_PROMPT = (
     "Explain why low-bit vector inference benefits from packed arithmetic "
     "and data reuse."
@@ -140,7 +143,7 @@ def node_shape(node: dict[str, str], prefix: str = "") -> tuple[int, int, int, i
 def qbs_nodes(graph: Graph) -> list[dict[str, str]]:
     return [
         node for node in graph.nodes
-        if node.get("op") == "MUL_MAT"
+        if node.get("op") in {"MUL_MAT", "MUL_MAT_ID"}
         and normalized_type(node.get("src0", "")) in SUPPORTED_QBS_TYPES
     ]
 
@@ -150,6 +153,9 @@ def attention_nodes(graph: Graph) -> list[dict[str, str]]:
 
 
 def qbs_payload(node: dict[str, str], abi: dict[str, object]) -> dict[str, int | str]:
+    operation = node.get("op", "")
+    if operation not in {"MUL_MAT", "MUL_MAT_ID"}:
+        raise ValueError(f"unsupported QBS operation: {operation}")
     profile = normalized_type(node["src0"])
     abi_profile = QBS_TRACE_TO_ABI.get(profile, profile)
     weight = abi["weight_profiles"][abi_profile]
@@ -158,22 +164,60 @@ def qbs_payload(node: dict[str, str], abi: dict[str, object]) -> dict[str, int |
         raise ValueError(f"{profile} does not have one activation profile")
     activation_profile = activations[0]
     activation = abi["activation_profiles"][activation_profile]
-    k = integer(node, "src0_ne0")
-    n = integer(node, "src0_ne1")
-    m = product(list(node_shape(node)[1:]))
+    src0_shape = node_shape(node, "src0_")
+    src1_shape = node_shape(node, "src1_")
+    output_shape = node_shape(node)
+    k = src0_shape[0]
+    n = src0_shape[1]
+    m = product(list(output_shape[1:]))
+    activation_rows = product(list(src1_shape[1:]))
     if k <= 0 or n <= 0 or m <= 0:
         raise ValueError(f"invalid QBS shape: {node}")
+    if src1_shape[0] != k or activation_rows <= 0:
+        raise ValueError(f"inconsistent QBS activation shape: {node}")
+    matrix_count = 1
+    if operation == "MUL_MAT":
+        if src0_shape[2:] != (1, 1):
+            raise ValueError(f"QBS MUL_MAT weight is not two-dimensional: {node}")
+    else:
+        matrix_count = src0_shape[2]
+        ids_shape = node_shape(node, "src2_")
+        if (
+            matrix_count <= 0
+            or src0_shape[3] != 1
+            or normalized_type(node.get("src2", "")) != "I32"
+            or ids_shape[2:] != (1, 1)
+            or ids_shape[0] != output_shape[1]
+            or ids_shape[1] != output_shape[2]
+            or output_shape[3] != 1
+            or output_shape[0] != n
+            or src1_shape[2] != output_shape[2]
+            or src1_shape[3] != 1
+            or output_shape[1] % src1_shape[1]
+        ):
+            raise ValueError(f"inconsistent QBS MUL_MAT_ID topology: {node}")
     if k % int(weight["block_elements"]) or k % int(activation["block_elements"]):
         raise ValueError(f"unaligned QBS K={k} for {profile}")
+    weight_matrix_bytes = n * (k // int(weight["block_elements"])) * int(weight["block_bytes"])
     return {
+        "operation": operation,
         "profile": profile,
         "activation_profile": activation_profile,
         "k": k,
         "m": m,
         "n": n,
+        "weight_matrices": matrix_count,
+        "activation_rows": activation_rows,
         "dot_elements": k * m * n,
-        "weight_bytes": n * (k // int(weight["block_elements"])) * int(weight["block_bytes"]),
-        "activation_bytes": m * (k // int(activation["block_elements"])) * int(activation["block_bytes"]),
+        # Logical traffic counts one selected expert matrix for every routed
+        # output row. The unique tensor capacity counts all resident experts.
+        "weight_bytes": weight_matrix_bytes * (m if operation == "MUL_MAT_ID" else 1),
+        "weight_unique_tensor_bytes": weight_matrix_bytes * matrix_count,
+        "activation_bytes": (
+            activation_rows
+            * (k // int(activation["block_elements"]))
+            * int(activation["block_bytes"])
+        ),
     }
 
 
@@ -231,6 +275,7 @@ def summarize_graphs(
     if not qbs_decode or not attention_decode:
         raise ValueError("Decode graph lacks QBS MUL_MAT or attention nodes")
     profiles = Counter(str(row["profile"]) for row in qbs_decode)
+    operations = Counter(str(row["operation"]) for row in qbs_decode)
     eligible_attention = [row for row in attention_decode if bool(row["shape_eligible"])]
     fallback_attention = [row for row in attention_decode if not bool(row["shape_eligible"])]
     all_qbs = [node for graph in graphs for node in qbs_nodes(graph)]
@@ -247,8 +292,12 @@ def summarize_graphs(
             "executed_compute_nodes": len(decode.nodes),
             "qbs_candidate_compute_nodes": len(qbs_decode),
             "qbs_profiles": dict(sorted(profiles.items())),
+            "qbs_operations": dict(sorted(operations.items())),
             "qbs_dot_elements": sum(int(row["dot_elements"]) for row in qbs_decode),
             "qbs_weight_logical_bytes": sum(int(row["weight_bytes"]) for row in qbs_decode),
+            "qbs_weight_unique_tensor_bytes": sum(
+                int(row["weight_unique_tensor_bytes"]) for row in qbs_decode
+            ),
             "qbs_activation_logical_bytes_without_cross_op_reuse": sum(
                 int(row["activation_bytes"]) for row in qbs_decode
             ),
@@ -257,13 +306,24 @@ def summarize_graphs(
             "akv_shape_eligible_compute_nodes": len(eligible_attention),
             "akv_shape_fallback_compute_nodes": len(fallback_attention),
             "akv_shape_eligible_groups": sum(int(row["kv_heads"]) for row in eligible_attention),
-            "akv_query_payload_logical_bytes": sum(
+            "attention_candidate_query_payload_logical_bytes": sum(
+                int(row["query_payload_logical_bytes"]) for row in attention_decode
+            ),
+            "attention_candidate_kv_payload_logical_bytes": sum(
+                int(row["kv_payload_logical_bytes"]) for row in attention_decode
+            ),
+            "attention_candidate_macs": sum(
+                int(row["attention_macs"]) for row in attention_decode
+            ),
+            "akv_shape_eligible_query_payload_logical_bytes": sum(
                 int(row["query_payload_logical_bytes"]) for row in eligible_attention
             ),
-            "akv_kv_payload_logical_bytes": sum(
+            "akv_shape_eligible_kv_payload_logical_bytes": sum(
                 int(row["kv_payload_logical_bytes"]) for row in eligible_attention
             ),
-            "akv_attention_macs": sum(int(row["attention_macs"]) for row in eligible_attention),
+            "akv_shape_eligible_attention_macs": sum(
+                int(row["attention_macs"]) for row in eligible_attention
+            ),
             "attention_shapes": attention_decode,
             "ordinary_rvv_compute_nodes_if_akv_shape_selected": (
                 len(decode.nodes) - len(qbs_decode) - len(eligible_attention)
@@ -273,11 +333,10 @@ def summarize_graphs(
     }
 
 
-def validate_reference(
-    summary: dict[str, object],
-    reference: dict[str, object],
-    decode_expectation: dict[str, object],
+def validate_decode_expectation(
+    summary: dict[str, object], decode_expectation: dict[str, object]
 ) -> None:
+    decode = summary["decode"]
     expected_qbs_nodes = int(decode_expectation["qbs_candidate_compute_nodes"])
     observed_qbs_nodes = int(summary["decode"]["qbs_candidate_compute_nodes"])
     if observed_qbs_nodes != expected_qbs_nodes:
@@ -288,17 +347,53 @@ def validate_reference(
     expected_profiles = set(decode_expectation["qbs_profiles"])
     if observed_profiles != expected_profiles:
         raise ValueError(f"Decode QBS profile mismatch: {observed_profiles} != {expected_profiles}")
+    if "qbs_operations" in decode_expectation:
+        observed_operations = summary["decode"]["qbs_operations"]
+        expected_operations = decode_expectation["qbs_operations"]
+        if observed_operations != expected_operations:
+            raise ValueError(
+                f"Decode QBS operation mismatch: {observed_operations} != {expected_operations}"
+            )
+
+    expected_candidates = int(decode_expectation["attention_candidate_compute_nodes"])
+    observed_candidates = int(decode["akv_candidate_compute_nodes"])
+    if observed_candidates != expected_candidates:
+        raise ValueError(
+            f"Decode attention candidate mismatch: {observed_candidates} != {expected_candidates}"
+        )
+
+
+def validate_akv_disposition(summary: dict[str, object], disposition: str) -> None:
+    decode = summary["decode"]
+    candidates = int(decode["akv_candidate_compute_nodes"])
+    eligible = int(decode["akv_shape_eligible_compute_nodes"])
+    fallback = int(decode["akv_shape_fallback_compute_nodes"])
+    if candidates <= 0 or candidates != eligible + fallback:
+        raise ValueError("invalid Decode AKV candidate partition")
+    if disposition == "execute":
+        if eligible <= 0:
+            raise ValueError("model is expected to execute AKV but has no eligible Decode shape")
+    elif disposition == "fallback_shape":
+        if eligible != 0 or fallback != candidates:
+            raise ValueError("model is expected to fall back all AKV candidates by shape")
+    else:
+        raise ValueError(f"unknown AKV disposition: {disposition}")
+
+
+def validate_reference(
+    summary: dict[str, object],
+    reference: dict[str, object],
+    decode_expectation: dict[str, object],
+) -> None:
+    validate_decode_expectation(summary, decode_expectation)
+    expected_qbs_nodes = int(decode_expectation["qbs_candidate_compute_nodes"])
+    expected_profiles = set(decode_expectation["qbs_profiles"])
     if set(reference["qbs"]["coverage"]) != expected_profiles:
         raise ValueError("manifest QBS profiles disagree with the RISC-V QEMU reference")
     if int(reference["qbs"]["nodes"]) != 2 * expected_qbs_nodes:
         raise ValueError("fixed-prompt QEMU reference does not contain one Prefill and one Decode QBS graph")
 
     expected_candidates = int(decode_expectation["attention_candidate_compute_nodes"])
-    observed_candidates = int(summary["decode"]["akv_candidate_compute_nodes"])
-    if observed_candidates != expected_candidates:
-        raise ValueError(
-            f"Decode attention candidate mismatch: {observed_candidates} != {expected_candidates}"
-        )
     if int(reference["akv_v2"]["coverage"]["candidate_ops"]) != 2 * expected_candidates:
         raise ValueError("fixed-prompt QEMU reference does not contain one Prefill and one Decode attention graph")
     if int(reference["akv_v2"]["calls"]) != int(

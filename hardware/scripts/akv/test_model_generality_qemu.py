@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).with_name("run-model-generality-qemu.py")
+SPEC = importlib.util.spec_from_file_location("run_model_generality_qemu", SCRIPT)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
+
+
+def summary(executed: int, fallback_shape: int) -> dict[str, object]:
+    return {
+        "provenance": {
+            "tool": {"sha256": MODULE.sha256(MODULE.MODEL_SUMMARIZER)},
+            "qbs_abi": {"sha256": "3" * 64, "architecture_version": 2},
+            "run_manifest": {
+                "LLAMA_REVISION": "llama-revision",
+                "LLAMA_BINARY_SHA256": "1" * 64,
+                "QEMU_BINARY_SHA256": "2" * 64,
+                "QEMU_CPU": "rv64,v=true,vlen=1024,elen=64,xaraqbs=true",
+                "MODEL_PROMPT": "test prompt",
+                "MODEL_TOKENS": "2",
+                "LOGITS_MAX_ABS_TOLERANCE": "0.001",
+            }
+        },
+        "functional": {
+            "guest_exit": 0,
+            "output_equal": True,
+            "logits_top1_equal": "1",
+            "logits_max_abs": "0",
+            "qbs_rvv": {
+                "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+                "QBS_RVV_TOKEN_OUTPUT_EQUAL": "1",
+                "QBS_RVV_LOGITS_MAX_ABS": "0.25",
+            },
+        },
+        "qbs": {
+            "nodes": 4,
+            "operations": {"MUL_MAT": 4},
+            "coverage": {
+                "Q4_K": {
+                    "candidate_tensors": "2",
+                    "selected_tensors": "2",
+                    "candidate_elements": "1024",
+                    "selected_elements": "1024",
+                    "fallback_runtime": "0",
+                    "fallback_format_filter": "0",
+                    "fallback_capability": "0",
+                    "fallback_dimensions": "0",
+                    "fallback_shape": "0",
+                    "fallback_layout": "0",
+                    "fallback_profile": "0",
+                    "fallback_dispatch": "0",
+                }
+            },
+            "execution": {
+                "Q4_K": {
+                    "gemv_calls": "2", "gemm_calls": "1",
+                    "native_qbexec": "8", "emulated_commands": "0",
+                    "dot_elements": "1024", "command_dot_elements": "1024",
+                }
+            },
+        },
+        "akv_v2": {
+            "coverage": {
+                "candidate_ops": str(executed + fallback_shape),
+                "executed_ops": str(executed),
+                "fallback_runtime": "0",
+                "fallback_capability": "0",
+                "fallback_threading": "0",
+                "fallback_feature": "0",
+                "fallback_shape": str(fallback_shape),
+                "fallback_layout": "0",
+                "fallback_mask": "0",
+            }
+        },
+    }
+
+
+class ModelGeneralityQemuTest(unittest.TestCase):
+    def test_execute_metrics_require_native_qbs_and_akv(self):
+        metrics = MODULE.qemu_metrics(summary(2, 0), "execute")
+        self.assertEqual(metrics["qbs_profiles"], "Q4_K")
+        self.assertEqual(metrics["qbs_operations"], "MUL_MAT:4")
+        self.assertEqual(metrics["qbs_gemv_calls"], 2)
+        self.assertEqual(metrics["qbs_gemm_calls"], 1)
+        self.assertEqual(metrics["qbs_dot_elements"], 1024)
+        self.assertEqual(metrics["qbs_native_commands"], 8)
+        self.assertEqual(metrics["akv_executed_ops"], 2)
+
+    def test_shape_fallback_is_explicitly_accepted(self):
+        metrics = MODULE.qemu_metrics(summary(0, 2), "fallback_shape")
+        self.assertEqual(metrics["akv_executed_ops"], 0)
+        self.assertEqual(metrics["akv_fallback_shape"], 2)
+
+    def test_partial_or_wrong_disposition_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "exclusively by shape"):
+            MODULE.qemu_metrics(summary(1, 1), "fallback_shape")
+        with self.assertRaisesRegex(ValueError, "no executed operation"):
+            MODULE.qemu_metrics(summary(0, 2), "execute")
+
+    def test_qbs_fallback_is_rejected(self):
+        value = summary(2, 0)
+        value["qbs"]["coverage"]["Q4_K"]["fallback_shape"] = "1"
+        with self.assertRaisesRegex(ValueError, "coverage is incomplete"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_akv_logits_tolerance_is_enforced(self):
+        value = summary(2, 0)
+        value["functional"]["logits_max_abs"] = "0.002"
+        with self.assertRaisesRegex(ValueError, "functional or numerical"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_stale_model_summary_is_rejected(self):
+        value = summary(2, 0)
+        value["provenance"]["tool"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "different model-closure summarizer"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_partial_native_command_work_is_rejected(self):
+        value = summary(2, 0)
+        value["qbs"]["execution"]["Q4_K"]["command_dot_elements"] = "1023"
+        with self.assertRaisesRegex(ValueError, "command work differs"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_legacy_mul_mat_id_activation_gap_is_explicit(self):
+        value = summary(2, 0)
+        value["qbs"]["operations"] = {"MUL_MAT_ID": 4}
+        value["qbs"]["activation_accounting"] = {
+            "complete": False,
+            "unresolved_nodes": 4,
+            "unresolved_operations": {"MUL_MAT_ID": 4},
+        }
+        metrics = MODULE.qemu_metrics(value, "execute")
+        self.assertEqual(
+            metrics["qbs_activation_accounting"],
+            "unavailable_legacy_source_shape",
+        )
+        self.assertEqual(metrics["qbs_activation_unresolved_nodes"], 4)
+
+
+if __name__ == "__main__":
+    unittest.main()

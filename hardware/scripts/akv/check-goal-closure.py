@@ -508,8 +508,8 @@ def build_support_rows(abi, shape_spec, models, qbs_tests, rvv):
 
 
 def write_csv(path, rows, fields):
-    with path.open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

@@ -1635,9 +1635,14 @@ QBS 只有在公共层与 GGML 适配层的条件同时成立时才接管 tensor
 - 兼容格式的 embedding/output projection；
 - 普通 2D tensor，以及不会让四行 repack group 跨 expert 的 MoE 3D tensor。
 
-当前三 expert `MUL_MAT_ID` 已在 directed QEMU case 中通过，但尚不能据此声称完整 MoE 模型、
-任意 expert 数和所有 routing/layout 均已闭环。Expert routing、token-to-expert gather/scatter 和
-load balancing 仍由 GGML/runtime 处理，QBS 只接管最终满足条件的量化矩阵 tile。
+除三 expert directed case 外，当前还使用真实 OLMoE-1B-active/7B-total Q4_K_M 模型完成了
+Host 图与全系统 QEMU 功能闭环。该模型包含 64 个 expert、每 token 选择 8 个 expert；单个
+Decode 图中观察到 65 个普通 `MUL_MAT` 节点和 48 个 `MUL_MAT_ID` 节点。llama.cpp 在进入
+expert 循环前只量化一次源 activation，随后对被路由到的 expert 执行矩阵计算，因此 source
+activation rows、动态 routed rows 和完整 expert tensor 容量是三个不同统计量，不能相互替代。
+这一结果证明一个真实 64-expert/top-8 layout 已接通，但仍不代表任意 expert 数、routing/layout
+和所有 MoE 模型已经闭环。Expert routing、token-to-expert gather/scatter 和 load balancing
+仍由 GGML/runtime 处理，QBS 只接管最终满足条件的量化矩阵 tile。
 
 它当前不直接执行：
 
@@ -1718,7 +1723,7 @@ F32-to-Q8 动态量化结果；跨 operator 扩展还需要绑定 tensor identit
 | Format | 9 组 weight/activation profile | 不等于覆盖全部 GGUF types |
 | Shape | M1-M4、命令 N<=32、K<=256 blocks，软件处理 N/M/K 外层分块 | 不等于所有 shape 都同样高效 |
 | Operator | quantized `GGML_OP_MUL_MAT` 和受约束 `MUL_MAT_ID` 的 GEMV/小 M GEMM | 不等于覆盖完整 Transformer block |
-| Model mapping | Qwen2.5 中主要 Q/K/V/O 和 FFN linear projections | 不等于所有模型家族和 MoE layout 已验证 |
+| Model mapping | Qwen2、Llama、Gemma3、Phi3 和 OLMoE 中的主要量化线性层 | 不等于所有模型家族、量化类别和 MoE layout 已验证 |
 | Implementation evidence | reference、directed RTL、QEMU native model、部分真实 RTL workload | 不等于完成 P&R、功耗和标准数据集质量闭环 |
 
 对已经隔离测试的目标 profile，`selected_tensors == candidate_tensors` 和
@@ -1762,6 +1767,64 @@ Q/K/V/O、FFN 和 LM head 因而是最直接的可迁移对象。
 
 评价“支持一个新模型”至少应同时给出逐 tensor type/shape 清单、selection/fallback counter、
 真实模型数值结果和端到端 operator time；只看到文件名中有 `Q4_K_M` 不足以证明覆盖。
+
+### 6.14 七模型工作集如何检验通用性
+
+为了避免用单个 Qwen 图同时代表所有格式和所有模型，当前验证将两个维度拆开：九 profile
+回归检验格式 decoder 和算术主路径；七模型工作集检验 GGML architecture、dense/MoE topology、
+真实 shape、operator dispatch 与 fallback。七个文件都采用发布名称中的 `Q4_K_M` 类别标签，
+但来自不同发布者，因此这只控制主要 GGUF 格式类别，不表示 quantizer 版本、importance matrix
+和 calibration 数据完全相同。
+
+| 模型 | GGML architecture / topology | Decode QBS operator | 实际出现的 profile | Attention shape | AKV disposition |
+| --- | --- | --- | --- | --- | --- |
+| Qwen2.5-1.5B | `qwen2` / dense | `MUL_MAT` | Q4_K, Q6_K | D128/GQA6 | execute |
+| TinyLlama-1.1B | `llama` / dense | `MUL_MAT` | Q4_K, Q6_K | D64/GQA8 | execute |
+| SmolLM2-135M | `llama` / dense | `MUL_MAT` | Q4_K, Q5_0, Q6_K, Q8_0 | D64/GQA3 | execute |
+| Llama-3.2-1B | `llama` / dense | `MUL_MAT` | Q4_K, Q6_K | D64/GQA4 | execute |
+| Gemma-3-1B | `gemma3` / dense | `MUL_MAT` | Q4_K, Q5_0, Q6_K, Q8_0 | D256/GQA4 | performance-gated fallback |
+| Phi-3.5-Mini | `phi3` / dense | `MUL_MAT` | Q4_K, Q5_K, Q6_K | D96/GQA1 | execute |
+| OLMoE-1B/7B | `olmoe` / MoE | `MUL_MAT`, `MUL_MAT_ID` | Q4_K, Q6_K | D128/GQA1 | execute |
+
+Host 侧对每个模型抓取 effective KV 为 16、128、512 和 1024 的单 token Decode 图，共 28 个
+case，全部通过。QBS 节点、profile、operator 和矩阵工作量在四个 KV 长度下保持不变；Attention
+拓扑不变，而候选 MAC 和 K/V payload 随有效 KV 线性增长。`attention_candidate_*` 统计全部真实
+Attention 工作，包括必须回退的 D256；`akv_shape_eligible_*` 只统计当前 AKV contract 真正接管
+的 D64/D96/D128、GQA1..8 工作，因此 fallback 模型的 Attention 计算量不会被错误记成 0。
+
+OLMoE 的现有 guest 日志来自较早的 graph-trace 格式，`MUL_MAT_ID` 节点没有输出 source tensor
+shape。该日志仍能严格验证 96 个 Prefill+Decode `MUL_MAT_ID` 节点的 routed matrix work、QBS
+command-dot work 和数值结果，但不能单独重建 source activation quantization rows；这 96 个节点
+在汇总中标为 `unavailable_legacy_source_shape`，激活量化工作量只采用新版 Host 图的严格统计，
+不使用 routed rows 近似。
+
+按池化单 token Decode 投影工作量选择的 28 个 QBS shape 覆盖 95.74% 名义工作量，并覆盖全部
+5 种 GGML architecture、dense/MoE 两类 topology、5 种实际出现的 profile 和两类矩阵 operator。
+SmolLM2 没有独占的代表 shape，因为其低权重 shape 未进入 95% 集合；它使用的 `llama`
+architecture 和 Q5_0/Q8_0 profile 已由其他真实 shape 覆盖。这种工作量加权选择不等于每个模型
+各选一个重复点，也不等于已经完成七模型乘九 profile 的笛卡尔积。
+
+冻结的 `20260831` 七模型全系统 QEMU 功能运行全部通过。每个模型执行一轮 Prefill 和一轮 Decode，共观察到
+908,688 条原生 QBS 命令、0 条模拟 QBS 命令、8,602 次 GEMV、1,602 次 GEMM，以及
+162,059,452,416 个同时由 operator 和 command 计数确认的 dot elements。所有模型的固定运行
+QBS/RVV Top-1 和输出 token 相同；QBS-only 与 QBS+AKV 的 logits 最大绝对差均为 0，低于统一的
+0.001 门限。Qwen2.5、TinyLlama、Llama-3.2 和 OLMoE 的 Decode Attention 进入 AKV；SmolLM2、
+Gemma 和 Phi 分别因当时的 GQA3、D256 和 D96 规则明确回退，未出现部分接管或未解释候选。这是
+旧 selector 的有效冻结证据，不能用来否定后续 D96/GQA3 通用化。
+
+当前生产规则已经扩展为 D64/D96/D128 和 GQA1..8。重新分析不可变 Host 图得到 28/28 PASS，
+其中六个模型 shape eligible，仅 Gemma D256 fallback。广义 QEMU 重跑中，SmolLM2 实际执行
+30 个 Decode D64/GQA3 AKV 节点，Phi-3.5 实际执行 32 个 Decode D96/GQA1 AKV 节点；两者分别
+保留 30 和 32 个符合设计边界的 Prefill shape fallback，且没有 runtime、capability、threading、
+feature、layout 或 mask fallback。两组 QBS-only/QBS+AKV 结果的输出、Top-1 和记录 logits 均一致。
+Host eligibility、QEMU execution 与 directed RTL cycle 仍作为三层独立证据归档，不能相互替代。
+
+七次 QEMU 使用同一 guest llama 二进制哈希、同一 QEMU 二进制、同一 VLEN=1024 CPU contract
+和同一 QBS ABI v2。前三个较早运行记录的源码 revision 标签不同，但 guest 二进制哈希相同；两次
+源码 revision 之间的差异只增加了 portable graph-trace metadata，没有改变计算路径。各模型 prompt
+被完整记录但并不全部相同，因此跨模型命令数用于覆盖证明，不能直接解释为可比较的性能样本。
+完整模型 QEMU 中只有 QBS 走原生自定义指令；AKV 使用 GGML functional-emulation backend 验证
+selection、fallback 和数值，原生 AKV 时序证据来自代表性 RTL leaf。
 
 ## 7. QBS 如何接入 Ara
 
@@ -2266,9 +2329,11 @@ timing model**。
 range 的前半位于 RAM、尾部进入未映射区时，在修改目的向量前产生 load-access fault。后者同时
 检查目的向量保持原值，避免“先算一部分、后发现范围非法”的非原子行为。
 
-完整模型测试在同一 Qwen2.5 prompt 上分别运行普通 RVV 和 native QBS opcode，检查输出文本、
-profile dispatch、GEMV/GEMM 和 fallback。QEMU 通过只能证明 GGML graph 和命令语义可工作，不能
-作为 RTL speedup。
+冻结的完整模型测试对每个模型使用各自记录的 prompt，依次运行普通 RVV、native QBS，以及 native QBS
+加 AKV functional-emulation backend，检查输出文本、Top-1、logits、profile/operator dispatch、
+GEMV/GEMM、原生命令数和所有 fallback。该七模型、五种 GGML architecture、六 dense 加一
+MoE 均通过；QEMU 通过只能证明 GGML graph、ISA/runtime 契约和功能数值可工作，不能作为 RTL
+speedup，也不能把不同 prompt 的命令数作为跨模型性能比较。
 
 ### 13.4 数值验证应分三层
 
@@ -2566,13 +2631,16 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 | Command RTL | 22 个功能命令，覆盖 M1-M4、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立 |
 | Fault RTL | validation、MMU、PMA、AXI/protocol fault | pre-compute 直接 fault、payload drain 和“失败不提交”均成立 |
 | QEMU directed | 九种 profile、M1-M4、N=35 tail、三 expert `MUL_MAT_ID` | ISA、guest memory、repack、dispatch 与软件 shape 组合成立 |
+| 多模型 Host 图 | 7 模型 x 4 个 effective KV，共 28/28 PASS；当前规则为 D64/D96/D128、GQA1..8 | Qwen2/Llama/Gemma3/Phi3/OLMoE 的 operator、profile、shape、MoE routing 和 Attention execute/fallback 可严格统计 |
 | 真实 RTL 数据 | `format_closure.csv` 中 Q3_K/Q5_K/Q6_K/Q8_0 代表点及既有 Q4_K/Q6_K workload | 真实 GGUF bytes、activation 和 golden 可穿过 timing RTL |
-| 模型级 QEMU | 七种 profile 有 68-step teacher-forced 指标；Q4_0/Q5_0 有严格生成回归 | 原生 `qbexec` 能运行真实模型且短片段质量未崩坏 |
+| 多模型 QEMU | 冻结旧 selector：7/7 模型 PASS；5 architecture、6 dense、1 MoE；统一 guest/QEMU/ABI | 原生 QBS 与当时的 AKV 执行/显式回退可穿过真实 GGML graph；不替代 D96/GQA3 广义重跑 |
+| 格式级模型数值 | 七种 profile 有 68-step teacher-forced 指标；Q4_0/Q5_0 有严格生成回归 | 原生 `qbexec` 能运行真实模型且短片段质量未崩坏 |
 
 这仍留下四类空白：
 
 1. Q4_0/Q5_0 尚未达到其余七种 profile 相同的 68-step 指标深度；
-2. 模型质量主要基于 Qwen2.5 和短固定文本，缺少多模型、标准数据集和长上下文；
+2. 七模型已完成短功能运行，但深度质量统计仍主要基于 Qwen2.5；缺少多模型标准数据集、长文本
+   free-running generation 和长上下文质量闭环；
 3. module-level fault 已覆盖，但长命令中的 reset、interrupt、debug/kill 系统级压力仍需专门闭环；
 4. QEMU 是功能模型，真实 RTL 的全格式、全模型执行成本以及综合/P&R/功耗不能由其替代。
 
@@ -2593,7 +2661,7 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 | Compute command RTL | 22/22 PASS，fault discard PASS | 9 profiles、M1--M4、N/K/layout/tail | block adapter 到 hidden accumulator 的命令内路径成立 |
 | End-to-end QBS RTL | 22/22 PASS，加 4 类 atomic-fault PASS | descriptor 到 VRF commit；validation/MMU/AXI/PMA fault | 成功结果可提交，失败命令在提交前不可见 |
 | 真实数据 RTL closure | 4 对 RVV/QBS 点全部 PASS，两侧对同一 golden 的 mismatch 均为 0 | Q3_K/Q5_K/Q6_K 的 1.5B `attn_q`，Q8_0 的 0.5B `attn_q` | 当前 timing RTL 可消费真实 GGUF bytes 和 activation |
-| 整模型 native QEMU | RVV/QBS 均退出 0，10-token prompt + 2-token greedy 输出逐字节一致 | Qwen2.5-1.5B Q4_K_M，Q4_K/Q6_K GEMV/GEMM、R4/M4、fallback | 真实 GGML graph 能发出并执行 native `qbexec`；不代表 RTL speedup |
+| 多模型全系统 QEMU | 冻结旧 selector：7/7 PASS；908,688 native QBS、0 emulated；AKV 82 execute/258 explicit fallback | 5 GGML architecture、6 dense、1 MoE；每模型一 Prefill 加一 Decode、2 generated tokens | 真实 GGML graph 能发出 native `qbexec` 并保持普通 RVV fallback；AKV 为功能仿真，不代表 RTL speedup或当前广义覆盖 |
 | 模型级数值 | 7 profiles 有 68-step teacher-forced；Q4_0/Q5_0 有生成回归 | Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/IQ4_NL logits；其余格式的定向模型回归 | 短固定文本未见分布崩坏；尚不是标准数据集质量结论 |
 
 当前严格配对的四个真实 operator 点如下。Compute 区间包含动态 activation quantization 和
@@ -2792,7 +2860,8 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
   投放前 buffer 容量拒绝；
 - QBS 与 Ara normal VLSU 有明确互斥和 assertion；
 - fault 前结果不可见，成功后结果进入普通 VRF；
-- 有真实 Qwen2.5 数据、完整 `MUL_MAT`、受约束 `MUL_MAT_ID` 和整模型 QEMU 功能闭环。
+- 有七个 exact-sha 真实模型、28 个 Host context case、完整 `MUL_MAT`、真实 OLMoE
+  `MUL_MAT_ID`，以及统一 guest/QEMU/QBS ABI 下的整模型功能闭环。
 
 ### 15.2 当前限制
 
@@ -2800,6 +2869,9 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 - dynamic activation quantization 仍在软件/RVV path；
 - K>256 blocks 依赖软件分段，现有 R4 子段令 N 降为 4；
 - 只覆盖列出的 profile，未覆盖全部 llama.cpp/IQ/TQ/MXFP type；
+- 七模型通用性工作集统一采用发布名称中的 Q4_K_M 类别，但不控制各发布者的 quantizer 版本、
+  importance matrix 和 calibration 数据；它与九 profile 回归是两个正交验证轴，不是完整的
+  七模型乘九 profile 笛卡尔积；
 - 当前九种 canonical profile 的 byte ABI 仍与 GGML/GGUF 一致；其他推理运行时尚无实际 adapter，
   非严格同构格式需要经过验证的加载期转换或新增 profile；
 - M 最大 4，N 最大受 VLEN/32 和 32 上限约束；

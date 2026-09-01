@@ -47,6 +47,14 @@ if [[ -f ${capture_root}/run.conf ]]; then
     exit 2
   fi
 fi
+if [[ -f ${capture_root}/replay/manifest.json ]]; then
+  captured_kv=$(jq -r '.topology.active_kv // .effective_kv // empty' \
+    "${capture_root}/replay/manifest.json")
+  if [[ -n ${captured_kv} && ${captured_kv} != "${kvlen}" ]]; then
+    echo "capture effective KV ${captured_kv} does not match requested KV ${kvlen}: ${capture_root}" >&2
+    exit 2
+  fi
+fi
 stamp=$(date +%Y%m%d_%H%M%S)
 run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
@@ -54,18 +62,16 @@ testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 if [[ ${implementation} != ref && ${implementation} != rvv &&
       ${implementation} != tiled_rvv && ${implementation} != akv &&
       ${implementation} != akv_v2 ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|63|64|65|128|256|1024] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
-if [[ ${kvlen} != 16 && ${kvlen} != 63 && ${kvlen} != 64 &&
-      ${kvlen} != 65 && ${kvlen} != 128 && ${kvlen} != 256 &&
-      ${kvlen} != 1024 ]]; then
+if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
   echo "unsupported effective KV length: ${kvlen}" >&2
   exit 2
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [16|63|64|65|128|256|1024] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ (${implementation} == akv || ${implementation} == akv_v2) &&

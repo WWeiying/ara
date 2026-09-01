@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "host_census": "hardware/akv_context_census_generalized_20260901_r4/summary.json",
+  "host_expected_models": [
+    {"id": "qwen25_1p5b_q4km", "name": "Qwen2.5-1.5B-Instruct-Q4_K_M", "head_dims": 128, "gqa_rows": 6, "disposition": "execute"},
+    {"id": "tinyllama_1p1b_q4km", "name": "TinyLlama-1.1B-Chat-Q4_K_M", "head_dims": 64, "gqa_rows": 8, "disposition": "execute"},
+    {"id": "smollm2_135m_q4km", "name": "SmolLM2-135M-Instruct-Q4_K_M", "head_dims": 64, "gqa_rows": 3, "disposition": "execute"},
+    {"id": "llama32_1b_q4km", "name": "Llama-3.2-1B-Instruct-Q4_K_M", "head_dims": 64, "gqa_rows": 4, "disposition": "execute"},
+    {"id": "gemma3_1b_q4km", "name": "Gemma-3-1B-IT-Q4_K_M", "head_dims": 256, "gqa_rows": 4, "disposition": "fallback_shape"},
+    {"id": "phi35_mini_q4km", "name": "Phi-3.5-Mini-Instruct-Q4_K_M", "head_dims": 96, "gqa_rows": 1, "disposition": "execute"},
+    {"id": "olmoe_1b7b_q4km", "name": "OLMoE-1B-7B-0924-Instruct-Q4_K_M", "head_dims": 128, "gqa_rows": 1, "disposition": "execute"}
+  ],
+  "frozen_full_model_qemu": {
+    "summary": "hardware/qbs_akv_model_generality_20260831/summary.json",
+    "complete": "hardware/qbs_akv_model_generality_20260831/complete",
+    "expected_dispositions": {
+      "qwen25_1p5b_q4km": "execute",
+      "tinyllama_1p1b_q4km": "execute",
+      "smollm2_135m_q4km": "fallback_shape",
+      "llama32_1b_q4km": "execute",
+      "gemma3_1b_q4km": "fallback_shape",
+      "phi35_mini_q4km": "fallback_shape",
+      "olmoe_1b7b_q4km": "execute"
+    },
+    "expected_totals": {
+      "qbs_native_commands": 908688,
+      "qbs_emulated_commands": 0,
+      "akv_executed_ops": 82,
+      "akv_fallback_ops": 258
+    }
+  },
+  "akv_engine_tests": [
+    {
+      "name": "generic_sram",
+      "log": "verification/akv/rtl_engine_build/run.log",
+      "marker": "AKV engine PASS: v1 D64/D128 plus v2 D64/D96/D128 and segmented D256"
+    },
+    {
+      "name": "target_macro_sram",
+      "log": "verification/akv/rtl_engine_macro_build/run.log",
+      "marker": "AKV engine PASS: v1 D64/D128 plus v2 D64/D96/D128 and segmented D256"
+    }
+  ],
+  "qbs_engine_tests": [
+    {"name": "profiles", "log": "verification/qbs/rtl_build/run.log", "marker": "QBS profile engine PASS: 432 cases"},
+    {"name": "commands", "log": "verification/qbs/rtl_command_build/run.log", "marker": "QBS command engine PASS: 22 functional cases"},
+    {"name": "descriptor", "log": "verification/qbs/rtl_descriptor_build/run.log", "marker": "QBS descriptor decoder PASS"},
+    {"name": "read", "log": "verification/qbs/rtl_read_build/run.log", "marker": "QBS read engine PASS"},
+    {"name": "commit", "log": "verification/qbs/rtl_commit_build/run.log", "marker": "QBS commit PASS"},
+    {"name": "context", "log": "verification/qbs/rtl_context_build/run.log", "marker": "QBS activation context PASS"},
+    {"name": "context_macro", "log": "verification/qbs/rtl_context_macro_build/run.log", "marker": "QBS activation context PASS"},
+    {"name": "end_to_end", "log": "verification/qbs/rtl_engine_build/run.log", "marker": "QBS engine PASS: 22 functional cases plus four fault classes"}
+  ],
+  "qbs_non_regression": [
+    {
+      "name": "Q4_K_context",
+      "baseline": "hardware/qbs_akv_goal_final_q4k_context_20260831_082621/result.csv",
+      "current": "hardware/qbs_akv_current_q4k_context_20260831_153548/result.csv",
+      "max_regression": 0.01
+    },
+    {
+      "name": "Q6_K_direct",
+      "baseline": "hardware/qbs_akv_goal_final_q6k_direct_20260831_082808/result.csv",
+      "current": "hardware/qbs_akv_current_q6k_20260831_133629/result.csv",
+      "max_regression": 0.01
+    }
+  ],
+  "qbs_integrated_points": [
+    {"name": "decode_attn_q_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/decode_attn_q_qbs"},
+    {"name": "decode_ffn_gate_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_gate_qbs"},
+    {"name": "decode_ffn_down_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_down_qbs"},
+    {"name": "prefill_attn_q_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/prefill_attn_q_qbs"},
+    {"name": "prefill_ffn_gate_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_gate_qbs"},
+    {"name": "prefill_ffn_down_qbs", "directory": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_down_qbs"}
+  ],
+  "ordinary_rvv": {
+    "case": "operator/decode/attention_core/rvv",
+    "baseline": "hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/ara.log",
+    "current": "hardware/akv_post_generalize_regress_rvv_20260901/decode_attention_core_rvv_kv16_20260901_030722/ara.log",
+    "max_regression": 0.01
+  },
+  "focused_akv": [
+    {
+      "name": "Qwen_D128_GQA6_KV16",
+      "case": "operator/decode/attention_core/akv_v2",
+      "baseline": "hardware/akv_post_d256_hotpath2_qwen_20260901/decode_attention_core_akv_v2_kv16_20260901_025815/ara.log",
+      "current": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv16_latest/ara.log",
+      "capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-attention-contexts-latest/kv16",
+      "max_regression": 0.01
+    },
+    {
+      "name": "SmolLM2_D64_GQA3_KV5",
+      "case": "operator/decode/attention_core/akv_v2",
+      "baseline": "hardware/akv_post_hotpath_regress_smollm2_20260901/decode_attention_core_akv_v2_kv5_20260901_030104/ara.log",
+      "current": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv5_latest/ara.log",
+      "capture_root": "/home/wangwy/llama/captures/smollm2-135m-q4_k_m-attention-gqa3-dag-probe",
+      "max_regression": 0.01
+    },
+    {
+      "name": "Phi35_D96_GQA1_KV18",
+      "case": "operator/decode/attention_core/akv_v2",
+      "baseline": "hardware/akv_post_hotpath_regress_phi35_20260901/decode_attention_core_akv_v2_kv18_20260901_030242/ara.log",
+      "current": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv18_latest/ara.log",
+      "capture_root": "/home/wangwy/llama/captures/phi35-mini-q4km-attention-d96-head0-meta-20260901",
+      "max_regression": 0.01
+    }
+  ],
+  "focused_simulator_run": {
+    "status": "hardware/akv_generalization_focused_current_20260901/status",
+    "complete": "hardware/akv_generalization_focused_current_20260901/complete"
+  },
+  "d256_gate": {
+    "akv_case": "operator/decode/attention_core/akv_v2",
+    "rvv_case": "operator/decode/attention_core/tiled_rvv",
+    "current_akv_log": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv17_latest/ara.log",
+    "current_rvv_log": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_tiled_rvv_kv17_latest/ara.log",
+    "capture_root": "/home/wangwy/llama/captures/gemma3-1b-q4km-attention-d256-head0-meta-20260901",
+    "minimum_speedup": 1.2,
+    "expected_disposition": "fallback_shape"
+  },
+  "legacy_akv_non_regression": [
+    {
+      "name": "D64_GQA8_KV64",
+      "case": "akv-v2/derived-real/d64-g8-kv64/akv_v2",
+      "baseline": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log",
+      "current": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv64_latest/ara.log",
+      "max_regression": 0.01
+    },
+    {
+      "name": "D128_GQA6_KV128",
+      "case": "akv-v2/derived-real/d128-g6-kv128/akv_v2",
+      "baseline": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log",
+      "current": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv128_latest/ara.log",
+      "max_regression": 0.01
+    },
+    {
+      "name": "D128_GQA4_KV63",
+      "case": "akv-v2/derived-real/d128-g4-kv63/akv_v2",
+      "baseline": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log",
+      "current": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv63_latest/ara.log",
+      "max_regression": 0.01
+    },
+    {
+      "name": "D64_GQA1_KV65",
+      "case": "akv-v2/derived-real/d64-g1-kv65/akv_v2",
+      "baseline": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log",
+      "current": "hardware/akv_d64_plan_init_fix_20260901/decode_attention_core_akv_v2_kv65_20260901_043811/ara.log",
+      "max_regression": 0.01
+    }
+  ],
+  "generalized_qemu": [
+    {
+      "name": "SmolLM2_D64_GQA3",
+      "summary": "hardware/akv_jobs/qemu_model_combined_smollm2_gqa3_20260831/model_closure_generalized_20260901/dynamic_summary.json",
+      "disposition": "execute"
+    },
+    {
+      "name": "Phi35_D96_GQA1",
+      "summary": "hardware/akv_jobs/model_generality_generalized_phi35_20260901/phi35_mini_q4km/run/model_closure/dynamic_summary.json",
+      "disposition": "execute"
+    }
+  ],
+  "legacy_simulator": {
+    "simv": "hardware/sim_akv_generalized_qbs_20260901/simv",
+    "filelist": "hardware/build_akv_generalized_qbs_20260901/vcs/bender_script_default",
+    "required_defines": [
+      "NR_LANES=4",
+      "VLEN=1024",
+      "ARA_QBS_ENABLE=1",
+      "ARA_AKV_ENABLE=1",
+      "ARA_AKV_V2_ENABLE=1",
+      "SIM_L2_SIZE_BYTES=16777216"
+    ],
+    "capture_root": "/home/wangwy/llama/captures/akv-v2-derived-real-qwen-v3",
+    "run_status": "hardware/akv_generalization_regress_20260901/status",
+    "run_complete": "hardware/akv_generalization_regress_20260901/complete",
+    "metadata_sources": [
+      "Bender.yml",
+      "hardware/Makefile",
+      "hardware/build_akv_generalized_qbs_20260901/work-dpi/elfloader.o",
+      "config/default.mk",
+      "config/sram.mk"
+    ]
+  },
+  "physical_closure": {
+    "status": "deferred_by_user",
+    "required_corner": "TSMC28_1GHz_setup_uncertainty_0.15ns"
+  }
+}

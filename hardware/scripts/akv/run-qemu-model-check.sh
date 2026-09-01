@@ -7,6 +7,7 @@ default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
 model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
 model_tokens=${AKV_MODEL_TOKENS:-2}
 model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
+qemu_memory=${AKV_QEMU_MEMORY:-4G}
 ara_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
 grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
@@ -193,6 +194,7 @@ write_manifest() {
     printf 'QEMU_BINARY=%s\n' "${qemu_binary}"
     printf 'QEMU_BINARY_SHA256=%s\n' "$(sha256sum "${qemu_binary}" | awk '{print $1}')"
     printf 'QEMU_CPU=%s\n' "${qemu_cpu}"
+    printf 'QEMU_MEMORY=%s\n' "${qemu_memory}"
     printf 'MODEL_DISK=%s\n' "${model_disk}"
     printf 'MODEL_DISK_SHA256=%s\n' "$(sha256sum "${model_disk}" | awk '{print $1}')"
     printf 'MODEL_GUEST_PATH=%s\n' "${model_guest_path}"
@@ -217,6 +219,11 @@ esac
   printf 'invalid AKV_MODEL_TOKENS: %s\n' "${model_tokens}" >&2
   exit 2
 }
+[[ ${qemu_memory} =~ ^[1-9][0-9]*[GM]$ ]] || {
+  printf 'invalid AKV_QEMU_MEMORY: %s (expected positive G/M size, for example 4G)\n' \
+    "${qemu_memory}" >&2
+  exit 2
+}
 [[ ${model_prompt} != *$'\n'* && ${model_prompt} != *$'\r'* ]] || {
   printf 'AKV_MODEL_PROMPT must be one line\n' >&2
   exit 2
@@ -235,7 +242,7 @@ if [[ ${1:-} == --check-log ]]; then
   result_file=$(dirname -- "${log_file}")/result.txt
   test -s "${log_file}"
   validate_log "${log_file}" "${result_file}"
-  if [[ ${model_mode} == combined ]]; then
+  if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
     summary_args=("${log_file}")
     if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
       summary_args+=(--dynamic-only)
@@ -330,7 +337,7 @@ write_manifest "${manifest_file}"
   -M virt \
   -cpu "${qemu_cpu}" \
   -smp 1 \
-  -m 4G \
+  -m "${qemu_memory}" \
   -display none \
   -monitor none \
   -serial stdio \
@@ -343,7 +350,7 @@ write_manifest "${manifest_file}"
   2>&1 | tee "${log_file}"
 
 validate_log "${log_file}" "${result_file}"
-if [[ ${model_mode} == combined ]]; then
+if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
   summary_args=("${log_file}")
   if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
     summary_args+=(--dynamic-only)

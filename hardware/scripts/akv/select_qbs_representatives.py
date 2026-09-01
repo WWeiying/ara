@@ -28,9 +28,12 @@ def write_csv(path: Path, rows: list[dict[str, object]]) -> None:
 def qbs_signature(summary: dict[str, object]) -> Counter[tuple[object, ...]]:
     return Counter(
         (
-            row["profile"], int(row["k"]), int(row["m"]), int(row["n"]),
+            row.get("operation", "MUL_MAT"), row["profile"],
+            int(row["k"]), int(row["m"]), int(row["n"]),
             int(row["dot_elements"]), int(row["weight_bytes"]),
-            int(row["activation_bytes"]), str(row["name"]),
+            int(row.get("weight_unique_tensor_bytes", row["weight_bytes"])),
+            int(row["activation_bytes"]),
+            str(row["name"]),
         )
         for row in summary["decode"]["qbs_shapes"]
     )
@@ -39,7 +42,8 @@ def qbs_signature(summary: dict[str, object]) -> Counter[tuple[object, ...]]:
 def collect_shapes(input_root: Path) -> tuple[list[dict[str, object]], list[str], list[int]]:
     if (input_root / "complete").read_text().strip() != "PASS":
         raise ValueError(f"incomplete context sweep: {input_root}")
-    dynamic_rows = list(csv.DictReader((input_root / "dynamic_counts.csv").open(newline="")))
+    with (input_root / "dynamic_counts.csv").open(newline="", encoding="utf-8") as stream:
+        dynamic_rows = list(csv.DictReader(stream))
     if not dynamic_rows or any(row["status"] != "PASS" for row in dynamic_rows):
         raise ValueError("context sweep contains a missing or failed point")
     models = sorted({row["model"] for row in dynamic_rows})
@@ -47,7 +51,7 @@ def collect_shapes(input_root: Path) -> tuple[list[dict[str, object]], list[str]
     if len(dynamic_rows) != len(models) * len(kv_lengths):
         raise ValueError("context sweep is not a complete model/KV matrix")
 
-    aggregate: dict[tuple[str, int, int, int], dict[str, object]] = defaultdict(
+    aggregate: dict[tuple[str, str, int, int, int, int], dict[str, object]] = defaultdict(
         lambda: {
             "nodes": 0,
             "dot_elements": 0,
@@ -68,7 +72,11 @@ def collect_shapes(input_root: Path) -> tuple[list[dict[str, object]], list[str]
             if qbs_signature(summary) != reference_signature:
                 raise ValueError(f"QBS Decode shapes vary with KV for {model}")
         for row in summaries[0]["decode"]["qbs_shapes"]:
-            key = (str(row["profile"]), int(row["k"]), int(row["m"]), int(row["n"]))
+            activation_rows = int(row.get("activation_rows", row["m"]))
+            key = (
+                str(row.get("operation", "MUL_MAT")), str(row["profile"]),
+                int(row["k"]), int(row["m"]), int(row["n"]), activation_rows,
+            )
             record = aggregate[key]
             record["nodes"] = int(record["nodes"]) + 1
             record["dot_elements"] = int(record["dot_elements"]) + int(row["dot_elements"])
@@ -76,17 +84,19 @@ def collect_shapes(input_root: Path) -> tuple[list[dict[str, object]], list[str]
                 int(record["weight_logical_bytes"]) + int(row["weight_bytes"])
             )
             record["activation_elements"] = (
-                int(record["activation_elements"]) + int(row["k"]) * int(row["m"])
+                int(record["activation_elements"]) + int(row["k"]) * activation_rows
             )
             record["models"].add(model)
 
     rows = []
-    for (profile, k, m, n), record in aggregate.items():
+    for (operation, profile, k, m, n, activation_rows), record in aggregate.items():
         rows.append({
+            "operation": operation,
             "profile": profile,
             "k": k,
             "m": m,
             "n": n,
+            "activation_rows": activation_rows,
             "nodes": record["nodes"],
             "dot_elements": record["dot_elements"],
             "weight_logical_bytes": record["weight_logical_bytes"],
@@ -133,7 +143,13 @@ def select(rows: list[dict[str, object]], target: float) -> tuple[list[dict[str,
 def sensitivity_coverage(
     rows: list[dict[str, object]], selected: list[dict[str, object]], profile: str, multipliers: list[float]
 ) -> list[dict[str, float]]:
-    selected_keys = {(row["profile"], row["k"], row["m"], row["n"]) for row in selected}
+    selected_keys = {
+        (
+            row["operation"], row["profile"], row["k"], row["m"], row["n"],
+            row.get("activation_rows", row["m"]),
+        )
+        for row in selected
+    }
     results = []
     for multiplier in multipliers:
         total = 0.0
@@ -143,7 +159,10 @@ def sensitivity_coverage(
             if row["profile"] == profile:
                 cycles *= multiplier
             total += cycles
-            if (row["profile"], row["k"], row["m"], row["n"]) in selected_keys:
+            if (
+                row["operation"], row["profile"], row["k"], row["m"], row["n"],
+                row.get("activation_rows", row["m"]),
+            ) in selected_keys:
                 covered += cycles
         results.append({"multiplier": multiplier, "coverage": covered / total})
     return results
@@ -178,7 +197,8 @@ def main() -> int:
 
     ordered = sorted(rows, key=lambda row: int(row["rank"]))
     columns = [
-        "rank", "selected", "profile", "k", "m", "n", "nodes", "models",
+        "rank", "selected", "operation", "profile", "k", "m", "n",
+        "activation_rows", "nodes", "models",
         "dot_elements", "weight_logical_bytes", "activation_elements",
         "matmul_projected_cycles", "quantize_projected_cycles_no_reuse",
         "projected_cycles_no_reuse", "cycle_share", "cumulative_cycle_share",
@@ -193,7 +213,7 @@ def main() -> int:
         "baseline_commit": calibration["baseline_commit"],
         "scope": calibration["scope"],
         "models": models,
-        "model_weights": {model: 1 for model in models},
+        "model_trace_multiplicity": {model: 1 for model in models},
         "validated_kv_lengths": kv_lengths,
         "qbs_shapes_are_kv_invariant": True,
         "coverage_target": target,
@@ -210,18 +230,19 @@ def main() -> int:
         "# QBS Representative Shape Selection",
         "",
         f"- Scope: {calibration['scope']}.",
-        f"- Models: {', '.join(models)} (equal weight).",
+        f"- Models: {', '.join(models)} (one Decode graph each; projected work is pooled).",
         f"- KV lengths checked for shape invariance: {', '.join(map(str, kv_lengths))}.",
         f"- Selected {len(selected)} shapes; nominal coverage: {nominal_coverage:.3%}.",
         f"- Minimum Q5_0 sensitivity coverage: {minimum:.3%}.",
         "- Projected cycles are a conservative ranking metric, not measured model cycles.",
         "",
-        "| Rank | Profile | K | M | N | Nodes | Projected cycles | Cumulative |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|",
+        "| Rank | Operation | Profile | K | M | A rows | N | Nodes | Projected cycles | Cumulative |",
+        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in selected:
         lines.append(
-            f"| {row['rank']} | {row['profile']} | {row['k']} | {row['m']} | {row['n']} | "
+            f"| {row['rank']} | {row['operation']} | {row['profile']} | "
+            f"{row['k']} | {row['m']} | {row['activation_rows']} | {row['n']} | "
             f"{row['nodes']} | {row['projected_cycles_no_reuse']} | "
             f"{float(row['cumulative_cycle_share']):.3%} |"
         )

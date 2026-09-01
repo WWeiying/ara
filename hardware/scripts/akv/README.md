@@ -171,6 +171,179 @@ gate, and AKV command/traffic formulas. `artifacts.csv` hashes every consumed
 raw artifact. This audit contains no synthesis, PPA, place-and-route, or
 full-model RTL timing claim.
 
+## Multi-model generality closure
+
+`model-generality-manifest.json` defines a set with the same published
+`Q4_K_M` GGUF quantization label spanning Qwen2, Llama-family, Gemma3, Phi3,
+and OLMoE graphs. This controls the primary format class, not the publisher's
+quantizer version, importance matrix, or calibration data. The OLMoE point
+exercises real `MUL_MAT_ID`; unsupported Attention dimensions or GQA ratios
+must fall back explicitly instead of being forced through AKV.
+This is the model-architecture/topology axis of validation, not a seven-model
+by nine-profile Cartesian product; the separate profile closure supplies the
+format axis.
+
+Capture one-token Decode graphs at four effective KV lengths and rank the real
+QBS shapes with the checked RTL calibration:
+
+```bash
+host=hardware/qbs_akv_model_generality_host_stage1_20260831
+hardware/scripts/akv/run-context-sweep.py \
+  --manifest hardware/scripts/akv/model-generality-manifest.json \
+  --output "$host" --models all --kv all --threads 16 --timeout 900
+hardware/scripts/akv/select_qbs_representatives.py --input "$host"
+```
+
+When the hardware support rule changes, do not edit or reinterpret the old
+capture directory. Re-evaluate its immutable real-model logs into a new output
+directory with the current analyzer:
+
+```bash
+hardware/scripts/akv/revalidate-context-sweep.py \
+  --source-root "$host" \
+  --output hardware/akv_context_census_generalized_YYYYMMDD
+```
+
+The revalidator writes all 28 per-model/KV summaries, `dynamic_counts.csv`, a
+model-level `support_matrix.csv`, and hashes of the source logs, prompts,
+manifest, analyzer, and tool. Its provenance also freezes the exact admitted
+head-dimension and GQA sets, so a later contract extension cannot silently
+change the meaning of an older result.
+
+The host census keeps workload and offload accounting separate. Fields named
+`attention_candidate_*` include every Decode Attention node, including shapes
+that must remain on RVV. Fields named `akv_shape_eligible_*` include only work
+admitted by the current AKV contract. For `MUL_MAT_ID`, routed matrix rows,
+resident all-expert weight capacity, and source-activation quantization rows
+are also separate quantities; they must not be substituted for one another.
+Legacy guest traces that omit the source tensor shape are marked
+`unavailable_legacy_source_shape`; their routed matrix and command-dot work
+remain usable, but activation quantization is taken only from the newer Host
+graph trace.
+
+Run each full model in QEMU with ordinary RVV, native QBS, and native QBS plus
+the AKV functional-emulation backend. This is a long functional run; launch it
+independently and do not poll it:
+
+```bash
+qemu=hardware/akv_jobs/model_generality_all_YYYYMMDD
+nohup hardware/scripts/akv/run-model-generality-qemu.py \
+  --models all --output "$qemu" >"$qemu.launch.log" 2>&1 &
+```
+
+The final summarizer requires one dynamic QEMU summary per manifest model. It
+cross-checks the exact Host/QEMU operator counts, profile set, operator versus
+native-command dot work, AKV Prefill/Decode partition, source/model-disk
+hashes, complete Host matrix, representative-shape provenance, and the
+existing timing-RTL closure. Each dynamic summary must also record the
+SHA-256 of the current `summarize-model-closure.py`; summaries produced with
+older accounting semantics are rejected instead of being mixed into a new
+aggregate:
+
+```bash
+hardware/scripts/akv/summarize-model-generality.py \
+  --host-root "$host" \
+  --qbs-representatives "$host/qbs_representative_selection" \
+  --qemu-summary qwen25_1p5b_q4km=path/to/dynamic_summary.json \
+  --qemu-summary tinyllama_1p1b_q4km=path/to/dynamic_summary.json \
+  --qemu-summary smollm2_135m_q4km=path/to/dynamic_summary.json \
+  --qemu-summary llama32_1b_q4km=path/to/dynamic_summary.json \
+  --qemu-summary gemma3_1b_q4km=path/to/dynamic_summary.json \
+  --qemu-summary phi35_mini_q4km=path/to/dynamic_summary.json \
+  --qemu-summary olmoe_1b7b_q4km=path/to/dynamic_summary.json \
+  --output hardware/qbs_akv_model_generality_YYYYMMDD
+```
+
+The final directory archives the manifest, Host aggregate/provenance, all
+model/KV Decode summaries, every QEMU dynamic summary, the checked QBS cycle
+calibration, the representative selection, the final verification tools, and
+the timing-RTL closure. Raw
+QEMU logs, model disks, and build products remain external and are referenced
+by hashes instead of copied into the compact result.
+
+The frozen full-model result is `hardware/qbs_akv_model_generality_20260831/`:
+7/7 QEMU models and 28/28 Host model/KV cases pass; 908,688 native QBS
+commands and zero emulated QBS commands are observed. That artifact used the
+older D64/D128 and GQA1/4/6/8 selector, so four model shapes execute AKV and
+three use explicit shape fallback. It remains valid evidence for that frozen
+contract and must not be relabeled as the generalized result.
+
+The current host-side generalized census is
+`hardware/akv_context_census_generalized_20260901_r4/`. All 28/28 model/KV
+cases pass under the production D64/D96/D128 and GQA1..8 rule. Qwen2.5,
+TinyLlama, SmolLM2, Llama-3.2, Phi-3.5, and OLMoE are shape eligible; Gemma-3
+D256 remains an explicit shape fallback. This artifact proves real-graph shape
+coverage only. Full-model QEMU numerics and native RTL cycles remain separate
+evidence layers and are not inferred from the census.
+
+The output includes `summary.json`, `dynamic_counts.csv`, `support_matrix.csv`,
+and `provenance.json`. The summary records the seven-model/four-KV matrix,
+execute-versus-fallback partition, aggregate candidate accounting, and hashes of
+the three detailed artifacts. The `complete` marker is written only after all
+four files have been generated successfully.
+
+This layered result has a strict interpretation. Host graphs establish exact
+workload coverage; QEMU establishes ISA/runtime functionality and numerical
+behavior; directed RTL establishes datapath and protocol behavior. None of
+these alone is a cycle-accurate full-model RTL measurement.
+
+## Area-controlled generalization closure audit
+
+The current generalization evidence is audited independently of the older goal
+closure with:
+
+```bash
+python3 hardware/scripts/akv/check-generalization-closure.py --allow-pending
+```
+
+The manifest is
+`hardware/scripts/akv/generalization-closure-manifest.json`; the generated
+status is `hardware/akv_generalization_closure_20260901/summary.json`. Every
+requirement is reported as `PASS`, `PENDING`, or `FAIL`. `--allow-pending` only
+allows the audit file to be emitted while background or explicitly deferred
+work remains; it does not turn `PENDING` into closure. Without that option the
+tool exits with status 2 whenever any requirement is pending.
+
+The host-census check is identity- and provenance-strict: it verifies the exact
+seven model IDs, names, D/GQA shapes and execute/fallback dispositions; the
+complete 7-model x 4-KV case matrix and candidate accounting; the hashes of the
+support matrix, dynamic counts and provenance files; and the hashes of all 28
+immutable source Host logs. Matching only the aggregate model/case counts is
+not sufficient to pass.
+
+Model-level evidence is layered rather than inferred. The audit first verifies
+the frozen 7/7-model QEMU closure (908,688 native QBS commands, zero emulated
+commands, and the historical four-execute/three-shape-fallback AKV partition),
+then requires current generalized QEMU runs for SmolLM2 GQA3 and Phi-3.5 D96.
+The latter two runs prove that the newly admitted shapes execute rather than
+silently retaining their former fallback disposition.
+
+The current non-physical audit reports 34 passing requirements, zero failures,
+and one pending requirement. The sole pending item is the explicitly deferred
+TSMC28 1 GHz physical closure; it is not treated as a functional pass. All six
+integrated QBS representatives, including the long Prefill FFN-gate point, have
+terminal passing results in the current simulator image.
+
+After other long simulations release the VCS resources, rerun the four frozen
+D64/D128, GQA1/4/6/8 non-regression points in one background worker with:
+
+```bash
+make -C hardware compile akv_v2=1 sim_l2_mb=16 \
+  buildpath="$PWD/hardware/build_akv_d256_compile" \
+  sim_dir=sim_akv_d256_compile no_fsdb=1
+
+mkdir -p hardware/akv_generalization_regress_20260901
+nohup hardware/scripts/akv/run-generalization-regression.sh \
+  > hardware/akv_generalization_regress_20260901/launcher.log 2>&1 &
+```
+
+The worker uses the immutable derived-real Qwen capture and writes a terminal
+`status`. The closure audit compares every current cycle count with its frozen
+baseline and enforces the 1% maximum-regression gate. Before any point starts,
+the worker also checks the VCS filelist and refuses a `simv` that predates an
+RTL/build input. Each accepted result must record the same simulator path and
+SHA-256 as the current binary, so an old executable cannot satisfy the gate.
+
 ## QBS cross-operator activation lifetime
 
 The lifetime check runs the same real Qwen prompt twice with native QBS. The
@@ -214,20 +387,28 @@ unmatched records are an error rather than a global proportional estimate.
 - `GGML_RISCV_AKV=1`: native capability query and AKV instruction execution;
 - `GGML_RISCV_AKV_TRACE=1`: candidate, execution, group, and fallback counts.
 
-The current AKV-v2 native profile is deliberately strict: Decode only, F32
-query, F16 K/V/mask, F32 output, one batch, `D=64/128`, and GQA ratio
-`1/4/6/8`. Positive KV lengths are processed in 64-token tiles, including
-one-token and non-multiple-of-64 tails. The specialized assembly path is
-`D128/GQA6`; other admitted combinations use generic RVV arithmetic over the
-same AKV-v2 token-axis context and commands. Attention sinks, ALiBi bias,
-softcap, unsupported GQA ratios, incompatible layouts, and malformed masks
-fall back before hidden context state changes. In particular, the current
-SmolLM2 `GQA=3` model test exercises this fallback rather than being silently
-forced through AKV.
+The current AKV-v2 production profile is deliberately strict: Decode only, F32
+Query, F16 K/V/mask, F32 output, one batch, `D=64/96/128`, and `q_rows` (the
+GQA ratio) from 1 through 8. Positive KV lengths are processed in 64-token
+tiles, including one-token and non-multiple-of-64 tails. D96 uses the D-axis
+tail capability in the existing D128 physical slot and does not increase
+context capacity. The specialized assembly path is D128/six rows; other
+admitted combinations use generic RVV arithmetic over the same AKV-v2
+token-axis context and commands. Attention sinks, ALiBi bias, softcap,
+incompatible layouts, malformed masks, or any unsupported state fall back
+before hidden context state changes.
 
-The derived-real shape matrix covers both `D64` and `D128`, all four admitted
-GQA ratios, and KV lengths `16/63/64/65/128/256/1024` through scalar reference
-and RVV execution. This proves shape and numerical behavior, not equal RTL
-performance for every point. Representative RTL leaves separately cover
-`D64/GQA8/KV64`, `D128/GQA6/KV128`, `D128/GQA4/KV63`, and
-`D64/GQA1/KV65`.
+The original derived-real matrix still provides 112/112 passing scalar/RVV
+cases over D64/D128, GQA1/4/6/8, and KV
+16/63/64/65/128/256/1024. Generalization is additionally checked by the AKV
+engine's generic- and macro-SRAM suites, a real SmolLM2 D64/GQA3 RTL leaf
+(30,853 cycles, zero mismatches), and a real Phi-3.5 D96/GQA1 RTL leaf
+(10,073 cycles, zero mismatches). These results prove correctness and
+selection breadth, not uniform speedup for every admitted shape.
+
+The runtime and directed tests implement D256 as two D128 score/value phases
+using `d_offset`/`d_count`, partial-score accumulation, and K/V replay without
+doubling context SRAM. The real Gemma D256 leaf passes with zero mismatches but
+takes 47,191 cycles versus 36,043 for the strong tiled-RVV baseline (0.764x).
+It fails the required 1.2x admission gate, so the production GGML selector and
+host support matrix intentionally retain D256 as `fallback_shape`.

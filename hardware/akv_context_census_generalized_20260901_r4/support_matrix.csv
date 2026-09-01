@@ -1,0 +1,8 @@
+model,model_name,head_dims,gqa_rows,q_heads,kv_heads,effective_kv,candidate_nodes_per_decode,eligible_nodes_per_decode,fallback_nodes_per_decode,expected_disposition,observed_disposition,reference_summary,host_census_status
+qwen25_1p5b_q4km,Qwen2.5-1.5B-Instruct-Q4_K_M,128,6,12,2,16/128/512/1024,28,28,0,execute,execute,hardware/akv_jobs/qemu_model_combined_fixedprompt_qwen_20260831/model_closure_lifetime/dynamic_summary.json,PASS
+tinyllama_1p1b_q4km,TinyLlama-1.1B-Chat-Q4_K_M,64,8,32,4,16/128/512/1024,22,22,0,execute,execute,hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json,PASS
+smollm2_135m_q4km,SmolLM2-135M-Instruct-Q4_K_M,64,3,9,3,16/128/512/1024,30,30,0,execute,execute,hardware/akv_jobs/qemu_model_combined_smollm2_gqa3_20260831/model_closure_generalized_20260901/dynamic_summary.json,PASS
+llama32_1b_q4km,Llama-3.2-1B-Instruct-Q4_K_M,64,4,32,8,16/128/512/1024,16,16,0,execute,execute,,PASS
+gemma3_1b_q4km,Gemma-3-1B-IT-Q4_K_M,256,4,4,1,16/128/512/1024,26,0,26,fallback_shape,fallback_shape,,PASS
+phi35_mini_q4km,Phi-3.5-Mini-Instruct-Q4_K_M,96,1,32,32,16/128/512/1024,32,32,0,execute,execute,,PASS
+olmoe_1b7b_q4km,OLMoE-1B-7B-0924-Instruct-Q4_K_M,128,1,16,16,16/128/512/1024,16,16,0,execute,execute,,PASS

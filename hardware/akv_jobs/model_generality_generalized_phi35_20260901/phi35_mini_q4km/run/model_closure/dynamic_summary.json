@@ -1,0 +1,241 @@
+{
+  "provenance": {
+    "tool": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/scripts/akv/summarize-model-closure.py",
+      "sha256": "269eab626bff3328e7bce2ae31920929618d4e74deb0ace00da16ee9f61d6220",
+      "projection_method_version": 1
+    },
+    "dynamic_log": {
+      "path": "/home/wangwy/openproject/ara_dsa/hardware/akv_jobs/model_generality_generalized_phi35_20260901/phi35_mini_q4km/run/qemu.log",
+      "sha256": "1e7416ce69a7447199d06bbbfe31b7df3909ddfbcea6dea9e0d9b6c06e9f1533"
+    },
+    "qbs_abi": {
+      "path": "/home/wangwy/openproject/ara_dsa/config/qbs_abi.json",
+      "sha256": "b70836b84701270d6f140436f0e6ce53c40c53026c2d843ff9d6ae8d76aed3fe",
+      "architecture_version": 2
+    },
+    "run_manifest": {
+      "MODEL_MODE": "combined",
+      "ARA_REVISION": "1f0f7e090e0de8a8351ea03f4f74a91fb041a76e",
+      "LLAMA_REVISION": "853fa38a5b2b0ac1b5dea0b6706fa2bf955bac5d",
+      "LLAMA_BINARY": "/home/wangwy/llama/llama.cpp/build-rv64-cva6-akv-static/bin/llama-simple",
+      "LLAMA_BINARY_SHA256": "cd4b854cfe3610b8ec0a254e0faf5df1d74a3b62864e80abff13cfdcd8b455ca",
+      "QEMU_BINARY": "/home/wangwy/llama/platforms/cva6-qemu/build/qemu-10.2.0-build/qemu-system-riscv64",
+      "QEMU_BINARY_SHA256": "9d169e77ca41001943053bf5ce8b893dd900dc9b17612286667afa6e04d436ef",
+      "QEMU_CPU": "rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true",
+      "QEMU_MEMORY": "8G",
+      "MODEL_DISK": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/phi35_mini_q4km.ext4",
+      "MODEL_DISK_SHA256": "6a0ed9fe8487d20ea695fb5037ae409df8dbff70dc71c449126aa1f30328e19b",
+      "MODEL_GUEST_PATH": "/model/models/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+      "MODEL_TOKENS": "2",
+      "MODEL_PROMPT": "Explain why low-bit vector inference benefits from packed arithmetic and data reuse.",
+      "LOGITS_MAX_ABS_TOLERANCE": "0.001"
+    }
+  },
+  "functional": {
+    "guest_exit": 0,
+    "output_equal": true,
+    "logits_top1_equal": "1",
+    "logits_max_abs": "0",
+    "qbs_rvv": {
+      "QBS_RVV_LOGITS_RECORDS": "2",
+      "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "2",
+      "QBS_RVV_LOGITS_MAX_ABS": "0.650527954",
+      "QBS_RVV_LOGITS_MAX_REL": "0.0166371409",
+      "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+      "QBS_RVV_TOKEN_OUTPUT_EQUAL": "1"
+    }
+  },
+  "graphs": {
+    "prefill": 1,
+    "decode": 1
+  },
+  "qbs": {
+    "nodes": 258,
+    "operations": {
+      "MUL_MAT": 258
+    },
+    "call_chunks": 384,
+    "unique_activation_elements": 12036096,
+    "output_elements": 22022784,
+    "dot_elements": 78412382208,
+    "per_operation_quantized_activation_bytes": 13728672,
+    "activation_accounting": {
+      "complete": true,
+      "known_unique_activation_elements": 12036096,
+      "known_per_operation_quantized_activation_bytes": 13728672,
+      "unresolved_nodes": 0,
+      "unresolved_operations": {}
+    },
+    "weight_payload_bytes": 6879108096,
+    "weight_payload_bytes_by_phase": {
+      "prefill": 4542819840,
+      "decode": 2336288256
+    },
+    "weight_payload_bytes_by_profile": {
+      "Q4_K": 3878682624,
+      "Q5_K": 1868562432,
+      "Q6_K": 1131863040
+    },
+    "coverage": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "candidate_tensors": "80",
+        "selected_tensors": "80",
+        "segmented_tensors": "0",
+        "candidate_elements": "2315255808",
+        "selected_elements": "2315255808",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q5_K": {
+        "type": "Q5_K",
+        "candidate_tensors": "33",
+        "selected_tensors": "33",
+        "segmented_tensors": "0",
+        "candidate_elements": "934281216",
+        "selected_elements": "934281216",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "candidate_tensors": "18",
+        "selected_tensors": "18",
+        "segmented_tensors": "0",
+        "candidate_elements": "599654400",
+        "selected_elements": "599654400",
+        "fallback_runtime": "0",
+        "fallback_format_filter": "0",
+        "fallback_capability": "0",
+        "fallback_dimensions": "0",
+        "fallback_shape": "0",
+        "fallback_layout": "0",
+        "fallback_profile": "0",
+        "fallback_dispatch": "0"
+      }
+    },
+    "execution": {
+      "Q4_K": {
+        "type": "Q4_K",
+        "gemv_calls": "160",
+        "gemm_calls": "79",
+        "input_rows": "1740",
+        "output_rows": "1998848",
+        "activation_elements": "7147520",
+        "output_elements": "14450688",
+        "dot_elements": "49928994816",
+        "split_calls": "0",
+        "commands_m1": "41984",
+        "commands_m2": "0",
+        "commands_m3": "0",
+        "commands_m4": "102400",
+        "native_qbexec": "144384",
+        "emulated_commands": "0",
+        "command_dot_elements": "49928994816",
+        "segmented_commands": "0",
+        "context_fill": "128",
+        "context_reuse": "38656",
+        "context_release": "128"
+      },
+      "Q5_K": {
+        "type": "Q5_K",
+        "gemv_calls": "64",
+        "gemm_calls": "32",
+        "input_rows": "704",
+        "output_rows": "884736",
+        "activation_elements": "2162688",
+        "output_elements": "6488064",
+        "dot_elements": "19931332608",
+        "split_calls": "0",
+        "commands_m1": "18432",
+        "commands_m2": "0",
+        "commands_m3": "0",
+        "commands_m4": "46080",
+        "native_qbexec": "64512",
+        "emulated_commands": "0",
+        "command_dot_elements": "19931332608",
+        "segmented_commands": "0",
+        "context_fill": "64",
+        "context_reuse": "18304",
+        "context_release": "64"
+      },
+      "Q6_K": {
+        "type": "Q6_K",
+        "gemv_calls": "34",
+        "gemm_calls": "15",
+        "input_rows": "334",
+        "output_rows": "208512",
+        "activation_elements": "2725888",
+        "output_elements": "1084032",
+        "dot_elements": "8552054784",
+        "split_calls": "0",
+        "commands_m1": "5076",
+        "commands_m2": "0",
+        "commands_m3": "0",
+        "commands_m4": "7200",
+        "native_qbexec": "12276",
+        "emulated_commands": "0",
+        "command_dot_elements": "8552054784",
+        "segmented_commands": "0",
+        "context_fill": "2",
+        "context_reuse": "2000",
+        "context_release": "2"
+      }
+    },
+    "activation_lifetime": null
+  },
+  "akv_v2": {
+    "calls": 32,
+    "attention_macs": 4325376,
+    "query_payload_bytes": 196608,
+    "kv_payload_bytes": 8650752,
+    "shapes": [
+      {
+        "graph_id": 1,
+        "phase": "decode",
+        "kernel": "v2",
+        "kv_heads": 32,
+        "q_rows": 32,
+        "gqa_rows": 1,
+        "head_dim": 96,
+        "active_kv": 22,
+        "calls": 32,
+        "query_payload_bytes": 196608,
+        "kv_payload_bytes": 8650752,
+        "attention_macs": 4325376
+      }
+    ],
+    "coverage": {
+      "candidate_ops": "64",
+      "executed_ops": "32",
+      "groups": "1024",
+      "executed_v1": "0",
+      "executed_v2": "32",
+      "groups_v1": "0",
+      "groups_v2": "1024",
+      "kv_group_tokens": "22528",
+      "attention_macs": "4325376",
+      "fallback_runtime": "0",
+      "fallback_capability": "0",
+      "fallback_threading": "0",
+      "fallback_feature": "0",
+      "fallback_shape": "32",
+      "fallback_layout": "0",
+      "fallback_mask": "0"
+    }
+  },
+  "model_nodes": 970
+}

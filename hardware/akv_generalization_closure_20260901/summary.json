@@ -1,0 +1,655 @@
+{
+  "schema_version": 1,
+  "status": "PENDING",
+  "counts": {
+    "PASS": 34,
+    "PENDING": 1,
+    "FAIL": 0
+  },
+  "scope": "AKV area-controlled generalization functional/performance/physical completion audit",
+  "manifest": {
+    "path": "hardware/scripts/akv/generalization-closure-manifest.json",
+    "sha256": "7e5b0a611845c44dd71d6cf507cd604712b60e085e246710b335b0849a6be042"
+  },
+  "checks": [
+    {
+      "name": "seven_model_host_census",
+      "category": "model_coverage",
+      "status": "PASS",
+      "detail": "exact seven-model x four-KV matrix, shape dispositions, artifacts, and immutable Host provenance verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_context_census_generalized_20260901_r4/summary.json",
+          "sha256": "38479ff946267eb0ab34d60af2447cd8cd0694ea261db325d82b583bd9ed1b14"
+        },
+        {
+          "path": "hardware/akv_context_census_generalized_20260901_r4/dynamic_counts.csv",
+          "sha256": "dc7bf310e5f40a4585243e43f1a5be6e30536b01afc6a849be43bbcc1de762c2"
+        },
+        {
+          "path": "hardware/akv_context_census_generalized_20260901_r4/support_matrix.csv",
+          "sha256": "b23b8be6f7c7e3caafe9232e60e5868d4d243757d9cf27f7342e407d11d9c092"
+        },
+        {
+          "path": "hardware/akv_context_census_generalized_20260901_r4/provenance.json",
+          "sha256": "bbc7aa32bc76096cb37348e338b385c0d69ed755149a0142276b00c2b4ab5945"
+        }
+      ]
+    },
+    {
+      "name": "frozen_seven_model_qemu",
+      "category": "full_model_qemu",
+      "status": "PASS",
+      "detail": "7/7 models; native QBS=908688; emulated QBS=0; frozen AKV execute/fallback=82/258",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_model_generality_20260831/summary.json",
+          "sha256": "25afd5ea4ef2a3046df3bacad4e62bd718b5a89999c8117f37aec228407d7c22"
+        },
+        {
+          "path": "hardware/qbs_akv_model_generality_20260831/complete",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        }
+      ]
+    },
+    {
+      "name": "current_akv_simulator",
+      "category": "provenance",
+      "status": "PASS",
+      "detail": "all compiled inputs predate simv sha256=dd6fbd3f696d8ce558fa46278fb22b0b0a09ef83c79e562b95dc2abdf46d052b",
+      "artifacts": [
+        {
+          "path": "hardware/sim_akv_generalized_qbs_20260901/simv",
+          "sha256": "dd6fbd3f696d8ce558fa46278fb22b0b0a09ef83c79e562b95dc2abdf46d052b"
+        },
+        {
+          "path": "hardware/build_akv_generalized_qbs_20260901/vcs/bender_script_default",
+          "sha256": "2ad53a799787d787029a8e8f4c0364d48badd4a1af4d0f55b42deab936b162fc"
+        }
+      ]
+    },
+    {
+      "name": "legacy_akv_regression_run",
+      "category": "akv_non_regression",
+      "status": "PASS",
+      "detail": "worker reached terminal PASS",
+      "artifacts": [
+        {
+          "path": "hardware/akv_generalization_regress_20260901/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "focused_akv_regression_run",
+      "category": "focused_rtl",
+      "status": "PASS",
+      "detail": "worker reached terminal PASS",
+      "artifacts": [
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "generic_sram",
+      "category": "akv_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/akv/rtl_engine_build/run.log",
+          "sha256": "0508acdfb82ccf70d5ce2641ffcbbe84b13c3605cbe43e0ab194ba8d78f84d11"
+        }
+      ]
+    },
+    {
+      "name": "target_macro_sram",
+      "category": "akv_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/akv/rtl_engine_macro_build/run.log",
+          "sha256": "d890e11c07d7361995d980cce8414738cf44eaa11a9ac7720c7e9ef8ea023590"
+        }
+      ]
+    },
+    {
+      "name": "profiles",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_build/run.log",
+          "sha256": "5b2b2943dcf86901727a5910391cedffc11abe4c5d46087fbb837ca1bb09b543"
+        }
+      ]
+    },
+    {
+      "name": "commands",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_command_build/run.log",
+          "sha256": "bec1d137320a8535afc48d78aed43b28406baa2302f8368715ba5ec5920bd0a6"
+        }
+      ]
+    },
+    {
+      "name": "descriptor",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_descriptor_build/run.log",
+          "sha256": "02370301d01564e11556706188a1fe71274df40bd2f1005e928f471f8f044e50"
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_read_build/run.log",
+          "sha256": "3e97f3c55e674c4222428e95c9b7c802789e41d5612b7d0f35bd5f492cc807aa"
+        }
+      ]
+    },
+    {
+      "name": "commit",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_commit_build/run.log",
+          "sha256": "2ad54e87df31d7c4196ae78064f7a9fc0bd5a23043f9b233a0fd7aad41bee6a3"
+        }
+      ]
+    },
+    {
+      "name": "context",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_context_build/run.log",
+          "sha256": "d54bcd749c47ea9856f005c1f5d65ff936a816dec0ccd8eb00e3cc83c2c026d2"
+        }
+      ]
+    },
+    {
+      "name": "context_macro",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_context_macro_build/run.log",
+          "sha256": "f15d3df260a625b1aaa18048ce4e9ff78c2a81f0023e04e574431d5e38393485"
+        }
+      ]
+    },
+    {
+      "name": "end_to_end",
+      "category": "qbs_directed",
+      "status": "PASS",
+      "detail": "required terminal marker present",
+      "artifacts": [
+        {
+          "path": "verification/qbs/rtl_engine_build/run.log",
+          "sha256": "861b69881b4f33dd8776773d03f89c592ffc271d6fc6aac30eb83a382643dc8e"
+        }
+      ]
+    },
+    {
+      "name": "Q4_K_context",
+      "category": "qbs_non_regression",
+      "status": "PASS",
+      "detail": "119883 -> 119894 cycles (+0.009%)",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_goal_final_q4k_context_20260831_082621/result.csv",
+          "sha256": "626ac321b99175519beb8ebe7a7c2921e31e0d44eebb07bc925d36064f517d27"
+        },
+        {
+          "path": "hardware/qbs_akv_current_q4k_context_20260831_153548/result.csv",
+          "sha256": "60c994971189fbf14c760019f64f78698ef6a33f804fa6f70588bc50490cae40"
+        }
+      ]
+    },
+    {
+      "name": "Q6_K_direct",
+      "category": "qbs_non_regression",
+      "status": "PASS",
+      "detail": "208863 -> 208863 cycles (+0.000%)",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_goal_final_q6k_direct_20260831_082808/result.csv",
+          "sha256": "e4fe7cb60675f21081287e61e03085a011941d7b1ea5dd09df82ba6af6cf119b"
+        },
+        {
+          "path": "hardware/qbs_akv_current_q6k_20260831_133629/result.csv",
+          "sha256": "e4fe7cb60675f21081287e61e03085a011941d7b1ea5dd09df82ba6af6cf119b"
+        }
+      ]
+    },
+    {
+      "name": "decode_attn_q_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=119894; commands=48; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_attn_q_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_attn_q_qbs/result.csv",
+          "sha256": "60c994971189fbf14c760019f64f78698ef6a33f804fa6f70588bc50490cae40"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_attn_q_qbs/qbs_perf.csv",
+          "sha256": "74da45ef795e92e4cf11da66d9d310fe6ba833ebff2d3ef492386ff579a538c0"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "decode_ffn_gate_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=314581; commands=128; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_gate_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_gate_qbs/result.csv",
+          "sha256": "f0f62e5172391ddea43a47e61228ab3af4a52b908d48266fa9b4215da32d1102"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_gate_qbs/qbs_perf.csv",
+          "sha256": "ac690217db2690ddd395e3e14c00a30a26e87e075a08cb6068eabacaba863a30"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "decode_ffn_down_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=208843; commands=8; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_down_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_down_qbs/result.csv",
+          "sha256": "94d4b7ff385461231af24804d78d48ca104692b0e21eedb785b93d2a465f28d3"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/decode_ffn_down_qbs/qbs_perf.csv",
+          "sha256": "542abe6b710eb009c4c04701385cec3fe58bc192e15343c706c350f0d95bc4be"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "prefill_attn_q_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=423481; commands=48; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_attn_q_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_attn_q_qbs/result.csv",
+          "sha256": "8b00abedc6c7303be660a4069fbba066b3b9bcd6d40caf8c20de681cf2d4018b"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_attn_q_qbs/qbs_perf.csv",
+          "sha256": "7dec3202dce9c6097505d6b2c4f2fc1d4d916227f389a5c1d6d2f865cbb4fc39"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "prefill_ffn_gate_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=1011405; commands=128; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_gate_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_gate_qbs/result.csv",
+          "sha256": "1ec626ea46fead86022c59c90d9405824334bec1fda562832557f9832463d07f"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_gate_qbs/qbs_perf.csv",
+          "sha256": "1d53a31dcfc9e97941229bac9796ac9851e12be8fc4e5d3c07610eec46ebbcc4"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "prefill_ffn_down_qbs",
+      "category": "qbs_integrated",
+      "status": "PASS",
+      "detail": "cycles=518466; commands=2; faults=0; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_down_qbs/status",
+          "sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_down_qbs/result.csv",
+          "sha256": "f70fff259f898b31ac62e67386c2df2e17c1342314a14988a9c41bd42c31cf03"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/prefill_ffn_down_qbs/qbs_perf.csv",
+          "sha256": "7896eecc2d8b91c08a1c59cc691e2b1c0268126780fe10e9162705c437e0d16f"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/sim_template",
+          "sha256": "a3c62f2cdc4ab5a6d34b5e418fc9a51961631e2829a06dfcf6a8197a5d2e7e62"
+        },
+        {
+          "path": "hardware/qbs_akv_post_generalize_current_20260901/simv.sha256",
+          "sha256": "1ac956d439e74286d30cdfc867ebbabdd3597be4731cd051b876fd43150bbd1b"
+        }
+      ]
+    },
+    {
+      "name": "ordinary_rvv_fallback",
+      "category": "fallback",
+      "status": "PASS",
+      "detail": "121512 -> 118639 cycles (-2.364%)",
+      "artifacts": [
+        {
+          "path": "hardware/qbs_akv_final_regress_rvv/decode_attention_core_rvv_kv16_20260831_145528/ara.log",
+          "sha256": "ce4b0a8191629e255bfa7a451468fdfca15c0714517be33cf9ef2395b76fcce6"
+        },
+        {
+          "path": "hardware/akv_post_generalize_regress_rvv_20260901/decode_attention_core_rvv_kv16_20260901_030722/ara.log",
+          "sha256": "4bd14958602a94bdeb8d23f7986f9e075fb35c611ac68f4f7b5b53b3522d7fef"
+        }
+      ]
+    },
+    {
+      "name": "Qwen_D128_GQA6_KV16",
+      "category": "focused_rtl",
+      "status": "PASS",
+      "detail": "36110 -> 36110 cycles (+0.000%); zero mismatches and current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_post_d256_hotpath2_qwen_20260901/decode_attention_core_akv_v2_kv16_20260901_025815/ara.log",
+          "sha256": "34f3cacdd8edd9c7ffb58fd91605604d67a7a0cecba3aaed92eff6b2d47b07d2"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv16_latest/ara.log",
+          "sha256": "ecfd91d487fed84dda5c6b74707f6c6b60ae0a6db123ae815d79f724c2b5ea8d"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv16_latest/run.conf",
+          "sha256": "90847c0b1b42be41997c4850befb2603045f8e67a12066d4e301c02974b8e510"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv16_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "SmolLM2_D64_GQA3_KV5",
+      "category": "focused_rtl",
+      "status": "PASS",
+      "detail": "30853 -> 30853 cycles (+0.000%); zero mismatches and current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_post_hotpath_regress_smollm2_20260901/decode_attention_core_akv_v2_kv5_20260901_030104/ara.log",
+          "sha256": "494ee086485bfb3cf264800ceb079e5c9a53f2dc99781e6f0452c42940139e06"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv5_latest/ara.log",
+          "sha256": "7411a736dd741ece3058fe0435c878b923375e472420535fa134f91118275243"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv5_latest/run.conf",
+          "sha256": "49e0707c768b4c79b1de3c8e7eaee48e41881a48c3bb4cc6be44ec8a62be66b8"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv5_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "Phi35_D96_GQA1_KV18",
+      "category": "focused_rtl",
+      "status": "PASS",
+      "detail": "10073 -> 10073 cycles (+0.000%); zero mismatches and current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_post_hotpath_regress_phi35_20260901/decode_attention_core_akv_v2_kv18_20260901_030242/ara.log",
+          "sha256": "95b3ad3f88c392b7b32ff4899a7976df6f025a0caf582ab0b2f7bd8f0c53cf68"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv18_latest/ara.log",
+          "sha256": "341a073f10557d6c3f5e071612593c4dda0e4f3992b50887b8ff54049cdf4709"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv18_latest/run.conf",
+          "sha256": "b2639ca3c62aa4a45b56f0b87195878ff67eaca4c0e78a758fba14c33393849a"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv18_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "Gemma_D256_admission",
+      "category": "performance_gate",
+      "status": "PASS",
+      "detail": "AKV=47191, tiled-RVV=36043, speedup=0.764x, disposition=fallback_shape; current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_akv_v2_kv17_latest/ara.log",
+          "sha256": "0da628e286cb8739dd6fc19beff3bc5352b04c600fe6c7ff6e037d1fc7ecb4ca"
+        },
+        {
+          "path": "hardware/akv_generalization_focused_current_20260901/decode_attention_core_tiled_rvv_kv17_latest/ara.log",
+          "sha256": "62c272ec614c41f64beb9a83514e57b397aa550997e66b85b645b592f1f77619"
+        }
+      ]
+    },
+    {
+      "name": "D64_GQA8_KV64",
+      "category": "akv_non_regression",
+      "status": "PASS",
+      "detail": "43353 -> 43357 cycles (+0.009%); current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv64_20260831_131854/ara.log",
+          "sha256": "97bd606664482fafaaf5eba80ca8b74408b50209c1e7675a2da09b18f9bd4f5e"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv64_latest/ara.log",
+          "sha256": "c2a16ab9b0739af7668b4f118dc4a87a26b48f65f878ffcf68de6b5e6e9a6f5f"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv64_latest/run.conf",
+          "sha256": "229392bd790eafde4a011087f525746e01fe3a6ad583b644c5b10a87064b7e3c"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv64_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "D128_GQA6_KV128",
+      "category": "akv_non_regression",
+      "status": "PASS",
+      "detail": "52984 -> 52995 cycles (+0.021%); current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv128_20260831_132146/ara.log",
+          "sha256": "4f1eaf876f3f77670aded78dd6d611731f09bd31422169024c87c2c36fec8252"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv128_latest/ara.log",
+          "sha256": "95406ae43f7cdc37d41a54716c490b66b38c169c05fa88a936656d375c32dc02"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv128_latest/run.conf",
+          "sha256": "29b7bc2b5e077a07db0195f2e9063477359fcf78dd3bc0d08072e555562ccdcd"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv128_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "D128_GQA4_KV63",
+      "category": "akv_non_regression",
+      "status": "PASS",
+      "detail": "37129 -> 37069 cycles (-0.162%); current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_v2_native_underflow_fix/decode_attention_core_akv_v2_kv63_20260831_132615/ara.log",
+          "sha256": "8b5484a58b9f04ea2e671284123d487e1bfa59e7c09239ea6788675a6ede50a9"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv63_latest/ara.log",
+          "sha256": "b2bc99b1ddde2c8788e2ecf4079c3f5f5298e7b0fd8991b4094c3894a06d5489"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv63_latest/run.conf",
+          "sha256": "f234d73232471bc097392f40cfd1fde154178cef27dede52f287d390dd27f770"
+        },
+        {
+          "path": "hardware/akv_generalization_regress_20260901/decode_attention_core_akv_v2_kv63_latest/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "D64_GQA1_KV65",
+      "category": "akv_non_regression",
+      "status": "PASS",
+      "detail": "12742 -> 12828 cycles (+0.675%); current simv hash verified",
+      "artifacts": [
+        {
+          "path": "hardware/akv_v2_native_discrim/decode_attention_core_akv_v2_kv65_20260831_131309/ara.log",
+          "sha256": "4ac8d0ae9518e92dafa3b28f086e81f9690c7e4f5359e62057aabef306a52f06"
+        },
+        {
+          "path": "hardware/akv_d64_plan_init_fix_20260901/decode_attention_core_akv_v2_kv65_20260901_043811/ara.log",
+          "sha256": "6bdade051fc2a40f89844e555af8dc1c4e06cf40da112dd7942dee562318951c"
+        },
+        {
+          "path": "hardware/akv_d64_plan_init_fix_20260901/decode_attention_core_akv_v2_kv65_20260901_043811/run.conf",
+          "sha256": "5b5fe0fa0b3d0b56a259fe714f3e006ad344d5d12be6c203f217ff42916c6571"
+        },
+        {
+          "path": "hardware/akv_d64_plan_init_fix_20260901/decode_attention_core_akv_v2_kv65_20260901_043811/complete",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "name": "SmolLM2_D64_GQA3",
+      "category": "full_model_qemu",
+      "status": "PASS",
+      "detail": "native AKV executed=30; candidates=60; top1/text/numerics pass",
+      "artifacts": [
+        {
+          "path": "hardware/akv_jobs/qemu_model_combined_smollm2_gqa3_20260831/model_closure_generalized_20260901/dynamic_summary.json",
+          "sha256": "b9af5faf0e2e58b034d310e05d61d538267adf056bf82b78a2eeadd151ae20a8"
+        }
+      ]
+    },
+    {
+      "name": "Phi35_D96_GQA1",
+      "category": "full_model_qemu",
+      "status": "PASS",
+      "detail": "native AKV executed=32; candidates=64; top1/text/numerics pass",
+      "artifacts": [
+        {
+          "path": "hardware/akv_jobs/model_generality_generalized_phi35_20260901/phi35_mini_q4km/run/model_closure/dynamic_summary.json",
+          "sha256": "f23b6ed6b50c3e21bfb2d45e50e8d79f4c6a9a7badfbe56f5300d2b82df65031"
+        }
+      ]
+    },
+    {
+      "name": "physical_closure",
+      "category": "physical",
+      "status": "PENDING",
+      "detail": "deferred_by_user: TSMC28_1GHz_setup_uncertainty_0.15ns",
+      "artifacts": []
+    }
+  ]
+}
