@@ -191,6 +191,16 @@ def main():
     for name, value in blobs.items():
         emit_blob(f"llama_{name}", value)
 
+    output_bytes = blobs["golden"]["nbytes"] if kind == "attention_core" else 0
+    print('.section .bss,"aw",@nobits')
+    print(".balign 64")
+    print(".global llama_attention_output_start")
+    print(".global llama_attention_output_end")
+    print("llama_attention_output_start:")
+    if output_bytes:
+        print(f".zero {output_bytes}")
+    print("llama_attention_output_end:")
+
 
 if __name__ == "__main__":
     main()

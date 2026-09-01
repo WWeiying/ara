@@ -97,6 +97,9 @@ fi
 capture_manifest_sha256=missing
 if [[ -f ${capture_root}/tensor.sha256 ]]; then
   capture_manifest_sha256=$(sha256sum -- "${capture_root}/tensor.sha256" | awk '{print $1}')
+elif [[ -f ${capture_root}/replay/manifest.json ]]; then
+  capture_manifest_sha256=$(sha256sum -- \
+    "${capture_root}/replay/manifest.json" | awk '{print $1}')
 fi
 simv_sha256=not-applicable
 if [[ ${execution} != --spike-only ]]; then
