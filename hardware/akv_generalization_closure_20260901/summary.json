@@ -104,11 +104,23 @@
       "name": "generic_sram",
       "category": "akv_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=ce7eaf3f770a25b47048a06f9ed2fd2a9e32c80e2bdb8911759a10a5541f797c; sources=2f89254450b2a6f6da799f7ac53d7a45b40c6cb2c723ff795a3705453fbfc776",
       "artifacts": [
         {
           "path": "verification/akv/rtl_engine_build/run.log",
           "sha256": "0508acdfb82ccf70d5ce2641ffcbbe84b13c3605cbe43e0ab194ba8d78f84d11"
+        },
+        {
+          "path": "verification/akv/rtl_engine_build/compile.log",
+          "sha256": "021c7d08a88a517e1d8decfbd2990da0c83af26961e8d649dd01ba15f9607d88"
+        },
+        {
+          "path": "verification/akv/rtl_engine_build/simv.daidir/.vcs.timestamp",
+          "sha256": "06a4c9a8e41304cecdfdf8d650d9ca9a5cf59cc8b1f3e8206bf590bffded8b8a"
+        },
+        {
+          "path": "verification/akv/rtl_engine_build/simv",
+          "sha256": "ce7eaf3f770a25b47048a06f9ed2fd2a9e32c80e2bdb8911759a10a5541f797c"
         }
       ]
     },
@@ -116,11 +128,23 @@
       "name": "target_macro_sram",
       "category": "akv_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=2a5162a24914fde02f2c677c6323f76beb198a74d824c129a3e569927518c154; sources=4eab286e8c0b47924e2b80f9ab8461ea22a7e307002525552f5e30b0d75a44d7",
       "artifacts": [
         {
           "path": "verification/akv/rtl_engine_macro_build/run.log",
           "sha256": "d890e11c07d7361995d980cce8414738cf44eaa11a9ac7720c7e9ef8ea023590"
+        },
+        {
+          "path": "verification/akv/rtl_engine_macro_build/compile.log",
+          "sha256": "6b9aa914122874bf33f10bf355622496deaa5e20efbb13196c308d64f3ad6979"
+        },
+        {
+          "path": "verification/akv/rtl_engine_macro_build/simv.daidir/.vcs.timestamp",
+          "sha256": "677262f8a8efa72c37c23fe13865334d9f6c4832c95f56813b8a2ab2a3a4c8e9"
+        },
+        {
+          "path": "verification/akv/rtl_engine_macro_build/simv",
+          "sha256": "2a5162a24914fde02f2c677c6323f76beb198a74d824c129a3e569927518c154"
         }
       ]
     },
@@ -128,11 +152,23 @@
       "name": "profiles",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=8fb074b7a5e98079edd600b458c8da525e52b99a8450a7ebf34e1938802ab600; sources=7cc52a244287dd24962d085790372019cc6f9d9b761ca6fa558c0032b6815b56",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_build/run.log",
           "sha256": "5b2b2943dcf86901727a5910391cedffc11abe4c5d46087fbb837ca1bb09b543"
+        },
+        {
+          "path": "verification/qbs/rtl_build/compile.log",
+          "sha256": "acbccf8215dd3e672d05e53a7c2169e5956d99f946d43f2db711c757eae7e19a"
+        },
+        {
+          "path": "verification/qbs/rtl_build/simv.daidir/.vcs.timestamp",
+          "sha256": "cfe8b7d06649366010f7ee80f5ce6995aeb97094349552683cb992c036f30a1d"
+        },
+        {
+          "path": "verification/qbs/rtl_build/simv",
+          "sha256": "8fb074b7a5e98079edd600b458c8da525e52b99a8450a7ebf34e1938802ab600"
         }
       ]
     },
@@ -140,11 +176,23 @@
       "name": "commands",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=b02bf78942b2c037ad4f0bfb5018ff857cde6cbe25426a686176408bb97a3f9b; sources=ffd2a897e0323d9aa32733e33491d3aac46a9bebe9de99eb9e665a18b226d82f",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_command_build/run.log",
           "sha256": "bec1d137320a8535afc48d78aed43b28406baa2302f8368715ba5ec5920bd0a6"
+        },
+        {
+          "path": "verification/qbs/rtl_command_build/compile.log",
+          "sha256": "338b1628012ef66c522b68b80097b9c1a4bcc14fe4a4df78ba0856e934da8fbc"
+        },
+        {
+          "path": "verification/qbs/rtl_command_build/simv.daidir/.vcs.timestamp",
+          "sha256": "00b690d668e359d3dfe320fd33d57d0a6b7811623da0d94cc11816e5f4368816"
+        },
+        {
+          "path": "verification/qbs/rtl_command_build/simv",
+          "sha256": "b02bf78942b2c037ad4f0bfb5018ff857cde6cbe25426a686176408bb97a3f9b"
         }
       ]
     },
@@ -152,11 +200,23 @@
       "name": "descriptor",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=15a866282b7701c40669e88f3c8795082a3e6904f0bb790b6e7bea637bbb7e10; sources=1e864ca89a3c61e126e3d8e6ff5859d36e04c25d7b0c8ce444a5177bf0ca4d2b",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_descriptor_build/run.log",
           "sha256": "02370301d01564e11556706188a1fe71274df40bd2f1005e928f471f8f044e50"
+        },
+        {
+          "path": "verification/qbs/rtl_descriptor_build/compile.log",
+          "sha256": "96a0a343ed1db9c4339c412d59feb8361e236b2804a030735e1c4d8223e03740"
+        },
+        {
+          "path": "verification/qbs/rtl_descriptor_build/simv.daidir/.vcs.timestamp",
+          "sha256": "3fb0c5704cbc54639d79a519c7c99c63ba2dae50c9443db77b97fdd13cfd0631"
+        },
+        {
+          "path": "verification/qbs/rtl_descriptor_build/simv",
+          "sha256": "15a866282b7701c40669e88f3c8795082a3e6904f0bb790b6e7bea637bbb7e10"
         }
       ]
     },
@@ -164,11 +224,23 @@
       "name": "read",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=1cf37cbbfeba24204982eb581616f4438e3a53689d42005ba8caae724025a8c6; sources=f86cba64fc358e209840c67b537bb7c4b0a65d28d5028a0834951814f3cbb558",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_read_build/run.log",
           "sha256": "3e97f3c55e674c4222428e95c9b7c802789e41d5612b7d0f35bd5f492cc807aa"
+        },
+        {
+          "path": "verification/qbs/rtl_read_build/compile.log",
+          "sha256": "8e62385b4b80c93cb74324443ecb221020b20eb7c4175980512b965b28a747ac"
+        },
+        {
+          "path": "verification/qbs/rtl_read_build/simv.daidir/.vcs.timestamp",
+          "sha256": "259f91462988959c7ee046474afbecf3e9c659a8f70e1b7e1bb74f13e38eaa4d"
+        },
+        {
+          "path": "verification/qbs/rtl_read_build/simv",
+          "sha256": "1cf37cbbfeba24204982eb581616f4438e3a53689d42005ba8caae724025a8c6"
         }
       ]
     },
@@ -176,11 +248,23 @@
       "name": "commit",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=9304556bc8d922cfa9256c389a8a8b8881d6b8c23c1137292c8088413bcd5594; sources=b2b866b730c131cd8986c71ca5385c9b071924959e229721b1a2170cc30e5ff5",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_commit_build/run.log",
           "sha256": "2ad54e87df31d7c4196ae78064f7a9fc0bd5a23043f9b233a0fd7aad41bee6a3"
+        },
+        {
+          "path": "verification/qbs/rtl_commit_build/compile.log",
+          "sha256": "7419779230cbbbeef461085769ebf8e1f3280f8cec1cd35d15482fdc3ae3da9c"
+        },
+        {
+          "path": "verification/qbs/rtl_commit_build/simv.daidir/.vcs.timestamp",
+          "sha256": "556510c541124c28034ac1d736adc559af480e52af04eea11ce99d5a2ad03f8f"
+        },
+        {
+          "path": "verification/qbs/rtl_commit_build/simv",
+          "sha256": "9304556bc8d922cfa9256c389a8a8b8881d6b8c23c1137292c8088413bcd5594"
         }
       ]
     },
@@ -188,11 +272,23 @@
       "name": "context",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=1b95ba7085df9e66db5b68f10cb028e332806c1d4a8d77763b6a799ebe5e866a; sources=662a4314cfbe6f86fafd4714591294d07c68a571119733fae4037f0398796634",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_context_build/run.log",
           "sha256": "d54bcd749c47ea9856f005c1f5d65ff936a816dec0ccd8eb00e3cc83c2c026d2"
+        },
+        {
+          "path": "verification/qbs/rtl_context_build/compile.log",
+          "sha256": "6ea9b2582ff6573d132da508436ca27cccb30b96462f5119f37999709eb57b66"
+        },
+        {
+          "path": "verification/qbs/rtl_context_build/simv.daidir/.vcs.timestamp",
+          "sha256": "5dbf512f27fd01585911be7af40107105198d441e5714bdf147800aed93b1538"
+        },
+        {
+          "path": "verification/qbs/rtl_context_build/simv",
+          "sha256": "1b95ba7085df9e66db5b68f10cb028e332806c1d4a8d77763b6a799ebe5e866a"
         }
       ]
     },
@@ -200,11 +296,23 @@
       "name": "context_macro",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=849f2256d194233f571ec56568ada1fac7c0e951409018ac05c9ac2c61335924; sources=6ca07fc4e4a7e104089a0fafb60c2073832613f581ffbf8a269432799a347e6f",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_context_macro_build/run.log",
           "sha256": "f15d3df260a625b1aaa18048ce4e9ff78c2a81f0023e04e574431d5e38393485"
+        },
+        {
+          "path": "verification/qbs/rtl_context_macro_build/compile.log",
+          "sha256": "c0807aee069a3cad18ccb5771ac6110247b4af57e5dafd92f09dc2cb455e908c"
+        },
+        {
+          "path": "verification/qbs/rtl_context_macro_build/simv.daidir/.vcs.timestamp",
+          "sha256": "8d4dae61a03c4c2f634e65e3d41dc395de222366a1b52c65c82e050a4a35d5d3"
+        },
+        {
+          "path": "verification/qbs/rtl_context_macro_build/simv",
+          "sha256": "849f2256d194233f571ec56568ada1fac7c0e951409018ac05c9ac2c61335924"
         }
       ]
     },
@@ -212,11 +320,23 @@
       "name": "end_to_end",
       "category": "qbs_directed",
       "status": "PASS",
-      "detail": "required terminal marker present",
+      "detail": "terminal marker and current VCS provenance verified; simv=47d44a200c3c87e18ca2377832ee17c823e679eec82a920162c08ce657759a05; sources=2e02ce93eccbaa42907e47e5c7e93198c1ae6a3627addd94817b12df98a04e8b",
       "artifacts": [
         {
           "path": "verification/qbs/rtl_engine_build/run.log",
           "sha256": "861b69881b4f33dd8776773d03f89c592ffc271d6fc6aac30eb83a382643dc8e"
+        },
+        {
+          "path": "verification/qbs/rtl_engine_build/compile.log",
+          "sha256": "aab3afb34e0b4623550ae35bda3a4dcce7dbdd45a4f37d0b0c424912f77bf5f7"
+        },
+        {
+          "path": "verification/qbs/rtl_engine_build/simv.daidir/.vcs.timestamp",
+          "sha256": "483c6f3ed062035a85356a7e5ab1827250a998a1b4f1efcf7c3e7c21d79b4b98"
+        },
+        {
+          "path": "verification/qbs/rtl_engine_build/simv",
+          "sha256": "47d44a200c3c87e18ca2377832ee17c823e679eec82a920162c08ce657759a05"
         }
       ]
     },

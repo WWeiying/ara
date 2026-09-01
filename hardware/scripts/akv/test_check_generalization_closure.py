@@ -122,6 +122,36 @@ class CheckGeneralizationClosureTest(unittest.TestCase):
         finally:
             MODULE.ROOT = original_root
 
+    def test_directed_vcs_provenance_rejects_newer_source(self):
+        original_root = MODULE.ROOT
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                MODULE.ROOT = Path(directory)
+                build = MODULE.ROOT / "build"
+                build.mkdir()
+                source = MODULE.ROOT / "source.sv"
+                source.write_text("module source; endmodule\n", encoding="utf-8")
+                compile_log = build / "compile.log"
+                compile_log.write_text(
+                    f"Command: vcs {source} -top source -o simv\n"
+                    " Chronologic VCS (TM)\n",
+                    encoding="utf-8",
+                )
+                simv = build / "simv"
+                simv.write_text("simulator\n", encoding="utf-8")
+                timestamp = build / "simv.daidir/.vcs.timestamp"
+                timestamp.parent.mkdir()
+                timestamp.write_text(f"1 {source}\n", encoding="utf-8")
+                run_log = build / "run.log"
+                run_log.write_text("PASS\n", encoding="utf-8")
+                os.utime(simv, ns=(1_000_000_000, 1_000_000_000))
+                os.utime(source, ns=(2_000_000_000, 2_000_000_000))
+                os.utime(run_log, ns=(3_000_000_000, 3_000_000_000))
+                with self.assertRaisesRegex(ValueError, "predates compile inputs"):
+                    MODULE.validate_directed_vcs_log(run_log, "akv_directed")
+        finally:
+            MODULE.ROOT = original_root
+
     def test_frozen_qemu_covers_exact_seven_model_set(self):
         spec = self.manifest["frozen_full_model_qemu"]
         summary = json.loads(MODULE.path(spec["summary"]).read_text(encoding="utf-8"))

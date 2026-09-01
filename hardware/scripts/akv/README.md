@@ -348,6 +348,15 @@ required defines, Bender metadata, configuration files, and DPI object. It does
 not use the whole Makefile timestamp because synthesis-only target edits do not
 change an already generated VCS image.
 
+Directed AKV and QBS PASS markers are also provenance-checked. The closure
+checker reconstructs each VCS source set from `compile.log` and any nested
+filelist, compares it with the source and included-header records in VCS's own
+`.vcs.timestamp`, and requires the PASS log to postdate that simulator. A
+deterministically regenerated filelist may have a newer timestamp, but its
+current source set must exactly equal the compiled set and its content remains
+part of the evidence digest. QBS logs must also postdate their generated
+runtime-vector files.
+
 ## QBS cross-operator activation lifetime
 
 The lifetime check runs the same real Qwen prompt twice with native QBS. The

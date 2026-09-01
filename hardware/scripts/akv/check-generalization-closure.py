@@ -10,6 +10,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -133,6 +134,151 @@ def inspect_simulator(spec: dict[str, object]) -> tuple[Path, Path, list[Path]]:
     simv_mtime = simv.stat().st_mtime_ns
     stale = sorted(source for source in set(sources) if source.stat().st_mtime_ns > simv_mtime)
     return simv, filelist, stale
+
+
+def _resolve_build_path(raw: str, base: Path) -> Path:
+    candidate = Path(raw)
+    return candidate if candidate.is_absolute() else base / candidate
+
+
+def _filelist_compile_inputs(filelist: Path) -> tuple[set[Path], set[Path]]:
+    text = filelist.read_text(encoding="utf-8", errors="replace")
+    tokens = shlex.split(re.sub(r"\\\s*\n", " ", text), comments=True)
+    sources: set[Path] = {filelist.resolve()}
+    include_dirs: set[Path] = set()
+    for token in tokens:
+        if token.startswith("+incdir+"):
+            for raw in token.removeprefix("+incdir+").split("+"):
+                if raw:
+                    include_dirs.add(_resolve_build_path(raw, filelist.parent).resolve())
+        elif token.endswith((".sv", ".v")):
+            sources.add(_resolve_build_path(token, filelist.parent).resolve())
+    return sources, include_dirs
+
+
+def vcs_compile_inputs(compile_log: Path) -> list[Path]:
+    text = compile_log.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r"(?ms)^Command:\s*(.*?)^\s*Chronologic VCS", text)
+    if not match:
+        raise ValueError(f"VCS command is missing from {compile_log}")
+    tokens = shlex.split(re.sub(r"\\\s*\n", " ", match.group(1)))
+    sources: set[Path] = set()
+    include_dirs: set[Path] = set()
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-f":
+            index += 1
+            if index >= len(tokens):
+                raise ValueError("VCS command ends after -f")
+            filelist = _resolve_build_path(tokens[index], compile_log.parent).resolve()
+            nested_sources, nested_includes = _filelist_compile_inputs(filelist)
+            sources.update(nested_sources)
+            include_dirs.update(nested_includes)
+        elif token.startswith("+incdir+"):
+            for raw in token.removeprefix("+incdir+").split("+"):
+                if raw:
+                    include_dirs.add(
+                        _resolve_build_path(raw, compile_log.parent).resolve()
+                    )
+        elif token.endswith((".sv", ".v")):
+            sources.add(_resolve_build_path(token, compile_log.parent).resolve())
+        index += 1
+
+    for directory in include_dirs:
+        if not directory.is_dir():
+            raise FileNotFoundError(f"VCS include directory is missing: {directory}")
+        for suffix in ("*.svh", "*.vh"):
+            sources.update(path.resolve() for path in directory.rglob(suffix))
+    missing = sorted(str(source) for source in sources if not source.is_file())
+    if missing:
+        raise FileNotFoundError("VCS compile inputs are missing: " + ", ".join(missing[:3]))
+    if not sources:
+        raise ValueError(f"VCS command contains no source inputs: {compile_log}")
+    return sorted(sources)
+
+
+def _vcs_timestamp_records(timestamp: Path) -> dict[Path, int]:
+    records: dict[Path, int] = {}
+    for line in timestamp.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = re.match(r"^(\d+) (/.+)$", line)
+        if match and int(match.group(1)) > 0:
+            records[Path(match.group(2)).resolve()] = int(match.group(1))
+    if not records:
+        raise ValueError(f"VCS timestamp contains no source records: {timestamp}")
+    return records
+
+
+def _under_root(candidate: Path) -> bool:
+    try:
+        candidate.relative_to(ROOT.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def validate_directed_vcs_log(
+    log: Path, category: str
+) -> tuple[Path, Path, Path, str]:
+    compile_log = log.parent / "compile.log"
+    simv = log.parent / "simv"
+    timestamp = log.parent / "simv.daidir/.vcs.timestamp"
+    if not compile_log.is_file() or not simv.is_file() or not timestamp.is_file():
+        raise FileNotFoundError(
+            "directed result lacks compile.log, simv, or .vcs.timestamp"
+        )
+    inputs = vcs_compile_inputs(compile_log)
+    records = _vcs_timestamp_records(timestamp)
+    current_rtl = {
+        source.resolve() for source in inputs if source.suffix in {".sv", ".v"}
+    }
+    recorded_rtl = {
+        source for source in records
+        if source.suffix in {".sv", ".v"} and _under_root(source)
+    }
+    if current_rtl != recorded_rtl:
+        missing = sorted(str(path) for path in current_rtl - recorded_rtl)
+        extra = sorted(str(path) for path in recorded_rtl - current_rtl)
+        raise ValueError(
+            "current VCS source set differs from compiled image: "
+            f"missing={missing[:2]} extra={extra[:2]}"
+        )
+
+    recorded_headers = {
+        source for source in records
+        if source.suffix in {".svh", ".vh"} and _under_root(source)
+    }
+    checked_sources = current_rtl | recorded_headers
+    missing_sources = [source for source in checked_sources if not source.is_file()]
+    if missing_sources:
+        raise FileNotFoundError(f"compiled source is missing: {missing_sources[0]}")
+    stale = [
+        source for source in checked_sources
+        if int(source.stat().st_mtime) > records[source]
+    ]
+    if stale:
+        raise ValueError(
+            "directed simulator predates compile inputs: "
+            + ", ".join(str(source.relative_to(ROOT)) for source in stale[:3])
+        )
+    simv_mtime = simv.stat().st_mtime_ns
+    if log.stat().st_mtime_ns < simv_mtime:
+        raise ValueError("directed PASS log predates its simulator")
+    if category == "qbs_directed":
+        runtime_inputs = [
+            ROOT / "verification/qbs/qbs_rtl_vectors.txt",
+            ROOT / "verification/qbs/qbs_command_vectors.txt",
+        ]
+        missing_runtime = [path for path in runtime_inputs if not path.is_file()]
+        if missing_runtime:
+            raise FileNotFoundError(f"QBS runtime vectors are missing: {missing_runtime[0]}")
+        if any(path.stat().st_mtime_ns > log.stat().st_mtime_ns for path in runtime_inputs):
+            raise ValueError("directed PASS log predates QBS runtime vectors")
+    digest = hashlib.sha256()
+    for source in sorted(set(inputs) | recorded_headers):
+        digest.update(str(source).encode("utf-8"))
+        digest.update(bytes.fromhex(sha256(source)))
+    return compile_log, simv, timestamp, digest.hexdigest()
 
 
 def key_value_file(config: Path) -> dict[str, str]:
@@ -457,8 +603,24 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
                 checks.append(result(spec["name"], category, "PENDING", "log is missing"))
                 continue
             text = log.read_text(encoding="utf-8", errors="replace")
-            status = "PASS" if spec["marker"] in text else "FAIL"
-            checks.append(result(spec["name"], category, status, "required terminal marker present" if status == "PASS" else "required terminal marker absent", [log]))
+            if spec["marker"] not in text:
+                checks.append(result(
+                    spec["name"], category, "FAIL", "required terminal marker absent", [log]
+                ))
+                continue
+            try:
+                compile_log, simv, timestamp, source_digest = validate_directed_vcs_log(
+                    log, category
+                )
+                checks.append(result(
+                    spec["name"], category, "PASS",
+                    f"terminal marker and current VCS provenance verified; simv={sha256(simv)}; sources={source_digest}",
+                    [log, compile_log, timestamp, simv],
+                ))
+            except Exception as error:
+                checks.append(result(
+                    spec["name"], category, "FAIL", str(error), [log]
+                ))
 
     for spec in manifest["qbs_non_regression"]:
         baseline, current = path(spec["baseline"]), path(spec["current"])

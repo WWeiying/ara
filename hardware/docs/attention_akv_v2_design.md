@@ -380,6 +380,16 @@ functional, full-model QEMU, cycle non-regression, and physical closure as
 separate checks. A `PENDING` physical check therefore cannot be hidden by a
 passing Host census or directed RTL suite.
 
+The physical preflight is complete, but physical measurement is not. The
+generated integrated filelist contains 403 sources and 18 defines for four
+lanes, VLEN=1024, QBS, AKV-v1/v2, and target SRAM macros. Static checks also
+verify the 64x256 SRAM DB, the complete Design Compiler startup chain, the
+1.0 ns clock, and 0.15 ns setup uncertainty for both standalone and integrated
+constraints. No synthesized logic area or setup slack is inferred from those
+checks. Those fields remain pending until both DC runs produce fresh reports
+whose RTL, headers, flow Tcl, constraints, physical libraries, netlists, and
+DDC hashes match the current tree.
+
 The corrected model-level integration executes ordinary RVV, QBS-only, and
 QBS plus AKV-v2 in one Qwen2.5-1.5B Q4_K_M QEMU guest. Its manifest records the
 literal prompt, and all three executions report the same ten prompt tokens.
