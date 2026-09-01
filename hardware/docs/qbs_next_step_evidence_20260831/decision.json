@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "05ac96ca86e130972ba0378352a5d86b2c5deb82",
+  "decision": {
+    "threshold": 0.1,
+    "model_weighting": "equal weight for Qwen2.5-1.5B, TinyLlama-1.1B, and SmolLM2-135M one-token Decode",
+    "projected_qbs_cycles_no_cross_operator_reuse": 145760385,
+    "nominal_optimistic_recoverable_cycles": 14270914,
+    "nominal_optimistic_recoverable_fraction": 0.0979066705950317,
+    "decision": "DO_NOT_CHANGE_RTL_FOR_MINIMAL_SCHEDULER",
+    "reason": "The nominal optimistic envelope is below the target and already assumes complete removal of all control phases, all non-payload WAIT_WEIGHT cycles, and complete hiding of context replay using the largest measured replay fraction. Q5_0 uses a Q8_0 counter proxy, so the result is a decision bound, not a claimed exact speedup."
+  },
+  "inputs": {
+    "context_dynamic_counts": {
+      "path": "hardware/qbs_akv_context_sweep_20260831_r2/dynamic_counts.csv",
+      "sha256": "56c502209ccf6123fc155d2f41ecca658d6166d032db17becbf7ddc9f90f864a"
+    },
+    "representative_shapes": {
+      "path": "hardware/qbs_akv_context_sweep_20260831_r2/qbs_representative_selection/all_shapes.csv",
+      "sha256": "5ac398c9312cf2cb7c003d5ef421a1ae39183550892223a67f277bc221bc57bb"
+    },
+    "akv_calibration": {
+      "path": "hardware/llama_attention_runs_akv_v2/attention_core_summary.csv",
+      "sha256": "43c9bd4d8621841d66c9e0f0a8cf938a7f9d34a2eca4cacf001eaf8936edc081"
+    },
+    "qwen_component_projection": {
+      "qbs_cycles": 97055000,
+      "rvv_remaining_cycles": 3700824,
+      "scope": "one-token Decode; exact lifetime-aware QBS projection plus calibrated remaining RVV leaves"
+    }
+  },
+  "limitations": [
+    "Projected cycles are calibrated estimates, not a full-model RTL simulation.",
+    "AKV KV512/KV1024 values extrapolate the measured KV128/KV256 slope.",
+    "Q5_0 schedule activity uses the measured Q8_0 32-element-profile proxy.",
+    "The scheduling envelope deliberately overestimates recoverability and is not a predicted speedup.",
+    "Q8_0 profile/FP blocking is reported but excluded from the minimal control/replay scheduling envelope because removing it requires a separate profile-engine change.",
+    "A 4x Q5_0 calibration sensitivity raises the envelope slightly above 10%; therefore exact Q5_0 measurement is required before any profile-engine proposal, rather than treating the nominal bound as a proof of impossibility.",
+    "TinyLlama and SmolLM2 provide dynamic coverage/traffic evidence; complete shape-matched remaining-RVV cycle projections are not claimed."
+  ]
+}
