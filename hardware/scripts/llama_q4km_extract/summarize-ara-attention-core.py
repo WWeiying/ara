@@ -29,8 +29,6 @@ AKV_PERF_SUM_FIELDS = (
     "busy_cycles",
     "v2_full",
     "v2_refill",
-    "v2_query_update",
-    "v2_query_update_fault",
     "v2_row_load",
     "v2_column_load",
     "v2_k_view_bank_cycles",
@@ -140,7 +138,15 @@ def main():
     output = args.output or run_roots[0] / "attention_core_summary.csv"
 
     rows = []
-    for implementation in ("ref", "rvv", "tiled_rvv", "akv", "akv_v2"):
+    for implementation in (
+        "ref",
+        "rvv",
+        "tiled_rvv",
+        "q64_rvv",
+        "akv",
+        "akv_v2",
+        "akv_v2_prefill",
+    ):
         for effective_kv in (16, 128, 256):
             selected = newest_complete_run(run_roots, implementation, effective_kv)
             if selected is not None:

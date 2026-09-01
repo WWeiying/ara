@@ -260,6 +260,145 @@ akv_v2_update_outputs_f16_generic:
     .size akv_v2_update_outputs_f16_generic, \
           .-akv_v2_update_outputs_f16_generic
 
+    .globl  akv_v2_update_outputs_f32_d128_gqa6
+    .type   akv_v2_update_outputs_f32_d128_gqa6,@function
+
+// a0: six row-major F32 softmax-weight rows, each with a 64-element stride
+// a1: six contiguous row-major F32 D128 output numerators
+// a2: six F32 old-state scale factors
+// a3: active token count, 1..64
+akv_v2_update_outputs_f32_d128_gqa6:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+
+    li              t4, 128
+    vsetvli         zero, t4, e32, m4, ta, ma
+    mv              a4, t1
+    vle32.v         v0, (a4)
+    addi            a4, a4, 512
+    vle32.v         v4, (a4)
+    addi            a4, a4, 512
+    vle32.v         v8, (a4)
+    addi            a4, a4, 512
+    vle32.v         v12, (a4)
+    addi            a4, a4, 512
+    vle32.v         v16, (a4)
+    addi            a4, a4, 512
+    vle32.v         v20, (a4)
+
+    flw             ft0, 0(t2)
+    flw             ft1, 4(t2)
+    flw             ft2, 8(t2)
+    flw             ft3, 12(t2)
+    flw             ft4, 16(t2)
+    flw             ft5, 20(t2)
+    vfmul.vf        v0, v0, ft0
+    vfmul.vf        v4, v4, ft1
+    vfmul.vf        v8, v8, ft2
+    vfmul.vf        v12, v12, ft3
+    vfmul.vf        v16, v16, ft4
+    vfmul.vf        v20, v20, ft5
+
+    li              t4, 0
+.Lakv_v2_f32_value_token:
+    flw             ft0, 0(t0)
+    flw             ft1, 256(t0)
+    flw             ft2, 512(t0)
+    flw             ft3, 768(t0)
+    flw             ft4, 1024(t0)
+    flw             ft5, 1280(t0)
+
+    li              a5, 128
+    vsetvli         zero, a5, e16, m2, ta, ma
+    slli            a0, t4, 2
+    ori             a0, a0, 2
+    .word           0x02053c5b  // vakvload.d128 v24:v25, V selector(a0)
+    vfwcvt.f.f.v    v28, v24
+    vsetvli         zero, a5, e32, m4, ta, ma
+    vfmacc.vf       v0, ft0, v28
+    vfmacc.vf       v4, ft1, v28
+    vfmacc.vf       v8, ft2, v28
+    vfmacc.vf       v12, ft3, v28
+    vfmacc.vf       v16, ft4, v28
+    vfmacc.vf       v20, ft5, v28
+
+    addi            t0, t0, 4
+    addi            t4, t4, 1
+    bltu            t4, t3, .Lakv_v2_f32_value_token
+
+    mv              a4, t1
+    vse32.v         v0, (a4)
+    addi            a4, a4, 512
+    vse32.v         v4, (a4)
+    addi            a4, a4, 512
+    vse32.v         v8, (a4)
+    addi            a4, a4, 512
+    vse32.v         v12, (a4)
+    addi            a4, a4, 512
+    vse32.v         v16, (a4)
+    addi            a4, a4, 512
+    vse32.v         v20, (a4)
+    ret
+
+    .size akv_v2_update_outputs_f32_d128_gqa6, \
+          .-akv_v2_update_outputs_f32_d128_gqa6
+
+    .globl  akv_v2_update_outputs_f32_generic
+    .type   akv_v2_update_outputs_f32_generic,@function
+
+// a0: F32 softmax rows, a1: contiguous F32 numerators, a2: old scales
+// a3: active tokens, a4: Q rows, a5: head dimension (64, 96, or 128)
+akv_v2_update_outputs_f32_generic:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    mv              t5, a5
+.Lakv_v2_generic_f32_output_head:
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vle32.v         v0, (t1)
+    flw             ft0, 0(t2)
+    vfmul.vf        v0, v0, ft0
+    mv              a7, t0
+    li              a6, 0
+.Lakv_v2_generic_f32_value_token:
+    flw             ft0, 0(a7)
+    vsetvli         zero, t5, e16, m2, ta, ma
+    slli            a0, a6, 2
+    ori             a0, a0, 2
+    li              a1, 64
+    beq             t5, a1, .Lakv_v2_generic_f32_load_d64
+    li              a1, 96
+    beq             t5, a1, .Lakv_v2_generic_f32_load_d96
+    .word           0x0205345b  // vakvload.d128 v8:v9, V selector(a0)
+    j               .Lakv_v2_generic_f32_value_loaded
+.Lakv_v2_generic_f32_load_d96:
+    .word           0x0405345b  // vakvload.d96 v8:v9, V selector(a0)
+    j               .Lakv_v2_generic_f32_value_loaded
+.Lakv_v2_generic_f32_load_d64:
+    .word           0x0005345b  // vakvload.d64 v8, V selector(a0)
+.Lakv_v2_generic_f32_value_loaded:
+    vfwcvt.f.f.v    v12, v8
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vfmacc.vf       v0, ft0, v12
+    addi            a7, a7, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_v2_generic_f32_value_token
+    vse32.v         v0, (t1)
+    slli            a0, t5, 2
+    add             t1, t1, a0
+    addi            t0, t0, 256
+    addi            t2, t2, 4
+    addi            t4, t4, -1
+    bnez            t4, .Lakv_v2_generic_f32_output_head
+    ret
+
+    .size akv_v2_update_outputs_f32_generic, \
+          .-akv_v2_update_outputs_f32_generic
+
     .globl  akv_v2_compute_scores_f16_d256_generic
     .type   akv_v2_compute_scores_f16_d256_generic,@function
 

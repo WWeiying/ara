@@ -108,7 +108,72 @@ def update_maximum(record: dict, values: np.ndarray, start_token: int,
     }
 
 
-def validate_case(root: Path, entry: dict, query_block: int) -> dict:
+def compute_attention_block(
+    query: np.ndarray,
+    key: np.ndarray,
+    value: np.ndarray,
+    mask: np.ndarray,
+    scale: float,
+    kv_tile: int,
+) -> np.ndarray:
+    if kv_tile == 0:
+        scores = query @ key.T
+        scores *= np.float32(scale)
+        scores += mask
+        scores -= np.max(scores, axis=1, keepdims=True)
+        np.exp(scores, out=scores)
+        scores /= np.sum(scores, axis=1, keepdims=True, dtype=np.float32)
+        return scores @ value
+
+    rows = query.shape[0]
+    accumulator = np.zeros((rows, value.shape[1]), dtype=np.float32)
+    maximum = np.full(rows, -np.inf, dtype=np.float32)
+    weight_sum = np.zeros(rows, dtype=np.float32)
+    for tile_start in range(0, key.shape[0], kv_tile):
+        tile_end = min(tile_start + kv_tile, key.shape[0])
+        tile_mask = mask[:, tile_start:tile_end]
+        active_rows = np.any(np.isfinite(tile_mask), axis=1)
+        if not np.any(active_rows):
+            continue
+
+        scores = query[active_rows] @ key[tile_start:tile_end].T
+        scores *= np.float32(scale)
+        scores += tile_mask[active_rows]
+        tile_maximum = np.max(scores, axis=1)
+        old_maximum = maximum[active_rows]
+        new_maximum = np.maximum(old_maximum, tile_maximum)
+        old_scale = np.zeros_like(new_maximum)
+        finite_old = np.isfinite(old_maximum)
+        old_scale[finite_old] = np.exp(
+            old_maximum[finite_old] - new_maximum[finite_old]
+        )
+        scores -= new_maximum[:, None]
+        np.exp(scores, out=scores)
+        accumulator[active_rows] = (
+            accumulator[active_rows] * old_scale[:, None]
+            + scores @ value[tile_start:tile_end]
+        )
+        weight_sum[active_rows] = (
+            weight_sum[active_rows] * old_scale
+            + np.sum(scores, axis=1, dtype=np.float32)
+        )
+        maximum[active_rows] = new_maximum
+
+    return np.divide(
+        accumulator,
+        weight_sum[:, None],
+        out=np.zeros_like(accumulator),
+        where=weight_sum[:, None] != 0.0,
+    )
+
+
+def validate_case(
+    root: Path,
+    entry: dict,
+    query_block: int,
+    kv_tile: int = 0,
+    quantize_query: bool = False,
+) -> dict:
     case_dir = (root / entry["path"]).resolve()
     case_path = case_dir / "case.json"
     case = load_json(case_path)
@@ -184,13 +249,16 @@ def validate_case(root: Path, entry: dict, query_block: int) -> dict:
             end = min(tokens, start + query_block)
             active = prefixes[end - 1]
             query_f32 = np.asarray(query[head, start:end], dtype=np.float32)
-            scores = query_f32 @ key_f32[:active].T
-            scores *= np.float32(scale)
-            scores += np.asarray(mask[start:end, :active], dtype=np.float32)
-            scores -= np.max(scores, axis=1, keepdims=True)
-            np.exp(scores, out=scores)
-            scores /= np.sum(scores, axis=1, keepdims=True, dtype=np.float32)
-            actual = scores @ value_f32[:active]
+            if quantize_query:
+                query_f32 = query_f32.astype(np.float16).astype(np.float32)
+            actual = compute_attention_block(
+                query_f32,
+                key_f32[:active],
+                value_f32[:active],
+                np.asarray(mask[start:end, :active], dtype=np.float32),
+                scale,
+                kv_tile,
+            )
             expected = np.asarray(golden[start:end, head], dtype=np.float32)
             absolute = np.abs(actual - expected)
             tolerance = np.float32(atol) + np.float32(rtol) * np.abs(expected)
@@ -238,18 +306,29 @@ def validate_case(root: Path, entry: dict, query_block: int) -> dict:
     return result
 
 
-def validate(root: Path, query_block: int) -> dict:
+def validate(
+    root: Path,
+    query_block: int,
+    kv_tile: int = 0,
+    quantize_query: bool = False,
+) -> dict:
     root = root.resolve()
     manifest_path = root / "replay" / "manifest.json"
     manifest = load_json(manifest_path)
-    cases = [validate_case(root, entry, query_block)
+    cases = [validate_case(root, entry, query_block, kv_tile, quantize_query)
              for entry in manifest["cases"]]
     result = {
         "schema_version": 1,
-        "reference": "independent NumPy FP32 stable softmax",
+        "reference": (
+            "independent NumPy FP32 stable softmax"
+            if kv_tile == 0
+            else "independent NumPy tiled online softmax"
+        ),
         "capture_root": str(root),
         "manifest_sha256": sha256(manifest_path),
         "query_block": query_block,
+        "kv_tile": kv_tile,
+        "query_input": "f16-converted" if quantize_query else "f32",
         "case_count": len(cases),
         "failed_cases": sum(case["status"] != "PASS" for case in cases),
         "required_atol_at_recorded_rtol": max(
@@ -265,12 +344,21 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("capture_root", type=Path)
     parser.add_argument("--query-block", type=int, default=16)
+    parser.add_argument("--kv-tile", type=int, default=0)
+    parser.add_argument("--f16-query", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--report-only", action="store_true")
     args = parser.parse_args()
     if args.query_block <= 0:
         parser.error("--query-block must be positive")
-    result = validate(args.capture_root, args.query_block)
+    if args.kv_tile < 0:
+        parser.error("--kv-tile must be non-negative")
+    result = validate(
+        args.capture_root,
+        args.query_block,
+        args.kv_tile,
+        args.f16_query,
+    )
     payload = json.dumps(result, indent=2) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

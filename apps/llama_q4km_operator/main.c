@@ -37,6 +37,8 @@ enum {
   CASE_FLAG_ATTENTION_AKV = 1u << 1,
   CASE_FLAG_ATTENTION_TILED_RVV = 1u << 2,
   CASE_FLAG_ATTENTION_AKV_V2 = 1u << 3,
+  CASE_FLAG_ATTENTION_AKV_V2_PREFILL = 1u << 4,
+  CASE_FLAG_ATTENTION_Q64_RVV = 1u << 5,
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
@@ -48,10 +50,12 @@ enum {
   MAX_CACHE_WIDTH = 256,
   MAX_CACHE_ROWS = 256,
   TILED_RVV_Q_ROWS = 6,
-  TILED_RVV_QUERY_TILE = 4,
+  TILED_RVV_QUERY_TILE = 64,
   TILED_RVV_MAX_ROWS = TILED_RVV_Q_ROWS * TILED_RVV_QUERY_TILE,
   TILED_RVV_DIM = 128,
   TILED_RVV_KV_TILE = 64,
+  Q64_RVV_QUERY_TILE = 64,
+  Q64_RVV_PADDED_ROWS = 66,
 };
 
 typedef struct {
@@ -66,6 +70,24 @@ typedef struct {
     uint32_t bytes;
   } tensors[5];
 } case_config_t;
+
+typedef struct __attribute__((aligned(64))) {
+  _Float16 query[Q64_RVV_PADDED_ROWS][TILED_RVV_DIM];
+  float accum[Q64_RVV_PADDED_ROWS][TILED_RVV_DIM];
+  float score[Q64_RVV_PADDED_ROWS][TILED_RVV_KV_TILE];
+  float maximum[Q64_RVV_PADDED_ROWS];
+  float sum[Q64_RVV_PADDED_ROWS];
+  float old_scale[Q64_RVV_PADDED_ROWS];
+} q64_rvv_workspace_t;
+
+_Static_assert(sizeof(q64_rvv_workspace_t) <=
+                   sizeof(akv_attention_v2_prefill_workspace_t),
+               "Q64 RVV baseline must reuse the bounded AKV Prefill scratch");
+
+typedef union __attribute__((aligned(64))) {
+  akv_attention_v2_prefill_workspace_t akv;
+  q64_rvv_workspace_t q64;
+} attention_prefill_workspace_t;
 
 extern const case_config_t llama_case_config;
 extern const char llama_case_name[];
@@ -112,6 +134,15 @@ static int attention_active_kv[MAX_ATTENTION_TOKENS];
 static akv_device_t attention_akv_device;
 static akv_attention_plan_t attention_akv_plan;
 static akv_attention_v2_workspace_t attention_akv_v2_workspace;
+static attention_prefill_workspace_t attention_prefill_workspace;
+
+#define attention_akv_v2_prefill_workspace attention_prefill_workspace.akv
+#define attention_q64_query attention_prefill_workspace.q64.query
+#define attention_q64_accum attention_prefill_workspace.q64.accum
+#define attention_q64_score attention_prefill_workspace.q64.score
+#define attention_q64_maximum attention_prefill_workspace.q64.maximum
+#define attention_q64_sum attention_prefill_workspace.q64.sum
+#define attention_q64_old_scale attention_prefill_workspace.q64.old_scale
 
 static inline uint64_t read_cycle(void) {
 #ifdef SPIKE
@@ -835,6 +866,186 @@ static void pack_tiled_kv_rvv(const _Float16 *key, const _Float16 *value,
   }
 }
 
+static void prepare_q64_queries_rvv(const float *query, int tokens,
+                                    int qhead, int query_start,
+                                    int query_count) {
+  for (int row = 0; row < query_count; ++row) {
+    const size_t query_index =
+        ((size_t)qhead * tokens + query_start + row) * TILED_RVV_DIM;
+    convert_f32_to_f16_rvv(attention_q64_query[row], query + query_index,
+                           TILED_RVV_DIM);
+    for (int offset = 0; offset < TILED_RVV_DIM;) {
+      const size_t vl = __riscv_vsetvl_e32m4(TILED_RVV_DIM - offset);
+      __riscv_vse32_v_f32m4(
+          attention_q64_accum[row] + offset,
+          __riscv_vfmv_v_f_f32m4(0.0f, vl), vl);
+      offset += (int)vl;
+    }
+    attention_q64_maximum[row] = negative_infinity_f32();
+    attention_q64_sum[row] = 0.0f;
+  }
+}
+
+static void compute_q64_scores4_rvv(int row_base, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m1(tile_tokens);
+  vfloat32m2_t score0 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score1 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score2 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score3 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+
+  for (int item = 0; item < TILED_RVV_DIM; ++item) {
+    const vfloat16m1_t key =
+        __riscv_vle16_v_f16m1(attention_tiled_key[item], vl);
+    score0 = __riscv_vfwmacc_vf_f32m2(
+        score0, attention_q64_query[row_base + 0][item], key, vl);
+    score1 = __riscv_vfwmacc_vf_f32m2(
+        score1, attention_q64_query[row_base + 1][item], key, vl);
+    score2 = __riscv_vfwmacc_vf_f32m2(
+        score2, attention_q64_query[row_base + 2][item], key, vl);
+    score3 = __riscv_vfwmacc_vf_f32m2(
+        score3, attention_q64_query[row_base + 3][item], key, vl);
+  }
+
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 0], score0, vl);
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 1], score1, vl);
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 2], score2, vl);
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 3], score3, vl);
+}
+
+static void compute_q64_scores2_rvv(int row_base, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m1(tile_tokens);
+  vfloat32m2_t score0 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+  vfloat32m2_t score1 = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+
+  for (int item = 0; item < TILED_RVV_DIM; ++item) {
+    const vfloat16m1_t key =
+        __riscv_vle16_v_f16m1(attention_tiled_key[item], vl);
+    score0 = __riscv_vfwmacc_vf_f32m2(
+        score0, attention_q64_query[row_base + 0][item], key, vl);
+    score1 = __riscv_vfwmacc_vf_f32m2(
+        score1, attention_q64_query[row_base + 1][item], key, vl);
+  }
+
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 0], score0, vl);
+  __riscv_vse32_v_f32m2(attention_q64_score[row_base + 1], score1, vl);
+}
+
+static void compute_q64_score1_rvv(int row, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e16m1(tile_tokens);
+  vfloat32m2_t score = __riscv_vfmv_v_f_f32m2(0.0f, vl);
+
+  for (int item = 0; item < TILED_RVV_DIM; ++item) {
+    const vfloat16m1_t key =
+        __riscv_vle16_v_f16m1(attention_tiled_key[item], vl);
+    score = __riscv_vfwmacc_vf_f32m2(
+        score, attention_q64_query[row][item], key, vl);
+  }
+
+  __riscv_vse32_v_f32m2(attention_q64_score[row], score, vl);
+}
+
+static void softmax_q64_scores_rvv(const _Float16 *mask, int physical_kvlen,
+                                   int query_start, int tile_start,
+                                   int row_base, int row_count,
+                                   int tile_tokens, float scale) {
+  const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
+  for (int row = row_base; row < row_base + row_count; ++row) {
+    const _Float16 *const tile_mask =
+        mask + (size_t)(query_start + row) * physical_kvlen + tile_start;
+    vfloat32m2_t score =
+        __riscv_vle32_v_f32m2(attention_q64_score[row], vl);
+    const vfloat32m2_t mask_f32 = __riscv_vfwcvt_f_f_v_f32m2(
+        __riscv_vle16_v_f16m1(tile_mask, vl), vl);
+    score = __riscv_vfadd_vv_f32m2(
+        __riscv_vfmul_vf_f32m2(score, scale, vl), mask_f32, vl);
+    const float tile_maximum = reduce_max_f32m2(score, vl);
+    const float old_maximum = attention_q64_maximum[row];
+    const float new_maximum =
+        tile_maximum > old_maximum ? tile_maximum : old_maximum;
+    const float old_scale = old_maximum == negative_infinity_f32()
+                                ? 0.0f
+                                : expf(old_maximum - new_maximum);
+    score = vector_expf(
+        __riscv_vfsub_vf_f32m2(score, new_maximum, vl), vl);
+    attention_q64_sum[row] =
+        attention_q64_sum[row] * old_scale + reduce_sum_f32m2(score, vl);
+    attention_q64_maximum[row] = new_maximum;
+    attention_q64_old_scale[row] = old_scale;
+    __riscv_vse32_v_f32m2(attention_q64_score[row], score, vl);
+  }
+
+  for (int row = row_base + row_count; row < row_base + 6; ++row) {
+    attention_q64_old_scale[row] = 0.0f;
+    __riscv_vse32_v_f32m2(
+        attention_q64_score[row], __riscv_vfmv_v_f_f32m2(0.0f, vl), vl);
+  }
+}
+
+static void update_q64_outputs6_rvv(int row_base, int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e32m4(TILED_RVV_DIM);
+  vfloat32m4_t accum0 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 0], vl),
+      attention_q64_old_scale[row_base + 0], vl);
+  vfloat32m4_t accum1 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 1], vl),
+      attention_q64_old_scale[row_base + 1], vl);
+  vfloat32m4_t accum2 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 2], vl),
+      attention_q64_old_scale[row_base + 2], vl);
+  vfloat32m4_t accum3 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 3], vl),
+      attention_q64_old_scale[row_base + 3], vl);
+  vfloat32m4_t accum4 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 4], vl),
+      attention_q64_old_scale[row_base + 4], vl);
+  vfloat32m4_t accum5 = __riscv_vfmul_vf_f32m4(
+      __riscv_vle32_v_f32m4(attention_q64_accum[row_base + 5], vl),
+      attention_q64_old_scale[row_base + 5], vl);
+
+  for (int token = 0; token < tile_tokens; ++token) {
+    const vfloat32m4_t value = __riscv_vfwcvt_f_f_v_f32m4(
+        __riscv_vle16_v_f16m2(attention_tiled_value[token], vl), vl);
+    accum0 = __riscv_vfmacc_vf_f32m4(
+        accum0, attention_q64_score[row_base + 0][token], value, vl);
+    accum1 = __riscv_vfmacc_vf_f32m4(
+        accum1, attention_q64_score[row_base + 1][token], value, vl);
+    accum2 = __riscv_vfmacc_vf_f32m4(
+        accum2, attention_q64_score[row_base + 2][token], value, vl);
+    accum3 = __riscv_vfmacc_vf_f32m4(
+        accum3, attention_q64_score[row_base + 3][token], value, vl);
+    accum4 = __riscv_vfmacc_vf_f32m4(
+        accum4, attention_q64_score[row_base + 4][token], value, vl);
+    accum5 = __riscv_vfmacc_vf_f32m4(
+        accum5, attention_q64_score[row_base + 5][token], value, vl);
+  }
+
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 0], accum0, vl);
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 1], accum1, vl);
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 2], accum2, vl);
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 3], accum3, vl);
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 4], accum4, vl);
+  __riscv_vse32_v_f32m4(attention_q64_accum[row_base + 5], accum5, vl);
+}
+
+static void store_q64_outputs_rvv(float *output, int qheads, int qhead,
+                                  int query_start, int query_count) {
+  for (int row = 0; row < query_count; ++row) {
+    const float inverse = attention_q64_sum[row] == 0.0f
+                              ? 0.0f
+                              : 1.0f / attention_q64_sum[row];
+    float *const destination =
+        output + ((size_t)(query_start + row) * qheads + qhead) *
+                     TILED_RVV_DIM;
+    const size_t vl = __riscv_vsetvl_e32m4(TILED_RVV_DIM);
+    __riscv_vse32_v_f32m4(
+        destination,
+        __riscv_vfmul_vf_f32m4(
+            __riscv_vle32_v_f32m4(attention_q64_accum[row], vl),
+            inverse, vl),
+        vl);
+  }
+}
+
 static void compute_tiled_scores4_rvv(float scale, const _Float16 *mask,
                                       int dim, int tile_tokens,
                                       int row_base) {
@@ -1162,6 +1373,97 @@ static void store_tiled_outputs4_d256_rvv(float *output) {
   }
 }
 
+// Standard-RVV Q64/KV64 Prefill baseline. Its loop nest mirrors GGML's
+// per-Query-head tiling while retaining the captured F16 K/V representation.
+// It is intentionally independent of AKV and is used only as a strong measured
+// denominator for the long-Prefill performance gate.
+static int run_attention_q64_rvv(const case_config_t *cfg) {
+  const float *query = (const float *)llama_input_a_start;
+  const _Float16 *key = (const _Float16 *)llama_input_b_start;
+  const _Float16 *value = (const _Float16 *)llama_input_c_start;
+  const uint16_t *mask_bits = (const uint16_t *)llama_input_d_start;
+  const _Float16 *mask = (const _Float16 *)llama_input_d_start;
+  const int dim = cfg->args[0];
+  const int tokens = cfg->args[1];
+  const int qheads = cfg->args[2];
+  const int physical_kvlen = cfg->args[3];
+  const int kvheads = cfg->args[4];
+
+  if (dim != TILED_RVV_DIM || tokens <= 1 || qheads <= 0 || kvheads <= 0 ||
+      qheads % kvheads != 0 ||
+      __riscv_vsetvl_e16m1(TILED_RVV_KV_TILE) != TILED_RVV_KV_TILE)
+    return 0;
+
+  const int heads_per_kv = qheads / kvheads;
+  for (int token = 0; token < tokens; ++token) {
+    attention_active_kv[token] = attention_active_prefix(
+        mask_bits + (size_t)token * physical_kvlen, physical_kvlen);
+    if (attention_active_kv[token] <= 0) return 0;
+  }
+
+  for (int qhead = 0; qhead < qheads; ++qhead) {
+    const int kvhead = qhead / heads_per_kv;
+    for (int query_start = 0; query_start < tokens;
+         query_start += Q64_RVV_QUERY_TILE) {
+      int query_count = tokens - query_start;
+      if (query_count > Q64_RVV_QUERY_TILE)
+        query_count = Q64_RVV_QUERY_TILE;
+
+      HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
+      prepare_q64_queries_rvv(query, tokens, qhead, query_start,
+                              query_count);
+
+      int maximum_prefix = 0;
+      for (int row = 0; row < query_count; ++row) {
+        const int prefix = attention_active_kv[query_start + row];
+        if (prefix > maximum_prefix) maximum_prefix = prefix;
+      }
+
+      for (int tile_start = 0; tile_start < maximum_prefix;
+           tile_start += TILED_RVV_KV_TILE) {
+        int tile_tokens = maximum_prefix - tile_start;
+        if (tile_tokens > TILED_RVV_KV_TILE)
+          tile_tokens = TILED_RVV_KV_TILE;
+        const size_t kv_base =
+            ((size_t)kvhead * physical_kvlen + tile_start) * dim;
+        HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+        pack_tiled_kv_rvv(key + kv_base, value + kv_base, dim, tile_tokens);
+
+        for (int row_base = 0; row_base < query_count; row_base += 6) {
+          int row_count = query_count - row_base;
+          if (row_count > 6) row_count = 6;
+          int cursor = row_base;
+          int remaining = row_count;
+
+          HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
+          if (remaining >= 4) {
+            compute_q64_scores4_rvv(cursor, tile_tokens);
+            cursor += 4;
+            remaining -= 4;
+          }
+          if (remaining >= 2) {
+            compute_q64_scores2_rvv(cursor, tile_tokens);
+            cursor += 2;
+            remaining -= 2;
+          }
+          if (remaining == 1)
+            compute_q64_score1_rvv(cursor, tile_tokens);
+
+          softmax_q64_scores_rvv(mask, physical_kvlen, query_start,
+                                 tile_start, row_base, row_count,
+                                 tile_tokens, cfg->params[2]);
+          update_q64_outputs6_rvv(row_base, tile_tokens);
+        }
+      }
+
+      HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
+      store_q64_outputs_rvv(attention_output, qheads, qhead, query_start,
+                            query_count);
+    }
+  }
+  return 1;
+}
+
 // Returns zero for shapes outside this deliberately strict strong-baseline
 // profile. The caller then preserves the standard one-row RVV fallback.
 static int run_attention_tiled_rvv(const case_config_t *cfg) {
@@ -1447,6 +1749,36 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
   return 1;
 }
 
+static int run_attention_akv_v2_prefill(const case_config_t *cfg) {
+  const int dim = cfg->args[0];
+  const int tokens = cfg->args[1];
+  const int qheads = cfg->args[2];
+  const int physical_kvlen = cfg->args[3];
+  const int kvheads = cfg->args[4];
+  if (tokens <= 1 || tokens > MAX_ATTENTION_TOKENS ||
+      qheads <= 0 || qheads > MAX_ATTENTION_HEADS ||
+      physical_kvlen <= 0 || physical_kvlen > MAX_ATTENTION_KV ||
+      kvheads <= 0)
+    return 0;
+
+  const akv_attention_v2_prefill_problem_t problem = {
+      .query = (const float *)llama_input_a_start,
+      .key = (const uint16_t *)llama_input_b_start,
+      .value = (const uint16_t *)llama_input_c_start,
+      .mask = (const uint16_t *)llama_input_d_start,
+      .output = attention_output,
+      .query_tokens = (uint32_t)tokens,
+      .query_heads = (uint32_t)qheads,
+      .kv_heads = (uint32_t)kvheads,
+      .kv_capacity = (uint32_t)physical_kvlen,
+      .head_dim = (uint32_t)dim,
+      .scale = cfg->params[2],
+  };
+  return akv_attention_execute_v2_prefill_native(
+             &attention_akv_device, &problem,
+             &attention_akv_v2_prefill_workspace) == AKV_STATUS_OK;
+}
+
 static void run_attention_rvv(const case_config_t *cfg) {
   const float *query = (const float *)llama_input_a_start;
   const _Float16 *key = (const _Float16 *)llama_input_b_start;
@@ -1621,7 +1953,8 @@ int main(void) {
   if (cfg->kind == CASE_ATTENTION && !attention_shape_is_supported(cfg)) return 1;
   if (cfg->kind == CASE_ATTENTION &&
       (cfg->flags & (CASE_FLAG_ATTENTION_AKV |
-                     CASE_FLAG_ATTENTION_AKV_V2)) != 0 &&
+                     CASE_FLAG_ATTENTION_AKV_V2 |
+                     CASE_FLAG_ATTENTION_AKV_V2_PREFILL)) != 0 &&
       akv_device_init_reference(&attention_akv_device) != AKV_STATUS_OK)
     return 1;
   HW_CNT_READY;
@@ -1639,10 +1972,14 @@ int main(void) {
     case CASE_GET_ROWS_F32: run_get_rows_f32(cfg); break;
     case CASE_GET_ROWS_Q4_K: run_get_rows_q4_k(cfg); break;
     case CASE_ATTENTION:
-      if ((cfg->flags & CASE_FLAG_ATTENTION_AKV_V2) != 0) {
+      if ((cfg->flags & CASE_FLAG_ATTENTION_AKV_V2_PREFILL) != 0) {
+        if (!run_attention_akv_v2_prefill(cfg)) run_attention_rvv(cfg);
+      } else if ((cfg->flags & CASE_FLAG_ATTENTION_AKV_V2) != 0) {
         if (!run_attention_akv_v2(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_AKV) != 0) {
         if (!run_attention_akv(cfg)) run_attention_rvv(cfg);
+      } else if ((cfg->flags & CASE_FLAG_ATTENTION_Q64_RVV) != 0) {
+        if (!run_attention_q64_rvv(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_TILED_RVV) != 0) {
         if (!run_attention_tiled_rvv(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_RVV) != 0) {

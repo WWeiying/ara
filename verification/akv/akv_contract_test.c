@@ -61,14 +61,13 @@ int main(void) {
   CHECK(akv_encode_v2_fill(10, 11, AKV_FILL_FULL) == UINT32_C(0x00b5605b));
   CHECK(akv_encode_v2_fill(10, 11, AKV_FILL_REFILL) ==
         UINT32_C(0x02b5605b));
-  CHECK(akv_encode_v2_query_update(10) == UINT32_C(0x0405605b));
   CHECK(akv_encode_v2_column_load(8, 10) == UINT32_C(0x0005745b));
 
   CHECK(akv_capability_word(0, 1) == UINT64_C(0x000f010808400101));
   CHECK(akv_capability_word(1, 1) == UINT64_C(0x00000000006b1a5b));
   CHECK(akv_capability_word(2, 1) == 0u);
   CHECK(akv_v2_capability_word(2, 1) ==
-        UINT64_C(0x000001ff06084002));
+        UINT64_C(0x000000ff06084002));
   CHECK(akv_v2_capability_word(3, 1) == UINT64_C(0x0000000001803e5b));
   CHECK(akv_v2_capability_word(4, 1) == 0u);
   CHECK(akv_head_dim_code(64) == AKV_HEAD_DIM_CODE_64);
@@ -108,9 +107,6 @@ int main(void) {
 
   akv_descriptor_t descriptor = valid_descriptor();
   CHECK(akv_descriptor_is_valid(&descriptor));
-  CHECK(akv_v2_query_base_is_valid(&descriptor, UINT64_C(0x60000)));
-  CHECK(!akv_v2_query_base_is_valid(&descriptor, UINT64_C(0x60002)));
-  CHECK(!akv_v2_query_base_is_valid(&descriptor, 0u));
   _Alignas(AKV_DESCRIPTOR_BYTES)
       unsigned char misaligned_storage[2u * AKV_DESCRIPTOR_BYTES];
   CHECK(!akv_descriptor_is_valid(misaligned_storage + 1u));

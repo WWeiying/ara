@@ -1,258 +1,301 @@
-# Bounded Query Update for Long-Prompt Prefill Attention
+# Bounded 64-Query-Block Prefill Reuse
 
-## 1. Design question
+## 1. Design decision
 
-This note records the falsifiable design contract and implementation status of
-the mechanism selected after the Stage-2 baselines were frozen. It is organized
-around externally testable behavior rather than an RTL change log.
+This note records the retained long-Prompt Prefill Attention schedule, the
+alternative that was rejected by measurement, and the exact software/RTL
+contract used to evaluate it.
 
-The question is whether the existing AKV-v2 resident 64-token K/V tile can be
-reused across multiple Prefill Query groups while all arithmetic continues to
-execute on the standard RVV lanes. The mechanism must:
+The retained mechanism keeps one 64-token K/V tile in AKV-v2 while a bounded
+software Query block consumes that tile. All QK, online Softmax, and PV
+arithmetic still executes on the standard RVV lanes. The design does not add
+an Attention MAC array and does not change ordinary RVV behavior.
 
-- preserve ordinary RVV behavior and fallback;
-- keep hidden hardware state fixed with respect to prompt length;
-- support causal prefixes that cross any number of 64-token tiles;
-- preserve F32 online-softmax state across tiles;
-- make a failed update invalidate the context atomically; and
-- expose strict counters that distinguish external K/V savings from local
-  replay, state, reduction, and backpressure costs.
+The fixed bounds are:
 
-It does not add an Attention MAC array. K-column dot products, exponentiation,
-reductions, and weighted V accumulation remain standard RVV work.
+- one GQA group with 1 through 8 Query heads;
+- one 64-Query software block;
+- one resident 64-token K/V tile;
+- D64, D96, or D128;
+- F32 Query, output, and online-Softmax state;
+- F16 K, V, mask, and temporary Query rows; and
+- a 137,472-byte aligned workspace independent of M, P, and KV length.
 
-## 2. Frozen pre-update path and its limitation
+The application output remains software-visible storage and naturally scales
+with the model shape. No hidden hardware state grows with the prompt.
 
-Before the Query-update node, AKV-v2 had two physically distinct payload
-stores:
+## 2. Why Query-only context update was rejected
 
-- `akv_context` stores the Query rows used by a context;
-- `akv_v2_context` stores one 64-token K/V tile in eight token banks and
-  provides row and token-axis column views.
+AKV-v2 physically separates Query rows from the resident K/V tile, so a
+Query-only update initially appeared to permit a global K/V-outer schedule:
 
-The visible commands were:
+```text
+for each K/V tile:
+    retain K/V
+    update Query rows for every visible Query token
+    run QK, Softmax, and PV
+```
 
-- `V2_FULL(descriptor,tile_start)`: fetch descriptor, Query rows, and K/V;
-- `V2_REFILL(tile_start)`: retain descriptor and Query metadata, replace K/V;
-- row/column loads: replay resident payload through the normal VLSU result
-  path into architectural vector registers; and
-- `RELEASE`: invalidate the context.
+The proposal was implemented as a distinct fill mode and tested on the real
+Qwen2.5 D128, GQA6, P0/M15 capture. The discriminating measurements were:
 
-There was no inverse of REFILL: software could not replace Query rows while
-retaining K/V. The frozen Prefill compatibility loop therefore created one
-complete context for each `(Query token, KV head)` pair. GQA rows share a fill,
-but the same K/V prefixes are fetched again for the next Query token.
+| Schedule | Cycles | External Q | External K/V | Local replay |
+|---|---:|---:|---:|---:|
+| direct AKV-v2 | 507,201 | 3,072 B | 15,360 B | 176,640 B |
+| Query update | 510,334 | 46,080 B | 15,360 B | 176,640 B |
+| strong tiled RVV | 542,674 | n/a | n/a | n/a |
 
-The physical separation of Query and K/V means this limitation is an ABI and
-control-path limitation, not a storage-layout limitation. A Query-only update
-can reuse the current memories without copying or rebuilding the resident K/V
-tile.
+The Query-update schedule was 3,133 cycles, or about 0.62%, slower than the
+direct path. It did not reduce K/V traffic at this one-tile point and added
+43,008 bytes of Query traffic. Static RTL tracing also confirmed that the QK
+microkernel reads the selected Query row through ordinary scalar/RVV memory
+accesses; updating the hidden Query store did not remove those reads.
 
-## 3. Root-cause hypothesis
+This result rejects Query update as the retained primitive. The command,
+capability bit, counters, reference behavior, and RTL state were removed.
+AKV-v2 returns to the smaller FULL/REFILL/row-load/column-load/RELEASE contract.
 
-For long Prefill, the current serial-AKV schedule performs the required QK and
-PV arithmetic but rereads K/V at Query-token granularity. The proposed change
-places the K/V-tile loop outside the Query loop:
+## 3. Retained dataflow
+
+The retained schedule moves reuse into a fixed software block:
 
 ```text
 for each KV head:
-    initialize F32 state for its Query heads
-    for each 64-token K/V tile:
-        FULL or REFILL the tile once
-        for each Query token that can see this tile:
-            QUERY_UPDATE its GQA Query rows
-            compute QK scores from resident K columns
-            apply this token's causal mask
-            resume stable online softmax
-            update F32 output numerator from resident V rows
-    normalize and store outputs
-    RELEASE
+    map its GQA Query heads
+    for each Query block QB of at most 64 tokens:
+        convert QB from F32 to a fixed F16 workspace
+        initialize F32 max, denominator, and output numerator
+
+        block_prefix = past_tokens + QB.start + QB.count
+        for each 64-token K/V tile below block_prefix:
+            FULL for tile zero, otherwise REFILL
+
+            for each Query token q in QB that can see this tile:
+                load q directly from the workspace
+                read resident K by token-axis columns
+                compute QK on RVV lanes
+                apply scale and q's causal mask
+                merge stable F32 online-Softmax state
+                read resident V by rows
+                update the F32 output numerator on RVV lanes
+
+        RELEASE the context
+        normalize the block's outputs by their F32 denominators
 ```
 
-The hypothesis is that removing repeated external K/V fills and descriptor
-setup gives at least 1.20x over the strongest tiled-RVV baseline at a real
-`M>=512` point. The hypothesis is rejected if external K/V bytes collapse as
-predicted but cycles remain limited by local row/column replay, F32 state
-traffic, reductions, or backend backpressure.
+The K/V tile is therefore fetched once per Query block and KV head, rather
+than once per Query token. A later Query block may need a longer causal prefix,
+so it starts a new bounded context and walks all visible tiles again. This is
+not the unique-K/V traffic floor, but it is bounded, requires no new command,
+and removes most serial-AKV rereads.
 
-## 4. Query-update command contract
+The existing FULL contract requires Query rows. For each block it reads the
+first local Query group as context-seeding payload. QK for every local Query,
+including the first, uses the software workspace directly. Those seed bytes
+are included in the strict `q_external_bytes` model and are not claimed as
+useful Query-cache hits.
 
-The implemented command reuses the AKV-v2 fill instruction class with a
-distinct reserved fill mode. It does not consume another custom opcode.
+## 4. Fixed workspace and layouts
 
-The concrete extension keeps token-axis profile version 2 and adds capability
-bit 40. `V2_FILL` uses `funct7=0` for FULL, `funct7=1` for REFILL, and
-`funct7=2` for QUERY_UPDATE. Keeping the profile version avoids rejecting an
-otherwise compatible v2 device; software tests the independent bit before it
-uses mode 2.
-
-For a Query update:
-
-- `rs1` is the new F16 Query-group base;
-- `rs2` and `rd` are zero;
-- resident `q_rows`, Query stride, head dimension, K/V bases, K/V stride,
-  logical KV length, current tile start, and tile count are unchanged;
-- the new Query base must satisfy the existing V2 alignment and range rules;
-- only the resident Query rows are fetched; descriptor and K/V are not read;
-- the context is unavailable from command acceptance until terminal success;
-- the new Query base becomes visible only on complete success; and
-- any validation, translation, range, or read fault leaves the context
-  invalid, so partially replaced Query rows can never be replayed.
-
-The initial profile retains `q_rows<=8`. This covers one GQA group for the
-target D64/D96/D128 and GQA1..8 contract. Increasing the physical Query-row
-capacity to batch several Query tokens is a separate optimization and is not
-justified until Query-update or column-command overhead is measured as the
-new critical path.
-
-Capability discovery must advertise Query update independently. Old hardware
-continues to decode the capability as absent, and software then uses tiled RVV
-or ordinary RVV without issuing the new mode.
-
-## 5. State-resume contract
-
-The captured tensors use F32 Query/output and F16 K/V/mask. Query rows may be
-narrowed to F16 before AKV fill, but stable online-softmax state consists of:
+The public Prefill problem uses contiguous batch-one tensors:
 
 ```text
-maximum:          F32 scalar per Query head
-denominator:      F32 scalar per Query head
-output numerator: F32[D] per Query head
+Query   F32 [query_heads][query_tokens][head_dim]
+Key     F16 [kv_heads][kv_capacity][head_dim]
+Value   F16 [kv_heads][kv_capacity][head_dim]
+Mask    F16 [query_tokens][kv_capacity]
+Output  F32 [query_tokens][query_heads][head_dim]
 ```
 
-F16 numerator state is not admissible for long Prefill. On the real
-Qwen2.5 P0/M1024 capture, its error is reproduced at approximately 0.017,
-whereas F32 state reduces the same focused cases to approximately `1e-5`.
+The fixed workspace is:
 
-The first mechanism stores resumable state in ordinary software-visible
-memory, using the output-sized numerator buffer plus maximum and denominator
-arrays. Standard RVV loads and stores restore it around each resident K/V
-tile. This memory grows with the model output, but hidden hardware state does
-not: AKV still contains one bounded Query group and one bounded 64-token K/V
-tile. A dedicated state SRAM is not part of the first implementation.
+```text
+query      F16 [8][64][128]  = 131,072 B
+plan                            = 192 B
+score      F32 [8][64]        = 2,048 B
+maximum    F32 [64][8]        = 2,048 B
+sum        F32 [64][8]        = 2,048 B
+old_scale  F32 [8]            = 32 B
+total, including layout        = 137,472 B
+```
 
-The tile merge for one Query head is:
+The `query[head][token][dimension]` layout gives one contiguous vector per
+Query head. The stride between two heads for a fixed local token is 16 KiB.
+The QK helpers receive that stride explicitly and support GQA1 through GQA8.
+
+The output buffer holds the current block's F32 numerator in place. It is
+initialized before the first tile, rescaled after each tile, and normalized
+only after the final tile. This avoids a second output-sized hidden buffer.
+
+## 5. Stable online Softmax
+
+For each Query head and tile, software maintains:
 
 ```text
 m_new = max(m_old, max(score_tile))
 a     = exp(m_old - m_new)
-w     = exp(score_tile - m_new)
-l_new = a * l_old + sum(w)
-o_new = a * o_old + sum(w_j * V_j)
+w_j   = exp(score_j - m_new)
+l_new = a * l_old + sum_j(w_j)
+o_new = a * o_old + sum_j(w_j * V_j)
 ```
 
-Masked lanes contribute neither to the maximum nor to either sum. A tail tile
-contains exactly `min(64, active_prefix - tile_start)` visible tokens. The
-state is committed only after all QK, softmax, and PV work for that tile has
-completed.
-
-## 6. Exact Qwen P0/M1024 expectations
-
-For D128, Hq=12, Hkv=2, GQA=6, M=1024, P=0, and one Query token per update:
+`m`, `l`, and `o` are F32. A never-initialized state uses
+`m_old=-infinity` and `a=0`. The active token count is:
 
 ```text
-K/V tiles per KV head                 = 16
-visible (Query, tile) groups per head = sum(1024 - 64*t), t=0..15
-                                      = 8,704
-visible groups across both KV heads   = 17,408
-V2_FULL                               = 2
-V2_REFILL                             = 30
-QUERY_UPDATE                          = 17,406
-F16 Query bytes                       = 17,408 * 6 * 128 * 2
-                                      = 26,738,688
-external K/V bytes                    = 1024 * 2 * 128 * 2 * 2
-                                      = 1,048,576
-K-column load commands                = 17,408 * 128
-                                      = 2,228,224
-V-row load commands                   = 2 * sum(i+1), i=0..1023
-                                      = 1,049,600
+min(64, past_tokens + query_index + 1 - tile_start)
 ```
 
-The external K/V value is the unique captured-payload floor and is 512.5x
-smaller than the existing serial-AKV projection of 537,395,200 bytes. This
-does not imply a 512.5x cycle speedup: K-column/V-row replay and all arithmetic
-remain. The large exact replay counts are why local replay activity must be
-reported alongside external bytes.
+and a tile is skipped when that value is not positive. Consequently:
 
-## 7. Strict counters
+- no future token contributes to QK, denominator, or PV;
+- a 1..64 tail has one explicit VL;
+- every tile merge is numerically stable;
+- state survives any number of K/V tiles; and
+- final normalization occurs exactly once.
 
-The retained implementation must add or preserve counters with literal
-semantics:
+F16 numerator state is intentionally not used. On long real captures it caused
+errors around 1.7e-2, while F32 state stayed near the configured 1e-5-scale
+focused tolerance.
 
-- engine outputs `v2_full_count_o`, `v2_refill_count_o`,
-  `v2_query_update_count_o`, and `release_count_o` count accepted commands by
-  type; their log fields are `v2_full`, `v2_refill`, `v2_query_update`, and
-  `release`;
-- `q_external_bytes` counts accepted Query payload bytes only;
-- `kv_external_bytes` counts accepted K/V payload bytes only;
-- `v2_column_load_count` and `v2_row_load_count` count accepted local replay
-  commands;
-- `replay_bytes` counts bytes accepted by the lane result path;
-- engine output `v2_query_update_fault_count_o`, logged as
-  `v2_query_update_fault`, counts terminal Query-update faults;
-- `read_*` counters retain their existing translated read-engine meaning;
-- software phase counters separately record state load/store, QK, softmax,
-  PV, and final-normalization cycles and bytes; and
-- total operator cycles are valid only with a complete golden comparison.
+## 6. Validation and failure behavior
 
-`resident_tile_reuse` may be reported as a derived value equal to successful
-Query updates since the most recent FULL/REFILL. It must not be presented as
-an independent data-cache hit counter.
+Selection and validation happen before output is modified. The implementation
+requires:
 
-## 8. Cycle-level discriminators
+- non-null, non-overlapping Query, K, V, mask, output, and workspace ranges;
+- a finite positive scale;
+- batch one and at least two Query tokens;
+- integral `query_heads / kv_heads` in 1..8;
+- D64, D96, or D128 advertised by the AKV-v2 capability;
+- F32-aligned Query/output, F16-aligned mask, and 32-byte-aligned K/V;
+- sizes and address ranges representable without integer wraparound; and
+- a dense causal-prefix mask.
 
-Before changing a second mechanism, one focused trace must include:
+The first Query row determines `past_tokens = first_prefix - 1`. Every later
+row must expose exactly `past_tokens + query_index + 1` finite entries,
+followed by F16 negative infinity. Non-prefix, ALiBi, soft-cap, sink, unsupported
+dtype/stride, and unsupported D/GQA cases use the unchanged RVV fallback.
 
-- command valid/ready/type and terminal success/fault;
-- context-ready, current tile start/count, pending and committed Query base;
-- read-range role/address/bytes and read completion/fault;
-- Query-context write slot/offset and absence of K/V writes during update;
-- K/V bank column start/busy/valid and lane replay grant/final grant;
-- sequencer/VLSU ready and backpressure; and
-- software phase markers around state restore, QK, softmax/reduction, PV, and
-  state spill.
+Every `(KV head, Query block)` descriptor is preflighted before output writes.
+Once native execution begins, a command fault follows the existing AKV
+exception contract and invalidates the hidden context; software does not
+silently recompute a partially modified output.
 
-The distinguishing observations are:
+## 7. Hardware command contract
 
-1. K/V context contents and tile metadata remain unchanged across a successful
-   Query update.
-2. No replay is accepted while context-ready is false.
-3. A fault cannot expose a mixture of old and new Query rows.
-4. Exact command and byte counts match the causal-prefix formulas.
-5. If cycles do not improve after the external-byte reduction, the phase and
-   replay counters identify the transferred bottleneck.
+No Prefill-specific command remains. The schedule uses the existing AKV-v2
+profile:
 
-## 9. Fallback and unsupported cases
+- `V2_FULL(descriptor, tile_start)` reads descriptor, Query seed rows, and
+  one 1..64-token K/V tile;
+- `V2_REFILL(tile_start)` retains shape and Query metadata while replacing
+  only the K/V tile;
+- `V2_COLUMN_LOAD(dimension)` returns the selected K column;
+- the existing row load returns one resident V row; and
+- `RELEASE` invalidates the context.
 
-The Prefill selector must require all of the following before using Query
-update:
+FULL and REFILL are blocking and commit atomically. Local row/column loads use
+the normal VLSU lane-result path, so ordinary vector destination hazards,
+backpressure, and completion rules remain in force. Standard RVV instructions
+perform conversion, dot products, exponentiation, reductions, accumulation,
+and final normalization.
 
-- advertised V2 token-axis and Query-update capabilities;
-- F32 Query/output and F16 K/V/mask;
-- D64, D96, or D128;
-- GQA ratio 1..8 with integral head mapping;
-- dense causal visible-prefix masks;
-- supported contiguous/aligned strides and nonaliasing ranges; and
-- a size threshold that amortizes command setup.
+## 8. Strict accounting
 
-ALiBi, logit soft-cap, non-prefix masks, unsupported dtypes/strides, D256 below
-its performance gate, command faults, and absent capability use the unchanged
-RVV path. Selection happens before hidden state is changed; a fault after a
-command starts invalidates AKV and returns through the existing exception
-contract rather than silently recomputing partial output.
+The performance log reports literal hardware events:
 
-## 10. Implementation status and order
+- `v2_full` and `v2_refill`: accepted context commands;
+- `v2_column_load` and `v2_row_load`: accepted local replay commands;
+- `release`: accepted releases;
+- `q_external_bytes`: Query seed bytes accepted by the read engine;
+- `kv_external_bytes`: K/V bytes accepted by the read engine;
+- `replay_bytes`: bytes accepted by the normal lane-result path;
+- `read_ranges`, `translations`, `ar`, and `r_beats`: translated
+  external-read activity; and
+- replay/read backpressure and outstanding occupancy counters: resource
+  pressure, not additive stall partitions.
 
-1. Completed: freeze strict Stage-2 numerical and strongest-RVV baselines.
-2. Completed: add ABI/reference-model Query-update semantics and negative tests.
-3. Completed: add the engine command with atomic context invalidation and
-   strict counters.
-4. Completed: prove command behavior with generic SRAM, target macro SRAM,
-   synthesis-wrapper, and complete `ara_tb` elaboration checks.
-5. Next: convert the shared AKV workspace and RVV helpers to F32 numerator
-   state.
-6. Next: implement the K/V-outer software schedule with real captured tensors.
-7. Then measure one short discriminating point and P0/M512 RTL if the hypothesis
-   survives.
-8. Finally regress Decode AKV, nine QBS profiles, ordinary RVV, tails, faults,
-   and all supported D/GQA shapes before GGML selector integration.
+The static analyzer independently derives exact expected values from the real
+capture. Strict validation fails if any command or byte count differs. Old
+logs containing removed Query-update fields are not part of the current
+schema.
+
+One column command replays the entire active resident tile, not one scalar.
+For a tile of T tokens it contributes `2*T` replay bytes. One V-row command
+contributes `2*D` replay bytes. This distinction explains why local replay
+can dominate after external K/V traffic is reduced.
+
+## 9. Exact Qwen2.5 P0/M1024 projection
+
+For D128, Hq=12, Hkv=2, GQA6, M=1024, P=0:
+
+| Quantity | Exact value |
+|---|---:|
+| Query blocks | 16 |
+| Sum of block maximum prefixes per KV head | 8,704 |
+| Query-tile visits across two KV heads | 17,408 |
+| `V2_FULL` | 32 |
+| `V2_REFILL` | 240 |
+| K-column commands | 2,228,224 |
+| V-row commands | 1,049,600 |
+| releases | 32 |
+| command records | 3,278,128 |
+| external Query seed bytes | 49,152 B |
+| external K/V bytes | 8,912,896 B |
+| column replay bytes | 285,212,672 B |
+| row replay bytes | 268,697,600 B |
+| total replay bytes | 553,910,272 B |
+| fixed allocated workspace | 137,472 B |
+
+Serial AKV projects 537,395,200 external K/V bytes for the same capture. B64
+therefore reduces that traffic by 60.29x, but still reads 8.5x the unique
+1,048,576-byte K/V payload floor and retains all QK/PV arithmetic and local
+replay. A 60.29x traffic reduction is not a 60.29x cycle prediction.
+
+## 10. Falsifiable performance hypothesis
+
+The retained hypothesis is:
+
+> At a real M>=512 Prefill point, amortizing K/V fill over a 64-Query block
+> reduces full Attention-core cycles by at least 1.20x relative to the
+> strongest tiled-RVV implementation.
+
+The hypothesis is accepted only with:
+
+1. a complete golden comparison;
+2. exact command and traffic counters;
+3. cycles/token and total operator cycles;
+4. separately reported Query conversion, QK, Softmax/reduction, PV, and final
+   normalization activity;
+5. RVV functional-unit utilization and VLSU/sequencer backpressure; and
+6. no unexplained regression in Decode AKV, QBS, or ordinary RVV.
+
+If K/V bytes match the projection but speedup is below 1.20x, the mechanism has
+transferred the bottleneck to column/row replay, command setup, F32 state,
+reductions, or backend pressure. Any additional hardware semantic must target
+that measured critical path rather than assume K/V traffic is still dominant.
+
+## 11. Verification status
+
+Completed:
+
+- real-capture static work, traffic, state, and workspace accounting;
+- direct versus Query-update discriminating RTL measurement;
+- removal of the losing Query-update ABI and RTL state;
+- B64 software implementation with preflight and strict fallback;
+- host runtime/alias/range tests;
+- ABI generation contract;
+- generic-SRAM AKV engine regression;
+- target-macro SRAM AKV engine regression; and
+- synthesis-wrapper elaboration without running synthesis.
+
+Remaining acceptance work:
+
+- complete the short B64 RTL discriminator and strict counter check;
+- run a multi-tile focused point;
+- run at least one real M>=512 full Attention-core RTL point;
+- compare against ordinary and strong tiled RVV;
+- integrate the selector into the real GGML Prefill path;
+- complete D64/D96/D128 and GQA1..8 plus seven-model fallback census; and
+- document measured performance, numerical tolerance, and unsupported cases.

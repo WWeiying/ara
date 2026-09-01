@@ -22,9 +22,9 @@ module qbs_dot_array (
   logic signed [17:0] stream_sum_d [16];
 
   always_comb begin
-    product_d = '{default: '0};
-    pair_sum_d = '{default: '0};
-    quad_sum_d = '{default: '0};
+    product_d = '{default: '{default: '0}};
+    pair_sum_d = '{default: '{default: '0}};
+    quad_sum_d = '{default: '{default: '0}};
     oct_sum_d = '{default: '0};
     stream_sum_d = '{default: '0};
 

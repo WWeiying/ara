@@ -34,7 +34,6 @@
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
 #define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
 #define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
-#define AKV_V2_QUERY_UPDATE_CAPABILITY_BIT 40u
 #define AKV_V2_COLUMN_SEGMENT_BIT 7u
 
 typedef enum {
@@ -51,7 +50,6 @@ typedef enum {
 typedef enum {
   AKV_FILL_FULL = 0,
   AKV_FILL_REFILL = 1,
-  AKV_FILL_QUERY_UPDATE = 2,
 } akv_fill_mode_t;
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
@@ -211,16 +209,6 @@ static inline int akv_v2_descriptor_is_valid(
           ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) == 0u;
 }
 
-static inline int akv_v2_query_base_is_valid(
-    const akv_descriptor_t *descriptor, uint64_t query_base) {
-  if (!akv_v2_descriptor_is_valid(descriptor) || query_base == 0u ||
-      (query_base & ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) != 0u)
-    return 0;
-  return akv_range_fits(query_base, descriptor->q_row_stride_bytes,
-                        descriptor->q_rows,
-                        (uint32_t)descriptor->head_dim * 2u);
-}
-
 static inline int akv_load_selector_is_valid(const akv_descriptor_t *descriptor,
                                               uint32_t tile_length,
                                               uint32_t selector) {
@@ -290,8 +278,7 @@ static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {
            (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
            (UINT64_C(1) << 37) |
            (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_QUERY_UPDATE_CAPABILITY_BIT);
+           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
   if (index == 3u)
     return (uint64_t)AKV_OPCODE_CUSTOM2 |
            ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |
@@ -335,10 +322,6 @@ static inline uint32_t akv_encode_v2_fill(uint32_t descriptor_rs1,
                                           akv_fill_mode_t mode) {
   return akv_encode_r(AKV_V2_FILL_FUNCT3, (uint32_t)mode, 0u,
                       descriptor_rs1, tile_start_rs2);
-}
-
-static inline uint32_t akv_encode_v2_query_update(uint32_t query_rs1) {
-  return akv_encode_v2_fill(query_rs1, 0u, AKV_FILL_QUERY_UPDATE);
 }
 
 static inline uint32_t akv_encode_v2_column_load(uint32_t vd,

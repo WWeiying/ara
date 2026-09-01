@@ -101,40 +101,6 @@ akv_status_t akv_v2_reference_refill(akv_v2_reference_context_t *context,
 }
 
 
-akv_status_t akv_v2_reference_query_update(
-    akv_v2_reference_context_t *context, const uint16_t *query) {
-  if (context == NULL)
-    return AKV_STATUS_BAD_ARGUMENT;
-  if (!context->ready)
-    return AKV_STATUS_EXECUTION;
-
-  context->ready = 0u;
-  if (query == NULL)
-    return AKV_STATUS_BAD_ARGUMENT;
-  if (!akv_v2_descriptor_is_valid(&context->descriptor) ||
-      ((uintptr_t)query & UINT64_C(31)) != 0u)
-    return AKV_STATUS_LAYOUT;
-  const uint64_t query_base = (uint64_t)(uintptr_t)query;
-  if (!akv_v2_query_base_is_valid(&context->descriptor, query_base))
-    return AKV_STATUS_RANGE;
-
-  uint16_t pending[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_128];
-  memset(pending, 0, sizeof(pending));
-  const size_t row_bytes =
-      (size_t)context->descriptor.head_dim * sizeof(uint16_t);
-  for (uint32_t row = 0; row < context->descriptor.q_rows; ++row)
-    memcpy(pending[row],
-           row_address(query_base,
-                       context->descriptor.q_row_stride_bytes, row),
-           row_bytes);
-
-  memcpy(context->query, pending, sizeof(pending));
-  context->descriptor.q_base = query_base;
-  context->ready = 1u;
-  return AKV_STATUS_OK;
-}
-
-
 akv_status_t akv_v2_reference_load_row(
     const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements) {

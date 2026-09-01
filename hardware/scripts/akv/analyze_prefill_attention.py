@@ -15,12 +15,24 @@ from pathlib import Path
 
 FP16_NEGATIVE_INFINITY = 0xFC00
 AKV_MAX_Q_ROWS = 8
+AKV_HEAD_DIM_128 = 128
 AKV_V2_TILE_TOKENS = 64
+AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
+AKV_ATTENTION_PLAN_BYTES = 192
+RVV_BASELINE_STRATEGIES = frozenset({
+    "rvv_qhead_serial",
+    "rvv_q64_qhead",
+    "rvv_gqa_q4",
+    "rvv_gqa_q64",
+})
 OPERATOR_RESULT_RE = re.compile(
     r"LLAMA_OPERATOR\s+(\S+)\s+(PASS|FAIL)\s+cycles=(\d+)\s+mismatches=(\d+)"
 )
 AKV_PERF_RE = re.compile(r"^\[AKV_PERF\]\s+(.*)$", re.MULTILINE)
 AKV_FIELD_RE = re.compile(r"([a-zA-Z0-9_]+)=(\d+)")
+LLM_PERF_REPORT_RE = re.compile(r"^\[LLM_PERF\] wrote (\S+)$", re.MULTILINE)
+LLM_PERF_ROW_RE = re.compile(r"^\[LLM_PERF\]\s+(.*)$", re.MULTILINE)
+LLM_PERF_FIELD_RE = re.compile(r"([a-zA-Z0-9_]+)=([^ ]+)")
 AKV_SUM_FIELDS = (
     "busy_cycles",
     "full",
@@ -29,8 +41,6 @@ AKV_SUM_FIELDS = (
     "release",
     "v2_full",
     "v2_refill",
-    "v2_query_update",
-    "v2_query_update_fault",
     "v2_row_load",
     "v2_column_load",
     "q_external_bytes",
@@ -104,6 +114,10 @@ def active_prefixes(mask: dict, kv_capacity: int, query_tokens: int) -> list[int
         row = values[token * kv_capacity : (token + 1) * kv_capacity]
         prefix = 0
         while prefix < kv_capacity and row[prefix] != FP16_NEGATIVE_INFINITY:
+            if row[prefix] & 0x7C00 == 0x7C00:
+                raise ValueError(
+                    f"query token {token} visible mask contains NaN or infinity"
+                )
             prefix += 1
         if prefix == 0:
             raise ValueError(f"query token {token} has no visible KV entry")
@@ -155,6 +169,102 @@ def parse_akv_perf(log_text: str) -> dict:
     return aggregate
 
 
+def parse_llm_perf_report(log_text: str) -> dict:
+    rows: dict[str, dict[str, int]] = {}
+    case_name = None
+    for line in LLM_PERF_ROW_RE.findall(log_text):
+        fields = dict(LLM_PERF_FIELD_RE.findall(line))
+        phase = fields.pop("phase", None)
+        row_case = fields.pop("case", None)
+        if phase is None or row_case is None:
+            continue
+        if case_name is None:
+            case_name = row_case
+        elif case_name != row_case:
+            raise ValueError("LLM performance report mixes multiple cases")
+        if phase in rows:
+            raise ValueError(f"duplicate LLM performance phase: {phase}")
+        try:
+            rows[phase] = {key: int(value) for key, value in fields.items()}
+        except ValueError as error:
+            raise ValueError(f"invalid LLM performance row for phase {phase}") from error
+    if not rows:
+        raise ValueError("LLM performance report has no counter rows")
+    if "total" not in rows:
+        raise ValueError("LLM performance report has no total row")
+
+    total = rows["total"]
+    cycles = total.get("cycles", 0)
+    if cycles <= 0:
+        raise ValueError("LLM performance total cycle count must be positive")
+    ratios = {
+        "backend_busy_ratio": total.get("backend_busy_cycles", 0) / cycles,
+        "lane_active_ratio": total.get("lane_active_cycles", 0) / cycles,
+        "compute_active_ratio": total.get("compute_active_cycles", 0) / cycles,
+        "mfpu_active_ratio": total.get("mfpu_exec_active_cycles", 0) / cycles,
+        "request_blocked_ratio": total.get("req_blocked_cycles", 0) / cycles,
+        "queue_full_ratio": total.get("queue_full_cycles", 0) / cycles,
+        "queue_resource_block_ratio":
+            total.get("queue_resource_block_cycles", 0) / cycles,
+        "operand_block_ratio": total.get("operand_block_cycles", 0) / cycles,
+        "hazard_block_ratio": total.get("hazard_block_cycles", 0) / cycles,
+    }
+    return {
+        "case": case_name,
+        "phases": rows,
+        "ratios": ratios,
+    }
+
+
+def load_llm_perf(log_path: Path, log_text: str) -> dict:
+    report_names = LLM_PERF_REPORT_RE.findall(log_text)
+    if not report_names:
+        return {}
+    if len(report_names) != 1:
+        raise ValueError(f"expected one LLM performance report in {log_path}")
+    report_name = Path(report_names[0])
+    if report_name.is_absolute() or report_name.name != str(report_name):
+        raise ValueError(f"unsafe LLM performance report name: {report_name}")
+    report_path = log_path.parent / report_name
+    if not report_path.is_file():
+        raise ValueError(f"missing LLM performance report: {report_path}")
+    parsed = parse_llm_perf_report(report_path.read_text(errors="replace"))
+    parsed["report"] = str(report_path.resolve())
+    parsed["report_sha256"] = sha256(report_path)
+    return parsed
+
+
+def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> dict:
+    if strategy != "akv_qblock64_kv_outer":
+        return {}
+    exact = summary["kv_outer_exact"]
+    expected = {
+        "v2_full": exact["v2_full"],
+        "v2_refill": exact["v2_refill"],
+        "v2_column_load": exact["v2_column_load"],
+        "v2_row_load": exact["v2_row_load"],
+        "release": exact["v2_release"],
+        "q_external_bytes": exact["resident_query_fill_bytes"],
+        "kv_external_bytes": exact["external_kv_bytes"],
+        "replay_bytes": exact["replay_bytes"],
+        "records": exact["command_records"],
+    }
+    mismatches = {
+        field: {"expected": value, "observed": counters.get(field)}
+        for field, value in expected.items()
+        if counters.get(field) != value
+    }
+    if mismatches:
+        raise ValueError(
+            f"{strategy} strict AKV counters do not match the schedule: "
+            f"{json.dumps(mismatches, sort_keys=True)}"
+        )
+    return {
+        "strict_counter_status": "PASS",
+        "strict_counter_checked_fields": len(expected),
+    }
+
+
 def attach_measurements(
     summary: dict, measurement_specs: list[tuple[str, Path]]
 ) -> None:
@@ -181,18 +291,47 @@ def attach_measurements(
             "log": str(path),
             "log_sha256": sha256(path),
         }
-        entry.update(
-            {f"akv_{key}": value for key, value in parse_akv_perf(log_text).items()}
-        )
+        llm_perf = load_llm_perf(path, log_text)
+        if llm_perf:
+            entry["llm_perf"] = llm_perf
+            total = llm_perf["phases"]["total"]
+            entry.update({f"llm_{key}": value for key, value in total.items()})
+            entry.update(
+                {f"llm_{key}": value for key, value in llm_perf["ratios"].items()}
+            )
+            entry["llm_report"] = llm_perf["report"]
+            entry["llm_report_sha256"] = llm_perf["report_sha256"]
+        counters = parse_akv_perf(log_text)
+        entry.update(validate_kv_outer_counters(summary, strategy, counters))
+        entry.update({f"akv_{key}": value for key, value in counters.items()})
         measurements.append(entry)
     by_strategy = {entry["strategy"]: entry for entry in measurements}
-    baseline = by_strategy.get("rvv_qhead_serial")
-    if baseline is not None:
+    ordinary_baseline = by_strategy.get("rvv_qhead_serial")
+    if ordinary_baseline is not None:
         for entry in measurements:
-            entry["speedup_vs_rvv"] = baseline["cycles"] / entry["cycles"]
-    candidate = by_strategy.get("akv_gqa_serial")
-    if baseline is not None and candidate is not None:
-        measured_speedup = baseline["cycles"] / candidate["cycles"]
+            entry["speedup_vs_rvv"] = (
+                ordinary_baseline["cycles"] / entry["cycles"]
+            )
+    measured_rvv_baselines = [
+        entry
+        for entry in measurements
+        if entry["strategy"] in RVV_BASELINE_STRATEGIES
+    ]
+    strongest_rvv = (
+        min(measured_rvv_baselines, key=lambda entry: entry["cycles"])
+        if measured_rvv_baselines
+        else None
+    )
+    if strongest_rvv is not None:
+        for entry in measurements:
+            entry["speedup_vs_strongest_rvv"] = (
+                strongest_rvv["cycles"] / entry["cycles"]
+            )
+    candidate = by_strategy.get("akv_qblock64_kv_outer")
+    if candidate is None:
+        candidate = by_strategy.get("akv_gqa_serial")
+    if strongest_rvv is not None and candidate is not None:
+        measured_speedup = strongest_rvv["cycles"] / candidate["cycles"]
         minimum_speedup = summary["decision_gate"]["minimum_kernel_speedup"]
         kernel_gate_pass = measured_speedup >= minimum_speedup
         summary["decision_gate"].update(
@@ -200,6 +339,8 @@ def attach_measurements(
                 "measurement_status": "PASS",
                 "correctness_gate_pass": True,
                 "measured_kernel_speedup": measured_speedup,
+                "strongest_rvv_strategy": strongest_rvv["strategy"],
+                "strongest_rvv_cycles": strongest_rvv["cycles"],
                 "kernel_speedup_gate_pass": kernel_gate_pass,
                 "model_share_gate_status": "NOT_EVALUATED",
                 "overall_status": (
@@ -281,11 +422,101 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
 
     prefix_sum = sum(prefixes)
     bytes_per_kv_prefix_token = kv_heads * head_dim * 2 * 2
+    bytes_per_qhead_prefix_token = query_heads * head_dim * 2 * 2
     rvv_qhead_serial_kv_bytes = prefix_sum * query_heads * head_dim * 2 * 2
     gqa_serial_kv_bytes = prefix_sum * bytes_per_kv_prefix_token
     unique_kv_bytes = max(prefixes) * bytes_per_kv_prefix_token
     score_macs = prefix_sum * query_heads * head_dim
     value_macs = score_macs
+    query_blocks = []
+    for start in range(0, query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS):
+        count = min(AKV_PREFILL_QUERY_BLOCK_TOKENS, query_tokens - start)
+        block_prefix = past_tokens + start + count
+        query_blocks.append(
+            {
+                "start": start,
+                "count": count,
+                "maximum_prefix": block_prefix,
+                "kv_tiles":
+                    (block_prefix + AKV_V2_TILE_TOKENS - 1)
+                    // AKV_V2_TILE_TOKENS,
+            }
+        )
+
+    query_tile_visits_per_kv_head = sum(
+        (prefix + AKV_V2_TILE_TOKENS - 1) // AKV_V2_TILE_TOKENS
+        for prefix in prefixes
+    )
+    query_tile_visits = query_tile_visits_per_kv_head * kv_heads
+    kv_outer_full = len(query_blocks) * kv_heads
+    kv_outer_refill = sum(
+        block["kv_tiles"] - 1 for block in query_blocks
+    ) * kv_heads
+    query_group_f32_bytes = gqa_rows * head_dim * 4
+    query_group_f16_bytes = gqa_rows * head_dim * 2
+    query_conversions = query_tokens * kv_heads
+    query_conversion_source_f32_read_bytes = query_conversions * query_group_f32_bytes
+    query_workspace_f16_write_bytes = query_conversions * query_group_f16_bytes
+    ordinary_qk_query_read_bytes = query_tile_visits * query_group_f16_bytes
+    resident_query_fill_bytes = kv_outer_full * query_group_f16_bytes
+    total_query_traffic_bytes = (
+        query_conversion_source_f32_read_bytes
+        + query_workspace_f16_write_bytes
+        + ordinary_qk_query_read_bytes
+        + resident_query_fill_bytes
+    )
+    state_scalar_bytes_per_visit = gqa_rows * 2 * 4 * 2
+    state_numerator_bytes_per_visit = gqa_rows * head_dim * 4 * 2
+    state_rows = query_tokens * query_heads
+    active_block_tokens = min(query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS)
+    active_numerator_f32_bytes = active_block_tokens * gqa_rows * head_dim * 4
+    active_softmax_f32_bytes = active_block_tokens * gqa_rows * 2 * 4
+    final_output_rw_bytes = query_tokens * query_heads * head_dim * 4 * 2
+    final_softmax_sum_read_bytes = state_rows * 4
+    initial_state_write_bytes = (
+        query_tokens * query_heads * (head_dim * 4 + 2 * 4)
+    )
+    active_local_workspace_bytes = (
+        active_block_tokens * query_group_f16_bytes
+        + AKV_ATTENTION_PLAN_BYTES
+        + gqa_rows * AKV_V2_TILE_TOKENS * 4
+        + active_block_tokens * gqa_rows * 2 * 4
+        + gqa_rows * 4
+    )
+    allocated_workspace_bytes = (
+        AKV_MAX_Q_ROWS * AKV_PREFILL_QUERY_BLOCK_TOKENS
+        * AKV_HEAD_DIM_128 * 2
+        + AKV_ATTENTION_PLAN_BYTES
+        + AKV_MAX_Q_ROWS * AKV_V2_TILE_TOKENS * 4
+        + AKV_PREFILL_QUERY_BLOCK_TOKENS * AKV_MAX_Q_ROWS * 2 * 4
+        + AKV_MAX_Q_ROWS * 4
+    )
+    allocated_workspace_bytes = (
+        (allocated_workspace_bytes + 63) // 64
+    ) * 64
+    block_prefix_sum = sum(block["maximum_prefix"] for block in query_blocks)
+    qblock_external_kv_bytes = block_prefix_sum * bytes_per_kv_prefix_token
+    column_replay_tokens_per_kv_head = 0
+    for block in query_blocks:
+        for token in range(block["start"], block["start"] + block["count"]):
+            for tile_start in range(0, prefixes[token], AKV_V2_TILE_TOKENS):
+                column_replay_tokens_per_kv_head += min(
+                    AKV_V2_TILE_TOKENS,
+                    block["maximum_prefix"] - tile_start,
+                )
+    column_replay_bytes = (
+        column_replay_tokens_per_kv_head * kv_heads * head_dim * 2
+    )
+    row_replay_bytes = prefix_sum * kv_heads * head_dim * 2
+    kv_outer_replay_bytes = column_replay_bytes + row_replay_bytes
+    kv_outer_release = kv_outer_full
+    kv_outer_command_records = (
+        kv_outer_full
+        + kv_outer_refill
+        + query_tile_visits * head_dim
+        + prefix_sum * kv_heads
+        + kv_outer_release
+    )
 
     strategies = [
         {
@@ -296,23 +527,57 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "fits_current_q_rows": True,
         },
         {
+            "name": "rvv_q64_qhead",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": query_tile_kv_bytes(
+                prefixes,
+                AKV_PREFILL_QUERY_BLOCK_TOKENS,
+                bytes_per_qhead_prefix_token,
+            ),
+            "required_q_rows_if_concurrent": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "fits_current_q_rows": False,
+            "query_mode": "standard_rvv_per_qhead_q64_software_tile",
+        },
+        {
+            "name": "rvv_gqa_q4",
+            "query_tile": 4,
+            "external_kv_bytes": query_tile_kv_bytes(
+                prefixes, 4, bytes_per_kv_prefix_token
+            ),
+            "required_q_rows_if_concurrent": 4 * gqa_rows,
+            "fits_current_q_rows": False,
+            "query_mode": "standalone_standard_rvv_gqa_tile",
+        },
+        {
+            "name": "rvv_gqa_q64",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": query_tile_kv_bytes(
+                prefixes,
+                AKV_PREFILL_QUERY_BLOCK_TOKENS,
+                bytes_per_kv_prefix_token,
+            ),
+            "required_q_rows_if_concurrent": (
+                AKV_PREFILL_QUERY_BLOCK_TOKENS * gqa_rows
+            ),
+            "fits_current_q_rows": False,
+            "query_mode": "standard_rvv_gqa_q64_software_tile",
+        },
+        {
             "name": "akv_gqa_serial",
             "query_tile": 1,
             "external_kv_bytes": gqa_serial_kv_bytes,
             "required_q_rows_if_concurrent": gqa_rows,
             "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
         },
+        {
+            "name": "akv_qblock64_kv_outer",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "query_mode": "fixed_software_query_block",
+        },
     ]
-    if max(prefixes) <= AKV_V2_TILE_TOKENS:
-        strategies.append(
-            {
-                "name": "akv_resident_single_kv_tile",
-                "query_tile": 1,
-                "external_kv_bytes": unique_kv_bytes,
-                "required_q_rows_if_concurrent": gqa_rows,
-                "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
-            }
-        )
     for query_tile in query_tiles:
         rows = query_tile * gqa_rows
         strategies.append(
@@ -339,30 +604,41 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     for strategy in strategies:
         query_tile = strategy["query_tile"]
         rows = strategy["required_q_rows_if_concurrent"]
+        state_rows_for_strategy = rows
+        if strategy["name"] == "akv_qblock64_kv_outer":
+            state_rows_for_strategy = active_block_tokens * gqa_rows
         strategy["reduction_vs_rvv"] = (
             rvv_qhead_serial_kv_bytes / strategy["external_kv_bytes"]
         )
         strategy["reduction_vs_akv_serial"] = (
             gqa_serial_kv_bytes / strategy["external_kv_bytes"]
         )
-        strategy["query_context_f16_bytes"] = rows * head_dim * 2
-        strategy["accumulator_f16_bytes"] = rows * head_dim * 2
-        strategy["score_f32_bytes"] = rows * AKV_V2_TILE_TOKENS * 4
-        strategy["softmax_scalar_bytes"] = rows * 3 * 4
-        strategy["workspace_bytes"] = (
-            strategy["accumulator_f16_bytes"]
-            + strategy["score_f32_bytes"]
-            + strategy["softmax_scalar_bytes"]
+        strategy["query_context_f16_bytes"] = (
+            state_rows_for_strategy * head_dim * 2
         )
-        strategy["requires_query_only_context_update"] = strategy["name"] in {
-            "akv_resident_single_kv_tile",
-        }
+        strategy["concurrent_numerator_state_f32_bytes"] = (
+            state_rows_for_strategy * head_dim * 4
+        )
+        strategy["score_f32_bytes"] = rows * AKV_V2_TILE_TOKENS * 4
+        strategy["concurrent_softmax_working_f32_bytes"] = (
+            state_rows_for_strategy * 2 * 4 + rows * 4
+        )
+        strategy["conceptual_concurrent_state_bytes"] = (
+            strategy["query_context_f16_bytes"]
+            + strategy["concurrent_numerator_state_f32_bytes"]
+            + strategy["score_f32_bytes"]
+            + strategy["concurrent_softmax_working_f32_bytes"]
+        )
+        strategy["requires_query_only_context_update"] = False
         strategy["requires_concurrent_query_state"] = strategy["name"].startswith(
             "akv_query_tile_"
-        ) or strategy["name"] == "unique_kv_floor"
+        ) or strategy["name"] in {
+            "unique_kv_floor",
+            "akv_qblock64_kv_outer",
+        }
 
     return {
-        "schema_version": 1,
+        "schema_version": 3,
         "status": "PASS",
         "scope": "real-capture static Prefill Attention work/traffic/state analysis",
         "case": str(case_path),
@@ -406,12 +682,54 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "output_f32_bytes": golden["nbytes"],
             "unique_visible_kv_bytes": unique_kv_bytes,
         },
+        "kv_outer_exact": {
+            "query_block_tokens": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "query_block_count": len(query_blocks),
+            "query_blocks": query_blocks,
+            "block_maximum_prefix_sum": block_prefix_sum,
+            "query_tile_visits_per_kv_head": query_tile_visits_per_kv_head,
+            "query_tile_visits": query_tile_visits,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "query_conversions": query_conversions,
+            "query_group_f32_bytes": query_group_f32_bytes,
+            "query_group_f16_bytes": query_group_f16_bytes,
+            "query_conversion_source_f32_read_bytes":
+                query_conversion_source_f32_read_bytes,
+            "query_workspace_f16_write_bytes": query_workspace_f16_write_bytes,
+            "ordinary_qk_query_read_bytes": ordinary_qk_query_read_bytes,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "total_query_traffic_bytes": total_query_traffic_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "v2_column_load": query_tile_visits * head_dim,
+            "v2_row_load": prefix_sum * kv_heads,
+            "v2_release": kv_outer_release,
+            "column_replay_bytes": column_replay_bytes,
+            "row_replay_bytes": row_replay_bytes,
+            "replay_bytes": kv_outer_replay_bytes,
+            "command_records": kv_outer_command_records,
+            "active_output_numerator_f32_bytes": active_numerator_f32_bytes,
+            "active_softmax_state_f32_bytes": active_softmax_f32_bytes,
+            "state_scalar_read_write_bytes": query_tile_visits
+            * state_scalar_bytes_per_visit,
+            "state_numerator_read_write_bytes": query_tile_visits
+            * state_numerator_bytes_per_visit,
+            "initial_state_write_bytes": initial_state_write_bytes,
+            "final_output_read_write_bytes": final_output_rw_bytes,
+            "final_softmax_sum_read_bytes": final_softmax_sum_read_bytes,
+            "active_local_workspace_bytes": active_local_workspace_bytes,
+            "allocated_workspace_bytes": allocated_workspace_bytes,
+            "workspace_semantics": (
+                "fixed 64-Query cache plus plan, score, and online-softmax "
+                "state; output holds only the current block's F32 numerator"
+            ),
+        },
         "strategies": strategies,
         "decision_gate": {
-            "rtl_changed": False,
+            "rtl_changed": True,
             "next_measurement": (
-                "measure ordinary RVV and existing-command serial AKV cycles; only then "
-                "evaluate a Query-only context-update command"
+                "validate the fixed B64 schedule on the short discriminator, then "
+                "measure a multi-tile point and the required M>=512 real capture"
             ),
             "minimum_kernel_speedup": 1.2,
             "minimum_model_share": 0.1,
@@ -434,7 +752,10 @@ def write_outputs(summary: dict, output_dir: Path) -> None:
             "required_q_rows_if_concurrent",
             "fits_current_q_rows",
             "query_context_f16_bytes",
-            "workspace_bytes",
+            "concurrent_numerator_state_f32_bytes",
+            "score_f32_bytes",
+            "concurrent_softmax_working_f32_bytes",
+            "conceptual_concurrent_state_bytes",
             "requires_query_only_context_update",
             "requires_concurrent_query_state",
         ]
@@ -455,6 +776,9 @@ def write_outputs(summary: dict, output_dir: Path) -> None:
             "cycles",
             "mismatches",
             "speedup_vs_rvv",
+            "speedup_vs_strongest_rvv",
+            "strict_counter_status",
+            "strict_counter_checked_fields",
             "akv_records",
             "akv_busy_cycles",
             "akv_v2_full",
@@ -474,6 +798,29 @@ def write_outputs(summary: dict, output_dir: Path) -> None:
             "akv_read_outstanding_occ_sum",
             "akv_read_outstanding_max",
             "akv_read_outstanding_full_cycles",
+            "llm_backend_busy_cycles",
+            "llm_lane_active_cycles",
+            "llm_compute_active_cycles",
+            "llm_mfpu_exec_active_cycles",
+            "llm_mfpu_exec_lane_fires",
+            "llm_req_valid_cycles",
+            "llm_req_fire_count",
+            "llm_req_blocked_cycles",
+            "llm_queue_full_cycles",
+            "llm_queue_resource_block_cycles",
+            "llm_operand_block_cycles",
+            "llm_hazard_block_cycles",
+            "llm_backend_busy_ratio",
+            "llm_lane_active_ratio",
+            "llm_compute_active_ratio",
+            "llm_mfpu_active_ratio",
+            "llm_request_blocked_ratio",
+            "llm_queue_full_ratio",
+            "llm_queue_resource_block_ratio",
+            "llm_operand_block_ratio",
+            "llm_hazard_block_ratio",
+            "llm_report",
+            "llm_report_sha256",
             "log",
             "log_sha256",
         ]

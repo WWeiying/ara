@@ -12,8 +12,6 @@ enum {
 };
 
 static _Alignas(64) uint16_t query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
-static _Alignas(64) uint16_t
-    updated_query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t key[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t value[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t mask[MAX_TEST_KV_LENGTH];
@@ -23,7 +21,12 @@ static _Alignas(64) uint16_t
 static _Alignas(64) uint16_t
     v2_value[V2_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) akv_v2_reference_context_t v2_context;
-static _Alignas(64) akv_v2_reference_context_t v2_context_snapshot;
+static _Alignas(64) float prefill_query[2u * 2u * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_key[2u * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_value[2u * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_mask[2u * 2u];
+static _Alignas(64) float prefill_output[2u * 2u * AKV_HEAD_DIM_64];
+static _Alignas(64) akv_attention_v2_prefill_workspace_t prefill_workspace;
 
 typedef struct {
   unsigned calls;
@@ -96,7 +99,6 @@ static void test_capabilities(void) {
   assert(device.capabilities.token_axis_banks == AKV_V2_TOKEN_BANKS);
   assert(device.capabilities.token_axis_d_axis_tail == 1u);
   assert(device.capabilities.token_axis_d256_segmented == 1u);
-  assert(device.capabilities.token_axis_query_update == 1u);
 
   akv_capabilities_t capabilities;
   assert(akv_capabilities_decode(0u, 0u, &capabilities) ==
@@ -130,13 +132,6 @@ static void test_capabilities(void) {
              no_d256_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
          AKV_STATUS_OK);
   assert(capabilities.token_axis_d256_segmented == 0u);
-  const uint64_t no_query_update_info2 = akv_v2_capability_word(2u, 1) &
-      ~(UINT64_C(1) << AKV_V2_QUERY_UPDATE_CAPABILITY_BIT);
-  assert(akv_capabilities_decode_extended(
-             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
-             no_query_update_info2, akv_v2_capability_word(3u, 1),
-             &capabilities) == AKV_STATUS_OK);
-  assert(capabilities.token_axis_query_update == 0u);
 }
 
 static void test_v2_reference_context(void) {
@@ -144,8 +139,6 @@ static void test_v2_reference_context(void) {
     for (size_t dimension = 0; dimension < TEST_ROW_ELEMENTS; ++dimension) {
       query[row * TEST_ROW_ELEMENTS + dimension] =
           (uint16_t)(0x0100u + row * 0x100u + dimension);
-      updated_query[row * TEST_ROW_ELEMENTS + dimension] =
-          (uint16_t)(0x4000u + row * 0x100u + dimension);
     }
   }
   for (size_t token = 0; token < V2_TEST_KV_LENGTH; ++token) {
@@ -208,53 +201,6 @@ static void test_v2_reference_context(void) {
          AKV_STATUS_OK);
   assert(active == 1u);
   assert(observed[0] == v2_key[64u * TEST_ROW_ELEMENTS + 127u]);
-
-  v2_context_snapshot = v2_context;
-  assert(akv_v2_reference_query_update(&v2_context, updated_query) ==
-         AKV_STATUS_OK);
-  assert(v2_context.ready == 1u);
-  assert(v2_context.descriptor.q_base ==
-         (uint64_t)(uintptr_t)updated_query);
-  assert(v2_context.tile_start == v2_context_snapshot.tile_start);
-  assert(v2_context.tile_count == v2_context_snapshot.tile_count);
-  assert(memcmp(v2_context.key, v2_context_snapshot.key,
-                sizeof(v2_context.key)) == 0);
-  assert(memcmp(v2_context.value, v2_context_snapshot.value,
-                sizeof(v2_context.value)) == 0);
-  assert(akv_v2_reference_load_row(
-             &v2_context, akv_v2_selector(AKV_STREAM_Q, 3u), observed,
-             AKV_HEAD_DIM_128) == AKV_STATUS_OK);
-  assert(memcmp(observed,
-                updated_query + 3u * TEST_ROW_ELEMENTS,
-                sizeof(observed)) == 0);
-
-  v2_context_snapshot = v2_context;
-  assert(akv_v2_reference_query_update(&v2_context, updated_query + 1u) ==
-         AKV_STATUS_LAYOUT);
-  assert(v2_context.ready == 0u);
-  assert(v2_context.descriptor.q_base ==
-         v2_context_snapshot.descriptor.q_base);
-  assert(memcmp(v2_context.query, v2_context_snapshot.query,
-                sizeof(v2_context.query)) == 0);
-  assert(memcmp(v2_context.key, v2_context_snapshot.key,
-                sizeof(v2_context.key)) == 0);
-  assert(memcmp(v2_context.value, v2_context_snapshot.value,
-                sizeof(v2_context.value)) == 0);
-
-  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
-         AKV_STATUS_OK);
-  assert(akv_v2_reference_query_update(
-             &v2_context,
-             (const uint16_t *)(uintptr_t)(UINTPTR_MAX - 31u)) ==
-         AKV_STATUS_RANGE);
-  assert(v2_context.ready == 0u);
-  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
-         AKV_STATUS_OK);
-  assert(akv_v2_reference_query_update(&v2_context, NULL) ==
-         AKV_STATUS_BAD_ARGUMENT);
-  assert(v2_context.ready == 0u);
-  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
-         AKV_STATUS_OK);
 
   const uint16_t old_tile_start = v2_context.tile_start;
   assert(akv_v2_reference_refill(&v2_context, 65u) == AKV_STATUS_RANGE);
@@ -523,6 +469,58 @@ static void test_v2_unsupported_matrix(void) {
   expect_v2_plan_rejection(&device, &problem, AKV_STATUS_CAPABILITY);
 }
 
+static void test_v2_prefill_boundary(void) {
+  akv_device_t device;
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  prefill_mask[0] = 0u;
+  prefill_mask[1] = UINT16_C(0xfc00);
+  prefill_mask[2] = 0u;
+  prefill_mask[3] = 0u;
+  akv_attention_v2_prefill_problem_t problem = {
+      .query = prefill_query,
+      .key = prefill_key,
+      .value = prefill_value,
+      .mask = prefill_mask,
+      .output = prefill_output,
+      .query_tokens = 2u,
+      .query_heads = 2u,
+      .kv_heads = 1u,
+      .kv_capacity = 2u,
+      .head_dim = AKV_HEAD_DIM_64,
+      .scale = 0.125f,
+  };
+
+  assert(sizeof(prefill_workspace) == 137472u);
+  assert(((uintptr_t)&prefill_workspace.plan &
+          (AKV_DESCRIPTOR_BYTES - 1u)) == 0u);
+#if !defined(__riscv)
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) ==
+         AKV_STATUS_RUNTIME_UNAVAILABLE);
+#endif
+  prefill_mask[0] = UINT16_C(0x7e00);
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_SHAPE);
+  prefill_mask[0] = 0u;
+  problem.query_tokens = 1u;
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_SHAPE);
+  problem.query_tokens = 2u;
+  problem.kv_capacity = UINT16_MAX + 1u;
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_SHAPE);
+  problem.kv_capacity = 2u;
+  problem.output = prefill_query;
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_ALIAS);
+  problem.output = (float *)(void *)&prefill_workspace;
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_ALIAS);
+  problem.output = prefill_output;
+  assert(akv_attention_execute_v2_prefill_native(NULL, NULL, NULL) ==
+         AKV_STATUS_BAD_ARGUMENT);
+}
+
 static void test_rejections(void) {
   akv_device_t device;
   akv_attention_plan_t plan;
@@ -608,6 +606,7 @@ int main(void) {
   test_v2_shape_matrix();
   test_v2_d256_segment_contract();
   test_v2_unsupported_matrix();
+  test_v2_prefill_boundary();
   test_rejections();
   test_v2_reference_context();
   assert(strcmp(akv_status_string(AKV_STATUS_LAYOUT), "layout") == 0);

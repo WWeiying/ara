@@ -17,7 +17,8 @@ fi
 default_sim_dir=${repo_root}/hardware/sim_llama_attention_16m_template
 if [[ ${implementation} == akv ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_m3_compile
-elif [[ ${implementation} == akv_v2 ]]; then
+elif [[ ${implementation} == akv_v2 ||
+        ${implementation} == akv_v2_prefill ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_v2_compile
 fi
 sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
@@ -61,9 +62,11 @@ run_dir=${run_root}/decode_attention_core_${implementation}_kv${kvlen}_${stamp}
 testcase=llama_q4km_decode_attention_core_${implementation}_kv${kvlen}
 
 if [[ ${implementation} != ref && ${implementation} != rvv &&
-      ${implementation} != tiled_rvv && ${implementation} != akv &&
-      ${implementation} != akv_v2 ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
+      ${implementation} != tiled_rvv && ${implementation} != q64_rvv &&
+      ${implementation} != akv &&
+      ${implementation} != akv_v2 &&
+      ${implementation} != akv_v2_prefill ]]; then
+  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
@@ -72,10 +75,11 @@ if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|akv|akv_v2] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
-if [[ (${implementation} == akv || ${implementation} == akv_v2) &&
+if [[ (${implementation} == akv || ${implementation} == akv_v2 ||
+       ${implementation} == akv_v2_prefill) &&
       ${execution} != --ara-only ]]; then
   echo "AKV custom instructions currently require --ara-only; use ref or rvv for Spike" >&2
   exit 2
@@ -163,7 +167,8 @@ if [[ ${execution} != --spike-only ]]; then
     "+TESTCASE=${testcase}"
     +NO_FSDB
   )
-  if [[ ${implementation} == akv || ${implementation} == akv_v2 ]]; then
+  if [[ ${implementation} == akv || ${implementation} == akv_v2 ||
+        ${implementation} == akv_v2_prefill ]]; then
     sim_args+=(+AKV_PERF)
   fi
   if [[ -n ${LLAMA_ATTN_EXTRA_SIM_ARGS:-} ]]; then

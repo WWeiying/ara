@@ -44,14 +44,20 @@ class ValidatePrefillAttentionReferenceTest(unittest.TestCase):
         case_dir = root / "replay/cases" / case_id
         case_dir.mkdir(parents=True)
         dim, tokens, query_heads, kv_heads, kv_capacity = 2, 2, 2, 1, 2
-        query = np.zeros((query_heads, tokens, dim), dtype=np.float32)
+        query = np.asarray(
+            [
+                [[1, 0], [1, 0]],
+                [[0, 1], [0, 1]],
+            ],
+            dtype=np.float32,
+        )
         key = np.asarray([[[1, 0], [0, 1]]], dtype=np.float16)
         value = np.asarray([[[2, 4], [6, 8]]], dtype=np.float16)
         mask = np.asarray([[0, -np.inf], [0, 0]], dtype=np.float16)
         golden = np.asarray(
             [
                 [[2, 4], [2, 4]],
-                [[4, 6], [4, 6]],
+                [[3.5101626, 5.5101626], [4.489837, 6.489837]],
             ],
             dtype=np.float32,
         )
@@ -108,10 +114,26 @@ class ValidatePrefillAttentionReferenceTest(unittest.TestCase):
         case = result["cases"][0]
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(case["mismatches"], 1)
-        self.assertAlmostEqual(case["required_atol_at_rtol"], 0.125)
+        self.assertAlmostEqual(case["required_atol_at_rtol"], 0.125, places=6)
         self.assertEqual(case["first_mismatch"]["token"], 1)
         self.assertEqual(case["first_mismatch"]["head"], 1)
         self.assertEqual(case["first_mismatch"]["element"], 0)
+
+    def test_tiled_online_schedule_crosses_kv_tiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.make_case(root)
+            result = validate_prefill.validate(
+                root,
+                query_block=2,
+                kv_tile=1,
+                quantize_query=True,
+            )
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["reference"],
+                         "independent NumPy tiled online softmax")
+        self.assertEqual(result["kv_tile"], 1)
+        self.assertEqual(result["query_input"], "f16-converted")
 
 
 if __name__ == "__main__":

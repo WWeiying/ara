@@ -221,17 +221,18 @@ the architectural cache hierarchy claimed by the design.
 
 The retained hypothesis is that a bounded Prefill mechanism should keep one
 64-token K/V tile resident while applying multiple Query groups, rather than
-restarting the context for each Query token. A Query-only update must replace
-Query metadata and state atomically without invalidating K/V. Online-softmax
-state must resume across K/V tiles, and storage must be fixed by the hardware
-Query-tile limit rather than scale with M, P, or context length.
+restarting the context for each Query token. The retained implementation uses
+a fixed 64-Query software block and existing FULL/REFILL commands; the measured
+Query-only context-update alternative was slower and has been removed.
+Online-softmax state resumes across K/V tiles, and storage is fixed by the
+Query-block limit rather than scale with M, P, or context length.
 
 The following cycle-level evidence distinguishes the expected bottleneck from
 alternatives:
 
 - external Query, K/V, mask, state, and output bytes as separate strict
   counters;
-- FULL, REFILL, Query-update, tile-resume, and RELEASE command counts;
+- FULL, REFILL, row/column replay, and RELEASE command counts;
 - resident K/V tile reuse count and K/V fill cycles;
 - online-softmax state spill/reload bytes and cycles;
 - QK/PV MAC work, maximum/sum reduction counts, and reduction wait cycles;

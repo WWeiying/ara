@@ -56,6 +56,11 @@ library        ?= work
 dpi_library    ?= work-dpi
 # verilator library
 vcs_library  ?= $(buildpath)/vcs
+veril_library ?= $(buildpath)/verilator
+veril_path    ?= $(abspath $(INSTALL_DIR)/verilator/bin)
+veril_top     ?= ara_tb_verilator
+veril_jobs    ?= 8
+veril_threads ?= 4
 # Path to the binaries
 app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
 # Path to ideal dispatcher vtraces
@@ -133,7 +138,7 @@ endif
 bender_defs_veril = $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk -t exclude_first_pass_decoder
-bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test
+bender_targs_veril    := $(bender_common_targs) -t cva6_test -t notsynthesis -t verilator
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 
 ifeq ($(mc), 1)
@@ -180,7 +185,7 @@ ifeq ($(qbs_perf), 1)
 APP += +QBS_PERF
 endif
 
-.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dc_flist dc_preflight dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
+.PHONY: bender compile compile_large verilate sim sim_large sim_verilator verify clean verdi lint trace dc dc_flist dc_preflight dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
 
 # Bender
 bender: $(BENDER)
@@ -209,6 +214,45 @@ compile: bender dpi ../Bender.yml
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 	@printf 'schema_version=1\nsim_l2_mb=%s\nsim_l2_bytes=%s\n' \
 		'$(sim_l2_mb)' '$(sim_l2_bytes)' > ./$(sim_dir)/simulator.conf
+
+verilate: bender ../Bender.yml
+	@rm -rf $(veril_library)
+	@mkdir -p $(veril_library)
+	@$(BENDER) script verilator --no-default-target \
+		$(bender_targs_veril) $(bender_defs_veril) \
+		> $(veril_library)/bender_script_$(config).raw
+	@grep -v '/deprecated/pad_functional.sv' \
+		$(veril_library)/bender_script_$(config).raw \
+		> $(veril_library)/bender_script_$(config)
+	@$(veril_path)/verilator \
+		-f $(veril_library)/bender_script_$(config) \
+		-GNrLanes=$(nr_lanes) -GVLEN=$(vlen) -GL2SizeBytes=$(sim_l2_bytes) \
+		-O3 --timing --hierarchical --threads $(veril_threads) \
+		-Wno-fatal -Wno-MODDUP -Wno-PINCONNECTEMPTY -Wno-PINMISSING \
+		-Wno-BLKANDNBLK -Wno-CASEINCOMPLETE -Wno-CMPCONST -Wno-LATCH \
+		-Wno-LITENDIAN -Wno-UNOPTFLAT -Wno-UNPACKED -Wno-UNSIGNED \
+		-Wno-WIDTH -Wno-WIDTHCONCAT -Wno-ENUMVALUE -Wno-COMBDLY \
+		-Wno-SELRANGE -Wno-ALWCOMBORDER -Wno-IMPLICIT \
+		--Mdir $(veril_library) --compiler gcc \
+		-CFLAGS "-O3 -march=native -DTOPLEVEL_NAME=$(veril_top)" \
+		-CFLAGS "-DNR_LANES=$(nr_lanes) -DL2_SIZE_BYTES=$(sim_l2_bytes)" \
+		-CFLAGS "-I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp" \
+		-CFLAGS "-I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp" \
+		-CFLAGS "-I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp" \
+		-LDFLAGS "-lelf" --exe \
+		$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/*.cc \
+		$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp/*.cc \
+		$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/*.cc \
+		$(ROOT_DIR)/tb/verilator/ara_tb.cpp \
+		--cc --top-module $(veril_top)
+	@$(MAKE) -C $(veril_library) -j$(veril_jobs) -f V$(veril_top).mk
+
+sim_verilator: verilate
+	@test -n "$(app)" || { echo "usage: make sim_verilator app=<app> [sim_l2_mb=16]" >&2; exit 2; }
+	@$(veril_library)/V$(veril_top) \
+		-l ram,$(app_path)/$(app),elf \
+		$(if $(filter 1,$(qbs_perf)),+QBS_PERF,) \
+		$(if $(filter 1,$(akv_v2)),+AKV_PERF,)
 
 compile_large:
 	@$(MAKE) compile sim_l2_mb=$(large_l2_mb)

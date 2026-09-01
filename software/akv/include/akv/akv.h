@@ -14,6 +14,7 @@ extern "C" {
 #define AKV_ATTENTION_KERNEL_VERSION_V2 2u
 #define AKV_ATTENTION_KERNEL_VERSION AKV_ATTENTION_KERNEL_VERSION_V1
 #define AKV_ATTENTION_KERNEL_Q_ROWS 6u
+#define AKV_PREFILL_QUERY_BLOCK_TOKENS 64u
 
 typedef enum {
   AKV_STATUS_OK = 0,
@@ -51,7 +52,6 @@ typedef struct {
   uint8_t token_axis_row_view;
   uint8_t token_axis_d_axis_tail;
   uint8_t token_axis_d256_segmented;
-  uint8_t token_axis_query_update;
 } akv_capabilities_t;
 
 typedef struct {
@@ -100,6 +100,39 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
   float sum[AKV_MAX_Q_ROWS];
   float old_scale[AKV_MAX_Q_ROWS];
 } akv_attention_v2_workspace_t;
+
+/*
+ * Contiguous batch-one Prefill layout:
+ *   Query  F32 [query_heads][query_tokens][head_dim]
+ *   Key/V  F16 [kv_heads][kv_capacity][head_dim]
+ *   mask   F16 [query_tokens][kv_capacity]
+ *   output F32 [query_tokens][query_heads][head_dim]
+ */
+typedef struct {
+  const float *query;
+  const uint16_t *key;
+  const uint16_t *value;
+  const uint16_t *mask;
+  float *output;
+  uint32_t query_tokens;
+  uint32_t query_heads;
+  uint32_t kv_heads;
+  uint32_t kv_capacity;
+  uint32_t head_dim;
+  float scale;
+} akv_attention_v2_prefill_problem_t;
+
+/* Fixed hidden state for one GQA group and one 64-Query block. */
+typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
+  /* Keep the GQA rows consumed together by one score kernel contiguous. */
+  uint16_t query[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS]
+                [AKV_HEAD_DIM_128];
+  akv_attention_plan_t plan;
+  float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+  float maximum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
+  float sum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
+  float old_scale[AKV_MAX_Q_ROWS];
+} akv_attention_v2_prefill_workspace_t;
 
 typedef akv_status_t (*akv_attention_executor_t)(
     void *context, const akv_descriptor_t *descriptor, const uint16_t *mask,
@@ -154,8 +187,6 @@ akv_status_t akv_v2_reference_full(akv_v2_reference_context_t *context,
                                    uint32_t tile_start);
 akv_status_t akv_v2_reference_refill(akv_v2_reference_context_t *context,
                                      uint32_t tile_start);
-akv_status_t akv_v2_reference_query_update(
-    akv_v2_reference_context_t *context, const uint16_t *query);
 akv_status_t akv_v2_reference_load_row(
     const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements);
@@ -174,6 +205,10 @@ akv_status_t akv_attention_execute_native(const akv_attention_plan_t *plan);
 akv_status_t akv_attention_execute_v2_native(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace);
+akv_status_t akv_attention_execute_v2_prefill_native(
+    const akv_device_t *device,
+    const akv_attention_v2_prefill_problem_t *problem,
+    akv_attention_v2_prefill_workspace_t *workspace);
 
 /* Call akv_native_info only after a trap-safe platform capability check. */
 uint64_t akv_native_info(void *context, unsigned index);

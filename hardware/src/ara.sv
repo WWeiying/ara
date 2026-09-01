@@ -148,7 +148,6 @@ module ara import ara_pkg::*; #(
     logic akv_refill;
     logic akv_v2;
     logic akv_column;
-    logic akv_query_update;
 
     // Rounding-Mode for FP operations
     fpnew_pkg::roundmode_e fp_rm;

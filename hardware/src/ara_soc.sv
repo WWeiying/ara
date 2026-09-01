@@ -241,11 +241,16 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
 `ifndef SPYGLASS
 `ifndef TARGET_SRAM_MC
+`ifdef TARGET_VERILATOR
+  localparam DramSimInit = "none";
+`else
+  localparam DramSimInit = "random";
+`endif
   tc_sram #(
     .NumWords (L2NumWords  ),
     .NumPorts (1           ),
     .DataWidth(AxiDataWidth),
-    .SimInit("random")
+    .SimInit  (DramSimInit )
   ) i_dram (
     .clk_i  (clk_i                                                                      ),
     .rst_ni (rst_ni                                                                     ),

@@ -4732,7 +4732,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             automatic logic akv_v2_implementation_supported;
             automatic logic akv_fill_is_full;
             automatic logic akv_fill_is_refill;
-            automatic logic akv_fill_is_query_update;
 
             is_qbexec = instr.rtype.funct3 == QbsQbexecFunct3;
             is_qbinfo = instr.rtype.funct3 == QbsQbinfoFunct3;
@@ -4761,8 +4760,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 akv_implementation_supported && AkvV2Enable;
             akv_fill_is_full = akv_funct7 == 7'(AKV_FILL_FULL);
             akv_fill_is_refill = akv_funct7 == 7'(AKV_FILL_REFILL);
-            akv_fill_is_query_update =
-                akv_funct7 == 7'(AKV_FILL_QUERY_UPDATE);
 
             if (is_qbinfo) begin
               if (!QbsEnable)
@@ -4856,7 +4853,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.akv_refill = akv_fill_is_refill;
               ara_req.akv_v2 = 1'b0;
               ara_req.akv_column = 1'b0;
-              ara_req.akv_query_update = 1'b0;
               ara_req.vm = 1'b1;
               ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
                                 vsew: EW16, vlmul: LMUL_1};
@@ -4908,7 +4904,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.emul = akv_wide_destination ? LMUL_2 : LMUL_1;
               ara_req.akv_v2 = 1'b0;
               ara_req.akv_column = 1'b0;
-              ara_req.akv_query_update = 1'b0;
 
               if (!akv_implementation_supported || !akv_head_dim_valid ||
                   (akv_head_dim == AkvHeadDim96 &&
@@ -4938,7 +4933,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.akv_refill = akv_fill_is_refill;
               ara_req.akv_v2 = 1'b1;
               ara_req.akv_column = 1'b0;
-              ara_req.akv_query_update = akv_fill_is_query_update;
               ara_req.vm = 1'b1;
               ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
                                 vsew: EW16, vlmul: LMUL_1};
@@ -4947,15 +4941,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.vl = vlen_t'(1);
 
               if (!akv_v2_implementation_supported ||
-                  !(akv_fill_is_full || akv_fill_is_refill ||
-                    akv_fill_is_query_update) || instr.rtype.rd != '0 ||
+                  !(akv_fill_is_full || akv_fill_is_refill) ||
+                  instr.rtype.rd != '0 ||
                   (akv_fill_is_refill && instr.rtype.rs1 != '0) ||
-                  (akv_fill_is_query_update && instr.rtype.rs2 != '0) ||
                   (akv_fill_is_full &&
                    acc_req_i.rs1[AkvDescriptorAlignmentLog2-1:0] != '0) ||
-                  (akv_fill_is_query_update &&
-                   (acc_req_i.rs1 == '0 ||
-                    acc_req_i.rs1[AkvV2PayloadAlignmentLog2-1:0] != '0)) ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
                 illegal_insn = 1'b1;
 
@@ -4992,7 +4982,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.akv_refill = 1'b0;
               ara_req.akv_v2 = 1'b1;
               ara_req.akv_column = 1'b1;
-              ara_req.akv_query_update = 1'b0;
 
               if (!akv_v2_implementation_supported || akv_funct7 != '0 ||
                   instr.rtype.rs2 != '0 || csr_vstart_q != '0 ||

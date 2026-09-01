@@ -53,8 +53,7 @@ def validate_spec(spec: dict) -> None:
         raise ValueError("AKV v1 supports only F16 resident vectors")
     if spec["streams"] != {"Q": 0, "K": 1, "V": 2}:
         raise ValueError("AKV v1 stream encoding changed")
-    if spec["fill_modes"] != {
-            "FULL": 0, "REFILL": 1, "QUERY_UPDATE": 2}:
+    if spec["fill_modes"] != {"FULL": 0, "REFILL": 1}:
         raise ValueError("AKV fill-mode encoding changed")
     if token["version"] != 2:
         raise ValueError("AKV token-axis profile version must be two")
@@ -72,9 +71,6 @@ def validate_spec(spec: dict) -> None:
             token["column_segment_bit"] != 7 or
             not token["d256_segmented"]):
         raise ValueError("AKV-v2 D256 uses two D128 physical segments")
-    if (not token["query_update"] or
-            token["query_update_capability_bit"] != 40):
-        raise ValueError("AKV-v2 Query update uses capability bit 40")
     extension_funct3 = [token["fill_funct3"], token["column_load_funct3"]]
     if extension_funct3 != [6, 7]:
         raise ValueError("AKV-v2 uses the two remaining custom-2 funct3 values")
@@ -124,7 +120,6 @@ def c_header(spec: dict) -> str:
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
 #define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
 #define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
-#define AKV_V2_QUERY_UPDATE_CAPABILITY_BIT {token['query_update_capability_bit']}u
 #define AKV_V2_COLUMN_SEGMENT_BIT {token['column_segment_bit']}u
 
 typedef enum {{
@@ -141,7 +136,6 @@ typedef enum {{
 typedef enum {{
   AKV_FILL_FULL = {spec['fill_modes']['FULL']},
   AKV_FILL_REFILL = {spec['fill_modes']['REFILL']},
-  AKV_FILL_QUERY_UPDATE = {spec['fill_modes']['QUERY_UPDATE']},
 }} akv_fill_mode_t;
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {{
@@ -301,16 +295,6 @@ static inline int akv_v2_descriptor_is_valid(
           ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) == 0u;
 }}
 
-static inline int akv_v2_query_base_is_valid(
-    const akv_descriptor_t *descriptor, uint64_t query_base) {{
-  if (!akv_v2_descriptor_is_valid(descriptor) || query_base == 0u ||
-      (query_base & ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) != 0u)
-    return 0;
-  return akv_range_fits(query_base, descriptor->q_row_stride_bytes,
-                        descriptor->q_rows,
-                        (uint32_t)descriptor->head_dim * 2u);
-}}
-
 static inline int akv_load_selector_is_valid(const akv_descriptor_t *descriptor,
                                               uint32_t tile_length,
                                               uint32_t selector) {{
@@ -380,8 +364,7 @@ static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {{
            (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
            (UINT64_C(1) << 37) |
            (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_QUERY_UPDATE_CAPABILITY_BIT);
+           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
   if (index == 3u)
     return (uint64_t)AKV_OPCODE_CUSTOM2 |
            ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |
@@ -425,10 +408,6 @@ static inline uint32_t akv_encode_v2_fill(uint32_t descriptor_rs1,
                                           akv_fill_mode_t mode) {{
   return akv_encode_r(AKV_V2_FILL_FUNCT3, (uint32_t)mode, 0u,
                       descriptor_rs1, tile_start_rs2);
-}}
-
-static inline uint32_t akv_encode_v2_query_update(uint32_t query_rs1) {{
-  return akv_encode_v2_fill(query_rs1, 0u, AKV_FILL_QUERY_UPDATE);
 }}
 
 static inline uint32_t akv_encode_v2_column_load(uint32_t vd,
@@ -488,8 +467,6 @@ package akv_pkg;
   localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
   localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
   localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
-  localparam int unsigned AkvV2QueryUpdateCapabilityBit =
-      {token['query_update_capability_bit']};
   localparam int unsigned AkvV2ColumnSegmentBit = {token['column_segment_bit']};
   localparam int unsigned AkvContextCount = {limits['context_count']};
   localparam int unsigned AkvMaxQRows = {limits['max_q_rows']};
@@ -511,10 +488,9 @@ package akv_pkg;
     AKV_STREAM_V = 2'd{spec['streams']['V']}
   }} akv_stream_e;
 
-  typedef enum logic [1:0] {{
-    AKV_FILL_FULL = 2'd{spec['fill_modes']['FULL']},
-    AKV_FILL_REFILL = 2'd{spec['fill_modes']['REFILL']},
-    AKV_FILL_QUERY_UPDATE = 2'd{spec['fill_modes']['QUERY_UPDATE']}
+  typedef enum logic {{
+    AKV_FILL_FULL = 1'b{spec['fill_modes']['FULL']},
+    AKV_FILL_REFILL = 1'b{spec['fill_modes']['REFILL']}
   }} akv_fill_mode_e;
 
   typedef enum logic [2:0] {{
@@ -524,7 +500,6 @@ package akv_pkg;
     AKV_COMMAND_RELEASE,
     AKV_COMMAND_V2_FULL,
     AKV_COMMAND_V2_REFILL,
-    AKV_COMMAND_V2_QUERY_UPDATE,
     AKV_COMMAND_V2_COLUMN_LOAD
   }} akv_command_e;
 
@@ -612,8 +587,7 @@ package akv_pkg;
           (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
           (64'd1 << 36) | (64'd1 << 37) |
           (64'd1 << AkvV2DAxisTailCapabilityBit) |
-          (64'd1 << AkvV2D256SegmentedCapabilityBit) |
-          (64'd1 << AkvV2QueryUpdateCapabilityBit);
+          (64'd1 << AkvV2D256SegmentedCapabilityBit);
       64'd3: akv_v2_capability_word =
           64'(AkvOpcodeCustom2) |
           (64'(AkvV2FillFunct3) << 8) |
