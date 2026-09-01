@@ -37,7 +37,7 @@ ifneq ($(sim_l2_mb),1)
   ifeq ($(mc),1)
     $(error simulation-only L2 expansion cannot be combined with mc=1)
   endif
-  ifneq ($(filter dc sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
+  ifneq ($(filter dc dc_flist dc_preflight sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
     $(error simulation-only L2 expansion cannot be used by synthesis, SRAM generation, or SAIF targets)
   endif
   sim_l2_bytes := $(shell echo $$(( $(sim_l2_mb) * 1024 * 1024 )))
@@ -180,7 +180,7 @@ ifeq ($(qbs_perf), 1)
 APP += +QBS_PERF
 endif
 
-.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
+.PHONY: bender compile compile_large sim sim_large verify clean verdi lint trace dc dc_flist dc_preflight dpi sram saif sim_all saif_all saif_ara llama_spike_build llama_spike_check llama_spike_list llama_spike llama_real_list llama_real_eval_list llama_real_eval_compile llama_real_eval_parallel llama_real_eval_status llama_real_build llama_real_spike llama_real_sim llama_real_sum llama_real_metrics_sum llama_qbs_eval_list llama_qbs_eval_build llama_qbs_eval_compile llama_qbs_eval_parallel llama_qbs_eval_status llama_qbs_eval_sum llama_format_list llama_format_build llama_format_rvv_compile llama_format_qbs_compile llama_format_rvv_parallel llama_format_qbs_parallel llama_format_status llama_format_sum
 
 # Bender
 bender: $(BENDER)
@@ -409,8 +409,9 @@ trace:
 	@./run/scripts/compare_traces.py -g ./run/log/ref_trace.log -d ./run/log/dut_trace.log -o ./run/log/diff_report
 	@head -n 20 ./run/log/diff_report
 
-dc:
+dc_flist:
 	@echo "1.Generating dc flist"
+	@mkdir -p ../backend/flist
 	@$(BENDER) script --no-default-target verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
 	@cd ../backend/flist && cat ara_soc.f | \
 	grep -v "incdir" | \
@@ -426,6 +427,19 @@ dc:
 	@cd ../backend/flist && cat defines.temp  >> ara_soc_dc.f
 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
+
+dc_preflight: dc_flist
+	@python3 scripts/akv/check-synthesis-preflight.py \
+		--filelist ../backend/flist/ara_soc_dc.f \
+		--sdc ../backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc \
+		--setup ../backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env \
+		$(if $(filter 1,$(qbs)),--require-qbs,) \
+		$(if $(filter 1,$(akv) $(akv_v2)),--require-akv,) \
+		$(if $(filter 1,$(akv_v2)),--require-akv-v2,) \
+		$(if $(filter 1,$(mc)),--require-macro-sram,) \
+		--nr-lanes $(nr_lanes) --vlen $(vlen)
+
+dc: dc_preflight
 	@echo "2.Synthesis"
 	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
 

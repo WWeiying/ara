@@ -412,3 +412,50 @@ doubling context SRAM. The real Gemma D256 leaf passes with zero mismatches but
 takes 47,191 cycles versus 36,043 for the strong tiled-RVV baseline (0.764x).
 It fails the required 1.2x admission gate, so the production GGML selector and
 host support matrix intentionally retain D256 as `fallback_shape`.
+
+## Synthesis preflight
+
+The DC entry is split into filelist generation, static preflight, and the
+actual synthesis launch. This prevents a stale QBS-only filelist from being
+mistaken for the current QBS+AKV-v2 configuration.
+
+Generate and inspect the current macro-SRAM filelist without invoking DC:
+
+```bash
+make -C hardware dc_flist mc=1 qbs=1 akv_v2=1
+make -C hardware dc_preflight mc=1 qbs=1 akv_v2=1
+```
+
+The preflight regenerates the filelist, then requires the QBS and AKV-v2
+defines and sources, the 64x256 SRAM blackbox and matching TSMC28 DB, and the
+1 ns clock with 0.15 ns setup uncertainty. It does not call any EDA tool. The
+existing synthesis command remains compatible and now runs the same check
+before launching DC:
+
+```bash
+make -C hardware dc mc=1 qbs=1 akv_v2=1
+```
+
+Run the last command only when a physical closure run is intended.
+
+The complete standalone AKV engine has a separate measurement wrapper and
+output directory. Its preflight uses VCS only to elaborate the fixed production
+types and uses the same 1 ns clock, 0.15 ns setup uncertainty, I/O budgets,
+loads, and driving cells as the integrated flow:
+
+```bash
+make -C verification/akv synth-preflight
+```
+
+This command does not invoke DC. After physical runs are explicitly enabled,
+the standalone launch is:
+
+```bash
+make -C verification/akv engine-synth
+```
+
+The future standalone report separates logic area from the 20 instantiated
+64x256 SRAM macros (four in the v1 context and sixteen in the v2 context) and
+reports both overall and register-to-register setup slack. The older
+`context-synth` target measures only the v1 resident context and is not a
+substitute for complete AKV-v2 area or timing.

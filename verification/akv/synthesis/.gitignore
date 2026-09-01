@@ -1,6 +1,9 @@
 akv_context_dc.log
 akv_context_dc.status
 akv_context_dc_out/
+akv_engine_dc_out/
+akv_engine_dc.log
+akv_engine_dc.status
 alib-*/
 command.log
 default.svf
