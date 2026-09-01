@@ -490,3 +490,8 @@ chain, GUI/environment/main setup Tcl, `dc_dont_use.tcl`, the launch script,
 constraints, and the report-generating Tcl. The startup and launch files live
 under the otherwise ignored backend work tree but are intentionally tracked so
 a fresh checkout does not depend on undocumented local files.
+
+The standalone preflight also validates the existing VCS elaboration of
+`akv_engine_synth_wrapper`: its exact compiled RTL set must match the current
+macro filelist and VCS timestamp records. This catches SystemVerilog type or
+port-boundary problems before the long standalone DC run begins.

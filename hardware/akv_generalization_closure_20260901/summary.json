@@ -9,7 +9,7 @@
   "scope": "AKV area-controlled generalization functional/performance/physical completion audit",
   "manifest": {
     "path": "hardware/scripts/akv/generalization-closure-manifest.json",
-    "sha256": "f76f7b3e3484a4ad15a8bef931ff2c58f38f760005b0186db65cc93a3ac3910e"
+    "sha256": "c79a524a6ed370fd94de6d5b34f33776ef33bf1f59096700c26109f8574ebbb6"
   },
   "checks": [
     {
@@ -768,7 +768,7 @@
       "name": "synthesis_preflight",
       "category": "physical_preflight",
       "status": "PASS",
-      "detail": "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, and 1 GHz/0.15 ns constraints verified",
+      "detail": "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, 1 GHz/0.15 ns constraints, and standalone wrapper elaboration verified; wrapper_simv=c682e105cd770b60f5ed891d052ba11e7f18f6cc4be432bba7549fb99b64d2f7 sources=0870d8ec719cd6e4afff0058d8ba7d57cd841645b545ea198958a444d1939be9",
       "artifacts": [
         {
           "path": "backend/flist/ara_soc_dc.f",
@@ -817,6 +817,18 @@
         {
           "path": "verification/akv/synthesis/run_engine_dc.sh",
           "sha256": "c291ea8873cc9ce9f9eada079a051d13d6e0118527d5304756026bb51630f5da"
+        },
+        {
+          "path": "verification/akv/rtl_synth_wrapper_build/compile.log",
+          "sha256": "e6733a068c9b7e3c3cfd6d1b5efe348ccddb2ec528bbc55798f16205df1a8eac"
+        },
+        {
+          "path": "verification/akv/rtl_synth_wrapper_build/simv",
+          "sha256": "c682e105cd770b60f5ed891d052ba11e7f18f6cc4be432bba7549fb99b64d2f7"
+        },
+        {
+          "path": "verification/akv/rtl_synth_wrapper_build/simv.daidir/.vcs.timestamp",
+          "sha256": "8a7c77af431fa2421fb7200601eb4952e8ac95e4105b7d7492d32b708ee89fc8"
         }
       ]
     },

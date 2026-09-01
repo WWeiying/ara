@@ -217,12 +217,9 @@ def _under_root(candidate: Path) -> bool:
         return False
 
 
-def validate_directed_vcs_log(
-    log: Path, category: str
-) -> tuple[Path, Path, Path, str]:
-    compile_log = log.parent / "compile.log"
-    simv = log.parent / "simv"
-    timestamp = log.parent / "simv.daidir/.vcs.timestamp"
+def validate_vcs_compile_image(compile_log: Path) -> tuple[Path, Path, str]:
+    simv = compile_log.parent / "simv"
+    timestamp = compile_log.parent / "simv.daidir/.vcs.timestamp"
     if not compile_log.is_file() or not simv.is_file() or not timestamp.is_file():
         raise FileNotFoundError(
             "directed result lacks compile.log, simv, or .vcs.timestamp"
@@ -261,8 +258,19 @@ def validate_directed_vcs_log(
             "directed simulator predates compile inputs: "
             + ", ".join(str(source.relative_to(ROOT)) for source in stale[:3])
         )
-    simv_mtime = simv.stat().st_mtime_ns
-    if log.stat().st_mtime_ns < simv_mtime:
+    digest = hashlib.sha256()
+    for source in sorted(set(inputs) | recorded_headers):
+        digest.update(str(source).encode("utf-8"))
+        digest.update(bytes.fromhex(sha256(source)))
+    return simv, timestamp, digest.hexdigest()
+
+
+def validate_directed_vcs_log(
+    log: Path, category: str
+) -> tuple[Path, Path, Path, str]:
+    compile_log = log.parent / "compile.log"
+    simv, timestamp, digest = validate_vcs_compile_image(compile_log)
+    if log.stat().st_mtime_ns < simv.stat().st_mtime_ns:
         raise ValueError("directed PASS log predates its simulator")
     if category == "qbs_directed":
         runtime_inputs = [
@@ -274,11 +282,7 @@ def validate_directed_vcs_log(
             raise FileNotFoundError(f"QBS runtime vectors are missing: {missing_runtime[0]}")
         if any(path.stat().st_mtime_ns > log.stat().st_mtime_ns for path in runtime_inputs):
             raise ValueError("directed PASS log predates QBS runtime vectors")
-    digest = hashlib.sha256()
-    for source in sorted(set(inputs) | recorded_headers):
-        digest.update(str(source).encode("utf-8"))
-        digest.update(bytes.fromhex(sha256(source)))
-    return compile_log, simv, timestamp, digest.hexdigest()
+    return compile_log, simv, timestamp, digest
 
 
 def key_value_file(config: Path) -> dict[str, str]:
@@ -784,6 +788,8 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
         *flow_paths.values(),
         *(path(item) for item in preflight["other_flow_inputs"]),
     ]
+    wrapper_compile_log = path(preflight["standalone_elaboration_compile_log"])
+    preflight_paths.append(wrapper_compile_log)
     if not all(item.is_file() for item in preflight_paths):
         checks.append(result(
             "synthesis_preflight",
@@ -811,12 +817,16 @@ def audit(manifest: dict[str, object]) -> list[dict[str, object]]:
             }
             checker.audit(checker.Options(sdc=integrated_sdc_path, **common))
             checker.audit(checker.Options(sdc=standalone_sdc_path, **common))
+            wrapper_simv, wrapper_timestamp, wrapper_digest = validate_vcs_compile_image(
+                wrapper_compile_log
+            )
             checks.append(result(
                 "synthesis_preflight",
                 "physical_preflight",
                 "PASS",
-                "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, and 1 GHz/0.15 ns constraints verified",
-                preflight_paths,
+                "integrated and standalone QBS+AKV-v2 filelist, flow setup, macro SRAM, DB, 1 GHz/0.15 ns constraints, and standalone wrapper elaboration verified; "
+                f"wrapper_simv={sha256(wrapper_simv)} sources={wrapper_digest}",
+                [*preflight_paths, wrapper_simv, wrapper_timestamp],
             ))
         except Exception as error:
             checks.append(result(

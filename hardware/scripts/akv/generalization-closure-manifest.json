@@ -201,6 +201,7 @@
         "verification/akv/synthesis/akv_engine_dc.tcl",
         "verification/akv/synthesis/run_engine_dc.sh"
       ],
+      "standalone_elaboration_compile_log": "verification/akv/rtl_synth_wrapper_build/compile.log",
       "sram_db": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db",
       "nr_lanes": 4,
       "vlen": 1024
