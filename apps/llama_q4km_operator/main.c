@@ -1098,51 +1098,56 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
   const int physical_kvlen = cfg->args[3];
   const int kvheads = cfg->args[4];
   const int heads_per_kv = qheads / kvheads;
-  const int active_kv = attention_active_prefix(mask, physical_kvlen);
 
-  if (tokens != 1 ||
-      !akv_attention_v2_shape_supported((uint32_t)heads_per_kv,
+  if (!akv_attention_v2_shape_supported((uint32_t)heads_per_kv,
                                         (uint32_t)dim) ||
-      active_kv <= 0 ||
-      active_kv > UINT16_MAX ||
       !attention_akv_device.capabilities.token_axis_valid)
     return 0;
 
-  for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
-    const int first_qhead = kvhead * heads_per_kv;
-    HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
-    for (int head = 0; head < heads_per_kv; ++head) {
-      convert_f32_to_f16_rvv(
-          attention_query_group_f16 + (size_t)head * dim,
-          query + (size_t)(first_qhead + head) * dim, dim);
+  for (int token = 0; token < tokens; ++token) {
+    const uint16_t *token_mask = mask + (size_t)token * physical_kvlen;
+    const int active_kv = attention_active_prefix(token_mask, physical_kvlen);
+    if (active_kv <= 0 || active_kv > UINT16_MAX) return 0;
+
+    for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
+      const int first_qhead = kvhead * heads_per_kv;
+      HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
+      for (int head = 0; head < heads_per_kv; ++head) {
+        const size_t query_index =
+            ((size_t)(first_qhead + head) * tokens + token) * dim;
+        convert_f32_to_f16_rvv(
+            attention_query_group_f16 + (size_t)head * dim,
+            query + query_index, dim);
+      }
+
+      const akv_attention_problem_t problem = {
+          .query = (const uint16_t *)attention_query_group_f16,
+          .key = (const uint16_t *)(
+              key + (size_t)kvhead * physical_kvlen * dim),
+          .value = (const uint16_t *)(
+              value + (size_t)kvhead * physical_kvlen * dim),
+          .mask = token_mask,
+          .output = attention_output +
+                    ((size_t)token * qheads + first_qhead) * dim,
+          .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+          .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+          .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+          .output_row_stride_bytes = (uint32_t)dim * sizeof(float),
+          .q_rows = (uint32_t)heads_per_kv,
+          .head_dim = (uint32_t)dim,
+          .kv_length = (uint32_t)active_kv,
+          .scale = cfg->params[2],
+      };
+      if (akv_attention_plan_create_v2(&attention_akv_device, &problem,
+                                       &attention_akv_plan) != AKV_STATUS_OK)
+        return 0;
+
+      HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+      if (akv_attention_execute_v2_native(&attention_akv_plan,
+                                          &attention_akv_v2_workspace) !=
+          AKV_STATUS_OK)
+        return 0;
     }
-
-    const akv_attention_problem_t problem = {
-        .query = (const uint16_t *)attention_query_group_f16,
-        .key = (const uint16_t *)(
-            key + (size_t)kvhead * physical_kvlen * dim),
-        .value = (const uint16_t *)(
-            value + (size_t)kvhead * physical_kvlen * dim),
-        .mask = mask,
-        .output = attention_output + (size_t)first_qhead * dim,
-        .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-        .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-        .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-        .output_row_stride_bytes = (uint32_t)dim * sizeof(float),
-        .q_rows = (uint32_t)heads_per_kv,
-        .head_dim = (uint32_t)dim,
-        .kv_length = (uint32_t)active_kv,
-        .scale = cfg->params[2],
-    };
-    if (akv_attention_plan_create_v2(&attention_akv_device, &problem,
-                                     &attention_akv_plan) != AKV_STATUS_OK)
-      return 0;
-
-    HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
-    if (akv_attention_execute_v2_native(&attention_akv_plan,
-                                        &attention_akv_v2_workspace) !=
-        AKV_STATUS_OK)
-      return 0;
   }
   return 1;
 }

@@ -298,6 +298,8 @@ module akv_v2_context
   assign row_data_o = bank_rdata[row_bank_index_q];
 
 `ifndef SYNTHESIS
+  logic probe_column_valid_q;
+
   initial begin
     assert (AkvV2TileTokens == 64);
     assert (AkvV2TokenBanks == 8);
@@ -307,7 +309,17 @@ module akv_v2_context
   end
 
   always_ff @(posedge clk_i) begin
-    if (rst_ni) begin
+    if (!rst_ni) begin
+      probe_column_valid_q <= 1'b0;
+    end else begin
+      probe_column_valid_q <= column_valid_q;
+      if ($test$plusargs("AKV_V2_TOKEN_PROBE") && column_valid_q &&
+          !probe_column_valid_q &&
+          unsigned'(column_token_count_q) > 5) begin
+        $display("[AKV_V2_TOKEN_GATHER] t=%0t stream=%0d dim=%0d count=%0d token5=%h",
+                 $time, column_stream_q, column_dimension_q,
+                 column_token_count_q, column_data_q[5*16 +: 16]);
+      end
       if (write_valid_i) begin
         assert (write_stream_i inside {AKV_STREAM_K, AKV_STREAM_V});
         assert (unsigned'(write_token_i) < AkvV2TileTokens);

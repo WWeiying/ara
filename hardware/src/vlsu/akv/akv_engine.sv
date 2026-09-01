@@ -1031,6 +1031,29 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   end
 
 `ifndef SYNTHESIS
+  // Observation-only probe for token-axis fill/gather diagnosis.
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("AKV_V2_TOKEN_PROBE")) begin
+      if (state_q == AKV_ENGINE_VALIDATE && descriptor_valid &&
+          active_command_q == AKV_COMMAND_V2_FULL) begin
+        automatic int unsigned probe_tile_count =
+            unsigned'(descriptor.kv_length) - unsigned'(requested_tile_start_q);
+        if (probe_tile_count > AkvV2TileTokens)
+          probe_tile_count = AkvV2TileTokens;
+        $display("[AKV_V2_CONTEXT_PROBE] t=%0t q=%h k=%h v=%h rows=%0d dim=%0d kv=%0d tile_start=%0d tile_count=%0d",
+                 $time, descriptor.q_base, descriptor.k_base,
+                 descriptor.v_base, descriptor.q_rows, descriptor.head_dim,
+                 descriptor.kv_length, requested_tile_start_q,
+                 probe_tile_count);
+      end
+      if (v2_context_write_valid && read_data_tag.index == 6'd5) begin
+        $display("[AKV_V2_TOKEN_WRITE] t=%0t stream=%0d token=%0d offset=%0d strb=%h data=%h",
+                 $time, v2_context_write_stream, read_data_tag.index,
+                 read_data_offset, read_data_strb, read_data);
+      end
+    end
+  end
+
   if (AkvEnable) begin : gen_akv_configuration_assertions
     initial begin
       assert (NrLanes == 4)

@@ -1,0 +1,7 @@
+name,query_tile,external_kv_bytes,reduction_vs_rvv,reduction_vs_akv_serial,required_q_rows_if_concurrent,fits_current_q_rows,query_context_f16_bytes,workspace_bytes,requires_query_only_context_update,requires_concurrent_query_state
+rvv_qhead_serial,1,737280,1.0,0.16666666666666666,1,True,256,524,False,False
+akv_gqa_serial,1,122880,6.0,1.0,6,True,1536,3144,False,False
+akv_resident_single_kv_tile,1,15360,48.0,8.0,6,True,1536,3144,True,False
+akv_query_tile_2,2,72704,10.140845070422536,1.6901408450704225,12,False,3072,6288,False,True
+akv_query_tile_4,4,39936,18.46153846153846,3.076923076923077,24,False,6144,12576,False,True
+unique_kv_floor,15,15360,48.0,8.0,90,False,23040,47160,False,True

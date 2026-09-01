@@ -33,6 +33,7 @@ valid_sim_l2_mb := 1 2 4 8 16 32 64
 ifeq ($(filter $(sim_l2_mb),$(valid_sim_l2_mb)),)
 $(error sim_l2_mb must be one of: $(valid_sim_l2_mb))
 endif
+sim_l2_bytes := $(shell echo $$(( $(sim_l2_mb) * 1024 * 1024 )))
 ifneq ($(sim_l2_mb),1)
   ifeq ($(mc),1)
     $(error simulation-only L2 expansion cannot be combined with mc=1)
@@ -40,7 +41,6 @@ ifneq ($(sim_l2_mb),1)
   ifneq ($(filter dc dc_flist dc_preflight sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
     $(error simulation-only L2 expansion cannot be used by synthesis, SRAM generation, or SAIF targets)
   endif
-  sim_l2_bytes := $(shell echo $$(( $(sim_l2_mb) * 1024 * 1024 )))
 endif
 
 # build path
@@ -207,6 +207,8 @@ compile: bender dpi ../Bender.yml
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
+	@printf 'schema_version=1\nsim_l2_mb=%s\nsim_l2_bytes=%s\n' \
+		'$(sim_l2_mb)' '$(sim_l2_bytes)' > ./$(sim_dir)/simulator.conf
 
 compile_large:
 	@$(MAKE) compile sim_l2_mb=$(large_l2_mb)

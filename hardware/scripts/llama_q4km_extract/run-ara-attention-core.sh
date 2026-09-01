@@ -22,6 +22,7 @@ elif [[ ${implementation} == akv_v2 ]]; then
 fi
 sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
 simv=${sim_dir}/simv
+l2_contract_checker=${repo_root}/hardware/scripts/llama_q4km_extract/check-sim-l2.sh
 run_root=${LLAMA_ATTN_RUN_ROOT:-${repo_root}/hardware/llama_attention_runs}
 build_lock=${apps_dir}/bin/.llama-q4km-operator-build.lock
 spike=${SPIKE:-${repo_root}/install/riscv-isa-sim/bin/spike}
@@ -139,6 +140,9 @@ printf 'capture_manifest_sha256=%s\nsimv_sha256=%s\n' \
     printf 'ara_elf_sha256=%s\n' \
       "$(sha256sum -- "${run_dir}/${app}.${implementation}.elf" | awk '{print $1}')" \
       >> "${run_dir}/run.conf"
+    l2_contract=$("${l2_contract_checker}" "${sim_dir}" \
+      "${run_dir}/${app}.${implementation}.elf")
+    printf '%s\n' "${l2_contract}" >> "${run_dir}/run.conf"
   fi
 ) 9> "${build_lock}"
 
@@ -158,6 +162,10 @@ if [[ ${execution} != --spike-only ]]; then
   )
   if [[ ${implementation} == akv || ${implementation} == akv_v2 ]]; then
     sim_args+=(+AKV_PERF)
+  fi
+  if [[ -n ${LLAMA_ATTN_EXTRA_SIM_ARGS:-} ]]; then
+    read -r -a extra_sim_args <<< "${LLAMA_ATTN_EXTRA_SIM_ARGS}"
+    sim_args+=("${extra_sim_args[@]}")
   fi
   (
     cd "${run_dir}"

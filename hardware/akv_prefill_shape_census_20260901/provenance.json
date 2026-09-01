@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "mode": "offline_census_of_immutable_real_llama_cpp_host_graphs",
+  "created_at": "2026-09-01T15:19:56.156258+00:00",
+  "manifest": "hardware/scripts/akv/model-generality-manifest.json",
+  "manifest_sha256": "2007efced28acebe613d2baa051daa396145e29196c069757ec94e5403652628",
+  "source_root": "hardware/qbs_akv_model_generality_host_stage1_20260831",
+  "source_complete_sha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431",
+  "tool": "hardware/scripts/akv/census_prefill_shapes.py",
+  "tool_sha256": "ace7e7e1ac567f0224e87039a3e125d9c280342c4ec986a54c05ee0b56f305d6",
+  "cases": [
+    {
+      "model": "qwen25_1p5b_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/qwen25_1p5b_q4km/kv16/host.log",
+      "host_log_sha256": "6969c590c6ebfd4570780473ce2c5cae114346b5d2b839e39526dc056bc5c120"
+    },
+    {
+      "model": "qwen25_1p5b_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/qwen25_1p5b_q4km/kv128/host.log",
+      "host_log_sha256": "98dec65cf6a508becd0cf9be5f6d97477a6c86daef39e6de3dc3e3f440ecf66f"
+    },
+    {
+      "model": "qwen25_1p5b_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/qwen25_1p5b_q4km/kv512/host.log",
+      "host_log_sha256": "8f688087a737b4d221b990e7c77a83881416202ca841ff56eb913a9e901aa4a1"
+    },
+    {
+      "model": "qwen25_1p5b_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/qwen25_1p5b_q4km/kv1024/host.log",
+      "host_log_sha256": "ad4b2ef18a6019d5136bd7be41e3b3aa813de3b1de32730ce3e7c8dc50cb279e"
+    },
+    {
+      "model": "tinyllama_1p1b_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/tinyllama_1p1b_q4km/kv16/host.log",
+      "host_log_sha256": "6e9a044b31d8ead228dd7366825c597b32651d91f21e9d905a9a2768c58b3b6e"
+    },
+    {
+      "model": "tinyllama_1p1b_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/tinyllama_1p1b_q4km/kv128/host.log",
+      "host_log_sha256": "cc7602fd3a1bd3095764add400b5fc5fd134d673cdecb54ad289b37c13a40e07"
+    },
+    {
+      "model": "tinyllama_1p1b_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/tinyllama_1p1b_q4km/kv512/host.log",
+      "host_log_sha256": "bec130ecb0a03e7f1bd3a207dc578460e520fe892b8e857135a94af2335f8739"
+    },
+    {
+      "model": "tinyllama_1p1b_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/tinyllama_1p1b_q4km/kv1024/host.log",
+      "host_log_sha256": "ffa293411de809ddd57d3932d697f4d736e9db299e3cbe3d3e6fdfab31e22fe4"
+    },
+    {
+      "model": "smollm2_135m_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/smollm2_135m_q4km/kv16/host.log",
+      "host_log_sha256": "d1212b7a86f9dc2af1cf9d82b5e1f08a4499496eaa9515ef2e1724d5e4653783"
+    },
+    {
+      "model": "smollm2_135m_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/smollm2_135m_q4km/kv128/host.log",
+      "host_log_sha256": "0d1c359dbeb4572a05b8bf2bfa0bd948ee197e15e5194339a13302442e86c6bf"
+    },
+    {
+      "model": "smollm2_135m_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/smollm2_135m_q4km/kv512/host.log",
+      "host_log_sha256": "4ed358bced9ecd271b8560b40d77d5f0793ec46120fe03de4f42e77c1a2fd967"
+    },
+    {
+      "model": "smollm2_135m_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/smollm2_135m_q4km/kv1024/host.log",
+      "host_log_sha256": "55dc9498f02de91420cee9e2bd3b2bd3135bb9baa7d71bf402e43f02adca5133"
+    },
+    {
+      "model": "llama32_1b_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/llama32_1b_q4km/kv16/host.log",
+      "host_log_sha256": "f1a15d3659291da504bef63f752163338e488e162c4a95050acfe0479e35f8ca"
+    },
+    {
+      "model": "llama32_1b_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/llama32_1b_q4km/kv128/host.log",
+      "host_log_sha256": "5f51bd5e02b3443a85b9a11dd3ba1195d8721772334b4be688fed54eb378d1bb"
+    },
+    {
+      "model": "llama32_1b_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/llama32_1b_q4km/kv512/host.log",
+      "host_log_sha256": "8898f80ec556f0129ca4b3815e0e64e23cba7459d20c71ca4081bc23c97988b5"
+    },
+    {
+      "model": "llama32_1b_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/llama32_1b_q4km/kv1024/host.log",
+      "host_log_sha256": "8ddef26f7afebafd96d2f6b1a96651ad290b614043c17098d2d62ad5acad8e91"
+    },
+    {
+      "model": "gemma3_1b_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/gemma3_1b_q4km/kv16/host.log",
+      "host_log_sha256": "d589330b57901b7f2b0dc96eb64dc8271aeb500c1ce4ffbd4005da52909a93b8"
+    },
+    {
+      "model": "gemma3_1b_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/gemma3_1b_q4km/kv128/host.log",
+      "host_log_sha256": "df2163fd6c000d15007bc063ab4671dd07b378ee94e8e9755f83065ec3bbdb32"
+    },
+    {
+      "model": "gemma3_1b_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/gemma3_1b_q4km/kv512/host.log",
+      "host_log_sha256": "ec90a4472e63d22c1bbb80cb5d2cfcf17267af2ecb33755f668f2a0270c6bcb9"
+    },
+    {
+      "model": "gemma3_1b_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/gemma3_1b_q4km/kv1024/host.log",
+      "host_log_sha256": "b6ebca6449cfd6093a197ce4be96de656a7cc62a687feed4f49cfcaa7a5187b8"
+    },
+    {
+      "model": "phi35_mini_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/phi35_mini_q4km/kv16/host.log",
+      "host_log_sha256": "deee45b2a8fa505f3752f23c4d6f72e4f13e6c07d4246f67e079e1ede6f9ff96"
+    },
+    {
+      "model": "phi35_mini_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/phi35_mini_q4km/kv128/host.log",
+      "host_log_sha256": "8063cda0fd02ba702b9359230bb6e6ead416b35a760626c996adc6fb248b18ae"
+    },
+    {
+      "model": "phi35_mini_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/phi35_mini_q4km/kv512/host.log",
+      "host_log_sha256": "6bb88acfef7638afad245aeab727ef630fefb359980d700a7a5ef42ed5178762"
+    },
+    {
+      "model": "phi35_mini_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/phi35_mini_q4km/kv1024/host.log",
+      "host_log_sha256": "4d8cc5463b14660cb64ea373ae02c24d6f15151028d8c71760d8b88d341806a3"
+    },
+    {
+      "model": "olmoe_1b7b_q4km",
+      "effective_kv": 16,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/olmoe_1b7b_q4km/kv16/host.log",
+      "host_log_sha256": "ecf13a1df7b407b5c78c74ef520de5e2b5e1899ae167e4f37579e18f50a9d114"
+    },
+    {
+      "model": "olmoe_1b7b_q4km",
+      "effective_kv": 128,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/olmoe_1b7b_q4km/kv128/host.log",
+      "host_log_sha256": "cf8983510de6c071b78d1e291ad4cdda43b7e5826c29bd4aad63b7fdd0f27a06"
+    },
+    {
+      "model": "olmoe_1b7b_q4km",
+      "effective_kv": 512,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/olmoe_1b7b_q4km/kv512/host.log",
+      "host_log_sha256": "4743e81dff1aa442b8c4842c31a7ba339ec95f7a7d8f24939f04e314cb29a84e"
+    },
+    {
+      "model": "olmoe_1b7b_q4km",
+      "effective_kv": 1024,
+      "host_log": "hardware/qbs_akv_model_generality_host_stage1_20260831/olmoe_1b7b_q4km/kv1024/host.log",
+      "host_log_sha256": "dec7e177159bc14e21de08a87085c3364fe551451e27399b8e520d886183a06f"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "scope": "shape/type/chunk census of immutable real llama.cpp Prefill graphs; mask payload, byte strides, QEMU execution, RTL cycles, and physical closure are not claimed",
+  "model_count": 7,
+  "source_case_count": 28,
+  "prefill_chunk_count": 35,
+  "chunked_source_cases": 7,
+  "head_dims": [
+    64,
+    96,
+    128,
+    256
+  ],
+  "gqa_rows": [
+    1,
+    3,
+    4,
+    6,
+    8
+  ],
+  "query_tokens_M": [
+    15,
+    127,
+    511,
+    512
+  ],
+  "past_tokens_P": [
+    0,
+    512
+  ],
+  "dispositions": {
+    "candidate": 30,
+    "fallback_head_dim": 5
+  },
+  "observed_types": {
+    "q_type": [
+      "F32"
+    ],
+    "k_type": [
+      "F16"
+    ],
+    "v_type": [
+      "F16"
+    ],
+    "mask_type": [
+      "F16"
+    ],
+    "output_type": [
+      "F32"
+    ]
+  },
+  "evidence_limits": {
+    "shape_and_type": "directly_observed",
+    "chunk_order_and_M_P": "derived_from_order_and_exact_prompt_token_count",
+    "mask_shape": "directly_observed",
+    "mask_payload_and_causal_prefix": "not_traced_in_graph_logs; exact_Qwen_M15_capture_checked_separately",
+    "byte_strides": "not_traced"
+  },
+  "artifacts": {
+    "prefill_shapes": {
+      "path": "hardware/akv_prefill_shape_census_20260901/prefill_shapes.csv",
+      "sha256": "98c5ebe5441055ea1537c6e44b2a6d31078f1ce32e0f885f63839007a48b16fc"
+    },
+    "support_matrix": {
+      "path": "hardware/akv_prefill_shape_census_20260901/support_matrix.csv",
+      "sha256": "33c0353298a688e57d373aeecba7dc86997dbde904837563119be15b2e273b16"
+    },
+    "provenance": {
+      "path": "hardware/akv_prefill_shape_census_20260901/provenance.json",
+      "sha256": "1f9171b4c3445d7b504da2201050ea23ceb5dcbef7cd9b84eff3caa368e8fbaf"
+    }
+  }
+}
