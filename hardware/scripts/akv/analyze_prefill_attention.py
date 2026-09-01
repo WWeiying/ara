@@ -18,6 +18,7 @@ AKV_MAX_Q_ROWS = 8
 AKV_HEAD_DIM_128 = 128
 AKV_V2_TILE_TOKENS = 64
 AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
+AKV_PREFILL_COMPUTE_TILE_TOKENS = 2
 AKV_ATTENTION_PLAN_BYTES = 192
 RVV_BASELINE_STRATEGIES = frozenset({
     "rvv_qhead_serial",
@@ -235,9 +236,13 @@ def load_llm_perf(log_path: Path, log_text: str) -> dict:
 
 
 def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> dict:
-    if strategy != "akv_qblock64_kv_outer":
+    exact_key = {
+        "akv_qblock64_kv_outer": "kv_outer_exact",
+        "akv_qblock64_q2_kv_outer": "kv_outer_q2_exact",
+    }.get(strategy)
+    if exact_key is None:
         return {}
-    exact = summary["kv_outer_exact"]
+    exact = summary[exact_key]
     expected = {
         "v2_full": exact["v2_full"],
         "v2_refill": exact["v2_refill"],
@@ -479,17 +484,19 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     active_local_workspace_bytes = (
         active_block_tokens * query_group_f16_bytes
         + AKV_ATTENTION_PLAN_BYTES
-        + gqa_rows * AKV_V2_TILE_TOKENS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS
+        * gqa_rows * AKV_V2_TILE_TOKENS * 4
         + active_block_tokens * gqa_rows * 2 * 4
-        + gqa_rows * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS * gqa_rows * 4
     )
     allocated_workspace_bytes = (
         AKV_MAX_Q_ROWS * AKV_PREFILL_QUERY_BLOCK_TOKENS
         * AKV_HEAD_DIM_128 * 2
         + AKV_ATTENTION_PLAN_BYTES
-        + AKV_MAX_Q_ROWS * AKV_V2_TILE_TOKENS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS
+        * AKV_MAX_Q_ROWS * AKV_V2_TILE_TOKENS * 4
         + AKV_PREFILL_QUERY_BLOCK_TOKENS * AKV_MAX_Q_ROWS * 2 * 4
-        + AKV_MAX_Q_ROWS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS * AKV_MAX_Q_ROWS * 4
     )
     allocated_workspace_bytes = (
         (allocated_workspace_bytes + 63) // 64
@@ -514,6 +521,44 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         kv_outer_full
         + kv_outer_refill
         + query_tile_visits * head_dim
+        + prefix_sum * kv_heads
+        + kv_outer_release
+    )
+
+    q2_group_visits_per_kv_head = 0
+    q2_column_replay_tokens_per_kv_head = 0
+    for block in query_blocks:
+        block_start = block["start"]
+        block_count = block["count"]
+        block_end = block_start + block_count
+        pair_count = (
+            block_count + AKV_PREFILL_COMPUTE_TILE_TOKENS - 1
+        ) // AKV_PREFILL_COMPUTE_TILE_TOKENS
+        for tile_start in range(0, block["maximum_prefix"], AKV_V2_TILE_TOKENS):
+            first_active = max(block_start, tile_start - past_tokens)
+            if first_active >= block_end:
+                continue
+            first_active_local = first_active - block_start
+            first_active_pair = (
+                first_active_local // AKV_PREFILL_COMPUTE_TILE_TOKENS
+            )
+            active_groups = pair_count - first_active_pair
+            resident_tokens = min(
+                AKV_V2_TILE_TOKENS, block["maximum_prefix"] - tile_start
+            )
+            q2_group_visits_per_kv_head += active_groups
+            q2_column_replay_tokens_per_kv_head += (
+                active_groups * resident_tokens
+            )
+    q2_group_visits = q2_group_visits_per_kv_head * kv_heads
+    q2_column_replay_bytes = (
+        q2_column_replay_tokens_per_kv_head * kv_heads * head_dim * 2
+    )
+    q2_replay_bytes = q2_column_replay_bytes + row_replay_bytes
+    q2_command_records = (
+        kv_outer_full
+        + kv_outer_refill
+        + q2_group_visits * head_dim
         + prefix_sum * kv_heads
         + kv_outer_release
     )
@@ -577,6 +622,17 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
             "query_mode": "fixed_software_query_block",
         },
+        {
+            "name": "akv_qblock64_q2_kv_outer",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "implemented_fast_path": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_mode": "fixed_query_block_two_query_k_column_reuse",
+        },
     ]
     for query_tile in query_tiles:
         rows = query_tile * gqa_rows
@@ -604,8 +660,14 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     for strategy in strategies:
         query_tile = strategy["query_tile"]
         rows = strategy["required_q_rows_if_concurrent"]
+        score_slots = 1
+        if strategy["name"] == "akv_qblock64_q2_kv_outer":
+            score_slots = AKV_PREFILL_COMPUTE_TILE_TOKENS
         state_rows_for_strategy = rows
-        if strategy["name"] == "akv_qblock64_kv_outer":
+        if strategy["name"] in {
+            "akv_qblock64_kv_outer",
+            "akv_qblock64_q2_kv_outer",
+        }:
             state_rows_for_strategy = active_block_tokens * gqa_rows
         strategy["reduction_vs_rvv"] = (
             rvv_qhead_serial_kv_bytes / strategy["external_kv_bytes"]
@@ -619,9 +681,11 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         strategy["concurrent_numerator_state_f32_bytes"] = (
             state_rows_for_strategy * head_dim * 4
         )
-        strategy["score_f32_bytes"] = rows * AKV_V2_TILE_TOKENS * 4
+        strategy["score_f32_bytes"] = (
+            score_slots * rows * AKV_V2_TILE_TOKENS * 4
+        )
         strategy["concurrent_softmax_working_f32_bytes"] = (
-            state_rows_for_strategy * 2 * 4 + rows * 4
+            state_rows_for_strategy * 2 * 4 + score_slots * rows * 4
         )
         strategy["conceptual_concurrent_state_bytes"] = (
             strategy["query_context_f16_bytes"]
@@ -635,10 +699,11 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         ) or strategy["name"] in {
             "unique_kv_floor",
             "akv_qblock64_kv_outer",
+            "akv_qblock64_q2_kv_outer",
         }
 
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "PASS",
         "scope": "real-capture static Prefill Attention work/traffic/state analysis",
         "case": str(case_path),
@@ -720,8 +785,33 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "active_local_workspace_bytes": active_local_workspace_bytes,
             "allocated_workspace_bytes": allocated_workspace_bytes,
             "workspace_semantics": (
-                "fixed 64-Query cache plus plan, score, and online-softmax "
-                "state; output holds only the current block's F32 numerator"
+                "fixed 64-Query cache plus plan, two score/scale scratch slots, "
+                "and online-softmax state; output holds only the current "
+                "block's F32 numerator"
+            ),
+        },
+        "kv_outer_q2_exact": {
+            "compute_tile_tokens": AKV_PREFILL_COMPUTE_TILE_TOKENS,
+            "supported_shape": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
+            "query_group_visits": q2_group_visits,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "v2_column_load": q2_group_visits * head_dim,
+            "v2_row_load": prefix_sum * kv_heads,
+            "v2_release": kv_outer_release,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "column_replay_bytes": q2_column_replay_bytes,
+            "row_replay_bytes": row_replay_bytes,
+            "replay_bytes": q2_replay_bytes,
+            "command_records": q2_command_records,
+            "schedule_semantics": (
+                "fixed adjacent Query pairs share each K-column replay; odd "
+                "tails and a pair with only one visible Query execute as Q1; "
+                "V-row replay remains per Query token"
             ),
         },
         "strategies": strategies,

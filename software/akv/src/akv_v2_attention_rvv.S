@@ -33,7 +33,7 @@ akv_v2_compute_scores_f16_d128_gqa6:
     vsetvli         zero, t1, e16, m1, ta, ma
     li              t2, 0
     li              t3, 128
-.Lakv_v2_score_dimension:
+.Lakv_v2_score_dimension_pair:
     mv              a0, t2
     .word           0x0005745b  // vakv2kcol v8, dimension(a0)
 
@@ -57,7 +57,31 @@ akv_v2_compute_scores_f16_d128_gqa6:
     addi            t5, t5, 2
     addi            t6, t6, 2
     addi            t2, t2, 1
-    bltu            t2, t3, .Lakv_v2_score_dimension
+
+    mv              a0, t2
+    .word           0x000574db  // vakv2kcol v9, dimension(a0)
+
+    flh             ft0, 0(a4)
+    flh             ft1, 0(a5)
+    flh             ft2, 0(a6)
+    flh             ft3, 0(a7)
+    flh             ft4, 0(t5)
+    flh             ft5, 0(t6)
+    vfwmacc.vf      v0, ft0, v9
+    vfwmacc.vf      v2, ft1, v9
+    vfwmacc.vf      v4, ft2, v9
+    vfwmacc.vf      v6, ft3, v9
+    vfwmacc.vf      v10, ft4, v9
+    vfwmacc.vf      v12, ft5, v9
+
+    addi            a4, a4, 2
+    addi            a5, a5, 2
+    addi            a6, a6, 2
+    addi            a7, a7, 2
+    addi            t5, t5, 2
+    addi            t6, t6, 2
+    addi            t2, t2, 1
+    bltu            t2, t3, .Lakv_v2_score_dimension_pair
 
     vsetvli         zero, t1, e32, m2, ta, ma
     vse32.v         v0, (t0)
@@ -75,6 +99,135 @@ akv_v2_compute_scores_f16_d128_gqa6:
 
     .size akv_v2_compute_scores_f16_d128_gqa6, \
           .-akv_v2_compute_scores_f16_d128_gqa6
+
+    .globl  akv_v2_compute_scores_f16_d128_gqa6_q2
+    .type   akv_v2_compute_scores_f16_d128_gqa6_q2,@function
+
+// a0: first six-row F16 D128 Query group
+// a1: second six-row F16 D128 Query group
+// a2: two six-row F32 score sets; each row has a 64-element stride and the
+//     second set starts after AKV_MAX_Q_ROWS rows
+// a3: active token count for the later Query, 1..64. The earlier Query may
+//     expose one fewer causal token; its caller consumes only that prefix.
+akv_v2_compute_scores_f16_d128_gqa6_q2:
+    mv              a6, a0
+    mv              a7, a1
+    mv              t0, a2
+    mv              t1, a3
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    vmv.v.i         v4, 0
+    vmv.v.i         v6, 0
+    vmv.v.i         v8, 0
+    vmv.v.i         v10, 0
+    vmv.v.i         v12, 0
+    vmv.v.i         v14, 0
+    vmv.v.i         v16, 0
+    vmv.v.i         v18, 0
+    vmv.v.i         v20, 0
+    vmv.v.i         v22, 0
+
+    vsetvli         zero, t1, e16, m1, ta, ma
+    li              t2, 0
+    li              t3, 128
+.Lakv_v2_q2_score_dimension_pair:
+    mv              a0, t2
+    .word           0x00057c5b  // vakv2kcol v24, dimension(a0)
+
+    flh             ft0, 0(a6)
+    flh             ft1, 256(a6)
+    flh             ft2, 512(a6)
+    flh             ft3, 768(a6)
+    flh             ft4, 1024(a6)
+    flh             ft5, 1280(a6)
+    flh             ft6, 0(a7)
+    flh             ft7, 256(a7)
+    flh             ft8, 512(a7)
+    flh             ft9, 768(a7)
+    flh             ft10, 1024(a7)
+    flh             ft11, 1280(a7)
+    vfwmacc.vf      v0, ft0, v24
+    vfwmacc.vf      v2, ft1, v24
+    vfwmacc.vf      v4, ft2, v24
+    vfwmacc.vf      v6, ft3, v24
+    vfwmacc.vf      v8, ft4, v24
+    vfwmacc.vf      v10, ft5, v24
+    vfwmacc.vf      v12, ft6, v24
+    vfwmacc.vf      v14, ft7, v24
+    vfwmacc.vf      v16, ft8, v24
+    vfwmacc.vf      v18, ft9, v24
+    vfwmacc.vf      v20, ft10, v24
+    vfwmacc.vf      v22, ft11, v24
+
+    addi            a6, a6, 2
+    addi            a7, a7, 2
+    addi            t2, t2, 1
+
+    mv              a0, t2
+    .word           0x00057cdb  // vakv2kcol v25, dimension(a0)
+
+    flh             ft0, 0(a6)
+    flh             ft1, 256(a6)
+    flh             ft2, 512(a6)
+    flh             ft3, 768(a6)
+    flh             ft4, 1024(a6)
+    flh             ft5, 1280(a6)
+    flh             ft6, 0(a7)
+    flh             ft7, 256(a7)
+    flh             ft8, 512(a7)
+    flh             ft9, 768(a7)
+    flh             ft10, 1024(a7)
+    flh             ft11, 1280(a7)
+    vfwmacc.vf      v0, ft0, v25
+    vfwmacc.vf      v2, ft1, v25
+    vfwmacc.vf      v4, ft2, v25
+    vfwmacc.vf      v6, ft3, v25
+    vfwmacc.vf      v8, ft4, v25
+    vfwmacc.vf      v10, ft5, v25
+    vfwmacc.vf      v12, ft6, v25
+    vfwmacc.vf      v14, ft7, v25
+    vfwmacc.vf      v16, ft8, v25
+    vfwmacc.vf      v18, ft9, v25
+    vfwmacc.vf      v20, ft10, v25
+    vfwmacc.vf      v22, ft11, v25
+
+    addi            a6, a6, 2
+    addi            a7, a7, 2
+    addi            t2, t2, 1
+    bltu            t2, t3, .Lakv_v2_q2_score_dimension_pair
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    mv              t4, t0
+    li              t5, 2048
+    add             t5, t0, t5
+    vse32.v         v0, (t4)
+    addi            t4, t4, 256
+    vse32.v         v2, (t4)
+    addi            t4, t4, 256
+    vse32.v         v4, (t4)
+    addi            t4, t4, 256
+    vse32.v         v6, (t4)
+    addi            t4, t4, 256
+    vse32.v         v8, (t4)
+    addi            t4, t4, 256
+    vse32.v         v10, (t4)
+    vse32.v         v12, (t5)
+    addi            t5, t5, 256
+    vse32.v         v14, (t5)
+    addi            t5, t5, 256
+    vse32.v         v16, (t5)
+    addi            t5, t5, 256
+    vse32.v         v18, (t5)
+    addi            t5, t5, 256
+    vse32.v         v20, (t5)
+    addi            t5, t5, 256
+    vse32.v         v22, (t5)
+    ret
+
+    .size akv_v2_compute_scores_f16_d128_gqa6_q2, \
+          .-akv_v2_compute_scores_f16_d128_gqa6_q2
 
     .globl  akv_v2_update_outputs_f16_d128_gqa6
     .type   akv_v2_update_outputs_f16_d128_gqa6,@function

@@ -15,6 +15,7 @@ extern "C" {
 #define AKV_ATTENTION_KERNEL_VERSION AKV_ATTENTION_KERNEL_VERSION_V1
 #define AKV_ATTENTION_KERNEL_Q_ROWS 6u
 #define AKV_PREFILL_QUERY_BLOCK_TOKENS 64u
+#define AKV_PREFILL_COMPUTE_TILE_TOKENS 2u
 
 typedef enum {
   AKV_STATUS_OK = 0,
@@ -128,10 +129,11 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
   uint16_t query[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS]
                 [AKV_HEAD_DIM_128];
   akv_attention_plan_t plan;
-  float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+  float score[AKV_PREFILL_COMPUTE_TILE_TOKENS][AKV_MAX_Q_ROWS]
+             [AKV_V2_TILE_TOKENS];
   float maximum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
   float sum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
-  float old_scale[AKV_MAX_Q_ROWS];
+  float old_scale[AKV_PREFILL_COMPUTE_TILE_TOKENS][AKV_MAX_Q_ROWS];
 } akv_attention_v2_prefill_workspace_t;
 
 typedef akv_status_t (*akv_attention_executor_t)(

@@ -213,6 +213,9 @@ static inline int common_v2_plan_is_valid(
 extern void akv_v2_compute_scores_f16_d128_gqa6(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes);
+extern void akv_v2_compute_scores_f16_d128_gqa6_q2(
+    const uint16_t *query0, const uint16_t *query1, float *score,
+    uint32_t tile_tokens);
 extern void akv_v2_update_outputs_f16_d128_gqa6(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens);
@@ -366,7 +369,7 @@ static void initialize_prefill_block(
 static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
     const uint16_t *mask_bits, float scale,
     akv_attention_v2_prefill_workspace_t *workspace, uint32_t local_token,
-    uint32_t tile_tokens, uint32_t q_rows) {
+    uint32_t compute_slot, uint32_t tile_tokens, uint32_t q_rows) {
   const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
   const vfloat32m2_t mask = __riscv_vfwcvt_f_f_v_f32m2(
       __riscv_vle16_v_f16m1((const _Float16 *)mask_bits, vl), vl);
@@ -374,7 +377,7 @@ static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
 #pragma clang loop unroll(disable)
   for (uint32_t head = 0u; head < q_rows; ++head) {
     vfloat32m2_t score =
-        __riscv_vle32_v_f32m2(workspace->score[head], vl);
+        __riscv_vle32_v_f32m2(workspace->score[compute_slot][head], vl);
     score = __riscv_vfadd_vv_f32m2(
         __riscv_vfmul_vf_f32m2(score, scale, vl), mask, vl);
     const float tile_maximum = reduce_max_f32m2(score, vl);
@@ -390,8 +393,9 @@ static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
         workspace->sum[local_token][head] * old_scale +
         reduce_sum_f32m2(score, vl);
     workspace->maximum[local_token][head] = new_maximum;
-    workspace->old_scale[head] = old_scale;
-    __riscv_vse32_v_f32m2(workspace->score[head], score, vl);
+    workspace->old_scale[compute_slot][head] = old_scale;
+    __riscv_vse32_v_f32m2(
+        workspace->score[compute_slot][head], score, vl);
   }
 }
 
@@ -714,49 +718,83 @@ akv_status_t akv_attention_execute_v2_prefill_native(
         const uint32_t resident_tokens =
             akv_v2_tile_length(block_prefix, tile_start);
         AKV_PROFILE_PHASE(AKV_PROFILE_PHASE_COMPUTE);
-        for (uint32_t local_token = 0u; local_token < token_count;
-             ++local_token) {
-          const uint32_t token = token_start + local_token;
-          const uint32_t active_prefix = past_tokens + token + 1u;
-          if (active_prefix <= tile_start) continue;
-          uint32_t visible_tokens = active_prefix - tile_start;
-          if (visible_tokens > resident_tokens)
-            visible_tokens = resident_tokens;
+        const int d128_gqa6 =
+            q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
+            problem->head_dim == AKV_HEAD_DIM_128;
+        for (uint32_t local_token = 0u; local_token < token_count;) {
+          uint32_t compute_tokens = 1u;
+          if (d128_gqa6 && local_token + 1u < token_count)
+            compute_tokens = AKV_PREFILL_COMPUTE_TILE_TOKENS;
 
-          const uint16_t *const query =
-              &workspace->query[local_token][0][0];
-          if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
-              problem->head_dim == AKV_HEAD_DIM_128) {
-            akv_v2_compute_scores_f16_d128_gqa6(
-                query, &workspace->score[0][0], visible_tokens,
-                query_stride_bytes);
-          } else {
-            akv_v2_compute_scores_f16_generic(
-                query, &workspace->score[0][0], visible_tokens,
-                query_stride_bytes, q_rows, problem->head_dim);
+          uint32_t visible_tokens[AKV_PREFILL_COMPUTE_TILE_TOKENS] = {0u, 0u};
+          for (uint32_t compute_slot = 0u;
+               compute_slot < compute_tokens; ++compute_slot) {
+            const uint32_t token =
+                token_start + local_token + compute_slot;
+            const uint32_t active_prefix = past_tokens + token + 1u;
+            if (active_prefix > tile_start) {
+              visible_tokens[compute_slot] = active_prefix - tile_start;
+              if (visible_tokens[compute_slot] > resident_tokens)
+                visible_tokens[compute_slot] = resident_tokens;
+            }
           }
 
-          const uint16_t *const tile_mask =
-              problem->mask + (size_t)token * problem->kv_capacity +
-              tile_start;
-          apply_prefill_scale_mask_softmax(
-              tile_mask, problem->scale, workspace, local_token,
-              visible_tokens, q_rows);
-
-          float *const output =
-              problem->output +
-              ((size_t)token * problem->query_heads + first_qhead) *
-                  problem->head_dim;
-          if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
-              problem->head_dim == AKV_HEAD_DIM_128) {
-            akv_v2_update_outputs_f32_d128_gqa6(
-                &workspace->score[0][0], output, workspace->old_scale,
-                visible_tokens);
-          } else {
-            akv_v2_update_outputs_f32_generic(
-                &workspace->score[0][0], output, workspace->old_scale,
-                visible_tokens, q_rows, problem->head_dim);
+          const int use_q2 = compute_tokens == 2u &&
+                             visible_tokens[0] != 0u &&
+                             visible_tokens[1] != 0u;
+          if (use_q2) {
+            akv_v2_compute_scores_f16_d128_gqa6_q2(
+                &workspace->query[local_token][0][0],
+                &workspace->query[local_token + 1u][0][0],
+                &workspace->score[0][0][0], visible_tokens[1]);
           }
+
+          for (uint32_t compute_slot = 0u;
+               compute_slot < compute_tokens; ++compute_slot) {
+            const uint32_t active_tokens = visible_tokens[compute_slot];
+            if (active_tokens == 0u) continue;
+            const uint32_t token =
+                token_start + local_token + compute_slot;
+
+            if (!use_q2) {
+              const uint16_t *const query =
+                  &workspace->query[local_token + compute_slot][0][0];
+              if (d128_gqa6) {
+                akv_v2_compute_scores_f16_d128_gqa6(
+                    query, &workspace->score[compute_slot][0][0],
+                    active_tokens, query_stride_bytes);
+              } else {
+                akv_v2_compute_scores_f16_generic(
+                    query, &workspace->score[compute_slot][0][0],
+                    active_tokens, query_stride_bytes, q_rows,
+                    problem->head_dim);
+              }
+            }
+
+            const uint16_t *const tile_mask =
+                problem->mask + (size_t)token * problem->kv_capacity +
+                tile_start;
+            apply_prefill_scale_mask_softmax(
+                tile_mask, problem->scale, workspace,
+                local_token + compute_slot, compute_slot, active_tokens,
+                q_rows);
+
+            float *const output =
+                problem->output +
+                ((size_t)token * problem->query_heads + first_qhead) *
+                    problem->head_dim;
+            if (d128_gqa6) {
+              akv_v2_update_outputs_f32_d128_gqa6(
+                  &workspace->score[compute_slot][0][0], output,
+                  workspace->old_scale[compute_slot], active_tokens);
+            } else {
+              akv_v2_update_outputs_f32_generic(
+                  &workspace->score[compute_slot][0][0], output,
+                  workspace->old_scale[compute_slot], active_tokens, q_rows,
+                  problem->head_dim);
+            }
+          }
+          local_token += compute_tokens;
         }
       }
       issue_release();

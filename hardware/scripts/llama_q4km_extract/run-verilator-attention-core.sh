@@ -89,7 +89,8 @@ set +e
 (
   cd "${run_dir}"
   timeout --foreground "${wall_timeout}" "${verilator}" \
-    -l "ram,${elf},elf" --term-after-cycles="${term_cycles}" +AKV_PERF \
+    --meminit="ram,${elf},elf" \
+    --term-after-cycles="${term_cycles}" +AKV_PERF \
     > verilator.log 2>&1
 )
 status=$?

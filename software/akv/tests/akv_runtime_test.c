@@ -490,7 +490,7 @@ static void test_v2_prefill_boundary(void) {
       .scale = 0.125f,
   };
 
-  assert(sizeof(prefill_workspace) == 137472u);
+  assert(sizeof(prefill_workspace) == 139520u);
   assert(((uintptr_t)&prefill_workspace.plan &
           (AKV_DESCRIPTOR_BYTES - 1u)) == 0u);
 #if !defined(__riscv)

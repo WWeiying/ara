@@ -115,6 +115,21 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
                 "requires_concurrent_query_state"
             ]
         )
+        self.assertEqual(
+            strategies["akv_qblock64_q2_kv_outer"]["score_f32_bytes"],
+            1024,
+        )
+        self.assertTrue(
+            strategies["akv_qblock64_q2_kv_outer"]["fits_current_q_rows"]
+        )
+        self.assertFalse(
+            strategies["akv_qblock64_q2_kv_outer"]["implemented_fast_path"]
+        )
+        self.assertTrue(
+            strategies["akv_qblock64_q2_kv_outer"][
+                "requires_concurrent_query_state"
+            ]
+        )
         self.assertEqual(summary["kv_outer_exact"]["query_block_count"], 1)
         self.assertEqual(
             summary["kv_outer_exact"]["query_blocks"][0]["maximum_prefix"], 3
@@ -161,12 +176,22 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
             summary["kv_outer_exact"]["final_softmax_sum_read_bytes"], 48
         )
         self.assertEqual(
-            summary["kv_outer_exact"]["allocated_workspace_bytes"], 137472
+            summary["kv_outer_exact"]["allocated_workspace_bytes"], 139520
         )
         self.assertEqual(summary["kv_outer_exact"]["column_replay_bytes"], 144)
         self.assertEqual(summary["kv_outer_exact"]["row_replay_bytes"], 96)
         self.assertEqual(summary["kv_outer_exact"]["replay_bytes"], 240)
         self.assertEqual(summary["kv_outer_exact"]["command_records"], 40)
+        q2 = summary["kv_outer_q2_exact"]
+        self.assertFalse(q2["supported_shape"])
+        self.assertEqual(q2["query_group_visits_per_kv_head"], 2)
+        self.assertEqual(q2["query_group_visits"], 4)
+        self.assertEqual(q2["v2_column_load"], 16)
+        self.assertEqual(q2["v2_row_load"], 12)
+        self.assertEqual(q2["column_replay_bytes"], 96)
+        self.assertEqual(q2["row_replay_bytes"], 96)
+        self.assertEqual(q2["replay_bytes"], 192)
+        self.assertEqual(q2["command_records"], 32)
         self.assertEqual(
             strategies["akv_query_tile_4"]["required_q_rows_if_concurrent"], 8
         )
@@ -372,6 +397,28 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "strict AKV counters"):
             prefill.validate_kv_outer_counters(
                 summary, "akv_qblock64_kv_outer", counters
+            )
+
+        q2 = summary["kv_outer_q2_exact"]
+        q2_counters = {
+            "v2_full": q2["v2_full"],
+            "v2_refill": q2["v2_refill"],
+            "v2_column_load": q2["v2_column_load"],
+            "v2_row_load": q2["v2_row_load"],
+            "release": q2["v2_release"],
+            "q_external_bytes": q2["resident_query_fill_bytes"],
+            "kv_external_bytes": q2["external_kv_bytes"],
+            "replay_bytes": q2["replay_bytes"],
+            "records": q2["command_records"],
+        }
+        status = prefill.validate_kv_outer_counters(
+            summary, "akv_qblock64_q2_kv_outer", q2_counters
+        )
+        self.assertEqual(status["strict_counter_status"], "PASS")
+        q2_counters["replay_bytes"] += 2
+        with self.assertRaisesRegex(ValueError, "strict AKV counters"):
+            prefill.validate_kv_outer_counters(
+                summary, "akv_qblock64_q2_kv_outer", q2_counters
             )
 
     def test_rejects_faulting_akv_command_record(self):
