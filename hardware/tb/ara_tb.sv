@@ -1176,6 +1176,7 @@ module ara_tb;
     byte buffer [];
     addr_t address;
     addr_t length;
+    addr_t word_addr;
     string binary;
 
     // tc_sram is initialized with zeros. We need to overwrite this value.
@@ -1200,12 +1201,17 @@ module ara_tb;
           for (int b = 0; b < AxiWideBeWidth; b++) begin
             mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
           end
-          if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
-            // This requires the sections to be aligned to AxiWideByteOffset,
-            // otherwise, they can be over-written.
-              dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
-          else
-            $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
+          word_addr = address + (w << AxiWideByteOffset);
+          if (word_addr >= DRAMAddrBase &&
+              word_addr < DRAMAddrBase + L2SizeBytes) begin
+            // Sections must be aligned to AxiWideByteOffset.
+            dut.i_ara_soc.i_dram.init_val[
+                (word_addr - DRAMAddrBase) >> AxiWideByteOffset] = mem_row;
+          end else begin
+            $fatal(1,
+                   "ELF address 0x%016h exceeds the %0d-byte simulation L2; rebuild the app and simulator with the same sim_l2_mb",
+                   word_addr, L2SizeBytes);
+          end
         end
       end
     end else begin
@@ -1214,6 +1220,34 @@ module ara_tb;
     end
   end : dram_init
   `endif
+
+`ifndef TARGET_GATESIM
+  // ara_soc decodes a larger architectural DRAM window than the behavioral
+  // simulation SRAM implements. The runtime deliberately places the stack in
+  // an equally sized window at the top of architectural DRAM; reject only the
+  // unmapped middle so an undersized simulation SRAM cannot silently alias it.
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      if (dut.i_ara_soc.system_axi_req.ar_valid &&
+          dut.i_ara_soc.system_axi_resp.ar_ready &&
+          dut.i_ara_soc.system_axi_req.ar.addr >= DRAMAddrBase + L2SizeBytes &&
+          dut.i_ara_soc.system_axi_req.ar.addr <
+              DRAMAddrBase + DRAMLength - L2SizeBytes)
+        $fatal(1,
+               "AXI read address 0x%016h exceeds the %0d-byte simulation L2",
+               dut.i_ara_soc.system_axi_req.ar.addr, L2SizeBytes);
+
+      if (dut.i_ara_soc.system_axi_req.aw_valid &&
+          dut.i_ara_soc.system_axi_resp.aw_ready &&
+          dut.i_ara_soc.system_axi_req.aw.addr >= DRAMAddrBase + L2SizeBytes &&
+          dut.i_ara_soc.system_axi_req.aw.addr <
+              DRAMAddrBase + DRAMLength - L2SizeBytes)
+        $fatal(1,
+               "AXI write address 0x%016h exceeds the %0d-byte simulation L2",
+               dut.i_ara_soc.system_axi_req.aw.addr, L2SizeBytes);
+    end
+  end
+`endif
 
 
 `ifndef TARGET_GATESIM

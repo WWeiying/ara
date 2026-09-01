@@ -89,9 +89,18 @@ akv_status_t akv_capabilities_decode_extended(
   capabilities->token_axis_enabled = (uint8_t)((info2 >> 32) & 1u);
   capabilities->token_axis_tail = (uint8_t)((info2 >> 35) & 1u);
   capabilities->token_axis_row_view = (uint8_t)((info2 >> 36) & 1u);
+  capabilities->token_axis_d_axis_tail =
+      (uint8_t)((info2 >> AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) & 1u);
+  capabilities->token_axis_d256_segmented =
+      (uint8_t)((info2 >> AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) & 1u);
 
-  if (info2 != akv_v2_capability_word(
-                   2u, capabilities->token_axis_enabled != 0u) ||
+  const uint64_t optional_capability_bits =
+      (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
+      (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
+  const uint64_t expected_info2 = akv_v2_capability_word(
+      2u, capabilities->token_axis_enabled != 0u);
+  if ((info2 & ~optional_capability_bits) !=
+          (expected_info2 & ~optional_capability_bits) ||
       info3 != akv_v2_capability_word(3u, 1) ||
       capabilities->token_axis_profile_version != AKV_V2_PROFILE_VERSION ||
       capabilities->token_axis_tile_tokens != AKV_V2_TILE_TOKENS ||
@@ -150,10 +159,55 @@ static int ranges_overlap(uintptr_t lhs_first, uintptr_t lhs_last,
 }
 
 int akv_attention_v2_shape_supported(uint32_t q_rows, uint32_t head_dim) {
-  const int q_rows_supported = q_rows == 1u || q_rows == 4u ||
-                               q_rows == 6u || q_rows == 8u;
-  return q_rows_supported &&
-         (head_dim == AKV_HEAD_DIM_64 || head_dim == AKV_HEAD_DIM_128);
+  return q_rows >= 1u && q_rows <= AKV_MAX_Q_ROWS &&
+         (head_dim == AKV_HEAD_DIM_64 || head_dim == AKV_HEAD_DIM_96 ||
+          head_dim == AKV_HEAD_DIM_128 || head_dim == AKV_HEAD_DIM_256);
+}
+
+int akv_attention_plan_v2_is_valid(const akv_attention_plan_t *plan) {
+  if (plan == NULL || plan->kernel_version != AKV_ATTENTION_KERNEL_VERSION_V2 ||
+      plan->mask == NULL || plan->output == NULL ||
+      !finite_positive_f32(plan->scale) || plan->reserved[0] != 0u)
+    return 0;
+
+  if (plan->d_segment_count == 1u) {
+    return plan->d_offset == 0u &&
+           plan->d_count == plan->descriptor.head_dim &&
+           plan->logical_head_dim == plan->descriptor.head_dim &&
+           akv_attention_v2_shape_supported(plan->descriptor.q_rows,
+                                            plan->logical_head_dim) &&
+           akv_v2_descriptor_is_valid(&plan->descriptor) &&
+           plan->output_row_stride_bytes >=
+               (size_t)plan->logical_head_dim * sizeof(float);
+  }
+
+  if (plan->d_segment_count != 2u ||
+      plan->logical_head_dim != AKV_HEAD_DIM_256 || plan->d_offset != 0u ||
+      plan->d_count != AKV_HEAD_DIM_128 ||
+      !akv_v2_descriptor_is_valid(&plan->descriptor) ||
+      !akv_v2_descriptor_is_valid(&plan->value_descriptor))
+    return 0;
+
+  const akv_descriptor_t *score = &plan->descriptor;
+  const akv_descriptor_t *value = &plan->value_descriptor;
+  const uint64_t segment_bytes = (uint64_t)plan->d_count * sizeof(uint16_t);
+  const uint32_t logical_row_bytes =
+      (uint32_t)plan->logical_head_dim * sizeof(uint16_t);
+  return score->head_dim == plan->d_count &&
+         value->head_dim == plan->d_count &&
+         score->q_rows == value->q_rows &&
+         score->kv_length == value->kv_length &&
+         score->q_row_stride_bytes == value->q_row_stride_bytes &&
+         score->k_token_stride_bytes == score->v_token_stride_bytes &&
+         value->k_token_stride_bytes == value->v_token_stride_bytes &&
+         score->q_row_stride_bytes >= logical_row_bytes &&
+         score->k_token_stride_bytes >= logical_row_bytes &&
+         value->k_token_stride_bytes >= logical_row_bytes &&
+         score->v_base == score->k_base + segment_bytes &&
+         value->q_base == score->q_base + segment_bytes &&
+         value->v_base == value->k_base + segment_bytes &&
+         plan->output_row_stride_bytes >=
+             (size_t)plan->logical_head_dim * sizeof(float);
 }
 
 static akv_status_t attention_plan_create(
@@ -161,34 +215,55 @@ static akv_status_t attention_plan_create(
     uint32_t kernel_version, akv_attention_plan_t *plan) {
   if (device == NULL || problem == NULL || plan == NULL)
     return AKV_STATUS_BAD_ARGUMENT;
-  memset(plan, 0, sizeof(*plan));
+  akv_status_t status;
+
+  if (((uintptr_t)plan & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
+    return AKV_STATUS_LAYOUT;
 
   const akv_capabilities_t *caps = &device->capabilities;
   if (!caps->valid || !caps->enabled || !caps->f16_payload ||
-      caps->context_count == 0u)
-    return AKV_STATUS_CAPABILITY;
+      caps->context_count == 0u) {
+    status = AKV_STATUS_CAPABILITY;
+    goto reject;
+  }
   if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
       (!caps->token_axis_valid || !caps->token_axis_enabled ||
-       !caps->token_axis_tail || !caps->token_axis_row_view))
-    return AKV_STATUS_CAPABILITY;
+       !caps->token_axis_tail || !caps->token_axis_row_view)) {
+    status = AKV_STATUS_CAPABILITY;
+    goto reject;
+  }
   if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V1) {
     if (problem->q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
-        problem->head_dim != AKV_HEAD_DIM_128)
-      return AKV_STATUS_SHAPE;
+        problem->head_dim != AKV_HEAD_DIM_128) {
+      status = AKV_STATUS_SHAPE;
+      goto reject;
+    }
   } else if (!akv_attention_v2_shape_supported(problem->q_rows,
                                                 problem->head_dim)) {
-    return AKV_STATUS_SHAPE;
+    status = AKV_STATUS_SHAPE;
+    goto reject;
   }
   const int head_dim_capable = problem->head_dim == AKV_HEAD_DIM_64
-      ? caps->head_dim_64 : caps->head_dim_128;
-  if (!head_dim_capable || caps->max_q_rows < problem->q_rows)
-    return AKV_STATUS_CAPABILITY;
-  if (problem->kv_length == 0u || problem->kv_length > UINT16_MAX)
-    return AKV_STATUS_SHAPE;
+      ? caps->head_dim_64
+      : (problem->head_dim == AKV_HEAD_DIM_96
+             ? caps->token_axis_d_axis_tail
+             : (problem->head_dim == AKV_HEAD_DIM_256
+                    ? caps->token_axis_d256_segmented
+                    : caps->head_dim_128));
+  if (!head_dim_capable || caps->max_q_rows < problem->q_rows) {
+    status = AKV_STATUS_CAPABILITY;
+    goto reject;
+  }
+  if (problem->kv_length == 0u || problem->kv_length > UINT16_MAX) {
+    status = AKV_STATUS_SHAPE;
+    goto reject;
+  }
   if (problem->query == NULL || problem->key == NULL ||
       problem->value == NULL || problem->mask == NULL ||
-      problem->output == NULL || !finite_positive_f32(problem->scale))
-    return AKV_STATUS_BAD_ARGUMENT;
+      problem->output == NULL || !finite_positive_f32(problem->scale)) {
+    status = AKV_STATUS_BAD_ARGUMENT;
+    goto reject;
+  }
 
   const size_t input_row_bytes = (size_t)problem->head_dim * sizeof(uint16_t);
   const size_t output_row_bytes = (size_t)problem->head_dim * sizeof(float);
@@ -203,11 +278,23 @@ static akv_status_t attention_plan_create(
        (uintptr_t)problem->value | (uintptr_t)problem->mask |
        problem->q_row_stride_bytes | problem->k_token_stride_bytes |
        problem->v_token_stride_bytes) &
-          (sizeof(uint16_t) - 1u))
-    return AKV_STATUS_LAYOUT;
+          (sizeof(uint16_t) - 1u)) {
+    status = AKV_STATUS_LAYOUT;
+    goto reject;
+  }
   if (((uintptr_t)problem->output | problem->output_row_stride_bytes) &
-      (sizeof(float) - 1u))
-    return AKV_STATUS_LAYOUT;
+      (sizeof(float) - 1u)) {
+    status = AKV_STATUS_LAYOUT;
+    goto reject;
+  }
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+      (((uintptr_t)problem->query | (uintptr_t)problem->key |
+        (uintptr_t)problem->value | problem->q_row_stride_bytes |
+        problem->k_token_stride_bytes | problem->v_token_stride_bytes) &
+       UINT64_C(31)) != 0u) {
+    status = AKV_STATUS_LAYOUT;
+    goto reject;
+  }
 
   uintptr_t q_last;
   uintptr_t k_last;
@@ -223,8 +310,10 @@ static akv_status_t attention_plan_create(
       !range_fits((uintptr_t)problem->mask, sizeof(uint16_t),
                   problem->kv_length, sizeof(uint16_t), &mask_last) ||
       !range_fits((uintptr_t)problem->output, problem->output_row_stride_bytes,
-                  problem->q_rows, output_row_bytes, &output_last))
-    return AKV_STATUS_RANGE;
+                  problem->q_rows, output_row_bytes, &output_last)) {
+    status = AKV_STATUS_RANGE;
+    goto reject;
+  }
 
   const uintptr_t output_first = (uintptr_t)problem->output;
   if (ranges_overlap(output_first, output_last, (uintptr_t)problem->query,
@@ -234,10 +323,12 @@ static akv_status_t attention_plan_create(
       ranges_overlap(output_first, output_last, (uintptr_t)problem->value,
                      v_last) ||
       ranges_overlap(output_first, output_last, (uintptr_t)problem->mask,
-                     mask_last))
-    return AKV_STATUS_ALIAS;
+                     mask_last)) {
+    status = AKV_STATUS_ALIAS;
+    goto reject;
+  }
 
-  plan->descriptor = (akv_descriptor_t){
+  const akv_descriptor_t logical_descriptor = (akv_descriptor_t){
       .version = AKV_DESCRIPTOR_VERSION,
       .element_format = AKV_ELEMENT_FORMAT_F16,
       .q_rows = (uint8_t)problem->q_rows,
@@ -254,17 +345,55 @@ static akv_status_t attention_plan_create(
       .reserved1 = 0u,
       .reserved2 = 0u,
   };
+  plan->descriptor = logical_descriptor;
   plan->mask = problem->mask;
   plan->output = problem->output;
   plan->output_row_stride_bytes = problem->output_row_stride_bytes;
   plan->scale = problem->scale;
   plan->kernel_version = kernel_version;
+  plan->logical_head_dim = (uint16_t)problem->head_dim;
+  plan->d_offset = 0u;
+  plan->d_count = (uint16_t)problem->head_dim;
+  plan->d_segment_count = 1u;
+  plan->reserved[0] = 0u;
+
   if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
-      !akv_v2_descriptor_is_valid(&plan->descriptor)) {
-    memset(plan, 0, sizeof(*plan));
-    return AKV_STATUS_LAYOUT;
+      problem->head_dim == AKV_HEAD_DIM_256) {
+    const uint64_t segment_bytes =
+        (uint64_t)AKV_HEAD_DIM_128 * sizeof(uint16_t);
+    plan->descriptor.head_dim = AKV_HEAD_DIM_128;
+    plan->descriptor.v_base = plan->descriptor.k_base + segment_bytes;
+    plan->descriptor.v_token_stride_bytes =
+        plan->descriptor.k_token_stride_bytes;
+    plan->value_descriptor = plan->descriptor;
+    plan->value_descriptor.q_base =
+        (uint64_t)(uintptr_t)problem->query + segment_bytes;
+    plan->value_descriptor.k_base = (uint64_t)(uintptr_t)problem->value;
+    plan->value_descriptor.v_base =
+        plan->value_descriptor.k_base + segment_bytes;
+    plan->value_descriptor.k_token_stride_bytes =
+        (uint32_t)problem->v_token_stride_bytes;
+    plan->value_descriptor.v_token_stride_bytes =
+        (uint32_t)problem->v_token_stride_bytes;
+    plan->d_count = AKV_HEAD_DIM_128;
+    plan->d_segment_count = 2u;
+  }
+
+  // The common descriptor is constructed solely from fields checked above;
+  // the native execution boundary validates it again before issuing hardware
+  // commands.  D256 has cross-descriptor relations and therefore retains the
+  // full post-construction validation here.
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+      problem->head_dim == AKV_HEAD_DIM_256 &&
+      !akv_attention_plan_v2_is_valid(plan)) {
+    status = AKV_STATUS_LAYOUT;
+    goto reject;
   }
   return AKV_STATUS_OK;
+
+reject:
+  memset(plan, 0, sizeof(*plan));
+  return status;
 }
 
 akv_status_t akv_attention_plan_create(const akv_device_t *device,
@@ -289,7 +418,7 @@ static akv_status_t attention_execute(const akv_attention_plan_t *plan,
     return AKV_STATUS_BAD_ARGUMENT;
   if (plan->kernel_version != kernel_version ||
       (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2
-           ? !akv_v2_descriptor_is_valid(&plan->descriptor)
+           ? !akv_attention_plan_v2_is_valid(plan)
            : !akv_descriptor_is_valid(&plan->descriptor)) ||
       plan->mask == NULL ||
       plan->output == NULL ||
@@ -297,11 +426,27 @@ static akv_status_t attention_execute(const akv_attention_plan_t *plan,
            ? (plan->descriptor.q_rows != AKV_ATTENTION_KERNEL_Q_ROWS ||
               plan->descriptor.head_dim != AKV_HEAD_DIM_128)
            : !akv_attention_v2_shape_supported(plan->descriptor.q_rows,
-                                               plan->descriptor.head_dim)) ||
+                                               plan->logical_head_dim)) ||
       plan->output_row_stride_bytes <
-          (size_t)plan->descriptor.head_dim * sizeof(float) ||
+          (size_t)(kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2
+                       ? plan->logical_head_dim
+                       : plan->descriptor.head_dim) * sizeof(float) ||
       !finite_positive_f32(plan->scale))
     return AKV_STATUS_BAD_ARGUMENT;
+
+  if (kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+      plan->d_segment_count == 2u) {
+    akv_descriptor_t logical = plan->descriptor;
+    logical.head_dim = plan->logical_head_dim;
+    logical.q_base -= (uint64_t)plan->d_offset * sizeof(uint16_t);
+    logical.k_base -= (uint64_t)plan->d_offset * sizeof(uint16_t);
+    logical.v_base = plan->value_descriptor.k_base -
+                     (uint64_t)plan->d_offset * sizeof(uint16_t);
+    logical.v_token_stride_bytes =
+        plan->value_descriptor.k_token_stride_bytes;
+    return executor(executor_context, &logical, plan->mask, plan->output,
+                    plan->output_row_stride_bytes, plan->scale);
+  }
   return executor(executor_context, &plan->descriptor, plan->mask, plan->output,
                   plan->output_row_stride_bytes, plan->scale);
 }

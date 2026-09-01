@@ -28,6 +28,16 @@ package akv_pkg;
   localparam int unsigned AkvV2SelectorIndexBits = 6;
   localparam logic [2:0] AkvV2FillFunct3 = 3'd6;
   localparam logic [2:0] AkvV2ColumnLoadFunct3 = 3'd7;
+  localparam int unsigned AkvHeadDim64 = 64;
+  localparam int unsigned AkvHeadDim96 = 96;
+  localparam int unsigned AkvHeadDim128 = 128;
+  localparam int unsigned AkvHeadDim256 = 256;
+  localparam logic [6:0] AkvHeadDimCode64 = 7'd0;
+  localparam logic [6:0] AkvHeadDimCode128 = 7'd1;
+  localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
+  localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
+  localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
+  localparam int unsigned AkvV2ColumnSegmentBit = 7;
   localparam int unsigned AkvContextCount = 1;
   localparam int unsigned AkvMaxQRows = 8;
   localparam int unsigned AkvTileTokens = 8;
@@ -101,8 +111,9 @@ package akv_pkg;
 
   function automatic logic [7:0] akv_head_dim_code(input int unsigned head_dim);
     unique case (head_dim)
-      64: akv_head_dim_code = 8'd0;
-      128: akv_head_dim_code = 8'd1;
+      AkvHeadDim64: akv_head_dim_code = 8'(AkvHeadDimCode64);
+      AkvHeadDim128: akv_head_dim_code = 8'(AkvHeadDimCode128);
+      AkvHeadDim96: akv_head_dim_code = 8'(AkvHeadDimCode96);
       default: akv_head_dim_code = 8'hff;
     endcase
   endfunction : akv_head_dim_code
@@ -144,7 +155,9 @@ package akv_pkg;
           (64'(6) << 24) |
           (64'(enabled) << 32) |
           (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
-          (64'd1 << 36) | (64'd1 << 37);
+          (64'd1 << 36) | (64'd1 << 37) |
+          (64'd1 << AkvV2DAxisTailCapabilityBit) |
+          (64'd1 << AkvV2D256SegmentedCapabilityBit);
       64'd3: akv_v2_capability_word =
           64'(AkvOpcodeCustom2) |
           (64'(AkvV2FillFunct3) << 8) |

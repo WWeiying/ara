@@ -8,7 +8,7 @@ enum {
   TEST_KV_LENGTH = 16,
   MAX_TEST_KV_LENGTH = 1024,
   V2_TEST_KV_LENGTH = 65,
-  TEST_ROW_ELEMENTS = AKV_HEAD_DIM_128,
+  TEST_ROW_ELEMENTS = AKV_HEAD_DIM_256,
 };
 
 static _Alignas(64) uint16_t query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
@@ -25,6 +25,7 @@ static _Alignas(64) akv_v2_reference_context_t v2_context;
 typedef struct {
   unsigned calls;
   const akv_descriptor_t *descriptor;
+  akv_descriptor_t descriptor_copy;
   const uint16_t *mask;
   float *output;
   size_t output_stride;
@@ -39,6 +40,7 @@ static akv_status_t capture_executor(void *context,
   executor_capture_t *capture = (executor_capture_t *)context;
   capture->calls++;
   capture->descriptor = descriptor;
+  capture->descriptor_copy = *descriptor;
   capture->mask = mask_address;
   capture->output = output_address;
   capture->output_stride = output_stride;
@@ -89,6 +91,8 @@ static void test_capabilities(void) {
          AKV_V2_PROFILE_VERSION);
   assert(device.capabilities.token_axis_tile_tokens == AKV_V2_TILE_TOKENS);
   assert(device.capabilities.token_axis_banks == AKV_V2_TOKEN_BANKS);
+  assert(device.capabilities.token_axis_d_axis_tail == 1u);
+  assert(device.capabilities.token_axis_d256_segmented == 1u);
 
   akv_capabilities_t capabilities;
   assert(akv_capabilities_decode(0u, 0u, &capabilities) ==
@@ -108,6 +112,20 @@ static void test_capabilities(void) {
              akv_capability_word(0u, 1), akv_capability_word(1u, 1),
              akv_v2_capability_word(2u, 1), 0u, &capabilities) ==
          AKV_STATUS_ABI_MISMATCH);
+  const uint64_t legacy_info2 = akv_v2_capability_word(2u, 1) &
+      ~(UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT);
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
+             legacy_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
+         AKV_STATUS_OK);
+  assert(capabilities.token_axis_d_axis_tail == 0u);
+  const uint64_t no_d256_info2 = akv_v2_capability_word(2u, 1) &
+      ~(UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
+             no_d256_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
+         AKV_STATUS_OK);
+  assert(capabilities.token_axis_d256_segmented == 0u);
 }
 
 static void test_v2_reference_context(void) {
@@ -248,8 +266,10 @@ static void test_plan_and_execute(void) {
 }
 
 static void test_v2_shape_matrix(void) {
-  static const uint32_t q_rows[] = {1u, 4u, 6u, 8u};
-  static const uint32_t head_dims[] = {AKV_HEAD_DIM_64, AKV_HEAD_DIM_128};
+  static const uint32_t q_rows[] = {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u};
+  static const uint32_t head_dims[] = {
+      AKV_HEAD_DIM_64, AKV_HEAD_DIM_96, AKV_HEAD_DIM_128, AKV_HEAD_DIM_256,
+  };
   static const uint32_t kv_lengths[] = {
       16u, 63u, 64u, 65u, 128u, 256u, 1024u,
   };
@@ -273,24 +293,117 @@ static void test_v2_shape_matrix(void) {
         assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
                AKV_STATUS_OK);
         assert(plan.descriptor.q_rows == q_rows[q]);
-        assert(plan.descriptor.head_dim == head_dims[d]);
+        assert(plan.descriptor.head_dim ==
+               (head_dims[d] == AKV_HEAD_DIM_256 ? AKV_HEAD_DIM_128
+                                                 : head_dims[d]));
+        assert(plan.logical_head_dim == head_dims[d]);
+        assert(plan.d_segment_count ==
+               (head_dims[d] == AKV_HEAD_DIM_256 ? 2u : 1u));
+        assert(akv_attention_plan_v2_is_valid(&plan));
         assert(plan.descriptor.kv_length == kv_lengths[k]);
         executor_capture_t capture;
         memset(&capture, 0, sizeof(capture));
         assert(akv_attention_execute_v2(&plan, capture_executor, &capture) ==
                AKV_STATUS_OK);
         assert(capture.calls == 1u);
+        assert(capture.descriptor_copy.head_dim == head_dims[d]);
       }
     }
   }
 
-  assert(!akv_attention_v2_shape_supported(2u, AKV_HEAD_DIM_128));
-  assert(!akv_attention_v2_shape_supported(6u, 96u));
+  assert(akv_attention_v2_shape_supported(3u, AKV_HEAD_DIM_128));
+  assert(akv_attention_v2_shape_supported(4u, AKV_HEAD_DIM_96));
+  assert(akv_attention_v2_shape_supported(4u, AKV_HEAD_DIM_256));
+}
+
+static void test_v2_d256_segment_contract(void) {
+  for (size_t row = 0; row < AKV_MAX_Q_ROWS; ++row) {
+    for (size_t d = 0; d < AKV_HEAD_DIM_256; ++d)
+      query[row * TEST_ROW_ELEMENTS + d] =
+          (uint16_t)(0x0100u + row * 0x100u + d);
+  }
+  for (size_t token = 0; token < V2_TEST_KV_LENGTH; ++token) {
+    for (size_t d = 0; d < AKV_HEAD_DIM_256; ++d) {
+      key[token * TEST_ROW_ELEMENTS + d] =
+          (uint16_t)(0x1000u + token * 0x100u + d);
+      value[token * TEST_ROW_ELEMENTS + d] =
+          (uint16_t)(0x8000u + token * 0x100u + d);
+    }
+  }
+
+  akv_device_t device;
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  akv_attention_problem_t problem = valid_problem();
+  problem.q_rows = 4u;
+  problem.head_dim = AKV_HEAD_DIM_256;
+  problem.kv_length = V2_TEST_KV_LENGTH;
+  akv_attention_plan_t plan;
+  assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
+         AKV_STATUS_OK);
+  assert(plan.logical_head_dim == AKV_HEAD_DIM_256);
+  assert(plan.d_offset == 0u);
+  assert(plan.d_count == AKV_HEAD_DIM_128);
+  assert(plan.d_segment_count == 2u);
+  assert(plan.descriptor.head_dim == AKV_HEAD_DIM_128);
+  assert(plan.descriptor.k_base == (uint64_t)(uintptr_t)key);
+  assert(plan.descriptor.v_base ==
+         (uint64_t)(uintptr_t)(key + AKV_HEAD_DIM_128));
+  assert(plan.value_descriptor.q_base ==
+         (uint64_t)(uintptr_t)(query + AKV_HEAD_DIM_128));
+  assert(plan.value_descriptor.k_base == (uint64_t)(uintptr_t)value);
+  assert(plan.value_descriptor.v_base ==
+         (uint64_t)(uintptr_t)(value + AKV_HEAD_DIM_128));
+  assert(akv_attention_plan_v2_is_valid(&plan));
+
+  executor_capture_t capture;
+  memset(&capture, 0, sizeof(capture));
+  assert(akv_attention_execute_v2(&plan, capture_executor, &capture) ==
+         AKV_STATUS_OK);
+  assert(capture.calls == 1u);
+  assert(capture.descriptor_copy.head_dim == AKV_HEAD_DIM_256);
+  assert(capture.descriptor_copy.q_base == (uint64_t)(uintptr_t)query);
+  assert(capture.descriptor_copy.k_base == (uint64_t)(uintptr_t)key);
+  assert(capture.descriptor_copy.v_base == (uint64_t)(uintptr_t)value);
+
+  uint16_t observed[AKV_HEAD_DIM_128];
+  size_t active = 0u;
+  akv_v2_reference_init(&v2_context);
+  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 0u) ==
+         AKV_STATUS_OK);
+  assert(akv_v2_reference_load_column(
+             &v2_context, akv_v2_column_selector(0u, 17u), observed,
+             AKV_HEAD_DIM_128, &active) == AKV_STATUS_OK);
+  assert(active == AKV_V2_TILE_TOKENS);
+  for (size_t token = 0; token < active; ++token)
+    assert(observed[token] == key[token * TEST_ROW_ELEMENTS + 17u]);
+  assert(akv_v2_reference_load_column(
+             &v2_context, akv_v2_column_selector(1u, 17u), observed,
+             AKV_HEAD_DIM_128, &active) == AKV_STATUS_OK);
+  for (size_t token = 0; token < active; ++token)
+    assert(observed[token] ==
+           key[token * TEST_ROW_ELEMENTS + AKV_HEAD_DIM_128 + 17u]);
+
+  assert(akv_v2_reference_full(&v2_context, &plan.value_descriptor, 0u) ==
+         AKV_STATUS_OK);
+  assert(akv_v2_reference_load_row(
+             &v2_context, akv_v2_selector(AKV_STREAM_K, 3u), observed,
+             AKV_HEAD_DIM_128) == AKV_STATUS_OK);
+  assert(memcmp(observed, value + 3u * TEST_ROW_ELEMENTS,
+                AKV_HEAD_DIM_128 * sizeof(uint16_t)) == 0);
+  assert(akv_v2_reference_load_row(
+             &v2_context, akv_v2_selector(AKV_STREAM_V, 3u), observed,
+             AKV_HEAD_DIM_128) == AKV_STATUS_OK);
+  assert(memcmp(observed,
+                value + 3u * TEST_ROW_ELEMENTS + AKV_HEAD_DIM_128,
+                AKV_HEAD_DIM_128 * sizeof(uint16_t)) == 0);
+
+  plan.d_count = AKV_HEAD_DIM_96;
+  assert(!akv_attention_plan_v2_is_valid(&plan));
 }
 
 static void test_v2_unsupported_matrix(void) {
-  static const uint32_t unsupported_q_rows[] = {0u, 2u, 3u, 5u, 7u, 9u};
-  static const uint32_t unsupported_head_dims[] = {0u, 32u, 96u, 256u};
+  static const uint32_t unsupported_q_rows[] = {0u, 9u};
+  static const uint32_t unsupported_head_dims[] = {0u, 32u, 80u, 192u, 257u};
   akv_device_t device;
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
 
@@ -325,6 +438,23 @@ static void test_v2_unsupported_matrix(void) {
   problem.q_rows = AKV_MAX_Q_ROWS;
   device.capabilities.max_q_rows = AKV_MAX_Q_ROWS - 1u;
   expect_v2_plan_rejection(&device, &problem, AKV_STATUS_CAPABILITY);
+
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  problem = valid_problem();
+  problem.head_dim = AKV_HEAD_DIM_96;
+  problem.q_row_stride_bytes = AKV_HEAD_DIM_96 * sizeof(uint16_t);
+  problem.k_token_stride_bytes = AKV_HEAD_DIM_96 * sizeof(uint16_t);
+  problem.v_token_stride_bytes = AKV_HEAD_DIM_96 * sizeof(uint16_t);
+  problem.output_row_stride_bytes = AKV_HEAD_DIM_96 * sizeof(float);
+  device.capabilities.token_axis_d_axis_tail = 0u;
+  expect_v2_plan_rejection(&device, &problem, AKV_STATUS_CAPABILITY);
+
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  problem = valid_problem();
+  problem.q_rows = 4u;
+  problem.head_dim = AKV_HEAD_DIM_256;
+  device.capabilities.token_axis_d256_segmented = 0u;
+  expect_v2_plan_rejection(&device, &problem, AKV_STATUS_CAPABILITY);
 }
 
 static void test_rejections(void) {
@@ -333,11 +463,21 @@ static void test_rejections(void) {
   akv_attention_problem_t problem = valid_problem();
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
 
+  _Alignas(AKV_DESCRIPTOR_BYTES) unsigned char misaligned_storage[
+      sizeof(akv_attention_plan_t) + AKV_DESCRIPTOR_BYTES];
+  memset(misaligned_storage, 0xa5, sizeof(misaligned_storage));
+  akv_attention_plan_t *misaligned_plan =
+      (akv_attention_plan_t *)(void *)(misaligned_storage + 1u);
+  assert(akv_attention_plan_create_v2(&device, &problem, misaligned_plan) ==
+         AKV_STATUS_LAYOUT);
+  for (size_t byte = 0; byte < sizeof(misaligned_storage); ++byte)
+    assert(misaligned_storage[byte] == 0xa5u);
+
   problem.q_rows = 5u;
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
          AKV_STATUS_SHAPE);
   assert(akv_attention_plan_create_v2(&device, &problem, &plan) ==
-         AKV_STATUS_SHAPE);
+         AKV_STATUS_OK);
   problem = valid_problem();
   problem.head_dim = AKV_HEAD_DIM_64;
   assert(akv_attention_plan_create(&device, &problem, &plan) ==
@@ -400,6 +540,7 @@ int main(void) {
   test_capabilities();
   test_plan_and_execute();
   test_v2_shape_matrix();
+  test_v2_d256_segment_contract();
   test_v2_unsupported_matrix();
   test_rejections();
   test_v2_reference_context();

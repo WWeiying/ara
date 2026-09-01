@@ -49,6 +49,8 @@ typedef struct {
   uint8_t token_axis_selector_index_bits;
   uint8_t token_axis_tail;
   uint8_t token_axis_row_view;
+  uint8_t token_axis_d_axis_tail;
+  uint8_t token_axis_d256_segmented;
 } akv_capabilities_t;
 
 typedef struct {
@@ -74,16 +76,24 @@ typedef struct {
 } akv_attention_problem_t;
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
+  /* Primary command descriptor; for D256 this maps Q0/K0/K1 as D128 rows. */
   akv_descriptor_t descriptor;
+  /* D256 value phase descriptor; maps Q1/V0/V1 into the same physical slots. */
+  akv_descriptor_t value_descriptor;
   const uint16_t *mask;
   float *output;
   size_t output_row_stride_bytes;
   float scale;
   uint32_t kernel_version;
+  uint16_t logical_head_dim;
+  uint16_t d_offset;
+  uint16_t d_count;
+  uint8_t d_segment_count;
+  uint8_t reserved[1];
 } akv_attention_plan_t;
 
 typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
-  uint16_t accumulator[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_128];
+  uint16_t accumulator[AKV_MAX_Q_ROWS][AKV_HEAD_DIM_256];
   float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
   float maximum[AKV_MAX_Q_ROWS];
   float sum[AKV_MAX_Q_ROWS];
@@ -120,8 +130,9 @@ akv_status_t akv_device_query(akv_info_reader_t reader, void *context,
                               akv_device_t *device);
 akv_status_t akv_device_init_reference(akv_device_t *device);
 
-/* AKV-v2 arithmetic kernels are validated for common GQA ratios only. */
+/* AKV-v2 accepts any Query group that fits the advertised context capacity. */
 int akv_attention_v2_shape_supported(uint32_t q_rows, uint32_t head_dim);
+int akv_attention_plan_v2_is_valid(const akv_attention_plan_t *plan);
 
 akv_status_t akv_attention_plan_create(const akv_device_t *device,
                                        const akv_attention_problem_t *problem,
@@ -147,6 +158,10 @@ akv_status_t akv_v2_reference_load_row(
     uint16_t *destination, size_t destination_elements);
 akv_status_t akv_v2_reference_load_k_column(
     const akv_v2_reference_context_t *context, uint32_t dimension,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements);
+akv_status_t akv_v2_reference_load_column(
+    const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements,
     size_t *active_elements);
 void akv_v2_reference_release(akv_v2_reference_context_t *context);

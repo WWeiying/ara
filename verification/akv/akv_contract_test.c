@@ -55,6 +55,7 @@ int main(void) {
   CHECK(akv_encode_fill(10, 11, AKV_FILL_REFILL) == UINT32_C(0x02b5205b));
   CHECK(akv_encode_load(8, 10, AKV_HEAD_DIM_64) == UINT32_C(0x0005345b));
   CHECK(akv_encode_load(8, 10, AKV_HEAD_DIM_128) == UINT32_C(0x0205345b));
+  CHECK(akv_encode_load(8, 10, AKV_HEAD_DIM_96) == UINT32_C(0x0405345b));
   CHECK(akv_encode_info(10, 10) == UINT32_C(0x0005455b));
   CHECK(akv_encode_release() == UINT32_C(0x0000505b));
   CHECK(akv_encode_v2_fill(10, 11, AKV_FILL_FULL) == UINT32_C(0x00b5605b));
@@ -66,14 +67,18 @@ int main(void) {
   CHECK(akv_capability_word(1, 1) == UINT64_C(0x00000000006b1a5b));
   CHECK(akv_capability_word(2, 1) == 0u);
   CHECK(akv_v2_capability_word(2, 1) ==
-        UINT64_C(0x0000003f06084002));
+        UINT64_C(0x000000ff06084002));
   CHECK(akv_v2_capability_word(3, 1) == UINT64_C(0x0000000001803e5b));
   CHECK(akv_v2_capability_word(4, 1) == 0u);
   CHECK(akv_head_dim_code(64) == AKV_HEAD_DIM_CODE_64);
   CHECK(akv_head_dim_code(128) == AKV_HEAD_DIM_CODE_128);
-  CHECK(akv_head_dim_code(96) == AKV_HEAD_DIM_CODE_INVALID);
+  CHECK(akv_head_dim_code(96) == AKV_HEAD_DIM_CODE_96);
+  CHECK(akv_head_dim_code(256) == AKV_HEAD_DIM_CODE_INVALID);
+  CHECK(akv_head_dim_code(80) == AKV_HEAD_DIM_CODE_INVALID);
   CHECK(akv_destination_registers(64) == 1u);
+  CHECK(akv_destination_registers(96) == 2u);
   CHECK(akv_destination_registers(128) == 2u);
+  CHECK(akv_destination_registers(256) == 0u);
 
   CHECK(akv_tile_length(256, 0) == 8u);
   CHECK(akv_tile_length(256, 248) == 8u);
@@ -91,6 +96,11 @@ int main(void) {
   CHECK(akv_v2_selector(AKV_STREAM_K, 63) == 253u);
   CHECK(akv_v2_selector(AKV_STREAM_V, 63) == 254u);
   CHECK(akv_v2_selector(AKV_STREAM_V, 64) == UINT32_MAX);
+  CHECK(akv_v2_column_selector(0, 127) == 127u);
+  CHECK(akv_v2_column_selector(1, 0) == 128u);
+  CHECK(akv_v2_column_selector(1, 127) == 255u);
+  CHECK(akv_v2_column_selector(2, 0) == UINT32_MAX);
+  CHECK(akv_v2_column_selector(0, 128) == UINT32_MAX);
 
   CHECK(akv_range_fits(UINT64_MAX - 255u, 256u, 1u, 256u));
   CHECK(!akv_range_fits(UINT64_MAX - 254u, 256u, 1u, 256u));
@@ -118,7 +128,9 @@ int main(void) {
   CHECK(!akv_v2_row_selector_is_valid(
       &descriptor, 61, akv_v2_selector(AKV_STREAM_V, 61)));
   CHECK(akv_v2_column_is_valid(&descriptor, 64, 127));
-  CHECK(!akv_v2_column_is_valid(&descriptor, 64, 128));
+  CHECK(akv_v2_column_is_valid(&descriptor, 64, 128));
+  CHECK(akv_v2_column_is_valid(&descriptor, 64, 255));
+  CHECK(!akv_v2_column_is_valid(&descriptor, 64, 256));
   CHECK(!akv_v2_column_is_valid(&descriptor, 0, 0));
 
   descriptor.flags = 1;
@@ -129,6 +141,9 @@ int main(void) {
   descriptor = valid_descriptor();
   descriptor.head_dim = 96;
   CHECK(!akv_descriptor_is_valid(&descriptor));
+  CHECK(akv_v2_descriptor_is_valid(&descriptor));
+  CHECK(akv_v2_column_is_valid(&descriptor, 64, 95));
+  CHECK(!akv_v2_column_is_valid(&descriptor, 64, 96));
   descriptor = valid_descriptor();
   descriptor.q_base |= 1u;
   CHECK(!akv_descriptor_is_valid(&descriptor));

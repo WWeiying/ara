@@ -24,10 +24,16 @@
 #define AKV_V2_FILL_FUNCT3 6u
 #define AKV_V2_COLUMN_LOAD_FUNCT3 7u
 #define AKV_HEAD_DIM_64 64u
+#define AKV_HEAD_DIM_96 96u
 #define AKV_HEAD_DIM_128 128u
+#define AKV_HEAD_DIM_256 256u
 #define AKV_HEAD_DIM_CODE_64 0u
 #define AKV_HEAD_DIM_CODE_128 1u
+#define AKV_HEAD_DIM_CODE_96 2u
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
+#define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
+#define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
+#define AKV_V2_COLUMN_SEGMENT_BIT 7u
 
 typedef enum {
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -78,12 +84,13 @@ _Static_assert(_Alignof(akv_descriptor_t) == AKV_DESCRIPTOR_BYTES,
 static inline uint32_t akv_head_dim_code(uint32_t head_dim) {
   if (head_dim == AKV_HEAD_DIM_64) return AKV_HEAD_DIM_CODE_64;
   if (head_dim == AKV_HEAD_DIM_128) return AKV_HEAD_DIM_CODE_128;
+  if (head_dim == AKV_HEAD_DIM_96) return AKV_HEAD_DIM_CODE_96;
   return AKV_HEAD_DIM_CODE_INVALID;
 }
 
 static inline uint32_t akv_destination_registers(uint32_t head_dim) {
   if (head_dim == AKV_HEAD_DIM_64) return 1u;
-  if (head_dim == AKV_HEAD_DIM_128) return 2u;
+  if (head_dim == AKV_HEAD_DIM_96 || head_dim == AKV_HEAD_DIM_128) return 2u;
   return 0u;
 }
 
@@ -126,6 +133,21 @@ static inline uint32_t akv_v2_selector_index(uint32_t selector) {
   return (selector >> 2) & ((1u << AKV_V2_SELECTOR_INDEX_BITS) - 1u);
 }
 
+static inline uint32_t akv_v2_column_selector(uint32_t segment,
+                                               uint32_t dimension) {
+  if (segment >= 2u || dimension >= AKV_HEAD_DIM_128)
+    return UINT32_MAX;
+  return (segment << AKV_V2_COLUMN_SEGMENT_BIT) | dimension;
+}
+
+static inline uint32_t akv_v2_column_segment(uint32_t selector) {
+  return (selector >> AKV_V2_COLUMN_SEGMENT_BIT) & 1u;
+}
+
+static inline uint32_t akv_v2_column_dimension(uint32_t selector) {
+  return selector & ((1u << AKV_V2_COLUMN_SEGMENT_BIT) - 1u);
+}
+
 static inline int akv_range_fits(uint64_t base, uint32_t stride,
                                  uint32_t count, uint32_t row_bytes) {
   if (count == 0u || row_bytes == 0u) return 0;
@@ -134,7 +156,8 @@ static inline int akv_range_fits(uint64_t base, uint32_t stride,
          (uint64_t)(row_bytes - 1u) <= UINT64_MAX - (base + last);
 }
 
-static inline int akv_descriptor_is_valid(const void *descriptor_address) {
+static inline int akv_descriptor_common_is_valid(
+    const void *descriptor_address, int allow_d96) {
   if (descriptor_address == NULL ||
       ((uintptr_t)descriptor_address & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
     return 0;
@@ -143,7 +166,9 @@ static inline int akv_descriptor_is_valid(const void *descriptor_address) {
   if (descriptor->version != AKV_DESCRIPTOR_VERSION ||
       descriptor->element_format != AKV_ELEMENT_FORMAT_F16 ||
       descriptor->q_rows == 0u || descriptor->q_rows > AKV_MAX_Q_ROWS ||
-      akv_head_dim_code(descriptor->head_dim) == AKV_HEAD_DIM_CODE_INVALID ||
+      (descriptor->head_dim != AKV_HEAD_DIM_64 &&
+       descriptor->head_dim != AKV_HEAD_DIM_128 &&
+       (!allow_d96 || descriptor->head_dim != AKV_HEAD_DIM_96)) ||
       descriptor->kv_length == 0u || descriptor->flags != 0u ||
       descriptor->reserved0 != 0u || descriptor->reserved1 != 0u ||
       descriptor->reserved2 != 0u)
@@ -167,9 +192,13 @@ static inline int akv_descriptor_is_valid(const void *descriptor_address) {
                         descriptor->kv_length, row_bytes);
 }
 
+static inline int akv_descriptor_is_valid(const void *descriptor_address) {
+  return akv_descriptor_common_is_valid(descriptor_address, 0);
+}
+
 static inline int akv_v2_descriptor_is_valid(
     const void *descriptor_address) {
-  if (!akv_descriptor_is_valid(descriptor_address)) return 0;
+  if (!akv_descriptor_common_is_valid(descriptor_address, 1)) return 0;
   const akv_descriptor_t *descriptor =
       (const akv_descriptor_t *)descriptor_address;
   return ((descriptor->q_base | descriptor->k_base | descriptor->v_base |
@@ -194,7 +223,7 @@ static inline int akv_load_selector_is_valid(const akv_descriptor_t *descriptor,
 static inline int akv_v2_row_selector_is_valid(
     const akv_descriptor_t *descriptor, uint32_t tile_length,
     uint32_t selector) {
-  if (!akv_descriptor_is_valid(descriptor) ||
+  if (!akv_v2_descriptor_is_valid(descriptor) ||
       (selector >> (2u + AKV_V2_SELECTOR_INDEX_BITS)) != 0u ||
       tile_length == 0u || tile_length > AKV_V2_TILE_TOKENS)
     return 0;
@@ -208,10 +237,11 @@ static inline int akv_v2_row_selector_is_valid(
 
 static inline int akv_v2_column_is_valid(
     const akv_descriptor_t *descriptor, uint32_t tile_length,
-    uint32_t dimension) {
-  return akv_descriptor_is_valid(descriptor) && tile_length != 0u &&
+    uint32_t selector) {
+  return akv_v2_descriptor_is_valid(descriptor) && tile_length != 0u &&
          tile_length <= AKV_V2_TILE_TOKENS &&
-         dimension < descriptor->head_dim;
+         (selector >> (AKV_V2_COLUMN_SEGMENT_BIT + 1u)) == 0u &&
+         akv_v2_column_dimension(selector) < descriptor->head_dim;
 }
 
 static inline uint64_t akv_capability_word(uint64_t index, int enabled) {
@@ -244,7 +274,9 @@ static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {
            ((uint64_t)(enabled != 0) << 32) |
            (UINT64_C(1) << 33) | (UINT64_C(1) << 34) |
            (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
-           (UINT64_C(1) << 37);
+           (UINT64_C(1) << 37) |
+           (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
+           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
   if (index == 3u)
     return (uint64_t)AKV_OPCODE_CUSTOM2 |
            ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |

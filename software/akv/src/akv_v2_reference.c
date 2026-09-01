@@ -128,8 +128,8 @@ akv_status_t akv_v2_reference_load_row(
 }
 
 
-akv_status_t akv_v2_reference_load_k_column(
-    const akv_v2_reference_context_t *context, uint32_t dimension,
+akv_status_t akv_v2_reference_load_column(
+    const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements,
     size_t *active_elements) {
   if (context == NULL || destination == NULL || active_elements == NULL)
@@ -137,14 +137,27 @@ akv_status_t akv_v2_reference_load_k_column(
   if (!context->ready)
     return AKV_STATUS_EXECUTION;
   if (!akv_v2_column_is_valid(&context->descriptor, context->tile_count,
-                              dimension) ||
+                              selector) ||
       destination_elements < context->tile_count)
     return AKV_STATUS_RANGE;
 
+  const uint32_t segment = akv_v2_column_segment(selector);
+  const uint32_t dimension = akv_v2_column_dimension(selector);
   for (uint32_t token = 0; token < context->tile_count; ++token)
-    destination[token] = context->key[token][dimension];
+    destination[token] = segment == 0u ? context->key[token][dimension]
+                                       : context->value[token][dimension];
   *active_elements = context->tile_count;
   return AKV_STATUS_OK;
+}
+
+
+akv_status_t akv_v2_reference_load_k_column(
+    const akv_v2_reference_context_t *context, uint32_t dimension,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements) {
+  return akv_v2_reference_load_column(
+      context, akv_v2_column_selector(0u, dimension), destination,
+      destination_elements, active_elements);
 }
 
 

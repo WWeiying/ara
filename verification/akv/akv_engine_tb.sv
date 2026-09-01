@@ -576,7 +576,7 @@ module akv_engine_tb;
     wait_success();
     if (early_ack_count != ack_before + 1)
       $fatal(1, "valid AKV load did not produce exactly one early ack");
-    if (replay_word_seen != (head_dim == 128 ? 8 : 4) ||
+    if (replay_word_seen != (head_dim >> 4) ||
         replay_bytes != head_dim * 2)
       $fatal(1, "AKV replay length mismatch words=%0d bytes=%0d",
              replay_word_seen, replay_bytes);
@@ -602,27 +602,29 @@ module akv_engine_tb;
     acknowledge_terminal();
   endtask
 
-  task automatic run_valid_v2_column(
-      input logic [6:0] dimension,
+  task automatic run_valid_v2_column_mapped(
+      input logic [7:0] selector,
       input logic [6:0] tile_count,
       input logic [63:0] tile_start,
       input logic [15:0] head_dim,
       input logic [4:0] vd,
       input vid_t id,
-      input integer stall_cycles
+      input integer stall_cycles,
+      input logic [63:0] source_base,
+      input logic [31:0] source_stride
   );
     integer ack_before;
     score_replay = 1'b1;
     score_column = 1'b1;
-    score_source_base = KBase + tile_start * head_dim * 2;
+    score_source_base = source_base;
     score_bytes = tile_count * 2;
-    score_source_stride = head_dim * 2;
-    score_column_dimension = dimension;
+    score_source_stride = source_stride;
+    score_column_dimension = selector[6:0];
     score_vd = vd;
     score_id = id;
     replay_word_seen = 0;
     ack_before = early_ack_count;
-    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, dimension,
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, selector,
                  head_dim, vd, id);
     if (stall_cycles != 0) begin
       grant_replay = 1'b0;
@@ -647,6 +649,21 @@ module akv_engine_tb;
     acknowledge_terminal();
     score_replay = 1'b0;
     score_column = 1'b0;
+  endtask
+
+  task automatic run_valid_v2_column(
+      input logic [7:0] selector,
+      input logic [6:0] tile_count,
+      input logic [63:0] tile_start,
+      input logic [15:0] head_dim,
+      input logic [4:0] vd,
+      input vid_t id,
+      input integer stall_cycles
+  );
+    automatic logic [63:0] stream_base = selector[7] ? VBase : KBase;
+    run_valid_v2_column_mapped(
+        selector, tile_count, tile_start, head_dim, vd, id, stall_cycles,
+        stream_base + tile_start * head_dim * 2, head_dim * 2);
   endtask
 
   task automatic run_descriptor_validation(
@@ -723,15 +740,14 @@ module akv_engine_tb;
     logic [15:0] head_dim;
     logic [15:0] kv_length;
 
-    for (q_index = 0; q_index < 4; q_index++) begin
-      case (q_index)
-        0: q_rows = 1;
-        1: q_rows = 4;
-        2: q_rows = 6;
-        default: q_rows = 8;
-      endcase
-      for (d_index = 0; d_index < 2; d_index++) begin
-        head_dim = d_index == 0 ? 64 : 128;
+    for (q_index = 0; q_index < AkvMaxQRows; q_index++) begin
+      q_rows = q_index + 1;
+      for (d_index = 0; d_index < 3; d_index++) begin
+        case (d_index)
+          0: head_dim = 64;
+          1: head_dim = 96;
+          default: head_dim = 128;
+        endcase
         for (kv_index = 0; kv_index < 7; kv_index++) begin
           case (kv_index)
             0: kv_length = 16;
@@ -989,6 +1005,7 @@ module akv_engine_tb;
     run_valid_v2_column(0, 64, 0, 128, 14, 4'h4, 0);
     run_valid_v2_column(17, 64, 0, 128, 16, 4'h5, 2);
     run_valid_v2_column(127, 64, 0, 128, 18, 4'h6, 0);
+    run_valid_v2_column(8'h91, 64, 0, 128, 20, 4'h7, 0);
 
     // Refill the five-token tail. Inactive destination bytes must remain
     // disabled; stale values from the preceding full tile cannot escape.
@@ -1015,7 +1032,7 @@ module akv_engine_tb;
 
     writes_before = aggregate_write_count;
     ack_before = early_ack_count;
-    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, 128,
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, 256,
                  128, 24, 4'hb);
     expect_validation_fault(AKV_VALIDATION_SELECTOR, 0, writes_before);
     if (!context_ready || early_ack_count != ack_before ||
@@ -1054,6 +1071,64 @@ module akv_engine_tb;
                    VBase + 64 * 128, 0);
     run_valid_v2_column(31, 1, 64, 64, 27, 4'h1, 0);
 
+    // D96 is a v2-only D-axis tail. It reuses the D128 physical slot while
+    // replaying exactly six valid 32-byte words into an LMUL=2 destination.
+    run_valid_v2_full(96, 65, 4, 0);
+    if (q_external_bytes != 4 * 192 ||
+        kv_external_bytes != 2 * 64 * 192 || read_range_count != 133)
+      $fatal(1, "AKV-v2 D96 full accounting mismatch");
+    run_valid_load(AKV_STREAM_Q, 3, 96, 8, 4'h2,
+                   QBase + 3 * 192, 0);
+    run_valid_load(AKV_STREAM_K, 63, 96, 10, 4'h3,
+                   KBase + 63 * 192, 0);
+    run_valid_load(AKV_STREAM_V, 63, 96, 12, 4'h4,
+                   VBase + 63 * 192, 2);
+    run_valid_v2_column(95, 64, 0, 96, 14, 4'h5, 0);
+
+    writes_before = aggregate_write_count;
+    send_command(AKV_COMMAND_LOAD, 0, 0,
+                 {56'b0, 6'd0, AKV_STREAM_Q}, 96, 9, 4'h6);
+    expect_validation_fault(AKV_VALIDATION_DESTINATION, 0, writes_before);
+    if (!context_ready)
+      $fatal(1, "D96 destination fault destroyed the v2 context");
+
+    // D256 uses the unchanged pair of D128 physical K/V regions twice. The
+    // score descriptor maps K0/K1 to the two regions; after softmax, the value
+    // descriptor maps V0/V1. Selector bit 7 chooses the second column segment.
+    descriptor = valid_descriptor(128, 17, 4);
+    descriptor.q_row_stride_bytes = 512;
+    descriptor.k_token_stride_bytes = 512;
+    descriptor.v_token_stride_bytes = 512;
+    descriptor.v_base = KBase + 256;
+    put_descriptor(DescriptorBase, descriptor);
+    send_command(AKV_COMMAND_V2_FULL, DescriptorBase, 0, 0,
+                 128, 0, 4'h7);
+    wait_success();
+    if (!context_ready || q_external_bytes != 4 * 256 ||
+        kv_external_bytes != 2 * 17 * 256 || read_range_count != 39)
+      $fatal(1, "AKV-v2 D256 score-segment fill accounting mismatch");
+    acknowledge_terminal();
+    run_valid_v2_column_mapped(8'h11, 17, 0, 128, 16, 4'h8, 0,
+                               KBase, 512);
+    run_valid_v2_column_mapped(8'h91, 17, 0, 128, 18, 4'h9, 0,
+                               KBase + 256, 512);
+
+    descriptor.q_base = QBase + 256;
+    descriptor.k_base = VBase;
+    descriptor.v_base = VBase + 256;
+    put_descriptor(DescriptorBase, descriptor);
+    send_command(AKV_COMMAND_V2_FULL, DescriptorBase, 0, 0,
+                 128, 0, 4'ha);
+    wait_success();
+    if (!context_ready || q_external_bytes != 4 * 256 ||
+        kv_external_bytes != 2 * 17 * 256 || read_range_count != 39)
+      $fatal(1, "AKV-v2 D256 value-segment fill accounting mismatch");
+    acknowledge_terminal();
+    run_valid_load(AKV_STREAM_K, 16, 128, 20, 4'hb,
+                   VBase + 16 * 512, 0);
+    run_valid_load(AKV_STREAM_V, 16, 128, 22, 4'hc,
+                   VBase + 256 + 16 * 512, 0);
+
     // The software-supported AKV-v2 matrix must obey the same FULL/REFILL,
     // byte, range, and tail identities for every advertised shape.
     run_v2_shape_matrix();
@@ -1064,7 +1139,7 @@ module akv_engine_tb;
     run_valid_load(AKV_STREAM_K, 7, 64, 26, 4'hd,
                    KBase + 7 * 128, 0);
 
-    $display("AKV engine PASS: v1 D64/D128 compatibility plus v2 64-token row/column views, five-token tail, counters, validation, and faults");
+    $display("AKV engine PASS: v1 D64/D128 plus v2 D64/D96/D128 and segmented D256 row/column views, tails, counters, validation, and faults");
     $finish;
   end
 

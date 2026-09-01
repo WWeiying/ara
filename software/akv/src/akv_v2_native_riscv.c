@@ -3,6 +3,23 @@
 #include <stdint.h>
 #include <string.h>
 
+static inline int common_v2_plan_is_valid(
+    const akv_attention_plan_t *plan) {
+  return plan != NULL &&
+         plan->kernel_version == AKV_ATTENTION_KERNEL_VERSION_V2 &&
+         plan->d_segment_count == 1u && plan->d_offset == 0u &&
+         plan->d_count == plan->descriptor.head_dim &&
+         plan->logical_head_dim == plan->descriptor.head_dim &&
+         plan->mask != NULL && plan->output != NULL &&
+         plan->reserved[0] == 0u && plan->scale > 0.0f &&
+         plan->scale <= 0x1.fffffep+127f &&
+         akv_attention_v2_shape_supported(plan->descriptor.q_rows,
+                                          plan->descriptor.head_dim) &&
+         akv_v2_descriptor_is_valid(&plan->descriptor) &&
+         plan->output_row_stride_bytes >=
+             (size_t)plan->descriptor.head_dim * sizeof(float);
+}
+
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)
 #include <riscv_vector.h>
@@ -19,6 +36,12 @@ extern void akv_v2_compute_scores_f16_generic(
 extern void akv_v2_update_outputs_f16_generic(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens, uint32_t q_rows, uint32_t head_dim);
+extern void akv_v2_compute_scores_f16_d256_generic(
+    const uint16_t *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes, uint32_t q_rows);
+extern void akv_v2_update_outputs_f16_d256_generic(
+    const float *score, uint16_t *accumulator, const float *old_scale,
+    uint32_t tile_tokens, uint32_t q_rows);
 
 static inline float negative_infinity_f32(void) {
   const uint32_t bits = UINT32_C(0xff800000);
@@ -169,24 +192,62 @@ static __attribute__((noinline)) void store_outputs(
     }
   }
 }
+
+static __attribute__((noinline)) akv_status_t execute_segmented_d256(
+    const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace) {
+  const uint16_t *const query =
+      (const uint16_t *)(uintptr_t)(
+          plan->descriptor.q_base -
+          (uint64_t)plan->d_offset * sizeof(uint16_t));
+  const uint16_t *const mask_bits = plan->mask;
+  float *const output = plan->output;
+  const uint32_t query_row_stride_bytes =
+      plan->descriptor.q_row_stride_bytes;
+  const uint32_t q_rows = plan->descriptor.q_rows;
+  const uint32_t head_dim = plan->logical_head_dim;
+  const uint32_t kv_length = plan->descriptor.kv_length;
+  const size_t output_row_stride_bytes = plan->output_row_stride_bytes;
+  const float scale = plan->scale;
+
+  initialize_workspace(workspace, q_rows, head_dim);
+  for (uint32_t tile_start = 0; tile_start < kv_length;
+       tile_start += AKV_V2_TILE_TOKENS) {
+    const uint32_t tile_tokens =
+        akv_v2_tile_length(kv_length, tile_start);
+    issue_full(&plan->descriptor, tile_start);
+    akv_v2_compute_scores_f16_d256_generic(
+        query, &workspace->score[0][0], tile_tokens,
+        query_row_stride_bytes, q_rows);
+    apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
+                                 tile_tokens, q_rows);
+    issue_full(&plan->value_descriptor, tile_start);
+    akv_v2_update_outputs_f16_d256_generic(
+        &workspace->score[0][0], &workspace->accumulator[0][0],
+        workspace->old_scale, tile_tokens, q_rows);
+  }
+  issue_release();
+  store_outputs(output, output_row_stride_bytes, workspace, q_rows, head_dim);
+  return AKV_STATUS_OK;
+}
 #endif
 
 akv_status_t akv_attention_execute_v2_native(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace) {
-  if (plan == NULL || workspace == NULL ||
-      plan->kernel_version != AKV_ATTENTION_KERNEL_VERSION_V2 ||
-      !akv_v2_descriptor_is_valid(&plan->descriptor) || plan->mask == NULL ||
-      plan->output == NULL ||
-      !akv_attention_v2_shape_supported(plan->descriptor.q_rows,
-                                        plan->descriptor.head_dim) ||
-      plan->output_row_stride_bytes <
-          (size_t)plan->descriptor.head_dim * sizeof(float) ||
+  const int segmented_d256 =
+      plan != NULL && plan->d_segment_count == 2u;
+  if (workspace == NULL ||
+      (segmented_d256 ? !akv_attention_plan_v2_is_valid(plan)
+                      : !common_v2_plan_is_valid(plan)) ||
       ((uintptr_t)workspace & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
     return AKV_STATUS_BAD_ARGUMENT;
 
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)
+  if (segmented_d256)
+    return execute_segmented_d256(plan, workspace);
+
   // AKV commands cross into a non-scalar memory client.  Snapshot every field
   // consumed by the following software schedule before issuing the first
   // command, so the schedule never depends on re-reading the DMA descriptor.

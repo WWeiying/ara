@@ -4726,6 +4726,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             automatic int unsigned qbs_m;
             automatic int unsigned qbs_destination_regs;
             automatic int unsigned akv_head_dim;
+            automatic logic akv_head_dim_valid;
+            automatic logic akv_wide_destination;
             automatic logic akv_implementation_supported;
             automatic logic akv_v2_implementation_supported;
 
@@ -4741,7 +4743,15 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             akv_funct7 = 7'(instr.rtype.funct7);
             qbs_m = unsigned'(qbs_funct7[1:0]) + 1;
             qbs_destination_regs = qbs_m == 1 ? 1 : (qbs_m == 2 ? 2 : 4);
-            akv_head_dim = akv_funct7[0] ? 128 : 64;
+            akv_head_dim = 0;
+            akv_head_dim_valid = 1'b1;
+            unique case (akv_funct7)
+              AkvHeadDimCode64: akv_head_dim = AkvHeadDim64;
+              AkvHeadDimCode96: akv_head_dim = AkvHeadDim96;
+              AkvHeadDimCode128: akv_head_dim = AkvHeadDim128;
+              default: akv_head_dim_valid = 1'b0;
+            endcase
+            akv_wide_destination = akv_head_dim > AkvHeadDim64;
             akv_implementation_supported =
                 AkvEnable && NrLanes == 4 && VLEN == 1024;
             akv_v2_implementation_supported =
@@ -4882,17 +4892,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.vm = 1'b1;
               ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
                                 vsew: EW16,
-                                vlmul: akv_funct7[0] ? LMUL_2 : LMUL_1};
+                                vlmul: akv_wide_destination ? LMUL_2 : LMUL_1};
               ara_req.eew_vd_op = EW16;
               ara_req.vstart = '0;
               ara_req.vl = vlen_t'(akv_head_dim);
-              ara_req.emul = akv_funct7[0] ? LMUL_2 : LMUL_1;
+              ara_req.emul = akv_wide_destination ? LMUL_2 : LMUL_1;
               ara_req.akv_v2 = 1'b0;
               ara_req.akv_column = 1'b0;
 
-              if (!akv_implementation_supported ||
-                  akv_funct7[6:1] != '0 || instr.rtype.rs2 != '0 ||
-                  (akv_funct7[0] &&
+              if (!akv_implementation_supported || !akv_head_dim_valid ||
+                  (akv_head_dim == AkvHeadDim96 &&
+                   !akv_v2_implementation_supported) ||
+                  instr.rtype.rs2 != '0 ||
+                  (akv_wide_destination &&
                    (instr.rtype.rd[7] || instr.rtype.rd > 5'd30)) ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en)
                 illegal_insn = 1'b1;

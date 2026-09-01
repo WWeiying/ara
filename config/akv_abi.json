@@ -35,6 +35,11 @@
     "tile_tokens": 64,
     "token_banks": 8,
     "selector_index_bits": 6,
+    "head_dims": [64, 96, 128],
+    "segmented_head_dims": [256],
+    "column_segment_bit": 7,
+    "d_axis_tail": true,
+    "d256_segmented": true,
     "fill_funct3": 6,
     "column_load_funct3": 7
   }

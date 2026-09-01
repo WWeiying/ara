@@ -40,7 +40,7 @@ enum {
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
-  MAX_ATTENTION_DIM = 128,
+  MAX_ATTENTION_DIM = 256,
   MAX_ATTENTION_TOKENS = 15,
   MAX_ATTENTION_HEADS = 12,
   MAX_ATTENTION_KV = 1024,
@@ -48,6 +48,7 @@ enum {
   MAX_CACHE_WIDTH = 256,
   MAX_CACHE_ROWS = 256,
   TILED_RVV_Q_ROWS = 6,
+  TILED_RVV_DIM = 128,
   TILED_RVV_KV_TILE = 64,
 };
 
@@ -576,6 +577,40 @@ static void mad_attention_accum_rvv(const _Float16 *value, float factor,
   }
 }
 
+// D256 is sensitive to rounding the online-softmax weight to F16 before the
+// value multiply. Keep the architectural F16 accumulator, but perform each
+// scale/MAC with the original F32 weight and narrow only the updated state.
+static void scale_attention_accum_rvv_f32_weight(float factor, int count) {
+  for (int offset = 0; offset < count;) {
+    const size_t vl = __riscv_vsetvl_e16m2(count - offset);
+    const vfloat32m4_t scaled = __riscv_vfmul_vf_f32m4(
+        __riscv_vfwcvt_f_f_v_f32m4(
+            __riscv_vle16_v_f16m2(attention_accum_f16 + offset, vl), vl),
+        factor, vl);
+    __riscv_vse16_v_f16m2(
+        attention_accum_f16 + offset,
+        __riscv_vfncvt_f_f_w_f16m2(scaled, vl), vl);
+    offset += (int)vl;
+  }
+}
+
+static void mad_attention_accum_rvv_f32_weight(const _Float16 *value,
+                                                float factor, int count) {
+  for (int offset = 0; offset < count;) {
+    const size_t vl = __riscv_vsetvl_e16m2(count - offset);
+    const vfloat32m4_t accumulator = __riscv_vfwcvt_f_f_v_f32m4(
+        __riscv_vle16_v_f16m2(attention_accum_f16 + offset, vl), vl);
+    const vfloat32m4_t value_f32 = __riscv_vfwcvt_f_f_v_f32m4(
+        __riscv_vle16_v_f16m2(value + offset, vl), vl);
+    const vfloat32m4_t updated = __riscv_vfmacc_vf_f32m4(
+        accumulator, factor, value_f32, vl);
+    __riscv_vse16_v_f16m2(
+        attention_accum_f16 + offset,
+        __riscv_vfncvt_f_f_w_f16m2(updated, vl), vl);
+    offset += (int)vl;
+  }
+}
+
 static void store_attention_output_rvv(float *output, float factor, int count) {
   for (int offset = 0; offset < count;) {
     const size_t vl = __riscv_vsetvl_e16m4(count - offset);
@@ -618,6 +653,24 @@ static void prepare_tiled_query_rvv(const float *query, int dim) {
                            query + (size_t)head * dim, dim);
     for (int offset = 0; offset < dim;) {
       const size_t vl = __riscv_vsetvl_e16m2(dim - offset);
+      __riscv_vse16_v_f16m2(
+          attention_tiled_accum[head] + offset,
+          __riscv_vfmv_v_f_f16m2((_Float16)0.0f, vl), vl);
+      offset += (int)vl;
+    }
+    attention_tiled_maximum[head] = negative_infinity_f32();
+    attention_tiled_sum[head] = 0.0f;
+  }
+}
+
+static void prepare_tiled_query4_d256_rvv(const float *query) {
+  for (int head = 0; head < 4; ++head) {
+    convert_f32_to_f16_rvv(attention_tiled_query[head],
+                           query + (size_t)head * AKV_HEAD_DIM_256,
+                           AKV_HEAD_DIM_256);
+    for (int offset = 0; offset < AKV_HEAD_DIM_256;) {
+      const size_t vl =
+          __riscv_vsetvl_e16m2(AKV_HEAD_DIM_256 - offset);
       __riscv_vse16_v_f16m2(
           attention_tiled_accum[head] + offset,
           __riscv_vfmv_v_f_f16m2((_Float16)0.0f, vl), vl);
@@ -735,6 +788,30 @@ static __attribute__((noinline)) void softmax_tiled_scores_rvv(
   }
 }
 
+static __attribute__((noinline)) void softmax_tiled_scores4_rvv(
+    int tile_tokens) {
+  const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
+#pragma clang loop unroll(disable)
+  for (int head = 0; head < 4; ++head) {
+    vfloat32m2_t scores =
+        __riscv_vle32_v_f32m2(attention_tiled_score[head], vl);
+    const float tile_maximum = reduce_max_f32m2(scores, vl);
+    const float old_maximum = attention_tiled_maximum[head];
+    const float new_maximum =
+        tile_maximum > old_maximum ? tile_maximum : old_maximum;
+    const float old_scale = old_maximum == negative_infinity_f32()
+                                ? 0.0f
+                                : expf(old_maximum - new_maximum);
+    scores = vector_expf(
+        __riscv_vfsub_vf_f32m2(scores, new_maximum, vl), vl);
+    attention_tiled_sum[head] =
+        attention_tiled_sum[head] * old_scale + reduce_sum_f32m2(scores, vl);
+    attention_tiled_maximum[head] = new_maximum;
+    attention_tiled_old_scale[head] = old_scale;
+    __riscv_vse32_v_f32m2(attention_tiled_score[head], scores, vl);
+  }
+}
+
 static void update_tiled_outputs_rvv(int dim, int tile_tokens) {
   const size_t vl = __riscv_vsetvl_e16m2(dim);
   vfloat16m2_t accum0 = __riscv_vfmul_vf_f16m2(
@@ -781,6 +858,63 @@ static void update_tiled_outputs_rvv(int dim, int tile_tokens) {
   __riscv_vse16_v_f16m2(attention_tiled_accum[5], accum5, vl);
 }
 
+static inline vfloat16m2_t scale_f16_state_f32(
+    vfloat16m2_t accumulator, float factor, size_t vl) {
+  return __riscv_vfncvt_f_f_w_f16m2(
+      __riscv_vfmul_vf_f32m4(
+          __riscv_vfwcvt_f_f_v_f32m4(accumulator, vl), factor, vl),
+      vl);
+}
+
+static inline vfloat16m2_t update_f16_state_f32(
+    vfloat16m2_t accumulator, float weight, vfloat32m4_t value,
+    size_t vl) {
+  return __riscv_vfncvt_f_f_w_f16m2(
+      __riscv_vfmacc_vf_f32m4(
+          __riscv_vfwcvt_f_f_v_f32m4(accumulator, vl), weight, value, vl),
+      vl);
+}
+
+static void update_tiled_outputs4_d256_rvv(int tile_tokens) {
+  for (int offset = 0; offset < AKV_HEAD_DIM_256;) {
+    const size_t vl =
+        __riscv_vsetvl_e16m2(AKV_HEAD_DIM_256 - offset);
+    vfloat16m2_t accum0 = scale_f16_state_f32(
+        __riscv_vle16_v_f16m2(attention_tiled_accum[0] + offset, vl),
+        attention_tiled_old_scale[0], vl);
+    vfloat16m2_t accum1 = scale_f16_state_f32(
+        __riscv_vle16_v_f16m2(attention_tiled_accum[1] + offset, vl),
+        attention_tiled_old_scale[1], vl);
+    vfloat16m2_t accum2 = scale_f16_state_f32(
+        __riscv_vle16_v_f16m2(attention_tiled_accum[2] + offset, vl),
+        attention_tiled_old_scale[2], vl);
+    vfloat16m2_t accum3 = scale_f16_state_f32(
+        __riscv_vle16_v_f16m2(attention_tiled_accum[3] + offset, vl),
+        attention_tiled_old_scale[3], vl);
+
+    for (int token = 0; token < tile_tokens; ++token) {
+      const vfloat32m4_t value = __riscv_vfwcvt_f_f_v_f32m4(
+          __riscv_vle16_v_f16m2(
+              attention_tiled_value[token] + offset, vl),
+          vl);
+      accum0 = update_f16_state_f32(
+          accum0, attention_tiled_score[0][token], value, vl);
+      accum1 = update_f16_state_f32(
+          accum1, attention_tiled_score[1][token], value, vl);
+      accum2 = update_f16_state_f32(
+          accum2, attention_tiled_score[2][token], value, vl);
+      accum3 = update_f16_state_f32(
+          accum3, attention_tiled_score[3][token], value, vl);
+    }
+
+    __riscv_vse16_v_f16m2(attention_tiled_accum[0] + offset, accum0, vl);
+    __riscv_vse16_v_f16m2(attention_tiled_accum[1] + offset, accum1, vl);
+    __riscv_vse16_v_f16m2(attention_tiled_accum[2] + offset, accum2, vl);
+    __riscv_vse16_v_f16m2(attention_tiled_accum[3] + offset, accum3, vl);
+    offset += (int)vl;
+  }
+}
+
 static void store_tiled_outputs_rvv(float *output, int dim) {
   for (int head = 0; head < TILED_RVV_Q_ROWS; ++head) {
     const float inverse = attention_tiled_sum[head] == 0.0f
@@ -794,6 +928,27 @@ static void store_tiled_outputs_rvv(float *output, int dim) {
           __riscv_vfwcvt_f_f_v_f32m4(accum, vl), inverse, vl);
       __riscv_vse32_v_f32m4(
           output + (size_t)head * dim + offset, result, vl);
+      offset += (int)vl;
+    }
+  }
+}
+
+static void store_tiled_outputs4_d256_rvv(float *output) {
+  for (int head = 0; head < 4; ++head) {
+    const float inverse = attention_tiled_sum[head] == 0.0f
+                              ? 0.0f
+                              : 1.0f / attention_tiled_sum[head];
+    for (int offset = 0; offset < AKV_HEAD_DIM_256;) {
+      const size_t vl =
+          __riscv_vsetvl_e16m2(AKV_HEAD_DIM_256 - offset);
+      const vfloat32m4_t result = __riscv_vfmul_vf_f32m4(
+          __riscv_vfwcvt_f_f_v_f32m4(
+              __riscv_vle16_v_f16m2(
+                  attention_tiled_accum[head] + offset, vl),
+              vl),
+          inverse, vl);
+      __riscv_vse32_v_f32m4(
+          output + (size_t)head * AKV_HEAD_DIM_256 + offset, result, vl);
       offset += (int)vl;
     }
   }
@@ -816,17 +971,24 @@ static int run_attention_tiled_rvv(const case_config_t *cfg) {
   const int active_kv = attention_active_prefix(mask_bits, physical_kvlen);
   const size_t token_tile_vl =
       __riscv_vsetvl_e16m1(TILED_RVV_KV_TILE);
+  const int d128_gqa6 =
+      dim == TILED_RVV_DIM && heads_per_kv == TILED_RVV_Q_ROWS;
+  const int d256_gqa4 =
+      dim == AKV_HEAD_DIM_256 && heads_per_kv == 4;
 
-  if (dim != MAX_ATTENTION_DIM || tokens != 1 ||
-      heads_per_kv != TILED_RVV_Q_ROWS || active_kv <= 0 ||
+  if ((!d128_gqa6 && !d256_gqa4) || tokens != 1 || active_kv <= 0 ||
       token_tile_vl != TILED_RVV_KV_TILE)
     return 0;
 
   for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
     const int first_qhead = kvhead * heads_per_kv;
     HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
-    prepare_tiled_query_rvv(
-        query + (size_t)first_qhead * dim, dim);
+    if (d256_gqa4)
+      prepare_tiled_query4_d256_rvv(
+          query + (size_t)first_qhead * dim);
+    else
+      prepare_tiled_query_rvv(
+          query + (size_t)first_qhead * dim, dim);
 
     for (int tile_start = 0; tile_start < active_kv;
          tile_start += TILED_RVV_KV_TILE) {
@@ -843,15 +1005,24 @@ static int run_attention_tiled_rvv(const case_config_t *cfg) {
       HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
       compute_tiled_scores4_rvv(cfg->params[2], mask + tile_start,
                                 dim, tile_tokens);
-      compute_tiled_scores2_rvv(cfg->params[2], mask + tile_start,
-                                dim, tile_tokens);
-      softmax_tiled_scores_rvv(tile_tokens);
-      update_tiled_outputs_rvv(dim, tile_tokens);
+      if (d256_gqa4) {
+        softmax_tiled_scores4_rvv(tile_tokens);
+        update_tiled_outputs4_d256_rvv(tile_tokens);
+      } else {
+        compute_tiled_scores2_rvv(cfg->params[2], mask + tile_start,
+                                  dim, tile_tokens);
+        softmax_tiled_scores_rvv(tile_tokens);
+        update_tiled_outputs_rvv(dim, tile_tokens);
+      }
     }
 
     HW_CNT_PHASE(ATTENTION_PHASE_OUTPUT);
-    store_tiled_outputs_rvv(
-        attention_output + (size_t)first_qhead * dim, dim);
+    if (d256_gqa4)
+      store_tiled_outputs4_d256_rvv(
+          attention_output + (size_t)first_qhead * dim);
+    else
+      store_tiled_outputs_rvv(
+          attention_output + (size_t)first_qhead * dim, dim);
   }
   return 1;
 }
@@ -1013,12 +1184,18 @@ static void run_attention_rvv(const case_config_t *cfg) {
         if (score > maximum) {
           maximum = score;
           old_scale = expf(old_maximum - maximum);
-          scale_attention_accum_rvv(old_scale, dim);
+          if (dim == AKV_HEAD_DIM_256)
+            scale_attention_accum_rvv_f32_weight(old_scale, dim);
+          else
+            scale_attention_accum_rvv(old_scale, dim);
         } else {
           weight = expf(score - maximum);
         }
         const _Float16 *v = value + ((size_t)kvhead * kvlen + sequence) * dim;
-        mad_attention_accum_rvv(v, weight, dim);
+        if (dim == AKV_HEAD_DIM_256)
+          mad_attention_accum_rvv_f32_weight(v, weight, dim);
+        else
+          mad_attention_accum_rvv(v, weight, dim);
         sum_weights = sum_weights * old_scale + weight;
       }
 

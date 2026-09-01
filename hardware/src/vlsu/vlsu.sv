@@ -562,8 +562,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       VAKVRELEASE: akv_command = AKV_COMMAND_RELEASE;
       default: ;
     endcase
-    akv_command_head_dim = pe_req_i.vl == vlen_t'(128)
-        ? 16'd128 : 16'd64;
+    unique case (pe_req_i.vl)
+      vlen_t'(AkvHeadDim64):  akv_command_head_dim = 16'(AkvHeadDim64);
+      vlen_t'(AkvHeadDim96):  akv_command_head_dim = 16'(AkvHeadDim96);
+      vlen_t'(AkvHeadDim128): akv_command_head_dim = 16'(AkvHeadDim128);
+      default:                akv_command_head_dim = '0;
+    endcase
   end
 
   assign akv_command_valid = AkvEnable && pe_req_valid_i &&

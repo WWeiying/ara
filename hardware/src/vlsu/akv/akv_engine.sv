@@ -272,15 +272,17 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
     if (!context_ready_q)
       command_load_error = AKV_VALIDATION_CONTEXT;
-    else if (!(command_head_dim_i inside {16'd64, 16'd128}) ||
-             command_head_dim_i != context_head_dim_q)
+    else if (!(command_head_dim_i inside {16'd64, 16'd128}) &&
+             !(context_v2_q && command_head_dim_i == 16'd96))
+      command_load_error = AKV_VALIDATION_HEAD_DIM;
+    else if (command_head_dim_i != context_head_dim_q)
       command_load_error = AKV_VALIDATION_HEAD_DIM;
     else if ((context_v2_q
                   ? command_selector_i[VAddrWidth-1:8] != '0
                   : command_selector_i[VAddrWidth-1:5] != '0) ||
              stream == 2'b11)
       command_load_error = AKV_VALIDATION_SELECTOR;
-    else if (command_head_dim_i == 128 &&
+    else if (command_head_dim_i > 64 &&
              (command_vd_i[0] || command_vd_i > 5'd30))
       command_load_error = AKV_VALIDATION_DESTINATION;
     else begin
@@ -318,7 +320,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     command_column_error = AKV_VALIDATION_OK;
     if (!context_ready_q || !context_v2_q)
       command_column_error = AKV_VALIDATION_CONTEXT;
-    else if (command_selector_i[VAddrWidth-1:7] != '0 ||
+    else if (command_selector_i[VAddrWidth-1:8] != '0 ||
              8'({1'b0, command_selector_i[6:0]}) >=
                  context_head_dim_q[7:0])
       command_column_error = AKV_VALIDATION_SELECTOR;
@@ -357,7 +359,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       descriptor_error = AKV_VALIDATION_DESCRIPTOR_FORMAT;
     else if (!(descriptor.q_rows inside {[1:AkvMaxQRows]}))
       descriptor_error = AKV_VALIDATION_Q_ROWS;
-    else if (!(descriptor.head_dim inside {16'd64, 16'd128}))
+    else if (!(descriptor.head_dim inside {16'd64, 16'd128}) &&
+             !(active_command_q == AKV_COMMAND_V2_FULL &&
+               descriptor.head_dim == 16'd96))
       descriptor_error = AKV_VALIDATION_HEAD_DIM;
     else if (descriptor.kv_length == 0)
       descriptor_error = AKV_VALIDATION_KV_LENGTH;
@@ -584,6 +588,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .row_word_i          (replay_word_q),
     .row_data_o          (v2_row_data),
     .column_start_i      (v2_column_start),
+    .column_stream_i     (command_selector_i[AkvV2ColumnSegmentBit]
+                              ? AKV_STREAM_V : AKV_STREAM_K),
     .column_dimension_i  (command_selector_i[6:0]),
     .column_token_count_i(context_tile_count_q),
     .column_busy_o       (v2_column_busy),
@@ -635,7 +641,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign replay_final_next = replay_final_seen_q |
       (ldu_result_final_gnt_i & (replay_accepted_q | replay_request_fire));
   assign replay_word_count = replay_column_q ? 4'd4 :
-      (context_head_dim_q == 128 ? 4'd8 : 4'd4);
+      4'(unsigned'(context_head_dim_q) >> 4);
   always_comb begin
     replay_word_bytes = '0;
     for (int unsigned lane = 0; lane < NrLanes; lane++)

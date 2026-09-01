@@ -26,6 +26,7 @@ module akv_v2_context
     output logic [255:0] row_data_o,
 
     input  logic          column_start_i,
+    input  akv_stream_e   column_stream_i,
     input  logic [6:0]    column_dimension_i,
     input  logic [6:0]    column_token_count_i,
     output logic          column_busy_o,
@@ -41,6 +42,10 @@ module akv_v2_context
   localparam int unsigned StreamRows = TokenGroups * WordsPerSlot;
   localparam int unsigned BankDepth = 2 * StreamRows;
   localparam int unsigned BankAddrWidth = $clog2(BankDepth);
+  localparam int unsigned RowBytes = 32;
+  localparam int unsigned MacroAddrWidth = 6;
+  localparam int unsigned MacroDepth = 1 << MacroAddrWidth;
+  localparam int unsigned MacroCount = (BankDepth + MacroDepth - 1) / MacroDepth;
 
   logic [BankCount-1:0] bank_req;
   logic [BankCount-1:0] bank_we;
@@ -57,6 +62,7 @@ module akv_v2_context
   logic [3:0] column_capture_group_q;
   logic column_capture_valid_q;
   logic [6:0] column_dimension_q;
+  akv_stream_e column_stream_q;
   logic [6:0] column_token_count_q;
   logic [3:0] column_group_count;
   logic column_read_issue;
@@ -127,7 +133,7 @@ module akv_v2_context
         if (token < unsigned'(column_token_count_q)) begin
           bank_req[bank] = 1'b1;
           bank_addr[bank] = row_address(
-              AKV_STREAM_K, 3'(column_issue_group_q),
+              column_stream_q, 3'(column_issue_group_q),
               4'(column_dimension_q[6:4]));
         end
       end
@@ -142,6 +148,7 @@ module akv_v2_context
       (row_read_i && (column_active_q || column_start_i)) ||
       (column_start_i && column_busy_o);
 
+`ifndef TARGET_SRAM_MC
   for (genvar bank = 0; bank < BankCount; bank++) begin : gen_context_bank
     tc_sram #(
       .NumWords (BankDepth),
@@ -159,6 +166,75 @@ module akv_v2_context
       .rdata_o(bank_rdata[bank])
     );
   end
+`else
+  logic [255:0] macro_q[BankCount][MacroCount];
+  logic [$clog2(MacroCount)-1:0] macro_read_select_q[BankCount];
+
+  for (genvar bank = 0; bank < BankCount; bank++) begin : gen_context_bank
+    logic [MacroCount-1:0] macro_req;
+    logic [MacroCount-1:0] macro_we;
+    logic [MacroAddrWidth-1:0] macro_addr[MacroCount];
+    logic [255:0] macro_wdata[MacroCount];
+    logic [255:0] macro_bweb[MacroCount];
+
+    always_comb begin : steer_macros
+      automatic int unsigned selected_macro;
+      automatic int unsigned selected_row;
+      macro_req = '0;
+      macro_we = '0;
+      for (int unsigned macro = 0; macro < MacroCount; macro++) begin
+        macro_addr[macro] = '0;
+        macro_wdata[macro] = '0;
+        macro_bweb[macro] = '1;
+      end
+      if (bank_req[bank]) begin
+        selected_macro = unsigned'(bank_addr[bank]) / MacroDepth;
+        selected_row = unsigned'(bank_addr[bank]) % MacroDepth;
+        macro_req[selected_macro] = 1'b1;
+        macro_we[selected_macro] = bank_we[bank];
+        macro_addr[selected_macro] = MacroAddrWidth'(selected_row);
+        if (bank_we[bank]) begin
+          macro_wdata[selected_macro] = bank_wdata[bank];
+          for (int unsigned byte_lane = 0; byte_lane < RowBytes; byte_lane++) begin
+            if (bank_be[bank][byte_lane])
+              macro_bweb[selected_macro][byte_lane*8+:8] = '0;
+          end
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) macro_read_select_q[bank] <= '0;
+      else if (bank_req[bank] && !bank_we[bank])
+        macro_read_select_q[bank] <=
+            $clog2(MacroCount)'(unsigned'(bank_addr[bank]) / MacroDepth);
+    end
+
+    assign bank_rdata[bank] = macro_q[bank][macro_read_select_q[bank]];
+
+    for (genvar macro = 0; macro < MacroCount; macro++) begin : gen_macro
+      TS1N28HPCPUHDSVTB64X256M1SWBSO i_context_sram (
+          .SLP  (1'b0),
+          .SD   (1'b0),
+          .CLK  (clk_i),
+          .CEB  (!macro_req[macro]),
+          .WEB  (!macro_we[macro]),
+          .CEBM (1'b1),
+          .WEBM (1'b1),
+          .A    (macro_addr[macro]),
+          .D    (macro_wdata[macro]),
+          .BWEB (macro_bweb[macro]),
+          .AM   ('0),
+          .DM   ('0),
+          .BWEBM('1),
+          .BIST (1'b0),
+          .RTSEL(2'b01),
+          .WTSEL(2'b00),
+          .Q    (macro_q[bank][macro])
+      );
+    end
+  end
+`endif
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -169,6 +245,7 @@ module akv_v2_context
       column_capture_group_q <= '0;
       column_capture_valid_q <= 1'b0;
       column_dimension_q <= '0;
+      column_stream_q <= AKV_STREAM_K;
       column_token_count_q <= '0;
       column_data_q <= '0;
       column_valid_q <= 1'b0;
@@ -194,6 +271,7 @@ module akv_v2_context
       if (column_start_i && !column_busy_o && !write_valid_i && !row_read_i) begin
         column_active_q <= 1'b1;
         column_issue_group_q <= '0;
+        column_stream_q <= column_stream_i;
         column_dimension_q <= column_dimension_i;
         column_token_count_q <= column_token_count_i;
         column_data_q <= '0;
@@ -225,6 +303,7 @@ module akv_v2_context
     assert (AkvV2TokenBanks == 8);
     assert (WordsPerSlot == 8);
     assert (BankDepth == 128);
+    assert (MacroCount == 2);
   end
 
   always_ff @(posedge clk_i) begin
@@ -240,6 +319,7 @@ module akv_v2_context
         assert (unsigned'(row_word_i) < WordsPerSlot);
       end
       if (column_start_i) begin
+        assert (column_stream_i inside {AKV_STREAM_K, AKV_STREAM_V});
         assert (unsigned'(column_dimension_i) < AkvMaxHeadDim);
         assert (column_token_count_i inside {[1:AkvV2TileTokens]});
         assert (!column_busy_o);
