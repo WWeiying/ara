@@ -153,16 +153,21 @@ byte unchanged. `AKVINFO(0)` and `AKVINFO(1)` therefore retain their old values.
 `AKVINFO(2)` advertises token-axis profile version 2, a 64-token maximum, eight
 token banks, six selector-index bits, tail support, row-view support, and an
 enable bit. It also advertises D-axis-tail and segmented-D256 composition
-capabilities. `AKVINFO(3)` publishes the two new instruction encodings and the
+capabilities. Capability bit 40 independently advertises Query-only context
+update. `AKVINFO(3)` publishes the two new instruction encodings and the
 128-element physical row bound. Hardware without the profile returns zero for
-both extension words, which remains a valid AKV-v1 device.
+both extension words, which remains a valid AKV-v1 device; hardware without
+bit 40 remains usable through FULL/REFILL and RVV fallback.
 
 The two extension instructions use the remaining custom-2 function classes:
 
-- `vakv2fill` uses `funct3=6`. Its FULL and REFILL forms retain the v1 operand
-  convention: FULL takes the unchanged 64-byte descriptor in `rs1` and
-  `tile_start` in `rs2`; REFILL reserves `rs1=x0` and takes `tile_start` in
-  `rs2`. A successful command installs 1..64 active tokens.
+- `vakv2fill` uses `funct3=6`. `funct7=0` FULL takes the unchanged 64-byte
+  descriptor in `rs1` and `tile_start` in `rs2`; `funct7=1` REFILL reserves
+  `rs1=x0` and takes `tile_start` in `rs2`. A successful command installs
+  1..64 active tokens. `funct7=2` QUERY_UPDATE takes a new aligned Query base
+  in `rs1`, requires `rs2=x0`, and atomically replaces only the resident Query
+  rows while retaining the current descriptor shape, K/V payload, and tile
+  start/count. A failed Query update leaves the context invalid.
 - `vakv2kcol` uses `funct3=7`, writes one `e16,m1` destination, and takes the
   dimension index in `rs1`. Only the first `tile_count` elements are valid.
   Existing `vakvload` remains the row-load command; under a v2 context its row
@@ -185,9 +190,10 @@ weakening or silently changing the v1 layout contract.
 
 `software/akv/src/akv_v2_reference.c` implements these visible semantics. It
 copies row-major Q/K/V, exposes row and K-column views, checks a one-token tail,
-and guarantees that selector, dimension, capacity, or tile-range validation
-fails before changing the destination or the previously valid reference
-context. A payload memory fault is a different class in RTL: partially written
+and models atomic Query replacement. Invalid selectors preserve a committed
+context; a rejected or failed Query update makes it unavailable and cannot
+expose mixed old/new Query rows. A payload memory fault is a different class
+in RTL: partially written
 hidden storage is never made ready, and the failed context is invalidated.
 The generic `akv_attention_plan_create()` remains the version-1 compatibility
 entry point. Version 2 is selected explicitly through

@@ -133,7 +133,7 @@ model is sufficient. Banking may still be used to meet 1 GHz timing.
 
 All instructions use the standard 32-bit R-type layout under `custom-2`
 opcode `0x5b`. QBS owns `funct3=0` and `funct3=1`; AKV uses the disjoint range
-2 through 5.
+2 through 5, while the optional AKV-v2 token-axis profile uses 6 and 7.
 
 | Mnemonic | `funct3` | `rd` meaning | `rs1` meaning | `rs2` meaning | `funct7` |
 |---|---:|---|---|---|---|
@@ -164,6 +164,14 @@ with another full fill.
 Both modes are blocking accelerator loads. They complete only after every
 required read is checked and the new context state is committed, or after a
 terminal exception is ready for the scalar core.
+
+The token-axis `vakv2fill` extension at `funct3=6` adds
+`AKV_FILL_QUERY_UPDATE=2`. It requires `rs1` to hold a 32-byte-aligned new
+Query base and requires `rs2=rd=x0`. It reuses the committed row count, stride,
+head dimension, K/V payload, and tile start/count. The context is unavailable
+from acceptance until all Query bytes commit; any validation or payload fault
+leaves it invalid. Software may issue this mode only when capability word 2,
+bit 40 is set.
 
 ### 5.2 `akvload.v`
 
@@ -267,20 +275,25 @@ EMPTY --full accepted--> FILLING --all reads succeed--> READY
   ^                            |                         |
   |                            +--fault-----------------+
   |                                                      |
-  +--release---------------- READY --refill--> REFILLING-+
-                                      |          |
-                                      +--fault---+--> EMPTY
+  +--release---------------- READY --refill------> REFILLING-+
+                              |       |              |
+                              |       +--fault-------+--> EMPTY
+                              +--query update--> Q-UPDATING-+
+                                      |               |
+                                      +--fault--------+--> EMPTY
 ```
 
 At reset the context is empty. Full fill invalidates any old context at
 acceptance. Refill makes the current tile unavailable while preserving Q only
 as implementation-private temporary state; software cannot issue a load until
-the refill commits. Any descriptor, translation, PMA, AXI, protocol, or payload
-fault during full fill or refill invalidates the complete context. Retrying such
-a command uses a full fill, which avoids ambiguous mixtures of old Q and new K/V
-state. A local-load validation fault has no hidden-state or VRF side effect and
-preserves a previously committed context, so software may correct the selector
-or destination and retry the load.
+the refill commits. Query update similarly makes the context unavailable while
+retaining K/V and tile metadata, and exposes the new Query base only after all
+rows succeed. Any descriptor, translation, PMA, AXI, protocol, or payload fault
+during full fill, refill, or Query update invalidates the complete context.
+Retrying uses a full fill, which avoids ambiguous mixtures of old and new
+payload. A local-load validation fault has no hidden-state or VRF side effect
+and preserves a previously committed context, so software may correct the
+selector or destination and retry the load.
 
 Payload writes during fill are speculative hidden-state writes. The ready bit
 is asserted only after all required bytes arrive and every range completes.

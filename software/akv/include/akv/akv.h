@@ -51,6 +51,7 @@ typedef struct {
   uint8_t token_axis_row_view;
   uint8_t token_axis_d_axis_tail;
   uint8_t token_axis_d256_segmented;
+  uint8_t token_axis_query_update;
 } akv_capabilities_t;
 
 typedef struct {
@@ -153,6 +154,8 @@ akv_status_t akv_v2_reference_full(akv_v2_reference_context_t *context,
                                    uint32_t tile_start);
 akv_status_t akv_v2_reference_refill(akv_v2_reference_context_t *context,
                                      uint32_t tile_start);
+akv_status_t akv_v2_reference_query_update(
+    akv_v2_reference_context_t *context, const uint16_t *query);
 akv_status_t akv_v2_reference_load_row(
     const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements);

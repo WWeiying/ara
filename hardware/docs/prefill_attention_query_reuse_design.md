@@ -79,6 +79,12 @@ traffic, reductions, or backend backpressure.
 The first implementation should reuse the AKV-v2 fill instruction class with
 a distinct reserved fill mode. It does not require another custom opcode.
 
+The concrete extension keeps token-axis profile version 2 and adds capability
+bit 40. `V2_FILL` uses `funct7=0` for FULL, `funct7=1` for REFILL, and
+`funct7=2` for QUERY_UPDATE. Keeping the profile version avoids rejecting an
+otherwise compatible v2 device; software tests the independent bit before it
+uses mode 2.
+
 For a Query update:
 
 - `rs1` is the new F16 Query-group base;

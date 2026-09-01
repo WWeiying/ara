@@ -12,6 +12,8 @@ enum {
 };
 
 static _Alignas(64) uint16_t query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
+static _Alignas(64) uint16_t
+    updated_query[AKV_MAX_Q_ROWS * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t key[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t value[MAX_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) uint16_t mask[MAX_TEST_KV_LENGTH];
@@ -21,6 +23,7 @@ static _Alignas(64) uint16_t
 static _Alignas(64) uint16_t
     v2_value[V2_TEST_KV_LENGTH * TEST_ROW_ELEMENTS];
 static _Alignas(64) akv_v2_reference_context_t v2_context;
+static _Alignas(64) akv_v2_reference_context_t v2_context_snapshot;
 
 typedef struct {
   unsigned calls;
@@ -93,6 +96,7 @@ static void test_capabilities(void) {
   assert(device.capabilities.token_axis_banks == AKV_V2_TOKEN_BANKS);
   assert(device.capabilities.token_axis_d_axis_tail == 1u);
   assert(device.capabilities.token_axis_d256_segmented == 1u);
+  assert(device.capabilities.token_axis_query_update == 1u);
 
   akv_capabilities_t capabilities;
   assert(akv_capabilities_decode(0u, 0u, &capabilities) ==
@@ -126,9 +130,24 @@ static void test_capabilities(void) {
              no_d256_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
          AKV_STATUS_OK);
   assert(capabilities.token_axis_d256_segmented == 0u);
+  const uint64_t no_query_update_info2 = akv_v2_capability_word(2u, 1) &
+      ~(UINT64_C(1) << AKV_V2_QUERY_UPDATE_CAPABILITY_BIT);
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
+             no_query_update_info2, akv_v2_capability_word(3u, 1),
+             &capabilities) == AKV_STATUS_OK);
+  assert(capabilities.token_axis_query_update == 0u);
 }
 
 static void test_v2_reference_context(void) {
+  for (size_t row = 0; row < AKV_MAX_Q_ROWS; ++row) {
+    for (size_t dimension = 0; dimension < TEST_ROW_ELEMENTS; ++dimension) {
+      query[row * TEST_ROW_ELEMENTS + dimension] =
+          (uint16_t)(0x0100u + row * 0x100u + dimension);
+      updated_query[row * TEST_ROW_ELEMENTS + dimension] =
+          (uint16_t)(0x4000u + row * 0x100u + dimension);
+    }
+  }
   for (size_t token = 0; token < V2_TEST_KV_LENGTH; ++token) {
     for (size_t dimension = 0; dimension < TEST_ROW_ELEMENTS; ++dimension) {
       v2_key[token * TEST_ROW_ELEMENTS + dimension] =
@@ -189,6 +208,53 @@ static void test_v2_reference_context(void) {
          AKV_STATUS_OK);
   assert(active == 1u);
   assert(observed[0] == v2_key[64u * TEST_ROW_ELEMENTS + 127u]);
+
+  v2_context_snapshot = v2_context;
+  assert(akv_v2_reference_query_update(&v2_context, updated_query) ==
+         AKV_STATUS_OK);
+  assert(v2_context.ready == 1u);
+  assert(v2_context.descriptor.q_base ==
+         (uint64_t)(uintptr_t)updated_query);
+  assert(v2_context.tile_start == v2_context_snapshot.tile_start);
+  assert(v2_context.tile_count == v2_context_snapshot.tile_count);
+  assert(memcmp(v2_context.key, v2_context_snapshot.key,
+                sizeof(v2_context.key)) == 0);
+  assert(memcmp(v2_context.value, v2_context_snapshot.value,
+                sizeof(v2_context.value)) == 0);
+  assert(akv_v2_reference_load_row(
+             &v2_context, akv_v2_selector(AKV_STREAM_Q, 3u), observed,
+             AKV_HEAD_DIM_128) == AKV_STATUS_OK);
+  assert(memcmp(observed,
+                updated_query + 3u * TEST_ROW_ELEMENTS,
+                sizeof(observed)) == 0);
+
+  v2_context_snapshot = v2_context;
+  assert(akv_v2_reference_query_update(&v2_context, updated_query + 1u) ==
+         AKV_STATUS_LAYOUT);
+  assert(v2_context.ready == 0u);
+  assert(v2_context.descriptor.q_base ==
+         v2_context_snapshot.descriptor.q_base);
+  assert(memcmp(v2_context.query, v2_context_snapshot.query,
+                sizeof(v2_context.query)) == 0);
+  assert(memcmp(v2_context.key, v2_context_snapshot.key,
+                sizeof(v2_context.key)) == 0);
+  assert(memcmp(v2_context.value, v2_context_snapshot.value,
+                sizeof(v2_context.value)) == 0);
+
+  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
+         AKV_STATUS_OK);
+  assert(akv_v2_reference_query_update(
+             &v2_context,
+             (const uint16_t *)(uintptr_t)(UINTPTR_MAX - 31u)) ==
+         AKV_STATUS_RANGE);
+  assert(v2_context.ready == 0u);
+  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
+         AKV_STATUS_OK);
+  assert(akv_v2_reference_query_update(&v2_context, NULL) ==
+         AKV_STATUS_BAD_ARGUMENT);
+  assert(v2_context.ready == 0u);
+  assert(akv_v2_reference_full(&v2_context, &plan.descriptor, 64u) ==
+         AKV_STATUS_OK);
 
   const uint16_t old_tile_start = v2_context.tile_start;
   assert(akv_v2_reference_refill(&v2_context, 65u) == AKV_STATUS_RANGE);

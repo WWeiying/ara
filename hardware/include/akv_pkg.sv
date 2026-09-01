@@ -37,6 +37,8 @@ package akv_pkg;
   localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
   localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
   localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
+  localparam int unsigned AkvV2QueryUpdateCapabilityBit =
+      40;
   localparam int unsigned AkvV2ColumnSegmentBit = 7;
   localparam int unsigned AkvContextCount = 1;
   localparam int unsigned AkvMaxQRows = 8;
@@ -58,9 +60,10 @@ package akv_pkg;
     AKV_STREAM_V = 2'd2
   } akv_stream_e;
 
-  typedef enum logic {
-    AKV_FILL_FULL = 1'b0,
-    AKV_FILL_REFILL = 1'b1
+  typedef enum logic [1:0] {
+    AKV_FILL_FULL = 2'd0,
+    AKV_FILL_REFILL = 2'd1,
+    AKV_FILL_QUERY_UPDATE = 2'd2
   } akv_fill_mode_e;
 
   typedef enum logic [2:0] {
@@ -70,6 +73,7 @@ package akv_pkg;
     AKV_COMMAND_RELEASE,
     AKV_COMMAND_V2_FULL,
     AKV_COMMAND_V2_REFILL,
+    AKV_COMMAND_V2_QUERY_UPDATE,
     AKV_COMMAND_V2_COLUMN_LOAD
   } akv_command_e;
 
@@ -157,7 +161,8 @@ package akv_pkg;
           (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
           (64'd1 << 36) | (64'd1 << 37) |
           (64'd1 << AkvV2DAxisTailCapabilityBit) |
-          (64'd1 << AkvV2D256SegmentedCapabilityBit);
+          (64'd1 << AkvV2D256SegmentedCapabilityBit) |
+          (64'd1 << AkvV2QueryUpdateCapabilityBit);
       64'd3: akv_v2_capability_word =
           64'(AkvOpcodeCustom2) |
           (64'(AkvV2FillFunct3) << 8) |

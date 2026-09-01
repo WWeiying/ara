@@ -28,7 +28,8 @@
   },
   "fill_modes": {
     "FULL": 0,
-    "REFILL": 1
+    "REFILL": 1,
+    "QUERY_UPDATE": 2
   },
   "token_axis_profile": {
     "version": 2,
@@ -40,6 +41,8 @@
     "column_segment_bit": 7,
     "d_axis_tail": true,
     "d256_segmented": true,
+    "query_update": true,
+    "query_update_capability_bit": 40,
     "fill_funct3": 6,
     "column_load_funct3": 7
   }
