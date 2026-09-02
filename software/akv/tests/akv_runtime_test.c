@@ -607,6 +607,12 @@ static void test_v2_prefill_boundary(void) {
   assert(akv_attention_execute_v2_prefill_native(
              &device, &problem, &prefill_workspace) == AKV_STATUS_SHAPE);
   problem.kv_capacity = 2u;
+  device.capabilities.context_count = 0u;
+  assert(akv_attention_execute_v2_prefill_reference(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_CAPABILITY);
+  assert(akv_attention_execute_v2_prefill_native(
+             &device, &problem, &prefill_workspace) == AKV_STATUS_CAPABILITY);
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
   problem.output = prefill_query;
   assert(akv_attention_execute_v2_prefill_native(
              &device, &problem, &prefill_workspace) == AKV_STATUS_ALIAS);

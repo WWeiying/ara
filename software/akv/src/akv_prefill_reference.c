@@ -62,6 +62,7 @@ akv_status_t akv_attention_v2_prefill_validate(
   const akv_capabilities_t *const caps = &device->capabilities;
   if (!caps->valid || !caps->enabled || !caps->token_axis_valid ||
       !caps->token_axis_enabled || !caps->f16_payload ||
+      caps->context_count == 0u ||
       caps->token_axis_tile_tokens != AKV_V2_TILE_TOKENS)
     return AKV_STATUS_CAPABILITY;
 
