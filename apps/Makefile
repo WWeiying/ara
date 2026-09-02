@@ -154,12 +154,16 @@ AKV_RUNTIME_C_SOURCES := \
 	$(ARA_DIR)/software/akv/src/akv_runtime.c \
 	$(ARA_DIR)/software/akv/src/akv_native_riscv.c \
 	$(ARA_DIR)/software/akv/src/akv_v2_native_riscv.c
+AKV_PREFILL_C_SOURCE := \
+	$(ARA_DIR)/software/akv/src/akv_prefill_reference.c
 AKV_RUNTIME_ASM_SOURCE := \
 	$(ARA_DIR)/software/akv/src/akv_attention_rvv.S \
 	$(ARA_DIR)/software/akv/src/akv_v2_attention_rvv.S
 
 llama_q4km_operator/akv_runtime.c.o \
 llama_q4km_operator/akv_runtime.c.o.spike: $(AKV_RUNTIME_C_SOURCES)
+llama_q4km_operator/akv_prefill_reference.c.o \
+llama_q4km_operator/akv_prefill_reference.c.o.spike: $(AKV_PREFILL_C_SOURCE)
 llama_q4km_operator/akv_attention.S.o \
 llama_q4km_operator/akv_attention.S.o.spike: $(AKV_RUNTIME_ASM_SOURCE)
 llama_q4km_operator/akv_v2_attention.S.o \
