@@ -53,6 +53,7 @@ typedef struct {
   uint8_t token_axis_row_view;
   uint8_t token_axis_d_axis_tail;
   uint8_t token_axis_d256_segmented;
+  uint8_t token_axis_column_panel4;
 } akv_capabilities_t;
 
 typedef struct {
@@ -200,6 +201,10 @@ akv_status_t akv_v2_reference_load_column(
     const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements,
     size_t *active_elements);
+akv_status_t akv_v2_reference_load_column_panel4(
+    const akv_v2_reference_context_t *context, uint32_t selector,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements_per_column);
 void akv_v2_reference_release(akv_v2_reference_context_t *context);
 
 /* Execute an immutable plan returned by akv_attention_plan_create(). */

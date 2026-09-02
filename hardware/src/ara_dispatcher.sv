@@ -4732,6 +4732,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             automatic logic akv_v2_implementation_supported;
             automatic logic akv_fill_is_full;
             automatic logic akv_fill_is_refill;
+            automatic logic akv_column_is_single;
+            automatic logic akv_column_is_panel4;
 
             is_qbexec = instr.rtype.funct3 == QbsQbexecFunct3;
             is_qbinfo = instr.rtype.funct3 == QbsQbinfoFunct3;
@@ -4760,6 +4762,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 akv_implementation_supported && AkvV2Enable;
             akv_fill_is_full = akv_funct7 == 7'(AKV_FILL_FULL);
             akv_fill_is_refill = akv_funct7 == 7'(AKV_FILL_REFILL);
+            akv_column_is_single =
+                akv_funct7 == AkvV2ColumnSingleFunct7;
+            akv_column_is_panel4 =
+                akv_funct7 == AkvV2ColumnPanelFunct7;
 
             if (is_qbinfo) begin
               if (!QbsEnable)
@@ -4974,18 +4980,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               ara_req.use_vd = 1'b1;
               ara_req.vm = 1'b1;
               ara_req.vtype = '{vill: 1'b0, vma: 1'b1, vta: 1'b1,
-                                vsew: EW16, vlmul: LMUL_1};
+                                vsew: EW16,
+                                vlmul: akv_column_is_panel4
+                                    ? LMUL_4 : LMUL_1};
               ara_req.eew_vd_op = EW16;
               ara_req.vstart = '0;
-              ara_req.vl = vlen_t'(AkvV2TileTokens);
-              ara_req.emul = LMUL_1;
+              ara_req.vl = vlen_t'(AkvV2TileTokens *
+                  (akv_column_is_panel4 ? AkvV2ColumnPanelWidth : 1));
+              ara_req.emul = akv_column_is_panel4 ? LMUL_4 : LMUL_1;
               ara_req.akv_refill = 1'b0;
               ara_req.akv_v2 = 1'b1;
               ara_req.akv_column = 1'b1;
 
-              if (!akv_v2_implementation_supported || akv_funct7 != '0 ||
+              if (!akv_v2_implementation_supported ||
+                  !(akv_column_is_single || akv_column_is_panel4) ||
                   instr.rtype.rs2 != '0 || csr_vstart_q != '0 ||
-                  !acc_req_i.acc_cons_en)
+                  !acc_req_i.acc_cons_en ||
+                  (akv_column_is_panel4 &&
+                   (instr.rtype.rd[8:7] != '0 || instr.rtype.rd > 5'd28 ||
+                    acc_req_i.rs1[1:0] != '0)))
                 illegal_insn = 1'b1;
 
               if (ara_resp_valid) begin

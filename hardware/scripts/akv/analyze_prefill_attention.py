@@ -19,6 +19,8 @@ AKV_HEAD_DIM_128 = 128
 AKV_V2_TILE_TOKENS = 64
 AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
 AKV_PREFILL_COMPUTE_TILE_TOKENS = 2
+AKV_V2_COLUMN_PANEL_WIDTH = 4
+AKV_V2_TOKEN_BANKS = 8
 AKV_ATTENTION_PLAN_BYTES = 192
 RVV_BASELINE_STRATEGIES = frozenset({
     "rvv_qhead_serial",
@@ -44,6 +46,11 @@ AKV_SUM_FIELDS = (
     "v2_refill",
     "v2_row_load",
     "v2_column_load",
+    "v2_column_panel",
+    "v2_logical_column",
+    "v2_k_view_bank_cycles",
+    "v2_bank_conflict_cycles",
+    "v2_rejected",
     "q_external_bytes",
     "kv_external_bytes",
     "replay_bytes",
@@ -239,6 +246,7 @@ def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> 
     exact_key = {
         "akv_qblock64_kv_outer": "kv_outer_exact",
         "akv_qblock64_q2_kv_outer": "kv_outer_q2_exact",
+        "akv_qblock64_q2_panel4_kv_outer": "kv_outer_q2_panel4_exact",
     }.get(strategy)
     if exact_key is None:
         return {}
@@ -254,6 +262,14 @@ def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> 
         "replay_bytes": exact["replay_bytes"],
         "records": exact["command_records"],
     }
+    if exact_key == "kv_outer_q2_panel4_exact":
+        expected.update({
+            "v2_column_panel": exact["v2_column_panel"],
+            "v2_logical_column": exact["v2_logical_column"],
+            "v2_k_view_bank_cycles": exact["v2_k_view_bank_cycles"],
+            "v2_bank_conflict_cycles": 0,
+            "v2_rejected": 0,
+        })
     mismatches = {
         field: {"expected": value, "observed": counters.get(field)}
         for field, value in expected.items()
@@ -527,6 +543,7 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
 
     q2_group_visits_per_kv_head = 0
     q2_column_replay_tokens_per_kv_head = 0
+    q2_column_bank_groups_per_kv_head = 0
     for block in query_blocks:
         block_start = block["start"]
         block_count = block["count"]
@@ -550,6 +567,9 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             q2_column_replay_tokens_per_kv_head += (
                 active_groups * resident_tokens
             )
+            q2_column_bank_groups_per_kv_head += active_groups * math.ceil(
+                resident_tokens / AKV_V2_TOKEN_BANKS
+            )
     q2_group_visits = q2_group_visits_per_kv_head * kv_heads
     q2_column_replay_bytes = (
         q2_column_replay_tokens_per_kv_head * kv_heads * head_dim * 2
@@ -559,6 +579,21 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         kv_outer_full
         + kv_outer_refill
         + q2_group_visits * head_dim
+        + prefix_sum * kv_heads
+        + kv_outer_release
+    )
+    q2_panel_column_loads = (
+        q2_group_visits * math.ceil(head_dim / AKV_V2_COLUMN_PANEL_WIDTH)
+    )
+    q2_panel_k_view_bank_cycles = (
+        q2_column_bank_groups_per_kv_head
+        * kv_heads
+        * math.ceil(head_dim / AKV_V2_COLUMN_PANEL_WIDTH)
+    )
+    q2_panel_command_records = (
+        kv_outer_full
+        + kv_outer_refill
+        + q2_panel_column_loads
         + prefix_sum * kv_heads
         + kv_outer_release
     )
@@ -633,6 +668,17 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             ),
             "query_mode": "fixed_query_block_two_query_k_column_reuse",
         },
+        {
+            "name": "akv_qblock64_q2_panel4_kv_outer",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "implemented_fast_path": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_mode": "fixed_query_block_q2_four_k_columns_per_command",
+        },
     ]
     for query_tile in query_tiles:
         rows = query_tile * gqa_rows
@@ -661,12 +707,16 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         query_tile = strategy["query_tile"]
         rows = strategy["required_q_rows_if_concurrent"]
         score_slots = 1
-        if strategy["name"] == "akv_qblock64_q2_kv_outer":
+        if strategy["name"] in {
+            "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
+        }:
             score_slots = AKV_PREFILL_COMPUTE_TILE_TOKENS
         state_rows_for_strategy = rows
         if strategy["name"] in {
             "akv_qblock64_kv_outer",
             "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
         }:
             state_rows_for_strategy = active_block_tokens * gqa_rows
         strategy["reduction_vs_rvv"] = (
@@ -700,10 +750,11 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "unique_kv_floor",
             "akv_qblock64_kv_outer",
             "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
         }
 
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "status": "PASS",
         "scope": "real-capture static Prefill Attention work/traffic/state analysis",
         "case": str(case_path),
@@ -814,6 +865,34 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
                 "V-row replay remains per Query token"
             ),
         },
+        "kv_outer_q2_panel4_exact": {
+            "compute_tile_tokens": AKV_PREFILL_COMPUTE_TILE_TOKENS,
+            "column_panel_width": AKV_V2_COLUMN_PANEL_WIDTH,
+            "supported_shape": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
+            "query_group_visits": q2_group_visits,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "v2_column_load": q2_panel_column_loads,
+            "v2_column_panel": q2_panel_column_loads,
+            "v2_logical_column": q2_group_visits * head_dim,
+            "v2_k_view_bank_cycles": q2_panel_k_view_bank_cycles,
+            "v2_row_load": prefix_sum * kv_heads,
+            "v2_release": kv_outer_release,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "column_replay_bytes": q2_column_replay_bytes,
+            "row_replay_bytes": row_replay_bytes,
+            "replay_bytes": q2_replay_bytes,
+            "command_records": q2_panel_command_records,
+            "schedule_semantics": (
+                "Q2 Query sharing is unchanged; each accepted panel command "
+                "replays four adjacent logical K columns into one aligned "
+                "LMUL=4 destination group"
+            ),
+        },
         "strategies": strategies,
         "decision_gate": {
             "rtl_changed": True,
@@ -875,6 +954,11 @@ def write_outputs(summary: dict, output_dir: Path) -> None:
             "akv_v2_refill",
             "akv_v2_row_load",
             "akv_v2_column_load",
+            "akv_v2_column_panel",
+            "akv_v2_logical_column",
+            "akv_v2_k_view_bank_cycles",
+            "akv_v2_bank_conflict_cycles",
+            "akv_v2_rejected",
             "akv_release",
             "akv_q_external_bytes",
             "akv_kv_external_bytes",

@@ -216,6 +216,9 @@ extern void akv_v2_compute_scores_f16_d128_gqa6(
 extern void akv_v2_compute_scores_f16_d128_gqa6_q2(
     const uint16_t *query0, const uint16_t *query1, float *score,
     uint32_t tile_tokens);
+extern void akv_v2_compute_scores_f16_d128_gqa6_q2_panel4(
+    const uint16_t *query0, const uint16_t *query1, float *score,
+    uint32_t tile_tokens);
 extern void akv_v2_update_outputs_f16_d128_gqa6(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens);
@@ -743,10 +746,17 @@ akv_status_t akv_attention_execute_v2_prefill_native(
                              visible_tokens[0] != 0u &&
                              visible_tokens[1] != 0u;
           if (use_q2) {
-            akv_v2_compute_scores_f16_d128_gqa6_q2(
-                &workspace->query[local_token][0][0],
-                &workspace->query[local_token + 1u][0][0],
-                &workspace->score[0][0][0], visible_tokens[1]);
+            if (device->capabilities.token_axis_column_panel4) {
+              akv_v2_compute_scores_f16_d128_gqa6_q2_panel4(
+                  &workspace->query[local_token][0][0],
+                  &workspace->query[local_token + 1u][0][0],
+                  &workspace->score[0][0][0], visible_tokens[1]);
+            } else {
+              akv_v2_compute_scores_f16_d128_gqa6_q2(
+                  &workspace->query[local_token][0][0],
+                  &workspace->query[local_token + 1u][0][0],
+                  &workspace->score[0][0][0], visible_tokens[1]);
+            }
           }
 
           for (uint32_t compute_slot = 0u;

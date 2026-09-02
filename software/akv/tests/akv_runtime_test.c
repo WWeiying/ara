@@ -99,6 +99,7 @@ static void test_capabilities(void) {
   assert(device.capabilities.token_axis_banks == AKV_V2_TOKEN_BANKS);
   assert(device.capabilities.token_axis_d_axis_tail == 1u);
   assert(device.capabilities.token_axis_d256_segmented == 1u);
+  assert(device.capabilities.token_axis_column_panel4 == 1u);
 
   akv_capabilities_t capabilities;
   assert(akv_capabilities_decode(0u, 0u, &capabilities) ==
@@ -132,6 +133,13 @@ static void test_capabilities(void) {
              no_d256_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
          AKV_STATUS_OK);
   assert(capabilities.token_axis_d256_segmented == 0u);
+  const uint64_t no_panel_info2 = akv_v2_capability_word(2u, 1) &
+      ~(UINT64_C(1) << AKV_V2_COLUMN_PANEL_CAPABILITY_BIT);
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
+             no_panel_info2, akv_v2_capability_word(3u, 1), &capabilities) ==
+         AKV_STATUS_OK);
+  assert(capabilities.token_axis_column_panel4 == 0u);
 }
 
 static void test_v2_reference_context(void) {
@@ -186,6 +194,20 @@ static void test_v2_reference_context(void) {
   for (size_t token = 0; token < active; ++token)
     assert(observed[token] == v2_key[token * TEST_ROW_ELEMENTS + 17u]);
 
+  uint16_t panel[AKV_V2_COLUMN_PANEL_WIDTH * AKV_V2_TILE_TOKENS];
+  memset(panel, 0xa5, sizeof(panel));
+  assert(akv_v2_reference_load_column_panel4(
+             &v2_context, akv_v2_column_selector(0u, 20u), panel,
+             sizeof(panel) / sizeof(panel[0]), &active) == AKV_STATUS_OK);
+  assert(active == AKV_V2_TILE_TOKENS);
+  for (size_t column = 0; column < AKV_V2_COLUMN_PANEL_WIDTH; ++column)
+    for (size_t token = 0; token < active; ++token)
+      assert(panel[column * AKV_V2_TILE_TOKENS + token] ==
+             v2_key[token * TEST_ROW_ELEMENTS + 20u + column]);
+  assert(akv_v2_reference_load_column_panel4(
+             &v2_context, akv_v2_column_selector(0u, 18u), panel,
+             sizeof(panel) / sizeof(panel[0]), &active) == AKV_STATUS_RANGE);
+
   memcpy(observed, sentinel, sizeof(observed));
   assert(akv_v2_reference_load_k_column(
              &v2_context, AKV_HEAD_DIM_128, observed, AKV_HEAD_DIM_128,
@@ -201,6 +223,20 @@ static void test_v2_reference_context(void) {
          AKV_STATUS_OK);
   assert(active == 1u);
   assert(observed[0] == v2_key[64u * TEST_ROW_ELEMENTS + 127u]);
+
+  for (size_t index = 0; index < sizeof(panel) / sizeof(panel[0]); ++index)
+    panel[index] = UINT16_C(0xa55a);
+  assert(akv_v2_reference_load_column_panel4(
+             &v2_context, akv_v2_column_selector(0u, 124u), panel,
+             sizeof(panel) / sizeof(panel[0]), &active) == AKV_STATUS_OK);
+  assert(active == 1u);
+  for (size_t column = 0; column < AKV_V2_COLUMN_PANEL_WIDTH; ++column) {
+    assert(panel[column * AKV_V2_TILE_TOKENS] ==
+           v2_key[64u * TEST_ROW_ELEMENTS + 124u + column]);
+    for (size_t token = 1; token < AKV_V2_TILE_TOKENS; ++token)
+      assert(panel[column * AKV_V2_TILE_TOKENS + token] ==
+             UINT16_C(0xa55a));
+  }
 
   const uint16_t old_tile_start = v2_context.tile_start;
   assert(akv_v2_reference_refill(&v2_context, 65u) == AKV_STATUS_RANGE);

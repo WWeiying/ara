@@ -28,10 +28,11 @@ module akv_v2_context
     input  logic          column_start_i,
     input  akv_stream_e   column_stream_i,
     input  logic [6:0]    column_dimension_i,
+    input  logic [2:0]    column_count_i,
     input  logic [6:0]    column_token_count_i,
     output logic          column_busy_o,
     output logic          column_valid_o,
-    output logic [1023:0] column_data_o,
+    output logic [3:0][1023:0] column_data_o,
     output logic          column_bank_cycle_o,
     output logic          conflict_o
 );
@@ -62,11 +63,12 @@ module akv_v2_context
   logic [3:0] column_capture_group_q;
   logic column_capture_valid_q;
   logic [6:0] column_dimension_q;
+  logic [2:0] column_count_q;
   akv_stream_e column_stream_q;
   logic [6:0] column_token_count_q;
   logic [3:0] column_group_count;
   logic column_read_issue;
-  logic [1023:0] column_data_q;
+  logic [3:0][1023:0] column_data_q;
   logic column_valid_q;
 
   function automatic logic [BankAddrWidth-1:0] row_address(
@@ -245,6 +247,7 @@ module akv_v2_context
       column_capture_group_q <= '0;
       column_capture_valid_q <= 1'b0;
       column_dimension_q <= '0;
+      column_count_q <= 3'd1;
       column_stream_q <= AKV_STREAM_K;
       column_token_count_q <= '0;
       column_data_q <= '0;
@@ -273,6 +276,7 @@ module akv_v2_context
         column_issue_group_q <= '0;
         column_stream_q <= column_stream_i;
         column_dimension_q <= column_dimension_i;
+        column_count_q <= column_count_i;
         column_token_count_q <= column_token_count_i;
         column_data_q <= '0;
         column_valid_q <= 1'b0;
@@ -283,8 +287,15 @@ module akv_v2_context
           automatic int unsigned token =
               unsigned'(column_capture_group_q) * BankCount + bank;
           if (token < unsigned'(column_token_count_q)) begin
-            column_data_q[token*16 +: 16] <=
-                bank_rdata[bank][unsigned'(column_dimension_q[3:0])*16 +: 16];
+            for (int unsigned column = 0;
+                 column < AkvV2ColumnPanelWidth; column++) begin
+              if (column < unsigned'(column_count_q)) begin
+                automatic int unsigned dimension =
+                    unsigned'(column_dimension_q[3:0]) + column;
+                column_data_q[column][token*16 +: 16] <=
+                    bank_rdata[bank][dimension*16 +: 16];
+              end
+            end
           end
         end
         if (unsigned'(column_capture_group_q) + 1 ==
@@ -318,7 +329,7 @@ module akv_v2_context
           unsigned'(column_token_count_q) > 5) begin
         $display("[AKV_V2_TOKEN_GATHER] t=%0t stream=%0d dim=%0d count=%0d token5=%h",
                  $time, column_stream_q, column_dimension_q,
-                 column_token_count_q, column_data_q[5*16 +: 16]);
+                 column_token_count_q, column_data_q[0][5*16 +: 16]);
       end
       if (write_valid_i) begin
         assert (write_stream_i inside {AKV_STREAM_K, AKV_STREAM_V});
@@ -333,6 +344,14 @@ module akv_v2_context
       if (column_start_i) begin
         assert (column_stream_i inside {AKV_STREAM_K, AKV_STREAM_V});
         assert (unsigned'(column_dimension_i) < AkvMaxHeadDim);
+        assert (column_count_i inside {3'd1, 3'd4});
+        assert (unsigned'(column_dimension_i) +
+                    unsigned'(column_count_i) <= AkvMaxHeadDim);
+        if (column_count_i == AkvV2ColumnPanelWidth) begin
+          assert (column_dimension_i[1:0] == '0);
+          assert (unsigned'(column_dimension_i[3:0]) +
+                      AkvV2ColumnPanelWidth <= 16);
+        end
         assert (column_token_count_i inside {[1:AkvV2TileTokens]});
         assert (!column_busy_o);
       end

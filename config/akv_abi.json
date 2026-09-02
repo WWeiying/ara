@@ -42,6 +42,9 @@
     "d_axis_tail": true,
     "d256_segmented": true,
     "fill_funct3": 6,
-    "column_load_funct3": 7
+    "column_load_funct3": 7,
+    "column_panel_width": 4,
+    "column_panel_funct7": 1,
+    "column_panel_capability_bit": 40
   }
 }

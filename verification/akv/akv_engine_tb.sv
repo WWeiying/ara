@@ -46,6 +46,7 @@ module akv_engine_tb;
   logic [63:0] command_descriptor_address;
   logic [63:0] command_tile_start;
   logic [63:0] command_selector;
+  logic [2:0] command_column_count;
   logic command_early_ack;
   logic success_valid;
   logic fault_valid;
@@ -96,6 +97,8 @@ module akv_engine_tb;
   logic [31:0] v2_refill_count;
   logic [31:0] v2_row_load_count;
   logic [31:0] v2_column_load_count;
+  logic [31:0] v2_column_panel_count;
+  logic [31:0] v2_logical_column_count;
   logic [31:0] v2_k_view_bank_cycles;
   logic [31:0] v2_bank_conflict_cycles;
   logic [31:0] v2_rejected_count;
@@ -138,6 +141,7 @@ module akv_engine_tb;
     .command_descriptor_address_i       (command_descriptor_address),
     .command_tile_start_i               (command_tile_start),
     .command_selector_i                 (command_selector),
+    .command_column_count_i             (command_column_count),
     .command_cache_i                    (CACHE_MODIFIABLE),
     .command_prot_i                     ('0),
     .command_early_ack_o                (command_early_ack),
@@ -186,6 +190,8 @@ module akv_engine_tb;
     .v2_refill_count_o                  (v2_refill_count),
     .v2_row_load_count_o                (v2_row_load_count),
     .v2_column_load_count_o             (v2_column_load_count),
+    .v2_column_panel_count_o            (v2_column_panel_count),
+    .v2_logical_column_count_o          (v2_logical_column_count),
     .v2_k_view_bank_cycles_o            (v2_k_view_bank_cycles),
     .v2_bank_conflict_cycles_o          (v2_bank_conflict_cycles),
     .v2_rejected_count_o                (v2_rejected_count),
@@ -370,6 +376,7 @@ module akv_engine_tb;
   logic [15:0] score_bytes;
   logic [31:0] score_source_stride;
   logic [6:0] score_column_dimension;
+  logic [2:0] score_column_count;
   logic [4:0] score_vd;
   vid_t score_id;
   integer replay_word_seen;
@@ -385,21 +392,31 @@ module akv_engine_tb;
       if (command_early_ack)
         early_ack_count <= early_ack_count + 1;
       if (|(ldu_result_req & ldu_result_gnt)) begin
+        automatic int unsigned words_per_column =
+            (unsigned'(score_bytes) + 31) / 32;
+        automatic int unsigned panel_column = score_column
+            ? replay_word_seen / words_per_column : 0;
+        automatic int unsigned word_in_column = score_column
+            ? replay_word_seen % words_per_column : replay_word_seen;
         if (!score_replay)
           $fatal(1, "unexpected AKV replay write");
+        if (score_column && panel_column >= unsigned'(score_column_count))
+          $fatal(1, "AKV replay exceeded the expected column panel");
         if ((ldu_result_req & ldu_result_gnt) != '1)
           $fatal(1, "AKV replay lanes did not complete together");
         for (int unsigned lane = 0; lane < NrLanes; lane++) begin
           if (ldu_result_id[lane] != score_id ||
               ldu_result_addr[lane] !=
                   vaddr_t'(unsigned'(score_vd) * WordsPerRegister +
-                           replay_word_seen))
+                           panel_column * WordsPerRegister +
+                           word_in_column))
             $fatal(1,
                    "AKV replay metadata mismatch word=%0d lane=%0d id=%0d/%0d addr=%0d/%0d",
                    replay_word_seen, lane, ldu_result_id[lane], score_id,
                    ldu_result_addr[lane],
                    vaddr_t'(unsigned'(score_vd) * WordsPerRegister +
-                            replay_word_seen));
+                            panel_column * WordsPerRegister +
+                            word_in_column));
         end
         for (int unsigned logical_byte = 0; logical_byte < 32;
              logical_byte++) begin
@@ -408,11 +425,12 @@ module akv_engine_tb;
           automatic int unsigned lane = physical_byte / 8;
           automatic int unsigned lane_byte = physical_byte % 8;
           automatic int unsigned source_offset =
-              replay_word_seen * 32 + logical_byte;
+              word_in_column * 32 + logical_byte;
           automatic logic expected_enable = source_offset < score_bytes;
           automatic logic [63:0] expected_address = score_column
               ? score_source_base + (source_offset / 2) * score_source_stride +
-                    unsigned'(score_column_dimension) * 2 + source_offset[0]
+                    (unsigned'(score_column_dimension) + panel_column) * 2 +
+                    source_offset[0]
               : score_source_base + source_offset;
           if (ldu_result_be[lane][lane_byte] != expected_enable)
             $fatal(1,
@@ -561,6 +579,7 @@ module akv_engine_tb;
     score_bytes = head_dim * 2;
     score_source_stride = '0;
     score_column_dimension = '0;
+    score_column_count = 3'd1;
     score_vd = vd;
     score_id = id;
     replay_word_seen = 0;
@@ -620,6 +639,7 @@ module akv_engine_tb;
     score_bytes = tile_count * 2;
     score_source_stride = source_stride;
     score_column_dimension = selector[6:0];
+    score_column_count = 3'd1;
     score_vd = vd;
     score_id = id;
     replay_word_seen = 0;
@@ -635,11 +655,13 @@ module akv_engine_tb;
     wait_success();
     if (early_ack_count != ack_before + 1)
       $fatal(1, "valid AKV-v2 column did not produce exactly one early ack");
-    if (replay_word_seen != 4 || replay_bytes != tile_count * 2)
+    if (replay_word_seen != (tile_count + 15) / 16 ||
+        replay_bytes != tile_count * 2)
       $fatal(1,
              "AKV-v2 column replay mismatch words=%0d bytes=%0d expected_bytes=%0d",
              replay_word_seen, replay_bytes, tile_count * 2);
-    if (v2_column_load_count != 1 ||
+    if (v2_column_load_count != 1 || v2_column_panel_count != 0 ||
+        v2_logical_column_count != 1 ||
         v2_k_view_bank_cycles != (tile_count + 7) / 8 ||
         v2_bank_conflict_cycles != 0)
       $fatal(1,
@@ -649,6 +671,61 @@ module akv_engine_tb;
     acknowledge_terminal();
     score_replay = 1'b0;
     score_column = 1'b0;
+  endtask
+
+  task automatic run_valid_v2_column_panel4(
+      input logic [7:0] selector,
+      input logic [6:0] tile_count,
+      input logic [63:0] tile_start,
+      input logic [15:0] head_dim,
+      input logic [4:0] vd,
+      input vid_t id,
+      input integer stall_cycles
+  );
+    integer ack_before;
+    automatic logic [63:0] stream_base = selector[7] ? VBase : KBase;
+    score_replay = 1'b1;
+    score_column = 1'b1;
+    score_source_base = stream_base + tile_start * head_dim * 2;
+    score_bytes = tile_count * 2;
+    score_source_stride = head_dim * 2;
+    score_column_dimension = selector[6:0];
+    score_column_count = 3'd4;
+    score_vd = vd;
+    score_id = id;
+    replay_word_seen = 0;
+    ack_before = early_ack_count;
+    command_column_count = 3'd4;
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, selector,
+                 head_dim, vd, id);
+    if (stall_cycles != 0) begin
+      grant_replay = 1'b0;
+      repeat (stall_cycles) @(posedge clk);
+      @(negedge clk);
+      grant_replay = 1'b1;
+    end
+    wait_success();
+    if (early_ack_count != ack_before + 1)
+      $fatal(1, "valid AKV-v2 column panel did not produce one early ack");
+    if (replay_word_seen != 4 * ((tile_count + 15) / 16) ||
+        replay_bytes != 4 * tile_count * 2)
+      $fatal(1,
+             "AKV-v2 panel replay mismatch words=%0d bytes=%0d",
+             replay_word_seen, replay_bytes);
+    if (v2_column_load_count != 1 || v2_column_panel_count != 1 ||
+        v2_logical_column_count != 4 ||
+        v2_k_view_bank_cycles != (tile_count + 7) / 8 ||
+        v2_bank_conflict_cycles != 0)
+      $fatal(1,
+             "AKV-v2 panel accounting mismatch commands=%0d panels=%0d columns=%0d bank_cycles=%0d conflicts=%0d",
+             v2_column_load_count, v2_column_panel_count,
+             v2_logical_column_count, v2_k_view_bank_cycles,
+             v2_bank_conflict_cycles);
+    acknowledge_terminal();
+    command_column_count = 3'd1;
+    score_replay = 1'b0;
+    score_column = 1'b0;
+    score_column_count = 3'd1;
   endtask
 
   task automatic run_valid_v2_column(
@@ -779,6 +856,7 @@ module akv_engine_tb;
     command_descriptor_address = '0;
     command_tile_start = '0;
     command_selector = '0;
+    command_column_count = 3'd1;
     terminal_ready = 1'b0;
     core_st_pending = 1'b0;
     translation_enable = 1'b0;
@@ -794,6 +872,7 @@ module akv_engine_tb;
     score_bytes = '0;
     score_source_stride = '0;
     score_column_dimension = '0;
+    score_column_count = 3'd1;
     score_vd = '0;
     score_id = '0;
     memory_epoch = '0;
@@ -1006,6 +1085,7 @@ module akv_engine_tb;
     run_valid_v2_column(17, 64, 0, 128, 16, 4'h5, 2);
     run_valid_v2_column(127, 64, 0, 128, 18, 4'h6, 0);
     run_valid_v2_column(8'h91, 64, 0, 128, 20, 4'h7, 0);
+    run_valid_v2_column_panel4(20, 64, 0, 128, 24, 4'h8, 2);
 
     // Refill the five-token tail. Inactive destination bytes must remain
     // disabled; stale values from the preceding full tile cannot escape.
@@ -1018,6 +1098,7 @@ module akv_engine_tb;
     run_valid_load(AKV_STREAM_V, 4, 128, 20, 4'h8,
                    VBase + 68 * 256, 0);
     run_valid_v2_column(63, 5, 64, 128, 22, 4'h9, 0);
+    run_valid_v2_column_panel4(60, 5, 64, 128, 24, 4'ha, 0);
 
     // Local validation is atomic: invalid row and dimension commands neither
     // write the VRF nor destroy the valid tail context.
@@ -1038,6 +1119,20 @@ module akv_engine_tb;
     if (!context_ready || early_ack_count != ack_before ||
         v2_rejected_count != 1)
       $fatal(1, "invalid AKV-v2 column changed context or accounting");
+
+    writes_before = aggregate_write_count;
+    command_column_count = 3'd4;
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, 126,
+                 128, 24, 4'hb);
+    expect_validation_fault(AKV_VALIDATION_SELECTOR, 0, writes_before);
+    command_column_count = 3'd1;
+
+    writes_before = aggregate_write_count;
+    command_column_count = 3'd4;
+    send_command(AKV_COMMAND_V2_COLUMN_LOAD, 0, 0, 124,
+                 128, 25, 4'hb);
+    expect_validation_fault(AKV_VALIDATION_DESTINATION, 0, writes_before);
+    command_column_count = 3'd1;
 
     // The token-banked write path has a 32-byte row contract. Reject an
     // incompatible layout before issuing any payload range.

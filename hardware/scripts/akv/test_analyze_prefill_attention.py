@@ -125,6 +125,11 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertFalse(
             strategies["akv_qblock64_q2_kv_outer"]["implemented_fast_path"]
         )
+        self.assertFalse(
+            strategies["akv_qblock64_q2_panel4_kv_outer"][
+                "implemented_fast_path"
+            ]
+        )
         self.assertTrue(
             strategies["akv_qblock64_q2_kv_outer"][
                 "requires_concurrent_query_state"
@@ -192,6 +197,16 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertEqual(q2["row_replay_bytes"], 96)
         self.assertEqual(q2["replay_bytes"], 192)
         self.assertEqual(q2["command_records"], 32)
+        panel4 = summary["kv_outer_q2_panel4_exact"]
+        self.assertFalse(panel4["supported_shape"])
+        self.assertEqual(panel4["column_panel_width"], 4)
+        self.assertEqual(panel4["v2_column_load"], 4)
+        self.assertEqual(panel4["v2_column_panel"], 4)
+        self.assertEqual(panel4["v2_logical_column"], 16)
+        self.assertEqual(panel4["v2_k_view_bank_cycles"], 4)
+        self.assertEqual(panel4["v2_row_load"], 12)
+        self.assertEqual(panel4["replay_bytes"], 192)
+        self.assertEqual(panel4["command_records"], 20)
         self.assertEqual(
             strategies["akv_query_tile_4"]["required_q_rows_if_concurrent"], 8
         )
@@ -313,10 +328,14 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
             [
                 "[AKV_PERF] seq=0 success=1 fault=0 busy_cycles=10 "
                 "v2_full=1 v2_refill=0 v2_row_load=0 v2_column_load=0 "
+                "v2_column_panel=0 v2_logical_column=0 "
+                "v2_k_view_bank_cycles=0 "
                 "release=0 q_external_bytes=64 kv_external_bytes=128 "
                 "replay_bytes=0 read_outstanding_max=2",
                 "[AKV_PERF] seq=1 success=1 fault=0 busy_cycles=3 "
                 "v2_full=0 v2_refill=0 v2_row_load=1 v2_column_load=0 "
+                "v2_column_panel=0 v2_logical_column=0 "
+                "v2_k_view_bank_cycles=0 "
                 "release=0 q_external_bytes=0 kv_external_bytes=0 "
                 "replay_bytes=32 read_outstanding_max=1",
             ]
@@ -326,6 +345,7 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertEqual(counters["busy_cycles"], 13)
         self.assertEqual(counters["v2_full"], 1)
         self.assertEqual(counters["v2_row_load"], 1)
+        self.assertEqual(counters["v2_column_panel"], 0)
         self.assertEqual(counters["q_external_bytes"], 64)
         self.assertEqual(counters["kv_external_bytes"], 128)
         self.assertEqual(counters["replay_bytes"], 32)
@@ -419,6 +439,36 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "strict AKV counters"):
             prefill.validate_kv_outer_counters(
                 summary, "akv_qblock64_q2_kv_outer", q2_counters
+            )
+
+        panel4 = summary["kv_outer_q2_panel4_exact"]
+        panel4_counters = {
+            "v2_full": panel4["v2_full"],
+            "v2_refill": panel4["v2_refill"],
+            "v2_column_load": panel4["v2_column_load"],
+            "v2_column_panel": panel4["v2_column_panel"],
+            "v2_logical_column": panel4["v2_logical_column"],
+            "v2_k_view_bank_cycles": panel4["v2_k_view_bank_cycles"],
+            "v2_bank_conflict_cycles": 0,
+            "v2_rejected": 0,
+            "v2_row_load": panel4["v2_row_load"],
+            "release": panel4["v2_release"],
+            "q_external_bytes": panel4["resident_query_fill_bytes"],
+            "kv_external_bytes": panel4["external_kv_bytes"],
+            "replay_bytes": panel4["replay_bytes"],
+            "records": panel4["command_records"],
+        }
+        status = prefill.validate_kv_outer_counters(
+            summary, "akv_qblock64_q2_panel4_kv_outer", panel4_counters
+        )
+        self.assertEqual(status["strict_counter_status"], "PASS")
+        self.assertEqual(status["strict_counter_checked_fields"], 14)
+        panel4_counters["v2_logical_column"] -= 1
+        with self.assertRaisesRegex(ValueError, "strict AKV counters"):
+            prefill.validate_kv_outer_counters(
+                summary,
+                "akv_qblock64_q2_panel4_kv_outer",
+                panel4_counters,
             )
 
     def test_rejects_faulting_akv_command_record(self):

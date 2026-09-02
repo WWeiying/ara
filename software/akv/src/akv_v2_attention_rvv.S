@@ -229,6 +229,120 @@ akv_v2_compute_scores_f16_d128_gqa6_q2:
     .size akv_v2_compute_scores_f16_d128_gqa6_q2, \
           .-akv_v2_compute_scores_f16_d128_gqa6_q2
 
+    .globl  akv_v2_compute_scores_f16_d128_gqa6_q2_panel4
+    .type   akv_v2_compute_scores_f16_d128_gqa6_q2_panel4,@function
+
+// Panel4 preserves the Q2 arithmetic and score layout above, but each custom
+// command exposes four adjacent K columns in one LMUL=4 destination group.
+// Alternating v24-v27 and v28-v31 keeps a following panel load independent of
+// the immediately preceding panel's RVV consumers.
+// a0: first six-row F16 D128 Query group
+// a1: second six-row F16 D128 Query group
+// a2: two six-row F32 score sets
+// a3: active token count for the later Query, 1..64
+
+    .macro AKV_Q2_PANEL_COLUMN vreg
+    flh             ft0, 0(a6)
+    flh             ft1, 256(a6)
+    flh             ft2, 512(a6)
+    flh             ft3, 768(a6)
+    flh             ft4, 1024(a6)
+    flh             ft5, 1280(a6)
+    flh             ft6, 0(a7)
+    flh             ft7, 256(a7)
+    flh             ft8, 512(a7)
+    flh             ft9, 768(a7)
+    flh             ft10, 1024(a7)
+    flh             ft11, 1280(a7)
+    vfwmacc.vf      v0, ft0, \vreg
+    vfwmacc.vf      v2, ft1, \vreg
+    vfwmacc.vf      v4, ft2, \vreg
+    vfwmacc.vf      v6, ft3, \vreg
+    vfwmacc.vf      v8, ft4, \vreg
+    vfwmacc.vf      v10, ft5, \vreg
+    vfwmacc.vf      v12, ft6, \vreg
+    vfwmacc.vf      v14, ft7, \vreg
+    vfwmacc.vf      v16, ft8, \vreg
+    vfwmacc.vf      v18, ft9, \vreg
+    vfwmacc.vf      v20, ft10, \vreg
+    vfwmacc.vf      v22, ft11, \vreg
+    addi            a6, a6, 2
+    addi            a7, a7, 2
+    .endm
+
+akv_v2_compute_scores_f16_d128_gqa6_q2_panel4:
+    mv              a6, a0
+    mv              a7, a1
+    mv              t0, a2
+    mv              t1, a3
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    vmv.v.i         v4, 0
+    vmv.v.i         v6, 0
+    vmv.v.i         v8, 0
+    vmv.v.i         v10, 0
+    vmv.v.i         v12, 0
+    vmv.v.i         v14, 0
+    vmv.v.i         v16, 0
+    vmv.v.i         v18, 0
+    vmv.v.i         v20, 0
+    vmv.v.i         v22, 0
+
+    vsetvli         zero, t1, e16, m1, ta, ma
+    li              t2, 0
+    li              t3, 128
+.Lakv_v2_q2_score_dimension_panel_pair:
+    mv              a0, t2
+    .word           0x02057c5b  // vakv2kpanel4 v24, dimension(a0)
+    AKV_Q2_PANEL_COLUMN v24
+    AKV_Q2_PANEL_COLUMN v25
+    AKV_Q2_PANEL_COLUMN v26
+    AKV_Q2_PANEL_COLUMN v27
+    addi            t2, t2, 4
+
+    mv              a0, t2
+    .word           0x02057e5b  // vakv2kpanel4 v28, dimension(a0)
+    AKV_Q2_PANEL_COLUMN v28
+    AKV_Q2_PANEL_COLUMN v29
+    AKV_Q2_PANEL_COLUMN v30
+    AKV_Q2_PANEL_COLUMN v31
+    addi            t2, t2, 4
+    bltu            t2, t3, .Lakv_v2_q2_score_dimension_panel_pair
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    mv              t4, t0
+    li              t5, 2048
+    add             t5, t0, t5
+    vse32.v         v0, (t4)
+    addi            t4, t4, 256
+    vse32.v         v2, (t4)
+    addi            t4, t4, 256
+    vse32.v         v4, (t4)
+    addi            t4, t4, 256
+    vse32.v         v6, (t4)
+    addi            t4, t4, 256
+    vse32.v         v8, (t4)
+    addi            t4, t4, 256
+    vse32.v         v10, (t4)
+    vse32.v         v12, (t5)
+    addi            t5, t5, 256
+    vse32.v         v14, (t5)
+    addi            t5, t5, 256
+    vse32.v         v16, (t5)
+    addi            t5, t5, 256
+    vse32.v         v18, (t5)
+    addi            t5, t5, 256
+    vse32.v         v20, (t5)
+    addi            t5, t5, 256
+    vse32.v         v22, (t5)
+    ret
+
+    .size akv_v2_compute_scores_f16_d128_gqa6_q2_panel4, \
+          .-akv_v2_compute_scores_f16_d128_gqa6_q2_panel4
+    .purgem AKV_Q2_PANEL_COLUMN
+
     .globl  akv_v2_update_outputs_f16_d128_gqa6
     .type   akv_v2_update_outputs_f16_d128_gqa6,@function
 

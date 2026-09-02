@@ -161,6 +161,36 @@ akv_status_t akv_v2_reference_load_k_column(
 }
 
 
+akv_status_t akv_v2_reference_load_column_panel4(
+    const akv_v2_reference_context_t *context, uint32_t selector,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements_per_column) {
+  if (context == NULL || destination == NULL ||
+      active_elements_per_column == NULL)
+    return AKV_STATUS_BAD_ARGUMENT;
+  if (!context->ready)
+    return AKV_STATUS_EXECUTION;
+  if (!akv_v2_column_panel_is_valid(&context->descriptor,
+                                    context->tile_count, selector) ||
+      destination_elements <
+          AKV_V2_COLUMN_PANEL_WIDTH * AKV_V2_TILE_TOKENS)
+    return AKV_STATUS_RANGE;
+
+  const uint32_t segment = akv_v2_column_segment(selector);
+  const uint32_t first_dimension = akv_v2_column_dimension(selector);
+  for (uint32_t column = 0u; column < AKV_V2_COLUMN_PANEL_WIDTH; ++column) {
+    const uint32_t dimension = first_dimension + column;
+    for (uint32_t token = 0u; token < context->tile_count; ++token) {
+      destination[(size_t)column * AKV_V2_TILE_TOKENS + token] =
+          segment == 0u ? context->key[token][dimension]
+                        : context->value[token][dimension];
+    }
+  }
+  *active_elements_per_column = context->tile_count;
+  return AKV_STATUS_OK;
+}
+
+
 void akv_v2_reference_release(akv_v2_reference_context_t *context) {
   if (context != NULL)
     context->ready = 0u;
