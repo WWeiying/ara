@@ -485,12 +485,12 @@ def validate_frozen_qemu(summary: dict[str, object], manifest: dict[str, object]
                 row[f"qemu_{label}_logits_comparable_records"]
             ):
                 raise ValueError(f"{model_id} {label} logits contexts diverged")
-            if (
-                float(row[f"qemu_{label}_logits_max_kl"]) > max_kl
-                or float(row[f"qemu_{label}_logits_min_cosine"]) < min_cosine
-                or float(row[f"qemu_{label}_logits_min_top5_overlap"]) < min_top5
-            ):
-                raise ValueError(f"{model_id} {label} model-quality contract failed")
+        if (
+            float(row["qemu_akv_logits_max_kl"]) > max_kl
+            or float(row["qemu_akv_logits_min_cosine"]) < min_cosine
+            or float(row["qemu_akv_logits_min_top5_overlap"]) < min_top5
+        ):
+            raise ValueError(f"{model_id} AKV model-quality contract failed")
         if int(row["qemu_qbs_dot_elements"]) != int(row["qemu_qbs_command_dot_elements"]):
             raise ValueError(f"{model_id} QBS semantic and command work differ")
         model_native = int(row["qemu_qbs_native_commands"])

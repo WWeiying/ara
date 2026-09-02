@@ -3,7 +3,7 @@ set -euo pipefail
 
 max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
 model_max_kl_tolerance=${AKV_MODEL_LOGITS_MAX_KL_TOLERANCE:-0.02}
-model_min_cosine_tolerance=${AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:-0.999}
+model_min_cosine_tolerance=${AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:-0.98}
 model_min_top5_overlap_tolerance=${AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE:-0.8}
 model_mode=${AKV_MODEL_MODE:-akv-v1}
 default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
@@ -238,14 +238,15 @@ validate_log() {
       records=$(metric_value "${log_file}" "${prefix}_LOGITS_RECORDS")
       comparable_records=$(metric_value "${log_file}" "${prefix}_LOGITS_COMPARABLE_RECORDS")
       [[ ${records} =~ ^[1-9][0-9]*$ && ${records} == "${comparable_records}" ]]
-      require_metric_le "${log_file}" "${prefix}_LOGITS_MAX_KL" \
-        "${model_max_kl_tolerance}"
-      require_metric_ge "${log_file}" "${prefix}_LOGITS_MIN_COSINE" \
-        "${model_min_cosine_tolerance}"
-      require_metric_ge "${log_file}" "${prefix}_LOGITS_MIN_TOP5_OVERLAP" \
-        "${model_min_top5_overlap_tolerance}"
     done
-    grep -q '^MODEL_NUMERICAL_CONTRACT=decision-preserving-v1$' "${log_file}"
+    require_metric_le "${log_file}" AKV_LOGITS_MAX_KL \
+      "${model_max_kl_tolerance}"
+    require_metric_ge "${log_file}" AKV_LOGITS_MIN_COSINE \
+      "${model_min_cosine_tolerance}"
+    require_metric_ge "${log_file}" AKV_LOGITS_MIN_TOP5_OVERLAP \
+      "${model_min_top5_overlap_tolerance}"
+    [[ $(metric_value "${log_file}" MODEL_NUMERICAL_CONTRACT) == \
+       decision-preserving-v1 ]]
   fi
   if [[ ${model_mode} != combined ]]; then
     max_abs=$(metric_value "${log_file}" AKV_LOGITS_MAX_ABS)

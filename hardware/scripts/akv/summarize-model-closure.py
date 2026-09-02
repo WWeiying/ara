@@ -614,6 +614,14 @@ def write_csv(path: Path, rows: list[dict[str, object]], leading: Iterable[str])
         writer.writerows(rows)
 
 
+def aggregate_call_counts_by_mode(rows: Iterable[dict[str, object]]) -> dict[str, int]:
+    """Count actual AKV invocations rather than aggregated shape rows."""
+    counts: Counter[str] = Counter()
+    for row in rows:
+        counts[str(row["mode"])] += int(row["calls"])
+    return dict(counts)
+
+
 def node_semantic(nodes: list[dict[str, str]], index: int) -> str:
     node = nodes[index]
     op = node.get("op", "").upper()
@@ -1640,7 +1648,7 @@ def make_dynamic_summary(
         },
         "akv_v2": {
             "calls": sum(int(row["calls"]) for row in akv_rows),
-            "calls_by_mode": dict(Counter(str(row["mode"]) for row in akv_rows)),
+            "calls_by_mode": aggregate_call_counts_by_mode(akv_rows),
             "attention_macs": sum(int(row["attention_macs"]) for row in akv_rows),
             "attention_pairs": sum(int(row["attention_pairs"]) for row in akv_rows),
             "query_source_f32_bytes": sum(

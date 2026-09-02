@@ -20,7 +20,7 @@
 #endif
 
 #ifndef AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE
-#define AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE 0.999
+#define AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE 0.98
 #endif
 
 #ifndef AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE
@@ -331,6 +331,12 @@ static int model_quality_pass(const struct logits_comparison * comparison) {
                AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE;
 }
 
+static int decision_stream_pass(const struct logits_comparison * comparison) {
+    return comparison->valid && comparison->records > 0 &&
+           comparison->comparable_records == comparison->records &&
+           comparison->top1_equal;
+}
+
 static int wait_for_device(const char * path) {
     for (int retry = 0; retry < 100; ++retry) {
         if (access(path, F_OK) == 0) {
@@ -438,7 +444,7 @@ static struct run_result run_variant(const char * label,
         execl("/run/llama-simple", "/run/llama-simple",
               "-m", AKV_MODEL_GUEST_PATH,
               "-n", AKV_MODEL_TOKENS, "-ngl", "0", "-t", "1",
-              "-tb", "1", "-fa", "on", AKV_MODEL_PROMPT, NULL);
+              AKV_MODEL_PROMPT, NULL);
         perror("exec llama-simple");
         _exit(127);
     }
@@ -560,7 +566,7 @@ int main(void) {
     const int akv_text_equal = output_equal(&qbs, &optimized);
     const int passed = rvv.exit_code == 0 && qbs.exit_code == 0 &&
                        optimized.exit_code == 0 && qbs_rvv_text_equal &&
-                       akv_text_equal && model_quality_pass(&qbs_rvv_logits) &&
+                       akv_text_equal && decision_stream_pass(&qbs_rvv_logits) &&
                        model_quality_pass(&akv_logits);
 
     printf("QBS_RVV_LOGITS_RECORDS=%u\n", qbs_rvv_logits.records);

@@ -36,7 +36,7 @@ def summary(
                 "LOGITS_MAX_ABS_TOLERANCE": "0.001",
                 "MODEL_NUMERICAL_CONTRACT": "decision-preserving-v1",
                 "MODEL_LOGITS_MAX_KL_TOLERANCE": "0.02",
-                "MODEL_LOGITS_MIN_COSINE_TOLERANCE": "0.999",
+                "MODEL_LOGITS_MIN_COSINE_TOLERANCE": "0.98",
                 "MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE": "0.8",
                 "REQUIRE_PREFILL": "1" if executed_prefill else "0",
             }

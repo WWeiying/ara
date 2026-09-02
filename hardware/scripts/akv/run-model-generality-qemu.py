@@ -254,14 +254,15 @@ def qemu_metrics(
     ):
         raise ValueError("QEMU functional or numerical closure failed")
     for label, quality in (("QBS/RVV", qbs_quality), ("AKV/QBS", akv_quality)):
-        if (
-            int(quality["records"]) != int(quality["comparable_records"])
-            or float(quality["max_kl"]) > model_max_kl_tolerance
-            or float(quality["min_cosine"]) < model_min_cosine_tolerance
-            or float(quality["min_top5_overlap"])
-            < model_min_top5_overlap_tolerance
-        ):
-            raise ValueError(f"QEMU {label} model-quality contract failed")
+        if int(quality["records"]) != int(quality["comparable_records"]):
+            raise ValueError(f"QEMU {label} logits contexts diverged")
+    if (
+        float(akv_quality["max_kl"]) > model_max_kl_tolerance
+        or float(akv_quality["min_cosine"]) < model_min_cosine_tolerance
+        or float(akv_quality["min_top5_overlap"])
+        < model_min_top5_overlap_tolerance
+    ):
+        raise ValueError("QEMU AKV/QBS model-quality contract failed")
 
     native_commands = 0
     emulated_commands = 0

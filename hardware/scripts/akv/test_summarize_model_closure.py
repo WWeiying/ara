@@ -17,6 +17,17 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ModelClosureTest(unittest.TestCase):
+    def test_akv_calls_by_mode_sums_invocations_not_shape_rows(self):
+        rows = [
+            {"mode": "prefill", "calls": 30},
+            {"mode": "prefill", "calls": 2},
+            {"mode": "decode", "calls": 30},
+        ]
+        self.assertEqual(
+            MODULE.aggregate_call_counts_by_mode(rows),
+            {"prefill": 32, "decode": 30},
+        )
+
     def write_prefill_calibration(self, root: Path) -> tuple[Path, dict[str, Path]]:
         tensors = {
             "input_a": ("f32", [128, 15, 12, 1]),
