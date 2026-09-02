@@ -204,6 +204,111 @@ LLAMA_GUEST_EXIT=0
         with self.assertRaisesRegex(ValueError, "QBS graph coverage mismatch"):
             MODULE.validate_dynamic(run)
 
+    def test_prefill_akv_call_has_exact_causal_work_and_traffic(self):
+        prefill_call = {
+            "_node_index": "0",
+            "mode": "prefill",
+            "kernel": "v2",
+            "M": "15",
+            "P": "0",
+            "kv_capacity": "15",
+            "kv_heads": "2",
+            "q_heads": "12",
+            "q_rows": "6",
+            "head_dim": "128",
+            "groups": "2",
+            "attention_pairs": "1440",
+            "attention_macs": "368640",
+        }
+        decode_call = {
+            "_node_index": "0",
+            "mode": "decode",
+            "kernel": "v2",
+            "kv_heads": "2",
+            "q_rows": "12",
+            "gqa_rows": "6",
+            "head_dim": "128",
+            "active_kv": "4",
+            "attention_macs": "12288",
+        }
+        graphs = [
+            MODULE.Graph(
+                graph_id=0,
+                declared_nodes=1,
+                nodes=[{"op": "FLASH_ATTN_EXT", "name": "blk.0.attn"}],
+                akv_calls=[prefill_call],
+                closed=True,
+            ),
+            MODULE.Graph(
+                graph_id=1,
+                declared_nodes=1,
+                nodes=[{"op": "FLASH_ATTN_EXT", "name": "blk.0.attn"}],
+                akv_calls=[decode_call],
+                closed=True,
+            ),
+        ]
+        coverage = {
+            "candidate_ops": "2",
+            "executed_ops": "2",
+            "groups": "4",
+            "executed_v1": "0",
+            "executed_v2": "2",
+            "groups_v1": "0",
+            "groups_v2": "4",
+            "kv_group_tokens": "38",
+            "attention_macs": "380928",
+            "executed_decode": "1",
+            "executed_prefill": "1",
+            "prefill_query_tokens": "15",
+            "prefill_attention_pairs": "1440",
+        }
+        run = MODULE.ParsedRun(
+            graphs=graphs,
+            qbs_coverage={},
+            qbs_exec={},
+            akv_coverage=coverage,
+            logits={"AKV_LOGITS_TOP1_EQUAL": "1"},
+            qbs_rvv={
+                "QBS_RVV_LOGITS_RECORDS": "1",
+                "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "1",
+            },
+            output_equal=True,
+            guest_exit=0,
+            optimized_exit=0,
+        )
+
+        MODULE.validate_dynamic(run)
+        _, _, akv_rows, node_rows = MODULE.dynamic_rows(run)
+        prefill = next(row for row in akv_rows if row["mode"] == "prefill")
+        self.assertEqual(prefill["query_source_f32_bytes"], 92160)
+        self.assertEqual(prefill["query_payload_bytes"], 46080)
+        self.assertEqual(prefill["unique_kv_payload_bytes"], 15360)
+        self.assertEqual(prefill["kv_payload_bytes"], 15360)
+        self.assertEqual(prefill["kv_reread_factor"], 1.0)
+        self.assertEqual(prefill["attention_pairs"], 1440)
+        projection = MODULE.cycle_projection(
+            [],
+            akv_rows,
+            node_rows,
+            [],
+            [{"active_kv": 4, "cycles": 100}, {"active_kv": 16, "cycles": 400}],
+            {},
+        )
+        self.assertEqual(
+            sum(row["category"] == "akv_v2" for row in projection), 1
+        )
+        self.assertEqual(
+            sum(
+                row["category"] == "uncalibrated" and row["phase"] == "prefill"
+                for row in projection
+            ),
+            1,
+        )
+
+        prefill_call["attention_pairs"] = "1439"
+        with self.assertRaisesRegex(ValueError, "attention-pair"):
+            MODULE.validate_dynamic(run)
+
     def test_node_semantics_follow_graph_order(self):
         nodes = [
             {"op": "RMS_NORM", "name": "norm-0"},

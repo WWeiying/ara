@@ -41,6 +41,8 @@ PROJECTION_METHOD_VERSION = 1
 QBS_ABI_PATH = Path(__file__).resolve().parents[3] / "config/qbs_abi.json"
 QBS_TRACE_TO_ABI_PROFILE = {"Q8_0": "Q8_0_WEIGHT"}
 F16_BYTES = 2
+F32_BYTES = 4
+AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
 
 
 def load_qbs_abi(path: Path = QBS_ABI_PATH) -> dict[str, object]:
@@ -221,7 +223,10 @@ class Graph:
     @property
     def phase(self) -> str:
         if self.akv_calls:
-            return "decode"
+            modes = {call.get("mode", "decode") for call in self.akv_calls}
+            if len(modes) == 1:
+                return modes.pop()
+            return "mixed"
         if any(call.get("mode") == "gemm" for call in self.qbs_calls):
             return "prefill"
         if any(call.get("mode") == "gemv" for call in self.qbs_calls):
@@ -411,51 +416,98 @@ def validate_dynamic(run: ParsedRun) -> None:
 
     akv_calls = []
     flash_nodes = 0
+    akv_groups = 0
+    akv_group_tokens = 0
+    akv_macs = 0
+    decode_calls = 0
+    prefill_calls = 0
+    prefill_query_tokens = 0
+    prefill_attention_pairs = 0
     for graph in run.graphs:
-        eligible_nodes = {
+        flash_node_indices = {
             index
             for index, node in enumerate(graph.nodes)
-            if graph.phase == "decode" and node.get("op") == "FLASH_ATTN_EXT"
+            if node.get("op") == "FLASH_ATTN_EXT"
         }
-        flash_nodes += sum(node.get("op") == "FLASH_ATTN_EXT" for node in graph.nodes)
+        flash_nodes += len(flash_node_indices)
         called_nodes: Counter[int] = Counter()
         for call in graph.akv_calls:
             node_index = integer(call, "_node_index", -1)
             if node_index < 0 or node_index >= len(graph.nodes):
                 raise ValueError("AKV call has no valid model-node owner")
-            if graph.phase != "decode" or graph.nodes[node_index].get("op") != "FLASH_ATTN_EXT":
+            mode = call.get("mode", "decode")
+            if mode not in ("decode", "prefill") or graph.phase != mode or \
+                    graph.nodes[node_index].get("op") != "FLASH_ATTN_EXT":
                 raise ValueError("AKV call/model-node association is inconsistent")
             called_nodes[node_index] += 1
             akv_calls.append(call)
-        if not set(called_nodes).issubset(eligible_nodes) or any(
+            if call.get("kernel") != "v2":
+                raise ValueError("an accelerated attention call did not use AKV-v2")
+
+            kv_heads = integer(call, "kv_heads")
+            head_dim = integer(call, "head_dim")
+            attention_macs = integer(call, "attention_macs")
+            if mode == "decode":
+                q_heads = integer(call, "q_rows")
+                gqa_rows = integer(call, "gqa_rows")
+                active_kv = integer(call, "active_kv")
+                if min(kv_heads, q_heads, gqa_rows, head_dim, active_kv) <= 0:
+                    raise ValueError("AKV Decode call has a non-positive shape field")
+                if q_heads != kv_heads * gqa_rows:
+                    raise ValueError("AKV Decode q-head/GQA identity is inconsistent")
+                expected_macs = 2 * kv_heads * gqa_rows * head_dim * active_kv
+                if attention_macs != expected_macs:
+                    raise ValueError("AKV Decode MAC count is inconsistent with its shape")
+                decode_calls += 1
+                akv_groups += kv_heads
+                akv_group_tokens += kv_heads * active_kv
+            else:
+                query_tokens = integer(call, "M")
+                past_tokens = integer(call, "P", -1)
+                kv_capacity = integer(call, "kv_capacity")
+                q_heads = integer(call, "q_heads")
+                gqa_rows = integer(call, "q_rows")
+                groups = integer(call, "groups")
+                attention_pairs = integer(call, "attention_pairs")
+                if min(query_tokens, kv_capacity, kv_heads, q_heads, gqa_rows, head_dim) <= 0 or past_tokens < 0:
+                    raise ValueError("AKV Prefill call has a non-positive shape field")
+                if query_tokens < 15 or head_dim not in (64, 96, 128) or gqa_rows > 8:
+                    raise ValueError("AKV Prefill call violates the selected hardware profile")
+                if q_heads != kv_heads * gqa_rows or past_tokens + query_tokens > kv_capacity:
+                    raise ValueError("AKV Prefill causal shape identity is inconsistent")
+                expected_pairs_per_head = (
+                    query_tokens * (past_tokens + 1)
+                    + query_tokens * (query_tokens - 1) // 2
+                )
+                expected_pairs = q_heads * expected_pairs_per_head
+                expected_groups = kv_heads * (
+                    (query_tokens + AKV_PREFILL_QUERY_BLOCK_TOKENS - 1)
+                    // AKV_PREFILL_QUERY_BLOCK_TOKENS
+                )
+                expected_group_tokens = sum(
+                    kv_heads * (past_tokens + min(token_start + AKV_PREFILL_QUERY_BLOCK_TOKENS, query_tokens))
+                    for token_start in range(0, query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS)
+                )
+                expected_macs = 2 * expected_pairs * head_dim
+                if attention_pairs != expected_pairs:
+                    raise ValueError("AKV Prefill attention-pair count is inconsistent with its causal shape")
+                if groups != expected_groups:
+                    raise ValueError("AKV Prefill group count is inconsistent with its blocked schedule")
+                if attention_macs != expected_macs:
+                    raise ValueError("AKV Prefill MAC count is inconsistent with its shape")
+                prefill_calls += 1
+                prefill_query_tokens += query_tokens
+                prefill_attention_pairs += attention_pairs
+                akv_groups += groups
+                akv_group_tokens += expected_group_tokens
+            akv_macs += attention_macs
+        if not set(called_nodes).issubset(flash_node_indices) or any(
             count != 1 for count in called_nodes.values()
         ):
             raise ValueError(
                 f"AKV graph coverage mismatch for graph {graph.graph_id}: "
-                f"eligible={sorted(eligible_nodes)} called={dict(sorted(called_nodes.items()))}"
+                f"flash={sorted(flash_node_indices)} called={dict(sorted(called_nodes.items()))}"
             )
-    if any(call.get("kernel") != "v2" for call in akv_calls):
-        raise ValueError("an accelerated attention call did not use AKV-v2")
-    for call in akv_calls:
-        kv_heads = integer(call, "kv_heads")
-        q_heads = integer(call, "q_rows")
-        gqa_rows = integer(call, "gqa_rows")
-        head_dim = integer(call, "head_dim")
-        active_kv = integer(call, "active_kv")
-        expected_macs = 2 * kv_heads * gqa_rows * head_dim * active_kv
-        if min(kv_heads, q_heads, gqa_rows, head_dim, active_kv) <= 0:
-            raise ValueError("AKV call has a non-positive shape field")
-        if q_heads != kv_heads * gqa_rows:
-            raise ValueError("AKV q-head/GQA identity is inconsistent")
-        if integer(call, "attention_macs") != expected_macs:
-            raise ValueError("AKV call MAC count is inconsistent with its shape")
-
-    akv_macs = sum(integer(call, "attention_macs") for call in akv_calls)
-    akv_groups = sum(integer(call, "kv_heads") for call in akv_calls)
-    akv_group_tokens = sum(
-        integer(call, "kv_heads") * integer(call, "active_kv")
-        for call in akv_calls
-    )
     if integer(run.akv_coverage, "attention_macs") != akv_macs:
         raise ValueError("AKV call/coverage MAC count mismatch")
     if integer(run.akv_coverage, "executed_v1") != 0:
@@ -468,6 +520,15 @@ def validate_dynamic(run: ParsedRun) -> None:
        integer(run.akv_coverage, "groups_v2") != akv_groups or \
        integer(run.akv_coverage, "kv_group_tokens") != akv_group_tokens:
         raise ValueError("AKV coverage traffic is inconsistent with per-call shapes")
+    optional_totals = {
+        "executed_decode": decode_calls,
+        "executed_prefill": prefill_calls,
+        "prefill_query_tokens": prefill_query_tokens,
+        "prefill_attention_pairs": prefill_attention_pairs,
+    }
+    for field_name, expected in optional_totals.items():
+        if field_name in run.akv_coverage and integer(run.akv_coverage, field_name) != expected:
+            raise ValueError(f"AKV coverage {field_name} is inconsistent with per-call shapes")
     akv_fallbacks = sum(
         integer(run.akv_coverage, key)
         for key in run.akv_coverage
@@ -537,15 +598,50 @@ def dynamic_rows(run: ParsedRun):
             )
             qbs_groups[key] += 1
         for call in graph.akv_calls:
+            mode = call.get("mode", "decode")
+            if mode == "prefill":
+                query_tokens = integer(call, "M")
+                past_tokens = integer(call, "P")
+                kv_capacity = integer(call, "kv_capacity")
+                kv_heads = integer(call, "kv_heads")
+                q_heads = integer(call, "q_heads")
+                gqa_rows = integer(call, "q_rows")
+                head_dim = integer(call, "head_dim")
+                groups = integer(call, "groups")
+                attention_pairs = integer(call, "attention_pairs")
+                active_kv = past_tokens + query_tokens
+                kv_group_tokens = sum(
+                    kv_heads * (past_tokens + min(token_start + AKV_PREFILL_QUERY_BLOCK_TOKENS, query_tokens))
+                    for token_start in range(0, query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS)
+                )
+            else:
+                query_tokens = 1
+                past_tokens = None
+                kv_heads = integer(call, "kv_heads")
+                q_heads = integer(call, "q_rows")
+                gqa_rows = integer(call, "gqa_rows")
+                head_dim = integer(call, "head_dim")
+                active_kv = integer(call, "active_kv")
+                kv_capacity = None
+                groups = kv_heads
+                attention_pairs = q_heads * active_kv
+                kv_group_tokens = kv_heads * active_kv
             key = (
                 graph.graph_id,
                 phase,
+                mode,
                 call["kernel"],
-                integer(call, "kv_heads"),
-                integer(call, "q_rows"),
-                integer(call, "gqa_rows"),
-                integer(call, "head_dim"),
-                integer(call, "active_kv"),
+                query_tokens,
+                past_tokens,
+                kv_capacity,
+                kv_heads,
+                q_heads,
+                gqa_rows,
+                head_dim,
+                active_kv,
+                groups,
+                attention_pairs,
+                kv_group_tokens,
                 integer(call, "attention_macs"),
             )
             akv_groups[key] += 1
@@ -728,23 +824,35 @@ def dynamic_rows(run: ParsedRun):
             )
     akv_rows = []
     for key, count in sorted(akv_groups.items()):
-        (graph_id, phase, kernel, kv_heads, q_rows, gqa_rows, head_dim,
-         active_kv, attention_macs) = key
+        (graph_id, phase, mode, kernel, query_tokens, past_tokens, kv_capacity,
+         kv_heads, q_heads, gqa_rows, head_dim, active_kv, groups,
+         attention_pairs, kv_group_tokens, attention_macs) = key
+        query_elements = count * query_tokens * q_heads * head_dim
+        streamed_kv_bytes = count * 2 * kv_group_tokens * head_dim * F16_BYTES
+        unique_kv_bytes = count * 2 * kv_heads * active_kv * head_dim * F16_BYTES
         akv_rows.append(
             {
                 "graph_id": graph_id,
                 "phase": phase,
+                "mode": mode,
                 "kernel": kernel,
+                "query_tokens": query_tokens,
+                "past_tokens": past_tokens,
+                "kv_capacity": kv_capacity,
                 "kv_heads": kv_heads,
-                "q_rows": q_rows,
+                "q_heads": q_heads,
                 "gqa_rows": gqa_rows,
                 "head_dim": head_dim,
                 "active_kv": active_kv,
+                "groups": groups,
+                "attention_pairs": attention_pairs,
+                "kv_group_tokens": kv_group_tokens,
                 "calls": count,
-                "query_payload_bytes": count * q_rows * head_dim * F16_BYTES,
-                "kv_payload_bytes": (
-                    count * 2 * kv_heads * active_kv * head_dim * F16_BYTES
-                ),
+                "query_source_f32_bytes": query_elements * F32_BYTES,
+                "query_payload_bytes": query_elements * F16_BYTES,
+                "unique_kv_payload_bytes": unique_kv_bytes,
+                "kv_payload_bytes": streamed_kv_bytes,
+                "kv_reread_factor": streamed_kv_bytes / unique_kv_bytes,
                 "attention_macs": count * attention_macs,
             }
         )
@@ -1023,7 +1131,25 @@ def cycle_projection(
     unmatched = {signature: count for signature, count in eliminated.items() if count}
     if unmatched:
         raise ValueError(f"QBS lifetime eliminations do not match dynamic model nodes: {unmatched}")
+    accelerated_flash_nodes: Counter[tuple[int, str]] = Counter()
     for call in akv_rows:
+        accelerated_flash_nodes[(int(call["graph_id"]), str(call["phase"]))] += int(call["calls"])
+        if call["mode"] == "prefill":
+            rows.append(
+                {
+                    "phase": call["phase"],
+                    "category": "uncalibrated",
+                    "detail": (
+                        f"AKV-v2 Prefill D{call['head_dim']} M{call['query_tokens']} "
+                        f"P{call['past_tokens']} Hq{call['q_heads']} Hkv{call['kv_heads']}"
+                    ),
+                    "instances": call["calls"],
+                    "projected_cycles": "",
+                    "calibration": "",
+                    "basis": "matching full-operator Prefill RTL calibration required",
+                }
+            )
+            continue
         per_call = interpolate_akv_cycles(int(call["active_kv"]), akv_points)
         rows.append(
             {
@@ -1031,7 +1157,7 @@ def cycle_projection(
                 "category": "akv_v2",
                 "detail": (
                     f"D{call['head_dim']} KV{call['active_kv']} "
-                    f"Hq{call['q_rows']} Hkv{call['kv_heads']} GQA{call['gqa_rows']}"
+                    f"Hq{call['q_heads']} Hkv{call['kv_heads']} GQA{call['gqa_rows']}"
                 ),
                 "instances": call["calls"],
                 "projected_cycles": round(per_call * int(call["calls"])),
@@ -1048,8 +1174,13 @@ def cycle_projection(
         count = int(node["count"])
         if op == "MUL_MAT" and src0 in SUPPORTED_QBS_TYPES:
             continue
-        if op == "FLASH_ATTN_EXT" and phase == "decode":
-            continue
+        if op == "FLASH_ATTN_EXT":
+            accelerated_key = (int(node["graph_id"]), phase)
+            accelerated = min(count, accelerated_flash_nodes[accelerated_key])
+            accelerated_flash_nodes[accelerated_key] -= accelerated
+            count -= accelerated
+            if count == 0:
+                continue
         classification = classify_rvv_node(node)
         if classification is None:
             uncalibrated[(phase, op)] += count
@@ -1081,6 +1212,11 @@ def cycle_projection(
                 "basis": "dynamic node count only",
             }
         )
+    unmatched_attention = {
+        key: count for key, count in accelerated_flash_nodes.items() if count
+    }
+    if unmatched_attention:
+        raise ValueError(f"AKV calls do not match traced Flash-Attention nodes: {unmatched_attention}")
     return rows
 
 
@@ -1166,6 +1302,8 @@ def make_dynamic_summary(
             str(row["operation"]) for row in unresolved_activation_nodes
         )),
     }
+    akv_unique_kv_bytes = sum(int(row["unique_kv_payload_bytes"]) for row in akv_rows)
+    akv_streamed_kv_bytes = sum(int(row["kv_payload_bytes"]) for row in akv_rows)
     return {
         "provenance": {
             "tool": {
@@ -1232,12 +1370,20 @@ def make_dynamic_summary(
         },
         "akv_v2": {
             "calls": sum(int(row["calls"]) for row in akv_rows),
+            "calls_by_mode": dict(Counter(str(row["mode"]) for row in akv_rows)),
             "attention_macs": sum(int(row["attention_macs"]) for row in akv_rows),
+            "attention_pairs": sum(int(row["attention_pairs"]) for row in akv_rows),
+            "query_source_f32_bytes": sum(
+                int(row["query_source_f32_bytes"]) for row in akv_rows
+            ),
             "query_payload_bytes": sum(
                 int(row["query_payload_bytes"]) for row in akv_rows
             ),
-            "kv_payload_bytes": sum(
-                int(row["kv_payload_bytes"]) for row in akv_rows
+            "unique_kv_payload_bytes": akv_unique_kv_bytes,
+            "kv_payload_bytes": akv_streamed_kv_bytes,
+            "kv_reread_factor": (
+                akv_streamed_kv_bytes / akv_unique_kv_bytes
+                if akv_unique_kv_bytes else None
             ),
             "shapes": akv_rows,
             "coverage": run.akv_coverage,
@@ -1282,16 +1428,18 @@ def write_dynamic_markdown(
     lines.extend(
         [
             "",
-            "| Phase | Kernel | D | GQA | Q heads | KV heads | Active KV | Calls | Q bytes | K/V bytes | MACs |",
-            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Phase | Mode | Kernel | D | M | P | GQA | Q heads | KV heads | Active KV | Calls | Q F32 bytes | Q context bytes | Unique K/V bytes | Streamed K/V bytes | K/V reread | MACs |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in akv_rows:
         lines.append(
-            f"| {row['phase']} | {row['kernel']} | {row['head_dim']} | "
-            f"{row['gqa_rows']} | {row['q_rows']} | {row['kv_heads']} | "
-            f"{row['active_kv']} | {row['calls']} | {row['query_payload_bytes']} | "
-            f"{row['kv_payload_bytes']} | {row['attention_macs']} |"
+            f"| {row['phase']} | {row['mode']} | {row['kernel']} | {row['head_dim']} | "
+            f"{row['query_tokens']} | {row['past_tokens'] if row['past_tokens'] is not None else '-'} | "
+            f"{row['gqa_rows']} | {row['q_heads']} | {row['kv_heads']} | {row['active_kv']} | "
+            f"{row['calls']} | {row['query_source_f32_bytes']} | {row['query_payload_bytes']} | "
+            f"{row['unique_kv_payload_bytes']} | {row['kv_payload_bytes']} | "
+            f"{float(row['kv_reread_factor']):.3f} | {row['attention_macs']} |"
         )
     if qbs_lifetime is not None:
         baseline = qbs_lifetime["baseline"]
@@ -1527,9 +1675,11 @@ def main() -> None:
         output / "akv_calls.csv",
         akv_rows,
         (
-            "graph_id", "phase", "kernel", "head_dim", "gqa_rows",
-            "active_kv", "kv_heads", "q_rows", "calls", "query_payload_bytes",
-            "kv_payload_bytes",
+            "graph_id", "phase", "mode", "kernel", "head_dim", "query_tokens",
+            "past_tokens", "kv_capacity", "gqa_rows", "q_heads", "kv_heads",
+            "active_kv", "groups", "calls", "attention_pairs",
+            "query_source_f32_bytes", "query_payload_bytes",
+            "unique_kv_payload_bytes", "kv_payload_bytes", "kv_reread_factor",
         ),
     )
     write_csv(

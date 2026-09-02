@@ -281,7 +281,7 @@ static struct run_result run_variant(const char * label,
         execl("/run/llama-simple", "/run/llama-simple",
               "-m", AKV_MODEL_GUEST_PATH,
               "-n", AKV_MODEL_TOKENS, "-ngl", "0", "-t", "1",
-              "-tb", "1", AKV_MODEL_PROMPT, NULL);
+              "-tb", "1", "-fa", "on", AKV_MODEL_PROMPT, NULL);
         perror("exec llama-simple");
         _exit(127);
     }
