@@ -162,6 +162,7 @@ fi
 
 if [[ ${execution} != --spike-only ]]; then
   sim_args=(
+    -no_save
     -l vcs.log
     "+PRELOAD=${run_dir}/${app}.${implementation}.elf"
     "+TESTCASE=${testcase}"
