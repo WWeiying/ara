@@ -1,4 +1,5 @@
 #include "../include/akv/akv.h"
+#include "akv_prefill_internal.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -17,177 +18,6 @@ _Static_assert(
     sizeof(((akv_attention_v2_prefill_workspace_t *)0)->query[0][0]) ==
         AKV_HEAD_DIM_128 * sizeof(uint16_t),
     "Prefill score kernels require contiguous Query rows");
-
-static inline int finite_positive_f32_local(float value) {
-  uint32_t bits;
-  memcpy(&bits, &value, sizeof(bits));
-  return (bits >> 31) == 0u && (bits & UINT32_C(0x7fffffff)) != 0u &&
-         (bits & UINT32_C(0x7f800000)) != UINT32_C(0x7f800000);
-}
-
-static inline int finite_f16_bits_local(uint16_t value) {
-  return (value & UINT16_C(0x7c00)) != UINT16_C(0x7c00);
-}
-
-typedef struct {
-  uintptr_t first;
-  uintptr_t last;
-} contiguous_range_t;
-
-static int multiply_size_local(size_t lhs, size_t rhs, size_t *product) {
-  return !__builtin_mul_overflow(lhs, rhs, product);
-}
-
-static int contiguous_range_local(const void *base, size_t elements,
-                                  size_t element_bytes,
-                                  contiguous_range_t *range) {
-  size_t bytes;
-  if (base == NULL || elements == 0u || element_bytes == 0u ||
-      !multiply_size_local(elements, element_bytes, &bytes) ||
-      __builtin_add_overflow((uintptr_t)base, bytes - 1u, &range->last))
-    return 0;
-  range->first = (uintptr_t)base;
-  return 1;
-}
-
-static inline int ranges_overlap_local(contiguous_range_t lhs,
-                                       contiguous_range_t rhs) {
-  return lhs.first <= rhs.last && rhs.first <= lhs.last;
-}
-
-static akv_status_t validate_prefill_problem(
-    const akv_device_t *device,
-    const akv_attention_v2_prefill_problem_t *problem,
-    const akv_attention_v2_prefill_workspace_t *workspace,
-    uint32_t *past_tokens, uint32_t *maximum_prefix) {
-  if (device == NULL || problem == NULL || workspace == NULL ||
-      past_tokens == NULL || maximum_prefix == NULL ||
-      problem->query == NULL || problem->key == NULL ||
-      problem->value == NULL || problem->mask == NULL ||
-      problem->output == NULL || !finite_positive_f32_local(problem->scale))
-    return AKV_STATUS_BAD_ARGUMENT;
-
-  if (((uintptr_t)workspace & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u ||
-      (((uintptr_t)problem->query | (uintptr_t)problem->output) &
-       (sizeof(float) - 1u)) != 0u ||
-      (((uintptr_t)problem->key | (uintptr_t)problem->value) &
-       ((UINT64_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u)) != 0u ||
-      ((uintptr_t)problem->mask & (sizeof(uint16_t) - 1u)) != 0u)
-    return AKV_STATUS_LAYOUT;
-
-  const akv_capabilities_t *const caps = &device->capabilities;
-  if (!caps->valid || !caps->enabled || !caps->token_axis_valid ||
-      !caps->token_axis_enabled || !caps->f16_payload ||
-      caps->token_axis_tile_tokens != AKV_V2_TILE_TOKENS)
-    return AKV_STATUS_CAPABILITY;
-
-  if (problem->query_tokens <= 1u || problem->query_tokens > UINT16_MAX ||
-      problem->query_heads == 0u || problem->kv_heads == 0u ||
-      problem->kv_capacity == 0u || problem->kv_capacity > UINT16_MAX ||
-      problem->query_heads % problem->kv_heads != 0u)
-    return AKV_STATUS_SHAPE;
-  const uint32_t q_rows = problem->query_heads / problem->kv_heads;
-  const int head_dim_capable =
-      problem->head_dim == AKV_HEAD_DIM_64
-          ? caps->head_dim_64
-          : (problem->head_dim == AKV_HEAD_DIM_96
-                 ? caps->token_axis_d_axis_tail
-                 : (problem->head_dim == AKV_HEAD_DIM_128
-                        ? caps->head_dim_128
-                        : 0));
-  if (!head_dim_capable || q_rows == 0u || q_rows > caps->max_q_rows ||
-      q_rows > AKV_MAX_Q_ROWS)
-    return AKV_STATUS_SHAPE;
-
-  size_t query_rows;
-  size_t query_elements;
-  size_t kv_rows;
-  size_t kv_elements;
-  size_t mask_elements;
-  if (!multiply_size_local(problem->query_heads, problem->query_tokens,
-                           &query_rows) ||
-      !multiply_size_local(query_rows, problem->head_dim, &query_elements) ||
-      !multiply_size_local(problem->kv_heads, problem->kv_capacity,
-                           &kv_rows) ||
-      !multiply_size_local(kv_rows, problem->head_dim, &kv_elements) ||
-      !multiply_size_local(problem->query_tokens, problem->kv_capacity,
-                           &mask_elements))
-    return AKV_STATUS_RANGE;
-
-  contiguous_range_t query_range;
-  contiguous_range_t key_range;
-  contiguous_range_t value_range;
-  contiguous_range_t mask_range;
-  contiguous_range_t output_range;
-  contiguous_range_t workspace_range;
-  if (!contiguous_range_local(problem->query, query_elements, sizeof(float),
-                              &query_range) ||
-      !contiguous_range_local(problem->key, kv_elements, sizeof(uint16_t),
-                              &key_range) ||
-      !contiguous_range_local(problem->value, kv_elements, sizeof(uint16_t),
-                              &value_range) ||
-      !contiguous_range_local(problem->mask, mask_elements, sizeof(uint16_t),
-                              &mask_range) ||
-      !contiguous_range_local(problem->output, query_elements, sizeof(float),
-                              &output_range) ||
-      !contiguous_range_local(workspace, 1u, sizeof(*workspace),
-                              &workspace_range))
-    return AKV_STATUS_RANGE;
-
-  const contiguous_range_t read_ranges[] = {
-      query_range, key_range, value_range, mask_range};
-  const contiguous_range_t write_ranges[] = {
-      output_range, workspace_range};
-  for (size_t write = 0u;
-       write < sizeof(write_ranges) / sizeof(write_ranges[0]); ++write) {
-    for (size_t read = 0u;
-         read < sizeof(read_ranges) / sizeof(read_ranges[0]); ++read) {
-      if (ranges_overlap_local(write_ranges[write], read_ranges[read]))
-        return AKV_STATUS_ALIAS;
-    }
-    for (size_t other = write + 1u;
-         other < sizeof(write_ranges) / sizeof(write_ranges[0]); ++other) {
-      if (ranges_overlap_local(write_ranges[write], write_ranges[other]))
-        return AKV_STATUS_ALIAS;
-    }
-  }
-
-  const uint16_t *first_mask = problem->mask;
-  uint32_t first_prefix = 0u;
-  while (first_prefix < problem->kv_capacity &&
-         first_mask[first_prefix] != UINT16_C(0xfc00)) {
-    if (!finite_f16_bits_local(first_mask[first_prefix]))
-      return AKV_STATUS_SHAPE;
-    ++first_prefix;
-  }
-  if (first_prefix == 0u) return AKV_STATUS_SHAPE;
-  for (uint32_t sequence = first_prefix; sequence < problem->kv_capacity;
-       ++sequence) {
-    if (first_mask[sequence] != UINT16_C(0xfc00)) return AKV_STATUS_SHAPE;
-  }
-  *past_tokens = first_prefix - 1u;
-  if (*past_tokens > UINT16_MAX - problem->query_tokens)
-    return AKV_STATUS_SHAPE;
-  *maximum_prefix = *past_tokens + problem->query_tokens;
-  if (*maximum_prefix > problem->kv_capacity ||
-      *maximum_prefix > UINT16_MAX)
-    return AKV_STATUS_SHAPE;
-
-  for (uint32_t token = 1u; token < problem->query_tokens; ++token) {
-    const uint16_t *const token_mask =
-        problem->mask + (size_t)token * problem->kv_capacity;
-    const uint32_t expected_prefix = *past_tokens + token + 1u;
-    for (uint32_t sequence = 0u; sequence < expected_prefix; ++sequence) {
-      if (!finite_f16_bits_local(token_mask[sequence]))
-        return AKV_STATUS_SHAPE;
-    }
-    for (uint32_t sequence = expected_prefix;
-         sequence < problem->kv_capacity; ++sequence) {
-      if (token_mask[sequence] != UINT16_C(0xfc00)) return AKV_STATUS_SHAPE;
-    }
-  }
-  return AKV_STATUS_OK;
-}
 
 static inline int common_v2_plan_is_valid(
     const akv_attention_plan_t *plan) {
@@ -692,7 +522,7 @@ akv_status_t akv_attention_execute_v2_prefill_native(
     akv_attention_v2_prefill_workspace_t *workspace) {
   uint32_t past_tokens = 0u;
   uint32_t maximum_prefix = 0u;
-  const akv_status_t validation = validate_prefill_problem(
+  const akv_status_t validation = akv_attention_v2_prefill_validate(
       device, problem, workspace, &past_tokens, &maximum_prefix);
   if (validation != AKV_STATUS_OK) return validation;
 

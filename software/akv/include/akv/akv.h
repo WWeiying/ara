@@ -216,6 +216,11 @@ akv_status_t akv_attention_execute_v2_prefill_native(
     const akv_device_t *device,
     const akv_attention_v2_prefill_problem_t *problem,
     akv_attention_v2_prefill_workspace_t *workspace);
+/* Functional Prefill model; it is not a cycle or latency model. */
+akv_status_t akv_attention_execute_v2_prefill_reference(
+    const akv_device_t *device,
+    const akv_attention_v2_prefill_problem_t *problem,
+    akv_attention_v2_prefill_workspace_t *workspace);
 
 /* Call akv_native_info only after a trap-safe platform capability check. */
 uint64_t akv_native_info(void *context, unsigned index);
