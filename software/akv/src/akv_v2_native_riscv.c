@@ -369,6 +369,73 @@ static void initialize_prefill_block(
   }
 }
 
+static inline __attribute__((always_inline)) void
+convert_prefill_query_row_d128(const float *source, uint16_t *destination,
+                               size_t vl) {
+  const vfloat32m4_t values = __riscv_vle32_v_f32m4(source, vl);
+  __riscv_vse16_v_f16m2(
+      (_Float16 *)destination,
+      __riscv_vfncvt_f_f_w_f16m2(values, vl), vl);
+}
+
+static void prepare_prefill_block_d128_gqa6(
+    const akv_attention_v2_prefill_problem_t *problem,
+    akv_attention_v2_prefill_workspace_t *workspace, uint32_t first_qhead,
+    uint32_t token_start, uint32_t token_count) {
+  const size_t query_vl = __riscv_vsetvl_e32m4(AKV_HEAD_DIM_128);
+  const size_t output_vl = __riscv_vsetvl_e32m8(2u * AKV_HEAD_DIM_128);
+  const size_t query_head_stride =
+      (size_t)problem->query_tokens * AKV_HEAD_DIM_128;
+  const size_t output_token_stride =
+      (size_t)problem->query_heads * AKV_HEAD_DIM_128;
+  const float negative_infinity = negative_infinity_f32();
+
+  const float *source0 = problem->query +
+      ((size_t)(first_qhead + 0u) * problem->query_tokens + token_start) *
+          AKV_HEAD_DIM_128;
+  const float *source1 = source0 + query_head_stride;
+  const float *source2 = source1 + query_head_stride;
+  const float *source3 = source2 + query_head_stride;
+  const float *source4 = source3 + query_head_stride;
+  const float *source5 = source4 + query_head_stride;
+  float *output = problem->output +
+      ((size_t)token_start * problem->query_heads + first_qhead) *
+          AKV_HEAD_DIM_128;
+
+  for (uint32_t local_token = 0u; local_token < token_count; ++local_token) {
+    convert_prefill_query_row_d128(
+        source0, workspace->query[local_token][0], query_vl);
+    convert_prefill_query_row_d128(
+        source1, workspace->query[local_token][1], query_vl);
+    convert_prefill_query_row_d128(
+        source2, workspace->query[local_token][2], query_vl);
+    convert_prefill_query_row_d128(
+        source3, workspace->query[local_token][3], query_vl);
+    convert_prefill_query_row_d128(
+        source4, workspace->query[local_token][4], query_vl);
+    convert_prefill_query_row_d128(
+        source5, workspace->query[local_token][5], query_vl);
+
+    const vfloat32m8_t zero = __riscv_vfmv_v_f_f32m8(0.0f, output_vl);
+    __riscv_vse32_v_f32m8(output, zero, output_vl);
+    __riscv_vse32_v_f32m8(output + 2u * AKV_HEAD_DIM_128, zero, output_vl);
+    __riscv_vse32_v_f32m8(output + 4u * AKV_HEAD_DIM_128, zero, output_vl);
+
+    for (uint32_t head = 0u; head < AKV_ATTENTION_KERNEL_Q_ROWS; ++head) {
+      workspace->maximum[local_token][head] = negative_infinity;
+      workspace->sum[local_token][head] = 0.0f;
+    }
+
+    source0 += AKV_HEAD_DIM_128;
+    source1 += AKV_HEAD_DIM_128;
+    source2 += AKV_HEAD_DIM_128;
+    source3 += AKV_HEAD_DIM_128;
+    source4 += AKV_HEAD_DIM_128;
+    source5 += AKV_HEAD_DIM_128;
+    output += output_token_stride;
+  }
+}
+
 static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
     const uint16_t *mask_bits, float scale,
     akv_attention_v2_prefill_workspace_t *workspace, uint32_t local_token,
@@ -681,10 +748,19 @@ akv_status_t akv_attention_execute_v2_prefill_native(
       const uint32_t block_prefix = past_tokens + token_start + token_count;
 
       AKV_PROFILE_PHASE(AKV_PROFILE_PHASE_QUERY);
-      convert_prefill_query_block(problem, workspace, first_qhead, token_start,
-                                  token_count, q_rows);
-      initialize_prefill_block(problem, workspace, first_qhead, token_start,
-                               token_count, q_rows);
+      if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
+          problem->head_dim == AKV_HEAD_DIM_128 &&
+          __riscv_vsetvl_e32m4(AKV_HEAD_DIM_128) == AKV_HEAD_DIM_128 &&
+          __riscv_vsetvl_e32m8(2u * AKV_HEAD_DIM_128) ==
+              2u * AKV_HEAD_DIM_128) {
+        prepare_prefill_block_d128_gqa6(
+            problem, workspace, first_qhead, token_start, token_count);
+      } else {
+        convert_prefill_query_block(problem, workspace, first_qhead,
+                                    token_start, token_count, q_rows);
+        initialize_prefill_block(problem, workspace, first_qhead, token_start,
+                                 token_count, q_rows);
+      }
 
       const akv_attention_problem_t context_problem = {
           .query = &workspace->query[0][0][0],
