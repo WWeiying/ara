@@ -55,6 +55,18 @@ AKV_PREFILL_SHAPE_FIELDS = (
     "gqa_rows",
     "kv_capacity",
 )
+NUMERICAL_METRIC_SUFFIXES = (
+    "LOGITS_RECORDS",
+    "LOGITS_COMPARABLE_RECORDS",
+    "LOGITS_MAX_ABS",
+    "LOGITS_MAX_REL",
+    "LOGITS_MEAN_ABS",
+    "LOGITS_MEAN_RMSE",
+    "LOGITS_MEAN_KL",
+    "LOGITS_MEAN_COSINE",
+    "LOGITS_TOP5_OVERLAP",
+    "LOGITS_TOP1_EQUAL",
+)
 
 
 def load_qbs_abi(path: Path = QBS_ABI_PATH) -> dict[str, object]:
@@ -119,6 +131,38 @@ def fields(line: str) -> dict[str, str]:
 
 def integer(values: dict[str, str], key: str, default: int = 0) -> int:
     return int(values.get(key, default))
+
+
+def validate_numerical_metrics(values: dict[str, str], prefix: str) -> None:
+    keys = tuple(f"{prefix}_{suffix}" for suffix in NUMERICAL_METRIC_SUFFIXES)
+    missing = [key for key in keys if key not in values]
+    if missing:
+        raise ValueError(
+            f"{prefix} numerical observation lacks metrics: {', '.join(missing)}"
+        )
+    records = integer(values, f"{prefix}_LOGITS_RECORDS")
+    comparable = integer(values, f"{prefix}_LOGITS_COMPARABLE_RECORDS")
+    if records <= 0 or comparable <= 0 or comparable > records:
+        raise ValueError(
+            f"{prefix} has invalid logits record counts: {comparable}/{records}"
+        )
+    nonnegative = (
+        "LOGITS_MAX_ABS",
+        "LOGITS_MAX_REL",
+        "LOGITS_MEAN_ABS",
+        "LOGITS_MEAN_RMSE",
+        "LOGITS_MEAN_KL",
+    )
+    for suffix in nonnegative:
+        value = float(values[f"{prefix}_{suffix}"])
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{prefix}_{suffix} is not finite and nonnegative")
+    cosine = float(values[f"{prefix}_LOGITS_MEAN_COSINE"])
+    overlap = float(values[f"{prefix}_LOGITS_TOP5_OVERLAP"])
+    if not math.isfinite(cosine) or not -1.0 <= cosine <= 1.0:
+        raise ValueError(f"{prefix}_LOGITS_MEAN_COSINE is outside [-1, 1]")
+    if not math.isfinite(overlap) or not 0.0 <= overlap <= 1.0:
+        raise ValueError(f"{prefix}_LOGITS_TOP5_OVERLAP is outside [0, 1]")
 
 
 def sha256(path: Path) -> str:
@@ -367,6 +411,8 @@ def validate_dynamic(run: ParsedRun) -> None:
         raise ValueError(f"optimized model child exited with {run.optimized_exit}")
     if run.guest_exit != 0 or not run.output_equal:
         raise ValueError("combined model run did not preserve functional output")
+    validate_numerical_metrics(run.logits, "AKV")
+    validate_numerical_metrics(run.qbs_rvv, "QBS_RVV")
     if run.logits.get("AKV_LOGITS_TOP1_EQUAL") != "1":
         raise ValueError("combined model run changed top-1 logits result")
     if integer(run.qbs_rvv, "QBS_RVV_LOGITS_RECORDS") == 0 or \
@@ -1541,6 +1587,7 @@ def make_dynamic_summary(
             "output_equal": run.output_equal,
             "logits_top1_equal": run.logits.get("AKV_LOGITS_TOP1_EQUAL"),
             "logits_max_abs": run.logits.get("AKV_LOGITS_MAX_ABS"),
+            "akv_qbs": run.logits,
             "qbs_rvv": run.qbs_rvv,
         },
         "graphs": dict(Counter(graph.phase for graph in run.graphs)),
@@ -1679,6 +1726,11 @@ def write_dynamic_markdown(
             f"- output equal: `{int(run.output_equal)}`",
             f"- logits top-1 equal: `{run.logits.get('AKV_LOGITS_TOP1_EQUAL', 'missing')}`",
             f"- logits max absolute difference: `{run.logits.get('AKV_LOGITS_MAX_ABS', 'missing')}`",
+            f"- logits mean absolute difference: `{run.logits.get('AKV_LOGITS_MEAN_ABS', 'missing')}`",
+            f"- logits mean RMSE: `{run.logits.get('AKV_LOGITS_MEAN_RMSE', 'missing')}`",
+            f"- logits mean KL divergence: `{run.logits.get('AKV_LOGITS_MEAN_KL', 'missing')}`",
+            f"- logits mean cosine similarity: `{run.logits.get('AKV_LOGITS_MEAN_COSINE', 'missing')}`",
+            f"- logits mean Top-5 overlap: `{run.logits.get('AKV_LOGITS_TOP5_OVERLAP', 'missing')}`",
             "",
             "This artifact proves dynamic selection, numerical behavior, and work/traffic",
             "identities. Weight and Q/K/V byte counts are logical payload bytes from the",

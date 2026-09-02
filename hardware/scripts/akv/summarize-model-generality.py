@@ -553,7 +553,17 @@ def main() -> int:
             "qemu_qbs_emulated_commands": metrics["qbs_emulated_commands"],
             "qemu_qbs_top1_equal": metrics["qbs_top1_equal"],
             "qemu_qbs_token_equal": metrics["qbs_token_output_equal"],
+            "qemu_qbs_logits_records": metrics["qbs_logits_records"],
+            "qemu_qbs_logits_comparable_records": metrics[
+                "qbs_logits_comparable_records"
+            ],
             "qemu_qbs_logits_max_abs": metrics["qbs_logits_max_abs"],
+            "qemu_qbs_logits_max_rel": metrics["qbs_logits_max_rel"],
+            "qemu_qbs_logits_mean_abs": metrics["qbs_logits_mean_abs"],
+            "qemu_qbs_logits_mean_rmse": metrics["qbs_logits_mean_rmse"],
+            "qemu_qbs_logits_mean_kl": metrics["qbs_logits_mean_kl"],
+            "qemu_qbs_logits_mean_cosine": metrics["qbs_logits_mean_cosine"],
+            "qemu_qbs_logits_top5_overlap": metrics["qbs_logits_top5_overlap"],
             "qemu_akv_executed_ops": metrics["akv_executed_ops"],
             "qemu_akv_executed_decode": metrics["akv_executed_decode"],
             "qemu_akv_executed_prefill": metrics["akv_executed_prefill"],
@@ -565,7 +575,17 @@ def main() -> int:
             "qemu_akv_performance_evidence": metrics["akv_performance_evidence"],
             "qemu_akv_top1_equal": metrics["akv_top1_equal"],
             "qemu_akv_token_equal": metrics["akv_token_output_equal"],
+            "qemu_akv_logits_records": metrics["akv_logits_records"],
+            "qemu_akv_logits_comparable_records": metrics[
+                "akv_logits_comparable_records"
+            ],
             "qemu_akv_logits_max_abs": metrics["akv_logits_max_abs"],
+            "qemu_akv_logits_max_rel": metrics["akv_logits_max_rel"],
+            "qemu_akv_logits_mean_abs": metrics["akv_logits_mean_abs"],
+            "qemu_akv_logits_mean_rmse": metrics["akv_logits_mean_rmse"],
+            "qemu_akv_logits_mean_kl": metrics["akv_logits_mean_kl"],
+            "qemu_akv_logits_mean_cosine": metrics["akv_logits_mean_cosine"],
+            "qemu_akv_logits_top5_overlap": metrics["akv_logits_top5_overlap"],
             "qemu_akv_logits_tolerance": metrics["akv_logits_tolerance"],
             "qemu_llama_revision": metrics["llama_revision"],
             "qemu_llama_binary_sha256": metrics["llama_binary_sha256"],
@@ -753,7 +773,10 @@ def main() -> int:
             f"{row['qemu_akv_executed_prefill']}/{row['qemu_akv_fallback_ops']} | "
             f"{row['qemu_qbs_gemv_calls']}/"
             f"{row['qemu_qbs_gemm_calls']} | {row['qemu_qbs_native_commands']} | "
-            f"top1/token PASS; max abs {row['qemu_qbs_logits_max_abs']} |"
+            f"top1/token PASS; AKV max/RMSE/KL/cos/top5 "
+            f"{row['qemu_akv_logits_max_abs']}/{row['qemu_akv_logits_mean_rmse']}/"
+            f"{row['qemu_akv_logits_mean_kl']}/{row['qemu_akv_logits_mean_cosine']}/"
+            f"{row['qemu_akv_logits_top5_overlap']} |"
         )
     lines.extend([
         "", "## Context-Length Checks", "",

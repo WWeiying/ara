@@ -42,10 +42,30 @@ def summary(
             "output_equal": True,
             "logits_top1_equal": "1",
             "logits_max_abs": "0",
+            "akv_qbs": {
+                "AKV_LOGITS_RECORDS": "1",
+                "AKV_LOGITS_COMPARABLE_RECORDS": "1",
+                "AKV_LOGITS_MAX_ABS": "0",
+                "AKV_LOGITS_MAX_REL": "0",
+                "AKV_LOGITS_MEAN_ABS": "0",
+                "AKV_LOGITS_MEAN_RMSE": "0",
+                "AKV_LOGITS_MEAN_KL": "0",
+                "AKV_LOGITS_MEAN_COSINE": "1",
+                "AKV_LOGITS_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_TOP1_EQUAL": "1",
+            },
             "qbs_rvv": {
+                "QBS_RVV_LOGITS_RECORDS": "1",
+                "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "1",
                 "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
                 "QBS_RVV_TOKEN_OUTPUT_EQUAL": "1",
                 "QBS_RVV_LOGITS_MAX_ABS": "0.25",
+                "QBS_RVV_LOGITS_MAX_REL": "0.5",
+                "QBS_RVV_LOGITS_MEAN_ABS": "0.1",
+                "QBS_RVV_LOGITS_MEAN_RMSE": "0.12",
+                "QBS_RVV_LOGITS_MEAN_KL": "0.01",
+                "QBS_RVV_LOGITS_MEAN_COSINE": "0.99",
+                "QBS_RVV_LOGITS_TOP5_OVERLAP": "1",
             },
         },
         "qbs": {
@@ -162,6 +182,7 @@ class ModelGeneralityQemuTest(unittest.TestCase):
     def test_akv_logits_tolerance_is_enforced(self):
         value = summary(2, 0)
         value["functional"]["logits_max_abs"] = "0.002"
+        value["functional"]["akv_qbs"]["AKV_LOGITS_MAX_ABS"] = "0.002"
         with self.assertRaisesRegex(ValueError, "functional or numerical"):
             MODULE.qemu_metrics(value, "execute")
 

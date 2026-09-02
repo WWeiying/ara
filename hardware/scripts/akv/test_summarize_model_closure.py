@@ -215,10 +215,23 @@ QBS_RVV_LOGITS_RECORDS=1
 QBS_RVV_LOGITS_COMPARABLE_RECORDS=1
 QBS_RVV_LOGITS_MAX_ABS=0.25
 QBS_RVV_LOGITS_MAX_REL=0.5
+QBS_RVV_LOGITS_MEAN_ABS=0.1
+QBS_RVV_LOGITS_MEAN_RMSE=0.12
+QBS_RVV_LOGITS_MEAN_KL=0.01
+QBS_RVV_LOGITS_MEAN_COSINE=0.99
+QBS_RVV_LOGITS_TOP5_OVERLAP=1
 QBS_RVV_LOGITS_TOP1_EQUAL=1
 QBS_RVV_TOKEN_OUTPUT_EQUAL=1
+AKV_LOGITS_RECORDS=1
+AKV_LOGITS_COMPARABLE_RECORDS=1
 AKV_LOGITS_TOP1_EQUAL=1
 AKV_LOGITS_MAX_ABS=0
+AKV_LOGITS_MAX_REL=0
+AKV_LOGITS_MEAN_ABS=0
+AKV_LOGITS_MEAN_RMSE=0
+AKV_LOGITS_MEAN_KL=0
+AKV_LOGITS_MEAN_COSINE=1
+AKV_LOGITS_TOP5_OVERLAP=1
 AKV_TOKEN_OUTPUT_EQUAL=1
 LLAMA_GUEST_EXIT=0
 """
@@ -347,10 +360,29 @@ LLAMA_GUEST_EXIT=0
             qbs_coverage={},
             qbs_exec={},
             akv_coverage=coverage,
-            logits={"AKV_LOGITS_TOP1_EQUAL": "1"},
+            logits={
+                "AKV_LOGITS_RECORDS": "1",
+                "AKV_LOGITS_COMPARABLE_RECORDS": "1",
+                "AKV_LOGITS_MAX_ABS": "0",
+                "AKV_LOGITS_MAX_REL": "0",
+                "AKV_LOGITS_MEAN_ABS": "0",
+                "AKV_LOGITS_MEAN_RMSE": "0",
+                "AKV_LOGITS_MEAN_KL": "0",
+                "AKV_LOGITS_MEAN_COSINE": "1",
+                "AKV_LOGITS_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_TOP1_EQUAL": "1",
+            },
             qbs_rvv={
                 "QBS_RVV_LOGITS_RECORDS": "1",
                 "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "1",
+                "QBS_RVV_LOGITS_MAX_ABS": "0",
+                "QBS_RVV_LOGITS_MAX_REL": "0",
+                "QBS_RVV_LOGITS_MEAN_ABS": "0",
+                "QBS_RVV_LOGITS_MEAN_RMSE": "0",
+                "QBS_RVV_LOGITS_MEAN_KL": "0",
+                "QBS_RVV_LOGITS_MEAN_COSINE": "1",
+                "QBS_RVV_LOGITS_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
             },
             output_equal=True,
             guest_exit=0,

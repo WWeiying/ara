@@ -323,7 +323,7 @@ fi
   "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
-  -o "${init_binary}"
+  -lm -o "${init_binary}"
 
 truncate -s 128M "${binary_disk}"
 mkfs.ext4 -q -F "${binary_disk}"

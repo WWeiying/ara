@@ -44,12 +44,18 @@ RESULT_FIELDS = (
     "status", "return_code", "prefill_census", "qbs_profiles", "qbs_operations", "qbs_nodes",
     "qbs_gemv_calls", "qbs_gemm_calls", "qbs_dot_elements",
     "qbs_command_dot_elements", "qbs_native_commands", "qbs_emulated_commands",
-    "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_max_abs", "akv_candidate_ops",
+    "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_records",
+    "qbs_logits_comparable_records", "qbs_logits_max_abs", "qbs_logits_max_rel",
+    "qbs_logits_mean_abs", "qbs_logits_mean_rmse", "qbs_logits_mean_kl",
+    "qbs_logits_mean_cosine", "qbs_logits_top5_overlap", "akv_candidate_ops",
     "akv_executed_ops", "akv_executed_decode", "akv_executed_prefill",
     "akv_prefill_query_tokens", "akv_prefill_attention_pairs",
     "akv_fallback_ops", "akv_fallback_shape", "akv_fastpath_status",
     "akv_performance_evidence", "akv_top1_equal",
-    "akv_token_output_equal", "akv_logits_max_abs", "llama_revision",
+    "akv_token_output_equal", "akv_logits_records", "akv_logits_comparable_records",
+    "akv_logits_max_abs", "akv_logits_max_rel", "akv_logits_mean_abs",
+    "akv_logits_mean_rmse", "akv_logits_mean_kl", "akv_logits_mean_cosine",
+    "akv_logits_top5_overlap", "llama_revision",
     "llama_binary_sha256", "qemu_binary_sha256", "qemu_cpu", "model_prompt",
     "model_tokens", "qbs_activation_accounting", "qbs_activation_unresolved_nodes",
     "qbs_abi_sha256", "qbs_architecture_version", "akv_logits_tolerance",
@@ -79,6 +85,30 @@ def read_key_values(path: Path) -> dict[str, str]:
             raise ValueError(f"invalid key/value manifest line in {path}: {line}")
         values[key] = value
     return values
+
+
+def quality_metrics(values: dict[str, str], prefix: str) -> dict[str, str]:
+    suffixes = (
+        "LOGITS_RECORDS",
+        "LOGITS_COMPARABLE_RECORDS",
+        "LOGITS_MAX_ABS",
+        "LOGITS_MAX_REL",
+        "LOGITS_MEAN_ABS",
+        "LOGITS_MEAN_RMSE",
+        "LOGITS_MEAN_KL",
+        "LOGITS_MEAN_COSINE",
+        "LOGITS_TOP5_OVERLAP",
+    )
+    missing = [f"{prefix}_{suffix}" for suffix in suffixes
+               if f"{prefix}_{suffix}" not in values]
+    if missing:
+        raise ValueError(
+            f"QEMU summary lacks {prefix} numerical metrics: {', '.join(missing)}"
+        )
+    return {
+        suffix.removeprefix("LOGITS_").lower(): values[f"{prefix}_{suffix}"]
+        for suffix in suffixes
+    }
 
 
 def ensure_model_disk(spec: dict[str, object]) -> tuple[Path, str, str]:
@@ -178,7 +208,17 @@ def qemu_metrics(
     qbs = summary["qbs"]
     akv = summary["akv_v2"]
     qbs_rvv = functional["qbs_rvv"]
-    akv_logits_max_abs = float(functional["logits_max_abs"])
+    akv_qbs = functional.get("akv_qbs")
+    if not isinstance(akv_qbs, dict):
+        raise ValueError("QEMU summary lacks AKV/QBS numerical metrics")
+    qbs_quality = quality_metrics(qbs_rvv, "QBS_RVV")
+    akv_quality = quality_metrics(akv_qbs, "AKV")
+    if (
+        str(functional["logits_top1_equal"]) != akv_qbs.get("AKV_LOGITS_TOP1_EQUAL")
+        or str(functional["logits_max_abs"]) != akv_qbs.get("AKV_LOGITS_MAX_ABS")
+    ):
+        raise ValueError("QEMU summary has inconsistent AKV numerical aliases")
+    akv_logits_max_abs = float(akv_quality["max_abs"])
     akv_logits_tolerance = float(run_manifest["LOGITS_MAX_ABS_TOLERANCE"])
     if akv_logits_tolerance < 0:
         raise ValueError("QEMU AKV logits tolerance is negative")
@@ -333,7 +373,15 @@ def qemu_metrics(
         "qbs_emulated_commands": emulated_commands,
         "qbs_top1_equal": qbs_rvv["QBS_RVV_LOGITS_TOP1_EQUAL"],
         "qbs_token_output_equal": qbs_rvv["QBS_RVV_TOKEN_OUTPUT_EQUAL"],
-        "qbs_logits_max_abs": qbs_rvv["QBS_RVV_LOGITS_MAX_ABS"],
+        "qbs_logits_records": qbs_quality["records"],
+        "qbs_logits_comparable_records": qbs_quality["comparable_records"],
+        "qbs_logits_max_abs": qbs_quality["max_abs"],
+        "qbs_logits_max_rel": qbs_quality["max_rel"],
+        "qbs_logits_mean_abs": qbs_quality["mean_abs"],
+        "qbs_logits_mean_rmse": qbs_quality["mean_rmse"],
+        "qbs_logits_mean_kl": qbs_quality["mean_kl"],
+        "qbs_logits_mean_cosine": qbs_quality["mean_cosine"],
+        "qbs_logits_top5_overlap": qbs_quality["top5_overlap"],
         "akv_candidate_ops": candidates,
         "akv_executed_ops": executed,
         "akv_executed_decode": executed_decode,
@@ -346,7 +394,15 @@ def qemu_metrics(
         "akv_performance_evidence": "functional-qemu-only",
         "akv_top1_equal": functional["logits_top1_equal"],
         "akv_token_output_equal": int(bool(functional["output_equal"])),
-        "akv_logits_max_abs": functional["logits_max_abs"],
+        "akv_logits_records": akv_quality["records"],
+        "akv_logits_comparable_records": akv_quality["comparable_records"],
+        "akv_logits_max_abs": akv_quality["max_abs"],
+        "akv_logits_max_rel": akv_quality["max_rel"],
+        "akv_logits_mean_abs": akv_quality["mean_abs"],
+        "akv_logits_mean_rmse": akv_quality["mean_rmse"],
+        "akv_logits_mean_kl": akv_quality["mean_kl"],
+        "akv_logits_mean_cosine": akv_quality["mean_cosine"],
+        "akv_logits_top5_overlap": akv_quality["top5_overlap"],
         "akv_logits_tolerance": akv_logits_tolerance,
         "llama_revision": str(run_manifest["LLAMA_REVISION"]),
         "llama_binary_sha256": str(run_manifest["LLAMA_BINARY_SHA256"]),
