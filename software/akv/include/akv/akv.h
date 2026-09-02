@@ -104,7 +104,12 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
 } akv_attention_v2_workspace_t;
 
 /*
- * Contiguous batch-one Prefill layout:
+ * Batch-one Prefill layout with a contiguous head-dimension row. A zero byte
+ * stride selects the canonical layout shown below. Explicit Query and K/V
+ * token/head strides may swap those dimensions while preserving
+ * non-overlapping regular rows. Mask and output retain token-major rows; only
+ * their token strides are configurable.
+ *
  *   Query  F32 [query_heads][query_tokens][head_dim]
  *   Key/V  F16 [kv_heads][kv_capacity][head_dim]
  *   mask   F16 [query_tokens][kv_capacity]
@@ -122,6 +127,14 @@ typedef struct {
   uint32_t kv_capacity;
   uint32_t head_dim;
   float scale;
+  uint32_t query_token_stride_bytes;
+  uint32_t query_head_stride_bytes;
+  uint32_t key_token_stride_bytes;
+  uint32_t key_head_stride_bytes;
+  uint32_t value_token_stride_bytes;
+  uint32_t value_head_stride_bytes;
+  uint32_t mask_token_stride_bytes;
+  uint32_t output_token_stride_bytes;
 } akv_attention_v2_prefill_problem_t;
 
 /* Fixed hidden state for one GQA group and one 64-Query block. */

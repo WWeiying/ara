@@ -18,7 +18,8 @@ default_sim_dir=${repo_root}/hardware/sim_llama_attention_16m_template
 if [[ ${implementation} == akv ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_m3_compile
 elif [[ ${implementation} == akv_v2 ||
-        ${implementation} == akv_v2_prefill ]]; then
+        ${implementation} == akv_v2_prefill ||
+        ${implementation} == akv_v2_prefill_strided ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_v2_compile
 fi
 sim_dir=${LLAMA_ATTN_SIM_DIR:-${default_sim_dir}}
@@ -65,8 +66,9 @@ if [[ ${implementation} != ref && ${implementation} != rvv &&
       ${implementation} != tiled_rvv && ${implementation} != q64_rvv &&
       ${implementation} != akv &&
       ${implementation} != akv_v2 &&
-      ${implementation} != akv_v2_prefill ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
+      ${implementation} != akv_v2_prefill &&
+      ${implementation} != akv_v2_prefill_strided ]]; then
+  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill|akv_v2_prefill_strided] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
@@ -79,7 +81,8 @@ if [[ ${execution} != --all && ${execution} != --spike-only &&
   exit 2
 fi
 if [[ (${implementation} == akv || ${implementation} == akv_v2 ||
-       ${implementation} == akv_v2_prefill) &&
+       ${implementation} == akv_v2_prefill ||
+       ${implementation} == akv_v2_prefill_strided) &&
       ${execution} != --ara-only ]]; then
   echo "AKV custom instructions currently require --ara-only; use ref or rvv for Spike" >&2
   exit 2
@@ -169,7 +172,8 @@ if [[ ${execution} != --spike-only ]]; then
     +NO_FSDB
   )
   if [[ ${implementation} == akv || ${implementation} == akv_v2 ||
-        ${implementation} == akv_v2_prefill ]]; then
+        ${implementation} == akv_v2_prefill ||
+        ${implementation} == akv_v2_prefill_strided ]]; then
     case ${LLAMA_ATTN_AKV_PERF_MODE:-detail} in
       detail) sim_args+=(+AKV_PERF) ;;
       summary) sim_args+=(+AKV_SUMMARY) ;;

@@ -146,6 +146,7 @@ static inline void issue_release(void) {
 
 static void convert_prefill_query_block(
     const akv_attention_v2_prefill_problem_t *problem,
+    const akv_attention_v2_prefill_layout_t *layout,
     akv_attention_v2_prefill_workspace_t *workspace, uint32_t first_qhead,
     uint32_t token_start, uint32_t token_count, uint32_t q_rows) {
 #pragma clang loop unroll(disable)
@@ -153,10 +154,10 @@ static void convert_prefill_query_block(
 #pragma clang loop unroll(disable)
     for (uint32_t head = 0u; head < q_rows; ++head) {
       const uint32_t token = token_start + local_token;
-      const float *const source =
-          problem->query +
-          ((size_t)(first_qhead + head) * problem->query_tokens + token) *
-              problem->head_dim;
+      const float *const source = (const float *)(const void *)(
+          (const char *)problem->query +
+          (size_t)(first_qhead + head) * layout->query_head_stride_bytes +
+          (size_t)token * layout->query_token_stride_bytes);
       uint16_t *const destination = workspace->query[local_token][head];
       uint32_t offset = 0u;
       while (offset < problem->head_dim) {
@@ -175,6 +176,7 @@ static void convert_prefill_query_block(
 
 static void initialize_prefill_block(
     const akv_attention_v2_prefill_problem_t *problem,
+    const akv_attention_v2_prefill_layout_t *layout,
     akv_attention_v2_prefill_workspace_t *workspace, uint32_t first_qhead,
     uint32_t token_start, uint32_t token_count, uint32_t q_rows) {
   const float negative_infinity = negative_infinity_f32();
@@ -182,11 +184,11 @@ static void initialize_prefill_block(
     for (uint32_t head = 0u; head < q_rows; ++head) {
       workspace->maximum[local_token][head] = negative_infinity;
       workspace->sum[local_token][head] = 0.0f;
-      float *const output =
-          problem->output +
-          ((size_t)(token_start + local_token) * problem->query_heads +
-           first_qhead + head) *
-              problem->head_dim;
+      float *const output = (float *)(void *)(
+          (char *)problem->output +
+          (size_t)(token_start + local_token) *
+              layout->output_token_stride_bytes +
+          (size_t)(first_qhead + head) * problem->head_dim * sizeof(float));
       uint32_t offset = 0u;
       while (offset < problem->head_dim) {
         const size_t vl =
@@ -210,27 +212,30 @@ convert_prefill_query_row_d128(const float *source, uint16_t *destination,
 
 static void prepare_prefill_block_d128_gqa6(
     const akv_attention_v2_prefill_problem_t *problem,
+    const akv_attention_v2_prefill_layout_t *layout,
     akv_attention_v2_prefill_workspace_t *workspace, uint32_t first_qhead,
     uint32_t token_start, uint32_t token_count) {
   const size_t query_vl = __riscv_vsetvl_e32m4(AKV_HEAD_DIM_128);
   const size_t output_vl = __riscv_vsetvl_e32m8(2u * AKV_HEAD_DIM_128);
   const size_t query_head_stride =
-      (size_t)problem->query_tokens * AKV_HEAD_DIM_128;
+      layout->query_head_stride_bytes / sizeof(float);
+  const size_t query_token_stride =
+      layout->query_token_stride_bytes / sizeof(float);
   const size_t output_token_stride =
-      (size_t)problem->query_heads * AKV_HEAD_DIM_128;
+      layout->output_token_stride_bytes / sizeof(float);
   const float negative_infinity = negative_infinity_f32();
 
   const float *source0 = problem->query +
-      ((size_t)(first_qhead + 0u) * problem->query_tokens + token_start) *
-          AKV_HEAD_DIM_128;
+      (size_t)(first_qhead + 0u) * query_head_stride +
+      (size_t)token_start * query_token_stride;
   const float *source1 = source0 + query_head_stride;
   const float *source2 = source1 + query_head_stride;
   const float *source3 = source2 + query_head_stride;
   const float *source4 = source3 + query_head_stride;
   const float *source5 = source4 + query_head_stride;
   float *output = problem->output +
-      ((size_t)token_start * problem->query_heads + first_qhead) *
-          AKV_HEAD_DIM_128;
+      (size_t)token_start * output_token_stride +
+      (size_t)first_qhead * AKV_HEAD_DIM_128;
 
   for (uint32_t local_token = 0u; local_token < token_count; ++local_token) {
     convert_prefill_query_row_d128(
@@ -256,12 +261,12 @@ static void prepare_prefill_block_d128_gqa6(
       workspace->sum[local_token][head] = 0.0f;
     }
 
-    source0 += AKV_HEAD_DIM_128;
-    source1 += AKV_HEAD_DIM_128;
-    source2 += AKV_HEAD_DIM_128;
-    source3 += AKV_HEAD_DIM_128;
-    source4 += AKV_HEAD_DIM_128;
-    source5 += AKV_HEAD_DIM_128;
+    source0 += query_token_stride;
+    source1 += query_token_stride;
+    source2 += query_token_stride;
+    source3 += query_token_stride;
+    source4 += query_token_stride;
+    source5 += query_token_stride;
     output += output_token_stride;
   }
 }
@@ -301,6 +306,7 @@ static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
 
 static void normalize_prefill_block(
     const akv_attention_v2_prefill_problem_t *problem,
+    const akv_attention_v2_prefill_layout_t *layout,
     const akv_attention_v2_prefill_workspace_t *workspace,
     uint32_t first_qhead, uint32_t token_start, uint32_t token_count,
     uint32_t q_rows) {
@@ -308,11 +314,11 @@ static void normalize_prefill_block(
     for (uint32_t head = 0u; head < q_rows; ++head) {
       const float sum = workspace->sum[local_token][head];
       const float inverse = sum == 0.0f ? 0.0f : 1.0f / sum;
-      float *const output =
-          problem->output +
-          ((size_t)(token_start + local_token) * problem->query_heads +
-           first_qhead + head) *
-              problem->head_dim;
+      float *const output = (float *)(void *)(
+          (char *)problem->output +
+          (size_t)(token_start + local_token) *
+              layout->output_token_stride_bytes +
+          (size_t)(first_qhead + head) * problem->head_dim * sizeof(float));
       uint32_t offset = 0u;
       while (offset < problem->head_dim) {
         const size_t vl =
@@ -522,15 +528,15 @@ akv_status_t akv_attention_execute_v2_prefill_native(
     akv_attention_v2_prefill_workspace_t *workspace) {
   uint32_t past_tokens = 0u;
   uint32_t maximum_prefix = 0u;
+  akv_attention_v2_prefill_layout_t layout;
   const akv_status_t validation = akv_attention_v2_prefill_validate(
-      device, problem, workspace, &past_tokens, &maximum_prefix);
+      device, problem, workspace, &past_tokens, &maximum_prefix, &layout);
   if (validation != AKV_STATUS_OK) return validation;
 
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)
   const uint32_t q_rows = problem->query_heads / problem->kv_heads;
   const uint32_t query_stride_bytes = sizeof(workspace->query[0][0]);
-  const uint32_t kv_stride_bytes = problem->head_dim * sizeof(uint16_t);
   const uint32_t output_stride_bytes = problem->head_dim * sizeof(float);
 
   /* Preflight every bounded block before touching architectural output. */
@@ -544,18 +550,22 @@ akv_status_t akv_attention_execute_v2_prefill_native(
       const uint32_t block_prefix = past_tokens + token_start + token_count;
       const akv_attention_problem_t context_problem = {
           .query = &workspace->query[0][0][0],
-          .key = problem->key +
-                 (size_t)kv_head * problem->kv_capacity * problem->head_dim,
-          .value = problem->value +
-                   (size_t)kv_head * problem->kv_capacity * problem->head_dim,
-          .mask = problem->mask + (size_t)token_start * problem->kv_capacity,
-          .output =
-              problem->output +
-              ((size_t)token_start * problem->query_heads + first_qhead) *
-                  problem->head_dim,
+          .key = (const uint16_t *)(const void *)(
+              (const char *)problem->key +
+              (size_t)kv_head * layout.key_head_stride_bytes),
+          .value = (const uint16_t *)(const void *)(
+              (const char *)problem->value +
+              (size_t)kv_head * layout.value_head_stride_bytes),
+          .mask = (const uint16_t *)(const void *)(
+              (const char *)problem->mask +
+              (size_t)token_start * layout.mask_token_stride_bytes),
+          .output = (float *)(void *)(
+              (char *)problem->output +
+              (size_t)token_start * layout.output_token_stride_bytes +
+              (size_t)first_qhead * output_stride_bytes),
           .q_row_stride_bytes = query_stride_bytes,
-          .k_token_stride_bytes = kv_stride_bytes,
-          .v_token_stride_bytes = kv_stride_bytes,
+          .k_token_stride_bytes = layout.key_token_stride_bytes,
+          .v_token_stride_bytes = layout.value_token_stride_bytes,
           .output_row_stride_bytes = output_stride_bytes,
           .q_rows = q_rows,
           .head_dim = problem->head_dim,
@@ -584,28 +594,32 @@ akv_status_t akv_attention_execute_v2_prefill_native(
           __riscv_vsetvl_e32m8(2u * AKV_HEAD_DIM_128) ==
               2u * AKV_HEAD_DIM_128) {
         prepare_prefill_block_d128_gqa6(
-            problem, workspace, first_qhead, token_start, token_count);
+            problem, &layout, workspace, first_qhead, token_start, token_count);
       } else {
-        convert_prefill_query_block(problem, workspace, first_qhead,
+        convert_prefill_query_block(problem, &layout, workspace, first_qhead,
                                     token_start, token_count, q_rows);
-        initialize_prefill_block(problem, workspace, first_qhead, token_start,
-                                 token_count, q_rows);
+        initialize_prefill_block(problem, &layout, workspace, first_qhead,
+                                 token_start, token_count, q_rows);
       }
 
       const akv_attention_problem_t context_problem = {
           .query = &workspace->query[0][0][0],
-          .key = problem->key +
-                 (size_t)kv_head * problem->kv_capacity * problem->head_dim,
-          .value = problem->value +
-                   (size_t)kv_head * problem->kv_capacity * problem->head_dim,
-          .mask = problem->mask + (size_t)token_start * problem->kv_capacity,
-          .output =
-              problem->output +
-              ((size_t)token_start * problem->query_heads + first_qhead) *
-                  problem->head_dim,
+          .key = (const uint16_t *)(const void *)(
+              (const char *)problem->key +
+              (size_t)kv_head * layout.key_head_stride_bytes),
+          .value = (const uint16_t *)(const void *)(
+              (const char *)problem->value +
+              (size_t)kv_head * layout.value_head_stride_bytes),
+          .mask = (const uint16_t *)(const void *)(
+              (const char *)problem->mask +
+              (size_t)token_start * layout.mask_token_stride_bytes),
+          .output = (float *)(void *)(
+              (char *)problem->output +
+              (size_t)token_start * layout.output_token_stride_bytes +
+              (size_t)first_qhead * output_stride_bytes),
           .q_row_stride_bytes = query_stride_bytes,
-          .k_token_stride_bytes = kv_stride_bytes,
-          .v_token_stride_bytes = kv_stride_bytes,
+          .k_token_stride_bytes = layout.key_token_stride_bytes,
+          .v_token_stride_bytes = layout.value_token_stride_bytes,
           .output_row_stride_bytes = output_stride_bytes,
           .q_rows = q_rows,
           .head_dim = problem->head_dim,
@@ -688,17 +702,19 @@ akv_status_t akv_attention_execute_v2_prefill_native(
             }
 
             const uint16_t *const tile_mask =
-                problem->mask + (size_t)token * problem->kv_capacity +
+                (const uint16_t *)(const void *)(
+                    (const char *)problem->mask +
+                    (size_t)token * layout.mask_token_stride_bytes) +
                 tile_start;
             apply_prefill_scale_mask_softmax(
                 tile_mask, problem->scale, workspace,
                 local_token + compute_slot, compute_slot, active_tokens,
                 q_rows);
 
-            float *const output =
-                problem->output +
-                ((size_t)token * problem->query_heads + first_qhead) *
-                    problem->head_dim;
+            float *const output = (float *)(void *)(
+                (char *)problem->output +
+                (size_t)token * layout.output_token_stride_bytes +
+                (size_t)first_qhead * output_stride_bytes);
             if (d128_gqa6) {
               akv_v2_update_outputs_f32_d128_gqa6(
                   &workspace->score[compute_slot][0][0], output,
@@ -714,8 +730,8 @@ akv_status_t akv_attention_execute_v2_prefill_native(
         }
       }
       issue_release();
-      normalize_prefill_block(problem, workspace, first_qhead, token_start,
-                              token_count, q_rows);
+      normalize_prefill_block(problem, &layout, workspace, first_qhead,
+                              token_start, token_count, q_rows);
     }
   }
   return AKV_STATUS_OK;

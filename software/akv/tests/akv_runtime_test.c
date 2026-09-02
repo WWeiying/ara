@@ -14,6 +14,10 @@ enum {
   PREFILL_D96_Q_HEADS = 4,
   PREFILL_D96_KV_HEADS = 2,
   PREFILL_D96_KV = 5,
+  PREFILL_STRIDED_M = 3,
+  PREFILL_STRIDED_Q_HEADS = 4,
+  PREFILL_STRIDED_KV_HEADS = 2,
+  PREFILL_STRIDED_KV = 5,
   PREFILL_TAIL_M = 65,
   PREFILL_TAIL_Q_HEADS = AKV_MAX_Q_ROWS,
 };
@@ -45,6 +49,24 @@ static _Alignas(64) uint16_t
 static _Alignas(64) float
     prefill_d96_output[PREFILL_D96_M * PREFILL_D96_Q_HEADS *
                        AKV_HEAD_DIM_96];
+static _Alignas(64) float prefill_strided_query_canonical
+    [PREFILL_STRIDED_Q_HEADS * PREFILL_STRIDED_M * AKV_HEAD_DIM_64];
+static _Alignas(64) float prefill_strided_query_token_major
+    [PREFILL_STRIDED_M * PREFILL_STRIDED_Q_HEADS * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_strided_key_canonical
+    [PREFILL_STRIDED_KV_HEADS * PREFILL_STRIDED_KV * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_strided_key_token_major
+    [PREFILL_STRIDED_KV * PREFILL_STRIDED_KV_HEADS * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_strided_value_canonical
+    [PREFILL_STRIDED_KV_HEADS * PREFILL_STRIDED_KV * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t prefill_strided_value_token_major
+    [PREFILL_STRIDED_KV * PREFILL_STRIDED_KV_HEADS * AKV_HEAD_DIM_64];
+static _Alignas(64) uint16_t
+    prefill_strided_mask[PREFILL_STRIDED_M * PREFILL_STRIDED_KV];
+static _Alignas(64) float prefill_strided_output_canonical
+    [PREFILL_STRIDED_M * PREFILL_STRIDED_Q_HEADS * AKV_HEAD_DIM_64];
+static _Alignas(64) float prefill_strided_output_token_major
+    [PREFILL_STRIDED_M * PREFILL_STRIDED_Q_HEADS * AKV_HEAD_DIM_64];
 static _Alignas(64) float
     prefill_tail_query[PREFILL_TAIL_Q_HEADS * PREFILL_TAIL_M *
                        AKV_HEAD_DIM_128];
@@ -689,6 +711,109 @@ static void test_v2_prefill_reference_d96_past_and_gqa(void) {
   }
 }
 
+static void test_v2_prefill_reference_regular_strides(void) {
+  akv_device_t device;
+  assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
+  memset(prefill_strided_query_canonical, 0,
+         sizeof(prefill_strided_query_canonical));
+  memset(prefill_strided_query_token_major, 0,
+         sizeof(prefill_strided_query_token_major));
+  memset(prefill_strided_key_canonical, 0,
+         sizeof(prefill_strided_key_canonical));
+  memset(prefill_strided_key_token_major, 0,
+         sizeof(prefill_strided_key_token_major));
+  memset(prefill_strided_output_canonical, 0,
+         sizeof(prefill_strided_output_canonical));
+  memset(prefill_strided_output_token_major, 0,
+         sizeof(prefill_strided_output_token_major));
+
+  for (uint32_t head = 0u; head < PREFILL_STRIDED_Q_HEADS; ++head) {
+    for (uint32_t token = 0u; token < PREFILL_STRIDED_M; ++token) {
+      const float value = (float)((head + 1u) * (token + 1u));
+      prefill_strided_query_canonical
+          [((size_t)head * PREFILL_STRIDED_M + token) * AKV_HEAD_DIM_64] =
+          value;
+      prefill_strided_query_token_major
+          [((size_t)token * PREFILL_STRIDED_Q_HEADS + head) *
+           AKV_HEAD_DIM_64] = value;
+    }
+  }
+  for (uint32_t head = 0u; head < PREFILL_STRIDED_KV_HEADS; ++head) {
+    for (uint32_t token = 0u; token < PREFILL_STRIDED_KV; ++token) {
+      const size_t canonical =
+          ((size_t)head * PREFILL_STRIDED_KV + token) * AKV_HEAD_DIM_64;
+      const size_t token_major =
+          ((size_t)token * PREFILL_STRIDED_KV_HEADS + head) *
+          AKV_HEAD_DIM_64;
+      const uint16_t key_value = token == 0u ? UINT16_C(0x3c00) : 0u;
+      const uint16_t data_value =
+          head == 0u ? UINT16_C(0x3c00) : UINT16_C(0x4000);
+      prefill_strided_key_canonical[canonical] = key_value;
+      prefill_strided_key_token_major[token_major] = key_value;
+      for (uint32_t dimension = 0u; dimension < AKV_HEAD_DIM_64;
+           ++dimension) {
+        prefill_strided_value_canonical[canonical + dimension] = data_value;
+        prefill_strided_value_token_major[token_major + dimension] =
+            data_value;
+      }
+    }
+  }
+  for (uint32_t token = 0u; token < PREFILL_STRIDED_M; ++token) {
+    const uint32_t prefix = 3u + token;
+    for (uint32_t sequence = 0u; sequence < PREFILL_STRIDED_KV;
+         ++sequence) {
+      prefill_strided_mask[(size_t)token * PREFILL_STRIDED_KV + sequence] =
+          sequence < prefix ? 0u : UINT16_C(0xfc00);
+    }
+  }
+
+  akv_attention_v2_prefill_problem_t canonical = {
+      .query = prefill_strided_query_canonical,
+      .key = prefill_strided_key_canonical,
+      .value = prefill_strided_value_canonical,
+      .mask = prefill_strided_mask,
+      .output = prefill_strided_output_canonical,
+      .query_tokens = PREFILL_STRIDED_M,
+      .query_heads = PREFILL_STRIDED_Q_HEADS,
+      .kv_heads = PREFILL_STRIDED_KV_HEADS,
+      .kv_capacity = PREFILL_STRIDED_KV,
+      .head_dim = AKV_HEAD_DIM_64,
+      .scale = 0.125f,
+  };
+  assert(akv_attention_execute_v2_prefill_reference(
+             &device, &canonical, &prefill_workspace) == AKV_STATUS_OK);
+
+  akv_attention_v2_prefill_problem_t strided = canonical;
+  strided.query = prefill_strided_query_token_major;
+  strided.key = prefill_strided_key_token_major;
+  strided.value = prefill_strided_value_token_major;
+  strided.output = prefill_strided_output_token_major;
+  strided.query_token_stride_bytes =
+      PREFILL_STRIDED_Q_HEADS * AKV_HEAD_DIM_64 * sizeof(float);
+  strided.query_head_stride_bytes = AKV_HEAD_DIM_64 * sizeof(float);
+  strided.key_token_stride_bytes =
+      PREFILL_STRIDED_KV_HEADS * AKV_HEAD_DIM_64 * sizeof(uint16_t);
+  strided.key_head_stride_bytes = AKV_HEAD_DIM_64 * sizeof(uint16_t);
+  strided.value_token_stride_bytes = strided.key_token_stride_bytes;
+  strided.value_head_stride_bytes = strided.key_head_stride_bytes;
+  strided.mask_token_stride_bytes =
+      PREFILL_STRIDED_KV * sizeof(uint16_t);
+  strided.output_token_stride_bytes =
+      PREFILL_STRIDED_Q_HEADS * AKV_HEAD_DIM_64 * sizeof(float);
+  assert(akv_attention_execute_v2_prefill_reference(
+             &device, &strided, &prefill_workspace) == AKV_STATUS_OK);
+
+  for (size_t element = 0u;
+       element < sizeof(prefill_strided_output_canonical) / sizeof(float);
+       ++element) {
+    assert_close(prefill_strided_output_token_major[element],
+                 prefill_strided_output_canonical[element]);
+  }
+  strided.query_head_stride_bytes = sizeof(float);
+  assert(akv_attention_execute_v2_prefill_reference(
+             &device, &strided, &prefill_workspace) == AKV_STATUS_LAYOUT);
+}
+
 static void test_v2_prefill_reference_block_and_tile_tail(void) {
   akv_device_t device;
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
@@ -825,6 +950,7 @@ int main(void) {
   test_v2_unsupported_matrix();
   test_v2_prefill_boundary();
   test_v2_prefill_reference_d96_past_and_gqa();
+  test_v2_prefill_reference_regular_strides();
   test_v2_prefill_reference_block_and_tile_tail();
   test_rejections();
   test_v2_reference_context();

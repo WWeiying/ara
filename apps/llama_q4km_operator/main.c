@@ -39,6 +39,7 @@ enum {
   CASE_FLAG_ATTENTION_AKV_V2 = 1u << 3,
   CASE_FLAG_ATTENTION_AKV_V2_PREFILL = 1u << 4,
   CASE_FLAG_ATTENTION_Q64_RVV = 1u << 5,
+  CASE_FLAG_ATTENTION_REGULAR_STRIDES = 1u << 6,
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
@@ -1755,16 +1756,70 @@ static int run_attention_akv_v2_prefill(const case_config_t *cfg) {
   const int qheads = cfg->args[2];
   const int physical_kvlen = cfg->args[3];
   const int kvheads = cfg->args[4];
-  if (tokens <= 1 || tokens > MAX_ATTENTION_TOKENS ||
+  if (dim <= 0 || dim > MAX_ATTENTION_DIM ||
+      tokens <= 1 || tokens > MAX_ATTENTION_TOKENS ||
       qheads <= 0 || qheads > MAX_ATTENTION_HEADS ||
       physical_kvlen <= 0 || physical_kvlen > MAX_ATTENTION_KV ||
-      kvheads <= 0)
+      kvheads <= 0 || kvheads > MAX_ATTENTION_HEADS ||
+      qheads % kvheads != 0)
     return 0;
 
+  const float *query = (const float *)llama_input_a_start;
+  const uint16_t *key = (const uint16_t *)llama_input_b_start;
+  const uint16_t *value = (const uint16_t *)llama_input_c_start;
+  uint32_t query_token_stride_bytes = 0;
+  uint32_t query_head_stride_bytes = 0;
+  uint32_t key_token_stride_bytes = 0;
+  uint32_t key_head_stride_bytes = 0;
+  uint32_t value_token_stride_bytes = 0;
+  uint32_t value_head_stride_bytes = 0;
+
+  if ((cfg->flags & CASE_FLAG_ATTENTION_REGULAR_STRIDES) != 0) {
+    const size_t query_elements = (size_t)tokens * qheads * dim;
+    const size_t kv_elements = (size_t)physical_kvlen * kvheads * dim;
+    if (query_elements > sizeof(operator_output) / sizeof(operator_output[0]) ||
+        kv_elements > sizeof(operator_output_f16) /
+                          sizeof(operator_output_f16[0]) ||
+        kv_elements > sizeof(attention_tiled_query) /
+                          sizeof(attention_tiled_query[0][0]))
+      return 0;
+
+    float *strided_query = operator_output;
+    uint16_t *strided_key = (uint16_t *)(void *)operator_output_f16;
+    uint16_t *strided_value = (uint16_t *)(void *)attention_tiled_query;
+    for (int token = 0; token < tokens; ++token) {
+      for (int head = 0; head < qheads; ++head) {
+        const size_t source = ((size_t)head * tokens + token) * dim;
+        const size_t destination = ((size_t)token * qheads + head) * dim;
+        __builtin_memcpy(strided_query + destination, query + source,
+                         (size_t)dim * sizeof(*strided_query));
+      }
+    }
+    for (int token = 0; token < physical_kvlen; ++token) {
+      for (int head = 0; head < kvheads; ++head) {
+        const size_t source = ((size_t)head * physical_kvlen + token) * dim;
+        const size_t destination = ((size_t)token * kvheads + head) * dim;
+        __builtin_memcpy(strided_key + destination, key + source,
+                         (size_t)dim * sizeof(*strided_key));
+        __builtin_memcpy(strided_value + destination, value + source,
+                         (size_t)dim * sizeof(*strided_value));
+      }
+    }
+    query = strided_query;
+    key = strided_key;
+    value = strided_value;
+    query_token_stride_bytes = (uint32_t)qheads * dim * sizeof(float);
+    query_head_stride_bytes = (uint32_t)dim * sizeof(float);
+    key_token_stride_bytes = (uint32_t)kvheads * dim * sizeof(uint16_t);
+    key_head_stride_bytes = (uint32_t)dim * sizeof(uint16_t);
+    value_token_stride_bytes = key_token_stride_bytes;
+    value_head_stride_bytes = key_head_stride_bytes;
+  }
+
   const akv_attention_v2_prefill_problem_t problem = {
-      .query = (const float *)llama_input_a_start,
-      .key = (const uint16_t *)llama_input_b_start,
-      .value = (const uint16_t *)llama_input_c_start,
+      .query = query,
+      .key = key,
+      .value = value,
       .mask = (const uint16_t *)llama_input_d_start,
       .output = attention_output,
       .query_tokens = (uint32_t)tokens,
@@ -1773,6 +1828,14 @@ static int run_attention_akv_v2_prefill(const case_config_t *cfg) {
       .kv_capacity = (uint32_t)physical_kvlen,
       .head_dim = (uint32_t)dim,
       .scale = cfg->params[2],
+      .query_token_stride_bytes = query_token_stride_bytes,
+      .query_head_stride_bytes = query_head_stride_bytes,
+      .key_token_stride_bytes = key_token_stride_bytes,
+      .key_head_stride_bytes = key_head_stride_bytes,
+      .value_token_stride_bytes = value_token_stride_bytes,
+      .value_head_stride_bytes = value_head_stride_bytes,
+      .mask_token_stride_bytes = (uint32_t)physical_kvlen * sizeof(uint16_t),
+      .output_token_stride_bytes = (uint32_t)qheads * dim * sizeof(float),
   };
   return akv_attention_execute_v2_prefill_native(
              &attention_akv_device, &problem,

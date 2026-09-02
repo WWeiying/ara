@@ -7,7 +7,7 @@
 typedef struct {
   uintptr_t first;
   uintptr_t last;
-} contiguous_range_t;
+} byte_range_t;
 
 static int finite_positive_f32(float value) {
   uint32_t bits;
@@ -24,18 +24,57 @@ static int multiply_size(size_t lhs, size_t rhs, size_t *product) {
   return !__builtin_mul_overflow(lhs, rhs, product);
 }
 
-static int contiguous_range(const void *base, size_t elements,
-                            size_t element_bytes, contiguous_range_t *range) {
-  size_t bytes;
-  if (base == NULL || elements == 0u || element_bytes == 0u ||
-      !multiply_size(elements, element_bytes, &bytes) ||
+static int resolve_stride(uint32_t requested, size_t canonical,
+                          uint32_t *resolved) {
+  const size_t value = requested == 0u ? canonical : requested;
+  if (value == 0u || value > UINT32_MAX) return 0;
+  *resolved = (uint32_t)value;
+  return 1;
+}
+
+/* Returns -1 for arithmetic overflow, 0 for overlapping rows, and 1 on OK. */
+static int matrix_layout_span(size_t row_bytes, uint32_t first_count,
+                              uint32_t first_stride, uint32_t second_count,
+                              uint32_t second_stride, size_t *span) {
+  size_t first_offset;
+  size_t second_offset;
+  size_t first_extent;
+  size_t second_extent;
+  size_t last_offset;
+  if (__builtin_mul_overflow((size_t)(first_count - 1u), first_stride,
+                             &first_offset) ||
+      __builtin_mul_overflow((size_t)(second_count - 1u), second_stride,
+                             &second_offset) ||
+      __builtin_add_overflow(first_offset, row_bytes, &first_extent) ||
+      __builtin_add_overflow(second_offset, row_bytes, &second_extent) ||
+      __builtin_add_overflow(first_offset, second_offset, &last_offset) ||
+      __builtin_add_overflow(last_offset, row_bytes, span))
+    return -1;
+  if (!((first_stride >= row_bytes && second_stride >= first_extent) ||
+        (second_stride >= row_bytes && first_stride >= second_extent)))
+    return 0;
+  return 1;
+}
+
+/* Returns -1 for arithmetic overflow, 0 for overlapping rows, and 1 on OK. */
+static int linear_layout_span(size_t row_bytes, uint32_t count,
+                              uint32_t stride, size_t *span) {
+  size_t last_offset;
+  if (__builtin_mul_overflow((size_t)(count - 1u), stride, &last_offset) ||
+      __builtin_add_overflow(last_offset, row_bytes, span))
+    return -1;
+  return count == 1u || stride >= row_bytes;
+}
+
+static int byte_range(const void *base, size_t bytes, byte_range_t *range) {
+  if (base == NULL || bytes == 0u ||
       __builtin_add_overflow((uintptr_t)base, bytes - 1u, &range->last))
     return 0;
   range->first = (uintptr_t)base;
   return 1;
 }
 
-static int ranges_overlap(contiguous_range_t lhs, contiguous_range_t rhs) {
+static int ranges_overlap(byte_range_t lhs, byte_range_t rhs) {
   return lhs.first <= rhs.last && rhs.first <= lhs.last;
 }
 
@@ -43,9 +82,10 @@ akv_status_t akv_attention_v2_prefill_validate(
     const akv_device_t *device,
     const akv_attention_v2_prefill_problem_t *problem,
     const akv_attention_v2_prefill_workspace_t *workspace,
-    uint32_t *past_tokens, uint32_t *maximum_prefix) {
+    uint32_t *past_tokens, uint32_t *maximum_prefix,
+    akv_attention_v2_prefill_layout_t *layout) {
   if (device == NULL || problem == NULL || workspace == NULL ||
-      past_tokens == NULL || maximum_prefix == NULL ||
+      past_tokens == NULL || maximum_prefix == NULL || layout == NULL ||
       problem->query == NULL || problem->key == NULL ||
       problem->value == NULL || problem->mask == NULL ||
       problem->output == NULL || !finite_positive_f32(problem->scale))
@@ -84,42 +124,103 @@ akv_status_t akv_attention_v2_prefill_validate(
       q_rows > AKV_MAX_Q_ROWS)
     return AKV_STATUS_SHAPE;
 
-  size_t query_rows;
-  size_t query_elements;
-  size_t kv_rows;
-  size_t kv_elements;
-  size_t mask_elements;
-  if (!multiply_size(problem->query_heads, problem->query_tokens,
-                     &query_rows) ||
-      !multiply_size(query_rows, problem->head_dim, &query_elements) ||
-      !multiply_size(problem->kv_heads, problem->kv_capacity, &kv_rows) ||
-      !multiply_size(kv_rows, problem->head_dim, &kv_elements) ||
-      !multiply_size(problem->query_tokens, problem->kv_capacity,
-                     &mask_elements))
+  size_t query_row_bytes;
+  size_t kv_row_bytes;
+  size_t mask_row_bytes;
+  size_t canonical_query_head_stride;
+  size_t canonical_kv_head_stride;
+  size_t canonical_output_token_stride;
+  if (!multiply_size(problem->head_dim, sizeof(float), &query_row_bytes) ||
+      !multiply_size(problem->head_dim, sizeof(uint16_t), &kv_row_bytes) ||
+      !multiply_size(problem->kv_capacity, sizeof(uint16_t),
+                     &mask_row_bytes) ||
+      !multiply_size(query_row_bytes, problem->query_tokens,
+                     &canonical_query_head_stride) ||
+      !multiply_size(kv_row_bytes, problem->kv_capacity,
+                     &canonical_kv_head_stride) ||
+      !multiply_size(query_row_bytes, problem->query_heads,
+                     &canonical_output_token_stride) ||
+      !resolve_stride(problem->query_token_stride_bytes, query_row_bytes,
+                      &layout->query_token_stride_bytes) ||
+      !resolve_stride(problem->query_head_stride_bytes,
+                      canonical_query_head_stride,
+                      &layout->query_head_stride_bytes) ||
+      !resolve_stride(problem->key_token_stride_bytes, kv_row_bytes,
+                      &layout->key_token_stride_bytes) ||
+      !resolve_stride(problem->key_head_stride_bytes,
+                      canonical_kv_head_stride,
+                      &layout->key_head_stride_bytes) ||
+      !resolve_stride(problem->value_token_stride_bytes, kv_row_bytes,
+                      &layout->value_token_stride_bytes) ||
+      !resolve_stride(problem->value_head_stride_bytes,
+                      canonical_kv_head_stride,
+                      &layout->value_head_stride_bytes) ||
+      !resolve_stride(problem->mask_token_stride_bytes, mask_row_bytes,
+                      &layout->mask_token_stride_bytes) ||
+      !resolve_stride(problem->output_token_stride_bytes,
+                      canonical_output_token_stride,
+                      &layout->output_token_stride_bytes))
     return AKV_STATUS_RANGE;
 
-  contiguous_range_t query_range;
-  contiguous_range_t key_range;
-  contiguous_range_t value_range;
-  contiguous_range_t mask_range;
-  contiguous_range_t output_range;
-  contiguous_range_t workspace_range;
-  if (!contiguous_range(problem->query, query_elements, sizeof(float),
-                        &query_range) ||
-      !contiguous_range(problem->key, kv_elements, sizeof(uint16_t),
-                        &key_range) ||
-      !contiguous_range(problem->value, kv_elements, sizeof(uint16_t),
-                        &value_range) ||
-      !contiguous_range(problem->mask, mask_elements, sizeof(uint16_t),
-                        &mask_range) ||
-      !contiguous_range(problem->output, query_elements, sizeof(float),
-                        &output_range) ||
-      !contiguous_range(workspace, 1u, sizeof(*workspace), &workspace_range))
+  if ((layout->query_token_stride_bytes | layout->query_head_stride_bytes |
+       layout->output_token_stride_bytes) & (sizeof(float) - 1u))
+    return AKV_STATUS_LAYOUT;
+  if ((layout->key_token_stride_bytes | layout->key_head_stride_bytes |
+       layout->value_token_stride_bytes | layout->value_head_stride_bytes) &
+      ((UINT32_C(1) << AKV_V2_PAYLOAD_ALIGNMENT_LOG2) - 1u))
+    return AKV_STATUS_LAYOUT;
+  if ((layout->mask_token_stride_bytes & (sizeof(uint16_t) - 1u)) != 0u)
+    return AKV_STATUS_LAYOUT;
+
+  size_t query_span;
+  size_t key_span;
+  size_t value_span;
+  size_t mask_span;
+  size_t output_span;
+  int layout_status = matrix_layout_span(
+      query_row_bytes, problem->query_tokens,
+      layout->query_token_stride_bytes, problem->query_heads,
+      layout->query_head_stride_bytes, &query_span);
+  if (layout_status < 0) return AKV_STATUS_RANGE;
+  if (layout_status == 0) return AKV_STATUS_LAYOUT;
+  layout_status = matrix_layout_span(
+      kv_row_bytes, problem->kv_capacity, layout->key_token_stride_bytes,
+      problem->kv_heads, layout->key_head_stride_bytes, &key_span);
+  if (layout_status < 0) return AKV_STATUS_RANGE;
+  if (layout_status == 0) return AKV_STATUS_LAYOUT;
+  layout_status = matrix_layout_span(
+      kv_row_bytes, problem->kv_capacity, layout->value_token_stride_bytes,
+      problem->kv_heads, layout->value_head_stride_bytes, &value_span);
+  if (layout_status < 0) return AKV_STATUS_RANGE;
+  if (layout_status == 0) return AKV_STATUS_LAYOUT;
+  layout_status = linear_layout_span(mask_row_bytes, problem->query_tokens,
+                                     layout->mask_token_stride_bytes,
+                                     &mask_span);
+  if (layout_status < 0) return AKV_STATUS_RANGE;
+  if (layout_status == 0) return AKV_STATUS_LAYOUT;
+  layout_status = matrix_layout_span(
+      query_row_bytes, problem->query_heads, (uint32_t)query_row_bytes,
+      problem->query_tokens, layout->output_token_stride_bytes, &output_span);
+  if (layout_status < 0) return AKV_STATUS_RANGE;
+  if (layout_status == 0) return AKV_STATUS_LAYOUT;
+
+  byte_range_t query_range;
+  byte_range_t key_range;
+  byte_range_t value_range;
+  byte_range_t mask_range;
+  byte_range_t output_range;
+  byte_range_t workspace_range;
+  if (!byte_range(problem->query, query_span, &query_range) ||
+      !byte_range(problem->key, key_span, &key_range) ||
+      !byte_range(problem->value, value_span, &value_range) ||
+      !byte_range(problem->mask, mask_span, &mask_range) ||
+      !byte_range(problem->output, output_span, &output_range) ||
+      !byte_range(workspace, sizeof(*workspace), &workspace_range))
     return AKV_STATUS_RANGE;
 
-  const contiguous_range_t read_ranges[] = {
+  const byte_range_t read_ranges[] = {
       query_range, key_range, value_range, mask_range};
-  const contiguous_range_t write_ranges[] = {output_range, workspace_range};
+  const byte_range_t write_ranges[] = {output_range, workspace_range};
   for (size_t write = 0u;
        write < sizeof(write_ranges) / sizeof(write_ranges[0]); ++write) {
     for (size_t read = 0u;
@@ -155,8 +256,9 @@ akv_status_t akv_attention_v2_prefill_validate(
     return AKV_STATUS_SHAPE;
 
   for (uint32_t token = 1u; token < problem->query_tokens; ++token) {
-    const uint16_t *const token_mask =
-        problem->mask + (size_t)token * problem->kv_capacity;
+    const uint16_t *const token_mask = (const uint16_t *)(const void *)(
+        (const char *)problem->mask +
+        (size_t)token * layout->mask_token_stride_bytes);
     const uint32_t expected_prefix = *past_tokens + token + 1u;
     for (uint32_t sequence = 0u; sequence < expected_prefix; ++sequence) {
       if (!finite_f16_bits(token_mask[sequence])) return AKV_STATUS_SHAPE;
@@ -245,20 +347,21 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
     akv_attention_v2_prefill_workspace_t *workspace) {
   uint32_t past_tokens = 0u;
   uint32_t maximum_prefix = 0u;
+  akv_attention_v2_prefill_layout_t layout;
   const akv_status_t validation = akv_attention_v2_prefill_validate(
-      device, problem, workspace, &past_tokens, &maximum_prefix);
+      device, problem, workspace, &past_tokens, &maximum_prefix, &layout);
   if (validation != AKV_STATUS_OK) return validation;
   (void)maximum_prefix;
 
   const uint32_t q_rows = problem->query_heads / problem->kv_heads;
   for (uint32_t kv_head = 0u; kv_head < problem->kv_heads; ++kv_head) {
     const uint32_t first_qhead = kv_head * q_rows;
-    const uint16_t *const key_base =
-        problem->key +
-        (size_t)kv_head * problem->kv_capacity * problem->head_dim;
-    const uint16_t *const value_base =
-        problem->value +
-        (size_t)kv_head * problem->kv_capacity * problem->head_dim;
+    const char *const key_base =
+        (const char *)problem->key +
+        (size_t)kv_head * layout.key_head_stride_bytes;
+    const char *const value_base =
+        (const char *)problem->value +
+        (size_t)kv_head * layout.value_head_stride_bytes;
 
     for (uint32_t token_start = 0u; token_start < problem->query_tokens;
          token_start += AKV_PREFILL_QUERY_BLOCK_TOKENS) {
@@ -270,10 +373,11 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
            ++local_token) {
         const uint32_t token = token_start + local_token;
         for (uint32_t head = 0u; head < q_rows; ++head) {
-          const float *const query =
-              problem->query +
-              ((size_t)(first_qhead + head) * problem->query_tokens + token) *
-                  problem->head_dim;
+          const float *const query = (const float *)(const void *)(
+              (const char *)problem->query +
+              (size_t)(first_qhead + head) *
+                  layout.query_head_stride_bytes +
+              (size_t)token * layout.query_token_stride_bytes);
           for (uint32_t dimension = 0u; dimension < problem->head_dim;
                ++dimension) {
             workspace->query[local_token][head][dimension] =
@@ -281,10 +385,11 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
           }
           workspace->maximum[local_token][head] = -INFINITY;
           workspace->sum[local_token][head] = 0.0f;
-          float *const output =
-              problem->output +
-              ((size_t)token * problem->query_heads + first_qhead + head) *
-                  problem->head_dim;
+          float *const output = (float *)(void *)(
+              (char *)problem->output +
+              (size_t)token * layout.output_token_stride_bytes +
+              (size_t)(first_qhead + head) * problem->head_dim *
+                  sizeof(float));
           memset(output, 0, (size_t)problem->head_dim * sizeof(*output));
         }
       }
@@ -303,17 +408,18 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
           if (active_prefix <= tile_start) continue;
           uint32_t active_tokens = active_prefix - tile_start;
           if (active_tokens > tile_count) active_tokens = tile_count;
-          const uint16_t *const mask =
-              problem->mask + (size_t)token * problem->kv_capacity +
-              tile_start;
+          const uint16_t *const mask = (const uint16_t *)(const void *)(
+              (const char *)problem->mask +
+              (size_t)token * layout.mask_token_stride_bytes) + tile_start;
 
           for (uint32_t head = 0u; head < q_rows; ++head) {
             float tile_maximum = -INFINITY;
             for (uint32_t sequence = 0u; sequence < active_tokens;
                  ++sequence) {
               const uint16_t *const key =
-                  key_base +
-                  (size_t)(tile_start + sequence) * problem->head_dim;
+                  (const uint16_t *)(const void *)(
+                      key_base + (size_t)(tile_start + sequence) *
+                                     layout.key_token_stride_bytes);
               float dot = 0.0f;
               for (uint32_t dimension = 0u; dimension < problem->head_dim;
                    ++dimension) {
@@ -345,18 +451,20 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
             workspace->sum[local_token][head] =
                 workspace->sum[local_token][head] * old_scale + tile_sum;
 
-            float *const output =
-                problem->output +
-                ((size_t)token * problem->query_heads + first_qhead + head) *
-                    problem->head_dim;
+            float *const output = (float *)(void *)(
+                (char *)problem->output +
+                (size_t)token * layout.output_token_stride_bytes +
+                (size_t)(first_qhead + head) * problem->head_dim *
+                    sizeof(float));
             for (uint32_t dimension = 0u; dimension < problem->head_dim;
                  ++dimension) {
               float accumulated = output[dimension] * old_scale;
               for (uint32_t sequence = 0u; sequence < active_tokens;
                    ++sequence) {
                 const uint16_t *const value =
-                    value_base +
-                    (size_t)(tile_start + sequence) * problem->head_dim;
+                    (const uint16_t *)(const void *)(
+                        value_base + (size_t)(tile_start + sequence) *
+                                         layout.value_token_stride_bytes);
                 accumulated += workspace->score[0][head][sequence] *
                                f16_to_f32(value[dimension]);
               }
@@ -372,10 +480,11 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
         for (uint32_t head = 0u; head < q_rows; ++head) {
           const float sum = workspace->sum[local_token][head];
           const float inverse = sum == 0.0f ? 0.0f : 1.0f / sum;
-          float *const output =
-              problem->output +
-              ((size_t)token * problem->query_heads + first_qhead + head) *
-                  problem->head_dim;
+          float *const output = (float *)(void *)(
+              (char *)problem->output +
+              (size_t)token * layout.output_token_stride_bytes +
+              (size_t)(first_qhead + head) * problem->head_dim *
+                  sizeof(float));
           for (uint32_t dimension = 0u; dimension < problem->head_dim;
                ++dimension)
             output[dimension] *= inverse;

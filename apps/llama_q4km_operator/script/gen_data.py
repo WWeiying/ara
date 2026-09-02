@@ -18,6 +18,7 @@ ATTENTION_TILED_RVV = 1 << 2
 ATTENTION_AKV_V2 = 1 << 3
 ATTENTION_AKV_V2_PREFILL = 1 << 4
 ATTENTION_Q64_RVV = 1 << 5
+ATTENTION_REGULAR_STRIDES = 1 << 6
 
 KIND = {
     "linear_q4": 1,
@@ -135,11 +136,13 @@ def make_spec(case_id, implementation):
                 flags |= ATTENTION_AKV_V2
             elif implementation == "akv_v2_prefill":
                 flags |= ATTENTION_AKV_V2_PREFILL
+            elif implementation == "akv_v2_prefill_strided":
+                flags |= ATTENTION_AKV_V2_PREFILL | ATTENTION_REGULAR_STRIDES
             elif implementation != "ref":
                 raise SystemExit(
                     "attention implementation must be 'ref', 'rvv', "
                     "'tiled_rvv', 'q64_rvv', 'akv', 'akv_v2', or "
-                    "'akv_v2_prefill'"
+                    "'akv_v2_prefill', or 'akv_v2_prefill_strided'"
                 )
             blobs["input_b"] = ref("key")
             blobs["input_c"] = ref("value")
@@ -166,7 +169,8 @@ def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(
             "usage: gen_data.py CASE_ID "
-            "[ref|rvv|tiled_rvv|akv|akv_v2|akv_v2_prefill]"
+            "[ref|rvv|tiled_rvv|akv|akv_v2|akv_v2_prefill|"
+            "akv_v2_prefill_strided]"
         )
     case_id = sys.argv[1]
     implementation = sys.argv[2] if len(sys.argv) == 3 else "ref"
