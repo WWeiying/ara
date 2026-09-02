@@ -241,7 +241,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
 `ifndef SPYGLASS
 `ifndef TARGET_SRAM_MC
-`ifdef TARGET_VERILATOR
+// VCS also selects Bender's verilator target; only the tool macro identifies
+// Verilator, while VCS needs reset to copy the DPI-preloaded init_val array.
+`ifdef VERILATOR
   localparam DramSimInit = "none";
 `else
   localparam DramSimInit = "random";
