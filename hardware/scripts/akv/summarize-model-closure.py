@@ -37,12 +37,24 @@ SUPPORTED_QBS_TYPES = {
     "IQ4_NL",
 }
 SUPPORTED_QBS_OPS = {"MUL_MAT", "MUL_MAT_ID"}
-PROJECTION_METHOD_VERSION = 1
+PROJECTION_METHOD_VERSION = 2
 QBS_ABI_PATH = Path(__file__).resolve().parents[3] / "config/qbs_abi.json"
 QBS_TRACE_TO_ABI_PROFILE = {"Q8_0": "Q8_0_WEIGHT"}
 F16_BYTES = 2
 F32_BYTES = 4
 AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
+AKV_PREFILL_CALIBRATION_SCHEMA_MIN = 6
+AKV_PREFILL_STRICT_COUNTER_FIELDS_MIN = 14
+AKV_PREFILL_RETAINED_STRATEGY = "akv_qblock64_q2_panel4_kv_outer"
+AKV_PREFILL_SHAPE_FIELDS = (
+    "head_dim",
+    "query_tokens",
+    "past_tokens",
+    "query_heads",
+    "kv_heads",
+    "gqa_rows",
+    "kv_capacity",
+)
 
 
 def load_qbs_abi(path: Path = QBS_ABI_PATH) -> dict[str, object]:
@@ -978,6 +990,189 @@ def describe_akv_calibration(points: list[dict[str, int]]) -> str:
     return f"piecewise AKV-v2 {kv_points} RTL"
 
 
+def _prefill_shape_key(values: dict[str, object]) -> tuple[int, ...]:
+    aliases = {"query_heads": "q_heads"}
+    return tuple(
+        int(values[field] if field in values else values[aliases[field]])
+        for field in AKV_PREFILL_SHAPE_FIELDS
+    )
+
+
+def _validate_prefill_source_hashes(
+    summary: dict[str, object],
+    summary_path: Path,
+    shape: dict[str, int],
+) -> dict[str, object]:
+    case_path = Path(str(summary.get("case", "")))
+    if not case_path.is_file():
+        raise ValueError(f"Prefill calibration case does not exist: {case_path}")
+    provenance = summary.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(f"Prefill calibration lacks provenance: {summary_path}")
+    if provenance.get("case_sha256") != sha256(case_path):
+        raise ValueError(f"Prefill calibration case hash mismatch: {summary_path}")
+
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    source_fields = {
+        "query_sha256": (
+            "input_a", "f32",
+            [shape["head_dim"], shape["query_tokens"], shape["query_heads"], 1],
+        ),
+        "key_sha256": (
+            "key", "f16",
+            [shape["head_dim"], shape["kv_capacity"], shape["kv_heads"], 1],
+        ),
+        "value_sha256": (
+            "value", "f16",
+            [shape["head_dim"], shape["kv_capacity"], shape["kv_heads"], 1],
+        ),
+        "mask_sha256": (
+            "mask", "f16",
+            [shape["kv_capacity"], shape["query_tokens"], 1, 1],
+        ),
+        "golden_sha256": (
+            "golden", "f32",
+            [shape["head_dim"] * shape["query_heads"], shape["query_tokens"], 1, 1],
+        ),
+    }
+    sources: dict[str, object] = {
+        "summary": {"path": str(summary_path.resolve()), "sha256": sha256(summary_path)},
+        "case": {"path": str(case_path.resolve()), "sha256": sha256(case_path)},
+    }
+    for hash_field, (case_field, expected_type, expected_shape) in source_fields.items():
+        relative = case.get(case_field)
+        if not isinstance(relative, str) or not relative:
+            raise ValueError(f"Prefill calibration case lacks {case_field}: {case_path}")
+        metadata_path = (case_path.parent / relative).resolve()
+        if not metadata_path.is_file():
+            raise ValueError(f"Prefill calibration metadata does not exist: {metadata_path}")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        payload = metadata_path.with_suffix(".bin")
+        if not payload.is_file():
+            raise ValueError(f"Prefill calibration payload does not exist: {payload}")
+        element_bytes = F32_BYTES if expected_type == "f32" else F16_BYTES
+        expected_strides = [element_bytes]
+        for dimension in expected_shape[:-1]:
+            expected_strides.append(expected_strides[-1] * dimension)
+        expected_nbytes = math.prod(expected_shape) * element_bytes
+        if str(metadata.get("type", "")).lower() != expected_type or \
+                [int(value) for value in metadata.get("shape", [])] != expected_shape or \
+                [int(value) for value in metadata.get("strides", [])] != expected_strides or \
+                int(metadata.get("nbytes", -1)) != expected_nbytes or \
+                payload.stat().st_size != expected_nbytes:
+            raise ValueError(f"Prefill calibration {case_field} metadata mismatch: {metadata_path}")
+        digest = sha256(payload)
+        if provenance.get(hash_field) != digest:
+            raise ValueError(f"Prefill calibration {case_field} hash mismatch: {summary_path}")
+        sources[case_field] = {
+            "metadata_path": str(metadata_path),
+            "metadata_sha256": sha256(metadata_path),
+            "payload_path": str(payload.resolve()),
+            "payload_sha256": digest,
+        }
+    return sources
+
+
+def load_akv_prefill_calibration(paths: Iterable[Path]) -> list[dict[str, object]]:
+    points: list[dict[str, object]] = []
+    keys: set[tuple[int, ...]] = set()
+    for path in paths:
+        path = path.resolve()
+        if not path.is_file():
+            raise ValueError(f"Prefill calibration summary does not exist: {path}")
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if int(summary.get("schema_version", 0)) < AKV_PREFILL_CALIBRATION_SCHEMA_MIN or summary.get("status") != "PASS":
+            raise ValueError(f"Prefill calibration is not a passing schema-v6 summary: {path}")
+
+        shape = summary.get("shape")
+        work = summary.get("work")
+        if not isinstance(shape, dict) or not isinstance(work, dict):
+            raise ValueError(f"Prefill calibration lacks shape/work accounting: {path}")
+        try:
+            key = _prefill_shape_key(shape)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Prefill calibration has an incomplete shape: {path}") from error
+        shape_values = dict(zip(AKV_PREFILL_SHAPE_FIELDS, key))
+        positive_shape_fields = set(AKV_PREFILL_SHAPE_FIELDS) - {"past_tokens"}
+        if any(shape_values[field] <= 0 for field in positive_shape_fields) or \
+                shape_values["past_tokens"] < 0 or int(shape.get("batch", 0)) != 1:
+            raise ValueError(f"Prefill calibration has an invalid shape: {path}")
+        if shape_values["query_heads"] != shape_values["kv_heads"] * shape_values["gqa_rows"] or \
+                shape_values["past_tokens"] + shape_values["query_tokens"] > shape_values["kv_capacity"]:
+            raise ValueError(f"Prefill calibration shape identities are inconsistent: {path}")
+        expected_prefixes = list(
+            range(
+                shape_values["past_tokens"] + 1,
+                shape_values["past_tokens"] + shape_values["query_tokens"] + 1,
+            )
+        )
+        if shape.get("active_prefixes") != expected_prefixes:
+            raise ValueError(f"Prefill calibration causal prefixes are inconsistent: {path}")
+        expected_pairs = shape_values["query_heads"] * sum(expected_prefixes)
+        expected_macs = 2 * expected_pairs * shape_values["head_dim"]
+        if int(work.get("active_query_head_kv_pairs", -1)) != expected_pairs or \
+                int(work.get("attention_macs", -1)) != expected_macs:
+            raise ValueError(f"Prefill calibration mathematical work is inconsistent: {path}")
+        if shape_values["head_dim"] != 128 or shape_values["gqa_rows"] != 6:
+            raise ValueError(
+                f"retained Panel4 calibration requires D128/GQA6, got "
+                f"D{shape_values['head_dim']}/GQA{shape_values['gqa_rows']}: {path}"
+            )
+
+        sources = _validate_prefill_source_hashes(summary, path, shape_values)
+        measurements = summary.get("measurements")
+        if not isinstance(measurements, list):
+            raise ValueError(f"Prefill calibration lacks measurements: {path}")
+        retained = [
+            measurement
+            for measurement in measurements
+            if isinstance(measurement, dict)
+            and measurement.get("strategy") == AKV_PREFILL_RETAINED_STRATEGY
+        ]
+        if len(retained) != 1:
+            raise ValueError(f"Prefill calibration must contain one retained Panel4 measurement: {path}")
+        measurement = retained[0]
+        if int(measurement.get("cycles", 0)) <= 0 or int(measurement.get("mismatches", -1)) != 0 or \
+                measurement.get("strict_counter_status") != "PASS" or \
+                int(measurement.get("strict_counter_checked_fields", 0)) < AKV_PREFILL_STRICT_COUNTER_FIELDS_MIN:
+            raise ValueError(f"Prefill calibration measurement is not strict PASS: {path}")
+
+        log_path = Path(str(measurement.get("log", "")))
+        if not log_path.is_file() or measurement.get("log_sha256") != sha256(log_path):
+            raise ValueError(f"Prefill calibration log provenance mismatch: {path}")
+        matches = OPERATOR_RE.findall(log_path.read_text(errors="replace"))
+        if len(matches) != 1:
+            raise ValueError(f"Prefill calibration log has no unique operator result: {log_path}")
+        case_name, status, cycles, mismatches = matches[0]
+        if status != "PASS" or int(mismatches) != 0 or int(cycles) != int(measurement["cycles"]) or \
+                case_name != measurement.get("case_name"):
+            raise ValueError(f"Prefill calibration log/result mismatch: {path}")
+        if key in keys:
+            raise ValueError(f"duplicate exact Prefill calibration shape: {key}")
+        keys.add(key)
+        sources["log"] = {"path": str(log_path.resolve()), "sha256": sha256(log_path)}
+        points.append(
+            {
+                **shape_values,
+                "batch": 1,
+                "strategy": AKV_PREFILL_RETAINED_STRATEGY,
+                "cycles": int(measurement["cycles"]),
+                "case_name": case_name,
+                "attention_pairs": expected_pairs,
+                "attention_macs": expected_macs,
+                "source": sources,
+            }
+        )
+    return sorted(points, key=_prefill_shape_key)
+
+
+def exact_akv_prefill_point(
+    call: dict[str, object], points: list[dict[str, object]]
+) -> dict[str, object] | None:
+    call_key = _prefill_shape_key(call)
+    return next((point for point in points if _prefill_shape_key(point) == call_key), None)
+
+
 def load_rvv_calibration(
     directories: Iterable[Path],
 ) -> tuple[dict[str, int], list[dict[str, object]]]:
@@ -1070,8 +1265,10 @@ def cycle_projection(
     akv_points: list[dict[str, int]],
     rvv_points: dict[str, int],
     qbs_lifetime: dict[str, object] | None = None,
+    akv_prefill_points: list[dict[str, object]] | None = None,
 ):
     rows: list[dict[str, object]] = []
+    akv_prefill_points = akv_prefill_points or []
     akv_calibration = describe_akv_calibration(akv_points)
     eliminated = Counter()
     if qbs_lifetime is not None:
@@ -1135,6 +1332,23 @@ def cycle_projection(
     for call in akv_rows:
         accelerated_flash_nodes[(int(call["graph_id"]), str(call["phase"]))] += int(call["calls"])
         if call["mode"] == "prefill":
+            point = exact_akv_prefill_point(call, akv_prefill_points)
+            if point is not None:
+                rows.append(
+                    {
+                        "phase": call["phase"],
+                        "category": "akv_v2_prefill",
+                        "detail": (
+                            f"AKV-v2 Prefill D{call['head_dim']} M{call['query_tokens']} "
+                            f"P{call['past_tokens']} Hq{call['q_heads']} Hkv{call['kv_heads']}"
+                        ),
+                        "instances": call["calls"],
+                        "projected_cycles": int(point["cycles"]) * int(call["calls"]),
+                        "calibration": point["case_name"],
+                        "basis": "exact shape-matched full-operator Prefill RTL x dynamic call count",
+                    }
+                )
+                continue
             rows.append(
                 {
                     "phase": call["phase"],
@@ -1621,6 +1835,13 @@ def main() -> None:
         default=root / "hardware/llama_attention_runs_akv_v2/attention_core_summary.csv",
     )
     parser.add_argument(
+        "--akv-prefill-calibration",
+        type=Path,
+        action="append",
+        default=[],
+        help="strict analyze_prefill_attention.py summary; repeat for exact full-operator RTL points",
+    )
+    parser.add_argument(
         "--rvv-calibration-dir",
         type=Path,
         action="append",
@@ -1708,6 +1929,7 @@ def main() -> None:
 
     qbs_points = load_qbs_calibration(args.qbs_calibration)
     akv_points = load_akv_calibration(args.akv_calibration)
+    akv_prefill_points = load_akv_prefill_calibration(args.akv_prefill_calibration)
     rvv_directories = args.rvv_calibration_dir or default_rvv_calibration_dirs(root)
     rvv_points, rvv_sources = load_rvv_calibration(rvv_directories)
     projection_rows = cycle_projection(
@@ -1718,6 +1940,7 @@ def main() -> None:
         akv_points,
         rvv_points,
         qbs_lifetime,
+        akv_prefill_points,
     )
     incomplete = {
         str(row["phase"])
@@ -1774,10 +1997,12 @@ def main() -> None:
             },
             "qbs": {"path": str(args.qbs_calibration.resolve()), "sha256": sha256(args.qbs_calibration)},
             "akv": {"path": str(args.akv_calibration.resolve()), "sha256": sha256(args.akv_calibration)},
+            "akv_prefill": [point["source"] for point in akv_prefill_points],
             "rvv": rvv_sources,
         },
         "qbs_points": qbs_points,
         "akv_points": akv_points,
+        "akv_prefill_points": akv_prefill_points,
         "rvv_points": rvv_points,
     }
     (output / "calibration_snapshot.json").write_text(json.dumps(calibration_snapshot, indent=2) + "\n")
