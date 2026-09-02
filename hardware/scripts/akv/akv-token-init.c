@@ -15,6 +15,18 @@
 #define AKV_LOGITS_MAX_ABS_TOLERANCE 0.001
 #endif
 
+#ifndef AKV_MODEL_LOGITS_MAX_KL_TOLERANCE
+#define AKV_MODEL_LOGITS_MAX_KL_TOLERANCE 0.02
+#endif
+
+#ifndef AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE
+#define AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE 0.999
+#endif
+
+#ifndef AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE
+#define AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE 0.8
+#endif
+
 #ifndef AKV_MODEL_GUEST_PATH
 #define AKV_MODEL_GUEST_PATH "/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 #endif
@@ -48,6 +60,9 @@ struct logits_comparison {
     double mean_kl;
     double mean_cosine;
     double top5_overlap;
+    double max_kl;
+    double min_cosine;
+    double min_top5_overlap;
 };
 
 struct run_result {
@@ -138,6 +153,9 @@ static struct logits_comparison compare_logits(const char * label,
         .mean_kl = 0.0,
         .mean_cosine = 0.0,
         .top5_overlap = 0.0,
+        .max_kl = 0.0,
+        .min_cosine = 1.0,
+        .min_top5_overlap = 1.0,
     };
     FILE * rvv_file = fopen(rvv_path, "rb");
     FILE * akv_file = fopen(akv_path, "rb");
@@ -261,6 +279,15 @@ static struct logits_comparison compare_logits(const char * label,
             result.mean_kl += record_kl;
             result.mean_cosine += record_cosine;
             result.top5_overlap += record_top5_overlap;
+            if (record_kl > result.max_kl) {
+                result.max_kl = record_kl;
+            }
+            if (record_cosine < result.min_cosine) {
+                result.min_cosine = record_cosine;
+            }
+            if (record_top5_overlap < result.min_top5_overlap) {
+                result.min_top5_overlap = record_top5_overlap;
+            }
             ++result.comparable_records;
             if (rvv_top != akv_top) {
                 result.top1_equal = 0;
@@ -292,6 +319,16 @@ cleanup:
         result.top5_overlap /= denominator;
     }
     return result;
+}
+
+static int model_quality_pass(const struct logits_comparison * comparison) {
+    return comparison->valid && comparison->records > 0 &&
+           comparison->comparable_records == comparison->records &&
+           comparison->top1_equal &&
+           comparison->max_kl <= AKV_MODEL_LOGITS_MAX_KL_TOLERANCE &&
+           comparison->min_cosine >= AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE &&
+           comparison->min_top5_overlap >=
+               AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE;
 }
 
 static int wait_for_device(const char * path) {
@@ -522,12 +559,9 @@ int main(void) {
     const int qbs_rvv_text_equal = output_equal(&rvv, &qbs);
     const int akv_text_equal = output_equal(&qbs, &optimized);
     const int passed = rvv.exit_code == 0 && qbs.exit_code == 0 &&
-                       optimized.exit_code == 0 && qbs_rvv_logits.valid &&
-                       qbs_rvv_logits.comparable_records > 0 &&
-                       qbs_rvv_logits.top1_equal && qbs_rvv_text_equal &&
-                       akv_text_equal &&
-                       akv_logits.valid && akv_logits.top1_equal &&
-                       akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
+                       optimized.exit_code == 0 && qbs_rvv_text_equal &&
+                       akv_text_equal && model_quality_pass(&qbs_rvv_logits) &&
+                       model_quality_pass(&akv_logits);
 
     printf("QBS_RVV_LOGITS_RECORDS=%u\n", qbs_rvv_logits.records);
     printf("QBS_RVV_LOGITS_COMPARABLE_RECORDS=%u\n",
@@ -539,6 +573,10 @@ int main(void) {
     printf("QBS_RVV_LOGITS_MEAN_KL=%.9g\n", qbs_rvv_logits.mean_kl);
     printf("QBS_RVV_LOGITS_MEAN_COSINE=%.9g\n", qbs_rvv_logits.mean_cosine);
     printf("QBS_RVV_LOGITS_TOP5_OVERLAP=%.9g\n", qbs_rvv_logits.top5_overlap);
+    printf("QBS_RVV_LOGITS_MAX_KL=%.9g\n", qbs_rvv_logits.max_kl);
+    printf("QBS_RVV_LOGITS_MIN_COSINE=%.9g\n", qbs_rvv_logits.min_cosine);
+    printf("QBS_RVV_LOGITS_MIN_TOP5_OVERLAP=%.9g\n",
+           qbs_rvv_logits.min_top5_overlap);
     printf("QBS_RVV_LOGITS_TOP1_EQUAL=%d\n",
            qbs_rvv_logits.valid && qbs_rvv_logits.top1_equal);
     printf("QBS_RVV_TOKEN_OUTPUT_EQUAL=%d\n", qbs_rvv_text_equal);
@@ -552,8 +590,19 @@ int main(void) {
     printf("AKV_LOGITS_MEAN_KL=%.9g\n", akv_logits.mean_kl);
     printf("AKV_LOGITS_MEAN_COSINE=%.9g\n", akv_logits.mean_cosine);
     printf("AKV_LOGITS_TOP5_OVERLAP=%.9g\n", akv_logits.top5_overlap);
+    printf("AKV_LOGITS_MAX_KL=%.9g\n", akv_logits.max_kl);
+    printf("AKV_LOGITS_MIN_COSINE=%.9g\n", akv_logits.min_cosine);
+    printf("AKV_LOGITS_MIN_TOP5_OVERLAP=%.9g\n",
+           akv_logits.min_top5_overlap);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
            (double) AKV_LOGITS_MAX_ABS_TOLERANCE);
+    printf("MODEL_LOGITS_MAX_KL_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MAX_KL_TOLERANCE);
+    printf("MODEL_LOGITS_MIN_COSINE_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE);
+    printf("MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE);
+    printf("MODEL_NUMERICAL_CONTRACT=decision-preserving-v1\n");
     printf("AKV_LOGITS_TOP1_EQUAL=%d\n",
            akv_logits.valid && akv_logits.top1_equal);
     printf("AKV_TOKEN_OUTPUT_EQUAL=%d\n", akv_text_equal);

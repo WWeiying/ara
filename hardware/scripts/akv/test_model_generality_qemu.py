@@ -34,6 +34,10 @@ def summary(
                 "MODEL_PROMPT": "test prompt",
                 "MODEL_TOKENS": "2",
                 "LOGITS_MAX_ABS_TOLERANCE": "0.001",
+                "MODEL_NUMERICAL_CONTRACT": "decision-preserving-v1",
+                "MODEL_LOGITS_MAX_KL_TOLERANCE": "0.02",
+                "MODEL_LOGITS_MIN_COSINE_TOLERANCE": "0.999",
+                "MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE": "0.8",
                 "REQUIRE_PREFILL": "1" if executed_prefill else "0",
             }
         },
@@ -52,6 +56,9 @@ def summary(
                 "AKV_LOGITS_MEAN_KL": "0",
                 "AKV_LOGITS_MEAN_COSINE": "1",
                 "AKV_LOGITS_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_MAX_KL": "0",
+                "AKV_LOGITS_MIN_COSINE": "1",
+                "AKV_LOGITS_MIN_TOP5_OVERLAP": "1",
                 "AKV_LOGITS_TOP1_EQUAL": "1",
             },
             "qbs_rvv": {
@@ -64,8 +71,11 @@ def summary(
                 "QBS_RVV_LOGITS_MEAN_ABS": "0.1",
                 "QBS_RVV_LOGITS_MEAN_RMSE": "0.12",
                 "QBS_RVV_LOGITS_MEAN_KL": "0.01",
-                "QBS_RVV_LOGITS_MEAN_COSINE": "0.99",
+                "QBS_RVV_LOGITS_MEAN_COSINE": "0.9995",
                 "QBS_RVV_LOGITS_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_MAX_KL": "0.01",
+                "QBS_RVV_LOGITS_MIN_COSINE": "0.9995",
+                "QBS_RVV_LOGITS_MIN_TOP5_OVERLAP": "1",
             },
         },
         "qbs": {
@@ -179,11 +189,10 @@ class ModelGeneralityQemuTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "coverage is incomplete"):
             MODULE.qemu_metrics(value, "execute")
 
-    def test_akv_logits_tolerance_is_enforced(self):
+    def test_akv_model_quality_contract_is_enforced(self):
         value = summary(2, 0)
-        value["functional"]["logits_max_abs"] = "0.002"
-        value["functional"]["akv_qbs"]["AKV_LOGITS_MAX_ABS"] = "0.002"
-        with self.assertRaisesRegex(ValueError, "functional or numerical"):
+        value["functional"]["akv_qbs"]["AKV_LOGITS_MAX_KL"] = "0.021"
+        with self.assertRaisesRegex(ValueError, "AKV/QBS model-quality"):
             MODULE.qemu_metrics(value, "execute")
 
     def test_stale_model_summary_is_rejected(self):

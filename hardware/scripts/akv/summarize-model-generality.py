@@ -564,6 +564,11 @@ def main() -> int:
             "qemu_qbs_logits_mean_kl": metrics["qbs_logits_mean_kl"],
             "qemu_qbs_logits_mean_cosine": metrics["qbs_logits_mean_cosine"],
             "qemu_qbs_logits_top5_overlap": metrics["qbs_logits_top5_overlap"],
+            "qemu_qbs_logits_max_kl": metrics["qbs_logits_max_kl"],
+            "qemu_qbs_logits_min_cosine": metrics["qbs_logits_min_cosine"],
+            "qemu_qbs_logits_min_top5_overlap": metrics[
+                "qbs_logits_min_top5_overlap"
+            ],
             "qemu_akv_executed_ops": metrics["akv_executed_ops"],
             "qemu_akv_executed_decode": metrics["akv_executed_decode"],
             "qemu_akv_executed_prefill": metrics["akv_executed_prefill"],
@@ -586,7 +591,22 @@ def main() -> int:
             "qemu_akv_logits_mean_kl": metrics["akv_logits_mean_kl"],
             "qemu_akv_logits_mean_cosine": metrics["akv_logits_mean_cosine"],
             "qemu_akv_logits_top5_overlap": metrics["akv_logits_top5_overlap"],
+            "qemu_akv_logits_max_kl": metrics["akv_logits_max_kl"],
+            "qemu_akv_logits_min_cosine": metrics["akv_logits_min_cosine"],
+            "qemu_akv_logits_min_top5_overlap": metrics[
+                "akv_logits_min_top5_overlap"
+            ],
             "qemu_akv_logits_tolerance": metrics["akv_logits_tolerance"],
+            "qemu_model_numerical_contract": metrics["model_numerical_contract"],
+            "qemu_model_logits_max_kl_tolerance": metrics[
+                "model_logits_max_kl_tolerance"
+            ],
+            "qemu_model_logits_min_cosine_tolerance": metrics[
+                "model_logits_min_cosine_tolerance"
+            ],
+            "qemu_model_logits_min_top5_overlap_tolerance": metrics[
+                "model_logits_min_top5_overlap_tolerance"
+            ],
             "qemu_llama_revision": metrics["llama_revision"],
             "qemu_llama_binary_sha256": metrics["llama_binary_sha256"],
             "qemu_binary_sha256": metrics["qemu_binary_sha256"],
@@ -613,6 +633,19 @@ def main() -> int:
     qemu_akv_logits_tolerances = {
         float(row["qemu_akv_logits_tolerance"]) for row in model_rows
     }
+    qemu_model_contracts = {
+        str(row["qemu_model_numerical_contract"]) for row in model_rows
+    }
+    qemu_model_max_kl_tolerances = {
+        float(row["qemu_model_logits_max_kl_tolerance"]) for row in model_rows
+    }
+    qemu_model_min_cosine_tolerances = {
+        float(row["qemu_model_logits_min_cosine_tolerance"]) for row in model_rows
+    }
+    qemu_model_min_top5_tolerances = {
+        float(row["qemu_model_logits_min_top5_overlap_tolerance"])
+        for row in model_rows
+    }
     if "" in qemu_llama_binaries or len(qemu_llama_binaries) != 1:
         raise ValueError("QEMU model runs do not share one recorded llama binary")
     if "" in qemu_binaries or len(qemu_binaries) != 1:
@@ -627,6 +660,12 @@ def main() -> int:
         raise ValueError("QEMU model runs do not share one QBS architecture version")
     if len(qemu_akv_logits_tolerances) != 1:
         raise ValueError("QEMU model runs do not share one AKV logits tolerance")
+    if qemu_model_contracts != {"decision-preserving-v1"}:
+        raise ValueError("QEMU model runs do not share the expected numerical contract")
+    if len(qemu_model_max_kl_tolerances) != 1 or \
+            len(qemu_model_min_cosine_tolerances) != 1 or \
+            len(qemu_model_min_top5_tolerances) != 1:
+        raise ValueError("QEMU model runs do not share model-quality thresholds")
 
     aggregate = {
         "model_count": len(model_rows),
@@ -674,6 +713,14 @@ def main() -> int:
         "qbs_abi_sha256": next(iter(qemu_qbs_abi_hashes)),
         "qbs_architecture_version": next(iter(qemu_qbs_architecture_versions)),
         "akv_logits_tolerance": next(iter(qemu_akv_logits_tolerances)),
+        "model_numerical_contract": next(iter(qemu_model_contracts)),
+        "model_logits_max_kl_tolerance": next(iter(qemu_model_max_kl_tolerances)),
+        "model_logits_min_cosine_tolerance": next(
+            iter(qemu_model_min_cosine_tolerances)
+        ),
+        "model_logits_min_top5_overlap_tolerance": next(
+            iter(qemu_model_min_top5_tolerances)
+        ),
         "qemu_llama_revisions": sorted({
             str(row["qemu_llama_revision"]) for row in model_rows
         }),

@@ -2,6 +2,9 @@
 set -euo pipefail
 
 max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
+model_max_kl_tolerance=${AKV_MODEL_LOGITS_MAX_KL_TOLERANCE:-0.02}
+model_min_cosine_tolerance=${AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:-0.999}
+model_min_top5_overlap_tolerance=${AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE:-0.8}
 model_mode=${AKV_MODEL_MODE:-akv-v1}
 default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
 model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
@@ -14,6 +17,55 @@ number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
 grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
   printf 'invalid AKV_LOGITS_MAX_ABS_TOLERANCE: %s\n' "${max_abs_tolerance}" >&2
   exit 2
+}
+for metric in \
+  "AKV_MODEL_LOGITS_MAX_KL_TOLERANCE:${model_max_kl_tolerance}" \
+  "AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:${model_min_cosine_tolerance}" \
+  "AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE:${model_min_top5_overlap_tolerance}"; do
+  name=${metric%%:*}
+  value=${metric#*:}
+  grep -Eq "${number_re}" <<< "${value}" || {
+    printf 'invalid %s: %s\n' "${name}" "${value}" >&2
+    exit 2
+  }
+done
+awk -v value="${model_min_cosine_tolerance}" \
+  'BEGIN { exit !((value + 0.0) >= 0.0 && (value + 0.0) <= 1.0) }' || {
+  printf 'AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE must be in [0,1]\n' >&2
+  exit 2
+}
+awk -v value="${model_min_top5_overlap_tolerance}" \
+  'BEGIN { exit !((value + 0.0) >= 0.0 && (value + 0.0) <= 1.0) }' || {
+  printf 'AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE must be in [0,1]\n' >&2
+  exit 2
+}
+
+metric_value() {
+  local log_file=$1
+  local key=$2
+  sed -n "s/^${key}=//p" "${log_file}" | tr -d '\r' | tail -n 1
+}
+
+require_metric_le() {
+  local log_file=$1
+  local key=$2
+  local limit=$3
+  local value
+  value=$(metric_value "${log_file}" "${key}")
+  grep -Eq "${number_re}" <<< "${value}"
+  awk -v value="${value}" -v limit="${limit}" \
+    'BEGIN { exit !((value + 0.0) <= (limit + 0.0)) }'
+}
+
+require_metric_ge() {
+  local log_file=$1
+  local key=$2
+  local limit=$3
+  local value
+  value=$(metric_value "${log_file}" "${key}")
+  grep -Eq "${number_re}" <<< "${value}"
+  awk -v value="${value}" -v limit="${limit}" \
+    'BEGIN { exit !((value + 0.0) >= (limit + 0.0)) }'
 }
 
 validate_log() {
@@ -179,12 +231,30 @@ validate_log() {
   grep -q 'AKV_TOKEN_OUTPUT_EQUAL=1' "${log_file}"
   grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
 
-  max_abs=$(sed -n 's/^AKV_LOGITS_MAX_ABS=//p' "${log_file}" | tr -d '\r' | tail -n 1)
-  grep -Eq "${number_re}" <<< "${max_abs}"
-  awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
-    'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
+  if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
+    for prefix in QBS_RVV AKV; do
+      local records
+      local comparable_records
+      records=$(metric_value "${log_file}" "${prefix}_LOGITS_RECORDS")
+      comparable_records=$(metric_value "${log_file}" "${prefix}_LOGITS_COMPARABLE_RECORDS")
+      [[ ${records} =~ ^[1-9][0-9]*$ && ${records} == "${comparable_records}" ]]
+      require_metric_le "${log_file}" "${prefix}_LOGITS_MAX_KL" \
+        "${model_max_kl_tolerance}"
+      require_metric_ge "${log_file}" "${prefix}_LOGITS_MIN_COSINE" \
+        "${model_min_cosine_tolerance}"
+      require_metric_ge "${log_file}" "${prefix}_LOGITS_MIN_TOP5_OVERLAP" \
+        "${model_min_top5_overlap_tolerance}"
+    done
+    grep -q '^MODEL_NUMERICAL_CONTRACT=decision-preserving-v1$' "${log_file}"
+  fi
+  if [[ ${model_mode} != combined ]]; then
+    max_abs=$(metric_value "${log_file}" AKV_LOGITS_MAX_ABS)
+    grep -Eq "${number_re}" <<< "${max_abs}"
+    awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
+      'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
+  fi
 
-  grep -E '^(GGML_RISCV_(QBS_(COVERAGE|EXEC)|AKV_(COVERAGE|EXEC))|QBS_RVV_|AKV_LOGITS_|AKV_TOKEN_(RUN_EXIT|OUTPUT_EQUAL)|LLAMA_GUEST_EXIT)' \
+  grep -E '^(GGML_RISCV_(QBS_(COVERAGE|EXEC)|AKV_(COVERAGE|EXEC))|QBS_RVV_|AKV_LOGITS_|MODEL_(LOGITS|NUMERICAL)|AKV_TOKEN_(RUN_EXIT|OUTPUT_EQUAL)|LLAMA_GUEST_EXIT)' \
     "${log_file}" | tr -d '\r' > "${result_file}"
   printf 'AKV_MODEL_PROMPT_TOKENS=%s\n' "${prompt_token_count}" >> "${result_file}"
 }
@@ -213,6 +283,15 @@ write_manifest() {
     printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
+    printf 'MODEL_LOGITS_MAX_KL_TOLERANCE=%s\n' "${model_max_kl_tolerance}"
+    printf 'MODEL_LOGITS_MIN_COSINE_TOLERANCE=%s\n' "${model_min_cosine_tolerance}"
+    printf 'MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=%s\n' \
+      "${model_min_top5_overlap_tolerance}"
+    if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
+      printf 'MODEL_NUMERICAL_CONTRACT=decision-preserving-v1\n'
+    else
+      printf 'MODEL_NUMERICAL_CONTRACT=exact-max-abs-v1\n'
+    fi
   } > "${manifest_file}"
 }
 
@@ -318,6 +397,9 @@ fi
 "${CROSS_BIN}/riscv64-linux-gcc" \
   -march=rv64gc -mabi=lp64d -O2 -static \
   "-DAKV_LOGITS_MAX_ABS_TOLERANCE=${max_abs_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MAX_KL_TOLERANCE=${model_max_kl_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE=${model_min_cosine_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=${model_min_top5_overlap_tolerance}" \
   "-DAKV_MODEL_GUEST_PATH=\"${model_guest_path}\"" \
   "-DAKV_MODEL_TOKENS=\"${model_tokens}\"" \
   "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \

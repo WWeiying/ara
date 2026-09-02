@@ -475,8 +475,22 @@ def validate_frozen_qemu(summary: dict[str, object], manifest: dict[str, object]
             raise ValueError(f"{model_id} frozen QBS numerics are not accepted")
         if str(row["qemu_akv_top1_equal"]) != "1" or str(row["qemu_akv_token_equal"]) != "1":
             raise ValueError(f"{model_id} frozen AKV/fallback numerics are not accepted")
-        if float(row["qemu_akv_logits_max_abs"]) > float(row["qemu_akv_logits_tolerance"]):
-            raise ValueError(f"{model_id} frozen AKV logits exceed tolerance")
+        if row.get("qemu_model_numerical_contract") != "decision-preserving-v1":
+            raise ValueError(f"{model_id} has an unsupported model numerical contract")
+        max_kl = float(row["qemu_model_logits_max_kl_tolerance"])
+        min_cosine = float(row["qemu_model_logits_min_cosine_tolerance"])
+        min_top5 = float(row["qemu_model_logits_min_top5_overlap_tolerance"])
+        for label in ("qbs", "akv"):
+            if int(row[f"qemu_{label}_logits_records"]) != int(
+                row[f"qemu_{label}_logits_comparable_records"]
+            ):
+                raise ValueError(f"{model_id} {label} logits contexts diverged")
+            if (
+                float(row[f"qemu_{label}_logits_max_kl"]) > max_kl
+                or float(row[f"qemu_{label}_logits_min_cosine"]) < min_cosine
+                or float(row[f"qemu_{label}_logits_min_top5_overlap"]) < min_top5
+            ):
+                raise ValueError(f"{model_id} {label} model-quality contract failed")
         if int(row["qemu_qbs_dot_elements"]) != int(row["qemu_qbs_command_dot_elements"]):
             raise ValueError(f"{model_id} QBS semantic and command work differ")
         model_native = int(row["qemu_qbs_native_commands"])

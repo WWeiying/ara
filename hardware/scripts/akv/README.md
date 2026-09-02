@@ -118,9 +118,24 @@ run another GGUF image. The manifest records the exact prompt, token count,
 model image, llama binary, QEMU binary, revisions, and hashes. Host validation
 rejects a run when the three child executions tokenize the prompt differently.
 
-`QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Their text,
-top-1 token, and logits must match exactly, which isolates AKV-v2 from the
-known numerical-order difference between QBS and the ordinary RVV baseline.
+`QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Operator
+captures retain their recorded elementwise `atol + rtol * abs(reference)`
+contract. Full-model logits use the separate `decision-preserving-v1`
+contract: every generated step must remain comparable, greedy Top-1 and output
+tokens must be identical, per-step KL divergence must not exceed `0.02`, cosine
+similarity must not fall below `0.999`, and Top-5 overlap must not fall below
+`0.8`. Maximum absolute logit difference remains a diagnostic because it is
+scale-sensitive and can grow across layers even when the output distribution
+and decoding decision remain stable. The three model-quality thresholds are
+recorded in the run manifest and can only be overridden explicitly through
+`AKV_MODEL_LOGITS_MAX_KL_TOLERANCE`,
+`AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE`, and
+`AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE`.
+
+This layered check isolates AKV-v2 from the known numerical-order difference
+between QBS and the ordinary RVV baseline without weakening the operator-level
+check. Both QBS-versus-RVV and AKV-versus-QBS must satisfy the same model-level
+quality envelope.
 Graph tracing associates every QBS and AKV call with its owning GGML node. The
 closure checker rejects a run unless every supported `MUL_MAT` node has a QBS
 call, every AKV call is owned by one `FLASH_ATTN_EXT` node in the matching

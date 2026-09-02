@@ -65,6 +65,9 @@ NUMERICAL_METRIC_SUFFIXES = (
     "LOGITS_MEAN_KL",
     "LOGITS_MEAN_COSINE",
     "LOGITS_TOP5_OVERLAP",
+    "LOGITS_MAX_KL",
+    "LOGITS_MIN_COSINE",
+    "LOGITS_MIN_TOP5_OVERLAP",
     "LOGITS_TOP1_EQUAL",
 )
 
@@ -152,17 +155,23 @@ def validate_numerical_metrics(values: dict[str, str], prefix: str) -> None:
         "LOGITS_MEAN_ABS",
         "LOGITS_MEAN_RMSE",
         "LOGITS_MEAN_KL",
+        "LOGITS_MAX_KL",
     )
     for suffix in nonnegative:
         value = float(values[f"{prefix}_{suffix}"])
         if not math.isfinite(value) or value < 0.0:
             raise ValueError(f"{prefix}_{suffix} is not finite and nonnegative")
-    cosine = float(values[f"{prefix}_LOGITS_MEAN_COSINE"])
-    overlap = float(values[f"{prefix}_LOGITS_TOP5_OVERLAP"])
-    if not math.isfinite(cosine) or not -1.0 <= cosine <= 1.0:
-        raise ValueError(f"{prefix}_LOGITS_MEAN_COSINE is outside [-1, 1]")
-    if not math.isfinite(overlap) or not 0.0 <= overlap <= 1.0:
-        raise ValueError(f"{prefix}_LOGITS_TOP5_OVERLAP is outside [0, 1]")
+    bounded = (
+        "LOGITS_MEAN_COSINE",
+        "LOGITS_MIN_COSINE",
+        "LOGITS_TOP5_OVERLAP",
+        "LOGITS_MIN_TOP5_OVERLAP",
+    )
+    for suffix in bounded:
+        value = float(values[f"{prefix}_{suffix}"])
+        lower = -1.0 if "COSINE" in suffix else 0.0
+        if not math.isfinite(value) or not lower <= value <= 1.0:
+            raise ValueError(f"{prefix}_{suffix} is outside [{lower:g}, 1]")
 
 
 def sha256(path: Path) -> str:

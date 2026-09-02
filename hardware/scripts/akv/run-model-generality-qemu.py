@@ -47,7 +47,8 @@ RESULT_FIELDS = (
     "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_records",
     "qbs_logits_comparable_records", "qbs_logits_max_abs", "qbs_logits_max_rel",
     "qbs_logits_mean_abs", "qbs_logits_mean_rmse", "qbs_logits_mean_kl",
-    "qbs_logits_mean_cosine", "qbs_logits_top5_overlap", "akv_candidate_ops",
+    "qbs_logits_mean_cosine", "qbs_logits_top5_overlap", "qbs_logits_max_kl",
+    "qbs_logits_min_cosine", "qbs_logits_min_top5_overlap", "akv_candidate_ops",
     "akv_executed_ops", "akv_executed_decode", "akv_executed_prefill",
     "akv_prefill_query_tokens", "akv_prefill_attention_pairs",
     "akv_fallback_ops", "akv_fallback_shape", "akv_fastpath_status",
@@ -55,10 +56,14 @@ RESULT_FIELDS = (
     "akv_token_output_equal", "akv_logits_records", "akv_logits_comparable_records",
     "akv_logits_max_abs", "akv_logits_max_rel", "akv_logits_mean_abs",
     "akv_logits_mean_rmse", "akv_logits_mean_kl", "akv_logits_mean_cosine",
-    "akv_logits_top5_overlap", "llama_revision",
+    "akv_logits_top5_overlap", "akv_logits_max_kl", "akv_logits_min_cosine",
+    "akv_logits_min_top5_overlap", "llama_revision",
     "llama_binary_sha256", "qemu_binary_sha256", "qemu_cpu", "model_prompt",
     "model_tokens", "qbs_activation_accounting", "qbs_activation_unresolved_nodes",
     "qbs_abi_sha256", "qbs_architecture_version", "akv_logits_tolerance",
+    "model_numerical_contract", "model_logits_max_kl_tolerance",
+    "model_logits_min_cosine_tolerance",
+    "model_logits_min_top5_overlap_tolerance",
     "artifact", "dynamic_summary",
 )
 
@@ -98,6 +103,9 @@ def quality_metrics(values: dict[str, str], prefix: str) -> dict[str, str]:
         "LOGITS_MEAN_KL",
         "LOGITS_MEAN_COSINE",
         "LOGITS_TOP5_OVERLAP",
+        "LOGITS_MAX_KL",
+        "LOGITS_MIN_COSINE",
+        "LOGITS_MIN_TOP5_OVERLAP",
     )
     missing = [f"{prefix}_{suffix}" for suffix in suffixes
                if f"{prefix}_{suffix}" not in values]
@@ -192,6 +200,9 @@ def qemu_metrics(
     required_provenance = (
         "LLAMA_REVISION", "LLAMA_BINARY_SHA256", "QEMU_BINARY_SHA256",
         "QEMU_CPU", "MODEL_PROMPT", "MODEL_TOKENS", "LOGITS_MAX_ABS_TOLERANCE",
+        "MODEL_NUMERICAL_CONTRACT", "MODEL_LOGITS_MAX_KL_TOLERANCE",
+        "MODEL_LOGITS_MIN_COSINE_TOLERANCE",
+        "MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE",
     )
     missing_provenance = [key for key in required_provenance if not run_manifest.get(key)]
     if missing_provenance:
@@ -218,19 +229,39 @@ def qemu_metrics(
         or str(functional["logits_max_abs"]) != akv_qbs.get("AKV_LOGITS_MAX_ABS")
     ):
         raise ValueError("QEMU summary has inconsistent AKV numerical aliases")
-    akv_logits_max_abs = float(akv_quality["max_abs"])
     akv_logits_tolerance = float(run_manifest["LOGITS_MAX_ABS_TOLERANCE"])
     if akv_logits_tolerance < 0:
         raise ValueError("QEMU AKV logits tolerance is negative")
+    model_contract = str(run_manifest["MODEL_NUMERICAL_CONTRACT"])
+    model_max_kl_tolerance = float(run_manifest["MODEL_LOGITS_MAX_KL_TOLERANCE"])
+    model_min_cosine_tolerance = float(
+        run_manifest["MODEL_LOGITS_MIN_COSINE_TOLERANCE"]
+    )
+    model_min_top5_overlap_tolerance = float(
+        run_manifest["MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE"]
+    )
+    if model_contract != "decision-preserving-v1":
+        raise ValueError(f"unsupported model numerical contract: {model_contract}")
+    if model_max_kl_tolerance < 0 or not 0 <= model_min_cosine_tolerance <= 1 \
+            or not 0 <= model_min_top5_overlap_tolerance <= 1:
+        raise ValueError("QEMU model-quality thresholds are invalid")
     if (
         int(functional["guest_exit"]) != 0
         or functional["output_equal"] is not True
         or str(functional["logits_top1_equal"]) != "1"
-        or akv_logits_max_abs > akv_logits_tolerance
         or str(qbs_rvv["QBS_RVV_LOGITS_TOP1_EQUAL"]) != "1"
         or str(qbs_rvv["QBS_RVV_TOKEN_OUTPUT_EQUAL"]) != "1"
     ):
         raise ValueError("QEMU functional or numerical closure failed")
+    for label, quality in (("QBS/RVV", qbs_quality), ("AKV/QBS", akv_quality)):
+        if (
+            int(quality["records"]) != int(quality["comparable_records"])
+            or float(quality["max_kl"]) > model_max_kl_tolerance
+            or float(quality["min_cosine"]) < model_min_cosine_tolerance
+            or float(quality["min_top5_overlap"])
+            < model_min_top5_overlap_tolerance
+        ):
+            raise ValueError(f"QEMU {label} model-quality contract failed")
 
     native_commands = 0
     emulated_commands = 0
@@ -382,6 +413,9 @@ def qemu_metrics(
         "qbs_logits_mean_kl": qbs_quality["mean_kl"],
         "qbs_logits_mean_cosine": qbs_quality["mean_cosine"],
         "qbs_logits_top5_overlap": qbs_quality["top5_overlap"],
+        "qbs_logits_max_kl": qbs_quality["max_kl"],
+        "qbs_logits_min_cosine": qbs_quality["min_cosine"],
+        "qbs_logits_min_top5_overlap": qbs_quality["min_top5_overlap"],
         "akv_candidate_ops": candidates,
         "akv_executed_ops": executed,
         "akv_executed_decode": executed_decode,
@@ -403,7 +437,16 @@ def qemu_metrics(
         "akv_logits_mean_kl": akv_quality["mean_kl"],
         "akv_logits_mean_cosine": akv_quality["mean_cosine"],
         "akv_logits_top5_overlap": akv_quality["top5_overlap"],
+        "akv_logits_max_kl": akv_quality["max_kl"],
+        "akv_logits_min_cosine": akv_quality["min_cosine"],
+        "akv_logits_min_top5_overlap": akv_quality["min_top5_overlap"],
         "akv_logits_tolerance": akv_logits_tolerance,
+        "model_numerical_contract": model_contract,
+        "model_logits_max_kl_tolerance": model_max_kl_tolerance,
+        "model_logits_min_cosine_tolerance": model_min_cosine_tolerance,
+        "model_logits_min_top5_overlap_tolerance": (
+            model_min_top5_overlap_tolerance
+        ),
         "llama_revision": str(run_manifest["LLAMA_REVISION"]),
         "llama_binary_sha256": str(run_manifest["LLAMA_BINARY_SHA256"]),
         "qemu_binary_sha256": str(run_manifest["QEMU_BINARY_SHA256"]),
