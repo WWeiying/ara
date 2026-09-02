@@ -542,35 +542,65 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     )
 
     q2_group_visits_per_kv_head = 0
+    q2_pair_visits_per_kv_head = 0
+    q1_fallback_visits_per_kv_head = 0
     q2_column_replay_tokens_per_kv_head = 0
-    q2_column_bank_groups_per_kv_head = 0
+    q2_panel_column_loads_per_kv_head = 0
+    q2_panel_column_commands_per_kv_head = 0
+    q2_panel_k_view_bank_cycles_per_kv_head = 0
     for block in query_blocks:
         block_start = block["start"]
         block_count = block["count"]
-        block_end = block_start + block_count
-        pair_count = (
-            block_count + AKV_PREFILL_COMPUTE_TILE_TOKENS - 1
-        ) // AKV_PREFILL_COMPUTE_TILE_TOKENS
         for tile_start in range(0, block["maximum_prefix"], AKV_V2_TILE_TOKENS):
-            first_active = max(block_start, tile_start - past_tokens)
-            if first_active >= block_end:
-                continue
-            first_active_local = first_active - block_start
-            first_active_pair = (
-                first_active_local // AKV_PREFILL_COMPUTE_TILE_TOKENS
-            )
-            active_groups = pair_count - first_active_pair
             resident_tokens = min(
                 AKV_V2_TILE_TOKENS, block["maximum_prefix"] - tile_start
             )
-            q2_group_visits_per_kv_head += active_groups
-            q2_column_replay_tokens_per_kv_head += (
-                active_groups * resident_tokens
-            )
-            q2_column_bank_groups_per_kv_head += active_groups * math.ceil(
+            resident_bank_groups = math.ceil(
                 resident_tokens / AKV_V2_TOKEN_BANKS
             )
+            for local_token in range(
+                0, block_count, AKV_PREFILL_COMPUTE_TILE_TOKENS
+            ):
+                compute_tokens = min(
+                    AKV_PREFILL_COMPUTE_TILE_TOKENS,
+                    block_count - local_token,
+                )
+                visible_tokens = []
+                for compute_slot in range(compute_tokens):
+                    token = block_start + local_token + compute_slot
+                    active_prefix = prefixes[token]
+                    visible = max(0, active_prefix - tile_start)
+                    visible_tokens.append(min(visible, resident_tokens))
+                active_slots = sum(visible != 0 for visible in visible_tokens)
+                if active_slots == 0:
+                    continue
+
+                q2_group_visits_per_kv_head += 1
+                q2_column_replay_tokens_per_kv_head += resident_tokens
+                if compute_tokens == 2 and active_slots == 2:
+                    q2_pair_visits_per_kv_head += 1
+                    panel_commands = math.ceil(
+                        head_dim / AKV_V2_COLUMN_PANEL_WIDTH
+                    )
+                    q2_panel_column_loads_per_kv_head += panel_commands
+                    q2_panel_column_commands_per_kv_head += panel_commands
+                    q2_panel_k_view_bank_cycles_per_kv_head += (
+                        panel_commands * resident_bank_groups
+                    )
+                else:
+                    # The implementation executes each active slot through the
+                    # ordinary Q1 column path.  A causal adjacent pair can have
+                    # at most one active slot here.
+                    q1_fallback_visits_per_kv_head += active_slots
+                    q2_panel_column_loads_per_kv_head += (
+                        active_slots * head_dim
+                    )
+                    q2_panel_k_view_bank_cycles_per_kv_head += (
+                        active_slots * head_dim * resident_bank_groups
+                    )
     q2_group_visits = q2_group_visits_per_kv_head * kv_heads
+    q2_pair_visits = q2_pair_visits_per_kv_head * kv_heads
+    q1_fallback_visits = q1_fallback_visits_per_kv_head * kv_heads
     q2_column_replay_bytes = (
         q2_column_replay_tokens_per_kv_head * kv_heads * head_dim * 2
     )
@@ -582,13 +612,12 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         + prefix_sum * kv_heads
         + kv_outer_release
     )
-    q2_panel_column_loads = (
-        q2_group_visits * math.ceil(head_dim / AKV_V2_COLUMN_PANEL_WIDTH)
+    q2_panel_column_loads = q2_panel_column_loads_per_kv_head * kv_heads
+    q2_panel_column_commands = (
+        q2_panel_column_commands_per_kv_head * kv_heads
     )
     q2_panel_k_view_bank_cycles = (
-        q2_column_bank_groups_per_kv_head
-        * kv_heads
-        * math.ceil(head_dim / AKV_V2_COLUMN_PANEL_WIDTH)
+        q2_panel_k_view_bank_cycles_per_kv_head * kv_heads
     )
     q2_panel_command_records = (
         kv_outer_full
@@ -848,6 +877,10 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             ),
             "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
             "query_group_visits": q2_group_visits,
+            "q2_pair_visits_per_kv_head": q2_pair_visits_per_kv_head,
+            "q2_pair_visits": q2_pair_visits,
+            "q1_fallback_visits_per_kv_head": q1_fallback_visits_per_kv_head,
+            "q1_fallback_visits": q1_fallback_visits,
             "v2_full": kv_outer_full,
             "v2_refill": kv_outer_refill,
             "v2_column_load": q2_group_visits * head_dim,
@@ -873,10 +906,14 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             ),
             "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
             "query_group_visits": q2_group_visits,
+            "q2_pair_visits_per_kv_head": q2_pair_visits_per_kv_head,
+            "q2_pair_visits": q2_pair_visits,
+            "q1_fallback_visits_per_kv_head": q1_fallback_visits_per_kv_head,
+            "q1_fallback_visits": q1_fallback_visits,
             "v2_full": kv_outer_full,
             "v2_refill": kv_outer_refill,
             "v2_column_load": q2_panel_column_loads,
-            "v2_column_panel": q2_panel_column_loads,
+            "v2_column_panel": q2_panel_column_commands,
             "v2_logical_column": q2_group_visits * head_dim,
             "v2_k_view_bank_cycles": q2_panel_k_view_bank_cycles,
             "v2_row_load": prefix_sum * kv_heads,

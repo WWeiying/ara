@@ -86,6 +86,82 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         )
         return case
 
+    def make_causal_case(
+        self,
+        root: Path,
+        *,
+        head_dim: int,
+        query_tokens: int,
+        query_heads: int,
+        kv_heads: int,
+        past_tokens: int = 0,
+    ) -> Path:
+        kv_capacity = past_tokens + query_tokens
+        query = self.make_tensor(
+            root,
+            "query",
+            "f32",
+            [head_dim, query_tokens, query_heads, 1],
+            4,
+        )
+        key = self.make_tensor(
+            root,
+            "key",
+            "f16",
+            [head_dim, kv_capacity, kv_heads, 1],
+            2,
+        )
+        value = self.make_tensor(
+            root,
+            "value",
+            "f16",
+            [head_dim, kv_capacity, kv_heads, 1],
+            2,
+        )
+        mask_values = []
+        for token in range(query_tokens):
+            visible = past_tokens + token + 1
+            mask_values.extend(
+                0x0000 if column < visible else 0xFC00
+                for column in range(kv_capacity)
+            )
+        mask = self.make_tensor(
+            root,
+            "mask",
+            "f16",
+            [kv_capacity, query_tokens, 1, 1],
+            2,
+            struct.pack(f"<{len(mask_values)}H", *mask_values),
+        )
+        golden = self.make_tensor(
+            root,
+            "golden",
+            "f32",
+            [head_dim * query_heads, query_tokens, 1, 1],
+            4,
+        )
+        case = root / "case.json"
+        case.write_text(
+            json.dumps(
+                {
+                    "kind": "attention_core",
+                    "input_a": query,
+                    "key": key,
+                    "value": value,
+                    "mask": mask,
+                    "golden": golden,
+                    "scale": 0.5,
+                    "max_bias": 0.0,
+                    "v_transposed": False,
+                    "atol": 0.004,
+                    "rtol": 0.002,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return case
+
     def test_exact_work_traffic_and_state(self):
         with tempfile.TemporaryDirectory() as directory:
             summary = prefill.analyze(self.make_case(Path(directory)), [2, 4])
@@ -200,17 +276,68 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         panel4 = summary["kv_outer_q2_panel4_exact"]
         self.assertFalse(panel4["supported_shape"])
         self.assertEqual(panel4["column_panel_width"], 4)
-        self.assertEqual(panel4["v2_column_load"], 4)
-        self.assertEqual(panel4["v2_column_panel"], 4)
+        self.assertEqual(panel4["q2_pair_visits"], 2)
+        self.assertEqual(panel4["q1_fallback_visits"], 2)
+        self.assertEqual(panel4["v2_column_load"], 10)
+        self.assertEqual(panel4["v2_column_panel"], 2)
         self.assertEqual(panel4["v2_logical_column"], 16)
-        self.assertEqual(panel4["v2_k_view_bank_cycles"], 4)
+        self.assertEqual(panel4["v2_k_view_bank_cycles"], 10)
         self.assertEqual(panel4["v2_row_load"], 12)
         self.assertEqual(panel4["replay_bytes"], 192)
-        self.assertEqual(panel4["command_records"], 20)
+        self.assertEqual(panel4["command_records"], 26)
         self.assertEqual(
             strategies["akv_query_tile_4"]["required_q_rows_if_concurrent"], 8
         )
         self.assertTrue(strategies["akv_query_tile_4"]["fits_current_q_rows"])
+
+    def test_panel4_distinguishes_q2_pairs_from_q1_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            odd = prefill.analyze(
+                self.make_causal_case(
+                    root,
+                    head_dim=128,
+                    query_tokens=15,
+                    query_heads=12,
+                    kv_heads=2,
+                ),
+                [2, 4, 64],
+            )["kv_outer_q2_panel4_exact"]
+
+        self.assertTrue(odd["supported_shape"])
+        self.assertEqual(odd["query_group_visits_per_kv_head"], 8)
+        self.assertEqual(odd["q2_pair_visits_per_kv_head"], 7)
+        self.assertEqual(odd["q1_fallback_visits_per_kv_head"], 1)
+        self.assertEqual(odd["q2_pair_visits"], 14)
+        self.assertEqual(odd["q1_fallback_visits"], 2)
+        self.assertEqual(odd["v2_column_load"], 704)
+        self.assertEqual(odd["v2_column_panel"], 448)
+        self.assertEqual(odd["v2_logical_column"], 2048)
+        self.assertEqual(odd["v2_k_view_bank_cycles"], 1408)
+        self.assertEqual(odd["replay_bytes"], 122880)
+        self.assertEqual(odd["command_records"], 948)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            even = prefill.analyze(
+                self.make_causal_case(
+                    root,
+                    head_dim=128,
+                    query_tokens=16,
+                    query_heads=12,
+                    kv_heads=2,
+                ),
+                [2, 4, 64],
+            )["kv_outer_q2_panel4_exact"]
+
+        self.assertEqual(even["q2_pair_visits"], 16)
+        self.assertEqual(even["q1_fallback_visits"], 0)
+        self.assertEqual(even["v2_column_load"], 512)
+        self.assertEqual(even["v2_column_panel"], 512)
+        self.assertEqual(even["v2_logical_column"], 2048)
+        self.assertEqual(even["v2_k_view_bank_cycles"], 1024)
+        self.assertEqual(even["replay_bytes"], 135168)
+        self.assertEqual(even["command_records"], 788)
 
     def test_rejects_non_prefix_mask(self):
         with tempfile.TemporaryDirectory() as directory:
