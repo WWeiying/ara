@@ -316,10 +316,13 @@ def host_model_summary(
 
 
 def verify_qemu_against_host(
-    spec: dict[str, object], host: dict[str, object], qemu: dict[str, object]
+    spec: dict[str, object],
+    host: dict[str, object],
+    qemu: dict[str, object],
+    prefill_census: bool = False,
 ) -> dict[str, object]:
     disposition = str(spec["akv_disposition"])
-    metrics = QEMU_MODULE.qemu_metrics(qemu, disposition)
+    metrics = QEMU_MODULE.qemu_metrics(qemu, disposition, prefill_census)
     decode = host["decode"]
     expectation = spec.get("decode_expectation")
     if expectation is None:
@@ -343,7 +346,15 @@ def verify_qemu_against_host(
     if int(metrics["akv_candidate_ops"]) != 2 * candidates:
         raise ValueError(f"{spec['id']} host/QEMU attention candidate mismatch")
     if disposition == "execute":
-        if (
+        if prefill_census:
+            if (
+                int(metrics["akv_executed_ops"]) != 2 * candidates
+                or int(metrics["akv_executed_decode"]) != candidates
+                or int(metrics["akv_executed_prefill"]) != candidates
+                or int(metrics["akv_fallback_ops"]) != 0
+            ):
+                raise ValueError(f"{spec['id']} QEMU Prefill/Decode AKV partition mismatch")
+        elif (
             int(metrics["akv_executed_ops"]) != candidates
             or int(metrics["akv_fallback_shape"]) != candidates
         ):
@@ -382,6 +393,11 @@ def main() -> int:
     parser.add_argument("--qbs-calibration", type=Path, default=DEFAULT_QBS_CALIBRATION)
     parser.add_argument("--rtl-closure", type=Path, default=DEFAULT_RTL_CLOSURE)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--prefill-census",
+        action="store_true",
+        help="require supported QEMU models to execute both Prefill and Decode",
+    )
     args = parser.parse_args()
 
     manifest = load_json(args.manifest)
@@ -448,6 +464,7 @@ def main() -> int:
     provenance = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "prefill_census": args.prefill_census,
         "verification_tools": archived_tools,
         "manifest": {"path": str(args.manifest.resolve()), "sha256": sha256(args.manifest)},
         "qbs_abi": {
@@ -497,7 +514,7 @@ def main() -> int:
         qemu = load_json(qemu_path)
         qemu_archive = qemu_evidence_root / f"{model_id}.json"
         shutil.copyfile(qemu_path, qemu_archive)
-        metrics = verify_qemu_against_host(spec, host, qemu)
+        metrics = verify_qemu_against_host(spec, host, qemu, args.prefill_census)
         provenance["qemu_summaries"][model_id] = {
             "source_path": str(qemu_path),
             "archived_path": str(qemu_archive.relative_to(output)),
@@ -538,7 +555,14 @@ def main() -> int:
             "qemu_qbs_token_equal": metrics["qbs_token_output_equal"],
             "qemu_qbs_logits_max_abs": metrics["qbs_logits_max_abs"],
             "qemu_akv_executed_ops": metrics["akv_executed_ops"],
+            "qemu_akv_executed_decode": metrics["akv_executed_decode"],
+            "qemu_akv_executed_prefill": metrics["akv_executed_prefill"],
+            "qemu_akv_prefill_query_tokens": metrics["akv_prefill_query_tokens"],
+            "qemu_akv_prefill_attention_pairs": metrics["akv_prefill_attention_pairs"],
+            "qemu_akv_fallback_ops": metrics["akv_fallback_ops"],
             "qemu_akv_fallback_shape": metrics["akv_fallback_shape"],
+            "qemu_akv_fastpath_status": metrics["akv_fastpath_status"],
+            "qemu_akv_performance_evidence": metrics["akv_performance_evidence"],
             "qemu_akv_top1_equal": metrics["akv_top1_equal"],
             "qemu_akv_token_equal": metrics["akv_token_output_equal"],
             "qemu_akv_logits_max_abs": metrics["akv_logits_max_abs"],
@@ -610,6 +634,19 @@ def main() -> int:
         "akv_shape_fallback_models": sum(
             row["akv_disposition"] == "fallback_shape" for row in model_rows
         ),
+        "akv_executed_decode": sum(
+            int(row["qemu_akv_executed_decode"]) for row in model_rows
+        ),
+        "akv_executed_prefill": sum(
+            int(row["qemu_akv_executed_prefill"]) for row in model_rows
+        ),
+        "akv_prefill_query_tokens": sum(
+            int(row["qemu_akv_prefill_query_tokens"]) for row in model_rows
+        ),
+        "akv_prefill_attention_pairs": sum(
+            int(row["qemu_akv_prefill_attention_pairs"]) for row in model_rows
+        ),
+        "prefill_census": args.prefill_census,
         "qemu_llama_binary_sha256": next(iter(qemu_llama_binaries)),
         "qemu_binary_sha256": next(iter(qemu_binaries)),
         "qemu_cpu": next(iter(qemu_cpus)),
@@ -668,6 +705,10 @@ def main() -> int:
         f"- QEMU matrix execution: {aggregate['qbs_gemv_calls']} GEMV calls, "
         f"{aggregate['qbs_gemm_calls']} GEMM calls, and "
         f"{aggregate['qbs_dot_elements']} checked dot elements.",
+        f"- AKV phase execution: {aggregate['akv_executed_decode']} Decode calls and "
+        f"{aggregate['akv_executed_prefill']} Prefill calls; Prefill accounts for "
+        f"{aggregate['akv_prefill_query_tokens']} query tokens and "
+        f"{aggregate['akv_prefill_attention_pairs']} causal attention pairs.",
         f"- All QEMU runs use one guest llama binary (`{aggregate['qemu_llama_binary_sha256'][:12]}...`), "
         f"one QEMU binary (`{aggregate['qemu_binary_sha256'][:12]}...`), and one CPU contract.",
         f"- Host and QEMU use QBS ABI v{aggregate['qbs_architecture_version']} "
@@ -700,7 +741,7 @@ def main() -> int:
         f"| Representative ranking | {aggregate['qbs_representative_shape_count']} shapes across {aggregate['qbs_representative_architecture_count']} architectures; {aggregate['qbs_representative_projected_coverage']:.3%} pooled projected work | Which real shapes dominate; projection is not measured full-model timing |",
         "",
         "## Model Results", "",
-        "| Model | Topology | GGML arch. | QBS op | Profiles | Decode nodes | Attention | AKV | AKV E/F | GEMV/GEMM | Native cmds | Numerical |",
+        "| Model | Topology | GGML arch. | QBS op | Profiles | Decode nodes | Attention | AKV | AKV D/P/F | GEMV/GEMM | Native cmds | Numerical |",
         "|---|---|---|---|---|---:|---|---|---:|---:|---:|---|",
     ])
     for row in model_rows:
@@ -708,8 +749,9 @@ def main() -> int:
             f"| {row['name']} | {row['topology']} | {row['architecture']} | "
             f"{row['qbs_operations']} | "
             f"{row['qbs_profiles']} | {row['decode_qbs_nodes']} | {row['attention_shape']} | "
-            f"{row['akv_disposition']} | {row['qemu_akv_executed_ops']}/"
-            f"{row['qemu_akv_fallback_shape']} | {row['qemu_qbs_gemv_calls']}/"
+            f"{row['akv_disposition']} | {row['qemu_akv_executed_decode']}/"
+            f"{row['qemu_akv_executed_prefill']}/{row['qemu_akv_fallback_ops']} | "
+            f"{row['qemu_qbs_gemv_calls']}/"
             f"{row['qemu_qbs_gemm_calls']} | {row['qemu_qbs_native_commands']} | "
             f"top1/token PASS; max abs {row['qemu_qbs_logits_max_abs']} |"
         )
@@ -732,7 +774,11 @@ def main() -> int:
     lines.extend([
         "", "## Interpretation and Boundary", "",
         "- QBS closure requires every eligible quantized tensor to select native commands with zero emulated commands.",
-        "- `execute` means Decode attention uses AKV; its Prefill attention intentionally follows the RVV fallback.",
+        (
+            "- `execute` means both Decode and eligible Prefill attention use AKV with zero fallback."
+            if args.prefill_census else
+            "- `execute` means Decode attention uses AKV; its Prefill attention intentionally follows the RVV fallback."
+        ),
         "- `fallback_shape` is a positive compatibility result: all attention candidates remain correct on RVV.",
         "- Equal greedy tokens/top-1 establish the fixed-run decision result; nonzero QBS logit deltas reflect the documented accumulation-order difference and are not bitwise equivalence.",
         "- QEMU establishes functional and numerical behavior, not RTL cycle performance.",

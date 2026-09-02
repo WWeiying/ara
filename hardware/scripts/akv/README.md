@@ -248,13 +248,20 @@ remain usable, but activation quantization is taken only from the newer Host
 graph trace.
 
 Run each full model in QEMU with ordinary RVV, native QBS, and native QBS plus
-the AKV functional-emulation backend. This is a long functional run; launch it
-independently and do not poll it:
+the AKV functional-emulation backend. For the Prefill census, supported models
+must execute both Decode and Prefill with zero fallback; Gemma-3 D256 must
+exercise the same long-Prompt graph while falling back exclusively by shape.
+The output labels this as functional QEMU evidence, not RTL performance
+evidence. This is a long functional run; launch it independently and do not
+poll it:
 
 ```bash
 qemu=hardware/akv_jobs/model_generality_all_YYYYMMDD
 nohup hardware/scripts/akv/run-model-generality-qemu.py \
-  --models all --output "$qemu" >"$qemu.launch.log" 2>&1 &
+  --models all --prefill-census \
+  --llama-src /home/wangwy/llama/llama.cpp-prefill-panel4 \
+  --llama-binary /home/wangwy/llama/llama.cpp-prefill-panel4/build-rv64-cva6-akv-prefill/bin/llama-simple \
+  --output "$qemu" >"$qemu.launch.log" 2>&1 &
 ```
 
 The final summarizer requires one dynamic QEMU summary per manifest model. It
@@ -268,6 +275,7 @@ aggregate:
 
 ```bash
 hardware/scripts/akv/summarize-model-generality.py \
+  --prefill-census \
   --host-root "$host" \
   --qbs-representatives "$host/qbs_representative_selection" \
   --qemu-summary qwen25_1p5b_q4km=path/to/dynamic_summary.json \

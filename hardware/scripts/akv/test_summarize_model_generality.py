@@ -30,7 +30,14 @@ def host(eligible: int = 1, fallback: int = 0) -> dict[str, object]:
     }
 
 
-def qemu(executed: int, fallback_shape: int) -> dict[str, object]:
+def qemu(
+    executed: int,
+    fallback_shape: int,
+    *,
+    executed_prefill: int = 0,
+) -> dict[str, object]:
+    executed_decode = executed - executed_prefill
+    assert executed_decode >= 0
     return {
         "graphs": {"prefill": 1, "decode": 1},
         "functional": {
@@ -66,12 +73,21 @@ def qemu(executed: int, fallback_shape: int) -> dict[str, object]:
             },
         },
         "akv_v2": {
+            "calls_by_mode": {
+                "decode": executed_decode,
+                "prefill": executed_prefill,
+            },
             "coverage": {
                 "candidate_ops": "2", "executed_ops": str(executed),
+                "executed_decode": str(executed_decode),
+                "executed_prefill": str(executed_prefill),
+                "prefill_query_tokens": str(15 * executed_prefill),
+                "prefill_attention_pairs": str(720 * executed_prefill),
                 "fallback_runtime": "0", "fallback_capability": "0",
                 "fallback_threading": "0", "fallback_feature": "0",
                 "fallback_shape": str(fallback_shape), "fallback_layout": "0",
                 "fallback_mask": "0",
+                "fallback_size": "0",
             }
         },
         "provenance": {
@@ -88,6 +104,7 @@ def qemu(executed: int, fallback_shape: int) -> dict[str, object]:
                 "QEMU_CPU": "rv64,v=true,vlen=1024,xaraqbs=true",
                 "QEMU_MEMORY": "4G",
                 "MODEL_DISK_SHA256": "disk-sha",
+                "REQUIRE_PREFILL": "1" if executed_prefill else "0",
             }
         },
     }
@@ -188,6 +205,41 @@ class SummarizeModelGeneralityTest(unittest.TestCase):
         }
         metrics = MODULE.verify_qemu_against_host(spec, host(0, 1), qemu(0, 2))
         self.assertEqual(metrics["akv_fallback_shape"], 2)
+
+    def test_prefill_census_requires_both_attention_phases(self):
+        spec = {
+            "id": "test", "akv_disposition": "execute",
+            "qemu": {"guest_path": "/model/models/test.gguf", "memory": "4G",
+                     "disk_sha256": "disk-sha"},
+            "decode_expectation": {
+                "qbs_candidate_compute_nodes": 2,
+                "attention_candidate_compute_nodes": 1,
+                "qbs_profiles": ["Q4_K"],
+                "qbs_operations": {"MUL_MAT": 2},
+            },
+        }
+        metrics = MODULE.verify_qemu_against_host(
+            spec, host(), qemu(2, 0, executed_prefill=1), True
+        )
+        self.assertEqual(metrics["akv_executed_decode"], 1)
+        self.assertEqual(metrics["akv_executed_prefill"], 1)
+
+    def test_prefill_census_rejects_old_decode_only_partition(self):
+        spec = {
+            "id": "test", "akv_disposition": "execute",
+            "qemu": {"guest_path": "/model/models/test.gguf", "memory": "4G",
+                     "disk_sha256": "disk-sha"},
+            "decode_expectation": {
+                "qbs_candidate_compute_nodes": 2,
+                "attention_candidate_compute_nodes": 1,
+                "qbs_profiles": ["Q4_K"],
+                "qbs_operations": {"MUL_MAT": 2},
+            },
+        }
+        value = qemu(1, 1)
+        value["provenance"]["run_manifest"]["REQUIRE_PREFILL"] = "1"
+        with self.assertRaisesRegex(ValueError, "both Decode and Prefill"):
+            MODULE.verify_qemu_against_host(spec, host(), value, True)
 
     def test_qemu_operation_drift_is_rejected(self):
         spec = {

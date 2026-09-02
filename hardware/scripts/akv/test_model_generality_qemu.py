@@ -14,7 +14,14 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-def summary(executed: int, fallback_shape: int) -> dict[str, object]:
+def summary(
+    executed: int,
+    fallback_shape: int,
+    *,
+    executed_prefill: int = 0,
+) -> dict[str, object]:
+    executed_decode = executed - executed_prefill
+    assert executed_decode >= 0
     return {
         "provenance": {
             "tool": {"sha256": MODULE.sha256(MODULE.MODEL_SUMMARIZER)},
@@ -27,6 +34,7 @@ def summary(executed: int, fallback_shape: int) -> dict[str, object]:
                 "MODEL_PROMPT": "test prompt",
                 "MODEL_TOKENS": "2",
                 "LOGITS_MAX_ABS_TOLERANCE": "0.001",
+                "REQUIRE_PREFILL": "1" if executed_prefill else "0",
             }
         },
         "functional": {
@@ -68,9 +76,17 @@ def summary(executed: int, fallback_shape: int) -> dict[str, object]:
             },
         },
         "akv_v2": {
+            "calls_by_mode": {
+                "decode": executed_decode,
+                "prefill": executed_prefill,
+            },
             "coverage": {
                 "candidate_ops": str(executed + fallback_shape),
                 "executed_ops": str(executed),
+                "executed_decode": str(executed_decode),
+                "executed_prefill": str(executed_prefill),
+                "prefill_query_tokens": str(15 * executed_prefill),
+                "prefill_attention_pairs": str(720 * executed_prefill),
                 "fallback_runtime": "0",
                 "fallback_capability": "0",
                 "fallback_threading": "0",
@@ -78,8 +94,10 @@ def summary(executed: int, fallback_shape: int) -> dict[str, object]:
                 "fallback_shape": str(fallback_shape),
                 "fallback_layout": "0",
                 "fallback_mask": "0",
+                "fallback_size": "0",
             }
         },
+        "graphs": {"prefill": 1, "decode": 1},
     }
 
 
@@ -98,6 +116,36 @@ class ModelGeneralityQemuTest(unittest.TestCase):
         metrics = MODULE.qemu_metrics(summary(0, 2), "fallback_shape")
         self.assertEqual(metrics["akv_executed_ops"], 0)
         self.assertEqual(metrics["akv_fallback_shape"], 2)
+        self.assertEqual(metrics["akv_fastpath_status"], "shape-fallback")
+
+    def test_prefill_census_requires_decode_and_prefill_without_fallback(self):
+        metrics = MODULE.qemu_metrics(
+            summary(2, 0, executed_prefill=1), "execute", require_prefill=True
+        )
+        self.assertEqual(metrics["akv_executed_decode"], 1)
+        self.assertEqual(metrics["akv_executed_prefill"], 1)
+        self.assertEqual(metrics["akv_prefill_query_tokens"], 15)
+        self.assertEqual(metrics["akv_prefill_attention_pairs"], 720)
+        self.assertEqual(metrics["akv_fastpath_status"], "decode+prefill")
+        self.assertEqual(metrics["akv_performance_evidence"], "functional-qemu-only")
+
+    def test_prefill_census_rejects_decode_only_execute(self):
+        value = summary(2, 0)
+        value["provenance"]["run_manifest"]["REQUIRE_PREFILL"] = "1"
+        with self.assertRaisesRegex(ValueError, "both Decode and Prefill"):
+            MODULE.qemu_metrics(value, "execute", require_prefill=True)
+
+    def test_prefill_census_accepts_explicit_shape_fallback(self):
+        metrics = MODULE.qemu_metrics(
+            summary(0, 2), "fallback_shape", require_prefill=True
+        )
+        self.assertEqual(metrics["akv_fallback_ops"], 2)
+
+    def test_prefill_census_does_not_default_missing_size_fallback(self):
+        value = summary(2, 0, executed_prefill=1)
+        del value["akv_v2"]["coverage"]["fallback_size"]
+        with self.assertRaisesRegex(ValueError, "fallback fields"):
+            MODULE.qemu_metrics(value, "execute", require_prefill=True)
 
     def test_partial_or_wrong_disposition_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "exclusively by shape"):

@@ -30,13 +30,25 @@ AKV_FALLBACK_FIELDS = {
     "fallback_runtime", "fallback_capability", "fallback_threading",
     "fallback_feature", "fallback_shape", "fallback_layout", "fallback_mask",
 }
+AKV_PREFILL_FALLBACK_FIELDS = {"fallback_size"}
+DEFAULT_MODEL_PROMPT = (
+    "Explain why low-bit vector inference benefits from packed arithmetic and data reuse."
+)
+DEFAULT_PREFILL_PROMPT = (
+    "Explain in detail why low-bit vector inference benefits from packed arithmetic, "
+    "reusable activation contexts, tiled memory access, and vectorized attention kernels "
+    "on resource-constrained processors."
+)
 RESULT_FIELDS = (
     "model", "architecture", "mode", "akv_disposition", "qemu_memory",
-    "status", "return_code", "qbs_profiles", "qbs_operations", "qbs_nodes",
+    "status", "return_code", "prefill_census", "qbs_profiles", "qbs_operations", "qbs_nodes",
     "qbs_gemv_calls", "qbs_gemm_calls", "qbs_dot_elements",
     "qbs_command_dot_elements", "qbs_native_commands", "qbs_emulated_commands",
     "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_max_abs", "akv_candidate_ops",
-    "akv_executed_ops", "akv_fallback_shape", "akv_top1_equal",
+    "akv_executed_ops", "akv_executed_decode", "akv_executed_prefill",
+    "akv_prefill_query_tokens", "akv_prefill_attention_pairs",
+    "akv_fallback_ops", "akv_fallback_shape", "akv_fastpath_status",
+    "akv_performance_evidence", "akv_top1_equal",
     "akv_token_output_equal", "akv_logits_max_abs", "llama_revision",
     "llama_binary_sha256", "qemu_binary_sha256", "qemu_cpu", "model_prompt",
     "model_tokens", "qbs_activation_accounting", "qbs_activation_unresolved_nodes",
@@ -137,7 +149,7 @@ def fallback_total(coverage: dict[str, object], required: set[str]) -> int:
 
 
 def qemu_metrics(
-    summary: dict[str, object], disposition: str
+    summary: dict[str, object], disposition: str, require_prefill: bool = False
 ) -> dict[str, object]:
     provenance = summary.get("provenance", {})
     summary_tool = provenance.get("tool", {})
@@ -157,6 +169,8 @@ def qemu_metrics(
             "QEMU run manifest lacks execution provenance: "
             + ", ".join(missing_provenance)
         )
+    if require_prefill and "REQUIRE_PREFILL" not in run_manifest:
+        raise ValueError("QEMU run manifest lacks Prefill-census provenance")
     qbs_abi = provenance.get("qbs_abi", {})
     if not qbs_abi.get("sha256") or int(qbs_abi.get("architecture_version", 0)) <= 0:
         raise ValueError("QEMU summary lacks QBS ABI provenance")
@@ -221,7 +235,12 @@ def qemu_metrics(
     candidates = int(akv_coverage["candidate_ops"])
     executed = int(akv_coverage["executed_ops"])
     fallback_shape = int(akv_coverage["fallback_shape"])
-    accounted = executed + fallback_total(akv_coverage, AKV_FALLBACK_FIELDS)
+    fallback_ops = fallback_total(akv_coverage, AKV_FALLBACK_FIELDS)
+    if require_prefill:
+        fallback_ops += fallback_total(akv_coverage, AKV_PREFILL_FALLBACK_FIELDS)
+    elif "fallback_size" in akv_coverage:
+        fallback_ops += int(akv_coverage["fallback_size"])
+    accounted = executed + fallback_ops
     if candidates <= 0 or candidates != accounted:
         raise ValueError("AKV candidates are not completely accounted")
     if disposition == "execute":
@@ -232,6 +251,52 @@ def qemu_metrics(
             raise ValueError("AKV fallback model did not fall back exclusively by shape")
     else:
         raise ValueError(f"unknown AKV disposition: {disposition}")
+
+    phase_fields = {
+        "executed_decode", "executed_prefill", "prefill_query_tokens",
+        "prefill_attention_pairs",
+    }
+    present_phase_fields = phase_fields & set(akv_coverage)
+    if present_phase_fields and present_phase_fields != phase_fields:
+        raise ValueError("AKV coverage contains only a partial phase breakdown")
+    executed_decode = int(akv_coverage.get("executed_decode", 0))
+    executed_prefill = int(akv_coverage.get("executed_prefill", 0))
+    prefill_query_tokens = int(akv_coverage.get("prefill_query_tokens", 0))
+    prefill_attention_pairs = int(akv_coverage.get("prefill_attention_pairs", 0))
+    if present_phase_fields:
+        if executed_decode + executed_prefill != executed:
+            raise ValueError("AKV Decode/Prefill calls do not equal total executed calls")
+        if executed_prefill == 0 and (prefill_query_tokens or prefill_attention_pairs):
+            raise ValueError("AKV Prefill work is nonzero without a Prefill call")
+        if executed_prefill > 0 and min(prefill_query_tokens, prefill_attention_pairs) <= 0:
+            raise ValueError("AKV Prefill call has no recorded token/pair work")
+
+    calls_by_mode = akv.get("calls_by_mode", {})
+    if calls_by_mode:
+        if int(calls_by_mode.get("decode", 0)) != executed_decode or \
+           int(calls_by_mode.get("prefill", 0)) != executed_prefill:
+            raise ValueError("AKV phase counters differ from traced calls")
+
+    if require_prefill:
+        graphs = summary.get("graphs", {})
+        if int(graphs.get("prefill", 0)) <= 0:
+            raise ValueError("Prefill census contains no Prefill graph")
+        if disposition == "execute":
+            if str(run_manifest["REQUIRE_PREFILL"]) != "1":
+                raise ValueError("Prefill execute run was not launched with strict selection")
+            if executed_decode <= 0 or executed_prefill <= 0:
+                raise ValueError("AKV execute model did not exercise both Decode and Prefill")
+            if fallback_ops != 0:
+                raise ValueError("AKV execute model used an unexpected fallback")
+        elif str(run_manifest["REQUIRE_PREFILL"]) != "0":
+            raise ValueError("Prefill fallback run has inconsistent strict-selection provenance")
+
+    if disposition == "fallback_shape":
+        fastpath_status = "shape-fallback"
+    elif executed_prefill > 0:
+        fastpath_status = "decode+prefill"
+    else:
+        fastpath_status = "decode-only"
 
     activation_accounting = qbs.get("activation_accounting")
     if "MUL_MAT_ID" in operations:
@@ -271,7 +336,14 @@ def qemu_metrics(
         "qbs_logits_max_abs": qbs_rvv["QBS_RVV_LOGITS_MAX_ABS"],
         "akv_candidate_ops": candidates,
         "akv_executed_ops": executed,
+        "akv_executed_decode": executed_decode,
+        "akv_executed_prefill": executed_prefill,
+        "akv_prefill_query_tokens": prefill_query_tokens,
+        "akv_prefill_attention_pairs": prefill_attention_pairs,
+        "akv_fallback_ops": fallback_ops,
         "akv_fallback_shape": fallback_shape,
+        "akv_fastpath_status": fastpath_status,
+        "akv_performance_evidence": "functional-qemu-only",
         "akv_top1_equal": functional["logits_top1_equal"],
         "akv_token_output_equal": int(bool(functional["output_equal"])),
         "akv_logits_max_abs": functional["logits_max_abs"],
@@ -290,7 +362,9 @@ def qemu_metrics(
 
 
 def empty_metrics() -> dict[str, object]:
-    return {field: "" for field in RESULT_FIELDS[7:-2]}
+    first = RESULT_FIELDS.index("qbs_profiles")
+    last = RESULT_FIELDS.index("artifact")
+    return {field: "" for field in RESULT_FIELDS[first:last]}
 
 
 def main() -> int:
@@ -306,10 +380,20 @@ def main() -> int:
     )
     parser.add_argument("--tokens", type=int, default=2)
     parser.add_argument(
+        "--prefill-census",
+        action="store_true",
+        help="require supported models to execute both Decode and Prefill; retain explicit shape fallback",
+    )
+    parser.add_argument("--llama-src", type=Path)
+    parser.add_argument("--llama-binary", type=Path)
+    parser.add_argument(
         "--prompt",
-        default="Explain why low-bit vector inference benefits from packed arithmetic and data reuse.",
+        default=None,
     )
     args = parser.parse_args()
+    prompt = args.prompt or (
+        DEFAULT_PREFILL_PROMPT if args.prefill_census else DEFAULT_MODEL_PROMPT
+    )
     if args.tokens <= 0:
         raise ValueError("tokens must be positive")
     if args.prepare_only and args.reuse_existing_log:
@@ -338,6 +422,19 @@ def main() -> int:
             "path": str(MODEL_SUMMARIZER.resolve()),
             "sha256": sha256(MODEL_SUMMARIZER),
         },
+        "runner": {
+            "path": str(Path(__file__).resolve()),
+            "sha256": sha256(Path(__file__).resolve()),
+        },
+        "qemu_driver": {
+            "path": str(RUN_QEMU.resolve()),
+            "sha256": sha256(RUN_QEMU),
+        },
+        "prefill_census": args.prefill_census,
+        "generated_tokens": args.tokens,
+        "prompt": prompt,
+        "llama_src": str(args.llama_src.resolve()) if args.llama_src else None,
+        "llama_binary": str(args.llama_binary.resolve()) if args.llama_binary else None,
         "models": {},
     }
     rows: list[dict[str, object]] = []
@@ -359,6 +456,7 @@ def main() -> int:
             disk, guest_path, model_sha = ensure_model_disk(spec)
             qemu = spec["qemu"]
             mode = "combined" if spec["akv_disposition"] == "execute" else "combined-fallback"
+            require_prefill = args.prefill_census and spec["akv_disposition"] == "execute"
             provenance["models"][model_id] = {
                 "name": spec["name"],
                 "architecture": spec["architecture"],
@@ -369,6 +467,8 @@ def main() -> int:
                 "guest_path": guest_path,
                 "qemu_memory": qemu["memory"],
                 "mode": mode,
+                "prefill_census": args.prefill_census,
+                "require_prefill_fastpath": require_prefill,
             }
             if args.prepare_only:
                 status.update(status="PREPARED", finished_at=now())
@@ -383,9 +483,14 @@ def main() -> int:
                     "AKV_MODEL_GUEST_PATH": guest_path,
                     "AKV_QEMU_MEMORY": str(qemu["memory"]),
                     "AKV_MODEL_TOKENS": str(args.tokens),
-                    "AKV_MODEL_PROMPT": args.prompt,
+                    "AKV_MODEL_PROMPT": prompt,
+                    "AKV_REQUIRE_PREFILL": "1" if require_prefill else "0",
                     "AKV_RUN_DIR": str(case_dir / "run"),
                 })
+                if args.llama_src:
+                    environment["AKV_LLAMA_SRC"] = str(args.llama_src.resolve())
+                if args.llama_binary:
+                    environment["AKV_LLAMA_BINARY"] = str(args.llama_binary.resolve())
                 status.update(
                     status="CHECKING_EXISTING" if args.reuse_existing_log else "RUNNING",
                     mode=mode,
@@ -415,7 +520,11 @@ def main() -> int:
                 summary_path = case_dir / "run" / "model_closure" / "dynamic_summary.json"
                 if not summary_path.is_file():
                     raise FileNotFoundError(summary_path)
-                metrics = qemu_metrics(load_json(summary_path), str(spec["akv_disposition"]))
+                metrics = qemu_metrics(
+                    load_json(summary_path),
+                    str(spec["akv_disposition"]),
+                    args.prefill_census,
+                )
                 dynamic_summary = artifact_path(summary_path)
                 status.update(
                     status="PASS",
@@ -431,6 +540,7 @@ def main() -> int:
                 "qemu_memory": qemu["memory"],
                 "status": status["status"],
                 "return_code": return_code,
+                "prefill_census": int(args.prefill_census),
                 **metrics,
                 "artifact": artifact_path(case_dir),
                 "dynamic_summary": dynamic_summary,
@@ -446,6 +556,7 @@ def main() -> int:
                 "qemu_memory": spec["qemu"]["memory"],
                 "status": "FAIL",
                 "return_code": 1,
+                "prefill_census": int(args.prefill_census),
                 **empty_metrics(),
                 "artifact": artifact_path(case_dir),
                 "dynamic_summary": "",
