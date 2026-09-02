@@ -54,6 +54,19 @@ def fake_summary(case_path: Path, _query_tiles: list[int]) -> dict:
             "v2_logical_column": 20,
             "v2_k_view_bank_cycles": 10,
         },
+        "kv_outer_q2_panel4_vslice64_exact": {
+            "implemented_fast_path": False,
+            "supported_shape": True,
+            "retention_status": "REJECTED_M15_RTL_REGRESSION",
+            "external_kv_bytes": 50,
+            "replay_bytes": 45,
+            "row_replay_bytes": 15,
+            "command_records": 25,
+            "v2_row_load": 12,
+            "q2_shared_v_rows": 4,
+            "single_query_v_rows": 4,
+            "row_busy_cycle_model": {"saved_row_busy_cycles": 96},
+        },
         "strategies": [
             common_strategy("rvv_qhead_serial", 100),
             common_strategy("rvv_gqa_q4", 80),
@@ -119,6 +132,23 @@ class PrefillMatrixTest(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["reference"]["bound_status"], "PASS")
         self.assertEqual(result["cases"][0]["reference_mismatches"], 0)
+        self.assertEqual(result["cases"][0]["vslice64_replay_bytes"], 45)
+        self.assertFalse(
+            result["cases"][0]["vslice64_implemented_fast_path"]
+        )
+        self.assertEqual(
+            result["cases"][0]["vslice64_retention_status"],
+            "REJECTED_M15_RTL_REGRESSION",
+        )
+        self.assertEqual(
+            result["cases"][0]["vslice64_external_kv_read_multiplier"], 1.25
+        )
+        self.assertEqual(
+            result["cases"][0]["vslice64_replay_reduction_vs_panel4"], 0.25
+        )
+        self.assertEqual(
+            result["cases"][0]["vslice64_saved_row_busy_cycles"], 96
+        )
 
     @mock.patch.object(module.single_case, "analyze", side_effect=fake_summary)
     def test_rejects_reference_for_different_case_payload(self, _analyze: mock.Mock) -> None:

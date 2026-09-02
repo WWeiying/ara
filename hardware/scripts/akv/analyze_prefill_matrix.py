@@ -69,6 +69,8 @@ def case_row(entry: dict, summary: dict, reference: dict | None) -> dict:
     payload = summary["payload"]
     q2 = summary["kv_outer_q2_exact"]
     panel = summary["kv_outer_q2_panel4_exact"]
+    vslice = summary["kv_outer_q2_panel4_vslice64_exact"]
+    vslice_busy = vslice["row_busy_cycle_model"]
     strategies = strategy_map(summary)
     row = {
         "case_id": entry["id"],
@@ -96,6 +98,29 @@ def case_row(entry: dict, summary: dict, reference: dict | None) -> dict:
         "panel4_column_commands": panel["v2_column_panel"],
         "panel4_logical_columns": panel["v2_logical_column"],
         "panel4_k_view_bank_cycles": panel["v2_k_view_bank_cycles"],
+        "vslice64_supported": vslice["supported_shape"],
+        "vslice64_implemented_fast_path": vslice["implemented_fast_path"],
+        "vslice64_retention_status": vslice["retention_status"],
+        "vslice64_external_kv_bytes": vslice["external_kv_bytes"],
+        "vslice64_replay_bytes": vslice["replay_bytes"],
+        "vslice64_row_replay_bytes": vslice["row_replay_bytes"],
+        "vslice64_external_kv_read_multiplier": (
+            None if not vslice["supported_shape"]
+            else vslice["external_kv_bytes"] / payload["unique_visible_kv_bytes"]
+        ),
+        "vslice64_replay_reduction_vs_panel4": (
+            None if not vslice["supported_shape"]
+            else (panel["replay_bytes"] - vslice["replay_bytes"])
+            / panel["replay_bytes"]
+        ),
+        "vslice64_command_records": vslice["command_records"],
+        "vslice64_row_commands": vslice["v2_row_load"],
+        "vslice64_shared_v_rows": vslice["q2_shared_v_rows"],
+        "vslice64_single_v_rows": vslice["single_query_v_rows"],
+        "vslice64_saved_row_busy_cycles": (
+            None if vslice_busy is None
+            else vslice_busy["saved_row_busy_cycles"]
+        ),
         "case_sha256": summary["provenance"]["case_sha256"],
         "reference_status": "NOT_PROVIDED",
         "reference_mismatches": None,
@@ -170,7 +195,7 @@ def analyze_matrix(
         else "INCOMPLETE"
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": overall_status,
         "scope": "real llama.cpp Prefill Attention matrix evidence",
         "capture_root": str(root),

@@ -227,6 +227,14 @@ def support_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     result = []
     for model, values in grouped.items():
         dispositions = Counter(str(row["fast_path_disposition"]) for row in values)
+        candidate_chunks = dispositions["candidate"]
+        fallback_chunks = len(values) - candidate_chunks
+        if candidate_chunks == len(values):
+            eligibility = "ELIGIBLE_ALL_OBSERVED_SHAPES"
+        elif candidate_chunks:
+            eligibility = "ELIGIBLE_SOME_OBSERVED_SHAPES"
+        else:
+            eligibility = "FALLBACK_ALL_OBSERVED_SHAPES"
         result.append({
             "model": model,
             "model_name": values[0]["model_name"],
@@ -239,9 +247,16 @@ def support_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
             "observed_M": "/".join(str(value) for value in sorted({int(row["M_query_tokens"]) for row in values})),
             "observed_P": "/".join(str(value) for value in sorted({int(row["P_past_tokens"]) for row in values})),
             "chunk_rows": len(values),
-            "candidate_chunks": dispositions["candidate"],
-            "fallback_chunks": len(values) - dispositions["candidate"],
+            "candidate_chunks": candidate_chunks,
+            "fallback_chunks": fallback_chunks,
             "dispositions": "/".join(f"{key}:{dispositions[key]}" for key in sorted(dispositions)),
+            "shape_type_evidence": "DIRECTLY_OBSERVED",
+            "fast_path_eligibility": eligibility,
+            "prefill_functional_execution": "NOT_MEASURED",
+            "prefill_fast_path_execution": (
+                "NOT_MEASURED" if candidate_chunks else "NOT_APPLICABLE"
+            ),
+            "prefill_performance_evidence": "NOT_MEASURED",
             "status": "PASS",
         })
     return result
@@ -294,7 +309,7 @@ def main() -> int:
     write_csv(shapes_path, rows)
     write_csv(support_path, models)
     provenance = {
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": "offline_census_of_immutable_real_llama_cpp_host_graphs",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "manifest": relative_or_absolute(args.manifest),

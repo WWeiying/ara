@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -259,6 +260,13 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertEqual(
             summary["kv_outer_exact"]["allocated_workspace_bytes"], 139520
         )
+        vslice = summary["kv_outer_q2_panel4_vslice64_exact"]
+        self.assertFalse(vslice["supported_shape"])
+        self.assertEqual(vslice["q2_shared_v_rows"], 2)
+        self.assertEqual(vslice["single_query_v_rows"], 8)
+        self.assertEqual(vslice["v2_row_load"], 12)
+        self.assertEqual(vslice["row_replay_bytes"], 80)
+        self.assertIsNone(vslice["row_busy_cycle_model"])
         self.assertEqual(summary["kv_outer_exact"]["column_replay_bytes"], 144)
         self.assertEqual(summary["kv_outer_exact"]["row_replay_bytes"], 96)
         self.assertEqual(summary["kv_outer_exact"]["replay_bytes"], 240)
@@ -450,6 +458,41 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         )
         self.assertFalse(summary["decision_gate"]["kernel_speedup_gate_pass"])
 
+    def test_selects_fastest_retained_akv_and_rejects_vslice_experiment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary = prefill.analyze(self.make_case(root), [2, 4])
+            specs = []
+            for strategy, cycles in (
+                ("rvv_gqa_q64", 120),
+                ("akv_gqa_serial", 110),
+                ("akv_qblock64_q2_panel4_kv_outer", 90),
+                (prefill.VSLICE64_STRATEGY, 95),
+            ):
+                path = root / f"{strategy}.log"
+                path.write_text(
+                    "LLAMA_OPERATOR operator/prefill/attention_core/test "
+                    f"PASS cycles={cycles} mismatches=0\n",
+                    encoding="utf-8",
+                )
+                specs.append((strategy, path))
+            with mock.patch.object(
+                prefill, "validate_kv_outer_counters", return_value={}
+            ):
+                prefill.attach_measurements(summary, specs)
+
+        self.assertEqual(
+            summary["decision_gate"]["retained_akv_strategy"],
+            "akv_qblock64_q2_panel4_kv_outer",
+        )
+        self.assertEqual(summary["decision_gate"]["retained_akv_cycles"], 90)
+        experiment = summary["vslice64_experiment"]
+        self.assertAlmostEqual(experiment["cycle_change_vs_panel4"], 95 / 90 - 1)
+        self.assertEqual(
+            experiment["retention_status"],
+            "REJECTED_M15_RTL_REGRESSION",
+        )
+
     def test_aggregates_strict_akv_command_counters(self):
         log = "\n".join(
             [
@@ -477,6 +520,59 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
         self.assertEqual(counters["kv_external_bytes"], 128)
         self.assertEqual(counters["replay_bytes"], 32)
         self.assertEqual(counters["read_outstanding_max"], 2)
+
+    def test_parses_strict_akv_summary(self):
+        fields = {field: 0 for field in prefill.AKV_SUM_FIELDS}
+        fields.update({
+            "records": 948,
+            "success_records": 948,
+            "fault_records": 0,
+            "validation_fault_records": 0,
+            "busy_cycles": 1234,
+            "v2_column_load": 704,
+            "v2_column_panel": 448,
+            "v2_logical_column": 2048,
+            "v2_k_view_bank_cycles": 1408,
+            "replay_bytes": 122880,
+            "read_outstanding_max": 2,
+        })
+        log = "[AKV_PERF_SUMMARY] " + " ".join(
+            f"{field}={value}" for field, value in fields.items()
+        )
+        counters = prefill.parse_akv_perf(log)
+        self.assertEqual(counters["records"], 948)
+        self.assertEqual(counters["success_records"], 948)
+        self.assertEqual(counters["v2_column_panel"], 448)
+        self.assertEqual(counters["replay_bytes"], 122880)
+        self.assertEqual(counters["read_outstanding_max"], 2)
+
+    def test_rejects_incomplete_or_failed_akv_summary(self):
+        with self.assertRaisesRegex(ValueError, "missing fields"):
+            prefill.parse_akv_perf(
+                "[AKV_PERF_SUMMARY] records=1 success_records=1 "
+                "fault_records=0 validation_fault_records=0"
+            )
+
+        fields = {field: 0 for field in prefill.AKV_SUM_FIELDS}
+        fields.update({
+            "records": 1,
+            "success_records": 0,
+            "fault_records": 1,
+            "validation_fault_records": 0,
+            "read_outstanding_max": 0,
+        })
+        log = "[AKV_PERF_SUMMARY] " + " ".join(
+            f"{field}={value}" for field, value in fields.items()
+        )
+        with self.assertRaisesRegex(ValueError, "failed commands"):
+            prefill.parse_akv_perf(log)
+
+    def test_rejects_mixed_akv_perf_modes(self):
+        with self.assertRaisesRegex(ValueError, "mixes detailed and summary"):
+            prefill.parse_akv_perf(
+                "[AKV_PERF] seq=0 success=1 fault=0\n"
+                "[AKV_PERF_SUMMARY] records=1"
+            )
 
     def test_attaches_llm_microarchitecture_counters(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -596,6 +692,38 @@ class AnalyzePrefillAttentionTest(unittest.TestCase):
                 summary,
                 "akv_qblock64_q2_panel4_kv_outer",
                 panel4_counters,
+            )
+
+        vslice = summary["kv_outer_q2_panel4_vslice64_exact"]
+        vslice_counters = {
+            "v2_full": vslice["v2_full"],
+            "v2_refill": vslice["v2_refill"],
+            "v2_column_load": vslice["v2_column_load"],
+            "v2_column_panel": vslice["v2_column_panel"],
+            "v2_logical_column": vslice["v2_logical_column"],
+            "v2_k_view_bank_cycles": vslice["v2_k_view_bank_cycles"],
+            "v2_bank_conflict_cycles": 0,
+            "v2_rejected": 0,
+            "v2_row_load": vslice["v2_row_load"],
+            "release": vslice["v2_release"],
+            "q_external_bytes": vslice["resident_query_fill_bytes"],
+            "kv_external_bytes": vslice["external_kv_bytes"],
+            "replay_bytes": vslice["replay_bytes"],
+            "records": vslice["command_records"],
+        }
+        status = prefill.validate_kv_outer_counters(
+            summary,
+            "akv_qblock64_q2_panel4_vslice64_kv_outer",
+            vslice_counters,
+        )
+        self.assertEqual(status["strict_counter_status"], "PASS")
+        self.assertEqual(status["strict_counter_checked_fields"], 14)
+        vslice_counters["replay_bytes"] += 128
+        with self.assertRaisesRegex(ValueError, "strict AKV counters"):
+            prefill.validate_kv_outer_counters(
+                summary,
+                "akv_qblock64_q2_panel4_vslice64_kv_outer",
+                vslice_counters,
             )
 
     def test_rejects_faulting_akv_command_record(self):

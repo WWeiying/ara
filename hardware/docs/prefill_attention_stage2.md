@@ -2,15 +2,19 @@
 
 ## 1. Purpose and evidence boundary
 
-This stage freezes the software baselines that a Prefill hardware extension
-must beat. It uses tensors captured at the `attention_core` boundary of a real
-llama.cpp execution of `Qwen2.5-1.5B-Instruct-Q4_K_M`. The stage does not add
-an instruction or change RTL. It separates four kinds of evidence:
+This stage freezes the software baselines that the bounded Prefill path must
+beat and records the retained Panel4 implementation. It uses tensors captured
+at the `attention_core` boundary of real llama.cpp executions of
+`Qwen2.5-1.5B-Instruct-Q4_K_M`. It separates four kinds of evidence:
 
 1. captured tensor topology and numerical goldens;
 2. exact algorithmic work and model-payload traffic;
 3. Spike correctness of the ordinary and tiled RVV implementations; and
-4. cycle-accurate RTL measurements, which are reported only when they exist.
+4. cycle-accurate VCS RTL measurements, which are reported only when they
+   exist and pass the complete numerical result check.
+
+No projected traffic saving is presented as measured speedup. This stage does
+not run synthesis or claim timing, area, power, or physical closure.
 
 Calculated K/V bytes below are logical reads of the captured K/V payload. They
 are not AXI-byte measurements and do not include scratch, instruction, mask,
@@ -30,10 +34,13 @@ A second execution captures a single target Prefill call with `M=1024` and
 template tail; those calls are retained in the capture but are not substituted
 for the target call.
 
-A third execution uses a 2,560-token real prompt and captures five consecutive
-512-token chunks. Its fifth chunk supplies the required `P=2048, M=512` case;
-smaller `M` cases at the same past-token length are Query-prefix slices of that
-real call, not padded or repeated tensors.
+A third execution uses a 3,072-token real prompt and captures six consecutive
+512-token chunks. Consecutive real chunks are also stitched after checking that
+every earlier K/V cache is a bit-exact prefix of the final chunk. This produces
+the `P=512, M=1024` and `P=2048, M=1024` sources by concatenating captured
+Query, mask, and golden rows and retaining the final captured K/V cache. The
+remaining smaller `M` cases are Query-prefix slices of these real calls, not
+padded, repeated, or synthetic tensors.
 
 All target tensors are contiguous and use:
 
@@ -52,7 +59,9 @@ The durable capture roots are:
 ```text
 /home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-1023-20260901
 /home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-m1024-20260901
-/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-p2048-20260901
+/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-m3072-20260901
+/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-stitched-p512-m1024-20260901
+/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-stitched-p2048-m1024-20260901
 ```
 
 ## 3. Query-prefix matrix
@@ -63,18 +72,18 @@ the Query-token axis and retains the complete captured K/V payload. K/V files
 are hard-linked when the filesystem permits it. Each case records source-case
 and source-manifest hashes.
 
-The current matrix contains 16 real-data cases:
+The current matrix contains all 18 required real-data cases:
 
 ```text
 P=0:    M=15,64,128,256,512,1024
-P=512:  M=15,64,128,256,511
-P=2048: M=15,64,128,256,512
+P=512:  M=15,64,128,256,512,1024
+P=2048: M=15,64,128,256,512,1024
 ```
 
 Its versioned root and stable symlink are:
 
 ```text
-/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-matrix-v3-20260901
+/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-matrix-v5-20260901
 /home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m-prefill-matrix-latest
 ```
 
@@ -166,7 +175,7 @@ the underflow lanes. This is the same numerical rule used by the native AKV-v2
 kernel. The fix removes the NaNs and does not change the finite-range
 polynomial.
 
-An independent NumPy implementation then recomputed all 16 cases with stable
+An independent NumPy implementation then recomputed all 18 cases with stable
 F32 softmax directly from the captured tensors. Every complete output passed.
 The global maximum absolute difference from the llama.cpp golden was
 `5.2195e-5`; at `rtol=0.002`, the largest required absolute tolerance was only
@@ -198,7 +207,9 @@ contract or widening either tolerance.
 |---|---|---|---|---|
 | Decode, D128/GQA6, M1/KV16 | tiled RVV | Spike | PASS | frozen Decode-state regression |
 | Decode, D256/GQA4, M1/KV17 | reference/RVV/tiled RVV | Spike | PASS | real Gemma capture; all three paths |
-| P0/M15 | tiled RVV | Spike | PASS | short Prefill regression |
+| P0/M15 | strongest RVV (`rvv_gqa_q64`) | VCS RTL | PASS | 530,794 cycles; zero mismatches |
+| P0/M15 | retained Panel4 AKV | VCS RTL | PASS | 434,869 cycles in debug and no-debug builds; zero mismatches; 1.2206x over strongest RVV |
+| P0/M15 | experimental D64 row-slice AKV | VCS RTL | PASS, rejected | 442,393 cycles; zero mismatches; 1.73% slower than Panel4 |
 | P512/M15 | ordinary RVV | Spike | PASS | complete captured output |
 | P512/M15 | tiled RVV | Spike | PASS | complete captured output |
 | P0/M512 | ordinary RVV | Spike | PASS | complete captured output |
@@ -207,9 +218,21 @@ contract or widening either tolerance.
 | P0/M1024 | tiled RVV | Spike | PASS | complete strict output; F32 Prefill state |
 
 Spike reports correctness only because `cycle` is intentionally zeroed in the
-Spike build. The complete P0/M512 checks are not RTL cycle measurements. The
-only current Prefill RTL cycle point remains the matched-L2 P0/M15 comparison
-documented in `prefill_attention_stage1.md`.
+Spike build. The complete P0/M512 checks are not RTL cycle measurements.
+P0/M15 is the current complete Prefill RTL cycle point. Its retained Panel4
+counter contract reports 948/948 successful commands, zero faults, 15,360
+external K/V bytes, 122,880 replay bytes, and no bank conflicts. The measured
+kernel speedup gate passes, while model-level Prefill share remains unevaluated.
+
+Long RTL points use a cycle-faithful VCS mode that omits FSDB instrumentation,
+instruction traces, and `-kdb -debug_access+all`; it does not change RTL,
+application code, memory timing, or clocking. With the same ELF, the standard
+and lightweight simulators both report 124,841 cycles for the ordinary-RVV
+Decode smoke. For P0/M15 Panel4, both report 434,869 cycles and identical
+strict AKV and LLM counters. Host simulation time falls by about 3.5x, but this
+host-time reduction is not an architectural performance result. Each run
+records the source state, ELF and `simv` hashes, simulated L2 capacity, and
+QBS/AKV capability bits in `run.conf` before execution.
 
 The M1024 application occupies 21.85 MiB above `0x80000000`; Query, golden,
 and output alone consume 18 MiB. It therefore cannot be run on the existing
@@ -226,6 +249,15 @@ a fixed 64-Query software block and existing FULL/REFILL commands; the measured
 Query-only context-update alternative was slower and has been removed.
 Online-softmax state resumes across K/V tiles, and storage is fixed by the
 Query-block limit rather than scale with M, P, or context length.
+
+One measured alternative replayed each D128 V row as two D64 slices so that two
+Query accumulators could share a resident row. It reduced AKV replay from
+122,880 B to 97,792 B at P0/M15, but added 1,946 ordinary RVV instructions,
+43,008 B of vector reads, 43,008 B of vector writes, 7,208 queue-resource block
+cycles, and 5,750 operand-block cycles. Total execution increased from 434,869
+to 442,393 cycles. The row-slice ABI, software, and RTL were therefore removed;
+the exact model remains only as a rejected design record. This result rules out
+replay-byte reduction alone as a sufficient optimization criterion.
 
 The following cycle-level evidence distinguishes the expected bottleneck from
 alternatives:
@@ -245,13 +277,14 @@ only by that measured transfer of the bottleneck.
 
 ## 9. Remaining Stage-2 gates
 
-Before changing RTL, this stage still requires:
+The remaining gates are:
 
-1. measured serial-AKV and tiled-RVV cycle attribution at a discriminating
-   feasible point; and
-2. one real M>=512 all-operator RTL point once the winning bounded mechanism
-   is available, because the current software baselines alone are too long to
-   use as the final hardware result.
+1. measured ordinary-RVV, serial-AKV, and strongest tiled-RVV attribution on a
+   common long-Prompt point;
+2. one real M>=512 all-operator RTL point using the retained bounded mechanism;
+3. a calibrated M1024 attribution from real model data; and
+4. model-level Prefill share plus a second D/GQA model and the seven-model
+   functional/fast-path/fallback census.
 
 No Stage-2 traffic projection is promoted to a performance claim until these
 gates are closed.

@@ -179,6 +179,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(buildpath)/$(dpi_lib
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 ifeq ($(no_fsdb), 1)
+SIMULATOR_DEF += +define+ARA_NO_FSDB
 APP += +NO_FSDB
 endif
 ifeq ($(qbs_perf), 1)
@@ -212,8 +213,10 @@ compile: bender dpi ../Bender.yml
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
-	@printf 'schema_version=1\nsim_l2_mb=%s\nsim_l2_bytes=%s\n' \
-		'$(sim_l2_mb)' '$(sim_l2_bytes)' > ./$(sim_dir)/simulator.conf
+	@printf 'schema_version=2\nsim_l2_mb=%s\nsim_l2_bytes=%s\nqbs_enabled=%s\nakv_enabled=%s\nakv_v2_enabled=%s\nnr_lanes=%s\nvlen=%s\n' \
+		'$(sim_l2_mb)' '$(sim_l2_bytes)' '$(qbs)' \
+		'$(if $(filter 1,$(akv) $(akv_v2)),1,0)' '$(akv_v2)' \
+		'$(nr_lanes)' '$(vlen)' > ./$(sim_dir)/simulator.conf
 
 verilate: bender ../Bender.yml
 	@rm -rf $(veril_library)

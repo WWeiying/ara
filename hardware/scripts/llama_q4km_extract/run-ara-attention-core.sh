@@ -148,7 +148,7 @@ printf 'capture_manifest_sha256=%s\nsimv_sha256=%s\n' \
       "$(sha256sum -- "${run_dir}/${app}.${implementation}.elf" | awk '{print $1}')" \
       >> "${run_dir}/run.conf"
     l2_contract=$("${l2_contract_checker}" "${sim_dir}" \
-      "${run_dir}/${app}.${implementation}.elf")
+      "${run_dir}/${app}.${implementation}.elf" "${implementation}")
     printf '%s\n' "${l2_contract}" >> "${run_dir}/run.conf"
   fi
 ) 9> "${build_lock}"
@@ -170,7 +170,18 @@ if [[ ${execution} != --spike-only ]]; then
   )
   if [[ ${implementation} == akv || ${implementation} == akv_v2 ||
         ${implementation} == akv_v2_prefill ]]; then
-    sim_args+=(+AKV_PERF)
+    case ${LLAMA_ATTN_AKV_PERF_MODE:-detail} in
+      detail) sim_args+=(+AKV_PERF) ;;
+      summary) sim_args+=(+AKV_SUMMARY) ;;
+      none) ;;
+      *)
+        echo "LLAMA_ATTN_AKV_PERF_MODE must be detail, summary, or none" >&2
+        exit 2
+        ;;
+    esac
+  fi
+  if [[ ${LLAMA_ATTN_INSTR_TRACE:-0} != 1 ]]; then
+    sim_args+=(+NO_INSTR_TRACE)
   fi
   if [[ -n ${LLAMA_ATTN_EXTRA_SIM_ARGS:-} ]]; then
     read -r -a extra_sim_args <<< "${LLAMA_ATTN_EXTRA_SIM_ARGS}"
