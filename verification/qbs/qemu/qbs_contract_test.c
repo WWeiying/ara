@@ -18,12 +18,14 @@ volatile uint64_t qbs_trap_tval;
 static qbs_block_q8_0_t weights[2] __attribute__((aligned(16)));
 static qbs_block_q8_0_t activations[2] __attribute__((aligned(16)));
 static qbs_block_q8_0_t matrix_weights[32] __attribute__((aligned(16)));
-static qbs_block_q8_0_t matrix_activations[4] __attribute__((aligned(16)));
+static qbs_block_q8_0_t matrix_activations[8] __attribute__((aligned(16)));
+static uint8_t matrix_activations_m8[8 * sizeof(qbs_block_q8_0_t)]
+    __attribute__((aligned(16)));
 static qbs_block_q4_k_t context_weights[2] __attribute__((aligned(16)));
 static qbs_block_q8_k_t context_activations[2]
     __attribute__((aligned(16)));
 static qbs_descriptor_t descriptor __attribute__((aligned(16)));
-static uint32_t output[4][32] __attribute__((aligned(16)));
+static uint32_t output[8][32] __attribute__((aligned(16)));
 static uint8_t page_crossing_storage[3 * 4096] __attribute__((aligned(4096)));
 
 static void finish(unsigned code) {
@@ -101,6 +103,37 @@ static void run_qbexec_m4(const void *descriptor_address,
       : : "r"(rs1), "r"(rs2) : "t0", "memory");
 }
 
+static void run_qbexec_m5(const void *descriptor_address,
+                          const void *activation_address) {
+  register uintptr_t rs1 __asm__("a0") = (uintptr_t)descriptor_address;
+  register uintptr_t rs2 __asm__("a1") = (uintptr_t)activation_address;
+  __asm__ volatile(
+      "li t0, 256\n"
+      "vsetvli zero, t0, e32, m8, ta, ma\n"
+      ".word 0x08b5005b"
+      : : "r"(rs1), "r"(rs2) : "t0", "memory");
+}
+
+static void run_qbexec_m8(const void *descriptor_address,
+                          const void *activation_address) {
+  register uintptr_t rs1 __asm__("a0") = (uintptr_t)descriptor_address;
+  register uintptr_t rs2 __asm__("a1") = (uintptr_t)activation_address;
+  __asm__ volatile(
+      "li t0, 256\n"
+      "vsetvli zero, t0, e32, m8, ta, ma\n"
+      ".word 0x0eb5005b"
+      : : "r"(rs1), "r"(rs2) : "t0", "memory");
+}
+
+static void run_qbexec_m8_bad_vd(const void *descriptor_address,
+                                 const void *activation_address) {
+  register uintptr_t rs1 __asm__("a0") = (uintptr_t)descriptor_address;
+  register uintptr_t rs2 __asm__("a1") = (uintptr_t)activation_address;
+  /* M8 reserves eight registers, so v1 is not a legal group base. */
+  __asm__ volatile(".word 0x0eb500db"
+                   : : "r"(rs1), "r"(rs2) : "memory");
+}
+
 static void run_qbexec_m2_bad_vd(const void *descriptor_address,
                                  const void *activation_address) {
   register uintptr_t rs1 __asm__("a0") = (uintptr_t)descriptor_address;
@@ -133,7 +166,7 @@ static void write_v0_word0(uint32_t value) {
 }
 
 static void write_destination(uint32_t value) {
-  for (unsigned reg = 0; reg < 4; ++reg)
+  for (unsigned reg = 0; reg < 8; ++reg)
     for (unsigned element = 0; element < 32; ++element)
       output[reg][element] = value;
   __asm__ volatile(
@@ -143,8 +176,13 @@ static void write_destination(uint32_t value) {
       "vle32.v v1, (%1)\n"
       "vle32.v v2, (%2)\n"
       "vle32.v v3, (%3)\n"
+      "vle32.v v4, (%4)\n"
+      "vle32.v v5, (%5)\n"
+      "vle32.v v6, (%6)\n"
+      "vle32.v v7, (%7)\n"
       : : "r"(output[0]), "r"(output[1]), "r"(output[2]),
-          "r"(output[3]) : "t0", "memory");
+          "r"(output[3]), "r"(output[4]), "r"(output[5]),
+          "r"(output[6]), "r"(output[7]) : "t0", "memory");
 }
 
 static void read_destination(void) {
@@ -155,8 +193,13 @@ static void read_destination(void) {
       "vse32.v v1, (%1)\n"
       "vse32.v v2, (%2)\n"
       "vse32.v v3, (%3)\n"
+      "vse32.v v4, (%4)\n"
+      "vse32.v v5, (%5)\n"
+      "vse32.v v6, (%6)\n"
+      "vse32.v v7, (%7)\n"
       : : "r"(output[0]), "r"(output[1]), "r"(output[2]),
-          "r"(output[3]) : "t0", "memory");
+          "r"(output[3]), "r"(output[4]), "r"(output[5]),
+          "r"(output[6]), "r"(output[7]) : "t0", "memory");
 }
 
 static uint32_t float_bits(float value) {
@@ -167,13 +210,15 @@ static uint32_t float_bits(float value) {
   return conversion.bits;
 }
 
-static void install_matrix_descriptor(unsigned n) {
+static void install_matrix_descriptor(unsigned m, unsigned n) {
   const qbs_descriptor_fields_t fields = {
       .descriptor_version = QBS_DESCRIPTOR_VERSION,
       .weight_profile = QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
       .activation_profile = QBS_ACTIVATION_PROFILE_Q8_0,
       .weight_layout = QBS_WEIGHT_LAYOUT_ROW_MAJOR,
-      .activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
+      .activation_layout = m >= QBS_WIDE_M_MIN
+          ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+          : QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
       .n = (uint8_t)n,
       .k_blocks = 1,
   };
@@ -182,14 +227,14 @@ static void install_matrix_descriptor(unsigned n) {
 }
 
 static int check_matrix_result(unsigned m, unsigned n) {
-  const unsigned registers = m == 1 ? 1 : (m == 2 ? 2 : 4);
+  const unsigned registers = m == 1 ? 1 : (m == 2 ? 2 : (m <= 4 ? 4 : 8));
   read_destination();
   for (unsigned context = 0; context < registers; ++context) {
     for (unsigned row = 0; row < 32; ++row) {
       uint32_t expected = 0;
       if (context < m && row < n)
         expected = float_bits((float)((context + 1u) * (row + 1u)));
-      else if (context >= m)
+      else if (context >= m || m >= QBS_WIDE_M_MIN)
         expected = QBS_DEST_POISON;
       if (output[context][row] != expected) return 0;
     }
@@ -198,14 +243,28 @@ static int check_matrix_result(unsigned m, unsigned n) {
 }
 
 static int run_matrix_case(unsigned m, unsigned n) {
-  install_matrix_descriptor(n);
+  install_matrix_descriptor(m, n);
   write_destination(QBS_DEST_POISON);
   clear_trap();
   if (m == 1) run_qbexec(&descriptor, matrix_activations);
   else if (m == 2) run_qbexec_m2(&descriptor, matrix_activations);
   else if (m == 3) run_qbexec_m3(&descriptor, matrix_activations);
-  else run_qbexec_m4(&descriptor, matrix_activations);
+  else if (m == 4) run_qbexec_m4(&descriptor, matrix_activations);
+  else if (m == 5) run_qbexec_m5(&descriptor, matrix_activations_m8);
+  else run_qbexec_m8(&descriptor, matrix_activations_m8);
   return qbs_trap_cause == UINT64_MAX && check_matrix_result(m, n);
+}
+
+static void pack_matrix_activations_m8(void) {
+  clear_bytes(matrix_activations_m8, sizeof(matrix_activations_m8));
+  for (unsigned context = 0; context < 8; ++context) {
+    copy_bytes(matrix_activations_m8 + context * sizeof(uint16_t),
+               &matrix_activations[context].d, sizeof(uint16_t));
+    for (unsigned byte = 0; byte < 32; ++byte) {
+      matrix_activations_m8[8 * sizeof(uint16_t) + byte * 8 + context] =
+          (uint8_t)matrix_activations[context].qs[byte];
+    }
+  }
 }
 
 static void install_descriptor(uint64_t weight_base) {
@@ -331,16 +390,31 @@ void qbs_contract_main(void) {
     matrix_weights[row].d = UINT16_C(0x3c00);
     matrix_weights[row].qs[0] = (int8_t)(row + 1u);
   }
-  for (unsigned context = 0; context < 4; ++context) {
+  for (unsigned context = 0; context < 8; ++context) {
     matrix_activations[context].d = UINT16_C(0x3c00);
     matrix_activations[context].qs[0] = (int8_t)(context + 1u);
   }
+  pack_matrix_activations_m8();
   if (!run_matrix_case(1, 1)) finish(9);
   if (!run_matrix_case(2, 31)) finish(10);
   if (!run_matrix_case(3, 32)) finish(11);
   if (!run_matrix_case(4, 31)) finish(12);
 
-  install_matrix_descriptor(1);
+  /* Wide commands use a fixed eight-row activation payload and preserve the
+   * inactive destination tail. M5 exercises row padding; M8 exercises all
+   * contexts. */
+  if (!run_matrix_case(5, 15)) finish(29);
+  if (!run_matrix_case(8, 16)) finish(30);
+
+  install_matrix_descriptor(8, 16);
+  write_destination(QBS_DEST_POISON);
+  clear_trap();
+  run_qbexec_m8_bad_vd(&descriptor, matrix_activations_m8);
+  if (!expect_illegal(UINT32_C(0x0eb500db)) ||
+      read_v0_word0() != QBS_DEST_POISON)
+    finish(31);
+
+  install_matrix_descriptor(1, 1);
   descriptor.header |= UINT64_C(1) << 63;
   write_v0_word0(UINT32_C(0x4d8d8d8d));
   clear_trap();
@@ -349,7 +423,7 @@ void qbs_contract_main(void) {
       read_v0_word0() != UINT32_C(0x4d8d8d8d))
     finish(13);
 
-  install_matrix_descriptor(1);
+  install_matrix_descriptor(2, 1);
   write_v0_word0(UINT32_C(0x4e9e9e9e));
   clear_trap();
   run_qbexec_m2_bad_vd(&descriptor, matrix_activations);

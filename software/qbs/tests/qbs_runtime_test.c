@@ -44,8 +44,9 @@ static int test_device_and_profiles(void) {
   qbs_device_t device;
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
   CHECK(device.capabilities.valid);
-  CHECK(device.capabilities.max_m == 4);
+  CHECK(device.capabilities.max_m == 8);
   CHECK(device.capabilities.max_n == 32);
+  CHECK(device.capabilities.max_results == 128);
   CHECK(device.capabilities.max_k_blocks == 256);
   CHECK(device.capabilities.blocking_completion);
   CHECK(device.capabilities.fault_atomic_destination);
@@ -61,6 +62,8 @@ static int test_device_and_profiles(void) {
         (UINT16_C(1) << QBS_ACTIVATION_PROFILE_Q8_K));
   CHECK(device.capabilities.activation_context_layouts ==
         (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
+  CHECK((device.capabilities.activation_layouts &
+         (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)) != 0);
 
   for (size_t index = 0;
        index < sizeof(weight_profiles) / sizeof(weight_profiles[0]); ++index) {
@@ -255,6 +258,88 @@ static int test_activation_pack_profile(unsigned profile) {
   return 0;
 }
 
+static int test_activation_pack_m8_profile(unsigned profile, size_t m) {
+  qbs_activation_profile_info_t info;
+  CHECK(qbs_activation_profile_info(profile, &info) == QBS_STATUS_OK);
+  CHECK(m >= QBS_WIDE_M_MIN);
+  const size_t k_blocks = 2;
+  const size_t source_bytes = m * k_blocks * info.block_bytes;
+  const size_t tail = m & 7u;
+  const size_t storage_rows =
+      m + (tail >= QBS_WIDE_M_MIN ? QBS_MAX_M - tail : 0u);
+  const size_t destination_bytes =
+      storage_rows * k_blocks * info.block_bytes;
+  uint8_t *source = (uint8_t *)malloc(source_bytes);
+  uint8_t *destination = (uint8_t *)malloc(destination_bytes);
+  CHECK(source != NULL && destination != NULL);
+  for (size_t context = 0; context < m; ++context) {
+    for (size_t block = 0; block < k_blocks; ++block) {
+      uint8_t *item = source +
+          (context * k_blocks + block) * info.block_bytes;
+      for (size_t byte = 0; byte < info.block_bytes; ++byte)
+        item[byte] = (uint8_t)(context * 37u + block * 19u + byte);
+    }
+  }
+  memset(destination, 0xa5, destination_bytes);
+  CHECK(qbs_pack_activation_m8_grouped(
+            profile, source, source_bytes, m, k_blocks, destination,
+            destination_bytes) ==
+        QBS_STATUS_OK);
+
+  size_t packed_offset = 0;
+  for (size_t first = 0; first < m;) {
+    const size_t remaining = m - first;
+    const size_t rows = remaining > 4u
+        ? (remaining < QBS_MAX_M ? remaining : QBS_MAX_M)
+        : remaining;
+    const size_t group_storage_rows = rows > 4u ? QBS_MAX_M : rows;
+    const uint8_t *packed = destination + packed_offset;
+    if (rows <= 4u) {
+      CHECK(memcmp(packed, source + first * k_blocks * info.block_bytes,
+                   rows * k_blocks * info.block_bytes) == 0);
+      first += rows;
+      packed_offset += rows * k_blocks * info.block_bytes;
+      continue;
+    }
+    for (size_t block = 0; block < k_blocks; ++block) {
+      const uint8_t *packed_block =
+          packed + block * group_storage_rows * info.block_bytes;
+      for (size_t context = 0; context < rows; ++context) {
+        const uint8_t *original = source +
+            ((first + context) * k_blocks + block) * info.block_bytes;
+        CHECK(memcmp(packed_block + context * info.scale_bytes, original,
+                     info.scale_bytes) == 0);
+        for (size_t byte = 0; byte < info.quant_bytes; ++byte) {
+          CHECK(packed_block[group_storage_rows * info.scale_bytes +
+                             byte * group_storage_rows + context] ==
+                original[info.scale_bytes + byte]);
+        }
+        for (size_t item = 0; item < info.aux_count; ++item) {
+          const size_t source_offset = info.scale_bytes + info.quant_bytes +
+              item * info.aux_element_bytes;
+          const size_t destination_offset =
+              group_storage_rows * info.scale_bytes +
+              group_storage_rows * info.quant_bytes +
+              (item * group_storage_rows + context) * info.aux_element_bytes;
+          CHECK(memcmp(packed_block + destination_offset,
+                       original + source_offset,
+                       info.aux_element_bytes) == 0);
+        }
+      }
+      for (size_t context = rows; context < group_storage_rows; ++context) {
+        CHECK(memcmp(packed_block + context * info.scale_bytes,
+                     (uint8_t[4]){0}, info.scale_bytes) == 0);
+      }
+    }
+    packed_offset += group_storage_rows * k_blocks * info.block_bytes;
+    first += rows;
+  }
+  CHECK(packed_offset == destination_bytes);
+  free(destination);
+  free(source);
+  return 0;
+}
+
 typedef struct {
   const qbs_plan_t *plan;
   const uint8_t *weights;
@@ -375,11 +460,16 @@ static int validate_plan_commands(const qbs_plan_t *plan) {
   const size_t weight_alignment = (size_t)1u
                                   << QBS_WEIGHT_BASE_ALIGNMENT_LOG2;
   const unsigned largest_command_m =
-      plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
-              plan->problem.m >= 4u
-          ? 4u
-          : (plan->problem.m < plan->command_m ? (unsigned)plan->problem.m
-                                                : plan->command_m);
+      plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+              plan->problem.m >= QBS_WIDE_M_MIN
+          ? (plan->problem.m < plan->command_m
+                 ? (unsigned)plan->problem.m : plan->command_m)
+          : (plan->problem.activation_storage ==
+                         QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+                     plan->problem.m >= 4u
+                 ? 4u
+                 : (plan->problem.m < plan->command_m
+                        ? (unsigned)plan->problem.m : plan->command_m));
   const size_t partial_bytes = plan->split_k
       ? (size_t)largest_command_m * plan->command_n * sizeof(float)
       : 0u;
@@ -390,24 +480,36 @@ static int validate_plan_commands(const qbs_plan_t *plan) {
 
   for (uint32_t input = 0; input < plan->problem.m;) {
     const uint32_t remaining = plan->problem.m - input;
-    const unsigned m =
-        plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
-                remaining >= 4u
-            ? 4u
-            : (remaining < plan->command_m ? (unsigned)remaining
-                                           : plan->command_m);
+    unsigned m;
+    if (plan->problem.activation_storage ==
+            QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+        remaining >= QBS_WIDE_M_MIN)
+      m = remaining < plan->command_m ? (unsigned)remaining : plan->command_m;
+    else if (plan->problem.activation_storage ==
+                 QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+             remaining >= 4u)
+      m = 4u;
+    else {
+      const unsigned narrow_limit = plan->command_m < 4u
+          ? plan->command_m : 4u;
+      m = remaining < narrow_limit ? (unsigned)remaining : narrow_limit;
+    }
     const int m4 =
         plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
         m == 4u;
+    const int m8 =
+        plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+        m >= QBS_WIDE_M_MIN;
+    const unsigned n_limit = m8 ? plan->wide_command_n : plan->command_n;
     for (uint16_t k_start = 0;;) {
       const unsigned k_blocks =
           plan->k_blocks - k_start < plan->command_k_blocks
               ? plan->k_blocks - k_start
               : plan->command_k_blocks;
       for (uint32_t output = 0; output < plan->problem.n;) {
-        const unsigned n = plan->problem.n - output < plan->command_n
+        const unsigned n = plan->problem.n - output < n_limit
                                ? (unsigned)(plan->problem.n - output)
-                               : plan->command_n;
+                               : n_limit;
         qbs_command_t command;
         int has_command = 0;
         CHECK(qbs_plan_next(plan, &cursor, &command, &has_command) ==
@@ -420,8 +522,10 @@ static int validate_plan_commands(const qbs_plan_t *plan) {
         CHECK(command.k_blocks == k_blocks);
         CHECK(command.accumulate == (plan->split_k && k_start != 0));
         CHECK(command.activation_layout ==
-              (m4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
-                  : QBS_ACTIVATION_LAYOUT_ROW_MAJOR));
+              (m8 ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+                  : (m4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+                        : QBS_ACTIVATION_LAYOUT_ROW_MAJOR)));
+        CHECK((size_t)command.m * command.n <= QBS_MAX_RESULTS);
 
         const size_t weight_block_index =
             plan->problem.weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
@@ -433,9 +537,9 @@ static int validate_plan_commands(const qbs_plan_t *plan) {
         }
         const size_t activation_offset =
             activation_block_index * activation_block_bytes;
-        const int gather =
-            !m4 && ((plan->split_k && m > 1u) ||
-                    (activation_offset & (activation_alignment - 1u)) != 0);
+        const int gather = !m4 && !m8 &&
+            ((plan->split_k && m > 1u) ||
+             (activation_offset & (activation_alignment - 1u)) != 0);
         CHECK(command.gather_activation == gather);
         CHECK(command.weight_offset_bytes ==
               weight_block_index * weight_block_bytes);
@@ -588,7 +692,7 @@ static int test_plan_and_execute(void) {
   CHECK(plan.split_k && plan.command_k_blocks == 256);
   CHECK(plan.command_n == 4);
   CHECK(plan.workspace_bytes ==
-        QBS_MAX_M * 4u * sizeof(float) +
+        4u * 4u * sizeof(float) +
             2u * QBS_MAX_K_BLOCKS * QBS_Q8_0_BLOCK_BYTES);
 
   mock_executor_t mock = {.plan = &plan};
@@ -631,6 +735,86 @@ static int test_plan_and_execute(void) {
   free(output);
   free(activations);
   free(weights);
+  return 0;
+}
+
+static int test_adaptive_multirow_plan(void) {
+  qbs_device_t device;
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+
+  CHECK(qbs_recommend_activation_storage(
+            &device, QBS_WEIGHT_PROFILE_Q4_K,
+            QBS_ACTIVATION_PROFILE_Q8_K,
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR, 4u, 1536u, 1536u) ==
+        QBS_ACTIVATION_STORAGE_M4_GROUPED);
+  CHECK(qbs_recommend_activation_storage(
+            &device, QBS_WEIGHT_PROFILE_Q4_K,
+            QBS_ACTIVATION_PROFILE_Q8_K,
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR, 8u, 1536u, 1536u) ==
+        QBS_ACTIVATION_STORAGE_M8_GROUPED);
+  qbs_device_t no_m8 = device;
+  no_m8.capabilities.activation_layouts &=
+      (uint16_t)~(UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED);
+  CHECK(qbs_recommend_activation_storage(
+            &no_m8, QBS_WEIGHT_PROFILE_Q4_K,
+            QBS_ACTIVATION_PROFILE_Q8_K,
+            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR, 8u, 1536u, 1536u) ==
+        QBS_ACTIVATION_STORAGE_M4_GROUPED);
+
+  const qbs_problem_t problem = {
+      .weight_profile = QBS_WEIGHT_PROFILE_Q6_K,
+      .activation_profile = QBS_ACTIVATION_PROFILE_Q8_K,
+      .weight_layout = QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      .activation_storage = QBS_ACTIVATION_STORAGE_M8_GROUPED,
+      .m = 15,
+      .n = 35,
+      .k_elements = 6u * QBS_Q6_K_BLOCK_ELEMENTS,
+  };
+  qbs_plan_t plan;
+  CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
+  CHECK(plan.uses_wide_m);
+  CHECK(plan.command_m == 8u);
+  CHECK(plan.command_n == 32u);
+  CHECK(plan.wide_command_n == 16u);
+  CHECK(!plan.split_k && !plan.needs_activation_gather);
+
+  mock_executor_t mock = {.plan = &plan};
+  CHECK(collect_commands(&plan, &mock) == 0);
+  CHECK(mock.command_count == 6u);
+  for (unsigned index = 0; index < 6u; ++index) {
+    const qbs_command_t *command = &mock.commands[index];
+    CHECK(command->m == (index < 3u ? 8u : 7u));
+    CHECK(command->n == (index % 3u == 2u ? 3u : 16u));
+    CHECK(command->activation_layout ==
+          QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED);
+    CHECK(!command->gather_activation);
+    CHECK((size_t)command->m * command->n <= QBS_MAX_RESULTS);
+  }
+  CHECK(mock.commands[3].input_start == 8u);
+  CHECK(mock.commands[3].activation_offset_bytes ==
+        8u * plan.k_blocks * QBS_Q8_K_BLOCK_BYTES);
+  CHECK(validate_plan_commands(&plan) == 0);
+
+  qbs_problem_t mixed_tail = problem;
+  mixed_tail.m = 12u;
+  CHECK(qbs_plan_create(&device, &mixed_tail, &plan) == QBS_STATUS_OK);
+  memset(&mock, 0, sizeof(mock));
+  mock.plan = &plan;
+  CHECK(collect_commands(&plan, &mock) == 0);
+  CHECK(mock.command_count == 5u);
+  CHECK(mock.commands[0].m == 8u && mock.commands[0].n == 16u);
+  CHECK(mock.commands[3].m == 4u && mock.commands[3].n == 32u);
+  CHECK(mock.commands[3].activation_layout ==
+        QBS_ACTIVATION_LAYOUT_ROW_MAJOR);
+  CHECK(validate_plan_commands(&plan) == 0);
+
+  qbs_problem_t split_k = problem;
+  split_k.k_elements = 257u * QBS_Q6_K_BLOCK_ELEMENTS;
+  CHECK(qbs_plan_create(&device, &split_k, &plan) == QBS_STATUS_SHAPE);
+
+  qbs_problem_t wrong_storage = problem;
+  wrong_storage.m = 4u;
+  CHECK(qbs_plan_create(&device, &wrong_storage, &plan) == QBS_STATUS_LAYOUT);
   return 0;
 }
 
@@ -911,18 +1095,18 @@ static int test_workspace_sizing(void) {
   problem.m = 4;
   CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
   CHECK(plan.split_k && !plan.needs_activation_gather);
-  CHECK(plan.workspace_bytes == QBS_MAX_M * 4u * sizeof(float));
+  CHECK(plan.workspace_bytes == 4u * 4u * sizeof(float));
 
   problem.m = 5;
   CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
   CHECK(plan.split_k && !plan.needs_activation_gather);
-  CHECK(plan.workspace_bytes == QBS_MAX_M * 4u * sizeof(float));
+  CHECK(plan.workspace_bytes == 4u * 4u * sizeof(float));
 
   problem.m = 6;
   CHECK(qbs_plan_create(&device, &problem, &plan) == QBS_STATUS_OK);
   CHECK(plan.needs_activation_gather);
   CHECK(plan.workspace_bytes ==
-        QBS_MAX_M * 4u * sizeof(float) +
+        4u * 4u * sizeof(float) +
             2u * QBS_MAX_K_BLOCKS * QBS_Q8_K_BLOCK_BYTES);
 
   CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
@@ -1000,8 +1184,12 @@ int main(void) {
   CHECK(test_weight_repack() == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_K) == 0);
   CHECK(test_activation_pack_profile(QBS_ACTIVATION_PROFILE_Q8_0) == 0);
+  CHECK(test_activation_pack_m8_profile(QBS_ACTIVATION_PROFILE_Q8_K, 8u) == 0);
+  CHECK(test_activation_pack_m8_profile(QBS_ACTIVATION_PROFILE_Q8_K, 15u) == 0);
+  CHECK(test_activation_pack_m8_profile(QBS_ACTIVATION_PROFILE_Q8_0, 7u) == 0);
   CHECK(test_plan_matrix() == 0);
   CHECK(test_plan_and_execute() == 0);
+  CHECK(test_adaptive_multirow_plan() == 0);
   CHECK(test_activation_context_execution() == 0);
   CHECK(test_restricted_row_major_device() == 0);
   CHECK(test_non_split_alignment_gather() == 0);

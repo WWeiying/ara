@@ -114,9 +114,16 @@ def estimate(
         * k_blocks
         * int(weight["block_bytes"])
     )
-    # Every N command tile rereads the activation rows in its M command group.
+    # M8 uses a fixed eight-row payload built from two M4-interleaved groups.
+    # The final M5--M7 group is padded; this is the byte cost paid to avoid a
+    # variable divider/modulo network in the RTL input steering path.
+    activation_storage_rows = sum(
+        geometry.max_m if geometry.max_m > 4 and mt > 4 else mt
+        for mt in m_tiles
+    )
+    # Every N command tile rereads the activation payload in its M group.
     activation_bytes = (
-        sum(m_tiles)
+        activation_storage_rows
         * len(n_tiles)
         * k_blocks
         * int(activation["block_bytes"])
@@ -147,7 +154,10 @@ def estimate(
         ideal_read_cycles=ideal_read_cycles,
         roofline_cycles=max(ideal_dot_cycles, ideal_read_cycles),
         activation_block_buffer_bytes=(
-            min(m, geometry.max_m) * int(activation["block_bytes"])
+            (geometry.max_m
+             if geometry.max_m > 4 and min(m, geometry.max_m) > 4
+             else min(m, geometry.max_m))
+            * int(activation["block_bytes"])
         ),
     )
 
@@ -156,7 +166,9 @@ def percent_reduction(old: int, new: int) -> float:
     return 100.0 * (old - new) / old
 
 
-def comparisons(estimates: Iterable[Estimate]) -> list[dict[str, object]]:
+def comparisons(
+    estimates: Iterable[Estimate], selection_threshold_pct: float
+) -> list[dict[str, object]]:
     groups: dict[tuple[str, int], dict[str, Estimate]] = {}
     for item in estimates:
         groups.setdefault((item.case, item.m), {})[item.geometry] = item
@@ -202,7 +214,7 @@ def comparisons(estimates: Iterable[Estimate]) -> list[dict[str, object]]:
                     and percent_reduction(
                         current.input_bytes, adaptive.input_bytes
                     )
-                    >= 20.0
+                    >= selection_threshold_pct
                 ),
             }
         )
@@ -279,7 +291,10 @@ def main() -> int:
                     )
                 )
 
-    rows = comparisons(estimates)
+    selection_threshold_pct = float(
+        abi["limits"]["wide_m_min_input_reduction_percent"]
+    )
+    rows = comparisons(estimates, selection_threshold_pct)
     if args.csv:
         write_csv(args.csv, rows)
     if args.markdown:

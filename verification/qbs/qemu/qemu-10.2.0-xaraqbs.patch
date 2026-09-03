@@ -127,7 +127,7 @@
 +%rs2 20:5
 +%rs1 15:5
 +%rd   7:5
-+%m   25:2 !function=ex_plus_1
++%m   25:3 !function=ex_plus_1
 +
 +&qbs_info rd rs1
 +&qbs_exec rd rs1 rs2 m
@@ -136,10 +136,10 @@
 +@qbs_exec ....... ..... ..... ... ..... ....... &qbs_exec %m %rs2 %rs1 %rd
 +
 +qbinfo 0000000 00000 ..... 001 ..... 1011011 @qbs_info
-+qbexec 00000.. ..... ..... 000 ..... 1011011 @qbs_exec
++qbexec 0000... ..... ..... 000 ..... 1011011 @qbs_exec
 --- /dev/null
 +++ b/target/riscv/insn_trans/trans_xaraqbs.c.inc
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,49 @@
 +/*
 + * RISC-V translation routines for the Xaraqbs extension.
 + *
@@ -169,7 +169,8 @@
 +    TCGv descriptor;
 +    TCGv activation;
 +
-+    destination_registers = a->m == 1 ? 1 : (a->m == 2 ? 2 : 4);
++    destination_registers = a->m == 1 ? 1 :
++                            (a->m == 2 ? 2 : (a->m <= 4 ? 4 : 8));
 +    if (ctx->mstatus_vs == EXT_STATUS_DISABLED ||
 +        ctx->mstatus_fs == EXT_STATUS_DISABLED ||
 +        !ctx->cfg_ptr->ext_zve32f || !ctx->vstart_eq_zero ||
@@ -190,7 +191,7 @@
 +}
 --- /dev/null
 +++ b/target/riscv/qbs_helper.c
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,244 @@
 +/*
 + * QEMU functional model for the Xaraqbs quantized block-stream extension.
 + *
@@ -289,7 +290,7 @@
 +
 +static unsigned qbs_destination_registers(unsigned m)
 +{
-+    return m == 1 ? 1 : (m == 2 ? 2 : 4);
++    return m == 1 ? 1 : (m == 2 ? 2 : (m <= 4 ? 4 : 8));
 +}
 +
 +static void qbs_copy_destination_from_env(CPURISCVState *env, unsigned vd,
@@ -350,7 +351,7 @@
 +    unsigned elements;
 +    g_autofree uint8_t *weights = NULL;
 +    g_autofree uint8_t *activations = NULL;
-+    float destination[4 * RV_VLEN_MAX / 32];
++    g_autofree float *destination = NULL;
 +
 +#if HOST_BIG_ENDIAN
 +    qbs_raise_illegal(env, insn, retaddr);
@@ -417,6 +418,7 @@
 +                       retaddr);
 +
 +    elements = riscv_cpu_cfg(env)->vlenb / sizeof(uint32_t);
++    destination = g_new(float, registers * elements);
 +    qbs_copy_destination_from_env(env, vd, registers, destination);
 +    status = qbs_ref_execute_with_context(
 +        &env->qbs_activation_context, &descriptor, m, vd,

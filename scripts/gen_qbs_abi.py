@@ -76,10 +76,23 @@ def validate_spec(spec: dict) -> None:
     if numerical_contract.get("uses_dynamic_frm") is not False:
         raise ValueError(
             "QBS numerical-contract v1 must not depend on dynamic frm")
-    if not 1 <= limits["max_m"] <= 4:
-        raise ValueError("limits.max_m must fit the 2-bit M-minus-one field")
+    m_bits = spec["instruction"].get("m_minus_one_bits", 2)
+    if not 1 <= m_bits <= 5:
+        raise ValueError("instruction.m_minus_one_bits must be in [1,5]")
+    if not 1 <= limits["max_m"] <= (1 << m_bits):
+        raise ValueError("limits.max_m does not fit the M-minus-one field")
     if not 1 <= limits["max_n"] <= 32:
         raise ValueError("limits.max_n must fit the 5-bit N-minus-one field")
+    if not 1 <= limits["max_results"] <= 256:
+        raise ValueError("limits.max_results must be in [1,256]")
+    if not 2 <= limits["wide_m_min"] <= limits["max_m"]:
+        raise ValueError("limits.wide_m_min must select a valid M range")
+    if not 1 <= limits["wide_m_max_n"] <= limits["max_n"]:
+        raise ValueError("limits.wide_m_max_n exceeds the QBS N limit")
+    if limits["max_m"] * limits["wide_m_max_n"] > limits["max_results"]:
+        raise ValueError("wide-M geometry exceeds the accumulator limit")
+    if not 1 <= limits["wide_m_min_input_reduction_percent"] <= 99:
+        raise ValueError("wide-M input-reduction threshold must be in [1,99]")
     if not 1 <= limits["max_k_blocks"] <= 256:
         raise ValueError(
             "limits.max_k_blocks must fit the 8-bit K-block-minus-one field")
@@ -451,9 +464,14 @@ def c_header(spec: dict) -> str:
 #define QBS_OPCODE_CUSTOM2 0x{insn['opcode']:02x}u
 #define QBS_QBEXEC_FUNCT3 {insn['qbexec_funct3']}u
 #define QBS_QBINFO_FUNCT3 {insn['qbinfo_funct3']}u
+#define QBS_M_MINUS_ONE_BITS {insn['m_minus_one_bits']}u
 
 #define QBS_MAX_M {limits['max_m']}u
 #define QBS_MAX_N {limits['max_n']}u
+#define QBS_MAX_RESULTS {limits['max_results']}u
+#define QBS_WIDE_M_MIN {limits['wide_m_min']}u
+#define QBS_WIDE_M_MAX_N {limits['wide_m_max_n']}u
+#define QBS_WIDE_M_MIN_INPUT_REDUCTION_PERCENT {limits['wide_m_min_input_reduction_percent']}u
 #define QBS_MAX_K_BLOCKS {limits['max_k_blocks']}u
 /* Compatibility alias for numerical-contract v1 K-quant profiles. */
 #define QBS_BLOCK_ELEMENTS {limits['block_elements']}u
@@ -668,12 +686,13 @@ static inline uint64_t qbs_capability_word(unsigned index,
            ((uint64_t)QBS_DESCRIPTOR_VERSION << 8) |
            ((uint64_t)QBS_DESCRIPTOR_BYTES << 16) |
            ((uint64_t)(QBS_MAX_M - 1u) << 24) |
-           ((uint64_t)(max_n - 1u) << 26) |
-           ((uint64_t)(QBS_MAX_K_BLOCKS - 1u) << 31) |
-           ((uint64_t)QBS_NUMERICAL_CONTRACT_VERSION << 39) |
-           (UINT64_C(1) << 43) | (UINT64_C(1) << 44) |
-           (UINT64_C(1) << 45) | (UINT64_C(1) << 46) |
-           (UINT64_C(1) << 47);
+           ((uint64_t)(max_n - 1u) << 27) |
+           ((uint64_t)(QBS_MAX_K_BLOCKS - 1u) << 32) |
+           ((uint64_t)QBS_NUMERICAL_CONTRACT_VERSION << 40) |
+           (UINT64_C(1) << 44) | (UINT64_C(1) << 45) |
+           (UINT64_C(1) << 46) | (UINT64_C(1) << 47) |
+           (UINT64_C(1) << 48) |
+           ((uint64_t)(QBS_MAX_RESULTS - 1u) << 56);
   }}
   if (index == 0x01u) {{
     const uint64_t weight_layouts =
@@ -705,7 +724,8 @@ static inline uint64_t qbs_capability_word(unsigned index,
 
 static inline uint32_t qbs_encode_qbexec(unsigned vd, unsigned rs1,
                                          unsigned rs2, unsigned m) {{
-  const uint32_t funct7 = (uint32_t)((m - 1u) & 0x3u);
+  const uint32_t funct7 =
+      (uint32_t)((m - 1u) & ((1u << QBS_M_MINUS_ONE_BITS) - 1u));
   return (funct7 << 25) | ((uint32_t)(rs2 & 0x1fu) << 20) |
          ((uint32_t)(rs1 & 0x1fu) << 15) | (QBS_QBEXEC_FUNCT3 << 12) |
          ((uint32_t)(vd & 0x1fu) << 7) | QBS_OPCODE_CUSTOM2;
@@ -944,9 +964,15 @@ package qbs_pkg;
   localparam logic [6:0] QbsOpcodeCustom2 = 7'h{insn['opcode']:02x};
   localparam logic [2:0] QbsQbexecFunct3 = 3'd{insn['qbexec_funct3']};
   localparam logic [2:0] QbsQbinfoFunct3 = 3'd{insn['qbinfo_funct3']};
+  localparam int unsigned QbsMMinusOneBits = {insn['m_minus_one_bits']};
 
   localparam int unsigned QbsMaxM = {limits['max_m']};
   localparam int unsigned QbsMaxN = {limits['max_n']};
+  localparam int unsigned QbsMaxResults = {limits['max_results']};
+  localparam int unsigned QbsWideMMin = {limits['wide_m_min']};
+  localparam int unsigned QbsWideMMaxN = {limits['wide_m_max_n']};
+  localparam int unsigned QbsWideMMinInputReductionPercent =
+      {limits['wide_m_min_input_reduction_percent']};
   localparam int unsigned QbsMaxKBlocks = {limits['max_k_blocks']};
   // Compatibility alias for numerical-contract v1 K-quant profiles.
   localparam int unsigned QbsBlockElements = {limits['block_elements']};
@@ -1090,11 +1116,12 @@ package qbs_pkg;
           result[7:0]   = 8'(QbsArchitectureVersion);
           result[15:8]  = 8'(QbsDescriptorVersion);
           result[23:16] = 8'(QbsDescriptorBytes);
-          result[25:24] = 2'(QbsMaxM - 1);
-          result[30:26] = 5'(max_n - 1);
-          result[38:31] = 8'(QbsMaxKBlocks - 1);
-          result[42:39] = 4'(QbsNumericalContractVersion);
-          result[47:43] = 5'b1_1111;
+          result[26:24] = 3'(QbsMaxM - 1);
+          result[31:27] = 5'(max_n - 1);
+          result[39:32] = 8'(QbsMaxKBlocks - 1);
+          result[43:40] = 4'(QbsNumericalContractVersion);
+          result[48:44] = 5'b1_1111;
+          result[63:56] = 8'(QbsMaxResults - 1);
         end
       end
       64'h01: begin

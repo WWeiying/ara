@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define QBS_EXTENSION_NAME "Xaraqbs"
-#define QBS_ARCH_VERSION 2u
+#define QBS_ARCH_VERSION 3u
 #define QBS_NUMERICAL_CONTRACT_VERSION 1u
 #define QBS_ROUNDING_MODE_RNE 0u
 #define QBS_NUMERICAL_ROUNDING_MODE QBS_ROUNDING_MODE_RNE
@@ -18,9 +18,14 @@
 #define QBS_OPCODE_CUSTOM2 0x5bu
 #define QBS_QBEXEC_FUNCT3 0u
 #define QBS_QBINFO_FUNCT3 1u
+#define QBS_M_MINUS_ONE_BITS 3u
 
-#define QBS_MAX_M 4u
+#define QBS_MAX_M 8u
 #define QBS_MAX_N 32u
+#define QBS_MAX_RESULTS 128u
+#define QBS_WIDE_M_MIN 5u
+#define QBS_WIDE_M_MAX_N 16u
+#define QBS_WIDE_M_MIN_INPUT_REDUCTION_PERCENT 15u
 #define QBS_MAX_K_BLOCKS 256u
 /* Compatibility alias for numerical-contract v1 K-quant profiles. */
 #define QBS_BLOCK_ELEMENTS 256u
@@ -161,6 +166,7 @@ typedef enum {
   QBS_ACTIVATION_LAYOUT_INVALID = 0,
   QBS_ACTIVATION_LAYOUT_ROW_MAJOR = 1,
   QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 2,
+  QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED = 3,
 } qbs_activation_layout_t;
 
 typedef enum {
@@ -521,12 +527,13 @@ static inline uint64_t qbs_capability_word(unsigned index,
            ((uint64_t)QBS_DESCRIPTOR_VERSION << 8) |
            ((uint64_t)QBS_DESCRIPTOR_BYTES << 16) |
            ((uint64_t)(QBS_MAX_M - 1u) << 24) |
-           ((uint64_t)(max_n - 1u) << 26) |
-           ((uint64_t)(QBS_MAX_K_BLOCKS - 1u) << 31) |
-           ((uint64_t)QBS_NUMERICAL_CONTRACT_VERSION << 39) |
-           (UINT64_C(1) << 43) | (UINT64_C(1) << 44) |
-           (UINT64_C(1) << 45) | (UINT64_C(1) << 46) |
-           (UINT64_C(1) << 47);
+           ((uint64_t)(max_n - 1u) << 27) |
+           ((uint64_t)(QBS_MAX_K_BLOCKS - 1u) << 32) |
+           ((uint64_t)QBS_NUMERICAL_CONTRACT_VERSION << 40) |
+           (UINT64_C(1) << 44) | (UINT64_C(1) << 45) |
+           (UINT64_C(1) << 46) | (UINT64_C(1) << 47) |
+           (UINT64_C(1) << 48) |
+           ((uint64_t)(QBS_MAX_RESULTS - 1u) << 56);
   }
   if (index == 0x01u) {
     const uint64_t weight_layouts =
@@ -534,7 +541,8 @@ static inline uint64_t qbs_capability_word(unsigned index,
         (UINT64_C(1) << QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR);
     const uint64_t activation_layouts =
         (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR) |
-        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED);
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) |
+        (UINT64_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED);
     return weight_layouts | (activation_layouts << 16) |
            ((uint64_t)QBS_DESCRIPTOR_ALIGNMENT_LOG2 << 32) |
            ((uint64_t)QBS_WEIGHT_BASE_ALIGNMENT_LOG2 << 40) |
@@ -654,7 +662,8 @@ static inline uint64_t qbs_capability_word(unsigned index,
 
 static inline uint32_t qbs_encode_qbexec(unsigned vd, unsigned rs1,
                                          unsigned rs2, unsigned m) {
-  const uint32_t funct7 = (uint32_t)((m - 1u) & 0x3u);
+  const uint32_t funct7 =
+      (uint32_t)((m - 1u) & ((1u << QBS_M_MINUS_ONE_BITS) - 1u));
   return (funct7 << 25) | ((uint32_t)(rs2 & 0x1fu) << 20) |
          ((uint32_t)(rs1 & 0x1fu) << 15) | (QBS_QBEXEC_FUNCT3 << 12) |
          ((uint32_t)(vd & 0x1fu) << 7) | QBS_OPCODE_CUSTOM2;

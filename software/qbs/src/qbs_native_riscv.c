@@ -21,7 +21,9 @@ qbs_status_t qbs_native_execute_command(
   (void)context;
   (void)segmented;
   if (descriptor == NULL || activations == NULL || output == NULL ||
-      m == 0 || m > QBS_MAX_M || n == 0 || n > QBS_MAX_N)
+      m == 0 || m > QBS_MAX_M || n == 0 || n > QBS_MAX_N ||
+      (m >= QBS_WIDE_M_MIN && n > QBS_WIDE_M_MAX_N) ||
+      m * n > QBS_MAX_RESULTS)
     return QBS_STATUS_BAD_ARGUMENT;
 #if defined(__riscv) && __riscv_xlen == 64
   register uintptr_t a0 __asm__("a0") = (uintptr_t)descriptor;
@@ -104,6 +106,126 @@ qbs_status_t qbs_native_execute_command(
             "+r"(a5)
           : [n] "r"(n)
           : "t0", "v8", "v9", "v10", "v11", "memory");
+      break;
+    }
+    case 5: {
+      register uintptr_t a2 __asm__("a2") = (uintptr_t)output;
+      register uintptr_t a3 __asm__("a3") =
+          output_stride_elements * sizeof(*output);
+      __asm__ volatile(
+          "fence rw, rw\n"
+          "li t0, 256\n"
+          "vsetvli zero, t0, e32, m8, ta, ma\n"
+          ".word 0x08b5045b\n"
+          "mv t0, %[n]\n"
+          "vsetvli zero, t0, e32, m1, ta, ma\n"
+          "mv t1, a2\n"
+          "vse32.v v8, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v9, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v10, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v11, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v12, (t1)\n"
+          : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+          : [n] "r"(n)
+          : "t0", "t1", "v8", "v9", "v10", "v11", "v12", "v13",
+            "v14", "v15", "memory");
+      break;
+    }
+    case 6: {
+      register uintptr_t a2 __asm__("a2") = (uintptr_t)output;
+      register uintptr_t a3 __asm__("a3") =
+          output_stride_elements * sizeof(*output);
+      __asm__ volatile(
+          "fence rw, rw\n"
+          "li t0, 256\n"
+          "vsetvli zero, t0, e32, m8, ta, ma\n"
+          ".word 0x0ab5045b\n"
+          "mv t0, %[n]\n"
+          "vsetvli zero, t0, e32, m1, ta, ma\n"
+          "mv t1, a2\n"
+          "vse32.v v8, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v9, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v10, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v11, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v12, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v13, (t1)\n"
+          : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+          : [n] "r"(n)
+          : "t0", "t1", "v8", "v9", "v10", "v11", "v12", "v13",
+            "v14", "v15", "memory");
+      break;
+    }
+    case 7: {
+      register uintptr_t a2 __asm__("a2") = (uintptr_t)output;
+      register uintptr_t a3 __asm__("a3") =
+          output_stride_elements * sizeof(*output);
+      __asm__ volatile(
+          "fence rw, rw\n"
+          "li t0, 256\n"
+          "vsetvli zero, t0, e32, m8, ta, ma\n"
+          ".word 0x0cb5045b\n"
+          "mv t0, %[n]\n"
+          "vsetvli zero, t0, e32, m1, ta, ma\n"
+          "mv t1, a2\n"
+          "vse32.v v8, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v9, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v10, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v11, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v12, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v13, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v14, (t1)\n"
+          : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+          : [n] "r"(n)
+          : "t0", "t1", "v8", "v9", "v10", "v11", "v12", "v13",
+            "v14", "v15", "memory");
+      break;
+    }
+    case 8: {
+      register uintptr_t a2 __asm__("a2") = (uintptr_t)output;
+      register uintptr_t a3 __asm__("a3") =
+          output_stride_elements * sizeof(*output);
+      __asm__ volatile(
+          "fence rw, rw\n"
+          "li t0, 256\n"
+          "vsetvli zero, t0, e32, m8, ta, ma\n"
+          ".word 0x0eb5045b\n"
+          "mv t0, %[n]\n"
+          "vsetvli zero, t0, e32, m1, ta, ma\n"
+          "mv t1, a2\n"
+          "vse32.v v8, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v9, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v10, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v11, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v12, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v13, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v14, (t1)\n"
+          "add t1, t1, a3\n"
+          "vse32.v v15, (t1)\n"
+          : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+          : [n] "r"(n)
+          : "t0", "t1", "v8", "v9", "v10", "v11", "v12", "v13",
+            "v14", "v15", "memory");
       break;
     }
   }

@@ -142,6 +142,7 @@ static void test_abi(void) {
   CHECK((header >> 47) == 0);
 
   CHECK(qbs_encode_qbexec(8, 10, 11, 4) == UINT32_C(0x06b5045b));
+  CHECK(qbs_encode_qbexec(8, 10, 11, 8) == UINT32_C(0x0eb5045b));
   CHECK(qbs_encode_qbexec(1, 2, 3, 1) == UINT32_C(0x003100db));
   CHECK(qbs_encode_qbinfo(6, 5) == UINT32_C(0x0002935b));
 
@@ -149,11 +150,13 @@ static void test_abi(void) {
   CHECK(((info0 >> 0) & 0xffu) == QBS_ARCH_VERSION);
   CHECK(((info0 >> 8) & 0xffu) == QBS_DESCRIPTOR_VERSION);
   CHECK(((info0 >> 16) & 0xffu) == QBS_DESCRIPTOR_BYTES);
-  CHECK(((info0 >> 24) & 0x3u) + 1u == QBS_MAX_M);
-  CHECK(((info0 >> 26) & 0x1fu) + 1u == QBS_MAX_N);
-  CHECK(((info0 >> 31) & 0xffu) + 1u == QBS_MAX_K_BLOCKS);
-  CHECK(((info0 >> 39) & 0xfu) == QBS_NUMERICAL_CONTRACT_VERSION);
-  CHECK(((info0 >> 43) & 0x1fu) == 0x1fu);
+  CHECK(((info0 >> 24) & 0x7u) + 1u == QBS_MAX_M);
+  CHECK(((info0 >> 27) & 0x1fu) + 1u == QBS_MAX_N);
+  CHECK(((info0 >> 32) & 0xffu) + 1u == QBS_MAX_K_BLOCKS);
+  CHECK(((info0 >> 40) & 0xfu) == QBS_NUMERICAL_CONTRACT_VERSION);
+  CHECK(((info0 >> 44) & 0x1fu) == 0x1fu);
+  CHECK(((info0 >> 56) & 0xffu) + 1u == QBS_MAX_RESULTS);
+  CHECK(((info0 >> 49) & 0x7fu) == 0);
   CHECK(qbs_ref_capability_word(0, 256) != info0);
   const uint64_t info2 = qbs_ref_capability_word(2, 1024);
   CHECK(((info2 >> 0) & 0x0fu) == QBS_ACTIVATION_CONTEXT_COUNT);
@@ -270,6 +273,32 @@ static void test_descriptor_validation(void) {
                             QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, 8, 1);
   CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 1, 0, 1024, 0x2000),
                QBS_REF_ACTIVATION_LAYOUT);
+  invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
+                            QBS_ACTIVATION_PROFILE_Q8_K,
+                            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 16, 1);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 8, 8, 1024, 0x2000),
+               QBS_REF_OK);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 4, 8, 1024, 0x2000),
+               QBS_REF_ACTIVATION_LAYOUT);
+  invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
+                            QBS_ACTIVATION_PROFILE_Q8_K,
+                            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                            QBS_ACTIVATION_LAYOUT_ROW_MAJOR, 16, 1);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 8, 8, 1024, 0x2000),
+               QBS_REF_ACTIVATION_LAYOUT);
+  invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
+                            QBS_ACTIVATION_PROFILE_Q8_K,
+                            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 17, 1);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 8, 8, 1024, 0x2000),
+               QBS_REF_N_RANGE);
+  invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
+                            QBS_ACTIVATION_PROFILE_Q8_K,
+                            QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, 16, 1);
+  CHECK_STATUS(qbs_ref_validate_descriptor(&invalid, 8, 4, 1024, 0x2000),
+               QBS_REF_VD_ALIGNMENT);
   invalid = make_descriptor(QBS_WEIGHT_PROFILE_Q4_K,
                             QBS_ACTIVATION_PROFILE_Q8_K,
                             QBS_WEIGHT_LAYOUT_ROW_MAJOR,
@@ -614,8 +643,9 @@ static void fill_q2_one(qbs_block_q2_k_t *block) {
   block->dmin = UINT16_C(0x3800);
 }
 
-static void fill_activations(qbs_block_q8_k_t *blocks, unsigned k_blocks) {
-  for (unsigned context = 0; context < 4; ++context) {
+static void fill_activations(qbs_block_q8_k_t *blocks, unsigned m,
+                             unsigned k_blocks) {
+  for (unsigned context = 0; context < m; ++context) {
     for (unsigned block = 0; block < k_blocks; ++block) {
       qbs_block_q8_k_t *item = &blocks[context * k_blocks + block];
       item->d = 1.0f;
@@ -791,11 +821,17 @@ static void test_profile_execution(unsigned profile) {
                    kBlocks, r4_weights, r4_bytes),
                QBS_REF_OK);
 
-  qbs_block_q8_k_t activations[4 * kBlocks];
+  qbs_block_q8_k_t activations[8 * kBlocks];
   qbs_block_q8_kx4_t interleaved[kBlocks];
-  fill_activations(activations, kBlocks);
+  uint8_t interleaved8[8 * kBlocks * sizeof(qbs_block_q8_k_t)];
+  fill_activations(activations, 8, kBlocks);
   CHECK_STATUS(qbs_ref_pack_activation_m4(activations, 4 * kBlocks, kBlocks,
                                           interleaved, kBlocks),
+               QBS_REF_OK);
+  CHECK_STATUS(qbs_ref_pack_activation_m8_profile(
+                   QBS_ACTIVATION_PROFILE_Q8_K, activations,
+                   sizeof(activations), 8, kBlocks, interleaved8,
+                   sizeof(interleaved8)),
                QBS_REF_OK);
 
   for (unsigned m = 1; m <= 4; ++m) {
@@ -863,6 +899,32 @@ static void test_profile_execution(unsigned profile) {
                  written_elements * sizeof(float)) == 0);
   }
 
+  float wide_result[8 * kElements];
+  for (unsigned index = 0; index < 8 * kElements; ++index)
+    wide_result[index] = 12345.0f;
+  qbs_descriptor_t wide_descriptor = make_descriptor(
+      profile, QBS_ACTIVATION_PROFILE_Q8_K,
+      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, kN, kBlocks);
+  qbs_ref_result_t wide_metadata = {0};
+  CHECK_STATUS(qbs_ref_execute(
+                   &wide_descriptor, 8, 8, 1024, UINT64_C(0x2000),
+                   r4_weights, r4_bytes, interleaved8, sizeof(interleaved8),
+                   wide_result, 8 * kElements, NULL, NULL, &wide_metadata),
+               QBS_REF_OK);
+  CHECK(wide_metadata.destination_registers == 8u);
+  CHECK(wide_metadata.active_outputs == 8u * kN);
+  const float wide_base = qbs_weight_correction_mode(profile) ==
+                                  QBS_CORRECTION_AFFINE_MIN
+                              ? 256.0f : 512.0f;
+  for (unsigned context = 0; context < 8; ++context) {
+    for (unsigned output = 0; output < kN; ++output)
+      CHECK(wide_result[context * kElements + output] ==
+            wide_base * (float)(context + 1u));
+    for (unsigned output = kN; output < kElements; ++output)
+      CHECK(wide_result[context * kElements + output] == 12345.0f);
+  }
+
   float destination[32];
   for (unsigned index = 0; index < 32; ++index) destination[index] = 77.0f;
   const float original[32] = {
@@ -890,7 +952,7 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
   _Alignas(qbs_block_q8_0_t)
       uint8_t row_weights[kN * kBlocks * sizeof(qbs_block_q8_0_t)];
   memset(row_weights, 0, sizeof(row_weights));
-  qbs_block_q8_0_t activations[4 * kBlocks];
+  qbs_block_q8_0_t activations[8 * kBlocks];
   for (unsigned row = 0; row < kN; ++row) {
     for (unsigned block = 0; block < kBlocks; ++block) {
       uint8_t *address = row_weights +
@@ -916,7 +978,7 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
       }
     }
   }
-  for (unsigned context = 0; context < 4; ++context) {
+  for (unsigned context = 0; context < 8; ++context) {
     for (unsigned block = 0; block < kBlocks; ++block) {
       qbs_block_q8_0_t *activation =
           &activations[context * kBlocks + block];
@@ -937,10 +999,16 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
                QBS_REF_OK);
 
   qbs_block_q8_0x4_t interleaved[kBlocks];
+  uint8_t interleaved8[8 * kBlocks * sizeof(qbs_block_q8_0_t)];
   CHECK_STATUS(qbs_ref_pack_activation_m4_profile(
                    QBS_ACTIVATION_PROFILE_Q8_0, activations,
                    sizeof(activations), kBlocks, interleaved,
                    sizeof(interleaved)),
+               QBS_REF_OK);
+  CHECK_STATUS(qbs_ref_pack_activation_m8_profile(
+                   QBS_ACTIVATION_PROFILE_Q8_0, activations,
+                   sizeof(activations), 8, kBlocks, interleaved8,
+                   sizeof(interleaved8)),
                QBS_REF_OK);
 
   for (unsigned m = 1; m <= 4; ++m) {
@@ -991,6 +1059,29 @@ static void test_q8_0_activation_execution(unsigned weight_profile) {
                  QBS_REF_OK);
     CHECK(memcmp(row_result, packed_result,
                  m * kElements * sizeof(float)) == 0);
+  }
+
+  float wide_result[8 * kElements];
+  for (unsigned index = 0; index < 8 * kElements; ++index)
+    wide_result[index] = 12345.0f;
+  qbs_descriptor_t wide_descriptor = make_descriptor(
+      weight_profile, QBS_ACTIVATION_PROFILE_Q8_0,
+      QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED, kN, kBlocks);
+  qbs_ref_result_t wide_metadata = {0};
+  CHECK_STATUS(qbs_ref_execute(
+                   &wide_descriptor, 8, 8, 1024, UINT64_C(0x2000),
+                   r4_weights, r4_bytes, interleaved8, sizeof(interleaved8),
+                   wide_result, 8 * kElements, NULL, NULL, &wide_metadata),
+               QBS_REF_OK);
+  CHECK(wide_metadata.destination_registers == 8u);
+  CHECK(wide_metadata.active_outputs == 8u * kN);
+  for (unsigned context = 0; context < 8; ++context) {
+    for (unsigned output = 0; output < kN; ++output)
+      CHECK(wide_result[context * kElements + output] ==
+            64.0f * (float)(context + 1u));
+    for (unsigned output = kN; output < kElements; ++output)
+      CHECK(wide_result[context * kElements + output] == 12345.0f);
   }
   free(r4_weights);
 }

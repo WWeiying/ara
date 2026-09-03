@@ -40,8 +40,11 @@ rejects an inconsistent CPU configuration during realization.
 The model checks vector/FP state, `vstart`, destination-group alignment,
 descriptor fields, supported profile/layout pairs, and guest-memory faults.
 It reads all inputs before committing the destination vector group, preserves
-the unused fourth destination register for `M=3`, zero-fills inactive output
-elements, and accumulates command floating-point exception flags into `fflags`.
+the unused fourth destination register for `M=3`, and accumulates command
+floating-point exception flags into `fflags`. Legacy M1--M4 commands zero-fill
+the inactive output tail. M5--M8 commands reserve an eight-register group,
+accept at most 16 outputs per row, and update only those active elements so the
+remaining register contents are preserved.
 Numerical-contract v1 always uses round-to-nearest-even (RNE); the dynamic
 `frm` CSR does not affect a QBS command.
 
@@ -66,7 +69,10 @@ payloads crossing a 4-KiB page, and RAM ranges whose tail enters an unmapped
 region. Faulting cases also verify that the destination vector remains intact.
 The same regression checks DIRECT, FILL/REUSE/RELEASE, stale-generation and
 metadata mismatch faults, abort safety, and that successful REUSE does not
-access the guest activation range.
+access the guest activation range. Architecture v3 coverage additionally
+checks M5 and M8 execution, the fixed eight-row interleaved activation payload,
+inactive-row padding, narrow-N tail preservation, and eight-register-group
+alignment. Existing M1--M4 instruction encodings remain unchanged.
 
 The nine supported profile pairs are:
 

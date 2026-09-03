@@ -7,7 +7,7 @@ package qbs_pkg;
   localparam bit QbsEnable = 1'b0;
 `endif
 
-  localparam int unsigned QbsArchitectureVersion = 2;
+  localparam int unsigned QbsArchitectureVersion = 3;
   localparam int unsigned QbsNumericalContractVersion = 1;
   localparam logic [2:0] QbsRoundingModeRne = 3'd0;
   localparam logic [2:0] QbsNumericalRoundingMode =
@@ -21,9 +21,15 @@ package qbs_pkg;
   localparam logic [6:0] QbsOpcodeCustom2 = 7'h5b;
   localparam logic [2:0] QbsQbexecFunct3 = 3'd0;
   localparam logic [2:0] QbsQbinfoFunct3 = 3'd1;
+  localparam int unsigned QbsMMinusOneBits = 3;
 
-  localparam int unsigned QbsMaxM = 4;
+  localparam int unsigned QbsMaxM = 8;
   localparam int unsigned QbsMaxN = 32;
+  localparam int unsigned QbsMaxResults = 128;
+  localparam int unsigned QbsWideMMin = 5;
+  localparam int unsigned QbsWideMMaxN = 16;
+  localparam int unsigned QbsWideMMinInputReductionPercent =
+      15;
   localparam int unsigned QbsMaxKBlocks = 256;
   // Compatibility alias for numerical-contract v1 K-quant profiles.
   localparam int unsigned QbsBlockElements = 256;
@@ -145,7 +151,8 @@ package qbs_pkg;
   typedef enum logic [3:0] {
     QBS_ACTIVATION_LAYOUT_INVALID = 4'd0,
     QBS_ACTIVATION_LAYOUT_ROW_MAJOR = 4'd1,
-    QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 4'd2
+    QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED = 4'd2,
+    QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED = 4'd3
   } qbs_activation_layout_e;
 
   typedef enum logic [1:0] {
@@ -445,11 +452,12 @@ package qbs_pkg;
           result[7:0]   = 8'(QbsArchitectureVersion);
           result[15:8]  = 8'(QbsDescriptorVersion);
           result[23:16] = 8'(QbsDescriptorBytes);
-          result[25:24] = 2'(QbsMaxM - 1);
-          result[30:26] = 5'(max_n - 1);
-          result[38:31] = 8'(QbsMaxKBlocks - 1);
-          result[42:39] = 4'(QbsNumericalContractVersion);
-          result[47:43] = 5'b1_1111;
+          result[26:24] = 3'(QbsMaxM - 1);
+          result[31:27] = 5'(max_n - 1);
+          result[39:32] = 8'(QbsMaxKBlocks - 1);
+          result[43:40] = 4'(QbsNumericalContractVersion);
+          result[48:44] = 5'b1_1111;
+          result[63:56] = 8'(QbsMaxResults - 1);
         end
       end
       64'h01: begin
@@ -457,6 +465,7 @@ package qbs_pkg;
         result[QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR] = 1'b1;
         result[16 + QBS_ACTIVATION_LAYOUT_ROW_MAJOR] = 1'b1;
         result[16 + QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED] = 1'b1;
+        result[16 + QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED] = 1'b1;
         result[39:32] = 8'(QbsDescriptorAlignmentLog2);
         result[47:40] = 8'(QbsWeightBaseAlignmentLog2);
         result[55:48] = 8'(QbsActivationBaseAlignmentLog2);

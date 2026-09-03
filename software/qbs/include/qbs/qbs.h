@@ -35,6 +35,10 @@ typedef enum {
   /* Complete groups of four are M4-interleaved. A final 1--3-row tail is
      stored row-major at the same logical row offset. */
   QBS_ACTIVATION_STORAGE_M4_GROUPED = 2,
+  /* Groups of 5--8 use a fixed eight-row payload made from two M4-interleaved
+     subgroups. Inactive rows in an M5--M7 final group are zero padding. A
+     final 1--4-row tail remains row-major. */
+  QBS_ACTIVATION_STORAGE_M8_GROUPED = 3,
 } qbs_activation_storage_t;
 
 typedef struct {
@@ -68,6 +72,7 @@ typedef struct {
   uint8_t max_m;
   uint8_t max_n;
   uint16_t max_k_blocks;
+  uint16_t max_results;
   uint16_t weight_layouts;
   uint16_t activation_layouts;
   uint8_t descriptor_alignment_log2;
@@ -122,6 +127,8 @@ typedef struct {
   uint16_t command_k_blocks;
   uint8_t command_m;
   uint8_t command_n;
+  uint8_t wide_command_n;
+  uint8_t uses_wide_m;
   uint8_t split_k;
   uint8_t needs_activation_gather;
   uint8_t activation_context_eligible;
@@ -222,6 +229,19 @@ qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                     size_t row_major_bytes, size_t k_blocks,
                                     void *interleaved,
                                     size_t interleaved_bytes);
+/* Packs groups of up to eight rows. Groups with 5--8 rows occupy a fixed
+   eight-row payload; a final 1--4-row tail remains row-major. */
+qbs_status_t qbs_pack_activation_m8_grouped(
+    unsigned activation_profile, const void *row_major,
+    size_t row_major_bytes, size_t m, size_t k_blocks, void *grouped,
+    size_t grouped_bytes);
+
+/* Returns the lowest-traffic supported storage for a direct R4 operation.
+   This is a byte-cost decision, not a cycle-speedup guarantee. */
+qbs_activation_storage_t qbs_recommend_activation_storage(
+    const qbs_device_t *device, unsigned weight_profile,
+    unsigned activation_profile, unsigned weight_layout, size_t m, size_t n,
+    size_t k_elements);
 
 /* A successful plan is immutable and may be reused for the same device
    contract and logical problem. Only qbs_plan_create may initialize it. */

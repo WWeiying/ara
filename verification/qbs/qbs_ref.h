@@ -193,6 +193,10 @@ qbs_ref_status_t qbs_ref_pack_activation_m4_profile(
     unsigned activation_profile, const void *row_major,
     size_t row_major_bytes, unsigned k_blocks, void *interleaved,
     size_t interleaved_bytes);
+qbs_ref_status_t qbs_ref_pack_activation_m8_profile(
+    unsigned activation_profile, const void *row_major,
+    size_t row_major_bytes, unsigned m, unsigned k_blocks, void *interleaved,
+    size_t interleaved_bytes);
 
 qbs_ref_status_t qbs_ref_quantize_q8_k(const float *input,
                                        size_t input_elements,

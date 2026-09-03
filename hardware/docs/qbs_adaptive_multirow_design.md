@@ -62,9 +62,9 @@ from silently replacing the claimed workload.
 | Profile | M | Weight change | Activation change | Total input change | Pair-capacity change | Ideal roofline change |
 |---|---:|---:|---:|---:|---:|---:|
 | Q4_K | 8 | -50.00% | +100.00% | -19.67% | 0% | 0% |
-| Q4_K | 15 | -50.00% | +100.00% | -21.20% | 0% | 0% |
+| Q4_K | 15 | -50.00% | +113.33% | -18.64% | 0% | 0% |
 | Q6_K | 8 | -50.00% | +100.00% | -27.79% | 0% | 0% |
-| Q6_K | 15 | -50.00% | +100.00% | -28.98% | 0% | 0% |
+| Q6_K | 15 | -50.00% | +113.33% | -27.11% | 0% | 0% |
 
 The ideal roofline is `max(padded_pairs/32, input_bytes/16)`. Its unchanged
 value is material: under a perfect, uncontended 16-byte/cycle memory system,
@@ -72,6 +72,13 @@ both geometries remain compute-bound. The table proves a bandwidth and energy
 opportunity, not an automatic RTL-cycle speedup. RTL retention therefore
 requires measured phase counters, and publication claims must distinguish
 traffic reduction from cycle reduction.
+
+The M8 payload is deliberately fixed as two M4-interleaved subgroups. An
+M5--M7 command carries zero padding through the inactive positions of the
+second subgroup. This costs at most three activation blocks in the final wide
+group, but reduces input steering to shifts and masks instead of placing a
+variable divide/modulo network on the 128-bit receive path. The byte model and
+selection decision include this padding rather than treating it as free.
 
 The new geometry must never be selected for `M <= 4`: it rereads activation
 blocks across twice as many N tiles without reducing weight traffic. For
@@ -104,7 +111,7 @@ An adaptive command follows this loop nest:
 
 ```text
 for each K block:
-    load up to eight activation blocks
+    load one fixed eight-row activation payload (two M4 subgroups)
     for each four-row weight microtile in N16:
         load the weight microtile once
         compute activation rows 0..3 with the existing profile engine

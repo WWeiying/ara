@@ -4,11 +4,11 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define QBS_CAP_BLOCKING_COMPLETION (UINT64_C(1) << 43)
-#define QBS_CAP_FAULT_ATOMIC_DESTINATION (UINT64_C(1) << 44)
-#define QBS_CAP_REQUIRES_VSTART_ZERO (UINT64_C(1) << 45)
-#define QBS_CAP_IDEMPOTENT_MEMORY_ONLY (UINT64_C(1) << 46)
-#define QBS_CAP_REQUIRES_ACCEL_CONSISTENCY (UINT64_C(1) << 47)
+#define QBS_CAP_BLOCKING_COMPLETION (UINT64_C(1) << 44)
+#define QBS_CAP_FAULT_ATOMIC_DESTINATION (UINT64_C(1) << 45)
+#define QBS_CAP_REQUIRES_VSTART_ZERO (UINT64_C(1) << 46)
+#define QBS_CAP_IDEMPOTENT_MEMORY_ONLY (UINT64_C(1) << 47)
+#define QBS_CAP_REQUIRES_ACCEL_CONSISTENCY (UINT64_C(1) << 48)
 
 static bool size_mul(size_t lhs, size_t rhs, size_t *result) {
   if (lhs != 0 && rhs > SIZE_MAX / lhs) return false;
@@ -104,12 +104,14 @@ qbs_status_t qbs_capabilities_decode(uint64_t info0, uint64_t info1,
   capabilities->architecture_version = (uint8_t)(info0 & 0xffu);
   capabilities->descriptor_version = (uint8_t)((info0 >> 8) & 0xffu);
   capabilities->descriptor_bytes = (uint8_t)((info0 >> 16) & 0xffu);
-  capabilities->max_m = (uint8_t)(((info0 >> 24) & 0x03u) + 1u);
-  capabilities->max_n = (uint8_t)(((info0 >> 26) & 0x1fu) + 1u);
+  capabilities->max_m = (uint8_t)(((info0 >> 24) & 0x07u) + 1u);
+  capabilities->max_n = (uint8_t)(((info0 >> 27) & 0x1fu) + 1u);
   capabilities->max_k_blocks =
-      (uint16_t)(((info0 >> 31) & 0xffu) + 1u);
+      (uint16_t)(((info0 >> 32) & 0xffu) + 1u);
   capabilities->numerical_contract_version =
-      (uint8_t)((info0 >> 39) & 0x0fu);
+      (uint8_t)((info0 >> 40) & 0x0fu);
+  capabilities->max_results =
+      (uint16_t)(((info0 >> 56) & 0xffu) + 1u);
   capabilities->blocking_completion =
       (info0 & QBS_CAP_BLOCKING_COMPLETION) != 0;
   capabilities->fault_atomic_destination =
@@ -150,7 +152,9 @@ qbs_status_t qbs_capabilities_decode(uint64_t info0, uint64_t info1,
           QBS_WEIGHT_BASE_ALIGNMENT_LOG2 ||
       capabilities->activation_alignment_log2 !=
           QBS_ACTIVATION_BASE_ALIGNMENT_LOG2 ||
-      capabilities->result_element_bits != 32u) {
+      capabilities->result_element_bits != 32u ||
+      capabilities->max_m != QBS_MAX_M ||
+      capabilities->max_results != QBS_MAX_RESULTS) {
     return QBS_STATUS_CAPABILITY;
   }
   capabilities->valid = 1;
@@ -321,10 +325,19 @@ size_t qbs_activation_storage_bytes(unsigned activation_profile,
   const size_t block_bytes = qbs_activation_block_bytes(activation_profile);
   if (block_bytes == 0 || m == 0 || k_blocks == 0 ||
       (activation_storage != QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
-       activation_storage != QBS_ACTIVATION_STORAGE_M4_GROUPED)) return 0;
+       activation_storage != QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+       activation_storage != QBS_ACTIVATION_STORAGE_M8_GROUPED)) return 0;
+  size_t storage_rows = m;
+  if (activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED) {
+    const size_t tail = m & 7u;
+    if (tail >= QBS_WIDE_M_MIN) {
+      if (m > SIZE_MAX - (QBS_MAX_M - tail)) return 0;
+      storage_rows += QBS_MAX_M - tail;
+    }
+  }
   size_t blocks;
   size_t bytes;
-  return size_mul(m, k_blocks, &blocks) &&
+  return size_mul(storage_rows, k_blocks, &blocks) &&
                  size_mul(blocks, block_bytes, &bytes)
              ? bytes
              : 0;
@@ -362,6 +375,37 @@ qbs_status_t qbs_repack_weight_r4(unsigned weight_profile,
   return QBS_STATUS_OK;
 }
 
+static void pack_activation_group(
+    const qbs_activation_profile_info_t *profile, const uint8_t *row_major,
+    size_t active_rows, size_t storage_rows, size_t k_blocks,
+    uint8_t *interleaved) {
+  for (size_t block = 0; block < k_blocks; ++block) {
+    uint8_t *destination =
+        interleaved + block * storage_rows * profile->block_bytes;
+    for (size_t context = 0; context < active_rows; ++context) {
+      const uint8_t *source = row_major +
+          (context * k_blocks + block) * profile->block_bytes;
+      memcpy(destination + context * profile->scale_bytes, source,
+             profile->scale_bytes);
+      for (size_t byte = 0; byte < profile->quant_bytes; ++byte) {
+        destination[storage_rows * profile->scale_bytes +
+                    byte * storage_rows + context] =
+            source[profile->scale_bytes + byte];
+      }
+      for (size_t item = 0; item < profile->aux_count; ++item) {
+        const size_t source_offset = profile->scale_bytes +
+            profile->quant_bytes + item * profile->aux_element_bytes;
+        const size_t destination_offset =
+            storage_rows * profile->scale_bytes +
+            storage_rows * profile->quant_bytes +
+            (item * storage_rows + context) * profile->aux_element_bytes;
+        memcpy(destination + destination_offset, source + source_offset,
+               profile->aux_element_bytes);
+      }
+    }
+  }
+}
+
 qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
                                     const void *row_major,
                                     size_t row_major_bytes, size_t k_blocks,
@@ -379,33 +423,63 @@ qbs_status_t qbs_pack_activation_m4(unsigned activation_profile,
   if (row_major_bytes < required || interleaved_bytes < required)
     return QBS_STATUS_BUFFER_TOO_SMALL;
 
-  for (size_t block = 0; block < k_blocks; ++block) {
-    uint8_t *destination =
-        (uint8_t *)interleaved + block * 4u * profile.block_bytes;
-    for (size_t context = 0; context < 4; ++context) {
-      const uint8_t *source = (const uint8_t *)row_major +
-          (context * k_blocks + block) * profile.block_bytes;
-      memcpy(destination + context * profile.scale_bytes, source,
-             profile.scale_bytes);
-      for (size_t byte = 0; byte < profile.quant_bytes; ++byte) {
-        destination[4u * profile.scale_bytes + byte * 4u + context] =
-            source[profile.scale_bytes + byte];
-      }
-      for (size_t item = 0; item < profile.aux_count; ++item) {
-        const size_t source_offset = profile.scale_bytes +
-            profile.quant_bytes + item * profile.aux_element_bytes;
-        const size_t destination_offset = 4u * profile.scale_bytes +
-            4u * profile.quant_bytes +
-            (item * 4u + context) * profile.aux_element_bytes;
-        memcpy(destination + destination_offset, source + source_offset,
-               profile.aux_element_bytes);
-      }
-    }
+  pack_activation_group(&profile, row_major, 4u, 4u, k_blocks, interleaved);
+  return QBS_STATUS_OK;
+}
+
+qbs_status_t qbs_pack_activation_m8_grouped(
+    unsigned activation_profile, const void *row_major,
+    size_t row_major_bytes, size_t m, size_t k_blocks, void *grouped,
+    size_t grouped_bytes) {
+  if (row_major == NULL || grouped == NULL || m < QBS_WIDE_M_MIN ||
+      k_blocks == 0)
+    return QBS_STATUS_BAD_ARGUMENT;
+  qbs_activation_profile_info_t profile;
+  qbs_status_t status = qbs_activation_profile_info(activation_profile,
+                                                    &profile);
+  if (status != QBS_STATUS_OK) return status;
+  size_t source_required;
+  size_t destination_required = qbs_activation_storage_bytes(
+      activation_profile, QBS_ACTIVATION_STORAGE_M8_GROUPED, m, k_blocks);
+  if (!size_mul(m, k_blocks, &source_required) ||
+      !size_mul(source_required, profile.block_bytes, &source_required) ||
+      destination_required == 0)
+    return QBS_STATUS_SIZE_OVERFLOW;
+  if (row_major_bytes < source_required ||
+      grouped_bytes < destination_required)
+    return QBS_STATUS_BUFFER_TOO_SMALL;
+
+  memset(grouped, 0, destination_required);
+  size_t destination_offset = 0;
+  for (size_t first = 0; first < m;) {
+    const size_t remaining = m - first;
+    const size_t active_rows = remaining > 4u
+        ? (remaining < QBS_MAX_M ? remaining : QBS_MAX_M)
+        : remaining;
+    const size_t storage_rows = active_rows >= QBS_WIDE_M_MIN
+        ? QBS_MAX_M : active_rows;
+    const size_t group_bytes = storage_rows * k_blocks * profile.block_bytes;
+    const uint8_t *source = (const uint8_t *)row_major +
+        first * k_blocks * profile.block_bytes;
+    uint8_t *destination = (uint8_t *)grouped + destination_offset;
+    if (active_rows >= QBS_WIDE_M_MIN)
+      pack_activation_group(&profile, source, active_rows, storage_rows,
+                            k_blocks, destination);
+    else
+      memcpy(destination, source,
+             active_rows * k_blocks * profile.block_bytes);
+    destination_offset += group_bytes;
+    first += active_rows;
   }
   return QBS_STATUS_OK;
 }
 
 static unsigned max_command_m(const qbs_plan_t *plan) {
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+      plan->problem.m >= QBS_WIDE_M_MIN) {
+    return plan->problem.m < QBS_MAX_M ? (unsigned)plan->problem.m
+                                       : QBS_MAX_M;
+  }
   if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
       plan->problem.m >= 4u) {
     return 4u;
@@ -416,6 +490,10 @@ static unsigned max_command_m(const qbs_plan_t *plan) {
 
 static unsigned max_non_m4_command_m(const qbs_plan_t *plan) {
   uint32_t rows = plan->problem.m;
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED) {
+    rows %= QBS_MAX_M;
+    if (rows >= QBS_WIDE_M_MIN) rows = 0;
+  }
   if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED) {
     rows %= 4u;
   }
@@ -447,6 +525,13 @@ static bool plan_needs_activation_gather(const qbs_plan_t *plan,
                                  activation_block_bytes, alignment);
   }
 
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED) {
+    const uint32_t tail_start = plan->problem.m - plan->problem.m % QBS_MAX_M;
+    return tail_start != 0 &&
+           !block_offset_aligned(tail_start, plan->k_blocks,
+                                 activation_block_bytes, alignment);
+  }
+
   if (plan->problem.m < 4u) {
     return plan->problem.m > plan->command_m &&
            !block_offset_aligned(plan->command_m, plan->k_blocks,
@@ -457,6 +542,104 @@ static bool plan_needs_activation_gather(const qbs_plan_t *plan,
   return tail_start != 0 &&
          !block_offset_aligned(tail_start, plan->k_blocks,
                                activation_block_bytes, alignment);
+}
+
+static unsigned storage_command_m(unsigned storage, size_t remaining) {
+  if (storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+      remaining >= QBS_WIDE_M_MIN)
+    return remaining < QBS_MAX_M ? (unsigned)remaining : QBS_MAX_M;
+  if (storage == QBS_ACTIVATION_STORAGE_M4_GROUPED && remaining >= 4u)
+    return 4u;
+  return remaining < 4u ? (unsigned)remaining : 4u;
+}
+
+static unsigned storage_command_n(unsigned command_m) {
+  return command_m >= QBS_WIDE_M_MIN ? QBS_WIDE_M_MAX_N : QBS_MAX_N;
+}
+
+static bool storage_input_bytes(
+    unsigned storage, size_t m, size_t n, size_t k_blocks,
+    size_t weight_block_bytes, size_t activation_block_bytes,
+    size_t *result) {
+  if (result == NULL || m == 0 || n == 0 || k_blocks == 0 ||
+      n > SIZE_MAX - 3u)
+    return false;
+  size_t total = 0;
+  const size_t padded_n = (n + 3u) & ~(size_t)3u;
+  for (size_t input = 0; input < m;) {
+    const unsigned tile_m = storage_command_m(storage, m - input);
+    const unsigned tile_n = storage_command_n(tile_m);
+    if (n > SIZE_MAX - (tile_n - 1u)) return false;
+    const size_t n_tiles = (n + tile_n - 1u) / tile_n;
+    size_t weight_blocks;
+    const size_t stored_m = tile_m >= QBS_WIDE_M_MIN
+        ? QBS_MAX_M : tile_m;
+    size_t activation_blocks;
+    size_t weight_bytes;
+    size_t activation_bytes;
+    if (!size_mul(padded_n, k_blocks, &weight_blocks) ||
+        !size_mul(weight_blocks, weight_block_bytes, &weight_bytes) ||
+        !size_mul(stored_m, n_tiles, &activation_blocks) ||
+        !size_mul(activation_blocks, k_blocks, &activation_blocks) ||
+        !size_mul(activation_blocks, activation_block_bytes,
+                  &activation_bytes) ||
+        !size_add(total, weight_bytes, &total) ||
+        !size_add(total, activation_bytes, &total))
+      return false;
+    input += tile_m;
+  }
+  *result = total;
+  return true;
+}
+
+qbs_activation_storage_t qbs_recommend_activation_storage(
+    const qbs_device_t *device, unsigned weight_profile,
+    unsigned activation_profile, unsigned weight_layout, size_t m, size_t n,
+    size_t k_elements) {
+  const qbs_activation_storage_t fallback = m >= 4u
+      ? QBS_ACTIVATION_STORAGE_M4_GROUPED
+      : QBS_ACTIVATION_STORAGE_ROW_MAJOR;
+  if (device == NULL || !device->capabilities.valid ||
+      weight_layout != QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR ||
+      m < QBS_WIDE_M_MIN || n == 0 || k_elements == 0 ||
+      device->capabilities.max_m < QBS_MAX_M ||
+      device->capabilities.max_results < QBS_MAX_RESULTS ||
+      (device->capabilities.activation_layouts &
+       (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)) == 0 ||
+      !qbs_device_supports_profile(device, weight_profile,
+                                   activation_profile))
+    return fallback;
+
+  qbs_weight_profile_info_t weight;
+  qbs_activation_profile_info_t activation;
+  if (qbs_weight_profile_info(weight_profile, &weight) != QBS_STATUS_OK ||
+      qbs_activation_profile_info(activation_profile, &activation) !=
+          QBS_STATUS_OK ||
+      weight.block_elements != activation.block_elements ||
+      k_elements % weight.block_elements != 0)
+    return fallback;
+
+  const size_t k_blocks = k_elements / weight.block_elements;
+  if (k_blocks == 0 || k_blocks > device->capabilities.max_k_blocks)
+    return fallback;
+  size_t current_bytes;
+  size_t adaptive_bytes;
+  if (!storage_input_bytes(QBS_ACTIVATION_STORAGE_M4_GROUPED, m, n,
+                           k_blocks, weight.block_bytes,
+                           activation.block_bytes, &current_bytes) ||
+      !storage_input_bytes(QBS_ACTIVATION_STORAGE_M8_GROUPED, m, n,
+                           k_blocks, weight.block_bytes,
+                           activation.block_bytes, &adaptive_bytes) ||
+      adaptive_bytes >= current_bytes)
+    return fallback;
+
+  const size_t saved = current_bytes - adaptive_bytes;
+  const size_t threshold =
+      QBS_WIDE_M_MIN_INPUT_REDUCTION_PERCENT;
+  const size_t required =
+      (current_bytes / 100u) * threshold +
+      ((current_bytes % 100u) * threshold + 99u) / 100u;
+  return saved >= required ? QBS_ACTIVATION_STORAGE_M8_GROUPED : fallback;
 }
 
 qbs_status_t qbs_plan_create(const qbs_device_t *device,
@@ -494,7 +677,8 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
        (UINT16_C(1) << problem->weight_layout)) == 0)
     return QBS_STATUS_LAYOUT;
   if (problem->activation_storage != QBS_ACTIVATION_STORAGE_ROW_MAJOR &&
-      problem->activation_storage != QBS_ACTIVATION_STORAGE_M4_GROUPED)
+      problem->activation_storage != QBS_ACTIVATION_STORAGE_M4_GROUPED &&
+      problem->activation_storage != QBS_ACTIVATION_STORAGE_M8_GROUPED)
     return QBS_STATUS_LAYOUT;
   if ((device->capabilities.activation_layouts &
        (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_ROW_MAJOR)) == 0)
@@ -504,6 +688,13 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
       (device->capabilities.max_m < 4 ||
        (device->capabilities.activation_layouts &
         (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED)) == 0))
+    return QBS_STATUS_LAYOUT;
+  if (problem->activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+      (problem->m < QBS_WIDE_M_MIN ||
+       device->capabilities.max_m < QBS_MAX_M ||
+       device->capabilities.max_results < QBS_MAX_RESULTS ||
+       (device->capabilities.activation_layouts &
+        (UINT16_C(1) << QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)) == 0))
     return QBS_STATUS_LAYOUT;
 
   size_t output_elements;
@@ -520,12 +711,21 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
       .problem = *problem,
       .k_blocks = (uint16_t)k_blocks,
       .command_k_blocks = device->capabilities.max_k_blocks,
-      .command_m = device->capabilities.max_m,
+      .command_m = problem->activation_storage ==
+              QBS_ACTIVATION_STORAGE_M8_GROUPED
+          ? device->capabilities.max_m
+          : (device->capabilities.max_m < 4u
+                 ? device->capabilities.max_m : 4u),
+      .wide_command_n = QBS_WIDE_M_MAX_N,
+      .uses_wide_m = problem->activation_storage ==
+          QBS_ACTIVATION_STORAGE_M8_GROUPED,
   };
   if (plan->command_k_blocks > QBS_MAX_K_BLOCKS)
     plan->command_k_blocks = QBS_MAX_K_BLOCKS;
   if (plan->command_m > QBS_MAX_M) plan->command_m = QBS_MAX_M;
   plan->split_k = k_blocks > plan->command_k_blocks;
+  if (plan->uses_wide_m && plan->split_k)
+    return QBS_STATUS_SHAPE;
 
   if (problem->weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) {
     if (device->capabilities.max_n < 4) return QBS_STATUS_CAPABILITY;
@@ -535,7 +735,12 @@ qbs_status_t qbs_plan_create(const qbs_device_t *device,
     plan->command_n = plan->split_k ? 1u : device->capabilities.max_n;
   }
   if (plan->command_n > QBS_MAX_N) plan->command_n = QBS_MAX_N;
-  if (plan->command_n == 0) return QBS_STATUS_CAPABILITY;
+  if (plan->wide_command_n > device->capabilities.max_n)
+    plan->wide_command_n = device->capabilities.max_n;
+  if (plan->wide_command_n > QBS_WIDE_M_MAX_N)
+    plan->wide_command_n = QBS_WIDE_M_MAX_N;
+  if (plan->command_n == 0 || plan->wide_command_n == 0)
+    return QBS_STATUS_CAPABILITY;
 
   plan->needs_activation_gather =
       plan_needs_activation_gather(plan, activation.block_bytes);
@@ -597,9 +802,14 @@ void qbs_plan_cursor_reset(qbs_plan_cursor_t *cursor) {
 
 static unsigned command_m(const qbs_plan_t *plan, uint32_t input_start) {
   const uint32_t remaining = plan->problem.m - input_start;
+  if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M8_GROUPED &&
+      remaining >= QBS_WIDE_M_MIN)
+    return remaining < plan->command_m ? remaining : plan->command_m;
   if (plan->problem.activation_storage == QBS_ACTIVATION_STORAGE_M4_GROUPED &&
       remaining >= 4u) return 4u;
-  return remaining < plan->command_m ? remaining : plan->command_m;
+  const unsigned narrow_limit = plan->command_m < 4u
+      ? plan->command_m : 4u;
+  return remaining < narrow_limit ? remaining : narrow_limit;
 }
 
 qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
@@ -611,14 +821,17 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
   if (cursor->done || cursor->input_start >= plan->problem.m) return QBS_STATUS_OK;
 
   const unsigned m = command_m(plan, cursor->input_start);
+  const unsigned n_limit = m >= QBS_WIDE_M_MIN
+      ? plan->wide_command_n : plan->command_n;
   const unsigned n_remaining = plan->problem.n - cursor->output_start;
-  const unsigned n = n_remaining < plan->command_n
-      ? n_remaining : plan->command_n;
+  const unsigned n = n_remaining < n_limit ? n_remaining : n_limit;
   const unsigned k_remaining = plan->k_blocks - cursor->k_block_start;
   const unsigned k_blocks = k_remaining < plan->command_k_blocks
       ? k_remaining : plan->command_k_blocks;
   const bool m4 = plan->problem.activation_storage ==
           QBS_ACTIVATION_STORAGE_M4_GROUPED && m == 4u;
+  const bool m8 = plan->problem.activation_storage ==
+          QBS_ACTIVATION_STORAGE_M8_GROUPED && m >= QBS_WIDE_M_MIN;
   const size_t weight_block_bytes =
       qbs_weight_block_bytes(plan->problem.weight_profile);
   const size_t activation_block_bytes =
@@ -641,9 +854,12 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
       activation_block_index * activation_block_bytes;
   const size_t activation_alignment =
       (size_t)1u << QBS_ACTIVATION_BASE_ALIGNMENT_LOG2;
-  const bool gather = !m4 &&
+  const bool gather = !m4 && !m8 &&
       ((plan->split_k && m > 1u) ||
        (activation_offset_bytes & (activation_alignment - 1u)) != 0);
+
+  if (m == 0 || n == 0 || (size_t)m * n > QBS_MAX_RESULTS)
+    return QBS_STATUS_SHAPE;
 
   *command = (qbs_command_t) {
       .input_start = cursor->input_start,
@@ -652,8 +868,9 @@ qbs_status_t qbs_plan_next(const qbs_plan_t *plan,
       .k_blocks = (uint16_t)k_blocks,
       .m = (uint8_t)m,
       .n = (uint8_t)n,
-      .activation_layout = m4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
-                              : QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
+      .activation_layout = m8 ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+          : (m4 ? QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+                : QBS_ACTIVATION_LAYOUT_ROW_MAJOR),
       .accumulate = (uint8_t)(plan->split_k && cursor->k_block_start != 0),
       .gather_activation = (uint8_t)gather,
       .weight_offset_bytes = weight_block_index * weight_block_bytes,

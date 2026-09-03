@@ -1,6 +1,6 @@
 {
   "extension_name": "Xaraqbs",
-  "architecture_version": 2,
+  "architecture_version": 3,
   "numerical_contract_version": 1,
   "numerical_contract": {
     "rounding_mode": "RNE",
@@ -22,11 +22,16 @@
   "instruction": {
     "opcode": 91,
     "qbexec_funct3": 0,
-    "qbinfo_funct3": 1
+    "qbinfo_funct3": 1,
+    "m_minus_one_bits": 3
   },
   "limits": {
-    "max_m": 4,
+    "max_m": 8,
     "max_n": 32,
+    "max_results": 128,
+    "wide_m_min": 5,
+    "wide_m_max_n": 16,
+    "wide_m_min_input_reduction_percent": 15,
     "max_k_blocks": 256,
     "block_elements": 256,
     "weight_base_alignment_log2": 1,
@@ -186,6 +191,7 @@
   },
   "activation_layouts": {
     "ROW_MAJOR": 1,
-    "M4_INTERLEAVED": 2
+    "M4_INTERLEAVED": 2,
+    "M8_INTERLEAVED": 3
   }
 }

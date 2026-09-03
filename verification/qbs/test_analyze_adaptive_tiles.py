@@ -97,6 +97,24 @@ class AdaptiveTileModelTest(unittest.TestCase):
         )
         self.assertGreater(adaptive.input_bytes, current.input_bytes)
 
+    def test_m15_accounts_for_fixed_m8_tail_padding(self):
+        adaptive = estimate(
+            self.abi,
+            "qwen25_ffn_down",
+            "Q6_K",
+            m=15,
+            n=1536,
+            k=8960,
+            geometry=Geometry("m8n16", 8, 16),
+        )
+        q8_k_bytes = self.abi["activation_profiles"]["Q8_K"]["block_bytes"]
+        k_blocks = 8960 // 256
+        self.assertEqual(
+            adaptive.activation_bytes,
+            16 * (1536 // 16) * k_blocks * q8_k_bytes,
+        )
+        self.assertEqual(adaptive.activation_block_buffer_bytes, 8 * q8_k_bytes)
+
 
 if __name__ == "__main__":
     unittest.main()
