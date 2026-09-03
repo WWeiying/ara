@@ -12,7 +12,7 @@ module qbs_compute_engine_tb;
   qbs_activation_profile_e command_activation_profile;
   qbs_weight_layout_e command_weight_layout;
   qbs_activation_layout_e command_activation_layout;
-  logic [2:0] command_m;
+  logic [3:0] command_m;
   logic [5:0] command_n;
   logic [8:0] command_k_blocks;
   logic fault;
@@ -26,7 +26,7 @@ module qbs_compute_engine_tb;
   logic activation_valid;
   logic activation_ready;
   logic [1:0] activation_context;
-  logic [10:0] activation_offset;
+  logic [11:0] activation_offset;
   logic [127:0] activation_data;
   logic [15:0] activation_strb;
   logic [7:0] expected_k_block;
@@ -181,7 +181,7 @@ module qbs_compute_engine_tb;
     @(negedge clk);
     activation_valid = 1'b1;
     activation_context = ctx[1:0];
-    activation_offset = offset[10:0];
+    activation_offset = offset[11:0];
     activation_strb = strb;
     activation_data = data;
     @(negedge clk);
@@ -277,7 +277,7 @@ module qbs_compute_engine_tb;
           qbs_weight_profile_e'(profile));
       command_weight_layout = qbs_weight_layout_e'(weight_layout);
       command_activation_layout = qbs_activation_layout_e'(activation_layout);
-      command_m = m[2:0];
+      command_m = m[3:0];
       command_n = n[5:0];
       command_k_blocks = k_blocks[8:0];
       command_valid = 1'b1;
@@ -327,7 +327,9 @@ module qbs_compute_engine_tb;
         end
 
         monitor_cycles = 0;
-        while (tiles_computed != tile + 1 && monitor_cycles < 8192) begin
+        while (tiles_computed !=
+                   (tile + 1) * (m > 4 ? 2 : 1) &&
+               monitor_cycles < 8192) begin
           @(posedge clk);
           monitor_cycles++;
         end

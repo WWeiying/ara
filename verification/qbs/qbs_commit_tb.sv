@@ -16,7 +16,7 @@ module qbs_commit_tb;
   logic start_ready;
   vid_t start_id;
   logic [4:0] start_vd;
-  logic [2:0] start_m;
+  logic [3:0] start_m;
   logic [5:0] start_n;
   logic [3:0] bank_row;
   logic [7:0] bank_valid;
@@ -67,7 +67,7 @@ module qbs_commit_tb;
 
   always #5 clk = ~clk;
 
-  logic [2:0] model_m;
+  logic [3:0] model_m;
   logic [5:0] model_n;
   logic [4:0] model_vd;
   vid_t model_id;
@@ -79,8 +79,11 @@ module qbs_commit_tb;
   always_comb begin
     for (int unsigned bank = 0; bank < 8; bank++) begin
       automatic int unsigned index = unsigned'(bank_row) * 8 + bank;
+      automatic int unsigned accumulator_stride =
+          unsigned'(model_m) >= QbsWideMMin ? QbsWideMMaxN : QbsMaxN;
       bank_data[bank] = accumulator_value(index);
-      bank_valid[bank] = (index % QbsMaxN) < unsigned'(model_n);
+      bank_valid[bank] =
+          (index % accumulator_stride) < unsigned'(model_n);
     end
   end
 
@@ -126,11 +129,13 @@ module qbs_commit_tb;
   logic score_reset;
   logic [31:0] request_count;
   logic [31:0] zero_tail_words;
+  logic [31:0] partial_write_count;
 
   always_ff @(posedge clk or negedge rst_n) begin : check_commit_payload
     if (!rst_n || score_reset) begin
       request_count <= '0;
       zero_tail_words <= '0;
+      partial_write_count <= '0;
     end else begin
       request_count <= request_count + $countones(result_req & result_gnt);
       for (int unsigned lane = 0; lane < NrLanes; lane++) begin
@@ -140,6 +145,10 @@ module qbs_commit_tb;
           automatic int unsigned register_word;
           automatic int unsigned low_element;
           automatic int unsigned high_element;
+          automatic int unsigned accumulator_stride;
+          automatic logic low_active;
+          automatic logic high_active;
+          automatic logic [7:0] expected_be;
           automatic logic [31:0] expected_low;
           automatic logic [31:0] expected_high;
 
@@ -149,20 +158,31 @@ module qbs_commit_tb;
           register_word = word_index % WordsPerRegister;
           low_element = register_word * 8 + lane;
           high_element = low_element + NrLanes;
-          expected_low = low_element < unsigned'(model_n)
-              ? accumulator_value(ctx * QbsMaxN + low_element) : 32'b0;
-          expected_high = high_element < unsigned'(model_n)
-              ? accumulator_value(ctx * QbsMaxN + high_element) : 32'b0;
+          accumulator_stride = unsigned'(model_m) >= QbsWideMMin
+              ? QbsWideMMaxN : QbsMaxN;
+          low_active = low_element < unsigned'(model_n);
+          high_active = high_element < unsigned'(model_n);
+          expected_be = unsigned'(model_m) >= QbsWideMMin
+              ? {{4{high_active}}, {4{low_active}}} : 8'hff;
+          expected_low = low_active
+              ? accumulator_value(ctx * accumulator_stride + low_element)
+              : 32'b0;
+          expected_high = high_active
+              ? accumulator_value(ctx * accumulator_stride + high_element)
+              : 32'b0;
 
           if (ctx >= unsigned'(model_m))
             $fatal(1, "QBS commit wrote inactive context %0d", ctx);
-          if (result_id[lane] != model_id || result_be[lane] != 8'hff ||
+          if (result_id[lane] != model_id ||
+              result_be[lane] != expected_be ||
               result_wdata[lane] != {expected_high, expected_low})
             $fatal(1, "QBS commit payload mismatch word=%0d lane=%0d",
                    word_index, lane);
           if ((low_element >= unsigned'(model_n)) &&
               (high_element >= unsigned'(model_n)))
             zero_tail_words <= zero_tail_words + 1'b1;
+          if (result_be[lane] != 8'hff)
+            partial_write_count <= partial_write_count + 1'b1;
         end
       end
     end
@@ -175,11 +195,21 @@ module qbs_commit_tb;
                           input logic backpressure);
     integer timeout;
     integer expected_words;
+    integer expected_requests;
 
-    expected_words = active_m * WordsPerRegister;
+    expected_words = active_m *
+        (active_m >= QbsWideMMin ? ((active_n + 7) / 8) :
+                                   WordsPerRegister);
+    expected_requests = expected_words * NrLanes;
+    if (active_m >= QbsWideMMin) begin
+      expected_requests = active_m *
+          ((active_n < 4 ? active_n : 4) +
+           (active_n > 8 ?
+                ((active_n - 8) < 4 ? (active_n - 8) : 4) : 0));
+    end
     while (!start_ready) @(posedge clk);
     @(negedge clk);
-    model_m = active_m[2:0];
+    model_m = active_m[3:0];
     model_n = active_n[5:0];
     model_vd = vd[4:0];
     model_id = id[2:0];
@@ -187,7 +217,7 @@ module qbs_commit_tb;
     score_reset = 1'b1;
     @(negedge clk);
     score_reset = 1'b0;
-    start_m = active_m[2:0];
+    start_m = active_m[3:0];
     start_n = active_n[5:0];
     start_vd = vd[4:0];
     start_id = id[2:0];
@@ -203,14 +233,17 @@ module qbs_commit_tb;
     if (!done_valid)
       $fatal(1, "timeout waiting for QBS commit");
     if (commit_word_count != expected_words ||
-        request_count != expected_words * NrLanes)
+        request_count != expected_requests)
       $fatal(1, "QBS commit accounting words=%0d/%0d requests=%0d/%0d",
              commit_word_count, expected_words, request_count,
-             expected_words * NrLanes);
+             expected_requests);
     if (backpressure && commit_backpressure_cycles == 0)
       $fatal(1, "QBS commit did not record injected backpressure");
-    if (active_n < 32 && zero_tail_words == 0)
+    if (active_m < QbsWideMMin && active_n < 32 && zero_tail_words == 0)
       $fatal(1, "QBS commit did not write zero tail bytes");
+    if (active_m >= QbsWideMMin && active_n < 16 &&
+        partial_write_count == 0)
+      $fatal(1, "QBS wide commit did not preserve its inactive tail");
 
     @(negedge clk);
     done_ready = 1'b1;
@@ -242,6 +275,8 @@ module qbs_commit_tb;
     run_case(1, 32, 3, 1, 1'b0);
     run_case(3, 5, 4, 2, 1'b1);
     run_case(4, 1, 8, 5, 1'b1);
+    run_case(5, 15, 8, 6, 1'b1);
+    run_case(8, 16, 16, 7, 1'b1);
 
     $display("QBS commit PASS");
     $finish;

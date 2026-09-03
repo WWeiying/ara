@@ -350,7 +350,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic qbs_active_d, qbs_active_q;
   logic qbs_clk, qbs_clk_en;
   logic qbs_command_valid, qbs_command_ready, qbs_command_fire;
-  logic [2:0] qbs_command_m;
+  logic [3:0] qbs_command_m;
   vid_t qbs_command_id_q;
 
   logic qbs_success_valid, qbs_fault_valid;
@@ -530,10 +530,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   always_comb begin
     qbs_command_m = '0;
     unique case (pe_req_i.vl)
-      vlen_t'(VLEN / 32)      : qbs_command_m = 3'd1;
-      vlen_t'(2 * VLEN / 32)  : qbs_command_m = 3'd2;
-      vlen_t'(3 * VLEN / 32)  : qbs_command_m = 3'd3;
-      vlen_t'(4 * VLEN / 32)  : qbs_command_m = 3'd4;
+      vlen_t'(VLEN / 32)      : qbs_command_m = 4'd1;
+      vlen_t'(2 * VLEN / 32)  : qbs_command_m = 4'd2;
+      vlen_t'(3 * VLEN / 32)  : qbs_command_m = 4'd3;
+      vlen_t'(4 * VLEN / 32)  : qbs_command_m = 4'd4;
+      vlen_t'(5 * VLEN / 32)  : qbs_command_m = 4'd5;
+      vlen_t'(6 * VLEN / 32)  : qbs_command_m = 4'd6;
+      vlen_t'(7 * VLEN / 32)  : qbs_command_m = 4'd7;
+      vlen_t'(8 * VLEN / 32)  : qbs_command_m = 4'd8;
       default                 : qbs_command_m = '0;
     endcase
   end
@@ -1046,7 +1050,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           else $fatal(1, "QBS engine activity diverged from VLSU ownership");
 
         if (qbs_command_fire) begin
-          assert (normal_vlsu_idle && (qbs_command_m inside {[1:4]}))
+          assert (normal_vlsu_idle && (qbs_command_m inside {[1:QbsMaxM]}))
             else $fatal(1, "QBS command accepted before a valid ownership handoff");
         end
 

@@ -8,7 +8,7 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
   input  logic [63:0]              descriptor_header_i,
   input  logic [63:0]              descriptor_weight_base_i,
   input  logic [63:0]              activation_base_i,
-  input  logic [2:0]               m_i,
+  input  logic [3:0]               m_i,
   input  logic [4:0]               vd_i,
 
   output logic                     valid_o,
@@ -37,7 +37,7 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
   logic [63:0] weight_rows;
   logic [64:0] weight_end_extended;
   logic [64:0] activation_end_extended;
-  logic [2:0] destination_registers;
+  logic [3:0] destination_registers;
 
   always_comb begin
     weight_profile_o =
@@ -63,10 +63,15 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
         ? padded_rows : n_o;
     weight_storage_bytes_o =
         weight_rows * k_blocks_o * weight_block_bytes_o;
-    activation_storage_bytes_o =
-        activation_layout_o == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
-            ? k_blocks_o * (4 * activation_block_bytes_o)
-            : m_i * k_blocks_o * activation_block_bytes_o;
+    if (activation_layout_o == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED)
+      activation_storage_bytes_o =
+          k_blocks_o * (QbsMaxM * activation_block_bytes_o);
+    else if (activation_layout_o == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED)
+      activation_storage_bytes_o =
+          k_blocks_o * (4 * activation_block_bytes_o);
+    else
+      activation_storage_bytes_o =
+          m_i * k_blocks_o * activation_block_bytes_o;
 
     weight_end_extended = {1'b0, descriptor_weight_base_i} +
                           {1'b0, weight_storage_bytes_o} - 1'b1;
@@ -74,8 +79,9 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
                               {1'b0, activation_storage_bytes_o} - 1'b1;
     weight_last_address_o = weight_end_extended[63:0];
     activation_last_address_o = activation_end_extended[63:0];
-    destination_registers = m_i == 1 ? 3'd1 :
-                            (m_i == 2 ? 3'd2 : 3'd4);
+    destination_registers = m_i == 1 ? 4'd1 :
+                            (m_i == 2 ? 4'd2 :
+                            (m_i <= 4 ? 4'd4 : 4'd8));
 
     error_o = QBS_VALIDATION_OK;
     if (descriptor_address_i[QbsDescriptorAlignmentLog2-1:0] != '0)
@@ -96,13 +102,20 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
       error_o = QBS_VALIDATION_WEIGHT_LAYOUT;
     else if (!(activation_layout_o inside {
                  QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
-                 QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED}) ||
+                 QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+                 QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}) ||
              (activation_layout_o ==
-                  QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED && m_i != 4))
+                  QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED && m_i != 4) ||
+             ((activation_layout_o ==
+                   QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED) !=
+                  (unsigned'(m_i) >= QbsWideMMin)))
       error_o = QBS_VALIDATION_ACTIVATION_LAYOUT;
     else if (!(m_i inside {[1:QbsMaxM]}))
       error_o = QBS_VALIDATION_M_RANGE;
-    else if (unsigned'(n_o) > MaxNForVlen)
+    else if (unsigned'(n_o) > MaxNForVlen ||
+             (unsigned'(m_i) >= QbsWideMMin &&
+              unsigned'(n_o) > QbsWideMMaxN) ||
+             unsigned'(m_i) * unsigned'(n_o) > QbsMaxResults)
       error_o = QBS_VALIDATION_N_RANGE;
     else if (unsigned'(k_blocks_o) > QbsMaxKBlocks)
       error_o = QBS_VALIDATION_K_RANGE;

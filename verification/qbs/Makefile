@@ -103,9 +103,12 @@ activation-context-evidence-check:
 		--direct $(ACTIVATION_CONTEXT_EVIDENCE)/direct/console.log \
 		--context $(ACTIVATION_CONTEXT_EVIDENCE)/context/console.log
 
-.PHONY: qemu-contract-check
+.PHONY: qemu-contract-check rtl-adaptive-real-check
 qemu-contract-check:
 	./qemu/run_qbs_contract_test.sh
+
+rtl-adaptive-real-check: qbs_command_vectors rtl-engine-compile
+	./run_adaptive_real_rtl.sh
 
 .PHONY: rtl-compile rtl-profile-check rtl-command-compile rtl-command-check \
 	rtl-descriptor-compile rtl-descriptor-check rtl-read-compile \
@@ -120,6 +123,8 @@ rtl-compile: qbs_rtl_vectors.txt $(RTL_PROFILE_SOURCES)
 rtl-profile-check: rtl-compile
 	cd $(RTL_BUILD) && ./simv -l run.log \
 		+QBS_VECTOR_FILE=$(RTL_VECTOR_FILE)
+	grep -q "QBS profile engine PASS:" $(RTL_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_BUILD)/run.log
 
 rtl-command-compile: qbs_command_vectors.txt $(RTL_COMMAND_SOURCES)
 	mkdir -p $(RTL_COMMAND_BUILD)
@@ -130,6 +135,8 @@ rtl-command-compile: qbs_command_vectors.txt $(RTL_COMMAND_SOURCES)
 rtl-command-check: rtl-command-compile
 	cd $(RTL_COMMAND_BUILD) && ./simv -l run.log \
 		+QBS_COMMAND_VECTOR_FILE=$(RTL_COMMAND_VECTOR_FILE)
+	grep -q "QBS command engine PASS:" $(RTL_COMMAND_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_COMMAND_BUILD)/run.log
 
 rtl-descriptor-compile: $(RTL_DESCRIPTOR_SOURCES)
 	mkdir -p $(RTL_DESCRIPTOR_BUILD)
@@ -139,6 +146,8 @@ rtl-descriptor-compile: $(RTL_DESCRIPTOR_SOURCES)
 
 rtl-descriptor-check: rtl-descriptor-compile
 	cd $(RTL_DESCRIPTOR_BUILD) && ./simv -l run.log
+	grep -q "QBS descriptor decoder PASS" $(RTL_DESCRIPTOR_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_DESCRIPTOR_BUILD)/run.log
 
 rtl-read-compile: $(RTL_READ_SOURCES)
 	mkdir -p $(RTL_READ_BUILD)
@@ -148,6 +157,8 @@ rtl-read-compile: $(RTL_READ_SOURCES)
 
 rtl-read-check: rtl-read-compile
 	cd $(RTL_READ_BUILD) && ./simv -l run.log
+	grep -q "QBS read engine PASS" $(RTL_READ_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_READ_BUILD)/run.log
 
 rtl-commit-compile: $(RTL_COMMIT_SOURCES)
 	mkdir -p $(RTL_COMMIT_BUILD)
@@ -157,6 +168,8 @@ rtl-commit-compile: $(RTL_COMMIT_SOURCES)
 
 rtl-commit-check: rtl-commit-compile
 	cd $(RTL_COMMIT_BUILD) && ./simv -l run.log
+	grep -q "QBS commit PASS" $(RTL_COMMIT_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_COMMIT_BUILD)/run.log
 
 rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
 	mkdir -p $(RTL_ENGINE_BUILD)
@@ -167,6 +180,8 @@ rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
 rtl-engine-check: rtl-engine-compile
 	cd $(RTL_ENGINE_BUILD) && ./simv -l run.log \
 		+QBS_COMMAND_VECTOR_FILE=$(RTL_COMMAND_VECTOR_FILE)
+	grep -q "QBS engine PASS:" $(RTL_ENGINE_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_ENGINE_BUILD)/run.log
 
 rtl-context-compile: $(RTL_CONTEXT_SOURCES)
 	mkdir -p $(RTL_CONTEXT_BUILD)
@@ -176,6 +191,8 @@ rtl-context-compile: $(RTL_CONTEXT_SOURCES)
 
 rtl-context-check: rtl-context-compile
 	cd $(RTL_CONTEXT_BUILD) && ./simv -l run.log
+	grep -q "QBS activation context PASS" $(RTL_CONTEXT_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_CONTEXT_BUILD)/run.log
 
 .PHONY: rtl-context-macro-compile rtl-context-macro-check
 rtl-context-macro-compile: $(RTL_CONTEXT_MACRO_SOURCES)
@@ -186,6 +203,8 @@ rtl-context-macro-compile: $(RTL_CONTEXT_MACRO_SOURCES)
 
 rtl-context-macro-check: rtl-context-macro-compile
 	cd $(RTL_CONTEXT_MACRO_BUILD) && ./simv -l run.log
+	grep -q "QBS activation context PASS" $(RTL_CONTEXT_MACRO_BUILD)/run.log
+	! grep -q "Fatal:" $(RTL_CONTEXT_MACRO_BUILD)/run.log
 
 rtl-check: rtl-profile-check rtl-command-check rtl-descriptor-check \
 	rtl-read-check rtl-commit-check rtl-context-check rtl-context-macro-check \

@@ -73,12 +73,14 @@ opportunity, not an automatic RTL-cycle speedup. RTL retention therefore
 requires measured phase counters, and publication claims must distinguish
 traffic reduction from cycle reduction.
 
-The M8 payload is deliberately fixed as two M4-interleaved subgroups. An
-M5--M7 command carries zero padding through the inactive positions of the
-second subgroup. This costs at most three activation blocks in the final wide
-group, but reduces input steering to shifts and masks instead of placing a
-variable divide/modulo network on the 128-bit receive path. The byte model and
-selection decision include this padding rather than treating it as free.
+The M8 payload is one fixed eight-way interleaved block. Hardware distributes
+its bytes into two four-context banks, but software does not encode two
+independent M4 payloads. An M5--M7 command carries zero padding through the
+inactive positions of the eight-way block. This costs at most three activation
+blocks in the final wide group, but reduces input steering to shifts and masks
+instead of placing a variable divide/modulo network on the 128-bit receive
+path. The byte model and selection decision include this padding rather than
+treating it as free.
 
 The new geometry must never be selected for `M <= 4`: it rereads activation
 blocks across twice as many N tiles without reducing weight traffic. For
@@ -132,9 +134,9 @@ M5--M8/N16: index = context * 16 + output_row
 ```
 
 Both mappings stay within 128 entries. The commit path reserves an eight-
-register destination group for M5--M8, but writes only words containing the
-logical N results; inactive tail elements remain architecturally agnostic.
-This avoids doubling VRF traffic merely because N is reduced from 32 to 16.
+register destination group for M5--M8, but writes only bytes containing the
+logical N results; byte enables preserve the inactive register tails. This
+avoids doubling VRF traffic merely because N is reduced from 32 to 16.
 
 ## 6. ABI and fallback contract
 
@@ -156,7 +158,36 @@ hold:
 Otherwise it emits the existing M1--M4 plan. Unknown formats and invalid
 contracts continue to select ordinary RVV before `qbexec` is issued.
 
-## 7. Evidence and stop conditions
+## 7. Focused RTL evidence
+
+`rtl-adaptive-real-check` uses layer-0 Qwen2.5-1.5B captures. It retains each
+operator's full reduction dimension and narrows only the output slice, so the
+comparison exercises every K block while remaining a short module-level VCS
+test. M4xN32 and M8xN16 both produce 128 outputs.
+
+| Capture | Geometry | K | Cycles | Weight bytes | Activation bytes | Total payload | Prefetch wait |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Q4_K Attention-Q | M4xN32 | 1536 | 7,200 | 27,648 | 7,008 | 34,672 | 0 |
+| Q4_K Attention-Q | M8xN16 | 1536 | 7,638 | 13,824 | 14,016 | 27,856 | 0 |
+| Q6_K FFN-down | M4xN32 | 8960 | 41,939 | 235,200 | 40,880 | 276,096 | 0 |
+| Q6_K FFN-down | M8xN16 | 8960 | 44,493 | 117,600 | 81,760 | 199,376 | 0 |
+
+M8 reduces measured payload by 19.66% for Q4_K and 27.79% for Q6_K, meeting
+the traffic acceptance threshold on Q6_K. It does not reduce cycles in this
+ideal-memory test: both points are approximately 6.1% slower. Phase counters
+attribute the complete delta to activation loading. For Q4_K, activation load
+grows from 468 to 906 cycles while `compute + overlap` remains 6,336 cycles;
+for Q6_K it grows from 2,731 to 5,285 cycles while `compute + overlap` remains
+36,960 cycles. Weight prefetch wait is zero in all four cases, so halving
+weight bytes cannot shorten the critical path under this memory model.
+
+M7xN16 Q4_K and Q6_K tail cases also pass the same full-K functional check.
+These results support a bounded bandwidth/energy optimization, not a cycle
+speedup claim. A cycle benefit requires a memory regime where the eliminated
+weight traffic is exposed, or a later mechanism that overlaps the command's
+activation acquisition without weakening fault atomicity.
+
+## 8. Evidence and stop conditions
 
 The implementation is retained only if:
 
@@ -174,7 +205,7 @@ be reported as a traffic/energy mechanism and evaluated later under measured
 latency/bandwidth sweeps. It must not be described as a cycle speedup based on
 the byte model alone.
 
-## 8. Reproduction
+## 9. Reproduction
 
 ```bash
 python3 verification/qbs/analyze_adaptive_tiles.py \
@@ -182,7 +213,10 @@ python3 verification/qbs/analyze_adaptive_tiles.py \
   --markdown /tmp/qbs_adaptive_tiles.md
 
 python3 -m unittest verification/qbs/test_analyze_adaptive_tiles.py
+
+make -C verification/qbs rtl-adaptive-real-check
 ```
 
-No synthesis, physical implementation, or long Prefill-Attention simulation
-is part of this stage.
+The focused target uses a 180-second default limit per case. No synthesis,
+physical implementation, full-layer VCS run, or long Prefill-Attention
+simulation is part of this stage.

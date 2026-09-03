@@ -29,7 +29,7 @@ module qbs_engine
     output logic                         command_ready_o,
     input  vid_t                         command_id_i,
     input  logic [4:0]                   command_vd_i,
-    input  logic [2:0]                   command_m_i,
+    input  logic [3:0]                   command_m_i,
     input  logic [VAddrWidth-1:0]        command_descriptor_address_i,
     input  logic [VAddrWidth-1:0]        command_activation_base_i,
     input  axi_pkg::cache_t              command_cache_i,
@@ -170,7 +170,7 @@ module qbs_engine
 
   vid_t id_q;
   logic [4:0] vd_q;
-  logic [2:0] m_q;
+  logic [3:0] m_q;
   logic [VAddrWidth-1:0] descriptor_address_q;
   logic [VAddrWidth-1:0] activation_base_q;
   axi_pkg::cache_t cache_q;
@@ -288,6 +288,7 @@ module qbs_engine
   logic context_fill_abort;
   logic context_release;
   logic context_lookup_valid;
+  logic [2:0] context_m;
   logic context_lookup_match;
   qbs_validation_error_e context_lookup_error;
   logic context_replay_start_valid;
@@ -306,7 +307,7 @@ module qbs_engine
 
   logic [127:0] compute_activation_write_data;
   logic [15:0] compute_activation_write_strb;
-  logic [10:0] compute_activation_write_offset;
+  logic [11:0] compute_activation_write_offset;
   logic [1:0] compute_activation_write_context;
 
   logic commit_start_valid;
@@ -353,7 +354,7 @@ module qbs_engine
   logic read_completion_fire;
   logic read_fault_fire;
   logic scheduler_tuple_current;
-  logic [2:0] activation_range_count;
+  logic [3:0] activation_range_count;
   logic [2:0] weight_range_count;
   logic weight_lookahead_enabled;
   logic weight_issue_cursor_current;
@@ -617,8 +618,10 @@ module qbs_engine
         scheduler_k_q == compute_expected_k &&
         scheduler_row_base_q == compute_expected_row_base;
     activation_range_count =
-        activation_layout_q == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
-            ? 3'd1 : m_q;
+        activation_layout_q inside {
+            QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}
+            ? 4'd1 : m_q;
     weight_range_count =
         weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
             ? 3'd1 : compute_expected_row_count;
@@ -641,12 +644,17 @@ module qbs_engine
                            target: activation_range_index_q[1:0],
                            weight_bank: 1'b0, weight_row_count: '0,
                            k_block: compute_expected_k};
-        if (activation_layout_q ==
-            QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED) begin
+        if (activation_layout_q inside {
+              QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+              QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}) begin
+          automatic int unsigned storage_m =
+              activation_layout_q == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+                  ? QbsMaxM : 4;
           address_offset = 64'(compute_expected_k) *
-                           (4 * activation_block_bytes_q);
+                           (storage_m * activation_block_bytes_q);
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
-          read_range_bytes = RangeBytesWidth'(4 * activation_block_bytes_q);
+          read_range_bytes = RangeBytesWidth'(
+              storage_m * activation_block_bytes_q);
         end else begin
           block_index = 64'(activation_range_index_q) * k_blocks_q +
                         compute_expected_k;
@@ -732,14 +740,14 @@ module qbs_engine
             QBS_ACTIVATION_ACCESS_RELEASE}));
   always_comb begin
     compute_activation_write_context = read_data_tag.target;
-    compute_activation_write_offset = read_data_offset[10:0];
+    compute_activation_write_offset = read_data_offset[11:0];
     compute_activation_write_data = read_data;
     compute_activation_write_strb = read_data_strb;
     if (activation_access_q inside {
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE}) begin
       compute_activation_write_context = '0;
-      compute_activation_write_offset = context_replay_offset;
+      compute_activation_write_offset = {1'b0, context_replay_offset};
       compute_activation_write_data = context_replay_data;
       compute_activation_write_strb = context_replay_strb;
     end
@@ -826,6 +834,10 @@ module qbs_engine
       descriptor_valid && descriptor_activation_access inside {
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE};
+  // The bounded activation context is intentionally an M1-only facility.
+  // Wider direct commands never exercise its 3-bit metadata interface.
+  assign context_m = unsigned'(m_q) <= QbsActivationContextMaxM
+      ? 3'(m_q) : '0;
   assign context_fill_begin = state_q == QBS_ENGINE_VALIDATE &&
       descriptor_valid &&
       descriptor_activation_access == QBS_ACTIVATION_ACCESS_FILL;
@@ -858,7 +870,7 @@ module qbs_engine
     .fill_generation_i         (descriptor_context_generation),
     .fill_profile_i            (descriptor_activation_profile),
     .fill_layout_i             (descriptor_activation_layout),
-    .fill_m_i                  (m_q),
+    .fill_m_i                  (context_m),
     .fill_k_blocks_i           (descriptor_k_blocks),
     .fill_write_valid_i        (context_fill_write),
     .fill_write_k_block_i      (read_data_tag.k_block),
@@ -874,7 +886,7 @@ module qbs_engine
     .lookup_generation_i       (descriptor_context_generation),
     .lookup_profile_i          (descriptor_activation_profile),
     .lookup_layout_i           (descriptor_activation_layout),
-    .lookup_m_i                (m_q),
+    .lookup_m_i                (context_m),
     .lookup_k_blocks_i         (descriptor_k_blocks),
     .lookup_match_o            (context_lookup_match),
     .lookup_error_o            (context_lookup_error),
@@ -1271,6 +1283,10 @@ module qbs_engine
       end
 
       if (state_q == QBS_ENGINE_VALIDATE && descriptor_valid) begin
+        if (unsigned'(m_q) > QbsActivationContextMaxM)
+          assert (descriptor_activation_access ==
+                  QBS_ACTIVATION_ACCESS_DIRECT)
+            else $fatal(1, "QBS wide command reached the M1 context path");
         weight_profile_q <= descriptor_weight_profile;
         activation_profile_q <= descriptor_activation_profile;
         weight_layout_q <= descriptor_weight_layout;

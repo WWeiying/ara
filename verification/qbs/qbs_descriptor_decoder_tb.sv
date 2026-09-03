@@ -7,7 +7,7 @@ module qbs_descriptor_decoder_tb;
   logic [63:0] descriptor_header;
   logic [63:0] descriptor_weight_base;
   logic [63:0] activation_base;
-  logic [2:0] m;
+  logic [3:0] m;
   logic [4:0] vd;
   logic valid;
   qbs_validation_error_e error;
@@ -132,7 +132,36 @@ module qbs_descriptor_decoder_tb;
         activation_storage_bytes != 40880)
       $fatal(1, "Q6 R4/M4 descriptor derived size mismatch");
 
+    descriptor_header = make_header(QbsDescriptorVersion, 1, 1, 2, 3, 15, 2);
+    m = 5;
+    vd = 8;
+    check_error(QBS_VALIDATION_OK);
+    if (weight_storage_bytes != 4608 ||
+        activation_storage_bytes != 4672)
+      $fatal(1, "Q4 R4/M8 descriptor derived size mismatch");
+
+    m = 8;
+    vd = 16;
+    descriptor_header = make_header(QbsDescriptorVersion, 2, 1, 2, 3, 16, 1);
+    check_error(QBS_VALIDATION_OK);
+    if (weight_storage_bytes != 3360 ||
+        activation_storage_bytes != 2336)
+      $fatal(1, "Q6 maximum M8 descriptor derived size mismatch");
+
+    descriptor_header = make_header(QbsDescriptorVersion, 2, 1, 2, 1, 16, 1);
+    check_error(QBS_VALIDATION_ACTIVATION_LAYOUT);
+    descriptor_header = make_header(QbsDescriptorVersion, 2, 1, 2, 3, 17, 1);
+    check_error(QBS_VALIDATION_N_RANGE);
+    descriptor_header = make_header(QbsDescriptorVersion, 2, 1, 2, 3, 16, 1);
+    vd = 4;
+    check_error(QBS_VALIDATION_VD_ALIGNMENT);
+    m = 4;
+    vd = 8;
+    check_error(QBS_VALIDATION_ACTIVATION_LAYOUT);
+
     descriptor_header = make_header(QbsDescriptorVersion, 3, 2, 1, 1, 32, 64);
+    m = 4;
+    vd = 4;
     check_error(QBS_VALIDATION_OK);
     if (weight_block_bytes != 18 || activation_block_bytes != 34 ||
         weight_storage_bytes != 36864 || activation_storage_bytes != 8704 ||

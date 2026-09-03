@@ -4743,8 +4743,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             is_akv2column = instr.rtype.funct3 == AkvV2ColumnLoadFunct3;
             qbs_funct7 = 7'(instr.rtype.funct7);
             akv_funct7 = 7'(instr.rtype.funct7);
-            qbs_m = unsigned'(qbs_funct7[1:0]) + 1;
-            qbs_destination_regs = qbs_m == 1 ? 1 : (qbs_m == 2 ? 2 : 4);
+            qbs_m = unsigned'(qbs_funct7[2:0]) + 1;
+            qbs_destination_regs = qbs_m == 1 ? 1 :
+                (qbs_m == 2 ? 2 : (qbs_m <= 4 ? 4 : 8));
             akv_head_dim = 0;
             akv_head_dim_valid = 1'b1;
             unique case (akv_funct7)
@@ -4801,12 +4802,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               unique case (qbs_m)
                 1: ara_req.emul = LMUL_1;
                 2: ara_req.emul = LMUL_2;
-                default: ara_req.emul = LMUL_4;
+                3, 4: ara_req.emul = LMUL_4;
+                default: ara_req.emul = LMUL_8;
               endcase
 
               // These checks are intentionally in front of descriptor fetch:
               // destination reservation cannot depend on unread memory.
-              if (qbs_funct7[6:2] != '0 ||
+              if (qbs_funct7[6:3] != '0 ||
                   (unsigned'(instr.rtype.rd) % qbs_destination_regs) != 0 ||
                   unsigned'(instr.rtype.rd) + qbs_destination_regs > 32 ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en ||

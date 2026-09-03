@@ -13,6 +13,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   input  qbs_weight_profile_e start_profile_i,
   input  qbs_activation_profile_e start_activation_profile_i,
   input  logic [2:0]          start_m_i,
+  input  logic [2:0]          start_context_base_i,
   input  logic [2:0]          start_row_count_i,
   input  logic [5:0]          start_row_base_i,
   input  logic                start_first_block_i,
@@ -22,6 +23,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   output logic                result_valid_o,
   input  logic                result_ready_i,
   output logic [3:0]          result_stream_o,
+  output logic [2:0]          result_context_base_o,
   output logic [5:0]          result_row_base_o,
   output logic [2:0]          result_row_count_o,
   output logic                result_first_block_o,
@@ -75,11 +77,13 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   logic [4:0] context_active_stream_count_q [NumContexts];
   logic [4:0] context_emitted_count_q [NumContexts];
   logic [5:0] context_row_base_q [NumContexts];
+  logic [2:0] context_base_q [NumContexts];
   logic [2:0] context_row_count_q [NumContexts];
   logic context_first_block_q [NumContexts];
 
   logic start_context;
   logic start_fire;
+  logic tail_wave_requires_correction_drain;
   logic compute_pipeline_empty;
   logic busy_q;
 
@@ -168,7 +172,17 @@ module qbs_profile_engine_int import qbs_pkg::*; (
 
   assign busy_q = compute_active_q || (|context_valid_q);
   assign busy_o = busy_q;
-  assign start_ready_o = !compute_active_q && !context_valid_q[start_context];
+  // A 16-element subgroup reaches its first group boundary after only two or
+  // four cycles for an M1/M2 tail wave. The preceding M4 wave can still have
+  // up to 16 correction slots in flight, so starting that tail immediately
+  // would exceed the two-lane correction drain rate. Wider/subgroup-32 waves
+  // provide enough lead time or service slack and keep the existing overlap.
+  assign tail_wave_requires_correction_drain =
+      start_context_base_i == 3'd4 && start_m_i inside {[1:2]} &&
+      qbs_weight_subgroup_elements(start_profile_i) == 16;
+  assign start_ready_o = !compute_active_q && !context_valid_q[start_context] &&
+      (!tail_wave_requires_correction_drain ||
+       correction_pending_flat == '0);
   assign start_fire = start_valid_i && start_ready_o;
   assign compute_pipeline_empty = !issue_active_q && !s0_valid_q && !dot_valid;
 
@@ -367,6 +381,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     result_valid_o = 1'b0;
     result_context = result_rr_q[4];
     result_stream_o = result_rr_q[3:0];
+    result_context_base_o = '0;
     result_row_base_o = '0;
     result_row_count_o = '0;
     result_first_block_o = 1'b0;
@@ -385,6 +400,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         result_valid_o = 1'b1;
         result_context = context_index;
         result_stream_o = stream_index;
+        result_context_base_o = context_base_q[context_index];
         result_row_base_o = context_row_base_q[context_index];
         result_row_count_o = context_row_count_q[context_index];
         result_first_block_o = context_first_block_q[context_index];
@@ -433,6 +449,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         context_active_stream_count_q[context_index] <= '0;
         context_emitted_count_q[context_index] <= '0;
         context_row_base_q[context_index] <= '0;
+        context_base_q[context_index] <= '0;
         context_row_count_q[context_index] <= '0;
         context_first_block_q[context_index] <= 1'b0;
         slot_valid_q[context_index] <= '0;
@@ -499,6 +516,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
             start_m_i * start_row_count_i;
         context_emitted_count_q[start_context] <= '0;
         context_row_base_q[start_context] <= start_row_base_i;
+        context_base_q[start_context] <= start_context_base_i;
         context_row_count_q[start_context] <= start_row_count_i;
         context_first_block_q[start_context] <= start_first_block_i;
         slot_valid_q[start_context] <= '0;
@@ -629,6 +647,12 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         assert (qbs_profiles_compatible(start_profile_i,
                                         start_activation_profile_i));
         assert (start_m_i inside {[1:4]});
+        assert (start_context_base_i inside {3'd0, 3'd4});
+        assert (unsigned'(start_context_base_i) + unsigned'(start_m_i) <=
+                QbsMaxM);
+        if (tail_wave_requires_correction_drain)
+          assert (correction_pending_flat == '0)
+            else $fatal(1, "QBS started a short tail wave before correction drain");
         assert (start_row_count_i inside {[1:4]});
         assert (!context_valid_q[start_context])
           else $fatal(1, "QBS reused a live integer tile context");

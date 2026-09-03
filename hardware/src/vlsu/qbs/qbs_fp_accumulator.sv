@@ -5,7 +5,7 @@ module qbs_fp_accumulator
   import qbs_pkg::*;
   import fpnew_pkg::*;
 #(
-  parameter int unsigned NumAccumulators = QbsMaxM * QbsMaxN,
+  parameter int unsigned NumAccumulators = QbsMaxResults,
   parameter int unsigned AccIndexWidth = $clog2(NumAccumulators)
 ) (
   input  logic                 clk_i,
@@ -47,6 +47,14 @@ module qbs_fp_accumulator
 );
 
   localparam int unsigned NumEntries = 16;
+
+`ifndef SYNTHESIS
+  initial begin
+    assert (NumAccumulators == QbsMaxResults &&
+            NumAccumulators == 8 * 16 && AccIndexWidth == 7)
+      else $fatal(1, "QBS accumulator bank/row mapping requires 128 entries");
+  end
+`endif
 
   typedef enum logic [2:0] {
     FP_DOT_CONVERT,

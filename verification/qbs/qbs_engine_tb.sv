@@ -35,7 +35,7 @@ module qbs_engine_tb;
   logic command_ready;
   vid_t command_id;
   logic [4:0] command_vd;
-  logic [2:0] command_m;
+  logic [3:0] command_m;
   logic [63:0] command_descriptor_address;
   logic [63:0] command_activation_base;
   logic success_valid;
@@ -244,6 +244,7 @@ module qbs_engine_tb;
   logic score_reset;
   integer commit_aggregate_words;
   integer unexpected_write_count;
+  bit functional_only;
   bit saw_dual_read_outstanding;
   bit saw_read_outstanding_full;
   logic activation_ar_monitor;
@@ -495,34 +496,45 @@ module qbs_engine_tb;
         automatic int relative_word;
         automatic int ctx;
         automatic int register_word;
-        if (ldu_result_req != '1)
-          $fatal(1, "QBS commit did not issue all lanes together");
+        automatic int accumulator_stride;
+        automatic int words_per_context;
         relative_word = unsigned'(ldu_result_addr[0]) -
                         score_vd * WordsPerRegister;
+        words_per_context = score_m > 4 ? (score_n > 8 ? 2 : 1) :
+                            WordsPerRegister;
         ctx = relative_word / WordsPerRegister;
         register_word = relative_word % WordsPerRegister;
+        accumulator_stride = score_m > 4 ? QbsWideMMaxN : QbsMaxN;
         if (ctx < 0 || ctx >= score_m || register_word < 0 ||
-            register_word >= WordsPerRegister)
+            register_word >= words_per_context)
           $fatal(1, "QBS commit address outside destination group");
         for (int lane = 0; lane < NrLanes; lane++) begin
-          automatic int low_index = ctx * 32 + register_word * 8 + lane;
-          automatic int high_index = low_index + NrLanes;
+          automatic int low_element = register_word * 8 + lane;
+          automatic int high_element = low_element + NrLanes;
+          automatic int low_index =
+              ctx * accumulator_stride + low_element;
+          automatic int high_index =
+              ctx * accumulator_stride + high_element;
+          automatic logic low_active = low_element < score_n;
+          automatic logic high_active = high_element < score_n;
+          automatic logic [7:0] expected_be = score_m > 4
+              ? {{4{high_active}}, {4{low_active}}} : 8'hff;
           automatic logic [31:0] expected_low;
           automatic logic [31:0] expected_high;
-          expected_low = low_index - ctx * 32 < score_n
+          expected_low = low_active
               ? expected_output[low_index] : 32'b0;
-          expected_high = high_index - ctx * 32 < score_n
+          expected_high = high_active
               ? expected_output[high_index] : 32'b0;
-          if (!expected_output_valid[low_index] &&
-              low_index - ctx * 32 < score_n)
+          if (!expected_output_valid[low_index] && low_active)
             $fatal(1, "missing expected low result index=%0d", low_index);
-          if (!expected_output_valid[high_index] &&
-              high_index - ctx * 32 < score_n)
+          if (!expected_output_valid[high_index] && high_active)
             $fatal(1, "missing expected high result index=%0d", high_index);
-          if (ldu_result_id[lane] != score_id[3:0] ||
-              ldu_result_addr[lane] != ldu_result_addr[0] ||
-              ldu_result_be[lane] != 8'hff ||
-              ldu_result_wdata[lane] != {expected_high, expected_low})
+          if (ldu_result_req[lane] != (|expected_be) ||
+              ldu_result_be[lane] != expected_be ||
+              ((|expected_be) &&
+               (ldu_result_id[lane] != score_id[3:0] ||
+                ldu_result_addr[lane] != ldu_result_addr[0] ||
+                ldu_result_wdata[lane] != {expected_high, expected_low})))
             $fatal(1,
                    "VRF write mismatch ctx=%0d word=%0d lane=%0d got=%h expected=%h_%h",
                    ctx, register_word, lane, ldu_result_wdata[lane],
@@ -547,7 +559,7 @@ module qbs_engine_tb;
     @(negedge clk);
     command_id = id[3:0];
     command_vd = vd[4:0];
-    command_m = m[2:0];
+    command_m = m[3:0];
     command_descriptor_address = descriptor_base;
     command_activation_base = activation_base;
     command_valid = 1'b1;
@@ -651,6 +663,7 @@ module qbs_engine_tb;
     activation_ar_monitor = 1'b0;
     monitored_activation_base = '0;
     monitored_activation_end = '0;
+    functional_only = $test$plusargs("QBS_FUNCTIONAL_ONLY");
 
     if (!$value$plusargs("QBS_COMMAND_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_command_vectors.txt";
@@ -749,9 +762,13 @@ module qbs_engine_tb;
             logic [127:0] data;
             rc = $fscanf(fd, "%d %d %h %h", ctx, offset, strb, data);
             if (rc != 4) $fatal(1, "case %0d: bad A beat", case_id);
-            if (activation_layout == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED)
+            if (activation_layout inside {
+                  QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+                  QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED})
               activation_offset =
-                  tile_k * (4 * activation_block_bytes) + offset;
+                  tile_k * ((activation_layout ==
+                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED ? QbsMaxM : 4) *
+                      activation_block_bytes) + offset;
             else
               activation_offset = (ctx * k_blocks + tile_k) *
                                   activation_block_bytes + offset;
@@ -797,8 +814,13 @@ module qbs_engine_tb;
       expected_ranges = 1 +
           (weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
               ? ((n + 3) / 4) * k_blocks : n * k_blocks) +
-          (activation_layout == QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+          (activation_layout inside {
+               QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+               QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}
               ? k_blocks : m * k_blocks);
+      begin
+        automatic integer expected_commit_words = m *
+            (m > 4 ? ((n + 7) / 8) : WordsPerRegister);
       case_errors = 0;
       if (result_fflags != expected_flags[4:0] ||
           tiles_computed != expected_tiles ||
@@ -819,8 +841,8 @@ module qbs_engine_tb;
               phase_fault_cycles + phase_terminal_cycles !=
               command_cycles + 1 ||
           (n > 4 && phase_overlap_cycles == 0) ||
-          commit_word_count != m * WordsPerRegister ||
-          commit_aggregate_words != m * WordsPerRegister ||
+          commit_word_count != expected_commit_words ||
+          commit_aggregate_words != expected_commit_words ||
           activation_access != QBS_ACTIVATION_ACCESS_DIRECT ||
           context_fill_count != 0 || context_reuse_count != 0 ||
           context_reuse_block_count != 0 || context_read_bytes != 0 ||
@@ -835,7 +857,7 @@ module qbs_engine_tb;
         $display("  ranges %0d/%0d payload %0d/%0d commit %0d/%0d",
                  read_range_count, expected_ranges, read_payload_bytes,
                  16 + expected_weight_bytes + expected_activation_bytes,
-                 commit_aggregate_words, m * WordsPerRegister);
+                 commit_aggregate_words, expected_commit_words);
         $display("  pairs useful=%0d/%0d capacity=%0d/%0d dot_cycles=%0d/%0d fp_uops=%0d/%0d updates=%0d/%0d",
                  useful_pairs, expected_useful_pairs, pair_capacity,
                  expected_pair_capacity, dot_active_cycles,
@@ -843,7 +865,7 @@ module qbs_engine_tb;
                  accumulator_updates, expected_updates);
         $display("  read outstanding max=%0d full_cycles=%0d commit_words=%0d/%0d unexpected=%0d",
                  read_outstanding_max, read_outstanding_full_cycles,
-                 commit_word_count, m * WordsPerRegister,
+                 commit_word_count, expected_commit_words,
                  unexpected_write_count);
         $display("  phases setup=%0d act=%0d weight=%0d compute=%0d overlap=%0d drain=%0d sched=%0d commit=%0d fault=%0d terminal=%0d prefetch_wait=%0d busy=%0d",
                  phase_setup_cycles, phase_activation_cycles,
@@ -854,14 +876,27 @@ module qbs_engine_tb;
                  weight_prefetch_wait_cycles, command_cycles + 1);
         case_errors++;
       end
+      end
       if (case_errors == 0)
         $display("QBS end-to-end case %0d PASS profile=%0d M=%0d N=%0d Kb=%0d layouts=%0d/%0d cycles=%0d",
                  case_id, profile, m, n, k_blocks, weight_layout,
                  activation_layout, command_cycles);
+      if (case_errors == 0 && functional_only) begin
+        $display("QBS phase case=%0d setup=%0d activation=%0d weight=%0d compute=%0d overlap=%0d drain=%0d scheduler=%0d commit=%0d terminal=%0d",
+                 case_id, phase_setup_cycles, phase_activation_cycles,
+                 phase_weight_cycles, phase_compute_cycles,
+                 phase_overlap_cycles, phase_drain_cycles,
+                 phase_scheduler_cycles, phase_commit_cycles,
+                 phase_terminal_cycles);
+        $display("QBS traffic case=%0d weight=%0d activation=%0d payload=%0d ranges=%0d dot=%0d prefetch_wait=%0d",
+                 case_id, weight_bytes, activation_bytes, read_payload_bytes,
+                 read_range_count, dot_active_cycles,
+                 weight_prefetch_wait_cycles);
+      end
       total_errors += case_errors;
       acknowledge_terminal();
 
-      if (ordinal == 0) begin
+      if (ordinal == 0 && !functional_only) begin
         const integer context_generation = 8'h35;
         const integer expected_weight_ranges =
             weight_layout == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
@@ -1031,6 +1066,14 @@ module qbs_engine_tb;
     end
 
     $fclose(fd);
+
+    if (functional_only) begin
+      if (total_errors != 0)
+        $fatal(1, "QBS functional-only run failed with %0d errors",
+               total_errors);
+      $display("QBS engine PASS: %0d functional cases", case_count);
+      $finish;
+    end
 
     // Descriptor validation failure: no compute or VRF activity may occur.
     memory.delete();

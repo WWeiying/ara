@@ -14,7 +14,7 @@ module qbs_compute_engine
   input  qbs_activation_profile_e command_activation_profile_i,
   input  qbs_weight_layout_e      command_weight_layout_i,
   input  qbs_activation_layout_e  command_activation_layout_i,
-  input  logic [2:0]              command_m_i,
+  input  logic [3:0]              command_m_i,
   input  logic [5:0]              command_n_i,
   input  logic [8:0]              command_k_blocks_i,
 
@@ -35,7 +35,7 @@ module qbs_compute_engine
   input  logic                    activation_write_valid_i,
   output logic                    activation_write_ready_o,
   input  logic [1:0]              activation_write_context_i,
-  input  logic [10:0]             activation_write_offset_i,
+  input  logic [11:0]             activation_write_offset_i,
   input  logic [127:0]            activation_write_data_i,
   input  logic [15:0]             activation_write_strb_i,
 
@@ -86,6 +86,7 @@ module qbs_compute_engine
     QBS_COMPUTE_TILE,
     QBS_WAIT_WEIGHT,
     QBS_START_WEIGHT,
+    QBS_START_CONTEXT_WAVE,
     QBS_CLEAR_BLOCK,
     QBS_FINAL_DRAIN,
     QBS_RESULT,
@@ -98,11 +99,16 @@ module qbs_compute_engine
   qbs_activation_profile_e activation_profile_q;
   qbs_weight_layout_e weight_layout_q;
   qbs_activation_layout_e activation_layout_q;
-  logic [2:0] m_q;
+  logic [3:0] m_q;
   logic [5:0] n_q;
   logic [8:0] k_blocks_q;
   logic [7:0] k_block_q;
   logic [5:0] row_base_q;
+  logic context_wave_q;
+  logic wide_command;
+  logic final_context_wave;
+  logic [2:0] wave_m;
+  logic [2:0] wave_context_base;
 
   logic [1:0] clear_weight;
   logic clear_activation;
@@ -124,16 +130,15 @@ module qbs_compute_engine
   logic [7:0] weight_block_bank0 [4][QbsMaxWeightBlockBytes];
   logic [7:0] weight_block_bank1 [4][QbsMaxWeightBlockBytes];
   logic [7:0] activation_block [4][QbsMaxActivationBlockBytes];
-  logic [7:0] unused_activation_block_bank1 [4][QbsMaxActivationBlockBytes];
+  logic [7:0] activation_block_bank0 [4][QbsMaxActivationBlockBytes];
+  logic [7:0] activation_block_bank1 [4][QbsMaxActivationBlockBytes];
   logic [3:0] weight_complete [2];
-  logic [3:0] activation_complete;
-  logic [3:0] unused_activation_complete_bank1;
+  logic [3:0] activation_complete [2];
   logic all_weight_complete [2];
+  logic all_activation_complete_bank [2];
   logic all_activation_complete;
-  logic unused_all_activation_complete_bank1;
   logic [31:0] adapter_weight_bytes [2];
-  logic [31:0] adapter_activation_bytes;
-  logic [31:0] unused_adapter_activation_bytes_bank1;
+  logic [31:0] adapter_activation_bytes [2];
   logic [2:0] weight_bank_row_count_q [2];
   logic [2:0] bank0_row_count;
   logic [2:0] bank1_row_count;
@@ -145,6 +150,7 @@ module qbs_compute_engine
   logic integer_result_valid;
   logic integer_result_ready;
   logic [3:0] integer_result_stream;
+  logic [2:0] integer_result_context_base;
   logic [5:0] integer_result_row_base;
   logic [2:0] integer_result_row_count;
   logic integer_result_first_block;
@@ -159,6 +165,7 @@ module qbs_compute_engine
 
   logic fp_request_ready;
   logic [6:0] fp_request_index;
+  logic [3:0] fp_request_context;
   logic fp_busy;
   logic fp_update_valid;
   logic [6:0] fp_update_index;
@@ -190,6 +197,31 @@ module qbs_compute_engine
     return remaining_rows >= 4 ? 3'd4 : 3'(remaining_rows);
   endfunction
 
+  assign wide_command = unsigned'(m_q) >= QbsWideMMin;
+  assign final_context_wave = !wide_command || context_wave_q;
+
+  always_comb begin
+    wave_context_base = wide_command && context_wave_q ? 3'd4 : 3'd0;
+    if (!wide_command)
+      wave_m = 3'(m_q);
+    else if (!context_wave_q)
+      wave_m = 3'd4;
+    else
+      wave_m = 3'(unsigned'(m_q) - 4);
+
+    for (int context_index = 0; context_index < 4; context_index++) begin
+      for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
+           byte_index++) begin
+        activation_block[context_index][byte_index] = context_wave_q
+            ? activation_block_bank1[context_index][byte_index]
+            : activation_block_bank0[context_index][byte_index];
+      end
+    end
+  end
+
+  assign all_activation_complete =
+      all_activation_complete_bank[0] && all_activation_complete_bank[1];
+
   always_comb begin
     row_count = rows_from_base(row_base_q);
     next_row_available = unsigned'(row_base_q) + unsigned'(row_count) <
@@ -198,13 +230,14 @@ module qbs_compute_engine
         ? rows_from_base(row_base_q + row_count) : '0;
     load_row_base = row_base_q;
     if (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
-                        QBS_START_WEIGHT} && next_row_available)
+                        QBS_START_WEIGHT, QBS_START_CONTEXT_WAVE} &&
+        next_row_available)
       load_row_base = row_base_q + row_count;
     load_row_count = rows_from_base(load_row_base);
 
     write_weight_bank = active_weight_bank_q;
     if (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
-                        QBS_START_WEIGHT})
+                        QBS_START_WEIGHT, QBS_START_CONTEXT_WAVE})
       write_weight_bank = ~active_weight_bank_q;
 
     // A response carries its own tile metadata. The live input is selected
@@ -231,7 +264,8 @@ module qbs_compute_engine
   assign load_weight_complete = all_weight_complete[write_weight_bank];
   assign weight_block_needed_o =
       !fault_i && ((state_q == QBS_LOAD_TILE && !current_weight_complete) ||
-      (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT} &&
+      (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
+                       QBS_START_CONTEXT_WAVE} &&
        next_row_available && !load_weight_complete));
   assign activation_write_ready_o = activation_block_needed_o;
 
@@ -260,7 +294,8 @@ module qbs_compute_engine
                 !all_weight_complete[weight_write_bank_i];
         end
         QBS_COMPUTE_TILE,
-        QBS_WAIT_WEIGHT: begin
+        QBS_WAIT_WEIGHT,
+        QBS_START_CONTEXT_WAVE: begin
           if (weight_write_bank_i != active_weight_bank_q)
             weight_write_ready_o =
                 !all_weight_complete[weight_write_bank_i];
@@ -271,7 +306,9 @@ module qbs_compute_engine
   end
   assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
 
-  qbs_block_adapter i_block_adapter_bank0 (
+  qbs_block_adapter #(
+    .ActivationContextBase (0)
+  ) i_block_adapter_bank0 (
     .clk_i,
     .rst_ni,
     .clear_weight_i               (clear_weight[0]),
@@ -295,16 +332,18 @@ module qbs_compute_engine
     .activation_write_data_i,
     .activation_write_strb_i,
     .weight_block_o               (weight_block_bank0),
-    .activation_block_o           (activation_block),
+    .activation_block_o           (activation_block_bank0),
     .weight_complete_o            (weight_complete[0]),
-    .activation_complete_o        (activation_complete),
+    .activation_complete_o        (activation_complete[0]),
     .all_weight_complete_o        (all_weight_complete[0]),
-    .all_activation_complete_o    (all_activation_complete),
+    .all_activation_complete_o    (all_activation_complete_bank[0]),
     .accepted_weight_bytes_o      (adapter_weight_bytes[0]),
-    .accepted_activation_bytes_o  (adapter_activation_bytes)
+    .accepted_activation_bytes_o  (adapter_activation_bytes[0])
   );
 
-  qbs_block_adapter i_block_adapter_bank1 (
+  qbs_block_adapter #(
+    .ActivationContextBase (4)
+  ) i_block_adapter_bank1 (
     .clk_i,
     .rst_ni,
     .clear_weight_i               (clear_weight[1]),
@@ -321,19 +360,20 @@ module qbs_compute_engine
     .weight_write_offset_i,
     .weight_write_data_i,
     .weight_write_strb_i,
-    .activation_write_valid_i     (1'b0),
-    .activation_write_context_i   ('0),
-    .activation_write_offset_i    ('0),
-    .activation_write_data_i      ('0),
-    .activation_write_strb_i      ('0),
+    .activation_write_valid_i     (activation_write_valid_i &&
+                                   activation_write_ready_o),
+    .activation_write_context_i,
+    .activation_write_offset_i,
+    .activation_write_data_i,
+    .activation_write_strb_i,
     .weight_block_o               (weight_block_bank1),
-    .activation_block_o           (unused_activation_block_bank1),
+    .activation_block_o           (activation_block_bank1),
     .weight_complete_o            (weight_complete[1]),
-    .activation_complete_o        (unused_activation_complete_bank1),
+    .activation_complete_o        (activation_complete[1]),
     .all_weight_complete_o        (all_weight_complete[1]),
-    .all_activation_complete_o    (unused_all_activation_complete_bank1),
+    .all_activation_complete_o    (all_activation_complete_bank[1]),
     .accepted_weight_bytes_o      (adapter_weight_bytes[1]),
-    .accepted_activation_bytes_o  (unused_adapter_activation_bytes_bank1)
+    .accepted_activation_bytes_o  (adapter_activation_bytes[1])
   );
 
   always_comb begin
@@ -346,12 +386,14 @@ module qbs_compute_engine
   end
 
   assign integer_start_valid =
-      state_q inside {QBS_LOAD_TILE, QBS_START_WEIGHT} &&
+      state_q inside {QBS_LOAD_TILE, QBS_START_WEIGHT,
+                      QBS_START_CONTEXT_WAVE} &&
       !fault_i && current_weight_complete && all_activation_complete;
   assign integer_start_fire = integer_start_valid && integer_start_ready;
   assign advance_prefetched_tile =
       (state_q == QBS_COMPUTE_TILE && integer_done &&
-       next_row_available && load_weight_complete && !fault_i) ||
+       final_context_wave && next_row_available && load_weight_complete &&
+       !fault_i) ||
       (state_q == QBS_WAIT_WEIGHT && load_weight_complete && !fault_i);
 
   assign phase_activation_load_o =
@@ -375,7 +417,8 @@ module qbs_compute_engine
     .start_ready_o                 (integer_start_ready),
     .start_profile_i               (weight_profile_q),
     .start_activation_profile_i    (activation_profile_q),
-    .start_m_i                     (m_q),
+    .start_m_i                     (wave_m),
+    .start_context_base_i          (wave_context_base),
     .start_row_count_i             (row_count),
     .start_row_base_i              (row_base_q),
     .start_first_block_i           (k_block_q == 0),
@@ -384,6 +427,7 @@ module qbs_compute_engine
     .result_valid_o                (integer_result_valid),
     .result_ready_i                (integer_result_ready),
     .result_stream_o               (integer_result_stream),
+    .result_context_base_o         (integer_result_context_base),
     .result_row_base_o             (integer_result_row_base),
     .result_row_count_o            (integer_result_row_count),
     .result_first_block_o          (integer_result_first_block),
@@ -409,10 +453,18 @@ module qbs_compute_engine
     .dot_active_cycles_o           (tile_dot_active_cycles)
   );
 
-  assign fp_request_index =
-      {integer_result_stream[1:0], 5'b0} +
-      {1'b0, integer_result_row_base} +
-      {5'b0, integer_result_stream[3:2]};
+  always_comb begin
+    fp_request_context = {1'b0, integer_result_context_base} +
+                         {2'b0, integer_result_stream[1:0]};
+    if (wide_command)
+      fp_request_index = {fp_request_context[2:0], 4'b0} +
+                         {1'b0, integer_result_row_base} +
+                         {5'b0, integer_result_stream[3:2]};
+    else
+      fp_request_index = {integer_result_stream[1:0], 5'b0} +
+                         {1'b0, integer_result_row_base} +
+                         {5'b0, integer_result_stream[3:2]};
+  end
   assign integer_result_ready = fp_request_ready;
 
   qbs_fp_accumulator i_fp_accumulator (
@@ -469,7 +521,9 @@ module qbs_compute_engine
         if (fault_i)
           state_d = QBS_FAULT_DRAIN;
         else if (integer_done) begin
-          if (next_row_available) begin
+          if (wide_command && !context_wave_q)
+            state_d = QBS_START_CONTEXT_WAVE;
+          else if (next_row_available) begin
             if (load_weight_complete)
               state_d = QBS_START_WEIGHT;
             else
@@ -480,6 +534,12 @@ module qbs_compute_engine
           else
             state_d = QBS_FINAL_DRAIN;
         end
+      end
+      QBS_START_CONTEXT_WAVE: begin
+        if (fault_i)
+          state_d = QBS_FAULT_DRAIN;
+        else if (integer_start_fire)
+          state_d = QBS_COMPUTE_TILE;
       end
       QBS_WAIT_WEIGHT: begin
         if (fault_i)
@@ -528,6 +588,7 @@ module qbs_compute_engine
       k_blocks_q <= '0;
       k_block_q <= '0;
       row_base_q <= '0;
+      context_wave_q <= 1'b0;
       active_weight_bank_q <= 1'b0;
       weight_bank_row_count_q[0] <= '0;
       weight_bank_row_count_q[1] <= '0;
@@ -551,6 +612,7 @@ module qbs_compute_engine
         k_blocks_q <= command_k_blocks_i;
         k_block_q <= '0;
         row_base_q <= '0;
+        context_wave_q <= 1'b0;
         active_weight_bank_q <= 1'b0;
         weight_bank_row_count_q[0] <= '0;
         weight_bank_row_count_q[1] <= '0;
@@ -571,12 +633,13 @@ module qbs_compute_engine
         weight_bank_row_count_q[weight_write_bank_i] <=
             weight_write_row_count_i;
 
-      if (integer_start_fire) begin
+      if (integer_start_fire && !context_wave_q) begin
         weight_bytes_o <=
             weight_bytes_o + adapter_weight_bytes[active_weight_bank_q];
         if (row_base_q == 0)
           activation_bytes_o <=
-              activation_bytes_o + adapter_activation_bytes;
+              activation_bytes_o + adapter_activation_bytes[0] +
+                                   adapter_activation_bytes[1];
       end
 
       if (state_q == QBS_COMPUTE_TILE && integer_done) begin
@@ -586,11 +649,16 @@ module qbs_compute_engine
         dot_active_cycles_o <=
             dot_active_cycles_o + tile_dot_active_cycles;
 
-        if (!next_row_available &&
-            unsigned'(k_block_q) + 1 < unsigned'(k_blocks_q)) begin
-          row_base_q <= '0;
-          k_block_q <= k_block_q + 1'b1;
-          active_weight_bank_q <= 1'b0;
+        if (wide_command && !context_wave_q) begin
+          context_wave_q <= 1'b1;
+        end else begin
+          context_wave_q <= 1'b0;
+          if (!next_row_available &&
+              unsigned'(k_block_q) + 1 < unsigned'(k_blocks_q)) begin
+            row_base_q <= '0;
+            k_block_q <= k_block_q + 1'b1;
+            active_weight_bank_q <= 1'b0;
+          end
         end
       end
 
@@ -613,19 +681,27 @@ module qbs_compute_engine
             QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR});
         assert (command_activation_layout_i inside {
             QBS_ACTIVATION_LAYOUT_ROW_MAJOR,
-            QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED});
-        assert (command_m_i inside {[1:4]});
+            QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED});
+        assert (command_m_i inside {[1:QbsMaxM]});
         assert (command_n_i inside {[1:QbsMaxN]});
+        assert (unsigned'(command_m_i) * unsigned'(command_n_i) <=
+                QbsMaxResults);
         assert (command_k_blocks_i inside {[1:QbsMaxKBlocks]});
         if (command_activation_layout_i ==
             QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED)
           assert (command_m_i == 4);
+        if (command_activation_layout_i ==
+            QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED) begin
+          assert (command_m_i inside {[QbsWideMMin:QbsMaxM]});
+          assert (command_n_i <= QbsWideMMaxN);
+        end
       end
       if (integer_result_valid && fp_request_ready) begin
-        assert (unsigned'(fp_request_index) < QbsMaxM * QbsMaxN);
+        assert (unsigned'(fp_request_index) < QbsMaxResults);
         assert (unsigned'(integer_result_stream[3:2]) <
                 unsigned'(integer_result_row_count));
-        assert (unsigned'(integer_result_stream[1:0]) < unsigned'(m_q));
+        assert (unsigned'(fp_request_context) < unsigned'(m_q));
       end
       if (weight_write_fire) begin
         assert (weight_write_row_count_i inside {[1:4]})
@@ -746,9 +822,7 @@ module qbs_compute_engine
 
   logic unused;
   assign unused = ^{weight_layout_q, weight_complete[0], weight_complete[1],
-                    activation_complete, fp_update_valid, fp_update_index,
-                    fp_update_data, unused_activation_complete_bank1,
-                    unused_all_activation_complete_bank1,
-                    unused_adapter_activation_bytes_bank1};
+                    activation_complete[0], activation_complete[1],
+                    fp_update_valid, fp_update_index, fp_update_data};
 
 endmodule : qbs_compute_engine
