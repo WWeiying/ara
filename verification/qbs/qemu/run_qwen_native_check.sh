@@ -6,7 +6,7 @@ platform_dir=${QBS_PLATFORM_DIR:-${HOME}/llama/platforms/cva6-qemu}
 source "${platform_dir}/env.sh"
 
 qemu_binary=${QBS_QEMU:-${script_dir}/build/qemu-10.2.0-build/qemu-system-riscv64}
-qemu_cpu=${QBS_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,xaraqbs=true}
+qemu_cpu=${QBS_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true}
 llama_binary=${QBS_LLAMA_BINARY:-${LLAMA_SRC}/build-rv64-cva6-qbs-emulate/bin/llama-simple}
 token_count=${QBS_TOKEN_COUNT:-2}
 prompt_text=${QBS_PROMPT:-The quick brown fox jumps over the lazy dog.}
@@ -16,6 +16,15 @@ require_equal=${QBS_REQUIRE_EQUAL:-1}
 require_activation_context=${QBS_REQUIRE_ACTIVATION_CONTEXT:-0}
 qbs_formats=${QBS_FORMATS:-}
 teacher_force=${QBS_TEACHER_FORCE:-0}
+if [[ -n ${QBS_EXPECTED_EXECUTION+x} ]]; then
+  expected_execution=${QBS_EXPECTED_EXECUTION}
+elif [[ ${teacher_force} == 1 ]]; then
+  expected_execution=any
+else
+  expected_execution=both
+fi
+model_digest=${QBS_MODEL_DIGEST:-}
+qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
 work_dir=${QBS_QWEN_WORK_DIR:-${script_dir}/build/qwen-native-check}
 log_file=${QBS_QWEN_LOG:-${work_dir}/qwen-native-check.log}
 model_file=${QBS_MODEL_FILE:-}
@@ -37,6 +46,21 @@ if [[ ! -x "${qemu_binary}" ]]; then
 fi
 test -x "${qemu_binary}"
 test -x "${llama_binary}"
+[[ "${qbs_wide_m}" == 0 || "${qbs_wide_m}" == 1 ]] || {
+  printf 'GGML_RISCV_QBS_WIDE_M must be 0 or 1\n' >&2
+  exit 2
+}
+case ${expected_execution} in
+  any|gemv|gemm|both) ;;
+  *)
+    printf 'QBS_EXPECTED_EXECUTION must be any, gemv, gemm, or both\n' >&2
+    exit 2
+    ;;
+esac
+[[ -z "${model_digest}" || "${model_digest}" =~ ^[A-Za-z0-9_]+([,\;][A-Za-z0-9_]+)*$ ]] || {
+  printf 'QBS_MODEL_DIGEST must be an operator name or comma-separated operator names\n' >&2
+  exit 2
+}
 mkdir -p "${work_dir}" "$(dirname -- "${log_file}")"
 
 if [[ -n "${model_file}" ]]; then
@@ -60,6 +84,8 @@ test -s "${model_disk}"
   -DQBS_REQUIRE_EQUAL="${require_equal}" \
   -DQBS_FORMATS="\"${qbs_formats}\"" \
   -DQBS_TEACHER_FORCE="${teacher_force}" \
+  -DQBS_MODEL_DIGEST="\"${model_digest}\"" \
+  -DQBS_WIDE_M="${qbs_wide_m}" \
   "${script_dir}/qbs_token_init.c" -lm -o "${init_binary}"
 
 truncate -s 128M "${binary_disk}"
@@ -95,12 +121,21 @@ test -x "${gen_init_cpio}"
 
 grep -q 'GGML_RISCV_REPACK=QBS' "${log_file}"
 for profile in ${expected_profiles}; do
-  if [[ "${teacher_force}" == "1" ]]; then
-    grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*native_qbexec=[1-9]" "${log_file}"
-  else
-    grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemv_calls=[1-9]" "${log_file}"
-    grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemm_calls=[1-9]" "${log_file}"
-  fi
+  case ${expected_execution} in
+    any)
+      grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*native_qbexec=[1-9]" "${log_file}"
+      ;;
+    gemv)
+      grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemv_calls=[1-9]" "${log_file}"
+      ;;
+    gemm)
+      grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemm_calls=[1-9]" "${log_file}"
+      ;;
+    both)
+      grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemv_calls=[1-9]" "${log_file}"
+      grep -Eq "GGML_RISCV_QBS_EXEC type=${profile} .*gemm_calls=[1-9]" "${log_file}"
+      ;;
+  esac
 done
 if [[ "${require_activation_context}" == "1" ]]; then
   grep -Eq 'GGML_RISCV_QBS_EXEC type=.* context_reuse=[1-9]' "${log_file}"

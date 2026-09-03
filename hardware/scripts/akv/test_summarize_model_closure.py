@@ -314,6 +314,85 @@ LLAMA_GUEST_EXIT=0
         with self.assertRaisesRegex(ValueError, "QBS graph coverage mismatch"):
             MODULE.validate_dynamic(run)
 
+    def test_decode_only_run_requires_explicit_prefill_relaxation(self):
+        graph = MODULE.Graph(
+            graph_id=0,
+            declared_nodes=1,
+            nodes=[{"op": "MUL_MAT", "src0": "q4_K"}],
+            qbs_calls=[{
+                "mode": "gemv",
+                "type": "Q4_K",
+                "_node_index": "0",
+                "k": "1",
+                "input_rows": "1",
+                "output_rows": "1",
+            }],
+            closed=True,
+        )
+        run = MODULE.ParsedRun(
+            graphs=[graph],
+            qbs_coverage={"Q4_K": {
+                "candidate_tensors": "1",
+                "selected_tensors": "1",
+                "candidate_elements": "1",
+                "selected_elements": "1",
+                "fallback_shape": "0",
+            }},
+            qbs_exec={"Q4_K": {
+                "dot_elements": "1",
+                "command_dot_elements": "1",
+                "native_qbexec": "1",
+                "emulated_commands": "0",
+            }},
+            akv_coverage={
+                "candidate_ops": "0",
+                "executed_ops": "0",
+                "executed_v1": "0",
+                "executed_v2": "0",
+                "groups": "0",
+                "groups_v2": "0",
+                "kv_group_tokens": "0",
+                "attention_macs": "0",
+            },
+            logits={
+                "AKV_LOGITS_RECORDS": "1",
+                "AKV_LOGITS_COMPARABLE_RECORDS": "1",
+                "AKV_LOGITS_MAX_ABS": "0",
+                "AKV_LOGITS_MAX_REL": "0",
+                "AKV_LOGITS_MEAN_ABS": "0",
+                "AKV_LOGITS_MEAN_RMSE": "0",
+                "AKV_LOGITS_MEAN_KL": "0",
+                "AKV_LOGITS_MEAN_COSINE": "1",
+                "AKV_LOGITS_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_MAX_KL": "0",
+                "AKV_LOGITS_MIN_COSINE": "1",
+                "AKV_LOGITS_MIN_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_TOP1_EQUAL": "1",
+            },
+            qbs_rvv={
+                "QBS_RVV_LOGITS_RECORDS": "1",
+                "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "1",
+                "QBS_RVV_LOGITS_MAX_ABS": "0",
+                "QBS_RVV_LOGITS_MAX_REL": "0",
+                "QBS_RVV_LOGITS_MEAN_ABS": "0",
+                "QBS_RVV_LOGITS_MEAN_RMSE": "0",
+                "QBS_RVV_LOGITS_MEAN_KL": "0",
+                "QBS_RVV_LOGITS_MEAN_COSINE": "1",
+                "QBS_RVV_LOGITS_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_MAX_KL": "0",
+                "QBS_RVV_LOGITS_MIN_COSINE": "1",
+                "QBS_RVV_LOGITS_MIN_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+            },
+            output_equal=True,
+            guest_exit=0,
+            optimized_exit=0,
+        )
+
+        with self.assertRaisesRegex(ValueError, "expected prefill and decode"):
+            MODULE.validate_dynamic(run)
+        MODULE.validate_dynamic(run, require_prefill=False)
+
     def test_prefill_akv_call_has_exact_causal_work_and_traffic(self):
         prefill_call = {
             "_node_index": "0",

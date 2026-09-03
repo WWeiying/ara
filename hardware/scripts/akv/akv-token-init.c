@@ -39,6 +39,14 @@
 #define AKV_MODEL_TOKENS "2"
 #endif
 
+#ifndef AKV_MODEL_DIGEST
+#define AKV_MODEL_DIGEST ""
+#endif
+
+#ifndef AKV_QBS_WIDE_M
+#define AKV_QBS_WIDE_M 0
+#endif
+
 struct logits_dump_record {
     uint32_t magic;
     uint32_t version;
@@ -427,6 +435,12 @@ static struct run_result run_variant(const char * label,
         unsetenv("GGML_RISCV_QBS_TRACE_LIFETIME");
         unsetenv("GGML_RISCV_QBS_CROSS_OP_CONTEXT");
         unsetenv("GGML_RISCV_MODEL_TRACE");
+        if (AKV_MODEL_DIGEST[0] != '\0') {
+            setenv("GGML_RISCV_MODEL_DIGEST", AKV_MODEL_DIGEST, 1);
+        } else {
+            unsetenv("GGML_RISCV_MODEL_DIGEST");
+        }
+        setenv("GGML_RISCV_QBS_WIDE_M", AKV_QBS_WIDE_M ? "1" : "0", 1);
         unsetenv("GGML_RISCV_AKV");
         unsetenv("GGML_RISCV_AKV_EMULATE");
         unsetenv("GGML_RISCV_AKV_KERNEL");

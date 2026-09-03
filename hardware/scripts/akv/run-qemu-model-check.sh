@@ -10,6 +10,8 @@ default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
 model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
 model_tokens=${AKV_MODEL_TOKENS:-2}
 model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
+model_digest=${AKV_MODEL_DIGEST:-}
+qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
 require_prefill=${AKV_REQUIRE_PREFILL:-0}
 qbs_preflight=${AKV_QBS_PREFLIGHT:-1}
@@ -286,6 +288,8 @@ write_manifest() {
     printf 'MODEL_GUEST_PATH=%s\n' "${model_guest_path}"
     printf 'MODEL_TOKENS=%s\n' "${model_tokens}"
     printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
+    printf 'MODEL_DIGEST=%s\n' "${model_digest}"
+    printf 'QBS_WIDE_M=%s\n' "${qbs_wide_m}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
     printf 'QBS_PREFLIGHT=%s\n' "${qbs_preflight_status}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
@@ -314,6 +318,14 @@ esac
 }
 [[ ${qbs_preflight} == 0 || ${qbs_preflight} == 1 ]] || {
   printf 'invalid AKV_QBS_PREFLIGHT: %s (expected 0 or 1)\n' "${qbs_preflight}" >&2
+  exit 2
+}
+[[ ${qbs_wide_m} == 0 || ${qbs_wide_m} == 1 ]] || {
+  printf 'GGML_RISCV_QBS_WIDE_M must be 0 or 1\n' >&2
+  exit 2
+}
+[[ -z ${model_digest} || ${model_digest} =~ ^[A-Za-z0-9_]+([,\;][A-Za-z0-9_]+)*$ ]] || {
+  printf 'AKV_MODEL_DIGEST must be an operator name or comma-separated operator names\n' >&2
   exit 2
 }
 if [[ ${require_prefill} == 1 && ${model_mode} != combined ]]; then
@@ -434,6 +446,8 @@ fi
   "-DAKV_MODEL_GUEST_PATH=\"${model_guest_path}\"" \
   "-DAKV_MODEL_TOKENS=\"${model_tokens}\"" \
   "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \
+  "-DAKV_MODEL_DIGEST=\"${model_digest}\"" \
+  "-DAKV_QBS_WIDE_M=${qbs_wide_m}" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
   -lm -o "${init_binary}"

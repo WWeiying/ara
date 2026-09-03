@@ -106,9 +106,13 @@ functional QBS run from one that silently used only DIRECT commands.
 Set `QBS_MODEL_FILE` to package a host GGUF into a private model image in the
 selected work directory. In this mode the guest path is derived from the file
 name, unless `QBS_MODEL_NAME` or `QBS_MODEL_PATH` overrides it. Set
-`QBS_EXPECTED_PROFILES` to the profile names that must each execute at least
-one GEMV and one GEMM. This makes the same check reusable for format closure
-without modifying the guest program or an existing model image.
+`QBS_EXPECTED_PROFILES` to the profile names that must execute natively.
+`QBS_EXPECTED_EXECUTION` selects the required dynamic shape: `gemv`, `gemm`,
+`both` (the normal default), or `any` (the teacher-forced default). Use `gemv`
+for an intentionally decode-only probe; complete model checks retain `both`
+and require both paths. This
+makes the same check reusable for format closure without modifying the guest
+program or an existing model image.
 `QBS_FORMATS` passes a comma- or space-separated QBS format allowlist into the
 native run. Formats outside the list use the ordinary RVV path, which is useful
 for isolating one profile in a mixed-format GGUF. An unset value keeps the

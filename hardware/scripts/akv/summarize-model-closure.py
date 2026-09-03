@@ -410,12 +410,16 @@ def parse_log(path: Path) -> ParsedRun:
     )
 
 
-def validate_dynamic(run: ParsedRun) -> None:
+def validate_dynamic(run: ParsedRun, *, require_prefill: bool = True) -> None:
     if not run.graphs:
         raise ValueError("no model graphs were traced")
     phases = Counter(graph.phase for graph in run.graphs)
-    if phases["prefill"] == 0 or phases["decode"] == 0:
-        raise ValueError(f"expected prefill and decode graphs, got {dict(phases)}")
+    required_phases = ("prefill", "decode") if require_prefill else ("decode",)
+    missing_phases = [phase for phase in required_phases if phases[phase] == 0]
+    if missing_phases:
+        raise ValueError(
+            f"expected {' and '.join(required_phases)} graphs, got {dict(phases)}"
+        )
     if run.optimized_exit != 0:
         raise ValueError(f"optimized model child exited with {run.optimized_exit}")
     if run.guest_exit != 0 or not run.output_equal:
@@ -1937,9 +1941,10 @@ def main() -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     run = parse_log(args.log)
-    validate_dynamic(run)
-    qbs_call_rows, qbs_node_rows, akv_rows, node_rows = dynamic_rows(run)
     model_manifest = read_manifest(args.log.parent / "manifest.txt")
+    require_prefill = model_manifest.get("REQUIRE_PREFILL", "1") != "0"
+    validate_dynamic(run, require_prefill=require_prefill)
+    qbs_call_rows, qbs_node_rows, akv_rows, node_rows = dynamic_rows(run)
     qbs_lifetime = load_qbs_lifetime_summary(args.qbs_lifetime_summary, model_manifest)
 
     write_csv(

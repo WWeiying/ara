@@ -313,6 +313,11 @@ static float f16_to_f32(uint16_t value) {
   return result;
 }
 
+static float multiply_then_add_f32(float lhs, float rhs, float addend) {
+  volatile float product = lhs * rhs;
+  return product + addend;
+}
+
 static uint16_t f32_to_f16(float value) {
   uint32_t bits;
   memcpy(&bits, &value, sizeof(bits));
@@ -439,7 +444,8 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
                 dot += f16_to_f32(workspace->query[local_token][head][dimension]) *
                        f16_to_f32(key[dimension]);
               }
-              const float score = dot * problem->scale + f16_to_f32(mask[sequence]);
+              const float score = multiply_then_add_f32(
+                  dot, problem->scale, f16_to_f32(mask[sequence]));
               workspace->score[0][head][sequence] = score;
               if (score > tile_maximum) tile_maximum = score;
             }

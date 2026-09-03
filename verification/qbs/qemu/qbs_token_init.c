@@ -31,6 +31,12 @@
 #ifndef QBS_TEACHER_FORCE
 #define QBS_TEACHER_FORCE 0
 #endif
+#ifndef QBS_MODEL_DIGEST
+#define QBS_MODEL_DIGEST ""
+#endif
+#ifndef QBS_WIDE_M
+#define QBS_WIDE_M 0
+#endif
 
 #define LOGITS_DUMP_MAGIC 0x5142534cU
 #define RVV_LOGITS_PATH "/rvv-logits.bin"
@@ -83,6 +89,12 @@ static struct run_result run_variant(const char *label, int native_qbs) {
     close(output_pipe[1]);
 
     setenv("GGML_RISCV_REPACK_TRACE", "1", 1);
+    if (QBS_MODEL_DIGEST[0] != '\0') {
+      setenv("GGML_RISCV_MODEL_DIGEST", QBS_MODEL_DIGEST, 1);
+    } else {
+      unsetenv("GGML_RISCV_MODEL_DIGEST");
+    }
+    setenv("GGML_RISCV_QBS_WIDE_M", QBS_WIDE_M ? "1" : "0", 1);
     unsetenv("GGML_RISCV_QBS");
     unsetenv("GGML_RISCV_QBS_EMULATE");
     unsetenv("GGML_RISCV_QBS_TRACE");
