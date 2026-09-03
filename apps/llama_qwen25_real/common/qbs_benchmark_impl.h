@@ -4,6 +4,7 @@
 #include "../../common/qbs_abi.h"
 #include "../../common/runtime.h"
 #include "../../llama_q4k_repack_bench/repack_kernels.h"
+#include "../../../software/qbs/include/qbs/qbs.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -134,18 +135,29 @@ typedef block_q8_K benchmark_activation_block_t;
 #endif
 
 #define BENCH_BLOCKS (BENCH_K / BENCH_BLOCK_ELEMENTS)
-#define BENCH_TILES ((BENCH_ROWS + QBS_MAX_N - 1) / QBS_MAX_N)
 #define BENCH_Q8_BLOCKS (BENCH_INPUTS * BENCH_BLOCKS)
 #define BENCH_OUTPUTS (BENCH_INPUTS * BENCH_ROWS)
 #define BENCH_TOTAL_OUTPUTS (QBS_BENCH_OPERATIONS * BENCH_OUTPUTS)
 
-#if BENCH_INPUTS == 4 && !BENCH_WEIGHT_Q8_0
+#if BENCH_INPUTS >= QBS_WIDE_M_MIN
+#define BENCH_TILE_N QBS_WIDE_M_MAX_N
+#define BENCH_USE_M8_INTERLEAVED 1
+#define BENCH_USE_M4_INTERLEAVED 0
+#define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+#define BENCH_PACKED_ACTIVATION_ROWS QBS_MAX_M
+#elif BENCH_INPUTS == 4 && !BENCH_WEIGHT_Q8_0
+#define BENCH_TILE_N QBS_MAX_N
+#define BENCH_USE_M8_INTERLEAVED 0
 #define BENCH_USE_M4_INTERLEAVED 1
 #define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED
+#define BENCH_PACKED_ACTIVATION_ROWS 4u
 #else
+#define BENCH_TILE_N QBS_MAX_N
+#define BENCH_USE_M8_INTERLEAVED 0
 #define BENCH_USE_M4_INTERLEAVED 0
 #define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_ROW_MAJOR
 #endif
+#define BENCH_TILES ((BENCH_ROWS + BENCH_TILE_N - 1) / BENCH_TILE_N)
 
 _Static_assert(BENCH_K > 0 && BENCH_K % BENCH_BLOCK_ELEMENTS == 0,
                "QBS K must align to the selected weight block");
@@ -153,7 +165,7 @@ _Static_assert(BENCH_BLOCKS <= QBS_MAX_K_BLOCKS,
                "QBS K block count exceeds the ABI limit");
 _Static_assert(BENCH_ROWS > 0, "QBS requires at least one output row");
 _Static_assert(BENCH_INPUTS >= 1 && BENCH_INPUTS <= QBS_MAX_M,
-               "QBS M must be in [1,4]");
+               "QBS M must be in [1,QBS_MAX_M]");
 _Static_assert(VLEN >= QBS_MAX_N * 32,
                "this benchmark requires 32 FP32 results per context");
 #if QBS_BENCH_ACTIVATION_CONTEXT
@@ -182,8 +194,9 @@ extern const uint8_t benchmark_golden_end[];
 
 static benchmark_activation_block_t quantized_activation[BENCH_Q8_BLOCKS]
     __attribute__((aligned(64), section(".bss")));
-#if BENCH_USE_M4_INTERLEAVED
-static block_q8_Kx4 packed_activation[BENCH_BLOCKS]
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
+static uint8_t packed_activation[BENCH_PACKED_ACTIVATION_ROWS * BENCH_BLOCKS *
+                                 sizeof(benchmark_activation_block_t)]
     __attribute__((aligned(64), section(".bss")));
 #endif
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
@@ -193,6 +206,7 @@ static qbs_descriptor_t
 #endif
 static float benchmark_output[BENCH_TOTAL_OUTPUTS]
     __attribute__((aligned(64), section(".bss")));
+static qbs_status_t benchmark_execution_status = QBS_STATUS_OK;
 
 static inline uint64_t benchmark_cycle(void) {
 #ifdef SPIKE
@@ -218,9 +232,9 @@ static uint32_t benchmark_float_bits(float value) {
 
 static inline qbs_descriptor_t benchmark_make_descriptor(unsigned operation,
                                                          unsigned tile) {
-  const unsigned first_row = tile * QBS_MAX_N;
+  const unsigned first_row = tile * BENCH_TILE_N;
   const unsigned remaining = BENCH_ROWS - first_row;
-  const unsigned tile_n = remaining < QBS_MAX_N ? remaining : QBS_MAX_N;
+  const unsigned tile_n = remaining < BENCH_TILE_N ? remaining : BENCH_TILE_N;
   unsigned activation_access = QBS_ACTIVATION_ACCESS_DIRECT;
 #if QBS_BENCH_ACTIVATION_CONTEXT
 #if QBS_BENCH_CROSS_OP_REUSE
@@ -291,41 +305,30 @@ static __attribute__((noinline)) void benchmark_quantize(void) {
   }
 }
 
-#if BENCH_USE_M4_INTERLEAVED
-static __attribute__((noinline)) void benchmark_pack_activation(void) {
-  for (unsigned block = 0; block < BENCH_BLOCKS; ++block) {
-    for (unsigned input = 0; input < 4; ++input)
-      packed_activation[block].d[input] =
-          quantized_activation[input * BENCH_BLOCKS + block].d;
-    for (unsigned element = 0; element < QK_K; ++element) {
-      for (unsigned input = 0; input < 4; ++input) {
-        packed_activation[block].qs[element * 4 + input] =
-            quantized_activation[input * BENCH_BLOCKS + block].qs[element];
-      }
-    }
-    for (unsigned sub_block = 0; sub_block < QK_K / 16; ++sub_block) {
-      const unsigned group = sub_block / 2;
-      const unsigned half = sub_block & 1;
-      for (unsigned input = 0; input < 4; ++input) {
-        packed_activation[block].bsums[group * 8 + half * 4 + input] =
-            quantized_activation[input * BENCH_BLOCKS + block]
-                .bsums[sub_block];
-      }
-    }
-  }
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
+static __attribute__((noinline)) qbs_status_t benchmark_pack_activation(void) {
+#if BENCH_USE_M8_INTERLEAVED
+  return qbs_pack_activation_m8_grouped(
+      BENCH_ACTIVATION_PROFILE, quantized_activation,
+      sizeof(quantized_activation), BENCH_INPUTS, BENCH_BLOCKS,
+      packed_activation, sizeof(packed_activation));
+#else
+  return qbs_pack_activation_m4(
+      BENCH_ACTIVATION_PROFILE, quantized_activation,
+      sizeof(quantized_activation), BENCH_BLOCKS, packed_activation,
+      sizeof(packed_activation));
+#endif
 }
 #endif
 
-static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
-                                       const void *activation, float *output,
-                                       unsigned output_stride, unsigned n) {
+static inline qbs_status_t benchmark_issue_qbs(
+    const qbs_descriptor_t *descriptor, const void *activation, float *output,
+    unsigned output_stride, unsigned n) {
 #if BENCH_INPUTS == 1
   (void)output_stride;
-#endif
   register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
   register uintptr_t a1 asm("a1") = (uintptr_t)activation;
   register uintptr_t a2 asm("a2") = (uintptr_t)output;
-#if BENCH_INPUTS == 1
   asm volatile("fence rw, rw\n"
                "li t0, 32\n"
                "vsetvli zero, t0, e32, m1, ta, ma\n"
@@ -336,8 +339,13 @@ static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
                : "+r"(a0), "+r"(a1), "+r"(a2)
                : [n] "r"(n)
                : "t0", "v8", "memory");
+  return QBS_STATUS_OK;
 #elif BENCH_INPUTS == 2
-  register uintptr_t a3 asm("a3") = (uintptr_t)(output + output_stride);
+  register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
+  register uintptr_t a1 asm("a1") = (uintptr_t)activation;
+  register uintptr_t a2 asm("a2") = (uintptr_t)output;
+  register uintptr_t a3 asm("a3") =
+      (uintptr_t)(output + output_stride);
   asm volatile("fence rw, rw\n"
                "li t0, 64\n"
                "vsetvli zero, t0, e32, m2, ta, ma\n"
@@ -349,9 +357,15 @@ static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
                : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
                : [n] "r"(n)
                : "t0", "v8", "v9", "memory");
+  return QBS_STATUS_OK;
 #elif BENCH_INPUTS == 3
-  register uintptr_t a3 asm("a3") = (uintptr_t)(output + output_stride);
-  register uintptr_t a4 asm("a4") = (uintptr_t)(output + 2 * output_stride);
+  register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
+  register uintptr_t a1 asm("a1") = (uintptr_t)activation;
+  register uintptr_t a2 asm("a2") = (uintptr_t)output;
+  register uintptr_t a3 asm("a3") =
+      (uintptr_t)(output + output_stride);
+  register uintptr_t a4 asm("a4") =
+      (uintptr_t)(output + 2u * output_stride);
   asm volatile("fence rw, rw\n"
                "li t0, 128\n"
                "vsetvli zero, t0, e32, m4, ta, ma\n"
@@ -364,10 +378,17 @@ static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
                : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3), "+r"(a4)
                : [n] "r"(n)
                : "t0", "v8", "v9", "v10", "v11", "memory");
-#else
-  register uintptr_t a3 asm("a3") = (uintptr_t)(output + output_stride);
-  register uintptr_t a4 asm("a4") = (uintptr_t)(output + 2 * output_stride);
-  register uintptr_t a5 asm("a5") = (uintptr_t)(output + 3 * output_stride);
+  return QBS_STATUS_OK;
+#elif BENCH_INPUTS == 4
+  register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
+  register uintptr_t a1 asm("a1") = (uintptr_t)activation;
+  register uintptr_t a2 asm("a2") = (uintptr_t)output;
+  register uintptr_t a3 asm("a3") =
+      (uintptr_t)(output + output_stride);
+  register uintptr_t a4 asm("a4") =
+      (uintptr_t)(output + 2u * output_stride);
+  register uintptr_t a5 asm("a5") =
+      (uintptr_t)(output + 3u * output_stride);
   asm volatile("fence rw, rw\n"
                "li t0, 128\n"
                "vsetvli zero, t0, e32, m4, ta, ma\n"
@@ -382,14 +403,51 @@ static inline void benchmark_issue_qbs(const qbs_descriptor_t *descriptor,
                  "+r"(a5)
                : [n] "r"(n)
                : "t0", "v8", "v9", "v10", "v11", "memory");
+  return QBS_STATUS_OK;
+#elif BENCH_INPUTS == 8
+  register uintptr_t a0 asm("a0") = (uintptr_t)descriptor;
+  register uintptr_t a1 asm("a1") = (uintptr_t)activation;
+  register uintptr_t a2 asm("a2") = (uintptr_t)output;
+  register uintptr_t a3 asm("a3") =
+      output_stride * sizeof(*output);
+  asm volatile("fence rw, rw\n"
+               "li t0, 256\n"
+               "vsetvli zero, t0, e32, m8, ta, ma\n"
+               ".word 0x0eb5045b\n"
+               "mv t0, %[n]\n"
+               "vsetvli zero, t0, e32, m1, ta, ma\n"
+               "mv t1, a2\n"
+               "vse32.v v8, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v9, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v10, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v11, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v12, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v13, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v14, (t1)\n"
+               "add t1, t1, a3\n"
+               "vse32.v v15, (t1)\n"
+               : "+r"(a0), "+r"(a1), "+r"(a2), "+r"(a3)
+               : [n] "r"(n)
+               : "t0", "t1", "v8", "v9", "v10", "v11", "v12",
+                 "v13", "v14", "v15", "memory");
+  return QBS_STATUS_OK;
+#else
+  return qbs_native_execute_command(NULL, descriptor, BENCH_INPUTS, activation,
+                                    output, output_stride, n, 0);
 #endif
 }
 
 static __attribute__((noinline)) uint64_t benchmark_qbs(unsigned operation) {
   for (unsigned tile = 0; tile < BENCH_TILES; ++tile) {
-    const unsigned first_row = tile * QBS_MAX_N;
+    const unsigned first_row = tile * BENCH_TILE_N;
     const unsigned remaining = BENCH_ROWS - first_row;
-    const unsigned tile_n = remaining < QBS_MAX_N ? remaining : QBS_MAX_N;
+    const unsigned tile_n = remaining < BENCH_TILE_N ? remaining : BENCH_TILE_N;
 #if QBS_BENCH_PREBUILT_DESCRIPTOR
     const qbs_descriptor_t *descriptor =
         &benchmark_descriptors[operation][tile];
@@ -398,14 +456,16 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(unsigned operation) {
         benchmark_make_descriptor(operation, tile);
     const qbs_descriptor_t *descriptor = &descriptor_value;
 #endif
-#if BENCH_USE_M4_INTERLEAVED
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
     const void *activation = packed_activation;
 #else
     const void *activation = quantized_activation;
 #endif
-    benchmark_issue_qbs(descriptor, activation,
-                        benchmark_output + operation * BENCH_OUTPUTS + first_row,
-                        BENCH_ROWS, tile_n);
+    benchmark_execution_status = benchmark_issue_qbs(
+        descriptor, activation,
+        benchmark_output + operation * BENCH_OUTPUTS + first_row, BENCH_ROWS,
+        tile_n);
+    if (benchmark_execution_status != QBS_STATUS_OK) break;
   }
 
   const uint64_t quantization_input_bytes =
@@ -416,9 +476,10 @@ static __attribute__((noinline)) uint64_t benchmark_qbs(unsigned operation) {
       (uint64_t)BENCH_TILES * sizeof(qbs_descriptor_t);
   const uint64_t weight_bytes =
       (uint64_t)(benchmark_weight_end - benchmark_weight_start);
-#if BENCH_USE_M4_INTERLEAVED
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
   const uint64_t activation_bytes =
-      (uint64_t)BENCH_TILES * BENCH_BLOCKS * sizeof(block_q8_Kx4);
+      (uint64_t)BENCH_TILES * BENCH_PACKED_ACTIVATION_ROWS * BENCH_BLOCKS *
+      sizeof(benchmark_activation_block_t);
 #else
   const uint64_t activation_bytes =
       (uint64_t)(QBS_BENCH_ACTIVATION_CONTEXT
@@ -499,16 +560,18 @@ int main(void) {
   const uint64_t start = benchmark_cycle();
   benchmark_quantize();
   const uint64_t quantize_end = benchmark_cycle();
-#if BENCH_USE_M4_INTERLEAVED
+#if BENCH_USE_M4_INTERLEAVED || BENCH_USE_M8_INTERLEAVED
   HW_CNT_PHASE(BENCH_PHASE_PACK);
-  benchmark_pack_activation();
+  benchmark_execution_status = benchmark_pack_activation();
   const uint64_t pack_end = benchmark_cycle();
 #else
   const uint64_t pack_end = quantize_end;
 #endif
   HW_CNT_PHASE(BENCH_PHASE_MATMUL);
   const uint64_t matmul_start = pack_end;
-  uint64_t logical_read_bytes = benchmark_qbs(0);
+  uint64_t logical_read_bytes = benchmark_execution_status == QBS_STATUS_OK
+      ? benchmark_qbs(0)
+      : 0;
   const uint64_t matmul_end = benchmark_cycle();
   uint64_t quantize_cycles = quantize_end - start;
   const uint64_t pack_cycles = pack_end - quantize_end;
@@ -518,6 +581,7 @@ int main(void) {
   uint64_t chain_end = matmul_end;
   for (unsigned operation = 1; operation < QBS_BENCH_OPERATIONS;
        ++operation) {
+    if (benchmark_execution_status != QBS_STATUS_OK) break;
 #if !QBS_BENCH_CROSS_OP_REUSE
     HW_CNT_PHASE(BENCH_PHASE_QUANTIZE);
     const uint64_t operation_quantize_start = benchmark_cycle();
@@ -539,6 +603,8 @@ int main(void) {
   float max_rel;
   uint64_t checksum;
   const int mismatches = benchmark_validate(&max_abs, &max_rel, &checksum);
+  const int passed =
+      mismatches == 0 && benchmark_execution_status == QBS_STATUS_OK;
   BENCH_REPORT(
       "QBS_REAL_BENCH case=%s result=%s k=%d rows=%d inputs=%d outputs=%d "
       "tiles=%d operations=%d outputs_per_operation=%d result_count=%d "
@@ -550,8 +616,8 @@ int main(void) {
       "cycles_per_output_x1000=%lu quantize_cycles=%lu pack_cycles=%lu "
       "matmul_cycles=%lu "
       "logical_read_bytes=%lu checksum=0x%lx mismatches=%d "
-      "max_abs_bits=0x%x max_rel_bits=0x%x\n",
-      BENCH_CASE_ID, mismatches == 0 ? "PASS" : "FAIL", BENCH_K,
+      "max_abs_bits=0x%x max_rel_bits=0x%x qbs_status=%u\n",
+      BENCH_CASE_ID, passed ? "PASS" : "FAIL", BENCH_K,
       BENCH_ROWS, BENCH_INPUTS, BENCH_OUTPUTS, BENCH_TILES,
       QBS_BENCH_OPERATIONS, BENCH_OUTPUTS, BENCH_TOTAL_OUTPUTS,
       QBS_BENCH_CROSS_OP_REUSE ? 1 : QBS_BENCH_OPERATIONS,
@@ -566,12 +632,13 @@ int main(void) {
       (unsigned long)quantize_cycles, (unsigned long)pack_cycles,
       (unsigned long)matmul_cycles,
       (unsigned long)logical_read_bytes, (unsigned long)checksum, mismatches,
-      benchmark_float_bits(max_abs), benchmark_float_bits(max_rel));
+      benchmark_float_bits(max_abs), benchmark_float_bits(max_rel),
+      (unsigned)benchmark_execution_status);
 #ifdef SPIKE
   printstr(BENCH_CASE_ID);
-  printstr(mismatches == 0 ? ": PASS\n" : ": FAIL\n");
+  printstr(passed ? ": PASS\n" : ": FAIL\n");
 #endif
-  return mismatches != 0;
+  return !passed;
 }
 
 #endif

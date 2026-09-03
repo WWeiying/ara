@@ -85,19 +85,28 @@ static qbs_descriptor_t make_descriptor(unsigned profile,
 static int execute_layout(const case_config_t *config, const void *weights,
                           size_t block_bytes,
                           const qbs_block_q8_k_t *activation_row,
-                          const qbs_block_q8_kx4_t *activation_m4,
+                          const void *activation_interleaved,
                           unsigned weight_layout,
                           unsigned activation_layout, float *output) {
   const unsigned k_blocks = config->k / QBS_BLOCK_ELEMENTS;
   const void *activation = activation_layout == QBS_ACTIVATION_LAYOUT_ROW_MAJOR
                                ? (const void *)activation_row
-                               : (const void *)activation_m4;
+                               : activation_interleaved;
   const size_t activation_bytes = qbs_ref_activation_storage_bytes(
       activation_layout, config->m, k_blocks);
+  const unsigned tile_limit =
+      activation_layout == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+          ? QBS_WIDE_M_MAX_N
+          : QBS_MAX_N;
+  const unsigned vd = config->m >= QBS_WIDE_M_MIN
+                          ? 8
+                          : (config->m == 1 ? 0 : 4);
   for (unsigned first_row = 0; first_row < config->n;
-       first_row += QBS_MAX_N) {
+       first_row += tile_limit) {
     const unsigned tile_n =
-        config->n - first_row < QBS_MAX_N ? config->n - first_row : QBS_MAX_N;
+        config->n - first_row < tile_limit
+            ? config->n - first_row
+            : tile_limit;
     const uint8_t *row_tile =
         (const uint8_t *)weights +
         (size_t)first_row * k_blocks * block_bytes;
@@ -132,10 +141,9 @@ static int execute_layout(const case_config_t *config, const void *weights,
       destination[index] = NAN;
     qbs_ref_result_t result = {0};
     const qbs_ref_status_t status = qbs_ref_execute(
-        &descriptor, config->m, config->m == 1 ? 0 : 4, 1024,
-        UINT64_C(0x2000), weight_tile, weight_tile_bytes, activation,
-        activation_bytes, destination, QBS_MAX_M * QBS_MAX_N, NULL, NULL,
-        &result);
+        &descriptor, config->m, vd, 1024, UINT64_C(0x2000), weight_tile,
+        weight_tile_bytes, activation, activation_bytes, destination,
+        QBS_MAX_M * QBS_MAX_N, NULL, NULL, &result);
     free(repacked);
     if (status != QBS_REF_OK) {
       fprintf(stderr, "%s: execute failed: %s\n", config->name,
@@ -261,25 +269,39 @@ int main(int argc, char **argv) {
 
   qbs_block_q8_k_t *activation_row =
       malloc((size_t)config.m * k_blocks * sizeof(*activation_row));
-  qbs_block_q8_kx4_t *activation_m4 =
-      config.m == 4 ? malloc(k_blocks * sizeof(*activation_m4)) : NULL;
+  const int has_interleaved_layout =
+      config.m == 4 || config.m >= QBS_WIDE_M_MIN;
+  const unsigned interleaved_layout = config.m >= QBS_WIDE_M_MIN
+      ? QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+      : QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED;
+  const size_t interleaved_bytes = has_interleaved_layout
+      ? qbs_ref_activation_storage_bytes(interleaved_layout, config.m,
+                                         k_blocks)
+      : 0;
+  void *activation_interleaved =
+      has_interleaved_layout ? malloc(interleaved_bytes) : NULL;
   float *row_row = malloc(output_elements * sizeof(float));
   float *r4_row = malloc(output_elements * sizeof(float));
-  float *row_m4 = config.m == 4 ? malloc(output_elements * sizeof(float)) : NULL;
-  float *r4_m4 = config.m == 4 ? malloc(output_elements * sizeof(float)) : NULL;
+  float *row_interleaved = has_interleaved_layout
+      ? malloc(output_elements * sizeof(float))
+      : NULL;
+  float *r4_interleaved = has_interleaved_layout
+      ? malloc(output_elements * sizeof(float))
+      : NULL;
   if (activation_row == NULL || row_row == NULL || r4_row == NULL ||
-      (config.m == 4 &&
-       (activation_m4 == NULL || row_m4 == NULL || r4_m4 == NULL))) {
+      (has_interleaved_layout &&
+       (activation_interleaved == NULL || row_interleaved == NULL ||
+        r4_interleaved == NULL))) {
     fprintf(stderr, "%s: allocation failure\n", config.name);
     free(weights);
     free(activation_f32);
     free(golden);
     free(activation_row);
-    free(activation_m4);
+    free(activation_interleaved);
     free(row_row);
     free(r4_row);
-    free(row_m4);
-    free(r4_m4);
+    free(row_interleaved);
+    free(r4_interleaved);
     return EXIT_FAILURE;
   }
 
@@ -289,43 +311,59 @@ int main(int argc, char **argv) {
   if (ok && config.m == 4) {
     ok = qbs_ref_pack_activation_m4(
              activation_row, (size_t)config.m * k_blocks, k_blocks,
-             activation_m4, k_blocks) == QBS_REF_OK;
+             activation_interleaved, k_blocks) == QBS_REF_OK;
   }
-  if (ok)
+  if (ok && config.m >= QBS_WIDE_M_MIN) {
+    ok = qbs_ref_pack_activation_m8_profile(
+             QBS_ACTIVATION_PROFILE_Q8_K, activation_row,
+             (size_t)config.m * k_blocks * sizeof(*activation_row), config.m,
+             k_blocks, activation_interleaved,
+             interleaved_bytes) == QBS_REF_OK;
+  }
+  if (ok && config.m < QBS_WIDE_M_MIN)
     ok = execute_layout(&config, weights, block_bytes, activation_row,
-                        activation_m4, QBS_WEIGHT_LAYOUT_ROW_MAJOR,
+                        activation_interleaved, QBS_WEIGHT_LAYOUT_ROW_MAJOR,
                         QBS_ACTIVATION_LAYOUT_ROW_MAJOR, row_row);
-  if (ok)
+  if (ok && config.m < QBS_WIDE_M_MIN)
     ok = execute_layout(&config, weights, block_bytes, activation_row,
-                        activation_m4, QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
+                        activation_interleaved,
+                        QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
                         QBS_ACTIVATION_LAYOUT_ROW_MAJOR, r4_row);
-  if (ok)
+  if (ok && config.m < QBS_WIDE_M_MIN)
     ok = compare_layout(config.name, "R4+row", row_row, r4_row,
                         output_elements);
-  if (ok && config.m == 4)
+  if (ok && has_interleaved_layout)
     ok = execute_layout(&config, weights, block_bytes, activation_row,
-                        activation_m4, QBS_WEIGHT_LAYOUT_ROW_MAJOR,
-                        QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, row_m4);
+                        activation_interleaved,
+                        QBS_WEIGHT_LAYOUT_ROW_MAJOR, interleaved_layout,
+                        row_interleaved);
   if (ok && config.m == 4)
-    ok = compare_layout(config.name, "row+M4", row_row, row_m4,
+    ok = compare_layout(config.name, "row+M4", row_row, row_interleaved,
                         output_elements);
-  if (ok && config.m == 4)
+  if (ok && has_interleaved_layout)
     ok = execute_layout(&config, weights, block_bytes, activation_row,
-                        activation_m4, QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR,
-                        QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED, r4_m4);
+                        activation_interleaved,
+                        QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR, interleaved_layout,
+                        r4_interleaved);
   if (ok && config.m == 4)
-    ok = compare_layout(config.name, "R4+M4", row_row, r4_m4,
+    ok = compare_layout(config.name, "R4+M4", row_row, r4_interleaved,
                         output_elements);
-  if (ok) ok = compare_golden(&config, row_row, golden, output_elements);
+  if (ok && config.m >= QBS_WIDE_M_MIN)
+    ok = compare_layout(config.name, "R4+M8", row_interleaved,
+                        r4_interleaved, output_elements);
+  if (ok)
+    ok = compare_golden(&config,
+                        config.m >= QBS_WIDE_M_MIN ? row_interleaved : row_row,
+                        golden, output_elements);
 
   free(weights);
   free(activation_f32);
   free(golden);
   free(activation_row);
-  free(activation_m4);
+  free(activation_interleaved);
   free(row_row);
   free(r4_row);
-  free(row_m4);
-  free(r4_m4);
+  free(row_interleaved);
+  free(r4_interleaved);
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

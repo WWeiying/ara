@@ -35,9 +35,9 @@ typedef enum {
   /* Complete groups of four are M4-interleaved. A final 1--3-row tail is
      stored row-major at the same logical row offset. */
   QBS_ACTIVATION_STORAGE_M4_GROUPED = 2,
-  /* Groups of 5--8 use a fixed eight-row payload made from two M4-interleaved
-     subgroups. Inactive rows in an M5--M7 final group are zero padding. A
-     final 1--4-row tail remains row-major. */
+  /* Groups of 5--8 use a fixed eight-way-interleaved row payload. Inactive
+     rows in an M5--M7 final group are zero padding. A final 1--4-row tail
+     remains row-major. */
   QBS_ACTIVATION_STORAGE_M8_GROUPED = 3,
 } qbs_activation_storage_t;
 

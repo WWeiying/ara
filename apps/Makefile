@@ -43,6 +43,17 @@ APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c
 APPS += $(patsubst $(APPS_DIR)/%/main.cpp,%,$(shell find $(APPS_DIR) -name "main.cpp"))
 LLAMA_QWEN25_APPS := $(filter llama_qwen25_%,$(APPS))
 LLAMA_QWEN25_COMMON := $(shell find llama_qwen25_real/common -type f 2>/dev/null)
+LLAMA_QBS_APPS := $(foreach app,$(LLAMA_QWEN25_APPS),\
+	$(if $(findstring _qbs,$(app)),$(app)))
+QBS_RUNTIME_HEADERS := \
+	$(ARA_DIR)/software/qbs/include/qbs/qbs.h \
+	$(ARA_DIR)/software/qbs/include/qbs/qbs_abi.h
+QBS_RUNTIME_OBJECTS := \
+	$(COMMON_DIR)/qbs_runtime.c.o \
+	$(COMMON_DIR)/qbs_native_riscv.c.o
+QBS_RUNTIME_SPIKE_OBJECTS := \
+	$(COMMON_DIR)/qbs_runtime.c.o.spike \
+	$(COMMON_DIR)/qbs_native_riscv.c.o.spike
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
 BINARIES := $(filter-out bin/benchmarks bin/rivec-bmarks% bin/_%, $(addprefix bin/,$(APPS)))
 
@@ -126,9 +137,9 @@ endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template_ideal,$(app))))
 
 define app_compile_template_spike
-bin/$1.spike: $1/data.S.o.spike $(addsuffix .o.spike, $(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_SPIKE) $(COMMON_SPIKE) patch-spike-crt0
+bin/$1.spike: $1/data.S.o.spike $(addsuffix .o.spike, $(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_SPIKE) $(COMMON_SPIKE) patch-spike-crt0 $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS))
 	mkdir -p bin/
-	$$(RISCV_CC) -Iinclude $$(RISCV_CCFLAGS_SPIKE) -o $$@ $$(addsuffix .o.spike, $$(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_SPIKE) $$(RISCV_LDFLAGS_SPIKE) -DSPIKE
+	$$(RISCV_CC) -Iinclude $$(RISCV_CCFLAGS_SPIKE) -o $$@ $$(addsuffix .o.spike, $$(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS)) $(RUNTIME_SPIKE) $$(RISCV_LDFLAGS_SPIKE) -DSPIKE
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template_spike,$(app))))
@@ -136,9 +147,9 @@ $(foreach app,$(APPS),$(eval $(call app_compile_template_spike,$(app))))
 $(addsuffix /main.c.o.spike,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
 
 define app_compile_template
-bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) linker_script
+bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) linker_script $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_OBJECTS))
 	mkdir -p bin/
-	$$(RISCV_CC) -Iinclude $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS)
+	$$(RISCV_CC) -Iinclude $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_OBJECTS)) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS)
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $(1)/$(1)$(BIN_SUFFIX).dump
 	$$(RISCV_NM) -n $$@ >> $(1)/$(1)$(BIN_SUFFIX).dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
@@ -147,6 +158,23 @@ endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
 
 $(addsuffix /main.c.o,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
+$(addsuffix /main.c.o,$(LLAMA_QBS_APPS)): $(QBS_RUNTIME_HEADERS)
+
+$(COMMON_DIR)/qbs_runtime.c.o: \
+		$(ARA_DIR)/software/qbs/src/qbs_runtime.c $(QBS_RUNTIME_HEADERS)
+	$(RISCV_CC) -I$(ARA_DIR)/software/qbs/include $(RISCV_CCFLAGS) -c $< -o $@
+
+$(COMMON_DIR)/qbs_native_riscv.c.o: \
+		$(ARA_DIR)/software/qbs/src/qbs_native_riscv.c $(QBS_RUNTIME_HEADERS)
+	$(RISCV_CC) -I$(ARA_DIR)/software/qbs/include $(RISCV_CCFLAGS) -c $< -o $@
+
+$(COMMON_DIR)/qbs_runtime.c.o.spike: \
+		$(ARA_DIR)/software/qbs/src/qbs_runtime.c $(QBS_RUNTIME_HEADERS)
+	$(RISCV_CC) -I$(ARA_DIR)/software/qbs/include $(RISCV_CCFLAGS_SPIKE) -c $< -o $@
+
+$(COMMON_DIR)/qbs_native_riscv.c.o.spike: \
+		$(ARA_DIR)/software/qbs/src/qbs_native_riscv.c $(QBS_RUNTIME_HEADERS)
+	$(RISCV_CC) -I$(ARA_DIR)/software/qbs/include $(RISCV_CCFLAGS_SPIKE) -c $< -o $@
 
 AKV_RUNTIME_C_SOURCES := \
 	$(ARA_DIR)/software/akv/include/akv/akv.h \
@@ -241,6 +269,7 @@ clean: riscv_tests_spike_clean benchmarks_clean
 	rm -vf $(RUNTIME_GCC)
 	rm -vf $(RUNTIME_LLVM)
 	rm -vf $(RUNTIME_SPIKE)
+	rm -vf $(QBS_RUNTIME_OBJECTS) $(QBS_RUNTIME_SPIKE_OBJECTS)
 	for app in $(APPS); do cd $(APPS_DIR)/$${app} && rm -f $$(find . -name "*.c.o*" -o -name "*.S.o*") && cd ..; done
 
 .INTERMEDIATE: $(addsuffix /main.c.o,$(APPS))

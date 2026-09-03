@@ -20,3 +20,4 @@ run_case decode_ffn_down_eval q6_K 1 256 8960
 run_case prefill_attn_q_eval q4_K 4 1536 1536
 run_case prefill_ffn_gate_eval q4_K 4 4096 1536
 run_case prefill_ffn_down_eval q6_K 4 64 8960
+run_case prefill_attn_q_qbs_m8 q4_K 8 1536 1536

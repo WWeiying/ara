@@ -91,6 +91,7 @@ def main() -> None:
     prebuilt_descriptor = (
         "#define QBS_BENCH_PREBUILT_DESCRIPTOR 1" in main_source
     )
+    uses_m8_activation_pack = 5 <= inputs <= 8
     uses_m4_activation_pack = inputs == 4 and weight_type != "q8_0"
     operations = source_define(main_source, "QBS_BENCH_OPERATIONS", 1)
     cross_op_reuse = bool(
@@ -106,6 +107,8 @@ def main() -> None:
     timed_stages = [f"F32_to_{activation_profile}"]
     if uses_m4_activation_pack:
         timed_stages.append("M4_activation_interleave")
+    elif uses_m8_activation_pack:
+        timed_stages.append("M8_activation_interleave")
     if not prebuilt_descriptor:
         timed_stages.append("per_command_descriptor_construction")
     timed_stages.extend([
@@ -124,19 +127,21 @@ def main() -> None:
         else "per_command_stack_in_timed_region"
     )
     provenance["qbs_activation_pack_in_timed_region"] = (
-        uses_m4_activation_pack
+        uses_m4_activation_pack or uses_m8_activation_pack
     )
     provenance["offline_repack_excluded"] = True
     provenance["qbs"] = {
         "descriptor_version": 2,
         "weight_layout": "W_R4_BLOCK_MAJOR",
         "activation_layout": (
-            "A_M4_INTERLEAVED" if uses_m4_activation_pack else "A_ROW_MAJOR"
+            "A_M8_INTERLEAVED" if uses_m8_activation_pack else
+            "A_M4_INTERLEAVED" if uses_m4_activation_pack else
+            "A_ROW_MAJOR"
         ),
         "activation_profile": activation_profile,
         "weight_profile": weight_type.upper(),
         "block_elements": block_elements,
-        "tile_n": 32,
+        "tile_n": 16 if uses_m8_activation_pack else 32,
         "k_blocks": k_blocks,
         "activation_context": activation_context,
         "operation_chain": {
