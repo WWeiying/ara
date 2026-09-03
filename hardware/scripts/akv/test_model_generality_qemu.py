@@ -22,10 +22,14 @@ def summary(
 ) -> dict[str, object]:
     executed_decode = executed - executed_prefill
     assert executed_decode >= 0
+    current_qbs_abi = MODULE.load_json(MODULE.CURRENT_QBS_ABI)
     return {
         "provenance": {
             "tool": {"sha256": MODULE.sha256(MODULE.MODEL_SUMMARIZER)},
-            "qbs_abi": {"sha256": "3" * 64, "architecture_version": 2},
+            "qbs_abi": {
+                "sha256": MODULE.sha256(MODULE.CURRENT_QBS_ABI),
+                "architecture_version": current_qbs_abi["architecture_version"],
+            },
             "run_manifest": {
                 "LLAMA_REVISION": "llama-revision",
                 "LLAMA_BINARY_SHA256": "1" * 64,
@@ -33,6 +37,7 @@ def summary(
                 "QEMU_CPU": "rv64,v=true,vlen=1024,elen=64,xaraqbs=true",
                 "MODEL_PROMPT": "test prompt",
                 "MODEL_TOKENS": "2",
+                "QBS_PREFLIGHT": "passed",
                 "LOGITS_MAX_ABS_TOLERANCE": "0.001",
                 "MODEL_NUMERICAL_CONTRACT": "decision-preserving-v1",
                 "MODEL_LOGITS_MAX_KL_TOLERANCE": "0.02",
@@ -199,6 +204,18 @@ class ModelGeneralityQemuTest(unittest.TestCase):
         value = summary(2, 0)
         value["provenance"]["tool"]["sha256"] = "0" * 64
         with self.assertRaisesRegex(ValueError, "different model-closure summarizer"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_stale_qbs_abi_is_rejected(self):
+        value = summary(2, 0)
+        value["provenance"]["qbs_abi"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "current generated QBS ABI"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_skipped_qbs_preflight_is_rejected(self):
+        value = summary(2, 0)
+        value["provenance"]["run_manifest"]["QBS_PREFLIGHT"] = "skipped"
+        with self.assertRaisesRegex(ValueError, "QBS execution preflight"):
             MODULE.qemu_metrics(value, "execute")
 
     def test_partial_native_command_work_is_rejected(self):

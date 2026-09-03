@@ -21,6 +21,7 @@ DEFAULT_MANIFEST = Path(__file__).with_name("model-generality-manifest.json")
 CREATE_DISK = Path(__file__).with_name("create-model-disk.sh")
 RUN_QEMU = Path(__file__).with_name("run-qemu-model-check.sh")
 MODEL_SUMMARIZER = Path(__file__).with_name("summarize-model-closure.py")
+CURRENT_QBS_ABI = ROOT / "config/qbs_abi.json"
 QBS_FALLBACK_FIELDS = {
     "fallback_runtime", "fallback_format_filter", "fallback_capability",
     "fallback_dimensions", "fallback_shape", "fallback_layout",
@@ -200,6 +201,7 @@ def qemu_metrics(
     required_provenance = (
         "LLAMA_REVISION", "LLAMA_BINARY_SHA256", "QEMU_BINARY_SHA256",
         "QEMU_CPU", "MODEL_PROMPT", "MODEL_TOKENS", "LOGITS_MAX_ABS_TOLERANCE",
+        "QBS_PREFLIGHT",
         "MODEL_NUMERICAL_CONTRACT", "MODEL_LOGITS_MAX_KL_TOLERANCE",
         "MODEL_LOGITS_MIN_COSINE_TOLERANCE",
         "MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE",
@@ -215,6 +217,15 @@ def qemu_metrics(
     qbs_abi = provenance.get("qbs_abi", {})
     if not qbs_abi.get("sha256") or int(qbs_abi.get("architecture_version", 0)) <= 0:
         raise ValueError("QEMU summary lacks QBS ABI provenance")
+    current_qbs_abi = load_json(CURRENT_QBS_ABI)
+    if (
+        str(qbs_abi["sha256"]) != sha256(CURRENT_QBS_ABI)
+        or int(qbs_abi["architecture_version"])
+        != int(current_qbs_abi["architecture_version"])
+    ):
+        raise ValueError("QEMU summary does not use the current generated QBS ABI")
+    if str(run_manifest["QBS_PREFLIGHT"]) != "passed":
+        raise ValueError("QEMU model run did not pass the QBS execution preflight")
     functional = summary["functional"]
     qbs = summary["qbs"]
     akv = summary["akv_v2"]

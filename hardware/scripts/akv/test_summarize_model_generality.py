@@ -38,6 +38,9 @@ def qemu(
 ) -> dict[str, object]:
     executed_decode = executed - executed_prefill
     assert executed_decode >= 0
+    current_qbs_abi = MODULE.QEMU_MODULE.load_json(
+        MODULE.QEMU_MODULE.CURRENT_QBS_ABI
+    )
     return {
         "graphs": {"prefill": 1, "decode": 1},
         "functional": {
@@ -118,11 +121,15 @@ def qemu(
         },
         "provenance": {
             "tool": {"sha256": MODULE.sha256(MODULE.QEMU_MODULE.MODEL_SUMMARIZER)},
-            "qbs_abi": {"sha256": "3" * 64, "architecture_version": 2},
+            "qbs_abi": {
+                "sha256": MODULE.sha256(MODULE.QEMU_MODULE.CURRENT_QBS_ABI),
+                "architecture_version": current_qbs_abi["architecture_version"],
+            },
             "run_manifest": {
                 "MODEL_GUEST_PATH": "/model/models/test.gguf",
                 "MODEL_PROMPT": "test prompt",
                 "MODEL_TOKENS": "2",
+                "QBS_PREFLIGHT": "passed",
                 "LOGITS_MAX_ABS_TOLERANCE": "0.001",
                 "MODEL_NUMERICAL_CONTRACT": "decision-preserving-v1",
                 "MODEL_LOGITS_MAX_KL_TOLERANCE": "0.02",

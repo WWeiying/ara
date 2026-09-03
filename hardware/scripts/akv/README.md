@@ -128,6 +128,10 @@ boot instead of silently selecting RVV fallback. Set `AKV_QBS_PREFLIGHT=0` only
 for a deliberate negative test; the manifest records whether the preflight
 passed or was skipped.
 
+The model-generality collector accepts a run only when that preflight passed
+and the recorded QBS ABI hash and architecture version exactly match the
+current generated `config/qbs_abi.json` contract.
+
 Override `AKV_MODEL_DISK`, `AKV_MODEL_GUEST_PATH`, and `AKV_MODEL_PROMPT` to
 run another GGUF image. The manifest records the exact prompt, token count,
 model image, llama binary, QEMU binary, revisions, and hashes. Host validation
