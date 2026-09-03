@@ -44,6 +44,7 @@ module akv_engine_synth_wrapper import akv_engine_synth_types_pkg::*; (
     input  logic [VAddrWidth-1:0]        command_descriptor_address_i,
     input  logic [VAddrWidth-1:0]        command_tile_start_i,
     input  logic [VAddrWidth-1:0]        command_selector_i,
+    input  logic [2:0]                   command_column_count_i,
     input  axi_pkg::cache_t              command_cache_i,
     input  axi_pkg::prot_t               command_prot_i,
 
@@ -98,6 +99,8 @@ module akv_engine_synth_wrapper import akv_engine_synth_types_pkg::*; (
     output logic [31:0]                  v2_refill_count_o,
     output logic [31:0]                  v2_row_load_count_o,
     output logic [31:0]                  v2_column_load_count_o,
+    output logic [31:0]                  v2_column_panel_count_o,
+    output logic [31:0]                  v2_logical_column_count_o,
     output logic [31:0]                  v2_k_view_bank_cycles_o,
     output logic [31:0]                  v2_bank_conflict_cycles_o,
     output logic [31:0]                  v2_rejected_count_o,

@@ -179,6 +179,7 @@ SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(buildpath)/$(dpi_lib
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 ifeq ($(no_fsdb), 1)
+SIMULATOR_DEF += +define+ARA_NO_FSDB
 APP += +NO_FSDB
 endif
 ifeq ($(qbs_perf), 1)
@@ -220,6 +221,9 @@ compile: bender dpi ../Bender.yml
 		'qbs=$(qbs)' \
 		'akv=$(akv)' \
 		'akv_v2=$(akv_v2)' \
+		'qbs_enabled=$(qbs)' \
+		'akv_enabled=$(if $(filter 1,$(akv) $(akv_v2)),1,0)' \
+		'akv_v2_enabled=$(akv_v2)' \
 		'sim_l2_mb=$(sim_l2_mb)' \
 		'sim_l2_bytes=$(sim_l2_bytes)' \
 		> ./$(sim_dir)/simulator.conf

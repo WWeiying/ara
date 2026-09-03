@@ -39,7 +39,14 @@ package akv_pkg;
   localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
   localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
   localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
+  localparam int unsigned AkvV2ColumnPanelCapabilityBit =
+      40;
   localparam int unsigned AkvV2ColumnSegmentBit = 7;
+  localparam int unsigned AkvV2ColumnPanelWidth =
+      4;
+  localparam logic [6:0] AkvV2ColumnSingleFunct7 = 7'd0;
+  localparam logic [6:0] AkvV2ColumnPanelFunct7 =
+      7'd1;
   localparam int unsigned AkvContextCount = 1;
   localparam int unsigned AkvMaxQRows = 8;
   localparam int unsigned AkvTileTokens = 8;
@@ -159,7 +166,8 @@ package akv_pkg;
           (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
           (64'd1 << 36) | (64'd1 << 37) |
           (64'd1 << AkvV2DAxisTailCapabilityBit) |
-          (64'd1 << AkvV2D256SegmentedCapabilityBit);
+          (64'd1 << AkvV2D256SegmentedCapabilityBit) |
+          (64'd1 << AkvV2ColumnPanelCapabilityBit);
       64'd3: akv_v2_capability_word =
           64'(AkvOpcodeCustom2) |
           (64'(AkvV2FillFunct3) << 8) |

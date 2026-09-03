@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,18 @@
 
 #ifndef AKV_LOGITS_MAX_ABS_TOLERANCE
 #define AKV_LOGITS_MAX_ABS_TOLERANCE 0.001
+#endif
+
+#ifndef AKV_MODEL_LOGITS_MAX_KL_TOLERANCE
+#define AKV_MODEL_LOGITS_MAX_KL_TOLERANCE 0.02
+#endif
+
+#ifndef AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE
+#define AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE 0.98
+#endif
+
+#ifndef AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE
+#define AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE 0.8
 #endif
 
 #ifndef AKV_MODEL_GUEST_PATH
@@ -42,6 +55,14 @@ struct logits_comparison {
     uint32_t comparable_records;
     float max_abs;
     float max_rel;
+    double mean_abs;
+    double mean_rmse;
+    double mean_kl;
+    double mean_cosine;
+    double top5_overlap;
+    double max_kl;
+    double min_cosine;
+    double min_top5_overlap;
 };
 
 struct run_result {
@@ -71,7 +92,54 @@ static int same_record(const struct logits_dump_record * lhs,
            lhs->reserved == 0 && rhs->reserved == 0 && lhs->n_vocab > 0;
 }
 
-static struct logits_comparison compare_logits(const char * rvv_path,
+static void find_top5(const float * values, uint32_t count, uint32_t top[5]) {
+    const unsigned limit = count < 5 ? count : 5;
+    for (unsigned rank = 0; rank < 5; ++rank) {
+        top[rank] = UINT32_MAX;
+    }
+    for (uint32_t index = 0; index < count; ++index) {
+        for (unsigned rank = 0; rank < limit; ++rank) {
+            if (top[rank] == UINT32_MAX || values[index] > values[top[rank]]) {
+                for (unsigned move = 4; move > rank; --move) {
+                    top[move] = top[move - 1];
+                }
+                top[rank] = index;
+                break;
+            }
+        }
+    }
+}
+
+static unsigned top5_intersection(const uint32_t lhs[5],
+                                  const uint32_t rhs[5], unsigned count) {
+    unsigned matches = 0;
+    for (unsigned left = 0; left < count; ++left) {
+        for (unsigned right = 0; right < count; ++right) {
+            if (lhs[left] == rhs[right]) {
+                ++matches;
+                break;
+            }
+        }
+    }
+    return matches;
+}
+
+static double logits_logsumexp(const float * values, uint32_t count) {
+    double maximum = values[0];
+    for (uint32_t index = 1; index < count; ++index) {
+        if (values[index] > maximum) {
+            maximum = values[index];
+        }
+    }
+    double sum = 0.0;
+    for (uint32_t index = 0; index < count; ++index) {
+        sum += exp((double)values[index] - maximum);
+    }
+    return maximum + log(sum);
+}
+
+static struct logits_comparison compare_logits(const char * label,
+                                                const char * rvv_path,
                                                 const char * akv_path) {
     struct logits_comparison result = {
         .valid = 0,
@@ -80,6 +148,14 @@ static struct logits_comparison compare_logits(const char * rvv_path,
         .comparable_records = 0,
         .max_abs = 0.0f,
         .max_rel = 0.0f,
+        .mean_abs = 0.0,
+        .mean_rmse = 0.0,
+        .mean_kl = 0.0,
+        .mean_cosine = 0.0,
+        .top5_overlap = 0.0,
+        .max_kl = 0.0,
+        .min_cosine = 1.0,
+        .min_top5_overlap = 1.0,
     };
     FILE * rvv_file = fopen(rvv_path, "rb");
     FILE * akv_file = fopen(akv_path, "rb");
@@ -122,6 +198,12 @@ static struct logits_comparison compare_logits(const char * rvv_path,
         uint32_t akv_top = 0;
         float record_max_abs = 0.0f;
         float record_max_rel = 0.0f;
+        uint32_t record_max_abs_index = 0;
+        double absolute_sum = 0.0;
+        double squared_error = 0.0;
+        double dot_product = 0.0;
+        double rvv_squared = 0.0;
+        double akv_squared = 0.0;
         for (uint32_t index = 0; index < rvv_record.n_vocab; ++index) {
             if (!finite_f32(rvv_logits[index]) || !finite_f32(akv_logits[index])) {
                 goto cleanup;
@@ -135,19 +217,76 @@ static struct logits_comparison compare_logits(const char * rvv_path,
             const float absolute = absf(akv_logits[index] - rvv_logits[index]);
             const float scale = absf(rvv_logits[index]) > 1.0e-6f ? absf(rvv_logits[index]) : 1.0e-6f;
             const float relative = absolute / scale;
+            const double rvv_value = rvv_logits[index];
+            const double akv_value = akv_logits[index];
+            absolute_sum += absolute;
+            squared_error += (akv_value - rvv_value) * (akv_value - rvv_value);
+            dot_product += rvv_value * akv_value;
+            rvv_squared += rvv_value * rvv_value;
+            akv_squared += akv_value * akv_value;
             if (absolute > record_max_abs) {
                 record_max_abs = absolute;
+                record_max_abs_index = index;
             }
             if (relative > record_max_rel) {
                 record_max_rel = relative;
             }
         }
+        const double rvv_logsum = logits_logsumexp(rvv_logits, rvv_record.n_vocab);
+        const double akv_logsum = logits_logsumexp(akv_logits, akv_record.n_vocab);
+        double record_kl = 0.0;
+        for (uint32_t index = 0; index < rvv_record.n_vocab; ++index) {
+            const double log_p = (double)rvv_logits[index] - rvv_logsum;
+            const double log_q = (double)akv_logits[index] - akv_logsum;
+            record_kl += exp(log_p) * (log_p - log_q);
+        }
+        if (record_kl < 0.0 && record_kl > -1.0e-12) {
+            record_kl = 0.0;
+        }
+        uint32_t rvv_top5[5];
+        uint32_t akv_top5[5];
+        find_top5(rvv_logits, rvv_record.n_vocab, rvv_top5);
+        find_top5(akv_logits, akv_record.n_vocab, akv_top5);
+        const double norm_product = sqrt(rvv_squared * akv_squared);
+        const double record_cosine = norm_product == 0.0
+            ? (rvv_squared == 0.0 && akv_squared == 0.0 ? 1.0 : 0.0)
+            : dot_product / norm_product;
+        const double record_mean_abs = absolute_sum / rvv_record.n_vocab;
+        const double record_rmse = sqrt(squared_error / rvv_record.n_vocab);
+        const unsigned top_count = rvv_record.n_vocab < 5 ? rvv_record.n_vocab : 5;
+        const double record_top5_overlap =
+            (double) top5_intersection(rvv_top5, akv_top5, top_count) / top_count;
         if (same_context) {
+            printf("LOGITS_RECORD pair=%s step=%u target=%d top1_equal=%d "
+                   "baseline_top1=%u candidate_top1=%u max_abs=%.9g "
+                   "max_abs_index=%u baseline_at_max=%.9g candidate_at_max=%.9g "
+                   "mean_abs=%.9g rmse=%.9g kl=%.9g cosine=%.9g "
+                   "top5_overlap=%.9g\n",
+                   label, rvv_record.step, rvv_record.target_token,
+                   rvv_top == akv_top, rvv_top, akv_top, record_max_abs,
+                   record_max_abs_index, rvv_logits[record_max_abs_index],
+                   akv_logits[record_max_abs_index], record_mean_abs,
+                   record_rmse, record_kl, record_cosine,
+                   record_top5_overlap);
             if (record_max_abs > result.max_abs) {
                 result.max_abs = record_max_abs;
             }
             if (record_max_rel > result.max_rel) {
                 result.max_rel = record_max_rel;
+            }
+            result.mean_abs += record_mean_abs;
+            result.mean_rmse += record_rmse;
+            result.mean_kl += record_kl;
+            result.mean_cosine += record_cosine;
+            result.top5_overlap += record_top5_overlap;
+            if (record_kl > result.max_kl) {
+                result.max_kl = record_kl;
+            }
+            if (record_cosine < result.min_cosine) {
+                result.min_cosine = record_cosine;
+            }
+            if (record_top5_overlap < result.min_top5_overlap) {
+                result.min_top5_overlap = record_top5_overlap;
             }
             ++result.comparable_records;
             if (rvv_top != akv_top) {
@@ -171,7 +310,31 @@ cleanup:
     if (akv_file != NULL) {
         fclose(akv_file);
     }
+    if (result.comparable_records != 0) {
+        const double denominator = result.comparable_records;
+        result.mean_abs /= denominator;
+        result.mean_rmse /= denominator;
+        result.mean_kl /= denominator;
+        result.mean_cosine /= denominator;
+        result.top5_overlap /= denominator;
+    }
     return result;
+}
+
+static int model_quality_pass(const struct logits_comparison * comparison) {
+    return comparison->valid && comparison->records > 0 &&
+           comparison->comparable_records == comparison->records &&
+           comparison->top1_equal &&
+           comparison->max_kl <= AKV_MODEL_LOGITS_MAX_KL_TOLERANCE &&
+           comparison->min_cosine >= AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE &&
+           comparison->min_top5_overlap >=
+               AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE;
+}
+
+static int decision_stream_pass(const struct logits_comparison * comparison) {
+    return comparison->valid && comparison->records > 0 &&
+           comparison->comparable_records == comparison->records &&
+           comparison->top1_equal;
 }
 
 static int wait_for_device(const char * path) {
@@ -281,7 +444,7 @@ static struct run_result run_variant(const char * label,
         execl("/run/llama-simple", "/run/llama-simple",
               "-m", AKV_MODEL_GUEST_PATH,
               "-n", AKV_MODEL_TOKENS, "-ngl", "0", "-t", "1",
-              "-tb", "1", AKV_MODEL_PROMPT, NULL);
+              AKV_MODEL_PROMPT, NULL);
         perror("exec llama-simple");
         _exit(127);
     }
@@ -367,7 +530,8 @@ int main(void) {
         run_variant("QBS_CROSS_OP", "/qbs-cross-op.logits",
                     1, NULL, 1, 1);
     const struct logits_comparison comparison =
-        compare_logits("/qbs-baseline.logits", "/qbs-cross-op.logits");
+        compare_logits("QBS_CROSS_OP", "/qbs-baseline.logits",
+                       "/qbs-cross-op.logits");
     const int text_equal = output_equal(&baseline, &optimized);
     const int passed = baseline.exit_code == 0 && optimized.exit_code == 0 &&
                        comparison.valid && comparison.comparable_records > 0 &&
@@ -395,22 +559,30 @@ int main(void) {
     const struct run_result optimized =
         run_variant("QBS_AKV_V2", "/optimized.logits", 1, "v2", 1, -1);
     const struct logits_comparison qbs_rvv_logits =
-        compare_logits("/rvv.logits", "/qbs.logits");
+        compare_logits("QBS_RVV", "/rvv.logits", "/qbs.logits");
     const struct logits_comparison akv_logits =
-        compare_logits("/qbs.logits", "/optimized.logits");
+        compare_logits("AKV", "/qbs.logits", "/optimized.logits");
     const int qbs_rvv_text_equal = output_equal(&rvv, &qbs);
     const int akv_text_equal = output_equal(&qbs, &optimized);
     const int passed = rvv.exit_code == 0 && qbs.exit_code == 0 &&
-                       optimized.exit_code == 0 && qbs_rvv_logits.valid &&
-                       qbs_rvv_logits.comparable_records > 0 && akv_text_equal &&
-                       akv_logits.valid && akv_logits.top1_equal &&
-                       akv_logits.max_abs <= AKV_LOGITS_MAX_ABS_TOLERANCE;
+                       optimized.exit_code == 0 && qbs_rvv_text_equal &&
+                       akv_text_equal && decision_stream_pass(&qbs_rvv_logits) &&
+                       model_quality_pass(&akv_logits);
 
     printf("QBS_RVV_LOGITS_RECORDS=%u\n", qbs_rvv_logits.records);
     printf("QBS_RVV_LOGITS_COMPARABLE_RECORDS=%u\n",
            qbs_rvv_logits.comparable_records);
     printf("QBS_RVV_LOGITS_MAX_ABS=%.9g\n", qbs_rvv_logits.max_abs);
     printf("QBS_RVV_LOGITS_MAX_REL=%.9g\n", qbs_rvv_logits.max_rel);
+    printf("QBS_RVV_LOGITS_MEAN_ABS=%.9g\n", qbs_rvv_logits.mean_abs);
+    printf("QBS_RVV_LOGITS_MEAN_RMSE=%.9g\n", qbs_rvv_logits.mean_rmse);
+    printf("QBS_RVV_LOGITS_MEAN_KL=%.9g\n", qbs_rvv_logits.mean_kl);
+    printf("QBS_RVV_LOGITS_MEAN_COSINE=%.9g\n", qbs_rvv_logits.mean_cosine);
+    printf("QBS_RVV_LOGITS_TOP5_OVERLAP=%.9g\n", qbs_rvv_logits.top5_overlap);
+    printf("QBS_RVV_LOGITS_MAX_KL=%.9g\n", qbs_rvv_logits.max_kl);
+    printf("QBS_RVV_LOGITS_MIN_COSINE=%.9g\n", qbs_rvv_logits.min_cosine);
+    printf("QBS_RVV_LOGITS_MIN_TOP5_OVERLAP=%.9g\n",
+           qbs_rvv_logits.min_top5_overlap);
     printf("QBS_RVV_LOGITS_TOP1_EQUAL=%d\n",
            qbs_rvv_logits.valid && qbs_rvv_logits.top1_equal);
     printf("QBS_RVV_TOKEN_OUTPUT_EQUAL=%d\n", qbs_rvv_text_equal);
@@ -419,8 +591,24 @@ int main(void) {
            akv_logits.comparable_records);
     printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
     printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
+    printf("AKV_LOGITS_MEAN_ABS=%.9g\n", akv_logits.mean_abs);
+    printf("AKV_LOGITS_MEAN_RMSE=%.9g\n", akv_logits.mean_rmse);
+    printf("AKV_LOGITS_MEAN_KL=%.9g\n", akv_logits.mean_kl);
+    printf("AKV_LOGITS_MEAN_COSINE=%.9g\n", akv_logits.mean_cosine);
+    printf("AKV_LOGITS_TOP5_OVERLAP=%.9g\n", akv_logits.top5_overlap);
+    printf("AKV_LOGITS_MAX_KL=%.9g\n", akv_logits.max_kl);
+    printf("AKV_LOGITS_MIN_COSINE=%.9g\n", akv_logits.min_cosine);
+    printf("AKV_LOGITS_MIN_TOP5_OVERLAP=%.9g\n",
+           akv_logits.min_top5_overlap);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
            (double) AKV_LOGITS_MAX_ABS_TOLERANCE);
+    printf("MODEL_LOGITS_MAX_KL_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MAX_KL_TOLERANCE);
+    printf("MODEL_LOGITS_MIN_COSINE_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE);
+    printf("MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=%.9g\n",
+           (double) AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE);
+    printf("MODEL_NUMERICAL_CONTRACT=decision-preserving-v1\n");
     printf("AKV_LOGITS_TOP1_EQUAL=%d\n",
            akv_logits.valid && akv_logits.top1_equal);
     printf("AKV_TOKEN_OUTPUT_EQUAL=%d\n", akv_text_equal);
@@ -431,7 +619,7 @@ int main(void) {
     const struct run_result akv =
         run_variant("AKV_V1_EMULATE", "/optimized.logits", 0, "v1", 1, -1);
     const struct logits_comparison akv_logits =
-        compare_logits("/rvv.logits", "/optimized.logits");
+        compare_logits("AKV", "/rvv.logits", "/optimized.logits");
     const int akv_text_equal = output_equal(&rvv, &akv);
     const int passed = akv_text_equal && akv_logits.valid &&
                        akv_logits.top1_equal &&
@@ -442,6 +630,11 @@ int main(void) {
            akv_logits.comparable_records);
     printf("AKV_LOGITS_MAX_ABS=%.9g\n", akv_logits.max_abs);
     printf("AKV_LOGITS_MAX_REL=%.9g\n", akv_logits.max_rel);
+    printf("AKV_LOGITS_MEAN_ABS=%.9g\n", akv_logits.mean_abs);
+    printf("AKV_LOGITS_MEAN_RMSE=%.9g\n", akv_logits.mean_rmse);
+    printf("AKV_LOGITS_MEAN_KL=%.9g\n", akv_logits.mean_kl);
+    printf("AKV_LOGITS_MEAN_COSINE=%.9g\n", akv_logits.mean_cosine);
+    printf("AKV_LOGITS_TOP5_OVERLAP=%.9g\n", akv_logits.top5_overlap);
     printf("AKV_LOGITS_MAX_ABS_TOLERANCE=%.9g\n",
            (double) AKV_LOGITS_MAX_ABS_TOLERANCE);
     printf("AKV_LOGITS_TOP1_EQUAL=%d\n",

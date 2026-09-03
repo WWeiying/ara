@@ -15,6 +15,7 @@ extern "C" {
 #define AKV_ATTENTION_KERNEL_VERSION AKV_ATTENTION_KERNEL_VERSION_V1
 #define AKV_ATTENTION_KERNEL_Q_ROWS 6u
 #define AKV_PREFILL_QUERY_BLOCK_TOKENS 64u
+#define AKV_PREFILL_COMPUTE_TILE_TOKENS 2u
 
 typedef enum {
   AKV_STATUS_OK = 0,
@@ -52,6 +53,7 @@ typedef struct {
   uint8_t token_axis_row_view;
   uint8_t token_axis_d_axis_tail;
   uint8_t token_axis_d256_segmented;
+  uint8_t token_axis_column_panel4;
 } akv_capabilities_t;
 
 typedef struct {
@@ -102,7 +104,12 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
 } akv_attention_v2_workspace_t;
 
 /*
- * Contiguous batch-one Prefill layout:
+ * Batch-one Prefill layout with a contiguous head-dimension row. A zero byte
+ * stride selects the canonical layout shown below. Explicit Query and K/V
+ * token/head strides may swap those dimensions while preserving
+ * non-overlapping regular rows. Mask and output retain token-major rows; only
+ * their token strides are configurable.
+ *
  *   Query  F32 [query_heads][query_tokens][head_dim]
  *   Key/V  F16 [kv_heads][kv_capacity][head_dim]
  *   mask   F16 [query_tokens][kv_capacity]
@@ -120,6 +127,14 @@ typedef struct {
   uint32_t kv_capacity;
   uint32_t head_dim;
   float scale;
+  uint32_t query_token_stride_bytes;
+  uint32_t query_head_stride_bytes;
+  uint32_t key_token_stride_bytes;
+  uint32_t key_head_stride_bytes;
+  uint32_t value_token_stride_bytes;
+  uint32_t value_head_stride_bytes;
+  uint32_t mask_token_stride_bytes;
+  uint32_t output_token_stride_bytes;
 } akv_attention_v2_prefill_problem_t;
 
 /* Fixed hidden state for one GQA group and one 64-Query block. */
@@ -128,10 +143,11 @@ typedef struct __attribute__((aligned(AKV_DESCRIPTOR_BYTES))) {
   uint16_t query[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS]
                 [AKV_HEAD_DIM_128];
   akv_attention_plan_t plan;
-  float score[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
+  float score[AKV_PREFILL_COMPUTE_TILE_TOKENS][AKV_MAX_Q_ROWS]
+             [AKV_V2_TILE_TOKENS];
   float maximum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
   float sum[AKV_PREFILL_QUERY_BLOCK_TOKENS][AKV_MAX_Q_ROWS];
-  float old_scale[AKV_MAX_Q_ROWS];
+  float old_scale[AKV_PREFILL_COMPUTE_TILE_TOKENS][AKV_MAX_Q_ROWS];
 } akv_attention_v2_prefill_workspace_t;
 
 typedef akv_status_t (*akv_attention_executor_t)(
@@ -198,6 +214,10 @@ akv_status_t akv_v2_reference_load_column(
     const akv_v2_reference_context_t *context, uint32_t selector,
     uint16_t *destination, size_t destination_elements,
     size_t *active_elements);
+akv_status_t akv_v2_reference_load_column_panel4(
+    const akv_v2_reference_context_t *context, uint32_t selector,
+    uint16_t *destination, size_t destination_elements,
+    size_t *active_elements_per_column);
 void akv_v2_reference_release(akv_v2_reference_context_t *context);
 
 /* Execute an immutable plan returned by akv_attention_plan_create(). */
@@ -206,6 +226,11 @@ akv_status_t akv_attention_execute_v2_native(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace);
 akv_status_t akv_attention_execute_v2_prefill_native(
+    const akv_device_t *device,
+    const akv_attention_v2_prefill_problem_t *problem,
+    akv_attention_v2_prefill_workspace_t *workspace);
+/* Functional Prefill model; it is not a cycle or latency model. */
+akv_status_t akv_attention_execute_v2_prefill_reference(
     const akv_device_t *device,
     const akv_attention_v2_prefill_problem_t *problem,
     akv_attention_v2_prefill_workspace_t *workspace);

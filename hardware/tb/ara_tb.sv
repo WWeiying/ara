@@ -891,12 +891,14 @@ module ara_tb;
 
   initial begin
     string testcase;
+`ifndef ARA_NO_FSDB
     if (!$test$plusargs("NO_FSDB")) begin
       $fsdbDumpfile("ara_tb.fsdb");
       $fsdbDumpvars(0, ara_tb);
       $fsdbDumpMDA(0, ara_tb);
       $fsdbDumpvars("+all");
     end
+`endif
 
     void'($value$plusargs("TESTCASE=%s", testcase));
     

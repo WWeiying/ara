@@ -93,10 +93,13 @@ akv_status_t akv_capabilities_decode_extended(
       (uint8_t)((info2 >> AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) & 1u);
   capabilities->token_axis_d256_segmented =
       (uint8_t)((info2 >> AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) & 1u);
+  capabilities->token_axis_column_panel4 =
+      (uint8_t)((info2 >> AKV_V2_COLUMN_PANEL_CAPABILITY_BIT) & 1u);
 
   const uint64_t optional_capability_bits =
       (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
-      (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
+      (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) |
+      (UINT64_C(1) << AKV_V2_COLUMN_PANEL_CAPABILITY_BIT);
   const uint64_t expected_info2 = akv_v2_capability_word(
       2u, capabilities->token_axis_enabled != 0u);
   if ((info2 & ~optional_capability_bits) !=

@@ -76,6 +76,10 @@ def validate_spec(spec: dict) -> None:
         raise ValueError("AKV-v2 uses the two remaining custom-2 funct3 values")
     if set(extension_funct3) & set(funct3) or len(set(extension_funct3)) != 2:
         raise ValueError("AKV-v1 and AKV-v2 funct3 values must be distinct")
+    if (token["column_panel_width"] != 4 or
+            token["column_panel_funct7"] != 1 or
+            token["column_panel_capability_bit"] != 40):
+        raise ValueError("AKV-v2 panel profile is fixed at four columns")
 
 
 def c_header(spec: dict) -> str:
@@ -120,7 +124,11 @@ def c_header(spec: dict) -> str:
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
 #define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
 #define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
+#define AKV_V2_COLUMN_PANEL_CAPABILITY_BIT {token['column_panel_capability_bit']}u
 #define AKV_V2_COLUMN_SEGMENT_BIT {token['column_segment_bit']}u
+#define AKV_V2_COLUMN_PANEL_WIDTH {token['column_panel_width']}u
+#define AKV_V2_COLUMN_SINGLE_FUNCT7 0u
+#define AKV_V2_COLUMN_PANEL_FUNCT7 {token['column_panel_funct7']}u
 
 typedef enum {{
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -332,6 +340,15 @@ static inline int akv_v2_column_is_valid(
          akv_v2_column_dimension(selector) < descriptor->head_dim;
 }}
 
+static inline int akv_v2_column_panel_is_valid(
+    const akv_descriptor_t *descriptor, uint32_t tile_length,
+    uint32_t selector) {{
+  const uint32_t dimension = akv_v2_column_dimension(selector);
+  return akv_v2_column_is_valid(descriptor, tile_length, selector) &&
+         (dimension & (AKV_V2_COLUMN_PANEL_WIDTH - 1u)) == 0u &&
+         dimension + AKV_V2_COLUMN_PANEL_WIDTH <= descriptor->head_dim;
+}}
+
 static inline uint64_t akv_capability_word(uint64_t index, int enabled) {{
   if (index == 0u)
     return (uint64_t)AKV_ARCHITECTURE_VERSION |
@@ -364,7 +381,8 @@ static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {{
            (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
            (UINT64_C(1) << 37) |
            (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
+           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) |
+           (UINT64_C(1) << AKV_V2_COLUMN_PANEL_CAPABILITY_BIT);
   if (index == 3u)
     return (uint64_t)AKV_OPCODE_CUSTOM2 |
            ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |
@@ -412,7 +430,15 @@ static inline uint32_t akv_encode_v2_fill(uint32_t descriptor_rs1,
 
 static inline uint32_t akv_encode_v2_column_load(uint32_t vd,
                                                  uint32_t dimension_rs1) {{
-  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3, 0u, vd,
+  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3,
+                      AKV_V2_COLUMN_SINGLE_FUNCT7, vd,
+                      dimension_rs1, 0u);
+}}
+
+static inline uint32_t akv_encode_v2_column_panel_load(
+    uint32_t vd, uint32_t dimension_rs1) {{
+  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3,
+                      AKV_V2_COLUMN_PANEL_FUNCT7, vd,
                       dimension_rs1, 0u);
 }}
 
@@ -467,7 +493,14 @@ package akv_pkg;
   localparam logic [6:0] AkvHeadDimCode96 = 7'd2;
   localparam int unsigned AkvV2DAxisTailCapabilityBit = 38;
   localparam int unsigned AkvV2D256SegmentedCapabilityBit = 39;
+  localparam int unsigned AkvV2ColumnPanelCapabilityBit =
+      {token['column_panel_capability_bit']};
   localparam int unsigned AkvV2ColumnSegmentBit = {token['column_segment_bit']};
+  localparam int unsigned AkvV2ColumnPanelWidth =
+      {token['column_panel_width']};
+  localparam logic [6:0] AkvV2ColumnSingleFunct7 = 7'd0;
+  localparam logic [6:0] AkvV2ColumnPanelFunct7 =
+      7'd{token['column_panel_funct7']};
   localparam int unsigned AkvContextCount = {limits['context_count']};
   localparam int unsigned AkvMaxQRows = {limits['max_q_rows']};
   localparam int unsigned AkvTileTokens = {limits['tile_tokens']};
@@ -587,7 +620,8 @@ package akv_pkg;
           (64'd1 << 33) | (64'd1 << 34) | (64'd1 << 35) |
           (64'd1 << 36) | (64'd1 << 37) |
           (64'd1 << AkvV2DAxisTailCapabilityBit) |
-          (64'd1 << AkvV2D256SegmentedCapabilityBit);
+          (64'd1 << AkvV2D256SegmentedCapabilityBit) |
+          (64'd1 << AkvV2ColumnPanelCapabilityBit);
       64'd3: akv_v2_capability_word =
           64'(AkvOpcodeCustom2) |
           (64'(AkvV2FillFunct3) << 8) |

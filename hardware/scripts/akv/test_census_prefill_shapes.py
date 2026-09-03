@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from census_prefill_shapes import analyze_case
+from census_prefill_shapes import analyze_case, support_rows
 
 
 def node_line(m: int, capacity: int = 256) -> str:
@@ -62,6 +62,21 @@ class CensusPrefillShapesTest(unittest.TestCase):
         self.assertEqual(row["visible_pairs_per_q_head"], 120)
         self.assertEqual(row["attention_macs"], 122880)
         self.assertEqual(row["fast_path_disposition"], "candidate")
+
+        support = support_rows(rows)[0]
+        self.assertEqual(
+            support["fast_path_eligibility"], "ELIGIBLE_ALL_OBSERVED_SHAPES"
+        )
+        self.assertEqual(support["prefill_functional_execution"], "NOT_MEASURED")
+        self.assertEqual(support["prefill_fast_path_execution"], "NOT_MEASURED")
+        self.assertEqual(support["prefill_performance_evidence"], "NOT_MEASURED")
+
+        rows[0]["fast_path_disposition"] = "fallback_head_dim"
+        fallback = support_rows(rows)[0]
+        self.assertEqual(
+            fallback["fast_path_eligibility"], "FALLBACK_ALL_OBSERVED_SHAPES"
+        )
+        self.assertEqual(fallback["prefill_fast_path_execution"], "NOT_APPLICABLE")
 
     def test_chunked_prefill_tracks_past_tokens(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -31,6 +31,8 @@ AKV_PERF_SUM_FIELDS = (
     "v2_refill",
     "v2_row_load",
     "v2_column_load",
+    "v2_column_panel",
+    "v2_logical_column",
     "v2_k_view_bank_cycles",
     "v2_bank_conflict_cycles",
     "v2_rejected",

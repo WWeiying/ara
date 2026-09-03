@@ -90,13 +90,13 @@ and applies the same value again during host log validation, so
 `LLAMA_GUEST_EXIT=0` and the final host verdict have the same numerical meaning.
 
 The emulation path validates GGML graph selection, shape/layout checks, shared
-runtime planning, and model-level numerical behavior. Its query-key dot,
-F16 accumulator scaling, and F16 value accumulation deliberately reuse the
-same GGML RVV helpers as the standard path. It is still neither a
-cycle-accurate model nor an instruction-order numerical model of the native
-assembly because the native kernel uses its own vector exponential
-approximation. Native numerical error and performance are measured with the
-shared assembly kernel on the real-model RTL operator benchmark.
+runtime planning, and model-level numerical behavior. Decode uses the existing
+callback model. Prefill uses the shared contiguous-Prefill reference executor,
+including deterministic F32-to-F16 Query narrowing, causal-prefix validation,
+stable online Softmax, and F32 value accumulation. Neither is a cycle-accurate
+or instruction-order model of the native assembly. Native numerical error and
+performance are measured with the shared assembly kernel on the real-model RTL
+operator benchmark.
 
 ## Combined QBS + AKV-v2 model closure
 
@@ -105,7 +105,7 @@ inside the same QEMU guest:
 
 1. ordinary RVV;
 2. native QBS with ordinary RVV Attention; and
-3. the same native QBS path with AKV-v2 Decode Attention.
+3. the same native QBS path with AKV-v2 Decode and eligible Prefill Attention.
 
 Run it with:
 
@@ -118,14 +118,53 @@ run another GGUF image. The manifest records the exact prompt, token count,
 model image, llama binary, QEMU binary, revisions, and hashes. Host validation
 rejects a run when the three child executions tokenize the prompt differently.
 
-`QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Their text,
-top-1 token, and logits must match exactly, which isolates AKV-v2 from the
-known numerical-order difference between QBS and the ordinary RVV baseline.
+`QBS_ONLY` and `QBS_AKV_V2` start from the same generated context. Operator
+captures retain their recorded elementwise `atol + rtol * abs(reference)`
+contract. Full-model logits use the separate `decision-preserving-v1`
+contract. Both comparisons require every generated step to remain comparable
+and preserve greedy Top-1 and output tokens. Because QBS is the frozen baseline
+for this goal, its distribution metrics relative to ordinary RVV are recorded
+rather than reused as an AKV acceptance gate. The incremental AKV-versus-QBS
+difference must keep per-step KL divergence at or below `0.02`, cosine
+similarity at or above `0.98`, and Top-5 overlap at or above `0.8`. Maximum
+absolute logit difference remains a diagnostic because it is
+scale-sensitive and can grow across layers even when the output distribution
+and decoding decision remain stable. The three model-quality thresholds are
+recorded in the run manifest and can only be overridden explicitly through
+`AKV_MODEL_LOGITS_MAX_KL_TOLERANCE`,
+`AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE`, and
+`AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE`.
+
+This layered check isolates AKV-v2 from the known numerical-order difference
+between QBS and the ordinary RVV baseline without weakening the operator-level
+check or silently charging pre-existing QBS variation to the Attention path.
 Graph tracing associates every QBS and AKV call with its owning GGML node. The
 closure checker rejects a run unless every supported `MUL_MAT` node has a QBS
-call, every Decode `FLASH_ATTN_EXT` node has exactly one AKV-v2 call, QBS has no
-fallback, and every non-executed AKV candidate is explained by an explicit
-fallback counter. Prefill Attention remains a deliberate shape fallback.
+call, every AKV call is owned by one `FLASH_ATTN_EXT` node in the matching
+Decode or Prefill graph, QBS has no fallback, and every non-executed AKV
+candidate is explained by an explicit fallback counter. Decode and Prefill
+calls are checked against separate shape, work, group, and traffic identities.
+
+Require a real causal Prefill dispatch with a prompt of at least 15 tokens by
+setting `AKV_REQUIRE_PREFILL=1`. Flash Attention is explicitly enabled in every
+variant, and validation requires nonzero Prefill calls, query tokens, attention
+pairs, no size fallback, and a `mode=prefill` execution record:
+
+```bash
+run=hardware/akv_jobs/qemu_model_combined_prefill_$(date +%Y%m%d_%H%M%S)
+mkdir -p "$run"
+nohup env \
+  AKV_REQUIRE_PREFILL=1 \
+  AKV_MODEL_MODE=combined \
+  AKV_MODEL_TOKENS=1 \
+  AKV_MODEL_PROMPT='Explain regular vector memory access using at least two detailed examples.' \
+  AKV_RUN_DIR="$PWD/$run" \
+  hardware/scripts/akv/run-qemu-model-check.sh \
+  >"$run/launch.log" 2>&1 &
+```
+
+This is a long QEMU functional run. After confirming that its process is live,
+leave it detached rather than polling it repeatedly.
 
 After the guest run, combine exact dynamic work with representative real-model
 RTL leaf measurements:
@@ -142,11 +181,15 @@ hardware/scripts/akv/summarize-model-closure.py "$run/qemu.log" \
 ```
 
 The generated `dynamic_summary.json` and call/node CSVs contain exact model
-execution counts. `cycle_projection_{detail,summary}.csv` is a calibrated
-projection: QBS uses unique activation and dot work, AKV-v2 uses active-KV
-interpolation, and remaining Decode nodes use compute-only RVV leaves. It is
-not QEMU wall time or a claim of full-model RTL simulation. Decode completeness
-is enforced by default; uncalibrated Prefill nodes remain explicitly listed.
+execution counts. Prefill records include M, P, GQA, causal attention pairs,
+Query source/context bytes, unique and schedule-streamed K/V bytes, and the K/V
+reread factor. `cycle_projection_{detail,summary}.csv` is a calibrated
+projection: QBS uses unique activation and dot work, Decode AKV-v2 uses
+active-KV interpolation, and remaining Decode nodes use compute-only RVV
+leaves. It is not QEMU wall time or a claim of full-model RTL simulation.
+Decode completeness is enforced by default; a Prefill call remains explicitly
+uncalibrated until a matching full-operator RTL point is supplied. Runs with
+`AKV_REQUIRE_PREFILL=1` therefore emit dynamic-only closure by default.
 The output snapshot records hashes for the attribution tool, dynamic log, run
 manifest, model and QEMU binaries, source revisions, and every RTL calibration
 log, together with an explicit projection-method version.
@@ -222,13 +265,20 @@ remain usable, but activation quantization is taken only from the newer Host
 graph trace.
 
 Run each full model in QEMU with ordinary RVV, native QBS, and native QBS plus
-the AKV functional-emulation backend. This is a long functional run; launch it
-independently and do not poll it:
+the AKV functional-emulation backend. For the Prefill census, supported models
+must execute both Decode and Prefill with zero fallback; Gemma-3 D256 must
+exercise the same long-Prompt graph while falling back exclusively by shape.
+The output labels this as functional QEMU evidence, not RTL performance
+evidence. This is a long functional run; launch it independently and do not
+poll it:
 
 ```bash
 qemu=hardware/akv_jobs/model_generality_all_YYYYMMDD
 nohup hardware/scripts/akv/run-model-generality-qemu.py \
-  --models all --output "$qemu" >"$qemu.launch.log" 2>&1 &
+  --models all --prefill-census \
+  --llama-src /home/wangwy/llama/llama.cpp-prefill-panel4 \
+  --llama-binary /home/wangwy/llama/llama.cpp-prefill-panel4/build-rv64-cva6-akv-prefill/bin/llama-simple \
+  --output "$qemu" >"$qemu.launch.log" 2>&1 &
 ```
 
 The final summarizer requires one dynamic QEMU summary per manifest model. It
@@ -242,6 +292,7 @@ aggregate:
 
 ```bash
 hardware/scripts/akv/summarize-model-generality.py \
+  --prefill-census \
   --host-root "$host" \
   --qbs-representatives "$host/qbs_representative_selection" \
   --qemu-summary qwen25_1p5b_q4km=path/to/dynamic_summary.json \

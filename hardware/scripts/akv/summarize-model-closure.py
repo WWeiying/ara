@@ -37,10 +37,39 @@ SUPPORTED_QBS_TYPES = {
     "IQ4_NL",
 }
 SUPPORTED_QBS_OPS = {"MUL_MAT", "MUL_MAT_ID"}
-PROJECTION_METHOD_VERSION = 1
+PROJECTION_METHOD_VERSION = 2
 QBS_ABI_PATH = Path(__file__).resolve().parents[3] / "config/qbs_abi.json"
 QBS_TRACE_TO_ABI_PROFILE = {"Q8_0": "Q8_0_WEIGHT"}
 F16_BYTES = 2
+F32_BYTES = 4
+AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
+AKV_PREFILL_CALIBRATION_SCHEMA_MIN = 6
+AKV_PREFILL_STRICT_COUNTER_FIELDS_MIN = 14
+AKV_PREFILL_RETAINED_STRATEGY = "akv_qblock64_q2_panel4_kv_outer"
+AKV_PREFILL_SHAPE_FIELDS = (
+    "head_dim",
+    "query_tokens",
+    "past_tokens",
+    "query_heads",
+    "kv_heads",
+    "gqa_rows",
+    "kv_capacity",
+)
+NUMERICAL_METRIC_SUFFIXES = (
+    "LOGITS_RECORDS",
+    "LOGITS_COMPARABLE_RECORDS",
+    "LOGITS_MAX_ABS",
+    "LOGITS_MAX_REL",
+    "LOGITS_MEAN_ABS",
+    "LOGITS_MEAN_RMSE",
+    "LOGITS_MEAN_KL",
+    "LOGITS_MEAN_COSINE",
+    "LOGITS_TOP5_OVERLAP",
+    "LOGITS_MAX_KL",
+    "LOGITS_MIN_COSINE",
+    "LOGITS_MIN_TOP5_OVERLAP",
+    "LOGITS_TOP1_EQUAL",
+)
 
 
 def load_qbs_abi(path: Path = QBS_ABI_PATH) -> dict[str, object]:
@@ -105,6 +134,44 @@ def fields(line: str) -> dict[str, str]:
 
 def integer(values: dict[str, str], key: str, default: int = 0) -> int:
     return int(values.get(key, default))
+
+
+def validate_numerical_metrics(values: dict[str, str], prefix: str) -> None:
+    keys = tuple(f"{prefix}_{suffix}" for suffix in NUMERICAL_METRIC_SUFFIXES)
+    missing = [key for key in keys if key not in values]
+    if missing:
+        raise ValueError(
+            f"{prefix} numerical observation lacks metrics: {', '.join(missing)}"
+        )
+    records = integer(values, f"{prefix}_LOGITS_RECORDS")
+    comparable = integer(values, f"{prefix}_LOGITS_COMPARABLE_RECORDS")
+    if records <= 0 or comparable <= 0 or comparable > records:
+        raise ValueError(
+            f"{prefix} has invalid logits record counts: {comparable}/{records}"
+        )
+    nonnegative = (
+        "LOGITS_MAX_ABS",
+        "LOGITS_MAX_REL",
+        "LOGITS_MEAN_ABS",
+        "LOGITS_MEAN_RMSE",
+        "LOGITS_MEAN_KL",
+        "LOGITS_MAX_KL",
+    )
+    for suffix in nonnegative:
+        value = float(values[f"{prefix}_{suffix}"])
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{prefix}_{suffix} is not finite and nonnegative")
+    bounded = (
+        "LOGITS_MEAN_COSINE",
+        "LOGITS_MIN_COSINE",
+        "LOGITS_TOP5_OVERLAP",
+        "LOGITS_MIN_TOP5_OVERLAP",
+    )
+    for suffix in bounded:
+        value = float(values[f"{prefix}_{suffix}"])
+        lower = -1.0 if "COSINE" in suffix else 0.0
+        if not math.isfinite(value) or not lower <= value <= 1.0:
+            raise ValueError(f"{prefix}_{suffix} is outside [{lower:g}, 1]")
 
 
 def sha256(path: Path) -> str:
@@ -221,7 +288,10 @@ class Graph:
     @property
     def phase(self) -> str:
         if self.akv_calls:
-            return "decode"
+            modes = {call.get("mode", "decode") for call in self.akv_calls}
+            if len(modes) == 1:
+                return modes.pop()
+            return "mixed"
         if any(call.get("mode") == "gemm" for call in self.qbs_calls):
             return "prefill"
         if any(call.get("mode") == "gemv" for call in self.qbs_calls):
@@ -350,6 +420,8 @@ def validate_dynamic(run: ParsedRun) -> None:
         raise ValueError(f"optimized model child exited with {run.optimized_exit}")
     if run.guest_exit != 0 or not run.output_equal:
         raise ValueError("combined model run did not preserve functional output")
+    validate_numerical_metrics(run.logits, "AKV")
+    validate_numerical_metrics(run.qbs_rvv, "QBS_RVV")
     if run.logits.get("AKV_LOGITS_TOP1_EQUAL") != "1":
         raise ValueError("combined model run changed top-1 logits result")
     if integer(run.qbs_rvv, "QBS_RVV_LOGITS_RECORDS") == 0 or \
@@ -411,51 +483,98 @@ def validate_dynamic(run: ParsedRun) -> None:
 
     akv_calls = []
     flash_nodes = 0
+    akv_groups = 0
+    akv_group_tokens = 0
+    akv_macs = 0
+    decode_calls = 0
+    prefill_calls = 0
+    prefill_query_tokens = 0
+    prefill_attention_pairs = 0
     for graph in run.graphs:
-        eligible_nodes = {
+        flash_node_indices = {
             index
             for index, node in enumerate(graph.nodes)
-            if graph.phase == "decode" and node.get("op") == "FLASH_ATTN_EXT"
+            if node.get("op") == "FLASH_ATTN_EXT"
         }
-        flash_nodes += sum(node.get("op") == "FLASH_ATTN_EXT" for node in graph.nodes)
+        flash_nodes += len(flash_node_indices)
         called_nodes: Counter[int] = Counter()
         for call in graph.akv_calls:
             node_index = integer(call, "_node_index", -1)
             if node_index < 0 or node_index >= len(graph.nodes):
                 raise ValueError("AKV call has no valid model-node owner")
-            if graph.phase != "decode" or graph.nodes[node_index].get("op") != "FLASH_ATTN_EXT":
+            mode = call.get("mode", "decode")
+            if mode not in ("decode", "prefill") or graph.phase != mode or \
+                    graph.nodes[node_index].get("op") != "FLASH_ATTN_EXT":
                 raise ValueError("AKV call/model-node association is inconsistent")
             called_nodes[node_index] += 1
             akv_calls.append(call)
-        if not set(called_nodes).issubset(eligible_nodes) or any(
+            if call.get("kernel") != "v2":
+                raise ValueError("an accelerated attention call did not use AKV-v2")
+
+            kv_heads = integer(call, "kv_heads")
+            head_dim = integer(call, "head_dim")
+            attention_macs = integer(call, "attention_macs")
+            if mode == "decode":
+                q_heads = integer(call, "q_rows")
+                gqa_rows = integer(call, "gqa_rows")
+                active_kv = integer(call, "active_kv")
+                if min(kv_heads, q_heads, gqa_rows, head_dim, active_kv) <= 0:
+                    raise ValueError("AKV Decode call has a non-positive shape field")
+                if q_heads != kv_heads * gqa_rows:
+                    raise ValueError("AKV Decode q-head/GQA identity is inconsistent")
+                expected_macs = 2 * kv_heads * gqa_rows * head_dim * active_kv
+                if attention_macs != expected_macs:
+                    raise ValueError("AKV Decode MAC count is inconsistent with its shape")
+                decode_calls += 1
+                akv_groups += kv_heads
+                akv_group_tokens += kv_heads * active_kv
+            else:
+                query_tokens = integer(call, "M")
+                past_tokens = integer(call, "P", -1)
+                kv_capacity = integer(call, "kv_capacity")
+                q_heads = integer(call, "q_heads")
+                gqa_rows = integer(call, "q_rows")
+                groups = integer(call, "groups")
+                attention_pairs = integer(call, "attention_pairs")
+                if min(query_tokens, kv_capacity, kv_heads, q_heads, gqa_rows, head_dim) <= 0 or past_tokens < 0:
+                    raise ValueError("AKV Prefill call has a non-positive shape field")
+                if query_tokens < 15 or head_dim not in (64, 96, 128) or gqa_rows > 8:
+                    raise ValueError("AKV Prefill call violates the selected hardware profile")
+                if q_heads != kv_heads * gqa_rows or past_tokens + query_tokens > kv_capacity:
+                    raise ValueError("AKV Prefill causal shape identity is inconsistent")
+                expected_pairs_per_head = (
+                    query_tokens * (past_tokens + 1)
+                    + query_tokens * (query_tokens - 1) // 2
+                )
+                expected_pairs = q_heads * expected_pairs_per_head
+                expected_groups = kv_heads * (
+                    (query_tokens + AKV_PREFILL_QUERY_BLOCK_TOKENS - 1)
+                    // AKV_PREFILL_QUERY_BLOCK_TOKENS
+                )
+                expected_group_tokens = sum(
+                    kv_heads * (past_tokens + min(token_start + AKV_PREFILL_QUERY_BLOCK_TOKENS, query_tokens))
+                    for token_start in range(0, query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS)
+                )
+                expected_macs = 2 * expected_pairs * head_dim
+                if attention_pairs != expected_pairs:
+                    raise ValueError("AKV Prefill attention-pair count is inconsistent with its causal shape")
+                if groups != expected_groups:
+                    raise ValueError("AKV Prefill group count is inconsistent with its blocked schedule")
+                if attention_macs != expected_macs:
+                    raise ValueError("AKV Prefill MAC count is inconsistent with its shape")
+                prefill_calls += 1
+                prefill_query_tokens += query_tokens
+                prefill_attention_pairs += attention_pairs
+                akv_groups += groups
+                akv_group_tokens += expected_group_tokens
+            akv_macs += attention_macs
+        if not set(called_nodes).issubset(flash_node_indices) or any(
             count != 1 for count in called_nodes.values()
         ):
             raise ValueError(
                 f"AKV graph coverage mismatch for graph {graph.graph_id}: "
-                f"eligible={sorted(eligible_nodes)} called={dict(sorted(called_nodes.items()))}"
+                f"flash={sorted(flash_node_indices)} called={dict(sorted(called_nodes.items()))}"
             )
-    if any(call.get("kernel") != "v2" for call in akv_calls):
-        raise ValueError("an accelerated attention call did not use AKV-v2")
-    for call in akv_calls:
-        kv_heads = integer(call, "kv_heads")
-        q_heads = integer(call, "q_rows")
-        gqa_rows = integer(call, "gqa_rows")
-        head_dim = integer(call, "head_dim")
-        active_kv = integer(call, "active_kv")
-        expected_macs = 2 * kv_heads * gqa_rows * head_dim * active_kv
-        if min(kv_heads, q_heads, gqa_rows, head_dim, active_kv) <= 0:
-            raise ValueError("AKV call has a non-positive shape field")
-        if q_heads != kv_heads * gqa_rows:
-            raise ValueError("AKV q-head/GQA identity is inconsistent")
-        if integer(call, "attention_macs") != expected_macs:
-            raise ValueError("AKV call MAC count is inconsistent with its shape")
-
-    akv_macs = sum(integer(call, "attention_macs") for call in akv_calls)
-    akv_groups = sum(integer(call, "kv_heads") for call in akv_calls)
-    akv_group_tokens = sum(
-        integer(call, "kv_heads") * integer(call, "active_kv")
-        for call in akv_calls
-    )
     if integer(run.akv_coverage, "attention_macs") != akv_macs:
         raise ValueError("AKV call/coverage MAC count mismatch")
     if integer(run.akv_coverage, "executed_v1") != 0:
@@ -468,6 +587,15 @@ def validate_dynamic(run: ParsedRun) -> None:
        integer(run.akv_coverage, "groups_v2") != akv_groups or \
        integer(run.akv_coverage, "kv_group_tokens") != akv_group_tokens:
         raise ValueError("AKV coverage traffic is inconsistent with per-call shapes")
+    optional_totals = {
+        "executed_decode": decode_calls,
+        "executed_prefill": prefill_calls,
+        "prefill_query_tokens": prefill_query_tokens,
+        "prefill_attention_pairs": prefill_attention_pairs,
+    }
+    for field_name, expected in optional_totals.items():
+        if field_name in run.akv_coverage and integer(run.akv_coverage, field_name) != expected:
+            raise ValueError(f"AKV coverage {field_name} is inconsistent with per-call shapes")
     akv_fallbacks = sum(
         integer(run.akv_coverage, key)
         for key in run.akv_coverage
@@ -484,6 +612,14 @@ def write_csv(path: Path, rows: list[dict[str, object]], leading: Iterable[str])
         writer = csv.DictWriter(stream, fieldnames=leading + remaining)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def aggregate_call_counts_by_mode(rows: Iterable[dict[str, object]]) -> dict[str, int]:
+    """Count actual AKV invocations rather than aggregated shape rows."""
+    counts: Counter[str] = Counter()
+    for row in rows:
+        counts[str(row["mode"])] += int(row["calls"])
+    return dict(counts)
 
 
 def node_semantic(nodes: list[dict[str, str]], index: int) -> str:
@@ -537,15 +673,50 @@ def dynamic_rows(run: ParsedRun):
             )
             qbs_groups[key] += 1
         for call in graph.akv_calls:
+            mode = call.get("mode", "decode")
+            if mode == "prefill":
+                query_tokens = integer(call, "M")
+                past_tokens = integer(call, "P")
+                kv_capacity = integer(call, "kv_capacity")
+                kv_heads = integer(call, "kv_heads")
+                q_heads = integer(call, "q_heads")
+                gqa_rows = integer(call, "q_rows")
+                head_dim = integer(call, "head_dim")
+                groups = integer(call, "groups")
+                attention_pairs = integer(call, "attention_pairs")
+                active_kv = past_tokens + query_tokens
+                kv_group_tokens = sum(
+                    kv_heads * (past_tokens + min(token_start + AKV_PREFILL_QUERY_BLOCK_TOKENS, query_tokens))
+                    for token_start in range(0, query_tokens, AKV_PREFILL_QUERY_BLOCK_TOKENS)
+                )
+            else:
+                query_tokens = 1
+                past_tokens = None
+                kv_heads = integer(call, "kv_heads")
+                q_heads = integer(call, "q_rows")
+                gqa_rows = integer(call, "gqa_rows")
+                head_dim = integer(call, "head_dim")
+                active_kv = integer(call, "active_kv")
+                kv_capacity = None
+                groups = kv_heads
+                attention_pairs = q_heads * active_kv
+                kv_group_tokens = kv_heads * active_kv
             key = (
                 graph.graph_id,
                 phase,
+                mode,
                 call["kernel"],
-                integer(call, "kv_heads"),
-                integer(call, "q_rows"),
-                integer(call, "gqa_rows"),
-                integer(call, "head_dim"),
-                integer(call, "active_kv"),
+                query_tokens,
+                past_tokens,
+                kv_capacity,
+                kv_heads,
+                q_heads,
+                gqa_rows,
+                head_dim,
+                active_kv,
+                groups,
+                attention_pairs,
+                kv_group_tokens,
                 integer(call, "attention_macs"),
             )
             akv_groups[key] += 1
@@ -728,23 +899,35 @@ def dynamic_rows(run: ParsedRun):
             )
     akv_rows = []
     for key, count in sorted(akv_groups.items()):
-        (graph_id, phase, kernel, kv_heads, q_rows, gqa_rows, head_dim,
-         active_kv, attention_macs) = key
+        (graph_id, phase, mode, kernel, query_tokens, past_tokens, kv_capacity,
+         kv_heads, q_heads, gqa_rows, head_dim, active_kv, groups,
+         attention_pairs, kv_group_tokens, attention_macs) = key
+        query_elements = count * query_tokens * q_heads * head_dim
+        streamed_kv_bytes = count * 2 * kv_group_tokens * head_dim * F16_BYTES
+        unique_kv_bytes = count * 2 * kv_heads * active_kv * head_dim * F16_BYTES
         akv_rows.append(
             {
                 "graph_id": graph_id,
                 "phase": phase,
+                "mode": mode,
                 "kernel": kernel,
+                "query_tokens": query_tokens,
+                "past_tokens": past_tokens,
+                "kv_capacity": kv_capacity,
                 "kv_heads": kv_heads,
-                "q_rows": q_rows,
+                "q_heads": q_heads,
                 "gqa_rows": gqa_rows,
                 "head_dim": head_dim,
                 "active_kv": active_kv,
+                "groups": groups,
+                "attention_pairs": attention_pairs,
+                "kv_group_tokens": kv_group_tokens,
                 "calls": count,
-                "query_payload_bytes": count * q_rows * head_dim * F16_BYTES,
-                "kv_payload_bytes": (
-                    count * 2 * kv_heads * active_kv * head_dim * F16_BYTES
-                ),
+                "query_source_f32_bytes": query_elements * F32_BYTES,
+                "query_payload_bytes": query_elements * F16_BYTES,
+                "unique_kv_payload_bytes": unique_kv_bytes,
+                "kv_payload_bytes": streamed_kv_bytes,
+                "kv_reread_factor": streamed_kv_bytes / unique_kv_bytes,
                 "attention_macs": count * attention_macs,
             }
         )
@@ -870,6 +1053,189 @@ def describe_akv_calibration(points: list[dict[str, int]]) -> str:
     return f"piecewise AKV-v2 {kv_points} RTL"
 
 
+def _prefill_shape_key(values: dict[str, object]) -> tuple[int, ...]:
+    aliases = {"query_heads": "q_heads"}
+    return tuple(
+        int(values[field] if field in values else values[aliases[field]])
+        for field in AKV_PREFILL_SHAPE_FIELDS
+    )
+
+
+def _validate_prefill_source_hashes(
+    summary: dict[str, object],
+    summary_path: Path,
+    shape: dict[str, int],
+) -> dict[str, object]:
+    case_path = Path(str(summary.get("case", "")))
+    if not case_path.is_file():
+        raise ValueError(f"Prefill calibration case does not exist: {case_path}")
+    provenance = summary.get("provenance")
+    if not isinstance(provenance, dict):
+        raise ValueError(f"Prefill calibration lacks provenance: {summary_path}")
+    if provenance.get("case_sha256") != sha256(case_path):
+        raise ValueError(f"Prefill calibration case hash mismatch: {summary_path}")
+
+    case = json.loads(case_path.read_text(encoding="utf-8"))
+    source_fields = {
+        "query_sha256": (
+            "input_a", "f32",
+            [shape["head_dim"], shape["query_tokens"], shape["query_heads"], 1],
+        ),
+        "key_sha256": (
+            "key", "f16",
+            [shape["head_dim"], shape["kv_capacity"], shape["kv_heads"], 1],
+        ),
+        "value_sha256": (
+            "value", "f16",
+            [shape["head_dim"], shape["kv_capacity"], shape["kv_heads"], 1],
+        ),
+        "mask_sha256": (
+            "mask", "f16",
+            [shape["kv_capacity"], shape["query_tokens"], 1, 1],
+        ),
+        "golden_sha256": (
+            "golden", "f32",
+            [shape["head_dim"] * shape["query_heads"], shape["query_tokens"], 1, 1],
+        ),
+    }
+    sources: dict[str, object] = {
+        "summary": {"path": str(summary_path.resolve()), "sha256": sha256(summary_path)},
+        "case": {"path": str(case_path.resolve()), "sha256": sha256(case_path)},
+    }
+    for hash_field, (case_field, expected_type, expected_shape) in source_fields.items():
+        relative = case.get(case_field)
+        if not isinstance(relative, str) or not relative:
+            raise ValueError(f"Prefill calibration case lacks {case_field}: {case_path}")
+        metadata_path = (case_path.parent / relative).resolve()
+        if not metadata_path.is_file():
+            raise ValueError(f"Prefill calibration metadata does not exist: {metadata_path}")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        payload = metadata_path.with_suffix(".bin")
+        if not payload.is_file():
+            raise ValueError(f"Prefill calibration payload does not exist: {payload}")
+        element_bytes = F32_BYTES if expected_type == "f32" else F16_BYTES
+        expected_strides = [element_bytes]
+        for dimension in expected_shape[:-1]:
+            expected_strides.append(expected_strides[-1] * dimension)
+        expected_nbytes = math.prod(expected_shape) * element_bytes
+        if str(metadata.get("type", "")).lower() != expected_type or \
+                [int(value) for value in metadata.get("shape", [])] != expected_shape or \
+                [int(value) for value in metadata.get("strides", [])] != expected_strides or \
+                int(metadata.get("nbytes", -1)) != expected_nbytes or \
+                payload.stat().st_size != expected_nbytes:
+            raise ValueError(f"Prefill calibration {case_field} metadata mismatch: {metadata_path}")
+        digest = sha256(payload)
+        if provenance.get(hash_field) != digest:
+            raise ValueError(f"Prefill calibration {case_field} hash mismatch: {summary_path}")
+        sources[case_field] = {
+            "metadata_path": str(metadata_path),
+            "metadata_sha256": sha256(metadata_path),
+            "payload_path": str(payload.resolve()),
+            "payload_sha256": digest,
+        }
+    return sources
+
+
+def load_akv_prefill_calibration(paths: Iterable[Path]) -> list[dict[str, object]]:
+    points: list[dict[str, object]] = []
+    keys: set[tuple[int, ...]] = set()
+    for path in paths:
+        path = path.resolve()
+        if not path.is_file():
+            raise ValueError(f"Prefill calibration summary does not exist: {path}")
+        summary = json.loads(path.read_text(encoding="utf-8"))
+        if int(summary.get("schema_version", 0)) < AKV_PREFILL_CALIBRATION_SCHEMA_MIN or summary.get("status") != "PASS":
+            raise ValueError(f"Prefill calibration is not a passing schema-v6 summary: {path}")
+
+        shape = summary.get("shape")
+        work = summary.get("work")
+        if not isinstance(shape, dict) or not isinstance(work, dict):
+            raise ValueError(f"Prefill calibration lacks shape/work accounting: {path}")
+        try:
+            key = _prefill_shape_key(shape)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Prefill calibration has an incomplete shape: {path}") from error
+        shape_values = dict(zip(AKV_PREFILL_SHAPE_FIELDS, key))
+        positive_shape_fields = set(AKV_PREFILL_SHAPE_FIELDS) - {"past_tokens"}
+        if any(shape_values[field] <= 0 for field in positive_shape_fields) or \
+                shape_values["past_tokens"] < 0 or int(shape.get("batch", 0)) != 1:
+            raise ValueError(f"Prefill calibration has an invalid shape: {path}")
+        if shape_values["query_heads"] != shape_values["kv_heads"] * shape_values["gqa_rows"] or \
+                shape_values["past_tokens"] + shape_values["query_tokens"] > shape_values["kv_capacity"]:
+            raise ValueError(f"Prefill calibration shape identities are inconsistent: {path}")
+        expected_prefixes = list(
+            range(
+                shape_values["past_tokens"] + 1,
+                shape_values["past_tokens"] + shape_values["query_tokens"] + 1,
+            )
+        )
+        if shape.get("active_prefixes") != expected_prefixes:
+            raise ValueError(f"Prefill calibration causal prefixes are inconsistent: {path}")
+        expected_pairs = shape_values["query_heads"] * sum(expected_prefixes)
+        expected_macs = 2 * expected_pairs * shape_values["head_dim"]
+        if int(work.get("active_query_head_kv_pairs", -1)) != expected_pairs or \
+                int(work.get("attention_macs", -1)) != expected_macs:
+            raise ValueError(f"Prefill calibration mathematical work is inconsistent: {path}")
+        if shape_values["head_dim"] != 128 or shape_values["gqa_rows"] != 6:
+            raise ValueError(
+                f"retained Panel4 calibration requires D128/GQA6, got "
+                f"D{shape_values['head_dim']}/GQA{shape_values['gqa_rows']}: {path}"
+            )
+
+        sources = _validate_prefill_source_hashes(summary, path, shape_values)
+        measurements = summary.get("measurements")
+        if not isinstance(measurements, list):
+            raise ValueError(f"Prefill calibration lacks measurements: {path}")
+        retained = [
+            measurement
+            for measurement in measurements
+            if isinstance(measurement, dict)
+            and measurement.get("strategy") == AKV_PREFILL_RETAINED_STRATEGY
+        ]
+        if len(retained) != 1:
+            raise ValueError(f"Prefill calibration must contain one retained Panel4 measurement: {path}")
+        measurement = retained[0]
+        if int(measurement.get("cycles", 0)) <= 0 or int(measurement.get("mismatches", -1)) != 0 or \
+                measurement.get("strict_counter_status") != "PASS" or \
+                int(measurement.get("strict_counter_checked_fields", 0)) < AKV_PREFILL_STRICT_COUNTER_FIELDS_MIN:
+            raise ValueError(f"Prefill calibration measurement is not strict PASS: {path}")
+
+        log_path = Path(str(measurement.get("log", "")))
+        if not log_path.is_file() or measurement.get("log_sha256") != sha256(log_path):
+            raise ValueError(f"Prefill calibration log provenance mismatch: {path}")
+        matches = OPERATOR_RE.findall(log_path.read_text(errors="replace"))
+        if len(matches) != 1:
+            raise ValueError(f"Prefill calibration log has no unique operator result: {log_path}")
+        case_name, status, cycles, mismatches = matches[0]
+        if status != "PASS" or int(mismatches) != 0 or int(cycles) != int(measurement["cycles"]) or \
+                case_name != measurement.get("case_name"):
+            raise ValueError(f"Prefill calibration log/result mismatch: {path}")
+        if key in keys:
+            raise ValueError(f"duplicate exact Prefill calibration shape: {key}")
+        keys.add(key)
+        sources["log"] = {"path": str(log_path.resolve()), "sha256": sha256(log_path)}
+        points.append(
+            {
+                **shape_values,
+                "batch": 1,
+                "strategy": AKV_PREFILL_RETAINED_STRATEGY,
+                "cycles": int(measurement["cycles"]),
+                "case_name": case_name,
+                "attention_pairs": expected_pairs,
+                "attention_macs": expected_macs,
+                "source": sources,
+            }
+        )
+    return sorted(points, key=_prefill_shape_key)
+
+
+def exact_akv_prefill_point(
+    call: dict[str, object], points: list[dict[str, object]]
+) -> dict[str, object] | None:
+    call_key = _prefill_shape_key(call)
+    return next((point for point in points if _prefill_shape_key(point) == call_key), None)
+
+
 def load_rvv_calibration(
     directories: Iterable[Path],
 ) -> tuple[dict[str, int], list[dict[str, object]]]:
@@ -962,8 +1328,10 @@ def cycle_projection(
     akv_points: list[dict[str, int]],
     rvv_points: dict[str, int],
     qbs_lifetime: dict[str, object] | None = None,
+    akv_prefill_points: list[dict[str, object]] | None = None,
 ):
     rows: list[dict[str, object]] = []
+    akv_prefill_points = akv_prefill_points or []
     akv_calibration = describe_akv_calibration(akv_points)
     eliminated = Counter()
     if qbs_lifetime is not None:
@@ -1023,7 +1391,42 @@ def cycle_projection(
     unmatched = {signature: count for signature, count in eliminated.items() if count}
     if unmatched:
         raise ValueError(f"QBS lifetime eliminations do not match dynamic model nodes: {unmatched}")
+    accelerated_flash_nodes: Counter[tuple[int, str]] = Counter()
     for call in akv_rows:
+        accelerated_flash_nodes[(int(call["graph_id"]), str(call["phase"]))] += int(call["calls"])
+        if call["mode"] == "prefill":
+            point = exact_akv_prefill_point(call, akv_prefill_points)
+            if point is not None:
+                rows.append(
+                    {
+                        "phase": call["phase"],
+                        "category": "akv_v2_prefill",
+                        "detail": (
+                            f"AKV-v2 Prefill D{call['head_dim']} M{call['query_tokens']} "
+                            f"P{call['past_tokens']} Hq{call['q_heads']} Hkv{call['kv_heads']}"
+                        ),
+                        "instances": call["calls"],
+                        "projected_cycles": int(point["cycles"]) * int(call["calls"]),
+                        "calibration": point["case_name"],
+                        "basis": "exact shape-matched full-operator Prefill RTL x dynamic call count",
+                    }
+                )
+                continue
+            rows.append(
+                {
+                    "phase": call["phase"],
+                    "category": "uncalibrated",
+                    "detail": (
+                        f"AKV-v2 Prefill D{call['head_dim']} M{call['query_tokens']} "
+                        f"P{call['past_tokens']} Hq{call['q_heads']} Hkv{call['kv_heads']}"
+                    ),
+                    "instances": call["calls"],
+                    "projected_cycles": "",
+                    "calibration": "",
+                    "basis": "matching full-operator Prefill RTL calibration required",
+                }
+            )
+            continue
         per_call = interpolate_akv_cycles(int(call["active_kv"]), akv_points)
         rows.append(
             {
@@ -1031,7 +1434,7 @@ def cycle_projection(
                 "category": "akv_v2",
                 "detail": (
                     f"D{call['head_dim']} KV{call['active_kv']} "
-                    f"Hq{call['q_rows']} Hkv{call['kv_heads']} GQA{call['gqa_rows']}"
+                    f"Hq{call['q_heads']} Hkv{call['kv_heads']} GQA{call['gqa_rows']}"
                 ),
                 "instances": call["calls"],
                 "projected_cycles": round(per_call * int(call["calls"])),
@@ -1048,8 +1451,13 @@ def cycle_projection(
         count = int(node["count"])
         if op == "MUL_MAT" and src0 in SUPPORTED_QBS_TYPES:
             continue
-        if op == "FLASH_ATTN_EXT" and phase == "decode":
-            continue
+        if op == "FLASH_ATTN_EXT":
+            accelerated_key = (int(node["graph_id"]), phase)
+            accelerated = min(count, accelerated_flash_nodes[accelerated_key])
+            accelerated_flash_nodes[accelerated_key] -= accelerated
+            count -= accelerated
+            if count == 0:
+                continue
         classification = classify_rvv_node(node)
         if classification is None:
             uncalibrated[(phase, op)] += count
@@ -1081,6 +1489,11 @@ def cycle_projection(
                 "basis": "dynamic node count only",
             }
         )
+    unmatched_attention = {
+        key: count for key, count in accelerated_flash_nodes.items() if count
+    }
+    if unmatched_attention:
+        raise ValueError(f"AKV calls do not match traced Flash-Attention nodes: {unmatched_attention}")
     return rows
 
 
@@ -1166,6 +1579,8 @@ def make_dynamic_summary(
             str(row["operation"]) for row in unresolved_activation_nodes
         )),
     }
+    akv_unique_kv_bytes = sum(int(row["unique_kv_payload_bytes"]) for row in akv_rows)
+    akv_streamed_kv_bytes = sum(int(row["kv_payload_bytes"]) for row in akv_rows)
     return {
         "provenance": {
             "tool": {
@@ -1189,6 +1604,7 @@ def make_dynamic_summary(
             "output_equal": run.output_equal,
             "logits_top1_equal": run.logits.get("AKV_LOGITS_TOP1_EQUAL"),
             "logits_max_abs": run.logits.get("AKV_LOGITS_MAX_ABS"),
+            "akv_qbs": run.logits,
             "qbs_rvv": run.qbs_rvv,
         },
         "graphs": dict(Counter(graph.phase for graph in run.graphs)),
@@ -1232,12 +1648,20 @@ def make_dynamic_summary(
         },
         "akv_v2": {
             "calls": sum(int(row["calls"]) for row in akv_rows),
+            "calls_by_mode": aggregate_call_counts_by_mode(akv_rows),
             "attention_macs": sum(int(row["attention_macs"]) for row in akv_rows),
+            "attention_pairs": sum(int(row["attention_pairs"]) for row in akv_rows),
+            "query_source_f32_bytes": sum(
+                int(row["query_source_f32_bytes"]) for row in akv_rows
+            ),
             "query_payload_bytes": sum(
                 int(row["query_payload_bytes"]) for row in akv_rows
             ),
-            "kv_payload_bytes": sum(
-                int(row["kv_payload_bytes"]) for row in akv_rows
+            "unique_kv_payload_bytes": akv_unique_kv_bytes,
+            "kv_payload_bytes": akv_streamed_kv_bytes,
+            "kv_reread_factor": (
+                akv_streamed_kv_bytes / akv_unique_kv_bytes
+                if akv_unique_kv_bytes else None
             ),
             "shapes": akv_rows,
             "coverage": run.akv_coverage,
@@ -1282,16 +1706,18 @@ def write_dynamic_markdown(
     lines.extend(
         [
             "",
-            "| Phase | Kernel | D | GQA | Q heads | KV heads | Active KV | Calls | Q bytes | K/V bytes | MACs |",
-            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Phase | Mode | Kernel | D | M | P | GQA | Q heads | KV heads | Active KV | Calls | Q F32 bytes | Q context bytes | Unique K/V bytes | Streamed K/V bytes | K/V reread | MACs |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in akv_rows:
         lines.append(
-            f"| {row['phase']} | {row['kernel']} | {row['head_dim']} | "
-            f"{row['gqa_rows']} | {row['q_rows']} | {row['kv_heads']} | "
-            f"{row['active_kv']} | {row['calls']} | {row['query_payload_bytes']} | "
-            f"{row['kv_payload_bytes']} | {row['attention_macs']} |"
+            f"| {row['phase']} | {row['mode']} | {row['kernel']} | {row['head_dim']} | "
+            f"{row['query_tokens']} | {row['past_tokens'] if row['past_tokens'] is not None else '-'} | "
+            f"{row['gqa_rows']} | {row['q_heads']} | {row['kv_heads']} | {row['active_kv']} | "
+            f"{row['calls']} | {row['query_source_f32_bytes']} | {row['query_payload_bytes']} | "
+            f"{row['unique_kv_payload_bytes']} | {row['kv_payload_bytes']} | "
+            f"{float(row['kv_reread_factor']):.3f} | {row['attention_macs']} |"
         )
     if qbs_lifetime is not None:
         baseline = qbs_lifetime["baseline"]
@@ -1317,6 +1743,11 @@ def write_dynamic_markdown(
             f"- output equal: `{int(run.output_equal)}`",
             f"- logits top-1 equal: `{run.logits.get('AKV_LOGITS_TOP1_EQUAL', 'missing')}`",
             f"- logits max absolute difference: `{run.logits.get('AKV_LOGITS_MAX_ABS', 'missing')}`",
+            f"- logits mean absolute difference: `{run.logits.get('AKV_LOGITS_MEAN_ABS', 'missing')}`",
+            f"- logits mean RMSE: `{run.logits.get('AKV_LOGITS_MEAN_RMSE', 'missing')}`",
+            f"- logits mean KL divergence: `{run.logits.get('AKV_LOGITS_MEAN_KL', 'missing')}`",
+            f"- logits mean cosine similarity: `{run.logits.get('AKV_LOGITS_MEAN_COSINE', 'missing')}`",
+            f"- logits mean Top-5 overlap: `{run.logits.get('AKV_LOGITS_TOP5_OVERLAP', 'missing')}`",
             "",
             "This artifact proves dynamic selection, numerical behavior, and work/traffic",
             "identities. Weight and Q/K/V byte counts are logical payload bytes from the",
@@ -1473,6 +1904,13 @@ def main() -> None:
         default=root / "hardware/llama_attention_runs_akv_v2/attention_core_summary.csv",
     )
     parser.add_argument(
+        "--akv-prefill-calibration",
+        type=Path,
+        action="append",
+        default=[],
+        help="strict analyze_prefill_attention.py summary; repeat for exact full-operator RTL points",
+    )
+    parser.add_argument(
         "--rvv-calibration-dir",
         type=Path,
         action="append",
@@ -1527,9 +1965,11 @@ def main() -> None:
         output / "akv_calls.csv",
         akv_rows,
         (
-            "graph_id", "phase", "kernel", "head_dim", "gqa_rows",
-            "active_kv", "kv_heads", "q_rows", "calls", "query_payload_bytes",
-            "kv_payload_bytes",
+            "graph_id", "phase", "mode", "kernel", "head_dim", "query_tokens",
+            "past_tokens", "kv_capacity", "gqa_rows", "q_heads", "kv_heads",
+            "active_kv", "groups", "calls", "attention_pairs",
+            "query_source_f32_bytes", "query_payload_bytes",
+            "unique_kv_payload_bytes", "kv_payload_bytes", "kv_reread_factor",
         ),
     )
     write_csv(
@@ -1558,6 +1998,7 @@ def main() -> None:
 
     qbs_points = load_qbs_calibration(args.qbs_calibration)
     akv_points = load_akv_calibration(args.akv_calibration)
+    akv_prefill_points = load_akv_prefill_calibration(args.akv_prefill_calibration)
     rvv_directories = args.rvv_calibration_dir or default_rvv_calibration_dirs(root)
     rvv_points, rvv_sources = load_rvv_calibration(rvv_directories)
     projection_rows = cycle_projection(
@@ -1568,6 +2009,7 @@ def main() -> None:
         akv_points,
         rvv_points,
         qbs_lifetime,
+        akv_prefill_points,
     )
     incomplete = {
         str(row["phase"])
@@ -1624,10 +2066,12 @@ def main() -> None:
             },
             "qbs": {"path": str(args.qbs_calibration.resolve()), "sha256": sha256(args.qbs_calibration)},
             "akv": {"path": str(args.akv_calibration.resolve()), "sha256": sha256(args.akv_calibration)},
+            "akv_prefill": [point["source"] for point in akv_prefill_points],
             "rvv": rvv_sources,
         },
         "qbs_points": qbs_points,
         "akv_points": akv_points,
+        "akv_prefill_points": akv_prefill_points,
         "rvv_points": rvv_points,
     }
     (output / "calibration_snapshot.json").write_text(json.dumps(calibration_snapshot, indent=2) + "\n")

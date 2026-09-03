@@ -32,6 +32,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  logic [VAddrWidth-1:0]        command_descriptor_address_i,
     input  logic [VAddrWidth-1:0]        command_tile_start_i,
     input  logic [VAddrWidth-1:0]        command_selector_i,
+    input  logic [2:0]                   command_column_count_i,
     input  axi_pkg::cache_t              command_cache_i,
     input  axi_pkg::prot_t               command_prot_i,
 
@@ -88,6 +89,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     output logic [31:0]                  v2_refill_count_o,
     output logic [31:0]                  v2_row_load_count_o,
     output logic [31:0]                  v2_column_load_count_o,
+    output logic [31:0]                  v2_column_panel_count_o,
+    output logic [31:0]                  v2_logical_column_count_o,
     output logic [31:0]                  v2_k_view_bank_cycles_o,
     output logic [31:0]                  v2_bank_conflict_cycles_o,
     output logic [31:0]                  v2_rejected_count_o,
@@ -177,11 +180,13 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [5:0] replay_token_q;
   logic replay_use_v2_q;
   logic replay_column_q;
+  logic [2:0] replay_column_count_q;
+  logic [1:0] replay_column_index_q;
   logic [3:0] replay_word_q;
   logic [255:0] replay_data;
   logic [255:0] v1_replay_data;
   logic [255:0] v2_row_data;
-  logic [1023:0] v2_column_data;
+  logic [3:0][1023:0] v2_column_data;
   logic v2_column_busy, v2_column_valid;
   logic v2_column_bank_cycle, v2_context_conflict;
   logic [NrLanes-1:0] replay_accepted_q;
@@ -323,6 +328,18 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     else if (command_selector_i[VAddrWidth-1:8] != '0 ||
              8'({1'b0, command_selector_i[6:0]}) >=
                  context_head_dim_q[7:0])
+      command_column_error = AKV_VALIDATION_SELECTOR;
+    else if (!(command_column_count_i inside {3'd1, 3'd4}))
+      command_column_error = AKV_VALIDATION_COMMAND;
+    else if (command_column_count_i == AkvV2ColumnPanelWidth &&
+             (command_vd_i[1:0] != '0 || command_vd_i > 5'd28))
+      command_column_error = AKV_VALIDATION_DESTINATION;
+    else if (command_column_count_i == AkvV2ColumnPanelWidth &&
+             command_selector_i[1:0] != '0)
+      command_column_error = AKV_VALIDATION_SELECTOR;
+    else if (unsigned'(command_selector_i[6:0]) +
+                 unsigned'(command_column_count_i) >
+             unsigned'(context_head_dim_q))
       command_column_error = AKV_VALIDATION_SELECTOR;
   end
   assign command_column_valid =
@@ -594,6 +611,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .column_stream_i     (command_selector_i[AkvV2ColumnSegmentBit]
                               ? AKV_STREAM_V : AKV_STREAM_K),
     .column_dimension_i  (command_selector_i[6:0]),
+    .column_count_i      (command_column_count_i),
     .column_token_count_i(context_tile_count_q),
     .column_busy_o       (v2_column_busy),
     .column_valid_o      (v2_column_valid),
@@ -604,7 +622,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   always_comb begin
     if (replay_column_q)
-      replay_data = v2_column_data[unsigned'(replay_word_q)*256 +: 256];
+      replay_data = v2_column_data[replay_column_index_q]
+          [unsigned'(replay_word_q)*256 +: 256];
     else if (replay_use_v2_q)
       replay_data = v2_row_data;
     else
@@ -617,7 +636,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                                !replay_accepted_q[lane];
       ldu_result_id_o[lane] = id_q;
       ldu_result_addr_o[lane] = vaddr_t'(
-          unsigned'(vd_q) * WordsPerRegister + unsigned'(replay_word_q));
+          unsigned'(vd_q) * WordsPerRegister +
+          unsigned'(replay_column_index_q) * WordsPerRegister +
+          unsigned'(replay_word_q));
       ldu_result_wdata_o[lane] = '0;
       ldu_result_be_o[lane] = '0;
     end
@@ -643,8 +664,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign replay_accepted_next = replay_accepted_q | replay_request_fire;
   assign replay_final_next = replay_final_seen_q |
       (ldu_result_final_gnt_i & (replay_accepted_q | replay_request_fire));
-  assign replay_word_count = replay_column_q ? 4'd4 :
-      4'(unsigned'(context_head_dim_q) >> 4);
+  assign replay_word_count = replay_column_q
+      ? 4'((unsigned'(context_tile_count_q) + 15) >> 4)
+      : 4'(unsigned'(context_head_dim_q) >> 4);
   always_comb begin
     replay_word_bytes = '0;
     for (int unsigned lane = 0; lane < NrLanes; lane++)
@@ -728,7 +750,10 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       AKV_ENGINE_REPLAY_WRITE: begin
         if (&replay_accepted_next && &replay_final_next)
           state_d = unsigned'(replay_word_q) + 1 == replay_word_count
-              ? AKV_ENGINE_SUCCESS : AKV_ENGINE_REPLAY_READ;
+              ? (unsigned'(replay_column_index_q) + 1 ==
+                     unsigned'(replay_column_count_q)
+                     ? AKV_ENGINE_SUCCESS : AKV_ENGINE_REPLAY_READ)
+              : AKV_ENGINE_REPLAY_READ;
       end
 
       AKV_ENGINE_SUCCESS: begin
@@ -778,6 +803,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       replay_token_q <= '0;
       replay_use_v2_q <= 1'b0;
       replay_column_q <= 1'b0;
+      replay_column_count_q <= 3'd1;
+      replay_column_index_q <= '0;
       replay_word_q <= '0;
       replay_accepted_q <= '0;
       replay_final_seen_q <= '0;
@@ -795,6 +822,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       v2_refill_count_o <= '0;
       v2_row_load_count_o <= '0;
       v2_column_load_count_o <= '0;
+      v2_column_panel_count_o <= '0;
+      v2_logical_column_count_o <= '0;
       v2_k_view_bank_cycles_o <= '0;
       v2_bank_conflict_cycles_o <= '0;
       v2_rejected_count_o <= '0;
@@ -818,6 +847,8 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         range_issue_index_q <= '0;
         range_completion_count_q <= '0;
         replay_word_q <= '0;
+        replay_column_index_q <= '0;
+        replay_column_count_q <= 3'd1;
         replay_accepted_q <= '0;
         replay_final_seen_q <= '0;
         fault_is_validation_q <= 1'b0;
@@ -836,6 +867,12 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             command_i == AKV_COMMAND_LOAD && context_v2_q;
         v2_column_load_count_o <=
             command_i == AKV_COMMAND_V2_COLUMN_LOAD;
+        v2_column_panel_count_o <=
+            command_i == AKV_COMMAND_V2_COLUMN_LOAD &&
+            command_column_count_i == AkvV2ColumnPanelWidth;
+        v2_logical_column_count_o <=
+            command_i == AKV_COMMAND_V2_COLUMN_LOAD
+                ? 32'(command_column_count_i) : '0;
         v2_k_view_bank_cycles_o <= '0;
         v2_bank_conflict_cycles_o <= '0;
         v2_rejected_count_o <= '0;
@@ -904,6 +941,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             replay_token_q <= '0;
             replay_use_v2_q <= 1'b0;
             replay_column_q <= 1'b1;
+            replay_column_count_q <= command_column_count_i;
             if (!command_column_valid) begin
               fault_is_validation_q <= 1'b1;
               validation_error_q <= command_column_error;
@@ -1026,8 +1064,13 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           replay_bytes_o <= replay_bytes_o + replay_word_bytes;
           replay_accepted_q <= '0;
           replay_final_seen_q <= '0;
-          if (unsigned'(replay_word_q) + 1 != replay_word_count)
+          if (unsigned'(replay_word_q) + 1 != replay_word_count) begin
             replay_word_q <= replay_word_q + 1'b1;
+          end else if (unsigned'(replay_column_index_q) + 1 !=
+                       unsigned'(replay_column_count_q)) begin
+            replay_word_q <= '0;
+            replay_column_index_q <= replay_column_index_q + 1'b1;
+          end
         end
       end
     end
@@ -1095,8 +1138,13 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       if (state_q inside {AKV_ENGINE_SUCCESS, AKV_ENGINE_FAULT})
         assert (!read_busy);
       if (active_command_q == AKV_COMMAND_V2_COLUMN_LOAD &&
-          state_q == AKV_ENGINE_REPLAY_WRITE)
+          state_q == AKV_ENGINE_REPLAY_WRITE) begin
         assert (v2_column_valid);
+        assert (replay_word_count inside {[4'd1:4'd4]});
+        assert (replay_word_q < replay_word_count);
+        assert (replay_column_count_q inside {3'd1, 3'd4});
+        assert (replay_column_index_q < replay_column_count_q);
+      end
     end
   end
 `endif

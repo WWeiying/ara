@@ -316,10 +316,13 @@ def host_model_summary(
 
 
 def verify_qemu_against_host(
-    spec: dict[str, object], host: dict[str, object], qemu: dict[str, object]
+    spec: dict[str, object],
+    host: dict[str, object],
+    qemu: dict[str, object],
+    prefill_census: bool = False,
 ) -> dict[str, object]:
     disposition = str(spec["akv_disposition"])
-    metrics = QEMU_MODULE.qemu_metrics(qemu, disposition)
+    metrics = QEMU_MODULE.qemu_metrics(qemu, disposition, prefill_census)
     decode = host["decode"]
     expectation = spec.get("decode_expectation")
     if expectation is None:
@@ -343,7 +346,15 @@ def verify_qemu_against_host(
     if int(metrics["akv_candidate_ops"]) != 2 * candidates:
         raise ValueError(f"{spec['id']} host/QEMU attention candidate mismatch")
     if disposition == "execute":
-        if (
+        if prefill_census:
+            if (
+                int(metrics["akv_executed_ops"]) != 2 * candidates
+                or int(metrics["akv_executed_decode"]) != candidates
+                or int(metrics["akv_executed_prefill"]) != candidates
+                or int(metrics["akv_fallback_ops"]) != 0
+            ):
+                raise ValueError(f"{spec['id']} QEMU Prefill/Decode AKV partition mismatch")
+        elif (
             int(metrics["akv_executed_ops"]) != candidates
             or int(metrics["akv_fallback_shape"]) != candidates
         ):
@@ -382,6 +393,11 @@ def main() -> int:
     parser.add_argument("--qbs-calibration", type=Path, default=DEFAULT_QBS_CALIBRATION)
     parser.add_argument("--rtl-closure", type=Path, default=DEFAULT_RTL_CLOSURE)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--prefill-census",
+        action="store_true",
+        help="require supported QEMU models to execute both Prefill and Decode",
+    )
     args = parser.parse_args()
 
     manifest = load_json(args.manifest)
@@ -448,6 +464,7 @@ def main() -> int:
     provenance = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "prefill_census": args.prefill_census,
         "verification_tools": archived_tools,
         "manifest": {"path": str(args.manifest.resolve()), "sha256": sha256(args.manifest)},
         "qbs_abi": {
@@ -497,7 +514,7 @@ def main() -> int:
         qemu = load_json(qemu_path)
         qemu_archive = qemu_evidence_root / f"{model_id}.json"
         shutil.copyfile(qemu_path, qemu_archive)
-        metrics = verify_qemu_against_host(spec, host, qemu)
+        metrics = verify_qemu_against_host(spec, host, qemu, args.prefill_census)
         provenance["qemu_summaries"][model_id] = {
             "source_path": str(qemu_path),
             "archived_path": str(qemu_archive.relative_to(output)),
@@ -536,13 +553,60 @@ def main() -> int:
             "qemu_qbs_emulated_commands": metrics["qbs_emulated_commands"],
             "qemu_qbs_top1_equal": metrics["qbs_top1_equal"],
             "qemu_qbs_token_equal": metrics["qbs_token_output_equal"],
+            "qemu_qbs_logits_records": metrics["qbs_logits_records"],
+            "qemu_qbs_logits_comparable_records": metrics[
+                "qbs_logits_comparable_records"
+            ],
             "qemu_qbs_logits_max_abs": metrics["qbs_logits_max_abs"],
+            "qemu_qbs_logits_max_rel": metrics["qbs_logits_max_rel"],
+            "qemu_qbs_logits_mean_abs": metrics["qbs_logits_mean_abs"],
+            "qemu_qbs_logits_mean_rmse": metrics["qbs_logits_mean_rmse"],
+            "qemu_qbs_logits_mean_kl": metrics["qbs_logits_mean_kl"],
+            "qemu_qbs_logits_mean_cosine": metrics["qbs_logits_mean_cosine"],
+            "qemu_qbs_logits_top5_overlap": metrics["qbs_logits_top5_overlap"],
+            "qemu_qbs_logits_max_kl": metrics["qbs_logits_max_kl"],
+            "qemu_qbs_logits_min_cosine": metrics["qbs_logits_min_cosine"],
+            "qemu_qbs_logits_min_top5_overlap": metrics[
+                "qbs_logits_min_top5_overlap"
+            ],
             "qemu_akv_executed_ops": metrics["akv_executed_ops"],
+            "qemu_akv_executed_decode": metrics["akv_executed_decode"],
+            "qemu_akv_executed_prefill": metrics["akv_executed_prefill"],
+            "qemu_akv_prefill_query_tokens": metrics["akv_prefill_query_tokens"],
+            "qemu_akv_prefill_attention_pairs": metrics["akv_prefill_attention_pairs"],
+            "qemu_akv_fallback_ops": metrics["akv_fallback_ops"],
             "qemu_akv_fallback_shape": metrics["akv_fallback_shape"],
+            "qemu_akv_fastpath_status": metrics["akv_fastpath_status"],
+            "qemu_akv_performance_evidence": metrics["akv_performance_evidence"],
             "qemu_akv_top1_equal": metrics["akv_top1_equal"],
             "qemu_akv_token_equal": metrics["akv_token_output_equal"],
+            "qemu_akv_logits_records": metrics["akv_logits_records"],
+            "qemu_akv_logits_comparable_records": metrics[
+                "akv_logits_comparable_records"
+            ],
             "qemu_akv_logits_max_abs": metrics["akv_logits_max_abs"],
+            "qemu_akv_logits_max_rel": metrics["akv_logits_max_rel"],
+            "qemu_akv_logits_mean_abs": metrics["akv_logits_mean_abs"],
+            "qemu_akv_logits_mean_rmse": metrics["akv_logits_mean_rmse"],
+            "qemu_akv_logits_mean_kl": metrics["akv_logits_mean_kl"],
+            "qemu_akv_logits_mean_cosine": metrics["akv_logits_mean_cosine"],
+            "qemu_akv_logits_top5_overlap": metrics["akv_logits_top5_overlap"],
+            "qemu_akv_logits_max_kl": metrics["akv_logits_max_kl"],
+            "qemu_akv_logits_min_cosine": metrics["akv_logits_min_cosine"],
+            "qemu_akv_logits_min_top5_overlap": metrics[
+                "akv_logits_min_top5_overlap"
+            ],
             "qemu_akv_logits_tolerance": metrics["akv_logits_tolerance"],
+            "qemu_model_numerical_contract": metrics["model_numerical_contract"],
+            "qemu_model_logits_max_kl_tolerance": metrics[
+                "model_logits_max_kl_tolerance"
+            ],
+            "qemu_model_logits_min_cosine_tolerance": metrics[
+                "model_logits_min_cosine_tolerance"
+            ],
+            "qemu_model_logits_min_top5_overlap_tolerance": metrics[
+                "model_logits_min_top5_overlap_tolerance"
+            ],
             "qemu_llama_revision": metrics["llama_revision"],
             "qemu_llama_binary_sha256": metrics["llama_binary_sha256"],
             "qemu_binary_sha256": metrics["qemu_binary_sha256"],
@@ -569,6 +633,19 @@ def main() -> int:
     qemu_akv_logits_tolerances = {
         float(row["qemu_akv_logits_tolerance"]) for row in model_rows
     }
+    qemu_model_contracts = {
+        str(row["qemu_model_numerical_contract"]) for row in model_rows
+    }
+    qemu_model_max_kl_tolerances = {
+        float(row["qemu_model_logits_max_kl_tolerance"]) for row in model_rows
+    }
+    qemu_model_min_cosine_tolerances = {
+        float(row["qemu_model_logits_min_cosine_tolerance"]) for row in model_rows
+    }
+    qemu_model_min_top5_tolerances = {
+        float(row["qemu_model_logits_min_top5_overlap_tolerance"])
+        for row in model_rows
+    }
     if "" in qemu_llama_binaries or len(qemu_llama_binaries) != 1:
         raise ValueError("QEMU model runs do not share one recorded llama binary")
     if "" in qemu_binaries or len(qemu_binaries) != 1:
@@ -583,6 +660,12 @@ def main() -> int:
         raise ValueError("QEMU model runs do not share one QBS architecture version")
     if len(qemu_akv_logits_tolerances) != 1:
         raise ValueError("QEMU model runs do not share one AKV logits tolerance")
+    if qemu_model_contracts != {"decision-preserving-v1"}:
+        raise ValueError("QEMU model runs do not share the expected numerical contract")
+    if len(qemu_model_max_kl_tolerances) != 1 or \
+            len(qemu_model_min_cosine_tolerances) != 1 or \
+            len(qemu_model_min_top5_tolerances) != 1:
+        raise ValueError("QEMU model runs do not share model-quality thresholds")
 
     aggregate = {
         "model_count": len(model_rows),
@@ -610,6 +693,19 @@ def main() -> int:
         "akv_shape_fallback_models": sum(
             row["akv_disposition"] == "fallback_shape" for row in model_rows
         ),
+        "akv_executed_decode": sum(
+            int(row["qemu_akv_executed_decode"]) for row in model_rows
+        ),
+        "akv_executed_prefill": sum(
+            int(row["qemu_akv_executed_prefill"]) for row in model_rows
+        ),
+        "akv_prefill_query_tokens": sum(
+            int(row["qemu_akv_prefill_query_tokens"]) for row in model_rows
+        ),
+        "akv_prefill_attention_pairs": sum(
+            int(row["qemu_akv_prefill_attention_pairs"]) for row in model_rows
+        ),
+        "prefill_census": args.prefill_census,
         "qemu_llama_binary_sha256": next(iter(qemu_llama_binaries)),
         "qemu_binary_sha256": next(iter(qemu_binaries)),
         "qemu_cpu": next(iter(qemu_cpus)),
@@ -617,6 +713,14 @@ def main() -> int:
         "qbs_abi_sha256": next(iter(qemu_qbs_abi_hashes)),
         "qbs_architecture_version": next(iter(qemu_qbs_architecture_versions)),
         "akv_logits_tolerance": next(iter(qemu_akv_logits_tolerances)),
+        "model_numerical_contract": next(iter(qemu_model_contracts)),
+        "model_logits_max_kl_tolerance": next(iter(qemu_model_max_kl_tolerances)),
+        "model_logits_min_cosine_tolerance": next(
+            iter(qemu_model_min_cosine_tolerances)
+        ),
+        "model_logits_min_top5_overlap_tolerance": next(
+            iter(qemu_model_min_top5_tolerances)
+        ),
         "qemu_llama_revisions": sorted({
             str(row["qemu_llama_revision"]) for row in model_rows
         }),
@@ -668,6 +772,10 @@ def main() -> int:
         f"- QEMU matrix execution: {aggregate['qbs_gemv_calls']} GEMV calls, "
         f"{aggregate['qbs_gemm_calls']} GEMM calls, and "
         f"{aggregate['qbs_dot_elements']} checked dot elements.",
+        f"- AKV phase execution: {aggregate['akv_executed_decode']} Decode calls and "
+        f"{aggregate['akv_executed_prefill']} Prefill calls; Prefill accounts for "
+        f"{aggregate['akv_prefill_query_tokens']} query tokens and "
+        f"{aggregate['akv_prefill_attention_pairs']} causal attention pairs.",
         f"- All QEMU runs use one guest llama binary (`{aggregate['qemu_llama_binary_sha256'][:12]}...`), "
         f"one QEMU binary (`{aggregate['qemu_binary_sha256'][:12]}...`), and one CPU contract.",
         f"- Host and QEMU use QBS ABI v{aggregate['qbs_architecture_version']} "
@@ -700,7 +808,7 @@ def main() -> int:
         f"| Representative ranking | {aggregate['qbs_representative_shape_count']} shapes across {aggregate['qbs_representative_architecture_count']} architectures; {aggregate['qbs_representative_projected_coverage']:.3%} pooled projected work | Which real shapes dominate; projection is not measured full-model timing |",
         "",
         "## Model Results", "",
-        "| Model | Topology | GGML arch. | QBS op | Profiles | Decode nodes | Attention | AKV | AKV E/F | GEMV/GEMM | Native cmds | Numerical |",
+        "| Model | Topology | GGML arch. | QBS op | Profiles | Decode nodes | Attention | AKV | AKV D/P/F | GEMV/GEMM | Native cmds | Numerical |",
         "|---|---|---|---|---|---:|---|---|---:|---:|---:|---|",
     ])
     for row in model_rows:
@@ -708,10 +816,14 @@ def main() -> int:
             f"| {row['name']} | {row['topology']} | {row['architecture']} | "
             f"{row['qbs_operations']} | "
             f"{row['qbs_profiles']} | {row['decode_qbs_nodes']} | {row['attention_shape']} | "
-            f"{row['akv_disposition']} | {row['qemu_akv_executed_ops']}/"
-            f"{row['qemu_akv_fallback_shape']} | {row['qemu_qbs_gemv_calls']}/"
+            f"{row['akv_disposition']} | {row['qemu_akv_executed_decode']}/"
+            f"{row['qemu_akv_executed_prefill']}/{row['qemu_akv_fallback_ops']} | "
+            f"{row['qemu_qbs_gemv_calls']}/"
             f"{row['qemu_qbs_gemm_calls']} | {row['qemu_qbs_native_commands']} | "
-            f"top1/token PASS; max abs {row['qemu_qbs_logits_max_abs']} |"
+            f"top1/token PASS; AKV max/RMSE/KL/cos/top5 "
+            f"{row['qemu_akv_logits_max_abs']}/{row['qemu_akv_logits_mean_rmse']}/"
+            f"{row['qemu_akv_logits_mean_kl']}/{row['qemu_akv_logits_mean_cosine']}/"
+            f"{row['qemu_akv_logits_top5_overlap']} |"
         )
     lines.extend([
         "", "## Context-Length Checks", "",
@@ -732,7 +844,11 @@ def main() -> int:
     lines.extend([
         "", "## Interpretation and Boundary", "",
         "- QBS closure requires every eligible quantized tensor to select native commands with zero emulated commands.",
-        "- `execute` means Decode attention uses AKV; its Prefill attention intentionally follows the RVV fallback.",
+        (
+            "- `execute` means both Decode and eligible Prefill attention use AKV with zero fallback."
+            if args.prefill_census else
+            "- `execute` means Decode attention uses AKV; its Prefill attention intentionally follows the RVV fallback."
+        ),
         "- `fallback_shape` is a positive compatibility result: all attention candidates remain correct on RVV.",
         "- Equal greedy tokens/top-1 establish the fixed-run decision result; nonzero QBS logit deltas reflect the documented accumulation-order difference and are not bitwise equivalence.",
         "- QEMU establishes functional and numerical behavior, not RTL cycle performance.",

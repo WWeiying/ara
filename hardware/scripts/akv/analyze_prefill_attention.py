@@ -18,6 +18,9 @@ AKV_MAX_Q_ROWS = 8
 AKV_HEAD_DIM_128 = 128
 AKV_V2_TILE_TOKENS = 64
 AKV_PREFILL_QUERY_BLOCK_TOKENS = 64
+AKV_PREFILL_COMPUTE_TILE_TOKENS = 2
+AKV_V2_COLUMN_PANEL_WIDTH = 4
+AKV_V2_TOKEN_BANKS = 8
 AKV_ATTENTION_PLAN_BYTES = 192
 RVV_BASELINE_STRATEGIES = frozenset({
     "rvv_qhead_serial",
@@ -25,10 +28,21 @@ RVV_BASELINE_STRATEGIES = frozenset({
     "rvv_gqa_q4",
     "rvv_gqa_q64",
 })
+RETAINED_AKV_STRATEGIES = frozenset({
+    "akv_gqa_serial",
+    "akv_qblock64_kv_outer",
+    "akv_qblock64_q2_kv_outer",
+    "akv_qblock64_q2_panel4_kv_outer",
+})
+VSLICE64_STRATEGY = "akv_qblock64_q2_panel4_vslice64_kv_outer"
+VSLICE64_RETENTION_STATUS = "REJECTED_M15_RTL_REGRESSION"
 OPERATOR_RESULT_RE = re.compile(
     r"LLAMA_OPERATOR\s+(\S+)\s+(PASS|FAIL)\s+cycles=(\d+)\s+mismatches=(\d+)"
 )
 AKV_PERF_RE = re.compile(r"^\[AKV_PERF\]\s+(.*)$", re.MULTILINE)
+AKV_PERF_SUMMARY_RE = re.compile(
+    r"^\[AKV_PERF_SUMMARY\]\s+(.*)$", re.MULTILINE
+)
 AKV_FIELD_RE = re.compile(r"([a-zA-Z0-9_]+)=(\d+)")
 LLM_PERF_REPORT_RE = re.compile(r"^\[LLM_PERF\] wrote (\S+)$", re.MULTILINE)
 LLM_PERF_ROW_RE = re.compile(r"^\[LLM_PERF\]\s+(.*)$", re.MULTILINE)
@@ -43,6 +57,11 @@ AKV_SUM_FIELDS = (
     "v2_refill",
     "v2_row_load",
     "v2_column_load",
+    "v2_column_panel",
+    "v2_logical_column",
+    "v2_k_view_bank_cycles",
+    "v2_bank_conflict_cycles",
+    "v2_rejected",
     "q_external_bytes",
     "kv_external_bytes",
     "replay_bytes",
@@ -56,6 +75,13 @@ AKV_SUM_FIELDS = (
     "read_backpressure_cycles",
     "read_outstanding_occ_sum",
     "read_outstanding_full_cycles",
+)
+AKV_SUMMARY_STATUS_FIELDS = (
+    "records",
+    "success_records",
+    "fault_records",
+    "validation_fault_records",
+    "read_outstanding_max",
 )
 
 
@@ -152,7 +178,30 @@ def parse_measurement(value: str) -> tuple[str, Path]:
 
 
 def parse_akv_perf(log_text: str) -> dict:
-    records = [dict(AKV_FIELD_RE.findall(line)) for line in AKV_PERF_RE.findall(log_text)]
+    detail_lines = AKV_PERF_RE.findall(log_text)
+    summary_lines = AKV_PERF_SUMMARY_RE.findall(log_text)
+    if detail_lines and summary_lines:
+        raise ValueError("AKV log mixes detailed and summary performance records")
+    if len(summary_lines) > 1:
+        raise ValueError("AKV log contains multiple performance summaries")
+    if summary_lines:
+        record = dict(AKV_FIELD_RE.findall(summary_lines[0]))
+        required = set(AKV_SUM_FIELDS) | set(AKV_SUMMARY_STATUS_FIELDS)
+        missing = sorted(required - record.keys())
+        if missing:
+            raise ValueError(
+                "AKV performance summary is missing fields: " + ", ".join(missing)
+            )
+        aggregate = {field: int(record[field]) for field in required}
+        if (
+            aggregate["success_records"] != aggregate["records"]
+            or aggregate["fault_records"] != 0
+            or aggregate["validation_fault_records"] != 0
+        ):
+            raise ValueError("AKV performance summary contains failed commands")
+        return aggregate
+
+    records = [dict(AKV_FIELD_RE.findall(line)) for line in detail_lines]
     if not records:
         return {"records": 0}
     for index, record in enumerate(records):
@@ -163,6 +212,9 @@ def parse_akv_perf(log_text: str) -> dict:
         for field in AKV_SUM_FIELDS:
             aggregate[field] += int(record.get(field, 0))
     aggregate["records"] = len(records)
+    aggregate["success_records"] = len(records)
+    aggregate["fault_records"] = 0
+    aggregate["validation_fault_records"] = 0
     aggregate["read_outstanding_max"] = max(
         int(record.get("read_outstanding_max", 0)) for record in records
     )
@@ -235,9 +287,17 @@ def load_llm_perf(log_path: Path, log_text: str) -> dict:
 
 
 def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> dict:
-    if strategy != "akv_qblock64_kv_outer":
+    exact_key = {
+        "akv_qblock64_kv_outer": "kv_outer_exact",
+        "akv_qblock64_q2_kv_outer": "kv_outer_q2_exact",
+        "akv_qblock64_q2_panel4_kv_outer": "kv_outer_q2_panel4_exact",
+        "akv_qblock64_q2_panel4_vslice64_kv_outer": (
+            "kv_outer_q2_panel4_vslice64_exact"
+        ),
+    }.get(strategy)
+    if exact_key is None:
         return {}
-    exact = summary["kv_outer_exact"]
+    exact = summary[exact_key]
     expected = {
         "v2_full": exact["v2_full"],
         "v2_refill": exact["v2_refill"],
@@ -249,6 +309,17 @@ def validate_kv_outer_counters(summary: dict, strategy: str, counters: dict) -> 
         "replay_bytes": exact["replay_bytes"],
         "records": exact["command_records"],
     }
+    if exact_key in {
+        "kv_outer_q2_panel4_exact",
+        "kv_outer_q2_panel4_vslice64_exact",
+    }:
+        expected.update({
+            "v2_column_panel": exact["v2_column_panel"],
+            "v2_logical_column": exact["v2_logical_column"],
+            "v2_k_view_bank_cycles": exact["v2_k_view_bank_cycles"],
+            "v2_bank_conflict_cycles": 0,
+            "v2_rejected": 0,
+        })
     mismatches = {
         field: {"expected": value, "observed": counters.get(field)}
         for field, value in expected.items()
@@ -327,9 +398,16 @@ def attach_measurements(
             entry["speedup_vs_strongest_rvv"] = (
                 strongest_rvv["cycles"] / entry["cycles"]
             )
-    candidate = by_strategy.get("akv_qblock64_kv_outer")
-    if candidate is None:
-        candidate = by_strategy.get("akv_gqa_serial")
+    measured_akv_candidates = [
+        entry
+        for entry in measurements
+        if entry["strategy"] in RETAINED_AKV_STRATEGIES
+    ]
+    candidate = (
+        min(measured_akv_candidates, key=lambda entry: entry["cycles"])
+        if measured_akv_candidates
+        else None
+    )
     if strongest_rvv is not None and candidate is not None:
         measured_speedup = strongest_rvv["cycles"] / candidate["cycles"]
         minimum_speedup = summary["decision_gate"]["minimum_kernel_speedup"]
@@ -339,6 +417,8 @@ def attach_measurements(
                 "measurement_status": "PASS",
                 "correctness_gate_pass": True,
                 "measured_kernel_speedup": measured_speedup,
+                "retained_akv_strategy": candidate["strategy"],
+                "retained_akv_cycles": candidate["cycles"],
                 "strongest_rvv_strategy": strongest_rvv["strategy"],
                 "strongest_rvv_cycles": strongest_rvv["cycles"],
                 "kernel_speedup_gate_pass": kernel_gate_pass,
@@ -354,6 +434,21 @@ def attach_measurements(
                 ),
             }
         )
+    panel4 = by_strategy.get("akv_qblock64_q2_panel4_kv_outer")
+    vslice64 = by_strategy.get(VSLICE64_STRATEGY)
+    if panel4 is not None and vslice64 is not None:
+        cycle_change = vslice64["cycles"] / panel4["cycles"] - 1.0
+        summary["vslice64_experiment"] = {
+            "status": "PASS",
+            "baseline_strategy": panel4["strategy"],
+            "baseline_cycles": panel4["cycles"],
+            "candidate_strategy": vslice64["strategy"],
+            "candidate_cycles": vslice64["cycles"],
+            "cycle_change_vs_panel4": cycle_change,
+            "baseline_replay_bytes": panel4.get("akv_replay_bytes"),
+            "candidate_replay_bytes": vslice64.get("akv_replay_bytes"),
+            "retention_status": VSLICE64_RETENTION_STATUS,
+        }
     summary["measurements"] = measurements
 
 
@@ -479,17 +574,19 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     active_local_workspace_bytes = (
         active_block_tokens * query_group_f16_bytes
         + AKV_ATTENTION_PLAN_BYTES
-        + gqa_rows * AKV_V2_TILE_TOKENS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS
+        * gqa_rows * AKV_V2_TILE_TOKENS * 4
         + active_block_tokens * gqa_rows * 2 * 4
-        + gqa_rows * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS * gqa_rows * 4
     )
     allocated_workspace_bytes = (
         AKV_MAX_Q_ROWS * AKV_PREFILL_QUERY_BLOCK_TOKENS
         * AKV_HEAD_DIM_128 * 2
         + AKV_ATTENTION_PLAN_BYTES
-        + AKV_MAX_Q_ROWS * AKV_V2_TILE_TOKENS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS
+        * AKV_MAX_Q_ROWS * AKV_V2_TILE_TOKENS * 4
         + AKV_PREFILL_QUERY_BLOCK_TOKENS * AKV_MAX_Q_ROWS * 2 * 4
-        + AKV_MAX_Q_ROWS * 4
+        + AKV_PREFILL_COMPUTE_TILE_TOKENS * AKV_MAX_Q_ROWS * 4
     )
     allocated_workspace_bytes = (
         (allocated_workspace_bytes + 63) // 64
@@ -514,6 +611,133 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         kv_outer_full
         + kv_outer_refill
         + query_tile_visits * head_dim
+        + prefix_sum * kv_heads
+        + kv_outer_release
+    )
+
+    q2_group_visits_per_kv_head = 0
+    q2_pair_visits_per_kv_head = 0
+    q1_fallback_visits_per_kv_head = 0
+    q2_column_replay_tokens_per_kv_head = 0
+    q2_panel_column_loads_per_kv_head = 0
+    q2_panel_column_commands_per_kv_head = 0
+    q2_panel_k_view_bank_cycles_per_kv_head = 0
+    q2_shared_v_rows_per_kv_head = 0
+    q2_single_v_rows_per_kv_head = 0
+    for block in query_blocks:
+        block_start = block["start"]
+        block_count = block["count"]
+        for tile_start in range(0, block["maximum_prefix"], AKV_V2_TILE_TOKENS):
+            resident_tokens = min(
+                AKV_V2_TILE_TOKENS, block["maximum_prefix"] - tile_start
+            )
+            resident_bank_groups = math.ceil(
+                resident_tokens / AKV_V2_TOKEN_BANKS
+            )
+            for local_token in range(
+                0, block_count, AKV_PREFILL_COMPUTE_TILE_TOKENS
+            ):
+                compute_tokens = min(
+                    AKV_PREFILL_COMPUTE_TILE_TOKENS,
+                    block_count - local_token,
+                )
+                visible_tokens = []
+                for compute_slot in range(compute_tokens):
+                    token = block_start + local_token + compute_slot
+                    active_prefix = prefixes[token]
+                    visible = max(0, active_prefix - tile_start)
+                    visible_tokens.append(min(visible, resident_tokens))
+                active_slots = sum(visible != 0 for visible in visible_tokens)
+                if active_slots == 0:
+                    continue
+
+                q2_group_visits_per_kv_head += 1
+                q2_column_replay_tokens_per_kv_head += resident_tokens
+                if compute_tokens == 2 and active_slots == 2:
+                    q2_pair_visits_per_kv_head += 1
+                    shared_v_rows = min(visible_tokens)
+                    q2_shared_v_rows_per_kv_head += shared_v_rows
+                    q2_single_v_rows_per_kv_head += (
+                        sum(visible_tokens) - 2 * shared_v_rows
+                    )
+                    panel_commands = math.ceil(
+                        head_dim / AKV_V2_COLUMN_PANEL_WIDTH
+                    )
+                    q2_panel_column_loads_per_kv_head += panel_commands
+                    q2_panel_column_commands_per_kv_head += panel_commands
+                    q2_panel_k_view_bank_cycles_per_kv_head += (
+                        panel_commands * resident_bank_groups
+                    )
+                else:
+                    # The implementation executes each active slot through the
+                    # ordinary Q1 column path.  A causal adjacent pair can have
+                    # at most one active slot here.
+                    q1_fallback_visits_per_kv_head += active_slots
+                    q2_single_v_rows_per_kv_head += sum(visible_tokens)
+                    q2_panel_column_loads_per_kv_head += (
+                        active_slots * head_dim
+                    )
+                    q2_panel_k_view_bank_cycles_per_kv_head += (
+                        active_slots * head_dim * resident_bank_groups
+                    )
+    q2_group_visits = q2_group_visits_per_kv_head * kv_heads
+    q2_pair_visits = q2_pair_visits_per_kv_head * kv_heads
+    q1_fallback_visits = q1_fallback_visits_per_kv_head * kv_heads
+    q2_column_replay_bytes = (
+        q2_column_replay_tokens_per_kv_head * kv_heads * head_dim * 2
+    )
+    q2_replay_bytes = q2_column_replay_bytes + row_replay_bytes
+    q2_command_records = (
+        kv_outer_full
+        + kv_outer_refill
+        + q2_group_visits * head_dim
+        + prefix_sum * kv_heads
+        + kv_outer_release
+    )
+    q2_panel_column_loads = q2_panel_column_loads_per_kv_head * kv_heads
+    q2_panel_column_commands = (
+        q2_panel_column_commands_per_kv_head * kv_heads
+    )
+    q2_panel_k_view_bank_cycles = (
+        q2_panel_k_view_bank_cycles_per_kv_head * kv_heads
+    )
+    q2_shared_v_rows = q2_shared_v_rows_per_kv_head * kv_heads
+    q2_single_v_rows = q2_single_v_rows_per_kv_head * kv_heads
+    q2_vslice_row_commands = 2 * q2_shared_v_rows + q2_single_v_rows
+    if q2_vslice_row_commands != prefix_sum * kv_heads:
+        raise AssertionError("Q2 V-row classification does not conserve row commands")
+    q2_vslice_row_replay_bytes = (
+        q2_shared_v_rows + q2_single_v_rows
+    ) * head_dim * 2
+    q2_vslice_supported = head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+    q2_vslice_busy_model = None
+    if q2_vslice_supported:
+        full_row_words = head_dim // 16
+        segment_row_words = (head_dim // 2) // 16
+        full_row_busy_cycles = 1 + 3 * full_row_words
+        segment_row_busy_cycles = 1 + 3 * segment_row_words
+        current_row_busy_cycles = (
+            2 * q2_shared_v_rows + q2_single_v_rows
+        ) * full_row_busy_cycles
+        sliced_row_busy_cycles = (
+            q2_shared_v_rows * 2 * segment_row_busy_cycles
+            + q2_single_v_rows * full_row_busy_cycles
+        )
+        q2_vslice_busy_model = {
+            "full_row_words": full_row_words,
+            "segment_row_words": segment_row_words,
+            "full_row_busy_cycles": full_row_busy_cycles,
+            "segment_row_busy_cycles": segment_row_busy_cycles,
+            "current_row_busy_cycles": current_row_busy_cycles,
+            "sliced_row_busy_cycles": sliced_row_busy_cycles,
+            "saved_row_busy_cycles": (
+                current_row_busy_cycles - sliced_row_busy_cycles
+            ),
+        }
+    q2_panel_command_records = (
+        kv_outer_full
+        + kv_outer_refill
+        + q2_panel_column_loads
         + prefix_sum * kv_heads
         + kv_outer_release
     )
@@ -577,6 +801,41 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
             "query_mode": "fixed_software_query_block",
         },
+        {
+            "name": "akv_qblock64_q2_kv_outer",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "implemented_fast_path": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_mode": "fixed_query_block_two_query_k_column_reuse",
+        },
+        {
+            "name": "akv_qblock64_q2_panel4_kv_outer",
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "implemented_fast_path": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_mode": "fixed_query_block_q2_four_k_columns_per_command",
+        },
+        {
+            "name": VSLICE64_STRATEGY,
+            "query_tile": AKV_PREFILL_QUERY_BLOCK_TOKENS,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "required_q_rows_if_concurrent": gqa_rows,
+            "fits_current_q_rows": gqa_rows <= AKV_MAX_Q_ROWS,
+            "implemented_fast_path": False,
+            "supported_shape": q2_vslice_supported,
+            "retention_status": VSLICE64_RETENTION_STATUS,
+            "query_mode": (
+                "fixed_query_block_q2_panel4_with_shared_D64_V_slices"
+            ),
+        },
     ]
     for query_tile in query_tiles:
         rows = query_tile * gqa_rows
@@ -604,8 +863,20 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
     for strategy in strategies:
         query_tile = strategy["query_tile"]
         rows = strategy["required_q_rows_if_concurrent"]
+        score_slots = 1
+        if strategy["name"] in {
+            "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
+            "akv_qblock64_q2_panel4_vslice64_kv_outer",
+        }:
+            score_slots = AKV_PREFILL_COMPUTE_TILE_TOKENS
         state_rows_for_strategy = rows
-        if strategy["name"] == "akv_qblock64_kv_outer":
+        if strategy["name"] in {
+            "akv_qblock64_kv_outer",
+            "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
+            "akv_qblock64_q2_panel4_vslice64_kv_outer",
+        }:
             state_rows_for_strategy = active_block_tokens * gqa_rows
         strategy["reduction_vs_rvv"] = (
             rvv_qhead_serial_kv_bytes / strategy["external_kv_bytes"]
@@ -619,9 +890,11 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         strategy["concurrent_numerator_state_f32_bytes"] = (
             state_rows_for_strategy * head_dim * 4
         )
-        strategy["score_f32_bytes"] = rows * AKV_V2_TILE_TOKENS * 4
+        strategy["score_f32_bytes"] = (
+            score_slots * rows * AKV_V2_TILE_TOKENS * 4
+        )
         strategy["concurrent_softmax_working_f32_bytes"] = (
-            state_rows_for_strategy * 2 * 4 + rows * 4
+            state_rows_for_strategy * 2 * 4 + score_slots * rows * 4
         )
         strategy["conceptual_concurrent_state_bytes"] = (
             strategy["query_context_f16_bytes"]
@@ -635,10 +908,12 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
         ) or strategy["name"] in {
             "unique_kv_floor",
             "akv_qblock64_kv_outer",
+            "akv_qblock64_q2_kv_outer",
+            "akv_qblock64_q2_panel4_kv_outer",
         }
 
     return {
-        "schema_version": 3,
+        "schema_version": 6,
         "status": "PASS",
         "scope": "real-capture static Prefill Attention work/traffic/state analysis",
         "case": str(case_path),
@@ -720,8 +995,110 @@ def analyze(case_path: Path, query_tiles: list[int]) -> dict:
             "active_local_workspace_bytes": active_local_workspace_bytes,
             "allocated_workspace_bytes": allocated_workspace_bytes,
             "workspace_semantics": (
-                "fixed 64-Query cache plus plan, score, and online-softmax "
-                "state; output holds only the current block's F32 numerator"
+                "fixed 64-Query cache plus plan, two score/scale scratch slots, "
+                "and online-softmax state; output holds only the current "
+                "block's F32 numerator"
+            ),
+        },
+        "kv_outer_q2_exact": {
+            "compute_tile_tokens": AKV_PREFILL_COMPUTE_TILE_TOKENS,
+            "supported_shape": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
+            "query_group_visits": q2_group_visits,
+            "q2_pair_visits_per_kv_head": q2_pair_visits_per_kv_head,
+            "q2_pair_visits": q2_pair_visits,
+            "q1_fallback_visits_per_kv_head": q1_fallback_visits_per_kv_head,
+            "q1_fallback_visits": q1_fallback_visits,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "v2_column_load": q2_group_visits * head_dim,
+            "v2_row_load": prefix_sum * kv_heads,
+            "v2_release": kv_outer_release,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "column_replay_bytes": q2_column_replay_bytes,
+            "row_replay_bytes": row_replay_bytes,
+            "replay_bytes": q2_replay_bytes,
+            "command_records": q2_command_records,
+            "schedule_semantics": (
+                "fixed adjacent Query pairs share each K-column replay; odd "
+                "tails and a pair with only one visible Query execute as Q1; "
+                "V-row replay remains per Query token"
+            ),
+        },
+        "kv_outer_q2_panel4_exact": {
+            "compute_tile_tokens": AKV_PREFILL_COMPUTE_TILE_TOKENS,
+            "column_panel_width": AKV_V2_COLUMN_PANEL_WIDTH,
+            "supported_shape": (
+                head_dim == AKV_HEAD_DIM_128 and gqa_rows == 6
+            ),
+            "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
+            "query_group_visits": q2_group_visits,
+            "q2_pair_visits_per_kv_head": q2_pair_visits_per_kv_head,
+            "q2_pair_visits": q2_pair_visits,
+            "q1_fallback_visits_per_kv_head": q1_fallback_visits_per_kv_head,
+            "q1_fallback_visits": q1_fallback_visits,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "v2_column_load": q2_panel_column_loads,
+            "v2_column_panel": q2_panel_column_commands,
+            "v2_logical_column": q2_group_visits * head_dim,
+            "v2_k_view_bank_cycles": q2_panel_k_view_bank_cycles,
+            "v2_row_load": prefix_sum * kv_heads,
+            "v2_release": kv_outer_release,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "column_replay_bytes": q2_column_replay_bytes,
+            "row_replay_bytes": row_replay_bytes,
+            "replay_bytes": q2_replay_bytes,
+            "command_records": q2_panel_command_records,
+            "schedule_semantics": (
+                "Q2 Query sharing is unchanged; each accepted panel command "
+                "replays four adjacent logical K columns into one aligned "
+                "LMUL=4 destination group"
+            ),
+        },
+        "kv_outer_q2_panel4_vslice64_exact": {
+            "implemented_fast_path": False,
+            "supported_shape": q2_vslice_supported,
+            "retention_status": VSLICE64_RETENTION_STATUS,
+            "d_segment_elements": 64,
+            "compute_tile_tokens": AKV_PREFILL_COMPUTE_TILE_TOKENS,
+            "column_panel_width": AKV_V2_COLUMN_PANEL_WIDTH,
+            "query_group_visits_per_kv_head": q2_group_visits_per_kv_head,
+            "query_group_visits": q2_group_visits,
+            "q2_pair_visits_per_kv_head": q2_pair_visits_per_kv_head,
+            "q2_pair_visits": q2_pair_visits,
+            "q1_fallback_visits_per_kv_head": q1_fallback_visits_per_kv_head,
+            "q1_fallback_visits": q1_fallback_visits,
+            "q2_shared_v_rows_per_kv_head": q2_shared_v_rows_per_kv_head,
+            "q2_shared_v_rows": q2_shared_v_rows,
+            "single_query_v_rows_per_kv_head": q2_single_v_rows_per_kv_head,
+            "single_query_v_rows": q2_single_v_rows,
+            "v2_full": kv_outer_full,
+            "v2_refill": kv_outer_refill,
+            "v2_column_load": q2_panel_column_loads,
+            "v2_column_panel": q2_panel_column_commands,
+            "v2_logical_column": q2_group_visits * head_dim,
+            "v2_k_view_bank_cycles": q2_panel_k_view_bank_cycles,
+            "v2_row_load": q2_vslice_row_commands,
+            "v2_release": kv_outer_release,
+            "resident_query_fill_bytes": resident_query_fill_bytes,
+            "external_kv_bytes": qblock_external_kv_bytes,
+            "column_replay_bytes": q2_column_replay_bytes,
+            "row_replay_bytes": q2_vslice_row_replay_bytes,
+            "replay_bytes": (
+                q2_column_replay_bytes + q2_vslice_row_replay_bytes
+            ),
+            "command_records": q2_panel_command_records,
+            "row_busy_cycle_model": q2_vslice_busy_model,
+            "schedule_semantics": (
+                "each adjacent Query pair retains twelve F32 D64 numerator "
+                "slices; two D64 row replays expose one resident D128 V row "
+                "once to both Queries, while causal and odd tails retain the "
+                "existing full-row path"
             ),
         },
         "strategies": strategies,
@@ -785,6 +1162,11 @@ def write_outputs(summary: dict, output_dir: Path) -> None:
             "akv_v2_refill",
             "akv_v2_row_load",
             "akv_v2_column_load",
+            "akv_v2_column_panel",
+            "akv_v2_logical_column",
+            "akv_v2_k_view_bank_cycles",
+            "akv_v2_bank_conflict_cycles",
+            "akv_v2_rejected",
             "akv_release",
             "akv_q_external_bytes",
             "akv_kv_external_bytes",

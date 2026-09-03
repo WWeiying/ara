@@ -426,6 +426,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   akv_command_e akv_command;
   akv_command_e akv_command_q;
   logic [15:0] akv_command_head_dim;
+  logic [2:0] akv_command_column_count;
   vid_t akv_command_id_q;
 
   logic akv_success_valid, akv_fault_valid;
@@ -463,6 +464,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [31:0] akv_load_count, akv_release_count;
   logic [31:0] akv_v2_full_count, akv_v2_refill_count;
   logic [31:0] akv_v2_row_load_count, akv_v2_column_load_count;
+  logic [31:0] akv_v2_column_panel_count, akv_v2_logical_column_count;
   logic [31:0] akv_v2_k_view_bank_cycles;
   logic [31:0] akv_v2_bank_conflict_cycles, akv_v2_rejected_count;
   logic [31:0] akv_q_external_bytes, akv_kv_external_bytes;
@@ -572,6 +574,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       vlen_t'(AkvHeadDim128): akv_command_head_dim = 16'(AkvHeadDim128);
       default:                akv_command_head_dim = '0;
     endcase
+    akv_command_column_count = pe_req_i.akv_column &&
+        pe_req_i.emul == LMUL_4 ? 3'd4 : 3'd1;
   end
 
   assign akv_command_valid = AkvEnable && pe_req_valid_i &&
@@ -961,6 +965,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .command_descriptor_address_i  (pe_req_i.scalar_op),
     .command_tile_start_i          (pe_req_i.stride),
     .command_selector_i            (pe_req_i.scalar_op),
+    .command_column_count_i        (akv_command_column_count),
     .command_cache_i               (axi_pkg::CACHE_MODIFIABLE),
     .command_prot_i                ('0),
     .command_early_ack_o           (akv_command_early_ack),
@@ -1009,6 +1014,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .v2_refill_count_o             (akv_v2_refill_count),
     .v2_row_load_count_o           (akv_v2_row_load_count),
     .v2_column_load_count_o        (akv_v2_column_load_count),
+    .v2_column_panel_count_o       (akv_v2_column_panel_count),
+    .v2_logical_column_count_o     (akv_v2_logical_column_count),
     .v2_k_view_bank_cycles_o       (akv_v2_k_view_bank_cycles),
     .v2_bank_conflict_cycles_o     (akv_v2_bank_conflict_cycles),
     .v2_rejected_count_o           (akv_v2_rejected_count),
@@ -1194,10 +1201,53 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     longint unsigned akv_command_sequence_q;
     pe_req_t akv_consumed_request_q;
 
+    typedef struct {
+      longint unsigned records;
+      longint unsigned success_records;
+      longint unsigned fault_records;
+      longint unsigned validation_fault_records;
+      longint unsigned busy_cycles;
+      longint unsigned full_count;
+      longint unsigned refill_count;
+      longint unsigned load_count;
+      longint unsigned release_count;
+      longint unsigned v2_full_count;
+      longint unsigned v2_refill_count;
+      longint unsigned v2_row_load_count;
+      longint unsigned v2_column_load_count;
+      longint unsigned v2_column_panel_count;
+      longint unsigned v2_logical_column_count;
+      longint unsigned v2_k_view_bank_cycles;
+      longint unsigned v2_bank_conflict_cycles;
+      longint unsigned v2_rejected_count;
+      longint unsigned q_external_bytes;
+      longint unsigned kv_external_bytes;
+      longint unsigned replay_bytes;
+      longint unsigned replay_backpressure_cycles;
+      longint unsigned read_range_count;
+      longint unsigned read_translation_count;
+      longint unsigned read_ar_count;
+      longint unsigned read_beat_count;
+      longint unsigned read_payload_bytes;
+      longint unsigned read_store_wait_cycles;
+      longint unsigned read_backpressure_cycles;
+      longint unsigned read_outstanding_occupancy_sum;
+      longint unsigned read_outstanding_max;
+      longint unsigned read_outstanding_full_cycles;
+    } akv_perf_summary_t;
+
+    akv_perf_summary_t akv_perf_summary_q;
+    bit akv_perf_summary_enable;
+
+    initial begin
+      akv_perf_summary_enable = $test$plusargs("AKV_SUMMARY");
+    end
+
     always_ff @(posedge clk_i) begin
       if (!rst_ni) begin
         akv_command_sequence_q <= '0;
         akv_consumed_request_q <= '0;
+        akv_perf_summary_q <= '{default: '0};
       end else begin
         if (akv_command_fire) begin
           akv_command_sequence_q <= akv_command_sequence_q + 1'b1;
@@ -1225,6 +1275,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               pe_req_i.vl == vlen_t'(128)) begin
             assert (!pe_req_i.vd[0] && pe_req_i.vd <= 5'd30)
               else $fatal(1, "Illegal D128 AKV destination reached the VLSU");
+          end
+          if (akv_command == AKV_COMMAND_V2_COLUMN_LOAD &&
+              akv_command_column_count == AkvV2ColumnPanelWidth) begin
+            assert (pe_req_i.emul == LMUL_4 &&
+                    pe_req_i.vl == vlen_t'(AkvV2TileTokens *
+                                           AkvV2ColumnPanelWidth) &&
+                    pe_req_i.vd[1:0] == '0 && pe_req_i.vd <= 5'd28)
+              else $fatal(1, "Illegal AKV-v2 panel destination reached the VLSU");
           end
         end
 
@@ -1266,6 +1324,89 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         end
 
         if (akv_terminal) begin
+          if (akv_perf_summary_enable) begin
+            akv_perf_summary_q.records <=
+                akv_perf_summary_q.records + 1'b1;
+            akv_perf_summary_q.success_records <=
+                akv_perf_summary_q.success_records + akv_success_valid;
+            akv_perf_summary_q.fault_records <=
+                akv_perf_summary_q.fault_records + akv_fault_valid;
+            akv_perf_summary_q.validation_fault_records <=
+                akv_perf_summary_q.validation_fault_records +
+                (akv_fault_valid && akv_fault_is_validation);
+            akv_perf_summary_q.busy_cycles <=
+                akv_perf_summary_q.busy_cycles + akv_command_cycles + 1'b1;
+            akv_perf_summary_q.full_count <=
+                akv_perf_summary_q.full_count + akv_full_count;
+            akv_perf_summary_q.refill_count <=
+                akv_perf_summary_q.refill_count + akv_refill_count;
+            akv_perf_summary_q.load_count <=
+                akv_perf_summary_q.load_count + akv_load_count;
+            akv_perf_summary_q.release_count <=
+                akv_perf_summary_q.release_count + akv_release_count;
+            akv_perf_summary_q.v2_full_count <=
+                akv_perf_summary_q.v2_full_count + akv_v2_full_count;
+            akv_perf_summary_q.v2_refill_count <=
+                akv_perf_summary_q.v2_refill_count + akv_v2_refill_count;
+            akv_perf_summary_q.v2_row_load_count <=
+                akv_perf_summary_q.v2_row_load_count + akv_v2_row_load_count;
+            akv_perf_summary_q.v2_column_load_count <=
+                akv_perf_summary_q.v2_column_load_count +
+                akv_v2_column_load_count;
+            akv_perf_summary_q.v2_column_panel_count <=
+                akv_perf_summary_q.v2_column_panel_count +
+                akv_v2_column_panel_count;
+            akv_perf_summary_q.v2_logical_column_count <=
+                akv_perf_summary_q.v2_logical_column_count +
+                akv_v2_logical_column_count;
+            akv_perf_summary_q.v2_k_view_bank_cycles <=
+                akv_perf_summary_q.v2_k_view_bank_cycles +
+                akv_v2_k_view_bank_cycles;
+            akv_perf_summary_q.v2_bank_conflict_cycles <=
+                akv_perf_summary_q.v2_bank_conflict_cycles +
+                akv_v2_bank_conflict_cycles;
+            akv_perf_summary_q.v2_rejected_count <=
+                akv_perf_summary_q.v2_rejected_count +
+                akv_v2_rejected_count;
+            akv_perf_summary_q.q_external_bytes <=
+                akv_perf_summary_q.q_external_bytes + akv_q_external_bytes;
+            akv_perf_summary_q.kv_external_bytes <=
+                akv_perf_summary_q.kv_external_bytes + akv_kv_external_bytes;
+            akv_perf_summary_q.replay_bytes <=
+                akv_perf_summary_q.replay_bytes + akv_replay_bytes;
+            akv_perf_summary_q.replay_backpressure_cycles <=
+                akv_perf_summary_q.replay_backpressure_cycles +
+                akv_replay_backpressure_cycles;
+            akv_perf_summary_q.read_range_count <=
+                akv_perf_summary_q.read_range_count + akv_read_range_count;
+            akv_perf_summary_q.read_translation_count <=
+                akv_perf_summary_q.read_translation_count +
+                akv_read_translation_count;
+            akv_perf_summary_q.read_ar_count <=
+                akv_perf_summary_q.read_ar_count + akv_read_ar_count;
+            akv_perf_summary_q.read_beat_count <=
+                akv_perf_summary_q.read_beat_count + akv_read_beat_count;
+            akv_perf_summary_q.read_payload_bytes <=
+                akv_perf_summary_q.read_payload_bytes +
+                akv_read_payload_bytes;
+            akv_perf_summary_q.read_store_wait_cycles <=
+                akv_perf_summary_q.read_store_wait_cycles +
+                akv_read_store_wait_cycles;
+            akv_perf_summary_q.read_backpressure_cycles <=
+                akv_perf_summary_q.read_backpressure_cycles +
+                akv_read_backpressure_cycles;
+            akv_perf_summary_q.read_outstanding_occupancy_sum <=
+                akv_perf_summary_q.read_outstanding_occupancy_sum +
+                akv_read_outstanding_occupancy_sum;
+            if (akv_read_outstanding_max >
+                akv_perf_summary_q.read_outstanding_max)
+              akv_perf_summary_q.read_outstanding_max <=
+                  akv_read_outstanding_max;
+            akv_perf_summary_q.read_outstanding_full_cycles <=
+                akv_perf_summary_q.read_outstanding_full_cycles +
+                akv_read_outstanding_full_cycles;
+          end
+
           assert ($onehot({akv_success_valid, akv_fault_valid}))
             else $fatal(1, "AKV terminal response is not a unique outcome");
           assert (pe_resp_o[OffsetLoad].vinsn_done[akv_command_id_q])
@@ -1274,7 +1415,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             else $fatal(1, "AKV scalar acknowledgment occurred at the wrong boundary");
 
           if ($test$plusargs("AKV_PERF")) begin
-            $display("[AKV_PERF] seq=%0d id=%0d command=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d context_ready=%0d busy_cycles=%0d full=%0d refill=%0d load=%0d release=%0d v2_full=%0d v2_refill=%0d v2_row_load=%0d v2_column_load=%0d v2_k_view_bank_cycles=%0d v2_bank_conflict_cycles=%0d v2_rejected=%0d q_external_bytes=%0d kv_external_bytes=%0d replay_bytes=%0d replay_backpressure_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d read_payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d",
+            $display("[AKV_PERF] seq=%0d id=%0d command=%0d success=%0d fault=%0d validation_fault=%0d validation_error=%0d read_fault=%0d context_ready=%0d busy_cycles=%0d full=%0d refill=%0d load=%0d release=%0d v2_full=%0d v2_refill=%0d v2_row_load=%0d v2_column_load=%0d v2_column_panel=%0d v2_logical_column=%0d v2_k_view_bank_cycles=%0d v2_bank_conflict_cycles=%0d v2_rejected=%0d q_external_bytes=%0d kv_external_bytes=%0d replay_bytes=%0d replay_backpressure_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d read_payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d",
                      akv_command_sequence_q, akv_command_id_q, akv_command_q,
                      akv_success_valid, akv_fault_valid,
                      akv_fault_is_validation, akv_validation_error,
@@ -1284,6 +1425,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                      akv_release_count, akv_v2_full_count,
                      akv_v2_refill_count, akv_v2_row_load_count,
                      akv_v2_column_load_count,
+                     akv_v2_column_panel_count,
+                     akv_v2_logical_column_count,
                      akv_v2_k_view_bank_cycles,
                      akv_v2_bank_conflict_cycles, akv_v2_rejected_count,
                      akv_q_external_bytes,
@@ -1298,6 +1441,44 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                      akv_read_outstanding_full_cycles);
           end
         end
+      end
+    end
+
+    final begin
+      if (akv_perf_summary_enable) begin
+        $display("[AKV_PERF_SUMMARY] records=%0d success_records=%0d fault_records=%0d validation_fault_records=%0d busy_cycles=%0d full=%0d refill=%0d load=%0d release=%0d v2_full=%0d v2_refill=%0d v2_row_load=%0d v2_column_load=%0d v2_column_panel=%0d v2_logical_column=%0d v2_k_view_bank_cycles=%0d v2_bank_conflict_cycles=%0d v2_rejected=%0d q_external_bytes=%0d kv_external_bytes=%0d replay_bytes=%0d replay_backpressure_cycles=%0d read_ranges=%0d translations=%0d ar=%0d r_beats=%0d read_payload_bytes=%0d store_wait_cycles=%0d read_backpressure_cycles=%0d read_outstanding_occ_sum=%0d read_outstanding_max=%0d read_outstanding_full_cycles=%0d",
+                 akv_perf_summary_q.records,
+                 akv_perf_summary_q.success_records,
+                 akv_perf_summary_q.fault_records,
+                 akv_perf_summary_q.validation_fault_records,
+                 akv_perf_summary_q.busy_cycles,
+                 akv_perf_summary_q.full_count,
+                 akv_perf_summary_q.refill_count,
+                 akv_perf_summary_q.load_count,
+                 akv_perf_summary_q.release_count,
+                 akv_perf_summary_q.v2_full_count,
+                 akv_perf_summary_q.v2_refill_count,
+                 akv_perf_summary_q.v2_row_load_count,
+                 akv_perf_summary_q.v2_column_load_count,
+                 akv_perf_summary_q.v2_column_panel_count,
+                 akv_perf_summary_q.v2_logical_column_count,
+                 akv_perf_summary_q.v2_k_view_bank_cycles,
+                 akv_perf_summary_q.v2_bank_conflict_cycles,
+                 akv_perf_summary_q.v2_rejected_count,
+                 akv_perf_summary_q.q_external_bytes,
+                 akv_perf_summary_q.kv_external_bytes,
+                 akv_perf_summary_q.replay_bytes,
+                 akv_perf_summary_q.replay_backpressure_cycles,
+                 akv_perf_summary_q.read_range_count,
+                 akv_perf_summary_q.read_translation_count,
+                 akv_perf_summary_q.read_ar_count,
+                 akv_perf_summary_q.read_beat_count,
+                 akv_perf_summary_q.read_payload_bytes,
+                 akv_perf_summary_q.read_store_wait_cycles,
+                 akv_perf_summary_q.read_backpressure_cycles,
+                 akv_perf_summary_q.read_outstanding_occupancy_sum,
+                 akv_perf_summary_q.read_outstanding_max,
+                 akv_perf_summary_q.read_outstanding_full_cycles);
       end
     end
   end

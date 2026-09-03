@@ -17,6 +17,97 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ModelClosureTest(unittest.TestCase):
+    def test_akv_calls_by_mode_sums_invocations_not_shape_rows(self):
+        rows = [
+            {"mode": "prefill", "calls": 30},
+            {"mode": "prefill", "calls": 2},
+            {"mode": "decode", "calls": 30},
+        ]
+        self.assertEqual(
+            MODULE.aggregate_call_counts_by_mode(rows),
+            {"prefill": 32, "decode": 30},
+        )
+
+    def write_prefill_calibration(self, root: Path) -> tuple[Path, dict[str, Path]]:
+        tensors = {
+            "input_a": ("f32", [128, 15, 12, 1]),
+            "key": ("f16", [128, 512, 2, 1]),
+            "value": ("f16", [128, 512, 2, 1]),
+            "mask": ("f16", [512, 15, 1, 1]),
+            "golden": ("f32", [1536, 15, 1, 1]),
+        }
+        metadata_paths = {}
+        payloads = {}
+        for field, (data_type, shape) in tensors.items():
+            element_bytes = 4 if data_type == "f32" else 2
+            strides = [element_bytes]
+            for dimension in shape[:-1]:
+                strides.append(strides[-1] * dimension)
+            nbytes = element_bytes
+            for dimension in shape:
+                nbytes *= dimension
+            metadata_path = root / f"{field}.json"
+            payload_path = root / f"{field}.bin"
+            metadata_path.write_text(json.dumps({
+                "type": data_type,
+                "shape": shape,
+                "strides": strides,
+                "nbytes": nbytes,
+            }) + "\n")
+            payload_path.write_bytes(bytes(nbytes))
+            metadata_paths[field] = metadata_path
+            payloads[field] = payload_path
+        case_path = root / "case.json"
+        case_path.write_text(
+            json.dumps({field: path.name for field, path in metadata_paths.items()}) + "\n"
+        )
+        log_path = root / "ara.log"
+        case_name = "operator/prefill/p0_m15/attention_core/akv_v2_prefill"
+        log_path.write_text(
+            f"LLAMA_OPERATOR {case_name} PASS cycles=434869 mismatches=0\n"
+        )
+        summary = {
+            "schema_version": 6,
+            "status": "PASS",
+            "case": str(case_path),
+            "shape": {
+                "head_dim": 128,
+                "query_tokens": 15,
+                "past_tokens": 0,
+                "query_heads": 12,
+                "kv_heads": 2,
+                "gqa_rows": 6,
+                "kv_capacity": 512,
+                "batch": 1,
+                "active_prefixes": list(range(1, 16)),
+            },
+            "work": {
+                "active_query_head_kv_pairs": 1440,
+                "attention_macs": 368640,
+            },
+            "provenance": {
+                "case_sha256": MODULE.sha256(case_path),
+                "query_sha256": MODULE.sha256(payloads["input_a"]),
+                "key_sha256": MODULE.sha256(payloads["key"]),
+                "value_sha256": MODULE.sha256(payloads["value"]),
+                "mask_sha256": MODULE.sha256(payloads["mask"]),
+                "golden_sha256": MODULE.sha256(payloads["golden"]),
+            },
+            "measurements": [{
+                "strategy": MODULE.AKV_PREFILL_RETAINED_STRATEGY,
+                "case_name": case_name,
+                "cycles": 434869,
+                "mismatches": 0,
+                "log": str(log_path),
+                "log_sha256": MODULE.sha256(log_path),
+                "strict_counter_status": "PASS",
+                "strict_counter_checked_fields": 14,
+            }],
+        }
+        summary_path = root / "summary.json"
+        summary_path.write_text(json.dumps(summary) + "\n")
+        return summary_path, {**payloads, "case": case_path, "log": log_path}
+
     def test_lifetime_summary_requires_matching_provenance(self):
         manifest = {
             key: f"value-{key}"
@@ -135,10 +226,29 @@ QBS_RVV_LOGITS_RECORDS=1
 QBS_RVV_LOGITS_COMPARABLE_RECORDS=1
 QBS_RVV_LOGITS_MAX_ABS=0.25
 QBS_RVV_LOGITS_MAX_REL=0.5
+QBS_RVV_LOGITS_MEAN_ABS=0.1
+QBS_RVV_LOGITS_MEAN_RMSE=0.12
+QBS_RVV_LOGITS_MEAN_KL=0.01
+QBS_RVV_LOGITS_MEAN_COSINE=0.99
+QBS_RVV_LOGITS_TOP5_OVERLAP=1
+QBS_RVV_LOGITS_MAX_KL=0.01
+QBS_RVV_LOGITS_MIN_COSINE=0.99
+QBS_RVV_LOGITS_MIN_TOP5_OVERLAP=1
 QBS_RVV_LOGITS_TOP1_EQUAL=1
 QBS_RVV_TOKEN_OUTPUT_EQUAL=1
+AKV_LOGITS_RECORDS=1
+AKV_LOGITS_COMPARABLE_RECORDS=1
 AKV_LOGITS_TOP1_EQUAL=1
 AKV_LOGITS_MAX_ABS=0
+AKV_LOGITS_MAX_REL=0
+AKV_LOGITS_MEAN_ABS=0
+AKV_LOGITS_MEAN_RMSE=0
+AKV_LOGITS_MEAN_KL=0
+AKV_LOGITS_MEAN_COSINE=1
+AKV_LOGITS_TOP5_OVERLAP=1
+AKV_LOGITS_MAX_KL=0
+AKV_LOGITS_MIN_COSINE=1
+AKV_LOGITS_MIN_TOP5_OVERLAP=1
 AKV_TOKEN_OUTPUT_EQUAL=1
 LLAMA_GUEST_EXIT=0
 """
@@ -203,6 +313,235 @@ LLAMA_GUEST_EXIT=0
         )
         with self.assertRaisesRegex(ValueError, "QBS graph coverage mismatch"):
             MODULE.validate_dynamic(run)
+
+    def test_prefill_akv_call_has_exact_causal_work_and_traffic(self):
+        prefill_call = {
+            "_node_index": "0",
+            "mode": "prefill",
+            "kernel": "v2",
+            "M": "15",
+            "P": "0",
+            "kv_capacity": "15",
+            "kv_heads": "2",
+            "q_heads": "12",
+            "q_rows": "6",
+            "head_dim": "128",
+            "groups": "2",
+            "attention_pairs": "1440",
+            "attention_macs": "368640",
+        }
+        decode_call = {
+            "_node_index": "0",
+            "mode": "decode",
+            "kernel": "v2",
+            "kv_heads": "2",
+            "q_rows": "12",
+            "gqa_rows": "6",
+            "head_dim": "128",
+            "active_kv": "4",
+            "attention_macs": "12288",
+        }
+        graphs = [
+            MODULE.Graph(
+                graph_id=0,
+                declared_nodes=1,
+                nodes=[{"op": "FLASH_ATTN_EXT", "name": "blk.0.attn"}],
+                akv_calls=[prefill_call],
+                closed=True,
+            ),
+            MODULE.Graph(
+                graph_id=1,
+                declared_nodes=1,
+                nodes=[{"op": "FLASH_ATTN_EXT", "name": "blk.0.attn"}],
+                akv_calls=[decode_call],
+                closed=True,
+            ),
+        ]
+        coverage = {
+            "candidate_ops": "2",
+            "executed_ops": "2",
+            "groups": "4",
+            "executed_v1": "0",
+            "executed_v2": "2",
+            "groups_v1": "0",
+            "groups_v2": "4",
+            "kv_group_tokens": "38",
+            "attention_macs": "380928",
+            "executed_decode": "1",
+            "executed_prefill": "1",
+            "prefill_query_tokens": "15",
+            "prefill_attention_pairs": "1440",
+        }
+        run = MODULE.ParsedRun(
+            graphs=graphs,
+            qbs_coverage={},
+            qbs_exec={},
+            akv_coverage=coverage,
+            logits={
+                "AKV_LOGITS_RECORDS": "1",
+                "AKV_LOGITS_COMPARABLE_RECORDS": "1",
+                "AKV_LOGITS_MAX_ABS": "0",
+                "AKV_LOGITS_MAX_REL": "0",
+                "AKV_LOGITS_MEAN_ABS": "0",
+                "AKV_LOGITS_MEAN_RMSE": "0",
+                "AKV_LOGITS_MEAN_KL": "0",
+                "AKV_LOGITS_MEAN_COSINE": "1",
+                "AKV_LOGITS_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_MAX_KL": "0",
+                "AKV_LOGITS_MIN_COSINE": "1",
+                "AKV_LOGITS_MIN_TOP5_OVERLAP": "1",
+                "AKV_LOGITS_TOP1_EQUAL": "1",
+            },
+            qbs_rvv={
+                "QBS_RVV_LOGITS_RECORDS": "1",
+                "QBS_RVV_LOGITS_COMPARABLE_RECORDS": "1",
+                "QBS_RVV_LOGITS_MAX_ABS": "0",
+                "QBS_RVV_LOGITS_MAX_REL": "0",
+                "QBS_RVV_LOGITS_MEAN_ABS": "0",
+                "QBS_RVV_LOGITS_MEAN_RMSE": "0",
+                "QBS_RVV_LOGITS_MEAN_KL": "0",
+                "QBS_RVV_LOGITS_MEAN_COSINE": "1",
+                "QBS_RVV_LOGITS_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_MAX_KL": "0",
+                "QBS_RVV_LOGITS_MIN_COSINE": "1",
+                "QBS_RVV_LOGITS_MIN_TOP5_OVERLAP": "1",
+                "QBS_RVV_LOGITS_TOP1_EQUAL": "1",
+            },
+            output_equal=True,
+            guest_exit=0,
+            optimized_exit=0,
+        )
+
+        MODULE.validate_dynamic(run)
+        _, _, akv_rows, node_rows = MODULE.dynamic_rows(run)
+        prefill = next(row for row in akv_rows if row["mode"] == "prefill")
+        self.assertEqual(prefill["query_source_f32_bytes"], 92160)
+        self.assertEqual(prefill["query_payload_bytes"], 46080)
+        self.assertEqual(prefill["unique_kv_payload_bytes"], 15360)
+        self.assertEqual(prefill["kv_payload_bytes"], 15360)
+        self.assertEqual(prefill["kv_reread_factor"], 1.0)
+        self.assertEqual(prefill["attention_pairs"], 1440)
+        projection = MODULE.cycle_projection(
+            [],
+            akv_rows,
+            node_rows,
+            [],
+            [{"active_kv": 4, "cycles": 100}, {"active_kv": 16, "cycles": 400}],
+            {},
+        )
+        self.assertEqual(
+            sum(row["category"] == "akv_v2" for row in projection), 1
+        )
+        self.assertEqual(
+            sum(
+                row["category"] == "uncalibrated" and row["phase"] == "prefill"
+                for row in projection
+            ),
+            1,
+        )
+
+        prefill_call["attention_pairs"] = "1439"
+        with self.assertRaisesRegex(ValueError, "attention-pair"):
+            MODULE.validate_dynamic(run)
+
+    def test_prefill_calibration_loads_and_projects_exact_dynamic_shape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path, _ = self.write_prefill_calibration(Path(directory))
+            points = MODULE.load_akv_prefill_calibration([summary_path])
+
+        self.assertEqual(len(points), 1)
+        self.assertEqual(points[0]["attention_macs"], 368640)
+        call = {
+            "graph_id": 0,
+            "phase": "prefill",
+            "mode": "prefill",
+            "head_dim": 128,
+            "query_tokens": 15,
+            "past_tokens": 0,
+            "q_heads": 12,
+            "kv_heads": 2,
+            "gqa_rows": 6,
+            "kv_capacity": 512,
+            "calls": 2,
+        }
+        node_rows = [{
+            "graph_id": 0,
+            "phase": "prefill",
+            "op": "FLASH_ATTN_EXT",
+            "src0": "f32",
+            "count": 2,
+        }]
+        rows = MODULE.cycle_projection(
+            [], [call], node_rows, [], [], {}, None, points
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["category"], "akv_v2_prefill")
+        self.assertEqual(rows[0]["instances"], 2)
+        self.assertEqual(rows[0]["projected_cycles"], 2 * 434869)
+        self.assertIn("exact shape-matched", rows[0]["basis"])
+
+    def test_prefill_calibration_rejects_tampered_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path, sources = self.write_prefill_calibration(Path(directory))
+            original_log = sources["log"].read_text()
+            sources["log"].write_text(original_log + "tampered\n")
+            with self.assertRaisesRegex(ValueError, "log provenance"):
+                MODULE.load_akv_prefill_calibration([summary_path])
+
+            sources["log"].write_text(original_log)
+            payload = sources["input_a"].read_bytes()
+            sources["input_a"].write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+            with self.assertRaisesRegex(ValueError, "input_a hash mismatch"):
+                MODULE.load_akv_prefill_calibration([summary_path])
+
+    def test_prefill_calibration_requires_strict_counter_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path, _ = self.write_prefill_calibration(Path(directory))
+            summary = json.loads(summary_path.read_text())
+            summary["measurements"][0]["strict_counter_status"] = "FAIL"
+            summary_path.write_text(json.dumps(summary) + "\n")
+            with self.assertRaisesRegex(ValueError, "not strict PASS"):
+                MODULE.load_akv_prefill_calibration([summary_path])
+
+    def test_prefill_calibration_rejects_non_panel4_shape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path, _ = self.write_prefill_calibration(Path(directory))
+            summary = json.loads(summary_path.read_text())
+            summary["shape"]["head_dim"] = 64
+            summary["work"]["attention_macs"] = 184320
+            summary_path.write_text(json.dumps(summary) + "\n")
+            with self.assertRaisesRegex(ValueError, "requires D128/GQA6"):
+                MODULE.load_akv_prefill_calibration([summary_path])
+
+    def test_prefill_projection_keeps_unmatched_shape_uncalibrated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary_path, _ = self.write_prefill_calibration(Path(directory))
+            points = MODULE.load_akv_prefill_calibration([summary_path])
+        call = {
+            "graph_id": 0,
+            "phase": "prefill",
+            "mode": "prefill",
+            "head_dim": 128,
+            "query_tokens": 64,
+            "past_tokens": 0,
+            "q_heads": 12,
+            "kv_heads": 2,
+            "gqa_rows": 6,
+            "kv_capacity": 512,
+            "calls": 1,
+        }
+        node_rows = [{
+            "graph_id": 0,
+            "phase": "prefill",
+            "op": "FLASH_ATTN_EXT",
+            "src0": "f32",
+            "count": 1,
+        }]
+        rows = MODULE.cycle_projection(
+            [], [call], node_rows, [], [], {}, None, points
+        )
+        self.assertEqual(rows[0]["category"], "uncalibrated")
+        self.assertEqual(rows[0]["projected_cycles"], "")
 
     def test_node_semantics_follow_graph_order(self):
         nodes = [

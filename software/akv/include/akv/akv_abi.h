@@ -34,7 +34,11 @@
 #define AKV_HEAD_DIM_CODE_INVALID 0xffu
 #define AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT 38u
 #define AKV_V2_D256_SEGMENTED_CAPABILITY_BIT 39u
+#define AKV_V2_COLUMN_PANEL_CAPABILITY_BIT 40u
 #define AKV_V2_COLUMN_SEGMENT_BIT 7u
+#define AKV_V2_COLUMN_PANEL_WIDTH 4u
+#define AKV_V2_COLUMN_SINGLE_FUNCT7 0u
+#define AKV_V2_COLUMN_PANEL_FUNCT7 1u
 
 typedef enum {
   AKV_ELEMENT_FORMAT_INVALID = 0,
@@ -246,6 +250,15 @@ static inline int akv_v2_column_is_valid(
          akv_v2_column_dimension(selector) < descriptor->head_dim;
 }
 
+static inline int akv_v2_column_panel_is_valid(
+    const akv_descriptor_t *descriptor, uint32_t tile_length,
+    uint32_t selector) {
+  const uint32_t dimension = akv_v2_column_dimension(selector);
+  return akv_v2_column_is_valid(descriptor, tile_length, selector) &&
+         (dimension & (AKV_V2_COLUMN_PANEL_WIDTH - 1u)) == 0u &&
+         dimension + AKV_V2_COLUMN_PANEL_WIDTH <= descriptor->head_dim;
+}
+
 static inline uint64_t akv_capability_word(uint64_t index, int enabled) {
   if (index == 0u)
     return (uint64_t)AKV_ARCHITECTURE_VERSION |
@@ -278,7 +291,8 @@ static inline uint64_t akv_v2_capability_word(uint64_t index, int enabled) {
            (UINT64_C(1) << 35) | (UINT64_C(1) << 36) |
            (UINT64_C(1) << 37) |
            (UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT) |
-           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT);
+           (UINT64_C(1) << AKV_V2_D256_SEGMENTED_CAPABILITY_BIT) |
+           (UINT64_C(1) << AKV_V2_COLUMN_PANEL_CAPABILITY_BIT);
   if (index == 3u)
     return (uint64_t)AKV_OPCODE_CUSTOM2 |
            ((uint64_t)AKV_V2_FILL_FUNCT3 << 8) |
@@ -326,7 +340,15 @@ static inline uint32_t akv_encode_v2_fill(uint32_t descriptor_rs1,
 
 static inline uint32_t akv_encode_v2_column_load(uint32_t vd,
                                                  uint32_t dimension_rs1) {
-  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3, 0u, vd,
+  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3,
+                      AKV_V2_COLUMN_SINGLE_FUNCT7, vd,
+                      dimension_rs1, 0u);
+}
+
+static inline uint32_t akv_encode_v2_column_panel_load(
+    uint32_t vd, uint32_t dimension_rs1) {
+  return akv_encode_r(AKV_V2_COLUMN_LOAD_FUNCT3,
+                      AKV_V2_COLUMN_PANEL_FUNCT7, vd,
                       dimension_rs1, 0u);
 }
 

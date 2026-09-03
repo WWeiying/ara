@@ -94,6 +94,9 @@ apps
 /verification/qbs/rtl_context_macro_build/
 /verification/qbs/rtl_descriptor_build/
 /verification/qbs/rtl_engine_build/
+/verification/akv/rtl_engine_build/
+/verification/akv/rtl_engine_macro_build/
+/verification/akv/rtl_synth_wrapper_build/
 /verification/qbs/synthesis/qbs_activation_context_dc*.log
 /verification/qbs/synthesis/qbs_activation_context_dc*.status
 /verification/qbs/synthesis/qbs_activation_context_dc_out*/

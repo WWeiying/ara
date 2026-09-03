@@ -2,17 +2,70 @@
 set -euo pipefail
 
 max_abs_tolerance=${AKV_LOGITS_MAX_ABS_TOLERANCE:-0.001}
+model_max_kl_tolerance=${AKV_MODEL_LOGITS_MAX_KL_TOLERANCE:-0.02}
+model_min_cosine_tolerance=${AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:-0.98}
+model_min_top5_overlap_tolerance=${AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE:-0.8}
 model_mode=${AKV_MODEL_MODE:-akv-v1}
 default_model_guest_path=/model/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
 model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
 model_tokens=${AKV_MODEL_TOKENS:-2}
 model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
+require_prefill=${AKV_REQUIRE_PREFILL:-0}
 ara_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
 grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
   printf 'invalid AKV_LOGITS_MAX_ABS_TOLERANCE: %s\n' "${max_abs_tolerance}" >&2
   exit 2
+}
+for metric in \
+  "AKV_MODEL_LOGITS_MAX_KL_TOLERANCE:${model_max_kl_tolerance}" \
+  "AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE:${model_min_cosine_tolerance}" \
+  "AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE:${model_min_top5_overlap_tolerance}"; do
+  name=${metric%%:*}
+  value=${metric#*:}
+  grep -Eq "${number_re}" <<< "${value}" || {
+    printf 'invalid %s: %s\n' "${name}" "${value}" >&2
+    exit 2
+  }
+done
+awk -v value="${model_min_cosine_tolerance}" \
+  'BEGIN { exit !((value + 0.0) >= 0.0 && (value + 0.0) <= 1.0) }' || {
+  printf 'AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE must be in [0,1]\n' >&2
+  exit 2
+}
+awk -v value="${model_min_top5_overlap_tolerance}" \
+  'BEGIN { exit !((value + 0.0) >= 0.0 && (value + 0.0) <= 1.0) }' || {
+  printf 'AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE must be in [0,1]\n' >&2
+  exit 2
+}
+
+metric_value() {
+  local log_file=$1
+  local key=$2
+  sed -n "s/^${key}=//p" "${log_file}" | tr -d '\r' | tail -n 1
+}
+
+require_metric_le() {
+  local log_file=$1
+  local key=$2
+  local limit=$3
+  local value
+  value=$(metric_value "${log_file}" "${key}")
+  grep -Eq "${number_re}" <<< "${value}"
+  awk -v value="${value}" -v limit="${limit}" \
+    'BEGIN { exit !((value + 0.0) <= (limit + 0.0)) }'
+}
+
+require_metric_ge() {
+  local log_file=$1
+  local key=$2
+  local limit=$3
+  local value
+  value=$(metric_value "${log_file}" "${key}")
+  grep -Eq "${number_re}" <<< "${value}"
+  awk -v value="${value}" -v limit="${limit}" \
+    'BEGIN { exit !((value + 0.0) >= (limit + 0.0)) }'
 }
 
 validate_log() {
@@ -41,6 +94,9 @@ validate_log() {
   for value in "${prompt_token_counts[@]}"; do
     [[ ${value} == "${prompt_token_count}" ]]
   done
+  if [[ ${require_prefill} == 1 ]]; then
+    (( prompt_token_count >= 15 ))
+  fi
 
   if [[ ${model_mode} == qbs-lifetime ]]; then
     grep -q 'AKV_TOKEN_RUN_EXIT=QBS_CONTEXT_BASELINE:0' "${log_file}"
@@ -153,6 +209,13 @@ validate_log() {
       [[ ${executed_ops} =~ ^[1-9][0-9]*$ ]]
     fi
     (( candidate_ops == executed_ops + accounted_ops ))
+    if [[ ${require_prefill} == 1 ]]; then
+      grep -Eq 'executed_prefill=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'prefill_query_tokens=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'prefill_attention_pairs=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'fallback_size=0([[:space:]]|$)' <<< "${coverage_line}"
+      grep -Eq '^GGML_RISCV_AKV_EXEC mode=prefill ' "${log_file}"
+    fi
     if [[ ${model_mode} == combined-fallback ]]; then
       local fallback_shape
       fallback_shape=$(sed -n 's/.*fallback_shape=\([0-9][0-9]*\).*/\1/p' <<< "${coverage_line}")
@@ -168,12 +231,31 @@ validate_log() {
   grep -q 'AKV_TOKEN_OUTPUT_EQUAL=1' "${log_file}"
   grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
 
-  max_abs=$(sed -n 's/^AKV_LOGITS_MAX_ABS=//p' "${log_file}" | tr -d '\r' | tail -n 1)
-  grep -Eq "${number_re}" <<< "${max_abs}"
-  awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
-    'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
+  if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
+    for prefix in QBS_RVV AKV; do
+      local records
+      local comparable_records
+      records=$(metric_value "${log_file}" "${prefix}_LOGITS_RECORDS")
+      comparable_records=$(metric_value "${log_file}" "${prefix}_LOGITS_COMPARABLE_RECORDS")
+      [[ ${records} =~ ^[1-9][0-9]*$ && ${records} == "${comparable_records}" ]]
+    done
+    require_metric_le "${log_file}" AKV_LOGITS_MAX_KL \
+      "${model_max_kl_tolerance}"
+    require_metric_ge "${log_file}" AKV_LOGITS_MIN_COSINE \
+      "${model_min_cosine_tolerance}"
+    require_metric_ge "${log_file}" AKV_LOGITS_MIN_TOP5_OVERLAP \
+      "${model_min_top5_overlap_tolerance}"
+    [[ $(metric_value "${log_file}" MODEL_NUMERICAL_CONTRACT) == \
+       decision-preserving-v1 ]]
+  fi
+  if [[ ${model_mode} != combined ]]; then
+    max_abs=$(metric_value "${log_file}" AKV_LOGITS_MAX_ABS)
+    grep -Eq "${number_re}" <<< "${max_abs}"
+    awk -v value="${max_abs}" -v tolerance="${max_abs_tolerance}" \
+      'BEGIN { exit !((value + 0.0) <= (tolerance + 0.0)) }'
+  fi
 
-  grep -E '^(GGML_RISCV_(QBS_(COVERAGE|EXEC)|AKV_(COVERAGE|EXEC))|QBS_RVV_|AKV_LOGITS_|AKV_TOKEN_(RUN_EXIT|OUTPUT_EQUAL)|LLAMA_GUEST_EXIT)' \
+  grep -E '^(GGML_RISCV_(QBS_(COVERAGE|EXEC)|AKV_(COVERAGE|EXEC))|QBS_RVV_|AKV_LOGITS_|MODEL_(LOGITS|NUMERICAL)|AKV_TOKEN_(RUN_EXIT|OUTPUT_EQUAL)|LLAMA_GUEST_EXIT)' \
     "${log_file}" | tr -d '\r' > "${result_file}"
   printf 'AKV_MODEL_PROMPT_TOKENS=%s\n' "${prompt_token_count}" >> "${result_file}"
 }
@@ -200,7 +282,17 @@ write_manifest() {
     printf 'MODEL_GUEST_PATH=%s\n' "${model_guest_path}"
     printf 'MODEL_TOKENS=%s\n' "${model_tokens}"
     printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
+    printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
+    printf 'MODEL_LOGITS_MAX_KL_TOLERANCE=%s\n' "${model_max_kl_tolerance}"
+    printf 'MODEL_LOGITS_MIN_COSINE_TOLERANCE=%s\n' "${model_min_cosine_tolerance}"
+    printf 'MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=%s\n' \
+      "${model_min_top5_overlap_tolerance}"
+    if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
+      printf 'MODEL_NUMERICAL_CONTRACT=decision-preserving-v1\n'
+    else
+      printf 'MODEL_NUMERICAL_CONTRACT=exact-max-abs-v1\n'
+    fi
   } > "${manifest_file}"
 }
 
@@ -211,6 +303,14 @@ case ${model_mode} in
     exit 2
     ;;
 esac
+[[ ${require_prefill} == 0 || ${require_prefill} == 1 ]] || {
+  printf 'invalid AKV_REQUIRE_PREFILL: %s (expected 0 or 1)\n' "${require_prefill}" >&2
+  exit 2
+}
+if [[ ${require_prefill} == 1 && ${model_mode} != combined ]]; then
+  printf 'AKV_REQUIRE_PREFILL=1 requires AKV_MODEL_MODE=combined\n' >&2
+  exit 2
+fi
 [[ ${model_guest_path} =~ ^/[A-Za-z0-9._/-]+$ ]] || {
   printf 'invalid AKV_MODEL_GUEST_PATH: %s\n' "${model_guest_path}" >&2
   exit 2
@@ -244,7 +344,7 @@ if [[ ${1:-} == --check-log ]]; then
   validate_log "${log_file}" "${result_file}"
   if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
     summary_args=("${log_file}")
-    if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
+    if [[ ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
       summary_args+=(--dynamic-only)
     fi
     "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \
@@ -298,12 +398,15 @@ fi
 "${CROSS_BIN}/riscv64-linux-gcc" \
   -march=rv64gc -mabi=lp64d -O2 -static \
   "-DAKV_LOGITS_MAX_ABS_TOLERANCE=${max_abs_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MAX_KL_TOLERANCE=${model_max_kl_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE=${model_min_cosine_tolerance}" \
+  "-DAKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE=${model_min_top5_overlap_tolerance}" \
   "-DAKV_MODEL_GUEST_PATH=\"${model_guest_path}\"" \
   "-DAKV_MODEL_TOKENS=\"${model_tokens}\"" \
   "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
-  -o "${init_binary}"
+  -lm -o "${init_binary}"
 
 truncate -s 128M "${binary_disk}"
 mkfs.ext4 -q -F "${binary_disk}"
@@ -352,7 +455,7 @@ write_manifest "${manifest_file}"
 validate_log "${log_file}" "${result_file}"
 if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
   summary_args=("${log_file}")
-  if [[ ${model_guest_path} != "${default_model_guest_path}" ]]; then
+  if [[ ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
     summary_args+=(--dynamic-only)
   fi
   "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \

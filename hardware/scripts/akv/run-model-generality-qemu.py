@@ -30,17 +30,40 @@ AKV_FALLBACK_FIELDS = {
     "fallback_runtime", "fallback_capability", "fallback_threading",
     "fallback_feature", "fallback_shape", "fallback_layout", "fallback_mask",
 }
+AKV_PREFILL_FALLBACK_FIELDS = {"fallback_size"}
+DEFAULT_MODEL_PROMPT = (
+    "Explain why low-bit vector inference benefits from packed arithmetic and data reuse."
+)
+DEFAULT_PREFILL_PROMPT = (
+    "Explain in detail why low-bit vector inference benefits from packed arithmetic, "
+    "reusable activation contexts, tiled memory access, and vectorized attention kernels "
+    "on resource-constrained processors."
+)
 RESULT_FIELDS = (
     "model", "architecture", "mode", "akv_disposition", "qemu_memory",
-    "status", "return_code", "qbs_profiles", "qbs_operations", "qbs_nodes",
+    "status", "return_code", "prefill_census", "qbs_profiles", "qbs_operations", "qbs_nodes",
     "qbs_gemv_calls", "qbs_gemm_calls", "qbs_dot_elements",
     "qbs_command_dot_elements", "qbs_native_commands", "qbs_emulated_commands",
-    "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_max_abs", "akv_candidate_ops",
-    "akv_executed_ops", "akv_fallback_shape", "akv_top1_equal",
-    "akv_token_output_equal", "akv_logits_max_abs", "llama_revision",
+    "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_records",
+    "qbs_logits_comparable_records", "qbs_logits_max_abs", "qbs_logits_max_rel",
+    "qbs_logits_mean_abs", "qbs_logits_mean_rmse", "qbs_logits_mean_kl",
+    "qbs_logits_mean_cosine", "qbs_logits_top5_overlap", "qbs_logits_max_kl",
+    "qbs_logits_min_cosine", "qbs_logits_min_top5_overlap", "akv_candidate_ops",
+    "akv_executed_ops", "akv_executed_decode", "akv_executed_prefill",
+    "akv_prefill_query_tokens", "akv_prefill_attention_pairs",
+    "akv_fallback_ops", "akv_fallback_shape", "akv_fastpath_status",
+    "akv_performance_evidence", "akv_top1_equal",
+    "akv_token_output_equal", "akv_logits_records", "akv_logits_comparable_records",
+    "akv_logits_max_abs", "akv_logits_max_rel", "akv_logits_mean_abs",
+    "akv_logits_mean_rmse", "akv_logits_mean_kl", "akv_logits_mean_cosine",
+    "akv_logits_top5_overlap", "akv_logits_max_kl", "akv_logits_min_cosine",
+    "akv_logits_min_top5_overlap", "llama_revision",
     "llama_binary_sha256", "qemu_binary_sha256", "qemu_cpu", "model_prompt",
     "model_tokens", "qbs_activation_accounting", "qbs_activation_unresolved_nodes",
     "qbs_abi_sha256", "qbs_architecture_version", "akv_logits_tolerance",
+    "model_numerical_contract", "model_logits_max_kl_tolerance",
+    "model_logits_min_cosine_tolerance",
+    "model_logits_min_top5_overlap_tolerance",
     "artifact", "dynamic_summary",
 )
 
@@ -67,6 +90,33 @@ def read_key_values(path: Path) -> dict[str, str]:
             raise ValueError(f"invalid key/value manifest line in {path}: {line}")
         values[key] = value
     return values
+
+
+def quality_metrics(values: dict[str, str], prefix: str) -> dict[str, str]:
+    suffixes = (
+        "LOGITS_RECORDS",
+        "LOGITS_COMPARABLE_RECORDS",
+        "LOGITS_MAX_ABS",
+        "LOGITS_MAX_REL",
+        "LOGITS_MEAN_ABS",
+        "LOGITS_MEAN_RMSE",
+        "LOGITS_MEAN_KL",
+        "LOGITS_MEAN_COSINE",
+        "LOGITS_TOP5_OVERLAP",
+        "LOGITS_MAX_KL",
+        "LOGITS_MIN_COSINE",
+        "LOGITS_MIN_TOP5_OVERLAP",
+    )
+    missing = [f"{prefix}_{suffix}" for suffix in suffixes
+               if f"{prefix}_{suffix}" not in values]
+    if missing:
+        raise ValueError(
+            f"QEMU summary lacks {prefix} numerical metrics: {', '.join(missing)}"
+        )
+    return {
+        suffix.removeprefix("LOGITS_").lower(): values[f"{prefix}_{suffix}"]
+        for suffix in suffixes
+    }
 
 
 def ensure_model_disk(spec: dict[str, object]) -> tuple[Path, str, str]:
@@ -137,7 +187,7 @@ def fallback_total(coverage: dict[str, object], required: set[str]) -> int:
 
 
 def qemu_metrics(
-    summary: dict[str, object], disposition: str
+    summary: dict[str, object], disposition: str, require_prefill: bool = False
 ) -> dict[str, object]:
     provenance = summary.get("provenance", {})
     summary_tool = provenance.get("tool", {})
@@ -150,6 +200,9 @@ def qemu_metrics(
     required_provenance = (
         "LLAMA_REVISION", "LLAMA_BINARY_SHA256", "QEMU_BINARY_SHA256",
         "QEMU_CPU", "MODEL_PROMPT", "MODEL_TOKENS", "LOGITS_MAX_ABS_TOLERANCE",
+        "MODEL_NUMERICAL_CONTRACT", "MODEL_LOGITS_MAX_KL_TOLERANCE",
+        "MODEL_LOGITS_MIN_COSINE_TOLERANCE",
+        "MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE",
     )
     missing_provenance = [key for key in required_provenance if not run_manifest.get(key)]
     if missing_provenance:
@@ -157,6 +210,8 @@ def qemu_metrics(
             "QEMU run manifest lacks execution provenance: "
             + ", ".join(missing_provenance)
         )
+    if require_prefill and "REQUIRE_PREFILL" not in run_manifest:
+        raise ValueError("QEMU run manifest lacks Prefill-census provenance")
     qbs_abi = provenance.get("qbs_abi", {})
     if not qbs_abi.get("sha256") or int(qbs_abi.get("architecture_version", 0)) <= 0:
         raise ValueError("QEMU summary lacks QBS ABI provenance")
@@ -164,19 +219,50 @@ def qemu_metrics(
     qbs = summary["qbs"]
     akv = summary["akv_v2"]
     qbs_rvv = functional["qbs_rvv"]
-    akv_logits_max_abs = float(functional["logits_max_abs"])
+    akv_qbs = functional.get("akv_qbs")
+    if not isinstance(akv_qbs, dict):
+        raise ValueError("QEMU summary lacks AKV/QBS numerical metrics")
+    qbs_quality = quality_metrics(qbs_rvv, "QBS_RVV")
+    akv_quality = quality_metrics(akv_qbs, "AKV")
+    if (
+        str(functional["logits_top1_equal"]) != akv_qbs.get("AKV_LOGITS_TOP1_EQUAL")
+        or str(functional["logits_max_abs"]) != akv_qbs.get("AKV_LOGITS_MAX_ABS")
+    ):
+        raise ValueError("QEMU summary has inconsistent AKV numerical aliases")
     akv_logits_tolerance = float(run_manifest["LOGITS_MAX_ABS_TOLERANCE"])
     if akv_logits_tolerance < 0:
         raise ValueError("QEMU AKV logits tolerance is negative")
+    model_contract = str(run_manifest["MODEL_NUMERICAL_CONTRACT"])
+    model_max_kl_tolerance = float(run_manifest["MODEL_LOGITS_MAX_KL_TOLERANCE"])
+    model_min_cosine_tolerance = float(
+        run_manifest["MODEL_LOGITS_MIN_COSINE_TOLERANCE"]
+    )
+    model_min_top5_overlap_tolerance = float(
+        run_manifest["MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE"]
+    )
+    if model_contract != "decision-preserving-v1":
+        raise ValueError(f"unsupported model numerical contract: {model_contract}")
+    if model_max_kl_tolerance < 0 or not 0 <= model_min_cosine_tolerance <= 1 \
+            or not 0 <= model_min_top5_overlap_tolerance <= 1:
+        raise ValueError("QEMU model-quality thresholds are invalid")
     if (
         int(functional["guest_exit"]) != 0
         or functional["output_equal"] is not True
         or str(functional["logits_top1_equal"]) != "1"
-        or akv_logits_max_abs > akv_logits_tolerance
         or str(qbs_rvv["QBS_RVV_LOGITS_TOP1_EQUAL"]) != "1"
         or str(qbs_rvv["QBS_RVV_TOKEN_OUTPUT_EQUAL"]) != "1"
     ):
         raise ValueError("QEMU functional or numerical closure failed")
+    for label, quality in (("QBS/RVV", qbs_quality), ("AKV/QBS", akv_quality)):
+        if int(quality["records"]) != int(quality["comparable_records"]):
+            raise ValueError(f"QEMU {label} logits contexts diverged")
+    if (
+        float(akv_quality["max_kl"]) > model_max_kl_tolerance
+        or float(akv_quality["min_cosine"]) < model_min_cosine_tolerance
+        or float(akv_quality["min_top5_overlap"])
+        < model_min_top5_overlap_tolerance
+    ):
+        raise ValueError("QEMU AKV/QBS model-quality contract failed")
 
     native_commands = 0
     emulated_commands = 0
@@ -221,7 +307,12 @@ def qemu_metrics(
     candidates = int(akv_coverage["candidate_ops"])
     executed = int(akv_coverage["executed_ops"])
     fallback_shape = int(akv_coverage["fallback_shape"])
-    accounted = executed + fallback_total(akv_coverage, AKV_FALLBACK_FIELDS)
+    fallback_ops = fallback_total(akv_coverage, AKV_FALLBACK_FIELDS)
+    if require_prefill:
+        fallback_ops += fallback_total(akv_coverage, AKV_PREFILL_FALLBACK_FIELDS)
+    elif "fallback_size" in akv_coverage:
+        fallback_ops += int(akv_coverage["fallback_size"])
+    accounted = executed + fallback_ops
     if candidates <= 0 or candidates != accounted:
         raise ValueError("AKV candidates are not completely accounted")
     if disposition == "execute":
@@ -232,6 +323,52 @@ def qemu_metrics(
             raise ValueError("AKV fallback model did not fall back exclusively by shape")
     else:
         raise ValueError(f"unknown AKV disposition: {disposition}")
+
+    phase_fields = {
+        "executed_decode", "executed_prefill", "prefill_query_tokens",
+        "prefill_attention_pairs",
+    }
+    present_phase_fields = phase_fields & set(akv_coverage)
+    if present_phase_fields and present_phase_fields != phase_fields:
+        raise ValueError("AKV coverage contains only a partial phase breakdown")
+    executed_decode = int(akv_coverage.get("executed_decode", 0))
+    executed_prefill = int(akv_coverage.get("executed_prefill", 0))
+    prefill_query_tokens = int(akv_coverage.get("prefill_query_tokens", 0))
+    prefill_attention_pairs = int(akv_coverage.get("prefill_attention_pairs", 0))
+    if present_phase_fields:
+        if executed_decode + executed_prefill != executed:
+            raise ValueError("AKV Decode/Prefill calls do not equal total executed calls")
+        if executed_prefill == 0 and (prefill_query_tokens or prefill_attention_pairs):
+            raise ValueError("AKV Prefill work is nonzero without a Prefill call")
+        if executed_prefill > 0 and min(prefill_query_tokens, prefill_attention_pairs) <= 0:
+            raise ValueError("AKV Prefill call has no recorded token/pair work")
+
+    calls_by_mode = akv.get("calls_by_mode", {})
+    if calls_by_mode:
+        if int(calls_by_mode.get("decode", 0)) != executed_decode or \
+           int(calls_by_mode.get("prefill", 0)) != executed_prefill:
+            raise ValueError("AKV phase counters differ from traced calls")
+
+    if require_prefill:
+        graphs = summary.get("graphs", {})
+        if int(graphs.get("prefill", 0)) <= 0:
+            raise ValueError("Prefill census contains no Prefill graph")
+        if disposition == "execute":
+            if str(run_manifest["REQUIRE_PREFILL"]) != "1":
+                raise ValueError("Prefill execute run was not launched with strict selection")
+            if executed_decode <= 0 or executed_prefill <= 0:
+                raise ValueError("AKV execute model did not exercise both Decode and Prefill")
+            if fallback_ops != 0:
+                raise ValueError("AKV execute model used an unexpected fallback")
+        elif str(run_manifest["REQUIRE_PREFILL"]) != "0":
+            raise ValueError("Prefill fallback run has inconsistent strict-selection provenance")
+
+    if disposition == "fallback_shape":
+        fastpath_status = "shape-fallback"
+    elif executed_prefill > 0:
+        fastpath_status = "decode+prefill"
+    else:
+        fastpath_status = "decode-only"
 
     activation_accounting = qbs.get("activation_accounting")
     if "MUL_MAT_ID" in operations:
@@ -268,14 +405,49 @@ def qemu_metrics(
         "qbs_emulated_commands": emulated_commands,
         "qbs_top1_equal": qbs_rvv["QBS_RVV_LOGITS_TOP1_EQUAL"],
         "qbs_token_output_equal": qbs_rvv["QBS_RVV_TOKEN_OUTPUT_EQUAL"],
-        "qbs_logits_max_abs": qbs_rvv["QBS_RVV_LOGITS_MAX_ABS"],
+        "qbs_logits_records": qbs_quality["records"],
+        "qbs_logits_comparable_records": qbs_quality["comparable_records"],
+        "qbs_logits_max_abs": qbs_quality["max_abs"],
+        "qbs_logits_max_rel": qbs_quality["max_rel"],
+        "qbs_logits_mean_abs": qbs_quality["mean_abs"],
+        "qbs_logits_mean_rmse": qbs_quality["mean_rmse"],
+        "qbs_logits_mean_kl": qbs_quality["mean_kl"],
+        "qbs_logits_mean_cosine": qbs_quality["mean_cosine"],
+        "qbs_logits_top5_overlap": qbs_quality["top5_overlap"],
+        "qbs_logits_max_kl": qbs_quality["max_kl"],
+        "qbs_logits_min_cosine": qbs_quality["min_cosine"],
+        "qbs_logits_min_top5_overlap": qbs_quality["min_top5_overlap"],
         "akv_candidate_ops": candidates,
         "akv_executed_ops": executed,
+        "akv_executed_decode": executed_decode,
+        "akv_executed_prefill": executed_prefill,
+        "akv_prefill_query_tokens": prefill_query_tokens,
+        "akv_prefill_attention_pairs": prefill_attention_pairs,
+        "akv_fallback_ops": fallback_ops,
         "akv_fallback_shape": fallback_shape,
+        "akv_fastpath_status": fastpath_status,
+        "akv_performance_evidence": "functional-qemu-only",
         "akv_top1_equal": functional["logits_top1_equal"],
         "akv_token_output_equal": int(bool(functional["output_equal"])),
-        "akv_logits_max_abs": functional["logits_max_abs"],
+        "akv_logits_records": akv_quality["records"],
+        "akv_logits_comparable_records": akv_quality["comparable_records"],
+        "akv_logits_max_abs": akv_quality["max_abs"],
+        "akv_logits_max_rel": akv_quality["max_rel"],
+        "akv_logits_mean_abs": akv_quality["mean_abs"],
+        "akv_logits_mean_rmse": akv_quality["mean_rmse"],
+        "akv_logits_mean_kl": akv_quality["mean_kl"],
+        "akv_logits_mean_cosine": akv_quality["mean_cosine"],
+        "akv_logits_top5_overlap": akv_quality["top5_overlap"],
+        "akv_logits_max_kl": akv_quality["max_kl"],
+        "akv_logits_min_cosine": akv_quality["min_cosine"],
+        "akv_logits_min_top5_overlap": akv_quality["min_top5_overlap"],
         "akv_logits_tolerance": akv_logits_tolerance,
+        "model_numerical_contract": model_contract,
+        "model_logits_max_kl_tolerance": model_max_kl_tolerance,
+        "model_logits_min_cosine_tolerance": model_min_cosine_tolerance,
+        "model_logits_min_top5_overlap_tolerance": (
+            model_min_top5_overlap_tolerance
+        ),
         "llama_revision": str(run_manifest["LLAMA_REVISION"]),
         "llama_binary_sha256": str(run_manifest["LLAMA_BINARY_SHA256"]),
         "qemu_binary_sha256": str(run_manifest["QEMU_BINARY_SHA256"]),
@@ -290,7 +462,9 @@ def qemu_metrics(
 
 
 def empty_metrics() -> dict[str, object]:
-    return {field: "" for field in RESULT_FIELDS[7:-2]}
+    first = RESULT_FIELDS.index("qbs_profiles")
+    last = RESULT_FIELDS.index("artifact")
+    return {field: "" for field in RESULT_FIELDS[first:last]}
 
 
 def main() -> int:
@@ -306,10 +480,20 @@ def main() -> int:
     )
     parser.add_argument("--tokens", type=int, default=2)
     parser.add_argument(
+        "--prefill-census",
+        action="store_true",
+        help="require supported models to execute both Decode and Prefill; retain explicit shape fallback",
+    )
+    parser.add_argument("--llama-src", type=Path)
+    parser.add_argument("--llama-binary", type=Path)
+    parser.add_argument(
         "--prompt",
-        default="Explain why low-bit vector inference benefits from packed arithmetic and data reuse.",
+        default=None,
     )
     args = parser.parse_args()
+    prompt = args.prompt or (
+        DEFAULT_PREFILL_PROMPT if args.prefill_census else DEFAULT_MODEL_PROMPT
+    )
     if args.tokens <= 0:
         raise ValueError("tokens must be positive")
     if args.prepare_only and args.reuse_existing_log:
@@ -338,6 +522,19 @@ def main() -> int:
             "path": str(MODEL_SUMMARIZER.resolve()),
             "sha256": sha256(MODEL_SUMMARIZER),
         },
+        "runner": {
+            "path": str(Path(__file__).resolve()),
+            "sha256": sha256(Path(__file__).resolve()),
+        },
+        "qemu_driver": {
+            "path": str(RUN_QEMU.resolve()),
+            "sha256": sha256(RUN_QEMU),
+        },
+        "prefill_census": args.prefill_census,
+        "generated_tokens": args.tokens,
+        "prompt": prompt,
+        "llama_src": str(args.llama_src.resolve()) if args.llama_src else None,
+        "llama_binary": str(args.llama_binary.resolve()) if args.llama_binary else None,
         "models": {},
     }
     rows: list[dict[str, object]] = []
@@ -359,6 +556,7 @@ def main() -> int:
             disk, guest_path, model_sha = ensure_model_disk(spec)
             qemu = spec["qemu"]
             mode = "combined" if spec["akv_disposition"] == "execute" else "combined-fallback"
+            require_prefill = args.prefill_census and spec["akv_disposition"] == "execute"
             provenance["models"][model_id] = {
                 "name": spec["name"],
                 "architecture": spec["architecture"],
@@ -369,6 +567,8 @@ def main() -> int:
                 "guest_path": guest_path,
                 "qemu_memory": qemu["memory"],
                 "mode": mode,
+                "prefill_census": args.prefill_census,
+                "require_prefill_fastpath": require_prefill,
             }
             if args.prepare_only:
                 status.update(status="PREPARED", finished_at=now())
@@ -383,9 +583,14 @@ def main() -> int:
                     "AKV_MODEL_GUEST_PATH": guest_path,
                     "AKV_QEMU_MEMORY": str(qemu["memory"]),
                     "AKV_MODEL_TOKENS": str(args.tokens),
-                    "AKV_MODEL_PROMPT": args.prompt,
+                    "AKV_MODEL_PROMPT": prompt,
+                    "AKV_REQUIRE_PREFILL": "1" if require_prefill else "0",
                     "AKV_RUN_DIR": str(case_dir / "run"),
                 })
+                if args.llama_src:
+                    environment["AKV_LLAMA_SRC"] = str(args.llama_src.resolve())
+                if args.llama_binary:
+                    environment["AKV_LLAMA_BINARY"] = str(args.llama_binary.resolve())
                 status.update(
                     status="CHECKING_EXISTING" if args.reuse_existing_log else "RUNNING",
                     mode=mode,
@@ -415,7 +620,11 @@ def main() -> int:
                 summary_path = case_dir / "run" / "model_closure" / "dynamic_summary.json"
                 if not summary_path.is_file():
                     raise FileNotFoundError(summary_path)
-                metrics = qemu_metrics(load_json(summary_path), str(spec["akv_disposition"]))
+                metrics = qemu_metrics(
+                    load_json(summary_path),
+                    str(spec["akv_disposition"]),
+                    args.prefill_census,
+                )
                 dynamic_summary = artifact_path(summary_path)
                 status.update(
                     status="PASS",
@@ -431,6 +640,7 @@ def main() -> int:
                 "qemu_memory": qemu["memory"],
                 "status": status["status"],
                 "return_code": return_code,
+                "prefill_census": int(args.prefill_census),
                 **metrics,
                 "artifact": artifact_path(case_dir),
                 "dynamic_summary": dynamic_summary,
@@ -446,6 +656,7 @@ def main() -> int:
                 "qemu_memory": spec["qemu"]["memory"],
                 "status": "FAIL",
                 "return_code": 1,
+                "prefill_census": int(args.prefill_census),
                 **empty_metrics(),
                 "artifact": artifact_path(case_dir),
                 "dynamic_summary": "",
