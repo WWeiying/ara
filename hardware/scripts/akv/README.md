@@ -113,6 +113,21 @@ Run it with:
 hardware/scripts/akv/run-qemu-combined-model-check.sh
 ```
 
+Combined and QBS-lifetime runs default to the repository-local QEMU image
+built by `verification/qbs/qemu/build_qemu_xaraqbs.sh` and the matching
+`build-rv64-cva6-qbs-arch3-current` llama binary. This keeps the QBS
+architecture version consumed by llama.cpp aligned with the generated QBS ABI.
+Set `AKV_QEMU_BINARY` or `AKV_LLAMA_BINARY` only when deliberately testing a
+different compatible build.
+
+Before a combined or QBS-lifetime model run, the launcher executes the short
+QBS capability and execution contract against that exact QEMU binary and CPU
+string. The check requires the generated architecture-v3 capability words and
+exercises both M5 and M8 commands, so an older QEMU fails before the long model
+boot instead of silently selecting RVV fallback. Set `AKV_QBS_PREFLIGHT=0` only
+for a deliberate negative test; the manifest records whether the preflight
+passed or was skipped.
+
 Override `AKV_MODEL_DISK`, `AKV_MODEL_GUEST_PATH`, and `AKV_MODEL_PROMPT` to
 run another GGUF image. The manifest records the exact prompt, token count,
 model image, llama binary, QEMU binary, revisions, and hashes. Host validation
@@ -145,10 +160,11 @@ Decode or Prefill graph, QBS has no fallback, and every non-executed AKV
 candidate is explained by an explicit fallback counter. Decode and Prefill
 calls are checked against separate shape, work, group, and traffic identities.
 
-Require a real causal Prefill dispatch with a prompt of at least 15 tokens by
-setting `AKV_REQUIRE_PREFILL=1`. Flash Attention is explicitly enabled in every
-variant, and validation requires nonzero Prefill calls, query tokens, attention
-pairs, no size fallback, and a `mode=prefill` execution record:
+Require real causal Prefill and Decode dispatches in the same run by setting
+`AKV_REQUIRE_PREFILL=1` with at least two generated tokens. The prompt must
+tokenize to at least 15 tokens. Flash Attention is explicitly enabled in every
+variant, and validation requires nonzero Prefill and Decode calls, query tokens,
+attention pairs, no size fallback, and both execution records:
 
 ```bash
 run=hardware/akv_jobs/qemu_model_combined_prefill_$(date +%Y%m%d_%H%M%S)
@@ -156,7 +172,7 @@ mkdir -p "$run"
 nohup env \
   AKV_REQUIRE_PREFILL=1 \
   AKV_MODEL_MODE=combined \
-  AKV_MODEL_TOKENS=1 \
+  AKV_MODEL_TOKENS=2 \
   AKV_MODEL_PROMPT='Explain regular vector memory access using at least two detailed examples.' \
   AKV_RUN_DIR="$PWD/$run" \
   hardware/scripts/akv/run-qemu-model-check.sh \

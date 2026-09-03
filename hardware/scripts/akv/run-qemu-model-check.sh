@@ -12,6 +12,8 @@ model_tokens=${AKV_MODEL_TOKENS:-2}
 model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
 require_prefill=${AKV_REQUIRE_PREFILL:-0}
+qbs_preflight=${AKV_QBS_PREFLIGHT:-1}
+qbs_preflight_status=not-applicable
 ara_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 number_re='^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$'
 grep -Eq "${number_re}" <<< "${max_abs_tolerance}" || {
@@ -211,10 +213,12 @@ validate_log() {
     (( candidate_ops == executed_ops + accounted_ops ))
     if [[ ${require_prefill} == 1 ]]; then
       grep -Eq 'executed_prefill=[1-9][0-9]*' <<< "${coverage_line}"
+      grep -Eq 'executed_decode=[1-9][0-9]*' <<< "${coverage_line}"
       grep -Eq 'prefill_query_tokens=[1-9][0-9]*' <<< "${coverage_line}"
       grep -Eq 'prefill_attention_pairs=[1-9][0-9]*' <<< "${coverage_line}"
       grep -Eq 'fallback_size=0([[:space:]]|$)' <<< "${coverage_line}"
       grep -Eq '^GGML_RISCV_AKV_EXEC mode=prefill ' "${log_file}"
+      grep -Eq '^GGML_RISCV_AKV_EXEC mode=decode ' "${log_file}"
     fi
     if [[ ${model_mode} == combined-fallback ]]; then
       local fallback_shape
@@ -283,6 +287,7 @@ write_manifest() {
     printf 'MODEL_TOKENS=%s\n' "${model_tokens}"
     printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
+    printf 'QBS_PREFLIGHT=%s\n' "${qbs_preflight_status}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
     printf 'MODEL_LOGITS_MAX_KL_TOLERANCE=%s\n' "${model_max_kl_tolerance}"
     printf 'MODEL_LOGITS_MIN_COSINE_TOLERANCE=%s\n' "${model_min_cosine_tolerance}"
@@ -307,6 +312,10 @@ esac
   printf 'invalid AKV_REQUIRE_PREFILL: %s (expected 0 or 1)\n' "${require_prefill}" >&2
   exit 2
 }
+[[ ${qbs_preflight} == 0 || ${qbs_preflight} == 1 ]] || {
+  printf 'invalid AKV_QBS_PREFLIGHT: %s (expected 0 or 1)\n' "${qbs_preflight}" >&2
+  exit 2
+}
 if [[ ${require_prefill} == 1 && ${model_mode} != combined ]]; then
   printf 'AKV_REQUIRE_PREFILL=1 requires AKV_MODEL_MODE=combined\n' >&2
   exit 2
@@ -319,6 +328,10 @@ fi
   printf 'invalid AKV_MODEL_TOKENS: %s\n' "${model_tokens}" >&2
   exit 2
 }
+if [[ ${require_prefill} == 1 && ${model_tokens} -lt 2 ]]; then
+  printf 'AKV_REQUIRE_PREFILL=1 requires AKV_MODEL_TOKENS>=2 so the same run covers both Prefill and Decode\n' >&2
+  exit 2
+fi
 [[ ${qemu_memory} =~ ^[1-9][0-9]*[GM]$ ]] || {
   printf 'invalid AKV_QEMU_MEMORY: %s (expected positive G/M size, for example 4G)\n' \
     "${qemu_memory}" >&2
@@ -359,7 +372,7 @@ fi
 
 platform=${AKV_QEMU_PLATFORM:-/home/wangwy/llama/platforms/cva6-qemu}
 llama_src=${AKV_LLAMA_SRC:-/home/wangwy/llama/llama.cpp}
-llama_binary=${AKV_LLAMA_BINARY:-${llama_src}/build-rv64-cva6-akv-static/bin/llama-simple}
+llama_binary=${AKV_LLAMA_BINARY:-}
 model_disk=${AKV_MODEL_DISK:-${platform}/images/qwen2.5-q4km-capture.ext4}
 timestamp=$(date +%Y%m%d_%H%M%S)
 run_dir=${AKV_RUN_DIR:-${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_${timestamp}}
@@ -368,9 +381,11 @@ source "${platform}/env.sh"
 
 if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ||
       ${model_mode} == qbs-lifetime ]]; then
-  qemu_binary=${AKV_QEMU_BINARY:-${platform}/build/qemu-10.2.0-build/qemu-system-riscv64}
+  llama_binary=${llama_binary:-${llama_src}/build-rv64-cva6-qbs-arch3-current/bin/llama-simple}
+  qemu_binary=${AKV_QEMU_BINARY:-${ara_root}/verification/qbs/qemu/build/qemu-10.2.0-build/qemu-system-riscv64}
   qemu_cpu=${AKV_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true,xaraqbs=true}
 else
+  llama_binary=${llama_binary:-${llama_src}/build-rv64-cva6-akv-static/bin/llama-simple}
   qemu_binary=${AKV_QEMU_BINARY:-${CROSS_BIN}/qemu-system-riscv64}
   qemu_cpu=${AKV_QEMU_CPU:-rv64,v=true,vlen=1024,elen=64,zfh=true,zvfh=true}
 fi
@@ -379,6 +394,21 @@ test -x "${llama_binary}"
 test -s "${model_disk}"
 test -x "${qemu_binary}"
 mkdir -p "${run_dir}"
+
+if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ||
+      ${model_mode} == qbs-lifetime ]]; then
+  if [[ ${qbs_preflight} == 1 ]]; then
+    printf 'Checking QBS ABI with %s\n' "${qemu_binary}"
+    QBS_QEMU="${qemu_binary}" \
+    QBS_QEMU_CPU="${qemu_cpu}" \
+    QBS_CONTRACT_BUILD_DIR="${run_dir}/qbs-contract" \
+      "${ara_root}/verification/qbs/qemu/run_qbs_contract_test.sh" \
+      2>&1 | tee "${run_dir}/qbs-contract.log"
+    qbs_preflight_status=passed
+  else
+    qbs_preflight_status=skipped
+  fi
+fi
 
 init_binary="${run_dir}/akv-token-init"
 initramfs="${run_dir}/akv-token-check.cpio"

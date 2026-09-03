@@ -16,6 +16,19 @@ static int finite_positive_f32(float value) {
          (bits & UINT32_C(0x7f800000)) != UINT32_C(0x7f800000);
 }
 
+static float negative_infinity_f32(void) {
+  const uint32_t bits = UINT32_C(0xff800000);
+  float value;
+  memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+static int is_negative_infinity_f32(float value) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  return bits == UINT32_C(0xff800000);
+}
+
 static int finite_f16_bits(uint16_t value) {
   return (value & UINT16_C(0x7c00)) != UINT16_C(0x7c00);
 }
@@ -383,7 +396,7 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
             workspace->query[local_token][head][dimension] =
                 f32_to_f16(query[dimension]);
           }
-          workspace->maximum[local_token][head] = -INFINITY;
+          workspace->maximum[local_token][head] = negative_infinity_f32();
           workspace->sum[local_token][head] = 0.0f;
           float *const output = (float *)(void *)(
               (char *)problem->output +
@@ -413,7 +426,7 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
               (size_t)token * layout.mask_token_stride_bytes) + tile_start;
 
           for (uint32_t head = 0u; head < q_rows; ++head) {
-            float tile_maximum = -INFINITY;
+            float tile_maximum = negative_infinity_f32();
             for (uint32_t sequence = 0u; sequence < active_tokens;
                  ++sequence) {
               const uint16_t *const key =
@@ -434,10 +447,9 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
             const float old_maximum = workspace->maximum[local_token][head];
             const float new_maximum =
                 tile_maximum > old_maximum ? tile_maximum : old_maximum;
-            const float old_scale =
-                isinf(old_maximum) && old_maximum < 0.0f
-                    ? 0.0f
-                    : expf(old_maximum - new_maximum);
+            const float old_scale = is_negative_infinity_f32(old_maximum)
+                                        ? 0.0f
+                                        : expf(old_maximum - new_maximum);
             workspace->old_scale[0][head] = old_scale;
             float tile_sum = 0.0f;
             for (uint32_t sequence = 0u; sequence < active_tokens;

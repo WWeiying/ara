@@ -209,14 +209,6 @@ def _vcs_timestamp_records(timestamp: Path) -> dict[Path, int]:
     return records
 
 
-def _under_root(candidate: Path) -> bool:
-    try:
-        candidate.relative_to(ROOT.resolve())
-        return True
-    except ValueError:
-        return False
-
-
 def validate_vcs_compile_image(compile_log: Path) -> tuple[Path, Path, str]:
     simv = compile_log.parent / "simv"
     timestamp = compile_log.parent / "simv.daidir/.vcs.timestamp"
@@ -231,7 +223,7 @@ def validate_vcs_compile_image(compile_log: Path) -> tuple[Path, Path, str]:
     }
     recorded_rtl = {
         source for source in records
-        if source.suffix in {".sv", ".v"} and _under_root(source)
+        if source.suffix in {".sv", ".v"}
     }
     if current_rtl != recorded_rtl:
         missing = sorted(str(path) for path in current_rtl - recorded_rtl)
@@ -243,7 +235,7 @@ def validate_vcs_compile_image(compile_log: Path) -> tuple[Path, Path, str]:
 
     recorded_headers = {
         source for source in records
-        if source.suffix in {".svh", ".vh"} and _under_root(source)
+        if source.suffix in {".svh", ".vh"}
     }
     checked_sources = current_rtl | recorded_headers
     missing_sources = [source for source in checked_sources if not source.is_file()]

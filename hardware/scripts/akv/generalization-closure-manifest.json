@@ -49,7 +49,7 @@
     {"name": "commit", "log": "verification/qbs/rtl_commit_build/run.log", "marker": "QBS commit PASS"},
     {"name": "context", "log": "verification/qbs/rtl_context_build/run.log", "marker": "QBS activation context PASS"},
     {"name": "context_macro", "log": "verification/qbs/rtl_context_macro_build/run.log", "marker": "QBS activation context PASS"},
-    {"name": "end_to_end", "log": "verification/qbs/rtl_engine_build/run.log", "marker": "QBS engine PASS: 22 functional cases plus four fault classes"}
+    {"name": "end_to_end", "log": "verification/qbs/rtl_engine_build/run.log", "marker": "QBS engine PASS: 33 functional cases plus four fault classes"}
   ],
   "qbs_non_regression": [
     {
