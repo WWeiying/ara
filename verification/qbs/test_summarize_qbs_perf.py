@@ -20,6 +20,7 @@ def record(sequence: int, saved: int) -> dict[str, int]:
         "seq": sequence,
         "id": 0,
         "m": 1,
+        "n": 32,
         "vlen": 1024,
         "lanes": 4,
         "success": 1,
@@ -49,6 +50,24 @@ def main() -> None:
     errors = MODULE.validate([impossible])
     if not any("saved activation bytes exceed" in error for error in errors):
         raise SystemExit("impossible activation saving was not rejected")
+
+    wide = record(1, 0)
+    wide.update({"m": 8, "n": 16, "commit_groups": 16})
+    errors = MODULE.validate([wide])
+    if errors:
+        raise SystemExit("valid M8/N16 commit geometry rejected: " + "; ".join(errors))
+
+    wide_tail = record(1, 0)
+    wide_tail.update({"m": 7, "n": 7, "commit_groups": 7})
+    errors = MODULE.validate([wide_tail])
+    if errors:
+        raise SystemExit("valid M7/N7 commit geometry rejected: " + "; ".join(errors))
+
+    wrong_wide = dict(wide)
+    wrong_wide["commit_groups"] = 32
+    errors = MODULE.validate([wrong_wide])
+    if not any("commit_groups=32, expected 16" in error for error in errors):
+        raise SystemExit("invalid M8/N16 commit geometry was not rejected")
     print("PASS: QBS direct/context payload accounting")
 
 

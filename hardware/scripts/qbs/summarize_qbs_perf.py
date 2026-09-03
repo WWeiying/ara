@@ -15,6 +15,7 @@ IDENTITY_FIELDS = {
     "seq",
     "id",
     "m",
+    "n",
     "vlen",
     "lanes",
     "success",
@@ -115,9 +116,15 @@ def validate(records: list[dict[str, int]]) -> list[str]:
         if record["useful_pairs"] > record["pair_capacity"]:
             errors.append(f"command {index}: useful pairs exceed capacity")
         if record["success"]:
-            expected_groups = (
-                record["m"] * record["vlen"] // (record["lanes"] * 64)
-            )
+            if record["m"] >= 5:
+                elements_per_group = record["lanes"] * 2
+                expected_groups = record["m"] * (
+                    (record["n"] + elements_per_group - 1) // elements_per_group
+                )
+            else:
+                expected_groups = (
+                    record["m"] * record["vlen"] // (record["lanes"] * 64)
+                )
             if record["commit_groups"] != expected_groups:
                 errors.append(
                     f"command {index}: commit_groups={record['commit_groups']}, "
