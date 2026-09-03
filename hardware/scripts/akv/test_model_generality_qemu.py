@@ -137,6 +137,29 @@ def summary(
 
 
 class ModelGeneralityQemuTest(unittest.TestCase):
+    def test_model_prompt_precedes_default_but_not_explicit_override(self):
+        spec = {
+            "id": "test",
+            "prompt": "model decode prompt",
+            "prefill_prompt": "model prefill prompt",
+        }
+        self.assertEqual(
+            MODULE.prompt_for_model(spec, None, False), "model decode prompt"
+        )
+        self.assertEqual(
+            MODULE.prompt_for_model(spec, None, True), "model prefill prompt"
+        )
+        self.assertEqual(
+            MODULE.prompt_for_model(spec, "explicit prompt", True),
+            "explicit prompt",
+        )
+
+    def test_empty_model_prompt_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid prefill_prompt"):
+            MODULE.prompt_for_model(
+                {"id": "test", "prefill_prompt": "  "}, None, True
+            )
+
     def test_execute_metrics_require_native_qbs_and_akv(self):
         metrics = MODULE.qemu_metrics(summary(2, 0), "execute")
         self.assertEqual(metrics["qbs_profiles"], "Q4_K")

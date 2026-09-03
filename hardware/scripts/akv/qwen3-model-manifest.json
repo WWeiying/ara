@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "e6ebc69fd11c843d5d20d27389f30777581eb3ac",
+  "kv_lengths": [16, 128, 512, 1024],
+  "models": [
+    {
+      "id": "qwen3_1p7b_q4km",
+      "name": "Qwen3-1.7B-Q4_K_M",
+      "architecture": "qwen3",
+      "topology": "dense",
+      "quantization": "Q4_K_M",
+      "model": "/home/wangwy/llama/models/Qwen3-1.7B-Q4_K_M.gguf",
+      "expected_sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+      "qemu": {
+        "disk": "/home/wangwy/llama/platforms/cva6-qemu/images/model-generality/qwen3_1p7b_q4km.ext4",
+        "disk_sha256": "8d7fde7c7087153394772321799a3048e5fe382a29b0a0f66d94a36e8813ce9f",
+        "guest_path": "/model/models/Qwen3-1.7B-Q4_K_M.gguf",
+        "memory": "4G"
+      },
+      "source": {
+        "repo": "ggml-org/Qwen3-1.7B-GGUF",
+        "revision": "daeb8e2d528a760970442092f6bf1e55c3b659eb",
+        "file": "Qwen3-1.7B-Q4_K_M.gguf"
+      },
+      "akv_disposition": "execute"
+    }
+  ]
+}

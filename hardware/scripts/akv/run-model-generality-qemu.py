@@ -478,6 +478,20 @@ def empty_metrics() -> dict[str, object]:
     return {field: "" for field in RESULT_FIELDS[first:last]}
 
 
+def prompt_for_model(
+    spec: dict[str, object], requested_prompt: str | None, prefill_census: bool
+) -> str:
+    if requested_prompt is not None:
+        return requested_prompt
+    key = "prefill_prompt" if prefill_census else "prompt"
+    value = spec.get(key)
+    if value is not None:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{spec['id']} has an invalid {key}")
+        return value
+    return DEFAULT_PREFILL_PROMPT if prefill_census else DEFAULT_MODEL_PROMPT
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -502,7 +516,7 @@ def main() -> int:
         default=None,
     )
     args = parser.parse_args()
-    prompt = args.prompt or (
+    default_prompt = args.prompt or (
         DEFAULT_PREFILL_PROMPT if args.prefill_census else DEFAULT_MODEL_PROMPT
     )
     if args.tokens <= 0:
@@ -543,7 +557,7 @@ def main() -> int:
         },
         "prefill_census": args.prefill_census,
         "generated_tokens": args.tokens,
-        "prompt": prompt,
+        "prompt": default_prompt,
         "llama_src": str(args.llama_src.resolve()) if args.llama_src else None,
         "llama_binary": str(args.llama_binary.resolve()) if args.llama_binary else None,
         "models": {},
@@ -553,6 +567,7 @@ def main() -> int:
 
     for model_id in selected:
         spec = models[model_id]
+        model_prompt = prompt_for_model(spec, args.prompt, args.prefill_census)
         case_dir = output / model_id
         case_dir.mkdir(exist_ok=args.reuse_existing_log)
         status = {
@@ -580,6 +595,7 @@ def main() -> int:
                 "mode": mode,
                 "prefill_census": args.prefill_census,
                 "require_prefill_fastpath": require_prefill,
+                "prompt": model_prompt,
             }
             if args.prepare_only:
                 status.update(status="PREPARED", finished_at=now())
@@ -594,7 +610,7 @@ def main() -> int:
                     "AKV_MODEL_GUEST_PATH": guest_path,
                     "AKV_QEMU_MEMORY": str(qemu["memory"]),
                     "AKV_MODEL_TOKENS": str(args.tokens),
-                    "AKV_MODEL_PROMPT": prompt,
+                    "AKV_MODEL_PROMPT": model_prompt,
                     "AKV_REQUIRE_PREFILL": "1" if require_prefill else "0",
                     "AKV_RUN_DIR": str(case_dir / "run"),
                 })

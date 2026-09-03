@@ -256,14 +256,28 @@ static struct logits_comparison compare_logits(const char * label,
         const unsigned top_count = rvv_record.n_vocab < 5 ? rvv_record.n_vocab : 5;
         const double record_top5_overlap =
             (double) top5_intersection(rvv_top5, akv_top5, top_count) / top_count;
+        const float rvv_top1_value = rvv_logits[rvv_top5[0]];
+        const float akv_top1_value = akv_logits[akv_top5[0]];
+        const float rvv_top1_margin = top_count > 1
+            ? rvv_top1_value - rvv_logits[rvv_top5[1]] : 0.0f;
+        const float akv_top1_margin = top_count > 1
+            ? akv_top1_value - akv_logits[akv_top5[1]] : 0.0f;
         if (same_context) {
             printf("LOGITS_RECORD pair=%s step=%u target=%d top1_equal=%d "
-                   "baseline_top1=%u candidate_top1=%u max_abs=%.9g "
+                   "baseline_top1=%u candidate_top1=%u "
+                   "baseline_top1_value=%.9g candidate_top1_value=%.9g "
+                   "baseline_top2=%u candidate_top2=%u "
+                   "baseline_top1_margin=%.9g candidate_top1_margin=%.9g "
+                   "max_abs=%.9g "
                    "max_abs_index=%u baseline_at_max=%.9g candidate_at_max=%.9g "
                    "mean_abs=%.9g rmse=%.9g kl=%.9g cosine=%.9g "
                    "top5_overlap=%.9g\n",
                    label, rvv_record.step, rvv_record.target_token,
-                   rvv_top == akv_top, rvv_top, akv_top, record_max_abs,
+                   rvv_top == akv_top, rvv_top, akv_top,
+                   rvv_top1_value, akv_top1_value,
+                   top_count > 1 ? rvv_top5[1] : UINT32_MAX,
+                   top_count > 1 ? akv_top5[1] : UINT32_MAX,
+                   rvv_top1_margin, akv_top1_margin, record_max_abs,
                    record_max_abs_index, rvv_logits[record_max_abs_index],
                    akv_logits[record_max_abs_index], record_mean_abs,
                    record_rmse, record_kl, record_cosine,

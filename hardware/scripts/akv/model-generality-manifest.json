@@ -51,6 +51,7 @@
         "file": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
       },
       "reference_summary": "hardware/akv_jobs/qemu_model_combined_fixedprompt_tinyllama_20260831/model_closure_final/dynamic_summary.json",
+      "prefill_prompt": "The quick brown fox jumps over the lazy dog.",
       "akv_disposition": "execute",
       "decode_expectation": {
         "qbs_candidate_compute_nodes": 155,
