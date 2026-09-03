@@ -97,6 +97,10 @@ def qemu(
                 "Q4_K": {
                     "gemv_calls": "2", "gemm_calls": "1",
                     "native_qbexec": "8", "emulated_commands": "0",
+                    "commands_m1": "2", "commands_m2": "0",
+                    "commands_m3": "0", "commands_m4": "3",
+                    "commands_m5": "0", "commands_m6": "0",
+                    "commands_m7": "0", "commands_m8": "3",
                     "dot_elements": "1024", "command_dot_elements": "1024",
                 }
             },

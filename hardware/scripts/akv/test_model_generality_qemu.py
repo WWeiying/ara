@@ -106,6 +106,10 @@ def summary(
                 "Q4_K": {
                     "gemv_calls": "2", "gemm_calls": "1",
                     "native_qbexec": "8", "emulated_commands": "0",
+                    "commands_m1": "2", "commands_m2": "0",
+                    "commands_m3": "0", "commands_m4": "3",
+                    "commands_m5": "0", "commands_m6": "0",
+                    "commands_m7": "0", "commands_m8": "3",
                     "dot_elements": "1024", "command_dot_elements": "1024",
                 }
             },
@@ -168,6 +172,8 @@ class ModelGeneralityQemuTest(unittest.TestCase):
         self.assertEqual(metrics["qbs_gemm_calls"], 1)
         self.assertEqual(metrics["qbs_dot_elements"], 1024)
         self.assertEqual(metrics["qbs_native_commands"], 8)
+        self.assertEqual(metrics["qbs_commands_m4"], 3)
+        self.assertEqual(metrics["qbs_commands_m8"], 3)
         self.assertEqual(metrics["akv_executed_ops"], 2)
 
     def test_shape_fallback_is_explicitly_accepted(self):
@@ -215,6 +221,12 @@ class ModelGeneralityQemuTest(unittest.TestCase):
         value = summary(2, 0)
         value["qbs"]["coverage"]["Q4_K"]["fallback_shape"] = "1"
         with self.assertRaisesRegex(ValueError, "coverage is incomplete"):
+            MODULE.qemu_metrics(value, "execute")
+
+    def test_qbs_m_width_accounting_must_match_command_total(self):
+        value = summary(2, 0)
+        value["qbs"]["execution"]["Q4_K"]["commands_m8"] = "2"
+        with self.assertRaisesRegex(ValueError, "M-width command accounting"):
             MODULE.qemu_metrics(value, "execute")
 
     def test_akv_model_quality_contract_is_enforced(self):

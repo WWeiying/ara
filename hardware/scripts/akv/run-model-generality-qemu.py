@@ -45,6 +45,8 @@ RESULT_FIELDS = (
     "status", "return_code", "prefill_census", "qbs_profiles", "qbs_operations", "qbs_nodes",
     "qbs_gemv_calls", "qbs_gemm_calls", "qbs_dot_elements",
     "qbs_command_dot_elements", "qbs_native_commands", "qbs_emulated_commands",
+    "qbs_commands_m1", "qbs_commands_m2", "qbs_commands_m3", "qbs_commands_m4",
+    "qbs_commands_m5", "qbs_commands_m6", "qbs_commands_m7", "qbs_commands_m8",
     "qbs_top1_equal", "qbs_token_output_equal", "qbs_logits_records",
     "qbs_logits_comparable_records", "qbs_logits_max_abs", "qbs_logits_max_rel",
     "qbs_logits_mean_abs", "qbs_logits_mean_rmse", "qbs_logits_mean_kl",
@@ -281,6 +283,7 @@ def qemu_metrics(
     gemm_calls = 0
     dot_elements = 0
     command_dot_elements = 0
+    commands_by_m = {m: 0 for m in range(1, 9)}
     operations = qbs.get("operations", {})
     if not operations:
         raise ValueError("QEMU summary lacks QBS operation accounting")
@@ -307,6 +310,15 @@ def qemu_metrics(
         command_dot_elements += int(execution["command_dot_elements"])
         native_commands += int(execution["native_qbexec"])
         emulated_commands += int(execution["emulated_commands"])
+        present_command_fields = [
+            f"commands_m{m}" for m in range(1, 9) if f"commands_m{m}" in execution
+        ]
+        if present_command_fields:
+            profile_commands = sum(int(execution[field]) for field in present_command_fields)
+            if profile_commands != int(execution["native_qbexec"]) + int(execution["emulated_commands"]):
+                raise ValueError(f"QBS M-width command accounting differs for {profile}")
+        for m in range(1, 9):
+            commands_by_m[m] += int(execution.get(f"commands_m{m}", 0))
     if gemv_calls + gemm_calls <= 0 or dot_elements <= 0:
         raise ValueError("QBS selected model work but executed no matrix kernel")
     if dot_elements != command_dot_elements:
@@ -414,6 +426,7 @@ def qemu_metrics(
         "qbs_command_dot_elements": command_dot_elements,
         "qbs_native_commands": native_commands,
         "qbs_emulated_commands": emulated_commands,
+        **{f"qbs_commands_m{m}": commands_by_m[m] for m in range(1, 9)},
         "qbs_top1_equal": qbs_rvv["QBS_RVV_LOGITS_TOP1_EQUAL"],
         "qbs_token_output_equal": qbs_rvv["QBS_RVV_TOKEN_OUTPUT_EQUAL"],
         "qbs_logits_records": qbs_quality["records"],

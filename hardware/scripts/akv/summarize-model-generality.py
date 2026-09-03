@@ -551,6 +551,10 @@ def main() -> int:
             "qemu_qbs_command_dot_elements": metrics["qbs_command_dot_elements"],
             "qemu_qbs_native_commands": metrics["qbs_native_commands"],
             "qemu_qbs_emulated_commands": metrics["qbs_emulated_commands"],
+            **{
+                f"qemu_qbs_commands_m{m}": metrics[f"qbs_commands_m{m}"]
+                for m in range(1, 9)
+            },
             "qemu_qbs_top1_equal": metrics["qbs_top1_equal"],
             "qemu_qbs_token_equal": metrics["qbs_token_output_equal"],
             "qemu_qbs_logits_records": metrics["qbs_logits_records"],
@@ -686,6 +690,10 @@ def main() -> int:
         }),
         "qbs_native_commands": sum(int(row["qemu_qbs_native_commands"]) for row in model_rows),
         "qbs_emulated_commands": sum(int(row["qemu_qbs_emulated_commands"]) for row in model_rows),
+        "qbs_commands_by_m": {
+            str(m): sum(int(row[f"qemu_qbs_commands_m{m}"]) for row in model_rows)
+            for m in range(1, 9)
+        },
         "qbs_gemv_calls": sum(int(row["qemu_qbs_gemv_calls"]) for row in model_rows),
         "qbs_gemm_calls": sum(int(row["qemu_qbs_gemm_calls"]) for row in model_rows),
         "qbs_dot_elements": sum(int(row["qemu_qbs_dot_elements"]) for row in model_rows),
