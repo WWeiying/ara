@@ -33,7 +33,7 @@ GGUF 原始块量化权重
   -> qbinfo 能力检查与 M/N/K 分块
   -> qbexec(descriptor, activation, vd, M)
   -> QBS 读取压缩块、解码、点积、修正、FP32 累加
-  -> 结果写入从 vd 开始的普通向量寄存器组（软件示例使用 v8...v11）
+  -> 结果写入从 vd 开始的普通向量寄存器组（软件示例使用 v8...v15）
   -> 标准 RVV vse32.v 写回 GGML 输出 tensor
 ```
 
@@ -47,7 +47,7 @@ GGUF 原始块量化权重
 4. 用第 11、12 节判断性能计数器，而不是从单个 utilization 数字猜瓶颈；
 5. 最后用第 13 至 16 节区分功能证明、模型质量、研究贡献和未来扩展。
 
-读完后至少应能回答四个问题：某个 weight byte 怎样参与一个 FP32 输出；为什么 R4/M4 不改变
+读完后至少应能回答四个问题：某个 weight byte 怎样参与一个 FP32 输出；为什么 R4/M4/M8 不改变
 数学结果；为什么 fault 前不能写 VRF；为什么一个不支持的 tensor 会回到普通 RVV，而不是进入
 “近似兼容”的 QBS 路径。
 
@@ -420,8 +420,9 @@ Decode:  A[1,K] x W[N,K] -> C[1,N]
 ```
 
 Prefill 能让一块 weight 被多行 activation 复用，算术强度较高；Decode 每个 token 都要重新扫描
-大量权重，通常更受 weight bandwidth 和低比特解码开销影响。QBS 因此同时提供 M1 GEMV 与
-M1..M4 micro-GEMM，而不是只优化一个固定 batch shape。
+大量权重，通常更受 weight bandwidth 和低比特解码开销影响。QBS 因此同时提供 M1 GEMV、
+M1--M4/N32 micro-GEMM，以及经精确流量判定选择的 M5--M8/N16 命令，而不是只优化一个固定
+batch shape。
 
 #### 2.14.1 一层完整 shape ledger
 
@@ -643,7 +644,7 @@ GGML:
 QBS backend:
   模型加载时把 weight 持久化 R4 repack
   -> 运行时把 M 行 activation 量化/布局
-  -> N<=32、M<=4、K-block 分命令
+  -> 窄 M<=4/N<=32，或流量有利时宽 M<=8/N<=16，K-block 分命令
   -> qbexec 直接计算 MxN 量化线性 microtile
 ```
 
@@ -917,7 +918,7 @@ QBS 保留这些高层但仍具有通用边界的语义，并通过 profile、la
 
 1. **Profile 描述数学**：block bytes、quant 位布局、scale/min correction 和 activation 配对
    决定每个 block 的严格数值含义；
-2. **Layout 暴露数据邻接**：R4/M4 使硬件知道哪些 weight/activation block 可作为一个连续 tile
+2. **Layout 暴露数据邻接**：R4/M4/M8 使硬件知道哪些 weight/activation block 可作为一个连续 tile
    读取和复用，而不依赖地址流猜测；
 3. **Shape 给出复用边界**：`M/N/K-blocks` 明确一条命令内 activation、weight 和 accumulator
    的生命周期；
@@ -1151,10 +1152,11 @@ unpack、correction、reduction 和控制仍是可退休的普通指令流。这
 
 QBS 不修改 GGML graph 中 `MUL_MAT` 的数学语义，也不删除 F32 activation 的动态量化。它改变的是
 量化后的矩阵内核：模型加载时一次性将权重转换为 R4 block-major，运行时把 activation 分成
-Q8_K/Q8_0 blocks，然后将大矩阵切成 `M<=4`、`N<=32`、`K-blocks<=256` 的命令。
+Q8_K/Q8_0 blocks。公共 planner 将大矩阵切成窄命令 `M<=4, N<=32`，或在设备能力、shape 和
+精确输入流量条件同时满足时切成宽命令 `5<=M<=8, N<=16`；两者的 `K-blocks` 均不超过 256。
 
 当前软件被分成“运行时适配器”和“QBS 公共层”。GGML 适配器只解释 tensor type、生命周期、
-allocator、trace 和 fallback；profile 元数据、能力解析、R4/M4 packing、M/N/K 分块、descriptor
+allocator、trace 和 fallback；profile 元数据、能力解析、R4/M4/M8 packing、M/N/K 分块、descriptor
 构造和原生指令 wrapper 属于不依赖 GGML 的公共层。调用关系可概括为：
 
 ```c
@@ -1175,7 +1177,7 @@ problem = {binding, weight_layout, activation_storage,
            M_total, N_total, K};
 plan = qbs_plan_create(device, problem);
 
-// 公共层完成 M1-M4、N tail、split-K 和 descriptor 构造；
+// 公共层完成 M1-M8、窄/宽 N tile、tail、split-K 和 descriptor 构造；
 // GGML callback 只负责原生 qbexec 或功能 emulation，以及 trace。
 qbs_execute(plan,
             weights_r4, weights_bytes,
@@ -1186,7 +1188,7 @@ qbs_execute(plan,
 ```
 
 实际 wrapper 在指令前用 `fence rw,rw` 确保 descriptor、activation 和 repacked weight 对 QBS 可见；按 M
-设置 e32/m1、m2 或 m4 向量状态；发出 raw `.word`；命令返回后把 `vl` 改成 logical N，用普通
+设置 e32/m1、m2、m4 或 m8 向量状态；发出 raw `.word`；命令返回后把 `vl` 改成 logical N，用普通
 `vse32.v` 存回结果。例如 M=4 的实际核心序列是：
 
 ```asm
@@ -1213,8 +1215,8 @@ partial outputs；这是功能 fallback，不是隐含在单条指令中的无�
 | 标准 RVV 块点积 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/quants.c` | 按 VLEN 选择 Q3/Q4/Q6 等 RVV decode/dot/reduction 实现 |
 | 标准 repacked GEMV/GEMM | `llama/llama.cpp/ggml/src/ggml-cpu/repack.cpp` | 选择多行 trait、重排权重/激活并调用 GEMV/GEMM kernel |
 | QBS 公共运行时 API | `software/qbs/include/qbs/qbs.h` | 与 framework 无关的 encoding binding、profile、capability、problem/plan、buffer 和 executor 契约 |
-| QBS 公共运行时实现 | `software/qbs/src/qbs_runtime.c`、`qbs_native_riscv.c` | capability 核验、R4/M4 packing、M/N/K 分块、tail/split-K、descriptor、容量预检和原生 wrapper |
-| QBS GGML 适配器 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | `ggml_type` 映射、tensor 选择、GGML trace/emulation、fallback 和公共 executor 回调 |
+| QBS 公共运行时实现 | `software/qbs/src/qbs_runtime.c`、`qbs_native_riscv.c` | capability 核验、R4/M4/M8 packing、精确流量选择、M/N/K 分块、tail/split-K、descriptor、容量预检和原生 wrapper |
+| QBS GGML 适配器 | `llama/llama.cpp/ggml/src/ggml-cpu/arch/riscv/qbs.cpp` | `ggml_type` 映射、tensor 选择、宽 M activation 规划/packing、GGML trace/emulation、fallback 和公共 executor 回调 |
 | QBS ABI 真源 | `config/qbs_abi.json` | canonical encoding、profile、layout、instruction 和 shape 的版本化定义 |
 | 生成的软件 ABI | `apps/common/qbs_abi.h`、`software/qbs/include/qbs/qbs_abi.h` | 同源 encoding ID、C 宏、descriptor pack/unpack、capability word 和 raw instruction encoding |
 | 生成的 RTL ABI | `hardware/include/qbs_pkg.sv` | 与 C 侧同源的 SystemVerilog 常量、enum 和 capability 函数 |
@@ -1239,11 +1241,11 @@ QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意�
 `qbexec` 使用 R-type 形状的 custom-2 编码，但 `rd` 字段在 Ara 中解释为 vector destination `vd`：
 
 ```text
-31          27 26 25 24      20 19      15 14   12 11       7 6          0
-+--------------+-----+----------+----------+-------+-----------+------------+
-| reserved=00000| M-1 |   rs2    |   rs1    |  000  |    vd     | 1011011    |
-+--------------+-----+----------+----------+-------+-----------+------------+
-    funct7[6:2]  [1:0]                       funct3             custom-2
+31        28 27       25 24      20 19      15 14   12 11       7 6          0
++------------+-----------+----------+----------+-------+-----------+------------+
+|reserved=0000|   M-1     |   rs2    |   rs1    |  000  |    vd     | 1011011    |
++------------+-----------+----------+----------+-------+-----------+------------+
+ funct7[6:3]   funct7[2:0]                    funct3             custom-2
 ```
 
 | Bits | 参数 | 严格含义 |
@@ -1253,19 +1255,21 @@ QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意�
 | 14:12 | funct3=`000` | 选择 `qbexec`；`001` 属于 `qbinfo` |
 | 19:15 | `rs1` | 包含 16 B descriptor **虚拟地址**的标量寄存器；地址必须 16 B 对齐 |
 | 24:20 | `rs2` | 包含 activation tile **虚拟地址**的标量寄存器；地址必须 4 B 对齐 |
-| 26:25 | `M-1` | activation/input row 数减 1；编码 `00/01/10/11` 分别表示 M=1/2/3/4 |
-| 31:27 | reserved | v1 必须全为 0；非零产生 illegal instruction |
+| 27:25 | `M-1` | activation/input row 数减 1；三位编码 `000` 到 `111` 分别表示 M=1 到 M=8 |
+| 31:28 | reserved | architecture v3 必须全为 0；非零产生 illegal instruction |
 
 `M` 同时决定目的寄存器预留：
 
 | M | `M-1` | 预留组 | `vd` 约束 | 架构结果 |
 | ---: | --- | ---: | --- | --- |
-| 1 | `00` | 1 register | 任意不越界 `vd` | `vd[0:N-1]` 有效，其余 FP32 元素清零 |
-| 2 | `01` | 2 registers | `vd` 必须为 2 的倍数 | `vd` 和 `vd+1` 分别对应两个 activation rows |
-| 3 | `10` | 4 registers | `vd` 必须为 4 的倍数 | 只修改 `vd..vd+2`；`vd+3` 保持原值 |
-| 4 | `11` | 4 registers | `vd` 必须为 4 的倍数 | `vd..vd+3` 分别对应四个 activation rows |
+| 1 | `000` | 1 register | 任意不越界 `vd` | `vd[0:N-1]` 有效，其余 FP32 元素清零 |
+| 2 | `001` | 2 registers | `vd` 必须为 2 的倍数 | `vd` 和 `vd+1` 分别对应两个 activation rows |
+| 3 | `010` | 4 registers | `vd` 必须为 4 的倍数 | 只修改 `vd..vd+2`；`vd+3` 保持原值 |
+| 4 | `011` | 4 registers | `vd` 必须为 4 的倍数 | `vd..vd+3` 分别对应四个 activation rows |
+| 5--7 | `100`--`110` | 8 registers | `vd` 必须为 8 的倍数 | 只修改前 M 个寄存器；其余保留原值 |
+| 8 | `111` | 8 registers | `vd` 必须为 8 的倍数 | `vd..vd+7` 分别对应八个 activation rows |
 
-当前 wrapper 固定 `vd=v8`、`rs1=a0`、`rs2=a1`，因而四种裸编码为：
+当前 wrapper 固定 `vd=v8`、`rs1=a0`、`rs2=a1`，因而八种裸编码为：
 
 | M | 概念助记符 | Raw word |
 | ---: | --- | --- |
@@ -1273,6 +1277,10 @@ QBS 没有把整个程序的信息全部塞进 32-bit 指令。参数被有意�
 | 2 | `qbexec v8, a0, a1, 2` | `0x02b5045b` |
 | 3 | `qbexec v8, a0, a1, 3` | `0x04b5045b` |
 | 4 | `qbexec v8, a0, a1, 4` | `0x06b5045b` |
+| 5 | `qbexec v8, a0, a1, 5` | `0x08b5045b` |
+| 6 | `qbexec v8, a0, a1, 6` | `0x0ab5045b` |
+| 7 | `qbexec v8, a0, a1, 7` | `0x0cb5045b` |
+| 8 | `qbexec v8, a0, a1, 8` | `0x0eb5045b` |
 
 概念助记符用于说明语义；当前工具链仍由 `.word` 发出。指令中**没有** weight 地址、profile、
 layout、N、K、输出内存地址、mask 或累加源寄存器；这些要么在 descriptor/profile 中，要么由后续普通
@@ -1310,7 +1318,7 @@ header 位域和实际语义如下：
 | 7:4 | `weight_profile` | 权重块的严格数学/byte-layout ID；当前 ID 见第 4.1 节 |
 | 11:8 | `activation_profile` | activation block ID；Q2/3/4/5/6_K 配 Q8_K，Q4_0/Q5_0/Q8_0/IQ4_NL 配 Q8_0 |
 | 15:12 | `weight_layout` | 1=`ROW_MAJOR`，2=`R4_BLOCK_MAJOR` |
-| 19:16 | `activation_layout` | 1=`ROW_MAJOR`，2=`M4_INTERLEAVED`；后者只允许 M=4 |
+| 19:16 | `activation_layout` | 1=`ROW_MAJOR`，2=`M4_INTERLEAVED`（只允许 M=4），3=`M8_INTERLEAVED`（只允许 M=5--8） |
 | 24:20 | `N-1` | 命令中的 logical output rows 减 1，因而可表达 1..32 |
 | 32:25 | `K-blocks-1` | reduction 维的 native blocks 数减 1，因而可表达 1..256 |
 | 34:33 | `activation_access` | 0=`DIRECT`，1=`FILL`，2=`REUSE`，3=`RELEASE` |
@@ -1337,6 +1345,7 @@ R4 weight bytes        = ceil(N/4) * 4 * K_blocks * weight_block_bytes
 
 ROW_MAJOR activation bytes = M * K_blocks * activation_block_bytes
 M4 activation bytes        = 4 * K_blocks * activation_block_bytes
+M8 activation bytes        = 8 * K_blocks * activation_block_bytes
 ```
 
 R4 的 padding row 只为了保证四行物理连续。硬件仍以 logical N 控制 accumulator 和 commit，不会把 padding
@@ -1370,23 +1379,24 @@ sequencer，dispatcher 组合查表后返回标量结果。未知 selector 返�
 
 | Bits | 含义 | 当前值 |
 | --- | --- | ---: |
-| 7:0 | QBS architecture version | 1 |
-| 15:8 | descriptor version | 1 |
+| 7:0 | QBS architecture version | 3 |
+| 15:8 | descriptor version | 2 |
 | 23:16 | descriptor bytes | 16 |
-| 25:24 | `max_M-1` | 3，即 max M=4 |
-| 30:26 | `max_N-1` | `min(31, VLEN/32-1)`；VLEN=1024 时为 31 |
-| 38:31 | `max_K_blocks-1` | 255，即 256 blocks |
-| 42:39 | numerical-contract version | 1 |
-| 43 | blocking completion | 1；指令到 terminal 前不返回 |
-| 44 | fault-atomic destination | 1；任何可能 fault 的读取完成前不启动 VRF commit |
-| 45 | requires `vstart==0` | 1 |
-| 46 | idempotent normal-memory only | 1；不允许将 block stream 投向非幂等 MMIO |
-| 47 | requires accelerator consistency | 1 |
-| 63:48 | reserved | 0 |
+| 26:24 | `max_M-1` | 7，即 max M=8 |
+| 31:27 | `max_N-1` | `min(31, VLEN/32-1)`；VLEN=1024 时为 31 |
+| 39:32 | `max_K_blocks-1` | 255，即 256 blocks |
+| 43:40 | numerical-contract version | 1 |
+| 44 | blocking completion | 1；指令到 terminal 前不返回 |
+| 45 | fault-atomic destination | 1；任何可能 fault 的读取完成前不启动 VRF commit |
+| 46 | requires `vstart==0` | 1 |
+| 47 | idempotent normal-memory only | 1；不允许将 block stream 投向非幂等 MMIO |
+| 48 | requires accelerator consistency | 1 |
+| 55:49 | reserved | 0 |
+| 63:56 | `max_results-1` | 127，即单命令最多形成 128 个 FP32 结果 |
 
-公共 QBS runtime 检查 version、descriptor bytes、numerical contract、M/N/K 上限和 bits 43..47，
+公共 QBS runtime 检查 version、descriptor bytes、numerical contract、M/N/K/result 上限和 bits 44..48，
 再通过 layout/profile selector 核验其余能力；GGML 和后续其他运行时共用这一解析，不各自复制
-位域逻辑。Bits 43..47 是当前 contract 已广告的执行属性；不能把某个位为 1 单独解释成完整系统
+位域逻辑。Bits 44..48 是当前 contract 已广告的执行属性；不能把某个位为 1 单独解释成完整系统
 证明，具体 fault/order 仍由第 10 和 13 节的 RTL 规则与验证支撑。
 
 #### 5.6.2 Selector `0x01`：layout、对齐与输出粒度
@@ -1394,7 +1404,7 @@ sequencer，dispatcher 组合查表后返回标量结果。未知 selector 返�
 | Bits | 含义 | 当前值 |
 | --- | --- | --- |
 | 15:0 | weight-layout bitmap | bit 1=`ROW_MAJOR`，bit 2=`R4_BLOCK_MAJOR` |
-| 31:16 | activation-layout bitmap | bit 1=`ROW_MAJOR`，bit 2=`M4_INTERLEAVED` |
+| 31:16 | activation-layout bitmap | bit 1=`ROW_MAJOR`，bit 2=`M4_INTERLEAVED`，bit 3=`M8_INTERLEAVED` |
 | 39:32 | descriptor alignment log2 | 4，即 16 B |
 | 47:40 | weight-base alignment log2 | 1，即 2 B |
 | 55:48 | activation-base alignment log2 | 2，即 4 B |
@@ -1479,7 +1489,7 @@ accelerator-consistent mode、descriptor/activation 地址对齐，并等待更�
 
 - descriptor version 和 reserved bits；
 - profile 是否存在、weight/activation 是否兼容；
-- layout 是否支持，M4-interleaved 是否确实与 M=4 配对；
+- layout 是否支持，M4-interleaved 是否与 M=4 配对，M8-interleaved 是否与 M=5--8 配对；
 - `M/N/K-blocks` 范围；
 - `vd` 对目标寄存器组的对齐；
 - weight base 的 2 B 对齐、activation base 的 4 B 对齐；
@@ -1504,8 +1514,8 @@ Qwen layer 名称或 GGML operator ID。它对上层暴露 `qbs::runtime` CMake 
 | encoding binding | 用稳定 encoding ID 严格绑定当前设备的 profile pair | 核实 native bytes，或提供经过验证的加载期 converter |
 | profile metadata | 查询 block bytes/elements、subgroup、scale、correction 和合法 activation 配对 | 使用绑定结果构造 framework tensor cache |
 | capability discovery | 统一解析并核验 `qbinfo` | 先通过 ISA/platform discovery 确认扩展存在 |
-| packing | row-major 到 R4、Q8 row-major 到 M4 | 决定持久缓存和临时 buffer 生命周期 |
-| planning | M1-M4、N tail、K segmentation 和 workspace | 提供逻辑 `M/N/K` 与源 layout |
+| packing | row-major 到 R4、Q8 row-major 到 M4/M8 grouped | 决定持久缓存和临时 buffer 生命周期 |
+| planning | M1--M8、窄/宽 N tile、N tail、K segmentation 和 workspace | 提供逻辑 `M/N/K` 与源 layout |
 | checked execution | 校验输入/输出容量，构造 descriptor，合并 split-K | 提供 allocator、错误传播和 command executor |
 | native ISA | `qbinfo/qbexec` wrapper | 决定何时使用 native、emulation 或普通 fallback |
 
@@ -1561,8 +1571,16 @@ GGML 的量化 matmul path 先把 FP32 activation 动态量化：
 - K-quant 权重使用 Q8_K activation；每 256 元素有 FP32 scale、256 个 int8 和 16 个 bsums；
 - `_0`/IQ4_NL 路径使用 Q8_0 activation；每 32 元素有 FP16 scale 和 32 个 int8。
 
-`M<4` 使用 row-major activation；`M=4` 使用 `M4_INTERLEAVED`，即同一 K block 的四个
-activation row 相邻。这样硬件可以在 weight block 保持不变时，把同一权重用于四个 activation row。
+窄路径中，`M<4` 使用 row-major activation，`M=4` 使用 `M4_INTERLEAVED`，即同一 K block
+的四个 activation row 相邻。宽路径使用 `M8_INTERLEAVED`：每个逻辑 M5--M8 group 都占用
+固定八行物理 payload，M5--M7 的未用行填零；最后只剩 M1--M4 时仍按窄路径保存。这样硬件可以
+保持同一 weight block，并先后用现有四 context datapath 处理 rows 0--3 与 rows 4--7。
+
+GGML 原有 `from_float` 量化器输出 row-major Q8。当前正确性优先的宽 M 接入因此在 work buffer 中
+同时分配最终 M8-grouped 区和互不重叠的 row-major staging 区：各 worker 先量化自己的行，barrier
+后由一个 worker 调用公共 `qbs_pack_activation_m8_grouped()`，再由既有 barrier 保证 packing 在
+矩阵执行前完成。这一额外 staging/packing 是真实的软件成本，不应从性能统计中隐藏；后续可用直接
+F32-to-M8-grouped 量化器消除，但无需修改指令或 descriptor。
 
 ### 6.4 GEMV：Decode 的 M=1 路径
 
@@ -1578,22 +1596,43 @@ M=1 是权重带宽最敏感的 decode 形态。当前 engine 对 `M=1 + R4` 开
 lookahead：current bank 计算时，inactive bank 可以预取**同一 K block 的下一组四个输出行**。
 它不会跨 K block 猜测；K block 推进时 activation 和 weight bank 生命周期重新建立。
 
-### 6.5 GEMM：Prefill 的 M=1..4 路径
+### 6.5 GEMM：Prefill 的 M=1..8 路径
 
-GGML 的 `ggml_riscv_qbs_gemm()` 提供完整 input-row 数和 M4 storage 信息，公共 planner 将其每次
-取最多 4 行：
+GGML 先对完整 `MUL_MAT` 调用执行一次 activation 规划。普通形态由
+`ggml_riscv_qbs_gemm()` 使用 M4-grouped storage；当设备广告 architecture v3/M8 layout、操作为
+单 activation plane、K 不需分段，且 M8/N16 相对 M4/N32 的精确 padded 输入字节至少减少 15% 时，
+`ggml_riscv_qbs_gemm_wide()` 使用 M8-grouped storage：
 
 ```text
-for input rows in groups of M<=4:
-    choose row-major or M4-interleaved activation
-    for output rows in N<=32 tiles:
+for input rows:
+    choose M<=4/N<=32 or M5--M8/N<=16 from the complete-op plan
+    choose row-major, M4-interleaved, or M8-interleaved activation
+    for output rows in the selected N tiles:
         qbexec(M, N, K-blocks)
         store M output vectors
 ```
 
-一条 M4 命令形成 4 x N 个 FP32 accumulator。硬件读取每个 weight block 后将它复用到四个
-activation row；读取每个 activation block 后又将它复用到 N 个 output rows。复用范围
-完全由 descriptor shape 推导，没有由地址预测产生的隐式流状态。
+窄命令最多形成 `4 x 32=128` 个 FP32 accumulator；宽命令最多形成 `8 x 16=128` 个，因此没有扩大
+accumulator entry 数或 32-pair/cycle dot 阵列。M8 执行把八行拆成两个四行 wave，在命令内部保留
+weight block，先后完成两个 wave。它以增加 activation payload 和一个 wave 的装载时间为代价，减少
+跨 M group 的 weight 重读。planner 比较的是 padded `weight+activation` 总字节，而不是仅看 M 或
+宣称 weight 固定减半。复用范围完全由 descriptor shape/layout 推导，没有地址预测产生的隐式流状态。
+
+`GGML_RISCV_QBS_WIDE_M` 默认开启上述条件选择；设为 `0` 可强制旧 M4 路径作同版本 A/B。宽 M
+目前不接管 `MUL_MAT_ID`、多 activation plane 或 split-K，这些场景继续使用原 QBS 窄命令或普通
+RVV fallback，避免为扩大覆盖而改变已有语义。
+
+同一 SmolLM2-135M、同一 22-token prompt 的 native-QEMU 对照中，两条路径都覆盖 422 个 QBS
+`MUL_MAT`、2,442,756,096 个 dot elements 和 36,522 条原生命令。旧路径分布为
+`M1=8,046, M2=4,746, M4=23,730`，宽路径为 `M1=8,046, M6=9,492, M8=18,984`。命令数相同是
+因为 M group 数减半的同时 N32 变为 N16；不能据此判断流量。按实际 call shape 和 ABI block bytes
+重建，Prefill 的 weight/activation/W+A payload 从
+`430,396,416/76,991,904/507,388,320 B` 变为
+`215,198,208/167,982,336/383,180,544 B`，即 weight -50%、activation +118.18%、总输入 -24.48%。
+计入不变的 Decode 后 W+A payload 减少 19.16%。该模型不含 descriptor、结果写回和软件
+staging 访存，也不是 AXI 实测或 RTL 周期；
+两版 Top-1 和生成 token 均一致。`compare_adaptive_model_logs.py` 会核对 graph-node 数，并用
+trace counters 反查 M 分布、命令数和 dot work，避免把不匹配 prompt 或不同计算量混入对比。
 
 ### 6.6 长 K 的软件分段
 
@@ -1672,8 +1711,9 @@ hidden size 为 1536，包含 12 个 query heads、2 个 KV heads、128 维 head
 | `ffn_down` | Q6_K | 8960 | 1536 | 1 | 15 | FFN 投影回 hidden size |
 
 表中 weight matrix 按 `N x K` 理解。Decode 的一行 activation 对应 M1 GEMV；Prefill 的
-15 行由 `4+4+4+3` 个 input-row groups 执行，其中 M4 使用 interleaved activation，M3 使用
-row-major activation 并保留 4-register destination group。每组内部 N 再按最多 32 行切分。
+15 行在旧窄路径中由 `4+4+4+3` 个 input-row groups 执行；当精确流量判定选择宽路径时，则由
+`8+7` 两组执行。M8/M7 使用固定八行 interleaved payload，M7 的第八行物理填零但不提交；每组内部
+N 按最多 16 行切分。该选择减少 weight 重读，但将 N tile 数加倍，因此只在总输入字节达到阈值时启用。
 
 Q4_K_M 是混合格式模型，名称中的 Q4_K 不意味着所有 tensor 都是 Q4_K。`attn_v` 和
 `ffn_down` 使用 Q6_K 正是多 profile capability 和 fallback 必须在真实模型中验证的原因。
@@ -1685,9 +1725,10 @@ RMSNorm、RoPE、Attention core、SwiGLU 和 residual 仍由 RVV/标量 GGML ker
 
 ```text
 GGML operator
-  for each input-row group M<=4:                 // software
+  choose narrow or wide activation storage once // software
+  for each input-row group M<=4 or M<=8:         // software
     quantize/pack activation rows
-    for each output-row command tile N<=32:      // software
+    for each output-row tile N<=32 or N<=16:      // software
       qbexec(M, N, all K blocks)
 
 qbexec command
@@ -1721,7 +1762,7 @@ F32-to-Q8 动态量化结果；跨 operator 扩展还需要绑定 tensor identit
 | 覆盖层 | 当前范围 | 不能据此推导的结论 |
 | --- | --- | --- |
 | Format | 9 组 weight/activation profile | 不等于覆盖全部 GGUF types |
-| Shape | M1-M4、命令 N<=32、K<=256 blocks，软件处理 N/M/K 外层分块 | 不等于所有 shape 都同样高效 |
+| Shape | M1--M4/N<=32；条件式 M5--M8/N<=16；K<=256 blocks，软件处理 N/M/K 外层分块 | 不等于所有 shape 都同样高效；宽 M 当前不支持 split-K |
 | Operator | quantized `GGML_OP_MUL_MAT` 和受约束 `MUL_MAT_ID` 的 GEMV/小 M GEMM | 不等于覆盖完整 Transformer block |
 | Model mapping | Qwen2、Llama、Gemma3、Phi3 和 OLMoE 中的主要量化线性层 | 不等于所有模型家族、量化类别和 MoE layout 已验证 |
 | Implementation evidence | reference、directed RTL、QEMU native model、部分真实 RTL workload | 不等于完成 P&R、功耗和标准数据集质量闭环 |
@@ -2142,9 +2183,11 @@ profile decoder 直接在 block bytes 上产生 quant/metadata，dot array 直�
 这就是“多输出”比单点积更重要的原因。单点积只能优化一行 `B[n,:] dot A[m,:]`；QBS 通过
 tile contract 让读取和控制开销在多个输出上摊薄。
 
-### 11.3 R4/M4 layout 与请求粒度
+### 11.3 R4/M4/M8 layout 与请求粒度
 
-R4 使四个 output rows 的同一 K block 连续，M4 使四个 activation rows 的同一 K block 连续。
+R4 使四个 output rows 的同一 K block 连续，M4/M8 分别使四个或八个 activation rows 的同一
+K block 连续。M8 的固定八行物理布局允许第二个四行 wave 保留并复用当前 weight block；它同时
+使每个 activation K block 的 payload 加倍，因此只能由总输入字节模型条件选择。
 如果 layout 与计算 tile 不匹配，硬件即使 dot throughput 足够，也会被大量小 range、翻译和 AR
 启动开销限制。
 
@@ -2300,7 +2343,7 @@ FP_table_avg_occ = fp_table_occupancy_sum / command_cycles
 
 - descriptor validation；
 - 九种 profile 的 exact decode 和数值 contract；
-- row-major/R4 与 row-major/M4 layout；
+- row-major/R4 与 row-major/M4/M8 layout；
 - trace group/block events；
 - fault 前不写结果的 atomic commit。
 
@@ -2311,7 +2354,7 @@ FP_table_avg_occ = fp_table_occupancy_sum / command_cycles
 - constructed format vectors；
 - profile decoder/integer engine/FP accumulator unit tests；
 - descriptor/read/compute/commit command testbench；
-- M1/M2/M3/M4、N tails、K blocks；
+- M1--M8、窄/宽 N tails、K blocks；
 - MMU/PMA/AXI response/RLAST 和 backpressure fault；
 - real Qwen2.5 weight、activation 和 llama.cpp golden。
 
@@ -2626,14 +2669,15 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 | 层次 | 已有覆盖 | 主要证明 |
 | --- | --- | --- |
 | ABI 生成 | JSON 到 C/SV 生成物一致性、padded tail/link regression | 软件和 RTL 使用同一字段定义 |
-| C reference | 九种 profile、两种 activation、两类 layout、shape/地址/原子提交 | canonical arithmetic/validation contract 可执行 |
-| Profile RTL | 9 profiles x M1-M4 x row-count 1-4 x 3 data patterns，共 432 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立 |
-| Command RTL | 22 个功能命令，覆盖 M1-M4、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立 |
+| C reference | 九种 profile、两种 activation、两种 weight layout、三种 activation layout、shape/地址/原子提交 | canonical arithmetic/validation contract 可执行 |
+| Profile RTL | 9 profiles x 内部 M1--M4 contexts x row-count 1--4 x 3 data patterns，共 432 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立；宽命令通过两个 wave 复用该 datapath |
+| Command RTL | 33 个端到端功能命令，覆盖 M1--M8、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立 |
 | Fault RTL | validation、MMU、PMA、AXI/protocol fault | pre-compute 直接 fault、payload drain 和“失败不提交”均成立 |
-| QEMU directed | 九种 profile、M1-M4、N=35 tail、三 expert `MUL_MAT_ID` | ISA、guest memory、repack、dispatch 与软件 shape 组合成立 |
+| QEMU directed | 九种 profile、M1--M4、M5/M8、N=35 tail、三 expert `MUL_MAT_ID` | ISA、guest memory、repack、dispatch 与软件 shape 组合成立 |
 | 多模型 Host 图 | 7 模型 x 4 个 effective KV，共 28/28 PASS；当前规则为 D64/D96/D128、GQA1..8 | Qwen2/Llama/Gemma3/Phi3/OLMoE 的 operator、profile、shape、MoE routing 和 Attention execute/fallback 可严格统计 |
 | 真实 RTL 数据 | `format_closure.csv` 中 Q3_K/Q5_K/Q6_K/Q8_0 代表点及既有 Q4_K/Q6_K workload | 真实 GGUF bytes、activation 和 golden 可穿过 timing RTL |
 | 多模型 QEMU | 冻结旧 selector：7/7 模型 PASS；5 architecture、6 dense、1 MoE；统一 guest/QEMU/ABI | 原生 QBS 与当时的 AKV 执行/显式回退可穿过真实 GGML graph；不替代 D96/GQA3 广义重跑 |
+| 宽 M GGML QEMU | 匹配 prompt 的 SmolLM2-135M Prefill+Decode PASS；422 个 QBS `MUL_MAT`；M8/M6/M1 为 18,984/9,492/8,046；0 emulated | 生产 GGML graph 已真实选择 architecture-v3 宽 M 路径；相同 dot work 下 Prefill 逻辑 W+A payload 比 M4 减少 24.48% |
 | 格式级模型数值 | 七种 profile 有 68-step teacher-forced 指标；Q4_0/Q5_0 有严格生成回归 | 原生 `qbexec` 能运行真实模型且短片段质量未崩坏 |
 
 这仍留下四类空白：
@@ -2656,12 +2700,13 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 | --- | --- | --- | --- |
 | ABI/generated check | PASS（2026-08-26 复跑） | JSON 到 C/SV、R4 padded tail、hard-link alias | 软件和 RTL 字段、profile ID 与生成物一致 |
 | Canonical C reference | PASS（2026-08-26 复跑） | descriptor、9 profiles、layout/tail/failure | numerical contract 和 validation 有可执行真源 |
-| Profile RTL | 432/432 PASS | 9 profiles x M1--M4 x row-count 1--4 x 3 patterns | decoder、32-pair integer path、correction 和 FP update 组合成立 |
+| Profile RTL | 432/432 PASS | 9 profiles x 内部 context M1--M4 x row-count 1--4 x 3 patterns | decoder、32-pair integer path、correction 和 FP update 组合成立；M5--M8 由两个四-context wave 组成，另由端到端命令验证 |
 | Descriptor/read/commit RTL | 三个 standalone bench 均 PASS | descriptor legality；page/burst/outstanding/fault；4-lane commit/backpressure | 三个接口边界各自满足定向 contract |
-| Compute command RTL | 22/22 PASS，fault discard PASS | 9 profiles、M1--M4、N/K/layout/tail | block adapter 到 hidden accumulator 的命令内路径成立 |
-| End-to-end QBS RTL | 22/22 PASS，加 4 类 atomic-fault PASS | descriptor 到 VRF commit；validation/MMU/AXI/PMA fault | 成功结果可提交，失败命令在提交前不可见 |
+| Compute command RTL | 33/33 PASS，fault discard PASS | 9 profiles、M1--M8、N/K/layout/tail | block adapter 到 hidden accumulator 的命令内路径成立 |
+| End-to-end QBS RTL | 33/33 PASS，加 4 类 atomic-fault PASS | descriptor 到 VRF commit；validation/MMU/AXI/PMA fault | 成功结果可提交，失败命令在提交前不可见 |
 | 真实数据 RTL closure | 4 对 RVV/QBS 点全部 PASS，两侧对同一 golden 的 mismatch 均为 0 | Q3_K/Q5_K/Q6_K 的 1.5B `attn_q`，Q8_0 的 0.5B `attn_q` | 当前 timing RTL 可消费真实 GGUF bytes 和 activation |
 | 多模型全系统 QEMU | 冻结旧 selector：7/7 PASS；908,688 native QBS、0 emulated；AKV 82 execute/258 explicit fallback | 5 GGML architecture、6 dense、1 MoE；每模型一 Prefill 加一 Decode、2 generated tokens | 真实 GGML graph 能发出 native `qbexec` 并保持普通 RVV fallback；AKV 为功能仿真，不代表 RTL speedup或当前广义覆盖 |
+| 宽 M 生产路径 QEMU | PASS；422 个 QBS `MUL_MAT`；`M1=8,046, M6=9,492, M8=18,984`；0 emulated | SmolLM2-135M Q4_K_M，同一 22-token prompt 的 M4/M8 对照 | GGML activation workspace、M8 packing、planner、原生指令和数值检查贯通；Prefill 逻辑 W+A payload 减少 24.48%，尚非 RTL 周期结论 |
 | 模型级数值 | 7 profiles 有 68-step teacher-forced；Q4_0/Q5_0 有生成回归 | Q2_K/Q3_K/Q4_K/Q5_K/Q6_K/Q8_0/IQ4_NL logits；其余格式的定向模型回归 | 短固定文本未见分布崩坏；尚不是标准数据集质量结论 |
 
 当前严格配对的四个真实 operator 点如下。Compute 区间包含动态 activation quantization 和
@@ -2853,7 +2898,7 @@ descriptor/translation/commit 固定成本是否过高。论文评价应围绕�
 ### 15.1 已形成的完整性
 
 - 九组 profile 共用 decoder/dot/correction/FP/commit 主路径；
-- M1-M4、N<=32、K 分段和尾块有软件/RTL/QEMU 支撑；
+- M1--M4/N<=32 与条件式 M5--M8/N<=16、K 分段和尾块有软件/RTL/QEMU 支撑；宽 M 明确不与 split-K 组合；
 - GGML 模型加载 repack、运行时 dispatch、普通 RVV fallback 已接通；
 - profile/capability/packing/planning/execution 已抽成独立 C11 runtime，GGML 只保留 framework adapter；
 - 独立测试已覆盖九种 profile、两种 activation、低能力 M2/row-major 设备、M/N tail、split-K 和
@@ -2979,7 +3024,7 @@ synthesis/P&R flow”。DSA 描述专用化程度，ASIC 描述物理实现形�
 5. 对照 `qbs_fp_accumulator.sv` 看 FP micro-op 顺序；
 6. 对照 `qbs_commit.sv` 看四个 FP32 结果进入哪个 lane/word。
 
-之后再扩到 M4、N32、多 K blocks 和 R4/M4 tails。直接从完整模型波形开始会把 format、layout、
+之后再扩到 M4、N32、多 K blocks、R4/M4 tails，最后验证 M5--M8/N16 与固定八行 payload。直接从完整模型波形开始会把 format、layout、
 memory 和 FP pipeline 四类问题混在一起。
 
 ### 17.3 性能问题的证据顺序
@@ -3005,6 +3050,7 @@ memory 和 FP pipeline 四类问题混在一起。
 | 所有格式都错 | descriptor/layout、activation 地址、commit mapping | 先改某个 profile decoder |
 | 只有一种格式错 | ABI block bytes、bit-plane、scale/min、reference trace | 先放大 timeout |
 | 只有 M3/M4 错 | M4 activation layout、vd group、inactive register/row | 假定是浮点误差 |
+| 只有 M5--M8 错 | M8 activation layout、第二个四行 wave、LMUL8 destination、M5--M7 padding | 先调宽 M planner 或浮点容差 |
 | 只有 N tail 错 | logical N、R4 padding、commit zero-fill | 改 dot array 宽度 |
 | 多 K block 才错 | accumulator first/update 顺序、bank clear、K advance | 只看最终最大误差 |
 | fault 后目的寄存器改变 | hidden state 与 commit 门控、fault drain | 用软件重试掩盖 |
@@ -3171,6 +3217,7 @@ memory 和 FP pipeline 四类问题混在一起。
 | Subgroup | block 内共享局部 scale/min 的元素组 |
 | R4 | 同一 K block 的四个 output rows 交错存放 |
 | M4 | 同一 K block 的四个 activation rows 交错存放 |
+| M8 | 同一 K block 的八个 activation rows 固定交错存放；M5--M7 尾组零填充未用行 |
 | M | 同一命令的 activation/input rows |
 | N | 同一命令的 output/weight rows |
 | K-blocks | 归约维包含的 native block 数 |

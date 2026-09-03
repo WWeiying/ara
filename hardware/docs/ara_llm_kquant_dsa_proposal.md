@@ -1,5 +1,12 @@
 # QBS-Ara：面向 llama.cpp 块量化线性层的可扩展后端语义流
 
+> **文档状态（历史提案）**：本文保留 QBS architecture v1 的冻结方案、早期设计取舍和
+> 实验规划，不能作为当前 RTL/ABI 的逐字段规范。当前实现已演进到 architecture v3、
+> descriptor v2，并支持条件式 `M5--M8/N<=16` 命令；现行机制、编码、能力字段和验证
+> 证据以 [qbs_full_mechanism_tutorial.md](qbs_full_mechanism_tutorial.md) 为准，自适应多行
+> 复用的设计边界与实测结论见
+> [qbs_adaptive_multirow_design.md](qbs_adaptive_multirow_design.md)。
+
 ## 1. 研究定位
 
 ### 1.1 研究对象与边界

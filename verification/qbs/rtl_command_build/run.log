@@ -1,7 +1,7 @@
-Command: /home/wangwy/openproject/ara_dsa/verification/qbs/rtl_command_build/./simv -l run.log +QBS_COMMAND_VECTOR_FILE=/home/wangwy/openproject/ara_dsa/verification/qbs/qbs_command_vectors.txt
+Command: /home/wangwy/openproject/ara_dsa_qbs_adaptive/verification/qbs/rtl_command_build/./simv -l run.log +QBS_COMMAND_VECTOR_FILE=/home/wangwy/openproject/ara_dsa_qbs_adaptive/verification/qbs/qbs_command_vectors.txt
 Chronologic VCS simulator copyright 1991-2023
 Contains Synopsys proprietary information.
-Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep  1 03:04 2026
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep  3 06:32 2026
 QBS command case 0 PASS profile=1 M=1 N=5 Kb=2 layouts=1/1
 QBS_DRAIN_PROBE case=0 command_cycles=426 integer_tail=22 context_blocked=0 result_blocked=0 fp_input_blocked=0
 QBS command case 1 PASS profile=1 M=4 N=7 Kb=2 layouts=2/2
@@ -46,11 +46,33 @@ QBS command case 20 PASS profile=9 M=1 N=5 Kb=3 layouts=1/1
 QBS_DRAIN_PROBE case=20 command_cycles=149 integer_tail=35 context_blocked=0 result_blocked=2 fp_input_blocked=0
 QBS command case 21 PASS profile=9 M=4 N=7 Kb=4 layouts=2/2
 QBS_DRAIN_PROBE case=21 command_cycles=417 integer_tail=155 context_blocked=0 result_blocked=23 fp_input_blocked=3
+QBS command case 22 PASS profile=1 M=5 N=15 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=22 command_cycles=1311 integer_tail=245 context_blocked=0 result_blocked=201 fp_input_blocked=4
+QBS command case 23 PASS profile=2 M=8 N=16 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=23 command_cycles=1872 integer_tail=96 context_blocked=0 result_blocked=0 fp_input_blocked=0
+QBS command case 24 PASS profile=1 M=6 N=11 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=24 command_cycles=1149 integer_tail=88 context_blocked=0 result_blocked=42 fp_input_blocked=3
+QBS command case 25 PASS profile=2 M=7 N=13 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=25 command_cycles=1746 integer_tail=71 context_blocked=0 result_blocked=0 fp_input_blocked=0
+QBS command case 26 PASS profile=4 M=8 N=9 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=26 command_cycles=1326 integer_tail=60 context_blocked=0 result_blocked=0 fp_input_blocked=0
+QBS command case 27 PASS profile=5 M=5 N=16 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=27 command_cycles=1253 integer_tail=80 context_blocked=24 result_blocked=8 fp_input_blocked=4
+QBS command case 28 PASS profile=6 M=8 N=7 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=28 command_cycles=260 integer_tail=93 context_blocked=0 result_blocked=68 fp_input_blocked=3
+QBS command case 29 PASS profile=3 M=6 N=12 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=29 command_cycles=304 integer_tail=145 context_blocked=21 result_blocked=125 fp_input_blocked=5
+QBS command case 30 PASS profile=7 M=7 N=15 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=30 command_cycles=1608 integer_tail=77 context_blocked=0 result_blocked=0 fp_input_blocked=0
+QBS command case 31 PASS profile=8 M=8 N=16 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=31 command_cycles=479 integer_tail=237 context_blocked=70 result_blocked=206 fp_input_blocked=7
+QBS command case 32 PASS profile=9 M=5 N=11 Kb=1 layouts=2/3
+QBS_DRAIN_PROBE case=32 command_cycles=251 integer_tail=120 context_blocked=20 result_blocked=106 fp_input_blocked=5
 QBS command fault discard PASS
-QBS command engine PASS: 22 functional cases
-$finish called from file "/home/wangwy/openproject/ara_dsa/verification/qbs/qbs_compute_engine_tb.sv", line 442.
-$finish at simulation time            158545000
+QBS command engine PASS: 33 functional cases
+$finish called from file "/home/wangwy/openproject/ara_dsa_qbs_adaptive/verification/qbs/qbs_compute_engine_tb.sv", line 444.
+$finish at simulation time            274765000
            V C S   S i m u l a t i o n   R e p o r t 
-Time: 158545000 ps
-CPU Time:      1.540 seconds;       Data structure size:   0.8Mb
-Tue Sep  1 03:04:51 2026
+Time: 274765000 ps
+CPU Time:      2.160 seconds;       Data structure size:   0.9Mb
+Thu Sep  3 06:32:38 2026

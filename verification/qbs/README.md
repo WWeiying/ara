@@ -1,12 +1,13 @@
-# QBS Phase-0 reference environment
+# QBS reference and contract-verification environment
 
-This directory is the executable specification for the first QBS-Ara ABI.
-It is intentionally independent of the RTL implementation.
+This directory contains the executable specification and focused RTL contract
+checks for QBS architecture version 3 and descriptor version 2.
 
-- `qbs_ref.c`: descriptor validation, Q3_K/Q4_K/Q5_K/Q6_K x Q8_K and
-  Q4_0/Q8_0 x Q8_0 execution, layout conversion, numerical-contract ordering,
-  trace events, and atomic result commit. R4 output-row groups are padded to
-  four rows; the descriptor retains the logical N and commit ignores padding.
+- `qbs_ref.c`: descriptor validation, all nine implemented weight profiles,
+  Q8_K/Q8_0 activation execution, layout conversion, numerical-contract
+  ordering, trace events, and atomic result commit. R4 output-row groups are
+  padded to four rows; the descriptor retains logical N and commit ignores
+  padding.
 - `qbs_ref_test.c`: constructed-vector tests for instruction/descriptor ABI,
   fixed-RNE behavior under a conflicting host rounding mode, profile decoding,
   quantization, layout equivalence, M/N tails, and failure behavior.
@@ -15,8 +16,13 @@ It is intentionally independent of the RTL implementation.
   numerical-contract output with the captured llama.cpp golden result.
 - `run_real_cases.sh`: fixed real-data regression manifest.
 - `qbs_command_vectors.c` and `qbs_engine_tb.sv`: end-to-end command tests for
-  every implemented profile, including R4 `N=7/9` multi-block tails and four
-  validation/MMU/AXI/PMA fault classes.
+  every implemented profile and M1--M8 narrow/wide command geometry, including
+  R4 `N=7/9` multi-block tails and four validation/MMU/AXI/PMA fault classes.
+- `compare_adaptive_model_logs.py`: matched-log checker for the production
+  GGML M4/M8 paths. It reconstructs ABI-derived weight-plus-activation payload
+  bytes and rejects mismatched graph-node counts, M counters, command counts,
+  or dot work. It does not treat those logical bytes as measured AXI traffic or
+  cycle speedup.
 - `qbs_activation_context_tb.sv`: focused DIRECT-independent context storage,
   metadata lookup, stale-generation rejection, incomplete-FILL protection,
   abort, replay backpressure, and RELEASE test. It deliberately writes Q8_K

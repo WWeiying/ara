@@ -91,6 +91,7 @@ generated-check:
 	python3 $(ROOT)/scripts/gen_qbs_abi.py --check
 	python3 test_generate_qbs_case.py
 	python3 test_summarize_qbs_perf.py
+	python3 test_compare_adaptive_model_logs.py
 
 check: generated-check qbs_ref_test
 	./qbs_ref_test

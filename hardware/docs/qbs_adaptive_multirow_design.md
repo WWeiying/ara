@@ -2,10 +2,10 @@
 
 ## 1. Scope and decision
 
-This work addresses one structural limitation of the current QBS execution
-contract: hardware commands accept at most four activation rows. A logical
-matrix operation with `M > 4` is therefore split into independent M1--M4
-commands, and every command group reads the same weight matrix again.
+This work addresses a structural limitation of the original QBS execution
+contract: hardware commands accepted at most four activation rows. A logical
+matrix operation with `M > 4` was therefore split into independent M1--M4
+commands, and every command group read the same weight matrix again.
 
 The proposed optimization does **not** widen the 32-pair/cycle dot array, the
 128-bit read path, or the 128-entry FP32 accumulator. It adds an optional
@@ -16,9 +16,11 @@ Performance comes from extending the lifetime of a weight block, not from
 duplicating arithmetic resources.
 
 The mechanism is deliberately conditional. The existing M1--M4/N32 geometry
-remains the default. Software may select M8/N16 only when an ABI-derived byte
-cost shows that reduced weight traffic exceeds the additional activation
-traffic. Ordinary RVV remains the fallback for every unsupported contract.
+remains the narrow-command fallback. Software may select M8/N16 only when an
+ABI-derived byte cost shows that reduced weight traffic exceeds the additional
+activation traffic. The GGML integration enables this conditional selection by
+default and provides an explicit M4-only A/B switch. Ordinary RVV remains the
+fallback for every unsupported contract.
 
 ## 2. Why fixed M4 is the relevant limitation
 
@@ -140,10 +142,12 @@ avoids doubling VRF traffic merely because N is reduced from 32 to 16.
 
 ## 6. ABI and fallback contract
 
-Existing encoded M1--M4 instructions retain their bit patterns. A new
-architecture capability advertises M8 and the M8-interleaved activation
-layout. The extended instruction uses a three-bit M-minus-one field, while
-the descriptor remains versioned and validated before any read is issued.
+Existing encoded M1--M4 instructions retain their bit patterns. Architecture
+version 3 advertises `max_M=8`, `max_results=128`, and activation-layout bit 3
+for `M8_INTERLEAVED`; descriptor version 2 carries the layout without changing
+its 16-byte size. The extended instruction uses a three-bit M-minus-one field,
+while the descriptor remains versioned and validated before any read is
+issued.
 
 The common planner selects adaptive execution only when all of the following
 hold:
@@ -158,7 +162,73 @@ hold:
 Otherwise it emits the existing M1--M4 plan. Unknown formats and invalid
 contracts continue to select ordinary RVV before `qbexec` is issued.
 
-## 7. Focused RTL evidence
+## 7. Production GGML integration
+
+The public runtime decision is now consumed by the real GGML
+`GGML_OP_MUL_MAT` path rather than only by directed tests. Selection is made
+once for the complete operator invocation. It is intentionally restricted to
+a single activation plane, an exact QBS tensor/profile binding, a direct R4
+weight operation, and a K dimension that fits one hardware command. Multi-plane
+operations, `MUL_MAT_ID`, split-K cases, `M <= 4`, and unsupported contracts
+retain the pre-existing M4 or ordinary-RVV path.
+
+GGML's generic quantizer naturally produces row-major Q8 blocks. For a selected
+wide-M operation, the work buffer therefore has two non-overlapping regions:
+
+```text
+packed M8_GROUPED output
+alignment padding
+row-major Q8 staging rows
+```
+
+Worker threads quantize their rows into the staging region, synchronize, and
+one worker calls the shared `qbs_pack_activation_m8_grouped()` routine. The
+existing post-quantization barrier then makes the final packed region visible
+before `ggml_riscv_qbs_gemm_wide()` executes the plan. M5--M7 tails are padded
+only in physical storage; the logical M still controls destination commit.
+This correctness-first staging pass is measurable software overhead and is not
+described as free. A future direct F32-to-M8 quantizer could remove it without
+changing the ISA or descriptor contract.
+
+`GGML_RISCV_QBS_WIDE_M` is default-on. Setting it to `0` forces the legacy
+M4-grouped plan for matched A/B runs. Trace output reports
+`commands_m1` through `commands_m8`; the model harness rejects a run if their
+sum does not equal native plus emulated command counts.
+
+A matched-prompt native-QEMU SmolLM2-135M Q4_K_M experiment compares the legacy
+and adaptive paths over the same 422 QBS `MUL_MAT` nodes and exactly
+2,442,756,096 dot elements. Both execute 36,522 native and zero emulated
+commands, but their command geometries differ:
+
+| Path | M1 | M2 | M4 | M6 | M8 | Native commands |
+|---|---:|---:|---:|---:|---:|---:|
+| Legacy M4 | 8,046 | 4,746 | 23,730 | 0 | 0 | 36,522 |
+| Adaptive M8 | 8,046 | 0 | 0 | 9,492 | 18,984 | 36,522 |
+
+Equal command counts are expected for this M22 prompt: each M8 group replaces
+two M4 groups but N16 doubles the number of output tiles. Command count alone
+therefore cannot measure the optimization. Reconstructing each observed call
+with canonical ABI block sizes gives the following logical
+weight-plus-activation payload. It excludes descriptor, result, and software
+staging traffic:
+
+| Scope | Path | Weight bytes | Activation bytes | W+A payload bytes |
+|---|---|---:|---:|---:|
+| Prefill GEMM | Legacy M4 | 430,396,416 | 76,991,904 | 507,388,320 |
+| Prefill GEMM | Adaptive M8 | 215,198,208 | 167,982,336 | 383,180,544 |
+| Prefill+Decode | Legacy M4 | 565,719,552 | 82,552,176 | 648,271,728 |
+| Prefill+Decode | Adaptive M8 | 350,521,344 | 173,542,608 | 524,063,952 |
+
+For Prefill, weight bytes fall by 50%, activation bytes rise by 118.18%, and
+their sum falls by 24.48%. Decode is unchanged, so the complete observed QBS
+payload falls by 19.16%. These are ABI-derived logical payload bytes, not
+measured AXI traffic. Both paths preserve QBS/RVV top-1 and generated tokens;
+QEMU wall time is not used as a hardware-cycle result. The reconstruction is
+reproducible with `verification/qbs/compare_adaptive_model_logs.py`, which also
+rejects any mismatch in graph-node counts, modeled/traced M counts, command
+counts, or dot work.
+
+## 8. Focused RTL evidence
 
 `rtl-adaptive-real-check` uses layer-0 Qwen2.5-1.5B captures. It retains each
 operator's full reduction dimension and narrows only the output slice, so the
@@ -187,7 +257,7 @@ speedup claim. A cycle benefit requires a memory regime where the eliminated
 weight traffic is exposed, or a later mechanism that overlaps the command's
 activation acquisition without weakening fault atomicity.
 
-## 8. Evidence and stop conditions
+## 9. Evidence and stop conditions
 
 The implementation is retained only if:
 
@@ -195,7 +265,7 @@ The implementation is retained only if:
    numerical contract for real Q4_K and Q6_K M8/M15 captures;
 2. strict counters equal the modeled weight, activation, useful-pair, and
    destination work;
-3. at least one representative point reduces external command input by 20%
+3. at least one representative point reduces ABI-derived W+A payload by 20%
    or measured cycles by 10%; and
 4. existing M1/M4, nine-profile, AKV, and ordinary-RVV representatives have
    no unexplained regression above 1%.
@@ -205,7 +275,7 @@ be reported as a traffic/energy mechanism and evaluated later under measured
 latency/bandwidth sweeps. It must not be described as a cycle speedup based on
 the byte model alone.
 
-## 9. Reproduction
+## 10. Reproduction
 
 ```bash
 python3 verification/qbs/analyze_adaptive_tiles.py \
@@ -213,6 +283,11 @@ python3 verification/qbs/analyze_adaptive_tiles.py \
   --markdown /tmp/qbs_adaptive_tiles.md
 
 python3 -m unittest verification/qbs/test_analyze_adaptive_tiles.py
+
+python3 verification/qbs/compare_adaptive_model_logs.py \
+  --baseline-log <matched-m4-qemu.log> \
+  --adaptive-log <matched-m8-qemu.log> \
+  --output <comparison.json>
 
 make -C verification/qbs rtl-adaptive-real-check
 ```
