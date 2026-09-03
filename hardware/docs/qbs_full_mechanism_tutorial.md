@@ -2552,7 +2552,7 @@ max_abs   = max_t max_abs[t]
 | `fallback_profile` | weight/activation profile 不兼容导致的回退数 |
 | `fallback_dispatch` | 运行时派发条件不满足导致的回退数 |
 | `gemv_calls/gemm_calls` | 分别进入 QBS Decode 型和 Prefill 型路径的 GGML 调用数 |
-| `commands_m1..m4` | 实际按 M=1..4 发出的 QBS command 数 |
+| `commands_m1..m8` | 实际按 M=1..8 发出的 QBS command 数；M5--M8 仅在 adaptive wide-M layout 被 planner 选中时非零 |
 | `native_qbexec` | QEMU 实际执行的原生 `qbexec` 指令数 |
 | `emulated_commands` | GGML 内部软件模拟执行的命令数；硬件闭环应为 0 |
 
