@@ -212,8 +212,17 @@ compile: bender dpi ../Bender.yml
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
-	@printf 'schema_version=1\nsim_l2_mb=%s\nsim_l2_bytes=%s\n' \
-		'$(sim_l2_mb)' '$(sim_l2_bytes)' > ./$(sim_dir)/simulator.conf
+	@printf '%s\n' \
+		'schema_version=2' \
+		'config=$(config)' \
+		'nr_lanes=$(nr_lanes)' \
+		'vlen=$(vlen)' \
+		'qbs=$(qbs)' \
+		'akv=$(akv)' \
+		'akv_v2=$(akv_v2)' \
+		'sim_l2_mb=$(sim_l2_mb)' \
+		'sim_l2_bytes=$(sim_l2_bytes)' \
+		> ./$(sim_dir)/simulator.conf
 
 verilate: bender ../Bender.yml
 	@rm -rf $(veril_library)

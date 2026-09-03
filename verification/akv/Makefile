@@ -12,6 +12,7 @@ SYNTH_SDC := $(abspath synthesis/akv_engine.sdc)
 SYNTH_CHECKER := $(abspath $(ROOT)/hardware/scripts/akv/check-synthesis-preflight.py)
 DC_SETUP := $(abspath $(ROOT)/backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env)
 DC_FILELIST := $(abspath $(ROOT)/backend/flist/ara_soc_dc.f)
+RTL_RUN_TIMEOUT ?= 10800
 
 BENDER_TARGETS := --no-default-target -t rtl -t cv64a6_imafdcv_sv39 \
 	-t tech_cells_generic_include_tc_sram \
@@ -21,7 +22,7 @@ BENDER_DEFINES := --define NR_LANES=4 --define VLEN=1024 \
 	--define ARA_AKV_ENABLE=1 --define ARA_AKV_V2_ENABLE=1 \
 	--define COMMON_CELLS_ASSERTS_OFF
 
-.PHONY: check contract-check rtl-compile rtl-check rtl-macro-compile \
+.PHONY: check contract-check integration-handoff-check rtl-compile rtl-check rtl-macro-compile \
 	rtl-macro-check synth-wrapper-compile synth-preflight context-synth \
 	engine-synth clean
 
@@ -29,6 +30,13 @@ check: contract-check rtl-check rtl-macro-check
 
 contract-check:
 	./run_contract_test.sh
+
+integration-handoff-check:
+	@test -n "$(QBS_AKV_SIMV)" || { \
+		echo "usage: make integration-handoff-check QBS_AKV_SIMV=/path/to/simv" >&2; \
+		exit 2; \
+	}
+	QBS_AKV_SIMV="$(QBS_AKV_SIMV)" ./run_qbs_akv_handoff.sh
 
 $(FILELIST): $(ROOT)/Bender.yml Makefile
 	mkdir -p $(BUILD)
@@ -47,8 +55,9 @@ rtl-compile: $(FILELIST) $(TB)
 		-f $(FILELIST) $(TB) -top akv_engine_tb -o simv
 
 rtl-check: rtl-compile
-	cd $(BUILD) && ./simv -l run.log
+	cd $(BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "AKV engine PASS" $(BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(BUILD)/run.log
 
 rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
 	cd $(MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
@@ -58,8 +67,9 @@ rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
 		-top akv_engine_tb -o simv
 
 rtl-macro-check: rtl-macro-compile
-	cd $(MACRO_BUILD) && ./simv -l run.log
+	cd $(MACRO_BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "AKV engine PASS" $(MACRO_BUILD)/run.log
+	! grep -Eq "Fatal:|Error:" $(MACRO_BUILD)/run.log
 
 synth-wrapper-compile: $(MACRO_FILELIST) $(MACRO_MODEL) $(SYNTH_WRAPPER)
 	mkdir -p $(SYNTH_WRAPPER_BUILD)

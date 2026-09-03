@@ -67,6 +67,9 @@ apps
 !/apps/akv_context_smoke/
 /apps/akv_context_smoke/*
 !/apps/akv_context_smoke/main.c
+!/apps/qbs_akv_handoff_smoke/
+/apps/qbs_akv_handoff_smoke/*
+!/apps/qbs_akv_handoff_smoke/main.c
 !/apps/llama_q4km_micro/
 !/apps/llama_q4km_operator/
 /apps/llama_q4km_operator/*
@@ -157,6 +160,7 @@ debug/
 /hardware/llama_eval_runs/
 /hardware/llama_attention_runs/
 /hardware/qbs_eval_runs/
+/hardware/qbs_akv_current_runs/
 /hardware/sim_llama_eval_*/
 /hardware/sim_llama_attention_*/
 /hardware/fsdb_traces/
