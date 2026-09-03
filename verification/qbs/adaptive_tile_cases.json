@@ -1,0 +1,48 @@
+{
+  "description": "Qwen2.5-1.5B layer-0 shapes captured from llama.cpp. M=15 is the real prompt capture; M=8 is the first complete proposed adaptive tile.",
+  "m_values": [1, 4, 8, 15],
+  "cases": [
+    {
+      "name": "qwen25_attn_q",
+      "weight_profile": "Q4_K",
+      "k": 1536,
+      "n": 1536
+    },
+    {
+      "name": "qwen25_attn_k",
+      "weight_profile": "Q4_K",
+      "k": 1536,
+      "n": 256
+    },
+    {
+      "name": "qwen25_attn_v",
+      "weight_profile": "Q6_K",
+      "k": 1536,
+      "n": 256
+    },
+    {
+      "name": "qwen25_attn_output",
+      "weight_profile": "Q4_K",
+      "k": 1536,
+      "n": 1536
+    },
+    {
+      "name": "qwen25_ffn_gate",
+      "weight_profile": "Q4_K",
+      "k": 1536,
+      "n": 8960
+    },
+    {
+      "name": "qwen25_ffn_up",
+      "weight_profile": "Q4_K",
+      "k": 1536,
+      "n": 8960
+    },
+    {
+      "name": "qwen25_ffn_down",
+      "weight_profile": "Q6_K",
+      "k": 8960,
+      "n": 1536
+    }
+  ]
+}

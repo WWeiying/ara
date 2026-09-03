@@ -1,0 +1,181 @@
+# QBS Shape-Aware Multi-Row Reuse
+
+## 1. Scope and decision
+
+This work addresses one structural limitation of the current QBS execution
+contract: hardware commands accept at most four activation rows. A logical
+matrix operation with `M > 4` is therefore split into independent M1--M4
+commands, and every command group reads the same weight matrix again.
+
+The proposed optimization does **not** widen the 32-pair/cycle dot array, the
+128-bit read path, or the 128-entry FP32 accumulator. It adds an optional
+M5--M8 command geometry whose maximum result tile is `M8 x N16 = 128`
+elements. The existing profile engine processes the eight activation rows as
+two sequential groups of four while retaining the same four-row weight tile.
+Performance comes from extending the lifetime of a weight block, not from
+duplicating arithmetic resources.
+
+The mechanism is deliberately conditional. The existing M1--M4/N32 geometry
+remains the default. Software may select M8/N16 only when an ABI-derived byte
+cost shows that reduced weight traffic exceeds the additional activation
+traffic. Ordinary RVV remains the fallback for every unsupported contract.
+
+## 2. Why fixed M4 is the relevant limitation
+
+For direct QBS execution, let:
+
+- `Bw` be packed bytes per weight block;
+- `Ba` be bytes per activation block;
+- `Kb` be the number of K blocks;
+- `Tm` and `Tn` be command limits along M and N;
+- `Gm = ceil(M/Tm)` and `Gn = ceil(N/Tn)` for divisible R4 output shapes.
+
+Ignoring only the final four-row padding, command input traffic is:
+
+```text
+weight bytes     = Gm * N * Kb * Bw
+activation bytes = M  * Gn * Kb * Ba
+```
+
+Changing M4/N32 to M8/N16 therefore halves weight traffic for M ranges where
+the number of M groups halves, but doubles activation traffic because twice
+as many N commands are needed. A valid decision must compare their sum. It is
+incorrect to report the 50% weight reduction alone.
+
+The current measured M4 counters provide two exact anchors for the model:
+
+| Captured operator | Shape | Commands | Weight bytes | Activation bytes | Dot-active cycles |
+|---|---:|---:|---:|---:|---:|
+| Q4_K Attention-Q | M4, N1536, K1536 | 48 | 1,327,104 | 336,384 | 294,912 |
+| Q6_K FFN-down slice | M4, N64, K8960 | 2 | 470,400 | 81,760 | 71,680 |
+
+`verification/qbs/analyze_adaptive_tiles.py` reproduces all six values from
+`config/qbs_abi.json`; its unit test fixes them as counter-contract anchors.
+
+## 3. Exact traffic screening
+
+The checked-in case list uses the seven layer-0 linear operators captured
+from Qwen2.5-1.5B. The percentage is independent of N and K when both command
+geometries divide N, but the concrete model shapes prevent a synthetic shape
+from silently replacing the claimed workload.
+
+| Profile | M | Weight change | Activation change | Total input change | Pair-capacity change | Ideal roofline change |
+|---|---:|---:|---:|---:|---:|---:|
+| Q4_K | 8 | -50.00% | +100.00% | -19.67% | 0% | 0% |
+| Q4_K | 15 | -50.00% | +100.00% | -21.20% | 0% | 0% |
+| Q6_K | 8 | -50.00% | +100.00% | -27.79% | 0% | 0% |
+| Q6_K | 15 | -50.00% | +100.00% | -28.98% | 0% | 0% |
+
+The ideal roofline is `max(padded_pairs/32, input_bytes/16)`. Its unchanged
+value is material: under a perfect, uncontended 16-byte/cycle memory system,
+both geometries remain compute-bound. The table proves a bandwidth and energy
+opportunity, not an automatic RTL-cycle speedup. RTL retention therefore
+requires measured phase counters, and publication claims must distinguish
+traffic reduction from cycle reduction.
+
+The new geometry must never be selected for `M <= 4`: it rereads activation
+blocks across twice as many N tiles without reducing weight traffic. For
+larger M, the planner evaluates exact padded bytes rather than relying only on
+an M threshold. This also handles tails such as M9--M15, where group-count
+rounding changes the benefit.
+
+## 4. Frozen resource envelope
+
+The first implementation is constrained as follows:
+
+| Resource | Existing | Adaptive mode |
+|---|---:|---:|
+| Signed 8-bit products per cycle | 32 | 32 |
+| Read datapath | 128 bit | 128 bit |
+| Weight row microtile | 4 | 4 |
+| FP32 accumulator entries | 128 | 128 |
+| Maximum result tile | M4 x N32 | M8 x N16 |
+| Simultaneously computed activation rows | 4 | 4, in two waves |
+
+M8 requires storage for eight current activation blocks instead of four. For
+Q8_K this bounded state is 2,336 bytes for one K block, 1,168 bytes more than
+the current active bank. It does not retain all K blocks and therefore does
+not scale with hidden dimension. The second four-row wave reuses the current
+weight buffer and existing integer/FP pipelines.
+
+## 5. Command execution
+
+An adaptive command follows this loop nest:
+
+```text
+for each K block:
+    load up to eight activation blocks
+    for each four-row weight microtile in N16:
+        load the weight microtile once
+        compute activation rows 0..3 with the existing profile engine
+        compute activation rows 4..7 with the same profile engine
+        retain all partial sums in the existing 128-entry accumulator
+commit M x N valid FP32 results
+```
+
+The two activation waves must be part of one command. Implementing them as two
+ordinary M4 commands would discard the weight block between commands and
+recover none of the intended reuse.
+
+Accumulator addressing becomes geometry-dependent:
+
+```text
+M1--M4/N32: index = context * 32 + output_row
+M5--M8/N16: index = context * 16 + output_row
+```
+
+Both mappings stay within 128 entries. The commit path reserves an eight-
+register destination group for M5--M8, but writes only words containing the
+logical N results; inactive tail elements remain architecturally agnostic.
+This avoids doubling VRF traffic merely because N is reduced from 32 to 16.
+
+## 6. ABI and fallback contract
+
+Existing encoded M1--M4 instructions retain their bit patterns. A new
+architecture capability advertises M8 and the M8-interleaved activation
+layout. The extended instruction uses a three-bit M-minus-one field, while
+the descriptor remains versioned and validated before any read is issued.
+
+The common planner selects adaptive execution only when all of the following
+hold:
+
+- hardware advertises the architecture and M8 layout capability;
+- `5 <= command M <= 8` after logical M tiling;
+- the result tile is at most 128 FP32 values;
+- K, profile, alignment, R4 layout, and destination register group are legal;
+- exact padded `weight + activation` bytes are lower than for M4/N32 by the
+  configured minimum margin.
+
+Otherwise it emits the existing M1--M4 plan. Unknown formats and invalid
+contracts continue to select ordinary RVV before `qbexec` is issued.
+
+## 7. Evidence and stop conditions
+
+The implementation is retained only if:
+
+1. C reference, QEMU/Spike, and RTL produce results within the existing QBS
+   numerical contract for real Q4_K and Q6_K M8/M15 captures;
+2. strict counters equal the modeled weight, activation, useful-pair, and
+   destination work;
+3. at least one representative point reduces external command input by 20%
+   or measured cycles by 10%; and
+4. existing M1/M4, nine-profile, AKV, and ordinary-RVV representatives have
+   no unexplained regression above 1%.
+
+If RTL cycles do not improve under the current idealized L2, the result must
+be reported as a traffic/energy mechanism and evaluated later under measured
+latency/bandwidth sweeps. It must not be described as a cycle speedup based on
+the byte model alone.
+
+## 8. Reproduction
+
+```bash
+python3 verification/qbs/analyze_adaptive_tiles.py \
+  --csv /tmp/qbs_adaptive_tiles.csv \
+  --markdown /tmp/qbs_adaptive_tiles.md
+
+python3 -m unittest verification/qbs/test_analyze_adaptive_tiles.py
+```
+
+No synthesis, physical implementation, or long Prefill-Attention simulation
+is part of this stage.
