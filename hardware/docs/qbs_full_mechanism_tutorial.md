@@ -1,4 +1,4 @@
-# QBS 全机制教学：从 Qwen2.5/llama.cpp 到 RVV 协同执行
+# QBS 全机制教学：从 Qwen2.5/Qwen3/llama.cpp 到 RVV 协同执行
 
 > 文档状态：2026-08-29，以提交 `b73af2775728` 为代码锚点，逐项对照 QBS RTL、ABI、验证
 > 参考模型、QEMU functional model 和本地 llama.cpp/GGML QBS backend 核查。归档实验还记录
@@ -1037,6 +1037,17 @@ affine profile 使用“正 dot 更新在前、min correction 在后”的两次
 操作顺序均由 `config/qbs_abi.json` 定义，并生成 C/SV 常量；`qbs_ref.c`、RTL FP accumulator 和
 QEMU canonical model 以此为准。
 
+这里的“两次 FMA”也是普通 RVV 与 QBS 公平比较的一部分。此前专用 Q4_K RVV GEMV/GEMM 将
+第二项写成 `vfsub(vfmul(min, scale))`，乘法结果先舍入一次，再执行减法；QBS 则按 contract 使用
+负乘加并只在 FMA 结果处舍入。实数公式相同，但长模型中这种一 ULP 级差异可逐层传播。受控
+Qwen3 逐节点实验确认首个差异正来自这里后，RVV 路径改用标准 `vfnmsac`。这样既匹配两次 FMA
+contract，也少一条普通 RVV 向量指令；它不是为了让 QBS 看起来更接近而削弱 baseline。
+
+AKV 也必须遵循实际执行路径的运算次序。其 native RVV Attention 先计算 `score*scale`，再加
+mask；功能模型若被编译器收缩成一次 FMA，就会制造并非硬件机制导致的差异。因此当前功能模型
+显式保持两步运算。逐节点 digest 只在诊断模式开启，并在节点完成后同步读取输出；它可定位首个
+分歧，但其同步开销不能进入性能测量。
+
 已经进行过让 Q2_K min correction 先执行的实验；短测试显示它可能更接近当前 RVV 的求和顺序，
 但这仍不是生产 contract。不同 profile 的 llama.cpp/RVV 累加组织并不完全相同，例如 Q5_K
 可能分别累计 correction 和 positive contribution，因此不能用一次全局交换假定所有格式都
@@ -1618,9 +1629,11 @@ weight block，先后完成两个 wave。它以增加 activation payload 和一�
 跨 M group 的 weight 重读。planner 比较的是 padded `weight+activation` 总字节，而不是仅看 M 或
 宣称 weight 固定减半。复用范围完全由 descriptor shape/layout 推导，没有地址预测产生的隐式流状态。
 
-`GGML_RISCV_QBS_WIDE_M` 默认开启上述条件选择；设为 `0` 可强制旧 M4 路径作同版本 A/B。宽 M
-目前不接管 `MUL_MAT_ID`、多 activation plane 或 split-K，这些场景继续使用原 QBS 窄命令或普通
-RVV fallback，避免为扩大覆盖而改变已有语义。
+`GGML_RISCV_QBS_WIDE_M=1` 显式开启上述条件选择；未设置或设为 `0` 时使用 M4 路径。当前默认
+选择 M4 不是删除 M8 能力，而是依据下述理想存储 RTL 周期结果作出的平台策略：M8 可减少输入
+payload，但 activation 装载增加使 Q4_K/Q6_K 代表点均慢约 6.1%。宽 M 目前不接管
+`MUL_MAT_ID`、多 activation plane 或 split-K，这些场景继续使用原 QBS 窄命令或普通 RVV
+fallback，避免为扩大覆盖而改变已有语义。
 
 同一 SmolLM2-135M、同一 22-token prompt 的 native-QEMU 对照中，两条路径都覆盖 422 个 QBS
 `MUL_MAT`、2,442,756,096 个 dot elements 和 36,522 条原生命令。旧路径分布为
@@ -1866,6 +1879,30 @@ Host eligibility、QEMU execution 与 directed RTL cycle 仍作为三层独立�
 被完整记录但并不全部相同，因此跨模型命令数用于覆盖证明，不能直接解释为可比较的性能样本。
 完整模型 QEMU 中只有 QBS 走原生自定义指令；AKV 使用 GGML functional-emulation backend 验证
 selection、fallback 和数值，原生 AKV 时序证据来自代表性 RTL leaf。
+
+Qwen3-1.7B-Q4_K_M 作为独立扩展检查，不并入上述冻结七模型分母。其 28 层、D=2048、
+FFN=6144、16 个 Q heads、8 个 KV heads 形成 D128/GQA2 Attention。短 Decode 闭环中，Q4_K
+169/169、Q6_K 30/30 候选 tensor 全部选择 QBS，AKV-v2 执行 56/56 个 Attention call，所有
+unexpected fallback 与软件模拟命令均为 0。RVV/QBS 和 QBS/AKV 的 logits、Top-1 与生成输出
+逐步完全一致；394 个 `MUL_MAT` 以及 450 个 `MUL_MAT`/`FLASH_ATTN_EXT` 节点 digest 也分别
+全等。该结果证明当前契约适配 dense Qwen3 和 GQA2，不代表 Qwen3-MoE、40K 上下文或整模型 RTL
+性能已经闭环。
+
+Qwen3 还用于核验两个不能混为一谈的生产策略。第一，`WIDE_M=1` 的确让 Q6_K 执行了 2,560 条
+M8 命令，但真实数据 RTL 中 Q4_K/Q6_K 的 M8 分别比 M4 慢 6.08%/6.09%，且 M33 长输入在
+Q6_K Prefill 输出投影处出现首个差异并改变第二步 Top-1。因此当前生产策略保持 `WIDE_M=0`，
+M8 仅作为显式诊断路径。第二，GGML 在 Query 长度小于 `GGML_FA_TILE_Q=64` 时使用逐 KV 的
+`one_chunk` Attention，从 64 开始才使用 tiled Attention；两者的 Query 精度、PV 累加和
+Softmax 合并顺序不同。AKV Prefill 对齐的是 tiled 契约，所以 M<64 必须返回原路径。周期级探针
+在 M33 的前两个 score 上分别观察到 1 ULP 和 3 ULP 首差；AKV 为 406,205 cycles，独立的
+standard-RVV Q64/KV64 tiled 强基线为 320,275 cycles，后者不是 GGML `one_chunk` 的周期。
+加入边界后，M33 节点逐位全等；M84 则真实执行 D128/GQA2
+AKV Prefill，57,120 个 causal pairs 和 14,622,720 次 MAC 均被计数，172,032 个 F32 输出
+逐位全等。这个策略保留了短序列的更快算法，同时只在 GGML 自己进入 tiled 算法时接管。
+完整 M33 固定输入随后也通过 `decision-preserving-v1`：RVV/QBS 与 QBS/AKV 的两步 logits
+均零差异，Top-1 和生成输出一致；Q4_K/Q6_K 分别执行 162,688/22,424 条原生 M4/M1 命令且
+无模拟或意外回退，28 个 Decode Attention 全部进入 AKV，28 个 Prefill 候选则严格记为预期的
+`fallback_size`。
 
 ## 7. QBS 如何接入 Ara
 

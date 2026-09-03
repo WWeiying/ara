@@ -22,6 +22,7 @@ ROW_MICROTILE = 4
 DOT_PAIRS_PER_CYCLE = 32
 READ_BYTES_PER_CYCLE = 16
 ACCUMULATOR_ENTRIES = 128
+NARROW_MAX_N = 32
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,13 @@ def round_up(value: int, alignment: int) -> int:
     return ((value + alignment - 1) // alignment) * alignment
 
 
+def command_n_limit(geometry: Geometry, tile_m: int) -> int:
+    """Mirror the runtime's mixed-width tail policy for wide-M storage."""
+    if geometry.max_m > 4 and tile_m <= 4:
+        return NARROW_MAX_N
+    return geometry.max_n
+
+
 def compatible_activation_profile(abi: dict, weight_profile: str) -> str:
     weight = abi["weight_profiles"][weight_profile]
     profiles = weight["activation_profiles"]
@@ -96,40 +104,46 @@ def estimate(
         )
 
     m_tiles = chunks(m, geometry.max_m)
-    n_tiles = chunks(n, geometry.max_n)
-    if max(mt * nt for mt in m_tiles for nt in n_tiles) > ACCUMULATOR_ENTRIES:
+    n_tiles_by_m = [chunks(n, command_n_limit(geometry, mt)) for mt in m_tiles]
+    if max(
+        mt * nt
+        for mt, n_tiles in zip(m_tiles, n_tiles_by_m)
+        for nt in n_tiles
+    ) > ACCUMULATOR_ENTRIES:
         raise ValueError(
             f"{geometry.name}: command result tile exceeds "
             f"{ACCUMULATOR_ENTRIES} accumulators"
         )
 
     k_blocks = k // block_elements
-    padded_n_rows = sum(round_up(nt, ROW_MICROTILE) for nt in n_tiles)
-    padded_m_rows = sum(round_up(mt, ROW_MICROTILE) for mt in m_tiles)
+    padded_n_rows_by_m = [
+        sum(round_up(nt, ROW_MICROTILE) for nt in n_tiles)
+        for n_tiles in n_tiles_by_m
+    ]
 
     # Every M command group walks all N tiles and therefore rereads weights.
     weight_bytes = (
-        len(m_tiles)
-        * padded_n_rows
+        sum(padded_n_rows_by_m)
         * k_blocks
         * int(weight["block_bytes"])
     )
     # M8 uses a fixed eight-row payload built from two M4-interleaved groups.
     # The final M5--M7 group is padded; this is the byte cost paid to avoid a
     # variable divider/modulo network in the RTL input steering path.
-    activation_storage_rows = sum(
-        geometry.max_m if geometry.max_m > 4 and mt > 4 else mt
-        for mt in m_tiles
-    )
     # Every N command tile rereads the activation payload in its M group.
     activation_bytes = (
-        activation_storage_rows
-        * len(n_tiles)
-        * k_blocks
-        * int(activation["block_bytes"])
+        sum(
+            (geometry.max_m if geometry.max_m > 4 and mt > 4 else mt)
+            * len(n_tiles)
+            for mt, n_tiles in zip(m_tiles, n_tiles_by_m)
+        )
+        * k_blocks * int(activation["block_bytes"])
     )
     useful_pairs = m * n * k
-    pair_capacity = padded_m_rows * padded_n_rows * k
+    pair_capacity = sum(
+        round_up(mt, ROW_MICROTILE) * padded_n_rows
+        for mt, padded_n_rows in zip(m_tiles, padded_n_rows_by_m)
+    ) * k
     ideal_dot_cycles = math.ceil(pair_capacity / DOT_PAIRS_PER_CYCLE)
     input_bytes = weight_bytes + activation_bytes
     ideal_read_cycles = math.ceil(input_bytes / READ_BYTES_PER_CYCLE)
@@ -141,8 +155,12 @@ def estimate(
         n=n,
         k=k,
         geometry=geometry.name,
-        command_count=len(m_tiles) * len(n_tiles),
-        max_command_results=max(mt * nt for mt in m_tiles for nt in n_tiles),
+        command_count=sum(len(n_tiles) for n_tiles in n_tiles_by_m),
+        max_command_results=max(
+            mt * nt
+            for mt, n_tiles in zip(m_tiles, n_tiles_by_m)
+            for nt in n_tiles
+        ),
         k_blocks=k_blocks,
         weight_bytes=weight_bytes,
         activation_bytes=activation_bytes,

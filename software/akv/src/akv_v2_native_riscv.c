@@ -55,6 +55,12 @@ extern void akv_v2_update_outputs_f16_d128_gqa6(
 extern void akv_v2_compute_scores_f16_generic(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes, uint32_t q_rows, uint32_t head_dim);
+extern void akv_v2_compute_scores_f32_generic(
+    const float *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes, uint32_t q_rows, uint32_t head_dim);
+extern void akv_v2_compute_scores_f32_d128_gqa2_panel4(
+    const float *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes);
 extern void akv_v2_update_outputs_f16_generic(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens, uint32_t q_rows, uint32_t head_dim);
@@ -119,10 +125,10 @@ static inline float reduce_max_f32m2(vfloat32m2_t values, size_t vl) {
       __riscv_vfredmax_vs_f32m2_f32m1(values, initial, vl));
 }
 
-static inline float reduce_sum_f32m2(vfloat32m2_t values, size_t vl) {
-  const vfloat32m1_t initial = __riscv_vfmv_v_f_f32m1(0.0f, 1);
-  return __riscv_vfmv_f_s_f32m1_f32(
-      __riscv_vfredusum_vs_f32m2_f32m1(values, initial, vl));
+static inline double reduce_sum_f32m2_to_f64(vfloat32m2_t values, size_t vl) {
+  const vfloat64m1_t initial = __riscv_vfmv_v_f_f64m1(0.0, 1);
+  return __riscv_vfmv_f_s_f64m1_f64(
+      __riscv_vfwredusum_vs_f32m2_f64m1(values, initial, vl));
 }
 
 static inline void issue_full(const akv_descriptor_t *descriptor,
@@ -294,9 +300,9 @@ static __attribute__((noinline)) void apply_prefill_scale_mask_softmax(
                                 : __builtin_expf(old_maximum - new_maximum);
     score = vector_expf(
         __riscv_vfsub_vf_f32m2(score, new_maximum, vl), vl);
-    workspace->sum[local_token][head] =
-        workspace->sum[local_token][head] * old_scale +
-        reduce_sum_f32m2(score, vl);
+    const float scaled_sum = workspace->sum[local_token][head] * old_scale;
+    workspace->sum[local_token][head] = (float)(
+        (double)scaled_sum + reduce_sum_f32m2_to_f64(score, vl));
     workspace->maximum[local_token][head] = new_maximum;
     workspace->old_scale[compute_slot][head] = old_scale;
     __riscv_vse32_v_f32m2(
@@ -378,8 +384,9 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
                                 ? 0.0f
                                 : __builtin_expf(old_maximum - new_maximum);
     score = vector_expf(__riscv_vfsub_vf_f32m2(score, new_maximum, vl), vl);
-    workspace->sum[head] =
-        workspace->sum[head] * old_scale + reduce_sum_f32m2(score, vl);
+    const float scaled_sum = workspace->sum[head] * old_scale;
+    workspace->sum[head] = (float)(
+        (double)scaled_sum + reduce_sum_f32m2_to_f64(score, vl));
     workspace->maximum[head] = new_maximum;
     workspace->old_scale[head] = old_scale;
     __riscv_vse32_v_f32m2(workspace->score[head], score, vl);
@@ -687,17 +694,28 @@ akv_status_t akv_attention_execute_v2_prefill_native(
                 token_start + local_token + compute_slot;
 
             if (!use_q2) {
-              const uint16_t *const query =
-                  &workspace->query[local_token + compute_slot][0][0];
               if (d128_gqa6) {
+                const uint16_t *const query =
+                    &workspace->query[local_token + compute_slot][0][0];
                 akv_v2_compute_scores_f16_d128_gqa6(
                     query, &workspace->score[compute_slot][0][0],
                     active_tokens, query_stride_bytes);
               } else {
-                akv_v2_compute_scores_f16_generic(
+                const float *const query = (const float *)(const void *)(
+                    (const char *)problem->query +
+                    (size_t)first_qhead * layout.query_head_stride_bytes +
+                    (size_t)token * layout.query_token_stride_bytes);
+                if (q_rows == 2u && problem->head_dim == AKV_HEAD_DIM_128 &&
+                    device->capabilities.token_axis_column_panel4) {
+                  akv_v2_compute_scores_f32_d128_gqa2_panel4(
+                      query, &workspace->score[compute_slot][0][0],
+                      active_tokens, layout.query_head_stride_bytes);
+                } else {
+                  akv_v2_compute_scores_f32_generic(
                     query, &workspace->score[compute_slot][0][0],
-                    active_tokens, query_stride_bytes, q_rows,
+                    active_tokens, layout.query_head_stride_bytes, q_rows,
                     problem->head_dim);
+                }
               }
             }
 

@@ -11,9 +11,12 @@ model_guest_path=${AKV_MODEL_GUEST_PATH:-${default_model_guest_path}}
 model_tokens=${AKV_MODEL_TOKENS:-2}
 model_prompt=${AKV_MODEL_PROMPT:-The quick brown fox jumps over the lazy dog.}
 model_digest=${AKV_MODEL_DIGEST:-}
+model_dump_f32=${AKV_MODEL_DUMP_F32:-}
+model_exit_after_dump=${AKV_MODEL_EXIT_AFTER_DUMP:-0}
 qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
 require_prefill=${AKV_REQUIRE_PREFILL:-0}
+prefill_min_query_tokens=64
 qbs_preflight=${AKV_QBS_PREFLIGHT:-1}
 qbs_preflight_status=not-applicable
 ara_root=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
@@ -99,7 +102,11 @@ validate_log() {
     [[ ${value} == "${prompt_token_count}" ]]
   done
   if [[ ${require_prefill} == 1 ]]; then
-    (( prompt_token_count >= 15 ))
+    if (( prompt_token_count < prefill_min_query_tokens )); then
+      printf 'AKV_REQUIRE_PREFILL=1 requires at least %d prompt tokens; got %d\n' \
+        "${prefill_min_query_tokens}" "${prompt_token_count}" >&2
+      return 1
+    fi
   fi
 
   if [[ ${model_mode} == qbs-lifetime ]]; then
@@ -289,8 +296,11 @@ write_manifest() {
     printf 'MODEL_TOKENS=%s\n' "${model_tokens}"
     printf 'MODEL_PROMPT=%s\n' "${model_prompt}"
     printf 'MODEL_DIGEST=%s\n' "${model_digest}"
+    printf 'MODEL_DUMP_F32=%s\n' "${model_dump_f32}"
+    printf 'MODEL_EXIT_AFTER_DUMP=%s\n' "${model_exit_after_dump}"
     printf 'QBS_WIDE_M=%s\n' "${qbs_wide_m}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
+    printf 'PREFILL_MIN_QUERY_TOKENS=%s\n' "${prefill_min_query_tokens}"
     printf 'QBS_PREFLIGHT=%s\n' "${qbs_preflight_status}"
     printf 'LOGITS_MAX_ABS_TOLERANCE=%s\n' "${max_abs_tolerance}"
     printf 'MODEL_LOGITS_MAX_KL_TOLERANCE=%s\n' "${model_max_kl_tolerance}"
@@ -328,6 +338,18 @@ esac
   printf 'AKV_MODEL_DIGEST must be an operator name or comma-separated operator names\n' >&2
   exit 2
 }
+[[ -z ${model_dump_f32} || ${model_dump_f32} =~ ^[0-9]+:[0-9]+$ ]] || {
+  printf 'AKV_MODEL_DUMP_F32 must be empty or GRAPH:NODE\n' >&2
+  exit 2
+}
+[[ ${model_exit_after_dump} == 0 || ${model_exit_after_dump} == 1 ]] || {
+  printf 'AKV_MODEL_EXIT_AFTER_DUMP must be 0 or 1\n' >&2
+  exit 2
+}
+if [[ ${model_exit_after_dump} == 1 && -z ${model_dump_f32} ]]; then
+  printf 'AKV_MODEL_EXIT_AFTER_DUMP=1 requires AKV_MODEL_DUMP_F32\n' >&2
+  exit 2
+fi
 if [[ ${require_prefill} == 1 && ${model_mode} != combined ]]; then
   printf 'AKV_REQUIRE_PREFILL=1 requires AKV_MODEL_MODE=combined\n' >&2
   exit 2
@@ -447,6 +469,8 @@ fi
   "-DAKV_MODEL_TOKENS=\"${model_tokens}\"" \
   "-DAKV_MODEL_PROMPT=\"${model_prompt}\"" \
   "-DAKV_MODEL_DIGEST=\"${model_digest}\"" \
+  "-DAKV_MODEL_DUMP_F32=\"${model_dump_f32}\"" \
+  "-DAKV_MODEL_EXIT_AFTER_DUMP=${model_exit_after_dump}" \
   "-DAKV_QBS_WIDE_M=${qbs_wide_m}" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
@@ -495,6 +519,11 @@ write_manifest "${manifest_file}"
   -drive "file=${model_disk},if=virtio,format=raw,readonly=on" \
   -append "console=ttyS0 rdinit=/init" \
   2>&1 | tee "${log_file}"
+
+if [[ -n ${model_dump_f32} && ${model_mode} == combined ]]; then
+  python3 "${ara_root}/hardware/scripts/akv/compare-model-f32-dumps.py" \
+    "${log_file}" --output "${run_dir}/model_f32_comparison.json"
+fi
 
 validate_log "${log_file}" "${result_file}"
 if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then

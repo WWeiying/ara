@@ -93,13 +93,21 @@ def parse_run(implementation: str, effective_kv: int, run, ara_log: Path, perf_l
     mismatches = match.group(3) if match else ""
     akv_perf = {f"akv_{key}": 0 for key in AKV_PERF_SUM_FIELDS}
     akv_perf["akv_command_count"] = 0
+    summary_values = None
     for line in log_text.splitlines():
-        if not line.startswith("[AKV_PERF]"):
-            continue
-        values = parse_key_values(line)
-        akv_perf["akv_command_count"] += 1
+        if line.startswith("[AKV_PERF]"):
+            values = parse_key_values(line)
+            akv_perf["akv_command_count"] += 1
+            for key in AKV_PERF_SUM_FIELDS:
+                akv_perf[f"akv_{key}"] += int(values.get(key, "0"))
+        elif line.startswith("[AKV_PERF_SUMMARY]"):
+            summary_values = parse_key_values(line)
+    if summary_values is not None:
+        if akv_perf["akv_command_count"] != 0:
+            raise ValueError(f"mixed AKV detail and summary records: {ara_log}")
+        akv_perf["akv_command_count"] = int(summary_values.get("records", "0"))
         for key in AKV_PERF_SUM_FIELDS:
-            akv_perf[f"akv_{key}"] += int(values.get(key, "0"))
+            akv_perf[f"akv_{key}"] = int(summary_values.get(key, "0"))
     rows = []
     for line in perf_log.read_text(errors="replace").splitlines():
         if not line.startswith("[LLM_PERF]"):
@@ -139,6 +147,19 @@ def main():
     ]
     output = args.output or run_roots[0] / "attention_core_summary.csv"
 
+    effective_kvs = {16, 128, 256}
+    for root in run_roots:
+        for config_path in root.glob("decode_attention_core_*/run.conf"):
+            run_config = parse_key_values(
+                config_path.read_text(errors="replace").replace("\n", " ")
+            )
+            try:
+                effective_kv = int(run_config.get("effective_kv", ""))
+            except ValueError:
+                continue
+            if effective_kv > 0:
+                effective_kvs.add(effective_kv)
+
     rows = []
     for implementation in (
         "ref",
@@ -149,7 +170,7 @@ def main():
         "akv_v2",
         "akv_v2_prefill",
     ):
-        for effective_kv in (16, 128, 256):
+        for effective_kv in sorted(effective_kvs):
             selected = newest_complete_run(run_roots, implementation, effective_kv)
             if selected is not None:
                 rows.extend(parse_run(implementation, effective_kv, *selected))

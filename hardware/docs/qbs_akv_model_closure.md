@@ -149,6 +149,75 @@ publishers. This seven-model suite tests the architecture/topology axis; the
 separate nine-profile closure tests the format datapath axis. It is not a
 seven-model by nine-profile Cartesian product.
 
+### 4.1 Independent Qwen3 compatibility and numerical closure
+
+Qwen3 is checked separately rather than retroactively changing the immutable
+seven-model suite. The real Qwen3-1.7B-Q4_K_M file is a dense 28-layer model
+with hidden size 2048, FFN size 6144, 16 Query heads, 8 KV heads and
+D128/GQA2 Attention. It therefore changes the GGML architecture, matrix
+shapes, vocabulary and GQA ratio relative to the Qwen2.5 anchor while staying
+inside the existing profile and Attention contracts.
+
+A matched Decode run produces the following dynamic evidence:
+
+| Mechanism | Candidate/executed work | Dynamic execution evidence | Unexpected fallback |
+|---|---:|---:|---:|
+| Q4_K QBS | 169/169 tensors | 33,152 `qbexec` | 0 |
+| Q6_K QBS | 30/30 tensors | 12,184 `qbexec` | 0 |
+| AKV-v2 D128/GQA2 | 56/56 calls | 56 functional-v2 calls | 0 |
+
+The ordinary-RVV, native-QBS, and native-QBS with functional AKV-v2 variants
+each produce two comparable logits records. RVV-to-QBS and QBS-to-AKV both
+have maximum absolute difference 0, KL divergence 0, cosine similarity 1,
+Top-5 overlap 1, equal Top-1 decisions and equal generated output. Exact post-node digests also
+match for all 394 selected `MUL_MAT` records in RVV versus QBS and all 450
+selected `MUL_MAT`/`FLASH_ATTN_EXT` records in QBS versus AKV.
+
+This exact result follows two localized numerical corrections. The specialized
+ordinary-RVV Q4_K GEMV/GEMM path formerly computed min correction as a rounded
+multiply followed by subtract, whereas numerical-contract v1 requires the
+second FP32 update to be a fused negative multiply-add. It now uses standard
+RVV `vfnmsac`, matching QBS without weakening the RVV baseline. The AKV
+functional model formerly contracted score scaling and mask addition into an
+FMA while the native path performs separate operations; its reference path now
+preserves that native ordering. No QBS or AKV RTL arithmetic was changed.
+
+These runs establish Qwen3 dense-model functional compatibility and precise
+localization of the previous mismatch. They are QEMU functional evidence, not
+full-model RTL timing, 40K-context quality, Qwen3-MoE coverage, synthesis or
+PPA evidence.
+
+Wide-M is also exercised rather than inferred from the planner. With an
+explicit diagnostic `WIDE_M=1`, the short Qwen3 run executes 2,560 native Q6_K
+M8 commands; Q4_K remains narrow because its exact padded-byte comparison does
+not admit M8 for that shape. Focused real-data RTL tests pass Q4_K and Q6_K at
+M4, M7, and M8 with zero mismatches and zero prefetch waits. However, M8 takes
+7,638 versus 7,200 cycles for Q4_K and 44,493 versus 41,939 for Q6_K, regressions
+of 6.08% and 6.09%. A fixed M33 model run also changes the Prefill Q6_K output
+projection and the second Top-1 decision under WIDE_M=1. Production therefore
+keeps `WIDE_M=0`; the wide path remains explicit diagnostic coverage, not a
+traffic-only optimization claim.
+
+Qwen3 Prefill exposes a second, independent boundary. GGML uses sequential
+`one_chunk` Attention below 64 Query tokens and tiled Attention from 64 onward.
+AKV implements the tiled numerical schedule. A pre-fix M33 probe found the
+first score differences at one and three FP32 ULPs and measured the AKV
+operator at 406,205 cycles versus 320,275 for the independent standard-RVV
+Q64/KV64 tiled baseline. The latter is a strong measured denominator, not a
+measurement of GGML `one_chunk`.
+Accordingly, the production selector now returns M<64 to GGML. The selected
+M33 Attention node then matches bit-for-bit. A real M84 D128/GQA2 graph does
+execute AKV Prefill and matches all 172,032 output words, with 57,120 causal
+pairs and 14,622,720 MACs accounted for. This is a decision-preserving
+algorithm-boundary policy, not a tolerance relaxation.
+
+The complete fixed M33 run also passes `decision-preserving-v1`: RVV/QBS and
+QBS/AKV each compare two logits records with zero difference, equal Top-1, and
+equal generated output. Q4_K and Q6_K execute 162,688 and 22,424 native M4/M1
+commands respectively, with zero emulation and zero unexpected QBS fallback.
+All 28 Decode Attention calls execute AKV-v2; the 28 Prefill candidates are
+reported as the intentional `fallback_size` cases required by the M64 policy.
+
 ## 5. Decode Cycle Attribution
 
 The Qwen fixed-prompt Decode trace contains 197 QBS nodes, 28 AKV calls, and

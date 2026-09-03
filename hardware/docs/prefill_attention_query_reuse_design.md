@@ -11,6 +11,12 @@ software Query block consumes that tile. All QK, online Softmax, and PV
 arithmetic still executes on the standard RVV lanes. The design does not add
 an Attention MAC array and does not change ordinary RVV behavior.
 
+The production GGML route enables this schedule only for Query length at least
+64. This is not merely an amortization threshold: 64 is GGML's
+`GGML_FA_TILE_Q` boundary between its short sequential algorithm and its tiled
+Prefill algorithm. AKV follows the tiled algorithm's F32 Query and accumulator
+contract; shorter graphs retain GGML's original `one_chunk` path.
+
 The fixed bounds are:
 
 - one GQA group with 1 through 8 Query heads;
@@ -63,7 +69,7 @@ The retained schedule moves reuse into a fixed software block:
 for each KV head:
     map its GQA Query heads
     for each Query block QB of at most 64 tokens:
-        convert QB from F32 to a fixed F16 workspace
+        prepare the bounded Query workspace required by the context ABI
         initialize F32 max, denominator, and output numerator
 
         block_prefix = past_tokens + QB.start + QB.count
@@ -82,6 +88,38 @@ for each KV head:
         RELEASE the context
         normalize the block's outputs by their F32 denominators
 ```
+
+Query precision is selected by the arithmetic path, not implied by this
+workspace preparation. The retained D128/GQA6 specialization consumes the F16
+workspace Query because its paired-token kernel was designed around that
+contract. The D128/GQA2 panel4 path and the generic D64/D96/D128 paths instead
+load the original F32 Query while widening resident F16 K columns to F32. This
+matches the GGML Prefill numerical contract for those shapes. The current
+shared context ABI still receives its bounded F16 Query seed; that redundant
+copy is accounted for and is not described as the arithmetic Query source.
+
+The Softmax numerator remains F32, as does the denominator state stored between
+K/V tiles. Within one tile, however, the native path widens each F32 exponential
+term into an F64 reduction before adding it to the rescaled F32 state and
+rounding the result back to F32. This follows the ordinary GGML/RVV Prefill
+implementation's `ggml_float` denominator semantics. It does not turn the
+complete Attention datapath into FP64; only the short scalar denominator
+reduction uses an existing standard-RVV widening operation.
+
+The boundary was established with cycle and stage-level evidence rather than
+by repeated selector tuning. Before the M64 guard, a real Qwen3 M33 graph sent
+the same Query values into both paths, but its first two QK scores differed by
+one and three FP32 ULPs because AKV used the tiled F32 schedule while GGML used
+the F16-query, sequential `one_chunk` schedule. The discrepancy propagated to
+65,533 of 67,584 outputs at that Attention node. The AKV operator also required
+406,205 cycles versus 320,275 for the independent standard-RVV Q64/KV64 tiled
+baseline.
+After M<64 was returned to GGML, all 67,584 words match. At M84, AKV is actually
+selected and all 172,032 F32 Attention outputs match bit-for-bit; its trace
+accounts for 57,120 causal pairs and 14,622,720 MACs. Thus the guard preserves
+the upstream short-query algorithm and admits AKV exactly where its numerical
+schedule changes to tiled Prefill. The 320,275-cycle result is a strong
+independent RVV denominator, not a cycle measurement of GGML `one_chunk`.
 
 The K/V tile is therefore fetched once per Query block and KV head, rather
 than once per Query token. A later Query block may need a longer causal prefix,
@@ -287,15 +325,23 @@ Completed:
 - host runtime/alias/range tests;
 - ABI generation contract;
 - generic-SRAM AKV engine regression;
-- target-macro SRAM AKV engine regression; and
-- synthesis-wrapper elaboration without running synthesis.
+- target-macro SRAM AKV engine regression;
+- synthesis-wrapper elaboration without running synthesis;
+- D128/GQA2 F32-Query panel4 execution on a derived real capture; and
+- a matched strong tiled-RVV comparison for that D128/GQA2 point.
 
-Remaining acceptance work:
+The derived D128/GQA2 leaf uses the same real captured tensors at `M=15`,
+active KV `15`, and D128. AKV-v2 Prefill passes with zero mismatches in 189,123
+cycles; the strong tiled-RVV implementation passes in 268,743 cycles. This is
+a 1.421x speedup (29.63% cycle reduction). Strict counters report one FULL,
+480 panel4 commands representing 1,920 logical K columns, 240 V-row loads,
+zero bank conflicts, and zero rejected commands. It is operator-level native
+RTL evidence, not a full-model cycle measurement.
 
-- complete the short B64 RTL discriminator and strict counter check;
-- run a multi-tile focused point;
-- run at least one real M>=512 full Attention-core RTL point;
-- compare against ordinary and strong tiled RVV;
-- integrate the selector into the real GGML Prefill path;
-- complete D64/D96/D128 and GQA1..8 plus seven-model fallback census; and
-- document measured performance, numerical tolerance, and unsupported cases.
+Remaining beyond the current non-physical closure:
+
+- run at least one real M>=512 full Attention-core RTL point and its matched
+  strong tiled-RVV baseline;
+- use that matched long point to add cycle-calibrated Prefill contribution to
+  the full-model attribution; and
+- perform synthesis/PPA closure separately when physical evaluation begins.

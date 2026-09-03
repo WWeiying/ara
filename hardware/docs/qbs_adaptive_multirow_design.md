@@ -19,8 +19,8 @@ The mechanism is deliberately conditional. The existing M1--M4/N32 geometry
 remains the narrow-command fallback. Software may select M8/N16 only when an
 ABI-derived byte cost shows that reduced weight traffic exceeds the additional
 activation traffic. The GGML integration enables this conditional selection by
-default and provides an explicit M4-only A/B switch. Ordinary RVV remains the
-fallback for every unsupported contract.
+an explicit opt-in and leaves M4 as the current platform default. Ordinary RVV
+remains the fallback for every unsupported contract.
 
 ## 2. Why fixed M4 is the relevant limitation
 
@@ -84,11 +84,12 @@ instead of placing a variable divide/modulo network on the 128-bit receive
 path. The byte model and selection decision include this padding rather than
 treating it as free.
 
-The new geometry must never be selected for `M <= 4`: it rereads activation
-blocks across twice as many N tiles without reducing weight traffic. For
-larger M, the planner evaluates exact padded bytes rather than relying only on
-an M threshold. This also handles tails such as M9--M15, where group-count
-rounding changes the benefit.
+The new storage must never be selected for `M <= 4`: no M5--M8 group exists,
+so it cannot reduce weight traffic. A one-to-four-row tail inside a wider
+operation automatically returns to N32 rather than being forced through N16.
+For larger M, the planner evaluates exact padded bytes rather than relying
+only on an M threshold. This also handles tails such as M9--M15 and M33, where
+group-count rounding and the mixed-width final command change the benefit.
 
 ## 4. Frozen resource envelope
 
@@ -190,8 +191,11 @@ This correctness-first staging pass is measurable software overhead and is not
 described as free. A future direct F32-to-M8 quantizer could remove it without
 changing the ISA or descriptor contract.
 
-`GGML_RISCV_QBS_WIDE_M` is default-on. Setting it to `0` forces the legacy
-M4-grouped plan for matched A/B runs. Trace output reports
+`GGML_RISCV_QBS_WIDE_M=1` explicitly enables this bandwidth-oriented plan.
+The default remains the M4-grouped path because the focused ideal-memory RTL
+measurements below show that M8 reduces payload but increases cycles. Setting
+the variable to `0`, or leaving it unset, therefore selects M4 for production
+runs on the current platform. Trace output reports
 `commands_m1` through `commands_m8`; the model harness rejects a run if their
 sum does not equal native plus emulated command counts.
 
@@ -227,6 +231,32 @@ QEMU wall time is not used as a hardware-cycle result. The reconstruction is
 reproducible with `verification/qbs/compare_adaptive_model_logs.py`, which also
 rejects any mismatch in graph-node counts, modeled/traced M counts, command
 counts, or dot work.
+
+The independent Qwen3-1.7B Q4_K_M check exercises a different dense model
+shape: hidden size 2048, FFN size 6144, 16 Query heads, 8 KV heads and
+D128/GQA2 Attention. With a ten-token input and `WIDE_M=1`, Q6_K executes
+2,560 native M8 commands. Q4_K remains on M4/M2 because, for this M=10 shape,
+the exact padded-byte comparison rejects its wide plan; this is expected
+planner behavior rather than a fallback. All 197 selected `MUL_MAT` node
+digests, final logits, Top-1 decision and generated output exactly match the
+ordinary-RVV run, and both Q4_K and Q6_K report zero software-emulated
+commands and zero unexpected fallback. This proves that M8 is dynamically
+executed where admitted by the byte model; it does not overturn the focused
+RTL result below, where M8 is slower in cycles under ideal memory.
+
+A longer fixed 33-token Qwen3 input exercises the mixed tail explicitly. M4
+and M8 both execute 185,112 native commands and identical dot work. The M4
+distribution is 45,336 M1 plus 139,776 M4 commands; M8 changes only the latter
+to M8, while each final one-row group correctly retains N32. The
+ABI-reconstructed weight-plus-activation payload falls from 10,458,835,712 to
+8,738,319,104 bytes (16.45%): weight bytes fall by 37.45%, while activation
+bytes rise by 92.73%. Q4_K contributes 129,536 M8 commands and Q6_K contributes
+10,240, with zero emulation or unexpected fallback. This traffic result still
+does not justify selecting M8 by default. On the same fixed input, the first
+RVV/QBS numerical difference appears at the Prefill Q6_K output projection,
+and the second token's Top-1 decision changes. Together with the focused RTL
+cycle regression, this keeps `WIDE_M=1` as a diagnostic opt-in rather than the
+current production policy.
 
 ## 8. Focused RTL evidence
 

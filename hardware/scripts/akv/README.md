@@ -55,8 +55,10 @@ into the same CPU backend:
 hardware/scripts/akv/build-llama.sh
 ```
 
-AKV requires `Zfh` and `Zvfh` because its strict profile consumes F16 Q/K/V
-data and performs F16/F32 conversion. QBS remains independently selected by
+AKV requires `Zfh` and `Zvfh` because K/V and mask data are F16 and the native
+path performs F16/F32 conversion. The retained D128/GQA6 specialization also
+consumes its bounded F16 Query workspace; D128/GQA2 and generic admitted
+shapes consume the original F32 Query. QBS remains independently selected by
 its own runtime capability and shape checks.
 
 ## Isolated AKV model check
@@ -91,12 +93,15 @@ and applies the same value again during host log validation, so
 
 The emulation path validates GGML graph selection, shape/layout checks, shared
 runtime planning, and model-level numerical behavior. Decode uses the existing
-callback model. Prefill uses the shared contiguous-Prefill reference executor,
-including deterministic F32-to-F16 Query narrowing, causal-prefix validation,
-stable online Softmax, and F32 value accumulation. Neither is a cycle-accurate
-or instruction-order model of the native assembly. Native numerical error and
-performance are measured with the shared assembly kernel on the real-model RTL
-operator benchmark.
+callback model. Prefill uses the shared contiguous-Prefill reference executor
+with causal-prefix validation, stable online Softmax, and F32 value
+accumulation. The retained D128/GQA6 specialization narrows Query to F16;
+D128/GQA2 and generic admitted shapes preserve GGML's F32 Query arithmetic.
+The reference mirrors the native polynomial exponential, explicit FMA
+ordering, and widening-F64 Softmax denominator accumulation. It does not model
+the native vector-reduction tree or cycle ordering. Native numerical error and
+performance are therefore measured separately with the assembly kernel on the
+real-model RTL operator benchmark.
 
 ## Combined QBS + AKV-v2 model closure
 
@@ -132,6 +137,50 @@ The model-generality collector accepts a run only when that preflight passed
 and the recorded QBS ABI hash and architecture version exactly match the
 current generated `config/qbs_abi.json` contract.
 
+### Numerical localization and execution-shape controls
+
+`AKV_MODEL_DIGEST` enables a diagnostic-only digest after selected GGML
+operators. Set it to `1`/`all` for every graph node, or to a comma-separated
+operator list such as `MUL_MAT,FLASH_ATTN_EXT`. Each record identifies the
+graph, node, operator, tensor shape and an exact FNV-1a digest over the logical
+output rows. The instrumentation adds synchronization only while enabled and
+must therefore not be used for wall-time or performance measurements.
+
+After separating two matched variants into individual logs, locate the first
+different node with:
+
+```bash
+python3 hardware/scripts/akv/compare-model-node-digests.py \
+  --baseline rvv.digest.log --candidate qbs.digest.log \
+  --output first-difference.json --require-equal
+```
+
+The checker first requires identical node identity, operator, type, shape,
+byte count and ordering. It then reports the first differing hash; a topology
+difference is an input/run mismatch rather than a numerical mismatch.
+
+After the digest has identified one node, dump its raw F32 words from every
+model variant with `AKV_MODEL_DUMP_F32=GRAPH:NODE`. Setting
+`AKV_MODEL_EXIT_AFTER_DUMP=1` stops each child immediately after that node, so
+the diagnostic does not spend time finishing the model. The normal model
+closure is intentionally incomplete in this mode; the useful artifact is
+`model_f32_comparison.json`, generated before final run validation. It reports
+the first differing element, raw IEEE-754 words, ULP distance, maximum absolute
+error, and complete tensor shape. Leave both variables unset for functional or
+performance runs because the dump adds a per-node synchronization barrier and
+large text I/O.
+
+`GGML_RISCV_QBS_WIDE_M` is an explicit experiment switch. Unset or `0` uses
+the current production M4 policy; `1` admits M5--M8 only when the exact planner
+contract selects it. `QBS_EXPECTED_EXECUTION=any|gemv|gemm|both` controls the
+standalone QBS run's dynamic-shape requirement, so a Decode-only probe can use
+`gemv` without weakening a normal Prefill-plus-Decode check. Likewise,
+`AKV_REQUIRE_PREFILL=0` permits a combined run whose prompt does not enter the
+production Prefill path; it does not disable Prefill selection. Its closure
+still requires all QBS, AKV, numerical and fallback identities, but does not
+invent a missing Prefill phase. Claims that exercise both phases should use
+`AKV_REQUIRE_PREFILL=1`.
+
 Override `AKV_MODEL_DISK`, `AKV_MODEL_GUEST_PATH`, and `AKV_MODEL_PROMPT` to
 run another GGUF image. The manifest records the exact prompt, token count,
 model image, llama binary, QEMU binary, revisions, and hashes. Host validation
@@ -154,9 +203,10 @@ recorded in the run manifest and can only be overridden explicitly through
 `AKV_MODEL_LOGITS_MIN_COSINE_TOLERANCE`, and
 `AKV_MODEL_LOGITS_MIN_TOP5_OVERLAP_TOLERANCE`.
 
-This layered check isolates AKV-v2 from the known numerical-order difference
-between QBS and the ordinary RVV baseline without weakening the operator-level
-check or silently charging pre-existing QBS variation to the Attention path.
+This layered check reports RVV-to-QBS and QBS-to-AKV differences separately,
+so a matrix-path discrepancy cannot be charged to the Attention path. Current
+Q4_K execution aligns both matrix paths to numerical-contract v1, but the
+separation remains necessary for other profiles and future contract changes.
 Graph tracing associates every QBS and AKV call with its owning GGML node. The
 closure checker rejects a run unless every supported `MUL_MAT` node has a QBS
 call, every AKV call is owned by one `FLASH_ATTN_EXT` node in the matching
@@ -166,7 +216,10 @@ calls are checked against separate shape, work, group, and traffic identities.
 
 Require real causal Prefill and Decode dispatches in the same run by setting
 `AKV_REQUIRE_PREFILL=1` with at least two generated tokens. The prompt must
-tokenize to at least 15 tokens. Flash Attention is explicitly enabled in every
+tokenize to at least 64 tokens. This boundary matches `GGML_FA_TILE_Q` and
+`AKV_PREFILL_QUERY_BLOCK_TOKENS`: shorter queries use GGML's
+numerically distinct one-chunk implementation, while AKV takes over when GGML
+itself enters tiled Prefill. Flash Attention is explicitly enabled in every
 variant, and validation requires nonzero Prefill and Decode calls, query tokens,
 attention pairs, no size fallback, and both execution records:
 
@@ -177,7 +230,7 @@ nohup env \
   AKV_REQUIRE_PREFILL=1 \
   AKV_MODEL_MODE=combined \
   AKV_MODEL_TOKENS=2 \
-  AKV_MODEL_PROMPT='Explain regular vector memory access using at least two detailed examples.' \
+  AKV_MODEL_PROMPT='Explain in detail why low-bit vector inference benefits from packed arithmetic, reusable activation contexts, tiled memory access, vectorized attention kernels, explicit numerical contracts, safe runtime fallback, and shape-aware scheduling on resource-constrained processors.' \
   AKV_RUN_DIR="$PWD/$run" \
   hardware/scripts/akv/run-qemu-model-check.sh \
   >"$run/launch.log" 2>&1 &
@@ -471,16 +524,19 @@ unmatched records are an error rather than a global proportional estimate.
 - `GGML_RISCV_AKV=1`: native capability query and AKV instruction execution;
 - `GGML_RISCV_AKV_TRACE=1`: candidate, execution, group, and fallback counts.
 
-The current AKV-v2 production profile is deliberately strict: Decode only, F32
-Query, F16 K/V/mask, F32 output, one batch, `D=64/96/128`, and `q_rows` (the
-GQA ratio) from 1 through 8. Positive KV lengths are processed in 64-token
-tiles, including one-token and non-multiple-of-64 tails. D96 uses the D-axis
-tail capability in the existing D128 physical slot and does not increase
-context capacity. The specialized assembly path is D128/six rows; other
-admitted combinations use generic RVV arithmetic over the same AKV-v2
-token-axis context and commands. Attention sinks, ALiBi bias, softcap,
-incompatible layouts, malformed masks, or any unsupported state fall back
-before hidden context state changes.
+The current AKV-v2 production profile is deliberately strict: Decode plus
+tiled Prefill with at least 64 Query tokens, F32 Query, F16 K/V/mask, F32
+output, one batch, `D=64/96/128`, and `q_rows` (the GQA ratio) from 1 through
+8. Positive KV lengths are processed in 64-token tiles, including one-token
+and non-multiple-of-64 tails. The Prefill threshold equals `GGML_FA_TILE_Q`;
+shorter graphs retain GGML's numerically distinct `one_chunk`
+implementation. D96 uses the D-axis tail capability in the existing D128
+physical slot and does not increase context capacity. Specialized assembly
+paths cover D128/six rows and D128/two-row panel4 QK; other admitted
+combinations use generic RVV arithmetic over the same AKV-v2 token-axis
+context and commands. Attention sinks, ALiBi bias, softcap, incompatible
+layouts, malformed masks, or any unsupported state fall back before hidden
+context state changes.
 
 The original derived-real matrix still provides 112/112 passing scalar/RVV
 cases over D64/D128, GQA1/4/6/8, and KV

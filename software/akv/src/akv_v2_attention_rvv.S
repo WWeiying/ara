@@ -473,6 +473,103 @@ akv_v2_compute_scores_f16_generic:
     .size akv_v2_compute_scores_f16_generic, \
           .-akv_v2_compute_scores_f16_generic
 
+    .globl  akv_v2_compute_scores_f32_generic
+    .type   akv_v2_compute_scores_f32_generic,@function
+
+// a0: F32 Query rows, a1: F32 score rows (64-element stride)
+// a2: active tokens, a3: Query stride, a4: Q rows, a5: head dimension
+akv_v2_compute_scores_f32_generic:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    mv              t5, a5
+.Lakv_v2_generic_f32_score_head:
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    mv              a6, t0
+    li              a7, 0
+.Lakv_v2_generic_f32_score_dimension:
+    vsetvli         zero, t2, e16, m1, ta, ma
+    mv              a0, a7
+    .word           0x0005745b  // vakv2kcol v8, dimension(a0)
+    vfwcvt.f.f.v    v10, v8
+    flw             ft0, 0(a6)
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vfmacc.vf       v0, ft0, v10
+    addi            a6, a6, 4
+    addi            a7, a7, 1
+    bltu            a7, t5, .Lakv_v2_generic_f32_score_dimension
+    vse32.v         v0, (t1)
+    add             t0, t0, t3
+    addi            t1, t1, 256
+    addi            t4, t4, -1
+    bnez            t4, .Lakv_v2_generic_f32_score_head
+    ret
+
+    .size akv_v2_compute_scores_f32_generic, \
+          .-akv_v2_compute_scores_f32_generic
+
+    .globl  akv_v2_compute_scores_f32_d128_gqa2_panel4
+    .type   akv_v2_compute_scores_f32_d128_gqa2_panel4,@function
+
+// Two GQA rows share each resident K panel. F32 Query values preserve GGML's
+// Prefill input contract while K remains in its captured F16 representation.
+// a0: first F32 D128 Query row, a1: two F32 score rows
+// a2: active tokens, a3: Query row stride in bytes
+akv_v2_compute_scores_f32_d128_gqa2_panel4:
+    mv              a4, a0
+    add             a5, a4, a3
+    mv              t0, a1
+    mv              t1, a2
+
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+
+    li              t2, 0
+    li              t3, 128
+.Lakv_v2_f32_gqa2_score_panel:
+    vsetvli         zero, t1, e16, m1, ta, ma
+    mv              a0, t2
+    .word           0x0205745b  // vakv2kpanel4 v8:v11, dimension(a0)
+    vfwcvt.f.f.v    v16, v8
+    vfwcvt.f.f.v    v18, v9
+    vfwcvt.f.f.v    v20, v10
+    vfwcvt.f.f.v    v22, v11
+
+    flw             ft0, 0(a4)
+    flw             ft1, 4(a4)
+    flw             ft2, 8(a4)
+    flw             ft3, 12(a4)
+    flw             ft4, 0(a5)
+    flw             ft5, 4(a5)
+    flw             ft6, 8(a5)
+    flw             ft7, 12(a5)
+    vsetvli         zero, t1, e32, m2, ta, ma
+    vfmacc.vf       v0, ft0, v16
+    vfmacc.vf       v0, ft1, v18
+    vfmacc.vf       v0, ft2, v20
+    vfmacc.vf       v0, ft3, v22
+    vfmacc.vf       v2, ft4, v16
+    vfmacc.vf       v2, ft5, v18
+    vfmacc.vf       v2, ft6, v20
+    vfmacc.vf       v2, ft7, v22
+
+    addi            a4, a4, 16
+    addi            a5, a5, 16
+    addi            t2, t2, 4
+    bltu            t2, t3, .Lakv_v2_f32_gqa2_score_panel
+
+    vse32.v         v0, (t0)
+    addi            t0, t0, 256
+    vse32.v         v2, (t0)
+    ret
+
+    .size akv_v2_compute_scores_f32_d128_gqa2_panel4, \
+          .-akv_v2_compute_scores_f32_d128_gqa2_panel4
+
     .globl  akv_v2_update_outputs_f16_generic
     .type   akv_v2_update_outputs_f16_generic,@function
 

@@ -43,6 +43,14 @@
 #define AKV_MODEL_DIGEST ""
 #endif
 
+#ifndef AKV_MODEL_DUMP_F32
+#define AKV_MODEL_DUMP_F32 ""
+#endif
+
+#ifndef AKV_MODEL_EXIT_AFTER_DUMP
+#define AKV_MODEL_EXIT_AFTER_DUMP 0
+#endif
+
 #ifndef AKV_QBS_WIDE_M
 #define AKV_QBS_WIDE_M 0
 #endif
@@ -439,6 +447,16 @@ static struct run_result run_variant(const char * label,
             setenv("GGML_RISCV_MODEL_DIGEST", AKV_MODEL_DIGEST, 1);
         } else {
             unsetenv("GGML_RISCV_MODEL_DIGEST");
+        }
+        if (AKV_MODEL_DUMP_F32[0] != '\0') {
+            setenv("GGML_RISCV_MODEL_DUMP_F32", AKV_MODEL_DUMP_F32, 1);
+        } else {
+            unsetenv("GGML_RISCV_MODEL_DUMP_F32");
+        }
+        if (AKV_MODEL_EXIT_AFTER_DUMP) {
+            setenv("GGML_RISCV_MODEL_EXIT_AFTER_DUMP", "1", 1);
+        } else {
+            unsetenv("GGML_RISCV_MODEL_EXIT_AFTER_DUMP");
         }
         setenv("GGML_RISCV_QBS_WIDE_M", AKV_QBS_WIDE_M ? "1" : "0", 1);
         unsetenv("GGML_RISCV_AKV");

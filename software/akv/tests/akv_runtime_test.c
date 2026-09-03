@@ -567,9 +567,11 @@ static void test_v2_prefill_boundary(void) {
   assert(akv_device_init_reference(&device) == AKV_STATUS_OK);
   memset(prefill_query, 0, sizeof(prefill_query));
   memset(prefill_key, 0, sizeof(prefill_key));
+  const float query_value = 1.0003f;
   for (uint32_t head = 0u; head < 2u; ++head) {
     for (uint32_t token = 0u; token < 2u; ++token)
-      prefill_query[((size_t)head * 2u + token) * AKV_HEAD_DIM_64] = 1.0f;
+      prefill_query[((size_t)head * 2u + token) * AKV_HEAD_DIM_64] =
+          query_value;
   }
   prefill_key[0] = UINT16_C(0x3c00);
   prefill_key[AKV_HEAD_DIM_64] = UINT16_C(0x4000);
@@ -601,8 +603,8 @@ static void test_v2_prefill_boundary(void) {
   assert(akv_attention_execute_v2_prefill_reference(
              &device, &problem, &prefill_workspace) == AKV_STATUS_OK);
   const float second_expected =
-      (2.0f * expf(1.0f) + 4.0f * expf(2.0f)) /
-      (expf(1.0f) + expf(2.0f));
+      (2.0f * expf(query_value) + 4.0f * expf(2.0f * query_value)) /
+      (expf(query_value) + expf(2.0f * query_value));
   for (uint32_t head = 0u; head < 2u; ++head) {
     for (uint32_t dimension = 0u; dimension < AKV_HEAD_DIM_64; ++dimension) {
       assert_close(prefill_output[head * AKV_HEAD_DIM_64 + dimension], 2.0f);

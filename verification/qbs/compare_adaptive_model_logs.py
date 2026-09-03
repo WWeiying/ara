@@ -11,6 +11,7 @@ the reconstruction so a stale geometry model cannot silently produce evidence.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
@@ -18,7 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from analyze_adaptive_tiles import Geometry, chunks, estimate, percent_reduction
+from analyze_adaptive_tiles import (
+    Geometry,
+    chunks,
+    command_n_limit,
+    estimate,
+    percent_reduction,
+)
 
 
 GGML_TYPE_TO_PROFILE = {
@@ -31,6 +38,10 @@ GGML_TYPE_TO_PROFILE = {
     "q6_K": "Q6_K",
     "q8_0": "Q8_0_WEIGHT",
     "iq4_nl": "IQ4_NL",
+}
+EXEC_TYPE_TO_PROFILE = {
+    ggml_type.upper(): profile
+    for ggml_type, profile in GGML_TYPE_TO_PROFILE.items()
 }
 
 CALL_PATTERN = re.compile(
@@ -50,68 +61,117 @@ class Call:
     split_k: bool
 
 
-def parse_calls(path: Path) -> list[Call]:
+def selected_qbs_run_lines(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    begin_prefix = "AKV_TOKEN_RUN_BEGIN="
+    has_run_markers = any(line.startswith(begin_prefix) for line in lines)
+    if not has_run_markers:
+        return lines
+
+    selected: list[str] = []
+    active = False
+    found = False
+    for line in lines:
+        if line.startswith(begin_prefix):
+            # Combined runs enable detailed QBS tracing only for the final
+            # QBS+AKV execution.  Scope calls, counters, and model nodes to
+            # that same execution instead of mixing records across variants.
+            active = line == f"{begin_prefix}QBS_AKV_V2"
+            found |= active
+        if active:
+            selected.append(line)
+        if line.startswith("AKV_TOKEN_RUN_EXIT=QBS_AKV_V2:"):
+            active = False
+    if not found:
+        raise ValueError(f"no QBS_AKV_V2 run section in combined log {path}")
+    return selected
+
+
+def parse_calls(path: Path, lines: list[str] | None = None) -> list[Call]:
     calls: list[Call] = []
-    with path.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            match = CALL_PATTERN.search(line)
-            if match is None:
-                continue
-            weight_type, mode, k, m, n, split_k = match.groups()
-            if weight_type not in GGML_TYPE_TO_PROFILE:
-                raise ValueError(f"unsupported traced GGML type: {weight_type}")
-            calls.append(
-                Call(
-                    weight_type=weight_type,
-                    mode=mode,
-                    k=int(k),
-                    m=int(m),
-                    n=int(n),
-                    split_k=split_k != "0",
-                )
+    for line in selected_qbs_run_lines(path) if lines is None else lines:
+        match = CALL_PATTERN.search(line)
+        if match is None:
+            continue
+        weight_type, mode, k, m, n, split_k = match.groups()
+        if weight_type not in GGML_TYPE_TO_PROFILE:
+            raise ValueError(f"unsupported traced GGML type: {weight_type}")
+        calls.append(
+            Call(
+                weight_type=weight_type,
+                mode=mode,
+                k=int(k),
+                m=int(m),
+                n=int(n),
+                split_k=split_k != "0",
             )
+        )
     if not calls:
         raise ValueError(f"no GGML_RISCV_QBS_CALL records in {path}")
     return calls
 
 
-def parse_exec_counters(path: Path) -> dict[str, object]:
+def parse_exec_counters(path: Path, lines: list[str] | None = None) -> dict[str, object]:
     commands_by_m = Counter()
     totals = Counter()
-    with path.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            if not line.startswith("GGML_RISCV_QBS_EXEC "):
-                continue
-            fields = dict(FIELD_PATTERN.findall(line))
-            for m in range(1, 9):
-                commands_by_m[m] += int(fields.get(f"commands_m{m}", 0))
-            for field in (
-                "native_qbexec",
-                "emulated_commands",
-                "command_dot_elements",
-            ):
-                totals[field] += int(fields.get(field, 0))
-    if not commands_by_m:
+    by_profile: dict[str, dict[str, Counter]] = defaultdict(
+        lambda: {"commands_by_m": Counter(), "totals": Counter()}
+    )
+    records = 0
+    for line in selected_qbs_run_lines(path) if lines is None else lines:
+        if not line.startswith("GGML_RISCV_QBS_EXEC "):
+            continue
+        fields = dict(FIELD_PATTERN.findall(line))
+        execution_type = fields.get("type", "")
+        if execution_type not in EXEC_TYPE_TO_PROFILE:
+            raise ValueError(
+                f"unsupported QBS execution counter type {execution_type!r} "
+                f"in {path}"
+            )
+        profile = EXEC_TYPE_TO_PROFILE[execution_type]
+        records += 1
+        for m in range(1, 9):
+            count = int(fields.get(f"commands_m{m}", 0))
+            commands_by_m[m] += count
+            by_profile[profile]["commands_by_m"][m] += count
+        for field in (
+            "native_qbexec",
+            "emulated_commands",
+            "command_dot_elements",
+        ):
+            value = int(fields.get(field, 0))
+            totals[field] += value
+            by_profile[profile]["totals"][field] += value
+    if records == 0:
         raise ValueError(f"no GGML_RISCV_QBS_EXEC command counters in {path}")
     return {
         "commands_by_m": dict(sorted(commands_by_m.items())),
+        "by_profile": {
+            profile: {
+                "commands_by_m": dict(sorted(values["commands_by_m"].items())),
+                **values["totals"],
+            }
+            for profile, values in sorted(by_profile.items())
+        },
         **totals,
     }
 
 
-def parse_model_nodes(path: Path) -> dict[str, int]:
+def parse_model_nodes(path: Path, lines: list[str] | None = None) -> dict[str, object]:
     counts = Counter()
-    with path.open(encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            if not line.startswith("GGML_RISCV_MODEL_NODE "):
-                continue
-            fields = dict(FIELD_PATTERN.findall(line))
-            counts["total"] += 1
-            if fields.get("op") == "MUL_MAT":
-                counts["mul_mat"] += 1
+    identity = hashlib.sha256()
+    for line in selected_qbs_run_lines(path) if lines is None else lines:
+        if not line.startswith("GGML_RISCV_MODEL_NODE "):
+            continue
+        identity.update(line.encode("utf-8"))
+        identity.update(b"\n")
+        fields = dict(FIELD_PATTERN.findall(line))
+        counts["total"] += 1
+        if fields.get("op") == "MUL_MAT":
+            counts["mul_mat"] += 1
     if not counts["total"]:
         raise ValueError(f"no GGML_RISCV_MODEL_NODE records in {path}")
-    return dict(counts)
+    return {**counts, "identity_sha256": identity.hexdigest()}
 
 
 def choose_geometry(abi: dict, call: Call, adaptive: bool) -> Geometry:
@@ -149,8 +209,10 @@ def analyze_log(path: Path, abi: dict, adaptive: bool) -> dict[str, object]:
     by_mode: dict[str, Counter] = defaultdict(Counter)
     by_profile: dict[str, Counter] = defaultdict(Counter)
     commands_by_m = Counter()
+    commands_by_m_by_profile: dict[str, Counter] = defaultdict(Counter)
 
-    calls = parse_calls(path)
+    lines = selected_qbs_run_lines(path)
+    calls = parse_calls(path, lines)
     for index, call in enumerate(calls):
         geometry = choose_geometry(abi, call, adaptive)
         profile = GGML_TYPE_TO_PROFILE[call.weight_type]
@@ -174,11 +236,14 @@ def analyze_log(path: Path, abi: dict, adaptive: bool) -> dict[str, object]:
         totals.update(fields)
         by_mode[call.mode].update(fields)
         by_profile[profile].update(fields)
-        n_tiles = len(chunks(call.n, geometry.max_n))
         for tile_m in chunks(call.m, geometry.max_m):
-            commands_by_m[tile_m] += n_tiles
+            command_count = len(
+                chunks(call.n, command_n_limit(geometry, tile_m))
+            )
+            commands_by_m[tile_m] += command_count
+            commands_by_m_by_profile[profile][tile_m] += command_count
 
-    trace = parse_exec_counters(path)
+    trace = parse_exec_counters(path, lines)
     traced_by_m = {
         int(m): int(count)
         for m, count in trace["commands_by_m"].items()
@@ -204,16 +269,56 @@ def analyze_log(path: Path, abi: dict, adaptive: bool) -> dict[str, object]:
             f"{trace['command_dot_elements']}"
         )
 
+    modeled_profiles = set(by_profile)
+    traced_profiles = set(trace["by_profile"])
+    if modeled_profiles != traced_profiles:
+        raise ValueError(
+            f"{path}: modeled profiles {sorted(modeled_profiles)} do not match "
+            f"traced profiles {sorted(traced_profiles)}"
+        )
+    profile_results = {}
+    for profile in sorted(modeled_profiles):
+        modeled = by_profile[profile]
+        traced = trace["by_profile"][profile]
+        modeled_m = dict(sorted(commands_by_m_by_profile[profile].items()))
+        traced_m = {
+            int(m): int(count)
+            for m, count in traced["commands_by_m"].items()
+            if int(count) != 0
+        }
+        if modeled_m != traced_m:
+            raise ValueError(
+                f"{path}: {profile} modeled M counts {modeled_m} do not match "
+                f"trace {traced_m}"
+            )
+        traced_profile_commands = int(traced["native_qbexec"]) + int(
+            traced["emulated_commands"]
+        )
+        if modeled["commands"] != traced_profile_commands:
+            raise ValueError(
+                f"{path}: {profile} modeled commands {modeled['commands']} != "
+                f"traced {traced_profile_commands}"
+            )
+        if modeled["dot_elements"] != int(traced["command_dot_elements"]):
+            raise ValueError(
+                f"{path}: {profile} modeled dot work {modeled['dot_elements']} "
+                f"!= traced {traced['command_dot_elements']}"
+            )
+        profile_results[profile] = {
+            **modeled,
+            "commands_by_m": modeled_m,
+            "native_commands": int(traced["native_qbexec"]),
+            "emulated_commands": int(traced["emulated_commands"]),
+        }
+
     return {
         **totals,
-        "model_nodes": parse_model_nodes(path),
+        "model_nodes": parse_model_nodes(path, lines),
         "commands_by_m": modeled_by_m,
         "native_commands": int(trace["native_qbexec"]),
         "emulated_commands": int(trace["emulated_commands"]),
         "by_mode": {name: dict(values) for name, values in sorted(by_mode.items())},
-        "by_profile": {
-            name: dict(values) for name, values in sorted(by_profile.items())
-        },
+        "by_profile": profile_results,
     }
 
 

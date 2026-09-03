@@ -318,6 +318,30 @@ static float multiply_then_add_f32(float lhs, float rhs, float addend) {
   return product + addend;
 }
 
+/* Scalar model of vector_expf() in akv_v2_native_riscv.c. */
+static float vector_expf_scalar(float value) {
+  const float minimum_normal_log = -0x1.5d58ap+6f;
+  if (value < minimum_normal_log) return 0.0f;
+
+  const float r = 0x1.8p23f;
+  const float z = fmaf(0x1.715476p+0f, value, r);
+  const float n = z - r;
+  const float b = fmaf(-0x1.7f7d1cp-20f, n,
+                       fmaf(-0x1.62e4p-1f, n, value));
+  uint32_t z_bits;
+  memcpy(&z_bits, &z, sizeof(z_bits));
+  const uint32_t k_bits = (z_bits << 23) + UINT32_C(0x3f800000);
+  float k;
+  memcpy(&k, &k_bits, sizeof(k));
+
+  const float u = b * b;
+  const float p0 = fmaf(0x1.555e66p-3f, b, 0x1.fffdb6p-2f);
+  const float p1 = fmaf(0x1.0e4020p-7f, b, 0x1.573e2ep-5f);
+  const float j = fmaf(fmaf(p1, u, p0), u,
+                       b * 0x1.ffffecp-1f);
+  return fmaf(j, k, k);
+}
+
 static uint16_t f32_to_f16(float value) {
   uint32_t bits;
   memcpy(&bits, &value, sizeof(bits));
@@ -372,6 +396,9 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
   (void)maximum_prefix;
 
   const uint32_t q_rows = problem->query_heads / problem->kv_heads;
+  const int use_f16_query =
+      (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
+       problem->head_dim == AKV_HEAD_DIM_128);
   for (uint32_t kv_head = 0u; kv_head < problem->kv_heads; ++kv_head) {
     const uint32_t first_qhead = kv_head * q_rows;
     const char *const key_base =
@@ -431,6 +458,11 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
               (size_t)token * layout.mask_token_stride_bytes) + tile_start;
 
           for (uint32_t head = 0u; head < q_rows; ++head) {
+            const float *const query = (const float *)(const void *)(
+                (const char *)problem->query +
+                (size_t)(first_qhead + head) *
+                    layout.query_head_stride_bytes +
+                (size_t)token * layout.query_token_stride_bytes);
             float tile_maximum = negative_infinity_f32();
             for (uint32_t sequence = 0u; sequence < active_tokens;
                  ++sequence) {
@@ -441,8 +473,12 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
               float dot = 0.0f;
               for (uint32_t dimension = 0u; dimension < problem->head_dim;
                    ++dimension) {
-                dot += f16_to_f32(workspace->query[local_token][head][dimension]) *
-                       f16_to_f32(key[dimension]);
+                const float query_value =
+                    use_f16_query
+                        ? f16_to_f32(
+                              workspace->query[local_token][head][dimension])
+                        : query[dimension];
+                dot = fmaf(query_value, f16_to_f32(key[dimension]), dot);
               }
               const float score = multiply_then_add_f32(
                   dot, problem->scale, f16_to_f32(mask[sequence]));
@@ -457,17 +493,20 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
                                         ? 0.0f
                                         : expf(old_maximum - new_maximum);
             workspace->old_scale[0][head] = old_scale;
-            float tile_sum = 0.0f;
+            double tile_sum_f64 = 0.0;
             for (uint32_t sequence = 0u; sequence < active_tokens;
                  ++sequence) {
-              const float weight =
-                  expf(workspace->score[0][head][sequence] - new_maximum);
+              const float exponent =
+                  workspace->score[0][head][sequence] - new_maximum;
+              const float weight = vector_expf_scalar(exponent);
               workspace->score[0][head][sequence] = weight;
-              tile_sum += weight;
+              tile_sum_f64 += (double)weight;
             }
             workspace->maximum[local_token][head] = new_maximum;
+            const float scaled_sum =
+                workspace->sum[local_token][head] * old_scale;
             workspace->sum[local_token][head] =
-                workspace->sum[local_token][head] * old_scale + tile_sum;
+                (float)((double)scaled_sum + tile_sum_f64);
 
             float *const output = (float *)(void *)(
                 (char *)problem->output +
@@ -483,8 +522,8 @@ akv_status_t akv_attention_execute_v2_prefill_reference(
                     (const uint16_t *)(const void *)(
                         value_base + (size_t)(tile_start + sequence) *
                                          layout.value_token_stride_bytes);
-                accumulated += workspace->score[0][head][sequence] *
-                               f16_to_f32(value[dimension]);
+                accumulated = fmaf(workspace->score[0][head][sequence],
+                                   f16_to_f32(value[dimension]), accumulated);
               }
               output[dimension] = accumulated;
             }

@@ -95,7 +95,19 @@ class AdaptiveTileModelTest(unittest.TestCase):
             k=1536,
             geometry=Geometry("m8n16", 8, 16),
         )
-        self.assertGreater(adaptive.input_bytes, current.input_bytes)
+        self.assertEqual(adaptive.input_bytes, current.input_bytes)
+
+    def test_m33_uses_narrow_n32_for_single_row_tail(self):
+        adaptive = estimate(
+            self.abi,
+            "qwen3_prefill_projection",
+            "Q4_K",
+            m=33,
+            n=2048,
+            k=2048,
+            geometry=Geometry("m8n16", 8, 16),
+        )
+        self.assertEqual(adaptive.command_count, 4 * (2048 // 16) + 2048 // 32)
 
     def test_m15_accounts_for_fixed_m8_tail_padding(self):
         adaptive = estimate(
