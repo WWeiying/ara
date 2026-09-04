@@ -4492,12 +4492,12 @@ completion；`qbs/` 决定压缩块算术和 activation snapshot，`akv/` 决定
 
 ### 18.7 补充设计与实验文档
 
-- `llama_ara_dsa_performance_plan.md`：性能计数器、评测命令和多格式闭环。
-- `llama_q4km_workload_and_ara_optimization.md`：真实模型 benchmark 分层和 shape。
-- `spacemit_ggml_backend_study.md`：进迭时空 GGML backend 的源码研究。
-- `attention_akv_v2_design.md`：当前 token-axis banking、Decode 周期与多 shape closure；源码沿用该文件名。
-- `prefill_attention_query_reuse_design.md`：B64 Prefill、算法门限和长点待验证假设。
-- `qbs_akv_model_closure.md`：七模型、Qwen3、coverage、周期归因和证据边界的结果索引。
+- `hardware/docs/llama_ara_dsa_performance_plan.md`：性能计数器、评测命令和多格式闭环。
+- `hardware/docs/llama_q4km_workload_and_ara_optimization.md`：真实模型 benchmark 分层和 shape。
+- `hardware/docs/spacemit_ggml_backend_study.md`：进迭时空 GGML backend 的源码研究。
+- `hardware/docs/attention_akv_v2_design.md`：当前 token-axis banking、Decode 周期与多 shape closure；源码沿用该文件名。
+- `hardware/docs/prefill_attention_query_reuse_design.md`：B64 Prefill、算法门限和长点待验证假设。
+- `hardware/docs/qbs_akv_model_closure.md`：七模型、Qwen3、coverage、周期归因和证据边界的结果索引。
 - `verification/qbs/README.md`：快速验证入口。
 - `verification/qbs/qemu/README.md`：QEMU 构建和整模型检查。
 
