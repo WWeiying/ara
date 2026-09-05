@@ -1,6 +1,6 @@
 # QBS/AKV 全机制教学：从 llama.cpp 模型算子到 RVV 协同执行
 
-> 文档状态：2026-09-03。硬件代码锚点为 `1cde6c45990a`，本地 llama.cpp/GGML backend
+> 文档状态：2026-09-05。硬件代码锚点为 `1cde6c45990a`，本地 llama.cpp/GGML backend
 > 锚点为 `f896237df65c`。本文逐项对照 QBS/AKV ABI、RTL、公共运行时、QEMU functional model、
 > GGML selector 和归档验证证据核查。本文只讲当前采用的机制和选择规则。实验数字的精确复现
 > 仍以对应目录中的 manifest、source diff、binary 与输入哈希为准。
@@ -57,7 +57,7 @@ GGML_OP_FLASH_ATTN_EXT 的运行时 Q/K/V
 | 路径 | 加速对象 | 隐藏状态 | 算术执行者 | 当前生产边界 |
 | --- | --- | --- | --- | --- |
 | 标准 RVV | 所有未选择的 GGML operator | 无专用 context | lanes/MFPU/VLSU | 永远保留的正确性与兼容 fallback |
-| QBS | 量化 `MUL_MAT`/受约束 `MUL_MAT_ID` | command-local FP32 accumulators；可选 Q8_K activation context | QBS decoder、32-pair integer dot 和共享 FP update | 9 种 weight profile；默认 M1--M4/N32，可显式启用受流量门控的 M5--M8/N16 |
+| QBS | 量化 `MUL_MAT`/受约束 `MUL_MAT_ID` | command-local FP32 accumulators；可选 Q8_K activation context | 新增 decoder、32-pair integer dot 和 QBS 内共享的 FP update 单元 | 9 种 weight profile；默认 M1--M4/N32，可显式启用受流量门控的 M5--M8/N16 |
 | AKV Decode | 单个 Query token 读取历史 K/V | 64-token、8-bank K/V context | 标准 RVV | F32 Q、F16 K/V/mask、F32 output，D64/96/128，GQA1..8 |
 | AKV Prefill | tiled causal Attention | 同一 64-token K/V context；软件维护 64-Query block | 标准 RVV | Query tokens >=64，并与 GGML tiled Attention 的计算顺序一致 |
 
@@ -151,7 +151,7 @@ QBS/AKV 当成一台另外的处理器重新学习。最有效的方法是先固
 | 你已经熟悉的 RVV 部件 | 保持不变的职责 | QBS/AKV 增加的内容 |
 | --- | --- | --- |
 | Dispatcher | 解码指令并构造 vector request | 识别 `qbexec/qbinfo` 和 AKV 指令，将 GPR、`vd`、M 及命令类型放入请求 |
-| Sequencer | 分配 `vid`、跟踪目的寄存器和功能单元完成 | 把长命令当作正常在飞 vector request；在 terminal 前阻止年轻指令观察部分结果 |
+| Sequencer | 分配 `vid`、跟踪目的寄存器和功能单元完成 | QBS 等完整提交；AKV local view 保留正常 hazard/chaining，不把早确认当作数据全部就绪 |
 | VLSU | 拥有 MMU/PMA、AXI 和 load-result 路径 | 增加 normal/QBS/AKV owner 仲裁；三者复用同一翻译、存储请求和结果端口 |
 | Lanes/VRF | 保存架构 vector state，执行整数、浮点、reduction 和 store | QBS 将 FP32 tile 结果提交到 VRF；AKV 将 F16 局部 view 送入 VRF，Attention 的 FP32 累加仍由 lanes/MFPU 执行 |
 | Vector CSR/异常域 | 维持 `vl/vtype/vstart/fflags`、顺序和 trap 可见性 | wrapper 设置合法的 RVV 结果几何；专用命令在原子发布/提交前不改变可见状态 |
@@ -162,13 +162,27 @@ AKV 是向普通 RVV Attention 提供有生命周期局部数据 view 的长命�
 计算路径，后者不新增 Attention 乘加/Softmax 阵列。这个区别贯穿 ISA、RTL、验证和
 性能解释。
 
+对“怎样从原 RVV 硬件改造成现在的快路径”这个问题，建议走一条更短的阅读路线：
+
+| 阅读次序 | 要看懂什么 | 对应位置 |
+| --- | --- | --- |
+| 1 | 原来的 load、ALU/MFPU、reduction 和 store 怎样合作 | 第 5.1、7.1 节 |
+| 2 | 哪些普通指令的工作移入 QBS，哪些 Attention 指令仍在 lanes 执行 | 第 7.6、7.7 节 |
+| 3 | custom opcode 怎样携带参数、占用 `vid`，并取得 MMU/AXI/写回端口 | 第 7.2 至 7.4 节 |
+| 4 | 一条命令的字节、乘积、结果如何对上 SRAM/VRF | 第 8.4、8.5 节的手算例子 |
+| 5 | 为什么能在保留 RAW/WAR/WAW、backpressure 和异常规则的前提下变快 | 第 7.3、7.5、10、11 节 |
+| 6 | 自己改造时哪些接点必须一起改，怎样逐层检查 | 第 7.8、17.6 节 |
+
+这里讲的是**当前设计的构造逻辑**，不是多个历史版本的变更日志。沿这条路线，应能从一个
+原有 RVV 请求一直追到新 engine，再沿原来的结果接口返回，而不只记住几个新模块名。
+
 ### 1.5 先问“状态归谁、活多久、何时可见”
 
 整套机制最容易混淆的不是乘加公式，而是状态边界。下表是后文所有模块的总索引：
 
 | 状态域 | 主要内容 | 所有者 | 生命周期 | 软件何时可见 |
 | --- | --- | --- | --- | --- |
-| RVV 架构状态 | VRF、`vl/vtype/vstart`、`fflags`、内存结果 | sequencer/lanes/VLSU | 跨指令，按 RVV 规则更新 | 指令正常完成后 |
+| RVV 架构状态 | VRF、`vl/vtype/vstart`、`fflags`、内存结果 | sequencer/lanes/VLSU | 跨指令，按 RVV 规则更新 | 按 ISA 顺序保证结果；后端可按 chaining 提前消费已就绪元素 |
 | 在飞命令状态 | `vid`、功能单元 owner、目的寄存器保留、success/fault | sequencer + VLSU | request accept 到 terminal handshake | 只通过完成、trap 和后续相关行为体现 |
 | QBS 命令局部状态 | descriptor snapshot、block banks、integer subtotal、FP32 accumulators | `qbs_engine` 及其子模块 | 单条 `qbexec` | 成功后仅通过 VRF tile 结果可见；fault 时全部丢弃 |
 | QBS activation context | ID/generation、profile/layout/shape metadata、Q8_K snapshot | `qbs_activation_context` | FILL 成功发布到 RELEASE/替换/invalid | 不可直接读；后续 `qbexec` 只能按显式 ID/generation REUSE |
@@ -178,6 +192,27 @@ AKV 是向普通 RVV Attention 提供有生命周期局部数据 view 的长命�
 对任何新信号或优化，都应先回答四个问题：谁写它；哪个事件使它有效；哪个事件清除它；如果中途
 fault，程序能否观察到部分状态。第 3.2 节给出设计原则，第 8 节沿命令走完生命周期，第 9 节再对应到
 每个 RTL 模块。
+
+### 1.6 先分清容量、计算宽度和传输宽度
+
+文中出现许多 32、64、128、256，它们常常不是同一个单位。以下均以当前四 lane、VLEN=1024 的
+实验配置为例；不能把这些实现参数自动推广到任意 RVV 处理器。
+
+| 数字 | 它是什么 | 它不是什么 |
+| --- | --- | --- |
+| `VLEN=1024 bit=128 B` | 一个架构向量寄存器的容量 | 不是每周期执行 1024 bit 算术的保证 |
+| `SEW=32`、LMUL1 的 `VLMAX=32` | 一个寄存器可放 32 个 FP32/i32 元素；一般 `VLMAX=LMUL*VLEN/SEW` | 不是 32 条物理 lane |
+| `vl` | 当前普通向量指令要处理的有效元素数 | 不是寄存器容量，也不是 QBS 的 K 维 |
+| 4 条 lane、每条 64-bit result word | 一组最多交付 256 bit，即 8 个 FP32 或 16 个 F16 元素 | 不代表每组只需一个时钟；还要等待各 lane grant |
+| 128-bit AXI read beat | 外部读接口一次握手传送 16 B 总线数据 | 不等于一个量化 block，也不等于有效 payload 必定有 16 B |
+| Q4_K 的 256 elements / 144 B | 一个权重 block 的逻辑元素数与实际压缩存储量 | 不是 VLEN=256，也不是一次完成 256 个乘法 |
+| QBS 的 32 integer pairs | dot array 每次接受工作时的物理乘法容量 | 不是 32 条 RVV 指令，也不是新增 32 条 RVV lane |
+| AKV 的 64-token tile | 一次驻留的 K/V 历史位置数；D128 时每 token 的 K 和 V 各为 256 B | 不是模型最大上下文长度，也不是 64 个 Query tokens |
+
+另外，模型章中的 `D=1536` 指 hidden width，AKV 接口中的 `D=64/96/128` 指 **head dimension**。
+QBS 的 `M` 是一条命令的 activation rows，Attention 的 Query-token 数是整个节点的 shape；二者
+都可随 Prefill 增长，但不是同一个字段。下文出现 `M84 Prefill` 时，表示节点有 84 个 Query tokens，
+绝不是发出一条 `qbexec M=84`。
 
 ## 2. 从一句自然语言到 QBS/AKV：先完整理解 Qwen2.5 推理
 
@@ -410,12 +445,18 @@ Qwen2.5-1.5B 使用 GQA：12 个 Q heads 共享 2 个 K/V heads，即每 6 个 Q
 ### 2.9 RoPE：把位置信息写入 Q/K 的相位
 
 纯点积 attention 若只看 token 内容，无法区分“前一个 token”和“很早以前的 token”。RoPE 将
-Q、K 的相邻特征维组成二维向量，并按 token position 和频率执行旋转：
+Q、K 的特征维两两配对，并按 token position 和频率执行旋转。用一对坐标 `u,v` 表示，其数学为：
 
 ```text
-[x_2i']     [ cos(theta_i*p)  -sin(theta_i*p) ] [x_2i  ]
-[x_2i+1'] = [ sin(theta_i*p)   cos(theta_i*p) ] [x_2i+1]
+[u']     [ cos(theta_i*p)  -sin(theta_i*p) ] [u]
+[v']  =  [ sin(theta_i*p)   cos(theta_i*p) ] [v]
 ```
+
+**配对关系不一定是内存中的相邻元素。** 本地 Qwen2/Qwen3 graph 使用 NeoX-style RoPE：在本文
+128 维 head、完整旋转维度下，第 `i` 维与第 `i+64` 维配对；另一种常见排列才是 `2i` 与 `2i+1`。
+二者采用同一种旋转思想，但 kernel 的索引、load 和 shuffle 不能互换。可在本地 llama.cpp 的
+`src/llama-model.cpp::llama_model_rope_type()` 与 `ggml/src/ggml-cpu/ops.cpp::rotate_pairs()`
+核对这两个层次。
 
 shape 不变：Q 仍是 `[T,12,128]`，K 仍是 `[T,2,128]`，V 不旋转。旋转后 Q 与 K 的点积自然
 带有相对位置关系。`rope_theta=1e6` 控制不同维度的频率分布，不是一个直接加到 embedding 上的
@@ -1025,8 +1066,13 @@ QBS 完成: hidden accumulators -> atomic commit -> LDU result port -> lane VRF 
 
 AKV 控制: FLASH_ATTN shape/feature -> descriptor/command -> dispatcher -> sequencer vid -> AKV FSM
 AKV 数据: Q/K/V VA -> MMU/PMA/AXI -> hidden context -> row/column/panel view
-AKV 完成: validated view -> LDU result port -> lane VRF -> RVV Attention -> vid terminal
+AKV view 完成: validated view -> LDU result port -> 最后一组 VRF grant -> 本命令 vid terminal
+后续 RVV 工作: 读取已受 hazard/chaining 保护的 VRF 数据 -> QK/Softmax/PV -> 各自完成
 ```
+
+一条 AKV view 命令完成，不需要等待整个 Attention 算子结束。反过来，后续 RVV 指令能被派发，
+也不表示该 view 的所有数据已经写完；它仍按普通依赖和 chaining 条件取数。两类事件不能画成
+“Attention 全部计算结束后，才释放 AKV 的 vid”这一条串行路径。
 
 - 控制路径决定“允许做什么”，包括 profile、layout、M/N/K 和目的寄存器组；
 - 数据路径决定“实际读到什么”，包括翻译、burst、range tag、block 边界和格式解码；
@@ -1397,13 +1443,18 @@ for (unsigned b = 0; b < K / 256; ++b) {
         min_correction += mins[g] * activation_group_sum(a.bsums, g);
     }
 
-    sum += (fp16_to_fp32(w.d)    * a.d) * dot;
-    sum -= (fp16_to_fp32(w.dmin) * a.d) * min_correction;
+    float sd = fp16_to_fp32(w.d)    * a.d;
+    float sm = fp16_to_fp32(w.dmin) * a.d;
+    sum = fmaf( sd, (float)dot,            sum);
+    sum = fmaf(-sm, (float)min_correction, sum);
 }
 output = sum;
 ```
 
-当 `VLEN=1024` 时，当前 Q4_K 专用实现已经做了合理的 RVV 优化：用 32 个 i32 lane 保留中间和，
+这是解释计算依赖的伪代码，不是复制出的可编译 kernel；显式写 FMA 是为了与第 4.3 节的数值顺序
+一致，避免把“先乘再加”的额外舍入误当作 contract。
+
+当 `VLEN=1024` 时，当前 Q4_K 专用实现已经做了合理的 RVV 优化：用向量中的 32 个 i32 元素槽保留中间和，
 用 `vle8` 读取 payload，用 `vand/vsrl` 拆分低、高 nibble，用 `vwmul/vwmacc` 做 widening 乘累加，
 并将原来多次的小归约收紧为最终 i32 reduction。因此本项目的 RVV baseline 不是纯标量或未优化
 参照。即便如此，它仍必须为每个 block/输出 tile 显式执行：
@@ -1859,8 +1910,9 @@ store 或 64-token K/V banks；它不会再次读取 `v_base + 5*stride`。
 
 目的寄存器中的这些 F16 bits 之后由普通 RVV `vfwcvt`、`vfwmacc` 或其他 Attention kernel 消费。
 本地 row load 可在 engine 接受并完成合法性检查后提前释放 scalar-side request handshake，但
-sequencer 中的 `vid` 和 destination hazard 要等所有 lane result grants 完成后才释放；因此年轻
-指令不可能读到只写了一半的向量。
+sequencer 中的 `vid` 仍等所有 lane result grants 完成后才释放。年轻指令不能读取尚未产生的
+元素，但符合正常 RVV chaining 条件时，可以消费已写回的部分；跨寄存器组偏移等不适合 chaining
+的依赖仍等待完成。这里保证的是“不会读到未就绪数据”，不是“所有消费者都等整个向量写完”。
 
 #### 5.9.3 Column selector：把 row-major K 当作 token 向量读取
 
@@ -2537,8 +2589,10 @@ tile tail、外部带宽和 RVV 算术瓶颈。
 5. mask 是否可证明为有限 causal prefix 后接 `-inf`，而不是任意稀疏 mask；
 6. Decode 是否为单 Query；Prefill 是否达到 64 Query，并已进入 GGML tiled Attention。
 
-上下文长度本身不是 capability 常量。合法 D/GQA 的 Decode 可把任意较长历史拆成连续 64-token
-K/V tiles；最后 1..64 token 作为 tail。上下文越长，AKV 能避免的重复 K/V traffic 可能越多，但
+上下文长度不必等于硬件 tile 大小，但仍受接口范围约束：当前 descriptor 的 `kv_length` 是非零
+16-bit 字段，最多表示 65,535 个 token，并非无限长。合法 D/GQA、长度和地址范围内的 Decode
+可把历史拆成连续 64-token K/V tiles；最后 1..64 token 作为 tail。超出接口范围需要额外的软件
+组合或 fallback，不能因“支持 tiling”就自动声称已支持。上下文越长，AKV 能避免的重复 K/V traffic 可能越多，但
 RVV QK/PV 算术也线性增加，所以仍需用实际周期判断收益。
 
 **第四步：把结论写成分层覆盖，而不是一个布尔值。** 推荐至少报告：
@@ -2567,7 +2621,7 @@ RVV QK/PV 算术也线性增加，所以仍需用实际周期判断收益。
 工作。增加新模型通常先扩充软件 mapping 和证据；只有出现现有 profile 无法表达的新 block 数学，
 或 D/feature 无法由当前 AKV view 表达时，才需要改变硬件 contract。
 
-## 7. QBS/AKV 如何接入 lane-based RVV 后端
+## 7. 从原 RVV 硬件改造成 QBS/AKV 快速路径
 
 ### 7.1 既有 RVV 数据通路和接入位置
 
@@ -2575,6 +2629,47 @@ RVV QK/PV 算术也线性增加，所以仍需用实际周期判断收益。
 sequencer 分配 `vid`、跟踪源/目的寄存器和功能单元完成；lanes 保存分片 VRF 并执行整数/FPU
 操作；VLSU 负责地址生成、MMU/PMA、AXI load/store 与 load-result 写回；SLDU/MASKU 处理跨 lane
 和 mask 类操作。
+
+先把**没有专用快路径时**的结构固定下来。下面的箭头表示职责和连接，不是一级一个周期的流水图：
+
+```text
+CVA6 标量核：取指、标量计算、地址更新、分支、标量 LSU、提交
+  |
+  | accelerator request：指令字、已经取出的 GPR 值、事务/状态信息
+  v
+Ara dispatcher：解码 RVV，构造 op/vl/寄存器组等元数据
+  v
+Ara sequencer：分配 vid，建立依赖，向目标执行单元派发
+  +--> lanes：VRF -> operand requester/queues -> ALU/MFPU -> VRF
+  +--> VLSU：AddrGen -> MMU/PMA/AXI -> load unit -> lane VRF
+  |           VRF store operands -> store unit -> AXI
+  +--> SLDU/MASKU：跨 lane、归约、排列和 mask 协作
+  ^
+  +--- 各执行单元返回 vinsn_done、地址确认或异常
+```
+
+原来的量化点积并没有一条“Q4_K 点积”指令。其 `vle`、位操作、整数乘加、归约和 FP 修正分别
+经过这条派发链，并多次读写 VRF。硬件能正确执行每一步，却不知道这些指令合在一起代表
+“同一量化 block 的四行输出”。第 5.1 节给出了相应软件结构。
+
+当前改造在 **VLSU 外部接口之前增加可选择的命令执行者**，保留原来的普通执行者：
+
+```text
+dispatcher/sequencer
+  +--> 普通 RVV 算术 ------------------------> 原 lanes/ALU/MFPU
+  |
+  +--> VLSU 请求选择
+         +--> normal：原 AddrGen/load/store units
+         +--> QBS：descriptor/read -> block decode/dot/FP -> commit
+         +--> AKV：descriptor/read -> Q/K/V context -> local view
+
+三种 VLSU owner 分时使用同一对外 MMU/AXI 接口、LDU result ports
+QBS 输出和 AKV view 均回到原 VRF；后续仍是普通 RVV 指令
+```
+
+因此改造既不是把所有 RVV 指令换成专用指令，也不是只在 ALU 中加一个 opcode。完整工作包括
+**新命令入口、参数传播、共享资源仲裁、局部数据/计算状态、结果回接和异常收尾**。少接其中一环，
+都可能出现单独 engine 算对了、接入处理器后却错误的情况。
 
 QBS/AKV 没有旁路这套系统。两者都在 dispatcher/sequencer 可见的 vector request 边界进入 VLSU
 资源域，所以 custom command 仍具有：
@@ -2602,6 +2697,31 @@ sequencer；不能等 hidden engine 发现 M/D 后才回头扩大 hazard reserva
 避免长命令改变隐藏状态时仍有旧请求访问共享接口。合法 AKV local view load 不改变 context，
 可以与非访存 RVV 算术形成重叠，但仍受 VLSU/result port 所有权和目的寄存器 hazard 约束。
 
+看 `ara_dispatcher.sv` 的 `custom2` 分支时，可把一条 `qbexec v8,a0,a1,M=4` 逐字段还原：
+
+| 内部请求字段 | 本例中的值 | 为什么要在这里确定 |
+| --- | --- | --- |
+| `op` | `VQBEXEC` | 选择 VLSU 内的 QBS engine，不送入 lane MFPU |
+| `scalar_op` | `acc_req_i.rs1`，即 a0 中的 descriptor 地址 | 复用请求中已有的 XLEN 数据载体 |
+| `stride` | `acc_req_i.rs2`，即 a1 中的 activation 地址 | 此处字段名仍叫 stride，但其语义已是第二个指针；不是做 strided load |
+| `vd`、`use_vd` | v8、1 | 提前保留架构目的寄存器，不能等内存中的 descriptor 返回 |
+| `emul` | LMUL4 | 跟踪 v8..v11 的依赖，而不是只跟踪 v8 |
+| `vtype.vsew`、`eew_vd_op` | EW32 | 告诉后端结果按 FP32 元素布局写回 |
+| 请求内部 `vl` | `4*(1024/32)=128` | 表示四行结果的寄存器空间；不是 K=128，也不是修改 CSR 的 `vl` |
+| `vstart`、`vm` | 0、1 | 长命令不支持 element restart，不使用普通向量 mask |
+| `fp_rm` | ABI 固定 RNE | 不从本次动态 `frm` 推断数值契约 |
+
+VLSU 再由 `pe_req_i.vl` 还原 `qbs_command_m`。这是复用既有请求字段的具体例子：字段的位宽
+和传输通路可以复用，但消费者必须先按 `op` 解释，不能把 custom 请求当成普通 load。
+
+AKV 的 `akv_refill`、`akv_v2`、`akv_column` 则是新增的显式元数据。它们同时出现在
+`ara.sv` 的请求结构和 `ara/ara_typedef.svh` 的 PE 请求结构，并由 sequencer 逐字段传递。
+漏接一个字段会改变 FULL/REFILL 或 row/column 的选择，不是少一个性能提示这么简单。
+
+标量端也有接点：`cva6_accel_first_pass_decoder.sv` 将 `qbexec` 声明为使用两个 GPR 源的
+accelerator load-like/FP 操作，却不声明 GPR `rd` 写回，因为这个编码位置代表 `vd`。
+`qbinfo/akvinfo` 才声明标量目的寄存器。这样 a0/a1 的地址依赖仍由 CVA6 原有机制处理。
+
 ### 7.3 Sequencer：让 custom command 留在正常完成域
 
 sequencer 将 `VQBEXEC`、`VAKVFILL`、`VAKVLOAD` 和 `VAKVRELEASE` 归入 load-like 功能单元类别，
@@ -2614,10 +2734,25 @@ terminal。AKV local row/column load 有一个更细的两级完成：
 1. engine 接受并验证本地 load 后可产生 **early acknowledgement**，让 scalar-side accelerator
    handshake 不必等所有 VRF words 写完；
 2. 该向量请求的 `vid` 仍然在飞，只有 replay 经所有 lane grants 完成并产生 terminal 后，
-   `load_complete` 才释放 destination hazard。
+   `vinsn_done[vid]` 才终结该在飞请求；早确认不会清掉全部相关性。
 
-所以“早确认”只缩短 request 接口占用，不是让年轻指令提前读到半个向量。将握手完成与向量结果
-完成分开，是局部 context load 能与 RVV 算术组合而又不破坏寄存器正确性的关键。
+要区分下面三个事件。名字里都有“ready/done/ack”，但不能互相代替：
+
+| 事件 | 当前源码中的观察点 | 此时真正得到的保证 |
+| --- | --- | --- |
+| engine 接受命令 | `command_valid && command_ready`，即 `*_command_fire` | 请求已被接管，ID/地址等被锁存；计算或 replay 尚未完成 |
+| 标量请求可继续 | `addrgen_ack_o` 经 sequencer/dispatcher 返回 request response | QBS/FULL/REFILL 在 terminal 才确认；合法 AKV local view 可在 `akv_command_early_ack` 时确认 |
+| 在飞向量工作完成 | `pe_resp_o[OffsetLoad].vinsn_done[command_id]` | 本次结果写回或故障收尾已结束，可以回收该 `vid` 和对应依赖 |
+
+AKV 早确认之后，新 RVV 指令可以进入后端，但**能否取操作数仍由正常 hazard/chaining 决定**。
+`operand_requester.sv` 用写回进度 `vinsn_result_written_q` 控制适合 chaining 的逐 word 读取；
+需要完整完成的依赖由 `hazard_wait_complete` 和 `global_hazard_table_i` 继续阻塞。
+例如 panel4 写 v8..v11，而下一条 LMUL1 指令只读 v9，生产者和消费者的组内偏移不同，当前
+sequencer 会要求等待完整完成，不能直接套用 v8 起点相同的 chaining 节奏。
+
+QBS 更保守：dispatcher 在 terminal 前保持阻塞请求，sequencer 又将 `VQBEXEC` 的 destination
+记录为 `wait_complete`。这里既没有“同包就免检”，也没有“为了加速而忽略 RAW/WAR/WAW”。
+两条快路径的正确性来自清楚的生产、消费和完成条件，而不是假定程序中没有依赖。
 
 ### 7.4 VLSU：QBS、AKV 与普通访存的单一所有权
 
@@ -2625,8 +2760,22 @@ VLSU 显式维护 `qbs_active_q` 和 `akv_active_q`，并以 `normal_vlsu_idle` 
 load/store unit、AXI pipeline 和 result port 已排空。接受条件保证同一周期只有一种 owner：
 
 ```text
-normal VLSU owner  xor  QBS owner  xor  AKV owner
+normal、QBS、AKV 三者至多一个拥有共享接口；全部空闲时允许没有 owner
 ```
+
+这里是互斥条件，不是用三输入 XOR 证明唯一性；三者同时为 1 时 XOR 也会为 1。
+例如 QBS 的实际接收条件为：
+
+```systemverilog
+assign qbs_command_valid = QbsEnable && pe_req_valid_i &&
+    pe_req_i.op == VQBEXEC && !qbs_active_q && !akv_active_q &&
+    normal_vlsu_idle;
+assign qbs_command_fire = qbs_command_valid && qbs_command_ready;
+```
+
+`normal_vlsu_idle` 不只是“AddrGen 状态为 IDLE”：它还检查 load/store unit，以及内部和对外 AXI
+接口上尚未撤销的 AR/AW/W/R/B valid。owner 在 command fire 后锁存，在 terminal 后释放，
+不随 AXI 某一周期 `ready` 变化。这保证一个 burst 的请求与返回不会被分别交给不同 engine。
 
 owner 生效后，VLSU 分别复用和仲裁：
 
@@ -2645,6 +2794,21 @@ sequencer 可能在 WAIT 状态保持同一个 level-valid PE request 穿过 eng
 held request 的所有字段保持稳定。这个细节防止一条 AKV 指令因“engine 已空闲但上游 valid 尚未
 拉低”而重复执行。
 
+还应区分**复用模块源码**与**复用同一个硬件实例**。`qbs_engine` 与 `akv_engine` 都实例化
+`qbs_read_engine`，各有自己的 range/burst 状态；三者真正分时共享的是 VLSU 对外的 MMU、
+AXI 和 lane-result 接口。不能由模块名字相同，推断 QBS/AKV 物理上只存在一套内部读 FIFO。
+
+检查 `vlsu.sv` 接线时，以下几对方向必须一起看：
+
+| 共享接口 | 出站选择 | 回站选择 | 少接回站会怎样 |
+| --- | --- | --- | --- |
+| MMU | 当前 owner 的 `mmu_req/vaddr/is_store` | 翻译有效、物理地址和异常进入活动 engine | 地址归属与 fault 归属可能不一致 |
+| AXI AR/R | 当前 owner 的 AR 与 R-ready | AR-ready、R-data/RRESP/RLAST/R-valid 返回同一 owner | 发出了请求却错误消费另一条流的响应 |
+| LDU result | `req/id/addr/wdata/be` 一起选择 | `gnt/final_gnt` 只反馈给当前 owner | 数据可能写了但 engine 不推进，或错误提前完成 |
+| 命令完成 | `success_valid/fault_valid` 转 terminal | 用锁存的 `command_id_q` 设置 `vinsn_done` | 释放了错误的 vid，破坏后续寄存器依赖 |
+
+因此这不是只在 memory data 前加一个 mux。**请求、返回、反压、错误和完成必须属于同一条命令。**
+
 ### 7.5 为什么结果必须回到普通 VRF
 
 QBS 若直接写 GGML memory，会绕开 vector-register dependency、完成和异常边界；AKV 若让 RVV
@@ -2662,8 +2826,9 @@ RVV widening FMA/reduction 消费。操作系统可见的计算结果仍在标�
 
 QBS 的“原子”表示任何 VRF 写回开始前，全部潜在 fault 访问和计算已完成；真正写回仍会跨多个
 cycle，年轻消费者靠 sequencer completion gating 看不到部分结果。AKV local replay 已没有 payload
-memory fault，但仍在第一个 write 前验证 context、selector 和 destination，并依靠同一 completion
-gating 阻止部分向量被消费。两条路径的代价都是 result-port/VRF grant 可能成为 backpressure，
+memory fault，但仍在第一个 write 前验证 context、selector 和 destination；之后按正常 RVV
+hazard/chaining 保护逐 word 消费，不要求所有消费者一律等待整个向量完成。两条路径的代价都是
+result-port/VRF grant 可能成为 backpressure，
 因此必须用对应 counter 判断，而不能假定“片上数据一定一周期可用”。
 
 ### 7.6 哪些硬件被复用，哪些逻辑是新增的
@@ -2704,6 +2869,61 @@ custom decode -> normal sequencer/vid -> new context row/column read
 新增 Attention 算术，因为现有 RVV lanes 已能高效表达 F16/F32 FMA、mask 和 reduction，真正缺口是
 K/V 的驻留与访问方向。两者都复用地址保护、顺序、异常和 VRF 可见状态，所以关闭
 `ARA_QBS_ENABLE`、`ARA_AKV_ENABLE` 或 `ARA_AKV_V2_ENABLE` 后，标准 RVV 数据通路仍保持原有功能。
+
+### 7.7 原来由 RVV 指令完成的工作，现在具体移到了哪里
+
+只看实例框图，容易产生“加一个 engine 就变快”的印象。要解释设计动机，必须追问原来哪些
+工作消失了，哪些只是换了执行者。下表以一个量化线性层为例；它描述职责对应，不表示硬件动态
+识别或融合这些 RVV 指令。**软件必须显式选择 QBS 并发出 `qbexec`。**
+
+| 原 RVV 软件/硬件中的工作 | QBS 路径中的执行者 | 为什么可能减少开销 |
+| --- | --- | --- |
+| 标量循环逐次更新 block、输出行和 activation 行地址 | planner 分大 tile，`qbs_compute_engine` 在一条命令内推进 K-block、row tile 和 wave | 命令内循环不再逐次占用 CPU 取指/派发 |
+| `vle` 先把 payload 和 metadata 装入 VRF | `qbs_read_engine` + `qbs_block_adapter` 直接填私有 block banks | 压缩输入不必为后续 unpack 先占据 VRF |
+| `vand/vsrl/merge` 恢复 low-bit 值、scale/min | `qbs_profile_decoder` 按 profile 的确切位布局输出整数与 metadata | 同一格式的拆位控制由专用逻辑承担 |
+| widening multiply/accumulate 与整数 reduction | `qbs_dot_array` + `qbs_profile_engine_int` | 整数中间和留在局部流水，不反复以普通指令读写 VRF |
+| int-to-FP、block scale、min correction 和 FP 累加 | `qbs_fp_accumulator` 中新增的 FP32 单元与私有 accumulator | 按 contract 更新多路输出，并复用同一 FP 执行实例 |
+| 最终 tile 结果写回 | `qbs_commit` -> 原 LDU result ports -> 原 lane VRF | 仍使用原有写回仲裁与依赖域，无需第二套架构寄存器 |
+| F32 activation 动态量化、输出 store、bias/activation/residual | 标准软件/RVV | 没有被 `qbexec` 包含，仍计入完整算子开销 |
+
+**QBS 内的 FP 单元不是 lane MFPU 的另一种模式。** RTL 在
+`qbs_fp_accumulator.sv` 内实例化独立的 `fpnew_top i_fpnew`；“共享”指 QBS 的多个 accumulator
+更新轮流使用这个实例，而不是与普通 RVV 指令争用现有 lane 的 FPU。QBS 的整数乘法阵列同样是
+新增的。两者复用的是已有 IP 实现方式或系统资源，不能据此声称“量化计算完全复用了原 RVV
+算术硬件、没有增加计算单元”。
+
+AKV 则不同：它**不把 QK、Softmax、PV 改造成 engine 内的计算循环**。其职责变化如下：
+
+| 原 RVV Attention 的工作 | AKV + RVV 的位置 | 保留的代价 |
+| --- | --- | --- |
+| 外部读取 K/V，按软件 tile 复用 | FULL/REFILL 读取一次有界 tile，成功后驻留于 context | 翻译、填充和单一 VLSU owner 仍花周期 |
+| 从 row-major K 组织跨 token 的列 | token-bank column/panel gather | SRAM 读、gather 缓冲和 VRF replay 仍有时延 |
+| 逐 token 读取 V 的连续 row | context row replay | 仍经过 LDU result port 和 VRF grant |
+| QK FMA、mask/scale、exp、reduction、PV、归一化 | 原 lane ALU/MFPU、reduction 及软件循环 | 这些算术和标量控制没有被消除 |
+
+这说明两种收益不能用同一句话概括：QBS 缩短的是**表示量化矩阵计算所需的指令与中间数据流**；
+AKV 改进的是**现有 RVV Attention 所消费的数据驻留与读取方向**。都不能仅凭指令数变少判断
+性能，必须连同新增读写、固定启动成本和实际周期一起比较。
+
+### 7.8 按什么顺序理解和验收一次硬件改造
+
+下面是把原有 RVV 接成当前两条快路径时的逻辑顺序，也是一份阅读源码的检查表。它不是让读者
+重复修改当前仓库，而是说明每个接点为何不可省略。所有地址均相对当前仓库。
+
+| 次序 | 要建立的连接 | 主要源码入口 | 应能够解释的验收条件 |
+| --- | --- | --- | --- |
+| 1 | 软件编码与硬件解码一致 | [QBS ABI](../../config/qbs_abi.json)、[AKV ABI](../../config/akv_abi.json)、生成的 package/headers | opcode、参数、profile、layout 和 capability 不发生漂移；非法字段在产生受保护副作用前拒绝 |
+| 2 | 标量取数与新命令入口 | [first-pass decoder](../src/cva6_accel_first_pass_decoder.sv)、[dispatcher](../src/ara_dispatcher.sv) | 地址 GPR 依赖正确；向量 vd 不被当作标量 rd；目的组在取 descriptor 前已确定 |
+| 3 | 新请求进入原来的依赖与完成域 | [sequencer](../src/ara_sequencer.sv)、[PE 请求结构](../include/ara/ara_typedef.svh)、[顶层接线](../src/ara.sv) | `vid/op/vd/emul` 与 AKV metadata 不丢失；QBS 与 AKV 的 ack/terminal 差异正确 |
+| 4 | 分时取得内存及写回资源 | [VLSU](../src/vlsu/vlsu.sv) | 旧访存排空、owner 互斥；请求、返回、grant、exception 与 ID 全部对齐 |
+| 5 | 做新的局部计算或数据视图 | [QBS engine](../src/vlsu/qbs/qbs_engine.sv)、[AKV engine](../src/vlsu/akv/akv_engine.sv) | 字节解释、bank 生命周期、整数/FP 依赖或 row/column view 与 reference 一致 |
+| 6 | 结果回到原 VRF，并容忍反压 | [QBS commit](../src/vlsu/qbs/qbs_commit.sv)、AKV `form_replay_result`、[operand requester](../src/lane/operand_requester.sv) | lane byte mapping、tail、两级 grant、RAW/WAR/WAW 与 chaining 不被破坏 |
+| 7 | 失败能排空，普通 RVV 能继续 | read engine、engine fault path、VLSU terminal mapping、handoff tests | fault 不提交部分结果；release/reset 清理有效状态；normal load/store 接着正确执行 |
+| 8 | 真实运行时选择该路径 | [QBS runtime](../../software/qbs/src/qbs_runtime.c)、[AKV runtime](../../software/akv/src/akv_runtime.c)、本地 GGML adapter | capability/shape/type 检查发生在第一条命令前，fallback 完整，计数证明快路径确实被使用 |
+
+其中第 5 步算对，只证明独立计算模块或 context 正确；第 2、3、4、6、7 步共同决定它能否作为
+**处理器的一部分**正确执行。第 8 步则决定真实模型是否真的进入这套硬件，而不是仍在跑 fallback。
+这一分层也解释了为什么仅做一个点积 testbench，不能宣布完成整个 RVV 快路径改造。
 
 ## 8. QBS/AKV 命令的完整生命周期
 
@@ -2789,6 +3009,118 @@ o_new = a*o_old + sum(w_j*V_j)
 固定 workspace 为 137,472 B，不随总 prompt/KV 长度增长；输出 tensor 作为正常软件可见数据按
 实际 shape 增长。该方案用多次有界 tile 覆盖长上下文，避免把“支持 40K context”错误理解为
 必须在 AKV SRAM 中放下 40K 条 K/V。
+
+### 8.4 手算一条 QBS：从 884 B 输入到四个 FP32 输出
+
+选最容易完整跟踪的命令：`Q4_K x Q8_K`、`M=1`、`N=4`、`K=256`、DIRECT activation、
+R4 weight layout、row-major activation、`vd=v8`。假定地址合法且不发生 fault。这里是根据当前
+契约推导的教学例子，**不是新增的仿真性能记录**。
+
+数学对象只有三项：
+
+```text
+A[1,256]       一条 activation row
+W[4,256]       四个输出通道的权重
+C[1,4]         四个点积结果，C[0,n] = dot(A[0,:], W[n,:])
+```
+
+Q4_K 的一个 block 覆盖整个 K=256，所以 descriptor 写 `K-blocks=1`、`N=4`；M=1 在指令中。
+输入的逻辑 payload 账本为：
+
+| 对象 | 计算 | 字节 |
+| --- | --- | ---: |
+| Descriptor | 1 个固定参数表 | 16 |
+| Activation | 1 个 Q8_K block | 292 |
+| Weight | 4 个 Q4_K blocks，正好一组 R4，无 padding 行 | 576 |
+| 合计 | `16 + 292 + 576` | **884** |
+
+这 884 B 不是“884 B 都会经 VRF 一遍”，也不是 AXI bus bytes 的必然值。descriptor 进入控制
+寄存器，A/W 进入私有 block buffers；AR 的对齐、末 beat 和页边界还决定总线事务数。QBS 仅在
+最后提交输出时使用普通 VRF。
+
+在一个 K block 内，四个 row cluster 各负责一个 weight row。M=1 时，每个 cluster 一次处理
+8 对 `q_weight*q_activation`，所以一个 dot fire 最多处理 32 对，四行总共需要
+`1*4*256=1024` 个有效乘积。`1024/32=32` 是满容量情况下的 **dot issue 次数下界**，不是整条
+命令 32 cycles 完成；descriptor、读取、group subtotal、FP 操作、反压和提交均另有工作。
+
+每行先产生整数 `D/AUX`，再依次执行正贡献与负 min correction 的 FP32 FMA。一共有四次
+block-output update，每次两次 FMA；scale multiplication 和 int-to-FP conversion 不包含在这
+“两次”之内。只有四个输出都有效、读取和计算排空后，`qbs_commit` 才开始写 v8。
+
+当前 e32、四 lane 的第一个 aggregate word 按下表接线。`C0..C3` 表示四个结果的 FP32 bits：
+
+| 目的 lane | 64-bit word 的低 32 bit | 高 32 bit | `be` | lane VRF word 地址 |
+| ---: | --- | --- | --- | ---: |
+| 0 | C0，即 v8 element 0 | 0，即 element 4 | `0xff` | 32 |
+| 1 | C1，即 v8 element 1 | 0，即 element 5 | `0xff` | 32 |
+| 2 | C2，即 v8 element 2 | 0，即 element 6 | `0xff` | 32 |
+| 3 | C3，即 v8 element 3 | 0，即 element 7 | `0xff` | 32 |
+
+地址 32 是每条 lane 内的 **64-bit word 索引**：`vd * WordsPerRegister = 8*4`，不是内存 byte
+address。后续三个 aggregate groups 分别写 word 33、34、35，对应 v8 的剩余元素并写零。
+所以 N=4 的窄命令仍提交完整的 128 B 寄存器，`commit_groups=4`；软件随后设置 `vl=4`，
+`vse32.v` 只把 16 B 有效输出存入 C。M5--M8 的保尾规则不同，不能将本例的清零行为套过去。
+
+再看反压：若第一个 group 的 lane 2 暂时未 grant，其他 lane 已接受的请求会被
+`accepted_q` 记住，不会每周期重复提交；还要用 `final_seen_q` 收齐 final grants。仅在本组
+全部 active lanes 都完成这两步后才推进 word。这里不需要猜“等两拍就写完”，握手本身就是
+推进条件。
+
+这条例子串起了整个改造：CPU 发一条命令，QBS 内部替代许多 load/unpack/dot/reduction/update
+指令，最后仍按原 RVV 的 lane 布局交付结果。**减少指令流没有取消结果写回、依赖和故障规则。**
+
+### 8.5 手算一个 AKV 尾块：原生行存储如何产生列视图
+
+选 `D=64`、`q_rows=1`、有效 KV=9、`tile_start=0`，令 Q/K/V base 和 stride 满足 contract。
+所有 Q/K/V 元素按 F16 保存。FULL 读取的逻辑 payload 为：
+
+```text
+descriptor = 64 B
+Q seed     = 1*64*2       = 128 B
+K and V    = 2*9*64*2     = 2304 B
+total      = 2496 B
+```
+
+这次 FULL 就能容纳全部 9 个 token，不需要 REFILL。注意 `q_rows=1` 是一个 KV head 对应的
+Query heads 数，不是说整张模型图只能处理一个 head。
+
+当前 K/V banks 使用下列物理地址规则。`t` 是 **tile 内 token 索引**，`d` 是 dimension，
+`s=0/1` 分别表示 K/V：
+
+```text
+bank      = t % 8
+group     = floor(t/8)
+word      = floor(d/16)                 // 一个 256-bit row 放 16 个 F16
+bank_row  = s*64 + group*8 + word
+halfword  = d % 16
+```
+
+这里 `group*8` 使用最大 D128 slot 的固定步长。即使本例只有 D64，也不能自行改为 `group*4`。
+外部 tensor 的 stride 决定填充地址；上述公式决定片上 SRAM 布局，是两个不同的地址空间。
+
+例如要得到 `K[:,2]`：
+
+| 读组 | 有效 token | bank 与 row | 从每个 word 中取什么 |
+| --- | --- | --- | --- |
+| group 0 | 0..7 | bank 0..7 的 row 0 | 从零编号、索引为 2 的 F16，即 bits 47:32 |
+| group 1 | 8 | 仅 bank 0 的 row 8 | 同样取索引为 2 的 F16 |
+
+得到的列向量为 `[K[0,2], K[1,2], ..., K[8,2]]`，每个值都与原数据 bit-identical。
+九个有效 F16 共 18 B，replay 用一个 256-bit aggregate group，并仅对有效元素设置 byte enable。
+列的其他 VRF 元素不能被当作有效数据；普通 RVV 消费者必须使用正确 `vl=9`。命令内部用于
+保留寄存器空间的长度，不会自动替软件设置下一条 RVV 指令的 CSR `vl`。
+
+panel4 若选择 `d=0`，从同一次 bank word read 中取出第 0、1、2、3 个 F16，分别拼成四列。
+它省的是重复发起命令和读取同一 word 的控制开销，**不是把单端口 SRAM 变成四读端口**。
+四列仍要按正常 result-port 容量分周期写入 v8..v11。
+
+再读 `V[8,:]` 时只访问 bank 0，按 dimension 顺序读 row 72..75；不需要重新从外部内存取
+128 B 的 V row。标准 RVV 使用列向量做 QK，使用行向量做 PV，Softmax 的 max/sum/output 状态
+仍由软件/RVV 保持。SRAM 中的数据没有变，变化的是硬件提供的读取方向。
+
+如果未来例子改成 `tile_start=64`，片上 t=0 对应外部 token 64，bank 规则不变；如果有效 KV=73，
+就先处理 64-token tile，再 REFILL 一个 9-token tail。增加上下文长度不等于增加 SRAM 容量，
+而是增加有界 tile 的执行次数，并始终受 descriptor 的长度/地址范围限制。
 
 ## 9. RTL 模块逐项讲解
 
@@ -2954,9 +3286,16 @@ weight_d * activation_d
 FMA(scale, dot_f, accumulator)
 ```
 
-affine block 还执行 aux conversion、`dmin*activation.d` 和第二次 FMA。模块复用一个 fpnew
-primitive，并用 tag 将多 entry 的返回值写回正确状态。对同一 accumulator index 的重叠 update
-必须受控，因为 FP 加法不满足任意重排的 bitwise 等价性。
+affine block 还执行 aux conversion、`dmin*activation.d` 和第二次 FMA。多个 entry 分时复用
+QBS 内部新增的 `fpnew_top i_fpnew`，并用 tag 将返回值写回正确状态；它不是 lane MFPU 实例。
+
+“同一 accumulator 更新有序”在这里有具体电路：接收前遍历有效 table entries，若发现相同
+`request_accumulator_index_i`，就置 `request_accumulator_conflict` 并拉低 `request_ready_o`。
+请求被接受时才抓取旧 accumulator 值，首 block 则抓取零；FP micro-op 带着 entry/state tag
+运行，正 FMA 的结果用于本 entry 的负 min FMA，最终结果才写回 accumulator bank 并释放 entry。
+所以另一个 K block 不会在前一次 update 还没完成时抓到过期的部分和。不同 accumulator 可以
+交错使用 FP pipeline，同一 accumulator 不能任意重排。这是局部数值依赖控制，不由普通 RVV
+scoreboard 代管。
 
 ### 9.10 `qbs_commit.sv`：故障原子、物理上分周期的 lane VRF 提交
 
@@ -4287,7 +4626,7 @@ shape 上优于当前强 RVV/QBS/AKV baseline？
 7. 为什么 88.24% 只能称作每层固定 projection MAC 占比，不能称作端到端时间占比？
 8. `GGML_OP_MUL_MAT`、架构 microkernel 和一条 `qbexec` 为什么不是一一对应？
 9. 哪七个层内 projection 可进入 QBS，Attention 的哪些部分由 AKV 提供数据、哪些仍由 RVV 算？
-10. 为什么 AKV 支持任意正 KV length 的分块，不等于 hidden SRAM 能保存整个模型最大 context？
+10. 为什么 AKV 在 descriptor 长度范围内支持多 tile，不等于 hidden SRAM 能保存整个模型最大 context？
 11. 为什么 M33 Prefill 必须回退，而 M84 可以选择 AKV；这个边界同时涉及性能还是数值算法？
 12. 一次真实模型生成正确，为什么仍不能替代 profile 算术、context bytes 和 RTL fault/commit 验证？
 
@@ -4396,6 +4735,44 @@ AKV 使用相同原则，但证据顺序不同：
 16. 为什么 Gemma 的 D256 Attention 走 RVV fallback，而 M84 bit-exact 仍不能证明长 Prefill RTL
     性能闭环？
 
+### 17.6 不先跑完整模型，也能检查自己是否真正看懂
+
+先完成两张手算账本，再读对应模块，比直接打开数小时的完整模型波形更容易建立联系：
+
+| 自检题 | 应能得到的答案 | 回到哪里核对 |
+| --- | --- | --- |
+| QBS 的 `M1/N4/K256` 为什么是 884 B 输入，却只产生 16 B 有效结果？ | descriptor 16 B、Q8_K 292 B、四个 Q4_K 共 576 B；四个 FP32 输出共 16 B | 第 8.4 节与 descriptor/profile ABI |
+| 这条 QBS 命令为什么不能说只跑 32 cycles？ | 32 只是 `1024 pairs / 32 pairs` 的满容量 dot issue 下界，不含读取、FP 和提交等阶段 | dot array、engine phase counter |
+| `commit_groups=4` 为什么也不是四个输出或四周期的同义词？ | 每组是四 lane 的 256-bit 写回；本例要写满一个寄存器且可能被 grant 阻塞 | `qbs_commit.sv` |
+| AKV D64/KV9 的 FULL 需要什么？ | 64 B descriptor、128 B Q、2304 B K/V；尾块不是先补成 64 token 再全部读取 | 第 8.5 节与 AKV range planner |
+| `akv_command_early_ack` 拉高时可否立即丢掉该 vid？ | 不可以；只放开标量请求接口，replay 和依赖仍然在飞，直到相应 `vinsn_done` | VLSU、sequencer 与 operand requester |
+| 增加 profile 与增大模型 N/K 是不是同一种改造？ | 不是；新 profile 改变字节/数值 contract，通常涉及 decoder/reference；合法 N/K 变化先由软件分块 | 第 4、5、6 节 |
+| 普通 RVV 的 MFPU 利用率下降，能否推出 QBS 没工作？ | 不能；QBS 的 dot/FP 单元是新增实例，要分别看其有效 pairs、FP update、phase 与总周期 | 第 7.7、12 节 |
+| 模型输出正确能否证明 AKV 指令在 QEMU 中原生执行？ | 不能；当前模型级 AKV 证据使用 functional reference，原生 RTL view 要看另外的命令/系统测试 | 第 6.14、13 节 |
+
+在仓库根目录可先运行以下轻量检查。它们只使用 Python 和主机 C 编译器，不启动 VCS、QEMU
+整模型或综合；`BUILD` 指向独立临时目录，不覆盖已有仿真结果：
+
+```bash
+python3 scripts/gen_qbs_abi.py --check
+python3 scripts/gen_akv_abi.py --check
+make -C software/qbs check BUILD=/tmp/ara_dsa_tutorial_qbs
+make -C software/akv check BUILD=/tmp/ara_dsa_tutorial_akv
+```
+
+前两条确认 JSON 与生成的 C/SV 定义一致；后两条检查公共 runtime 的 profile、shape、layout、
+plan、容量和 fallback 等契约。它们**没有执行硬件乘法阵列、SRAM 或 VRF handshake**，通过后
+仍不能替代 RTL 验证。需要观察电路时，先按
+[QBS 验证说明](../../verification/qbs/README.md) 选择独立的 descriptor/read/commit/context
+用例；AKV 的入口是 [验证 Makefile](../../verification/akv/Makefile) 中的 `rtl-check` 和
+`rtl-macro-check`，分别使用通用存储模型和宏接口模型。随后再做
+[系统交接检查](../../verification/akv/run_qbs_akv_handoff.sh)，最后才扩到真实模型片段。
+这些 RTL 入口需要相应 VCS 环境；运行前另选独立 build/run 目录，不要覆盖已有仿真。
+
+如果阅读达到教学目标，读者应能在不猜测的情况下画出：**一条指令在哪里被接受、参数在哪里
+锁存、哪些内存字节进入哪个 bank、哪个单元做乘加、哪些结果通过哪个端口写回，以及什么事件
+释放依赖**。能回答这些，再去优化吞吐或新增格式才有可靠基础。
+
 ## 18. 当前源码索引
 
 ### 18.1 单一 ABI 真源
@@ -4421,6 +4798,7 @@ RTL elaboration。QBS/AKV 共用 `custom-2` opcode，但 funct3 空间、descrip
 - `hardware/src/ara.sv`
 - `hardware/src/ara_dispatcher.sv`
 - `hardware/src/ara_sequencer.sv`
+- `hardware/src/lane/operand_requester.sv`：解释 result-paced chaining 与 wait-complete 依赖，不能只看 sequencer 的最终 `vid` 完成。
 - `hardware/src/vlsu/vlsu.sv`
 - `hardware/src/vlsu/qbs/qbs_engine.sv`
 - `hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv`
@@ -4609,6 +4987,12 @@ completion；`qbs/` 决定压缩块算术和 activation snapshot，`akv/` 决定
 | Capability discovery | 软件在运行时查询版本、shape、layout 和 profile，而不是按 CPU 名称猜能力 |
 | Command-local dataflow | 计算数据在一条命令内部按 valid/ready 流过多个阶段，accumulator 不跨命令；显式 activation/AKV context 是独立的跨命令数据生命周期机制 |
 | Hidden accumulator | 命令内部 FP32 部分和，成功前不是架构可见状态 |
+| Physical lane | 原 RVV 的物理执行与 VRF 分片；不同于一个向量中的元素槽，也不同于 QBS dot-array row cluster |
+| VLEN / SEW / LMUL / vl | 分别描述寄存器位数、元素位数、寄存器组倍率和本次有效元素数，不等同于单周期吞吐 |
+| Ready/valid fire | 某个时钟边沿 valid 与 ready 同时成立，表示该接口的一次传输被接受，不代表整条命令完成 |
+| Early acknowledgement | 合法 AKV local view 提前释放标量请求接口；不释放其在飞 vid，不跳过向量相关性检查 |
+| Chaining | 按生产者写回进度安全推进消费者的逐 word 操作数读取；不要求每种依赖都支持，也不是去掉 hazard |
+| Wait-complete dependency | 需要生产者整条指令完成后才能解除的依赖，例如 QBS 目的组和部分组内偏移不匹配的访问 |
 | Atomic commit | 所有访问/计算成功后，才将完整结果写入 VRF |
 | Split-K | 软件把过长 K 分成多条命令，再按原顺序累加 FP32 partial results |
 | Native QBS | guest 实际执行 `qbexec`，区别于 GGML 内部 scalar emulation |
