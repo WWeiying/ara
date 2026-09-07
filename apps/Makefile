@@ -39,6 +39,9 @@ include $(COMMON_DIR)/runtime.mk
 include $(COMMON_DIR)/riscv_tests.mk
 include $(COMMON_DIR)/default_args.mk
 
+# This contract test includes masks with -Inf and checks NaN rejection.
+akv_portability_smoke/main.c.o akv_portability_smoke/runtime.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
+
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
 APPS += $(patsubst $(APPS_DIR)/%/main.cpp,%,$(shell find $(APPS_DIR) -name "main.cpp"))
 LLAMA_QWEN25_APPS := $(filter llama_qwen25_%,$(APPS))

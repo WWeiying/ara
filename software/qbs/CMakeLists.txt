@@ -6,7 +6,8 @@ include(CMakePackageConfigHelpers)
 
 add_library(qbs_runtime STATIC
     src/qbs_runtime.c
-    src/qbs_native_riscv.c)
+    src/qbs_native_riscv.c
+    src/qbs_format.c)
 add_library(qbs::runtime ALIAS qbs_runtime)
 target_include_directories(qbs_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -42,6 +43,9 @@ if (QBS_BUILD_TESTS)
     add_executable(qbs_runtime_test tests/qbs_runtime_test.c)
     target_link_libraries(qbs_runtime_test PRIVATE qbs_runtime)
     add_test(NAME qbs_runtime_test COMMAND qbs_runtime_test)
+    add_executable(qbs_format_test tests/qbs_format_test.c)
+    target_link_libraries(qbs_format_test PRIVATE qbs::runtime)
+    add_test(NAME qbs_format_test COMMAND qbs_format_test)
 endif()
 
 option(QBS_BUILD_EXAMPLES "Build QBS runtime adapter examples" OFF)

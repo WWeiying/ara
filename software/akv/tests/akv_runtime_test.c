@@ -176,6 +176,12 @@ static void test_capabilities(void) {
              akv_capability_word(0u, 1), akv_capability_word(1u, 1),
              akv_v2_capability_word(2u, 1), 0u, &capabilities) ==
          AKV_STATUS_ABI_MISMATCH);
+  assert(!capabilities.valid && !capabilities.token_axis_valid);
+  assert(akv_capabilities_decode_extended(
+             akv_capability_word(0u, 1), akv_capability_word(1u, 1),
+             akv_v2_capability_word(2u, 1) ^ (UINT64_C(1) << 63),
+             akv_v2_capability_word(3u, 1), &capabilities) == AKV_STATUS_ABI_MISMATCH);
+  assert(!capabilities.valid && !capabilities.token_axis_valid);
   const uint64_t legacy_info2 = akv_v2_capability_word(2u, 1) &
       ~(UINT64_C(1) << AKV_V2_D_AXIS_TAIL_CAPABILITY_BIT);
   assert(akv_capabilities_decode_extended(

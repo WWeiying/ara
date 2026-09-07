@@ -5,15 +5,16 @@ CFLAGS += -std=c11 -Wall -Wextra -Werror -Iinclude
 BUILD := build
 SOURCES := src/akv_runtime.c src/akv_native_riscv.c \
 		src/akv_v2_native_riscv.c src/akv_v2_reference.c \
-		src/akv_prefill_reference.c
+		src/akv_prefill_reference.c src/akv_features.c src/akv_decode.c
 OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 .PHONY: all check clean
 
 all: $(BUILD)/libakv_runtime.a
 
-check: $(BUILD)/akv_runtime_test
+check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test
 	$(BUILD)/akv_runtime_test
+	$(BUILD)/akv_portability_test
 
 $(BUILD)/libakv_runtime.a: $(OBJECTS)
 	$(AR) rcs $@ $^
@@ -21,9 +22,14 @@ $(BUILD)/libakv_runtime.a: $(OBJECTS)
 $(BUILD)/akv_runtime_test: tests/akv_runtime_test.c $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -lm -o $@
 
+$(BUILD)/akv_portability_test: tests/akv_portability_test.c $(OBJECTS)
+	$(CC) $(CFLAGS) $^ -lm -o $@
+
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 clean:
 	rm -rf $(BUILD)
+
+-include $(OBJECTS:.o=.d)

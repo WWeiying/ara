@@ -58,6 +58,14 @@ Matching names, nominal bit width, or group size alone is insufficient.
 
 ### Load-time conversion
 
+`qbs/qbs_format.h` implements the restricted grouped-integer conversion in
+`README.md`. Use `qbs_grouped_integer_size` for full preflight and
+`qbs_import_grouped_integer` for an explicitly selected target. It accepts
+exact F16 scales and representable recentered integers; it does not infer a
+profile from bit width or change the activation contract. The ONNX Q/DQ test
+in `tests/test_onnx_portability.py` exercises real runtime output, including
+M/N tails and split K, without claiming a native ONNX provider.
+
 Static model weights may be converted once into a canonical QBS profile and
 then persistently R4-repacked. The runtime owns this conversion and must decide
 whether it is:

@@ -212,7 +212,10 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
   if (status != QBS_STATUS_OK) return status;
   status = qbs_context_capabilities_decode(reader(context, 2),
                                            &device->capabilities);
-  if (status != QBS_STATUS_OK) return status;
+  if (status != QBS_STATUS_OK) {
+    memset(device, 0, sizeof(*device));
+    return status;
+  }
 
   const unsigned vlen_bits = (unsigned)device->capabilities.max_n * 32u;
   for (unsigned profile = 1; profile < 16; ++profile) {
@@ -245,15 +248,19 @@ qbs_status_t qbs_device_query(qbs_info_reader_t reader, void *context,
       device->weight_profiles &= (uint16_t)~(UINT16_C(1) << profile);
     }
   }
-  return device->weight_profiles != 0 && device->activation_profiles != 0
-             ? QBS_STATUS_OK
-             : QBS_STATUS_PROFILE;
+  if (device->weight_profiles == 0 || device->activation_profiles == 0) {
+    memset(device, 0, sizeof(*device));
+    return QBS_STATUS_PROFILE;
+  }
+  return QBS_STATUS_OK;
 }
 
 qbs_status_t qbs_device_init_reference(unsigned vlen_bits,
                                        qbs_device_t *device) {
-  if (vlen_bits < 32 || vlen_bits % 32u != 0)
+  if (vlen_bits < 32 || vlen_bits > 1024 || vlen_bits % 32u != 0) {
+    if (device != NULL) memset(device, 0, sizeof(*device));
     return QBS_STATUS_BAD_ARGUMENT;
+  }
   return qbs_device_query(reference_info, &vlen_bits, device);
 }
 

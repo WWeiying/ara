@@ -1,9 +1,14 @@
 # QBS/AKV 全机制教学：从 llama.cpp 模型算子到 RVV 协同执行
 
-> 文档状态：2026-09-05。硬件代码锚点为 `1cde6c45990a`，本地 llama.cpp/GGML backend
+> 文档状态：2026-09-07。硬件代码锚点为 `1cde6c45990a`，本地 llama.cpp/GGML backend
 > 锚点为 `f896237df65c`。本文逐项对照 QBS/AKV ABI、RTL、公共运行时、QEMU functional model、
 > GGML selector 和归档验证证据核查。本文只讲当前采用的机制和选择规则。实验数字的精确复现
 > 仍以对应目录中的 manifest、source diff、binary 与输入哈希为准。
+> 公共运行时和 GGML 的可选通用化接口见第 6.18 节及
+> [实施与验证记录](qbs_akv_portability_work.md)。这些软件扩展不改变 RTL 编码；
+> 默认快速路径与需要显式开启的新场景分别列出，不混用验证范围。
+> 该通用化接口对应硬件仓库 `5b914d74` 上的工作区修改，以及上述 GGML 基线加
+> `software/akv/integrations/llama-cpp-portability.patch`。
 
 ## 1. 阅读目标与一句话定位
 
@@ -2621,6 +2626,46 @@ RVV QK/PV 算术也线性增加，所以仍需用实际周期判断收益。
 工作。增加新模型通常先扩充软件 mapping 和证据；只有出现现有 profile 无法表达的新 block 数学，
 或 D/feature 无法由当前 AKV view 表达时，才需要改变硬件 contract。
 
+### 6.18 从精确硬件格式到不同运行时：公共适配层
+
+让接口更通用，不是把九种 profile 改名为“通用 INT4”。同是 4 bit，另一个运行时
+可能采用不同的整数排列、scale 精度和 zero point。软件必须先还原它的数学定义，
+再判断是否能**不改变权重值**地转换到已经实现的字节格式。
+
+`qbs_format.h` 将编码分为三类：分组整数 `s_g*(q-z_g)`、分层 scale/correction
+的 K 格式、查表恢复的码本格式。当前转换器实装第一类：2..8 bit，组长
+32/64/128/256，有限且能精确表示为 F16 的 scale，显式 signed/unsigned、zero point
+和 stride。调用者选择 Q4_0/Q5_0/Q8_0 目标，转换器检查整个输入后才写入。
+较大 group 可以拆为多个 group32 并重复 scale，不增加硬件寄存器或指令字段。
+码本和 K 格式仍须符合已有精确布局，不能任意替换查表内容或修正公式。
+
+例如 group64、scale=0.25 的无符号 INT4、zero point=8，可以精确转成两个
+Q4_0 block；scale=0.1 不能由 F16 精确表示，必须拒绝这条转换路径。
+此外，**权重相同不等于算子相同**：如果原运行时使用 FP16 activation，不能擅自
+量化为 Q8 后声称逐位等价。本轮 ONNX 对照明确使用 INT8 Q/DQ activation，18 个
+MatMul shape/格式组合通过，但没有实现完整的 ONNX ExecutionProvider。
+
+AKV 的通用化同样先发生在软件层。`akv_decode.h` 显式描述 batch、Query/KV head、
+token/D 和字节 stride，按已有 context 容量顺序执行。GQA17 拆为 8+8+1，
+不要求硬件增加 Query 槽；K/V 的 head/token 主序和行 padding 可以用 stride 表达。
+所有缓冲区容量与跨组输出别名在 issue 前检查。分页 KV 不属于这个线性地址接口。
+
+可选 `akv_features.h` 在标准 RVV 的 QK/Softmax/PV 之间插入 softcap、mask 缩放、
+位置 bias/window 和 sink 处理。sink 只增加 Softmax 分母，不增加真实 Value 行。
+首 tile 全遮蔽时不计算 `-Inf - -Inf`，而是产生零权重。
+GGML 的 ALiBi 已通过 mask 表达，adapter 只做按 head 缩放，不重复加一次位置偏置。
+
+私有 GGML 以 `GGML_RISCV_AKV_PORTABLE=1` 开放大 GQA、mask holes、ALiBi、
+softcap 和 sinks。默认生产 selector 不扩张，batch>1、D256 和额外 Prefill 场景
+仍按原规则回退；公共运行时支持 batch 不等于每个 framework adapter 都已接入。
+这些扩展会增加软件计算或分组次数，功能更广不能直接写成性能更快。
+
+两个图可能各有一个 worker-zero，因此 GGML 还用进程内 mutex 保护完整 AKV
+FULL/REFILL/计算/RELEASE 生命周期。它解决同进程的并发所有权，不解决 OS 抢占、
+线程迁移或多进程共享；原生平台仍须保证执行期间 context 不被另一用户替换。
+执行前拒绝可以 fallback；发出命令后发生错误可能已有输出写入，必须上报而不是
+静默重算。这是接口层保证与操作系统保证的分界。
+
 ## 7. 从原 RVV 硬件改造成 QBS/AKV 快速路径
 
 ### 7.1 既有 RVV 数据通路和接入位置
@@ -4500,8 +4545,9 @@ tiled baseline 的实测提升仍可衡量硬件驻留/view 的增量贡献。�
 - 七模型通用性工作集统一采用发布名称中的 Q4_K_M 类别，但不控制各发布者的 quantizer 版本、
   importance matrix 和 calibration 数据；它与九 profile 回归是两个正交验证轴，不是完整的
   七模型乘九 profile 笛卡尔积；
-- 当前九种 canonical profile 的 byte ABI 仍与 GGML/GGUF 一致；其他推理运行时尚无实际 adapter，
-  非严格同构格式需要经过验证的加载期转换或新增 profile；
+- 当前九种 canonical profile 的 byte ABI 仍与 GGML/GGUF 一致；已有精确分组整数转换及
+  ONNX Q/DQ MatMul 的实际运行时算子对照，但没有完整第二运行时的原生后端或模型闭环；
+  非严格同构格式仍需经过验证的转换或新增 profile；
 - 当前 QBS 数据接入固定为 128-bit AXI read beat，commit mapping 固定为 4 lanes；RTL 约束 VLEN 位于
   256..1024 且为 256 的整数倍，结合
   RVV 对 VLEN 为 2 的幂的要求，实际合法配置为 256/512/1024；这不是任意 Ara 配置已经自动
@@ -4513,9 +4559,10 @@ tiled baseline 的实测提升仍可衡量硬件驻留/view 的增量贡献。�
   `FLASH_ATTN_EXT`，不覆盖完整 Transformer block；
 - AKV 只有一个 hidden context，FULL/REFILL 与普通 VLSU/QBS 互斥；没有多 context、多 tenant、
   save/restore 或 normal-load overlap；
-- AKV fast path 不支持 D256、batch>1、reference Attention、attention sinks、ALiBi、
-  softcap、非 prefix mask 或不规则/未对齐 K/V layout。D256 两段实现功能正确但慢于强 tiled-RVV，
-  因而主动回退；
+- AKV 默认 fast path 不支持 D256、batch>1、reference Attention、attention sinks、ALiBi、
+  softcap、非 prefix mask 或不规则/未对齐 K/V layout。第 6.18 节的可选 Decode 路径
+  扩大大 GQA、mask、ALiBi、softcap、sink 的功能覆盖，但不作为默认性能承诺。
+  D256 两段实现功能正确但慢于强 tiled-RVV，因而 GGML 继续主动回退；
 - Prefill 只有 M>=64 且 GGML 已进入 tiled algorithm 时可选择。M84 有真实 graph 节点数值闭环，
   但 M>=512 的 matched native RTL 周期仍待完成；不能把 60.29x 静态 K/V traffic reduction 写成
   同倍数 speedup；

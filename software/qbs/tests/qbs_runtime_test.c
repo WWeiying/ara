@@ -169,6 +169,13 @@ static int test_device_and_profiles(void) {
                                     QBS_ACTIVATION_PROFILE_Q8_K));
   CHECK(!qbs_device_supports_profile(&device, QBS_WEIGHT_PROFILE_Q4_K,
                                      QBS_ACTIVATION_PROFILE_Q8_0));
+  reader.overridden_index = 2;
+  reader.overridden_value = UINT64_MAX;
+  CHECK(qbs_device_query(capability_reader, &reader, &device) == QBS_STATUS_CAPABILITY);
+  CHECK(!device.capabilities.valid && !device.weight_profiles);
+  CHECK(qbs_device_init_reference(1024, &device) == QBS_STATUS_OK);
+  CHECK(qbs_device_init_reference(2048, &device) == QBS_STATUS_BAD_ARGUMENT);
+  CHECK(!device.capabilities.valid);
   return 0;
 }
 

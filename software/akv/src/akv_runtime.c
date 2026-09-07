@@ -78,8 +78,10 @@ akv_status_t akv_capabilities_decode_extended(
 
   if (info2 == 0u && info3 == 0u)
     return AKV_STATUS_OK;
-  if (info2 == 0u || info3 == 0u)
+  if (info2 == 0u || info3 == 0u) {
+    memset(capabilities, 0, sizeof(*capabilities));
     return AKV_STATUS_ABI_MISMATCH;
+  }
 
   capabilities->token_axis_profile_version = (uint8_t)(info2 & 0xffu);
   capabilities->token_axis_tile_tokens = (uint8_t)((info2 >> 8) & 0xffu);
@@ -109,8 +111,10 @@ akv_status_t akv_capabilities_decode_extended(
       capabilities->token_axis_tile_tokens != AKV_V2_TILE_TOKENS ||
       capabilities->token_axis_banks != AKV_V2_TOKEN_BANKS ||
       capabilities->token_axis_selector_index_bits !=
-          AKV_V2_SELECTOR_INDEX_BITS)
+          AKV_V2_SELECTOR_INDEX_BITS) {
+    memset(capabilities, 0, sizeof(*capabilities));
     return AKV_STATUS_ABI_MISMATCH;
+  }
 
   capabilities->token_axis_valid = capabilities->token_axis_enabled;
   return AKV_STATUS_OK;

@@ -2,17 +2,22 @@ cmake_minimum_required(VERSION 3.16)
 project(akv_runtime VERSION 1.0.0 LANGUAGES C)
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 add_library(akv_runtime STATIC
     src/akv_runtime.c
     src/akv_native_riscv.c
     src/akv_v2_native_riscv.c
-    src/akv_v2_reference.c)
+    src/akv_v2_reference.c
+    src/akv_prefill_reference.c
+    src/akv_features.c
+    src/akv_decode.c)
 add_library(akv::runtime ALIAS akv_runtime)
 target_include_directories(akv_runtime PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_compile_features(akv_runtime PUBLIC c_std_11)
+target_link_libraries(akv_runtime PUBLIC m)
 set_target_properties(akv_runtime PROPERTIES
     EXPORT_NAME runtime
     POSITION_INDEPENDENT_CODE ON)
@@ -35,6 +40,18 @@ install(DIRECTORY include/akv DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT akvRuntimeTargets
     NAMESPACE akv::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/akv_runtime)
+configure_package_config_file(
+    cmake/akv_runtimeConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/akv_runtimeConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/akv_runtime)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/akv_runtimeConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/akv_runtimeConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/akv_runtimeConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/akv_runtime)
 
 option(AKV_BUILD_TESTS "Build AKV runtime host tests" OFF)
 if (AKV_BUILD_TESTS)
@@ -42,4 +59,7 @@ if (AKV_BUILD_TESTS)
     add_executable(akv_runtime_test tests/akv_runtime_test.c)
     target_link_libraries(akv_runtime_test PRIVATE akv::runtime)
     add_test(NAME akv_runtime_test COMMAND akv_runtime_test)
+    add_executable(akv_portability_test tests/akv_portability_test.c)
+    target_link_libraries(akv_portability_test PRIVATE akv::runtime)
+    add_test(NAME akv_portability_test COMMAND akv_portability_test)
 endif()

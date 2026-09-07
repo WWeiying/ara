@@ -1,4 +1,5 @@
 #include "../include/akv/akv.h"
+#include "../include/akv/akv_features.h"
 #include "akv_prefill_internal.h"
 
 #include <stdint.h>
@@ -82,6 +83,12 @@ static inline float negative_infinity_f32(void) {
   float value;
   memcpy(&value, &bits, sizeof(value));
   return value;
+}
+
+static inline int is_negative_infinity_f32(float value) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  return bits == UINT32_C(0xff800000);
 }
 
 static inline vfloat32m2_t vector_expf(vfloat32m2_t x, size_t vl) {
@@ -362,7 +369,8 @@ static void initialize_workspace(akv_attention_v2_workspace_t *workspace,
 static __attribute__((noinline)) void apply_scale_mask_and_softmax(
     const uint16_t *mask_bits, float scale,
     akv_attention_v2_workspace_t *workspace, uint32_t tile_start,
-    uint32_t tile_tokens, uint32_t q_rows) {
+    uint32_t tile_tokens, uint32_t q_rows,
+    const akv_attention_features_t *features) {
   const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
   const vfloat32m2_t mask = __riscv_vfwcvt_f_f_v_f32m2(
       __riscv_vle16_v_f16m1(
@@ -371,16 +379,30 @@ static __attribute__((noinline)) void apply_scale_mask_and_softmax(
 
 #pragma clang loop unroll(disable)
   for (uint32_t head = 0; head < q_rows; ++head) {
+    if (features != NULL) {
+      for (uint32_t token = 0; token < tile_tokens; ++token)
+        workspace->score[head][token] = akv_attention_score_transform(
+            workspace->score[head][token], scale,
+            mask_bits[tile_start + token], head, tile_start + token,
+            features);
+    }
     vfloat32m2_t score =
         __riscv_vle32_v_f32m2(workspace->score[head], vl);
-    score = __riscv_vfadd_vv_f32m2(
-        __riscv_vfmul_vf_f32m2(score, scale, vl), mask, vl);
+    if (features == NULL)
+      score = __riscv_vfadd_vv_f32m2(
+          __riscv_vfmul_vf_f32m2(score, scale, vl), mask, vl);
 
     const float tile_maximum = reduce_max_f32m2(score, vl);
     const float old_maximum = workspace->maximum[head];
     const float new_maximum =
         tile_maximum > old_maximum ? tile_maximum : old_maximum;
-    const float old_scale = old_maximum == negative_infinity_f32()
+    if (is_negative_infinity_f32(new_maximum)) {
+      workspace->old_scale[head] = 0.0f;
+      __riscv_vse32_v_f32m2(workspace->score[head],
+                            __riscv_vfmv_v_f_f32m2(0.0f, vl), vl);
+      continue;
+    }
+    const float old_scale = is_negative_infinity_f32(old_maximum)
                                 ? 0.0f
                                 : __builtin_expf(old_maximum - new_maximum);
     score = vector_expf(__riscv_vfsub_vf_f32m2(score, new_maximum, vl), vl);
@@ -420,7 +442,8 @@ static __attribute__((noinline)) void store_outputs(
 
 static __attribute__((noinline)) akv_status_t execute_segmented_d256(
     const akv_attention_plan_t *plan,
-    akv_attention_v2_workspace_t *workspace) {
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features) {
   const uint16_t *const query =
       (const uint16_t *)(uintptr_t)(
           plan->descriptor.q_base -
@@ -436,6 +459,12 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
   const float scale = plan->scale;
 
   initialize_workspace(workspace, q_rows, head_dim);
+  if (features != NULL && features->sinks_enabled) {
+    for (uint32_t head = 0; head < q_rows; ++head) {
+      workspace->maximum[head] = features->sinks[head];
+      workspace->sum[head] = 1.0f;
+    }
+  }
   for (uint32_t tile_start = 0; tile_start < kv_length;
        tile_start += AKV_V2_TILE_TOKENS) {
     const uint32_t tile_tokens =
@@ -445,7 +474,7 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
         query, &workspace->score[0][0], tile_tokens,
         query_row_stride_bytes, q_rows);
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
-                                 tile_tokens, q_rows);
+                                 tile_tokens, q_rows, features);
     issue_full(&plan->value_descriptor, tile_start);
     akv_v2_update_outputs_f16_d256_generic(
         &workspace->score[0][0], &workspace->accumulator[0][0],
@@ -457,9 +486,10 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
 }
 #endif
 
-akv_status_t akv_attention_execute_v2_native(
+akv_status_t akv_attention_execute_v2_with_features_native(
     const akv_attention_plan_t *plan,
-    akv_attention_v2_workspace_t *workspace) {
+    akv_attention_v2_workspace_t *workspace,
+    const akv_attention_features_t *features) {
   const int segmented_d256 =
       plan != NULL && plan->d_segment_count == 2u;
   if (workspace == NULL ||
@@ -467,11 +497,14 @@ akv_status_t akv_attention_execute_v2_native(
                       : !common_v2_plan_is_valid(plan)) ||
       ((uintptr_t)workspace & (AKV_DESCRIPTOR_BYTES - 1u)) != 0u)
     return AKV_STATUS_BAD_ARGUMENT;
+  if (akv_attention_features_validate(features, plan->descriptor.q_rows,
+                                      plan->descriptor.kv_length) != AKV_STATUS_OK)
+    return AKV_STATUS_BAD_ARGUMENT;
 
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)
   if (segmented_d256)
-    return execute_segmented_d256(plan, workspace);
+    return execute_segmented_d256(plan, workspace, features);
 
   // AKV commands cross into a non-scalar memory client.  Snapshot every field
   // consumed by the following software schedule before issuing the first
@@ -489,6 +522,12 @@ akv_status_t akv_attention_execute_v2_native(
   const float scale = plan->scale;
 
   initialize_workspace(workspace, q_rows, head_dim);
+  if (features != NULL && features->sinks_enabled) {
+    for (uint32_t head = 0; head < q_rows; ++head) {
+      workspace->maximum[head] = features->sinks[head];
+      workspace->sum[head] = 1.0f;
+    }
+  }
   for (uint32_t tile_start = 0; tile_start < kv_length;
        tile_start += AKV_V2_TILE_TOKENS) {
     const uint32_t tile_tokens =
@@ -509,7 +548,7 @@ akv_status_t akv_attention_execute_v2_native(
           query_row_stride_bytes, q_rows, head_dim);
     }
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
-                                 tile_tokens, q_rows);
+                                 tile_tokens, q_rows, features);
     if (q_rows == AKV_ATTENTION_KERNEL_Q_ROWS &&
         head_dim == AKV_HEAD_DIM_128) {
       akv_v2_update_outputs_f16_d128_gqa6(
@@ -527,6 +566,12 @@ akv_status_t akv_attention_execute_v2_native(
 #else
   return AKV_STATUS_RUNTIME_UNAVAILABLE;
 #endif
+}
+
+akv_status_t akv_attention_execute_v2_native(
+    const akv_attention_plan_t *plan,
+    akv_attention_v2_workspace_t *workspace) {
+  return akv_attention_execute_v2_with_features_native(plan, workspace, NULL);
 }
 
 akv_status_t akv_attention_execute_v2_prefill_native(

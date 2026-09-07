@@ -53,3 +53,80 @@ make -C software/akv clean check
 
 The CMake target automatically includes the native RVV assembly kernel for a
 RISC-V target. Set `AKV_BUILD_NATIVE_KERNEL=OFF` for a contract-only build.
+
+## Batched Decode and Layouts
+
+`akv/akv_decode.h` accepts Q/output `[batch, query_head, D]`, K/V
+`[batch, kv_head, token, D]`, explicit byte strides and all buffer capacities.
+D is contiguous. K/V head/token axes can be exchanged and rows padded; only
+the mask can broadcast across batches using a zero batch stride. This is not
+a paged-KV interface.
+
+`akv_decode_validate` checks every group, span, capability and cross-group
+output/input overlap before issue. `akv_decode_execute` traverses groups
+serially and supplies immutable plans to the caller's executor callback.
+Large GQA is split within each KV head at the device's maximum Query-row count:
+GQA17 becomes 8+8+1, not a larger hardware context. The callback receives the
+batch and first logical Query head for selecting the corresponding metadata.
+
+Callers serialize the entire operation against other users of the context.
+The completion count reports successful groups. An execution failure may
+already have written output and must not trigger transparent fallback.
+
+Logical D values are 64/96/128/256 and KV length is 1..65535; device and
+production-policy restrictions still apply. D256 remains outside the GGML
+selector. Batch support here does not mean GGML admits batch>1: its selector
+still rejects that case.
+
+## Optional Attention Features
+
+`akv/akv_features.h` defines optional Decode score processing using software
+and ordinary RVV, without new RTL commands or storage:
+
+1. scale the QK dot product;
+2. optionally apply `softcap * tanh(score / softcap)`;
+3. optionally add a per-head relative-position slope;
+4. add the F16 mask, optionally multiplied by a positive per-head scale;
+5. exclude masked/window-outside positions and run online Softmax/PV.
+
+An optional per-head sink adds one score to the denominator and zero Value.
+Window bounds and relative positions use absolute token positions. Q/K/V must
+be finite and masks finite or negative infinity. The F32 oracle rejects invalid
+masks before writing output; native callers must validate that data contract
+before issue. A leading completely masked tile now produces zero weights,
+avoiding `-Inf - -Inf`. An entirely masked row without a sink returns zero.
+
+`akv_attention_execute_v2_with_features_native` uses the existing context and
+RVV schedule. `akv_attention_execute_v2_native` remains the NULL-feature call.
+`...with_features_reference` is a mathematical F32 oracle, not a bit-exact
+native model: native Value accumulation rounds to F16 and uses the existing
+RVV exp approximation. Compile the oracle without fast-math and compare with
+an explicit tolerance.
+
+The private GGML adapter admits larger GQA, finite masks with holes, ALiBi
+mask scaling, softcap and sinks only with `GGML_RISCV_AKV_PORTABLE=1`.
+GGML's ALiBi convention scales its constructed mask; do not also add an
+independent positional bias. Prefill selection is not broadened. New optional
+paths have functional tests but no general performance guarantee; leave the
+flag off until the real model/shape passes the performance gate.
+
+Worker-zero calls from different GGML graphs use a process-local mutex around
+the complete context lifetime. This is not OS context save/restore or
+cross-process isolation. The native platform must prevent uncoordinated users
+or migration during the lifetime; OS ownership is required for multi-process
+deployment.
+
+## Portability Verification
+
+- `make -C software/akv check`: existing contract plus 192 combinations of
+  batches, GQA, D, KV tails and head/token-major layouts, plus feature/error tests.
+- `bash verification/akv/run_ggml_portability_test.sh`: cross-built GGML against
+  its original CPU Attention on RVV QEMU, using the **AKV software oracle**;
+  18 combinations, two concurrent graphs, fallback and default-path checks.
+- `bash verification/akv/run_portability_rtl.sh`: fresh isolated VCS image,
+  native feature smoke followed by QBS/AKV/ordinary-RVV handoff. Launch long
+  runs in tmux instead of polling continuously.
+
+CMake consumers can use `akv::runtime` through add-subdirectory or the
+installed `find_package(akv_runtime CONFIG REQUIRED)` package.
+See `hardware/docs/qbs_akv_portability_work.md` for scope and evidence.

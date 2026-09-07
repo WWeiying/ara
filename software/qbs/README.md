@@ -54,6 +54,10 @@ profile or a persistent model-load conversion.
 
 The current v1 profiles cover four useful semantic families:
 
+The public three-family classifier combines the first two below into
+`QBS_FORMAT_HIERARCHICAL_INTEGER`; their distinct correction formulas remain
+part of each exact profile.
+
 - affine K-block formats: `Q2_K`, `Q4_K`, and `Q5_K`;
 - symmetric K-block formats: `Q3_K` and `Q6_K`;
 - simple 32-element block formats: `Q4_0`, `Q5_0`, and `Q8_0`;
@@ -80,6 +84,7 @@ for a runtime format registry.
 | Discovery | `qbs_device_query` | call only after ISA/platform discovery proves `Xaraqbs` exists |
 | Encoding binding | `qbs_device_bind_encodings` | assert an exact source/converted encoding ID pair |
 | Metadata | `qbs_*_profile_info` | inspect the resolved canonical profile |
+| Format conversion | `qbs_format_family`, `qbs_import_grouped_integer` | describe packed integers, scale and zero point; choose an exact target explicitly |
 | Packing | `qbs_repack_weight_r4`, `qbs_pack_activation_m4` | cache persistent weights and prepare activation groups |
 | Planning | `qbs_plan_create`, `qbs_plan_next` | supply logical M/N/K and source storage layouts |
 | Execution | `qbs_execute`, `qbs_execute_with_options` | provide buffers/workspace; optionally bind one explicit activation-context token |
@@ -90,6 +95,11 @@ construction, and split-K accumulation. It supports row-major and R4 weights,
 row-major activations, and the grouped M4 representation used by multi-token
 GEMM. It performs all shape, profile, layout, workspace, and capability checks
 before issuing the first command.
+
+Explicit M8-grouped activation storage also permits M5--M8/N16 commands on
+capable devices. `qbs_select_activation_storage` applies the existing input-byte
+reduction gate; wide commands are not enabled merely because M exceeds four.
+This is distinct from processing a logical M=5 problem with M4 plus M1 commands.
 
 A successful `qbs_plan_t` is immutable and can be cached for repeated calls
 with the same shape and device contract. `plan.workspace_bytes` is a validated
@@ -104,6 +114,9 @@ is an execution fault and must be propagated. A runtime must not silently
 retry the same operation on a fallback path after a possibly visible command.
 
 ## Explicit activation-context reuse
+
+See the exact-import section below before converting a foreign weight or
+activation format for reuse.
 
 `qbs_execute()` is the compatibility path and always emits `DIRECT` commands.
 `qbs_execute_with_options()` can eliminate repeated Q8_K activation reads
@@ -197,6 +210,45 @@ and workspace must be naturally aligned for `float`, and packing-helper source
 and destination ranges must not overlap.
 
 ## Building and testing
+
+### Exact grouped-integer import
+
+`qbs/qbs_format.h` groups existing encodings into grouped integer, hierarchical
+integer (affine and symmetric K blocks), and codebook families. These are
+software categories, not new hardware profiles. Descriptors are unchanged.
+
+The importer accepts `w = scale[group] * (q - zero_point[group])`:
+
+- 2--8 packed bits, signed two's complement or unsigned;
+- groups of 32/64/128/256 elements; K must divide exactly into groups;
+- explicit per-row byte stride and input/metadata capacities;
+- finite scales exactly representable as F16, without rounding or requantization;
+- explicit Q4_0, Q5_0 or Q8_0 target containing every recentered integer.
+
+It validates the entire source before writing canonical row-major blocks.
+The existing R4 helper can then repack them once at model load. Larger-group
+scales repeat over the corresponding 32-element blocks. Promoting six-bit
+weights into Q8_0 requires explicit target selection, increases storage and
+is not a performance claim. K and codebook formats still require exact layouts.
+
+This preserves weights only. A W4A16 runtime must not silently quantize its
+activation to Q8_0 and claim an equivalent operator. Arbitrary GPTQ/AWQ packing,
+out-of-range zero points, partial groups and arbitrary F32 scales require a
+separately validated conversion or the original fallback.
+
+`tests/test_onnx_portability.py` compares actual ONNX Runtime Q/DQ MatMul with
+the importer, common planner and canonical QBS instruction reference. Its
+activations are explicitly INT8 Q/DQ, weights have 4/5/8 significant bits in
+UINT8 containers, and scales are powers of two. It is an operator-level test,
+not a native ONNX ExecutionProvider or a full-model W4A16 equivalence test.
+
+```sh
+python3 -m venv /tmp/qbs-onnx-test
+/tmp/qbs-onnx-test/bin/pip install -r software/qbs/tests/onnx-requirements.txt
+/tmp/qbs-onnx-test/bin/python software/qbs/tests/test_onnx_portability.py
+```
+
+### Host tests
 
 ```sh
 make -C software/qbs check
