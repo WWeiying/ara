@@ -1,0 +1,6 @@
+{
+  "qwen25_1p5b_q4km": "/home/wangwy/openproject/ara_dsa/hardware/qbs_akv_portability_stage2_20260907_r3",
+  "qwen3_1p7b_q4km": "/home/wangwy/openproject/ara_dsa/hardware/qbs_akv_portability_stage2_20260907_r3",
+  "gemma3_1b_q4km": "/home/wangwy/openproject/ara_dsa/hardware/qbs_akv_portability_stage2_20260907_r3",
+  "refact_1p6b_q4km": "/home/wangwy/openproject/ara_dsa/hardware/qbs_akv_portability_stage2_20260907_r4"
+}

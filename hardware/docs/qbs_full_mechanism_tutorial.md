@@ -2660,6 +2660,22 @@ softcap 和 sinks。默认生产 selector 不扩张，batch>1、D256 和额外 P
 仍按原规则回退；公共运行时支持 batch 不等于每个 framework adapter 都已接入。
 这些扩展会增加软件计算或分组次数，功能更广不能直接写成性能更快。
 
+“支持更多特性”也不应让普通输入每次付出完整处理代价。因此在完成参数检查后，
+当所有额外特性关闭、有效 mask 全为零时，共享执行函数继续使用原来的向量化
+score 路径；不计算无用的 ALiBi 幂函数，也不逐元素调用通用 score 函数。
+mask 存在孔洞、有限偏置、window 或 sink 时不能走这个简化分支。
+一次真实 Refact Decode 的 `D=64、QH=32、KVH=1` 会分成四个 8-head 组，
+各组仍使用原有 K/V context。它的 ALiBi 使用全局 Query head 编号计算缩放，
+不能在每个组内从 head 0 重新编号。
+
+还需要区分两个参考计算。公共 F32 oracle 适合检查 Attention 数学表达，
+但原 GGML 的 F16 Value 累加会在每一步舍入，不能用 F32 oracle 代替原实现并
+要求整个模型的 token 不变。GGML 的 QEMU 功能执行器因此保留 F16 累加，
+额外特性只改变 score 或 sink 校正；原生 RTL 则另用真实 Q/K/V capture 检查误差
+和周期。QEMU 模型通过不等于整个模型已经在 RTL 上逐位验证。
+代表性实测与明确的 fallback 边界见
+[通用化实施记录第 6 节](qbs_akv_portability_work.md#6-真实模型覆盖与同数据性能闭环)。
+
 两个图可能各有一个 worker-zero，因此 GGML 还用进程内 mutex 保护完整 AKV
 FULL/REFILL/计算/RELEASE 生命周期。它解决同进程的并发所有权，不解决 OS 抢占、
 线程迁移或多进程共享；原生平台仍须保证执行期间 context 不被另一用户替换。

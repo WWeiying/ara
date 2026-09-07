@@ -14,6 +14,9 @@ model_digest=${AKV_MODEL_DIGEST:-}
 model_dump_f32=${AKV_MODEL_DUMP_F32:-}
 model_exit_after_dump=${AKV_MODEL_EXIT_AFTER_DUMP:-0}
 qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
+akv_portable=${AKV_MODEL_PORTABLE:-0}
+dynamic_only=${AKV_MODEL_DYNAMIC_ONLY:-0}
+[[ ${dynamic_only} == 0 || ${dynamic_only} == 1 ]] || exit 2
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
 require_prefill=${AKV_REQUIRE_PREFILL:-0}
 prefill_min_query_tokens=64
@@ -82,6 +85,8 @@ validate_log() {
   local candidate_ops
   local executed_ops
   local accounted_ops
+  local feature_fallbacks
+  local prefill_feature_fallbacks
   local max_abs
   local expected_runs
   local prompt_token_count
@@ -152,7 +157,15 @@ validate_log() {
     grep -Eq 'executed_v1=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'groups_v1=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'fallback_capability=0([[:space:]]|$)' <<< "${coverage_line}"
-    grep -Eq 'fallback_feature=0([[:space:]]|$)' <<< "${coverage_line}"
+    if [[ ${akv_portable} == 1 ]]; then
+      feature_fallbacks=$(sed -n 's/.*fallback_feature=\([0-9][0-9]*\).*/\1/p' <<< "${coverage_line}")
+      prefill_feature_fallbacks=$(awk '/AKV_TOKEN_RUN_BEGIN=QBS_AKV_V2/ {active=1}
+        active && /^GGML_RISCV_AKV_FALLBACK mode=prefill reason=feature / {n++}
+        END {print n+0}' "${log_file}")
+      [[ ${feature_fallbacks} == "${prefill_feature_fallbacks}" ]]
+    else
+      grep -Eq 'fallback_feature=0([[:space:]]|$)' <<< "${coverage_line}"
+    fi
     grep -Eq 'fallback_layout=0([[:space:]]|$)' <<< "${coverage_line}"
     grep -Eq 'fallback_mask=0([[:space:]]|$)' <<< "${coverage_line}"
     if [[ ${model_mode} == combined ]]; then
@@ -231,8 +244,16 @@ validate_log() {
     fi
     if [[ ${model_mode} == combined-fallback ]]; then
       local fallback_shape
+      local fallback_size
+      local prefill_size_fallbacks
       fallback_shape=$(sed -n 's/.*fallback_shape=\([0-9][0-9]*\).*/\1/p' <<< "${coverage_line}")
-      (( candidate_ops == fallback_shape ))
+      fallback_size=$(sed -n 's/.*fallback_size=\([0-9][0-9]*\).*/\1/p' <<< "${coverage_line}")
+      prefill_size_fallbacks=$(awk '/AKV_TOKEN_RUN_BEGIN=QBS_AKV_V2/ {active=1}
+        /^AKV_TOKEN_RUN_EXIT=QBS_AKV_V2:/ {active=0}
+        active && /^GGML_RISCV_AKV_FALLBACK mode=prefill reason=size / {n++}
+        END {print n+0}' "${log_file}")
+      [[ ${fallback_size} == "${prefill_size_fallbacks}" ]]
+      (( candidate_ops == fallback_shape + fallback_size ))
     fi
   else
     grep -Eq 'executed_v1=[1-9][0-9]*' <<< "${coverage_line}"
@@ -299,6 +320,8 @@ write_manifest() {
     printf 'MODEL_DUMP_F32=%s\n' "${model_dump_f32}"
     printf 'MODEL_EXIT_AFTER_DUMP=%s\n' "${model_exit_after_dump}"
     printf 'QBS_WIDE_M=%s\n' "${qbs_wide_m}"
+    printf 'AKV_PORTABLE=%s\n' "${akv_portable}"
+    printf 'DYNAMIC_ONLY=%s\n' "${dynamic_only}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
     printf 'PREFILL_MIN_QUERY_TOKENS=%s\n' "${prefill_min_query_tokens}"
     printf 'QBS_PREFLIGHT=%s\n' "${qbs_preflight_status}"
@@ -332,6 +355,10 @@ esac
 }
 [[ ${qbs_wide_m} == 0 || ${qbs_wide_m} == 1 ]] || {
   printf 'GGML_RISCV_QBS_WIDE_M must be 0 or 1\n' >&2
+  exit 2
+}
+[[ ${akv_portable} == 0 || ${akv_portable} == 1 ]] || {
+  printf 'AKV_MODEL_PORTABLE must be 0 or 1\n' >&2
   exit 2
 }
 [[ -z ${model_digest} || ${model_digest} =~ ^[A-Za-z0-9_]+([,\;][A-Za-z0-9_]+)*$ ]] || {
@@ -391,7 +418,7 @@ if [[ ${1:-} == --check-log ]]; then
   validate_log "${log_file}" "${result_file}"
   if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
     summary_args=("${log_file}")
-    if [[ ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
+    if [[ ${dynamic_only} == 1 || ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
       summary_args+=(--dynamic-only)
     fi
     "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \
@@ -472,6 +499,7 @@ fi
   "-DAKV_MODEL_DUMP_F32=\"${model_dump_f32}\"" \
   "-DAKV_MODEL_EXIT_AFTER_DUMP=${model_exit_after_dump}" \
   "-DAKV_QBS_WIDE_M=${qbs_wide_m}" \
+  "-DAKV_MODEL_PORTABLE=${akv_portable}" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
   -lm -o "${init_binary}"
@@ -528,7 +556,7 @@ fi
 validate_log "${log_file}" "${result_file}"
 if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
   summary_args=("${log_file}")
-  if [[ ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
+  if [[ ${dynamic_only} == 1 || ${model_guest_path} != "${default_model_guest_path}" || ${require_prefill} == 1 ]]; then
     summary_args+=(--dynamic-only)
   fi
   "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \

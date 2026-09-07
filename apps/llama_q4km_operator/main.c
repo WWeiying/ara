@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "../../software/akv/include/akv/akv.h"
+#include "../../software/akv/include/akv/akv_features.h"
 #include "runtime.h"
 
 #ifdef SPIKE
@@ -40,6 +41,7 @@ enum {
   CASE_FLAG_ATTENTION_AKV_V2_PREFILL = 1u << 4,
   CASE_FLAG_ATTENTION_Q64_RVV = 1u << 5,
   CASE_FLAG_ATTENTION_REGULAR_STRIDES = 1u << 6,
+  CASE_FLAG_ATTENTION_PORTABLE = 1u << 7,
   ATTENTION_PHASE_Q_CONVERT = 1,
   ATTENTION_PHASE_ONLINE_KV = 2,
   ATTENTION_PHASE_OUTPUT = 3,
@@ -1696,8 +1698,10 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
   const int physical_kvlen = cfg->args[3];
   const int kvheads = cfg->args[4];
   const int heads_per_kv = qheads / kvheads;
+  const int portable = (cfg->flags & CASE_FLAG_ATTENTION_PORTABLE) != 0;
+  const int group_limit = portable ? AKV_MAX_Q_ROWS : heads_per_kv;
 
-  if (!akv_attention_v2_shape_supported((uint32_t)heads_per_kv,
+  if (!akv_attention_v2_shape_supported(portable ? 1u : (uint32_t)heads_per_kv,
                                         (uint32_t)dim) ||
       !attention_akv_device.capabilities.token_axis_valid)
     return 0;
@@ -1708,43 +1712,66 @@ static int run_attention_akv_v2(const case_config_t *cfg) {
     if (active_kv <= 0 || active_kv > UINT16_MAX) return 0;
 
     for (int kvhead = 0; kvhead < kvheads; ++kvhead) {
-      const int first_qhead = kvhead * heads_per_kv;
-      HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
-      for (int head = 0; head < heads_per_kv; ++head) {
-        const size_t query_index =
-            ((size_t)(first_qhead + head) * tokens + token) * dim;
-        convert_f32_to_f16_rvv(
-            attention_query_group_f16 + (size_t)head * dim,
-            query + query_index, dim);
+      for (int start_head = 0; start_head < heads_per_kv; start_head += group_limit) {
+        const int rows = heads_per_kv - start_head < group_limit
+                             ? heads_per_kv - start_head : group_limit;
+        const int first_qhead = kvhead * heads_per_kv + start_head;
+        HW_CNT_PHASE(ATTENTION_PHASE_Q_CONVERT);
+        for (int head = 0; head < rows; ++head) {
+          const size_t query_index =
+              ((size_t)(first_qhead + head) * tokens + token) * dim;
+          convert_f32_to_f16_rvv(
+              attention_query_group_f16 + (size_t)head * dim,
+              query + query_index, dim);
+        }
+
+        const akv_attention_problem_t problem = {
+            .query = (const uint16_t *)attention_query_group_f16,
+            .key = (const uint16_t *)(
+                key + (size_t)kvhead * physical_kvlen * dim),
+            .value = (const uint16_t *)(
+                value + (size_t)kvhead * physical_kvlen * dim),
+            .mask = token_mask,
+            .output = attention_output +
+                      ((size_t)token * qheads + first_qhead) * dim,
+            .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+            .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+            .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
+            .output_row_stride_bytes = (uint32_t)dim * sizeof(float),
+            .q_rows = (uint32_t)rows,
+            .head_dim = (uint32_t)dim,
+            .kv_length = (uint32_t)active_kv,
+            .scale = cfg->params[2],
+        };
+        if (akv_attention_plan_create_v2(&attention_akv_device, &problem,
+                                         &attention_akv_plan) != AKV_STATUS_OK)
+          return 0;
+
+        HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
+        akv_attention_features_t features = {0};
+        if (portable) {
+          features.softcap = cfg->params[4];
+          features.mask_scale_enabled = cfg->params[3] > 0.0f;
+          if (features.mask_scale_enabled) {
+            uint32_t head_pow2 = 1;
+            while (head_pow2 <= (uint32_t)qheads / 2u) head_pow2 *= 2u;
+            const float m0 = powf(2.0f, -cfg->params[3] / head_pow2);
+            const float m1 = powf(2.0f, -(cfg->params[3] / 2.0f) / head_pow2);
+            for (int head = 0; head < rows; ++head) {
+              const uint32_t h = first_qhead + head;
+              features.mask_scale[head] = h < head_pow2 ? powf(m0, h + 1u)
+                  : powf(m1, 2u * (h - head_pow2) + 1u);
+            }
+          }
+        }
+        const akv_status_t status = portable
+            ? akv_attention_execute_v2_with_features_native(
+                  &attention_akv_plan, &attention_akv_v2_workspace, &features)
+            : akv_attention_execute_v2_native(
+                  &attention_akv_plan, &attention_akv_v2_workspace);
+        if (status != AKV_STATUS_OK)
+          return 0;
       }
-
-      const akv_attention_problem_t problem = {
-          .query = (const uint16_t *)attention_query_group_f16,
-          .key = (const uint16_t *)(
-              key + (size_t)kvhead * physical_kvlen * dim),
-          .value = (const uint16_t *)(
-              value + (size_t)kvhead * physical_kvlen * dim),
-          .mask = token_mask,
-          .output = attention_output +
-                    ((size_t)token * qheads + first_qhead) * dim,
-          .q_row_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-          .k_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-          .v_token_stride_bytes = (uint32_t)dim * sizeof(_Float16),
-          .output_row_stride_bytes = (uint32_t)dim * sizeof(float),
-          .q_rows = (uint32_t)heads_per_kv,
-          .head_dim = (uint32_t)dim,
-          .kv_length = (uint32_t)active_kv,
-          .scale = cfg->params[2],
-      };
-      if (akv_attention_plan_create_v2(&attention_akv_device, &problem,
-                                       &attention_akv_plan) != AKV_STATUS_OK)
-        return 0;
-
-      HW_CNT_PHASE(ATTENTION_PHASE_ONLINE_KV);
-      if (akv_attention_execute_v2_native(&attention_akv_plan,
-                                          &attention_akv_v2_workspace) !=
-          AKV_STATUS_OK)
-        return 0;
     }
   }
   return 1;
@@ -1853,8 +1880,15 @@ static void run_attention_rvv(const case_config_t *cfg) {
   const int kvlen = cfg->args[3];
   const int kvheads = cfg->args[4];
   const int heads_per_kv = qheads / kvheads;
+  uint32_t head_pow2 = 1;
+  while (head_pow2 <= (uint32_t)qheads / 2u) head_pow2 *= 2u;
+  const float m0 = cfg->params[3] == 0.0f ? 1.0f : powf(2.0f, -cfg->params[3] / head_pow2);
+  const float m1 = cfg->params[3] == 0.0f ? 1.0f : powf(2.0f, -(cfg->params[3] / 2.0f) / head_pow2);
 
   for (int qhead = 0; qhead < qheads; ++qhead) {
+    const float slope = cfg->params[3] == 0.0f ? 1.0f
+        : ((uint32_t)qhead < head_pow2 ? powf(m0, qhead + 1u)
+           : powf(m1, 2u * ((uint32_t)qhead - head_pow2) + 1u));
     const int kvhead = qhead / heads_per_kv;
     for (int token = 0; token < tokens; ++token) {
       const float *q = query + ((size_t)qhead * tokens + token) * dim;
@@ -1873,9 +1907,10 @@ static void run_attention_rvv(const case_config_t *cfg) {
         if (mask_bits == 0xfc00u) continue;
 
         const _Float16 *k = key + ((size_t)kvhead * kvlen + sequence) * dim;
-        const float score = dot_f16_rvv(k, attention_query_f16, dim) *
-                                cfg->params[2] +
-                            fp16_to_fp32(mask_bits);
+        float score = dot_f16_rvv(k, attention_query_f16, dim) * cfg->params[2];
+        if (cfg->params[4] != 0.0f)
+          score = cfg->params[4] * tanhf(score / cfg->params[4]);
+        score += fp16_to_fp32(mask_bits) * slope;
         const float old_maximum = maximum;
         float old_scale = 1.0f;
         float weight = 1.0f;
@@ -2024,6 +2059,7 @@ int main(void) {
   perf_time();
   const uint64_t start = read_cycle();
   int failures = 0;
+  int fastpath_executed = 0;
   switch (cfg->kind) {
     case CASE_LINEAR_Q4:
     case CASE_LINEAR_Q6: run_linear(cfg); break;
@@ -2038,7 +2074,8 @@ int main(void) {
       if ((cfg->flags & CASE_FLAG_ATTENTION_AKV_V2_PREFILL) != 0) {
         if (!run_attention_akv_v2_prefill(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_AKV_V2) != 0) {
-        if (!run_attention_akv_v2(cfg)) run_attention_rvv(cfg);
+        fastpath_executed = run_attention_akv_v2(cfg);
+        if (!fastpath_executed) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_AKV) != 0) {
         if (!run_attention_akv(cfg)) run_attention_rvv(cfg);
       } else if ((cfg->flags & CASE_FLAG_ATTENTION_Q64_RVV) != 0) {
@@ -2057,6 +2094,9 @@ int main(void) {
   const uint64_t cycles = read_cycle() - start;
   perf_time();
   HW_CNT_NOT_READY;
+  if (cfg->kind == CASE_ATTENTION && (cfg->flags & CASE_FLAG_ATTENTION_AKV_V2))
+    REPORT("ATTENTION_DISPATCH native_v2=%d portable=%d\n", fastpath_executed,
+           (cfg->flags & CASE_FLAG_ATTENTION_PORTABLE) != 0);
   if (cfg->kind == CASE_ATTENTION) {
     failures = check_attention(cfg);
   } else if (cfg->kind == CASE_SET_ROWS_F32_F16) {

@@ -136,6 +136,19 @@ def integer(values: dict[str, str], key: str, default: int = 0) -> int:
     return int(values.get(key, default))
 
 
+def decode_group_count(call: dict[str, str]) -> int:
+    kv_heads = integer(call, "kv_heads")
+    gqa_rows = integer(call, "gqa_rows")
+    groups = integer(call, "groups", kv_heads)
+    minimum = kv_heads * ((gqa_rows + 7) // 8)
+    if kv_heads <= 0 or gqa_rows <= 0 or groups < minimum or \
+       groups > kv_heads * gqa_rows or groups % kv_heads:
+        raise ValueError("AKV Decode group count is inconsistent with Query grouping")
+    if integer(call, "portable") == 0 and groups != kv_heads:
+        raise ValueError("legacy AKV Decode cannot split a KV head into groups")
+    return groups
+
+
 def validate_numerical_metrics(values: dict[str, str], prefix: str) -> None:
     keys = tuple(f"{prefix}_{suffix}" for suffix in NUMERICAL_METRIC_SUFFIXES)
     missing = [key for key in keys if key not in values]
@@ -530,8 +543,9 @@ def validate_dynamic(run: ParsedRun, *, require_prefill: bool = True) -> None:
                 if attention_macs != expected_macs:
                     raise ValueError("AKV Decode MAC count is inconsistent with its shape")
                 decode_calls += 1
-                akv_groups += kv_heads
-                akv_group_tokens += kv_heads * active_kv
+                groups = decode_group_count(call)
+                akv_groups += groups
+                akv_group_tokens += groups * active_kv
             else:
                 query_tokens = integer(call, "M")
                 past_tokens = integer(call, "P", -1)
@@ -702,9 +716,9 @@ def dynamic_rows(run: ParsedRun):
                 head_dim = integer(call, "head_dim")
                 active_kv = integer(call, "active_kv")
                 kv_capacity = None
-                groups = kv_heads
+                groups = decode_group_count(call)
                 attention_pairs = q_heads * active_kv
-                kv_group_tokens = kv_heads * active_kv
+                kv_group_tokens = groups * active_kv
             key = (
                 graph.graph_id,
                 phase,
@@ -1941,6 +1955,8 @@ def main() -> None:
     output.mkdir(parents=True, exist_ok=True)
 
     run = parse_log(args.log)
+    if not args.dynamic_only and any(integer(call, "portable") for graph in run.graphs for call in graph.akv_calls):
+        raise ValueError("portable AKV requires --dynamic-only until a matching feature/group RTL calibration is supplied")
     model_manifest = read_manifest(args.log.parent / "manifest.txt")
     require_prefill = model_manifest.get("REQUIRE_PREFILL", "1") != "0"
     validate_dynamic(run, require_prefill=require_prefill)

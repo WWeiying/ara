@@ -17,6 +17,34 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ModelClosureTest(unittest.TestCase):
+    def test_portable_decode_counts_repeated_kv_per_query_group(self):
+        call = dict(_node_index="0", mode="decode", kernel="v2", kv_heads="1",
+                    q_rows="32", gqa_rows="32", head_dim="64", active_kv="4",
+                    groups="4", portable="1", attention_macs="16384")
+        self.assertEqual(MODULE.decode_group_count(call), 4)
+        with self.assertRaisesRegex(ValueError, "group count"):
+            MODULE.decode_group_count({**call, "groups": "1"})
+        with self.assertRaisesRegex(ValueError, "legacy"):
+            MODULE.decode_group_count({**call, "portable": "0"})
+        numerical = {suffix: ("1" if any(token in suffix for token in
+                     ("RECORDS", "COSINE", "TOP5", "TOP1")) else "0")
+                     for suffix in MODULE.NUMERICAL_METRIC_SUFFIXES}
+        run = MODULE.ParsedRun(
+            graphs=[MODULE.Graph(graph_id=0, declared_nodes=1,
+                    nodes=[dict(op="FLASH_ATTN_EXT", name="attention")],
+                    akv_calls=[call], closed=True)], qbs_coverage={}, qbs_exec={},
+            akv_coverage=dict(candidate_ops="1", executed_ops="1", executed_v1="0",
+                             executed_v2="1", groups="4", groups_v2="4",
+                             kv_group_tokens="16", attention_macs="16384"),
+            logits={"AKV_" + key: value for key, value in numerical.items()},
+            qbs_rvv={"QBS_RVV_" + key: value for key, value in numerical.items()},
+            output_equal=True, guest_exit=0, optimized_exit=0)
+        MODULE.validate_dynamic(run, require_prefill=False)
+        _, _, rows, _ = MODULE.dynamic_rows(run)
+        self.assertEqual(rows[0]["unique_kv_payload_bytes"], 1024)
+        self.assertEqual(rows[0]["kv_payload_bytes"], 4096)
+        self.assertEqual(rows[0]["kv_reread_factor"], 4)
+
     def test_akv_calls_by_mode_sums_invocations_not_shape_rows(self):
         rows = [
             {"mode": "prefill", "calls": 30},

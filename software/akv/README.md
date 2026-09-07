@@ -98,6 +98,10 @@ avoiding `-Inf - -Inf`. An entirely masked row without a sink returns zero.
 
 `akv_attention_execute_v2_with_features_native` uses the existing context and
 RVV schedule. `akv_attention_execute_v2_native` remains the NULL-feature call.
+When every feature is disabled and every active mask value is zero, the shared
+helper uses that original vector score path after validation. It does not
+discard mask holes, finite additive bias, windows or sinks. ALiBi coefficients
+are computed only when mask scaling is enabled.
 `...with_features_reference` is a mathematical F32 oracle, not a bit-exact
 native model: native Value accumulation rounds to F16 and uses the existing
 RVV exp approximation. Compile the oracle without fast-math and compare with
@@ -109,6 +113,12 @@ GGML's ALiBi convention scales its constructed mask; do not also add an
 independent positional bias. Prefill selection is not broadened. New optional
 paths have functional tests but no general performance guarantee; leave the
 flag off until the real model/shape passes the performance gate.
+
+GGML's QEMU functional executor retains its F16 Value accumulator for both
+plain and feature-enabled Decode. The standalone F32 oracle is not used as a
+drop-in replacement for that numerical schedule. Neither executor predicts
+the native token-tiled reduction/exp rounding bit for bit; real captured leaves
+are checked separately on VCS.
 
 Worker-zero calls from different GGML graphs use a process-local mutex around
 the complete context lifetime. This is not OS context save/restore or
@@ -126,6 +136,11 @@ deployment.
 - `bash verification/akv/run_portability_rtl.sh`: fresh isolated VCS image,
   native feature smoke followed by QBS/AKV/ordinary-RVV handoff. Launch long
   runs in tmux instead of polling continuously.
+- `verification/akv/run_portability_stage2.py`: pinned model preparation,
+  isolated QEMU model checks and same-capture RVV/original-AKV/portable-AKV
+  VCS tests. Each VCS run is limited to three hours, without overwriting an
+  earlier cohort. `summarize_portability_stage2.py` collects all raw counters
+  and model fallback reasons; see the work document for commands and results.
 
 CMake consumers can use `akv::runtime` through add-subdirectory or the
 installed `find_package(akv_runtime CONFIG REQUIRED)` package.

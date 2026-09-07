@@ -17,7 +17,7 @@ fi
 default_sim_dir=${repo_root}/hardware/sim_llama_attention_16m_template
 if [[ ${implementation} == akv ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_m3_compile
-elif [[ ${implementation} == akv_v2 ||
+elif [[ ${implementation} == akv_v2 || ${implementation} == akv_v2_portable ||
         ${implementation} == akv_v2_prefill ||
         ${implementation} == akv_v2_prefill_strided ]]; then
   default_sim_dir=${repo_root}/hardware/sim_akv_v2_compile
@@ -66,9 +66,10 @@ if [[ ${implementation} != ref && ${implementation} != rvv &&
       ${implementation} != tiled_rvv && ${implementation} != q64_rvv &&
       ${implementation} != akv &&
       ${implementation} != akv_v2 &&
+      ${implementation} != akv_v2_portable &&
       ${implementation} != akv_v2_prefill &&
       ${implementation} != akv_v2_prefill_strided ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill|akv_v2_prefill_strided] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_portable|akv_v2_prefill|akv_v2_prefill_strided] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
 if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
@@ -77,10 +78,10 @@ if [[ ! ${kvlen} =~ ^[1-9][0-9]*$ ]] || (( kvlen > 65535 )); then
 fi
 if [[ ${execution} != --all && ${execution} != --spike-only &&
       ${execution} != --ara-only ]]; then
-  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_prefill] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
+  echo "usage: $0 [ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_portable|akv_v2_prefill] [KV_LENGTH] [--all|--spike-only|--ara-only]" >&2
   exit 2
 fi
-if [[ (${implementation} == akv || ${implementation} == akv_v2 ||
+if [[ (${implementation} == akv || ${implementation} == akv_v2 || ${implementation} == akv_v2_portable ||
        ${implementation} == akv_v2_prefill ||
        ${implementation} == akv_v2_prefill_strided) &&
       ${execution} != --ara-only ]]; then
@@ -171,7 +172,7 @@ if [[ ${execution} != --spike-only ]]; then
     "+TESTCASE=${testcase}"
     +NO_FSDB
   )
-  if [[ ${implementation} == akv || ${implementation} == akv_v2 ||
+  if [[ ${implementation} == akv || ${implementation} == akv_v2 || ${implementation} == akv_v2_portable ||
         ${implementation} == akv_v2_prefill ||
         ${implementation} == akv_v2_prefill_strided ]]; then
     case ${LLAMA_ATTN_AKV_PERF_MODE:-detail} in
@@ -199,6 +200,9 @@ if [[ ${execution} != --spike-only ]]; then
   grep -q 'Core Test \*\*\* SUCCESS' "${run_dir}/ara.log"
   grep -q "LLAMA_OPERATOR ${case_id}/${implementation} PASS" \
     "${run_dir}/ara.log"
+  if [[ ${implementation} == akv_v2 || ${implementation} == akv_v2_portable ]]; then
+    grep -q 'ATTENTION_DISPATCH native_v2=1 ' "${run_dir}/ara.log"
+  fi
 fi
 
 : > "${run_dir}/complete"

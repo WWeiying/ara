@@ -86,7 +86,7 @@ case ${implementation} in
       exit 1
     fi
     ;;
-  akv_v2|akv_v2_prefill)
+  akv_v2|akv_v2_portable|akv_v2_prefill)
     if [[ ${akv_enabled} != 1 || ${akv_v2_enabled} != 1 ]]; then
       echo "simulator does not enable AKV-v2 required by ${implementation}" >&2
       exit 1

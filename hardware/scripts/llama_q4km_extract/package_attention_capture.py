@@ -37,12 +37,12 @@ def active_mask_prefix(path: Path, capacity: int) -> int:
         raise SystemExit(f"invalid attention mask size: {len(data)}")
     values = struct.unpack(f"<{capacity}H", data)
     active = 0
-    while active < capacity and values[active] == 0x0000:
+    while active < capacity and (values[active] & 0x7c00) != 0x7c00:
         active += 1
     if active == 0:
         raise SystemExit("attention mask has no active KV entries")
     if any(value != 0xFC00 for value in values[active:]):
-        raise SystemExit("attention mask is not a 0/-inf prefix mask")
+        raise SystemExit("attention mask is not a finite/-inf prefix mask")
     return active
 
 
@@ -93,8 +93,8 @@ def main() -> int:
     if kv_heads <= 0 or query_heads % kv_heads != 0:
         raise SystemExit("query heads must be an integer multiple of KV heads")
     gqa_rows = query_heads // kv_heads
-    if gqa_rows < 1 or gqa_rows > 8:
-        raise SystemExit(f"GQA ratio {gqa_rows} exceeds the AKV-v2 contract")
+    if gqa_rows < 1:
+        raise SystemExit(f"invalid GQA ratio {gqa_rows}")
     if golden_shape != [head_dim * query_heads, 1, 1, 1]:
         raise SystemExit("attention output shape does not match Q topology")
 
@@ -118,6 +118,8 @@ def main() -> int:
         scale_source = "legacy inferred 1/sqrt(head_dim)"
     max_bias = float(attention_params.get("max_bias", 0.0))
     logit_softcap = float(attention_params.get("logit_softcap", 0.0))
+    if not all(math.isfinite(v) for v in (scale, max_bias, logit_softcap)) or scale <= 0 or min(max_bias, logit_softcap) < 0:
+        raise SystemExit("invalid captured attention scale/bias/softcap")
     model_metadata_path = root / "model.json"
     model_metadata = (
         json.loads(model_metadata_path.read_text())

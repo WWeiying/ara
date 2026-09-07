@@ -22,10 +22,17 @@ make -C "${root}/apps" akv_portability_smoke qbs_akv_handoff_smoke \
   -W akv_portability_smoke/runtime.c sim_l2_mb=16 > "${run}/apps.log" 2>&1
 cp "${root}/apps/bin/akv_portability_smoke" "${run}/portable.elf"
 cp "${root}/apps/bin/qbs_akv_handoff_smoke" "${run}/handoff.elf"
-make -C "${root}/hardware" compile qbs=1 akv_v2=1 no_fsdb=1 \
-  sim_l2_mb=16 nr_lanes=4 vlen=1024 \
-  sim_dir="qbs_akv_portability_runs/${tag}/sim" \
-  buildpath="${run}/build" > "${run}/compile.log" 2>&1
+if [[ -n ${AKV_PORTABLE_SIM_DIR:-} ]]; then
+  test -x "${AKV_PORTABLE_SIM_DIR}/simv"
+  bash "${root}/hardware/scripts/llama_q4km_extract/check-sim-l2.sh" \
+    "${AKV_PORTABLE_SIM_DIR}" "${run}/portable.elf" akv_v2_portable > "${run}/sim-reuse.conf"
+  ln -s "$(realpath "${AKV_PORTABLE_SIM_DIR}")" "${run}/sim"
+else
+  make -C "${root}/hardware" compile qbs=1 akv_v2=1 no_fsdb=1 \
+    sim_l2_mb=16 nr_lanes=4 vlen=1024 \
+    sim_dir="qbs_akv_portability_runs/${tag}/sim" \
+    buildpath="${run}/build" > "${run}/compile.log" 2>&1
+fi
 sha256sum "${run}"/*.elf "${run}/sim/simv" \
   "${run}/sim/simulator.conf" > "${run}/binaries.sha256"
 

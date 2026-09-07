@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import math
 import os
 import struct
 import sys
@@ -19,6 +20,7 @@ ATTENTION_AKV_V2 = 1 << 3
 ATTENTION_AKV_V2_PREFILL = 1 << 4
 ATTENTION_Q64_RVV = 1 << 5
 ATTENTION_REGULAR_STRIDES = 1 << 6
+ATTENTION_PORTABLE = 1 << 7
 
 KIND = {
     "linear_q4": 1,
@@ -134,6 +136,8 @@ def make_spec(case_id, implementation):
                 flags |= ATTENTION_Q64_RVV
             elif implementation == "akv_v2":
                 flags |= ATTENTION_AKV_V2
+            elif implementation == "akv_v2_portable":
+                flags |= ATTENTION_AKV_V2 | ATTENTION_PORTABLE
             elif implementation == "akv_v2_prefill":
                 flags |= ATTENTION_AKV_V2_PREFILL
             elif implementation == "akv_v2_prefill_strided":
@@ -150,7 +154,13 @@ def make_spec(case_id, implementation):
             qshape = blobs["input_a"]["shape"]
             kshape = blobs["input_b"]["shape"]
             args[:5] = [qshape[0], qshape[1], qshape[2], kshape[1], kshape[2]]
-            params[2:4] = [case["scale"], case.get("max_bias", 0.0)]
+            params[2:5] = [case["scale"], case.get("max_bias", 0.0), case.get("logit_softcap", 0.0)]
+            if not all(math.isfinite(v) for v in params[2:5]) or params[2] <= 0 or any(v < 0 for v in params[3:5]):
+                raise SystemExit("invalid attention scale/bias/softcap")
+            if any(case.get(key) for key in ("sinks", "sinks_enabled", "window_enabled")):
+                raise SystemExit("this benchmark requires an explicit sink/window input adapter")
+            if (params[3] != 0.0 or params[4] != 0.0) and implementation not in ("rvv", "akv_v2_portable"):
+                raise SystemExit("attention score features require rvv or akv_v2_portable")
         elif kind == "set_rows_f32_f16":
             blobs["input_b"] = ref("index")
             width = blobs["input_a"]["shape"][0] * blobs["input_a"]["shape"][1]
@@ -169,7 +179,7 @@ def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit(
             "usage: gen_data.py CASE_ID "
-            "[ref|rvv|tiled_rvv|akv|akv_v2|akv_v2_prefill|"
+            "[ref|rvv|tiled_rvv|q64_rvv|akv|akv_v2|akv_v2_portable|akv_v2_prefill|"
             "akv_v2_prefill_strided]"
         )
     case_id = sys.argv[1]

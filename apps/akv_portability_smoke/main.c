@@ -30,7 +30,7 @@ int main(void) {
   };
   akv_attention_plan_t plan;
   if (akv_attention_plan_create_v2(&device, &problem, &plan) != AKV_STATUS_OK) return 2;
-  for (unsigned test = 0; test < 6; ++test) {
+  for (unsigned test = 0; test < 7; ++test) {
     akv_attention_features_t features = {0};
     float expected = 2.0f;
     memset(mask, 0, sizeof(mask));

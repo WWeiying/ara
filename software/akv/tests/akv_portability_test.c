@@ -106,6 +106,27 @@ static void test_decode(unsigned gqa, unsigned dim, unsigned tokens,
 }
 
 static void test_features(void) {
+  uint16_t plain_mask[2] = {0};
+  akv_attention_features_t empty = {0};
+  assert(akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  assert(akv_attention_can_use_plain_scores(NULL, plain_mask, 2));
+  assert(!akv_attention_can_use_plain_scores(&empty, NULL, 2));
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 0));
+  plain_mask[0] = 0xfc00;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  plain_mask[0] = 0xb400;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  plain_mask[0] = 0;
+  empty.softcap = 1;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  empty.softcap = 0; empty.mask_scale_enabled = 1;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  empty.mask_scale_enabled = 0; empty.position_bias_enabled = 1;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  empty.position_bias_enabled = 0; empty.sinks_enabled = 1;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
+  empty.sinks_enabled = 0; empty.window_enabled = 1;
+  assert(!akv_attention_can_use_plain_scores(&empty, plain_mask, 2));
   akv_attention_features_t f = {
       .softcap = 2.0f, .mask_scale_enabled = 1, .position_bias_enabled = 1,
       .mask_scale = {0.5f}, .position_slope = {0.25f},

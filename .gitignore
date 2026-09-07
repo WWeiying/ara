@@ -110,6 +110,7 @@ apps
 /hardware/sim_qbs_*/
 /hardware/build_qbs_*/
 /hardware/qbs_akv_portability_runs/
+/hardware/qbs_akv_portability_stage2_*/
 /hardware/qbs_activation_context_evidence/
 /apps/llama_q4km_micro/data.S
 /apps/llama_q4km_micro/*.dump

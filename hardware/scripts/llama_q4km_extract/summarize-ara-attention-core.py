@@ -168,6 +168,7 @@ def main():
         "q64_rvv",
         "akv",
         "akv_v2",
+        "akv_v2_portable",
         "akv_v2_prefill",
     ):
         for effective_kv in sorted(effective_kvs):

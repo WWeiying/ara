@@ -500,6 +500,9 @@ akv_status_t akv_attention_execute_v2_with_features_native(
   if (akv_attention_features_validate(features, plan->descriptor.q_rows,
                                       plan->descriptor.kv_length) != AKV_STATUS_OK)
     return AKV_STATUS_BAD_ARGUMENT;
+  if (features != NULL && akv_attention_can_use_plain_scores(
+          features, plan->mask, plan->descriptor.kv_length))
+    features = NULL;
 
 #if defined(__riscv) && __riscv_xlen == 64 && defined(__riscv_vector) &&       \
     defined(__riscv_zvfh) && !defined(SPIKE)

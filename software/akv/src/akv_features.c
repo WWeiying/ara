@@ -46,6 +46,16 @@ akv_status_t akv_attention_features_validate(
   return AKV_STATUS_OK;
 }
 
+int akv_attention_can_use_plain_scores(const akv_attention_features_t *f,
+                                        const uint16_t *mask, uint32_t length) {
+  if (!mask || !length || (f && (f->softcap != 0.0f || f->mask_scale_enabled ||
+      f->position_bias_enabled || f->sinks_enabled || f->window_enabled)))
+    return 0;
+  for (uint32_t token = 0; token < length; ++token)
+    if (mask[token] != 0u) return 0;
+  return 1;
+}
+
 float akv_attention_score_transform(float dot, float scale, uint16_t mask,
                                      uint32_t head, uint32_t key_index,
                                      const akv_attention_features_t *f) {

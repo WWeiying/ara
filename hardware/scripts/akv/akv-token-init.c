@@ -55,6 +55,10 @@
 #define AKV_QBS_WIDE_M 0
 #endif
 
+#ifndef AKV_MODEL_PORTABLE
+#define AKV_MODEL_PORTABLE 0
+#endif
+
 struct logits_dump_record {
     uint32_t magic;
     uint32_t version;
@@ -463,6 +467,7 @@ static struct run_result run_variant(const char * label,
         unsetenv("GGML_RISCV_AKV_EMULATE");
         unsetenv("GGML_RISCV_AKV_KERNEL");
         unsetenv("GGML_RISCV_AKV_TRACE");
+        unsetenv("GGML_RISCV_AKV_PORTABLE");
         if (enable_qbs) {
             setenv("GGML_RISCV_QBS", "1", 1);
             if (qbs_cross_op_context >= 0) {
@@ -484,6 +489,7 @@ static struct run_result run_variant(const char * label,
         if (akv_kernel != NULL) {
             setenv("GGML_RISCV_AKV_EMULATE", "1", 1);
             setenv("GGML_RISCV_AKV_KERNEL", akv_kernel, 1);
+            setenv("GGML_RISCV_AKV_PORTABLE", AKV_MODEL_PORTABLE ? "1" : "0", 1);
         }
         setenv("LLAMA_SIMPLE_LOGITS_FILE", logits_path, 1);
 

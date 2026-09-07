@@ -30,6 +30,11 @@ typedef struct {
 akv_status_t akv_attention_features_validate(
     const akv_attention_features_t *features, uint32_t q_rows,
     uint32_t kv_length);
+/* Call after validation. Mask holes and additive biases must retain the
+ * feature path, including its masked-overflow handling. */
+int akv_attention_can_use_plain_scores(
+    const akv_attention_features_t *features, const uint16_t *mask,
+    uint32_t kv_length);
 float akv_attention_score_transform(float dot, float scale, uint16_t mask,
                                      uint32_t head, uint32_t key_index,
                                      const akv_attention_features_t *features);
