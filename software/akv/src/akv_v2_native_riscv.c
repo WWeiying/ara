@@ -1,6 +1,7 @@
 #include "../include/akv/akv.h"
 #include "../include/akv/akv_features.h"
 #include "akv_prefill_internal.h"
+#include "akv_online_internal.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -79,6 +80,9 @@ extern void akv_v2_compute_scores_f16_d256_panel4(
     size_t q_row_stride_bytes, uint32_t q_rows);
 extern void akv_v2_update_outputs_f16_d256_generic(
     const float *score, uint16_t *accumulator, const float *old_scale,
+    uint32_t tile_tokens, uint32_t q_rows);
+extern void akv_v2_update_outputs_f16_d256_online(
+    const float *score, uint16_t *accumulator, const float *token_scale,
     uint32_t tile_tokens, uint32_t q_rows);
 
 static inline float negative_infinity_f32(void) {
@@ -443,6 +447,36 @@ static __attribute__((noinline)) void store_outputs(
   }
 }
 
+static __attribute__((noinline)) void prepare_d256_online_softmax(
+    const uint16_t *mask_bits, float scale,
+    akv_attention_v2_workspace_t *workspace,
+    float token_scale[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS],
+    uint32_t tile_start, uint32_t tile_tokens, uint32_t q_rows,
+    const akv_attention_features_t *features) {
+  const size_t vl = __riscv_vsetvl_e32m2(tile_tokens);
+  const vfloat32m2_t mask = __riscv_vfwcvt_f_f_v_f32m2(
+      __riscv_vle16_v_f16m1((const _Float16 *)mask_bits + tile_start, vl), vl);
+  for (uint32_t head = 0; head < q_rows; ++head) {
+    float *const scores = workspace->score[head];
+    if (features != NULL) {
+      for (uint32_t token = 0; token < tile_tokens; ++token)
+        scores[token] = akv_attention_score_transform(
+            scores[token], scale, mask_bits[tile_start + token],
+            head, tile_start + token, features);
+    } else {
+      const vfloat32m2_t dot = __riscv_vle32_v_f32m2(scores, vl);
+      __riscv_vse32_v_f32m2(scores, __riscv_vfadd_vv_f32m2(
+          __riscv_vfmul_vf_f32m2(dot, scale, vl), mask, vl), vl);
+    }
+    akv_online_prepare_exponents(scores, token_scale[head], tile_tokens,
+                                 &workspace->maximum[head]);
+    __riscv_vse32_v_f32m2(
+        scores, vector_expf(__riscv_vle32_v_f32m2(scores, vl), vl), vl);
+    workspace->sum[head] = akv_online_update_sum(
+        workspace->sum[head], scores, token_scale[head], tile_tokens);
+  }
+}
+
 static __attribute__((noinline)) akv_status_t execute_segmented_d256(
     const akv_attention_plan_t *plan,
     akv_attention_v2_workspace_t *workspace,
@@ -460,6 +494,7 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
   const uint32_t kv_length = plan->descriptor.kv_length;
   const size_t output_row_stride_bytes = plan->output_row_stride_bytes;
   const float scale = plan->scale;
+  float token_scale[AKV_MAX_Q_ROWS][AKV_V2_TILE_TOKENS];
 
   const int column_panel4 = q_rows >= 4u &&
       ((akv_native_info(NULL, 2u) >> AKV_V2_COLUMN_PANEL_CAPABILITY_BIT) & 1u);
@@ -483,12 +518,12 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
       akv_v2_compute_scores_f16_d256_generic(
           query, &workspace->score[0][0], tile_tokens,
           query_row_stride_bytes, q_rows);
-    apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
-                                 tile_tokens, q_rows, features);
+    prepare_d256_online_softmax(mask_bits, scale, workspace, token_scale,
+                                tile_start, tile_tokens, q_rows, features);
     issue_full(&plan->value_descriptor, tile_start);
-    akv_v2_update_outputs_f16_d256_generic(
+    akv_v2_update_outputs_f16_d256_online(
         &workspace->score[0][0], &workspace->accumulator[0][0],
-        workspace->old_scale, tile_tokens, q_rows);
+        &token_scale[0][0], tile_tokens, q_rows);
   }
   issue_release();
   store_outputs(output, output_row_stride_bytes, workspace, q_rows, head_dim);

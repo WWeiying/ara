@@ -31,6 +31,12 @@ def main():
     emit('weights', (f32((13 + (h * 53 + t * 7) % 100) / 1024)
                      for h in range(8) for t in range(64)), '.word')
     emit('old_scale', (f32((817 + h * 17) / 1024) for h in range(8)), '.word')
+    emit('token_scale', (f32(0.0 if t == 0 else
+                            (0.8125 + h / 128 if (t + h) % 7 == 0 else 1.0))
+                         for h in range(8) for t in range(64)), '.word')
+    emit('online_weights', (f32(0.0 if (t + h) % 11 == 0 else
+                               (13 + (h * 53 + t * 7) % 100) / 1024)
+                            for h in range(8) for t in range(64)), '.word')
 
 
 if __name__ == '__main__':

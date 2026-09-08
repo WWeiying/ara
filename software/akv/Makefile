@@ -12,9 +12,10 @@ OBJECTS := $(SOURCES:%.c=$(BUILD)/%.o)
 
 all: $(BUILD)/libakv_runtime.a
 
-check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test
+check: $(BUILD)/akv_runtime_test $(BUILD)/akv_portability_test $(BUILD)/akv_online_test
 	$(BUILD)/akv_runtime_test
 	$(BUILD)/akv_portability_test
+	$(BUILD)/akv_online_test
 
 $(BUILD)/libakv_runtime.a: $(OBJECTS)
 	$(AR) rcs $@ $^
@@ -24,6 +25,10 @@ $(BUILD)/akv_runtime_test: tests/akv_runtime_test.c $(OBJECTS)
 
 $(BUILD)/akv_portability_test: tests/akv_portability_test.c $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -lm -o $@
+
+$(BUILD)/akv_online_test: tests/akv_online_test.c src/akv_online_internal.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -fno-fast-math -ffp-contract=off $< -lm -o $@
 
 $(BUILD)/%.o: %.c
 	@mkdir -p $(dir $@)

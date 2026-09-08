@@ -21,6 +21,9 @@
 
 ## llama.cpp optimization integration
 
+- Treat llama.cpp/GGML as the primary runtime. Prioritize model, quantization,
+  attention-shape, and context-length coverage there; other runtimes are
+  optional adapters and must not weaken existing llama.cpp support.
 - Develop and measure an optimization first with a minimal benchmark using
   real llama.cpp model data. Do not tune only for synthetic inputs.
 - When an optimization has reproducible benefit, stable numerical semantics,

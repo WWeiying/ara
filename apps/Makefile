@@ -50,7 +50,7 @@ llama_q4km_operator/akv_v2_attention.S.o llama_q4km_operator/akv_v2_attention.S.
     ../software/akv/src/akv_v2_attention_rvv.S
 
 llama_q4km_operator/akv_runtime.c.o llama_q4km_operator/akv_runtime.c.o.spike: \
-    $(wildcard ../software/akv/src/*.c ../software/akv/include/akv/*.h)
+    $(wildcard ../software/akv/src/*.c ../software/akv/src/*.h ../software/akv/include/akv/*.h)
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
 APPS += $(patsubst $(APPS_DIR)/%/main.cpp,%,$(shell find $(APPS_DIR) -name "main.cpp"))

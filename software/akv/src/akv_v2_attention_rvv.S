@@ -1035,6 +1035,128 @@ akv_v2_update_outputs_f16_d256_generic:
     .size akv_v2_update_outputs_f16_d256_generic, \
           .-akv_v2_update_outputs_f16_d256_generic
 
+    .globl akv_v2_update_outputs_f16_d256_online
+    .type akv_v2_update_outputs_f16_d256_online,@function
+
+// a2 now contains one F32 scale per head/token, with the same 256-byte
+// row stride as a0. Rescale and round before that token's F32 FMA/F16 store.
+// The tile still delivers each V row once to a group of four Query heads.
+akv_v2_update_outputs_f16_d256_online:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    li              a5, 0x3f800000
+.Lakv_d256_online_group:
+    li              t5, 4
+    bltu            t4, t5, .Lakv_d256_online_tail
+    li              t5, 128
+    li              t6, 1
+    mv              a1, t1
+.Lakv_d256_online_segment:
+    vsetvli         zero, t5, e16, m2, ta, ma
+    mv              a4, a1
+    vle16.v         v0, (a4)
+    addi            a4, a4, 512
+    vle16.v         v2, (a4)
+    addi            a4, a4, 512
+    vle16.v         v4, (a4)
+    addi            a4, a4, 512
+    vle16.v         v6, (a4)
+    mv              a7, t0
+    mv              a2, t2
+    li              a6, 0
+.Lakv_d256_online_group_token:
+    slli            a0, a6, 2
+    or              a0, a0, t6
+    .word           0x0205345b  // vakvload.d128 v8:v9, low/high V segment
+    vfwcvt.f.f.v    v16, v8
+    .macro akv_d256_online_head accumulator, offset
+    lw              a4, \offset(a2)
+    beq             a4, a5, .Lakv_d256_no_rescale\@
+    fmv.w.x         ft4, a4
+    akv_d256_rescale \accumulator, ft4
+.Lakv_d256_no_rescale\@:
+    lw              a4, \offset(a7)
+    beqz            a4, .Lakv_d256_no_weight\@
+    fmv.w.x         ft0, a4
+    akv_d256_accumulate \accumulator, ft0
+.Lakv_d256_no_weight\@:
+    .endm
+    akv_d256_online_head v0, 0
+    akv_d256_online_head v2, 256
+    akv_d256_online_head v4, 512
+    akv_d256_online_head v6, 768
+    addi            a7, a7, 4
+    addi            a2, a2, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_d256_online_group_token
+    mv              a4, a1
+    vse16.v         v0, (a4)
+    addi            a4, a4, 512
+    vse16.v         v2, (a4)
+    addi            a4, a4, 512
+    vse16.v         v4, (a4)
+    addi            a4, a4, 512
+    vse16.v         v6, (a4)
+    addi            a1, a1, 256
+    addi            t6, t6, 1
+    li              a4, 3
+    bltu            t6, a4, .Lakv_d256_online_segment
+    addi            t0, t0, 1024
+    addi            t1, t1, 1024
+    addi            t1, t1, 1024
+    addi            t2, t2, 1024
+    addi            t4, t4, -4
+    j               .Lakv_d256_online_group
+.Lakv_d256_online_tail:
+    beqz            t4, .Lakv_d256_online_done
+.Lakv_d256_online_head:
+    li              t5, 128
+    vsetvli         zero, t5, e16, m2, ta, ma
+    vle16.v         v0, (t1)
+    addi            t6, t1, 256
+    vle16.v         v2, (t6)
+    mv              a7, t0
+    mv              a2, t2
+    li              a6, 0
+.Lakv_d256_online_token:
+    lw              a4, 0(a2)
+    beq             a4, a5, .Lakv_d256_online_tail_unscaled
+    fmv.w.x         ft4, a4
+    akv_d256_rescale v0, ft4
+    akv_d256_rescale v2, ft4
+.Lakv_d256_online_tail_unscaled:
+    lw              a4, 0(a7)
+    beqz            a4, .Lakv_d256_online_tail_masked
+    fmv.w.x         ft0, a4
+    slli            a0, a6, 2
+    ori             a0, a0, 1
+    .word           0x0205345b  // vakvload.d128 v8:v9, V[0:128]
+    vfwcvt.f.f.v    v16, v8
+    akv_d256_accumulate v0, ft0
+    addi            a0, a0, 1
+    .word           0x0205345b  // vakvload.d128 v8:v9, V[128:256]
+    vfwcvt.f.f.v    v16, v8
+    akv_d256_accumulate v2, ft0
+.Lakv_d256_online_tail_masked:
+    addi            a7, a7, 4
+    addi            a2, a2, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_d256_online_token
+    vse16.v         v0, (t1)
+    vse16.v         v2, (t6)
+    addi            t1, t1, 512
+    addi            t0, t0, 256
+    addi            t2, t2, 256
+    addi            t4, t4, -1
+    bnez            t4, .Lakv_d256_online_head
+.Lakv_d256_online_done:
+    ret
+    .size akv_v2_update_outputs_f16_d256_online, \
+          .-akv_v2_update_outputs_f16_d256_online
+
 #ifdef AKV_D256_TEST_REFERENCE
     // Test-only entries bypass batching and execute the original one-row
     // loops. They are not exported by normal benchmark or GGML builds.

@@ -73,6 +73,7 @@ def run_smoke(out, sim_dir):
                  timeout=10800)
     text = (out / "ara.log").read_text()
     if ("AKV D256 reuse smoke: PASS cases=8 bit_exact=1" not in text or
+            "AKV D256 online PV: PASS cases=8 bit_exact=1" not in text or
             "Core Test *** SUCCESS" not in text):
         return 1
     return rc

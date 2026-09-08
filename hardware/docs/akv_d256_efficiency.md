@@ -178,3 +178,61 @@ VCS 每点上限为三小时，长任务使用 tmux 独立后台执行，不连�
 不会周期性轮询长仿真日志。原始目录包含源码快照、ELF、日志和哈希；Git 只收录
 共享实现、测试、文档以及 `verification/akv/results/d256_efficiency_20260907/`
 中的小型结果快照。
+
+## 5. llama.cpp 优先的逐 token 数值兼容
+
+后续分支 `akv-d256-online-order` 从 `59eb50d3` 出发，保留前面的性能基线。
+主目标是扩大 llama.cpp 对模型、格式和 Attention 形状的可靠支持；其他运行时
+只酌情复用接口。本阶段不接入新的外部运行时，不改 RTL 或 GGML 默认 selector。
+
+当前实现保留 64-token QK 装载、panel4 列递送及四 Query-head 的 V 行复用，
+但 D256 的 Softmax 改为记录每个 token 到来时的运行最大值：
+
+1. 已遮蔽的 token 保留零权重，不计算 `-Inf - -Inf`。
+2. 分数超过此前最大值时，记录 `exp(old_max - new_score)` 缩放因子。
+3. 每个权重按它自己的运行最大值计算，exp 仍批量使用原 RVV 实现。
+4. PV 在对应 token 之前执行 F32 缩放并舍入到 F16，再执行该 token 的
+   F32 FMA 并舍入到 F16；没有新最大值时跳过多余缩放。
+5. 分母按 token 顺序执行单独的 F32 乘法和加法，不再每 tile 归约一次。
+
+缩放因子使用最多 `8 x 64 x 4 = 2048` 字节的软件局部数组，不增加硬件 context
+或改变公共 workspace/descriptor ABI。编译器自身的栈帧和寄存器 spill 另外计入
+软件开销。旧逐 tile PV 函数保留作回归对照；新函数仅用于实验性 D256 执行路径。
+D64/D96/D128、Prefill 和 QBS 的算法、指令和选择条件均不改变。
+
+这项修改修正的是已测的 D256 Decode 中间舍入顺序，不声称与所有 GGML 算法逐位
+一致。QK 和 exp 实现仍存在原有的数值差异；带 sink 等组合也不能仅从本次无 sink
+Gemma 输入推广。D256 仍必须同时通过原数值容差和性能准入，才能另行考虑接管 GGML。
+
+已完成的静态与 Host 检查：
+
+- `make -C software/akv check`：原合约检查、192 组布局/功能和新增 108 组
+  token-order 检查通过。108 组覆盖 1/3/17/64/65/140 token、三种软件分块、
+  前导遮蔽/遮蔽空洞/全遮蔽，以及已初始化的 sink 分母状态。
+- Host 编译器不提供 `_Float16`，因此 Host 新测试明确只验证 F32 调度和分母。
+  F16 舍入另由原生 PV 测试与独立 RVV-memory oracle 对比，不假称 Host 已测 F16。
+- 新 PV 和实际 native C 调度均使用项目 LLVM 交叉编译通过；不使用 ZCC。
+- 原有 D256 结果收集/数值诊断的 12 项 Python 测试通过。
+
+原生测试新增逐 token 缩放、零权重、四-head 和 1..3-head 尾组，对照普通 RVV
+内存加载实现的 PV，并同时检查整个输出、未使用区域及 `fflags`。复用既有八组
+RNE/RDN、token 尾部和带 padding 的测试输入，不覆盖前一次运行记录。
+
+后台入口：
+
+```bash
+python3 verification/akv/run_d256_online_order.py \
+  --output hardware/akv_d256_efficiency_runs/online_order_20260908
+```
+
+入口按以下顺序串行执行，任一点失败便停止后续点：真实 Gemma KV140、八组原生
+PV 对照、Gemma KV17、Qwen D128、SmolLM2 D64、Phi D96、同一 Gemma KV140 的
+普通 RVV。每次启动要求全新的目录；保存源码和 ELF 哈希，软件在运行期间发生
+变化便停止后续点，防止混合版本。所有点复用原基线同一个 simv，每点 VCS 上限
+三小时，不持续轮询日志。
+
+本节写入时上述新 VCS 结果仍待运行，不能把 Host 通过写成原生通过。
+原 KV140 tiled-RVV 已超差，不作为有效加速比分母；只有数值通过的同输入基线
+才能用于新的性能结论。新结果由独立目录中的 `status.json`、各点 `stage.json`
+及原生日志决定；`successful_metrics.csv` 只包含通过点，失败/未执行点保留在
+状态表中，不更新原有总表或论文数据。
