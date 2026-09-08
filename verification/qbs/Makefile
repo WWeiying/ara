@@ -16,6 +16,7 @@ RTL_ENGINE_BUILD := rtl_engine_build
 RTL_CONTEXT_BUILD := rtl_context_build
 RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
 RTL_RUN_TIMEOUT ?= 10800
+RTL_EXTRA_SOURCES ?=
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
 RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
@@ -48,6 +49,7 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_compute_engine.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_commit.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_engine.sv
+RTL_SOURCES += $(RTL_EXTRA_SOURCES)
 RTL_PROFILE_SOURCES := $(RTL_SOURCES) $(abspath qbs_profile_engine_tb.sv)
 RTL_COMMAND_SOURCES := $(RTL_SOURCES) $(abspath qbs_compute_engine_tb.sv)
 RTL_DESCRIPTOR_SOURCES := $(RTL_SOURCES) $(abspath qbs_descriptor_decoder_tb.sv)

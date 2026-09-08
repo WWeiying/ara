@@ -198,52 +198,56 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VAADD, VAADDU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [7:0] half_a =
-                    {(op_i == VAADD) & opa.w8[b][7], opa.w8[b][7:1]};
-                automatic logic [7:0] half_b =
-                    {(op_i == VAADD) & opb.w8[b][7], opb.w8[b][7:1]};
-                automatic logic low_carry = opa.w8[b][0] & opb.w8[b][0];
+                automatic logic signed_mode = op_i == VAADD;
                 automatic logic retained_lsb =
-                    half_a[0] ^ half_b[0] ^ low_carry;
+                    opa.w8[b][1] ^ opb.w8[b][1] ^
+                    (opa.w8[b][0] & opb.w8[b][0]);
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opa.w8[b][0] ^ opb.w8[b][0], vxrm);
-                res.w8[b] = half_b + half_a + low_carry + round;
+                automatic logic [8:0] rounded_sum =
+                    {signed_mode & opb.w8[b][7], opb.w8[b]} +
+                    {signed_mode & opa.w8[b][7], opa.w8[b]} +
+                    {7'b0, round, 1'b0};
+                res.w8[b] = rounded_sum[8:1];
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] half_a =
-                    {(op_i == VAADD) & opa.w16[b][15], opa.w16[b][15:1]};
-                automatic logic [15:0] half_b =
-                    {(op_i == VAADD) & opb.w16[b][15], opb.w16[b][15:1]};
-                automatic logic low_carry = opa.w16[b][0] & opb.w16[b][0];
+                automatic logic signed_mode = op_i == VAADD;
                 automatic logic retained_lsb =
-                    half_a[0] ^ half_b[0] ^ low_carry;
+                    opa.w16[b][1] ^ opb.w16[b][1] ^
+                    (opa.w16[b][0] & opb.w16[b][0]);
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opa.w16[b][0] ^ opb.w16[b][0], vxrm);
-                res.w16[b] = half_b + half_a + low_carry + round;
+                automatic logic [16:0] rounded_sum =
+                    {signed_mode & opb.w16[b][15], opb.w16[b]} +
+                    {signed_mode & opa.w16[b][15], opa.w16[b]} +
+                    {15'b0, round, 1'b0};
+                res.w16[b] = rounded_sum[16:1];
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] half_a =
-                    {(op_i == VAADD) & opa.w32[b][31], opa.w32[b][31:1]};
-                automatic logic [31:0] half_b =
-                    {(op_i == VAADD) & opb.w32[b][31], opb.w32[b][31:1]};
-                automatic logic low_carry = opa.w32[b][0] & opb.w32[b][0];
+                automatic logic signed_mode = op_i == VAADD;
                 automatic logic retained_lsb =
-                    half_a[0] ^ half_b[0] ^ low_carry;
+                    opa.w32[b][1] ^ opb.w32[b][1] ^
+                    (opa.w32[b][0] & opb.w32[b][0]);
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opa.w32[b][0] ^ opb.w32[b][0], vxrm);
-                res.w32[b] = half_b + half_a + low_carry + round;
+                automatic logic [32:0] rounded_sum =
+                    {signed_mode & opb.w32[b][31], opb.w32[b]} +
+                    {signed_mode & opa.w32[b][31], opa.w32[b]} +
+                    {31'b0, round, 1'b0};
+                res.w32[b] = rounded_sum[32:1];
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] half_a =
-                    {(op_i == VAADD) & opa.w64[b][63], opa.w64[b][63:1]};
-                automatic logic [63:0] half_b =
-                    {(op_i == VAADD) & opb.w64[b][63], opb.w64[b][63:1]};
-                automatic logic low_carry = opa.w64[b][0] & opb.w64[b][0];
+                automatic logic signed_mode = op_i == VAADD;
                 automatic logic retained_lsb =
-                    half_a[0] ^ half_b[0] ^ low_carry;
+                    opa.w64[b][1] ^ opb.w64[b][1] ^
+                    (opa.w64[b][0] & opb.w64[b][0]);
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opa.w64[b][0] ^ opb.w64[b][0], vxrm);
-                res.w64[b] = half_b + half_a + low_carry + round;
+                automatic logic [64:0] rounded_sum =
+                    {signed_mode & opb.w64[b][63], opb.w64[b]} +
+                    {signed_mode & opa.w64[b][63], opa.w64[b]} +
+                    {63'b0, round, 1'b0};
+                res.w64[b] = rounded_sum[64:1];
               end
           endcase
         VADD, VADC, VMADC, VREDSUM, VWREDSUMU, VWREDSUM: unique case (vew_i)
@@ -346,52 +350,56 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
           endcase
         VASUB, VASUBU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8: for (int b = 0; b < 8; b++) begin
-                automatic logic [7:0] half_a =
-                    {(op_i == VASUB) & opa.w8[b][7], opa.w8[b][7:1]};
-                automatic logic [7:0] half_b =
-                    {(op_i == VASUB) & opb.w8[b][7], opb.w8[b][7:1]};
+                automatic logic signed_mode = op_i == VASUB;
                 automatic logic low_borrow = ~opb.w8[b][0] & opa.w8[b][0];
                 automatic logic retained_lsb =
-                    half_b[0] ^ half_a[0] ^ low_borrow;
+                    opb.w8[b][1] ^ opa.w8[b][1] ^ low_borrow;
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opb.w8[b][0] ^ opa.w8[b][0], vxrm);
-                res.w8[b] = half_b - half_a - low_borrow + round;
+                automatic logic [8:0] rounded_sub =
+                    {signed_mode & opb.w8[b][7], opb.w8[b]} -
+                    {signed_mode & opa.w8[b][7], opa.w8[b]} +
+                    {7'b0, round, 1'b0};
+                res.w8[b] = rounded_sub[8:1];
               end
             EW16: for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] half_a =
-                    {(op_i == VASUB) & opa.w16[b][15], opa.w16[b][15:1]};
-                automatic logic [15:0] half_b =
-                    {(op_i == VASUB) & opb.w16[b][15], opb.w16[b][15:1]};
+                automatic logic signed_mode = op_i == VASUB;
                 automatic logic low_borrow = ~opb.w16[b][0] & opa.w16[b][0];
                 automatic logic retained_lsb =
-                    half_b[0] ^ half_a[0] ^ low_borrow;
+                    opb.w16[b][1] ^ opa.w16[b][1] ^ low_borrow;
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opb.w16[b][0] ^ opa.w16[b][0], vxrm);
-                res.w16[b] = half_b - half_a - low_borrow + round;
+                automatic logic [16:0] rounded_sub =
+                    {signed_mode & opb.w16[b][15], opb.w16[b]} -
+                    {signed_mode & opa.w16[b][15], opa.w16[b]} +
+                    {15'b0, round, 1'b0};
+                res.w16[b] = rounded_sub[16:1];
               end
             EW32: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] half_a =
-                    {(op_i == VASUB) & opa.w32[b][31], opa.w32[b][31:1]};
-                automatic logic [31:0] half_b =
-                    {(op_i == VASUB) & opb.w32[b][31], opb.w32[b][31:1]};
+                automatic logic signed_mode = op_i == VASUB;
                 automatic logic low_borrow = ~opb.w32[b][0] & opa.w32[b][0];
                 automatic logic retained_lsb =
-                    half_b[0] ^ half_a[0] ^ low_borrow;
+                    opb.w32[b][1] ^ opa.w32[b][1] ^ low_borrow;
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opb.w32[b][0] ^ opa.w32[b][0], vxrm);
-                res.w32[b] = half_b - half_a - low_borrow + round;
+                automatic logic [32:0] rounded_sub =
+                    {signed_mode & opb.w32[b][31], opb.w32[b]} -
+                    {signed_mode & opa.w32[b][31], opa.w32[b]} +
+                    {31'b0, round, 1'b0};
+                res.w32[b] = rounded_sub[32:1];
               end
             EW64: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] half_a =
-                    {(op_i == VASUB) & opa.w64[b][63], opa.w64[b][63:1]};
-                automatic logic [63:0] half_b =
-                    {(op_i == VASUB) & opb.w64[b][63], opb.w64[b][63:1]};
+                automatic logic signed_mode = op_i == VASUB;
                 automatic logic low_borrow = ~opb.w64[b][0] & opa.w64[b][0];
                 automatic logic retained_lsb =
-                    half_b[0] ^ half_a[0] ^ low_borrow;
+                    opb.w64[b][1] ^ opa.w64[b][1] ^ low_borrow;
                 automatic logic round = average_rounding_increment(
                     retained_lsb, opb.w64[b][0] ^ opa.w64[b][0], vxrm);
-                res.w64[b] = half_b - half_a - low_borrow + round;
+                automatic logic [64:0] rounded_sub =
+                    {signed_mode & opb.w64[b][63], opb.w64[b]} -
+                    {signed_mode & opa.w64[b][63], opa.w64[b]} +
+                    {63'b0, round, 1'b0};
+                res.w64[b] = rounded_sub[64:1];
               end
           endcase
 
@@ -474,55 +482,80 @@ module simd_alu import ara_pkg::*; import rvv_pkg::*; #(
             EW8 : for (int b = 0; b < 4; b++) begin
                 automatic logic signed [15:0] shifted =
                     $signed(opb.w16[b]) >>> opa.w16[b][3:0];
-                automatic logic signed [16:0] rounded =
-                    $signed({shifted[15], shifted}) + $signed({16'b0, rm[b]});
-                automatic logic sat = rounded[16:8] != {9{rounded[7]}};
+                automatic logic [8:0] low_sum =
+                    {1'b0, shifted[7:0]} + rm[b];
+                automatic logic negative = shifted[15];
+                automatic logic sat = negative
+                    ? ((shifted[15:8] != 8'hff) ||
+                       (!low_sum[8] && !low_sum[7]))
+                    : ((shifted[15:8] != 8'h00) ||
+                       low_sum[8] || low_sum[7]);
                 vxsat.w8[2*b + narrowing_select_i] = sat;
                 res.w8[2*b + narrowing_select_i] = sat
-                    ? (rounded[16] ? 8'h80 : 8'h7f) : rounded[7:0];
+                    ? (negative ? 8'h80 : 8'h7f) : low_sum[7:0];
               end
             EW16: for (int b = 0; b < 2; b++) begin
                 automatic logic signed [31:0] shifted =
                     $signed(opb.w32[b]) >>> opa.w32[b][4:0];
-                automatic logic signed [32:0] rounded =
-                    $signed({shifted[31], shifted}) + $signed({32'b0, rm[b]});
-                automatic logic sat = rounded[32:16] != {17{rounded[15]}};
+                automatic logic [16:0] low_sum =
+                    {1'b0, shifted[15:0]} + rm[b];
+                automatic logic negative = shifted[31];
+                automatic logic sat = negative
+                    ? ((shifted[31:16] != 16'hffff) ||
+                       (!low_sum[16] && !low_sum[15]))
+                    : ((shifted[31:16] != 16'h0000) ||
+                       low_sum[16] || low_sum[15]);
                 vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
                 res.w16[2*b + narrowing_select_i] = sat
-                    ? (rounded[32] ? 16'h8000 : 16'h7fff) : rounded[15:0];
+                    ? (negative ? 16'h8000 : 16'h7fff) : low_sum[15:0];
               end
             EW32: for (int b = 0; b < 1; b++) begin
                 automatic logic signed [63:0] shifted =
                     $signed(opb.w64[b]) >>> opa.w64[b][5:0];
-                automatic logic signed [64:0] rounded =
-                    $signed({shifted[63], shifted}) + $signed({64'b0, rm[b]});
-                automatic logic sat = rounded[64:32] != {33{rounded[31]}};
+                automatic logic [32:0] low_sum =
+                    {1'b0, shifted[31:0]} + rm[b];
+                automatic logic negative = shifted[63];
+                automatic logic sat = negative
+                    ? ((shifted[63:32] != 32'hffff_ffff) ||
+                       (!low_sum[32] && !low_sum[31]))
+                    : ((shifted[63:32] != 32'h0000_0000) ||
+                       low_sum[32] || low_sum[31]);
                 vxsat.w32[narrowing_select_i] = {4{sat}};
                 res.w32[narrowing_select_i] = sat
-                    ? (rounded[64] ? 32'h80000000 : 32'h7fffffff) : rounded[31:0];
+                    ? (negative ? 32'h8000_0000 : 32'h7fff_ffff)
+                    : low_sum[31:0];
               end
           endcase
         VNCLIPU: if (FixPtSupport == FixedPointEnable) unique case (vew_i)
             EW8 : for (int b = 0; b < 4; b++) begin
-                automatic logic [15:0] rounded =
-                    (opb.w16[b] >> opa.w16[b][3:0]) + rm[b];
-                automatic logic sat = |rounded[15:8];
+                automatic logic [15:0] shifted =
+                    opb.w16[b] >> opa.w16[b][3:0];
+                automatic logic [8:0] low_sum =
+                    {1'b0, shifted[7:0]} + rm[b];
+                automatic logic sat = |shifted[15:8] || low_sum[8];
                 vxsat.w8[2*b + narrowing_select_i] = sat;
-                res.w8[2*b + narrowing_select_i] = sat ? 8'hff : rounded[7:0];
+                res.w8[2*b + narrowing_select_i] = sat
+                    ? 8'hff : low_sum[7:0];
               end
             EW16: for (int b = 0; b < 2; b++) begin
-                automatic logic [31:0] rounded =
-                    (opb.w32[b] >> opa.w32[b][4:0]) + rm[b];
-                automatic logic sat = |rounded[31:16];
+                automatic logic [31:0] shifted =
+                    opb.w32[b] >> opa.w32[b][4:0];
+                automatic logic [16:0] low_sum =
+                    {1'b0, shifted[15:0]} + rm[b];
+                automatic logic sat = |shifted[31:16] || low_sum[16];
                 vxsat.w16[2*b + narrowing_select_i] = {2{sat}};
-                res.w16[2*b + narrowing_select_i] = sat ? 16'hffff : rounded[15:0];
+                res.w16[2*b + narrowing_select_i] = sat
+                    ? 16'hffff : low_sum[15:0];
               end
             EW32: for (int b = 0; b < 1; b++) begin
-                automatic logic [63:0] rounded =
-                    (opb.w64[b] >> opa.w64[b][5:0]) + rm[b];
-                automatic logic sat = |rounded[63:32];
+                automatic logic [63:0] shifted =
+                    opb.w64[b] >> opa.w64[b][5:0];
+                automatic logic [32:0] low_sum =
+                    {1'b0, shifted[31:0]} + rm[b];
+                automatic logic sat = |shifted[63:32] || low_sum[32];
                 vxsat.w32[narrowing_select_i] = {4{sat}};
-                res.w32[narrowing_select_i] = sat ? 32'hffffffff : rounded[31:0];
+                res.w32[narrowing_select_i] = sat
+                    ? 32'hffff_ffff : low_sum[31:0];
               end
           endcase
 

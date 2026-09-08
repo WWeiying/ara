@@ -102,36 +102,33 @@ module qbs_profile_engine_int import qbs_pkg::*; (
 
   logic [3:0] meta_group_index_q;
   logic meta_group_end_q;
-  logic signed [7:0] meta_scale_q [16];
-  logic [7:0] meta_min_q [16];
-  logic signed [15:0] meta_aux_q [16];
-  logic [15:0] meta_weight_d_q [4];
-  logic [15:0] meta_weight_dmin_q [4];
-  logic [31:0] meta_activation_d_q [4];
+  // A stream is {weight row, local activation context}. Do not replicate
+  // row-only or context-only metadata across all sixteen streams.
+  logic signed [7:0] meta_row_scale_q [4];
+  logic [5:0] meta_row_min_q [4];
+  logic signed [15:0] meta_context_aux_q [4];
+  logic [15:0] context_weight_d_q [NumContexts][4];
+  logic [15:0] context_weight_dmin_q [NumContexts][4];
+  logic [31:0] context_activation_d_q [NumContexts][4];
 
   logic dot_valid;
   logic [15:0] dot_stream_valid;
   logic signed [18:0] dot_stream_sum [16];
-  logic signed [31:0] group_partial_q [NumContexts][NumStreams];
+  // The largest unscaled group has 32 signed INT8 products (+524288).
+  // Q6_K bounds a block subtotal to [-2^27, 2^27-1]. Keep guard bits in
+  // the correction arithmetic and check before narrowing stored results.
+  logic signed [20:0] group_partial_q [NumContexts][NumStreams];
 
   logic [NumStreams-1:0] slot_valid_q [NumContexts];
-  logic signed [31:0] slot_dot_q [NumContexts][NumStreams];
+  logic signed [20:0] slot_dot_q [NumContexts][NumStreams];
   logic signed [15:0] slot_aux_q [NumContexts][NumStreams];
   logic signed [7:0] slot_scale_q [NumContexts][NumStreams];
-  logic [7:0] slot_min_q [NumContexts][NumStreams];
+  logic [5:0] slot_min_q [NumContexts][NumStreams];
   logic slot_last_q [NumContexts][NumStreams];
-  logic [15:0] slot_weight_d_q [NumContexts][NumStreams];
-  logic [15:0] slot_weight_dmin_q [NumContexts][NumStreams];
-  logic [31:0] slot_activation_d_q [NumContexts][NumStreams];
-  logic signed [31:0] subtotal_dot_q [NumContexts][NumStreams];
+  logic signed [27:0] subtotal_dot_q [NumContexts][NumStreams];
   logic signed [31:0] subtotal_aux_q [NumContexts][NumStreams];
 
   logic [NumStreams-1:0] result_pending_q [NumContexts];
-  logic signed [31:0] result_dot_q [NumContexts][NumStreams];
-  logic signed [31:0] result_aux_q [NumContexts][NumStreams];
-  logic [15:0] result_weight_d_q [NumContexts][NumStreams];
-  logic [15:0] result_weight_dmin_q [NumContexts][NumStreams];
-  logic [31:0] result_activation_d_q [NumContexts][NumStreams];
 
   logic [4:0] result_rr_q;
   logic result_context;
@@ -142,8 +139,11 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   logic [1:0] correction_valid;
   logic correction_context [2];
   logic [3:0] correction_stream [2];
-  logic signed [47:0] correction_dot [2];
-  logic signed [47:0] correction_aux [2];
+  logic signed [28:0] correction_dot_product [2];
+  logic signed [29:0] correction_dot [2];
+  // Preserve all sixteen encoded bsum bits, including noncanonical inputs.
+  logic signed [22:0] correction_aux_product [2];
+  logic signed [32:0] correction_aux [2];
 
   logic [FlatEntries-1:0] correction_pending_flat;
   logic [FlatEntries-1:0] correction_first_upper_mask;
@@ -343,35 +343,45 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   // worst-case rate of two 16-element groups per cycle. Both lanes implement
   // affine correction because Q2_K can sustain that rate.
   always_comb begin
+    correction_dot_product = '{default: '0};
+    correction_aux_product = '{default: '0};
     correction_dot = '{default: '0};
     correction_aux = '{default: '0};
 
     if (correction_valid[0]) begin
-      correction_dot[0] =
-          $signed(subtotal_dot_q[correction_context[0]][correction_stream[0]]) +
+      correction_dot_product[0] =
           $signed(slot_dot_q[correction_context[0]][correction_stream[0]]) *
           $signed(slot_scale_q[correction_context[0]][correction_stream[0]]);
+      correction_dot[0] =
+          $signed(subtotal_dot_q[correction_context[0]][correction_stream[0]]) +
+          $signed(correction_dot_product[0]);
       correction_aux[0] =
           $signed(subtotal_aux_q[correction_context[0]][correction_stream[0]]);
-      if (context_affine_q[correction_context[0]])
-        correction_aux[0] = correction_aux[0] +
+      if (context_affine_q[correction_context[0]]) begin
+        correction_aux_product[0] =
             $signed(slot_aux_q[correction_context[0]][correction_stream[0]]) *
             $signed({1'b0,
                 slot_min_q[correction_context[0]][correction_stream[0]]});
+        correction_aux[0] = correction_aux[0] + $signed(correction_aux_product[0]);
+      end
     end
 
     if (correction_valid[1]) begin
-      correction_dot[1] =
-          $signed(subtotal_dot_q[correction_context[1]][correction_stream[1]]) +
+      correction_dot_product[1] =
           $signed(slot_dot_q[correction_context[1]][correction_stream[1]]) *
           $signed(slot_scale_q[correction_context[1]][correction_stream[1]]);
+      correction_dot[1] =
+          $signed(subtotal_dot_q[correction_context[1]][correction_stream[1]]) +
+          $signed(correction_dot_product[1]);
       correction_aux[1] =
           $signed(subtotal_aux_q[correction_context[1]][correction_stream[1]]);
-      if (context_affine_q[correction_context[1]])
-        correction_aux[1] = correction_aux[1] +
+      if (context_affine_q[correction_context[1]]) begin
+        correction_aux_product[1] =
             $signed(slot_aux_q[correction_context[1]][correction_stream[1]]) *
             $signed({1'b0,
                 slot_min_q[correction_context[1]][correction_stream[1]]});
+        correction_aux[1] = correction_aux[1] + $signed(correction_aux_product[1]);
+      end
     end
   end
 
@@ -404,13 +414,16 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         result_row_base_o = context_row_base_q[context_index];
         result_row_count_o = context_row_count_q[context_index];
         result_first_block_o = context_first_block_q[context_index];
-        result_dot_o = result_dot_q[context_index][stream_index];
-        result_aux_o = result_aux_q[context_index][stream_index];
-        result_weight_d_o = result_weight_d_q[context_index][stream_index];
+        // A context cannot be reused until every pending result is consumed.
+        // Its final subtotals already provide stable result storage.
+        result_dot_o = subtotal_dot_q[context_index][stream_index];
+        result_aux_o = context_affine_q[context_index]
+            ? $signed(subtotal_aux_q[context_index][stream_index]) : 32'sd0;
+        result_weight_d_o = context_weight_d_q[context_index][stream_index[3:2]];
         result_weight_dmin_o =
-            result_weight_dmin_q[context_index][stream_index];
+            context_weight_dmin_q[context_index][stream_index[3:2]];
         result_activation_d_o =
-            result_activation_d_q[context_index][stream_index];
+            context_activation_d_q[context_index][stream_index[1:0]];
       end
     end
   end
@@ -454,6 +467,11 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         context_first_block_q[context_index] <= 1'b0;
         slot_valid_q[context_index] <= '0;
         result_pending_q[context_index] <= '0;
+        for (int index = 0; index < 4; index++) begin
+          context_weight_d_q[context_index][index] <= '0;
+          context_weight_dmin_q[context_index][index] <= '0;
+          context_activation_d_q[context_index][index] <= '0;
+        end
         for (int stream = 0; stream < NumStreams; stream++) begin
           group_partial_q[context_index][stream] <= '0;
           subtotal_dot_q[context_index][stream] <= '0;
@@ -463,14 +481,6 @@ module qbs_profile_engine_int import qbs_pkg::*; (
           slot_scale_q[context_index][stream] <= '0;
           slot_min_q[context_index][stream] <= '0;
           slot_last_q[context_index][stream] <= 1'b0;
-          slot_weight_d_q[context_index][stream] <= '0;
-          slot_weight_dmin_q[context_index][stream] <= '0;
-          slot_activation_d_q[context_index][stream] <= '0;
-          result_dot_q[context_index][stream] <= '0;
-          result_aux_q[context_index][stream] <= '0;
-          result_weight_d_q[context_index][stream] <= '0;
-          result_weight_dmin_q[context_index][stream] <= '0;
-          result_activation_d_q[context_index][stream] <= '0;
         end
       end
 
@@ -480,16 +490,12 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         group_aux_o[stream] <= '0;
         group_scale_o[stream] <= '0;
         group_min_o[stream] <= '0;
-        meta_scale_q[stream] <= '0;
-        meta_min_q[stream] <= '0;
-        meta_aux_q[stream] <= '0;
       end
-      for (int row = 0; row < 4; row++) begin
-        meta_weight_d_q[row] <= '0;
-        meta_weight_dmin_q[row] <= '0;
+      for (int index = 0; index < 4; index++) begin
+        meta_row_scale_q[index] <= '0;
+        meta_row_min_q[index] <= '0;
+        meta_context_aux_q[index] <= '0;
       end
-      for (int context_index = 0; context_index < 4; context_index++)
-        meta_activation_d_q[context_index] <= '0;
     end else begin
       done_o <= 1'b0;
       group_valid_o <= '0;
@@ -550,43 +556,34 @@ module qbs_profile_engine_int import qbs_pkg::*; (
         dot_context_q <= s0_context_q;
         meta_group_index_q <= decoder_group_index;
         meta_group_end_q <= decoder_group_end;
-        for (int stream = 0; stream < NumStreams; stream++) begin
-          meta_scale_q[stream] <= decoder_scale[stream];
-          meta_min_q[stream] <= decoder_min[stream];
-          meta_aux_q[stream] <= decoder_aux[stream];
+        for (int index = 0; index < 4; index++) begin
+          meta_row_scale_q[index] <= decoder_scale[4 * index];
+          meta_row_min_q[index] <= decoder_min[4 * index][5:0];
+          meta_context_aux_q[index] <= decoder_aux[index];
+          if (s0_k_base_q == 0) begin
+            context_weight_d_q[s0_context_q][index] <= decoder_weight_d[index];
+            context_weight_dmin_q[s0_context_q][index] <= decoder_weight_dmin[index];
+            context_activation_d_q[s0_context_q][index] <= decoder_activation_d[index];
+          end
         end
-        for (int row = 0; row < 4; row++) begin
-          meta_weight_d_q[row] <= decoder_weight_d[row];
-          meta_weight_dmin_q[row] <= decoder_weight_dmin[row];
-        end
-        for (int context_index = 0; context_index < 4; context_index++)
-          meta_activation_d_q[context_index] <=
-              decoder_activation_d[context_index];
       end
 
       if (correction_consume_any)
         correction_rr_q <= correction_last_index + 1'b1;
       for (int lane = 0; lane < 2; lane++) begin
         if (correction_valid[lane]) begin
+`ifndef SYNTHESIS
+          assert (!result_pending_q[correction_context[lane]][correction_stream[lane]])
+            else $fatal(1, "QBS correction overwrote an unconsumed result");
+`endif
           slot_valid_q[correction_context[lane]][correction_stream[lane]] <= 1'b0;
           subtotal_dot_q[correction_context[lane]][correction_stream[lane]] <=
-              correction_dot[lane][31:0];
+              correction_dot[lane][27:0];
           subtotal_aux_q[correction_context[lane]][correction_stream[lane]] <=
               correction_aux[lane][31:0];
           if (slot_last_q[correction_context[lane]][correction_stream[lane]]) begin
             result_pending_q[correction_context[lane]][correction_stream[lane]] <=
                 1'b1;
-            result_dot_q[correction_context[lane]][correction_stream[lane]] <=
-                correction_dot[lane][31:0];
-            result_aux_q[correction_context[lane]][correction_stream[lane]] <=
-                context_affine_q[correction_context[lane]]
-                ? correction_aux[lane][31:0] : '0;
-            result_weight_d_q[correction_context[lane]][correction_stream[lane]] <=
-                slot_weight_d_q[correction_context[lane]][correction_stream[lane]];
-            result_weight_dmin_q[correction_context[lane]][correction_stream[lane]] <=
-                slot_weight_dmin_q[correction_context[lane]][correction_stream[lane]];
-            result_activation_d_q[correction_context[lane]][correction_stream[lane]] <=
-                slot_activation_d_q[correction_context[lane]][correction_stream[lane]];
           end
         end
       end
@@ -594,34 +591,32 @@ module qbs_profile_engine_int import qbs_pkg::*; (
       if (dot_valid) begin
         for (int stream = 0; stream < NumStreams; stream++) begin
           if (dot_stream_valid[stream]) begin
-            automatic logic signed [31:0] group_total;
+            automatic logic signed [21:0] group_total;
             group_total = group_partial_q[dot_context_q][stream] +
                 dot_stream_sum[stream];
             if (meta_group_end_q) begin
               group_partial_q[dot_context_q][stream] <= '0;
               slot_valid_q[dot_context_q][stream] <= 1'b1;
-              slot_dot_q[dot_context_q][stream] <= group_total;
-              slot_aux_q[dot_context_q][stream] <= meta_aux_q[stream];
-              slot_scale_q[dot_context_q][stream] <= meta_scale_q[stream];
-              slot_min_q[dot_context_q][stream] <= meta_min_q[stream];
+              slot_dot_q[dot_context_q][stream] <= group_total[20:0];
+              slot_aux_q[dot_context_q][stream] <= meta_context_aux_q[stream % 4];
+              slot_scale_q[dot_context_q][stream] <= meta_row_scale_q[stream / 4];
+              slot_min_q[dot_context_q][stream] <= meta_row_min_q[stream / 4];
               slot_last_q[dot_context_q][stream] <=
                   unsigned'(meta_group_index_q) + 1 ==
                       context_subgroup_count_q[dot_context_q];
-              slot_weight_d_q[dot_context_q][stream] <=
-                  meta_weight_d_q[stream / 4];
-              slot_weight_dmin_q[dot_context_q][stream] <=
-                  meta_weight_dmin_q[stream / 4];
-              slot_activation_d_q[dot_context_q][stream] <=
-                  meta_activation_d_q[stream % 4];
               group_valid_o[stream] <= 1'b1;
               group_index_o[stream] <= meta_group_index_q;
               group_dot_o[stream] <= group_total;
-              group_aux_o[stream] <= meta_aux_q[stream];
-              group_scale_o[stream] <= meta_scale_q[stream];
-              group_min_o[stream] <= meta_min_q[stream];
+              group_aux_o[stream] <= meta_context_aux_q[stream % 4];
+              group_scale_o[stream] <= meta_row_scale_q[stream / 4];
+              group_min_o[stream] <= {2'b0, meta_row_min_q[stream / 4]};
             end else begin
-              group_partial_q[dot_context_q][stream] <= group_total;
+              group_partial_q[dot_context_q][stream] <= group_total[20:0];
             end
+`ifndef SYNTHESIS
+            assert (group_total[21] == group_total[20])
+              else $fatal(1, "QBS unscaled group overflow");
+`endif
           end
         end
       end
@@ -659,13 +654,12 @@ module qbs_profile_engine_int import qbs_pkg::*; (
       end
       for (int lane = 0; lane < 2; lane++) begin
         if (correction_valid[lane]) begin
-          assert (correction_dot[lane] <= 48'sh0000_7fff_ffff &&
-                  correction_dot[lane] >= -48'sh0000_8000_0000)
+          assert (correction_dot[lane] <= 30'sd134217727 &&
+                  correction_dot[lane] >= -30'sd134217728)
             else $fatal(1,
                 "QBS dot subtotal overflow: context=%0d stream=%0d",
                 correction_context[lane], correction_stream[lane]);
-          assert (correction_aux[lane] <= 48'sh0000_7fff_ffff &&
-                  correction_aux[lane] >= -48'sh0000_8000_0000)
+          assert (correction_aux[lane][32] == correction_aux[lane][31])
             else $fatal(1,
                 "QBS aux subtotal overflow: context=%0d stream=%0d",
                 correction_context[lane], correction_stream[lane]);
@@ -681,6 +675,20 @@ module qbs_profile_engine_int import qbs_pkg::*; (
               else $fatal(1,
                   "QBS correction slot overflow: context=%0d stream=%0d",
                   context_index, stream);
+          end
+        end
+      end
+      if (s0_valid_q) begin
+        if (s0_k_base_q == 0)
+          assert (result_pending_q[s0_context_q] == '0)
+            else $fatal(1, "QBS metadata overwritten before result drain");
+        for (int stream = 0; stream < NumStreams; stream++) begin
+          if (decoder_stream_valid[stream]) begin
+            assert (decoder_scale[stream] == decoder_scale[4 * (stream / 4)] &&
+                    decoder_min[stream] == decoder_min[4 * (stream / 4)] &&
+                    decoder_aux[stream] == decoder_aux[stream % 4] &&
+                    decoder_min[stream] <= 8'd63)
+              else $fatal(1, "QBS row/context metadata factoring violated");
           end
         end
       end

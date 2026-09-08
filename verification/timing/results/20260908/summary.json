@@ -1,0 +1,74 @@
+{
+  "date": "2026-09-08",
+  "baseline_commit": "b07e194deb4bc8cc88cc26cb1266893b9e92612d",
+  "source_branch": "ara_dsa_timing",
+  "source_head": "3349cf83",
+  "target_branch": "ara_dsa",
+  "rtl_sha256": {
+    "hardware/src/lane/simd_alu.sv": "be02f437155ea39e59dffb4b336b8b684145a303dc0e5285ff43a292c14774b8",
+    "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv": "476fc06632181c63d53a230d790efda6a7637e642ef94054f4f853755c6861b3",
+    "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv": "3e329c9fe9301f62737672f02a8efbb41f048414fbd74ff6afdfda4e0fe165b0"
+  },
+  "tests": {
+    "integer_bounds": {
+      "status": "PASS",
+      "tests": 3
+    },
+    "qbs_profile": {
+      "status": "PASS",
+      "cases": 448,
+      "reference_cycle_compare": true,
+      "log": "/tmp/ara_dsa_timing_port_20260908_equiv/profile/run.log"
+    },
+    "qbs_engine": {
+      "status": "PASS",
+      "cases": 33,
+      "fault_classes": 4,
+      "activation_context_lifecycle": "PASS",
+      "all_cycle_deltas": 0,
+      "reference_cycle_compare": true,
+      "log": "/tmp/ara_dsa_timing_port_20260908_equiv/qbs/run.log"
+    },
+    "alu_exhaustive_random": {
+      "status": "PASS",
+      "checks": 9877184,
+      "reference_and_arithmetic_model": true,
+      "log": "/tmp/ara_dsa_timing_port_20260908_equiv/alu/run.log"
+    },
+    "alu_directed": {
+      "status": "PASS",
+      "checks": 22528,
+      "reference_and_arithmetic_model": true,
+      "log": "/tmp/ara_dsa_timing_port_20260908_edges/alu/run.log"
+    },
+    "top_handoff": {
+      "status": "PASS",
+      "rvv": "PASS",
+      "qbs_commands": 4,
+      "akv_commands": 10,
+      "traps": 0,
+      "result_dir": "hardware/timing_port_handoff_20260908",
+      "simv_sha256": "2fcee496b68112e0585a1a2c063a0f555fce0c346251b6c2d24f29387cd75023",
+      "followup_note": "After this run, only an ifndef SYNTHESIS guard was added around an existing assertion; default simulation behavior is unchanged."
+    },
+    "synthesis_define_engine": {
+      "status": "PASS",
+      "cases": 33,
+      "fault_classes": 4,
+      "reference_cycle_compare": true,
+      "log": "/tmp/ara_dsa_timing_port_20260908_synthesis_define/run.log",
+      "note": "VCS with +define+SYNTHESIS, not DC synthesis."
+    }
+  },
+  "structural_changes": {
+    "fp_entry_payload_bits_removed": 2560,
+    "integer_payload_bits_removed": 7176,
+    "total_declared_payload_bits_removed": 9736,
+    "fp_tag_before_bits": 7,
+    "fp_tag_after_bits": 4,
+    "added_pipeline_stages": 0,
+    "note": "RTL declaration count only; synthesis may already merge duplicate registers. Not measured FF count or area."
+  },
+  "synthesis_run": false,
+  "ppa_claimed": false
+}
