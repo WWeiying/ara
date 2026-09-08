@@ -40,6 +40,33 @@ Run the fast constructed tests with:
 make -C verification/qbs check
 ```
 
+The profile-level VCS suite contains the original 432 cases plus 16 Q8_0
+signed-extreme cases (physical M1--M4, row counts 1--4). Both operands are
+`-128`: eight products total `+131072`, which requires a signed 19-bit dot
+result. Alternating `-128/127` inputs alone do not exercise this overflow.
+The suite checks decoded operands, integer groups/results, first and repeated
+FP updates, fflags, and dot activity counters. Its PASS lines also report
+first/repeated block latency for before/after comparisons.
+
+From the repository root, use a separate build directory:
+
+```sh
+build_dir=$(mktemp -d)
+make -C verification/qbs rtl-profile-check RTL_BUILD="$build_dir" RTL_RUN_TIMEOUT=180
+
+# Optional: trace the first extreme case, without changing the DUT.
+"$build_dir/simv" -no_save -l "$build_dir/trace.log" \
+  +QBS_VECTOR_FILE="$PWD/verification/qbs/qbs_rtl_vectors.txt" \
+  +QBS_DOT_TRACE_CASE=432
+```
+
+`QBS_DOT_TRACE` samples stream-zero operands at a rising edge and reports the
+registered dot result after that edge, together with a signed 32-bit testbench
+sum. The trace is disabled unless a case ID is supplied. Test success requires
+the final PASS marker and no `Error:`/`Fatal:` lines, not just process exit zero.
+The measured failure, fix, and unchanged command-cycle comparisons are recorded
+in [the signed-extreme regression report](results/int8_extreme_20260908.md).
+
 Run the six real-data cases with:
 
 ```sh

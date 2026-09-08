@@ -8,7 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { PATTERN_ZERO = 0, PATTERN_EDGE = 1, PATTERN_RANDOM = 2 };
+enum {
+  PATTERN_ZERO = 0,
+  PATTERN_EDGE = 1,
+  PATTERN_RANDOM = 2,
+  PATTERN_NEGATIVE_EXTREME = 3,
+};
 
 typedef union {
   qbs_block_q4_k_t q4[4];
@@ -97,7 +102,9 @@ static void set_q8_0_pattern(qbs_block_q8_0_t *block, unsigned pattern,
   block->d = (qbs_fp16_t)(UINT16_C(0x3400) + ctx * 0x40u + case_id);
   for (unsigned element = 0; element < QBS_Q8_0_BLOCK_ELEMENTS; ++element) {
     int value = 0;
-    if (pattern == PATTERN_EDGE) {
+    if (pattern == PATTERN_NEGATIVE_EXTREME) {
+      value = -128;
+    } else if (pattern == PATTERN_EDGE) {
       value = (element & 1u) != 0 ? 127 : -128;
     } else if (pattern == PATTERN_RANDOM) {
       value = (int)(next_random() & 0xffu) - 128;
@@ -238,6 +245,8 @@ static void set_q8_0_weight_pattern(qbs_block_q8_0_t *block,
   for (unsigned i = 0; i < sizeof(block->qs); ++i) {
     if (pattern == PATTERN_ZERO)
       block->qs[i] = 0;
+    else if (pattern == PATTERN_NEGATIVE_EXTREME)
+      block->qs[i] = -128;
     else if (pattern == PATTERN_EDGE)
       block->qs[i] = (i & 1u) != 0 ? 127 : -128;
     else
@@ -622,7 +631,8 @@ int main(int argc, char **argv) {
                                       QBS_WEIGHT_PROFILE_Q5_0,
                                       QBS_WEIGHT_PROFILE_IQ4_NL};
   const unsigned case_count =
-      (unsigned)(sizeof(profiles) / sizeof(profiles[0])) * 4u * 4u * 3u;
+      (unsigned)(sizeof(profiles) / sizeof(profiles[0])) * 4u * 4u * 3u +
+      4u * 4u;
   fprintf(output, "QBSV1 %u\n", case_count);
   unsigned case_id = 0;
   for (unsigned profile_index = 0;
@@ -640,6 +650,18 @@ int main(int argc, char **argv) {
           ++case_id;
         }
       }
+    }
+  }
+  // Preserve the existing case IDs and random stream. M1 needs a signed
+  // 19-bit eight-product sum; M2--M4 also check the shorter signed paths.
+  for (unsigned m = 1; m <= 4; ++m) {
+    for (unsigned rows = 1; rows <= 4; ++rows) {
+      if (emit_case(output, case_id, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT, m,
+                    rows, PATTERN_NEGATIVE_EXTREME) != 0) {
+        fclose(output);
+        return 1;
+      }
+      ++case_id;
     }
   }
   fclose(output);

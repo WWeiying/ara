@@ -12,14 +12,14 @@ module qbs_dot_array (
   input  logic signed [7:0]  activation_quant_i [4][8],
   output logic               valid_o,
   output logic [15:0]        stream_valid_o,
-  output logic signed [17:0] stream_sum_o [16]
+  output logic signed [18:0] stream_sum_o [16]
 );
 
   logic signed [15:0] product_d [4][8];
   logic signed [16:0] pair_sum_d [4][4];
   logic signed [17:0] quad_sum_d [4][2];
-  logic signed [17:0] oct_sum_d [4];
-  logic signed [17:0] stream_sum_d [16];
+  logic signed [18:0] oct_sum_d [4];
+  logic signed [18:0] stream_sum_d [16];
 
   always_comb begin
     product_d = '{default: '{default: '0}};
@@ -62,7 +62,10 @@ module qbs_dot_array (
       quad_sum_d[row][1] =
           $signed({pair_sum_d[row][2][16], pair_sum_d[row][2]}) +
           $signed({pair_sum_d[row][3][16], pair_sum_d[row][3]});
-      oct_sum_d[row] = quad_sum_d[row][0] + quad_sum_d[row][1];
+      // Eight (-128)*(-128) products total +131072, beyond signed 18 bits.
+      oct_sum_d[row] =
+          $signed({quad_sum_d[row][0][17], quad_sum_d[row][0]}) +
+          $signed({quad_sum_d[row][1][17], quad_sum_d[row][1]});
 
       if (valid_i && row < row_count_i) begin
         unique case (m_i)

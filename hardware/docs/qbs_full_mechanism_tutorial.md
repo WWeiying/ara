@@ -3315,6 +3315,12 @@ wave。两个 wave 读取不同的 activation bank，但保留同一个 active w
 几何只改变 pair 在 output row、activation row 和时间上的分配。balanced reduction tree 避免
 综合成串行加法链。
 
+求和树的有符号位宽依次为：单项乘积 16 位、两项和 17 位、四项和 18 位、八项和 19 位。
+最后一级不能只用 18 位，因为八个 `(-128)*(-128)` 的和是 `131072`，超过 18 位有符号数的
+上限 `131071`。两个四项和先符号扩展到 19 位再相加，输出寄存器以及连接到整数流水的
+`dot_stream_sum` 也保留 19 位，之后才进入 32 位 subgroup 累加器。这里不增加流水级，
+`valid`、stream mask 和元数据仍按原周期对齐；不能用截断输入的方式回避合法 INT8 极值。
+
 ### 9.8 `qbs_profile_engine_int.sv`：整数流水与结果整形
 
 该模块包含两个内部流水槽位和 16 个 logical streams（4 weight rows x 4 activation rows）。
@@ -4259,7 +4265,7 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 | ABI 生成 | JSON 到 C/SV 生成物一致性、padded tail/link regression | 软件和 RTL 使用同一字段定义 |
 | QBS C reference | 九种 profile、两种 activation、R4/M4/M8 layout、shape/地址/原子提交 | canonical arithmetic/validation contract 可执行 |
 | AKV runtime/reference | descriptor、D64/D96/D128、GQA1..8、Decode、bounded Prefill、tail、fallback | context/view 与普通 RVV Attention 算法边界可执行 |
-| Profile RTL | 9 profiles x physical-wave M1--M4 x row-count 1--4 x 3 data patterns，共 432 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立；M5--M8 command 由 command test 覆盖两个 wave 的组合 |
+| Profile RTL | 原有 432 cases，加 Q8_0 双操作数全 -128 的 M1--M4 x row-count 1--4 共 16 cases，总计 448 cases | decoder、integer subtotal、correction 和 FP 更新逐格式成立，并覆盖八项有符号点积极值；M5--M8 command 由 command test 覆盖两个 wave 的组合 |
 | Command RTL | 默认 M1--M4 与自适应 M5--M8、不同 N/K、tail/layout | descriptor 到 commit 的组合路径成立；宽 M 使用两个四行 wave |
 | Fault RTL | validation、MMU、PMA、AXI/protocol fault | pre-compute 直接 fault、payload drain 和“失败不提交”均成立 |
 | QBS context RTL | generic/target-macro fill、reuse、release、metadata mismatch、abort | 显式 activation snapshot 不泄露半填充状态 |
@@ -4293,13 +4299,13 @@ Q4_0/Q5_0 已有真实模型严格生成输出回归，但尚未达到表中七�
 ### 13.11 当前测试结果总览
 
 下面汇总的是与本文所核 RTL 对应的当前结果。表中“通过”只对该行列出的证明目标有效，不能跨层
-替代。例如 432 个 profile cases 不能证明 MMU fault，QEMU 模型运行也不能证明 RTL timing。
+替代。例如 448 个 profile cases 不能证明 MMU fault，QEMU 模型运行也不能证明 RTL timing。
 
 | 验证层次 | 当前结果 | 覆盖范围 | 可以得出的结论 |
 | --- | --- | --- | --- |
 | ABI/generated check | PASS（2026-08-26 复跑） | JSON 到 C/SV、R4 padded tail、hard-link alias | 软件和 RTL 字段、profile ID 与生成物一致 |
 | Canonical C reference | PASS（2026-08-26 复跑） | descriptor、9 profiles、layout/tail/failure | numerical contract 和 validation 有可执行真源 |
-| Profile RTL | 432/432 PASS | 9 profiles x physical-wave M1--M4 x row-count 1--4 x 3 patterns | decoder、32-pair integer path、correction 和 FP update 组合成立；M5--M8 的双 wave 调度由 command RTL 覆盖 |
+| Profile RTL | 448/448 PASS（2026-09-08 复跑） | 原有九种 profile 的 432 cases，加 16 个 Q8_0 有符号极值 cases | decoder、32-pair integer path、correction 和 FP update 组合成立；原有 432 cases 的首 block/重复 block 周期不变；M5--M8 的双 wave 调度由 command RTL 覆盖 |
 | Descriptor/read/commit RTL | 三个 standalone bench 均 PASS | descriptor legality；page/burst/outstanding/fault；4-lane commit/backpressure | 三个接口边界各自满足定向 contract |
 | Compute command RTL | 默认与 adaptive 命令集 PASS，fault discard PASS | 9 profiles、M1--M8、N/K/layout/tail | block adapter 到 hidden accumulator 的命令内路径成立 |
 | End-to-end QBS RTL | 33/33 PASS，加 4 类 atomic-fault PASS | descriptor 到 VRF commit；validation/MMU/AXI/PMA fault | 成功结果可提交，失败命令在提交前不可见 |

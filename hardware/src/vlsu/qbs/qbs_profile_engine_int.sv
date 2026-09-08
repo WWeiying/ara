@@ -111,7 +111,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
 
   logic dot_valid;
   logic [15:0] dot_stream_valid;
-  logic signed [17:0] dot_stream_sum [16];
+  logic signed [18:0] dot_stream_sum [16];
   logic signed [31:0] group_partial_q [NumContexts][NumStreams];
 
   logic [NumStreams-1:0] slot_valid_q [NumContexts];

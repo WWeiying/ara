@@ -259,6 +259,7 @@ module qbs_profile_engine_tb;
     integer rc;
     integer case_count;
     integer total_errors;
+    integer dot_trace_case;
 
     clk = 1'b0;
     rst_n = 1'b0;
@@ -286,6 +287,8 @@ module qbs_profile_engine_tb;
 
     if (!$value$plusargs("QBS_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_rtl_vectors.txt";
+    if (!$value$plusargs("QBS_DOT_TRACE_CASE=%d", dot_trace_case))
+      dot_trace_case = -1;
     fd = $fopen(vector_file, "r");
     if (fd == 0) $fatal(1, "cannot open QBS vector file %s", vector_file);
     rc = $fscanf(fd, "%s %d", token, case_count);
@@ -315,6 +318,7 @@ module qbs_profile_engine_tb;
       integer uops_per_output;
       integer case_errors;
       integer monitor_cycles;
+      integer first_block_cycles;
       logic [15:0] expected_stream_mask;
       bit integer_done_seen;
 
@@ -475,9 +479,22 @@ module qbs_profile_engine_tb;
       monitor_cycles = 0;
       integer_done_seen = 1'b0;
       while ((!integer_done_seen || busy || fp_busy) && monitor_cycles < 4096) begin
+        integer trace_dot;
+        bit trace_valid;
         @(posedge clk);
+        trace_valid = case_id == dot_trace_case && decode_valid;
+        trace_dot = 0;
+        if (trace_valid) begin
+          for (int lane = 0; lane < decode_k_per; lane++)
+            trace_dot += int'($signed(decode_weight_quant[0][lane])) *
+                         int'($signed(decode_activation_quant[0][lane]));
+        end
         #1;
         ++monitor_cycles;
+        if (trace_valid)
+          $display("QBS_DOT_TRACE case=%0d cycle=%0d valid=%0d mask=%h sum0=%0d expected=%0d",
+                   case_id, monitor_cycles, dut.dot_valid, dut.dot_stream_valid,
+                   $signed(dut.dot_stream_sum[0]), trace_dot);
         if (done) integer_done_seen = 1'b1;
         if (decode_valid) begin
           if (decode_stream_valid != expected_stream_mask) begin
@@ -563,6 +580,7 @@ module qbs_profile_engine_tb;
         end
       end
 
+      first_block_cycles = monitor_cycles;
       if (!integer_done_seen || fp_busy) begin
         fail("timeout", case_id);
         ++case_errors;
@@ -665,8 +683,9 @@ module qbs_profile_engine_tb;
       end
 
       if (case_errors == 0)
-        $display("QBS RTL case %0d PASS profile=%0d M=%0d rows=%0d pattern=%0d",
-                 case_id, profile, m, rows, pattern);
+        $display("QBS RTL case %0d PASS profile=%0d M=%0d rows=%0d pattern=%0d first_cycles=%0d repeat_cycles=%0d",
+                 case_id, profile, m, rows, pattern, first_block_cycles,
+                 monitor_cycles);
       total_errors += case_errors;
       @(posedge clk);
     end
