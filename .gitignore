@@ -75,6 +75,13 @@ apps
 !/apps/akv_portability_smoke/main.c
 !/apps/akv_portability_smoke/native.S
 !/apps/akv_portability_smoke/runtime.c
+!/apps/akv_d256_reuse_smoke/
+/apps/akv_d256_reuse_smoke/*
+!/apps/akv_d256_reuse_smoke/main.c
+!/apps/akv_d256_reuse_smoke/native.S
+!/apps/akv_d256_reuse_smoke/runtime.c
+!/apps/akv_d256_reuse_smoke/script/
+!/apps/akv_d256_reuse_smoke/script/gen_data.py
 !/apps/llama_q4km_micro/
 !/apps/llama_q4km_operator/
 /apps/llama_q4km_operator/*
@@ -111,6 +118,7 @@ apps
 /hardware/build_qbs_*/
 /hardware/qbs_akv_portability_runs/
 /hardware/qbs_akv_portability_stage2_*/
+/hardware/akv_d256_efficiency_runs/
 /hardware/qbs_activation_context_evidence/
 /apps/llama_q4km_micro/data.S
 /apps/llama_q4km_micro/*.dump

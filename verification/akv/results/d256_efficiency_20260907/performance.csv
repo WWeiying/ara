@@ -1,0 +1,12 @@
+case,status,kernel_cycles,mismatches,akv_v2_full,akv_v2_column_load,akv_v2_column_panel,akv_v2_logical_column,akv_v2_row_load,akv_replay_bytes,akv_kv_external_bytes,axi_ar_bytes,retired_vector_inst_count,retired_scalar_inst_count,fp_exec_lane_fires,akv_busy_cycles
+baseline_kv17,PASS,47393,0,2,1024,0,1024,136,69632,17408,32240,3443,9008,47885,17402
+rvv_kv17,PASS,35408,0,0,0,0,0,0,0,0,51568,2742,4806,41297,0
+reuse4_kv17,PASS,32713,0,2,256,0,256,34,17408,17408,32240,2392,6535,41357,5231
+panel4_kv17,PASS,30255,0,2,64,64,256,34,17408,17408,32240,2201,5206,41357,4091
+reuse4_kv140,FAIL,149455,18,,,,,,,,,,,,
+rvv_kv140,FAIL,193172,18,,,,,,,,,,,,
+panel4_kv140,FAIL,141683,18,,,,,,,,,,,,
+qwen_d128_kv16,PASS,35290,0,2,256,0,256,32,16384,16384,44992,2792,8713,23188,3893
+smollm_d64_kv5,PASS,31860,0,3,576,0,576,45,11520,3840,19344,1881,8360,4773,4461
+phi_d96_kv18,PASS,10854,0,1,96,0,96,18,6912,6912,9088,311,3172,1781,1971
+bit_exact_panel4,RUNNING,,,,,,,,,,,,,,

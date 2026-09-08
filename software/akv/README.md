@@ -40,10 +40,19 @@ otherwise unsupported call.
 
 The shared runtime and directed RTL tests also define a segmented D256 contract
 using two D128 physical phases without increasing K/V context capacity. This
-contract is functional evidence, not a production-selector promise: the real
-Gemma D256 leaf measured 47,191 cycles versus 36,043 for the strong tiled-RVV
-baseline. The llama.cpp selector therefore deliberately leaves D256 on ordinary
-RVV until a later implementation meets the performance gate.
+contract is functional evidence, not a production-selector promise. The shared
+D256 kernels now reuse a column/row across four Query heads; capable devices
+also use the existing four-column command. Incomplete head groups retain the
+single-head loop, and each output element retains its previous F32/F16 rounding
+order. No RTL capacity or encoding changes are required.
+
+On the same current simulator, real Gemma KV17 improved from 47,393 to 30,255
+cycles, versus 35,408 for strong tiled-RVV. This is still below the 1.2x admission
+gate. A real KV140 capture also exposes an existing tiled-F16 rounding-order
+mismatch in both AKV and tiled-RVV. The llama.cpp selector therefore continues
+to leave D256 on ordinary RVV. See
+[D256 evidence and numerical boundary](../../hardware/docs/akv_d256_efficiency.md);
+neither a faster failing result nor a host-only test admits a production path.
 
 Run the host contract tests with:
 

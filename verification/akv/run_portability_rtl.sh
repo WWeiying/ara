@@ -18,10 +18,13 @@ tar -C "${root}" --exclude=build --exclude='rtl_*build' --exclude='*.o' --exclud
   apps/akv_portability_smoke apps/qbs_akv_handoff_smoke verification/akv
 
 printf 'BUILDING\n' > "${run}/status"
-make -C "${root}/apps" akv_portability_smoke qbs_akv_handoff_smoke \
-  -W akv_portability_smoke/runtime.c sim_l2_mb=16 > "${run}/apps.log" 2>&1
-cp "${root}/apps/bin/akv_portability_smoke" "${run}/portable.elf"
-cp "${root}/apps/bin/qbs_akv_handoff_smoke" "${run}/handoff.elf"
+(
+  flock 9
+  make -C "${root}/apps" akv_portability_smoke qbs_akv_handoff_smoke \
+    -W akv_portability_smoke/runtime.c sim_l2_mb=16 > "${run}/apps.log" 2>&1
+  cp "${root}/apps/bin/akv_portability_smoke" "${run}/portable.elf"
+  cp "${root}/apps/bin/qbs_akv_handoff_smoke" "${run}/handoff.elf"
+) 9> "${root}/apps/bin/.llama-q4km-operator-build.lock"
 if [[ -n ${AKV_PORTABLE_SIM_DIR:-} ]]; then
   test -x "${AKV_PORTABLE_SIM_DIR}/simv"
   bash "${root}/hardware/scripts/llama_q4km_extract/check-sim-l2.sh" \

@@ -771,11 +771,95 @@ akv_v2_update_outputs_f32_generic:
 // a0: F16 Query rows, a1: F32 score rows (64-element stride)
 // a2: active tokens, a3: Query stride, a4: Q rows
 akv_v2_compute_scores_f16_d256_generic:
+    li              a5, 0
+    j               .Lakv_v2_d256_score_entry
+
+    .globl akv_v2_compute_scores_f16_d256_panel4
+    .type  akv_v2_compute_scores_f16_d256_panel4,@function
+akv_v2_compute_scores_f16_d256_panel4:
+    li              a5, 1
+.Lakv_v2_d256_score_entry:
     mv              t0, a0
     mv              t1, a1
     mv              t2, a2
     mv              t3, a3
     mv              t4, a4
+    mv              t6, a5
+    // Four Query rows reuse each column. Each row still accumulates D0..D255
+    // in the original order; incomplete groups retain the one-row schedule.
+.Lakv_v2_d256_score_group:
+    li              t5, 4
+    bltu            t4, t5, .Lakv_v2_d256_score_tail
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vmv.v.i         v0, 0
+    vmv.v.i         v2, 0
+    vmv.v.i         v4, 0
+    vmv.v.i         v6, 0
+    vsetvli         zero, t2, e16, m1, ta, ma
+    mv              a2, t0
+    add             a3, a2, t3
+    add             a4, a3, t3
+    add             a5, a4, t3
+    li              a7, 0
+    li              t5, 256
+    bnez            t6, .Lakv_v2_d256_score_group_panel
+.Lakv_v2_d256_score_group_dimension:
+    mv              a0, a7
+    .word           0x0005745b  // vakv2col v8, {segment,dimension}(a0)
+    flh             ft0, 0(a2)
+    flh             ft1, 0(a3)
+    flh             ft2, 0(a4)
+    flh             ft3, 0(a5)
+    vfwmacc.vf      v0, ft0, v8
+    vfwmacc.vf      v2, ft1, v8
+    vfwmacc.vf      v4, ft2, v8
+    vfwmacc.vf      v6, ft3, v8
+    addi            a2, a2, 2
+    addi            a3, a3, 2
+    addi            a4, a4, 2
+    addi            a5, a5, 2
+    addi            a7, a7, 1
+    bltu            a7, t5, .Lakv_v2_d256_score_group_dimension
+    j               .Lakv_v2_d256_score_group_store
+.Lakv_v2_d256_score_group_panel:
+    mv              a0, a7
+    .word           0x0205745b  // vakv2kpanel4 v8:v11, segment/column(a0)
+    .macro akv_d256_score_column source, offset
+    flh             ft0, \offset(a2)
+    flh             ft1, \offset(a3)
+    flh             ft2, \offset(a4)
+    flh             ft3, \offset(a5)
+    vfwmacc.vf      v0, ft0, \source
+    vfwmacc.vf      v2, ft1, \source
+    vfwmacc.vf      v4, ft2, \source
+    vfwmacc.vf      v6, ft3, \source
+    .endm
+    akv_d256_score_column v8, 0
+    akv_d256_score_column v9, 2
+    akv_d256_score_column v10, 4
+    akv_d256_score_column v11, 6
+    addi            a2, a2, 8
+    addi            a3, a3, 8
+    addi            a4, a4, 8
+    addi            a5, a5, 8
+    addi            a7, a7, 4
+    bltu            a7, t5, .Lakv_v2_d256_score_group_panel
+.Lakv_v2_d256_score_group_store:
+    vsetvli         zero, t2, e32, m2, ta, ma
+    vse32.v         v0, (t1)
+    addi            t1, t1, 256
+    vse32.v         v2, (t1)
+    addi            t1, t1, 256
+    vse32.v         v4, (t1)
+    addi            t1, t1, 256
+    vse32.v         v6, (t1)
+    addi            t1, t1, 256
+    slli            a1, t3, 2
+    add             t0, t0, a1
+    addi            t4, t4, -4
+    j               .Lakv_v2_d256_score_group
+.Lakv_v2_d256_score_tail:
+    beqz            t4, .Lakv_v2_d256_score_done
 .Lakv_v2_d256_score_head:
     vsetvli         zero, t2, e32, m2, ta, ma
     vmv.v.i         v0, 0
@@ -797,10 +881,13 @@ akv_v2_compute_scores_f16_d256_generic:
     addi            t1, t1, 256
     addi            t4, t4, -1
     bnez            t4, .Lakv_v2_d256_score_head
+.Lakv_v2_d256_score_done:
     ret
 
     .size akv_v2_compute_scores_f16_d256_generic, \
           .-akv_v2_compute_scores_f16_d256_generic
+    .size akv_v2_compute_scores_f16_d256_panel4, \
+          .-akv_v2_compute_scores_f16_d256_panel4
 
     .globl  akv_v2_update_outputs_f16_d256_generic
     .type   akv_v2_update_outputs_f16_d256_generic,@function
@@ -815,6 +902,84 @@ akv_v2_update_outputs_f16_d256_generic:
     mv              t2, a2
     mv              t3, a3
     mv              t4, a4
+    // Preserve the F32 multiply/FMA followed by F16 rounding at every token.
+    // Low and high D halves are independent and may be traversed separately.
+.Lakv_v2_d256_output_group:
+    li              t5, 4
+    bltu            t4, t5, .Lakv_v2_d256_output_tail
+    li              t5, 128
+    li              t6, 1
+    mv              a1, t1
+.Lakv_v2_d256_output_segment:
+    vsetvli         zero, t5, e16, m2, ta, ma
+    mv              a4, a1
+    vle16.v         v0, (a4)
+    addi            a4, a4, 512
+    vle16.v         v2, (a4)
+    addi            a4, a4, 512
+    vle16.v         v4, (a4)
+    addi            a4, a4, 512
+    vle16.v         v6, (a4)
+    flw             ft0, 0(t2)
+    flw             ft1, 4(t2)
+    flw             ft2, 8(t2)
+    flw             ft3, 12(t2)
+    .macro akv_d256_rescale accumulator, factor
+    vfwcvt.f.f.v    v12, \accumulator
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vfmul.vf        v12, v12, \factor
+    vsetvli         zero, t5, e16, m2, ta, ma
+    vfncvt.f.f.w    \accumulator, v12
+    .endm
+    akv_d256_rescale v0, ft0
+    akv_d256_rescale v2, ft1
+    akv_d256_rescale v4, ft2
+    akv_d256_rescale v6, ft3
+    mv              a7, t0
+    li              a6, 0
+.Lakv_v2_d256_group_value_token:
+    slli            a0, a6, 2
+    or              a0, a0, t6
+    .word           0x0205345b  // vakvload.d128 v8:v9, low/high V segment
+    vfwcvt.f.f.v    v16, v8
+    flw             ft0, 0(a7)
+    flw             ft1, 256(a7)
+    flw             ft2, 512(a7)
+    flw             ft3, 768(a7)
+    .macro akv_d256_accumulate accumulator, weight
+    vfwcvt.f.f.v    v12, \accumulator
+    vsetvli         zero, t5, e32, m4, ta, ma
+    vfmacc.vf       v12, \weight, v16
+    vsetvli         zero, t5, e16, m2, ta, ma
+    vfncvt.f.f.w    \accumulator, v12
+    .endm
+    akv_d256_accumulate v0, ft0
+    akv_d256_accumulate v2, ft1
+    akv_d256_accumulate v4, ft2
+    akv_d256_accumulate v6, ft3
+    addi            a7, a7, 4
+    addi            a6, a6, 1
+    bltu            a6, t3, .Lakv_v2_d256_group_value_token
+    mv              a4, a1
+    vse16.v         v0, (a4)
+    addi            a4, a4, 512
+    vse16.v         v2, (a4)
+    addi            a4, a4, 512
+    vse16.v         v4, (a4)
+    addi            a4, a4, 512
+    vse16.v         v6, (a4)
+    addi            a1, a1, 256
+    addi            t6, t6, 1
+    li              a4, 3
+    bltu            t6, a4, .Lakv_v2_d256_output_segment
+    addi            t0, t0, 1024
+    addi            t1, t1, 1024
+    addi            t1, t1, 1024
+    addi            t2, t2, 16
+    addi            t4, t4, -4
+    j               .Lakv_v2_d256_output_group
+.Lakv_v2_d256_output_tail:
+    beqz            t4, .Lakv_v2_d256_output_done
 .Lakv_v2_d256_output_head:
     li              t5, 128
     vsetvli         zero, t5, e16, m2, ta, ma
@@ -864,7 +1029,30 @@ akv_v2_update_outputs_f16_d256_generic:
     addi            t2, t2, 4
     addi            t4, t4, -1
     bnez            t4, .Lakv_v2_d256_output_head
+.Lakv_v2_d256_output_done:
     ret
 
     .size akv_v2_update_outputs_f16_d256_generic, \
           .-akv_v2_update_outputs_f16_d256_generic
+
+#ifdef AKV_D256_TEST_REFERENCE
+    // Test-only entries bypass batching and execute the original one-row
+    // loops. They are not exported by normal benchmark or GGML builds.
+    .globl akv_d256_scores_reference
+akv_d256_scores_reference:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    j               .Lakv_v2_d256_score_head
+
+    .globl akv_d256_outputs_reference
+akv_d256_outputs_reference:
+    mv              t0, a0
+    mv              t1, a1
+    mv              t2, a2
+    mv              t3, a3
+    mv              t4, a4
+    j               .Lakv_v2_d256_output_head
+#endif

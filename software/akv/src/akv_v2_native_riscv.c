@@ -74,6 +74,9 @@ extern void akv_v2_update_outputs_f32_generic(
 extern void akv_v2_compute_scores_f16_d256_generic(
     const uint16_t *query, float *score, uint32_t tile_tokens,
     size_t q_row_stride_bytes, uint32_t q_rows);
+extern void akv_v2_compute_scores_f16_d256_panel4(
+    const uint16_t *query, float *score, uint32_t tile_tokens,
+    size_t q_row_stride_bytes, uint32_t q_rows);
 extern void akv_v2_update_outputs_f16_d256_generic(
     const float *score, uint16_t *accumulator, const float *old_scale,
     uint32_t tile_tokens, uint32_t q_rows);
@@ -458,6 +461,8 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
   const size_t output_row_stride_bytes = plan->output_row_stride_bytes;
   const float scale = plan->scale;
 
+  const int column_panel4 = q_rows >= 4u &&
+      ((akv_native_info(NULL, 2u) >> AKV_V2_COLUMN_PANEL_CAPABILITY_BIT) & 1u);
   initialize_workspace(workspace, q_rows, head_dim);
   if (features != NULL && features->sinks_enabled) {
     for (uint32_t head = 0; head < q_rows; ++head) {
@@ -470,9 +475,14 @@ static __attribute__((noinline)) akv_status_t execute_segmented_d256(
     const uint32_t tile_tokens =
         akv_v2_tile_length(kv_length, tile_start);
     issue_full(&plan->descriptor, tile_start);
-    akv_v2_compute_scores_f16_d256_generic(
-        query, &workspace->score[0][0], tile_tokens,
-        query_row_stride_bytes, q_rows);
+    if (column_panel4)
+      akv_v2_compute_scores_f16_d256_panel4(
+          query, &workspace->score[0][0], tile_tokens,
+          query_row_stride_bytes, q_rows);
+    else
+      akv_v2_compute_scores_f16_d256_generic(
+          query, &workspace->score[0][0], tile_tokens,
+          query_row_stride_bytes, q_rows);
     apply_scale_mask_and_softmax(mask_bits, scale, workspace, tile_start,
                                  tile_tokens, q_rows, features);
     issue_full(&plan->value_descriptor, tile_start);

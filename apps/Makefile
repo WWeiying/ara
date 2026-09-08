@@ -41,6 +41,13 @@ include $(COMMON_DIR)/default_args.mk
 
 # This contract test includes masks with -Inf and checks NaN rejection.
 akv_portability_smoke/main.c.o akv_portability_smoke/runtime.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
+akv_d256_reuse_smoke/main.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
+akv_portability_smoke/runtime.c.o akv_d256_reuse_smoke/runtime.c.o: \
+    $(wildcard ../software/akv/src/*.c ../software/akv/include/akv/*.h)
+akv_d256_reuse_smoke/native.S.o: ../software/akv/src/akv_v2_attention_rvv.S
+akv_portability_smoke/native.S.o: ../software/akv/src/akv_attention_rvv.S ../software/akv/src/akv_v2_attention_rvv.S
+llama_q4km_operator/akv_v2_attention.S.o llama_q4km_operator/akv_v2_attention.S.o.spike: \
+    ../software/akv/src/akv_v2_attention_rvv.S
 
 llama_q4km_operator/akv_runtime.c.o llama_q4km_operator/akv_runtime.c.o.spike: \
     $(wildcard ../software/akv/src/*.c ../software/akv/include/akv/*.h)
