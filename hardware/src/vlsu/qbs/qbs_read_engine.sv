@@ -150,6 +150,7 @@ module qbs_read_engine import qbs_pkg::*; #(
   axi_pkg::prot_t ar_prot_q;
   logic ar_range_last_q;
   logic [15:0] ar_sequence_q;
+  logic ar_stalled_q;
 
   logic completion_valid_q;
   tag_t completion_tag_q;
@@ -222,7 +223,8 @@ module qbs_read_engine import qbs_pkg::*; #(
 
   assign completion_valid_o = completion_valid_q;
   assign completion_tag_o = completion_tag_q;
-  assign fault_valid_o = fault_pending_q && burst_fifo_count_q == 0;
+  assign fault_valid_o = fault_pending_q && burst_fifo_count_q == 0 &&
+                         !ar_stalled_q;
   assign fault_kind_o = fault_kind_q;
   assign fault_vaddr_o = fault_vaddr_q;
   assign fault_tag_o = fault_tag_q;
@@ -289,10 +291,19 @@ module qbs_read_engine import qbs_pkg::*; #(
     prot   : ar_prot_q,
     default: '0
   };
-  assign axi_ar_valid_o = plan_state_q == QBS_PLAN_AR &&
+  // A fault may cancel an unoffered burst, but not an AR already held for
+  // READY. Its reserved tag slot cannot be consumed by another planner.
+  assign axi_ar_valid_o = ar_stalled_q || (plan_state_q == QBS_PLAN_AR &&
       burst_fifo_count_q < ReadOutstanding && !fault_pending_q &&
-      !response_fault_event;
+      !response_fault_event);
   assign ar_fire = axi_ar_valid_o && axi_ar_ready_i;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni)
+      ar_stalled_q <= 1'b0;
+    else
+      ar_stalled_q <= axi_ar_valid_o && !axi_ar_ready_i;
+  end
 
   always_comb begin
     response_head = '0;
@@ -451,7 +462,10 @@ module qbs_read_engine import qbs_pkg::*; #(
         next_sequence_q <= '0;
 
       if (planner_fault_event || response_fault_event || fault_pending_q) begin
-        plan_state_q <= QBS_PLAN_IDLE;
+        // Retain the AR metadata until its required handshake. The ordinary
+        // burst FIFO then tracks and drains its response before fault release.
+        if (!ar_stalled_q || ar_fire)
+          plan_state_q <= QBS_PLAN_IDLE;
       end else begin
         unique case (plan_state_q)
           QBS_PLAN_IDLE: begin
@@ -666,6 +680,11 @@ module qbs_read_engine import qbs_pkg::*; #(
   end
 
 `ifndef SYNTHESIS
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      axi_ar_valid_o && !axi_ar_ready_i |=>
+      axi_ar_valid_o && $stable(axi_ar_o))
+    else $fatal(1, "QBS AR changed before handshake");
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       probe_range_blocked_cycles_q <= '0;
@@ -736,6 +755,10 @@ module qbs_read_engine import qbs_pkg::*; #(
         else $fatal(1, "QBS range FIFO overflow");
       assert (burst_fifo_count_q <= ReadOutstanding)
         else $fatal(1, "QBS burst tag FIFO overflow");
+      if (ar_stalled_q)
+        assert (plan_state_q == QBS_PLAN_AR &&
+                burst_fifo_count_q < ReadOutstanding)
+          else $fatal(1, "QBS held AR lost its reserved tag slot");
       if (axi_r_valid_i)
         assert (burst_fifo_count_q != 0)
           else $fatal(1, "QBS received R data without an outstanding tag");

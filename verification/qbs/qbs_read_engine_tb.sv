@@ -207,11 +207,13 @@ module qbs_read_engine_tb;
   integer response_error_beat;
   integer last_mode;
   logic hold_axi_responses;
+  logic hold_axi_addresses;
+  logic trace_ar_fault;
   integer ar_log_count;
-  logic [63:0] ar_log_addr [0:31];
-  logic [7:0] ar_log_len [0:31];
+  logic [63:0] ar_log_addr [0:63];
+  logic [7:0] ar_log_len [0:63];
 
-  assign axi_ar_ready = response_count < 2;
+  assign axi_ar_ready = response_count < 2 && !hold_axi_addresses;
   assign axi_r_valid = response_count != 0 && !hold_axi_responses;
 
   always_comb begin
@@ -230,6 +232,26 @@ module qbs_read_engine_tb;
       default: axi_r.last = response_beat ==
                             {1'b0, response_len[response_rd]};
     endcase
+  end
+
+  // Check the entire AR bundle, including the cycle that finally accepts it.
+  logic stalled_ar_q;
+  axi_ar_t stalled_ar_payload_q;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      stalled_ar_q <= 1'b0;
+      stalled_ar_payload_q <= '0;
+    end else begin
+      if (trace_ar_fault)
+        $display("AR_FAULT t=%0t ar_v=%0b ar_r=%0b addr=%h r_v=%0b r_r=%0b resp=%0d last=%0b slots=%0d pending=%0b fault=%0b",
+                 $time, axi_ar_valid, axi_ar_ready, axi_ar.addr,
+                 axi_r_valid, axi_r_ready, axi_r.resp, axi_r.last,
+                 dut.burst_fifo_count_q, dut.fault_pending_q, fault_valid);
+      if (stalled_ar_q && (!axi_ar_valid || axi_ar !== stalled_ar_payload_q))
+        $fatal(1, "AR changed or was withdrawn before handshake");
+      stalled_ar_q <= axi_ar_valid && !axi_ar_ready;
+      stalled_ar_payload_q <= axi_ar;
+    end
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -405,6 +427,84 @@ module qbs_read_engine_tb;
     score_enable = 1'b0;
   endtask
 
+  task automatic stalled_ar_fault(input integer response_mode,
+                                  input integer release_delay);
+    integer ar_base;
+    integer old_bytes;
+    integer old_beats;
+    integer timeout_cycles;
+    qbs_read_fault_e expected_kind;
+    old_bytes = response_mode == 2 ? 16 : 64;
+    old_beats = response_mode == 0 ? 4 : response_mode == 1 ? 1 : 2;
+    expected_kind = response_mode == 0 ? QBS_READ_FAULT_AXI_RESPONSE :
+                                         QBS_READ_FAULT_AXI_PROTOCOL;
+    clear_read_counters();
+    hold_axi_responses = 1'b1;
+    hold_axi_addresses = 1'b0;
+    ar_base = ar_log_count;
+    send_range(64'hf100, old_bytes, 31);
+    timeout_cycles = 0;
+    while (ar_log_count != ar_base + 1 && timeout_cycles < 100) begin
+      @(negedge clk);
+      timeout_cycles++;
+    end
+    if (ar_log_count != ar_base + 1)
+      $fatal(1, "older AR was not accepted");
+    hold_axi_addresses = 1'b1;
+    send_range(64'hf200, 16, 32);
+    send_range(64'hf300, 16, 33);
+    timeout_cycles = 0;
+    while (!axi_ar_valid && timeout_cycles < 100) begin
+      @(negedge clk);
+      timeout_cycles++;
+    end
+    if (!axi_ar_valid || axi_ar.addr != 64'hf200)
+      $fatal(1, "younger AR did not reach the stalled interface");
+    trace_ar_fault = 1'b1;
+    repeat (2) @(negedge clk);
+    response_error_beat = response_mode == 0 ? 0 : -1;
+    last_mode = response_mode;
+    hold_axi_responses = 1'b0;
+    // Check both error + AR acceptance in one cycle, and an AR that remains
+    // stalled even after the older response has completely drained.
+    if (release_delay == 0)
+      hold_axi_addresses = 1'b0;
+    repeat (release_delay) begin
+      @(negedge clk);
+      if (fault_valid || completion_valid || data_valid || range_ready)
+        $fatal(1, "fault escaped or work advanced before stalled AR drain");
+    end
+    hold_axi_addresses = 1'b0;
+    timeout_cycles = 0;
+    while (ar_log_count != ar_base + 2 && timeout_cycles < 100) begin
+      @(negedge clk);
+      timeout_cycles++;
+    end
+    if (ar_log_count != ar_base + 2)
+      $fatal(1, "stalled younger AR was lost");
+    timeout_cycles = 0;
+    while (r_beat_count < old_beats && timeout_cycles < 100) begin
+      @(negedge clk);
+      timeout_cycles++;
+    end
+    if (r_beat_count < old_beats)
+      $fatal(1, "older malformed response did not drain");
+    // Only the older response is malformed; the accepted younger AR drains
+    // normally without publishing data or completion for the failed command.
+    response_error_beat = -1;
+    last_mode = 0;
+    wait_fault(expected_kind, 31, 64'hf100);
+    if (ar_log_count != ar_base + 2 || ar_log_addr[ar_base+1] != 64'hf200 ||
+        ar_count != 2 || r_beat_count != old_beats + 1 ||
+        payload_byte_count != 0 || completion_valid || busy || response_count != 0)
+      $fatal(1, "stalled-AR fault drain/accounting mismatch");
+    trace_ar_fault = 1'b0;
+    begin_score(64'hf400, 32, 34);
+    send_range(64'hf400, 32, 34);
+    wait_completion(34, 32);
+    $display("QBS stalled-AR fault PASS mode=%0d delay=%0d", response_mode, release_delay);
+  endtask
+
   initial begin : run_tests
     integer ar_base;
 
@@ -426,6 +526,8 @@ module qbs_read_engine_tb;
     response_error_beat = -1;
     last_mode = 0;
     hold_axi_responses = 1'b0;
+    hold_axi_addresses = 1'b0;
+    trace_ar_fault = 1'b0;
     use_backpressure = 1'b0;
     score_enable = 1'b0;
     score_base = '0;
@@ -659,6 +761,13 @@ module qbs_read_engine_tb;
     if (mmu_is_store)
       $fatal(1, "QBS read engine requested a store translation");
 
+    $display("QBS read legacy cases PASS t=%0t", $time);
+    if (!$test$plusargs("QBS_SKIP_AR_FAULT_TESTS")) begin
+      for (int mode = 0; mode < 3; mode++) begin
+        stalled_ar_fault(mode, 0);
+        stalled_ar_fault(mode, 6);
+      end
+    end
     $display("QBS read engine PASS");
     $finish;
   end

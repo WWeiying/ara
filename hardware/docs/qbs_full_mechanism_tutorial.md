@@ -3239,7 +3239,19 @@ descriptor、activation 和 weight 共用一条 read engine：
 - 跟踪最多两个有序 outstanding burst。
 
 两个 outstanding 使用同一 AXI ID，因此响应按发出顺序归属到 burst-tag FIFO 头。read engine
-仍逐项检查 RRESP/RLAST；发生 fault 后停止新 AR，排空已发响应，并保留最早应报告的 fault。
+仍逐项检查 RRESP/RLAST；发生 fault 后停止规划新的 AR，排空已发响应，并保留最早应报告的 fault。
+这里必须区分“还没展示的请求”和“ARVALID 已经拉高、但 ARREADY 尚未接收的请求”。后者已经
+受 AXI 握手规则约束，不能因为其他请求出错就撤销地址或 VALID。
+
+`ar_stalled_q` 记录这样的待握手 AR。发生 fault 后，它保留地址、长度、属性和 range tag，
+直到 AR 握手；随后照常将 tag 放入 burst FIFO，返回的数据只排空，不对外发布 payload 或
+completion。上报 fault 必须同时满足 **burst FIFO 为空，且没有已展示的待握手 AR**。
+即使旧请求已经排空，也不能在年轻 AR 还被阻塞时提前释放 VLSU owner。
+
+这个状态位不增加请求缓冲容量或正常路径流水级。只有一个 planner 能占用 AR 元数据，
+待握手期间它不能再发其他 AR，因此第一次展示 AR 时预留的 outstanding slot 不会被抢走。
+QBS 和 AKV 都复用这套规则。定向 VCS 的周期证据、修复边界和回归结果见
+[共享读路径异常检查](qbs_shared_reader_fault_review.md)。
 
 “read outstanding=2”不等于任意乱序 cache miss engine。它是有界、有序、带 range tag 的预取/
 传输重叠，便于证明 fault 和 payload 归属。
