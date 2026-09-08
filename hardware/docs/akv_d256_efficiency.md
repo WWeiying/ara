@@ -254,7 +254,7 @@ Gemma KV140 相对同输入、同 simv 且通过数值检查的普通 RVV 为 **
 
 ## 6. 受控接入 GGML Decode
 
-新阶段位于 `llm-linear-attention-next`，基线引用
+本阶段最初位于 `llm-linear-attention-next`，现已合入 `ara_dsa`，基线引用
 `llm-linear-attention-baseline-20260908` 保留 `4410dce9`。
 llama.cpp 的接入使用独立工作树 `llama.cpp-d256-admission`，原
 `qbs-activation-context` 的未提交修改完整保留。
@@ -287,6 +287,36 @@ llama.cpp 安装新 adapter。
 命中数与 fallback 原因，不仅要求模型能结束。长输入来自同样的真实模型推理，
 不把重复短 capture 当作长 K/V 数据。此处 QBS 执行 QEMU 自定义指令模型，
 AKV 执行 GGML 功能参考；模型通过不等于新增原生 RTL 性能数据，也不等于大规模
-困惑度验证。模型结果待队列完整结束后归档，不预填 PASS。
+困惑度验证。
+
+### 6.1 已完成的模型对照
+
+2026-09-08 07:50:22 至 10:19:20 UTC 的队列已完成，并从原始 `qemu.log`
+重新核对三种运行配置的完整边界、退出状态、全部三条可比较 logit 记录、原有
+数值阈值、逐节点执行/回退与总计数守恒，以及 guest ELF 哈希。4/4 通过：
+
+| 模型与 D256 设置 | prompt token | Decode AKV/总调用 | 实际 Decode KV | Prefill 回退 | QBS/RVV 最大 KL |
+| --- | ---: | ---: | --- | ---: | ---: |
+| Gemma-3-1B Q4_K_M，开启 | 4 | 52/52 | 5、6 | 26，size | 0.0184498306 |
+| 同输入，默认关闭 | 4 | 0/52 | 不记录快速路径 KV | 26，size | 0.0184498306 |
+| Qwen2.5-1.5B Q4_K_M，开启新开关 | 3 | 56/56 | 4、5，仍为 D128 | 28，size | 0 |
+| Gemma-3-1B Q4_K_M，较长输入开启 | 139 | 52/52 | 140、141 | 26，shape | 0.00036250645 |
+
+每点 RVV、QBS-only、QBS+AKV 各生成 3 个 token，三者 token 和每步 top-1 均
+一致。AKV 相对 QBS-only 的 logit 最大绝对差均为零。但 Gemma 的 QBS/RVV
+最大绝对差分别达到 1.04037714（短输入）和 1.03702736（较长输入），短输入
+最小 top-5 重合率为 0.8；只能称为通过原来的 `decision-preserving-v1` 检查，
+不能称为逐位一致或模型整体质量无损。没有提高容差以取得通过。
+
+组合配置中 QBS 的实际原生 QEMU 指令数分别为 67,632、67,632、74,724、
+539,688，`emulated_commands=0`。Gemma 的这个混合量化 GGUF 实际使用
+Q4_K、Q6_K、Q8_0、Q5_0 四种权重，所有候选 tensor/element 均被选中。这只
+是这些模型文件的覆盖证据，不代表九种 profile 的全部形状都在本轮跑过。
+
+结果和原始日志哈希保存在 `verification/akv/results/d256_admission_20260908/`，
+严格收集器为 `verification/akv/summarize_d256_admission.py`。原始运行目录与
+ELF 不改写。运行版本 `8fafaf39` 早于后来的 QBS INT8 极值修复；AKV 仍是 GGML
+功能参考，不能把这张表解释为当前 RTL 的模型周期。原生性能证据仍是第 5 节的
+7/7 VCS 队列。D256 显式开关、特性限制和默认 fallback 不因本轮通过而解除。
 
 复现与当前阶段安排见 `llm_linear_attention_next.md`。

@@ -1,0 +1,5 @@
+case,model,status,d256_enabled,decode_executed,decode_fallback,active_kv,execution,prompt_tokens,candidate_ops,prefill_executed,prefill_fallback,native_qbexec,qbs_rvv_max_abs,qbs_rvv_max_kl,qbs_rvv_min_cosine,qbs_rvv_min_top5_overlap,akv_qbs_max_abs,token_equal
+gemma_enabled,gemma3_1b_q4km,PASS,True,52,0,5;6,GGML functional AKV; QEMU native QBS,4,78,0,26,67632,1.04037714,0.0184498306,0.999417326,0.8,0.0,True
+gemma_default,gemma3_1b_q4km,PASS,False,0,52,,GGML functional AKV; QEMU native QBS,4,78,0,26,67632,1.04037714,0.0184498306,0.999417326,0.8,0.0,True
+qwen_existing,qwen25_1p5b_q4km,PASS,True,56,0,4;5,GGML functional AKV; QEMU native QBS,3,84,0,28,74724,0.0,0.0,1.0,1.0,0.0,True
+gemma_long_enabled,gemma3_1b_q4km,PASS,True,52,0,140;141,GGML functional AKV; QEMU native QBS,139,78,0,26,539688,1.03702736,0.00036250645,0.999822572,1.0,0.0,True
