@@ -1,0 +1,197 @@
+{
+  "date": "2026-09-08",
+  "baseline_commit": "7b7c3de0645d00a68395e9d6866bd6c47702e8ea",
+  "rtl_file": "hardware/src/vlsu/qbs/qbs_block_adapter.sv",
+  "baseline_rtl_sha256": "13a1a439a663dbee7ace9080f618335f7347fee3cb46e3f71cc020d21b96b8f6",
+  "current_rtl_sha256": "794f4ab85eab01d73e312a993621a91b9e81756b9e3dac30b0d46bfc5a956715",
+  "added_pipeline_stages": 0,
+  "added_state_bits": 0,
+  "dc_synthesis_run": false,
+  "physical_timing_improvement_measured": false,
+  "adapter": {
+    "status": "PASS",
+    "cases": 81,
+    "strobe_masks": 65536,
+    "cycles": 157217,
+    "simultaneous": 71056,
+    "duplicates": 6455,
+    "clear_collisions": 81,
+    "idle": 72073,
+    "cycle_reference_compare": true,
+    "unique_source_byte_scoreboard": true,
+    "trace_cycles": 64,
+    "trace_equal_to_baseline": true,
+    "trace_sha256": "93059f055a62958bc9615de011c89a876a2e7c6dc44f051516692f9d1b3080fa",
+    "log": "/tmp/ara_dsa_adapter_20260908_exhaustive/adapter/run.log",
+    "log_sha256": "6d683e9d9b4a79d52ea2b749ed22a8aab9650164273bf2894b049b5d88ef5642"
+  },
+  "engine": {
+    "status": "PASS",
+    "functional_cases": 33,
+    "fault_classes": 4,
+    "activation_context_lifecycle": "PASS",
+    "all_cycle_deltas": 0,
+    "cycle_adapter_reference_compare": true,
+    "baseline_simv_sha256": "4f32c57738de8ddab6a3a593c7df9fb0f2c3e968961b5b83f7edbac94a481d3c",
+    "current_simv_sha256": "cb0d6744de1ee386797039cc694e0e95ae5ba855817bc5bd0b9836e30c64b480",
+    "baseline_log_sha256": "ea01975f5472353f4beaa69128de74586d8a996733b21791a8d099b2e5fa76ce",
+    "current_log_sha256": "fe30535b1ecc97a6f86ed3d80ad98cff9159295104454bdaae1a809b5cb23f94"
+  },
+  "real_model": {
+    "status": "PASS",
+    "source": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m",
+    "cases": 7,
+    "all_cycle_deltas": 0,
+    "phase_and_traffic_equal": true,
+    "capture_sha256": {
+      "decode/operators/blk_0_attn_q_weight/activation_f32.bin": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1",
+      "decode/operators/blk_0_attn_q_weight/output_f32.bin": "796b1dd56a51e4ff907b36c8f1f053126789f570920f093660720bb6a14684b3",
+      "decode/operators/blk_0_attn_q_weight/weight_q4_K.bin": "f578b25b8fe8ce69119c2dfd157ed1a98021d699fd6d678a1f8d6aeec4029825",
+      "decode/operators/blk_0_attn_q_weight/operator.json": "a8d0cd0460c3aa8f9c2e05dedd77b147c5c2b9a88f3d59cf576e2f14343f2c8a",
+      "prefill/operators/blk_0_attn_q_weight/activation_f32.bin": "458df7aeebbcebfd2e768ada8671e70c38bf0da3f013a6958bc4b737b49d76ee",
+      "prefill/operators/blk_0_attn_q_weight/output_f32.bin": "55788ddf40285b4495a0dc36c6869c53ad046ae0f167567d66848b22f63b38f5",
+      "prefill/operators/blk_0_attn_q_weight/weight_q4_K.bin": "f578b25b8fe8ce69119c2dfd157ed1a98021d699fd6d678a1f8d6aeec4029825",
+      "prefill/operators/blk_0_attn_q_weight/operator.json": "e73f496c0f9a882b1e862df71ace51caddd960da7b2a900e6d4e1f83bf53e82c",
+      "prefill/operators/blk_0_ffn_down_weight/activation_f32.bin": "af8243490827e3271c6f38cbbf96bf71b7b8b4dcf6724080bac01873d42342b9",
+      "prefill/operators/blk_0_ffn_down_weight/output_f32.bin": "f8a411ac89f8a81541ec3fac535571b7b01d55c168af4781bc876cac481d6baf",
+      "prefill/operators/blk_0_ffn_down_weight/weight_q6_K.bin": "1e535b29e678b4e85e9c00375a2585a1fab58dc014a133fd2eba9546dbbe3882",
+      "prefill/operators/blk_0_ffn_down_weight/operator.json": "0394a6e16d955da084c806aee8a04e7cc27176801903e7a704938c0c98b31678"
+    },
+    "logs_and_vectors_sha256": {
+      "q4_decode_m1n32": {
+        "baseline": "b9b71f2f4e8318b3be9edefb270251a3c2f24ac8f56d35b027f7eb126a88a299",
+        "current": "2795d299beda60e36b607c39e5ec0beae517eb9bf2676868f969c06b43d376a2",
+        "vectors": "9c5904e559994884c974dffb48f1e592f2b1978ea674888296af96b4640a3345"
+      },
+      "q4_m4n32": {
+        "baseline": "1db738f64f95a399c0eb4a52847af39bb97fcc416d6b15c948026c001d3fd09d",
+        "current": "93ae7072706cabcdb3d826d34188a9f7f71887b5b76811ae479b0ae56809848d",
+        "vectors": "62290eecfa268c9068399561a2431f80352f3db8c7b24d7b235ae28a0af76e28"
+      },
+      "q4_m8n16": {
+        "baseline": "5f59d8ef8d30f6368b13958c0281c0794bb78e84d8d42368e90fa7f84bdefd37",
+        "current": "972496244d1047e4f731c6d3edd5789620e2b2a4a4c51399897ed923dc912a02",
+        "vectors": "17ffe7b12ed26ebd10f12269224cb5cff7c87735bb1b18c70dda86cf3627c61e"
+      },
+      "q4_m7n16": {
+        "baseline": "0395803b3a64deeb1cd00192552ad4772ceaac0b7d6fd3d3a399777fe007e039",
+        "current": "e9f453536f21b4e126519eb8be6c06bf41d80975018319ec8c22703f2bf33fec",
+        "vectors": "7bc0317f61e8972b90cc27d66fb55a292fb4ee771d504cf1600918221991dec6"
+      },
+      "q6_m4n32": {
+        "baseline": "23a51ceecb1a29e48a9649e2b5d82bd4ae91414162c1d406c51319c4a4ab851d",
+        "current": "4a6bd0519d94cfcae38d3702a9697c7b02f996ba2799752696388d958049b3f3",
+        "vectors": "7588ed840d8ca3cd60502f4b6635997fc14355091a79cd91e23c09d12f7fb5fb"
+      },
+      "q6_m8n16": {
+        "baseline": "0ab30bc89070e3ab776f8c37cd687daecee732425889d42fd5d78c8e342ec26d",
+        "current": "657fd26aade8b1cbfa99030213d014376fcc605d352aba3aeae363e77815e78f",
+        "vectors": "602473e51199b7d01dfa203fdf8525f911d15a15d05b9d2658c3f5af0a341d2f"
+      },
+      "q6_m7n16": {
+        "baseline": "278755214c622d63b9a89d727b5c386ab16b934b35774b6e068e553905b2ef7a",
+        "current": "ef6b0d9352f76a51b32ff3e8861a505fc553777971e8ca78c38bc1b51765193d",
+        "vectors": "c5514053309a98a75357a24b0f45543e93ce63ebd847e4706bd43a30f001fb1f"
+      }
+    },
+    "phase_cycles": {
+      "q4_decode_m1n32": {
+        "setup": 9,
+        "activation": 179,
+        "weight": 216,
+        "compute": 216,
+        "overlap": 1512,
+        "drain": 27,
+        "scheduler": 55,
+        "commit": 5,
+        "terminal": 1
+      },
+      "q4_m4n32": {
+        "setup": 9,
+        "activation": 468,
+        "weight": 216,
+        "compute": 4572,
+        "overlap": 1764,
+        "drain": 99,
+        "scheduler": 55,
+        "commit": 17,
+        "terminal": 1
+      },
+      "q4_m8n16": {
+        "setup": 9,
+        "activation": 906,
+        "weight": 216,
+        "compute": 5580,
+        "overlap": 756,
+        "drain": 99,
+        "scheduler": 55,
+        "commit": 17,
+        "terminal": 1
+      },
+      "q4_m7n16": {
+        "setup": 9,
+        "activation": 906,
+        "weight": 216,
+        "compute": 5580,
+        "overlap": 756,
+        "drain": 75,
+        "scheduler": 55,
+        "commit": 15,
+        "terminal": 1
+      },
+      "q6_m4n32": {
+        "setup": 9,
+        "activation": 2731,
+        "weight": 1855,
+        "compute": 22503,
+        "overlap": 14457,
+        "drain": 51,
+        "scheduler": 316,
+        "commit": 17,
+        "terminal": 1
+      },
+      "q6_m8n16": {
+        "setup": 9,
+        "activation": 5285,
+        "weight": 1855,
+        "compute": 30763,
+        "overlap": 6197,
+        "drain": 51,
+        "scheduler": 316,
+        "commit": 17,
+        "terminal": 1
+      },
+      "q6_m7n16": {
+        "setup": 9,
+        "activation": 5285,
+        "weight": 1855,
+        "compute": 30763,
+        "overlap": 6197,
+        "drain": 39,
+        "scheduler": 316,
+        "commit": 15,
+        "terminal": 1
+      }
+    },
+    "note": "QBS engine-level command cycles, not full SoC kernel or token-generation performance."
+  },
+  "synthesis_define": {
+    "status": "PASS",
+    "functional_cases": 33,
+    "fault_classes": 4,
+    "log": "/tmp/ara_dsa_adapter_20260908_synthesis_define/run.log",
+    "log_sha256": "02b57088bbe84b32a6cafc647d55ac3f6fe9ef43490335b50685a9c042ec528a",
+    "note": "VCS compilation/run with +define+SYNTHESIS; not synthesis."
+  },
+  "top_handoff": {
+    "status": "PASS",
+    "started_at": "2026-09-08T16:11:47.599913+00:00",
+    "finished_at": "2026-09-08T16:13:13.847571+00:00",
+    "simv_sha256": "fc196af205c5d581e435f3511bcba29f986be2e7aa1d12e7ffd0c96810bcc042",
+    "scope": "current RTL; 4 lanes; VLEN=1024; 1 MiB simulated L2; QBS and AKV-v2",
+    "result_dir": "hardware/timing_adapter_handoff_20260908",
+    "qbs_commands": 4,
+    "akv_commands": 10,
+    "traps": 0
+  }
+}

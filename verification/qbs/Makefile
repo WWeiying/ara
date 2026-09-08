@@ -17,6 +17,7 @@ RTL_CONTEXT_BUILD := rtl_context_build
 RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
+RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
 RTL_INCLUDES := +incdir+$(ROOT)/hardware/deps/common_cells/include \
@@ -43,7 +44,7 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
-	$(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv \
+	$(RTL_BLOCK_ADAPTER_SOURCE) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_compute_engine.sv \

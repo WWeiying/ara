@@ -6,7 +6,7 @@ capture_root=${QBS_REAL_CAPTURE_ROOT:-${HOME}/llama/captures/qwen2.5-1.5b-q4_k_m
 result_dir=${QBS_ADAPTIVE_RTL_RESULT_DIR:-${script_dir}/rtl_engine_build/adaptive_real}
 case_timeout=${QBS_ADAPTIVE_RTL_TIMEOUT:-180}
 generator=${script_dir}/qbs_command_vectors
-simulator=${script_dir}/rtl_engine_build/simv
+simulator=${QBS_ADAPTIVE_RTL_SIMV:-${script_dir}/rtl_engine_build/simv}
 
 q4_capture=${capture_root}/prefill/operators/blk_0_attn_q_weight
 q6_capture=${capture_root}/prefill/operators/blk_0_ffn_down_weight

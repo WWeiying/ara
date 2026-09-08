@@ -2,12 +2,12 @@
 
 ## 1. 范围和基准
 
-本轮以 `ara_dsa` 的 `b07e194deb4bc8cc88cc26cb1266893b9e92612d` 为比较基准，
+第一批以 `ara_dsa` 的 `b07e194deb4bc8cc88cc26cb1266893b9e92612d` 为比较基准，
 借鉴 `ara_dsa_timing` 中的 QBS 状态压缩和 ALU 算术改写。
 来源包含 `3349cf83` 之前的已提交工作，以及该 worktree 的 ALU 未提交改动。
 不是将旧 worktree 的文件整体覆盖到当前设计。
 
-只修改三个 RTL 模块：
+第一批只修改三个 RTL 模块，已提交为 `7b7c3de0`；第 8 节记录在此基础上的接收路径优化。
 
 | 模块 | 本次内容 | 保持不变的部分 |
 | --- | --- | --- |
@@ -148,3 +148,142 @@ QBS 两个模块合计减少 9736 bit 的声明数据状态，其中 FP entry �
 实测记录、源文件哈希和 33 点的前后周期表保存在
 `verification/timing/results/20260908/`。这些结果支持“本轮覆盖范围内没有增加执行周期”，
 不代表已经完成全部模型回归或物理时序收敛。没有修改原来的性能结果目录。
+
+## 8. QBS 回数接收控制的组合优化
+
+### 8.1 依据和边界
+
+本批基准为 `7b7c3de0`，只修改 `qbs_block_adapter.sv` 的组合组织和写入表达式。
+不修改 `qbs_read_engine` 的 AXI、completion、fault 协议，也不修改 compute engine
+的 ready 条件、双 bank 调度、M8 两波执行或激活 context replay。
+
+timing worktree 的 `clk_i_max.tim` 首条路径从 read engine 的
+`completion_tag_q.role` 出发，经 `completion_ready`、`data_valid`、
+`compute_weight_write_valid` 到 block adapter 的 `weight_accepted_q`，slack 为
+`-0.214 ns`。**该报告对应 SRAM 版 adapter，不是当前寄存器版，也不是本批修改后的报告。**
+它用于定位值得检查的控制链，不能用来计算本批修改的时序收益。
+
+当前代码有两个可以保持周期行为的改写点：
+
+- 每个 beat 最多 16 字节，原来的 `new_*_bytes++` 是循环展开的条件累加。
+  把新增字节判断独立出来，再明确写成平衡加法树，可以避免在 RTL 中描述长串行计数链。
+- 原来的完成判断从 `row < row_count` 开始逐字节 `&=`，把行使能混入整个归约表达式。
+  compute engine 的 live row count 又经过 valid 控制的选择器。先独立归约 byte-valid，
+  再判断当前行是否启用，可以使行选择位只在归约末端参与计算。
+
+这是组合结构优化，不是减少 kernel 周期的调度优化。综合工具可能已经优化过部分旧表达式；
+最终门级深度、扇出、面积和功耗变化必须另行测量。
+
+### 8.2 字节计数如何改写
+
+每个输入 byte 仍使用原来的地址映射和范围判断，生成目标 row/context、局部 offset、有效位。
+只有范围检查通过，压缩后的局部地址才会用于写入；不会先截断 offset 再检查范围。
+weight offset 用 8 bit 覆盖 210 字节，activation offset 用 9 bit 覆盖 292 字节。
+这些 target 只是组合信号，不是新的 FIFO、寄存器或流水级。
+
+对第 `i` 个输入字节，新增标志为：
+
+```text
+new_mask[i] = strb[i] && mapping_valid[i] && !byte_valid[target[i]]
+
+16 个 1-bit 标志
+  -> 8 个 2-bit 两两和
+  -> 4 个 3-bit 和
+  -> 2 个 4-bit 和
+  -> 1 个 5-bit 新增字节数，范围 0..16
+```
+
+局部 `write_valid` 不再作为计数树内部的条件，而是在寄存器更新处决定本拍是否写入。
+总计数器仍为原来的 32 bit，没有收窄，也没有改变溢出行为。
+这里的“移到末端”限于 adapter 内部；上游的 row count 仍可能由 valid 限定，
+因此不能声称整条 completion-to-counter 物理路径已经消失。
+
+必须保留的规则如下：
+
+- `clear` 和 write 同拍时，清理优先，计数归零、byte-valid 清零。
+- 重复 byte 可以覆盖存储数据，但不重复增加 accepted-byte 计数。
+- `strb=0` 或范围检查失败的 byte 不能写入，也不能增加计数。
+- `valid=0` 时，无论组合地址、strobe 或预计算 count 是什么，都不改变状态。
+- 清理只清 byte-valid 和计数，不清 payload；这一点与基准完全一致。
+- 权重和激活分别计算 mask、count，允许同拍写入，不能因共享读总线就假设两者互斥。
+  尤其是权重 AXI 回数可以与本地 activation replay 并行。
+- M8 的两个 adapter 仍分别接收 context 0..3 和 4..7，M5..M7 的填充布局也不改变。
+
+### 8.3 完成判断为什么仍然准确
+
+每行先根据当前 profile 的 block 字节数计算 `payload_complete`：
+该 block 范围内的 byte-valid 必须全部为 1，范围以外的数组容量不参与判断。
+然后单独计算 `row_active`，最终得到：
+
+```text
+weight_complete[row] = row_active[row] && payload_complete[row]
+all_weight_complete = row_count 合法 && 没有已启用但未完成的行
+```
+
+activation 使用同样的组织方式。没有启用的 context 不阻挡完成，M8 时两个局部
+bank 都检查各自四个 context。仍使用 byte-valid，而不是用收到的总字节数猜测完成，
+因此重复写、部分 strobe 和跨 native block 的 beat 不会造成提前完成。
+
+### 8.4 实测和结论
+
+先在未修改 adapter 上验证定向激励和独立 source-byte 计分板，再以相同输入驱动
+新 adapter 和从 Git 固定提取的 reference。比较每周期的完整 payload、byte-valid、
+逐行完成位、整体完成位和 accepted-byte 计数，不仅比较最后结果。
+
+| 检查 | 结果 |
+| --- | --- |
+| 九种权重 profile，M1..M8，row-major/R4 和 activation row-major/M4/M8 | 81 组通过 |
+| 16-bit strobe 全组合，经真实写入和独立计分板检查 | 65536 组通过 |
+| 上述测试逐周期 reference 对照 | 157217 个测试周期通过 |
+| 同拍权重/激活写入、重复写、clear 与 valid 冲突、空闲周期 | 均实际覆盖 |
+| QBS engine | 33 功能点和四类 fault 通过，周期与独立基准一致 |
+| activation FILL/REUSE/RELEASE | 通过 |
+| VCS 定义 SYNTHESIS 后执行同一 engine 回归 | 33 点及四类 fault 通过，不代表完成 DC 综合 |
+| 完整顶层切换 | 普通 RVV、4 条 QBS、10 条 AKV 通过，traps=0 |
+
+真实模型数据来自 `llama/captures/qwen2.5-1.5b-q4_k_m`。
+Decode 使用捕获的 `attn_q`；Prefill 使用捕获的 `attn_q` 和 `ffn_down`。
+保留完整 K=1536/8960，只截取输出行和 token 数，使功能仿真保持短小。
+下表是 QBS engine 测试环境中的 command 周期，不是完整 SoC kernel 周期或 token/s。
+
+| 来源/格式 | M | N | K | 基准周期 | 修改后周期 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Decode attn_q / Q4_K | 1 | 32 | 1536 | 2219 | 2219 |
+| Prefill attn_q / Q4_K | 4 | 32 | 1536 | 7200 | 7200 |
+| Prefill attn_q / Q4_K | 8 | 16 | 1536 | 7638 | 7638 |
+| Prefill attn_q / Q4_K | 7 | 16 | 1536 | 7612 | 7612 |
+| Prefill ffn_down / Q6_K | 4 | 32 | 8960 | 41939 | 41939 |
+| Prefill ffn_down / Q6_K | 8 | 16 | 8960 | 44493 | 44493 |
+| Prefill ffn_down / Q6_K | 7 | 16 | 8960 | 44479 | 44479 |
+
+七点的 phase 周期、权重/激活/总 payload 字节数、range 数、dot 活跃周期和
+weight-prefetch 等待周期也与基准一致。浮点计算顺序、量化格式和数据内容没有修改。
+
+本批不增加状态位或流水级，不更改普通 RVV、AKV 或软件 ABI。不运行综合、布局或功耗工具。
+结果支持“已测功能和执行周期不变”，不支持“已经消除违例”或“已获得某个 MHz/面积收益”。
+详细记录位于 `verification/timing/results/20260908_adapter/`。
+
+### 8.5 复现命令
+
+从仓库根目录执行，BUILD 使用新的独立目录：
+
+```sh
+make -C verification/timing adapter-check adapter-engine-check \
+  adapter-baseline-engine-check BUILD=/tmp/qbs_adapter_check RUN_TIMEOUT=300
+
+QBS_ADAPTIVE_RTL_SIMV=/tmp/qbs_adapter_check/engine/simv \
+QBS_ADAPTIVE_RTL_RESULT_DIR=/tmp/qbs_adapter_check/real \
+  bash verification/qbs/run_adaptive_real_rtl.sh
+
+QBS_ADAPTIVE_RTL_SIMV=/tmp/qbs_adapter_check/baseline_engine/simv \
+QBS_ADAPTIVE_RTL_RESULT_DIR=/tmp/qbs_adapter_check/baseline_real \
+  bash verification/qbs/run_adaptive_real_rtl.sh
+
+diff -u /tmp/qbs_adapter_check/baseline_real/summary.csv \
+  /tmp/qbs_adapter_check/real/summary.csv
+```
+
+`ADAPTER_REFERENCE` 默认固定为 `7b7c3de0`。`RTL_BLOCK_ADAPTER_SOURCE` 只用于验证中
+装入基准 adapter，普通 QBS 验证默认仍编译当前 RTL。
+`QBS_ADAPTIVE_RTL_SIMV` 允许真实数据测试使用独立编译目录；不设置时保持原行为。
+Decode 单点和顶层切换的命令见结果目录的 README。
