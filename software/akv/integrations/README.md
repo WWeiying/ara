@@ -33,10 +33,41 @@ AKV_GGML_BUILD=/tmp/qbs-akv-portable-ggml \
 ```
 
 Run these commands from the hardware repository root, or replace `$PWD` with
-its absolute path. The test uses standard RVV QEMU and an AKV F32 oracle,
+its absolute path. The test uses standard RVV QEMU and the GGML F16-accumulator functional executor,
 not native AKV instructions. Native instruction validation is a separate VCS
 test. `GGML_RISCV_AKV_PORTABLE=1` enables the new adapter selection only when
 the AKV backend itself is enabled and capable; default selection is retained.
 
 No commits or pushes are performed by these scripts. Maintain the external
 repository separately; update this patch if the adapter changes.
+
+## Experimental D256 Decode
+
+`llama-cpp-d256-admission.patch` is an alternative, complete patch against the
+same `f896237df65c8f5d5101d65acfc500e194127a14` baseline. It includes the portability
+changes above. Apply one of the two patches, not both. This records the external
+adapter in the hardware repository without committing the user's llama.cpp worktree.
+
+The original local adapter was at `8ed9403e3` plus uncommitted changes; its
+`akv.cpp` SHA-256 before D256 admission was
+`495dfe1e88a03974d64ed17780e4597f13bcd5ec13411810a435aeedfda53c61`.
+Those changes are preserved in this patch and in the original worktree.
+
+`GGML_RISCV_AKV_D256=1` enables only verified-contract D256 Decode candidates:
+segmented v2 and panel4 capabilities, aligned F16 K/V, and an unmodified zero
+mask prefix with optional trailing `-Inf`. Other features and D256 Prefill keep
+their RVV fallback. The flag is off by default. The linked runtime and header
+must come from this repository's token-order implementation; its software
+contract is marked by `AKV_D256_ONLINE_FP16` (not an ISA capability).
+
+```sh
+AKV_TEST_D256=1 AKV_LLAMA_SRC=/path/to/patched/llama.cpp \
+  AKV_GGML_BUILD=/path/to/static/ggml/build \
+  AKV_PORTABLE_RUN=/path/to/new/test-output \
+  bash verification/akv/run_ggml_portability_test.sh
+```
+
+Set `AKV_MODEL_D256=1` in `run-qemu-model-check.sh` to pass the option to the
+guest's combined run. Its RVV and QBS-only variants explicitly clear the flag.
+`verification/akv/run_d256_admission.py` runs the fixed real-model cohort with
+per-case deadlines and preserves binaries, hashes, output and selection evidence.

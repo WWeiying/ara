@@ -16,6 +16,8 @@ extern "C" {
 #define AKV_ATTENTION_KERNEL_Q_ROWS 6u
 #define AKV_PREFILL_QUERY_BLOCK_TOKENS 64u
 #define AKV_PREFILL_COMPUTE_TILE_TOKENS 2u
+/* Software numerical contract; this is not an ISA capability bit. */
+#define AKV_D256_ONLINE_FP16 1
 
 typedef enum {
   AKV_STATUS_OK = 0,

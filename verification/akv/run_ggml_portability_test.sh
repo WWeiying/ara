@@ -5,9 +5,12 @@ llama=${AKV_LLAMA_SRC:-/home/wangwy/llama/llama.cpp}
 platform=${AKV_QEMU_PLATFORM:-/home/wangwy/llama/platforms/cva6-qemu}
 build=${AKV_GGML_BUILD:?set AKV_GGML_BUILD to the cross-compiled static GGML build}
 run=${AKV_PORTABLE_RUN:-${root}/software/akv/build/ggml-portability}
+d256=${AKV_TEST_D256:-0}
+[[ ${d256} == 0 || ${d256} == 1 ]] || exit 2
 mkdir -p "${run}"
 cc=${platform}/tools/bin/riscv64-linux-g++
 "${cc}" -std=c++17 -O2 -march=rv64gcv_zfh_zvfh -mabi=lp64d -static -pthread \
+  "-DAKV_TEST_D256=${d256}" \
   -I"${llama}/ggml/include" -I"${llama}/ggml/src" -I"${llama}/ggml/src/ggml-cpu" \
   "${root}/verification/akv/ggml_portability_test.cpp" \
   -Wl,--start-group "${build}/ggml/src/libggml.a" \
@@ -31,3 +34,6 @@ timeout --foreground "${AKV_PORTABLE_TIMEOUT:-180}" \
   -initrd "${run}/init.cpio" -append 'console=ttyS0 rdinit=/init' \
   > "${run}/qemu.log" 2>&1
 grep -F 'AKV GGML portability: PASS cases=18 concurrent_graphs=2 fallbacks=2 legacy=1' "${run}/qemu.log"
+if [[ ${d256} == 1 ]]; then
+  grep -F 'AKV GGML D256: PASS cases=16 default_fallbacks=16 feature_fallbacks=5 layout=1 v1=1 gqa=1 optout=1 legacy_dims=2 guards=1' "${run}/qemu.log"
+fi

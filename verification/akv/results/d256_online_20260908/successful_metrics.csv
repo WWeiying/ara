@@ -1,0 +1,7 @@
+case,status,kernel_cycles,mismatches,akv_v2_column_load,akv_v2_column_panel,akv_v2_row_load,akv_replay_bytes,retired_vector_inst_count,retired_scalar_inst_count
+gemma_kv140,PASS,164622,0,192,192,280,143360,10315,28518
+gemma_kv17,PASS,33521,0,64,64,34,17408,2177,7387
+qwen_d128,PASS,35343,0,256,0,32,16384,2792,8713
+smollm_d64,PASS,31959,0,576,0,45,11520,1881,8360
+phi_d96,PASS,10901,0,96,0,18,6912,311,3172
+rvv_gemma_kv140,PASS,419549,0,0,0,0,0,26809,66330

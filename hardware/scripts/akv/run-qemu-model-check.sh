@@ -15,8 +15,11 @@ model_dump_f32=${AKV_MODEL_DUMP_F32:-}
 model_exit_after_dump=${AKV_MODEL_EXIT_AFTER_DUMP:-0}
 qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
 akv_portable=${AKV_MODEL_PORTABLE:-0}
+akv_d256=${AKV_MODEL_D256:-0}
 dynamic_only=${AKV_MODEL_DYNAMIC_ONLY:-0}
 [[ ${dynamic_only} == 0 || ${dynamic_only} == 1 ]] || exit 2
+update_latest=${AKV_UPDATE_LATEST:-1}
+[[ ${update_latest} == 0 || ${update_latest} == 1 ]] || exit 2
 qemu_memory=${AKV_QEMU_MEMORY:-4G}
 require_prefill=${AKV_REQUIRE_PREFILL:-0}
 prefill_min_query_tokens=64
@@ -321,6 +324,7 @@ write_manifest() {
     printf 'MODEL_EXIT_AFTER_DUMP=%s\n' "${model_exit_after_dump}"
     printf 'QBS_WIDE_M=%s\n' "${qbs_wide_m}"
     printf 'AKV_PORTABLE=%s\n' "${akv_portable}"
+    printf 'AKV_D256=%s\n' "${akv_d256}"
     printf 'DYNAMIC_ONLY=%s\n' "${dynamic_only}"
     printf 'REQUIRE_PREFILL=%s\n' "${require_prefill}"
     printf 'PREFILL_MIN_QUERY_TOKENS=%s\n' "${prefill_min_query_tokens}"
@@ -359,6 +363,10 @@ esac
 }
 [[ ${akv_portable} == 0 || ${akv_portable} == 1 ]] || {
   printf 'AKV_MODEL_PORTABLE must be 0 or 1\n' >&2
+  exit 2
+}
+[[ ${akv_d256} == 0 || ${akv_d256} == 1 ]] || {
+  printf 'AKV_MODEL_D256 must be 0 or 1\n' >&2
   exit 2
 }
 [[ -z ${model_digest} || ${model_digest} =~ ^[A-Za-z0-9_]+([,\;][A-Za-z0-9_]+)*$ ]] || {
@@ -500,6 +508,7 @@ fi
   "-DAKV_MODEL_EXIT_AFTER_DUMP=${model_exit_after_dump}" \
   "-DAKV_QBS_WIDE_M=${qbs_wide_m}" \
   "-DAKV_MODEL_PORTABLE=${akv_portable}" \
+  "-DAKV_MODEL_D256=${akv_d256}" \
   "${init_defines[@]}" \
   "${ara_root}/hardware/scripts/akv/akv-token-init.c" \
   -lm -o "${init_binary}"
@@ -562,6 +571,8 @@ if [[ ${model_mode} == combined || ${model_mode} == combined-fallback ]]; then
   "${ara_root}/hardware/scripts/akv/summarize-model-closure.py" \
     "${summary_args[@]}"
 fi
-ln -sfn "${run_dir}" \
-  "${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_latest"
+if [[ ${update_latest} == 1 ]]; then
+  ln -sfn "${run_dir}" \
+    "${ara_root}/hardware/akv_jobs/qemu_model_${model_mode}_latest"
+fi
 printf 'AKV model check passed: %s\n' "${run_dir}"

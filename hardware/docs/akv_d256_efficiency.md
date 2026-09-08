@@ -231,8 +231,62 @@ PV 对照、Gemma KV17、Qwen D128、SmolLM2 D64、Phi D96、同一 Gemma KV140 
 变化便停止后续点，防止混合版本。所有点复用原基线同一个 simv，每点 VCS 上限
 三小时，不持续轮询日志。
 
-本节写入时上述新 VCS 结果仍待运行，不能把 Host 通过写成原生通过。
-原 KV140 tiled-RVV 已超差，不作为有效加速比分母；只有数值通过的同输入基线
-才能用于新的性能结论。新结果由独立目录中的 `status.json`、各点 `stage.json`
-及原生日志决定；`successful_metrics.csv` 只包含通过点，失败/未执行点保留在
-状态表中，不更新原有总表或论文数据。
+上述串行 VCS 队列已完成：2026-09-08 03:08:59 至 04:31:41 UTC，共约
+82 分 43 秒，7/7 项通过，没有放宽容差。当前有效结果如下：
+
+| 输入和实现 | kernel_cycles | mismatch |
+| --- | ---: | ---: |
+| Gemma D256 / GQA4 / KV140，逐 token AKV | 164,622 | 0 |
+| 同一 Gemma KV140，普通 RVV | 419,549 | 0 |
+| Gemma D256 / GQA4 / KV17，逐 token AKV | 33,521 | 0 |
+| Qwen D128 / GQA6 / KV16 | 35,343 | 0 |
+| SmolLM2 D64 / GQA3 / KV5 | 31,959 | 0 |
+| Phi D96 / 单 Query head / KV18 | 10,901 | 0 |
+| 原生 PV smoke，原有 8 组及 online 8 组 | 不作为性能点 | 全输出及 fflags 一致 |
+
+Gemma KV140 相对同输入、同 simv 且通过数值检查的普通 RVV 为 **2.549 倍**，
+周期减少 **60.76%**。分子分母均为 `kernel_cycles`；不要混用 `hw_cycles`。
+这不是完整模型加速比，也不是相对已经修正数值顺序的最强 tiled-RVV 加速比。
+前文 193,172 周期的 tiled-RVV 仍超差，不能作为有效分母。
+
+归档在 `verification/akv/results/d256_online_20260908/`，包括完整状态和六个
+性能点的小型 CSV。原 ELF、逐点源码、日志和哈希仍在独立运行目录中。
+
+## 6. 受控接入 GGML Decode
+
+新阶段位于 `llm-linear-attention-next`，基线引用
+`llm-linear-attention-baseline-20260908` 保留 `4410dce9`。
+llama.cpp 的接入使用独立工作树 `llama.cpp-d256-admission`，原
+`qbs-activation-context` 的未提交修改完整保留。
+
+新开关为 `GGML_RISCV_AKV_D256=1`，只在 AKV 本身开启时起作用，默认关闭。
+接入条件是 v2、D128 物理区、D256 segmented 和 panel4 能力可用，F16 K/V、
+F32 Query/输出、合法对齐与步长，以及正长度的普通 Decode mask。mask 只能是
+连续有效前缀的零偏置与末尾 `-Inf` padding；暂不接管前导遮蔽、空洞、全遮蔽、
+有限偏置、softcap、ALiBi 或 sink。D256 Prefill 和不符合条件的节点仍走 RVV。
+GQA 超过 8 只有同时开启既有 portable 分组功能时才拆组处理。
+
+不能只放开维度判断：GGML 的 Query 转换暂存区和功能参考累加器原来只容纳
+D128，本次都扩展到 D256。前者最大 4 KiB，新增的是 2 KiB 软件栈容量，
+并非片上 SRAM。只转换实际使用的 Query 行，原生 executor 不读取未初始化的
+尾部。后者只在功能参考执行中使用。原生 QK/PV 仍调用同一个共享内核，本次
+未改 RTL、指令、descriptor、native 算法或 QBS 选择。
+
+`AKV_D256_ONLINE_FP16` 是软件实现契约标记，防止 adapter 在缺少逐 token
+舍入实现的旧头文件上开启新选择；它不是新 ISA capability bit。使用构建脚本
+将 adapter 和本仓库的 runtime 一起编译，不应混装其他版本的静态库。
+
+定向 GGML 测试新增 D256/GQA1、3、4、8、9，KV17、65、140，共 15 点，
+加 1 点末尾遮蔽；逐项检查默认回退、开启后输出、越界保护、5 类特性回退、
+不对齐步长、v1 拒绝和显式关闭。原有 18 组 portable 测试与 D96/D128 检查
+仍保留。D256 测试用 `AKV_TEST_D256=1` 显式开启，旧测试入口默认不要求外部
+llama.cpp 安装新 adapter。
+
+模型队列为 Gemma 短输入开启、同输入关闭、Qwen 原路径回归、Gemma 较长输入
+开启，每点生成 3 个 token，分别比较 RVV、QBS-only、QBS+AKV。统计实际 Decode
+命中数与 fallback 原因，不仅要求模型能结束。长输入来自同样的真实模型推理，
+不把重复短 capture 当作长 K/V 数据。此处 QBS 执行 QEMU 自定义指令模型，
+AKV 执行 GGML 功能参考；模型通过不等于新增原生 RTL 性能数据，也不等于大规模
+困惑度验证。模型结果待队列完整结束后归档，不预填 PASS。
+
+复现与当前阶段安排见 `llm_linear_attention_next.md`。
