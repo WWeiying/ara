@@ -100,4 +100,4 @@ sram-check: sram-references
 sram-engine-check: sram-references
 	$(MAKE) -C $(ROOT)/verification/qbs rtl-engine-check \
 		RTL_ENGINE_BUILD=$(BUILD)/engine RTL_RUN_TIMEOUT=$(RUN_TIMEOUT) \
-		RTL_EXTRA_SOURCES="$(BUILD)/qbs_block_adapter_reference.sv $(CURDIR)/qbs_sram_adapter_checker.sv"
+		RTL_EXTRA_SOURCES="$(BUILD)/qbs_block_adapter_reference.sv $(CURDIR)/qbs_sram_adapter_checker.sv $(CURDIR)/qbs_sram_ingress_checker.sv"

@@ -7,13 +7,14 @@ module qbs_payload_buffer import qbs_pkg::*; (
   input logic clk_i, rst_ni,
   input qbs_weight_profile_e weight_profile_i,
   input qbs_activation_profile_e activation_profile_i,
-  input logic weight_valid_i, activation_valid_i,
-  input logic [15:0] weight_mask_i, activation_mask_i,
-  input logic [1:0] weight_row_i [16], activation_context_i [16],
-  input logic [7:0] weight_offset_i [16],
-  input logic [8:0] activation_offset_i [16],
-  input logic [127:0] weight_data_i, activation_data_i,
-  output logic [15:0] weight_consumed_o, activation_consumed_o,
+  // Slot 0 is the older pending beat; slot 1 is the accepted input beat.
+  input logic [1:0] weight_valid_i, activation_valid_i,
+  input logic [31:0] weight_mask_i, activation_mask_i,
+  input logic [1:0] weight_row_i [32], activation_context_i [32],
+  input logic [7:0] weight_offset_i [32],
+  input logic [8:0] activation_offset_i [32],
+  input logic [255:0] weight_data_i, activation_data_i,
+  output logic [31:0] weight_consumed_o, activation_consumed_o,
   input logic weight_read_i, activation_read_i,
   input logic [7:0] read_k_i,
   // Only the payload window addressed by read_k_i is meaningful. Side
@@ -30,17 +31,18 @@ module qbs_payload_buffer import qbs_pkg::*; (
   } location_t;
   logic [7:0] weight_side_q [4][WeightSideBytes];
   logic [7:0] activation_side_q [4][ActivationSideBytes];
-  location_t weight_location [16], activation_location [16];
-  logic write_req [3][4];
-  logic [2:0] write_addr [3][4];
-  logic [255:0] write_data [3][4], read_data [3][4];
-  logic [31:0] write_be [3][4];
+  location_t weight_location [32], activation_location [32];
+  logic write_req [2][3][4];
+  logic [2:0] write_addr [2][3][4];
+  logic [255:0] write_data [2][3][4], read_data [3][4];
+  logic [31:0] write_be [2][3][4];
   logic [2:0] read_addr [3];
 
-  function automatic location_t weight_location_of(input int unsigned offset);
+  function automatic location_t weight_location_of(
+      input qbs_weight_profile_e profile, input int unsigned offset);
     location_t loc;
     loc = '{plane: 2'd2, offset: 8'(offset)};
-    case (weight_profile_i)
+    case (profile)
       QBS_WEIGHT_PROFILE_Q4_K:
         if (offset >= 16) loc = '{2'd0, 8'(offset - 16)};
       QBS_WEIGHT_PROFILE_Q5_K:
@@ -67,11 +69,12 @@ module qbs_payload_buffer import qbs_pkg::*; (
     return loc;
   endfunction
 
-  function automatic location_t activation_location_of(input int unsigned offset);
+  function automatic location_t activation_location_of(
+      input qbs_activation_profile_e profile, input int unsigned offset);
     int unsigned scale, quants;
     location_t loc;
-    scale = qbs_activation_scale_bytes(activation_profile_i);
-    quants = qbs_activation_quant_bytes(activation_profile_i);
+    scale = qbs_activation_scale_bytes(profile);
+    quants = qbs_activation_quant_bytes(profile);
     loc = '{plane: 2'd2, offset: 8'(offset)};
     if (offset >= scale + quants) loc.offset = 8'(offset - quants);
     else if (offset >= scale) loc = '{2'd0, 8'(offset - scale)};
@@ -96,47 +99,60 @@ module qbs_payload_buffer import qbs_pkg::*; (
     endcase
   end
 
-  // Select one word per physical bank. Unconsumed bytes are replayed by the
-  // adapter on the next cycle; weight and activation never share that queue.
-  always_comb begin
-    weight_consumed_o = '0;
-    activation_consumed_o = '0;
-    for (int plane = 0; plane < 3; plane++)
-      for (int row = 0; row < 4; row++) begin
-        write_req[plane][row] = 1'b0;
-        write_addr[plane][row] = '0;
-        write_data[plane][row] = '0;
-        write_be[plane][row] = '0;
-      end
-    for (int b = 0; b < 16; b++) begin
-      weight_location[b] = weight_location_of(unsigned'(weight_offset_i[b]));
-      activation_location[b] = activation_location_of(unsigned'(activation_offset_i[b]));
-      if (weight_valid_i && weight_mask_i[b]) begin
-        if (weight_location[b].plane == 2) weight_consumed_o[b] = 1'b1;
-        else begin
-          automatic int unsigned p = unsigned'(weight_location[b].plane);
-          automatic int unsigned r = unsigned'(weight_row_i[b]);
-          automatic logic [2:0] word_addr = weight_location[b].offset[7:5];
-          if (!write_req[p][r] || write_addr[p][r] == word_addr) begin
-            write_req[p][r] = 1'b1;
-            write_addr[p][r] = word_addr;
-            write_data[p][r][8*weight_location[b].offset[4:0] +: 8] = weight_data_i[8*b +: 8];
-            write_be[p][r][weight_location[b].offset[4:0]] = 1'b1;
-            weight_consumed_o[b] = 1'b1;
+  for (genvar b = 0; b < 32; b++) begin : gen_location
+    assign weight_location[b] = weight_location_of(weight_profile_i, unsigned'(weight_offset_i[b]));
+    assign activation_location[b] = activation_location_of(activation_profile_i, unsigned'(activation_offset_i[b]));
+  end
+
+  // Select pending addresses first, then merge newer bytes into those words.
+  // Separate stages keep pending-consumed (and hence input ready) independent
+  // of input valid/data. Each bank still performs only one physical write.
+  for (genvar slot = 0; slot < 2; slot++) begin : gen_write_merge
+    always_comb begin
+      weight_consumed_o[16*slot +: 16] = '0;
+      activation_consumed_o[16*slot +: 16] = '0;
+      for (int plane = 0; plane < 3; plane++)
+        for (int row = 0; row < 4; row++) begin
+          if (slot == 0) begin
+            write_req[slot][plane][row] = 1'b0;
+            write_addr[slot][plane][row] = '0;
+            write_data[slot][plane][row] = '0;
+            write_be[slot][plane][row] = '0;
+          end else begin
+            write_req[slot][plane][row] = write_req[0][plane][row];
+            write_addr[slot][plane][row] = write_addr[0][plane][row];
+            write_data[slot][plane][row] = write_data[0][plane][row];
+            write_be[slot][plane][row] = write_be[0][plane][row];
           end
         end
-      end
-      if (activation_valid_i && activation_mask_i[b]) begin
-        if (activation_location[b].plane == 2) activation_consumed_o[b] = 1'b1;
-        else begin
-          automatic int unsigned r = unsigned'(activation_context_i[b]);
-          automatic logic [2:0] word_addr = activation_location[b].offset[7:5];
-          if (!write_req[2][r] || write_addr[2][r] == word_addr) begin
-            write_req[2][r] = 1'b1;
-            write_addr[2][r] = word_addr;
-            write_data[2][r][8*activation_location[b].offset[4:0] +: 8] = activation_data_i[8*b +: 8];
-            write_be[2][r][activation_location[b].offset[4:0]] = 1'b1;
-            activation_consumed_o[b] = 1'b1;
+      for (int b = 16*slot; b < 16*(slot+1); b++) begin
+        if (weight_valid_i[slot] && weight_mask_i[b]) begin
+          if (weight_location[b].plane == 2) weight_consumed_o[b] = 1'b1;
+          else begin
+            automatic int unsigned p = unsigned'(weight_location[b].plane);
+            automatic int unsigned r = unsigned'(weight_row_i[b]);
+            automatic logic [2:0] word_addr = weight_location[b].offset[7:5];
+            if (!write_req[slot][p][r] || write_addr[slot][p][r] == word_addr) begin
+              write_req[slot][p][r] = 1'b1;
+              write_addr[slot][p][r] = word_addr;
+              write_data[slot][p][r][8*weight_location[b].offset[4:0] +: 8] = weight_data_i[8*b +: 8];
+              write_be[slot][p][r][weight_location[b].offset[4:0]] = 1'b1;
+              weight_consumed_o[b] = 1'b1;
+            end
+          end
+        end
+        if (activation_valid_i[slot] && activation_mask_i[b]) begin
+          if (activation_location[b].plane == 2) activation_consumed_o[b] = 1'b1;
+          else begin
+            automatic int unsigned r = unsigned'(activation_context_i[b]);
+            automatic logic [2:0] word_addr = activation_location[b].offset[7:5];
+            if (!write_req[slot][2][r] || write_addr[slot][2][r] == word_addr) begin
+              write_req[slot][2][r] = 1'b1;
+              write_addr[slot][2][r] = word_addr;
+              write_data[slot][2][r][8*activation_location[b].offset[4:0] +: 8] = activation_data_i[8*b +: 8];
+              write_be[slot][2][r][activation_location[b].offset[4:0]] = 1'b1;
+              activation_consumed_o[b] = 1'b1;
+            end
           end
         end
       end
@@ -147,20 +163,20 @@ module qbs_payload_buffer import qbs_pkg::*; (
     for (genvar r = 0; r < 4; r++) begin : gen_row
       wire rd = p == 2 ? activation_read_i : weight_read_i;
       qbs_payload_sram #(.NumWords(p == 0 ? 4 : p == 1 ? 2 : 8)) i_payload (
-        .clk_i, .rst_ni, .req_i(rd || write_req[p][r]), .we_i(write_req[p][r]),
-        .addr_i(write_req[p][r] ? write_addr[p][r] : read_addr[p]),
-        .wdata_i(write_data[p][r]), .be_i(write_be[p][r]), .rdata_o(read_data[p][r])
+        .clk_i, .rst_ni, .req_i(rd || write_req[1][p][r]), .we_i(write_req[1][p][r]),
+        .addr_i(write_req[1][p][r] ? write_addr[1][p][r] : read_addr[p]),
+        .wdata_i(write_data[1][p][r]), .be_i(write_be[1][p][r]), .rdata_o(read_data[p][r])
       );
 `ifndef SYNTHESIS
       assert property (@(posedge clk_i) disable iff (!rst_ni)
-          !(rd && write_req[p][r]))
+          !(rd && write_req[1][p][r]))
         else $fatal(1, "QBS payload single-port read/write collision");
 `endif
     end
   end
 
   always_ff @(posedge clk_i) begin
-    for (int b = 0; b < 16; b++) begin
+    for (int b = 0; b < 32; b++) begin
       if (weight_consumed_o[b] && weight_location[b].plane == 2)
         weight_side_q[weight_row_i[b]][weight_location[b].offset] <= weight_data_i[8*b +: 8];
       if (activation_consumed_o[b] && activation_location[b].plane == 2)
@@ -171,7 +187,7 @@ module qbs_payload_buffer import qbs_pkg::*; (
   always_comb begin
     for (int row = 0; row < 4; row++) begin
       for (int b = 0; b < QbsMaxWeightBlockBytes; b++) begin
-        automatic location_t loc = weight_location_of(b);
+        automatic location_t loc = weight_location_of(weight_profile_i, b);
         weight_view_o[row][b] = '0;
         if (b < qbs_weight_block_bytes(weight_profile_i)) begin
           if (loc.plane == 2) weight_view_o[row][b] = weight_side_q[row][loc.offset];
@@ -179,7 +195,7 @@ module qbs_payload_buffer import qbs_pkg::*; (
         end
       end
       for (int b = 0; b < QbsMaxActivationBlockBytes; b++) begin
-        automatic location_t loc = activation_location_of(b);
+        automatic location_t loc = activation_location_of(activation_profile_i, b);
         activation_view_o[row][b] = '0;
         if (b < qbs_activation_block_bytes(activation_profile_i)) begin
           if (loc.plane == 2) activation_view_o[row][b] = activation_side_q[row][loc.offset];

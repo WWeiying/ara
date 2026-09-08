@@ -247,7 +247,7 @@ module qbs_profile_engine_tb;
     do @(posedge clk); while (!weight_write_ready);
     @(negedge clk);
     weight_write_valid = 1'b0;
-    while (!weight_write_ready) @(negedge clk);
+    while (i_block_adapter.weight_pending_q_valid) @(negedge clk);
   endtask
 
   task automatic write_activation_beat(input integer ctx,
@@ -263,7 +263,7 @@ module qbs_profile_engine_tb;
     do @(posedge clk); while (!activation_write_ready);
     @(negedge clk);
     activation_write_valid = 1'b0;
-    while (!activation_write_ready) @(negedge clk);
+    while (i_block_adapter.activation_pending_q_valid) @(negedge clk);
   endtask
 
   initial begin

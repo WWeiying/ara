@@ -31,8 +31,14 @@ def completed(path, marker):
 
 
 def compare_cases(baseline, candidate):
-    old = {tuple(map(int, row[:-1])): int(row[-1]) for row in CASE.findall(baseline)}
-    new = {tuple(map(int, row[:-1])): int(row[-1]) for row in CASE.findall(candidate)}
+    def parsed(text):
+        rows = CASE.findall(text)
+        result = {tuple(map(int, row[:-1])): int(row[-1]) for row in rows}
+        if len(rows) != len(result):
+            raise ValueError("duplicate case identity in log")
+        return result
+    old = parsed(baseline)
+    new = parsed(candidate)
     if not old or old.keys() != new.keys():
         raise ValueError("baseline/candidate case identities differ")
     return [list(key) + [old[key], new[key], new[key] - old[key],
@@ -51,14 +57,21 @@ def main():
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--handoff", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--baseline-run-root", type=Path,
+                        help="Reuse immutable register-baseline logs/inputs from this run")
+    parser.add_argument("--engine-dir", default="check/engine")
+    parser.add_argument("--previous-sram-root", type=Path,
+                        help="Also compare against the original replay-only SRAM run")
+    parser.add_argument("--require-cycle-parity", action="store_true")
     args = parser.parse_args()
     runs = args.run_root.resolve()
+    baseline_runs = (args.baseline_run_root or runs).resolve()
     out = args.output.resolve()
     logs = {
         "adapter": runs / "adapter/sram/run.log",
         "macro_functional": runs / "macro_functional/sram/run.log",
-        "engine": runs / "check/engine/run.log",
-        "baseline_engine": runs / "baseline/baseline_engine/run.log",
+        "engine": runs / args.engine_dir / "run.log",
+        "baseline_engine": baseline_runs / "baseline/baseline_engine/run.log",
         "profile": runs / "profile_wired/run.log",
         "synthesis_define_vcs": runs / "synthesis_define/run.log",
     }
@@ -69,26 +82,53 @@ def main():
              for key, path in logs.items()}
     engine_rows = compare_cases(texts["baseline_engine"], texts["engine"])
     assert len(engine_rows) == 33
+    if args.require_cycle_parity:
+        assert all(row[-2] == 0 for row in engine_rows), "engine cycle regression"
+        for key in ("adapter", "macro_functional"):
+            assert "QBS SRAM streaming PASS cases=81 stalls=0" in texts[key]
+            assert "QBS SRAM discontinuous/duplicate PASS" in texts[key]
     real_rows = []
+    merge_rows = []
+    ingress = {}
     input_hashes = {}
     for name in NAMES:
-        base = runs / "baseline_real" / f"{name}.log"
+        base = baseline_runs / "baseline_real" / f"{name}.log"
         candidate = runs / "real" / f"{name}.log"
         bt = completed(base, "QBS engine PASS: 1 functional cases")
         ct = completed(candidate, "QBS engine PASS: 1 functional cases")
         comparison, = compare_cases(bt, ct)
+        if args.require_cycle_parity:
+            assert comparison[-2] == 0, f"real cycle regression: {name}"
+            fields = re.search(r"QBS SRAM ingress wfire=(\d+) afire=(\d+) "
+                               r"wblocked=(\d+) ablocked=(\d+) "
+                               r"wbuffer_blocked=(\d+) abuffer_blocked=(\d+)", ct)
+            if not fields:
+                raise ValueError(f"missing ingress evidence: {name}")
+            ingress[name] = dict(zip(("wfire", "afire", "wblocked", "ablocked",
+                                      "wbuffer_blocked", "abuffer_blocked"),
+                                     map(int, fields.groups())))
         traffic_old = TRAFFIC.search(bt)
         traffic_new = TRAFFIC.search(ct)
         if not traffic_old or not traffic_new or traffic_old.groups() != traffic_new.groups():
             raise ValueError(f"traffic differs: {name}")
         real_rows.append([name] + comparison[1:] + list(traffic_new.groups()))
         vector = runs / "real" / f"{name}.vectors"
-        baseline_vector = runs / "baseline_real" / f"{name}.vectors"
+        baseline_vector = baseline_runs / "baseline_real" / f"{name}.vectors"
         if baseline_vector.exists() and sha(vector) != sha(baseline_vector):
             raise ValueError(f"input vector differs: {name}")
         input_hashes[name] = sha(vector)
         logs[f"baseline_{name}"] = base
         logs[name] = candidate
+        if args.previous_sram_root:
+            old_path = args.previous_sram_root / "real" / f"{name}.log"
+            old_text = completed(old_path, "QBS engine PASS: 1 functional cases")
+            old_vector = args.previous_sram_root / "real" / f"{name}.vectors"
+            if sha(old_vector) != sha(vector):
+                raise ValueError(f"replay/merge input differs: {name}")
+            previous, = compare_cases(old_text, ct)
+            merge_rows.append([name, comparison[2], comparison[3], comparison[4],
+                               comparison[-4], previous[-4], previous[-3], -previous[-2]])
+            logs[f"replay_{name}"] = old_path
     handoff = json.loads((args.handoff / "status.json").read_text())
     assert handoff["status"] == "PASS"
     for name, expected in handoff["source_sha256"].items():
@@ -103,6 +143,10 @@ def main():
     write_csv(out / "engine_cycles.csv", ["case"] + common, engine_rows)
     write_csv(out / "real_cycles.csv", ["case"] + common +
               ["weight_bytes", "activation_bytes", "payload_bytes", "ranges", "dot_cycles", "prefetch_wait_cycles"], real_rows)
+    if merge_rows:
+        write_csv(out / "write_merge_cycles.csv",
+                  ["case", "m", "n", "k_blocks", "register_cycles", "replay_sram_cycles",
+                   "merged_sram_cycles", "saved_cycles"], merge_rows)
     evidence = {}
     for name, path in logs.items():
         target = out / f"{name}.log"
@@ -122,6 +166,9 @@ def main():
         "engine_max_cycle_increase_percent": max(row[-1] for row in engine_rows),
         "real_cases": len(real_rows), "real_traffic_and_dot_unchanged": True,
         "real_max_cycle_increase_percent": max(row[10] for row in real_rows),
+        "write_merge_validated": args.require_cycle_parity,
+        "compute_ingress_counters": ingress,
+        "engine_simv_sha256": sha(runs / args.engine_dir / "simv"),
         "input_vector_sha256": input_hashes,
         "top_level": {key: handoff[key] for key in ("status", "scope", "started_at", "finished_at", "simv_sha256", "source_sha256")},
         "evidence": evidence,

@@ -1,0 +1,19 @@
+Command: /tmp/ara_dsa_sram_merge_20260908/checked_ingress/engine/simv -l q4_decode_m1n32.log +QBS_FUNCTIONAL_ONLY +QBS_COMMAND_VECTOR_FILE=/tmp/ara_dsa_sram_merge_20260908/real/q4_decode_m1n32.vectors
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep  8 11:00 2026
+QBS end-to-end case 0 PASS profile=1 M=1 N=32 Kb=6 layouts=2/1 cycles=2219
+QBS phase case=0 setup=9 activation=179 weight=216 compute=216 overlap=1512 drain=27 scheduler=55 commit=5 terminal=1
+QBS traffic case=0 weight=27648 activation=1752 payload=29416 ranges=55 dot=1536 prefetch_wait=36
+QBS engine PASS: 1 functional cases
+$finish called from file "/home/wangwy/openproject/ara_dsa_sram/verification/qbs/qbs_engine_tb.sv", line 1075.
+QBS SRAM checker base=0 cycles=2228 read_windows=1536 weight_pending=0 activation_pending=35 simultaneous=0
+QBS SRAM writes base=0 wfire=864 afire=114 wblocked=0 ablocked=0 wold_new_commit=0 aold_new_commit=35
+QBS SRAM checker base=4 cycles=2228 read_windows=768 weight_pending=0 activation_pending=0 simultaneous=0
+QBS SRAM writes base=4 wfire=864 afire=114 wblocked=0 ablocked=0 wold_new_commit=0 aold_new_commit=0
+QBS SRAM ingress wfire=1728 afire=114 wblocked=72 ablocked=0 wbuffer_blocked=36 abuffer_blocked=0
+$finish at simulation time             22315000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 22315000 ps
+CPU Time:      2.560 seconds;       Data structure size:   1.7Mb
+Tue Sep  8 11:00:21 2026

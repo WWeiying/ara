@@ -67,10 +67,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
     logic [1:0] ctx;
     logic [ActivationOffsetWidth-1:0] offset;
   } activation_target_t;
-  weight_target_t weight_target [16];
-  activation_target_t activation_target [16];
-  logic [15:0] new_weight_mask, new_activation_mask;
-  logic [4:0] new_weight_bytes, new_activation_bytes;
+  weight_target_t weight_target [32];
+  activation_target_t activation_target [32];
+  logic [31:0] new_weight_mask, new_activation_mask;
+  logic [5:0] new_weight_bytes, new_activation_bytes;
 
   typedef struct packed {
     logic group_mode;
@@ -85,35 +85,43 @@ module qbs_block_adapter import qbs_pkg::*; #(
     logic [127:0] data;
     logic [15:0] strb;
   } activation_beat_t;
-  weight_beat_t weight_pending_q, weight_source;
-  activation_beat_t activation_pending_q, activation_source;
+  weight_beat_t weight_pending_q, weight_source [2];
+  activation_beat_t activation_pending_q, activation_source [2];
   logic weight_pending_q_valid, activation_pending_q_valid;
-  logic weight_source_valid, activation_source_valid;
-  logic [15:0] weight_mask, activation_mask;
-  logic [15:0] weight_consumed, activation_consumed;
-  logic [15:0] weight_remaining, activation_remaining;
-  logic [1:0] weight_rows [16], activation_contexts [16];
-  logic [7:0] weight_offsets [16];
-  logic [8:0] activation_offsets [16];
+  logic [1:0] weight_source_valid, activation_source_valid;
+  logic [31:0] weight_mask, activation_mask;
+  logic [31:0] weight_consumed, activation_consumed;
+  logic [31:0] weight_remaining, activation_remaining;
+  logic [1:0] weight_rows [32], activation_contexts [32];
+  logic [7:0] weight_offsets [32];
+  logic [8:0] activation_offsets [32];
+  logic [12:0] weight_source_base [2], activation_source_base [2];
+  logic [15:0] weight_duplicate_mask, activation_duplicate_mask;
 
-  assign weight_write_ready_o = !weight_pending_q_valid &&
+  // Only the pending slot determines ready. A noncontiguous input may leave
+  // two words pending; drain one before accepting another beat in that case.
+  assign weight_write_ready_o =
+      (!weight_pending_q_valid || !(|weight_remaining[15:0])) &&
       !clear_weight_i && !weight_read_i;
-  assign activation_write_ready_o = !activation_pending_q_valid &&
+  assign activation_write_ready_o =
+      (!activation_pending_q_valid || !(|activation_remaining[15:0])) &&
       !clear_activation_i && !activation_read_i;
-  assign weight_source = weight_pending_q_valid ? weight_pending_q :
+  assign weight_source[0] = weight_pending_q;
+  assign activation_source[0] = activation_pending_q;
+  assign weight_source[1] =
       {weight_write_group_i, weight_write_row_i, weight_write_offset_i,
        weight_write_data_i, weight_write_strb_i};
-  assign activation_source = activation_pending_q_valid ? activation_pending_q :
+  assign activation_source[1] =
       {activation_write_context_i, activation_write_offset_i,
        activation_write_data_i, activation_write_strb_i};
-  assign weight_source_valid = !clear_weight_i &&
-      (weight_pending_q_valid || (weight_write_valid_i && weight_write_ready_o));
-  assign activation_source_valid = !clear_activation_i &&
-      (activation_pending_q_valid || (activation_write_valid_i && activation_write_ready_o));
+  assign weight_source_valid[0] = weight_pending_q_valid && !clear_weight_i;
+  assign activation_source_valid[0] = activation_pending_q_valid && !clear_activation_i;
+  assign weight_source_valid[1] = weight_write_valid_i && weight_write_ready_o;
+  assign activation_source_valid[1] = activation_write_valid_i && activation_write_ready_o;
   assign weight_remaining = weight_mask & ~weight_consumed;
   assign activation_remaining = activation_mask & ~activation_consumed;
 
-  for (genvar b = 0; b < 16; b++) begin : gen_payload_targets
+  for (genvar b = 0; b < 32; b++) begin : gen_payload_targets
     assign weight_mask[b] = weight_target[b].valid;
     assign activation_mask[b] = activation_target[b].valid;
     assign weight_rows[b] = weight_target[b].row;
@@ -128,7 +136,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
     .weight_row_i(weight_rows), .weight_offset_i(weight_offsets),
     .activation_context_i(activation_contexts), .activation_offset_i(activation_offsets),
-    .weight_data_i(weight_source.data), .activation_data_i(activation_source.data),
+    .weight_data_i({weight_source[1].data, weight_source[0].data}),
+    .activation_data_i({activation_source[1].data, activation_source[0].data}),
     .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
     .weight_read_i, .activation_read_i, .read_k_i,
     .weight_view_o(weight_block_o), .activation_view_o(activation_block_o)
@@ -142,20 +151,26 @@ module qbs_block_adapter import qbs_pkg::*; #(
       activation_pending_q <= '0;
     end else begin
       if (clear_weight_i) weight_pending_q_valid <= 1'b0;
-      else if (weight_source_valid) begin
-        weight_pending_q_valid <= |weight_remaining;
-        if (|weight_remaining) begin
-          weight_pending_q <= weight_source;
-          weight_pending_q.strb <= weight_remaining;
+      else if (weight_source_valid[1]) begin
+        weight_pending_q_valid <= |weight_remaining[31:16];
+        if (|weight_remaining[31:16]) begin
+          weight_pending_q <= weight_source[1];
+          weight_pending_q.strb <= weight_remaining[31:16];
         end
+      end else if (weight_source_valid[0]) begin
+        weight_pending_q_valid <= |weight_remaining[15:0];
+        weight_pending_q.strb <= weight_remaining[15:0];
       end
       if (clear_activation_i) activation_pending_q_valid <= 1'b0;
-      else if (activation_source_valid) begin
-        activation_pending_q_valid <= |activation_remaining;
-        if (|activation_remaining) begin
-          activation_pending_q <= activation_source;
-          activation_pending_q.strb <= activation_remaining;
+      else if (activation_source_valid[1]) begin
+        activation_pending_q_valid <= |activation_remaining[31:16];
+        if (|activation_remaining[31:16]) begin
+          activation_pending_q <= activation_source[1];
+          activation_pending_q.strb <= activation_remaining[31:16];
         end
+      end else if (activation_source_valid[0]) begin
+        activation_pending_q_valid <= |activation_remaining[15:0];
+        activation_pending_q.strb <= activation_remaining[15:0];
       end
     end
   end
@@ -172,6 +187,34 @@ module qbs_block_adapter import qbs_pkg::*; #(
       octets[i] = {1'b0, quads[2*i]} + {1'b0, quads[2*i+1]};
     return {1'b0, octets[0]} + {1'b0, octets[1]};
   endfunction
+
+  // Align older committed strobes with the input beat's source byte indices.
+  // This avoids counting a byte twice when the newer beat overwrites an older
+  // pending byte in the same physical SRAM write.
+  function automatic logic [15:0] overlapping_bytes(
+      input logic [15:0] older_mask,
+      input logic [12:0] older_base, newer_base);
+    logic [12:0] distance;
+    if (newer_base >= older_base) begin
+      distance = newer_base - older_base;
+      return distance < 16 ? older_mask >> distance[3:0] : 16'b0;
+    end
+    distance = older_base - newer_base;
+    return distance < 16 ? older_mask << distance[3:0] : 16'b0;
+  endfunction
+
+  for (genvar slot = 0; slot < 2; slot++) begin : gen_source_base
+    assign weight_source_base[slot] = 13'(weight_source[slot].offset) +
+        (weight_source[slot].group_mode ? 13'b0 :
+         13'(unsigned'(weight_source[slot].row) * qbs_weight_block_bytes(weight_profile_i)));
+    assign activation_source_base[slot] = 13'(activation_source[slot].offset) +
+        (activation_layout_i != QBS_ACTIVATION_LAYOUT_ROW_MAJOR ? 13'b0 :
+         13'(unsigned'(activation_source[slot].ctx) * qbs_activation_block_bytes(activation_profile_i)));
+  end
+  assign weight_duplicate_mask = overlapping_bytes(weight_consumed[15:0],
+      weight_source_base[0], weight_source_base[1]);
+  assign activation_duplicate_mask = overlapping_bytes(activation_consumed[15:0],
+      activation_source_base[0], activation_source_base[1]);
 
   // Complete each byte reduction before applying the live row/context count.
   // A response's row count can arrive through a late valid-qualified mux.
@@ -221,21 +264,21 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // advance only for bytes actually committed to payload or side storage.
   always_comb begin : map_weight_bytes
     new_weight_mask = '0;
-    for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
+    for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(weight_source.offset) + beat_byte;
+          unsigned'(weight_source[beat_byte/16].offset) + (beat_byte % 16);
       automatic int unsigned target_row;
       automatic int unsigned target_offset;
       automatic int unsigned block_bytes;
       automatic logic mapping_valid;
 
       block_bytes = qbs_weight_block_bytes(weight_profile_i);
-      target_row = unsigned'(weight_source.row);
+      target_row = unsigned'(weight_source[beat_byte/16].row);
       target_offset = source_offset;
 
       // The native block size is profile-dependent. At most four row
       // banks are active, so range comparisons avoid a divider.
-      if (weight_source.group_mode) begin
+      if (weight_source[beat_byte/16].group_mode) begin
         if (source_offset >= 3 * block_bytes) begin
           target_row = 3;
           target_offset = source_offset - 3 * block_bytes;
@@ -252,20 +295,23 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
       mapping_valid = target_row < unsigned'(weight_row_count_i) &&
                       target_offset < block_bytes;
-      weight_target[beat_byte].valid = weight_source.strb[beat_byte] &&
+      weight_target[beat_byte].valid = weight_source[beat_byte/16].strb[beat_byte % 16] &&
                                        mapping_valid;
       weight_target[beat_byte].row = 2'(target_row);
       weight_target[beat_byte].offset = WeightOffsetWidth'(target_offset);
-      if (weight_target[beat_byte].valid)
+      if (weight_target[beat_byte].valid) begin
         new_weight_mask[beat_byte] = !weight_byte_valid_q[target_row][target_offset];
+        if (beat_byte >= 16)
+          new_weight_mask[beat_byte] &= !weight_duplicate_mask[beat_byte % 16];
+      end
     end
   end
 
   always_comb begin : map_activation_bytes
     new_activation_mask = '0;
-    for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
+    for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(activation_source.offset) + beat_byte;
+          unsigned'(activation_source[beat_byte/16].offset) + (beat_byte % 16);
       automatic int unsigned target_context;
       automatic int unsigned target_local_context;
       automatic int unsigned target_offset;
@@ -282,7 +328,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
       aux_count = qbs_activation_aux_count(activation_profile_i);
       aux_element_bytes =
           qbs_activation_aux_element_bytes(activation_profile_i);
-      target_context = unsigned'(activation_source.ctx);
+      target_context = unsigned'(activation_source[beat_byte/16].ctx);
       target_offset = source_offset;
       mapping_valid = source_offset < block_bytes;
 
@@ -362,18 +408,25 @@ module qbs_block_adapter import qbs_pkg::*; #(
       target_local_context = target_context - ActivationContextBase;
       mapping_valid &= target_context >= ActivationContextBase &&
                        target_context < ActivationContextBase + 4;
-      activation_target[beat_byte].valid = activation_source.strb[beat_byte] &&
+      activation_target[beat_byte].valid = activation_source[beat_byte/16].strb[beat_byte % 16] &&
           mapping_valid && target_local_context < 4 && target_offset < block_bytes;
       activation_target[beat_byte].ctx = 2'(target_local_context);
       activation_target[beat_byte].offset = ActivationOffsetWidth'(target_offset);
-      if (activation_target[beat_byte].valid)
+      if (activation_target[beat_byte].valid) begin
         new_activation_mask[beat_byte] =
             !activation_byte_valid_q[target_local_context][target_offset];
+        if (beat_byte >= 16)
+          new_activation_mask[beat_byte] &= !activation_duplicate_mask[beat_byte % 16];
+      end
     end
   end
 
-  assign new_weight_bytes = count_beat_bytes(new_weight_mask & weight_consumed);
-  assign new_activation_bytes = count_beat_bytes(new_activation_mask & activation_consumed);
+  assign new_weight_bytes =
+      {1'b0, count_beat_bytes(new_weight_mask[15:0] & weight_consumed[15:0])} +
+      {1'b0, count_beat_bytes(new_weight_mask[31:16] & weight_consumed[31:16])};
+  assign new_activation_bytes =
+      {1'b0, count_beat_bytes(new_activation_mask[15:0] & activation_consumed[15:0])} +
+      {1'b0, count_beat_bytes(new_activation_mask[31:16] & activation_consumed[31:16])};
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -405,8 +458,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
             activation_byte_valid_q[ctx][byte_index] <= 1'b0;
       end
 
-      if (weight_source_valid) begin
-        for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
+      if (|weight_source_valid) begin
+        for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
           if (weight_consumed[beat_byte]) begin
             weight_byte_valid_q[weight_target[beat_byte].row][weight_target[beat_byte].offset]
                 <= 1'b1;
@@ -415,8 +468,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
         accepted_weight_bytes_o <= accepted_weight_bytes_o + 32'(new_weight_bytes);
       end
 
-      if (activation_source_valid) begin
-        for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
+      if (|activation_source_valid) begin
+        for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
           if (activation_consumed[beat_byte]) begin
             activation_byte_valid_q[activation_target[beat_byte].ctx]
                                    [activation_target[beat_byte].offset] <= 1'b1;
@@ -428,12 +481,12 @@ module qbs_block_adapter import qbs_pkg::*; #(
 `ifndef SYNTHESIS
       assert (!(weight_read_i && (weight_pending_q_valid || clear_weight_i)));
       assert (!(activation_read_i && (activation_pending_q_valid || clear_activation_i)));
-      if (weight_pending_q_valid && !clear_weight_i)
-        assert (weight_remaining == 0)
-          else $fatal(1, "QBS weight beat needs more than two SRAM writes");
-      if (activation_pending_q_valid && !clear_activation_i)
-        assert (activation_remaining == 0)
-          else $fatal(1, "QBS activation beat needs more than two SRAM writes");
+      if (weight_source_valid[1] && weight_pending_q_valid)
+        assert (weight_remaining[15:0] == 0)
+          else $fatal(1, "QBS input overwrote uncommitted weight bytes");
+      if (activation_source_valid[1] && activation_pending_q_valid)
+        assert (activation_remaining[15:0] == 0)
+          else $fatal(1, "QBS input overwrote uncommitted activation bytes");
       if (weight_write_valid_i) begin
         assert (weight_write_group_i ||
                 weight_write_row_i < weight_row_count_i)
@@ -473,5 +526,16 @@ module qbs_block_adapter import qbs_pkg::*; #(
 `endif
     end
   end
+
+`ifndef SYNTHESIS
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      weight_source_valid[0] && (|weight_remaining[15:0]) |=>
+      clear_weight_i || !(|weight_remaining[15:0]))
+    else $fatal(1, "QBS pending weight needs more than two SRAM writes");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      activation_source_valid[0] && (|activation_remaining[15:0]) |=>
+      clear_activation_i || !(|activation_remaining[15:0]))
+    else $fatal(1, "QBS pending activation needs more than two SRAM writes");
+`endif
 
 endmodule : qbs_block_adapter
