@@ -1,0 +1,94 @@
+Command: /tmp/ara_dsa_sram_20260908/adapter/sram/./simv -l run.log
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep  8 09:59 2026
+QBS adapter case PASS profile=1 M=1 rows=1 group=0 layout=1 W=144 A=292
+QBS adapter case PASS profile=1 M=3 rows=3 group=0 layout=1 W=432 A=876
+QBS adapter case PASS profile=1 M=4 rows=4 group=1 layout=2 W=576 A=1168
+QBS adapter case PASS profile=1 M=5 rows=4 group=1 layout=3 W=576 A=2336
+QBS adapter case PASS profile=1 M=6 rows=4 group=1 layout=3 W=576 A=2336
+QBS adapter case PASS profile=1 M=7 rows=4 group=1 layout=3 W=576 A=2336
+QBS adapter case PASS profile=1 M=8 rows=4 group=1 layout=3 W=576 A=2336
+QBS adapter case PASS profile=1 M=2 rows=2 group=0 layout=1 W=288 A=584
+QBS adapter case PASS profile=1 M=2 rows=2 group=1 layout=1 W=288 A=584
+QBS adapter case PASS profile=2 M=1 rows=1 group=0 layout=1 W=210 A=292
+QBS adapter case PASS profile=2 M=3 rows=3 group=0 layout=1 W=630 A=876
+QBS adapter case PASS profile=2 M=4 rows=4 group=1 layout=2 W=840 A=1168
+QBS adapter case PASS profile=2 M=5 rows=4 group=1 layout=3 W=840 A=2336
+QBS adapter case PASS profile=2 M=6 rows=4 group=1 layout=3 W=840 A=2336
+QBS adapter case PASS profile=2 M=7 rows=4 group=1 layout=3 W=840 A=2336
+QBS adapter case PASS profile=2 M=8 rows=4 group=1 layout=3 W=840 A=2336
+QBS adapter case PASS profile=2 M=2 rows=2 group=0 layout=1 W=420 A=584
+QBS adapter case PASS profile=2 M=2 rows=2 group=1 layout=1 W=420 A=584
+QBS adapter case PASS profile=3 M=1 rows=1 group=0 layout=1 W=18 A=34
+QBS adapter case PASS profile=3 M=3 rows=3 group=0 layout=1 W=54 A=102
+QBS adapter case PASS profile=3 M=4 rows=4 group=1 layout=2 W=72 A=136
+QBS adapter case PASS profile=3 M=5 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=3 M=6 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=3 M=7 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=3 M=8 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=3 M=2 rows=2 group=0 layout=1 W=36 A=68
+QBS adapter case PASS profile=3 M=2 rows=2 group=1 layout=1 W=36 A=68
+QBS adapter case PASS profile=4 M=1 rows=1 group=0 layout=1 W=176 A=292
+QBS adapter case PASS profile=4 M=3 rows=3 group=0 layout=1 W=528 A=876
+QBS adapter case PASS profile=4 M=4 rows=4 group=1 layout=2 W=704 A=1168
+QBS adapter case PASS profile=4 M=5 rows=4 group=1 layout=3 W=704 A=2336
+QBS adapter case PASS profile=4 M=6 rows=4 group=1 layout=3 W=704 A=2336
+QBS adapter case PASS profile=4 M=7 rows=4 group=1 layout=3 W=704 A=2336
+QBS adapter case PASS profile=4 M=8 rows=4 group=1 layout=3 W=704 A=2336
+QBS adapter case PASS profile=4 M=2 rows=2 group=0 layout=1 W=352 A=584
+QBS adapter case PASS profile=4 M=2 rows=2 group=1 layout=1 W=352 A=584
+QBS adapter case PASS profile=5 M=1 rows=1 group=0 layout=1 W=110 A=292
+QBS adapter case PASS profile=5 M=3 rows=3 group=0 layout=1 W=330 A=876
+QBS adapter case PASS profile=5 M=4 rows=4 group=1 layout=2 W=440 A=1168
+QBS adapter case PASS profile=5 M=5 rows=4 group=1 layout=3 W=440 A=2336
+QBS adapter case PASS profile=5 M=6 rows=4 group=1 layout=3 W=440 A=2336
+QBS adapter case PASS profile=5 M=7 rows=4 group=1 layout=3 W=440 A=2336
+QBS adapter case PASS profile=5 M=8 rows=4 group=1 layout=3 W=440 A=2336
+QBS adapter case PASS profile=5 M=2 rows=2 group=0 layout=1 W=220 A=584
+QBS adapter case PASS profile=5 M=2 rows=2 group=1 layout=1 W=220 A=584
+QBS adapter case PASS profile=6 M=1 rows=1 group=0 layout=1 W=34 A=34
+QBS adapter case PASS profile=6 M=3 rows=3 group=0 layout=1 W=102 A=102
+QBS adapter case PASS profile=6 M=4 rows=4 group=1 layout=2 W=136 A=136
+QBS adapter case PASS profile=6 M=5 rows=4 group=1 layout=3 W=136 A=272
+QBS adapter case PASS profile=6 M=6 rows=4 group=1 layout=3 W=136 A=272
+QBS adapter case PASS profile=6 M=7 rows=4 group=1 layout=3 W=136 A=272
+QBS adapter case PASS profile=6 M=8 rows=4 group=1 layout=3 W=136 A=272
+QBS adapter case PASS profile=6 M=2 rows=2 group=0 layout=1 W=68 A=68
+QBS adapter case PASS profile=6 M=2 rows=2 group=1 layout=1 W=68 A=68
+QBS adapter case PASS profile=7 M=1 rows=1 group=0 layout=1 W=84 A=292
+QBS adapter case PASS profile=7 M=3 rows=3 group=0 layout=1 W=252 A=876
+QBS adapter case PASS profile=7 M=4 rows=4 group=1 layout=2 W=336 A=1168
+QBS adapter case PASS profile=7 M=5 rows=4 group=1 layout=3 W=336 A=2336
+QBS adapter case PASS profile=7 M=6 rows=4 group=1 layout=3 W=336 A=2336
+QBS adapter case PASS profile=7 M=7 rows=4 group=1 layout=3 W=336 A=2336
+QBS adapter case PASS profile=7 M=8 rows=4 group=1 layout=3 W=336 A=2336
+QBS adapter case PASS profile=7 M=2 rows=2 group=0 layout=1 W=168 A=584
+QBS adapter case PASS profile=7 M=2 rows=2 group=1 layout=1 W=168 A=584
+QBS adapter case PASS profile=8 M=1 rows=1 group=0 layout=1 W=22 A=34
+QBS adapter case PASS profile=8 M=3 rows=3 group=0 layout=1 W=66 A=102
+QBS adapter case PASS profile=8 M=4 rows=4 group=1 layout=2 W=88 A=136
+QBS adapter case PASS profile=8 M=5 rows=4 group=1 layout=3 W=88 A=272
+QBS adapter case PASS profile=8 M=6 rows=4 group=1 layout=3 W=88 A=272
+QBS adapter case PASS profile=8 M=7 rows=4 group=1 layout=3 W=88 A=272
+QBS adapter case PASS profile=8 M=8 rows=4 group=1 layout=3 W=88 A=272
+QBS adapter case PASS profile=8 M=2 rows=2 group=0 layout=1 W=44 A=68
+QBS adapter case PASS profile=8 M=2 rows=2 group=1 layout=1 W=44 A=68
+QBS adapter case PASS profile=9 M=1 rows=1 group=0 layout=1 W=18 A=34
+QBS adapter case PASS profile=9 M=3 rows=3 group=0 layout=1 W=54 A=102
+QBS adapter case PASS profile=9 M=4 rows=4 group=1 layout=2 W=72 A=136
+QBS adapter case PASS profile=9 M=5 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=9 M=6 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=9 M=7 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=9 M=8 rows=4 group=1 layout=3 W=72 A=272
+QBS adapter case PASS profile=9 M=2 rows=2 group=0 layout=1 W=36 A=68
+QBS adapter case PASS profile=9 M=2 rows=2 group=1 layout=1 W=36 A=68
+QBS SRAM adapter PASS cases=81 strobe_masks=65536 cycles=162564 simultaneous=71056 duplicates=6455 clear_collisions=81 idle=77420
+$finish called from file "/home/wangwy/openproject/ara_dsa_sram/verification/timing/qbs_sram_adapter_tb.sv", line 318.
+QBS SRAM checker base=0 cycles=164560 read_windows=5104 weight_pending=940 activation_pending=960 simultaneous=0
+QBS SRAM checker base=4 cycles=164560 read_windows=5104 weight_pending=940 activation_pending=220 simultaneous=0
+$finish at simulation time           1645631000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 1645631000 ps
+CPU Time:     87.240 seconds;       Data structure size:   1.4Mb
+Tue Sep  8 10:01:07 2026

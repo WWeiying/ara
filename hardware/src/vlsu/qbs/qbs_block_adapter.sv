@@ -19,6 +19,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // all active row blocks; byte-level steering handles beats that cross a
   // native-block boundary without padding or a second AXI request.
   input  logic                    weight_write_valid_i,
+  output logic                    weight_write_ready_o,
   input  logic                    weight_write_group_i,
   input  logic [1:0]              weight_write_row_i,
   input  logic [9:0]              weight_write_offset_i,
@@ -29,11 +30,16 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // byte-interleave four quant payloads, then element-interleave auxiliary
   // arrays. The profile metadata determines each region's fixed geometry.
   input  logic                    activation_write_valid_i,
+  output logic                    activation_write_ready_o,
   input  logic [1:0]              activation_write_context_i,
   input  logic [11:0]             activation_write_offset_i,
   input  logic [127:0]            activation_write_data_i,
   input  logic [15:0]             activation_write_strb_i,
 
+  input  logic                    weight_read_i,
+  input  logic                    activation_read_i,
+  input  logic [7:0]              read_k_i,
+  // Native-index view of the synchronous payload window, not a full block.
   output logic [7:0]              weight_block_o [4][QbsMaxWeightBlockBytes],
   output logic [7:0]              activation_block_o [4][QbsMaxActivationBlockBytes],
   output logic [3:0]              weight_complete_o,
@@ -65,6 +71,94 @@ module qbs_block_adapter import qbs_pkg::*; #(
   activation_target_t activation_target [16];
   logic [15:0] new_weight_mask, new_activation_mask;
   logic [4:0] new_weight_bytes, new_activation_bytes;
+
+  typedef struct packed {
+    logic group_mode;
+    logic [1:0] row;
+    logic [9:0] offset;
+    logic [127:0] data;
+    logic [15:0] strb;
+  } weight_beat_t;
+  typedef struct packed {
+    logic [1:0] ctx;
+    logic [11:0] offset;
+    logic [127:0] data;
+    logic [15:0] strb;
+  } activation_beat_t;
+  weight_beat_t weight_pending_q, weight_source;
+  activation_beat_t activation_pending_q, activation_source;
+  logic weight_pending_q_valid, activation_pending_q_valid;
+  logic weight_source_valid, activation_source_valid;
+  logic [15:0] weight_mask, activation_mask;
+  logic [15:0] weight_consumed, activation_consumed;
+  logic [15:0] weight_remaining, activation_remaining;
+  logic [1:0] weight_rows [16], activation_contexts [16];
+  logic [7:0] weight_offsets [16];
+  logic [8:0] activation_offsets [16];
+
+  assign weight_write_ready_o = !weight_pending_q_valid &&
+      !clear_weight_i && !weight_read_i;
+  assign activation_write_ready_o = !activation_pending_q_valid &&
+      !clear_activation_i && !activation_read_i;
+  assign weight_source = weight_pending_q_valid ? weight_pending_q :
+      {weight_write_group_i, weight_write_row_i, weight_write_offset_i,
+       weight_write_data_i, weight_write_strb_i};
+  assign activation_source = activation_pending_q_valid ? activation_pending_q :
+      {activation_write_context_i, activation_write_offset_i,
+       activation_write_data_i, activation_write_strb_i};
+  assign weight_source_valid = !clear_weight_i &&
+      (weight_pending_q_valid || (weight_write_valid_i && weight_write_ready_o));
+  assign activation_source_valid = !clear_activation_i &&
+      (activation_pending_q_valid || (activation_write_valid_i && activation_write_ready_o));
+  assign weight_remaining = weight_mask & ~weight_consumed;
+  assign activation_remaining = activation_mask & ~activation_consumed;
+
+  for (genvar b = 0; b < 16; b++) begin : gen_payload_targets
+    assign weight_mask[b] = weight_target[b].valid;
+    assign activation_mask[b] = activation_target[b].valid;
+    assign weight_rows[b] = weight_target[b].row;
+    assign activation_contexts[b] = activation_target[b].ctx;
+    assign weight_offsets[b] = weight_target[b].offset;
+    assign activation_offsets[b] = activation_target[b].offset;
+  end
+
+  qbs_payload_buffer i_payload_buffer (
+    .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
+    .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
+    .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
+    .weight_row_i(weight_rows), .weight_offset_i(weight_offsets),
+    .activation_context_i(activation_contexts), .activation_offset_i(activation_offsets),
+    .weight_data_i(weight_source.data), .activation_data_i(activation_source.data),
+    .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
+    .weight_read_i, .activation_read_i, .read_k_i,
+    .weight_view_o(weight_block_o), .activation_view_o(activation_block_o)
+  );
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      weight_pending_q_valid <= 1'b0;
+      activation_pending_q_valid <= 1'b0;
+      weight_pending_q <= '0;
+      activation_pending_q <= '0;
+    end else begin
+      if (clear_weight_i) weight_pending_q_valid <= 1'b0;
+      else if (weight_source_valid) begin
+        weight_pending_q_valid <= |weight_remaining;
+        if (|weight_remaining) begin
+          weight_pending_q <= weight_source;
+          weight_pending_q.strb <= weight_remaining;
+        end
+      end
+      if (clear_activation_i) activation_pending_q_valid <= 1'b0;
+      else if (activation_source_valid) begin
+        activation_pending_q_valid <= |activation_remaining;
+        if (|activation_remaining) begin
+          activation_pending_q <= activation_source;
+          activation_pending_q.strb <= activation_remaining;
+        end
+      end
+    end
+  end
 
   function automatic logic [4:0] count_beat_bytes(input logic [15:0] mask);
     logic [1:0] pairs [8];
@@ -103,43 +197,45 @@ module qbs_block_adapter import qbs_pkg::*; #(
       for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes; byte_index++)
         byte_complete[byte_index] = byte_index >= weight_bytes ||
                                    weight_byte_valid_q[row][byte_index];
-      weight_complete_o[row] = row < weight_row_count_i && (&byte_complete);
+      weight_complete_o[row] = row < weight_row_count_i && (&byte_complete) &&
+                               !weight_pending_q_valid;
       weight_missing[row] = row < weight_row_count_i && !(&byte_complete);
     end
     all_weight_complete_o = (weight_row_count_i inside {[1:4]}) &&
-                            !(|weight_missing);
+                            !(|weight_missing) && !weight_pending_q_valid;
 
     for (int ctx = 0; ctx < 4; ctx++) begin
       logic [QbsMaxActivationBlockBytes-1:0] byte_complete;
       for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes; byte_index++)
         byte_complete[byte_index] = byte_index >= activation_bytes ||
                                    activation_byte_valid_q[ctx][byte_index];
-      activation_complete_o[ctx] = ctx < activation_context_count && (&byte_complete);
+      activation_complete_o[ctx] = ctx < activation_context_count && (&byte_complete) &&
+                                   !activation_pending_q_valid;
       activation_missing[ctx] = ctx < activation_context_count && !(&byte_complete);
     end
     all_activation_complete_o = (m_i inside {[1:QbsMaxM]}) &&
-                                !(|activation_missing);
+                                !(|activation_missing) && !activation_pending_q_valid;
   end
 
-  // Mapping, duplicate detection and the balanced count do not depend on
-  // write_valid. Handshake qualification is applied at the register enables.
+  // Mapping and duplicate detection precede SRAM arbitration. Counters below
+  // advance only for bytes actually committed to payload or side storage.
   always_comb begin : map_weight_bytes
     new_weight_mask = '0;
     for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(weight_write_offset_i) + beat_byte;
+          unsigned'(weight_source.offset) + beat_byte;
       automatic int unsigned target_row;
       automatic int unsigned target_offset;
       automatic int unsigned block_bytes;
       automatic logic mapping_valid;
 
       block_bytes = qbs_weight_block_bytes(weight_profile_i);
-      target_row = unsigned'(weight_write_row_i);
+      target_row = unsigned'(weight_source.row);
       target_offset = source_offset;
 
       // The native block size is profile-dependent. At most four row
       // banks are active, so range comparisons avoid a divider.
-      if (weight_write_group_i) begin
+      if (weight_source.group_mode) begin
         if (source_offset >= 3 * block_bytes) begin
           target_row = 3;
           target_offset = source_offset - 3 * block_bytes;
@@ -156,7 +252,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
       mapping_valid = target_row < unsigned'(weight_row_count_i) &&
                       target_offset < block_bytes;
-      weight_target[beat_byte].valid = weight_write_strb_i[beat_byte] &&
+      weight_target[beat_byte].valid = weight_source.strb[beat_byte] &&
                                        mapping_valid;
       weight_target[beat_byte].row = 2'(target_row);
       weight_target[beat_byte].offset = WeightOffsetWidth'(target_offset);
@@ -169,7 +265,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
     new_activation_mask = '0;
     for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(activation_write_offset_i) + beat_byte;
+          unsigned'(activation_source.offset) + beat_byte;
       automatic int unsigned target_context;
       automatic int unsigned target_local_context;
       automatic int unsigned target_offset;
@@ -186,7 +282,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
       aux_count = qbs_activation_aux_count(activation_profile_i);
       aux_element_bytes =
           qbs_activation_aux_element_bytes(activation_profile_i);
-      target_context = unsigned'(activation_write_context_i);
+      target_context = unsigned'(activation_source.ctx);
       target_offset = source_offset;
       mapping_valid = source_offset < block_bytes;
 
@@ -266,7 +362,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
       target_local_context = target_context - ActivationContextBase;
       mapping_valid &= target_context >= ActivationContextBase &&
                        target_context < ActivationContextBase + 4;
-      activation_target[beat_byte].valid = activation_write_strb_i[beat_byte] &&
+      activation_target[beat_byte].valid = activation_source.strb[beat_byte] &&
           mapping_valid && target_local_context < 4 && target_offset < block_bytes;
       activation_target[beat_byte].ctx = 2'(target_local_context);
       activation_target[beat_byte].offset = ActivationOffsetWidth'(target_offset);
@@ -276,8 +372,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
     end
   end
 
-  assign new_weight_bytes = count_beat_bytes(new_weight_mask);
-  assign new_activation_bytes = count_beat_bytes(new_activation_mask);
+  assign new_weight_bytes = count_beat_bytes(new_weight_mask & weight_consumed);
+  assign new_activation_bytes = count_beat_bytes(new_activation_mask & activation_consumed);
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -287,13 +383,11 @@ module qbs_block_adapter import qbs_pkg::*; #(
         for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
              byte_index++) begin
           weight_byte_valid_q[row][byte_index] <= 1'b0;
-          weight_block_o[row][byte_index] <= '0;
         end
       for (int ctx = 0; ctx < 4; ctx++)
         for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
              byte_index++) begin
           activation_byte_valid_q[ctx][byte_index] <= 1'b0;
-          activation_block_o[ctx][byte_index] <= '0;
         end
     end else begin
       if (clear_weight_i) begin
@@ -311,11 +405,9 @@ module qbs_block_adapter import qbs_pkg::*; #(
             activation_byte_valid_q[ctx][byte_index] <= 1'b0;
       end
 
-      if (weight_write_valid_i && !clear_weight_i) begin
+      if (weight_source_valid) begin
         for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
-          if (weight_target[beat_byte].valid) begin
-            weight_block_o[weight_target[beat_byte].row][weight_target[beat_byte].offset] <=
-                weight_write_data_i[beat_byte * 8 +: 8];
+          if (weight_consumed[beat_byte]) begin
             weight_byte_valid_q[weight_target[beat_byte].row][weight_target[beat_byte].offset]
                 <= 1'b1;
           end
@@ -323,12 +415,9 @@ module qbs_block_adapter import qbs_pkg::*; #(
         accepted_weight_bytes_o <= accepted_weight_bytes_o + 32'(new_weight_bytes);
       end
 
-      if (activation_write_valid_i && !clear_activation_i) begin
+      if (activation_source_valid) begin
         for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
-          if (activation_target[beat_byte].valid) begin
-            activation_block_o[activation_target[beat_byte].ctx]
-                              [activation_target[beat_byte].offset] <=
-                activation_write_data_i[beat_byte * 8 +: 8];
+          if (activation_consumed[beat_byte]) begin
             activation_byte_valid_q[activation_target[beat_byte].ctx]
                                    [activation_target[beat_byte].offset] <= 1'b1;
           end
@@ -337,6 +426,14 @@ module qbs_block_adapter import qbs_pkg::*; #(
       end
 
 `ifndef SYNTHESIS
+      assert (!(weight_read_i && (weight_pending_q_valid || clear_weight_i)));
+      assert (!(activation_read_i && (activation_pending_q_valid || clear_activation_i)));
+      if (weight_pending_q_valid && !clear_weight_i)
+        assert (weight_remaining == 0)
+          else $fatal(1, "QBS weight beat needs more than two SRAM writes");
+      if (activation_pending_q_valid && !clear_activation_i)
+        assert (activation_remaining == 0)
+          else $fatal(1, "QBS activation beat needs more than two SRAM writes");
       if (weight_write_valid_i) begin
         assert (weight_write_group_i ||
                 weight_write_row_i < weight_row_count_i)

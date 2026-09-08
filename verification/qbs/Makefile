@@ -44,6 +44,8 @@ RTL_SOURCES := \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_read_engine.sv \
 	$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_activation_context.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_sram.sv \
+	$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_buffer.sv \
 	$(RTL_BLOCK_ADAPTER_SOURCE) \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv \
 	$(ROOT)/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv \

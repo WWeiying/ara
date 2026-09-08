@@ -1,0 +1,14 @@
+Command: /tmp/ara_dsa_sram_20260908/engine/simv -l /tmp/ara_dsa_sram_20260908/real/q6_m8n16.log +QBS_FUNCTIONAL_ONLY +QBS_COMMAND_VECTOR_FILE=/tmp/ara_dsa_sram_20260908/real/q6_m8n16.vectors
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep  8 09:53 2026
+QBS end-to-end case 0 PASS profile=2 M=8 N=16 Kb=35 layouts=2/3 cycles=44981
+QBS phase case=0 setup=9 activation=5285 weight=2343 compute=29291 overlap=7669 drain=51 scheduler=316 commit=17 terminal=1
+QBS traffic case=0 weight=117600 activation=81760 payload=199376 ranges=176 dot=35840 prefetch_wait=0
+QBS engine PASS: 1 functional cases
+$finish called from file "/home/wangwy/openproject/ara_dsa_sram/verification/qbs/qbs_engine_tb.sv", line 1075.
+$finish at simulation time            449935000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 449935000 ps
+CPU Time:      8.810 seconds;       Data structure size:   0.7Mb
+Tue Sep  8 09:54:09 2026

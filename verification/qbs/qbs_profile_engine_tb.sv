@@ -7,6 +7,9 @@ module qbs_profile_engine_tb;
   logic clk;
   logic rst_n;
   logic weight_write_valid;
+  logic weight_write_ready, activation_write_ready;
+  logic buffer_read_valid;
+  logic [7:0] buffer_read_k_base;
   logic [1:0] weight_write_row;
   logic [7:0] weight_write_offset;
   logic [127:0] weight_write_data;
@@ -109,6 +112,11 @@ module qbs_profile_engine_tb;
     .weight_row_count_i            (start_rows),
     .activation_layout_i           (QBS_ACTIVATION_LAYOUT_ROW_MAJOR),
     .m_i                           ({1'b0, start_m}),
+    .weight_write_ready_o          (weight_write_ready),
+    .activation_write_ready_o      (activation_write_ready),
+    .weight_read_i                 (buffer_read_valid),
+    .activation_read_i             (buffer_read_valid),
+    .read_k_i                      (buffer_read_k_base),
     .weight_write_valid_i          (weight_write_valid),
     .weight_write_group_i          (1'b0),
     .weight_write_row_i            (weight_write_row),
@@ -135,6 +143,8 @@ module qbs_profile_engine_tb;
     .rst_ni                        (rst_n),
     .weight_block_i                (adapter_weight_block),
     .activation_block_i            (adapter_activation_block),
+    .buffer_read_valid_o           (buffer_read_valid),
+    .buffer_read_k_base_o          (buffer_read_k_base),
     .start_valid_i                 (start_valid),
     .start_ready_o                 (start_ready),
     .start_profile_i               (start_profile),
@@ -234,8 +244,10 @@ module qbs_profile_engine_tb;
     weight_write_offset = offset[7:0];
     weight_write_strb = strb;
     weight_write_data = data;
+    do @(posedge clk); while (!weight_write_ready);
     @(negedge clk);
     weight_write_valid = 1'b0;
+    while (!weight_write_ready) @(negedge clk);
   endtask
 
   task automatic write_activation_beat(input integer ctx,
@@ -248,8 +260,10 @@ module qbs_profile_engine_tb;
     activation_write_offset = offset[8:0];
     activation_write_strb = strb;
     activation_write_data = data;
+    do @(posedge clk); while (!activation_write_ready);
     @(negedge clk);
     activation_write_valid = 1'b0;
+    while (!activation_write_ready) @(negedge clk);
   endtask
 
   initial begin

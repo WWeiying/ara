@@ -7,6 +7,8 @@ module qbs_profile_engine_int import qbs_pkg::*; (
 
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
+  output logic                buffer_read_valid_o,
+  output logic [7:0]          buffer_read_k_base_o,
 
   input  logic                start_valid_i,
   output logic                start_ready_o,
@@ -185,6 +187,10 @@ module qbs_profile_engine_int import qbs_pkg::*; (
        correction_pending_flat == '0);
   assign start_fire = start_valid_i && start_ready_o;
   assign compute_pipeline_empty = !issue_active_q && !s0_valid_q && !dot_valid;
+  // Read SRAM on the edge that registers s0_k_base_q. Its data reaches the
+  // decoder with the existing s0 stage, without adding a dot-product stage.
+  assign buffer_read_valid_o = compute_active_q && issue_active_q;
+  assign buffer_read_k_base_o = k_cursor_q;
 
   qbs_profile_decoder i_profile_decoder (
     .profile_i             (profile_q),

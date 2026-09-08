@@ -127,6 +127,9 @@ module qbs_compute_engine
   logic advance_prefetched_tile;
 
   logic [7:0] weight_block [4][QbsMaxWeightBlockBytes];
+  logic buffer_read_valid;
+  logic [7:0] buffer_read_k_base;
+  logic [1:0] adapter_weight_ready, adapter_activation_ready;
   logic [7:0] weight_block_bank0 [4][QbsMaxWeightBlockBytes];
   logic [7:0] weight_block_bank1 [4][QbsMaxWeightBlockBytes];
   logic [7:0] activation_block [4][QbsMaxActivationBlockBytes];
@@ -267,7 +270,8 @@ module qbs_compute_engine
       (state_q inside {QBS_COMPUTE_TILE, QBS_WAIT_WEIGHT,
                        QBS_START_CONTEXT_WAVE} &&
        next_row_available && !load_weight_complete));
-  assign activation_write_ready_o = activation_block_needed_o;
+  assign activation_write_ready_o = activation_block_needed_o &&
+                                    (&adapter_activation_ready);
 
   always_comb begin
     clear_weight = '0;
@@ -283,7 +287,8 @@ module qbs_compute_engine
   always_comb begin
     weight_write_ready_o = 1'b0;
     if (!fault_i && weight_write_row_count_i inside {[1:4]} &&
-        !clear_weight[weight_write_bank_i]) begin
+        !clear_weight[weight_write_bank_i] &&
+        adapter_weight_ready[weight_write_bank_i]) begin
       unique case (state_q)
         QBS_LOAD_TILE: begin
           if (weight_write_bank_i == active_weight_bank_q)
@@ -318,6 +323,11 @@ module qbs_compute_engine
     .weight_row_count_i           (bank0_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
+    .weight_write_ready_o         (adapter_weight_ready[0]),
+    .activation_write_ready_o     (adapter_activation_ready[0]),
+    .weight_read_i                (buffer_read_valid && !active_weight_bank_q),
+    .activation_read_i            (buffer_read_valid && !context_wave_q),
+    .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b0),
     .weight_write_group_i,
@@ -353,6 +363,11 @@ module qbs_compute_engine
     .weight_row_count_i           (bank1_row_count),
     .activation_layout_i          (activation_layout_q),
     .m_i                          (m_q),
+    .weight_write_ready_o         (adapter_weight_ready[1]),
+    .activation_write_ready_o     (adapter_activation_ready[1]),
+    .weight_read_i                (buffer_read_valid && active_weight_bank_q),
+    .activation_read_i            (buffer_read_valid && context_wave_q),
+    .read_k_i                     (buffer_read_k_base),
     .weight_write_valid_i         (weight_write_fire &&
                                    weight_write_bank_i == 1'b1),
     .weight_write_group_i,
@@ -413,6 +428,8 @@ module qbs_compute_engine
     .rst_ni,
     .weight_block_i                (weight_block),
     .activation_block_i            (activation_block),
+    .buffer_read_valid_o           (buffer_read_valid),
+    .buffer_read_k_base_o          (buffer_read_k_base),
     .start_valid_i                 (integer_start_valid),
     .start_ready_o                 (integer_start_ready),
     .start_profile_i               (weight_profile_q),
