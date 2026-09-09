@@ -2,20 +2,22 @@
 
 ## 1. 范围与结论
 
-本工作在 `ara_dsa_sram` 分支完成，起点为 `be1487b5`。原来的
-`ara_dsa` 工作目录和 `ara_dsa_timing` 工作目录均不修改。
+本工作在 `ara_dsa_sram` 分支完成，起点为 `be1487b5`，现已将
+`348cbd50` 快进合入 `ara_dsa`。`ara_dsa_timing` 工作目录未修改；
+此前已验证的两批时序优化随基线保留。
 
 目的不是增加算术单元，而是把 QBS 本地块缓冲中适合存储器实现的压缩
 payload 从寄存器移到单端口同步 SRAM。保留当前九种权重 profile、
 M1--M8、尾块、权重双缓冲、激活复用及故障处理，不改 ISA、数值计算
 顺序、dot array、FP accumulator 或 AKV 数据通路。
 
-这是一个已完成代表性功能验证的存储实现候选，**还没有合入 `ara_dsa`**。
+这是一个已完成代表性功能验证、已合入 `ara_dsa` 的存储实现。
 当前实现使用单端口 SRAM，并合并相邻返回 beat 对同一个 SRAM 字的写入。
 七个真实模型切片和 33 个完整 engine 用例均恢复到原寄存器版的周期数，
 没有增加 SRAM 容量、端口、pending 数据寄存器或 dot pipeline 级数。
 这不意味着任意不连续访问都能无等待，也不意味着组合写合并逻辑没有面积和时序代价。
-尚未运行 DC、PNR、面积、时序或功耗评估，也尚未完成 FPGA 存储映射。
+DC 综合环境及启动检查见第 8 节，尚无本次实现的完成版 PPA 报告。
+PNR、功耗闭环和 FPGA 存储映射尚未完成。
 
 ## 2. 为什么不能直接把数组换成 RAM
 
@@ -244,10 +246,11 @@ Q6 M4 的 weight-load 阶段由 2343 恢复到 1855 cycles，消掉 488 个额�
 ```sh
 make sram-check sram-engine-check BUILD=/tmp/qbs_sram_check RUN_TIMEOUT=300
 make adapter-baseline-engine-check BUILD=/tmp/qbs_sram_check \
-  BASELINE_ROOT=/home/wangwy/openproject/ara_dsa RUN_TIMEOUT=300
+  BASELINE_ROOT=/path/to/clean_be1487b5_worktree RUN_TIMEOUT=300
 ```
 
-第二条要求参考 worktree 的 HEAD 是 `be1487b5`，相关 RTL 没有未提交修改。
+第二条需将示例路径替换为参考 worktree，其 HEAD 必须是 `be1487b5`，
+相关 RTL 没有未提交修改。合并后的 `ara_dsa` 不能再充当该寄存器基线。
 `adapter-check` / `adapter-engine-check` 已转到新的握手及窗口感知测试。
 旧完整数组的 cycle miter 仅供历史实现参考，不能直接用于 SRAM 窗口接口。
 
@@ -266,7 +269,7 @@ make sram-check BUILD=/tmp/qbs_sram_macro RUN_TIMEOUT=300 \
 后台运行时保留 source hash、binary hash、返回码和日志，不能覆盖其他工作的结果。
 
 当前结果根目录：`/tmp/ara_dsa_sram_merge_20260908/`；
-顶层结果：`hardware/sram_merge_handoff_20260908/`；
+顶层结果：`/home/wangwy/openproject/ara_dsa_sram/hardware/sram_merge_handoff_20260908/`；
 可版本管理的紧凑结果在 `verification/timing/results/20260908_sram_merge/`。
 寄存器基线和独立补写 SRAM 记录保留在 `/tmp/ara_dsa_sram_20260908/`，未覆盖。
 逐周期 CSV 从首个有效写入开始采样 128 拍，采样点在正沿更新寄存器之前。
@@ -277,10 +280,42 @@ python3 verification/timing/summarize_sram_results.py \
   --baseline-run-root /tmp/ara_dsa_sram_20260908 \
   --previous-sram-root /tmp/ara_dsa_sram_20260908 \
   --engine-dir checked_ingress/engine --require-cycle-parity \
-  --handoff hardware/sram_merge_handoff_20260908 \
+  --handoff /home/wangwy/openproject/ara_dsa_sram/hardware/sram_merge_handoff_20260908 \
   --output verification/timing/results/20260908_sram_merge
 ```
 
 该汇总检查日志 PASS、用例身份、输入 hash、traffic/dot、逐点周期一致性以及
 顶层仿真时的 RTL hash，不会把缺失或诊断失败的日志算成通过。
-综合 blackbox/Bender 和 DB 列表已补齐，但没有启动综合或修改 clock uncertainty。
+综合 blackbox/Bender 和 DB 列表已补齐，clock uncertainty 未修改。
+
+## 8. 合入后的 DC 启动检查
+
+DC 在 `~/Makefile` 的 `enter_eda` 所使用的 `synopsys_workspace` 容器内运行。
+普通 `make dc mc=1` 默认不开启 QBS/AKV，完整设计应在容器内执行：
+
+```sh
+cd /home/wangwy/openproject/ara_dsa/hardware
+make dc mc=1 qbs=1 akv_v2=1 config=default ideal_dispatcher=0 sim_l2_mb=1
+```
+
+配置为 4 lane、VLEN=1024、CVA6 标量核、QBS、AKV-v2、1 MiB 宏实现 L2，
+使用 TSMC 28 nm TT 0.9 V 25 C 库。时钟周期为 1 ns，setup uncertainty
+为 0.15 ns；没有放宽约束来掩盖违例。预检确认 406 个源文件及所需开关，
+包含 QBS payload 的 8x256 SRAM blackbox 和对应 DB。
+
+首轮 DC T-2022.03-SP2 编译发现 `qbs_dot_array` 组合块中三条二维数组
+嵌套 `default` 初始化报 `VER-294`。这不是输入端口缺省值或算术错误：
+`product_d[4][8]`、`pair_sum_d[4][4]`、`quad_sum_d[4][2]` 均在后续
+固定范围循环中逐元素无条件赋值。删除这三条冗余初始化即可避免该语法，
+不改变任何元素的最终表达式、INT8 极值位宽、平衡加法树或流水级。
+
+修正后重新运行 448 个 profile 用例、33 个 engine 用例、四类故障处理和
+activation FILL/REUSE/RELEASE，全部通过。逐用例 PASS 行及周期与
+`20260908_sram_merge` 记录完全一致。新增验证记录位于
+`/tmp/ara_dsa_dc_compat_20260909/`，不是用旧 binary 代替当前源码回归。
+
+启动前的旧报告、输出、运行目录及 filelist 已归档至
+`/home/wangwy/openproject/ara_dsa_dc_runs/sram_348cbd50_20260909_003706/previous_reports_outputs_run_flist.tar`。
+本次运行保留独立日志、源码快照、SHA256、开始/结束时间和返回码。
+预检通过和进程启动均不等于时序收敛；面积与 slack 必须以综合完成后生成的
+新报告为准，不能混用旧报告。

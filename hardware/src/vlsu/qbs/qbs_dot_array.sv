@@ -22,9 +22,7 @@ module qbs_dot_array (
   logic signed [18:0] stream_sum_d [16];
 
   always_comb begin
-    product_d = '{default: '{default: '0}};
-    pair_sum_d = '{default: '{default: '0}};
-    quad_sum_d = '{default: '{default: '0}};
+    // Fixed-bound loops fully assign the multidimensional intermediates below.
     oct_sum_d = '{default: '0};
     stream_sum_d = '{default: '0};
 
