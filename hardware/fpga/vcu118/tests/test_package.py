@@ -5,7 +5,9 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
@@ -108,6 +110,40 @@ class PackageTests(unittest.TestCase):
         ignore = (ROOT / ".gitignore").read_text().splitlines()
         for pattern in ("!*", "/build/", "/reports/", "/output/", "/.fpga_sync_backups/", "*.zip"):
             self.assertIn(pattern, ignore)
+
+    def test_generated_files_ignored(self):
+        ignored = (
+            "build/project/rtl/generated.v", "reports/synth/utilization.rpt",
+            "output/board.bit", ".fpga_sync_backups/snapshot/rtl/core.sv",
+            "gui/project.runs/synth_1/netlist.v", "gui/project.cache/ip/data",
+            "gui/project.sim/sim_1/generated.sv", "gui/project.gen/ip/generated.v",
+            "gui/project.hw/hw_1/state", "gui/project.ip_user_files/ip/model.v",
+            "gui/ip_user_files/ip/model.v", "gui/.Xil/state", "gui/.cache/state",
+            "gui/xsim.dir/top/xsim.exe", "gui/vivado.log", "gui/vivado.jou",
+            "gui/vivado.str", "gui/vivado_1.backup.jou", "gui/top.vds",
+            "gui/vivado.pb", "gui/top.dcp", "gui/top.bit", "gui/top.ltx",
+            "gui/top.xpr", "gui/top.wdb", "gui/top.wcfg", "gui/top.vcd",
+            "gui/top.fst", "gui/top.fsdb", "gui/flash.bin", "gui/flash.mcs",
+            "gui/flash.prm", "gui/timing.rpt", "backup.zip", "backup.7z",
+            "backup.tar.gz", "gui/Thumbs.db", "gui/Desktop.ini",
+        )
+        visible = (
+            "rtl/cheshire/hw/cheshire_soc.sv", "rtl/cva6/core/debug/new.sv",
+            "rtl/board/new.v", "scripts/new.tcl", "constraints/new.xdc",
+            "ip/new.xci", "ip/init.coe", "ip/init.mem", "software/smoke.elf",
+            "software/smoke.dump", "manifest.json", "SHA256SUMS",
+        )
+        # A fresh repo tests untracked inputs, independent of the real Git index.
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "-q", directory], check=True)
+            (repo / ".gitignore").write_text((ROOT / ".gitignore").read_text())
+            for paths, expected in ((ignored, 0), (visible, 1)):
+                for name in paths:
+                    with self.subTest(path=name):
+                        result = subprocess.run(
+                            ["git", "check-ignore", "-q", "--", name], cwd=repo)
+                        self.assertEqual(result.returncode, expected)
 
     def test_elf(self):
         entry, segments = loader.load_segments(ROOT / "software/smoke.elf")

@@ -193,3 +193,31 @@ sim_mc/
 /verification/tools/
 /hardware/deps
 /hardware/bender
+
+# Windows shell metadata.
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Vivado generated state, including projects saved outside build/.
+.Xil/
+*.cache/
+*.runs/
+*.sim/
+*.gen/
+*.hw/
+*.ip_user_files/
+ip_user_files/
+xsim.dir/
+*.jou
+*.str
+*.vds
+*.pb
+*.dcp
+*.bit
+*.ltx
+*.xpr
+*.wdb
+*.wcfg
+vivado*.backup.*
