@@ -1030,7 +1030,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         fault_vaddr_q <= read_fault_vaddr;
         fault_mmu_exception_q <= read_fault_mmu_exception;
       end else if (state_q == AKV_ENGINE_DESCRIPTOR_WAIT &&
-                   read_completion_valid && !&descriptor_byte_valid_q) begin
+                   read_completion_valid && !(&descriptor_byte_valid_q)) begin
         context_ready_q <= 1'b0;
         fault_is_validation_q <= 1'b0;
         read_fault_kind_q <= QBS_READ_FAULT_REQUEST;

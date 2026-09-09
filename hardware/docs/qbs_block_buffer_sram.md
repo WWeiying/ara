@@ -314,6 +314,11 @@ activation FILL/REUSE/RELEASE，全部通过。逐用例 PASS 行及周期与
 `20260908_sram_merge` 记录完全一致。新增验证记录位于
 `/tmp/ara_dsa_dc_compat_20260909/`，不是用旧 binary 代替当前源码回归。
 
+完整设计继续编译时，还发现 AKV 的 `!&descriptor_byte_valid_q` 在 DC
+中解析失败。改为显式的 `!(&descriptor_byte_valid_q)`，仍表示描述符的
+字节有效位没有全部置一，不改变 fault 判断条件。该处修正后的 AKV engine
+回归通过，覆盖 v1、v2、D64/D96/D128、分段 D256、行/列视图、尾块和故障。
+
 启动前的旧报告、输出、运行目录及 filelist 已归档至
 `/home/wangwy/openproject/ara_dsa_dc_runs/sram_348cbd50_20260909_003706/previous_reports_outputs_run_flist.tar`。
 本次运行保留独立日志、源码快照、SHA256、开始/结束时间和返回码。
