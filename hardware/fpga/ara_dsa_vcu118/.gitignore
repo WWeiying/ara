@@ -1,0 +1,26 @@
+# Do not inherit exclusions of required vendor sources (cheshire/, debug/, etc.).
+!*
+
+# Machine-local Vivado state and products, not portable project inputs.
+/build/
+/reports/
+/output/
+/.Xil/
+/.cache/
+/.fpga_sync_backups/
+/.fpga_sync.lock
+/vivado*.log
+/vivado*.jou
+/vivado*.str
+/vivado*.backup.*
+/hs_err_pid*.log
+/docs/*.log
+__pycache__/
+*.pyc
+*.zip
+*.dcp
+*.bit
+*.ltx
+*.xpr
+*.wdb
+*.pb

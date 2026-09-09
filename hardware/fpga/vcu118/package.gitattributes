@@ -1,0 +1,3 @@
+# Preserve snapshot bytes on Windows, including original vendor line endings.
+# core.autocrlf must not invalidate SHA256SUMS or the three-way sync baseline.
+* -text

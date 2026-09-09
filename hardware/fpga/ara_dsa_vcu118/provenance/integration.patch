@@ -1,0 +1,146 @@
+--- a/rtl/cheshire/hw/cheshire_pkg.sv
++++ b/rtl/cheshire/hw/cheshire_pkg.sv
+@@ -493,6 +493,11 @@
+     doub_bt NoCieBase = cfg.Cva6ExtCieOnTop ? 64'h2000_0000 : 64'h2000_0000 + cfg.Cva6ExtCieLength;
+     // Base our config on the upstream default for this variant
+     config_pkg::cva6_user_cfg_t ret = cva6_config_pkg::cva6_cfg;
++    // FPGA-only integration: retain the current scalar/vector FP16 contract.
++    // This CVA6 snapshot has stub-only FpgaEn RAMs. Use its real generic
++    // implementation; tc_sram is independently mapped to Xilinx XPM.
++    ret.FpgaEn = 0;
++    ret.XF16 = 1;
+     // Modify what we need to
+     ret.AxiAddrWidth          = cfg.AddrWidth;
+     ret.AxiDataWidth          = cfg.AxiDataWidth;
+--- a/rtl/cheshire/hw/cheshire_soc.sv
++++ b/rtl/cheshire/hw/cheshire_soc.sv
+@@ -664,6 +664,16 @@
+ //      .clic_irq_ready_o ( clic_irq_ready ),
+ //      .clic_kill_req_i  ( clic_irq_kill_req ),
+ //      .clic_kill_ack_o  ( clic_irq_kill_ack ),
++      .clic_irq_valid_i ( 1'b0 ),
++      .clic_irq_id_i    ( '0 ),
++      .clic_irq_level_i ( '0 ),
++      .clic_irq_priv_i  ( riscv::PRIV_LVL_M ),
++      .clic_irq_v_i     ( 1'b0 ),
++      .clic_irq_vsid_i  ( '0 ),
++      .clic_irq_shv_i   ( 1'b0 ),
++      .clic_irq_ready_o ( ),
++      .clic_kill_req_i  ( 1'b0 ),
++      .clic_kill_ack_o  ( ),
+       .rvfi_probes_o    ( ),
+       .cvxif_req_o      ( acc_req       ),
+       .cvxif_resp_i     ( acc_resp_pack ),
+--- a/rtl/cva6/common/local/util/sram_cache.sv
++++ b/rtl/cva6/common/local/util/sram_cache.sv
+@@ -110,6 +110,9 @@
+           .NUM_WORDS  (NUM_WORDS)
+       ) data_sram (
+           .clk_i  (clk_i),
++          .rst_ni (rst_ni),
++          .wuser_i(wuser_i),
++          .ruser_o(ruser_o),
+           .req_i  (req_i),
+           .we_i   (we_i),
+           .addr_i (addr_i),
+--- a/rtl/ara/hardware/src/ara_dispatcher.sv
++++ b/rtl/ara/hardware/src/ara_dispatcher.sv
+@@ -1607,7 +1607,7 @@
+                     end else begin
+                       // Normal stripmining
+                       csr_vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(csr_vl_d)]) ||
+-                        (vlen_t'(acc_req_i.rs1) > vlmax)) ? vlmax : vlen_t'(acc_req_i.rs1);
++                        (acc_req_i.rs1[$bits(csr_vl_d)-1:0] > vlmax)) ? vlmax : acc_req_i.rs1[$bits(csr_vl_d)-1:0];
+                     end
+                   end
+                 end
+@@ -1958,7 +1958,7 @@
+                     ara_req.scale_vl      = 1'b1;
+                     // If stride > vl, the vslideup has no effects
+                     if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
+-                      (vlen_t'(ara_req.stride) >= csr_vl_q)) null_vslideup = 1'b1;
++                      (ara_req.stride[$bits(csr_vl_q)-1:0] >= csr_vl_q)) null_vslideup = 1'b1;
+                   end
+                   6'b001111: begin
+                     ara_req.op            = ara_pkg::VSLIDEDOWN;
+@@ -2207,7 +2207,7 @@
+                     ara_req.scale_vl      = 1'b1;
+                     // If stride > vl, the vslideup has no effects
+                     if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
+-                      (vlen_t'(ara_req.stride) >= csr_vl_q)) null_vslideup = 1'b1;
++                      (ara_req.stride[$bits(csr_vl_q)-1:0] >= csr_vl_q)) null_vslideup = 1'b1;
+                   end
+                   6'b001111: begin
+                     ara_req.op            = ara_pkg::VSLIDEDOWN;
+--- a/rtl/board/dram_wrapper_xilinx.sv
++++ b/rtl/board/dram_wrapper_xilinx.sv
+@@ -31,6 +31,7 @@
+   // Controller reset
+   input  logic  soc_resetn_i,
+   input  logic  soc_clk_i,
++  output logic  fabric_ready_o,
+   // PHY interfaces
+ `ifdef USE_DDR4
+   `DDR4_INTF(Ddr4CsNWidth, Ddr4DmDbiNWidth, Ddr4DqWidth, Ddr4DqsWidth)
+@@ -60,7 +61,7 @@
+ 
+ `ifdef TARGET_VCU118
+   localparam dram_cfg_t cfg = '{
+-    EnCdc         : 1,    // 333 MHz AXI (cf. CdcLogDepth)
++    EnCdc         : 1,    // UI clock derived by the Vivado DDR4 IP
+     CdcLogDepth   : 5,
+     IdWidth       : 8,
+     AddrWidth     : 31,
+@@ -73,7 +74,7 @@
+ 
+ `ifdef TARGET_VCU128
+   localparam dram_cfg_t cfg = '{
+-    EnCdc         : 1,    // 333 MHz AXI (cf. CdcLogDepth)
++    EnCdc         : 1,    // UI clock derived by the Vivado DDR4 IP
+     CdcLogDepth   : 5,
+     IdWidth       : 8,
+     AddrWidth     : 32,
+@@ -115,6 +116,14 @@
+   // Clock on which is clocked the DRAM AXI
+   logic dram_axi_clk;
+   logic dram_rst_o;
++  logic calib_complete;
++  logic ui_resetn;
++  // Common asynchronous assertion, separately synchronized deassertion.
++  assign fabric_ready_o = ~sys_rst_i & ~dram_rst_o & calib_complete;
++  rstgen i_ui_rstgen (
++    .clk_i(dram_axi_clk), .rst_ni(fabric_ready_o), .test_mode_i(1'b0),
++    .rst_no(ui_resetn), .init_no()
++  );
+ 
+   // Signals before resizing
+   axi_soc_req_t  soc_dresizer_req;
+@@ -214,7 +223,7 @@
+       .src_req_i  ( iresizer_cdc_req ),
+       .src_resp_o ( iresizer_cdc_rsp ),
+       .dst_clk_i  ( dram_axi_clk ),
+-      .dst_rst_ni ( ~dram_rst_o  ),
++      .dst_rst_ni ( ui_resetn    ),
+       .dst_req_o  ( cdc_dram_req ),
+       .dst_resp_i ( cdc_dram_rsp )
+     );
+@@ -245,7 +254,7 @@
+     // Reset
+     .sys_rst                    ( sys_rst_i    ),  // Active high
+     .c0_sys_clk_i               ( dram_clk_i   ),
+-    .c0_ddr4_aresetn            ( soc_resetn_i ),
++    .c0_ddr4_aresetn            ( ui_resetn    ),
+     // Clock and reset out
+     .c0_ddr4_ui_clk             ( dram_axi_clk ),
+     .c0_ddr4_ui_clk_sync_rst    ( dram_rst_o   ),
+@@ -288,8 +297,8 @@
+     .c0_ddr4_s_axi_rlast        ( cdc_dram_rsp.r.last   ),
+     .c0_ddr4_s_axi_rvalid       ( cdc_dram_rsp.r_valid  ),
+     // Others
+-    .c0_init_calib_complete     ( ),
+-    .addn_ui_clkout1            ( dram_clk_o ),
++    .c0_init_calib_complete     ( calib_complete ),
++    .addn_ui_clkout1            ( ),
+     .dbg_clk                    ( ),
+     .dbg_bus                    ( ),
+     // PHY

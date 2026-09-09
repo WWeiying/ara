@@ -1,0 +1,189 @@
+diff --git a/common/local/util/instr_tracer.sv b/common/local/util/instr_tracer.sv
+index 5376d5c10..926b82ad3 100644
+--- a/common/local/util/instr_tracer.sv
++++ b/common/local/util/instr_tracer.sv
+@@ -256,8 +256,10 @@ module instr_tracer #(
+ 
+   initial begin
+     #15ns;
+-    create_file(hart_id_i);
+-    trace();
++    if (!$test$plusargs("NO_INSTR_TRACE")) begin
++      create_file(hart_id_i);
++      trace();
++    end
+   end
+ 
+   final begin
+diff --git a/core/acc_dispatcher.sv b/core/acc_dispatcher.sv
+index aa526951e..485ec49e0 100644
+--- a/core/acc_dispatcher.sv
++++ b/core/acc_dispatcher.sv
+@@ -189,17 +189,23 @@ module acc_dispatcher
+ 
+     // We received a new instruction
+     if (acc_valid_q) insn_pending_d[acc_data.trans_id] = 1'b1;
+-    // Flush all received instructions
+-    if (flush_ex_i) insn_pending_d = '0;
+-
+     // An accelerator instruction is no longer speculative.
+     if (acc_commit && insn_pending_q[acc_commit_trans_id]) begin
+       insn_ready_d[acc_commit_trans_id]   = 1'b1;
+       insn_pending_d[acc_commit_trans_id] = 1'b0;
+     end
+ 
+-    // An accelerator instruction was issued.
+-    if (acc_req_o.acc_req.req_valid) insn_ready_d[acc_req_o.acc_req.trans_id] = 1'b0;
++    // The committed instruction left the speculative queue and is retained by
++    // the non-flushable output spill register from this point onward.
++    if (acc_insn_queue_pop) insn_ready_d[acc_insn_queue_o.trans_id] = 1'b0;
++
++    // A pipeline flush invalidates all queue-resident transaction-ID state.
++    // Transaction IDs are reused, so retaining a ready bit would let a later
++    // instruction bypass its own commit check.
++    if (flush_ex_i) begin
++      insn_pending_d = '0;
++      insn_ready_d   = '0;
++    end
+   end : p_non_speculative_ff
+ 
+   /*************************
+@@ -266,8 +272,10 @@ module acc_dispatcher
+           default: '0
+       };
+       // Wait until the instruction is no longer speculative.
+-      acc_req_valid      = insn_ready_q[acc_insn_queue_o.trans_id] ||
+-                           (acc_commit && insn_pending_q[acc_commit_trans_id] && !flush_unissued_instr_i);
++      acc_req_valid      = (insn_ready_q[acc_insn_queue_o.trans_id] ||
++                            (acc_commit && insn_pending_q[acc_commit_trans_id] &&
++                             acc_insn_queue_o.trans_id == acc_commit_trans_id)) &&
++                           !flush_unissued_instr_i;
+       acc_insn_queue_pop = acc_req_valid && acc_req_ready;
+     end
+   end
+@@ -294,8 +302,8 @@ module acc_dispatcher
+   assign acc_req_o.acc_req.resp_ready = 1'b1;
+ 
+   // Signal dispatched load/store to issue stage
+-  assign acc_ld_disp = acc_req_valid && (acc_insn_queue_o.operation == ACCEL_OP_LOAD);
+-  assign acc_st_disp = acc_req_valid && (acc_insn_queue_o.operation == ACCEL_OP_STORE);
++  assign acc_ld_disp = acc_insn_queue_pop && (acc_insn_queue_o.operation == ACCEL_OP_LOAD);
++  assign acc_st_disp = acc_insn_queue_pop && (acc_insn_queue_o.operation == ACCEL_OP_STORE);
+ 
+   // Cache invalidation
+   assign inval_valid_o = acc_resp_i.acc_resp.inval_valid;
+@@ -311,7 +319,8 @@ module acc_dispatcher
+   always_comb begin : accelerator_commit
+     acc_commit = 1'b0;
+     if (!commit_instr_i[0].valid && commit_instr_i[0].fu == ACCEL) acc_commit = 1'b1;
+-    if (commit_instr_i[0].valid && !commit_instr_i[1].valid && commit_instr_i[1].fu == ACCEL)
++    if (commit_ack_i[0] && commit_instr_i[0].valid && !commit_instr_i[1].valid &&
++        commit_instr_i[1].fu == ACCEL)
+       acc_commit = 1'b1;
+   end
+ 
+@@ -326,6 +335,15 @@ module acc_dispatcher
+   assign acc_commit_trans_id = !commit_instr_i[0].valid ? commit_instr_i[0].trans_id
+                                                         : commit_instr_i[1].trans_id;
+ 
++  // Port 1 is younger than port 0. It must not escape into the non-flushable
++  // accelerator output register until the older instruction actually retires.
++  acc_dispatcher_port1_requires_older_commit :
++    assert property (@(posedge clk_i) disable iff (!rst_ni)
++      (acc_insn_queue_pop && commit_instr_i[0].valid &&
++       !commit_instr_i[1].valid && commit_instr_i[1].fu == ACCEL &&
++       acc_insn_queue_o.trans_id == commit_instr_i[1].trans_id) |->
++      (commit_ack_i[0] && !flush_unissued_instr_i));
++
+   /**************************
+    *  Accelerator barriers  *
+    **************************/
+diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
+index 180cba4fa..60df1ed9e 100644
+--- a/core/csr_regfile.sv
++++ b/core/csr_regfile.sv
+@@ -1983,8 +1983,10 @@ module csr_regfile
+       mstatus_d.vs = riscv::Dirty;
+     end
+     // hardwired extension registers
+-    if (CVA6Cfg.RVS || CVA6Cfg.RVF) begin
+-      mstatus_d.sd = (mstatus_q.xs == riscv::Dirty) | (mstatus_q.fs == riscv::Dirty);
++    if (CVA6Cfg.RVS || CVA6Cfg.RVF || CVA6Cfg.RVV) begin
++      mstatus_d.sd = (mstatus_d.xs == riscv::Dirty) |
++                     (mstatus_d.fs == riscv::Dirty) |
++                     (mstatus_d.vs == riscv::Dirty);
+     end else begin
+       mstatus_d.sd = riscv::Off;
+     end
+diff --git a/core/fpu_wrap.sv b/core/fpu_wrap.sv
+index 5b5fefc23..05177856f 100644
+--- a/core/fpu_wrap.sv
++++ b/core/fpu_wrap.sv
+@@ -522,12 +522,53 @@ module fpu_wrap
+     assign fpu_vec_op = use_hold ? fpu_vec_op_q : fpu_vec_op_d;
+     assign fpu_tag    = use_hold ? fpu_tag_q : fpu_tag_d;
+ 
++    // Canonicalize malformed scalar operands before div/sqrt.  This keeps
++    // scalar NaN-boxing behavior explicit across the available backends.
++    function automatic logic [CVA6Cfg.FLen-1:0] canonical_nan(
++        input fpnew_pkg::fp_format_e fmt
++    );
++      logic [CVA6Cfg.FLen-1:0] value;
++      value = '1;
++      unique case (fmt)
++        fpnew_pkg::FP64:    value = 64'h7ff8_0000_0000_0000;
++        fpnew_pkg::FP32:    value[31:0] = 32'h7fc0_0000;
++        fpnew_pkg::FP16:    value[15:0] = 16'h7e00;
++        fpnew_pkg::FP16ALT: value[15:0] = 16'h7fc0;
++        fpnew_pkg::FP8:     value[7:0]  = 8'h7e;
++        default:            value = '1;
++      endcase
++      return value;
++    endfunction
++
++    function automatic logic [CVA6Cfg.FLen-1:0] canonicalize_unboxed(
++        input logic [CVA6Cfg.FLen-1:0] value,
++        input fpnew_pkg::fp_format_e fmt
++    );
++      int unsigned fmt_width;
++      logic is_boxed;
++      fmt_width = fpnew_pkg::fp_width(fmt);
++      is_boxed = 1'b1;
++      for (int unsigned bit_idx = 0; bit_idx < CVA6Cfg.FLen; bit_idx++) begin
++        if (bit_idx >= fmt_width) is_boxed &= value[bit_idx];
++      end
++      return is_boxed ? value : canonical_nan(fmt);
++    endfunction
++
+     // Consolidate operands
+     logic [2:0][CVA6Cfg.FLen-1:0] fpu_operands;
+ 
+-    assign fpu_operands[0] = operand_a;
+-    assign fpu_operands[1] = operand_b;
+-    assign fpu_operands[2] = operand_c;
++    always_comb begin
++      fpu_operands[0] = operand_a;
++      fpu_operands[1] = operand_b;
++      fpu_operands[2] = operand_c;
++
++      if (!fpu_vec_op && (fpu_op == fpnew_pkg::DIV)) begin
++        fpu_operands[0] = canonicalize_unboxed(operand_a, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++        fpu_operands[1] = canonicalize_unboxed(operand_b, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++      end else if (!fpu_vec_op && (fpu_op == fpnew_pkg::SQRT)) begin
++        fpu_operands[0] = canonicalize_unboxed(operand_a, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++      end
++    end
+ 
+     //---------------
+     // FPU instance
+@@ -536,7 +577,9 @@ module fpu_wrap
+     fpnew_top #(
+         .Features      (FPU_FEATURES),
+         .Implementation(FPU_IMPLEMENTATION),
+-        .DivSqrtSel    (fpnew_pkg::PULP),
++        // Match the vector FP backend: the legacy PULP divider has known
++        // one-ULP IEEE-754 rounding errors on directed div/sqrt cases.
++        .DivSqrtSel    (fpnew_pkg::THMULTI),
+         .TagType       (logic [CVA6Cfg.TRANS_ID_BITS-1:0])
+     ) i_fpnew_bulk (
+         .clk_i,
