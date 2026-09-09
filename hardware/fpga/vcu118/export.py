@@ -31,6 +31,38 @@ def patch_akv_descriptor_reduction(text):
     raise RuntimeError("Integration source changed: unexpected AKV descriptor reduction")
 
 
+def patch_akv_byte_counts(text):
+    text = patch_akv_descriptor_reduction(text)
+    text = replace_once(text,
+        "  logic [AxiDataWidth/8-1:0] read_data_strb;",
+        """  logic [AxiDataWidth/8-1:0] read_data_strb;
+  logic [$clog2(AxiDataWidth/8+1)-1:0] fpga_read_data_byte_count;""")
+    text = replace_once(text, """  always_comb begin
+    replay_word_bytes = '0;
+    for (int unsigned lane = 0; lane < NrLanes; lane++)
+      replay_word_bytes += 7'($countones(ldu_result_be_o[lane]));
+  end""", """  // Fixed-bound loops avoid dynamic $countones in Vivado 2020.1.
+  // Procedural if counts only known ones, preserving $countones X/Z behavior.
+  always_comb begin
+    replay_word_bytes = '0;
+    for (int unsigned lane = 0; lane < NrLanes; lane++)
+      for (int unsigned byte_lane = 0; byte_lane < 8; byte_lane++)
+        if (ldu_result_be_o[lane][byte_lane])
+          replay_word_bytes += 7'd1;
+  end
+
+  always_comb begin
+    fpga_read_data_byte_count = '0;
+    for (int unsigned byte_lane = 0; byte_lane < AxiDataWidth/8; byte_lane++)
+      if (read_data_strb[byte_lane])
+        fpga_read_data_byte_count += 1'b1;
+  end""")
+    old = "32'($countones(read_data_strb))"
+    if text.count(old) != 2:
+        raise RuntimeError("Integration source changed: unexpected AKV byte counter updates")
+    return text.replace(old, "32'(fpga_read_data_byte_count)")
+
+
 def patch_dispatcher_vlen_casts(text):
     # Vivado 2020.1 rejects these casts in comparisons on struct members.
     # vlen_t is unsigned packed logic; a low slice has identical bit semantics.
@@ -214,7 +246,7 @@ def export(dst, gcc, objdump, smoke_from=None):
                            ("rtl/cva6/common/local/util/sram_cache.sv", patch_sram_cache),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_vlen_casts),
                            ("rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
-                            patch_akv_descriptor_reduction)]:
+                            patch_akv_byte_counts)]:
         path = dst / rel
         before = path.read_text()
         after = transform(before)

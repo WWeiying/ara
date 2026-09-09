@@ -6,7 +6,8 @@ import unittest
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from export import patch_akv_descriptor_reduction, patch_dispatcher_vlen_casts, replace_once
+from export import (patch_akv_descriptor_reduction, patch_akv_byte_counts,
+                    patch_dispatcher_vlen_casts, replace_once)
 from prepare import ROOT
 
 
@@ -74,6 +75,33 @@ class DispatcherPatchTests(unittest.TestCase):
             with self.subTest(source=source[:60]):
                 with self.assertRaisesRegex(RuntimeError, "dispatcher VL comparison"):
                     patch_dispatcher_vlen_casts(source)
+
+
+class AkvByteCountPatchTests(unittest.TestCase):
+    def setUp(self):
+        self.source = (ROOT / "hardware/src/vlsu/akv/akv_engine.sv").read_text()
+        self.patched = patch_akv_byte_counts(self.source)
+
+    def test_synthesis_countones_removed(self):
+        body = self.patched.split("`ifndef SYNTHESIS", 1)[0]
+        self.assertNotRegex(body, r"\$countones\(")
+        self.assertEqual(self.patched.count("32'(fpga_read_data_byte_count)"), 2)
+
+    def test_assertion_is_unchanged(self):
+        self.assertEqual(self.source.split("`ifndef SYNTHESIS", 1)[1],
+                         self.patched.split("`ifndef SYNTHESIS", 1)[1])
+
+    def test_register_updates_only_change_count_expression(self):
+        before = self.source[self.source.index("  always_ff"):]
+        after = self.patched[self.patched.index("  always_ff"):]
+        self.assertEqual(after, before.replace("32'($countones(read_data_strb))",
+                                              "32'(fpga_read_data_byte_count)"))
+
+    def test_changed_source_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            patch_akv_byte_counts(self.source.replace("32'($countones(read_data_strb))", "0", 1))
+        with self.assertRaises(RuntimeError):
+            patch_akv_byte_counts(self.patched)
 
 
 if __name__ == "__main__":

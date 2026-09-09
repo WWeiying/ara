@@ -61,6 +61,17 @@ source scripts/synth.tcl
 [AMD UG835](https://docs.amd.com/r/2024.1-English/ug835-vivado-tcl-commands/reset_runs)。
 本机没有 Vivado；表达式等价性检查不代表 Vivado 顶层综合已经通过。
 
+### AKV 动态 countones 报错
+
+若遇到 `Synth 8-280 expression must be constant: first argument to $countones`，
+新版导出副本已将 AKV 字节统计改成固定上限的逐位计数，包括 replay byte enable
+和两处 read strobe 计数。主工程 RTL、计算功能和 IP 配置未改动。
+更新后在当前工程目录重置 `synth_1` 并重新执行 `scripts/synth.tcl`，无需重建 XPR。
+
+若同时出现 `Memdata 28-203/28-83`，需保留并检查 DDR4 IP 的完整日志。
+不能只凭 `ddr4_synth_1 finished` 就认定校准程序的 BRAM 初始化成功；
+在明确原因前，不把生成 bitstream 或上板启动视为已验收。
+
 连接 VCU118 的 FPGA JTAG USB 后：
 
 ```tcl

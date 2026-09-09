@@ -47,6 +47,7 @@
 | UART/GPIO | UART CTS/DSR/DCD 置于允许通信状态，未用 GPIO 接零 | 默认 Boot ROM 开启 UART 自动流控，CTS 不能悬空 |
 | `axi_inval_filter` | 仅编译本项目实现，不重复编译依赖中的同名模块 | 保持现有 cache invalidation 逻辑，并消除重复定义 |
 | Dispatcher 的 VL 比较 | 三处 AVL/slide 比较改用显式低位切片，保留高位非零检查 | 避开 Vivado 2020.1 对这些 `vlen_t'(...)` 表达式的 `Synth 8-2105` 报错，不改变 unsigned 截断、比较和溢出处理 |
+| AKV 字节统计 | 可综合路径的三处动态 `$countones` 改为固定上限的逐位计数；读 strobe 计数共用一个组合结果 | 避开 Vivado 2020.1 的 `Synth 8-280`；只统计已知的 1，保留计数寄存器更新条件，不改数据通路或流水级 |
 | AKV 一处表达式 | 导出副本中 `!&descriptor_byte_valid_q` 写成 `!(&descriptor_byte_valid_q)` | 显式表达 reduction-AND 后取反，消除解析歧义；不改变预期逻辑 |
 | DDR wrapper | 回移上游 VCU118 支持，补齐 DDR ready 和时钟域复位 | 上游 Ara-enabled 分支没有 VCU118 板级支持 |
 | 时钟门控 | 使用 tech_cells_generic 的 Xilinx 映射，节能用 clock gating 在 FPGA 上旁路 | 不能照搬 ASIC 的门控时钟实现，FPGA 功耗也不能直接当 ASIC 功耗 |

@@ -72,6 +72,52 @@
                    end
                    6'b001111: begin
                      ara_req.op            = ara_pkg::VSLIDEDOWN;
+--- a/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
++++ b/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
+@@ -215,6 +215,7 @@
+   logic read_data_valid, read_data_ready;
+   logic [AxiDataWidth-1:0] read_data;
+   logic [AxiDataWidth/8-1:0] read_data_strb;
++  logic [$clog2(AxiDataWidth/8+1)-1:0] fpga_read_data_byte_count;
+   logic [RangeBytesWidth-1:0] read_data_offset;
+   akv_range_tag_t read_data_tag;
+   logic read_completion_valid, read_completion_ready;
+@@ -667,10 +668,21 @@
+   assign replay_word_count = replay_column_q
+       ? 4'((unsigned'(context_tile_count_q) + 15) >> 4)
+       : 4'(unsigned'(context_head_dim_q) >> 4);
++  // Fixed-bound loops avoid dynamic $countones in Vivado 2020.1.
++  // Procedural if counts only known ones, preserving $countones X/Z behavior.
+   always_comb begin
+     replay_word_bytes = '0;
+     for (int unsigned lane = 0; lane < NrLanes; lane++)
+-      replay_word_bytes += 7'($countones(ldu_result_be_o[lane]));
++      for (int unsigned byte_lane = 0; byte_lane < 8; byte_lane++)
++        if (ldu_result_be_o[lane][byte_lane])
++          replay_word_bytes += 7'd1;
++  end
++
++  always_comb begin
++    fpga_read_data_byte_count = '0;
++    for (int unsigned byte_lane = 0; byte_lane < AxiDataWidth/8; byte_lane++)
++      if (read_data_strb[byte_lane])
++        fpga_read_data_byte_count += 1'b1;
+   end
+ 
+   always_comb begin
+@@ -1047,10 +1059,10 @@
+       if (read_data_fire && read_data_tag.role != AKV_RANGE_DESCRIPTOR) begin
+         if (read_data_tag.role == AKV_RANGE_Q)
+           q_external_bytes_o <= q_external_bytes_o +
+-              32'($countones(read_data_strb));
++              32'(fpga_read_data_byte_count);
+         else
+           kv_external_bytes_o <= kv_external_bytes_o +
+-              32'($countones(read_data_strb));
++              32'(fpga_read_data_byte_count);
+       end
+ 
+       if (state_q == AKV_ENGINE_REPLAY_WRITE) begin
 --- a/rtl/board/dram_wrapper_xilinx.sv
 +++ b/rtl/board/dram_wrapper_xilinx.sv
 @@ -31,6 +31,7 @@

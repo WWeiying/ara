@@ -664,8 +664,21 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "2ac7103163ac5c99c350cddc7c339466b5a35d8d",
-      "tracked_changes": []
+      "commit": "d28926953e91cdff70aa507e397b346a32b1d523",
+      "tracked_changes": [
+        "hardware/fpga/ara_dsa_vcu118/README_WINDOWS.md",
+        "hardware/fpga/ara_dsa_vcu118/SHA256SUMS",
+        "hardware/fpga/ara_dsa_vcu118/docs/INTEGRATION.md",
+        "hardware/fpga/ara_dsa_vcu118/docs/VALIDATION.md",
+        "hardware/fpga/ara_dsa_vcu118/manifest.json",
+        "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch",
+        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
+        "hardware/fpga/vcu118/README_WINDOWS.md",
+        "hardware/fpga/vcu118/docs/INTEGRATION.md",
+        "hardware/fpga/vcu118/docs/VALIDATION.md",
+        "hardware/fpga/vcu118/export.py",
+        "hardware/fpga/vcu118/tests/test_export.py"
+      ]
     },
     "axi": {
       "commit": "a8c53cee2520d328d390c507c88818e8ac144c8c",

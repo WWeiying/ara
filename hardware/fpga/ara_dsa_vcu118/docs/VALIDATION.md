@@ -24,7 +24,8 @@ CVA6 中 `DATA_USER_EN=0` 的未启用分支仍含 user-byte 范围告警；静�
 
 ## 当前源码同步检查记录
 
-本次更新对应 Ara 提交 `2ac7103163ac5c99c350cddc7c339466b5a35d8d`。
+主 RTL 内容仍与 Ara 提交 `2ac7103163ac5c99c350cddc7c339466b5a35d8d` 一致；
+本次只修改 FPGA 集成及工具，实际导出来源提交以 `manifest.json` 为准。
 `manifest.json` 记录各依赖的实际提交和本地修改；CVA6 原有的本地修改仍随包保留，
 不是将依赖强制重置为干净提交。当前包包含 616 个编译输入、14 个 include 目录。
 
@@ -34,8 +35,9 @@ CVA6 中 `DATA_USER_EN=0` 的未启用分支仍含 user-byte 范围告警；静�
 | 新增 QBS SRAM 文件 | `qbs_payload_buffer.sv`、`qbs_payload_sram.sv` 均进入编译清单，顺序检查通过 |
 | 新版 RTL 静态展开 | `cva6=1`、`ara=1`、`lane=4`、`qbs_engine=1`、`akv_engine=1`；无非厂商模块展开错误 |
 | QBS payload 存储层次 | 2 个 `qbs_payload_buffer`、24 个 `qbs_payload_sram`；全部选择 FPGA `tc_sram`，未选择 TSMC 宏 |
-| 导出补丁回归 | 9 项测试通过，覆盖 AKV 写法兼容、Dispatcher 三行等价替换、高位检查保留、重复应用和异常源码拒绝 |
+| 导出补丁回归 | 13 项测试通过，覆盖 AKV 写法及字节统计兼容、计数更新/断言保留、Dispatcher 三行等价替换和异常源码拒绝 |
 | Dispatcher 表达式等价性 | VCS 11 组 VLEN、238,175 组输入通过；同时比较新旧表达式及已知输入下的完整 unsigned 参考计算 |
+| AKV 字节统计等价性 | VCS 337,681 组输入通过；穷举 16-bit read strobe、逐 lane 的 8-bit 四态 byte enable，并检查最大值 16/32 字节 |
 | 增量同步回归 | 26 项测试通过，包括新默认路径、Git 元数据、冲突检测、旧文件备份、本地修改保留和失败回滚 |
 | 文件/ELF/UART host 回归 | 9 项测试通过；串口仅使用 mock，不是板上执行 |
 | Tcl 创建入口检查 | 源码清单及创建流程 mock 通过，不代表已经运行 Vivado |
@@ -95,6 +97,41 @@ VCS 检查证明的是这些表达式的功能等价性，不是 Vivado 2020.1 �
 本机仍无 Vivado。Windows 更新后应 reset 顶层 `synth_1` 再综合，
 无需重建已成功的 DDR4 等 IP；下一阶段可能出现的兼容性或资源问题仍需实际日志确认。
 
+### Vivado 2020.1 动态位计数兼容
+
+下一轮用户日志显示 Dispatcher 的 cast 不再是终止点，但 AKV 原第 673 行的
+`$countones(ldu_result_be_o[lane])` 触发 `Synth 8-280`，要求参数为常量。
+同模块原第 1050/1053 行还有两处动态 `$countones(read_data_strb)`，也一并改写。
+
+- Replay 每 lane 统计 8 个 byte enable，再累加到原有 7-bit `replay_word_bytes`。
+- Read strobe 用固定循环上限 `AxiDataWidth/8` 计数。当前 128-bit AXI 下为
+  16 个 strobe，结果使用 5 位，可表示 0 至 16，不会把全有效情况溢出为零。
+- 循环内部用 `if (bit)` 增加计数，X/Z 不计入，与 `$countones` 的四态行为一致。
+  没有直接把 X/Z 位加到计数器上而改变模拟语义。
+- `q_external_bytes_o`、`kv_external_bytes_o` 和 `replay_bytes_o` 的更新条件不变；
+  不修改 handshake、FSM、重放地址或返回数据，也没有新增流水寄存器。
+- `ifndef SYNTHESIS` 内的断言保持原样。其他来源中检出的 `$countones`
+  位于断言宏中，不属于这三处可综合字节计数。
+
+`tests/check_akv_byte_counts.py` 从实际源码及导出副本提取组合计数表达式，
+在 VCS 中检查 337,681 组输入，结果一致。运行命令：
+
+```bash
+python3 -B hardware/fpga/vcu118/tests/check_akv_byte_counts.py /tmp/vcu118_akv_count_check
+```
+
+这轮 Windows 报告还包含两个必须区分的问题：
+
+1. Cheshire 第 623 行是 `genvar i < NumIntHarts`；`NumIntHarts=Cfg.NumCores`，
+   板级常量配置明确设为 1。静态展开可得到一个 CVA6，故当前判断更像下层失败的
+   连带诊断，但不能在没有 Vivado 重测的情况下保证它必然消失。本次不把参数强行写死。
+2. DDR4 IP 出现 `Memdata 28-203/28-83`，涉及校准 MicroBlaze 的 BRAM 初始化映射。
+   IP OOC 任务完成不能单独证明初始化正确；仍需完整 DDR4 日志确认，
+   不能降级/屏蔽消息或手改生成的 IP 文件来当作修复完成。
+
+用户报告本轮 RTL elaboration 耗时约 74 分钟、峰值内存约 30,290 MB；
+它尚未进入成功的完整综合/实现验收。上述 VCS 等价性检查不替代 Vivado 原生综合。
+
 ## Git 管理与迁移检查
 
 完整工程位于 `hardware/fpga/ara_dsa_vcu118/`，导出与同步工具位于
@@ -121,4 +158,4 @@ VCS 检查证明的是这些表达式的功能等价性，不是 Vivado 2020.1 �
 
 本机没有 Vivado，也没有连接 VCU118，不能将上表静态检查描述为上述步骤已经通过。
 用户已在 Windows 完成工程创建和 DDR4 IP OOC 综合；顶层综合尚未通过，
-当前报错和修正见上节。后续按 `README_WINDOWS.md` 顺序验收。
+当前报错和修正见上节，DDR4 初始化映射消息仍待核查。后续按 `README_WINDOWS.md` 顺序验收。
