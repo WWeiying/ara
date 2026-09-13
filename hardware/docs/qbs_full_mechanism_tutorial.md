@@ -3329,19 +3329,43 @@ wave。两个 wave 读取不同的 activation bank，但保留同一个 active w
 
 求和树的有符号位宽依次为：单项乘积 16 位、两项和 17 位、四项和 18 位、八项和 19 位。
 最后一级不能只用 18 位，因为八个 `(-128)*(-128)` 的和是 `131072`，超过 18 位有符号数的
-上限 `131071`。两个四项和先符号扩展到 19 位再相加，输出寄存器以及连接到整数流水的
-`dot_stream_sum` 也保留 19 位，之后才进入 32 位 subgroup 累加器。这里不增加流水级，
-`valid`、stream mask 和元数据仍按原周期对齐；不能用截断输入的方式回避合法 INT8 极值。
+上限 `131071`。M1/M2 用 carry-save 压缩中间项，最后再传播一次进位；输出寄存器以及连接
+到整数流水的 `dot_stream_sum` 保留 19 位，之后进入 21 位 subgroup partial 累加器。
+不能用截断输入的方式回避合法 INT8 极值。
+
+当前 dot array 是固定吞吐的三级流水：第一级保存 decoder 得到的 signed INT8 操作数，
+第二级保存 32 个 16 位乘积，第三级完成按 M 分组的求和并寄存结果。这样 SRAM 读出和
+格式解码不会再与乘法、求和串在同一个时钟周期内。若输入在时钟沿 t 被接受，对应结果
+在沿 t+2 后可见；连续三个时钟沿可以分别处理不同批数据，不是隔三拍才能输入一批。
+`m`、有效行数、stream mask 和 valid 随数据一起寄存，bubble 只移动 valid，不被当成计算。
+
+profile engine 同步延迟 context、group index/end、row scale/min 和 activation aux，
+并逐拍断言数据 valid 与 metadata valid 相同。增加的启动/排空延迟会在每个 native block、
+每个行分组和 activation wave 的启动处体现，不能只算成整条命令开头的两拍。
 
 ### 9.8 `qbs_profile_engine_int.sv`：整数流水与结果整形
 
-该模块包含两个内部流水槽位和 16 个 logical streams（4 weight rows x 4 activation rows）。
+该模块包含两个 tile context，每个 context 有 16 个 logical streams（4 weight rows x
+4 activation rows）。这里的两个 context 不是指只有两级流水。
 它将 decoder 输出送入 dot array，按 subgroup 累计 partial dot，再应用 integer scale/min：
 
 ```text
 subtotal_dot += group_scale * group_dot
 subtotal_aux += group_min   * group_aux
 ```
+
+每个 context/stream 有一个待校正 slot。两路共享校正通路每拍最多选中两个不同 slot，
+按照三个阶段处理：选择 slot 并保存操作数，计算 scale/min 乘积，最后读取并更新 subtotal。
+slot 在操作数被流水接收时释放，后续结果由流水中的 context、stream 和 last-group 标识
+负责，不能在释放 slot 时就把计算标为完成。最后一级才读取 subtotal，保证同一 stream
+前一次提交的部分和对下一次提交可见；若在选择阶段提前保存 subtotal，就可能发生旧值覆盖。
+两路提交不允许指向同一个 context/stream，同一 stream 的更新保持先后顺序。
+
+最后一个 subgroup 真正更新 subtotal 后才置 `result_pending`。context 要等本次 block
+所有有效 stream 的结果都被 FP consumer 接受后才能复用。16-element subgroup 的短尾波
+还必须等待旧 slot 和两级校正流水排空，避免旧 M4 波与 M1/M2 尾波同时挤满校正入口。
+正常计算完成检查包含三级点积的有效位；异常完成检查还包括校正流水和 FP consumer，
+不允许在旧事务仍在写局部状态时宣布 fault drain 完成。
 
 完成一个 native block 后，它以 round-robin 方式把每个有效 stream 的 `dot/aux/d/dmin` 送给
 FP accumulator。两 context 的作用是吸收 decode、dot reduction 和 FP consumer 之间的速率差，

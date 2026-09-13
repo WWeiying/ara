@@ -188,6 +188,58 @@ module qbs_compute_engine_tb;
     activation_valid = 1'b0;
   endtask
 
+  task automatic check_pipeline_fault(input int stage);
+    int ticks;
+    bit reached;
+    while (!command_ready) @(negedge clk);
+    @(negedge clk);
+    command_profile = QBS_WEIGHT_PROFILE_Q2_K;
+    command_activation_profile = QBS_ACTIVATION_PROFILE_Q8_K;
+    command_weight_layout = QBS_WEIGHT_LAYOUT_ROW_MAJOR;
+    command_activation_layout = QBS_ACTIVATION_LAYOUT_ROW_MAJOR;
+    command_m = 1;
+    command_n = 4;
+    command_k_blocks = 1;
+    command_valid = 1;
+    @(negedge clk);
+    command_valid = 0;
+    for (int row = 0; row < 4; row++) begin
+      for (int offset = 0; offset < 84; offset += 16)
+        send_weight(row, offset, offset == 80 ? 16'h000f : 16'hffff, '0);
+    end
+    for (int offset = 0; offset < 292; offset += 16)
+      send_activation(0, offset, offset == 288 ? 16'h000f : 16'hffff, '0);
+    reached = 0;
+    ticks = 0;
+    while (!reached && ticks < 1024) begin
+      case (stage)
+        0: reached = dut.i_profile_engine_int.i_dot_array.quant_valid_q;
+        1: reached = dut.i_profile_engine_int.i_dot_array.product_valid_q;
+        2: reached = dut.i_profile_engine_int.correction_operand_q[0].valid;
+        3: reached = dut.i_profile_engine_int.correction_product_q[0].valid;
+        default: $fatal(1, "invalid pipeline fault stage");
+      endcase
+      if (!reached) @(negedge clk);
+      ticks++;
+    end
+    if (!reached) $fatal(1, "pipeline fault stage %0d was not exercised", stage);
+    fault = 1;
+    ticks = 0;
+    while (!fault_done && ticks < 1024) begin
+      @(negedge clk);
+      if (result_valid) $fatal(1, "pipeline fault stage %0d exposed results", stage);
+      ticks++;
+    end
+    if (!fault_done || dut.integer_busy || dut.fp_busy ||
+        dut.i_profile_engine_int.correction_pipeline_busy)
+      $fatal(1, "pipeline fault stage %0d failed to drain", stage);
+    fault = 0;
+    @(negedge clk);
+    if (!command_ready || result_valid)
+      $fatal(1, "pipeline fault stage %0d failed to recover", stage);
+    $display("QBS pipeline fault stage %0d PASS drain_cycles=%0d", stage, ticks);
+  endtask
+
   initial begin
     string vector_file;
     string token;
@@ -436,6 +488,8 @@ module qbs_compute_engine_tb;
     if (!command_ready || result_valid)
       $fatal(1, "QBS command did not return cleanly after fault");
     $display("QBS command fault discard PASS");
+
+    for (int stage = 0; stage < 4; stage++) check_pipeline_fault(stage);
 
     $fclose(fd);
     if (total_errors != 0)

@@ -1532,3 +1532,131 @@ cycles 依次为 7200、7638、7612、41939、44493、44479，weight/activation/
 独立整机 DC 已在 2026-09-13 10:15:08 UTC 通过回归门槛并启动，确认正在分析
 `soc_dc/sources/` 中的冻结源码。此时没有新的整机 WNS/TNS，不能提前填写改善
 比例或宣布 1 GHz 时序收敛；后续查看该独立目录下的报告，不混用原目录旧结果。
+
+## 21. QBS 点积与校正流水化
+
+### 21.1 选择这两条路径的原因
+
+在允许少量周期增加后，本轮不再只重写组合表达式，而是拆开两个已由旧整机
+报告定位的长路径：payload SRAM 经格式解码、INT8 乘法和求和到 dot 寄存器，
+以及校正 RR 选择经 slot 读取、乘法和 subtotal 累加到 subtotal 寄存器。
+旧报告对应 slack 分别为 -0.652 ns 和 -0.610 ns，详见第 18、20 节。
+这些数值属于旧整机，不是上一节局部 wrapper 的数据，也不是本轮改善量。
+
+假设是：即使改进优先编码和进位结构，串在同一周期内的存储器读出、选择、
+乘法及加法仍限制频率。用寄存器分开这些运算，可以缩短每级组合路径；代价是
+流水填充与排空变长。保持每周期的接收能力，才有机会让长块工作负载的周期
+代价较小。本轮先核对数据、标签、context 释放和 fault 排空，再实施并测试。
+
+### 21.2 两处 RTL 修改
+
+| 模块 | 修改前 | 修改后 | 不变的能力 |
+| --- | --- | --- | --- |
+| `qbs_dot_array.sv` | 解码输出直接经过乘法、求和，再寄存输出 | 寄存解码值；寄存乘积；寄存归约结果，共三级 | 32 个 INT8 乘积通路，每周期可接收一批 |
+| `qbs_profile_engine_int.sv` | 选择 slot、乘法、subtotal 更新在同一周期 | 选择并寄存操作数；乘法并寄存；subtotal 更新，共三级 | 两条共享校正通路，每周期最多两项校正 |
+
+没有增加乘法器数量，没有新增 SRAM，没有改变浮点运算和累加次序。
+普通 RVV 与 AKV 的 RTL 未改，QBS 的指令编码、描述符、profile、布局、维度
+契约及软件接口也未改。时钟仍为 1 ns，setup uncertainty 仍为 0.15 ns，
+没有添加 multicycle/false-path 例外。
+
+增加的声明状态位如下。它们是按 RTL 字段计算的位数，不是 DC 映射后的面积。
+
+| 部分 | 新增状态位 |
+| --- | ---: |
+| dot 解码值、乘积及两级有效位/形状/stream mask | 1070 |
+| dot context、group、scale、min、aux 的标签对齐 | 255 |
+| 两条校正通路的操作数级与乘积级 | 236 |
+| 合计 | 1561 |
+
+### 21.3 保持正确性的关键条件
+
+1. **数据和标签同时前进。** `DotLatency=3`，context、group index/end、scale、
+   min、aux 与 dot 同步延迟。断言逐拍检查 dot valid 与末级 metadata valid
+   一致。不能只推迟数值而仍使用当前 decoder 的标签。
+2. **填槽和释放槽的顺序不变。** 校正 grant 在捕获 slot 操作数时释放该 slot，
+   此后由流水寄存器持有数据。同一周期允许消费旧 group 并填入新 group；
+   slot 的新填入操作保留原来的赋值优先级，不会被消费操作清空。
+3. **累加时读取最新 subtotal。** 选择级不缓存 subtotal，最终提交级才读取并
+   累加。相邻周期属于同一 stream 的校正能看到前一次更新。断言禁止两条
+   校正通路同周期写同一 context/stream，避免丢失其中一次更新。
+4. **最后一组真正提交后才能报告结果。** `result_pending` 在 last group 的
+   校正提交时置位，不在 grant 时提前置位。context 仍要等全部有效 stream
+   的结果被 FP 路径接受后才能释放，输出反压不能导致提前复用。
+5. **排空条件覆盖新增级。** `compute_pipeline_empty` 包含全部 dot metadata
+   valid。`correction_drain_empty` 同时检查 pending slots、操作数级和乘积级，
+   M1/M2 的短 tail wave 不会把“slot 已空”误认为“校正已结束”。busy 也包含
+   校正在途状态，fault 时沿原有排空路径退出，不把旧结果泄漏到下一条命令。
+
+更长流水可能在每个 native block 或 row wave 的边界重复填充和排空，不能
+笼统描述为“一条大命令只多两周期”。特别是 Q8_0 的 32 元素块，边界开销占比
+可能高于 256 元素的 K-quant 块，必须分别测量。
+
+### 21.4 功能检查和代表回归
+
+本轮独立目录为 `hardware/timing_qbs_pipeline_20260913_SBCC1Q/`。
+`before/` 保存本轮修改前的真实文件，未覆盖既有仿真或综合结果。
+
+| 检查 | 结果 | 核查内容 |
+| --- | --- | --- |
+| 独立 dot 数学模型与三级流水模型 | PASS，16008 个检查周期、13700 批有效输入 | M1-M4、行数、随机值、INT8 极值、连续请求、气泡和复位 |
+| datapath 新旧结果序列比较 | PASS，143970 次 arithmetic、164064 次 dot 检查 | dot 按输出顺序比较；其他算术仍按原周期比较 |
+| C golden profile 矩阵 | 448/448 PASS | group 整数和最终浮点结果 |
+| 加结果反压的 profile 矩阵 | 448/448 PASS | 只在握手时检查数据，随机及连续停顿 |
+| 完整 QBS engine | 33/33 PASS，另有四类 fault PASS | 九种 profile、形状/布局边界、activation context、描述符及访存异常 |
+| compute engine 新增在途异常 | 四处均 PASS | dot 解码级、乘积级、校正操作数级、校正乘积级；排空分别 65/64/60/59 周期 |
+| 完整 SoC VCS 代表回归 | 5/5 PASS | QBS/AKV handoff、`vfredusum`、`vfdiv`、`vfmacc`、AXPY |
+
+所有测试均使用第一版流水化 RTL 通过，没有调整软件、放宽超时或修改数值容差
+来规避失败。新旧延迟不同，因此不能继续使用同周期整数引擎 miter 宣称等价；
+`qbs-cycle-check` 仅保留给不改变延迟的改写，当前默认 `qbs-check` 使用独立
+数学模型、C golden 和握手检查。以上是仿真覆盖，不是形式等价证明。
+
+### 21.5 真实模型输入的周期代价
+
+六个 Qwen2.5 捕获输入切片使用同一测试程序和同样的流量条件。基线为上一轮
+`hardware/timing_feedback_20260913_x9goNT/real/summary.csv`。
+
+| profile | M | N | K | 原周期 | 新周期 | 增加 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Q4_K | 4 | 32 | 1536 | 7200 | 7298 | 1.36% |
+| Q4_K | 8 | 16 | 1536 | 7638 | 7736 | 1.28% |
+| Q4_K | 7 | 16 | 1536 | 7612 | 7710 | 1.29% |
+| Q6_K | 4 | 32 | 8960 | 41939 | 42501 | 1.34% |
+| Q6_K | 8 | 16 | 8960 | 44493 | 45055 | 1.26% |
+| Q6_K | 7 | 16 | 8960 | 44479 | 45041 | 1.26% |
+
+六点全部 PASS；weight、activation、payload 字节数、range 数、dot 活动周期
+均与基线相同，prefetch wait 均为 0。Q4_K 各增加 98 周期，Q6_K 各增加
+562 周期。这些是 engine 测试的周期，不是完整模型的 token/s，也不是实测主频。
+
+33 个功能命令中，已测最大相对代价是 Q8_0、M1/N1/Kb65：1389 增至 1521，
+即增加 132 周期、9.50%。因此只能说六个真实切片的代价约为 1.3%，不能说
+全部形状都只有这一开销。同一工作负载只有在频率提升比例大于周期增加比例时，
+执行时间才改善；当前尚未取得新整机频率证据。
+
+### 21.6 归档及综合边界
+
+```sh
+python3 verification/timing/collect_qbs_pipeline_results.py \
+  --run hardware/timing_qbs_pipeline_20260913_SBCC1Q \
+  --baseline hardware/timing_feedback_20260913_x9goNT \
+  --output verification/timing/results/20260913_qbs_pipeline
+```
+
+归档包含 `summary.json`、`commands.csv`、`real.csv`，保留修改前后源码哈希、
+功能日志路径、33 个命令和六个真实切片的周期对照。可用如下命令单独复现 dot：
+
+```sh
+make -C verification/timing qbs-pipeline-check \
+  BUILD="$PWD/hardware/timing_qbs_pipeline_recheck"
+```
+
+`dc_before/` 和 `dc_after/` 已在 EDA 容器内后台启动，使用同一约束下的完整
+integer profile pipeline wrapper，涵盖 decoder、dot、校正选择、乘法及
+subtotal。wrapper 的输入寄存器不是实际 SRAM 宏，不能代替 SRAM clock-to-Q、
+bank mux、整机负载与布线。记录时尚无两组最终时序或面积数值。
+
+上一轮 `timing_feedback_20260913_x9goNT/soc_dc/` 仍使用流水化之前的冻结源码，
+没有被本轮覆盖、停止或偷偷换成新设计。它的后续结果不能归功于本轮流水化。
+本轮未新开整机 DC，也不以局部结果提前宣布 1 GHz 达标。

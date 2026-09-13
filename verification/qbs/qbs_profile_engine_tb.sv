@@ -31,6 +31,10 @@ module qbs_profile_engine_tb;
   logic done;
   logic result_valid;
   logic result_ready;
+  bit inject_result_stalls;
+  logic result_gate;
+  logic [15:0] stall_lfsr;
+  int unsigned stall_cycle;
   logic [3:0] result_stream;
   logic signed [31:0] result_dot;
   logic signed [31:0] result_aux;
@@ -98,7 +102,19 @@ module qbs_profile_engine_tb;
   bit expected_result_valid [16];
   bit observed_result [16];
 
-  assign result_ready = fp_request_ready;
+  assign result_gate = !inject_result_stalls ||
+      (stall_cycle % 23 < 11 && stall_lfsr[0]);
+  assign result_ready = fp_request_ready && result_gate;
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      stall_lfsr <= 16'hc175;
+      stall_cycle <= 0;
+    end else begin
+      stall_lfsr <= {stall_lfsr[14:0],
+          stall_lfsr[15] ^ stall_lfsr[13] ^ stall_lfsr[12] ^ stall_lfsr[10]};
+      stall_cycle <= stall_cycle + 1;
+    end
+  end
   assign fp_request_accumulator_index =
       {result_stream[1:0], 5'b0} + {5'b0, result_stream[3:2]};
 
@@ -189,7 +205,7 @@ module qbs_profile_engine_tb;
     .clk_i                         (clk),
     .rst_ni                        (rst_n),
     .clear_i                       (fp_clear),
-    .request_valid_i               (result_valid),
+    .request_valid_i               (result_valid && result_gate),
     .request_ready_o               (fp_request_ready),
     .request_slot_i                (result_stream),
     .request_profile_i             (start_profile),
@@ -298,6 +314,7 @@ module qbs_profile_engine_tb;
     fp_first_block = 1'b1;
     fp_read_index = '0;
     total_errors = 0;
+    inject_result_stalls = $test$plusargs("QBS_STALL_RESULTS");
 
     if (!$value$plusargs("QBS_VECTOR_FILE=%s", vector_file))
       vector_file = "../qbs_rtl_vectors.txt";
@@ -335,6 +352,8 @@ module qbs_profile_engine_tb;
       integer first_block_cycles;
       logic [15:0] expected_stream_mask;
       bit integer_done_seen;
+      bit [2:0] trace_pending;
+      integer trace_values [3];
 
       rc = $fscanf(fd, "%s %d %d %d %d %d", token, case_id, profile, m,
                    rows, pattern);
@@ -492,6 +511,8 @@ module qbs_profile_engine_tb;
 
       monitor_cycles = 0;
       integer_done_seen = 1'b0;
+      trace_pending = '0;
+      trace_values = '{default: 0};
       while ((!integer_done_seen || busy || fp_busy) && monitor_cycles < 4096) begin
         integer trace_dot;
         bit trace_valid;
@@ -503,12 +524,37 @@ module qbs_profile_engine_tb;
             trace_dot += int'($signed(decode_weight_quant[0][lane])) *
                          int'($signed(decode_activation_quant[0][lane]));
         end
+        trace_pending = {trace_pending[1:0], trace_valid};
+        trace_values[2] = trace_values[1];
+        trace_values[1] = trace_values[0];
+        trace_values[0] = trace_dot;
+        // Check the payload that actually handshakes on this edge, not the
+        // next arbitration candidate visible after nonblocking assignments.
+        if (result_valid && result_ready) begin
+          if (!expected_result_valid[result_stream] ||
+              observed_result[result_stream] ||
+              $signed(result_dot) != expected_result_dot[result_stream] ||
+              $signed(result_aux) != expected_result_aux[result_stream] ||
+              result_weight_d != expected_result_weight_d[result_stream] ||
+              result_weight_dmin != expected_result_weight_dmin[result_stream] ||
+              result_activation_d != expected_result_activation_d[result_stream]) begin
+            fail($sformatf(
+                "result mismatch stream=%0d dot=%0d/%0d aux=%0d/%0d wd=%h/%h wdmin=%h/%h ad=%h/%h",
+                result_stream, $signed(result_dot), expected_result_dot[result_stream],
+                $signed(result_aux), expected_result_aux[result_stream],
+                result_weight_d, expected_result_weight_d[result_stream],
+                result_weight_dmin, expected_result_weight_dmin[result_stream],
+                result_activation_d, expected_result_activation_d[result_stream]), case_id);
+            ++case_errors;
+          end
+          observed_result[result_stream] = 1'b1;
+        end
         #1;
         ++monitor_cycles;
-        if (trace_valid)
+        if (trace_pending[2])
           $display("QBS_DOT_TRACE case=%0d cycle=%0d valid=%0d mask=%h sum0=%0d expected=%0d",
                    case_id, monitor_cycles, dut.dot_valid, dut.dot_stream_valid,
-                   $signed(dut.dot_stream_sum[0]), trace_dot);
+                   $signed(dut.dot_stream_sum[0]), trace_values[2]);
         if (done) integer_done_seen = 1'b1;
         if (decode_valid) begin
           if (decode_stream_valid != expected_stream_mask) begin
@@ -571,27 +617,6 @@ module qbs_profile_engine_tb;
           end
         end
 
-        if (result_valid) begin
-          if (!expected_result_valid[result_stream] ||
-              observed_result[result_stream] ||
-              $signed(result_dot) != expected_result_dot[result_stream] ||
-              $signed(result_aux) != expected_result_aux[result_stream] ||
-              result_weight_d != expected_result_weight_d[result_stream] ||
-              result_weight_dmin != expected_result_weight_dmin[result_stream] ||
-              result_activation_d !=
-                  expected_result_activation_d[result_stream]) begin
-            fail($sformatf(
-                "result mismatch stream=%0d dot=%0d/%0d aux=%0d/%0d wd=%h/%h wdmin=%h/%h ad=%h/%h",
-                result_stream, $signed(result_dot),
-                expected_result_dot[result_stream], $signed(result_aux),
-                expected_result_aux[result_stream], result_weight_d,
-                expected_result_weight_d[result_stream], result_weight_dmin,
-                expected_result_weight_dmin[result_stream], result_activation_d,
-                expected_result_activation_d[result_stream]), case_id);
-            ++case_errors;
-          end
-          observed_result[result_stream] = 1'b1;
-        end
       end
 
       first_block_cycles = monitor_cycles;

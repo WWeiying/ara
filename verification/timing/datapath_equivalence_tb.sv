@@ -25,10 +25,41 @@ module datapath_equivalence_tb;
   logic [15:0] stream_valid_i, stream_valid_o, ref_stream_valid;
   logic signed [7:0] weight_quant_i [4][8], activation_quant_i [4][8];
   logic signed [18:0] stream_sum_o [16], ref_stream_sum [16];
+  typedef struct packed {
+    logic [15:0] mask;
+    logic [15:0][18:0] sums;
+  } dot_result_t;
+  dot_result_t expected_dot [$];
   qbs_dot_array i_dot (.valid_i(dot_input_valid), .valid_o(dot_valid), .*);
   qbs_dot_array_reference i_dot_reference (
       .valid_i(dot_input_valid), .valid_o(ref_dot_valid),
       .stream_valid_o(ref_stream_valid), .stream_sum_o(ref_stream_sum), .*);
+
+  task automatic check_dot;
+    dot_result_t value;
+    if (!rst_ni) begin
+      expected_dot.delete();
+      assert (!dot_valid && !ref_dot_valid)
+        else $fatal(1, "dot reset did not clear valid");
+    end else begin
+      if (ref_dot_valid) begin
+        value.mask = ref_stream_valid;
+        for (int stream = 0; stream < 16; stream++) value.sums[stream] = ref_stream_sum[stream];
+        expected_dot.push_back(value);
+      end
+      if (dot_valid) begin
+        assert (expected_dot.size() != 0) else $fatal(1, "dot output without input");
+        value = expected_dot.pop_front();
+        assert (stream_valid_o === value.mask) else $fatal(1, "dot stream mask mismatch");
+        for (int stream = 0; stream < 16; stream++) begin
+          assert (stream_sum_o[stream] === value.sums[stream])
+            else $fatal(1, "dot stream=%0d got=%0d expected=%0d",
+                stream, stream_sum_o[stream], $signed(value.sums[stream]));
+          dot_checks++;
+        end
+      end
+    end
+  endtask
 
   task automatic check_alu;
     #1;
@@ -107,15 +138,17 @@ module datapath_equivalence_tb;
         end
       @(posedge clk_i);
       #1;
-      assert ({dot_valid, stream_valid_o} === {ref_dot_valid, ref_stream_valid})
-        else $fatal(1, "dot handshake mismatch");
-      for (int stream = 0; stream < 16; stream++) begin
-        assert (stream_sum_o[stream] === ref_stream_sum[stream])
-          else $fatal(1, "dot m=%0d stream=%0d got=%0d expected=%0d",
-              m_i, stream, stream_sum_o[stream], ref_stream_sum[stream]);
-        dot_checks++;
-      end
+      check_dot();
     end
+    @(negedge clk_i);
+    rst_ni = 1;
+    dot_input_valid = 0;
+    repeat (5) begin
+      @(posedge clk_i);
+      #1;
+      check_dot();
+    end
+    assert (expected_dot.size() == 0) else $fatal(1, "dot outputs lost during drain");
     $display("Timing datapath equivalence PASS arithmetic_checks=%0d dot_checks=%0d",
              checks, dot_checks);
     $finish;

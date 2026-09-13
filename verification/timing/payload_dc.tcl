@@ -14,7 +14,7 @@ set top qbs_payload_buffer
 if {[info exists env(DC_LOCAL_TOP)]} {set top $env(DC_LOCAL_TOP)}
 if {$top ni {qbs_payload_buffer qbs_block_adapter qbs_ingress_timing simd_mul_timing
              simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing
-             qbs_correction_select_timing qbs_address_timing}} {
+             qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   error "unsupported local top: $top"
 }
 set sources {
@@ -25,6 +25,12 @@ if {$top eq "qbs_ingress_timing"} {lappend sources src/qbs_ingress_timing.sv}
 if {$top eq "qbs_decode_dot_timing"} {
   set sources {src/qbs_pkg.sv src/qbs_profile_decoder.sv src/qbs_dot_array.sv
     src/qbs_decode_dot_timing.sv}
+}
+if {$top eq "qbs_profile_pipeline_timing"} {
+  set sources {src/cf_math_pkg.sv src/lzc.sv src/qbs_pkg.sv
+    src/qbs_profile_decoder.sv src/qbs_dot_array.sv src/qbs_profile_engine_int.sv
+    src/qbs_profile_pipeline_timing.sv}
+  set_app_var search_path [concat ./src $search_path]
 }
 if {$top eq "vfdsu_round_timing"} {
   set sources {src/gated_clk_cell.v src/ct_vfdsu_round.v src/vfdsu_round_timing.sv}
@@ -96,7 +102,7 @@ if {[info exists env(DC_ELAB_ONLY)] && $env(DC_ELAB_ONLY) == 1} {
   puts "PAYLOAD_DC_ELAB_COMPLETE"
   exit
 }
-if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing}} {
+if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   # Match the integrated run's clock gate and setup requirement exactly.
   set_clock_gating_style -sequential latch \
       -positive_edge_logic {integrated:CKLNQD4BWP12T40P140} \
@@ -123,7 +129,7 @@ redirect clk_i_max.tim {
   report_timing -group clk_i -delay_type max -max_paths 1000 -input_pins -nets \
       -transition_time -capacitance -significant_digits 4
 }
-if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing}} {
+if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   redirect clock_gating.rpt {report_clock_gating}
 }
 if {$top eq "ara_dispatcher_timing"} {

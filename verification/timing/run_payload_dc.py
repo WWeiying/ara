@@ -53,7 +53,8 @@ def main():
                                          "qbs_ingress_timing", "simd_mul_timing",
                                          "simd_alu_timing", "qbs_decode_dot_timing",
                                          "vfdsu_round_timing", "ara_dispatcher_timing",
-                                         "qbs_correction_select_timing", "qbs_address_timing"),
+                                         "qbs_correction_select_timing", "qbs_address_timing",
+                                         "qbs_profile_pipeline_timing"),
                         default="qbs_payload_buffer")
     parser.add_argument("--elaborate-only", action="store_true",
                         help="save and inspect GTECH without technology mapping")
@@ -103,6 +104,12 @@ def main():
         sources = [ROOT / "hardware/include/qbs_pkg.sv"] + [
             ROOT / "hardware/src/vlsu/qbs" / name
             for name in ("qbs_profile_decoder.sv", "qbs_dot_array.sv")]
+    if args.top == "qbs_profile_pipeline_timing":
+        sources = [ROOT / "hardware/deps/common_cells/src/cf_math_pkg.sv",
+                   ROOT / "hardware/deps/common_cells/src/lzc.sv",
+                   ROOT / "hardware/include/qbs_pkg.sv"] + [
+            ROOT / "hardware/src/vlsu/qbs" / name
+            for name in ("qbs_profile_decoder.sv", "qbs_dot_array.sv", "qbs_profile_engine_int.sv")]
     if args.top == "vfdsu_round_timing":
         sources = [ROOT / path for path in (
             "hardware/deps/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v",
@@ -140,13 +147,14 @@ def main():
                 "git", "-C", str(ROOT), "show", f"{reference}:{source.relative_to(ROOT)}"]))
         elif (args.source_overrides and source.name in
               ("qbs_payload_buffer.sv", "qbs_block_adapter.sv", "simd_mul.sv",
-               "simd_alu.sv", "qbs_dot_array.sv", "ct_vfdsu_round.v", "ara_dispatcher.sv")):
+               "simd_alu.sv", "qbs_dot_array.sv", "qbs_profile_engine_int.sv",
+               "ct_vfdsu_round.v", "ara_dispatcher.sv")):
             shutil.copy2(args.source_overrides / source.name, target)
         else:
             shutil.copy2(source, target)
         records.append({"path": str(source.relative_to(ROOT)) if source.is_relative_to(ROOT) else str(source),
                         "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
-    if is_feedback_cone:
+    if is_feedback_cone or args.top == "qbs_profile_pipeline_timing":
         for name in ("assertions.svh", "assertions_dummy.svh"):
             source = ROOT / "hardware/deps/common_cells/include/common_cells" / name
             if source.is_file():
@@ -162,7 +170,7 @@ def main():
         records.append({"path": "generated:vfdsu_round_timing.sv",
                         "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
     if args.top in ("qbs_ingress_timing", "simd_mul_timing", "simd_alu_timing",
-                    "qbs_decode_dot_timing", "ara_dispatcher_timing"):
+                    "qbs_decode_dot_timing", "ara_dispatcher_timing", "qbs_profile_pipeline_timing"):
         source = Path(__file__).with_name(args.top + ".sv")
         target = out / "src" / source.name
         shutil.copy2(source, target)
@@ -203,7 +211,7 @@ def main():
         "clock_gating": args.top in ("qbs_ingress_timing", "simd_mul_timing",
                                      "simd_alu_timing", "qbs_decode_dot_timing", "vfdsu_round_timing",
                                      "ara_dispatcher_timing", "qbs_correction_select_timing",
-                                     "qbs_address_timing"),
+                                     "qbs_address_timing", "qbs_profile_pipeline_timing"),
         "element_width": args.element_width,
         "elaborate_only": args.elaborate_only, "compact_read": args.compact_read,
         "timeout_seconds": args.timeout_seconds,

@@ -18,6 +18,16 @@ GATED_CLOCK := $(ROOT)/hardware/deps/fpnew/vendor/opene906/E906_RTL_FACTORY/gen_
 DISPATCHER_BEFORE ?=
 DISPATCHER_FEATURES ?= +define+ARA_QBS_ENABLE+ARA_AKV_ENABLE+ARA_AKV_V2_ENABLE
 
+.PHONY: qbs-pipeline-check
+qbs-pipeline-check:
+	mkdir -p $(BUILD)/dot_pipeline
+	cd $(BUILD)/dot_pipeline && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
+		$(ROOT)/hardware/src/vlsu/qbs/qbs_dot_array.sv $(CURDIR)/qbs_dot_pipeline_tb.sv \
+		-top qbs_dot_pipeline_tb -o simv
+	cd $(BUILD)/dot_pipeline && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	grep -q 'QBS dot pipeline PASS' $(BUILD)/dot_pipeline/run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/dot_pipeline/run.log
+
 .PHONY: feedback-check
 feedback-check:
 	@test -n "$(BEFORE_DIR)"
@@ -164,7 +174,15 @@ references:
 	git -C $(ROOT) show $(REFERENCE):hardware/src/vlsu/qbs/qbs_profile_engine_int.sv > $(BUILD)/qbs_profile_engine_int.original.sv
 	sed 's/\bqbs_profile_engine_int\b/qbs_profile_engine_int_reference/g' $(BUILD)/qbs_profile_engine_int.original.sv > $(BUILD)/qbs_profile_engine_int_reference.sv
 
-qbs-check: references
+# The integer pipeline is retimed. Its primary oracle is the independent C
+# model (groups, integer subtotals, FP results and flags), not cycle equality.
+qbs-check: qbs-pipeline-check
+	$(MAKE) -C $(ROOT)/verification/qbs rtl-profile-check rtl-engine-check \
+		RTL_BUILD=$(BUILD)/profile RTL_ENGINE_BUILD=$(BUILD)/qbs RTL_RUN_TIMEOUT=$(RUN_TIMEOUT)
+
+# Historical zero-latency-change experiments only; not the pipelined design.
+.PHONY: qbs-cycle-check
+qbs-cycle-check: references
 	$(MAKE) -C $(ROOT)/verification/qbs rtl-profile-check rtl-engine-check \
 		RTL_BUILD=$(BUILD)/profile \
 		RTL_ENGINE_BUILD=$(BUILD)/qbs RTL_RUN_TIMEOUT=$(RUN_TIMEOUT) \

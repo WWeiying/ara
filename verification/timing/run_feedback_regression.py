@@ -27,25 +27,30 @@ def sources():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--test", action="append", help="override the representative test list")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    tests = args.test or TESTS
     out = args.output.resolve()
     if not args.worker:
         out.mkdir(parents=True, exist_ok=False)
         with (out / "driver.log").open("w") as log:
-            proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
-                "--worker", "--output", str(out)], cwd=ROOT, stdin=subprocess.DEVNULL,
+            command = [sys.executable, str(Path(__file__).resolve()),
+                       "--worker", "--output", str(out)]
+            for test in tests:
+                command += ["--test", test]
+            proc = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         print(f"started pid={proc.pid} output={out}")
         return
     status = {"state": "RUNNING", "pid": os.getpid(),
-              "started": datetime.now(timezone.utc).isoformat(), "tests": TESTS,
+              "started": datetime.now(timezone.utc).isoformat(), "tests": tests,
               "source_sha256": sources()}
     status_path = out / "status.json"
     status_path.write_text(json.dumps(status, indent=2) + "\n")
     command = [sys.executable, "verification/verify.py", "run", "--jobs", "2",
                "--timeout", "600", "--output", str(out / "results")]
-    for test in TESTS:
+    for test in tests:
         command += ["--test", test]
     env = dict(os.environ, MAKEFLAGS="qbs=1 akv=1 akv_v2=1 zcc=0", PYTHONUNBUFFERED="1")
     try:
