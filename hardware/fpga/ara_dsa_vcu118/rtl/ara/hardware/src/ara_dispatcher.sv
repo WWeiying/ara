@@ -189,7 +189,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   //  Backend interface  //
   /////////////////////////
 
-  ara_req_t ara_req, ara_req_d;
+  ara_req_t ara_req, ara_req_d, ara_req_idle, ara_req_committed;
+  logic decode_blocked;
+  assign ara_req_committed = decode_blocked ? ara_req_idle : ara_req;
   logic     ara_req_valid, ara_req_valid_d;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -344,21 +346,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   function automatic int unsigned active_first_register(
     vew_e target_eew, vlen_t vstart
   );
-    automatic int unsigned elements_per_register = VLENB >> unsigned'(target_eew);
-    active_first_register = unsigned'(vstart) / elements_per_register;
+    active_first_register = element_word_index(unsigned'(vstart), $clog2(VLENB), target_eew);
   endfunction : active_first_register
 
   function automatic int unsigned active_register_count(
     vlmul_e lmul, vew_e target_eew, vlen_t vstart, vlen_t vl
   );
-    automatic int unsigned elements_per_register = VLENB >> unsigned'(target_eew);
     automatic int unsigned register_count = lmul_register_count(lmul);
     automatic int unsigned first_register;
     automatic int unsigned last_register;
     active_register_count = 0;
     if (unsigned'(vl) > unsigned'(vstart)) begin
-      first_register = unsigned'(vstart) / elements_per_register;
-      last_register  = (unsigned'(vl) - 1) / elements_per_register;
+      first_register = element_word_index(unsigned'(vstart), $clog2(VLENB), target_eew);
+      last_register  = element_word_index(unsigned'(vl) - 1, $clog2(VLENB), target_eew);
       if (first_register < register_count) begin
         if (last_register >= register_count) last_register = register_count - 1;
         active_register_count = last_register - first_register + 1;
@@ -889,7 +889,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .store_complete_i(store_complete_i),
     .store_complete_o(store_complete),
     .eew_i(eew_q),
-    .ara_req_i(ara_req),
+    .ara_req_i(ara_req_committed),
     .ara_req_o(ara_req_d),
     .ara_req_valid_i(ara_req_valid),
     .ara_req_valid_o(ara_req_valid_d),
@@ -954,7 +954,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   elen_t vfmvfs_result;
 
-  always_comb begin: p_decoder
+  // Defaults also form the not-accepted cofactor of the normal decoder.
+  function automatic void init_decoder_outputs();
     // Default values
     csr_vstart_d     = csr_vstart_q;
     csr_vl_d         = csr_vl_q;
@@ -1080,6 +1081,86 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     // fflags
     for (int lane = 0; lane < NrLanes; lane++) acc_resp_o.fflags |= fflags_ex_i[lane];
 
+    ara_req_valid = 1'b0;
+    vs2_reshuffle_eew = csr_vtype_q.vsew;
+    vs2_reshuffle_vstart = csr_vstart_q;
+    vs2_reshuffle_vl = csr_vl_q;
+    reshuffle_full_vs2_group = 1'b0;
+    indexed_mixed_vs2_layout = 1'b0;
+
+    is_config            = 1'b0;
+    ignore_zero_vl_check = 1'b0;
+
+    // Saturation in any lane will raise vxsat flag
+    csr_vxsat_d |= |vxsat_flag_i;
+    // Fixed-point rounding mode is applied to all lanes
+    for (int lane = 0; lane < NrLanes; lane++) alu_vxrm_o[lane] = csr_vxrm_q;
+    // Rounding mode is shared between all lanes
+    for (int lane = 0; lane < NrLanes; lane++) acc_resp_o.fflags |= fflags_ex_i[lane];
+  endfunction
+
+  // Shared by accepted decode and the legacy pending-reshuffle path when
+  // no new architectural request can be accepted.
+  function automatic void prepare_reshuffle(input ara_req_t request);
+    // Stall the interface, and inject a reshuffling instruction
+    acc_resp_o.req_ready  = 1'b0;
+    acc_resp_o.resp_valid = 1'b0;
+    ara_req_valid  = 1'b0;
+
+    // Each operand can have a different effective LMUL.
+    unique casez (reshuffle_req_d)
+      3'b??1: rs_lmul_cnt_limit_d = is_segment_mem_op && is_vload
+          ? 3'(segment_register_count(request.nf, request.emul) - 1)
+          : active_register_limit(
+              single_register_result(request.op) ? LMUL_1 : request.emul,
+              request.vtype.vsew, request.vstart, request.vl);
+      3'b?10: rs_lmul_cnt_limit_d = active_register_limit(
+        lmul_vs2, vs2_reshuffle_eew,
+        reshuffle_full_vs2_group ? vlen_t'(0) : vs2_reshuffle_vstart,
+        reshuffle_full_vs2_group
+            ? vlen_t'((VLENB * lmul_register_count(lmul_vs2)) >>
+                      unsigned'(vs2_reshuffle_eew))
+            : vs2_reshuffle_vl);
+      3'b100: rs_lmul_cnt_limit_d = is_segment_mem_op && is_vstore
+          ? 3'(segment_register_count(request.nf, request.emul) - 1)
+          : active_register_limit(
+              is_vstore ? request.emul : lmul_vs1,
+              request.eew_vs1, request.vstart, request.vl);
+      default: rs_lmul_cnt_limit_d = '0;
+    endcase
+
+    // Save info for next reshuffles
+    reshuffle_eew_vs1_d = request.eew_vs1;
+    reshuffle_eew_vs2_d = vs2_reshuffle_eew;
+    reshuffle_eew_vd_d  = request.vtype.vsew;
+    reshuffle_vs1_base_d = request.vs1 +
+        (is_segment_mem_op && is_vstore ? 0 :
+         active_first_register(request.eew_vs1, request.vstart));
+    reshuffle_vs2_base_d = request.vs2 +
+        (reshuffle_full_vs2_group ? 0 :
+         active_first_register(vs2_reshuffle_eew, vs2_reshuffle_vstart));
+    reshuffle_vs1_limit_d = is_segment_mem_op && is_vstore
+        ? 3'(segment_register_count(request.nf, request.emul) - 1)
+        : active_register_limit(
+            is_vstore ? request.emul : lmul_vs1,
+            request.eew_vs1, request.vstart, request.vl);
+    reshuffle_vs2_limit_d = active_register_limit(
+        lmul_vs2, vs2_reshuffle_eew,
+        reshuffle_full_vs2_group ? vlen_t'(0) : vs2_reshuffle_vstart,
+        reshuffle_full_vs2_group
+            ? vlen_t'((VLENB * lmul_register_count(lmul_vs2)) >>
+                      unsigned'(vs2_reshuffle_eew))
+            : vs2_reshuffle_vl);
+    reshuffle_lmul_vs1_d = is_vstore ? request.emul : lmul_vs1;
+    reshuffle_lmul_vs2_d = lmul_vs2;
+    reshuffle_lmul_vd_d  = single_register_result(request.op) ? LMUL_1 : request.emul;
+
+    // Reshuffle
+    state_d = RESHUFFLE;
+  endfunction
+
+  always_comb begin: p_decoder
+    init_decoder_outputs();
     ara_req = '{
       vl           : csr_vl_q,
       vstart       : csr_vstart_q,
@@ -1103,22 +1184,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 `endif
       default      : '0
     };
-    ara_req_valid = 1'b0;
-    vs2_reshuffle_eew = csr_vtype_q.vsew;
-    vs2_reshuffle_vstart = csr_vstart_q;
-    vs2_reshuffle_vl = csr_vl_q;
-    reshuffle_full_vs2_group = 1'b0;
-    indexed_mixed_vs2_layout = 1'b0;
-
-    is_config            = 1'b0;
-    ignore_zero_vl_check = 1'b0;
-
-    // Saturation in any lane will raise vxsat flag
-    csr_vxsat_d |= |vxsat_flag_i;
-    // Fixed-point rounding mode is applied to all lanes
-    for (int lane = 0; lane < NrLanes; lane++) alu_vxrm_o[lane] = csr_vxrm_q;
-    // Rounding mode is shared between all lanes
-    for (int lane = 0; lane < NrLanes; lane++) acc_resp_o.fflags |= fflags_ex_i[lane];
+    ara_req_idle = ara_req;
+    decode_blocked = 1'b0;
     // Special states
     case (state_q)
       // Is Ara idle?
@@ -1531,7 +1598,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
     if (state_d == NORMAL_OPERATION && state_q != RESHUFFLE &&
         state_q != OVERLAP_RESPOND && state_q != SOURCE_SNAPSHOT_WAIT) begin
-      if (acc_req_i.req_valid && ara_req_ready_i && acc_req_i.resp_ready) begin
+      // Decode before the late backend-ready signal. Only the final commit
+      // selection may expose its results or change architectural state.
+      decode_blocked = acc_req_i.req_valid && acc_req_i.resp_ready && !ara_req_ready_i;
+      if (acc_req_i.req_valid && acc_req_i.resp_ready) begin
         // Decoding
         is_decoding = 1'b1;
         // Acknowledge the request
@@ -4815,7 +4885,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               // These checks are intentionally in front of descriptor fetch:
               // destination reservation cannot depend on unread memory.
               if (qbs_funct7[6:3] != '0 ||
-                  (unsigned'(instr.rtype.rd) % qbs_destination_regs) != 0 ||
+                  (unsigned'(instr.rtype.rd) & (qbs_destination_regs - 1)) != 0 ||
                   unsigned'(instr.rtype.rd) + qbs_destination_regs > 32 ||
                   csr_vstart_q != '0 || !acc_req_i.acc_cons_en ||
                   acc_req_i.rs1[QbsDescriptorAlignmentLog2-1:0] != '0 ||
@@ -5580,79 +5650,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         end
         state_d = SOURCE_SNAPSHOT_CAPTURE;
       end else if (|reshuffle_req_d) begin
-        // Instruction is of one of the RVV types
-        automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
-
-        // Stall the interface, and inject a reshuffling instruction
-        acc_resp_o.req_ready  = 1'b0;
-        acc_resp_o.resp_valid = 1'b0;
-        ara_req_valid  = 1'b0;
-
-        // Each operand can have a different effective LMUL.
-        unique casez (reshuffle_req_d)
-          3'b??1: rs_lmul_cnt_limit_d = is_segment_mem_op && is_vload
-              ? 3'(segment_register_count(ara_req.nf, ara_req.emul) - 1)
-              : active_register_limit(
-                  single_register_result(ara_req.op) ? LMUL_1 : ara_req.emul,
-                  ara_req.vtype.vsew, ara_req.vstart, ara_req.vl);
-          3'b?10: rs_lmul_cnt_limit_d = active_register_limit(
-            lmul_vs2, vs2_reshuffle_eew,
-            reshuffle_full_vs2_group ? vlen_t'(0) : vs2_reshuffle_vstart,
-            reshuffle_full_vs2_group
-                ? vlen_t'((VLENB * lmul_register_count(lmul_vs2)) >>
-                          unsigned'(vs2_reshuffle_eew))
-                : vs2_reshuffle_vl);
-          3'b100: rs_lmul_cnt_limit_d = is_segment_mem_op && is_vstore
-              ? 3'(segment_register_count(ara_req.nf, ara_req.emul) - 1)
-              : active_register_limit(
-                  is_vstore ? ara_req.emul : lmul_vs1,
-                  ara_req.eew_vs1, ara_req.vstart, ara_req.vl);
-          default: rs_lmul_cnt_limit_d = '0;
-        endcase
-
-        // Save info for next reshuffles
-        reshuffle_eew_vs1_d = ara_req.eew_vs1;
-        reshuffle_eew_vs2_d = vs2_reshuffle_eew;
-        reshuffle_eew_vd_d  = ara_req.vtype.vsew;
-        reshuffle_vs1_base_d = ara_req.vs1 +
-            (is_segment_mem_op && is_vstore ? 0 :
-             active_first_register(ara_req.eew_vs1, ara_req.vstart));
-        reshuffle_vs2_base_d = ara_req.vs2 +
-            (reshuffle_full_vs2_group ? 0 :
-             active_first_register(vs2_reshuffle_eew, vs2_reshuffle_vstart));
-        reshuffle_vs1_limit_d = is_segment_mem_op && is_vstore
-            ? 3'(segment_register_count(ara_req.nf, ara_req.emul) - 1)
-            : active_register_limit(
-                is_vstore ? ara_req.emul : lmul_vs1,
-                ara_req.eew_vs1, ara_req.vstart, ara_req.vl);
-        reshuffle_vs2_limit_d = active_register_limit(
-            lmul_vs2, vs2_reshuffle_eew,
-            reshuffle_full_vs2_group ? vlen_t'(0) : vs2_reshuffle_vstart,
-            reshuffle_full_vs2_group
-                ? vlen_t'((VLENB * lmul_register_count(lmul_vs2)) >>
-                          unsigned'(vs2_reshuffle_eew))
-                : vs2_reshuffle_vl);
-        reshuffle_lmul_vs1_d = is_vstore ? ara_req.emul : lmul_vs1;
-        reshuffle_lmul_vs2_d = lmul_vs2;
-        reshuffle_lmul_vd_d  = single_register_result(ara_req.op) ? LMUL_1 : ara_req.emul;
-
-        // Reshuffle
-        state_d = RESHUFFLE;
+        prepare_reshuffle(ara_req);
       end else if ((ara_req.vstart < ara_req.vl) &&
                    ((legal_widen_overlap &&
                      (!source_snapshot_resolves_widen ||
                       source_snapshot_replays_wide_vd)) ||
                     legal_narrow_overlap || legal_reduction_vd_overlap) &&
-                   ara_req_valid && ara_req_ready_i) begin
+                   ara_req_valid) begin
         if (!overlap_prepared_q) begin
           automatic vlen_t repair_vl = legal_reduction_vd_overlap
               ? vlen_t'(1) : ara_req.vl;
           automatic int unsigned elements_per_reg =
               VLENB >> unsigned'(ara_req.vtype.vsew);
           automatic int unsigned boundary_reg =
-              unsigned'(repair_vl) / elements_per_reg;
+              element_word_index(unsigned'(repair_vl), $clog2(VLENB), ara_req.vtype.vsew);
           automatic int unsigned active_in_boundary =
-              unsigned'(repair_vl) % elements_per_reg;
+              element_word_offset(unsigned'(repair_vl), $clog2(VLENB), ara_req.vtype.vsew);
           automatic int unsigned active_bytes =
               active_in_boundary << unsigned'(ara_req.vtype.vsew);
           automatic int unsigned overlap_source_base;
@@ -5749,11 +5762,20 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       end
 
 
-      if (ara_req_valid && ara_req_ready_i &&
+      if (ara_req_valid &&
           (ara_req.source_snapshot_replay_vs1 ||
            ara_req.source_snapshot_replay_vs2)) begin
         source_snapshot_valid_d = 1'b0;
       end
+    end
+
+    if (decode_blocked) begin
+      // Preserve the old no-decode behavior, including asynchronous lane
+      // flags and an already pending reshuffle. Keep the speculative request
+      // on the local layout-helper path; the segment interface sees idle.
+      init_decoder_outputs();
+      state_d = NORMAL_OPERATION;
+      if (|reshuffle_req_d) prepare_reshuffle(ara_req_idle);
     end
 
     // Update only registers intersecting the architectural active interval.
@@ -5807,6 +5829,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
     // The token must change at every new instruction
     ara_req.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
+    ara_req_idle.token = ara_req.token;
 `ifdef FOR_VERIFY
     if (acc_req_i.req_valid && acc_resp_o.req_ready) begin
       verify_front_active_d = 1'b0;

@@ -50,15 +50,45 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
     logic [7:0][ 7:0] w8;
   } mul_operand_t;
 
-  mul_operand_t opa, opb, opc;
+  typedef union packed {
+    logic [0:0][127:0] w128;
+    logic [1:0][63:0] w64;
+    logic [3:0][31:0] w32;
+    logic [7:0][15:0] w16;
+  } mul_result_t;
+  localparam int unsigned ElementBits = 8 << int'(ElementWidth);
+  typedef logic [DataWidth/ElementBits-1:0] element_sat_t;
+  mul_operand_t opc;
+  mul_result_t input_product, mul_res;
+  element_sat_t input_sat;
+  element_sat_t [NumPipeRegs:0] sat_d;
+  vxsat_t vxsat;
   ara_op_e      op;
+
+  // Retain the existing handshake latency, but put its registers between
+  // multiplication and accumulation/rounding instead of before both cones.
+  wire signed_a = op_i inside {VMULH, VSMUL};
+  wire signed_b = op_i inside {VMULH, VMULHSU, VSMUL};
+  for (genvar l = 0; l < DataWidth/ElementBits; l++) begin : gen_input_product
+    wire [ElementBits-1:0] a = operand_a_i[l*ElementBits +: ElementBits];
+    wire [ElementBits-1:0] b = operand_b_i[l*ElementBits +: ElementBits];
+    localparam logic [ElementBits-1:0] MinSigned = {1'b1, {(ElementBits-1){1'b0}}};
+    assign input_product[l*2*ElementBits +: 2*ElementBits] =
+        $signed({a[ElementBits-1] & signed_a, a}) *
+        $signed({b[ElementBits-1] & signed_b, b});
+    assign input_sat[l] = FixPtSupport == FixedPointEnable && op_i == VSMUL &&
+                         a == MinSigned && b == MinSigned;
+    assign vxsat[l*(ElementBits/8) +: ElementBits/8] =
+        {(ElementBits/8){sat_d[NumPipeRegs][l]}};
+  end
 
   ///////////////////////
   //  Pipeline stages  //
   ///////////////////////
 
   // Input signals for the next stage (= output signals of the previous stage)
-  mul_operand_t [NumPipeRegs:0] opa_d, opb_d, opc_d;
+  mul_operand_t [NumPipeRegs:0] opc_d;
+  mul_result_t  [NumPipeRegs:0] product_d;
   ara_op_e      [NumPipeRegs:0] op_d;
   strb_t        [NumPipeRegs:0] mask_d;
   logic         [NumPipeRegs:0] valid_d;
@@ -66,8 +96,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   logic         [NumPipeRegs:0] stage_ready;
 
   // Input stage: First element of pipeline is taken from inputs
-  assign opa_d[0]   = operand_a_i;
-  assign opb_d[0]   = operand_b_i;
+  assign product_d[0] = input_product;
+  assign sat_d[0] = input_sat;
   assign opc_d[0]   = operand_c_i;
   assign op_d[0]    = op_i;
   assign mask_d[0]  = mask_i;
@@ -76,15 +106,17 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   // Generate the pipeline stages in case they are needed
   if (NumPipeRegs > 0) begin : gen_pipeline
     // Pipelined versions of signals for later stages
-    mul_operand_t [NumPipeRegs-1:0] opa_q, opb_q, opc_q;
+    mul_operand_t [NumPipeRegs-1:0] opc_q;
+    mul_result_t [NumPipeRegs-1:0] product_q;
+    element_sat_t [NumPipeRegs-1:0] sat_q;
     strb_t [NumPipeRegs-1:0] mask_q;
     ara_op_e [NumPipeRegs-1:0] op_q;
     logic [NumPipeRegs-1:0] valid_q;
 
     for (genvar i = 0; i < NumPipeRegs; i++) begin : gen_pipeline_stages
       // Next state from previous register to form a shift register
-      assign opa_d[i+1]   = opa_q[i];
-      assign opb_d[i+1]   = opb_q[i];
+      assign product_d[i+1] = product_q[i];
+      assign sat_d[i+1] = sat_q[i];
       assign opc_d[i+1]   = opc_q[i];
       assign op_d[i+1]    = op_q[i];
       assign mask_d[i+1]  = mask_q[i];
@@ -101,8 +133,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
 
       // Generate the pipeline
       `FFL(valid_q[i], valid_d[i], reg_ena, '0)
-      `FFL(opa_q[i], opa_d[i], reg_ena, '0)
-      `FFL(opb_q[i], opb_d[i], reg_ena, '0)
+      `FFL(product_q[i], product_d[i], reg_ena, '0)
+      `FFL(sat_q[i], sat_d[i], reg_ena, '0)
       `FFL(opc_q[i], opc_d[i], reg_ena, '0)
       `FFL(op_q[i], op_d[i], reg_ena, ara_op_e'('0))
       `FFL(mask_q[i], mask_d[i], reg_ena, '0)
@@ -114,8 +146,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
 
   // Output stage: bind last stage outputs to the pipeline output. Directly connects to input if no
   // regs.
-  assign opa     = opa_d[NumPipeRegs];
-  assign opb     = opb_d[NumPipeRegs];
+  assign mul_res = product_d[NumPipeRegs];
   assign opc     = opc_d[NumPipeRegs];
   assign op      = op_d[NumPipeRegs];
   assign mask_o  = mask_d[NumPipeRegs];
@@ -128,22 +159,7 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   //  Multiplier  //
   //////////////////
 
-  typedef union packed {
-    logic [0:0][127:0] w128;
-    logic [1:0][63:0] w64;
-    logic [3:0][31:0] w32;
-    logic [7:0][15:0] w16;
-  } mul_result_t;
-  mul_result_t mul_res;
-
-  logic signed_a, signed_b;
-
-  // Sign select MUX
-  assign signed_a = op inside {VMULH, VSMUL};
-  assign signed_b = op inside {VMULH, VMULHSU, VSMUL};
-
   // saturation and rounding mode
-  vxsat_t vxsat;
   vxrm_t  vxrm;
   strb_t  r;
 
@@ -152,17 +168,6 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
 
 
   if (ElementWidth == EW64) begin: gen_p_mul_ew64
-    for (genvar l = 0; l < 1; l++) begin: gen_mul
-      assign mul_res.w128[l] =
-      $signed({opa.w64[l][63] & signed_a, opa.w64[l]}) * $signed({opb.w64[l][63] & signed_b, opb.w64[l]});
-      if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w64[l] = {8{(op == VSMUL) &&
-                                 (opa.w64[l] == 64'h8000_0000_0000_0000) &&
-                                 (opb.w64[l] == 64'h8000_0000_0000_0000)}};
-      else
-        assign vxsat.w64[l] = '0;
-    end : gen_mul
-
     always_comb begin : p_mul
       // Default assignment
       result_o = '0;
@@ -179,11 +184,10 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b11: for (int b=0; b<1; b++) r[b] = !mul_res.w128[b][63] & (mul_res.w128[b][62:0] != '0);
           endcase
           for (int l = 0; l < 1; l++) begin
-            if (opa.w64[l] == 64'h8000_0000_0000_0000 &&
-                opb.w64[l] == 64'h8000_0000_0000_0000)
+            if (|vxsat.w64[l])
               result_o[64*l +: 64] = 64'h7fff_ffff_ffff_ffff;
             else
-              result_o[64*l +: 64] = (mul_res.w128[l] >> 63) + r[l];
+              result_o[64*l +: 64] = prefix_add65(64'(mul_res.w128[l] >> 63), 65'd0, r[l]);
           end
         end
         VMULH,
@@ -192,27 +196,16 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
         // Single-Width integer multiply-add instructions
         VMACC,
         VMADD: begin
-          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = mul_res.w128[l][63:0] + opc.w64[l];
+          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = prefix_add65(mul_res.w128[l][63:0], opc.w64[l], 1'b0);
         end
         VNMSAC,
         VNMSUB: begin
-          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = -mul_res.w128[l][63:0] + opc.w64[l];
+          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = prefix_sub65(opc.w64[l], mul_res.w128[l][63:0], 1'b0);
         end
         default: result_o = '0;
       endcase
     end
   end : gen_p_mul_ew64 else if (ElementWidth == EW32) begin: gen_p_mul_ew32
-    for (genvar l = 0; l < 2; l++) begin: gen_mul
-      assign mul_res.w64[l] =
-      $signed({opa.w32[l][31] & signed_a, opa.w32[l]}) * $signed({opb.w32[l][31] & signed_b, opb.w32[l]});
-      if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w32[l] = {4{(op == VSMUL) &&
-                                 (opa.w32[l] == 32'h8000_0000) &&
-                                 (opb.w32[l] == 32'h8000_0000)}};
-      else
-        assign vxsat.w32[l] = '0;
-    end: gen_mul
-
     always_comb begin : p_mul
       unique case (op)
         // Single-Width integer multiply instructions
@@ -226,10 +219,10 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b11: for (int b=0; b<2; b++) r[b] = !mul_res.w64[b][31] & (mul_res.w64[b][30:0] != '0);
           endcase
           for (int l = 0; l < 2; l++) begin
-            if (opa.w32[l] == 32'h8000_0000 && opb.w32[l] == 32'h8000_0000)
+            if (|vxsat.w32[l])
               result_o[32*l +: 32] = 32'h7fff_ffff;
             else
-              result_o[32*l +: 32] = (mul_res.w64[l] >> 31) + r[l];
+              result_o[32*l +: 32] = prefix_add65(32'(mul_res.w64[l] >> 31), 65'd0, r[l]);
           end
         end
         VMULH,
@@ -237,26 +230,15 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
         VMULHSU: for (int l = 0; l < 2; l++) result_o[32*l +: 32] = mul_res.w64[l][63:32];
         // Single-Width integer multiply-add instructions
         VMACC,
-        VMADD: for (int l = 0; l < 2; l++) result_o[32*l +: 32] = mul_res.w64[l][31:0] + opc.w32[l];
+        VMADD: for (int l = 0; l < 2; l++) result_o[32*l +: 32] = prefix_add65(mul_res.w64[l][31:0], opc.w32[l], 1'b0);
         VNMSAC,
         VNMSUB: for (int l = 0; l < 2; l++) begin
-            result_o[32*l +: 32] = -mul_res.w64[l][31:0] + opc.w32[l];
+            result_o[32*l +: 32] = prefix_sub65(opc.w32[l], mul_res.w64[l][31:0], 1'b0);
           end
         default: result_o = '0;
       endcase
     end
   end : gen_p_mul_ew32 else if (ElementWidth == EW16) begin: gen_p_mul_ew16
-    for (genvar l = 0; l < 4; l++) begin: gen_mul
-      assign mul_res.w32[l] =
-      $signed({opa.w16[l][15] & signed_a, opa.w16[l]}) * $signed({opb.w16[l] [15] & signed_b, opb.w16[l]});
-      if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w16[l] = {2{(op == VSMUL) &&
-                                 (opa.w16[l] == 16'h8000) &&
-                                 (opb.w16[l] == 16'h8000)}};
-      else
-        assign vxsat.w16[l] = '0;
-    end : gen_mul
-
     always_comb begin : p_mul
       unique case (op)
         // Single-Width integer multiply instructions
@@ -270,10 +252,10 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b11: for (int b=0; b<4; b++) r[b] = !mul_res.w32[b][15] & (mul_res.w32[b][14:0] != '0);
           endcase
           for (int l = 0; l < 4; l++) begin
-            if (opa.w16[l] == 16'h8000 && opb.w16[l] == 16'h8000)
+            if (|vxsat.w16[l])
               result_o[16*l +: 16] = 16'h7fff;
             else
-              result_o[16*l +: 16] = (mul_res.w32[l] >> 15) + r[l];
+              result_o[16*l +: 16] = prefix_add65(16'(mul_res.w32[l] >> 15), 65'd0, r[l]);
           end
         end
         VMULH,
@@ -281,26 +263,15 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
         VMULHSU: for (int l = 0; l < 4; l++) result_o[16*l +: 16] = mul_res.w32[l][31:16];
         // Single-Width integer multiply-add instructions
         VMACC,
-        VMADD: for (int l = 0; l < 4; l++) result_o[16*l +: 16] = mul_res.w32[l][15:0] + opc.w16[l];
+        VMADD: for (int l = 0; l < 4; l++) result_o[16*l +: 16] = prefix_add65(mul_res.w32[l][15:0], opc.w16[l], 1'b0);
         VNMSAC,
         VNMSUB: for (int l = 0; l < 4; l++) begin
-            result_o[16*l +: 16] = -mul_res.w32[l][15:0] + opc.w16[l];
+            result_o[16*l +: 16] = prefix_sub65(opc.w16[l], mul_res.w32[l][15:0], 1'b0);
           end
         default: result_o = '0;
       endcase
     end
   end : gen_p_mul_ew16 else if (ElementWidth == EW8) begin: gen_p_mul_ew8
-    for (genvar l = 0; l < 8; l++) begin: gen_mul
-      assign mul_res.w16[l] =
-      $signed({opa.w8[l][7] & signed_a, opa.w8[l]}) * $signed({opb.w8[l][7] & signed_b, opb.w8[l]});
-      if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w8[l] = (op == VSMUL) &&
-                             (opa.w8[l] == 8'h80) &&
-                             (opb.w8[l] == 8'h80);
-      else
-        assign vxsat.w8[l] = '0;
-    end : gen_mul
-
     always_comb begin : p_mul
       unique case (op)
         // Single-Width integer multiply instructions
@@ -314,10 +285,10 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b11: for (int b=0; b<8; b++) r[b] = !mul_res.w16[b][7] & (mul_res.w16[b][6:0] != '0);
           endcase
           for (int l = 0; l < 8; l++) begin
-            if (opa.w8[l] == 8'h80 && opb.w8[l] == 8'h80)
+            if (vxsat.w8[l])
               result_o[8*l +: 8] = 8'h7f;
             else
-              result_o[8*l +: 8] = (mul_res.w16[l] >> 7) + r[l];
+              result_o[8*l +: 8] = prefix_add65(8'(mul_res.w16[l] >> 7), 65'd0, r[l]);
           end
         end
         VMULH,
@@ -325,9 +296,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
         VMULHSU: for (int l = 0; l < 8; l++) result_o[8*l +: 8] = mul_res.w16[l][15:8];
         // Single-Width integer multiply-add instructions
         VMACC,
-        VMADD: for (int l = 0; l < 8; l++) result_o[8*l +: 8] = mul_res.w16[l][7:0] + opc.w8[l];
+        VMADD: for (int l = 0; l < 8; l++) result_o[8*l +: 8] = prefix_add65(mul_res.w16[l][7:0], opc.w8[l], 1'b0);
         VNMSAC,
-        VNMSUB: for (int l = 0; l < 8; l++) result_o[8*l +: 8] = -mul_res.w16[l][7:0] + opc.w8[l];
+        VNMSUB: for (int l = 0; l < 8; l++) result_o[8*l +: 8] = prefix_sub65(opc.w8[l], mul_res.w16[l][7:0], 1'b0);
         default: result_o = '0;
       endcase
     end

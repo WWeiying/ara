@@ -135,6 +135,14 @@ module qbs_compute_engine
   logic [7:0] activation_block [4][QbsMaxActivationBlockBytes];
   logic [7:0] activation_block_bank0 [4][QbsMaxActivationBlockBytes];
   logic [7:0] activation_block_bank1 [4][QbsMaxActivationBlockBytes];
+  logic [255:0] weight_window_bank [2][4][2], activation_window_bank [2][4];
+  logic [7:0] weight_side_bank [2][4][20], activation_side_bank [2][4][36];
+  logic [255:0] weight_window [4][2], activation_window [4];
+  logic [7:0] weight_side [4][20], activation_side [4][36];
+  assign weight_window = active_weight_bank_q ? weight_window_bank[1] : weight_window_bank[0];
+  assign weight_side = active_weight_bank_q ? weight_side_bank[1] : weight_side_bank[0];
+  assign activation_window = context_wave_q ? activation_window_bank[1] : activation_window_bank[0];
+  assign activation_side = context_wave_q ? activation_side_bank[1] : activation_side_bank[0];
   logic [3:0] weight_complete [2];
   logic [3:0] activation_complete [2];
   logic all_weight_complete [2];
@@ -312,7 +320,7 @@ module qbs_compute_engine
   assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
 
   qbs_block_adapter #(
-    .ActivationContextBase (0)
+    .ActivationContextBase (0), .NativeView(1'b0)
   ) i_block_adapter_bank0 (
     .clk_i,
     .rst_ni,
@@ -343,6 +351,8 @@ module qbs_compute_engine
     .activation_write_strb_i,
     .weight_block_o               (weight_block_bank0),
     .activation_block_o           (activation_block_bank0),
+    .weight_window_o(weight_window_bank[0]), .activation_window_o(activation_window_bank[0]),
+    .weight_side_o(weight_side_bank[0]), .activation_side_o(activation_side_bank[0]),
     .weight_complete_o            (weight_complete[0]),
     .activation_complete_o        (activation_complete[0]),
     .all_weight_complete_o        (all_weight_complete[0]),
@@ -352,7 +362,7 @@ module qbs_compute_engine
   );
 
   qbs_block_adapter #(
-    .ActivationContextBase (4)
+    .ActivationContextBase (4), .NativeView(1'b0)
   ) i_block_adapter_bank1 (
     .clk_i,
     .rst_ni,
@@ -383,6 +393,8 @@ module qbs_compute_engine
     .activation_write_strb_i,
     .weight_block_o               (weight_block_bank1),
     .activation_block_o           (activation_block_bank1),
+    .weight_window_o(weight_window_bank[1]), .activation_window_o(activation_window_bank[1]),
+    .weight_side_o(weight_side_bank[1]), .activation_side_o(activation_side_bank[1]),
     .weight_complete_o            (weight_complete[1]),
     .activation_complete_o        (activation_complete[1]),
     .all_weight_complete_o        (all_weight_complete[1]),
@@ -423,11 +435,13 @@ module qbs_compute_engine
   assign probe_weight_wait_active = state_q == QBS_WAIT_WEIGHT;
 `endif
 
-  qbs_profile_engine_int i_profile_engine_int (
+  qbs_profile_engine_int #(.CompactRead(1'b1)) i_profile_engine_int (
     .clk_i,
     .rst_ni,
     .weight_block_i                (weight_block),
     .activation_block_i            (activation_block),
+    .weight_window_i(weight_window), .activation_window_i(activation_window),
+    .weight_side_i(weight_side), .activation_side_i(activation_side),
     .buffer_read_valid_o           (buffer_read_valid),
     .buffer_read_k_base_o          (buffer_read_k_base),
     .start_valid_i                 (integer_start_valid),

@@ -505,7 +505,6 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      source_snapshot_q <= '0;
       source_snapshot_capture_q <= 1'b0;
       source_snapshot_capture_index_q <= '0;
       source_snapshot_capture_last_q <= '0;
@@ -533,8 +532,6 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       if (source_snapshot_capture_q && vrf_operand_valid[SlideAddrGenA]) begin
-        source_snapshot_q[source_snapshot_capture_index_q] <=
-            vrf_operand[SlideAddrGenA];
 `ifdef FOR_VERIFY
         if ($test$plusargs("ARA_DEBUG_SOURCE_SNAPSHOT"))
           $display("[ARA_SOURCE_CAPTURE] %m t=%0t lane=%0d idx=%0d/%0d data=%016h",
@@ -547,6 +544,15 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
           source_snapshot_capture_index_q <= source_snapshot_capture_index_q + 1'b1;
       end
 
+    end
+  end
+
+  for (genvar word_index = 0; word_index < SourceSnapshotWords; word_index++) begin : gen_snapshot_word
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) source_snapshot_q[word_index] <= '0;
+      else if (source_snapshot_capture_q && vrf_operand_valid[SlideAddrGenA] &&
+               source_snapshot_capture_index_q == SourceSnapshotIdxWidth'(word_index))
+        source_snapshot_q[word_index] <= vrf_operand[SlideAddrGenA];
     end
   end
 

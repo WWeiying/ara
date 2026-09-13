@@ -238,6 +238,27 @@ module akv_v2_context
   end
 `endif
 
+  // One 16-bit selector per bank/column, broadcast to fixed token slots.
+  // Only enables depend on the capture group; no 1024-bit partial update.
+  wire column_clear = column_start_i && !column_busy_o && !write_valid_i && !row_read_i;
+  for (genvar column = 0; column < AkvV2ColumnPanelWidth; column++) begin : gen_column_capture
+    wire [4:0] dimension = {1'b0, column_dimension_q[3:0]} + 5'(column);
+    for (genvar bank = 0; bank < BankCount; bank++) begin : gen_bank
+      wire [15:0] value = bank_rdata[bank][16*dimension +: 16];
+      for (genvar group_index = 0; group_index < TokenGroups; group_index++) begin : gen_group
+        localparam int Token = group_index * BankCount + bank;
+        wire capture = column_capture_valid_q &&
+            column_capture_group_q == 4'(group_index) &&
+            Token < unsigned'(column_token_count_q) && column < unsigned'(column_count_q);
+        always_ff @(posedge clk_i or negedge rst_ni) begin
+          if (!rst_ni) column_data_q[column][16*Token +: 16] <= '0;
+          else if (capture) column_data_q[column][16*Token +: 16] <= value;
+          else if (column_clear) column_data_q[column][16*Token +: 16] <= '0;
+        end
+      end
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       row_bank_q <= 1'b0;
@@ -250,7 +271,6 @@ module akv_v2_context
       column_count_q <= 3'd1;
       column_stream_q <= AKV_STREAM_K;
       column_token_count_q <= '0;
-      column_data_q <= '0;
       column_valid_q <= 1'b0;
     end else begin
       if (row_read_i && !write_valid_i && !column_active_q) begin
@@ -278,26 +298,10 @@ module akv_v2_context
         column_dimension_q <= column_dimension_i;
         column_count_q <= column_count_i;
         column_token_count_q <= column_token_count_i;
-        column_data_q <= '0;
         column_valid_q <= 1'b0;
       end
 
       if (column_capture_valid_q) begin
-        for (int unsigned bank = 0; bank < BankCount; bank++) begin
-          automatic int unsigned token =
-              unsigned'(column_capture_group_q) * BankCount + bank;
-          if (token < unsigned'(column_token_count_q)) begin
-            for (int unsigned column = 0;
-                 column < AkvV2ColumnPanelWidth; column++) begin
-              if (column < unsigned'(column_count_q)) begin
-                automatic int unsigned dimension =
-                    unsigned'(column_dimension_q[3:0]) + column;
-                column_data_q[column][token*16 +: 16] <=
-                    bank_rdata[bank][dimension*16 +: 16];
-              end
-            end
-          end
-        end
         if (unsigned'(column_capture_group_q) + 1 ==
             unsigned'(column_group_count)) begin
           column_valid_q <= 1'b1;

@@ -644,13 +644,27 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     automatic int unsigned max_burst_bytes = 256 << eff_axi_dw_log;
 
-    // The final address can be found similarly...
-    if (num_bytes >= max_burst_bytes) begin
-        aligned_next_start_addr = aligned_addr(addr + max_burst_bytes, eff_axi_dw_log);
+    // Keep the existing AXI boundary rules, but avoid serial full-width
+    // carry chains in addr + length - 1 and the subsequent alignment bump.
+    if (AxiAddrWidth <= 64) begin
+      if (num_bytes >= max_burst_bytes) begin
+        aligned_next_start_addr = aligned_addr(
+            axi_addr_t'(prefix_add65(65'(addr), 65'(max_burst_bytes), 1'b0)), eff_axi_dw_log);
+      end else begin
+        aligned_next_start_addr = axi_addr_t'(prefix_add65(
+            65'(aligned_addr(axi_addr_t'(prefix_add3_65(
+                65'(addr), 65'(num_bytes), '1, 1'b0)), eff_axi_dw_log)),
+            65'(eff_axi_dw), 1'b0));
+      end
+      aligned_end_addr = axi_addr_t'(prefix_sub65(65'(aligned_next_start_addr), 65'd1, 1'b0));
     end else begin
+      // Preserve the parameterized behavior for wider AXI address types.
+      if (num_bytes >= max_burst_bytes)
+        aligned_next_start_addr = aligned_addr(addr + max_burst_bytes, eff_axi_dw_log);
+      else
         aligned_next_start_addr = aligned_addr(addr + num_bytes - 1, eff_axi_dw_log) + eff_axi_dw;
+      aligned_end_addr = aligned_next_start_addr - 1;
     end
-    aligned_end_addr = aligned_next_start_addr - 1;
 
     // But since AXI requests are aligned in 4 KiB pages, aligned_end_addr must be in the
     // same page as aligned_start_addr

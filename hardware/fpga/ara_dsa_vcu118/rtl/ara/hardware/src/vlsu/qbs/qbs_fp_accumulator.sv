@@ -134,6 +134,21 @@ module qbs_fp_accumulator
   logic fp_busy;
   logic [4:0] entry_occupancy;
   logic request_accumulator_conflict;
+  logic [NumEntries-1:0] schedule_upper, schedule_lower;
+  logic [3:0] schedule_upper_index, schedule_lower_index, schedule_index;
+  logic schedule_upper_empty, schedule_lower_empty, schedule_found;
+
+  for (genvar entry = 0; entry < NumEntries; entry++) begin : gen_schedule_mask
+    wire eligible = entry_valid_q[entry] && !entry_inflight_q[entry];
+    assign schedule_upper[entry] = eligible && 4'(entry) >= schedule_rr_q;
+    assign schedule_lower[entry] = eligible && 4'(entry) < schedule_rr_q;
+  end
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_schedule_upper (
+    .in_i(schedule_upper), .cnt_o(schedule_upper_index), .empty_o(schedule_upper_empty));
+  lzc #(.WIDTH(NumEntries), .MODE(1'b0)) i_schedule_lower (
+    .in_i(schedule_lower), .cnt_o(schedule_lower_index), .empty_o(schedule_lower_empty));
+  assign schedule_found = !schedule_upper_empty || !schedule_lower_empty;
+  assign schedule_index = !schedule_upper_empty ? schedule_upper_index : schedule_lower_index;
 
   function automatic logic [31:0] fp16_to_fp32(input logic [15:0] value);
     logic sign;
@@ -203,8 +218,6 @@ module qbs_fp_accumulator
   assign fp_fire = fp_in_valid && fp_in_ready;
 
   always_comb begin
-    logic found;
-    found = 1'b0;
     fp_in_valid = 1'b0;
     fp_operands = '0;
     fp_round_mode = roundmode_e'(QbsNumericalRoundingMode);
@@ -212,10 +225,10 @@ module qbs_fp_accumulator
     fp_operation_modifier = 1'b0;
     fp_tag_in = '0;
 
-    for (int offset = 0; offset < NumEntries; offset++) begin
-      automatic logic [3:0] entry = schedule_rr_q + 4'(offset);
-      if (entry_valid_q[entry] && !entry_inflight_q[entry] && !found) begin
-        found = 1'b1;
+    // Arbitrate only the valid bits, then select one entry's operands.
+    begin
+      automatic logic [3:0] entry = schedule_index;
+      if (schedule_found) begin
         fp_in_valid = 1'b1;
         fp_tag_in = entry;
         unique case (entry_state_q[entry])
@@ -255,6 +268,19 @@ module qbs_fp_accumulator
           default: fp_in_valid = 1'b0;
         endcase
       end
+    end
+  end
+
+  wire [AccIndexWidth-1:0] write_index = entry_accumulator_index_q[fp_tag_out];
+  wire write_accumulator = rst_ni && !clear_i && fp_out_valid &&
+      (entry_state_q[fp_tag_out] == FP_ACCUMULATE_MIN ||
+       (entry_state_q[fp_tag_out] == FP_ACCUMULATE_DOT && !entry_affine_q[fp_tag_out]));
+  for (genvar bank = 0; bank < 8; bank++) begin : gen_accumulator_bank
+    wire bank_write = write_accumulator && write_index[2:0] == 3'(bank);
+    for (genvar row = 0; row < 16; row++) begin : gen_row
+      always_ff @(posedge clk_i)
+        if (bank_write && write_index[6:3] == 4'(row))
+          accumulator_data_q[bank][row] <= fp_result;
     end
   end
 
@@ -386,9 +412,6 @@ module qbs_fp_accumulator
                 entry_accumulator_value_q[fp_tag_out] <= fp_result;
                 entry_state_q[fp_tag_out] <= FP_ACCUMULATE_MIN;
               end else begin
-                accumulator_data_q[
-                    entry_accumulator_index_q[fp_tag_out][2:0]][
-                    entry_accumulator_index_q[fp_tag_out][6:3]] <= fp_result;
                 accumulator_valid_q[entry_accumulator_index_q[fp_tag_out]] <=
                     1'b1;
                 entry_valid_q[fp_tag_out] <= 1'b0;
@@ -400,9 +423,6 @@ module qbs_fp_accumulator
               end
             end
             FP_ACCUMULATE_MIN: begin
-              accumulator_data_q[
-                  entry_accumulator_index_q[fp_tag_out][2:0]][
-                  entry_accumulator_index_q[fp_tag_out][6:3]] <= fp_result;
               accumulator_valid_q[entry_accumulator_index_q[fp_tag_out]] <=
                   1'b1;
               entry_valid_q[fp_tag_out] <= 1'b0;

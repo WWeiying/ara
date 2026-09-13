@@ -20,15 +20,24 @@ module qbs_dot_array (
   logic signed [17:0] quad_sum_d [4][2];
   logic signed [18:0] oct_sum_d [4];
   logic signed [18:0] stream_sum_d [16];
+  logic [18:0] product_ext [4][8];
+  logic [18:0] quad_sum_bits [4][2], quad_carry_bits [4][2];
+  logic [18:0] oct_sum_bits [4], oct_carry_bits [4];
+
+  // The low half is sum, the high half is the already shifted carry.
+  function automatic logic [37:0] compress3(
+      input logic [18:0] a, b, c);
+    return {19'(((a & b) | (a & c) | (b & c)) << 1), a ^ b ^ c};
+  endfunction
 
   always_comb begin
     // Fixed-bound loops fully assign the multidimensional intermediates below.
     oct_sum_d = '{default: '0};
     stream_sum_d = '{default: '0};
 
-    // Four row clusters, each with eight physical low-bit x INT8 pairs. Keep
-    // the 32 multipliers, but use a balanced reduction tree rather than the
-    // loop-carried accumulation that synthesized as a serial adder chain.
+    // Keep 32 multipliers and the existing output register. Carry-save
+    // compression lets the M1/M2 paths propagate carry only once, instead
+    // of once at every level of the pair/quad/oct reduction.
     for (int row = 0; row < 4; row++) begin
       for (int slot = 0; slot < 8; slot++) begin
         automatic int unsigned ctx;
@@ -44,6 +53,7 @@ module qbs_dot_array (
         end
         product_d[row][slot] =
             weight_quant_i[row][lane] * activation_quant_i[ctx][lane];
+        product_ext[row][slot] = {{3{product_d[row][slot][15]}}, product_d[row][slot]};
       end
 
       for (int pair = 0; pair < 4; pair++) begin
@@ -54,16 +64,23 @@ module qbs_dot_array (
                      product_d[row][2 * pair + 1]});
       end
 
-      quad_sum_d[row][0] =
-          $signed({pair_sum_d[row][0][16], pair_sum_d[row][0]}) +
-          $signed({pair_sum_d[row][1][16], pair_sum_d[row][1]});
-      quad_sum_d[row][1] =
-          $signed({pair_sum_d[row][2][16], pair_sum_d[row][2]}) +
-          $signed({pair_sum_d[row][3][16], pair_sum_d[row][3]});
+      for (int quad = 0; quad < 2; quad++) begin
+        automatic logic [37:0] first;
+        first = compress3(product_ext[row][4*quad], product_ext[row][4*quad+1],
+                          product_ext[row][4*quad+2]);
+        {quad_carry_bits[row][quad], quad_sum_bits[row][quad]} =
+            compress3(first[18:0], first[37:19], product_ext[row][4*quad+3]);
+        quad_sum_d[row][quad] = 18'(quad_sum_bits[row][quad] + quad_carry_bits[row][quad]);
+      end
+      begin
+        automatic logic [37:0] first;
+        first = compress3(quad_sum_bits[row][0], quad_carry_bits[row][0],
+                          quad_sum_bits[row][1]);
+        {oct_carry_bits[row], oct_sum_bits[row]} =
+            compress3(first[18:0], first[37:19], quad_carry_bits[row][1]);
+      end
       // Eight (-128)*(-128) products total +131072, beyond signed 18 bits.
-      oct_sum_d[row] =
-          $signed({quad_sum_d[row][0][17], quad_sum_d[row][0]}) +
-          $signed({quad_sum_d[row][1][17], quad_sum_d[row][1]});
+      oct_sum_d[row] = oct_sum_bits[row] + oct_carry_bits[row];
 
       if (valid_i && row < row_count_i) begin
         unique case (m_i)

@@ -178,6 +178,8 @@ module qbs_engine
 
   logic [127:0] descriptor_q;
   logic [15:0] descriptor_byte_valid_q;
+  logic [127:0] descriptor_write_data;
+  logic [15:0] descriptor_write_mask;
 
   logic descriptor_valid;
   qbs_validation_error_e descriptor_error;
@@ -208,6 +210,7 @@ module qbs_engine
   logic [8:0] k_blocks_q;
   logic [15:0] weight_block_bytes_q;
   logic [15:0] activation_block_bytes_q;
+  logic [24:0] weight_row_bytes_q, activation_row_bytes_q;
   logic [63:0] weight_base_q;
 
   logic [7:0] scheduler_k_q;
@@ -229,6 +232,11 @@ module qbs_engine
   logic [AxiDataWidth-1:0] read_data;
   logic [AxiDataWidth/8-1:0] read_data_strb;
   logic [RangeBytesWidth-1:0] read_data_offset;
+
+  // Align the beat once; each descriptor byte has a fixed write enable.
+  assign descriptor_write_data = 128'(read_data) << (unsigned'(read_data_offset) * 8);
+  assign descriptor_write_mask = 16'(read_data_strb) << read_data_offset;
+
   qbs_range_tag_t read_data_tag;
   logic read_completion_valid;
   logic read_completion_ready;
@@ -602,9 +610,24 @@ module qbs_engine
     .activation_last_address_o    (descriptor_activation_last_address)
   );
 
+  // Descriptor-time row strides remove a serial multiplication from each
+  // range request. All seven row bits and all sixteen byte-count bits fit.
+  function automatic logic [31:0] block_byte_offset(
+      input logic [6:0] row,
+      input logic [7:0] k_block,
+      input logic [24:0] row_bytes,
+      input logic [15:0] block_bytes,
+      input logic row_group_four);
+    logic [31:0] row_offset;
+    logic [23:0] k_offset;
+    row_offset = (row_group_four ? (row >> 2) : row) * row_bytes;
+    k_offset = k_block * block_bytes;
+    return row_group_four ? ((row_offset + 32'(k_offset)) << 2)
+                          : (row_offset + 32'(k_offset));
+  endfunction : block_byte_offset
+
   always_comb begin : form_read_range
     automatic logic [63:0] logical_row;
-    automatic logic [63:0] block_index;
     automatic logic [63:0] address_offset;
 
     read_range_valid = 1'b0;
@@ -656,9 +679,9 @@ module qbs_engine
           read_range_bytes = RangeBytesWidth'(
               storage_m * activation_block_bytes_q);
         end else begin
-          block_index = 64'(activation_range_index_q) * k_blocks_q +
-                        compute_expected_k;
-          address_offset = block_index * activation_block_bytes_q;
+          address_offset = 64'(block_byte_offset(
+              7'(activation_range_index_q), compute_expected_k,
+              activation_row_bytes_q, activation_block_bytes_q, 1'b0));
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
           read_range_bytes = RangeBytesWidth'(activation_block_bytes_q);
         end
@@ -667,9 +690,9 @@ module qbs_engine
                    weight_issue_row_base_q < n_q &&
                    weight_ranges_pending_q < 2) begin
         logical_row = weight_issue_row_base_q;
-        block_index = ((logical_row >> 2) * k_blocks_q +
-                       weight_issue_k_q) << 2;
-        address_offset = block_index * weight_block_bytes_q;
+        address_offset = 64'(block_byte_offset(
+            7'(logical_row), weight_issue_k_q, weight_row_bytes_q,
+            weight_block_bytes_q, 1'b1));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = RangeBytesWidth'(weight_issue_row_count *
@@ -682,13 +705,9 @@ module qbs_engine
                    weight_range_index_q < weight_range_count) begin
         logical_row = 64'(compute_expected_row_base) +
                       weight_range_index_q;
-        if (weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR) begin
-          block_index = ((logical_row >> 2) * k_blocks_q +
-                         compute_expected_k) << 2;
-        end else begin
-          block_index = logical_row * k_blocks_q + compute_expected_k;
-        end
-        address_offset = block_index * weight_block_bytes_q;
+        address_offset = 64'(block_byte_offset(
+            7'(logical_row), compute_expected_k, weight_row_bytes_q,
+            weight_block_bytes_q, weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = weight_layout_q ==
@@ -1196,6 +1215,8 @@ module qbs_engine
       k_blocks_q <= '0;
       weight_block_bytes_q <= '0;
       activation_block_bytes_q <= '0;
+      weight_row_bytes_q <= '0;
+      activation_row_bytes_q <= '0;
       weight_base_q <= '0;
       scheduler_k_q <= '0;
       scheduler_row_base_q <= '0;
@@ -1270,14 +1291,11 @@ module qbs_engine
         descriptor_byte_valid_q <= '0;
       end else if (read_data_fire &&
                    read_data_tag.role == QBS_RANGE_DESCRIPTOR) begin
-        for (int unsigned byte_lane = 0;
-             byte_lane < AxiDataWidth / 8; byte_lane++) begin
-          automatic int unsigned descriptor_offset =
-              unsigned'(read_data_offset) + byte_lane;
-          if (read_data_strb[byte_lane] && descriptor_offset < 16) begin
-            descriptor_q[descriptor_offset * 8 +: 8] <=
-                read_data[byte_lane * 8 +: 8];
-            descriptor_byte_valid_q[descriptor_offset] <= 1'b1;
+        for (int unsigned byte_index = 0; byte_index < 16; byte_index++) begin
+          if (descriptor_write_mask[byte_index]) begin
+            descriptor_q[byte_index * 8 +: 8] <=
+                descriptor_write_data[byte_index * 8 +: 8];
+            descriptor_byte_valid_q[byte_index] <= 1'b1;
           end
         end
       end
@@ -1298,6 +1316,8 @@ module qbs_engine
         k_blocks_q <= descriptor_k_blocks;
         weight_block_bytes_q <= descriptor_weight_block_bytes;
         activation_block_bytes_q <= descriptor_activation_block_bytes;
+        weight_row_bytes_q <= descriptor_k_blocks * descriptor_weight_block_bytes;
+        activation_row_bytes_q <= descriptor_k_blocks * descriptor_activation_block_bytes;
         weight_base_q <= descriptor_q[127:64];
         if (context_lookup_valid && context_lookup_match) begin
           context_reuse_count_o <= 32'd1;

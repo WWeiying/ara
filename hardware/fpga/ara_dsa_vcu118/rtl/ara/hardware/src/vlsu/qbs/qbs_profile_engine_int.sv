@@ -1,12 +1,16 @@
 // Copyright 2026
 // SPDX-License-Identifier: SHL-0.51
 
-module qbs_profile_engine_int import qbs_pkg::*; (
+module qbs_profile_engine_int import qbs_pkg::*; #(
+  parameter bit CompactRead = 1'b0
+) (
   input  logic                clk_i,
   input  logic                rst_ni,
 
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
+  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic                buffer_read_valid_o,
   output logic [7:0]          buffer_read_k_base_o,
 
@@ -150,22 +154,54 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   logic [FlatEntries-1:0] correction_pending_flat;
   logic [FlatEntries-1:0] correction_first_upper_mask;
   logic [FlatEntries-1:0] correction_first_lower_mask;
-  logic [FlatEntries-1:0] correction_second_pending;
-  logic [FlatEntries-1:0] correction_second_upper_mask;
-  logic [FlatEntries-1:0] correction_second_lower_mask;
-  logic [4:0] correction_first_upper_index;
-  logic [4:0] correction_first_lower_index;
   logic [4:0] correction_first_index;
-  logic [4:0] correction_second_start;
-  logic [4:0] correction_second_upper_index;
-  logic [4:0] correction_second_lower_index;
   logic [4:0] correction_second_index;
-  logic correction_first_upper_empty;
-  logic correction_first_lower_empty;
-  logic correction_second_upper_empty;
-  logic correction_second_lower_empty;
   logic correction_first_found;
   logic correction_second_found;
+
+  typedef struct packed {
+    logic first_valid;
+    logic [4:0] first_index;
+    logic second_valid;
+    logic [4:0] second_index;
+  } correction_selection_t;
+  correction_selection_t correction_upper, correction_lower;
+
+  // Prefix counts saturate at two. Both grants are decoded together, so the
+  // second grant does not wait for the first index and a second rotating mask.
+  function automatic correction_selection_t first_two(
+      input logic [FlatEntries-1:0] pending);
+    logic [FlatEntries-1:0] any_prefix [$clog2(FlatEntries)+1];
+    logic [FlatEntries-1:0] two_prefix [$clog2(FlatEntries)+1];
+    correction_selection_t selection;
+    any_prefix[0] = pending;
+    two_prefix[0] = '0;
+    for (int level = 0; level < $clog2(FlatEntries); level++) begin
+      for (int bit_index = 0; bit_index < FlatEntries; bit_index++) begin
+        any_prefix[level+1][bit_index] = any_prefix[level][bit_index];
+        two_prefix[level+1][bit_index] = two_prefix[level][bit_index];
+        if (bit_index >= (1 << level)) begin
+          any_prefix[level+1][bit_index] |=
+              any_prefix[level][bit_index-(1 << level)];
+          two_prefix[level+1][bit_index] |=
+              two_prefix[level][bit_index-(1 << level)] |
+              (any_prefix[level][bit_index] &
+               any_prefix[level][bit_index-(1 << level)]);
+        end
+      end
+    end
+    selection = '0;
+    selection.first_valid = any_prefix[$clog2(FlatEntries)][FlatEntries-1];
+    selection.second_valid = two_prefix[$clog2(FlatEntries)][FlatEntries-1];
+    for (int bit_index = 1; bit_index < FlatEntries; bit_index++) begin
+      selection.first_index |= 5'(bit_index) & {5{pending[bit_index] &
+          ~any_prefix[$clog2(FlatEntries)][bit_index-1]}};
+      selection.second_index |= 5'(bit_index) & {5{pending[bit_index] &
+          any_prefix[$clog2(FlatEntries)][bit_index-1] &
+          ~two_prefix[$clog2(FlatEntries)][bit_index-1]}};
+    end
+    return selection;
+  endfunction : first_two
 
   always_comb begin
     start_context = 1'b0;
@@ -192,7 +228,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
   assign buffer_read_valid_o = compute_active_q && issue_active_q;
   assign buffer_read_k_base_o = k_cursor_q;
 
-  qbs_profile_decoder i_profile_decoder (
+  qbs_profile_decoder #(.CompactRead(CompactRead)) i_profile_decoder (
     .profile_i             (profile_q),
     .activation_profile_i  (activation_profile_q),
     .m_i                   (m_q),
@@ -200,6 +236,7 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     .k_base_i              (s0_k_base_q),
     .weight_block_i        (weight_block_i),
     .activation_block_i    (activation_block_i),
+    .weight_window_i, .activation_window_i, .weight_side_i, .activation_side_i,
     .k_per_context_o       (decoder_k_per),
     .group_index_o         (decoder_group_index),
     .group_end_o           (decoder_group_end),
@@ -255,67 +292,17 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     end
   end
 
-  lzc #(
-    .WIDTH ( FlatEntries ),
-    .MODE  ( 1'b0       )
-  ) i_correction_first_upper_lzc (
-    .in_i    ( correction_first_upper_mask  ),
-    .cnt_o   ( correction_first_upper_index ),
-    .empty_o ( correction_first_upper_empty )
-  );
-
-  lzc #(
-    .WIDTH ( FlatEntries ),
-    .MODE  ( 1'b0       )
-  ) i_correction_first_lower_lzc (
-    .in_i    ( correction_first_lower_mask  ),
-    .cnt_o   ( correction_first_lower_index ),
-    .empty_o ( correction_first_lower_empty )
-  );
-
-  assign correction_first_found =
-      !correction_first_upper_empty || !correction_first_lower_empty;
-  assign correction_first_index = !correction_first_upper_empty
-      ? correction_first_upper_index : correction_first_lower_index;
-  assign correction_second_start = correction_first_index + 1'b1;
-
-  always_comb begin
-    correction_second_pending = correction_pending_flat;
-    if (correction_first_found)
-      correction_second_pending[correction_first_index] = 1'b0;
-
-    correction_second_upper_mask = '0;
-    correction_second_lower_mask = '0;
-    for (int index = 0; index < FlatEntries; index++) begin
-      if (5'(index) >= correction_second_start)
-        correction_second_upper_mask[index] = correction_second_pending[index];
-      else
-        correction_second_lower_mask[index] = correction_second_pending[index];
-    end
-  end
-
-  lzc #(
-    .WIDTH ( FlatEntries ),
-    .MODE  ( 1'b0       )
-  ) i_correction_second_upper_lzc (
-    .in_i    ( correction_second_upper_mask  ),
-    .cnt_o   ( correction_second_upper_index ),
-    .empty_o ( correction_second_upper_empty )
-  );
-
-  lzc #(
-    .WIDTH ( FlatEntries ),
-    .MODE  ( 1'b0       )
-  ) i_correction_second_lower_lzc (
-    .in_i    ( correction_second_lower_mask  ),
-    .cnt_o   ( correction_second_lower_index ),
-    .empty_o ( correction_second_lower_empty )
-  );
-
-  assign correction_second_found = correction_first_found &&
-      (!correction_second_upper_empty || !correction_second_lower_empty);
-  assign correction_second_index = !correction_second_upper_empty
-      ? correction_second_upper_index : correction_second_lower_index;
+  assign correction_upper = first_two(correction_first_upper_mask);
+  assign correction_lower = first_two(correction_first_lower_mask);
+  assign correction_first_found = correction_upper.first_valid || correction_lower.first_valid;
+  assign correction_first_index = correction_upper.first_valid
+      ? correction_upper.first_index : correction_lower.first_index;
+  assign correction_second_found = correction_upper.second_valid ||
+      (correction_upper.first_valid && correction_lower.first_valid) ||
+      correction_lower.second_valid;
+  assign correction_second_index = correction_upper.second_valid
+      ? correction_upper.second_index : correction_upper.first_valid
+      ? correction_lower.first_index : correction_lower.second_index;
 
   always_comb begin
     correction_consume = '{default: '0};
@@ -391,9 +378,22 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     end
   end
 
+  logic [FlatEntries-1:0] result_upper, result_lower;
+  logic [4:0] result_upper_index, result_lower_index, result_index;
+  logic result_upper_empty, result_lower_empty, result_found;
+  for (genvar index = 0; index < FlatEntries; index++) begin : gen_result_mask
+    wire pending_result = result_pending_q[index / NumStreams][index % NumStreams];
+    assign result_upper[index] = pending_result && 5'(index) >= result_rr_q;
+    assign result_lower[index] = pending_result && 5'(index) < result_rr_q;
+  end
+  lzc #(.WIDTH(FlatEntries), .MODE(1'b0)) i_result_upper (
+    .in_i(result_upper), .cnt_o(result_upper_index), .empty_o(result_upper_empty));
+  lzc #(.WIDTH(FlatEntries), .MODE(1'b0)) i_result_lower (
+    .in_i(result_lower), .cnt_o(result_lower_index), .empty_o(result_lower_empty));
+  assign result_found = !result_upper_empty || !result_lower_empty;
+  assign result_index = !result_upper_empty ? result_upper_index : result_lower_index;
+
   always_comb begin
-    logic found;
-    found = 1'b0;
     result_valid_o = 1'b0;
     result_context = result_rr_q[4];
     result_stream_o = result_rr_q[3:0];
@@ -407,12 +407,11 @@ module qbs_profile_engine_int import qbs_pkg::*; (
     result_weight_dmin_o = '0;
     result_activation_d_o = '0;
 
-    for (int offset = 0; offset < FlatEntries; offset++) begin
-      automatic logic [4:0] index = result_rr_q + 5'(offset);
+    begin
+      automatic logic [4:0] index = result_index;
       automatic logic context_index = index[4];
       automatic logic [3:0] stream_index = index[3:0];
-      if (result_pending_q[context_index][stream_index] && !found) begin
-        found = 1'b1;
+      if (result_found) begin
         result_valid_o = 1'b1;
         result_context = context_index;
         result_stream_o = stream_index;

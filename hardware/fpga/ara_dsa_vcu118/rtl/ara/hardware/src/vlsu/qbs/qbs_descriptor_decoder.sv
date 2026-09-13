@@ -129,7 +129,7 @@ module qbs_descriptor_decoder import qbs_pkg::*; #(
               unsigned'(m_i) > QbsActivationContextMaxM ||
               unsigned'(k_blocks_o) > QbsActivationContextMaxKBlocks))
       error_o = QBS_VALIDATION_CONTEXT_UNSUPPORTED;
-    else if ((unsigned'(vd_i) % destination_registers) != 0 ||
+    else if ((unsigned'(vd_i) & (destination_registers - 1)) != 0 ||
              unsigned'(vd_i) + destination_registers > 32)
       error_o = QBS_VALIDATION_VD_ALIGNMENT;
     else if (descriptor_weight_base_i[

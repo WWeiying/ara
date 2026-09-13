@@ -983,15 +983,57 @@ end
 //RN : Never occur
 //RP : sign of quotient is -
 //RM : sign of quotient is +
-assign frac_add1_rst[54:0]             = {1'b0,total_qt_rt_58[56:3]} +
-                                         frac_add1_op1_with_denorm[54:0];
+// Keep format/denormal selection and IEEE rounding unchanged. Bound the
+// post-selection carry depth instead of rippling across all 55 bits.
+function [54:0] round_add55;
+  input [54:0] a, b;
+  input carry_in;
+  reg [55:0] ax, bx, result;
+  reg [4:0] sum0 [0:13], sum1 [0:13];
+  reg [13:0] g [0:4], p [0:4];
+  reg [13:0] carry;
+  integer block_index, level;
+  begin
+    ax = {1'b0, a};
+    bx = {1'b0, b};
+    for (block_index = 0; block_index < 14; block_index = block_index + 1) begin
+      sum0[block_index] = {1'b0, ax[4*block_index +: 4]} +
+                          {1'b0, bx[4*block_index +: 4]};
+      sum1[block_index] = sum0[block_index] + 5'd1;
+      g[0][block_index] = sum0[block_index][4];
+      p[0][block_index] = &(ax[4*block_index +: 4] ^ bx[4*block_index +: 4]);
+    end
+    for (level = 0; level < 4; level = level + 1) begin
+      for (block_index = 0; block_index < 14; block_index = block_index + 1) begin
+        g[level+1][block_index] = g[level][block_index];
+        p[level+1][block_index] = p[level][block_index];
+        if (block_index >= (1 << level)) begin
+          g[level+1][block_index] = g[level][block_index] |
+              (p[level][block_index] & g[level][block_index-(1 << level)]);
+          p[level+1][block_index] = p[level][block_index] &
+              p[level][block_index-(1 << level)];
+        end
+      end
+    end
+    carry[0] = carry_in;
+    for (block_index = 1; block_index < 14; block_index = block_index + 1)
+      carry[block_index] = g[4][block_index-1] | (p[4][block_index-1] & carry_in);
+    for (block_index = 0; block_index < 14; block_index = block_index + 1)
+      result[4*block_index +: 4] = carry[block_index]
+          ? sum1[block_index][3:0] : sum0[block_index][3:0];
+    round_add55 = result[54:0];
+  end
+endfunction
+
+assign frac_add1_rst[54:0]             = round_add55({1'b0,total_qt_rt_58[56:3]},
+                                         frac_add1_op1_with_denorm[54:0], 1'b0);
 assign frac_add1_op1_with_denorm[54:0] = ex3_rslt_denorm ? 
                                   {1'b0,vfdsu_ex3_result_denorm_round_add_num[52:0],1'b0} :
                                   frac_add1_op1[54:0];      
 assign frac_sub1_rst[54:0]             = (ex3_rst_eq_1)
                                        ? {2'b0,{53{1'b1}}}
-                                       : {1'b0,total_qt_rt_58[56:3]} +
-                                         frac_sub1_op1_with_denorm[54:0] + {54'b0,ex3_rslt_denorm};
+                                       : round_add55({1'b0,total_qt_rt_58[56:3]},
+                                         frac_sub1_op1_with_denorm[54:0], ex3_rslt_denorm);
 assign frac_sub1_op1_with_denorm[54:0] = ex3_rslt_denorm ?
                                 ~{1'b0,vfdsu_ex3_result_denorm_round_add_num[52:0],1'b0} :
                                 frac_sub1_op1[54:0];
@@ -1154,5 +1196,4 @@ end
 // &Force("output","vfdsu_ex4_single"); @738
 // &ModuleEnd; @739
 endmodule
-
 

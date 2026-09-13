@@ -694,10 +694,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           // around vstart and vl in the boundary words.
           idx_elems_per_lane_word      = 8 >> unsigned'(pe_req.eew_vs2);
           idx_elems_per_aggregate_word = NrLanes * idx_elems_per_lane_word;
-          idx_first_aggregate_word     = pe_req.vstart / idx_elems_per_aggregate_word;
+          idx_first_aggregate_word     = pe_req.eew_vs2 <= EW64 ? element_word_index(
+              pe_req.vstart, $clog2(NrLanes * 8), pe_req.eew_vs2) : 'x;
           idx_aggregate_word_count     =
-              ((pe_req.vl + idx_elems_per_aggregate_word - 1) /
-               idx_elems_per_aggregate_word) - idx_first_aggregate_word;
+              pe_req.eew_vs2 <= EW64 ? element_word_index(
+                  pe_req.vl + idx_elems_per_aggregate_word - 1,
+                  $clog2(NrLanes * 8), pe_req.eew_vs2) - idx_first_aggregate_word : 'x;
           idx_elems_per_lane_word = 8 >> unsigned'(pe_req.old_eew_vs2);
           operand_request[SlideAddrGenA].eew = pe_req.old_eew_vs2;
           operand_request[SlideAddrGenA].vtype.vsew = pe_req.old_eew_vs2;
@@ -775,10 +777,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           };
           idx_elems_per_lane_word      = 8 >> unsigned'(pe_req.eew_vs2);
           idx_elems_per_aggregate_word = NrLanes * idx_elems_per_lane_word;
-          idx_first_aggregate_word     = pe_req.vstart / idx_elems_per_aggregate_word;
+          idx_first_aggregate_word     = pe_req.eew_vs2 <= EW64 ? element_word_index(
+              pe_req.vstart, $clog2(NrLanes * 8), pe_req.eew_vs2) : 'x;
           idx_aggregate_word_count     =
-              ((pe_req.vl + idx_elems_per_aggregate_word - 1) /
-               idx_elems_per_aggregate_word) - idx_first_aggregate_word;
+              pe_req.eew_vs2 <= EW64 ? element_word_index(
+                  pe_req.vl + idx_elems_per_aggregate_word - 1,
+                  $clog2(NrLanes * 8), pe_req.eew_vs2) - idx_first_aggregate_word : 'x;
           idx_elems_per_lane_word = 8 >> unsigned'(pe_req.old_eew_vs2);
           operand_request[SlideAddrGenA].eew = pe_req.old_eew_vs2;
           operand_request[SlideAddrGenA].vtype.vsew = pe_req.old_eew_vs2;
