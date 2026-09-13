@@ -664,35 +664,9 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "c27e384203fd76a1b527ce903c59e3a15aabba3c",
+      "commit": "be927c197ea906148a4b4064ec973538d5da2ca0",
       "tracked_changes": [
-        "backend/syn/ara_soc/v1-dc/reports/area.rpt",
-        "hardware/fpga/ara_dsa_vcu118/SHA256SUMS",
-        "hardware/fpga/ara_dsa_vcu118/manifest.json",
-        "hardware/fpga/ara_dsa_vcu118/provenance/ara_local.patch",
-        "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/include/ara_pkg.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/lane.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/lane_sequencer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/simd_alu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/simd_mul.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/vmfpu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/masku/masku_operands.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/addrgen.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_v2_context.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_block_adapter.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_compute_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_dot_array.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_profile_decoder.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_read_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v"
+        "backend/syn/ara_soc/v1-dc/reports/area.rpt"
       ]
     },
     "axi": {
@@ -2639,7 +2613,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_dot_array.sv",
-      "source_sha256": "411e0a1623c1b666467eba7f6bf084e027ff82a698c980e0ea981d398ab9c853"
+      "source_sha256": "584199d19c64aff90b5c1e81b2d48e2a7fbae61de2655531ceec4dd67b83260c"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv",
@@ -2667,7 +2641,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
-      "source_sha256": "5c77abcc1c28e12ef291a2200ce91a1d4cdb08c0bbfbbd4af15313af46902504"
+      "source_sha256": "fe86ab756b1356143e04fa7172762c712a35b012fd5e7bd5d12597867a66d7ce"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
