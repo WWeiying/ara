@@ -74,6 +74,21 @@ FPGA 后续可使用工程已有的 `tc_sram` FPGA 实现，但本次没有验�
 
 ### 4.2 `qbs_payload_buffer.sv`
 
+当前实现把写入逻辑按固定物理 bank 展开，而不是用运行时 bank 下标反复更新整组
+宽数据数组。metadata 则按固定字节生成写使能，用五层选择树保留最后一个有效写者。
+两者都保持下述字节优先级和握手行为，不增加流水级、存储容量或 SRAM 端口。
+
+实际 compute 路径将两个 adapter 配置为 `NativeView=0`，直接输出 SRAM 的
+256-bit 窗口和辅助信息。权重为 `4 row * 2 plane * 256 bit` 加 `4 * 20 B`
+metadata，激活为 `4 context * 256 bit` 加 `4 * 36 B` metadata。计算入口
+只需选择这 4864 bit 的有效存储视图，不再先展开成 16064 bit 的原生索引视图
+再选择 bank。数字描述的是组合接口宽度，不是新增寄存器数或最终门数。
+
+兼容测试仍可启用 `NativeView=1`：各格式的 `weight_view` 和 `activation_view`
+只是组合连线，不是额外保存九份 block。未启用的兼容输出逐元素接零，由综合
+常量折叠消除。综合友好改写的依据、功能对照和证据边界见
+[`timing_optimization_port.md` 第 14 节](timing_optimization_port.md)。
+
 把原生块 offset 转换为 `(plane, word, byte lane)`。所有格式仍保持压缩
 存储，直到 profile decoder 才拆位、查 IQ4_NL 表或恢复有符号量化值。
 
@@ -102,10 +117,16 @@ FPGA 后续可使用工程已有的 `tc_sram` FPGA 实现，但本次没有验�
 连续赋值的仿真敏感性可能遗漏格式变化。首次格式切换和各 profile 的
 读窗口对照已纳入测试，防止首拍被错误分类为元数据。
 
-对 decoder 的输出仍保留原生字节索引，减少格式解码的变化，但这只是一个
-**同步读窗口视图**：payload 字节由 SRAM 输出的当前 32-byte 字重复布线，
-并不是把整个块又复制回寄存器。只有当前 K 索引需要的 payload 有效；
-不允许其他使用者把这个接口当作可任意寻址的完整块。
+`qbs_profile_engine_int` 和其中的 decoder 在实际 compute 路径使用
+`CompactRead=1`。decoder 的 `weight_byte()` / `activation_byte()` 将需要的
+原生 offset 映射到当前窗口内字节或 metadata，再执行原来的量化解码；scale、
+min、bsum 和浮点累加顺序不变。两个 bank 的选择和 M8 的 context wave 仍在
+compute 模块中完成，没有改变 SRAM 地址发起及返回的时刻。
+
+这仍然是**同步读窗口**，不是可任意寻址的完整块。只有当前 K 索引需要的
+payload 有效。独立 profile 测试可用 `CompactRead=0` 接原生索引视图；必须
+保证生产端和消费端的配置配对。新增格式时，写入 offset 映射、紧凑读映射及
+量化解码需要一起维护，并跑各 K 窗口的独立内容对照。
 
 ### 4.3 `qbs_block_adapter.sv`
 
@@ -115,6 +136,38 @@ FPGA 后续可使用工程已有的 `tc_sram` FPGA 实现，但本次没有验�
 数据进入某个 SRAM 字或元数据寄存器时才设置对应 byte-valid，并增加
 `accepted_*_bytes_o`。这些字段在本模块指**已写入本地存储的唯一字节数**，
 不再保证和输入 beat 握手同周期更新。重复字节仍允许覆盖数据，但不重复计数。
+
+valid 状态按固定 `(row/context, byte)` 位置生成写使能：将所有已提交且目标相同的
+字节请求作 OR，再把该 valid 位置 1。因为这些请求都写入常量 1，不需要数据缓冲中
+“最后一个写者获胜”的优先选择链。清除、复位以及置位所在的周期不变，去重查询
+仍读取更新前的 valid 状态。它只是更新网络的改写，不减少原有逐字节覆盖精度。
+
+译码按输入字节共享，而不是每个目标 valid 位都重新比较完整地址。每个输入目标拆为
+行/上下文号、16-byte 分组号和组内 4-bit 偏移；先生成这三组选择信号，再在每个
+固定目标处合并。16-byte 分组只是组合译码的组织方式，不要求输入 beat 对齐，也
+不把 valid 精度扩大到 16 B。210-byte 权重和 292-byte 激活的最后一组仅生成实际
+存在的 2/4 个 valid 位，不新增存储、流水级或 SRAM 端口。
+
+去重读取按输入 beat 查询一个 16-bit 窗口，不再对 32 个候选字节分别做完整的
+`valid[row][offset]` 动态查询。具体过程为：
+
+1. 根据当前 profile，把已有的 native byte-valid 按源字节顺序连线。权重按
+   R4 block-major 顺序连接，row-major 访问通过 `row * block_bytes + offset`
+   定位；激活分别连接 row-major、M4 或 M8 的 scale、quant 和辅助数组顺序。
+2. 源偏移的高位选择从 16-byte 边界开始的 32-bit valid 窗口，低四位右移，
+   取出本 beat 对应的 16 位。多取的 16 位处理未对齐 beat，尾部补零。
+3. 将查询结果与原来的 mapping-valid、strobe 和同拍旧/新 beat 去重条件结合。
+   只有 SRAM/metadata 实际消费的字节参与计数，未提交字节继续留在 pending。
+
+例如 Q6_K 每行 210 byte，R4 源偏移 208 的 16-byte beat 同时覆盖 row 0 的
+208/209 byte 和 row 1 的 0..13 byte。窗口读取保留这种跨 native-block 行为，
+不要求 block 大小为 16 的倍数。M8 的两份 adapter 只连接各自四个 context 的
+valid，其余 context 在该视图中为零，最终仍用原来的 context 范围检查筛选。
+
+这些视图只是组合连线，不是第二份 valid 存储；每个 adapter 的 2008 个 byte-valid
+位及更新周期不变。格式映射的除法和取模仅出现在编译期常量函数中，用于生成固定
+索引，不用于运行时地址计算。新 profile 若改变源布局，必须同步增加此视图映射，
+并用原 native 索引规则验证，不能只修改 block 大小。
 
 一次写入的流程如下：
 

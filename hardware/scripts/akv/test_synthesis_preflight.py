@@ -28,6 +28,8 @@ class SynthesisPreflightTest(unittest.TestCase):
         self.setup = self.root / "setup.env"
         self.sram_db = self.root / "akv.db"
         self.sram_db.write_text("db", encoding="utf-8")
+        self.qbs_sram_db = self.root / "qbs.db"
+        self.qbs_sram_db.write_text("db", encoding="utf-8")
         self.sdc.write_text(
             "set clk_mul 1.0\n"
             "set uncertainty_add 0\n"
@@ -36,7 +38,8 @@ class SynthesisPreflightTest(unittest.TestCase):
             "[expr {(0.15 + $uncertainty_add) * $clk_mul}] [get_clocks clk_i]\n",
             encoding="utf-8",
         )
-        self.setup.write_text(f"set akv_db {self.sram_db}\n", encoding="utf-8")
+        self.setup.write_text(
+            f"set akv_db {self.sram_db}\nset qbs_db {self.qbs_sram_db}\n", encoding="utf-8")
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -65,6 +68,7 @@ class SynthesisPreflightTest(unittest.TestCase):
         ]
         if blackbox:
             sources.append(MODULE.AKV_SRAM_BLACKBOX)
+        sources.append(MODULE.QBS_SRAM_BLACKBOX)
         self.filelist.write_text("\n".join([*defines, *sources]) + "\n", encoding="utf-8")
 
     def options(self) -> object:
@@ -73,6 +77,7 @@ class SynthesisPreflightTest(unittest.TestCase):
             sdc=self.sdc,
             setup=self.setup,
             sram_db=self.sram_db,
+            qbs_sram_db=self.qbs_sram_db,
             require_qbs=True,
             require_akv=True,
             require_akv_v2=True,
@@ -101,6 +106,32 @@ class SynthesisPreflightTest(unittest.TestCase):
         text = self.filelist.read_text().replace("+define+TARGET_SRAM_MC\n", "")
         self.filelist.write_text(text)
         with self.assertRaisesRegex(MODULE.PreflightError, "TARGET_SRAM_MC"):
+            MODULE.audit(self.options())
+
+    def test_missing_qbs_payload_source_is_rejected(self) -> None:
+        self.write_filelist()
+        self.filelist.write_text(self.filelist.read_text().replace(
+            "hardware/src/vlsu/qbs/qbs_payload_buffer.sv\n", ""))
+        with self.assertRaisesRegex(MODULE.PreflightError, "qbs_payload_buffer"):
+            MODULE.audit(self.options())
+
+    def test_missing_qbs_macro_blackbox_is_rejected(self) -> None:
+        self.write_filelist()
+        self.filelist.write_text(self.filelist.read_text().replace(
+            MODULE.QBS_SRAM_BLACKBOX + "\n", ""))
+        with self.assertRaisesRegex(MODULE.PreflightError, "8x256"):
+            MODULE.audit(self.options())
+
+    def test_missing_qbs_library_is_rejected(self) -> None:
+        self.write_filelist()
+        self.qbs_sram_db.unlink()
+        with self.assertRaisesRegex(MODULE.PreflightError, "missing QBS SRAM DB"):
+            MODULE.audit(self.options())
+
+    def test_unlinked_qbs_library_is_rejected(self) -> None:
+        self.write_filelist()
+        self.setup.write_text(f"set akv_db {self.sram_db}\n")
+        with self.assertRaisesRegex(MODULE.PreflightError, "include the QBS"):
             MODULE.audit(self.options())
 
     def test_wrong_clock_constraint_is_rejected(self) -> None:

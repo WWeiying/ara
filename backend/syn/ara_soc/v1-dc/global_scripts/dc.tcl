@@ -1,3 +1,5 @@
+source ../global_scripts/dc_flow_state.tcl
+dc_flow_stage ANALYZE
 set svf_file_tail 0
 set cur_shell_run_path  [pwd]
 set svf_file $GUI_DESIGN_NAME.svf
@@ -32,12 +34,14 @@ if { $GUI_BLOCK_ABSTRACTION_DESIGNS != ""} {
 }
 
 if {$GUI_VCS_OPTION != ""} {
-        analyze -format sverilog -vcs $GUI_VCS_OPTION
-        elaborate $GUI_DESIGN_NAME
+        if {![analyze -format sverilog -vcs $GUI_VCS_OPTION]} {exit 1}
+        dc_flow_stage ELABORATE
+        if {![elaborate $GUI_DESIGN_NAME]} {exit 1}
 } else {
         source $GUI_RTL_ORDER_FILE
-        analyze -format sverilog $GUI_RTL_FILE
-        elaborate $GUI_DESIGN_NAME
+        if {![analyze -format sverilog $GUI_RTL_FILE]} {exit 1}
+        dc_flow_stage ELABORATE
+        if {![elaborate $GUI_DESIGN_NAME]} {exit 1}
 }
 
 #user defined
@@ -59,11 +63,12 @@ current_design $GUI_DESIGN_NAME
 
 if { ![link] } {
         echo "Linking error!"
-        exit; #Exits DC if a serious linking problem is encountered
+        dc_flow_stage LINK_FAILED
+        exit 1
 }
 if { $GUI_BLOCK_ABSTRACTION_DESIGNS != ""} {
         report_top_implementation_options > ../reports/top_implementation_options.rpt
-        report_block_abstraction > ../reports/top_implementation_options.rpt
+        report_block_abstraction > ../reports/block_abstraction.rpt
 }
 
 ## set dont merge DFF
@@ -92,12 +97,20 @@ if { $GUI_DCG_MODE } {
 eval write -format ddc -output ../outputs/${GUI_DESIGN_NAME}_dc_gtech.ddc $hierarchy_opt
 
 ## constrain
+dc_flow_stage CONSTRAIN
 if { $GUI_SDC_FILE != "" } {
-        foreach constraint_file $GUI_SDC_FILE { source -echo -verbose $constraint_file }
+        if {[catch {
+                foreach constraint_file $GUI_SDC_FILE { source -echo -verbose $constraint_file }
+        } sdc_error]} {
+                echo "Error: SDC loading failed: $sdc_error"
+                dc_flow_stage INVALID_SDC
+                exit 1
+        }
 } else {
         puts "ADS Info: Cann't find any timing constraint files."
         puts "ADS Info: please finish timing constraint files as ref.sdc in scripts directory."
-        exit;
+        dc_flow_stage MISSING_SDC
+        exit 1
 }
 
 ## ungroup
@@ -190,10 +203,24 @@ if { $GUI_DFT } {
 }
 
 ##compiler
+dc_flow_checkpoint constrained
+redirect ../reports/references_pre.rpt {report_reference -hierarchy}
+if {[dc_flow_elaborate_only]} {
+        if {![dc_flow_check_errors]} {dc_flow_stage ERRORS; exit 1}
+        dc_flow_stage ELABORATED
+        puts "DC_ELAB_COMPLETE"
+        exit
+}
+dc_flow_stage COMPILE
 set compile_ultra_cmd "compile_ultra -no_seq_output_inversion $compile_ultra_hier_opt"
 if { $GUI_DCG_MODE } { append compile_ultra_cmd " -spg" }
 echo $compile_ultra_cmd
-eval $compile_ultra_cmd
+if {[catch {eval $compile_ultra_cmd} compile_ok] || !$compile_ok} {
+        dc_flow_stage COMPILE_FAILED
+        exit 1
+}
+dc_flow_checkpoint mapped
+dc_flow_stage REPORT
 
 ## define bus name style
 define_name_rules verilog -target_bus_naming_style {%s[%d]} -case_insensitive
@@ -230,12 +257,39 @@ set akv_v2_macros [get_cells -quiet -hierarchical -filter \
 set akv_macro_count [sizeof_collection $akv_context_macros]
 set akv_v1_macro_count [sizeof_collection $akv_v1_macros]
 set akv_v2_macro_count [sizeof_collection $akv_v2_macros]
-set design_total_area [get_attribute [current_design] area]
+# A design object has no area attribute in this DC version. Use the total
+# already emitted by report_area, including macro instances exactly once.
+set area_file [open ../reports/area.rpt r]
+set area_text [read $area_file]
+close $area_file
+if {![regexp -line {^Total cell area:[ \t]+([0-9]+(?:\.[0-9]+)?)[ \t]*$} $area_text unused design_total_area]} {
+    error "Missing total cell area in ../reports/area.rpt"
+}
+unset area_text
+
+# -max_paths is per path group, not a global limit. Reduce all returned paths
+# rather than writing a list of slacks into a scalar summary field.
+proc dc_min_path_slack {paths} {
+    if {[sizeof_collection $paths] == 0} {return NA}
+    set minimum Inf
+    foreach value [get_attribute $paths slack] {
+        if {![string is double -strict $value]} {error "Invalid path slack: $value"}
+        if {$value < $minimum} {set minimum $value}
+    }
+    return $minimum
+}
 set worst_setup_path [get_timing_paths -delay_type max -max_paths 1]
-set worst_reg_path [get_timing_paths -delay_type max -from [all_registers] \
-    -to [all_registers] -max_paths 1]
-set worst_setup_slack [get_attribute $worst_setup_path slack]
-set worst_reg_slack [get_attribute $worst_reg_path slack]
+set reg_start_pins [all_registers -edge_triggered -output_pins]
+set reg_end_pins [all_registers -edge_triggered -data_pins]
+set worst_reg_slack NA
+if {[sizeof_collection $reg_start_pins] && [sizeof_collection $reg_end_pins]} {
+    set worst_reg_path [get_timing_paths -delay_type max -from $reg_start_pins \
+        -to $reg_end_pins -max_paths 1]
+    set worst_reg_slack [dc_min_path_slack $worst_reg_path]
+    eval report_timing -max_paths 20 $report_timing_opt -group clk_i \
+        -from $reg_start_pins -to $reg_end_pins > ../reports/clk_i_reg2reg_max.tim
+}
+set worst_setup_slack [dc_min_path_slack $worst_setup_path]
 
 set physical_summary [open ../reports/physical_summary.rpt w]
 puts $physical_summary "scope=ara_soc_integrated"
@@ -289,7 +343,11 @@ if { $GUI_SYN_CYCLE != 1 } {
         set compile_ultra_cmd "compile_ultra -no_seq_output_inversion $compile_ultra_hier_opt -incremental"
         if { $GUI_DCG_MODE } { append compile_ultra_cmd " -spg" }
         echo $compile_ultra_cmd
-        eval $compile_ultra_cmd
+        if {[catch {eval $compile_ultra_cmd} compile_ok] || !$compile_ok} {
+            dc_flow_stage COMPILE_FAILED
+            exit 1
+        }
+        dc_flow_checkpoint mapped_loop_$i
         if {$i == $GUI_SYN_CYCLE} { 
             create_block_abstraction
             eval write -format ddc -output ../outputs/${GUI_DESIGN_NAME}_dc_loop_$i.ddc $hierarchy_opt
@@ -323,5 +381,12 @@ if { $GUI_SYN_CYCLE != 1 } {
 set_svf -off
 print_message_info
 set endtime [clock seconds]
-report_runtime
-if { !$GUI_DEBUG_MODE } { exit }
+if {[llength [info commands report_runtime]]} {
+    report_runtime
+} else {
+    puts "DC_ELAPSED_SECONDS=[expr {$endtime - $starttime}]"
+}
+if {![dc_flow_check_errors]} {dc_flow_stage ERRORS; exit 1}
+dc_flow_stage COMPLETE
+puts "DC_FLOW_COMPLETE"
+if { !$GUI_DEBUG_MODE || [info exists env(DC_BATCH)] } { exit }

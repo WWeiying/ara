@@ -31,6 +31,11 @@ DEFAULT_AKV_SRAM_DB = Path(
     "ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
     "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
 )
+DEFAULT_QBS_SRAM_DB = Path(
+    "/home/wangwy/ara/backend/library/mem/"
+    "ts1n28hpcpuhdsvtb8x256m1swbso_170a/DB/"
+    "ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.db"
+)
 
 COMMON_SOURCES = (
     "hardware/include/rvv_pkg.sv",
@@ -45,6 +50,8 @@ QBS_SOURCES = (
     "hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv",
     "hardware/src/vlsu/qbs/qbs_read_engine.sv",
     "hardware/src/vlsu/qbs/qbs_activation_context.sv",
+    "hardware/src/vlsu/qbs/qbs_payload_sram.sv",
+    "hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
     "hardware/src/vlsu/qbs/qbs_block_adapter.sv",
     "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
     "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
@@ -62,6 +69,9 @@ AKV_SRAM_BLACKBOX = (
     "backend/blackbox/"
     "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v"
 )
+QBS_SRAM_BLACKBOX = (
+    "backend/blackbox/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.v"
+)
 
 
 class PreflightError(ValueError):
@@ -74,6 +84,7 @@ class Options:
     sdc: Path
     setup: Path
     sram_db: Path
+    qbs_sram_db: Path = DEFAULT_QBS_SRAM_DB
     dc_startup: Path | None = None
     dc_gui_setup: Path | None = None
     dc_main_setup: Path | None = None
@@ -211,7 +222,7 @@ def _check_integrated_flow(options: Options) -> None:
         texts["DC runner"],
         {
             "pipeline failure propagation": r"(?m)^\s*set\s+-o\s+pipefail\s*$",
-            "tracked DC invocation": r"(?m)^\s*dc_shell-t\s+-64bit\s+-f\s+\.\./global_scripts/dc\.tcl\s*\|\s*tee\s+dc\.log\s*$",
+            "tracked DC invocation": r"(?m)^\s*dc_shell-t\s+-64bit\s+-f\s+\.\./global_scripts/dc\.tcl(?:\s+2>&1)?\s*\|\s*tee\s+dc\.log\s*$",
         },
         "DC runner",
     )
@@ -278,6 +289,12 @@ def audit(options: Options) -> dict[str, int | str]:
             raise PreflightError(f"missing AKV SRAM DB: {options.sram_db}")
         if str(options.sram_db) not in setup_text:
             raise PreflightError("DC setup does not include the AKV 64x256 SRAM DB")
+        if options.require_qbs:
+            _require_sources(sources, (QBS_SRAM_BLACKBOX,))
+            if not options.qbs_sram_db.is_file():
+                raise PreflightError(f"missing QBS SRAM DB: {options.qbs_sram_db}")
+            if str(options.qbs_sram_db) not in setup_text:
+                raise PreflightError("DC setup does not include the QBS 8x256 SRAM DB")
 
     _check_sdc(sdc_text)
     _check_integrated_flow(options)
@@ -301,6 +318,7 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser.add_argument("--dc-script", type=Path, default=DEFAULT_DC_SCRIPT)
     parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
+    parser.add_argument("--qbs-sram-db", type=Path, default=DEFAULT_QBS_SRAM_DB)
     parser.add_argument("--require-qbs", action="store_true")
     parser.add_argument("--require-akv", action="store_true")
     parser.add_argument("--require-akv-v2", action="store_true")

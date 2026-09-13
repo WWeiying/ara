@@ -159,41 +159,72 @@ module qbs_read_engine_tb;
     return address[7:0] ^ address[15:8] ^ address[23:16] ^ 8'h5a;
   endfunction
 
-  // One-cycle MMU response model. The page offset is deliberately preserved.
+  // A response acknowledges the level request; it must not start a duplicate
+  // translation. COMBINATIONAL_MMU also models a same-cycle TLB/PMP response.
   logic mmu_pending;
   logic [63:0] mmu_pending_vaddr;
   logic mmu_pending_fault;
   logic inject_mmu_fault;
+  bit combinational_mmu;
+  logic mmu_reply_valid;
+  logic [63:0] mmu_reply_paddr;
+  exception_t mmu_reply_exception;
+
+  always_comb begin
+    mmu_valid = mmu_reply_valid;
+    mmu_paddr = mmu_reply_paddr;
+    mmu_exception = mmu_reply_exception;
+    if (combinational_mmu) begin
+      mmu_valid = mmu_req && !inject_mmu_fault;
+      mmu_paddr = mmu_vaddr;
+      mmu_exception = '0;
+      if (mmu_req && inject_mmu_fault) begin
+        mmu_exception.valid = 1'b1;
+        mmu_exception.cause = 64'd13;
+        mmu_exception.tval = mmu_vaddr;
+      end
+    end
+  end
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       mmu_pending <= 1'b0;
       mmu_pending_vaddr <= '0;
       mmu_pending_fault <= 1'b0;
-      mmu_valid <= 1'b0;
-      mmu_paddr <= '0;
-      mmu_exception <= '0;
+      mmu_reply_valid <= 1'b0;
+      mmu_reply_paddr <= '0;
+      mmu_reply_exception <= '0;
     end else begin
-      mmu_valid <= 1'b0;
-      mmu_exception <= '0;
-      if (!mmu_pending && mmu_req) begin
+      mmu_reply_valid <= 1'b0;
+      mmu_reply_exception <= '0;
+      if (!combinational_mmu && !mmu_pending && mmu_req && !mmu_reply_valid) begin
         mmu_pending <= 1'b1;
         mmu_pending_vaddr <= mmu_vaddr;
         mmu_pending_fault <= inject_mmu_fault;
       end else if (mmu_pending) begin
         mmu_pending <= 1'b0;
-        mmu_valid <= 1'b1;
-        mmu_paddr <= mmu_pending_vaddr;
+        mmu_reply_valid <= 1'b1;
+        mmu_reply_paddr <= mmu_pending_vaddr;
         if (mmu_pending_fault) begin
-          mmu_exception.valid <= 1'b1;
-          mmu_exception.cause <= 64'd13;
-          mmu_exception.tval <= mmu_pending_vaddr;
+          mmu_reply_exception.valid <= 1'b1;
+          mmu_reply_exception.cause <= 64'd13;
+          mmu_reply_exception.tval <= mmu_pending_vaddr;
         end
       end
     end
   end
 
   assign mmu_exception_valid = mmu_exception.valid;
+
+  always @(posedge clk) begin
+    if (rst_n && dut.translation_complete && !dut.fault_pending_q) begin
+      assert (mmu_req)
+        else $fatal(1, "MMU request withdrawn before response was sampled");
+      $display("QBS_MMU_RESPONSE t=%0t combinational=%0b req=%0b valid=%0b exception=%0b vaddr=%h",
+               $time, combinational_mmu, mmu_req, mmu_valid,
+               mmu_exception_valid, mmu_vaddr);
+    end
+  end
 
   // Deterministic, two-request, same-ID AXI read slave. Responses are returned
   // in AR order. last_mode 1 emits an early last; last_mode 2 emits one late
@@ -521,6 +552,7 @@ module qbs_read_engine_tb;
     core_st_pending = 1'b0;
     translation_enable = 1'b0;
     inject_mmu_fault = 1'b0;
+    combinational_mmu = $test$plusargs("COMBINATIONAL_MMU");
     physical_range_allowed = 1'b1;
     counters_clear = 1'b0;
     response_error_beat = -1;

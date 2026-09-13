@@ -3,7 +3,9 @@
 
 // Four rows/contexts, three independent single-port SRAM planes per row.
 // Native block offsets are translated without expanding quantized values.
-module qbs_payload_buffer import qbs_pkg::*; (
+module qbs_payload_buffer import qbs_pkg::*; #(
+  parameter bit NativeView = 1'b1
+) (
   input logic clk_i, rst_ni,
   input qbs_weight_profile_e weight_profile_i,
   input qbs_activation_profile_e activation_profile_i,
@@ -15,13 +17,17 @@ module qbs_payload_buffer import qbs_pkg::*; (
   input logic [8:0] activation_offset_i [32],
   input logic [255:0] weight_data_i, activation_data_i,
   output logic [31:0] weight_consumed_o, activation_consumed_o,
+  // Independent of live valid: can every slot-0 byte use one word per bank?
+  output logic weight_pending_multiword_o, activation_pending_multiword_o,
   input logic weight_read_i, activation_read_i,
   input logic [7:0] read_k_i,
   // Only the payload window addressed by read_k_i is meaningful. Side
   // metadata retains its native indices; repeated payload wires are a view,
   // not a full-block register copy. The profile decoder reads this window.
   output logic [7:0] weight_view_o [4][QbsMaxWeightBlockBytes],
-  output logic [7:0] activation_view_o [4][QbsMaxActivationBlockBytes]
+  output logic [7:0] activation_view_o [4][QbsMaxActivationBlockBytes],
+  output logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  output logic [7:0] weight_side_o [4][20], activation_side_o [4][36]
 );
   localparam int unsigned WeightSideBytes = 20;
   localparam int unsigned ActivationSideBytes = 36;
@@ -104,60 +110,127 @@ module qbs_payload_buffer import qbs_pkg::*; (
     assign activation_location[b] = activation_location_of(activation_profile_i, unsigned'(activation_offset_i[b]));
   end
 
-  // Select pending addresses first, then merge newer bytes into those words.
-  // Separate stages keep pending-consumed (and hence input ready) independent
-  // of input valid/data. Each bank still performs only one physical write.
+  logic [15:0] bank_grant [2][3][4];
+  logic [3:0] pending_multiword [3];
+  logic [31:0] weight_byte_select [32], activation_byte_select [32];
+  for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte_decode
+    for (genvar writer = 0; writer < 32; writer++) begin : gen_writer
+      assign weight_byte_select[byte_lane][writer] =
+          weight_location[writer].offset[4:0] == 5'(byte_lane);
+      assign activation_byte_select[byte_lane][writer] =
+          activation_location[writer].offset[4:0] == 5'(byte_lane);
+    end
+  end
+
+  function automatic logic [8:0] last_slot_byte(
+      input logic [15:0] hit, input logic [127:0] data);
+    logic [8:0] tree [32];
+    tree[0] = '0;
+    for (int b = 0; b < 16; b++) tree[16+b] = {hit[b], data[8*b +: 8]};
+    for (int n = 15; n > 0; n--)
+      tree[n] = tree[2*n+1][8] ? tree[2*n+1] : tree[2*n];
+    return tree[1];
+  endfunction
+
+  // Keep byte priority local to one bank. Dynamic bank updates otherwise
+  // describe a mux over the entire 3072-bit write-data array at every byte.
   for (genvar slot = 0; slot < 2; slot++) begin : gen_write_merge
-    always_comb begin
-      weight_consumed_o[16*slot +: 16] = '0;
-      activation_consumed_o[16*slot +: 16] = '0;
-      for (int plane = 0; plane < 3; plane++)
-        for (int row = 0; row < 4; row++) begin
-          if (slot == 0) begin
-            write_req[slot][plane][row] = 1'b0;
-            write_addr[slot][plane][row] = '0;
-            write_data[slot][plane][row] = '0;
-            write_be[slot][plane][row] = '0;
+    for (genvar p = 0; p < 3; p++) begin : gen_bank_plane
+      for (genvar r = 0; r < 4; r++) begin : gen_bank_row
+        logic [15:0] candidate;
+        logic [15:0] word_match;
+        logic [7:0] offset [16];
+        logic [3:0] first_word [32];
+        logic [2:0] selected_word;
+        wire source_valid = p == 2 ? activation_valid_i[slot] : weight_valid_i[slot];
+        wire [127:0] data = p == 2 ? activation_data_i[128*slot +: 128]
+                                              : weight_data_i[128*slot +: 128];
+        for (genvar b = 0; b < 16; b++) begin : gen_candidate
+          localparam int B = 16*slot + b;
+          if (p == 2) begin
+            assign offset[b] = activation_location[B].offset;
+            assign candidate[b] = activation_mask_i[B] &&
+                activation_location[B].plane == 0 && activation_context_i[B] == 2'(r);
           end else begin
-            write_req[slot][plane][row] = write_req[0][plane][row];
-            write_addr[slot][plane][row] = write_addr[0][plane][row];
-            write_data[slot][plane][row] = write_data[0][plane][row];
-            write_be[slot][plane][row] = write_be[0][plane][row];
+            assign offset[b] = weight_location[B].offset;
+            assign candidate[b] = weight_mask_i[B] &&
+                weight_location[B].plane == 2'(p) && weight_row_i[B] == 2'(r);
           end
+          assign first_word[16+b] = {candidate[b], offset[b][7:5]};
         end
-      for (int b = 16*slot; b < 16*(slot+1); b++) begin
-        if (weight_valid_i[slot] && weight_mask_i[b]) begin
-          if (weight_location[b].plane == 2) weight_consumed_o[b] = 1'b1;
-          else begin
-            automatic int unsigned p = unsigned'(weight_location[b].plane);
-            automatic int unsigned r = unsigned'(weight_row_i[b]);
-            automatic logic [2:0] word_addr = weight_location[b].offset[7:5];
-            if (!write_req[slot][p][r] || write_addr[slot][p][r] == word_addr) begin
-              write_req[slot][p][r] = 1'b1;
-              write_addr[slot][p][r] = word_addr;
-              write_data[slot][p][r][8*weight_location[b].offset[4:0] +: 8] = weight_data_i[8*b +: 8];
-              write_be[slot][p][r][weight_location[b].offset[4:0]] = 1'b1;
-              weight_consumed_o[b] = 1'b1;
+        // Select the first byte's word in four levels, then grant all bytes
+        // in that word in parallel. An older slot still owns the bank first.
+        assign first_word[0] = '0;
+        for (genvar n = 1; n < 16; n++) begin : gen_first_word
+          assign first_word[n] = first_word[2*n][3]
+              ? first_word[2*n] : first_word[2*n+1];
+        end
+        if (slot == 0) begin
+          logic [2:0] word_bit_conflict;
+          for (genvar bit_index = 0; bit_index < 3; bit_index++) begin : gen_word_conflict
+            logic [15:0] word_bit;
+            for (genvar b = 0; b < 16; b++) begin : gen_bit
+              assign word_bit[b] = offset[b][5+bit_index];
             end
+            // Distinct words differ in at least one address bit. This test
+            // needs neither priority selection nor the consumed-byte path.
+            assign word_bit_conflict[bit_index] =
+                (|(candidate & word_bit)) && (|(candidate & ~word_bit));
           end
+          assign pending_multiword[p][r] = |word_bit_conflict;
+          assign selected_word = first_word[1][2:0];
+          assign write_req[slot][p][r] = source_valid && first_word[1][3];
+          assign write_addr[slot][p][r] = write_req[slot][p][r]
+              ? selected_word : 3'b0;
+        end else begin
+          assign selected_word = write_req[0][p][r]
+              ? write_addr[0][p][r] : first_word[1][2:0];
+          assign write_req[slot][p][r] = write_req[0][p][r] ||
+              (source_valid && first_word[1][3]);
+          assign write_addr[slot][p][r] = write_req[slot][p][r]
+              ? selected_word : 3'b0;
         end
-        if (activation_valid_i[slot] && activation_mask_i[b]) begin
-          if (activation_location[b].plane == 2) activation_consumed_o[b] = 1'b1;
-          else begin
-            automatic int unsigned r = unsigned'(activation_context_i[b]);
-            automatic logic [2:0] word_addr = activation_location[b].offset[7:5];
-            if (!write_req[slot][2][r] || write_addr[slot][2][r] == word_addr) begin
-              write_req[slot][2][r] = 1'b1;
-              write_addr[slot][2][r] = word_addr;
-              write_data[slot][2][r][8*activation_location[b].offset[4:0] +: 8] = activation_data_i[8*b +: 8];
-              write_be[slot][2][r][activation_location[b].offset[4:0]] = 1'b1;
-              activation_consumed_o[b] = 1'b1;
-            end
+        for (genvar b = 0; b < 16; b++) begin : gen_word_grant
+          assign word_match[b] = candidate[b] && selected_word == offset[b][7:5];
+          assign bank_grant[slot][p][r][b] = source_valid && word_match[b];
+        end
+        for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte_merge
+          wire [15:0] hit = word_match &
+              (p == 2 ? activation_byte_select[byte_lane][16*slot +: 16]
+                      : weight_byte_select[byte_lane][16*slot +: 16]);
+          wire [8:0] selected = last_slot_byte(hit, data);
+          wire byte_valid = source_valid && selected[8];
+          if (slot == 0) begin
+            assign write_be[slot][p][r][byte_lane] = byte_valid;
+            assign write_data[slot][p][r][8*byte_lane +: 8] =
+                byte_valid ? selected[7:0] : 8'b0;
+          end else begin
+            assign write_be[slot][p][r][byte_lane] =
+                byte_valid || write_be[0][p][r][byte_lane];
+            assign write_data[slot][p][r][8*byte_lane +: 8] = byte_valid
+                ? selected[7:0] : write_data[0][p][r][8*byte_lane +: 8];
           end
         end
       end
     end
+    for (genvar b = 0; b < 16; b++) begin : gen_consumed
+      localparam int B = 16*slot + b;
+      logic [7:0] weight_grants;
+      logic [3:0] activation_grants;
+      for (genvar r = 0; r < 4; r++) begin : gen_row_grant
+        assign weight_grants[r] = bank_grant[slot][0][r][b];
+        assign weight_grants[4+r] = bank_grant[slot][1][r][b];
+        assign activation_grants[r] = bank_grant[slot][2][r][b];
+      end
+      assign weight_consumed_o[B] = (|weight_grants) ||
+          (weight_valid_i[slot] && weight_mask_i[B] && weight_location[B].plane == 2);
+      assign activation_consumed_o[B] = (|activation_grants) ||
+          (activation_valid_i[slot] && activation_mask_i[B] && activation_location[B].plane == 2);
+    end
   end
+
+  assign weight_pending_multiword_o = |pending_multiword[0] || |pending_multiword[1];
+  assign activation_pending_multiword_o = |pending_multiword[2];
 
   for (genvar p = 0; p < 3; p++) begin : gen_plane
     for (genvar r = 0; r < 4; r++) begin : gen_row
@@ -175,32 +248,134 @@ module qbs_payload_buffer import qbs_pkg::*; (
     end
   end
 
-  always_ff @(posedge clk_i) begin
-    for (int b = 0; b < 32; b++) begin
-      if (weight_consumed_o[b] && weight_location[b].plane == 2)
-        weight_side_q[weight_row_i[b]][weight_location[b].offset] <= weight_data_i[8*b +: 8];
-      if (activation_consumed_o[b] && activation_location[b].plane == 2)
-        activation_side_q[activation_context_i[b]][activation_location[b].offset] <= activation_data_i[8*b +: 8];
+  logic [31:0] weight_side_row [4], activation_side_row [4];
+  logic [31:0] weight_side_offset [WeightSideBytes], activation_side_offset [ActivationSideBytes];
+  for (genvar n = 0; n < 32; n++) begin : gen_side_decode
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      // Side bytes never arbitrate for an SRAM word. Decode their enables
+      // directly, without passing through the payload-consumption reduction.
+      assign weight_side_row[row][n] = weight_mask_i[n] &&
+          weight_location[n].plane == 2 && weight_row_i[n] == 2'(row);
+      assign activation_side_row[row][n] = activation_mask_i[n] &&
+          activation_location[n].plane == 2 && activation_context_i[n] == 2'(row);
+    end
+    for (genvar b = 0; b < WeightSideBytes; b++) begin : gen_weight
+      assign weight_side_offset[b][n] = weight_location[n].offset == 8'(b);
+    end
+    for (genvar b = 0; b < ActivationSideBytes; b++) begin : gen_activation
+      assign activation_side_offset[b][n] = activation_location[n].offset == 8'(b);
     end
   end
 
-  always_comb begin
-    for (int row = 0; row < 4; row++) begin
-      for (int b = 0; b < QbsMaxWeightBlockBytes; b++) begin
-        automatic location_t loc = weight_location_of(weight_profile_i, b);
-        weight_view_o[row][b] = '0;
-        if (b < qbs_weight_block_bytes(weight_profile_i)) begin
-          if (loc.plane == 2) weight_view_o[row][b] = weight_side_q[row][loc.offset];
-          else weight_view_o[row][b] = read_data[loc.plane][row][8*loc.offset[4:0] +: 8];
+  for (genvar row = 0; row < 4; row++) begin : gen_side_row
+    for (genvar b = 0; b < WeightSideBytes; b++) begin : gen_weight_byte
+      wire [31:0] hit = weight_side_row[row] & weight_side_offset[b];
+      wire [8:0] older = last_slot_byte(hit[15:0], weight_data_i[127:0]);
+      wire [8:0] newer = last_slot_byte(hit[31:16], weight_data_i[255:128]);
+      wire use_newer = weight_valid_i[1] && newer[8];
+      wire enable = use_newer || (weight_valid_i[0] && older[8]);
+      // Decode and select data before applying the late input handshake.
+      always_ff @(posedge clk_i)
+        if (enable) weight_side_q[row][b] <= use_newer ? newer[7:0] : older[7:0];
+    end
+    for (genvar b = 0; b < ActivationSideBytes; b++) begin : gen_activation_byte
+      wire [31:0] hit = activation_side_row[row] & activation_side_offset[b];
+      wire [8:0] older = last_slot_byte(hit[15:0], activation_data_i[127:0]);
+      wire [8:0] newer = last_slot_byte(hit[31:16], activation_data_i[255:128]);
+      wire use_newer = activation_valid_i[1] && newer[8];
+      wire enable = use_newer || (activation_valid_i[0] && older[8]);
+      always_ff @(posedge clk_i)
+        if (enable) activation_side_q[row][b] <= use_newer ? newer[7:0] : older[7:0];
+    end
+  end
+
+  assign weight_side_o = weight_side_q;
+  assign activation_side_o = activation_side_q;
+  for (genvar row = 0; row < 4; row++) begin : gen_window
+    assign weight_window_o[row][0] = read_data[0][row];
+    assign weight_window_o[row][1] = read_data[1][row];
+    assign activation_window_o[row] = read_data[2][row];
+  end
+
+  if (NativeView) begin : gen_native_view
+  localparam qbs_weight_profile_e WeightProfiles [9] = '{
+    QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q6_K,
+    QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q5_K,
+    QBS_WEIGHT_PROFILE_Q3_K, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+    QBS_WEIGHT_PROFILE_Q2_K, QBS_WEIGHT_PROFILE_Q5_0,
+    QBS_WEIGHT_PROFILE_IQ4_NL
+  };
+  localparam qbs_activation_profile_e ActivationProfiles [2] = '{
+    QBS_ACTIVATION_PROFILE_Q8_K, QBS_ACTIVATION_PROFILE_Q8_0
+  };
+  logic [7:0] weight_view [9][4][QbsMaxWeightBlockBytes];
+  logic [7:0] activation_view [2][4][QbsMaxActivationBlockBytes];
+
+  // Each profile's native-byte mapping is wiring, not an addressable memory.
+  // Resolve indices at elaboration, then select the profile's byte value.
+  for (genvar f = 0; f < 9; f++) begin : gen_weight_view
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      for (genvar b = 0; b < QbsMaxWeightBlockBytes; b++) begin : gen_byte
+        localparam location_t Loc = weight_location_of(WeightProfiles[f], b);
+        if (b >= qbs_weight_block_bytes(WeightProfiles[f])) begin
+          assign weight_view[f][row][b] = '0;
+        end else if (Loc.plane == 2) begin
+          assign weight_view[f][row][b] = weight_side_q[row][Loc.offset];
+        end else begin
+          assign weight_view[f][row][b] =
+              read_data[Loc.plane][row][8*Loc.offset[4:0] +: 8];
         end
       end
-      for (int b = 0; b < QbsMaxActivationBlockBytes; b++) begin
-        automatic location_t loc = activation_location_of(activation_profile_i, b);
-        activation_view_o[row][b] = '0;
-        if (b < qbs_activation_block_bytes(activation_profile_i)) begin
-          if (loc.plane == 2) activation_view_o[row][b] = activation_side_q[row][loc.offset];
-          else activation_view_o[row][b] = read_data[2][row][8*loc.offset[4:0] +: 8];
+    end
+  end
+  for (genvar f = 0; f < 2; f++) begin : gen_activation_view
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      for (genvar b = 0; b < QbsMaxActivationBlockBytes; b++) begin : gen_byte
+        localparam location_t Loc = activation_location_of(ActivationProfiles[f], b);
+        if (b >= qbs_activation_block_bytes(ActivationProfiles[f])) begin
+          assign activation_view[f][row][b] = '0;
+        end else if (Loc.plane == 2) begin
+          assign activation_view[f][row][b] = activation_side_q[row][Loc.offset];
+        end else begin
+          assign activation_view[f][row][b] = read_data[2][row][8*Loc.offset[4:0] +: 8];
         end
+      end
+    end
+  end
+  for (genvar row = 0; row < 4; row++) begin : gen_view_select
+    for (genvar b = 0; b < QbsMaxWeightBlockBytes; b++) begin : gen_weight_byte
+      always_comb begin
+        case (weight_profile_i)
+          QBS_WEIGHT_PROFILE_Q4_K:        weight_view_o[row][b] = weight_view[0][row][b];
+          QBS_WEIGHT_PROFILE_Q6_K:        weight_view_o[row][b] = weight_view[1][row][b];
+          QBS_WEIGHT_PROFILE_Q4_0:        weight_view_o[row][b] = weight_view[2][row][b];
+          QBS_WEIGHT_PROFILE_Q5_K:        weight_view_o[row][b] = weight_view[3][row][b];
+          QBS_WEIGHT_PROFILE_Q3_K:        weight_view_o[row][b] = weight_view[4][row][b];
+          QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: weight_view_o[row][b] = weight_view[5][row][b];
+          QBS_WEIGHT_PROFILE_Q2_K:        weight_view_o[row][b] = weight_view[6][row][b];
+          QBS_WEIGHT_PROFILE_Q5_0:        weight_view_o[row][b] = weight_view[7][row][b];
+          QBS_WEIGHT_PROFILE_IQ4_NL:      weight_view_o[row][b] = weight_view[8][row][b];
+          default:                      weight_view_o[row][b] = '0;
+        endcase
+      end
+    end
+    for (genvar b = 0; b < QbsMaxActivationBlockBytes; b++) begin : gen_activation_byte
+      always_comb begin
+        case (activation_profile_i)
+          QBS_ACTIVATION_PROFILE_Q8_K: activation_view_o[row][b] = activation_view[0][row][b];
+          QBS_ACTIVATION_PROFILE_Q8_0: activation_view_o[row][b] = activation_view[1][row][b];
+          default:                   activation_view_o[row][b] = '0;
+        endcase
+      end
+    end
+  end
+  end else begin : gen_no_native_view
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      for (genvar b = 0; b < QbsMaxWeightBlockBytes; b++) begin : gen_weight
+        assign weight_view_o[row][b] = '0;
+      end
+      for (genvar b = 0; b < QbsMaxActivationBlockBytes; b++) begin : gen_activation
+        assign activation_view_o[row][b] = '0;
       end
     end
   end

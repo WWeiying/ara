@@ -1,7 +1,9 @@
 // Copyright 2026
 // SPDX-License-Identifier: SHL-0.51
 
-module qbs_profile_decoder import qbs_pkg::*; (
+module qbs_profile_decoder import qbs_pkg::*; #(
+  parameter bit CompactRead = 1'b0
+) (
   input  qbs_weight_profile_e profile_i,
   input  qbs_activation_profile_e activation_profile_i,
   input  logic [2:0]          m_i,
@@ -9,6 +11,8 @@ module qbs_profile_decoder import qbs_pkg::*; (
   input  logic [7:0]          k_base_i,
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
+  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic [3:0]          k_per_context_o,
   output logic [3:0]          group_index_o,
   output logic                group_end_o,
@@ -22,6 +26,58 @@ module qbs_profile_decoder import qbs_pkg::*; (
   output logic [15:0]         weight_dmin_o [4],
   output logic [31:0]         activation_d_o [4]
 );
+
+
+  // Translate only the bytes consumed this cycle. The compatibility input is
+  // retained for standalone profile tests; the integrated path uses windows.
+  function automatic logic [7:0] weight_byte(input int unsigned row, offset);
+    logic [1:0] plane;
+    logic [7:0] local_offset;
+    if (!CompactRead) return weight_block_i[row][offset];
+    if (offset >= QbsMaxWeightBlockBytes) return 'x;
+    if (offset >= qbs_weight_block_bytes(profile_i)) return '0;
+    plane = 2;
+    local_offset = 8'(offset);
+    case (profile_i)
+      QBS_WEIGHT_PROFILE_Q4_K:
+        if (offset >= 16) begin plane = 0; local_offset = 8'(offset - 16); end
+      QBS_WEIGHT_PROFILE_Q5_K:
+        if (offset >= 48) begin plane = 0; local_offset = 8'(offset - 48); end
+        else if (offset >= 16) begin plane = 1; local_offset = 8'(offset - 16); end
+      QBS_WEIGHT_PROFILE_Q6_K:
+        if (offset < 128) plane = 0;
+        else if (offset < 192) begin plane = 1; local_offset = 8'(offset - 128); end
+        else local_offset = 8'(offset - 192);
+      QBS_WEIGHT_PROFILE_Q3_K:
+        if (offset < 32) plane = 1;
+        else if (offset < 96) begin plane = 0; local_offset = 8'(offset - 32); end
+        else local_offset = 8'(offset - 96);
+      QBS_WEIGHT_PROFILE_Q2_K:
+        if (offset >= 80) local_offset = 8'(offset - 64);
+        else if (offset >= 16) begin plane = 0; local_offset = 8'(offset - 16); end
+      QBS_WEIGHT_PROFILE_Q5_0:
+        if (offset >= 6) begin plane = 0; local_offset = 8'(offset - 6); end
+      QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT, QBS_WEIGHT_PROFILE_IQ4_NL:
+        if (offset >= 2) begin plane = 0; local_offset = 8'(offset - 2); end
+      default: ;
+    endcase
+    if (plane == 2) return weight_side_i[row][local_offset];
+    return weight_window_i[row][plane][8*local_offset[4:0] +: 8];
+  endfunction
+
+  function automatic logic [7:0] activation_byte(input int unsigned ctx, offset);
+    int unsigned scale, quants;
+    logic [8:0] local_offset;
+    if (!CompactRead) return activation_block_i[ctx][offset];
+    if (offset >= QbsMaxActivationBlockBytes) return 'x;
+    if (offset >= qbs_activation_block_bytes(activation_profile_i)) return '0;
+    scale = qbs_activation_scale_bytes(activation_profile_i);
+    quants = qbs_activation_quant_bytes(activation_profile_i);
+    if (offset < scale) return activation_side_i[ctx][offset];
+    if (offset >= scale + quants) return activation_side_i[ctx][offset - quants];
+    local_offset = 9'(offset - scale);
+    return activation_window_i[ctx][8*local_offset[4:0] +: 8];
+  endfunction
 
   function automatic logic signed [7:0] iq4_nl_value(input logic [3:0] index);
     begin
@@ -64,16 +120,14 @@ module qbs_profile_decoder import qbs_pkg::*; (
       if (profile_i == QBS_WEIGHT_PROFILE_Q4_K) begin
         packet = element >> 6;
         within_index = element & 8'h3f;
-        packed_byte = weight_block_i[row]
-            [16 + packet * 32 + (within_index & 8'h1f)];
+        packed_byte = weight_byte(row, 16 + packet * 32 + (within_index & 8'h1f));
         decode_weight_quant = within_index < 32
             ? $signed({4'b0, packed_byte[3:0]})
             : $signed({4'b0, packed_byte[7:4]});
       end else if (profile_i == QBS_WEIGHT_PROFILE_Q5_K) begin
         packet = element >> 6;
         within_index = element & 8'h3f;
-        packed_byte = weight_block_i[row]
-            [48 + packet * 32 + (within_index & 8'h1f)];
+        packed_byte = weight_byte(row, 48 + packet * 32 + (within_index & 8'h1f));
         low = within_index < 32
             ? {4'b0, packed_byte[3:0]}
             : {4'b0, packed_byte[7:4]};
@@ -81,24 +135,23 @@ module qbs_profile_decoder import qbs_pkg::*; (
         // variable eight-bit shifter on the decoder-to-dot critical stage.
         unique case (packet)
           0: high[0] = within_index < 32
-              ? weight_block_i[row][16 + (within_index & 8'h1f)][0]
-              : weight_block_i[row][16 + (within_index & 8'h1f)][1];
+              ? 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (0))
+              : 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (1));
           1: high[0] = within_index < 32
-              ? weight_block_i[row][16 + (within_index & 8'h1f)][2]
-              : weight_block_i[row][16 + (within_index & 8'h1f)][3];
+              ? 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (2))
+              : 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (3));
           2: high[0] = within_index < 32
-              ? weight_block_i[row][16 + (within_index & 8'h1f)][4]
-              : weight_block_i[row][16 + (within_index & 8'h1f)][5];
+              ? 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (4))
+              : 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (5));
           default: high[0] = within_index < 32
-              ? weight_block_i[row][16 + (within_index & 8'h1f)][6]
-              : weight_block_i[row][16 + (within_index & 8'h1f)][7];
+              ? 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (6))
+              : 1'(weight_byte(row, 16 + (within_index & 8'h1f)) >> (7));
         endcase
         decode_weight_quant = $signed({3'b000, high[0], low[3:0]});
       end else if (profile_i == QBS_WEIGHT_PROFILE_Q3_K) begin
         packet = element >> 5;
         lane = element & 8'h1f;
-        packed_byte = weight_block_i[row]
-            [32 + (packet >= 4 ? 32 : 0) + lane];
+        packed_byte = weight_byte(row, 32 + (packet >= 4 ? 32 : 0) + lane);
         low = '0;
         unique case (packet[1:0])
           0: low[1:0] = packed_byte[1:0];
@@ -108,14 +161,14 @@ module qbs_profile_decoder import qbs_pkg::*; (
         endcase
         high = '0;
         unique case (packet)
-          0: high[0] = weight_block_i[row][lane][0];
-          1: high[0] = weight_block_i[row][lane][1];
-          2: high[0] = weight_block_i[row][lane][2];
-          3: high[0] = weight_block_i[row][lane][3];
-          4: high[0] = weight_block_i[row][lane][4];
-          5: high[0] = weight_block_i[row][lane][5];
-          6: high[0] = weight_block_i[row][lane][6];
-          default: high[0] = weight_block_i[row][lane][7];
+          0: high[0] = 1'(weight_byte(row, lane) >> (0));
+          1: high[0] = 1'(weight_byte(row, lane) >> (1));
+          2: high[0] = 1'(weight_byte(row, lane) >> (2));
+          3: high[0] = 1'(weight_byte(row, lane) >> (3));
+          4: high[0] = 1'(weight_byte(row, lane) >> (4));
+          5: high[0] = 1'(weight_byte(row, lane) >> (5));
+          6: high[0] = 1'(weight_byte(row, lane) >> (6));
+          default: high[0] = 1'(weight_byte(row, lane) >> (7));
         endcase
         decode_weight_quant =
             $signed({6'b000000, low[1:0]}) - (high[0] ? 8'sd0 : 8'sd4);
@@ -125,16 +178,16 @@ module qbs_profile_decoder import qbs_pkg::*; (
         lane = element & 8'h1f;
         ql_index = half * 64 + ((quarter & 1) != 0 ? 32 : 0) + lane;
         qh_index = 128 + half * 32 + lane;
-        low = (weight_block_i[row][ql_index] >>
+        low = (weight_byte(row, ql_index) >>
                (quarter >= 2 ? 4 : 0)) & 8'h0f;
-        high = (weight_block_i[row][qh_index] >> (quarter * 2)) & 8'h03;
+        high = (weight_byte(row, qh_index) >> (quarter * 2)) & 8'h03;
         decode_weight_quant =
             $signed({2'b00, high[1:0], low[3:0]}) - 8'sd32;
       end else if (profile_i == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT) begin
         decode_weight_quant =
-            $signed(weight_block_i[row][2 + element]);
+            $signed(weight_byte(row, 2 + element));
       end else if (profile_i == QBS_WEIGHT_PROFILE_Q4_0) begin
-        packed_byte = weight_block_i[row][2 + (element & 8'h0f)];
+        packed_byte = weight_byte(row, 2 + (element & 8'h0f));
         decode_weight_quant = (element < 16
             ? $signed({4'b0, packed_byte[3:0]})
             : $signed({4'b0, packed_byte[7:4]})) - 8'sd8;
@@ -142,8 +195,7 @@ module qbs_profile_decoder import qbs_pkg::*; (
         half = element >> 7;
         subgroup = (element & 8'h7f) >> 4;
         lane = element & 8'h0f;
-        packed_byte = weight_block_i[row]
-            [16 + half * 32 + ((subgroup & 1) != 0 ? 16 : 0) + lane];
+        packed_byte = weight_byte(row, 16 + half * 32 + ((subgroup & 1) != 0 ? 16 : 0) + lane);
         unique case (subgroup[2:1])
           0: decode_weight_quant = $signed({6'b0, packed_byte[1:0]});
           1: decode_weight_quant = $signed({6'b0, packed_byte[3:2]});
@@ -151,16 +203,16 @@ module qbs_profile_decoder import qbs_pkg::*; (
           default: decode_weight_quant = $signed({6'b0, packed_byte[7:6]});
         endcase
       end else if (profile_i == QBS_WEIGHT_PROFILE_Q5_0) begin
-        packed_byte = weight_block_i[row][6 + (element & 8'h0f)];
+        packed_byte = weight_byte(row, 6 + (element & 8'h0f));
         low = element < 16
             ? {4'b0, packed_byte[3:0]}
             : {4'b0, packed_byte[7:4]};
         high = '0;
-        high[0] = weight_block_i[row][2 + (element >> 3)][element & 7];
+        high[0] = 1'(weight_byte(row, 2 + (element >> 3)) >> (element & 7));
         decode_weight_quant =
             $signed({3'b000, high[0], low[3:0]}) - 8'sd16;
       end else if (profile_i == QBS_WEIGHT_PROFILE_IQ4_NL) begin
-        packed_byte = weight_block_i[row][2 + (element & 8'h0f)];
+        packed_byte = weight_byte(row, 2 + (element & 8'h0f));
         decode_weight_quant = iq4_nl_value(
             element < 16 ? packed_byte[3:0] : packed_byte[7:4]);
       end
@@ -177,27 +229,27 @@ module qbs_profile_decoder import qbs_pkg::*; (
     begin
       group_slot = group_index & 3;
       low_meta = '0;
-      high_meta = weight_block_i[row][104 + group_slot];
+      high_meta = weight_byte(row, 104 + group_slot);
       low_nibble = '0;
       high_bits = '0;
       unique case (group_index >> 2)
         0: begin
-          low_meta = weight_block_i[row][96 + group_slot];
+          low_meta = weight_byte(row, 96 + group_slot);
           low_nibble = low_meta[3:0];
           high_bits = high_meta[1:0];
         end
         1: begin
-          low_meta = weight_block_i[row][100 + group_slot];
+          low_meta = weight_byte(row, 100 + group_slot);
           low_nibble = low_meta[3:0];
           high_bits = high_meta[3:2];
         end
         2: begin
-          low_meta = weight_block_i[row][96 + group_slot];
+          low_meta = weight_byte(row, 96 + group_slot);
           low_nibble = low_meta[7:4];
           high_bits = high_meta[5:4];
         end
         default: begin
-          low_meta = weight_block_i[row][100 + group_slot];
+          low_meta = weight_byte(row, 100 + group_slot);
           low_nibble = low_meta[7:4];
           high_bits = high_meta[7:6];
         end
@@ -211,7 +263,7 @@ module qbs_profile_decoder import qbs_pkg::*; (
       input int unsigned row, input int unsigned group_index);
     logic [7:0] meta [12];
     begin
-      for (int i = 0; i < 12; i++) meta[i] = weight_block_i[row][4 + i];
+      for (int i = 0; i < 12; i++) meta[i] = weight_byte(row, 4 + i);
       if (group_index < 4)
         decode_q4_scale = meta[group_index] & 8'h3f;
       else
@@ -224,7 +276,7 @@ module qbs_profile_decoder import qbs_pkg::*; (
       input int unsigned row, input int unsigned group_index);
     logic [7:0] meta [12];
     begin
-      for (int i = 0; i < 12; i++) meta[i] = weight_block_i[row][4 + i];
+      for (int i = 0; i < 12; i++) meta[i] = weight_byte(row, 4 + i);
       if (group_index < 4)
         decode_q4_min = meta[group_index + 4] & 8'h3f;
       else
@@ -239,8 +291,8 @@ module qbs_profile_decoder import qbs_pkg::*; (
     logic [15:0] bits;
     begin
       offset = 260 + subgroup * 2;
-      bits = {activation_block_i[ctx][offset + 1],
-              activation_block_i[ctx][offset]};
+      bits = {activation_byte(ctx, offset + 1),
+              activation_byte(ctx, offset)};
       activation_bsum = $signed(bits);
     end
   endfunction
@@ -287,29 +339,29 @@ module qbs_profile_decoder import qbs_pkg::*; (
       unique case (profile_i)
         QBS_WEIGHT_PROFILE_Q4_K,
         QBS_WEIGHT_PROFILE_Q5_K: begin
-          weight_d_o[row] = {weight_block_i[row][1],
-                             weight_block_i[row][0]};
-          weight_dmin_o[row] = {weight_block_i[row][3],
-                                weight_block_i[row][2]};
+          weight_d_o[row] = {weight_byte(row, 1),
+                             weight_byte(row, 0)};
+          weight_dmin_o[row] = {weight_byte(row, 3),
+                                weight_byte(row, 2)};
         end
         QBS_WEIGHT_PROFILE_Q6_K:
-          weight_d_o[row] = {weight_block_i[row][209],
-                             weight_block_i[row][208]};
+          weight_d_o[row] = {weight_byte(row, 209),
+                             weight_byte(row, 208)};
         QBS_WEIGHT_PROFILE_Q3_K:
-          weight_d_o[row] = {weight_block_i[row][109],
-                             weight_block_i[row][108]};
+          weight_d_o[row] = {weight_byte(row, 109),
+                             weight_byte(row, 108)};
         QBS_WEIGHT_PROFILE_Q2_K: begin
-          weight_d_o[row] = {weight_block_i[row][81],
-                             weight_block_i[row][80]};
-          weight_dmin_o[row] = {weight_block_i[row][83],
-                                weight_block_i[row][82]};
+          weight_d_o[row] = {weight_byte(row, 81),
+                             weight_byte(row, 80)};
+          weight_dmin_o[row] = {weight_byte(row, 83),
+                                weight_byte(row, 82)};
         end
         QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
         QBS_WEIGHT_PROFILE_Q4_0,
         QBS_WEIGHT_PROFILE_Q5_0,
         QBS_WEIGHT_PROFILE_IQ4_NL:
-          weight_d_o[row] = {weight_block_i[row][1],
-                             weight_block_i[row][0]};
+          weight_d_o[row] = {weight_byte(row, 1),
+                             weight_byte(row, 0)};
         default: ;
       endcase
       for (int lane = 0; lane < 8; lane++) begin
@@ -325,19 +377,19 @@ module qbs_profile_decoder import qbs_pkg::*; (
       unique case (activation_profile_i)
         QBS_ACTIVATION_PROFILE_Q8_K:
           activation_d_o[ctx] = {
-              activation_block_i[ctx][3], activation_block_i[ctx][2],
-              activation_block_i[ctx][1], activation_block_i[ctx][0]};
+              activation_byte(ctx, 3), activation_byte(ctx, 2),
+              activation_byte(ctx, 1), activation_byte(ctx, 0)};
         QBS_ACTIVATION_PROFILE_Q8_0:
-          activation_d_o[ctx] = {16'b0, activation_block_i[ctx][1],
-                                 activation_block_i[ctx][0]};
+          activation_d_o[ctx] = {16'b0, activation_byte(ctx, 1),
+                                 activation_byte(ctx, 0)};
         default: ;
       endcase
       for (int lane = 0; lane < 8; lane++) begin
         activation_quant_o[ctx][lane] = '0;
         if (ctx < m_i && lane < k_per_context_o)
-          activation_quant_o[ctx][lane] = $signed(activation_block_i[ctx][
+          activation_quant_o[ctx][lane] = $signed(activation_byte(ctx,
               (activation_profile_i == QBS_ACTIVATION_PROFILE_Q8_K ? 4 : 2) +
-              unsigned'(k_base_i) + lane]);
+              unsigned'(k_base_i) + lane));
       end
     end
 
@@ -359,14 +411,14 @@ module qbs_profile_decoder import qbs_pkg::*; (
               activation_bsum(ctx, 2 * group_index_o + 1);
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q6_K) begin
           group_scale_o[stream] = $signed(
-              weight_block_i[row][192 + group_index_o]);
+              weight_byte(row, 192 + group_index_o));
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q3_K) begin
           group_scale_o[stream] = decode_q3_scale(row, group_index_o);
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q2_K) begin
           group_scale_o[stream] = $signed({4'b0,
-              weight_block_i[row][group_index_o][3:0]});
+              4'(weight_byte(row, group_index_o) >> 0)});
           group_min_o[stream] = {4'b0,
-              weight_block_i[row][group_index_o][7:4]};
+              4'(weight_byte(row, group_index_o) >> 4)};
           group_aux_o[stream] = activation_bsum(ctx, group_index_o);
         end else if (profile_i == QBS_WEIGHT_PROFILE_Q8_0_WEIGHT ||
                      profile_i == QBS_WEIGHT_PROFILE_Q4_0 ||

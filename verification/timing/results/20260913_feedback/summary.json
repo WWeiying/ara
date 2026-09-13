@@ -1,0 +1,324 @@
+{
+  "recorded_utc": "2026-09-13T10:17:02.248092+00:00",
+  "run_directory": "hardware/timing_feedback_20260913_x9goNT",
+  "added_pipeline_stages": 0,
+  "added_rtl_state_bits": 50,
+  "post_fix_integrated_timing_measured": false,
+  "formal_equivalence": false,
+  "source_sha256": {
+    "hardware/src/lane/vmfpu.sv": "5054982638dc14cc27bf71bd027ba09c19bc189db66232fdeb1e6cb4184003c0",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "e1cfd911eb5a970b3196e832b257c0ad7c8db184d940b84fb6f72f30826e917b",
+    "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv": "5c77abcc1c28e12ef291a2200ce91a1d4cdb08c0bbfbbd4af15313af46902504"
+  },
+  "checks": {
+    "cones": {
+      "state": "PASS",
+      "evidence": "Feedback cones PASS arb=225680 address_cycles=67571",
+      "log": "check/feedback/run.log"
+    },
+    "profile": {
+      "state": "PASS",
+      "evidence": "QBS profile engine PASS: 448 cases",
+      "log": "qbs_profile_r2/run.log"
+    },
+    "engine": {
+      "state": "PASS",
+      "evidence": "QBS engine PASS: 33 functional cases plus four fault classes",
+      "log": "qbs_engine/run.log"
+    }
+  },
+  "dc": {
+    "dc_arb_before": {
+      "state": "PASS",
+      "started": "2026-09-13T09:52:48.227804+00:00",
+      "pid": 2768808,
+      "exit_code": 0,
+      "errors": [],
+      "finished": "2026-09-13T10:07:52.674768+00:00",
+      "first_ff_path_arrival_ns": 0.8351,
+      "first_ff_path_slack_ns": 0.0007,
+      "total_cell_area": 517.271994,
+      "scope": "extracted cone, not complete module or integrated SoC"
+    },
+    "dc_arb_after": {
+      "state": "PASS",
+      "started": "2026-09-13T09:52:48.564625+00:00",
+      "pid": 2768880,
+      "exit_code": 0,
+      "errors": [],
+      "finished": "2026-09-13T10:07:59.880042+00:00",
+      "first_ff_path_arrival_ns": 0.8321,
+      "first_ff_path_slack_ns": 0.0032,
+      "total_cell_area": 662.087993,
+      "scope": "extracted cone, not complete module or integrated SoC"
+    },
+    "dc_addr_before": {
+      "state": "PASS",
+      "started": "2026-09-13T09:52:48.881351+00:00",
+      "pid": 2768950,
+      "exit_code": 0,
+      "errors": [],
+      "finished": "2026-09-13T10:08:24.619590+00:00",
+      "first_ff_path_arrival_ns": 0.8388,
+      "first_ff_path_slack_ns": 0.0002,
+      "total_cell_area": 2231.543968,
+      "scope": "extracted cone, not complete module or integrated SoC"
+    },
+    "dc_addr_after": {
+      "state": "PASS",
+      "started": "2026-09-13T09:52:49.200886+00:00",
+      "pid": 2769099,
+      "exit_code": 0,
+      "errors": [],
+      "finished": "2026-09-13T10:08:10.237508+00:00",
+      "first_ff_path_arrival_ns": 0.8366,
+      "first_ff_path_slack_ns": 0.0002,
+      "total_cell_area": 2557.295965,
+      "scope": "extracted cone, not complete module or integrated SoC"
+    }
+  },
+  "real_model_slices": [
+    {
+      "case": "q4_m4n32",
+      "profile": "q4_K",
+      "m": "4",
+      "n": "32",
+      "k": "1536",
+      "cycles": "7200",
+      "weight_bytes": "27648",
+      "activation_bytes": "7008",
+      "payload_bytes": "34672",
+      "ranges": "55",
+      "dot_cycles": "6144",
+      "prefetch_wait_cycles": "0"
+    },
+    {
+      "case": "q4_m8n16",
+      "profile": "q4_K",
+      "m": "8",
+      "n": "16",
+      "k": "1536",
+      "cycles": "7638",
+      "weight_bytes": "13824",
+      "activation_bytes": "14016",
+      "payload_bytes": "27856",
+      "ranges": "31",
+      "dot_cycles": "6144",
+      "prefetch_wait_cycles": "0"
+    },
+    {
+      "case": "q4_m7n16",
+      "profile": "q4_K",
+      "m": "7",
+      "n": "16",
+      "k": "1536",
+      "cycles": "7612",
+      "weight_bytes": "13824",
+      "activation_bytes": "14016",
+      "payload_bytes": "27856",
+      "ranges": "31",
+      "dot_cycles": "6144",
+      "prefetch_wait_cycles": "0"
+    },
+    {
+      "case": "q6_m4n32",
+      "profile": "q6_K",
+      "m": "4",
+      "n": "32",
+      "k": "8960",
+      "cycles": "41939",
+      "weight_bytes": "235200",
+      "activation_bytes": "40880",
+      "payload_bytes": "276096",
+      "ranges": "316",
+      "dot_cycles": "35840",
+      "prefetch_wait_cycles": "0"
+    },
+    {
+      "case": "q6_m8n16",
+      "profile": "q6_K",
+      "m": "8",
+      "n": "16",
+      "k": "8960",
+      "cycles": "44493",
+      "weight_bytes": "117600",
+      "activation_bytes": "81760",
+      "payload_bytes": "199376",
+      "ranges": "176",
+      "dot_cycles": "35840",
+      "prefetch_wait_cycles": "0"
+    },
+    {
+      "case": "q6_m7n16",
+      "profile": "q6_K",
+      "m": "7",
+      "n": "16",
+      "k": "8960",
+      "cycles": "44479",
+      "weight_bytes": "117600",
+      "activation_bytes": "81760",
+      "payload_bytes": "199376",
+      "ranges": "176",
+      "dot_cycles": "35840",
+      "prefetch_wait_cycles": "0"
+    }
+  ],
+  "rvv": {
+    "state": "PASS",
+    "pid": 2800094,
+    "started": "2026-09-13T10:06:04.960044+00:00",
+    "tests": [
+      "rvv:vfredusum",
+      "rvv:vfredosum",
+      "rvv:vfredmin",
+      "rvv:vfredmax",
+      "rvv:vfwredusum",
+      "rvv:vfwredosum",
+      "rvv:vfrec7",
+      "rvv:vfrsqrt7",
+      "rvv:vfdiv",
+      "rvv:vfsqrt",
+      "rvv:vfmacc",
+      "rvv:vfnmsac",
+      "rvv:vwiden_overlap_edges",
+      "app:vsaxpy"
+    ],
+    "returncode": 0,
+    "finished": "2026-09-13T10:14:41.933048+00:00",
+    "directory": "rvv_r2",
+    "results": [
+      {
+        "name": "rvv:vfredusum",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "59.313010448997375",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredusum"
+      },
+      {
+        "name": "rvv:vfredosum",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "62.72477175400127",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredosum"
+      },
+      {
+        "name": "rvv:vfredmin",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "54.129302287998144",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredmin"
+      },
+      {
+        "name": "rvv:vfredmax",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "55.33493657200597",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredmax"
+      },
+      {
+        "name": "rvv:vfwredusum",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "36.04344060100266",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfwredusum"
+      },
+      {
+        "name": "rvv:vfwredosum",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "37.346577015996445",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfwredosum"
+      },
+      {
+        "name": "rvv:vfrec7",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "27.501951384998392",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfrec7"
+      },
+      {
+        "name": "rvv:vfrsqrt7",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "17.77189306099899",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfrsqrt7"
+      },
+      {
+        "name": "rvv:vfdiv",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "37.442492913018214",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfdiv"
+      },
+      {
+        "name": "rvv:vfsqrt",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "19.78328370800591",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfsqrt"
+      },
+      {
+        "name": "rvv:vfmacc",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "38.34102906601038",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfmacc"
+      },
+      {
+        "name": "rvv:vfnmsac",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "37.93851607001852",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfnmsac"
+      },
+      {
+        "name": "rvv:vwiden_overlap_edges",
+        "kind": "rvv",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "75.14812942201388",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vwiden_overlap_edges"
+      },
+      {
+        "name": "app:vsaxpy",
+        "kind": "app",
+        "status": "PASS",
+        "returncode": "0",
+        "elapsed_s": "6.928197706001811",
+        "reason": "",
+        "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/app_vsaxpy"
+      }
+    ]
+  },
+  "integrated_dc": {
+    "state": "RUNNING",
+    "pid": 2809867,
+    "started": "2026-09-13T10:10:07.996668+00:00",
+    "dc_started": "2026-09-13T10:15:08.277539+00:00"
+  }
+}

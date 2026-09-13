@@ -8,6 +8,56 @@
 
 package ara_pkg;
 
+  // Four-bit local sums and a five-level group-prefix carry network. The
+  // extra bit preserves carry/borrow and signed averaging at SEW=64.
+  function automatic logic [64:0] prefix_add65(
+      input logic [64:0] a, b, input logic carry_in);
+    logic [67:0] ax, bx, result;
+    logic [4:0] sum0 [17], sum1 [17];
+    logic [16:0] generate_carry [6], propagate_carry [6];
+    logic [16:0] carry;
+    ax = {3'b0, a};
+    bx = {3'b0, b};
+    for (int block = 0; block < 17; block++) begin
+      sum0[block] = {1'b0, ax[4*block +: 4]} +
+                    {1'b0, bx[4*block +: 4]};
+      sum1[block] = sum0[block] + 5'd1;
+      generate_carry[0][block] = sum0[block][4];
+      propagate_carry[0][block] = &(ax[4*block +: 4] ^ bx[4*block +: 4]);
+    end
+    for (int level = 0; level < 5; level++) begin
+      for (int block = 0; block < 17; block++) begin
+        generate_carry[level+1][block] = generate_carry[level][block];
+        propagate_carry[level+1][block] = propagate_carry[level][block];
+        if (block >= (1 << level)) begin
+          generate_carry[level+1][block] = generate_carry[level][block] |
+              (propagate_carry[level][block] &
+               generate_carry[level][block-(1 << level)]);
+          propagate_carry[level+1][block] = propagate_carry[level][block] &
+              propagate_carry[level][block-(1 << level)];
+        end
+      end
+    end
+    carry[0] = carry_in;
+    for (int block = 1; block < 17; block++)
+      carry[block] = generate_carry[5][block-1] |
+          (propagate_carry[5][block-1] & carry_in);
+    for (int block = 0; block < 17; block++)
+      result[4*block +: 4] = carry[block] ? sum1[block][3:0] : sum0[block][3:0];
+    return result[64:0];
+  endfunction
+
+  function automatic logic [64:0] prefix_sub65(
+      input logic [64:0] a, b, input logic borrow_in);
+    return prefix_add65(a, ~b, ~borrow_in);
+  endfunction
+
+  // Compress three operands before the sole carry-propagating addition.
+  function automatic logic [64:0] prefix_add3_65(
+      input logic [64:0] a, b, c, input logic carry_in);
+    return prefix_add65(a ^ b ^ c, ((a & b) | (a & c) | (b & c)) << 1, carry_in);
+  endfunction
+
   //////////////////
   //  Parameters  //
   //////////////////
@@ -854,7 +904,7 @@ typedef struct packed {
    return element_shuffle_index[byte_index];*/
   endfunction : shuffle_index
 
-  function automatic logic [$clog2(8*MaxNrLanes)-1:0] deshuffle_index(logic[15:0] byte_index, int NrLanes, rvv_pkg::vew_e ew);
+  function automatic logic [$clog2(8*MaxNrLanes)-1:0] deshuffle_index_const(logic[15:0] byte_index, int NrLanes, rvv_pkg::vew_e ew);
     // Generate the deshuffling of the table above
     unique case (NrLanes)
       1: begin
@@ -894,7 +944,33 @@ typedef struct packed {
         return index[byte_index[4:0]];
       end
     endcase
+  endfunction : deshuffle_index_const
+
+  // Each inverse table is constant. Do not construct a runtime-indexed
+  // inverse table separately for every byte of every operand.
+  function automatic logic [$clog2(8*MaxNrLanes)-1:0] deshuffle_index(
+      logic [15:0] byte_index, int NrLanes, rvv_pkg::vew_e ew);
+    case (ew)
+      rvv_pkg::EW8:  return deshuffle_index_const(byte_index, NrLanes, rvv_pkg::EW8);
+      rvv_pkg::EW16: return deshuffle_index_const(byte_index, NrLanes, rvv_pkg::EW16);
+      rvv_pkg::EW32: return deshuffle_index_const(byte_index, NrLanes, rvv_pkg::EW32);
+      default:      return deshuffle_index_const(byte_index, NrLanes, rvv_pkg::EW64);
+    endcase
   endfunction : deshuffle_index
+
+  // Divide an element index by the element capacity of a power-of-two byte
+  // word. Callers pass a constant log2(bytes); preserve division-by-zero X.
+  function automatic logic [31:0] element_word_index(
+      logic [31:0] element, int unsigned log_bytes, rvv_pkg::vew_e eew);
+    if (unsigned'(eew) > log_bytes) return 'x;
+    return element >> (log_bytes - unsigned'(eew));
+  endfunction
+
+  function automatic logic [31:0] element_word_offset(
+      logic [31:0] element, int unsigned log_bytes, rvv_pkg::vew_e eew);
+    if (unsigned'(eew) > log_bytes) return 'x;
+    return element & ((32'd1 << (log_bytes - unsigned'(eew))) - 1);
+  endfunction
 
   /////////////////////////
   ////// Fixed-Point //////

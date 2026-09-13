@@ -235,9 +235,10 @@ module qbs_read_engine import qbs_pkg::*; #(
                   burst_fifo_count_q != 0 || completion_valid_q ||
                   fault_pending_q;
 
+  // CVA6 can return a TLB/PMP result combinationally from this request.
+  // Hold it through the response edge; only the registered planner may end it.
   assign mmu_req_o = plan_state_q == QBS_PLAN_TRANSLATE &&
-      en_ld_st_translation_i && !mmu_valid_i &&
-      !mmu_exception_valid_i && !fault_pending_q;
+      en_ld_st_translation_i && !fault_pending_q;
   assign mmu_vaddr_o = planner_cursor_q;
   assign mmu_is_store_o = 1'b0;
   assign translation_complete = plan_state_q == QBS_PLAN_TRANSLATE &&

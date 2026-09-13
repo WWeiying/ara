@@ -1,0 +1,124 @@
+{
+  "date": "2026-09-12",
+  "head": "1b0aec5f8e12e662decd88ce66931420d7977d6c",
+  "working_tree_dirty": true,
+  "run_directory": "hardware/timing_dc_repair_20260912_t9X6PJ",
+  "prior_run_directory": "hardware/timing_ingress_cleanup_20260911",
+  "scope": "Shared-reader MMU feedback fix, combinational payload arbitration rewrite, DC report and status fixes",
+  "changed_rtl": [
+    "hardware/src/vlsu/qbs/qbs_read_engine.sv",
+    "hardware/src/vlsu/qbs/qbs_payload_buffer.sv"
+  ],
+  "added_pipeline_stages": 0,
+  "integrated_synthesis_rerun": false,
+  "post_fix_ppa_claimed": false,
+  "input_sha256": {
+    "hardware/include/qbs_pkg.sv": "0889be69e5db0aa470f154d06c372d165dedaccf04555cf0349e0812aae3fb27",
+    "hardware/src/vlsu/qbs/qbs_activation_context.sv": "d2b3e319954daed66d30b2f86ebcabb1ecacc11dc86e2b00d41d3d3427f5873d",
+    "hardware/src/vlsu/qbs/qbs_block_adapter.sv": "2c7a22faa9272c3c94d29083cd5fe8ebfc52fe156937e627403d88d58c09c96d",
+    "hardware/src/vlsu/qbs/qbs_commit.sv": "748d32c3bbd8fc8c1f1429ccb1e10d8d7bb355eee0a85f17fe812499015cab86",
+    "hardware/src/vlsu/qbs/qbs_compute_engine.sv": "5b1decacadeb770ef106266e85b3811891ca29a0bee2ce8cc13799f97b6d718e",
+    "hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv": "54e1496ca93bb7ccc3949038a0329c9e9d7843de5b9ebdcba7be63b011a4569b",
+    "hardware/src/vlsu/qbs/qbs_dot_array.sv": "d107acb5c58f1094dee9b5c8309d88091308fc59197a431a7cc83ac8af91c8dc",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "3f6900ae013bbeb9fbf334b766da75e0cf1d5a9aa3fc22d94d01b7ac3945bd60",
+    "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv": "f6e0cbd90289e53f012e482db19b38c458ce1a1b8779340e5e785272bfdad069",
+    "hardware/src/vlsu/qbs/qbs_payload_buffer.sv": "c209a15c901eda6b279da7732464b0d6d900631c36ed0846967eefacb5824262",
+    "hardware/src/vlsu/qbs/qbs_payload_sram.sv": "c55c424a6af583455698db7c268e288cabcd44ce13c5320ace9d5b6a5b638870",
+    "hardware/src/vlsu/qbs/qbs_profile_decoder.sv": "6ecea582907face8318688d0c8d16974f25535e53e4ecc6352c1b76be119dd38",
+    "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv": "b418682f53615be82c5b277673331370f5924c3550a0e039879e5460d8618cbc",
+    "hardware/src/vlsu/qbs/qbs_read_engine.sv": "690e3d956628da22c7dac102ae06f66b56907420f835e8258d06553be00d4968",
+    "hardware/src/vlsu/akv/akv_context.sv": "3eeaf174ec154febd65c6affc7b2fc4fae325e48af7340ab4827635aa75b26e4",
+    "hardware/src/vlsu/akv/akv_engine.sv": "c70bcdf88d5ce4557bf6b233e6c0d165ee33f8fd2969e4c053ec9195761fc761",
+    "hardware/src/vlsu/akv/akv_v2_context.sv": "86c3a50f1d599ccb15240699e82fdee11a46fa1b60ca7e26b323ffdca2dac282",
+    "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl": "8a9350847a9e84d6cdb1df36a09a5305ba3db06bd81ea955c501fee7790a0939",
+    "backend/syn/ara_soc/v1-dc/global_scripts/dc_flow_state.tcl": "18424fd61eaa7f9b037d6449607d45c3e7d2a7c2047bd1d9626d14229303fc09",
+    "backend/syn/ara_soc/v1-dc/run/run.cmd": "d2718ac481031e918fd32fb7255b076daa9a46ffcaa4188dd561645798dbde90",
+    "verification/qbs/qbs_read_engine_tb.sv": "d92ea194988ce378ec954649a8b78e564939c0c70f535a00520d37ae3b58ec61",
+    "verification/qbs/qbs_engine_tb.sv": "3039d0b74b271d0657d971b3d4ce8e1f2dcccb5248145a5a2c94f157ff7592b0",
+    "verification/akv/akv_engine_tb.sv": "9db7ac02dceb3e7c9c4fc357d61fedb91927f48e97c2c9cd1c0c4eaf7d442578"
+  },
+  "checks": {
+    "reader_before": {
+      "status": "EXPECTED_FAIL",
+      "first_failure_ns": 285,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/read_before/run.log"
+    },
+    "reader_delayed": {
+      "status": "PASS",
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/read_final/run.log"
+    },
+    "reader_combinational": {
+      "status": "PASS",
+      "exception_without_success_valid": true,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/read_final/run_comb_mmu.log"
+    },
+    "payload_cycle_comparison": {
+      "status": "PASS",
+      "reference": "1b0aec5f",
+      "profiles": 9,
+      "checks": 110592,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/payload/payload/run.log"
+    },
+    "qbs_engine": {
+      "status": "PASS",
+      "functional_cases": 33,
+      "fault_classes": 4,
+      "cycle_deltas": 0,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/qbs_final/run.log"
+    },
+    "akv_engine": {
+      "status": "PASS",
+      "scope": "v1 D64/D128, v2 D64/D96/D128, segmented D256, tails, counters, faults",
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/akv_final/run.log"
+    },
+    "dc_flow_unit_tests": {
+      "status": "PASS",
+      "tests": 19
+    },
+    "synthesis_preflight_unit_tests": {
+      "status": "PASS",
+      "tests": 11
+    },
+    "synthesis_collection_unit_tests": {
+      "status": "PASS",
+      "tests": 6
+    },
+    "dc_report_api_smoke": {
+      "status": "PASS",
+      "scope": "32-FF test circuit, not integrated synthesis",
+      "startup_manual_errors": 1,
+      "flow_errors": 0,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/report_final/console.log"
+    },
+    "real_q4": {
+      "status": "PASS",
+      "M": 4,
+      "N": 32,
+      "K": 1536,
+      "cycles_before": 7200,
+      "cycles_after": 7200,
+      "phase_and_traffic_equal": true,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/real_q4/run.log"
+    },
+    "real_q6": {
+      "status": "PASS",
+      "M": 4,
+      "N": 32,
+      "K": 8960,
+      "cycles_before": 41939,
+      "cycles_after": 41939,
+      "phase_and_traffic_equal": true,
+      "log": "hardware/timing_dc_repair_20260912_t9X6PJ/real_q6/run.log"
+    }
+  },
+  "prior_synthesis": {
+    "run_id": "20260911_013929_1782",
+    "clk_i_wns_ns": -0.675988,
+    "top_1000_endpoints": {
+      "payload": 958,
+      "other_qbs": 18,
+      "other": 24
+    },
+    "note": "Pre-fix report; not an estimate of post-fix timing. The worst endpoint is a clock gate."
+  }
+}

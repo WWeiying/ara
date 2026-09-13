@@ -1,0 +1,27 @@
+Command: /home/wangwy/openproject/ara_dsa/hardware/timing_dispatch_20260913_RTu2k0/check_rvv/dispatcher/./simv -l run.log
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 13 02:17 2026
+dispatcher state=0 visits=39358
+dispatcher state=1 visits=11147
+dispatcher state=2 visits=32
+dispatcher state=3 visits=16125
+dispatcher state=4 visits=32
+dispatcher state=5 visits=32
+dispatcher state=6 visits=33
+dispatcher state=7 visits=34
+dispatcher state=8 visits=33
+dispatcher state=9 visits=34
+dispatcher state=10 visits=34
+dispatcher state=11 visits=34
+dispatcher state=12 visits=33
+dispatcher state=13 visits=35
+dispatcher state=14 visits=44
+dispatcher state=15 visits=0
+Dispatcher equivalence PASS checks=67040 blocked=13689 accepted=26028
+$finish called from file "/home/wangwy/openproject/ara_dsa/verification/timing/dispatcher_equivalence_tb.sv", line 235.
+$finish at simulation time            680030000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 680030000 ps
+CPU Time:      2.940 seconds;       Data structure size:   0.1Mb
+Sun Sep 13 02:18:06 2026

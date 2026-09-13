@@ -377,7 +377,8 @@ module qbs_engine_tb;
     end else begin
       mmu_valid <= 1'b0;
       mmu_exception <= '0;
-      if (!mmu_pending && mmu_req) begin
+      // The response cycle acknowledges this request, not a new request.
+      if (!mmu_pending && mmu_req && !mmu_valid && !mmu_exception.valid) begin
         mmu_pending <= 1'b1;
         mmu_pending_vaddr <= mmu_vaddr;
       end else if (mmu_pending) begin

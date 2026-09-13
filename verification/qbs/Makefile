@@ -166,6 +166,9 @@ rtl-read-check: rtl-read-compile
 	cd $(RTL_READ_BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log
 	grep -q "QBS read engine PASS" $(RTL_READ_BUILD)/run.log
 	! grep -Eq "Fatal:|Error:" $(RTL_READ_BUILD)/run.log
+	cd $(RTL_READ_BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv +COMBINATIONAL_MMU -l run_comb_mmu.log
+	grep -q "QBS read engine PASS" $(RTL_READ_BUILD)/run_comb_mmu.log
+	! grep -Eq "Fatal:|Error:" $(RTL_READ_BUILD)/run_comb_mmu.log
 
 rtl-commit-compile: $(RTL_COMMIT_SOURCES)
 	mkdir -p $(RTL_COMMIT_BUILD)

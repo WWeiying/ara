@@ -30,6 +30,8 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
   input logic [15:0] activation_write_strb_i,
   input logic [7:0] weight_block_o [4][QbsMaxWeightBlockBytes],
   input logic [7:0] activation_block_o [4][QbsMaxActivationBlockBytes],
+  input logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  input logic [7:0] weight_side_o [4][20], activation_side_o [4][36],
   input logic weight_byte_valid_q [4][QbsMaxWeightBlockBytes],
   input logic activation_byte_valid_q [4][QbsMaxActivationBlockBytes],
   input logic [3:0] weight_complete_o, activation_complete_o,
@@ -71,11 +73,13 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
     $fdisplay(trace_file, "cycle,wvalid,wready,avalid,aready,woff,aoff,wpend,apend,pending_woff,pending_aoff,wcommit_old,wcommit_new,acommit_old,acommit_new,wremain_old,wremain_new,aremain_old,aremain_new,wread,aread,k,wbytes,abytes");
   end
   for (genvar i = 0; i < 2; i++) begin : gen_decode
-    qbs_profile_decoder i_decoder (
+    qbs_profile_decoder #(.CompactRead(i == 0)) i_decoder (
       .profile_i(weight_profile_i), .activation_profile_i,
       .m_i(m_i > 4 ? 3'd4 : 3'(m_i)), .row_count_i(3'd4), .k_base_i(k_q),
       .weight_block_i(i == 0 ? weight_block_o : ref_weight),
       .activation_block_i(i == 0 ? activation_block_o : ref_activation),
+      .weight_window_i(weight_window_o), .activation_window_i(activation_window_o),
+      .weight_side_i(weight_side_o), .activation_side_i(activation_side_o),
       .k_per_context_o(), .group_index_o(), .group_end_o(), .stream_valid_o(),
       .weight_quant_o(wq[i]), .activation_quant_o(aq[i]),
       .group_scale_o(scale[i]), .group_min_o(minimum[i]), .group_aux_o(aux[i]),

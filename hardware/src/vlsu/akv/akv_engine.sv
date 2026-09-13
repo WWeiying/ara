@@ -153,6 +153,9 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   logic [511:0] descriptor_q;
   logic [63:0] descriptor_byte_valid_q;
+  logic [511:0] descriptor_write_data;
+  logic [63:0] descriptor_write_mask;
+
   akv_descriptor_v1_t descriptor;
   akv_validation_error_e descriptor_error;
   logic descriptor_valid;
@@ -172,6 +175,23 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   logic [15:0] fill_tile_start_q;
   logic [6:0] fill_tile_count_q;
+
+  // Both callers have already checked start < kv_length at full address
+  // width. Keep the remaining-count arithmetic at the descriptor's 16 bits,
+  // and select the mode only after the two constant-limit comparisons.
+  function automatic logic [6:0] capped_tile_count(
+      input logic [15:0] remaining, input logic use_v2);
+    logic [6:0] v1_count, v2_count;
+    v1_count = remaining >= 16'(AkvTileTokens) ? 7'(AkvTileTokens) : 7'(remaining);
+    v2_count = remaining >= 16'(AkvV2TileTokens) ? 7'(AkvV2TileTokens) : 7'(remaining);
+    return use_v2 ? v2_count : v1_count;
+  endfunction
+
+  logic [15:0] refill_remaining, descriptor_remaining;
+  assign refill_remaining = 16'(prefix_sub65(context_kv_length_q,
+                                            16'(command_tile_start_i), 1'b0));
+  assign descriptor_remaining = 16'(prefix_sub65(descriptor.kv_length,
+                                                16'(requested_tile_start_q), 1'b0));
   logic [7:0] range_issue_index_q;
   logic [7:0] range_completion_count_q;
 
@@ -216,6 +236,11 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [AxiDataWidth-1:0] read_data;
   logic [AxiDataWidth/8-1:0] read_data_strb;
   logic [RangeBytesWidth-1:0] read_data_offset;
+
+  // Align the beat once; each descriptor byte has a fixed write enable.
+  assign descriptor_write_data = 512'(read_data) << (unsigned'(read_data_offset) * 8);
+  assign descriptor_write_mask = 64'(read_data_strb) << read_data_offset;
+
   akv_range_tag_t read_data_tag;
   logic read_completion_valid, read_completion_ready;
   akv_range_tag_t read_completion_tag;
@@ -913,14 +938,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                 v2_rejected_count_o <= 32'd1;
             end else begin
               fill_tile_count_q <=
-                  unsigned'(context_kv_length_q) -
-                          unsigned'(command_tile_start_i) >=
-                              (command_i == AKV_COMMAND_V2_REFILL
-                                   ? AkvV2TileTokens : AkvTileTokens)
-                      ? 7'(command_i == AKV_COMMAND_V2_REFILL
-                               ? AkvV2TileTokens : AkvTileTokens)
-                      : 7'(unsigned'(context_kv_length_q) -
-                           unsigned'(command_tile_start_i));
+                  capped_tile_count(refill_remaining, command_i == AKV_COMMAND_V2_REFILL);
             end
           end
           AKV_COMMAND_LOAD: begin
@@ -966,14 +984,11 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         descriptor_byte_valid_q <= '0;
       end else if (read_data_fire &&
                    read_data_tag.role == AKV_RANGE_DESCRIPTOR) begin
-        for (int unsigned byte_lane = 0;
-             byte_lane < AxiDataWidth / 8; byte_lane++) begin
-          automatic int unsigned descriptor_offset =
-              unsigned'(read_data_offset) + byte_lane;
-          if (read_data_strb[byte_lane] && descriptor_offset < 64) begin
-            descriptor_q[descriptor_offset*8 +: 8] <=
-                read_data[byte_lane*8 +: 8];
-            descriptor_byte_valid_q[descriptor_offset] <= 1'b1;
+        for (int unsigned byte_index = 0; byte_index < 64; byte_index++) begin
+          if (descriptor_write_mask[byte_index]) begin
+            descriptor_q[byte_index*8 +: 8] <=
+                descriptor_write_data[byte_index*8 +: 8];
+            descriptor_byte_valid_q[byte_index] <= 1'b1;
           end
         end
       end
@@ -992,14 +1007,7 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           context_v2_q <= active_command_q == AKV_COMMAND_V2_FULL;
           fill_tile_start_q <= 16'(requested_tile_start_q);
           fill_tile_count_q <=
-              unsigned'(descriptor.kv_length) -
-                      unsigned'(requested_tile_start_q) >=
-                          (active_command_q == AKV_COMMAND_V2_FULL
-                               ? AkvV2TileTokens : AkvTileTokens)
-                  ? 7'(active_command_q == AKV_COMMAND_V2_FULL
-                           ? AkvV2TileTokens : AkvTileTokens)
-                  : 7'(unsigned'(descriptor.kv_length) -
-                       unsigned'(requested_tile_start_q));
+              capped_tile_count(descriptor_remaining, active_command_q == AKV_COMMAND_V2_FULL);
           range_issue_index_q <= '0;
           range_completion_count_q <= '0;
         end else begin

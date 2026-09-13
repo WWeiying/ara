@@ -70,10 +70,16 @@ bind qbs_fp_accumulator qbs_fp_equivalence #(
     .NumAccumulators(NumAccumulators), .AccIndexWidth(AccIndexWidth))
     i_timing_equivalence (.*);
 
-module qbs_int_equivalence import qbs_pkg::*; (
+module qbs_int_equivalence import qbs_pkg::*; #(
+  parameter bit CompactRead = 1'b0
+) (
   input logic clk_i, rst_ni,
+  input logic buffer_read_valid_o,
+  input logic [7:0] buffer_read_k_base_o,
   input logic [7:0] weight_block_i [4][QbsMaxWeightBlockBytes],
   input logic [7:0] activation_block_i [4][QbsMaxActivationBlockBytes],
+  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   input logic start_valid_i, start_ready_o,
   input qbs_weight_profile_e start_profile_i,
   input qbs_activation_profile_e start_activation_profile_i,
@@ -104,6 +110,8 @@ module qbs_int_equivalence import qbs_pkg::*; (
   input logic [15:0] dot_active_cycles_o
 );
   logic ref_start_ready, ref_busy, ref_done, ref_result_valid;
+  logic ref_buffer_valid;
+  logic [7:0] ref_buffer_k;
   logic [3:0] ref_stream;
   logic [2:0] ref_context_base, ref_row_count;
   logic [5:0] ref_row_base;
@@ -123,7 +131,11 @@ module qbs_int_equivalence import qbs_pkg::*; (
   logic [7:0] ref_group_min [16];
   logic [31:0] ref_pairs, ref_capacity;
   logic [15:0] ref_active;
+  // Integrated compact-window decoding is checked against the full-block
+  // reference in qbs_sram_adapter_checker. This miter checks native inputs.
+  if (!CompactRead) begin : gen_native_miter
   qbs_profile_engine_int_reference i_reference (
+    .buffer_read_valid_o(ref_buffer_valid), .buffer_read_k_base_o(ref_buffer_k),
     .start_ready_o(ref_start_ready), .busy_o(ref_busy), .done_o(ref_done),
     .result_valid_o(ref_result_valid), .result_stream_o(ref_stream),
     .result_context_base_o(ref_context_base), .result_row_base_o(ref_row_base),
@@ -140,6 +152,9 @@ module qbs_int_equivalence import qbs_pkg::*; (
     .pair_capacity_o(ref_capacity), .dot_active_cycles_o(ref_active), .*
   );
   always @(negedge clk_i) if (rst_ni) begin
+    assert (buffer_read_valid_o === ref_buffer_valid &&
+        (!buffer_read_valid_o || buffer_read_k_base_o === ref_buffer_k))
+      else $fatal(1, "QBS integer read request mismatch");
     assert ({start_ready_o, busy_o, done_o, result_valid_o, decode_valid_o,
         group_valid_o, useful_pairs_o, pair_capacity_o, dot_active_cycles_o} ===
         {ref_start_ready, ref_busy, ref_done, ref_result_valid, ref_decode_valid,
@@ -167,6 +182,8 @@ module qbs_int_equivalence import qbs_pkg::*; (
           ref_group_scale[stream], ref_group_min[stream]})
         else $fatal(1, "QBS group %0d mismatch", stream);
   end
+  end
 endmodule
 
-bind qbs_profile_engine_int qbs_int_equivalence i_timing_equivalence (.*);
+bind qbs_profile_engine_int qbs_int_equivalence #(.CompactRead(CompactRead))
+    i_timing_equivalence (.*);

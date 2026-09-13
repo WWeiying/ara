@@ -33,7 +33,8 @@ module qbs_sram_adapter_tb;
   for (genvar bank = 0; bank < 2; bank++) begin : gen_adapter
     assign wpending[bank] = i_dut.weight_pending_q_valid;
     assign apending[bank] = i_dut.activation_pending_q_valid;
-    qbs_block_adapter #(.ActivationContextBase(bank * 4)) i_dut (
+    qbs_block_adapter #(.ActivationContextBase(bank * 4), .NativeView(1'b0)) i_dut (
+      .weight_window_o(), .activation_window_o(), .weight_side_o(), .activation_side_o(),
       .weight_write_ready_o(wready[bank]), .activation_write_ready_o(aready[bank]),
       .weight_write_valid_i(weight_write_valid_i && (&wready)),
       .activation_write_valid_i(activation_write_valid_i && (&aready)),
@@ -422,6 +423,8 @@ module qbs_sram_adapter_tb;
     weight_write_offset_i = 0;
     activation_write_offset_i = 0;
     for (int mask = 0; mask < 65536; mask++) begin
+      if ((mask % 4096) == 0)
+        $display("QBS SRAM strobe progress mask=%0d cycles=%0d time=%0t", mask, cycles, $time);
       clear_weight_i = 1;
       clear_activation_i = 1;
       weight_write_valid_i = 0;

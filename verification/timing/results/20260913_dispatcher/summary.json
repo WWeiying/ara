@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-13",
+  "scope": "dispatcher late backend-ready factoring; no added pipeline stage",
+  "git_head": "1b0aec5f8e12e662decd88ce66931420d7977d6c",
+  "before_is_dirty_worktree_snapshot": true,
+  "source_sha256": {
+    "hardware/src/ara_dispatcher.sv": "b32fd175fa62f71db3dc9dd784fa93844b243c970b8c23c41c4dde1889e1cb5f",
+    "hardware/timing_dispatch_20260913_RTu2k0/ara_dispatcher_before.sv": "3047c18bedec46567248db7d9613ea410acf9503f3548c2a14ab949ed087ce38",
+    "hardware/include/ara_pkg.sv": "b8c19fd33981290475ca29c28259ad08143ede4541fa3b1680257c73e44958b8",
+    "hardware/src/segment_sequencer.sv": "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7",
+    "verification/timing/dispatcher_equivalence_tb.sv": "1136a0f9fdc539e9275b933ea35ad037d23057abd7011ef2463782aebb45c73a",
+    "verification/timing/generate_dispatcher_check.py": "8905f211f0cca2d11d19d8566dfe20af48cf53de0bcd5714540c3f2528aafb3c",
+    "verification/timing/ara_dispatcher_timing.sv": "89635b356f0632bb013a0fcfcea8a959b39037b2b46e3a1bce121e3783acd1eb",
+    "verification/timing/run_payload_dc.py": "5f5e75dbe227a2c0f97e8846a61c1545dffae40f2dd048cc0323e391a8108a03",
+    "verification/timing/payload_dc.tcl": "7666ef88600c14368752badda6a560a250ed6ae7f1c0a553832ba0ecb8f9d503",
+    "verification/timing/Makefile": "c3a8db629c85fe0cbd9406b67738478041cce3fe325f3440d5bcb84309f01263"
+  },
+  "tests": [
+    {
+      "name": "check_full",
+      "features": [
+        "qbs",
+        "akv",
+        "akv_v2"
+      ],
+      "status": "PASS",
+      "checks": 67040,
+      "blocked_samples": 13478,
+      "accepted_requests": 25379,
+      "registered_state_groups": 70,
+      "visited_states": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "log": "hardware/timing_dispatch_20260913_RTu2k0/check_full/dispatcher/run.log"
+    },
+    {
+      "name": "check_rvv",
+      "features": [],
+      "status": "PASS",
+      "checks": 67040,
+      "blocked_samples": 13689,
+      "accepted_requests": 26028,
+      "registered_state_groups": 70,
+      "visited_states": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "log": "hardware/timing_dispatch_20260913_RTu2k0/check_rvv/dispatcher/run.log"
+    }
+  ],
+  "dc": {
+    "scope": "local dispatcher A/B, not SoC timing closure",
+    "period_ns": 1,
+    "setup_uncertainty_ns": 0.15,
+    "clock_gating_setup_ns": 0.2,
+    "elaboration": "PASS before/after",
+    "mapping": "RUNNING at handoff",
+    "before": "hardware/timing_dispatch_20260913_RTu2k0/dc_before_r2",
+    "after": "hardware/timing_dispatch_20260913_RTu2k0/dc_after_r2",
+    "worker_pids": [
+      2686836,
+      2686693
+    ]
+  },
+  "soc_regression": {
+    "status": "BUILDING at handoff; not a PASS result",
+    "worker_pid": 2695602,
+    "directory": "hardware/timing_dispatch_20260913_RTu2k0/rvv_regression",
+    "tests": [
+      "app:vsaxpy",
+      "rvv:vsetvli",
+      "rvv:vwiden_overlap_edges",
+      "rvv:vsegment_emul_edges",
+      "rvv:villegal_segment_recovery",
+      "rvv:vmask_mem_emul_edges"
+    ],
+    "features": [
+      "qbs",
+      "akv",
+      "akv_v2"
+    ],
+    "jobs": 2,
+    "timeout_per_test_seconds": 600
+  },
+  "claims": {
+    "formal_equivalence": false,
+    "cycle_equivalence_measured": true,
+    "soc_setup_closed": false,
+    "power_measured": false
+  }
+}

@@ -38,7 +38,7 @@ ifneq ($(sim_l2_mb),1)
   ifeq ($(mc),1)
     $(error simulation-only L2 expansion cannot be combined with mc=1)
   endif
-  ifneq ($(filter dc dc_flist dc_preflight sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
+  ifneq ($(filter dc dc_flist dc_preflight dc_locked dc_flist_locked dc_preflight_locked sram saif saif_all saif_ara,$(MAKECMDGOALS)),)
     $(error simulation-only L2 expansion cannot be used by synthesis, SRAM generation, or SAIF targets)
   endif
 endif
@@ -468,7 +468,21 @@ trace:
 	@./run/scripts/compare_traces.py -g ./run/log/ref_trace.log -d ./run/log/dut_trace.log -o ./run/log/diff_report
 	@head -n 20 ./run/log/diff_report
 
-dc_flist:
+DC_LOCK_SCRIPT := $(abspath $(ROOT_DIR)/../backend/syn/ara_soc/v1-dc/global_scripts/dc_lock.sh)
+DC_LOCK_FILE := $(abspath $(ROOT_DIR)/../backend/syn/ara_soc/v1-dc/run/.dc.lock)
+
+.PHONY: dc dc_flist dc_preflight dc_locked dc_flist_locked dc_preflight_locked dc_require_lock
+
+# Acquire before any shared file is generated; release only after collection.
+# Recursive make preserves command-line configuration, jobserver, and dry-run.
+dc dc_flist dc_preflight:
+	+@bash "$(DC_LOCK_SCRIPT)" "$(DC_LOCK_FILE)" $(MAKE) --no-print-directory \
+		-C "$(ROOT_DIR)" -f "$(ROOT_DIR)/Makefile" $@_locked
+
+dc_require_lock:
+	@bash "$(DC_LOCK_SCRIPT)" --check "$(DC_LOCK_FILE)"
+
+dc_flist_locked: | dc_require_lock
 	@echo "1.Generating dc flist"
 	@mkdir -p ../backend/flist
 	@$(BENDER) script --no-default-target verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
@@ -487,7 +501,7 @@ dc_flist:
 	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
 	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
 
-dc_preflight: dc_flist
+dc_preflight_locked: dc_flist_locked
 	@python3 scripts/akv/check-synthesis-preflight.py \
 		--filelist ../backend/flist/ara_soc_dc.f \
 		--sdc ../backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc \
@@ -498,10 +512,12 @@ dc_preflight: dc_flist
 		$(if $(filter 1,$(mc)),--require-macro-sram,) \
 		--nr-lanes $(nr_lanes) --vlen $(vlen)
 
-dc: dc_preflight
+dc_locked: dc_preflight_locked
 	@echo "2.Synthesis"
 	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
-	@if [ "$(mc)" = "1" ] && [ "$(qbs)" = "1" ] && [ "$(akv_v2)" = "1" ]; then \
+	@if [ "$${DC_ELAB_ONLY:-0}" = "1" ]; then \
+		echo "Elaboration only: no mapped PPA results to collect"; \
+	elif [ "$(mc)" = "1" ] && [ "$(qbs)" = "1" ] && [ "$(akv_v2)" = "1" ]; then \
 		python3 scripts/akv/collect-synthesis-results.py --mode integrated; \
 	else \
 		echo "AKV physical result collection skipped (requires mc=1 qbs=1 akv_v2=1)"; \

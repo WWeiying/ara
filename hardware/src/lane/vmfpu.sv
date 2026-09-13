@@ -1501,9 +1501,33 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   // Latency stall mechanism to ensure in-order FPU execution when needed
   // i.e. when issue insn has latency lower than processing insn latency
-  fpu_latency_t vinsn_issue_lat_d, vinsn_processing_lat_d;
+  fpu_latency_t queue_latency_d [VInsnQueueDepth];
+  logic [VInsnQueueDepth-1:0][VInsnQueueDepth-1:0] queue_latency_conflict_d;
+
+  // Decode queue entries in parallel; late issue/processing pointers select
+  // only a one-bit decision, not an instruction followed by operation decode.
+  for (genvar issue = 0; issue < VInsnQueueDepth; issue++) begin : gen_latency_issue
+    assign queue_latency_d[issue] = fpu_latency(
+        vinsn_queue_d.vinsn[issue].vtype.vsew, vinsn_queue_d.vinsn[issue].op);
+    for (genvar processing = 0; processing < VInsnQueueDepth;
+         processing++) begin : gen_latency_processing
+      assign queue_latency_conflict_d[issue][processing] =
+          (queue_latency_d[issue] < queue_latency_d[processing]) ||
+          (((vinsn_queue_d.vinsn[issue].op inside {[VMUL:VSMUL]}) &&
+            (vinsn_queue_d.vinsn[processing].op inside {[VMUL:VSMUL]}) &&
+            (vinsn_queue_d.vinsn[issue].vtype.vsew !=
+             vinsn_queue_d.vinsn[processing].vtype.vsew)) ||
+           (vinsn_queue_d.vinsn[issue].op inside {VFDIV, VFRDIV, VFSQRT}) ||
+           (vinsn_queue_d.vinsn[processing].op inside {VFDIV, VFRDIV, VFSQRT})) &&
+          (vinsn_queue_d.vinsn[issue].id != vinsn_queue_d.vinsn[processing].id);
+    end
+  end
   logic latency_stall, latency_transition_stall, fpnew_group_transition_stall;
   logic latency_problem_d, latency_problem_q;
+  // Keep pointer selection outside the process that writes those pointers:
+  // an unchanged matrix must still be reselected when only a pointer advances.
+  assign latency_problem_d = queue_latency_conflict_d[
+      vinsn_queue_d.issue_pnt][vinsn_queue_d.processing_pnt];
 
   always_comb begin: p_vmfpu
     // Maintain state
@@ -1552,25 +1576,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     fpu_red_complete_d = 1'b0;
 
-    // Get latencies
-    vinsn_issue_lat_d      = fpu_latency(vinsn_issue_d.vtype.vsew, vinsn_issue_d.op);
-    vinsn_processing_lat_d = fpu_latency(vinsn_processing_d.vtype.vsew, vinsn_processing_d.op);
-
     // fpnew allows out-of-order execution and different instruction
     // types have different latencies. We have to enforce in-order execution.
     // If we are about to issue an instruction while another one is processing,
     // issue only if the new instruction is slower than the previous one.
     // VFDIV-like instructions have variable latency, so stall them not to create
     // problems.
-    latency_problem_d = (vinsn_issue_lat_d < vinsn_processing_lat_d)            ||
-                        ((vinsn_issue_d.op inside {[VMUL:VSMUL]}) &&
-                         (vinsn_processing_d.op inside {[VMUL:VSMUL]}) &&
-                         (vinsn_issue_d.vtype.vsew != vinsn_processing_d.vtype.vsew) &&
-                         (vinsn_issue_d.id != vinsn_processing_d.id))            ||
-                        (((vinsn_issue_d.op    inside {VFDIV, VFRDIV, VFSQRT})  ||
-                        (vinsn_processing_d.op inside {VFDIV, VFRDIV, VFSQRT})) &&
-                        vinsn_issue_d.id != vinsn_processing_d.id);
-
     // latency_problem_q deliberately cuts the operation-decode path, but it is one cycle stale
     // when issue_pnt advances. Cover that transition cycle so a short-latency request cannot
     // overtake results of the instruction still selected by processing_pnt.
@@ -2061,14 +2072,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 // This result data is used, set valid to 0
                 first_result_op_valid_d = 1'b0;
                 intra_op_rx_cnt_en      = 1'b1;
-                operand_b               = result_queue_d[result_queue_write_pnt_q].wdata;
+                // A reduction forwards raw fpnew results. Estimate/comparison
+                // postprocessing belongs only to ordinary result writeback.
+                operand_b               = vfpu_result;
                 operands_valid          = 1'b1;
               end else begin
                 operands_valid = 1'b0;
               end
             end else if (first_result_op_valid_q && result_queue_valid_d[result_queue_write_pnt_q]) begin
               operand_a               = result_queue_q[result_queue_write_pnt_q].wdata;
-              operand_b               = result_queue_d[result_queue_write_pnt_q].wdata;
+              operand_b               = vfpu_result;
               operand_c               = result_queue_q[result_queue_write_pnt_q].wdata;
               operands_valid          = 1'b1;
               first_result_op_valid_d = 1'b0;
@@ -2811,6 +2824,28 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                  operand_a, operand_b, issue_be);
       end
     end
+  end
+`endif
+
+`ifndef SYNTHESIS
+  // Reductions own the FPU until commit; a forwarded response cannot require
+  // estimate/comparison postprocessing. Check the invariant on actual returns.
+  always @(posedge clk_i) if (rst_ni) begin
+    if (mfpu_state_q == INTRA_LANE_REDUCTION && vfpu_out_valid && !result_queue_full)
+      assert (is_reduction(vinsn_processing_q.op) &&
+              vfpu_result === vfpu_processed_result)
+        else $fatal(1, "VMFPU reduction feedback requires a raw reduction result");
+    assert (latency_problem_d ===
+        ((fpu_latency(vinsn_issue_d.vtype.vsew, vinsn_issue_d.op) <
+          fpu_latency(vinsn_processing_d.vtype.vsew, vinsn_processing_d.op)) ||
+         ((vinsn_issue_d.op inside {[VMUL:VSMUL]}) &&
+          (vinsn_processing_d.op inside {[VMUL:VSMUL]}) &&
+          (vinsn_issue_d.vtype.vsew != vinsn_processing_d.vtype.vsew) &&
+          (vinsn_issue_d.id != vinsn_processing_d.id)) ||
+         (((vinsn_issue_d.op inside {VFDIV, VFRDIV, VFSQRT}) ||
+           (vinsn_processing_d.op inside {VFDIV, VFRDIV, VFSQRT})) &&
+          (vinsn_issue_d.id != vinsn_processing_d.id))))
+      else $fatal(1, "VMFPU predecoded latency decision differs from original");
   end
 `endif
 

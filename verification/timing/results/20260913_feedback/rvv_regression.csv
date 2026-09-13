@@ -1,0 +1,15 @@
+name,kind,status,returncode,elapsed_s,reason,artifact_dir
+rvv:vfredusum,rvv,PASS,0,59.313010448997375,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredusum
+rvv:vfredosum,rvv,PASS,0,62.72477175400127,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredosum
+rvv:vfredmin,rvv,PASS,0,54.129302287998144,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredmin
+rvv:vfredmax,rvv,PASS,0,55.33493657200597,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfredmax
+rvv:vfwredusum,rvv,PASS,0,36.04344060100266,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfwredusum
+rvv:vfwredosum,rvv,PASS,0,37.346577015996445,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfwredosum
+rvv:vfrec7,rvv,PASS,0,27.501951384998392,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfrec7
+rvv:vfrsqrt7,rvv,PASS,0,17.77189306099899,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfrsqrt7
+rvv:vfdiv,rvv,PASS,0,37.442492913018214,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfdiv
+rvv:vfsqrt,rvv,PASS,0,19.78328370800591,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfsqrt
+rvv:vfmacc,rvv,PASS,0,38.34102906601038,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfmacc
+rvv:vfnmsac,rvv,PASS,0,37.93851607001852,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vfnmsac
+rvv:vwiden_overlap_edges,rvv,PASS,0,75.14812942201388,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/rvv_vwiden_overlap_edges
+app:vsaxpy,app,PASS,0,6.928197706001811,,/home/wangwy/openproject/ara_dsa/hardware/timing_feedback_20260913_x9goNT/rvv_r2/results/tests/app_vsaxpy

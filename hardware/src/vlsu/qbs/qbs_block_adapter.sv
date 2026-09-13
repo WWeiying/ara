@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: SHL-0.51
 
 module qbs_block_adapter import qbs_pkg::*; #(
-  parameter int unsigned ActivationContextBase = 0
+  parameter int unsigned ActivationContextBase = 0,
+  parameter bit NativeView = 1'b1
 ) (
   input  logic                    clk_i,
   input  logic                    rst_ni,
@@ -42,6 +43,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // Native-index view of the synchronous payload window, not a full block.
   output logic [7:0]              weight_block_o [4][QbsMaxWeightBlockBytes],
   output logic [7:0]              activation_block_o [4][QbsMaxActivationBlockBytes],
+  output logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  output logic [7:0] weight_side_o [4][20], activation_side_o [4][36],
   output logic [3:0]              weight_complete_o,
   output logic [3:0]              activation_complete_o,
   output logic                    all_weight_complete_o,
@@ -92,6 +95,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
   logic [31:0] weight_mask, activation_mask;
   logic [31:0] weight_consumed, activation_consumed;
   logic [31:0] weight_remaining, activation_remaining;
+  logic weight_pending_multiword, activation_pending_multiword;
   logic [1:0] weight_rows [32], activation_contexts [32];
   logic [7:0] weight_offsets [32];
   logic [8:0] activation_offsets [32];
@@ -101,10 +105,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // Only the pending slot determines ready. A noncontiguous input may leave
   // two words pending; drain one before accepting another beat in that case.
   assign weight_write_ready_o =
-      (!weight_pending_q_valid || !(|weight_remaining[15:0])) &&
+      (!weight_pending_q_valid || !weight_pending_multiword) &&
       !clear_weight_i && !weight_read_i;
   assign activation_write_ready_o =
-      (!activation_pending_q_valid || !(|activation_remaining[15:0])) &&
+      (!activation_pending_q_valid || !activation_pending_multiword) &&
       !clear_activation_i && !activation_read_i;
   assign weight_source[0] = weight_pending_q;
   assign activation_source[0] = activation_pending_q;
@@ -130,7 +134,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
     assign activation_offsets[b] = activation_target[b].offset;
   end
 
-  qbs_payload_buffer i_payload_buffer (
+  qbs_payload_buffer #(.NativeView(NativeView)) i_payload_buffer (
     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
@@ -139,8 +143,11 @@ module qbs_block_adapter import qbs_pkg::*; #(
     .weight_data_i({weight_source[1].data, weight_source[0].data}),
     .activation_data_i({activation_source[1].data, activation_source[0].data}),
     .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
+    .weight_pending_multiword_o(weight_pending_multiword),
+    .activation_pending_multiword_o(activation_pending_multiword),
     .weight_read_i, .activation_read_i, .read_k_i,
-    .weight_view_o(weight_block_o), .activation_view_o(activation_block_o)
+    .weight_view_o(weight_block_o), .activation_view_o(activation_block_o),
+    .weight_window_o, .activation_window_o, .weight_side_o, .activation_side_o
   );
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -216,6 +223,145 @@ module qbs_block_adapter import qbs_pkg::*; #(
   assign activation_duplicate_mask = overlapping_bytes(activation_consumed[15:0],
       activation_source_base[0], activation_source_base[1]);
 
+  // These views only permute existing valid bits into source byte order.
+  // Two 16-bit windows replace 32 independent full-block bit lookups.
+  localparam int WeightLinearBits = 4 * QbsMaxWeightBlockBytes;
+  localparam int ActivationLinearBits = QbsMaxM * QbsMaxActivationBlockBytes;
+  localparam int WeightWindowCount = (WeightLinearBits + 15) / 16;
+  localparam int ActivationWindowCount = (ActivationLinearBits + 15) / 16;
+  logic [WeightLinearBits-1:0] weight_valid_view [9];
+  logic [ActivationLinearBits-1:0] activation_valid_view [6];
+  logic [16*WeightWindowCount+15:0] weight_linear_valid;
+  logic [16*ActivationWindowCount+15:0] activation_linear_valid;
+  wire [31:0] weight_valid_window [WeightWindowCount];
+  wire [31:0] activation_valid_window [ActivationWindowCount];
+  logic [15:0] weight_seen [2], activation_seen [2];
+
+  for (genvar profile = 0; profile < 9; profile++) begin : gen_weight_valid_view
+    localparam int Bytes = qbs_weight_block_bytes(qbs_weight_profile_e'(profile + 1));
+    for (genvar index = 0; index < WeightLinearBits; index++) begin : gen_bit
+      if (index < 4 * Bytes) begin : gen_native
+        assign weight_valid_view[profile][index] = weight_byte_valid_q[index/Bytes][index%Bytes];
+      end else begin : gen_padding
+        assign weight_valid_view[profile][index] = 1'b0;
+      end
+    end
+  end
+
+  // Called only with elaboration constants. The result is a fixed wire index,
+  // including the context-wave filter, not a runtime divider or decoder.
+  function automatic int activation_valid_index(
+      input int index, block_bytes, scale_bytes, quant_bytes, contexts);
+    int ctx, offset, relative;
+    if (contexts == 1) begin
+      ctx = index / block_bytes;
+      offset = index % block_bytes;
+    end else if (index >= contexts * block_bytes) begin
+      return -1;
+    end else if (index < contexts * scale_bytes) begin
+      ctx = index / scale_bytes;
+      offset = index % scale_bytes;
+    end else if (index < contexts * (scale_bytes + quant_bytes)) begin
+      relative = index - contexts * scale_bytes;
+      ctx = relative % contexts;
+      offset = scale_bytes + relative / contexts;
+    end else begin
+      relative = index - contexts * (scale_bytes + quant_bytes);
+      ctx = (relative / 2) % contexts;
+      offset = scale_bytes + quant_bytes + (relative / (2 * contexts)) * 2 + relative % 2;
+    end
+    // A row-major request has a two-bit context index.
+    if ((contexts == 1 && ctx >= 4) || ctx < ActivationContextBase ||
+        ctx >= ActivationContextBase + 4) return -1;
+    return (ctx - ActivationContextBase) * QbsMaxActivationBlockBytes + offset;
+  endfunction
+
+  for (genvar profile = 0; profile < 2; profile++) begin : gen_activation_valid_view
+    localparam qbs_activation_profile_e Profile = qbs_activation_profile_e'(profile + 1);
+    for (genvar layout_index = 0; layout_index < 3; layout_index++) begin : gen_layout
+      localparam int Contexts = layout_index == 0 ? 1 : layout_index == 1 ? 4 : QbsMaxM;
+      for (genvar index = 0; index < ActivationLinearBits; index++) begin : gen_bit
+        localparam int NativeIndex = activation_valid_index(index,
+            qbs_activation_block_bytes(Profile), qbs_activation_scale_bytes(Profile),
+            qbs_activation_quant_bytes(Profile), Contexts);
+        if (NativeIndex >= 0) begin : gen_native
+          assign activation_valid_view[3*profile+layout_index][index] =
+              activation_byte_valid_q[NativeIndex/QbsMaxActivationBlockBytes]
+                                     [NativeIndex%QbsMaxActivationBlockBytes];
+        end else begin : gen_padding
+          assign activation_valid_view[3*profile+layout_index][index] = 1'b0;
+        end
+      end
+    end
+  end
+
+  always_comb begin
+    weight_linear_valid = '0;
+    case (weight_profile_i)
+      QBS_WEIGHT_PROFILE_Q4_K: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[0];
+      QBS_WEIGHT_PROFILE_Q6_K: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[1];
+      QBS_WEIGHT_PROFILE_Q4_0: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[2];
+      QBS_WEIGHT_PROFILE_Q5_K: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[3];
+      QBS_WEIGHT_PROFILE_Q3_K: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[4];
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[5];
+      QBS_WEIGHT_PROFILE_Q2_K: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[6];
+      QBS_WEIGHT_PROFILE_Q5_0: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[7];
+      QBS_WEIGHT_PROFILE_IQ4_NL: weight_linear_valid[WeightLinearBits-1:0] = weight_valid_view[8];
+      default: ;
+    endcase
+    activation_linear_valid = '0;
+    case (activation_profile_i)
+      QBS_ACTIVATION_PROFILE_Q8_K:
+        case (activation_layout_i)
+          QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED:
+            activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[1];
+          QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED:
+            activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[2];
+          default: activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[0];
+        endcase
+      QBS_ACTIVATION_PROFILE_Q8_0:
+        case (activation_layout_i)
+          QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED:
+            activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[4];
+          QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED:
+            activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[5];
+          default: activation_linear_valid[ActivationLinearBits-1:0] = activation_valid_view[3];
+        endcase
+      default: ;
+    endcase
+  end
+
+  for (genvar group_index = 0; group_index < WeightWindowCount; group_index++) begin : gen_weight_window
+    assign weight_valid_window[group_index] = weight_linear_valid[16*group_index +: 32];
+  end
+  for (genvar group_index = 0; group_index < ActivationWindowCount; group_index++) begin : gen_activation_window
+    assign activation_valid_window[group_index] = activation_linear_valid[16*group_index +: 32];
+  end
+  for (genvar slot = 0; slot < 2; slot++) begin : gen_seen_window
+    logic [12:0] activation_base;
+    // The mapping's default layout is row-major; preserve it for idle inputs.
+    assign activation_base = activation_source[slot].offset +
+        ((activation_layout_i inside {QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+                                      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}) ? 13'b0 :
+         13'(unsigned'(activation_source[slot].ctx) * qbs_activation_block_bytes(activation_profile_i)));
+    always_comb begin
+      weight_seen[slot] = '0;
+      activation_seen[slot] = '0;
+      if (weight_source_base[slot] < WeightLinearBits)
+        weight_seen[slot] = 16'(weight_valid_window[
+            weight_source_base[slot][4 +: $clog2(WeightWindowCount)]] >> weight_source_base[slot][3:0]);
+      if (activation_base < ActivationLinearBits)
+        activation_seen[slot] = 16'(activation_valid_window[
+            activation_base[4 +: $clog2(ActivationWindowCount)]] >> activation_base[3:0]);
+    end
+    for (genvar b = 0; b < 16; b++) begin : gen_new_byte
+      assign new_weight_mask[16*slot+b] = weight_target[16*slot+b].valid &&
+          !weight_seen[slot][b] && (slot == 0 || !weight_duplicate_mask[b]);
+      assign new_activation_mask[16*slot+b] = activation_target[16*slot+b].valid &&
+          !activation_seen[slot][b] && (slot == 0 || !activation_duplicate_mask[b]);
+    end
+  end
+
   // Complete each byte reduction before applying the live row/context count.
   // A response's row count can arrive through a late valid-qualified mux.
   always_comb begin : check_completion
@@ -263,7 +409,6 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // Mapping and duplicate detection precede SRAM arbitration. Counters below
   // advance only for bytes actually committed to payload or side storage.
   always_comb begin : map_weight_bytes
-    new_weight_mask = '0;
     for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
       automatic int unsigned source_offset =
           unsigned'(weight_source[beat_byte/16].offset) + (beat_byte % 16);
@@ -299,16 +444,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
                                        mapping_valid;
       weight_target[beat_byte].row = 2'(target_row);
       weight_target[beat_byte].offset = WeightOffsetWidth'(target_offset);
-      if (weight_target[beat_byte].valid) begin
-        new_weight_mask[beat_byte] = !weight_byte_valid_q[target_row][target_offset];
-        if (beat_byte >= 16)
-          new_weight_mask[beat_byte] &= !weight_duplicate_mask[beat_byte % 16];
-      end
     end
   end
 
   always_comb begin : map_activation_bytes
-    new_activation_mask = '0;
     for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
       automatic int unsigned source_offset =
           unsigned'(activation_source[beat_byte/16].offset) + (beat_byte % 16);
@@ -412,12 +551,6 @@ module qbs_block_adapter import qbs_pkg::*; #(
           mapping_valid && target_local_context < 4 && target_offset < block_bytes;
       activation_target[beat_byte].ctx = 2'(target_local_context);
       activation_target[beat_byte].offset = ActivationOffsetWidth'(target_offset);
-      if (activation_target[beat_byte].valid) begin
-        new_activation_mask[beat_byte] =
-            !activation_byte_valid_q[target_local_context][target_offset];
-        if (beat_byte >= 16)
-          new_activation_mask[beat_byte] &= !activation_duplicate_mask[beat_byte % 16];
-      end
     end
   end
 
@@ -428,53 +561,85 @@ module qbs_block_adapter import qbs_pkg::*; #(
       {1'b0, count_beat_bytes(new_activation_mask[15:0] & activation_consumed[15:0])} +
       {1'b0, count_beat_bytes(new_activation_mask[31:16] & activation_consumed[31:16])};
 
+  localparam int unsigned WeightValidGroups = (QbsMaxWeightBlockBytes + 15) / 16;
+  localparam int unsigned ActivationValidGroups = (QbsMaxActivationBlockBytes + 15) / 16;
+  logic [31:0] weight_valid_row [4], activation_valid_row [4];
+  logic [31:0] weight_valid_group [WeightValidGroups];
+  logic [31:0] activation_valid_group [ActivationValidGroups];
+  logic [31:0] weight_valid_byte [16], activation_valid_byte [16];
+
+  // Decode each writer once, then share row/group/byte selects. Repeating
+  // the full target comparison at every valid bit creates a large network.
+  for (genvar b = 0; b < 32; b++) begin : gen_valid_decode
+    wire weight_commit = (|weight_source_valid) && weight_consumed[b];
+    wire activation_commit = (|activation_source_valid) && activation_consumed[b];
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      assign weight_valid_row[row][b] = weight_commit && weight_target[b].row == 2'(row);
+      assign activation_valid_row[row][b] = activation_commit && activation_target[b].ctx == 2'(row);
+    end
+    for (genvar group_index = 0; group_index < WeightValidGroups; group_index++) begin : gen_weight_group
+      assign weight_valid_group[group_index][b] =
+          weight_target[b].offset[WeightOffsetWidth-1:4] == (WeightOffsetWidth-4)'(group_index);
+    end
+    for (genvar group_index = 0; group_index < ActivationValidGroups; group_index++) begin : gen_activation_group
+      assign activation_valid_group[group_index][b] =
+          activation_target[b].offset[ActivationOffsetWidth-1:4] == (ActivationOffsetWidth-4)'(group_index);
+    end
+    for (genvar byte_index = 0; byte_index < 16; byte_index++) begin : gen_byte
+      assign weight_valid_byte[byte_index][b] = weight_target[b].offset[3:0] == 4'(byte_index);
+      assign activation_valid_byte[byte_index][b] = activation_target[b].offset[3:0] == 4'(byte_index);
+    end
+  end
+
+  // All writers set 1, so their order is immaterial. Keep reset > set > clear.
+  for (genvar row = 0; row < 4; row++) begin : gen_byte_valid
+    for (genvar group_index = 0; group_index < WeightValidGroups; group_index++) begin : gen_weight
+      wire [31:0] group_hit = weight_valid_row[row] & weight_valid_group[group_index];
+      for (genvar byte_index = 0; byte_index < 16; byte_index++) begin : gen_byte
+        localparam int Index = 16*group_index + byte_index;
+        if (Index < QbsMaxWeightBlockBytes) begin : gen_valid
+          wire set_hit = |(group_hit & weight_valid_byte[byte_index]);
+          always_ff @(posedge clk_i or negedge rst_ni) begin
+            if (!rst_ni) weight_byte_valid_q[row][Index] <= 1'b0;
+            else if (set_hit) weight_byte_valid_q[row][Index] <= 1'b1;
+            else if (clear_weight_i) weight_byte_valid_q[row][Index] <= 1'b0;
+          end
+        end
+      end
+    end
+    for (genvar group_index = 0; group_index < ActivationValidGroups; group_index++) begin : gen_activation
+      wire [31:0] group_hit = activation_valid_row[row] & activation_valid_group[group_index];
+      for (genvar byte_index = 0; byte_index < 16; byte_index++) begin : gen_byte
+        localparam int Index = 16*group_index + byte_index;
+        if (Index < QbsMaxActivationBlockBytes) begin : gen_valid
+          wire set_hit = |(group_hit & activation_valid_byte[byte_index]);
+          always_ff @(posedge clk_i or negedge rst_ni) begin
+            if (!rst_ni) activation_byte_valid_q[row][Index] <= 1'b0;
+            else if (set_hit) activation_byte_valid_q[row][Index] <= 1'b1;
+            else if (clear_activation_i) activation_byte_valid_q[row][Index] <= 1'b0;
+          end
+        end
+      end
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       accepted_weight_bytes_o <= '0;
       accepted_activation_bytes_o <= '0;
-      for (int row = 0; row < 4; row++)
-        for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
-             byte_index++) begin
-          weight_byte_valid_q[row][byte_index] <= 1'b0;
-        end
-      for (int ctx = 0; ctx < 4; ctx++)
-        for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
-             byte_index++) begin
-          activation_byte_valid_q[ctx][byte_index] <= 1'b0;
-        end
     end else begin
       if (clear_weight_i) begin
         accepted_weight_bytes_o <= '0;
-        for (int row = 0; row < 4; row++)
-          for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes;
-               byte_index++)
-            weight_byte_valid_q[row][byte_index] <= 1'b0;
       end
       if (clear_activation_i) begin
         accepted_activation_bytes_o <= '0;
-        for (int ctx = 0; ctx < 4; ctx++)
-          for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes;
-               byte_index++)
-            activation_byte_valid_q[ctx][byte_index] <= 1'b0;
       end
 
       if (|weight_source_valid) begin
-        for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
-          if (weight_consumed[beat_byte]) begin
-            weight_byte_valid_q[weight_target[beat_byte].row][weight_target[beat_byte].offset]
-                <= 1'b1;
-          end
-        end
         accepted_weight_bytes_o <= accepted_weight_bytes_o + 32'(new_weight_bytes);
       end
 
       if (|activation_source_valid) begin
-        for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
-          if (activation_consumed[beat_byte]) begin
-            activation_byte_valid_q[activation_target[beat_byte].ctx]
-                                   [activation_target[beat_byte].offset] <= 1'b1;
-          end
-        end
         accepted_activation_bytes_o <= accepted_activation_bytes_o + 32'(new_activation_bytes);
       end
 
@@ -528,6 +693,16 @@ module qbs_block_adapter import qbs_pkg::*; #(
   end
 
 `ifndef SYNTHESIS
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      weight_write_ready_o ==
+      ((!weight_pending_q_valid || !(|weight_remaining[15:0])) &&
+       !clear_weight_i && !weight_read_i))
+    else $fatal(1, "QBS weight conflict detector changed ready");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      activation_write_ready_o ==
+      ((!activation_pending_q_valid || !(|activation_remaining[15:0])) &&
+       !clear_activation_i && !activation_read_i))
+    else $fatal(1, "QBS activation conflict detector changed ready");
   assert property (@(posedge clk_i) disable iff (!rst_ni)
       weight_source_valid[0] && (|weight_remaining[15:0]) |=>
       clear_weight_i || !(|weight_remaining[15:0]))

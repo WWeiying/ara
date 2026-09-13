@@ -13,6 +13,8 @@ SYNTH_CHECKER := $(abspath $(ROOT)/hardware/scripts/akv/check-synthesis-prefligh
 DC_SETUP := $(abspath $(ROOT)/backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.env)
 DC_FILELIST := $(abspath $(ROOT)/backend/flist/ara_soc_dc.f)
 RTL_RUN_TIMEOUT ?= 10800
+RTL_EXTRA_SOURCES ?=
+RTL_EXTRA_DEFINES ?=
 
 BENDER_TARGETS := --no-default-target -t rtl -t cv64a6_imafdcv_sv39 \
 	-t tech_cells_generic_include_tc_sram \
@@ -48,11 +50,11 @@ $(MACRO_FILELIST): $(ROOT)/Bender.yml Makefile
 	cd $(ROOT) && $(BENDER) script verilator $(BENDER_TARGETS) \
 		$(BENDER_DEFINES) > $(MACRO_FILELIST)
 
-rtl-compile: $(FILELIST) $(TB)
+rtl-compile: $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES)
 	cd $(BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
 		+lint=TFIPC-L -l compile.log \
-		-f $(FILELIST) $(TB) -top akv_engine_tb -o simv
+		$(RTL_EXTRA_DEFINES) -f $(FILELIST) $(TB) $(RTL_EXTRA_SOURCES) -top akv_engine_tb -o simv
 
 rtl-check: rtl-compile
 	cd $(BUILD) && timeout --foreground $(RTL_RUN_TIMEOUT) ./simv -l run.log

@@ -1,0 +1,286 @@
+{
+  "recorded_utc": "2026-09-13T08:38:51Z",
+  "head": "1b0aec5f8e12e662decd88ce66931420d7977d6c",
+  "working_tree_dirty": true,
+  "run_directory": "hardware/timing_closure_20260913_CnSzZc",
+  "baseline_full_dc_source_snapshot": "hardware/dc_runs/20260912_120931_ready_mul/source_manifest.json",
+  "baseline_qor": "backend/syn/ara_soc/v1-dc/reports/qor.rpt",
+  "baseline_clk_i": {
+    "period_ns": 1,
+    "setup_uncertainty_ns": 0.15,
+    "hold_uncertainty_ns": 0.075,
+    "gating_setup_ns": 0.2,
+    "wns_ns": -0.658,
+    "tns_ns": -27295.217,
+    "violating_paths": 81244,
+    "scope": "includes SRAM and clock-gating paths, not FF-to-FF only"
+  },
+  "added_pipeline_stages_this_change": 0,
+  "added_rtl_state_bits_this_change": 0,
+  "post_fix_integrated_synthesis": false,
+  "post_fix_global_wns_tns_not_yet_measured": true,
+  "local_dc_completed_before_close": {
+    "round_after": {
+      "state": "PASS",
+      "report_date_local": "2026-09-13 01:43:15",
+      "clk_i_setup_tns_ns": 0,
+      "clk_i_setup_violating_paths": 0,
+      "worst_ff_arrival_ns": 0.8327,
+      "worst_ff_required_ns": 0.8335,
+      "clk_i_hold_violating_paths": 78,
+      "clk_i_worst_hold_ns_rounded": -0.05,
+      "scope": "local wrapper only; before result pending, no improvement percentage claimed"
+    },
+    "mul_before": {
+      "state": "PASS",
+      "clk_i_setup_tns_ns": 0,
+      "scope": "pre-edit local wrapper already meets setup, not comparable to global violation magnitude"
+    }
+  },
+  "input_sha256": {
+    "hardware/include/ara_pkg.sv": "b8c19fd33981290475ca29c28259ad08143ede4541fa3b1680257c73e44958b8",
+    "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+    "hardware/src/lane/simd_alu.sv": "8d84858bd3dbb3baab5e2b12b8eb0c36cceb407373adee9dc0285ab8dfa962bc",
+    "hardware/src/vlsu/qbs/qbs_dot_array.sv": "411e0a1623c1b666467eba7f6bf084e027ff82a698c980e0ea981d398ab9c853",
+    "hardware/src/vlsu/addrgen.sv": "ba07eff509d12dba834d19b68695aaa7339818712c04b547961811012adec8d6",
+    "hardware/src/vlsu/akv/akv_engine.sv": "667bb13c9039c1e65d8c3197fc37c10852be3741ea1e0e7fd99a9a024fe0b5c5",
+    "hardware/deps/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v": "325b90c8d43008d905a56d32cc65d20c3f189ebe45fe37b7286591917647471a",
+    "hardware/patches/fpnew/vfdsu_round_prefix.patch": "e27e6f18e842ac781f5344b65e31d2f7072a95b79c375f85d84bad010b8d9dfd",
+    "verification/timing/datapath_equivalence_tb.sv": "6c607861e9beed0668a586f52e80d9cdb8c17841b555d480ff4569ace198271b",
+    "verification/timing/simd_mul_equivalence_tb.sv": "551b7db2edbb0c84508400364b2bd9d2ac147688eff904dcfb7ec36ea89c4ca7",
+    "verification/timing/addrgen_end_equivalence_tb.sv": "d617c13f12b2ec8f681cdc67b341a1b40520649f5199b90f2ba8d695374393cb",
+    "verification/timing/akv_count_equivalence_tb.sv": "61100e5d9a4928397be33e5f3aca603223271b3717cc713a7e5e1a82c1bf8c76",
+    "verification/timing/generate_closure_checks.py": "e4011a0df528a009ef754cef4b9a853d89c3ede785cc5397e18b2cae6a65899a",
+    "verification/timing/run_payload_dc.py": "ea33ddddd3e4200c977391680b5f5174b33e242167700cbeaa70c2d0a05a0ba6",
+    "verification/timing/payload_dc.tcl": "764228d0f5ca87dcd71df84252809bbe85a18bfc258ad01000ddcf4d65ad55a8",
+    "verification/timing/simd_alu_timing.sv": "90f13635b197ff9b872542d5a04d768d1c7dcf47d996c23b3c839052cd8da178",
+    "verification/timing/qbs_decode_dot_timing.sv": "f49a1e03c89cb7e97f87cf48b69c4c05ab427c588054e248c2d4f0be6ef1e7ed",
+    "verification/timing/Makefile": "47a66442fe4e1b188d193f34b9333ef557d0fff4524c1adfa8ca1245a60fd8f3"
+  },
+  "before_sha256": {
+    "hardware/timing_closure_20260913_CnSzZc/before/addrgen.sv": "4784706990ae61ff8dacc0ded3e982d505da2d3a66ad4f5d4c5867f107dafefc",
+    "hardware/timing_closure_20260913_CnSzZc/before/akv_engine.sv": "c70bcdf88d5ce4557bf6b233e6c0d165ee33f8fd2969e4c053ec9195761fc761",
+    "hardware/timing_closure_20260913_CnSzZc/before/ara_pkg.sv": "80a4763ba876c50ba48ee4f9e34c6457b53817d6cb19a303205c64f5498a7655",
+    "hardware/timing_closure_20260913_CnSzZc/before/ct_vfdsu_round.v": "9e3ba6079023f087b67ba18a20b31bf7a80784f8da9803a7903b0deb71cdb522",
+    "hardware/timing_closure_20260913_CnSzZc/before/qbs_dot_array.sv": "d107acb5c58f1094dee9b5c8309d88091308fc59197a431a7cc83ac8af91c8dc",
+    "hardware/timing_closure_20260913_CnSzZc/before/simd_alu.sv": "be02f437155ea39e59dffb4b336b8b684145a303dc0e5285ff43a292c14774b8",
+    "hardware/timing_closure_20260913_CnSzZc/before/simd_mul.sv": "13f4cb3d36cb260f92eca0113b667308009187048fd21b41d664ca4951ec511d"
+  },
+  "checks": {
+    "datapath": {
+      "status": "PASS",
+      "arithmetic_checks": 143970,
+      "dot_output_checks": 192000
+    },
+    "mul": {
+      "status": "PASS",
+      "configurations": 24,
+      "cycle_checks": 196296,
+      "independent_arithmetic_retirements": 84464
+    },
+    "addrgen": {
+      "status": "PASS",
+      "configurations": 12,
+      "comparisons": 144000
+    },
+    "akv_count": {
+      "status": "PASS",
+      "comparisons": 151168,
+      "range": "all 16-bit remaining counts plus high-address rejection and random legal/illegal starts"
+    },
+    "akv_engine": {
+      "status": "PASS",
+      "coverage": "v1 D64/D128; v2 D64/D96/D128/segmented D256, row/column, tails, counters, faults"
+    },
+    "vfdsu_round": {
+      "status": "PASS",
+      "cycles": 30000,
+      "outputs": 25
+    },
+    "qbs_profile": {
+      "status": "PASS",
+      "cases": 448
+    },
+    "qbs_engine": {
+      "status": "PASS",
+      "functional_cases": 33,
+      "fault_classes": 4,
+      "case_identity_and_cycles_equal_to_prior": true
+    }
+  },
+  "real_model_slices": [
+    {
+      "case": "q4_m4n32",
+      "profile": "q4_K",
+      "m": 4,
+      "n": 32,
+      "k": 1536,
+      "cycles": 7200,
+      "weight_bytes": 27648,
+      "activation_bytes": 7008,
+      "payload_bytes": 34672,
+      "ranges": 55,
+      "dot_cycles": 6144,
+      "prefetch_wait_cycles": 0
+    },
+    {
+      "case": "q4_m8n16",
+      "profile": "q4_K",
+      "m": 8,
+      "n": 16,
+      "k": 1536,
+      "cycles": 7638,
+      "weight_bytes": 13824,
+      "activation_bytes": 14016,
+      "payload_bytes": 27856,
+      "ranges": 31,
+      "dot_cycles": 6144,
+      "prefetch_wait_cycles": 0
+    },
+    {
+      "case": "q4_m7n16",
+      "profile": "q4_K",
+      "m": 7,
+      "n": 16,
+      "k": 1536,
+      "cycles": 7612,
+      "weight_bytes": 13824,
+      "activation_bytes": 14016,
+      "payload_bytes": 27856,
+      "ranges": 31,
+      "dot_cycles": 6144,
+      "prefetch_wait_cycles": 0
+    },
+    {
+      "case": "q6_m4n32",
+      "profile": "q6_K",
+      "m": 4,
+      "n": 32,
+      "k": 8960,
+      "cycles": 41939,
+      "weight_bytes": 235200,
+      "activation_bytes": 40880,
+      "payload_bytes": 276096,
+      "ranges": 316,
+      "dot_cycles": 35840,
+      "prefetch_wait_cycles": 0
+    },
+    {
+      "case": "q6_m8n16",
+      "profile": "q6_K",
+      "m": 8,
+      "n": 16,
+      "k": 8960,
+      "cycles": 44493,
+      "weight_bytes": 117600,
+      "activation_bytes": 81760,
+      "payload_bytes": 199376,
+      "ranges": 176,
+      "dot_cycles": 35840,
+      "prefetch_wait_cycles": 0
+    },
+    {
+      "case": "q6_m7n16",
+      "profile": "q6_K",
+      "m": 7,
+      "n": 16,
+      "k": 8960,
+      "cycles": 44479,
+      "weight_bytes": 117600,
+      "activation_bytes": 81760,
+      "payload_bytes": 199376,
+      "ranges": 176,
+      "dot_cycles": 35840,
+      "prefetch_wait_cycles": 0
+    }
+  ],
+  "real_model_comparison": {
+    "baseline_directory": "hardware/timing_ready_20260912_kF6fVT",
+    "q4_m4n32_cycles_and_traffic_equal": true,
+    "q6_m4n32_cycles_and_traffic_equal": true,
+    "other_four_slices": "PASS; no immediate pre-edit measurements archived for these shapes"
+  },
+  "qbs_case_lines": [
+    "QBS end-to-end case 0 PASS profile=1 M=1 N=5 Kb=2 layouts=1/1 cycles=302",
+    "QBS end-to-end case 1 PASS profile=1 M=4 N=7 Kb=2 layouts=2/2 cycles=864",
+    "QBS end-to-end case 2 PASS profile=2 M=3 N=3 Kb=2 layouts=1/1 cycles=529",
+    "QBS end-to-end case 3 PASS profile=2 M=4 N=8 Kb=3 layouts=2/2 cycles=1272",
+    "QBS end-to-end case 4 PASS profile=1 M=1 N=9 Kb=3 layouts=2/1 cycles=547",
+    "QBS end-to-end case 5 PASS profile=3 M=1 N=5 Kb=3 layouts=1/1 cycles=156",
+    "QBS end-to-end case 6 PASS profile=3 M=4 N=7 Kb=4 layouts=2/2 cycles=414",
+    "QBS end-to-end case 7 PASS profile=3 M=1 N=1 Kb=65 layouts=1/1 cycles=1389",
+    "QBS end-to-end case 8 PASS profile=4 M=1 N=5 Kb=2 layouts=1/1 cycles=318",
+    "QBS end-to-end case 9 PASS profile=4 M=4 N=7 Kb=3 layouts=2/2 cycles=1269",
+    "QBS end-to-end case 10 PASS profile=5 M=1 N=5 Kb=2 layouts=1/1 cycles=284",
+    "QBS end-to-end case 11 PASS profile=5 M=4 N=7 Kb=3 layouts=2/2 cycles=1185",
+    "QBS end-to-end case 12 PASS profile=6 M=1 N=5 Kb=3 layouts=1/1 cycles=161",
+    "QBS end-to-end case 13 PASS profile=6 M=4 N=7 Kb=4 layouts=2/2 cycles=418",
+    "QBS end-to-end case 14 PASS profile=1 M=2 N=3 Kb=2 layouts=2/1 cycles=338",
+    "QBS end-to-end case 15 PASS profile=3 M=3 N=5 Kb=3 layouts=2/1 cycles=246",
+    "QBS end-to-end case 16 PASS profile=7 M=1 N=5 Kb=2 layouts=1/1 cycles=278",
+    "QBS end-to-end case 17 PASS profile=7 M=4 N=7 Kb=3 layouts=2/2 cycles=1200",
+    "QBS end-to-end case 18 PASS profile=8 M=1 N=5 Kb=3 layouts=1/1 cycles=158",
+    "QBS end-to-end case 19 PASS profile=8 M=4 N=7 Kb=4 layouts=2/2 cycles=415",
+    "QBS end-to-end case 20 PASS profile=9 M=1 N=5 Kb=3 layouts=1/1 cycles=156",
+    "QBS end-to-end case 21 PASS profile=9 M=4 N=7 Kb=4 layouts=2/2 cycles=414",
+    "QBS end-to-end case 22 PASS profile=1 M=5 N=15 Kb=1 layouts=2/3 cycles=946",
+    "QBS end-to-end case 23 PASS profile=2 M=8 N=16 Kb=1 layouts=2/3 cycles=1347",
+    "QBS end-to-end case 24 PASS profile=1 M=6 N=11 Kb=1 layouts=2/3 cycles=860",
+    "QBS end-to-end case 25 PASS profile=2 M=7 N=13 Kb=1 layouts=2/3 cycles=1306",
+    "QBS end-to-end case 26 PASS profile=4 M=8 N=9 Kb=1 layouts=2/3 cycles=1048",
+    "QBS end-to-end case 27 PASS profile=5 M=5 N=16 Kb=1 layouts=2/3 cycles=926",
+    "QBS end-to-end case 28 PASS profile=6 M=8 N=7 Kb=1 layouts=2/3 cycles=246",
+    "QBS end-to-end case 29 PASS profile=3 M=6 N=12 Kb=1 layouts=2/3 cycles=296",
+    "QBS end-to-end case 30 PASS profile=7 M=7 N=15 Kb=1 layouts=2/3 cycles=1319",
+    "QBS end-to-end case 31 PASS profile=8 M=8 N=16 Kb=1 layouts=2/3 cycles=471",
+    "QBS end-to-end case 32 PASS profile=9 M=5 N=11 Kb=1 layouts=2/3 cycles=243"
+  ],
+  "local_dc_at_recording": {
+    "mul_before": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:19:37.142709+00:00",
+      "pid": 2564205
+    },
+    "mul_after": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:26:18.935141+00:00",
+      "pid": 2582297
+    },
+    "alu_before": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:19:37.481037+00:00",
+      "pid": 2564379
+    },
+    "alu_after": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:26:19.247403+00:00",
+      "pid": 2582444
+    },
+    "dot_before_fixed": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:22:14.527496+00:00",
+      "pid": 2572017
+    },
+    "dot_after": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:26:19.560164+00:00",
+      "pid": 2582537
+    },
+    "round_before": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:28:09.510462+00:00",
+      "pid": 2586306
+    },
+    "round_after": {
+      "state": "RUNNING",
+      "started": "2026-09-13T08:28:09.823498+00:00",
+      "pid": 2586368
+    }
+  },
+  "local_dc_scope": "matched local register-boundary experiments; QBS decode/dot excludes SRAM access and routing; no integrated PPA claim",
+  "remaining_global_paths": [
+    "CVA6 LSU/MMU -> VLSU AddrGen ack -> sequencer -> dispatcher -> CVA6 scoreboard ICG feedback",
+    "other div/sqrt SRT paths require new timing report",
+    "hold violations and physical clock/routing effects not closed here"
+  ]
+}
