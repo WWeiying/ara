@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('synth', 'impl')][string]$Stage = 'synth',
+    [ValidateSet('synth', 'impl', 'inspect')][string]$Stage = 'synth',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat',
     [string]$RunRoot
 )
@@ -54,20 +54,26 @@ try {
     $fingerprint = Get-InputFingerprint $root
     $latest = Join-Path $stateDir 'latest_synth.json'
     $parent = '-'
-    if ($Stage -eq 'impl') {
+    if ($Stage -in @('impl', 'inspect')) {
         if (!(Test-Path -LiteralPath $latest)) { throw 'Run this script with -Stage synth successfully first.' }
         $record = Get-Content -Raw -LiteralPath $latest | ConvertFrom-Json
-        if ($record.Project -ne $project -or $record.InputHash -ne $fingerprint) {
+        if ($record.Project -ne $project -or ($Stage -eq 'impl' -and $record.InputHash -ne $fingerprint)) {
             throw 'Inputs/project changed since the recorded synthesis. Run -Stage synth again.'
         }
         $parent = $record.Run
         if ($parent -notmatch '^synth_[0-9a-f]{12}$') { throw 'Invalid recorded synthesis run' }
+        if ($Stage -eq 'inspect') {
+            Write-Host "INSPECT existing netlist $parent with current constraints; this does not validate new RTL."
+        }
     }
     if (!$RunRoot) { $RunRoot = Join-Path ([IO.Path]::GetPathRoot($root)) 'fpga_runs' }
     $token = [Guid]::NewGuid().ToString('N').Substring(0, 12)
     $session = Join-Path $RunRoot ("ara_" + (Get-Date -Format yyyyMMdd_HHmmss) + "_$token")
     New-Item -ItemType Directory -Path $session | Out-Null
     $session = (Resolve-Path -LiteralPath $session).Path
+    if ($Stage -eq 'inspect') {
+        Copy-Item -LiteralPath $latest -Destination (Join-Path $session 'inspected_synth.json')
+    }
     Copy-Item -LiteralPath $project -Destination (Join-Path $session 'project_before.xpr')
     Write-Host "Project: $project"
     Write-Host "Stage: $Stage; results: $session"
@@ -87,6 +93,14 @@ try {
         $temp = Join-Path $stateDir "latest_$token.tmp"
         $record | ConvertTo-Json | Set-Content -LiteralPath $temp -Encoding UTF8
         Move-Item -LiteralPath $temp -Destination $latest -Force
+    }
+    if ($Stage -eq 'inspect') {
+        $reportDir = Join-Path $root "reports/$run"
+        New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+        @{ InspectedSynthesis = $record; CurrentInputHash = $fingerprint;
+           Run = $run; Directory = $session; Mode = 'old netlist, current constraints' } |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $reportDir 'inspection.json') -Encoding UTF8
     }
     Write-Host "SUCCESS: $run; results: $session"
 } finally {

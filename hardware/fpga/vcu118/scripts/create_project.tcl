@@ -35,8 +35,7 @@ add_files -fileset constrs_1 -norecurse [file join $package_root constraints boa
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints timing.xdc]
 set cdc [file join $package_root constraints cdc.xdc]
 add_files -fileset constrs_1 -norecurse $cdc
-set_property USED_IN_SYNTHESIS false [get_files $cdc]
-set_property PROCESSING_ORDER LATE [get_files $cdc]
+configure_package_constraints
 file mkdir [file join $package_root reports]
 report_ip_status -file [file join $package_root reports ip_status.rpt]
 puts "Created: $xpr_path"

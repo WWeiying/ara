@@ -113,9 +113,12 @@ class PackageTests(unittest.TestCase):
 
     def test_managed_run_scripts_match_templates(self):
         templates = Path(__file__).resolve().parents[1] / "scripts"
-        for name in ("run.ps1", "run.tcl", "run_support.tcl"):
+        for name in ("run.ps1", "run.tcl", "run_support.tcl", "common.tcl",
+                     "create_project.tcl", "impl.tcl"):
             self.assertEqual((ROOT / "scripts" / name).read_bytes(),
                              (templates / name).read_bytes(), name)
+        self.assertEqual((ROOT / "constraints/cdc.xdc").read_bytes(),
+                         (templates.parent / "constraints/cdc.xdc").read_bytes())
 
     def test_generated_files_ignored(self):
         ignored = (

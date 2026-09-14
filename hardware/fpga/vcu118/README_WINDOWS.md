@@ -116,6 +116,7 @@ powershell -NoProfile -File scripts/run.ps1 -Stage impl
 - 成功后记录输入文件指纹。`-Stage impl` 只使用记录的成功综合，源码变化或综合过期时拒绝实现。
   原有自定义 Tcl hook 必须先审查，避免 hook 写回旧目录或修改共享 IP。
 - 实现只运行到布线并生成报告，setup/hold 失败则返回错误，**不自动生成或下载 bitstream**。
+  布局布线前和布线后检查 `LUTLP-1` 组合环；存在环路则停止，不添加环路豁免。
   审查 DRC、CDC 和未约束路径后再处理 bitstream；原 `output/` 的旧文件不是本次结果。
 
 运行期间保持终端打开，不要通过 GUI/其他脚本同时操作该工程，也不要更新源码。
@@ -126,6 +127,44 @@ powershell -NoProfile -File scripts/run.ps1 -Stage impl
 控制流程已用 Tcl/PowerShell 测试替身验证，并非 Windows Vivado 实测。
 独立 run 的 `launch_runs -dir` 语义见
 [AMD UG835](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/launch_runs)。
+
+### 只检查已有综合：不重新综合或生成 IP
+
+已有 `build/managed/latest_synth.json` 时，更新工程包、关闭 Vivado GUI，
+在 PowerShell 中执行：
+
+```powershell
+cd D:/project/ara/hardware/fpga/ara_dsa_vcu118
+powershell -NoProfile -File scripts/run.ps1 -Stage inspect
+```
+
+入口仍使用原 XPR 和已完成的综合 DCP，不创建或启动任何 run，不重建三个 IP。
+新报告写入 `reports/inspect_<唯一标识>/`，原综合报告和 `latest_synth.json` 不覆盖。
+报告包含 `loop_cells.rpt`（环路 LUT 的 INIT、引脚及驱动连接）、`loops.rpt`、
+`setup_paths.rpt`、`ignored_exceptions.rpt` 和原有资源、时序、CDC、DRC 报告。
+`inspection.json` 同时记录旧综合输入指纹和当前输入指纹，提交报告时一并保留。
+
+此模式允许源码已更新，但分析的是**旧综合网表加当前约束**，不验证新的 RTL，
+也不使旧综合重新满足 `-Stage impl` 的输入一致性检查。
+检查完成后提交该目录的文本报告即可，不需要上传 DCP、XPR 或 IP 目录。
+`reports/` 仍默认忽略；确认本次报告后，可显式加入：
+
+```powershell
+git add -f -- 'reports/inspect_*/*.rpt' 'reports/inspect_*/inspection.json'
+git diff --cached --stat
+```
+
+脚本会自动将原 XPR 中的 `constraints/cdc.xdc` 设置为 `FILE_TYPE TCL`，
+以支持 Vivado 2020.1 的 Tcl 控制流，并在 IP 时钟约束之后加载。
+五个 AXI CDC FIFO 分别约束数据接收寄存器和双向 Gray 指针第一级同步器，
+保持 3 ns `set_max_delay -datapath_only` 上限，不使用整个跨域模块的批量 `-through`。
+查不到预期端点或时钟时明确停止；不要用全局 false path 掩盖这些错误。
+已有 XPR 应通过上述脚本迁移属性，单击 GUI Run 不会自动执行该迁移。
+同步工具即使提示工程配置改变，本次更新也不需要重新创建工程或 IP。
+文件类型设置依据 [AMD UG903](https://docs.amd.com/r/2023.1-English/ug903-vivado-using-constraints/About-XDC-Constraints)。
+
+这些修复已经通过离线控制流程测试，但仍需用本机 Vivado 检查实际端点匹配和约束效果。
+现有报告的问题清单见 `docs/FPGA_ISSUES.md`。
 
 ## 2. 固定配置
 
@@ -185,7 +224,10 @@ VIO 的 `probe_out0` 为复位，`probe_out1` 为两位启动模式，`probe_out
 ## 5. 当前完成度与后续顺序
 
 本包的验收范围是“离线、无软链接的 FPGA 工程输入”，并进行源码/接口静态检查。
-**尚未证明** Vivado 综合通过、布局布线收敛、DDR 上板校准、Linux 启动或端到端模型运行。
+2026-09-14 的 Windows Vivado 2020.1 报告证明旧快照 `synth_67f8334f3965` 综合完成，
+但同时存在组合环、失效的 CDC 约束和时序违例；不是可上板的验收结果。
+本次约束及脚本更新尚未经过 Vivado 实测，布局布线收敛、DDR 上板校准、Linux 启动
+或端到端模型运行也**尚未证明**。
 具体静态检查记录见 `docs/VALIDATION.md`，不要把静态 elaboration 当成 FPGA 功能验证。
 
 建议逐步验证：

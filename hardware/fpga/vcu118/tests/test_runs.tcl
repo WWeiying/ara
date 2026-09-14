@@ -54,7 +54,7 @@ proc get_property {key object} {
         DIRECTORY { return [file join $::session old $object] }
         NEEDS_REFRESH {
             return [expr {($::scenario eq "stale_ip" && $object eq "vio_synth_1") ||
-                ($::scenario eq "stale_parent" && $object eq $::parent)}]
+                ($::scenario in {stale_parent inspect_stale} && $object eq $::parent)}]
         }
         IS_LOCKED { return [expr {$::scenario eq "locked_ip" && $object eq "vio"}] }
         STATUS {
@@ -102,8 +102,15 @@ proc launch_runs {name args} {
 rename after real_after
 proc after {args} { assert {[lindex $args 0] == 5000} "bounded monitor interval" }
 proc open_run {name} {}
-proc write_reports {name} { set ::reported $name }
+proc write_reports {name {reject_loops false}} {
+    set ::reported $name
+    if {$::scenario eq "route_loop" && $reject_loops} { error "Combinational loops remain" }
+}
 proc close_project {} { set ::closed 1 }
+proc close_design {} {}
+proc require_no_combinational_loops {dir} {
+    if {$::scenario eq "loop"} { error "Combinational loops remain" }
+}
 proc get_timing_paths {args} {
     if {$::scenario eq "no_timing"} { return {} }
     return path
@@ -116,26 +123,32 @@ foreach forbidden {reset_runs delete_runs generate_target create_ip_run upgrade_
 set failures 0
 foreach scenario {healthy quiet_phase missing_run missing_ip incomplete_ip stale_ip locked_ip
     missing_dcp empty_dcp hook existing_dir launcher_error error_marker crash failed_status
-    implementation stale_parent bad_timing no_timing} {
+    implementation stale_parent bad_timing no_timing loop route_loop inspect inspect_stale} {
     setup $scenario
     set stage synth
     set use_parent -
-    if {$scenario in {implementation stale_parent bad_timing no_timing}} {
+    if {$scenario in {implementation stale_parent bad_timing no_timing loop route_loop}} {
         set stage impl
         set use_parent $parent
     }
+    if {$scenario in {inspect inspect_stale}} { set stage inspect; set use_parent $parent }
     set code [catch {fpga_run::execute $stage $session $token $use_parent} message]
-    set success [expr {$scenario in {healthy quiet_phase implementation}}]
+    set success [expr {$scenario in {healthy quiet_phase implementation inspect inspect_stale}}]
     if {[catch {
         assert {$code == !$success} "$scenario: unexpected result ($message)"
         assert {[llength $launched] <= 1} "only one run launched"
         assert {[file exists [file join $session completed_run.txt]] == $success} "completion marker"
         assert {[file exists [file join $session old synth_1 exception.log]]} "old artifacts preserved"
-        if {$success} {
+        if {$success && $stage ne "inspect"} {
             assert {[dict get $copied STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY] eq "none"} "options copied"
             assert {[dict get $launch_args -dir] eq $session} "fresh output directory"
             assert {$reported eq "${stage}_$token" && $closed} "reports and clean close"
         }
+        if {$stage eq "inspect"} {
+            assert {![llength $created] && ![llength $launched]} "inspection must not create/launch runs"
+            assert {$reported eq "inspect_$token" && $closed} "inspection writes separate reports"
+        }
+        if {$scenario eq "loop"} { assert {![llength $launched]} "block implementation before launch" }
         if {$scenario eq "implementation"} {
             assert {[dict get $args_seen -parent_run] eq $parent} "new implementation uses recorded synthesis"
             assert {[dict get $launch_args -to_step] eq "route_design"} "route-only implementation"

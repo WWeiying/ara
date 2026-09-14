@@ -17,7 +17,7 @@ function Assert([bool]$Condition, [string]$Message) {
 function Invoke-TestRun([string]$Stage = 'synth') {
     & (Join-Path $global:FakePackage 'scripts/run.ps1') -Vivado $fake -RunRoot (Join-Path $base 'runs') -Stage $Stage
 }
-foreach ($case in @('healthy', 'repeat_synth', 'existing_process', 'held_lock', 'child_error', 'missing_marker', 'mutated_input', 'stale_input')) {
+foreach ($case in @('healthy', 'repeat_synth', 'inspect', 'inspect_stale', 'inspect_wrong_project', 'existing_process', 'held_lock', 'child_error', 'missing_marker', 'mutated_input', 'stale_input')) {
     $global:FakePackage = Join-Path $base $case
     $global:FakeCase = 'healthy'
     $global:FakeCalls = 0
@@ -43,19 +43,35 @@ foreach ($case in @('healthy', 'repeat_synth', 'existing_process', 'held_lock', 
         if ($case -eq 'held_lock') {
             $held = [IO.File]::Open((Join-Path $global:FakePackage 'build/managed/run.lock'), 'Open', 'ReadWrite', 'None')
         }
-        if ($case -eq 'stale_input') {
+        if ($case -in @('stale_input', 'inspect_stale')) {
             Add-Content -LiteralPath (Join-Path $global:FakePackage 'rtl/core.sv') -Value '// new revision'
+        }
+        if ($case -eq 'inspect_wrong_project') {
+            $record.Project = 'different.xpr'
+            $record | ConvertTo-Json | Set-Content -LiteralPath $latest
+            $saved = Get-Content -Raw -LiteralPath $latest
         }
         $caught = ''
         try {
-            if ($case -in @('healthy', 'stale_input')) { Invoke-TestRun impl } else { Invoke-TestRun }
+            if ($case -in @('healthy', 'stale_input')) { Invoke-TestRun impl }
+            elseif ($case -in @('inspect', 'inspect_stale', 'inspect_wrong_project')) { Invoke-TestRun inspect }
+            else { Invoke-TestRun }
         } catch { $caught = $_.ToString() }
-        if ($case -in @('healthy', 'repeat_synth')) {
+        if ($case -in @('healthy', 'repeat_synth', 'inspect', 'inspect_stale')) {
             Assert (!$caught) "implementation failed: $caught"
             if ($case -eq 'healthy') {
                 Assert ($global:FakeParent -eq $record.Run) 'implementation must use recorded parent'
             }
             Assert ($global:FakeSession -ne $oldSession) 'run directories must differ'
+            if ($case -in @('inspect', 'inspect_stale')) {
+                Assert ($global:FakeParent -eq $record.Run) 'inspect must use the recorded OLD netlist'
+                $inspected = Get-Content -Raw (Join-Path $global:FakeSession 'inspected_synth.json') | ConvertFrom-Json
+                Assert ($inspected.InputHash -eq $record.InputHash) 'preserve inspected input provenance'
+                $inspectionRun = (Get-Content -Raw (Join-Path $global:FakeSession 'completed_run.txt')).Trim()
+                $provenance = Get-Content -Raw (Join-Path $global:FakePackage "reports/$inspectionRun/inspection.json") | ConvertFrom-Json
+                Assert ($provenance.InspectedSynthesis.InputHash -eq $record.InputHash) 'reports carry original synthesis fingerprint'
+                Assert (($provenance.CurrentInputHash -ne $record.InputHash) -eq ($case -eq 'inspect_stale')) 'distinguish changed inputs from inspected netlist'
+            }
         } else {
             $expected = @{
                 existing_process = 'Vivado processes already exist'
@@ -64,6 +80,7 @@ foreach ($case in @('healthy', 'repeat_synth', 'existing_process', 'held_lock', 
                 missing_marker = 'completed_run.txt'
                 mutated_input = 'Inputs changed during the run'
                 stale_input = 'Inputs/project changed'
+                inspect_wrong_project = 'Inputs/project changed'
             }
             Assert ($caught.Contains($expected[$case])) "$case returned the wrong error: $caught"
         }
@@ -74,7 +91,7 @@ foreach ($case in @('healthy', 'repeat_synth', 'existing_process', 'held_lock', 
             Assert ($updated -eq $saved) 'do not overwrite synthesis record on failure/implementation'
         }
         Assert (Test-Path (Join-Path $oldSession 'completed_run.txt')) 'old completed work must survive'
-        if ($case -in @('existing_process', 'held_lock', 'stale_input')) {
+        if ($case -in @('existing_process', 'held_lock', 'stale_input', 'inspect_wrong_project')) {
             Assert ($global:FakeCalls -eq 1) 'preflight must not launch Vivado'
         }
     } finally { if ($null -ne $held) { $held.Dispose() } }

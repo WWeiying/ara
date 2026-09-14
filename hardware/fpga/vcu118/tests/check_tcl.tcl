@@ -13,7 +13,7 @@ proc get_param {name} { return $::params($name) }
 proc set_param {name value} { set ::params($name) $value }
 proc get_parts {args} { return [lindex $args end] }
 proc get_board_parts {args} { return [lindex $args end] }
-proc set_property {args} {}
+proc set_property {key value object} { dict set ::properties $object $key $value }
 proc get_property {name args} {
     switch $name {
         PERIOD { return 3.333 }
@@ -55,7 +55,7 @@ proc create_ip_run {objects} {
     if {[lsearch -exact $::mock_ip_runs $name] >= 0} { error "Duplicate IP run: $name" }
     lappend ::mock_ip_runs $name
 }
-proc get_files {args} { return $args }
+proc get_files {args} { return [lindex $args end] }
 proc report_ip_status {args} {}
 proc get_ports {args} { return [lindex $args end] }
 proc get_nets {args} { return mock_net }
@@ -88,5 +88,14 @@ if {[llength $mock_sources] != [expr {[llength $rtl_files] + 3}]} { error "Sourc
 if {[llength [lsort -unique $rtl_files]] != [llength $rtl_files]} { error "Duplicate file" }
 if {[lsearch -exact $rtl_defines ARA_QBS_ENABLE=1] < 0} { error "QBS disabled" }
 if {[lsearch -exact $rtl_defines ARA_AKV_V2_ENABLE=1] < 0} { error "AKV-v2 disabled" }
-foreach path [glob $root/constraints/*.xdc] { source $path }
+foreach path [glob $root/constraints/*.xdc] {
+    if {[file tail $path] ne "cdc.xdc"} { source $path }
+}
+set cdc [file join $root constraints cdc.xdc]
+if {[dict get $properties $cdc FILE_TYPE] ne "TCL" ||
+    [dict get $properties $cdc USED_IN_SYNTHESIS] ne "false" ||
+    [dict get $properties $cdc PROCESSING_ORDER] ne "LATE"} {
+    error "CDC must be loaded as implementation-only unmanaged Tcl after IP clocks"
+}
+puts [exec [info nameofexecutable] [file join [file dirname [info script]] test_cdc.tcl] $root]
 puts "PASS: Tcl syntax, create-project command path, source list, per-IP synthesis run creation"

@@ -86,17 +86,35 @@ proc fpga_run::wait_checked {name expected dir} {
 }
 
 proc fpga_run::execute {stage session token parent} {
-    global project_name max_threads
-    if {$stage ni {synth impl} || ![regexp {^[0-9a-f]{12}$} $token]} {
+    global project_name max_threads package_root
+    if {$stage ni {synth impl inspect} || ![regexp {^[0-9a-f]{12}$} $token]} {
         error "Invalid managed-run arguments"
     }
     if {![file isdirectory $session]} { error "Session directory missing: $session" }
     open_package_project
     set_param general.maxThreads $max_threads
+    if {$stage eq "inspect"} {
+        if {![regexp {^synth_[0-9a-f]{12}$} $parent]} { error "Missing synthesis to inspect" }
+        # Stale sources are allowed only here: inspect the OLD netlist without
+        # updating the accepted synthesis record or launching any runs.
+        check_run $parent {*synth_design Complete*}
+        nonempty [file join [get_property DIRECTORY [get_runs $parent]] ${project_name}.dcp]
+        puts "INSPECT: $parent (existing netlist, current constraints; no synthesis)"
+        open_run $parent
+        write_reports inspect_$token
+        set handle [open [file join $session completed_run.txt] {WRONLY CREAT EXCL}]
+        puts $handle inspect_$token
+        close $handle
+        close_project
+        return
+    }
     check_ips
     if {$stage eq "impl"} {
         if {![regexp {^synth_[0-9a-f]{12}$} $parent]} { error "Missing managed synthesis parent" }
         reusable $parent {*synth_design Complete*} ${project_name}.dcp
+        open_run $parent
+        require_no_combinational_loops [file join $package_root reports preflight_$token]
+        close_design
     } elseif {$parent ne "-"} { error "Synthesis must not have a parent" }
     set name ${stage}_$token
     set dir [file join $session $name]
@@ -117,7 +135,7 @@ proc fpga_run::execute {stage session token parent} {
     wait_checked $name $expected $dir
     check_run $name $expected
     open_run $name
-    write_reports $name
+    write_reports $name [expr {$stage eq "impl"}]
     if {$stage eq "impl"} {
         set setup [get_timing_paths -quiet -delay_type max -max_paths 1]
         set hold [get_timing_paths -quiet -delay_type min -max_paths 1]
