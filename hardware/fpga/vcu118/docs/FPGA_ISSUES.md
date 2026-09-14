@@ -49,6 +49,53 @@ This is not a synthesis of the subsequent board RTL changes below.
 
 ## Blocking Findings
 
+### Targeted Fault-Decode Correction
+
+The extended `inspect_9a3426f975cc` dump reaches its 2048-cell bound with 1595
+cells pending, but contains all nine LUTs needed to evaluate the fault side of
+the feedback edge. Exhaustive evaluation of four engine state bits, four phase
+signals, read busy, and read fault (1024 independent boundary combinations)
+shows that changing `i_read_engine_i_224/O` never changes `compute_fault`.
+It changes the inner `i_compute_engine_i_166/O` in eight combinations, but the
+outer state qualification masks those changes. This proves the edge redundant
+in the captured two-state steady Boolean function; it does not prove absence
+of physical races, complete netlist equivalence, or a specific Vivado bug.
+
+The FPGA export now implements the original fault expression with one
+`DONT_TOUCH` LUT5, driven only by `state_q[3:0]` and `read_fault_valid`.
+INIT is derived from the named enum constants (currently `32'h00600040`).
+The export rejects changed state encodings or a changed fault expression for
+review. No fault register, added cycle, removed gating, or loop waiver is used.
+ASIC/source RTL retains the original expression. The focused VCS check covers
+all 32 binary input combinations using the actual exported decoder and the
+original expression; the primitive model is a truth table, not Xilinx timing.
+
+The same update synchronizes the existing QBS ingress changes. The 95 source
+hashes in `verification/timing/results/20260914_ingress/summary.json` matched
+the upstream files at synchronization. Existing evidence includes 33 QBS
+commands, seven real-data slices, SRAM functional checks and representative
+RVV checks. This evidence is reused, not counted as a newly run FPGA test.
+There is no measured FPGA area or timing improvement for this new package yet.
+
+Run one new `-Stage synth`, reusing the existing three IP checkpoints. It already
+generates timing, utilization, CDC and loop reports, and now always adds the
+bounded `fault_decode.rpt`, even when no loop remains. Confirm the preserved
+`i_fpga_compute_fault` LUT and register-bounded inputs there, and zero LUTLP-1
+violations in `loops.rpt`. Old inspection netlists have no such cell and produce
+an empty fault-cone report. Do not repeat inspection of the old netlist to
+validate this RTL update. Route only after reviewing the new synthesis reports.
+
+Reproduce the short offline check with:
+
+```sh
+python3 hardware/fpga/vcu118/tests/check_qbs_fault.py /tmp/qbs_fault_check --vcs /path/to/vcs
+```
+
+Primitive and preservation semantics: [LUT5](https://docs.amd.com/r/en-US/ug974-vivado-ultrascale-libraries/LUT5),
+[DONT_TOUCH](https://docs.amd.com/r/en-US/ug912-vivado-properties/DONT_TOUCH).
+
+### Remaining Signoff Checks
+
 1. **QBS combinational feedback.** `drc.rpt` reports one LUTLP-1 violation
    involving eight LUTs. `check_timing.rpt` shows two overlapping feedback
    paths through compute/read logic and the weight/activation-needed outputs.
@@ -129,12 +176,10 @@ Still pending actual Vivado verification:
    their first-stage-only exceptions, and the DDR-to-SoC clock interaction.
    The VCS test checks wiring/latency under 40 transitions, not metastability
    or placement. Existing 806 critical CDC findings still require classification.
-2. First run `-Stage inspect` again to collect `loop_fanin.rpt` from the old
-   synthesis without rebuilding IP. Use its LUT INIT values and drivers to
-   distinguish real RTL feedback from another mapping dependency or mismatched
-   historical inputs. If RTL feedback is identified, expose the
-   corresponding valid/ready, needed/complete, fault, and queue-state signals
-   in one focused test before editing that path.
+2. The extended old-netlist inspection and fault-side Boolean check are now
+   complete. Validate the dedicated FPGA fault LUT in one new synthesis,
+   using its automatically generated `fault_decode.rpt` and `loops.rpt`.
+   The mapping correction has not yet been verified in Vivado.
 3. Rerun synthesis after a verified RTL change; then compare area and setup
    paths and perform routed timing/CDC/DRC checks. Do not equate a completed
    diagnostic run with a clean design.

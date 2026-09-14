@@ -1,0 +1,14 @@
+Command: /home/wangwy/openproject/ara_dsa/hardware/timing_qbs_ingress_20260914_jEgtgo/before_engine/simv -l /home/wangwy/openproject/ara_dsa/hardware/timing_qbs_ingress_20260914_jEgtgo/before_results/real/q6_m7n16.log +QBS_FUNCTIONAL_ONLY +QBS_COMMAND_VECTOR_FILE=/home/wangwy/openproject/ara_dsa/hardware/timing_qbs_ingress_20260914_jEgtgo/before_results/real/q6_m7n16.vectors
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 14 04:48 2026
+QBS end-to-end case 0 PASS profile=2 M=7 N=16 Kb=35 layouts=2/3 cycles=45041
+QBS phase case=0 setup=9 activation=5285 weight=1855 compute=31323 overlap=6197 drain=41 scheduler=316 commit=15 terminal=1
+QBS traffic case=0 weight=117600 activation=81760 payload=199376 ranges=176 dot=35840 prefetch_wait=0
+QBS engine PASS: 1 functional cases
+$finish called from file "/home/wangwy/openproject/ara_dsa/verification/qbs/qbs_engine_tb.sv", line 1076.
+$finish at simulation time            450535000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 450535000 ps
+CPU Time:     61.110 seconds;       Data structure size:   1.7Mb
+Mon Sep 14 04:50:03 2026

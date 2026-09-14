@@ -67,7 +67,7 @@ for ram in payload_rams:
     if wrapper is None or wrapper.definition.name != "tc_sram":
         raise RuntimeError(f"QBS payload must use FPGA tc_sram, not an ASIC macro: {ram}")
 print("Required hierarchy: " + json.dumps({k: instances[k] for k in required}, sort_keys=True))
-vendor = {"BUFGMUX", "xpm_memory_spram", "xpm_memory_tdpram", "ddr4", "IBUFDS",
+vendor = {"BUFGMUX", "LUT5", "xpm_memory_spram", "xpm_memory_tdpram", "ddr4", "IBUFDS",
           "clkwiz", "vio", "STARTUPE3"}
 errors, external = [], set()
 for diag in compilation.getAllDiagnostics():

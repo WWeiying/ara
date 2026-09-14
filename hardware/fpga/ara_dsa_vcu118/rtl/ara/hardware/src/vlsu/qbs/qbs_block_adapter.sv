@@ -90,6 +90,20 @@ module qbs_block_adapter import qbs_pkg::*; #(
   } activation_beat_t;
   weight_beat_t weight_pending_q, weight_source [2];
   activation_beat_t activation_pending_q, activation_source [2];
+  weight_beat_t weight_input, weight_ingress_q [2];
+  activation_beat_t activation_input, activation_ingress_q [2];
+  weight_target_t weight_input_target [16], weight_ingress_target_q [2][16];
+  activation_target_t activation_input_target [16], activation_ingress_target_q [2][16];
+  weight_target_t weight_pending_target_q [16];
+  activation_target_t activation_pending_target_q [16];
+  qbs_payload_location_t weight_input_location [16], activation_input_location [16];
+  qbs_payload_location_t weight_ingress_location_q [2][16], activation_ingress_location_q [2][16];
+  qbs_payload_location_t weight_pending_location_q [16], activation_pending_location_q [16];
+  qbs_payload_location_t weight_location [32], activation_location [32];
+  logic weight_ingress_rd_q, weight_ingress_wr_q, activation_ingress_rd_q, activation_ingress_wr_q;
+  logic [1:0] weight_ingress_count_q, activation_ingress_count_q;
+  logic weight_ingress_push, activation_ingress_push;
+  logic weight_write_pending, activation_write_pending;
   logic weight_pending_q_valid, activation_pending_q_valid;
   logic [1:0] weight_source_valid, activation_source_valid;
   logic [31:0] weight_mask, activation_mask;
@@ -102,26 +116,34 @@ module qbs_block_adapter import qbs_pkg::*; #(
   logic [12:0] weight_source_base [2], activation_source_base [2];
   logic [15:0] weight_duplicate_mask, activation_duplicate_mask;
 
-  // Only the pending slot determines ready. A noncontiguous input may leave
-  // two words pending; drain one before accepting another beat in that case.
-  assign weight_write_ready_o =
-      (!weight_pending_q_valid || !weight_pending_multiword) &&
+  // Decode once at acceptance. Two entries separate upstream ready from SRAM
+  // arbitration and sustain one beat/cycle with simultaneous push and pop.
+  assign weight_write_ready_o = weight_ingress_count_q < 2 &&
       !clear_weight_i && !weight_read_i;
-  assign activation_write_ready_o =
-      (!activation_pending_q_valid || !activation_pending_multiword) &&
+  assign activation_write_ready_o = activation_ingress_count_q < 2 &&
       !clear_activation_i && !activation_read_i;
+  assign weight_ingress_push = weight_write_valid_i && weight_write_ready_o;
+  assign activation_ingress_push = activation_write_valid_i && activation_write_ready_o;
+  assign weight_write_pending = weight_pending_q_valid || weight_ingress_count_q != 0;
+  assign activation_write_pending = activation_pending_q_valid || activation_ingress_count_q != 0;
   assign weight_source[0] = weight_pending_q;
   assign activation_source[0] = activation_pending_q;
-  assign weight_source[1] =
+  assign weight_input =
       {weight_write_group_i, weight_write_row_i, weight_write_offset_i,
        weight_write_data_i, weight_write_strb_i};
-  assign activation_source[1] =
+  assign activation_input =
       {activation_write_context_i, activation_write_offset_i,
        activation_write_data_i, activation_write_strb_i};
+  assign weight_source[1] = weight_ingress_q[weight_ingress_rd_q];
+  assign activation_source[1] = activation_ingress_q[activation_ingress_rd_q];
   assign weight_source_valid[0] = weight_pending_q_valid && !clear_weight_i;
   assign activation_source_valid[0] = activation_pending_q_valid && !clear_activation_i;
-  assign weight_source_valid[1] = weight_write_valid_i && weight_write_ready_o;
-  assign activation_source_valid[1] = activation_write_valid_i && activation_write_ready_o;
+  assign weight_source_valid[1] = weight_ingress_count_q != 0 &&
+      (!weight_pending_q_valid || !weight_pending_multiword) &&
+      !clear_weight_i && !weight_read_i;
+  assign activation_source_valid[1] = activation_ingress_count_q != 0 &&
+      (!activation_pending_q_valid || !activation_pending_multiword) &&
+      !clear_activation_i && !activation_read_i;
   assign weight_remaining = weight_mask & ~weight_consumed;
   assign activation_remaining = activation_mask & ~activation_consumed;
 
@@ -134,12 +156,13 @@ module qbs_block_adapter import qbs_pkg::*; #(
     assign activation_offsets[b] = activation_target[b].offset;
   end
 
-  qbs_payload_buffer #(.NativeView(NativeView)) i_payload_buffer (
+  qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1)) i_payload_buffer (
     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
     .weight_row_i(weight_rows), .weight_offset_i(weight_offsets),
     .activation_context_i(activation_contexts), .activation_offset_i(activation_offsets),
+    .weight_location_i(weight_location), .activation_location_i(activation_location),
     .weight_data_i({weight_source[1].data, weight_source[0].data}),
     .activation_data_i({activation_source[1].data, activation_source[0].data}),
     .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
@@ -149,6 +172,92 @@ module qbs_block_adapter import qbs_pkg::*; #(
     .weight_view_o(weight_block_o), .activation_view_o(activation_block_o),
     .weight_window_o, .activation_window_o, .weight_side_o, .activation_side_o
   );
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      weight_ingress_count_q <= '0;
+      activation_ingress_count_q <= '0;
+      weight_ingress_rd_q <= 1'b0;
+      weight_ingress_wr_q <= 1'b0;
+      activation_ingress_rd_q <= 1'b0;
+      activation_ingress_wr_q <= 1'b0;
+    end else begin
+      if (clear_weight_i) begin
+        weight_ingress_count_q <= '0;
+        weight_ingress_rd_q <= 1'b0;
+        weight_ingress_wr_q <= 1'b0;
+      end else begin
+        case ({weight_ingress_push, weight_source_valid[1]})
+          2'b10: weight_ingress_count_q <= weight_ingress_count_q + 1'b1;
+          2'b01: weight_ingress_count_q <= weight_ingress_count_q - 1'b1;
+          default: ;
+        endcase
+        if (weight_ingress_push) weight_ingress_wr_q <= ~weight_ingress_wr_q;
+        if (weight_source_valid[1]) weight_ingress_rd_q <= ~weight_ingress_rd_q;
+      end
+      if (clear_activation_i) begin
+        activation_ingress_count_q <= '0;
+        activation_ingress_rd_q <= 1'b0;
+        activation_ingress_wr_q <= 1'b0;
+      end else begin
+        case ({activation_ingress_push, activation_source_valid[1]})
+          2'b10: activation_ingress_count_q <= activation_ingress_count_q + 1'b1;
+          2'b01: activation_ingress_count_q <= activation_ingress_count_q - 1'b1;
+          default: ;
+        endcase
+        if (activation_ingress_push) activation_ingress_wr_q <= ~activation_ingress_wr_q;
+        if (activation_source_valid[1]) activation_ingress_rd_q <= ~activation_ingress_rd_q;
+      end
+    end
+  end
+
+  for (genvar entry = 0; entry < 2; entry++) begin : gen_ingress_storage
+    always_ff @(posedge clk_i) begin
+      if (weight_ingress_push && weight_ingress_wr_q == 1'(entry)) begin
+        weight_ingress_q[entry] <= weight_input;
+        for (int b = 0; b < 16; b++) begin
+          weight_ingress_target_q[entry][b] <= weight_input_target[b];
+          weight_ingress_location_q[entry][b] <= weight_input_location[b];
+        end
+      end
+      if (activation_ingress_push && activation_ingress_wr_q == 1'(entry)) begin
+        activation_ingress_q[entry] <= activation_input;
+        for (int b = 0; b < 16; b++) begin
+          activation_ingress_target_q[entry][b] <= activation_input_target[b];
+          activation_ingress_location_q[entry][b] <= activation_input_location[b];
+        end
+      end
+    end
+  end
+
+  for (genvar b = 0; b < 16; b++) begin : gen_registered_targets
+    assign weight_input_location[b] = qbs_weight_payload_location(
+        weight_profile_i, unsigned'(weight_input_target[b].offset));
+    assign activation_input_location[b] = qbs_activation_payload_location(
+        activation_profile_i, unsigned'(activation_input_target[b].offset));
+    assign weight_target[b] = {
+        weight_pending_target_q[b].valid && weight_pending_q.strb[b],
+        weight_pending_target_q[b].row, weight_pending_target_q[b].offset};
+    assign activation_target[b] = {
+        activation_pending_target_q[b].valid && activation_pending_q.strb[b],
+        activation_pending_target_q[b].ctx, activation_pending_target_q[b].offset};
+    assign weight_target[16+b] = weight_ingress_target_q[weight_ingress_rd_q][b];
+    assign activation_target[16+b] = activation_ingress_target_q[activation_ingress_rd_q][b];
+    assign weight_location[b] = weight_pending_location_q[b];
+    assign activation_location[b] = activation_pending_location_q[b];
+    assign weight_location[16+b] = weight_ingress_location_q[weight_ingress_rd_q][b];
+    assign activation_location[16+b] = activation_ingress_location_q[activation_ingress_rd_q][b];
+    always_ff @(posedge clk_i) begin
+      if (weight_source_valid[1] && (|weight_remaining[31:16])) begin
+        weight_pending_target_q[b] <= weight_target[16+b];
+        weight_pending_location_q[b] <= weight_location[16+b];
+      end
+      if (activation_source_valid[1] && (|activation_remaining[31:16])) begin
+        activation_pending_target_q[b] <= activation_target[16+b];
+        activation_pending_location_q[b] <= activation_location[16+b];
+      end
+    end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -387,11 +496,11 @@ module qbs_block_adapter import qbs_pkg::*; #(
         byte_complete[byte_index] = byte_index >= weight_bytes ||
                                    weight_byte_valid_q[row][byte_index];
       weight_complete_o[row] = row < weight_row_count_i && (&byte_complete) &&
-                               !weight_pending_q_valid;
+                               !weight_write_pending;
       weight_missing[row] = row < weight_row_count_i && !(&byte_complete);
     end
     all_weight_complete_o = (weight_row_count_i inside {[1:4]}) &&
-                            !(|weight_missing) && !weight_pending_q_valid;
+                            !(|weight_missing) && !weight_write_pending;
 
     for (int ctx = 0; ctx < 4; ctx++) begin
       logic [QbsMaxActivationBlockBytes-1:0] byte_complete;
@@ -399,31 +508,31 @@ module qbs_block_adapter import qbs_pkg::*; #(
         byte_complete[byte_index] = byte_index >= activation_bytes ||
                                    activation_byte_valid_q[ctx][byte_index];
       activation_complete_o[ctx] = ctx < activation_context_count && (&byte_complete) &&
-                                   !activation_pending_q_valid;
+                                   !activation_write_pending;
       activation_missing[ctx] = ctx < activation_context_count && !(&byte_complete);
     end
     all_activation_complete_o = (m_i inside {[1:QbsMaxM]}) &&
-                                !(|activation_missing) && !activation_pending_q_valid;
+                                !(|activation_missing) && !activation_write_pending;
   end
 
-  // Mapping and duplicate detection precede SRAM arbitration. Counters below
-  // advance only for bytes actually committed to payload or side storage.
+  // The first stage maps the incoming beat; stored targets drive SRAM
+  // arbitration in the next stage. Counters advance only on actual commits.
   always_comb begin : map_weight_bytes
-    for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
+    for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(weight_source[beat_byte/16].offset) + (beat_byte % 16);
+          unsigned'(weight_input.offset) + beat_byte;
       automatic int unsigned target_row;
       automatic int unsigned target_offset;
       automatic int unsigned block_bytes;
       automatic logic mapping_valid;
 
       block_bytes = qbs_weight_block_bytes(weight_profile_i);
-      target_row = unsigned'(weight_source[beat_byte/16].row);
+      target_row = unsigned'(weight_input.row);
       target_offset = source_offset;
 
       // The native block size is profile-dependent. At most four row
       // banks are active, so range comparisons avoid a divider.
-      if (weight_source[beat_byte/16].group_mode) begin
+      if (weight_input.group_mode) begin
         if (source_offset >= 3 * block_bytes) begin
           target_row = 3;
           target_offset = source_offset - 3 * block_bytes;
@@ -440,17 +549,17 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
       mapping_valid = target_row < unsigned'(weight_row_count_i) &&
                       target_offset < block_bytes;
-      weight_target[beat_byte].valid = weight_source[beat_byte/16].strb[beat_byte % 16] &&
+      weight_input_target[beat_byte].valid = weight_input.strb[beat_byte] &&
                                        mapping_valid;
-      weight_target[beat_byte].row = 2'(target_row);
-      weight_target[beat_byte].offset = WeightOffsetWidth'(target_offset);
+      weight_input_target[beat_byte].row = 2'(target_row);
+      weight_input_target[beat_byte].offset = WeightOffsetWidth'(target_offset);
     end
   end
 
   always_comb begin : map_activation_bytes
-    for (int beat_byte = 0; beat_byte < 32; beat_byte++) begin
+    for (int beat_byte = 0; beat_byte < 16; beat_byte++) begin
       automatic int unsigned source_offset =
-          unsigned'(activation_source[beat_byte/16].offset) + (beat_byte % 16);
+          unsigned'(activation_input.offset) + beat_byte;
       automatic int unsigned target_context;
       automatic int unsigned target_local_context;
       automatic int unsigned target_offset;
@@ -467,7 +576,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
       aux_count = qbs_activation_aux_count(activation_profile_i);
       aux_element_bytes =
           qbs_activation_aux_element_bytes(activation_profile_i);
-      target_context = unsigned'(activation_source[beat_byte/16].ctx);
+      target_context = unsigned'(activation_input.ctx);
       target_offset = source_offset;
       mapping_valid = source_offset < block_bytes;
 
@@ -547,10 +656,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
       target_local_context = target_context - ActivationContextBase;
       mapping_valid &= target_context >= ActivationContextBase &&
                        target_context < ActivationContextBase + 4;
-      activation_target[beat_byte].valid = activation_source[beat_byte/16].strb[beat_byte % 16] &&
+      activation_input_target[beat_byte].valid = activation_input.strb[beat_byte] &&
           mapping_valid && target_local_context < 4 && target_offset < block_bytes;
-      activation_target[beat_byte].ctx = 2'(target_local_context);
-      activation_target[beat_byte].offset = ActivationOffsetWidth'(target_offset);
+      activation_input_target[beat_byte].ctx = 2'(target_local_context);
+      activation_input_target[beat_byte].offset = ActivationOffsetWidth'(target_offset);
     end
   end
 
@@ -644,8 +753,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
       end
 
 `ifndef SYNTHESIS
-      assert (!(weight_read_i && (weight_pending_q_valid || clear_weight_i)));
-      assert (!(activation_read_i && (activation_pending_q_valid || clear_activation_i)));
+      assert (!(weight_read_i && (weight_write_pending || clear_weight_i)))
+        else $fatal(1, "QBS weight read before ingress drained");
+      assert (!(activation_read_i && (activation_write_pending || clear_activation_i)))
+        else $fatal(1, "QBS activation read before ingress drained");
       if (weight_source_valid[1] && weight_pending_q_valid)
         assert (weight_remaining[15:0] == 0)
           else $fatal(1, "QBS input overwrote uncommitted weight bytes");
@@ -694,15 +805,34 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
 `ifndef SYNTHESIS
   assert property (@(posedge clk_i) disable iff (!rst_ni)
-      weight_write_ready_o ==
-      ((!weight_pending_q_valid || !(|weight_remaining[15:0])) &&
+      weight_source_valid[1] ==
+      ((weight_ingress_count_q != 0) &&
+       (!weight_pending_q_valid || !(|weight_remaining[15:0])) &&
        !clear_weight_i && !weight_read_i))
-    else $fatal(1, "QBS weight conflict detector changed ready");
+    else $fatal(1, "QBS weight conflict detector changed ingress pop");
   assert property (@(posedge clk_i) disable iff (!rst_ni)
-      activation_write_ready_o ==
-      ((!activation_pending_q_valid || !(|activation_remaining[15:0])) &&
+      activation_source_valid[1] ==
+      ((activation_ingress_count_q != 0) &&
+       (!activation_pending_q_valid || !(|activation_remaining[15:0])) &&
        !clear_activation_i && !activation_read_i))
-    else $fatal(1, "QBS activation conflict detector changed ready");
+    else $fatal(1, "QBS activation conflict detector changed ingress pop");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      weight_ingress_count_q <= 2 && activation_ingress_count_q <= 2)
+    else $fatal(1, "QBS ingress FIFO overflow/underflow");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      clear_weight_i |=> !weight_write_pending)
+    else $fatal(1, "QBS weight clear did not flush ingress");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      clear_activation_i |=> !activation_write_pending)
+    else $fatal(1, "QBS activation clear did not flush ingress");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      weight_write_pending && !clear_weight_i |=>
+      clear_weight_i || $stable(weight_profile_i))
+    else $fatal(1, "QBS weight profile changed with uncommitted ingress");
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      activation_write_pending && !clear_activation_i |=>
+      clear_activation_i || $stable({activation_profile_i, activation_layout_i}))
+    else $fatal(1, "QBS activation profile/layout changed with uncommitted ingress");
   assert property (@(posedge clk_i) disable iff (!rst_ni)
       weight_source_valid[0] && (|weight_remaining[15:0]) |=>
       clear_weight_i || !(|weight_remaining[15:0]))

@@ -11,12 +11,17 @@ payload 从寄存器移到单端口同步 SRAM。保留当前九种权重 profil
 M1--M8、尾块、权重双缓冲、激活复用及故障处理，不改 ISA、数值计算
 顺序、dot array、FP accumulator 或 AKV 数据通路。
 
-这是一个已完成代表性功能验证、已合入 `ara_dsa` 的存储实现。
 当前实现使用单端口 SRAM，并合并相邻返回 beat 对同一个 SRAM 字的写入。
-七个真实模型切片和 33 个完整 engine 用例均恢复到原寄存器版的周期数，
-没有增加 SRAM 容量、端口、pending 数据寄存器或 dot pipeline 级数。
-这不意味着任意不连续访问都能无等待，也不意味着组合写合并逻辑没有面积和时序代价。
-DC 综合环境及启动检查见第 8 节，尚无本次实现的完成版 PPA 报告。
+2026-09-14 在已合入的 SRAM 实现上增加了写入译码流水：每个 adapter 的权重、
+激活入口各有两项 FIFO，保存数据及已译码的目的位置，再进行 SRAM 写仲裁。
+这会增加少量 beat 级寄存器，不增加 SRAM 容量、端口或算术单元。
+连续规则写入仍可每拍接收一个 beat；非连续地址、块尾排空仍可能产生等待。
+
+第 5 节保留最初寄存器/SRAM 转换的历史对照，不代表当前流水版的周期。
+当前七个真实切片相对本轮修改前增加 0.078%--0.263% 的 engine 周期，
+33 个完整命令、激活 context 复用、故障处理和普通 RVV/QBS/AKV 交接均通过。
+详细证据及测量范围见 [`timing_optimization_port.md` 第 22 节](timing_optimization_port.md)。
+DC 综合环境及启动检查见第 8 节；当前流水版的整机时序与面积结果仍待综合完成。
 PNR、功耗闭环和 FPGA 存储映射尚未完成。
 
 ## 2. 为什么不能直接把数组换成 RAM
@@ -52,9 +57,10 @@ PNR、功耗闭环和 FPGA 存储映射尚未完成。
 - 每行最多 20 B 权重元数据，包括 scale、min、Q5_0 的高位辅助位等。
 - 每上下文最多 36 B 激活元数据，包括 scale 和 Q8_K 的 16 个 bsum。
 - 原有逐字节 valid、去重计数、银行归属和完成状态。
-- 权重和激活各自的一个未完成写 beat。两个 adapter 相比原寄存器版共需
-  634 bit 暂存数据/控制状态，包括 valid。写合并继续复用这些寄存器，
-  没有再增加一整套数据队列。
+- 权重和激活各自的一个未完成写 beat。原有两个 adapter 合计 634 bit
+  数据/控制状态继续保留；当前另加每域两项入口 FIFO，以及 FIFO 和残留 beat
+  的逻辑/物理位置元数据。FIFO 保存的是 16 B beat，不是完整解压块。
+  新增状态的综合后面积需查报告，不能直接用声明位数代替。
 
 这里的 3584 B 是逻辑 SRAM 容量，**不是节省的面积**。TSMC 映射使用
 `TS1N28HPCPUHDSVTB8X256M1SWBSO`，深度 2/4 的银行只使用部分物理地址。
@@ -76,7 +82,8 @@ FPGA 后续可使用工程已有的 `tc_sram` FPGA 实现，但本次没有验�
 
 当前实现把写入逻辑按固定物理 bank 展开，而不是用运行时 bank 下标反复更新整组
 宽数据数组。metadata 则按固定字节生成写使能，用五层选择树保留最后一个有效写者。
-两者都保持下述字节优先级和握手行为，不增加流水级、存储容量或 SRAM 端口。
+两者都保持下述字节优先级；当前将前面的格式译码注册后再送入这些写入逻辑，
+不增加 payload 容量或 SRAM 端口。
 
 实际 compute 路径将两个 adapter 配置为 `NativeView=0`，直接输出 SRAM 的
 256-bit 窗口和辅助信息。权重为 `4 row * 2 plane * 256 bit` 加 `4 * 20 B`
@@ -89,7 +96,10 @@ metadata，激活为 `4 context * 256 bit` 加 `4 * 36 B` metadata。计算入�
 常量折叠消除。综合友好改写的依据、功能对照和证据边界见
 [`timing_optimization_port.md` 第 14 节](timing_optimization_port.md)。
 
-把原生块 offset 转换为 `(plane, word, byte lane)`。所有格式仍保持压缩
+原生块 offset 转换为 `(plane, word, byte lane)` 的函数集中在生成的 `qbs_pkg`，
+由 `scripts/gen_qbs_abi.py` 维护。生产 adapter 配置
+`PredecodedWriteLocations=1`，在 FIFO 前完成转换，payload 模块直接消费保存的
+物理位置；独立测试保留默认的原生 offset 译码路径。所有格式仍保持压缩
 存储，直到 profile decoder 才拆位、查 IQ4_NL 表或恢复有符号量化值。
 
 | Profile | 低位 SRAM | 高位 SRAM | 寄存器中的辅助信息 |
@@ -103,8 +113,9 @@ metadata，激活为 `4 context * 256 bit` 加 `4 * 36 B` metadata。计算入�
 | Q4_0 / IQ4_NL | 16 B 压缩值 | 不使用 | d |
 | Q5_0 | 16 B 低位 | 不使用 | d、4 B 高位辅助位 |
 
-模块有两个组合输入槽位：slot 0 是旧 pending，slot 1 是本周期握手的新 beat。
-这两个槽位不是两级寄存器，也不是两个物理写端口。
+模块有两个组合输入槽位：slot 0 是旧 pending，slot 1 是入口 FIFO 本周期取出的
+beat，而不是尚未寄存的 AXI 输入。这两个仲裁槽位不是两个物理写端口；
+两项入口 FIFO 则是实际的寄存器存储，位于本模块之前。
 
 每个物理银行先选择旧 pending 需要的一个字，再把新 beat 中落在同一字的
 字节合入。没有旧写入的银行可以直接服务新 beat。一个 SRAM 字最后只产生
@@ -171,17 +182,21 @@ valid，其余 context 在该视图中为零，最终仍用原来的 context 范
 
 一次写入的流程如下：
 
-1. 先检查旧 pending 能否在本周期全部写完。这个判定不依赖新输入的 valid/data，
-   因此不会建立新输入 valid 与 ready 之间的组合环。
-2. 能写完时允许接收新 beat。旧字节先写，新字节尽量合并到同一 SRAM 字中。
-3. 只把新 beat 中仍未落盘的字节保存在原 pending 寄存器中。旧 pending 已全部完成，
-   不会被新数据覆盖丢失。
-4. 若地址突然跳转，新 beat 可能整体被暂存，且自身跨两个 SRAM 字。下一周期
-   先暂停新输入、写其中一个字，再恢复接收。没有继续输入时，pending 最多两拍排空。
+1. 入口 `ready` 由两项 FIFO 的占用和本域 read/clear 决定，不经过 SRAM 仲裁反馈。
+   握手时保存原始 beat，以及每个字节的合法位、行/上下文、原生 offset、物理 plane/offset。
+2. 下一拍，若旧 pending 能在本拍写完，取出 FIFO 队首。旧字节先选择 SRAM 字，
+   队首中落在同一字的字节合并写入；两者可以同拍提交。
+3. 只把该队首 beat 未写完的字节及其目的位置转入 pending。输入 FIFO 可在同拍
+   入队下一 beat；不能覆盖仍未提交的旧 pending。
+4. 非连续地址可能使 pending 跨两个 SRAM 字，此时先暂停出队、排空一个字。
+   FIFO 暂存后续输入，满时再向上游施加反压；满状态不通过组合 pop 放行输入。
+5. byte-valid 和唯一字节计数只在实际写入后更新。complete 还要求 FIFO 与 pending
+   均已排空，不能将“最后一拍已接收”误当作“块可供计算”。无新输入且允许写入时，
+   两项 FIFO 加 pending 的保守排空上界为六拍。
 
 例如 Q8_K 激活的量化值前面有 4-byte scale：
 
-| 周期输入的原生 offset | 对应量化字节 | 本周期 SRAM 写入 | 留到下一拍 |
+| FIFO 出队的原生 offset | 对应量化字节 | 本周期 SRAM 写入 | 留到下一拍 |
 |---|---|---|---|
 | 32--47 | 28--43 | 字 0 的 byte 28--31 | 字 1 的 byte 0--11 |
 | 48--63 | 44--59 | 字 1 的旧 byte 0--11 + 新 byte 12--27 | 无 |
@@ -197,14 +212,21 @@ valid，其余 context 在该视图中为零，最终仍用原来的 context 范
 重复写仍更新数据，但 `accepted_*_bytes_o` 只累计唯一字节。
 
 即使剩余字节只是重复覆盖，也不能让 complete 提前使能计算。
-clear 优先于写入，清除有效位和 pending，不扫描清零整个 SRAM。
-断言检查旧 pending 未写完时不能接收新 beat、两拍排空上界、无同银行读写碰撞，
-以及 read 不与 clear/pending 冲突。
+clear 优先于写入，清除本域有效位、FIFO 占用/指针和 pending，不扫描清零 SRAM。
+权重 clear 不清除激活 FIFO，激活 clear 也不清除权重 FIFO。没有 reset 的数据寄存器
+只能在有效位和占用允许时被消费。断言检查 FIFO 上下溢出、残留写不被覆盖、
+clear 后无遗留事务、待写期间格式稳定，以及 read 不与 clear/FIFO/pending 冲突。
+
+激活 context 的 REUSE/RELEASE 同样必须区分接收与落盘：回放启动握手后，
+`qbs_engine` 复用 `activation_range_index_q` 记录本块已经发起；即使块尾还在 FIFO
+中，也不再启动同一 K 块。推进到下一块时才重新取得启动资格。否则重复回放可能
+被反压保存到下一 K 块，造成错误数据。仿真另用按 K 块记录的位图检查唯一启动，
+该位图不参与综合。
 
 ### 4.4 `qbs_profile_engine_int.sv`
 
-只新增现有 issue 阶段的 `buffer_read_valid_o` 和 `buffer_read_k_base_o`。
-不增加 dot pipeline 级数，不改变 correction 或 FP 的算术顺序。
+SRAM 读入口使用现有 issue 阶段的 `buffer_read_valid_o` 和 `buffer_read_k_base_o`。
+本轮写入流水不改变已有 dot/correction 的级数或 FP 的算术顺序。
 
 | 时刻 | 原寄存器版本 | SRAM 版本 |
 |---|---|---|
@@ -226,13 +248,14 @@ M8 的激活输入广播只有在两个 adapter 都 ready 时才算一次握手�
 `QBS_FAULT_CLEAR` 条件保留。SRAM 的到来不允许在读数据尚未消费完时清理
 银行，也不能在 fault 后把 pending 数据误当作下一命令的数据。
 
-## 5. 实测结果
+## 5. 最初 SRAM 转换的历史实测
 
-以下均为 QBS engine 的 command cycles，不是整个 SoC 的 kernel 周期，
+以下是 2026-09-08 的冻结对照，不包含之后的算术和入口时序流水优化。
+当前版本数据见第 1 节链接。以下均为 QBS engine 的 command cycles，不是整个 SoC 的 kernel 周期，
 也不是模型 tokens/s。输入来自真实 Qwen2.5-1.5B 捕获数据；保留完整 K，
 只缩小输出行数和 token 数。
 
-| 数据切片 | M x N x K | 寄存器版 | 独立补写 SRAM | 当前合并写 SRAM |
+| 数据切片 | M x N x K | 寄存器版 | 独立补写 SRAM | 当时合并写 SRAM |
 |---|---:|---:|---:|---:|
 | Q4 Decode attn_q | 1 x 32 x 1536 | 2219 | 2254 | 2219 |
 | Q4 Prefill attn_q | 4 x 32 x 1536 | 7200 | 7200 | 7200 |

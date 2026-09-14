@@ -12,7 +12,7 @@ set compile_enable_register_merging false
 set compile_seqmap_propagate_constants false
 set top qbs_payload_buffer
 if {[info exists env(DC_LOCAL_TOP)]} {set top $env(DC_LOCAL_TOP)}
-if {$top ni {qbs_payload_buffer qbs_block_adapter qbs_ingress_timing simd_mul_timing
+if {$top ni {qbs_payload_buffer qbs_block_adapter qbs_ingress_timing qbs_adapter_pipeline_timing simd_mul_timing
              simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing
              qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   error "unsupported local top: $top"
@@ -20,8 +20,9 @@ if {$top ni {qbs_payload_buffer qbs_block_adapter qbs_ingress_timing simd_mul_ti
 set sources {
   src/qbs_pkg.sv src/qbs_payload_sram.sv src/qbs_payload_buffer.sv
 }
-if {$top in {qbs_block_adapter qbs_ingress_timing}} {lappend sources src/qbs_block_adapter.sv}
+if {$top in {qbs_block_adapter qbs_ingress_timing qbs_adapter_pipeline_timing}} {lappend sources src/qbs_block_adapter.sv}
 if {$top eq "qbs_ingress_timing"} {lappend sources src/qbs_ingress_timing.sv}
+if {$top eq "qbs_adapter_pipeline_timing"} {lappend sources src/qbs_adapter_pipeline_timing.sv}
 if {$top eq "qbs_decode_dot_timing"} {
   set sources {src/qbs_pkg.sv src/qbs_profile_decoder.sv src/qbs_dot_array.sv
     src/qbs_decode_dot_timing.sv}
@@ -62,7 +63,7 @@ if {$top eq "simd_mul_timing"} {
   if {$ew ni {0 1 2 3}} {error "invalid multiplier SEW"}
   set pipes [expr {$ew == 0 ? 0 : 1}]
   if {![elaborate $top -parameters "ElementWidth=$ew,NumPipeRegs=$pipes"]} {exit 1}
-} elseif {$top ne "qbs_ingress_timing" && [info exists env(DC_COMPACT_READ)] && $env(DC_COMPACT_READ) == 1} {
+} elseif {$top ni {qbs_ingress_timing qbs_adapter_pipeline_timing} && [info exists env(DC_COMPACT_READ)] && $env(DC_COMPACT_READ) == 1} {
   if {![elaborate $top -parameters "NativeView=0"]} {exit 1}
 } else {
   if {![elaborate $top]} {exit 1}
@@ -102,7 +103,7 @@ if {[info exists env(DC_ELAB_ONLY)] && $env(DC_ELAB_ONLY) == 1} {
   puts "PAYLOAD_DC_ELAB_COMPLETE"
   exit
 }
-if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
+if {$top in {qbs_ingress_timing qbs_adapter_pipeline_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   # Match the integrated run's clock gate and setup requirement exactly.
   set_clock_gating_style -sequential latch \
       -positive_edge_logic {integrated:CKLNQD4BWP12T40P140} \
@@ -129,7 +130,7 @@ redirect clk_i_max.tim {
   report_timing -group clk_i -delay_type max -max_paths 1000 -input_pins -nets \
       -transition_time -capacitance -significant_digits 4
 }
-if {$top in {qbs_ingress_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
+if {$top in {qbs_ingress_timing qbs_adapter_pipeline_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {
   redirect clock_gating.rpt {report_clock_gating}
 }
 if {$top eq "ara_dispatcher_timing"} {

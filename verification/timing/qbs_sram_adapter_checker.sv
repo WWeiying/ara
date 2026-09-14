@@ -6,6 +6,9 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
 ) (
   input logic clk_i, rst_ni, clear_weight_i, clear_activation_i,
   input logic weight_pending_q_valid, activation_pending_q_valid,
+  input logic weight_write_pending, activation_write_pending,
+  input logic [1:0] weight_ingress_count_q, activation_ingress_count_q,
+  input logic [1:0] weight_source_valid, activation_source_valid,
   input logic weight_read_i, activation_read_i,
   input logic [7:0] read_k_i,
   input qbs_weight_profile_e weight_profile_i,
@@ -70,7 +73,7 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
   int trace_file;
   initial begin
     trace_file = $fopen($sformatf("sram_adapter_%0d.csv", ActivationContextBase), "w");
-    $fdisplay(trace_file, "cycle,wvalid,wready,avalid,aready,woff,aoff,wpend,apend,pending_woff,pending_aoff,wcommit_old,wcommit_new,acommit_old,acommit_new,wremain_old,wremain_new,aremain_old,aremain_new,wread,aread,k,wbytes,abytes");
+    $fdisplay(trace_file, "cycle,wvalid,wready,avalid,aready,woff,aoff,wpend,apend,pending_woff,pending_aoff,wcommit_old,wcommit_new,acommit_old,acommit_new,wremain_old,wremain_new,aremain_old,aremain_new,wread,aread,k,wbytes,abytes,wfifo,afifo,wpop,apop");
   end
   for (genvar i = 0; i < 2; i++) begin : gen_decode
     qbs_profile_decoder #(.CompactRead(i == 0)) i_decoder (
@@ -103,7 +106,7 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
           activation_write_valid_i && activation_write_ready_o) dual++;
       if (|weight_consumed || |activation_consumed) trace_active = 1;
       if (trace_active && trace_count < 128) begin
-        $fdisplay(trace_file, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%04h,%04h,%04h,%04h,%04h,%04h,%04h,%04h,%0d,%0d,%0d,%0d,%0d",
+        $fdisplay(trace_file, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
             cycles, weight_write_valid_i, weight_write_ready_o,
             activation_write_valid_i, activation_write_ready_o,
             weight_write_offset_i, activation_write_offset_i,
@@ -114,7 +117,9 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
             weight_remaining[15:0], weight_remaining[31:16],
             activation_remaining[15:0], activation_remaining[31:16],
             weight_read_i, activation_read_i, read_k_i,
-            accepted_weight_bytes_o, accepted_activation_bytes_o);
+            accepted_weight_bytes_o, accepted_activation_bytes_o,
+            weight_ingress_count_q, activation_ingress_count_q,
+            weight_source_valid[1], activation_source_valid[1]);
         trace_count++;
       end
     end
@@ -129,13 +134,13 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
   always @(negedge clk_i) begin
     #1ps;
     if (rst_ni) begin
-      if (!weight_pending_q_valid) begin
+      if (!weight_write_pending) begin
         assert ({weight_complete_o, all_weight_complete_o, accepted_weight_bytes_o} ===
             {ref_weight_complete, ref_all_weight, ref_weight_bytes} &&
             weight_byte_valid_q === i_reference.weight_byte_valid_q)
           else $fatal(1, "SRAM weight control mismatch base=%0d t=%0t", ActivationContextBase, $time);
       end
-      if (!activation_pending_q_valid) begin
+      if (!activation_write_pending) begin
         assert ({activation_complete_o, all_activation_complete_o, accepted_activation_bytes_o} ===
             {ref_activation_complete, ref_all_activation, ref_activation_bytes} &&
             activation_byte_valid_q === i_reference.activation_byte_valid_q)

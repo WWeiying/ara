@@ -31,8 +31,8 @@ module qbs_sram_adapter_tb;
   logic weight_read_i = 0, activation_read_i = 0;
   logic [7:0] read_k_i = 0;
   for (genvar bank = 0; bank < 2; bank++) begin : gen_adapter
-    assign wpending[bank] = i_dut.weight_pending_q_valid;
-    assign apending[bank] = i_dut.activation_pending_q_valid;
+    assign wpending[bank] = i_dut.weight_write_pending;
+    assign apending[bank] = i_dut.activation_write_pending;
     qbs_block_adapter #(.ActivationContextBase(bank * 4), .NativeView(1'b0)) i_dut (
       .weight_window_o(), .activation_window_o(), .weight_side_o(), .activation_side_o(),
       .weight_write_ready_o(wready[bank]), .activation_write_ready_o(aready[bank]),
@@ -52,6 +52,7 @@ module qbs_sram_adapter_tb;
   int expected_weight, expected_activation;
   int cycles, cases, simultaneous, duplicates, clear_collisions, idle_cycles;
   int stream_cases, stream_stalls, discontinuous_stalls;
+  int strobe_stride = 1, strobe_masks;
   logic last_wfire, last_afire;
   int trace_file;
 
@@ -113,7 +114,8 @@ module qbs_sram_adapter_tb;
       @(posedge clk_i);
       #1;
       drain_cycles++;
-      assert (drain_cycles <= 2) else $fatal(1, "SRAM write failed to drain");
+      // Two ingress beats and one residual, at most two writes per beat.
+      assert (drain_cycles <= 6) else $fatal(1, "SRAM write failed to drain");
     end
     cycles++;
     assert (weight_bytes[0] <= expected_weight && weight_bytes[1] <= expected_weight &&
@@ -411,6 +413,61 @@ module qbs_sram_adapter_tb;
     $display("QBS SRAM discontinuous/duplicate PASS stalls=%0d", discontinuous_stalls);
   endtask
 
+  task automatic full_ingress_clear;
+    int offsets [4] = '{24, 88, 152, 24};
+    weight_profile_i = QBS_WEIGHT_PROFILE_Q6_K;
+    activation_profile_i = QBS_ACTIVATION_PROFILE_Q8_K;
+    weight_row_count_i = 1;
+    m_i = 1;
+    activation_layout_i = QBS_ACTIVATION_LAYOUT_ROW_MAJOR;
+    weight_write_group_i = 0;
+    weight_write_row_i = 0;
+    activation_write_context_i = 0;
+    weight_write_valid_i = 0;
+    activation_write_valid_i = 0;
+    clear_weight_i = 1;
+    clear_activation_i = 1;
+    tick();
+    clear_weight_i = 0;
+    clear_activation_i = 0;
+    for (int beat = 0; beat < 4; beat++) begin
+      weight_write_valid_i = 1;
+      activation_write_valid_i = 1;
+      weight_write_offset_i = 10'(offsets[beat]);
+      activation_write_offset_i = 12'(offsets[beat] + 4);
+      weight_write_strb_i = '1;
+      activation_write_strb_i = '1;
+      weight_write_data_i = {4{32'(beat + 31)}};
+      activation_write_data_i = {4{32'(beat + 73)}};
+      tick(0);
+      assert (last_wfire && last_afire) else $fatal(1, "clear-test setup stalled");
+    end
+    assert (gen_adapter[0].i_dut.weight_ingress_count_q == 2 &&
+            gen_adapter[0].i_dut.activation_ingress_count_q == 2 &&
+            gen_adapter[0].i_dut.weight_pending_q_valid &&
+            gen_adapter[0].i_dut.activation_pending_q_valid)
+      else $fatal(1, "clear-test did not fill FIFO and residual storage");
+    weight_write_valid_i = 0;
+    activation_write_valid_i = 0;
+    // Flush only weights first; activations must commit without loss.
+    clear_weight_i = 1;
+    tick();
+    clear_weight_i = 0;
+    repeat (3) tick();
+    assert (weight_bytes[0] == 0 && activation_bytes[0] == expected_activation &&
+            expected_activation > 0 && !(|wpending || |apending))
+      else $fatal(1, "independent ingress clear lost or resurrected data");
+    clear_activation_i = 1;
+    tick();
+    clear_activation_i = 0;
+    // A new-format command must not inherit queued bytes from the old one.
+    weight_profile_i = QBS_WEIGHT_PROFILE_Q8_0_WEIGHT;
+    activation_profile_i = QBS_ACTIVATION_PROFILE_Q8_0;
+    stream_case();
+    stream_cases--;
+    $display("QBS SRAM full-ingress clear PASS");
+  endtask
+
   task automatic all_strobes;
     weight_profile_i = QBS_WEIGHT_PROFILE_Q4_K;
     activation_profile_i = QBS_ACTIVATION_PROFILE_Q8_K;
@@ -422,7 +479,7 @@ module qbs_sram_adapter_tb;
     activation_write_context_i = 0;
     weight_write_offset_i = 0;
     activation_write_offset_i = 0;
-    for (int mask = 0; mask < 65536; mask++) begin
+    for (int mask = 0; mask < 65536; mask += strobe_stride) begin
       if ((mask % 4096) == 0)
         $display("QBS SRAM strobe progress mask=%0d cycles=%0d time=%0t", mask, cycles, $time);
       clear_weight_i = 1;
@@ -437,6 +494,7 @@ module qbs_sram_adapter_tb;
       weight_write_strb_i = 16'(mask);
       activation_write_strb_i = 16'(mask);
       tick();
+      strobe_masks++;
     end
     weight_write_valid_i = 0;
     activation_write_valid_i = 0;
@@ -444,6 +502,9 @@ module qbs_sram_adapter_tb;
   endtask
 
   initial begin
+    if ($value$plusargs("QBS_STROBE_STRIDE=%d", strobe_stride))
+      assert (strobe_stride inside {[1:65535]})
+        else $fatal(1, "invalid strobe-test stride");
     clear_weight_i = 0;
     clear_activation_i = 0;
     weight_profile_i = QBS_WEIGHT_PROFILE_Q4_K;
@@ -472,11 +533,12 @@ module qbs_sram_adapter_tb;
       for (int config_id = 0; config_id < 9; config_id++)
         run_case(qbs_weight_profile_e'(profile), config_id);
     discontinuous_case();
+    full_ingress_clear();
     all_strobes();
     assert (simultaneous > 0 && duplicates > 0 && clear_collisions > 0 && idle_cycles > 0)
       else $fatal(1, "missing adapter corner coverage");
-    $display("QBS SRAM adapter PASS cases=%0d strobe_masks=65536 cycles=%0d simultaneous=%0d duplicates=%0d clear_collisions=%0d idle=%0d",
-             cases, cycles, simultaneous, duplicates, clear_collisions, idle_cycles);
+    $display("QBS SRAM adapter PASS cases=%0d strobe_masks=%0d cycles=%0d simultaneous=%0d duplicates=%0d clear_collisions=%0d idle=%0d",
+             cases, strobe_masks, cycles, simultaneous, duplicates, clear_collisions, idle_cycles);
     assert (stream_cases == 81 && stream_stalls == 0);
     $display("QBS SRAM streaming PASS cases=%0d stalls=%0d", stream_cases, stream_stalls);
     $fclose(trace_file);

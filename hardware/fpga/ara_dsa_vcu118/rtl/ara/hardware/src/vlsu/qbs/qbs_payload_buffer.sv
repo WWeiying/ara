@@ -4,7 +4,8 @@
 // Four rows/contexts, three independent single-port SRAM planes per row.
 // Native block offsets are translated without expanding quantized values.
 module qbs_payload_buffer import qbs_pkg::*; #(
-  parameter bit NativeView = 1'b1
+  parameter bit NativeView = 1'b1,
+  parameter bit PredecodedWriteLocations = 1'b0
 ) (
   input logic clk_i, rst_ni,
   input qbs_weight_profile_e weight_profile_i,
@@ -15,6 +16,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   input logic [1:0] weight_row_i [32], activation_context_i [32],
   input logic [7:0] weight_offset_i [32],
   input logic [8:0] activation_offset_i [32],
+  input qbs_payload_location_t weight_location_i [32], activation_location_i [32],
   input logic [255:0] weight_data_i, activation_data_i,
   output logic [31:0] weight_consumed_o, activation_consumed_o,
   // Independent of live valid: can every slot-0 byte use one word per bank?
@@ -31,61 +33,14 @@ module qbs_payload_buffer import qbs_pkg::*; #(
 );
   localparam int unsigned WeightSideBytes = 20;
   localparam int unsigned ActivationSideBytes = 36;
-  typedef struct packed {
-    logic [1:0] plane; // 0: low, 1: high, 2: side metadata
-    logic [7:0] offset;
-  } location_t;
   logic [7:0] weight_side_q [4][WeightSideBytes];
   logic [7:0] activation_side_q [4][ActivationSideBytes];
-  location_t weight_location [32], activation_location [32];
+  qbs_payload_location_t weight_location [32], activation_location [32];
   logic write_req [2][3][4];
   logic [2:0] write_addr [2][3][4];
   logic [255:0] write_data [2][3][4], read_data [3][4];
   logic [31:0] write_be [2][3][4];
   logic [2:0] read_addr [3];
-
-  function automatic location_t weight_location_of(
-      input qbs_weight_profile_e profile, input int unsigned offset);
-    location_t loc;
-    loc = '{plane: 2'd2, offset: 8'(offset)};
-    case (profile)
-      QBS_WEIGHT_PROFILE_Q4_K:
-        if (offset >= 16) loc = '{2'd0, 8'(offset - 16)};
-      QBS_WEIGHT_PROFILE_Q5_K:
-        if (offset >= 48) loc = '{2'd0, 8'(offset - 48)};
-        else if (offset >= 16) loc = '{2'd1, 8'(offset - 16)};
-      QBS_WEIGHT_PROFILE_Q6_K:
-        if (offset < 128) loc = '{2'd0, 8'(offset)};
-        else if (offset < 192) loc = '{2'd1, 8'(offset - 128)};
-        else loc.offset = 8'(offset - 192);
-      QBS_WEIGHT_PROFILE_Q3_K:
-        if (offset < 32) loc = '{2'd1, 8'(offset)};
-        else if (offset < 96) loc = '{2'd0, 8'(offset - 32)};
-        else loc.offset = 8'(offset - 96);
-      QBS_WEIGHT_PROFILE_Q2_K:
-        if (offset >= 80) loc.offset = 8'(offset - 64);
-        else if (offset >= 16) loc = '{2'd0, 8'(offset - 16)};
-      QBS_WEIGHT_PROFILE_Q5_0:
-        if (offset >= 6) loc = '{2'd0, 8'(offset - 6)};
-      QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
-      QBS_WEIGHT_PROFILE_IQ4_NL:
-        if (offset >= 2) loc = '{2'd0, 8'(offset - 2)};
-      default: ;
-    endcase
-    return loc;
-  endfunction
-
-  function automatic location_t activation_location_of(
-      input qbs_activation_profile_e profile, input int unsigned offset);
-    int unsigned scale, quants;
-    location_t loc;
-    scale = qbs_activation_scale_bytes(profile);
-    quants = qbs_activation_quant_bytes(profile);
-    loc = '{plane: 2'd2, offset: 8'(offset)};
-    if (offset >= scale + quants) loc.offset = 8'(offset - quants);
-    else if (offset >= scale) loc = '{2'd0, 8'(offset - scale)};
-    return loc;
-  endfunction
 
   always_comb begin
     read_addr[0] = '0;
@@ -106,8 +61,13 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   end
 
   for (genvar b = 0; b < 32; b++) begin : gen_location
-    assign weight_location[b] = weight_location_of(weight_profile_i, unsigned'(weight_offset_i[b]));
-    assign activation_location[b] = activation_location_of(activation_profile_i, unsigned'(activation_offset_i[b]));
+    if (PredecodedWriteLocations) begin : gen_registered
+      assign weight_location[b] = weight_location_i[b];
+      assign activation_location[b] = activation_location_i[b];
+    end else begin : gen_native
+      assign weight_location[b] = qbs_weight_payload_location(weight_profile_i, unsigned'(weight_offset_i[b]));
+      assign activation_location[b] = qbs_activation_payload_location(activation_profile_i, unsigned'(activation_offset_i[b]));
+    end
   end
 
   logic [15:0] bank_grant [2][3][4];
@@ -316,7 +276,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   for (genvar f = 0; f < 9; f++) begin : gen_weight_view
     for (genvar row = 0; row < 4; row++) begin : gen_row
       for (genvar b = 0; b < QbsMaxWeightBlockBytes; b++) begin : gen_byte
-        localparam location_t Loc = weight_location_of(WeightProfiles[f], b);
+        localparam qbs_payload_location_t Loc = qbs_weight_payload_location(WeightProfiles[f], b);
         if (b >= qbs_weight_block_bytes(WeightProfiles[f])) begin
           assign weight_view[f][row][b] = '0;
         end else if (Loc.plane == 2) begin
@@ -331,7 +291,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   for (genvar f = 0; f < 2; f++) begin : gen_activation_view
     for (genvar row = 0; row < 4; row++) begin : gen_row
       for (genvar b = 0; b < QbsMaxActivationBlockBytes; b++) begin : gen_byte
-        localparam location_t Loc = activation_location_of(ActivationProfiles[f], b);
+        localparam qbs_payload_location_t Loc = qbs_activation_payload_location(ActivationProfiles[f], b);
         if (b >= qbs_activation_block_bytes(ActivationProfiles[f])) begin
           assign activation_view[f][row][b] = '0;
         end else if (Loc.plane == 2) begin

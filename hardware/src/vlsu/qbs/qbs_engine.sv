@@ -347,6 +347,19 @@ module qbs_engine
   logic [31:0] phase_terminal_cycles_q;
 
 `ifndef SYNTHESIS
+  logic [QbsActivationContextMaxKBlocks-1:0] context_replay_started_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) context_replay_started_q <= '0;
+    else if (compute_command_valid && compute_command_ready)
+      context_replay_started_q <= '0;
+    else if (context_replay_start_valid && context_replay_start_ready) begin
+      assert (unsigned'(compute_expected_k) < QbsActivationContextMaxKBlocks &&
+              !context_replay_started_q[compute_expected_k])
+        else $fatal(1, "QBS activation context replayed a K block twice");
+      context_replay_started_q[compute_expected_k] <= 1'b1;
+    end
+  end
+
   logic [31:0] probe_weight_wait_no_outstanding_cycles_q;
   logic [31:0] probe_weight_wait_response_idle_cycles_q;
   logic [31:0] probe_weight_wait_r_transfer_cycles_q;
@@ -877,6 +890,7 @@ module qbs_engine
       activation_access_q == QBS_ACTIVATION_ACCESS_RELEASE;
   assign context_replay_start_valid = state_q == QBS_ENGINE_RUN &&
       scheduler_tuple_current && compute_activation_needed &&
+      activation_range_index_q == 0 &&
       activation_access_q inside {
           QBS_ACTIVATION_ACCESS_REUSE,
           QBS_ACTIVATION_ACCESS_RELEASE};
@@ -1361,14 +1375,20 @@ module qbs_engine
           scheduler_row_base_q <= compute_expected_row_base;
           activation_range_index_q <= '0;
           weight_range_index_q <= '0;
-        end else if (read_range_fire) begin
-          unique case (read_range_tag.role)
-            QBS_RANGE_ACTIVATION:
-              activation_range_index_q <= activation_range_index_q + 1'b1;
-            QBS_RANGE_WEIGHT:
-              weight_range_index_q <= weight_range_index_q + 1'b1;
-            default: ;
-          endcase
+        end else begin
+          // REUSE/RELEASE issues one local M1 range. Remember its handshake:
+          // the final beat can be accepted before adapter writes have drained.
+          if (context_replay_start_valid && context_replay_start_ready)
+            activation_range_index_q <= 3'd1;
+          if (read_range_fire) begin
+            unique case (read_range_tag.role)
+              QBS_RANGE_ACTIVATION:
+                activation_range_index_q <= activation_range_index_q + 1'b1;
+              QBS_RANGE_WEIGHT:
+                weight_range_index_q <= weight_range_index_q + 1'b1;
+              default: ;
+            endcase
+          end
         end
 
         if (weight_lookahead_enabled) begin

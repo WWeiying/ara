@@ -34,6 +34,7 @@ module qbs_payload_equivalence_tb;
   endfunction
 
   qbs_payload_buffer dut (
+    .weight_location_i(), .activation_location_i(),
     .weight_window_o(), .activation_window_o(), .weight_side_o(), .activation_side_o(),
     .weight_consumed_o(wc), .activation_consumed_o(ac),
     .weight_view_o(wview), .activation_view_o(aview), .*

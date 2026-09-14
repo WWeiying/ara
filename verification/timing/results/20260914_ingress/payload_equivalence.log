@@ -1,0 +1,20 @@
+Command: /home/wangwy/openproject/ara_dsa/hardware/timing_qbs_ingress_20260914_jEgtgo/payload/payload/./simv -l run.log
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 14 04:54 2026
+QBS payload profile=1 trials=4096 time=20000
+QBS payload profile=2 trials=4096 time=40980000
+QBS payload profile=3 trials=4096 time=81940000
+QBS payload profile=4 trials=4096 time=122900000
+QBS payload profile=5 trials=4096 time=163860000
+QBS payload profile=6 trials=4096 time=204820000
+QBS payload profile=7 trials=4096 time=245780000
+QBS payload profile=8 trials=4096 time=286740000
+QBS payload profile=9 trials=4096 time=327700000
+QBS payload equivalence PASS checks=110592
+$finish called from file "/home/wangwy/openproject/ara_dsa/verification/timing/qbs_payload_equivalence_tb.sv", line 139.
+$finish at simulation time            368660000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 368660000 ps
+CPU Time:     92.110 seconds;       Data structure size:   0.5Mb
+Mon Sep 14 04:56:20 2026

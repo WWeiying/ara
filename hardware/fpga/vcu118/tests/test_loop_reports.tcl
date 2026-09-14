@@ -12,18 +12,23 @@ proc report_drc {args} {
 }
 proc get_drc_violations {args} { return [expr {$::has_loop ? "LUTLP-1#1" : ""}] }
 proc get_cells {args} {
+    if {[lsearch -exact $args -hierarchical] >= 0} {
+        assert {[lindex $args end] eq "NAME =~ */i_fpga_compute_fault"} "fixed fault LUT lookup"
+        return [expr {$::has_fault_guard ? "qbs/i_fpga_compute_fault" : ""}]
+    }
     set objects [lindex $args end]
     if {$objects eq "LUTLP-1#1"} { return {qbs/needed_LUT qbs/read_LUT} }
     set result {}
     foreach pin $objects { lappend result [file dirname $pin] }
     return $result
 }
-proc list_property {cell} { return {REF_NAME INIT ORIG_CELL_NAME} }
+proc list_property {cell} { return {REF_NAME INIT DONT_TOUCH ORIG_CELL_NAME} }
 proc get_property {key object} {
     switch $key {
         REF_NAME { return [expr {$object eq "qbs/state_reg" ? "FDRE" : "LUT2"}] }
         IS_SEQUENTIAL { return [expr {$object eq "qbs/state_reg"}] }
         INIT { return 4'h8 }
+        DONT_TOUCH { return TRUE }
         ORIG_CELL_NAME { return $object }
         DIRECTION { return [expr {[string match */O $object] ? "OUT" : "IN"}] }
         default { error "Unexpected property $key" }
@@ -38,6 +43,7 @@ proc get_pins {args} {
             qbs/needed_LUT/I1 { return qbs/support_LUT/O }
             qbs/read_LUT/I0 { return qbs/needed_LUT/O }
             qbs/read_LUT/I1 - qbs/support_LUT/I0 { return qbs/state_reg/Q }
+            qbs/i_fpga_compute_fault/I0 - qbs/i_fpga_compute_fault/I1 { return qbs/state_reg/Q }
             qbs/support_LUT/I1 { return {} }
             default { return $pin }
         }
@@ -83,9 +89,19 @@ proc report_drc {args} {
     if {[lsearch -exact $args -checks] >= 0} { loop_report_drc {*}$args }
 }
 set package_root $dir
+set has_fault_guard 1
 write_reports clean true
+set f [open $dir/reports/clean/fault_decode.rpt r]; set fault [read $f]; close $f
+foreach text {"CELL qbs/i_fpga_compute_fault" "DONT_TOUCH=TRUE" "BOUNDARY sequential" "Visited 2 cells; pending 0"} {
+    assert {[string first $text $fault] >= 0} "fixed fault diagnostic missing $text"
+}
+set has_fault_guard 0
 set has_loop 1
 write_reports inspect
+set f [open $dir/reports/inspect/fault_decode.rpt r]; set fault [read $f]; close $f
+assert {[string first "Visited 0 cells; pending 0" $fault] >= 0} "old netlist has no fixed fault LUT"
+set f [open $dir/reports/inspect/loop_fanin.rpt r]; set fanin [read $f]; close $f
+assert {[string first "CELL qbs/needed_LUT" $fanin] >= 0} "fault report does not overwrite loop report"
 assert {[catch {write_reports route true} message]} "post-route loops must fail"
 assert {[string match "Combinational loops remain*" $message]} "post-route loop diagnosis"
 

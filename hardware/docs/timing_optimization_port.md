@@ -1630,7 +1630,7 @@ cycles 依次为 7200、7638、7612、41939、44493、44479，weight/activation/
 均与基线相同，prefetch wait 均为 0。Q4_K 各增加 98 周期，Q6_K 各增加
 562 周期。这些是 engine 测试的周期，不是完整模型的 token/s，也不是实测主频。
 
-33 个功能命令中，已测最大相对代价是 Q8_0、M1/N1/Kb65：1389 增至 1521，
+33 个功能命令中，已测最大相对代价是 Q4_0、M1/N1/Kb65：1389 增至 1521，
 即增加 132 周期、9.50%。因此只能说六个真实切片的代价约为 1.3%，不能说
 全部形状都只有这一开销。同一工作负载只有在频率提升比例大于周期增加比例时，
 执行时间才改善；当前尚未取得新整机频率证据。
@@ -1660,3 +1660,142 @@ bank mux、整机负载与布线。记录时尚无两组最终时序或面积数
 上一轮 `timing_feedback_20260913_x9goNT/soc_dc/` 仍使用流水化之前的冻结源码，
 没有被本轮覆盖、停止或偷偷换成新设计。它的后续结果不能归功于本轮流水化。
 本轮未新开整机 DC，也不以局部结果提前宣布 1 GHz 达标。
+
+## 22. QBS 写入译码与 SRAM 仲裁分级（2026-09-14）
+
+### 22.1 依据和范围
+
+本轮起点是 `ara_dsa` 的 `4cb07780`，针对上一轮
+`hardware/dc_runs/20260913_111442_qbs_pipeline/` 的 `clk_i` 路径。
+当时整组 WNS 为 -0.292 ns；两个 block adapter 合计约占 52% 的 TNS，
+是先处理这一部分而不是扩展算术单元的原因。
+
+代表路径从 `weight_profile_q` 经 R4/原生块位置译码、payload plane/offset
+转换、银行选择及写合并，到 SRAM 的 D 或 metadata 寄存器的时钟门控使能。
+例如 SRAM 数据路径到达约 1.058 ns、要求约 0.796 ns；某门控使能路径到达
+约 0.923 ns、要求约 0.650 ns。只改宽 mux 的语法，或者只在 AXI 原始数据前
+放寄存器，不能截断 profile 同周期穿过两次地址映射和 SRAM 仲裁的路径。
+
+本轮只改 QBS 的 beat 入口、payload 位置接口和必需的回放调度边界。
+不改 ISA、九种权重 profile、量化公式、FP 累加顺序、dot 数量、AKV 数据通路、
+lane 数量、SRAM 容量或端口。1 ns 时钟、0.15 ns setup uncertainty、
+0.075 ns hold uncertainty 和 0.2 ns clock-gating setup 均保持。
+
+### 22.2 实际结构
+
+写入路径分为：
+
+```text
+原始 beat / profile / layout
+    -> 行或上下文 + 原生 offset 合法性检查
+    -> 物理 plane + offset 译码
+    -> 两项入口 FIFO（数据与上述位置一起保存）
+    -> FIFO 队首和旧 pending 仲裁、同字合并
+    -> SRAM / metadata 写入、byte-valid 和唯一字节计数
+```
+
+- `qbs_block_adapter`：权重、激活各自独立两项 FIFO；输入 ready 只看占用及
+  本域 read/clear。规则流可同时入队和出队，81 组连续写验证均为零额外停顿。
+- `qbs_payload_buffer`：生产路径设 `PredecodedWriteLocations=1`，使用已寄存
+  的位置。旧 pending 优先选字、新字节同址覆盖优先的规则不变。
+- `qbs_pkg`：共享位置类型及两个纯映射函数；函数由 `scripts/gen_qbs_abi.py`
+  生成，软件 ABI 文件不变。独立 payload 测试仍可走原生 offset 译码路径。
+- complete 必须等 FIFO 和 pending 都空。残留 beat 的目的位置也保留，
+  不在下一拍重新穿过 profile 映射；清除一域不会清除另一域。
+- 数据和位置数组不复位，只复位占用、指针和 pending 有效位；无效内容不被使用。
+  这是 beat 级缓冲，不是新建一份解压矩阵，也不是让多个 QBS 命令乱序执行。
+
+原有双权重 bank、M8 两组上下文、下一 tile 加载与当前计算重叠均保留。
+新增级主要增加块启动延迟，不改变 dot 每拍工作量；短块仍可能受新增延迟影响。
+
+### 22.3 回放边界的实测修正
+
+初版流水在直接执行和局部 SRAM 等价检查中正常，但完整 engine 的激活 context
+REUSE 失败。检查表明，它不是多行格式解码错误：局部参考模型收到的输入本身
+已经属于错误的 K 块，局部数据映射一致不能证明上游调度正确。
+
+`qbs_ingress_boundary_trace.sv` 在正沿更新前记录启动、块号、offset、握手及整数/FP
+结果。第一次失败的第 6 个命令有以下证据：
+
+| 周期 | 事件 | 计算期望 K | 说明 |
+|---:|---|---:|---|
+| 699 | replay start | 0 | 正常启动 K0 |
+| 719 | 最后一拍 offset=288 被接收 | 0 | FIFO 尚未写完 |
+| 720 | replay done 同拍再次 start | 0 | `activation_needed` 仍高，重复启动 K0 |
+| 820 | offset=0 被下一块接收 | 1 | 回放器仍提供重复启动的 K0 数据 |
+
+原启动条件把“数据尚未全部写好”当成“仍需发起一次回放”。两者在加入流水后
+不再等价。修正复用 `activation_range_index_q`：REUSE/RELEASE 的本地 M1 range
+启动握手后置为 1，当前调度块不再允许第二次启动；下一块才清零。
+该更新和权重 AXI range 握手可以同拍发生，不能写成互斥分支而漏记回放。
+
+修正后第 720 周期不再 start，第 820 周期正确启动 K1；FILL/REUSE/RELEASE
+结果、实际回放块数和省去的 AXI 字节数全部通过原有检查。额外的仿真位图断言
+检查一个命令内每个 K 块只能回放一次，位图不综合，不增加架构状态。
+
+### 22.4 功能与性能证据
+
+原始运行目录：`hardware/timing_qbs_ingress_20260914_jEgtgo/`。
+归档目录：`verification/timing/results/20260914_ingress/`。
+
+| 验证 | 实测结果 |
+|---|---|
+| 原生 payload 位置映射对照 | 110592 次比较通过 |
+| TSMC SRAM 宏功能模型 | 81 组格式/布局、81 组无停顿流、256 个 strobe mask 通过 |
+| 写入边界 | 非连续地址、重复覆盖、两项 FIFO 与 pending 同时占用后独立清除通过 |
+| 完整 QBS engine | 33 个功能用例、四类故障、context FILL/REUSE/RELEASE 通过 |
+| 普通 RVV 代表点 | `vfmacc`、`vwiden_overlap_edges`、`vsaxpy` 通过 |
+| 整机命令交接 | 普通 RVV 加 4 个 QBS、10 个 AKV 命令通过，traps=0 |
+
+宏功能模型使用 `+notimingcheck`，避免零延迟 RTL 驱动触发宏 hold notifier；
+它不替代门级 SDF 时序验证。通用 SRAM 的初次全 strobe 扫描在 600 秒预算内
+完成了 81 组格式/布局并推进到 mask=16384 后超时，没有完整 PASS 标记，
+不计为全部 65536 个 mask 已通过；当前归档的宏检查明确是 256 个 mask。
+本轮未做形式等价，也未重跑全部随机 RVV case。
+
+下表保留真实 Qwen2.5 捕获数据的完整 K，仅裁剪输出行和 token 数。
+修改前后使用逐字节相同的输入文件；周期为 **QBS engine command cycles**，
+不是整机 kernel 周期或模型 token/s。
+
+| 算子/格式 | M x N x K | 修改前 | 修改后 | 增加 |
+|---|---:|---:|---:|---:|
+| Decode attn_q / Q4_K | 1 x 32 x 1536 | 2281 | 2287 | 0.263% |
+| Prefill attn_q / Q4_K | 4 x 32 x 1536 | 7298 | 7304 | 0.082% |
+| Prefill attn_q / Q4_K | 8 x 16 x 1536 | 7736 | 7742 | 0.078% |
+| Prefill attn_q 尾块 / Q4_K | 7 x 16 x 1536 | 7710 | 7716 | 0.078% |
+| Prefill ffn_down / Q6_K | 4 x 32 x 8960 | 42501 | 42536 | 0.082% |
+| Prefill ffn_down / Q6_K | 8 x 16 x 8960 | 45055 | 45090 | 0.078% |
+| Prefill ffn_down 尾块 / Q6_K | 7 x 16 x 8960 | 45041 | 45076 | 0.078% |
+
+七点均 PASS，weight/activation/payload 字节数、range 数、dot 活跃周期保持一致，
+prefetch wait 仍为零。每个 K 块增加一拍，未破坏连续计算或双缓冲重叠。
+最敏感的短块命令为 Q4_0、M1/N1/Kb65：1521 -> 1586，增加 4.27%；
+不能把真实大切片的 0.08% 开销外推到所有形状。
+
+实际时间满足 `time = cycles / frequency`。只有频率提升超过相应周期增幅，
+该用例的执行时间才改善；当前结果证明功能与周期代价，尚不证明新频率达标。
+
+### 22.5 综合和复现
+
+本轮局部 DC 使用完整 adapter wrapper，观察全部 SRAM 窗口和 metadata，
+修改前后使用相同输入寄存器、库及约束。源码和工具脚本分别冻结在
+`dc_before/` 与 `dc_after/`，当前仍在运行。
+与第 21 节的算术 pipeline wrapper 不同，本轮确实实例化 payload SRAM 宏，
+但局部负载与布线仍不等同整机。
+
+新的整机 DC 已在 `synopsys_workspace` 容器启动：
+`hardware/dc_runs/20260914_0521_qbs_ingress/`。
+使用未放宽的现有综合脚本/SDC，冻结当前 RTL、头文件及依赖；先检查当前 RVV
+回归与 QBS 功能日志通过、源码哈希对应，再运行综合。旧运行和报告未覆盖。
+记录时尚未获得本轮完成的时序/面积报告，不宣称已消除全部违例。
+
+```sh
+python3 verification/timing/collect_qbs_ingress_results.py \
+  --run hardware/timing_qbs_ingress_20260914_jEgtgo \
+  --output verification/timing/results/20260914_ingress
+```
+
+汇总校验完整 PASS 标记、前后输入哈希、用例身份、工作量和当前源码哈希，
+保存原始日志、33 命令与七切片 CSV、RTL patch 及综合状态。失败定位的原始
+`replay_probe/ingress_boundary.trace` 与修正后的 `replay_fixed/ingress_boundary.trace`
+保留在运行目录，不能把失败探针或未结束任务的中间输出归入通过数据。

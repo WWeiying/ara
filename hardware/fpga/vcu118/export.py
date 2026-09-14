@@ -88,6 +88,39 @@ def patch_dispatcher_vlen_casts(text):
     return text
 
 
+def patch_qbs_fault_decode(text):
+    # Keep the fault decoder independent of the scheduler/performance decode.
+    # The old Vivado netlist shares a logically redundant feedback path here.
+    enum = """  typedef enum logic [3:0] {
+    QBS_ENGINE_IDLE,
+    QBS_ENGINE_DESCRIPTOR_REQUEST,
+    QBS_ENGINE_DESCRIPTOR_WAIT,
+    QBS_ENGINE_VALIDATE,
+    QBS_ENGINE_COMPUTE_START,
+    QBS_ENGINE_RUN,
+    QBS_ENGINE_COMPUTE_FAULT_DRAIN,
+    QBS_ENGINE_COMMIT,
+    QBS_ENGINE_SUCCESS,
+    QBS_ENGINE_FAULT
+  } qbs_engine_state_e;"""
+    if text.count(enum) != 1:
+        raise RuntimeError("Integration source changed: unexpected QBS engine state encoding")
+    return replace_once(text,
+        """  assign compute_fault = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN ||
+      (state_q == QBS_ENGINE_RUN && read_fault_valid);""",
+        """  // FPGA-only: one preserved LUT prevents shared-decode feedback through
+  // needed/read selection. No register, fault delay, or handshake change.
+  localparam logic [31:0] FpgaComputeFaultInit =
+      (32'h1 << int'(QBS_ENGINE_COMPUTE_FAULT_DRAIN)) |
+      (32'h1 << (16 + int'(QBS_ENGINE_COMPUTE_FAULT_DRAIN))) |
+      (32'h1 << (16 + int'(QBS_ENGINE_RUN)));
+  (* DONT_TOUCH = "TRUE" *)
+  LUT5 #(.INIT(FpgaComputeFaultInit)) i_fpga_compute_fault (
+    .I0(state_q[0]), .I1(state_q[1]), .I2(state_q[2]), .I3(state_q[3]),
+    .I4(read_fault_valid), .O(compute_fault)
+  );""")
+
+
 def patch_soc_pkg(text):
     return replace_once(text, "    // Modify what we need to\n", """    // FPGA-only integration: retain the current scalar/vector FP16 contract.
     // This CVA6 snapshot has stub-only FpgaEn RAMs. Use its real generic
@@ -245,6 +278,7 @@ def export(dst, gcc, objdump, smoke_from=None):
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc),
                            ("rtl/cva6/common/local/util/sram_cache.sv", patch_sram_cache),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_vlen_casts),
+                           ("rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv", patch_qbs_fault_decode),
                            ("rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
                             patch_akv_byte_counts)]:
         path = dst / rel

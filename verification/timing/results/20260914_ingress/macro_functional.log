@@ -1,0 +1,182 @@
+Command: /home/wangwy/openproject/ara_dsa/hardware/timing_qbs_ingress_20260914_jEgtgo/adapter_macro_functional/sram/./simv -l run.log +QBS_STROBE_STRIDE=257
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 14 05:12 2026
+QBS SRAM stream PASS profile=1 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=1 M=1 rows=1 group=0 layout=1 W=144 A=292
+QBS SRAM stream PASS profile=1 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=1 M=3 rows=3 group=0 layout=1 W=432 A=876
+QBS SRAM stream PASS profile=1 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=1 M=4 rows=4 group=1 layout=2 W=576 A=1168
+QBS SRAM stream PASS profile=1 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=1 M=5 rows=4 group=1 layout=3 W=576 A=2336
+QBS SRAM stream PASS profile=1 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=1 M=6 rows=4 group=1 layout=3 W=576 A=2336
+QBS SRAM stream PASS profile=1 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=1 M=7 rows=4 group=1 layout=3 W=576 A=2336
+QBS SRAM stream PASS profile=1 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=1 M=8 rows=4 group=1 layout=3 W=576 A=2336
+QBS SRAM stream PASS profile=1 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=1 M=2 rows=2 group=0 layout=1 W=288 A=584
+QBS SRAM stream PASS profile=1 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=1 M=2 rows=2 group=1 layout=1 W=288 A=584
+QBS SRAM stream PASS profile=2 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=2 M=1 rows=1 group=0 layout=1 W=210 A=292
+QBS SRAM stream PASS profile=2 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=2 M=3 rows=3 group=0 layout=1 W=630 A=876
+QBS SRAM stream PASS profile=2 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=2 M=4 rows=4 group=1 layout=2 W=840 A=1168
+QBS SRAM stream PASS profile=2 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=2 M=5 rows=4 group=1 layout=3 W=840 A=2336
+QBS SRAM stream PASS profile=2 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=2 M=6 rows=4 group=1 layout=3 W=840 A=2336
+QBS SRAM stream PASS profile=2 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=2 M=7 rows=4 group=1 layout=3 W=840 A=2336
+QBS SRAM stream PASS profile=2 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=2 M=8 rows=4 group=1 layout=3 W=840 A=2336
+QBS SRAM stream PASS profile=2 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=2 M=2 rows=2 group=0 layout=1 W=420 A=584
+QBS SRAM stream PASS profile=2 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=2 M=2 rows=2 group=1 layout=1 W=420 A=584
+QBS SRAM stream PASS profile=3 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=3 M=1 rows=1 group=0 layout=1 W=18 A=34
+QBS SRAM stream PASS profile=3 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=3 M=3 rows=3 group=0 layout=1 W=54 A=102
+QBS SRAM stream PASS profile=3 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=3 M=4 rows=4 group=1 layout=2 W=72 A=136
+QBS SRAM stream PASS profile=3 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=3 M=5 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=3 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=3 M=6 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=3 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=3 M=7 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=3 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=3 M=8 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=3 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=3 M=2 rows=2 group=0 layout=1 W=36 A=68
+QBS SRAM stream PASS profile=3 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=3 M=2 rows=2 group=1 layout=1 W=36 A=68
+QBS SRAM stream PASS profile=4 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=4 M=1 rows=1 group=0 layout=1 W=176 A=292
+QBS SRAM stream PASS profile=4 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=4 M=3 rows=3 group=0 layout=1 W=528 A=876
+QBS SRAM stream PASS profile=4 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=4 M=4 rows=4 group=1 layout=2 W=704 A=1168
+QBS SRAM stream PASS profile=4 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=4 M=5 rows=4 group=1 layout=3 W=704 A=2336
+QBS SRAM stream PASS profile=4 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=4 M=6 rows=4 group=1 layout=3 W=704 A=2336
+QBS SRAM stream PASS profile=4 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=4 M=7 rows=4 group=1 layout=3 W=704 A=2336
+QBS SRAM stream PASS profile=4 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=4 M=8 rows=4 group=1 layout=3 W=704 A=2336
+QBS SRAM stream PASS profile=4 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=4 M=2 rows=2 group=0 layout=1 W=352 A=584
+QBS SRAM stream PASS profile=4 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=4 M=2 rows=2 group=1 layout=1 W=352 A=584
+QBS SRAM stream PASS profile=5 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=5 M=1 rows=1 group=0 layout=1 W=110 A=292
+QBS SRAM stream PASS profile=5 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=5 M=3 rows=3 group=0 layout=1 W=330 A=876
+QBS SRAM stream PASS profile=5 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=5 M=4 rows=4 group=1 layout=2 W=440 A=1168
+QBS SRAM stream PASS profile=5 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=5 M=5 rows=4 group=1 layout=3 W=440 A=2336
+QBS SRAM stream PASS profile=5 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=5 M=6 rows=4 group=1 layout=3 W=440 A=2336
+QBS SRAM stream PASS profile=5 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=5 M=7 rows=4 group=1 layout=3 W=440 A=2336
+QBS SRAM stream PASS profile=5 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=5 M=8 rows=4 group=1 layout=3 W=440 A=2336
+QBS SRAM stream PASS profile=5 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=5 M=2 rows=2 group=0 layout=1 W=220 A=584
+QBS SRAM stream PASS profile=5 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=5 M=2 rows=2 group=1 layout=1 W=220 A=584
+QBS SRAM stream PASS profile=6 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=6 M=1 rows=1 group=0 layout=1 W=34 A=34
+QBS SRAM stream PASS profile=6 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=6 M=3 rows=3 group=0 layout=1 W=102 A=102
+QBS SRAM stream PASS profile=6 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=6 M=4 rows=4 group=1 layout=2 W=136 A=136
+QBS SRAM stream PASS profile=6 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=6 M=5 rows=4 group=1 layout=3 W=136 A=272
+QBS SRAM stream PASS profile=6 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=6 M=6 rows=4 group=1 layout=3 W=136 A=272
+QBS SRAM stream PASS profile=6 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=6 M=7 rows=4 group=1 layout=3 W=136 A=272
+QBS SRAM stream PASS profile=6 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=6 M=8 rows=4 group=1 layout=3 W=136 A=272
+QBS SRAM stream PASS profile=6 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=6 M=2 rows=2 group=0 layout=1 W=68 A=68
+QBS SRAM stream PASS profile=6 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=6 M=2 rows=2 group=1 layout=1 W=68 A=68
+QBS SRAM stream PASS profile=7 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=7 M=1 rows=1 group=0 layout=1 W=84 A=292
+QBS SRAM stream PASS profile=7 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=7 M=3 rows=3 group=0 layout=1 W=252 A=876
+QBS SRAM stream PASS profile=7 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=7 M=4 rows=4 group=1 layout=2 W=336 A=1168
+QBS SRAM stream PASS profile=7 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=7 M=5 rows=4 group=1 layout=3 W=336 A=2336
+QBS SRAM stream PASS profile=7 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=7 M=6 rows=4 group=1 layout=3 W=336 A=2336
+QBS SRAM stream PASS profile=7 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=7 M=7 rows=4 group=1 layout=3 W=336 A=2336
+QBS SRAM stream PASS profile=7 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=7 M=8 rows=4 group=1 layout=3 W=336 A=2336
+QBS SRAM stream PASS profile=7 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=7 M=2 rows=2 group=0 layout=1 W=168 A=584
+QBS SRAM stream PASS profile=7 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=7 M=2 rows=2 group=1 layout=1 W=168 A=584
+QBS SRAM stream PASS profile=8 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=8 M=1 rows=1 group=0 layout=1 W=22 A=34
+QBS SRAM stream PASS profile=8 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=8 M=3 rows=3 group=0 layout=1 W=66 A=102
+QBS SRAM stream PASS profile=8 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=8 M=4 rows=4 group=1 layout=2 W=88 A=136
+QBS SRAM stream PASS profile=8 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=8 M=5 rows=4 group=1 layout=3 W=88 A=272
+QBS SRAM stream PASS profile=8 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=8 M=6 rows=4 group=1 layout=3 W=88 A=272
+QBS SRAM stream PASS profile=8 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=8 M=7 rows=4 group=1 layout=3 W=88 A=272
+QBS SRAM stream PASS profile=8 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=8 M=8 rows=4 group=1 layout=3 W=88 A=272
+QBS SRAM stream PASS profile=8 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=8 M=2 rows=2 group=0 layout=1 W=44 A=68
+QBS SRAM stream PASS profile=8 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=8 M=2 rows=2 group=1 layout=1 W=44 A=68
+QBS SRAM stream PASS profile=9 M=1 layout=1 stalls=0
+QBS adapter case PASS profile=9 M=1 rows=1 group=0 layout=1 W=18 A=34
+QBS SRAM stream PASS profile=9 M=3 layout=1 stalls=0
+QBS adapter case PASS profile=9 M=3 rows=3 group=0 layout=1 W=54 A=102
+QBS SRAM stream PASS profile=9 M=4 layout=2 stalls=0
+QBS adapter case PASS profile=9 M=4 rows=4 group=1 layout=2 W=72 A=136
+QBS SRAM stream PASS profile=9 M=5 layout=3 stalls=0
+QBS adapter case PASS profile=9 M=5 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=9 M=6 layout=3 stalls=0
+QBS adapter case PASS profile=9 M=6 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=9 M=7 layout=3 stalls=0
+QBS adapter case PASS profile=9 M=7 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=9 M=8 layout=3 stalls=0
+QBS adapter case PASS profile=9 M=8 rows=4 group=1 layout=3 W=72 A=272
+QBS SRAM stream PASS profile=9 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=9 M=2 rows=2 group=0 layout=1 W=36 A=68
+QBS SRAM stream PASS profile=9 M=2 layout=1 stalls=0
+QBS adapter case PASS profile=9 M=2 rows=2 group=1 layout=1 W=36 A=68
+QBS SRAM discontinuous/duplicate PASS stalls=4
+QBS SRAM stream PASS profile=6 M=1 layout=1 stalls=0
+QBS SRAM full-ingress clear PASS
+QBS SRAM strobe progress mask=0 cycles=41427 time=630011000
+QBS SRAM adapter PASS cases=81 strobe_masks=256 cycles=41940 simultaneous=7298 duplicates=6460 clear_collisions=81 idle=17572
+QBS SRAM streaming PASS cases=81 stalls=0
+$finish called from file "/home/wangwy/openproject/ara_dsa/verification/timing/qbs_sram_adapter_tb.sv", line 545.
+QBS SRAM checker base=0 cycles=63767 read_windows=10276 weight_pending=1038 activation_pending=1245 simultaneous=7377
+QBS SRAM writes base=0 wfire=7377 afire=24366 wblocked=0 ablocked=0 wold_new_commit=100 aold_new_commit=284
+QBS SRAM checker base=4 cycles=63767 read_windows=10276 weight_pending=1038 activation_pending=220 simultaneous=7377
+QBS SRAM writes base=4 wfire=7377 afire=24366 wblocked=0 ablocked=0 wold_new_commit=100 aold_new_commit=0
+$finish at simulation time            637701000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 637701000 ps
+CPU Time:    202.950 seconds;       Data structure size:   5.4Mb
+Mon Sep 14 05:15:41 2026

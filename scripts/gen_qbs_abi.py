@@ -1101,6 +1101,55 @@ package qbs_pkg;
 
 {sv_default_activation_function(spec)}
 
+  // Internal payload storage locations, shared by ingress and SRAM steering.
+  typedef struct packed {{
+    logic [1:0] plane; // 0: low, 1: high, 2: side metadata
+    logic [7:0] offset;
+  }} qbs_payload_location_t;
+
+  function automatic qbs_payload_location_t qbs_weight_payload_location(
+      input qbs_weight_profile_e profile, input int unsigned offset);
+    qbs_payload_location_t loc;
+    loc = '{{plane: 2'd2, offset: 8'(offset)}};
+    case (profile)
+      QBS_WEIGHT_PROFILE_Q4_K:
+        if (offset >= 16) loc = '{{2'd0, 8'(offset - 16)}};
+      QBS_WEIGHT_PROFILE_Q5_K:
+        if (offset >= 48) loc = '{{2'd0, 8'(offset - 48)}};
+        else if (offset >= 16) loc = '{{2'd1, 8'(offset - 16)}};
+      QBS_WEIGHT_PROFILE_Q6_K:
+        if (offset < 128) loc = '{{2'd0, 8'(offset)}};
+        else if (offset < 192) loc = '{{2'd1, 8'(offset - 128)}};
+        else loc.offset = 8'(offset - 192);
+      QBS_WEIGHT_PROFILE_Q3_K:
+        if (offset < 32) loc = '{{2'd1, 8'(offset)}};
+        else if (offset < 96) loc = '{{2'd0, 8'(offset - 32)}};
+        else loc.offset = 8'(offset - 96);
+      QBS_WEIGHT_PROFILE_Q2_K:
+        if (offset >= 80) loc.offset = 8'(offset - 64);
+        else if (offset >= 16) loc = '{{2'd0, 8'(offset - 16)}};
+      QBS_WEIGHT_PROFILE_Q5_0:
+        if (offset >= 6) loc = '{{2'd0, 8'(offset - 6)}};
+      QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
+      QBS_WEIGHT_PROFILE_IQ4_NL:
+        if (offset >= 2) loc = '{{2'd0, 8'(offset - 2)}};
+      default: ;
+    endcase
+    return loc;
+  endfunction
+
+  function automatic qbs_payload_location_t qbs_activation_payload_location(
+      input qbs_activation_profile_e profile, input int unsigned offset);
+    int unsigned scale, quants;
+    qbs_payload_location_t loc;
+    scale = qbs_activation_scale_bytes(profile);
+    quants = qbs_activation_quant_bytes(profile);
+    loc = '{{plane: 2'd2, offset: 8'(offset)}};
+    if (offset >= scale + quants) loc.offset = 8'(offset - quants);
+    else if (offset >= scale) loc = '{{2'd0, 8'(offset - scale)}};
+    return loc;
+  endfunction
+
   function automatic logic [63:0] qbs_capability_word(
       input logic [63:0] index,
       input int unsigned vlen_bits

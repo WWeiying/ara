@@ -7,7 +7,7 @@ import unittest
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from export import (patch_akv_descriptor_reduction, patch_akv_byte_counts,
-                    patch_dispatcher_vlen_casts, replace_once)
+                    patch_dispatcher_vlen_casts, patch_qbs_fault_decode, replace_once)
 from prepare import ROOT
 
 
@@ -102,6 +102,32 @@ class AkvByteCountPatchTests(unittest.TestCase):
             patch_akv_byte_counts(self.source.replace("32'($countones(read_data_strb))", "0", 1))
         with self.assertRaises(RuntimeError):
             patch_akv_byte_counts(self.patched)
+
+
+class QbsFaultPatchTests(unittest.TestCase):
+    def setUp(self):
+        self.source = (ROOT / "hardware/src/vlsu/qbs/qbs_engine.sv").read_text()
+
+    def test_only_fault_decode_changes(self):
+        patched = patch_qbs_fault_decode(self.source)
+        start = patched.index("  // FPGA-only: one preserved LUT")
+        end = patched.index("\n  );", start) + len("\n  );")
+        original = """  assign compute_fault = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN ||
+      (state_q == QBS_ENGINE_RUN && read_fault_valid);"""
+        self.assertEqual(patched[:start] + original + patched[end:], self.source)
+        self.assertIn('(* DONT_TOUCH = "TRUE" *)', patched[start:end])
+        self.assertIn('.I4(read_fault_valid), .O(compute_fault)', patched[start:end])
+        self.assertNotIn("always_ff", patched[start:end])
+
+    def test_changed_inputs_or_encoding_are_rejected(self):
+        changed = [self.source.replace("&& read_fault_valid);", "&& read_busy);"),
+                   self.source.replace("    QBS_ENGINE_RUN,", "    QBS_ENGINE_RUN = 12,"),
+                   self.source.replace("typedef enum logic [3:0]", "typedef enum logic [4:0]", 1),
+                   patch_qbs_fault_decode(self.source)]
+        for source in changed:
+            with self.subTest(source=source[:60]):
+                with self.assertRaises(RuntimeError):
+                    patch_qbs_fault_decode(source)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--container", default="synopsys_workspace")
     parser.add_argument("--top", choices=("qbs_payload_buffer", "qbs_block_adapter",
-                                         "qbs_ingress_timing", "simd_mul_timing",
+                                         "qbs_ingress_timing", "qbs_adapter_pipeline_timing", "simd_mul_timing",
                                          "simd_alu_timing", "qbs_decode_dot_timing",
                                          "vfdsu_round_timing", "ara_dispatcher_timing",
                                          "qbs_correction_select_timing", "qbs_address_timing",
@@ -98,7 +98,7 @@ def main():
     sources = [ROOT / "hardware/include/qbs_pkg.sv"] + [
         ROOT / "hardware/src/vlsu/qbs" / name
         for name in ("qbs_payload_sram.sv", "qbs_payload_buffer.sv")]
-    if args.top in ("qbs_block_adapter", "qbs_ingress_timing"):
+    if args.top in ("qbs_block_adapter", "qbs_ingress_timing", "qbs_adapter_pipeline_timing"):
         sources.append(ROOT / "hardware/src/vlsu/qbs/qbs_block_adapter.sv")
     if args.top == "qbs_decode_dot_timing":
         sources = [ROOT / "hardware/include/qbs_pkg.sv"] + [
@@ -169,7 +169,7 @@ def main():
         target.write_text(round_timing_module((out / "src/ct_vfdsu_round.v").read_text()))
         records.append({"path": "generated:vfdsu_round_timing.sv",
                         "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
-    if args.top in ("qbs_ingress_timing", "simd_mul_timing", "simd_alu_timing",
+    if args.top in ("qbs_ingress_timing", "qbs_adapter_pipeline_timing", "simd_mul_timing", "simd_alu_timing",
                     "qbs_decode_dot_timing", "ara_dispatcher_timing", "qbs_profile_pipeline_timing"):
         source = Path(__file__).with_name(args.top + ".sv")
         target = out / "src" / source.name
@@ -208,7 +208,7 @@ def main():
         "period_ns": 1.0,
         "setup_uncertainty_ns": 0.15, "cores": 2, "reference": reference,
         "source_overrides": str(args.source_overrides.resolve()) if args.source_overrides else None,
-        "clock_gating": args.top in ("qbs_ingress_timing", "simd_mul_timing",
+        "clock_gating": args.top in ("qbs_ingress_timing", "qbs_adapter_pipeline_timing", "simd_mul_timing",
                                      "simd_alu_timing", "qbs_decode_dot_timing", "vfdsu_round_timing",
                                      "ara_dispatcher_timing", "qbs_correction_select_timing",
                                      "qbs_address_timing", "qbs_profile_pipeline_timing"),

@@ -54,6 +54,9 @@ proc write_reports {stage {reject_loops false}} {
         -file [file join $dir setup_paths.rpt]
     report_exceptions -ignored -file [file join $dir ignored_exceptions.rpt]
     report_clocks -file [file join $dir clocks.rpt]
+    # Collect the fixed fault cone in the same run, even if no loop remains.
+    set fault_cells [get_cells -quiet -hierarchical -filter {NAME =~ */i_fpga_compute_fault}]
+    write_loop_fanin $dir $fault_cells 64 fault_decode.rpt
     set loops [write_loop_details $dir]
     if {$reject_loops && $loops} {
         error "Combinational loops remain; inspect $dir/loop_cells.rpt. No bitstream was generated."
@@ -87,7 +90,7 @@ proc write_loop_details {dir} {
 
 proc write_cell_details {out cell} {
     puts $out "CELL $cell REF_NAME=[get_property REF_NAME $cell]"
-    foreach key {INIT ORIG_REF_NAME ORIG_CELL_NAME FILE_NAME LINE_NUMBER} {
+    foreach key {INIT DONT_TOUCH ORIG_REF_NAME ORIG_CELL_NAME FILE_NAME LINE_NUMBER} {
         if {$key in [list_property $cell]} { puts $out "  $key=[get_property $key $cell]" }
     }
     if {[get_property IS_SEQUENTIAL $cell]} {
@@ -113,14 +116,14 @@ proc write_cell_details {out cell} {
 
 # Include side inputs of the loop, stopping at registers instead of exporting
 # the whole QBS netlist. A hard node bound keeps this diagnostic uploadable.
-proc write_loop_fanin {dir seeds {limit 2048}} {
+proc write_loop_fanin {dir seeds {limit 2048} {filename loop_fanin.rpt}} {
     if {$limit < 1} { error "Invalid fanin report limit" }
     set queue [lsort -unique $seeds]
     set seen {}
     foreach cell $queue { dict set seen $cell 1 }
-    set out [open [file join $dir loop_fanin.rpt] w]
+    set out [open [file join $dir $filename] w]
     set code [catch {
-        puts $out "Loop fanin, maximum $limit cells; sequential cells are boundaries"
+        puts $out "Cell fanin, maximum $limit cells; sequential cells are boundaries"
         for {set n 0} {$n < [llength $queue] && $n < $limit} {incr n} {
             foreach source [write_cell_details $out [lindex $queue $n]] {
                 if {![dict exists $seen $source]} {

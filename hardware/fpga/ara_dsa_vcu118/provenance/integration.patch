@@ -72,6 +72,28 @@
                    end
                    6'b001111: begin
                      ara_req.op            = ara_pkg::VSLIDEDOWN;
+--- a/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
++++ b/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
+@@ -941,8 +941,17 @@
+   );
+ 
+   assign compute_command_valid = state_q == QBS_ENGINE_COMPUTE_START;
+-  assign compute_fault = state_q == QBS_ENGINE_COMPUTE_FAULT_DRAIN ||
+-      (state_q == QBS_ENGINE_RUN && read_fault_valid);
++  // FPGA-only: one preserved LUT prevents shared-decode feedback through
++  // needed/read selection. No register, fault delay, or handshake change.
++  localparam logic [31:0] FpgaComputeFaultInit =
++      (32'h1 << int'(QBS_ENGINE_COMPUTE_FAULT_DRAIN)) |
++      (32'h1 << (16 + int'(QBS_ENGINE_COMPUTE_FAULT_DRAIN))) |
++      (32'h1 << (16 + int'(QBS_ENGINE_RUN)));
++  (* DONT_TOUCH = "TRUE" *)
++  LUT5 #(.INIT(FpgaComputeFaultInit)) i_fpga_compute_fault (
++    .I0(state_q[0]), .I1(state_q[1]), .I2(state_q[2]), .I3(state_q[3]),
++    .I4(read_fault_valid), .O(compute_fault)
++  );
+ 
+   qbs_compute_engine i_compute_engine (
+     .clk_i,
 --- a/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
 +++ b/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv
 @@ -235,6 +235,7 @@
