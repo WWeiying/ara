@@ -100,7 +100,8 @@ proc fpga_run::execute {stage session token parent} {
         check_run $parent {*synth_design Complete*}
         nonempty [file join [get_property DIRECTORY [get_runs $parent]] ${project_name}.dcp]
         puts "INSPECT: $parent (existing netlist, current constraints; no synthesis)"
-        open_run $parent
+        set ::ara_cdc_inspect_legacy true
+        try { open_run $parent } finally { unset ::ara_cdc_inspect_legacy }
         write_reports inspect_$token
         set handle [open [file join $session completed_run.txt] {WRONLY CREAT EXCL}]
         puts $handle inspect_$token

@@ -65,26 +65,69 @@ proc write_loop_details {dir} {
     report_drc -checks {LUTLP-1} -name ara_loops -force -file [file join $dir loops.rpt]
     set violations [get_drc_violations -quiet -name ara_loops LUTLP*]
     set out [open [file join $dir loop_cells.rpt] w]
+    set seeds {}
     puts $out "LUTLP violations: [llength $violations]"
-    foreach violation $violations {
-        puts $out "VIOLATION $violation"
-        foreach cell [get_cells -quiet -of_objects $violation] {
-            puts $out "CELL $cell REF_NAME=[get_property REF_NAME $cell]"
-            foreach key {INIT ORIG_REF_NAME ORIG_CELL_NAME} {
-                if {$key in [list_property $cell]} { puts $out "  $key=[get_property $key $cell]" }
+    try {
+        foreach violation $violations {
+            puts $out "VIOLATION $violation"
+            foreach cell [get_cells -quiet -of_objects $violation] {
+                lappend seeds $cell
+                write_cell_details $out $cell
             }
-            foreach pin [get_pins -quiet -of_objects $cell] {
-                set nets [get_nets -quiet -segments -of_objects $pin]
-                puts $out "  PIN $pin [get_property DIRECTION $pin] NETS=$nets"
-                if {[llength $nets]} {
-                    puts $out "    DRIVERS=[get_pins -quiet -leaf -of_objects $nets -filter {DIRECTION == OUT}]"
-                    puts $out "    PORTS=[get_ports -quiet -of_objects $nets]"
-                }
+        }
+    } finally { close $out }
+    write_loop_fanin $dir $seeds
+    return [llength $violations]
+}
+
+proc write_cell_details {out cell} {
+    puts $out "CELL $cell REF_NAME=[get_property REF_NAME $cell]"
+    foreach key {INIT ORIG_REF_NAME ORIG_CELL_NAME FILE_NAME LINE_NUMBER} {
+        if {$key in [list_property $cell]} { puts $out "  $key=[get_property $key $cell]" }
+    }
+    if {[get_property IS_SEQUENTIAL $cell]} {
+        puts $out "  BOUNDARY sequential"
+        return {}
+    }
+    set fanin {}
+    foreach pin [get_pins -quiet -of_objects $cell] {
+        set direction [get_property DIRECTION $pin]
+        set nets [get_nets -quiet -segments -of_objects $pin]
+        puts $out "  PIN $pin $direction NETS=$nets"
+        if {[llength $nets]} {
+            set drivers [get_pins -quiet -leaf -of_objects $nets -filter {DIRECTION == OUT}]
+            puts $out "    DRIVERS=$drivers"
+            puts $out "    PORTS=[get_ports -quiet -of_objects $nets]"
+            if {$direction eq "IN" && [llength $drivers]} {
+                foreach source [get_cells -quiet -of_objects $drivers] { lappend fanin $source }
             }
         }
     }
-    close $out
-    return [llength $violations]
+    return [lsort -unique $fanin]
+}
+
+# Include side inputs of the loop, stopping at registers instead of exporting
+# the whole QBS netlist. A hard node bound keeps this diagnostic uploadable.
+proc write_loop_fanin {dir seeds {limit 2048}} {
+    if {$limit < 1} { error "Invalid fanin report limit" }
+    set queue [lsort -unique $seeds]
+    set seen {}
+    foreach cell $queue { dict set seen $cell 1 }
+    set out [open [file join $dir loop_fanin.rpt] w]
+    puts $out "Loop fanin, maximum $limit cells; sequential cells are boundaries"
+    try {
+        for {set n 0} {$n < [llength $queue] && $n < $limit} {incr n} {
+            foreach source [write_cell_details $out [lindex $queue $n]] {
+                if {![dict exists $seen $source]} {
+                    dict set seen $source 1
+                    lappend queue $source
+                }
+            }
+        }
+        set pending [expr {[llength $queue] - $n}]
+        puts $out "Visited $n cells; pending $pending"
+        if {$pending} { puts $out "TRUNCATED: remaining cells [lrange $queue $n end]" }
+    } finally { close $out }
 }
 
 proc require_no_combinational_loops {dir} {

@@ -38,7 +38,17 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   logic vio_reset, vio_boot_select;
   logic [1:0] vio_boot_mode, boot_mode;
   wire sys_rst = sys_reset | vio_reset | ~clk_locked;
-  wire [3:0] status = {rst_n, fabric_ready, clk_locked, sys_rst};
+  wire [3:0] status_async = {rst_n, fabric_ready, clk_locked, sys_rst};
+  wire [3:0] status;
+
+  // Independent debug indicators, not an atomic status word. Keep sampling
+  // during reset so VIO can show why the SoC is being held in reset.
+  for (genvar bit_idx = 0; bit_idx < 4; bit_idx++) begin : gen_status_sync
+    sync #(.STAGES(2)) i_sync (
+      .clk_i(soc_clk), .rst_ni(1'b1),
+      .serial_i(status_async[bit_idx]), .serial_o(status[bit_idx])
+    );
+  end : gen_status_sync
 
   IBUFDS #(.IBUF_LOW_PWR("FALSE")) i_bufds_sys_clk (
     .I(sys_clk_p), .IB(sys_clk_n), .O(sys_clk)

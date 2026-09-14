@@ -60,6 +60,25 @@ proc ara_cdc::apply {} {
     foreach pin {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni} {
         set_false_path -through [require [get_pins -quiet $pin] "reset input $pin" 1]
     }
+    set status_regs [get_cells -quiet -hierarchical -filter \
+        {NAME =~ gen_status_sync*.i_sync/reg_q_reg* && REF_NAME =~ FD*}]
+    if {![llength $status_regs] && [info exists ::ara_cdc_inspect_legacy] &&
+        $::ara_cdc_inspect_legacy} {
+        puts "WARNING: CDC: legacy netlist has no VIO status synchronizers; re-synthesis is required to verify the board fix."
+    } else {
+        require $status_regs "eight VIO status synchronizer registers" 8
+        set status_first {}
+        foreach reg $status_regs {
+            if {[regexp {\/reg_q_reg\[0\]$} [get_property NAME $reg]]} {
+                lappend status_first $reg
+            }
+        }
+        require $status_first "four VIO first-stage registers" 4
+        set_property ASYNC_REG TRUE $status_regs
+        set_false_path -to [require [get_pins -quiet -of_objects $status_first \
+            -filter {REF_PIN_NAME == D}] "four VIO first-stage D pins" 4]
+        puts "CDC: four independent VIO status bits synchronized; only first-stage D pins excepted"
+    }
 }
 
 ara_cdc::apply

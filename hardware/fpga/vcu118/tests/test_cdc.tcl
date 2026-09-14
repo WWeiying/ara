@@ -32,6 +32,16 @@ proc setup {scenario} {
     }
     dict set ::pins i_rstgen/rst_ni reset
     if {$scenario ne "missing_reset"} { dict set ::pins i_dram_wrapper/i_ui_rstgen/rst_ni reset }
+    unset -nocomplain ::ara_cdc_inspect_legacy
+    if {$scenario eq "legacy"} { set ::ara_cdc_inspect_legacy true }
+    if {$scenario ni {legacy missing_status}} {
+        for {set bit 0} {$bit < 4} {incr bit} {
+            for {set stage 0} {$stage < 2} {incr stage} {
+                if {$scenario eq "missing_status_second" && $stage == 1 && $bit == 0} { continue }
+                dict set ::cells [format {gen_status_sync[%d].i_sync/reg_q_reg[%d]} $bit $stage] soc
+            }
+        }
+    }
 }
 proc get_cells {args} {
     set filter [option $args -filter]
@@ -85,17 +95,25 @@ proc set_max_delay {args} {
     lappend ::max_delays $args
 }
 proc set_false_path {args} {
-    assert {[llength $args] == 2 && [lindex $args 0] eq "-through"} "reset pin only"
-    assert {[lindex $args 1] in {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni}} "no broad false paths"
+    assert {[llength $args] == 2} "one bounded pin set only"
+    if {[lindex $args 0] eq "-through"} {
+        assert {[lindex $args 1] in {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni}} "reset pins only"
+    } else {
+        assert {[lindex $args 0] eq "-to" && [llength [lindex $args 1]] == 4} "four status inputs only"
+        foreach pin [lindex $args 1] {
+            assert {[regexp {^gen_status_sync\[[0-3]\]\.i_sync/reg_q_reg\[0\]/D$} $pin]} "only first-stage status D pins"
+        }
+    }
     lappend ::false_paths $args
 }
-foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset} {
+foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second} {
     setup $scenario
     set failed [catch {source $root/constraints/cdc.xdc} message]
-    assert {$failed == ($scenario ne "healthy")} "$scenario: $message"
+    assert {$failed == ($scenario ni {healthy legacy})} "$scenario: $message"
     if {!$failed} {
-        assert {[llength $max_delays] == 15 && [llength $false_paths] == 2} "all five channels covered"
-        assert {[dict size $attributes] == 120} "all 60 two-stage pointer synchronizers marked"
+        set legacy [expr {$scenario eq "legacy"}]
+        assert {[llength $max_delays] == 15 && [llength $false_paths] == ($legacy ? 2 : 3)} "all channels/status bits covered"
+        assert {[dict size $attributes] == ($legacy ? 120 : 128)} "pointer/status synchronizers marked"
     } else {
         assert {[string match CDC:* $message]} "expected an intentional validation failure: $message"
     }

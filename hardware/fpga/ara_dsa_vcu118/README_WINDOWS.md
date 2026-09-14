@@ -135,17 +135,21 @@ powershell -NoProfile -File scripts/run.ps1 -Stage impl
 
 ```powershell
 cd D:/project/ara/hardware/fpga/ara_dsa_vcu118
-powershell -NoProfile -File scripts/run.ps1 -Stage inspect
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/run.ps1 -Stage inspect
 ```
 
 入口仍使用原 XPR 和已完成的综合 DCP，不创建或启动任何 run，不重建三个 IP。
 新报告写入 `reports/inspect_<唯一标识>/`，原综合报告和 `latest_synth.json` 不覆盖。
 报告包含 `loop_cells.rpt`（环路 LUT 的 INIT、引脚及驱动连接）、`loops.rpt`、
 `setup_paths.rpt`、`ignored_exceptions.rpt` 和原有资源、时序、CDC、DRC 报告。
+新增 `loop_fanin.rpt` 包含环路上游的支持逻辑，遇到时序单元停止，最多输出
+2048 个单元；出现 `TRUNCATED` 时说明诊断还不完整，提交报告时保留该标记。
 `inspection.json` 同时记录旧综合输入指纹和当前输入指纹，提交报告时一并保留。
 
 此模式允许源码已更新，但分析的是**旧综合网表加当前约束**，不验证新的 RTL，
 也不使旧综合重新满足 `-Stage impl` 的输入一致性检查。
+旧网表没有新加的 VIO 状态同步器时，会提示 `legacy netlist`，仅检查模式允许继续。
+正常综合/实现必须匹配四条两级同步链；不能用检查旧网表证明这项 RTL 修复已生效。
 检查完成后提交该目录的文本报告即可，不需要上传 DCP、XPR 或 IP 目录。
 `reports/` 仍默认忽略；确认本次报告后，可显式加入：
 
@@ -163,7 +167,8 @@ git diff --cached --stat
 同步工具即使提示工程配置改变，本次更新也不需要重新创建工程或 IP。
 文件类型设置依据 [AMD UG903](https://docs.amd.com/r/2023.1-English/ug903-vivado-using-constraints/About-XDC-Constraints)。
 
-这些修复已经通过离线控制流程测试，但仍需用本机 Vivado 检查实际端点匹配和约束效果。
+回传的 `inspect_a1c3e095ccee` 已验证双向 FIFO 约束生效，但 QBS 组合环仍在。
+本次新增的 VIO 同步器和扩展诊断尚需本机 Vivado 验证；不要直接进入实现或生成 bitstream。
 现有报告的问题清单见 `docs/FPGA_ISSUES.md`。
 
 ## 2. 固定配置
