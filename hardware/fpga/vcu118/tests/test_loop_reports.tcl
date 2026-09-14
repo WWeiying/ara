@@ -1,4 +1,6 @@
 # Offline checks for diagnostic extraction and the pre-implementation gate.
+# Reproduce the missing command in the Windows Vivado 2020.1 interpreter.
+if {[llength [info commands try]]} { rename try {} }
 source [file join [file dirname [info script]] .. scripts common.tcl]
 set dir [file normalize [lindex $argv 0]]
 file mkdir $dir
@@ -86,4 +88,39 @@ set has_loop 1
 write_reports inspect
 assert {[catch {write_reports route true} message]} "post-route loops must fail"
 assert {[string match "Combinational loops remain*" $message]} "post-route loop diagnosis"
+
+rename write_cell_details real_write_cell_details
+proc write_cell_details {out cell} {
+    if {$::detail_failure} {
+        return -code error -errorcode {ARA TEST DETAIL} "Cannot read cell"
+    }
+    return [real_write_cell_details $out $cell]
+}
+rename close real_close
+proc close {channel} {
+    real_close $channel
+    if {$::close_failure} {
+        return -code error -errorcode {ARA TEST CLOSE} "Cannot flush report"
+    }
+}
+foreach entry {write_loop_details write_loop_fanin} {
+    foreach failure {detail close both} {
+        set detail_failure [expr {$failure in {detail both}}]
+        set close_failure [expr {$failure in {close both}}]
+        set before [lsort [chan names]]
+        set command [list $entry $dir]
+        if {$entry eq "write_loop_fanin"} { lappend command qbs/needed_LUT }
+        set code [catch {{*}$command} message options]
+        assert {$code == 1} "$entry: propagate report failures"
+        set expected [expr {$detail_failure ? "ARA TEST DETAIL" : "ARA TEST CLOSE"}]
+        set expected_message [expr {$detail_failure ? "Cannot read cell" : "Cannot flush report"}]
+        assert {[dict get $options -errorcode] eq $expected} "$entry: preserve failure code"
+        assert {$message eq $expected_message} "$entry: preserve failure message"
+        assert {[string first $entry [dict get $options -errorinfo]] >= 0} "$entry: preserve stack"
+        assert {[lsort [chan names]] eq $before} "$entry: report channel must be closed"
+        puts "PASS $entry $failure cleanup"
+    }
+}
+rename close {}
+rename real_close close
 puts "PASS: loop cell connectivity, INIT, inspection and pre/post-implementation gates"

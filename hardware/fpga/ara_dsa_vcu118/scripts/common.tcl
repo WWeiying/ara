@@ -66,8 +66,10 @@ proc write_loop_details {dir} {
     set violations [get_drc_violations -quiet -name ara_loops LUTLP*]
     set out [open [file join $dir loop_cells.rpt] w]
     set seeds {}
-    puts $out "LUTLP violations: [llength $violations]"
-    try {
+    # Preserve diagnostics and release the file even on an extraction failure.
+    # catch is supported by the older Tcl embedded in Windows Vivado 2020.1.
+    set code [catch {
+        puts $out "LUTLP violations: [llength $violations]"
         foreach violation $violations {
             puts $out "VIOLATION $violation"
             foreach cell [get_cells -quiet -of_objects $violation] {
@@ -75,7 +77,10 @@ proc write_loop_details {dir} {
                 write_cell_details $out $cell
             }
         }
-    } finally { close $out }
+    } result options]
+    set close_code [catch {close $out} close_result close_options]
+    if {$code} { return -options $options $result }
+    if {$close_code} { return -options $close_options $close_result }
     write_loop_fanin $dir $seeds
     return [llength $violations]
 }
@@ -114,8 +119,8 @@ proc write_loop_fanin {dir seeds {limit 2048}} {
     set seen {}
     foreach cell $queue { dict set seen $cell 1 }
     set out [open [file join $dir loop_fanin.rpt] w]
-    puts $out "Loop fanin, maximum $limit cells; sequential cells are boundaries"
-    try {
+    set code [catch {
+        puts $out "Loop fanin, maximum $limit cells; sequential cells are boundaries"
         for {set n 0} {$n < [llength $queue] && $n < $limit} {incr n} {
             foreach source [write_cell_details $out [lindex $queue $n]] {
                 if {![dict exists $seen $source]} {
@@ -127,7 +132,10 @@ proc write_loop_fanin {dir seeds {limit 2048}} {
         set pending [expr {[llength $queue] - $n}]
         puts $out "Visited $n cells; pending $pending"
         if {$pending} { puts $out "TRUNCATED: remaining cells [lrange $queue $n end]" }
-    } finally { close $out }
+    } result options]
+    set close_code [catch {close $out} close_result close_options]
+    if {$code} { return -options $options $result }
+    if {$close_code} { return -options $close_options $close_result }
 }
 
 proc require_no_combinational_loops {dir} {

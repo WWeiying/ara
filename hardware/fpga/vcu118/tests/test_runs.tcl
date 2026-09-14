@@ -1,4 +1,8 @@
 # Offline control-flow tests. This does not emulate Vivado synthesis or timing.
+# Load the host clock library before removing a command its loader may use.
+clock format [clock seconds] -format {%Y-%m-%d %H:%M:%S}
+# Reproduce the missing command in the Windows Vivado 2020.1 interpreter.
+if {[llength [info commands try]]} { rename try {} }
 source [file join [file dirname [info script]] .. scripts common.tcl]
 source [file join [file dirname [info script]] .. scripts run_support.tcl]
 set sandbox [file normalize [lindex $argv 0]]
@@ -105,7 +109,9 @@ proc open_run {name} {
     if {$::scenario in {inspect inspect_stale inspect_open_error}} {
         assert {[info exists ::ara_cdc_inspect_legacy] && $::ara_cdc_inspect_legacy} \
             "only inspection may open a legacy status netlist"
-        if {$::scenario eq "inspect_open_error"} { error "Cannot open checkpoint" }
+        if {$::scenario eq "inspect_open_error"} {
+            return -code error -errorcode {ARA TEST OPEN} "Cannot open checkpoint"
+        }
     } else {
         assert {![info exists ::ara_cdc_inspect_legacy]} "no legacy bypass for synthesis or implementation"
     }
@@ -140,11 +146,16 @@ foreach scenario {healthy quiet_phase missing_run missing_ip incomplete_ip stale
         set use_parent $parent
     }
     if {$scenario in {inspect inspect_stale inspect_open_error}} { set stage inspect; set use_parent $parent }
-    set code [catch {fpga_run::execute $stage $session $token $use_parent} message]
+    set code [catch {fpga_run::execute $stage $session $token $use_parent} message options]
     set success [expr {$scenario in {healthy quiet_phase implementation inspect inspect_stale}}]
     if {[catch {
         assert {$code == !$success} "$scenario: unexpected result ($message)"
         assert {![info exists ::ara_cdc_inspect_legacy]} "legacy bypass must be scoped to open_run"
+        if {$scenario eq "inspect_open_error"} {
+            assert {$message eq "Cannot open checkpoint"} "preserve original failure message"
+            assert {[dict get $options -errorcode] eq "ARA TEST OPEN"} "preserve original error code"
+            assert {[string first open_run [dict get $options -errorinfo]] >= 0} "preserve failure stack"
+        }
         assert {[llength $launched] <= 1} "only one run launched"
         assert {[file exists [file join $session completed_run.txt]] == $success} "completion marker"
         assert {[file exists [file join $session old synth_1 exception.log]]} "old artifacts preserved"

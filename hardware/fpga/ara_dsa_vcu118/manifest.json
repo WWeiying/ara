@@ -664,18 +664,13 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "98bbc6eaa6dbc289ae82a3dfc45e0076d5ab54aa",
+      "commit": "fde1fe1768a70671f7f3cc359c2980df522e14f2",
       "tracked_changes": [
         "backend/syn/ara_soc/v1-dc/reports/area.rpt",
-        "hardware/fpga/vcu118/README.md",
         "hardware/fpga/vcu118/README_WINDOWS.md",
-        "hardware/fpga/vcu118/constraints/cdc.xdc",
-        "hardware/fpga/vcu118/docs/FPGA_ISSUES.md",
         "hardware/fpga/vcu118/docs/VALIDATION.md",
-        "hardware/fpga/vcu118/rtl/ara_dsa_vcu118.sv",
         "hardware/fpga/vcu118/scripts/common.tcl",
         "hardware/fpga/vcu118/scripts/run_support.tcl",
-        "hardware/fpga/vcu118/tests/test_cdc.tcl",
         "hardware/fpga/vcu118/tests/test_loop_reports.tcl",
         "hardware/fpga/vcu118/tests/test_runs.tcl"
       ]

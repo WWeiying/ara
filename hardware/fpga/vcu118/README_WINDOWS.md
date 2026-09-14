@@ -138,6 +138,10 @@ cd D:/project/ara/hardware/fpga/ara_dsa_vcu118
 powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/run.ps1 -Stage inspect
 ```
 
+若之前遇到 `invalid command name "try"`，先 `git pull --ff-only` 更新兼容修复，
+再执行同一命令即可。无需删除旧运行目录、重置综合或重新生成 IP。
+该错误发生在打开旧综合网表之前，不是新的 RTL 综合失败。
+
 入口仍使用原 XPR 和已完成的综合 DCP，不创建或启动任何 run，不重建三个 IP。
 新报告写入 `reports/inspect_<唯一标识>/`，原综合报告和 `latest_synth.json` 不覆盖。
 报告包含 `loop_cells.rpt`（环路 LUT 的 INIT、引脚及驱动连接）、`loops.rpt`、

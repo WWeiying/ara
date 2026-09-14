@@ -101,7 +101,10 @@ proc fpga_run::execute {stage session token parent} {
         nonempty [file join [get_property DIRECTORY [get_runs $parent]] ${project_name}.dcp]
         puts "INSPECT: $parent (existing netlist, current constraints; no synthesis)"
         set ::ara_cdc_inspect_legacy true
-        try { open_run $parent } finally { unset ::ara_cdc_inspect_legacy }
+        # Use catch cleanup: the Windows Vivado 2020.1 Tcl has no try command.
+        set code [catch {open_run $parent} result options]
+        unset ::ara_cdc_inspect_legacy
+        if {$code} { return -options $options $result }
         write_reports inspect_$token
         set handle [open [file join $session completed_run.txt] {WRONLY CREAT EXCL}]
         puts $handle inspect_$token
