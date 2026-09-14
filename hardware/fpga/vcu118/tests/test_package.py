@@ -111,6 +111,12 @@ class PackageTests(unittest.TestCase):
         for pattern in ("!*", "/build/", "/reports/", "/output/", "/.fpga_sync_backups/", "*.zip"):
             self.assertIn(pattern, ignore)
 
+    def test_managed_run_scripts_match_templates(self):
+        templates = Path(__file__).resolve().parents[1] / "scripts"
+        for name in ("run.ps1", "run.tcl", "run_support.tcl"):
+            self.assertEqual((ROOT / "scripts" / name).read_bytes(),
+                             (templates / name).read_bytes(), name)
+
     def test_generated_files_ignored(self):
         ignored = (
             "build/project/rtl/generated.v", "reports/synth/utilization.rpt",

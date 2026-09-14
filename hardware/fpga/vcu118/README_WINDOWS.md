@@ -82,6 +82,51 @@ source scripts/program.tcl
 若仍在旧 `D:/fpga/ara_dsa_vcu118` 中工作，以上 `cd` 改为实际路径；
 从 Git 检出目录向旧工程同步的方法见第 7 节，工程名保持不变。
 
+### 已有工程：自动检查并复用 IP
+
+已有 `build/ara_dsa_vcu118/ara_dsa_vcu118.xpr` 且三个 IP 已完成综合时，
+不需要新 worktree，也不要重新创建工程或删除 `build/`。以后从 PowerShell 使用：
+
+```powershell
+cd D:/project/ara/hardware/fpga/ara_dsa_vcu118
+powershell -NoProfile -File scripts/run.ps1
+# 综合成功并检查报告后，布局布线使用同一个入口：
+powershell -NoProfile -File scripts/run.ps1 -Stage impl
+```
+
+若本机策略禁止运行本地脚本，可在上述命令中加入 `-ExecutionPolicy RemoteSigned`，
+只对这次 PowerShell 进程生效，不修改系统级执行策略。
+
+默认 Vivado 路径为 `D:/Xilinx/Vivado/2020.1/bin/vivado.bat`，可以用
+`-Vivado C:/Xilinx/Vivado/2020.1/bin/vivado.bat` 指定其他安装位置。
+结果默认放在工程所在盘的 `fpga_runs/ara_<时间>_<唯一标识>/` 下，
+也可用 `-RunRoot D:/fpga/ara_runs` 指定有写权限和足够空间的位置。
+所有诊断日志、综合/实现 DCP 都保留，报告在原工程包的 `reports/<新 run 名>/`。
+
+此入口的边界和保护如下：
+
+- 始终打开原 XPR，新增顶层 run，不重置/删除旧 run，不重新生成或升级 IP。
+- 检查 `clkwiz`、`vio`、`ddr4` 的完成状态、过期/锁定状态及非空 DCP；不满足条件直接停止。
+- 使用独占文件句柄阻止同一工程重复启动；句柄随进程退出释放，不要手动删除 `build/managed/run.lock`。
+- 保守拒绝机器上已有的 `vivado.exe`，包括 GUI 和旧 worker，即便它可能属于另一个工程。
+  先保存并关闭 GUI，确认残留进程归属后再处理；脚本只列出 PID，不会自动杀进程。
+- 每次使用全新的结果目录，不读旧 `synth_1/runme.log` 判断当前进度。
+  监视新目录的 `exception.log`、错误标记和崩溃日志，避免已明确启动失败却无限等待。
+  没有因为运行时间长或 CPU 低就中止任务的超时策略；无错误记录的挂起仍需人工诊断。
+- 成功后记录输入文件指纹。`-Stage impl` 只使用记录的成功综合，源码变化或综合过期时拒绝实现。
+  原有自定义 Tcl hook 必须先审查，避免 hook 写回旧目录或修改共享 IP。
+- 实现只运行到布线并生成报告，setup/hold 失败则返回错误，**不自动生成或下载 bitstream**。
+  审查 DRC、CDC 和未约束路径后再处理 bitstream；原 `output/` 的旧文件不是本次结果。
+
+运行期间保持终端打开，不要通过 GUI/其他脚本同时操作该工程，也不要更新源码。
+这是同一份源码的独立运行目录，不是冻结的源码快照。
+此入口不代替首次工程/IP 初始化，不修复损坏的 IP，也不能保证排除所有系统权限或安全软件问题。
+不混用写死 `synth_1`/`impl_1` 的旧 `scripts/synth.tcl`、`scripts/impl.tcl` 启动后续阶段。
+
+控制流程已用 Tcl/PowerShell 测试替身验证，并非 Windows Vivado 实测。
+独立 run 的 `launch_runs -dir` 语义见
+[AMD UG835](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/launch_runs)。
+
 ## 2. 固定配置
 
 | 项目 | 本包配置 |
