@@ -1,0 +1,12 @@
+﻿{
+    "Mode":  "old netlist, current constraints",
+    "Run":  "inspect_9a3426f975cc",
+    "Directory":  "D:\\fpga_runs\\ara_20260914_192241_9a3426f975cc",
+    "InspectedSynthesis":  {
+                               "Run":  "synth_67f8334f3965",
+                               "Directory":  "D:\\fpga_runs\\ara_20260914_125049_67f8334f3965",
+                               "Project":  "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\build\\ara_dsa_vcu118\\ara_dsa_vcu118.xpr",
+                               "InputHash":  "6AE175B608713C8C3182F15923147A010E223C67B4F29B870DA355696304F566"
+                           },
+    "CurrentInputHash":  "4B7AA8A3CF9D8FA531320F74F269A97CA7D8ED1FD24EFFE615C74D9BD0E14ACA"
+}
