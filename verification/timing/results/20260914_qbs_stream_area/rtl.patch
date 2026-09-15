@@ -1,0 +1,231 @@
+diff --git a/hardware/src/vlsu/qbs/qbs_block_adapter.sv b/hardware/src/vlsu/qbs/qbs_block_adapter.sv
+index cb3d9470..66de79a1 100644
+--- a/hardware/src/vlsu/qbs/qbs_block_adapter.sv
++++ b/hardware/src/vlsu/qbs/qbs_block_adapter.sv
+@@ -114,6 +114,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
+   logic [7:0] weight_offsets [32];
+   logic [8:0] activation_offsets [32];
+   logic [12:0] weight_source_base [2], activation_source_base [2];
++  logic [3:0] weight_source_phase [2], activation_source_phase [2];
+   logic [15:0] weight_duplicate_mask, activation_duplicate_mask;
+ 
+   // Decode once at acceptance. Two entries separate upstream ready from SRAM
+@@ -156,7 +157,15 @@ module qbs_block_adapter import qbs_pkg::*; #(
+     assign activation_offsets[b] = activation_target[b].offset;
+   end
+ 
+-  qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1)) i_payload_buffer (
++  for (genvar slot = 0; slot < 2; slot++) begin : gen_stream_phase
++    assign weight_source_phase[slot] = weight_source_base[slot][3:0];
++    // Row-major activation ranges already carry an explicit context. Packed
++    // M4/M8 ranges carry the global interleaved offset in this same field.
++    assign activation_source_phase[slot] = activation_source[slot].offset[3:0];
++  end
++
++  qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1),
++      .StreamWriteData(1'b1), .ActivationContextBase(ActivationContextBase)) i_payload_buffer (
+     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
+     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
+     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
+@@ -165,6 +174,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
+     .weight_location_i(weight_location), .activation_location_i(activation_location),
+     .weight_data_i({weight_source[1].data, weight_source[0].data}),
+     .activation_data_i({activation_source[1].data, activation_source[0].data}),
++    .weight_source_phase_i(weight_source_phase), .activation_source_phase_i(activation_source_phase),
++    .activation_layout_i,
+     .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
+     .weight_pending_multiword_o(weight_pending_multiword),
+     .activation_pending_multiword_o(activation_pending_multiword),
+diff --git a/hardware/src/vlsu/qbs/qbs_payload_buffer.sv b/hardware/src/vlsu/qbs/qbs_payload_buffer.sv
+index 889103a5..d09802c5 100644
+--- a/hardware/src/vlsu/qbs/qbs_payload_buffer.sv
++++ b/hardware/src/vlsu/qbs/qbs_payload_buffer.sv
+@@ -5,7 +5,11 @@
+ // Native block offsets are translated without expanding quantized values.
+ module qbs_payload_buffer import qbs_pkg::*; #(
+   parameter bit NativeView = 1'b1,
+-  parameter bit PredecodedWriteLocations = 1'b0
++  parameter bit PredecodedWriteLocations = 1'b0,
++  // The adapter maps bytes of one contiguous 16-byte source beat. Standalone
++  // arbitrary-target clients retain the generic last-writer data selection.
++  parameter bit StreamWriteData = 1'b0,
++  parameter int unsigned ActivationContextBase = 0
+ ) (
+   input logic clk_i, rst_ni,
+   input qbs_weight_profile_e weight_profile_i,
+@@ -18,6 +22,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
+   input logic [8:0] activation_offset_i [32],
+   input qbs_payload_location_t weight_location_i [32], activation_location_i [32],
+   input logic [255:0] weight_data_i, activation_data_i,
++  input logic [3:0] weight_source_phase_i [2], activation_source_phase_i [2],
++  input qbs_activation_layout_e activation_layout_i,
+   output logic [31:0] weight_consumed_o, activation_consumed_o,
+   // Independent of live valid: can every slot-0 byte use one word per bank?
+   output logic weight_pending_multiword_o, activation_pending_multiword_o,
+@@ -92,6 +98,94 @@ module qbs_payload_buffer import qbs_pkg::*; #(
+     return tree[1];
+   endfunction
+ 
++  // Output byte j is input byte (j + phase) modulo 16. Four fixed stages
++  // share the rotation instead of selecting 16 sources at every SRAM byte.
++  function automatic logic [127:0] rotate_beat(
++      input logic [127:0] data, input logic [3:0] phase);
++    logic [127:0] stage [5];
++    stage[0] = data;
++    for (int s = 0; s < 4; s++)
++      for (int b = 0; b < 16; b++)
++        stage[s+1][8*b +: 8] = phase[s]
++            ? stage[s][8*((b + (1 << s)) % 16) +: 8] : stage[s][8*b +: 8];
++    return stage[4];
++  endfunction
++
++  // All arguments here are elaboration constants. Only the low four source
++  // address bits select data; the existing full-address masks grant writes.
++  function automatic int unsigned activation_phase(
++      input int unsigned scale, quants, contexts, ctx, b, input bit side);
++    int unsigned source_byte;
++    if (contexts == 1) source_byte = side ? b : scale + b;
++    else if (!side) source_byte = contexts * scale + b * contexts + ctx;
++    else if (b < scale) source_byte = ctx * scale + b;
++    else source_byte = contexts * (scale + quants) +
++        ((b - scale) / 2) * contexts * 2 + ctx * 2 + ((b - scale) % 2);
++    return source_byte % 16;
++  endfunction
++
++  function automatic logic [7:0] activation_stream_byte(
++      input logic [127:0] aligned_data, input qbs_activation_profile_e profile,
++      input qbs_activation_layout_e layout, input int unsigned ctx, b, input bit side);
++    case (layout)
++      QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED:
++        return profile == QBS_ACTIVATION_PROFILE_Q8_K
++            ? aligned_data[8*activation_phase(4, 256, 4, ctx, b, side) +: 8]
++            : aligned_data[8*activation_phase(2, 32, 4, ctx, b, side) +: 8];
++      QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED:
++        return profile == QBS_ACTIVATION_PROFILE_Q8_K
++            ? aligned_data[8*activation_phase(4, 256, 8, ctx, b, side) +: 8]
++            : aligned_data[8*activation_phase(2, 32, 8, ctx, b, side) +: 8];
++      default:
++        return profile == QBS_ACTIVATION_PROFILE_Q8_K
++            ? aligned_data[8*activation_phase(4, 256, 1, ctx, b, side) +: 8]
++            : aligned_data[8*activation_phase(2, 32, 1, ctx, b, side) +: 8];
++    endcase
++  endfunction
++
++  logic [7:0] stream_data [2][3][4][16];
++  logic [7:0] stream_weight_side [2][4][16];
++  logic [7:0] stream_activation_side [2][4][ActivationSideBytes];
++  if (StreamWriteData) begin : gen_stream_data
++    wire [3:0] weight_block_phase = 4'(qbs_weight_block_bytes(weight_profile_i));
++    for (genvar slot = 0; slot < 2; slot++) begin : gen_slot
++      wire [127:0] activation_aligned = rotate_beat(
++          activation_data_i[128*slot +: 128], 4'(-activation_source_phase_i[slot]));
++      for (genvar row = 0; row < 4; row++) begin : gen_row
++        wire [3:0] row_phase = 4'(row) * weight_block_phase - weight_source_phase_i[slot];
++        wire [127:0] weight_aligned = rotate_beat(weight_data_i[128*slot +: 128], row_phase);
++        for (genvar b = 0; b < 16; b++) begin : gen_byte
++          // K formats' region offsets are multiples of 16. Q4_0/Q8_0/IQ4_NL
++          // start payload at byte 2, Q5_0 at byte 6; all side phases are zero.
++          always_comb begin
++            case (weight_profile_i)
++              QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q8_0_WEIGHT,
++              QBS_WEIGHT_PROFILE_IQ4_NL:
++                stream_data[slot][0][row][b] = weight_aligned[8*((b+2)%16) +: 8];
++              QBS_WEIGHT_PROFILE_Q5_0:
++                stream_data[slot][0][row][b] = weight_aligned[8*((b+6)%16) +: 8];
++              default: stream_data[slot][0][row][b] = weight_aligned[8*b +: 8];
++            endcase
++          end
++          assign stream_data[slot][1][row][b] = weight_aligned[8*b +: 8];
++          assign stream_weight_side[slot][row][b] = weight_aligned[8*b +: 8];
++          assign stream_data[slot][2][row][b] = activation_stream_byte(
++              activation_aligned, activation_profile_i, activation_layout_i,
++              row + ActivationContextBase, b, 1'b0);
++        end
++        for (genvar b = 0; b < ActivationSideBytes; b++) begin : gen_side
++          assign stream_activation_side[slot][row][b] = activation_stream_byte(
++              activation_aligned, activation_profile_i, activation_layout_i,
++              row + ActivationContextBase, b, 1'b1);
++        end
++      end
++    end
++  end else begin : gen_generic_data
++    assign stream_data = '{default:'0};
++    assign stream_weight_side = '{default:'0};
++    assign stream_activation_side = '{default:'0};
++  end
++
+   // Keep byte priority local to one bank. Dynamic bank updates otherwise
+   // describe a mux over the entire 3072-bit write-data array at every byte.
+   for (genvar slot = 0; slot < 2; slot++) begin : gen_write_merge
+@@ -158,7 +252,16 @@ module qbs_payload_buffer import qbs_pkg::*; #(
+           wire [15:0] hit = word_match &
+               (p == 2 ? activation_byte_select[byte_lane][16*slot +: 16]
+                       : weight_byte_select[byte_lane][16*slot +: 16]);
+-          wire [8:0] selected = last_slot_byte(hit, data);
++          wire [8:0] selected = StreamWriteData
++              ? {(|hit), stream_data[slot][p][r][byte_lane % 16]} : last_slot_byte(hit, data);
++`ifdef QBS_STREAM_EQUIV
++          if (StreamWriteData) begin : gen_equivalence
++            assert property (@(posedge clk_i) disable iff (!rst_ni)
++                (source_valid && (|hit)) |->
++                ($onehot(hit) && selected == last_slot_byte(hit, data)))
++              else $fatal(1, "QBS stream payload selection differs from generic routing");
++          end
++`endif
+           wire byte_valid = source_valid && selected[8];
+           if (slot == 0) begin
+             assign write_be[slot][p][r][byte_lane] = byte_valid;
+@@ -230,8 +333,24 @@ module qbs_payload_buffer import qbs_pkg::*; #(
+   for (genvar row = 0; row < 4; row++) begin : gen_side_row
+     for (genvar b = 0; b < WeightSideBytes; b++) begin : gen_weight_byte
+       wire [31:0] hit = weight_side_row[row] & weight_side_offset[b];
+-      wire [8:0] older = last_slot_byte(hit[15:0], weight_data_i[127:0]);
+-      wire [8:0] newer = last_slot_byte(hit[31:16], weight_data_i[255:128]);
++      wire [8:0] older = StreamWriteData
++          ? {(|hit[15:0]), stream_weight_side[0][row][b % 16]}
++          : last_slot_byte(hit[15:0], weight_data_i[127:0]);
++      wire [8:0] newer = StreamWriteData
++          ? {(|hit[31:16]), stream_weight_side[1][row][b % 16]}
++          : last_slot_byte(hit[31:16], weight_data_i[255:128]);
++`ifdef QBS_STREAM_EQUIV
++      if (StreamWriteData) begin : gen_equivalence
++        assert property (@(posedge clk_i) disable iff (!rst_ni)
++            (weight_valid_i[0] && (|hit[15:0])) |->
++            ($onehot(hit[15:0]) && older == last_slot_byte(hit[15:0], weight_data_i[127:0])))
++          else $fatal(1, "QBS old weight metadata selection mismatch");
++        assert property (@(posedge clk_i) disable iff (!rst_ni)
++            (weight_valid_i[1] && (|hit[31:16])) |->
++            ($onehot(hit[31:16]) && newer == last_slot_byte(hit[31:16], weight_data_i[255:128])))
++          else $fatal(1, "QBS new weight metadata selection mismatch");
++      end
++`endif
+       wire use_newer = weight_valid_i[1] && newer[8];
+       wire enable = use_newer || (weight_valid_i[0] && older[8]);
+       // Decode and select data before applying the late input handshake.
+@@ -240,8 +359,24 @@ module qbs_payload_buffer import qbs_pkg::*; #(
+     end
+     for (genvar b = 0; b < ActivationSideBytes; b++) begin : gen_activation_byte
+       wire [31:0] hit = activation_side_row[row] & activation_side_offset[b];
+-      wire [8:0] older = last_slot_byte(hit[15:0], activation_data_i[127:0]);
+-      wire [8:0] newer = last_slot_byte(hit[31:16], activation_data_i[255:128]);
++      wire [8:0] older = StreamWriteData
++          ? {(|hit[15:0]), stream_activation_side[0][row][b]}
++          : last_slot_byte(hit[15:0], activation_data_i[127:0]);
++      wire [8:0] newer = StreamWriteData
++          ? {(|hit[31:16]), stream_activation_side[1][row][b]}
++          : last_slot_byte(hit[31:16], activation_data_i[255:128]);
++`ifdef QBS_STREAM_EQUIV
++      if (StreamWriteData) begin : gen_equivalence
++        assert property (@(posedge clk_i) disable iff (!rst_ni)
++            (activation_valid_i[0] && (|hit[15:0])) |->
++            ($onehot(hit[15:0]) && older == last_slot_byte(hit[15:0], activation_data_i[127:0])))
++          else $fatal(1, "QBS old activation metadata selection mismatch");
++        assert property (@(posedge clk_i) disable iff (!rst_ni)
++            (activation_valid_i[1] && (|hit[31:16])) |->
++            ($onehot(hit[31:16]) && newer == last_slot_byte(hit[31:16], activation_data_i[255:128])))
++          else $fatal(1, "QBS new activation metadata selection mismatch");
++      end
++`endif
+       wire use_newer = activation_valid_i[1] && newer[8];
+       wire enable = use_newer || (activation_valid_i[0] && older[8]);
+       always_ff @(posedge clk_i)

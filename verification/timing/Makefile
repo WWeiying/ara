@@ -240,6 +240,13 @@ payload-check:
 sram-references:
 	$(MAKE) adapter-references BUILD=$(BUILD) ADAPTER_REFERENCE=$(SRAM_REFERENCE)
 
+.PHONY: stream-check
+stream-check:
+	$(MAKE) sram-check BUILD=$(BUILD) \
+		SRAM_DEFINES="$(SRAM_DEFINES) +define+QBS_STREAM_EQUIV" \
+		SRAM_EXTRA_SOURCES="$(SRAM_EXTRA_SOURCES) $(CURDIR)/qbs_stream_contract_checker.sv" \
+		SIM_ARGS="$(SIM_ARGS) +QBS_STROBE_STRIDE=257"
+
 sram-check: sram-references
 	mkdir -p $(BUILD)/sram
 	cd $(BUILD)/sram && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
