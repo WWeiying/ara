@@ -7,7 +7,8 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   input logic sys_clk_p,
   input logic sys_clk_n,
   input logic sys_reset,
-  input logic jtag_tck_i,
+  // The TAP already instantiates a BUFGMUX; do not infer a second BUFG.
+  (* CLOCK_BUFFER_TYPE = "NONE" *) input logic jtag_tck_i,
   input logic jtag_tms_i,
   input logic jtag_tdi_i,
   output logic jtag_tdo_o,

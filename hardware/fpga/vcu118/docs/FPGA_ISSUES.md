@@ -1,5 +1,91 @@
 # FPGA Findings and Verification Boundary
 
+## Current Status: Control RTL and DMI Constraints (2026-09-15)
+
+This section supersedes the historical findings below. The latest measured
+Windows result is `synth_1357d6f785ab`, input fingerprint
+`542A5114A34855C5BF71FA95C950AE89E82174D6A4F3EC4C45FCE5AA9E3938BC`.
+It completed synthesis: 746409 total LUTs, 207332 QBS LUTs, zero LUTLP-1
+violations. Setup still has WNS -0.743 ns, TNS -68.600 ns and 210 failing
+endpoints. This result does NOT include the following refresh.
+
+### Refreshed RTL
+
+The snapshot now includes the six modified source modules: dispatcher, VMFPU,
+QBS engine, compute engine, block adapter and profile decoder. In particular,
+dispatcher decode uses current-state conditions instead of the complete
+next-state expression. The existing verification record at
+`verification/timing/results/20260915_control_timing/summary.json` matches the
+current upstream source hashes. It records the 67040-cycle dispatcher comparison,
+12 SoC regressions, 33 QBS commands and six real-data slices. This is reused
+functional evidence, not formal equivalence or a new FPGA timing result.
+
+### DMI CDC Correction
+
+The latest CDC report has 804 Critical findings, 800 between external JTAG and
+the SoC. Many are fanout from the reset controller's bundled phase word; they
+are not 800 independent missing synchronizers. `cdc_2phase_clearable` explicitly
+requires `max_delay = min(source_period, destination_period)` on req/ack/data.
+Its reset controller uses two non-decoupled four-phase handshakes to isolate,
+clear and release both domains, including when one side resets alone.
+
+The blanket JTAG asynchronous clock group has been removed: it would override
+these physical bounds. `cdc.xdc` now constrains all six handshakes (two DMI
+channels plus four reset-phase directions), using 18 bounded exceptions through
+only their async output ports. Source and destination are clocks, avoiding
+segmentation at hierarchical pins. The current bound is 20 ns in both
+directions, derived from actual clocks. Normal inter-stage timing is retained.
+The req/ack synchronizer stages are checked and marked ASYNC_REG; data and state
+registers are not marked as synchronizers. Missing ports, changed data widths,
+missing clocks, or changed stages are errors rather than silently empty rules.
+
+No handshake RTL, reset latency, data qualification, or CDC waivers were changed.
+These timing bounds do not by themselves prove bundled-data correctness or
+eliminate structural CDC-1/4 findings. In the next reports verify DMI paths use
+Max Delay Datapath Only, not Asynch Clock Groups, and inspect both
+`ignored_exceptions.rpt` and the new `exception_coverage.rpt` for overrides or
+empty paths. The offline query tests are not an actual Vivado netlist check.
+
+### Clock and I/O Corrections and Open Items
+
+- The top-level JTAG port now carries RTL `CLOCK_BUFFER_TYPE="NONE"`. The TAP
+  already instantiates a BUFGMUX. The latest DRC found an additional inferred
+  BUFG feeding that mux (REQP-1851); setting the attribute at RTL input inference
+  is intended to remove that extra buffer. The retained non-dedicated-route
+  exception is for the existing board pin, not a timing waiver. Re-synthesis
+  must verify the actual buffer chain and placement legality.
+- UART RX already uses `UART_IS_SIN` with two FFs. Mark those ASYNC_REG and
+  apply the existing 70 ns physical budget only from the RX pad to the first
+  D pin, using datapath-only timing. Do not invent a synchronous UART launch
+  phase; the second stage remains normally timed. `check_timing` can still flag
+  a lack of conventional input delay on this asynchronous interface.
+- 533 missing-clock pins in the current report originate at debug-hub outputs
+  `sl_iport0_o[1]` and `sl_iport1_o[1]`. The new `clock_io.rpt` records hub
+  black-box status, actual clocks, and net drivers. Determine whether these are
+  pre-implementation debug-core placeholders before changing clock definitions.
+  Do not create arbitrary clocks on the hub outputs or confuse FPGA debug-hub
+  JTAG with the separate external RISC-V DMI JTAG port.
+- DDR reset output `c0_ddr4_reset_n` remains an open interface-constraint review.
+  Its driver is included in `clock_io.rpt`. No invented output delay or blanket
+  reset-output exception has been added. MIG reset sequencing and pulse widths
+  require separate verification; an output-delay declaration cannot prove them.
+- The other four CDC Criticals involve composed reset/ready signals into status
+  or reset synchronizers. They remain visible: no changes to functional POR,
+  calibration gating, or reset release were made without waveform evidence.
+
+The same managed synth/inspect/impl flows generate the added reports. Existing
+valid clkwiz/vio/ddr4 checkpoints are reused; no IP parameters changed. Run one
+new synthesis of the frozen package, review the constraints and critical paths,
+then perform implementation. An old-netlist `inspect` cannot validate the new
+dispatcher or JTAG buffer attribute. No local Vivado run or routed signoff has
+been performed for this update.
+
+References: [Clock exception priority](https://docs.amd.com/r/2021.1-English/ug1387-acap-hardware-ip-platform-dev-methodology/Clock-Exceptions-Precedence-Over-set_max_delay),
+[CLOCK_BUFFER_TYPE](https://docs.amd.com/r/2023.1-English/ug912-vivado-properties/CLOCK_BUFFER_TYPE),
+[Exception coverage](https://docs.amd.com/r/2020.2-English/ug906-vivado-design-analysis/Reporting-the-Timing-Exceptions-Coverage).
+
+## Historical Investigation
+
 ## Evidence
 
 The tracked Windows Vivado 2020.1 reports are under

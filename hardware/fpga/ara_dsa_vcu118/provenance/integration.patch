@@ -45,7 +45,7 @@
            .addr_i (addr_i),
 --- a/rtl/ara/hardware/src/ara_dispatcher.sv
 +++ b/rtl/ara/hardware/src/ara_dispatcher.sv
-@@ -1677,7 +1677,7 @@
+@@ -1681,7 +1681,7 @@
                      end else begin
                        // Normal stripmining
                        csr_vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(csr_vl_d)]) ||
@@ -54,7 +54,7 @@
                      end
                    end
                  end
-@@ -2028,7 +2028,7 @@
+@@ -2032,7 +2032,7 @@
                      ara_req.scale_vl      = 1'b1;
                      // If stride > vl, the vslideup has no effects
                      if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
@@ -63,7 +63,7 @@
                    end
                    6'b001111: begin
                      ara_req.op            = ara_pkg::VSLIDEDOWN;
-@@ -2277,7 +2277,7 @@
+@@ -2281,7 +2281,7 @@
                      ara_req.scale_vl      = 1'b1;
                      // If stride > vl, the vslideup has no effects
                      if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
@@ -74,7 +74,7 @@
                      ara_req.op            = ara_pkg::VSLIDEDOWN;
 --- a/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
 +++ b/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv
-@@ -941,8 +941,17 @@
+@@ -952,8 +952,17 @@
    );
  
    assign compute_command_valid = state_q == QBS_ENGINE_COMPUTE_START;

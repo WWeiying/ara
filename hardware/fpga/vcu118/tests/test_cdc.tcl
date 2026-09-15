@@ -1,4 +1,5 @@
 # Synthetic netlist query tests, not a substitute for Vivado timing/CDC.
+if {[llength [info commands try]]} { rename try {} }
 set root [file normalize [lindex $argv 0]]
 proc assert {condition message} {
     if {![uplevel 1 [list expr $condition]]} { error "ASSERT: $message" }
@@ -42,6 +43,51 @@ proc setup {scenario} {
             }
         }
     }
+    set ::through_clocks {}
+    set dmi i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc
+    foreach channel {req resp} width {41 34} {
+        set cdc $dmi/i_cdc_$channel
+        set source [expr {$channel eq "req" ? "jtag" : "soc"}]
+        set dest [expr {$source eq "soc" ? "jtag" : "soc"}]
+        mock_handshake $cdc/i_src $cdc/i_dst $source $dest 3 $width
+        set reset $cdc/i_cdc_reset_ctrlr
+        mock_handshake $reset/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src \
+            $reset/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst $source $dest 2 2
+        mock_handshake $reset/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src \
+            $reset/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst $dest $source 2 2
+    }
+    set uart i_cheshire_soc/gen_uart.i_uart/i_apb_uart/UART_IS_SIN
+    dict set ::cells $uart/iD_reg\[0\] soc
+    dict set ::cells $uart/iD_reg\[1\] soc
+    switch $scenario {
+        missing_dmi_req { dict unset ::pins $dmi/i_cdc_req/i_src/async_req_o }
+        missing_dmi_ack { dict unset ::pins $dmi/i_cdc_resp/i_dst/async_ack_o }
+        missing_dmi_bit { dict unset ::pins $dmi/i_cdc_req/i_src/async_data_o\[40\] }
+        missing_dmi_stage { dict unset ::cells $dmi/i_cdc_req/i_src/i_sync/reg_q_reg\[2\] }
+        wrong_dmi_stage {
+            dict unset ::cells $dmi/i_cdc_req/i_src/i_sync/reg_q_reg\[2\]
+            dict set ::cells $dmi/i_cdc_req/i_src/i_sync/reg_q_reg\[3\] jtag
+        }
+        missing_reset_phase { dict unset ::pins $reset/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src/async_data_o\[1\] }
+        missing_uart_stage { dict unset ::cells $uart/iD_reg\[0\] }
+    }
+}
+proc mock_handshake {src dst source dest stages width} {
+    foreach half [list $src $dst] clock [list $source $dest] {
+        dict set ::pins $half/clk_i $clock
+        for {set stage 0} {$stage < $stages} {incr stage} {
+            dict set ::cells [format {%s/i_sync/reg_q_reg[%d]} $half $stage] $clock
+        }
+    }
+    dict set ::pins $src/async_req_o $source
+    dict set ::pins $dst/async_ack_o $dest
+    dict set ::through_clocks $src/async_req_o [list $source $dest]
+    dict set ::through_clocks $dst/async_ack_o [list $dest $source]
+    for {set bit 0} {$bit < $width} {incr bit} {
+        set name [format {%s/async_data_o[%d]} $src $bit]
+        dict set ::pins $name $source
+        dict set ::through_clocks $name [list $source $dest]
+    }
 }
 proc get_cells {args} {
     set filter [option $args -filter]
@@ -62,7 +108,18 @@ proc get_pins {args} {
     }
     set name [lindex $args end]
     if {[dict exists $::pins $name]} { return $name }
+    if {[string match */async_data_o* $name]} {
+        set result {}
+        dict for {pin clock} $::pins {
+            if {[string match $name $pin]} { lappend result $pin }
+        }
+        return $result
+    }
     return {}
+}
+proc get_ports {args} {
+    assert {[lindex $args end] eq "uart_rx_i"} "UART input only"
+    return [expr {$::scenario eq "missing_uart_port" ? "" : "uart_rx_i"}]
 }
 proc get_clocks {args} {
     set pin [option $args -of_objects]
@@ -74,7 +131,10 @@ proc get_clocks {args} {
 proc get_property {key object} {
     switch $key {
         NAME { return $object }
-        PERIOD { return [expr {$object eq "soc" ? 20 : $::scenario eq "fast_clock" ? 2.5 : 3.333}] }
+        PERIOD {
+            if {$object eq "jtag"} { return [expr {$::scenario eq "fast_jtag" ? 10.0 : 100.0}] }
+            return [expr {$object eq "soc" ? 20.0 : $::scenario eq "fast_clock" ? 2.5 : 3.333}]
+        }
         default { error "Unexpected property $key" }
     }
 }
@@ -83,6 +143,25 @@ proc set_property {key value objects} {
     foreach cell $objects { dict set ::attributes $cell $value }
 }
 proc set_max_delay {args} {
+    set from [option $args -from]; set to [option $args -to]
+    if {[lsearch -exact $args -through] >= 0} {
+        set pins [option $args -through]
+        set delay [expr {$::scenario eq "fast_jtag" ? 10.0 : 20.0}]
+        assert {[lrange $args 0 1] eq "-datapath_only $delay"} "minimum actual period, not a hardcoded JTAG period"
+        assert {$from in {soc jtag} && $to in {soc jtag} && $from ne $to} "opposite clock endpoints"
+        assert {[llength $pins] >= 1 && [llength $pins] <= 41} "bounded DMI ports"
+        foreach pin $pins {
+            assert {[dict get $::through_clocks $pin] eq [list $from $to]} "physical source/destination direction"
+        }
+        lappend ::max_delays $args
+        return
+    }
+    if {$from eq "uart_rx_i"} {
+        assert {[lrange $args 0 1] eq "-datapath_only 70.0"} "UART physical bound"
+        assert {[llength $to] == 1 && [lindex $to 0] eq {i_cheshire_soc/gen_uart.i_uart/i_apb_uart/UART_IS_SIN/iD_reg[0]/D}} "UART first stage only"
+        lappend ::max_delays $args
+        return
+    }
     assert {[lrange $args 0 1] eq "-datapath_only 3.0"} "3 ns datapath-only bound"
     assert {[lsearch -exact $args -through] < 0} "no huge through collection"
     set from [option $args -from]; set to [option $args -to]
@@ -106,14 +185,14 @@ proc set_false_path {args} {
     }
     lappend ::false_paths $args
 }
-foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second} {
+foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag missing_uart_stage missing_uart_port} {
     setup $scenario
     set failed [catch {source $root/constraints/cdc.xdc} message]
-    assert {$failed == ($scenario ni {healthy legacy})} "$scenario: $message"
+    assert {$failed == ($scenario ni {healthy legacy fast_jtag})} "$scenario: $message"
     if {!$failed} {
         set legacy [expr {$scenario eq "legacy"}]
-        assert {[llength $max_delays] == 15 && [llength $false_paths] == ($legacy ? 2 : 3)} "all channels/status bits covered"
-        assert {[dict size $attributes] == ($legacy ? 120 : 128)} "pointer/status synchronizers marked"
+        assert {[llength $max_delays] == 34 && [llength $false_paths] == ($legacy ? 2 : 3)} "all FIFO/DMI/UART channels covered"
+        assert {[dict size $attributes] == ($legacy ? 150 : 158)} "only pointer/status/handshake/UART synchronizers marked"
     } else {
         assert {[string match CDC:* $message]} "expected an intentional validation failure: $message"
     }

@@ -1,0 +1,609 @@
+diff --git a/hardware/src/ara_dispatcher.sv b/hardware/src/ara_dispatcher.sv
+index 13a25a76..747b9d54 100644
+--- a/hardware/src/ara_dispatcher.sv
++++ b/hardware/src/ara_dispatcher.sv
+@@ -1596,8 +1596,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
+       end
+     endcase
+ 
+-    if (state_d == NORMAL_OPERATION && state_q != RESHUFFLE &&
+-        state_q != OVERLAP_RESPOND && state_q != SOURCE_SNAPSHOT_WAIT) begin
++    // Only these states can enter the architectural decoder in this cycle.
++    // Do not route repair-uop arithmetic through the full next-state encoder
++    // and back into the scalar response/scoreboard path.
++    if (state_q == NORMAL_OPERATION || state_q == OVERLAP_ISSUE_ORIGINAL ||
++        (state_q == WAIT_IDLE && !ara_req_valid_o && ara_idle_i) ||
++        (state_q == WAIT_IDLE_FLUSH && lsu_ex_state_q == LSU_FLUSH_DONE)) begin
+       // Decode before the late backend-ready signal. Only the final commit
+       // selection may expose its results or change architectural state.
+       decode_blocked = acc_req_i.req_valid && acc_req_i.resp_ready && !ara_req_ready_i;
+diff --git a/hardware/src/lane/vmfpu.sv b/hardware/src/lane/vmfpu.sv
+index 9a625202..600f47ce 100644
+--- a/hardware/src/lane/vmfpu.sv
++++ b/hardware/src/lane/vmfpu.sv
+@@ -1289,6 +1289,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+     localparam int unsigned SIG_BITS_E32   = 23;
+     localparam int unsigned SIG_BITS_E64   = 52;
+ 
++    // Estimate classification depends only on the already aligned operand tag.
++    // Keeping it off the shared result bus avoids a cast/FMA -> estimate chain.
++    fpnew_pkg::classmask_e estimate_class_e16 [4];
++    fpnew_pkg::classmask_e estimate_class_e32 [2];
++    fpnew_pkg::classmask_e estimate_class_e64;
++
++    function automatic fpnew_pkg::classmask_e estimate_class_mask(
++        input fpnew_pkg::fp_info_t info, input logic sign);
++      if (info.is_normal)
++        return sign ? fpnew_pkg::NEGNORM : fpnew_pkg::POSNORM;
++      if (info.is_subnormal)
++        return sign ? fpnew_pkg::NEGSUBNORM : fpnew_pkg::POSSUBNORM;
++      if (info.is_zero)
++        return sign ? fpnew_pkg::NEGZERO : fpnew_pkg::POSZERO;
++      if (info.is_inf)
++        return sign ? fpnew_pkg::NEGINF : fpnew_pkg::POSINF;
++      return info.is_signalling ? fpnew_pkg::SNAN : fpnew_pkg::QNAN;
++    endfunction
++
+     if (FPExtSupport) begin
+       // Keep vfrec7/vfrsqrt7 side information aligned with fpnew's elastic
+       // pipeline under bubbles and result backpressure.
+@@ -1297,6 +1316,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+ 
+       // sew: 16-bit
+       for (genvar i = 0; i < 4; i = i + 1) begin
++        fpnew_pkg::fp_info_t [0:0] estimate_info;
++        fpnew_classifier #(.FpFormat(FP16), .NumOperands(1)) i_estimate_classifier (
++          .operands_i(operand_a_delay[i*16 +: 16]),
++          .is_boxed_i(1'b1),
++          .info_o(estimate_info)
++        );
++        assign estimate_class_e16[i] =
++            estimate_class_mask(estimate_info[0], operand_a_delay[i*16+15]);
+         lzc #(
+           .WIDTH(SIG_BITS_E16),
+           .MODE (1           )
+@@ -1309,6 +1336,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+ 
+       // sew: 32-bit
+       for (genvar j = 0; j < 2; j = j + 1) begin
++        fpnew_pkg::fp_info_t [0:0] estimate_info;
++        fpnew_classifier #(.FpFormat(FP32), .NumOperands(1)) i_estimate_classifier (
++          .operands_i(operand_a_delay[j*32 +: 32]),
++          .is_boxed_i(1'b1),
++          .info_o(estimate_info)
++        );
++        assign estimate_class_e32[j] =
++            estimate_class_mask(estimate_info[0], operand_a_delay[j*32+31]);
+         lzc #(
+           .WIDTH(SIG_BITS_E32),
+           .MODE (1           )
+@@ -1320,6 +1355,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+       end
+ 
+       // sew: 64-bit
++      fpnew_pkg::fp_info_t [0:0] estimate_info_e64;
++      fpnew_classifier #(.FpFormat(FP64), .NumOperands(1)) i_estimate_classifier_e64 (
++        .operands_i(operand_a_delay),
++        .is_boxed_i(1'b1),
++        .info_o(estimate_info_e64)
++      );
++      assign estimate_class_e64 = estimate_class_mask(estimate_info_e64[0], operand_a_delay[63]);
+       lzc #(
+         .WIDTH(SIG_BITS_E64),
+         .MODE (1           )
+@@ -1332,6 +1374,30 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+ 
+     assign   fp_rm_process = vinsn_processing_q.fp_rm;
+ 
++`ifndef SYNTHESIS
++    always_ff @(posedge clk_i) begin
++      if (rst_ni && FPExtSupport && vfpu_out_valid &&
++          vinsn_processing_q.op inside {VFREC7, VFRSQRT7}) begin
++        case (vinsn_processing_q.vtype.vsew)
++          EW16: for (int i = 0; i < 4; i++) begin
++            if (vfpu_flag_mask[FPULanes*i/4])
++              assert (estimate_class_e16[i] === vfpu_result[i*16 +: 10])
++                else $fatal(1, "VMFPU FP16 estimate classification mismatch");
++          end
++          EW32: for (int i = 0; i < 2; i++) begin
++            if (vfpu_flag_mask[FPULanes*i/2])
++              assert (estimate_class_e32[i] === vfpu_result[i*32 +: 10])
++                else $fatal(1, "VMFPU FP32 estimate classification mismatch");
++          end
++          EW64: if (vfpu_flag_mask[0])
++            assert (estimate_class_e64 === vfpu_result[9:0])
++              else $fatal(1, "VMFPU FP64 estimate classification mismatch");
++          default: ;
++        endcase
++      end
++    end
++`endif
++
+     always_comb begin: fpu_result_processing_p
+ 
+       if (FPExtSupport) begin
+@@ -1340,7 +1406,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+         unique case (vinsn_processing_q.vtype.vsew)
+           EW16: begin
+             for (int h = 0; h < 4; h++) vfrec7_out_e16[h] =
+-              vfrec7_fp16(vfpu_result[h*16 +: 10], operand_a_delay[h*16 +: 16], fp_rm_process);
++              vfrec7_fp16(estimate_class_e16[h], operand_a_delay[h*16 +: 16], fp_rm_process);
+ 
+             vfrec7_result_o = {vfrec7_out_e16[3].vf7_e16, vfrec7_out_e16[2].vf7_e16,
+                                vfrec7_out_e16[1].vf7_e16, vfrec7_out_e16[0].vf7_e16};
+@@ -1352,7 +1418,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+           end
+           EW32: begin
+             for (int w = 0; w < 2; w++) vfrec7_out_e32[w] =
+-              vfrec7_fp32(vfpu_result[w*32 +: 10], operand_a_delay[w*32 +: 32], fp_rm_process);
++              vfrec7_fp32(estimate_class_e32[w], operand_a_delay[w*32 +: 32], fp_rm_process);
+ 
+             vfrec7_result_o = {vfrec7_out_e32[1].vf7_e32, vfrec7_out_e32[0].vf7_e32};
+ 
+@@ -1361,7 +1427,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+           end
+           EW64: begin
+             for (int d = 0; d < 1; d++) vfrec7_out_e64[d] =
+-              vfrec7_fp64(vfpu_result[d*64 +: 10], operand_a_delay[d*64 +: 64], fp_rm_process);
++              vfrec7_fp64(estimate_class_e64, operand_a_delay[d*64 +: 64], fp_rm_process);
+ 
+             vfrec7_result_o  =  vfrec7_out_e64[0].vf7_e64;
+ 
+@@ -1377,7 +1443,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+         unique case (vinsn_processing_q.vtype.vsew)
+           EW16: begin
+             for (int h = 0; h < 4; h++) vfrsqrt7_out_e16[h] =
+-              vfrsqrt7_fp16(vfpu_result[h*16 +: 10], operand_a_delay[h*16 +: 16], lzc_e16[h*4 +: 4]);
++              vfrsqrt7_fp16(estimate_class_e16[h], operand_a_delay[h*16 +: 16], lzc_e16[h*4 +: 4]);
+ 
+             vfrsqrt7_result_o = {vfrsqrt7_out_e16[3].vf7_e16, vfrsqrt7_out_e16[2].vf7_e16,
+                                  vfrsqrt7_out_e16[1].vf7_e16, vfrsqrt7_out_e16[0].vf7_e16};
+@@ -1389,7 +1455,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+           end
+           EW32: begin
+             for (int w = 0; w < 2; w++) vfrsqrt7_out_e32[w] =
+-              vfrsqrt7_fp32(vfpu_result[w*32 +: 10], operand_a_delay[w*32 +: 32], lzc_e32[w*5 +: 5]);
++              vfrsqrt7_fp32(estimate_class_e32[w], operand_a_delay[w*32 +: 32], lzc_e32[w*5 +: 5]);
+ 
+             vfrsqrt7_result_o = {vfrsqrt7_out_e32[1].vf7_e32, vfrsqrt7_out_e32[0].vf7_e32};
+ 
+@@ -1398,7 +1464,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
+           end
+           EW64: begin
+             for (int d = 0; d < 1; d++) vfrsqrt7_out_e64[d] =
+-              vfrsqrt7_fp64(vfpu_result[d*64 +: 10], operand_a_delay[d*64 +: 64], lzc_e64[d*6 +: 6]);
++              vfrsqrt7_fp64(estimate_class_e64, operand_a_delay[d*64 +: 64], lzc_e64[d*6 +: 6]);
+ 
+             vfrsqrt7_result_o = vfrsqrt7_out_e64[0].vf7_e64;
+ 
+diff --git a/hardware/src/vlsu/qbs/qbs_block_adapter.sv b/hardware/src/vlsu/qbs/qbs_block_adapter.sv
+index 66de79a1..1d2803a5 100644
+--- a/hardware/src/vlsu/qbs/qbs_block_adapter.sv
++++ b/hardware/src/vlsu/qbs/qbs_block_adapter.sv
+@@ -3,7 +3,10 @@
+ 
+ module qbs_block_adapter import qbs_pkg::*; #(
+   parameter int unsigned ActivationContextBase = 0,
+-  parameter bit NativeView = 1'b1
++  parameter bit NativeView = 1'b1,
++  // The integrated range reader/replay writes each block byte once between
++  // clears. Generic clients may rewrite bytes and retain bitmap tracking.
++  parameter bit UniqueInputBytes = 1'b0
+ ) (
+   input  logic                    clk_i,
+   input  logic                    rst_ni,
+@@ -55,6 +58,14 @@ module qbs_block_adapter import qbs_pkg::*; #(
+ 
+   logic weight_byte_valid_q [4][QbsMaxWeightBlockBytes];
+   logic activation_byte_valid_q [4][QbsMaxActivationBlockBytes];
++`ifdef SYNTHESIS
++  localparam bit TrackByteValid = !UniqueInputBytes;
++`else
++  // Simulation keeps the exact bitmap as a contract oracle, not hardware.
++  localparam bit TrackByteValid = 1'b1;
++`endif
++  logic [$clog2(QbsMaxWeightBlockBytes+1)-1:0] weight_committed_q [4];
++  logic [$clog2(QbsMaxActivationBlockBytes+1)-1:0] activation_committed_q [4];
+   logic [2:0] activation_context_count;
+ 
+   localparam int unsigned WeightOffsetWidth = $clog2(QbsMaxWeightBlockBytes);
+@@ -343,33 +354,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
+   assign activation_duplicate_mask = overlapping_bytes(activation_consumed[15:0],
+       activation_source_base[0], activation_source_base[1]);
+ 
+-  // These views only permute existing valid bits into source byte order.
+-  // Two 16-bit windows replace 32 independent full-block bit lookups.
+-  localparam int WeightLinearBits = 4 * QbsMaxWeightBlockBytes;
+-  localparam int ActivationLinearBits = QbsMaxM * QbsMaxActivationBlockBytes;
+-  localparam int WeightWindowCount = (WeightLinearBits + 15) / 16;
+-  localparam int ActivationWindowCount = (ActivationLinearBits + 15) / 16;
+-  logic [WeightLinearBits-1:0] weight_valid_view [9];
+-  logic [ActivationLinearBits-1:0] activation_valid_view [6];
+-  logic [16*WeightWindowCount+15:0] weight_linear_valid;
+-  logic [16*ActivationWindowCount+15:0] activation_linear_valid;
+-  wire [31:0] weight_valid_window [WeightWindowCount];
+-  wire [31:0] activation_valid_window [ActivationWindowCount];
+-  logic [15:0] weight_seen [2], activation_seen [2];
+-
+-  for (genvar profile = 0; profile < 9; profile++) begin : gen_weight_valid_view
+-    localparam int Bytes = qbs_weight_block_bytes(qbs_weight_profile_e'(profile + 1));
+-    for (genvar index = 0; index < WeightLinearBits; index++) begin : gen_bit
+-      if (index < 4 * Bytes) begin : gen_native
+-        assign weight_valid_view[profile][index] = weight_byte_valid_q[index/Bytes][index%Bytes];
+-      end else begin : gen_padding
+-        assign weight_valid_view[profile][index] = 1'b0;
+-      end
+-    end
+-  end
+-
+-  // Called only with elaboration constants. The result is a fixed wire index,
+-  // including the context-wave filter, not a runtime divider or decoder.
++  // Constant mapping helper stays at module scope for VCS/DC elaboration.
+   function automatic int activation_valid_index(
+       input int index, block_bytes, scale_bytes, quant_bytes, contexts);
+     int ctx, offset, relative;
+@@ -390,12 +375,37 @@ module qbs_block_adapter import qbs_pkg::*; #(
+       ctx = (relative / 2) % contexts;
+       offset = scale_bytes + quant_bytes + (relative / (2 * contexts)) * 2 + relative % 2;
+     end
+-    // A row-major request has a two-bit context index.
+     if ((contexts == 1 && ctx >= 4) || ctx < ActivationContextBase ||
+         ctx >= ActivationContextBase + 4) return -1;
+     return (ctx - ActivationContextBase) * QbsMaxActivationBlockBytes + offset;
+   endfunction
+ 
++  // These views only permute existing valid bits into source byte order.
++  // Two 16-bit windows replace 32 independent full-block bit lookups.
++  if (!UniqueInputBytes) begin : gen_byte_history
++  localparam int WeightLinearBits = 4 * QbsMaxWeightBlockBytes;
++  localparam int ActivationLinearBits = QbsMaxM * QbsMaxActivationBlockBytes;
++  localparam int WeightWindowCount = (WeightLinearBits + 15) / 16;
++  localparam int ActivationWindowCount = (ActivationLinearBits + 15) / 16;
++  logic [WeightLinearBits-1:0] weight_valid_view [9];
++  logic [ActivationLinearBits-1:0] activation_valid_view [6];
++  logic [16*WeightWindowCount+15:0] weight_linear_valid;
++  logic [16*ActivationWindowCount+15:0] activation_linear_valid;
++  wire [31:0] weight_valid_window [WeightWindowCount];
++  wire [31:0] activation_valid_window [ActivationWindowCount];
++  logic [15:0] weight_seen [2], activation_seen [2];
++
++  for (genvar profile = 0; profile < 9; profile++) begin : gen_weight_valid_view
++    localparam int Bytes = qbs_weight_block_bytes(qbs_weight_profile_e'(profile + 1));
++    for (genvar index = 0; index < WeightLinearBits; index++) begin : gen_bit
++      if (index < 4 * Bytes) begin : gen_native
++        assign weight_valid_view[profile][index] = weight_byte_valid_q[index/Bytes][index%Bytes];
++      end else begin : gen_padding
++        assign weight_valid_view[profile][index] = 1'b0;
++      end
++    end
++  end
++
+   for (genvar profile = 0; profile < 2; profile++) begin : gen_activation_valid_view
+     localparam qbs_activation_profile_e Profile = qbs_activation_profile_e'(profile + 1);
+     for (genvar layout_index = 0; layout_index < 3; layout_index++) begin : gen_layout
+@@ -481,6 +491,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
+           !activation_seen[slot][b] && (slot == 0 || !activation_duplicate_mask[b]);
+     end
+   end
++  end else begin : gen_unique_bytes
++    assign new_weight_mask = weight_mask;
++    assign new_activation_mask = activation_mask;
++  end
+ 
+   // Complete each byte reduction before applying the live row/context count.
+   // A response's row count can arrive through a late valid-qualified mux.
+@@ -503,24 +517,30 @@ module qbs_block_adapter import qbs_pkg::*; #(
+ 
+     for (int row = 0; row < 4; row++) begin
+       logic [QbsMaxWeightBlockBytes-1:0] byte_complete;
++      logic row_complete;
+       for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes; byte_index++)
+         byte_complete[byte_index] = byte_index >= weight_bytes ||
+                                    weight_byte_valid_q[row][byte_index];
+-      weight_complete_o[row] = row < weight_row_count_i && (&byte_complete) &&
++      row_complete = UniqueInputBytes ? unsigned'(weight_committed_q[row]) == weight_bytes
++                                      : (&byte_complete);
++      weight_complete_o[row] = row < weight_row_count_i && row_complete &&
+                                !weight_write_pending;
+-      weight_missing[row] = row < weight_row_count_i && !(&byte_complete);
++      weight_missing[row] = row < weight_row_count_i && !row_complete;
+     end
+     all_weight_complete_o = (weight_row_count_i inside {[1:4]}) &&
+                             !(|weight_missing) && !weight_write_pending;
+ 
+     for (int ctx = 0; ctx < 4; ctx++) begin
+       logic [QbsMaxActivationBlockBytes-1:0] byte_complete;
++      logic row_complete;
+       for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes; byte_index++)
+         byte_complete[byte_index] = byte_index >= activation_bytes ||
+                                    activation_byte_valid_q[ctx][byte_index];
+-      activation_complete_o[ctx] = ctx < activation_context_count && (&byte_complete) &&
++      row_complete = UniqueInputBytes ? unsigned'(activation_committed_q[ctx]) == activation_bytes
++                                      : (&byte_complete);
++      activation_complete_o[ctx] = ctx < activation_context_count && row_complete &&
+                                    !activation_write_pending;
+-      activation_missing[ctx] = ctx < activation_context_count && !(&byte_complete);
++      activation_missing[ctx] = ctx < activation_context_count && !row_complete;
+     end
+     all_activation_complete_o = (m_i inside {[1:QbsMaxM]}) &&
+                                 !(|activation_missing) && !activation_write_pending;
+@@ -712,6 +732,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
+   end
+ 
+   // All writers set 1, so their order is immaterial. Keep reset > set > clear.
++  if (TrackByteValid) begin : gen_bitmap_storage
+   for (genvar row = 0; row < 4; row++) begin : gen_byte_valid
+     for (genvar group_index = 0; group_index < WeightValidGroups; group_index++) begin : gen_weight
+       wire [31:0] group_hit = weight_valid_row[row] & weight_valid_group[group_index];
+@@ -742,6 +763,55 @@ module qbs_block_adapter import qbs_pkg::*; #(
+       end
+     end
+   end
++  end
++
++  if (UniqueInputBytes) begin : gen_commit_counts
++    for (genvar row = 0; row < 4; row++) begin : gen_row
++      wire [5:0] weight_count =
++          {1'b0, count_beat_bytes(weight_valid_row[row][15:0])} +
++          {1'b0, count_beat_bytes(weight_valid_row[row][31:16])};
++      wire [5:0] activation_count =
++          {1'b0, count_beat_bytes(activation_valid_row[row][15:0])} +
++          {1'b0, count_beat_bytes(activation_valid_row[row][31:16])};
++      always_ff @(posedge clk_i or negedge rst_ni) begin
++        if (!rst_ni) begin
++          weight_committed_q[row] <= '0;
++          activation_committed_q[row] <= '0;
++        end else begin
++          if (clear_weight_i) weight_committed_q[row] <= '0;
++          else if (|weight_count)
++            weight_committed_q[row] <= weight_committed_q[row] + weight_count;
++          if (clear_activation_i) activation_committed_q[row] <= '0;
++          else if (|activation_count)
++            activation_committed_q[row] <= activation_committed_q[row] + activation_count;
++        end
++      end
++`ifndef SYNTHESIS
++      always @(posedge clk_i) if (rst_ni) begin
++        if (|weight_count)
++          assert (unsigned'(weight_committed_q[row]) + unsigned'(weight_count) <=
++                  qbs_weight_block_bytes(weight_profile_i))
++            else $fatal(1, "QBS weight completion counter overflow");
++        if (|activation_count)
++          assert (unsigned'(activation_committed_q[row]) + unsigned'(activation_count) <=
++                  qbs_activation_block_bytes(activation_profile_i))
++            else $fatal(1, "QBS activation completion counter overflow");
++      end
++`endif
++    end
++`ifndef SYNTHESIS
++    always @(posedge clk_i) if (rst_ni) begin
++      for (int b = 0; b < 32; b++) begin
++        if (weight_consumed[b])
++          assert (!weight_byte_valid_q[weight_rows[b]][weight_offsets[b]])
++            else $fatal(1, "QBS unique-input adapter received a duplicate weight byte");
++        if (activation_consumed[b])
++          assert (!activation_byte_valid_q[activation_contexts[b]][activation_offsets[b]])
++            else $fatal(1, "QBS unique-input adapter received a duplicate activation byte");
++      end
++    end
++`endif
++  end
+ 
+   always_ff @(posedge clk_i or negedge rst_ni) begin
+     if (!rst_ni) begin
+diff --git a/hardware/src/vlsu/qbs/qbs_compute_engine.sv b/hardware/src/vlsu/qbs/qbs_compute_engine.sv
+index e808b7e5..1b6ac572 100644
+--- a/hardware/src/vlsu/qbs/qbs_compute_engine.sv
++++ b/hardware/src/vlsu/qbs/qbs_compute_engine.sv
+@@ -320,7 +320,7 @@ module qbs_compute_engine
+   assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
+ 
+   qbs_block_adapter #(
+-    .ActivationContextBase (0), .NativeView(1'b0)
++    .ActivationContextBase (0), .NativeView(1'b0), .UniqueInputBytes(1'b1)
+   ) i_block_adapter_bank0 (
+     .clk_i,
+     .rst_ni,
+@@ -362,7 +362,7 @@ module qbs_compute_engine
+   );
+ 
+   qbs_block_adapter #(
+-    .ActivationContextBase (4), .NativeView(1'b0)
++    .ActivationContextBase (4), .NativeView(1'b0), .UniqueInputBytes(1'b1)
+   ) i_block_adapter_bank1 (
+     .clk_i,
+     .rst_ni,
+diff --git a/hardware/src/vlsu/qbs/qbs_engine.sv b/hardware/src/vlsu/qbs/qbs_engine.sv
+index 6aafcd68..dd673b43 100644
+--- a/hardware/src/vlsu/qbs/qbs_engine.sv
++++ b/hardware/src/vlsu/qbs/qbs_engine.sv
+@@ -627,18 +627,31 @@ module qbs_engine
+   // range request. All seven row bits and all sixteen byte-count bits fit.
+   function automatic logic [31:0] block_byte_offset(
+       input logic [6:0] row,
+-      input logic [7:0] k_block,
++      input logic [23:0] k_offset,
+       input logic [24:0] row_bytes,
+-      input logic [15:0] block_bytes,
+       input logic row_group_four);
+     logic [31:0] row_offset;
+-    logic [23:0] k_offset;
+     row_offset = (row_group_four ? (row >> 2) : row) * row_bytes;
+-    k_offset = k_block * block_bytes;
+     return row_group_four ? ((row_offset + 32'(k_offset)) << 2)
+                           : (row_offset + 32'(k_offset));
+   endfunction : block_byte_offset
+ 
++  // Range issue already waits for the scheduler tuple to catch up. Compute
++  // K-byte products in that existing cycle, before the row/base additions.
++  logic [23:0] weight_k_offset_q, activation_k_offset_q;
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      weight_k_offset_q <= '0;
++      activation_k_offset_q <= '0;
++    end else if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
++      weight_k_offset_q <= '0;
++      activation_k_offset_q <= '0;
++    end else if (state_q == QBS_ENGINE_RUN && !scheduler_tuple_current) begin
++      weight_k_offset_q <= compute_expected_k * weight_block_bytes_q;
++      activation_k_offset_q <= compute_expected_k * activation_block_bytes_q;
++    end
++  end
++
+   always_comb begin : form_read_range
+     automatic logic [63:0] logical_row;
+     automatic logic [63:0] address_offset;
+@@ -686,15 +699,14 @@ module qbs_engine
+           automatic int unsigned storage_m =
+               activation_layout_q == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
+                   ? QbsMaxM : 4;
+-          address_offset = 64'(compute_expected_k) *
+-                           (storage_m * activation_block_bytes_q);
++          address_offset = 64'(activation_k_offset_q) * storage_m;
+           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
+           read_range_bytes = RangeBytesWidth'(
+               storage_m * activation_block_bytes_q);
+         end else begin
+           address_offset = 64'(block_byte_offset(
+-              7'(activation_range_index_q), compute_expected_k,
+-              activation_row_bytes_q, activation_block_bytes_q, 1'b0));
++              7'(activation_range_index_q), activation_k_offset_q,
++              activation_row_bytes_q, 1'b0));
+           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
+           read_range_bytes = RangeBytesWidth'(activation_block_bytes_q);
+         end
+@@ -704,8 +716,7 @@ module qbs_engine
+                    weight_ranges_pending_q < 2) begin
+         logical_row = weight_issue_row_base_q;
+         address_offset = 64'(block_byte_offset(
+-            7'(logical_row), weight_issue_k_q, weight_row_bytes_q,
+-            weight_block_bytes_q, 1'b1));
++            7'(logical_row), weight_k_offset_q, weight_row_bytes_q, 1'b1));
+         read_range_valid = 1'b1;
+         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
+         read_range_bytes = RangeBytesWidth'(weight_issue_row_count *
+@@ -719,8 +730,8 @@ module qbs_engine
+         logical_row = 64'(compute_expected_row_base) +
+                       weight_range_index_q;
+         address_offset = 64'(block_byte_offset(
+-            7'(logical_row), compute_expected_k, weight_row_bytes_q,
+-            weight_block_bytes_q, weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
++            7'(logical_row), weight_k_offset_q, weight_row_bytes_q,
++            weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
+         read_range_valid = 1'b1;
+         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
+         read_range_bytes = weight_layout_q ==
+@@ -1425,6 +1436,11 @@ module qbs_engine
+ 
+   always_ff @(posedge clk_i) begin
+     if (rst_ni) begin
++      if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
++        assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q) &&
++                activation_k_offset_q == 24'(compute_expected_k * activation_block_bytes_q))
++          else $fatal(1, "QBS range K-byte offset is not aligned with the scheduler");
++      end
+       assert (!(success_valid_o && fault_valid_o))
+         else $fatal(1, "QBS command cannot succeed and fault together");
+       if (state_q inside {QBS_ENGINE_DESCRIPTOR_REQUEST,
+diff --git a/hardware/src/vlsu/qbs/qbs_profile_decoder.sv b/hardware/src/vlsu/qbs/qbs_profile_decoder.sv
+index c9aad7f8..b30986c9 100644
+--- a/hardware/src/vlsu/qbs/qbs_profile_decoder.sv
++++ b/hardware/src/vlsu/qbs/qbs_profile_decoder.sv
+@@ -27,6 +27,76 @@ module qbs_profile_decoder import qbs_pkg::*; #(
+   output logic [31:0]         activation_d_o [4]
+ );
+ 
++  logic [7:0] compact_low [4][8], compact_high [4][8];
++  logic [7:0] compact_activation [4][8];
++
++  // Each issue consumes consecutive bytes within one SRAM window. Share the
++  // alignment network across the eight outputs, instead of reading the
++  // 32-byte window independently for every format/element combination.
++  function automatic logic [255:0] align_window(
++      input logic [255:0] data, input logic [4:0] offset);
++    logic [255:0] stage [6];
++    stage[0] = data;
++    for (int level = 0; level < 5; level++)
++      for (int b = 0; b < 32; b++)
++        stage[level+1][8*b +: 8] = offset[level]
++            ? stage[level][8*((b + (1 << level)) % 32) +: 8]
++            : stage[level][8*b +: 8];
++    return stage[5];
++  endfunction
++
++  if (CompactRead) begin : gen_compact_alignment
++    wire short_payload = profile_i inside {
++        QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q5_0, QBS_WEIGHT_PROFILE_IQ4_NL};
++    for (genvar row = 0; row < 4; row++) begin : gen_row
++      wire [255:0] low_source = short_payload
++          ? {2{weight_window_i[row][0][127:0]}} : weight_window_i[row][0];
++      wire [255:0] low_aligned = align_window(low_source, k_base_i[4:0]);
++      wire [255:0] high_aligned = align_window(weight_window_i[row][1], k_base_i[4:0]);
++      wire [255:0] activation_aligned = align_window(activation_window_i[row], k_base_i[4:0]);
++      for (genvar lane = 0; lane < 8; lane++) begin : gen_byte
++        assign compact_low[row][lane] = low_aligned[8*lane +: 8];
++        assign compact_high[row][lane] = high_aligned[8*lane +: 8];
++        assign compact_activation[row][lane] = activation_aligned[8*lane +: 8];
++      end
++    end
++  end else begin : gen_native_alignment
++    assign compact_low = '{default:'0};
++    assign compact_high = '{default:'0};
++    assign compact_activation = '{default:'0};
++  end
++
++  function automatic logic signed [7:0] compact_weight_quant(
++      input int unsigned row, lane, element);
++    logic [7:0] low, high;
++    logic [3:0] nibble;
++    logic [1:0] pair_bits, high_pair;
++    logic high_bit;
++    logic [31:0] q5_high_bits;
++    low = compact_low[row][lane];
++    high = compact_high[row][lane];
++    nibble = (profile_i == QBS_WEIGHT_PROFILE_Q6_K ? element[6] :
++        (profile_i inside {QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q5_0,
++                           QBS_WEIGHT_PROFILE_IQ4_NL}) ? element[4] : element[5])
++        ? low[7:4] : low[3:0];
++    pair_bits = 2'(low >> {element[6:5], 1'b0});
++    high_pair = 2'(high >> {element[6:5], 1'b0});
++    high_bit = high[element[7:5]];
++    q5_high_bits = {weight_side_i[row][5], weight_side_i[row][4],
++                    weight_side_i[row][3], weight_side_i[row][2]};
++    case (profile_i)
++      QBS_WEIGHT_PROFILE_Q4_K: return $signed({4'b0, nibble});
++      QBS_WEIGHT_PROFILE_Q5_K: return $signed({3'b0, high_bit, nibble});
++      QBS_WEIGHT_PROFILE_Q6_K: return 8'($signed({~high_pair[1], high_pair[0], nibble}));
++      QBS_WEIGHT_PROFILE_Q3_K: return 8'($signed({~high_bit, pair_bits}));
++      QBS_WEIGHT_PROFILE_Q2_K: return $signed({6'b0, pair_bits});
++      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return $signed(low);
++      QBS_WEIGHT_PROFILE_Q4_0: return 8'($signed({~nibble[3], nibble[2:0]}));
++      QBS_WEIGHT_PROFILE_Q5_0: return 8'($signed({~q5_high_bits[element[4:0]], nibble}));
++      QBS_WEIGHT_PROFILE_IQ4_NL: return iq4_nl_value(nibble);
++      default: return '0;
++    endcase
++  endfunction
+ 
+   // Translate only the bytes consumed this cycle. The compatibility input is
+   // retained for standalone profile tests; the integrated path uses windows.
+@@ -367,8 +437,9 @@ module qbs_profile_decoder import qbs_pkg::*; #(
+       for (int lane = 0; lane < 8; lane++) begin
+         weight_quant_o[row][lane] = '0;
+         if (row < row_count_i && lane < k_per_context_o)
+-          weight_quant_o[row][lane] =
+-              decode_weight_quant(row, unsigned'(k_base_i) + lane);
++          weight_quant_o[row][lane] = CompactRead
++              ? compact_weight_quant(row, lane, unsigned'(k_base_i) + lane)
++              : decode_weight_quant(row, unsigned'(k_base_i) + lane);
+       end
+     end
+ 
+@@ -387,7 +458,7 @@ module qbs_profile_decoder import qbs_pkg::*; #(
+       for (int lane = 0; lane < 8; lane++) begin
+         activation_quant_o[ctx][lane] = '0;
+         if (ctx < m_i && lane < k_per_context_o)
+-          activation_quant_o[ctx][lane] = $signed(activation_byte(ctx,
++          activation_quant_o[ctx][lane] = CompactRead ? $signed(compact_activation[ctx][lane]) : $signed(activation_byte(ctx,
+               (activation_profile_i == QBS_ACTIVATION_PROFILE_Q8_K ? 4 : 2) +
+               unsigned'(k_base_i) + lane));
+       end

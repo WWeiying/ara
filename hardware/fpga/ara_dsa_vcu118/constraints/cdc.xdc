@@ -32,6 +32,71 @@ proc ara_cdc::pointer_inputs {root} {
         "first-stage D pins in $root" 6]
 }
 
+# Bound the actual asynchronous output ports, not arbitrary hierarchy pins.
+# Clock endpoints avoid path segmentation; -through preserves checks all the
+# way to receiving FFs, including the unbuffered reset-phase decode/CE paths.
+proc ara_cdc::handshake {src dst stages width} {
+    set src_clock [clock_at $src/clk_i]
+    set dst_clock [clock_at $dst/clk_i]
+    if {$src_clock eq $dst_clock} { error "CDC: same clock on DMI handshake $src -> $dst" }
+    set bound [expr {min([get_property PERIOD $src_clock], [get_property PERIOD $dst_clock])}]
+    set req [require [get_pins -quiet $src/async_req_o] "$src request output" 1]
+    set ack [require [get_pins -quiet $dst/async_ack_o] "$dst acknowledge output" 1]
+    set data [require [get_pins -quiet $src/async_data_o*] "$src data output bits" $width]
+    foreach half [list $src $dst] {
+        set regs [require [get_cells -quiet -hierarchical -filter \
+            "NAME =~ $half/i_sync/reg_q_reg* && REF_NAME =~ FD*"] \
+            "DMI synchronizer in $half" $stages]
+        # Check each stage as well as the total count; do not mark data/state FFs.
+        for {set stage 0} {$stage < $stages} {incr stage} {
+            set expected [format {%s/i_sync/reg_q_reg[%d]} $half $stage]
+            set found {}
+            foreach reg $regs {
+                if {[get_property NAME $reg] eq $expected} { lappend found $reg }
+            }
+            require $found "DMI stage $expected" 1
+        }
+        set_property ASYNC_REG TRUE $regs
+    }
+    set_max_delay -datapath_only $bound -from $src_clock -through $req -to $dst_clock
+    set_max_delay -datapath_only $bound -from $dst_clock -through $ack -to $src_clock
+    set_max_delay -datapath_only $bound -from $src_clock -through $data -to $dst_clock
+    puts "CDC: DMI $src -> $dst; data=$width, stages=$stages, max=${bound}ns"
+}
+
+proc ara_cdc::dmi {} {
+    set root i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc
+    # dm_pkg::dmi_req_t and dmi_resp_t; a changed ABI/hierarchy must be reviewed.
+    foreach channel {req resp} width {41 34} {
+        set cdc $root/i_cdc_$channel
+        handshake $cdc/i_src $cdc/i_dst 3 $width
+        set reset $cdc/i_cdc_reset_ctrlr
+        foreach side {a b} other {b a} {
+            handshake $reset/i_cdc_reset_ctrlr_half_$side/i_state_transition_cdc_src \
+                $reset/i_cdc_reset_ctrlr_half_$other/i_state_transition_cdc_dst 2 2
+        }
+    }
+}
+
+proc ara_cdc::uart {} {
+    set root i_cheshire_soc/gen_uart.i_uart/i_apb_uart/UART_IS_SIN
+    set regs [require [get_cells -quiet -hierarchical -filter \
+        "NAME =~ $root/iD_reg* && REF_NAME =~ FD*"] "UART RX synchronizer" 2]
+    set first {}
+    foreach reg $regs {
+        if {[get_property NAME $reg] eq "$root/iD_reg\[0\]"} { lappend first $reg }
+    }
+    require $first "UART RX first stage" 1
+    set_property ASYNC_REG TRUE $regs
+    set input [require [get_ports -quiet uart_rx_i] "UART RX port" 1]
+    set capture [require [get_pins -quiet -of_objects $first -filter {REF_PIN_NAME == D}] \
+        "UART RX first-stage D pin" 1]
+    # Retain the existing 70 ns physical budget, without a fictitious launch
+    # phase or a hold exception on downstream synchronous logic.
+    set_max_delay -datapath_only 70.0 -from $input -to $capture
+    puts "CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed"
+}
+
 proc ara_cdc::apply {} {
     set root i_dram_wrapper/gen_cdc.i_axi_cdc_mig
     foreach channel {aw w ar b r} {
@@ -79,6 +144,8 @@ proc ara_cdc::apply {} {
             -filter {REF_PIN_NAME == D}] "four VIO first-stage D pins" 4]
         puts "CDC: four independent VIO status bits synchronized; only first-stage D pins excepted"
     }
+    dmi
+    uart
 }
 
 ara_cdc::apply

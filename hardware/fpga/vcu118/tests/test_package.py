@@ -120,6 +120,20 @@ class PackageTests(unittest.TestCase):
         self.assertEqual((ROOT / "constraints/cdc.xdc").read_bytes(),
                          (templates.parent / "constraints/cdc.xdc").read_bytes())
 
+    def test_jtag_and_uart_constraint_contract(self):
+        timing = (ROOT / "constraints/timing.xdc").read_text()
+        commands = "\n".join(line for line in timing.splitlines()
+                             if not line.lstrip().startswith("#"))
+        self.assertNotIn("set_clock_groups", commands)
+        self.assertNotIn("-from [get_ports uart_rx_i]", commands)
+        board = (ROOT / "rtl/board/ara_dsa_vcu118.sv").read_text()
+        self.assertIn('(* CLOCK_BUFFER_TYPE = "NONE" *) input logic jtag_tck_i', board)
+        self.assertIn('.jtag_trst_ni(1\'b1)', board)
+        # The reset-aware generic CDC remains intact; no extra handshake cycle.
+        dmi = (ROOT / "rtl/riscv-dbg/src/dmi_cdc.sv").read_text()
+        self.assertIn("cdc_2phase_clearable #(.T(dm::dmi_req_t))", dmi)
+        self.assertIn("cdc_2phase_clearable #(.T(dm::dmi_resp_t))", dmi)
+
     def test_generated_files_ignored(self):
         ignored = (
             "build/project/rtl/generated.v", "reports/synth/utilization.rpt",

@@ -89,6 +89,8 @@ proc report_drc {args} {
     if {[lsearch -exact $args -checks] >= 0} { loop_report_drc {*}$args }
 }
 set package_root $dir
+# Clock/IO query details have a separate synthetic-netlist test.
+proc write_clock_io_details {dir} {}
 set has_fault_guard 1
 write_reports clean true
 set f [open $dir/reports/clean/fault_decode.rpt r]; set fault [read $f]; close $f

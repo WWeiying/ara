@@ -96,6 +96,7 @@ python3 hardware/fpga/vcu118/tests/test_export.py
 python3 hardware/fpga/vcu118/tests/test_sync.py
 python3 hardware/fpga/vcu118/tests/test_package.py hardware/fpga/ara_dsa_vcu118
 tclsh hardware/fpga/vcu118/tests/check_tcl.tcl hardware/fpga/ara_dsa_vcu118
+tclsh hardware/fpga/vcu118/tests/test_clock_io.tcl /tmp/ara_clock_io_check
 # 安装 VCS 后，使用尚不存在的临时目录运行板级状态采样测试：
 python3 hardware/fpga/vcu118/tests/check_status_sync.py /tmp/ara_status_check --vcs /path/to/vcs
 # 安装 pyslang 后执行：

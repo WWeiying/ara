@@ -320,7 +320,7 @@ module qbs_compute_engine
   assign weight_write_fire = weight_write_valid_i && weight_write_ready_o;
 
   qbs_block_adapter #(
-    .ActivationContextBase (0), .NativeView(1'b0)
+    .ActivationContextBase (0), .NativeView(1'b0), .UniqueInputBytes(1'b1)
   ) i_block_adapter_bank0 (
     .clk_i,
     .rst_ni,
@@ -362,7 +362,7 @@ module qbs_compute_engine
   );
 
   qbs_block_adapter #(
-    .ActivationContextBase (4), .NativeView(1'b0)
+    .ActivationContextBase (4), .NativeView(1'b0), .UniqueInputBytes(1'b1)
   ) i_block_adapter_bank1 (
     .clk_i,
     .rst_ni,

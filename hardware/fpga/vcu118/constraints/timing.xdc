@@ -1,15 +1,15 @@
 create_clock -period 100.0 -name clk_jtag [get_ports jtag_tck_i]
 set_input_jitter clk_jtag 1.0
-set_clock_groups -asynchronous -group [get_clocks clk_jtag]
+# DMI bundled-data CDC needs physical delay bounds, not an asynchronous clock
+# group (which would override set_max_delay). See implementation-only cdc.xdc.
 set_input_delay -min -clock clk_jtag 10.0 [get_ports {jtag_tdi_i jtag_tms_i}]
 set_input_delay -max -clock clk_jtag 20.0 [get_ports {jtag_tdi_i jtag_tms_i}]
 set_output_delay -min -clock clk_jtag 10.0 [get_ports jtag_tdo_o]
 set_output_delay -max -clock clk_jtag 20.0 [get_ports jtag_tdo_o]
 set_property CLOCK_DEDICATED_ROUTE FALSE [get_nets -of_objects [get_ports jtag_tck_i]]
 set_property CLOCK_BUFFER_TYPE NONE [get_nets -of_objects [get_ports jtag_tck_i]]
-# External UART is asynchronous; bound its pad-to-synchronizer/output paths.
-set_max_delay 70.0 -from [get_ports uart_rx_i]
-set_false_path -hold -from [get_ports uart_rx_i]
+# RX is bounded to its first synchronizer D pin in cdc.xdc. Do not invent
+# a synchronous external launch clock for this asynchronous serial input.
 set_max_delay 70.0 -to [get_ports uart_tx_o]
 set_false_path -hold -to [get_ports uart_tx_o]
 set_false_path -from [get_ports sys_reset]

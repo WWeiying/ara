@@ -53,7 +53,11 @@ proc write_reports {stage {reject_loops false}} {
     report_timing -delay_type max -max_paths 50 -nworst 1 -slack_lesser_than 0 \
         -file [file join $dir setup_paths.rpt]
     report_exceptions -ignored -file [file join $dir ignored_exceptions.rpt]
+    # -ignored omits partially overridden exceptions. Coverage exposes those
+    # as well as empty paths; needed for the bundled-data DMI constraints.
+    report_exceptions -coverage -file [file join $dir exception_coverage.rpt]
     report_clocks -file [file join $dir clocks.rpt]
+    write_clock_io_details $dir
     # Collect the fixed fault cone in the same run, even if no loop remains.
     set fault_cells [get_cells -quiet -hierarchical -filter {NAME =~ */i_fpga_compute_fault}]
     write_loop_fanin $dir $fault_cells 64 fault_decode.rpt
@@ -61,6 +65,47 @@ proc write_reports {stage {reject_loops false}} {
     if {$reject_loops && $loops} {
         error "Combinational loops remain; inspect $dir/loop_cells.rpt. No bitstream was generated."
     }
+}
+
+# Do not create guessed clocks on debug-hub outputs or guessed DDR reset I/O
+# delays. Capture their actual drivers/clock coverage in this same run first.
+proc write_clock_io_details {dir} {
+    set out [open [file join $dir clock_io.rpt] w]
+    set code [catch {
+        foreach cell [get_cells -quiet dbg_hub] {
+            puts $out "CELL $cell"
+            foreach key {REF_NAME IS_BLACKBOX} {
+                if {$key in [list_property $cell]} {
+                    puts $out "  $key=[get_property $key $cell]"
+                }
+            }
+        }
+        foreach kind {port pin} patterns {
+            {jtag_tck_i uart_rx_i c0_ddr4_reset_n}
+            {dbg_hub/clk {dbg_hub/sl_iport0_o[1]} {dbg_hub/sl_iport1_o[1]}}
+        } {
+            foreach pattern $patterns {
+                if {$kind eq "port"} { set objects [get_ports -quiet $pattern] } \
+                else { set objects [get_pins -quiet $pattern] }
+                if {![llength $objects]} { puts $out "MISSING $kind $pattern" }
+                foreach object $objects {
+                    puts $out "OBJECT $object CLOCKS=[get_clocks -quiet -of_objects $object]"
+                    set nets [get_nets -quiet -segments -of_objects $object]
+                    if {![llength $nets]} { puts $out "  NO NET"; continue }
+                    set drivers [get_pins -quiet -leaf -of_objects $nets -filter {DIRECTION == OUT}]
+                    puts $out "  NETS=$nets DRIVERS=$drivers"
+                    if {[llength $drivers]} {
+                        foreach cell [get_cells -quiet -of_objects $drivers] {
+                            puts $out "  DRIVER_CELL=$cell REF_NAME=[get_property REF_NAME $cell]"
+                        }
+                    }
+                }
+            }
+        }
+    } result options]
+    set close_code [catch {close $out} close_result close_options]
+    if {$code} { return -options $options $result }
+    if {$close_code} { return -options $close_options $close_result }
 }
 
 # LUT names alone cannot distinguish RTL feedback from a mapping problem.

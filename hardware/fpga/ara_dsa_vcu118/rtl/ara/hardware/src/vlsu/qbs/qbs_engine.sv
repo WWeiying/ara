@@ -627,17 +627,30 @@ module qbs_engine
   // range request. All seven row bits and all sixteen byte-count bits fit.
   function automatic logic [31:0] block_byte_offset(
       input logic [6:0] row,
-      input logic [7:0] k_block,
+      input logic [23:0] k_offset,
       input logic [24:0] row_bytes,
-      input logic [15:0] block_bytes,
       input logic row_group_four);
     logic [31:0] row_offset;
-    logic [23:0] k_offset;
     row_offset = (row_group_four ? (row >> 2) : row) * row_bytes;
-    k_offset = k_block * block_bytes;
     return row_group_four ? ((row_offset + 32'(k_offset)) << 2)
                           : (row_offset + 32'(k_offset));
   endfunction : block_byte_offset
+
+  // Range issue already waits for the scheduler tuple to catch up. Compute
+  // K-byte products in that existing cycle, before the row/base additions.
+  logic [23:0] weight_k_offset_q, activation_k_offset_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      weight_k_offset_q <= '0;
+      activation_k_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
+      weight_k_offset_q <= '0;
+      activation_k_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_RUN && !scheduler_tuple_current) begin
+      weight_k_offset_q <= compute_expected_k * weight_block_bytes_q;
+      activation_k_offset_q <= compute_expected_k * activation_block_bytes_q;
+    end
+  end
 
   always_comb begin : form_read_range
     automatic logic [63:0] logical_row;
@@ -686,15 +699,14 @@ module qbs_engine
           automatic int unsigned storage_m =
               activation_layout_q == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
                   ? QbsMaxM : 4;
-          address_offset = 64'(compute_expected_k) *
-                           (storage_m * activation_block_bytes_q);
+          address_offset = 64'(activation_k_offset_q) * storage_m;
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
           read_range_bytes = RangeBytesWidth'(
               storage_m * activation_block_bytes_q);
         end else begin
           address_offset = 64'(block_byte_offset(
-              7'(activation_range_index_q), compute_expected_k,
-              activation_row_bytes_q, activation_block_bytes_q, 1'b0));
+              7'(activation_range_index_q), activation_k_offset_q,
+              activation_row_bytes_q, 1'b0));
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
           read_range_bytes = RangeBytesWidth'(activation_block_bytes_q);
         end
@@ -704,8 +716,7 @@ module qbs_engine
                    weight_ranges_pending_q < 2) begin
         logical_row = weight_issue_row_base_q;
         address_offset = 64'(block_byte_offset(
-            7'(logical_row), weight_issue_k_q, weight_row_bytes_q,
-            weight_block_bytes_q, 1'b1));
+            7'(logical_row), weight_k_offset_q, weight_row_bytes_q, 1'b1));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = RangeBytesWidth'(weight_issue_row_count *
@@ -719,8 +730,8 @@ module qbs_engine
         logical_row = 64'(compute_expected_row_base) +
                       weight_range_index_q;
         address_offset = 64'(block_byte_offset(
-            7'(logical_row), compute_expected_k, weight_row_bytes_q,
-            weight_block_bytes_q, weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
+            7'(logical_row), weight_k_offset_q, weight_row_bytes_q,
+            weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = weight_layout_q ==
@@ -1434,6 +1445,11 @@ module qbs_engine
 
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
+      if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
+        assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q) &&
+                activation_k_offset_q == 24'(compute_expected_k * activation_block_bytes_q))
+          else $fatal(1, "QBS range K-byte offset is not aligned with the scheduler");
+      end
       assert (!(success_valid_o && fault_valid_o))
         else $fatal(1, "QBS command cannot succeed and fault together");
       if (state_q inside {QBS_ENGINE_DESCRIPTOR_REQUEST,

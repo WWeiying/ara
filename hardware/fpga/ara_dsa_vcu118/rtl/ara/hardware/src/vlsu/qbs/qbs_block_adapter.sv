@@ -3,7 +3,10 @@
 
 module qbs_block_adapter import qbs_pkg::*; #(
   parameter int unsigned ActivationContextBase = 0,
-  parameter bit NativeView = 1'b1
+  parameter bit NativeView = 1'b1,
+  // The integrated range reader/replay writes each block byte once between
+  // clears. Generic clients may rewrite bytes and retain bitmap tracking.
+  parameter bit UniqueInputBytes = 1'b0
 ) (
   input  logic                    clk_i,
   input  logic                    rst_ni,
@@ -55,6 +58,14 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
   logic weight_byte_valid_q [4][QbsMaxWeightBlockBytes];
   logic activation_byte_valid_q [4][QbsMaxActivationBlockBytes];
+`ifdef SYNTHESIS
+  localparam bit TrackByteValid = !UniqueInputBytes;
+`else
+  // Simulation keeps the exact bitmap as a contract oracle, not hardware.
+  localparam bit TrackByteValid = 1'b1;
+`endif
+  logic [$clog2(QbsMaxWeightBlockBytes+1)-1:0] weight_committed_q [4];
+  logic [$clog2(QbsMaxActivationBlockBytes+1)-1:0] activation_committed_q [4];
   logic [2:0] activation_context_count;
 
   localparam int unsigned WeightOffsetWidth = $clog2(QbsMaxWeightBlockBytes);
@@ -343,8 +354,35 @@ module qbs_block_adapter import qbs_pkg::*; #(
   assign activation_duplicate_mask = overlapping_bytes(activation_consumed[15:0],
       activation_source_base[0], activation_source_base[1]);
 
+  // Constant mapping helper stays at module scope for VCS/DC elaboration.
+  function automatic int activation_valid_index(
+      input int index, block_bytes, scale_bytes, quant_bytes, contexts);
+    int ctx, offset, relative;
+    if (contexts == 1) begin
+      ctx = index / block_bytes;
+      offset = index % block_bytes;
+    end else if (index >= contexts * block_bytes) begin
+      return -1;
+    end else if (index < contexts * scale_bytes) begin
+      ctx = index / scale_bytes;
+      offset = index % scale_bytes;
+    end else if (index < contexts * (scale_bytes + quant_bytes)) begin
+      relative = index - contexts * scale_bytes;
+      ctx = relative % contexts;
+      offset = scale_bytes + relative / contexts;
+    end else begin
+      relative = index - contexts * (scale_bytes + quant_bytes);
+      ctx = (relative / 2) % contexts;
+      offset = scale_bytes + quant_bytes + (relative / (2 * contexts)) * 2 + relative % 2;
+    end
+    if ((contexts == 1 && ctx >= 4) || ctx < ActivationContextBase ||
+        ctx >= ActivationContextBase + 4) return -1;
+    return (ctx - ActivationContextBase) * QbsMaxActivationBlockBytes + offset;
+  endfunction
+
   // These views only permute existing valid bits into source byte order.
   // Two 16-bit windows replace 32 independent full-block bit lookups.
+  if (!UniqueInputBytes) begin : gen_byte_history
   localparam int WeightLinearBits = 4 * QbsMaxWeightBlockBytes;
   localparam int ActivationLinearBits = QbsMaxM * QbsMaxActivationBlockBytes;
   localparam int WeightWindowCount = (WeightLinearBits + 15) / 16;
@@ -367,34 +405,6 @@ module qbs_block_adapter import qbs_pkg::*; #(
       end
     end
   end
-
-  // Called only with elaboration constants. The result is a fixed wire index,
-  // including the context-wave filter, not a runtime divider or decoder.
-  function automatic int activation_valid_index(
-      input int index, block_bytes, scale_bytes, quant_bytes, contexts);
-    int ctx, offset, relative;
-    if (contexts == 1) begin
-      ctx = index / block_bytes;
-      offset = index % block_bytes;
-    end else if (index >= contexts * block_bytes) begin
-      return -1;
-    end else if (index < contexts * scale_bytes) begin
-      ctx = index / scale_bytes;
-      offset = index % scale_bytes;
-    end else if (index < contexts * (scale_bytes + quant_bytes)) begin
-      relative = index - contexts * scale_bytes;
-      ctx = relative % contexts;
-      offset = scale_bytes + relative / contexts;
-    end else begin
-      relative = index - contexts * (scale_bytes + quant_bytes);
-      ctx = (relative / 2) % contexts;
-      offset = scale_bytes + quant_bytes + (relative / (2 * contexts)) * 2 + relative % 2;
-    end
-    // A row-major request has a two-bit context index.
-    if ((contexts == 1 && ctx >= 4) || ctx < ActivationContextBase ||
-        ctx >= ActivationContextBase + 4) return -1;
-    return (ctx - ActivationContextBase) * QbsMaxActivationBlockBytes + offset;
-  endfunction
 
   for (genvar profile = 0; profile < 2; profile++) begin : gen_activation_valid_view
     localparam qbs_activation_profile_e Profile = qbs_activation_profile_e'(profile + 1);
@@ -481,6 +491,10 @@ module qbs_block_adapter import qbs_pkg::*; #(
           !activation_seen[slot][b] && (slot == 0 || !activation_duplicate_mask[b]);
     end
   end
+  end else begin : gen_unique_bytes
+    assign new_weight_mask = weight_mask;
+    assign new_activation_mask = activation_mask;
+  end
 
   // Complete each byte reduction before applying the live row/context count.
   // A response's row count can arrive through a late valid-qualified mux.
@@ -503,24 +517,30 @@ module qbs_block_adapter import qbs_pkg::*; #(
 
     for (int row = 0; row < 4; row++) begin
       logic [QbsMaxWeightBlockBytes-1:0] byte_complete;
+      logic row_complete;
       for (int byte_index = 0; byte_index < QbsMaxWeightBlockBytes; byte_index++)
         byte_complete[byte_index] = byte_index >= weight_bytes ||
                                    weight_byte_valid_q[row][byte_index];
-      weight_complete_o[row] = row < weight_row_count_i && (&byte_complete) &&
+      row_complete = UniqueInputBytes ? unsigned'(weight_committed_q[row]) == weight_bytes
+                                      : (&byte_complete);
+      weight_complete_o[row] = row < weight_row_count_i && row_complete &&
                                !weight_write_pending;
-      weight_missing[row] = row < weight_row_count_i && !(&byte_complete);
+      weight_missing[row] = row < weight_row_count_i && !row_complete;
     end
     all_weight_complete_o = (weight_row_count_i inside {[1:4]}) &&
                             !(|weight_missing) && !weight_write_pending;
 
     for (int ctx = 0; ctx < 4; ctx++) begin
       logic [QbsMaxActivationBlockBytes-1:0] byte_complete;
+      logic row_complete;
       for (int byte_index = 0; byte_index < QbsMaxActivationBlockBytes; byte_index++)
         byte_complete[byte_index] = byte_index >= activation_bytes ||
                                    activation_byte_valid_q[ctx][byte_index];
-      activation_complete_o[ctx] = ctx < activation_context_count && (&byte_complete) &&
+      row_complete = UniqueInputBytes ? unsigned'(activation_committed_q[ctx]) == activation_bytes
+                                      : (&byte_complete);
+      activation_complete_o[ctx] = ctx < activation_context_count && row_complete &&
                                    !activation_write_pending;
-      activation_missing[ctx] = ctx < activation_context_count && !(&byte_complete);
+      activation_missing[ctx] = ctx < activation_context_count && !row_complete;
     end
     all_activation_complete_o = (m_i inside {[1:QbsMaxM]}) &&
                                 !(|activation_missing) && !activation_write_pending;
@@ -712,6 +732,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
   end
 
   // All writers set 1, so their order is immaterial. Keep reset > set > clear.
+  if (TrackByteValid) begin : gen_bitmap_storage
   for (genvar row = 0; row < 4; row++) begin : gen_byte_valid
     for (genvar group_index = 0; group_index < WeightValidGroups; group_index++) begin : gen_weight
       wire [31:0] group_hit = weight_valid_row[row] & weight_valid_group[group_index];
@@ -741,6 +762,55 @@ module qbs_block_adapter import qbs_pkg::*; #(
         end
       end
     end
+  end
+  end
+
+  if (UniqueInputBytes) begin : gen_commit_counts
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      wire [5:0] weight_count =
+          {1'b0, count_beat_bytes(weight_valid_row[row][15:0])} +
+          {1'b0, count_beat_bytes(weight_valid_row[row][31:16])};
+      wire [5:0] activation_count =
+          {1'b0, count_beat_bytes(activation_valid_row[row][15:0])} +
+          {1'b0, count_beat_bytes(activation_valid_row[row][31:16])};
+      always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) begin
+          weight_committed_q[row] <= '0;
+          activation_committed_q[row] <= '0;
+        end else begin
+          if (clear_weight_i) weight_committed_q[row] <= '0;
+          else if (|weight_count)
+            weight_committed_q[row] <= weight_committed_q[row] + weight_count;
+          if (clear_activation_i) activation_committed_q[row] <= '0;
+          else if (|activation_count)
+            activation_committed_q[row] <= activation_committed_q[row] + activation_count;
+        end
+      end
+`ifndef SYNTHESIS
+      always @(posedge clk_i) if (rst_ni) begin
+        if (|weight_count)
+          assert (unsigned'(weight_committed_q[row]) + unsigned'(weight_count) <=
+                  qbs_weight_block_bytes(weight_profile_i))
+            else $fatal(1, "QBS weight completion counter overflow");
+        if (|activation_count)
+          assert (unsigned'(activation_committed_q[row]) + unsigned'(activation_count) <=
+                  qbs_activation_block_bytes(activation_profile_i))
+            else $fatal(1, "QBS activation completion counter overflow");
+      end
+`endif
+    end
+`ifndef SYNTHESIS
+    always @(posedge clk_i) if (rst_ni) begin
+      for (int b = 0; b < 32; b++) begin
+        if (weight_consumed[b])
+          assert (!weight_byte_valid_q[weight_rows[b]][weight_offsets[b]])
+            else $fatal(1, "QBS unique-input adapter received a duplicate weight byte");
+        if (activation_consumed[b])
+          assert (!activation_byte_valid_q[activation_contexts[b]][activation_offsets[b]])
+            else $fatal(1, "QBS unique-input adapter received a duplicate activation byte");
+      end
+    end
+`endif
   end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin

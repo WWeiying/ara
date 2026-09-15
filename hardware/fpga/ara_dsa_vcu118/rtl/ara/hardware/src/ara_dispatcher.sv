@@ -1596,8 +1596,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       end
     endcase
 
-    if (state_d == NORMAL_OPERATION && state_q != RESHUFFLE &&
-        state_q != OVERLAP_RESPOND && state_q != SOURCE_SNAPSHOT_WAIT) begin
+    // Only these states can enter the architectural decoder in this cycle.
+    // Do not route repair-uop arithmetic through the full next-state encoder
+    // and back into the scalar response/scoreboard path.
+    if (state_q == NORMAL_OPERATION || state_q == OVERLAP_ISSUE_ORIGINAL ||
+        (state_q == WAIT_IDLE && !ara_req_valid_o && ara_idle_i) ||
+        (state_q == WAIT_IDLE_FLUSH && lsu_ex_state_q == LSU_FLUSH_DONE)) begin
       // Decode before the late backend-ready signal. Only the final commit
       // selection may expose its results or change architectural state.
       decode_blocked = acc_req_i.req_valid && acc_req_i.resp_ready && !ara_req_ready_i;
