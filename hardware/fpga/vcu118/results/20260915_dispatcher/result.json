@@ -1,0 +1,28 @@
+{
+  "state": "PASS",
+  "reference": "74042fbd",
+  "before_sha256": "bd48a832a04524ae05aff6a85f4f29eaef7f3b3ca8ab7ab5fc8b356e7e7ac078",
+  "after_sha256": "c3aee27113948b3005a50f7e7db853c510154c7cc3b563e1af442126293dc250",
+  "testbench_sha256": "1136a0f9fdc539e9275b933ea35ad037d23057abd7011ef2463782aebb45c73a",
+  "layout_vectors": {
+    "64": 79648,
+    "1024": 110368,
+    "65536": 2174752
+  },
+  "dispatcher_comparison": "Dispatcher equivalence PASS checks=67040 blocked=13478 accepted=25379",
+  "registered_state_signals": 70,
+  "vivado_timing_verified": false,
+  "tool": "Synopsys VCS V-2023.12-SP1_Full64",
+  "scope": "FPGA dispatcher only; no main RTL/DC synchronization; no Vivado timing result",
+  "baseline_windows_run": "synth_f18665bfb9ae",
+  "test_inputs": {
+    "hardware/fpga/vcu118/dispatcher_fpga.py": "21f898de42d784e2bdb6f59fa1e7e693aae98c5b3c2172f98b8cff3ac84545d1",
+    "hardware/fpga/vcu118/tests/check_dispatcher_layout.py": "dbd810f51e599561ce09880493c940427ac0e5f925b20a533174f5fda4b5392d",
+    "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/segment_sequencer.sv": "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7"
+  },
+  "full_package_static_check": "PASS excluding explicitly enumerated Xilinx IP/primitives; vendor internals not modeled",
+  "logs_sha256": {
+    "dispatcher_run.txt": "b0f36295e35e8f4a9f1f03141392272c3e89bbb7d7c23814ce4c0ba40217ed88",
+    "layout_run.txt": "7b918116087083372c6aa9526348f6c8318fe8b8d41b59b42c17e0952e2ec01d"
+  }
+}

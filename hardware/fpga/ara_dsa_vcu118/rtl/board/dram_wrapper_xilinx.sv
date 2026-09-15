@@ -118,8 +118,18 @@ module dram_wrapper_xilinx #(
   logic dram_rst_o;
   logic calib_complete;
   logic ui_resetn;
-  // Common asynchronous assertion, separately synchronized deassertion.
-  assign fabric_ready_o = ~sys_rst_i & ~dram_rst_o & calib_complete;
+  // Synchronize system-reset release before using it in the UI domain.
+  logic ui_por_n;
+  rstgen i_ui_por (
+    .clk_i(dram_axi_clk), .rst_ni(~sys_rst_i), .test_mode_i(1'b0),
+    .rst_no(ui_por_n), .init_no()
+  );
+  // A single UI-domain register crosses to the SoC reset/status chains.
+  // System reset asserts this low even if the DDR UI clock is stopped.
+  always_ff @(posedge dram_axi_clk or negedge ui_por_n) begin
+    if (!ui_por_n) fabric_ready_o <= 1'b0;
+    else fabric_ready_o <= ~dram_rst_o & calib_complete;
+  end
   rstgen i_ui_rstgen (
     .clk_i(dram_axi_clk), .rst_ni(fabric_ready_o), .test_mode_i(1'b0),
     .rst_no(ui_resetn), .init_no()

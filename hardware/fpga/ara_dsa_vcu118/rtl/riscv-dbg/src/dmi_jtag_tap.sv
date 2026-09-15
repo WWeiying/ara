@@ -25,7 +25,9 @@ module dmi_jtag_tap #(
   // xxxxxxxxxxx      manufacturer id
   // 1                required by standard
 ) (
-  input  logic        tck_i,    // JTAG test clock pad
+  input  logic        clk_i,    // FPGA SoC clock, not the J53 pad
+  input  logic        fpga_rise_i,
+  input  logic        fpga_fall_i,
   input  logic        tms_i,    // JTAG test mode select pad
   input  logic        trst_ni,  // JTAG test reset pad
   input  logic        td_i,     // JTAG test data input pad
@@ -101,11 +103,11 @@ module dmi_jtag_tap #(
     end
   end
 
-  always_ff @(posedge tck_i, negedge trst_ni) begin : p_jtag_ir_reg
+  always_ff @(posedge clk_i, negedge trst_ni) begin : p_jtag_ir_reg
     if (!trst_ni) begin
       jtag_ir_shift_q <= '0;
       jtag_ir_q       <= IDCODE;
-    end else begin
+    end else if (fpga_rise_i) begin
       jtag_ir_shift_q <= jtag_ir_shift_d;
       jtag_ir_q       <= jtag_ir_d;
     end
@@ -182,30 +184,14 @@ module dmi_jtag_tap #(
     end
   end
 
-  // ----------------
-  // DFT
-  // ----------------
-  logic tck_n, tck_ni;
-
-  tc_clk_inverter i_tck_inv (
-    .clk_i ( tck_i  ),
-    .clk_o ( tck_ni )
-  );
-
-  tc_clk_mux2 i_dft_tck_mux (
-    .clk0_i    ( tck_ni     ),
-    .clk1_i    ( tck_i      ), // bypass the inverted clock for testing
-    .clk_sel_i ( testmode_i ),
-    .clk_o     ( tck_n      )
-  );
-
-  // TDO changes state at negative edge of TCK
-  always_ff @(posedge tck_n, negedge trst_ni) begin : p_tdo_regs
+  // Update TDO only on the sampled falling edge. No inverted fabric
+  // clock or ASIC DFT BUFGMUX; testmode_i is unused in the FPGA build.
+  always_ff @(posedge clk_i or negedge trst_ni) begin : p_tdo_regs
     if (!trst_ni) begin
-      td_o     <= 1'b0;
+      td_o <= 1'b0;
       tdo_oe_o <= 1'b0;
-    end else begin
-      td_o     <= tdo_mux;
+    end else if (fpga_fall_i) begin
+      td_o <= tdo_mux;
       tdo_oe_o <= (shift_ir | shift_dr);
     end
   end
@@ -301,12 +287,12 @@ module dmi_jtag_tap #(
     endcase
   end
 
-  always_ff @(posedge tck_i or negedge trst_ni) begin : p_regs
+  always_ff @(posedge clk_i or negedge trst_ni) begin : p_regs
     if (!trst_ni) begin
       tap_state_q <= RunTestIdle;
       idcode_q    <= IdcodeValue;
       bypass_q    <= 1'b0;
-    end else begin
+    end else if (fpga_rise_i) begin
       tap_state_q <= tap_state_d;
       idcode_q    <= idcode_d;
       bypass_q    <= bypass_d;
@@ -315,12 +301,12 @@ module dmi_jtag_tap #(
 
   // Pass through JTAG signals to debug custom DR logic.
   // In case of a single TAP those are just feed-through.
-  assign tck_o = tck_i;
+  assign tck_o = clk_i;
   assign tdi_o = td_i;
-  assign update_o = update_dr;
-  assign shift_o = shift_dr;
-  assign capture_o = capture_dr;
-  assign dmi_clear_o = test_logic_reset;
+  assign update_o = fpga_rise_i & update_dr;
+  assign shift_o = fpga_rise_i & shift_dr;
+  assign capture_o = fpga_rise_i & capture_dr;
+  assign dmi_clear_o = fpga_rise_i & test_logic_reset;
 
 
 endmodule : dmi_jtag_tap

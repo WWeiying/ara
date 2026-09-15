@@ -4,6 +4,26 @@
 包中包含 CVA6、四 Lane RVV、QBS、AKV、Cheshire SoC、外设依赖、板级顶层、约束及 Vivado Tcl。
 不需要访问原 Linux 工作区，不需要 Git、Bender、软链接、TSMC SRAM 库。
 
+## 本次 CDC/JTAG 更新
+
+外部 J53 CPU JTAG 已改为 50 MHz SoC 时钟采样，**外部 TCK 请限制到 1 MHz**，
+高、低电平各至少 400 ns，TMS/TDI 在下降沿改变。OpenOCD 配置在 `init` 前设置
+`adapter speed 1000`，不要在复位事件中升速。接线、IDCODE 和 DMI 协议不变；
+板载 FPGA USB-JTAG 下载和 VIO 不受此限速影响。CPU TAP 需等 DDR 就绪、SoC 退出复位后访问。
+软件单位参见 [OpenOCD 文档](https://www.openocd.org/doc/html/Debug-Adapter-Configuration.html)。
+
+关闭 Vivado GUI，保留原工程和三个 IP，在已有 PowerShell 中执行：
+
+```powershell
+cd D:\project\ara
+git pull --ff-only
+cd hardware\fpga\ara_dsa_vcu118
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run.ps1 -Stage synth
+```
+
+必须重新综合顶层，不能用 `inspect` 的旧网表验证本次修复。
+本机协议/复位测试已通过，但尚无本版 Vivado 综合或布线结果，详见 `docs/FPGA_ISSUES.md`。
+
 ## 1. Windows 上先做什么
 
 1. 从 GitHub 检出 `ara_dsa` 分支。工程位于 `hardware/fpga/ara_dsa_vcu118/`，不需要 ZIP 或 submodule 初始化。

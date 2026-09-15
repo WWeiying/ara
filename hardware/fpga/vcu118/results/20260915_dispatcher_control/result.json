@@ -1,0 +1,37 @@
+{
+  "state": "PASS",
+  "reference": "74042fbd",
+  "before_sha256": "bd48a832a04524ae05aff6a85f4f29eaef7f3b3ca8ab7ab5fc8b356e7e7ac078",
+  "after_sha256": "aa4bf3d2b73a0415e887939cb36c5eaf6b5804c7a1563b6624cae9cbabd66ae3",
+  "testbench_sha256": "ebc0ccc30ed4d829c19e524324c1c0c2c1d54600858766b91b3f1468621398ca",
+  "original_testbench_sha256": "1136a0f9fdc539e9275b933ea35ad037d23057abd7011ef2463782aebb45c73a",
+  "segment_before_sha256": "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7",
+  "segment_after_sha256": "8fac5ea2276b27033c6b066ab930be2f4f29ab7fa01edbf0e74365d139cfe8a8",
+  "layout_vectors": {
+    "64": 79648,
+    "1024": 110368,
+    "65536": 2174752
+  },
+  "dispatcher_comparison": "Dispatcher equivalence PASS checks=68640 blocked=13542 accepted=25379",
+  "eew_metadata_comparison": "FPGA EEW metadata checks=13685 first_segment=128 later_segment=13318",
+  "registered_state_signals": 70,
+  "vivado_timing_verified": false,
+  "tool": "VCS V-2023.12-SP1",
+  "check_inputs_sha256": {
+    "hardware/fpga/vcu118/dispatcher_fpga.py": "21f898de42d784e2bdb6f59fa1e7e693aae98c5b3c2172f98b8cff3ac84545d1",
+    "hardware/fpga/vcu118/dispatcher_control_fpga.py": "19942db667f65d4581a44b952f456b1f56df888bcd68806c1f45a013d32923d4",
+    "hardware/fpga/vcu118/tests/check_dispatcher_layout.py": "9e165724b067f6ad1bcd543eb4d66646fce42b85cf7d8bffc3eba9e4a8aa6581"
+  },
+  "logs_sha256": {
+    "layout_run.txt": "06ab3084fc7352ee25b58e50a388a892808e7f599f30dce14f875c00751ff8c4",
+    "dispatcher_run.txt": "a196ade5ee4396986074708225cb27b27ab4cb07b0c877c2cae569b2916eca16"
+  },
+  "static_rtl_check": "PASS with 8 explicitly allowed vendor modules; no non-vendor elaboration errors",
+  "standard_cell_diagnosis": {
+    "state": "INCOMPLETE",
+    "baseline_timeout_seconds": 300,
+    "last_phase": "standard-cell library analysis",
+    "candidate_started": false,
+    "area_or_timing_metrics_available": false
+  }
+}

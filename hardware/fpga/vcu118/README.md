@@ -4,6 +4,11 @@
 **Windows 直接使用已纳入 Git 的 `hardware/fpga/ara_dsa_vcu118/`，不是此模板目录。**
 完整工程与本工具都位于仓库 `hardware/fpga/` 下，通过 GitHub 同步，不再生成 ZIP。
 
+当前 FPGA 专用 JTAG 使用 SoC 时钟采样，J53 外部 TCK 限制为 1 MHz，
+高低电平各至少 400 ns；不能继续沿用旧版 10 MHz 设置。
+`jtag_fpga.py` 保留原 TAP 状态逻辑并替换时钟/DMI 传输，另将板级复位就绪信号寄存后跨域。
+边界、测试和 Windows 重跑步骤见快照的 `README_WINDOWS.md`、`docs/FPGA_ISSUES.md`。
+
 宿主机首次准备依赖需要 Python 3、PyYAML、Git、仓库现有 Bender 和网络：
 
 ```sh
@@ -99,6 +104,8 @@ tclsh hardware/fpga/vcu118/tests/check_tcl.tcl hardware/fpga/ara_dsa_vcu118
 tclsh hardware/fpga/vcu118/tests/test_clock_io.tcl /tmp/ara_clock_io_check
 # 安装 VCS 后，使用尚不存在的临时目录运行板级状态采样测试：
 python3 hardware/fpga/vcu118/tests/check_status_sync.py /tmp/ara_status_check --vcs /path/to/vcs
+# FPGA 独立 dispatcher 补丁的区间运算及逐周期对照，不调用 Vivado：
+python3 hardware/fpga/vcu118/tests/check_dispatcher_layout.py /tmp/ara_dispatcher_check --vcs /path/to/vcs
 # 安装 pyslang 后执行：
 python3 hardware/fpga/vcu118/check_rtl.py hardware/fpga/ara_dsa_vcu118 --allow-vendor-ip
 ```

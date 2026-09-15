@@ -48,7 +48,35 @@ module dmi_jtag #(
   } dmi_error_e;
   dmi_error_e error_d, error_q;
 
-  logic tck;
+  // FPGA J53 is an asynchronous data input, never a fabric clock.
+  // Three independent single-bit synchronizers; TMS/TDI are stable across
+  // the sampled rising edge (>=400 ns TCK phases at >=50 MHz clk_i).
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [2:0] fpga_tck_sync_q;
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [2:0] fpga_tms_sync_q;
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [2:0] fpga_tdi_sync_q;
+  (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) logic [2:0] fpga_reset_q;
+  wire fpga_arst_n = rst_ni & trst_ni;
+  wire fpga_rst_n = fpga_reset_q[2];
+  logic fpga_tck_q;
+  wire fpga_rise = fpga_tck_sync_q[2] & ~fpga_tck_q;
+  wire fpga_fall = ~fpga_tck_sync_q[2] & fpga_tck_q;
+  always_ff @(posedge clk_i or negedge fpga_arst_n) begin
+    if (!fpga_arst_n) fpga_reset_q <= '0;
+    else fpga_reset_q <= {fpga_reset_q[1:0], 1'b1};
+  end
+  always_ff @(posedge clk_i or negedge fpga_rst_n) begin
+    if (!fpga_rst_n) begin
+      fpga_tck_sync_q <= '0;
+      fpga_tms_sync_q <= '1;
+      fpga_tdi_sync_q <= '0;
+      fpga_tck_q <= 1'b0;
+    end else begin
+      fpga_tck_sync_q <= {fpga_tck_sync_q[1:0], tck_i};
+      fpga_tms_sync_q <= {fpga_tms_sync_q[1:0], tms_i};
+      fpga_tdi_sync_q <= {fpga_tdi_sync_q[1:0], td_i};
+      fpga_tck_q <= fpga_tck_sync_q[2];
+    end
+  end
   logic jtag_dmi_clear; // Synchronous reset of DMI triggered by TestLogicReset in
                         // jtag TAP
   logic dmi_clear; // Functional (warm) reset of the entire DMI
@@ -89,8 +117,8 @@ module dmi_jtag #(
     end
   end
 
-  always_ff @(posedge tck or negedge trst_ni) begin
-    if (!trst_ni) begin
+  always_ff @(posedge clk_i or negedge fpga_rst_n) begin
+    if (!fpga_rst_n) begin
       dtmcs_q <= '0;
     end else begin
       dtmcs_q <= dtmcs_d;
@@ -282,8 +310,8 @@ module dmi_jtag #(
     end
   end
 
-  always_ff @(posedge tck or negedge trst_ni) begin
-    if (!trst_ni) begin
+  always_ff @(posedge clk_i or negedge fpga_rst_n) begin
+    if (!fpga_rst_n) begin
       dr_q      <= '0;
       state_q   <= Idle;
       address_q <= '0;
@@ -305,14 +333,16 @@ module dmi_jtag #(
     .IrLength (5),
     .IdcodeValue(IdcodeValue)
   ) i_dmi_jtag_tap (
-    .tck_i,
-    .tms_i,
-    .trst_ni,
-    .td_i,
+    .clk_i,
+    .fpga_rise_i    ( fpga_rise        ),
+    .fpga_fall_i    ( fpga_fall        ),
+    .tms_i         ( fpga_tms_sync_q[2] ),
+    .trst_ni       ( fpga_rst_n       ),
+    .td_i          ( fpga_tdi_sync_q[2] ),
     .td_o,
     .tdo_oe_o,
     .testmode_i,
-    .tck_o          ( tck              ),
+    .tck_o          (                  ),
     .dmi_clear_o    ( jtag_dmi_clear   ),
     .update_o       ( update           ),
     .capture_o      ( capture          ),
@@ -324,30 +354,19 @@ module dmi_jtag #(
     .dmi_tdo_i      ( dmi_tdo          )
   );
 
-  // ---------
-  // CDC
-  // ---------
-  dmi_cdc i_dmi_cdc (
-    // JTAG side (master side)
-    .tck_i                ( tck              ),
-    .trst_ni              ( trst_ni          ),
-    .jtag_dmi_cdc_clear_i ( dmi_clear        ),
-    .jtag_dmi_req_i       ( dmi_req          ),
-    .jtag_dmi_ready_o     ( dmi_req_ready    ),
-    .jtag_dmi_valid_i     ( dmi_req_valid    ),
-    .jtag_dmi_resp_o      ( dmi_resp         ),
-    .jtag_dmi_valid_o     ( dmi_resp_valid   ),
-    .jtag_dmi_ready_i     ( dmi_resp_ready   ),
-    // core side
-    .clk_i,
-    .rst_ni,
-    .core_dmi_rst_no      ( dmi_rst_no       ),
-    .core_dmi_req_o       ( dmi_req_o        ),
-    .core_dmi_valid_o     ( dmi_req_valid_o  ),
-    .core_dmi_ready_i     ( dmi_req_ready_i  ),
-    .core_dmi_resp_i      ( dmi_resp_i       ),
-    .core_dmi_ready_o     ( dmi_resp_ready_o ),
-    .core_dmi_valid_i     ( dmi_resp_valid_i )
-  );
+  // TAP and DM now share clk_i. Keep DMI valid/ready active even when
+  // external TCK stops. The existing DTM FSM holds request/response state.
+  assign dmi_req_o = dmi_req;
+  assign dmi_req_valid_o = dmi_req_valid & ~dmi_clear & dmi_rst_no;
+  assign dmi_req_ready = dmi_req_ready_i & ~dmi_clear & dmi_rst_no;
+  assign dmi_resp = dmi_resp_i;
+  assign dmi_resp_valid = dmi_resp_valid_i & ~dmi_clear & dmi_rst_no;
+  assign dmi_resp_ready_o = dmi_resp_ready & ~dmi_clear & dmi_rst_no;
+  // Registered synchronous flush of the DM response FIFO. Isolate both
+  // handshakes on the clear event and throughout the following flush cycle.
+  always_ff @(posedge clk_i or negedge fpga_rst_n) begin
+    if (!fpga_rst_n) dmi_rst_no <= 1'b0;
+    else dmi_rst_no <= ~dmi_clear;
+  end
 
 endmodule : dmi_jtag

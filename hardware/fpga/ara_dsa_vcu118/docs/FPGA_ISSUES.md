@@ -1,6 +1,189 @@
 # FPGA Findings and Verification Boundary
 
-## Current Status: Control RTL and DMI Constraints (2026-09-15)
+## Current Status: Sampled JTAG and Registered Reset CDC (2026-09-15)
+
+This change includes the dispatcher patch below and modifies only the frozen
+FPGA package, its export transforms, constraints and tests. It does not refresh
+main RTL, change QBS/AKV, alter the three IP configurations, or update ASIC/DC.
+The latest actual Vivado evidence is still `synth_f18665bfb9ae`, not this patch.
+
+### Root Cause and Changes
+
+- The baseline's 800 JTAG/SoC Critical CDC findings come from the TAP-clocked
+  DMI request/response and reset-phase handshakes. J53 TCK (P30) also drives an
+  inverted-clock DFT BUFGMUX, causing PLCK-58 on a non-clock-capable input.
+- The FPGA copy retains the original TAP state machine and shift registers,
+  but clocks them with the SoC clock. Three-stage ASYNC_REG chains sample TCK,
+  TMS and TDI. Rising/falling TCK edge enables replace the external clock and
+  DFT clock mux. DMI now shares the DM clock; the old clearable CDC source is
+  retained for other users but is not instantiated by this TAP.
+- Requests hold valid/data through backpressure and responses complete even
+  with TCK stopped. TAP reset/DTM hard reset cancels unaccepted requests and
+  synchronously flushes the DM response FIFO. Already accepted writes are not
+  undone. Both handshakes are isolated during clear and the flush cycle.
+- The four baseline CDC-10 paths included combinational reset/ready logic
+  before synchronizers. VIO reset is now registered in its own SoC domain;
+  external reset/clock loss still asserts it asynchronously. DDR ready is
+  registered in the UI domain, after a separate reset-release synchronizer,
+  before crossing to the SoC reset/status chains. Both AXI FIFO sides reset
+  together, including when the UI clock stops. Reset chains carry ASYNC_REG.
+- No sampled-TAP `create_clock`, asynchronous clock group or
+  CLOCK_DEDICATED_ROUTE waiver remains. Only each input's first-stage D pin
+  gets a 20 ns pad budget; TDO gets a 20 ns output datapath budget. Later
+  stages and TAP/DMI paths use normal SoC timing. Existing DDR bounds remain.
+  Legacy `inspect` reconstructs the old JTAG timing explicitly and warns that
+  it cannot validate the new clocking/reset architecture.
+
+### Required External JTAG Contract
+
+Use **TCK <=1 MHz**, high and low phases each **>=400 ns**, and change TMS/TDI
+on falling TCK. The SoC clock must be **>=50 MHz**, running and out of reset.
+This intentionally replaces the earlier 10 MHz external-TCK configuration;
+it is not a drop-in 10 MHz implementation. J53 wiring and DMI commands do not
+change. FPGA USB-JTAG/VIO is separate and unaffected. CPU TAP access before
+DDR calibration/SoC reset release is not available; use VIO for that diagnosis.
+
+Set `adapter speed 1000` in the external OpenOCD configuration before `init`
+and remove any reset-event override that raises it. This command uses kHz;
+see [OpenOCD adapter configuration](https://www.openocd.org/doc/html/Debug-Adapter-Configuration.html).
+Clock-enable use follows [AMD UG949](https://docs.amd.com/r/en-US/ug949-vivado-design-methodology/Using-Gated-Clocks);
+the particular sampled-TAP timing contract is our design requirement, not an
+AMD claim or hardware qualification.
+
+### Evidence and Acceptance
+
+`tests/check_jtag.py` compares the patched TAP against the pinned `74042fbd`
+TAP/DMI CDC with a ready/valid DM response-queue model. VCS passes 74 checked
+scans and 45 accepted requests per implementation, all 16 TAP states, 20
+clock phases, both 40/60% duty cycles, IR/DR pause, BUSY/failed status,
+soft/hard reset, queued-response flush, stopped TCK, SoC reset and TRST.
+The same bounded run extracts the actual board/DDR reset logic and passes 50
+reset checks including calibration loss, VIO reset and stopped UI clock.
+Results and source hashes are under `vcu118/results/20260915_jtag/`.
+The constraint-query test passes 27 cases, including missing/wrong stages,
+missing pads, too-slow SoC clock and legacy inspection. Full static package
+elaboration has no non-vendor errors; vendor cells/IP require Vivado.
+
+These are digital functional/static checks, not metastability simulation,
+routed CDC/DRC signoff, or an actual debugger/board test. Re-run **synth**, not
+`inspect`, using the existing project/IPs. In the new netlist verify no JTAG
+clock/DFT mux/DMI CDC instance, all nine sampling FFs preserved, no old four
+CDC-10 structures, and no PLCK-58. Then inspect route timing, CDC, reset
+recovery/removal and physical IO budgets. The earlier dispatcher timing,
+DDR hold/pulse and debug-hub/no-clock issues still need new Vivado evidence;
+this patch does not claim all FPGA violations are cleared.
+
+## Dispatcher-Only Timing Patch (2026-09-15)
+
+The frozen Windows baseline is `synth_f18665bfb9ae`, input fingerprint
+`B229D9E90114A9DDA31D23172E9F3CABD470DEA3BC656D5D8853E63C1C19C0F4`.
+It contains 650867 LUTs (QBS: 113982), 235830 FFs, 433 RAMB36,
+17 RAMB18, eight URAMs and 257 DSPs. Compared with `synth_1357d6f785ab`,
+total LUTs fell 12.8% and QBS LUTs fell 45.0%. QBS is now 17.5% of total
+LUTs. There are no LUTLP-1 loops; REQP-1851 is no longer reported.
+
+Setup still fails: WNS -1.283 ns, TNS -189.161 ns, 224 endpoints. All 50
+reported worst setup paths run from dispatcher
+`overlap_elements_per_reg_q_reg[0]` to `eew_q_reg[*][*]/CE`.
+The worst path has 84 logic levels, including 22 CARRY8s, and 20.994 ns
+estimated data delay. The named nets trace active-element calculation,
+64-bit slide bounds, register-interval calculation, layout/ready decisions,
+segment request selection and the final EEW write enable.
+
+### Targeted Change and Evidence
+
+Only the exported FPGA dispatcher and segment sequencer change in this portion. Main
+`hardware/src`, DC scripts, QBS/AKV datapaths, board wiring, clocks, CDC
+constraints, reset protocols and IP configurations are unchanged by this patch.
+This is NOT a refresh from the concurrently changing main RTL.
+
+- Slide bounds now carry only through the VL-sized low word (11 bits for
+  VLEN=1024); upper-stride reduction checks preserve the original modulo-2^64
+  overflow, scalar decrement, borrow and capacity clamp.
+- Active register coverage is an eight-bit parallel interval mask. Reshuffle
+  checks and EEW writes consume the mask directly, eliminating the late
+  first-register/count/index-add chain. Count users get a balanced reduction.
+- Architectural decoding and maintenance micro-ops now build separate request
+  candidates. A current-state mux selects the backend request. Maintenance
+  interval arithmetic no longer supplies the architectural layout helpers;
+  the original token, idle payload, and blocked-decode behavior are retained.
+- A segment-sequencer sideband computes EEW destination geometry before the
+  late request-valid/ready decision. Only actual EEW-writing handshakes consume
+  it. This separates first-segment interval calculation from transfer approval
+  without changing the real request payload, segment state, or latency.
+- No register, cycle, ready/valid condition, reset or EEW update guard is added
+  or removed. Unsupported EW fallback behavior is also preserved.
+- `vcu118/dispatcher_fpga.py` and `dispatcher_control_fpga.py` reapply these
+  paired transforms during export. The control transform pins the reviewed
+  source hashes and rejects changed upstream versions rather than silently
+  combining them with the FPGA patch. Opt-in uop traces follow the selected
+  backend request, including maintenance operations.
+
+The focused VCS comparison passes 2364768 arithmetic/layout vectors across
+VLEN=64/1024/65536, including LMUL/EW encodings, v31 clipping, empty/reversed
+intervals, 64-bit wrap and scalar borrow. A boundary test first exposed the
+old two-state integer fallback for unsupported EW; the patch preserves it.
+The dispatcher comparison passes 68640 cycles, comparing outputs and 70
+registered state signals, with 13542 blocked and 25379 accepted requests.
+State-cofactor injection exercises all 15 defined states; it is not a claim
+that random instruction traffic naturally reaches every overlap state.
+The old dispatcher uses its own unmodified segment sequencer in this test.
+There are 1280 additional nonzero repair/segment-phase combinations, with
+backpressure and boundary intervals. Another 64 held legal segment loads
+exercise field zero, including nonzero vstart. The geometry assertion runs
+13685 times on EEW-writing handshakes (128 first-segment and 13318 later-segment
+observations). The first-segment coverage check initially found a hole in the
+random traffic; the directed loads close it. No RTL behavior was relaxed to
+pass that check. All original overlap-context assertions remain enabled.
+This is differential simulation, not formal equivalence or FPGA timing proof.
+One local standard-cell DC comparison was attempted in a separate directory.
+The baseline hit its 300-second bound while analyzing the standard-cell
+libraries, before mapped timing was available; the candidate run was not
+started. This attempt supplies no area/timing improvement measurement and was
+not retried with different RTL or synthesis settings.
+
+Reproduce with one bounded check (VCS required, reference commit retained):
+
+```sh
+python3 hardware/fpga/vcu118/tests/check_dispatcher_layout.py /tmp/fpga_dispatcher_check --vcs /path/to/vcs
+```
+
+Current evidence is in repository
+`hardware/fpga/vcu118/results/20260915_dispatcher_control/`; the earlier
+arithmetic-only evidence remains in `results/20260915_dispatcher/`.
+No Vivado installation is available locally, so no new synthesis, placement or routing
+result is claimed. Run one new managed `-Stage synth`, retaining the three
+existing valid IP checkpoints. Compare setup paths, utilization and loops with
+the baseline above. Do not use old-netlist `inspect` to validate this RTL.
+
+In the new `setup_paths.rpt`, check whether repair context still traverses
+architectural slide/layout logic, whether segment valid still precedes interval
+arithmetic, and where the new worst path moves. Review all 224 old endpoints,
+not just the top path. Do not change clocks, add false paths, or claim closure
+from the source rewrite. This follows the RTL-path-first approach in
+[AMD's timing-closure guide](https://docs.amd.com/r/2022.1-English/ug949-vivado-design-methodology/Timing-Closure).
+
+### Remaining Items, Not Waived
+
+- 804 CDC Critical findings remain in the baseline. 800 are on the external
+  JTAG/SoC crossing; the six reset-aware bundled-data handshakes now have
+  active bounds (18 exceptions, 100% through coverage). Structural findings
+  still require protocol/reset review; bounds alone do not prove CDC safety.
+  Four reset/status findings also remain. No waivers were added.
+- PLCK-58 remains on the external RISC-V JTAG clock route from the existing
+  non-clock-capable board pin. The redundant BUFG fix does not make this a
+  dedicated clock route. Board routing or a separately verified TAP clocking
+  change is still required; no fake clock or timing exclusion was added.
+- The 533 no-clock pins are driven by the debug hub's pre-implementation
+  outputs. `clock_io.rpt` confirms `IS_BLACKBOX=1` and a real 75 MHz input
+  clock. Recheck after debug-core insertion in implementation; do not define
+  guessed clocks on its outputs or treat pre-route placeholders as signoff.
+- Hold (-0.154 ns) and DDR pulse-width (-0.029 ns) are synthesis estimates.
+  UART input-delay coverage and DDR reset output constraints still need
+  interface review. Routed timing, unconstrained endpoints, CDC and DRC must
+  be reviewed before hardware use.
+
+## Previous Update: Control RTL and DMI Constraints (2026-09-15)
 
 This section supersedes the historical findings below. The latest measured
 Windows result is `synth_1357d6f785ab`, input fingerprint

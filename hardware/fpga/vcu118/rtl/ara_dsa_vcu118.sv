@@ -7,7 +7,7 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   input logic sys_clk_p,
   input logic sys_clk_n,
   input logic sys_reset,
-  // The TAP already instantiates a BUFGMUX; do not infer a second BUFG.
+  // J53 TCK is sampled as data by the FPGA-only TAP, not used as a clock.
   (* CLOCK_BUFFER_TYPE = "NONE" *) input logic jtag_tck_i,
   input logic jtag_tms_i,
   input logic jtag_tdi_i,
@@ -38,7 +38,19 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   wire rst_n, fabric_ready;
   logic vio_reset, vio_boot_select;
   logic [1:0] vio_boot_mode, boot_mode;
-  wire sys_rst = sys_reset | vio_reset | ~clk_locked;
+  // Keep the VIO reset local before crossing to MIG. External reset or clock
+  // loss asserts immediately; release is synchronized before this register.
+  wire board_arst_n = ~sys_reset & clk_locked;
+  wire board_reset_n;
+  rstgen i_board_por (
+    .clk_i(soc_clk), .rst_ni(board_arst_n), .test_mode_i(1'b0),
+    .rst_no(board_reset_n), .init_no()
+  );
+  logic sys_rst;
+  always_ff @(posedge soc_clk or negedge board_reset_n) begin
+    if (!board_reset_n) sys_rst <= 1'b1;
+    else sys_rst <= vio_reset;
+  end
   wire [3:0] status_async = {rst_n, fabric_ready, clk_locked, sys_rst};
   wire [3:0] status;
 

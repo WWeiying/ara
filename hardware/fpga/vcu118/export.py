@@ -11,6 +11,9 @@ import subprocess
 import sys
 
 from prepare import HERE, ROOT, CACHE, CHESHIRE, BOARD_PORT, BOARD_TREE
+from dispatcher_fpga import patch_dispatcher_layout
+from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
+from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
 
 
 def replace_once(text, old, new):
@@ -176,7 +179,7 @@ def patch_dram(text):
                         ".addn_ui_clkout1            ( )")
     text = text.replace("// 333 MHz AXI (cf. CdcLogDepth)",
                         "// UI clock derived by the Vivado DDR4 IP")
-    return text
+    return patch_ready(text)
 
 
 def git(path, *args):
@@ -277,7 +280,13 @@ def export(dst, gcc, objdump, smoke_from=None):
     for rel, transform in [("rtl/cheshire/hw/cheshire_pkg.sv", patch_soc_pkg),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc),
                            ("rtl/cva6/common/local/util/sram_cache.sv", patch_sram_cache),
+                           ("rtl/riscv-dbg/src/dmi_jtag.sv", patch_jtag),
+                           ("rtl/riscv-dbg/src/dmi_jtag_tap.sv", patch_tap),
+                           ("rtl/common_cells/src/rstgen_bypass.sv", patch_reset_sync),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_vlen_casts),
+                           ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_layout),
+                           ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_control),
+                           ("rtl/ara/hardware/src/segment_sequencer.sv", patch_segment_geometry),
                            ("rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv", patch_qbs_fault_decode),
                            ("rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
                             patch_akv_byte_counts)]:

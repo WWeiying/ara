@@ -26,6 +26,8 @@ module rstgen_bypass #(
     // internal reset
     logic rst_n;
 
+    // FPGA reset assertion is asynchronous, release traverses every stage.
+    (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *)
     logic [NumRegs-1:0] synch_regs_q;
 
     // bypass mode: use (clock) multiplexers

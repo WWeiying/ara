@@ -64,7 +64,7 @@ proc ara_cdc::handshake {src dst stages width} {
     puts "CDC: DMI $src -> $dst; data=$width, stages=$stages, max=${bound}ns"
 }
 
-proc ara_cdc::dmi {} {
+proc ara_cdc::dmi_legacy {} {
     set root i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc
     # dm_pkg::dmi_req_t and dmi_resp_t; a changed ABI/hierarchy must be reviewed.
     foreach channel {req resp} width {41 34} {
@@ -76,6 +76,51 @@ proc ara_cdc::dmi {} {
                 $reset/i_cdc_reset_ctrlr_half_$other/i_state_transition_cdc_dst 2 2
         }
     }
+}
+
+proc ara_cdc::jtag {} {
+    set root i_cheshire_soc/i_dbg_dmi_jtag
+    set regs [get_cells -quiet -hierarchical -filter \
+        "NAME =~ $root/fpga_tck_sync_q_reg* && REF_NAME =~ FD*"]
+    if {![llength $regs] && [info exists ::ara_cdc_inspect_legacy] &&
+        $::ara_cdc_inspect_legacy} {
+        puts "WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis."
+        create_clock -period 100.0 -name clk_jtag [get_ports jtag_tck_i]
+        set_input_delay -min -clock clk_jtag 10.0 [get_ports {jtag_tdi_i jtag_tms_i}]
+        set_input_delay -max -clock clk_jtag 20.0 [get_ports {jtag_tdi_i jtag_tms_i}]
+        set_output_delay -min -clock clk_jtag 10.0 [get_ports jtag_tdo_o]
+        set_output_delay -max -clock clk_jtag 20.0 [get_ports jtag_tdo_o]
+        dmi_legacy
+        return
+    }
+    require $regs "three sampled-TCK registers; re-synthesize the FPGA snapshot" 3
+    set clock [clock_at $root/clk_i]
+    if {[get_property PERIOD $clock] > 20.0} {
+        error "CDC: sampled JTAG requires a SoC clock of at least 50 MHz"
+    }
+    foreach signal {tck tms tdi} {
+        set regs [require [get_cells -quiet -hierarchical -filter \
+            "NAME =~ $root/fpga_${signal}_sync_q_reg* && REF_NAME =~ FD*"] \
+            "three sampled-$signal registers" 3]
+        set first {}
+        for {set stage 0} {$stage < 3} {incr stage} {
+            set expected [format {%s/fpga_%s_sync_q_reg[%d]} $root $signal $stage]
+            set found {}
+            foreach reg $regs {
+                if {[get_property NAME $reg] eq $expected} { lappend found $reg }
+            }
+            require $found "JTAG stage $expected" 1
+            if {$stage == 0} { set first $found }
+        }
+        set_property ASYNC_REG TRUE $regs
+        set pad [require [get_ports -quiet jtag_${signal}_i] "JTAG $signal pad" 1]
+        set pin [require [get_pins -quiet -of_objects $first -filter {REF_PIN_NAME == D}] \
+            "JTAG $signal first-stage D" 1]
+        set_max_delay -datapath_only 20.0 -from $pad -to $pin
+    }
+    set_max_delay -datapath_only 20.0 -from $clock \
+        -to [require [get_ports -quiet jtag_tdo_o] "JTAG TDO pad" 1]
+    puts "CDC: sampled JTAG on $clock; TCK <=1 MHz, phases >=400ns, IO budgets=20ns"
 }
 
 proc ara_cdc::uart {} {
@@ -125,6 +170,15 @@ proc ara_cdc::apply {} {
     foreach pin {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni} {
         set_false_path -through [require [get_pins -quiet $pin] "reset input $pin" 1]
     }
+    foreach pin {i_board_por/rst_ni i_dram_wrapper/i_ui_por/rst_ni} {
+        set pins [get_pins -quiet $pin]
+        if {![llength $pins] && [info exists ::ara_cdc_inspect_legacy] &&
+            $::ara_cdc_inspect_legacy} {
+            puts "WARNING: CDC: legacy reset netlist lacks $pin; re-synthesis required."
+        } else {
+            set_false_path -through [require $pins "registered reset POR input $pin" 1]
+        }
+    }
     set status_regs [get_cells -quiet -hierarchical -filter \
         {NAME =~ gen_status_sync*.i_sync/reg_q_reg* && REF_NAME =~ FD*}]
     if {![llength $status_regs] && [info exists ::ara_cdc_inspect_legacy] &&
@@ -144,7 +198,7 @@ proc ara_cdc::apply {} {
             -filter {REF_PIN_NAME == D}] "four VIO first-stage D pins" 4]
         puts "CDC: four independent VIO status bits synchronized; only first-stage D pins excepted"
     }
-    dmi
+    jtag
     uart
 }
 

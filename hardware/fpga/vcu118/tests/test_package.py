@@ -125,14 +125,24 @@ class PackageTests(unittest.TestCase):
         commands = "\n".join(line for line in timing.splitlines()
                              if not line.lstrip().startswith("#"))
         self.assertNotIn("set_clock_groups", commands)
+        self.assertNotIn("create_clock", commands)
+        self.assertNotIn("CLOCK_DEDICATED_ROUTE", commands)
         self.assertNotIn("-from [get_ports uart_rx_i]", commands)
         board = (ROOT / "rtl/board/ara_dsa_vcu118.sv").read_text()
         self.assertIn('(* CLOCK_BUFFER_TYPE = "NONE" *) input logic jtag_tck_i', board)
         self.assertIn('.jtag_trst_ni(1\'b1)', board)
-        # The reset-aware generic CDC remains intact; no extra handshake cycle.
+        # Retain the generic CDC source for other users, but no instance may
+        # survive in the sampled FPGA TAP, which shares the DM clock.
         dmi = (ROOT / "rtl/riscv-dbg/src/dmi_cdc.sv").read_text()
         self.assertIn("cdc_2phase_clearable #(.T(dm::dmi_req_t))", dmi)
         self.assertIn("cdc_2phase_clearable #(.T(dm::dmi_resp_t))", dmi)
+        jtag = (ROOT / "rtl/riscv-dbg/src/dmi_jtag.sv").read_text()
+        tap = (ROOT / "rtl/riscv-dbg/src/dmi_jtag_tap.sv").read_text()
+        self.assertNotIn("dmi_cdc i_dmi_cdc", jtag)
+        self.assertNotIn("posedge tck", jtag + tap)
+        self.assertNotIn("i_dft_tck_mux", tap)
+        self.assertIn("else if (fpga_fall_i)", tap)
+        self.assertIn("assign dmi_req_valid_o = dmi_req_valid & ~dmi_clear & dmi_rst_no;", jtag)
 
     def test_generated_files_ignored(self):
         ignored = (

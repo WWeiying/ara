@@ -7,6 +7,7 @@ proc assert {condition message} {
 proc option {args key} { return [lindex $args [expr {[lsearch -exact $args $key]+1}]] }
 proc setup {scenario} {
     set ::scenario $scenario
+    set ::legacy [expr {$scenario in {legacy missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag}}]
     set ::cells {}; set ::pins {}; set ::max_delays {}; set ::false_paths {}; set ::attributes {}
     set base i_dram_wrapper/gen_cdc.i_axi_cdc_mig
     foreach channel {aw w ar b r} {
@@ -34,7 +35,23 @@ proc setup {scenario} {
     dict set ::pins i_rstgen/rst_ni reset
     if {$scenario ne "missing_reset"} { dict set ::pins i_dram_wrapper/i_ui_rstgen/rst_ni reset }
     unset -nocomplain ::ara_cdc_inspect_legacy
-    if {$scenario eq "legacy"} { set ::ara_cdc_inspect_legacy true }
+    if {$::legacy} {
+        set ::ara_cdc_inspect_legacy true
+    } else {
+        foreach pin {i_board_por/rst_ni i_dram_wrapper/i_ui_por/rst_ni} {
+            if {$scenario ne "missing_ui_por"} { dict set ::pins $pin reset }
+        }
+        set jtag i_cheshire_soc/i_dbg_dmi_jtag
+        dict set ::pins $jtag/clk_i soc
+        foreach signal {tck tms tdi} {
+            for {set stage 0} {$stage < 3} {incr stage} {
+                if {$scenario eq "missing_jtag_stage" && $signal eq "tdi" && $stage == 2} { continue }
+                if {$scenario eq "missing_jtag" && $signal eq "tck"} { continue }
+                set index [expr {$scenario eq "wrong_jtag_stage" && $signal eq "tms" && $stage == 2 ? 3 : $stage}]
+                dict set ::cells [format {%s/fpga_%s_sync_q_reg[%d]} $jtag $signal $index] soc
+            }
+        }
+    }
     if {$scenario ni {legacy missing_status}} {
         for {set bit 0} {$bit < 4} {incr bit} {
             for {set stage 0} {$stage < 2} {incr stage} {
@@ -118,9 +135,17 @@ proc get_pins {args} {
     return {}
 }
 proc get_ports {args} {
-    assert {[lindex $args end] eq "uart_rx_i"} "UART input only"
-    return [expr {$::scenario eq "missing_uart_port" ? "" : "uart_rx_i"}]
+    set ports [lindex $args end]
+    foreach port $ports {
+        assert {$port in {uart_rx_i jtag_tck_i jtag_tms_i jtag_tdi_i jtag_tdo_o}} "known asynchronous pads only"
+    }
+    if {$::scenario eq "missing_uart_port" && $ports eq "uart_rx_i"} { return {} }
+    if {$::scenario eq "missing_jtag_port" && $ports eq "jtag_tdi_i"} { return {} }
+    return $ports
 }
+proc create_clock {args} { assert {$::legacy} "never clock the sampled JTAG pad" }
+proc set_input_delay {args} { assert {$::legacy} "legacy JTAG only" }
+proc set_output_delay {args} { assert {$::legacy} "legacy JTAG only" }
 proc get_clocks {args} {
     set pin [option $args -of_objects]
     if {$::scenario eq "missing_clock"} { return {} }
@@ -132,6 +157,7 @@ proc get_property {key object} {
     switch $key {
         NAME { return $object }
         PERIOD {
+            if {$object eq "soc" && $::scenario eq "slow_soc"} { return 25.0 }
             if {$object eq "jtag"} { return [expr {$::scenario eq "fast_jtag" ? 10.0 : 100.0}] }
             return [expr {$object eq "soc" ? 20.0 : $::scenario eq "fast_clock" ? 2.5 : 3.333}]
         }
@@ -144,6 +170,18 @@ proc set_property {key value objects} {
 }
 proc set_max_delay {args} {
     set from [option $args -from]; set to [option $args -to]
+    if {[string match jtag_* $from] || $to eq "jtag_tdo_o"} {
+        assert {!$::legacy && [lrange $args 0 1] eq "-datapath_only 20.0"} "sampled JTAG IO budget"
+        if {$to eq "jtag_tdo_o"} {
+            assert {$from eq "soc"} "TDO is sourced by SoC clock"
+        } else {
+            regexp {jtag_(.*)_i} $from -> signal
+            set expected [format {i_cheshire_soc/i_dbg_dmi_jtag/fpga_%s_sync_q_reg[0]/D} $signal]
+            assert {[llength $to] == 1 && [lindex $to 0] eq $expected} "only first synchronizer D pin; downstream paths remain timed"
+        }
+        lappend ::max_delays $args
+        return
+    }
     if {[lsearch -exact $args -through] >= 0} {
         set pins [option $args -through]
         set delay [expr {$::scenario eq "fast_jtag" ? 10.0 : 20.0}]
@@ -176,7 +214,7 @@ proc set_max_delay {args} {
 proc set_false_path {args} {
     assert {[llength $args] == 2} "one bounded pin set only"
     if {[lindex $args 0] eq "-through"} {
-        assert {[lindex $args 1] in {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni}} "reset pins only"
+        assert {[lindex $args 1] in {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni i_board_por/rst_ni i_dram_wrapper/i_ui_por/rst_ni}} "reset pins only"
     } else {
         assert {[lindex $args 0] eq "-to" && [llength [lindex $args 1]] == 4} "four status inputs only"
         foreach pin [lindex $args 1] {
@@ -185,14 +223,15 @@ proc set_false_path {args} {
     }
     lappend ::false_paths $args
 }
-foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag missing_uart_stage missing_uart_port} {
+foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag missing_uart_stage missing_uart_port missing_ui_por missing_jtag missing_jtag_stage wrong_jtag_stage missing_jtag_port slow_soc} {
     setup $scenario
     set failed [catch {source $root/constraints/cdc.xdc} message]
     assert {$failed == ($scenario ni {healthy legacy fast_jtag})} "$scenario: $message"
     if {!$failed} {
-        set legacy [expr {$scenario eq "legacy"}]
-        assert {[llength $max_delays] == 34 && [llength $false_paths] == ($legacy ? 2 : 3)} "all FIFO/DMI/UART channels covered"
-        assert {[dict size $attributes] == ($legacy ? 150 : 158)} "only pointer/status/handshake/UART synchronizers marked"
+        set no_status [expr {$scenario eq "legacy"}]
+        assert {[llength $max_delays] == ($legacy ? 34 : 20)} "all FIFO/JTAG/UART channels covered"
+        assert {[llength $false_paths] == ($legacy ? ($no_status ? 2 : 3) : 5)} "only known reset/status exceptions"
+        assert {[dict size $attributes] == ($legacy ? ($no_status ? 150 : 158) : 139)} "only real synchronizers marked"
     } else {
         assert {[string match CDC:* $message]} "expected an intentional validation failure: $message"
     }
