@@ -60,6 +60,27 @@ proc fpga_run::launch_error {dir} {
     foreach path [glob -nocomplain -directory $dir hs_err_pid*.log] {
         if {[file size $path] > 0} { error "Vivado crash report: $path" }
     }
+    # A synthesis worker can crash without an error marker or a STATUS update.
+    # Read only the log tail; quiet optimization alone is not a failure.
+    set path [file join $dir runme.log]
+    if {![file isfile $path]} { return }
+    set handle [open $path rb]
+    set code [catch {
+        set offset [expr {max(0, [file size $path] - 65536)}]
+        seek $handle $offset start
+        set tail [read $handle 65536]
+    } result options]
+    set close_code [catch {close $handle} close_result close_options]
+    if {$code} { return -options $options $result }
+    if {$close_code} { return -options $close_options $close_result }
+    if {$offset > 0} {
+        set newline [string first "\n" $tail]
+        if {$newline < 0} { return }
+        set tail [string range $tail [expr {$newline + 1}] end]
+    }
+    if {[regexp -line -nocase {^[ \t]*(An unrecoverable error has occurred[^\r\n]*|TclStackFree: incorrect freePtr[^\r\n]*)} $tail diagnostic]} {
+        error "Vivado crash in $path: [string trim $diagnostic]. Run STATUS may be stale; no run or IP was reset."
+    }
 }
 
 proc fpga_run::wait_checked {name expected dir} {

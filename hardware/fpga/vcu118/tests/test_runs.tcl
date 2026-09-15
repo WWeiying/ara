@@ -66,7 +66,8 @@ proc get_property {key object} {
             if {$object in $::launched} {
                 incr ::polls
                 if {$::scenario eq "failed_status"} { return "synth_design ERROR" }
-                if {$::scenario eq "quiet_phase" && $::polls < 3} { return Running }
+                if {$::scenario in {quiet_phase delayed_log_crash log_cancelled log_canceled log_stackfree}
+                    && $::polls < 3} { return Running }
                 if {[string match impl_* $object]} { return "route_design Complete!" }
             }
             return "synth_design Complete!"
@@ -101,10 +102,32 @@ proc launch_runs {name args} {
         launcher_error { put [file join $dir exception.log] "Permission denied" }
         error_marker { put [file join $dir .vivado.error.rst] "" }
         crash { put [file join $dir hs_err_pid99.log] crash }
+        log_cancelled {
+            put [file join $dir runme.log] "[string repeat {INFO: DSP mapping completed.} 4000]\r\nAn unrecoverable error has occurred, synthesis cancelled.\r\nTclStackFree: incorrect freePtr. Call out of sequence?\r\n"
+        }
+        log_canceled {
+            put [file join $dir runme.log] "An unrecoverable error has occurred, synthesis canceled."
+        }
+        log_stackfree {
+            put [file join $dir runme.log] "Start Timing Optimization\nTclStackFree: incorrect freePtr. Call out of sequence?"
+        }
+        benign_log {
+            put [file join $dir runme.log] {# puts "An unrecoverable error has occurred"
+# puts "TclStackFree: incorrect freePtr. Call out of sequence?"
+WARNING: an error message in RTL text is not a tool crash.
+Start Timing Optimization
+}
+        }
     }
 }
 rename after real_after
-proc after {args} { assert {[lindex $args 0] == 5000} "bounded monitor interval" }
+proc after {args} {
+    assert {[lindex $args 0] == 5000} "bounded monitor interval"
+    if {$::scenario eq "delayed_log_crash"} {
+        put [file join $::session synth_$::token runme.log] \
+            "An unrecoverable error has occurred, synthesis cancelled.\n"
+    }
+}
 proc open_run {name} {
     if {$::scenario in {inspect inspect_stale inspect_open_error}} {
         assert {[info exists ::ara_cdc_inspect_legacy] && $::ara_cdc_inspect_legacy} \
@@ -135,8 +158,9 @@ foreach forbidden {reset_runs delete_runs generate_target create_ip_run upgrade_
 }
 
 set failures 0
-foreach scenario {healthy quiet_phase missing_run missing_ip incomplete_ip stale_ip locked_ip
+foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomplete_ip stale_ip locked_ip
     missing_dcp empty_dcp hook existing_dir launcher_error error_marker crash failed_status
+    log_cancelled log_canceled log_stackfree delayed_log_crash
     implementation stale_parent bad_timing no_timing loop route_loop inspect inspect_stale inspect_open_error} {
     setup $scenario
     set stage synth
@@ -147,7 +171,7 @@ foreach scenario {healthy quiet_phase missing_run missing_ip incomplete_ip stale
     }
     if {$scenario in {inspect inspect_stale inspect_open_error}} { set stage inspect; set use_parent $parent }
     set code [catch {fpga_run::execute $stage $session $token $use_parent} message options]
-    set success [expr {$scenario in {healthy quiet_phase implementation inspect inspect_stale}}]
+    set success [expr {$scenario in {healthy quiet_phase benign_log implementation inspect inspect_stale}}]
     if {[catch {
         assert {$code == !$success} "$scenario: unexpected result ($message)"
         assert {![info exists ::ara_cdc_inspect_legacy]} "legacy bypass must be scoped to open_run"
@@ -159,6 +183,15 @@ foreach scenario {healthy quiet_phase missing_run missing_ip incomplete_ip stale
         assert {[llength $launched] <= 1} "only one run launched"
         assert {[file exists [file join $session completed_run.txt]] == $success} "completion marker"
         assert {[file exists [file join $session old synth_1 exception.log]]} "old artifacts preserved"
+        if {$scenario in {log_cancelled log_canceled log_stackfree delayed_log_crash}} {
+            assert {[string first "runme.log" $message] >= 0} "crash error identifies the log"
+            assert {[string first "unrecoverable error" $message] >= 0 ||
+                [string first "TclStackFree" $message] >= 0} "crash error preserves the diagnostic"
+            assert {$polls == ($scenario eq "delayed_log_crash" ? 1 : 0)} \
+                "detect log-only crashes despite stale Running status"
+            assert {$reported eq ""} "crashed synthesis must not generate success reports"
+            assert {[file exists [file join $session synth_$token runme.log]]} "crash evidence preserved"
+        }
         if {$success && $stage ne "inspect"} {
             assert {[dict get $copied STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY] eq "none"} "options copied"
             assert {[dict get $launch_args -dir] eq $session} "fresh output directory"

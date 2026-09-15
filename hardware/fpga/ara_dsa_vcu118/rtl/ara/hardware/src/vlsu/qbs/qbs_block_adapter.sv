@@ -114,6 +114,7 @@ module qbs_block_adapter import qbs_pkg::*; #(
   logic [7:0] weight_offsets [32];
   logic [8:0] activation_offsets [32];
   logic [12:0] weight_source_base [2], activation_source_base [2];
+  logic [3:0] weight_source_phase [2], activation_source_phase [2];
   logic [15:0] weight_duplicate_mask, activation_duplicate_mask;
 
   // Decode once at acceptance. Two entries separate upstream ready from SRAM
@@ -156,7 +157,15 @@ module qbs_block_adapter import qbs_pkg::*; #(
     assign activation_offsets[b] = activation_target[b].offset;
   end
 
-  qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1)) i_payload_buffer (
+  for (genvar slot = 0; slot < 2; slot++) begin : gen_stream_phase
+    assign weight_source_phase[slot] = weight_source_base[slot][3:0];
+    // Row-major activation ranges already carry an explicit context. Packed
+    // M4/M8 ranges carry the global interleaved offset in this same field.
+    assign activation_source_phase[slot] = activation_source[slot].offset[3:0];
+  end
+
+  qbs_payload_buffer #(.NativeView(NativeView), .PredecodedWriteLocations(1'b1),
+      .StreamWriteData(1'b1), .ActivationContextBase(ActivationContextBase)) i_payload_buffer (
     .clk_i, .rst_ni, .weight_profile_i, .activation_profile_i,
     .weight_valid_i(weight_source_valid), .activation_valid_i(activation_source_valid),
     .weight_mask_i(weight_mask), .activation_mask_i(activation_mask),
@@ -165,6 +174,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
     .weight_location_i(weight_location), .activation_location_i(activation_location),
     .weight_data_i({weight_source[1].data, weight_source[0].data}),
     .activation_data_i({activation_source[1].data, activation_source[0].data}),
+    .weight_source_phase_i(weight_source_phase), .activation_source_phase_i(activation_source_phase),
+    .activation_layout_i,
     .weight_consumed_o(weight_consumed), .activation_consumed_o(activation_consumed),
     .weight_pending_multiword_o(weight_pending_multiword),
     .activation_pending_multiword_o(activation_pending_multiword),

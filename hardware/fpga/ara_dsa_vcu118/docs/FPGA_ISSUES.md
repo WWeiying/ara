@@ -187,3 +187,70 @@ Still pending actual Vivado verification:
 No Vivado executable is available in the current Linux workspace, and the
 Windows DCP is not present here. This update has not fixed or waived the QBS
 loop, reduced the measured QBS area, or demonstrated timing closure.
+
+## Windows Synthesis Crash (2026-09-14)
+
+The user-provided log excerpts for `synth_1e29d62d80ed` show a new synthesis
+attempt, not an inspection of the earlier netlist. The run reached
+`Start Timing Optimization`, then printed:
+
+```text
+An unrecoverable error has occurred, synthesis cancelled.
+TclStackFree: incorrect freePtr. Call out of sequence?
+```
+
+The directory listing contained only `.vivado.begin.rst`, with no top-level
+DCP or end/error marker. The outer monitor continued printing
+`Running synth_design` until 2026-09-15 04:34. This is not a successful new
+synthesis or an area/timing result. The reported memory peak alone does not
+establish out-of-memory as the cause; preserve the full run/session/crash
+logs before changing RTL, tool versions, or synthesis options.
+
+The monitor now checks the last 64 KiB of `runme.log` on each poll for these
+explicit fatal diagnostics, even when Vivado leaves STATUS stale. It does
+not impose a quiet-log timeout, kill processes, or reset existing IP runs.
+Offline tests cover log-only crashes, delayed diagnostics, CRLF and EOF
+handling, and nonfatal/echoed text. This fixes missed crash detection, not
+the underlying Vivado crash; Windows/Vivado verification remains pending.
+
+
+The full logs are now tracked under `reports/failed_synth_1e29d62d80ed/`
+(commit `bab087e1`). They confirm:
+
+- All three IP runs (`clkwiz`, `vio`, `ddr4`) were reused; licensing succeeded.
+- Synthesis used the default directive with `-flatten_hierarchy none` and
+  reported a maximum of four helper processes.
+- Cumulative elapsed times were 00:14:33 at RTL elaboration, 01:24:36 at
+  cross-boundary/area optimization, and 01:26:23 after applying timing XDC.
+- There is no earlier `ERROR:` or `CRITICAL WARNING:` diagnostic and no
+  explicit allocation failure in either uploaded log. Synthesis did not parse
+  `cdc.xdc`; the earlier oversized CDC collections are not reported here.
+- Three `simd_mul` rounding-variable latch warnings remain a separate review
+  item. Neither those warnings nor the 19600 MB peak identifies the crash cause.
+
+The monitor patch was also checked directly against the uploaded log: it
+rejects this run without consulting Vivado STATUS or requiring an error marker.
+The logs have no internal crash stack. Collect any existing `hs_err_pid*.log`
+or `vivado_pid*.str` before another synthesis; their absence is not evidence
+of a successful run. Do not claim that the monitor patch repairs synthesis.
+
+## QBS RTL Refresh (2026-09-15)
+
+The next FPGA snapshot includes the verified shared byte-alignment path in
+`qbs_block_adapter` and `qbs_payload_buffer`. Production adapters enable
+`StreamWriteData`; standalone arbitrary-target payload clients keep the
+generic selection path by default. The change preserves write masks, slot
+priority, SRAM capacity and pipeline depth. It targets duplicated byte-data
+selectors, not the Vivado timing-optimization crash.
+
+Repository evidence is under
+`verification/timing/results/20260914_qbs_stream_area/`. Before export, the
+collector rechecked current RTL hashes and completed test records: 33 commands
+and seven real-data slices retain identical engine cycles; adapter, macro,
+generic-payload and RVV/AKV handoff checks also passed. This is reuse and
+verification of existing simulation evidence, not a new FPGA synthesis.
+
+Run `scripts/run.ps1 -Stage synth`, not `inspect`, to measure the refreshed
+RTL. The managed flow uses a fresh top-level run directory and reuses the
+three completed, non-stale IP runs. Do not reset/recreate the project or IPs.
+No new Vivado area, loop, CDC or timing result is available for this snapshot.

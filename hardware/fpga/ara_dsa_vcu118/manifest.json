@@ -664,29 +664,24 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "694241217d2ee501171745aaed133d449dc27331",
+      "commit": "4493e3a49af2f66394af7bd2b48daedf07a1b5fc",
       "tracked_changes": [
+        "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl",
+        "backend/syn/ara_soc/v1-dc/global_scripts/synopsys_dc.setup.gui",
+        "backend/syn/ara_soc/v1-dc/local_scripts/ara_soc.sdc",
         "backend/syn/ara_soc/v1-dc/reports/area.rpt",
+        "hardware/docs/attention_akv_v2_design.md",
         "hardware/docs/qbs_block_buffer_sram.md",
-        "hardware/docs/timing_optimization_port.md",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/scripts/common.tcl",
-        "hardware/fpga/vcu118/check_rtl.py",
+        "hardware/docs/qbs_full_mechanism_tutorial.md",
+        "hardware/fpga/ara_dsa_vcu118/SHA256SUMS",
+        "hardware/fpga/ara_dsa_vcu118/docs/FPGA_ISSUES.md",
+        "hardware/fpga/ara_dsa_vcu118/scripts/run_support.tcl",
         "hardware/fpga/vcu118/docs/FPGA_ISSUES.md",
-        "hardware/fpga/vcu118/export.py",
-        "hardware/fpga/vcu118/scripts/common.tcl",
-        "hardware/fpga/vcu118/tests/test_export.py",
-        "hardware/fpga/vcu118/tests/test_loop_reports.tcl",
-        "hardware/include/qbs_pkg.sv",
-        "hardware/src/vlsu/qbs/qbs_block_adapter.sv",
-        "hardware/src/vlsu/qbs/qbs_engine.sv",
-        "hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
-        "scripts/gen_qbs_abi.py",
+        "hardware/fpga/vcu118/scripts/run_support.tcl",
+        "hardware/fpga/vcu118/tests/test_runs.tcl",
         "verification/timing/payload_dc.tcl",
-        "verification/timing/qbs_payload_equivalence_tb.sv",
-        "verification/timing/qbs_sram_adapter_checker.sv",
-        "verification/timing/qbs_sram_adapter_tb.sv",
-        "verification/timing/run_payload_dc.py"
+        "verification/timing/run_payload_dc.py",
+        "verification/timing/test_dc_flow.py"
       ]
     },
     "axi": {
@@ -2653,11 +2648,11 @@
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
-      "source_sha256": "1a5a598d9d60dfda73a43975b3646214625b63735d34ded1e73fef6dd5cdaa3a"
+      "source_sha256": "ce310f49bb0b5b7f743f6a2f898d0435018969dcbab1ee6e9dd9264210692c92"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_block_adapter.sv",
-      "source_sha256": "b6dee58ceabc07132736a18320f5ca69d65e145a3448d01051ac02e76d04d590"
+      "source_sha256": "2b4ab6311529af05ca83a97f3007fadb9e190031db4f0942274bec55688d987f"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
