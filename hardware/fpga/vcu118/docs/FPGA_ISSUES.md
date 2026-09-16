@@ -1,6 +1,106 @@
 # FPGA Findings and Verification Boundary
 
-## Current Status: Sampled JTAG and Registered Reset CDC (2026-09-15)
+## Current Status: Routed DDR Boundary Timing (2026-09-16)
+
+The measured baseline is Windows Vivado 2020.1 `impl_1684ae5a235b`, uploaded
+in `4d5a4b02`. It is fully routed, but setup/recovery fails: WNS -0.580 ns,
+TNS -44.468 ns and 946 failing endpoints. Hold is now +0.009 ns and pulse/
+skew is +0.039 ns, both with zero failing endpoints. The 50 MHz SoC group
+has +0.892 ns setup slack. There are no no-clock or unconstrained internal
+endpoints. This supersedes the pre-route hold/skew estimates below.
+
+### Measured Causes and FPGA-Only Changes
+
+- The worst recovery path runs from the last `i_ui_por` reset synchronizer
+  to `fabric_ready_o_reg/CLR`. A reset test-bypass `tc_clk_mux2` maps to
+  BUFGMUX/BUFGCTRL even though test mode is tied low. The path crosses SLR1
+  to SLR2; 94% of its 2.979 ns delay is routing. The FPGA `rstgen_bypass`
+  now uses ordinary reset/data muxes, allowing constant test mode to remove
+  the bypass. Actual clock muxes are untouched. Asynchronous assertion,
+  four-stage release and ASYNC_REG attributes are preserved. Recovery and
+  removal are still timed; no internal reset false path was added.
+- The 300 MHz FIFO write-data receiver has -0.176 ns on read-pointer decode
+  through the 32:1 payload mux, with pointer fanout 4360. The reverse FIFO
+  also has -0.134 ns on Gray-to-binary write-word/CE selection. Only local
+  data selection changes: wide, 32-entry FIFOs use registered one-hot
+  selection replicated per 64-bit slice. Read selection is a parallel
+  masked reduction. Write word enables are local to each slice.
+  Both advance on the same internal handshakes as the original pointers.
+- This targets the separate 3 ns bundled-data violation (-0.168 ns) too.
+  FIFO depth, payload bits, Gray pointer crossing, full/empty logic,
+  synchronizer stages, spill registers and cycle latency do not change.
+  Narrow FIFOs and other depths retain the generic implementation.
+  The expected cost in the board's W/R FIFOs is 1216 selector FFs, protected
+  from merging with DONT_TOUCH. Actual mapped area and routing must still
+  be measured. An RTL rewrite alone does not prove timing closure.
+- All five remaining Critical CDC findings in the routed baseline are
+  internal to VIO, between its 50 MHz clock and the auto-selected 75 MHz
+  debug hub clock. Debug constraints now connect the hub to the same
+  free-running SoC net as VIO, with its frequency property set to 50 MHz.
+  This uses the documented debug-port connection flow, not guessed
+  generated clocks on hub outputs or a CDC waiver. Existing IPs are reused.
+- Four asynchronous input pads now have a virtual zero-delay reference
+  for IO/CDC coverage. First-stage-only 20 ns JTAG / 70 ns UART datapath
+  bounds remain unchanged and override phase-based timing only on those
+  paths. This bookkeeping reference does not make the pads synchronous.
+  Later synchronizer stages retain normal timing.
+- The reported DDR reset driver is UI-clocked `cal_RESET_n_reg[0]`.
+  Its on-chip output propagation is bounded to one UI period (3.333 ns).
+  This is a conservative design budget, not a DDR CK setup/hold claim;
+  MIG still owns reset/CKE sequencing. LVCMOS12 is checked explicitly.
+- The existing 3 ns FIFO pointer/data bounds are not relaxed. Explicit
+  3 ns bus-skew constraints are added on each Gray-pointer crossing.
+
+The two edited RTL files are only in the frozen FPGA package. Main RTL,
+QBS/AKV, ASIC/DC and the three IP configurations are unchanged. The export
+transform pins the reviewed FIFO source hash; an upstream protocol change
+requires a new review. Do not refresh main RTL while validating this patch.
+
+### Functional Evidence
+
+`tests/check_cdc_fifo.py` compares the actual frozen FIFO with the unmodified
+`4d5a4b02` FIFO. One bounded VCS run passes seven configurations, including
+the real 582-bit W / 521-bit R payloads, both clock directions, 128/129-bit
+slice boundaries and generic depth/width fallbacks. It compares ready,
+valid, all output data, Gray pointers and the complete payload array every
+cycle. Scoreboards check ordering; directed fill/drain and randomized stalls
+cover full/empty, backpressure and pointer wrap. Four reset epochs include
+full queues and stopped clocks. Per-slice one-hot state is checked against
+the decoded binary pointer. Reset discards in-flight data in both versions;
+independent one-sided warm reset is not supported or claimed.
+
+`tests/check_jtag.py` also passes again with the new reset mux: 74 TAP scans,
+45 accepted DMI requests per implementation, 20 phases, stopped TCK and
+50 checks of the actual board/reset logic. Evidence and input hashes are in
+`vcu118/results/20260916_cdc_fifo/` and `20260916_jtag_reset/`.
+Full static elaboration has no non-vendor errors; VCS and static elaboration
+are not metastability analysis or Vivado placement/routing validation.
+
+### One Windows Validation Cycle
+
+Run a new managed `-Stage synth`, then `-Stage impl` after synthesis succeeds.
+Do not use `inspect` on the old netlist to validate these RTL changes.
+The existing project and valid clkwiz/vio/ddr4 checkpoints remain in use.
+No local Vivado is installed, so this patch has no new routed timing result.
+
+Reports now include `bus_skew.rpt`, `methodology.rpt`, `io.rpt`,
+`exceptions.rpt`, `hold_paths.rpt`, individual pad timing and
+`boundary_checks.rpt`. Routed boundary checks reject reset BUFGs, missing
+selector replicas, unconstrained/overridden or failing pad budgets, a
+non-LVCMOS12 DDR reset, or different hub/VIO clocks.
+
+Acceptance still requires WNS/WHS/WPWS >= 0, no bus-skew violations,
+no new DRC/CDC Critical findings, and review of exception coverage and
+unconstrained endpoints. The baseline's 1185 CDC-15 warnings are mainly
+bundled FIFO data paths; inspect the real protocol and physical bounds,
+not just the warning count. Bus-skew and methodology reports are additional
+review evidence, not an automatic waiver or complete CDC signoff.
+
+References: [AMD debug-core clocking](https://docs.amd.com/r/2024.1-English/ug908-vivado-programming-debugging/Debug-Cores-Clocking-Guidelines),
+[asynchronous constraints](https://docs.amd.com/r/2021.2-English/ug903-vivado-using-constraints/Constraining-Asynchronous-Signals),
+[DDR4 pin rules](https://docs.amd.com/r/en-US/pg150-ultrascale-memory-ip/DDR4-Pin-Rules).
+
+## Previous Update: Sampled JTAG and Registered Reset CDC (2026-09-15)
 
 This change includes the dispatcher patch below and modifies only the frozen
 FPGA package, its export transforms, constraints and tests. It does not refresh

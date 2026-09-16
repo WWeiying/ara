@@ -14,6 +14,7 @@ from prepare import HERE, ROOT, CACHE, CHESHIRE, BOARD_PORT, BOARD_TREE
 from dispatcher_fpga import patch_dispatcher_layout
 from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
+from cdc_fpga import patch_reset_muxes, patch_fifo_selectors
 
 
 def replace_once(text, old, new):
@@ -283,6 +284,8 @@ def export(dst, gcc, objdump, smoke_from=None):
                            ("rtl/riscv-dbg/src/dmi_jtag.sv", patch_jtag),
                            ("rtl/riscv-dbg/src/dmi_jtag_tap.sv", patch_tap),
                            ("rtl/common_cells/src/rstgen_bypass.sv", patch_reset_sync),
+                           ("rtl/common_cells/src/rstgen_bypass.sv", patch_reset_muxes),
+                           ("rtl/common_cells/src/cdc_fifo_gray.sv", patch_fifo_selectors),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_vlen_casts),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_layout),
                            ("rtl/ara/hardware/src/ara_dispatcher.sv", patch_dispatcher_control),

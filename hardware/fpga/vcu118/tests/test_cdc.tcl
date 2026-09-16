@@ -9,6 +9,9 @@ proc setup {scenario} {
     set ::scenario $scenario
     set ::legacy [expr {$scenario in {legacy missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag}}]
     set ::cells {}; set ::pins {}; set ::max_delays {}; set ::false_paths {}; set ::attributes {}
+    set ::pad_ref 0; set ::input_delays {}; set ::bus_skews {}; set ::debug_connected 0
+    dict set ::pins i_vio/clk soc
+    dict set ::pins dbg_hub/clk ui
     set base i_dram_wrapper/gen_cdc.i_axi_cdc_mig
     foreach channel {aw w ar b r} {
         foreach side {src dst} {
@@ -137,16 +140,31 @@ proc get_pins {args} {
 proc get_ports {args} {
     set ports [lindex $args end]
     foreach port $ports {
-        assert {$port in {uart_rx_i jtag_tck_i jtag_tms_i jtag_tdi_i jtag_tdo_o}} "known asynchronous pads only"
+        assert {$port in {uart_rx_i jtag_tck_i jtag_tms_i jtag_tdi_i jtag_tdo_o c0_ddr4_reset_n}} "known asynchronous pads only"
     }
     if {$::scenario eq "missing_uart_port" && $ports eq "uart_rx_i"} { return {} }
     if {$::scenario eq "missing_jtag_port" && $ports eq "jtag_tdi_i"} { return {} }
+    if {$::scenario eq "missing_ddr_reset" && $ports eq "c0_ddr4_reset_n"} { return {} }
     return $ports
 }
-proc create_clock {args} { assert {$::legacy} "never clock the sampled JTAG pad" }
-proc set_input_delay {args} { assert {$::legacy} "legacy JTAG only" }
+proc create_clock {args} {
+    if {[option $args -name] eq "ara_async_pad"} {
+        assert {[llength $args] == 4 && [option $args -period] == 1000.0} "virtual only, no fabric/pad clock"
+        set ::pad_ref 1
+    } else { assert {$::legacy} "never clock the sampled JTAG pad" }
+}
+proc set_input_delay {args} {
+    if {[option $args -clock] eq "ara_async_pad"} {
+        assert {$::pad_ref && [lindex $args end-1] == 0.0} "zero-delay bookkeeping reference"
+        assert {[lindex $args end] in {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i}} "first-stage pads only"
+        lappend ::input_delays $args
+    } else { assert {$::legacy} "legacy JTAG only" }
+}
 proc set_output_delay {args} { assert {$::legacy} "legacy JTAG only" }
 proc get_clocks {args} {
+    if {[lindex $args end] eq "ara_async_pad"} {
+        return [expr {$::pad_ref ? "ara_async_pad" : ""}]
+    }
     set pin [option $args -of_objects]
     if {$::scenario eq "missing_clock"} { return {} }
     if {$::scenario eq "multiple_clocks"} { return {soc ui} }
@@ -165,11 +183,22 @@ proc get_property {key object} {
     }
 }
 proc set_property {key value objects} {
+    if {$key in {C_CLK_INPUT_FREQ_HZ C_ENABLE_CLK_DIVIDER}} {
+        assert {$objects eq "dbg_hub"} "only debug hub properties"
+        assert {($key eq "C_CLK_INPUT_FREQ_HZ" && $value == 50000000) ||
+                ($key eq "C_ENABLE_CLK_DIVIDER" && $value eq "false")} "50 MHz without a clock divider"
+        return
+    }
     assert {$key eq "ASYNC_REG" && $value eq "TRUE"} "only synchronizer attributes"
     foreach cell $objects { dict set ::attributes $cell $value }
 }
 proc set_max_delay {args} {
     set from [option $args -from]; set to [option $args -to]
+    if {$to eq "c0_ddr4_reset_n"} {
+        assert {$from eq "ui" && [lrange $args 0 1] eq "-datapath_only 3.333"} "DDR reset one-UI-period physical budget"
+        lappend ::max_delays $args
+        return
+    }
     if {[string match jtag_* $from] || $to eq "jtag_tdo_o"} {
         assert {!$::legacy && [lrange $args 0 1] eq "-datapath_only 20.0"} "sampled JTAG IO budget"
         if {$to eq "jtag_tdo_o"} {
@@ -211,6 +240,32 @@ proc set_max_delay {args} {
     }
     lappend ::max_delays $args
 }
+proc set_bus_skew {args} {
+    assert {[lindex $args 0] == 3.0} "unchanged Gray-pointer skew bound"
+    set pins [option $args -to]
+    assert {[llength $pins] == 6} "six Gray bits"
+    foreach pin $pins {
+        assert {[string match */gen_sync*/reg_q_reg* $pin]} "pointer synchronizers only"
+        assert {[regexp {reg_q_reg\[0\]/D$} $pin]} "only first stage"
+    }
+    lappend ::bus_skews $args
+}
+proc get_debug_cores {args} {
+    assert {[lindex $args end] eq "dbg_hub"} "only the existing hub"
+    if {$::scenario eq "missing_debug_hub"} { return {} }
+    return dbg_hub
+}
+proc get_nets {args} {
+    set pin [option $args -of_objects]
+    if {$pin eq "i_vio/clk"} { return soc_net }
+    assert {$pin eq "dbg_hub/clk"} "only debug clock pins"
+    return old_debug_net
+}
+proc disconnect_debug_port {pin} { assert {$pin eq "dbg_hub/clk"} "only hub clock disconnected" }
+proc connect_debug_port {pin net} {
+    assert {$pin eq "dbg_hub/clk" && $net eq "soc_net"} "hub uses existing VIO clock"
+    set ::debug_connected 1
+}
 proc set_false_path {args} {
     assert {[llength $args] == 2} "one bounded pin set only"
     if {[lindex $args 0] eq "-through"} {
@@ -223,13 +278,16 @@ proc set_false_path {args} {
     }
     lappend ::false_paths $args
 }
-foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag missing_uart_stage missing_uart_port missing_ui_por missing_jtag missing_jtag_stage wrong_jtag_stage missing_jtag_port slow_soc} {
+foreach scenario {healthy missing_first missing_second missing_data missing_clock multiple_clocks fast_clock same_clock missing_reset legacy missing_status missing_status_second missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag missing_uart_stage missing_uart_port missing_ui_por missing_jtag missing_jtag_stage wrong_jtag_stage missing_jtag_port slow_soc missing_ddr_reset missing_debug_hub} {
     setup $scenario
     set failed [catch {source $root/constraints/cdc.xdc} message]
     assert {$failed == ($scenario ni {healthy legacy fast_jtag})} "$scenario: $message"
     if {!$failed} {
         set no_status [expr {$scenario eq "legacy"}]
-        assert {[llength $max_delays] == ($legacy ? 34 : 20)} "all FIFO/JTAG/UART channels covered"
+        assert {[llength $max_delays] == ($legacy ? 35 : 21)} "all FIFO/JTAG/UART/DDR reset channels covered"
+        assert {[llength $input_delays] == ($legacy ? 2 : 8)} "both min/max for every asynchronous input"
+        assert {[llength $bus_skews] == 10} "both Gray directions of five channels"
+        assert {$debug_connected == !$legacy} "new runs select the VIO clock"
         assert {[llength $false_paths] == ($legacy ? ($no_status ? 2 : 3) : 5)} "only known reset/status exceptions"
         assert {[dict size $attributes] == ($legacy ? ($no_status ? 150 : 158) : 139)} "only real synchronizers marked"
     } else {

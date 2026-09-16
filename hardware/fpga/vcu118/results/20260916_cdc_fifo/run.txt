@@ -1,0 +1,19 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 16 04:51 2026
+PASS FIFO 1 width=521 depth=32 sent=2077 received=1941 checks=21650 full=10775 stalled=811
+PASS FIFO 2 width=128 depth=32 sent=5732 received=5596 checks=24626 full=6536 stalled=2458
+PASS FIFO 3 width=129 depth=32 sent=10807 received=10671 checks=38794 full=1003 stalled=5935
+PASS FIFO 4 width=40 depth=32 sent=10725 received=10589 checks=85388 full=995 stalled=11254
+PASS FIFO 5 width=256 depth=8 sent=10638 received=10598 checks=85388 full=1189 stalled=11464
+PASS FIFO 6 width=8 depth=2 sent=7459 received=7443 checks=85388 full=4528 stalled=9932
+PASS FIFO 0 width=582 depth=32 sent=10846 received=10710 checks=85388 full=995 stalled=11424
+PASS: all FIFO comparisons
+$finish called from file "cdc_fifo_equivalence_tb.sv", line 136.
+$finish at simulation time            284980713
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 284980713 ps
+CPU Time:      3.200 seconds;       Data structure size:   0.4Mb
+Wed Sep 16 04:51:56 2026

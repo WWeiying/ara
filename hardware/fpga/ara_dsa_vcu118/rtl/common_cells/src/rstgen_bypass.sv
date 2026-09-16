@@ -30,27 +30,12 @@ module rstgen_bypass #(
     (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *)
     logic [NumRegs-1:0] synch_regs_q;
 
-    // bypass mode: use (clock) multiplexers
-    tc_clk_mux2 i_tc_clk_mux2_rst_n (
-        .clk0_i     ( rst_ni ),
-        .clk1_i     ( rst_test_mode_ni ),
-        .clk_sel_i  ( test_mode_i ),
-        .clk_o      ( rst_n )
-    );
-
-    tc_clk_mux2 i_tc_clk_mux2_rst_no (
-        .clk0_i     ( synch_regs_q[NumRegs-1] ),
-        .clk1_i     ( rst_test_mode_ni ),
-        .clk_sel_i  ( test_mode_i ),
-        .clk_o      ( rst_no )
-    );
-
-    tc_clk_mux2 i_tc_clk_mux2_init_no (
-        .clk0_i     ( synch_regs_q[NumRegs-1] ),
-        .clk1_i     ( 1'b1 ),
-        .clk_sel_i  ( test_mode_i ),
-        .clk_o      ( init_no )
-    );
+    // These are reset/data muxes, not clocks. tc_clk_mux2 maps to BUFGMUX
+    // on Xilinx and prevents constant test_mode_i from removing the bypass.
+    // Keep the original asynchronous assertion and NumRegs-cycle release.
+    assign rst_n = test_mode_i ? rst_test_mode_ni : rst_ni;
+    assign rst_no = test_mode_i ? rst_test_mode_ni : synch_regs_q[NumRegs-1];
+    assign init_no = test_mode_i ? 1'b1 : synch_regs_q[NumRegs-1];
 
     always @(posedge clk_i or negedge rst_n) begin
         if (~rst_n) begin

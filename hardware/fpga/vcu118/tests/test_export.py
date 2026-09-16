@@ -15,6 +15,7 @@ from dispatcher_fpga import FUNCTIONS, HELPERS, NEW_UPDATE, OLD_UPDATE, patch_di
 from dispatcher_control_fpga import (dispatcher_edits, patch_dispatcher_control,
                                      patch_segment_geometry, segment_edits)
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
+from cdc_fpga import patch_reset_muxes
 
 
 class IntegrationPatchTests(unittest.TestCase):
@@ -53,7 +54,7 @@ class JtagPatchTests(unittest.TestCase):
         pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
         transforms = {"rtl/riscv-dbg/src/dmi_jtag.sv": patch_jtag,
                       "rtl/riscv-dbg/src/dmi_jtag_tap.sv": patch_tap,
-                      "rtl/common_cells/src/rstgen_bypass.sv": patch_reset_sync,
+                      "rtl/common_cells/src/rstgen_bypass.sv": lambda t: patch_reset_muxes(patch_reset_sync(t)),
                       "rtl/board/dram_wrapper_xilinx.sv": patch_ready}
         blocks = re.split(r"(?=^--- a/)", (pkg / "provenance/integration.patch").read_text(), flags=re.M)
         for rel, transform in transforms.items():
@@ -83,7 +84,7 @@ class JtagPatchTests(unittest.TestCase):
     def test_jtag_evidence_matches_current_rtl(self):
         import hashlib
         import json
-        directory = ROOT / "hardware/fpga/vcu118/results/20260915_jtag"
+        directory = ROOT / "hardware/fpga/vcu118/results/20260916_jtag_reset"
         result = json.loads((directory / "result.json").read_text())
         for name, expected in result["inputs"].items():
             if name == "board_sha256":
@@ -100,7 +101,10 @@ class JtagPatchTests(unittest.TestCase):
 class DispatcherPatchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = (ROOT / "hardware/src/ara_dispatcher.sv").read_text()
+        # Test the reviewed export input, not concurrently changing main RTL.
+        cls.source = subprocess.check_output([
+            "git", "show", "74042fbd:hardware/src/ara_dispatcher.sv"
+        ], cwd=ROOT, text=True)
         cls.patched = patch_dispatcher_vlen_casts(cls.source)
 
     def test_only_three_reported_lines_change(self):
@@ -262,7 +266,9 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
 
 class AkvByteCountPatchTests(unittest.TestCase):
     def setUp(self):
-        self.source = (ROOT / "hardware/src/vlsu/akv/akv_engine.sv").read_text()
+        self.source = subprocess.check_output([
+            "git", "show", "74042fbd:hardware/src/vlsu/akv/akv_engine.sv"
+        ], cwd=ROOT, text=True)
         self.patched = patch_akv_byte_counts(self.source)
 
     def test_synthesis_countones_removed(self):
@@ -289,7 +295,9 @@ class AkvByteCountPatchTests(unittest.TestCase):
 
 class QbsFaultPatchTests(unittest.TestCase):
     def setUp(self):
-        self.source = (ROOT / "hardware/src/vlsu/qbs/qbs_engine.sv").read_text()
+        self.source = subprocess.check_output([
+            "git", "show", "74042fbd:hardware/src/vlsu/qbs/qbs_engine.sv"
+        ], cwd=ROOT, text=True)
 
     def test_only_fault_decode_changes(self):
         patched = patch_qbs_fault_decode(self.source)

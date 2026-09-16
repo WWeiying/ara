@@ -1,0 +1,25 @@
+{
+  "inputs": {
+    "hardware/fpga/ara_dsa_vcu118/rtl/riscv-dbg/src/dm_pkg.sv": "ddd883331359926221f593a853b62a21537ecf7a9ffa7427e845ac1d03c32487",
+    "hardware/fpga/ara_dsa_vcu118/rtl/riscv-dbg/src/dmi_jtag.sv": "424019b9b1ce656ad810f2135d808f31db6c582344aa5ab26f37fc2401f0153f",
+    "hardware/fpga/ara_dsa_vcu118/rtl/riscv-dbg/src/dmi_jtag_tap.sv": "4a893c776f25c27661cd9157eb9ec3ef30ca81ca92541d2d485d57f9189cb975",
+    "hardware/fpga/ara_dsa_vcu118/rtl/riscv-dbg/src/dmi_cdc.sv": "85bff5443ad0e19aa5f7dcfcc3054901e6d2a4e364cde8c3ba3db329fa093c1d",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/cdc_reset_ctrlr_pkg.sv": "6aa61392209fd23d5b25684b693a7c0a6369c0b4fb403b3276970f2cac2c660a",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/sync.sv": "cc7605468d124b0af0d4b2d17323ade1f4093bc96999fab037b9dacac5fe5956",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/rstgen.sv": "83d9f70bab3b514062a7a79a581919afd5de466167dfcd08733c773f36ba094a",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/rstgen_bypass.sv": "f838297ccb5c34cf923c716394bc191f9e4cecc7cecafa09f38effec2254d424",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/cdc_2phase_clearable.sv": "8ff6e48890e0ad3f5ebc46e1c069f806bb46a13a4cd7aa2c01042075c37000c4",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/cdc_reset_ctrlr.sv": "a56cdd3399481ddd7fb115fb5a9d6e83b33e8591a808f54b307a24e2fc3b2e2a",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/cdc_4phase.sv": "6ba8ed945b14d4107b2dd55aa17c3f9644dc4e4ce51c4920c0829e8b3c32d5ee",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register.sv": "97bf85128f538c54c749896b8eee5fcfe4b27c16845d2a17990979a63b09f2ec",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register_flushable.sv": "3285eb2e557f6377de88df91751b0bccdad07b16be9d926314a52a23e964f02c",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/include/common_cells/assertions.svh": "d39c7afa893656e235b0019233c1bcf12491cd421639791c827cc53236bd4841",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/include/common_cells/registers.svh": "532dfd1723d2936421b921235abdafcc8ca407990224992ca13575fdb620053a",
+    "board_sha256": "19a66b8ebb8c911449418485c10ac8f35333821b92744eeb10f2e998b10283fd",
+    "dram_sha256": "c3eea7cfad7a93192b09aa4ae326746ce7bb8c675a9e838e8bd1b502840604a6",
+    "hardware/fpga/vcu118/tests/jtag_sampled_tb.sv": "5f01ae160581890b4fd204be8e1c0cf3136658048c8d7c45ede16f299132100d"
+  },
+  "reference": "74042fbd",
+  "test": "digital TAP/DMI protocol and board-reset checks; no metastability/physical signoff",
+  "run_sha256": "e0db009a209812737c246e6e98dd4558cbb1dceb655a33ba2597ab5639360963"
+}

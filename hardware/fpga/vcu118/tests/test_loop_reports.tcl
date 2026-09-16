@@ -81,7 +81,8 @@ assert {[string first "Visited 0 cells; pending 0" $fanin] >= 0} "clean design h
 assert {[catch {write_loop_fanin $dir {} 0}]} "invalid node bound must fail"
 require_no_combinational_loops $dir
 foreach cmd {report_utilization report_timing_summary check_timing report_cdc
-    report_clock_interaction report_timing report_exceptions report_clocks} {
+    report_clock_interaction report_timing report_exceptions report_clocks
+    report_bus_skew report_methodology report_io} {
     proc $cmd {args} {}
 }
 rename report_drc loop_report_drc
@@ -91,6 +92,7 @@ proc report_drc {args} {
 set package_root $dir
 # Clock/IO query details have a separate synthetic-netlist test.
 proc write_clock_io_details {dir} {}
+proc write_boundary_checks {dir routed} {}
 set has_fault_guard 1
 write_reports clean true
 set f [open $dir/reports/clean/fault_decode.rpt r]; set fault [read $f]; close $f

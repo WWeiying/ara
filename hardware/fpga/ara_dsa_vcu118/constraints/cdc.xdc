@@ -19,6 +19,47 @@ proc ara_cdc::clock_at {pin} {
     return $clock
 }
 
+# A virtual zero-delay pad reference makes these paths visible to input/CDC
+# reports. It is not an external synchronous clock: the first-stage-only
+# datapath constraint below overrides phase/setup and excludes only its hold.
+# The physical 20/70 ns budgets are unchanged.
+proc ara_cdc::async_input {pad capture budget} {
+    if {![llength [get_clocks -quiet ara_async_pad]]} {
+        create_clock -name ara_async_pad -period 1000.0
+    }
+    set_input_delay -clock ara_async_pad -min 0.0 $pad
+    set_input_delay -clock ara_async_pad -max 0.0 $pad
+    set_max_delay -datapath_only $budget -from $pad -to $capture
+}
+
+proc ara_cdc::ddr_reset {} {
+    set ui [clock_at i_dram_wrapper/gen_cdc.i_axi_cdc_mig/i_axi_cdc_dst/i_cdc_fifo_gray_src_r/src_clk_i]
+    set port [require [get_ports -quiet c0_ddr4_reset_n] "DDR reset output" 1]
+    # Routed evidence: UI-clocked cal_RESET_n_reg -> OBUF -> reset_n.
+    # Bound the on-chip propagation to one UI cycle. This is NOT an invented
+    # DDR CK setup/hold requirement; MIG owns the long reset/CKE sequencing.
+    set_max_delay -datapath_only [get_property PERIOD $ui] -from $ui -to $port
+    puts "CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions"
+}
+
+proc ara_cdc::debug_clock {} {
+    if {[info exists ::ara_cdc_inspect_legacy] && $::ara_cdc_inspect_legacy} { return }
+    set core [require [get_debug_cores -quiet dbg_hub] "debug hub core" 1]
+    set vio [require [get_pins -quiet i_vio/clk] "VIO clock pin" 1]
+    set clock [clock_at i_vio/clk]
+    set period [get_property PERIOD $clock]
+    if {abs($period - 20.0) > 0.001} { error "CDC: expected 50 MHz VIO clock, got $period ns" }
+    set net [require [get_nets -quiet -of_objects $vio] "VIO clock net" 1]
+    # UG908 debug constraints: select the free-running SoC clock before
+    # implementation inserts the hub, rather than auto-selecting DDR 75 MHz.
+    set connected [get_nets -quiet -of_objects [get_pins -quiet dbg_hub/clk]]
+    if {[llength $connected]} { disconnect_debug_port dbg_hub/clk }
+    set_property C_CLK_INPUT_FREQ_HZ 50000000 $core
+    set_property C_ENABLE_CLK_DIVIDER false $core
+    connect_debug_port dbg_hub/clk $net
+    puts "CDC: debug hub and VIO share $clock (50 MHz)"
+}
+
 proc ara_cdc::pointer_inputs {root} {
     set regs [require [get_cells -quiet -hierarchical -filter \
         "NAME =~ $root/gen_sync* && REF_NAME =~ FD*"] "pointer synchronizers in $root" 12]
@@ -116,7 +157,7 @@ proc ara_cdc::jtag {} {
         set pad [require [get_ports -quiet jtag_${signal}_i] "JTAG $signal pad" 1]
         set pin [require [get_pins -quiet -of_objects $first -filter {REF_PIN_NAME == D}] \
             "JTAG $signal first-stage D" 1]
-        set_max_delay -datapath_only 20.0 -from $pad -to $pin
+        async_input $pad $pin 20.0
     }
     set_max_delay -datapath_only 20.0 -from $clock \
         -to [require [get_ports -quiet jtag_tdo_o] "JTAG TDO pad" 1]
@@ -136,9 +177,7 @@ proc ara_cdc::uart {} {
     set input [require [get_ports -quiet uart_rx_i] "UART RX port" 1]
     set capture [require [get_pins -quiet -of_objects $first -filter {REF_PIN_NAME == D}] \
         "UART RX first-stage D pin" 1]
-    # Retain the existing 70 ns physical budget, without a fictitious launch
-    # phase or a hold exception on downstream synchronous logic.
-    set_max_delay -datapath_only 70.0 -from $input -to $capture
+    async_input $input $capture 70.0
     puts "CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed"
 }
 
@@ -164,6 +203,8 @@ proc ara_cdc::apply {} {
         set_max_delay -datapath_only 3.0 -from $src_clock -to $forward
         set_max_delay -datapath_only 3.0 -from $dst_clock -to $reverse
         set_max_delay -datapath_only 3.0 -from $src_clock -to $data
+        set_bus_skew 3.0 -from $src_clock -to $forward
+        set_bus_skew 3.0 -from $dst_clock -to $reverse
         puts "CDC: $channel $src_clock -> $dst_clock; data=[llength $data], pointers=6+6, max=3ns"
     }
     # POR assertion is asynchronous; each rstgen synchronizes deassertion.
@@ -200,6 +241,8 @@ proc ara_cdc::apply {} {
     }
     jtag
     uart
+    ddr_reset
+    debug_clock
 }
 
 ara_cdc::apply
