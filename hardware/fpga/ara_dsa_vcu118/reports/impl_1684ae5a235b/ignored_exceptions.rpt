@@ -1,0 +1,23 @@
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2020.1 (win64) Build 2902540 Wed May 27 19:54:49 MDT 2020
+| Date              : Wed Sep 16 18:36:42 2026
+| Host              : DESKTOP-9T3TD2K running 64-bit major release  (build 9200)
+| Command           : report_exceptions -ignored -file D:/project/ara/hardware/fpga/ara_dsa_vcu118/reports/impl_1684ae5a235b/ignored_exceptions.rpt
+| Design            : ara_dsa_vcu118
+| Device            : xcvu9p-flga2104
+| Speed File        : -2L  PRODUCTION 1.27 02-28-2020
+| Temperature Grade : E
+----------------------------------------------------------------------------------------------------------------------------------------------------
+
+Exceptions Report
+
+Position  From                                 Through                                           To                                      Setup           Hold            Status                          
+--------  -----------------------------------  ------------------------------------------------  --------------------------------------  --------------  --------------  --------------------------------
+9         *                                    [get_ports -scoped_to_current_instance SYS_Rst]   *                                       false           false           Non-existent path               
+10        *                                    [get_ports -scoped_to_current_instance SYS_Rst]   *                                       false           false           Non-existent path               
+37        [get_pins */input_rst_design_reg/C]  *                                                 [get_pins {*/rst_div_sync_r_reg[0]/D}]  false           false           Non-existent path               
+38        [get_pins */input_rst_design_reg/C]  *                                                 [get_pins {*/rst_riu_sync_r_reg[0]/D}]  false           false           Non-existent path               
+39        [get_pins */input_rst_design_reg/C]  *                                                 [get_pins {*/rst_mb_sync_r_reg[0]/D}]   false           false           Non-existent path               
+54        *                                    [get_pins -quiet i_board_por/rst_ni]              *                                       false           false           Totally overridden path by FP 46
+
