@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('synth', 'impl', 'inspect')][string]$Stage = 'synth',
+    [ValidateSet('all', 'synth', 'impl', 'inspect')][string]$Stage = 'synth',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat',
     [string]$RunRoot
 )
@@ -26,6 +26,15 @@ function Get-InputFingerprint([string]$Root) {
     } finally { $sha.Dispose() }
 }
 
+function Assert-VivadoIdle {
+    # GUI command lines do not reliably identify their open XPR. Fail closed.
+    $existing = @(Get-CimInstance Win32_Process -Filter "Name = 'vivado.exe'")
+    if ($existing.Count) {
+        $details = $existing | Select-Object ProcessId, CreationDate, CommandLine | Format-List | Out-String
+        throw "Vivado processes already exist. Save/close the GUI and inspect leftover workers first. No process was killed.`n$details"
+    }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'build\ara_dsa_vcu118\ara_dsa_vcu118.xpr'
 if (!(Test-Path -LiteralPath $project -PathType Leaf)) {
@@ -35,7 +44,6 @@ $Vivado = (Get-Command $Vivado -ErrorAction Stop).Source
 $stateDir = Join-Path $root 'build\managed'
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 $lock = $null
-$pushed = $false
 try {
     # Keep the handle for the entire child lifetime. Never unlink a held lock.
     try {
@@ -44,12 +52,7 @@ try {
         throw "Cannot acquire $stateDir\run.lock. Check other managed runs and directory permissions; do not delete the lock file. $($_.Exception.Message)"
     }
 
-    # GUI command lines do not reliably identify their open XPR. Fail closed.
-    $existing = @(Get-CimInstance Win32_Process -Filter "Name = 'vivado.exe'")
-    if ($existing.Count) {
-        $details = $existing | Select-Object ProcessId, CreationDate, CommandLine | Format-List | Out-String
-        throw "Vivado processes already exist. Save/close the GUI and inspect leftover workers first. No process was killed.`n$details"
-    }
+    Assert-VivadoIdle
 
     $fingerprint = Get-InputFingerprint $root
     $latest = Join-Path $stateDir 'latest_synth.json'
@@ -78,32 +81,57 @@ try {
     Write-Host "Project: $project"
     Write-Host "Stage: $Stage; results: $session"
     Write-Host 'Keep this terminal open. Do not edit/update the project sources during the run.'
-    Push-Location -LiteralPath $session
-    $pushed = $true
-    & $Vivado -mode batch -source (Join-Path $PSScriptRoot 'run.tcl') `
-        -log session.log -journal session.jou -tclargs $Stage $session $token $parent
-    if ($LASTEXITCODE -ne 0) { throw "Vivado failed. Inspect $session\session.log and the printed run directory." }
-    if ((Get-InputFingerprint $root) -ne $fingerprint) {
-        throw "Inputs changed during the run. Results in $session were NOT accepted; rerun with stable inputs."
+    $stages = @($Stage)
+    if ($Stage -eq 'all') { $stages = @('synth', 'impl') }
+    $completed = @()
+    foreach ($currentStage in $stages) {
+        # Keep one lock and one source fingerprint across the entire flow.
+        Assert-VivadoIdle
+        if ((Get-InputFingerprint $root) -ne $fingerprint) {
+            throw "Inputs changed during the run. $currentStage was not launched."
+        }
+        $stageDir = $session
+        if ($Stage -eq 'all') {
+            $stageDir = Join-Path $session $currentStage
+            New-Item -ItemType Directory -Path $stageDir | Out-Null
+        }
+        Write-Host "Running $currentStage; results: $stageDir"
+        Push-Location -LiteralPath $stageDir
+        try {
+            & $Vivado -mode batch -notrace -source (Join-Path $PSScriptRoot 'run.tcl') `
+                -log session.log -journal session.jou -tclargs $currentStage $stageDir $token $parent
+            if ($LASTEXITCODE -ne 0) { throw "Vivado failed. Inspect $stageDir\session.log and the printed run directory." }
+            if ((Get-InputFingerprint $root) -ne $fingerprint) {
+                throw "Inputs changed during the run. Results in $stageDir were NOT accepted; rerun with stable inputs."
+            }
+            $run = (Get-Content -Raw -LiteralPath (Join-Path $stageDir 'completed_run.txt')).Trim()
+            if ($run -ne "${currentStage}_$token") { throw 'Missing or mismatched completion record' }
+            if ($currentStage -eq 'synth') {
+                $record = @{ Project = $project; Run = $run; InputHash = $fingerprint; Directory = $stageDir }
+                $temp = Join-Path $stateDir "latest_$token.tmp"
+                $record | ConvertTo-Json | Set-Content -LiteralPath $temp -Encoding UTF8
+                Move-Item -LiteralPath $temp -Destination $latest -Force
+                $parent = $run
+            }
+            if ($currentStage -eq 'inspect') {
+                $reportDir = Join-Path $root "reports/$run"
+                New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+                @{ InspectedSynthesis = $record; CurrentInputHash = $fingerprint;
+                   Run = $run; Directory = $stageDir; Mode = 'old netlist, current constraints' } |
+                    ConvertTo-Json -Depth 4 |
+                    Set-Content -LiteralPath (Join-Path $reportDir 'inspection.json') -Encoding UTF8
+            }
+            $completed += @{ Run = $run; Directory = $stageDir; Reports = (Join-Path $root "reports/$run") }
+            Write-Host "SUCCESS: $run; results: $stageDir"
+        } finally { Pop-Location }
     }
-    $run = (Get-Content -Raw -LiteralPath (Join-Path $session 'completed_run.txt')).Trim()
-    if ($run -ne "${Stage}_$token") { throw 'Missing or mismatched completion record' }
-    if ($Stage -eq 'synth') {
-        $record = @{ Project = $project; Run = $run; InputHash = $fingerprint; Directory = $session }
-        $temp = Join-Path $stateDir "latest_$token.tmp"
-        $record | ConvertTo-Json | Set-Content -LiteralPath $temp -Encoding UTF8
-        Move-Item -LiteralPath $temp -Destination $latest -Force
-    }
-    if ($Stage -eq 'inspect') {
-        $reportDir = Join-Path $root "reports/$run"
-        New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
-        @{ InspectedSynthesis = $record; CurrentInputHash = $fingerprint;
-           Run = $run; Directory = $session; Mode = 'old netlist, current constraints' } |
+    if ($Stage -eq 'all') {
+        @{ Project = $project; InputHash = $fingerprint; Runs = $completed; BitstreamGenerated = $false } |
             ConvertTo-Json -Depth 4 |
-            Set-Content -LiteralPath (Join-Path $reportDir 'inspection.json') -Encoding UTF8
+            Set-Content -LiteralPath (Join-Path $session 'completed_flow.json') -Encoding UTF8
+        Write-Host "SUCCESS: full synthesis and routed implementation; results: $session"
+        Write-Host 'No bitstream was generated. Review the routed reports before programming the board.'
     }
-    Write-Host "SUCCESS: $run; results: $session"
 } finally {
-    if ($pushed) { Pop-Location }
     if ($null -ne $lock) { $lock.Dispose() }
 }

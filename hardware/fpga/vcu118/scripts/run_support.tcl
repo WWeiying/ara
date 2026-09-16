@@ -138,14 +138,20 @@ proc fpga_run::execute {stage session token parent} {
         if {![regexp {^synth_[0-9a-f]{12}$} $parent]} { error "Missing managed synthesis parent" }
         reusable $parent {*synth_design Complete*} ${project_name}.dcp
         open_run $parent
+        require_no_multiple_drivers [file join $package_root reports preflight_$token]
         require_no_combinational_loops [file join $package_root reports preflight_$token]
         close_design
     } elseif {$parent ne "-"} { error "Synthesis must not have a parent" }
+    if {$stage eq "synth"} {
+        set hook [file join $package_root scripts synth_pre.tcl]
+        nonempty $hook
+    }
     set name ${stage}_$token
     set dir [file join $session $name]
     if {[file exists $dir]} { error "Refusing to reuse run directory: $dir" }
     set run [clone_run ${stage}_1 $name $parent]
     if {$stage eq "synth"} {
+        set_property STEPS.SYNTH_DESIGN.TCL.PRE $hook $run
         current_run -synthesis $run
         set expected {*synth_design Complete*}
         set extra {}
@@ -160,6 +166,7 @@ proc fpga_run::execute {stage session token parent} {
     wait_checked $name $expected $dir
     check_run $name $expected
     open_run $name
+    require_no_multiple_drivers [file join $package_root reports $name]
     write_reports $name [expr {$stage eq "impl"}]
     if {$stage eq "impl"} {
         set setup [get_timing_paths -quiet -delay_type max -max_paths 1]

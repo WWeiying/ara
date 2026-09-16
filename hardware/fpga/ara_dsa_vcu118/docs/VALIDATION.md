@@ -1,5 +1,37 @@
 # 检查范围
 
+## 2026-09-16 单命令全局流程
+
+`scripts/run.ps1 -Stage all` 直接运行全板新综合到布局布线和报告。
+不运行局部 FIFO probe，不复用旧顶层综合网表，不重建或升级已有三个 IP。
+这次仅修改流程、检查和文档；FIFO 独立 `word_q` 存储修复保持 `f529244d` 的版本，
+不更新主 RTL、ASIC/DC、QBS/AKV 或时序约束。
+
+已执行的本地检查：
+
+- PowerShell 7.4.13：10 项全局流程及 11 项原单阶段流程通过。
+  覆盖 synth/impl 失败、缺失/错误完成标记、阶段内/阶段间源码变化、锁冲突和残留进程。
+  使用真正的 PowerShell 执行器，但 Vivado 和 Windows CIM 查询使用替身。
+- Tcl：33 项运行流程通过；另外 5 项真实多驱动检查函数/综合 hook 测试通过。
+  禁用 `try`，覆盖原 Windows 嵌入 Tcl 不支持该命令的情况。
+  检查缺少 hook、综合/实现父网表/布线后多驱动及查询失败时拒绝接受结果。
+- CDC 29 项、边界检查 12 项、时钟/IO 报告、组合环提取/资源清理及工程 Tcl 检查通过。
+  均为脚本测试，不代表真实网表和布局布线通过。
+- VCS 九组 FIFO 等价回归通过，包括实际 579/525 位 AXI 类型和常量字段。
+  JTAG 74 次扫描、每个实现 45 次 DMI 接收、板级复位 50 项检查通过。
+- 全板静态展开无非厂商模块错误，确认 CVA6、四 Lane Ara、QBS/AKV 和实际 FIFO 位宽。
+  Xilinx 原语、XPM、DDR4、Clock Wizard 和 VIO 仍需 Vivado 展开，未使用假 IP 替代。
+- 导出/同步/补丁回归、Windows 包文件与模板一致性、SHA256 完整性检查通过。
+
+每个阶段启动前后检查同一输入指纹，两阶段之间继续持有排他锁。
+综合失败不会进入实现；实现使用本次新通过检查的综合。
+`completed_flow.json` 仅在两阶段通过脚本检查后写入，明确标记没有生成 bitstream。
+多驱动诊断升级在实际综合 worker 的前置 hook 内设置，网表另有 MDRV-1 检查。
+
+本机没有 Vivado，以上不证明 Windows Vivado 2020.1 综合崩溃已消失或物理时序已经收敛。
+仍须执行一次 Windows 全局流程，复核 setup/hold/pulse、bus skew、DRC/CDC 和未约束路径；
+脚本成功也不是完整的 CDC/上板验收，不自动生成或下载 bitstream。
+
 ## 2026-09-14 Windows Tcl 兼容修复
 
 Windows `inspect_9f18a71a5829` 在调用 `open_run` 之前报

@@ -4,7 +4,7 @@
 包中包含 CVA6、四 Lane RVV、QBS、AKV、Cheshire SoC、外设依赖、板级顶层、约束及 Vivado Tcl。
 不需要访问原 Linux 工作区，不需要 Git、Bender、软链接、TSMC SRAM 库。
 
-## 本次 CDC/JTAG 更新
+## 本次全局流程与 CDC/JTAG 更新
 
 外部 J53 CPU JTAG 已改为 50 MHz SoC 时钟采样，**外部 TCK 请限制到 1 MHz**，
 高、低电平各至少 400 ns，TMS/TDI 在下降沿改变。OpenOCD 配置在 `init` 前设置
@@ -17,12 +17,15 @@
 ```powershell
 cd D:\project\ara
 git pull --ff-only
+if ($LASTEXITCODE) { throw 'git pull failed' }
 cd hardware\fpga\ara_dsa_vcu118
-powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run.ps1 -Stage synth
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run.ps1 -Stage all
 ```
 
+`all` 自动完成全板新综合、检查、布局布线和报告，不启动局部 FIFO 小工程，
+不需要中途输入命令。综合失败就停止，不会继续实现或使用旧网表。
 必须重新综合顶层，不能用 `inspect` 的旧网表验证本次修复。
-本机协议/复位测试已通过，但尚无本版 Vivado 综合或布线结果，详见 `docs/FPGA_ISSUES.md`。
+本机协议/复位和流程测试已通过，但尚无本版 Vivado 综合或布线结果，详见 `docs/FPGA_ISSUES.md`。
 
 ## 1. Windows 上先做什么
 
@@ -109,32 +112,37 @@ source scripts/program.tcl
 
 ```powershell
 cd D:/project/ara/hardware/fpga/ara_dsa_vcu118
-powershell -NoProfile -File scripts/run.ps1
-# 综合成功并检查报告后，布局布线使用同一个入口：
-powershell -NoProfile -File scripts/run.ps1 -Stage impl
+powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/run.ps1 -Stage all
 ```
 
-若本机策略禁止运行本地脚本，可在上述命令中加入 `-ExecutionPolicy RemoteSigned`，
-只对这次 PowerShell 进程生效，不修改系统级执行策略。
+`-ExecutionPolicy RemoteSigned` 只对这次 PowerShell 进程生效，不修改系统级执行策略。
+仍可分别指定 `synth`、`impl`、`inspect` 做诊断；不指定阶段时保持原来的仅综合行为。
+`check_fifo.ps1` 是可选诊断工具，不是全局流程的前置步骤，也不由 `all` 调用。
 
 默认 Vivado 路径为 `D:/Xilinx/Vivado/2020.1/bin/vivado.bat`，可以用
 `-Vivado C:/Xilinx/Vivado/2020.1/bin/vivado.bat` 指定其他安装位置。
 结果默认放在工程所在盘的 `fpga_runs/ara_<时间>_<唯一标识>/` 下，
 也可用 `-RunRoot D:/fpga/ara_runs` 指定有写权限和足够空间的位置。
 所有诊断日志、综合/实现 DCP 都保留，报告在原工程包的 `reports/<新 run 名>/`。
+`all` 在同一个结果目录下分别保存 `synth/` 和 `impl/` 的日志与产物；
+两阶段全部通过脚本检查才生成 `completed_flow.json`，其中记录输入指纹和两个 run。
 
 此入口的边界和保护如下：
 
 - 始终打开原 XPR，新增顶层 run，不重置/删除旧 run，不重新生成或升级 IP。
 - 检查 `clkwiz`、`vio`、`ddr4` 的完成状态、过期/锁定状态及非空 DCP；不满足条件直接停止。
-- 使用独占文件句柄阻止同一工程重复启动；句柄随进程退出释放，不要手动删除 `build/managed/run.lock`。
+- 使用独占文件句柄阻止同一工程重复启动；`all` 两阶段之间也不释放锁。
+  句柄随进程退出释放，不要手动删除 `build/managed/run.lock`。
 - 保守拒绝机器上已有的 `vivado.exe`，包括 GUI 和旧 worker，即便它可能属于另一个工程。
   先保存并关闭 GUI，确认残留进程归属后再处理；脚本只列出 PID，不会自动杀进程。
 - 每次使用全新的结果目录，不读旧 `synth_1/runme.log` 判断当前进度。
   监视新目录的 `exception.log`、错误标记和崩溃日志，避免已明确启动失败却无限等待。
   没有因为运行时间长或 CPU 低就中止任务的超时策略；无错误记录的挂起仍需人工诊断。
 - 成功后记录输入文件指纹。`-Stage impl` 只使用记录的成功综合，源码变化或综合过期时拒绝实现。
+  `all` 始终新跑全板综合，使用本次通过检查的网表作为实现父任务，并在阶段前后核对同一指纹。
   原有自定义 Tcl hook 必须先审查，避免 hook 写回旧目录或修改共享 IP。
+- 新综合 run 的前置 hook 将 `Synth 8-6858/8-6859` 升级为错误，禁止常量驱动静默替换寄存器。
+  打开新综合、实现父网表和布线结果时检查 `MDRV-1`，诊断保存到 `multiple_drivers.rpt`。
 - 实现只运行到布线并生成报告，setup/hold 失败则返回错误，**不自动生成或下载 bitstream**。
   布局布线前和布线后检查 `LUTLP-1` 组合环；存在环路则停止，不添加环路豁免。
   审查 DRC、CDC 和未约束路径后再处理 bitstream；原 `output/` 的旧文件不是本次结果。

@@ -115,7 +115,7 @@ class PackageTests(unittest.TestCase):
         templates = Path(__file__).resolve().parents[1] / "scripts"
         for name in ("run.ps1", "run.tcl", "run_support.tcl", "common.tcl",
                      "create_project.tcl", "impl.tcl", "check_fifo.ps1", "check_fifo.tcl",
-                     "fifo_probe.sv"):
+                     "fifo_probe.sv", "synth_pre.tcl"):
             self.assertEqual((ROOT / "scripts" / name).read_bytes(),
                              (templates / name).read_bytes(), name)
         self.assertEqual((ROOT / "constraints/cdc.xdc").read_bytes(),

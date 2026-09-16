@@ -40,6 +40,14 @@ proc check_run {name expected} {
     }
 }
 
+proc require_no_multiple_drivers {dir} {
+    file mkdir $dir
+    report_drc -checks MDRV-1 -name ara_drivers -force -file [file join $dir multiple_drivers.rpt]
+    if {[llength [get_drc_violations -name ara_drivers MDRV*]]} {
+        error "Multiple drivers remain; inspect $dir/multiple_drivers.rpt. Run was not accepted."
+    }
+}
+
 proc write_reports {stage {reject_loops false}} {
     global package_root
     set dir [file join $package_root reports $stage]

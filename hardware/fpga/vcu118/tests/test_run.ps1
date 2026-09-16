@@ -21,6 +21,7 @@ foreach ($case in @('healthy', 'repeat_synth', 'inspect', 'inspect_stale', 'insp
     $global:FakePackage = Join-Path $base $case
     $global:FakeCase = 'healthy'
     $global:FakeCalls = 0
+    $global:FakeLog = @()
     $global:FakeSession = ''
     $global:FakeParent = ''
     foreach ($dir in @('scripts', 'rtl', 'build/ara_dsa_vcu118')) {

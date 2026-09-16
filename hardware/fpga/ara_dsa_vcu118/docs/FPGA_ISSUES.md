@@ -36,8 +36,24 @@ under `build/fifo_check_*`. It never opens/resets the board project or IP.
 This uses [named structural DRC reports](https://docs.amd.com/r/2021.2-English/ug835-vivado-tcl-commands/report_drc);
 it is not a physical timing or CDC signoff.
 
-Run this check first on Windows; only after PASS run the managed synth then
-impl. A full synth must not be retried unchanged just because Tcl crashed.
+For the normal Windows flow, run `scripts/run.ps1 -Stage all`. It starts
+fresh full-board synthesis and then implementation, without a separate
+FIFO probe or any intermediate user command. The isolated check above is
+optional diagnostics only. A full synth must not be retried unchanged just
+because Tcl crashed.
+
+The full synthesis worker runs `synth_pre.tcl`, which promotes Synth
+8-6858/8-6859 to errors. The new synthesized netlist, implementation parent
+and routed design also pass an explicit MDRV-1 gate before acceptance;
+findings are saved in `multiple_drivers.rpt`. This is an error check, not
+a change to FIFO hardware or a warning waiver. One process lock and input
+fingerprint cover both stages. Failed synthesis never launches impl;
+impl uses exactly the newly accepted synthesis, never the prior record.
+Logs are separated into `synth/` and `impl/` under one session, with
+`completed_flow.json` written only after both stages pass the script gates.
+The flow still stops at routed reports, not an automatically programmed
+bitstream or complete physical signoff.
+
 No local Vivado is available, so successful native synthesis and routing
 of this correction remain unverified until the Windows run.
 
@@ -128,7 +144,7 @@ are not metastability analysis or Vivado placement/routing validation.
 
 ### One Windows Validation Cycle
 
-Run a new managed `-Stage synth`, then `-Stage impl` after synthesis succeeds.
+Run the managed `-Stage all` to run new full-board synth then impl automatically.
 Do not use `inspect` on the old netlist to validate these RTL changes.
 The existing project and valid clkwiz/vio/ddr4 checkpoints remain in use.
 No local Vivado is installed, so this patch has no new routed timing result.

@@ -12,6 +12,7 @@ set package_root $sandbox
 set project_name ara_dsa_vcu118
 set token 012345abcdef
 set parent synth_abcdef012345
+set synth_hook [file normalize [file join [file dirname [info script]] .. scripts synth_pre.tcl]]
 
 proc assert {condition message} {
     if {![uplevel 1 [list expr $condition]]} { error "ASSERT: $message" }
@@ -30,7 +31,11 @@ proc setup {scenario} {
     set ::args_seen {}
     set ::polls 0
     set ::reported {}
+    set ::driver_checks {}
     set ::closed 0
+    file mkdir [file join $::package_root scripts]
+    file copy -force $::synth_hook [file join $::package_root scripts synth_pre.tcl]
+    if {$scenario eq "missing_hook"} { file delete [file join $::package_root scripts synth_pre.tcl] }
     foreach ip {clkwiz vio ddr4} {
         put [file join $::session old ${ip}_synth_1 ${ip}.dcp] checkpoint
     }
@@ -148,6 +153,13 @@ proc close_design {} {}
 proc require_no_combinational_loops {dir} {
     if {$::scenario eq "loop"} { error "Combinational loops remain" }
 }
+proc require_no_multiple_drivers {dir} {
+    lappend ::driver_checks $dir
+    if {$::scenario in {synth_multidriver impl_multidriver} ||
+        ($::scenario eq "route_multidriver" && [string match impl_* [file tail $dir]])} {
+        error "Multiple drivers remain"
+    }
+}
 proc get_timing_paths {args} {
     if {$::scenario eq "no_timing"} { return {} }
     return path
@@ -159,13 +171,14 @@ foreach forbidden {reset_runs delete_runs generate_target create_ip_run upgrade_
 
 set failures 0
 foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomplete_ip stale_ip locked_ip
-    missing_dcp empty_dcp hook existing_dir launcher_error error_marker crash failed_status
+    missing_dcp empty_dcp hook missing_hook existing_dir launcher_error error_marker crash failed_status
     log_cancelled log_canceled log_stackfree delayed_log_crash
-    implementation stale_parent bad_timing no_timing loop route_loop inspect inspect_stale inspect_open_error} {
+    implementation stale_parent bad_timing no_timing loop route_loop synth_multidriver impl_multidriver route_multidriver
+    inspect inspect_stale inspect_open_error} {
     setup $scenario
     set stage synth
     set use_parent -
-    if {$scenario in {implementation stale_parent bad_timing no_timing loop route_loop}} {
+    if {$scenario in {implementation stale_parent bad_timing no_timing loop route_loop impl_multidriver route_multidriver}} {
         set stage impl
         set use_parent $parent
     }
@@ -193,11 +206,17 @@ foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomple
             assert {[file exists [file join $session synth_$token runme.log]]} "crash evidence preserved"
         }
         if {$success && $stage ne "inspect"} {
+            assert {[llength $driver_checks] == ($stage eq "synth" ? 1 : 2)} "check synthesized and routed netlists"
             assert {[dict get $copied STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY] eq "none"} "options copied"
             assert {[dict get $launch_args -dir] eq $session} "fresh output directory"
             assert {$reported eq "${stage}_$token" && $closed} "reports and clean close"
+            if {$stage eq "synth"} {
+                assert {[dict get $copied STEPS.SYNTH_DESIGN.TCL.PRE] eq
+                    [file join $package_root scripts synth_pre.tcl]} "worker must execute strict synthesis hook"
+            }
         }
         if {$stage eq "inspect"} {
+            assert {![llength $driver_checks]} "historical inspection remains diagnostic only"
             assert {![llength $created] && ![llength $launched]} "inspection must not create/launch runs"
             if {$success} {
                 assert {$reported eq "inspect_$token" && $closed} "inspection writes separate reports"
@@ -205,13 +224,20 @@ foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomple
                 assert {$reported eq ""} "failed inspection must not report success"
             }
         }
-        if {$scenario eq "loop"} { assert {![llength $launched]} "block implementation before launch" }
+        if {$scenario in {loop impl_multidriver}} { assert {![llength $launched]} "block implementation before launch" }
+        if {$scenario in {synth_multidriver impl_multidriver route_multidriver}} {
+            assert {$message eq "Multiple drivers remain"} "driver gate diagnostic preserved"
+            assert {$reported eq ""} "reject before expensive reports and success marker"
+            if {$scenario eq "route_multidriver"} {
+                assert {[llength $driver_checks] == 2 && [llength $launched] == 1} "post-route gate must run"
+            }
+        }
         if {$scenario eq "implementation"} {
             assert {[dict get $args_seen -parent_run] eq $parent} "new implementation uses recorded synthesis"
             assert {[dict get $launch_args -to_step] eq "route_design"} "route-only implementation"
         }
         if {$scenario in {missing_run missing_ip incomplete_ip stale_ip locked_ip missing_dcp
-            empty_dcp hook existing_dir stale_parent}} {
+            empty_dcp hook missing_hook existing_dir stale_parent}} {
             assert {[llength $launched] == 0 && [llength $created] == 0} "preflight must stop before creation"
         }
     } failure]} {
