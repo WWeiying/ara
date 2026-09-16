@@ -1,2 +1,4 @@
 /build/
+/build_area_*/
+/build_control_*/
 __pycache__/

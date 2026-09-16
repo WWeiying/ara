@@ -1421,6 +1421,25 @@ C[m,n] = dot(A[m,:], W[n,:])，并按量化 profile 执行 scale/min correction
 都使用的同名参数。本文为避免混淆，把完整维度写成 `M_total/N_total/K`，把单条命令的 tile
 写成 `M/N/K-blocks`。
 
+当前 `ara_dispatcher.sv`、`qbs_pkg.sv`、`akv_pkg.sv` 与 `software/*` native wrappers/ABI
+对应的完整指令面如下：八个 function class 共用一个 `custom-2` major opcode `0x5b`。
+
+| `funct3` | 概念名称 | `funct7` | 用途与当前 llama.cpp 路径 |
+| ---: | --- | --- | --- |
+| 0 | `qbexec` | bits 2:0=`M-1`，bits 6:3=0 | 主路径：按 descriptor 执行量化点积，结果写 VRF |
+| 1 | `qbinfo` | 0 | 主路径：标量 capability 查询 |
+| 2 | `akvfill` | 0=FULL，1=REFILL | 兼容 v1 tile-8 fill；token-axis 主路径不发出 |
+| 3 | `akvload.v` / `vakvload` | 0=D64，1=D128，2=D96 | 主路径：context row 写 VRF；D96 要求 v2 可用 |
+| 4 | `akvinfo` | 0 | 主路径：标量 capability 查询 |
+| 5 | `akvrelease` | 0 | 主路径：使 committed context 无效 |
+| 6 | `vakv2fill` | 0=FULL，1=REFILL | 主路径：建立或替换 1..64-token tile |
+| 7 | `vakv2kcol` | 0=单列，1=Panel4 | 主路径：token-axis column/panel 写 VRF |
+
+因此当前 QBS + AKV-v2 llama.cpp 主路径合计使用七类；兼容 v1 路径仍保留 `funct3=2`。
+`M`、FULL/REFILL、D code、Panel4 都是类内参数，descriptor 中的 profile/layout/activation-access
+等字段也不是独立 opcode。表中名称仅为概念助记符，并非工具链正式汇编 mnemonic；当前 native
+wrappers 使用原始 `.word` 发出指令。各类操作数与合法性约束见下文。
+
 ### 5.1 原始标准 RVV 程序是什么样的
 
 “原 RVV 程序”不是唯一一个固定函数。GGML 会根据量化格式、VLEN、Decode/Prefill shape 和 repack
@@ -1516,7 +1535,8 @@ qbs_execute(plan,
 ```
 
 实际 wrapper 在指令前用 `fence rw,rw` 确保 descriptor、activation 和 repacked weight 对 QBS 可见；按 M
-设置 e32/m1、m2 或 m4 向量状态；发出 raw `.word`；命令返回后把 `vl` 改成 logical N，用普通
+设置 e32 向量状态：M=1 用 m1，M=2 用 m2，M=3..4 用 m4，M=5..8 用 m8；发出 raw `.word`；
+命令返回后把 `vl` 改成 logical N，用普通
 `vse32.v` 存回结果。例如 M=4 的实际核心序列是：
 
 ```asm
@@ -1978,17 +1998,24 @@ Selector 2 的 bits 33、34、37 和 selector 3 的 bit 24 目前由生成 ABI �
 这不是运行时在两套数据流之间随机选择：公共 runtime 先完整核验四个 capability words，GGML
 selected path 随后固定使用 64-token 命令族。
 
+在基础 AKV 可用而 v2 禁用的当前实现中，selector 2 仅清 bit 32，其余静态字段仍返回，selector 3
+也保持非零；不能仅凭扩展字非零或 Panel4 等 feature bit 判断 v2 可执行。公共 runtime 还兼容
+两个扩展字均为 0 的旧 v1 设备，但这不是当前包禁用 v2 时的返回方式。
+
 软件仍需先通过平台契约、设备树、OS hwprobe 或一次 trap-safe probe 确认处理器会解码 AKV；不能
 在未知 CPU 上直接执行 `akvinfo`，再期待 illegal-instruction trap 自动变成普通函数式回退。
 
-#### 5.9.5 `akvrelease` 和所有命令共有的隐式状态
+#### 5.9.5 `akvrelease` 和非查询命令的隐式状态
 
-`akvrelease` 没有显式操作数，所有 R-type 字段必须为 0，raw word 为 `0x0000505b`。它等待更老
+`akvrelease` 没有显式操作数；`funct7/rd/rs1/rs2` 必须为 0，但 `funct3=5`、opcode=`0x5b`，
+raw word 为 `0x0000505b`。它等待更老
 向量工作完成后清除 context ready；之后任何 local row/column load 都必须失败，直到新的 FULL
 成功提交。显式 RELEASE 让软件可以在一个 GQA group 结束时终止 K/V snapshot 生命周期，也为
 异常清理和未来 protection-domain 切换提供明确边界。
 
-上述指令还共同依赖以下不在 32-bit encoding 中的状态：
+`akvinfo` 在 dispatcher 中直接返回，不进入 sequencer，也不要求 `vstart=0`、`acc_cons_en=1`
+或等待 `ara_idle`；它仍要求基础 AKV 实现可用（`AkvEnable`、4 lanes、VLEN=1024），且
+`funct7=0`、`rs2=x0`。除这一查询外，上述 AKV 执行命令依赖以下隐式状态与执行约束：
 
 - `vstart` 必须为 0，当前不支持从某个 token 或 VRF word 断点重启；
 - CVA6 accelerator-consistent mode 必须开启；
@@ -3267,6 +3294,22 @@ range tag、offset、layout 和 bank，把返回字节写入：
 
 它解决的是“传输粒度”和“计算格式粒度”不一致，而不是量化数学。
 
+生产实例并不把整个 block 展开成寄存器。量化 payload 使用同步、按字节写使能的 SRAM，
+scale/min/bsum 等小元数据留在寄存器。权重、激活入口各有两项 beat FIFO；输入握手时保存
+字节的行号、原生 offset 和物理位置，下一拍进行写仲裁。跨 SRAM 字的剩余字节保存在 pending，
+可与下一 beat 合并写入。入口能继续接收，不等于最后一个字节已经进入可读存储。
+
+两个生产 adapter 启用 `UniqueInputBytes=1`：范围读取和激活重放在一个 block 清空周期内
+不会重复提交同一目标字节，因此每行只需计数已经实际写入的字节。权重最多 210 B，用 8 位；
+激活最多 292 B，用 9 位。只有合法字节互不重复、提交数达到块大小、FIFO/pending 排空后，
+该行才完整。不能改成仅数 AXI 输入握手，也不能数尚未写完的 beat。
+
+这一条件由读范围和 replay 调度保证，仿真用独立 bitmap 检查重复提交和计数上界。
+bitmap 在生产综合中去除；通用 adapter 默认关闭这个优化，仍允许重复覆盖且按字节去重。
+例如未来接入支持部分重写的生产者，必须使用默认模式或重新证明唯一性，不能只开启参数。
+清空域彼此独立，profile 的切换伴随 INIT 清空；清空期间的完成输出不被计算入口消费。
+详细写仲裁和验证说明见 [QBS SRAM 文档](qbs_block_buffer_sram.md)。
+
 ### 9.5 `qbs_compute_engine.sv`：shape 调度和 buffer 生命周期
 
 compute engine 负责：
@@ -3309,6 +3352,16 @@ weight_d, weight_dmin, activation_d
 ```
 
 后面的 dot array、correction scheduler 和 FP accumulator不需要知道 GGUF 字节偏移。
+
+实际路径使用 `CompactRead=1`：每行先共享对齐 low/high 的 16-byte 权重窗口和
+32-byte activation 窗口，
+再对连续的 2/4/8 个元素拆位，而不是每个元素和每种格式分别动态选择完整数组。
+这减少组合选数网络，不增加计算读事务、流水级或算术单元。权重低位/高位 plane 的
+逻辑组织分别为 8x128/4x128，物理上各用一个 8x128 宏；激活仍为 8x256。
+16-byte 的 Q4_0/Q5_0/IQ4_NL low payload 在两个 nibble 轮次读取同一个字，
+由 K 索引选择高/低 nibble；Q6_K 等偏置整数可通过翻转符号位再符号
+扩展恢复。scale/min/bsum 与浮点运算顺序保持不变。兼容测试的 `CompactRead=0` 仍接受原生
+索引视图，不能把这两种视图误当成存储两份权重。
 
 ### 9.7 `qbs_dot_array.sv`：32 个整数 pair/cycle
 
@@ -3361,6 +3414,17 @@ slot 在操作数被流水接收时释放，后续结果由流水中的 context�
 前一次提交的部分和对下一次提交可见；若在选择阶段提前保存 subtotal，就可能发生旧值覆盖。
 两路提交不允许指向同一个 context/stream，同一 stream 的更新保持先后顺序。
 
+slot 的 dot 仍逐 stream 保存；scale/min 只随 weight row 变化，aux 只随 activation row
+变化，因此每个 tile context 分别保存四份行元数据和四份激活元数据，last-group 只保存一份。
+同一 subgroup 的有效 streams 同拍进入 slot，必须等旧组的所有 slot 已被修正流水取走，才能
+覆盖共享元数据。最后两路旧 slot 的读取和新组写入可以发生在同一时钟沿：修正操作数寄存器
+接收旧值，共享寄存器随后保存新值。断言检查这一边界，不靠新增停顿满足它。
+
+dot subtotal 保持 28 位；aux subtotal 为 26 位有符号数，更新加法保留第 27 位检查溢出。
+即使不假设 Q8_K 的编码 bsum 等于真实激活和，保留其完整 signed-16 范围，并按 16 组、
+每组最大 unsigned-6 min 估计，绝对值上界也只有 `16*63*32768=33030144`，小于 `2^25`。
+向 FP 路径输出时符号扩展到 32 位。这是整数范围压缩，不是量化精度降低。
+
 最后一个 subgroup 真正更新 subtotal 后才置 `result_pending`。context 要等本次 block
 所有有效 stream 的结果都被 FP consumer 接受后才能复用。16-element subgroup 的短尾波
 还必须等待旧 slot 和两级校正流水排空，避免旧 M4 波与 M1/M2 尾波同时挤满校正入口。
@@ -3394,9 +3458,13 @@ QBS 内部新增的 `fpnew_top i_fpnew`，并用 tag 将返回值写回正确状
 
 “同一 accumulator 更新有序”在这里有具体电路：接收前遍历有效 table entries，若发现相同
 `request_accumulator_index_i`，就置 `request_accumulator_conflict` 并拉低 `request_ready_o`。
-请求被接受时才抓取旧 accumulator 值，首 block 则抓取零；FP micro-op 带着 entry/state tag
-运行，正 FMA 的结果用于本 entry 的负 min FMA，最终结果才写回 accumulator bank 并释放 entry。
-所以另一个 K block 不会在前一次 update 还没完成时抓到过期的部分和。不同 accumulator 可以
+请求被接受时记录 accumulator 索引和 first-block 位，并保存 activation scale。非 affine 的
+scale 乘法返回、或 affine 的 min-scale 乘法返回后，activation scale 已不再使用；此时将
+同一个 `entry_work_value_q` 改存旧 accumulator，首 block 改存零，不再为两种生命周期不重叠
+的值各留一个 32-bit 寄存器。旧 accumulator 在该 entry 有效期间由它独占，因此推迟读取不会
+读到其他 update 修改的值。FP micro-op 带着 entry/state tag 运行，正 FMA 的结果随后覆盖该
+寄存器，供负 min FMA 使用，最终结果才写回 accumulator bank 并释放 entry。
+乘法顺序、FMA 顺序、舍入和发射仲裁都不变，也不新增等待拍。不同 accumulator 可以
 交错使用 FP pipeline，同一 accumulator 不能任意重排。这是局部数值依赖控制，不由普通 RVV
 scoreboard 代管。
 
@@ -3435,7 +3503,10 @@ element 在 commit 前都必须已有 valid accumulator。VRF grant 不足时状
 Q8_K block 的 292 B 不是 16 B 的整数倍，因此相邻 block 会在 128-bit row 中产生旋转。模块按
 32-bit word steering，将相邻偶/奇 128-bit rows 放入两个单端口 banks；一个对齐到 4 B、长度最多
 16 B 的 fill/replay beat 即使跨 row，也可同时访问两个 bank。generic 仿真使用两个 128-bit SRAM
-banks；目标宏映射中每个 parity bank 使用两个 64x256 macros，共四个 macros。
+banks；目标宏映射中每个 parity bank 使用一个 76x256 宏，共两个宏。bank 的 146 个
+128-bit 逻辑行两两合并，需要 73 个 256-bit 物理字，76 深度满足编译器粒度约束。总物理容量
+为 4864 B，逻辑可用容量仍为 4672 B；读延迟、两 bank 并行访问和每拍 16 B 的接口均不变。
+逻辑地址最低位选半字，其余位直接作为宏地址，不对 76 取模，也不允许访问逻辑范围之外的字。
 
 控制上，它分别保存 committed metadata 和 in-progress fill metadata。`fill_begin` 先清旧 valid，
 每个完成的 K block 置一位 completion bitmap；只有声明范围内所有 completion bits 均为 1，
@@ -3503,11 +3574,12 @@ stream 的 256-bit D-axis words。一个完整 ready context 的逻辑数据量�
 - `akv_engine.sv`：保存 descriptor metadata、tile start/count、ready 属性和 replay 控制，不保存
   Query payload 本身。
 
-目标宏映射中，K/V 有八个 token banks，每 bank 两个 64x256 macros，共 16 个 macros；Query
-row store 使用四个 64x256 macros。20 个 macros 的原始容量为 40 KiB，其中 Query row store
-存在 padding 和当前未使用的 K/V slot；所以“有效逻辑 context 为 34,816 B”和“集成实现配置
-40 KiB SRAM macro capacity”同时成立。前者描述当前命令有效数据，后者描述物理阵列容量，二者
-都不是综合网表面积结论。
+目标宏映射中，K/V 有八个 token banks，每 bank 一个 128x256 宏，共八个宏；Query/v1 row
+store 有两个 parity banks，每 bank 一个 96x256 宏。十个宏的原始容量为 38 KiB，其中 v1
+store 保留兼容 v1 命令的 K/V slots。因此“v2 当前有效数据为 34,816 B”和“物理宏容量为
+38 KiB”同时成立。将同一 bank 的两个浅宏合并没有合并独立访问端口：每个 bank 原本每拍
+只发一个地址，八 bank 的列收集能力保持不变，并省去 bank 内的宏选择多路器。这些容量数字
+不是综合网表面积结论。
 
 同一份 row-major K/V 写入可提供两种局部 view：
 
@@ -3974,7 +4046,7 @@ bit-exact comparison；AKV context 应对搬运 bytes bit-exact；只有完整 A
 - normal VLSU、QBS、AKV 的 owner 互斥及 QBS-to-AKV handoff；
 - real Qwen/Qwen3、SmolLM2、Phi、Gemma shape 的 payload 和 llama.cpp golden。
 
-AKV context 同时跑 generic behavioral SRAM 与目标 64x256 macro wrapper。前者便于功能定位，后者
+AKV context 同时跑 generic behavioral SRAM 与目标 96x256/128x256 macro wrapper。前者便于功能定位，后者
 验证 bank/address/enable 极性和宏拼接；二者都通过才说明“算法正确”没有掩盖“宏映射错误”。系统
 handoff test 则专门检查一条 QBS terminal 后 AKV 能获得 VLSU，AKV release 后 normal RVV load
 仍能获得接口，并且 held level-valid request 不会被重复接受。

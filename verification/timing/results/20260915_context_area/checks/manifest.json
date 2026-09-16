@@ -1,0 +1,27 @@
+[
+  {
+    "path": "hardware/src/vlsu/qbs/qbs_activation_context.sv",
+    "before_sha256": "d2b3e319954daed66d30b2f86ebcabb1ecacc11dc86e2b00d41d3d3427f5873d",
+    "after_sha256": "f3a9a227bc1018252ba9e1dbabc26c2739f6f3bee4e7b73ec5f72d84f492d47a"
+  },
+  {
+    "path": "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
+    "before_sha256": "4d97728d3a6a9218c6cf89933d4f33d12c8d2284da90668a773bf5f8126bf2d6",
+    "after_sha256": "576304613df34547c7d80b04739a4a0164febd719cfcbc463d6465db6d966978"
+  },
+  {
+    "path": "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
+    "before_sha256": "f6e0cbd90289e53f012e482db19b38c458ce1a1b8779340e5e785272bfdad069",
+    "after_sha256": "f191445db9ba3bf23c3650db2710ec5df251202e39fba14dad87adacda45f205"
+  },
+  {
+    "path": "hardware/src/vlsu/akv/akv_context.sv",
+    "before_sha256": "3eeaf174ec154febd65c6affc7b2fc4fae325e48af7340ab4827635aa75b26e4",
+    "after_sha256": "dfa543233534a766ccb4b25529689f2992169ca0f9f63db9241be7e36b406103"
+  },
+  {
+    "path": "hardware/src/vlsu/akv/akv_v2_context.sv",
+    "before_sha256": "86c3a50f1d599ccb15240699e82fdee11a46fa1b60ca7e26b323ffdca2dac282",
+    "after_sha256": "ff8987bb4d25d3779e60c411c959fb5e8b88d96cf42947c142cae7ead0483ae1"
+  }
+]

@@ -28,14 +28,23 @@ DEFAULT_DC_SCRIPT = ROOT / "backend/syn/ara_soc/v1-dc/global_scripts/dc.tcl"
 DEFAULT_DC_RUNNER = ROOT / "backend/syn/ara_soc/v1-dc/run/run.cmd"
 DEFAULT_AKV_SRAM_DB = Path(
     "/home/wangwy/ara/backend/library/mem/"
-    "ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/"
-    "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
+    "ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/"
+    "ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"
 )
 DEFAULT_QBS_SRAM_DB = Path(
     "/home/wangwy/ara/backend/library/mem/"
     "ts1n28hpcpuhdsvtb8x256m1swbso_170a/DB/"
     "ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.db"
 )
+EXTRA_SRAM_NAMES = {
+    "akv_v2_sram_db": "ts1n28hpcpuhdsvtb128x256m1swbso_170a",
+    "qbs_context_sram_db": "ts1n28hpcpuhdsvtb76x256m1swbso_170a",
+    "qbs_weight_sram_db": "ts1n28hpcpuhdsvtb8x128m1swbso_170a",
+}
+EXTRA_SRAM_DBS = {
+    key: Path(f"/home/wangwy/ara/backend/library/mem/{name}/DB/{name}_tt0p9v25c.db")
+    for key, name in EXTRA_SRAM_NAMES.items()
+}
 
 COMMON_SOURCES = (
     "hardware/include/rvv_pkg.sv",
@@ -67,7 +76,7 @@ AKV_SOURCES = (
 AKV_V2_SOURCES = ("hardware/src/vlsu/akv/akv_v2_context.sv",)
 AKV_SRAM_BLACKBOX = (
     "backend/blackbox/"
-    "ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.v"
+    "ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.v"
 )
 QBS_SRAM_BLACKBOX = (
     "backend/blackbox/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.v"
@@ -85,6 +94,9 @@ class Options:
     setup: Path
     sram_db: Path
     qbs_sram_db: Path = DEFAULT_QBS_SRAM_DB
+    akv_v2_sram_db: Path = EXTRA_SRAM_DBS["akv_v2_sram_db"]
+    qbs_context_sram_db: Path = EXTRA_SRAM_DBS["qbs_context_sram_db"]
+    qbs_weight_sram_db: Path = EXTRA_SRAM_DBS["qbs_weight_sram_db"]
     dc_startup: Path | None = None
     dc_gui_setup: Path | None = None
     dc_main_setup: Path | None = None
@@ -288,13 +300,22 @@ def audit(options: Options) -> dict[str, int | str]:
         if not options.sram_db.is_file():
             raise PreflightError(f"missing AKV SRAM DB: {options.sram_db}")
         if str(options.sram_db) not in setup_text:
-            raise PreflightError("DC setup does not include the AKV 64x256 SRAM DB")
+            raise PreflightError("DC setup does not include the AKV 96x256 SRAM DB")
         if options.require_qbs:
             _require_sources(sources, (QBS_SRAM_BLACKBOX,))
             if not options.qbs_sram_db.is_file():
                 raise PreflightError(f"missing QBS SRAM DB: {options.qbs_sram_db}")
             if str(options.qbs_sram_db) not in setup_text:
                 raise PreflightError("DC setup does not include the QBS 8x256 SRAM DB")
+        for key, name in EXTRA_SRAM_NAMES.items():
+            required = options.require_akv_v2 if key == "akv_v2_sram_db" else options.require_qbs
+            if required:
+                _require_sources(sources, (f"backend/blackbox/{name}_tt0p9v25c.v",))
+                path = getattr(options, key)
+                if not path.is_file():
+                    raise PreflightError(f"missing {key}: {path}")
+                if str(path) not in setup_text:
+                    raise PreflightError(f"DC setup does not include {key}: {path}")
 
     _check_sdc(sdc_text)
     _check_integrated_flow(options)
@@ -319,6 +340,8 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser.add_argument("--dc-runner", type=Path, default=DEFAULT_DC_RUNNER)
     parser.add_argument("--sram-db", type=Path, default=DEFAULT_AKV_SRAM_DB)
     parser.add_argument("--qbs-sram-db", type=Path, default=DEFAULT_QBS_SRAM_DB)
+    for key, path in EXTRA_SRAM_DBS.items():
+        parser.add_argument("--" + key.replace("_", "-"), type=Path, default=path)
     parser.add_argument("--require-qbs", action="store_true")
     parser.add_argument("--require-akv", action="store_true")
     parser.add_argument("--require-akv-v2", action="store_true")

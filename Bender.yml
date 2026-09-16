@@ -120,6 +120,10 @@ sources:
 
     - target: sram_blackbox
       files:
+        - backend/blackbox/ts1n28hpcpuhdsvtb76x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.v
+        - backend/blackbox/ts1n28hpcpuhdsvtb8x128m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpsvtb8192x128m4swbaso_180a_tt0p9v25c.v
         - backend/blackbox/ts1n28hpcpuhdsvtb16x64m1swbso_170a_tt0p9v25c.v

@@ -9,16 +9,42 @@ ADAPTER_REFERENCE ?= 7b7c3de0
 SRAM_REFERENCE ?= be1487b5
 SRAM_DEFINES ?=
 SRAM_EXTRA_SOURCES ?=
-PAYLOAD_REFERENCE ?= 1b0aec5f
 HELPER_REFERENCE ?= 1b0aec5f
 DATAPATH_REFERENCE ?= HEAD
+AREA_REFERENCE ?= 630e16b3
+AREA_DEFINES ?=
 BEFORE_DIR ?=
 VFDSU_DIR := $(ROOT)/hardware/deps/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl
 GATED_CLOCK := $(ROOT)/hardware/deps/fpnew/vendor/opene906/E906_RTL_FACTORY/gen_rtl/clk/rtl/gated_clk_cell.v
 DISPATCHER_BEFORE ?=
 DISPATCHER_FEATURES ?= +define+ARA_QBS_ENABLE+ARA_AKV_ENABLE+ARA_AKV_V2_ENABLE
+DISPATCHER_CHECK_ARGS ?=
 
 .PHONY: qbs-pipeline-check
+.PHONY: decoder-check
+.PHONY: area-engine-check
+area-engine-check:
+	mkdir -p $(BUILD)/area_reference
+	git -C $(ROOT) show $(AREA_REFERENCE):hardware/src/vlsu/qbs/qbs_block_adapter.sv > $(BUILD)/area_reference/original.sv
+	sed -e 's/\bqbs_block_adapter\b/qbs_block_adapter_area_reference/g' \
+		-e 's/logic \[255:0\] weight_window_o \[4\]\[2\], activation_window_o \[4\]/logic [127:0] weight_window_o [4][2], output logic [255:0] activation_window_o [4]/' \
+		$(BUILD)/area_reference/original.sv > $(BUILD)/area_reference/adapter.sv
+	$(MAKE) -C $(ROOT)/verification/qbs rtl-engine-check \
+		RTL_ENGINE_BUILD=$(BUILD)/engine RTL_RUN_TIMEOUT=$(RUN_TIMEOUT) \
+		RTL_ENGINE_DEFINES="$(AREA_DEFINES)" \
+		RTL_EXTRA_SOURCES="$(BUILD)/area_reference/adapter.sv $(CURDIR)/qbs_adapter_area_checker.sv $(CURDIR)/qbs_unique_commit_checker.sv"
+
+decoder-check:
+	mkdir -p $(BUILD)/decoder
+	git -C $(ROOT) show $(AREA_REFERENCE):hardware/src/vlsu/qbs/qbs_profile_decoder.sv > $(BUILD)/decoder/original.sv
+	sed 's/\bqbs_profile_decoder\b/qbs_profile_decoder_reference/g' $(BUILD)/decoder/original.sv > $(BUILD)/decoder/reference.sv
+	cd $(BUILD)/decoder && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
+		$(ROOT)/hardware/include/qbs_pkg.sv $(ROOT)/hardware/src/vlsu/qbs/qbs_profile_decoder.sv \
+		reference.sv $(CURDIR)/qbs_decoder_equivalence_tb.sv -top qbs_decoder_equivalence_tb -o simv
+	cd $(BUILD)/decoder && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	grep -q 'QBS decoder equivalence PASS' $(BUILD)/decoder/run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/decoder/run.log
+
 qbs-pipeline-check:
 	mkdir -p $(BUILD)/dot_pipeline
 	cd $(BUILD)/dot_pipeline && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
@@ -46,7 +72,7 @@ feedback-check:
 .PHONY: dispatcher-check
 dispatcher-check:
 	@test -n "$(DISPATCHER_BEFORE)"
-	python3 generate_dispatcher_check.py --before $(DISPATCHER_BEFORE) --output $(BUILD)/dispatcher
+	python3 generate_dispatcher_check.py --before $(DISPATCHER_BEFORE) --output $(BUILD)/dispatcher $(DISPATCHER_CHECK_ARGS)
 	cd $(BUILD)/dispatcher && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
 		+define+FOR_VERIFY $(DISPATCHER_FEATURES) \
 		+incdir+$(ROOT)/hardware/deps/common_cells/include+$(ROOT)/hardware/include+$(BUILD)/dispatcher \
@@ -57,19 +83,47 @@ dispatcher-check:
 		$(ROOT)/hardware/deps/common_cells/src/delta_counter.sv \
 		$(ROOT)/hardware/deps/common_cells/src/counter.sv \
 		$(ROOT)/hardware/src/segment_sequencer.sv \
+		segment_sequencer_reference.sv \
 		ara_dispatcher_reference.sv $(ROOT)/hardware/src/ara_dispatcher.sv \
 		$(CURDIR)/ara_dispatcher_timing.sv \
-		$(CURDIR)/dispatcher_equivalence_tb.sv -top dispatcher_equivalence_tb -o simv
+		dispatcher_equivalence_tb.sv -top dispatcher_equivalence_tb -o simv
 	cd $(BUILD)/dispatcher && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
 	grep -q 'Dispatcher equivalence PASS' $(BUILD)/dispatcher/run.log
 	! grep -Eq 'Fatal:|Error:' $(BUILD)/dispatcher/run.log
 
+.PHONY: dispatcher-layout-check
+dispatcher-layout-check:
+	$(MAKE) dispatcher-check DISPATCHER_CHECK_ARGS=--layout
+	cd $(BUILD)/dispatcher && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
+		+incdir+$(ROOT)/hardware/deps/common_cells/include -l layout_compile.log \
+		$(PACKAGES) layout.sv -top layout_tb -o layout_simv
+	cd $(BUILD)/dispatcher && timeout --foreground $(RUN_TIMEOUT) ./layout_simv -l layout_run.log
+	grep -q 'Dispatcher layout equivalence PASS' $(BUILD)/dispatcher/layout_run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/dispatcher/layout_run.log
+
 .PHONY: closure-cones address-check round-check akv-count-check
+.PHONY: vstu-check
+vstu-check:
+	@test -n "$(BEFORE_DIR)"
+	python3 generate_vstu_check.py --before $(BEFORE_DIR)/vstu.sv --output $(BUILD)/vstu
+	cd $(BUILD)/vstu && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l compile.log \
+		+incdir+$(ROOT)/hardware/deps/common_cells/include+$(ROOT)/hardware/include+$(BUILD)/vstu \
+		$(PACKAGES) $(ROOT)/hardware/deps/common_cells/src/spill_register_flushable.sv \
+		$(ROOT)/hardware/deps/common_cells/src/fifo_v3.sv \
+		$(ROOT)/hardware/deps/common_cells/src/fall_through_register.sv \
+		$(ROOT)/hardware/src/vlsu/vstu.sv vstu_reference.sv $(CURDIR)/vstu_equivalence_tb.sv \
+		-top vstu_equivalence_tb -o simv
+	cd $(BUILD)/vstu && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log
+	grep -q 'VSTU equivalence PASS' $(BUILD)/vstu/run.log
+	! grep -Eq 'Fatal:|Error:' $(BUILD)/vstu/run.log
+
 closure-cones:
 	@test -n "$(BEFORE_DIR)"
 	python3 generate_closure_checks.py --before-dir $(BEFORE_DIR) --output $(BUILD)/cones
 
-address-check: closure-cones
+address-check:
+	@test -n "$(BEFORE_DIR)"
+	python3 generate_closure_checks.py --before-dir $(BEFORE_DIR) --output $(BUILD)/cones --address-only
 	cd $(BUILD)/cones && $(VCS) -full64 -sverilog -timescale=1ns/1ps -l address_compile.log \
 		$(PACKAGES) addrgen_cones.sv $(CURDIR)/addrgen_end_equivalence_tb.sv \
 		-top addrgen_end_equivalence_tb -o address_simv
@@ -224,14 +278,12 @@ adapter-baseline-engine-check:
 .PHONY: payload-check
 payload-check:
 	mkdir -p $(BUILD)/payload
-	git -C $(ROOT) show $(PAYLOAD_REFERENCE):hardware/src/vlsu/qbs/qbs_payload_buffer.sv > $(BUILD)/payload/original.sv
-	sed 's/\bqbs_payload_buffer\b/qbs_payload_buffer_reference/g' $(BUILD)/payload/original.sv > $(BUILD)/payload/reference.sv
 	cd $(BUILD)/payload && $(VCS) -full64 -sverilog -timescale=1ns/1ps \
 		+lint=TFIPC-L -l compile.log $(ROOT)/hardware/include/qbs_pkg.sv \
 		$(ROOT)/hardware/deps/tech_cells_generic/src/rtl/tc_sram.sv \
 		$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_sram.sv \
 		$(ROOT)/hardware/src/vlsu/qbs/qbs_payload_buffer.sv \
-		reference.sv $(CURDIR)/qbs_payload_equivalence_tb.sv \
+		$(CURDIR)/qbs_payload_reference.sv $(CURDIR)/qbs_payload_equivalence_tb.sv \
 		-top qbs_payload_equivalence_tb -o simv
 	cd $(BUILD)/payload && timeout --foreground $(RUN_TIMEOUT) ./simv -l run.log $(SIM_ARGS)
 	grep -q 'QBS payload equivalence PASS' $(BUILD)/payload/run.log
@@ -241,6 +293,13 @@ sram-references:
 	$(MAKE) adapter-references BUILD=$(BUILD) ADAPTER_REFERENCE=$(SRAM_REFERENCE)
 
 .PHONY: stream-check
+.PHONY: unique-adapter-check
+unique-adapter-check:
+	$(MAKE) sram-check BUILD=$(BUILD) \
+		SRAM_DEFINES="$(SRAM_DEFINES) +define+QBS_STREAM_EQUIV+QBS_UNIQUE_INPUT_BYTES" \
+		SRAM_EXTRA_SOURCES="$(SRAM_EXTRA_SOURCES) $(CURDIR)/qbs_unique_commit_checker.sv" \
+		SIM_ARGS="$(SIM_ARGS) +QBS_STROBE_STRIDE=257"
+
 stream-check:
 	$(MAKE) sram-check BUILD=$(BUILD) \
 		SRAM_DEFINES="$(SRAM_DEFINES) +define+QBS_STREAM_EQUIV" \

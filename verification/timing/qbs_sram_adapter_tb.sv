@@ -4,6 +4,11 @@
 
 module qbs_sram_adapter_tb;
   import qbs_pkg::*;
+`ifdef QBS_UNIQUE_INPUT_BYTES
+  localparam bit UniqueTraffic = 1'b1;
+`else
+  localparam bit UniqueTraffic = 1'b0;
+`endif
   logic clk_i = 0;
   always #5 clk_i = ~clk_i;
   logic rst_ni = 0;
@@ -33,7 +38,8 @@ module qbs_sram_adapter_tb;
   for (genvar bank = 0; bank < 2; bank++) begin : gen_adapter
     assign wpending[bank] = i_dut.weight_write_pending;
     assign apending[bank] = i_dut.activation_write_pending;
-    qbs_block_adapter #(.ActivationContextBase(bank * 4), .NativeView(1'b0)) i_dut (
+    qbs_block_adapter #(.ActivationContextBase(bank * 4), .NativeView(1'b0),
+                        .UniqueInputBytes(UniqueTraffic)) i_dut (
       .weight_window_o(), .activation_window_o(), .weight_side_o(), .activation_side_o(),
       .weight_write_ready_o(wready[bank]), .activation_write_ready_o(aready[bank]),
       .weight_write_valid_i(weight_write_valid_i && (&wready)),
@@ -268,7 +274,7 @@ module qbs_sram_adapter_tb;
           ? 12'(ap % alen) : 12'(ap);
       wm = 16'((1 << wtake) - 1);
       am = 16'((1 << atake) - 1);
-      for (int pass = 0; pass < 3; pass++) begin
+      for (int pass = 0; pass < (UniqueTraffic ? 2 : 3); pass++) begin
         pattern = pass == 0 ? 16'h5a5a : pass == 1 ? 16'ha5a5 : 16'hffff;
         weight_write_strb_i = wm & pattern;
         activation_write_strb_i = am & pattern;
@@ -303,6 +309,10 @@ module qbs_sram_adapter_tb;
     weight_read_i = 0;
     activation_read_i = 0;
     tick();
+    if (UniqueTraffic) begin
+      cases++;
+      return;
+    end
     // Cancel pending payload, including an unrelated read-domain clear.
     weight_write_valid_i = 1;
     activation_write_valid_i = 1;
@@ -343,6 +353,7 @@ module qbs_sram_adapter_tb;
     int offsets [6] = '{24, 88, 96, 100, 24, 32};
     bit wdone, adone;
     int wlen, alen;
+    if (UniqueTraffic) offsets = '{24, 88, 152, 184, 56, 120};
     weight_profile_i = QBS_WEIGHT_PROFILE_Q6_K;
     activation_profile_i = QBS_ACTIVATION_PROFILE_Q8_K;
     weight_row_count_i = 2;
@@ -410,11 +421,15 @@ module qbs_sram_adapter_tb;
     end
     assert (discontinuous_stalls > 0) else $fatal(1, "missing capacity backpressure test");
     read_windows();
-    $display("QBS SRAM discontinuous/duplicate PASS stalls=%0d", discontinuous_stalls);
+    if (UniqueTraffic)
+      $display("QBS SRAM discontinuous/unique PASS stalls=%0d", discontinuous_stalls);
+    else
+      $display("QBS SRAM discontinuous/duplicate PASS stalls=%0d", discontinuous_stalls);
   endtask
 
   task automatic full_ingress_clear;
     int offsets [4] = '{24, 88, 152, 24};
+    if (UniqueTraffic) offsets[3] = 184;
     weight_profile_i = QBS_WEIGHT_PROFILE_Q6_K;
     activation_profile_i = QBS_ACTIVATION_PROFILE_Q8_K;
     weight_row_count_i = 1;
@@ -535,7 +550,7 @@ module qbs_sram_adapter_tb;
     discontinuous_case();
     full_ingress_clear();
     all_strobes();
-    assert (simultaneous > 0 && duplicates > 0 && clear_collisions > 0 && idle_cycles > 0)
+    assert (simultaneous > 0 && (UniqueTraffic || duplicates > 0) && clear_collisions > 0 && idle_cycles > 0)
       else $fatal(1, "missing adapter corner coverage");
     $display("QBS SRAM adapter PASS cases=%0d strobe_masks=%0d cycles=%0d simultaneous=%0d duplicates=%0d clear_collisions=%0d idle=%0d",
              cases, strobe_masks, cycles, simultaneous, duplicates, clear_collisions, idle_cycles);

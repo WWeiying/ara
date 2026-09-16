@@ -132,6 +132,20 @@ class CollectSynthesisResultsTest(unittest.TestCase):
         with self.assertRaisesRegex(MODULE.CollectionError, "current RTL"):
             MODULE.validate_summary(self.output, "standalone", self.root)
 
+    def test_capacity_matched_organization(self) -> None:
+        self.write_standalone_reports()
+        text = self.summary_rpt.read_text()
+        text = text.replace("akv_sram_macro_count=20", "akv_sram_macro_count=10")
+        text = text.replace("akv_v1_sram_macro_count=4", "akv_v1_sram_macro_count=2")
+        text = text.replace("akv_v2_sram_macro_count=16", "akv_v2_sram_macro_count=8")
+        text = text.replace("physical_sram_capacity_bits=327680", "physical_sram_capacity_bits=311296")
+        self.summary_rpt.write_text(text)
+        self.mark_fresh()
+        with mock.patch.object(MODULE.subprocess, "check_output", return_value="deadbeef\n"):
+            summary = MODULE.collect(self.spec())
+        self.assertEqual(summary["metrics"]["akv_sram_macro_count"], 10)
+        MODULE.validate_summary(self.output, "standalone", self.root)
+
     def test_old_reports_are_rejected_after_filelist_regeneration(self) -> None:
         self.write_standalone_reports()
         self.mark_fresh()

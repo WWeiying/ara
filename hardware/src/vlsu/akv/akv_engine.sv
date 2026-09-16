@@ -442,18 +442,44 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       ? 8'(unsigned'(context_q_rows_q) + 2 * unsigned'(fill_tile_count_q))
       : 8'(2 * unsigned'(fill_tile_count_q));
 
+  // Per-stream cursors keep token-index multiplication off the range FIFO
+  // input. Initialize in the existing validate/command cycle and advance only
+  // after the corresponding request is accepted, including across backpressure.
+  logic [63:0] q_read_address_q, k_read_address_q, v_read_address_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      q_read_address_q <= '0;
+      k_read_address_q <= '0;
+      v_read_address_q <= '0;
+    end else if (state_q == AKV_ENGINE_VALIDATE && descriptor_valid) begin
+      q_read_address_q <= descriptor.q_base;
+      k_read_address_q <= descriptor.k_base +
+          64'(48'(requested_tile_start_q[15:0]) * descriptor.k_token_stride_bytes);
+      v_read_address_q <= descriptor.v_base +
+          64'(48'(requested_tile_start_q[15:0]) * descriptor.v_token_stride_bytes);
+    end else if (command_fire && command_i inside {AKV_COMMAND_REFILL, AKV_COMMAND_V2_REFILL}) begin
+      k_read_address_q <= context_k_base_q +
+          64'(48'(command_tile_start_i[15:0]) * context_k_stride_q);
+      v_read_address_q <= context_v_base_q +
+          64'(48'(command_tile_start_i[15:0]) * context_v_stride_q);
+    end else if (state_q == AKV_ENGINE_PAYLOAD && read_range_fire) begin
+      case (read_range_tag.role)
+        AKV_RANGE_Q: q_read_address_q <= q_read_address_q + context_q_stride_q;
+        AKV_RANGE_K: k_read_address_q <= k_read_address_q + context_k_stride_q;
+        AKV_RANGE_V: v_read_address_q <= v_read_address_q + context_v_stride_q;
+        default:;
+      endcase
+    end
+  end
+
   always_comb begin : form_read_range
     automatic int unsigned logical_index;
-    automatic logic [63:0] token_index;
-    automatic logic [63:0] byte_offset;
 
     read_range_valid = 1'b0;
     read_range_vaddr = '0;
     read_range_bytes = '0;
     read_range_tag = '{role: AKV_RANGE_DESCRIPTOR, index: '0};
     logical_index = unsigned'(range_issue_index_q);
-    token_index = '0;
-    byte_offset = '0;
 
     if (state_q == AKV_ENGINE_DESCRIPTOR_REQUEST) begin
       read_range_valid = 1'b1;
@@ -467,24 +493,19 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       if (active_command_is_full &&
           logical_index < unsigned'(context_q_rows_q)) begin
         read_range_tag = '{role: AKV_RANGE_Q, index: 6'(logical_index)};
-        byte_offset = 64'(logical_index) * context_q_stride_q;
-        read_range_vaddr = VAddrWidth'(context_q_base_q + byte_offset);
+        read_range_vaddr = VAddrWidth'(q_read_address_q);
       end else begin
         if (active_command_is_full)
           logical_index -= unsigned'(context_q_rows_q);
         if (logical_index < unsigned'(fill_tile_count_q)) begin
-          token_index = 64'(fill_tile_start_q) + 64'(logical_index);
           read_range_tag = '{role: AKV_RANGE_K,
                             index: 6'(logical_index)};
-          byte_offset = token_index * context_k_stride_q;
-          read_range_vaddr = VAddrWidth'(context_k_base_q + byte_offset);
+          read_range_vaddr = VAddrWidth'(k_read_address_q);
         end else begin
           logical_index -= unsigned'(fill_tile_count_q);
-          token_index = 64'(fill_tile_start_q) + 64'(logical_index);
           read_range_tag = '{role: AKV_RANGE_V,
                             index: 6'(logical_index)};
-          byte_offset = token_index * context_v_stride_q;
-          read_range_vaddr = VAddrWidth'(context_v_base_q + byte_offset);
+          read_range_vaddr = VAddrWidth'(v_read_address_q);
         end
       end
     end
@@ -1125,6 +1146,20 @@ module akv_engine import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
+      if (state_q == AKV_ENGINE_PAYLOAD && read_range_valid) begin
+        case (read_range_tag.role)
+          AKV_RANGE_Q: assert (read_range_vaddr == context_q_base_q +
+              64'(read_range_tag.index) * context_q_stride_q)
+            else $fatal(1, "AKV Q cursor differs from indexed address");
+          AKV_RANGE_K: assert (read_range_vaddr == context_k_base_q +
+              (64'(fill_tile_start_q) + 64'(read_range_tag.index)) * context_k_stride_q)
+            else $fatal(1, "AKV K cursor differs from indexed address");
+          AKV_RANGE_V: assert (read_range_vaddr == context_v_base_q +
+              (64'(fill_tile_start_q) + 64'(read_range_tag.index)) * context_v_stride_q)
+            else $fatal(1, "AKV V cursor differs from indexed address");
+          default:;
+        endcase
+      end
       assert (!(success_valid_o && fault_valid_o));
       assert (range_issue_index_q <= payload_range_count);
       assert (range_completion_count_q <= range_issue_index_q);

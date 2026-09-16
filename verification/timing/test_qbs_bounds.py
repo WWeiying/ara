@@ -47,10 +47,12 @@ class QbsBounds(unittest.TestCase):
         products = [b * m for b, m in itertools.product((-32768, 32767), (0, 63))]
         self.assert_signed_fits(products, 23)
         self.assert_signed_fits([p + total for p, total in itertools.product(
-            products, (-(1 << 31), (1 << 31) - 1))], 33)
+            products, (-(1 << 25), (1 << 25) - 1))], 27)
         for groups, minimum_max in ((8, 63), (16, 15)):
             self.assert_signed_fits([b * minimum_max * groups
-                                     for b in (-32768, 32767)], 32)
+                                     for b in (-32768, 32767)], 26)
+        # Deliberately combine the largest group count and min across profiles.
+        self.assert_signed_fits([b * 63 * 16 for b in (-32768, 32767)], 26)
 
 
 if __name__ == "__main__":

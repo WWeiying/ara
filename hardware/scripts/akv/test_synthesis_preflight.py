@@ -40,6 +40,14 @@ class SynthesisPreflightTest(unittest.TestCase):
         )
         self.setup.write_text(
             f"set akv_db {self.sram_db}\nset qbs_db {self.qbs_sram_db}\n", encoding="utf-8")
+        self.extra_dbs = {}
+        for key in MODULE.EXTRA_SRAM_NAMES:
+            path = self.root / f"{key}.db"
+            path.write_text("db")
+            self.extra_dbs[key] = path
+        with self.setup.open("a") as output:
+            for key, path in self.extra_dbs.items():
+                output.write(f"set {key} {path}\n")
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -69,6 +77,8 @@ class SynthesisPreflightTest(unittest.TestCase):
         if blackbox:
             sources.append(MODULE.AKV_SRAM_BLACKBOX)
         sources.append(MODULE.QBS_SRAM_BLACKBOX)
+        sources += [f"backend/blackbox/{name}_tt0p9v25c.v"
+                    for name in MODULE.EXTRA_SRAM_NAMES.values()]
         self.filelist.write_text("\n".join([*defines, *sources]) + "\n", encoding="utf-8")
 
     def options(self) -> object:
@@ -84,6 +94,7 @@ class SynthesisPreflightTest(unittest.TestCase):
             require_macro_sram=True,
             nr_lanes=4,
             vlen=1024,
+            **self.extra_dbs,
         )
 
     def test_complete_qbs_akv_v2_inputs_pass(self) -> None:
@@ -98,7 +109,7 @@ class SynthesisPreflightTest(unittest.TestCase):
 
     def test_missing_macro_blackbox_is_rejected(self) -> None:
         self.write_filelist(blackbox=False)
-        with self.assertRaisesRegex(MODULE.PreflightError, "64x256"):
+        with self.assertRaisesRegex(MODULE.PreflightError, "96x256"):
             MODULE.audit(self.options())
 
     def test_missing_macro_selection_define_is_rejected(self) -> None:
@@ -107,6 +118,15 @@ class SynthesisPreflightTest(unittest.TestCase):
         self.filelist.write_text(text)
         with self.assertRaisesRegex(MODULE.PreflightError, "TARGET_SRAM_MC"):
             MODULE.audit(self.options())
+
+    def test_each_capacity_matched_library_is_required(self) -> None:
+        self.write_filelist()
+        for key, path in self.extra_dbs.items():
+            with self.subTest(library=key):
+                path.unlink()
+                with self.assertRaisesRegex(MODULE.PreflightError, key):
+                    MODULE.audit(self.options())
+                path.write_text("db")
 
     def test_missing_qbs_payload_source_is_rejected(self) -> None:
         self.write_filelist()

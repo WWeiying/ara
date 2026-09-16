@@ -35,3 +35,63 @@ module TS1N28HPCPUHDSVTB64X256M1SWBSO (
                   ^RTSEL ^ ^WTSEL;
 
 endmodule
+
+// Functional-only model; vendor models are also exercised by the area regression.
+module TS1N28HPCPUHDSVTB76X256M1SWBSO (
+  input logic SLP, SD, CLK, CEB, WEB, CEBM, WEBM,
+  input logic [6:0] A,
+  input logic [255:0] D, BWEB,
+  input logic [6:0] AM,
+  input logic [255:0] DM, BWEBM,
+  input logic BIST,
+  input logic [1:0] RTSEL, WTSEL,
+  output logic [255:0] Q
+);
+  logic [255:0] memory [76];
+  always_ff @(posedge CLK) if (!CEB) begin
+    assert (unsigned'(A) < 76) else $fatal(1, "context SRAM address out of range");
+    assert (!SLP && !SD && !BIST) else $fatal(1, "unsupported context SRAM test mode");
+    if (!WEB) memory[A] <= (memory[A] & BWEB) | (D & ~BWEB);
+    else Q <= memory[A];
+  end
+endmodule
+
+// Functional-only model; vendor models are also exercised by the area regression.
+module TS1N28HPCPUHDSVTB96X256M1SWBSO (
+  input logic SLP, SD, CLK, CEB, WEB, CEBM, WEBM,
+  input logic [6:0] A,
+  input logic [255:0] D, BWEB,
+  input logic [6:0] AM,
+  input logic [255:0] DM, BWEBM,
+  input logic BIST,
+  input logic [1:0] RTSEL, WTSEL,
+  output logic [255:0] Q
+);
+  logic [255:0] memory [96];
+  always_ff @(posedge CLK) if (!CEB) begin
+    assert (unsigned'(A) < 96) else $fatal(1, "context SRAM address out of range");
+    assert (!SLP && !SD && !BIST) else $fatal(1, "unsupported context SRAM test mode");
+    if (!WEB) memory[A] <= (memory[A] & BWEB) | (D & ~BWEB);
+    else Q <= memory[A];
+  end
+endmodule
+
+// Functional-only model; vendor models are also exercised by the area regression.
+module TS1N28HPCPUHDSVTB128X256M1SWBSO (
+  input logic SLP, SD, CLK, CEB, WEB, CEBM, WEBM,
+  input logic [6:0] A,
+  input logic [255:0] D, BWEB,
+  input logic [6:0] AM,
+  input logic [255:0] DM, BWEBM,
+  input logic BIST,
+  input logic [1:0] RTSEL, WTSEL,
+  output logic [255:0] Q
+);
+  logic [255:0] memory [128];
+  always_ff @(posedge CLK) if (!CEB) begin
+    assert (unsigned'(A) < 128) else $fatal(1, "context SRAM address out of range");
+    assert (!SLP && !SD && !BIST) else $fatal(1, "unsupported context SRAM test mode");
+    if (!WEB) memory[A] <= (memory[A] & BWEB) | (D & ~BWEB);
+    else Q <= memory[A];
+  end
+endmodule

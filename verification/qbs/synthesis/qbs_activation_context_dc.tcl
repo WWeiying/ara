@@ -10,7 +10,7 @@ file mkdir $output_dir
 define_design_lib WORK -path [file join $output_dir work]
 
 set std_library "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db"
-set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
+set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb76x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb76x256m1swbso_170a_tt0p9v25c.db"
 set synthetic_library "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb"
 
 set_app_var target_library $std_library
@@ -46,14 +46,14 @@ redirect [file join $output_dir references.rpt] {report_reference -hierarchy}
 redirect [file join $output_dir resources.rpt] {report_resources}
 
 set context_macros [get_cells -hierarchical -filter \
-    "ref_name == TS1N28HPCPUHDSVTB64X256M1SWBSO"]
+    "ref_name == TS1N28HPCPUHDSVTB76X256M1SWBSO"]
 set macro_count [sizeof_collection $context_macros]
 set report_file [open [file join $output_dir context_summary.rpt] w]
 puts $report_file "clock_period_ns=1.0"
 puts $report_file "clock_uncertainty_ns=0.15"
 puts $report_file "logical_payload_bits=37376"
 puts $report_file "physical_sram_macro_count=$macro_count"
-puts $report_file "physical_sram_capacity_bits=[expr {$macro_count * 64 * 256}]"
+puts $report_file "physical_sram_capacity_bits=[expr {$macro_count * 76 * 256}]"
 close $report_file
 
 write -format ddc -hierarchy -output [file join $output_dir qbs_activation_context.ddc]

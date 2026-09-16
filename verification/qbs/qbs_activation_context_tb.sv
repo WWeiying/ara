@@ -98,7 +98,7 @@ module qbs_activation_context_tb;
 
   function automatic logic [7:0] expected_byte(
       input int unsigned block, input int unsigned offset);
-    return 8'((block * 8'h61 + offset * 8'h17 + 8'h3d) & 8'hff);
+    return 8'((block * 8'h61 + offset * 8'h17 + fill_generation) & 8'hff);
   endfunction
 
   task automatic pulse_fill_begin(input logic [7:0] generation,
@@ -179,16 +179,16 @@ module qbs_activation_context_tb;
         for (int unsigned lane = 0; lane < 16; lane++) begin
           const int unsigned offset = unsigned'(replay_offset) + lane;
           const logic expected_valid = offset < QbsQ8KBlockBytes;
-          if (replay_strb[lane] != expected_valid)
+          if (replay_strb[lane] !== expected_valid)
             $fatal(1, "replay strobe mismatch block=%0d offset=%0d",
                    block, offset);
-          if (expected_valid && replay_data[lane * 8 +: 8] !=
+          if (expected_valid && replay_data[lane * 8 +: 8] !==
                                 expected_byte(block, offset))
             $fatal(1, "replay data mismatch block=%0d offset=%0d got=%02x",
                    block, offset, replay_data[lane * 8 +: 8]);
           if (expected_valid) accepted_bytes++;
         end
-        if (replay_last !=
+        if (replay_last !==
             (unsigned'(replay_offset) + 16 >= QbsQ8KBlockBytes))
           $fatal(1, "replay last mismatch at offset %0d", replay_offset);
       end
@@ -287,7 +287,28 @@ module qbs_activation_context_tb;
     if (fill_in_progress || context_valid)
       $fatal(1, "aborted FILL left a reusable context");
 
-    $display("QBS activation context PASS");
+    // Exercise every physical address, both packed halves, and the final
+    // partial beat; repeat with new data so stale contents cannot pass.
+    for (int pass = 0; pass < 2; pass++) begin
+      pulse_fill_begin(8'h60 + 8'(pass), QbsActivationContextMaxKBlocks);
+      for (int block = 0; block < QbsActivationContextMaxKBlocks; block++)
+        fill_block(block, 4 * (1 + (block + pass) % 4));
+      if (!fill_ready_to_commit) $fatal(1, "full-depth context incomplete");
+      @(negedge clk);
+      fill_commit = 1'b1;
+      @(negedge clk);
+      fill_commit = 1'b0;
+      check_lookup(8'h60 + 8'(pass), QbsActivationContextMaxKBlocks,
+                   1'b1, QBS_VALIDATION_OK);
+      for (int block = QbsActivationContextMaxKBlocks - 1; block >= 0; block--)
+        replay_and_check(block);
+      @(negedge clk);
+      release_context = 1'b1;
+      @(negedge clk);
+      release_context = 1'b0;
+    end
+
+    $display("QBS activation context PASS: full depth, refill, alignment, backpressure");
     $finish;
   end
 

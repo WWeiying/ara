@@ -643,10 +643,42 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   );
 
     automatic int unsigned max_burst_bytes = 256 << eff_axi_dw_log;
+    localparam int LengthWidth = $bits(vlen_t) + 1 > clog2_AxiStrobeWidth + 9
+        ? $bits(vlen_t) + 1 : clog2_AxiStrobeWidth + 9;
+    localparam int OffsetWidth = LengthWidth > 13 ? LengthWidth : 13;
 
-    // Keep the existing AXI boundary rules, but avoid serial full-width
-    // carry chains in addr + length - 1 and the subsequent alignment bump.
-    if (AxiAddrWidth <= 64) begin
+    // Length, alignment and the exclusive-end adjustment only carry through
+    // this bounded low word. Compute upper-word +/-1 in parallel, retaining
+    // modulo-address-width wrap, zero length and the existing page clamp.
+    if (AxiAddrWidth > OffsetWidth && AxiAddrWidth <= 64) begin
+      automatic logic [OffsetWidth+1:0] next_low, end_low;
+      automatic logic [AxiAddrWidth-OffsetWidth-1:0] upper, upper_inc, upper_dec;
+      upper = addr[AxiAddrWidth-1:OffsetWidth];
+      upper_inc = upper + 1'b1;
+      upper_dec = upper - 1'b1;
+      next_low = {2'b0, addr[OffsetWidth-1:0]};
+      if (num_bytes >= max_burst_bytes) begin
+        next_low = next_low + (OffsetWidth+2)'(max_burst_bytes);
+        next_low = (next_low >> eff_axi_dw_log) << eff_axi_dw_log;
+      end else begin
+        next_low = next_low + (OffsetWidth+2)'(num_bytes) - 1'b1;
+        next_low = (next_low >> eff_axi_dw_log) << eff_axi_dw_log;
+        next_low = next_low + (OffsetWidth+2)'(eff_axi_dw);
+      end
+      end_low = next_low - 1'b1;
+      aligned_next_start_addr = {upper, next_low[OffsetWidth-1:0]};
+      aligned_end_addr = {upper, end_low[OffsetWidth-1:0]};
+      case (next_low[OffsetWidth+1:OffsetWidth])
+        2'b01: aligned_next_start_addr[AxiAddrWidth-1:OffsetWidth] = upper_inc;
+        2'b11: aligned_next_start_addr[AxiAddrWidth-1:OffsetWidth] = upper_dec;
+        default:;
+      endcase
+      case (end_low[OffsetWidth+1:OffsetWidth])
+        2'b01: aligned_end_addr[AxiAddrWidth-1:OffsetWidth] = upper_inc;
+        2'b11: aligned_end_addr[AxiAddrWidth-1:OffsetWidth] = upper_dec;
+        default:;
+      endcase
+    end else if (AxiAddrWidth <= 64) begin
       if (num_bytes >= max_burst_bytes) begin
         aligned_next_start_addr = aligned_addr(
             axi_addr_t'(prefix_add65(65'(addr), 65'(max_burst_bytes), 1'b0)), eff_axi_dw_log);

@@ -7,7 +7,8 @@ module qbs_decode_dot_timing import qbs_pkg::*; (
   input qbs_activation_profile_e activation_profile_i,
   input logic [2:0] m_i, row_count_i,
   input logic [7:0] k_base_i,
-  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [127:0] weight_window_i [4][2],
+  input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic valid_o,
   output logic [15:0] stream_valid_o,
@@ -17,7 +18,8 @@ module qbs_decode_dot_timing import qbs_pkg::*; (
   qbs_activation_profile_e activation_profile_q;
   logic [2:0] m_q, row_count_q;
   logic [7:0] k_base_q;
-  logic [255:0] weight_window_q [4][2], activation_window_q [4];
+  logic [127:0] weight_window_q [4][2];
+  logic [255:0] activation_window_q [4];
   logic [7:0] weight_side_q [4][20], activation_side_q [4][36];
   logic valid_q;
   wire [7:0] unused_weight [4][QbsMaxWeightBlockBytes];

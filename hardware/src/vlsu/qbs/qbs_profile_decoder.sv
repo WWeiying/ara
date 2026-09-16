@@ -11,7 +11,8 @@ module qbs_profile_decoder import qbs_pkg::*; #(
   input  logic [7:0]          k_base_i,
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
-  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [127:0] weight_window_i [4][2],
+  input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic [3:0]          k_per_context_o,
   output logic [3:0]          group_index_o,
@@ -27,6 +28,84 @@ module qbs_profile_decoder import qbs_pkg::*; #(
   output logic [31:0]         activation_d_o [4]
 );
 
+  logic [7:0] compact_low [4][8], compact_high [4][8];
+  logic [7:0] compact_activation [4][8];
+
+  // Each issue consumes consecutive bytes within one SRAM window. Share the
+  // alignment network across the eight outputs, instead of reading the
+  // window independently for every format/element combination.
+  function automatic logic [127:0] align_weight_window(
+      input logic [127:0] data, input logic [3:0] offset);
+    logic [127:0] stage [5];
+    stage[0] = data;
+    for (int level = 0; level < 4; level++)
+      for (int b = 0; b < 16; b++)
+        stage[level+1][8*b +: 8] = offset[level]
+            ? stage[level][8*((b + (1 << level)) % 16) +: 8]
+            : stage[level][8*b +: 8];
+    return stage[4];
+  endfunction
+
+  function automatic logic [255:0] align_window(
+      input logic [255:0] data, input logic [4:0] offset);
+    logic [255:0] stage [6];
+    stage[0] = data;
+    for (int level = 0; level < 5; level++)
+      for (int b = 0; b < 32; b++)
+        stage[level+1][8*b +: 8] = offset[level]
+            ? stage[level][8*((b + (1 << level)) % 32) +: 8]
+            : stage[level][8*b +: 8];
+    return stage[5];
+  endfunction
+
+  if (CompactRead) begin : gen_compact_alignment
+    for (genvar row = 0; row < 4; row++) begin : gen_row
+      wire [127:0] low_aligned = align_weight_window(weight_window_i[row][0], k_base_i[3:0]);
+      wire [127:0] high_aligned = align_weight_window(weight_window_i[row][1], k_base_i[3:0]);
+      wire [255:0] activation_aligned = align_window(activation_window_i[row], k_base_i[4:0]);
+      for (genvar lane = 0; lane < 8; lane++) begin : gen_byte
+        assign compact_low[row][lane] = low_aligned[8*lane +: 8];
+        assign compact_high[row][lane] = high_aligned[8*lane +: 8];
+        assign compact_activation[row][lane] = activation_aligned[8*lane +: 8];
+      end
+    end
+  end else begin : gen_native_alignment
+    assign compact_low = '{default:'0};
+    assign compact_high = '{default:'0};
+    assign compact_activation = '{default:'0};
+  end
+
+  function automatic logic signed [7:0] compact_weight_quant(
+      input int unsigned row, lane, element);
+    logic [7:0] low, high;
+    logic [3:0] nibble;
+    logic [1:0] pair_bits, high_pair;
+    logic high_bit;
+    logic [31:0] q5_high_bits;
+    low = compact_low[row][lane];
+    high = compact_high[row][lane];
+    nibble = (profile_i == QBS_WEIGHT_PROFILE_Q6_K ? element[6] :
+        (profile_i inside {QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q5_0,
+                           QBS_WEIGHT_PROFILE_IQ4_NL}) ? element[4] : element[5])
+        ? low[7:4] : low[3:0];
+    pair_bits = 2'(low >> {element[6:5], 1'b0});
+    high_pair = 2'(high >> {element[6:5], 1'b0});
+    high_bit = high[element[7:5]];
+    q5_high_bits = {weight_side_i[row][5], weight_side_i[row][4],
+                    weight_side_i[row][3], weight_side_i[row][2]};
+    case (profile_i)
+      QBS_WEIGHT_PROFILE_Q4_K: return $signed({4'b0, nibble});
+      QBS_WEIGHT_PROFILE_Q5_K: return $signed({3'b0, high_bit, nibble});
+      QBS_WEIGHT_PROFILE_Q6_K: return 8'($signed({~high_pair[1], high_pair[0], nibble}));
+      QBS_WEIGHT_PROFILE_Q3_K: return 8'($signed({~high_bit, pair_bits}));
+      QBS_WEIGHT_PROFILE_Q2_K: return $signed({6'b0, pair_bits});
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT: return $signed(low);
+      QBS_WEIGHT_PROFILE_Q4_0: return 8'($signed({~nibble[3], nibble[2:0]}));
+      QBS_WEIGHT_PROFILE_Q5_0: return 8'($signed({~q5_high_bits[element[4:0]], nibble}));
+      QBS_WEIGHT_PROFILE_IQ4_NL: return iq4_nl_value(nibble);
+      default: return '0;
+    endcase
+  endfunction
 
   // Translate only the bytes consumed this cycle. The compatibility input is
   // retained for standalone profile tests; the integrated path uses windows.
@@ -62,7 +141,7 @@ module qbs_profile_decoder import qbs_pkg::*; #(
       default: ;
     endcase
     if (plane == 2) return weight_side_i[row][local_offset];
-    return weight_window_i[row][plane][8*local_offset[4:0] +: 8];
+    return weight_window_i[row][plane][8*local_offset[3:0] +: 8];
   endfunction
 
   function automatic logic [7:0] activation_byte(input int unsigned ctx, offset);
@@ -367,8 +446,9 @@ module qbs_profile_decoder import qbs_pkg::*; #(
       for (int lane = 0; lane < 8; lane++) begin
         weight_quant_o[row][lane] = '0;
         if (row < row_count_i && lane < k_per_context_o)
-          weight_quant_o[row][lane] =
-              decode_weight_quant(row, unsigned'(k_base_i) + lane);
+          weight_quant_o[row][lane] = CompactRead
+              ? compact_weight_quant(row, lane, unsigned'(k_base_i) + lane)
+              : decode_weight_quant(row, unsigned'(k_base_i) + lane);
       end
     end
 
@@ -387,7 +467,7 @@ module qbs_profile_decoder import qbs_pkg::*; #(
       for (int lane = 0; lane < 8; lane++) begin
         activation_quant_o[ctx][lane] = '0;
         if (ctx < m_i && lane < k_per_context_o)
-          activation_quant_o[ctx][lane] = $signed(activation_byte(ctx,
+          activation_quant_o[ctx][lane] = CompactRead ? $signed(compact_activation[ctx][lane]) : $signed(activation_byte(ctx,
               (activation_profile_i == QBS_ACTIVATION_PROFILE_Q8_K ? 4 : 2) +
               unsigned'(k_base_i) + lane));
       end

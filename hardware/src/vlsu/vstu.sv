@@ -240,6 +240,22 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
   // First payload from the lanes? If yes, it can be offset by vstart.
   logic first_lane_payload_d, first_lane_payload_q;
 
+  // Prepare the next instruction's byte geometry independently of the late
+  // current-beat completion. Acceptance below still overrides an empty queue.
+  logic [idx_width(VInsnQueueDepth)-1:0] next_issue_pnt;
+  pe_req_t next_issue_req;
+  vlen_t next_issue_bytes;
+  logic [$clog2(8*NrLanes)-1:0] next_word_start_byte;
+  logic [$clog2(8*NrLanes):0] next_first_payload_byte;
+  assign next_issue_pnt = vinsn_queue_q.issue_pnt == VInsnQueueDepth-1
+      ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+  assign next_issue_req = vinsn_queue_q.vinsn[next_issue_pnt];
+  assign next_issue_bytes = (next_issue_req.vl - next_issue_req.vstart)
+      << unsigned'(next_issue_req.vtype.vsew);
+  assign next_word_start_byte = next_issue_req.vstart[$clog2(8*NrLanes)-1:0]
+      << next_issue_req.vtype.vsew;
+  assign next_first_payload_byte = (NrLanes * DataWidthB) - next_word_start_byte;
+
   // Signal that the current burst is having an exception
   logic stu_current_burst_exception_d;
 
@@ -414,15 +430,13 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
       // Load issue_cnt_bytes_d for next instruction (if any)
       if (vinsn_queue_d.issue_cnt != 0) begin : issue_cnt_bytes_update
-        issue_cnt_bytes_d = (vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl - vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart)
-                            << unsigned'(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype.vsew);
+        issue_cnt_bytes_d = next_issue_bytes;
         // Prepare the VRF start pointer
-        vrf_word_start_byte = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vstart[$clog2(8*NrLanes)-1:0] <<
-          vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vtype.vsew;
+        vrf_word_start_byte = next_word_start_byte;
         vrf_pnt_d           = {1'b0, vrf_word_start_byte[$clog2(8*NrLanes)-1:0]};
         vrf_cnt_d           = '0;
         // The first payload byte width for this vload
-        first_payload_byte_d = (NrLanes * DataWidthB) - vrf_word_start_byte[$clog2(8*NrLanes)-1:0];
+        first_payload_byte_d = next_first_payload_byte;
         // The next payload will be the first one for this store
         first_lane_payload_d = 1'b1;
       end : issue_cnt_bytes_update

@@ -1,0 +1,5 @@
+name,kind,status,returncode,elapsed_s,reason,artifact_dir
+rvv:vfmacc,rvv,PASS,0,43.96500740596093,,/home/wangwy/openproject/ara_dsa/hardware/context_area_20260915_dJqcsu/soc/results/tests/rvv_vfmacc
+rvv:vfredusum,rvv,PASS,0,59.61100757797249,,/home/wangwy/openproject/ara_dsa/hardware/context_area_20260915_dJqcsu/soc/results/tests/rvv_vfredusum
+rvv:vwiden_overlap_edges,rvv,PASS,0,64.00394528597826,,/home/wangwy/openproject/ara_dsa/hardware/context_area_20260915_dJqcsu/soc/results/tests/rvv_vwiden_overlap_edges
+app:vsaxpy,app,PASS,0,7.228155442979187,,/home/wangwy/openproject/ara_dsa/hardware/context_area_20260915_dJqcsu/soc/results/tests/app_vsaxpy

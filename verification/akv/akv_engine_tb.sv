@@ -433,13 +433,13 @@ module akv_engine_tb;
                     (unsigned'(score_column_dimension) + panel_column) * 2 +
                     source_offset[0]
               : score_source_base + source_offset;
-          if (ldu_result_be[lane][lane_byte] != expected_enable)
+          if (ldu_result_be[lane][lane_byte] !== expected_enable)
             $fatal(1,
                    "AKV replay byte-enable mismatch word=%0d byte=%0d got=%0b expected=%0b",
                    replay_word_seen, logical_byte,
                    ldu_result_be[lane][lane_byte], expected_enable);
           if (expected_enable &&
-              ldu_result_wdata[lane][lane_byte*8 +: 8] !=
+              ldu_result_wdata[lane][lane_byte*8 +: 8] !==
                   memory_byte(expected_address))
             $fatal(1,
                    "AKV replay data mismatch word=%0d byte=%0d got=%h expected=%h",

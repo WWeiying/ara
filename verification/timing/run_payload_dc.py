@@ -27,6 +27,8 @@ def worker(out, container):
                "-e", f"DC_ELAB_ONLY={int(manifest['elaborate_only'])}",
                "-e", f"DC_LOCAL_TOP={manifest['top']}",
                "-e", f"DC_COMPACT_READ={int(manifest.get('compact_read', False))}",
+               "-e", f"DC_UNIQUE_INPUT_BYTES={int(manifest.get('unique_input_bytes', False))}",
+               "-e", f"DC_LOCAL_QUICK_REPORTS={int(manifest.get('quick_reports', False))}",
                "-e", f"DC_ELEMENT_WIDTH={manifest.get('element_width', 2)}",
                "-w", str(out), container, "bash", "-lc",
                f"exec timeout --signal=TERM --kill-after=30s {limit} dc_shell -f payload_dc.tcl"]
@@ -60,6 +62,10 @@ def main():
                         help="save and inspect GTECH without technology mapping")
     parser.add_argument("--compact-read", action="store_true",
                         help="elaborate NativeView=0, as used by the compute engine")
+    parser.add_argument("--unique-input-bytes", action="store_true",
+                        help="use production unique-commit counters in the adapter wrapper")
+    parser.add_argument("--quick-reports", action="store_true",
+                        help="keep normal clock-group reports; skip the expensive all-FF pin-pair query")
     parser.add_argument("--reference", help="snapshot QBS RTL from this Git revision")
     parser.add_argument("--source-overrides", type=Path,
                         help="directory with pre-edit payload/adapter or SIMD multiplier RTL")
@@ -76,6 +82,8 @@ def main():
         return
     if args.timeout_seconds <= 0:
         parser.error("--timeout-seconds must be positive")
+    if args.unique_input_bytes and args.top != "qbs_adapter_pipeline_timing":
+        parser.error("--unique-input-bytes requires --top qbs_adapter_pipeline_timing")
     if args.reference and args.source_overrides:
         parser.error("--reference and --source-overrides are mutually exclusive")
     if args.reference and args.top in ("simd_mul_timing", "simd_alu_timing", "vfdsu_round_timing"):
@@ -214,6 +222,8 @@ def main():
                                      "qbs_address_timing", "qbs_profile_pipeline_timing"),
         "element_width": args.element_width,
         "elaborate_only": args.elaborate_only, "compact_read": args.compact_read,
+        "unique_input_bytes": args.unique_input_bytes,
+        "quick_reports": args.quick_reports,
         "timeout_seconds": args.timeout_seconds,
         "flow_sha256": {name: hashlib.sha256((out / name).read_bytes()).hexdigest()
                         for name in ("payload_dc.tcl", "library_env.tcl", "runner.py")}},

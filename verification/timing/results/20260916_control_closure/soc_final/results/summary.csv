@@ -1,0 +1,7 @@
+name,kind,status,returncode,elapsed_s,reason,artifact_dir
+rvv:vwiden_overlap_edges,rvv,PASS,0,82.37033794895979,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/rvv_vwiden_overlap_edges
+rvv:vsegment_emul_edges,rvv,PASS,0,43.63762712001335,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/rvv_vsegment_emul_edges
+rvv:vslide_mask_edges,rvv,PASS,0,51.16138005803805,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/rvv_vslide_mask_edges
+rvv:vse32,rvv,PASS,0,136.4258134390111,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/rvv_vse32
+rvv:vfmacc,rvv,PASS,0,42.84016031702049,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/rvv_vfmacc
+app:vsaxpy,app,PASS,0,7.832825147022959,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/results/tests/app_vsaxpy

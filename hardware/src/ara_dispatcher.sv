@@ -190,9 +190,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   /////////////////////////
 
   ara_req_t ara_req, ara_req_d, ara_req_idle, ara_req_committed;
+  // Keep repair-uop arithmetic out of the architectural layout checks.
+  ara_req_t maintenance_req, backend_req, layout_req;
+  logic arch_decode, maintenance_valid, backend_valid;
   logic decode_blocked;
-  assign ara_req_committed = decode_blocked ? ara_req_idle : ara_req;
   logic     ara_req_valid, ara_req_valid_d;
+  assign backend_req = arch_decode ? ara_req : maintenance_req;
+  assign backend_valid = arch_decode ? ara_req_valid : maintenance_valid;
+  assign ara_req_committed = decode_blocked ? ara_req_idle : backend_req;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
@@ -281,24 +286,52 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     endcase
   endfunction : lmul_element_capacity
 
+  // Keep the 64-bit modulo-add semantics, but only carry through
+  // the VL-sized low word. Upper bits only decide whether saturation applies.
+  function automatic vlen_t slide_bound(
+    vlen_t index, elen_t stride, logic decrement, int unsigned capacity
+  );
+    localparam int W = $bits(vlen_t);
+    automatic logic [W:0] sum = {1'b0, index} + {1'b0, stride[W-1:0]};
+    automatic logic high_zero = sum[W] ? (&stride[63:W]) : (~|stride[63:W]);
+    automatic logic high_one = sum[W] ? (~|stride[63:W]) : (stride[63:W] == 1);
+    automatic vlen_t low = sum[W-1:0];
+    if (decrement && (!high_zero || low != 0)) begin
+      if (low == 0) high_zero = high_one;
+      low = low - 1'b1;
+    end
+    return (!high_zero || unsigned'(low) > capacity) ? vlen_t'(capacity) : low;
+  endfunction : slide_bound
+
+  // Bit r means that relative register r intersects the active interval.
+  // Constant register boundaries avoid subtract/shift/count/add chains and
+  // variable first-register indexing on the late EEW write-enable path.
+  function automatic logic [7:0] active_register_mask(
+    vlmul_e lmul, vew_e eew, vlen_t vstart, vlen_t vl
+  );
+    active_register_mask = '0;
+    for (int unsigned r = 0; r < 8; r++) begin
+      if (unsigned'(eew) <= $clog2(VLENB))
+        active_register_mask[r] = r < lmul_register_count(lmul) && vl > vstart &&
+            unsigned'(vstart) < (((r + 1) * VLENB) >> unsigned'(eew)) &&
+            unsigned'(vl) > ((r * VLENB) >> unsigned'(eew));
+      else
+        // The original int first/last indices coerce an unsupported EW's X
+        // result to zero. Preserve that fallback, including EEW bookkeeping.
+        active_register_mask[r] = r == 0 && vl > vstart;
+    end
+  endfunction : active_register_mask
+
   function automatic vlen_t slidedown_source_start(
     vlen_t vstart, elen_t stride, vlmul_e lmul, vew_e eew
   );
-    automatic longint unsigned source_start = unsigned'(vstart) + unsigned'(stride);
-    automatic int unsigned capacity = lmul_element_capacity(lmul, eew);
-    slidedown_source_start = source_start > capacity ? vlen_t'(capacity)
-                                                      : vlen_t'(source_start);
+    return slide_bound(vstart, stride, 1'b0, lmul_element_capacity(lmul, eew));
   endfunction : slidedown_source_start
 
   function automatic vlen_t slidedown_source_end(
     vlen_t vl, elen_t stride, logic use_scalar_op, vlmul_e lmul, vew_e eew
   );
-    automatic longint unsigned source_end = unsigned'(vl) + unsigned'(stride);
-    automatic int unsigned capacity = lmul_element_capacity(lmul, eew);
-    // vslide1down obtains its last destination element from the scalar operand.
-    if (use_scalar_op && source_end != 0) source_end -= 1;
-    slidedown_source_end = source_end > capacity ? vlen_t'(capacity)
-                                                 : vlen_t'(source_end);
+    return slide_bound(vl, stride, use_scalar_op, lmul_element_capacity(lmul, eew));
   endfunction : slidedown_source_end
 
   function automatic logic [2:0] lmul_counter_limit(vlmul_e lmul);
@@ -352,18 +385,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   function automatic int unsigned active_register_count(
     vlmul_e lmul, vew_e target_eew, vlen_t vstart, vlen_t vl
   );
-    automatic int unsigned register_count = lmul_register_count(lmul);
-    automatic int unsigned first_register;
-    automatic int unsigned last_register;
-    active_register_count = 0;
-    if (unsigned'(vl) > unsigned'(vstart)) begin
-      first_register = element_word_index(unsigned'(vstart), $clog2(VLENB), target_eew);
-      last_register  = element_word_index(unsigned'(vl) - 1, $clog2(VLENB), target_eew);
-      if (first_register < register_count) begin
-        if (last_register >= register_count) last_register = register_count - 1;
-        active_register_count = last_register - first_register + 1;
-      end
-    end
+    automatic logic [7:0] mask = active_register_mask(lmul, target_eew, vstart, vl);
+    automatic logic [1:0] n01 = {1'b0, mask[0]} + {1'b0, mask[1]};
+    automatic logic [1:0] n23 = {1'b0, mask[2]} + {1'b0, mask[3]};
+    automatic logic [1:0] n45 = {1'b0, mask[4]} + {1'b0, mask[5]};
+    automatic logic [1:0] n67 = {1'b0, mask[6]} + {1'b0, mask[7]};
+    automatic logic [2:0] lo = {1'b0, n01} + {1'b0, n23};
+    automatic logic [2:0] hi = {1'b0, n45} + {1'b0, n67};
+    return {1'b0, lo} + {1'b0, hi};
   endfunction : active_register_count
 
   function automatic logic [2:0] active_register_limit(
@@ -378,15 +407,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     logic [4:0] base, vlmul_e lmul, vew_e target_eew,
     vlen_t vstart, vlen_t vl
   );
-    automatic int unsigned first_register = active_first_register(target_eew, vstart);
-    automatic int unsigned count =
-        active_register_count(lmul, target_eew, vstart, vl);
+    automatic logic [7:0] mask = active_register_mask(lmul, target_eew, vstart, vl);
     active_group_needs_reshuffle = 1'b0;
-    for (int unsigned i = 0; i < 8; i++) begin
-      if (i < count && (unsigned'(base) + first_register + i) < 32)
-        active_group_needs_reshuffle |=
-            eew_valid_q[base + first_register + i] &&
-            (eew_q[base + first_register + i] != target_eew);
+    for (int unsigned r = 0; r < 8; r++) begin
+      if (mask[r] && (unsigned'(base) + r) < 32)
+        active_group_needs_reshuffle |= eew_valid_q[base + r] &&
+            (eew_q[base + r] != target_eew);
     end
   endfunction : active_group_needs_reshuffle
 
@@ -394,21 +420,17 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     logic [4:0] base, vlmul_e lmul, vew_e element_eew,
     vlen_t vstart, vlen_t vl
   );
-    automatic int unsigned first_register = active_first_register(element_eew, vstart);
-    automatic int unsigned count =
-        active_register_count(lmul, element_eew, vstart, vl);
+    automatic logic [7:0] mask = active_register_mask(lmul, element_eew, vstart, vl);
     automatic logic found_reference = 1'b0;
     automatic vew_e reference_eew = EW8;
     active_group_has_mixed_eew = 1'b0;
-    for (int unsigned i = 0; i < 8; i++) begin
-      if (i < count && (unsigned'(base) + first_register + i) < 32 &&
-          eew_valid_q[base + first_register + i]) begin
+    for (int unsigned r = 0; r < 8; r++) begin
+      if (mask[r] && (unsigned'(base) + r) < 32 && eew_valid_q[base + r]) begin
         if (!found_reference) begin
           found_reference = 1'b1;
-          reference_eew = eew_q[base + first_register + i];
+          reference_eew = eew_q[base + r];
         end else begin
-          active_group_has_mixed_eew |=
-              eew_q[base + first_register + i] != reference_eew;
+          active_group_has_mixed_eew |= eew_q[base + r] != reference_eew;
         end
       end
     end
@@ -642,7 +664,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         verify_active_insn_q == 32'h49332257 &&
         (debug_reshuffle_idle_cycle_q % 100 == 0)) begin
       $display("[ARA_RESHUFFLE_IDLE] t=%0t state=%0d ara_idle=%0b sldu_idle=%0b req=%0b/%0b pending=%b",
-               $time, state_q, ara_idle_i, sldu_idle_i, ara_req_valid,
+               $time, state_q, ara_idle_i, sldu_idle_i, backend_valid,
                ara_req_ready_i, reshuffle_req_q);
     end
   end
@@ -656,8 +678,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
          (eew_valid_d[15:8] != eew_valid_q[15:8]))) begin
       $display("[ARA_EEW] t=%0t arch=%0d insn=%h state=%0d in_v/r=%0b/%0b in_op=%0d in_vd=v%0d in_use_vd=%0b in_emul=%0d in_vsew=%0d seg_v=%0b seg_op=%0d seg_vd=v%0d seg_use_vd=%0b seg_emul=%0d seg_vsew=%0d valid=%b->%b eew=%0d%0d%0d%0d_%0d%0d%0d%0d->%0d%0d%0d%0d_%0d%0d%0d%0d",
                $time, verify_active_arch_seq_q, verify_active_insn_q, state_q,
-               ara_req_valid, ara_req_ready_i, ara_req.op, ara_req.vd,
-               ara_req.use_vd, ara_req.emul, ara_req.vtype.vsew,
+               backend_valid, ara_req_ready_i, backend_req.op, backend_req.vd,
+               backend_req.use_vd, backend_req.emul, backend_req.vtype.vsew,
                ara_req_valid_d, ara_req_d.op, ara_req_d.vd,
                ara_req_d.use_vd, ara_req_d.emul, ara_req_d.vtype.vsew,
                eew_valid_q[15:8], eew_valid_d[15:8],
@@ -672,11 +694,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     if (rst_ni && $test$plusargs("ARA_DEBUG_EEW") &&
         verify_front_active_q &&
         (verify_active_insn_q inside {32'h25c82657, 32'hbc86b257}) &&
-        (ara_req_valid || ara_req_valid_d || ara_req_valid_o)) begin
+        (backend_valid || ara_req_valid_d || ara_req_valid_o)) begin
       $display("[ARA_EEW_REQ] t=%0t arch=%0d insn=%h state=%0d ready=%0b in_v=%0b in_op=%0d in_vd=v%0d in_use_vd=%0b in_emul=%0d in_vsew=%0d seg_v=%0b seg_op=%0d seg_vd=v%0d seg_use_vd=%0b seg_emul=%0d seg_vsew=%0d out_v=%0b out_op=%0d out_vd=v%0d out_use_vd=%0b out_emul=%0d out_vsew=%0d eew=%0d%0d%0d%0d_%0d%0d%0d%0d",
                $time, verify_active_arch_seq_q, verify_active_insn_q, state_q,
-               ara_req_ready_i, ara_req_valid, ara_req.op, ara_req.vd,
-               ara_req.use_vd, ara_req.emul, ara_req.vtype.vsew,
+               ara_req_ready_i, backend_valid, backend_req.op, backend_req.vd,
+               backend_req.use_vd, backend_req.emul, backend_req.vtype.vsew,
                ara_req_valid_d, ara_req_d.op, ara_req_d.vd,
                ara_req_d.use_vd, ara_req_d.emul, ara_req_d.vtype.vsew,
                ara_req_valid_o, ara_req_o.op, ara_req_o.vd,
@@ -694,12 +716,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         (verify_active_insn_q inside {
           32'hbe05c057, 32'hb60d3a57, 32'hbc86b257, 32'hb1820c57
         }) &&
-        ((state_d != state_q) || (ara_req_valid && ara_req_ready_i))) begin
+        ((state_d != state_q) || (backend_valid && ara_req_ready_i))) begin
       $display("[ARA_NARROW_CHAIN] t=%0t insn=%h state=%0d->%0d fire=%b op=%0d vd=v%0d vs2=v%0d emul=%0d eew=%0d->%0d vl=%0d vstart=%0d reshuffle=%b cnt=%0d/%0d buf=v%0d old=%0d new=%0d valid0_7=%b eew0_7=%0d%0d%0d%0d_%0d%0d%0d%0d",
                $time, verify_active_insn_q, state_q, state_d,
-               ara_req_valid && ara_req_ready_i, ara_req.op, ara_req.vd,
-               ara_req.vs2, ara_req.emul, ara_req.eew_vs2,
-               ara_req.vtype.vsew, ara_req.vl, ara_req.vstart,
+               backend_valid && ara_req_ready_i, backend_req.op, backend_req.vd,
+               backend_req.vs2, backend_req.emul, backend_req.eew_vs2,
+               backend_req.vtype.vsew, backend_req.vl, backend_req.vstart,
                reshuffle_req_q, rs_lmul_cnt_q, rs_lmul_cnt_limit_q,
                vs_buffer_q, eew_old_buffer_q, eew_new_buffer_q,
                eew_valid_q[7:0], eew_q[0], eew_q[1], eew_q[2], eew_q[3],
@@ -716,10 +738,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           32'hc3090c57, 32'h9f83b457, 32'hf2062857, 32'h3e4a3257,
           32'h3eb345d7, 32'h1ebdab57
         }) &&
-        ((state_d != state_q) || (ara_req_valid && ara_req_ready_i))) begin
+        ((state_d != state_q) || (backend_valid && ara_req_ready_i))) begin
       $display("[ARA_RESHUFFLE] t=%0t state=%0d->%0d fire=%b op=%0d vd=%0d vs2=%0d vs1=%0d reqs=%b cnt=%0d/%0d mask=%b buf=v%0d old=%0d new=%0d lmul(vd/vs2/vs1)=%0d/%0d/%0d valid0_7=%h eew0_7=%0d%0d%0d%0d_%0d%0d%0d%0d valid16_31=%h eew16_31=%0d%0d%0d%0d_%0d%0d%0d%0d_%0d%0d%0d%0d_%0d%0d%0d%0d",
-               $time, state_q, state_d, ara_req_valid && ara_req_ready_i,
-               ara_req.op, ara_req.vd, ara_req.vs2, ara_req.vs1,
+               $time, state_q, state_d, backend_valid && ara_req_ready_i,
+               backend_req.op, backend_req.vd, backend_req.vs2, backend_req.vs1,
                reshuffle_req_q, rs_lmul_cnt_q, rs_lmul_cnt_limit_q,
                rs_mask_request_q, vs_buffer_q, eew_old_buffer_q,
                eew_new_buffer_q, reshuffle_lmul_vd_q,
@@ -737,7 +759,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
   always_ff @(posedge clk_i) begin
     if (rst_ni && $test$plusargs("ARA_DEBUG_OVERLAP") &&
-        ((state_q != state_d) || (ara_req_valid && ara_req_ready_i)) &&
+        ((state_q != state_d) || (backend_valid && ara_req_ready_i)) &&
         (state_q inside {OVERLAP_PREFIX_FIXUP, OVERLAP_WAIT_PREFIX_FIXUP,
                          OVERLAP_CAPTURE, OVERLAP_WAIT_CAPTURE,
                          OVERLAP_ISSUE_ORIGINAL, OVERLAP_WAIT_ORIGINAL,
@@ -747,10 +769,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                          OVERLAP_ISSUE_ORIGINAL, OVERLAP_WAIT_ORIGINAL,
                          OVERLAP_FIXUP, OVERLAP_WAIT_FIXUP, OVERLAP_RESPOND})) begin
       $display("[ARA_OVERLAP] t=%0t state=%0d->%0d idle=%b req=%b/%b pipe=%b vd=v%0d vs2=v%0d emul=%0d eew=%0d->%0d vl=%0d vstart=%0d idx=%0d old_valid=%b snapshot=%b prepared=%b",
-               $time, state_q, state_d, ara_idle_i, ara_req_valid,
-               ara_req_ready_i, ara_req_valid_o, ara_req.vd, ara_req.vs2,
-               ara_req.emul, ara_req.eew_vs2, ara_req.vtype.vsew,
-               ara_req.vl, ara_req.vstart, overlap_reg_index_q,
+               $time, state_q, state_d, ara_idle_i, backend_valid,
+               ara_req_ready_i, ara_req_valid_o, backend_req.vd, backend_req.vs2,
+               backend_req.emul, backend_req.eew_vs2, backend_req.vtype.vsew,
+               backend_req.vl, backend_req.vstart, overlap_reg_index_q,
                overlap_current_old_eew_valid_q,
                overlap_snapshot_valid_q, overlap_prepared_q);
     end
@@ -777,12 +799,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   always_ff @(posedge clk_i) begin
     if (rst_ni && $test$plusargs("ARA_DEBUG_LAYOUT428") &&
         verify_front_active_q && verify_active_insn_q == 32'h944be457 &&
-        ((state_q != state_d) || ara_req_valid || ara_req_valid_d || ara_req_valid_o)) begin
+        ((state_q != state_d) || backend_valid || ara_req_valid_d || ara_req_valid_o)) begin
       $display("[ARA_LAYOUT428] t=%0t state=%0d->%0d req=%b->%b pipe=%b/%b op=%0d vd=v%0d vs2=v%0d eew2=%0d emul=%0d vsew=%0d vl=%0d resh=%b cnt=%0d/%0d buf=v%0d old=%0d new=%0d valid0_15=%h eew0_15=%0d%0d%0d%0d_%0d%0d%0d%0d_%0d%0d%0d%0d_%0d%0d%0d%0d",
-               $time, state_q, state_d, ara_req_valid, ara_req_ready_i,
-               ara_req_valid_d, ara_req_valid_o, ara_req.op, ara_req.vd,
-               ara_req.vs2, ara_req.eew_vs2, ara_req.emul,
-               ara_req.vtype.vsew, ara_req.vl, reshuffle_req_q,
+               $time, state_q, state_d, backend_valid, ara_req_ready_i,
+               ara_req_valid_d, ara_req_valid_o, backend_req.op, backend_req.vd,
+               backend_req.vs2, backend_req.eew_vs2, backend_req.emul,
+               backend_req.vtype.vsew, backend_req.vl, reshuffle_req_q,
                rs_lmul_cnt_q, rs_lmul_cnt_limit_q, vs_buffer_q,
                eew_old_buffer_q, eew_new_buffer_q, eew_valid_q[15:0],
                eew_q[0], eew_q[1], eew_q[2], eew_q[3],
@@ -891,7 +913,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .eew_i(eew_q),
     .ara_req_i(ara_req_committed),
     .ara_req_o(ara_req_d),
-    .ara_req_valid_i(ara_req_valid),
+    .layout_req_i(backend_req),
+    .layout_req_o(layout_req),
+    .ara_req_valid_i(backend_valid),
     .ara_req_valid_o(ara_req_valid_d),
     .ara_req_ready_i(ara_req_ready_i),
     .ara_resp_i(ara_resp_i),
@@ -1082,6 +1106,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     for (int lane = 0; lane < NrLanes; lane++) acc_resp_o.fflags |= fflags_ex_i[lane];
 
     ara_req_valid = 1'b0;
+    maintenance_valid = 1'b0;
     vs2_reshuffle_eew = csr_vtype_q.vsew;
     vs2_reshuffle_vstart = csr_vstart_q;
     vs2_reshuffle_vl = csr_vl_q;
@@ -1159,6 +1184,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     state_d = RESHUFFLE;
   endfunction
 
+  assign arch_decode = state_q == NORMAL_OPERATION || state_q == OVERLAP_ISSUE_ORIGINAL ||
+        (state_q == WAIT_IDLE && !ara_req_valid_o && ara_idle_i) ||
+        (state_q == WAIT_IDLE_FLUSH && lsu_ex_state_q == LSU_FLUSH_DONE);
+
   always_comb begin: p_decoder
     init_decoder_outputs();
     ara_req = '{
@@ -1185,6 +1214,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       default      : '0
     };
     ara_req_idle = ara_req;
+    maintenance_req = ara_req;
     decode_blocked = 1'b0;
     // Special states
     case (state_q)
@@ -1231,21 +1261,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           // Re-encode only a destination prefix known not to contain an
           // overlapping source. This covers preserved narrowing elements below
           // vstart and a widening accumulator below the high source group.
-          ara_req_valid         = ara_idle_i;
-          ara_req.emul          = LMUL_1;
-          ara_req.vstart        = '0;
-          ara_req.vs2           = overlap_current_vd_q;
-          ara_req.eew_vs2       = overlap_current_old_eew_q;
-          ara_req.use_vs2       = 1'b1;
-          ara_req.vd            = overlap_current_vd_q;
-          ara_req.use_vd        = 1'b1;
-          ara_req.op            = ara_pkg::VSLIDEDOWN;
-          ara_req.stride        = '0;
-          ara_req.use_scalar_op = 1'b0;
-          ara_req.vm            = 1'b1;
-          ara_req.vtype.vsew    = overlap_target_eew_q;
-          ara_req.vl            = preserved_elements;
-          ara_req.scale_vl      = 1'b1;
+          maintenance_valid         = ara_idle_i;
+          maintenance_req.emul          = LMUL_1;
+          maintenance_req.vstart        = '0;
+          maintenance_req.vs2           = overlap_current_vd_q;
+          maintenance_req.eew_vs2       = overlap_current_old_eew_q;
+          maintenance_req.use_vs2       = 1'b1;
+          maintenance_req.vd            = overlap_current_vd_q;
+          maintenance_req.use_vd        = 1'b1;
+          maintenance_req.op            = ara_pkg::VSLIDEDOWN;
+          maintenance_req.stride        = '0;
+          maintenance_req.use_scalar_op = 1'b0;
+          maintenance_req.vm            = 1'b1;
+          maintenance_req.vtype.vsew    = overlap_target_eew_q;
+          maintenance_req.vl            = preserved_elements;
+          maintenance_req.scale_vl      = 1'b1;
         end
 
         if (!needs_fixup || (ara_idle_i && ara_req_ready_i)) begin
@@ -1287,25 +1317,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // A boundary register inside that group therefore cannot rely on a
         // per-register RAW check against an older group write.  Capture only
         // after all older Ara operations have drained.
-        ara_req_valid             = ara_idle_i;
-        ara_req.emul              = LMUL_1;
-        ara_req.vstart            = '0;
-        ara_req.vs2               = overlap_boundary_vd_q;
-        ara_req.eew_vs2           = overlap_boundary_old_eew_q;
-        ara_req.use_vs2           = 1'b1;
-        ara_req.vd                = overlap_boundary_vd_q;
-        ara_req.use_vd            = 1'b0;
-        ara_req.op                = ara_pkg::VSLIDEDOWN;
-        ara_req.stride            = '0;
-        ara_req.use_scalar_op     = 1'b0;
-        ara_req.vm                = 1'b1;
+        maintenance_valid             = ara_idle_i;
+        maintenance_req.emul              = LMUL_1;
+        maintenance_req.vstart            = '0;
+        maintenance_req.vs2               = overlap_boundary_vd_q;
+        maintenance_req.eew_vs2           = overlap_boundary_old_eew_q;
+        maintenance_req.use_vs2           = 1'b1;
+        maintenance_req.vd                = overlap_boundary_vd_q;
+        maintenance_req.use_vd            = 1'b0;
+        maintenance_req.op                = ara_pkg::VSLIDEDOWN;
+        maintenance_req.stride            = '0;
+        maintenance_req.use_scalar_op     = 1'b0;
+        maintenance_req.vm                = 1'b1;
         // Run the normal reshuffle datapath during capture and retain the
         // selected word already encoded in the destination EEW layout.
-        ara_req.vtype.vsew        = overlap_target_eew_q;
-        ara_req.vl                = overlap_elements_per_reg_q;
-        ara_req.scale_vl          = 1'b1;
-        ara_req.overlap_capture   = 1'b1;
-        ara_req.overlap_snapshot_word = overlap_snapshot_word_q;
+        maintenance_req.vtype.vsew        = overlap_target_eew_q;
+        maintenance_req.vl                = overlap_elements_per_reg_q;
+        maintenance_req.scale_vl          = 1'b1;
+        maintenance_req.overlap_capture   = 1'b1;
+        maintenance_req.overlap_snapshot_word = overlap_snapshot_word_q;
 
         if (ara_idle_i && ara_req_ready_i)
           state_d = OVERLAP_WAIT_CAPTURE;
@@ -1366,24 +1396,24 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
           // Re-encode only destination elements that the widening operation did
           // not overwrite. vstart marks the first untouched element in this
           // architectural register; the SLDU keeps lower result bytes intact.
-          ara_req_valid         = 1'b1;
-          ara_req.emul          = LMUL_1;
-          ara_req.vstart        = active_elements;
-          ara_req.vs2           = overlap_current_vd_q;
-          ara_req.eew_vs2       = overlap_current_old_eew_q;
-          ara_req.use_vs2       = 1'b1;
-          ara_req.vd            = overlap_current_vd_q;
-          ara_req.use_vd        = 1'b1;
-          ara_req.op            = ara_pkg::VSLIDEDOWN;
-          ara_req.stride        = '0;
-          ara_req.use_scalar_op = 1'b0;
-          ara_req.vm            = 1'b1;
-          ara_req.vtype.vsew    = overlap_target_eew_q;
-          ara_req.vl            = overlap_elements_per_reg_q;
-          ara_req.scale_vl      = 1'b1;
-          ara_req.overlap_use_snapshot = overlap_snapshot_valid_q &&
+          maintenance_valid         = 1'b1;
+          maintenance_req.emul          = LMUL_1;
+          maintenance_req.vstart        = active_elements;
+          maintenance_req.vs2           = overlap_current_vd_q;
+          maintenance_req.eew_vs2       = overlap_current_old_eew_q;
+          maintenance_req.use_vs2       = 1'b1;
+          maintenance_req.vd            = overlap_current_vd_q;
+          maintenance_req.use_vd        = 1'b1;
+          maintenance_req.op            = ara_pkg::VSLIDEDOWN;
+          maintenance_req.stride        = '0;
+          maintenance_req.use_scalar_op = 1'b0;
+          maintenance_req.vm            = 1'b1;
+          maintenance_req.vtype.vsew    = overlap_target_eew_q;
+          maintenance_req.vl            = overlap_elements_per_reg_q;
+          maintenance_req.scale_vl      = 1'b1;
+          maintenance_req.overlap_use_snapshot = overlap_snapshot_valid_q &&
               overlap_reg_index_q == overlap_boundary_reg_q;
-          ara_req.overlap_snapshot_word = overlap_snapshot_word_q;
+          maintenance_req.overlap_snapshot_word = overlap_snapshot_word_q;
         end
 
         if (!needs_fixup || ara_req_ready_i) begin
@@ -1430,23 +1460,23 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
         // Read the source in its current narrow layout without writing an
         // architectural destination. Each lane retains its raw VRF words.
-        ara_req_valid             = ara_idle_i;
-        ara_req.emul              = source_snapshot_lmul_q;
-        ara_req.vstart            = '0;
-        ara_req.vs2               = source_snapshot_vs_q;
-        ara_req.eew_vs2           = source_snapshot_eew_q;
-        ara_req.use_vs2           = 1'b1;
-        ara_req.use_vd            = 1'b0;
-        ara_req.op                = ara_pkg::VSLIDEDOWN;
-        ara_req.stride            = '0;
-        ara_req.use_scalar_op     = 1'b0;
-        ara_req.vm                = 1'b1;
-        ara_req.vtype.vsew        = source_snapshot_eew_q;
-        ara_req.vtype.vlmul       = source_snapshot_lmul_q;
-        ara_req.vl                = source_snapshot_vl_q;
-        ara_req.scale_vl          = 1'b0;
-        ara_req.overlap_capture   = 1'b1;
-        ara_req.source_snapshot_capture = 1'b1;
+        maintenance_valid             = ara_idle_i;
+        maintenance_req.emul              = source_snapshot_lmul_q;
+        maintenance_req.vstart            = '0;
+        maintenance_req.vs2               = source_snapshot_vs_q;
+        maintenance_req.eew_vs2           = source_snapshot_eew_q;
+        maintenance_req.use_vs2           = 1'b1;
+        maintenance_req.use_vd            = 1'b0;
+        maintenance_req.op                = ara_pkg::VSLIDEDOWN;
+        maintenance_req.stride            = '0;
+        maintenance_req.use_scalar_op     = 1'b0;
+        maintenance_req.vm                = 1'b1;
+        maintenance_req.vtype.vsew        = source_snapshot_eew_q;
+        maintenance_req.vtype.vlmul       = source_snapshot_lmul_q;
+        maintenance_req.vl                = source_snapshot_vl_q;
+        maintenance_req.scale_vl          = 1'b0;
+        maintenance_req.overlap_capture   = 1'b1;
+        maintenance_req.source_snapshot_capture = 1'b1;
 
         if (ara_idle_i && ara_req_ready_i)
           state_d = SOURCE_SNAPSHOT_WAIT;
@@ -1476,10 +1506,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         rs_mask_request_d   = 1'b0;
 
         // Every single reshuffle request refers to LMUL == 1
-        ara_req.emul = LMUL_1;
+        maintenance_req.emul = LMUL_1;
 
         // vstart is always 0 for a reshuffle
-        ara_req.vstart = '0;
+        maintenance_req.vstart = '0;
 
         // These generate a reshuffle request to Ara's backend
         // When LMUL > 1, not all the regs that compose a large
@@ -1488,25 +1518,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // physical EEW layout. Start it only after the older shared SLDU
         // stream has drained, so its untagged per-lane operands cannot be
         // interleaved with a preceding reduction or slide stream.
-        ara_req_valid         = ~rs_mask_request_q & ara_idle_i & sldu_idle_i;
-        ara_req.use_scalar_op = 1'b1;
-        ara_req.vs2           = vs_buffer_q;
-        ara_req.eew_vs2       = eew_old_buffer_q;
-        ara_req.use_vs2       = 1'b1;
-        ara_req.vd            = vs_buffer_q;
-        ara_req.use_vd        = 1'b1;
-        ara_req.op            = ara_pkg::VSLIDEDOWN;
-        ara_req.stride        = '0;
-        ara_req.use_scalar_op = 1'b0;
+        maintenance_valid         = ~rs_mask_request_q & ara_idle_i & sldu_idle_i;
+        maintenance_req.use_scalar_op = 1'b1;
+        maintenance_req.vs2           = vs_buffer_q;
+        maintenance_req.eew_vs2       = eew_old_buffer_q;
+        maintenance_req.use_vs2       = 1'b1;
+        maintenance_req.vd            = vs_buffer_q;
+        maintenance_req.use_vd        = 1'b1;
+        maintenance_req.op            = ara_pkg::VSLIDEDOWN;
+        maintenance_req.stride        = '0;
+        maintenance_req.use_scalar_op = 1'b0;
         // Unmasked: reshuffle everything
-        ara_req.vm            = 1'b1;
+        maintenance_req.vm            = 1'b1;
         // Shuffle the whole reg (vl refers to current vsew)
-        ara_req.vtype.vsew    = eew_new_buffer_q;
+        maintenance_req.vtype.vsew    = eew_new_buffer_q;
         // Always reshuffle one vreg at a time
-        ara_req.vl            = VLENB >> ara_req.vtype.vsew;
+        maintenance_req.vl            = VLENB >> maintenance_req.vtype.vsew;
         // Vl refers to current system vsew but operand requesters
         // will fetch from a register with a different eew
-        ara_req.scale_vl      = 1'b1;
+        maintenance_req.scale_vl      = 1'b1;
 
         // Backend ready - Decide what to do next. A masked reshuffle has no
         // request to handshake, so skip it independently of backend readiness.
@@ -1596,8 +1626,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       end
     endcase
 
-    if (state_d == NORMAL_OPERATION && state_q != RESHUFFLE &&
-        state_q != OVERLAP_RESPOND && state_q != SOURCE_SNAPSHOT_WAIT) begin
+    // Only these states can enter the architectural decoder in this cycle.
+    // Do not route repair-uop arithmetic through the full next-state encoder
+    // and back into the scalar response/scoreboard path.
+    if (arch_decode) begin
       // Decode before the late backend-ready signal. Only the final commit
       // selection may expose its results or change architectural state.
       decode_blocked = acc_req_i.req_valid && acc_req_i.resp_ready && !ara_req_ready_i;
@@ -1677,7 +1709,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     end else begin
                       // Normal stripmining
                       csr_vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(csr_vl_d)]) ||
-                        (vlen_t'(acc_req_i.rs1) > vlmax)) ? vlmax : vlen_t'(acc_req_i.rs1);
+                        (acc_req_i.rs1[$bits(csr_vl_d)-1:0] > vlmax)) ? vlmax : acc_req_i.rs1[$bits(csr_vl_d)-1:0];
                     end
                   end
                 end
@@ -2028,7 +2060,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     ara_req.scale_vl      = 1'b1;
                     // If stride > vl, the vslideup has no effects
                     if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
-                      (vlen_t'(ara_req.stride) >= csr_vl_q)) null_vslideup = 1'b1;
+                      (ara_req.stride[$bits(csr_vl_q)-1:0] >= csr_vl_q)) null_vslideup = 1'b1;
                   end
                   6'b001111: begin
                     ara_req.op            = ara_pkg::VSLIDEDOWN;
@@ -2277,7 +2309,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     ara_req.scale_vl      = 1'b1;
                     // If stride > vl, the vslideup has no effects
                     if (|ara_req.stride[$bits(ara_req.stride)-1:$bits(csr_vl_q)] ||
-                      (vlen_t'(ara_req.stride) >= csr_vl_q)) null_vslideup = 1'b1;
+                      (ara_req.stride[$bits(csr_vl_q)-1:0] >= csr_vl_q)) null_vslideup = 1'b1;
                   end
                   6'b001111: begin
                     ara_req.op            = ara_pkg::VSLIDEDOWN;
@@ -5783,17 +5815,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     // their physical layout and their per-register EEW metadata.
     if (ara_req_valid_d && ara_req_d.use_vd && ara_req_ready_i &&
         state_q != OVERLAP_PREFIX_FIXUP) begin
-      automatic vlmul_e destination_lmul = single_register_result(ara_req_d.op)
-          ? LMUL_1 : ara_req_d.emul;
-      automatic int unsigned first_register = active_first_register(
-          ara_req_d.vtype.vsew, ara_req_d.vstart);
-      automatic int unsigned register_count = active_register_count(
-          destination_lmul, ara_req_d.vtype.vsew, ara_req_d.vstart, ara_req_d.vl);
+      automatic vlmul_e destination_lmul = single_register_result(layout_req.op)
+          ? LMUL_1 : layout_req.emul;
+      automatic logic [7:0] active_registers = active_register_mask(
+          destination_lmul, layout_req.vtype.vsew, layout_req.vstart, layout_req.vl);
       for (int unsigned i = 0; i < 8; i++) begin
-        if (i < register_count &&
-            (unsigned'(ara_req_d.vd) + first_register + i) < 32) begin
-          eew_d[ara_req_d.vd + first_register + i]       = ara_req_d.vtype.vsew;
-          eew_valid_d[ara_req_d.vd + first_register + i] = 1'b1;
+        if (active_registers[i] && (unsigned'(layout_req.vd) + i) < 32) begin
+          eew_d[layout_req.vd + i]       = layout_req.vtype.vsew;
+          eew_valid_d[layout_req.vd + i] = 1'b1;
         end
       end
     end
@@ -5829,6 +5858,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
     // The token must change at every new instruction
     ara_req.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
+    maintenance_req.token = ara_req.token;
     ara_req_idle.token = ara_req.token;
 `ifdef FOR_VERIFY
     if (acc_req_i.req_valid && acc_resp_o.req_ready) begin

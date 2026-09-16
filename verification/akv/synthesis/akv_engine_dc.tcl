@@ -13,11 +13,12 @@ file mkdir $output_dir
 define_design_lib WORK -path [file join $output_dir work]
 
 set std_library "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db"
-set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb64x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb64x256m1swbso_170a_tt0p9v25c.db"
+set context_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb96x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.db"
+set kv_sram_library "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb128x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.db"
 set synthetic_library "/home/wangwy/software/synopsys/install/syn/syn/T-2022.03-SP2/libraries/syn/dw_foundation.sldb"
 
 foreach required_file [list $dc_filelist $wrapper $project_sdc $std_library \
-                            $context_sram_library $synthetic_library] {
+                            $context_sram_library $kv_sram_library $synthetic_library] {
   if {![file isfile $required_file]} {
     error "missing standalone synthesis input: $required_file"
   }
@@ -25,7 +26,7 @@ foreach required_file [list $dc_filelist $wrapper $project_sdc $std_library \
 
 set_app_var target_library $std_library
 set_app_var synthetic_library $synthetic_library
-set_app_var link_library "* $std_library $context_sram_library $synthetic_library"
+set_app_var link_library "* $std_library $context_sram_library $kv_sram_library $synthetic_library"
 set_host_options -max_cores 8
 set hdlin_check_no_latch true
 set compile_seqmap_propagate_constants false
@@ -61,16 +62,17 @@ redirect [file join $output_dir qor.rpt] {report_qor}
 redirect [file join $output_dir references.rpt] {report_reference -hierarchy}
 redirect [file join $output_dir resources.rpt] {report_resources}
 
-set macro_ref TS1N28HPCPUHDSVTB64X256M1SWBSO
-set context_macros [get_cells -hierarchical -filter "ref_name == $macro_ref"]
+set v1_macro_ref TS1N28HPCPUHDSVTB96X256M1SWBSO
+set v2_macro_ref TS1N28HPCPUHDSVTB128X256M1SWBSO
+set context_macros [get_cells -hierarchical -filter "ref_name == $v1_macro_ref || ref_name == $v2_macro_ref"]
 set v1_macros [get_cells -hierarchical -filter \
-    "ref_name == $macro_ref && full_name =~ i_akv_engine/i_context/*"]
+    "ref_name == $v1_macro_ref && full_name =~ i_akv_engine/i_context/*"]
 set v2_macros [get_cells -hierarchical -filter \
-    "ref_name == $macro_ref && full_name =~ i_akv_engine/i_v2_context/*"]
+    "ref_name == $v2_macro_ref && full_name =~ i_akv_engine/i_v2_context/*"]
 set macro_count [sizeof_collection $context_macros]
 set v1_macro_count [sizeof_collection $v1_macros]
 set v2_macro_count [sizeof_collection $v2_macros]
-if {$macro_count != 20 || $v1_macro_count != 4 || $v2_macro_count != 16} {
+if {$macro_count != 10 || $v1_macro_count != 2 || $v2_macro_count != 8} {
   error "unexpected AKV SRAM organization: total=$macro_count v1=$v1_macro_count v2=$v2_macro_count"
 }
 
@@ -93,7 +95,7 @@ puts $report_file "scope=akv_engine_standalone"
 puts $report_file "akv_sram_macro_count=$macro_count"
 puts $report_file "akv_v1_sram_macro_count=$v1_macro_count"
 puts $report_file "akv_v2_sram_macro_count=$v2_macro_count"
-puts $report_file "physical_sram_capacity_bits=[expr {$macro_count * 64 * 256}]"
+puts $report_file "physical_sram_capacity_bits=[expr {($v1_macro_count * 96 + $v2_macro_count * 128) * 256}]"
 puts $report_file "design_total_area_um2=$total_area"
 puts $report_file "design_macro_area_um2=$macro_area"
 puts $report_file "design_logic_area_um2=$logic_area"

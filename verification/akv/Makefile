@@ -15,6 +15,7 @@ DC_FILELIST := $(abspath $(ROOT)/backend/flist/ara_soc_dc.f)
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
 RTL_EXTRA_DEFINES ?=
+RTL_MACRO_VCS_FLAGS ?=
 
 BENDER_TARGETS := --no-default-target -t rtl -t cv64a6_imafdcv_sv39 \
 	-t tech_cells_generic_include_tc_sram \
@@ -64,7 +65,7 @@ rtl-check: rtl-compile
 rtl-macro-compile: $(MACRO_FILELIST) $(TB) $(MACRO_MODEL)
 	cd $(MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
 		+define+ARA_AKV_ENABLE=1 +define+ARA_AKV_V2_ENABLE=1 \
-		+define+TARGET_SRAM_MC +lint=TFIPC-L \
+		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L \
 		-l compile.log -f $(MACRO_FILELIST) $(MACRO_MODEL) $(TB) \
 		-top akv_engine_tb -o simv
 

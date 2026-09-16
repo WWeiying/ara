@@ -54,8 +54,11 @@ endmodule
 
 def address_module(text, optimized):
     function = between(text, "  function automatic logic [31:0] block_byte_offset(",
-                       "  always_comb begin : form_read_range") if optimized else ""
+                       "  endfunction : block_byte_offset") + \
+        "  endfunction : block_byte_offset\n" if optimized else ""
     compute = """
+    offset = 64'(block_byte_offset(logical_row, k_offset_q, row_bytes_q, r4_q));
+""" if optimized and "input logic [23:0] k_offset" in function else """
     offset = 64'(block_byte_offset(logical_row, k_q, row_bytes_q, bytes_q, r4_q));
 """ if optimized else """
     block_index = r4_q ? (((64'(logical_row) >> 2) * blocks_q + k_q) << 2)
@@ -75,6 +78,7 @@ def address_module(text, optimized):
   logic [8:0] blocks_q;
   logic [15:0] bytes_q;
   logic [24:0] row_bytes_q;
+  logic [23:0] k_offset_q;
   logic [63:0] base_q, address_d, offset, block_index;
   logic [6:0] logical_row;
   logic r4_q;
@@ -88,10 +92,12 @@ def address_module(text, optimized):
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       row_q <= '0; index_q <= '0; k_q <= '0; blocks_q <= '0;
-      bytes_q <= '0; row_bytes_q <= '0; base_q <= '0; r4_q <= '0; address_o <= '0;
+      bytes_q <= '0; row_bytes_q <= '0; k_offset_q <= '0;
+      base_q <= '0; r4_q <= '0; address_o <= '0;
     end else begin
       row_q <= row_i; index_q <= index_i; k_q <= k_i; blocks_q <= blocks_i;
       bytes_q <= bytes_i; row_bytes_q <= blocks_i * bytes_i;
+      k_offset_q <= k_i * bytes_i;
       base_q <= base_i; r4_q <= r4_i; address_o <= address_d;
     end
   end
@@ -111,7 +117,8 @@ def main():
         profile = (directory / "qbs_profile_engine_int.sv").read_text()
         engine = (directory / "qbs_engine.sv").read_text()
         (out / "qbs_correction_select_timing.sv").write_text(correction_module(profile))
-        (out / "qbs_address_timing.sv").write_text(address_module(engine, name == "after"))
+        (out / "qbs_address_timing.sv").write_text(
+            address_module(engine, "function automatic logic [31:0] block_byte_offset(" in engine))
     for top in ("qbs_correction_select_timing", "qbs_address_timing"):
         old = (args.output / "before" / (top + ".sv")).read_text()
         old = re.sub(r"\b(qbs_correction_select_comb|qbs_correction_select_timing|qbs_address_timing)\b",

@@ -8,7 +8,8 @@ module qbs_profile_pipeline_timing import qbs_pkg::*; (
   input logic [2:0] m_i, rows_i, context_base_i,
   input logic [5:0] row_base_i,
   input logic first_block_i,
-  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [127:0] weight_window_i [4][2],
+  input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic start_ready_o, busy_o, done_o, result_valid_o,
   output logic [3:0] result_stream_o,
@@ -23,7 +24,8 @@ module qbs_profile_pipeline_timing import qbs_pkg::*; (
   logic [2:0] m_q, rows_q, context_base_q;
   logic [5:0] row_base_q;
   logic first_block_q, start_valid_q, result_ready_q;
-  logic [255:0] weight_window_q [4][2], activation_window_q [4];
+  logic [127:0] weight_window_q [4][2];
+  logic [255:0] activation_window_q [4];
   logic [7:0] weight_side_q [4][20], activation_side_q [4][36];
   wire [7:0] unused_weight [4][QbsMaxWeightBlockBytes];
   wire [7:0] unused_activation [4][QbsMaxActivationBlockBytes];

@@ -1,0 +1,2 @@
+name,kind,status,returncode,elapsed_s,reason,artifact_dir
+app:vsaxpy,app,PASS,0,9.434602393012028,,/home/wangwy/openproject/ara_dsa/hardware/timing_control_20260916/soc_final/focus/tests/app_vsaxpy

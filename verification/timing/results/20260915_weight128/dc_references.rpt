@@ -1,0 +1,243 @@
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth256' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth256' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth256' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth256' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords4_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords4_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords4_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords4_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_sram_NumWords8_DataWidth128' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_payload_buffer_0_1_1_00000000' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Changed wire load model for 'qbs_block_adapter_0_1' from '(none)' to 'ZeroWireload'. (OPT-170)
+Information: Updating graph... (UID-83)
+Warning: Design 'qbs_adapter_pipeline_timing' contains 5 high-fanout nets. A fanout number of 1000 will be used for delay calculations involving these nets. (TIM-134)
+ 
+****************************************
+Report : reference
+Design : qbs_adapter_pipeline_timing
+Version: T-2022.03-SP2
+Date   : Tue Sep 15 09:54:41 2026
+****************************************
+
+Attributes:
+    b - black box (unknown)
+   bo - allows boundary optimization
+    d - dont_touch
+   mo - map_only
+    h - hierarchical
+    n - noncombinational
+    r - removable
+    s - synthetic operator
+    u - contains unmapped logic
+
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+**SEQGEN**                        0.000000     348      0.000000  n, u
+GTECH_NOT          gtech          0.000000       1      0.000000  u
+qbs_block_adapter_0_1         38565.916016       1  38565.916016  b, h, n, u
+-----------------------------------------------------------------------------
+Total 3 references                                  38565.916016
+
+****************************************
+Design: qbs_block_adapter_0_1 
+****************************************
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+**SEQGEN**                        0.000000    3039      0.000000  n, u
+*ADD_UNS_OP_1_1_2                 0.000000     160      0.000000  s, u
+*ADD_UNS_OP_2_1_2                 0.000000       2      0.000000  s, u
+*ADD_UNS_OP_2_2_3                 0.000000      80      0.000000  s, u
+*ADD_UNS_OP_3_3_4                 0.000000      40      0.000000  s, u
+*ADD_UNS_OP_3_9_10                0.000000      48      0.000000  s, u
+*ADD_UNS_OP_3_29_30               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_3_30_31               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_4_4_4                 0.000000       2      0.000000  s, u
+*ADD_UNS_OP_4_4_5                 0.000000      20      0.000000  s, u
+*ADD_UNS_OP_5_5_6                 0.000000      10      0.000000  s, u
+*ADD_UNS_OP_5_11_12               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_6_12_13               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_8_6_8                 0.000000       4      0.000000  s, u
+*ADD_UNS_OP_9_6_9                 0.000000       4      0.000000  s, u
+*ADD_UNS_OP_10_1_11               0.000000       1      0.000000  s, u
+*ADD_UNS_OP_10_2_11               0.000000       2      0.000000  s, u
+*ADD_UNS_OP_10_3_11               0.000000       4      0.000000  s, u
+*ADD_UNS_OP_10_4_11               0.000000       8      0.000000  s, u
+*ADD_UNS_OP_10_29_30              0.000000      16      0.000000  s, u
+*ADD_UNS_OP_10_30_31              0.000000      16      0.000000  s, u
+*ADD_UNS_OP_12_1_13               0.000000       1      0.000000  s, u
+*ADD_UNS_OP_12_2_13               0.000000       2      0.000000  s, u
+*ADD_UNS_OP_12_3_13               0.000000       4      0.000000  s, u
+*ADD_UNS_OP_12_4_13               0.000000       8      0.000000  s, u
+*ADD_UNS_OP_30_1_31               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_31_1_32               0.000000      16      0.000000  s, u
+*ADD_UNS_OP_32_6_32               0.000000       2      0.000000  s, u
+*EQ_UNS_OP_8_8_1                  0.000000       4      0.000000  s, u
+*EQ_UNS_OP_9_9_1                  0.000000       4      0.000000  s, u
+*GEQ_UNS_OP_3_1_1                 0.000000       1      0.000000  s, u
+*GEQ_UNS_OP_4_1_1                 0.000000       1      0.000000  s, u
+*GEQ_UNS_OP_8_3_1                 0.000000      16      0.000000  s, u
+*GEQ_UNS_OP_8_6_1                 0.000000      16      0.000000  s, u
+*GEQ_UNS_OP_8_7_1                 0.000000      16      0.000000  s, u
+*GEQ_UNS_OP_9_3_1                 0.000000      16      0.000000  s, u
+*GEQ_UNS_OP_9_10_1                0.000000      16      0.000000  s, u
+*GEQ_UNS_OP_10_8_1                0.000000       1      0.000000  s, u
+*GEQ_UNS_OP_10_9_1                0.000000       1      0.000000  s, u
+*GEQ_UNS_OP_10_10_1               0.000000       1      0.000000  s, u
+*GEQ_UNS_OP_11_8_1                0.000000      15      0.000000  s, u
+*GEQ_UNS_OP_11_9_1                0.000000      15      0.000000  s, u
+*GEQ_UNS_OP_11_10_1               0.000000      15      0.000000  s, u
+*LEQ_UNS_OP_3_3_1                 0.000000       1      0.000000  s, u
+*LEQ_UNS_OP_4_3_1                 0.000000       1      0.000000  s, u
+*LEQ_UNS_OP_4_4_1                 0.000000       1      0.000000  s, u
+*LT_UNS_OP_1_3_1                  0.000000       4      0.000000  s, u
+*LT_UNS_OP_2_3_1                  0.000000      20      0.000000  s, u
+*LT_UNS_OP_8_7_1                  0.000000      16      0.000000  s, u
+*LT_UNS_OP_8_8_1                  0.000000      16      0.000000  s, u
+*LT_UNS_OP_12_5_1                 0.000000       1      0.000000  s, u
+*LT_UNS_OP_12_6_1                 0.000000       1      0.000000  s, u
+*LT_UNS_OP_12_9_1                 0.000000       1      0.000000  s, u
+*LT_UNS_OP_12_11_1                0.000000       1      0.000000  s, u
+*LT_UNS_OP_12_12_1                0.000000       2      0.000000  s, u
+*LT_UNS_OP_12_13_1                0.000000       1      0.000000  s, u
+*LT_UNS_OP_13_5_1                 0.000000      15      0.000000  s, u
+*LT_UNS_OP_13_6_1                 0.000000      15      0.000000  s, u
+*LT_UNS_OP_13_9_1                 0.000000      15      0.000000  s, u
+*LT_UNS_OP_13_11_1                0.000000      15      0.000000  s, u
+*LT_UNS_OP_13_12_1                0.000000      30      0.000000  s, u
+*LT_UNS_OP_13_13_1                0.000000      15      0.000000  s, u
+*LT_UNS_OP_32_8_1                 0.000000      16      0.000000  s, u
+*LT_UNS_OP_32_9_1                 0.000000      32      0.000000  s, u
+*LT_UNS_OP_32_10_1                0.000000      16      0.000000  s, u
+*MULT_UNS_OP_2_4_4                0.000000       2      0.000000  s, u
+*MULT_UNS_OP_2_8_10               0.000000      32      0.000000  s, u
+*MULT_UNS_OP_7_2_9                0.000000      16      0.000000  s, u
+*MULT_UNS_OP_8_2_10               0.000000      16      0.000000  s, u
+*SELECT_OP_2.1_2.1_1              0.000000    1047      0.000000  s, u
+*SELECT_OP_2.2_2.1_2              0.000000      36      0.000000  s, u
+*SELECT_OP_2.3_2.1_3              0.000000      16      0.000000  s, u
+*SELECT_OP_2.4_2.1_4              0.000000       2      0.000000  s, u
+*SELECT_OP_2.8_2.1_8              0.000000       5      0.000000  s, u
+*SELECT_OP_2.9_2.1_9              0.000000      20      0.000000  s, u
+*SELECT_OP_2.10_2.1_10            0.000000      15      0.000000  s, u
+*SELECT_OP_2.11_2.1_11            0.000000       2      0.000000  s, u
+*SELECT_OP_2.12_2.1_12            0.000000      30      0.000000  s, u
+*SELECT_OP_2.16_2.1_16            0.000000       2      0.000000  s, u
+*SELECT_OP_2.31_2.1_31            0.000000      16      0.000000  s, u
+*SELECT_OP_2.32_2.1_32            0.000000      18      0.000000  s, u
+*SELECT_OP_3.1_3.1_1              0.000000      92      0.000000  s, u
+*SELECT_OP_3.2_3.1_2              0.000000      80      0.000000  s, u
+*SELECT_OP_3.3_3.1_3              0.000000      34      0.000000  s, u
+*SELECT_OP_3.9_3.1_9              0.000000      64      0.000000  s, u
+*SELECT_OP_3.10_3.1_10            0.000000      16      0.000000  s, u
+*SELECT_OP_3.11_3.1_11            0.000000       1      0.000000  s, u
+*SELECT_OP_3.12_3.1_12            0.000000      15      0.000000  s, u
+*SELECT_OP_3.30_3.1_30            0.000000      16      0.000000  s, u
+*SELECT_OP_3.31_3.1_31            0.000000      16      0.000000  s, u
+*SELECT_OP_3.32_3.1_32            0.000000      16      0.000000  s, u
+*SELECT_OP_4.1_4.1_1              0.000000       2      0.000000  s, u
+*SELECT_OP_4.2_4.1_2              0.000000      16      0.000000  s, u
+*SELECT_OP_4.4_4.1_4              0.000000       2      0.000000  s, u
+*SELECT_OP_4.11_4.1_11            0.000000       1      0.000000  s, u
+*SELECT_OP_4.12_4.1_12            0.000000      15      0.000000  s, u
+*SELECT_OP_8.10_8.1_10            0.000000      16      0.000000  s, u
+*SELECT_OP_10.2_10.1_2            0.000000       2      0.000000  s, u
+*SELECT_OP_10.6_10.1_6            0.000000      17      0.000000  s, u
+*SUB_UNS_OP_2_1_2                 0.000000       2      0.000000  s, u
+*SUB_UNS_OP_8_2_8                 0.000000      16      0.000000  s, u
+*SUB_UNS_OP_8_3_8                 0.000000      32      0.000000  s, u
+*SUB_UNS_OP_8_5_8                 0.000000      48      0.000000  s, u
+*SUB_UNS_OP_8_6_8                 0.000000      48      0.000000  s, u
+*SUB_UNS_OP_8_7_8                 0.000000      32      0.000000  s, u
+*SUB_UNS_OP_8_8_8                 0.000000      32      0.000000  s, u
+*SUB_UNS_OP_10_8_11               0.000000       1      0.000000  s, u
+*SUB_UNS_OP_10_9_11               0.000000       1      0.000000  s, u
+*SUB_UNS_OP_10_10_11              0.000000       1      0.000000  s, u
+*SUB_UNS_OP_11_8_12               0.000000      15      0.000000  s, u
+*SUB_UNS_OP_11_9_12               0.000000      15      0.000000  s, u
+*SUB_UNS_OP_11_10_12              0.000000      15      0.000000  s, u
+*SUB_UNS_OP_12_5_13               0.000000       1      0.000000  s, u
+*SUB_UNS_OP_12_6_13               0.000000       1      0.000000  s, u
+*SUB_UNS_OP_12_12_13              0.000000       1      0.000000  s, u
+*SUB_UNS_OP_12_13_14              0.000000       1      0.000000  s, u
+*SUB_UNS_OP_13_5_14               0.000000      15      0.000000  s, u
+*SUB_UNS_OP_13_6_14               0.000000      15      0.000000  s, u
+*SUB_UNS_OP_13_12_14              0.000000      15      0.000000  s, u
+*SUB_UNS_OP_13_13_14              0.000000      15      0.000000  s, u
+GTECH_AND2         gtech          0.000000    1594      0.000000  u
+GTECH_BUF          gtech          0.000000    1038      0.000000  u
+GTECH_NOT          gtech          0.000000    2543      0.000000  u
+GTECH_OR2          gtech          0.000000    3620      0.000000  u
+qbs_payload_buffer_0_1_1_00000000
+                              38565.916016       1  38565.916016  b, h, n, u
+-----------------------------------------------------------------------------
+Total 125 references                                38565.916016
+
+****************************************
+Design: qbs_payload_buffer_0_1_1_00000000 
+****************************************
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+**SEQGEN**                        0.000000    1792      0.000000  n, u
+*EQ_UNS_OP_3_3_1                  0.000000     384      0.000000  s, u
+*MULT_UNS_OP_2_4_4                0.000000       2      0.000000  s, u
+*SELECT_OP_2.1_2.1_1              0.000000       1      0.000000  s, u
+*SELECT_OP_2.3_2.1_3              0.000000      49      0.000000  s, u
+*SELECT_OP_2.4_2.1_4              0.000000     360      0.000000  s, u
+*SELECT_OP_2.8_2.1_8              0.000000    1684      0.000000  s, u
+*SELECT_OP_3.8_3.1_8              0.000000     524      0.000000  s, u
+*SELECT_OP_5.4_5.1_4              0.000000       1      0.000000  s, u
+*SELECT_OP_10.2_10.1_2            0.000000       1      0.000000  s, u
+*SUB_UNS_OP_1_4_4                 0.000000       4      0.000000  s, u
+*SUB_UNS_OP_4_4_4                 0.000000       6      0.000000  s, u
+GTECH_AND2         gtech          0.000000   20005      0.000000  u
+GTECH_BUF          gtech          0.000000    2641      0.000000  u
+GTECH_NOT          gtech          0.000000    6450      0.000000  u
+GTECH_OR2          gtech          0.000000   27846      0.000000  u
+qbs_payload_sram_NumWords4_DataWidth128
+                               2520.177246       4  10080.708984  b, h, u
+qbs_payload_sram_NumWords8_DataWidth128
+                               2520.177246       4  10080.708984  b, h, u
+qbs_payload_sram_NumWords8_DataWidth256
+                               4601.124512       4  18404.498047  b, h, u
+-----------------------------------------------------------------------------
+Total 19 references                                 38565.916016
+
+****************************************
+Design: qbs_payload_sram_NumWords4_DataWidth128 
+****************************************
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+GTECH_NOT          gtech          0.000000     130      0.000000  u
+TS1N28HPCPUHDSVTB8X128M1SWBSO
+                   ts1n28hpcpuhdsvtb8x128m1swbso_tt0p9v25c
+                               2520.177246       1   2520.177246  b, d
+-----------------------------------------------------------------------------
+Total 2 references                                   2520.177246
+
+****************************************
+Design: qbs_payload_sram_NumWords8_DataWidth128 
+****************************************
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+GTECH_NOT          gtech          0.000000     130      0.000000  u
+TS1N28HPCPUHDSVTB8X128M1SWBSO
+                   ts1n28hpcpuhdsvtb8x128m1swbso_tt0p9v25c
+                               2520.177246       1   2520.177246  b, d
+-----------------------------------------------------------------------------
+Total 2 references                                   2520.177246
+
+****************************************
+Design: qbs_payload_sram_NumWords8_DataWidth256 
+****************************************
+Reference          Library       Unit Area   Count    Total Area   Attributes
+-----------------------------------------------------------------------------
+GTECH_NOT          gtech          0.000000     258      0.000000  u
+TS1N28HPCPUHDSVTB8X256M1SWBSO
+                   ts1n28hpcpuhdsvtb8x256m1swbso_tt0p9v25c
+                               4601.124512       1   4601.124512  b, d
+-----------------------------------------------------------------------------
+Total 2 references                                   4601.124512
+1

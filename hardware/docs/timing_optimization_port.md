@@ -1799,3 +1799,255 @@ python3 verification/timing/collect_qbs_ingress_results.py \
 保存原始日志、33 命令与七切片 CSV、RTL patch 及综合状态。失败定位的原始
 `replay_probe/ingress_boundary.trace` 与修正后的 `replay_fixed/ingress_boundary.trace`
 保留在运行目录，不能把失败探针或未结束任务的中间输出归入通过数据。
+
+## 23. 面积压缩后的控制与共享结果路径优化（2026-09-15）
+
+### 23.1 报告范围与本轮目标
+
+依据 `hardware/dc_runs/20260914_0917_qbs_stream_area/` 中的整机
+`reports/clk_i_max.tim`。该文件最多列出 1000 个 endpoint，下面的数量仅表示
+这组最差路径的分布，不是全芯片违例总数或动态执行比例。
+
+| 路径类别 | 报告中的 endpoint 数 | 最差 slack | 本轮处理 |
+|---|---:|---:|---|
+| Dispatcher overlap 状态到解码及 CVA6 接口 | 164 | -0.306 ns | 解码准入与修复请求的下一状态运算分离 |
+| VMFPU，除 SIMD MUL 外 | 578 | -0.295 ns | 处理其中转换结果经过 estimate 后处理的串联通路；并非宣称覆盖该类全部路径 |
+| QBS | 19 | -0.278 ns | K-block 偏移乘法前移到已有调度同步周期 |
+| SIMD MUL | 15 | -0.299 ns | 本轮不改乘法器延迟，保留后续时序检查 |
+
+新的 QBS adapter 和 profile pipeline 局部综合已经在 1 ns 周期、0.15 ns
+setup uncertainty 下没有 setup 违例。因此本轮保留 unique-byte 完成计数、
+共享 compact 解码和既有 SRAM/流水结构，不恢复大 bitmap 或宽字节选择网络。
+局部综合通过不能代替整机通过。
+
+本轮不修改综合约束。需要区分旧报告的 `clock gating setup time=0.200 ns`
+与工作区此前已对齐 main_real 的 `GUI_GATER_SETUP=0.05`；二者不同。
+后续不能把 clock-gating 检查条件变化带来的 slack 改善全部归因于 RTL。
+时钟周期仍为 1 ns，setup uncertainty 仍为 0.15 ns。
+
+### 23.2 Dispatcher：让解码准入直接由当前状态决定
+
+旧逻辑先计算 overlap 修复的有效元素数、是否需要修复和下一状态，再通过
+`state_d == NORMAL_OPERATION` 判断能否进入架构指令解码。虽然修复状态实际上
+不能直接进入普通解码，综合网络仍将宽组合状态运算接到该条件上，最终延伸到
+标量 response、scoreboard forwarding 和时钟门控 enable。
+
+现在直接列出可以在本拍进入解码的四种情况：普通执行、重新发射原始 overlap
+指令、WAIT_IDLE 已排空、WAIT_IDLE_FLUSH 已完成。其它状态不进入此路径。
+特别保留了 SOURCE_SNAPSHOT_WAIT 和 OVERLAP_RESPOND 不在当拍再次解码的规则。
+没有新增寄存器，也没有提前确认尚未完成的指令。
+
+新旧完整 dispatcher 逐拍比较了全部外部输出和 70 组寄存状态：
+67,040 拍通过，覆盖全部 15 个有效 FSM 状态、13,478 拍后端阻塞和 25,379 次接收。
+这是仿真等价检查，不是形式验证证明。
+
+### 23.3 VMFPU：估算分类不再经过共享算术结果总线
+
+旧路径中，`vfrec7/vfrsqrt7` 的分类输入来自 fpnew 的 CLASSIFY 输出。这是正确的
+功能实现，但该总线还承载 FMA、浮点转换等结果。静态时序因而出现：
+
+```text
+cast 中间寄存器 -> 转换/舍入 -> 两级结果仲裁
+  -> vfrec7/vfrsqrt7 后处理 -> narrowing/结果选择 -> result queue
+```
+
+最差转换路径在 fpnew 输出处已经到达约 0.822 ns，写入结果队列时为 1.149 ns。
+本轮从随同请求保存在 fpnew elastic tag 中的原操作数重新获得分类：FP16、FP32、
+FP64 分别复用现成的 `fpnew_classifier`。NaN、无穷、零、正规数、非正规数及符号
+映射和 fpnew 原 CLASSIFY 一致。向量执行不要求逐元素 NaN boxing；该接口原本
+固定 `vectorial_op_i=1`，所以分类器的 `is_boxed_i=1` 与原路径一致。
+
+原操作数已经随 valid/ready 阻塞正确保持，不再额外保存一份操作数或添加 pipeline。
+原 fpnew 请求、完成握手、fflags、舍入方式、mask、归约反馈及普通算术结果来源均
+不变。新增仿真断言在每个有效 estimate 结果上，将活跃元素的新分类与实际
+CLASSIFY 输出比较，防止 tag、SEW 或 mask 对齐出错。
+
+### 23.4 QBS：利用已有同步周期保存 K 字节偏移
+
+原范围地址需要在一拍内完成 `k_block * block_bytes`、行偏移合并和虚拟基址相加。
+整机报告中，这条链从 compute 的 K-block 寄存器到 reader range FIFO，达到
+1.120 ns，slack 为 -0.278 ns。
+
+调度器本来就有 `scheduler_tuple_current` 条件：compute 改变 K/行位置后，下一拍
+同步调度器的位置；同步完成前不发出范围请求。本轮在这个已有周期计算并保存
+weight/activation 的 K-byte offset。以后形成范围请求时，只读稳定的偏移，不再
+串联 K 乘法。两路各 24 bit，共增加 48 bit 内部状态，不增加同步等待拍数。
+
+24 bit 覆盖完整的 8-bit K 索引与 16-bit block 字节数乘积，不依赖某个模型或格式。
+M4/M8 interleaved activation 仍按对应 storage M 扩展偏移；R4 weight 的地址和
+尾行数量保持原规则。所有 RUN 且 tuple 对齐的周期都有断言核对缓存偏移和原公式。
+改写前后的地址组合/寄存器包装对照通过 67,571 拍，覆盖格式相关步长、行号、
+索引和高位基址；完整 QBS 还验证了上下文 FILL/REUSE/RELEASE 及异常后的重新启动。
+
+### 23.5 功能证据、性能与综合边界
+
+独立运行目录为
+`verification/timing/build_area_20260915/timing_closure/`。
+`before/` 保存本轮编辑前的三个模块，不把更早的流水版本当作本轮基线。
+
+QBS 的 33 个功能命令和 validation/MMU/AXI/PMA 四类故障全部通过。
+六个真实模型切片的 command cycles、weight/activation/payload 字节、range 数和
+dot 活跃周期均与面积压缩后、本轮修改前的结果相同：
+
+| 格式 | M x N x K | 修改前周期 | 修改后周期 |
+|---|---:|---:|---:|
+| Q4_K | 4 x 32 x 1536 | 7304 | 7304 |
+| Q4_K | 8 x 16 x 1536 | 7742 | 7742 |
+| Q4_K | 7 x 16 x 1536 | 7716 | 7716 |
+| Q6_K | 4 x 32 x 8960 | 42536 | 42536 |
+| Q6_K | 8 x 16 x 8960 | 45090 | 45090 |
+| Q6_K | 7 x 16 x 8960 | 45076 | 45076 |
+
+普通 RVV 回归包含 vfrec7、vfrsqrt7、三类转换、vstart、widen/reduction overlap、
+segment、FMA、归约和 AXPY，启用 QBS/AKV-v2 的真实 CVA6 顶层，12 个测试全部
+通过，完整状态记录在 `soc/status.json`。同一新编译的整机仿真还完成 QBS/AKV
+交替执行：4 条 QBS 和 10 条 AKV 命令全部通过，记录在
+`handoff/qbs_akv_handoff_20260915_073951/summary.txt`。
+
+`dc_dispatcher_before/`、`dc_dispatcher/`、`dc_address_before/`、`dc_address/`
+使用容器内独立冻结输入的 DC 对照，不覆盖旧综合。其中 address 只是抽取的
+地址路径，不是完整 QBS；dispatcher 不包含下游 CVA6 的实际负载。当前尚无本轮
+整机时序结果，不能宣称已经消掉全部违例或保证 1 GHz。仍需检查 EW64 MUL、
+CVA6 FPU、operand queue 到 ALU 及其它未被本轮覆盖的路径。
+
+整机综合已在容器中启动，冻结本轮 RTL、依赖和现有约束，目录为
+`hardware/dc_runs/20260915_control_timing/`。该版本同时包含此前的面积压缩和
+本节三项时序改写。旧综合任务、输出和报告没有覆盖；新日志位于该目录下的
+`backend/syn/ara_soc/v1-dc/run/dc.log`。启动时先核对整机回归的源码哈希及 QBS
+完整通过标记，再开始 DC，不把仿真通过当作时序收敛证据。
+
+以下命令已完成本轮日志、源码哈希和逐点周期对照的归档；输出目录必须为新目录，
+不覆盖已有结果：
+
+```sh
+python3 verification/timing/collect_control_timing_results.py \
+  --run verification/timing/build_area_20260915/timing_closure \
+  --baseline verification/timing/build_area_20260915 \
+  --output verification/timing/results/20260915_control_timing
+```
+
+## 24. 非算术控制路径收敛（2026-09-16）
+
+### 24.1 本轮基线与目标
+
+本轮直接修改 `ara_dsa` 的面积压缩版，不覆盖为 FPGA 导出的旧 RTL。
+保留当前 SRAM 尺寸、紧凑 payload 窗口、已加入的算术流水及 QBS 状态复用。
+编辑前完整 `hardware/src`、`hardware/include` 保存在
+`verification/timing/build_control_20260916/before/`，逐周期参考模块从这份快照生成。
+
+目标来自 `hardware/dc_runs/20260915_context_area/` 的 `clk_i_max.tim`。
+该报告采用 1 ns 时钟、0.15 ns setup uncertainty，最差 slack 为 -0.206 ns。
+下面的 slack 是**修改前**的实测值，不是对新综合结果的预测。
+
+| 路径类别 | 修改前代表 slack/ns | 本轮处理 |
+|---|---:|---|
+| overlap 状态到 Dispatcher EEW 写回，并延伸到 CVA6 返回/issue | -0.206 | 请求分支提前分开；区间直接生成寄存器掩码 |
+| sequencer ready 经 Dispatcher/segment 到 `old_eew_vs1` | -0.193 | 从未被晚到 ready 门控的候选请求计算布局信息 |
+| AddrGen burst 末地址到下一起始地址 | -0.198 | 有界低位算术与高位进/借位并行计算 |
+| VSTU 最后一拍判定到下条指令首字节数量 | -0.189 | 预先计算下一队项的字节几何信息 |
+| 控制 MMIO downsizer 到 burst splitter 的 ready 链 | -0.188 | 仅在 CTRL 分支加入现有 `axi_cut` |
+
+QBS/AKV 的 range 地址路径也纳入优化，但它们的全部违例端点不能仅根据名称
+推断成同一个原因。此次只处理能从 RTL 重建的“行/token 索引乘法、偏移合并、
+基址相加、range FIFO”路径，不据此宣称覆盖所有 QBS/AKV 违例。
+
+### 24.2 Dispatcher 与 segment：提前计算，不提前生效
+
+`arch_decode` 准备普通指令请求；`maintenance_req` 准备重排、overlap 修复和
+source snapshot 等内部请求。根据已寄存的状态选择 `backend_req`，不让普通
+解码的赋值链串在维护请求之后。请求接收、异常返回和流水寄存器使能仍遵守原规则。
+
+寄存器范围不再先串行计算“首寄存器、总数、循环偏移、最终索引”，而是为相对
+寄存器 0 到 7 分别判断是否与 `[vstart, vl)` 相交。得到的 8-bit mask 直接参与
+EEW 写回、混合布局判定和重排需求判定。fractional LMUL、空区间、寄存器 v31
+处的截断保持原有行为。slide 的 64-bit 地址偏移仍保留原来的模加和饱和语义；
+仅把实际进位计算限制在 VL 相关低位，高位负责判断越界，不是直接截断高位。
+
+新增 `layout_req_i/o` 是**内部组合侧带**，不是额外指令、FIFO 或流水级。
+segment 使用候选请求和自己已寄存的 field/element 位置，提前计算首字段和后续
+字段的目标范围，也提前定位 store 源寄存器的旧 EEW。真实 `valid/ready`、合法性
+检查以及原有写回条件决定这些信息何时生效。反压期间不推进 segment 计数器。
+
+扩展验证曾否定一个进一步简化：不能无条件删除 `OVERLAP_FIXUP` 后面的通用
+EEW 更新。强制组合的 segment 状态下，局部修复写回与通用更新不一定指向同一个
+寄存器。本轮保留原条件和优先级，不依靠未经证明的可达性假设删除写回。
+
+### 24.3 QBS/AKV：将重复地址计算改为握手驱动的游标
+
+- QBS 原有 tuple 同步周期已能计算 K-byte offset；现在同样在准备周期设置
+  demand 行偏移。每接受一个对应 range，才累加一次行跨度。activation、demand
+  weight、lookahead weight 各有独立游标。R4 的乘 4、尾行数量以及 M4/M8 激活
+  布局仍沿用原契约，context replay 与外部读不会使同一行重复推进。
+- AKV 在现有 validate/full/refill 接收阶段准备 Q/K/V 地址，PAYLOAD 阶段按实际
+  接受的 Q、K 或 V range 只推进对应游标。不同 token stride、非零 tile start、
+  尾 token、row/column view 和 D256 分段仍受原 descriptor 校验约束。
+- QBS 新增 96 bit、AKV 新增 192 bit 游标状态，总计 288 bit；没有扩大 payload
+  SRAM、计算阵列或命令窗口，也没有增加计算或读请求的等待阶段。
+- 所有有效 range，包括受反压但尚未接收的周期，都通过仿真断言核对旧索引公式。
+  完整 engine 差分还比较 MMU、AXI、PMA、VRF 写回、完成、异常和性能计数器。
+  这比只比较最终矩阵结果更能发现重发、丢请求或错误推进。
+
+### 24.4 AddrGen、VSTU 与控制总线
+
+AddrGen 的 burst 长度和对齐只影响有界低位，高位最多加一或减一。因此预先并行
+准备高位的原值、加一值和减一值，再由低位结果选择。末地址与下一起始地址不再
+串联多次全宽运算；零长度、地址宽度回绕、非对齐起始地址和 4 KiB 裁切保持一致。
+
+VSTU 从寄存的 issue pointer 预先选择下一队项，计算其 `vl-vstart` 字节数、
+VRF 字内起点及第一批有效字节数。当前指令最后一拍完成时只选择这些已算出的
+组合值。队列为空时，同拍新接收指令仍按原有后写优先级初始化，不能错误使用
+预读的旧队项。队列容量、接受/发射/提交三个指针和 lane spill register 都未改变。
+
+`ara_soc` 只在 `CTRL` 这一 MMIO 分支的 AXI downsizer 与 AXI-to-Lite 之间加入
+已有的五通道 `axi_cut`。它隔离 request/response 的组合反压，并保持各通道次序。
+会增加少量控制寄存器访问延迟；L2、权重、激活、KV 的读写数据通路没有插入缓冲。
+AXPY 的实测 `[PERF] total_cycles` 在修改前后均为 1303。
+
+### 24.5 验证与可复现结果
+
+| 检查 | 已通过的范围 |
+|---|---|
+| Dispatcher 完整状态/输出差分 | 68,640 拍，70 组寄存状态，15 个 FSM 状态 |
+| EEW 布局算术差分 | VLEN=64/1024/65536，共 2,364,768 组 |
+| AddrGen 原/新末地址函数 | 12 种参数组合，144,000 组 |
+| VSTU 完整状态/输出差分 | 24,192 拍，含出队、指针回绕、非零 vstart 与同拍接收 |
+| QBS 原/新完整 engine | 68 项输出逐拍比较；33 个功能命令及四类异常 |
+| AKV 原/新完整 engine | 53 项输出逐拍比较；D64/D96/D128/D256、尾块及 view/异常 |
+
+八个切片使用前一轮保存的真实 Qwen2.5 权重和激活，输入 hash 与旧记录一致。
+修改后的仿真同时绑定旧 engine，最终结果、range/流量、phase 计数和 command
+cycles 均一致，没有通过缩短 K、改 hint 或改软件输入换取这些结果。
+
+| 格式 | M x N x K | 修改前周期 | 修改后周期 |
+|---|---:|---:|---:|
+| Q4_K | 1 x 32 x 1536 | 2287 | 2287 |
+| Q4_K | 4 x 32 x 1536 | 7304 | 7304 |
+| Q4_K | 8 x 16 x 1536 | 7742 | 7742 |
+| Q4_K | 7 x 16 x 1536 | 7716 | 7716 |
+| Q6_K | 1 x 32 x 8960 | 17813 | 17813 |
+| Q6_K | 4 x 32 x 8960 | 42536 | 42536 |
+| Q6_K | 8 x 16 x 8960 | 45090 | 45090 |
+| Q6_K | 7 x 16 x 8960 | 45076 | 45076 |
+
+整机回归选择 `vsaxpy`、`vwiden_overlap_edges`、`vsegment_emul_edges`、
+`vslide_mask_edges`、`vse32` 和 `vfmacc`，使用同一新编译的真实 CVA6、QBS/AKV-v2
+顶层，六项全部通过。执行状态在 `hardware/timing_control_20260916/soc_final/status.json`，真实
+切片状态在同级 `real/status.json`。本轮没有进行局部 DC 综合，也没有修改算术
+结果的舍入顺序。这些检查是有限的逐周期差分和功能回归，不是形式等价证明。
+
+汇总命令只接受全部完成且源码 hash 一致的结果：
+
+```sh
+python3 verification/timing/collect_control_closure_results.py \
+  --checks verification/timing/build_control_20260916 \
+  --run hardware/timing_control_20260916 \
+  --baseline-summary verification/timing/results/20260915_context_area/summary.json \
+  --output verification/timing/results/20260916_control_closure
+```
+
+整体 DC 使用独立目录 `hardware/dc_runs/20260916_control_closure/`，冻结 RTL、
+依赖源码、宏黑盒和约束；保持此前的 TSMC SRAM、TT 库、1 ns/0.15 ns 约束、8 核
+配置和 compile 选项。已于 2026-09-16 02:07 PDT 在 `synopsys_workspace` 容器
+启动整体 DC，确认日志正在编译冻结源码。旧综合及其报告不覆盖。后续应使用新报告核实各路径的实际
+slack；本轮未改动的 FMA/乘法/浮点结果传播等功能单元路径仍可能限制全局 WNS，
+不能把控制路径优化或仿真通过写成“全部违例已消除”。

@@ -1,0 +1,13 @@
+name,kind,status,returncode,elapsed_s,reason,artifact_dir
+rvv:vfrec7,rvv,PASS,0,31.011586412030738,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfrec7
+rvv:vfrsqrt7,rvv,PASS,0,22.484271351015195,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfrsqrt7
+rvv:vfcvt,rvv,PASS,0,98.09535145800328,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfcvt
+rvv:vfncvt,rvv,PASS,0,86.26407101104269,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfncvt
+rvv:vfwcvt,rvv,PASS,0,88.79961206100415,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfwcvt
+rvv:vfp_vstart_edges,rvv,PASS,0,31.118618835986126,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfp_vstart_edges
+rvv:vwiden_overlap_edges,rvv,PASS,0,76.75134337804047,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vwiden_overlap_edges
+rvv:vreduction_overlap_edges,rvv,PASS,0,19.97694806504296,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vreduction_overlap_edges
+rvv:vsegment_emul_edges,rvv,PASS,0,45.34016106202034,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vsegment_emul_edges
+rvv:vfmacc,rvv,PASS,0,36.219540247984696,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfmacc
+rvv:vfredusum,rvv,PASS,0,64.20511314400937,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/rvv_vfredusum
+app:vsaxpy,app,PASS,0,6.724516552989371,,/home/wangwy/openproject/ara_dsa/verification/timing/build_area_20260915/timing_closure/soc/results/tests/app_vsaxpy

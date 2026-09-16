@@ -67,10 +67,8 @@ module qbs_activation_context import qbs_pkg::*; (
   localparam int unsigned ReplayBeats =
       (QbsQ8KBlockBytes + BeatBytes - 1) / BeatBytes;
   localparam int unsigned ReplayBeatWidth = $clog2(ReplayBeats);
-  localparam int unsigned MacroAddrWidth = 6;
-  localparam int unsigned MacroHalfRows = 1 << MacroAddrWidth;
-  localparam int unsigned MacroRows = 2 * MacroHalfRows;
-  localparam int unsigned MacroCount = (BankDepth + MacroRows - 1) / MacroRows;
+  localparam int unsigned MacroDepth = 76;
+  localparam int unsigned MacroAddrWidth = $clog2(MacroDepth);
 
   logic context_valid_q;
   logic [3:0] context_id_q;
@@ -229,84 +227,53 @@ module qbs_activation_context import qbs_pkg::*; (
     );
   end
 `else
-  logic [255:0] macro_q [BankCount][MacroCount];
-  logic [$clog2(MacroCount)-1:0] macro_read_select_q [BankCount];
+  logic [255:0] macro_q [BankCount];
   logic macro_read_half_q [BankCount];
 
   for (genvar bank = 0; bank < BankCount; bank++) begin : gen_context_bank
-    logic [MacroCount-1:0] macro_req;
-    logic [MacroCount-1:0] macro_we;
-    logic [MacroAddrWidth-1:0] macro_addr [MacroCount];
-    logic [255:0] macro_wdata [MacroCount];
-    logic [255:0] macro_bweb [MacroCount];
-
-    always_comb begin
-      automatic int unsigned selected_macro;
-      automatic int unsigned selected_row;
-      automatic int unsigned selected_half;
-      macro_req = '0;
-      macro_we = '0;
-      for (int unsigned macro = 0; macro < MacroCount; macro++) begin
-        macro_addr[macro] = '0;
-        macro_wdata[macro] = '0;
-        macro_bweb[macro] = '1;
-      end
-      if (bank_req[bank]) begin
-        selected_macro = unsigned'(bank_addr[bank]) / MacroRows;
-        selected_row = unsigned'(bank_addr[bank]) % MacroRows;
-        selected_half = selected_row & 1;
-        macro_req[selected_macro] = 1'b1;
-        macro_we[selected_macro] = bank_we[bank];
-        macro_addr[selected_macro] = MacroAddrWidth'(selected_row >> 1);
-        if (bank_we[bank]) begin
-          macro_wdata[selected_macro][selected_half * 128 +: 128] =
-              bank_wdata[bank];
-          for (int unsigned byte_lane = 0; byte_lane < BeatBytes;
-               byte_lane++) begin
-            if (bank_be[bank][byte_lane])
-              macro_bweb[selected_macro]
-                  [selected_half * 128 + byte_lane * 8 +: 8] = '0;
-          end
-        end
+    wire macro_req = bank_req[bank] && unsigned'(bank_addr[bank]) < BankDepth;
+    wire [MacroAddrWidth-1:0] macro_addr = MacroAddrWidth'(bank_addr[bank] >> 1);
+    wire [255:0] macro_bweb;
+    // Pack two logical 128-bit rows into one physical word, without changing
+    // the two-bank interface or its one-cycle synchronous read.
+    for (genvar half = 0; half < 2; half++) begin : gen_half
+      for (genvar byte_lane = 0; byte_lane < BeatBytes; byte_lane++) begin : gen_byte
+        assign macro_bweb[half*128 + byte_lane*8 +: 8] =
+            {8{!(bank_we[bank] && bank_addr[bank][0] == 1'(half) &&
+                 bank_be[bank][byte_lane])}};
       end
     end
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        macro_read_select_q[bank] <= '0;
         macro_read_half_q[bank] <= 1'b0;
-      end else if (bank_req[bank] && !bank_we[bank]) begin
-        macro_read_select_q[bank] <=
-            $clog2(MacroCount)'(unsigned'(bank_addr[bank]) / MacroRows);
-        macro_read_half_q[bank] <=
-            (unsigned'(bank_addr[bank]) % MacroRows) & 1;
+      end else if (macro_req && !bank_we[bank]) begin
+        macro_read_half_q[bank] <= bank_addr[bank][0];
       end
     end
 
-    assign bank_rdata[bank] = macro_q[bank][macro_read_select_q[bank]]
+    assign bank_rdata[bank] = macro_q[bank]
         [macro_read_half_q[bank] * 128 +: 128];
 
-    for (genvar macro = 0; macro < MacroCount; macro++) begin : gen_macro
-      TS1N28HPCPUHDSVTB64X256M1SWBSO i_context_sram (
+      TS1N28HPCPUHDSVTB76X256M1SWBSO i_context_sram (
         .SLP   (1'b0),
         .SD    (1'b0),
         .CLK   (clk_i),
-        .CEB   (!macro_req[macro]),
-        .WEB   (!macro_we[macro]),
+        .CEB   (!macro_req),
+        .WEB   (!bank_we[bank]),
         .CEBM  (1'b1),
         .WEBM  (1'b1),
-        .A     (macro_addr[macro]),
-        .D     (macro_wdata[macro]),
-        .BWEB  (macro_bweb[macro]),
+        .A     (macro_addr),
+        .D     ({2{bank_wdata[bank]}}),
+        .BWEB  (macro_bweb),
         .AM    ('0),
         .DM    ('0),
         .BWEBM ('1),
         .BIST  (1'b0),
         .RTSEL (2'b01),
         .WTSEL (2'b00),
-        .Q     (macro_q[bank][macro])
+        .Q     (macro_q[bank])
       );
-    end
   end
 `endif
 
@@ -434,7 +401,7 @@ module qbs_activation_context import qbs_pkg::*; (
     assert (QbsActivationContextMaxKBlocks == 16);
     assert (QbsQ8KBlockBytes % 4 == 0);
     assert ((BankCount & (BankCount - 1)) == 0);
-    assert (MacroCount == 2);
+    assert (BankDepth <= 2 * MacroDepth);
   end
 
   always_ff @(posedge clk_i) begin

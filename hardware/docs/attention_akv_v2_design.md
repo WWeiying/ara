@@ -153,21 +153,42 @@ byte unchanged. `AKVINFO(0)` and `AKVINFO(1)` therefore retain their old values.
 `AKVINFO(2)` advertises token-axis profile version 2, a 64-token maximum, eight
 token banks, six selector-index bits, tail support, row-view support, and an
 enable bit. It also advertises D-axis-tail and segmented-D256 composition
-capabilities. `AKVINFO(3)` publishes the two new instruction encodings and
-the 128-element physical row bound. Hardware without the profile returns zero
-for both extension words, which remains a valid AKV-v1 device and uses the
-ordinary RVV fallback.
+capabilities, plus column Panel4 at bit 40. `AKVINFO(3)` publishes the two new
+function classes and the 128-element physical row bound. In the current
+`akv_pkg.sv` and software ABI, disabling v2 clears only `AKVINFO(2)[32]`;
+the static extension fields and `AKVINFO(3)` remain nonzero. Software must
+validate the ABI and the enable bit, not infer availability from nonzero words
+or feature bits alone. The runtime also accepts two zero extension words from
+older v1 devices; this is not the current package's disabled-v2 response.
+Without enabled v2, selection retains the existing v1/RVV fallback. If the
+base AKV implementation itself is unavailable, the dispatcher rejects
+`akvinfo` as illegal instead of providing a zero-valued discovery response.
 
-The two extension instructions use the remaining custom-2 function classes:
+The two extension instructions share major opcode `0x5b` and use the remaining
+custom-2 function classes:
 
 - `vakv2fill` uses `funct3=6`. `funct7=0` FULL takes the unchanged 64-byte
-  descriptor in `rs1` and `tile_start` in `rs2`; `funct7=1` REFILL reserves
-  `rs1=x0` and takes `tile_start` in `rs2`. A successful command installs
-  1..64 active tokens. Other `funct7` values are reserved and illegal.
-- `vakv2kcol` uses `funct3=7`, writes one `e16,m1` destination, and takes the
-  dimension index in `rs1`. Only the first `tile_count` elements are valid.
-  Existing `vakvload` remains the row-load command; under a v2 context its row
-  selector uses six index bits so V0..V63 and K0..K63 are addressable.
+  descriptor's 64-byte-aligned address in `rs1` and `tile_start` in `rs2`;
+  `funct7=1` REFILL reserves `rs1=x0` and takes `tile_start` in `rs2`.
+  Both require `rd=x0`. A successful command installs 1..64 active tokens.
+  Other `funct7` values are reserved and illegal.
+- `vakv2kcol` uses `funct3=7`, takes the column selector in `rs1`, and requires
+  `rs2=x0`. `funct7=0` writes one `e16,m1` destination with 64 slots;
+  `funct7=1` returns four consecutive columns (`d..d+3`) as an `e16,m4`
+  Panel4, one 64-slot column per register. Each column has only `tile_count`
+  valid elements. Panel4 requires a four-register-aligned `vd<=v28`,
+  `d % 4=0`, and `d+4<=head_dim`; other `funct7` values are illegal.
+  Existing `vakvload` remains the row-load command (`funct3=3`); under a v2
+  context its row selector uses six index bits so V0..V63 and K0..K63 are
+  addressable.
+
+These are conceptual names, not formal assembler mnemonics: current native
+wrappers emit raw `.word` encodings. FULL/REFILL, D codes, and Panel4 (also
+called `vakv2kpanel4` in assembly comments) are class-local modes, and
+descriptor fields are not independent opcodes. The complete eight-class
+table, including compatible `akvfill` (`funct3=2`) and the seven-class
+llama.cpp QBS + AKV-v2 main path, is in
+[the mechanism tutorial, Section 5](qbs_full_mechanism_tutorial.md#5-从标准-rvv-到专用命令qbsakv-isa-与-abi).
 
 The descriptor still describes row-major Q, K, and V model tensors. The v2
 profile changes only hidden-context organization and local views; software does
@@ -325,10 +346,10 @@ and cover v1 D64/D128; v2 D64/D96/D128; segmented D256 row/column views; a
 ordering; byte enables; validation atomicity; and read faults.
 
 The target-macro configuration now maps both context versions explicitly. The
-v1 store has two logical banks of depth 96; each bank uses two 64x256 macros,
-for four macros total. The v2 store has eight token banks of depth 128; each
-bank uses two 64x256 macros, for 16 macros total. The current elaborated AKV
-organization is therefore 20 macros with 40 KiB of physical macro capacity for
+v1 store has two logical banks of depth 96; each bank uses one 96x256 macro,
+for two macros total. The v2 store has eight token banks of depth 128; each
+bank uses one 128x256 macro, for eight macros total. The current AKV
+organization is therefore ten macros with 38 KiB of physical macro capacity for
 38 KiB of logical context (6 KiB v1 plus 32 KiB v2). This is an RTL organization
 and macro-model regression result, not a synthesized area result. In
 particular, the v2 `TARGET_SRAM_MC` branch is exercised by the macro suite; it
@@ -369,9 +390,9 @@ translated read stream. The v2 store instead relies on 32-byte-aligned rows and
 one write to one token bank per cycle. Preserving the v1 contract in shared
 banks would therefore require split-write buffering and explicit read-data
 backpressure. A separate v1-compatible Query store would still require two
-64x256 macros to preserve cross-row write throughput, so this change would
-reduce the static organization only from 20 to 18 macros while adding control
-and timing risk. Storage sharing is consequently an evaluated follow-up, not
+independent banks to preserve cross-row write throughput. That is a different
+change from using one capacity-matched macro within each existing bank; it
+requires new arbitration and a performance check. Storage sharing is an evaluated follow-up, not
 part of the current implementation; it must be reconsidered only with measured
 area, timing, and performance evidence.
 
@@ -428,7 +449,7 @@ passing Host census or directed RTL suite.
 The physical preflight is complete, but physical measurement is not. The
 generated integrated filelist contains 403 sources and 18 defines for four
 lanes, VLEN=1024, QBS, AKV-v1/v2, and target SRAM macros. Static checks also
-verify the 64x256 SRAM DB, the complete Design Compiler startup chain, the
+verify the 96x256/128x256 SRAM DBs, the complete Design Compiler startup chain, the
 1.0 ns clock, and 0.15 ns setup uncertainty for both standalone and integrated
 constraints. No synthesized logic area or setup slack is inferred from those
 checks. Those fields remain pending until both DC runs produce fresh reports

@@ -33,7 +33,8 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
   input logic [15:0] activation_write_strb_i,
   input logic [7:0] weight_block_o [4][QbsMaxWeightBlockBytes],
   input logic [7:0] activation_block_o [4][QbsMaxActivationBlockBytes],
-  input logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  input logic [127:0] weight_window_o [4][2],
+  input logic [255:0] activation_window_o [4],
   input logic [7:0] weight_side_o [4][20], activation_side_o [4][36],
   input logic weight_byte_valid_q [4][QbsMaxWeightBlockBytes],
   input logic activation_byte_valid_q [4][QbsMaxActivationBlockBytes],
@@ -135,16 +136,23 @@ module qbs_sram_adapter_checker import qbs_pkg::*; #(
     #1ps;
     if (rst_ni) begin
       if (!weight_write_pending) begin
-        assert ({weight_complete_o, all_weight_complete_o, accepted_weight_bytes_o} ===
-            {ref_weight_complete, ref_all_weight, ref_weight_bytes} &&
+        assert (accepted_weight_bytes_o === ref_weight_bytes &&
             weight_byte_valid_q === i_reference.weight_byte_valid_q)
-          else $fatal(1, "SRAM weight control mismatch base=%0d t=%0t", ActivationContextBase, $time);
+          else $fatal(1, "SRAM weight byte state mismatch base=%0d t=%0t", ActivationContextBase, $time);
+        // INIT installs a new profile before synchronous clear. Old byte
+        // counts/bitmaps still match, but completion for the new profile is
+        // not consumable until clear has taken effect.
+        if (!clear_weight_i)
+          assert ({weight_complete_o, all_weight_complete_o} === {ref_weight_complete, ref_all_weight})
+            else $fatal(1, "SRAM weight completion mismatch base=%0d t=%0t", ActivationContextBase, $time);
       end
       if (!activation_write_pending) begin
-        assert ({activation_complete_o, all_activation_complete_o, accepted_activation_bytes_o} ===
-            {ref_activation_complete, ref_all_activation, ref_activation_bytes} &&
+        assert (accepted_activation_bytes_o === ref_activation_bytes &&
             activation_byte_valid_q === i_reference.activation_byte_valid_q)
-          else $fatal(1, "SRAM activation control mismatch base=%0d t=%0t", ActivationContextBase, $time);
+          else $fatal(1, "SRAM activation byte state mismatch base=%0d t=%0t", ActivationContextBase, $time);
+        if (!clear_activation_i)
+          assert ({activation_complete_o, all_activation_complete_o} === {ref_activation_complete, ref_all_activation})
+            else $fatal(1, "SRAM activation completion mismatch base=%0d t=%0t", ActivationContextBase, $time);
       end
       if (wr_q) begin
         assert (all_weight_complete_o);
@@ -174,18 +182,20 @@ bind qbs_block_adapter qbs_sram_adapter_checker #(
     .pending_weight_offset(weight_pending_q.offset),
     .pending_activation_offset(activation_pending_q.offset), .*);
 
-module qbs_sram_write_checker (
+module qbs_sram_write_checker #(
+  parameter int unsigned DataWidth = 256
+) (
   input logic clk_i, rst_ni, req_i, we_i,
   input logic [2:0] addr_i,
-  input logic [255:0] wdata_i,
-  input logic [31:0] be_i
+  input logic [DataWidth-1:0] wdata_i,
+  input logic [DataWidth/8-1:0] be_i
 );
   int accesses;
   always @(posedge clk_i) if (rst_ni && req_i) begin
     assert (!$isunknown({we_i, addr_i}));
     if (we_i) begin
       assert (!$isunknown(be_i));
-      for (int b = 0; b < 32; b++) if (be_i[b])
+      for (int b = 0; b < DataWidth/8; b++) if (be_i[b])
         assert (!$isunknown(wdata_i[8*b +: 8]))
           else $fatal(1, "QBS SRAM unknown write byte=%0d addr=%0d", b, addr_i);
     end
@@ -195,4 +205,4 @@ module qbs_sram_write_checker (
   end
 endmodule
 
-bind qbs_payload_sram qbs_sram_write_checker i_write_checker (.*);
+bind qbs_payload_sram qbs_sram_write_checker #(.DataWidth(DataWidth)) i_write_checker (.*);

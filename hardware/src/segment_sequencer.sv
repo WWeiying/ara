@@ -30,6 +30,9 @@ module segment_sequencer import ara_pkg::*; import rvv_pkg::*; #(
     // Ara frontend - backend info and handshakes
     input  ara_req_t  ara_req_i,
     output ara_req_t  ara_req_o,
+    // Speculative layout sideband, meaningful only on an EEW-writing transfer.
+    input  ara_req_t  layout_req_i,
+    output ara_req_t  layout_req_o,
     input  logic      ara_req_valid_i,
     output logic      ara_req_valid_o,
     input  logic      ara_req_ready_i,
@@ -64,6 +67,7 @@ module segment_sequencer import ara_pkg::*; import rvv_pkg::*; #(
     logic segment_cnt_en, segment_cnt_clear;
     logic [$bits(ara_req_i.nf)-1:0] segment_cnt_q;
     logic [4:0] segment_reg_offset;
+    logic [4:0] layout_reg_offset;
     int unsigned segment_source_reg_index;
 
     always_comb begin
@@ -72,6 +76,15 @@ module segment_sequencer import ara_pkg::*; import rvv_pkg::*; #(
         LMUL_4: segment_reg_offset = 5'(segment_cnt_q << 2);
         LMUL_8: segment_reg_offset = 5'(segment_cnt_q << 3);
         default: segment_reg_offset = 5'(segment_cnt_q);
+      endcase
+    end
+
+    always_comb begin
+      case (layout_req_i.emul)
+        LMUL_2: layout_reg_offset = 5'(segment_cnt_q << 1);
+        LMUL_4: layout_reg_offset = 5'(segment_cnt_q << 2);
+        LMUL_8: layout_reg_offset = 5'(segment_cnt_q << 3);
+        default: layout_reg_offset = 5'(segment_cnt_q);
       endcase
     end
 
@@ -121,12 +134,34 @@ module segment_sequencer import ara_pkg::*; import rvv_pkg::*; #(
       automatic int unsigned active_element;
       automatic int unsigned element_reg_offset;
 
+      // Query layout before the late ready/idle-payload selection. The
+      // dispatcher captures this metadata only when ready, when both request
+      // candidates agree; no segment state is advanced speculatively.
       active_element = state_q == IDLE
-          ? unsigned'(ara_req_i.vstart) : unsigned'(vstart_cnt_q);
+          ? unsigned'(layout_req_i.vstart) : unsigned'(vstart_cnt_q);
       element_reg_offset =
-          (active_element << unsigned'(ara_req_i.eew_vs1)) / VLENB;
-      segment_source_reg_index = unsigned'(ara_req_i.vs1) +
-          unsigned'(segment_reg_offset) + element_reg_offset;
+          (active_element << unsigned'(layout_req_i.eew_vs1)) / VLENB;
+      segment_source_reg_index = unsigned'(layout_req_i.vs1) +
+          unsigned'(layout_reg_offset) + element_reg_offset;
+    end
+
+    // Speculate only EEW geometry. The dispatcher still qualifies every write
+    // with the real output handshake. In IDLE this removes valid/ready from
+    // the first-element interval calculation; request outputs are unchanged.
+    always_comb begin
+      layout_req_o = layout_req_i;
+      case (state_q)
+        IDLE: begin
+          if (is_segment_mem_op_i && !illegal_insn_i)
+            layout_req_o.vl = layout_req_i.vstart + 1'b1;
+        end
+        SEGMENT_MICRO_OPS: begin
+          layout_req_o.vl = next_vstart_cnt;
+          layout_req_o.vstart = vstart_cnt_q;
+          layout_req_o.vd = layout_req_i.vd + layout_reg_offset;
+        end
+        default:;
+      endcase
     end
 
     always_comb begin
@@ -300,6 +335,7 @@ module segment_sequencer import ara_pkg::*; import rvv_pkg::*; #(
     assign load_complete_o  = load_complete_i;
     assign store_complete_o = store_complete_i;
     assign ara_req_o        = ara_req_i;
+    assign layout_req_o   = layout_req_i;
     assign ara_req_valid_o  = ara_req_valid_i;
     assign ara_resp_o       = ara_resp_i;
     assign ara_resp_valid_o = ara_resp_valid_i;

@@ -116,6 +116,16 @@ apps
 /verification/qbs/synthesis/default.svf
 /hardware/sim_qbs_*/
 /hardware/build_qbs_*/
+/hardware/weight128_*/
+/hardware/context_area_*/
+!/backend/
+/backend/*
+!/backend/blackbox/
+/backend/blackbox/*
+!/backend/blackbox/ts1n28hpcpuhdsvtb8x128m1swbso_170a_tt0p9v25c.v
+!/backend/blackbox/ts1n28hpcpuhdsvtb76x256m1swbso_170a_tt0p9v25c.v
+!/backend/blackbox/ts1n28hpcpuhdsvtb96x256m1swbso_170a_tt0p9v25c.v
+!/backend/blackbox/ts1n28hpcpuhdsvtb128x256m1swbso_170a_tt0p9v25c.v
 /hardware/qbs_akv_portability_runs/
 /hardware/qbs_akv_portability_stage2_*/
 /hardware/akv_d256_efficiency_runs/

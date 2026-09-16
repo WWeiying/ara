@@ -485,6 +485,16 @@ module qbs_profile_engine_tb;
         $fatal(1, "case %0d: bad counter record", case_id);
       read_token(fd, "END", case_id);
 
+      // Input acceptance precedes the staged SRAM/sideband commit. Drain the
+      // adapter before checking assembly; this is outside compute timing.
+      begin
+        automatic int drain_cycles = 0;
+        while ((!adapter_all_weight_complete || !adapter_all_activation_complete) &&
+               drain_cycles < 32) begin
+          @(negedge clk);
+          drain_cycles++;
+        end
+      end
       if (!adapter_all_weight_complete ||
           !adapter_all_activation_complete ||
           adapter_weight_bytes != rows * block_bytes ||

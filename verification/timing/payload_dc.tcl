@@ -4,7 +4,7 @@ set local_starttime [clock seconds]
 source ./library_env.tcl
 set_app_var target_library $STD_LIBRARY_LIST(BWP12T,tc)
 set_app_var synthetic_library dw_foundation.sldb
-set_app_var link_library "* $target_library $ts1n28hpcpuhdsvtb8x256m1swbso_170a $synthetic_library"
+set_app_var link_library "* $target_library $ts1n28hpcpuhdsvtb8x128m1swbso_170a $ts1n28hpcpuhdsvtb8x256m1swbso_170a $synthetic_library"
 set_host_options -max_cores 2
 define_design_lib WORK -path ./work
 set hdlin_check_no_latch true
@@ -37,6 +37,9 @@ if {$top eq "vfdsu_round_timing"} {
   set sources {src/gated_clk_cell.v src/ct_vfdsu_round.v src/vfdsu_round_timing.sv}
 }
 set defines {SYNTHESIS TARGET_SRAM_MC}
+if {[info exists env(DC_UNIQUE_INPUT_BYTES)] && $env(DC_UNIQUE_INPUT_BYTES) == 1} {
+  lappend defines QBS_UNIQUE_INPUT_BYTES
+}
 if {$top in {simd_mul_timing simd_alu_timing ara_dispatcher_timing}} {
   set sources {src/cf_math_pkg.sv src/axi_pkg.sv src/fpnew_pkg.sv
     src/config_pkg.sv src/cv64a6_imafdcv_sv39_config_pkg.sv src/riscv_pkg.sv
@@ -121,13 +124,17 @@ redirect timing.rpt {
   report_timing -delay_type max -max_paths 20 -input_pins -nets \
       -transition_time -capacitance -significant_digits 4
 }
-redirect reg_to_reg.rpt {
-  report_timing -delay_type max -from [all_registers -edge_triggered -output_pins] \
-      -to [all_registers -edge_triggered -data_pins] -max_paths 20 -input_pins -nets \
-      -transition_time -capacitance -significant_digits 4
+set quick_reports [expr {[info exists env(DC_LOCAL_QUICK_REPORTS)] && $env(DC_LOCAL_QUICK_REPORTS) == 1}]
+if {!$quick_reports} {
+  redirect reg_to_reg.rpt {
+    report_timing -delay_type max -from [all_registers -edge_triggered -output_pins] \
+        -to [all_registers -edge_triggered -data_pins] -max_paths 20 -input_pins -nets \
+        -transition_time -capacitance -significant_digits 4
+  }
 }
+set clock_report_paths [expr {$quick_reports ? 20 : 1000}]
 redirect clk_i_max.tim {
-  report_timing -group clk_i -delay_type max -max_paths 1000 -input_pins -nets \
+  report_timing -group clk_i -delay_type max -max_paths $clock_report_paths -input_pins -nets \
       -transition_time -capacitance -significant_digits 4
 }
 if {$top in {qbs_ingress_timing qbs_adapter_pipeline_timing simd_mul_timing simd_alu_timing qbs_decode_dot_timing vfdsu_round_timing ara_dispatcher_timing qbs_correction_select_timing qbs_address_timing qbs_profile_pipeline_timing}} {

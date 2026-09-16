@@ -435,6 +435,22 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   soc_narrow_lite_req_t  axi_lite_ctrl_registers_req;
   soc_narrow_lite_resp_t axi_lite_ctrl_registers_resp;
+  soc_narrow_req_t ctrl_axi_req;
+  soc_narrow_resp_t ctrl_axi_resp;
+
+  // Break the downsizer/burst-splitter ready chain on MMIO only. The L2 and
+  // vector payload paths are unchanged; all five AXI channels remain ordered.
+  axi_cut #(
+    .aw_chan_t(soc_narrow_aw_chan_t), .w_chan_t(soc_narrow_w_chan_t),
+    .b_chan_t(soc_narrow_b_chan_t), .ar_chan_t(soc_narrow_ar_chan_t),
+    .r_chan_t(soc_narrow_r_chan_t),
+    .axi_req_t(soc_narrow_req_t), .axi_resp_t(soc_narrow_resp_t)
+  ) i_ctrl_axi_cut (
+    .clk_i, .rst_ni,
+    .slv_req_i(periph_narrow_axi_req[CTRL]),
+    .slv_resp_o(periph_narrow_axi_resp[CTRL]),
+    .mst_req_o(ctrl_axi_req), .mst_resp_i(ctrl_axi_resp)
+  );
 
   logic [63:0] event_trigger;
 
@@ -454,8 +470,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .clk_i     (clk_i                        ),
     .rst_ni    (rst_ni                       ),
     .test_i    (1'b0                         ),
-    .slv_req_i (periph_narrow_axi_req[CTRL]  ),
-    .slv_resp_o(periph_narrow_axi_resp[CTRL] ),
+    .slv_req_i (ctrl_axi_req                 ),
+    .slv_resp_o(ctrl_axi_resp                ),
     .mst_req_o (axi_lite_ctrl_registers_req  ),
     .mst_resp_i(axi_lite_ctrl_registers_resp )
   );

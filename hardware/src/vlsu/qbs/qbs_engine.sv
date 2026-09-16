@@ -627,17 +627,63 @@ module qbs_engine
   // range request. All seven row bits and all sixteen byte-count bits fit.
   function automatic logic [31:0] block_byte_offset(
       input logic [6:0] row,
-      input logic [7:0] k_block,
+      input logic [23:0] k_offset,
       input logic [24:0] row_bytes,
-      input logic [15:0] block_bytes,
       input logic row_group_four);
     logic [31:0] row_offset;
-    logic [23:0] k_offset;
     row_offset = (row_group_four ? (row >> 2) : row) * row_bytes;
-    k_offset = k_block * block_bytes;
     return row_group_four ? ((row_offset + 32'(k_offset)) << 2)
                           : (row_offset + 32'(k_offset));
   endfunction : block_byte_offset
+
+  // Range issue already waits for the scheduler tuple to catch up. Compute
+  // K-byte products in that existing cycle, before the row/base additions.
+  logic [23:0] weight_k_offset_q, activation_k_offset_q;
+  logic [31:0] activation_row_offset_q, weight_row_offset_q, lookahead_row_offset_q;
+  // Row positions advance only on accepted ranges. Tuple preparation already
+  // provides a cycle to seed the demand cursor; no request bubble is added.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      activation_row_offset_q <= '0;
+      weight_row_offset_q <= '0;
+      lookahead_row_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
+      activation_row_offset_q <= '0;
+      weight_row_offset_q <= '0;
+      lookahead_row_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_RUN) begin
+      if (!scheduler_tuple_current) begin
+        activation_row_offset_q <= '0;
+        weight_row_offset_q <=
+            (weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+                ? (compute_expected_row_base >> 2) : compute_expected_row_base)
+            * weight_row_bytes_q;
+      end else begin
+        if ((read_range_fire && read_range_tag.role == QBS_RANGE_ACTIVATION) ||
+            (context_replay_start_valid && context_replay_start_ready))
+          activation_row_offset_q <= activation_row_offset_q + activation_row_bytes_q;
+        if (read_range_fire && read_range_tag.role == QBS_RANGE_WEIGHT &&
+            !weight_lookahead_enabled && weight_layout_q != QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)
+          weight_row_offset_q <= weight_row_offset_q + weight_row_bytes_q;
+      end
+      if (!weight_issue_cursor_current)
+        lookahead_row_offset_q <= '0;
+      else if (lookahead_weight_range_fire)
+        lookahead_row_offset_q <= lookahead_row_offset_q + weight_row_bytes_q;
+    end
+  end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      weight_k_offset_q <= '0;
+      activation_k_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_COMPUTE_START && compute_command_ready) begin
+      weight_k_offset_q <= '0;
+      activation_k_offset_q <= '0;
+    end else if (state_q == QBS_ENGINE_RUN && !scheduler_tuple_current) begin
+      weight_k_offset_q <= compute_expected_k * weight_block_bytes_q;
+      activation_k_offset_q <= compute_expected_k * activation_block_bytes_q;
+    end
+  end
 
   always_comb begin : form_read_range
     automatic logic [63:0] logical_row;
@@ -686,15 +732,12 @@ module qbs_engine
           automatic int unsigned storage_m =
               activation_layout_q == QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
                   ? QbsMaxM : 4;
-          address_offset = 64'(compute_expected_k) *
-                           (storage_m * activation_block_bytes_q);
+          address_offset = 64'(activation_k_offset_q) * storage_m;
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
           read_range_bytes = RangeBytesWidth'(
               storage_m * activation_block_bytes_q);
         end else begin
-          address_offset = 64'(block_byte_offset(
-              7'(activation_range_index_q), compute_expected_k,
-              activation_row_bytes_q, activation_block_bytes_q, 1'b0));
+          address_offset = 64'(32'(activation_row_offset_q + activation_k_offset_q));
           read_range_vaddr = activation_base_q + VAddrWidth'(address_offset);
           read_range_bytes = RangeBytesWidth'(activation_block_bytes_q);
         end
@@ -703,9 +746,7 @@ module qbs_engine
                    weight_issue_row_base_q < n_q &&
                    weight_ranges_pending_q < 2) begin
         logical_row = weight_issue_row_base_q;
-        address_offset = 64'(block_byte_offset(
-            7'(logical_row), weight_issue_k_q, weight_row_bytes_q,
-            weight_block_bytes_q, 1'b1));
+        address_offset = 64'(32'((lookahead_row_offset_q + weight_k_offset_q) << 2));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = RangeBytesWidth'(weight_issue_row_count *
@@ -718,9 +759,9 @@ module qbs_engine
                    weight_range_index_q < weight_range_count) begin
         logical_row = 64'(compute_expected_row_base) +
                       weight_range_index_q;
-        address_offset = 64'(block_byte_offset(
-            7'(logical_row), compute_expected_k, weight_row_bytes_q,
-            weight_block_bytes_q, weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR));
+        address_offset = weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR
+            ? 64'(32'((weight_row_offset_q + weight_k_offset_q) << 2))
+            : 64'(32'(weight_row_offset_q + weight_k_offset_q));
         read_range_valid = 1'b1;
         read_range_vaddr = VAddrWidth'(weight_base_q + address_offset);
         read_range_bytes = weight_layout_q ==
@@ -1416,6 +1457,22 @@ module qbs_engine
   end
 
 `ifndef SYNTHESIS
+  always_ff @(posedge clk_i) if (rst_ni && state_q == QBS_ENGINE_RUN && read_range_valid) begin
+    if (read_range_tag.role == QBS_RANGE_ACTIVATION &&
+        !(activation_layout_q inside {QBS_ACTIVATION_LAYOUT_M4_INTERLEAVED,
+                                     QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED}))
+      assert (read_range_vaddr == activation_base_q + 64'(block_byte_offset(
+          7'(activation_range_index_q), activation_k_offset_q, activation_row_bytes_q, 1'b0)))
+        else $fatal(1, "QBS activation cursor differs from indexed address");
+    if (read_range_tag.role == QBS_RANGE_WEIGHT)
+      assert (read_range_vaddr == weight_base_q + 64'(block_byte_offset(
+          weight_lookahead_enabled ? 7'(weight_issue_row_base_q)
+              : 7'(compute_expected_row_base) + 7'(weight_range_index_q),
+          weight_k_offset_q, weight_row_bytes_q,
+          weight_layout_q == QBS_WEIGHT_LAYOUT_R4_BLOCK_MAJOR)))
+        else $fatal(1, "QBS weight cursor differs from indexed address");
+  end
+
   initial begin
     assert (AxiDataWidth == 128)
       else $fatal(1, "QBS block adapter requires a 128-bit read beat");
@@ -1425,6 +1482,11 @@ module qbs_engine
 
   always_ff @(posedge clk_i) begin
     if (rst_ni) begin
+      if (state_q == QBS_ENGINE_RUN && scheduler_tuple_current) begin
+        assert (weight_k_offset_q == 24'(compute_expected_k * weight_block_bytes_q) &&
+                activation_k_offset_q == 24'(compute_expected_k * activation_block_bytes_q))
+          else $fatal(1, "QBS range K-byte offset is not aligned with the scheduler");
+      end
       assert (!(success_valid_o && fault_valid_o))
         else $fatal(1, "QBS command cannot succeed and fault together");
       if (state_q inside {QBS_ENGINE_DESCRIPTOR_REQUEST,

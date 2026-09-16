@@ -22,7 +22,8 @@ module qbs_adapter_pipeline_timing import qbs_pkg::*; (
   output logic weight_ready_o, activation_ready_o,
   output logic all_weight_complete_o, all_activation_complete_o,
   output logic [31:0] weight_bytes_o, activation_bytes_o,
-  output logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  output logic [127:0] weight_window_o [4][2],
+  output logic [255:0] activation_window_o [4],
   output logic [7:0] weight_side_o [4][20], activation_side_o [4][36]
 );
   typedef struct packed {
@@ -58,7 +59,11 @@ module qbs_adapter_pipeline_timing import qbs_pkg::*; (
       activation_read: activation_read_i, read_k: read_k_i
     };
   end
-  qbs_block_adapter #(.NativeView(1'b0)) i_adapter (
+  qbs_block_adapter #(.NativeView(1'b0)
+`ifdef QBS_UNIQUE_INPUT_BYTES
+    , .UniqueInputBytes(1'b1)
+`endif
+  ) i_adapter (
     .clk_i, .rst_ni,
     .clear_weight_i(inputs_q.clear_weight), .clear_activation_i(inputs_q.clear_activation),
     .weight_profile_i(inputs_q.weight_profile),

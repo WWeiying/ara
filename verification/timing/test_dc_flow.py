@@ -137,6 +137,70 @@ puts PHYSICAL_SUMMARY_PASS
         text = (FLOW / "global_scripts/dc.tcl").read_text()
         self.assertLess(text.index("dc_flow_checkpoint mapped"), text.index("foreach_in_collection each_path_group"))
 
+    def test_main_real_constraints_and_compile_options(self):
+        script = r'''
+proc pwd {} {return /test/syn/ara_soc/v1-dc/run}
+set calls {}
+foreach command {
+    create_clock set_clock_uncertainty set_clock_transition set_ideal_network
+    set_max_fanout set_max_transition remove_ideal_network set_driving_cell
+    set_load group_path set_input_delay set_output_delay set_false_path
+} {
+    proc $command {args} [format {lappend ::calls [linsert $args 0 %%s]} $command]
+}
+proc get_ports {args} {return [lindex $args end]}
+proc get_clocks {args} {return [lindex $args end]}
+proc current_design {} {return ara_soc}
+proc all_inputs {} {return {clk_i rst_ni data_i}}
+proc all_outputs {} {return {data_o}}
+proc all_registers {} {return {reg_q}}
+proc get_pins {args} {return {}}
+proc sizeof_collection {objects} {return [llength $objects]}
+proc remove_from_collection {objects removed} {
+    set result {}
+    foreach object $objects {
+        if {$object ni $removed} {lappend result $object}
+    }
+    return $result
+}
+source {%s}
+source {%s}
+foreach {name expected} {
+    GUI_MAX_CPU_NUM 8 GUI_UNGROUP 0 GUI_SYN_CYCLE 1 GUI_DFT 0
+    GUI_DCG_MODE 0 GUI_POWER_OPT 1 GUI_CLOCK_GATE 1
+    GUI_GATER_CLOCK_MIN_BITWIDTH 8 GUI_GATER_SETUP 0.05
+    GUI_GATER_MAX_FANOUT 32 GUI_GATER_NUM_STAGES 1 GUI_PVT tc
+} {
+    if {[set $name] ne $expected} {error "unexpected $name=[set $name]"}
+}
+foreach expected {
+    {create_clock -name clk_i -period 1.0 clk_i}
+    {set_clock_uncertainty -setup 0.15 clk_i}
+    {set_clock_uncertainty -hold 0.075 clk_i}
+    {set_clock_transition 0.08 clk_i}
+    {set_max_transition 0.3 ara_soc}
+    {group_path -name clk_i -critical 0.20 -weight 10}
+    {set_input_delay -clock clk_i -min 0 {rst_ni data_i}}
+    {set_output_delay -clock clk_i -min 0 data_o}
+} {
+    if {[lsearch -exact $calls $expected] < 0} {error "missing $expected"}
+}
+if {[lsearch -exact $calls {set_false_path -to {}}] >= 0} {
+    error "missing RVFI pins must not create an empty timing exception"
+}
+puts MAIN_REAL_SETTINGS_PASS
+''' % (FLOW / "global_scripts/synopsys_dc.setup.gui",
+       FLOW / "local_scripts/ara_soc.sdc")
+        result = subprocess.run(["tclsh"], input=script, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(result.stderr, result.stderr)
+        self.assertIn("MAIN_REAL_SETTINGS_PASS", result.stdout)
+        text = (FLOW / "global_scripts/dc.tcl").read_text()
+        self.assertIn("set compile_register_replication false\n", text)
+        self.assertIn('set compile_ultra_cmd "compile_ultra -no_seq_output_inversion $compile_ultra_hier_opt"', text)
+        self.assertIn('set compile_ultra_hier_opt      " -no_autoungroup"', text)
+        self.assertIn('append compile_ultra_hier_opt " -gate_clock "', text)
+
     def test_phase_and_checkpoint_helpers(self):
         script = """
 set GUI_DESIGN_NAME test_soc
@@ -220,6 +284,37 @@ puts HELPERS_PASS
                     self.assertFalse(result.stderr, result.stderr)
                     if not supported:
                         self.assertIn("ELAPSED_SECONDS=", result.stdout)
+
+    def test_unique_commit_adapter_snapshot(self):
+        path = ROOT / "verification/timing/run_payload_dc.py"
+        spec = importlib.util.spec_from_file_location("area_dc_runner", path)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        out = self.root / "unique_adapter_snapshot"
+        argv = [str(path), "--output", str(out), "--top", "qbs_adapter_pipeline_timing",
+                "--unique-input-bytes", "--quick-reports"]
+        with mock.patch.object(runner.sys, "argv", argv), \
+             mock.patch.object(runner.subprocess, "check_output", side_effect=["unit-test-commit", b""]), \
+             mock.patch.object(runner.subprocess, "Popen"), \
+             contextlib.redirect_stdout(io.StringIO()):
+            runner.main()
+        manifest = json.loads((out / "manifest.json").read_text())
+        self.assertTrue(manifest["unique_input_bytes"])
+        self.assertTrue(manifest["quick_reports"])
+        self.assertEqual(len(manifest["sources"]), 5)
+        wrapper = (out / "src/qbs_adapter_pipeline_timing.sv").read_text()
+        self.assertIn("`ifdef QBS_UNIQUE_INPUT_BYTES", wrapper)
+        self.assertIn(".UniqueInputBytes(1'b1)", wrapper)
+        script = (out / "payload_dc.tcl").read_text()
+        start = script.index("set defines {SYNTHESIS TARGET_SRAM_MC}")
+        end = script.index('\nif {$top in {simd_mul_timing', start)
+        for enabled in (0, 1):
+            result = subprocess.run(["tclsh"], input=f"set env(DC_UNIQUE_INPUT_BYTES) {enabled}\n" +
+                                    script[start:end] + "\nputs $defines\n",
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(result.stderr)
+            self.assertEqual("QBS_UNIQUE_INPUT_BYTES" in result.stdout, bool(enabled))
 
 
 class IntegratedLockTest(unittest.TestCase):

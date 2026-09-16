@@ -1,0 +1,342 @@
+{
+  "state": "PASS",
+  "recorded_utc": "2026-09-15T17:06:00.835871+00:00",
+  "run_root": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G",
+  "baseline": "pre-edit working tree snapshot, includes prior uncommitted timing/area optimizations",
+  "weight_word_bits": {
+    "before": 256,
+    "after": 128
+  },
+  "activation_word_bits": 256,
+  "logical_payload_bytes": 3584,
+  "physical_payload_bytes": {
+    "before": 6144,
+    "after": 4096
+  },
+  "functional_command_cases": 33,
+  "atomic_fault_classes": 4,
+  "real_model_slices": 8,
+  "decoder_legal_issue_cases": 61952,
+  "payload_checks": 110592,
+  "macro_layout_cases": 81,
+  "macro_functional_timing_checks": false,
+  "cycle_phase_traffic_parity": true,
+  "formal_proof": false,
+  "full_chip_dc_run": false,
+  "physical_timing_validated": false,
+  "weight_macro_area": {
+    "basis": "TT Liberty cell area sum only; not final chip area",
+    "count": 16,
+    "before_um2": 73617.992,
+    "after_um2": 40322.8368,
+    "saved_um2": 33295.1552,
+    "reduction_percent": 45.226926591532134,
+    "libraries": {
+      "128": {
+        "lib": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb8x128m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb8x128m1swbso_170a_tt0p9v25c.lib",
+        "lib_sha256": "88f9c86dc2d0e58b445185d78764a7e08b838fcda539a46ef90ebd8eb9d49248",
+        "db": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb8x128m1swbso_170a/DB/ts1n28hpcpuhdsvtb8x128m1swbso_170a_tt0p9v25c.db",
+        "db_sha256": "628f6861ded1dec4857bc800b3e39dcd413e54bb119bab8767459afd1108117f",
+        "cell_area_um2": 2520.1773
+      },
+      "256": {
+        "lib": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb8x256m1swbso_170a/NLDM/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.lib",
+        "lib_sha256": "947911a7f88b266698ad4ff5502ecb47e458693d31db007fb70a0a0afe1ef14a",
+        "db": "/home/wangwy/ara/backend/library/mem/ts1n28hpcpuhdsvtb8x256m1swbso_170a/DB/ts1n28hpcpuhdsvtb8x256m1swbso_170a_tt0p9v25c.db",
+        "db_sha256": "b373f7069e9f48ae9823493de81d7767700f4d647d9b094fe891ed75cd392f3a",
+        "cell_area_um2": 4601.1245
+      }
+    }
+  },
+  "dc_elaboration": {
+    "status": {
+      "state": "PASS",
+      "started": "2026-09-15T16:52:58.939705+00:00",
+      "pid": 4039978,
+      "exit_code": 0,
+      "errors": [],
+      "finished": "2026-09-15T16:54:42.381136+00:00"
+    },
+    "top": "qbs_adapter_pipeline_timing",
+    "mapped": false
+  },
+  "input_sha256": {
+    "commands": "24d9d661893dbdbd13b37ea003cb364dc5fe038f7ab042445dedd25b47ecb885",
+    "q4_m4n32": "62290eecfa268c9068399561a2431f80352f3db8c7b24d7b235ae28a0af76e28",
+    "q4_m8n16": "17ffe7b12ed26ebd10f12269224cb5cff7c87735bb1b18c70dda86cf3627c61e",
+    "q4_m7n16": "7bc0317f61e8972b90cc27d66fb55a292fb4ee771d504cf1600918221991dec6",
+    "q6_m4n32": "7588ed840d8ca3cd60502f4b6635997fc14355091a79cd91e23c09d12f7fb5fb",
+    "q6_m8n16": "602473e51199b7d01dfa203fdf8525f911d15a15d05b9d2658c3f5af0a341d2f",
+    "q6_m7n16": "c5514053309a98a75357a24b0f45543e93ce63ebd847e4706bd43a30f001fb1f",
+    "q4_decode_m1n32": "9c5904e559994884c974dffb48f1e592f2b1978ea674888296af96b4640a3345",
+    "q6_decode_m1n32": "990e18c22158ea187fbc925d2934cd494dd3f5b12a33619725650976b3be3339"
+  },
+  "source_sha256": {
+    "Bender.lock": "4572274dd387f2b7f59038fd9186c4517eee0eeb39464819de4e9afe976329cd",
+    "Bender.yml": "478a97a37e07697032c703a84c12bad0295e274c511aa77012a615592a5cb0d9",
+    "config/16_lanes.mk": "7539af77d8b64d63918c4ad4f80066f38049dc7f6fac0cb92f42fb1032e67a88",
+    "config/2_lanes.mk": "a51801baed89dd3bd34319d2729966fd7d580797917a1493d8ebf27a42a4585b",
+    "config/4_lanes.mk": "655eea1180ea27c6f924ed7e090deceaccd40b5288d62d4d4b2c11f3c49718fe",
+    "config/8_lanes.mk": "8cd8a97b14493c3c95bf439acea998db01e2fadb1be4659e96a5295251ed08c9",
+    "config/README.md": "ade5f81069c4cf1e3ffc8536d683c38214d2fad94c7266292e8d667cbdaf98f8",
+    "config/akv_abi.json": "2442c713f9de62cd9f63c776ae3ae24c4960d50bbd9fae231d0e8cf3d4ad85fd",
+    "config/default.mk": "f32f797d6bde262af0f9433863ece2bdcbbc4f2c79f05da501a3199cd58bec20",
+    "config/qbs_abi.json": "a3191933871938200bc5657dd697fee07c52e6ab41e8ad82bac9905e580d6888",
+    "config/sram.mk": "ebaa57d613374e00aafe54f35afccf6381d2f02539f2328209f6e7069c3edcbe",
+    "hardware/Makefile": "391cd7e1281227b9c3c87a5468b04a5306c668e021f05a4e0b26ccb2dedc9735",
+    "hardware/include/akv_pkg.sv": "1a4971587b6eeea3e0a315f8f77acb4f7d823b56f2ca325a2305e34ef71df495",
+    "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+    "hardware/include/ara/ara_typedef.svh": "bd0af2e4d895ef6078331a10bc61a6859805bc981eed8ace9a888884011aa272",
+    "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+    "hardware/include/ara_pkg.sv": "b8c19fd33981290475ca29c28259ad08143ede4541fa3b1680257c73e44958b8",
+    "hardware/include/qbs_pkg.sv": "f64946527f9f88608a1ab6fdfb19f9854f932ca0a84fa27f4a1aa55cece5234d",
+    "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+    "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+    "hardware/src/ara.sv": "719aa4d01deceef883fc39f1fff7bb39034a108bd8218e360fb136e094fd3ca8",
+    "hardware/src/ara_dispatcher.sv": "4c0f3ff9fecac7dbb9f71347dff35db716e149435d134b7290bc0180d30bc42b",
+    "hardware/src/ara_sequencer.sv": "f3002fbadc1530de3243570a03f11a8171332a8bd71bb9a279f8e764d0819fdf",
+    "hardware/src/ara_soc.sv": "9a17ca9926866f43e533a58314ffed2fd20def680e283be1dbcd8be8c0ff943b",
+    "hardware/src/ara_system.sv": "a53fd923f2f5f44aa3cb7dca377c73222b19a9ddbc2ae36029db7593446fc057",
+    "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+    "hardware/src/common_cells_compat/fall_through_register_v1.sv": "6c3f144eef57b12157fe999321c91cbadeb57814bdaa7a090974022db98354fd",
+    "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+    "hardware/src/cva6_accel_first_pass_decoder.sv": "79dcb6c3c41b6ce0157f39b0f5d1ea42dcbc58a36b6f743b59b96b9d041594fc",
+    "hardware/src/lane/fixed_p_rounding.sv": "ca97b61d6b51abc6797e831fa0f4ce085e8f435d1d553c0e739d42610762a033",
+    "hardware/src/lane/lane.sv": "5e621bf955cad43e87881253a2d8626c5bad23e2251e2ee7276a3518d1036241",
+    "hardware/src/lane/lane_sequencer.sv": "db2def1a76cc25a715a31a7efa1336804e2156dd9aa731f96de81ccde7a58cf3",
+    "hardware/src/lane/operand_queue.sv": "32d84913fdd6947ee4d7b9d9b2bae471c8432ce867cd90033bc086e064ccb8f4",
+    "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+    "hardware/src/lane/operand_requester.sv": "327291850e6d77797ab9e67c8d24dd7e8bca9019139d85518b0075fd80f5bca2",
+    "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+    "hardware/src/lane/simd_alu.sv": "8d84858bd3dbb3baab5e2b12b8eb0c36cceb407373adee9dc0285ab8dfa962bc",
+    "hardware/src/lane/simd_div.sv": "e1c558d4b187ef6df09411d3a3835a6d64ff7a2d3c4fb488ad1b2045deb710ff",
+    "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+    "hardware/src/lane/valu.sv": "1ffd580c78f2fc3acc538b717595a8cf722eeb4d3c3971f9b16577e8ce1ee8c9",
+    "hardware/src/lane/vector_fus_stage.sv": "dc6161e84a36719f070f77b7af40458eb719516da8390b3e425288e9cf0fedf2",
+    "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+    "hardware/src/lane/vmfpu.sv": "5a116dd146aeea0e3f2bf1a03cfa1b7e1b383097f5b046c3b48bee08f065a2db",
+    "hardware/src/masku/masku.sv": "01bee7345b4ad44c79d3653715b8e8390c4fe3f8e36c460d6706184d4a1f3482",
+    "hardware/src/masku/masku_operands.sv": "789747d1a4f03fe1da20c9024e78b7226c6d3b6b8cebb35a41778f4f0aeb327a",
+    "hardware/src/segment_sequencer.sv": "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7",
+    "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+    "hardware/src/sldu/sldu.sv": "54ca01132a5439dfb8a9599e48c1c261bad2d1edd2378037af01979b408fb17d",
+    "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+    "hardware/src/vlsu/addrgen.sv": "ba07eff509d12dba834d19b68695aaa7339818712c04b547961811012adec8d6",
+    "hardware/src/vlsu/akv/akv_context.sv": "3eeaf174ec154febd65c6affc7b2fc4fae325e48af7340ab4827635aa75b26e4",
+    "hardware/src/vlsu/akv/akv_engine.sv": "667bb13c9039c1e65d8c3197fc37c10852be3741ea1e0e7fd99a9a024fe0b5c5",
+    "hardware/src/vlsu/akv/akv_v2_context.sv": "86c3a50f1d599ccb15240699e82fdee11a46fa1b60ca7e26b323ffdca2dac282",
+    "hardware/src/vlsu/qbs/qbs_activation_context.sv": "d2b3e319954daed66d30b2f86ebcabb1ecacc11dc86e2b00d41d3d3427f5873d",
+    "hardware/src/vlsu/qbs/qbs_block_adapter.sv": "6038223062242987b6b6064ae85aa875199c5065429202843ac66c99f6336372",
+    "hardware/src/vlsu/qbs/qbs_commit.sv": "748d32c3bbd8fc8c1f1429ccb1e10d8d7bb355eee0a85f17fe812499015cab86",
+    "hardware/src/vlsu/qbs/qbs_compute_engine.sv": "a37865b05e1e48e19cfd0a1d75a657e9fc55cdc3adbdd389e17dbd90ddd42ad2",
+    "hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv": "54e1496ca93bb7ccc3949038a0329c9e9d7843de5b9ebdcba7be63b011a4569b",
+    "hardware/src/vlsu/qbs/qbs_dot_array.sv": "584199d19c64aff90b5c1e81b2d48e2a7fbae61de2655531ceec4dd67b83260c",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "3a69717d1f680ea0a9b1de9e50357a47c6dc03a3dca9d357ac7080f132da511b",
+    "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv": "f6e0cbd90289e53f012e482db19b38c458ce1a1b8779340e5e785272bfdad069",
+    "hardware/src/vlsu/qbs/qbs_payload_buffer.sv": "664916dbe39405b316c1bff5e750d33b3fecffdfaf5a3c6385287d362ca0056e",
+    "hardware/src/vlsu/qbs/qbs_payload_sram.sv": "186d3b03fe2a7781fcfaa01c7bb698adf0196de9f3b5f9388a08bbbbe0062695",
+    "hardware/src/vlsu/qbs/qbs_profile_decoder.sv": "df18e8e2a30b8521f72ea331df383f565760f193d5e3d050cae6c77393b3101e",
+    "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv": "4d97728d3a6a9218c6cf89933d4f33d12c8d2284da90668a773bf5f8126bf2d6",
+    "hardware/src/vlsu/qbs/qbs_read_engine.sv": "690e3d956628da22c7dac102ae06f66b56907420f835e8258d06553be00d4968",
+    "hardware/src/vlsu/vldu.sv": "77b12d67b608b90890f08f888e08ee463b4485551e97a369ad1f09f738d5ec71",
+    "hardware/src/vlsu/vlsu.sv": "aba5a864fe16d9a5ca97f8e9ea40ec1705bc21ca4dbe473c3c4504cd83d9f567",
+    "hardware/src/vlsu/vstu.sv": "9576183e7c205e7d47ecc65c1f3fc0f04bd457f80311147401a4bd72b2d26136",
+    "hardware/tb/.gitignore": "4445aeaa4e189f85c7c3409fbef41cbefd685aca50b459e95191cf6838ccf37c",
+    "hardware/tb/ara_commit_monitor.sv": "526266c52268220de3a3b42265d7693d7260aee6d6bf4ac545a42faf58b362bb",
+    "hardware/tb/ara_tb.sv": "85282ff61e51bee951e67b99e89101c220a62dd833ad3af32d95d9778cbecf7b",
+    "hardware/tb/ara_tb_vcs.sv": "07eaa562bf1e518c24d8853215ff2e1fe7f106eed003d4b9a62db0e7f9b7dcec",
+    "hardware/tb/ara_tb_verilator.sv": "4a32acc3d7fd9af265112d3e90e5777fa0c75cb833c91405a8c4e1e476bfa0cc",
+    "hardware/tb/ara_testharness.sv": "2170512673680e73b91cce44a0a600bb32000427404b9026238b2914af20482c",
+    "hardware/tb/dpi/elfloader.cc": "eafc87734cb0a07f45b6dd5e5cd7883c09bc040e1c7afe4b371d2b1597c911b4",
+    "hardware/tb/llm_perf_monitor.sv": "06429b17aadd8fcb7c7c9881879d4f84a0c1ba61b50a0aad79b18b3993d3af67",
+    "hardware/tb/verilator/ara_tb.cpp": "176f15cf977337e4b548f09f6dedacae949d6f7bfab1f8f874bc139790e2962e",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/dpi_memutil.cc": "62a7042558e84ca6d9d2b90e20f49845c0a6280a1dd09f41ab069c9252365ef3",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/dpi_memutil.h": "75b98b36933778281015f47c77bc3dbbc355a515ac9ba19d248200973c9a2cf6",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/ranged_map.h": "4293a6529ebac0e5758fd83922036a04a802dbf8695abddcd3828c01334a702f",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/sv_scoped.cc": "5f1d8ddb068b0901d6d9023f41d13f73783af3af97153afb3e94492d12ab7dd4",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp/sv_scoped.h": "7e41be5fa05e953cc058ce77cbb8f8a085b875ba84d19a233216639313a18bff",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_verilator/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp/verilator_memutil.cc": "8e741023accfbeae888ca5b400bfb5697883bd3f1d052d49c550825fa6a5b879",
+    "hardware/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp/verilator_memutil.h": "242f3ee1c8f1df38f144b1f8eee802d4ac2c06112c46b739101088c8d4319235",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/sim_ctrl_extension.h": "aad5b5cff995522ea91c0b8593baa8305a27220a34fdfc917be20622a6983df7",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/verilated_toplevel.cc": "295853f2e462ccc6b6dea9ce8c861bca6c70441fcdf9cf0abe5d9a7e0cbffbab",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/verilated_toplevel.h": "5ff3768b1bafdfdecc5923b6bd76090608b9bb2bfb46873f5177a3f01be6fead",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/verilator_sim_ctrl.cc": "c99e54c62f5bff6ae26b062f128c28d3e218864c7813c9fe09bece311309f8f1",
+    "hardware/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp/verilator_sim_ctrl.h": "8bd149a49a0fe96d9d33eca7d883b062934b991d59a3ebbf86c638cba5e0d2fe",
+    "hardware/tb/verilator/waiver.vlt": "a4a03c7ab0f97a0a59b8884d98a3bb70b55a4e02799619321ecbe031d5249138",
+    "hardware/tb/vrf_perf_monitor.sv": "afb6542a7db8ae27a770181eefbd8c99ee9bc61f8269519f02c1593d94a17d00"
+  },
+  "before_qbs_sha256": {
+    "hardware/src/vlsu/qbs/qbs_activation_context.sv": "d2b3e319954daed66d30b2f86ebcabb1ecacc11dc86e2b00d41d3d3427f5873d",
+    "hardware/src/vlsu/qbs/qbs_block_adapter.sv": "f1576b8cdecb25fa3653ea5c9ac7ca58b79888c2b713bc24204b7c9767dd6309",
+    "hardware/src/vlsu/qbs/qbs_commit.sv": "748d32c3bbd8fc8c1f1429ccb1e10d8d7bb355eee0a85f17fe812499015cab86",
+    "hardware/src/vlsu/qbs/qbs_compute_engine.sv": "28403f9b078fcef6e4a8aa976f23e9290b7346bebb2d9d06cf94570ba16180aa",
+    "hardware/src/vlsu/qbs/qbs_descriptor_decoder.sv": "54e1496ca93bb7ccc3949038a0329c9e9d7843de5b9ebdcba7be63b011a4569b",
+    "hardware/src/vlsu/qbs/qbs_dot_array.sv": "584199d19c64aff90b5c1e81b2d48e2a7fbae61de2655531ceec4dd67b83260c",
+    "hardware/src/vlsu/qbs/qbs_engine.sv": "3a69717d1f680ea0a9b1de9e50357a47c6dc03a3dca9d357ac7080f132da511b",
+    "hardware/src/vlsu/qbs/qbs_fp_accumulator.sv": "f6e0cbd90289e53f012e482db19b38c458ce1a1b8779340e5e785272bfdad069",
+    "hardware/src/vlsu/qbs/qbs_payload_buffer.sv": "ce310f49bb0b5b7f743f6a2f898d0435018969dcbab1ee6e9dd9264210692c92",
+    "hardware/src/vlsu/qbs/qbs_payload_sram.sv": "c55c424a6af583455698db7c268e288cabcd44ce13c5320ace9d5b6a5b638870",
+    "hardware/src/vlsu/qbs/qbs_profile_decoder.sv": "4579251b2a7ecc71099e8c794a26fe38800cb2d9f836666af7fe49c09b6507f0",
+    "hardware/src/vlsu/qbs/qbs_profile_engine_int.sv": "fe86ab756b1356143e04fa7172762c712a35b012fd5e7bd5d12597867a66d7ce",
+    "hardware/src/vlsu/qbs/qbs_read_engine.sv": "690e3d956628da22c7dac102ae06f66b56907420f835e8258d06553be00d4968"
+  },
+  "soc_regression": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/rvv_vfmacc",
+      "elapsed_s": 38.350562211999204,
+      "kind": "rvv",
+      "name": "rvv:vfmacc",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/rvv_vwiden_overlap_edges",
+      "elapsed_s": 73.75819693697849,
+      "kind": "rvv",
+      "name": "rvv:vwiden_overlap_edges",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/app_vsaxpy",
+      "elapsed_s": 7.12616619997425,
+      "kind": "app",
+      "name": "app:vsaxpy",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/app_qbs_akv_handoff_smoke",
+      "elapsed_s": 11.23888124799123,
+      "kind": "app",
+      "name": "app:qbs_akv_handoff_smoke",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ],
+  "evidence": {
+    "commands_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/commands.log",
+      "sha256": "5212e29524b280c87d127b1a00fb6e60d49d4db4d46c7c47c14e8141e7fa956a"
+    },
+    "commands_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/commands.log",
+      "sha256": "721aa20c012215f08ba4aaa8e3166d7e5cc68794f375d240f8d7494cf4692ba5"
+    },
+    "engine_native_oracle": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/after/engine/run.log",
+      "sha256": "a45c49f1d1d298b7424a1d8066d87b08fd03f9d79d9a7877b64e9ce4a1d053a8"
+    },
+    "decoder": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/decoder/decoder/run.log",
+      "sha256": "90a2b247661606cf6990eaf2456b9c8c373c789def731a70ca299e129f50d956"
+    },
+    "payload": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/payload/payload/run.log",
+      "sha256": "70a595092abdcea5852eca781748395eeb0d70dc2cea50bf0d1dca1ac1d12b4a"
+    },
+    "macro": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/macro/sram/run.log",
+      "sha256": "11353023252626bd075d4ff9fcdbf42067b5026a94fd52ceda1884d6bec51964"
+    },
+    "synthesis_define": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/synthesis_check/engine/run.log",
+      "sha256": "5918db51629db92143db58f54171f407e775012e52714e0d03b6294fae0341bb"
+    },
+    "handoff": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/app_qbs_akv_handoff_smoke/console.log",
+      "sha256": "95e256a05da57114f43badd2ddb8d36b96030be0bf181f746fafe36a55230a6c"
+    },
+    "q4_m4n32_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q4_m4n32.log",
+      "sha256": "008c46ee2f843bd8a409419ee7415191d535c3ad83a410592bb3c3b2ad77cff4"
+    },
+    "q4_m4n32_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q4_m4n32.log",
+      "sha256": "f7e9631fd8d72cc8cc6d921a968633a714ab8a3627c6b63bc3da0bb1c67a6ecc"
+    },
+    "q4_m8n16_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q4_m8n16.log",
+      "sha256": "d4ac56d2223083224d0751b6d80cbc3c4eb93e75e37f638c2c243fc5be0302b2"
+    },
+    "q4_m8n16_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q4_m8n16.log",
+      "sha256": "684506d038f437bed2b8b4519199d1ec3b8275ca32141acf37a375aa629fafb2"
+    },
+    "q4_m7n16_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q4_m7n16.log",
+      "sha256": "89e84d8bb7a2cb1a6c2fd29b549e2ae6d7bbc148b81c55d2c8d2fa0cd042648f"
+    },
+    "q4_m7n16_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q4_m7n16.log",
+      "sha256": "f27d6f556bf93b20bc5aaf8ffdd8dd1151fe8b02f73137cd33db5d68258a6d8d"
+    },
+    "q6_m4n32_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q6_m4n32.log",
+      "sha256": "f9d4fd818b95b0209c893e75232f84b19eac41c7609681f0d72279e49a93f160"
+    },
+    "q6_m4n32_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q6_m4n32.log",
+      "sha256": "7a9a2524cf87a8c00d5fc3d312692d946dbfb17bead1d1f2130a7a9096cb0e5f"
+    },
+    "q6_m8n16_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q6_m8n16.log",
+      "sha256": "7f4524b5faca21de49bbf873d11f726f1e1a5dec88ba02fc7aabd9f11d08d012"
+    },
+    "q6_m8n16_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q6_m8n16.log",
+      "sha256": "f16c0dd6f9ef2166c4caab87eca0a5f719dd1ac3b7abe18f9dda3606b899f587"
+    },
+    "q6_m7n16_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_before/real/q6_m7n16.log",
+      "sha256": "65be4f58d265558f3a089b7a1b2f4dcc4fa76119d67937134804f35db8f87da2"
+    },
+    "q6_m7n16_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/real_after/real/q6_m7n16.log",
+      "sha256": "289f59d30ea497176dbe4adb6314a4d65453c4cbd87c715ad48914252b58ab9b"
+    },
+    "q4_decode_m1n32_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/decode/q4_K_before/run.log",
+      "sha256": "9a09944e66c8e997c12b06a7613c8de7fc30af416eec68df18d4a2f9275ab982"
+    },
+    "q4_decode_m1n32_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/decode/q4_K_after/run.log",
+      "sha256": "8f146187420ad50b16f9db37d8d52354430a28fed2b334d73a57eff27ae5e758"
+    },
+    "q6_decode_m1n32_before": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/decode/q6_K_before/run.log",
+      "sha256": "f01ec4e4eb35135c6261797fcfb7da8ea256092aff50cd90339a6ab7ec0da3b9"
+    },
+    "q6_decode_m1n32_after": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/decode/q6_K_after/run.log",
+      "sha256": "46e9c06c4a09369fe1e5c864d5162ff3699331348e38bde8c929dfc745158f16"
+    },
+    "rvv_vfmacc": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/rvv_vfmacc/console.log",
+      "sha256": "2e1cab316fcee62538757dcbb76078970a5b6b0c5b7be6034905942875fa33f8"
+    },
+    "rvv_vwiden_overlap_edges": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/rvv_vwiden_overlap_edges/console.log",
+      "sha256": "235592313ad0078f5199adb1583a029b79514bfe4834df9a7fab05a88f21d770"
+    },
+    "app_vsaxpy": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/app_vsaxpy/console.log",
+      "sha256": "0b734d4fa92f2c46620902571b70b5b918c46201845e59b455e309ef41d3e34e"
+    },
+    "app_qbs_akv_handoff_smoke": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/soc/results/tests/app_qbs_akv_handoff_smoke/console.log",
+      "sha256": "95e256a05da57114f43badd2ddb8d36b96030be0bf181f746fafe36a55230a6c"
+    },
+    "dc_references": {
+      "source": "/home/wangwy/openproject/ara_dsa/hardware/weight128_20260915_97vc3G/dc_elab/elaborated_references.rpt",
+      "sha256": "f448a292ad6defa0d90b66143840fd2da3ccfd27730ae5c6c27e9339d6e318e8"
+    }
+  }
+}

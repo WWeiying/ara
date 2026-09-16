@@ -134,6 +134,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--before-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--address-only", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     current = (ROOT / "hardware/src/vlsu/addrgen.sv").read_text()
@@ -141,6 +142,8 @@ def main():
     (args.output / "addrgen_cones.sv").write_text(
         address_module("addrgen_end_dut", current) +
         address_module("addrgen_end_reference", previous))
+    if args.address_only:
+        return
     previous_round = (args.before_dir / "ct_vfdsu_round.v").read_text()
     (args.output / "round_reference.v").write_text(
         re.sub(r"\bct_vfdsu_round\b", "ct_vfdsu_round_reference", previous_round))

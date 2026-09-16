@@ -46,7 +46,7 @@ module qbs_payload_equivalence_tb;
     .weight_view_o(ref_wview), .activation_view_o(ref_aview), .*
   );
 
-  task automatic compare;
+  task automatic compare(input bit read_visible = 0);
     if (weight_valid_i[0])
       assert (weight_pending_multiword_o === (|(weight_mask_i[15:0] & ~ref_wc[15:0])))
         else $fatal(1, "weight pending capacity mismatch");
@@ -71,10 +71,14 @@ module qbs_payload_equivalence_tb;
           end
         end
     for (int r = 0; r < 4; r++) begin
-      for (int b = 0; b < QbsMaxWeightBlockBytes; b++)
-        assert (wview[r][b] === ref_wview[r][b]) else $fatal(1, "weight view mismatch");
-      for (int b = 0; b < QbsMaxActivationBlockBytes; b++)
-        assert (aview[r][b] === ref_aview[r][b]) else $fatal(1, "activation view mismatch");
+      // SRAM idle/write output behavior is unspecified; compare payload only
+      // after a read, when the contract makes the addressed window visible.
+      if (read_visible && weight_read_i)
+        for (int b = 0; b < QbsMaxWeightBlockBytes; b++)
+          assert (wview[r][b] === ref_wview[r][b]) else $fatal(1, "weight view mismatch");
+      if (read_visible && activation_read_i)
+        for (int b = 0; b < QbsMaxActivationBlockBytes; b++)
+          assert (aview[r][b] === ref_aview[r][b]) else $fatal(1, "activation view mismatch");
     end
     checks++;
   endtask
@@ -133,7 +137,7 @@ module qbs_payload_equivalence_tb;
           else $fatal(1, "new input changed pending consumption");
         @(posedge clk_i);
         #1;
-        compare();
+        compare(1);
         @(negedge clk_i);
       end
     end

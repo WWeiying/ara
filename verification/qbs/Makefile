@@ -17,6 +17,8 @@ RTL_CONTEXT_BUILD := rtl_context_build
 RTL_CONTEXT_MACRO_BUILD := rtl_context_macro_build
 RTL_RUN_TIMEOUT ?= 10800
 RTL_EXTRA_SOURCES ?=
+RTL_ENGINE_DEFINES ?=
+RTL_MACRO_VCS_FLAGS ?=
 RTL_BLOCK_ADAPTER_SOURCE ?= $(ROOT)/hardware/src/vlsu/qbs/qbs_block_adapter.sv
 RTL_VECTOR_FILE := $(abspath qbs_rtl_vectors.txt)
 RTL_COMMAND_VECTOR_FILE := $(abspath qbs_command_vectors.txt)
@@ -184,7 +186,7 @@ rtl-commit-check: rtl-commit-compile
 rtl-engine-compile: qbs_command_vectors.txt $(RTL_ENGINE_SOURCES)
 	mkdir -p $(RTL_ENGINE_BUILD)
 	cd $(RTL_ENGINE_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
-		+lint=TFIPC-L -l compile.log $(RTL_INCLUDES) $(RTL_ENGINE_SOURCES) \
+		+lint=TFIPC-L $(RTL_ENGINE_DEFINES) -l compile.log $(RTL_INCLUDES) $(RTL_ENGINE_SOURCES) \
 		-top qbs_engine_tb -o simv
 
 rtl-engine-check: rtl-engine-compile
@@ -208,7 +210,7 @@ rtl-context-check: rtl-context-compile
 rtl-context-macro-compile: $(RTL_CONTEXT_MACRO_SOURCES)
 	mkdir -p $(RTL_CONTEXT_MACRO_BUILD)
 	cd $(RTL_CONTEXT_MACRO_BUILD) && vcs -full64 -sverilog -timescale=1ns/1ps \
-		+define+TARGET_SRAM_MC +lint=TFIPC-L -l compile.log \
+		+define+TARGET_SRAM_MC $(RTL_MACRO_VCS_FLAGS) +lint=TFIPC-L -l compile.log \
 		$(RTL_CONTEXT_MACRO_SOURCES) -top qbs_activation_context_tb -o simv
 
 rtl-context-macro-check: rtl-context-macro-compile

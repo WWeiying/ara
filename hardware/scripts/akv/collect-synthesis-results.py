@@ -21,6 +21,8 @@ CORNER = {
     "clock_period_ns": 1.0,
     "setup_uncertainty_ns": 0.15,
 }
+# Keep historical reports readable without accepting mixed macro organizations.
+AKV_SRAM_ORGANIZATIONS = {(20, 4, 16): 327680, (10, 2, 8): 311296}
 
 
 class CollectionError(ValueError):
@@ -169,8 +171,10 @@ def library_inputs(source_inputs: tuple[Path, ...]) -> list[Path]:
     names = [path.name.lower() for path in libraries]
     if not any("tcbn28hpcplus" in name for name in names):
         raise CollectionError("TSMC28 standard-cell DB was not identified")
-    if not any("64x256" in name for name in names):
-        raise CollectionError("AKV 64x256 SRAM DB was not identified")
+    legacy = any("64x256" in name for name in names)
+    compact = all(any(shape in name for name in names) for shape in ("96x256", "128x256"))
+    if not (legacy or compact):
+        raise CollectionError("AKV SRAM DBs were not identified")
     return sorted(libraries, key=lambda path: str(path.resolve()))
 
 
@@ -191,11 +195,12 @@ def validate_metrics(mode: str, values: dict[str, str], area_rpt: Path) -> dict[
     v1_count = required_int(values, "akv_v1_sram_macro_count")
     v2_count = required_int(values, "akv_v2_sram_macro_count")
     capacity = required_int(values, "physical_sram_capacity_bits")
-    if (macro_count, v1_count, v2_count) != (20, 4, 16):
+    organization = (macro_count, v1_count, v2_count)
+    if organization not in AKV_SRAM_ORGANIZATIONS:
         raise CollectionError(
             f"wrong AKV SRAM organization: total={macro_count}, v1={v1_count}, v2={v2_count}"
         )
-    if capacity != macro_count * 64 * 256:
+    if capacity != AKV_SRAM_ORGANIZATIONS[organization]:
         raise CollectionError(f"wrong AKV SRAM physical capacity: {capacity}")
 
     report_total, report_macro = parse_area_report(area_rpt)
@@ -388,10 +393,12 @@ def validate_summary(path: Path, expected_mode: str, root: Path = ROOT) -> dict[
         raise CollectionError("current RTL or synthesis inputs differ from synthesized sources")
 
     metrics = summary.get("metrics", {})
+    organization = (metrics.get("akv_sram_macro_count"),
+                    metrics.get("akv_v1_sram_macro_count"),
+                    metrics.get("akv_v2_sram_macro_count"))
     if (
-        metrics.get("akv_sram_macro_count") != 20
-        or metrics.get("akv_v1_sram_macro_count") != 4
-        or metrics.get("akv_v2_sram_macro_count") != 16
+        organization not in AKV_SRAM_ORGANIZATIONS
+        or metrics.get("akv_sram_capacity_bits") != AKV_SRAM_ORGANIZATIONS.get(organization)
         or float(metrics.get("design_total_area_um2", 0)) <= 0
         or float(metrics.get("design_logic_area_um2", 0)) <= 0
     ):

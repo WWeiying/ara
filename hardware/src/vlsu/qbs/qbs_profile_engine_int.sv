@@ -9,7 +9,8 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
 
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
-  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [127:0] weight_window_i [4][2],
+  input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic                buffer_read_valid_o,
   output logic [7:0]          buffer_read_k_base_o,
@@ -140,12 +141,15 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
 
   logic [NumStreams-1:0] slot_valid_q [NumContexts];
   logic signed [20:0] slot_dot_q [NumContexts][NumStreams];
-  logic signed [15:0] slot_aux_q [NumContexts][NumStreams];
-  logic signed [7:0] slot_scale_q [NumContexts][NumStreams];
-  logic [5:0] slot_min_q [NumContexts][NumStreams];
-  logic slot_last_q [NumContexts][NumStreams];
+  // All active streams in a context deposit one subgroup together. Retain
+  // its shared row/context metadata until the correction operands consume it.
+  logic signed [15:0] slot_aux_q [NumContexts][4];
+  logic signed [7:0] slot_scale_q [NumContexts][4];
+  logic [5:0] slot_min_q [NumContexts][4];
+  logic slot_last_q [NumContexts];
   logic signed [27:0] subtotal_dot_q [NumContexts][NumStreams];
-  logic signed [31:0] subtotal_aux_q [NumContexts][NumStreams];
+  // Even 16 groups of full signed-16 bsum times unsigned-6 min fit in 26 bits.
+  logic signed [25:0] subtotal_aux_q [NumContexts][NumStreams];
 
   logic [NumStreams-1:0] result_pending_q [NumContexts];
 
@@ -162,7 +166,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
   logic signed [29:0] correction_dot [2];
   // Preserve all sixteen encoded bsum bits, including noncanonical inputs.
   logic signed [22:0] correction_aux_product [2];
-  logic signed [32:0] correction_aux [2];
+  logic signed [26:0] correction_aux [2];
 
   typedef struct packed {
     logic valid;
@@ -506,21 +510,21 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
         context_row_count_q[context_index] <= '0;
         context_first_block_q[context_index] <= 1'b0;
         slot_valid_q[context_index] <= '0;
+        slot_last_q[context_index] <= 1'b0;
         result_pending_q[context_index] <= '0;
         for (int index = 0; index < 4; index++) begin
           context_weight_d_q[context_index][index] <= '0;
           context_weight_dmin_q[context_index][index] <= '0;
           context_activation_d_q[context_index][index] <= '0;
+          slot_aux_q[context_index][index] <= '0;
+          slot_scale_q[context_index][index] <= '0;
+          slot_min_q[context_index][index] <= '0;
         end
         for (int stream = 0; stream < NumStreams; stream++) begin
           group_partial_q[context_index][stream] <= '0;
           subtotal_dot_q[context_index][stream] <= '0;
           subtotal_aux_q[context_index][stream] <= '0;
           slot_dot_q[context_index][stream] <= '0;
-          slot_aux_q[context_index][stream] <= '0;
-          slot_scale_q[context_index][stream] <= '0;
-          slot_min_q[context_index][stream] <= '0;
-          slot_last_q[context_index][stream] <= 1'b0;
         end
       end
 
@@ -622,16 +626,16 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
           correction_operand_q[lane].context_id <= correction_context[lane];
           correction_operand_q[lane].stream <= correction_stream[lane];
           correction_operand_q[lane].last_group <=
-              slot_last_q[correction_context[lane]][correction_stream[lane]];
+              slot_last_q[correction_context[lane]];
           correction_operand_q[lane].affine <= context_affine_q[correction_context[lane]];
           correction_operand_q[lane].dot <=
               slot_dot_q[correction_context[lane]][correction_stream[lane]];
           correction_operand_q[lane].aux <=
-              slot_aux_q[correction_context[lane]][correction_stream[lane]];
+              slot_aux_q[correction_context[lane]][correction_stream[lane][1:0]];
           correction_operand_q[lane].scale <=
-              slot_scale_q[correction_context[lane]][correction_stream[lane]];
+              slot_scale_q[correction_context[lane]][correction_stream[lane][3:2]];
           correction_operand_q[lane].minimum <=
-              slot_min_q[correction_context[lane]][correction_stream[lane]];
+              slot_min_q[correction_context[lane]][correction_stream[lane][3:2]];
         end
         if (correction_operand_q[lane].valid) begin
           correction_product_q[lane].context_id <= correction_operand_q[lane].context_id;
@@ -646,7 +650,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
               correction_dot[lane][27:0];
           subtotal_aux_q[correction_product_q[lane].context_id]
               [correction_product_q[lane].stream] <=
-              correction_aux[lane][31:0];
+              correction_aux[lane][25:0];
           if (correction_product_q[lane].last_group) begin
             result_pending_q[correction_product_q[lane].context_id]
                 [correction_product_q[lane].stream] <=
@@ -656,6 +660,20 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
       end
 
       if (dot_valid) begin
+        if (meta_group_end_q && |dot_stream_valid) begin
+          for (int index = 0; index < 4; index++) begin
+            slot_aux_q[dot_context_q][index] <= meta_context_aux_q[index];
+            slot_scale_q[dot_context_q][index] <= meta_row_scale_q[index];
+            slot_min_q[dot_context_q][index] <= meta_row_min_q[index];
+          end
+          slot_last_q[dot_context_q] <= unsigned'(meta_group_index_q) + 1 ==
+              context_subgroup_count_q[dot_context_q];
+`ifndef SYNTHESIS
+          assert ((slot_valid_q[dot_context_q] &
+                   ~correction_consume[dot_context_q]) == '0)
+            else $fatal(1, "QBS shared subgroup metadata overwritten before consumption");
+`endif
+        end
         for (int stream = 0; stream < NumStreams; stream++) begin
           if (dot_stream_valid[stream]) begin
             automatic logic signed [21:0] group_total;
@@ -665,12 +683,6 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
               group_partial_q[dot_context_q][stream] <= '0;
               slot_valid_q[dot_context_q][stream] <= 1'b1;
               slot_dot_q[dot_context_q][stream] <= group_total[20:0];
-              slot_aux_q[dot_context_q][stream] <= meta_context_aux_q[stream % 4];
-              slot_scale_q[dot_context_q][stream] <= meta_row_scale_q[stream / 4];
-              slot_min_q[dot_context_q][stream] <= meta_row_min_q[stream / 4];
-              slot_last_q[dot_context_q][stream] <=
-                  unsigned'(meta_group_index_q) + 1 ==
-                      context_subgroup_count_q[dot_context_q];
               group_valid_o[stream] <= 1'b1;
               group_index_o[stream] <= meta_group_index_q;
               group_dot_o[stream] <= group_total;
@@ -730,7 +742,7 @@ module qbs_profile_engine_int import qbs_pkg::*; #(
             else $fatal(1,
                 "QBS dot subtotal overflow: context=%0d stream=%0d",
                 correction_product_q[lane].context_id, correction_product_q[lane].stream);
-          assert (correction_aux[lane][32] == correction_aux[lane][31])
+          assert (correction_aux[lane][26] == correction_aux[lane][25])
             else $fatal(1,
                 "QBS aux subtotal overflow: context=%0d stream=%0d",
                 correction_product_q[lane].context_id, correction_product_q[lane].stream);

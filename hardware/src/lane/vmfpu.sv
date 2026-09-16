@@ -1289,6 +1289,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     localparam int unsigned SIG_BITS_E32   = 23;
     localparam int unsigned SIG_BITS_E64   = 52;
 
+    // Estimate classification depends only on the already aligned operand tag.
+    // Keeping it off the shared result bus avoids a cast/FMA -> estimate chain.
+    fpnew_pkg::classmask_e estimate_class_e16 [4];
+    fpnew_pkg::classmask_e estimate_class_e32 [2];
+    fpnew_pkg::classmask_e estimate_class_e64;
+
+    function automatic fpnew_pkg::classmask_e estimate_class_mask(
+        input fpnew_pkg::fp_info_t info, input logic sign);
+      if (info.is_normal)
+        return sign ? fpnew_pkg::NEGNORM : fpnew_pkg::POSNORM;
+      if (info.is_subnormal)
+        return sign ? fpnew_pkg::NEGSUBNORM : fpnew_pkg::POSSUBNORM;
+      if (info.is_zero)
+        return sign ? fpnew_pkg::NEGZERO : fpnew_pkg::POSZERO;
+      if (info.is_inf)
+        return sign ? fpnew_pkg::NEGINF : fpnew_pkg::POSINF;
+      return info.is_signalling ? fpnew_pkg::SNAN : fpnew_pkg::QNAN;
+    endfunction
+
     if (FPExtSupport) begin
       // Keep vfrec7/vfrsqrt7 side information aligned with fpnew's elastic
       // pipeline under bubbles and result backpressure.
@@ -1297,6 +1316,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
       // sew: 16-bit
       for (genvar i = 0; i < 4; i = i + 1) begin
+        fpnew_pkg::fp_info_t [0:0] estimate_info;
+        fpnew_classifier #(.FpFormat(FP16), .NumOperands(1)) i_estimate_classifier (
+          .operands_i(operand_a_delay[i*16 +: 16]),
+          .is_boxed_i(1'b1),
+          .info_o(estimate_info)
+        );
+        assign estimate_class_e16[i] =
+            estimate_class_mask(estimate_info[0], operand_a_delay[i*16+15]);
         lzc #(
           .WIDTH(SIG_BITS_E16),
           .MODE (1           )
@@ -1309,6 +1336,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
       // sew: 32-bit
       for (genvar j = 0; j < 2; j = j + 1) begin
+        fpnew_pkg::fp_info_t [0:0] estimate_info;
+        fpnew_classifier #(.FpFormat(FP32), .NumOperands(1)) i_estimate_classifier (
+          .operands_i(operand_a_delay[j*32 +: 32]),
+          .is_boxed_i(1'b1),
+          .info_o(estimate_info)
+        );
+        assign estimate_class_e32[j] =
+            estimate_class_mask(estimate_info[0], operand_a_delay[j*32+31]);
         lzc #(
           .WIDTH(SIG_BITS_E32),
           .MODE (1           )
@@ -1320,6 +1355,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       end
 
       // sew: 64-bit
+      fpnew_pkg::fp_info_t [0:0] estimate_info_e64;
+      fpnew_classifier #(.FpFormat(FP64), .NumOperands(1)) i_estimate_classifier_e64 (
+        .operands_i(operand_a_delay),
+        .is_boxed_i(1'b1),
+        .info_o(estimate_info_e64)
+      );
+      assign estimate_class_e64 = estimate_class_mask(estimate_info_e64[0], operand_a_delay[63]);
       lzc #(
         .WIDTH(SIG_BITS_E64),
         .MODE (1           )
@@ -1332,6 +1374,30 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     assign   fp_rm_process = vinsn_processing_q.fp_rm;
 
+`ifndef SYNTHESIS
+    always_ff @(posedge clk_i) begin
+      if (rst_ni && FPExtSupport && vfpu_out_valid &&
+          vinsn_processing_q.op inside {VFREC7, VFRSQRT7}) begin
+        case (vinsn_processing_q.vtype.vsew)
+          EW16: for (int i = 0; i < 4; i++) begin
+            if (vfpu_flag_mask[FPULanes*i/4])
+              assert (estimate_class_e16[i] === vfpu_result[i*16 +: 10])
+                else $fatal(1, "VMFPU FP16 estimate classification mismatch");
+          end
+          EW32: for (int i = 0; i < 2; i++) begin
+            if (vfpu_flag_mask[FPULanes*i/2])
+              assert (estimate_class_e32[i] === vfpu_result[i*32 +: 10])
+                else $fatal(1, "VMFPU FP32 estimate classification mismatch");
+          end
+          EW64: if (vfpu_flag_mask[0])
+            assert (estimate_class_e64 === vfpu_result[9:0])
+              else $fatal(1, "VMFPU FP64 estimate classification mismatch");
+          default: ;
+        endcase
+      end
+    end
+`endif
+
     always_comb begin: fpu_result_processing_p
 
       if (FPExtSupport) begin
@@ -1340,7 +1406,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         unique case (vinsn_processing_q.vtype.vsew)
           EW16: begin
             for (int h = 0; h < 4; h++) vfrec7_out_e16[h] =
-              vfrec7_fp16(vfpu_result[h*16 +: 10], operand_a_delay[h*16 +: 16], fp_rm_process);
+              vfrec7_fp16(estimate_class_e16[h], operand_a_delay[h*16 +: 16], fp_rm_process);
 
             vfrec7_result_o = {vfrec7_out_e16[3].vf7_e16, vfrec7_out_e16[2].vf7_e16,
                                vfrec7_out_e16[1].vf7_e16, vfrec7_out_e16[0].vf7_e16};
@@ -1352,7 +1418,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
           EW32: begin
             for (int w = 0; w < 2; w++) vfrec7_out_e32[w] =
-              vfrec7_fp32(vfpu_result[w*32 +: 10], operand_a_delay[w*32 +: 32], fp_rm_process);
+              vfrec7_fp32(estimate_class_e32[w], operand_a_delay[w*32 +: 32], fp_rm_process);
 
             vfrec7_result_o = {vfrec7_out_e32[1].vf7_e32, vfrec7_out_e32[0].vf7_e32};
 
@@ -1361,7 +1427,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
           EW64: begin
             for (int d = 0; d < 1; d++) vfrec7_out_e64[d] =
-              vfrec7_fp64(vfpu_result[d*64 +: 10], operand_a_delay[d*64 +: 64], fp_rm_process);
+              vfrec7_fp64(estimate_class_e64, operand_a_delay[d*64 +: 64], fp_rm_process);
 
             vfrec7_result_o  =  vfrec7_out_e64[0].vf7_e64;
 
@@ -1377,7 +1443,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         unique case (vinsn_processing_q.vtype.vsew)
           EW16: begin
             for (int h = 0; h < 4; h++) vfrsqrt7_out_e16[h] =
-              vfrsqrt7_fp16(vfpu_result[h*16 +: 10], operand_a_delay[h*16 +: 16], lzc_e16[h*4 +: 4]);
+              vfrsqrt7_fp16(estimate_class_e16[h], operand_a_delay[h*16 +: 16], lzc_e16[h*4 +: 4]);
 
             vfrsqrt7_result_o = {vfrsqrt7_out_e16[3].vf7_e16, vfrsqrt7_out_e16[2].vf7_e16,
                                  vfrsqrt7_out_e16[1].vf7_e16, vfrsqrt7_out_e16[0].vf7_e16};
@@ -1389,7 +1455,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
           EW32: begin
             for (int w = 0; w < 2; w++) vfrsqrt7_out_e32[w] =
-              vfrsqrt7_fp32(vfpu_result[w*32 +: 10], operand_a_delay[w*32 +: 32], lzc_e32[w*5 +: 5]);
+              vfrsqrt7_fp32(estimate_class_e32[w], operand_a_delay[w*32 +: 32], lzc_e32[w*5 +: 5]);
 
             vfrsqrt7_result_o = {vfrsqrt7_out_e32[1].vf7_e32, vfrsqrt7_out_e32[0].vf7_e32};
 
@@ -1398,7 +1464,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
           EW64: begin
             for (int d = 0; d < 1; d++) vfrsqrt7_out_e64[d] =
-              vfrsqrt7_fp64(vfpu_result[d*64 +: 10], operand_a_delay[d*64 +: 64], lzc_e64[d*6 +: 6]);
+              vfrsqrt7_fp64(estimate_class_e64, operand_a_delay[d*64 +: 64], lzc_e64[d*6 +: 6]);
 
             vfrsqrt7_result_o = vfrsqrt7_out_e64[0].vf7_e64;
 

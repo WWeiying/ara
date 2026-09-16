@@ -530,12 +530,12 @@ module qbs_engine_tb;
             $fatal(1, "missing expected low result index=%0d", low_index);
           if (!expected_output_valid[high_index] && high_active)
             $fatal(1, "missing expected high result index=%0d", high_index);
-          if (ldu_result_req[lane] != (|expected_be) ||
-              ldu_result_be[lane] != expected_be ||
+          if (ldu_result_req[lane] !== (|expected_be) ||
+              ldu_result_be[lane] !== expected_be ||
               ((|expected_be) &&
-               (ldu_result_id[lane] != score_id[3:0] ||
-                ldu_result_addr[lane] != ldu_result_addr[0] ||
-                ldu_result_wdata[lane] != {expected_high, expected_low})))
+               (ldu_result_id[lane] !== score_id[3:0] ||
+                ldu_result_addr[lane] !== ldu_result_addr[0] ||
+                ldu_result_wdata[lane] !== {expected_high, expected_low})))
             $fatal(1,
                    "VRF write mismatch ctx=%0d word=%0d lane=%0d got=%h expected=%h_%h",
                    ctx, register_word, lane, ldu_result_wdata[lane],
