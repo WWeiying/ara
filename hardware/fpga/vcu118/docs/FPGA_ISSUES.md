@@ -1,5 +1,54 @@
 # FPGA Findings and Verification Boundary
 
+## Current Blocker: FIFO Synthesis Mapping (2026-09-16)
+
+Windows run `synth_79e06129d61a` with `4a04a751` fails during Cross Boundary
+and Area Optimization. Before `TclStackFree`, Synth 8-6859/8-6858 reports
+FIFO write-data registers competing with VCC at `cdc_fifo_gray.sv:212`.
+The failing hierarchy is the new `gen_fpga_write.gen_slice[].gen_word[]`,
+not the earlier DDR PHY regeneration or a timing-report failure.
+
+The implicated construct is multiple generated clocked processes writing
+part-selects of one packed array of AXI structs. In particular, the log
+places `strb[63]` under slice 0, although it is bit 66 of the actual 579-bit
+W type and belongs to slice 1. This is evidence of an incorrect synthesized
+mapping, not permission to ignore constant-driver warnings. The final Tcl
+stack error alone does not establish the internal Vivado crash mechanism.
+
+The FPGA-only correction gives each word/slice its own plain `word_q`
+vector, with one clocked process assigning the whole vector. Flat wires
+assemble the payload, with one whole-array conversion to/from the AXI type.
+The one-hot selectors, reset, pointer crossings, FIFO capacity, spill stage
+and handshake latency are unchanged. No timing exception is loosened.
+Main RTL, ASIC/DC, QBS/AKV and the existing vendor IPs are unchanged.
+
+The falsifiable hypothesis is that the shared typed-array slice storage
+triggers incorrect constant propagation in Vivado 2020.1. Acceptance needs
+both cycle-equivalent FIFO behavior and native synthesis without 8-6858,
+8-6859 or MDRV-1. A simulation pass alone cannot establish the latter.
+
+`scripts/check_fifo.ps1` runs a small, isolated native Vivado synthesis
+using the frozen FIFO and production AXI typedef macros: dynamic W, W with
+constant-one strobes/zero user, and R with zero user. It uses the same part
+and `flatten_hierarchy none`, promotes both driver diagnostics to errors,
+checks MDRV-1/LUTLP-1 and selector replica counts, and preserves its logs
+under `build/fifo_check_*`. It never opens/resets the board project or IP.
+This uses [named structural DRC reports](https://docs.amd.com/r/2021.2-English/ug835-vivado-tcl-commands/report_drc);
+it is not a physical timing or CDC signoff.
+
+Run this check first on Windows; only after PASS run the managed synth then
+impl. A full synth must not be retried unchanged just because Tcl crashed.
+No local Vivado is available, so successful native synthesis and routing
+of this correction remain unverified until the Windows run.
+
+The original seven-case simulation used synthetic 582/521-bit two-field
+structs, not the board's exact payloads. It remains historical evidence in
+`results/20260916_cdc_fifo`, not proof for this correction. The new nine-case
+run uses actual 579/525-bit AXI structs, constant-field cases and walking-bit
+patterns; see the functional evidence below. Full-board static elaboration
+now checks these widths explicitly. The physical selector-count query also
+accepts Vivado's generated `i_1` hierarchy, seen in the failing log.
+
 ## Current Status: Routed DDR Boundary Timing (2026-09-16)
 
 The measured baseline is Windows Vivado 2020.1 `impl_1684ae5a235b`, uploaded
@@ -59,9 +108,10 @@ requires a new review. Do not refresh main RTL while validating this patch.
 ### Functional Evidence
 
 `tests/check_cdc_fifo.py` compares the actual frozen FIFO with the unmodified
-`4d5a4b02` FIFO. One bounded VCS run passes seven configurations, including
-the real 582-bit W / 521-bit R payloads, both clock directions, 128/129-bit
-slice boundaries and generic depth/width fallbacks. It compares ready,
+`4d5a4b02` FIFO. One bounded VCS run passes nine configurations, including
+the actual 579-bit W / 525-bit R packed AXI payloads, constant-one W strobes,
+constant-zero user fields, both clock directions, 128/129-bit slice
+boundaries and generic depth/width fallbacks. It compares ready,
 valid, all output data, Gray pointers and the complete payload array every
 cycle. Scoreboards check ordering; directed fill/drain and randomized stalls
 cover full/empty, backpressure and pointer wrap. Four reset epochs include
@@ -72,7 +122,7 @@ independent one-sided warm reset is not supported or claimed.
 `tests/check_jtag.py` also passes again with the new reset mux: 74 TAP scans,
 45 accepted DMI requests per implementation, 20 phases, stopped TCK and
 50 checks of the actual board/reset logic. Evidence and input hashes are in
-`vcu118/results/20260916_cdc_fifo/` and `20260916_jtag_reset/`.
+`vcu118/results/20260916_cdc_storage/` and `20260916_jtag_reset/`.
 Full static elaboration has no non-vendor errors; VCS and static elaboration
 are not metastability analysis or Vivado placement/routing validation.
 

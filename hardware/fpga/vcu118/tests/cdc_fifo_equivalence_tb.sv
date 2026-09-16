@@ -1,12 +1,16 @@
 module fifo_check #(
-  parameter int Width = 582,
+  parameter int Width = 579,
+  parameter type Payload = logic [Width-1:0],
+  parameter logic [Width-1:0] Ones = '0,
+  parameter logic [Width-1:0] Zeros = '0,
   parameter int LogDepth = 5,
   parameter time SrcHalf = 10ns,
   parameter time DstHalf = 1667ps,
   parameter int Id = 0
 ) (output logic done = 0);
   timeunit 1ns; timeprecision 1ps;
-  typedef struct packed { logic [Width-2:0] data; logic last; } payload_t;
+  typedef Payload payload_t;
+  initial if ($bits(Payload) != Width || |(Ones & Zeros)) $fatal(1, "invalid test type/masks");
   logic src_clk = 0, dst_clk = 0, clocks_run = 1;
   always #(SrcHalf) if (clocks_run) src_clk = ~src_clk;
   initial begin
@@ -41,7 +45,9 @@ module fifo_check #(
   function automatic payload_t payload(input int n);
     logic [Width-1:0] bits;
     for (int b = 0; b < Width; b++) bits[b] = ((n*17 + b*13) >> (b%19)) & 1;
-    return payload_t'(bits);
+    // Walk every bit, including slice/field boundaries, between random words.
+    if (n % 2 == 0) bits = {{(Width-1){1'b0}}, 1'b1} << ((n/2)%Width);
+    return payload_t'((bits & ~Zeros) | Ones);
   endfunction
   always @(negedge arst_n) queue.delete();
   always @(negedge src_clk) begin
@@ -125,14 +131,19 @@ endmodule
 
 module tb;
   timeunit 1ns; timeprecision 1ps;
-  wire [6:0] done;
-  fifo_check #(.Id(0)) w_forward(done[0]);
-  fifo_check #(.Width(521), .SrcHalf(1667ps), .DstHalf(10ns), .Id(1)) r_reverse(done[1]);
+  import fifo_probe_pkg::*;
+  wire [8:0] done;
+  fifo_check #(.Width($bits(w_t)), .Payload(w_t), .Id(0)) w_forward(done[0]);
+  fifo_check #(.Width($bits(r_t)), .Payload(r_t), .SrcHalf(1667ps), .DstHalf(10ns), .Id(1)) r_reverse(done[1]);
   fifo_check #(.Width(128), .SrcHalf(3ns), .DstHalf(5ns), .Id(2)) boundary(done[2]);
   fifo_check #(.Width(129), .SrcHalf(5ns), .DstHalf(3ns), .Id(3)) partial_slice(done[3]);
   fifo_check #(.Width(40), .Id(4)) narrow_unchanged(done[4]);
   fifo_check #(.Width(256), .LogDepth(3), .Id(5)) other_depth(done[5]);
   fifo_check #(.Width(8), .LogDepth(1), .Id(6)) min_depth(done[6]);
+  fifo_check #(.Width($bits(w_t)), .Payload(w_t), .Ones(WStrbMask),
+               .Zeros(WUserMask), .Id(7)) w_constant_strobes(done[7]);
+  fifo_check #(.Width($bits(r_t)), .Payload(r_t), .Zeros(RUserMask),
+               .SrcHalf(1667ps), .DstHalf(10ns), .Id(8)) r_constant_user(done[8]);
   initial begin wait (&done); $display("PASS: all FIFO comparisons"); $finish; end
   initial begin #2ms; $fatal(1, "bounded FIFO test timed out"); end
 endmodule

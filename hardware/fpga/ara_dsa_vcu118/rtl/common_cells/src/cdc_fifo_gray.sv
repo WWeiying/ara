@@ -199,6 +199,9 @@ module cdc_fifo_gray_src #(
     localparam int Depth = 2**LOG_DEPTH;
     localparam int Width = $bits(T);
     localparam int Slice = 64;
+    wire [Width-1:0] src_bits = src_data_i;
+    wire [Depth*Width-1:0] data_bits;
+    assign data_q = data_bits;
     for (genvar s = 0; s < (Width+Slice-1)/Slice; s++) begin : gen_slice
       localparam int Bits = (Width-s*Slice < Slice) ? Width-s*Slice : Slice;
       (* DONT_TOUCH = "TRUE" *) logic [Depth-1:0] select_q;
@@ -208,11 +211,15 @@ module cdc_fifo_gray_src #(
           select_q <= {select_q[Depth-2:0], select_q[Depth-1]};
       end
       for (genvar word_idx = 0; word_idx < Depth; word_idx++) begin : gen_word
+        // One whole-vector FF owner per slice. Vivado 2020.1 mis-maps
+        // procedural part-select writes into the shared packed struct array.
+        logic [Bits-1:0] word_q;
         always_ff @(posedge src_clk_i or negedge src_rst_ni) begin
-          if (!src_rst_ni) data_q[word_idx][s*Slice +: Bits] <= '0;
+          if (!src_rst_ni) word_q <= '0;
           else if (src_valid_i && src_ready_o && select_q[word_idx])
-            data_q[word_idx][s*Slice +: Bits] <= src_data_i[s*Slice +: Bits];
+            word_q <= src_bits[s*Slice +: Bits];
         end
+        assign data_bits[word_idx*Width+s*Slice +: Bits] = word_q;
       end
     end
   end else begin : gen_generic_write
@@ -280,6 +287,9 @@ module cdc_fifo_gray_dst #(
     localparam int Depth = 2**LOG_DEPTH;
     localparam int Width = $bits(T);
     localparam int Slice = 64;
+    wire [Depth*Width-1:0] async_bits = async_data_i;
+    wire [Width-1:0] selected_bits;
+    assign dst_data = selected_bits;
     for (genvar s = 0; s < (Width+Slice-1)/Slice; s++) begin : gen_slice
       localparam int Bits = (Width-s*Slice < Slice) ? Width-s*Slice : Slice;
       // Replicas must not merge back into one high-fanout pointer decoder.
@@ -294,9 +304,9 @@ module cdc_fifo_gray_dst #(
       always_comb begin
         selected = '0;
         for (int word_idx = 0; word_idx < Depth; word_idx++)
-          selected |= async_data_i[word_idx][s*Slice +: Bits] & {Bits{select_q[word_idx]}};
+          selected |= async_bits[word_idx*Width+s*Slice +: Bits] & {Bits{select_q[word_idx]}};
       end
-      assign dst_data[s*Slice +: Bits] = selected;
+      assign selected_bits[s*Slice +: Bits] = selected;
     end
   end else begin : gen_generic_read
     assign dst_data = async_data_i[rptr_bin[LOG_DEPTH-1:0]];

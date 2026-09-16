@@ -36,6 +36,16 @@ class CdcPatchTests(unittest.TestCase):
         for text in ("", self.raw.replace("PtrFull", "Changed"), patch_fifo_selectors(self.raw)):
             with self.assertRaises(RuntimeError): patch_fifo_selectors(text)
 
+    def test_whole_vector_storage_owners(self):
+        self.assertNotIn("data_q[word_idx]", NEW_WRITE)
+        self.assertIn("logic [Bits-1:0] word_q;", NEW_WRITE)
+        self.assertIn("word_q <= '0;", NEW_WRITE)
+        self.assertIn("word_q <= src_bits[s*Slice +: Bits];", NEW_WRITE)
+        self.assertIn("assign data_bits[word_idx*Width+s*Slice +: Bits] = word_q;", NEW_WRITE)
+        self.assertIn("assign data_q = data_bits;", NEW_WRITE)
+        self.assertNotIn("async_data_i[word_idx]", NEW_READ)
+        self.assertIn("assign dst_data = selected_bits;", NEW_READ)
+
     def test_provenance_replays(self):
         blocks = re.split(r"(?=^--- a/)", (self.pkg / "provenance/integration.patch").read_text(), flags=re.M)
         patch = "".join(b for b in blocks if b.startswith("--- a/" + self.rel + "\n"))
@@ -49,13 +59,13 @@ class CdcPatchTests(unittest.TestCase):
             self.assertEqual(target.read_text(), (self.pkg / self.rel).read_text())
 
     def test_measured_evidence_matches(self):
-        directory = ROOT / "hardware/fpga/vcu118/results/20260916_cdc_fifo"
+        directory = ROOT / "hardware/fpga/vcu118/results/20260916_cdc_storage"
         record = json.loads((directory / "result.json").read_text())
         for name, digest in record["inputs"].items():
             self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest, name)
         log = (directory / "run.txt").read_bytes()
         self.assertEqual(hashlib.sha256(log).hexdigest(), record["run_sha256"])
-        self.assertEqual(log.count(b"PASS FIFO "), 7)
+        self.assertEqual(log.count(b"PASS FIFO "), 9)
         self.assertIn(b"PASS: all FIFO comparisons", log)
 
 

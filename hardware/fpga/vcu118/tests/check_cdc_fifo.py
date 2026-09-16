@@ -38,7 +38,11 @@ def main():
     (out / "common_cells").mkdir()
     for path in (pkg / "rtl/common_cells/include/common_cells").glob("*.svh"):
         copy(path, "common_cells/" + path.name)
-    files += ["reference.sv", copy(here / "cdc_fifo_equivalence_tb.sv")]
+    (out / "axi").mkdir()
+    copy(pkg / "rtl/axi/include/axi/typedef.svh", "axi/typedef.svh")
+    files += [copy(pkg / "rtl/axi/src/axi_pkg.sv"),
+              copy(pkg / "scripts/fifo_probe.sv"), "reference.sv",
+              copy(here / "cdc_fifo_equivalence_tb.sv")]
     with (out / "compile.log").open("w") as log:
         subprocess.run([args.vcs, "-full64", "-sverilog", "+define+SYNTHESIS",
                         "-timescale=1ns/1ps", "+incdir+.", "-top", "tb", *files, "-o", "simv"],
@@ -48,7 +52,7 @@ def main():
                        stderr=subprocess.STDOUT, check=True, timeout=120)
     result = (out / "run.log").read_text()
     print(result)
-    if result.count("PASS FIFO ") != 7 or "PASS: all FIFO comparisons" not in result:
+    if result.count("PASS FIFO ") != 9 or "PASS: all FIFO comparisons" not in result:
         raise RuntimeError("Missing FIFO completion/coverage markers")
     (out / "result.json").write_text(json.dumps({"reference": "4d5a4b02", "inputs": hashes,
         "test": "FIFO cycle equivalence, data order, reset, full/stall and selector invariants; not physical signoff",

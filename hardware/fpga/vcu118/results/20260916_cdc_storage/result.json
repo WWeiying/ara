@@ -1,0 +1,21 @@
+{
+  "reference": "4d5a4b02",
+  "inputs": {
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/sync.sv": "cc7605468d124b0af0d4b2d17323ade1f4093bc96999fab037b9dacac5fe5956",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/gray_to_binary.sv": "e8cc57b3e6a6accb91a5f204d0f71a95ec7383f9975c727b70fa49fa6bc72470",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/binary_to_gray.sv": "99e8a0bac473921d7e2c0f5e248f88705e3f44f9aeaa4d637cecf5fbf2a4d511",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register.sv": "97bf85128f538c54c749896b8eee5fcfe4b27c16845d2a17990979a63b09f2ec",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register_flushable.sv": "3285eb2e557f6377de88df91751b0bccdad07b16be9d926314a52a23e964f02c",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/rstgen.sv": "83d9f70bab3b514062a7a79a581919afd5de466167dfcd08733c773f36ba094a",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/rstgen_bypass.sv": "f838297ccb5c34cf923c716394bc191f9e4cecc7cecafa09f38effec2254d424",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/cdc_fifo_gray.sv": "687fc85626597661a95e37b7d555580e49aa7e753be5cc244b450f2e5a27bc6e",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/include/common_cells/assertions.svh": "d39c7afa893656e235b0019233c1bcf12491cd421639791c827cc53236bd4841",
+    "hardware/fpga/ara_dsa_vcu118/rtl/common_cells/include/common_cells/registers.svh": "532dfd1723d2936421b921235abdafcc8ca407990224992ca13575fdb620053a",
+    "hardware/fpga/ara_dsa_vcu118/rtl/axi/include/axi/typedef.svh": "63f095042c9183f977e95307df14ce0baa06b71121491a380af289f8b309482c",
+    "hardware/fpga/ara_dsa_vcu118/rtl/axi/src/axi_pkg.sv": "244bd5cb3c5bc58d786f2ed2f5eeefd910c4fe03a175f4a2888c6a2ea1c430dc",
+    "hardware/fpga/ara_dsa_vcu118/scripts/fifo_probe.sv": "39d536e2181efd7bffaba2f94704a8ed34a009c66a0d627d623e1264265f9ae0",
+    "hardware/fpga/vcu118/tests/cdc_fifo_equivalence_tb.sv": "dd629500fd9afdf5b147ccf89820b064bd63d16ca52b11bc90f8907c6406c206"
+  },
+  "test": "FIFO cycle equivalence, data order, reset, full/stall and selector invariants; not physical signoff",
+  "run_sha256": "b0efb8204f569306cffc9e09fd87a3076971450d4603f32af95caf6bf0af84c3"
+}

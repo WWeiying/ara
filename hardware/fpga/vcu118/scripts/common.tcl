@@ -86,11 +86,11 @@ proc write_boundary_checks {dir routed} {
         puts $out "RESET_BUFG_COUNT=[llength $muxes] CELLS=$muxes"
         if {[llength $muxes]} { lappend failures "reset path still uses BUFG" }
         set root i_dram_wrapper/gen_cdc.i_axi_cdc_mig
-        foreach channel {w r} width {582 521} source {src dst} dest {dst src} {
+        foreach channel {w r} width {579 525} source {src dst} dest {dst src} {
             foreach half {src dst} side [list $source $dest] gen {write read} {
                 set fifo $root/i_axi_cdc_$side/i_cdc_fifo_gray_${half}_$channel
                 set regs [get_cells -quiet -hierarchical -filter \
-                    "NAME =~ $fifo/gen_fpga_${gen}*select_q_reg* && REF_NAME =~ FD*"]
+                    "NAME =~ $fifo/*gen_fpga_${gen}*select_q_reg* && REF_NAME =~ FD*"]
                 set expected [expr {32 * (($width+63)/64)}]
                 puts $out "SELECTOR $channel $half COUNT=[llength $regs] EXPECTED=$expected"
                 if {[llength $regs] != $expected} { lappend failures "$channel $half selector replicas missing" }

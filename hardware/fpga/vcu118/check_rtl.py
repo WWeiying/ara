@@ -67,6 +67,15 @@ for ram in payload_rams:
     if wrapper is None or wrapper.definition.name != "tc_sram":
         raise RuntimeError(f"QBS payload must use FPGA tc_sram, not an ASIC macro: {ram}")
 print("Required hierarchy: " + json.dumps({k: instances[k] for k in required}, sort_keys=True))
+# Keep the focused synthesis/simulation probe tied to real elaborated AXI types,
+# not to endpoint counts after Vivado constant propagation.
+cdc = "ara_dsa_vcu118.i_dram_wrapper.gen_cdc.i_axi_cdc_mig"
+for channel, side, width in (("w", "src", 579), ("r", "dst", 525)):
+    path = f"{cdc}.i_axi_cdc_{side}.i_cdc_fifo_gray_src_{channel}.src_data_i"
+    symbol = compilation.getRoot().lookupName(path)
+    if symbol is None or symbol.type.bitWidth != width:
+        raise RuntimeError(f"DDR FIFO {channel} payload changed; update/review the probe: {path}")
+    print(f"DDR FIFO {channel}: {width} bits (packed AXI struct)")
 vendor = {"BUFGMUX", "LUT5", "xpm_memory_spram", "xpm_memory_tdpram", "ddr4", "IBUFDS",
           "clkwiz", "vio", "STARTUPE3"}
 errors, external = [], set()
