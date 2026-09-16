@@ -1,0 +1,19 @@
+CELL dbg_hub
+  REF_NAME=dbg_hub_CV
+  IS_BLACKBOX=1
+OBJECT jtag_tck_i CLOCKS=
+  NETS=jtag_tck_i jtag_tck_i_IBUF_inst/I DRIVERS=
+OBJECT uart_rx_i CLOCKS=
+  NETS=uart_rx_i uart_rx_i_IBUF_inst/I DRIVERS=
+OBJECT c0_ddr4_reset_n CLOCKS=
+  NETS=i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_mig_ddr4_phy/inst/ddr4_reset_n i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_mig_ddr4_phy/ddr4_reset_n i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/c0_ddr4_reset_n i_dram_wrapper/i_dram/inst/c0_ddr4_reset_n i_dram_wrapper/i_dram/c0_ddr4_reset_n i_dram_wrapper/c0_ddr4_reset_n c0_ddr4_reset_n DRIVERS=i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_mig_ddr4_phy/inst/OBUF_reset_n/O
+  DRIVER_CELL=i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_mig_ddr4_phy/inst/OBUF_reset_n REF_NAME=OBUF
+OBJECT dbg_hub/clk CLOCKS=mmcm_clkout5
+  NETS=i_dram_wrapper/i_dram/inst/u_ddr4_infrastructure/dbg_clk i_dram_wrapper/i_dram/inst/dbg_clk i_dram_wrapper/i_dram/dbg_clk i_dram_wrapper/clk clk DRIVERS=i_dram_wrapper/i_dram/inst/u_ddr4_infrastructure/u_bufg_dbg_clk/O
+  DRIVER_CELL=i_dram_wrapper/i_dram/inst/u_ddr4_infrastructure/u_bufg_dbg_clk REF_NAME=BUFGCE
+OBJECT dbg_hub/sl_iport0_o[1] CLOCKS=
+  NETS=sl_iport0[1] i_dram_wrapper/sl_iport0[1] i_dram_wrapper/i_dram/sl_iport0[1] i_dram_wrapper/i_dram/inst/sl_iport0[1] i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/out[1] i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/out[1] i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/out[1] i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/U_XSDB_SLAVE/sl_iport_i[1] i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/s_dclk i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/u_xsdb_arbiter/CLK i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/u_xsdb_arbiter/u_slave_do_sync/CLK i_dram_wrapper/i_dram/inst/u_ddr4_mem_intfc/u_ddr_cal_top/u_ddr_cal/u_xsdb_arbiter/u_slave_rdy_sync/CLK DRIVERS=dbg_hub/sl_iport0_o[1]
+  DRIVER_CELL=dbg_hub REF_NAME=dbg_hub_CV
+OBJECT dbg_hub/sl_iport1_o[1] CLOCKS=
+  NETS=sl_iport0_1[1] i_vio/sl_iport0[1] i_vio/inst/sl_iport0[1] i_vio/inst/U_XSDB_SLAVE/sl_iport_i[1] i_vio/inst/bus_clk i_vio/inst/DECODER_INST/out i_vio/inst/PROBE_IN_INST/out i_vio/inst/PROBE_OUT_ALL_INST/out i_vio/inst/PROBE_OUT_ALL_INST/G_PROBE_OUT[2].PROBE_OUT0_INST/data_int_reg[0]_1 i_vio/inst/PROBE_OUT_ALL_INST/G_PROBE_OUT[0].PROBE_OUT0_INST/out i_vio/inst/PROBE_OUT_ALL_INST/G_PROBE_OUT[1].PROBE_OUT0_INST/out i_vio/inst/PROBE_OUT_WIDTH_INST/out DRIVERS=dbg_hub/sl_iport1_o[1]
+  DRIVER_CELL=dbg_hub REF_NAME=dbg_hub_CV
