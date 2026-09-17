@@ -24,8 +24,11 @@ powershell -NoProfile -ExecutionPolicy RemoteSigned -File .\scripts\run.ps1 -Sta
 
 `all` 自动完成全板新综合、检查、布局布线和报告，不启动局部 FIFO 小工程，
 不需要中途输入命令。综合失败就停止，不会继续实现或使用旧网表。
-必须重新综合顶层，不能用 `inspect` 的旧网表验证本次修复。
-本机协议/复位和流程测试已通过，但尚无本版 Vivado 综合或布线结果，详见 `docs/FPGA_ISSUES.md`。
+按此全局流程重新执行，不能用 `inspect` 的旧网表当作本次验收。
+上一轮 `impl_6abc9f1816a4` 已完成综合和布线，现有时序裕量为正，但有 CDC 约束缺失。
+本次只修正 FPGA 约束和验收检查，不改功能 RTL、不重建三个 IP。
+新增 `constraint_checks.rpt` 核对约束确实生效；复位缓冲改为检查实际连接，不一律禁止 BUFG。
+本地回归通过，新的约束仍需本次 Windows 全流程验证，详见 `docs/FPGA_ISSUES.md`。
 
 ## 1. Windows 上先做什么
 

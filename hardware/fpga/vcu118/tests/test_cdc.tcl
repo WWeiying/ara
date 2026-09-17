@@ -10,6 +10,7 @@ proc setup {scenario} {
     set ::legacy [expr {$scenario in {legacy missing_dmi_req missing_dmi_ack missing_dmi_bit missing_dmi_stage wrong_dmi_stage missing_reset_phase fast_jtag}}]
     set ::cells {}; set ::pins {}; set ::max_delays {}; set ::false_paths {}; set ::attributes {}
     set ::pad_ref 0; set ::input_delays {}; set ::bus_skews {}; set ::debug_connected 0
+    set ::queries {}
     dict set ::pins i_vio/clk soc
     dict set ::pins dbg_hub/clk ui
     set base i_dram_wrapper/gen_cdc.i_axi_cdc_mig
@@ -114,11 +115,30 @@ proc get_cells {args} {
     assert {[regexp {^NAME =~ (\S+) && REF_NAME =~ FD\*$} $filter -> pattern]} "bounded FF query"
     set result {}
     dict for {cell clock} $::cells { if {[string match $pattern $cell]} { lappend result $cell } }
+    dict set ::queries $result 1
+    return $result
+}
+proc filter {args} {
+    set objects [lindex $args end-1]
+    set expression [lindex $args end]
+    assert {[dict exists $::queries $objects]} "filter a query-backed collection"
+    set result {}
+    if {[lindex $args 0] eq "-regexp"} {
+        assert {$expression eq {NAME =~ .*/reg_q_reg\[0\]$}} "first stage only"
+        foreach cell $objects {
+            if {[regexp {.*\/reg_q_reg\[0\]$} $cell]} { lappend result $cell }
+        }
+    } else {
+        assert {[regexp {^NAME == "(.*)"$} $expression -> expected]} "literal register name"
+        foreach cell $objects { if {$cell eq $expected} { lappend result $cell } }
+    }
+    dict set ::queries $result 1
     return $result
 }
 proc get_pins {args} {
     if {[lsearch -exact $args -of_objects] >= 0} {
         assert {[option $args -filter] eq "REF_PIN_NAME == D"} "only D pins, not clock/reset/CE"
+        assert {[dict exists $::queries [option $args -of_objects]]} "do not build exception endpoints with lappend"
         set result {}
         foreach cell [option $args -of_objects] {
             assert {[dict exists $::cells $cell]} "unknown register"

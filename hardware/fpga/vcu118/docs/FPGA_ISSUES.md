@@ -1,6 +1,79 @@
 # FPGA Findings and Verification Boundary
 
-## Current Blocker: FIFO Synthesis Mapping (2026-09-16)
+## Current Status: Missing CDC Exceptions (2026-09-17 Windows Run)
+
+Commit `d3aef3dd` contains the fully routed `impl_6abc9f1816a4` reports.
+The preceding FIFO storage fix now has native full-board synthesis and
+routing evidence: no MDRV-1 or LUTLP-1 violations, WNS +0.022 ns,
+WHS +0.010 ns and WPWS +0.039 ns. The 50 MHz SoC group has +1.368 ns
+setup slack. These numbers apply only to the constraints actually present;
+they do not establish complete CDC or board signoff.
+
+### Evidence and Correction
+
+- `boundary_checks.rpt` rejects two reset buffers and UART RX's requirement
+  of 20 ns instead of the intended 70 ns. The UART path is ordinary setup,
+  not a datapath-only exception. The three JTAG input paths also lost their
+  exceptions; their ordinary 20 ns setup requirement accidentally matched
+  the checker and concealed the same problem.
+- All 60 Gray first-stage D paths have `Exception None` in `cdc.rpt`.
+  None of the ten board Gray bus-skew groups appears in `bus_skew.rpt`;
+  only four vendor debug-hub groups remain. The VIO ready first-stage
+  false path is also absent. These are not reported as ignored exceptions.
+- The missing constraints share first-stage lists assembled by Tcl
+  `foreach`/`lappend`, whereas direct object queries retained the FIFO data,
+  reset and output constraints. The falsifiable hypothesis is loss of those
+  list-derived endpoints during Vivado 2020.1 constraint/checkpoint handling.
+  This is an inference, not proof of an internal Vivado defect. First stages
+  now remain query-backed collections through `filter` and `get_pins`.
+  Acceptance requires their exceptions to survive `open_run` and routing.
+- Data constraints now select only the spill register's `a_data_q`, which
+  receives the asynchronous payload. `b_data_q` receives A locally and the
+  full flags are local control. Including them caused the misleading 50%
+  coverage, not missing data bounds. No numeric bound is increased.
+- The two reset buffers are under the final main SoC/UI reset synchronizers,
+  not the previously failing `i_ui_por` test mux. The main SoC recovery path
+  explicitly shows final FF -> BUFGCE -> 158465-load reset net. Vivado can
+  promote high-fanout controls to global routing. The checker now verifies
+  the exact owner, final FF driver, buffer type and constant, non-inverted
+  enable. POR buffers, BUFGCTRL/test muxes, wrong drivers and gated/inverted
+  buffers still fail. Recovery/removal checks remain active.
+
+Only FPGA constraints, checking scripts and documentation change. Functional
+RTL, main RTL, ASIC/DC, QBS/AKV and existing vendor IPs are unchanged. FIFO
+pointer/data and Gray skew remain 3 ns; JTAG remains 20 ns, UART 70 ns and
+DDR reset one UI period. No whole clock domain is false-pathed.
+
+### Validation and Remaining Work
+
+`constraint_checks.rpt` audits the saved CDC, pad and bus-skew reports,
+instead of trusting that the intended Tcl commands took effect. Missing
+CDC/pad exceptions stop synthesis acceptance before implementation starts.
+After routing, all ten Gray skew groups must exist with 3 ns requirements;
+both board and vendor skew slacks must be finite and nonnegative. Unplaced
+skew estimates are diagnostic, not final physical signoff.
+
+Offline tests use the actual uploaded reports plus modified in-memory
+fixtures, not fabricated native results: 38 report checks, 29 CDC-query
+scenarios and 18 boundary scenarios pass. The uploaded result is correctly
+rejected for 75 missing constraint checks. Functional RTL was not changed,
+so the earlier FIFO/JTAG simulation evidence is retained without another
+simulation sweep. Linux has no Vivado; native validation of this correction
+still requires the Windows full-board `scripts/run.ps1 -Stage all` flow.
+
+The baseline also has two CDC-11 findings on `fabric_ready` fanout to the
+main reset chain and independently observed VIO status, 1177 CDC-15 warnings
+on bundled FIFO data, and two TIMING-51 methodology findings. VIO status does
+not feed functional reset/control. None of these findings is silently waived;
+review them again with the restored exceptions and routed bounds. Keep the
+50 MHz SoC target and inspect pulse width, DRC, unconstrained endpoints and
+exception coverage before generating a bitstream.
+
+References: [AMD object filtering](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/filter),
+[bus-skew reporting](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/report_bus_skew),
+[high-fanout global buffering](https://docs.amd.com/r/2024.1-English/ug949-vivado-design-methodology/Promote-High-Fanout-Nets-to-Global-Routing).
+
+## Previous Blocker: FIFO Synthesis Mapping (2026-09-16)
 
 Windows run `synth_79e06129d61a` with `4a04a751` fails during Cross Boundary
 and Area Optimization. Before `TclStackFree`, Synth 8-6859/8-6858 reports
@@ -54,8 +127,8 @@ Logs are separated into `synth/` and `impl/` under one session, with
 The flow still stops at routed reports, not an automatically programmed
 bitstream or complete physical signoff.
 
-No local Vivado is available, so successful native synthesis and routing
-of this correction remain unverified until the Windows run.
+At the time of this change, no local Vivado was available. The subsequent
+Windows `impl_6abc9f1816a4` result above confirms native synthesis and routing.
 
 The original seven-case simulation used synthetic 582/521-bit two-field
 structs, not the board's exact payloads. It remains historical evidence in
@@ -65,7 +138,7 @@ patterns; see the functional evidence below. Full-board static elaboration
 now checks these widths explicitly. The physical selector-count query also
 accepts Vivado's generated `i_1` hierarchy, seen in the failing log.
 
-## Current Status: Routed DDR Boundary Timing (2026-09-16)
+## Previous Status: Routed DDR Boundary Timing (2026-09-16)
 
 The measured baseline is Windows Vivado 2020.1 `impl_1684ae5a235b`, uploaded
 in `4d5a4b02`. It is fully routed, but setup/recovery fails: WNS -0.580 ns,
@@ -151,7 +224,8 @@ No local Vivado is installed, so this patch has no new routed timing result.
 
 Reports now include `bus_skew.rpt`, `methodology.rpt`, `io.rpt`,
 `exceptions.rpt`, `hold_paths.rpt`, individual pad timing and
-`boundary_checks.rpt`. Routed boundary checks reject reset BUFGs, missing
+`boundary_checks.rpt`. The original boundary checks rejected all reset BUFGs
+(corrected to a connectivity check in the current update), missing
 selector replicas, unconstrained/overridden or failing pad budgets, a
 non-LVCMOS12 DDR reset, or different hub/VIO clocks.
 

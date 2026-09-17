@@ -7,9 +7,16 @@ proc assert {condition message} {
 }
 proc option {args name} { return [lindex $args [expr {[lsearch -exact $args $name]+1}]] }
 proc get_cells {args} {
+    if {[lsearch -exact $args -of_objects] >= 0} {
+        return [expr {$::scenario eq "gated_reset" ? "gate" : "power"}]
+    }
     set filter [option $args -filter]
     if {[string match *BUFG* $filter]} {
-        return [expr {$::scenario eq "reset_bufg" ? "reset/BUFG" : ""}]
+        if {$::scenario eq "por_bufg"} { return i_dram_wrapper/i_ui_por/i_rstgen_bypass/buf }
+        if {$::scenario in {auto_bufg reset_bufg bad_driver gated_reset inverted_reset}} {
+            return {i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst}
+        }
+        return {}
     }
     set count [expr {[string match *_src_w/* $filter] || [string match *_dst_w/* $filter] ? 320 : 288}]
     if {$::scenario eq "selector_merge"} { incr count -1 }
@@ -17,7 +24,19 @@ proc get_cells {args} {
     return $regs
 }
 proc get_ports {args} { return [lindex $args end] }
-proc get_pins {args} { return [lindex $args end] }
+proc get_nets {args} { return [option $args -of_objects] }
+proc get_pins {args} {
+    if {[lsearch -exact $args -of_objects] >= 0} {
+        set object [option $args -of_objects]
+        if {[lsearch -exact $args -leaf] >= 0} {
+            if {[string match */CE $object]} { return power/P }
+            if {$::scenario eq "bad_driver"} { return wrong/Q }
+            return {i_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]/Q}
+        }
+        return $object/[lindex [option $args -filter] end]
+    }
+    return [lindex $args end]
+}
 proc get_clocks {args} {
     set pin [option $args -of_objects]
     if {[string match */src_clk_i $pin]} { return ui }
@@ -31,6 +50,13 @@ proc get_timing_paths {args} {
 proc get_property {key object} {
     if {$::scenario eq "query_error"} { error "query failed" }
     switch $key {
+        NAME { return $object }
+        REF_NAME {
+            if {$object eq "power"} { return VCC }
+            if {$object eq "gate"} { return LUT1 }
+            return [expr {$::scenario eq "reset_bufg" ? "BUFGCTRL" : "BUFGCE"}]
+        }
+        IS_CE_INVERTED - IS_I_INVERTED { return [expr {$::scenario eq "inverted_reset"}] }
         PERIOD { return 3.333 }
         IOSTANDARD { return [expr {$::scenario eq "wrong_io" ? "LVCMOS18" : "LVCMOS12"}] }
         SLACK {
@@ -52,17 +78,21 @@ proc get_property {key object} {
     }
 }
 proc report_timing {args} { lappend ::pad_reports [file tail [option $args -file]] }
-foreach scenario {healthy scientific reset_bufg selector_merge no_path wrong_debug_clock wrong_io violated unconstrained wrong_budget infinite_budget query_error} {
+proc write_constraint_checks {dir routed} {
+    return [expr {$::scenario eq "missing_constraints" ? [list "constraint missing"] : {}}]
+}
+foreach scenario {healthy scientific auto_bufg reset_bufg por_bufg bad_driver gated_reset inverted_reset missing_constraints selector_merge no_path wrong_debug_clock wrong_io violated unconstrained wrong_budget infinite_budget query_error} {
     set pad_reports {}
     set before [lsort [chan names]]
     set failed [catch {write_boundary_checks $dir true} message]
-    assert {$failed == ($scenario ni {healthy scientific})} "$scenario: $message"
+    assert {$failed == ($scenario ni {healthy scientific auto_bufg})} "$scenario: $message"
     assert {[lsort [chan names]] eq $before} "report must close on error"
-    if {$scenario in {healthy scientific}} {
+    if {$scenario in {healthy scientific auto_bufg}} {
         assert {[llength $pad_reports] == 7} "all seven pad budgets reported"
     } elseif {$scenario ne "query_error"} {
         assert {[string match {Physical boundary checks failed:*} $message]} "fail-closed route gate"
-        assert {![catch {write_boundary_checks $dir false}]} "synthesis collects without route gate"
+        assert {[catch {write_boundary_checks $dir false}] == ($scenario eq "missing_constraints")} \
+            "missing constraints fail before routing; estimated slack is diagnostic only"
     }
     puts "PASS boundary $scenario"
 }

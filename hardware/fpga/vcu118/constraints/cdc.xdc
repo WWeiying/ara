@@ -63,10 +63,10 @@ proc ara_cdc::debug_clock {} {
 proc ara_cdc::pointer_inputs {root} {
     set regs [require [get_cells -quiet -hierarchical -filter \
         "NAME =~ $root/gen_sync* && REF_NAME =~ FD*"] "pointer synchronizers in $root" 12]
-    set first {}
-    foreach reg $regs {
-        if {[regexp {\/reg_q_reg\[0\]$} [get_property NAME $reg]]} { lappend first $reg }
-    }
+    # Keep a Vivado query-backed collection through checkpoint serialization.
+    # In impl_6abc9f1816a4 every exception using a hand-built first-stage list
+    # disappeared, while the direct get_* queries survived.
+    set first [filter -regexp $regs {NAME =~ .*/reg_q_reg\[0\]$}]
     require $first "six first-stage Gray pointer registers in $root" 6
     set_property ASYNC_REG TRUE $regs
     return [require [get_pins -quiet -of_objects $first -filter {REF_PIN_NAME == D}] \
@@ -143,13 +143,9 @@ proc ara_cdc::jtag {} {
         set regs [require [get_cells -quiet -hierarchical -filter \
             "NAME =~ $root/fpga_${signal}_sync_q_reg* && REF_NAME =~ FD*"] \
             "three sampled-$signal registers" 3]
-        set first {}
         for {set stage 0} {$stage < 3} {incr stage} {
             set expected [format {%s/fpga_%s_sync_q_reg[%d]} $root $signal $stage]
-            set found {}
-            foreach reg $regs {
-                if {[get_property NAME $reg] eq $expected} { lappend found $reg }
-            }
+            set found [filter $regs [format {NAME == "%s"} $expected]]
             require $found "JTAG stage $expected" 1
             if {$stage == 0} { set first $found }
         }
@@ -168,10 +164,7 @@ proc ara_cdc::uart {} {
     set root i_cheshire_soc/gen_uart.i_uart/i_apb_uart/UART_IS_SIN
     set regs [require [get_cells -quiet -hierarchical -filter \
         "NAME =~ $root/iD_reg* && REF_NAME =~ FD*"] "UART RX synchronizer" 2]
-    set first {}
-    foreach reg $regs {
-        if {[get_property NAME $reg] eq "$root/iD_reg\[0\]"} { lappend first $reg }
-    }
+    set first [filter $regs [format {NAME == "%s/iD_reg[0]"} $root]]
     require $first "UART RX first stage" 1
     set_property ASYNC_REG TRUE $regs
     set input [require [get_ports -quiet uart_rx_i] "UART RX port" 1]
@@ -194,12 +187,14 @@ proc ara_cdc::apply {} {
         set forward [pointer_inputs $dst]
         set reverse [pointer_inputs $src]
         set spill [require [get_cells -quiet -hierarchical -filter \
-            "NAME =~ $dst/i_spill_register/* && REF_NAME =~ FD*"] "spill registers in $dst"]
+            "NAME =~ $dst/i_spill_register/*gen_spill_reg.a_data_q_reg* && REF_NAME =~ FD*"] \
+            "spill input-data registers in $dst"]
         set data [require [get_pins -quiet -of_objects $spill -filter {REF_PIN_NAME == D}] \
             "spill register D pins in $dst"]
         # Only receiving D pins are exceptions. Stage 1 -> stage 2 remains
         # normally timed. The data mux must settle before the synchronized
         # write pointer permits capture in the destination spill register.
+        # Only A captures asynchronous data; B and full flags are local logic.
         set_max_delay -datapath_only 3.0 -from $src_clock -to $forward
         set_max_delay -datapath_only 3.0 -from $dst_clock -to $reverse
         set_max_delay -datapath_only 3.0 -from $src_clock -to $data
@@ -227,12 +222,7 @@ proc ara_cdc::apply {} {
         puts "WARNING: CDC: legacy netlist has no VIO status synchronizers; re-synthesis is required to verify the board fix."
     } else {
         require $status_regs "eight VIO status synchronizer registers" 8
-        set status_first {}
-        foreach reg $status_regs {
-            if {[regexp {\/reg_q_reg\[0\]$} [get_property NAME $reg]]} {
-                lappend status_first $reg
-            }
-        }
+        set status_first [filter -regexp $status_regs {NAME =~ .*/reg_q_reg\[0\]$}]
         require $status_first "four VIO first-stage registers" 4
         set_property ASYNC_REG TRUE $status_regs
         set_false_path -to [require [get_pins -quiet -of_objects $status_first \

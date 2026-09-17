@@ -1,5 +1,6 @@
 set package_root [file normalize [file join [file dirname [info script]] ..]]
 source [file join $package_root scripts config.tcl]
+source [file join $package_root scripts constraint_checks.tcl]
 set build_dir [file join $package_root build $project_name]
 set xpr_path [file join $build_dir ${project_name}.xpr]
 
@@ -83,16 +84,53 @@ proc write_reports {stage {reject_loops false}} {
     if {![string match inspect* $stage]} { write_boundary_checks $dir $reject_loops }
 }
 
-# Fail closed on missing/overridden pad budgets and on an unmodified physical
-# topology, after saving the usual diagnostics. This is not a CDC waiver.
+# Check actual reset connectivity, not the name of an automatically inserted
+# global buffer. BUFGCTRL/test muxes and buffers on the short POR paths remain
+# forbidden; only ungated buffers driven by the final SoC/UI reset FF qualify.
+proc reset_buffer_failures {out} {
+    set failures {}
+    set buffers [get_cells -quiet -hierarchical -filter \
+        {NAME =~ */i_rstgen_bypass/* && REF_NAME =~ BUFG*}]
+    puts $out "RESET_BUFG_COUNT=[llength $buffers] CELLS=$buffers"
+    foreach buffer $buffers {
+        set type [get_property REF_NAME $buffer]
+        set owner [file dirname [get_property NAME $buffer]]
+        if {$type ni {BUFG BUFGCE} || $owner ni \
+                {i_rstgen/i_rstgen_bypass i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass}} {
+            lappend failures "reset clock mux or POR buffer remains: $buffer ($type)"
+            continue
+        }
+        set input [get_pins -quiet -of_objects $buffer -filter {REF_PIN_NAME == I}]
+        set net [get_nets -quiet -segments -of_objects $input]
+        set drivers [get_pins -quiet -leaf -of_objects $net -filter {DIRECTION == OUT}]
+        set expected [format {%s/synch_regs_q_reg[3]/Q} $owner]
+        puts $out "RESET_BUFFER $buffer TYPE=$type DRIVERS=$drivers"
+        if {[llength $input] != 1 || [llength $drivers] != 1 ||
+            [get_property NAME $drivers] ne $expected} {
+            lappend failures "reset buffer is not driven by the final reset FF: $buffer"
+        }
+        if {$type eq "BUFGCE"} {
+            set ce [get_pins -quiet -of_objects $buffer -filter {REF_PIN_NAME == CE}]
+            set ce_net [get_nets -quiet -segments -of_objects $ce]
+            set ce_driver [get_pins -quiet -leaf -of_objects $ce_net -filter {DIRECTION == OUT}]
+            set ce_cell [get_cells -quiet -of_objects $ce_driver]
+            if {[llength $ce] != 1 || [llength $ce_cell] != 1 ||
+                [get_property REF_NAME $ce_cell] ne "VCC" ||
+                [get_property IS_CE_INVERTED $buffer] || [get_property IS_I_INVERTED $buffer]} {
+                lappend failures "reset BUFGCE must be non-inverting and always enabled: $buffer"
+            }
+        }
+    }
+    return $failures
+}
+
+# Fail closed on missing/overridden budgets after saving the diagnostics. Missing
+# CDC constraints fail even before routing; estimated negative slack does not.
 proc write_boundary_checks {dir routed} {
     set out [open [file join $dir boundary_checks.rpt] w]
     set failures {}
     set code [catch {
-        set muxes [get_cells -quiet -hierarchical -filter \
-            {NAME =~ */i_rstgen_bypass/* && REF_NAME =~ BUFG*}]
-        puts $out "RESET_BUFG_COUNT=[llength $muxes] CELLS=$muxes"
-        if {[llength $muxes]} { lappend failures "reset path still uses BUFG" }
+        set failures [reset_buffer_failures $out]
         set root i_dram_wrapper/gen_cdc.i_axi_cdc_mig
         foreach channel {w r} width {579 525} source {src dst} dest {dst src} {
             foreach half {src dst} side [list $source $dest] gen {write read} {
@@ -146,12 +184,14 @@ proc write_boundary_checks {dir routed} {
         if {[llength $hub] != 1 || $hub ne $vio} {
             lappend failures "debug hub and VIO clocks differ"
         }
+        set constraint_failures [write_constraint_checks $dir $routed]
+        set failures [concat $failures $constraint_failures]
         puts $out "FAILURES=[llength $failures]: $failures"
     } result options]
     set close_code [catch {close $out} close_result close_options]
     if {$code} { return -options $options $result }
     if {$close_code} { return -options $close_options $close_result }
-    if {$routed && [llength $failures]} {
+    if {[llength $constraint_failures] || ($routed && [llength $failures])} {
         error "Physical boundary checks failed: $failures. Inspect $dir/boundary_checks.rpt."
     }
 }
