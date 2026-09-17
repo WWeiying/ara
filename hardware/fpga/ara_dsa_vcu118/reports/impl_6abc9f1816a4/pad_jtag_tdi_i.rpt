@@ -1,0 +1,93 @@
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2020.1 (win64) Build 2902540 Wed May 27 19:54:49 MDT 2020
+| Date              : Thu Sep 17 02:11:50 2026
+| Host              : DESKTOP-9T3TD2K running 64-bit major release  (build 9200)
+| Command           : report_timing -delay_type max -max_paths 1 -from [get_ports -quiet jtag_tdi_i] -file D:/project/ara/hardware/fpga/ara_dsa_vcu118/reports/impl_6abc9f1816a4/pad_jtag_tdi_i.rpt
+| Design            : ara_dsa_vcu118
+| Device            : xcvu9p-flga2104
+| Speed File        : -2L  PRODUCTION 1.27 02-28-2020
+| Temperature Grade : E
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             12.776ns  (required time - arrival time)
+  Source:                 jtag_tdi_i
+                            (input port clocked by ara_async_pad  {rise@0.000ns fall@500.000ns period=1000.000ns})
+  Destination:            i_cheshire_soc/i_dbg_dmi_jtag/fpga_tdi_sync_q_reg[0]/D
+                            (rising edge-triggered cell FDCE clocked by clk_50_clkwiz  {rise@0.000ns fall@10.000ns period=20.000ns})
+  Path Group:             clk_50_clkwiz
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            20.000ns  (clk_50_clkwiz rise@20.000ns - ara_async_pad rise@0.000ns)
+  Data Path Delay:        12.111ns  (logic 0.646ns (5.336%)  route 11.465ns (94.664%))
+  Logic Levels:           2  (IBUFCTRL=1 INBUF=1)
+  Input Delay:            0.000ns
+  Clock Path Skew:        5.995ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    5.995ns = ( 25.995 - 20.000 ) 
+    Source Clock Delay      (SCD):    0.000ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.234ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.050ns
+    Discrete Jitter          (DJ):    0.150ns
+    Phase Error              (PE):    0.155ns
+  Inter-SLR Compensation: 0.899ns  (DCD * PF)
+    Destination Clock Delay (DCD):    5.995ns
+    Prorating Factor         (PF):    0.150
+  Clock Net Delay (Destination): 3.326ns (routing 1.700ns, distribution 1.626ns)
+  Clock Domain Crossing:  Inter clock paths are considered valid unless explicitly excluded by timing constraints such as set_clock_groups or set_false_path.
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock ara_async_pad rise edge)
+                                                      0.000     0.000 r  
+                         ideal clock network latency
+                                                      0.000     0.000    
+                         input delay                  0.000     0.000    
+    M30                                               0.000     0.000 r  jtag_tdi_i (IN)
+                         net (fo=0)                   0.000     0.000    jtag_tdi_i_IBUF_inst/I
+    M30                  INBUF (Prop_INBUF_HPIOB_S_PAD_O)
+                                                      0.646     0.646 r  jtag_tdi_i_IBUF_inst/INBUF_INST/O
+                         net (fo=1, routed)           0.000     0.646    jtag_tdi_i_IBUF_inst/OUT
+    M30                  IBUFCTRL (Prop_IBUFCTRL_HPIOB_S_I_O)
+                                                      0.000     0.646 r  jtag_tdi_i_IBUF_inst/IBUFCTRL_INST/O
+                         net (fo=1, routed)          11.465    12.111    i_cheshire_soc/i_dbg_dmi_jtag/td_i
+    SLR Crossing[1->2]   
+    SLICE_X45Y603        FDCE                                         r  i_cheshire_soc/i_dbg_dmi_jtag/fpga_tdi_sync_q_reg[0]/D
+  -------------------------------------------------------------------    -------------------
+
+                         (clock clk_50_clkwiz rise edge)
+                                                     20.000    20.000 r  
+    E12                                               0.000    20.000 r  sys_clk_p (IN)
+                         net (fo=0)                   0.000    20.000    i_bufds_sys_clk/I
+    HPIOBDIFFINBUF_X1Y300
+                         DIFFINBUF (Prop_DIFFINBUF_HPIOBDIFFINBUF_DIFF_IN_P_O)
+                                                      0.564    20.564 r  i_bufds_sys_clk/DIFFINBUF_INST/O
+                         net (fo=1, routed)           0.040    20.604    i_bufds_sys_clk/OUT
+    E12                  IBUFCTRL (Prop_IBUFCTRL_HPIOB_M_I_O)
+                                                      0.000    20.604 r  i_bufds_sys_clk/IBUFCTRL_INST/O
+                         net (fo=1, routed)           0.297    20.901    sys_clk
+    BUFGCE_X1Y289        BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.024    20.925 r  sys_clk_BUFGCE_inst/O
+                         net (fo=19, routed)          0.876    21.801    i_clkwiz/inst/clk_in1
+    MMCM_X1Y11           MMCME4_ADV (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                      0.630    22.431 r  i_clkwiz/inst/mmcme4_adv_inst/CLKOUT0
+                         net (fo=1, routed)           0.214    22.645    i_clkwiz/inst/clk_50_clkwiz
+    BUFGCE_X1Y266        BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.024    22.669 r  i_clkwiz/inst/clkout1_buf/O
+    X2Y7 (CLOCK_ROOT)    net (fo=199676, routed)      3.326    25.995    i_cheshire_soc/i_dbg_dmi_jtag/clk_i
+    SLICE_X45Y603        FDCE                                         r  i_cheshire_soc/i_dbg_dmi_jtag/fpga_tdi_sync_q_reg[0]/C
+                         clock pessimism              0.000    25.995    
+                         inter-SLR compensation      -0.899    25.096    
+                         clock uncertainty           -0.234    24.862    
+    SLICE_X45Y603        FDCE (Setup_DFF2_SLICEM_C_D)
+                                                      0.025    24.887    i_cheshire_soc/i_dbg_dmi_jtag/fpga_tdi_sync_q_reg[0]
+  -------------------------------------------------------------------
+                         required time                         24.887    
+                         arrival time                         -12.111    
+  -------------------------------------------------------------------
+                         slack                                 12.776    
+
+
+
+
