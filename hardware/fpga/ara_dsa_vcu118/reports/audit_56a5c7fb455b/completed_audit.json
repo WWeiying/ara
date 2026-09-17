@@ -1,0 +1,20 @@
+﻿{
+    "Mode":  "routed checkpoint only",
+    "Checkpoint":  "D:\\fpga_runs\\ara_20260917_104055_54e53e8b3aaf\\impl\\impl_54e53e8b3aaf\\ara_dsa_vcu118_routed.dcp",
+    "SHA256":  "B44D8C9507C696EB0D667309C183EA521A185D8EF4BC60F604C8751974551B7F",
+    "Length":  442131834,
+    "Audit":  "audit_56a5c7fb455b",
+    "Reports":  "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\reports\\audit_56a5c7fb455b",
+    "Directory":  "D:\\fpga_runs\\ara_audit_20260917_230634_56a5c7fb455b",
+    "ScriptHashes":  {
+                         "audit_routed.ps1":  "8600AD5672B94C6E3F70A7093A80533164EFE6548B03CA27AE29A847317C7C67",
+                         "audit_routed.tcl":  "5491D4936AE2C46E094F5C35CAA87F787C9A371C0E2E211789BC6655A5966580",
+                         "audit_support.tcl":  "A52FB8C86FC66AC7AF2BBD7C94B60F0062B31533BD90693CC5CB990D318BB834",
+                         "common.tcl":  "95BE8EC98DA66E6289736A7C0413F158610895F92D2F79BB18E693777A6915C6",
+                         "config.tcl":  "FF06F7B8FB6A174D6FF2817C6465F6606B42927C4951A95CD97D4D190E01265E",
+                         "constraint_checks.tcl":  "9EDB5B9230650F583572AF6D6BFD74211D5D8ACDF375EF5D80440818D6528747"
+                     },
+    "BitstreamGenerated":  false,
+    "ManualReviewRequired":  true,
+    "AutomatedChecksPassed":  true
+}

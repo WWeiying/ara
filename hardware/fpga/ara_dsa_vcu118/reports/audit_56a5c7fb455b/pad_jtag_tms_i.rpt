@@ -1,0 +1,54 @@
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2020.1 (win64) Build 2902540 Wed May 27 19:54:49 MDT 2020
+| Date              : Thu Sep 17 23:30:04 2026
+| Host              : DESKTOP-9T3TD2K running 64-bit major release  (build 9200)
+| Command           : report_timing -delay_type max -max_paths 1 -from [get_ports -quiet jtag_tms_i] -file D:/project/ara/hardware/fpga/ara_dsa_vcu118/reports/audit_56a5c7fb455b/pad_jtag_tms_i.rpt
+| Design            : ara_dsa_vcu118
+| Device            : xcvu9p-flga2104
+| Speed File        : -2L  PRODUCTION 1.27 02-28-2020
+| Temperature Grade : E
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             16.350ns  (required time - arrival time)
+  Source:                 jtag_tms_i
+                            (input port clocked by ara_async_pad  {rise@0.000ns fall@500.000ns period=1000.000ns})
+  Destination:            i_cheshire_soc/i_dbg_dmi_jtag/fpga_tms_sync_q_reg[0]/D
+                            (rising edge-triggered cell FDPE clocked by clk_50_clkwiz  {rise@0.000ns fall@10.000ns period=20.000ns})
+  Path Group:             clk_50_clkwiz
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            20.000ns  (MaxDelay Path 20.000ns)
+  Data Path Delay:        3.675ns  (logic 0.644ns (17.530%)  route 3.031ns (82.470%))
+  Logic Levels:           2  (IBUFCTRL=1 INBUF=1)
+  Input Delay:            0.000ns
+  Timing Exception:       MaxDelay Path 20.000ns -datapath_only
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         input delay                  0.000     0.000    
+    N28                                               0.000     0.000 r  jtag_tms_i (IN)
+                         net (fo=0)                   0.000     0.000    jtag_tms_i_IBUF_inst/I
+    N28                  INBUF (Prop_INBUF_HPIOB_M_PAD_O)
+                                                      0.644     0.644 r  jtag_tms_i_IBUF_inst/INBUF_INST/O
+                         net (fo=1, routed)           0.000     0.644    jtag_tms_i_IBUF_inst/OUT
+    N28                  IBUFCTRL (Prop_IBUFCTRL_HPIOB_M_I_O)
+                                                      0.000     0.644 r  jtag_tms_i_IBUF_inst/IBUFCTRL_INST/O
+                         net (fo=1, routed)           3.031     3.675    i_cheshire_soc/i_dbg_dmi_jtag/tms_i
+    SLR Crossing[1->2]   
+    SLICE_X51Y603        FDPE                                         r  i_cheshire_soc/i_dbg_dmi_jtag/fpga_tms_sync_q_reg[0]/D
+  -------------------------------------------------------------------    -------------------
+
+                         max delay                   20.000    20.000    
+    SLICE_X51Y603        FDPE (Setup_HFF2_SLICEM_C_D)
+                                                      0.025    20.025    i_cheshire_soc/i_dbg_dmi_jtag/fpga_tms_sync_q_reg[0]
+  -------------------------------------------------------------------
+                         required time                         20.025    
+                         arrival time                          -3.675    
+  -------------------------------------------------------------------
+                         slack                                 16.350    
+
+
+
+
