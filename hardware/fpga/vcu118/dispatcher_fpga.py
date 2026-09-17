@@ -3,6 +3,10 @@ import hashlib
 import re
 
 
+# db90e341 already includes the layout/control changes and Vivado VL casts.
+UPSTREAM_DISPATCHER_SHA256 = "e28714d0dc41020363ac8da3207c4124ebcf400f7ce790a2c0cf7436f808eeb1"
+
+
 HELPERS = """  // FPGA-only: keep the 64-bit modulo-add semantics, but only carry through
   // the VL-sized low word. Upper bits only decide whether saturation applies.
   function automatic vlen_t fpga_slide_bound(
@@ -131,6 +135,8 @@ NEW_UPDATE = """      automatic logic [7:0] active_registers = fpga_active_regis
 
 def patch_dispatcher_layout(text):
     """Fail closed on a changed upstream function; never patch main RTL in place."""
+    if hashlib.sha256(text.encode()).hexdigest() == UPSTREAM_DISPATCHER_SHA256:
+        return text
     patched = "function automatic vlen_t fpga_slide_bound(" in text
     for name, (digest, replacement) in FUNCTIONS.items():
         matches = list(re.finditer(r"  function automatic [^\n]*\b" + name +

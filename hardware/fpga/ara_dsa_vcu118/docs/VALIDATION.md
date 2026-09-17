@@ -1,5 +1,127 @@
 # 检查范围
 
+## 2026-09-17 新 RTL 构建与旧 bit 上板分流
+
+当前 FPGA 源快照同步主线 `db90e341` 的存储与控制优化；下面各节保留当时的
+验证状态，其中“尚未提交/未推送”是历史记录。旧报告和旧 bitstream 均不代表
+这次主线同步后的综合、布局布线或上板结果，新 RTL 必须重新运行 `-Stage all`。
+
+- Windows 在 Git 工作目录 `D:/project/ara` 中执行 `git pull --ff-only`，进入
+  `hardware/fpga/ara_dsa_vcu118` 后先运行 `py scripts/verify_package.py`，通过后执行
+  `powershell -NoProfile -ExecutionPolicy RemoteSigned -File scripts/run.ps1 -Stage all`。
+  本次源码清单、宏定义和三个 IP 配置不变，可保留现有工程及 IP。
+- 保留 `D:/fpga_runs/ara_bit_54e53e8b3aaf/ara_dsa_vcu118.bit` 及同目录同名 `.ltx`。
+  上板必须选择这对旧文件，不使用新 RTL 的探针文件。新构建使用独立运行目录，
+  不生成或下载 bitstream，也不会改写正在 FPGA 上运行的配置。
+- `run.ps1` 在启动和每个阶段开始前都拒绝已有 `vivado.exe`，包括只打开
+  Hardware Manager 的 GUI。同一台 Windows 应先烧录旧文件、确认 VIO 状态，
+  再关闭 GUI 并开始新构建；第二个 PowerShell 可同时执行 UART 加载测试。
+  需要 GUI/VIO 复位时应等新构建结束，或在另一台连接该板的电脑进行上板流程。
+- 旧 bit 的 VIO 启动选择为 1、启动模式为 `00`、复位为 0，稳定就绪状态为
+  `probe_in0=0xE`。在包目录运行 `py software/uart_load.py --port COM5`，将 COM5
+  换成实际 FPGA UART 端口；先关闭占用串口的终端。smoke 通过后停在 WFI，
+  再次加载前需复位回 BootROM。此次同步未改变 smoke ELF 或 UART 协议。
+- 本地静态检查和差分验证不能替代新 Windows Vivado 结果。旧 bit 上的 smoke
+  只验证旧硬件的基本 DDR/RVV/能力查询，不等于 Linux 或 llama.cpp 已可运行。
+
+## 2026-09-17 回传 impl_54e53e8b3aaf 报告复核
+
+已合入报告提交 `0168e596` 的 22 个 `.rpt`，未修改原始报告，也没有运行新的 Vivado。
+报告对应 Windows `impl_54e53e8b3aaf` 的已布线网表，不代表本地尚未提交的
+`db90e341` 主线 RTL 同步已经完成综合/布线验证。
+
+- 全设计 WNS +0.023 ns、WHS +0.010 ns、WPWS +0.039 ns，三类失败端点均为 0。
+  SoC/Ara 时钟为 50 MHz，本域 WNS +0.840 ns；全设计最差 setup 来自 300 MHz DDR UI
+  域。这里只确认本报告设定频率，不以全局 WNS 换算 SoC 的最高主频。
+- 60 条 Gray 指针首级和全部五条 FIFO 数据通道已显示 `Max Delay Datapath Only`；
+  十组 Gray bus-skew 要求均为 3 ns，另有四组厂商调试 FIFO 的 20 ns 要求。
+  14 组偏斜均通过，最差裕量 +2.160 ns。此前 TIMING-51 已不在方法学报告中。
+- MDRV-1 和 LUTLP-1 均为 0；无时钟寄存器、未约束内部端点、常量时钟端点均为 0。
+  DRC 和方法学报告没有 Error/Critical，但仍分别有 1588 和 880 项 Warning/Advisory，
+  不能表述为零告警。包含 DSP 寄存器/复位建议、LLC XPM URAM 的 96 条未用级联输入
+  接低建议，以及 MIG 网无可布线负载提示；本次未修改厂商 IP 或屏蔽这些检查。
+- DDR reset 输出已是 N20 / LVCMOS12 / DRIVE 8 / SLEW SLOW；时序摘要中最大延迟要求
+  3.333 ns、数据延迟 2.167 ns、裕量 +1.166 ns。64 个 DQ 和 8 个 DM 为 POD12_DCI，
+  DQS 为 DIFF_POD12_DCI，CK 为 DIFF_SSTL12_DCI，不是临时 PHY probe 中的 LVCMOS18。
+
+剩余审查边界：
+
+- CDC-15 的 1177 条全部属于 AXI FIFO A 级接收数据：AW 39、W 576、AR 39、B 5、R 518。
+  对应最大延迟约束已经生效且本报告无负裕量；这不是对所有 CDC 规则的自动豁免。
+- 两条 Critical CDC-11 均由 UI 域 `fabric_ready_o_reg` 扇出，分别到 SoC 四级复位链
+  和两级 VIO 状态链。板级源码中 VIO 分支仅接 `probe_in0`，不驱动复位或 AXI 控制，
+  两链也不要求同拍释放/更新。这解释了检查拓扑，但未生成 waiver；实际复位缓冲
+  I/CE 连线和反相还要由完整边界检查确认。参见
+  [AMD UG906 的 Fanout 规则](https://docs.amd.com/r/2023.1-English/ug906-vivado-design-analysis/Fanout)。
+- `check_timing` 仍报告 JTAG 三个输入和 UART RX 的四项 `partial_input_delay`；
+  方法学同时报告这些端口 min/max 都为 0。源码使用虚拟参考和首级 datapath-only
+  预算，不能据此把真实异步输入当成同步接口，也不能仅凭源码推定检查已经通过。
+  需保留告警并结合完整端口报告/重载后的约束复核，不通过编造板外延迟消除告警。
+- `boundary_checks.rpt` 在首个 UI 复位 BUFGCE 的驱动记录后中断，七份 `pad_*.rpt`
+  和 `constraint_checks.rpt` 未产生；因此本轮不是完整流程成功，也未生成 bitstream。
+
+使用真实 bus-skew 报告还复现了第二个脚本问题：路径解析器把 Id 11 的厂商 20 ns
+段头误写进 Id 10 的 Gray 路径，从而误报 Gray 要求不是 3 ns。现在遇到新 `Id:`
+先结束上一条路径，保留每段自己的要求，不改约束值或接受标准。
+59 项实际报告/反例检查通过，含旧报告缺失约束、跨段覆盖、缺少路径要求、真实格式的
+Gray/厂商负裕量；复位检查的 39 项场景继续通过。以上是离线解析/查询替身测试，
+不是重新综合的证据。修正仍在本地，遵循暂不推送要求。
+
+## 2026-09-17 布线后复位检查 Tcl 修正
+
+Windows `impl_54e53e8b3aaf` 日志显示已读取布线结果，生成时序、CDC、DRC 等报告，
+随后 `reset_buffer_failures` 将空的单元反相属性直接用于布尔表达式，报
+`expected boolean value but got ""`。这是验收脚本错误，不是该日志中的综合或布线崩溃；
+验收中断也不能视为剩余时序、CDC 和物理边界通过。
+
+- 改查实际 I/CE 引脚的 `IS_INVERTED`，不再读取可能未赋值的
+  `IS_I_INVERTED`/`IS_CE_INVERTED` 单元属性。依据
+  [UG912 v2020.1 的 PIN 属性表，第 116 页](https://docs.amd.com/v/u/2020.1-English/ug912-vivado-properties)。
+- 先验证引脚、驱动和驱动单元数量；仍只接受最终 SoC/UI 同步寄存器驱动的
+  BUFG/BUFGCE，BUFGCE 的 CE 必须由唯一 VCC 驱动，I/CE 必须非反相。
+- 空/非法反相值或查询异常记录为明确的边界失败，继续采集其他边界诊断；
+  不把空值默认成 false，不修改网表属性，不放宽时序约束。
+- 新测试用空单元属性复现原错误；修正后 39 项边界脚本场景通过，覆盖 I/CE
+  反相、缺值、查询错误、缺失/重复引脚、缺失/重复驱动和报告文件关闭。
+  这些是 Tcl 查询替身测试，不是原生 Vivado 验证。
+
+此次没有再改 RTL，保留尚未提交的主线同步。本机无 Vivado，回传报告复核见上节；
+不能把脚本测试或旧网表的通过项当作本地主线同步版本的物理验收。未提交、未推送。
+
+## 2026-09-17 同步主线存储与控制优化
+
+从主线 `db90e341` 同步 16 个 RTL 文件，保留 `dec4174a` 的 FPGA 集成修复。
+主线 57 个 RTL/头文件哈希与 `verification/timing/results/20260916_control_closure/`
+的通过记录一致；其中 FPGA 使用的 54 个文件经补丁后逐个核对，未更改主线源码。
+
+- QBS 权重读窗口由 256 位改为 128 位，连同 SRAM 地址、adapter、decoder 和
+  compute 接口一起同步。逻辑 payload 容量不因此减半；实际 FPGA 资源收益尚待综合。
+- 同步共享 subgroup 元数据、缩窄辅助累加状态、复用 FP 工作寄存器，以及按握手
+  推进的 QBS/AKV 地址游标。同步 AddrGen/VSTU 控制路径和 segment 布局预计算。
+- 主线已包含 dispatcher 区间/请求分支优化，导出器仅对已审阅源码哈希直接放行，
+  不重复套用旧 FPGA 补丁；后续未审阅的修改仍拒绝导出。旧差分证据保留为历史记录。
+- 保留 QBS 独立故障 LUT、AKV Vivado 字节计数、FIFO 独立 word 存储、采样 JTAG、
+  复位和 CDC 约束。板级源码、三个 IP 配置、616 个编译文件的清单和宏定义不变。
+- 上下文 TSMC SRAM 改动位于 `TARGET_SRAM_MC` 分支；FPGA 仍使用 `tc_sram`/XPM，
+  不能将 ASIC 面积下降直接换算为 FPGA LUT/BRAM 节省。主线 `ara_soc` 的 CTRL AXI
+  cut 不导入使用 Cheshire 顶层的 FPGA 工程，也没有更换 SoC。
+
+本次本地验证：
+
+- VCS dispatcher 全状态/输出对照通过 68,640 拍、70 组寄存状态；EEW 写回侧带
+  核对 13,685 次，布局算术覆盖 VLEN=64/1024/65536 共 2,364,768 组。
+  新记录位于 `hardware/fpga/vcu118/results/20260917_mainline_sync/`。
+- QBS 故障译码 32 个输入全覆盖通过，历史反馈锥 1,024 个边界组合检查通过；
+  AKV 字节计数 337,681 组（含 X/Z）通过。这些是有界表达式/状态差分，不是形式证明。
+- 全板静态展开无非厂商模块错误，确认 16 个 128-bit 权重 SRAM、8 个 256-bit
+  激活 SRAM，以及实际 DDR FIFO 的 579/525-bit 类型。Xilinx 原语/IP 仍需 Vivado。
+- 导出、同步、包检查和 SHA256 检查通过。主线已有的六项 SoC、八项真实模型切片
+  结果通过源码哈希核对复用；本次没有重复整机仿真，也没有运行新的 Vivado 综合/布线。
+
+旧 `impl_6abc9f1816a4` 不代表本快照的时序或资源；恢复 CDC 约束后的时序、
+TIMING-51/CDC-11 及物理边界检查仍须用新 Windows 全局 `-Stage all` 结果确认。
+运行脚本仍需人工复核 WPWS 和其余 CDC/方法学项，不能仅凭 `SUCCESS` 判定可上板。
+
 ## 2026-09-17 布线报告复核与约束修正
 
 已复核 `d3aef3dd` 上传的 `impl_6abc9f1816a4`。这是完整 Windows Vivado 2020.1

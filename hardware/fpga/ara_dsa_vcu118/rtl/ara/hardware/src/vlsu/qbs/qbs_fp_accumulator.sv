@@ -105,6 +105,7 @@ module qbs_fp_accumulator
   logic [NumEntries-1:0] entry_valid_q;
   logic [NumEntries-1:0] entry_inflight_q;
   logic entry_affine_q [NumEntries];
+  logic entry_first_block_q [NumEntries];
   logic [AccIndexWidth-1:0] entry_accumulator_index_q [NumEntries];
   fp_state_e entry_state_q [NumEntries];
   // Reuse storage only after the previous value's final consumer completes.
@@ -113,8 +114,9 @@ module qbs_fp_accumulator
   logic signed [31:0] entry_aux_value_q [NumEntries];
   logic [31:0] entry_scale_value_q [NumEntries];
   logic [31:0] entry_min_scale_value_q [NumEntries];
-  logic [31:0] entry_activation_value_q [NumEntries];
-  logic [31:0] entry_accumulator_value_q [NumEntries];
+  // Holds activation scale until the final scale multiply completes, then
+  // the accumulator addend. A live entry exclusively owns its accumulator.
+  logic [31:0] entry_work_value_q [NumEntries];
 
   logic [3:0] schedule_rr_q;
   fflags_t fflags_q;
@@ -243,18 +245,18 @@ module qbs_fp_accumulator
           FP_SCALE_MULTIPLY: begin
             fp_operation = MUL;
             fp_operands[0] = entry_scale_value_q[entry];
-            fp_operands[1] = entry_activation_value_q[entry];
+            fp_operands[1] = entry_work_value_q[entry];
           end
           FP_MIN_SCALE_MULTIPLY: begin
             fp_operation = MUL;
             fp_operands[0] = entry_min_scale_value_q[entry];
-            fp_operands[1] = entry_activation_value_q[entry];
+            fp_operands[1] = entry_work_value_q[entry];
           end
           FP_ACCUMULATE_DOT: begin
             fp_operation = FMADD;
             fp_operands[0] = entry_scale_value_q[entry];
             fp_operands[1] = entry_dot_value_q[entry];
-            fp_operands[2] = entry_accumulator_value_q[entry];
+            fp_operands[2] = entry_work_value_q[entry];
           end
           FP_ACCUMULATE_MIN: begin
             fp_operation = FMADD;
@@ -263,7 +265,7 @@ module qbs_fp_accumulator
               entry_min_scale_value_q[entry][30:0]
             };
             fp_operands[1] = entry_aux_value_q[entry];
-            fp_operands[2] = entry_accumulator_value_q[entry];
+            fp_operands[2] = entry_work_value_q[entry];
           end
           default: fp_in_valid = 1'b0;
         endcase
@@ -354,6 +356,7 @@ module qbs_fp_accumulator
 
         if (request_valid_i && request_ready_o) begin
           entry_valid_q[request_slot_i] <= 1'b1;
+          entry_first_block_q[request_slot_i] <= request_first_block_i;
           entry_inflight_q[request_slot_i] <= 1'b0;
           entry_affine_q[request_slot_i] <=
               qbs_weight_correction_mode(request_profile_i) ==
@@ -367,14 +370,11 @@ module qbs_fp_accumulator
               fp16_to_fp32(request_weight_d_i);
           entry_min_scale_value_q[request_slot_i] <=
               fp16_to_fp32(request_weight_dmin_i);
-          entry_activation_value_q[request_slot_i] <=
+          entry_work_value_q[request_slot_i] <=
               qbs_activation_scale_format(request_activation_profile_i) ==
                   QBS_SCALE_FP16
               ? fp16_to_fp32(request_activation_d_i[15:0])
               : request_activation_d_i;
-          entry_accumulator_value_q[request_slot_i] <= request_first_block_i
-              ? '0 : accumulator_data_q[request_accumulator_index_i[2:0]]
-                                         [request_accumulator_index_i[6:3]];
         end
 
         if (fp_fire) begin
@@ -399,17 +399,22 @@ module qbs_fp_accumulator
             end
             FP_SCALE_MULTIPLY: begin
               entry_scale_value_q[fp_tag_out] <= fp_result;
+              if (!entry_affine_q[fp_tag_out])
+                entry_work_value_q[fp_tag_out] <= entry_first_block_q[fp_tag_out]
+                    ? '0 : accumulator_data_q[write_index[2:0]][write_index[6:3]];
               entry_state_q[fp_tag_out] <=
                   entry_affine_q[fp_tag_out]
                       ? FP_MIN_SCALE_MULTIPLY : FP_ACCUMULATE_DOT;
             end
             FP_MIN_SCALE_MULTIPLY: begin
               entry_min_scale_value_q[fp_tag_out] <= fp_result;
+              entry_work_value_q[fp_tag_out] <= entry_first_block_q[fp_tag_out]
+                  ? '0 : accumulator_data_q[write_index[2:0]][write_index[6:3]];
               entry_state_q[fp_tag_out] <= FP_ACCUMULATE_DOT;
             end
             FP_ACCUMULATE_DOT: begin
               if (entry_affine_q[fp_tag_out]) begin
-                entry_accumulator_value_q[fp_tag_out] <= fp_result;
+                entry_work_value_q[fp_tag_out] <= fp_result;
                 entry_state_q[fp_tag_out] <= FP_ACCUMULATE_MIN;
               end else begin
                 accumulator_valid_q[entry_accumulator_index_q[fp_tag_out]] <=

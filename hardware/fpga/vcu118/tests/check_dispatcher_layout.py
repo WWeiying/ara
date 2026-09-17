@@ -14,6 +14,7 @@ ROOT = HERE.parents[3]
 sys.path.insert(0, str(HERE.parent))
 from dispatcher_fpga import OLD_UPDATE, NEW_UPDATE, patch_dispatcher_layout
 from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
+from export import patch_dispatcher_vlen_casts
 
 REL = "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv"
 SEG_REL = "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/segment_sequencer.sv"
@@ -250,6 +251,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("output", type=Path)
     ap.add_argument("--reference", default="74042fbd")
+    ap.add_argument("--upstream", default="db90e341",
+                    help="Reviewed mainline revision for an integrated dispatcher")
     ap.add_argument("--vcs", default="vcs")
     args = ap.parse_args()
     out = args.output.resolve()
@@ -259,7 +262,16 @@ def main():
     before = subprocess.check_output(["git", "show", f"{args.reference}:{REL}"],
                                      cwd=ROOT, text=True)
     after = (ROOT / REL).read_text()
-    if patch_dispatcher_control(patch_dispatcher_layout(before)) != after:
+    integrated = "function automatic vlen_t slide_bound(" in after
+    if integrated:
+        source = subprocess.check_output([
+            "git", "show", f"{args.upstream}:hardware/src/ara_dispatcher.sv"
+        ], cwd=ROOT, text=True)
+        expected = patch_dispatcher_control(patch_dispatcher_layout(
+            patch_dispatcher_vlen_casts(source)))
+    else:
+        expected = patch_dispatcher_control(patch_dispatcher_layout(before))
+    if expected != after:
         raise RuntimeError("FPGA dispatcher differs from the reviewed transform")
     common = [pkg / p for p in (
         "rtl/common_cells/src/cf_math_pkg.sv", "rtl/axi/src/axi_pkg.sv",
@@ -271,8 +283,9 @@ def main():
              "+incdir+" + str(pkg / "rtl/common_cells/include"),
              "+incdir+" + str(rtl / "include"), "+incdir+" + str(out)]
     results = {}
+    update = NEW_UPDATE.replace("fpga_active_registers", "active_register_mask") if integrated else NEW_UPDATE
     (out / "layout.sv").write_text(layout_module(before, "layout_before", OLD_UPDATE) +
-                                  layout_module(after, "layout_after", NEW_UPDATE) + BENCH)
+                                  layout_module(after, "layout_after", update) + BENCH)
 
     def run(name, sources, top, extra=()):
         with (out / f"{name}_compile.log").open("w") as log:
@@ -310,7 +323,10 @@ def main():
     old_segment = subprocess.check_output(["git", "show", f"{args.reference}:{SEG_REL}"],
                                           cwd=ROOT, text=True)
     segment = (ROOT / SEG_REL).read_text()
-    if patch_segment_geometry(old_segment) != segment:
+    segment_source = subprocess.check_output([
+        "git", "show", f"{args.upstream}:hardware/src/segment_sequencer.sv"
+    ], cwd=ROOT, text=True) if integrated else old_segment
+    if patch_segment_geometry(segment_source) != segment:
         raise RuntimeError("FPGA sequencer differs from the reviewed transform")
     (out / "segment_reference.sv").write_text(re.sub(
         r"\bsegment_sequencer\b", "segment_sequencer_reference", old_segment))
@@ -345,6 +361,8 @@ def main():
     $display("FPGA EEW metadata checks=%0d first_segment=%0d later_segment=%0d",
              fpga_eew_checks,fpga_segment_first,fpga_segment_later);
     $finish;""")
+    if integrated:
+        bench = bench.replace("dut.fpga_eew_req", "dut.layout_req")
     (out / "dispatcher_equivalence_tb.sv").write_text(bench)
     states = set(re.findall(r"^\s*(\w+_q[q]?)\s*<=", after, re.M))
     states.update(re.findall(r"`FF\(\s*(\w+_q)\s*,", after))
@@ -364,6 +382,7 @@ def main():
         ["+define+FOR_VERIFY+ARA_QBS_ENABLE+ARA_AKV_ENABLE+ARA_AKV_V2_ENABLE"])
     (out / "result.json").write_text(json.dumps({
         "state": "PASS", "reference": args.reference,
+        "upstream": args.upstream if integrated else None,
         "before_sha256": hashlib.sha256(before.encode()).hexdigest(),
         "after_sha256": hashlib.sha256(after.encode()).hexdigest(),
         "testbench_sha256": hashlib.sha256(bench.encode()).hexdigest(),

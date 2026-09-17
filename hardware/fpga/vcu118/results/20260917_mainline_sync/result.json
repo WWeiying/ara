@@ -1,0 +1,20 @@
+{
+  "state": "PASS",
+  "reference": "74042fbd",
+  "upstream": "db90e341",
+  "before_sha256": "bd48a832a04524ae05aff6a85f4f29eaef7f3b3ca8ab7ab5fc8b356e7e7ac078",
+  "after_sha256": "e28714d0dc41020363ac8da3207c4124ebcf400f7ce790a2c0cf7436f808eeb1",
+  "testbench_sha256": "54ada7e4e21453710f2e3c9ce769f35f815745ae02e9f642c2841322e64e9a36",
+  "original_testbench_sha256": "1136a0f9fdc539e9275b933ea35ad037d23057abd7011ef2463782aebb45c73a",
+  "segment_before_sha256": "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7",
+  "segment_after_sha256": "5b443bf1aa3bb2e64d21e6661c2aee4b0edaaeeb6c3a5d92eb99a6923cc33552",
+  "layout_vectors": {
+    "64": 79648,
+    "1024": 110368,
+    "65536": 2174752
+  },
+  "dispatcher_comparison": "Dispatcher equivalence PASS checks=68640 blocked=13542 accepted=25379",
+  "eew_metadata_comparison": "FPGA EEW metadata checks=13685 first_segment=128 later_segment=13318",
+  "registered_state_signals": 70,
+  "vivado_timing_verified": false
+}

@@ -46,7 +46,8 @@ module qbs_block_adapter import qbs_pkg::*; #(
   // Native-index view of the synchronous payload window, not a full block.
   output logic [7:0]              weight_block_o [4][QbsMaxWeightBlockBytes],
   output logic [7:0]              activation_block_o [4][QbsMaxActivationBlockBytes],
-  output logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  output logic [127:0] weight_window_o [4][2],
+  output logic [255:0] activation_window_o [4],
   output logic [7:0] weight_side_o [4][20], activation_side_o [4][36],
   output logic [3:0]              weight_complete_o,
   output logic [3:0]              activation_complete_o,

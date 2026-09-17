@@ -43,6 +43,7 @@ paths = [prefix + "i_core_cva6", prefix + "gen_ara.i_ara"]
 paths += [prefix + f"gen_ara.i_ara.gen_lanes[{i}].i_lane" for i in range(4)]
 paths += [prefix + "gen_ara.i_ara.i_vlsu." + name for name in ("i_qbs_engine", "i_akv_engine")]
 payload_rams = []
+payload_widths = {}
 for bank in range(2):
     payload = (prefix + "gen_ara.i_ara.i_vlsu.i_qbs_engine.i_compute_engine."
                + f"i_block_adapter_bank{bank}.i_payload_buffer")
@@ -52,6 +53,7 @@ for bank in range(2):
             ram = payload + f".gen_plane[{plane}].gen_row[{row}].i_payload"
             paths.append(ram)
             payload_rams.append(ram)
+            payload_widths[ram] = 256 if plane == 2 else 128
 for path in paths:
     symbol = compilation.getRoot().lookupName(path)
     if symbol is None:
@@ -66,7 +68,12 @@ for ram in payload_rams:
     wrapper = compilation.getRoot().lookupName(ram + ".i_sram")
     if wrapper is None or wrapper.definition.name != "tc_sram":
         raise RuntimeError(f"QBS payload must use FPGA tc_sram, not an ASIC macro: {ram}")
+    for port in ("wdata_i", "rdata_o"):
+        symbol = compilation.getRoot().lookupName(ram + "." + port)
+        if symbol is None or symbol.type.bitWidth != payload_widths[ram]:
+            raise RuntimeError(f"Unexpected QBS payload width: {ram}.{port}")
 print("Required hierarchy: " + json.dumps({k: instances[k] for k in required}, sort_keys=True))
+print("QBS payload: 16 weight SRAMs x 128 bits, 8 activation SRAMs x 256 bits")
 # Keep the focused synthesis/simulation probe tied to real elaborated AXI types,
 # not to endpoint counts after Vivado constant propagation.
 cdc = "ara_dsa_vcu118.i_dram_wrapper.gen_cdc.i_axi_cdc_mig"

@@ -135,9 +135,11 @@ module qbs_compute_engine
   logic [7:0] activation_block [4][QbsMaxActivationBlockBytes];
   logic [7:0] activation_block_bank0 [4][QbsMaxActivationBlockBytes];
   logic [7:0] activation_block_bank1 [4][QbsMaxActivationBlockBytes];
-  logic [255:0] weight_window_bank [2][4][2], activation_window_bank [2][4];
+  logic [127:0] weight_window_bank [2][4][2];
+  logic [255:0] activation_window_bank [2][4];
   logic [7:0] weight_side_bank [2][4][20], activation_side_bank [2][4][36];
-  logic [255:0] weight_window [4][2], activation_window [4];
+  logic [127:0] weight_window [4][2];
+  logic [255:0] activation_window [4];
   logic [7:0] weight_side [4][20], activation_side [4][36];
   assign weight_window = active_weight_bank_q ? weight_window_bank[1] : weight_window_bank[0];
   assign weight_side = active_weight_bank_q ? weight_side_bank[1] : weight_side_bank[0];

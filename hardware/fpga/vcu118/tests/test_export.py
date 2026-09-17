@@ -18,6 +18,10 @@ from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
 from cdc_fpga import patch_reset_muxes
 
 
+def frozen_file(path, revision="dec4174a"):
+    return subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=ROOT, text=True)
+
+
 class IntegrationPatchTests(unittest.TestCase):
     legacy = "if (read_completion_valid && !&descriptor_byte_valid_q) begin\n"
     current = "if (read_completion_valid && !(&descriptor_byte_valid_q)) begin\n"
@@ -56,7 +60,8 @@ class JtagPatchTests(unittest.TestCase):
                       "rtl/riscv-dbg/src/dmi_jtag_tap.sv": patch_tap,
                       "rtl/common_cells/src/rstgen_bypass.sv": lambda t: patch_reset_muxes(patch_reset_sync(t)),
                       "rtl/board/dram_wrapper_xilinx.sv": patch_ready}
-        blocks = re.split(r"(?=^--- a/)", (pkg / "provenance/integration.patch").read_text(), flags=re.M)
+        blocks = re.split(r"(?=^--- a/)", frozen_file(
+            "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch"), flags=re.M)
         for rel, transform in transforms.items():
             before = subprocess.check_output(["git", "show", "74042fbd:hardware/fpga/ara_dsa_vcu118/" + rel],
                                              cwd=ROOT, text=True)
@@ -145,9 +150,9 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
         ], cwd=ROOT, text=True)
         cls.patched = patch_dispatcher_layout(cls.source)
 
-    def test_exported_snapshot_matches(self):
-        exported = ROOT / "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv"
-        self.assertEqual(patch_dispatcher_control(self.patched), exported.read_text())
+    def test_legacy_snapshot_matches(self):
+        exported = "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv"
+        self.assertEqual(patch_dispatcher_control(self.patched), frozen_file(exported))
 
     def test_control_patch_is_reversible_and_strict(self):
         patched = patch_dispatcher_control(self.patched)
@@ -161,7 +166,7 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
         rel = "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/segment_sequencer.sv"
         source = subprocess.check_output(["git", "show", "74042fbd:" + rel], cwd=ROOT, text=True)
         patched = patch_segment_geometry(source)
-        self.assertEqual(patched, (ROOT / rel).read_text())
+        self.assertEqual(patched, frozen_file(rel))
         self.assertEqual(segment_edits(patched, reverse=True), source)
         self.assertEqual(patch_segment_geometry(patched), patched)
         with self.assertRaises(RuntimeError):
@@ -172,14 +177,14 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
         import hashlib
         import json
         import re
-        pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
         rel = "rtl/ara/hardware/src/segment_sequencer.sv"
-        current = (pkg / rel).read_text()
+        current = frozen_file("hardware/fpga/ara_dsa_vcu118/" + rel)
         raw = segment_edits(current, reverse=True)
-        records = json.loads((pkg / "manifest.json").read_text())["source_hashes_before_integration"]
+        records = json.loads(frozen_file("hardware/fpga/ara_dsa_vcu118/manifest.json"))["source_hashes_before_integration"]
         expected = next(r["source_sha256"] for r in records if r["file"] == rel)
         self.assertEqual(hashlib.sha256(raw.encode()).hexdigest(), expected)
-        blocks = re.split(r"(?=^--- a/)", (pkg / "provenance/integration.patch").read_text(), flags=re.M)
+        blocks = re.split(r"(?=^--- a/)", frozen_file(
+            "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch"), flags=re.M)
         patch = "".join(b for b in blocks if b.startswith("--- a/" + rel + "\n"))
         self.assertTrue(patch)
         with tempfile.TemporaryDirectory() as directory:
@@ -202,22 +207,22 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
             "    // Only these states can enter", 1)[0]
         self.assertNotRegex(special, r"\bara_req\b|\bara_req_valid\b")
 
-    def test_recorded_control_check_matches_snapshot(self):
+    def test_recorded_control_check_matches_historical_snapshot(self):
         import hashlib
         import json
         directory = ROOT / "hardware/fpga/vcu118/results/20260915_dispatcher_control"
         record = json.loads((directory / "result.json").read_text())
-        rtl = ROOT / "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src"
+        rtl = "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/"
         for name, key in (("ara_dispatcher.sv", "after_sha256"),
                           ("segment_sequencer.sv", "segment_after_sha256")):
-            self.assertEqual(hashlib.sha256((rtl / name).read_bytes()).hexdigest(), record[key])
+            self.assertEqual(hashlib.sha256(frozen_file(rtl + name).encode()).hexdigest(), record[key])
         for name, digest in record["logs_sha256"].items():
             log = (directory / name).read_bytes()
             self.assertEqual(hashlib.sha256(log).hexdigest(), digest)
             self.assertIn(b"equivalence PASS", log)
             self.assertNotIn(b"Fatal:", log)
         for name, digest in record["check_inputs_sha256"].items():
-            self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+            self.assertEqual(hashlib.sha256(frozen_file(name).encode()).hexdigest(), digest)
 
     def test_only_reviewed_combinational_blocks_change(self):
         import re
@@ -244,15 +249,15 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
         import hashlib
         import json
         import re
-        pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
         rel = "rtl/ara/hardware/src/ara_dispatcher.sv"
         raw = self.source.replace("acc_req_i.rs1[$bits(csr_vl_d)-1:0]",
                                   "vlen_t'(acc_req_i.rs1)").replace(
                                       "ara_req.stride[$bits(csr_vl_q)-1:0]", "vlen_t'(ara_req.stride)")
-        records = json.loads((pkg / "manifest.json").read_text())["source_hashes_before_integration"]
+        records = json.loads(frozen_file("hardware/fpga/ara_dsa_vcu118/manifest.json"))["source_hashes_before_integration"]
         expected = next(r["source_sha256"] for r in records if r["file"] == rel)
         self.assertEqual(hashlib.sha256(raw.encode()).hexdigest(), expected)
-        patches = re.split(r"(?=^--- a/)", (pkg / "provenance/integration.patch").read_text(), flags=re.M)
+        patches = re.split(r"(?=^--- a/)", frozen_file(
+            "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch"), flags=re.M)
         patch_text = "".join(p for p in patches if p.startswith("--- a/" + rel + "\n"))
         self.assertTrue(patch_text)
         with tempfile.TemporaryDirectory() as directory:
@@ -262,6 +267,97 @@ class DispatcherLayoutPatchTests(unittest.TestCase):
             subprocess.run(["git", "apply", "--whitespace=nowarn", "-"], input=patch_text,
                            text=True, cwd=directory, check=True, capture_output=True)
             self.assertEqual(target.read_text(), patch_dispatcher_control(self.patched))
+
+
+class MainlineSyncTests(unittest.TestCase):
+    revision = "db90e341"
+
+    def test_integrated_dispatcher_and_segment_are_not_patched_twice(self):
+        dispatcher = patch_dispatcher_vlen_casts(frozen_file(
+            "hardware/src/ara_dispatcher.sv", self.revision))
+        self.assertEqual(patch_dispatcher_layout(dispatcher), dispatcher)
+        self.assertEqual(patch_dispatcher_control(dispatcher), dispatcher)
+        segment = frozen_file("hardware/src/segment_sequencer.sv", self.revision)
+        self.assertEqual(patch_segment_geometry(segment), segment)
+        for transform, source in ((patch_dispatcher_layout, dispatcher),
+                                  (patch_dispatcher_control, dispatcher),
+                                  (patch_segment_geometry, segment)):
+            with self.subTest(transform=transform.__name__):
+                with self.assertRaises(RuntimeError):
+                    transform(source + "\n")
+
+    def test_exported_ara_matches_reviewed_mainline_with_fpga_patches(self):
+        import hashlib
+        import json
+        pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
+        manifest = json.loads((pkg / "manifest.json").read_text())
+        evidence = json.loads((ROOT / "verification/timing/results/20260916_control_closure/summary.json").read_text())
+        transforms = {
+            "hardware/src/ara_dispatcher.sv": lambda t: patch_dispatcher_control(
+                patch_dispatcher_layout(patch_dispatcher_vlen_casts(t))),
+            "hardware/src/segment_sequencer.sv": patch_segment_geometry,
+            "hardware/src/vlsu/qbs/qbs_engine.sv": patch_qbs_fault_decode,
+            "hardware/src/vlsu/akv/akv_engine.sv": patch_akv_byte_counts,
+        }
+        checked = 0
+        for record in manifest["source_hashes_before_integration"]:
+            rel = record["file"]
+            if not rel.startswith("rtl/ara/hardware/"):
+                continue
+            source_path = rel.removeprefix("rtl/ara/")
+            raw = frozen_file(source_path, self.revision)
+            digest = hashlib.sha256(raw.encode()).hexdigest()
+            self.assertEqual(record["source_sha256"], digest, rel)
+            self.assertEqual(evidence["source_sha256"][source_path], digest, rel)
+            expected = transforms.get(source_path, lambda t: t)(raw)
+            self.assertEqual((pkg / rel).read_text(), expected, rel)
+            checked += 1
+        self.assertEqual(checked, 54)
+
+    def test_current_ara_provenance_replays(self):
+        import re
+        pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
+        blocks = re.split(r"(?=^--- a/)", (pkg / "provenance/integration.patch").read_text(), flags=re.M)
+        patched = set()
+        with tempfile.TemporaryDirectory() as directory:
+            for block in blocks:
+                match = re.match(r"--- a/(rtl/ara/[^\n]+)\n", block)
+                if not match:
+                    continue
+                rel = match[1]
+                patched.add(rel)
+                target = Path(directory) / rel
+                if not target.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(frozen_file(rel.removeprefix("rtl/ara/"), self.revision))
+                subprocess.run(["git", "apply", "--whitespace=nowarn", "-"], input=block,
+                               text=True, cwd=directory, check=True, capture_output=True)
+            for target in (Path(directory) / "rtl/ara").rglob("*.sv"):
+                self.assertEqual(target.read_text(), (pkg / target.relative_to(directory)).read_text())
+        self.assertEqual(patched, {
+            "rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv",
+            "rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
+        })
+
+    def test_current_dispatcher_evidence_matches_snapshot(self):
+        import hashlib
+        import json
+        directory = ROOT / "hardware/fpga/vcu118/results/20260917_mainline_sync"
+        record = json.loads((directory / "result.json").read_text())
+        self.assertEqual(record["state"], "PASS")
+        self.assertEqual(record["upstream"], self.revision)
+        rtl = ROOT / "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src"
+        for name, key in (("ara_dispatcher.sv", "after_sha256"),
+                          ("segment_sequencer.sv", "segment_after_sha256")):
+            self.assertEqual(hashlib.sha256((rtl / name).read_bytes()).hexdigest(), record[key])
+        log = (directory / "dispatcher_run.txt").read_text()
+        self.assertIn(record["dispatcher_comparison"], log)
+        self.assertIn(record["eew_metadata_comparison"], log)
+        self.assertNotRegex(log, r"Fatal:|Error:")
+        log = (directory / "layout_run.txt").read_text()
+        for vlen, count in record["layout_vectors"].items():
+            self.assertIn(f"PASS FPGA layout VLEN={vlen} checks={count}", log)
+        self.assertNotRegex(log, r"Fatal:|Error:")
 
 
 class AkvByteCountPatchTests(unittest.TestCase):

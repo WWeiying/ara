@@ -1,0 +1,15 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 16 23:21 2026
+PASS FPGA layout VLEN=64 checks=79648
+PASS FPGA layout VLEN=1024 checks=110368
+PASS FPGA layout VLEN=65536 checks=2174752
+FPGA layout equivalence PASS
+$finish called from file "/tmp/ara-fpga-mainline-sync.64FdBy/dispatcher/layout.sv", line 560.
+$finish at simulation time           2174752000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 2174752000 ps
+CPU Time:      9.030 seconds;       Data structure size:   0.0Mb
+Wed Sep 16 23:22:06 2026

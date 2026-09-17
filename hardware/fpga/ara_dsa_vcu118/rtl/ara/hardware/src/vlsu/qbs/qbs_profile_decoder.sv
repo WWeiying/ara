@@ -11,7 +11,8 @@ module qbs_profile_decoder import qbs_pkg::*; #(
   input  logic [7:0]          k_base_i,
   input  logic [7:0]          weight_block_i [4][QbsMaxWeightBlockBytes],
   input  logic [7:0]          activation_block_i [4][QbsMaxActivationBlockBytes],
-  input logic [255:0] weight_window_i [4][2], activation_window_i [4],
+  input logic [127:0] weight_window_i [4][2],
+  input logic [255:0] activation_window_i [4],
   input logic [7:0] weight_side_i [4][20], activation_side_i [4][36],
   output logic [3:0]          k_per_context_o,
   output logic [3:0]          group_index_o,
@@ -32,7 +33,19 @@ module qbs_profile_decoder import qbs_pkg::*; #(
 
   // Each issue consumes consecutive bytes within one SRAM window. Share the
   // alignment network across the eight outputs, instead of reading the
-  // 32-byte window independently for every format/element combination.
+  // window independently for every format/element combination.
+  function automatic logic [127:0] align_weight_window(
+      input logic [127:0] data, input logic [3:0] offset);
+    logic [127:0] stage [5];
+    stage[0] = data;
+    for (int level = 0; level < 4; level++)
+      for (int b = 0; b < 16; b++)
+        stage[level+1][8*b +: 8] = offset[level]
+            ? stage[level][8*((b + (1 << level)) % 16) +: 8]
+            : stage[level][8*b +: 8];
+    return stage[4];
+  endfunction
+
   function automatic logic [255:0] align_window(
       input logic [255:0] data, input logic [4:0] offset);
     logic [255:0] stage [6];
@@ -46,13 +59,9 @@ module qbs_profile_decoder import qbs_pkg::*; #(
   endfunction
 
   if (CompactRead) begin : gen_compact_alignment
-    wire short_payload = profile_i inside {
-        QBS_WEIGHT_PROFILE_Q4_0, QBS_WEIGHT_PROFILE_Q5_0, QBS_WEIGHT_PROFILE_IQ4_NL};
     for (genvar row = 0; row < 4; row++) begin : gen_row
-      wire [255:0] low_source = short_payload
-          ? {2{weight_window_i[row][0][127:0]}} : weight_window_i[row][0];
-      wire [255:0] low_aligned = align_window(low_source, k_base_i[4:0]);
-      wire [255:0] high_aligned = align_window(weight_window_i[row][1], k_base_i[4:0]);
+      wire [127:0] low_aligned = align_weight_window(weight_window_i[row][0], k_base_i[3:0]);
+      wire [127:0] high_aligned = align_weight_window(weight_window_i[row][1], k_base_i[3:0]);
       wire [255:0] activation_aligned = align_window(activation_window_i[row], k_base_i[4:0]);
       for (genvar lane = 0; lane < 8; lane++) begin : gen_byte
         assign compact_low[row][lane] = low_aligned[8*lane +: 8];
@@ -132,7 +141,7 @@ module qbs_profile_decoder import qbs_pkg::*; #(
       default: ;
     endcase
     if (plane == 2) return weight_side_i[row][local_offset];
-    return weight_window_i[row][plane][8*local_offset[4:0] +: 8];
+    return weight_window_i[row][plane][8*local_offset[3:0] +: 8];
   endfunction
 
   function automatic logic [7:0] activation_byte(input int unsigned ctx, offset);

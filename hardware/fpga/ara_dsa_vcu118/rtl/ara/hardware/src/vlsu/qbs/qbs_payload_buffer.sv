@@ -34,7 +34,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   // not a full-block register copy. The profile decoder reads this window.
   output logic [7:0] weight_view_o [4][QbsMaxWeightBlockBytes],
   output logic [7:0] activation_view_o [4][QbsMaxActivationBlockBytes],
-  output logic [255:0] weight_window_o [4][2], activation_window_o [4],
+  output logic [127:0] weight_window_o [4][2],
+  output logic [255:0] activation_window_o [4],
   output logic [7:0] weight_side_o [4][20], activation_side_o [4][36]
 );
   localparam int unsigned WeightSideBytes = 20;
@@ -54,14 +55,20 @@ module qbs_payload_buffer import qbs_pkg::*; #(
     read_addr[2] = activation_profile_i == QBS_ACTIVATION_PROFILE_Q8_K
         ? read_k_i[7:5] : 3'b0;
     case (weight_profile_i)
-      QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q5_K:
-        read_addr[0] = {1'b0, read_k_i[7:6]};
-      QBS_WEIGHT_PROFILE_Q6_K: begin
-        read_addr[0] = {1'b0, read_k_i[7], read_k_i[5]};
-        read_addr[1] = {2'b0, read_k_i[7]};
+      QBS_WEIGHT_PROFILE_Q4_K, QBS_WEIGHT_PROFILE_Q5_K: begin
+        read_addr[0] = {read_k_i[7:6], read_k_i[4]};
+        read_addr[1] = {2'b0, read_k_i[4]};
       end
-      QBS_WEIGHT_PROFILE_Q3_K, QBS_WEIGHT_PROFILE_Q2_K:
-        read_addr[0] = {2'b0, read_k_i[7]};
+      QBS_WEIGHT_PROFILE_Q6_K: begin
+        read_addr[0] = {read_k_i[7], read_k_i[5:4]};
+        read_addr[1] = {1'b0, read_k_i[7], read_k_i[4]};
+      end
+      QBS_WEIGHT_PROFILE_Q3_K, QBS_WEIGHT_PROFILE_Q2_K: begin
+        read_addr[0] = {1'b0, read_k_i[7], read_k_i[4]};
+        read_addr[1] = {2'b0, read_k_i[4]};
+      end
+      QBS_WEIGHT_PROFILE_Q8_0_WEIGHT:
+        read_addr[0] = {2'b0, read_k_i[4]};
       default: ;
     endcase
   end
@@ -78,11 +85,15 @@ module qbs_payload_buffer import qbs_pkg::*; #(
 
   logic [15:0] bank_grant [2][3][4];
   logic [3:0] pending_multiword [3];
-  logic [31:0] weight_byte_select [32], activation_byte_select [32];
-  for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte_decode
+  logic [31:0] weight_byte_select [16], activation_byte_select [32];
+  for (genvar byte_lane = 0; byte_lane < 16; byte_lane++) begin : gen_weight_byte_decode
     for (genvar writer = 0; writer < 32; writer++) begin : gen_writer
       assign weight_byte_select[byte_lane][writer] =
-          weight_location[writer].offset[4:0] == 5'(byte_lane);
+          weight_location[writer].offset[3:0] == 4'(byte_lane);
+    end
+  end
+  for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_activation_byte_decode
+    for (genvar writer = 0; writer < 32; writer++) begin : gen_writer
       assign activation_byte_select[byte_lane][writer] =
           activation_location[writer].offset[4:0] == 5'(byte_lane);
     end
@@ -190,6 +201,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   // describe a mux over the entire 3072-bit write-data array at every byte.
   for (genvar slot = 0; slot < 2; slot++) begin : gen_write_merge
     for (genvar p = 0; p < 3; p++) begin : gen_bank_plane
+      localparam int WordShift = p == 2 ? 5 : 4;
+      localparam int WordBytes = 1 << WordShift;
       for (genvar r = 0; r < 4; r++) begin : gen_bank_row
         logic [15:0] candidate;
         logic [15:0] word_match;
@@ -210,7 +223,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
             assign candidate[b] = weight_mask_i[B] &&
                 weight_location[B].plane == 2'(p) && weight_row_i[B] == 2'(r);
           end
-          assign first_word[16+b] = {candidate[b], offset[b][7:5]};
+          assign first_word[16+b] = {candidate[b], offset[b][WordShift +: 3]};
         end
         // Select the first byte's word in four levels, then grant all bytes
         // in that word in parallel. An older slot still owns the bank first.
@@ -224,7 +237,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
           for (genvar bit_index = 0; bit_index < 3; bit_index++) begin : gen_word_conflict
             logic [15:0] word_bit;
             for (genvar b = 0; b < 16; b++) begin : gen_bit
-              assign word_bit[b] = offset[b][5+bit_index];
+              assign word_bit[b] = offset[b][WordShift+bit_index];
             end
             // Distinct words differ in at least one address bit. This test
             // needs neither priority selection nor the consumed-byte path.
@@ -245,13 +258,17 @@ module qbs_payload_buffer import qbs_pkg::*; #(
               ? selected_word : 3'b0;
         end
         for (genvar b = 0; b < 16; b++) begin : gen_word_grant
-          assign word_match[b] = candidate[b] && selected_word == offset[b][7:5];
+          assign word_match[b] = candidate[b] && selected_word == offset[b][WordShift +: 3];
           assign bank_grant[slot][p][r][b] = source_valid && word_match[b];
         end
-        for (genvar byte_lane = 0; byte_lane < 32; byte_lane++) begin : gen_byte_merge
+        if (p != 2) begin : gen_unused_upper
+          assign write_be[slot][p][r][31:16] = '0;
+          assign write_data[slot][p][r][255:128] = '0;
+        end
+        for (genvar byte_lane = 0; byte_lane < WordBytes; byte_lane++) begin : gen_byte_merge
           wire [15:0] hit = word_match &
               (p == 2 ? activation_byte_select[byte_lane][16*slot +: 16]
-                      : weight_byte_select[byte_lane][16*slot +: 16]);
+                      : weight_byte_select[byte_lane % 16][16*slot +: 16]);
           wire [8:0] selected = StreamWriteData
               ? {(|hit), stream_data[slot][p][r][byte_lane % 16]} : last_slot_byte(hit, data);
 `ifdef QBS_STREAM_EQUIV
@@ -298,11 +315,14 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   for (genvar p = 0; p < 3; p++) begin : gen_plane
     for (genvar r = 0; r < 4; r++) begin : gen_row
       wire rd = p == 2 ? activation_read_i : weight_read_i;
-      qbs_payload_sram #(.NumWords(p == 0 ? 4 : p == 1 ? 2 : 8)) i_payload (
+      localparam int DataWidth = p == 2 ? 256 : 128;
+      qbs_payload_sram #(.NumWords(p == 1 ? 4 : 8), .DataWidth(DataWidth)) i_payload (
         .clk_i, .rst_ni, .req_i(rd || write_req[1][p][r]), .we_i(write_req[1][p][r]),
         .addr_i(write_req[1][p][r] ? write_addr[1][p][r] : read_addr[p]),
-        .wdata_i(write_data[1][p][r]), .be_i(write_be[1][p][r]), .rdata_o(read_data[p][r])
+        .wdata_i(write_data[1][p][r][DataWidth-1:0]),
+        .be_i(write_be[1][p][r][DataWidth/8-1:0]), .rdata_o(read_data[p][r][DataWidth-1:0])
       );
+      if (p != 2) assign read_data[p][r][255:128] = '0;
 `ifndef SYNTHESIS
       assert property (@(posedge clk_i) disable iff (!rst_ni)
           !(rd && write_req[1][p][r]))
@@ -387,8 +407,8 @@ module qbs_payload_buffer import qbs_pkg::*; #(
   assign weight_side_o = weight_side_q;
   assign activation_side_o = activation_side_q;
   for (genvar row = 0; row < 4; row++) begin : gen_window
-    assign weight_window_o[row][0] = read_data[0][row];
-    assign weight_window_o[row][1] = read_data[1][row];
+    assign weight_window_o[row][0] = read_data[0][row][127:0];
+    assign weight_window_o[row][1] = read_data[1][row][127:0];
     assign activation_window_o[row] = read_data[2][row];
   end
 
@@ -418,7 +438,7 @@ module qbs_payload_buffer import qbs_pkg::*; #(
           assign weight_view[f][row][b] = weight_side_q[row][Loc.offset];
         end else begin
           assign weight_view[f][row][b] =
-              read_data[Loc.plane][row][8*Loc.offset[4:0] +: 8];
+              read_data[Loc.plane][row][8*Loc.offset[3:0] +: 8];
         end
       end
     end

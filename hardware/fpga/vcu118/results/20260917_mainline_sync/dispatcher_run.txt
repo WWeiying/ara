@@ -1,0 +1,29 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 16 23:22 2026
+dispatcher state=0 visits=38845
+dispatcher state=1 visits=11446
+dispatcher state=2 visits=32
+dispatcher state=3 visits=16915
+dispatcher state=4 visits=288
+dispatcher state=5 visits=32
+dispatcher state=6 visits=289
+dispatcher state=7 visits=34
+dispatcher state=8 visits=33
+dispatcher state=9 visits=34
+dispatcher state=10 visits=290
+dispatcher state=11 visits=34
+dispatcher state=12 visits=33
+dispatcher state=13 visits=291
+dispatcher state=14 visits=44
+dispatcher state=15 visits=0
+Dispatcher equivalence PASS checks=68640 blocked=13542 accepted=25379
+FPGA EEW metadata checks=13685 first_segment=128 later_segment=13318
+$finish called from file "/tmp/ara-fpga-mainline-sync.64FdBy/dispatcher/dispatcher_equivalence_tb.sv", line 401.
+$finish at simulation time            722910000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 722910000 ps
+CPU Time:      3.640 seconds;       Data structure size:   0.1Mb
+Wed Sep 16 23:22:31 2026
