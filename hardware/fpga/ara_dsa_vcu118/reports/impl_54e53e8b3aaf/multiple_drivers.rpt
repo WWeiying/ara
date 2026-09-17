@@ -1,0 +1,36 @@
+Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2020.1 (win64) Build 2902540 Wed May 27 19:54:49 MDT 2020
+| Date         : Thu Sep 17 17:16:08 2026
+| Host         : DESKTOP-9T3TD2K running 64-bit major release  (build 9200)
+| Command      : report_drc -checks MDRV-1 -name ara_drivers -force -file D:/project/ara/hardware/fpga/ara_dsa_vcu118/reports/impl_54e53e8b3aaf/multiple_drivers.rpt
+| Design       : ara_dsa_vcu118
+| Device       : xcvu9p-flga2104-2L-e
+| Speed File   : -2L
+| Design State : Fully Routed
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Report DRC
+
+Table of Contents
+-----------------
+1. REPORT SUMMARY
+2. REPORT DETAILS
+
+1. REPORT SUMMARY
+-----------------
+            Netlist: netlist
+          Floorplan: impl_54e53e8b3aaf
+      Design limits: <entire design considered>
+
+            Checks: MDRV-1
+             Max violations: <unlimited>
+             Violations found: 0
++------+----------+-------------+------------+
+| Rule | Severity | Description | Violations |
++------+----------+-------------+------------+
++------+----------+-------------+------------+
+
+2. REPORT DETAILS
+-----------------
+
