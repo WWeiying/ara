@@ -59,6 +59,30 @@ assert {[llength [fpga_checks::skew_failures {} true]] == 10} "empty skew report
 set changed [regsub {Endpoint Destination:[^\n]+} $good_skew {}]
 assert {[llength [fpga_checks::skew_failures $changed true]] == 1} "unparsed bus-skew path rejected"
 
+# Native routed output has a constraint-level Requirement before every path.
+# The next constraint's value must not overwrite the preceding path's header.
+set routed_dir [file join [file dirname [info script]] .. .. ara_dsa_vcu118 reports impl_54e53e8b3aaf]
+set routed_cdc [fpga_checks::read_report [file join $routed_dir cdc.rpt]]
+set routed_skew [fpga_checks::read_report [file join $routed_dir bus_skew.rpt]]
+assert {![llength [fpga_checks::cdc_failures $routed_cdc]]} "native routed CDC bounds restored"
+assert {![llength [fpga_checks::skew_failures $routed_skew true]]} "native routed Gray and vendor skew all pass"
+set routed_paths [fpga_checks::path_headers $routed_skew]
+assert {[llength $routed_paths] == 14} "read 10 native Gray and 4 vendor paths"
+foreach path [lrange $routed_paths 0 9] {
+    assert {[dict get $path Requirement] == 3.0} "Gray path keeps its own 3 ns requirement"
+}
+foreach path [lrange $routed_paths 10 end] {
+    assert {[dict get $path Requirement] == 20.0} "vendor path keeps its own 20 ns requirement"
+}
+set changed [regsub -line {^  Requirement: +3.000ns} $routed_skew {  Requirement: 20.000ns}]
+assert {[llength [fpga_checks::skew_failures $changed true]] == 1} "next Gray group cannot hide a widened bound"
+set changed [regsub -line {^  Requirement: +3.000ns[^\n]*} $routed_skew {}]
+assert {[llength [fpga_checks::skew_failures $changed true]] == 1} "missing path requirement cannot inherit from next group"
+set changed [regsub {(Slack \(MET\)\s*:)\s+2.186ns} $routed_skew {\1 -0.001ns}]
+assert {[llength [fpga_checks::skew_failures $changed true]] == 1} "native Gray violation rejected"
+set changed [regsub {(Slack \(MET\)\s*:)\s+18.453ns} $routed_skew {\1 -0.001ns}]
+assert {[llength [fpga_checks::skew_failures $changed true]] == 1} "native vendor violation rejected"
+
 foreach port {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i jtag_tdo_o uart_tx_o c0_ddr4_reset_n} {
     set report [fpga_checks::read_report [file join $dir pad_$port.rpt]]
     set missing [expr {$port in {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i}}]
@@ -82,4 +106,4 @@ assert {[string match {*FAILURES=75*} [fpga_checks::read_report $scratch/constra
 assert {[llength [write_constraint_checks $scratch false]] == 65} "missing CDC/pad constraints also rejected before routing"
 assert {[lsort [chan names]] eq $before} "all report handles closed"
 assert {[string match {*FAILURES=65*} [fpga_checks::read_report $scratch/constraint_checks.rpt]]} "saved synthesis audit summary"
-puts "PASS: $checks report checks using impl_6abc9f1816a4 and negative fixtures"
+puts "PASS: $checks report checks using impl_6abc9f1816a4, impl_54e53e8b3aaf and negative fixtures"

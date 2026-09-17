@@ -21,7 +21,11 @@ proc fpga_checks::path_headers {report} {
     set paths {}; set path {}
     foreach line [split $report \n] {
         set line [string trim $line]
-        if {[regexp {^Slack(?:\s+\([^)]*\))?\s*:\s*(\S+)} $line -> slack]} {
+        if {[regexp {^Id:\s+[0-9]+\s*$} $line]} {
+            # A new skew constraint has its own Requirement before its Slack.
+            if {[dict size $path]} { lappend paths $path }
+            set path {}
+        } elseif {[regexp {^Slack(?:\s+\([^)]*\))?\s*:\s*(\S+)} $line -> slack]} {
             if {[dict size $path]} { lappend paths $path }
             set path [dict create Slack [string trimright $slack ns]]
         } elseif {[dict size $path] && [regexp \

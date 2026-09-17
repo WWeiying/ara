@@ -101,23 +101,51 @@ proc reset_buffer_failures {out} {
             continue
         }
         set input [get_pins -quiet -of_objects $buffer -filter {REF_PIN_NAME == I}]
+        if {[llength $input] != 1} {
+            lappend failures "reset buffer must have one I pin: $buffer (pins=$input)"
+            continue
+        }
         set net [get_nets -quiet -segments -of_objects $input]
-        set drivers [get_pins -quiet -leaf -of_objects $net -filter {DIRECTION == OUT}]
+        set drivers {}
+        if {[llength $net]} {
+            set drivers [get_pins -quiet -leaf -of_objects $net -filter {DIRECTION == OUT}]
+        }
         set expected [format {%s/synch_regs_q_reg[3]/Q} $owner]
         puts $out "RESET_BUFFER $buffer TYPE=$type DRIVERS=$drivers"
-        if {[llength $input] != 1 || [llength $drivers] != 1 ||
+        if {[llength $drivers] != 1 ||
             [get_property NAME $drivers] ne $expected} {
             lappend failures "reset buffer is not driven by the final reset FF: $buffer"
         }
+        set inputs [list I $input]
         if {$type eq "BUFGCE"} {
             set ce [get_pins -quiet -of_objects $buffer -filter {REF_PIN_NAME == CE}]
+            if {[llength $ce] != 1} {
+                lappend failures "reset BUFGCE must have one CE pin: $buffer (pins=$ce)"
+                continue
+            }
             set ce_net [get_nets -quiet -segments -of_objects $ce]
-            set ce_driver [get_pins -quiet -leaf -of_objects $ce_net -filter {DIRECTION == OUT}]
-            set ce_cell [get_cells -quiet -of_objects $ce_driver]
-            if {[llength $ce] != 1 || [llength $ce_cell] != 1 ||
-                [get_property REF_NAME $ce_cell] ne "VCC" ||
-                [get_property IS_CE_INVERTED $buffer] || [get_property IS_I_INVERTED $buffer]} {
-                lappend failures "reset BUFGCE must be non-inverting and always enabled: $buffer"
+            set ce_driver {}
+            if {[llength $ce_net]} {
+                set ce_driver [get_pins -quiet -leaf -of_objects $ce_net -filter {DIRECTION == OUT}]
+            }
+            set ce_cell {}
+            if {[llength $ce_driver] == 1} { set ce_cell [get_cells -quiet -of_objects $ce_driver] }
+            puts $out "RESET_BUFFER_CE $buffer DRIVERS=$ce_driver CELLS=$ce_cell"
+            if {[llength $ce_driver] != 1 || [llength $ce_cell] != 1 ||
+                [get_property REF_NAME $ce_cell] ne "VCC"} {
+                lappend failures "reset BUFGCE must be always enabled by one VCC driver: $buffer"
+            }
+            lappend inputs CE $ce
+        }
+        # UG912 (2020.1): inversion is a netlist PIN property. Optional cell
+        # attributes can be empty after BUFG -> BUFGCE unisim transformation.
+        foreach {name pin} $inputs {
+            set code [catch {get_property IS_INVERTED $pin} inverted]
+            puts $out "RESET_BUFFER_PIN $buffer/$name QUERY_ERROR=$code IS_INVERTED=[list $inverted]"
+            if {$code || ![string is boolean -strict $inverted]} {
+                lappend failures "reset buffer pin inversion unavailable: $buffer/$name ([list $inverted])"
+            } elseif {$inverted} {
+                lappend failures "reset buffer pin must be non-inverting: $buffer/$name"
             }
         }
     }
