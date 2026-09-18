@@ -1,0 +1,81 @@
+/dts-v1/;
+
+/ {
+  #address-cells = <2>;
+  #size-cells = <2>;
+  compatible = "eth,cheshire-dev";
+  model = "Ara DSA VCU118";
+
+  chosen {
+    stdout-path = &uart0;
+    bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio32,0x03002000,115200 loglevel=7 rdinit=/init";
+    linux,initrd-start = <0x0 __INITRD_START__>;
+    linux,initrd-end = <0x0 __INITRD_END__>;
+  };
+
+  memory@80000000 {
+    device_type = "memory";
+    reg = <0x0 0x80000000 0x0 0x80000000>;
+  };
+
+  cpus {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    timebase-frequency = <1000000>;
+
+    CPU0: cpu@0 {
+      device_type = "cpu";
+      status = "okay";
+      compatible = "eth,ariane", "riscv";
+      clock-frequency = <50000000>;
+      riscv,isa = "rv64imafdcv";
+      mmu-type = "riscv,sv39";
+      tlb-split;
+      reg = <0>;
+
+      CPU0_intc: interrupt-controller {
+        #address-cells = <0>;
+        #interrupt-cells = <1>;
+        interrupt-controller;
+        compatible = "riscv,cpu-intc";
+      };
+    };
+  };
+
+  soc: soc {
+    #address-cells = <2>;
+    #size-cells = <2>;
+    compatible = "eth,cheshire-bare-soc", "simple-bus";
+    ranges;
+
+    uart0: serial@3002000 {
+      compatible = "ns16550a";
+      clock-frequency = <50000000>;
+      current-speed = <115200>;
+      interrupt-parent = <&PLIC0>;
+      interrupts = <1>;
+      reg = <0x0 0x03002000 0x0 0x1000>;
+      reg-shift = <2>;
+      reg-io-width = <4>;
+      status = "okay";
+    };
+
+    clint@2040000 {
+      compatible = "riscv,clint0";
+      interrupts-extended = <&CPU0_intc 3 &CPU0_intc 7>;
+      reg-names = "control";
+      reg = <0x0 0x02040000 0x0 0x40000>;
+    };
+
+    PLIC0: interrupt-controller@4000000 {
+      compatible = "riscv,plic0";
+      #address-cells = <0>;
+      #interrupt-cells = <1>;
+      interrupt-controller;
+      interrupts-extended = <&CPU0_intc 11 &CPU0_intc 9>;
+      riscv,max-priority = <7>;
+      riscv,ndev = <51>;
+      reg = <0x0 0x04000000 0x0 0x04000000>;
+    };
+  };
+};

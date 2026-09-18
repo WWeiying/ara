@@ -69,7 +69,9 @@ CDC 约束不把 SoC 与 DDR 两个时钟整体切成 false path。
 
 ## 启动与模型边界
 
-只将 VIO boot mode `00` 作为当前推荐启动方式，通过板载 UART 的原有被动加载协议运行小程序。
+只将 VIO boot mode `00` 作为当前推荐启动方式，通过板载 UART 的原有被动加载协议运行程序。
+`linux/` 目录现在提供了基于同一 bitstream 的 OpenSBI/Linux 首次 handoff 产物和加载脚本；
+该路径仍需在实际板上完成一次启动验证，不能把静态生成成功当成 Linux 已经在板上运行。
 不要直接选择其他 boot mode：本顶层没有 SD/I2C 启动接线，QSPI 也没有验证 Flash 型号对应的软件驱动。
 
 2 GiB DDR 是一个通道的容量，不是片上 SRAM 容量。LLC/SPM 默认物理容量为 128 KiB。

@@ -5,6 +5,7 @@
 /build/
 /reports/
 /output/
+/linux/out/
 .Xil/
 .cache/
 /.fpga_sync_backups/

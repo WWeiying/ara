@@ -22,6 +22,8 @@ py software/uart_load.py --port COM5
 预期出现 `SMOKE PASS: small RAM, RVV integer, QBS/AKV capabilities`；这是预期标志，不是已经上板跑出的记录。
 程序结束后停在 WFI，重新加载前通过 VIO 复位一次，等 DDR 再次 ready。
 
+同一个加载器也支持多个 DDR 裸镜像。Linux 首次启动的设备树、内核和 initramfs 流程见上级 `linux/README.md`；大镜像应使用 `--no-readback`，并可提高 `--chunk-size`。
+
 ## 注意
 
 - 整个硬件包尚未上板，UART 驱动、DDR 校准、实际波特率仍需在板上确认。

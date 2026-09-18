@@ -256,6 +256,7 @@ VIO 的 `probe_out0` 为复位，`probe_out1` 为两位启动模式，`probe_out
 | `scripts` | 创建、综合、实现、下载入口 |
 | `constraints` | 引脚、时钟、UART/JTAG、DDR CDC 约束 |
 | `software` | 板级启动辅助与 smoke test，见该目录说明 |
+| `linux` | 与当前地址表匹配的 OpenSBI/Linux 首次启动流程，见该目录说明 |
 | `provenance` | 本地 CVA6 补丁、FPGA 集成补丁 |
 | `manifest.json`、`SHA256SUMS` | 源码版本、编译顺序、定义和文件校验值 |
 | `.gitignore`、`.gitattributes` | 排除本机产物、保留 Windows 检出的快照字节 |
@@ -276,7 +277,7 @@ VIO 的 `probe_out0` 为复位，`probe_out1` 为两位启动模式，`probe_out
 2. 检查时序、未约束路径、DRC、CDC，不降低 DRC 严重级别来强行生成 bitstream。
 3. 下载并检查 VIO 的 PLL/DDR 状态，再验证 UART、DDR 读写、普通 RVV。
 4. 验证 QBS/AKV 能力指令及实际计算结果，与已有 Spike/VCS reference 对比。
-5. 准备符合 **本 SoC 地址表和中断布局** 的 OpenSBI、Linux、设备树和 rootfs，再接入 llama.cpp。
+5. 用 `linux/README.md` 的流程验证符合 **本 SoC 地址表和中断布局** 的 OpenSBI、Linux、设备树和 rootfs，再接入 llama.cpp。
 
 已有 QEMU `virt` 镜像不能直接当作这块板的 Linux 镜像。
 工程没有附带 Vivado 软件、许可证或几 GB 的模型权重，这些不是 RTL 工程依赖。
