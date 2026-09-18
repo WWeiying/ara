@@ -8,7 +8,7 @@
 
   chosen {
     stdout-path = &uart0;
-    bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio32,0x03002000,115200 loglevel=7 rdinit=/init";
+    bootargs = "earlycon=sbi console=ttyS0,115200 earlyprintk loglevel=7 rdinit=/init";
     linux,initrd-start = <0x0 __INITRD_START__>;
     linux,initrd-end = <0x0 __INITRD_END__>;
   };

@@ -47,7 +47,8 @@ py hardware/fpga/ara_dsa_vcu118/software/uart_load.py `
 
 At 115200 baud, transferring the kernel takes a long time even with readback
 disabled. Expected output includes an OpenSBI banner, Linux early console
-messages, and:
+messages through the SBI debug console, followed by the normal UART console,
+and:
 
 ```text
 Ara DSA VCU118 Linux init reached
