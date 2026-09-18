@@ -1,0 +1,23 @@
+RESET_BUFG_COUNT=2 CELLS=i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst
+RESET_BUFFER i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place TYPE=BUFGCE DRIVERS=i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]/Q
+RESET_BUFFER_CE i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place DRIVERS=i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/VCC/P CELLS=i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/VCC
+RESET_BUFFER_PIN i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place/I QUERY_ERROR=0 IS_INVERTED=0
+RESET_BUFFER_PIN i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place/CE QUERY_ERROR=0 IS_INVERTED=0
+RESET_BUFFER i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst TYPE=BUFGCE DRIVERS=i_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]/Q
+RESET_BUFFER_CE i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst DRIVERS=i_rstgen/i_rstgen_bypass/VCC_1/P CELLS=i_rstgen/i_rstgen_bypass/VCC_1
+RESET_BUFFER_PIN i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst/I QUERY_ERROR=0 IS_INVERTED=0
+RESET_BUFFER_PIN i_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst/CE QUERY_ERROR=0 IS_INVERTED=0
+SELECTOR w src COUNT=320 EXPECTED=320
+SELECTOR w dst COUNT=320 EXPECTED=320
+SELECTOR r src COUNT=288 EXPECTED=288
+SELECTOR r dst COUNT=288 EXPECTED=288
+PAD jtag_tck_i BUDGET=20.0 REQUIREMENT=20.000 SLACK=15.656
+PAD jtag_tms_i BUDGET=20.0 REQUIREMENT=20.000 SLACK=15.419
+PAD jtag_tdi_i BUDGET=20.0 REQUIREMENT=20.000 SLACK=15.701
+PAD uart_rx_i BUDGET=70.0 REQUIREMENT=70.000 SLACK=65.047
+PAD jtag_tdo_o BUDGET=20.0 REQUIREMENT=20.000 SLACK=15.105
+PAD uart_tx_o BUDGET=70.0 REQUIREMENT=70.000 SLACK=57.504
+PAD c0_ddr4_reset_n BUDGET=3.333 REQUIREMENT=3.333 SLACK=0.835
+DDR_RESET_IOSTANDARD=LVCMOS12
+DEBUG_HUB_CLOCK=clk_50_clkwiz VIO_CLOCK=clk_50_clkwiz
+FAILURES=0: 

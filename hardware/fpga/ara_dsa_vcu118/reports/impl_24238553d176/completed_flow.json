@@ -1,0 +1,17 @@
+﻿{
+    "BitstreamGenerated":  false,
+    "Project":  "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\build\\ara_dsa_vcu118\\ara_dsa_vcu118.xpr",
+    "InputHash":  "1684458AA9FE2188BD626C10667221398E4FE0FF4F4F0875113C474C6C0806ED",
+    "Runs":  [
+                 {
+                     "Reports":  "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\reports\\synth_24238553d176",
+                     "Run":  "synth_24238553d176",
+                     "Directory":  "D:\\fpga_runs\\ara_20260918_010626_24238553d176\\synth"
+                 },
+                 {
+                     "Reports":  "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\reports\\impl_24238553d176",
+                     "Run":  "impl_24238553d176",
+                     "Directory":  "D:\\fpga_runs\\ara_20260918_010626_24238553d176\\impl"
+                 }
+             ]
+}

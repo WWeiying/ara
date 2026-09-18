@@ -1,0 +1,3 @@
+Expected: 60 Gray first-stage paths, 5 data crossings, 10 Gray bus-skew groups, 7 pad exceptions, VIO ready first-stage exception
+ROUTED=1 (complete bus-skew coverage and nonnegative slack required after routing)
+FAILURES=0
