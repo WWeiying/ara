@@ -1,64 +1,683 @@
+################################################################################
+#                                Reproduce Info                                #
+################################################################################
 
-Discarded input sections
+Terapines LTD LLD 4.1.8
 
- .comment       0x0000000000000000       0x21 /tmp/ccvqflHn.o
- .note.GNU-stack
-                0x0000000000000000        0x0 /tmp/ccvqflHn.o
- .eh_frame      0x0000000000000000       0x98 /tmp/ccvqflHn.o
+--chroot .
+-m elf64lriscv
+--script home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/software/smoke.ld
+--build-id=none
+--no-relax
+--Map smoke.map
+tmp/tmp.WGj9z3RtaT/start.o
+tmp/tmp.WGj9z3RtaT/smoke.o
+-o smoke.elf
 
-Memory Configuration
 
-Name             Origin             Length             Attributes
-ram              0x0000000080000000 0x0000000000020000 xrw
-*default*        0x0000000000000000 0xffffffffffffffff
+################################################################################
+#                              Library Trace Info                              #
+################################################################################
 
-Linker script and memory map
+/tmp/tmp.WGj9z3RtaT/start.o
+/tmp/tmp.WGj9z3RtaT/smoke.o
 
-LOAD /tmp/ccGkubHA.o
-LOAD /tmp/ccvqflHn.o
 
-.text           0x0000000080000000      0x708
- *(.text.start)
- .text.start    0x0000000080000000       0x7a /tmp/ccGkubHA.o
-                0x0000000080000000                _start
- *(.text .text.*)
- .text          0x000000008000007a        0x0 /tmp/ccGkubHA.o
- .text          0x000000008000007a      0x280 /tmp/ccvqflHn.o
-                0x000000008000012c                report_trap
- .text.startup  0x00000000800002fa      0x28c /tmp/ccvqflHn.o
-                0x00000000800002fa                main
- *(.rodata .rodata.*)
- *fill*         0x0000000080000586        0x2 
- .rodata.str1.8
-                0x0000000080000588      0x180 /tmp/ccvqflHn.o
+################################################################################
+#                         Members  Extracted  Archive                          #
+################################################################################
 
-.rela.dyn       0x0000000080000708        0x0
- .rela.text.start
-                0x0000000080000708        0x0 /tmp/ccGkubHA.o
 
-.data           0x0000000080000710        0x0
-                0x0000000080000f10                __global_pointer$ = (. + 0x800)
- *(.sdata .sdata.* .data .data.*)
- .data          0x0000000080000710        0x0 /tmp/ccGkubHA.o
- .data          0x0000000080000710        0x0 /tmp/ccvqflHn.o
 
-.bss            0x0000000080000780     0x4480
-                0x0000000080000780                __bss_start = .
- *(.bss .bss.* .sbss .sbss.* COMMON)
- .bss           0x0000000080000780        0x0 /tmp/ccGkubHA.o
- .bss           0x0000000080000780     0x4480 /tmp/ccvqflHn.o
-                0x0000000080004c00                . = ALIGN (0x8)
-                0x0000000080004c00                __bss_end = .
-                0x0000000080020000                __stack_top = (ORIGIN (ram) + LENGTH (ram))
-                0x0000000000000001                ASSERT (((__bss_end + 0x2000) <= __stack_top), Smoke test exceeds reserved RAM)
+################################################################################
+#                               Dependency File                                #
+################################################################################
 
-/DISCARD/
- *(.comment .eh_frame .note*)
-OUTPUT(/home/wangwy/openproject/ara_dsa_vcu118/software/smoke.elf elf64-littleriscv)
+/tmp/tmp.WGj9z3RtaT/smoke.elf: \
+ hardware/fpga/ara_dsa_vcu118/software/smoke.ld \
+ /tmp/tmp.WGj9z3RtaT/start.o \
+ /tmp/tmp.WGj9z3RtaT/smoke.o
 
-.riscv.attributes
-                0x0000000000000000       0xe4
- .riscv.attributes
-                0x0000000000000000       0xe2 /tmp/ccGkubHA.o
- .riscv.attributes
-                0x00000000000000e2       0xe4 /tmp/ccvqflHn.o
+hardware/fpga/ara_dsa_vcu118/software/smoke.ld:
+
+/tmp/tmp.WGj9z3RtaT/start.o:
+
+/tmp/tmp.WGj9z3RtaT/smoke.o:
+
+
+################################################################################
+#                        Removing Unused Input Sections                        #
+################################################################################
+
+
+
+################################################################################
+#                         Linker Script And Memory Map                         #
+################################################################################
+
+             VMA              LMA     Size Align Out     In      Symbol
+        80000000         80000000      d01     8 .text
+        80000000         80000000       7a     4         /tmp/tmp.WGj9z3RtaT/start.o:(.text.start)
+        80000000         80000000        0     1                 _start
+        8000000c         8000000c        0     1                 .Lpcrel_hi0
+        80000014         80000014        0     1                 .Lpcrel_hi1
+        8000001c         8000001c        0     1                 .Lpcrel_hi2
+        80000036         80000036        0     1                 .Lpcrel_hi3
+        8000003e         8000003e        0     1                 .Lpcrel_hi4
+        80000046         80000046        0     1                 .Ltmp0
+        80000052         80000052        0     1                 .Ltmp1
+        8000005e         8000005e        0     1                 .Ltmp2
+        80000064         80000064        0     1                 trap
+        8000007a         8000007a        0     2         /tmp/tmp.WGj9z3RtaT/start.o:(.text)
+        8000007a         8000007a      b90     2         /tmp/tmp.WGj9z3RtaT/smoke.o:(.text)
+        8000007a         8000007a      368     1                 report_trap
+        80000080         80000080        0     1                 .L0 
+        80000092         80000092        0     1                 .L0 
+        800000a4         800000a4        0     1                 .L0 
+        800000b8         800000b8        0     1                 .L0 
+        800000cc         800000cc        0     1                 .L0 
+        800000e0         800000e0        0     1                 .L0 
+        800000f4         800000f4        0     1                 .L0 
+        80000108         80000108        0     1                 .L0 
+        8000011c         8000011c        0     1                 .L0 
+        80000130         80000130        0     1                 .L0 
+        80000144         80000144        0     1                 .L0 
+        80000158         80000158        0     1                 .L0 
+        8000016c         8000016c        0     1                 .L0 
+        8000017e         8000017e        0     1                 .L0 
+        80000190         80000190        0     1                 .L0 
+        800001a4         800001a4        0     1                 .L0 
+        800001b8         800001b8        0     1                 .L0 
+        800001cc         800001cc        0     1                 .L0 
+        800001e0         800001e0        0     1                 .L0 
+        800001f4         800001f4        0     1                 .L0 
+        80000208         80000208        0     1                 .L0 
+        80000222         80000222        0     1                 .Lpcrel_hi0
+        8000022a         8000022a        0     1                 .L0 
+        80000238         80000238        0     1                 .L0 
+        8000024c         8000024c        0     1                 .L0 
+        8000025e         8000025e        0     1                 .L0 
+        80000270         80000270        0     1                 .L0 
+        80000284         80000284        0     1                 .L0 
+        80000298         80000298        0     1                 .L0 
+        800002ac         800002ac        0     1                 .L0 
+        800002c0         800002c0        0     1                 .L0 
+        800002da         800002da        0     1                 .L0 
+        800002e8         800002e8        0     1                 .L0 
+        800002fc         800002fc        0     1                 .L0 
+        8000030e         8000030e        0     1                 .L0 
+        80000320         80000320        0     1                 .L0 
+        80000334         80000334        0     1                 .L0 
+        80000348         80000348        0     1                 .L0 
+        8000035c         8000035c        0     1                 .L0 
+        80000370         80000370        0     1                 .L0 
+        80000384         80000384        0     1                 .L0 
+        8000039c         8000039c        0     1                 .L0 
+        800003aa         800003aa        0     1                 .L0 
+        800003bc         800003bc        0     1                 .L0 
+        800003ce         800003ce        0     1                 .L0 
+        800003e2         800003e2      828     1                 main
+        8000040c         8000040c        0     1                 .Lpcrel_hi1
+        8000041e         8000041e        0     1                 .L0 
+        8000043c         8000043c        0     1                 .Lpcrel_hi2
+        80000440         80000440        0     1                 .Lpcrel_hi3
+        80000450         80000450        0     1                 .L0 
+        80000464         80000464        0     1                 .Lpcrel_hi4
+        80000470         80000470        0     1                 .L0 
+        80000484         80000484        0     1                 .L0 
+        80000498         80000498        0     1                 .L0 
+        800004ac         800004ac        0     1                 .L0 
+        800004c0         800004c0        0     1                 .L0 
+        800004d4         800004d4        0     1                 .L0 
+        800004e8         800004e8        0     1                 .L0 
+        80000500         80000500        0     1                 .Lpcrel_hi6
+        80000508         80000508        0     1                 .L0 
+        80000516         80000516        0     1                 .L0 
+        80000528         80000528        0     1                 .L0 
+        8000053a         8000053a        0     1                 .L0 
+        80000558         80000558        0     1                 .Lpcrel_hi7
+        8000056a         8000056a        0     1                 .L0 
+        80000580         80000580        0     1                 .Lpcrel_hi8
+        8000058c         8000058c        0     1                 .L0 
+        800005c6         800005c6        0     1                 .L0 
+        800005ee         800005ee        0     1                 .L0 
+        80000602         80000602        0     1                 .L0 
+        80000616         80000616        0     1                 .L0 
+        8000062a         8000062a        0     1                 .L0 
+        8000063e         8000063e        0     1                 .L0 
+        80000652         80000652        0     1                 .L0 
+        80000666         80000666        0     1                 .L0 
+        8000067a         8000067a        0     1                 .L0 
+        8000068e         8000068e        0     1                 .L0 
+        800006a2         800006a2        0     1                 .L0 
+        800006ba         800006ba        0     1                 .L0 
+        800006c8         800006c8        0     1                 .L0 
+        800006da         800006da        0     1                 .L0 
+        800006ec         800006ec        0     1                 .L0 
+        800006fe         800006fe        0     1                 .L0 
+        80000712         80000712        0     1                 .L0 
+        80000726         80000726        0     1                 .L0 
+        8000073a         8000073a        0     1                 .L0 
+        8000074e         8000074e        0     1                 .L0 
+        80000762         80000762        0     1                 .L0 
+        80000776         80000776        0     1                 .L0 
+        8000078a         8000078a        0     1                 .L0 
+        8000079e         8000079e        0     1                 .L0 
+        800007b2         800007b2        0     1                 .L0 
+        800007c6         800007c6        0     1                 .L0 
+        800007de         800007de        0     1                 .L0 
+        800007ec         800007ec        0     1                 .L0 
+        800007fe         800007fe        0     1                 .L0 
+        80000810         80000810        0     1                 .L0 
+        80000822         80000822        0     1                 .L0 
+        80000836         80000836        0     1                 .L0 
+        8000084a         8000084a        0     1                 .L0 
+        8000085e         8000085e        0     1                 .L0 
+        80000872         80000872        0     1                 .L0 
+        80000886         80000886        0     1                 .L0 
+        8000089a         8000089a        0     1                 .L0 
+        800008ae         800008ae        0     1                 .L0 
+        800008c2         800008c2        0     1                 .L0 
+        800008d6         800008d6        0     1                 .L0 
+        800008ea         800008ea        0     1                 .L0 
+        80000902         80000902        0     1                 .L0 
+        80000910         80000910        0     1                 .L0 
+        80000922         80000922        0     1                 .L0 
+        80000934         80000934        0     1                 .L0 
+        8000093e         8000093e        0     1                 .Lpcrel_hi10
+        8000097c         8000097c        0     1                 .Lpcrel_hi12
+        80000988         80000988        0     1                 .L0 
+        800009aa         800009aa        0     1                 .Lpcrel_hi13
+        800009ba         800009ba        0     1                 .L0 
+        800009da         800009da        0     1                 .L0 
+        800009ee         800009ee        0     1                 .L0 
+        80000a02         80000a02        0     1                 .L0 
+        80000a16         80000a16        0     1                 .L0 
+        80000a2a         80000a2a        0     1                 .L0 
+        80000a3e         80000a3e        0     1                 .L0 
+        80000a52         80000a52        0     1                 .L0 
+        80000a66         80000a66        0     1                 .L0 
+        80000a7a         80000a7a        0     1                 .L0 
+        80000a8e         80000a8e        0     1                 .L0 
+        80000aa2         80000aa2        0     1                 .L0 
+        80000ab6         80000ab6        0     1                 .L0 
+        80000aca         80000aca        0     1                 .L0 
+        80000ade         80000ade        0     1                 .L0 
+        80000af2         80000af2        0     1                 .L0 
+        80000b06         80000b06        0     1                 .L0 
+        80000b18         80000b18        0     1                 .L0 
+        80000b26         80000b26        0     1                 .L0 
+        80000b2c         80000b2c        0     1                 .Lpcrel_hi5
+        80000b3a         80000b3a        0     1                 .L0 
+        80000b5a         80000b5a        0     1                 .L0 
+        80000b60         80000b60        0     1                 .Lpcrel_hi9
+        80000b6e         80000b6e        0     1                 .L0 
+        80000b92         80000b92        0     1                 .L0 
+        80000ba0         80000ba0        0     1                 .L0 
+        80000bb2         80000bb2        0     1                 .L0 
+        80000bc4         80000bc4        0     1                 .L0 
+        80000bd0         80000bd0        0     1                 .L0 
+        80000bda         80000bda        0     1                 .L0 
+        80000be0         80000be0        0     1                 .Lpcrel_hi11
+        80000bea         80000bea        0     1                 .L0 
+        80000c10         80000c10       10     8         <internal>:(.rodata.cst8)
+        80000c20         80000c20       e1     1         <internal>:(.rodata.str1.1)
+        80000d10         80000d10        0    16 .data
+        80000d10         80000d10        0     1         __global_pointer$ = . + 0x800
+        80000d40         80000d40     4450    64 .bss
+        80000d40         80000d40        0     1         __bss_start = .
+        80000d80         80000d80     440c   128         /tmp/tmp.WGj9z3RtaT/smoke.o:(.bss)
+        80000d80         80000d80     4000     1                 memory_check
+        80004d80         80004d80      40c     1                 .L_MergedGlobals
+        80004d80         80004d80      10c     1                 a
+        80004f00         80004f00      10c     1                 b
+        80005080         80005080      10c     1                 c
+        8000518c         8000518c        4     1         . = ALIGN ( 8 )
+        80005190         80005190        0     1         __bss_end = .
+        80005190         80005190        0     1 __stack_top = ORIGIN ( ram ) + LENGTH ( ram )
+        80005190         80005190        0     1 
+               0                0       e0     1 .riscv.attributes
+               0                0       e0     1         <internal>:(.riscv.attributes)
+               0                0     10b0     8 .symtab
+               0                0     10b0     8         <internal>:(.symtab)
+               0                0       3e     1 .shstrtab
+               0                0       3e     1         <internal>:(.shstrtab)
+               0                0      42e     1 .strtab
+               0                0      42e     1         <internal>:(.strtab)
+
+
+################################################################################
+#                            Cross Reference Table                             #
+################################################################################
+
+Symbol                                            File
+_start                                            /tmp/tmp.WGj9z3RtaT/start.o
+__global_pointer$                                 hardware/fpga/ara_dsa_vcu118/software/smoke.ld:8
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+__stack_top                                       hardware/fpga/ara_dsa_vcu118/software/smoke.ld:13
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+__bss_start                                       hardware/fpga/ara_dsa_vcu118/software/smoke.ld:10
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+__bss_end                                         hardware/fpga/ara_dsa_vcu118/software/smoke.ld:11
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+main                                              /tmp/tmp.WGj9z3RtaT/smoke.o
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+report_trap                                       /tmp/tmp.WGj9z3RtaT/smoke.o
+                                                  /tmp/tmp.WGj9z3RtaT/start.o
+
+
+################################################################################
+#                            Architecture Specific                             #
+################################################################################
+
+BuildAttributes {
+  FormatVersion: 0x41
+  Section 1 {
+    SectionLength: 223
+    Vendor: riscv
+    Tag: Tag_File (0x1)
+    Size: 213
+    FileAttributes {
+      Attribute {
+        Tag: 4
+        Value: 16
+        TagName: stack_align
+        Description: Stack alignment is 16-bytes
+      }
+      Attribute {
+        Tag: 5
+        TagName: arch
+        Value: rv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_v1p0_zicsr2p0_zifencei2p0_zmmul1p0_zaamo1p0_zalrsc1p0_zfh1p0_zfhmin1p0_zve32f1p0_zve32x1p0_zve64d1p0_zve64f1p0_zve64x1p0_zvfh1p0_zvfhmin1p0_zvl128b1p0_zvl32b1p0_zvl64b1p0
+      }
+    }
+  }
+}
+
+
+################################################################################
+#                             Memory Configuration                             #
+################################################################################
+
+Memory region         Used Size  Region Size  %age Used
+             ram:       20880 B       128 KB     15.93%
+
+
+################################################################################
+#                               Component Sizes                                #
+################################################################################
+
+zcc uses the IR library, where all library files are compiled together into smoke.elf.lto.o. 
+All source files compiled with -flto are also placed in this .lto.o
+
+The statistics here are not completely consistent with llvm-size. The linker
+only includes data that is actually used, which is usually smaller than the
+result of llvm-size, and some sections may be deleted by --gc-section.
+
+	Code (inc. data)   RO Data    RW Data    BSS      Debug   Object Name
+
+     122                 0         0         0         0   /tmp/tmp.WGj9z3RtaT/start.o
+    2960               241         0     17420         0   /tmp/tmp.WGj9z3RtaT/smoke.o
+
+    ----------------------------------------------------------------------
+    3082               241         0     17420         0   Object Totals
+
+==============================================================================
+    Total RO  Size (Code + RO Data)                  3323 (   3.25kB)
+    Total RW  Size (RW Data + ZI Data)              17420 (  17.01kB)
+    Total ROM Size (Code + RO Data + RW Data)        3323 (   3.25kB)
+
+
+################################################################################
+#                             Symbol Table By Name                             #
+################################################################################
+
+Symbol table contains 170 entries:
+   Num: Value              Size Type    Bind   Vis      Ndx  Name                 Object 
+     0: 0000000080000080      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     1: 0000000080000092      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     2: 00000000800000a4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     3: 00000000800000b8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     4: 00000000800000cc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     5: 00000000800000e0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     6: 00000000800000f4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     7: 0000000080000108      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     8: 000000008000011c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+     9: 0000000080000130      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    10: 0000000080000144      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    11: 0000000080000158      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    12: 000000008000016c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    13: 000000008000017e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    14: 0000000080000190      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    15: 00000000800001a4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    16: 00000000800001b8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    17: 00000000800001cc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    18: 00000000800001e0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    19: 00000000800001f4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    20: 0000000080000208      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    21: 000000008000022a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    22: 0000000080000238      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    23: 000000008000024c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    24: 000000008000025e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    25: 0000000080000270      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    26: 0000000080000284      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    27: 0000000080000298      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    28: 00000000800002ac      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    29: 00000000800002c0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    30: 00000000800002da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    31: 00000000800002e8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    32: 00000000800002fc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    33: 000000008000030e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    34: 0000000080000320      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    35: 0000000080000334      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    36: 0000000080000348      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    37: 000000008000035c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    38: 0000000080000370      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    39: 0000000080000384      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    40: 000000008000039c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    41: 00000000800003aa      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    42: 00000000800003bc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    43: 00000000800003ce      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    44: 000000008000041e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    45: 0000000080000450      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    46: 0000000080000470      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    47: 0000000080000b26      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    48: 0000000080000484      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    49: 0000000080000498      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    50: 00000000800004ac      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    51: 00000000800004c0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    52: 00000000800004d4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    53: 00000000800004e8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    54: 0000000080000508      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    55: 0000000080000516      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    56: 0000000080000528      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    57: 000000008000053a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    58: 00000000800009da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    59: 000000008000056a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    60: 000000008000058c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    61: 00000000800005c6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    62: 0000000080000b5a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    63: 00000000800005ee      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    64: 0000000080000602      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    65: 0000000080000616      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    66: 000000008000062a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    67: 000000008000063e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    68: 0000000080000652      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    69: 0000000080000666      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    70: 000000008000067a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    71: 000000008000068e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    72: 00000000800006a2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    73: 00000000800006ba      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    74: 00000000800006c8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    75: 00000000800006da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    76: 00000000800006ec      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    77: 00000000800006fe      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    78: 0000000080000712      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    79: 0000000080000726      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    80: 000000008000073a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    81: 000000008000074e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    82: 0000000080000762      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    83: 0000000080000776      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    84: 000000008000078a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    85: 000000008000079e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    86: 00000000800007b2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    87: 00000000800007c6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    88: 00000000800007de      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    89: 00000000800007ec      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    90: 00000000800007fe      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    91: 0000000080000810      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    92: 0000000080000822      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    93: 0000000080000836      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    94: 000000008000084a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    95: 000000008000085e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    96: 0000000080000872      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    97: 0000000080000886      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    98: 000000008000089a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    99: 00000000800008ae      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   100: 00000000800008c2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   101: 00000000800008d6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   102: 00000000800008ea      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   103: 0000000080000902      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   104: 0000000080000910      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   105: 0000000080000922      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   106: 0000000080000934      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   107: 0000000080000bda      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   108: 0000000080000988      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   109: 00000000800009ba      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   110: 00000000800009ee      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   111: 0000000080000a02      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   112: 0000000080000a16      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   113: 0000000080000a2a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   114: 0000000080000a3e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   115: 0000000080000a52      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   116: 0000000080000a66      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   117: 0000000080000a7a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   118: 0000000080000a8e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   119: 0000000080000aa2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   120: 0000000080000ab6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   121: 0000000080000aca      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   122: 0000000080000ade      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   123: 0000000080000af2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   124: 0000000080000b06      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   125: 0000000080000b18      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   126: 0000000080000bd0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   127: 0000000080000b3a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   128: 0000000080000b6e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   129: 0000000080000b92      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   130: 0000000080000ba0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   131: 0000000080000bb2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   132: 0000000080000bc4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   133: 0000000080000bea      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   134: 0000000080004d80   1036 OBJECT  LOCAL  DEFAULT    3 .L_MergedGlobals     smoke.o
+   135: 000000008000000c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi0          start.o
+   136: 0000000080000222      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi0          smoke.o
+   137: 0000000080000014      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi1          start.o
+   138: 000000008000040c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi1          smoke.o
+   139: 000000008000093e      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi10         smoke.o
+   140: 0000000080000be0      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi11         smoke.o
+   141: 000000008000097c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi12         smoke.o
+   142: 00000000800009aa      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi13         smoke.o
+   143: 000000008000001c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi2          start.o
+   144: 000000008000043c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi2          smoke.o
+   145: 0000000080000036      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi3          start.o
+   146: 0000000080000440      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi3          smoke.o
+   147: 000000008000003e      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi4          start.o
+   148: 0000000080000464      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi4          smoke.o
+   149: 0000000080000b2c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi5          smoke.o
+   150: 0000000080000500      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi6          smoke.o
+   151: 0000000080000558      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi7          smoke.o
+   152: 0000000080000580      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi8          smoke.o
+   153: 0000000080000b60      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi9          smoke.o
+   154: 0000000080000046      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp0               start.o
+   155: 0000000080000052      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp1               start.o
+   156: 000000008000005e      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp2               start.o
+   157: 0000000080005190      0 NOTYPE  GLOBAL DEFAULT    3 __bss_end            smoke.ld:11
+   158: 0000000080000d40      0 NOTYPE  GLOBAL DEFAULT    3 __bss_start          smoke.ld:10
+   159: 0000000080001510      0 NOTYPE  GLOBAL DEFAULT    2 __global_pointer$    smoke.ld:8
+   160: 0000000080020000      0 NOTYPE  GLOBAL DEFAULT  ABS __stack_top          smoke.ld:13
+   161: 0000000080000000      0 NOTYPE  GLOBAL DEFAULT    1 _start               start.o
+   162: 0000000080004d80    268 OBJECT  LOCAL  DEFAULT    3 a                    smoke.o
+   163: 0000000080004f00    268 OBJECT  LOCAL  DEFAULT    3 b                    smoke.o
+   164: 0000000080005080    268 OBJECT  LOCAL  DEFAULT    3 c                    smoke.o
+   165: 00000000800003e2   2088 FUNC    GLOBAL DEFAULT    1 main                 smoke.o
+   166: 0000000080000d80  16384 OBJECT  LOCAL  DEFAULT    3 memory_check         smoke.o
+   167: 000000008000007a    872 FUNC    GLOBAL DEFAULT    1 report_trap          smoke.o
+   168: 0000000000000000      0 FILE    LOCAL  DEFAULT  ABS smoke.c              smoke.o
+   169: 0000000080000064      0 NOTYPE  LOCAL  DEFAULT    1 trap                 start.o
+
+
+################################################################################
+#                           Symbol Table By Address                            #
+################################################################################
+
+Symbol table contains 170 entries:
+   Num: Value              Size Type    Bind   Vis      Ndx  Name                 Object 
+     0: 0000000000000000      0 FILE    LOCAL  DEFAULT  ABS smoke.c              smoke.o
+     1: 0000000080000000      0 NOTYPE  GLOBAL DEFAULT    1 _start               start.o
+     2: 000000008000000c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi0          start.o
+     3: 0000000080000014      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi1          start.o
+     4: 000000008000001c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi2          start.o
+     5: 0000000080000036      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi3          start.o
+     6: 000000008000003e      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi4          start.o
+     7: 0000000080000046      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp0               start.o
+     8: 0000000080000052      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp1               start.o
+     9: 000000008000005e      0 NOTYPE  LOCAL  DEFAULT    1 .Ltmp2               start.o
+    10: 0000000080000064      0 NOTYPE  LOCAL  DEFAULT    1 trap                 start.o
+    11: 000000008000007a    872 FUNC    GLOBAL DEFAULT    1 report_trap          smoke.o
+    12: 0000000080000080      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    13: 0000000080000092      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    14: 00000000800000a4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    15: 00000000800000b8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    16: 00000000800000cc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    17: 00000000800000e0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    18: 00000000800000f4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    19: 0000000080000108      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    20: 000000008000011c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    21: 0000000080000130      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    22: 0000000080000144      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    23: 0000000080000158      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    24: 000000008000016c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    25: 000000008000017e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    26: 0000000080000190      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    27: 00000000800001a4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    28: 00000000800001b8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    29: 00000000800001cc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    30: 00000000800001e0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    31: 00000000800001f4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    32: 0000000080000208      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    33: 0000000080000222      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi0          smoke.o
+    34: 000000008000022a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    35: 0000000080000238      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    36: 000000008000024c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    37: 000000008000025e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    38: 0000000080000270      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    39: 0000000080000284      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    40: 0000000080000298      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    41: 00000000800002ac      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    42: 00000000800002c0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    43: 00000000800002da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    44: 00000000800002e8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    45: 00000000800002fc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    46: 000000008000030e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    47: 0000000080000320      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    48: 0000000080000334      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    49: 0000000080000348      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    50: 000000008000035c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    51: 0000000080000370      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    52: 0000000080000384      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    53: 000000008000039c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    54: 00000000800003aa      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    55: 00000000800003bc      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    56: 00000000800003ce      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    57: 00000000800003e2   2088 FUNC    GLOBAL DEFAULT    1 main                 smoke.o
+    58: 000000008000040c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi1          smoke.o
+    59: 000000008000041e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    60: 000000008000043c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi2          smoke.o
+    61: 0000000080000440      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi3          smoke.o
+    62: 0000000080000450      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    63: 0000000080000464      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi4          smoke.o
+    64: 0000000080000470      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    65: 0000000080000484      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    66: 0000000080000498      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    67: 00000000800004ac      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    68: 00000000800004c0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    69: 00000000800004d4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    70: 00000000800004e8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    71: 0000000080000500      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi6          smoke.o
+    72: 0000000080000508      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    73: 0000000080000516      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    74: 0000000080000528      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    75: 000000008000053a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    76: 0000000080000558      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi7          smoke.o
+    77: 000000008000056a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    78: 0000000080000580      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi8          smoke.o
+    79: 000000008000058c      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    80: 00000000800005c6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    81: 00000000800005ee      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    82: 0000000080000602      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    83: 0000000080000616      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    84: 000000008000062a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    85: 000000008000063e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    86: 0000000080000652      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    87: 0000000080000666      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    88: 000000008000067a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    89: 000000008000068e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    90: 00000000800006a2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    91: 00000000800006ba      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    92: 00000000800006c8      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    93: 00000000800006da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    94: 00000000800006ec      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    95: 00000000800006fe      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    96: 0000000080000712      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    97: 0000000080000726      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    98: 000000008000073a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+    99: 000000008000074e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   100: 0000000080000762      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   101: 0000000080000776      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   102: 000000008000078a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   103: 000000008000079e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   104: 00000000800007b2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   105: 00000000800007c6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   106: 00000000800007de      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   107: 00000000800007ec      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   108: 00000000800007fe      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   109: 0000000080000810      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   110: 0000000080000822      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   111: 0000000080000836      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   112: 000000008000084a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   113: 000000008000085e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   114: 0000000080000872      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   115: 0000000080000886      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   116: 000000008000089a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   117: 00000000800008ae      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   118: 00000000800008c2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   119: 00000000800008d6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   120: 00000000800008ea      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   121: 0000000080000902      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   122: 0000000080000910      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   123: 0000000080000922      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   124: 0000000080000934      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   125: 000000008000093e      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi10         smoke.o
+   126: 000000008000097c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi12         smoke.o
+   127: 0000000080000988      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   128: 00000000800009aa      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi13         smoke.o
+   129: 00000000800009ba      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   130: 00000000800009da      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   131: 00000000800009ee      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   132: 0000000080000a02      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   133: 0000000080000a16      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   134: 0000000080000a2a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   135: 0000000080000a3e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   136: 0000000080000a52      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   137: 0000000080000a66      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   138: 0000000080000a7a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   139: 0000000080000a8e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   140: 0000000080000aa2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   141: 0000000080000ab6      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   142: 0000000080000aca      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   143: 0000000080000ade      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   144: 0000000080000af2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   145: 0000000080000b06      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   146: 0000000080000b18      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   147: 0000000080000b26      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   148: 0000000080000b2c      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi5          smoke.o
+   149: 0000000080000b3a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   150: 0000000080000b5a      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   151: 0000000080000b60      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi9          smoke.o
+   152: 0000000080000b6e      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   153: 0000000080000b92      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   154: 0000000080000ba0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   155: 0000000080000bb2      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   156: 0000000080000bc4      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   157: 0000000080000bd0      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   158: 0000000080000bda      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   159: 0000000080000be0      0 NOTYPE  LOCAL  DEFAULT    1 .Lpcrel_hi11         smoke.o
+   160: 0000000080000bea      0 NOTYPE  LOCAL  DEFAULT    1 .L0                  smoke.o
+   161: 0000000080000d40      0 NOTYPE  GLOBAL DEFAULT    3 __bss_start          smoke.ld:10
+   162: 0000000080000d80  16384 OBJECT  LOCAL  DEFAULT    3 memory_check         smoke.o
+   163: 0000000080001510      0 NOTYPE  GLOBAL DEFAULT    2 __global_pointer$    smoke.ld:8
+   164: 0000000080004d80   1036 OBJECT  LOCAL  DEFAULT    3 .L_MergedGlobals     smoke.o
+   165: 0000000080004d80    268 OBJECT  LOCAL  DEFAULT    3 a                    smoke.o
+   166: 0000000080004f00    268 OBJECT  LOCAL  DEFAULT    3 b                    smoke.o
+   167: 0000000080005080    268 OBJECT  LOCAL  DEFAULT    3 c                    smoke.o
+   168: 0000000080005190      0 NOTYPE  GLOBAL DEFAULT    3 __bss_end            smoke.ld:11
+   169: 0000000080020000      0 NOTYPE  GLOBAL DEFAULT  ABS __stack_top          smoke.ld:13
