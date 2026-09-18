@@ -3,7 +3,8 @@
 #include "qbs_abi.h"
 #include "akv_abi.h"
 
-static volatile uint8_t *const uart = (volatile uint8_t *)0x03002000u;
+// The APB UART exposes one register per 32-bit bus word (4-byte stride).
+static volatile uint32_t *const uart = (volatile uint32_t *)0x03002000u;
 static void putc_uart(char c) {
     while (!(uart[5] & 0x20u)) {}
     uart[0] = (uint8_t)c;
