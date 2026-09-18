@@ -45,6 +45,19 @@ py hardware/fpga/ara_dsa_vcu118/software/uart_load.py `
   --no-readback --chunk-size 4096 --seconds 120
 ```
 
+For the regenerated fast-boot bitstream, use the CP2105 Enhanced COM port for
+the payload and switch the host back to the Linux console rate after `EXEC`:
+
+```powershell
+py hardware/fpga/ara_dsa_vcu118/software/uart_load.py `
+  --port COM7 --baud 1562500 --console-baud 115200 `
+  --elf hardware/fpga/ara_dsa_vcu118/linux/artifacts/fw_jump.elf `
+  --load 0x80200000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/Image `
+  --load 0x80100000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/ara_vcu118.dtb `
+  --load 0x88000000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/initramfs.cpio `
+  --no-readback --chunk-size 65536 --seconds 120
+```
+
 At 115200 baud, transferring the kernel takes a long time even with readback
 disabled. Expected output includes an OpenSBI banner, Linux early console
 messages through the SBI debug console, followed by the normal UART console,

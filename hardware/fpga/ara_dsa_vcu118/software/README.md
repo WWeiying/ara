@@ -17,6 +17,22 @@ Cheshire 原有 Boot ROM 的被动模式支持 UART 的 WRITE / READ / EXEC 协�
 py software/uart_load.py --port COM5
 ```
 
+The loader keeps 115200 as its default for compatibility with the existing
+bitstream. After rebuilding and programming the fast-boot bitstream, use the
+CP2105 Enhanced COM port and select the matching rate explicitly:
+
+```powershell
+py software/uart_load.py --port COM7 --baud 1562500 --console-baud 115200 `
+  --no-readback --chunk-size 65536
+```
+
+The 1562500 setting is only valid after the Boot ROM has been regenerated with
+the updated `reference/params.h` and the resulting RTL has gone through
+synthesis, implementation, and bitstream generation. The CP2105 Standard COM
+port is kept for 115200; the Enhanced COM port is the high-speed channel.
+`--console-baud 115200` switches the host back after `EXEC`, matching the
+Linux device tree and the smoke program's console setup.
+
 `vendor/` 随包携带纯 Python 的 pyserial/pyelftools wheel，脚本可直接导入，不必在线 pip 安装。
 加载器先逐块写入并读回校验，再执行入口，并显示 30 秒串口输出。
 预期出现 `SMOKE PASS: small RAM, RVV integer, QBS/AKV capabilities`；这是预期标志，不是已经上板跑出的记录。
@@ -28,7 +44,10 @@ py software/uart_load.py --port COM5
 
 - 整个硬件包尚未上板，UART 驱动、DDR 校准、实际波特率仍需在板上确认。
 - 默认 Boot ROM 来自锁定的 Cheshire RTL，Boot ROM 源码和 UART 协议源码在 `reference/`。
-- UART 没有带宽优势，只用于首个小程序。不要用 115200 串口传输 GB 级模型。
+- UART 仅用于加载和验证，不是持久化存储。旧 bitstream 使用 115200；新的
+  高速 bitstream 使用 1562500，并且主机必须选择 CP2105 Enhanced COM 口。
+  即使提高到 1562500，1.28 GB 模型仍需要约 2.3 小时，不能替代 Flash、PCIe
+  或 Ethernet 高速加载。
 - DDR 里的 `.elf` 和 FPGA 的 `.bit` 是两种不同文件，不能把 ELF 导入 Vivado 当成 HDL。
 - 要重编译，运行 `build_smoke.py --gcc <RV64 GCC> --objdump <RV64 objdump>`。Windows 创建 Vivado 工程不需要这个编译器。
 - 完整模型接入需另做 Linux/设备树/rootfs 和权重存储，并验证加速器上下文与操作系统的使用约束。

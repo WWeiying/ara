@@ -33,8 +33,9 @@ extern void *__base_usb;
 extern void *__base_spm;
 extern void *__base_dram;
 
-// Default boot baudrate
-static const uint32_t __BOOT_BAUDRATE = 115200;
+// Default boot baudrate. At the 50 MHz SoC clock, 1562500 gives an exact
+// 16550 divisor of 2 (core_freq / (16 * baudrate)).
+static const uint32_t __BOOT_BAUDRATE = 1562500;
 
 // Maximum number of LBAs to copy to SPM for boot (48 KiB)
 static const uint64_t __BOOT_SPM_MAX_LBAS = 2 * 48;

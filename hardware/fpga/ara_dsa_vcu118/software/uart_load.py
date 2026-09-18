@@ -16,6 +16,7 @@ ACK, EOT = b"\x06", b"\x04"
 DDR_START = 0x80000000
 DDR_END = 0x100000000
 CHUNK_SIZE = 256
+DEFAULT_BAUD = 115200
 
 
 def exact(port, size):
@@ -109,6 +110,17 @@ def print_uart_chunk(chunk):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="e.g. COM5 or /dev/ttyUSB0")
+    parser.add_argument(
+        "--baud", type=int, default=DEFAULT_BAUD,
+        help=(
+            f"UART baud rate (default: {DEFAULT_BAUD}); use 1562500 only with "
+            "the matching fast-boot bitstream and the CP2105 enhanced port"
+        ),
+    )
+    parser.add_argument(
+        "--console-baud", type=int,
+        help="switch the host UART to this rate immediately after EXEC is acknowledged",
+    )
     parser.add_argument("--elf", type=Path, default=HERE / "smoke.elf")
     parser.add_argument(
         "--load", action="append", type=parse_raw_load, default=[],
@@ -131,6 +143,10 @@ def main():
     args = parser.parse_args()
     if args.chunk_size <= 0:
         parser.error("--chunk-size must be positive")
+    if args.baud <= 0:
+        parser.error("--baud must be positive")
+    if args.console_baud is not None and args.console_baud <= 0:
+        parser.error("--console-baud must be positive")
     entry, segments = load_segments(args.elf)
     segments.extend(load_raw(path, address) for address, path in args.load)
     segments.sort()
@@ -142,7 +158,7 @@ def main():
     if not any(addr <= entry < addr + len(data) and flags & 1
                for addr, data, flags in segments):
         raise ValueError("Entry point is not in an executable ELF load segment")
-    with serial.Serial(args.port, 115200, timeout=0.2, write_timeout=10,
+    with serial.Serial(args.port, args.baud, timeout=0.2, write_timeout=10,
                        rtscts=False, dsrdtr=False) as port:
         port.reset_input_buffer()
         port.write(ACK)
@@ -155,6 +171,9 @@ def main():
         port.write(b"\x13" + struct.pack("<Q", entry))
         expect(port, ACK)
         print(f"Executing 0x{entry:x}; collecting UART for {args.seconds:g} seconds", flush=True)
+        if args.console_baud is not None and args.console_baud != args.baud:
+            port.baudrate = args.console_baud
+            print(f"Switched host UART console to {args.console_baud} baud", flush=True)
         output = bytearray()
         end = time.monotonic() + args.seconds
         while time.monotonic() < end:
