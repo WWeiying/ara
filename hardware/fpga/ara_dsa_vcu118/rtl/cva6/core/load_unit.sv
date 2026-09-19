@@ -289,10 +289,7 @@ module load_unit
         // An exception does not need a cache request. Retire it here instead
         // of waiting for the store-buffer conflict or a cache grant to clear.
         if (ex_i.valid) begin
-          if (req_port_i.data_rvalid) begin
-            // Retain the exception while an older load response has priority.
-            translation_req_o = 1'b1;
-          end else begin
+          if (!req_port_i.data_rvalid) begin
             state_d = IDLE;
             pop_ld_o = 1'b1;
           end
@@ -305,17 +302,17 @@ module load_unit
       WAIT_GNT: begin
         // An exception is already complete at the LSU/MMU boundary. Do not
         // let it depend on D$ arbitration, cache init, or stall_i.
+        // Keep the MMU request asserted independently of ex_i. The MMU
+        // exception is derived from the request and must not feed it back
+        // combinationally.
+        translation_req_o = 1'b1;
         if (ex_i.valid) begin
-          if (req_port_i.data_rvalid) begin
-            // Retain the exception while an older load response has priority.
-            translation_req_o = 1'b1;
-          end else begin
+          if (!req_port_i.data_rvalid) begin
             state_d = IDLE;
             pop_ld_o = 1'b1;
           end
         end else begin
           // keep the translation request up
-          translation_req_o   = 1'b1;
           // keep the request up
           req_port_o.data_req = 1'b1;
           // we finally got a data grant
