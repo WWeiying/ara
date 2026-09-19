@@ -286,35 +286,46 @@ module load_unit
 
       // wait here for the page offset to not match anymore
       WAIT_PAGE_OFFSET: begin
-        // we make a new request as soon as the page offset does not match anymore
-        if (!page_offset_matches_i) begin
+        // An exception does not need a cache request. Retire it here instead
+        // of waiting for the store-buffer conflict or a cache grant to clear.
+        if (ex_i.valid) begin
+          state_d = IDLE;
+          pop_ld_o = 1'b1;
+        end else if (!page_offset_matches_i) begin
+          // we make a new request as soon as the page offset does not match anymore
           state_d = WAIT_GNT;
         end
       end
 
       WAIT_GNT: begin
-        // keep the translation request up
-        translation_req_o   = 1'b1;
-        // keep the request up
-        req_port_o.data_req = 1'b1;
-        // we finally got a data grant
-        if (req_port_i.data_gnt) begin
-          // so we send the tag in the next cycle
-          if (CVA6Cfg.MmuPresent && !dtlb_hit_i) begin
-            state_d = ABORT_TRANSACTION;
-          end else begin
-            if (!stall_ni) begin
-              // we got a grant and a hit on the DTLB so we can send the tag in the next cycle
-              state_d  = SEND_TAG;
-              pop_ld_o = 1'b1;
-              // translation valid but this is to NC and the WB is not yet empty.
-            end else if (CVA6Cfg.NonIdemPotenceEn) begin
-              state_d = ABORT_TRANSACTION_NI;
+        // An exception is already complete at the LSU/MMU boundary. Do not
+        // let it depend on D$ arbitration, cache init, or stall_i.
+        if (ex_i.valid) begin
+          state_d = IDLE;
+          pop_ld_o = 1'b1;
+        end else begin
+          // keep the translation request up
+          translation_req_o   = 1'b1;
+          // keep the request up
+          req_port_o.data_req = 1'b1;
+          // we finally got a data grant
+          if (req_port_i.data_gnt) begin
+            // so we send the tag in the next cycle
+            if (CVA6Cfg.MmuPresent && !dtlb_hit_i) begin
+              state_d = ABORT_TRANSACTION;
+            end else begin
+              if (!stall_ni) begin
+                // we got a grant and a hit on the DTLB so we can send the tag in the next cycle
+                state_d  = SEND_TAG;
+                pop_ld_o = 1'b1;
+                // translation valid but this is to NC and the WB is not yet empty.
+              end else if (CVA6Cfg.NonIdemPotenceEn) begin
+                state_d = ABORT_TRANSACTION_NI;
+              end
             end
           end
-
+          // otherwise we keep waiting on our grant
         end
-        // otherwise we keep waiting on our grant
       end
       // we know for sure that the tag we want to send is valid
       SEND_TAG: begin
@@ -446,7 +457,9 @@ module load_unit
     // exceptions can retire out-of-order -> but we need to give priority to non-excepting load and stores
     // so we simply check if we got an rvalid if so we prioritize it by not retiring the exception - we simply go for another
     // round in the load FSM
-    if ((CVA6Cfg.MmuPresent || CVA6Cfg.NonIdemPotenceEn) && (state_q == WAIT_TRANSLATION) && !req_port_i.data_rvalid && ex_i.valid && valid_i) begin
+    if ((CVA6Cfg.MmuPresent || CVA6Cfg.NonIdemPotenceEn) &&
+        (state_q inside {WAIT_PAGE_OFFSET, WAIT_GNT, WAIT_TRANSLATION}) &&
+        !req_port_i.data_rvalid && ex_i.valid && valid_i) begin
       trans_id_o = lsu_ctrl_i.trans_id;
       valid_o = 1'b1;
       ex_o.valid = 1'b1;
