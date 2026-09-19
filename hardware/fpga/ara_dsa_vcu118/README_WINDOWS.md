@@ -219,7 +219,7 @@ git diff --cached --stat
 | SoC 时钟 | 50 MHz 起步目标，不是已测最高频率 |
 | 外部存储 | 一个 64-bit DDR4 通道，2 GiB，`0x80000000..0xffffffff` |
 | 片上存储 | Xilinx XPM，保持原端口和读延迟，实际 BRAM/URAM/LUTRAM 分配由综合决定 |
-| UART | 板载 USB-UART，用于控制台；旧 bitstream 为 115200，新高速 Boot ROM 为 1562500、8N1 |
+| UART | 板载 USB-UART，用于控制台和加载；当前默认 bitstream 为 115200、8N1，使用 CP2105 Standard COM6 |
 | 调试控制 | VIO 控制复位与启动模式，观察时钟和 DDR 就绪 |
 
 DDR 的 512-bit AXI 接口经位宽转换和异步 FIFO 接入 SoC，不能把仿真的 16 MiB L2 数组当作模型 DRAM。
