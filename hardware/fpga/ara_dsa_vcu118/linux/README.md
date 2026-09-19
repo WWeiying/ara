@@ -1,15 +1,15 @@
 # Linux bring-up
 
-This is the first Linux handoff for the existing passive UART boot path. It
-uses the current VCU118 bitstream and places OpenSBI, the kernel, the device
-tree, and a small initramfs in DDR before executing OpenSBI. The DTB is also
-embedded in OpenSBI so its platform initialization does not depend on the
+This is the Linux handoff for the existing passive UART boot path. It uses the
+current VCU118 bitstream and places OpenSBI, the kernel, the device tree, and
+an interactive BusyBox initramfs in DDR before executing OpenSBI. The DTB is
+also embedded in OpenSBI so its platform initialization does not depend on the
 initial register contents supplied by the passive UART `EXEC` call.
 
 ## Build
 
-The build host needs the RISC-V Buildroot SDK used for the kernel and OpenSBI,
-plus `dtc` and `cpio`:
+The build host needs the RISC-V Buildroot SDK used for the kernel, OpenSBI,
+and BusyBox, plus `dtc` and `cpio`:
 
 ```bash
 cd hardware/fpga/ara_dsa_vcu118
@@ -68,7 +68,15 @@ Ara DSA VCU118 Linux init reached
 Linux console, DDR and RVV handoff are alive
 ```
 
-This validates the OS handoff only. It is not yet a persistent Linux boot or a
-llama.cpp deployment: the current image has no shell, network, storage driver,
-or model filesystem. A real llama.cpp run still needs a storage path or a
-higher-bandwidth host loader and a rootfs with the application and GGUF model.
+The initramfs then starts a BusyBox shell on `/dev/console`. With the fast-boot
+bitstream, use `--interactive` so the loader keeps the same CP2105 Enhanced
+COM port open and forwards keyboard input after switching to 115200:
+
+```powershell
+py hardware/fpga/ara_dsa_vcu118/software/uart_load.py --port COM7 --baud 1562500 --console-baud 115200 --elf hardware/fpga/ara_dsa_vcu118/linux/artifacts/fw_jump.elf --load 0x80200000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/Image --load 0x80100000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/ara_vcu118.dtb --load 0x88000000:hardware/fpga/ara_dsa_vcu118/linux/artifacts/initramfs.cpio --no-readback --chunk-size 65536 --interactive
+```
+
+Press `Ctrl-C` on the host to disconnect the loader; the Linux process remains
+running. This is an interactive bring-up rootfs, not persistent storage and
+does not yet contain llama.cpp or GGUF weights. Those still need to be added to
+the initramfs or loaded into DDR by a separate high-bandwidth path.

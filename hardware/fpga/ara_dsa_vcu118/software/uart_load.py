@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Load DDR payloads using Cheshire's passive UART boot protocol."""
 import argparse
+import os
 from pathlib import Path
+import select
 import struct
 import sys
 import time
@@ -107,6 +109,52 @@ def print_uart_chunk(chunk):
         print(f"\n[UART non-UTF8] {chunk.hex(' ')}", flush=True)
 
 
+def interactive_console(port):
+    """Bridge the host terminal and target UART after EXEC."""
+    if os.name == "nt":
+        import msvcrt
+
+        def read_input():
+            data = bytearray()
+            while msvcrt.kbhit():
+                char = msvcrt.getwch()
+                if char in ("\x00", "\xe0"):
+                    msvcrt.getwch()
+                    continue
+                if char == "\x03":
+                    raise KeyboardInterrupt
+                data.extend(b"\r" if char == "\r" else char.encode("utf-8", errors="replace"))
+            return bytes(data)
+
+        restore_terminal = lambda: None
+    else:
+        import termios
+        import tty
+
+        stdin_fd = sys.stdin.fileno()
+        saved_terminal = termios.tcgetattr(stdin_fd)
+        tty.setraw(stdin_fd)
+
+        def read_input():
+            ready, _, _ = select.select([stdin_fd], [], [], 0)
+            return os.read(stdin_fd, 1024) if ready else b""
+
+        def restore_terminal():
+            termios.tcsetattr(stdin_fd, termios.TCSADRAIN, saved_terminal)
+
+    print("\nInteractive UART console; press Ctrl-C to disconnect.\n", flush=True)
+    try:
+        while True:
+            chunk = port.read(256)
+            if chunk:
+                print_uart_chunk(chunk)
+            data = read_input()
+            if data:
+                port.write(data)
+    finally:
+        restore_terminal()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="e.g. COM5 or /dev/ttyUSB0")
@@ -140,6 +188,10 @@ def main():
         help=f"bytes per UART WRITE transaction (default: {CHUNK_SIZE})",
     )
     parser.add_argument("--seconds", type=float, default=30)
+    parser.add_argument(
+        "--interactive", action="store_true",
+        help="bridge host keyboard and UART after EXEC instead of timing out",
+    )
     args = parser.parse_args()
     if args.chunk_size <= 0:
         parser.error("--chunk-size must be positive")
@@ -174,14 +226,19 @@ def main():
         if args.console_baud is not None and args.console_baud != args.baud:
             port.baudrate = args.console_baud
             print(f"Switched host UART console to {args.console_baud} baud", flush=True)
-        output = bytearray()
-        end = time.monotonic() + args.seconds
-        while time.monotonic() < end:
-            chunk = port.read(256)
-            output.extend(chunk)
-            if chunk:
-                print_uart_chunk(chunk)
-        if args.elf.name == "smoke.elf" and not args.load and b"SMOKE PASS:" not in output:
+        if args.interactive:
+            interactive_console(port)
+            output = bytearray()
+        else:
+            output = bytearray()
+            end = time.monotonic() + args.seconds
+            while time.monotonic() < end:
+                chunk = port.read(256)
+                output.extend(chunk)
+                if chunk:
+                    print_uart_chunk(chunk)
+        if (not args.interactive and args.elf.name == "smoke.elf" and
+                not args.load and b"SMOKE PASS:" not in output):
             raise RuntimeError("Smoke pass marker not received; inspect UART output and VIO")
 
 
