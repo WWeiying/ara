@@ -145,8 +145,14 @@ reset_vector:
     la      ra, _eoc
     // Call main
     la      t0, main
+#if defined(ARA_FPGA)
+    // The UART loader already starts the image in M-mode.  Calling main
+    // directly avoids depending on the FPGA's MRET privilege transition.
+    jalr    ra, 0(t0)
+#else
     csrw    mepc, t0
     mret
+#endif
 
     .align 2
 trap_vector:
