@@ -95,7 +95,7 @@ e1c558d4b187ef6df09411d3a3835a6d64ff7a2d3c4fb488ad1b2045deb710ff  rtl/ara/hardwa
 1ffd580c78f2fc3acc538b717595a8cf722eeb4d3c3971f9b16577e8ce1ee8c9  rtl/ara/hardware/src/lane/valu.sv
 dc6161e84a36719f070f77b7af40458eb719516da8390b3e425288e9cf0fedf2  rtl/ara/hardware/src/lane/vector_fus_stage.sv
 583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314  rtl/ara/hardware/src/lane/vector_regfile.sv
-5a116dd146aeea0e3f2bf1a03cfa1b7e1b383097f5b046c3b48bee08f065a2db  rtl/ara/hardware/src/lane/vmfpu.sv
+2f7b2de426a5f7c89710eec96ff3b6af05635641d1b4fb808d1f7290f4958a41  rtl/ara/hardware/src/lane/vmfpu.sv
 01bee7345b4ad44c79d3653715b8e8390c4fe3f8e36c460d6706184d4a1f3482  rtl/ara/hardware/src/masku/masku.sv
 789747d1a4f03fe1da20c9024e78b7226c6d3b6b8cebb35a41778f4f0aeb327a  rtl/ara/hardware/src/masku/masku_operands.sv
 5b443bf1aa3bb2e64d21e6661c2aee4b0edaaeeb6c3a5d92eb99a6923cc33552  rtl/ara/hardware/src/segment_sequencer.sv
