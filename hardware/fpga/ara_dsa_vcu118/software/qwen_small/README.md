@@ -12,11 +12,16 @@ Q4_K weight access, the matmul kernel, correctness checking, and cycle timing.
 
 ## QEMU functional check
 
-On the Linux development host, run the existing QBS contract regression first:
+On the Linux development host, the existing bare-metal QBS contract
+regression is optional:
 
 ```bash
 verification/qbs/qemu/run_qbs_contract_test.sh
 ```
+
+That test uses a bare-metal finisher address and requires a QEMU machine
+configuration exposing that finisher. It is not the gate for this package;
+the real llama.cpp check below is the functional acceptance check.
 
 For a small real llama.cpp model check, use the 101 MiB SmolLM2 Q4_K_M model;
 this validates the QEMU/llama.cpp dispatch path and is separate from FPGA
