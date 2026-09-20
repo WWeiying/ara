@@ -54,6 +54,11 @@ markers are diagnostic only and are intentionally absent from the Spike output.
 | 15 | adjacent max/min reductions, first result | 41700000 |
 | 16 | second result from adjacent reductions | c1700000 |
 
+The probe also emits `Q17` before stage 05 as a standalone `vfredmin` control.
+It is a discriminator: if `Q17` passes but stage 06 fails, the failure is
+specific to the adjacent max/min reduction sequence rather than standalone
+`vfredmin`.
+
 After those checks, the same unmodified C quantizer used by the boot probe runs.
 Its 256 quantized elements, 16 block sums and scale bits are checked against an
 integer reference. Only `QUANT_PROBE PASS` indicates full diagnostic completion.
