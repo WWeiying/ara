@@ -58,6 +58,8 @@ The probe also emits `Q17` before stage 05 as a standalone `vfredmin` control.
 It is a discriminator: if `Q17` passes but stage 06 fails, the failure is
 specific to the adjacent max/min reduction sequence rather than standalone
 `vfredmin`.
+`Q18` reads back the `v25` scalar seed before `Q17`; it must report
+`7f800000`.
 
 After those checks, the same unmodified C quantizer used by the boot probe runs.
 Its 256 quantized elements, 16 block sums and scale bits are checked against an

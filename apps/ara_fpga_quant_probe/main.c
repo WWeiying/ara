@@ -12,7 +12,7 @@ extern void printstr(const char *);
 
 static float input[QK_K] __attribute__((aligned(128)));
 static uint8_t scratch[QK_K] __attribute__((aligned(128)));
-static uint64_t trace[18] __attribute__((aligned(128)));
+static uint64_t trace[20] __attribute__((aligned(128)));
 static block_q8_K output __attribute__((aligned(128)));
 
 extern int probe_quant_ops(const float *, uint8_t *, uint64_t *);
@@ -24,7 +24,7 @@ int main(void) {
 
   int rc = probe_quant_ops(input, scratch, trace);
 #ifndef SPIKE
-  for (unsigned i = 1; i <= 16; ++i)
+  for (unsigned i = 1; i <= 18; ++i)
     printf("QUANT_VALUE %u %x\n", i, (unsigned)trace[i]);
 #endif
   if (rc) {

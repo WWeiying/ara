@@ -113,6 +113,10 @@ probe_quant_ops:
   vmv.x.s a2, v16
   done 4, 0xc1700000
 
+  begin 18
+  vmv.x.s a2, v25
+  done 18, 0x7f800000
+
   /* Discriminate standalone vfredmin from the adjacent max/min sequence. */
   begin 17
   vfredmin.vs v9, v16, v25
