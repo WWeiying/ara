@@ -70,12 +70,22 @@ reset_vector:
     li      x29, 0
     li      x30, 0
     li      x31, 0
-    // Initialize stack at the end of the DRAM region
+    // The Ara simulation exposes DRAM end through the CTRL block.  The
+    // VCU118 Cheshire design has DDR at 0x80000000 but does not expose that
+    // simulation-only CTRL window, so use the top of the 2 MiB bare-metal
+    // image region for FPGA-hosted applications.
+#if defined(ARA_FPGA)
+    li      sp, 0x80200000
+#else
     la      t0, dram_end_address_reg
     ld      sp, 0(t0)
+#endif
     // Set up a PMP to permit all accesses
     li t0, (1 << (31 + (__riscv_xlen / 64) * (53 - 31))) - 1
     csrw pmpaddr0, t0
+#if defined(ARA_FPGA)
+    la      t0, trap_vector
+#endif
     csrw    mtvec, t0
     csrwi   medeleg, 0
     csrwi   mideleg, 0
