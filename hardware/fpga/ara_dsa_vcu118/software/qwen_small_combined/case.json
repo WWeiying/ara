@@ -1,0 +1,21 @@
+{
+  "case_id": "shape_decode_n32_qbs_plus_attention_core",
+  "model": "qwen2.5-1.5b-instruct-q4_k_m",
+  "qbs": {
+    "operator": "blk_0_attn_q_weight",
+    "k": 1536,
+    "rows": 32,
+    "inputs": 1,
+    "weight_type": "q4_K"
+  },
+  "attention": {
+    "operator": "operator/decode/attention_core",
+    "implementation": "akv_v2",
+    "dim": 128,
+    "tokens": 1,
+    "query_heads": 12,
+    "kv_heads": 2,
+    "physical_kv": 256
+  },
+  "data_source": "llama.cpp real capture, layer 0"
+}

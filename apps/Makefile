@@ -225,6 +225,15 @@ llama_qwen25_small_attention/akv_attention.S.o.spike \
 llama_qwen25_small_attention/akv_v2_attention.S.o \
 llama_qwen25_small_attention/akv_v2_attention.S.o.spike: $(AKV_RUNTIME_ASM_SOURCE)
 
+llama_qwen25_small_qbs_akv/akv_runtime.c.o \
+llama_qwen25_small_qbs_akv/akv_runtime.c.o.spike: $(AKV_RUNTIME_C_SOURCES)
+llama_qwen25_small_qbs_akv/akv_prefill_reference.c.o \
+llama_qwen25_small_qbs_akv/akv_prefill_reference.c.o.spike: $(AKV_PREFILL_C_SOURCE)
+llama_qwen25_small_qbs_akv/akv_attention.S.o \
+llama_qwen25_small_qbs_akv/akv_attention.S.o.spike \
+llama_qwen25_small_qbs_akv/akv_v2_attention.S.o \
+llama_qwen25_small_qbs_akv/akv_v2_attention.S.o.spike: $(AKV_RUNTIME_ASM_SOURCE)
+
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)
 

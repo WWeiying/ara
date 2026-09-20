@@ -138,6 +138,7 @@ static akv_device_t attention_akv_device;
 static akv_attention_plan_t attention_akv_plan;
 static akv_attention_v2_workspace_t attention_akv_v2_workspace;
 static attention_prefill_workspace_t attention_prefill_workspace;
+static uint64_t operator_last_cycles;
 
 #define attention_akv_v2_prefill_workspace attention_prefill_workspace.akv
 #define attention_q64_query attention_prefill_workspace.q64.query
@@ -2092,6 +2093,7 @@ int main(void) {
     default: return 1;
   }
   const uint64_t cycles = read_cycle() - start;
+  operator_last_cycles = cycles;
   perf_time();
   HW_CNT_NOT_READY;
   if (cfg->kind == CASE_ATTENTION && (cfg->flags & CASE_FLAG_ATTENTION_AKV_V2))

@@ -207,6 +207,7 @@ static qbs_descriptor_t
 static float benchmark_output[BENCH_TOTAL_OUTPUTS]
     __attribute__((aligned(64), section(".bss")));
 static qbs_status_t benchmark_execution_status = QBS_STATUS_OK;
+static uint64_t benchmark_last_compute_cycles;
 
 static inline uint64_t benchmark_cycle(void) {
 #ifdef SPIKE
@@ -605,6 +606,7 @@ int main(void) {
   const int mismatches = benchmark_validate(&max_abs, &max_rel, &checksum);
   const int passed =
       mismatches == 0 && benchmark_execution_status == QBS_STATUS_OK;
+  benchmark_last_compute_cycles = compute_cycles;
   BENCH_REPORT(
       "QBS_REAL_BENCH case=%s result=%s k=%d rows=%d inputs=%d outputs=%d "
       "tiles=%d operations=%d outputs_per_operation=%d result_count=%d "

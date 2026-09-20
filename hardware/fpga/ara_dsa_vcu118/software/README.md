@@ -71,3 +71,10 @@ the Linux artifacts or the QBS linear package. Run it with
 `run_qwen_attention_small.ps1`; each mode writes the raw UART log plus CSV,
 JSON, and an ELF hash, and `compare_qwen_attention_small.ps1` produces the
 three-mode cycle comparison.
+
+`qwen_small_combined/` contains the next small end-to-end replay. Its single
+`qbs_akv.elf` runs one real Qwen Q4_K projection through QBS and one real
+`attention_core` decode through AKV-v2, checks both golden outputs, and emits
+QBS cycles, attention cycles, and their UART-excluded total. Run
+`run_qwen_small_combined.ps1`; it saves `raw.log`, `result.csv`,
+`result.json`, and the ELF hash under `D:\qwen_small_combined_runs`.

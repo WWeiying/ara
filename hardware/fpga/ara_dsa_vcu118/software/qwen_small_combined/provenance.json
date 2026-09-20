@@ -1,0 +1,29 @@
+{
+  "package": "qwen_small_combined",
+  "model": "qwen2.5-1.5b-instruct-q4_k_m",
+  "source_runtime": "llama.cpp",
+  "source_capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m",
+  "qbs_case": "shape_decode_n32_qbs",
+  "attention_case": "operator/decode/attention_core",
+  "attention_implementation": "akv_v2",
+  "qbs_input_bytes": 6144,
+  "qbs_embedded_weight_bytes": 1327104,
+  "attention_query_bytes": 6144,
+  "attention_key_bytes": 131072,
+  "attention_value_bytes": 131072,
+  "attention_mask_bytes": 512,
+  "attention_golden_bytes": 6144,
+  "cycle_semantics": {
+    "qbs_cycles": "QBS timed compute_cycles from the QBS benchmark",
+    "attention_cycles": "LLAMA_OPERATOR timed cycle interval",
+    "total_cycles": "qbs_cycles plus attention_cycles; UART printing excluded",
+    "clock_hz": 50000000
+  },
+  "validation": {
+    "qbs_result": "PASS required",
+    "attention_result": "PASS required",
+    "mismatches": 0,
+    "qbs_status": 0,
+    "attention_status": 0
+  }
+}
