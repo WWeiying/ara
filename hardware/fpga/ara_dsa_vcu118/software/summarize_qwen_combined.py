@@ -23,6 +23,11 @@ def parse(log):
     combined = None
     for raw in log.splitlines():
         line = raw.strip()
+        for marker in ("QBS_REAL_BENCH ", "ATTENTION_DISPATCH ",
+                       "LLAMA_OPERATOR ", "QBS_AKV_COMBINED "):
+            if marker in line and not line.startswith(marker):
+                line = line[line.index(marker):]
+                break
         if line.startswith("QBS_REAL_BENCH "):
             qbs = fields(line.split(None, 1)[1])
         elif line.startswith("ATTENTION_DISPATCH "):

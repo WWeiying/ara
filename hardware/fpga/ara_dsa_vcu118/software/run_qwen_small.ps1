@@ -36,6 +36,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & py -3 $Summarizer --log $Raw --output $Csv --json $Json --mode $Mode
+if ($LASTEXITCODE -ne 0) {
+    throw "result parser failed; inspect $Raw"
+}
 Get-FileHash -Algorithm SHA256 $Elf | Out-File (Join-Path $Run 'elf.sha256') -Encoding ascii
 Write-Host "Saved: $Raw"
 Write-Host "Saved: $Csv"
