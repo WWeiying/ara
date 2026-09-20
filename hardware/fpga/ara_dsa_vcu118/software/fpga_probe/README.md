@@ -31,6 +31,10 @@ a numerical mismatch at the last begun stage. A missing D narrows the blocked
 region to that group and its dependency/completion path, not necessarily the
 first instruction named below.
 
+For stage 01, the FPGA diagnostic also emits `Q01a` through `Q01g` markers:
+they bracket `vsetvli`, `vmv.v.x`, `vmv.s.x`, and `vmv.x.s` separately. These
+markers are diagnostic only and are intentionally absent from the Spike output.
+
 | Stage | Operation group | Expected low 32 bits |
 | --- | --- | --- |
 | 01 | e32/m8 initialize and integer scalar read | ff800000 |

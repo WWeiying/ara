@@ -49,6 +49,18 @@
 #endif
 .endm
 
+.macro substage letter
+#ifdef ARA_FPGA
+  li t3, 0x03002000
+  uart_char 81
+  uart_char 48
+  uart_char 49
+  uart_char \letter
+  uart_char 13
+  uart_char 10
+#endif
+.endm
+
 .macro begin id
   li a4, \id
   sd a4, 0(a3)
@@ -67,16 +79,23 @@ probe_quant_ops:
   mv a3, a2
   begin 1
   vsetvli t0, zero, e32, m8, ta, ma
+  substage 97
   mv a2, t0
   li t1, 256
   bne t0, t1, .Lfail
   li t0, 0xff800000
   vmv.v.x v8, t0
+  substage 98
   vmv.s.x v24, t0
+  substage 99
   li t0, 0x7f800000
   vmv.v.x v16, t0
+  substage 100
   vmv.s.x v25, t0
+  substage 101
+  substage 102
   vmv.x.s a2, v8
+  substage 103
   done 1, 0xff800000
 
   begin 2

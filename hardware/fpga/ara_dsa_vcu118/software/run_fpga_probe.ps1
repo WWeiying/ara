@@ -35,7 +35,7 @@ $LoadExit = $LASTEXITCODE
 $Marker = if ($Probe -eq 'quant') { 'QUANT_PROBE PASS' } else { 'FPGA_PROBE 5 quantize_done' }
 $Complete = ($LoadExit -eq 0) -and $Text.Contains($Marker)
 $LastStage = @($Text -split '\r?\n' | Where-Object {
-    $_ -match '^(Q\d\d |QUANT_PROBE |FPGA_PROBE )'
+    $_ -match '^(Q\d\d[A-Za-z]? |QUANT_PROBE |FPGA_PROBE )'
 }) | Select-Object -Last 1
 [ordered]@{
     probe = $Probe
