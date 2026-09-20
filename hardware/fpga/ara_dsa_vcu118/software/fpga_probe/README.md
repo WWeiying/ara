@@ -61,6 +61,11 @@ specific to the adjacent max/min reduction sequence rather than standalone
 `Q18` reads back the `v25` scalar seed before `Q17`; it must report
 `7f800000`.
 
+`Q19` repeats `vfredmin.vs` with `VL=1`, so only the first element is active.
+It uses the same `v16` data and `v25` seed as `Q17`. If `Q19` passes while
+`Q17` fails, the fault is in cross-lane/SLDU reduction rather than the
+intra-lane reduction or scalar seed path.
+
 After those checks, the same unmodified C quantizer used by the boot probe runs.
 Its 256 quantized elements, 16 block sums and scale bits are checked against an
 integer reference. Only `QUANT_PROBE PASS` indicates full diagnostic completion.

@@ -117,6 +117,16 @@ probe_quant_ops:
   vmv.x.s a2, v25
   done 18, 0x7f800000
 
+  /* Keep only element zero active to isolate intra-lane reduction from
+   * the cross-lane/SLDU reduction. */
+  vsetivli zero, 1, e32, m8, ta, ma
+  begin 19
+  vfredmin.vs v9, v16, v25
+  vfmv.f.s ft1, v9
+  fmv.x.w a2, ft1
+  done 19, 0xc1700000
+  vsetvli t0, zero, e32, m8, ta, ma
+
   /* Discriminate standalone vfredmin from the adjacent max/min sequence. */
   begin 17
   vfredmin.vs v9, v16, v25
