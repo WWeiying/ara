@@ -78,3 +78,23 @@ three-mode cycle comparison.
 QBS cycles, attention cycles, and their UART-excluded total. Run
 `run_qwen_small_combined.ps1`; it saves `raw.log`, `result.csv`,
 `result.json`, and the ELF hash under `D:\qwen_small_combined_runs`.
+
+## Four-mode small matrix
+
+The matrix runner combines the same real-Qwen projection and attention records
+into four comparable rows: `rvv`, `qbs`, `akv` (AKV-v2 attention), and
+`qbs_akv`. It runs five ELF cases because the first three rows reuse the
+projection or attention records; all cycle measurements are compute intervals
+and exclude UART printing.
+
+Use the normal bitstream and COM6/115200. Add `-WaitForReset` when the CPU
+must be reset in Vivado VIO before each case:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\software\run_qwen_small_matrix.ps1 -Port COM6 -WaitForReset
+```
+
+The final `matrix.csv`, `matrix.json`, and `manifest.json` are written under
+`D:\qwen_small_matrix_runs\matrix_<timestamp>`. Each row includes projection
+and attention cycles, total cycles, 50 MHz seconds, speedup against RVV,
+logical read bytes, native dispatch, mismatch counts, and pass status.
