@@ -39,3 +39,4 @@ def_args_conjugate_gradient	?= "128 0 0.5"
 # box1d, particles_per_box, alpha, maxelm
 def_args_lavamd      ?= "2 32 0.5 128"
 def_args_llama_q4km_operator ?= "operator/decode/attention_residual"
+def_args_llama_qwen25_small_attention ?= "operator/decode/attention_core rvv"

@@ -1,0 +1,24 @@
+{
+  "model": "qwen2.5-1.5b-instruct",
+  "capture_case": "operator/decode/attention_core",
+  "phase": "decode",
+  "dim": 128,
+  "tokens": 1,
+  "query_heads": 12,
+  "kv_heads": 2,
+  "physical_kv_capacity": 256,
+  "input_bytes": {
+    "query_f32": 6144,
+    "key_f16": 131072,
+    "value_f16": 131072,
+    "mask_f16": 512,
+    "golden_f32": 6144
+  },
+  "implementations": {
+    "rvv": "standard RVV attention",
+    "akv": "AKV version 1 native attention",
+    "akv_v2": "AKV-v2 token-axis native attention"
+  },
+  "clock_hz": 50000000,
+  "link_l2_bytes": 2097152
+}

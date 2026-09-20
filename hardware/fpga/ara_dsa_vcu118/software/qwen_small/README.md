@@ -78,5 +78,6 @@ SoC clock, convert cycles to seconds as `cycles / 50000000`. Compare RVV and
 QBS using the same bitstream, reset procedure, and UART command.
 
 This first package does not claim AKV coverage. It establishes a reproducible
-real-Qwen RVV-versus-QBS baseline; AKV should be added as a second small case
-after this data path is confirmed.
+real-Qwen RVV-versus-QBS baseline. The separate `../qwen_attention_small/`
+package provides the small RVV/AKV attention measurement without changing
+this linear benchmark.

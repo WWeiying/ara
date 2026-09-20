@@ -1,0 +1,11 @@
+{
+  "source": "llama.cpp capture",
+  "capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m",
+  "generator": "apps/llama_q4km_operator/script/gen_data.py",
+  "capture_case": "operator/decode/attention_core",
+  "compiler_mode": "fpga=1 sim_l2_mb=2",
+  "target": "RV64GCV_ZFH_ZVFH",
+  "uart": "COM6/115200",
+  "entry": "0x80000000",
+  "note": "Same real Qwen input and golden output for all three mode ELFs."
+}
