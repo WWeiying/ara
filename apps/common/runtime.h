@@ -35,7 +35,7 @@ inline int64_t perf_time() {
   asm volatile("rdcycle zero");
 };
 
-#ifndef SPIKE
+#if !defined(SPIKE) && !defined(ARA_FPGA)
 // Enable and disable the hw-counter
 // Until the HW counter is not enabled, it will not start
 // counting even if a vector instruction is dispatched

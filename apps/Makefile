@@ -28,6 +28,12 @@ ifeq ($(filter $(sim_l2_mb),$(valid_sim_l2_mb)),)
 $(error sim_l2_mb must be one of: $(valid_sim_l2_mb))
 endif
 
+# Route benchmark printf output to the VCU118 UART and avoid the simulation-
+# only SoC hardware-counter MMIO register for FPGA-hosted microbenchmarks.
+ifeq ($(fpga),1)
+ENV_DEFINES += -DARA_FPGA=1
+endif
+
 ifeq ($(sim_l2_mb),1)
 LINKER_SCRIPT := $(COMMON_DIR)/link.ld
 else

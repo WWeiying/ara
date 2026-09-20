@@ -1,0 +1,127 @@
+{
+  "activation_quantization": "F32_to_Q8_K_at_runtime",
+  "capture_inputs": 1,
+  "capture_llama_commit": "unknown",
+  "capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m",
+  "capture_rows": 1536,
+  "captured_metadata": {
+    "activation": {
+      "nbytes": 6144,
+      "role": "activation_f32",
+      "shape": [
+        1536,
+        1,
+        1,
+        1
+      ],
+      "strides": [
+        4,
+        6144,
+        6144,
+        6144
+      ],
+      "tensor_name": "attn_norm-0",
+      "type": "f32"
+    },
+    "golden": {
+      "nbytes": 6144,
+      "role": "output_f32",
+      "shape": [
+        1536,
+        1,
+        1,
+        1
+      ],
+      "strides": [
+        4,
+        6144,
+        6144,
+        6144
+      ],
+      "tensor_name": "Qcur-0",
+      "type": "f32"
+    },
+    "weight": {
+      "nbytes": 1327104,
+      "role": "weight_q4_K",
+      "shape": [
+        1536,
+        1536,
+        1,
+        1
+      ],
+      "strides": [
+        144,
+        864,
+        1327104,
+        1327104
+      ],
+      "tensor_name": "blk.0.attn_q.weight",
+      "type": "q4_K"
+    }
+  },
+  "case_id": "shape_decode_n32_qbs",
+  "embedded_weight_layout": "qbs_r4_block_major_v1",
+  "evaluation_slice": {
+    "input_rows": [
+      0,
+      1
+    ],
+    "output_rows": [
+      0,
+      32
+    ]
+  },
+  "inputs": 1,
+  "k": 1536,
+  "layer": 0,
+  "model": "qwen2.5-1.5b-instruct",
+  "model_description": "qwen2 1.5B Q4_K - Medium",
+  "model_metadata_sha256": "d3d8e336b987b79805dcdc62530c729b1427311345ef8a506e3300eae51f75cd",
+  "offline_repack_excluded": true,
+  "op": "GGML_OP_MUL_MAT",
+  "operator": "blk_0_attn_q_weight",
+  "phase": "decode",
+  "qbs": {
+    "activation_context": false,
+    "activation_layout": "A_ROW_MAJOR",
+    "activation_profile": "Q8_K",
+    "block_elements": 256,
+    "descriptor_version": 2,
+    "k_blocks": 6,
+    "operation_chain": {
+      "controlled_weight_replay": false,
+      "cross_operator_reuse": false,
+      "operations": 1,
+      "runtime_quantizations": 1
+    },
+    "tile_n": 32,
+    "weight_layout": "W_R4_BLOCK_MAJOR",
+    "weight_profile": "Q4_K"
+  },
+  "qbs_activation_pack_in_timed_region": false,
+  "qbs_command_setup_in_timed_region": true,
+  "qbs_descriptor_mode": "per_command_stack_in_timed_region",
+  "rows": 32,
+  "runtime_timed_region": "F32_to_Q8_K+per_command_descriptor_construction+command_fence_and_vsetvli+blocking_QBS_execution+result_vector_stores",
+  "tensors": {
+    "activation_f32.bin": {
+      "bytes": 6144,
+      "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1"
+    },
+    "embedded_weight.bin": {
+      "bytes": 27648,
+      "layout": "qbs_r4_block_major_v1",
+      "sha256": "d5cd42fcab8514ee34eda594c53293202dd7536cc8923a2994fafd60b99b3510"
+    },
+    "golden_f32.bin": {
+      "bytes": 128,
+      "sha256": "9c29bd4234c6d8c1a159cae5e66072e09f3e8f2ce0b843b0f9c3d6b0ae962113"
+    },
+    "source_weight.bin": {
+      "bytes": 27648,
+      "sha256": "eba1f01414cad5bbfa95a86586275efdff06a8b707daf3c1db3f0ee47b0368e5"
+    }
+  },
+  "weight_type": "q4_K"
+}

@@ -1,0 +1,108 @@
+{
+  "activation_quantization": "F32_to_Q8_K_at_runtime",
+  "capture_inputs": 1,
+  "capture_llama_commit": "unknown",
+  "capture_root": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m",
+  "capture_rows": 1536,
+  "captured_metadata": {
+    "activation": {
+      "nbytes": 6144,
+      "role": "activation_f32",
+      "shape": [
+        1536,
+        1,
+        1,
+        1
+      ],
+      "strides": [
+        4,
+        6144,
+        6144,
+        6144
+      ],
+      "tensor_name": "attn_norm-0",
+      "type": "f32"
+    },
+    "golden": {
+      "nbytes": 6144,
+      "role": "output_f32",
+      "shape": [
+        1536,
+        1,
+        1,
+        1
+      ],
+      "strides": [
+        4,
+        6144,
+        6144,
+        6144
+      ],
+      "tensor_name": "Qcur-0",
+      "type": "f32"
+    },
+    "weight": {
+      "nbytes": 1327104,
+      "role": "weight_q4_K",
+      "shape": [
+        1536,
+        1536,
+        1,
+        1
+      ],
+      "strides": [
+        144,
+        864,
+        1327104,
+        1327104
+      ],
+      "tensor_name": "blk.0.attn_q.weight",
+      "type": "q4_K"
+    }
+  },
+  "case_id": "shape_decode_n32_rvv",
+  "embedded_weight_layout": "q4_K_x32_rvv",
+  "evaluation_slice": {
+    "input_rows": [
+      0,
+      1
+    ],
+    "output_rows": [
+      0,
+      32
+    ]
+  },
+  "inputs": 1,
+  "k": 1536,
+  "layer": 0,
+  "model": "qwen2.5-1.5b-instruct",
+  "model_description": "qwen2 1.5B Q4_K - Medium",
+  "model_metadata_sha256": "d3d8e336b987b79805dcdc62530c729b1427311345ef8a506e3300eae51f75cd",
+  "offline_repack_excluded": true,
+  "op": "GGML_OP_MUL_MAT",
+  "operator": "blk_0_attn_q_weight",
+  "phase": "decode",
+  "rows": 32,
+  "runtime_setup_cycles": 0,
+  "runtime_timed_region": "F32_to_Q8_K_plus_quantized_matmul",
+  "tensors": {
+    "activation_f32.bin": {
+      "bytes": 6144,
+      "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1"
+    },
+    "embedded_weight.bin": {
+      "bytes": 27648,
+      "layout": "q4_K_x32_rvv",
+      "sha256": "45c4c107cb067b00ec60733f24a419e573f103b097e15aa21f640763d746e878"
+    },
+    "golden_f32.bin": {
+      "bytes": 128,
+      "sha256": "9c29bd4234c6d8c1a159cae5e66072e09f3e8f2ce0b843b0f9c3d6b0ae962113"
+    },
+    "source_weight.bin": {
+      "bytes": 27648,
+      "sha256": "eba1f01414cad5bbfa95a86586275efdff06a8b707daf3c1db3f0ee47b0368e5"
+    }
+  },
+  "weight_type": "q4_K"
+}
