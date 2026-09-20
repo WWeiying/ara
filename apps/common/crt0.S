@@ -120,6 +120,13 @@ reset_vector:
     csrw medeleg, t0
     .align 2
 1:  csrwi mstatus, 0
+#if defined(ARA_FPGA)
+    // The VCU118 UART loader enters this ELF directly in M-mode.  It does
+    // not provide a lower-privilege PMP/S-mode runtime for bare-metal apps,
+    // so keep FPGA benchmarks in M-mode, like the board smoke program.
+    li      t0, MSTATUS_MPP
+    csrs    mstatus, t0
+#endif
     // Enable FP Extension
     li      t0, (MSTATUS_FS & (MSTATUS_FS >> 1))
     csrs    mstatus, t0
@@ -153,14 +160,23 @@ trap_vector:
 
     .align 2
 _eoc:
+#if defined(ARA_FPGA)
+1:  wfi
+    j       1b
+#else
     la t0, eoc_address_reg
     sd a0, 0(t0)
     jal x0, _eoc
+#endif
 
     .align 2
 _fail:
+#if defined(ARA_FPGA)
+    j       _eoc
+#else
     la t0, eoc_address_reg
     sd a0, 0(t0)
     jal x0, _eoc
+#endif
 
 .section .data
