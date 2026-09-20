@@ -27,6 +27,8 @@ model_digest=${QBS_MODEL_DIGEST:-}
 qbs_wide_m=${GGML_RISCV_QBS_WIDE_M:-0}
 work_dir=${QBS_QWEN_WORK_DIR:-${script_dir}/build/qwen-native-check}
 log_file=${QBS_QWEN_LOG:-${work_dir}/qwen-native-check.log}
+report_csv=${QBS_QWEN_REPORT_CSV:-${work_dir}/qwen-native-check.csv}
+report_json=${QBS_QWEN_REPORT_JSON:-${work_dir}/qwen-native-check.json}
 model_file=${QBS_MODEL_FILE:-}
 if [[ -n "${model_file}" ]]; then
   model_name=${QBS_MODEL_NAME:-$(basename -- "${model_file}")}
@@ -153,3 +155,7 @@ else
   grep -q 'QBS_TOKEN_OUTPUT_EQUAL=NA' "${log_file}"
 fi
 grep -q 'LLAMA_GUEST_EXIT=0' "${log_file}"
+
+python3 "${script_dir}/summarize_qbs_native_check.py" \
+  --log "${log_file}" --output "${report_csv}" --json "${report_json}" \
+  --require-pass

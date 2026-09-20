@@ -126,6 +126,13 @@ nohup verification/qbs/qemu/run_qwen_native_check.sh \
   > qwen-native-launch.log 2>&1 &
 ```
 
+Every successful run keeps the raw UART-style log and also writes
+`qwen-native-check.csv` and `qwen-native-check.json` in the selected work
+directory. The JSON preserves the per-format `GGML_RISCV_QBS_EXEC` records and
+the logits metrics; the CSV is the one-row summary for importing into a
+spreadsheet. Override the report paths with `QBS_QWEN_REPORT_CSV` and
+`QBS_QWEN_REPORT_JSON` when collecting a larger matrix.
+
 For example, a standalone `Q5_0` model check can use:
 
 ```bash
