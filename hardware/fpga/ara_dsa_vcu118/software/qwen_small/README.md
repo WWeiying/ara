@@ -58,6 +58,17 @@ cycle count, cycles per output, quantize/pack/matmul cycles, logical bytes,
 checksum, mismatch count, and error bounds. A valid run must report
 `result=PASS` and `mismatches=0`.
 
+After both runs finish, compare the two records. Replace the two timestamped
+paths with the directories printed by the scripts:
+
+```powershell
+py -3 .\software\compare_bench.py --rvv D:\qwen_small_runs\rvv_YYYYMMDD_HHMMSS\result.csv --qbs D:\qwen_small_runs\qbs_YYYYMMDD_HHMMSS\result.csv --output D:\qwen_small_runs\comparison.csv --json D:\qwen_small_runs\comparison.json --clock-mhz 50
+```
+
+The comparison contains RVV/QBS cycles, microseconds, QBS/RVV ratio, and
+`speedup_rvv_over_qbs` for compute, quantization, packing, matmul, and logical
+memory traffic.
+
 The cycle counter is the FPGA CPU cycle counter. With the current 50 MHz
 SoC clock, convert cycles to seconds as `cycles / 50000000`. Compare RVV and
 QBS using the same bitstream, reset procedure, and UART command.
