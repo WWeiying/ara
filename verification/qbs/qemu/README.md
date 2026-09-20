@@ -142,6 +142,24 @@ QBS_QWEN_WORK_DIR=$PWD/verification/qbs/qemu/build/model-q5-0 \
 verification/qbs/qemu/run_qwen_native_check.sh
 ```
 
+For the first short end-to-end run, use the small real GGUF below. It keeps
+the same llama.cpp/QBS path while avoiding the multi-gigabyte Qwen transfer:
+
+```bash
+QBS_MODEL_FILE=/path/SmolLM2-135M-Instruct-Q4_K_M.gguf \
+QBS_MODEL_NAME=smollm2-135m-q4_k_m.gguf \
+QBS_EXPECTED_PROFILES=Q4_K \
+QBS_EXPECTED_EXECUTION=both \
+QBS_TOKEN_COUNT=2 \
+QBS_QWEN_WORK_DIR=$PWD/verification/qbs/qemu/build/smollm2-small \
+verification/qbs/qemu/run_qwen_native_check.sh
+```
+
+This produces the raw log plus CSV/JSON reports. The QEMU path validates
+llama.cpp model execution and QBS numerical agreement; AKV is measured by the
+separate VCU118 small-operator matrix because this QEMU extension currently
+models QBS, not the FPGA AKV datapath.
+
 The directed native regression additionally executes all nine profile pairs
 with M1/M2/M3/M4 and an `N=35` tail. Its `MUL_MAT_ID` case runs a three-expert
 `Q2_K` graph and checks expert routing and every result against an independent
