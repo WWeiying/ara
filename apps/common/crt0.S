@@ -80,6 +80,24 @@ reset_vector:
     la      t0, dram_end_address_reg
     ld      sp, 0(t0)
 #endif
+#if defined(ARA_FPGA)
+    // The Cheshire boot protocol may leave the 16550 in an unknown state
+    // when control is transferred to a bare-metal benchmark.  Match the
+    // fixed 50 MHz VCU118 setup used by the board smoke test before any
+    // benchmark code can print through serial.c.
+    li      t0, 0x03002000
+    sw      zero, 4(t0)       // IER = 0
+    li      t1, 0x80
+    sw      t1, 12(t0)        // LCR: access divisor latch
+    li      t1, 27
+    sw      t1, 0(t0)         // DLL: 115200 baud at 50 MHz
+    sw      zero, 4(t0)       // DLM
+    li      t1, 3
+    sw      t1, 12(t0)        // LCR: 8 data bits, no parity, 1 stop
+    li      t1, 7
+    sw      t1, 8(t0)         // FCR: enable and clear FIFOs
+    sw      zero, 16(t0)      // MCR
+#endif
     // Set up a PMP to permit all accesses
     li t0, (1 << (31 + (__riscv_xlen / 64) * (53 - 31))) - 1
     csrw pmpaddr0, t0
