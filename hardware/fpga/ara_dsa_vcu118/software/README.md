@@ -94,6 +94,17 @@ must be reset in Vivado VIO before each case:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\software\run_qwen_small_matrix.ps1 -Port COM6 -WaitForReset
 ```
 
+With the bitstream open in Vivado Hardware Manager, the reset can be pulsed
+from the Vivado Tcl Console instead of clicking VIO manually:
+
+```tcl
+source D:/project/ara/hardware/fpga/ara_dsa_vcu118/software/reset_vio_cpu.tcl
+```
+
+Run that command at each `-WaitForReset` prompt, then press Enter in the
+PowerShell window. The helper changes only `probe_out0` (CPU reset); it leaves
+the boot-mode probes unchanged.
+
 The final `matrix.csv`, `matrix.json`, and `manifest.json` are written under
 `D:\qwen_small_matrix_runs\matrix_<timestamp>`. Each row includes projection
 and attention cycles, total cycles, 50 MHz seconds, speedup against RVV,
