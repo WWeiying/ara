@@ -1,5 +1,32 @@
 # Ara Verification Environment
 
+For an isolated worktree, initialize the external build inputs explicitly:
+
+```bash
+bash verification/setup_worktree.sh
+```
+
+The script links only the external toolchain/application tree, installs the
+locked Bender version, and clones the locked riscv-dv and RTL dependencies into
+clean detached checkouts. It does not copy simulation output or source changes
+from another worktree. The resulting `verification/worktree_inputs.json` records
+the source and target revisions.
+
+The requirement-driven plan is in `verification/VERIFICATION_PLAN.md` and
+`verification/verification_plan.json`:
+
+```bash
+PYTHONPATH=verification python3 verification/verify.py plan
+```
+
+UVM is a reusable transaction-level methodology, not a replacement for the
+ISA reference model or system-level boot tests. This repository currently uses
+the same functional roles through VCS/SystemVerilog monitors, Spike differential
+comparison, deterministic riscv-dv generation, and Python artifact control. A
+full UVM agent layer can be added around the CVXIF/AXI interfaces without
+changing the plan or evidence format; it must not be used to waive the
+architectural and Linux gates.
+
 This directory contains the staged functional verification environment for the
 CVA6 plus Ara system. Functional correctness and performance regression are
 kept separate: a functional test passes only when its self-checking software and
@@ -334,7 +361,18 @@ accepts this boundary only when both sides agree on the prefix, the RTL program
 exits successfully, and the complete RTL request/uop trace is valid; a scalar
 `MATCH` never accepts a vector `PREFIX`.
 
-## Planned stage
+The complete gate sequence, including UVM's role and the VCU118/Linux end
+point, is documented in [`SIGNOFF_ROADMAP.md`](SIGNOFF_ROADMAP.md). Use the
+requirement map and audit gate before accepting a result:
 
-Stage 4 adds vector architectural coverage, randomized memory backpressure,
-protocol assertions, and Sail cross-checking.
+```bash
+PYTHONPATH=verification python3 verification/verify.py plan
+PYTHONPATH=verification python3 verification/verify.py audit \
+  --run verification/out/<run-id> \
+  --require-trace --require-vector --require-coverage
+```
+
+An audit failure is an incomplete result, not a functional pass. Long VCS or
+FPGA runs should use an independent output directory and be inspected only
+after completion; the saved `run.json` and replay command are the source of
+truth for reproducibility.

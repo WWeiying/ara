@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "project": "ara_dsa",
+  "purpose": "Requirement-driven functional verification for CVA6 plus Ara RVV 1.0 integration.",
+  "signoff_policy": {
+    "allowed_statuses": ["PASS"],
+    "require_complete_run": true,
+    "require_reproducibility_metadata": true,
+    "require_trace_for_differential": true,
+    "require_vector_evidence_for_rvv": true,
+    "require_stimulus_coverage_for_random": true
+  },
+  "required_artifacts": {
+    "every_run": ["run.json", "summary.json", "replay_command"],
+    "differential": ["commit_comparison", "trace_summary"],
+    "vector": ["vector_checkpoints_or_signature", "memory_signature"],
+    "random": ["stimulus_coverage", "seed_manifest"],
+    "linux": ["boot_log", "payload_hashes", "userspace_smoke"],
+    "fpga": ["bitstream_hash", "software_hash", "board_manifest", "ddr_status"]
+  },
+  "fpga_signoff": {
+    "board": "VCU118",
+    "required_stages": [
+      "reset_uart_ddr",
+      "baremetal_rvv_signature",
+      "linux_boot",
+      "rvv_fallback_userspace",
+      "qbs_akv_userspace",
+      "context_switch_and_fault_return",
+      "long_model_smoke"
+    ],
+    "requires_bitstream_and_software_hash": true,
+    "requires_reproducible_manifest": true
+  },
+  "requirements": [
+    {
+      "id": "RVV-CFG",
+      "title": "Vector configuration and architectural state",
+      "risk": "high",
+      "suites": ["rvv-corners", "rvv-directed"],
+      "evidence": ["directed_pass", "commit_trace", "vector_state"]
+    },
+    {
+      "id": "RVV-ALU",
+      "title": "Integer, fixed-point, widening, and narrowing arithmetic",
+      "risk": "high",
+      "suites": ["rvv-corners", "rvv-reductions"],
+      "evidence": ["directed_pass", "vector_state"]
+    },
+    {
+      "id": "RVV-FP",
+      "title": "Floating-point arithmetic, conversion, and reduction",
+      "risk": "high",
+      "suites": ["rvv-corners", "rvv-reductions"],
+      "evidence": ["directed_pass", "vector_state"]
+    },
+    {
+      "id": "RVV-MASK",
+      "title": "Mask production, consumption, scalar return, and policy handling",
+      "risk": "high",
+      "suites": ["rvv-corners", "rvv-failure-regression"],
+      "evidence": ["directed_pass", "vector_state", "memory_signature"]
+    },
+    {
+      "id": "RVV-MEM",
+      "title": "Unit-stride, strided, indexed, segmented, whole-register, and mask memory",
+      "risk": "critical",
+      "suites": ["rvv-corners", "rvv-failure-regression"],
+      "evidence": ["directed_pass", "vector_state", "memory_signature", "trace_valid"]
+    },
+    {
+      "id": "RVV-RESTART",
+      "title": "vstart restart, tail/mask preservation, and exception recovery",
+      "risk": "critical",
+      "suites": ["rvv-corners", "rvv-failure-regression", "rvv-reductions"],
+      "evidence": ["directed_pass", "vector_state", "trace_valid"]
+    },
+    {
+      "id": "RVV-PIPE",
+      "title": "CVA6/CVXIF request ordering, backend lifetime, and completion",
+      "risk": "critical",
+      "suites": ["rvv-directed", "rvv-corners"],
+      "evidence": ["directed_pass", "commit_trace", "trace_valid"]
+    },
+    {
+      "id": "RVV-RANDOM",
+      "title": "Constrained-random RVV 1.0 coverage closure",
+      "risk": "high",
+      "random_profiles": [
+        "ara_dsa_rvv1_arithmetic",
+        "ara_dsa_rvv1_load_store",
+        "ara_dsa_rvv1_integer_stress",
+        "ara_dsa_rvv1_fp32",
+        "ara_dsa_rvv1_fp64",
+        "ara_dsa_rvv1_vtype_churn",
+        "ara_dsa_rvv1_load_store_slide",
+        "ara_dsa_rvv1_mixed_control"
+      ],
+      "evidence": ["spike_match", "vector_state", "trace_valid", "stimulus_coverage"]
+    },
+    {
+      "id": "APP-INTEGRATION",
+      "title": "Self-checking scalar/vector application integration",
+      "risk": "medium",
+      "suites": ["smoke", "applications"],
+      "evidence": ["application_pass", "optional_commit_trace"]
+    },
+    {
+      "id": "LINUX-SYS",
+      "title": "Linux boot, virtual memory, context switching, and user-mode paths",
+      "risk": "critical",
+      "linux_levels": ["linux_qemu", "linux_rtl", "linux_fpga"],
+      "evidence": ["boot_markers", "payload_hashes", "rvv_userspace", "qbs_fallback"]
+    },
+    {
+      "id": "QBS-AKV",
+      "title": "Domain-specific QBS/AKV contract and RVV fallback behavior",
+      "risk": "critical",
+      "suites": ["llama-micro"],
+      "evidence": ["contract_pass", "numeric_check", "fallback_pass"]
+    }
+  ],
+  "coverage_dimensions": {
+    "sew": ["e8", "e16", "e32", "e64"],
+    "lmul": ["mf8", "mf4", "mf2", "m1", "m2", "m4", "m8"],
+    "tail_policy": ["ta", "tu"],
+    "mask_policy": ["ma", "mu"],
+    "memory_mode": [
+      "unit_stride", "strided", "indexed", "segment",
+      "mask", "whole_register", "fault_first"
+    ],
+    "restart": ["vstart_zero", "vstart_nonzero", "illegal_nonzero_vstart"],
+    "operand_layout": ["non_overlapping", "widening_overlap", "narrowing_overlap", "mixed_eew"]
+  },
+  "levels": [
+    {
+      "name": "preflight",
+      "purpose": "Lock sources, tools, simulator configuration, and test inventory before execution."
+    },
+    {
+      "name": "unit_subsystem",
+      "purpose": "Exercise QBS/AKV, VLSU, lane, MFPU, mask, reduction, and timing-boundary checkers."
+    },
+    {
+      "name": "directed_differential",
+      "purpose": "Compare Spike and RTL architectural behavior and verify CVXIF trace invariants."
+    },
+    {
+      "name": "constrained_random",
+      "purpose": "Close instruction, operand, policy, memory-mode, and restart coverage with deterministic seeds."
+    },
+    {
+      "name": "integration",
+      "purpose": "Run self-checking applications and llama.cpp-derived QBS/AKV contracts with fallback paths."
+    },
+    {
+      "name": "signoff",
+      "purpose": "Reject incomplete, stale, non-reproducible, or weakly observed results."
+    }
+  ]
+}

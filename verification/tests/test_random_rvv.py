@@ -444,6 +444,10 @@ class RandomRvvCommandTests(unittest.TestCase):
                 result = json.loads((output / "summary.json").read_text())[0]
                 self.assertEqual(result["status"], expected)
                 self.assertEqual(returncode, 0 if expected == "PASS" else 1)
+                run_metadata = json.loads((output / "run.json").read_text())
+                self.assertEqual(run_metadata["status"], "COMPLETE")
+                self.assertIn("invocation", run_metadata)
+                self.assertIn("commit", run_metadata["git"])
                 self.assertIn(
                     "vsoxei32.v", (output / "asm_test/profile_0.S").read_text()
                 )

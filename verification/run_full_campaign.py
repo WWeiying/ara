@@ -467,6 +467,10 @@ def write_summary(
     (output / "campaign_summary.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    # Keep the standard runner/audit contract at the campaign root as well.
+    (output / "summary.json").write_text(
+        json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     with (output / "campaign_summary.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
@@ -511,8 +515,10 @@ def main() -> int:
     validate_required_directed_tests(catalog_test_names())
 
     metadata = {
+        "schema_version": 1,
         "status": "DRY_RUN" if args.dry_run else "RUNNING",
         "created_at": datetime.now().astimezone().isoformat(),
+        "invocation": [str(Path(__file__).resolve()), *sys.argv[1:]],
         "expected": expected,
         "profiles": [{"name": name, "iterations": iterations} for name, iterations in profiles],
         "required_directed_tests": sorted(REQUIRED_DIRECTED_TESTS),
@@ -534,7 +540,13 @@ def main() -> int:
         "random_jobs": args.random_jobs,
         "seed": args.seed,
     }
+    inputs = REPO_ROOT / "verification" / "worktree_inputs.json"
+    if inputs.is_file():
+        metadata["worktree_inputs"] = str(inputs)
     (output / "campaign.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (output / "run.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
@@ -605,6 +617,9 @@ def main() -> int:
     )
     metadata["completed_at"] = datetime.now().astimezone().isoformat()
     (output / "campaign.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (output / "run.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return 0 if all_pass else 1

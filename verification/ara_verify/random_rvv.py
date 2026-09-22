@@ -8,6 +8,7 @@ import signal
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -466,6 +467,21 @@ def _command_text(command: Sequence[object]) -> str:
     return shlex.join(str(item) for item in command)
 
 
+def _git_snapshot(repo_root: Path) -> Dict[str, object]:
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=repo_root, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+        )
+        return result.stdout.strip()
+
+    return {
+        "commit": git("rev-parse", "HEAD"),
+        "branch": git("branch", "--show-current"),
+        "status": git("status", "--short").splitlines(),
+    }
+
+
 def _write_command(path: Path, command: Sequence[object], cwd: Path) -> None:
     path.write_text(
         json.dumps({"command": [str(item) for item in command], "cwd": str(cwd)}, indent=2) + "\n",
@@ -743,6 +759,31 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
     generation_command = random_rvv_command(
         generation, steps="gen" if deterministic_stream else "gen,gcc_compile",
         simulate_only=options.generator_simv is not None,
+    )
+    run_metadata = {
+        "schema_version": 1,
+        "status": "DRY_RUN" if generation.dry_run else "RUNNING",
+        "created_at": datetime.now().astimezone().isoformat(),
+        "invocation": [str(item) for item in generation_command],
+        "test": generation.test,
+        "seed": generation.seed,
+        "iterations": iterations,
+        "simulator": generation.simulator,
+        "vector_signature": strict_vector_state,
+        "vector_checkpoints": options.vector_checkpoints,
+        "vector_commit_compare": options.vector_commit_compare,
+        "timeouts": {
+            "rtl_s": options.timeout_s,
+            "spike_s": options.spike_timeout_s,
+            "watchdog_cycles": options.watchdog_cycles,
+        },
+        "git": _git_snapshot(generation.repo_root),
+    }
+    inputs = generation.repo_root / "verification" / "worktree_inputs.json"
+    if inputs.is_file():
+        run_metadata["worktree_inputs"] = str(inputs)
+    (output / "run.json").write_text(
+        json.dumps(run_metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     tool_root = Path(generation_command[1]).parent
     gcc_root = generation.repo_root / "install" / "riscv-gcc" / "bin"
@@ -1074,4 +1115,17 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
     (output / "summary.json").write_text(
         json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    return 0 if all(result["status"] == "PASS" for result in results) else 1
+    returncode = 0 if all(result["status"] == "PASS" for result in results) else 1
+    run_metadata.update({
+        "status": "COMPLETE",
+        "verdict": "PASS" if returncode == 0 else "FAIL",
+        "completed_at": datetime.now().astimezone().isoformat(),
+        "status_counts": {
+            status: sum(result["status"] == status for result in results)
+            for status in sorted({str(result["status"]) for result in results})
+        },
+    })
+    (output / "run.json").write_text(
+        json.dumps(run_metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return returncode

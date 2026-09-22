@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ from ara_verify.random_rvv import (
     generate_random_rvv,
     run_random_rvv,
 )
+from ara_verify.plan import PlanError, audit_run, load_plan, validate_plan, write_audit
 from ara_verify.runner import RegressionRunner, RunOptions, default_output
 from ara_verify.rvv_replay import (
     RvvReplayOptions,
@@ -28,6 +30,7 @@ from ara_verify.rvv_postprocess import RvvPostprocessOptions, postprocess_existi
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_MANIFEST = SCRIPT_DIR / "suites.json"
+DEFAULT_PLAN = SCRIPT_DIR / "verification_plan.json"
 
 
 def _default_spike() -> Path:
@@ -58,6 +61,21 @@ def _parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list", help="list discovered tests or suites")
     list_parser.add_argument("--suite")
     list_parser.add_argument("--suites", action="store_true")
+
+    plan_parser = subparsers.add_parser(
+        "plan", help="validate and print the requirement-driven verification plan"
+    )
+    plan_parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
+
+    audit_parser = subparsers.add_parser(
+        "audit", help="audit a completed run before accepting it as signoff evidence"
+    )
+    audit_parser.add_argument("--run", type=Path, required=True)
+    audit_parser.add_argument("--output", type=Path)
+    audit_parser.add_argument("--allow-incomplete", action="store_true")
+    audit_parser.add_argument("--require-trace", action="store_true")
+    audit_parser.add_argument("--require-vector", action="store_true")
+    audit_parser.add_argument("--require-coverage", action="store_true")
 
     random_parser = subparsers.add_parser(
         "generate-rvv", help="generate deterministic RVV 1.0 random assembly"
@@ -294,6 +312,50 @@ def main(argv: Optional[List[str]] = None) -> int:
         for test in tests:
             print(f"{test.name:36} {test.kind:5} {test.binary.relative_to(REPO_ROOT)}")
         return 0
+
+    if args.command == "plan":
+        try:
+            catalog = load_catalog(REPO_ROOT, args.manifest.resolve())
+            plan = load_plan(DEFAULT_PLAN)
+            summary = validate_plan(catalog, plan)
+        except (ManifestError, PlanError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(summary, indent=2, sort_keys=True))
+        else:
+            print(f"requirements: {summary['requirement_count']}")
+            for item in summary["requirements"]:
+                print(f"{item['id']:16} {item['risk']:8} tests={item['test_count']:4}  {item['title']}")
+            print(f"random profiles: {summary['random_profile_count']}")
+            print(f"Linux levels:    {', '.join(summary['linux_levels'])}")
+            print("coverage:")
+            for name, values in summary["coverage_dimensions"].items():
+                print(f"  {name:16} {', '.join(values)}")
+        return 0
+
+    if args.command == "audit":
+        try:
+            payload = audit_run(
+                args.run,
+                require_complete=not args.allow_incomplete,
+                require_trace=args.require_trace,
+                require_vector=args.require_vector,
+                require_coverage=args.require_coverage,
+            )
+        except PlanError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        output = args.output.resolve() if args.output else args.run.resolve() / "verification_audit.json"
+        write_audit(payload, output)
+        print(json.dumps({
+            "status": payload["status"],
+            "case_count": payload["case_count"],
+            "passed_cases": payload["passed_cases"],
+            "failed_cases": payload["failed_cases"],
+            "output": str(output),
+        }, indent=2, sort_keys=True))
+        return 0 if payload["status"] == "PASS" else 1
 
     if args.jobs <= 0:
         print("error: --jobs must be positive", file=sys.stderr)

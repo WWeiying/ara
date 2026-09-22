@@ -200,6 +200,7 @@ run.sh
 sim/
 sim_mc/
 /verification/out/
+/verification/worktree_inputs.json
 /verification/tools/
 /hardware/deps
 /hardware/bender
