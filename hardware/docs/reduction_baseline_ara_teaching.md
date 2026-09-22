@@ -71,6 +71,21 @@ Ara 的基本组织方式是：
 再由 SLDU 负责跨 lane 合并。这样既复用了 Ara 的 SIMD ALU/FPU，也复用了
 原本用于 slide 的跨 lane 数据通路。
 
+### 1.1 先固定五个概念
+
+| 概念 | 本文中的含义 |
+|---|---|
+| lane | Ara 的一个并行执行分片。`NrLanes=4` 时，一个向量元素只会被一个 lane 负责，跨 lane 合并由 SLDU 完成。 |
+| VRF | 向量寄存器文件。lane 通常以 64-bit word 读写它；`SEW` 决定一个 word 中有几个元素。 |
+| operand queue | 从 VRF 返回的数据进入执行单元之前的队列，负责转换、重排、mask 和 neutral 填充。 |
+| result queue | ALU/FPU 或 SLDU 已经产生、但还没有获得 VRF/MASKU grant 的结果队列。它既保存数据，也保存地址、byte-enable 和 instruction owner。 |
+| valid/ready | 两端在同一拍都为 1 才算一次传输。只有握手完成后，生产者才可以推进计数器或释放 token。 |
+
+`SEW` 是元素宽度，`VL` 是本条指令的活动元素数，`vm=1` 表示不使用
+`v0` mask；`vm=0` 时还要读取 mask。规约教学中最容易混淆的是：`VL` 是
+架构元素数，不是每个 lane 的元素数，lane 内部还要根据 lane 映射和尾部
+补齐来生成自己的 operand beat。
+
 ## 2. 支持的规约指令和执行单元
 
 操作码在 [`ara_pkg.sv`](../include/ara_pkg.sv) 中定义，基线主要分成四组：
@@ -150,10 +165,17 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 
 | 运算 | neutral value |
 |---|---|
-| 整数加法 / XOR / OR / AND 等 | 由 `ntr_red` 和操作类型决定 |
+| `VREDSUM`、`VREDOR`、`VREDXOR`、`VREDMAXU`、widening sum | 每个元素全 0 |
+| `VREDAND`、`VREDMINU` | 每个元素全 1 |
+| signed `VREDMIN` | 该 SEW 的最大正数，例如 EW8 为 `0x7f` |
+| signed `VREDMAX` | 该 SEW 的最小负数，例如 EW8 为 `0x80` |
 | FP sum | `+0` |
 | FP min | `+∞` |
 | FP max | `-∞` |
+
+表中的 neutral 只描述空 lane、tail 或 masked-off 元素的单位元；真实 active
+operand 的 NaN、signed zero 和 `fflags` 仍由 FPnew/FPU 数据通路处理，不能把
+neutral 表当成完整的 IEEE 特殊值规则。
 
 基线通过 `cvt_resize` 的编码复用字段把 FP reduction 的 neutral 类型传入
 operand queue/VMFPU。这个字段在 `ara_pkg.sv` 中有注释：`00` 表示零，
@@ -445,6 +467,25 @@ exact-sum 意义上的跨实现 bitwise 可重复性。ordered FP reduction 则�
 
 这些限制正是优化分支后来引入 output/route bypass、context stream、exact
 backend 和 versioned chain bypass 的动机。
+
+### 10.1 一个可用于对照的基线测量锚点
+
+下面的数字来自已有 `perf_reduction_probe` 的 4-lane、`VLEN=1024`、e32/m1、
+`VL=32` clean 配置。它们用于帮助读者建立量级，不是某条指令的固定理论
+延迟；改动外围指令、仿真 ROI 或配置后不能直接复用。
+
+| 指令 | 基线指令延迟 |
+|---|---:|
+| `vredsum` | 24 cycles |
+| `vfredusum` | 49 cycles |
+| `vfredmin` | 55 cycles |
+| `vfredmax` | 55 cycles |
+| `vfredosum` | 287 cycles |
+| 混合 probe ROI | 424 cycles |
+
+ordered sum 明显更长，是因为一个 token 必须按 lane 顺序反复经过 VMFPU、
+SLDU 和下一个 lane；unordered tree 则可以在 lane 间并行合并。优化文档第
+8 节用同一类 probe 给出对应的旁路和 exact/stream 对照。
 
 ## 11. 原始 Ara 的代码导航
 
