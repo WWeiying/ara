@@ -133,6 +133,27 @@ typedef struct {
   logic [63:0] exact_stream_background_input_lane_beats;
   logic [63:0] exact_stream_overlap_lane_cycles;
   logic [63:0] exact_stream_promote_lane_events;
+  logic [63:0] chain_late_seed_issue_insns;
+  logic [63:0] chain_late_seed_bind_insns;
+  logic [63:0] chain_late_seed_wait_cycles;
+  logic [63:0] chain_seed_table_entry_cycles;
+  logic [63:0] chain_seed_table_multi_entry_cycles;
+  logic [63:0] wb_forward_lane_beats;
+  logic [63:0] wb_forward_alu_lane_beats;
+  logic [63:0] wb_forward_mfpu_lane_beats;
+  logic [63:0] wb_forward_reduction_cache_lane_beats;
+  logic [63:0] wb_forward_reduction_cache_alu_lane_beats;
+  logic [63:0] wb_forward_reduction_cache_mfpu_lane_beats;
+  logic [63:0] wb_reduction_cache_entry_lane_cycles;
+  logic [63:0] wb_reduction_cache_multi_entry_lane_cycles;
+  logic [63:0] wb_forward_sldu_lane_beats;
+  logic [63:0] wb_forward_sldu_cache_lane_beats;
+  logic [63:0] wb_forward_mul_fpu_a_lane_beats;
+  logic [63:0] wb_forward_mul_fpu_b_lane_beats;
+  logic [63:0] wb_forward_mul_fpu_c_lane_beats;
+  logic [63:0] wb_forward_mask_b_lane_beats;
+  logic [63:0] wb_forward_store_a_lane_beats;
+  logic [63:0] wb_forward_other_lane_beats;
 } red_stream_perf_t;
 
 localparam int unsigned NrMemClasses = 2;
@@ -724,6 +745,69 @@ function automatic red_stream_perf_t red_stream_perf_delta(
   delta.exact_stream_promote_lane_events =
     end_count.exact_stream_promote_lane_events -
     start_count.exact_stream_promote_lane_events;
+  delta.chain_late_seed_issue_insns =
+    end_count.chain_late_seed_issue_insns -
+    start_count.chain_late_seed_issue_insns;
+  delta.chain_late_seed_bind_insns =
+    end_count.chain_late_seed_bind_insns -
+    start_count.chain_late_seed_bind_insns;
+  delta.chain_late_seed_wait_cycles =
+    end_count.chain_late_seed_wait_cycles -
+    start_count.chain_late_seed_wait_cycles;
+  delta.chain_seed_table_entry_cycles =
+    end_count.chain_seed_table_entry_cycles -
+    start_count.chain_seed_table_entry_cycles;
+  delta.chain_seed_table_multi_entry_cycles =
+    end_count.chain_seed_table_multi_entry_cycles -
+    start_count.chain_seed_table_multi_entry_cycles;
+  delta.wb_forward_lane_beats =
+    end_count.wb_forward_lane_beats -
+    start_count.wb_forward_lane_beats;
+  delta.wb_forward_alu_lane_beats =
+    end_count.wb_forward_alu_lane_beats -
+    start_count.wb_forward_alu_lane_beats;
+  delta.wb_forward_mfpu_lane_beats =
+    end_count.wb_forward_mfpu_lane_beats -
+    start_count.wb_forward_mfpu_lane_beats;
+  delta.wb_forward_reduction_cache_lane_beats =
+    end_count.wb_forward_reduction_cache_lane_beats -
+    start_count.wb_forward_reduction_cache_lane_beats;
+  delta.wb_forward_reduction_cache_alu_lane_beats =
+    end_count.wb_forward_reduction_cache_alu_lane_beats -
+    start_count.wb_forward_reduction_cache_alu_lane_beats;
+  delta.wb_forward_reduction_cache_mfpu_lane_beats =
+    end_count.wb_forward_reduction_cache_mfpu_lane_beats -
+    start_count.wb_forward_reduction_cache_mfpu_lane_beats;
+  delta.wb_reduction_cache_entry_lane_cycles =
+    end_count.wb_reduction_cache_entry_lane_cycles -
+    start_count.wb_reduction_cache_entry_lane_cycles;
+  delta.wb_reduction_cache_multi_entry_lane_cycles =
+    end_count.wb_reduction_cache_multi_entry_lane_cycles -
+    start_count.wb_reduction_cache_multi_entry_lane_cycles;
+  delta.wb_forward_sldu_lane_beats =
+    end_count.wb_forward_sldu_lane_beats -
+    start_count.wb_forward_sldu_lane_beats;
+  delta.wb_forward_sldu_cache_lane_beats =
+    end_count.wb_forward_sldu_cache_lane_beats -
+    start_count.wb_forward_sldu_cache_lane_beats;
+  delta.wb_forward_mul_fpu_a_lane_beats =
+    end_count.wb_forward_mul_fpu_a_lane_beats -
+    start_count.wb_forward_mul_fpu_a_lane_beats;
+  delta.wb_forward_mul_fpu_b_lane_beats =
+    end_count.wb_forward_mul_fpu_b_lane_beats -
+    start_count.wb_forward_mul_fpu_b_lane_beats;
+  delta.wb_forward_mul_fpu_c_lane_beats =
+    end_count.wb_forward_mul_fpu_c_lane_beats -
+    start_count.wb_forward_mul_fpu_c_lane_beats;
+  delta.wb_forward_mask_b_lane_beats =
+    end_count.wb_forward_mask_b_lane_beats -
+    start_count.wb_forward_mask_b_lane_beats;
+  delta.wb_forward_store_a_lane_beats =
+    end_count.wb_forward_store_a_lane_beats -
+    start_count.wb_forward_store_a_lane_beats;
+  delta.wb_forward_other_lane_beats =
+    end_count.wb_forward_other_lane_beats -
+    start_count.wb_forward_other_lane_beats;
   return delta;
 endfunction
 
@@ -967,6 +1051,69 @@ function automatic void print_red_stream_report(
       stats.exact_stream_overlap_lane_cycles);
     $display("[PERF] red_exact_stream_promote_lane_events: %0d",
       stats.exact_stream_promote_lane_events);
+    $display("[PERF] red_chain_late_seed_issue_insns: %0d",
+      stats.chain_late_seed_issue_insns);
+    $display("[PERF] red_chain_late_seed_bind_insns: %0d",
+      stats.chain_late_seed_bind_insns);
+    $display("[PERF] red_chain_late_seed_wait_cycles: %0d",
+      stats.chain_late_seed_wait_cycles);
+    $display("[PERF] red_chain_seed_table_entry_cycles: %0d",
+      stats.chain_seed_table_entry_cycles);
+    $display("[PERF] red_chain_seed_table_multi_entry_cycles: %0d",
+      stats.chain_seed_table_multi_entry_cycles);
+    $display("[PERF] red_wb_forward_lane_beats: %0d",
+      stats.wb_forward_lane_beats);
+    $display("[PERF] red_wb_forward_alu_lane_beats: %0d",
+      stats.wb_forward_alu_lane_beats);
+    $display("[PERF] red_wb_forward_mfpu_lane_beats: %0d",
+      stats.wb_forward_mfpu_lane_beats);
+    $display("[PERF] red_wb_forward_reduction_cache_lane_beats: %0d",
+      stats.wb_forward_reduction_cache_lane_beats);
+    $display("[PERF] red_wb_forward_reduction_cache_alu_lane_beats: %0d",
+      stats.wb_forward_reduction_cache_alu_lane_beats);
+    $display("[PERF] red_wb_forward_reduction_cache_mfpu_lane_beats: %0d",
+      stats.wb_forward_reduction_cache_mfpu_lane_beats);
+    $display("[PERF] red_wb_reduction_cache_entry_lane_cycles: %0d",
+      stats.wb_reduction_cache_entry_lane_cycles);
+    $display("[PERF] red_wb_reduction_cache_multi_entry_lane_cycles: %0d",
+      stats.wb_reduction_cache_multi_entry_lane_cycles);
+    $display("[PERF] red_wb_forward_sldu_lane_beats: %0d",
+      stats.wb_forward_sldu_lane_beats);
+    $display("[PERF] red_wb_forward_sldu_cache_lane_beats: %0d",
+      stats.wb_forward_sldu_cache_lane_beats);
+    $display("[PERF] red_wb_forward_mul_fpu_a_lane_beats: %0d",
+      stats.wb_forward_mul_fpu_a_lane_beats);
+    $display("[PERF] red_wb_forward_mul_fpu_b_lane_beats: %0d",
+      stats.wb_forward_mul_fpu_b_lane_beats);
+    $display("[PERF] red_wb_forward_mul_fpu_c_lane_beats: %0d",
+      stats.wb_forward_mul_fpu_c_lane_beats);
+    $display("[PERF] red_wb_forward_mask_b_lane_beats: %0d",
+      stats.wb_forward_mask_b_lane_beats);
+    $display("[PERF] red_wb_forward_store_a_lane_beats: %0d",
+      stats.wb_forward_store_a_lane_beats);
+    $display("[PERF] red_wb_forward_other_lane_beats: %0d",
+      stats.wb_forward_other_lane_beats);
+    $display("[PERF] red_chain_issue_bind_consistent: %0d",
+      stats.chain_late_seed_issue_insns ==
+        stats.chain_late_seed_bind_insns);
+    $display("[PERF] red_wb_forward_source_consistent: %0d",
+      stats.wb_forward_lane_beats ==
+        stats.wb_forward_alu_lane_beats +
+        stats.wb_forward_mfpu_lane_beats +
+        stats.wb_forward_sldu_lane_beats +
+        stats.wb_forward_sldu_cache_lane_beats);
+    $display("[PERF] red_wb_forward_reduction_cache_source_consistent: %0d",
+      stats.wb_forward_reduction_cache_lane_beats ==
+        stats.wb_forward_reduction_cache_alu_lane_beats +
+        stats.wb_forward_reduction_cache_mfpu_lane_beats);
+    $display("[PERF] red_wb_forward_queue_consistent: %0d",
+      stats.wb_forward_lane_beats ==
+        stats.wb_forward_mul_fpu_a_lane_beats +
+        stats.wb_forward_mul_fpu_b_lane_beats +
+        stats.wb_forward_mul_fpu_c_lane_beats +
+        stats.wb_forward_mask_b_lane_beats +
+        stats.wb_forward_store_a_lane_beats +
+        stats.wb_forward_other_lane_beats);
     $display("[PERF] red_exact_stream_launch_promote_consistent: %0d",
       stats.exact_stream_successor_launch_lane_events ==
         stats.exact_stream_promote_lane_events);
@@ -1101,6 +1248,85 @@ function automatic void print_red_stream_report(
     $fwrite(file_handle,
       "[PERF] red_exact_stream_promote_lane_events: %0d\n",
       stats.exact_stream_promote_lane_events);
+    $fwrite(file_handle, "[PERF] red_chain_late_seed_issue_insns: %0d\n",
+      stats.chain_late_seed_issue_insns);
+    $fwrite(file_handle, "[PERF] red_chain_late_seed_bind_insns: %0d\n",
+      stats.chain_late_seed_bind_insns);
+    $fwrite(file_handle, "[PERF] red_chain_late_seed_wait_cycles: %0d\n",
+      stats.chain_late_seed_wait_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_chain_seed_table_entry_cycles: %0d\n",
+      stats.chain_seed_table_entry_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_chain_seed_table_multi_entry_cycles: %0d\n",
+      stats.chain_seed_table_multi_entry_cycles);
+    $fwrite(file_handle, "[PERF] red_wb_forward_lane_beats: %0d\n",
+      stats.wb_forward_lane_beats);
+    $fwrite(file_handle, "[PERF] red_wb_forward_alu_lane_beats: %0d\n",
+      stats.wb_forward_alu_lane_beats);
+    $fwrite(file_handle, "[PERF] red_wb_forward_mfpu_lane_beats: %0d\n",
+      stats.wb_forward_mfpu_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_reduction_cache_lane_beats: %0d\n",
+      stats.wb_forward_reduction_cache_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_reduction_cache_alu_lane_beats: %0d\n",
+      stats.wb_forward_reduction_cache_alu_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_reduction_cache_mfpu_lane_beats: %0d\n",
+      stats.wb_forward_reduction_cache_mfpu_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_reduction_cache_entry_lane_cycles: %0d\n",
+      stats.wb_reduction_cache_entry_lane_cycles);
+    $fwrite(file_handle,
+      "[PERF] red_wb_reduction_cache_multi_entry_lane_cycles: %0d\n",
+      stats.wb_reduction_cache_multi_entry_lane_cycles);
+    $fwrite(file_handle, "[PERF] red_wb_forward_sldu_lane_beats: %0d\n",
+      stats.wb_forward_sldu_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_sldu_cache_lane_beats: %0d\n",
+      stats.wb_forward_sldu_cache_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_mul_fpu_a_lane_beats: %0d\n",
+      stats.wb_forward_mul_fpu_a_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_mul_fpu_b_lane_beats: %0d\n",
+      stats.wb_forward_mul_fpu_b_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_mul_fpu_c_lane_beats: %0d\n",
+      stats.wb_forward_mul_fpu_c_lane_beats);
+    $fwrite(file_handle, "[PERF] red_wb_forward_mask_b_lane_beats: %0d\n",
+      stats.wb_forward_mask_b_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_store_a_lane_beats: %0d\n",
+      stats.wb_forward_store_a_lane_beats);
+    $fwrite(file_handle, "[PERF] red_wb_forward_other_lane_beats: %0d\n",
+      stats.wb_forward_other_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_chain_issue_bind_consistent: %0d\n",
+      stats.chain_late_seed_issue_insns ==
+        stats.chain_late_seed_bind_insns);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_source_consistent: %0d\n",
+      stats.wb_forward_lane_beats ==
+        stats.wb_forward_alu_lane_beats +
+        stats.wb_forward_mfpu_lane_beats +
+        stats.wb_forward_sldu_lane_beats +
+        stats.wb_forward_sldu_cache_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_reduction_cache_source_consistent: %0d\n",
+      stats.wb_forward_reduction_cache_lane_beats ==
+        stats.wb_forward_reduction_cache_alu_lane_beats +
+        stats.wb_forward_reduction_cache_mfpu_lane_beats);
+    $fwrite(file_handle,
+      "[PERF] red_wb_forward_queue_consistent: %0d\n",
+      stats.wb_forward_lane_beats ==
+        stats.wb_forward_mul_fpu_a_lane_beats +
+        stats.wb_forward_mul_fpu_b_lane_beats +
+        stats.wb_forward_mul_fpu_c_lane_beats +
+        stats.wb_forward_mask_b_lane_beats +
+        stats.wb_forward_store_a_lane_beats +
+        stats.wb_forward_other_lane_beats);
     $fwrite(file_handle,
       "[PERF] red_exact_stream_launch_promote_consistent: %0d\n",
       stats.exact_stream_successor_launch_lane_events ==
@@ -7831,6 +8057,237 @@ module ara_tb;
           red_stream_perf_counters.exact_final_broadcasts +
           ((ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.state_q == 4'd11) &&
            !ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.result_queue_full);
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+        begin : p_chain_bypass_counters
+          automatic logic [63:0] total_forward = '0;
+          automatic logic [63:0] alu_forward = '0;
+          automatic logic [63:0] mfpu_forward = '0;
+          automatic logic [63:0] reduction_cache_forward = '0;
+          automatic logic [63:0] reduction_cache_alu_forward = '0;
+          automatic logic [63:0] reduction_cache_mfpu_forward = '0;
+          automatic logic [63:0] sldu_forward = '0;
+          automatic logic [63:0] sldu_cache_forward = '0;
+          automatic logic [63:0] mul_fpu_a_forward = '0;
+          automatic logic [63:0] mul_fpu_b_forward = '0;
+          automatic logic [63:0] mul_fpu_c_forward = '0;
+          automatic logic [63:0] mask_b_forward = '0;
+          automatic logic [63:0] store_a_forward = '0;
+          automatic logic [63:0] seed_table_entries = '0;
+          automatic logic [63:0] reduction_cache_entries = '0;
+          automatic logic [63:0] reduction_cache_multi = '0;
+
+          seed_table_entries =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.
+              exact_result_cache_valid_q);
+          reduction_cache_entries =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.reduction_result_cache_valid_q) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.reduction_result_cache_valid_q) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.reduction_result_cache_valid_q) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.reduction_result_cache_valid_q);
+          reduction_cache_multi =
+            $countones({
+              $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+                i_lane.i_operand_requester.reduction_result_cache_valid_q) > 1,
+              $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+                i_lane.i_operand_requester.reduction_result_cache_valid_q) > 1,
+              $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+                i_lane.i_operand_requester.reduction_result_cache_valid_q) > 1,
+              $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+                i_lane.i_operand_requester.reduction_result_cache_valid_q) > 1
+            });
+
+          total_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_fire);
+          alu_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_alu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_alu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_alu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_alu_fire);
+          mfpu_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_mfpu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_mfpu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_mfpu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_mfpu_fire);
+          reduction_cache_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_reduction_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_reduction_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_reduction_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_reduction_cache_fire);
+          reduction_cache_alu_forward =
+            $countones(
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+                i_operand_requester.operand_forward_reduction_cache_fire &
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+                i_operand_requester.operand_forward_alu_fire) +
+            $countones(
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+                i_operand_requester.operand_forward_reduction_cache_fire &
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+                i_operand_requester.operand_forward_alu_fire) +
+            $countones(
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+                i_operand_requester.operand_forward_reduction_cache_fire &
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+                i_operand_requester.operand_forward_alu_fire) +
+            $countones(
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+                i_operand_requester.operand_forward_reduction_cache_fire &
+              ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+                i_operand_requester.operand_forward_alu_fire);
+          reduction_cache_mfpu_forward =
+            reduction_cache_forward - reduction_cache_alu_forward;
+          sldu_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_sldu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_sldu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_sldu_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_sldu_fire);
+          sldu_cache_forward =
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].
+              i_lane.i_operand_requester.operand_forward_sldu_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].
+              i_lane.i_operand_requester.operand_forward_sldu_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].
+              i_lane.i_operand_requester.operand_forward_sldu_cache_fire) +
+            $countones(ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].
+              i_lane.i_operand_requester.operand_forward_sldu_cache_fire);
+          mul_fpu_a_forward =
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUA];
+          mul_fpu_b_forward =
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUB];
+          mul_fpu_c_forward =
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUC] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUC] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUC] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+              i_operand_requester.operand_forward_fire[MulFPUC];
+          mask_b_forward =
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+              i_operand_requester.operand_forward_fire[MaskB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+              i_operand_requester.operand_forward_fire[MaskB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+              i_operand_requester.operand_forward_fire[MaskB] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+              i_operand_requester.operand_forward_fire[MaskB];
+          store_a_forward =
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[0].i_lane.
+              i_operand_requester.operand_forward_fire[StA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[1].i_lane.
+              i_operand_requester.operand_forward_fire[StA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[2].i_lane.
+              i_operand_requester.operand_forward_fire[StA] +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.gen_lanes[3].i_lane.
+              i_operand_requester.operand_forward_fire[StA];
+
+          red_stream_perf_counters.chain_late_seed_issue_insns <=
+            red_stream_perf_counters.chain_late_seed_issue_insns +
+            (ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_valid_d &&
+             ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.late_seed &&
+             !ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.vinsn_running_q[
+               ara_tb.dut.i_ara_soc.i_system.i_ara.i_sequencer.pe_req_d.id]);
+          red_stream_perf_counters.chain_late_seed_bind_insns <=
+            red_stream_perf_counters.chain_late_seed_bind_insns +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.exact_late_seed_bind;
+          red_stream_perf_counters.chain_late_seed_wait_cycles <=
+            red_stream_perf_counters.chain_late_seed_wait_cycles +
+            ara_tb.dut.i_ara_soc.i_system.i_ara.i_sldu.exact_late_seed_wait;
+          red_stream_perf_counters.chain_seed_table_entry_cycles <=
+            red_stream_perf_counters.chain_seed_table_entry_cycles +
+            seed_table_entries;
+          red_stream_perf_counters.chain_seed_table_multi_entry_cycles <=
+            red_stream_perf_counters.chain_seed_table_multi_entry_cycles +
+            (seed_table_entries > 1);
+          red_stream_perf_counters.wb_forward_lane_beats <=
+            red_stream_perf_counters.wb_forward_lane_beats + total_forward;
+          red_stream_perf_counters.wb_forward_alu_lane_beats <=
+            red_stream_perf_counters.wb_forward_alu_lane_beats + alu_forward;
+          red_stream_perf_counters.wb_forward_mfpu_lane_beats <=
+            red_stream_perf_counters.wb_forward_mfpu_lane_beats + mfpu_forward;
+          red_stream_perf_counters.wb_forward_reduction_cache_lane_beats <=
+            red_stream_perf_counters.wb_forward_reduction_cache_lane_beats +
+            reduction_cache_forward;
+          red_stream_perf_counters.wb_forward_reduction_cache_alu_lane_beats <=
+            red_stream_perf_counters.wb_forward_reduction_cache_alu_lane_beats +
+            reduction_cache_alu_forward;
+          red_stream_perf_counters.wb_forward_reduction_cache_mfpu_lane_beats <=
+            red_stream_perf_counters.wb_forward_reduction_cache_mfpu_lane_beats +
+            reduction_cache_mfpu_forward;
+          red_stream_perf_counters.wb_reduction_cache_entry_lane_cycles <=
+            red_stream_perf_counters.wb_reduction_cache_entry_lane_cycles +
+            reduction_cache_entries;
+          red_stream_perf_counters.wb_reduction_cache_multi_entry_lane_cycles <=
+            red_stream_perf_counters.wb_reduction_cache_multi_entry_lane_cycles +
+            reduction_cache_multi;
+          red_stream_perf_counters.wb_forward_sldu_lane_beats <=
+            red_stream_perf_counters.wb_forward_sldu_lane_beats + sldu_forward;
+          red_stream_perf_counters.wb_forward_sldu_cache_lane_beats <=
+            red_stream_perf_counters.wb_forward_sldu_cache_lane_beats +
+            sldu_cache_forward;
+          red_stream_perf_counters.wb_forward_mul_fpu_a_lane_beats <=
+            red_stream_perf_counters.wb_forward_mul_fpu_a_lane_beats +
+            mul_fpu_a_forward;
+          red_stream_perf_counters.wb_forward_mul_fpu_b_lane_beats <=
+            red_stream_perf_counters.wb_forward_mul_fpu_b_lane_beats +
+            mul_fpu_b_forward;
+          red_stream_perf_counters.wb_forward_mul_fpu_c_lane_beats <=
+            red_stream_perf_counters.wb_forward_mul_fpu_c_lane_beats +
+            mul_fpu_c_forward;
+          red_stream_perf_counters.wb_forward_mask_b_lane_beats <=
+            red_stream_perf_counters.wb_forward_mask_b_lane_beats +
+            mask_b_forward;
+          red_stream_perf_counters.wb_forward_store_a_lane_beats <=
+            red_stream_perf_counters.wb_forward_store_a_lane_beats +
+            store_a_forward;
+          red_stream_perf_counters.wb_forward_other_lane_beats <=
+            red_stream_perf_counters.wb_forward_other_lane_beats +
+            total_forward - mul_fpu_a_forward - mul_fpu_b_forward -
+            mul_fpu_c_forward - mask_b_forward - store_a_forward;
+        end : p_chain_bypass_counters
+`endif
 `ifdef ARA_RED_EXACT_STREAM_4LANE
         red_stream_perf_counters.exact_stream_early_release_lane_events <=
           red_stream_perf_counters.exact_stream_early_release_lane_events +
@@ -8887,7 +9344,8 @@ module ara_tb;
           exec_perf_counters.lane_desync_cycle[c] + exec_lane_desync[c];
 
         exec_perf_counters.issue_progress_cycle[c] <=
-          exec_perf_counters.issue_progress_cycle[c] + exec_event.issue_progress[c];
+          exec_perf_counters.issue_progress_cycle[c] +
+          (exec_class_active[c] && exec_event.issue_progress[c]);
         exec_perf_counters.no_issue_progress_cycle[c] <=
           exec_perf_counters.no_issue_progress_cycle[c] +
           (exec_class_active[c] && !exec_event.issue_progress[c]);

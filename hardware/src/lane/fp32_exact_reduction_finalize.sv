@@ -20,6 +20,10 @@ module fp32_exact_reduction_finalize #(
   input  logic                        neg_zero_seen_i,
   input  logic                        seed_valid_i,
   input  logic [31:0]                 seed_i,
+  // Deasserted for a versioned late-bound seed.  In that case the vector
+  // subtree intentionally excludes the seed and this finalizer inserts the
+  // producer's already-rounded architectural value exactly once.
+  input  logic                        seed_in_exact_i,
   input  logic [2:0]                  rnd_mode_i,
   input  logic                        format_fp16_i,
   output logic [31:0]                 result_o,
@@ -28,6 +32,120 @@ module fp32_exact_reduction_finalize #(
 );
 
   typedef logic signed [AccWidth-1:0] accumulator_t;
+
+  function automatic logic value_is_nan(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_nan = format_fp16
+                 ? ((&value[14:10]) && (|value[9:0]))
+                 : ((&value[30:23]) && (|value[22:0]));
+  endfunction
+
+  function automatic logic value_is_snan(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_snan = value_is_nan(value, format_fp16) &&
+                    (format_fp16 ? !value[9] : !value[22]);
+  endfunction
+
+  function automatic logic value_is_inf(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_inf = format_fp16
+                 ? ((&value[14:10]) && !(|value[9:0]))
+                 : ((&value[30:23]) && !(|value[22:0]));
+  endfunction
+
+  function automatic logic value_is_zero(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_zero = format_fp16 ? !(|value[14:0])
+                                : !(|value[30:0]);
+  endfunction
+
+  function automatic logic value_sign(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_sign = format_fp16 ? value[15] : value[31];
+  endfunction
+
+  function automatic accumulator_t value_to_fixed(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    accumulator_t magnitude;
+    logic [23:0] significand32;
+    logic [10:0] significand16;
+    int unsigned shift;
+    begin
+      magnitude = '0;
+      if (format_fp16) begin
+        if (value[14:10] == 5'h00) begin
+          magnitude = value[9:0];
+          magnitude = magnitude <<< 125;
+        end else if (value[14:10] != 5'h1f) begin
+          significand16 = {1'b1, value[9:0]};
+          shift = value[14:10] + 124;
+          magnitude = significand16;
+          magnitude = magnitude <<< shift;
+        end
+        value_to_fixed = value[15] ? -magnitude : magnitude;
+      end else begin
+        if (value[30:23] == 8'h00) begin
+          magnitude[22:0] = value[22:0];
+        end else if (value[30:23] != 8'hff) begin
+          significand32 = {1'b1, value[22:0]};
+          shift = value[30:23] - 1'b1;
+          magnitude = significand32;
+          magnitude = magnitude <<< shift;
+        end
+        value_to_fixed = value[31] ? -magnitude : magnitude;
+      end
+    end
+  endfunction
+
+  function automatic logic [3:0] value_special(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    logic sign;
+    begin
+      value_special = '0;
+      sign = value_sign(value, format_fp16);
+      if (value_is_nan(value, format_fp16)) begin
+        value_special[3] = 1'b1;
+        value_special[2] = value_is_snan(value, format_fp16);
+      end else if (value_is_inf(value, format_fp16)) begin
+        value_special[1] = !sign;
+        value_special[0] = sign;
+      end
+    end
+  endfunction
+
+  function automatic logic [3:0] merge_special(
+    input logic [3:0] left,
+    input logic [3:0] right
+  );
+    begin
+      merge_special = '0;
+      merge_special[2] = left[2] | right[2];
+      if (left[3] || right[3]) begin
+        merge_special[3] = 1'b1;
+      end else if ((left[1] && right[0]) ||
+                   (left[0] && right[1])) begin
+        merge_special[3] = 1'b1;
+        merge_special[2] = 1'b1;
+      end else begin
+        merge_special[1] = left[1] | right[1];
+        merge_special[0] = left[0] | right[0];
+      end
+    end
+  endfunction
 
   function automatic logic [31:0] overflow_result(
     input logic sign,
@@ -281,14 +399,46 @@ module fp32_exact_reduction_finalize #(
   always_comb begin
     logic [36:0] rounded;
     logic [20:0] rounded_fp16;
+    accumulator_t effective_exact;
     accumulator_t magnitude;
+    logic [3:0] effective_special;
+    logic effective_finite_nonzero_seen;
+    logic effective_pos_zero_seen;
+    logic effective_neg_zero_seen;
+    logic insert_seed;
     logic sign;
     int msb;
 
     rounded = '0;
     rounded_fp16 = '0;
-    sign = exact_value_i[AccWidth-1];
-    magnitude = sign ? -exact_value_i : exact_value_i;
+    insert_seed = seed_valid_i && !seed_in_exact_i;
+    effective_exact = exact_value_i;
+    effective_special = special_i;
+    effective_finite_nonzero_seen = finite_nonzero_seen_i;
+    effective_pos_zero_seen = pos_zero_seen_i;
+    effective_neg_zero_seen = neg_zero_seen_i;
+
+    if (insert_seed) begin
+      effective_special =
+        merge_special(effective_special,
+                      value_special(seed_i, format_fp16_i));
+      effective_finite_nonzero_seen |=
+        !value_is_nan(seed_i, format_fp16_i) &&
+        !value_is_inf(seed_i, format_fp16_i) &&
+        !value_is_zero(seed_i, format_fp16_i);
+      effective_pos_zero_seen |=
+        value_is_zero(seed_i, format_fp16_i) &&
+        !value_sign(seed_i, format_fp16_i);
+      effective_neg_zero_seen |=
+        value_is_zero(seed_i, format_fp16_i) &&
+        value_sign(seed_i, format_fp16_i);
+      if (!value_is_nan(seed_i, format_fp16_i) &&
+          !value_is_inf(seed_i, format_fp16_i))
+        effective_exact += value_to_fixed(seed_i, format_fp16_i);
+    end
+
+    sign = effective_exact[AccWidth-1];
+    magnitude = sign ? -effective_exact : effective_exact;
     msb = exact_msb(magnitude);
     result_o = '0;
     status_o = '0;
@@ -302,23 +452,25 @@ module fp32_exact_reduction_finalize #(
       else
         result_o = seed_valid_i ? seed_i
                                 : {(rnd_mode_i != 3'b010), 31'b0};
-    end else if (special_i[3]) begin
+    end else if (effective_special[3]) begin
       result_o = format_fp16_i ? 32'h00007e00 : 32'h7fc00000;
-      status_o[4] = special_i[2];
-    end else if (special_i[1]) begin
+      status_o[4] = effective_special[2];
+    end else if (effective_special[1]) begin
       result_o = format_fp16_i ? 32'h00007c00 : 32'h7f800000;
-    end else if (special_i[0]) begin
+    end else if (effective_special[0]) begin
       result_o = format_fp16_i ? 32'h0000fc00 : 32'hff800000;
     end else if (format_fp16_i) begin
       rounded_fp16 = round_fixed_fp16(magnitude, sign, msb, rnd_mode_i,
-                                      finite_nonzero_seen_i,
-                                      pos_zero_seen_i, neg_zero_seen_i);
+                                      effective_finite_nonzero_seen,
+                                      effective_pos_zero_seen,
+                                      effective_neg_zero_seen);
       status_o = rounded_fp16[20:16];
       result_o = {16'b0, rounded_fp16[15:0]};
     end else begin
       rounded = round_fixed(magnitude, sign, msb, rnd_mode_i,
-                            finite_nonzero_seen_i,
-                            pos_zero_seen_i, neg_zero_seen_i);
+                            effective_finite_nonzero_seen,
+                            effective_pos_zero_seen,
+                            effective_neg_zero_seen);
       status_o = rounded[36:32];
       result_o = rounded[31:0];
     end

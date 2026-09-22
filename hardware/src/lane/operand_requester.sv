@@ -16,7 +16,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     parameter  type          operand_request_cmd_t = logic,
     parameter  type          operand_queue_cmd_t   = logic,
     // Dependant parameters. DO NOT CHANGE!
-    localparam type          strb_t  = logic[$bits(elen_t)/8-1:0],
+    localparam int unsigned  StrbWidth = $bits(elen_t)/8,
+    localparam type          strb_t  = logic[StrbWidth-1:0],
     localparam type          vlen_t  = logic[$clog2(VLEN+1)-1:0]
   ) (
     input  logic                                       clk_i,
@@ -27,6 +28,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  operand_request_cmd_t [NrOperandQueues-1:0] operand_request_i,
     input  logic                 [NrOperandQueues-1:0] operand_request_valid_i,
     output logic                 [NrOperandQueues-1:0] operand_request_ready_o,
+    // Writeback-to-read forwarding.  The payload is registered to align with
+    // the VRF's one-cycle read response.  A one-cycle SLDU result cache also
+    // covers a consumer that becomes ready immediately after the writeback.
+    output elen_t                [NrOperandQueues-1:0] forwarded_operand_o,
+    output logic                 [NrOperandQueues-1:0] forwarded_operand_valid_o,
     // Support for store exception flush
     input  logic                                       lsu_ex_flush_i,
     output logic                                       lsu_ex_flush_o,
@@ -46,6 +52,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     // ALU
     input  logic                                       alu_result_req_i,
     input  vid_t                                       alu_result_id_i,
+    input  vreg_version_t                              alu_result_version_i,
+    input  logic                                       alu_result_is_reduction_i,
     input  vaddr_t                                     alu_result_addr_i,
     input  elen_t                                      alu_result_wdata_i,
     input  strb_t                                      alu_result_be_i,
@@ -53,6 +61,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     // Multiplier/FPU
     input  logic                                       mfpu_result_req_i,
     input  vid_t                                       mfpu_result_id_i,
+    input  vreg_version_t                              mfpu_result_version_i,
+    input  logic                                       mfpu_result_is_reduction_i,
     input  vaddr_t                                     mfpu_result_addr_i,
     input  elen_t                                      mfpu_result_wdata_i,
     input  strb_t                                      mfpu_result_be_i,
@@ -245,6 +255,11 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     vlen_t len;
     // Element width
     vew_e vew;
+    // Byte offset of the first useful element in the current VRF word.
+    // It becomes zero after the first beat.
+    logic [2:0] byte_offset;
+    // Architectural epoch of the register value requested by this consumer.
+    vreg_version_t source_version;
 
     // Hazards between vector instructions
     logic [NrVInsn-1:0] hazard;
@@ -273,6 +288,215 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
   logic [NrOperandQueues-1:0] stall;
   logic [NrOperandQueues-1:0][NrBanks-1:0] operand_requester_gnt;
+  logic [NrOperandQueues-1:0] operand_forward_candidate;
+  logic [NrOperandQueues-1:0] operand_forward_fire;
+  logic [NrOperandQueues-1:0] operand_forward_alu_fire;
+  logic [NrOperandQueues-1:0] operand_forward_mfpu_fire;
+  logic [NrOperandQueues-1:0] operand_forward_sldu_fire;
+  logic [NrOperandQueues-1:0] operand_forward_sldu_cache_fire;
+  logic [NrOperandQueues-1:0] operand_forward_reduction_cache_fire;
+  logic [NrOperandQueues-1:0] operand_forward_reduction_cache_index;
+  elen_t [NrOperandQueues-1:0] operand_forward_data;
+  elen_t [NrOperandQueues-1:0] forwarded_operand_q;
+  logic [NrOperandQueues-1:0] forwarded_operand_valid_q;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+  logic   recent_mfpu_result_valid_q;
+  vid_t   recent_mfpu_result_id_q;
+  vreg_version_t recent_mfpu_result_version_q;
+  vaddr_t recent_mfpu_result_addr_q;
+  elen_t  recent_mfpu_result_wdata_q;
+  strb_t  recent_mfpu_result_be_q;
+  logic   recent_sldu_result_valid_q;
+  vid_t   recent_sldu_result_id_q;
+  vaddr_t recent_sldu_result_addr_q;
+  elen_t  recent_sldu_result_wdata_q;
+  strb_t  recent_sldu_result_be_q;
+  // Two short-lived, version-tagged victim entries keep consecutive
+  // reductions available across retirement and vsetvl boundaries.  This
+  // covers the common pair-accumulator pattern without a content-addressed
+  // structure.  The entry expires before 256 cycles, so it cannot survive
+  // enough one-write-per-cycle updates for an eight-bit epoch to wrap.
+  localparam int unsigned ReductionResultCacheDepth = 2;
+  logic [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_valid_q;
+  vreg_version_t [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_version_q;
+  vaddr_t [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_addr_q;
+  elen_t [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_wdata_q;
+  strb_t [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_be_q;
+  logic [ReductionResultCacheDepth-1:0][VRegVersionWidth-1:0]
+    reduction_result_cache_age_q;
+  logic [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_from_mfpu_q;
+  logic [ReductionResultCacheDepth-1:0]
+    reduction_result_cache_consume;
+  logic reduction_result_cache_replace_q;
+  logic reduction_result_cache_fill_index;
+
+  always_comb begin
+    reduction_result_cache_consume = '0;
+    for (int requester = 0; requester < NrOperandQueues; requester++)
+      if (operand_forward_reduction_cache_fire[requester])
+        reduction_result_cache_consume[
+          operand_forward_reduction_cache_index[requester]] = 1'b1;
+  end
+
+  assign reduction_result_cache_fill_index =
+    (!reduction_result_cache_valid_q[0] ||
+     reduction_result_cache_consume[0]) ? 1'b0 :
+    (!reduction_result_cache_valid_q[1] ||
+     reduction_result_cache_consume[1]) ? 1'b1 :
+    reduction_result_cache_replace_q;
+`endif
+
+  assign forwarded_operand_o       = forwarded_operand_q;
+  assign forwarded_operand_valid_o = forwarded_operand_valid_q;
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_forwarded_operands
+    if (!rst_ni) begin
+      forwarded_operand_q       <= '0;
+      forwarded_operand_valid_q <= '0;
+    end else begin
+      forwarded_operand_valid_q <= operand_forward_fire;
+      for (int requester = 0; requester < NrOperandQueues; requester++)
+        if (operand_forward_fire[requester])
+          forwarded_operand_q[requester] <= operand_forward_data[requester];
+    end
+  end
+
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+  // MFPU result addresses may leave the result queue in bank-friendly order
+  // rather than monotonically increasing VRF order.  Delay a granted,
+  // post-rounded beat by one cycle, then match its full address before
+  // forwarding it.  While the same producer presents a different address,
+  // the requester is held so it cannot read a not-yet-written hole.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_recent_mfpu_result
+    if (!rst_ni) begin
+      recent_mfpu_result_valid_q <= 1'b0;
+      recent_mfpu_result_id_q    <= '0;
+      recent_mfpu_result_version_q <= '0;
+      recent_mfpu_result_addr_q  <= '0;
+      recent_mfpu_result_wdata_q <= '0;
+      recent_mfpu_result_be_q    <= '0;
+    end else begin
+      recent_mfpu_result_valid_q <= mfpu_result_gnt_o;
+      if (mfpu_result_gnt_o) begin
+        recent_mfpu_result_id_q    <= mfpu_result_id_i;
+        recent_mfpu_result_version_q <= mfpu_result_version_i;
+        recent_mfpu_result_addr_q  <= mfpu_result_addr_i;
+        recent_mfpu_result_wdata_q <= mfpu_result_wdata_i;
+        recent_mfpu_result_be_q    <= mfpu_result_be_i;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_reduction_result_cache
+    if (!rst_ni) begin
+      reduction_result_cache_valid_q   <= '0;
+      reduction_result_cache_version_q <= '0;
+      reduction_result_cache_addr_q    <= '0;
+      reduction_result_cache_wdata_q   <= '0;
+      reduction_result_cache_be_q      <= '0;
+      reduction_result_cache_age_q     <= '0;
+      reduction_result_cache_from_mfpu_q <= '0;
+      reduction_result_cache_replace_q <= 1'b0;
+    end else begin
+      for (int entry = 0; entry < ReductionResultCacheDepth; entry++) begin
+        if (reduction_result_cache_valid_q[entry]) begin
+          if (reduction_result_cache_age_q[entry] ==
+              ({VRegVersionWidth{1'b1}} - 1'b1)) begin
+            reduction_result_cache_valid_q[entry] <= 1'b0;
+            reduction_result_cache_age_q[entry]   <= '0;
+          end else begin
+            reduction_result_cache_age_q[entry] <=
+              reduction_result_cache_age_q[entry] + 1'b1;
+          end
+        end
+      end
+
+      // More than one requester may consume the same victim in a cycle.  All
+      // see the old registered payload; invalidation is applied afterwards.
+      for (int requester = 0; requester < NrOperandQueues; requester++) begin
+        if (operand_forward_reduction_cache_fire[requester]) begin
+          reduction_result_cache_valid_q[
+            operand_forward_reduction_cache_index[requester]] <= 1'b0;
+          reduction_result_cache_age_q[
+            operand_forward_reduction_cache_index[requester]] <= '0;
+        end
+      end
+
+      // New writes have final priority if fill and consume select the same
+      // slot in one cycle.  ALU and MFPU may win different VRF banks
+      // together; when both carry reductions, retain both in distinct slots.
+      if (mfpu_result_gnt_o && mfpu_result_is_reduction_i) begin
+        reduction_result_cache_valid_q[
+          reduction_result_cache_fill_index] <= 1'b1;
+        reduction_result_cache_version_q[
+          reduction_result_cache_fill_index] <= mfpu_result_version_i;
+        reduction_result_cache_addr_q[
+          reduction_result_cache_fill_index] <= mfpu_result_addr_i;
+        reduction_result_cache_wdata_q[
+          reduction_result_cache_fill_index] <= mfpu_result_wdata_i;
+        reduction_result_cache_be_q[
+          reduction_result_cache_fill_index] <= mfpu_result_be_i;
+        reduction_result_cache_age_q[
+          reduction_result_cache_fill_index] <= '0;
+        reduction_result_cache_from_mfpu_q[
+          reduction_result_cache_fill_index] <= 1'b1;
+        reduction_result_cache_replace_q <=
+          ~reduction_result_cache_fill_index;
+      end
+      if (alu_result_gnt_o && alu_result_is_reduction_i) begin
+        automatic logic alu_fill_index;
+        alu_fill_index =
+          (mfpu_result_gnt_o && mfpu_result_is_reduction_i)
+            ? ~reduction_result_cache_fill_index
+            : reduction_result_cache_fill_index;
+        reduction_result_cache_valid_q[
+          alu_fill_index] <= 1'b1;
+        reduction_result_cache_version_q[
+          alu_fill_index] <= alu_result_version_i;
+        reduction_result_cache_addr_q[
+          alu_fill_index] <= alu_result_addr_i;
+        reduction_result_cache_wdata_q[
+          alu_fill_index] <= alu_result_wdata_i;
+        reduction_result_cache_be_q[
+          alu_fill_index] <= alu_result_be_i;
+        reduction_result_cache_age_q[
+          alu_fill_index] <= '0;
+        reduction_result_cache_from_mfpu_q[
+          alu_fill_index] <= 1'b0;
+        reduction_result_cache_replace_q <=
+          ~alu_fill_index;
+      end
+    end
+  end
+
+  // A single-cycle victim entry is sufficient to bridge the arbitration
+  // boundary after a reduction result has entered the VRF.  Keeping it for
+  // only one cycle also prevents a recycled instruction ID from aliasing a
+  // stale result.
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_recent_sldu_result
+    if (!rst_ni) begin
+      recent_sldu_result_valid_q <= 1'b0;
+      recent_sldu_result_id_q    <= '0;
+      recent_sldu_result_addr_q  <= '0;
+      recent_sldu_result_wdata_q <= '0;
+      recent_sldu_result_be_q    <= '0;
+    end else begin
+      recent_sldu_result_valid_q <= sldu_result_gnt;
+      if (sldu_result_gnt) begin
+        recent_sldu_result_id_q    <= sldu_result_id;
+        recent_sldu_result_addr_q  <= sldu_result_addr;
+        recent_sldu_result_wdata_q <= sldu_result_wdata;
+        recent_sldu_result_be_q    <= sldu_result_be;
+      end
+    end
+  end
+`endif
 
   for (genvar requester_index = 0; requester_index < NrOperandQueues; requester_index++) begin : gen_operand_requester
 
@@ -282,7 +506,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     end
 
     // Did we issue a word to this operand queue?
-    assign operand_issued_o[requester_index] = |(operand_requester_gnt[requester_index]);
+    assign operand_issued_o[requester_index] =
+      |(operand_requester_gnt[requester_index]) |
+      operand_forward_fire[requester_index];
 
     always_comb begin: operand_requester
       // Helper local variables
@@ -290,6 +516,16 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       automatic requester_metadata_t requester_metadata_tmp;
       automatic vlen_t               effective_vector_body_length;
       automatic vaddr_t              vrf_addr;
+      automatic strb_t               required_forward_be;
+      automatic logic                mfpu_producer_active;
+      automatic logic                cached_mfpu_forward_match;
+      automatic logic                reduction_cache_forward_match;
+      automatic logic                reduction_cache_forward_index;
+      automatic logic                sldu_forward_match;
+      automatic logic                cached_sldu_forward_match;
+      automatic vlen_t               forward_elements;
+      automatic int unsigned         forward_bytes;
+      automatic int unsigned         forward_byte_end;
 
       automatic elen_t vl_byte;
       automatic elen_t vstart_byte;
@@ -300,6 +536,25 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       automatic int bank = requester_metadata_q[requester_index].addr[idx_width(NrBanks)-1:0];
 
       stall[requester_index] = '0;
+      operand_forward_candidate[requester_index] = 1'b0;
+      operand_forward_fire[requester_index]      = 1'b0;
+      operand_forward_alu_fire[requester_index]  = 1'b0;
+      operand_forward_mfpu_fire[requester_index] = 1'b0;
+      operand_forward_sldu_fire[requester_index] = 1'b0;
+      operand_forward_sldu_cache_fire[requester_index] = 1'b0;
+      operand_forward_reduction_cache_fire[requester_index] = 1'b0;
+      operand_forward_reduction_cache_index[requester_index] = 1'b0;
+      operand_forward_data[requester_index]      = '0;
+      required_forward_be = '0;
+      mfpu_producer_active = 1'b0;
+      cached_mfpu_forward_match = 1'b0;
+      reduction_cache_forward_match = 1'b0;
+      reduction_cache_forward_index = 1'b0;
+      sldu_forward_match  = 1'b0;
+      cached_sldu_forward_match = 1'b0;
+      forward_elements    = '0;
+      forward_bytes       = 0;
+      forward_byte_end    = 0;
 
       // Maintain state
       state_d[requester_index]     = state_q[requester_index];
@@ -350,6 +605,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         addr        : vrf_addr,
         len         : effective_vector_body_length,
         vew         : operand_request_i[requester_index].eew,
+        byte_offset : vstart_byte[2:0],
+        source_version : operand_request_i[requester_index].source_version,
         hazard      : operand_request_i[requester_index].hazard,
         is_widening : operand_request_i[requester_index].cvt_resize == CVT_WIDE,
         default: '0
@@ -413,8 +670,128 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           if (operand_queue_ready_i[requester_index]) begin : operand_queue_ready
             automatic vlen_t num_elements;
 
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            // A producer write covers exactly the bytes this requester needs
+            // from the current 64-bit word.  Requiring the byte enables avoids
+            // forwarding masked/tail bytes whose old architectural value still
+            // resides only in the VRF.
+            forward_elements =
+              1 << (unsigned'(EW64) -
+                    unsigned'(requester_metadata_q[requester_index].vew));
+            if (requester_metadata_q[requester_index].len < forward_elements)
+              forward_elements =
+                requester_metadata_q[requester_index].len;
+            forward_bytes =
+              forward_elements <<
+              unsigned'(requester_metadata_q[requester_index].vew);
+            forward_byte_end =
+              requester_metadata_q[requester_index].byte_offset +
+              forward_bytes;
+            if (forward_byte_end > StrbWidth)
+              forward_byte_end = StrbWidth;
+            for (int byte_index = 0; byte_index < StrbWidth; byte_index++)
+              if ((byte_index >=
+                   requester_metadata_q[requester_index].byte_offset) &&
+                  (byte_index < forward_byte_end))
+                required_forward_be[byte_index] = 1'b1;
+
+            mfpu_producer_active =
+              mfpu_result_req_i &&
+              requester_metadata_q[requester_index]
+                .hazard[mfpu_result_id_i];
+
+            cached_mfpu_forward_match =
+              recent_mfpu_result_valid_q &&
+              (requester_metadata_q[requester_index].source_version ==
+               recent_mfpu_result_version_q) &&
+              requester_metadata_q[requester_index]
+                .hazard[recent_mfpu_result_id_q] &&
+              (requester_metadata_q[requester_index].addr ==
+               recent_mfpu_result_addr_q) &&
+              ((recent_mfpu_result_be_q & required_forward_be) ==
+               required_forward_be);
+
+            // A completed reduction may already have retired and therefore no
+            // longer owns a live hazard bit.  Address + architectural epoch is
+            // the authoritative match; byte coverage prevents forwarding
+            // undefined tail bytes.
+            for (int entry = 0;
+                 entry < ReductionResultCacheDepth; entry++) begin
+              if (!reduction_cache_forward_match &&
+                  reduction_result_cache_valid_q[entry] &&
+                  (requester_metadata_q[requester_index].source_version ==
+                   reduction_result_cache_version_q[entry]) &&
+                  (requester_metadata_q[requester_index].addr ==
+                   reduction_result_cache_addr_q[entry]) &&
+                  ((reduction_result_cache_be_q[entry] &
+                    required_forward_be) == required_forward_be)) begin
+                reduction_cache_forward_match = 1'b1;
+                reduction_cache_forward_index = 1'(entry);
+              end
+            end
+
+            sldu_forward_match =
+              sldu_result_req &&
+              (requester_metadata_q[requester_index].len <=
+               forward_elements) &&
+              requester_metadata_q[requester_index]
+                .hazard[sldu_result_id] &&
+              (requester_metadata_q[requester_index].addr ==
+               sldu_result_addr) &&
+              ((sldu_result_be & required_forward_be) ==
+               required_forward_be);
+
+            cached_sldu_forward_match =
+              recent_sldu_result_valid_q &&
+              requester_metadata_q[requester_index]
+                .hazard[recent_sldu_result_id_q] &&
+              (requester_metadata_q[requester_index].addr ==
+               recent_sldu_result_addr_q) &&
+              ((recent_sldu_result_be_q & required_forward_be) ==
+               required_forward_be);
+
+            operand_forward_candidate[requester_index] =
+              mfpu_producer_active || reduction_cache_forward_match ||
+              cached_mfpu_forward_match ||
+              sldu_forward_match || cached_sldu_forward_match;
+            if (reduction_cache_forward_match) begin
+              operand_forward_fire[requester_index] = 1'b1;
+              operand_forward_alu_fire[requester_index] =
+                !reduction_result_cache_from_mfpu_q[
+                  reduction_cache_forward_index];
+              operand_forward_mfpu_fire[requester_index] =
+                reduction_result_cache_from_mfpu_q[
+                  reduction_cache_forward_index];
+              operand_forward_reduction_cache_fire[requester_index] = 1'b1;
+              operand_forward_reduction_cache_index[requester_index] =
+                reduction_cache_forward_index;
+              operand_forward_data[requester_index] =
+                reduction_result_cache_wdata_q[
+                  reduction_cache_forward_index];
+            end else if (cached_sldu_forward_match) begin
+              operand_forward_fire[requester_index] = 1'b1;
+              operand_forward_sldu_cache_fire[requester_index] = 1'b1;
+              operand_forward_data[requester_index] =
+                recent_sldu_result_wdata_q;
+            end else if (cached_mfpu_forward_match) begin
+              operand_forward_fire[requester_index] = 1'b1;
+              operand_forward_mfpu_fire[requester_index] = 1'b1;
+              operand_forward_data[requester_index] =
+                recent_mfpu_result_wdata_q;
+            end else if (sldu_forward_match) begin
+              operand_forward_fire[requester_index] =
+                sldu_result_gnt;
+              operand_forward_sldu_fire[requester_index] =
+                sldu_result_gnt;
+              operand_forward_data[requester_index] =
+                sldu_result_wdata;
+            end
+`endif
+
             // Operand request
-            lane_operand_req_transposed[requester_index][bank] = !stall[requester_index] ;
+            lane_operand_req_transposed[requester_index][bank] =
+              !stall[requester_index] &&
+              !operand_forward_candidate[requester_index];
             operand_payload[requester_index]   = '{
               addr   : requester_metadata_q[requester_index].addr >> $clog2(NrBanks),
               opqueue: opqueue_e'(requester_index),
@@ -425,6 +802,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             if (|operand_requester_gnt[requester_index]) begin : op_req_grant
               // Bump the address pointer
               requester_metadata_d[requester_index].addr = requester_metadata_q[requester_index].addr + 1'b1;
+              requester_metadata_d[requester_index].byte_offset = '0;
 
               // We read less than 64 bits worth of elements
               num_elements = ( 1 << ( unsigned'(EW64) - unsigned'(requester_metadata_q[requester_index].vew) ) );
@@ -435,6 +813,22 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
                 requester_metadata_d[requester_index].len = requester_metadata_q[requester_index].len - num_elements;
               end
             end : op_req_grant
+
+            // A forwarded beat owns the same operand-queue credit as a VRF
+            // read and therefore advances the requester exactly once.
+            if (operand_forward_fire[requester_index]) begin : op_forward_grant
+              num_elements =
+                (1 << (unsigned'(EW64) -
+                       unsigned'(requester_metadata_q[requester_index].vew)));
+              requester_metadata_d[requester_index].addr =
+                requester_metadata_q[requester_index].addr + 1'b1;
+              requester_metadata_d[requester_index].byte_offset = '0;
+              if (requester_metadata_q[requester_index].len < num_elements)
+                requester_metadata_d[requester_index].len = '0;
+              else
+                requester_metadata_d[requester_index].len =
+                  requester_metadata_q[requester_index].len - num_elements;
+            end : op_forward_grant
 
             // Finished requesting all the elements
             if (requester_metadata_d[requester_index].len == '0) begin : finish_request
@@ -500,6 +894,18 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
   end : gen_operand_requester
+
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifndef SYNTHESIS
+  for (genvar requester = 0; requester < NrOperandQueues; requester++) begin
+    a_forwarded_operand_replaces_vrf_read: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        operand_forward_fire[requester] |->
+          !(|operand_requester_gnt[requester])
+    ) else $error("operand requester consumed forwarded and VRF data together");
+  end
+`endif
+`endif
 
   ////////////////
   //  Arbiters  //

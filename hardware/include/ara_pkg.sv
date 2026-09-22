@@ -118,6 +118,11 @@ package ara_pkg;
 
   typedef logic [$clog2(NrVInsn)-1:0] vid_t;
   typedef logic [ELEN-1:0] elen_t;
+  // Architectural vector-register epoch used by cross-instruction
+  // forwarding.  Eight bits let short-lived result caches remain useful for
+  // long reductions while still expiring before an epoch can wrap.
+  localparam int unsigned VRegVersionWidth = 8;
+  typedef logic [VRegVersionWidth-1:0] vreg_version_t;
 
   //////////////////
   //  Operations  //

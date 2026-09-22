@@ -340,6 +340,10 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         // vrgather/vcompress request vs2 in a non-conventional way from MaskB, not ALU
         use_vs2        : pe_req.use_vs2 && !(pe_req.op inside {[VRGATHER:VCOMPRESS]}),
         ordered_source_alias : pe_req.ordered_source_alias,
+        late_seed      : pe_req.late_seed,
+        seed_producer_id : pe_req.seed_producer_id,
+        seed_version   : pe_req.seed_version,
+        vd_version     : pe_req.vd_version,
         use_vd_op      : pe_req.use_vd_op,
         scalar_op      : pe_req.scalar_op,
         use_scalar_op  : pe_req.use_scalar_op,
@@ -451,6 +455,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MulFPUA] = '{
             id         : pe_req.id,
             vs         : pe_req.vs1,
+            source_version : pe_req.vs1_version,
             eew        : pe_req.eew_vs1,
             // If reductions and vl == 0, we must replace with neutral values
             conv       : pe_req.conversion_vs1,
@@ -466,11 +471,16 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             target_fu  : MFPU_ADDRGEN,
             default    : '0
           };
-          operand_request_push[MulFPUA] = pe_req.use_vs1;
+          // A versioned late seed is supplied by the preceding exact
+          // reduction at the global finalizer.  Do not allocate a stale VRF
+          // read or an otherwise empty operand-queue command for vs1.
+          operand_request_push[MulFPUA] = pe_req.use_vs1 && !pe_req.late_seed;
 
           operand_request[MulFPUB] = '{
             id         : pe_req.id,
             vs         : pe_req.swap_vs2_vd_op ? pe_req.vd        : pe_req.vs2,
+            source_version : pe_req.swap_vs2_vd_op
+                           ? pe_req.vd_operand_version : pe_req.vs2_version,
             eew        : pe_req.swap_vs2_vd_op ? pe_req.eew_vd_op : pe_req.eew_vs2,
             // If reductions and vl == 0, we must replace with neutral values
             conv       : pe_req.conversion_vs2,
@@ -494,6 +504,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MulFPUC] = '{
             id         : pe_req.id,
             vs         : pe_req.swap_vs2_vd_op ? pe_req.vs2            : pe_req.vd,
+            source_version : pe_req.swap_vs2_vd_op
+                           ? pe_req.vs2_version : pe_req.vd_operand_version,
             eew        : pe_req.swap_vs2_vd_op ? pe_req.eew_vs2        : pe_req.eew_vd_op,
             conv       : pe_req.swap_vs2_vd_op ? pe_req.conversion_vs2 : OpQueueConversionNone,
             scale_vl   : pe_req.scale_vl,
@@ -581,6 +593,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[StA] = '{
             id      : pe_req.id,
             vs      : pe_req.vs1,
+            source_version : pe_req.vs1_version,
             eew     : pe_req.old_eew_vs1,
             conv    : pe_req.conversion_vs1,
             scale_vl: pe_req.scale_vl,
@@ -926,6 +939,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MaskB] = '{
             id         : pe_req.id,
             vs         : pe_req.vs2,
+            source_version : pe_req.vs2_version,
             eew        : pe_req.eew_vs2,
             conv       : pe_req.conversion_vs2,
             scale_vl   : pe_req.scale_vl,

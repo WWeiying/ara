@@ -152,6 +152,32 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   pe_req_t pe_req_d;
   logic    pe_req_valid_d;
 
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+  // The producer ID disambiguates simultaneously live definitions; the
+  // wider architectural epoch also makes post-retirement result caches safe
+  // and useful across long reductions.
+  vreg_version_t [31:0] vreg_version_d, vreg_version_q;
+  logic [NrVInsn-1:0] writer_exact_d, writer_exact_q;
+  logic [NrVInsn-1:0][4:0] writer_vd_d, writer_vd_q;
+  vreg_version_t [NrVInsn-1:0] writer_version_d, writer_version_q;
+  logic late_seed_candidate;
+  vid_t late_seed_producer;
+
+  function automatic logic exact_chain_eligible(input ara_req_t request);
+    logic sum_width_eligible;
+    sum_width_eligible = request.vtype.vsew == EW32;
+`ifdef ARA_RED_EXACT_FP16_4LANE
+    sum_width_eligible |= request.vtype.vsew == EW16;
+`endif
+    exact_chain_eligible = (NrLanes == 4) &&
+      (((request.op == VFREDUSUM) &&
+        sum_width_eligible) ||
+       ((request.op == VFWREDUSUM) &&
+        (request.vtype.vsew == EW32))) &&
+      (request.vl >= 1);
+  endfunction : exact_chain_eligible
+`endif
+
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
   logic ordered_last_issue_valid_d, ordered_last_issue_valid_q;
   ara_req_t ordered_last_issue_d, ordered_last_issue_q;
@@ -396,6 +422,14 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Maintain request
     pe_req_d       = '0;
     pe_req_valid_d = 1'b0;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+    vreg_version_d   = vreg_version_q;
+    writer_exact_d   = writer_exact_q;
+    writer_vd_d      = writer_vd_q;
+    writer_version_d = writer_version_q;
+    late_seed_candidate = 1'b0;
+    late_seed_producer  = '0;
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
     ordered_last_issue_valid_d = ordered_last_issue_valid_q;
     ordered_last_issue_d       = ordered_last_issue_q;
@@ -471,6 +505,39 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
               write_list_d[ara_req_i.vd].valid;
 
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            // A dependent exact reduction may consume its vector body before
+            // the preceding rounded scalar seed is available.  The tuple
+            // {producer ID, register epoch} names that seed unambiguously.
+            if (ara_req_i.use_vs1 && exact_chain_eligible(ara_req_i) &&
+                write_list_d[ara_req_i.vs1].valid) begin
+              late_seed_producer =
+                write_list_d[ara_req_i.vs1].vid;
+              late_seed_candidate =
+                writer_exact_q[late_seed_producer] &&
+                (writer_vd_q[late_seed_producer] == ara_req_i.vs1) &&
+                (writer_version_q[late_seed_producer] ==
+                 vreg_version_q[ara_req_i.vs1]);
+            end
+
+            if (late_seed_candidate) begin
+              // The true seed RAW is replaced by the versioned late binding.
+              // For the in-place accumulator form, the same producer's WAW
+              // and prior-seed WAR are false for computation because every
+              // result queue still commits in instruction order.  Preserve a
+              // real vs2/v0 RAW.  A chain that changes destination still gets
+              // late seed binding, but retains any ambiguous WAR bit.
+              pe_req_d.hazard_vs1[late_seed_producer] = 1'b0;
+              if (ara_req_i.vd == ara_req_i.vs1) begin
+                if (ara_req_i.vs2 != ara_req_i.vs1)
+                  pe_req_d.hazard_vs2[late_seed_producer] = 1'b0;
+                if (ara_req_i.vm || (ara_req_i.vs1 != VMASK))
+                  pe_req_d.hazard_vm[late_seed_producer] = 1'b0;
+                pe_req_d.hazard_vd[late_seed_producer] = 1'b0;
+              end
+            end
+`endif
+
             `ifdef FOR_VERIFY
             raw_hazard = (ara_req_i.use_vs1 && pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid]) ||
                          (ara_req_i.use_vs2 && pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid]) ||
@@ -529,6 +596,24 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               hazard_vs2    : pe_req_d.hazard_vs2,
               default       : '0
             };
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            pe_req_d.late_seed =
+              late_seed_candidate;
+            pe_req_d.seed_producer_id =
+              late_seed_producer;
+            pe_req_d.seed_version =
+              vreg_version_q[ara_req_i.vs1];
+            pe_req_d.vd_version =
+              ara_req_i.use_vd
+                ? vreg_version_q[ara_req_i.vd] + 1'b1
+                : vreg_version_q[ara_req_i.vd];
+            pe_req_d.vs1_version =
+              vreg_version_q[ara_req_i.vs1];
+            pe_req_d.vs2_version =
+              vreg_version_q[ara_req_i.vs2];
+            pe_req_d.vd_operand_version =
+              vreg_version_q[ara_req_i.vd];
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
             pe_req_d.ordered_source_alias =
               ordered_last_issue_valid_q &&
@@ -587,6 +672,18 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
               // Mark that this vector instruction is writing to vector vd
               if (ara_req_i.use_vd) write_list_d[ara_req_i.vd] = '{vid: vinsn_id_n, valid: 1'b1};
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+              if (ara_req_i.use_vd) begin
+                vreg_version_d[ara_req_i.vd] =
+                  pe_req_d.vd_version;
+                writer_exact_d[vinsn_id_n] =
+                  exact_chain_eligible(ara_req_i);
+                writer_vd_d[vinsn_id_n] =
+                  ara_req_i.vd;
+                writer_version_d[vinsn_id_n] =
+                  pe_req_d.vd_version;
+              end
+`endif
 
               // Mark that this loop is reading vs
               if (ara_req_i.use_vs1) read_list_d[ara_req_i.vs1] = '{vid: vinsn_id_n, valid: 1'b1};
@@ -655,6 +752,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       pe_req_o       <= '0;
       pe_req_valid_o <= 1'b0;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      vreg_version_q   <= '0;
+      writer_exact_q   <= '0;
+      writer_vd_q      <= '0;
+      writer_version_q <= '0;
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       ordered_last_issue_valid_q <= 1'b0;
       ordered_last_issue_q       <= '0;
@@ -674,6 +777,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       pe_req_o       <= pe_req_d;
       pe_req_valid_o <= pe_req_valid_d;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      vreg_version_q   <= vreg_version_d;
+      writer_exact_q   <= writer_exact_d;
+      writer_vd_q      <= writer_vd_d;
+      writer_version_q <= writer_version_d;
+`endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       ordered_last_issue_valid_q <= ordered_last_issue_valid_d;
       ordered_last_issue_q       <= ordered_last_issue_d;

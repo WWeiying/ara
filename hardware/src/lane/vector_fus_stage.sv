@@ -54,6 +54,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Interface with the vector register file
     output logic                              alu_result_req_o,
     output vid_t                              alu_result_id_o,
+    output vreg_version_t                     alu_result_version_o,
+    output logic                              alu_result_is_reduction_o,
     output vaddr_t                            alu_result_addr_o,
     output elen_t                             alu_result_wdata_o,
     output strb_t                             alu_result_be_o,
@@ -61,6 +63,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Multiplier/FPU
     output logic                              mfpu_result_req_o,
     output vid_t                              mfpu_result_id_o,
+    output vreg_version_t                     mfpu_result_version_o,
+    output logic                              mfpu_result_is_reduction_o,
     output vaddr_t                            mfpu_result_addr_o,
     output elen_t                             mfpu_result_wdata_o,
     output strb_t                             mfpu_result_be_o,
@@ -132,6 +136,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .alu_result_req_o     (alu_result_req_o               ),
     .alu_result_addr_o    (alu_result_addr_o              ),
     .alu_result_id_o      (alu_result_id_o                ),
+    .alu_result_version_o (alu_result_version_o           ),
+    .alu_result_is_reduction_o(alu_result_is_reduction_o  ),
     .alu_result_wdata_o   (alu_result_wdata_o             ),
     .alu_result_be_o      (alu_result_be_o                ),
     .alu_result_gnt_i     (alu_result_gnt_i               ),
@@ -188,6 +194,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Interface with the vector register file
     .mfpu_result_req_o    (mfpu_result_req_o               ),
     .mfpu_result_id_o     (mfpu_result_id_o                ),
+    .mfpu_result_version_o(mfpu_result_version_o           ),
+    .mfpu_result_is_reduction_o(mfpu_result_is_reduction_o ),
     .mfpu_result_addr_o   (mfpu_result_addr_o              ),
     .mfpu_result_wdata_o  (mfpu_result_wdata_o             ),
     .mfpu_result_be_o     (mfpu_result_be_o                ),

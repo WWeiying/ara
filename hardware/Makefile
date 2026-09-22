@@ -118,6 +118,44 @@ reduction_exact_global        ?= 0
 reduction_exact_fixed_window  ?= 0
 reduction_exact_fp16          ?= 0
 reduction_exact_stream        ?= 0
+reduction_chain_bypass        ?= 0
+reduction_complete_4lane      ?= 0
+reduction_complete_4lane_chain_bypass ?= 1
+
+# Reproducible final 4-lane candidate.  Individual switches remain available
+# for ablation builds, while this profile prevents a paper/kernel run from
+# silently omitting an already-validated mechanism.  The fixed-window exact
+# protocol is intentionally excluded because it is the dense ablation control;
+# the final candidate uses the sparse active-window protocol.
+ifeq ($(reduction_complete_4lane),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_complete_4lane requires nr_lanes=4)
+  endif
+  override reduction_output_bypass       := 1
+  override reduction_route_bypass        := 1
+  override reduction_mask_fastpath       := 1
+  override reduction_mask_skip           := 1
+  override reduction_dense_input_bypass  := 1
+  override reduction_tree_input_bypass   := 1
+  override reduction_terminal_fusion     := 1
+  override reduction_context_flow        := 1
+  override reduction_context_stream      := 1
+  override reduction_slack_schedule      := 1
+  override reduction_heterogeneous_stream := 1
+  override reduction_masked_stream       := 1
+  override reduction_tree_stage_pipeline := 1
+  override reduction_ordered_interleave  := 1
+  override reduction_source_fusion       := 1
+  override reduction_ordered_fast        := 1
+  override reduction_exact_sum           := 1
+  override reduction_exact_segmented     := 1
+  override reduction_exact_global        := 1
+  override reduction_exact_fp16          := 1
+  override reduction_exact_stream        := 1
+  # Set only the following knob to 0 for a same-profile chain-bypass
+  # ablation; every other final mechanism remains enabled.
+  override reduction_chain_bypass        := $(reduction_complete_4lane_chain_bypass)
+endif
 
 # Masked-off token relay uses the direct VMFPU output protocol and the
 # mask-decoupled return credit.  Make those prerequisites explicit so a skip
@@ -252,6 +290,15 @@ ifeq ($(reduction_exact_stream),1)
     $(error reduction_exact_stream requires reduction_exact_global=1)
   endif
   bender_defs += --define ARA_RED_EXACT_STREAM_4LANE=1
+endif
+ifeq ($(reduction_chain_bypass),1)
+  ifneq ($(reduction_exact_global),1)
+    $(error reduction_chain_bypass requires reduction_exact_global=1)
+  endif
+  ifneq ($(nr_lanes),4)
+    $(error reduction_chain_bypass currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_CHAIN_BYPASS_4LANE=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
   bender_defs += --define ARA_RED_INPUT_BYPASS=1

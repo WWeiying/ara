@@ -32,6 +32,19 @@ module fp_exact_reduction_oracle_tb;
   logic state_format_fp16;
   logic [31:0] final_result;
   logic [4:0] final_status;
+  logic late_in_ready;
+  logic late_out_valid;
+  logic late_busy;
+  logic [287:0] late_exact_value;
+  logic [3:0] late_special;
+  logic late_source_seen;
+  logic late_finite_nonzero_seen;
+  logic late_pos_zero_seen;
+  logic late_neg_zero_seen;
+  logic [2:0] late_rnd_mode;
+  logic late_format_fp16;
+  logic [31:0] late_final_result;
+  logic [4:0] late_final_status;
 
   logic [VectorWidth-1:0] vectors [0:VectorCount-1];
 
@@ -77,10 +90,63 @@ module fp_exact_reduction_oracle_tb;
     .neg_zero_seen_i        (neg_zero_seen),
     .seed_valid_i           (state_seed_valid),
     .seed_i                 (state_seed),
+    .seed_in_exact_i        (1'b1),
     .rnd_mode_i             (state_rnd_mode),
     .format_fp16_i          (state_format_fp16),
     .result_o               (final_result),
     .status_o               (final_status)
+  );
+
+  // The same source subtree without a seed models the versioned chain path.
+  // Its finalizer receives the preceding instruction's rounded result only at
+  // the global merge boundary.
+  fp32_exact_reduction_accum #(
+    .ExponentSegmented (1'b1),
+    .EmitRoundedResult (1'b0)
+  ) i_late_accum (
+    .clk_i                  (clk),
+    .rst_ni                 (rst_n),
+    .start_i                (start),
+    .rnd_mode_i             (rnd_mode),
+    .format_fp16_i          (format_fp16),
+    .seed_valid_i           (1'b0),
+    .seed_i                 ('0),
+    .data_i                 (data),
+    .active_i               (active),
+    .last_i                 (1'b1),
+    .in_valid_i             (in_valid),
+    .in_ready_o             (late_in_ready),
+    .result_o               (),
+    .status_o               (),
+    .out_valid_o            (late_out_valid),
+    .out_ready_i            (out_ready),
+    .busy_o                 (late_busy),
+    .exact_value_o          (late_exact_value),
+    .special_o              (late_special),
+    .source_seen_o          (late_source_seen),
+    .finite_nonzero_seen_o  (late_finite_nonzero_seen),
+    .pos_zero_seen_o        (late_pos_zero_seen),
+    .neg_zero_seen_o        (late_neg_zero_seen),
+    .seed_valid_o           (),
+    .seed_o                 (),
+    .rnd_mode_o             (late_rnd_mode),
+    .format_fp16_o          (late_format_fp16)
+  );
+
+  fp32_exact_reduction_finalize i_late_finalize (
+    .exact_value_i          (late_exact_value),
+    .special_i              (late_special),
+    .source_seen_i          (late_source_seen),
+    .finite_nonzero_seen_i  (late_finite_nonzero_seen),
+    .pos_zero_seen_i        (late_pos_zero_seen),
+    .neg_zero_seen_i        (late_neg_zero_seen),
+    .seed_valid_i           (1'b1),
+    .seed_i                 (seed),
+    .seed_in_exact_i        (1'b0),
+    .rnd_mode_i             (late_rnd_mode),
+    .format_fp16_i          (late_format_fp16),
+    .result_o               (late_final_result),
+    .status_o               (late_final_status)
   );
 
   always #5 clk = ~clk;
@@ -105,7 +171,7 @@ module fp_exact_reduction_oracle_tb;
     rst_n = 1'b1;
 
     for (int unsigned test = 0; test < VectorCount; test++) begin
-      wait (!busy);
+      wait (!busy && !late_busy);
       @(negedge clk);
       {format_fp16, rnd_mode, seed, data, active,
        expected_result, expected_status} = vectors[test];
@@ -115,7 +181,7 @@ module fp_exact_reduction_oracle_tb;
       start = 1'b0;
       in_valid = 1'b0;
 
-      wait (out_valid);
+      wait (out_valid && late_out_valid);
       #1;
       if ({final_status, final_result} !==
           {expected_status, expected_result}) begin
@@ -126,10 +192,19 @@ module fp_exact_reduction_oracle_tb;
           exact_value);
         $fatal(1);
       end
+      if ({late_final_status, late_final_result} !==
+          {expected_status, expected_result}) begin
+        $error(
+          "late-seed mismatch test=%0d fp16=%0b rm=%0d seed=%08x data=%016x active=%x got=%02x/%08x expected=%02x/%08x exact=%072x",
+          test, format_fp16, rnd_mode, seed, data, active,
+          late_final_status, late_final_result,
+          expected_status, expected_result, late_exact_value);
+        $fatal(1);
+      end
       @(posedge clk);
     end
 
-    $display("PASS: exact integer oracle (%0d FP32/FP16/widening reductions)",
+    $display("PASS: exact integer oracle (%0d FP32/FP16/widening reductions, conventional and late seed)",
              VectorCount);
     $finish;
   end

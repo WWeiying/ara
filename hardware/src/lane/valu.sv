@@ -41,6 +41,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     // Interface with the vector register file
     output logic                         alu_result_req_o,
     output vid_t                         alu_result_id_o,
+    output vreg_version_t                alu_result_version_o,
+    output logic                         alu_result_is_reduction_o,
     output vaddr_t                       alu_result_addr_o,
     output elen_t                        alu_result_wdata_o,
     output strb_t                        alu_result_be_o,
@@ -137,6 +139,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // yet accepted by the corresponding lane.
   typedef struct packed {
     vid_t id;
+    vreg_version_t version;
+    logic is_reduction;
     vaddr_t addr;
     elen_t wdata;
     strb_t be;
@@ -652,6 +656,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               result_queue_d[result_queue_write_pnt_q].wdata = result_queue_q[result_queue_write_pnt_q].wdata | valu_result;
               result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + ((vinsn_issue_q.vl - issue_cnt_q) >> (unsigned'(EW64) - unsigned'(vinsn_issue_q.vtype.vsew)));
               result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
+              result_queue_d[result_queue_write_pnt_q].version =
+                vinsn_issue_q.vd_version;
+              result_queue_d[result_queue_write_pnt_q].is_reduction =
+                is_reduction(vinsn_issue_q.op);
               result_queue_d[result_queue_write_pnt_q].mask  = vinsn_issue_q.vfu == VFU_MaskUnit;
               if (!narrowing(vinsn_issue_q.op) || !narrowing_select_q)
                 result_queue_d[result_queue_write_pnt_q].be = be(element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm || vinsn_issue_q.op inside {VMERGE, VADC, VSBC} ? {StrbWidth{1'b1}} : mask_i);
@@ -750,6 +758,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               end
               result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN);
               result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
+              result_queue_d[result_queue_write_pnt_q].version =
+                vinsn_issue_q.vd_version;
+              result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
               result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_issue_q.vtype.vsew);
 
               // The first operation of this instruction has just been done
@@ -1028,6 +1039,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     end
     alu_result_addr_o = result_queue_q[result_queue_read_pnt_q].addr;
     alu_result_id_o   = result_queue_q[result_queue_read_pnt_q].id;
+    alu_result_version_o =
+      result_queue_q[result_queue_read_pnt_q].version;
+    alu_result_is_reduction_o =
+      result_queue_q[result_queue_read_pnt_q].is_reduction;
     alu_result_be_o   = result_queue_q[result_queue_read_pnt_q].be;
 
     // alu saturation calculation
@@ -1047,9 +1062,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       // Decrement the counter of results waiting to be written
       result_queue_cnt_d -= 1;
 
-      // Decrement the counter of remaining vector elements waiting to be written
-      // Don't do it in case of a reduction
-      if (!is_reduction(vinsn_commit.op)) begin
+      // Decrement the counter of the instruction that owns this queued
+      // result.  A streamed reduction may retire internally before its final
+      // scalar wins the VRF port, so the live commit pointer can already name
+      // its successor here.  The queue-carried tag is the authoritative
+      // lifetime, just like its id/version/address payload.
+      if (!result_queue_q[result_queue_read_pnt_q].is_reduction) begin
         automatic logic [6:0] element_cnt = element_cnt_commit;
           commit_cnt_d = commit_cnt_q - element_cnt;
         if (commit_cnt_q < element_cnt) commit_cnt_d = '0;
@@ -1185,6 +1203,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         result_queue_d[result_queue_write_pnt_d].addr =
           vaddr(next_foreground.vd, NrLanes, VLEN);
         result_queue_d[result_queue_write_pnt_d].id = next_foreground.id;
+        result_queue_d[result_queue_write_pnt_d].version =
+          next_foreground.vd_version;
+        result_queue_d[result_queue_write_pnt_d].is_reduction = 1'b1;
         result_queue_d[result_queue_write_pnt_d].be =
           be(1, next_foreground.vtype.vsew);
 
@@ -1379,6 +1400,26 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         $stable({sldu_transactions_cnt_q, reduction_rx_cnt_q,
                  simd_red_cnt_q, first_op_q})
   ) else $error("integer tree input bypass advanced while stalled");
+`endif
+`endif
+
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifndef SYNTHESIS
+  a_alu_nonreduction_writeback_matches_commit_head: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (alu_result_req_o && !alu_result_is_reduction_o) |->
+        (vinsn_commit_valid &&
+         (alu_result_id_o == vinsn_commit.id))
+  ) else $error("VALU non-reduction writeback does not belong to the commit head");
+
+  a_alu_writeback_has_valid_queue_owner: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      alu_result_req_o |->
+        (result_queue_cnt_q != '0 &&
+         result_queue_valid_q[result_queue_read_pnt_q] &&
+         !$isunknown({alu_result_id_o, alu_result_version_o,
+                      alu_result_addr_o, alu_result_be_o}))
+  ) else $error("VALU writeback metadata has no valid result-queue owner");
 `endif
 `endif
 

@@ -1330,3 +1330,284 @@ context/stream 机制优化，但不属于本 exact-sum 数据域。
 能形成真实输入/完成重叠；它不是对所有 RVV reduction opcode 的统一 exact
 化。下一步若继续做论文级扩展，应把 packet ownership 协议参数化到 2/8 lane，
 并为 binary64 设计分块或分层 accumulator，而不是在当前门禁上做不安全扩张。
+
+## 25. 跨指令规约数据流：late-bound seed、乘法规约旁路与结果缓存
+
+前面的 exact packet early-release 能让后一条规约提前处理 vector body，但
+连续规约链仍存在三个跨指令断点：
+
+```text
+reduction N 写 vd[0] -> reduction N+1 从 VRF 读 vs1[0]
+VFMUL 写完整向量    -> VFREDUSUM 从 VRF 读 source
+reduction 写 vd[0]   -> VFMV.F.S / VL=1 store 从 VRF 读结果
+```
+
+这些断点不属于规约算术本身，而是寄存器版本、提交顺序和操作数获取之间的
+协同问题。本轮用同一个配置开关启用：
+
+```make
+reduction_chain_bypass=1
+```
+
+该开关要求 4 lane 和 `reduction_exact_global=1`。关闭时保留原 VRF
+依赖/读写路径，可作为严格 control。
+
+### 25.1 八位体系结构版本标签
+
+中央 sequencer 为 32 个 vector register 分别维护八位 epoch。每一条写
+vector destination 的指令在发射时分配下一版本，同时记录当前所有 source
+应读取的版本。版本随 PE request 进入 lane，再随各 operand request 进入
+requester。
+
+版本标签解决了仅用 instruction ID 无法解决的别名问题。Ara 的 instruction
+ID 会循环复用，而寄存器也可能被中间指令重定义；因此旁路匹配至少要区分：
+
+```text
+源寄存器地址 + 期望版本 + 写回地址 + 有效字节
+```
+
+late-bound seed 还同时检查 producer ID。Ara 只有 8 个 instruction ID，
+同一 ID 被重新接受为 exact producer 时，SLDU 会先清除旧表项，因此不能把
+前一任 ID 的值绑定给新生产者。八位 epoch 进一步把退休后结果缓存的安全
+寿命扩大到 255 cycle；即使理想化为每 cycle 都重写同一寄存器，缓存也会在
+第 256 个版本回绕之前失效。
+
+### 25.2 带版本标签的 late-bound seed
+
+当 sequencer 发现 exact `VFREDUSUM`/`VFWREDUSUM` 的 `vs1` 由仍在途的
+任一 eligible exact reduction 产生，并且 producer destination 与
+register epoch 均匹配时，它把该依赖改写成 late seed：
+
+- 清除已被版本绑定替代的 seed RAW；
+- 对 `vd == vs1` 的原地累加链，清除同一 producer 上不影响计算的 WAW 和
+  prior-seed WAR；
+- 保留真实的 `vs2`/`v0` RAW，以及重命名链中无法证明无害的 WAR；
+- 不为 `MulFPUA` 分配旧 seed 的 VRF 请求和 operand-queue command；
+- 将 `{seed_producer_id, seed_version}` 一直带到 SLDU。
+
+后一条规约因此可以先完成本地 exact vector-body accumulation。上一条在
+central finalizer 完成唯一一次舍入后，SLDU 将其 rounded result 连同
+destination version 写入以 producer ID 为索引的 8 项精确结果表；后继
+header 只有在该 ID 槽的 destination 和版本同时命中时才绑定 seed。若结果
+尚未到达，header 在边界等待，绝不会用零或旧 VRF 值继续。
+
+finalizer 对普通 seed 仍先解码后与 exact accumulator 合并。late seed 则在
+最终阶段才解码到统一的 `2^-149` 整数域，连同 NaN、sNaN、Inf、signed zero
+和异常 sideband 一起参与最终舍入。这样“晚绑定”改变的是数据到达时间，不
+增加新的浮点舍入点。
+
+该表不再把“链”限制成最后一条生产者形成的线性序列。`P、Q、consume(P)、
+consume(Q)` 这类交错规约 DAG 中，P 和 Q 分别占用自己的 instruction-ID
+槽，两个消费者都可晚绑定。表项不会在第一次读取后销毁，因而同一个仍在途
+producer 也可扇出给多个已发射消费者；instruction ID 被重新分配给新 exact
+producer 时则立即失效旧槽，消除 ID 循环复用和八位版本偶然相同共同造成的
+陈旧命中风险。
+
+### 25.3 `VFMUL -> VFREDUSUM` 的 post-rounded writeback 旁路
+
+MFPU result queue 的写回顺序是面向 VRF bank 的，地址不保证单调。最初若只
+看 producer ID 直接转发，会把当前出现的某个 bank beat 错配给另一地址，
+表现为缺元素或 X 数据。因此正式实现使用完整 VRF word 地址匹配：
+
+- 只有 producer hazard、source version、完整地址和所需 byte-enable 全部
+  匹配时，已 grant 的 MFPU beat 才能在下一拍替代 VRF read；
+- 当同一 producer 正在给出其他地址时，请求者暂停，不能越过尚未写入的地址
+  洞读取旧 VRF 值；
+- forwarded payload 注册一拍，与原 VRF 同样的一拍 read-response 时序对齐；
+- forwarded beat 与 VRF grant 互斥，并消耗同一个 operand-queue credit。
+
+这里旁路的是 `VFMUL` 已经按照指令舍入模式产生的体系结构结果，而不是
+fpnew 内部未舍入乘积。因此后接 `VFREDUSUM` 观察到的数值与“先写 VRF、再读
+VRF”完全相同，不会把两条 RVV 指令错误融合成无限精度 multiply-reduction。
+
+### 25.4 规约结果到标量读取/存储的小型缓存
+
+每个 lane 增加两项短寿命 reduction-result victim entry，保存：
+
+```text
+valid, destination version, full VRF address,
+64-bit rounded data, byte-enable, age
+```
+
+VALU 整数规约或 MFPU 浮点规约的结果获得 VRF write grant 时捕获该项。
+后续 `VFMV.F.S`/`VMV.X.S` 使用的 `MaskB` 请求，或只存定义标量元素的
+`VL=1` store 请求，可以用
+`address + source_version + byte coverage` 命中缓存。此时 producer 可能
+已经退休，global hazard bit 已清除，所以版本是权威条件，不能继续要求 live
+hazard。每个命中项独立失效；没有命中则在 255 cycle 内自动失效。填充优先
+选择空项或本拍刚被消费的项，否则 round-robin 替换，避免无谓驱逐另一条仍
+可旁路的结果；若 ALU 和 MFPU 的规约结果同拍赢得不同 VRF bank，则分别写入
+两个槽，不丢失其中一种结果的旁路机会。
+
+`version/is_reduction` 必须保存在 VALU/MFPU result queue 的每个 entry 中，
+不能在 VRF grant 时从 live commit head 临时推导。整数规约会先结束内部
+commit 生命周期，再让最终 entry 竞争 VRF 端口；若读取已推进的 commit
+pointer，就会把真正的 `VREDSUM` 结果误标为后继非规约指令。将标签与
+`id/address/data/byte-enable` 一起排队后，即使写回被延迟或 commit pointer
+已经推进，缓存仍捕获正确的生产者版本和操作类别。
+
+同一生命周期规则还必须用于 commit 计数。streamed 整数规约可能已经从
+VALU 内部 commit queue 退休，但最终标量仍停留在 result queue 等待 VRF
+端口。弹出这个旧结果时若根据新的 live commit head 判断“它是不是规约”，
+就会误减后继指令的 commit count。实现现改为使用 result entry 自带的
+`is_reduction`，并用断言分别检查非规约结果仍匹配 commit head、任意写回都
+有有效的 result-queue owner。
+
+byte coverage 是必要的正确性门禁。规约只定义 destination element 0；
+例如 EW32 结果通常只写低四个 byte。一个保持大 VL 的 `vse32.v` 首个
+64-bit beat 还需要 element 1 的旧值，不能仅靠缓存替代整个 VRF word。
+`VL=1` store 只请求已定义的低四个 byte，因而可以安全命中。若以后需要对
+大 VL store 做同类优化，应实现“缓存有效 byte 与 VRF read response 合并”，
+而不能放宽现有覆盖检查。
+
+### 25.5 定向验证与可归因指标
+
+定向程序覆盖原地四级规约链、重命名规约链、中间重定义版本失效、
+两条独立规约交错后分别消费、同一 producer 的双消费者扇出、
+`VFMUL -> VFREDUSUM`、浮点规约到
+`VL=1` store、FP16 规约链、整数 `VREDSUM` 到标量读取和 `VL=1`
+store，以及连续两个整数规约结果都在缓存中存活后分别读取。当前 4-lane
+完整配置结果如下：
+
+| 检查 | 结果 |
+|---|---|
+| 所有十四个结果与期望值 | PASS |
+| 同配置 chain-off / candidate total cycles | 949 / 881 |
+| 定向程序周期减少 | 68（7.17%） |
+| late seed issue / bind | 12 / 12 |
+| late seed 等待 | 0 cycle |
+| seed table 多项同时有效 cycles | 786 |
+| writeback-forward lane beats | 29 |
+| 其中 VALU source | 3 |
+| 其中 MFPU source | 26 |
+| 其中 versioned reduction cache | 13 |
+| reduction cache 的 VALU / MFPU 分类 | 3 / 10 |
+| 双项 result cache 同时有效 lane-cycles | 180 |
+| `MulFPUC`，即乘法结果到规约 source | 16 |
+| `MulFPUA`，即回退路径的 seed 读取 | 0 |
+| `MaskB`，即规约结果到标量读取 | 11 |
+| `StA`，即规约结果到存储 | 2 |
+| source/queue 分类守恒 | 均为 1 |
+| 全局指标覆盖率 | 100%（28/28） |
+| 瓶颈分析器 `--require-ready` | PASS，high confidence |
+
+性能报告分别输出 late seed issue/bind/wait、VALU/MFPU/SLDU/cache source
+分类、cache 的 VALU/MFPU 二级分类，以及 `MulFPUA/B/C`、`MaskB`、`StA`
+和 other destination 分类。因而后续 kernel 分析能够区分“机制没有被识别”
+“识别后等待 producer”“旁路实际命中”“命中来自整数还是浮点规约”和“命中
+发生在哪一类消费者”，而不是只观察总周期变化。
+
+通用执行指标还严格按 class-active 周期划分为 issue-progress 与
+no-issue-progress，完成脉冲若落在非 active 周期不会被重复计入。最终定向
+日志通过 `analyze_perf_bottleneck.py --require-ready`：全局 28/28 指标均
+存在，dispatch、execution、progress 三组分区均一致，归因置信度为 high。
+因此这里的性能数字既可用于比较总周期，也可继续向 response wait、operand
+wait、FU queue full 等具体瓶颈下钻。
+
+### 25.6 `vsdot` kernel 结果
+
+使用 `reduction_complete_4lane=1` 统一打开所有最终机制，再只令
+`reduction_complete_4lane_chain_bypass=0`，得到严格同配置 control。
+`vsdot_asm` 的 control 为 1398 `total_cycles`，candidate 为 1308 cycles，
+减少 90 cycles，即 6.44%。两者数值检查和 `Core Test` 均成功，candidate
+内部事件如下：
+
+| 指标 | 数值 |
+|---|---:|
+| late seed issue / bind / wait | 29 / 29 / 0 |
+| seed table 多项同时有效 cycles | 132 |
+| writeback-forward lane beats | 515 |
+| `MulFPUC`，乘法结果到规约 source | 512 |
+| versioned reduction-cache hits | 3 |
+| RAW / WAR / WAW hazard cycles | 65 / 506 / 0 |
+| false-hazard / sequencer-block cycles | 506 / 474 |
+
+这组数据证明 32 组大向量乘法规约之间的 post-rounded source forwarding
+实际传输了 512 个 beat，同时 29 条 exact reduction seed 形成了无等待 late
+binding。control 到 candidate 的 WAW hazard 从 31 cycle 降为 0，
+WAR/false-hazard 从 621 降为 506，sequencer block 从 558 降为 474，而
+RAW 保持 65 cycle。这说明 90-cycle 端到端收益同时来自解除连续规约的假
+WAW、缩短 WAR 可见窗口和减少 VRF 往返，不能只凭任一单项命中数归因。
+当前剩余主要压力仍是 506-cycle 跨迭代 WAR/false-hazard 和 474-cycle
+sequencer block；它们是下一阶段做 kernel-level destination renaming、
+有限窗口 scoreboard 或 producer-consumer co-scheduling 时应优先对照的
+指标。
+
+## 26. 4-lane 最终机制闭环
+
+### 26.1 单一可复现配置
+
+此前各项优化由独立 Make 变量控制，容易在一次“最终实验”中漏开已经验证的
+机制。现在使用：
+
+```make
+nr_lanes=4 reduction_complete_4lane=1
+```
+
+统一启用 output/route/input bypass、mask fast/skip、terminal fusion、
+context flow/stream、slack/heterogeneous/masked stream、tree pipeline、
+ordered interleave/source fusion/fast path、exact
+sum/segmented/global/FP16/stream 和跨指令 chain bypass。dense
+fixed-window 只作为 exact packet 的消融 control，不进入最终候选。
+
+同配置消融只需追加：
+
+```make
+reduction_complete_4lane_chain_bypass=0
+```
+
+这只关闭第 25 节的 late seed、writeback forwarding 和 result cache，其余
+机制保持一致，避免用配置差异虚增或掩盖收益。若 `nr_lanes` 不是 4，Make
+会直接报错，防止把尚未参数化验证的结构误当成通用 lane 配置。
+
+### 26.2 “100%”的工程判据
+
+这里的 100% 指当前论文 4-lane RTL 机制范围完成闭环，而不是宣称所有可能的
+RVV 实现和物理设计工作都结束。闭环判据及结果如下：
+
+| 判据 | 最终状态 |
+|---|---|
+| 所有最终机制可由一个 profile 同时 elaboration | VCS 0 error |
+| exact producer 线性链、交错链和扇出不因一项表容量回退 | 8 项、按 instruction ID 索引 |
+| instruction-ID 复用不会命中前任值 | 新 exact producer 接受时先失效同 ID 槽 |
+| 退休后规约结果可跨长延迟和双 accumulator 保存 | 每 lane 2 项、8-bit epoch、最多 255 cycle |
+| ALU/MFPU 同拍规约结果不会互相覆盖 | 双填充端口逻辑分别写两个槽 |
+| 延迟结果写回不误改后继 commit count | 使用 result-entry `is_reduction`，断言 PASS |
+| 中间寄存器重定义、byte coverage 不满足时 | 保留安全 VRF fallback |
+| 定向依赖/冲突测试 | 14 个结果全部 PASS，0 assertion error |
+| FP32/FP16/widening exact 数值 oracle | 900 组 PASS |
+| 实际 kernel | `vsdot`: 1398 -> 1308 cycles，-6.44% |
+| issue/bind 与旁路分类守恒 | 全部为 1 |
+| 瓶颈归因闭环 | 28/28 指标、`--require-ready` PASS、high confidence |
+
+多项容量不是“代码存在但测试未触发”：定向窗口记录到 seed table 有 786
+cycle 同时多项有效，双项 lane result cache 有 180 lane-cycle 同时有效；
+`vsdot` 中相应数值为 132 cycle 和 1079 lane-cycle。定向程序的同配置
+chain-off/candidate 为 949/881 cycles，减少 68 cycles，即 7.17%。
+
+### 26.3 类别与回退回归
+
+最终统一 profile 下补跑了容易发生机制交叉冲突的类别：
+
+| 回归 | total cycles | 结果 |
+|---|---:|---|
+| 通用 reduction stream | 215 | PASS |
+| integer reduction stream | 程序未开 ROI 计数 | PASS |
+| FP/integer min/max stream | 261 | PASS |
+| masked reduction stream | 254 | PASS |
+| widening ordered stream | 124 | PASS |
+| EW64 ordered + unordered legacy fallback | 292 | PASS |
+
+这些结果意味着统一打开机制没有破坏整数、min/max、mask、ordered、
+widening 或 EW64 fallback。`VFMUL -> VFREDUSUM` 旁路传递的是已舍入的
+体系结构乘法结果；unordered exact sum 仍只对已经声明支持的 FP16、FP32 和
+widening 路径生效；不满足资格的 opcode、宽度、版本或 byte coverage 都走
+原 VRF/legacy 路径，不静默改变语义。
+
+### 26.4 明确不计入“已完成”的外延
+
+EW64 unordered sum 仍未实现约两千位量级的全精度 superaccumulator，而是使用
+已经回归通过的 legacy 路径；masked FP background speculation 仍受未标记
+MASKU token 的安全边界约束；不同 lane 数的参数化以及 ASIC 时序、功耗和
+布局布线也不由本节结果替代。它们是后续扩展或物理签核项目，不是当前
+4-lane 机制闭环中的隐藏缺项。

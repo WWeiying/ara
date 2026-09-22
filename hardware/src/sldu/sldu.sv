@@ -441,11 +441,37 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic         exact_format_fp16_d, exact_format_fp16_q;
   logic [31:0]  exact_final_result;
   logic [4:0]   exact_final_status;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+  // Keep one rounded scalar per in-flight instruction ID.  This turns the
+  // original linear-chain entry into a small versioned producer table, so
+  // independent exact reductions may be interleaved without evicting one
+  // another.  Reaccepting an instruction ID invalidates its old slot before
+  // execution; destination and epoch checks protect register redefinitions.
+  logic [NrVInsn-1:0]       exact_result_cache_valid_d,
+                              exact_result_cache_valid_q;
+  logic [NrVInsn-1:0][4:0]  exact_result_cache_vd_d,
+                              exact_result_cache_vd_q;
+  vreg_version_t [NrVInsn-1:0] exact_result_cache_version_d,
+                                  exact_result_cache_version_q;
+  logic [NrVInsn-1:0][31:0] exact_result_cache_data_d,
+                              exact_result_cache_data_q;
+  logic         exact_late_seed_ready;
+
+  assign exact_late_seed_ready =
+    !vinsn_issue_q.late_seed ||
+    (exact_result_cache_valid_q[vinsn_issue_q.seed_producer_id] &&
+     (exact_result_cache_vd_q[vinsn_issue_q.seed_producer_id] ==
+      vinsn_issue_q.vs1) &&
+     (exact_result_cache_version_q[vinsn_issue_q.seed_producer_id] ==
+      vinsn_issue_q.seed_version));
+`endif
   // Simulation-visible protocol events.  They are not architectural outputs
   // and are pruned when no monitor observes them.
   logic [NrLanes-1:0] exact_stale_token_drop;
   logic               exact_header_rendezvous_wait;
   logic               exact_header_merge_fire;
+  logic               exact_late_seed_wait;
+  logic               exact_late_seed_bind;
   logic [2:0]         exact_header_global_limb_count;
   logic               exact_limb_merge_fire;
   logic [2:0]         exact_implicit_sign_lane_count;
@@ -484,6 +510,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     .neg_zero_seen_i       (exact_neg_zero_seen_q),
     .seed_valid_i          (exact_seed_valid_q),
     .seed_i                (exact_seed_q),
+    .seed_in_exact_i       (!vinsn_commit.late_seed),
     .rnd_mode_i            (exact_rnd_mode_q),
     .format_fp16_i         (exact_format_fp16_q),
     .result_o              (exact_final_result),
@@ -577,9 +604,17 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     exact_seed_d                   = exact_seed_q;
     exact_rnd_mode_d               = exact_rnd_mode_q;
     exact_format_fp16_d            = exact_format_fp16_q;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+    exact_result_cache_valid_d      = exact_result_cache_valid_q;
+    exact_result_cache_vd_d         = exact_result_cache_vd_q;
+    exact_result_cache_version_d    = exact_result_cache_version_q;
+    exact_result_cache_data_d       = exact_result_cache_data_q;
+`endif
     exact_stale_token_drop         = '0;
     exact_header_rendezvous_wait   = 1'b0;
     exact_header_merge_fire        = 1'b0;
+    exact_late_seed_wait           = 1'b0;
+    exact_late_seed_bind           = 1'b0;
     exact_header_global_limb_count = '0;
     exact_limb_merge_fire          = 1'b0;
     exact_implicit_sign_lane_count = '0;
@@ -756,10 +791,24 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 sldu_operand[lane][13:11] > header_limb_count)
               header_limb_count = sldu_operand[lane][13:11];
           end
-          exact_header_rendezvous_wait = !(&header_match);
+          exact_header_rendezvous_wait = !(&header_match)
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+                                         || !exact_late_seed_ready
+          ;
+          exact_late_seed_wait =
+            vinsn_issue_q.late_seed && !exact_late_seed_ready
+`endif
+                                         ;
 
-          if (&header_match) begin
+          if (&header_match
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+              && exact_late_seed_ready
+`endif
+             ) begin
             exact_header_merge_fire = 1'b1;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            exact_late_seed_bind = vinsn_issue_q.late_seed;
+`endif
             exact_header_global_limb_count = header_limb_count;
             sldu_operand_ready = '1;
             special_pair_lo = exact_merge_special(
@@ -780,8 +829,18 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             exact_neg_zero_seen_d =
               sldu_operand[0][18] | sldu_operand[1][18] |
               sldu_operand[2][18] | sldu_operand[3][18];
-            exact_seed_valid_d = sldu_operand[0][17];
-            exact_seed_d       = sldu_operand[0][63:32];
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            if (vinsn_issue_q.late_seed) begin
+              exact_seed_valid_d = 1'b1;
+              exact_seed_d =
+                exact_result_cache_data_q[vinsn_issue_q.seed_producer_id];
+            end else begin
+`endif
+              exact_seed_valid_d = sldu_operand[0][17];
+              exact_seed_d       = sldu_operand[0][63:32];
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            end
+`endif
             exact_rnd_mode_d   = sldu_operand[0][16:14];
             exact_format_fp16_d = sldu_operand[0][10];
             exact_limb_count_d = header_limb_count;
@@ -804,13 +863,25 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               assert (sldu_operand[lane][13:11] inside {[3'd2:3'd5]})
                 else $error("exact reduction packet advertises an invalid active window");
             end
-            assert (sldu_operand[0][17] &&
-                    !(sldu_operand[1][17] |
-                      sldu_operand[2][17] |
-                      sldu_operand[3][17]))
-              else $error("exact reduction seed ownership invalid: %016x %016x %016x %016x",
-                          sldu_operand[0], sldu_operand[1],
-                          sldu_operand[2], sldu_operand[3]);
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            if (vinsn_issue_q.late_seed) begin
+              assert (!(sldu_operand[0][17] |
+                        sldu_operand[1][17] |
+                        sldu_operand[2][17] |
+                        sldu_operand[3][17]))
+                else $error("late exact seed was also inserted by a lane");
+            end else begin
+`endif
+              assert (sldu_operand[0][17] &&
+                      !(sldu_operand[1][17] |
+                        sldu_operand[2][17] |
+                        sldu_operand[3][17]))
+                else $error("exact reduction seed ownership invalid: %016x %016x %016x %016x",
+                            sldu_operand[0], sldu_operand[1],
+                            sldu_operand[2], sldu_operand[3]);
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            end
+`endif
 `endif
           end
         end else begin
@@ -905,6 +976,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // and lane-zero SIMD fold.  Broadcasting it keeps all lane FSMs at
         // the same architectural phase while only lane zero writes the value.
         if (!result_queue_full) begin
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+          exact_result_cache_valid_d[vinsn_commit.id]   = 1'b1;
+          exact_result_cache_vd_d[vinsn_commit.id]      = vinsn_commit.vd;
+          exact_result_cache_version_d[vinsn_commit.id] =
+            vinsn_commit.vd_version;
+          exact_result_cache_data_d[vinsn_commit.id]    = exact_final_result;
+`endif
           for (int lane = 0; lane < NrLanes; lane++) begin
             result_queue_d[result_queue_write_pnt_q][lane].wdata =
               {8'hf7, 19'b0, exact_final_status, exact_final_result};
@@ -1416,6 +1494,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
       exact_global_d[vinsn_queue_q.accept_pnt] =
         exact_global_eligible(pe_req_i);
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      // Instruction IDs are recycled.  Kill any rounded value left by the
+      // previous owner as soon as a new exact producer with that ID enters
+      // the SLDU queue, before a dependent header can inspect the slot.
+      if (exact_global_eligible(pe_req_i))
+        exact_result_cache_valid_d[pe_req_i.id] = 1'b0;
+`endif
 `endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       begin : p_mark_ordered_alias
@@ -1485,6 +1570,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_seed_q                    <= '0;
       exact_rnd_mode_q                <= '0;
       exact_format_fp16_q             <= 1'b0;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      exact_result_cache_valid_q       <= 1'b0;
+      exact_result_cache_vd_q          <= '0;
+      exact_result_cache_version_q     <= '0;
+      exact_result_cache_data_q        <= '0;
+`endif
 `endif
       pe_resp_o             <= '0;
       result_final_gnt_q    <= '0;
@@ -1520,6 +1611,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_seed_q                    <= exact_seed_d;
       exact_rnd_mode_q                <= exact_rnd_mode_d;
       exact_format_fp16_q             <= exact_format_fp16_d;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      exact_result_cache_valid_q       <= exact_result_cache_valid_d;
+      exact_result_cache_vd_q          <= exact_result_cache_vd_d;
+      exact_result_cache_version_q     <= exact_result_cache_version_d;
+      exact_result_cache_data_q        <= exact_result_cache_data_d;
+`endif
 `endif
       pe_resp_o             <= pe_resp;
       result_final_gnt_q    <= result_final_gnt_d;

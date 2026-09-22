@@ -18,6 +18,17 @@ typedef struct packed {
   // intervening vector write from being hidden by their filtered queues.
   logic ordered_source_alias;
 
+  // Versioned reduction-chain metadata.  A late seed names the exact
+  // producer and architectural register epoch that must supply vs1[0].
+  // vd_version is allocated centrally for every vector-register writer.
+  logic       late_seed;
+  vid_t       seed_producer_id;
+  vreg_version_t seed_version;
+  vreg_version_t vd_version;
+  vreg_version_t vs1_version;
+  vreg_version_t vs2_version;
+  vreg_version_t vd_operand_version;
+
   // Mask vector register operand
   logic vm;
   rvv_pkg::vew_e eew_vmask;

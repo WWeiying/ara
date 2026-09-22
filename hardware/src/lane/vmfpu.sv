@@ -50,6 +50,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // Interface with the vector register file
     output logic                         mfpu_result_req_o,
     output vid_t                         mfpu_result_id_o,
+    output vreg_version_t                mfpu_result_version_o,
+    output logic                         mfpu_result_is_reduction_o,
     output vaddr_t                       mfpu_result_addr_o,
     output elen_t                        mfpu_result_wdata_o,
     output strb_t                        mfpu_result_be_o,
@@ -161,6 +163,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // yet accepted by the corresponding lane.
   typedef struct packed {
     vid_t id;
+    vreg_version_t version;
+    logic is_reduction;
     vaddr_t addr;
     elen_t wdata;
     strb_t be;
@@ -2421,6 +2425,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
           // Store the result in the result queue
           result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
+          result_queue_d[result_queue_write_pnt_q].version =
+            vinsn_processing_q.vd_version;
+          result_queue_d[result_queue_write_pnt_q].is_reduction =
+            is_reduction(vinsn_processing_q.op);
           result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN) +
             ((vinsn_processing_q.vl - to_process_cnt_q) >> (int'(EW64) - vinsn_processing_q.vtype.vsew));
           // FP narrowing instructions pack the result in two different cycles, and only some 8-bit slices are active
@@ -2513,7 +2521,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
             (mask_valid_i || vinsn_issue_q.vm) &&
-            (!first_op_q || mfpu_operand_valid_i[0]);
+            (!first_op_q || vinsn_issue_q.late_seed ||
+             mfpu_operand_valid_i[0]);
 `ifndef ARA_RED_EXACT_GLOBAL_4LANE
           automatic logic [31:0] empty_subtree_identity =
             (vinsn_issue_q.fp_rm == RDN) ? 32'h00000000 : 32'h80000000;
@@ -2527,9 +2536,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_FP16_4LANE
           exact_sum_format_fp16 = (vinsn_issue_q.vtype.vsew == EW16);
 `endif
-          exact_sum_seed       = vinsn_issue_q.use_scalar_op
-                               ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
-          exact_sum_seed_valid = (lane_id_i == '0);
+          exact_sum_seed       = vinsn_issue_q.late_seed ? '0 :
+                                 (vinsn_issue_q.use_scalar_op
+                                  ? scalar_op[31:0]
+                                  : mfpu_operand_i[0][31:0]);
+          exact_sum_seed_valid = (lane_id_i == '0) &&
+                                 !vinsn_issue_q.late_seed;
           exact_sum_data       = vinsn_issue_q.swap_vs2_vd_op
                                ? mfpu_operand_i[2] : mfpu_operand_i[1];
 `ifdef ARA_RED_EXACT_FP16_4LANE
@@ -2563,8 +2575,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             issue_cnt_d       = issue_cnt_q - issue_element_cnt;
             intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
             mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
-                                 ? {2'b10, first_op_q}
-                                 : {2'b01, first_op_q};
+                                 ? {2'b10, first_op_q &&
+                                           !vinsn_issue_q.late_seed}
+                                 : {2'b01, first_op_q &&
+                                           !vinsn_issue_q.late_seed};
             mask_ready_o = !vinsn_issue_q.vm;
             first_op_d = 1'b0;
           end
@@ -2586,6 +2600,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
             result_queue_d[result_queue_write_pnt_q].id =
               vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].version =
+              vinsn_processing_q.vd_version;
+            result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
             result_queue_d[result_queue_write_pnt_q].be =
               be(1, vinsn_processing_q.vtype.vsew);
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -2716,6 +2733,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 result_queue_d[result_queue_write_pnt_q].addr  =
                   vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
                 result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
+                result_queue_d[result_queue_write_pnt_q].version =
+                  vinsn_processing_q.vd_version;
+                result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
                 result_queue_d[result_queue_write_pnt_q].be    =
                   be(1, vinsn_processing_q.vtype.vsew);
                 result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -2754,6 +2774,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
             result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
             result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].version =
+              vinsn_processing_q.vd_version;
+            result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
             result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_processing_q.vtype.vsew);
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
 
@@ -2966,7 +2989,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
             (mask_valid_i || vinsn_issue_q.vm) &&
-            (!first_op_q || mfpu_operand_valid_i[0]);
+            (!first_op_q || vinsn_issue_q.late_seed ||
+             mfpu_operand_valid_i[0]);
 
           if (issue_element_cnt > issue_cnt_q)
             issue_element_cnt = issue_cnt_q;
@@ -2976,9 +3000,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           exact_sum_format_fp16 =
             (vinsn_issue_q.vtype.vsew == EW16);
 `endif
-          exact_sum_seed = vinsn_issue_q.use_scalar_op
-                         ? scalar_op[31:0] : mfpu_operand_i[0][31:0];
-          exact_sum_seed_valid = (lane_id_i == '0);
+          exact_sum_seed = vinsn_issue_q.late_seed ? '0 :
+                           (vinsn_issue_q.use_scalar_op
+                            ? scalar_op[31:0]
+                            : mfpu_operand_i[0][31:0]);
+          exact_sum_seed_valid = (lane_id_i == '0) &&
+                                 !vinsn_issue_q.late_seed;
           exact_sum_data = vinsn_issue_q.swap_vs2_vd_op
                          ? mfpu_operand_i[2] : mfpu_operand_i[1];
 `ifdef ARA_RED_EXACT_FP16_4LANE
@@ -3009,8 +3036,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             issue_cnt_d = issue_cnt_q - issue_element_cnt;
             intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
             mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
-                                 ? {2'b10, first_op_q}
-                                 : {2'b01, first_op_q};
+                                 ? {2'b10, first_op_q &&
+                                           !vinsn_issue_q.late_seed}
+                                 : {2'b01, first_op_q &&
+                                           !vinsn_issue_q.late_seed};
             mask_ready_o = !vinsn_issue_q.vm;
             first_op_d = 1'b0;
             exact_stream_background_input_fire = 1'b1;
@@ -3032,6 +3061,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
             result_queue_d[result_queue_write_pnt_q].id =
               vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].version =
+              vinsn_processing_q.vd_version;
+            result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
             result_queue_d[result_queue_write_pnt_q].be =
               be(1, vinsn_processing_q.vtype.vsew);
             result_queue_d[result_queue_write_pnt_q].mask = 1'b0;
@@ -3439,6 +3471,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // Lane 0 should wait for the final result
           result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
           result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
+          result_queue_d[result_queue_write_pnt_q].version =
+            vinsn_processing_q.vd_version;
+          result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
           result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_processing_q.vtype.vsew);
           result_queue_d[result_queue_write_pnt_q].mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
           result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
@@ -3502,6 +3537,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
             result_queue_d[result_queue_write_pnt_q].id =
               vinsn_processing_q.id;
+            result_queue_d[result_queue_write_pnt_q].version =
+              vinsn_processing_q.vd_version;
+            result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
             result_queue_d[result_queue_write_pnt_q].be =
               be(1, vinsn_processing_q.vtype.vsew);
             result_queue_d[result_queue_write_pnt_q].mask = 1'b0;
@@ -3661,6 +3699,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
               result_queue_d[result_queue_write_pnt_q].id =
                 vinsn_processing_d.id;
+              result_queue_d[result_queue_write_pnt_q].version =
+                vinsn_processing_d.vd_version;
+              result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
               result_queue_d[result_queue_write_pnt_q].be =
                 be(1, vinsn_processing_d.vtype.vsew);
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -3991,6 +4032,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         result_queue_d[result_queue_write_pnt_q].addr =
           vaddr(vinsn_processing_d.vd, NrLanes, VLEN);
         result_queue_d[result_queue_write_pnt_q].id = vinsn_processing_d.id;
+        result_queue_d[result_queue_write_pnt_q].version =
+          vinsn_processing_d.vd_version;
+        result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
         result_queue_d[result_queue_write_pnt_q].be =
           be(1, vinsn_processing_d.vtype.vsew);
         result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -4040,6 +4084,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     mfpu_result_addr_o  = result_queue_q[result_queue_read_pnt_q].addr;
     mfpu_result_id_o    = result_queue_q[result_queue_read_pnt_q].id;
+    // Metadata travels with the result queue entry.  Reduction state machines
+    // may finish their commit lifecycle before the entry wins a VRF grant, so
+    // deriving these tags from the live commit head would misclassify a
+    // delayed result as the following instruction.
+    mfpu_result_version_o =
+      result_queue_q[result_queue_read_pnt_q].version;
+    mfpu_result_is_reduction_o =
+      result_queue_q[result_queue_read_pnt_q].is_reduction;
 `ifdef ARA_RED_OUTPUT_BYPASS
     mfpu_result_wdata_o = osum_output_bypass_active
                         ?
@@ -4705,6 +4757,19 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         $stable({issue_cnt_q, osum_issue_cnt_q, first_op_q,
                  sldu_transactions_cnt_q, reduction_rx_cnt_q})
   ) else $error("reduction input bypass advanced while stalled");
+`endif
+`endif
+
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifndef SYNTHESIS
+  // Result-queue retirement is ordered: the exported destination epoch is
+  // taken from the commit head, so its ID must own the visible writeback.
+  a_mfpu_writeback_matches_commit_head: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      mfpu_result_req_o |->
+        (vinsn_commit_valid &&
+         (mfpu_result_id_o == vinsn_commit.id))
+  ) else $error("MFPU writeback does not belong to the commit head");
 `endif
 `endif
 

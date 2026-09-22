@@ -142,6 +142,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     // Hazards
     logic [NrVInsn-1:0] hazard;
+    // Architectural register epoch expected by this operand.
+    vreg_version_t source_version;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -164,6 +166,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     logic use_vs2;   // This operation uses vs1
     logic use_vd_op; // This operation uses vd as an operand as well
     logic ordered_source_alias;
+    logic late_seed;
+    vid_t seed_producer_id;
+    vreg_version_t seed_version;
+    vreg_version_t vd_version;
 
     elen_t scalar_op;    // Scalar operand
     logic use_scalar_op; // This operation uses the scalar operand
@@ -290,12 +296,16 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Interface with the operand queues
   logic               [NrOperandQueues-1:0]   operand_queue_ready;
   logic               [NrOperandQueues-1:0]   operand_issued;
+  elen_t              [NrOperandQueues-1:0]   forwarded_operand;
+  logic               [NrOperandQueues-1:0]   forwarded_operand_valid;
   operand_queue_cmd_t [NrOperandQueues-1:0]   operand_queue_cmd;
   logic               [NrOperandQueues-1:0]   operand_queue_cmd_valid;
   // Interface with the VFUs
   // ALU
   logic                                       alu_result_req;
   vid_t                                       alu_result_id;
+  vreg_version_t                              alu_result_version;
+  logic                                       alu_result_is_reduction;
   vaddr_t                                     alu_result_addr;
   elen_t                                      alu_result_wdata;
   strb_t                                      alu_result_be;
@@ -303,6 +313,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Multiplier/FPU
   logic                                       mfpu_result_req;
   vid_t                                       mfpu_result_id;
+  vreg_version_t                              mfpu_result_version;
+  logic                                       mfpu_result_is_reduction;
   vaddr_t                                     mfpu_result_addr;
   elen_t                                      mfpu_result_wdata;
   strb_t                                      mfpu_result_be;
@@ -329,6 +341,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_i        (operand_request         ),
     .operand_request_valid_i  (operand_request_valid   ),
     .operand_request_ready_o  (operand_request_ready   ),
+    .forwarded_operand_o      (forwarded_operand       ),
+    .forwarded_operand_valid_o(forwarded_operand_valid ),
     // Support for store exception flush
     .lsu_ex_flush_i           (lsu_ex_flush_op_req_q   ),
     .lsu_ex_flush_o           (lsu_ex_flush_op_queues_d),
@@ -348,6 +362,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // ALU
     .alu_result_req_i         (alu_result_req          ),
     .alu_result_id_i          (alu_result_id           ),
+    .alu_result_version_i     (alu_result_version      ),
+    .alu_result_is_reduction_i(alu_result_is_reduction ),
     .alu_result_addr_i        (alu_result_addr         ),
     .alu_result_wdata_i       (alu_result_wdata        ),
     .alu_result_be_i          (alu_result_be           ),
@@ -355,6 +371,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // MFPU
     .mfpu_result_req_i        (mfpu_result_req         ),
     .mfpu_result_id_i         (mfpu_result_id          ),
+    .mfpu_result_version_i    (mfpu_result_version     ),
+    .mfpu_result_is_reduction_i(mfpu_result_is_reduction),
     .mfpu_result_addr_i       (mfpu_result_addr        ),
     .mfpu_result_wdata_i      (mfpu_result_wdata       ),
     .mfpu_result_be_i         (mfpu_result_be          ),
@@ -392,6 +410,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Interface with the operand queues
   elen_t [NrOperandQueues-1:0] vrf_operand;
   logic  [NrOperandQueues-1:0] vrf_operand_valid;
+  elen_t [NrOperandQueues-1:0] operand_input;
+  logic  [NrOperandQueues-1:0] operand_input_valid;
 
   vector_regfile #(
     .VRFSize(VRFSizePerLane   ),
@@ -411,6 +431,29 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_o      (vrf_operand      ),
     .operand_valid_o(vrf_operand_valid)
   );
+
+  always_comb begin : p_operand_writeback_forward_mux
+    for (int requester = 0; requester < NrOperandQueues; requester++) begin
+      operand_input[requester] = forwarded_operand_valid[requester]
+                               ? forwarded_operand[requester]
+                               : vrf_operand[requester];
+      operand_input_valid[requester] =
+        forwarded_operand_valid[requester] |
+        vrf_operand_valid[requester];
+    end
+  end
+
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifndef SYNTHESIS
+  for (genvar requester = 0; requester < NrOperandQueues; requester++) begin
+    a_forward_and_vrf_response_are_exclusive: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        !(forwarded_operand_valid[requester] &&
+          vrf_operand_valid[requester])
+    ) else $error("operand queue received two payloads in one cycle");
+  end
+`endif
+`endif
 
   //////////////////////
   //  Operand queues  //
@@ -443,8 +486,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .rst_ni                           (rst_ni                             ),
     .lane_id_i                        (lane_id_i                          ),
     // Interface with the Vector Register File
-    .operand_i                        (vrf_operand                        ),
-    .operand_valid_i                  (vrf_operand_valid                  ),
+    .operand_i                        (operand_input                      ),
+    .operand_valid_i                  (operand_input_valid                ),
     // Interface with the operand requester
     .operand_issued_i                 (operand_issued                     ),
     .operand_queue_ready_o            (operand_queue_ready                ),
@@ -525,6 +568,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // ALU
     .alu_result_req_o     (alu_result_req                         ),
     .alu_result_id_o      (alu_result_id                          ),
+    .alu_result_version_o (alu_result_version                     ),
+    .alu_result_is_reduction_o(alu_result_is_reduction            ),
     .alu_result_addr_o    (alu_result_addr                        ),
     .alu_result_wdata_o   (alu_result_wdata                       ),
     .alu_result_be_o      (alu_result_be                          ),
@@ -532,6 +577,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // MFPU
     .mfpu_result_req_o    (mfpu_result_req                        ),
     .mfpu_result_id_o     (mfpu_result_id                         ),
+    .mfpu_result_version_o(mfpu_result_version                    ),
+    .mfpu_result_is_reduction_o(mfpu_result_is_reduction          ),
     .mfpu_result_addr_o   (mfpu_result_addr                       ),
     .mfpu_result_wdata_o  (mfpu_result_wdata                      ),
     .mfpu_result_be_o     (mfpu_result_be                         ),
