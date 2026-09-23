@@ -178,6 +178,46 @@ def preflight_axi_mapping(transport, caps, record):
     record["verified"] = True
 
 
+def probe_axi_single_beat(transport, caps, record):
+    """Discriminate an address-specific single-beat failure from a burst failure."""
+    address = AXI_PREFLIGHT_ADDRESS
+    check_range(address, 16, caps)
+    reads = [Operation("M", "READ", address + 8 * i) for i in range(2)]
+    record.update(address=address, bytes=16, target_address=address + 8,
+                  verified=False, restored=False,
+                  method="one-beat write at +8, separately read +0/+8, then restore both")
+    original = transport.exchange(reads)
+    record["original_bytes_at_each_address"] = [word.hex() for word in original]
+    pattern = bytes.fromhex("deadc0de88776655")
+    if pattern == original[1]:
+        pattern = bytes(b ^ 0xff for b in pattern)
+    record["written_bytes_at_target"] = pattern.hex()
+    try:
+        transport.exchange([Operation("M", "WRITE", address + 8, data=pattern)])
+        actual = transport.exchange(reads)
+        record["observed_bytes_at_each_address"] = [word.hex() for word in actual]
+        if actual != [original[0], pattern]:
+            raise RuntimeError("AXI single-beat write/read at 0xffff0008 failed or changed adjacent word")
+    except Exception as exc:
+        record["error"] = str(exc)
+        raise
+    finally:
+        try:
+            # Restore +8 first: if that address aliases +0, the final +0 write
+            # still restores its original value.
+            transport.exchange([Operation("M", "WRITE", address + 8, data=original[1]),
+                                Operation("M", "WRITE", address, data=original[0])])
+            restored = transport.exchange(reads)
+            record["restored"] = restored == original
+            if not record["restored"]:
+                raise RuntimeError("single-beat scratch restore readback mismatch")
+        except Exception as exc:
+            record["restore_error"] = str(exc)
+            raise RuntimeError(f"AXI probe scratch restoration failed: {exc}; "
+                               f"original error: {record.get('error', 'none')}") from exc
+    record["verified"] = True
+
+
 def verified_load(transport, image, batch_chunks=16):
     if not 1 <= batch_chunks <= 128:
         raise ValueError("batch_chunks must be 1..128")
@@ -394,7 +434,7 @@ def collect_uart(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "load", "snapshot", "uart", "ddr-test"):
+    for name in ("prepare", "load", "snapshot", "uart", "ddr-test", "axi-probe"):
         sub = commands.add_parser(name)
         sub.add_argument("--out", type=Path, required=True, help="new evidence directory")
         if name in ("prepare", "load"):
@@ -402,7 +442,7 @@ def main(argv=None):
             sub.add_argument("--load", action="append", type=parse_load, default=[])
         if name == "prepare":
             sub.add_argument("--caps", type=lambda s: int(s, 0), default=CAP_HOST)
-        if name in ("load", "snapshot", "ddr-test"):
+        if name in ("load", "snapshot", "ddr-test", "axi-probe"):
             sub.add_argument("--vivado", default="vivado")
             sub.add_argument("--server", default="localhost:3121")
             sub.add_argument("--probes", type=Path, help="matching debug probes .ltx file")
@@ -412,7 +452,7 @@ def main(argv=None):
             sub.add_argument("--debug-cell", default="gen_host.i_host_bridge.i_jtag_debug")
             sub.add_argument("--transaction-timeout", type=float, default=30)
             sub.add_argument("--startup-timeout", type=float, default=120)
-        if name in ("load", "ddr-test"):
+        if name in ("load", "ddr-test", "axi-probe"):
             sub.add_argument("--full-reset-confirmed", action="store_true")
         if name == "ddr-test":
             sub.add_argument("--destructive-ddr-test-confirmed", action="store_true")
@@ -426,7 +466,7 @@ def main(argv=None):
             sub.add_argument("--port", required=True)
             sub.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args(argv)
-    if args.command in ("load", "ddr-test") and not args.full_reset_confirmed:
+    if args.command in ("load", "ddr-test", "axi-probe") and not args.full_reset_confirmed:
         parser.error("Perform a full VIO reset first, then explicitly pass --full-reset-confirmed")
     if args.command == "ddr-test" and not args.destructive_ddr_test_confirmed:
         parser.error("--destructive-ddr-test-confirmed is required; last 64 KiB per bank WILL be overwritten")
@@ -439,7 +479,7 @@ def main(argv=None):
         args.run_id = args.run_id if args.run_id is not None else secrets.randbelow(0xFFFFFFFF) + 1
         if not 0 < args.run_id <= 0xFFFFFFFF:
             parser.error("Run ID must be a nonzero uint32")
-    if args.command in ("load", "snapshot", "ddr-test") and args.probes is not None:
+    if args.command in ("load", "snapshot", "ddr-test", "axi-probe") and args.probes is not None:
         if not args.probes.is_file():
             parser.error(f"Debug probes file not found: {args.probes}")
         args.probes = args.probes.resolve()
@@ -469,6 +509,17 @@ def main(argv=None):
             with connect("debug") as transport:
                 save_snapshot(args.out, capture_snapshot(transport))
             report["state"] = "snapshot_collected_not_execution_verification"
+        elif args.command == "axi-probe":
+            with connect("axi_probe") as transport:
+                ident = identity(transport)
+                report["identity"] = ident
+                check_passive_boot(transport)
+                report["axi_single_beat_probe"] = {}
+                try:
+                    probe_axi_single_beat(transport, ident["caps"], report["axi_single_beat_probe"])
+                finally:
+                    write_json(args.out / "report.json", report)
+            report.update(state="passed_axi_single_beat_only", passed=True)
         elif args.command == "ddr-test":
             from host_ddr_test import test_memory, plan
             with connect("ddr_test") as transport:
@@ -506,7 +557,7 @@ def main(argv=None):
     except Exception as exc:
         report.update(state="failed", passed=False, error=str(exc), completed_utc=now())
         write_json(args.out / "report.json", report)
-        if args.command in ("load", "ddr-test") and not (args.out / "snapshot.json").exists():
+        if args.command in ("load", "ddr-test", "axi-probe") and not (args.out / "snapshot.json").exists():
             # A timed-out memory transaction must not prevent independent diagnosis.
             try:
                 with connect("recovery_debug") as transport:

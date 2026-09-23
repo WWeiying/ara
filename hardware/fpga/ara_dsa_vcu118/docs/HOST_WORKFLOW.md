@@ -85,6 +85,21 @@ JTAG AXI object before matching the expected core names.
 Outputs include `report.json`, `snapshot.json`, `snapshot.csv`, a Vivado log,
 and a transaction audit log. A collected snapshot is **not** an execution pass.
 
+If `load` stops at the AXI burst-mapping preflight, first check whether a
+single-beat write to the second address works. After a full VIO reset and
+with the GUI hardware target disconnected, run:
+
+```powershell
+py -3 .\host_load.py axi-probe --probes $probes --full-reset-confirmed --out D:\fpga_host_runs\axi_probe01
+```
+
+This probe does not load or launch an ELF. It saves two 64-bit words in the
+reserved DDR1 scratch area, writes only the second word, reads both addresses
+separately, then restores and verifies both. Inspect `axi_single_beat_probe`
+in `report.json`: `verified=true` rules out a basic single-beat write failure
+at the second address, but does not establish that AXI bursts work. If
+`restored=false`, do not treat the scratch contents as preserved.
+
 The register bank records cycles, retired instructions, last retired PC,
 commit-head PC, last committed exception PC/cause/tval, software marker/run ID,
 result and done. A configurable no-retirement watchdog freezes and snapshots
