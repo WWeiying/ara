@@ -476,6 +476,9 @@ class TclTransportTests(unittest.TestCase):
         self.assertLess(reset_index, memory_index)
         self.assertIn("MOCK reset memory AXI core",
                       (output / "axi_spm_probe/vivado.log").read_text())
+        self.assertRegex((output / "axi_spm_probe/vivado.log").read_text(),
+                         r"HOST AXI two-beat READ address=0x1401ff00 "
+                         r"before_refresh=[0-9a-f]{32} after_refresh=[0-9a-f]{32}")
 
     def test_spm_probe_reset_failure_prevents_memory_access(self):
         with self.transport("reset_error") as transport:

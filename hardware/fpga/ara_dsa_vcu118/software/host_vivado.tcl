@@ -106,7 +106,12 @@ proc host::transaction {line} {
         if {$bus eq "M" && $beats == 2 && $addr == 0xffff0000} {
             puts "HOST AXI scratch $kind CMD.LEN=[get_property CMD.LEN $txn] DATA=[get_property DATA $txn]"
         }
+        set trace_two_beat_read [expr {$bus eq "M" && $kind eq "READ" && $beats == 2 &&
+            ($addr == 0x1401ff00 || $addr == 0xffff0000)}]
         run_hw_axi $txn
+        if {$trace_two_beat_read && [catch {get_property DATA $txn} raw_before_refresh]} {
+            set raw_before_refresh "unavailable:$raw_before_refresh"
+        }
         refresh_hw_axi $object
         set prefix STATUS.AXI_${kind}
         if {[get_property ${prefix}_BUSY $object] != 0 ||
@@ -116,7 +121,11 @@ proc host::transaction {line} {
         set response [get_property [expr {$kind eq "READ" ? "STATUS.RRESP" : "STATUS.BRESP"}] $object]
         if {$response ne "OKAY"} { error "$bus $kind at $address returned $response" }
         if {$kind eq "READ"} {
-            set value [string map {_ "" " " "" \n "" \r ""} [get_property DATA $txn]]
+            set raw_after_refresh [get_property DATA $txn]
+            if {$trace_two_beat_read} {
+                puts "HOST AXI two-beat READ address=[format 0x%08x $addr] before_refresh=$raw_before_refresh after_refresh=$raw_after_refresh"
+            }
+            set value [string map {_ "" " " "" \n "" \r ""} $raw_after_refresh]
             regsub -nocase {^0x} $value "" value
             if {![regexp {^[0-9a-fA-F]+$} $value] || [string length $value] != $bytes * 2} {
                 error "Invalid Vivado DATA width"
