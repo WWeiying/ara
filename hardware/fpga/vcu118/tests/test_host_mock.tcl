@@ -49,7 +49,13 @@ proc get_property {property object} {
         if {$::mode eq "wrong_width" && $::txn($object,core) eq "mem_a"} { return 32 }
         return [expr {$::txn($object,core) eq "mem_a" ? 64 : 32}]
     }
-    if {$property eq "DATA"} { return $::txn($object,result) }
+    if {$property eq "CMD.LEN"} { return $::txn($object,-len) }
+    if {$property eq "CMD.BURST"} { return $::txn($object,-burst) }
+    if {$property eq "DATA"} {
+        if {[info exists ::txn($object,result)]} { return $::txn($object,result) }
+        if {[info exists ::txn($object,-data)]} { return $::txn($object,-data) }
+        return ""
+    }
     if {[string match STATUS.*_BUSY $property]} { return 0 }
     if {[string match STATUS.*_DONE $property]} {
         return [expr {$::mode ne "incomplete" || $object ne "mem_a"}]

@@ -65,8 +65,19 @@ proc host::transaction {line} {
         error "Invalid AXI boundary/length/alignment"
     }
     if {$kind eq "WRITE"} {
-        if {![regexp {^[0-9a-fA-F]+$} $data] || [string length $data] != $bytes * 2} {
+        set clean_data [string map {_ ""} $data]
+        if {![regexp {^[0-9a-fA-F]+$} $clean_data] ||
+            [string length $clean_data] != $bytes * 2} {
             error "Invalid WRITE data length"
+        }
+        if {[string first _ $data] >= 0} {
+            set words [split $data _]
+            if {[llength $words] != $beats} { error "Invalid WRITE word separators" }
+            foreach word $words {
+                if {[string length $word] != $width * 2} {
+                    error "Invalid WRITE word width"
+                }
+            }
         }
     } elseif {$data ne "-"} { error "Unexpected READ data" }
     set object [host::core $bus]
@@ -81,6 +92,20 @@ proc host::transaction {line} {
         # https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/refresh_hw_axi
         # https://docs.amd.com/r/2023.2-English/ug912-vivado-properties/HW_AXI
         if {[get_property CMD.SIZE $txn] != $width * 8} { error "Wrong IP data width" }
+        if {[get_property CMD.LEN $txn] != $beats} { error "Vivado CMD.LEN differs from requested beats" }
+        if {$bus eq "M" && [get_property CMD.BURST $txn] ne "INCR"} {
+            error "Vivado CMD.BURST is not INCR"
+        }
+        if {$kind eq "WRITE"} {
+            set accepted [string map {_ "" " " "" \n "" \r ""} [get_property DATA $txn]]
+            regsub -nocase {^0x} $accepted "" accepted
+            if {[string tolower $accepted] ne [string tolower $clean_data]} {
+                error "Vivado DATA differs from requested WRITE data"
+            }
+        }
+        if {$bus eq "M" && $beats == 2 && $addr == 0xffff0000} {
+            puts "HOST AXI scratch $kind CMD.LEN=[get_property CMD.LEN $txn] DATA=[get_property DATA $txn]"
+        }
         run_hw_axi $txn
         refresh_hw_axi $object
         set prefix STATUS.AXI_${kind}
@@ -141,8 +166,8 @@ proc host::serve {channel} {
 proc host::main {arguments} {
     variable cells
     variable device
-    if {[llength $arguments] != 7} { error "Expected port token server target device mem_cell debug_cell" }
-    lassign $arguments port token server target_name device_name cells(M) cells(D)
+    if {[llength $arguments] != 8} { error "Expected port token server target device mem_cell debug_cell probes" }
+    lassign $arguments port token server target_name device_name cells(M) cells(D) probes
     foreach cell [list $cells(M) $cells(D)] {
         if {![regexp {^[A-Za-z0-9_./]+$} $cell]} { error "Invalid CELL_NAME suffix" }
     }
@@ -153,7 +178,16 @@ proc host::main {arguments} {
     set devices [get_hw_devices -of_objects $target -filter {PART =~ xcvu9p*}]
     set device [host::select_one $devices $device_name device]
     current_hw_device $device
+    if {$probes ne "-"} {
+        if {![file isfile $probes]} { error "Debug probes file not found: $probes" }
+        set_property PROBES.FILE $probes $device
+    }
     refresh_hw_device $device
+    set axes [get_hw_axis -of_objects $device]
+    puts "HOST JTAG AXI objects: [llength $axes]"
+    foreach object $axes {
+        puts "HOST AXI $object CELL_NAME=[get_property CELL_NAME $object] PROTOCOL=[get_property PROTOCOL $object]"
+    }
     # Do not discover, reset or refresh the memory IP for a debug-only session.
     host::core D
     set channel [socket 127.0.0.1 $port]

@@ -21,6 +21,7 @@ class Operation:
     address: int
     beats: int = 1
     data: bytes = b""
+    separate_words: bool = False
 
     @property
     def width(self):
@@ -37,7 +38,12 @@ class Operation:
             raise ValueError("Invalid AXI alignment, length or boundary")
         if (self.kind == "WRITE" and len(self.data) != size) or (self.kind == "READ" and self.data):
             raise ValueError("Invalid AXI data length")
+        if self.separate_words and (self.kind != "WRITE" or self.beats < 2):
+            raise ValueError("Word separators require a multi-beat WRITE")
         data = to_axi_hex(self.data, self.width) if self.kind == "WRITE" else "-"
+        if self.separate_words:
+            digits = self.width * 2
+            data = "_".join(data[i:i + digits] for i in range(0, len(data), digits))
         return f"{self.bus} {self.kind} {self.address:016x} {self.beats} {data}"
 
 
@@ -92,14 +98,15 @@ def stop_owned_tree(process, platform=None):
 class VivadoTransport:
     def __init__(self, output, vivado="vivado", server="localhost:3121", target="-",
                  device="-", mem_cell="i_jtag_mem", debug_cell="i_jtag_debug",
-                 timeout=30.0, startup_timeout=120.0, command=None):
+                 timeout=30.0, startup_timeout=120.0, command=None, probes=None):
         self.output = Path(output)
         self.timeout = timeout
         self.startup_timeout = startup_timeout
         self.sequence = 0
         self.process = self.sock = self.reader = self.log = self.audit = None
         self.broken = False
-        self.arguments = (server, target, device, mem_cell, debug_cell)
+        self.arguments = (server, target, device, mem_cell, debug_cell,
+                          Path(probes).as_posix() if probes is not None else "-")
         script = Path(__file__).with_name("host_vivado.tcl")
         # Windows CreateProcess does not search PATHEXT; which resolves vivado.bat.
         self.command = command or [shutil.which(vivado) or vivado,

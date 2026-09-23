@@ -21,6 +21,7 @@ MARKER, RESULT, RUN_ID, WATCHDOG, FLAGS, DONE = 0x1C, 0x20, 0x24, 0x28, 0x2C, 0x
 CLEAR, SNAPSHOT, FREEZE, RESUME = 1, 2, 4, 8
 SCRATCH = 0x03000000
 AXI_PREFLIGHT_ADDRESS = 0xFFFF0000
+SPM_PROBE_ADDRESS = 0x1401FF00
 CORE_FIELDS = ("cycles", "retired", "last_pc", "head_pc", "last_trap_pc",
                "last_trap_cause", "last_trap_tval", "trap_count")
 DDR_FIELDS = ("ar_count", "aw_count", "r_bytes", "w_bytes", "ar_stall", "aw_stall",
@@ -175,6 +176,145 @@ def preflight_axi_mapping(transport, caps, record):
             record["restore_error"] = str(exc)
             raise RuntimeError(f"AXI mapping preflight scratch restoration failed: {exc}; "
                                f"original error: {record.get('error', 'none')}; refusing load/launch") from exc
+    record["verified"] = True
+
+
+def probe_axi_single_beat(transport, caps, record):
+    """Discriminate an address-specific single-beat failure from a burst failure."""
+    address = AXI_PREFLIGHT_ADDRESS
+    check_range(address, 16, caps)
+    reads = [Operation("M", "READ", address + 8 * i) for i in range(2)]
+    record.update(address=address, bytes=16, target_address=address + 8,
+                  verified=False, restored=False,
+                  method="one-beat write at +8, separately read +0/+8, then restore both")
+    original = transport.exchange(reads)
+    record["original_bytes_at_each_address"] = [word.hex() for word in original]
+    pattern = bytes.fromhex("deadc0de88776655")
+    if pattern == original[1]:
+        pattern = bytes(b ^ 0xff for b in pattern)
+    record["written_bytes_at_target"] = pattern.hex()
+    try:
+        transport.exchange([Operation("M", "WRITE", address + 8, data=pattern)])
+        actual = transport.exchange(reads)
+        record["observed_bytes_at_each_address"] = [word.hex() for word in actual]
+        if actual != [original[0], pattern]:
+            raise RuntimeError("AXI single-beat write/read at 0xffff0008 failed or changed adjacent word")
+    except Exception as exc:
+        record["error"] = str(exc)
+        raise
+    finally:
+        try:
+            # Restore +8 first: if that address aliases +0, the final +0 write
+            # still restores its original value.
+            transport.exchange([Operation("M", "WRITE", address + 8, data=original[1]),
+                                Operation("M", "WRITE", address, data=original[0])])
+            restored = transport.exchange(reads)
+            record["restored"] = restored == original
+            if not record["restored"]:
+                raise RuntimeError("single-beat scratch restore readback mismatch")
+        except Exception as exc:
+            record["restore_error"] = str(exc)
+            raise RuntimeError(f"AXI probe scratch restoration failed: {exc}; "
+                               f"original error: {record.get('error', 'none')}") from exc
+    record["verified"] = True
+
+
+def probe_axi_separated_burst(transport, caps, record):
+    """Test read bursts and the manual's word-separated write syntax in scratch."""
+    address = AXI_PREFLIGHT_ADDRESS
+    check_range(address, 16, caps)
+    reads = [Operation("M", "READ", address + 8 * i) for i in range(2)]
+    record.update(address=address, bytes=16, burst_read_verified=False,
+                  separated_write_verified=False, write_attempted=False, restored=True,
+                  method="two-beat read compared with two single reads; word-separated two-beat write checked by single reads; restore")
+    original = transport.exchange(reads)
+    record["original_bytes_at_each_address"] = [word.hex() for word in original]
+    burst = transport.exchange([Operation("M", "READ", address, 2)])[0]
+    record["observed_burst_read_bytes"] = burst.hex()
+    record["burst_read_verified"] = burst == b"".join(original)
+    if not record["burst_read_verified"]:
+        check_range(address, 80, caps)
+        record["repeated_burst_read_bytes"] = transport.exchange(
+            [Operation("M", "READ", address, 2)])[0].hex()
+        neighbors = transport.exchange(
+            [Operation("M", "READ", address + 8 * i) for i in range(10)])
+        record["neighbor_single_bytes"] = [word.hex() for word in neighbors]
+        record["shifted_burst_read_bytes"] = transport.exchange(
+            [Operation("M", "READ", address + 8, 2)])[0].hex()
+        record["post_single_bytes"] = [word.hex() for word in transport.exchange(reads)]
+        raise RuntimeError("AXI two-beat read differs from separately addressed reads; no write attempted")
+
+    expected = [bytes.fromhex("0011223344556677"), bytes.fromhex("8899aabbccddeeff")]
+    expected = [bytes(b ^ 0xff for b in word) if word == old else word
+                for word, old in zip(expected, original)]
+    record["expected_bytes_at_each_address"] = [word.hex() for word in expected]
+    record["write_attempted"] = True
+    record["restored"] = False
+    try:
+        transport.exchange([Operation("M", "WRITE", address, 2, b"".join(expected),
+                                      separate_words=True)])
+        actual = transport.exchange(reads)
+        record["observed_bytes_at_each_address"] = [word.hex() for word in actual]
+        if actual != expected:
+            raise RuntimeError("AXI word-separated two-beat write did not update both addresses")
+    except Exception as exc:
+        record["error"] = str(exc)
+        raise
+    finally:
+        try:
+            transport.exchange([Operation("M", "WRITE", address + 8, data=original[1]),
+                                Operation("M", "WRITE", address, data=original[0])])
+            record["restored"] = transport.exchange(reads) == original
+            if not record["restored"]:
+                raise RuntimeError("separated burst scratch restore readback mismatch")
+        except Exception as exc:
+            record["restore_error"] = str(exc)
+            raise RuntimeError(f"AXI separated burst scratch restoration failed: {exc}; "
+                               f"original error: {record.get('error', 'none')}") from exc
+    record["separated_write_verified"] = True
+
+
+def probe_axi_spm_burst(transport, record):
+    """Compare single and two-beat reads in the host profile's uncached SPM."""
+    address = SPM_PROBE_ADDRESS
+    reads = [Operation("M", "READ", address + 8 * i) for i in range(2)]
+    record.update(address=address, bytes=16, region="uncached_llc_spm",
+                  verified=False, restored=False, write_attempted=False,
+                  single_beat_verified=False,
+                  method="single-beat save/write/read, two-beat read, single-beat restore/read")
+    original = transport.exchange(reads)
+    record["original_bytes_at_each_address"] = [word.hex() for word in original]
+    expected = [bytes.fromhex("0123456789abcdef"), bytes.fromhex("fedcba9876543210")]
+    expected = [bytes(b ^ 0xff for b in word) if word == old else word
+                for word, old in zip(expected, original)]
+    record["expected_bytes_at_each_address"] = [word.hex() for word in expected]
+    try:
+        record["write_attempted"] = True
+        transport.exchange([Operation("M", "WRITE", address + 8 * i, data=word)
+                            for i, word in enumerate(expected)])
+        actual = transport.exchange(reads)
+        record["observed_single_bytes"] = [word.hex() for word in actual]
+        record["single_beat_verified"] = actual == expected
+        if not record["single_beat_verified"]:
+            raise RuntimeError("SPM single-beat write/read mismatch; burst not attempted")
+        burst = transport.exchange([Operation("M", "READ", address, 2)])[0]
+        record["observed_burst_read_bytes"] = burst.hex()
+        if burst != b"".join(expected):
+            raise RuntimeError("SPM two-beat read differs from separately addressed reads")
+    except Exception as exc:
+        record["error"] = str(exc)
+        raise
+    finally:
+        try:
+            transport.exchange([Operation("M", "WRITE", address + 8, data=original[1]),
+                                Operation("M", "WRITE", address, data=original[0])])
+            record["restored"] = transport.exchange(reads) == original
+            if not record["restored"]:
+                raise RuntimeError("SPM scratch restore readback mismatch")
+        except Exception as exc:
+            record["restore_error"] = str(exc)
+            raise RuntimeError(f"SPM scratch restoration failed: {exc}; "
+                               f"original error: {record.get('error', 'none')}") from exc
     record["verified"] = True
 
 
@@ -394,7 +534,7 @@ def collect_uart(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "load", "snapshot", "uart", "ddr-test"):
+    for name in ("prepare", "load", "snapshot", "uart", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
         sub = commands.add_parser(name)
         sub.add_argument("--out", type=Path, required=True, help="new evidence directory")
         if name in ("prepare", "load"):
@@ -402,17 +542,20 @@ def main(argv=None):
             sub.add_argument("--load", action="append", type=parse_load, default=[])
         if name == "prepare":
             sub.add_argument("--caps", type=lambda s: int(s, 0), default=CAP_HOST)
-        if name in ("load", "snapshot", "ddr-test"):
+        if name in ("load", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
             sub.add_argument("--vivado", default="vivado")
             sub.add_argument("--server", default="localhost:3121")
+            sub.add_argument("--probes", type=Path, help="matching debug probes .ltx file")
             sub.add_argument("--target", default="-")
             sub.add_argument("--device", default="-")
             sub.add_argument("--mem-cell", default="gen_host.i_host_bridge.i_jtag_mem")
             sub.add_argument("--debug-cell", default="gen_host.i_host_bridge.i_jtag_debug")
             sub.add_argument("--transaction-timeout", type=float, default=30)
             sub.add_argument("--startup-timeout", type=float, default=120)
-        if name in ("load", "ddr-test"):
+        if name in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
             sub.add_argument("--full-reset-confirmed", action="store_true")
+        if name == "axi-spm-probe":
+            sub.add_argument("--destructive-spm-test-confirmed", action="store_true")
         if name == "ddr-test":
             sub.add_argument("--destructive-ddr-test-confirmed", action="store_true")
         if name == "load":
@@ -425,8 +568,10 @@ def main(argv=None):
             sub.add_argument("--port", required=True)
             sub.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args(argv)
-    if args.command in ("load", "ddr-test") and not args.full_reset_confirmed:
+    if args.command in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not args.full_reset_confirmed:
         parser.error("Perform a full VIO reset first, then explicitly pass --full-reset-confirmed")
+    if args.command == "axi-spm-probe" and not args.destructive_spm_test_confirmed:
+        parser.error("--destructive-spm-test-confirmed is required; 16 SPM bytes WILL be overwritten then restored")
     if args.command == "ddr-test" and not args.destructive_ddr_test_confirmed:
         parser.error("--destructive-ddr-test-confirmed is required; last 64 KiB per bank WILL be overwritten")
     for key in ("seconds", "transaction_timeout", "startup_timeout", "baud"):
@@ -438,6 +583,10 @@ def main(argv=None):
         args.run_id = args.run_id if args.run_id is not None else secrets.randbelow(0xFFFFFFFF) + 1
         if not 0 < args.run_id <= 0xFFFFFFFF:
             parser.error("Run ID must be a nonzero uint32")
+    if args.command in ("load", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and args.probes is not None:
+        if not args.probes.is_file():
+            parser.error(f"Debug probes file not found: {args.probes}")
+        args.probes = args.probes.resolve()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
     report = {"command": args.command, "started_utc": now(), "state": "starting", "passed": False,
@@ -448,7 +597,7 @@ def main(argv=None):
         return VivadoTransport(args.out / name, vivado=args.vivado, server=args.server,
                                target=args.target, device=args.device, mem_cell=args.mem_cell,
                                debug_cell=args.debug_cell, timeout=args.transaction_timeout,
-                               startup_timeout=args.startup_timeout)
+                               startup_timeout=args.startup_timeout, probes=args.probes)
 
     try:
         if args.command == "prepare":
@@ -464,6 +613,39 @@ def main(argv=None):
             with connect("debug") as transport:
                 save_snapshot(args.out, capture_snapshot(transport))
             report["state"] = "snapshot_collected_not_execution_verification"
+        elif args.command == "axi-probe":
+            with connect("axi_probe") as transport:
+                ident = identity(transport)
+                report["identity"] = ident
+                check_passive_boot(transport)
+                report["axi_single_beat_probe"] = {}
+                try:
+                    probe_axi_single_beat(transport, ident["caps"], report["axi_single_beat_probe"])
+                finally:
+                    write_json(args.out / "report.json", report)
+            report.update(state="passed_axi_single_beat_only", passed=True)
+        elif args.command == "axi-burst-probe":
+            with connect("axi_burst_probe") as transport:
+                ident = identity(transport)
+                report["identity"] = ident
+                check_passive_boot(transport)
+                report["axi_burst_probe"] = {}
+                try:
+                    probe_axi_separated_burst(transport, ident["caps"], report["axi_burst_probe"])
+                finally:
+                    write_json(args.out / "report.json", report)
+            report.update(state="passed_axi_separated_burst_only", passed=True)
+        elif args.command == "axi-spm-probe":
+            with connect("axi_spm_probe") as transport:
+                ident = identity(transport)
+                report["identity"] = ident
+                check_passive_boot(transport)
+                report["axi_spm_probe"] = {}
+                try:
+                    probe_axi_spm_burst(transport, report["axi_spm_probe"])
+                finally:
+                    write_json(args.out / "report.json", report)
+            report.update(state="passed_axi_spm_burst_only", passed=True)
         elif args.command == "ddr-test":
             from host_ddr_test import test_memory, plan
             with connect("ddr_test") as transport:
@@ -501,7 +683,7 @@ def main(argv=None):
     except Exception as exc:
         report.update(state="failed", passed=False, error=str(exc), completed_utc=now())
         write_json(args.out / "report.json", report)
-        if args.command in ("load", "ddr-test") and not (args.out / "snapshot.json").exists():
+        if args.command in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not (args.out / "snapshot.json").exists():
             # A timed-out memory transaction must not prevent independent diagnosis.
             try:
                 with connect("recovery_debug") as transport:

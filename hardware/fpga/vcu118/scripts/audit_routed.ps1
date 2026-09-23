@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)][string]$Checkpoint,
+    [ValidateSet('baseline', 'host', 'dual_ddr')][string]$Profile = 'baseline',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat',
     [string]$RunRoot
 )
@@ -31,7 +32,9 @@ $stateDir = Join-Path $root 'build/managed'
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 $lock = $null
 $inputHandle = $null
+$previousProfile = $env:ARA_FPGA_PROFILE
 try {
+    $env:ARA_FPGA_PROFILE = $Profile
     try {
         $lock = [IO.File]::Open((Join-Path $stateDir 'run.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
     } catch {
@@ -52,7 +55,7 @@ try {
     New-Item -ItemType Directory -Path $session | Out-Null
     $session = (Resolve-Path -LiteralPath $session).Path
     $record = [ordered]@{
-        Mode = 'routed checkpoint only'; Checkpoint = $Checkpoint; SHA256 = $hash
+        Mode = 'routed checkpoint only'; Profile = $Profile; Checkpoint = $Checkpoint; SHA256 = $hash
         Length = $inputHandle.Length; Audit = $name; Reports = $reports; Directory = $session
         ScriptHashes = ($scriptHashes | ConvertFrom-Json)
         BitstreamGenerated = $false; ManualReviewRequired = $true
@@ -81,6 +84,7 @@ try {
         Write-Host 'Review CDC, DRC, methodology and timing coverage. The old flow status was not changed.'
     } finally { Pop-Location }
 } finally {
+    $env:ARA_FPGA_PROFILE = $previousProfile
     if ($null -ne $inputHandle) { $inputHandle.Dispose() }
     if ($null -ne $lock) { $lock.Dispose() }
 }

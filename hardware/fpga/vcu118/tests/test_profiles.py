@@ -11,7 +11,7 @@ EXPORT = ROOT.parent / "ara_dsa_vcu118"
 SCRIPTS = (
     "config.tcl", "common.tcl", "constraint_checks.tcl", "create_project.tcl",
     "create_ip.tcl", "run_support.tcl", "run.ps1", "create_profile.ps1", "prepare_profile.tcl",
-    "write_profile_bit.ps1", "write_profile_bit.tcl",
+    "write_profile_bit.ps1", "write_profile_bit.tcl", "audit_routed.ps1",
 )
 
 

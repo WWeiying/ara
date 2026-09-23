@@ -7,8 +7,8 @@ proc assert {condition message} {
 }
 proc option {args name} { return [lindex $args [expr {[lsearch -exact $args $name]+1}]] }
 set reset_scenarios {
-    empty_cell_inversion auto_bufg legacy_bufg ui_bufg reset_bufg por_bufg
-    bad_driver gated_reset inverted_reset multiple_ce_drivers missing_ce_driver
+    empty_cell_inversion auto_bufg legacy_bufg ui_bufg board_por_bufg
+    board_por_bad_driver reset_bufg por_bufg bad_driver gated_reset inverted_reset multiple_ce_drivers missing_ce_driver
     missing_ce_cell multiple_ce_cells
 }
 foreach pin {I CE} {
@@ -26,6 +26,9 @@ proc get_cells {args} {
     set filter [option $args -filter]
     if {[string match *BUFG* $filter]} {
         if {$::scenario eq "por_bufg"} { return i_dram_wrapper/i_ui_por/i_rstgen_bypass/buf }
+        if {$::scenario in {board_por_bufg board_por_bad_driver}} {
+            return {i_board_por/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place}
+        }
         if {$::scenario eq "ui_bufg"} {
             return {i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q[3]_BUFG_inst}
         }
@@ -54,7 +57,10 @@ proc get_pins {args} {
                 if {$::scenario eq "missing_ce_driver"} { return {} }
                 return power/P
             }
-            if {$::scenario eq "bad_driver"} { return wrong/Q }
+            if {$::scenario in {bad_driver board_por_bad_driver}} { return wrong/Q }
+            if {$::scenario eq "board_por_bufg"} {
+                return {i_board_por/i_rstgen_bypass/synch_regs_q_reg[3]/Q}
+            }
             if {$::scenario eq "ui_bufg"} {
                 return {i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass/synch_regs_q_reg[3]/Q}
             }
@@ -127,7 +133,7 @@ proc report_timing {args} { lappend ::pad_reports [file tail [option $args -file
 proc write_constraint_checks {dir routed} {
     return [expr {$::scenario eq "missing_constraints" ? [list "constraint missing"] : {}}]
 }
-set passing {healthy scientific auto_bufg legacy_bufg ui_bufg empty_cell_inversion pin_I_false pin_CE_false}
+set passing {healthy scientific auto_bufg legacy_bufg ui_bufg board_por_bufg empty_cell_inversion pin_I_false pin_CE_false}
 foreach scenario [concat $reset_scenarios {
     healthy scientific missing_constraints selector_merge no_path wrong_debug_clock
     wrong_io violated unconstrained wrong_budget infinite_budget query_error

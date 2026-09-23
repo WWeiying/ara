@@ -5,6 +5,10 @@
 This is an optional RTL and host-software implementation. Local digital tests
 are not Vivado timing/CDC/DRC signoff and are not an FPGA pass. Build the `host`
 profile first and complete stages 1 and 2 before building `dual_ddr`.
+The host-profile debug snapshot and UART-launched `host_smoke.elf` have board
+evidence (PASS marker, 509 retired instructions, zero traps/DDR errors). JTAG
+host ELF loading has not passed its AXI burst preflight, and C2 has not been
+validated on the board.
 
 The existing baseline, COM6/115200 boot ROM, UART loader, Linux images and
 QBS/AKV arithmetic are not replaced by this feature. An old bitstream cannot
@@ -13,7 +17,7 @@ existing arithmetic or Linux boot fault.
 
 Profiles have separate project directories and recorded synthesis state:
 
-| Profile | Project suffix | Host/debug | Usable DDR |
+| Profile | Project suffix | Host/debug | Intended DDR map |
 | --- | --- | --- | --- |
 | baseline | none | existing UART/VIO | C1, 2 GiB |
 | host | `_host` | two JTAG AXI cores | C1, 2 GiB |
@@ -73,11 +77,66 @@ be new, so prior evidence cannot be silently overwritten.
 ```powershell
 cd D:\project\ara\hardware\fpga\ara_dsa_vcu118\software
 $env:Path = 'D:\Xilinx\Vivado\2020.1\bin;' + $env:Path
-py -3 .\host_load.py snapshot --out D:\fpga_host_runs\snapshot01
+$probes = 'D:\fpga_runs\ara_20260923_125216_228b9d4f9525\bitstream_host\ara_dsa_vcu118.ltx'
+py -3 .\host_load.py snapshot --probes $probes --out D:\fpga_host_runs\snapshot01
 ```
+
+Replace `$probes` with the `.ltx` from the same output directory as the bitstream
+currently programmed on the board. The loader opens its own Vivado session, so
+the GUI's probes-file setting is not inherited. Its log lists every detected
+JTAG AXI object before matching the expected core names.
 
 Outputs include `report.json`, `snapshot.json`, `snapshot.csv`, a Vivado log,
 and a transaction audit log. A collected snapshot is **not** an execution pass.
+
+If `load` stops at the AXI burst-mapping preflight, first check whether a
+single-beat write to the second address works. After a full VIO reset and
+with the GUI hardware target disconnected, run:
+
+```powershell
+py -3 .\host_load.py axi-probe --probes $probes --full-reset-confirmed --out D:\fpga_host_runs\axi_probe01
+```
+
+This probe does not load or launch an ELF. It saves two 64-bit words in the
+reserved DDR1 scratch area, writes only the second word, reads both addresses
+separately, then restores and verifies both. Inspect `axi_single_beat_probe`
+in `report.json`: `verified=true` rules out a basic single-beat write failure
+at the second address, but does not establish that AXI bursts work. If
+`restored=false`, do not treat the scratch contents as preserved.
+
+If the single-beat probe passes but the original two-beat preflight fails,
+run one format-discriminating test after another full VIO reset:
+
+```powershell
+py -3 .\host_load.py axi-burst-probe --probes $probes --full-reset-confirmed --out D:\fpga_host_runs\axi_burst01
+```
+
+It first compares a two-beat read with separate reads, then uses the
+word-separated two-beat write syntax shown in Vivado documentation. It reads
+both addresses separately and restores them with single-beat writes. The
+`axi_burst_probe` object in `report.json` distinguishes read-burst failure,
+word-separated write failure, and successful scratch restoration. This is a
+diagnostic A/B test, not permission to skip the normal load preflight.
+If the read comparison fails, no write is attempted; the probe records a
+repeated burst, ten neighboring single reads, and a burst starting at `+8`
+to distinguish stable address-dependent data from a transient return value.
+
+To separate a common JTAG/upstream burst problem from the external DDR path,
+compare the same two-beat read on the host profile's uncached on-chip SPM.
+After a full VIO reset, with no program running and the GUI target disconnected:
+
+```powershell
+py -3 .\host_load.py axi-spm-probe --probes $probes --full-reset-confirmed --destructive-spm-test-confirmed --out D:\fpga_host_runs\axi_spm01
+```
+
+This test backs up 16 bytes at `0x1401ff00`, writes two distinct values using
+single-beat transactions, checks them with separate reads, checks one two-beat
+read, then restores and verifies the originals. It does not launch an ELF or
+validate the DDR loader. Inspect `axi_spm_probe` in `report.json`. If SPM
+passes while the DDR burst probe fails, investigate the LLC-to-DDR path; if
+both fail, investigate the common host/LLC path first. Neither result alone
+identifies a specific RTL defect. If `restored` is not true, treat the SPM
+scratch contents as potentially changed.
 
 The register bank records cycles, retired instructions, last retired PC,
 commit-head PC, last committed exception PC/cause/tval, software marker/run ID,
@@ -121,6 +180,8 @@ does not need a RISC-V compiler.
 ```powershell
 $load = @(
   'load'
+  '--probes'
+  $probes
   '--elf'
   '.\host_smoke.elf'
   '--full-reset-confirmed'
@@ -179,6 +240,7 @@ py -3 .\host_load.py uart --port COM6 --out D:\fpga_host_runs\uart01
 
 Only after the host-profile checks pass, repeat the build with
 `-Profile dual_ddr`. This is a new bitstream; software alone cannot add C2.
+Set `$probes` to the matching dual-DDR `.ltx` after programming that bitstream.
 
 | Bank | Physical address range (end exclusive) |
 | --- | --- |
@@ -197,6 +259,8 @@ Perform a full VIO reset. The destructive scratch test overwrites the last
 ```powershell
 $test = @(
   'ddr-test'
+  '--probes'
+  $probes
   '--full-reset-confirmed'
   '--destructive-ddr-test-confirmed'
   '--out'

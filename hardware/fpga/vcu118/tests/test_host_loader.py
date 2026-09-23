@@ -406,6 +406,67 @@ class TclTransportTests(unittest.TestCase):
         self.assertFalse(report["axi_mapping_preflight"]["restored"])
         self.assertNotIn("load_metrics", report)
 
+    def test_spm_probe_compares_burst_and_restores_original_words(self):
+        address = host.SPM_PROBE_ADDRESS
+        original = [bytes.fromhex("aabbccdd11223344"), bytes.fromhex("deadbeef13579bdf")]
+        record = {}
+        with self.transport() as transport:
+            transport.exchange([Operation("M", "WRITE", address + 8 * i, data=word)
+                                for i, word in enumerate(original)])
+            host.probe_axi_spm_burst(transport, record)
+            restored = transport.exchange([Operation("M", "READ", address + 8 * i)
+                                           for i in range(2)])
+        self.assertTrue(record["verified"])
+        self.assertTrue(record["single_beat_verified"])
+        self.assertTrue(record["restored"])
+        self.assertEqual(restored, original)
+
+    def test_spm_burst_mismatch_is_reported_and_restored(self):
+        address = host.SPM_PROBE_ADDRESS
+        original = [bytes.fromhex("aabbccdd11223344"), bytes.fromhex("deadbeef13579bdf")]
+        record = {}
+        with self.transport() as transport:
+            transport.exchange([Operation("M", "WRITE", address + 8 * i, data=word)
+                                for i, word in enumerate(original)])
+            exchange = transport.exchange
+
+            def wrong_burst(operations):
+                if len(operations) == 1 and operations[0].kind == "READ" and \
+                        operations[0].address == address and operations[0].beats == 2:
+                    return [bytes(16)]
+                return exchange(operations)
+
+            with patch.object(transport, "exchange", side_effect=wrong_burst):
+                with self.assertRaisesRegex(RuntimeError, "two-beat read differs"):
+                    host.probe_axi_spm_burst(transport, record)
+            restored = exchange([Operation("M", "READ", address + 8 * i)
+                                 for i in range(2)])
+        self.assertFalse(record["verified"])
+        self.assertTrue(record["single_beat_verified"])
+        self.assertTrue(record["restored"])
+        self.assertEqual(restored, original)
+
+    def test_spm_probe_cli_requires_explicit_destructive_gate(self):
+        output = self.base / "spm"
+        with self.assertRaises(SystemExit):
+            host.main(["axi-spm-probe", "--out", str(output), "--full-reset-confirmed"])
+        self.assertFalse(output.exists())
+
+    def test_spm_probe_cli_writes_narrow_pass_report(self):
+        output = self.base / "spm"
+
+        def factory(directory, **kwargs):
+            return self.transport("pass", str(Path(directory).relative_to(self.base)))
+
+        with patch.object(host, "VivadoTransport", side_effect=factory):
+            code = host.main(["axi-spm-probe", "--out", str(output),
+                              "--full-reset-confirmed", "--destructive-spm-test-confirmed"])
+        self.assertEqual(code, 0)
+        report = json.loads((output / "report.json").read_text())
+        self.assertEqual(report["state"], "passed_axi_spm_burst_only")
+        self.assertTrue(report["axi_spm_probe"]["restored"])
+        self.assertFalse((output / "image.json").exists())
+
     def test_unaligned_adjacent_segments_preserve_outside_bytes(self):
         raw = self.base / "raw.bin"
         raw.write_bytes(bytes(range(23)))

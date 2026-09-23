@@ -107,11 +107,11 @@ proc write_reports {stage {reject_loops false}} {
 }
 
 # Check actual reset connectivity, not the name of an automatically inserted
-# global buffer. BUFGCTRL/test muxes and buffers on the short POR paths remain
-# forbidden; only ungated buffers driven by the final SoC/UI reset FF qualify.
+# global buffer. BUFGCTRL/test muxes and raw POR buffers remain forbidden;
+# only ungated buffers driven by a final reset synchronizer FF qualify.
 proc reset_buffer_failures {out} {
     set failures {}
-    set allowed {i_rstgen/i_rstgen_bypass}
+    set allowed {i_board_por/i_rstgen_bypass i_rstgen/i_rstgen_bypass}
     foreach {wrapper pad} [fpga_checks::ddr_channels] {
         lappend allowed $wrapper/i_ui_rstgen/i_rstgen_bypass
     }
