@@ -113,6 +113,9 @@ both addresses separately and restores them with single-beat writes. The
 `axi_burst_probe` object in `report.json` distinguishes read-burst failure,
 word-separated write failure, and successful scratch restoration. This is a
 diagnostic A/B test, not permission to skip the normal load preflight.
+If the read comparison fails, no write is attempted; the probe records a
+repeated burst, ten neighboring single reads, and a burst starting at `+8`
+to distinguish stable address-dependent data from a transient return value.
 
 The register bank records cycles, retired instructions, last retired PC,
 commit-head PC, last committed exception PC/cause/tval, software marker/run ID,

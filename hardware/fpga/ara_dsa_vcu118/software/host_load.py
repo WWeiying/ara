@@ -232,6 +232,15 @@ def probe_axi_separated_burst(transport, caps, record):
     record["observed_burst_read_bytes"] = burst.hex()
     record["burst_read_verified"] = burst == b"".join(original)
     if not record["burst_read_verified"]:
+        check_range(address, 80, caps)
+        record["repeated_burst_read_bytes"] = transport.exchange(
+            [Operation("M", "READ", address, 2)])[0].hex()
+        neighbors = transport.exchange(
+            [Operation("M", "READ", address + 8 * i) for i in range(10)])
+        record["neighbor_single_bytes"] = [word.hex() for word in neighbors]
+        record["shifted_burst_read_bytes"] = transport.exchange(
+            [Operation("M", "READ", address + 8, 2)])[0].hex()
+        record["post_single_bytes"] = [word.hex() for word in transport.exchange(reads)]
         raise RuntimeError("AXI two-beat read differs from separately addressed reads; no write attempted")
 
     expected = [bytes.fromhex("0011223344556677"), bytes.fromhex("8899aabbccddeeff")]

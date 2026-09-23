@@ -12,13 +12,16 @@ class FakeTransport:
         self.address = AXI_PREFLIGHT_ADDRESS
         self.memory = {self.address: bytes.fromhex("0123456789abcdef"),
                        self.address + 8: bytes.fromhex("1032547698badcfe")}
+        self.memory.update({self.address + 8 * i: bytes([i]) * 8 for i in range(2, 10)})
         self.second_write = second_write
         self.burst_read = burst_read
         self.burst_write = burst_write
+        self.operations = []
 
     def exchange(self, operations):
         replies = []
         for op in operations:
+            self.operations.append(op)
             if op.kind == "READ":
                 if op.beats == 2:
                     data = self.memory[op.address] + self.memory[op.address + 8]
@@ -103,6 +106,9 @@ class HostAxiProbeTests(unittest.TestCase):
         self.assertFalse(record["burst_read_verified"])
         self.assertFalse(record["write_attempted"])
         self.assertTrue(record["restored"])
+        self.assertEqual(len(record["neighbor_single_bytes"]), 10)
+        self.assertEqual(record["post_single_bytes"], record["original_bytes_at_each_address"])
+        self.assertTrue(all(op.kind == "READ" for op in transport.operations))
         self.assertEqual(transport.memory, original)
 
     def test_word_separators_only_on_explicit_multibeat_write(self):
