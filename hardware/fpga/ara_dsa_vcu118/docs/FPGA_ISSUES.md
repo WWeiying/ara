@@ -1,6 +1,20 @@
 # FPGA Findings and Verification Boundary
 
-## Current Status: Routed Warning Review (impl_24238553d176)
+## Host Reset Buffer Check (impl_228b9d4f9525, 2026-09-23)
+
+Windows Vivado 2020.1 completed synthesis and routing of the host profile,
+but the post-route `boundary_checks.rpt` rejected one buffer:
+`i_board_por/i_rstgen_bypass/synch_regs_q_reg[3]_bufg_place` (BUFGCE).
+The report showed two other final-reset buffers passing, and no other
+boundary-check failures. The checker rejected the board POR owner before
+querying its input, CE and inversion, so this report alone cannot certify
+that buffer's connectivity. The board RTL ties `test_mode_i` low and uses the
+final four-stage synchronizer output. The checker now allows this owner but
+still requires the final FF driver, VCC CE and non-inverted pins. Re-audit
+the saved routed DCP with `audit_routed.ps1 -Profile host` before accepting
+the run; no new hardware result is claimed by this rule change.
+
+## Earlier Routed Warning Review (impl_24238553d176)
 
 The uploaded `40465e2e` reports match the synchronized `d8fee8a9` package
 inputs (704 build inputs, fingerprint
@@ -96,8 +110,10 @@ they do not establish complete CDC or board signoff.
   explicitly shows final FF -> BUFGCE -> 158465-load reset net. Vivado can
   promote high-fanout controls to global routing. The checker now verifies
   the exact owner, final FF driver, buffer type and constant, non-inverted
-  enable. POR buffers, BUFGCTRL/test muxes, wrong drivers and gated/inverted
-  buffers still fail. Recovery/removal checks remain active.
+  enable. The host profile also promotes the final `i_board_por` synchronizer
+  output; it must pass the same driver, enable and inversion checks. Raw POR
+  buffers, BUFGCTRL/test muxes, wrong drivers and gated/inverted buffers still
+  fail. Recovery/removal checks remain active.
 
 Only FPGA constraints, checking scripts and documentation change. Functional
 RTL, main RTL, ASIC/DC, QBS/AKV and existing vendor IPs are unchanged. FIFO
