@@ -263,7 +263,10 @@ context 的空槽，不允许跨 context 合并 accumulator。
 SEW、mask 形态和（浮点路径的）rounding 等字段；打开 heterogeneous stream
 后会有意放宽其中一些相同性要求，但只对已经证明可共存的 local DAG 生效。
 `masked_stream` 还要处理 MASKU credit。它不是一个统一的“所有字段都相等”
-门禁。
+门禁。尤其 VMFPU 的 `red_stream_compatible()` 在打开 `masked_stream` 后仍
+要求前台和后台 `vm=1`：masked FP 可以走加速的前台 context DAG，**不做**
+投机后台 stream，因为 MASKU 与 FPU 返回的时序可能不同。整数 VALU 的门禁
+另行定义，不能从 Make 开关名推断两者行为一样。
 
 exact early-release stream 使用更严格的兼容函数：要求 opcode、完整 vtype、
 VL、vstart、vm、rounding mode 和 `cvt_resize` 相同；ordered source alias
@@ -325,8 +328,9 @@ sum、min/max 和不满足格式条件的规约仍走各自的 legacy/tree 路�
 对有限 binary32，最小单位为 `2^-149`。exact 模块的 288-bit 参数按源码
 注释预留了“最多 256 个 binary32 向量元素加一个 scalar seed”的容量；在
 本文的 `VLEN=1024`、e32/m1 配置中，架构 `VLMAX` 实际是 32，256 是状态
-设计容量而不是一条当前指令的 `VL`。最终舍入前，finite limb 和 seed 都
-保持在同一个整数域中。
+设计容量而不是一条当前指令的 `VL`。最终舍入前，finite limb 保持在同一个
+整数域；普通 seed 可以在 lane 0 进入该域，late-bound seed 则在 central
+finalizer 前插入一次，不能重复加入。
 
 ### 5.2 16 个指数段和低宽反馈
 
@@ -525,7 +529,8 @@ format、special、seed-valid、limb count 和 sign 等字段。字段无法证�
 - exact finalizer 才能执行唯一最终舍入，不能在 packet merge 中偷偷舍入；
 - masked-off sNaN/Inf 不能触发 active FPU 的异常；
 - late seed 必须保持 seed 的 NaN、Inf、signed zero 和 fflags 语义；
-- result cache 只覆盖已定义字节，未覆盖字节必须从 VRF 合并或读取；
+- result cache 只覆盖已定义字节；当前实现遇到所需字节未全覆盖时回退到
+  VRF 读取，不把部分 cache 数据误作完整 word；
 - unsupported EW64 exact、不同 vtype 或版本不匹配自动回退。
 
 ### 7.4 用哪些检查确认没有破坏基线
@@ -650,3 +655,529 @@ make sim nr_lanes=4 vlen=1024 config=default \
 `reduction_*` 开关，而不是回退整个分支；如果要验证最终闭环，则用
 `reduction_complete_4lane=1` 并只把 `reduction_complete_4lane_chain_bypass`
 设为 `0` 做同 profile 对照。
+
+## 11. 从源码重建最终 profile：先找门禁，再找状态
+
+前面给出机制地图；下面按一个 RTL 阅读者真的会走的顺序，把每层的关键
+条件、状态和握手摊开。阅读当前代码时先在
+[`Makefile`](../Makefile) 查宏定义，再定位宏内的 `eligible` 或
+`compatible` 函数，随后看状态机如何使用它。只有看见某个宏被编译进来，
+并不能说明每条规约都走那条路。尤其 `exact`、`context stream`、
+`ordered` 分别代表三类不同执行算法，不能把它们的收益相加。
+
+| 输入类型 | 4-lane 最终配置中的主要路径 | 为什么 |
+|---|---|---|
+| `VREDSUM` 等整数，`VL>=8` | VALU tree/context stream（满足本地兼容条件时） | 可以并行做局部和跨 lane 合并；不牵涉 FP 舍入 |
+| `VFREDUSUM` e32，`VL>=1` | exact local + packet + SLDU merge + finalizer | 该格式落在 288-bit exact 域内 |
+| `VFREDUSUM` e16 | native FP16 exact（打开 `exact_fp16`） | 最终按 FP16 舍入 |
+| `VFWREDUSUM`，目的域 e32 | FP16 源精确扩展后进入 FP32 exact 域 | `vtype.vsew` 门禁读的是目的/累加域 |
+| `VFREDMIN/MAX` e16/e32 | VMFPU context DAG | 不使用 exact sum 的整数域 |
+| `VFREDOSUM` / `VFWREDOSUM` | ordered token 路径与定向旁路 | 每一步仍按元素顺序舍入 |
+| EW64 unordered FP | legacy fallback | 当前 exact 域未覆盖这个格式 |
+| 不满足 4-lane 或其它门禁 | 相应基线路径 | 不能把特定 profile 的验证外推 |
+
+这些是**路径选择**，不是 RVV 的语义分类。例如 RVV 允许 unordered FP
+实现自选确定性树，当前 exact 算法选择了更强的“在支持格式上只最终舍入
+一次”行为；[RVV 规范的 Reduction Operations](https://docs.riscv.org/reference/isa/extensions/vector/_attachments/riscv-v-spec.pdf)
+规定的是架构可观察结果和有序/无序边界。源码里的 `vstart` 字段同样是
+兼容性 fingerprint 的一部分，不意味着归约已支持从非零 `vstart` 重新开始。
+
+源码导航时可在每个模块上回答四个问题：**何时成为 owner、owner 存在
+哪个寄存器、何时把 owner 交给下一级、背压时谁保存它**。把答案写在状态图
+旁，比先看数值加法器更容易发现丢 token、重复消费和错误早释放。
+
+## 12. 第一层旁路的逐拍推导
+
+### 12.1 输入 spill 的“存储优先”规则
+
+[`valu.sv`](../src/lane/valu.sv) 和 [`vmfpu.sv`](../src/lane/vmfpu.sv)
+都保留原始 spill register，只在消费者**本拍确实接收**时允许透明路径。
+以 VMFPU 的 `reduction_input_bypass_active` 为例，核心关系是：
+
+```systemverilog
+active = opcode_is_eligible && !sldu_mfpu_valid_spill;
+operand = sldu_mfpu_valid_spill ? sldu_operand_spill : sldu_operand_i;
+input_to_spill = sldu_mfpu_valid_i && !(active && sldu_mfpu_ready_d);
+```
+
+第一行的 `!valid_spill` 让已经存下的旧 token 优先；第二行使读到的数据
+与这个优先级一致；第三行是**恰好一次**条件：透明路径消费成功时，绝不能
+再写 spill。若 `ready_d=0`，第三行恢复为写入 spill，下一拍它就是稳定
+的 owner。VALU 的 `tree_input_bypass` 用同样结构，但只对整数归约 opcode
+申请。VMFPU 的 dense 输入只给未遮蔽的 ordered 操作申请；unordered tree
+输入由另一个开关申请。三个条件看似相似，适用阶段并不相同。
+
+逐拍检查可用这个小表。`V/R` 指上游 valid/消费者 ready；`S` 是 spill
+已有 token：
+
+| S | V/R | 本拍选择 | 下一拍 owner |
+|---:|---|---|---|
+| 1 | 任意 | 先消费 spill；新输入按 spill ready 决定是否入队 | 消费者或 spill |
+| 0 | 1/1 | 透明直达消费者 | 消费者 |
+| 0 | 1/0 | 输入写入 spill | spill |
+| 0 | 0/任意 | 没有传输 | 无 |
+
+这也是常见弹性流水线做法：缩短无背压时的空拍，同时让背压仍由既有
+缓冲吸收。`ready` 若跨多个模块直接组合传播，会形成长时序路径，极端
+情况下还可能有组合环；所以需要检查旁路选择和队列优先级，而非机械地
+把所有寄存器删掉。[AMD AXI4-Stream 的 valid/ready 说明](https://docs.amd.com/r/en-US/ug897-vivado-sysgen-user/AXI4-Stream-Support-in-System-Generator)
+可作为握手检查参考；Ara 这些端口是内部协议，不是 AXI 接口。
+
+### 12.2 output、route、input 省掉的是不同的拍
+
+可把 ordered `VFREDOSUM` 的单个元素画成：
+
+```text
+FPU response
+  -- output --> VMFPU/SLDU 边界
+  -- route  --> SLDU/目标 lane 边界
+  -- input  --> 目标 VMFPU 的下一次 FPU request
+```
+
+`output_bypass` 只改变第一段；`route_bypass` 只改变第二段；
+`dense_input_bypass` 作用于第三段。它们的条件包含不同 `ready/grant`，
+不能因为某一个波形少了一拍就认为其他边界也可删。资料里的 `287→255→223`
+是特定 32 元素 probe 上两段定向旁路的效果，不表示每个 VL 或 mask
+排列都线性省 `2*VL` 拍。要复核自己的结果，记录从请求被接受到完成的
+逐阶段等待时间，并对照 `vfpu_out_valid`、`mfpu_red_ready_i`、
+`sldu_result_gnt_i` 与 `sldu_mfpu_ready_o`。
+
+### 12.3 mask skip 是协议动作，不能只替换数值
+
+[`vmfpu.sv`](../src/lane/vmfpu.sv) 的 ordered mask skip 有
+`osum_mask_skip_active/fire` 两层：前者说明当前元素被遮蔽且 mask 可用，
+后者还要求 downstream 可接收。只有 `fire` 才推进元素计数与 mask credit。
+这类路径的正确性包含三件事：结果 accumulator 不变、被遮蔽的 sNaN
+不进 FPU/不产生 `NV`、MASKU/operand token 被消费一次。单纯把 masked-off
+数值改成 `+0.0`，可能改变有序 FP signed-zero 结果，也无法保证异常
+sideband，因此不能代替显式 skip。
+
+## 13. Context flow：一个流水 FPU 如何服务多条规约
+
+### 13.1 为什么需要 tag 和 pending 位
+
+在基线中，FPU request 和 response 隔着流水延迟；发出某条规约的下一次
+局部加法时，上一次结果可能尚未返回。如果允许另一条规约填空，返回值
+就不能靠“当前指令”推断归属。当前 [`vmfpu.sv`](../src/lane/vmfpu.sv)
+用 `red_context_data/valid/pending` 保存四个局部上下文槽，并把 `vfpu_tag_in`
+编码成：
+
+```text
+bit 7 = 1             context-flow 标记，避免和基线 neutral tag 0/1/2 混淆
+bits 5:4 = 00/01/10  accumulator 更新 / pair 合并 / root 合并
+bits 1:0              目标 context 槽号
+```
+
+`RedContextTagMarker=8'h80`、`Accum=8'h00`、`Pair=8'h10`、
+`Root=8'h20` 在源码中直接定义。发射时先把对应槽 `valid` 清掉并置
+`pending`；返回时按 tag 把数值送回正确槽，重新置 `valid`。如果只在
+发射时改 `data`，下一条操作就可能读到尚未完成的旧值；如果只用指令 ID
+而不编码 DAG level，pair response 还可能被当成局部累加结果。
+
+四个局部槽最终经两层固定 DAG：
+
+```text
+slot0 ──┐
+        ├─ pair0 ─┐
+slot1 ──┘         │
+                  ├─ root -> 跨 lane tree
+slot2 ──┐         │
+        ├─ pair1 ─┘
+slot3 ──┘
+```
+
+当 `vl<=8`，RTL 的 `red_context_two_way_q` 只在两个槽之间轮转，直接
+用两路 root，避免为了很短的向量等待四路填满。这里的 DAG 是**一条指令
+内部**的局部合并。后面的 instruction stream 让另一条指令的独立 DAG
+在前一条做跨 lane tree 时运行；两条指令的数据永不进入同一槽。
+
+### 13.2 foreground、background 和 root FIFO
+
+VMFPU 的四项 instruction queue 容纳一个架构 foreground 和至多三个预取
+context；代码设置 `RedStreamRootDepth = VInsnQueueDepth - 1`，为已完成的
+lane-local root 提供独立 FIFO。典型时间线是：
+
+```text
+时间       t0       t1       t2       t3
+指令 P     local -> root -> SLDU tree ----> commit
+指令 Q              local -> root -> wait ----> SLDU tree
+```
+
+Q 的 local root 可以排队，但不能越过 P 的跨 lane/提交边界。代码中
+`red_stream_bg_active`、`red_stream_bg_complete` 与
+`red_stream_foreground_advanced` 分别描述后台是否执行、是否形成 root、
+架构前台是否已经推进。读状态机时要分清 `issue_pnt`（开始运算）与
+`commit_pnt`（可以按序退休）；同一个 FIFO 条目被创建和被消费是两个
+事件。类似于 CPU 的乱序执行与按序提交原则，但这里是**受限的规约局部
+工作重叠**，没有通用乱序处理器的重命名或 ROB。
+
+### 13.3 兼容门禁要按模块分别读
+
+整数 [`valu.sv`](../src/lane/valu.sv) 的 `red_stream_eligible()` 要求
+4 lanes、整数规约和 `VL>=8`；未开 masked stream 时要求 `vm=1`。
+默认 `red_stream_compatible()` 还比较 opcode、SEW、vm，打开 hetero
+define 后有意放宽这些相同性检查。浮点 `vmfpu.sv` 的 context 门禁只收
+特定 e16/e32 unordered opcode；如果 exact sum 已接管，则把符合 exact
+资格的指令排除。浮点的普通 stream 还涉及 rounding mode 和 MASKU
+时序；当前即使开启 masked-stream，投机后台也要求两条 `vm=1`。
+
+exact 的 `red_exact_stream_compatible()` 更严格，直接比较完整 `vtype`、
+`VL`、`vstart`、`vm`、`fp_rm`、`cvt_resize`、opcode。原因不是数值
+需要相同：不同向量寄存器当然可以连续处理；原因是四个 lane 要在不知道
+彼此队列背压细节的条件下，对 packet 边界作出**相同的推进决定**。
+如果其中一个 lane 把 Q 当作后继、另一个仍把 P 当作当前，header rendezvous
+无法修复 owner 错位。把控制形状放进 fingerprint 是同步多通道流水的常见
+方法，真正需要放宽时应先给出跨 lane 同步证明与回归。
+
+### 13.4 exact early release 是资源所有权转移
+
+在 `EXACT_GLOBAL_TX`，最后一个 limb 与 SLDU 完成握手的那一拍，所有 finite
+局部状态已由 SLDU 输入 spill/merger 持有。代码把
+`exact_sum_out_ready=1` 并置 `exact_stream_early_release`；若队列下一条
+满足严格兼容，就推进 `issue_pnt` 并重置 local accumulator 的输入计数。
+前一条仍占据 processing/commit owner，直到 SLDU final token 返回。
+因此它复用的是**一套 local accumulator 在两个不同时间段的所有权**，
+不是同时让两条指令改写同一个 288-bit 状态。可在波形中要求：
+
+```text
+last_limb_fire(P) <= first_accumulate(Q)
+completion_fire(P) <= publish_header(Q)
+```
+
+若去掉第一条约束，会混合两条 finite sum；若去掉第二条约束，会让
+SLDU 按错误顺序看到 packet。两条约束也解释了 early release 何时真的
+能改善吞吐：Q 的 local body 应足够长，能覆盖 P 的中央合并和 finalizer
+等待；孤立单条指令没有这种重叠收益。
+
+## 14. Exact sum 的数值推导：从 IEEE 位型到一次舍入
+
+### 14.1 binary32 为什么可以变成整数加法
+
+有限 binary32 正规数的值是
+`(-1)^sign × (2^23 + fraction) × 2^(E-150)`；这里 `E` 是 1 到 254
+的 biased exponent。非正规数是
+`(-1)^sign × fraction × 2^-149`。因此把所有输入乘 `2^149` 后，
+两者都变成整数：正规数贡献
+`(2^23+fraction) << (E-1)`，非正规数贡献 `fraction`。
+[`fp32_exact_reduction_accum.sv`](../src/lane/fp32_exact_reduction_accum.sv)
+的 `fp32_to_fixed()` 正是在构造这个二补码整数。binary16 最小单位
+`2^-24`，映射到同一域就是左移 125 位，源码的 `fp16_to_fixed()` 与
+`fp16_segment_index()` 可核对这个关系。
+
+例如三个数 `2^100, 1, -2^100`，若按某种普通 FP32 tree 先做
+`2^100+1`，小的 1 会被舍掉，最终可能得到 0；exact 域先做整数加法，
+得到整数 `2^149`，finalizer 一次舍入为 `1.0`。这说明改动可能改变
+`VFREDUSUM` 的末位结果，但 RVV 对 unordered reduction 允许确定性树的
+不同中间精度/结合方式；**不能**拿此算法替换 `VFREDOSUM`，后者规定
+逐元素、逐步舍入。这里的例子是说明算法，不代替对 NaN、signed zero、
+异常标志的验证。
+
+### 14.2 288 bit 与 16×49 bit 各解决什么问题
+
+`AccWidth=288` 的完整二补码域覆盖 binary32 从极小非正规到最大正规数
+的位权，并给支持的输入数留有进位空间。若每个输入 beat 都直接更新
+288-bit feedback，关键路径会经过长加法器。segmented 模式依据 exponent
+把源送到 16 个窗口之一：
+
+```text
+binary32 segment = ((E == 0) ? 0 : E-1) >> 4
+local shift       = ((E == 0) ? 0 : E-1) & 15
+segment update    = old_bin + signed(significand << local_shift)
+```
+
+单个正常数的 significand 有 24 位，窗口内最多移 15 位；最多 257 项
+（256 个向量元素加 seed）还需要 9 位 population carry，再留 1 个有符号
+位，总计 `24+15+9+1=49` 位。这里的 256 是此模块的设计容量，不是
+当前 e32/m1 指令的实际 `VLMAX`。源码还保留非 segmented 的四个
+288-bit bank 形式，便于比较算法与反馈路径；最终 profile 选 16 段。
+
+完成所有输入后，状态机按
+`IDLE→ACCUMULATE→MERGE_PAIRS→MERGE_ROOT→ROUND_RESULT→HOLD_RESULT`
+合并这些精确 partial sum，再由
+[`fp32_exact_reduction_finalize.sv`](../src/lane/fp32_exact_reduction_finalize.sv)
+做唯一的格式化舍入。第一拍可以同时接受新任务和首个 beat，所以看
+`IDLE` 时不能误以为它纯粹是启动空拍。`HOLD_RESULT` 则一直保持稳定
+输出，直到下游 `out_ready_i` 才释放 owner。
+
+### 14.3 数值位和语义位为什么必须分开
+
+NaN、无穷和有符号零没有适合直接相加的固定整数值。每个 lane 还记录
+`special={nan,invalid,pos_inf,neg_inf}`、`source_seen`、
+`finite_nonzero_seen`、`pos_zero_seen`、`neg_zero_seen`。这几个位不是
+冗余的：
+
+| 情形 | 单看有限整数和会丢掉什么 |
+|---|---|
+| `+0.0 + -0.0` | 零的符号及 rounding-mode 相关规则 |
+| `+Inf + -Inf` | 必须识别 invalid，而不是把两者抵消 |
+| 被 mask 掉的 sNaN | 应完全不参与，不能凭原始 source 位型设置 `NV` |
+| `VL>0` 且没有 active source | 应按规范的空源规则处理 seed，不能把“整数和=0”误判成真的零和 |
+| late seed | seed 尚未在 lane 插入；finalizer 必须只插入一次 |
+
+特别是 `source_seen` 表示**真实 active source 被处理过**，不是
+`VL>0` 或“收到了 neutral beat”。RVV 规定 `VL=0` 不执行规约，
+`VL>0` 而所有 source inactive 的行为另有 seed 规则；两者不可合并。
+更多边界见[RVV 规范](https://docs.riscv.org/reference/isa/extensions/vector/_attachments/riscv-v-spec.pdf)
+及基线文档第 12 节。当前 exact 门禁要求 `vl>=1`，而内部队列仍会生成
+neutral beat；验证时要分别检查门禁、active metadata 和最终 VRF 写回。
+
+## 15. Exact packet：64-bit 通道承载 288-bit 结果
+
+### 15.1 header 每一位的实际含义
+
+[`vmfpu.sv`](../src/lane/vmfpu.sv) 的 `exact_packet_word` 在 beat 0
+发 header，其后发 little-endian limbs。按**当前 RTL**解析 header：
+
+| 位 | 字段 | 用途 |
+|---|---|---|
+| `[63:32]` | 32-bit seed 位型 | 普通路径 lane 0 携带；late seed 时不在 lane 预插入 |
+| `[31:28]` | `4'he` magic | 防止把普通 SLDU word 当作 exact header |
+| `[27:26]` | lane ID | 四个输入必须各占正确 lane |
+| `[25:22]` | `{nan,invalid,pos_inf,neg_inf}` | special 合并 |
+| `[21:18]` | source seen、finite nonzero、positive zero、negative zero | finalizer 语义 |
+| `[17]` | seed valid | 普通路径仅 lane 0 应置 1 |
+| `[16:14]` | rounding mode | 四 lane 必须一致 |
+| `[13:11]` | local limb count `2..5` | 本 lane 何时停止发 limb |
+| `[10]` | native FP16 结果格式 | 选择最终编码 |
+| `[9]` | masked marker | 描述 `!vm`，不是该 lane 的 active 个数 |
+| `[8]` | 完整二补码值的符号 | 省略高 limb 时用于 sign extension |
+| `[7:0]` | instruction ID | 防止不同规约 packet 互串 |
+
+这个 header 是内部协议版本，不能拿它当架构数据或对外 ABI。`magic`
+只做类型区分，不足以识别 owner；SLDU 的 rendezvous 同时检查 magic、
+lane ID 和当前 instruction ID。四个 header 都匹配后才确认它们，提前
+到达的匹配 header 要保留；旧的、不匹配的 dummy token 可被丢弃。
+SLDU 还断言四路 rounding mode、格式一致，并检查 seed 的唯一 owner。
+
+### 15.2 sparse active window 手算一次
+
+完整 exact 状态是 288 位，若固定用 64-bit 总线发出，需五个 limb
+（前四个 64 位，第五个低 32 位加符号扩展）。当前 `exact_local_limb_count`
+寻找最高的非符号扩展 limb，再多发一个 guard limb，范围 `2..5`。
+比如 finite 值 `2^-149` 在固定整数域是 bit 0 置 1：只有 limb 1 的
+最低位非零，lane 仍发 `header + limb1 + limb2`；limb2 是 guard。
+值 `1.0` 对应 bit 149，在 limb3 中，因此至少还要发 limb4 作 guard。
+不要把 header 中的 `2` 理解成两个 active 元素；它是两个**64-bit limbs**。
+
+每个 lane 可以广告不同长度。SLDU 从四个 header 取最大 count；对还需
+发送的 lane，必须等真实 `valid`；对已经结束的 lane，根据它广告的符号
+生成全 0 或全 1 的隐式高 limb，并且不等待额外物理 beat。每轮执行：
+
+```systemverilog
+chunk_sum = lane0_limb + lane1_limb + lane2_limb + lane3_limb
+          + carry_from_lower_limb;          // 66-bit 暂存
+root_limb = chunk_sum[63:0];
+carry_to_next_limb = chunk_sum[65:64];
+```
+
+这是四个二补码整数的分 limb 加法，不是四个 FP32 运算；没有中间浮点
+舍入。最后一个 limb 把符号扩展填入未传的高位，形成 288-bit root，
+送中央 finalizer。`fixed_window` 开关强制每 lane 发五个 limb，是衡量
+sparse 协议控制复杂度与带宽收益的对照，不属于最终 profile。
+
+源码里还能看见 `SLIDE_SEND_EXACT_WINDOW` 和 `8'he8` 控制 token，
+这是保留的 global-window 同步路径；当前 sparse merge 可以直接用每 lane
+header 长度和隐式符号扩展推进，不需要把它误当成每个 packet 都必经的
+反馈轮次。读这块时以状态转移、define 和 `exact_packet_beat_q` 为准，
+不要只凭某个 case 分支存在就画进最终时序。
+
+### 15.3 结束 token 也有 owner
+
+SLDU 合并最后一个 limb 后进入 finalizer/等待状态，再把完成 token
+广播给四个 lane；只有 lane 0 分配架构结果。其余 lane 也必须消耗完成
+token 来释放对应 local/exact owner，否则下一条 packet 可能在一个 lane
+上被旧状态阻塞。这里可建立两个守恒式：
+
+```text
+每 lane：1 个匹配 header + 所广告 limb 数 = 该 packet 被网络消费的 beat 数
+全局：1 次四路 header rendezvous -> 1 次 finalizer -> 1 次架构写回 owner
+```
+
+遇到 sporadic hang 时，应先看四路 `header_match`、各路 `limb_available`
+和 `exact_late_seed_ready`。数值计算本身很短，真正停住的常是一个
+lane 的 operand queue/MASKU credit 尚未送到，或 late seed 仍等 producer。
+
+## 16. 跨指令链：版本、地址和所需字节组成安全条件
+
+### 16.1 一个例子区分“物理地址”和“值的身份”
+
+考虑 `P` 写 `v8[0]`，`Q` 用 `v8[0]` 作 seed，随后 `R` 又重写 `v8`。
+若仅按 `v8` 地址匹配，`Q` 可能拿到 R 的值；若仅按 instruction ID
+匹配，ID 环形复用后旧 cache 又可能误命中。主
+[`ara_sequencer.sv`](../src/ara_sequencer.sv) 为 32 个向量寄存器分别
+维护 8-bit `vreg_version`，并把 `seed_version/vd_version/vs1_version/
+vs2_version` 随 request 发往 lane。地址说明**在哪儿**，epoch 说明
+**哪一次定义**，producer ID 说明当前在途的 owner。正确的旁路用与自身
+场景相应的组合键验证三者，而不是简单做“同一个 v 寄存器就能转发”。
+
+版本号有限宽度，不能无限保存旁路值。因此 lane 内的两项 reduction
+result cache 用 `age` 限定寿命，在可能的 epoch 回绕前失效；SLDU 的
+late-seed table 在 ID 重新分配给 producer 时使旧槽失效。工程上这种
+**有界版本 + 有界保存期**比盲目加宽版本号更容易给出硬件成本和安全证明。
+
+### 16.2 late seed 的 hazard 放宽具体到哪些位
+
+`exact_chain_eligible()` 先验证 producer/consumer 都是可用 exact 形态。
+检测到 `consumer.vs1` 是在途 exact producer 的目的寄存器，且
+`writer_vd` 和 `writer_version` 与 consumer 期待的一致，才建立
+`late_seed_candidate`。代码无条件清除针对**这个 producer**的
+`hazard_vs1`；若是就地 accumulator 形式 `vd==vs1`，才进一步清除可证明
+为假的 `hazard_vd` 和相关旧 seed WAR。真正 `vs2` source 的 RAW、遮蔽时
+对 `v0` 的 RAW，以及改写不同目的寄存器时有歧义的 WAR 继续保留。
+
+结果是 Q 可以先读自己的 body，把精确有限和算完；P 在 SLDU finalizer
+产出**已舍入**结果后，late-seed table 用 producer ID、目的寄存器和
+seed epoch 确认身份。Q 的 header rendezvous 会等
+`exact_late_seed_ready`，随后只在 central finalizer 插入这份 seed。
+这并非把 P 的未舍入 288-bit 中间状态直接并入 Q：P 的架构边界已经完成
+一次舍入，Q 必须以这个 rounded scalar 为 seed。这个区别是链式 FP
+规约保持语义的关键。
+
+可以写下检查式：
+
+```text
+Q.expected_seed_epoch == P.produced_vd_epoch
+Q.seed_producer_id    == P.id
+Q.vs1                == P.vd
+Q.seed_insert_count   == 1
+```
+
+它们都成立时才允许跳过 VRF seed 读取。若 source 与 destination 别名、
+mask 寄存器也复用相同地址，要逐个看 hazard 位是否仍表达真实依赖。
+
+### 16.3 VFMUL forwarding 为什么要等 grant 后的 beat
+
+`VFMUL→VFREDUSUM` 需要的是 VFMUL 已按其架构 rounding mode 舍入的
+source word。`operand_requester.sv` 取 MFPU result queue **获得 VRF grant**
+后的 `wdata`，再注册一拍，使 `forwarded_operand_valid/data` 与正常
+VRF read response 对齐。匹配键包含 producer hazard、source epoch、
+完整 word address 和所需 byte enable。由于各 VRF bank 的 grant 可
+交错，MFPU result 地址可能不是线性递增：当前 beat 地址不等于 request
+地址时，要保持 request 等待，不能把 VRF 中尚未写好的旧 word 读出来。
+
+这里借鉴处理器旁路网络的通行思路：**生产者结果真正定型后、消费者
+需要的字节全部可用时**才交付。它还要求接口时序和正常读取一致：旁路
+数据不能在 operand queue 尚无 credit 时强塞，也不能把一次 grant
+当成两次 response。看波形时并排放 `mfpu_result_gnt_o`、
+`recent_mfpu_result_addr_q`、requester `addr`、`forwarded_operand_valid_o`
+和 queue `ready`，比仅比较最后数值更容易发现错拍。
+
+### 16.4 result cache 是已退休结果的短暂桥
+
+同一 lane 的两项 cache 保存 `valid/version/full_addr/wdata/be/age`，
+并保留结果来自 ALU 还是 MFPU。一次完整命中要求**所需的每一个字节**都
+在 `be` 内。举例：e32 规约只写 `vd[31:0]`，e32 `VFMV.F.S` 所需低四
+字节可命中；要求八字节的整 word 读不能用同一 entry 冒充。
+未命中则走正常 VRF 请求。cache 被消费后会失效；若同拍多个 requester
+命中，均观察旧的寄存 payload；同拍新 ALU/MFPU fill 的优先级在时序逻辑
+中明确处理，两个 bank 同时完成也可放进不同 slot。
+
+这个 cache 不等同于 SLDU late-seed table：前者面对**已经 grant/退休**
+但下一次 VRF 读取尚未衔接的间隙，后者面对**还在途**的 P→Q seed
+依赖。缓存类型不同，匹配键和失效时机自然也不同。教学调试时可构造
+`P: VREDSUM -> Q: VMV.X.S` 与 `P: VFREDUSUM -> Q: VFREDUSUM` 两条
+链，看两者分别命中哪个结构。
+
+### 16.5 ordered alias 仍要按原序逐步舍入
+
+ordered source fusion 记录上一条 source 的 alias/fingerprint；比较范围
+包括 opcode、SEW、VL、vstart、vm、rounding、`vs1/vs2` 和 seed/use
+flags。它试图复用的是可证明相同的 source 工作，不是开放 ordered
+reduction 的重结合。对 `VFREDOSUM`，即使数学上 `a+b+c` 可交换，
+IEEE 浮点每一步 rounding、sNaN/Inf 异常与 signed zero 仍使交换顺序
+不可随意改变。源码里凡是 ordered 加速，都应能指出“下一项仍拿到上一项
+已舍入 token”的路径；若找不到，先不要把它归为安全优化。
+
+## 17. 怎样验证：语义 oracle、协议守恒和性能消融
+
+### 17.1 先验证语义，再验证吞吐
+
+单独的速度数字无法证明结果正确。对整数规约，reference model 应覆盖
+SEW 截断、带符号/无符号扩展、mask 和 `vd[0]` 写使能。对 ordered FP，
+reference 必须按 RVV 元素顺序逐项调用目标格式加法和舍入；对 exact
+unordered，可使用任意精度整数域重新求和，单次按目标格式舍入，并单独
+检查 NaN/Inf/signed zero/`fflags`。随机数值对 cancellation、subnormal、
+溢出、tie 点的覆盖不够，应加定向边界向量：
+
+```text
+2^100, 1, -2^100       检查 exact cancellation
+最小 subnormal 与其负数  检查固定域低位和零号
++Inf 与 -Inf            检查 NV
+masked-off sNaN         检查完全不触发 NV
+全 masked-off, VL>0     检查 seed 的 bitwise-copy 路径
+VL=0, vd!=vs1           检查目的寄存器不被改写
+```
+
+RVV 规范把 `VL=0`、非零 `vstart` 与普通 masked-off 情况明确区分；尤其
+非零 `vstart` 对归约是非法，不能以结构中有 `vstart` 字段替代架构测试。
+基线文档第 17 节也列出了这些未被当前文档“证明通过”的检查项目。
+
+### 17.2 把旁路和 packet 的不变量写成断言
+
+当前 RTL 已有多处 `assert property` 和仿真断言。继续扩展时，优先围绕
+所有权写检查，而不是写“输出等于某公式”的实现镜像：
+
+1. 输入 `valid && !ready` 时，payload 和 owner tag 在下一拍保持；
+2. 透明输入 `fire` 时，同一 token 不再写 spill；spill 已有 token 时优先
+   处理它；
+3. 每个 context tag response 只能清除对应槽的 `pending`，不能更新
+   另一槽；
+4. 每个 exact header 的 lane/ID/format/rm 匹配后才被四路合并；每 lane
+   实际 limb 消费数等于它广告的数；
+5. `last_limb_fire(P)` 之后才 early release local accumulator；P 的完成
+   token 之前不能发布 Q header；
+6. late seed 只在版本和 producer 都匹配时绑定一次；cache forwarding 的
+   `be` 必须覆盖 requester 所需字节；
+7. 只有 lane 0 最终写 `vd[0]`，其他 lane 的完成仅释放内部 owner。
+
+这些不变量能把数值 bug 和协议 bug 分开。若某个测试超时，先查
+`valid/ready` 与 packet 计数；若所有 token 走完但 bit 结果不同，再查
+数值转换和 finalizer。常见工业验证也会把 reference/oracle 与通道守恒
+分层：前者比较功能，后者抓死锁、重复传输和错 owner。
+
+### 17.3 performance 数字应怎样解释
+
+文档第 8 节的数据有三种量：单指令的执行 latency、整段 probe 的 ROI
+cycles、跨多个连续指令的稳态完成间隔。旁路主要降低短指令 latency；
+context stream 与 exact early release 主要改善连续流的间隔。不能用某条
+单指令 `24 cycles` 去推导 16 条连续指令必为 `384 cycles`，因为它们可重叠，
+也不能把不同 mask/VL/SEW 的实验直接算百分比。
+
+公平的消融要保持 `nr_lanes=4`、`vlen=1024`、配置、测试二进制、
+指令序列、ROI 起止点与仿真器一致。仅改变一个 Make 开关，再记下
+`pass/fail`、ROI、每条指令的 execution/operand-wait、SLDU header 等待、
+FPU busy 和 cache hit。`reduction_complete_4lane_chain_bypass=0` 是链旁路
+的严格 control；若要研究某个前置机制，应检查 Makefile 是否自动补开
+依赖 define。仿真 cycles 也不是硅片速度：旁路增加的组合 `ready` 路径、
+16 个 segmented bin、packet merger 与 cache 都需要综合后的 Fmax、面积
+和功耗数据才能评估 PPA。现有文档没有给出这些综合结果，因此不应把
+cycle 收益直接表述为最终芯片加速比。
+
+## 18. 自学任务：沿一条指令把关键代码读透
+
+下面四个练习都可以只用当前源码、基线快照和现有 probe 完成；记录波形
+时把**条件、状态、owner、握手**写在同一张表。预期答案是检查方向，
+不是对当前未跑过的配置作额外通过声明。
+
+1. **整数 `VL=10, SEW=32`**：先按基线文档第 13 节算出四 lane 元素数，
+   在 `valu.sv` 找 `red_stream_eligible`、`tree_input_bypass_active`、
+   `sldu_transactions_cnt` 和最后的 `be(1,SEW)`。关掉 tree input bypass
+   再看 SLDU→VALU 的返回多了哪一拍，确认最终 word 仍只写低 4 字节。
+2. **ordered e32 `VL=2`，第二项 masked-off sNaN**：在 `vmfpu.sv` 跟
+   `osum_issue_cnt`、`osum_mask_skip_active/fire`、`vfpu_in_valid`，在
+   `sldu.sv` 跟 route grant。预期被遮蔽项不启动 FPU，不引入 `NV`；
+   当前已舍入 token 仍以原次序交给下一项。
+3. **exact e32 两条相依链**：P 的 `vd` 给 Q 的 `vs1`。先在
+   `ara_sequencer.sv` 检查 `writer_version==seed_version` 才清 seed RAW；
+   再在 VMFPU 观察 Q 是否先累加 body；最后在 SLDU 等 P final result
+   被 late-seed table 命中并插入 Q。故意让另一条指令改写该寄存器，
+   应不再错误绑定旧 seed。
+4. **sparse packet**：给四个 lane 构造不同大小和正负号的 finite partial
+   sum，分别手算 header count `2/3/4/5`、每轮真实/隐式 limb 与 carry。
+   在 `SLIDE_RUN_EXACT` 看四路 `header_match` 和 `limb_available`，验证
+   root 与一个软件 288-bit 二补码和一致，再比较最终 FP bit/fflags。
+
+读完每项后，回到第 9.3 节导航表和
+[`reduction_acceleration_4lane.md`](reduction_acceleration_4lane.md) 查对应
+实验的 control、测量边界与已知局限。这样既能理解“代码如何实现”，也
+能区分“已有实验观察”和“下一步需要证明的性质”。

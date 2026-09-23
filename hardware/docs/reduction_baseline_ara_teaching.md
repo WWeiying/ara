@@ -81,10 +81,10 @@ Ara 的基本组织方式是：
 | result queue | ALU/FPU 或 SLDU 已经产生、但还没有获得 VRF/MASKU grant 的结果队列。它既保存数据，也保存地址、byte-enable 和 instruction owner。 |
 | valid/ready | 两端在同一拍都为 1 才算一次传输。只有握手完成后，生产者才可以推进计数器或释放 token。 |
 
-`SEW` 是元素宽度，`VL` 是本条指令的活动元素数，`vm=1` 表示不使用
+`SEW` 是元素宽度，`VL` 是本条指令的元素范围上界，`vm=1` 表示不使用
 `v0` mask；`vm=0` 时还要读取 mask。规约教学中最容易混淆的是：`VL` 是
-架构元素数，不是每个 lane 的元素数，lane 内部还要根据 lane 映射和尾部
-补齐来生成自己的 operand beat。
+架构元素数上界，不是每个 lane 的元素数或实际参与运算的元素数；后者还受
+mask 影响。lane 内部要根据 lane 映射和尾部补齐生成自己的 operand beat。
 
 ## 2. 支持的规约指令和执行单元
 
@@ -150,7 +150,8 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 
 - EEW/SEW 转换；
 - widening 的符号扩展或浮点格式扩展；
-- `vstart`、lane 起始位置和 VL 缩放；
+- `vstart`/lane 起始位置和 VL 缩放的通用请求字段（规约的架构 `vstart`
+  应为 0，详见第 7 节）；
 - mask 对应的有效字节；
 - 规约所需的 neutral value 填充。
 
@@ -161,7 +162,8 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 ### 3.3 neutral value
 
 当某个 lane 没有实际元素，或者一个 64-bit word 中只有部分元素有效时，
-硬件必须提供不会改变结果的单位元：
+硬件要给流水线补上不会改变归约结果的值。下表是该实现的 neutral 编码
+直觉；FP 的有符号零、NaN 和异常仍要看实际数据路径：
 
 | 运算 | neutral value |
 |---|---|
@@ -169,7 +171,7 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 | `VREDAND`、`VREDMINU` | 每个元素全 1 |
 | signed `VREDMIN` | 该 SEW 的最大正数，例如 EW8 为 `0x7f` |
 | signed `VREDMAX` | 该 SEW 的最小负数，例如 EW8 为 `0x80` |
-| FP sum | `+0` |
+| FP sum | 默认零位型（通常写作 `+0`）；不能据此推断所有舍入模式下的 signed-zero 结果 |
 | FP min | `+∞` |
 | FP max | `-∞` |
 
@@ -353,10 +355,10 @@ masked ordered reduction，operand 和 mask 必须同时有效；masked-off 元�
 基线 tree 是对 lane 的局部结果做对数级合并。以 4 lane 为例：
 
 ```text
-level 0: (lane0, lane1) -> partial0
-         (lane2, lane3) -> partial2
-level 1: (partial0, partial2) -> lane0
-lane 0:  64-bit word 内 SIMD fold
+level 0: (lane0, lane1) -> lane1 持有部分结果
+         (lane2, lane3) -> lane3 持有部分结果
+level 1: 两组部分结果 -> lane3 持有跨 lane 根
+最后:    根送回 lane0，再做 64-bit word 内 SIMD fold
 ```
 
 `red_stride_cnt_q` 控制每一轮的跨 lane 位置；`issue_cnt_q` 按
@@ -385,18 +387,25 @@ token 写入 SLDU result queue，并等待下一 lane 的 operand requester/VMFP
 accumulator 或写入新结果；VMFPU 用 `processed_red_operand()` 把 inactive
 元素转换为 neutral。mask-ready 只有在当前 word 的相关元素被消费后才推进。
 
-### `VL=0` 和不平衡 workload
+### `VL=0`、空 lane 和不平衡 workload
 
-规约不能简单像普通向量指令那样在 `vl==0` 时完全静音，因为所有 lane 仍
-需要参与 neutral/完成握手。`lane_sequencer` 会给规约请求保留最小 operand
-流程，operand queue 产生 neutral 数据，最终由 lane 0 写出 seed 语义要求
-的结果。
+这三个概念必须分开：当全局 `VL>0`，某个 lane 分到 0 个元素时，其他 lane
+仍在工作；这个空 lane 需要 neutral/mock operand 配合跨 lane tree 的同步。
+当**全局 `VL=0`** 时，RVV 规范要求整条规约不更新 `vd`，不能把内部可能出现
+的 seed/neutral token 解释成架构写回。基线 `lane_sequencer.sv` 确实保留了
+规约的最小 operand 请求，使各参与单元可以完成握手；它是内部进度机制。
+教学与验证要额外检查最终 VRF byte enable/写回：`VL=0` 时 `vd` 必须保持
+不变，尤其要覆盖 `vd != vs1` 的情况。本文不把内部握手直接当作这项边界已
+经验证通过。
 
 ### `vstart` 和尾部元素
 
-operand requester 根据 `vstart/NrLanes` 计算每个 lane 的起始元素；低编号
-lane 可能收到 mock 数据来平衡 packet。有效 byte enable 和 mask 共同决定
-哪些元素真正进入 accumulator。widening 规约还要同时考虑源和目标 EEW。
+通用 lane 请求逻辑包含 `vstart/NrLanes` 的起点换算；低编号 lane 在其他向量
+操作中可能收到 mock 数据来平衡 packet。**这不表示规约允许非零架构
+`vstart`**：RVV 规定规约遇到 `vstart≠0` 应报非法指令异常；基线
+`operand_requester.sv` 的注释也写明 Ara 只对内存操作支持非零架构
+`vstart`。因此以下规约时序例子均取 `vstart=0`。widening 规约还要同时
+考虑源和目标 EEW。
 
 ### `prevent_commit`
 
@@ -504,3 +513,270 @@ SLDU 和下一个 lane；unordered tree 则可以在 lane 间并行合并。优�
 `vmfpu.sv` 与 `sldu.sv` 的握手。不要先从 `SIMD_REDUCTION` 开始，因为它
 只是整个规约的最后一小段；真正决定性能的是局部 accumulator、跨 lane
 token/tree 和提交队列三者的配合。
+
+## 12. 先把 ISA 语义和硬件动作分开
+
+这一章开始逐段读代码。先记住三层不同的“完成”：①运算单元已经得到一个
+局部部分和；②SLDU 已经把部分和送回 lane 0；③`vd[0]` 获得写回并向
+sequencer 报告结束。波形中看到第一层完成，不能直接推断第三层已发生。
+
+RVV 规范规定，规约的 `vs2` 是向量源，`vs1[0]` 是标量初值，结果写入
+`vd[0]`；seed 始终参与，`v0` mask 只过滤 `vs2` 的元素。`vd` 可以与源
+寄存器重叠，所以 `vd=vs1` 的原地累加必须遵守 RAW/WAR/WAW。其他目的元素
+按 tail policy 处理。[RISC-V V 扩展第 14 章](https://docs.riscv.org/reference/isa/extensions/vector/_attachments/riscv-v-spec.pdf)
+给出这些架构约束；Ara 的队列与 SLDU 是这些约束的具体实现。
+
+以 `SEW=32`、`VL=5`、seed `10`、`vs2=[1,2,3,4,5]` 为例：
+
+| 情况 | 真正参与的 `vs2` 元素 | `vredsum` 的 `vd[0]` |
+|---|---|---:|
+| `vm=1` | 1、2、3、4、5 | 25 |
+| `vm=0`，只开元素 0、2、4 | 1、3、5 | 19 |
+| `vm=0`，全部关闭且 `VL>0` | 无 | 10 |
+| `VL=0` | 不执行规约 | `vd` 原值不变 |
+
+最后一行是代码阅读时最容易漏掉的边界：`VL=0` 和“`VL>0` 但全 mask-off”
+不同。前者不写目的寄存器，后者要产生只含 seed 的结果。又如
+`vfredosum` 在 `VL>0` 且无 active source 时，必须逐位复制 seed，不能因为
+一次“与 neutral 相加”改变 NaN payload、符号零或 `fflags`；unordered sum
+的空树规则则允许实现更宽的选择空间。读 FP 控制时要追踪这个分支，而不只
+看普通有限数相加的路径。
+
+浮点有序规约要求每一步都按元素顺序舍入。比如 binary32 seed=0，输入
+`[2^24,1,-2^24]`：有序逐步相加时中间的 `1` 可能在第一轮舍入后消失；
+改变结合顺序可能得到另一结果。这个例子解释了为什么 ordered token 要
+逐元素穿过 FPU，而 unordered 可以采用 tree。整数加法按 SEW 取模，结合
+顺序不会改变最终位型；浮点加法的舍入使这一点不再成立。
+
+## 13. 从主 sequencer 到 lane：请求和依赖如何形成
+
+下面的链接固定在基线提交，便于看到本轮优化前的真实代码，而不是当前分支
+后来加入的字段：
+
+| 阅读顺序 | 固定快照 | 先找的符号 |
+|---|---|---|
+| 1 | [ara_sequencer.sv（基线）](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/ara_sequencer.sv) | `global_hazard_table_d`、`pe_req_d` |
+| 2 | [lane_sequencer.sv（基线）](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/lane/lane_sequencer.sv) | `vfu_operation_d.vl`、`operand_request` |
+| 3 | [operand_requester.sv（基线）](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/lane/operand_requester.sv) | `vstart_byte`、`operand_queue_cmd_tmp` |
+| 4 | [operand_queue.sv（基线）](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/lane/operand_queue.sv) | `ntr_red`、`is_reduct` |
+
+### 13.1 `pe_req_t` 不只是 opcode
+
+主 sequencer 对新指令计算目标 VFU 和寄存器依赖，再把 `id/op/vl/vtype`
+连同 `vs1/vs2/vd`、`vm`、`fp_rm`、转换控制及 hazard 位装入 `pe_req_d`。
+hazard 表每行对应一条在途指令，每列对应它可能等待的旧指令 ID。基线中
+读 `vs2` 等待旧 writer 是 RAW；新写 `vd` 等待旧 reader 是 WAR；新写同一
+`vd` 等待旧 writer 是 WAW。只有相关参与单元发回 `vinsn_done`，旧占用才
+会被清除。因此“本 lane 已算出结果”不等于“下条依赖指令可以读它”。
+
+教学时可以用两条指令手算 hazard：`vredsum.vs v8,v4,v8` 紧接另一条读取
+`v8[0]` 的规约。第二条的 `vs1` 对第一条的 `vd` 有 RAW。若第一条尚在
+SLDU 或 result queue，基线会等它的完成边界；优化文档第 6 节才讨论
+如何用版本化 late seed 缩短这个等待。
+
+### 13.2 lane 的 `VL` 为什么不同于全局 `VL`
+
+`lane_sequencer.sv` 先把全局元素数按 `NrLanes` 分给各 lane：每 lane 有
+`floor(VL/NrLanes)` 个基础元素，余数再给低编号 lane。例如 `NrLanes=4`、
+`SEW=32`、`VL=10` 时，各 lane 分别得到 3、3、2、2 个元素。概念上的
+分配是 lane0 处理 `{0,4,8}`，lane1 处理 `{1,5,9}`，lane2 处理 `{2,6}`，
+lane3 处理 `{3,7}`。具体 VRF word 顺序还会经过 Ara 的 shuffle/deshuffle，
+所以波形里的 64-bit word 不能直接按 C 数组顺序阅读。
+
+请求进一步拆为 seed 队列 `AluA/MulFPUA`、向量 body 队列 `AluB` 或
+`MulFPUB/MulFPUC`、以及必要时的 mask 队列。规约 seed 的请求长度通常
+固定为一个标量元素；`VL=0` 或某 lane 没有 body 时，代码仍可能把请求
+长度抬到至少 1，令 operand queue 送一个 neutral/mock beat 保持协议推进。
+这一步只解释内部队列为什么有数据，架构写回仍要另行验证。
+
+### 13.3 operand queue 如何做 neutral 填充
+
+`operand_requester.sv` 把 `cvt_resize` 搬到 queue 命令的 `ntr_red`；
+`operand_queue.sv` 根据 `target_fu` 和 `eew` 构造相应的 64-bit neutral。
+其整数关键式可概括为（省略重复的 EW16/32/64 case）：
+
+```systemverilog
+// 取自基线 operand_queue.sv 的 ALU_SLDU neutral 生成逻辑
+ntrl_int = cmd.ntr_red[0];
+ntrh_int = cmd.ntr_red[1];
+if (cmd.is_reduct && cmd.target_fu == ALU_SLDU)
+  ntr.w64 = {8{ntrh_int, {7{ntrl_int}}}}; // EW8 的每元素位型
+```
+
+`ntrh_int` 是符号位，`ntrl_int` 复制到其余位。于是 `00→0x00`，
+`11→0xff`，`01→0x7f`，`10→0x80`。同一个两位字段就能覆盖整数
+sum/OR、AND/unsigned min、signed min、signed max 的单位元。浮点分支
+把 `01/10` 译成正/负无穷的 IEEE 位型。**注意**字段名叫 `cvt_resize`
+不表示此处正在做宽度转换；基线复用了它的编码，阅读时要看 consumer。
+
+行业里常用这种“数据加有效性”做法：无效槽位送单位元，让一棵固定形状的
+树照常运行。它简化控制，但 `neutral` 是否真的无副作用必须连同 signed
+zero、NaN 和异常标志验证；对 masked-off FP 值，仅替换数值仍不足以证明
+不会产生异常。
+
+## 14. VALU：整数局部累计和跨 lane 所有权
+
+打开 [基线 valu.sv](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/lane/valu.sv)，
+按 `is_reduction` → `reduction_rx_cnt_init` → `INTRA_LANE_REDUCTION` →
+`INTER_LANES_REDUCTION_TX/RX` → `SIMD_REDUCTION` 的顺序读。
+
+### 14.1 第一轮 seed、以后反馈
+
+第一轮 `first_op_q=1`，`alu_operand_a` 取标量 seed；后续轮次改取
+result queue 中的前次累计值。提交到队列前，代码逐 byte 选择：
+
+```systemverilog
+red_mask = be(element_cnt, vinsn_issue_q.vtype.vsew) &
+           ({StrbWidth{vinsn_issue_q.vm}} | mask_i);
+for (int b = 0; b < 8; b++)
+  result_queue_d[result_queue_write_pnt_q].wdata[8*b +: 8] =
+      red_mask[b] ? valu_result[8*b +: 8] : alu_operand_a[8*b +: 8];
+```
+
+`be(...)` 划出当前 word 在 `VL` 内的字节，`mask_i` 再划出 active 元素。
+无效字节保留旧 accumulator，而不是把 ALU 的计算结果写入。`issue_cnt_d`
+只在这轮 operands 可用、队列空间足够并完成对应握手时扣除；当计数为零
+才切到 `INTER_LANES_REDUCTION_TX`。波形上若 `issue_cnt_q` 不动，先看
+`operand_valid_i`、`mask_valid_i` 和 `result_queue_full`，不要先怀疑 ALU 算术。
+
+### 14.2 4-lane tree 不是四个 lane 都执行两轮加法
+
+`reduction_rx_cnt_init(4,lane_id)` 对 lane0/1/2/3 给出 `0/1/0/2`。
+它表示各 lane 需要真正执行的跨 lane 合并次数；所有 lane 仍要同步通过
+`sldu_transactions_cnt_q = clog2(4)+1 = 3` 个 transaction 边界。lane1
+执行一轮、lane3 执行两轮，lane0 最后接收根再做 word 内 SIMD fold。
+
+```systemverilog
+// 基线 VALU 的关键控制，省略数据选择
+if (sldu_alu_valid_q) begin
+  sldu_alu_ready_d = 1'b1;
+  sldu_transactions_cnt_d = sldu_transactions_cnt_q - 1;
+  if (reduction_rx_cnt_q != '0) begin
+    valu_valid = 1'b1;
+    reduction_rx_cnt_d = reduction_rx_cnt_q - 1;
+  end
+end
+```
+
+如果把 `sldu_transactions_cnt_q` 误当作“本 lane 的加法次数”，就会觉得
+lane0 的计数 `0` 与最后结果矛盾。前者是全局阶段同步，后者是本 lane
+实际运算次数。这也是所有权与完成计数要分别保存的常见设计原因。
+
+### 14.3 word 内折叠和唯一架构写回
+
+SLDU 的跨 lane 根仍是 64-bit word，EW8/16/32 时其中含 8/4/2 个
+子元素。lane0 的 `SIMD_REDUCTION` 依次把高子元素折叠到低子元素；
+EW64 已经只有一个元素。最终 result queue entry 的 `addr` 指向 `vd`
+的首 word，`be(1,SEW)` 只允许写结果元素的字节。其他 lane 走
+`LN0_REDUCTION_COMMIT`，不生成第二份架构结果。把 lane0 的最终
+`result_queue_valid`、`alu_result_req_o`、VRF grant 和 `vinsn_done`
+放在同一张波形里，能看见“算完”和“写回/释放依赖”的拍数差。
+
+## 15. VMFPU：unordered 树与 ordered 递归链
+
+打开 [基线 vmfpu.sv](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/lane/vmfpu.sv)。
+`next_mfpu_state()` 把 `{VFREDUSUM,VFREDMIN,VFREDMAX,VFWREDUSUM}`
+送到 `INTRA_LANE_REDUCTION`，把 `{VFREDOSUM,VFWREDOSUM}` 送到
+`OSUM_REDUCTION`。这是读 FP 代码的第一个分叉。
+
+### 15.1 unordered 的 FPU latency 怎样与输入重叠
+
+FPnew 是有流水延迟的：输入被接受和结果返回不是同一拍。基线使用
+`first_op_q` 判断 seed 是否尚未使用，使用 `intra_op_rx_cnt_q` 记录从
+operand queue 消费的元素，`to_process_cnt_q` 记录尚未收到的结果，
+`first_result_op_valid_q` 指示反馈是否已可用。首次真实结果尚未返回时，
+`ntr_filling_q` 允许发送 neutral 请求填充流水线；`vfpu_tag_in/out`
+区分真实输入、一个 neutral、两个 neutral，以免把填充请求计入真实
+`VL`。这就是为什么不能只看 `vfpu_in_valid` 推算已处理的架构元素数。
+
+`processed_red_operand()` 同时检查元素位置的 `be` 和 mask：
+
+```systemverilog
+processed_red_operand[8*i +: 8] =
+  ((~is_masked | mask[i]) & pos_mask[i])
+    ? mfpu_operand[8*i +: 8] : ntr_val[8*i +: 8];
+```
+
+看这个式子时要问两个问题：这个字节是否属于当前 `VL`？若属于，mask
+是否打开？任一个答案为否都走 neutral。随后 FPU 结果先进 result queue，
+跨 lane 合并时的 `operand_b` 可以从该队列读旧值；`vfpu_out_valid` 到来
+后还要等 `result_queue_full=0` 才能保存。高吞吐设计常把“发射计数”与
+“返回计数”分开，Ara 这里就是一个具体例子。
+
+### 15.2 ordered 的关键是每步舍入后的 token
+
+`OSUM_REDUCTION` 每次只从一个 64-bit body word 选一个元素。EW32
+在同一 word 中按 `osum_issue_cnt_q` 选择低 32 bit，再选择高 32 bit；
+对应 mask byte 是 0 和 4。只有本次 FPU 接受输入，才推进
+`osum_issue_cnt_q`、`issue_cnt_q`，并在一个 word 的元素发完后给 body
+queue/mask queue `ready`。当前加法返回的 rounded result 先进入 VMFPU
+result queue，随后通过 SLDU 传给下一个 lane；下一个元素必须等这个 token。
+
+有序路径的近似每元素间隔可以拆成 `FPU recurrence + VMFPU result queue
++ SLDU route queue + 下一个 lane 输入 spill`。这些是关键路径上的串行等待，
+所以文档中的 287-cycle `VFREDOSUM` 与 49-cycle `VFREDUSUM` 有明显差距。
+数值上也不能把 ordered 改成 unordered tree 来“加速”，因为 RVV 要求每步
+按元素顺序舍入。可做的工作是让已算出的 token 在保持相同顺序的情况下
+少走固定寄存器；优化文档第 3 节逐项实现了这个思路。
+
+## 16. SLDU、result queue 与 valid/ready：跟一次 token
+
+[基线 sldu.sv](https://github.com/WWeiying/ara/blob/30c6971b/hardware/src/sldu/sldu.sv)
+把规约借道 slide 的跨 lane 交换网络。`SLIDE_IDLE` 遇到 ordered opcode
+就设置 `issue_cnt_d=vl` 并进入 `SLIDE_RUN_OSUM`；unordered 则预算
+`NrLanes*(clog2(NrLanes)+1)` 个 64-bit transaction。在 `SLIDE_RUN`
+里，输入先通过 spill；SLDU 计算跨 lane permutation，把每 lane 的输出
+暂存于自己的 result queue，等待接收 lane 的 grant。
+
+ordered 分支中，目标 lane 通常是 `(lane+1)%NrLanes`，最后一个 token
+强制送回 lane0。基线代码中只有当 result queue 不满且输入 valid，才
+确认源 token、写入目标 result queue 并将 `issue_cnt` 减一。这是完整
+的生产者到消费者链的一半；另一半要等目标 lane 接受 SLDU 输出：
+
+```text
+VMFPU 的 FPU response
+  -> VMFPU result queue -> mfpu_red_valid_o / mfpu_red_ready_i
+  -> SLDU input spill -> SLDU result queue
+  -> sldu_red_valid_o / sldu_result_gnt_i
+  -> 目标 lane 输入 spill -> 下一次 FPU 发射
+```
+
+这里的 `grant` 不等于架构 VRF 写回：规约的 SLDU 结果通常回到执行单元，
+最终只有 lane0 的 result queue 才请求架构写回。若某级下游 `ready=0`，
+上游持有 valid/data，不得把同一 token 再发一次。通行的 ready/valid
+规则是在**同一拍** `valid && ready` 才发生一次传输；payload 在等待
+期间保持稳定。[AMD AXI4-Stream 握手说明](https://docs.amd.com/r/en-US/ug897-vivado-sysgen-user/AXI4-Stream-Support-in-System-Generator)
+采用相同的基本约束。Ara 不是 AXI4-Stream 总线，但检查其内部接口时
+可以复用这一思路。
+
+初学者可以在波形里挑一个 `VL=2` 的 ordered 指令做逐拍表：每拍记
+`mfpu_red_valid/ready`、`sldu_red_valid`、`sldu_result_gnt`、FPU
+`in_valid/ready`、`vfpu_out_valid`。每出现一次 `valid&&ready` 就画一条
+所有权转移箭头。若 token 在两处同时被计数，或 valid 在未握手时消失，
+那是协议问题；若所有握手正确而结果错误，再查元素顺序、mask 和舍入。
+
+## 17. 基线学习实验与自检题
+
+实验都使用第 1 节固定的基线提交；当前优化分支的 `hardware/src` 已有新
+define，不要拿它当“原始代码”。不想切换工作树时，可以直接用
+`git show 30c6971b:路径` 看源码，波形对照则需从该提交单独构建。
+
+1. **一条整数规约**：取 `SEW=32,VL=5,seed=10`，手算 lane 分布和
+   `vd[0]`；检查 `lane_sequencer` 的每 lane `vl`、VALU 的 `issue_cnt_q`
+   与 lane0 最终 `be`。预期只有低四个目的字节属于结果元素。
+2. **masked-off FP**：让 `vs2` 含 sNaN，但对应 mask 为 0；跟踪
+   `processed_red_operand`、FPU 输入和 `fflags`。预期被遮蔽值不能引入
+   `NV`；若全无 active source，还要检查 seed 拷贝路径。
+3. **背压**：让 SLDU 的下游暂时不 grant；在三拍内检查输入 valid/data
+   是否保持、`issue_cnt` 是否只在真实握手后变化。
+4. **`VL=0`**：把 `vd` 与 `vs1` 设成不同寄存器，先给 `vd` 写哨兵值。
+   规范期望 `vd` 完全不变。基线内部会保留最小握手，因此这项要检查最终
+   VRF 请求，不能只看 ALU/FPU 算出的数。
+5. **非零 `vstart`**：规范期望非法指令异常。基线请求结构里有通用
+   `vstart` 字段，但 `operand_requester` 注释限定了架构支持范围；不能
+   因为字段存在就把此项写成规约功能已覆盖。
+
+若要比较性能，先把 `VLEN/NrLanes/SEW/LMUL/VL`、probe 指令序列和
+ROI 边界固定。第 10.1 节的 24/49/55/287 是**该 probe 的观测
+execution latency**；424 是整段混合 ROI。它们都不是 FPU 的纯组合延迟，
+也不能在换了 mask 或前序指令后直接套用。
