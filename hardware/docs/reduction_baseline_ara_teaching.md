@@ -20,9 +20,15 @@ git show 30c6971b:hardware/src/sldu/sldu.sv
 [`reduction_optimization_teaching.md`](reduction_optimization_teaching.md)，
 实验记录见 [`reduction_acceleration_4lane.md`](reduction_acceleration_4lane.md)。
 
+**建议按两遍阅读。**第 1～8 节先建立“指令进入 → 各 lane 计算 → SLDU
+合并 → lane 0 写回”的整体图；第 12～16 节再对照固定基线快照读关键 RTL。
+第 9～11 节可在需要核对正确性边界、性能数据或文件位置时查阅，第 17 节
+用来练习逐拍跟踪。第一次阅读不必记住所有状态名；先认清每个阶段拿着
+哪份数据、等待谁的握手。
+
 ## 1. 先建立整体认识
 
-RVV 规约把一个向量和一个标量 seed 合并成一个结果。以
+RVV 规约把一个向量和一个标量初值（下文称 seed）合并成一个结果。以
 `vredsum.vs vd, vs2, vs1` 为例，语义可以抽象为：
 
 ```text
@@ -31,6 +37,10 @@ for i in active_elements(vs2):
     acc = acc + vs2[i]
 vd[0] = acc
 ```
+
+这段循环只用于说明**哪些元素参与**。整数加法在目标宽度内取模；
+有序浮点加法必须按元素编号逐步舍入；无序浮点规约允许实现把元素分组
+后用树合并，因此其真实执行顺序不一定是上面的循环顺序。
 
 浮点规约的运算符可能是加法、最小值或最大值；widening 版本还会改变
 累加器的元素宽度。硬件不能把它当作普通的逐元素向量运算，因为每一步都
@@ -79,12 +89,25 @@ Ara 的基本组织方式是：
 | VRF | 向量寄存器文件。lane 通常以 64-bit word 读写它；`SEW` 决定一个 word 中有几个元素。 |
 | operand queue | 从 VRF 返回的数据进入执行单元之前的队列，负责转换、重排、mask 和 neutral 填充。 |
 | result queue | ALU/FPU 或 SLDU 已经产生、但还没有获得 VRF/MASKU grant 的结果队列。它既保存数据，也保存地址、byte-enable 和 instruction owner。 |
-| valid/ready | 两端在同一拍都为 1 才算一次传输。只有握手完成后，生产者才可以推进计数器或释放 token。 |
+| valid/ready | 发送端用 valid 表示数据可用，接收端用 ready 表示能接收；同一拍都为 1 才发生一次传输。 |
 
-`SEW` 是元素宽度，`VL` 是本条指令的元素范围上界，`vm=1` 表示不使用
-`v0` mask；`vm=0` 时还要读取 mask。规约教学中最容易混淆的是：`VL` 是
-架构元素数上界，不是每个 lane 的元素数或实际参与运算的元素数；后者还受
-mask 影响。lane 内部要根据 lane 映射和尾部补齐生成自己的 operand beat。
+`byte-enable`（源码常缩写为 `be`）是 64-bit word 中每个字节的写入许可位；
+例如 e32 规约只写结果元素时，通常只有低四个字节被允许写入。
+`fflags` 是浮点异常标志，检查 FP 结果时应连同结果位型一起比较。
+
+后文的 **token** 指“某条指令的一份部分结果及其身份信息”；**owner**
+指当前负责保存它的模块或队列。例如 SLDU 尚未接收时，lane 的结果队列
+是 owner；SLDU 完成握手后，owner 才转移到 SLDU。理解这个转移比记住
+所有内部信号名更重要。
+
+`SEW` 是每个元素的位宽；`VL=5` 表示本条指令考虑编号 0～4 的五个元素。
+`vm=1` 表示这些元素不受 `v0` mask 过滤；`vm=0` 时还要读取 mask，
+只有 mask 为 1 的元素真正参加运算。因此 `VL` 既不是每个 lane 的元素数，
+也不一定等于实际参与计算的元素数。lane 还要按自己的元素位置与尾部情况
+生成输入数据包（operand beat）。
+`VLEN` 是一个向量寄存器的位数，`LMUL` 是一组操作数占用的寄存器组倍率；
+对常见整数倍率配置，`VLMAX=LMUL×VLEN/SEW` 是该配置最多能处理的元素数。
+源码中的 `EW8/EW16/EW32/EW64` 分别指 8/16/32/64-bit 元素宽度。
 
 ## 2. 支持的规约指令和执行单元
 
@@ -135,6 +158,11 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 因此，基线安全但保守：一条规约在跨 lane 阶段停留时，后续可能复用同一
 寄存器的指令通常要等待它完全结束。
 
+这里的三个缩写都描述**两条指令访问同一个寄存器**的次序：RAW 是后一条
+要读取前一条写出的值，例如 Q 的 seed 来自 P 的 `vd[0]`；WAR 是前一条
+尚未读完，后一条准备覆盖它的源寄存器；WAW 是两条都准备写同一个目的
+寄存器。RAW 保证读到新值，WAR/WAW 保证写入不提前破坏旧指令的读写顺序。
+
 ### 3.2 lane_sequencer 和 operand requester
 
 [`lane_sequencer.sv`](../src/lane/lane_sequencer.sv) 把主 sequencer 的
@@ -159,10 +187,11 @@ seed -> element 0 -> element 1 -> element 2 -> ...
 之后的步骤不再从 VRF 读取 accumulator，而是从执行单元自己的 result queue
 取上一轮结果。
 
-### 3.3 neutral value
+### 3.3 neutral value（单位元）
 
 当某个 lane 没有实际元素，或者一个 64-bit word 中只有部分元素有效时，
-硬件要给流水线补上不会改变归约结果的值。下表是该实现的 neutral 编码
+硬件要给流水线补上**单位元**，即参与对应运算后不改变已有结果的值。
+例如加法用 0、按位与用全 1。下表是该实现的 neutral 编码
 直觉；FP 的有符号零、NaN 和异常仍要看实际数据路径：
 
 | 运算 | neutral value |
@@ -363,7 +392,7 @@ level 1: 两组部分结果 -> lane3 持有跨 lane 根
 
 `red_stride_cnt_q` 控制每一轮的跨 lane 位置；`issue_cnt_q` 按
 `NrLanes * (clog2(NrLanes)+1)` 的 64-bit transaction 预算推进。即使某个
-lane没有实际数据，也可能需要通过 neutral 或空同步 transaction 保持 tree
+lane 没有实际数据，也可能需要通过 neutral 或空同步 transaction 保持 tree
 边界一致。
 
 ### 6.3 ordered one-hop
@@ -415,7 +444,25 @@ sequencer 的 commit counter，保证所有 lane 在同一个架构指令边界�
 
 ## 8. 一条 4-lane 规约的时序示例
 
-假设 `VLEN=1024`、`NrLanes=4`、`SEW=32`、`VL=32`：
+先用容易手算的一条整数指令建立数据流：`NrLanes=4`、`SEW=32`、
+`VL=10`、seed=10、`vs2=[1,2,3,4,5,6,7,8,9,10]`、不使用 mask。
+在元素按 lane 轮转的逻辑视角下：
+
+| lane | 负责的元素编号 | 元素之和 | 含 seed 的局部值 |
+|---:|---|---:|---:|
+| 0 | 0、4、8 | 1+5+9=15 | 25 |
+| 1 | 1、5、9 | 2+6+10=18 | 18 |
+| 2 | 2、6 | 3+7=10 | 10 |
+| 3 | 3、7 | 4+8=12 | 12 |
+
+四个局部值合起来是 `25+18+10+12=65`，与标量手算
+`10+(1+…+10)=65` 相同。表里的 lane 分配是便于理解的逻辑元素编号；
+实际 VRF 64-bit word 还经过 shuffle，不能照此表直接解释物理字节顺序。
+在源码里按第 13～16 节跟踪 seed 请求、各 lane 的 `issue_cnt`、SLDU
+两级合并和 lane 0 写回，就能把这 65 的每一步找出来。
+
+再看用于性能测量的浮点示例。假设 `VLEN=1024`、`NrLanes=4`、
+`SEW=32`、`VL=32`：
 
 ```text
 每 lane 约 8 个元素
@@ -494,7 +541,7 @@ backend 和 versioned chain bypass 的动机。
 
 ordered sum 明显更长，是因为一个 token 必须按 lane 顺序反复经过 VMFPU、
 SLDU 和下一个 lane；unordered tree 则可以在 lane 间并行合并。优化文档第
-8 节用同一类 probe 给出对应的旁路和 exact/stream 对照。
+15 节用同一类 probe 给出对应的旁路和 exact/stream 对照。
 
 ## 11. 原始 Ara 的代码导航
 
@@ -509,12 +556,12 @@ SLDU 和下一个 lane；unordered tree 则可以在 lane 间并行合并。优�
 | 跨 lane 通道 | `hardware/src/sldu/sldu.sv` | `SLIDE_RUN_OSUM`、`red_stride_cnt_q` |
 | 现有模块级说明 | `docs/source/modules/lane/valu.md` | Reduction Support |
 
-阅读顺序建议是：先看本文第 1～3 节，再对照 `valu.sv` 的状态机，最后看
-`vmfpu.sv` 与 `sldu.sv` 的握手。不要先从 `SIMD_REDUCTION` 开始，因为它
-只是整个规约的最后一小段；真正决定性能的是局部 accumulator、跨 lane
-token/tree 和提交队列三者的配合。
+本表是文件索引。**原始实现应以 `30c6971b` 快照为准**：当前分支中这些
+路径仍存在，但已加入优化代码，直接点击本地路径可能读到新逻辑。第 13 节
+给出固定到基线提交的链接。建议先读本文第 1～8 节，再按第 13～16 节的
+顺序看请求、VALU、VMFPU 和 SLDU。
 
-## 12. 先把 ISA 语义和硬件动作分开
+## 12. 第二遍读源码：先把 ISA 语义和硬件动作分开
 
 这一章开始逐段读代码。先记住三层不同的“完成”：①运算单元已经得到一个
 局部部分和；②SLDU 已经把部分和送回 lane 0；③`vd[0]` 获得写回并向
@@ -757,7 +804,7 @@ VMFPU 的 FPU response
 
 ## 17. 基线学习实验与自检题
 
-实验都使用第 1 节固定的基线提交；当前优化分支的 `hardware/src` 已有新
+实验都使用文首固定的基线提交；当前优化分支的 `hardware/src` 已有新
 define，不要拿它当“原始代码”。不想切换工作树时，可以直接用
 `git show 30c6971b:路径` 看源码，波形对照则需从该提交单独构建。
 
