@@ -100,6 +100,20 @@ in `report.json`: `verified=true` rules out a basic single-beat write failure
 at the second address, but does not establish that AXI bursts work. If
 `restored=false`, do not treat the scratch contents as preserved.
 
+If the single-beat probe passes but the original two-beat preflight fails,
+run one format-discriminating test after another full VIO reset:
+
+```powershell
+py -3 .\host_load.py axi-burst-probe --probes $probes --full-reset-confirmed --out D:\fpga_host_runs\axi_burst01
+```
+
+It first compares a two-beat read with separate reads, then uses the
+word-separated two-beat write syntax shown in Vivado documentation. It reads
+both addresses separately and restores them with single-beat writes. The
+`axi_burst_probe` object in `report.json` distinguishes read-burst failure,
+word-separated write failure, and successful scratch restoration. This is a
+diagnostic A/B test, not permission to skip the normal load preflight.
+
 The register bank records cycles, retired instructions, last retired PC,
 commit-head PC, last committed exception PC/cause/tval, software marker/run ID,
 result and done. A configurable no-retirement watchdog freezes and snapshots

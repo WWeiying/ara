@@ -21,6 +21,7 @@ class Operation:
     address: int
     beats: int = 1
     data: bytes = b""
+    separate_words: bool = False
 
     @property
     def width(self):
@@ -37,7 +38,12 @@ class Operation:
             raise ValueError("Invalid AXI alignment, length or boundary")
         if (self.kind == "WRITE" and len(self.data) != size) or (self.kind == "READ" and self.data):
             raise ValueError("Invalid AXI data length")
+        if self.separate_words and (self.kind != "WRITE" or self.beats < 2):
+            raise ValueError("Word separators require a multi-beat WRITE")
         data = to_axi_hex(self.data, self.width) if self.kind == "WRITE" else "-"
+        if self.separate_words:
+            digits = self.width * 2
+            data = "_".join(data[i:i + digits] for i in range(0, len(data), digits))
         return f"{self.bus} {self.kind} {self.address:016x} {self.beats} {data}"
 
 
