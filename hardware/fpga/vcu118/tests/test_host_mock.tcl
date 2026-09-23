@@ -72,6 +72,11 @@ proc create_hw_axi_txn {name core args} {
     return $name
 }
 proc refresh_hw_axi {core} {}
+proc reset_hw_axi {core} {
+    if {$core ne "mem_a"} { error "Wrong AXI core reset" }
+    if {$::mode eq "reset_error"} { error "Injected JTAG AXI reset failure" }
+    puts "MOCK reset memory AXI core"
+}
 proc delete_hw_axi_txn {name} {
     foreach key [array names ::txn "$name,*"] { unset ::txn($key) }
 }

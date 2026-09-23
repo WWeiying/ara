@@ -138,6 +138,13 @@ both fail, investigate the common host/LLC path first. Neither result alone
 identifies a specific RTL defect. If `restored` is not true, treat the SPM
 scratch contents as potentially changed.
 
+For a single controlled test of stale JTAG-AXI core state, repeat the same SPM
+probe after another full VIO reset, with a new output directory and the
+optional `--reset-jtag-axi` flag. This invokes Vivado `reset_hw_axi` once before
+the first memory transaction and records `jtag_axi_reset_before_probe=true`.
+It does not alter memory or relax the loader preflight; compare both probe
+reports before changing RTL. The reset experiment is not a loader workaround.
+
 The register bank records cycles, retired instructions, last retired PC,
 commit-head PC, last committed exception PC/cause/tval, software marker/run ID,
 result and done. A configurable no-retirement watchdog freezes and snapshots

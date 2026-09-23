@@ -556,6 +556,7 @@ def main(argv=None):
             sub.add_argument("--full-reset-confirmed", action="store_true")
         if name == "axi-spm-probe":
             sub.add_argument("--destructive-spm-test-confirmed", action="store_true")
+            sub.add_argument("--reset-jtag-axi", action="store_true")
         if name == "ddr-test":
             sub.add_argument("--destructive-ddr-test-confirmed", action="store_true")
         if name == "load":
@@ -639,6 +640,10 @@ def main(argv=None):
             with connect("axi_spm_probe") as transport:
                 ident = identity(transport)
                 report["identity"] = ident
+                report["jtag_axi_reset_before_probe"] = False
+                if args.reset_jtag_axi:
+                    transport.reset_memory_axi()
+                    report["jtag_axi_reset_before_probe"] = True
                 check_passive_boot(transport)
                 report["axi_spm_probe"] = {}
                 try:

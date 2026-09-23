@@ -135,6 +135,21 @@ proc host::transaction {line} {
 proc host::serve {channel} {
     while {[gets $channel header] >= 0} {
         if {$header eq "QUIT"} { return }
+        if {[llength $header] == 3 && [lindex $header 0] eq "RESET"} {
+            lassign $header command seq bus
+            if {![string is integer -strict $seq] || $bus ne "M"} { error "Invalid reset request" }
+            set object [host::core M]
+            if {[catch {reset_hw_axi $object} value]} {
+                binary scan [encoding convertto utf-8 $value] H* error_hex
+                puts $channel "ERR $seq 0 $error_hex"
+            } else {
+                puts "HOST reset memory AXI core: $object"
+                puts $channel "OK $seq 0 -"
+            }
+            puts $channel "END $seq"
+            flush $channel
+            continue
+        }
         if {[llength $header] != 3} { error "Malformed batch" }
         lassign $header command seq count
         if {$command ne "BATCH" || ![string is integer -strict $seq] ||

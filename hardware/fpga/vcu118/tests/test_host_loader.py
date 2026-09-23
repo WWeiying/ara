@@ -460,12 +460,30 @@ class TclTransportTests(unittest.TestCase):
 
         with patch.object(host, "VivadoTransport", side_effect=factory):
             code = host.main(["axi-spm-probe", "--out", str(output),
-                              "--full-reset-confirmed", "--destructive-spm-test-confirmed"])
+                              "--full-reset-confirmed", "--destructive-spm-test-confirmed",
+                              "--reset-jtag-axi"])
         self.assertEqual(code, 0)
         report = json.loads((output / "report.json").read_text())
         self.assertEqual(report["state"], "passed_axi_spm_burst_only")
+        self.assertTrue(report["jtag_axi_reset_before_probe"])
         self.assertTrue(report["axi_spm_probe"]["restored"])
         self.assertFalse((output / "image.json").exists())
+        entries = [json.loads(line) for line in
+                   (output / "axi_spm_probe/transport.jsonl").read_text().splitlines()]
+        reset_index = next(i for i, entry in enumerate(entries) if "reset" in entry)
+        memory_index = next(i for i, entry in enumerate(entries)
+                            if any(op["bus"] == "M" for op in entry.get("operations", [])))
+        self.assertLess(reset_index, memory_index)
+        self.assertIn("MOCK reset memory AXI core",
+                      (output / "axi_spm_probe/vivado.log").read_text())
+
+    def test_spm_probe_reset_failure_prevents_memory_access(self):
+        with self.transport("reset_error") as transport:
+            with self.assertRaisesRegex(TransportError, "JTAG AXI reset failed"):
+                transport.reset_memory_axi()
+        entries = [json.loads(line) for line in
+                   (self.base / "session/transport.jsonl").read_text().splitlines()]
+        self.assertFalse(any("operations" in entry for entry in entries))
 
     def test_unaligned_adjacent_segments_preserve_outside_bytes(self):
         raw = self.base / "raw.bin"

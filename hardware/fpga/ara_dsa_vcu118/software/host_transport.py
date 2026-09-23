@@ -195,6 +195,30 @@ class VivadoTransport:
             self.audit.flush()
             raise TransportError(f"AXI batch {seq} failed: {exc}") from exc
 
+    def reset_memory_axi(self):
+        if self.broken:
+            raise TransportError("Session is unusable; open a new debug-only session")
+        self.sequence += 1
+        seq = self.sequence
+        self.audit.write(json.dumps({"reset": seq, "bus": "M"}) + "\n")
+        self.audit.flush()
+        try:
+            self.sock.sendall(f"RESET {seq} M\n".encode("ascii"))
+            fields = self._line().split()
+            if len(fields) != 4 or fields[1:3] != [str(seq), "0"]:
+                raise TransportError("Mismatched Vivado reset response")
+            if fields[0] == "ERR":
+                raise TransportError(bytes.fromhex(fields[3]).decode("utf-8", errors="replace"))
+            if fields != ["OK", str(seq), "0", "-"] or self._line() != f"END {seq}":
+                raise TransportError("Invalid Vivado reset completion")
+            self.audit.write(json.dumps({"reset": seq, "checked": True}) + "\n")
+            self.audit.flush()
+        except (OSError, ValueError, TransportError) as exc:
+            self.broken = True
+            self.audit.write(json.dumps({"reset": seq, "error": str(exc)}) + "\n")
+            self.audit.flush()
+            raise TransportError(f"JTAG AXI reset failed: {exc}") from exc
+
     def close(self):
         try:
             if self.sock:
