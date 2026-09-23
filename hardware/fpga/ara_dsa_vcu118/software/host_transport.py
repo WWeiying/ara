@@ -92,14 +92,15 @@ def stop_owned_tree(process, platform=None):
 class VivadoTransport:
     def __init__(self, output, vivado="vivado", server="localhost:3121", target="-",
                  device="-", mem_cell="i_jtag_mem", debug_cell="i_jtag_debug",
-                 timeout=30.0, startup_timeout=120.0, command=None):
+                 timeout=30.0, startup_timeout=120.0, command=None, probes=None):
         self.output = Path(output)
         self.timeout = timeout
         self.startup_timeout = startup_timeout
         self.sequence = 0
         self.process = self.sock = self.reader = self.log = self.audit = None
         self.broken = False
-        self.arguments = (server, target, device, mem_cell, debug_cell)
+        self.arguments = (server, target, device, mem_cell, debug_cell,
+                          Path(probes).as_posix() if probes is not None else "-")
         script = Path(__file__).with_name("host_vivado.tcl")
         # Windows CreateProcess does not search PATHEXT; which resolves vivado.bat.
         self.command = command or [shutil.which(vivado) or vivado,

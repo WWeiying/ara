@@ -141,8 +141,8 @@ proc host::serve {channel} {
 proc host::main {arguments} {
     variable cells
     variable device
-    if {[llength $arguments] != 7} { error "Expected port token server target device mem_cell debug_cell" }
-    lassign $arguments port token server target_name device_name cells(M) cells(D)
+    if {[llength $arguments] != 8} { error "Expected port token server target device mem_cell debug_cell probes" }
+    lassign $arguments port token server target_name device_name cells(M) cells(D) probes
     foreach cell [list $cells(M) $cells(D)] {
         if {![regexp {^[A-Za-z0-9_./]+$} $cell]} { error "Invalid CELL_NAME suffix" }
     }
@@ -153,7 +153,16 @@ proc host::main {arguments} {
     set devices [get_hw_devices -of_objects $target -filter {PART =~ xcvu9p*}]
     set device [host::select_one $devices $device_name device]
     current_hw_device $device
+    if {$probes ne "-"} {
+        if {![file isfile $probes]} { error "Debug probes file not found: $probes" }
+        set_property PROBES.FILE $probes $device
+    }
     refresh_hw_device $device
+    set axes [get_hw_axis -of_objects $device]
+    puts "HOST JTAG AXI objects: [llength $axes]"
+    foreach object $axes {
+        puts "HOST AXI $object CELL_NAME=[get_property CELL_NAME $object] PROTOCOL=[get_property PROTOCOL $object]"
+    }
     # Do not discover, reset or refresh the memory IP for a debug-only session.
     host::core D
     set channel [socket 127.0.0.1 $port]

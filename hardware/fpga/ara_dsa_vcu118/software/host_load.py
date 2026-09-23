@@ -405,6 +405,7 @@ def main(argv=None):
         if name in ("load", "snapshot", "ddr-test"):
             sub.add_argument("--vivado", default="vivado")
             sub.add_argument("--server", default="localhost:3121")
+            sub.add_argument("--probes", type=Path, help="matching debug probes .ltx file")
             sub.add_argument("--target", default="-")
             sub.add_argument("--device", default="-")
             sub.add_argument("--mem-cell", default="gen_host.i_host_bridge.i_jtag_mem")
@@ -438,6 +439,10 @@ def main(argv=None):
         args.run_id = args.run_id if args.run_id is not None else secrets.randbelow(0xFFFFFFFF) + 1
         if not 0 < args.run_id <= 0xFFFFFFFF:
             parser.error("Run ID must be a nonzero uint32")
+    if args.command in ("load", "snapshot", "ddr-test") and args.probes is not None:
+        if not args.probes.is_file():
+            parser.error(f"Debug probes file not found: {args.probes}")
+        args.probes = args.probes.resolve()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=False)
     report = {"command": args.command, "started_utc": now(), "state": "starting", "passed": False,
@@ -448,7 +453,7 @@ def main(argv=None):
         return VivadoTransport(args.out / name, vivado=args.vivado, server=args.server,
                                target=args.target, device=args.device, mem_cell=args.mem_cell,
                                debug_cell=args.debug_cell, timeout=args.transaction_timeout,
-                               startup_timeout=args.startup_timeout)
+                               startup_timeout=args.startup_timeout, probes=args.probes)
 
     try:
         if args.command == "prepare":

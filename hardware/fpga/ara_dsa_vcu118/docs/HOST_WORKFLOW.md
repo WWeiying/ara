@@ -73,8 +73,14 @@ be new, so prior evidence cannot be silently overwritten.
 ```powershell
 cd D:\project\ara\hardware\fpga\ara_dsa_vcu118\software
 $env:Path = 'D:\Xilinx\Vivado\2020.1\bin;' + $env:Path
-py -3 .\host_load.py snapshot --out D:\fpga_host_runs\snapshot01
+$probes = 'D:\fpga_runs\ara_20260923_125216_228b9d4f9525\bitstream_host\ara_dsa_vcu118.ltx'
+py -3 .\host_load.py snapshot --probes $probes --out D:\fpga_host_runs\snapshot01
 ```
+
+Replace `$probes` with the `.ltx` from the same output directory as the bitstream
+currently programmed on the board. The loader opens its own Vivado session, so
+the GUI's probes-file setting is not inherited. Its log lists every detected
+JTAG AXI object before matching the expected core names.
 
 Outputs include `report.json`, `snapshot.json`, `snapshot.csv`, a Vivado log,
 and a transaction audit log. A collected snapshot is **not** an execution pass.
@@ -121,6 +127,8 @@ does not need a RISC-V compiler.
 ```powershell
 $load = @(
   'load'
+  '--probes'
+  $probes
   '--elf'
   '.\host_smoke.elf'
   '--full-reset-confirmed'
@@ -179,6 +187,7 @@ py -3 .\host_load.py uart --port COM6 --out D:\fpga_host_runs\uart01
 
 Only after the host-profile checks pass, repeat the build with
 `-Profile dual_ddr`. This is a new bitstream; software alone cannot add C2.
+Set `$probes` to the matching dual-DDR `.ltx` after programming that bitstream.
 
 | Bank | Physical address range (end exclusive) |
 | --- | --- |
@@ -197,6 +206,8 @@ Perform a full VIO reset. The destructive scratch test overwrites the last
 ```powershell
 $test = @(
   'ddr-test'
+  '--probes'
+  $probes
   '--full-reset-confirmed'
   '--destructive-ddr-test-confirmed'
   '--out'
