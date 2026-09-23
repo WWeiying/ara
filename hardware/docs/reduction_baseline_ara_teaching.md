@@ -1,12 +1,32 @@
-# 原始 Ara 规约实现教学文档
+# 规约优化前的 Ara 实现教学文档
 
-本文解释 Ara 在本轮 4-lane 优化之前的规约实现。这里的“原始”不是指
-RVV 规约指令的最早历史版本，而是本仓库本轮优化的基线快照：
+本文解释本仓库在这轮 4-lane 规约优化开始前的实现。这里的**基线**是
+实验对照用的固定提交，不等于官方 Ara 仓库未经修改的版本：
 
 ```text
-baseline commit: 30c6971b  (2026-07-09)
-optimization branch: reduction-optimization
+官方 Ara 共同祖先： e970f773  (2025-11-24)
+本仓库优化前基线： 30c6971b  (2026-07-09)
+本轮优化所在分支： reduction-optimization
 ```
+
+本仓库与[官方 Ara 的 `e970f773` 提交](https://github.com/pulp-platform/ara/commit/e970f7736cde544eb2a44c6a44ad7eb0f8789f1a)
+共享历史；从该提交到 `30c6971b` 又有 63 个提交。两者的
+`hardware/src/lane/valu.sv`、`vmfpu.sv`、`hardware/src/sldu/sldu.sv`
+文件内容相同，所以本文讲的**规约核心运算与跨 lane 机制**可以追溯到
+那份官方源码。外围却已有本仓库修改，不能把本文的构建环境、握手时序或
+性能数字称为“官方原版结果”：
+
+| 基线中相对共同祖先的差异 | 对学习规约有什么影响 |
+|---|---|
+| `lane_sequencer.sv` 改了请求接收的 ready 条件和请求寄存器实现 | 指令何时进入 lane 可能不同；读调度时必须用固定基线快照。 |
+| `operand_requester.sv` 重排了各队列状态/metadata、stall 计算和请求握手代码 | operand 发起路径并非官方共同祖先的逐字副本。 |
+| `ara_sequencer.sv` 增加 `FOR_VERIFY` 下的 hazard 观测信号 | 用于统计 RAW/WAR/WAW 等等待，不是新的规约算术。 |
+| Makefile、testbench、性能探针、SRAM 配置及部分应用/工具链有改动 | 仿真条件与结果需要按本仓库的 profile 解释。 |
+
+官方 `main` 此后也继续发展；本文的“基线”只用于比较
+`reduction-optimization` 分支的前后实现。可运行
+`git diff e970f773 30c6971b -- hardware/src` 核对上述源码差异；若要看
+**当前**官方代码，请另看 `upstream/main`，不要用它替代本文的固定快照。
 
 基线代码可以用下面的方式复现：
 
@@ -543,7 +563,7 @@ ordered sum 明显更长，是因为一个 token 必须按 lane 顺序反复经�
 SLDU 和下一个 lane；unordered tree 则可以在 lane 间并行合并。优化文档第
 15 节用同一类 probe 给出对应的旁路和 exact/stream 对照。
 
-## 11. 原始 Ara 的代码导航
+## 11. 优化前基线的代码导航
 
 | 主题 | 文件 | 重点符号 |
 |---|---|---|

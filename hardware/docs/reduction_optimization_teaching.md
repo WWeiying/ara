@@ -1,6 +1,6 @@
 # Ara 规约优化实现教学文档
 
-本文解释 `reduction-optimization` 分支在原始 Ara 规约协议之上做了什么、
+本文解释 `reduction-optimization` 分支在本仓库**优化前基线**之上做了什么、
 为什么这样做，以及如何从代码和仿真中复现这些机制。它是一份面向阅读 RTL
 和继续开发的教学文档；逐次实验的完整记录仍在
 [`reduction_acceleration_4lane.md`](reduction_acceleration_4lane.md)。
@@ -15,7 +15,9 @@ NrLanes:      4
 VLEN:         1024
 ```
 
-`30c6971b` 是本轮优化开始前的基线快照，原始实现请先阅读
+`30c6971b` 是本轮优化开始前的本仓库快照，已包含此前相对官方 Ara 的
+调度、operand 请求和工程环境修改；它不是官方仓库的原样提交。
+这层来源关系和优化前实现请先阅读
 [`reduction_baseline_ara_teaching.md`](reduction_baseline_ara_teaching.md)。
 本文中的“最终候选”专指 `NrLanes=4` 的已验证 profile，不表示所有 lane 数和
 所有 RVV 浮点格式都已经参数化完成。
