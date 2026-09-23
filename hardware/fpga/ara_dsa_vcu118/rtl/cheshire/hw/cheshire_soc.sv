@@ -8,6 +8,8 @@
 // Thomas Benz <tbenz@iis.ee.ethz.ch>
 // Alessandro Ottaviano <aottaviano@iis.ee.ethz.ch>
 
+`include "rvfi_types.svh"
+
 module cheshire_soc import cheshire_pkg::*; #(
   // Cheshire config
   parameter cheshire_cfg_t Cfg = '0,
@@ -28,6 +30,12 @@ module cheshire_soc import cheshire_pkg::*; #(
   input  logic        test_mode_i,
   input  logic [1:0]  boot_mode_i,
   input  logic        rtc_i,
+`ifdef ARA_FPGA_HOST
+  output logic [7:0] fpga_retire_count_o,
+  output logic [63:0] fpga_retire_pc_o, fpga_head_pc_o,
+  output logic fpga_trap_o,
+  output logic [63:0] fpga_trap_pc_o, fpga_trap_cause_o, fpga_trap_tval_o,
+`endif
   // External AXI LLC (DRAM) port
   output axi_ext_llc_req_t axi_llc_mst_req_o,
   input  axi_ext_llc_rsp_t axi_llc_mst_rsp_i,
@@ -624,6 +632,32 @@ module cheshire_soc import cheshire_pkg::*; #(
     axi_cva6_req_t core_out_req, core_ur_req;
     axi_cva6_rsp_t core_out_rsp, core_ur_rsp;
 
+`ifdef ARA_FPGA_HOST
+    typedef `RVFI_PROBES_INSTR_T(Cva6Cfg) fpga_instr_t;
+    typedef `RVFI_PROBES_CSR_T(Cva6Cfg) fpga_csr_t;
+    typedef struct packed {
+      fpga_csr_t csr;
+      fpga_instr_t instr;
+    } fpga_probes_t;
+    fpga_probes_t fpga_probes;
+    if (i == 0) begin : gen_fpga_probe
+      always_comb begin
+        fpga_retire_count_o = 0;
+        fpga_retire_pc_o = 0;
+        for (int p = 0; p < Cva6Cfg.NrCommitPorts; p++) begin
+          if (fpga_probes.instr.commit_ack[p] && !fpga_probes.instr.commit_drop[p]) begin
+            fpga_retire_count_o = fpga_retire_count_o + 1;
+            fpga_retire_pc_o = 64'($signed(fpga_probes.instr.commit_instr_pc[p]));
+          end
+        end
+        fpga_head_pc_o = 64'($signed(fpga_probes.instr.commit_instr_pc[0]));
+        fpga_trap_o = fpga_probes.instr.ex_commit_valid;
+        fpga_trap_pc_o = fpga_head_pc_o;
+        fpga_trap_cause_o = fpga_probes.instr.ex_commit_cause;
+        fpga_trap_tval_o = fpga_probes.instr.tval;
+      end
+    end
+`endif
     // CLIC interface
     logic clic_irq_valid, clic_irq_ready;
     logic clic_irq_kill_req, clic_irq_kill_ack;
@@ -674,7 +708,11 @@ module cheshire_soc import cheshire_pkg::*; #(
       .clic_irq_ready_o ( ),
       .clic_kill_req_i  ( 1'b0 ),
       .clic_kill_ack_o  ( ),
+`ifdef ARA_FPGA_HOST
+      .rvfi_probes_o    ( fpga_probes ),
+`else
       .rvfi_probes_o    ( ),
+`endif
       .cvxif_req_o      ( acc_req       ),
       .cvxif_resp_i     ( acc_resp_pack ),
       .noc_req_o        ( core_out_req ),

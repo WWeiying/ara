@@ -1,6 +1,66 @@
 # FPGA Findings and Verification Boundary
 
-## Current Status: Missing CDC Exceptions (2026-09-17 Windows Run)
+## Current Status: Routed Warning Review (impl_24238553d176)
+
+The uploaded `40465e2e` reports match the synchronized `d8fee8a9` package
+inputs (704 build inputs, fingerprint
+`1684458AA9FE2188BD626C10667221398E4FE0FF4F4F0875113C474C6C0806ED`).
+The saved routed reports pass timing (WNS +0.085 ns, WHS +0.010 ns,
+WPWS +0.039 ns), boundary checks and CDC/pad/skew constraints. The 14 skew
+groups have a worst slack of +2.193 ns. No multiple drivers or loops remain.
+This is implementation evidence, not a board, Linux or llama.cpp test.
+
+The 1597 DRC warnings comprise 1500 DSP pipeline/reset optimization findings,
+96 REQP-1869 findings and one RTSTAT-10 group. Do not enable DSP MREG/PREG or
+change asynchronous resets just to lower the warning count: that can change
+latency/reset semantics. The current design meets the specified clocks.
+
+The 96 REQP-1869 findings name eight LLC XPM URAM cells, with CASCADE_ORDER_A
+and CASCADE_ORDER_B both NONE. They cover six input groups per port. The
+uploaded reports do not show whether each input is unconnected, tied high,
+or driven by logic. The hypothesis is an unused cascade-input tie-off issue
+in the XPM-generated netlist; it is not yet a demonstrated harmless Vivado
+bug. Do not patch XPM/LLC RTL or the routed checkpoint without the actual
+pin/driver evidence. Native Vivado and this DCP are not available on Linux.
+
+The two CDC-11 findings remain on registered UI `fabric_ready` feeding the
+four-stage SoC reset synchronizer and independent two-stage VIO observer.
+Only the former controls functional reset; the latter feeds `probe_in0`.
+Different update cycles are intentional, not an atomic status word. Replacing
+the ready observation with the final reset would remove useful diagnostics,
+not demonstrate a fixed functional failure. No CDC waiver/severity change is
+made. Digital rechecks pass 50 board-reset checks (including calibration
+loss, repeated reset and stopped UI clock), 40 VIO transitions, 74 JTAG scan
+checks and 45/45 DMI acceptances. These do not model metastability or replace
+post-route connectivity and hardware tests.
+
+`scripts/audit_routed.ps1 <routed.dcp>` now also writes `warning_details.rpt`.
+It records every cascade-input driver for NONE/FIRST URAM ports, leaves
+MIDDLE/LAST cascade connections alone, and traces the actual ready and VIO
+chain endpoints through combinational buffers. Non-ground or missing items
+are explicitly counted; query errors prevent a completion marker. The
+observation-only indicator describes endpoint fanout, not full CDC signoff.
+The script opens the saved DCP read-only; it does not resynthesize, reload
+current RTL/XDC, change connections, waive warnings or generate a bitstream.
+Existing DCP/bit/LTX files and previously uploaded reports are untouched.
+
+For an already-open routed design, the same focused queries can be run without
+repeating the full timing audit (the directory must be new):
+
+```tcl
+source D:/project/ara/hardware/fpga/ara_dsa_vcu118/scripts/warning_details.tcl
+set audit_dir [file join {D:/project/ara/hardware/fpga/ara_dsa_vcu118/reports} warning_[clock seconds]]
+fpga_warning_details::write $audit_dir
+```
+
+Review the saved connections before deciding on a targeted tie-off fix. Board
+acceptance still needs repeated reset/DDR calibration and larger DDR/LLC data
+tests; the small bundled smoke test is not sufficient for long Linux runs.
+
+References: [AMD CDC fanout rule](https://docs.amd.com/r/2023.1-English/ug906-vivado-design-analysis/Fanout),
+[URAM288 ports/attributes](https://docs.amd.com/r/2020.2-English/ug974-vivado-ultrascale-libraries/URAM288).
+
+## Previous Blocker: Missing CDC Exceptions (2026-09-17 Windows Run)
 
 Commit `d3aef3dd` contains the fully routed `impl_6abc9f1816a4` reports.
 The preceding FIFO storage fix now has native full-board synthesis and

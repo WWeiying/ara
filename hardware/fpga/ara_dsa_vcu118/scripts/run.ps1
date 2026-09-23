@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('all', 'synth', 'impl', 'inspect')][string]$Stage = 'synth',
+    [ValidateSet('baseline', 'host', 'dual_ddr')][string]$Profile = 'baseline',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat',
     [string]$RunRoot
 )
@@ -21,7 +22,7 @@ function Get-InputFingerprint([string]$Root) {
     if ($null -eq $rows) { throw 'No build inputs found in SHA256SUMS' }
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
-        $bytes = [Text.Encoding]::UTF8.GetBytes(($rows -join "`n"))
+        $bytes = [Text.Encoding]::UTF8.GetBytes(("profile=$Profile`n" + ($rows -join "`n")))
         return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '')
     } finally { $sha.Dispose() }
 }
@@ -36,20 +37,29 @@ function Assert-VivadoIdle {
 }
 
 $root = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $root 'build\ara_dsa_vcu118\ara_dsa_vcu118.xpr'
+$projectName = 'ara_dsa_vcu118'
+if ($Profile -ne 'baseline') { $projectName += "_$Profile" }
+$project = Join-Path $root "build\$projectName\$projectName.xpr"
 if (!(Test-Path -LiteralPath $project -PathType Leaf)) {
-    throw "Existing project required: $project. This command never recreates the project or IP."
+    throw "Existing project required: $project. Run scripts/create_profile.ps1 -Profile $Profile first."
 }
 $Vivado = (Get-Command $Vivado -ErrorAction Stop).Source
 $stateDir = Join-Path $root 'build\managed'
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+$lockPath = Join-Path $stateDir 'run.lock'
+if ($Profile -ne 'baseline') {
+    $stateDir = Join-Path $stateDir $Profile
+    New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+}
+$previousProfile = $env:ARA_FPGA_PROFILE
 $lock = $null
 try {
+    $env:ARA_FPGA_PROFILE = $Profile
     # Keep the handle for the entire child lifetime. Never unlink a held lock.
     try {
-        $lock = [IO.File]::Open((Join-Path $stateDir 'run.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+        $lock = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
     } catch {
-        throw "Cannot acquire $stateDir\run.lock. Check other managed runs and directory permissions; do not delete the lock file. $($_.Exception.Message)"
+        throw "Cannot acquire $lockPath. Check other managed runs and directory permissions; do not delete the lock file. $($_.Exception.Message)"
     }
 
     Assert-VivadoIdle
@@ -79,7 +89,7 @@ try {
     }
     Copy-Item -LiteralPath $project -Destination (Join-Path $session 'project_before.xpr')
     Write-Host "Project: $project"
-    Write-Host "Stage: $Stage; results: $session"
+    Write-Host "Profile: $Profile; stage: $Stage; results: $session"
     Write-Host 'Keep this terminal open. Do not edit/update the project sources during the run.'
     $stages = @($Stage)
     if ($Stage -eq 'all') { $stages = @('synth', 'impl') }
@@ -107,7 +117,7 @@ try {
             $run = (Get-Content -Raw -LiteralPath (Join-Path $stageDir 'completed_run.txt')).Trim()
             if ($run -ne "${currentStage}_$token") { throw 'Missing or mismatched completion record' }
             if ($currentStage -eq 'synth') {
-                $record = @{ Project = $project; Run = $run; InputHash = $fingerprint; Directory = $stageDir }
+                $record = @{ Project = $project; Profile = $Profile; Run = $run; InputHash = $fingerprint; Directory = $stageDir }
                 $temp = Join-Path $stateDir "latest_$token.tmp"
                 $record | ConvertTo-Json | Set-Content -LiteralPath $temp -Encoding UTF8
                 Move-Item -LiteralPath $temp -Destination $latest -Force
@@ -126,7 +136,7 @@ try {
         } finally { Pop-Location }
     }
     if ($Stage -eq 'all') {
-        @{ Project = $project; InputHash = $fingerprint; Runs = $completed; BitstreamGenerated = $false } |
+        @{ Project = $project; Profile = $Profile; InputHash = $fingerprint; Runs = $completed; BitstreamGenerated = $false } |
             ConvertTo-Json -Depth 4 |
             Set-Content -LiteralPath (Join-Path $session 'completed_flow.json') -Encoding UTF8
         Write-Host "SUCCESS: full synthesis and routed implementation; results: $session"
@@ -134,4 +144,5 @@ try {
     }
 } finally {
     if ($null -ne $lock) { $lock.Dispose() }
+    $env:ARA_FPGA_PROFILE = $previousProfile
 }

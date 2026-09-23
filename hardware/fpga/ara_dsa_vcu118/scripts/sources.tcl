@@ -614,7 +614,11 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/cheshire/hw/cheshire_pkg.sv} \
     {rtl/cheshire/hw/cheshire_soc.sv} \
     {rtl/board/dram_wrapper_xilinx.sv} \
-    {rtl/board/ara_dsa_vcu118.sv}]
+    {rtl/board/ara_dsa_vcu118.sv} \
+    {rtl/board/ara_axi_observer.sv} \
+    {rtl/board/ara_ddr_router.sv} \
+    {rtl/board/ara_fpga_debug.sv} \
+    {rtl/board/ara_host_bridge.sv}]
 set rtl_include_dirs [list {rtl/common_cells/include} \
     {rtl/apb/include} \
     {rtl/axi/include} \

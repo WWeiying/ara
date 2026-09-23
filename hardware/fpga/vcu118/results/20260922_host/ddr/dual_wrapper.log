@@ -1,0 +1,12 @@
+Info: [VCS_SAVE_RESTORE_INFO] ASLR (Address Space Layout Randomization) is detected on the machine. To enable $save functionality, ASLR will be switched off and simv re-executed.
+Please use '-no_save' simv switch to avoid re-execution or '-suppress=ASLR_DETECTED_INFO' to suppress this message.
+Chronologic VCS simulator copyright 1991-2023
+Contains Synopsys proprietary information.
+Compiler version V-2023.12-SP1_Full64; Runtime version V-2023.12-SP1_Full64;  Sep 22 19:27 2026
+PASS: DDR wrapper reset/channel selection (vendor PHY stub only)
+$finish called from file "/tmp/ara_ddr2_coupled_reset_20260922/wrapper_tb.sv", line 101.
+$finish at simulation time              4020000
+           V C S   S i m u l a t i o n   R e p o r t 
+Time: 4020000 ps
+CPU Time:      0.850 seconds;       Data structure size:   0.5Mb
+Tue Sep 22 19:27:09 2026

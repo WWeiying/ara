@@ -32,9 +32,38 @@ proc ara_cdc::async_input {pad capture budget} {
     set_max_delay -datapath_only $budget -from $pad -to $capture
 }
 
-proc ara_cdc::ddr_reset {} {
-    set ui [clock_at i_dram_wrapper/gen_cdc.i_axi_cdc_mig/i_axi_cdc_dst/i_cdc_fifo_gray_src_r/src_clk_i]
-    set port [require [get_ports -quiet c0_ddr4_reset_n] "DDR reset output" 1]
+proc ara_cdc::ddr_channels {} {
+    set channels {i_dram_wrapper c0_ddr4_reset_n}
+    set second gen_ddr2.i_dram_wrapper_c2
+    set present [llength [get_pins -quiet $second/soc_clk_i]]
+    # Saved checkpoints have no source fileset; use their retained hierarchy.
+    # In project mode, also reject a missing channel required by the profile.
+    if {[llength [info commands get_filesets]]} {
+        set fileset [get_filesets -quiet sources_1]
+        if {[llength $fileset]} {
+            set enabled 0
+            foreach define [get_property verilog_define $fileset] {
+                if {[regexp {^ARA_FPGA_DDR2($|=)} $define]} { set enabled 1 }
+            }
+            if {$enabled != ($present != 0)} {
+                error "CDC: ARA_FPGA_DDR2 profile and second DDR hierarchy disagree"
+            }
+        }
+    }
+    if {$present} {
+        require [get_pins -quiet $second/soc_clk_i] "second DDR SoC clock pin" 1
+        require [get_ports -quiet c1_ddr4_reset_n] "second DDR reset output" 1
+        foreach wrapper [list i_dram_wrapper $second] {
+            require [get_pins -quiet $wrapper/fabric_reset_ni] "coupled DDR reset on $wrapper" 1
+        }
+        lappend channels $second c1_ddr4_reset_n
+    }
+    return $channels
+}
+
+proc ara_cdc::ddr_reset {{wrapper i_dram_wrapper} {pad c0_ddr4_reset_n}} {
+    set ui [clock_at $wrapper/gen_cdc.i_axi_cdc_mig/i_axi_cdc_dst/i_cdc_fifo_gray_src_r/src_clk_i]
+    set port [require [get_ports -quiet $pad] "DDR reset output $pad" 1]
     # Routed evidence: UI-clocked cal_RESET_n_reg -> OBUF -> reset_n.
     # Bound the on-chip propagation to one UI cycle. This is NOT an invented
     # DDR CK setup/hold requirement; MIG owns the long reset/CKE sequencing.
@@ -174,8 +203,8 @@ proc ara_cdc::uart {} {
     puts "CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed"
 }
 
-proc ara_cdc::apply {} {
-    set root i_dram_wrapper/gen_cdc.i_axi_cdc_mig
+proc ara_cdc::ddr_fifo {wrapper} {
+    set root $wrapper/gen_cdc.i_axi_cdc_mig
     foreach channel {aw w ar b r} {
         if {$channel in {aw w ar}} { set source src; set dest dst } \
         else { set source dst; set dest src }
@@ -202,11 +231,24 @@ proc ara_cdc::apply {} {
         set_bus_skew 3.0 -from $dst_clock -to $reverse
         puts "CDC: $channel $src_clock -> $dst_clock; data=[llength $data], pointers=6+6, max=3ns"
     }
+}
+
+proc ara_cdc::apply {} {
+    set channels [ddr_channels]
+    set resets {i_rstgen/rst_ni}
+    set pors {i_board_por/rst_ni}
+    foreach {wrapper pad} $channels {
+        ddr_fifo $wrapper
+        lappend resets $wrapper/i_ui_rstgen/rst_ni
+        lappend pors $wrapper/i_ui_por/rst_ni
+    }
     # POR assertion is asynchronous; each rstgen synchronizes deassertion.
-    foreach pin {i_rstgen/rst_ni i_dram_wrapper/i_ui_rstgen/rst_ni} {
+    # The dual-channel fabric_reset_ni inputs terminate at these same UI rstgens.
+    # Except their asynchronous assertion paths, not the wrapper ports or ready FFs.
+    foreach pin $resets {
         set_false_path -through [require [get_pins -quiet $pin] "reset input $pin" 1]
     }
-    foreach pin {i_board_por/rst_ni i_dram_wrapper/i_ui_por/rst_ni} {
+    foreach pin $pors {
         set pins [get_pins -quiet $pin]
         if {![llength $pins] && [info exists ::ara_cdc_inspect_legacy] &&
             $::ara_cdc_inspect_legacy} {
@@ -231,7 +273,7 @@ proc ara_cdc::apply {} {
     }
     jtag
     uart
-    ddr_reset
+    foreach {wrapper pad} $channels { ddr_reset $wrapper $pad }
     debug_clock
 }
 

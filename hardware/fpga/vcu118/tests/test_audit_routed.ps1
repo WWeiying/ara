@@ -19,7 +19,7 @@ foreach ($case in @('healthy', 'native_error', 'missing_marker', 'wrong_marker',
         New-Item -ItemType Directory -Path (Join-Path $global:FakePackage $dir) | Out-Null
     }
     foreach ($name in @('audit_routed.ps1', 'audit_routed.tcl', 'audit_support.tcl',
-                       'common.tcl', 'config.tcl', 'constraint_checks.tcl')) {
+                       'common.tcl', 'config.tcl', 'constraint_checks.tcl', 'warning_details.tcl')) {
         Copy-Item -LiteralPath (Join-Path $scripts $name) -Destination (Join-Path $global:FakePackage 'scripts')
     }
     $global:FakeCheckpoint = Join-Path $global:FakePackage 'old run/old_routed.dcp'
@@ -67,6 +67,7 @@ foreach ($case in @('healthy', 'native_error', 'missing_marker', 'wrong_marker',
             Assert ($record.Checkpoint -eq $global:FakeCheckpoint) 'checkpoint provenance'
             Assert ($record.SHA256 -eq (Get-FileHash -Algorithm SHA256 -LiteralPath $global:FakeCheckpoint).Hash) 'checkpoint hash'
             Assert ($record.ScriptHashes.'audit_routed.ps1' -ne '') 'script provenance'
+            Assert ($record.ScriptHashes.'warning_details.tcl' -ne '') 'warning-query provenance'
             Assert ($record.AutomatedChecksPassed -and $record.ManualReviewRequired -and !$record.BitstreamGenerated) 'bounded success statement'
         }
     }

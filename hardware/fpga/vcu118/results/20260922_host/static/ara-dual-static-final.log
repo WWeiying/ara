@@ -1,0 +1,153 @@
+  in 13 instances, e.g. ara_dsa_vcu118.i_cheshire_soc.gen_cva6_cores[0].gen_ara.i_ara.i_vlsu.i_akv_engine.i_v2_context.gen_context_bank[0].i_context_sram
+hardware/fpga/ara_dsa_vcu118/rtl/tech_cells_generic/src/fpga/tc_sram_xilinx.sv:86:5: error: unknown module 'xpm_memory_spram'
+    xpm_memory_spram#(
+    ^~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/sldu/sldu.sv:848:73: warning: unsized integer in concat; using a width of 1 [-Wunsized-concat]
+            out_pnt_d = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? {'0, red_stride_cnt_d, 3'b0} : '0;
+                                                                        ^~
+hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/sldu/sldu.sv:1048:40: warning: unsized integer in concat; using a width of 1 [-Wunsized-concat]
+          if (p2_stride_gen_popc_q == {'0, 1'b1} && result_queue_empty) begin
+                                       ^~
+hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv:992:3: error: unknown module 'LUT5'
+  LUT5 #(.INIT(FpgaComputeFaultInit)) i_fpga_compute_fault (
+  ^~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/src/axi_llc_reg_wrap.sv:241:3: warning: shift count of '32' overflows 32-bit operand [-Wshift-count-overflow]
+  `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D(config_hw2reg, config_regs_d)
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:32:5: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D'
+    `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER(regbus, d_struct, bist_out)       \
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:20:56: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER'
+    assign regbus.member``_high.d = d_struct.member >> 32; \
+                                                       ^~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/src/axi_llc_reg_wrap.sv:241:3: warning: shift count of '32' overflows 32-bit operand [-Wshift-count-overflow]
+  `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D(config_hw2reg, config_regs_d)
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:31:5: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D'
+    `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER(regbus, d_struct, flushed)        \
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:20:56: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER'
+    assign regbus.member``_high.d = d_struct.member >> 32; \
+                                                       ^~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/src/axi_llc_reg_wrap.sv:241:3: warning: shift count of '32' overflows 32-bit operand [-Wshift-count-overflow]
+  `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D(config_hw2reg, config_regs_d)
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:25:5: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D'
+    `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER(regbus, d_struct, cfg_spm)        \
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:20:56: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER'
+    assign regbus.member``_high.d = d_struct.member >> 32; \
+                                                       ^~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/src/axi_llc_reg_wrap.sv:241:3: warning: shift count of '32' overflows 32-bit operand [-Wshift-count-overflow]
+  `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D(config_hw2reg, config_regs_d)
+  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:26:5: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D'
+    `AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER(regbus, d_struct, cfg_flush)      \
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/axi_llc/include/axi_llc/assign.svh:20:56: note: expanded from macro 'AXI_LLC_ASSIGN_REGBUS_FROM_REGS_D_MEMBER'
+    assign regbus.member``_high.d = d_struct.member >> 32; \
+                                                       ^~
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:335:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_read_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:519:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_b_status_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_reg_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.gen_llc_atomics.i_llc_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'full_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_cheshire_soc.i_dbg_slv_axi_atomics.i_axi_riscv_atomics_wrap.i_atomics.i_lrsc
+hardware/fpga/ara_dsa_vcu118/rtl/axi_riscv_atomics/src/axi_riscv_lrsc.sv:546:7: warning: output port 'empty_o' has no connection [-Wunconnected-output-port]
+    ) i_write_in_flight_queue (
+      ^
+  in instance: ara_dsa_vcu118.i_dram_wrapper
+hardware/fpga/ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv:276:3: error: unknown module 'ddr4'
+  ddr4 i_dram (
+  ^~~~
+  in instance: ara_dsa_vcu118.gen_ddr2.i_dram_wrapper_c2
+hardware/fpga/ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv:331:3: error: unknown module 'ddr4_c2'
+  ddr4_c2 i_dram (
+  ^~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv:90:3: error: unknown module 'IBUFDS'
+  IBUFDS #(.IBUF_LOW_PWR("FALSE")) i_bufds_sys_clk (
+  ^~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv:93:3: error: unknown module 'clkwiz'
+  clkwiz i_clkwiz (
+  ^~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv:97:3: error: unknown module 'vio'
+  vio i_vio (
+  ^~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv:127:3: error: unknown module 'STARTUPE3'
+  STARTUPE3 #(.PROG_USR("FALSE"), .SIM_CCLK_FREQ(0.0)) i_startupe3 (
+  ^~~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_host_bridge.sv:33:3: error: unknown module 'jtag_mem'
+  jtag_mem i_jtag_mem (
+  ^~~~~~~~
+hardware/fpga/ara_dsa_vcu118/rtl/board/ara_host_bridge.sv:55:3: error: unknown module 'jtag_debug'
+  jtag_debug i_jtag_debug (
+  ^~~~~~~~~~
+Required hierarchy: {"akv_engine": 1, "ara": 1, "cva6": 1, "lane": 4, "qbs_engine": 1, "qbs_payload_buffer": 2, "qbs_payload_sram": 24}
+QBS payload: 16 weight SRAMs x 128 bits, 8 activation SRAMs x 256 bits
+DDR FIFO w: 579 bits (packed AXI struct)
+DDR FIFO r: 525 bits (packed AXI struct)
+STATIC RTL CHECK: no non-vendor elaboration errors
+NOT ELABORATED (Vivado required): IBUFDS, LUT5, STARTUPE3, clkwiz, ddr4, ddr4_c2, jtag_debug, jtag_mem, vio, xpm_memory_spram

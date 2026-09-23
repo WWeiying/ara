@@ -2,6 +2,19 @@
 # a positive setup slack can conceal a lost asynchronous datapath exception.
 namespace eval fpga_checks {}
 
+# In a saved checkpoint use the same hierarchy validation as the CDC script.
+# Offline report checks use the explicitly selected profile (baseline by default).
+proc fpga_checks::ddr_channels {} {
+    if {[llength [info commands ::ara_cdc::ddr_channels]]} {
+        return [::ara_cdc::ddr_channels]
+    }
+    set channels {i_dram_wrapper c0_ddr4_reset_n}
+    if {[info exists ::fpga_profile] && $::fpga_profile eq "dual_ddr"} {
+        lappend channels gen_ddr2.i_dram_wrapper_c2 c1_ddr4_reset_n
+    }
+    return $channels
+}
+
 proc fpga_checks::read_report {path} {
     set in [open $path r]
     set code [catch {read $in} result options]
@@ -43,10 +56,12 @@ proc fpga_checks::path_headers {report} {
 
 proc fpga_checks::gray_groups {} {
     set groups {}
-    foreach channel {aw w ar b r} {
-        foreach half {src dst} {
-            set side [expr {($channel in {aw w ar}) == ($half eq "src") ? "src" : "dst"}]
-            lappend groups i_dram_wrapper/gen_cdc.i_axi_cdc_mig/i_axi_cdc_$side/i_cdc_fifo_gray_${half}_$channel
+    foreach {wrapper pad} [ddr_channels] {
+        foreach channel {aw w ar b r} {
+            foreach half {src dst} {
+                set side [expr {($channel in {aw w ar}) == ($half eq "src") ? "src" : "dst"}]
+                lappend groups $wrapper/gen_cdc.i_axi_cdc_mig/i_axi_cdc_$side/i_cdc_fifo_gray_${half}_$channel
+            }
         }
     }
     return $groups
@@ -71,8 +86,7 @@ proc fpga_checks::cdc_failures {report} {
             if {$exception ne "Max Delay Datapath Only"} {
                 lappend failures "Gray pointer has no datapath-only bound: $dest ($exception)"
             }
-        } elseif {[string match i_dram_wrapper/gen_cdc.i_axi_cdc_mig/*/i_spill_register/* $dest]} {
-            regexp {^(.*)/i_spill_register/} $dest -> fifo
+        } elseif {[regexp {^(.*)/i_spill_register/} $dest -> fifo] && $fifo in [gray_groups]} {
             dict set data $fifo 1
             if {$exception ne "Max Delay Datapath Only"} {
                 lappend failures "FIFO data has no datapath-only bound: $dest ($exception)"
@@ -144,7 +158,9 @@ proc write_constraint_checks {dir routed} {
     set failures [fpga_checks::cdc_failures [fpga_checks::read_report [file join $dir cdc.rpt]]]
     set failures [concat $failures [fpga_checks::skew_failures \
         [fpga_checks::read_report [file join $dir bus_skew.rpt]] $routed]]
-    foreach port {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i jtag_tdo_o uart_tx_o c0_ddr4_reset_n} {
+    set ports {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i jtag_tdo_o uart_tx_o}
+    foreach {wrapper pad} [fpga_checks::ddr_channels] { lappend ports $pad }
+    foreach port $ports {
         set file [file join $dir pad_$port.rpt]
         if {![file exists $file]} {
             lappend failures "$port: pad timing report missing"
@@ -155,7 +171,8 @@ proc write_constraint_checks {dir routed} {
     }
     set out [open [file join $dir constraint_checks.rpt] w]
     set code [catch {
-        puts $out "Expected: 60 Gray first-stage paths, 5 data crossings, 10 Gray bus-skew groups, 7 pad exceptions, VIO ready first-stage exception"
+        set n [expr {[llength [fpga_checks::ddr_channels]] / 2}]
+        puts $out "Expected: [expr {60*$n}] Gray first-stage paths, [expr {5*$n}] data crossings, [expr {10*$n}] Gray bus-skew groups, [llength $ports] pad exceptions, VIO ready first-stage exception"
         puts $out "ROUTED=$routed (complete bus-skew coverage and nonnegative slack required after routing)"
         puts $out "FAILURES=[llength $failures]"
         foreach failure $failures { puts $out $failure }

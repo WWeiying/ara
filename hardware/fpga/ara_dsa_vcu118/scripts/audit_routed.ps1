@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 function Get-AuditScriptHashes {
     $hashes = [ordered]@{}
     foreach ($name in @('audit_routed.ps1', 'audit_routed.tcl', 'audit_support.tcl',
-                       'common.tcl', 'config.tcl', 'constraint_checks.tcl')) {
+                       'common.tcl', 'config.tcl', 'constraint_checks.tcl', 'warning_details.tcl')) {
         $hashes[$name] = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot $name)).Hash
     }
     return ($hashes | ConvertTo-Json -Compress)

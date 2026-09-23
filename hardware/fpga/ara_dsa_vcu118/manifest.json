@@ -619,7 +619,11 @@
     "rtl/cheshire/hw/cheshire_pkg.sv",
     "rtl/cheshire/hw/cheshire_soc.sv",
     "rtl/board/dram_wrapper_xilinx.sv",
-    "rtl/board/ara_dsa_vcu118.sv"
+    "rtl/board/ara_dsa_vcu118.sv",
+    "rtl/board/ara_axi_observer.sv",
+    "rtl/board/ara_ddr_router.sv",
+    "rtl/board/ara_fpga_debug.sv",
+    "rtl/board/ara_host_bridge.sv"
   ],
   "include_dirs": [
     "rtl/common_cells/include",
@@ -664,36 +668,22 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "3e494a0781fcd4e888edeade0338b8778965b5a4",
+      "commit": "40465e2e7371f0d512aae77ef0fefcc56f334801",
       "tracked_changes": [
         "backend/syn/ara_soc/v1-dc/reports/area.rpt",
         "hardware/fpga/ara_dsa_vcu118/SHA256SUMS",
-        "hardware/fpga/ara_dsa_vcu118/docs/VALIDATION.md",
+        "hardware/fpga/ara_dsa_vcu118/docs/FPGA_ISSUES.md",
         "hardware/fpga/ara_dsa_vcu118/manifest.json",
-        "hardware/fpga/ara_dsa_vcu118/provenance/ara_local.patch",
-        "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/segment_sequencer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/addrgen.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_context.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/akv/akv_v2_context.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_activation_context.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_block_adapter.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_compute_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_engine.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_fp_accumulator.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_payload_buffer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_payload_sram.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_profile_decoder.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/qbs/qbs_profile_engine_int.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/vstu.sv",
-        "hardware/fpga/vcu118/check_rtl.py",
-        "hardware/fpga/vcu118/dispatcher_control_fpga.py",
-        "hardware/fpga/vcu118/dispatcher_fpga.py",
-        "hardware/fpga/vcu118/docs/VALIDATION.md",
-        "hardware/fpga/vcu118/tests/check_dispatcher_layout.py",
-        "hardware/fpga/vcu118/tests/test_export.py"
+        "hardware/fpga/ara_dsa_vcu118/scripts/audit_routed.ps1",
+        "hardware/fpga/ara_dsa_vcu118/scripts/audit_support.tcl",
+        "hardware/fpga/ara_dsa_vcu118/scripts/common.tcl",
+        "hardware/fpga/vcu118/README.md",
+        "hardware/fpga/vcu118/docs/FPGA_ISSUES.md",
+        "hardware/fpga/vcu118/scripts/audit_routed.ps1",
+        "hardware/fpga/vcu118/scripts/audit_support.tcl",
+        "hardware/fpga/vcu118/tests/test_audit_routed.ps1",
+        "hardware/fpga/vcu118/tests/test_audit_routed.tcl",
+        "hardware/fpga/vcu118/tests/test_package.py"
       ]
     },
     "axi": {

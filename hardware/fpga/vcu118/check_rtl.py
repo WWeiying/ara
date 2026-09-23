@@ -11,6 +11,7 @@ from collections import Counter
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("package", type=Path)
+parser.add_argument("--profile", choices=("baseline", "host", "dual_ddr"), default="baseline")
 parser.add_argument("--allow-vendor-ip", action="store_true",
                     help="Allow only the exact expected unelaborated Vivado IP/primitives")
 args = parser.parse_args()
@@ -27,6 +28,10 @@ argv = ["slang", "--top", manifest["top"], "--single-unit", "-DSYNTHESIS", "--er
         "-Wno-range-width-oob"]
 for name, value in manifest["defines"].items():
     argv.append("-D" + name + ("" if value is None else "=" + str(value)))
+if args.profile != "baseline":
+    argv.append("-DARA_FPGA_HOST")
+if args.profile == "dual_ddr":
+    argv.append("-DARA_FPGA_DDR2")
 argv.extend("-I" + str(root / path) for path in manifest["include_dirs"])
 argv.extend(str(root / path) for path in manifest["files"])
 command = " ".join('"' + arg + '"' for arg in argv)
@@ -85,6 +90,23 @@ for channel, side, width in (("w", "src", 579), ("r", "dst", 525)):
     print(f"DDR FIFO {channel}: {width} bits (packed AXI struct)")
 vendor = {"BUFGMUX", "LUT5", "xpm_memory_spram", "xpm_memory_tdpram", "ddr4", "IBUFDS",
           "clkwiz", "vio", "STARTUPE3"}
+if args.profile != "baseline":
+    vendor.update({"jtag_mem", "jtag_debug"})
+    for path in ("gen_host.i_debug", "gen_host.i_host_bridge", "gen_host.gen_observer[0].i_observer"):
+        if compilation.getRoot().lookupName("ara_dsa_vcu118." + path) is None:
+            raise RuntimeError("Missing host profile hardware: " + path)
+    for field, width in (("aw.id", 2), ("aw.addr", 48), ("w.data", 64), ("w.strb", 8)):
+        path = "ara_dsa_vcu118.gen_host.i_host_bridge.mem_req_o"
+        symbol = compilation.getRoot().lookupName(path)
+        for member in field.split("."):
+            symbol = symbol.type.canonicalType.find(member)
+        if symbol.type.bitWidth != width:
+            raise RuntimeError(f"JTAG IP width mismatch: {field} = {symbol.type.bitWidth}, expected {width}")
+if args.profile == "dual_ddr":
+    vendor.add("ddr4_c2")
+    for path in ("i_ddr_router", "gen_ddr2.i_dram_wrapper_c2"):
+        if compilation.getRoot().lookupName("ara_dsa_vcu118." + path) is None:
+            raise RuntimeError("Missing dual DDR hardware: " + path)
 errors, external = [], set()
 for diag in compilation.getAllDiagnostics():
     severity = driver.diagEngine.getSeverity(diag.code, diag.location)

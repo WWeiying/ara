@@ -15,6 +15,8 @@ from dispatcher_fpga import patch_dispatcher_layout
 from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
 from cdc_fpga import patch_reset_muxes, patch_fifo_selectors
+from host_debug_fpga import patch_soc_debug
+from ddr2_fpga import patch_ddr2
 
 
 def replace_once(text, old, new):
@@ -280,6 +282,7 @@ def export(dst, gcc, objdump, smoke_from=None):
 
     for rel, transform in [("rtl/cheshire/hw/cheshire_pkg.sv", patch_soc_pkg),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc),
+                           ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc_debug),
                            ("rtl/cva6/common/local/util/sram_cache.sv", patch_sram_cache),
                            ("rtl/riscv-dbg/src/dmi_jtag.sv", patch_jtag),
                            ("rtl/riscv-dbg/src/dmi_jtag_tap.sv", patch_tap),
@@ -304,15 +307,16 @@ def export(dst, gcc, objdump, smoke_from=None):
         path = dst / "rtl/board" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         before = (board_src / name).read_text()
-        after = patch_dram(before) if name.endswith(".sv") else before
+        after = patch_ddr2(patch_dram(before)) if name.endswith(".sv") else before
         path.write_text(after)
         if name.endswith(".sv"):
             files.append(path.relative_to(dst).as_posix())
             changes.extend(difflib.unified_diff(before.splitlines(True), after.splitlines(True),
                 fromfile="a/rtl/board/" + name, tofile="b/rtl/board/" + name))
     incdirs.append("rtl/board")
-    shutil.copyfile(HERE / "rtl/ara_dsa_vcu118.sv", dst / "rtl/board/ara_dsa_vcu118.sv")
-    files.append("rtl/board/ara_dsa_vcu118.sv")
+    for path in sorted((HERE / "rtl").glob("*.sv")):
+        shutil.copyfile(path, dst / "rtl/board" / path.name)
+        files.append("rtl/board/" + path.name)
     defines.update({"ARA": None, "NR_LANES": 4, "VLEN": 1024,
                     "ARA_QBS_ENABLE": 1, "ARA_AKV_ENABLE": 1, "ARA_AKV_V2_ENABLE": 1})
     forbidden = {"TARGET_SRAM_MC", "IDEAL_DISPATCHER", "FOR_VERIFY"}

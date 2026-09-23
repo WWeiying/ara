@@ -16,7 +16,8 @@ proc fpga_run::reusable {name expected checkpoint} {
 }
 
 proc fpga_run::check_ips {} {
-    foreach name {clkwiz vio ddr4} {
+    global profile_ips
+    foreach name $profile_ips {
         set ip [get_ips -quiet $name]
         if {[llength $ip] != 1 || [get_property IS_LOCKED $ip]} {
             error "IP missing or locked: $name. No IP rebuild/upgrade was requested."
@@ -107,7 +108,7 @@ proc fpga_run::wait_checked {name expected dir} {
 }
 
 proc fpga_run::execute {stage session token parent} {
-    global project_name max_threads package_root
+    global design_top max_threads package_root
     if {$stage ni {synth impl inspect} || ![regexp {^[0-9a-f]{12}$} $token]} {
         error "Invalid managed-run arguments"
     }
@@ -119,7 +120,7 @@ proc fpga_run::execute {stage session token parent} {
         # Stale sources are allowed only here: inspect the OLD netlist without
         # updating the accepted synthesis record or launching any runs.
         check_run $parent {*synth_design Complete*}
-        nonempty [file join [get_property DIRECTORY [get_runs $parent]] ${project_name}.dcp]
+        nonempty [file join [get_property DIRECTORY [get_runs $parent]] ${design_top}.dcp]
         puts "INSPECT: $parent (existing netlist, current constraints; no synthesis)"
         set ::ara_cdc_inspect_legacy true
         # Use catch cleanup: the Windows Vivado 2020.1 Tcl has no try command.
@@ -136,7 +137,7 @@ proc fpga_run::execute {stage session token parent} {
     check_ips
     if {$stage eq "impl"} {
         if {![regexp {^synth_[0-9a-f]{12}$} $parent]} { error "Missing managed synthesis parent" }
-        reusable $parent {*synth_design Complete*} ${project_name}.dcp
+        reusable $parent {*synth_design Complete*} ${design_top}.dcp
         open_run $parent
         require_no_multiple_drivers [file join $package_root reports preflight_$token]
         require_no_combinational_loops [file join $package_root reports preflight_$token]

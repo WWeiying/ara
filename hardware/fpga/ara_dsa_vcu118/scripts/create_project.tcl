@@ -26,9 +26,9 @@ set_property source_mgmt_mode None [current_project]
 set abs_includes [list]
 foreach path $rtl_include_dirs { lappend abs_includes [file join $package_root $path] }
 set_property include_dirs $abs_includes [current_fileset]
-set_property verilog_define $rtl_defines [current_fileset]
+set_property verilog_define [concat $rtl_defines $profile_defines] [current_fileset]
 foreach path $rtl_files { add_files -norecurse [file join $package_root $path] }
-set_property top ara_dsa_vcu118 [current_fileset]
+set_property top $design_top [current_fileset]
 set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
 source [file join $package_root scripts create_ip.tcl]
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints board.xdc]
@@ -37,6 +37,12 @@ set cdc [file join $package_root constraints cdc.xdc]
 add_files -fileset constrs_1 -norecurse $cdc
 configure_package_constraints
 file mkdir [file join $package_root reports]
-report_ip_status -file [file join $package_root reports ip_status.rpt]
+set report_name ip_status.rpt
+if {$fpga_profile ne "baseline"} { set report_name ip_status_$fpga_profile.rpt }
+report_ip_status -file [file join $package_root reports $report_name]
+file mkdir $build_dir
+set marker [open [file join $build_dir profile.txt] {WRONLY CREAT EXCL}]
+puts $marker $fpga_profile
+close $marker
 puts "Created: $xpr_path"
-puts "No synthesis was launched. Next: source scripts/synth.tcl"
+puts "No synthesis was launched. Next: scripts/create_profile.ps1 -Profile $fpga_profile (prepare/check IP)"

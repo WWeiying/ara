@@ -4,6 +4,13 @@
 包中包含 CVA6、四 Lane RVV、QBS、AKV、Cheshire SoC、外设依赖、板级顶层、约束及 Vivado Tcl。
 不需要访问原 Linux 工作区，不需要 Git、Bender、软链接、TSMC SRAM 库。
 
+## 可选 Host 与双 DDR 配置
+
+新增调试快照、CSV/JSON 结果采集、板载 USB-JTAG 加载和第二组 DDR，见
+[裸机分阶段流程](docs/HOST_WORKFLOW.md)。按 `host` 验证后再运行 `dual_ddr`；
+均需重新生成 bitstream。保留 `baseline` 和 COM6/115200，不改 Linux 镜像。
+目前有本地静态检查和数字仿真，尚无新增配置的 Vivado 实现或上板通过结论。
+
 ## 本次全局流程与 CDC/JTAG 更新
 
 外部 J53 CPU JTAG 已改为 50 MHz SoC 时钟采样，**外部 TCK 请限制到 1 MHz**，

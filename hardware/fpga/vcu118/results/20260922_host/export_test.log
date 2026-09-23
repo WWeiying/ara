@@ -1,0 +1,44 @@
+test_assertion_is_unchanged (test_export.AkvByteCountPatchTests) ... ok
+test_changed_source_is_rejected (test_export.AkvByteCountPatchTests) ... ok
+test_register_updates_only_change_count_expression (test_export.AkvByteCountPatchTests) ... ok
+test_synthesis_countones_removed (test_export.AkvByteCountPatchTests) ... ok
+test_control_patch_does_not_change_state_or_ee_writes_guard (test_export.DispatcherLayoutPatchTests) ... ok
+test_control_patch_is_reversible_and_strict (test_export.DispatcherLayoutPatchTests) ... ok
+test_idempotent_and_fail_closed (test_export.DispatcherLayoutPatchTests) ... ok
+test_legacy_snapshot_matches (test_export.DispatcherLayoutPatchTests) ... ok
+test_only_reviewed_combinational_blocks_change (test_export.DispatcherLayoutPatchTests) ... ok
+test_provenance_replays (test_export.DispatcherLayoutPatchTests) ... ok
+test_recorded_control_check_matches_historical_snapshot (test_export.DispatcherLayoutPatchTests) ... ok
+test_segment_patch_is_reversible_and_strict (test_export.DispatcherLayoutPatchTests) ... ok
+test_segment_provenance_and_disabled_passthrough (test_export.DispatcherLayoutPatchTests) ... ok
+test_current_source_is_idempotent (test_export.DispatcherPatchTests) ... ok
+test_only_three_reported_lines_change (test_export.DispatcherPatchTests) ... ok
+test_overflow_guards_are_preserved (test_export.DispatcherPatchTests) ... ok
+test_unexpected_source_is_rejected (test_export.DispatcherPatchTests) ... ok
+test_akv_patch_is_idempotent (test_export.IntegrationPatchTests) ... ok
+test_current_akv_is_unchanged (test_export.IntegrationPatchTests) ... ok
+test_legacy_akv_syntax (test_export.IntegrationPatchTests) ... ok
+test_other_patches_remain_strict (test_export.IntegrationPatchTests) ... ok
+test_unexpected_akv_source_is_rejected (test_export.IntegrationPatchTests) ... ok
+test_frozen_sources_and_provenance (test_export.JtagPatchTests) ... ok
+test_jtag_evidence_matches_recorded_revision (test_export.JtagPatchTests) ... ok
+test_sampled_tap_source_is_pinned (test_export.JtagPatchTests) ... ok
+test_current_ara_provenance_replays (test_export.MainlineSyncTests) ... ok
+test_current_dispatcher_evidence_matches_snapshot (test_export.MainlineSyncTests) ... ok
+test_exported_ara_matches_reviewed_mainline_with_fpga_patches (test_export.MainlineSyncTests) ... FAIL
+test_integrated_dispatcher_and_segment_are_not_patched_twice (test_export.MainlineSyncTests) ... ok
+test_changed_inputs_or_encoding_are_rejected (test_export.QbsFaultPatchTests) ... ok
+test_only_fault_decode_changes (test_export.QbsFaultPatchTests) ... ok
+
+======================================================================
+FAIL: test_exported_ara_matches_reviewed_mainline_with_fpga_patches (test_export.MainlineSyncTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/wangwy/openproject/ara_dsa/hardware/fpga/vcu118/tests/test_export.py", line 318, in test_exported_ara_matches_reviewed_mainline_with_fpga_patches
+    self.assertEqual((pkg / rel).read_text(), expected, rel)
+AssertionError: '// C[13446 chars]esize, ara_op_e op);\n    narrowing = 1\'b0;\n[120704 chars]pu\n' != '// C[13446 chars]esize);\n    narrowing = 1\'b0;\n    if (resiz[120283 chars]pu\n' : rtl/ara/hardware/src/lane/vmfpu.sv
+
+----------------------------------------------------------------------
+Ran 31 tests in 1.561s
+
+FAILED (failures=1)

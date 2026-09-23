@@ -48,6 +48,10 @@ proc require_no_multiple_drivers {dir} {
     incr ::driver_checks
     if {$::scenario eq "drivers"} { error "Multiple drivers remain" }
 }
+proc fpga_warning_details::write {dir} {
+    incr ::warning_reports
+    if {$::scenario eq "warning_error"} { error "Warning connectivity query failed" }
+}
 proc write_reports {name routed} {
     assert {$name eq "audit_012345abcdef" && $routed} "run full routed boundary checks, not inspect mode"
     incr ::reports
@@ -73,7 +77,7 @@ proc get_property {property path} {
 }
 set scenarios {healthy boolean_words scientific bad_token missing_dcp empty_dcp wrong_extension
     missing_session existing_project existing_reports existing_marker open_error close_error
-    route_query_error route_empty route_invalid unrouted route_errors drivers boundary_error}
+    route_query_error route_empty route_invalid unrouted route_errors drivers boundary_error warning_error}
 foreach kind {max min} {
     foreach fault {missing multiple negative empty inf nan} { lappend scenarios ${kind}_$fault }
 }
@@ -84,6 +88,7 @@ foreach scenario $scenarios {
     set marker [file join $session completed_audit.txt]
     set token 012345abcdef
     set project {}; set opened 0; set closed 0; set reports 0; set driver_checks 0; set timed {}
+    set warning_reports 0
     file mkdir $session
     put $checkpoint "old checkpoint"
     put [file join $package_root reports impl_old boundary_checks.rpt] "old report"
@@ -107,6 +112,7 @@ foreach scenario $scenarios {
     assert {[file exists $marker] == ($success || $scenario eq "existing_marker")} "no success marker after failures"
     if {$success} {
         assert {$reports == 1 && $driver_checks == 1 && $timed eq {max min}} "all gates executed exactly once"
+        assert {$warning_reports == 1} "collect warning connections from the same checkpoint"
         assert {[string trim [fpga_checks::read_report $marker]] eq "audit_$token"} "correct completion record"
     }
     if {$scenario eq "existing_project"} { assert {$project eq "user_project"} "do not close another project" }

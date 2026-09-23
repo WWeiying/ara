@@ -20,7 +20,29 @@ proc open_package_project {} {
               [file normalize [file dirname $xpr_path]]} {
         error "A different project is open; close it first."
     }
+    require_project_profile
     configure_package_constraints
+}
+
+proc require_project_profile {} {
+    global fpga_profile profile_defines build_dir project_name
+    if {[get_property NAME [current_project]] ne $project_name} {
+        error "Open project does not match profile $fpga_profile"
+    }
+    set actual {}
+    foreach define [get_property verilog_define [get_filesets sources_1]] {
+        if {[regexp {^ARA_FPGA_(HOST|DDR2)($|=)} $define]} { lappend actual $define }
+    }
+    if {[lsort $actual] ne [lsort $profile_defines]} {
+        error "Project defines do not match profile $fpga_profile: $actual (expected $profile_defines)"
+    }
+    set marker [file join $build_dir profile.txt]
+    if {[file exists $marker]} {
+        set value [string trim [fpga_checks::read_report $marker]]
+        if {$value ne $fpga_profile} { error "Project profile marker mismatch: $value" }
+    } elseif {$fpga_profile ne "baseline"} {
+        error "Missing profile marker: $marker. Use scripts/create_profile.ps1."
+    }
 }
 
 proc configure_package_constraints {} {
@@ -89,14 +111,17 @@ proc write_reports {stage {reject_loops false}} {
 # forbidden; only ungated buffers driven by the final SoC/UI reset FF qualify.
 proc reset_buffer_failures {out} {
     set failures {}
+    set allowed {i_rstgen/i_rstgen_bypass}
+    foreach {wrapper pad} [fpga_checks::ddr_channels] {
+        lappend allowed $wrapper/i_ui_rstgen/i_rstgen_bypass
+    }
     set buffers [get_cells -quiet -hierarchical -filter \
         {NAME =~ */i_rstgen_bypass/* && REF_NAME =~ BUFG*}]
     puts $out "RESET_BUFG_COUNT=[llength $buffers] CELLS=$buffers"
     foreach buffer $buffers {
         set type [get_property REF_NAME $buffer]
         set owner [file dirname [get_property NAME $buffer]]
-        if {$type ni {BUFG BUFGCE} || $owner ni \
-                {i_rstgen/i_rstgen_bypass i_dram_wrapper/i_ui_rstgen/i_rstgen_bypass}} {
+        if {$type ni {BUFG BUFGCE} || $owner ni $allowed} {
             lappend failures "reset clock mux or POR buffer remains: $buffer ($type)"
             continue
         }
@@ -159,26 +184,35 @@ proc write_boundary_checks {dir routed} {
     set failures {}
     set code [catch {
         set failures [reset_buffer_failures $out]
-        set root i_dram_wrapper/gen_cdc.i_axi_cdc_mig
-        foreach channel {w r} width {579 525} source {src dst} dest {dst src} {
-            foreach half {src dst} side [list $source $dest] gen {write read} {
-                set fifo $root/i_axi_cdc_$side/i_cdc_fifo_gray_${half}_$channel
-                set regs [get_cells -quiet -hierarchical -filter \
-                    "NAME =~ $fifo/*gen_fpga_${gen}*select_q_reg* && REF_NAME =~ FD*"]
-                set expected [expr {32 * (($width+63)/64)}]
-                puts $out "SELECTOR $channel $half COUNT=[llength $regs] EXPECTED=$expected"
-                if {[llength $regs] != $expected} { lappend failures "$channel $half selector replicas missing" }
+        set channels [fpga_checks::ddr_channels]
+        foreach {wrapper reset_pad} $channels {
+            set root $wrapper/gen_cdc.i_axi_cdc_mig
+            foreach channel {w r} width {579 525} source {src dst} dest {dst src} {
+                foreach half {src dst} side [list $source $dest] gen {write read} {
+                    set fifo $root/i_axi_cdc_$side/i_cdc_fifo_gray_${half}_$channel
+                    set regs [get_cells -quiet -hierarchical -filter \
+                        "NAME =~ $fifo/*gen_fpga_${gen}*select_q_reg* && REF_NAME =~ FD*"]
+                    set expected [expr {32 * (($width+63)/64)}]
+                    puts $out "SELECTOR $wrapper $channel $half COUNT=[llength $regs] EXPECTED=$expected"
+                    if {[llength $regs] != $expected} { lappend failures "$wrapper $channel $half selector replicas missing" }
+                }
             }
         }
-        foreach port {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i jtag_tdo_o uart_tx_o c0_ddr4_reset_n} \
-                budget {20.0 20.0 20.0 70.0 20.0 70.0 ui} \
-                direction {in in in in out out out} {
+        set ports {jtag_tck_i jtag_tms_i jtag_tdi_i uart_rx_i jtag_tdo_o uart_tx_o}
+        set budgets {20.0 20.0 20.0 70.0 20.0 70.0}
+        set directions {in in in in out out}
+        foreach {wrapper reset_pad} $channels {
+            lappend ports $reset_pad
+            lappend budgets $wrapper/gen_cdc.i_axi_cdc_mig
+            lappend directions out
+        }
+        foreach port $ports budget $budgets direction $directions {
             set pad [get_ports -quiet $port]
-            if {$budget eq "ui"} {
+            if {![string is double -strict $budget]} {
                 set clocks [get_clocks -quiet -of_objects [get_pins -quiet \
-                    $root/i_axi_cdc_dst/i_cdc_fifo_gray_src_r/src_clk_i]]
+                    $budget/i_axi_cdc_dst/i_cdc_fifo_gray_src_r/src_clk_i]]
                 if {[llength $clocks] != 1} {
-                    lappend failures "DDR UI clock missing"; continue
+                    lappend failures "$port DDR UI clock missing"; continue
                 }
                 set budget [get_property PERIOD $clocks]
             }
@@ -202,15 +236,29 @@ proc write_boundary_checks {dir routed} {
             }
             report_timing {*}$args -file [file join $dir pad_$port.rpt]
         }
-        set reset [get_ports -quiet c0_ddr4_reset_n]
-        set standard [get_property IOSTANDARD $reset]
-        puts $out "DDR_RESET_IOSTANDARD=$standard"
-        if {$standard ne "LVCMOS12"} { lappend failures "DDR reset must use LVCMOS12" }
+        foreach {wrapper reset_pad} $channels {
+            set reset [get_ports -quiet $reset_pad]
+            set standard [get_property IOSTANDARD $reset]
+            puts $out "DDR_RESET_IOSTANDARD=$standard PORT=$reset_pad"
+            if {$standard ne "LVCMOS12"} { lappend failures "$reset_pad must use LVCMOS12" }
+        }
         set hub [get_clocks -quiet -of_objects [get_pins -quiet dbg_hub/clk]]
         set vio [get_clocks -quiet -of_objects [get_pins -quiet i_vio/clk]]
         puts $out "DEBUG_HUB_CLOCK=$hub VIO_CLOCK=$vio"
         if {[llength $hub] != 1 || $hub ne $vio} {
             lappend failures "debug hub and VIO clocks differ"
+        }
+        if {[info exists ::fpga_profile] && $::fpga_profile ne "baseline"} {
+            foreach name {jtag_mem jtag_debug} {
+                set pin [get_pins -quiet gen_host.i_host_bridge/i_$name/aclk]
+                set clocks {}
+                if {[llength $pin] == 1} { set clocks [get_clocks -quiet -of_objects $pin] }
+                puts $out "HOST_CLOCK $name=$clocks"
+                if {[llength $clocks] != 1 || $clocks ne $vio ||
+                    abs([get_property PERIOD $clocks] - 20.0) > 0.001} {
+                    lappend failures "$name must use the VIO 50 MHz clock"
+                }
+            }
         }
         set constraint_failures [write_constraint_checks $dir $routed]
         set failures [concat $failures $constraint_failures]

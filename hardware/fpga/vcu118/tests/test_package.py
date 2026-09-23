@@ -115,7 +115,7 @@ class PackageTests(unittest.TestCase):
         templates = Path(__file__).resolve().parents[1] / "scripts"
         for name in ("run.ps1", "run.tcl", "run_support.tcl", "common.tcl",
                      "audit_routed.ps1", "audit_routed.tcl", "audit_support.tcl",
-                     "constraint_checks.tcl",
+                     "constraint_checks.tcl", "warning_details.tcl",
                      "create_project.tcl", "impl.tcl", "check_fifo.ps1", "check_fifo.tcl",
                      "fifo_probe.sv", "synth_pre.tcl"):
             self.assertEqual((ROOT / "scripts" / name).read_bytes(),

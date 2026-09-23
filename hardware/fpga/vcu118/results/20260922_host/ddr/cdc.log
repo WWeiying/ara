@@ -1,0 +1,276 @@
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+CDC: debug hub and VIO share soc (50 MHz)
+PASS CDC healthy
+PASS CDC missing_first
+PASS CDC missing_second
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+PASS CDC missing_data
+PASS CDC missing_clock
+PASS CDC multiple_clocks
+PASS CDC fast_clock
+PASS CDC same_clock
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS CDC missing_reset
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy netlist has no VIO status synchronizers; re-synthesis is required to verify the board fix.
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_dst; data=41, stages=3, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_dst; data=34, stages=3, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+PASS CDC legacy
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS CDC missing_status
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS CDC missing_status_second
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+PASS CDC missing_dmi_req
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_dst; data=41, stages=3, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+PASS CDC missing_dmi_ack
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+PASS CDC missing_dmi_bit
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+PASS CDC missing_dmi_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+PASS CDC wrong_dmi_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_dst; data=41, stages=3, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_dst; data=34, stages=3, max=20.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=20.0ns
+PASS CDC missing_reset_phase
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+WARNING: CDC: legacy reset netlist lacks i_board_por/rst_ni; re-synthesis required.
+WARNING: CDC: legacy reset netlist lacks i_dram_wrapper/i_ui_por/rst_ni; re-synthesis required.
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+WARNING: CDC: inspecting legacy TCK-clocked TAP; sampled-JTAG fix requires synthesis.
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_dst; data=41, stages=3, max=10.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=10.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_req/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=10.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_dst; data=34, stages=3, max=10.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_dst; data=2, stages=2, max=10.0ns
+CDC: DMI i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_b/i_state_transition_cdc_src -> i_cheshire_soc/i_dbg_dmi_jtag/i_dmi_cdc/i_cdc_resp/i_cdc_reset_ctrlr/i_cdc_reset_ctrlr_half_a/i_state_transition_cdc_dst; data=2, stages=2, max=10.0ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+PASS CDC fast_jtag
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+PASS CDC missing_uart_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+PASS CDC missing_uart_port
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS CDC missing_ui_por
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+PASS CDC missing_jtag
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+PASS CDC missing_jtag_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+PASS CDC wrong_jtag_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+PASS CDC missing_jtag_port
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+PASS CDC slow_soc
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+PASS CDC missing_ddr_reset
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+PASS CDC missing_debug_hub
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: aw soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: b ui2 -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui2 -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+CDC: debug hub and VIO share soc (50 MHz)
+PASS DDR2 CDC dual
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: four independent VIO status bits synchronized; only first-stage D pins excepted
+CDC: sampled JTAG on soc; TCK <=1 MHz, phases >=400ns, IO budgets=20ns
+CDC: UART RX pad -> first-stage D, max=70ns; second stage normally timed
+CDC: DDR reset output bounded to one UI period; no internal reset recovery exceptions
+CDC: debug hub and VIO share soc (50 MHz)
+PASS DDR2 CDC single
+PASS DDR2 CDC missing_channel
+PASS DDR2 CDC unexpected_channel
+PASS DDR2 CDC missing_pad
+PASS DDR2 CDC missing_c1_coupled_reset
+PASS DDR2 CDC missing_c2_coupled_reset
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS DDR2 CDC missing_second_stage
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+PASS DDR2 CDC missing_ui_clock
+CDC: aw soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui; data=1, pointers=6+6, max=3ns
+CDC: b ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui -> soc; data=1, pointers=6+6, max=3ns
+CDC: aw soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: w soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: ar soc -> ui2; data=1, pointers=6+6, max=3ns
+CDC: b ui2 -> soc; data=1, pointers=6+6, max=3ns
+CDC: r ui2 -> soc; data=1, pointers=6+6, max=3ns
+PASS DDR2 CDC missing_por

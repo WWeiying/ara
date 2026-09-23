@@ -102,6 +102,7 @@ python3 hardware/fpga/vcu118/tests/test_sync.py
 python3 hardware/fpga/vcu118/tests/test_package.py hardware/fpga/ara_dsa_vcu118
 tclsh hardware/fpga/vcu118/tests/check_tcl.tcl hardware/fpga/ara_dsa_vcu118
 tclsh hardware/fpga/vcu118/tests/test_clock_io.tcl /tmp/ara_clock_io_check
+tclsh hardware/fpga/vcu118/tests/test_warning_details.tcl /tmp/ara_warning_detail_check
 # 安装 VCS 后，使用尚不存在的临时目录运行板级状态采样测试：
 python3 hardware/fpga/vcu118/tests/check_status_sync.py /tmp/ara_status_check --vcs /path/to/vcs
 # FPGA 独立 dispatcher 补丁的区间运算及逐周期对照，不调用 Vivado：

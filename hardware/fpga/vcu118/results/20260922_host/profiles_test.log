@@ -1,0 +1,8 @@
+test_board_interfaces (__main__.Profiles) ... ok
+test_exported_copies (__main__.Profiles) ... ok
+test_tcl (__main__.Profiles) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.301s
+
+OK

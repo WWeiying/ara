@@ -1,0 +1,15 @@
+{
+  "scope": "register ABI, arbitration, passive AXI counters, atomic snapshot, watchdog",
+  "not_tested": [
+    "vendor JTAG IP",
+    "MIG",
+    "physical FPGA",
+    "full CPU execution"
+  ],
+  "inputs": {
+    "ara_axi_observer.sv": "8d4c1342e3537440f0ddc559654e4c19933a7a86b56e7d20c2b08b928c816da1",
+    "ara_fpga_debug.sv": "f881692114cd63e7bfb24caf1cad0bcdb196aba8f4dd7a4fb6bd30254e54527f",
+    "host_debug_tb.sv": "7867e2598b2939417734b2e8c576eeeaee577cde1779f30c033d1e08e877f380"
+  },
+  "run_sha256": "171e2c5390b663ce282d816e6cf46880c9405f606b09544b7491355e4a5072e1"
+}

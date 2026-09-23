@@ -1,0 +1,10 @@
+test_channel_and_reset (__main__.DdrPatchTests) ... ok
+test_exported_copies (__main__.DdrPatchTests) ... ok
+test_exported_wrapper (__main__.DdrPatchTests) ... ok
+test_ready_generation_is_independent (__main__.DdrPatchTests) ... ok
+test_reject_drift_and_duplicate_application (__main__.DdrPatchTests) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.047s
+
+OK

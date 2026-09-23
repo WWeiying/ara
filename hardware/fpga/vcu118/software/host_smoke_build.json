@@ -1,0 +1,34 @@
+{
+  "compiler": "riscv64-unknown-elf-gcc (Xuantie-900 elf newlib gcc Toolchain V3.0.1 B-20241120) 14.1.1 20240710",
+  "flags": [
+    "-march=rv64imac_zicsr_zifencei",
+    "-mabi=lp64",
+    "-mcmodel=medany",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-pic",
+    "-fno-stack-protector",
+    "-nostdlib",
+    "-nostartfiles",
+    "-Wl,--build-id=none",
+    "-T",
+    "host_smoke.ld",
+    "host_start.S",
+    "host_smoke.c"
+  ],
+  "sources": {
+    "host_start.S": "8dc0a36040de2b941bdac66921d69e9d5c88784dfdef7a77b4d8534c0d18639b",
+    "host_smoke.c": "e91dc5c26137efd0033c0a5903ca7e3467894e69db6252eccf85501024ee033d",
+    "host_smoke.ld": "f853f288e7fb75b7ab238e46d60f26a980317c9db5b9df100e4afe9ae363f103",
+    "fpga_debug.h": "eb12cfc1d9790f247cc1cdfe6c86acb908a503f479b3071256f9b2dfdb6e6054"
+  },
+  "outputs": {
+    "host_smoke.elf": "0bc7d3a56646e6bdf2dead6d8eba8e8daa269b62463e07d59579c1213dc0d296",
+    "host_trap.elf": "b5c8b7b8108fbc590d3b337ec6c1164fc072eeea38a40a64f7b27facea31222d",
+    "host_ddr2_smoke.elf": "b78ef130d4a19b62b2d3a7b030588dcf22c8da467063fcdfb452d8cb1af18011"
+  }
+}

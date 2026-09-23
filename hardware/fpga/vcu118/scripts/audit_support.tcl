@@ -1,4 +1,5 @@
 namespace eval fpga_audit {}
+source [file join [file dirname [info script]] warning_details.tcl]
 
 proc fpga_audit::execute {checkpoint session token} {
     global package_root
@@ -29,6 +30,7 @@ proc fpga_audit::execute {checkpoint session token} {
                 error "Checkpoint is not fully/error-free routed ($check=$value). Inspect $dir/route_status.rpt."
             }
         }
+        fpga_warning_details::write $dir
         require_no_multiple_drivers $dir
         write_reports $name true
         foreach kind {max min} {

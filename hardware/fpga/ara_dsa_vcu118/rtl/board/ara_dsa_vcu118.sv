@@ -13,6 +13,19 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   input logic jtag_tdi_i,
   output logic jtag_tdo_o,
   `DDR4_INTF(1, 8, 64, 8)
+`ifdef ARA_FPGA_DDR2
+  output logic c1_ddr4_act_n,
+  output logic [16:0] c1_ddr4_adr,
+  output logic [1:0] c1_ddr4_ba,
+  output logic [0:0] c1_ddr4_bg,
+  output logic [0:0] c1_ddr4_ck_t, c1_ddr4_ck_c,
+  output logic [0:0] c1_ddr4_cke, c1_ddr4_cs_n,
+  inout wire [7:0] c1_ddr4_dm_dbi_n,
+  inout wire [63:0] c1_ddr4_dq,
+  inout wire [7:0] c1_ddr4_dqs_t, c1_ddr4_dqs_c,
+  output logic [0:0] c1_ddr4_odt,
+  output logic c1_ddr4_reset_n,
+`endif
   input logic uart_rx_i,
   output logic uart_tx_o
 );
@@ -29,6 +42,17 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
     cfg.I2c = 0;
     cfg.Dma = 0;
     cfg.Clic = 0;
+`ifdef ARA_FPGA_HOST
+    cfg.AxiExtNumMst = 1;
+    cfg.RegExtNumSlv = 1;
+    cfg.RegExtNumRules = 1;
+    cfg.RegExtRegionIdx[0] = 0;
+    cfg.RegExtRegionStart[0] = 'h03010000;
+    cfg.RegExtRegionEnd[0] = 'h03011000;
+`endif
+`ifdef ARA_FPGA_DDR2
+    cfg.LlcOutRegionEnd = 'h180000000;
+`endif
     return cfg;
   endfunction
   localparam cheshire_cfg_t FPGACfg = board_cfg();
@@ -110,6 +134,47 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
 
   axi_llc_req_t axi_llc_req;
   axi_llc_rsp_t axi_llc_rsp;
+  axi_llc_req_t [1:0] dram_req;
+  axi_llc_rsp_t [1:0] dram_rsp;
+  wire [1:0] dram_ready;
+`ifdef ARA_FPGA_DDR2
+  ara_ddr_router #(
+    .req_t(axi_llc_req_t), .rsp_t(axi_llc_rsp_t)
+  ) i_ddr_router (
+    .clk_i(soc_clk), .rst_ni(rst_n),
+    .req_i(axi_llc_req), .rsp_o(axi_llc_rsp),
+    .req_o(dram_req), .rsp_i(dram_rsp)
+  );
+  assign fabric_ready = &dram_ready;
+  if (1) begin : gen_ddr2
+    dram_wrapper_xilinx #(
+      .Channel(1),
+      .axi_soc_aw_chan_t(axi_llc_aw_chan_t), .axi_soc_w_chan_t(axi_llc_w_chan_t),
+      .axi_soc_b_chan_t(axi_llc_b_chan_t), .axi_soc_ar_chan_t(axi_llc_ar_chan_t),
+      .axi_soc_r_chan_t(axi_llc_r_chan_t), .axi_soc_req_t(axi_llc_req_t),
+      .axi_soc_resp_t(axi_llc_rsp_t)
+    ) i_dram_wrapper_c2 (
+      .sys_rst_i(sys_rst), .soc_resetn_i(rst_n), .soc_clk_i(soc_clk),
+      .fabric_reset_ni(fabric_ready),
+      .dram_clk_i(sys_clk), .fabric_ready_o(dram_ready[1]),
+      .soc_req_i(dram_req[1]), .soc_rsp_o(dram_rsp[1]),
+      .c0_ddr4_act_n(c1_ddr4_act_n), .c0_ddr4_adr(c1_ddr4_adr),
+      .c0_ddr4_ba(c1_ddr4_ba), .c0_ddr4_bg(c1_ddr4_bg),
+      .c0_ddr4_ck_t(c1_ddr4_ck_t), .c0_ddr4_ck_c(c1_ddr4_ck_c),
+      .c0_ddr4_cke(c1_ddr4_cke), .c0_ddr4_cs_n(c1_ddr4_cs_n),
+      .c0_ddr4_dm_dbi_n(c1_ddr4_dm_dbi_n), .c0_ddr4_dq(c1_ddr4_dq),
+      .c0_ddr4_dqs_t(c1_ddr4_dqs_t), .c0_ddr4_dqs_c(c1_ddr4_dqs_c),
+      .c0_ddr4_odt(c1_ddr4_odt), .c0_ddr4_reset_n(c1_ddr4_reset_n)
+    );
+  end
+`else
+  assign dram_req[0] = axi_llc_req;
+  assign axi_llc_rsp = dram_rsp[0];
+  assign dram_req[1] = '0;
+  assign dram_rsp[1] = '0;
+  assign dram_ready[1] = 1'b0;
+  assign fabric_ready = dram_ready[0];
+`endif
   dram_wrapper_xilinx #(
     .axi_soc_aw_chan_t(axi_llc_aw_chan_t), .axi_soc_w_chan_t(axi_llc_w_chan_t),
     .axi_soc_b_chan_t(axi_llc_b_chan_t), .axi_soc_ar_chan_t(axi_llc_ar_chan_t),
@@ -117,9 +182,62 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
     .axi_soc_resp_t(axi_llc_rsp_t)
   ) i_dram_wrapper (
     .sys_rst_i(sys_rst), .soc_resetn_i(rst_n), .soc_clk_i(soc_clk),
-    .dram_clk_i(sys_clk), .fabric_ready_o(fabric_ready),
-    .soc_req_i(axi_llc_req), .soc_rsp_o(axi_llc_rsp), .*
+`ifdef ARA_FPGA_DDR2
+    .fabric_reset_ni(fabric_ready),
+`endif
+    .dram_clk_i(sys_clk), .fabric_ready_o(dram_ready[0]),
+    .soc_req_i(dram_req[0]), .soc_rsp_o(dram_rsp[0]), .*
   );
+
+  axi_mst_req_t [0:0] host_req;
+  axi_mst_rsp_t [0:0] host_rsp;
+  reg_req_t [0:0] cpu_debug_req;
+  reg_rsp_t [0:0] cpu_debug_rsp;
+`ifdef ARA_FPGA_HOST
+  logic [7:0] retire_count;
+  logic [63:0] retire_pc, head_pc, trap_pc, trap_cause, trap_tval;
+  logic trap;
+  if (1) begin : gen_host
+    reg_req_t debug_req;
+    reg_rsp_t debug_rsp;
+    logic enable_count, clear_count;
+    logic [1:0][14:0][63:0] ddr_metrics;
+    ara_host_bridge #(
+      .axi_req_t(axi_mst_req_t), .axi_rsp_t(axi_mst_rsp_t),
+      .reg_req_t(reg_req_t), .reg_rsp_t(reg_rsp_t)
+    ) i_host_bridge (
+      .clk_i(soc_clk), .board_rst_ni(board_reset_n), .soc_rst_ni(rst_n),
+      .mem_req_o(host_req[0]), .mem_rsp_i(host_rsp[0]),
+      .debug_req_o(debug_req), .debug_rsp_i(debug_rsp)
+    );
+    for (genvar c = 0; c < 2; c++) begin : gen_observer
+      ara_axi_observer #(.req_t(axi_llc_req_t), .rsp_t(axi_llc_rsp_t)) i_observer (
+        .clk_i(soc_clk), .rst_ni(board_reset_n), .soc_rst_ni(rst_n),
+        .enable_i(enable_count), .clear_i(clear_count),
+        .req_i(dram_req[c]), .rsp_i(dram_rsp[c]), .counters_o(ddr_metrics[c])
+      );
+    end
+    ara_fpga_debug #(
+`ifdef ARA_FPGA_DDR2
+      .DualDdr(1),
+`endif
+      .reg_req_t(reg_req_t), .reg_rsp_t(reg_rsp_t)
+    ) i_debug (
+      .clk_i(soc_clk), .rst_ni(board_reset_n), .soc_rst_ni(rst_n),
+      // Synchronized board indicators; CPU reset itself is already local.
+      .status_i({status[0],status[1],status[2],rst_n}),
+      .host_req_i(debug_req), .host_rsp_o(debug_rsp),
+      .cpu_req_i(cpu_debug_req[0]), .cpu_rsp_o(cpu_debug_rsp[0]),
+      .retire_count_i(retire_count), .retire_pc_i(retire_pc), .head_pc_i(head_pc),
+      .trap_i(trap), .trap_pc_i(trap_pc), .trap_cause_i(trap_cause),
+      .trap_tval_i(trap_tval), .ddr_metrics_i(ddr_metrics),
+      .count_enable_o(enable_count), .count_clear_o(clear_count)
+    );
+  end
+`else
+  assign host_req = '0;
+  assign cpu_debug_rsp = '0;
+`endif
 
   cheshire_soc #(
     .Cfg(FPGACfg), .ExtHartinfo('0),
@@ -131,9 +249,14 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
     .clk_i(soc_clk), .rst_ni(rst_n), .test_mode_i(1'b0),
     .boot_mode_i(boot_mode), .rtc_i(rtc_clk),
     .axi_llc_mst_req_o(axi_llc_req), .axi_llc_mst_rsp_i(axi_llc_rsp),
-    .axi_ext_mst_req_i('0), .axi_ext_mst_rsp_o(),
+    .axi_ext_mst_req_i(host_req), .axi_ext_mst_rsp_o(host_rsp),
     .axi_ext_slv_req_o(), .axi_ext_slv_rsp_i('0),
-    .reg_ext_slv_req_o(), .reg_ext_slv_rsp_i('0),
+    .reg_ext_slv_req_o(cpu_debug_req), .reg_ext_slv_rsp_i(cpu_debug_rsp),
+`ifdef ARA_FPGA_HOST
+    .fpga_retire_count_o(retire_count), .fpga_retire_pc_o(retire_pc),
+    .fpga_head_pc_o(head_pc), .fpga_trap_o(trap), .fpga_trap_pc_o(trap_pc),
+    .fpga_trap_cause_o(trap_cause), .fpga_trap_tval_o(trap_tval),
+`endif
     .intr_ext_i('0), .intr_ext_o(), .xeip_ext_o(), .mtip_ext_o(), .msip_ext_o(),
     .dbg_active_o(), .dbg_ext_req_o(), .dbg_ext_unavail_i('0),
     .slink_rcv_clk_i(1'b0), .slink_rcv_clk_o(), .slink_i('0), .slink_o(),
