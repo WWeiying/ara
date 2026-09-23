@@ -160,14 +160,14 @@ class MeasurementTests(unittest.TestCase):
             events.append("clock")
             return 100 if len(events) == 1 else 102
 
-        def load(*args):
+        def load(*args, **kwargs):
             events.append("verified_load")
             return records
 
         with patch.object(host.time, "monotonic", side_effect=clock), \
                 patch.object(host, "verified_load", side_effect=load) as mocked_load:
             self.assertEqual(host.measured_verified_load(None, prepared, report, 7), records)
-        mocked_load.assert_called_once_with(None, prepared, 7)
+        mocked_load.assert_called_once_with(None, prepared, 7, single_beat=False)
         self.assertEqual(events, ["clock", "verified_load", "clock"])
         metrics = report["load_metrics"]
         self.assertTrue(metrics["complete"])
@@ -323,6 +323,42 @@ class TclTransportTests(unittest.TestCase):
         self.assertEqual(snapshot["core"]["retired"], 123)
         self.assertEqual(snapshot["ddr1"]["read_outstanding"], 2)
         self.assertIn("ddr1.r_bytes", (self.base / "snapshot.csv").read_text())
+
+    def test_single_beat_load_works_when_bursts_are_broken(self):
+        prepared = image.prepare_image(self.elf, caps=3)
+        report = {"passed": False}
+        with self.transport("burst_left") as transport:
+            host.load_and_run(transport, prepared, self.base, report, True,
+                              0x12345678, 0.02, batch_chunks=2, single_beat=True)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["memory_transaction_mode"], "single_beat")
+        self.assertTrue(report["axi_single_beat_preflight"]["verified"])
+        self.assertTrue(report["axi_single_beat_preflight"]["restored"])
+        self.assertEqual(report["readback"][0]["readback_sha256"], prepared.segments[0].sha256)
+        entries = [json.loads(line) for line in
+                   (self.base / "session/transport.jsonl").read_text().splitlines()]
+        memory_ops = [op for entry in entries for op in entry.get("operations", [])
+                      if op["bus"] == "M"]
+        self.assertTrue(memory_ops)
+        self.assertTrue(all(op["beats"] == 1 for op in memory_ops))
+
+    def test_batched_replies_arrive_before_entire_batch_finishes(self):
+        with self.transport("slow_mem", timeout=1) as transport:
+            replies = transport.exchange([Operation("M", "READ", 0xffff0000 + 8 * i)
+                                          for i in range(3)])
+        self.assertEqual(len(replies), 3)
+
+    def test_single_beat_payload_corruption_prevents_launch(self):
+        prepared = image.prepare_image(self.elf, caps=3)
+        report = {"passed": False}
+        with self.transport("payload_corrupt") as transport:
+            with self.assertRaisesRegex(RuntimeError, "readback mismatch"):
+                host.load_and_run(transport, prepared, self.base, report, True,
+                                  0x12345678, 0.02, single_beat=True)
+            self.assertEqual(host.read_debug(transport, [host.DONE]), [0])
+        self.assertFalse(report["passed"])
+        self.assertTrue(report["axi_single_beat_preflight"]["verified"])
+        self.assertFalse(report["load_metrics"]["complete"])
 
     def test_preflight_uses_individual_addresses_and_restores_scratch(self):
         address = host.AXI_PREFLIGHT_ADDRESS
@@ -497,6 +533,23 @@ class TclTransportTests(unittest.TestCase):
             left = transport.exchange([Operation("M", "READ", 0x100000FF8)])[0]
             right = transport.exchange([Operation("M", "READ", 0x100001000, 3)])[0]
             self.assertEqual(left + right, b"\xa5" * 3 + bytes(range(23)) + b"\xa5" * 6)
+
+    def test_single_beat_unaligned_segment_preserves_outside_bytes(self):
+        raw = self.base / "raw.bin"
+        raw.write_bytes(bytes(range(23)))
+        prepared = image.prepare_image(self.elf, [(0x100000FFB, raw)], 3)
+        with self.transport(name="single_unaligned") as transport:
+            records = host.verified_load(transport, prepared, batch_chunks=2,
+                                         single_beat=True)
+            self.assertTrue(all(record["verified"] for record in records))
+            left = transport.exchange([Operation("M", "READ", 0x100000FF8)])[0]
+            right = b"".join(transport.exchange(
+                [Operation("M", "READ", 0x100001000 + 8 * i) for i in range(3)]))
+            self.assertEqual(left + right, b"\xa5" * 3 + bytes(range(23)) + b"\xa5" * 6)
+        entries = [json.loads(line) for line in
+                   (self.base / "single_unaligned/transport.jsonl").read_text().splitlines()]
+        self.assertTrue(all(op["beats"] == 1 for entry in entries
+                            for op in entry.get("operations", []) if op["bus"] == "M"))
 
     def test_no_done_is_not_pass(self):
         with self.transport("no_done") as transport:

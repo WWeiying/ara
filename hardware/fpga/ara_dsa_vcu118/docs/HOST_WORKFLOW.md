@@ -198,12 +198,30 @@ $load = @(
 py -3 .\host_load.py @load
 ```
 
+On the current host bitstream, two-beat reads have failed in both DDR scratch
+and uncached SPM, while separately addressed single-beat reads/writes passed.
+To try a functional host load without rebuilding the FPGA, use the explicit
+single-beat mode after a fresh full VIO reset. Use a new output directory and
+do not send a UART loader handshake after reset:
+
+```powershell
+py -3 .\host_load.py load --probes $probes --elf .\host_smoke.elf --full-reset-confirmed --single-beat --batch-chunks 128 --seconds 30 --out D:\fpga_host_runs\smoke_single01
+```
+
+This mode performs a single-beat scratch preflight and uses only independently
+addressed 64-bit memory transactions for ELF write/readback. It still refuses
+launch on a mismatch or hardware error. `passed` requires the normal execution
+result checks; a local/mock test is not an FPGA pass. This mode does not verify
+or repair burst hardware and may be slower than UART. Read the measured
+`load_metrics` before using it for a large payload.
+
 The confirmation flag is an assertion that you actually reset the board; it
 does not reset hardware. The loader checks identity/capability/readiness and
 passive boot registers, loads ELF `PT_LOAD` segments plus zero-filled BSS,
 reads back and hashes each segment, then publishes the 64-bit entry and writes
-`2` to scratch register `0x03000008` last. Bursts are at most 256 beats and do
-not cross 4 KiB. Unaligned image edges preserve neighboring bytes.
+`2` to scratch register `0x03000008` last. In the default mode, bursts are at
+most 256 beats and do not cross 4 KiB. Unaligned image edges preserve
+neighboring bytes in either mode.
 
 Only a matching run ID, nonzero done, zero software result, valid retirement
 measurement and no recorded hardware errors can produce an execution pass.

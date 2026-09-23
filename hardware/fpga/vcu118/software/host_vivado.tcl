@@ -180,6 +180,7 @@ proc host::serve {channel} {
                 break
             }
             puts $channel "OK $seq $i $value"
+            flush $channel
             incr i
         }
         puts $channel "END $seq"

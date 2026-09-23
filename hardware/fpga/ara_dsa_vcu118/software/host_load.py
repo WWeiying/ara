@@ -318,7 +318,20 @@ def probe_axi_spm_burst(transport, record):
     record["verified"] = True
 
 
-def verified_load(transport, image, batch_chunks=16):
+def load_chunks(segment, single_beat):
+    for address, data in segment.chunks():
+        if not single_beat:
+            yield address, data
+            continue
+        offset = 0
+        while offset < len(data):
+            current = address + offset
+            length = min(len(data) - offset, 8 - (current & 7))
+            yield current, data[offset:offset + length]
+            offset += length
+
+
+def verified_load(transport, image, batch_chunks=16, single_beat=False):
     if not 1 <= batch_chunks <= 128:
         raise ValueError("batch_chunks must be 1..128")
     records = []
@@ -339,7 +352,7 @@ def verified_load(transport, image, batch_chunks=16):
                 digest.update(actual[prefix:prefix + length])
             pending.clear()
 
-        for address, data in segment.chunks():
+        for address, data in load_chunks(segment, single_beat):
             aligned = address & ~7
             prefix = address - aligned
             size = (prefix + len(data) + 7) & ~7
@@ -364,7 +377,7 @@ def verified_load(transport, image, batch_chunks=16):
     return records
 
 
-def measured_verified_load(transport, image, report, batch_chunks=16):
+def measured_verified_load(transport, image, report, batch_chunks=16, single_beat=False):
     """Wall time of verified_load ONLY, not preparation, launch or collection.
 
     This is payload throughput INCLUDING all readback, hashing, Tcl and refresh
@@ -373,6 +386,7 @@ def measured_verified_load(transport, image, report, batch_chunks=16):
     """
     payload_bytes = sum(segment.size for segment in image.segments)
     metrics = {"clock": "time.monotonic", "scope": "verified_load_only",
+               "memory_transaction_mode": "single_beat" if single_beat else "burst",
                "complete": False, "payload_bytes_including_bss": payload_bytes,
                "payload_bytes_per_second_including_readback": None,
                "uart_115200_theoretical_bytes_per_second": 11520,
@@ -382,7 +396,7 @@ def measured_verified_load(transport, image, report, batch_chunks=16):
     report["load_metrics"] = metrics
     start = time.monotonic()
     try:
-        records = verified_load(transport, image, batch_chunks)
+        records = verified_load(transport, image, batch_chunks, single_beat=single_beat)
     except BaseException:
         metrics["elapsed_seconds"] = time.monotonic() - start
         raise
@@ -426,32 +440,39 @@ def check_passive_boot(transport):
 
 
 def load_and_run(transport, image, output, report, full_reset_confirmed=False,
-                 run_id=1, seconds=30.0, watchdog_cycles=0, batch_chunks=16):
+                 run_id=1, seconds=30.0, watchdog_cycles=0, batch_chunks=16,
+                 single_beat=False):
     if not full_reset_confirmed:
         raise ValueError("Explicit --full-reset-confirmed is required before each load")
     if (not 0 < run_id <= 0xFFFFFFFF or not 0 <= watchdog_cycles <= 0xFFFFFFFF or
             not math.isfinite(seconds) or seconds <= 0):
         raise ValueError("Invalid run ID, watchdog or execution timeout")
     ident = identity(transport)
+    report["memory_transaction_mode"] = "single_beat" if single_beat else "burst"
     if ident["caps"] != image.caps:
         raise RuntimeError("Capabilities changed since preparation")
     # The 64-bit memory IP has no narrow transfers. Read paired 32-bit registers.
     scratch3 = check_passive_boot(transport)
     write_debug(transport, [(WATCHDOG, 0), (COMMAND, CLEAR), (COMMAND, RESUME), (DONE, 0),
                             (RESULT, 0xFFFFFFFF), (RUN_ID, run_id), (MARKER, 0)])
-    report["state"] = "axi_mapping_preflight"
-    report["axi_mapping_preflight"] = {}
+    preflight_name = "axi_single_beat_preflight" if single_beat else "axi_mapping_preflight"
+    report["state"] = preflight_name
+    report[preflight_name] = {}
     timings = report.setdefault("other_timings_seconds", {})
     write_json(Path(output) / "report.json", report)
     start = time.monotonic()
     try:
-        preflight_axi_mapping(transport, image.caps, report["axi_mapping_preflight"])
+        if single_beat:
+            probe_axi_single_beat(transport, image.caps, report[preflight_name])
+        else:
+            preflight_axi_mapping(transport, image.caps, report[preflight_name])
     finally:
-        timings["axi_mapping_preflight"] = time.monotonic() - start
+        timings[preflight_name] = time.monotonic() - start
         write_json(Path(output) / "report.json", report)
     report["state"] = "loading"
     write_json(Path(output) / "report.json", report)
-    report["readback"] = measured_verified_load(transport, image, report, batch_chunks)
+    report["readback"] = measured_verified_load(transport, image, report, batch_chunks,
+                                                 single_beat=single_beat)
     start = time.monotonic()
     loading_snapshot = capture_snapshot(transport, freeze=True)
     write_json(Path(output) / "load_snapshot.json", loading_snapshot)
@@ -563,6 +584,8 @@ def main(argv=None):
             sub.add_argument("--run-id", type=lambda s: int(s, 0), default=None)
             sub.add_argument("--watchdog-cycles", type=lambda s: int(s, 0), default=0)
             sub.add_argument("--batch-chunks", type=int, default=16)
+            sub.add_argument("--single-beat", action="store_true",
+                             help="use only single-beat memory transactions; slower, burst hardware remains unverified")
         if name in ("load", "uart"):
             sub.add_argument("--seconds", type=float, default=30)
         if name == "uart":
@@ -674,7 +697,8 @@ def main(argv=None):
                 report["other_timings_seconds"]["image_preparation"] = time.monotonic() - start
                 write_json(args.out / "image.json", image.manifest())
                 load_and_run(transport, image, args.out, report, args.full_reset_confirmed,
-                             args.run_id, args.seconds, args.watchdog_cycles, args.batch_chunks)
+                             args.run_id, args.seconds, args.watchdog_cycles, args.batch_chunks,
+                             args.single_beat)
         write_json(args.out / "report.json", report)
         print(f"{report['state']}: {args.out}")
         metrics = report.get("load_metrics", {})

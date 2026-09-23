@@ -119,6 +119,7 @@ proc run_hw_axi {name} {
     set beats $::txn($name,-len)
     if {$core eq "mem_a" && $::mode eq "debug_only"} { error "Main master must not be accessed" }
     if {$core eq "mem_a" && $::mode eq "hang_mem"} { after 60000 }
+    if {$core eq "mem_a" && $::mode eq "slow_mem"} { after 600 }
     set width [expr {$core eq "mem_a" ? 8 : 4}]
     set result ""
     for {set i 0} {$i < $beats} {incr i} {
@@ -158,6 +159,10 @@ proc run_hw_axi {name} {
                     set value [expr {$value | ($byte << (8 * $b))}]
                 }
                 if {$::mode eq "corrupt" && $a >= 0x80000000 && [info exists ::memory($a)]} {
+                    set value [expr {$value ^ 1}]
+                }
+                if {$::mode eq "payload_corrupt" && $a >= 0x80000000 &&
+                    $a < 0xffff0000 && [info exists ::memory($a)]} {
                     set value [expr {$value ^ 1}]
                 }
             } else {
