@@ -2,7 +2,7 @@ import contextlib
 import csv
 import io
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import shutil
 import subprocess
 import tempfile
@@ -35,7 +35,7 @@ class EthernetPreflightTest(unittest.TestCase):
         self.assertEqual(Path(kwargs["cwd"]), self.out)
         self.assertIn("-mode", command)
         self.assertIn("batch", command)
-        self.assertEqual(command[-2:], [str(self.out), str(preflight.BOARD.parents[1])])
+        self.assertEqual(command[-2:], [self.out.as_posix(), preflight.BOARD.parents[1].as_posix()])
         self.stage_file(dict.fromkeys(preflight.STAGES, "PASS"))
         (self.out / "preflight.rpt").write_text("PREFLIGHT_COMPLETE\n")
         for name in ("ip_status_before.rpt", "ip_status_after.rpt"):
@@ -95,6 +95,24 @@ class EthernetPreflightTest(unittest.TestCase):
         self.assertFalse(record["hardware_access"])
         self.assertFalse(record["hardware_verified"])
         self.assertFalse(record["bitstream_license_verified"])
+
+    def test_windows_paths_use_forward_slashes_at_vivado_boundary(self):
+        here = PureWindowsPath(r"D:\project\ara\hardware\fpga\vcu118\tests")
+        board = PureWindowsPath(r"D:\project\ara\hardware\fpga\ara_dsa_vcu118\board_files\vcu118\2.4")
+        with mock.patch.object(preflight, "HERE", here), \
+                mock.patch.object(preflight, "BOARD", board), \
+                mock.patch.object(preflight, "board_contract", return_value={}), \
+                mock.patch.object(preflight, "digest", return_value="mock-digest"), \
+                mock.patch.object(preflight, "find_vivado", return_value=r"D:\Xilinx\Vivado\2020.1\bin\vivado.bat"), \
+                mock.patch.object(preflight.subprocess, "run", side_effect=self.vivado_result) as run:
+            self.assertEqual(self.main(), 0)
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index("-source") + 1],
+                         "D:/project/ara/hardware/fpga/vcu118/tests/host_ethernet_preflight.tcl")
+        self.assertEqual(command[-1], "D:/project/ara/hardware/fpga/ara_dsa_vcu118/board_files")
+        for argument in command[command.index("-source") + 1:]:
+            self.assertNotIn("\\", argument)
+            self.assertNotIn("{", argument)
 
     def test_zero_exit_without_marker_rejected(self):
         def incomplete(command, **kwargs):

@@ -1,6 +1,13 @@
 set ::eth_preflight_library_only 1
 source [file join [file dirname [info script]] host_ethernet_preflight.tcl]
 set root [lindex $argv 0]
+set repository [file join $root {board repo}]
+file mkdir [file join $repository vcu118 2.4]
+foreach name {board.xml part0_pins.xml preset.xml} {
+    set stream [open [file join $repository vcu118 2.4 $name] w]
+    puts $stream "fixture"
+    close $stream
+}
 set stream [open [file join $root requested_config.tsv] r]
 set rows [split [string trim [read $stream]] \n]
 close $stream
@@ -10,10 +17,24 @@ foreach row $rows { lassign [split $row \t] key value; dict set expected $key $v
 proc assert {condition message} { if {![uplevel 1 [list expr $condition]]} { error $message } }
 proc version {args} { if {$::mode eq "wrong_version"} { return 2023.2 }; return 2020.1 }
 proc get_projects {args} { if {$::mode eq "existing_project"} { return user_project }; return {} }
-proc set_param {key value} { assert {$key eq "board.repoPaths"} "Unexpected parameter $key" }
+proc set_param {key value} {
+    assert {$key eq "board.repoPaths"} "Unexpected parameter $key"
+    assert {[llength $value] == 1} "Expected one repository"
+    assert {[file isdirectory [lindex $value 0]]} "Nonexistent board repository"
+    assert {[lindex $value 0] eq [file normalize $::repository]} "Path not normalized"
+    assert {[string first "\\" [lindex $value 0]] < 0} "Backslash passed to board parser"
+    set ::repo_param $value
+}
+proc get_param {key} {
+    assert {$key eq "board.repoPaths"} "Unexpected parameter $key"
+    return $::repo_param
+}
 proc create_project {args} { lappend ::calls project; file mkdir [lindex $args 1] }
 proc current_project {} { return $::project }
-proc get_board_parts {args} { return xilinx.com:vcu118:part0:2.4 }
+proc get_board_parts {args} {
+    if {$::mode eq "missing_board_definition"} { return {} }
+    return xilinx.com:vcu118:part0:2.4
+}
 proc set_property {args} {
     if {[lindex $args 0] eq "-dict"} {
         set ::effective [lindex $args 1]
@@ -75,14 +96,20 @@ proc get_files {args} {
 }
 proc close_project {} { lappend ::calls close }
 
-foreach mode {success normalized_property wrong_version existing_project missing_ip unsupported_property ignored_property status_failure generation_failure example_failure missing_constraints} {
+foreach mode {success normalized_property wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip unsupported_property ignored_property status_failure generation_failure example_failure missing_constraints} {
     set output [file join $root $mode]
     file mkdir $output
     file copy [file join $root requested_config.tsv] $output
     set effective [dict create]
     set project eth_preflight
     set calls {}
-    set result [eth_preflight::run $output board_repo]
+    set selected_repository [file join $repository .]
+    if {$mode eq "missing_repository"} { set selected_repository [file join $repository absent] }
+    if {$mode eq "missing_board_file"} {
+        set selected_repository [file join $repository empty]
+        file mkdir $selected_repository
+    }
+    set result [eth_preflight::run $output $selected_repository]
     set f [open [file join $output stages.tsv] r]
     set status [read $f]
     close $f
@@ -93,10 +120,10 @@ foreach mode {success normalized_property wrong_version existing_project missing
         assert {$result == 0} "Failure accepted: $mode"
         assert {[string first FAIL $status] >= 0} "Failure reason missing: $mode"
     }
-    if {$mode in {wrong_version existing_project missing_ip unsupported_property ignored_property}} {
+    if {$mode in {wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip unsupported_property ignored_property}} {
         assert {[lsearch -exact $calls generate] < 0} "Unsafe generation: $mode"
     }
-    if {$mode eq "existing_project"} {
+    if {$mode in {existing_project missing_repository missing_board_file}} {
         assert {[llength $calls] == 0} "Existing project touched"
     }
     if {$mode eq "generation_failure"} {
@@ -108,5 +135,12 @@ foreach mode {success normalized_property wrong_version existing_project missing
     close $f
     assert {[string first "PREFLIGHT_COMPLETE" $report] >= 0} "Missing completion marker"
     assert {[string first "BITSTREAM_LICENSE_VERIFIED=false" $report] >= 0} "Incorrect license claim"
+    if {$mode eq "success"} {
+        assert {[string first "BOARD_REPO_NORMALIZED [file normalize $repository]" $report] >= 0} "Missing path evidence"
+        assert {[string first "EXISTS=1" $report] >= 0} "Missing file existence evidence"
+    }
+    if {$mode eq "missing_board_definition"} {
+        assert {[string first "AVAILABLE_VCU118_BOARDS" $report] >= 0} "Missing board discovery evidence"
+    }
 }
-puts "PASS: Ethernet preflight (11 scenarios, no synthesis or hardware commands mocked)"
+puts "PASS: Ethernet preflight (14 scenarios, no synthesis or hardware commands mocked)"

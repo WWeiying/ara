@@ -56,6 +56,7 @@ proc eth_preflight::same {actual expected} {
 proc eth_preflight::run {output board_repo} {
     variable report
     variable stages
+    set output [file normalize $output]
     set report [open [file join $output preflight.rpt] {WRONLY CREAT EXCL}]
     set stages [open [file join $output stages.tsv] {WRONLY CREAT EXCL}]
     fconfigure $report -encoding utf-8
@@ -70,11 +71,24 @@ proc eth_preflight::run {output board_repo} {
     set usable [stage project {
         if {[llength [get_projects -quiet]]} { error "Run in a fresh batch process, not an existing project" }
         if {[file exists [file join $output project]]} { error "Project directory already exists" }
+        note "BOARD_REPO_INPUT $board_repo"
+        set board_repo [file normalize $board_repo]
+        note "BOARD_REPO_NORMALIZED $board_repo"
+        if {![file isdirectory $board_repo]} { error "Board repository directory does not exist: $board_repo" }
+        foreach name {board.xml part0_pins.xml preset.xml} {
+            set path [file join $board_repo vcu118 2.4 $name]
+            note "BOARD_FILE $path EXISTS=[file isfile $path]"
+            if {![file isfile $path]} { error "Bundled board file does not exist: $path" }
+        }
         set_param board.repoPaths [list $board_repo]
+        note "BOARD_REPO_PARAMETER [get_param board.repoPaths]"
         create_project eth_preflight [file join $output project] -part xcvu9p-flga2104-2L-e
         set opened 1
         set boards [get_board_parts -quiet xilinx.com:vcu118:part0:2.4]
-        if {[llength $boards] != 1} { error "Bundled VCU118 board definition not loaded: $boards" }
+        if {[llength $boards] != 1} {
+            note "AVAILABLE_VCU118_BOARDS [get_board_parts -quiet *vcu118*]"
+            error "Bundled VCU118 board definition not loaded: $boards"
+        }
         set_property board_part [lindex $boards 0] [current_project]
         set_property target_language Verilog [current_project]
     } $usable]

@@ -38,6 +38,20 @@ If Git upload fails, local results and the prepared bundle are retained.
 `--static-only` checks the repository's board XML without invoking Vivado. It is
 useful for development but cannot establish installed IP availability.
 
+### Windows Board Repository Path Fix
+
+The first uploaded run (`81eaefcc43aa2481aed56ea931483c4d1e679831`) stopped in
+`project`, before catalog or license checks. Python could read the board XML, but
+Vivado 2020.1 reported the repository as `'{D:\project\ara\...\board_files}'`
+and rejected it as nonexistent (`Board 49-91`). The runner now passes forward
+slashes for Tcl-facing paths; Tcl also normalizes and checks the repository and
+all three board XML files before creating the disposable project. It records the
+effective repository parameter and available VCU118 boards on discovery failure.
+No board files, license settings, Ara project, or RTL changes are required.
+Update the checkout and rerun the same command; each run gets a fresh directory.
+Regression tests cover Windows-shaped argv on Linux and Tcl path/discovery
+failures, but a Windows Vivado rerun is still required to confirm the correction.
+
 ## What Is Checked
 
 - Bundled VCU118 2.4 board, XC VU9P `xcvu9p-flga2104-2L-e`, TI DP83867ISRGZ PHY.

@@ -195,8 +195,10 @@ def main(argv=None):
             record["state"] = "static_board_checked_not_ip_verified"
             code = 0
         else:
+            # Vivado 2020.1's board repository parser rejected a Tcl list made
+            # from Windows backslashes. Use native argv quoting, but Tcl paths.
             command = [find_vivado(args.vivado), "-mode", "batch", "-notrace", "-nojournal", "-nolog",
-                       "-source", str(script), "-tclargs", str(output), str(BOARD.parents[1])]
+                       "-source", script.as_posix(), "-tclargs", output.as_posix(), BOARD.parents[1].as_posix()]
             record["command"] = command
             print("Generating isolated IP/example only; no Ara project, synthesis, routing or board access.", flush=True)
             print(f"Vivado log: {output / 'vivado.log'}", flush=True)
