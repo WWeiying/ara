@@ -33,8 +33,9 @@ PRESET = {
     "CONFIG.txlane0_placement": "DIFF_PAIR_2",
     "CONFIG.rxlane0_placement": "DIFF_PAIR_0",
 }
-# PG138 v7.1 (2019), plus the bundled VCU118 board preset. This is a
-# candidate non-processor-mode core, not the final Ara integration contract.
+# PG138 parameter names plus the bundled VCU118 board preset. The installed
+# AXI Ethernet 7.2 schema must accept and echo each property. This candidate
+# non-processor-mode core is not the final Ara integration contract.
 CONFIG = {
     "CONFIG.PHY_TYPE": "SGMII", "CONFIG.ENABLE_LVDS": "true",
     "CONFIG.speed_1_2p5": "1G", "CONFIG.SupportLevel": "1",

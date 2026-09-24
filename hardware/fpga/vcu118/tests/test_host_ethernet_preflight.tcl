@@ -47,12 +47,25 @@ proc set_property {args} {
 }
 proc get_ipdefs {args} {
     if {$::mode eq "missing_ip"} { return {} }
-    return [string map {* 7.1} [lindex $args end]]
+    # Catalog observed in uploaded evidence 6f546884471657d46d4b6ba10b646f743174f264.
+    # Filter real entries, never fabricate an object for an unmatched exact query.
+    set catalog {
+        xilinx.com:ip:axi_ethernet:7.2
+        xilinx.com:ip:gig_ethernet_pcs_pma:16.2
+        xilinx.com:ip:tri_mode_ethernet_mac:9.0
+    }
+    if {$::mode eq "old_catalog"} { set catalog [lreplace $catalog 0 0 xilinx.com:ip:axi_ethernet:7.1] }
+    if {$::mode eq "future_catalog"} { set catalog [lreplace $catalog 0 0 xilinx.com:ip:axi_ethernet:8.0] }
+    if {$::mode eq "multiple_catalog"} { lappend catalog xilinx.com:ip:axi_ethernet:8.0 }
+    if {$::mode eq "duplicate_catalog"} { lappend catalog xilinx.com:ip:axi_ethernet:7.2 }
+    return [lsearch -all -inline -glob $catalog [lindex $args end]]
 }
 proc get_ips {args} { return eth_j10 }
 proc create_ip {args} {
     lappend ::calls create_ip
-    assert {[lindex $args 1] eq "xilinx.com:ip:axi_ethernet:7.1"} "Wrong IP"
+    set vlnv [lindex $args 1]
+    assert {$vlnv eq "xilinx.com:ip:axi_ethernet:7.2"} "Wrong IP"
+    assert {[llength [get_ipdefs -all -quiet $vlnv]] == 1} "IP is not uniquely present in catalog"
 }
 proc list_property {object} {
     if {$object eq "eth_j10"} {
@@ -60,13 +73,13 @@ proc list_property {object} {
         if {$::mode eq "unsupported_property"} { set keys [lsearch -all -inline -not -exact $keys CONFIG.ENABLE_LVDS] }
         return $keys
     }
-    return {VLNV LICENSE}
+    return {VLNV REQUIRES_LICENSE}
 }
 proc get_property {key object} {
     switch $key {
         FILE_TYPE { return Verilog }
         NAME { return $object }
-        LICENSE { return "not validated by mock" }
+        REQUIRES_LICENSE { return [expr {$object ne "xilinx.com:ip:gig_ethernet_pcs_pma:16.2"}] }
         VLNV { return $object }
         default { if {[dict exists $::effective $key]} { return [dict get $::effective $key] }; return default }
     }
@@ -96,7 +109,7 @@ proc get_files {args} {
 }
 proc close_project {} { lappend ::calls close }
 
-foreach mode {success normalized_property wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip unsupported_property ignored_property status_failure generation_failure example_failure missing_constraints} {
+foreach mode {success normalized_property wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip old_catalog future_catalog multiple_catalog duplicate_catalog unsupported_property ignored_property status_failure generation_failure example_failure missing_constraints} {
     set output [file join $root $mode]
     file mkdir $output
     file copy [file join $root requested_config.tsv] $output
@@ -113,18 +126,21 @@ foreach mode {success normalized_property wrong_version existing_project missing
     set f [open [file join $output stages.tsv] r]
     set status [read $f]
     close $f
-    if {$mode in {success normalized_property}} {
+    if {$mode in {success normalized_property multiple_catalog}} {
         assert {$result == 1} "Success rejected: $status"
         assert {[string first FAIL $status] < 0 && [string first SKIP $status] < 0} "Incomplete success"
     } else {
         assert {$result == 0} "Failure accepted: $mode"
         assert {[string first FAIL $status] >= 0} "Failure reason missing: $mode"
     }
-    if {$mode in {wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip unsupported_property ignored_property}} {
+    if {$mode in {wrong_version existing_project missing_repository missing_board_file missing_board_definition missing_ip old_catalog future_catalog duplicate_catalog unsupported_property ignored_property}} {
         assert {[lsearch -exact $calls generate] < 0} "Unsafe generation: $mode"
     }
     if {$mode in {existing_project missing_repository missing_board_file}} {
         assert {[llength $calls] == 0} "Existing project touched"
+    }
+    if {$mode in {missing_ip old_catalog future_catalog duplicate_catalog}} {
+        assert {[lsearch -exact $calls create_ip] < 0} "IP created without supported unique definition"
     }
     if {$mode eq "generation_failure"} {
         assert {[lsearch -exact $calls example] < 0} "Example attempted after failed generation"
@@ -138,9 +154,14 @@ foreach mode {success normalized_property wrong_version existing_project missing
     if {$mode eq "success"} {
         assert {[string first "BOARD_REPO_NORMALIZED [file normalize $repository]" $report] >= 0} "Missing path evidence"
         assert {[string first "EXISTS=1" $report] >= 0} "Missing file existence evidence"
+        foreach vlnv {axi_ethernet:7.2 gig_ethernet_pcs_pma:16.2 tri_mode_ethernet_mac:9.0} {
+            assert {[string first "xilinx.com:ip:$vlnv" $report] >= 0} "Observed catalog entry missing: $vlnv"
+        }
+        assert {[string first "SELECTED_AXI_IP xilinx.com:ip:axi_ethernet:7.2" $report] >= 0} "Selected IP missing"
+        assert {[string first "REQUIRES_LICENSE = 1" $report] >= 0} "Catalog license requirement lost"
     }
     if {$mode eq "missing_board_definition"} {
         assert {[string first "AVAILABLE_VCU118_BOARDS" $report] >= 0} "Missing board discovery evidence"
     }
 }
-puts "PASS: Ethernet preflight (14 scenarios, no synthesis or hardware commands mocked)"
+puts "PASS: Ethernet preflight (18 scenarios, no synthesis or hardware commands mocked)"

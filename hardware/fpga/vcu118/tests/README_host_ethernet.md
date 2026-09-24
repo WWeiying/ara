@@ -52,6 +52,29 @@ Update the checkout and rerun the same command; each run gets a fresh directory.
 Regression tests cover Windows-shaped argv on Linux and Tcl path/discovery
 failures, but a Windows Vivado rerun is still required to confirm the correction.
 
+### Installed IP Version Correction
+
+The next uploaded run (`6f546884471657d46d4b6ba10b646f743174f264`) confirmed
+`project: PASS` and the board-path correction. Its Vivado 2020.1 catalog contains:
+
+| IP | Installed Version | Catalog REQUIRES_LICENSE |
+| --- | --- | --- |
+| AXI Ethernet | 7.2 | 1 |
+| Gigabit Ethernet PCS/PMA | 16.2 | 0 |
+| Tri-Mode Ethernet MAC | 9.0 | 1 |
+
+The earlier script incorrectly pinned AXI Ethernet to 7.1, using an older guide
+as its version reference. It now requires the observed 7.2 definition and uses
+that same catalog object's VLNV for creation. It neither upgrades installed IP
+nor selects an arbitrary newer version. A missing or ambiguous definition is
+still rejected. Tests now filter the observed three-entry catalog rather than
+returning a fictional object for every exact query; they also cover absent,
+older-only, newer-only, multiple-version, and duplicate definitions.
+
+`REQUIRES_LICENSE=1` describes an IP requirement, not whether this installation
+has or lacks that license. No configuration, generation, or actual license-status
+stage ran in this evidence. Those remain unverified until the next preflight.
+
 ## What Is Checked
 
 - Bundled VCU118 2.4 board, XC VU9P `xcvu9p-flga2104-2L-e`, TI DP83867ISRGZ PHY.
@@ -61,7 +84,7 @@ failures, but a Windows Vivado rerun is still required to confirm the correction
   reference clock is **625 MHz**. Differential data I/O standards come from the
   board preset/pin file; do not replace them all with `LVDS` by assumption.
 - Installed AXI Ethernet, PCS/PMA, and TEMAC catalog entries, configuration
-  properties and allowed values, selected AXI Ethernet **7.1** configuration.
+  properties and allowed values, selected AXI Ethernet **7.2** configuration.
 - Exact effective configuration readback: 1G, SGMII/LVDS, board interfaces,
   625 MHz, and the board's bitslice placement preset. Unknown or ignored
   properties stop generation. There is no trial-and-error alternative mode.
@@ -117,7 +140,11 @@ for now is only the preflight command above.
 
 - [VCU118 board guide UG1224](https://docs.amd.com/v/u/en-US/ug1224-vcu118-eval-bd).
 - [AXI Ethernet PG138 v7.1, May 2019](https://docs.amd.com/api/khub/documents/ZfG2eaY4zZT4hU~HF5MaaA/content):
-  licensing, configuration table, and VCU118/KCU116 example (printed page 141).
+  historical configuration and VCU118/KCU116 example (printed page 141), not
+  evidence of which IP version is installed in Vivado 2020.1.
+- [PG138 revision history](https://docs.amd.com/r/en-US/pg138-axi-ethernet/Revision-History):
+  records version 7.2 on June 24, 2020; installed versions above are from the
+  actual uploaded catalog, not inferred from this document date.
 - [Vivado IP flow UG896 v2019.1](https://docs.amd.com/api/khub/documents/v9xbbDpXI1pI8~L4nCyifA/content):
   product and in-process example generation.
 - Repository board contract: `hardware/fpga/ara_dsa_vcu118/board_files/vcu118/2.4`.

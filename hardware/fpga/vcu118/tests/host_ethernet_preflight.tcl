@@ -98,11 +98,17 @@ proc eth_preflight::run {output board_repo} {
             note "CATALOG $name = $definitions"
             foreach definition $definitions { properties $definition }
         }
-        set selected [get_ipdefs -all -quiet xilinx.com:ip:axi_ethernet:7.1]
-        if {[llength $selected] != 1} { error "Expected installed AXI Ethernet 7.1, found: $selected" }
+        # Use the 2020.1 catalog observed in uploaded evidence, not the version
+        # printed on an older product guide. Do not silently choose the latest.
+        set expected_axi xilinx.com:ip:axi_ethernet:7.2
+        set selected [get_ipdefs -all -quiet $expected_axi]
+        if {[llength $selected] != 1} { error "Expected one installed $expected_axi, found: $selected" }
+        set selected_vlnv [get_property VLNV [lindex $selected 0]]
+        if {$selected_vlnv ne $expected_axi} { error "Unexpected catalog VLNV: $selected_vlnv" }
+        note "SELECTED_AXI_IP $selected_vlnv"
     } $usable]
     set created [stage create_ip {
-        create_ip -vlnv xilinx.com:ip:axi_ethernet:7.1 -module_name eth_j10
+        create_ip -vlnv $selected_vlnv -module_name eth_j10
         set ip [get_ips eth_j10]
         note "DEFAULT_CONFIG"
         properties $ip
