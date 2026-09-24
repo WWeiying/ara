@@ -50,6 +50,25 @@ proc eth_build::full_license {path} {
     if {!$count} { error "TEMAC Synthesis license row not found; inspect ip_status.rpt" }
     note "FULL_LICENSE_REPORTED_NOT_YET_BITSTREAM_VERIFIED"
 }
+proc eth_build::blackboxes {phase {allow_pending_hub false}} {
+    set allowed ""
+    if {$allow_pending_hub} {
+        set hub [get_debug_cores -quiet dbg_hub]
+        if {[llength $hub] != 1 || [get_property NAME $hub] ne "dbg_hub"} {
+            error "Expected exactly one registered dbg_hub debug core"
+        }
+        # Vivado leaves the registered hub as a stub until opt_design. This is
+        # not an exemption for other IP, similarly named cells, or routed logic.
+        set allowed dbg_hub
+    }
+    set unresolved {}
+    set cells [get_cells -hier -quiet -filter {IS_BLACKBOX == 1}]
+    foreach cell $cells {
+        if {[get_property NAME $cell] ne $allowed} { lappend unresolved $cell }
+    }
+    note "BLACKBOX_CHECK $phase COUNT=[llength $cells] CELLS=$cells"
+    if {[llength $unresolved]} { error "Unresolved blackboxes ($phase): $unresolved" }
+}
 proc eth_build::pins {} {
     foreach {port pin standard} {
         clk_in_p G31 DIFF_SSTL12 clk_in_n F31 DIFF_SSTL12 sys_rst L19 LVCMOS12
@@ -67,7 +86,7 @@ proc eth_build::pins {} {
     foreach {port property expected} {
         sgmii_txp OUTPUT_IMPEDANCE RDRV_48_48 sgmii_txn OUTPUT_IMPEDANCE RDRV_48_48
         sgmii_rxp ODT RTT_48 sgmii_rxn ODT RTT_48
-        mgt_clk_p DIFF_TERM TRUE mgt_clk_n DIFF_TERM TRUE
+        mgt_clk_p DIFF_TERM_ADV TERM_100 mgt_clk_n DIFF_TERM_ADV TERM_100
     } {
         if {![eth_preflight::same [get_property $property [get_ports $port]] $expected]} {
             error "Electrical property mismatch: $port $property"
@@ -130,8 +149,7 @@ proc eth_build::run {output source board_repo jobs} {
         wait_on_run synth_1
         if {[get_property STATUS [get_runs synth_1]] ne "synth_design Complete!"} { error "Synthesis did not complete" }
         open_run synth_1
-        set blackboxes [get_cells -hier -quiet -filter {IS_BLACKBOX == 1}]
-        if {[llength $blackboxes]} { error "Unresolved blackboxes: $blackboxes" }
+        blackboxes linked_synthesis true
         pins
         set ctrl [get_nets -of_objects [get_pins i_jtag/aclk]]
         if {[llength $ctrl] != 1} { error "Missing independent control clock net" }
@@ -147,6 +165,7 @@ proc eth_build::run {output source board_repo jobs} {
     }
     step implementation {
         opt_design
+        blackboxes post_opt
         place_design
         phys_opt_design
         route_design
@@ -167,6 +186,7 @@ proc eth_build::run {output source board_repo jobs} {
         report_drc -name eth_drc -file [file join $output drc.rpt]
     }
     step gates {
+        blackboxes routed
         pins
         set bad_routes [get_nets -hier -quiet -filter {ROUTE_STATUS == UNROUTED || ROUTE_STATUS == PARTIAL || ROUTE_STATUS == CONFLICTS || ROUTE_STATUS == ANTENNAS || ROUTE_STATUS == NODRIVER || ROUTE_STATUS == UNPLACED}]
         if {[llength $bad_routes]} { error "Incomplete/invalid routes: [llength $bad_routes]" }

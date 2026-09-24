@@ -1,8 +1,10 @@
 # Isolated VCU118 J10 Diagnostic Build
 
-Status: implementation and local RTL regression available. **Not yet synthesized
-in real Vivado, programmed or tested on a physical Ethernet link.** This is the
-next build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
+Status: the first Windows Vivado 2020.1 run completed top/IP synthesis, then
+stopped at an incorrect script check of the pending debug hub. The script/XDC
+fixes below are locally regression-tested but await a new Windows build.
+**Placement, routing, bitgen and physical Ethernet operation are unverified.**
+This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
 
 ## Windows: One Build Invocation
@@ -40,6 +42,42 @@ image yet.** First review the uploaded IO/clock/CDC/timing/methodology reports.
 Any `FAIL` stops the flow; no DRC severity is downgraded. TEMAC must report a
 full Synthesis license before synthesis, and actual bitgen must succeed. This
 does not constitute a complete timing-coverage review or hardware acceptance.
+
+## First Windows Build Review
+
+Evidence: `3ff4f3ae378bd036bbdff0821549f6e0a60e0108` on
+`fpga-evidence/ethernet-build-20260924_122540-5176c596`, from
+`D:/fpga_runs/ara_eth_build_utxyocj1` using source `2e651c40`.
+All 16 archived files were checked against the manifest hashes/sizes. TEMAC
+Synthesis reports `Bought/Bought`, and the top and OOC synthesis logs complete.
+The script marks synthesis FAIL because its post-synthesis checks did not finish;
+this is not a TEMAC license or RTL synthesis failure.
+
+Three build-flow issues are addressed, without changing packet/reset RTL:
+
+- The registered `dbg_hub` is initially a black box; Vivado implements it in
+  `opt_design`. Only that exact registered top-level hub may remain pending
+  after synthesis. Unknown IP/nested lookalikes are rejected. Immediately after
+  `opt_design`, before placement, **all** black boxes are rejected; the same
+  strict check runs again in the routed gates. See
+  [UG835, implement_debug_core](https://docs.amd.com/r/en-US/ug835-vivado-tcl-commands/implement_debug_core)
+  and the older [UG908 v2017.4, printed page 145](https://docs.amd.com/api/khub/documents/zNIkNQOgtGKFxEP3_AtZ0A/content).
+- The XDC reader rejected the `foreach` pin loop with Designutils 20-1307.
+  Pin/standard assignments are now declarative `set_property` commands, not
+  general Tcl control flow. The test uses a restricted interpreter exposing
+  only the three commands needed by this file; plain `source` missed this bug.
+- Vivado translated legacy `DIFF_TERM TRUE` to `DIFF_TERM_ADV TERM_100`.
+  Both our XDC and electrical gate now use the UltraScale native property.
+  Vendor board constraints may still issue the legacy translation warning;
+  their files are unchanged. See
+  [UG912 v2019.2, printed page 193](https://docs.amd.com/api/khub/documents/rk0Uzk92HN6YiZcSJ3RgaA/content).
+
+Rerun the same two PowerShell commands above; retain the existing preflight
+and failed build. No additional source collection, GUI operation or board reset
+is needed. The new run snapshots the fixes into a new directory. Unused-output,
+generated OOC constraint and clock-period warnings are not a timing pass; review
+the new linked/routed reports before considering programming. No such reports
+or bitstream were produced by this failed run.
 
 ## Circuit and Boundaries
 
@@ -102,7 +140,8 @@ source-synchronous MDIO timing signoff; inspect existing IP exceptions and board
 timing. No broad asynchronous clock-group exceptions hide MAC/control crossings.
 
 Automated gates: exact pins/standards/electrical properties, no unresolved black
-boxes, no erroneous/incomplete routes or Error-severity DRCs, nonnegative worst
+boxes after `opt_design` or routing (only the registered hub can be pending
+before `opt_design`), no erroneous/incomplete routes or Error-severity DRCs, nonnegative worst
 setup/hold path slack, common 100 MHz management/debug clock and 625 MHz PHY
 reference. Pulse-width checks, unconstrained paths, CDC, bus-skew, Critical
 Warnings and IO timing still require the emitted reports to be reviewed before

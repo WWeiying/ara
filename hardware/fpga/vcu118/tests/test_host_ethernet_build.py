@@ -96,8 +96,10 @@ class BuildTests(unittest.TestCase):
         tcl = shutil.which("tclsh")
         if not tcl:
             self.skipTest("tclsh required for build API/control-flow regression")
-        for case in ("success", "version_fail", "config_fail", "license_fail", "synth_fail", "pin_fail", "route_fail",
-                     "drc_fail", "timing_fail", "clock_fail"):
+        for case in ("success", "materialized_hub", "version_fail", "config_fail", "license_fail", "synth_fail",
+                     "pin_fail", "termination_fail", "route_fail", "drc_fail", "timing_fail", "clock_fail",
+                     "user_blackbox_fail", "nested_hub_fail", "unregistered_hub_fail", "pending_hub_fail",
+                     "routed_blackbox_fail", "xdc_reject_control_flow"):
             with self.subTest(case=case):
                 output = self.root / case
                 result = subprocess.run([tcl, str(build.HERE / "test_host_ethernet_build.tcl"), str(output), case],
