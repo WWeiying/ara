@@ -1,0 +1,90 @@
+{
+  "hardware_access": false,
+  "hardware_verified": false,
+  "source": "D:\\fpga_runs\\ara_eth_build_utxyocj1",
+  "evidence_branch": "fpga-evidence/ethernet-build-20260924_122540-5176c596",
+  "collection_checkout_commit": "2e651c401057ea1b95da9fed0c6f835bcc318004",
+  "files": [
+    {
+      "path": "build.json",
+      "bytes": 6055,
+      "sha256": "c2bc2420b31339e1f373c8782ae9a60fd1d9ed4d7a83448d33ea883b805913e0"
+    },
+    {
+      "path": "build.rpt",
+      "bytes": 2088,
+      "sha256": "0657e74f8c065daf239e6afedcab95be12c5f49dc27bf2d98deb1856d679106b"
+    },
+    {
+      "path": "build_stages.tsv",
+      "bytes": 53,
+      "sha256": "ae0f392da15a7bc92e32631d21e256dd07cfd89f82ba6d3df68c970c50a22b99"
+    },
+    {
+      "path": "vivado.log",
+      "bytes": 79065,
+      "sha256": "606feb2f6fccb2efbfca47eb7eb3281eef8d1e717164ffce8edabe3bfaec39cb"
+    },
+    {
+      "path": "ip_status.rpt",
+      "bytes": 3393,
+      "sha256": "82c8fc59395995a6954e1b1ebed4423c84f9421ac6f38820cbe7c86d621c6264"
+    },
+    {
+      "path": "compile_order.rpt",
+      "bytes": 96155,
+      "sha256": "6b5abc23d1e74d6e5ec8086f16d945dfd1d4817c8aab3707e946615cbdcbf6e9"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_c_counter_binary_0_0_synth_1/runme.log",
+      "bytes": 17593,
+      "sha256": "4deafca231de4595ee74d676f34c08363c1e53537328d24cbf04e209a6b81ab7"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_c_shift_ram_0_0_synth_1/runme.log",
+      "bytes": 16983,
+      "sha256": "71fb6bb73a6e2c9a53a45da5eb34dcac8d9ea12d4f2cd596b8e75b9cc729a807"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_mac_0_synth_1/runme.log",
+      "bytes": 35132,
+      "sha256": "445191d2ce9bb456b98fddafa72fbee0396a22cc150690c5127c1f016393b462"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_pcs_pma_0_synth_1/runme.log",
+      "bytes": 94863,
+      "sha256": "d79ea2dc58367a78fdcd8acee447f74fc5946bf23f4df40f7d7d830d567119b3"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_reset_inv_0_synth_1/runme.log",
+      "bytes": 163,
+      "sha256": "dc08710887d6c4efe81aa30a4322a256561a288359ff822c55328db90186bdc5"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/bd_f779_util_vector_logic_0_0_synth_1/runme.log",
+      "bytes": 15234,
+      "sha256": "9bbcfa37a31c570ad0b74177b2f258b166f0bba3e3d03aa6ca25b33bfec572ee"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/eth_j10_synth_1/runme.log",
+      "bytes": 32563,
+      "sha256": "4997e1a36db75049f4a72ca3ba08332c68421bfa27133d9b78f783ae6af57f1a"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/eth_jtag_synth_1/runme.log",
+      "bytes": 37666,
+      "sha256": "a7dd12197f3b733a3acbbce2c337112d543da9e4f3cd0e5b5238e6e7fd018ea8"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/eth_vio_synth_1/runme.log",
+      "bytes": 18383,
+      "sha256": "34f72cf212361199081764b88119a14c5c7498fca28ef3df510602e22d2a14c5"
+    },
+    {
+      "path": "run_logs/eth_diag.runs/synth_1/runme.log",
+      "bytes": 59987,
+      "sha256": "f7ca01359093f9314bafc4ebcf31eea022cfa3a81c853bcde024076ee06994fa"
+    }
+  ],
+  "archive_sha256": "f4ec3ce0fa387038e003c3c27051ce4cd555f4d11dae423eb5b59855b3b919ac"
+}
