@@ -10,8 +10,18 @@ both generated and available Synthesis license levels. Example generation now
 completes with inherited console handles and a Vivado-native log. This validates
 the launch workaround in one Windows run, not Ethernet hardware operation.
 Preserve `D:/fpga_runs/ara_eth_zr9jsk58`; there is no need to repeat this preflight
-unchanged. Next is the example clock/reset/pin review, before an isolated network
-build or Ara integration.
+unchanged. That preflight did not establish correct example clocks, reset or
+pins; the subsequent source review below addresses those integration gates.
+
+The subsequent source bundle `2dfc00c4cbac63fd9a724b435771d091bb981a92` has
+now been reviewed. **Do not program the generated example unchanged:** its
+explicit SGMII pin assignments disagree with J10, its default controller selects
+PHY loopback/negotiation-off, and a bounded simulation reproduces independent
+AW/W handshake and response-checking limitations in that demo controller.
+See [the source review and measured results](ETHERNET_EXAMPLE_REVIEW.md).
+No additional Windows collection is needed for this review. The independent
+PHY-reset dependency and final implementation/hardware gates remain open;
+this is not a claim that the protected TEMAC core is defective.
 
 ## One Windows Command
 
@@ -291,7 +301,9 @@ restrictions before proceeding. `bitstream_license_verified` and
 The next hardware image should test the network in isolation, not simultaneously
 introduce a new network stack, DMA, and Ara memory path. Current evidence is
 sufficient to proceed with the licensed-MAC route. Example generation has passed;
-its clock/reset/constraint review remains open before building that network image.
+source review found board-placement and controller integration blockers detailed
+in `ETHERNET_EXAMPLE_REVIEW.md`. Resolve those, the reset dependency and effective
+implementation constraints before approving a network image for programming.
 
 ## References and Local Tests
 
