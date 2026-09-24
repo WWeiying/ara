@@ -11,11 +11,11 @@ not another unchanged preflight or source collection. It creates a fresh design,
 uses corrected J10 pins, independent PHY reset and JTAG AXI-Lite management,
 and adds a disabled-by-default filtered L2 echo behind the vendor RX FIFO.
 It does not access the board or modify Ara. Local bounded FIFO/echo/reset tests
-passed. The first real Vivado run completed top/IP synthesis but stopped in the
-script's pending `dbg_hub` check. Pin-XDC control flow was also rejected. These
-build-script issues are fixed with local regression coverage; rerun the same
-isolated build command, not the preflight. See the
-[first build review](../ethernet/README.md#first-windows-build-review).
+passed. The latest real Vivado run completed top/IP synthesis and the corrected
+pending-hub/pin/electrical checks, then stopped on a missing `-from` in our
+timing script. All custom max-delay/skew endpoints are now explicit, with
+argument/path regression checks; rerun the same isolated build command, not the
+preflight. See the [second build review](../ethernet/README.md#second-windows-build-review).
 Placement/routing, bitgen and PHY/packet board tests remain open.
 
 Successful preflight evidence (`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`): **all 11

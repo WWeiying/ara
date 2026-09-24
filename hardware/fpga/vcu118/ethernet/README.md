@@ -1,8 +1,9 @@
 # Isolated VCU118 J10 Diagnostic Build
 
-Status: the first Windows Vivado 2020.1 run completed top/IP synthesis, then
-stopped at an incorrect script check of the pending debug hub. The script/XDC
-fixes below are locally regression-tested but await a new Windows build.
+Status: Windows Vivado 2020.1 has completed top/IP synthesis and the corrected
+pending-hub, pin and electrical checks. The second build stopped on a missing
+`-from` in our timing constraints; the endpoint fixes below are locally
+regression-tested but await a new Windows build.
 **Placement, routing, bitgen and physical Ethernet operation are unverified.**
 This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
@@ -78,6 +79,41 @@ is needed. The new run snapshots the fixes into a new directory. Unused-output,
 generated OOC constraint and clock-period warnings are not a timing pass; review
 the new linked/routed reports before considering programming. No such reports
 or bitstream were produced by this failed run.
+
+## Second Windows Build Review
+
+Evidence `9207ed2ef59a7e2df7ad26b1576a8bdaa2374a5e` on
+`fpga-evidence/ethernet-build-20260924_124426-1edd918e` comes from
+`D:/fpga_runs/ara_eth_build_7kgmi089` with source `a677409d`. All 16 files were
+verified against the manifest. Synthesis and the pending-hub/pin/electrical
+checks pass; the former XDC-loop critical warning is gone. Implementation has
+not started: `eth_diag_timing` stops with Constraints 18-540 because
+`set_max_delay -datapath_only` requires a nonempty `-from`. The previous API
+mock only recorded timing commands and missed this requirement.
+
+The timing fix audits every custom max-delay/skew command, not only the first:
+
+- Bit synchronizers use their linked-netlist timing startpoints, discovered
+  with `all_fanin -flat -startpoints_only`, to the same first-stage D pins.
+- RX FIFO bundled data uses only the six `rd_addr[11:6]` register clock pins
+  to `wr_rd_addr` D pins for both max delay and bus skew, excluding the reset,
+  update-toggle, and CE/feedback logic from the skew group.
+- PHY reset and MDIO/MDC outputs explicitly start at the management clock.
+  MDIO input explicitly ends at the first reachable timing endpoints.
+
+Budgets remain 8 ns (synchronizers/pointer/skew) and 20 ns (pads); no broad false
+paths or clock groups are added. Empty source/endpoint queries stop the build,
+and `TIMING_*` records in `build.rpt` preserve the resolved objects for review.
+The mock now checks required arguments, exact selected paths/budgets and missing
+object cases. It is still not a Vivado timing or routing simulation. See
+[UG835 set_max_delay](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/set_max_delay)
+and [set_bus_skew](https://docs.amd.com/r/2020.2-English/ug835-vivado-tcl-commands/set_bus_skew).
+Vendor MDIO exceptions are retained (including its first-stage false path);
+the 20 ns pad budgets alone do not prove complete MDIO timing coverage.
+
+Use the same two build commands above. The existing preflight is reused as
+input; a fresh build directory keeps both failed runs intact. No GUI or board
+operation is required. Placement/routing, report review and bitgen remain open.
 
 ## Circuit and Boundaries
 

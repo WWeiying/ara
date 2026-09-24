@@ -10,6 +10,26 @@ set ports {}
 set operation_log {}
 set optimized 0
 set routed 0
+set timing_calls {}
+set sync_d [list i_enable/axi_eth_ex_des_data_sync_reg0/D {gen_status[0].i_sync/axi_eth_ex_des_data_sync_reg0/D}]
+set sync_from {i_vio/echo_reg/C i_echo/seen_reg/C}
+set mdio_to {i_mac/mdio_capture_reg/D}
+set pointer_c {}; set pointer_d {}; set fixture_pins $sync_d
+for {set bit 0} {$bit < 12} {incr bit} {
+    set pin [format {i_fifo/rx_fifo_i/rd_addr_reg[%d]/C} $bit]
+    lappend fixture_pins $pin
+    if {$bit >= 6} {
+        lappend pointer_c $pin
+        lappend pointer_d [format {i_fifo/rx_fifo_i/wr_rd_addr_reg[%d]/D} $bit]
+    }
+}
+set fixture_pins [concat $fixture_pins $pointer_d]
+foreach index {0 1 2 3} {
+    lappend fixture_pins i_fifo/reset_sync/axi_eth_ex_des_reset_sync${index}_reg/PRE
+}
+foreach domain {ctrl packet} {
+    foreach index {0 1 2} { lappend fixture_pins [format {i_%s_reset/stages_reg[%d]/PRE} $domain $index] }
+}
 proc set_property {args} {
     global properties
     if {[lindex $args 0] eq "-dict"} {
@@ -37,10 +57,12 @@ proc get_ports {args} {
     return [lindex $args end]
 }
 proc get_pins {args} {
+    global fixture_pins scenario
     if {[lsearch -exact $args -regexp] >= 0} {
         set pattern [lindex $args end]
-        if {[string match *wr_rd_addr* $pattern] || [string match *stages_reg* $pattern]} { return {p0 p1 p2 p3 p4 p5} }
-        return {sync0 sync1}
+        set found [lsearch -all -inline -regexp $fixture_pins $pattern]
+        if {$scenario eq "pointer_source_fail" && [string match */C $pattern]} { return [lrange $found 1 end] }
+        return $found
     }
     return [lindex $args end]
 }
@@ -50,7 +72,19 @@ proc get_nets {args} {
     return ctrl_clk
 }
 proc get_clocks {args} {
+    global scenario
+    if {$scenario eq "pad_clock_fail"} { return {} }
     return [expr {[lindex $args end] eq "mgt_clk_p" ? "phy_clock" : "control_clock"}]
+}
+proc all_fanin {args} {
+    global sync_from sync_d scenario
+    if {$args ne [list -flat -startpoints_only $sync_d]} { error "Unexpected fanin traversal: $args" }
+    return [expr {$scenario eq "sync_start_fail" ? "" : $sync_from}]
+}
+proc all_fanout {args} {
+    global mdio_to scenario
+    if {$args ne [list -flat -endpoints_only mdio]} { error "Unexpected fanout traversal: $args" }
+    return [expr {$scenario eq "mdio_endpoint_fail" ? "" : $mdio_to}]
 }
 proc get_cells {args} {
     global scenario optimized routed
@@ -92,6 +126,20 @@ proc open_run {args} {
     read_pin_xdc $text
 }
 proc record_command {name args} { global operation_log; lappend operation_log $name }
+proc timing_constraint {name args} {
+    global timing_calls
+    # Require explicit, nonempty endpoints, including Vivado's 18-540 check.
+    foreach option {-from -to} {
+        set index [lsearch -exact $args $option]
+        if {$index < 0 || ![llength [lindex $args [expr {$index + 1}]]]} {
+            error "$name requires nonempty $option"
+        }
+    }
+    lappend timing_calls [linsert $args 0 $name]
+    record_command $name
+}
+interp alias {} set_max_delay {} timing_constraint set_max_delay
+interp alias {} set_bus_skew {} timing_constraint set_bus_skew
 proc opt_design {} {
     global optimized
     record_command opt_design
@@ -105,7 +153,7 @@ proc route_design {} {
 foreach command {
     set_param create_project create_ip generate_target create_ip_run add_files
     update_compile_order launch_runs wait_on_run connect_debug_port disconnect_debug_port create_clock
-    set_max_delay set_bus_skew set_false_path write_checkpoint close_project
+    set_false_path write_checkpoint close_project
     place_design phys_opt_design
     report_compile_order report_route_status report_io report_clocks report_clock_interaction
     report_utilization report_timing_summary check_timing report_cdc report_bus_skew
@@ -119,6 +167,21 @@ proc report_ip_status {args} {
     close $f
 }
 proc get_timing_paths {args} { return path }
+if {$scenario eq "timing_api_guard"} {
+    foreach bad {
+        {set_max_delay 8.0 -datapath_only -to capture/D}
+        {set_max_delay 8.0 -datapath_only -from {} -to capture/D}
+        {set_max_delay 20.0 -datapath_only -from mdio -to {}}
+        {set_bus_skew 8.0 -to capture/D}
+        {set_bus_skew 8.0 -from source/C}
+    } {
+        if {![catch {{*}$bad} message] || ![string match {*requires nonempty*} $message]} {
+            error "Constraint API guard failed: $bad"
+        }
+    }
+    puts "PASS $scenario"
+    exit 0
+}
 if {$scenario eq "xdc_reject_control_flow"} {
     if {![catch {read_pin_xdc {foreach port {a b} {set_property PACKAGE_PIN G31 [get_ports $port]}}} message] ||
         ![string match {*invalid command name "foreach"*} $message]} { error "XDC accepted Tcl control flow" }
@@ -135,6 +198,14 @@ if {$scenario in {success materialized_hub}} {
     foreach {key value} {C_CLK_INPUT_FREQ_HZ 100000000 C_ENABLE_CLK_DIVIDER false} {
         if {[get_property $key dbg_hub] ne $value} { error "Debug hub property mismatch: $key" }
     }
+    set expected_timing [list \
+        [list set_max_delay 8.0 -datapath_only -from $sync_from -to $sync_d] \
+        [list set_max_delay 8.0 -datapath_only -from $pointer_c -to $pointer_d] \
+        [list set_bus_skew 8.0 -from $pointer_c -to $pointer_d] \
+        [list set_max_delay 20.0 -datapath_only -from control_clock -to phy_rst_n] \
+        [list set_max_delay 20.0 -datapath_only -from control_clock -to {mdio mdio_mdc}] \
+        [list set_max_delay 20.0 -datapath_only -from mdio -to $mdio_to]]
+    if {$timing_calls ne $expected_timing} { error "Timing paths/budgets changed: $timing_calls" }
 } else {
     if {!$failed} { error "Expected $scenario failure" }
     if {[lsearch -exact $operation_log write_bitstream] >= 0} { error "Bitstream attempted after failure" }
@@ -153,6 +224,10 @@ if {$scenario in {success materialized_hub}} {
         unregistered_hub_fail {*Expected exactly one registered dbg_hub debug core*} \
         pending_hub_fail {*Unresolved blackboxes (post_opt):*dbg_hub*} \
         routed_blackbox_fail {*Unresolved blackboxes (routed):*i_unresolved*} \
+        sync_start_fail {*Missing bit-synchronizer timing startpoints*} \
+        pointer_source_fail {*Expected six RX FIFO source clock pins*} \
+        pad_clock_fail {*Expected one management clock for output pad budgets*} \
+        mdio_endpoint_fail {*Missing MDIO input timing endpoints*} \
         termination_fail {*Electrical property mismatch:*DIFF_TERM_ADV*}]
     if {![string match [dict get $expected $scenario] $message]} {
         error "Wrong $scenario failure: $message"
