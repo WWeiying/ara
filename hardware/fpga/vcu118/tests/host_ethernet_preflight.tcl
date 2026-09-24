@@ -7,6 +7,33 @@ proc eth_preflight::note {message} {
     flush $report
 }
 
+proc eth_preflight::console_status {phase} {
+    note "CONSOLE $phase CHANNELS=[lsort [chan names]]"
+    set failed [catch {
+        puts stdout "ETH_CONSOLE $phase"
+        flush stdout
+    } message options]
+    note "CONSOLE $phase STDOUT_OK=[expr {!$failed}]"
+    if {$failed} { note [dict get $options -errorinfo] }
+    return [expr {!$failed}]
+}
+
+proc eth_preflight::trace_stdout_close {command operation} {
+    set words [lrange $command 1 end]
+    if {[namespace tail [lindex $command 0]] eq "chan"} {
+        if {[lindex $words 0] ne "close"} { return }
+        set words [lrange $words 1 end]
+    }
+    if {[lindex $words 0] ne "stdout"} { return }
+    # Observe only. Never prevent a close or change vendor command semantics.
+    catch {
+        note "STDOUT_CLOSE $command"
+        for {set i 1} {$i <= 4 && $i < [info frame]} {incr i} {
+            note "STDOUT_CLOSE_FRAME [info frame -$i]"
+        }
+    }
+}
+
 proc eth_preflight::stage {name body {enabled 1}} {
     variable stages
     if {!$enabled} {
@@ -63,11 +90,15 @@ proc eth_preflight::run {output board_repo} {
     fconfigure $stages -encoding utf-8
     set ok 1
     set opened 0
+    set usable [stage console {
+        note "TCL_VERSION [info patchlevel]"
+        if {![console_status startup]} { error "stdout unavailable at startup" }
+    }]
     set usable [stage version {
         set tool_version [version -short]
         note "VIVADO_VERSION $tool_version"
         if {$tool_version ne "2020.1"} { error "Expected Vivado 2020.1; refusing unreviewed IP version" }
-    }]
+    } $usable]
     set usable [stage project {
         if {[llength [get_projects -quiet]]} { error "Run in a fresh batch process, not an existing project" }
         if {[file exists [file join $output project]]} { error "Project directory already exists" }
@@ -152,8 +183,27 @@ proc eth_preflight::run {output board_repo} {
         report_ip_status -license_status -file [file join $output ip_status_after.rpt]
     } $created]} { set ok 0 }
     set example [stage example {
+        if {![console_status before_example]} { error "stdout unavailable before example generation" }
+        set traced {}
+        foreach command {::close ::chan} {
+            if {[catch {trace add execution $command enter ::eth_preflight::trace_stdout_close} message]} {
+                note "STDOUT_TRACE_UNAVAILABLE $command $message"
+            } else {
+                lappend traced $command
+                note "STDOUT_TRACE_ATTACHED $command"
+            }
+        }
         # Keep this in-process: the default opens a second Vivado GUI instance.
-        open_example_project -in_process -dir [file join $output example] $ip
+        set example_code [catch {
+            open_example_project -in_process -dir [file join $output example] $ip
+        } example_result example_options]
+        foreach command $traced {
+            trace remove execution $command enter ::eth_preflight::trace_stdout_close
+        }
+        set console_ok [console_status after_example]
+        note "EXAMPLE_RETURN_CODE $example_code"
+        if {$example_code} { return -options $example_options $example_result }
+        if {!$console_ok} { error "stdout lost during example generation" }
         note "EXAMPLE_PROJECT [get_property NAME [current_project]]"
     } $generated]
     if {![stage example_inventory {

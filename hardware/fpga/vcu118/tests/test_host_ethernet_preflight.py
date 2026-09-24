@@ -13,6 +13,17 @@ import xml.etree.ElementTree as ET
 import host_ethernet_preflight as preflight
 
 
+# Abbreviated rows from uploaded f8d60ab1, preserving Vivado's blank cells.
+LICENSE_TABLE = """IP License Status Summary
+| Instance Name | Target | Required License | Generated License Level | Available License Level |
++---------------+--------+------------------+-------------------------+-------------------------+
+| eth_j10 | Simulation | tri_mode_eth_mac@2015.04 | Design_Linking | Design_Linking |
+|         |            | eth_avb_endpoint@2015.04 | Design_Linking | Design_Linking |
+|         | Synthesis  | tri_mode_eth_mac@2015.04 | Design_Linking | Design_Linking |
+|         |            | eth_avb_endpoint@2015.04 | Design_Linking | Design_Linking |
+"""
+
+
 class EthernetPreflightTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -35,9 +46,14 @@ class EthernetPreflightTest(unittest.TestCase):
         self.assertEqual(Path(kwargs["cwd"]), self.out)
         self.assertIn("-mode", command)
         self.assertIn("batch", command)
+        self.assertNotIn("-nolog", command)
+        self.assertEqual(command[command.index("-log") + 1], (self.out / "vivado.log").as_posix())
+        for option in ("stdout", "stderr", "stdin", "capture_output", "shell", "creationflags"):
+            self.assertNotIn(option, kwargs, f"Must inherit console handles, not {option}")
         self.assertEqual(command[-2:], [self.out.as_posix(), preflight.BOARD.parents[1].as_posix()])
         self.stage_file(dict.fromkeys(preflight.STAGES, "PASS"))
         (self.out / "preflight.rpt").write_text("PREFLIGHT_COMPLETE\n")
+        (self.out / "vivado.log").write_text("Mock Vivado native log\n")
         for name in ("ip_status_before.rpt", "ip_status_after.rpt"):
             (self.out / name).write_text("Mock license missing/evaluation report, not an approval\n")
         return subprocess.CompletedProcess(command, 0)
@@ -77,6 +93,7 @@ class EthernetPreflightTest(unittest.TestCase):
         self.assertEqual(record["state"], "static_board_checked_not_ip_verified")
         self.assertFalse(record["hardware_verified"])
         self.assertFalse(record["bitstream_license_verified"])
+        self.assertNotIn("logging_mode", record)
         self.assertEqual(record["stages"], {})
 
     def test_existing_output_untouched(self):
@@ -92,6 +109,7 @@ class EthernetPreflightTest(unittest.TestCase):
             self.assertEqual(self.main(), 0)
         record = self.record()
         self.assertEqual(record["state"], "ip_example_generated_needs_license_and_constraints_review")
+        self.assertEqual(record["logging_mode"], "inherited_console_with_vivado_native_log")
         self.assertFalse(record["hardware_access"])
         self.assertFalse(record["hardware_verified"])
         self.assertFalse(record["bitstream_license_verified"])
@@ -153,6 +171,105 @@ class EthernetPreflightTest(unittest.TestCase):
                 mock.patch.object(preflight.subprocess, "run", side_effect=missing):
             self.assertEqual(self.main(), 1)
 
+    def test_design_linking_is_not_accepted_despite_all_stages_passing(self):
+        def linking_only(command, **kwargs):
+            result = self.vivado_result(command, **kwargs)
+            (self.out / "ip_status_after.rpt").write_text(LICENSE_TABLE)
+            return result
+        with mock.patch.object(preflight, "find_vivado", return_value="vivado"), \
+                mock.patch.object(preflight.subprocess, "run", side_effect=linking_only):
+            self.assertEqual(self.main(), 1)
+        record = self.record()
+        self.assertEqual(record["stages"], dict.fromkeys(preflight.STAGES, "PASS"))
+        self.assertEqual(record["state"], "failed")
+        self.assertIn("Design_Linking", record["error"])
+        self.assertFalse(record["bitstream_license_verified"])
+
+    def test_example_error_and_license_blocker_both_survive_failure_upload(self):
+        def observed_failure(command, **kwargs):
+            self.vivado_result(command, **kwargs)
+            self.stage_file({**dict.fromkeys(preflight.STAGES, "PASS"),
+                             "example": "FAIL", "example_inventory": "SKIP"})
+            (self.out / "ip_status_after.rpt").write_text(LICENSE_TABLE)
+            (self.out / "vivado.log").write_text('can not find channel named "stdout"\n')
+            return subprocess.CompletedProcess(command, 1)
+        with mock.patch.object(preflight, "find_vivado", return_value="vivado"), \
+                mock.patch.object(preflight.subprocess, "run", side_effect=observed_failure), \
+                mock.patch.object(preflight, "upload") as upload:
+            self.assertEqual(self.main("--upload"), 1)
+        upload.assert_called_once_with(self.out)
+        record = self.record()
+        self.assertEqual(record["stages"]["example"], "FAIL")
+        diagnostics = record["diagnostics"]
+        self.assertTrue(diagnostics["stdout_channel_error_observed"])
+        self.assertEqual(diagnostics["temac_license"]["state"], "blocked_design_linking")
+
+    def test_bought_license_does_not_hide_example_failure(self):
+        def observed_failure(command, **kwargs):
+            self.vivado_result(command, **kwargs)
+            self.stage_file({**dict.fromkeys(preflight.STAGES, "PASS"),
+                             "example": "FAIL", "example_inventory": "SKIP"})
+            (self.out / "ip_status_after.rpt").write_text(LICENSE_TABLE.replace("Design_Linking", "Bought"))
+            (self.out / "preflight.rpt").write_text('can not find channel named "stdout"\nPREFLIGHT_COMPLETE\n')
+            return subprocess.CompletedProcess(command, 1)
+        with mock.patch.object(preflight, "find_vivado", return_value="vivado"), \
+                mock.patch.object(preflight.subprocess, "run", side_effect=observed_failure):
+            self.assertEqual(self.main(), 1)
+        record = self.record()
+        self.assertEqual(record["state"], "failed")
+        self.assertTrue(record["diagnostics"]["stdout_channel_error_observed"])
+        self.assertEqual(record["diagnostics"]["temac_license"]["state"], "full_reported_not_bitstream_verified")
+
+    def test_stdout_error_cannot_be_accepted_despite_success_stages(self):
+        def suppressed_error(command, **kwargs):
+            result = self.vivado_result(command, **kwargs)
+            (self.out / "vivado.log").write_text('can not find channel named "stdout"\n')
+            return result
+        with mock.patch.object(preflight, "find_vivado", return_value="vivado"), \
+                mock.patch.object(preflight.subprocess, "run", side_effect=suppressed_error):
+            self.assertEqual(self.main(), 1)
+        self.assertIn("stdout channel error", self.record()["error"])
+
+    def test_license_table_continuation_and_disabled_avb(self):
+        assessment = preflight.assess_mac_license(LICENSE_TABLE.replace("\n", "\r\n"))
+        self.assertEqual(assessment["state"], "blocked_design_linking")
+        self.assertEqual(len(assessment["synthesis_rows"]), 1)
+        self.assertEqual(assessment["synthesis_rows"][0]["required"], "tri_mode_eth_mac@2015.04")
+        # Leave AVB at Design_Linking, but provide a full TEMAC license.
+        full = LICENSE_TABLE.replace("tri_mode_eth_mac@2015.04 | Design_Linking | Design_Linking",
+                                     "tri_mode_eth_mac@2015.04 | Full | Full")
+        self.assertEqual(preflight.assess_mac_license(full)["state"], "full_reported_not_bitstream_verified")
+        self.assertFalse(preflight.assess_mac_license(full)["bitstream_verified"])
+        for generated, available in (("Bought", "Bought"), ("Purchased", "Purchased"),
+                                     ("Bought", "Full"), ("Full", "Bought")):
+            with self.subTest(generated=generated, available=available):
+                table = full.replace("| Full | Full", f"| {generated} | {available}")
+                assessment = preflight.assess_mac_license(table)
+                self.assertEqual(assessment["state"], "full_reported_not_bitstream_verified")
+                self.assertEqual(assessment["synthesis_rows"][0]["generated"], generated)
+                self.assertEqual(assessment["synthesis_rows"][0]["available"], available)
+                self.assertFalse(assessment["bitstream_verified"])
+        stale = full.replace("tri_mode_eth_mac@2015.04 | Full | Full",
+                             "tri_mode_eth_mac@2015.04 | Design_Linking | Full")
+        self.assertEqual(preflight.assess_mac_license(stale)["state"], "blocked_design_linking")
+        evaluation = full.replace("| Full | Full", "| Hardware_Evaluation | Hardware_Evaluation")
+        self.assertEqual(preflight.assess_mac_license(evaluation)["state"],
+                         "evaluation_reported_not_bitstream_verified")
+
+    def test_license_unknown_or_unrelated_report_never_approves_hardware(self):
+        for content in ("", "unrecognized table", "Design_Linking in prose",
+                        LICENSE_TABLE.replace("Synthesis", "Simulation"),
+                        LICENSE_TABLE.replace("eth_j10", "another_ip"),
+                        LICENSE_TABLE.replace("Design_Linking", "Unrecognized_Level")):
+            with self.subTest(content=content):
+                assessment = preflight.assess_mac_license(content)
+                self.assertEqual(assessment["state"], "unverified")
+                self.assertFalse(assessment["bitstream_verified"])
+        self.out.mkdir()
+        diagnostics = preflight.diagnose_reports(self.out)
+        self.assertEqual(diagnostics["temac_license"]["state"], "unverified")
+        self.assertFalse(diagnostics["stdout_channel_error_observed"])
+
     def test_tool_missing_leaves_failure_report(self):
         with mock.patch.object(preflight, "find_vivado", side_effect=ValueError("not installed")):
             self.assertEqual(self.main(), 1)
@@ -187,7 +304,19 @@ class EthernetPreflightTest(unittest.TestCase):
         result = subprocess.run(["tclsh", str(preflight.HERE / "test_host_ethernet_preflight.tcl"), str(self.out)],
                                 capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: Ethernet preflight", result.stdout)
+        self.assertIn("PASS: Ethernet preflight", result.stderr)
+
+    @unittest.skipUnless(shutil.which("tclsh"), "tclsh not installed")
+    def test_tcl_real_stdout_loss_is_recorded_and_rejected(self):
+        self.assertEqual(self.main("--static-only"), 0)
+        for mode in ("stdout_before_example", "stdout_closed_in_example",
+                     "stdout_closed_on_success", "stdout_chan_closed_in_example"):
+            with self.subTest(mode=mode):
+                result = subprocess.run(
+                    ["tclsh", str(preflight.HERE / "test_host_ethernet_preflight.tcl"), str(self.out), mode],
+                    capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("PASS: Ethernet preflight", result.stderr)
 
 
 if __name__ == "__main__":

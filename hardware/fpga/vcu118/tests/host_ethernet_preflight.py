@@ -48,7 +48,7 @@ CONFIG = {
     **PRESET,
 }
 STAGES = (
-    "version", "project", "catalog", "create_ip", "configure",
+    "console", "version", "project", "catalog", "create_ip", "configure",
     "license_before", "generate", "license_after", "example", "example_inventory",
 )
 UPLOAD_FILES = (
@@ -138,6 +138,59 @@ def read_stages(output):
     return result
 
 
+def assess_mac_license(content):
+    """Read the Vivado 2020.1 table, including blank continuation cells."""
+    header = ["Instance Name", "Target", "Required License",
+              "Generated License Level", "Available License Level"]
+    in_table = False
+    instance = target = ""
+    rows = []
+    for fields in csv.reader(content.splitlines(), delimiter="|"):
+        if len(fields) != 7 or fields[0].strip() or fields[-1].strip():
+            continue
+        fields = [field.strip() for field in fields[1:-1]]
+        if fields == header:
+            in_table = True
+            instance = target = ""
+            continue
+        if not in_table:
+            continue
+        if fields[0]:
+            instance, target = fields[:2]
+        elif fields[1]:
+            target = fields[1]
+        required, generated, available = fields[2:]
+        # AVB is disabled in CONFIG. Its separate table entries must not be
+        # mistaken for the required TEMAC feature's hardware license level.
+        if instance == "eth_j10" and target == "Synthesis" and required.startswith("tri_mode_eth_mac@"):
+            rows.append({"required": required, "generated": generated, "available": available})
+    state = "unverified"
+    if rows:
+        generated = {row["generated"] for row in rows}
+        available = {row["available"] for row in rows}
+        if "Design_Linking" in generated | available:
+            state = "blocked_design_linking"
+        elif generated | available <= {"Full", "Bought", "Purchased"}:
+            state = "full_reported_not_bitstream_verified"
+        elif generated | available <= {"Full", "Bought", "Purchased", "Hardware_Evaluation"}:
+            state = "evaluation_reported_not_bitstream_verified"
+    return {"state": state, "synthesis_rows": rows, "bitstream_verified": False}
+
+
+def diagnose_reports(output):
+    license_path = output / "ip_status_after.rpt"
+    log_path = output / "vivado.log"
+    license_text = license_path.read_text(encoding="utf-8-sig", errors="replace") if license_path.is_file() else ""
+    log = log_path.read_text(encoding="utf-8-sig", errors="replace") if log_path.is_file() else ""
+    report_path = output / "preflight.rpt"
+    report = report_path.read_text(encoding="utf-8-sig", errors="replace") if report_path.is_file() else ""
+    return {
+        "license_stage_pass_means_report_generated_only": True,
+        "temac_license": assess_mac_license(license_text),
+        "stdout_channel_error_observed": 'can not find channel named "stdout"' in log + report,
+    }
+
+
 def upload(output):
     from host_axi_upload import git, package, publish
     files = [(output / name, name) for name in UPLOAD_FILES if (output / name).is_file()]
@@ -198,23 +251,34 @@ def main(argv=None):
         else:
             # Vivado 2020.1's board repository parser rejected a Tcl list made
             # from Windows backslashes. Use native argv quoting, but Tcl paths.
-            command = [find_vivado(args.vivado), "-mode", "batch", "-notrace", "-nojournal", "-nolog",
+            command = [find_vivado(args.vivado), "-mode", "batch", "-notrace", "-nojournal",
+                       "-log", (output / "vivado.log").as_posix(),
                        "-source", script.as_posix(), "-tclargs", output.as_posix(), BOARD.parents[1].as_posix()]
             record["command"] = command
+            record["logging_mode"] = "inherited_console_with_vivado_native_log"
             print("Generating isolated IP/example only; no Ara project, synthesis, routing or board access.", flush=True)
             print(f"Vivado log: {output / 'vivado.log'}", flush=True)
-            with (output / "vivado.log").open("wb") as log:
-                process = subprocess.run(command, cwd=output, stdout=log, stderr=subprocess.STDOUT, check=False)
+            # Keep Windows console handles intact; let Vivado own its log file.
+            # Whether redirection caused the example's stdout error still needs
+            # a real Windows run. Tcl records channel checks on both sides.
+            print("Vivado output follows; keep this console open until completion.", flush=True)
+            process = subprocess.run(command, cwd=output, check=False)
             record["vivado_exit_code"] = process.returncode
+            record["diagnostics"] = diagnose_reports(output)
             record["stages"] = read_stages(output)
             report = (output / "preflight.rpt").read_text(encoding="utf-8", errors="replace")
             complete = "PREFLIGHT_COMPLETE" in report.splitlines()
             all_pass = record["stages"] == dict.fromkeys(STAGES, "PASS")
             if process.returncode or not complete or not all_pass:
                 raise RuntimeError("IP preflight incomplete/failed; inspect stages.tsv, preflight.rpt and vivado.log")
+            if record["diagnostics"]["stdout_channel_error_observed"]:
+                raise RuntimeError("stdout channel error observed despite stage results; inspect Vivado and Tcl reports")
             for name in ("ip_status_before.rpt", "ip_status_after.rpt"):
                 if not (output / name).is_file() or (output / name).stat().st_size == 0:
                     raise RuntimeError(f"Missing IP status report: {name}")
+            if record["diagnostics"]["temac_license"]["state"] == "blocked_design_linking":
+                raise RuntimeError("TEMAC is Design_Linking only in generated or available license level; "
+                                   "IP generation is not hardware authorization")
             record["state"] = "ip_example_generated_needs_license_and_constraints_review"
             code = 0
     except (OSError, ValueError, RuntimeError, ET.ParseError) as exc:
@@ -227,6 +291,16 @@ def main(argv=None):
         for stage, state in record["stages"].items():
             print(f"{stage}: {state}")
         print(f"STATE {record['state']}\nEVIDENCE {output}", flush=True)
+        if "diagnostics" in record:
+            diagnostics = record["diagnostics"]
+            print("License-stage PASS means report generation only, not hardware authorization.")
+            print(f"TEMAC_LICENSE {diagnostics['temac_license']['state']}")
+            if diagnostics["temac_license"]["state"] == "blocked_design_linking":
+                print("HARDWARE BLOCKER: TEMAC Design_Linking is not a hardware license. "
+                      "Do not proceed to board integration on this evidence.")
+            if diagnostics["stdout_channel_error_observed"]:
+                print("TOOL ERROR: stdout channel error observed; example generation is not validated. "
+                      "This is separate from the license assessment.")
         print("No hardware validation or full bitstream license approval has been established.", flush=True)
         if args.upload:
             try:

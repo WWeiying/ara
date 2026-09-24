@@ -4,6 +4,13 @@ Status: **IP/environment preflight only. Ethernet download RTL is not integrated
 and no link, throughput, or Ethernet-to-DDR test has passed on hardware.**
 The existing UART and JTAG single-beat loader remain unchanged.
 
+Latest Windows evidence (`9523a342e8947de5c7834d0eab97c1da71cb2d48`): IP
+configuration and generation passed; the regenerated TEMAC now reports **Bought**
+for both generated and available Synthesis license levels. Example export still
+fails with a Tcl `stdout` channel error. The runner below tests a console/logging
+correction and collects channel diagnostics; it is not yet validated in Windows
+Vivado. Do not start Ara integration on this evidence.
+
 ## One Windows Command
 
 From PowerShell, after updating the `ara_dsa` checkout:
@@ -18,7 +25,10 @@ Use `--vivado PATH` for another installation of **2020.1**. Other versions are
 reported and rejected, not silently treated as equivalent.
 
 The script creates a unique short directory under `D:/fpga_runs` (system temp on
-Linux), prints its path, and writes Vivado output to `vivado.log`. It never opens
+Linux), prints its path, and uses Vivado's native `-log` to write `vivado.log`.
+Vivado inherits the PowerShell console, so output is also visible while it runs.
+Run directly in PowerShell, without piping or redirecting the command's output,
+and wait for the final stage summary and upload branch. It never opens
 the Ara project or an existing checkpoint. It does not launch synthesis,
 implementation, simulation, or bitstream generation. It creates one disposable
 AXI Ethernet IP and its example project using `-in_process`, without opening a
@@ -50,7 +60,7 @@ effective repository parameter and available VCU118 boards on discovery failure.
 No board files, license settings, Ara project, or RTL changes are required.
 Update the checkout and rerun the same command; each run gets a fresh directory.
 Regression tests cover Windows-shaped argv on Linux and Tcl path/discovery
-failures, but a Windows Vivado rerun is still required to confirm the correction.
+failures. The next uploaded run below confirmed the correction in Windows.
 
 ### Installed IP Version Correction
 
@@ -73,7 +83,66 @@ older-only, newer-only, multiple-version, and duplicate definitions.
 
 `REQUIRES_LICENSE=1` describes an IP requirement, not whether this installation
 has or lacks that license. No configuration, generation, or actual license-status
-stage ran in this evidence. Those remain unverified until the next preflight.
+stage ran in that evidence; the subsequent runs below reached those stages.
+
+### Generated IP and the Original License Blocker
+
+Run `D:/fpga_runs/ara_eth_9k5nelr8`, uploaded as
+`f8d60ab166fbca0c1f02e3413bfa9b6cb95c8159`, passed all stages through
+`license_after`. Two separate findings must be preserved:
+
+- The example flow added HDL and XDC, exported simulator scripts, then printed
+  `can not find channel named "stdout"`. `open_example_project` returned an
+  error; the example inventory was skipped. The log localizes the failure to
+  that flow, but does not identify which command closed or lost the channel.
+  This does not establish a vendor RTL bug or a completed example.
+- `ip_status_after.rpt` lists `tri_mode_eth_mac@2015.04` with generated **and**
+  available license level `Design_Linking` for Synthesis. This is not a hardware
+  license. Successful IP generation and the two license-report commands do not
+  approve a board bitstream. AVB is disabled; its additional table rows are not
+  used to infer the required TEMAC feature's license level.
+
+The runner now records `diagnostics.temac_license` and any observed stdout
+channel error even when the example stage fails, and prints both independently.
+A detected TEMAC Design_Linking level rejects overall success even if every
+command stage passes. Unknown tables remain unverified. Full/Bought/Purchased
+levels are recognized while preserving the raw report values; neither these nor
+Hardware_Evaluation set `bitstream_license_verified` or `hardware_verified`.
+
+### Purchased License and the Remaining Example Failure
+
+After license activation, run `D:/fpga_runs/ara_eth_ymyhv6sh`, uploaded as
+`9523a342e8947de5c7834d0eab97c1da71cb2d48`, reports available level `Purchased`
+before generation and generated/available TEMAC Synthesis levels `Bought` after
+generation. The earlier Design_Linking blocker is no longer observed. The same
+`stdout` error persists after simulator script export, independently of licensing.
+
+The runner previously used Python to redirect Vivado stdout/stderr to a regular
+file and passed `-nolog`. The hypothesis under test is that this Windows batch
+launch arrangement contributes to the missing Tcl stdout channel. It now leaves
+the console handles inherited and lets Vivado manage its own `-log` file. This
+is a candidate workaround, not a proven root cause or a vendor patch.
+
+To make the next run discriminating, `preflight.rpt` records:
+
+- A separate `console` stage, Tcl version, channel names and an actual stdout
+  write/flush at startup and immediately before/after example generation.
+- Example return code and original error stack, including when stdout fails.
+- Temporary, observation-only Tcl execution traces of `close stdout` and
+  `chan close stdout`, with calling frames. Traces are removed after the call.
+  They observe only this interpreter, not child interpreters or native code;
+  absence of a close trace does not prove the channel was never closed.
+
+If stdout fails before the example, the example is not attempted. If stdout
+disappears during it, the run fails even if the example command returned success.
+If the parent channel remains healthy but the example fails, the remaining fault
+must be investigated inside the example flow; it cannot be called fixed. Errors
+are never ignored to accept a partially exported example. No license, IP
+configuration, board constraint, vendor installation, or Ara RTL is changed.
+
+Linux tests cover command construction and inherited stream options, report
+classification, 18 mocked vendor-flow scenarios, and four isolated Tcl processes
+that really close stdout. They cannot reproduce Windows Vivado internals.
 
 ## What Is Checked
 
@@ -133,8 +202,9 @@ restrictions before proceeding. `bitstream_license_verified` and
    startup and software execution; do not claim a speedup from line rate.
 
 The next hardware image should test the network in isolation, not simultaneously
-introduce a new network stack, DMA, and Ara memory path. The user's next action
-for now is only the preflight command above.
+introduce a new network stack, DMA, and Ara memory path. Current evidence is
+sufficient to proceed with the licensed-MAC route, but example generation and
+its clock/reset/constraint review must pass before building that network image.
 
 ## References and Local Tests
 
@@ -147,6 +217,8 @@ for now is only the preflight command above.
   actual uploaded catalog, not inferred from this document date.
 - [Vivado IP flow UG896 v2019.1](https://docs.amd.com/api/khub/documents/v9xbbDpXI1pI8~L4nCyifA/content):
   product and in-process example generation.
+- [Tcl execution traces](https://www.tcl-lang.org/man/tcl8.6/TclCmd/trace.htm):
+  observation of channel-closing calls, not a Vivado workaround guarantee.
 - Repository board contract: `hardware/fpga/ara_dsa_vcu118/board_files/vcu118/2.4`.
 
 ```bash
