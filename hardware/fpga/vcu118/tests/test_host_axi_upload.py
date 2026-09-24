@@ -73,12 +73,24 @@ class UploadTests(unittest.TestCase):
             root = Path(tmp)
             _, netlist, _ = self.fixture(root)
             with patch.object(upload, "MAX_INPUT_BYTES", 1):
-                with self.assertRaisesRegex(ValueError, "128 MiB"):
+                with self.assertRaisesRegex(ValueError, "512 MiB"):
                     upload.evidence_files(netlist, None)
             files = upload.evidence_files(netlist, None)
             with patch.object(upload, "MAX_ARCHIVE_BYTES", 1):
                 with self.assertRaisesRegex(ValueError, "48 MiB"):
                     upload.package(files, root, {})
+
+    def test_full_netlist_is_required_only_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, netlist, _ = self.fixture(Path(tmp))
+            full = netlist / "full_design.v"
+            full.write_text("module full; endmodule")
+            self.assertNotIn(full, [path for path, _ in upload.evidence_files(netlist, None)])
+            (netlist / "inspection.json").write_text('{"collected":true,"full_export":true}')
+            self.assertIn(full, [path for path, _ in upload.evidence_files(netlist, None)])
+            full.unlink()
+            with self.assertRaisesRegex(ValueError, "Required evidence"):
+                upload.evidence_files(netlist, None)
 
     def test_real_git_push_does_not_touch_user_branch_index_or_files(self):
         with tempfile.TemporaryDirectory() as tmp:

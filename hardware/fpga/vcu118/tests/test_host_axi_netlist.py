@@ -93,6 +93,57 @@ class NetlistTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("PASS", result.stdout)
 
+    def test_probes_from_latest_inspection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old = root / "axi_netlists/run"
+            old.mkdir(parents=True)
+            expected = root / "matching.ltx"
+            (old / "inspection.json").write_text(json.dumps({"bitstream_metadata": {
+                "Outputs": [{"Path": str(root / "design.bit")}, {"Path": str(expected)}]}}))
+            self.assertEqual(inspect.probes_from_last(root), expected)
+
+    def test_full_export_and_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            probes, checkpoint = self.fixture(root)
+
+            def run(command, **kwargs):
+                self.assertEqual(command[-3], str(checkpoint))
+                self.assertEqual(command[-1], "1")
+                output = Path(command[-2])
+                (output / "axi_netlist.rpt").write_text("INSPECTION_COMPLETE\n")
+                (output / "full_design.v").write_text("module full; endmodule\n")
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch.object(inspect.Path, "cwd", return_value=root), \
+                 patch.object(inspect.shutil, "which", return_value="vivado.bat"), \
+                 patch.object(inspect.subprocess, "run", side_effect=run), \
+                 patch("host_axi_upload.main", return_value=0) as upload, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(inspect.main([str(probes), "--full", "--upload"]), 0)
+            upload.assert_called_once()
+            record = json.loads(next((root / "axi_netlists").glob("*/inspection.json")).read_text())
+            self.assertTrue(record["collected"])
+            self.assertTrue(record["full_export"])
+
+    def test_missing_full_netlist_never_uploads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            probes, _ = self.fixture(root)
+
+            def run(command, **kwargs):
+                (Path(command[-2]) / "axi_netlist.rpt").write_text("INSPECTION_COMPLETE\n")
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch.object(inspect.Path, "cwd", return_value=root), \
+                 patch.object(inspect.shutil, "which", return_value="vivado.bat"), \
+                 patch.object(inspect.subprocess, "run", side_effect=run), \
+                 patch("host_axi_upload.main") as upload, \
+                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(inspect.main([str(probes), "--full", "--upload"]), 1)
+            upload.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

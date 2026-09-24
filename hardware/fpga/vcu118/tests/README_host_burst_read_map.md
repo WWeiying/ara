@@ -113,7 +113,7 @@ Only the inspection metadata, AXI report, four LLC netlists, Vivado logs,
 mapping JSON and mapping transport audit are included. There is no recursive
 directory upload. DCP, bitstream, ELF, unrelated logs and source changes are
 excluded. The manifest records per-file SHA256/length and the ZIP SHA256.
-Selected input is limited to 128 MiB and the ZIP to 48 MiB.
+Selected input is limited to 512 MiB and the ZIP to 48 MiB.
 
 `--push` authorizes sending these generated design files and logs (including
 local paths) to the checkout's **origin** remote with its existing access
@@ -137,3 +137,86 @@ and verifies that existing staged/unstaged data and branch state are untouched:
 ```sh
 python3 -m unittest -v test_host_axi_upload.py
 ```
+
+## Full Connectivity Export in One Command
+
+The four cell exports do not include the interconnect, vendor JTAG command
+logic, or the storage interfaces. Some optimized duplicate output aliases
+also have no driver when a cell is exported in isolation. To retain all
+connectivity without another hardware experiment, run:
+
+```powershell
+py -3 ..\..\vcu118\tests\host_axi_netlist.py --full --upload
+```
+
+The default probes path is recovered from the latest inspection's recorded
+bitstream outputs. The original checkpoint and probes hashes are rechecked.
+Explicitly supplying a probes path remains supported. The command opens the
+same old checkpoint and adds `full_design.v` using `write_verilog -mode funcsim
+-include_xilinx_libs`, then calls the isolated-branch uploader automatically.
+No synthesis, implementation, programming, hardware connection, or current
+RTL/XDC load is performed. The full netlist contains the entire generated
+design, including memory initialization and vendor simulation primitives;
+`--upload` authorizes sending it to origin, not just the four small LLC cells.
+If export or hash checking fails, nothing is uploaded. This is functional
+connectivity evidence, not a timing simulation or board correctness pass.
+
+## Reproduce Local Archived-Netlist Checks
+
+On Linux, with Icarus Verilog in PATH and the evidence branch's two files in
+an external directory, run:
+
+```sh
+python3 hardware/fpga/vcu118/tests/check_host_llc_netlist.py /path/to/evidence /tmp/new_llc_check
+```
+
+This checks archive/file hashes before using the unchanged exported netlists
+and their included Xilinx primitive models. The combinational AR cutter is
+checked for aligned 1/2/4/8-byte transfers and all 1..256-beat lengths (FIXED
+and INCR), in two address regions. Both sequential splitters are checked
+with 8-byte INCR beats at 16 starting offsets, lengths 1..17 and descriptor
+backpressure. The read unit checks 8-byte FIXED/INCR descriptors wholly within
+one line, SRAM request addresses, request/response counts, RLAST, ID and the
+retained RRESP bit, with request and response backpressure. SRAM returns dummy
+data; this does not check stored contents. The exported read-unit line-address
+registers survive on `r_unlock_o[index]`; the undriven duplicate line-address
+port and optimized-away RRESP[0] are not interpreted as hardware faults.
+Each simulation has a 120-second wall limit. No board access is required.
+
+### Evidence 62abf705: Local Findings
+
+Source: `fpga-evidence/axi-20260924_045820-8ac2da54`, commit
+`62abf7054a0876f9924e5cebd2246ddd182e5788`.
+Archive SHA256: `cb8d0d2b4c0221ce7017724f375ac649b36269e4f35c39de1a09311940eaf63c`.
+All ten archived file lengths and SHA256 values were checked locally.
+The recorded routed checkpoint SHA256 is
+`cba09318d878dea5325d08b1ba53c55559e49def20bb282b764807cb264272ac`.
+That DCP itself was not transferred or independently reopened on Linux.
+
+The report identifies ARSIZE/AWSIZE[2:0] as Q outputs of JTAG command FIFO
+register bits [23:21], all FDREs, not tied-off constants. It does not record
+their values during an actual request. `CMD.SIZE=64` in the host software
+and the three-bit physical pin width do not establish sampled AxSIZE=3.
+
+Results from the unchanged exported gate netlists and included primitives:
+
+| Check | Result |
+| --- | --- |
+| AR cutter arithmetic | 122,880 cases passed |
+| AR splitter with/without descriptor backpressure | 544 cases, 1,088 descriptors passed |
+| AW splitter with/without descriptor backpressure | 544 cases, 1,088 descriptors passed |
+| Read unit, 8-byte beats with backpressure | 72 cases, 240 SRAM request addresses passed |
+
+The cutter sweep includes long FIXED lengths as arithmetic inputs; it is not
+AXI protocol compliance certification. An initial broader read-unit sweep
+including narrow transfers was stopped without a completion result; it is
+not counted as passing. The bounded read-unit run above matches the intended
+64-bit full-width host accesses and is the reproducible check in the runner.
+
+These tests did not reproduce the board's +0x48/+0x90 matching pattern when
+correct requests/descriptors were injected into these isolated blocks.
+They do not exonerate the full LLC or JTAG path. Remaining distinctions need
+the actual inter-module connections, vendor command/return logic and storage
+interfaces, hence the full-connectivity export above. No production RTL,
+constraints, host burst mapping or acceptance checks were changed based on
+this negative result. Keep using the verified single-beat loader.

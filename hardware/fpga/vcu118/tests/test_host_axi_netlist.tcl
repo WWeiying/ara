@@ -22,7 +22,16 @@ proc get_property {property object} {
     error "Unexpected property $property"
 }
 proc get_nets {args} { return [lindex $args end] }
-proc write_verilog {args} { error "mock export failure" }
+proc write_verilog {args} {
+    if {$::mode eq "full"} {
+        if {[lsearch -exact $args -cell] >= 0} { error "Full export must not select a cell" }
+        set stream [open [lindex $args end] w]
+        puts $stream "module full; endmodule"
+        close $stream
+        return
+    }
+    error "mock export failure"
+}
 proc get_pins {args} {
     if {[lindex $args 0] eq "-leaf"} {
         set net [lindex $args 2]
@@ -54,4 +63,11 @@ foreach mode {constant dynamic export_failure} expected {011 ??? 011} {
 set mode blackbox
 if {![catch {axi_inspect::inspect mock.dcp $output} error] ||
     [string first "black box" $error] < 0} { error "Black box was not rejected" }
+set mode full
+axi_inspect::inspect mock.dcp $output 1
+if {![file exists [file join $output full_design.v]]} { error "Full export missing" }
+set mode dynamic
+if {![catch {axi_inspect::inspect mock.dcp $output 1} error]} {
+    error "Full export failure must be fatal"
+}
 puts "PASS: netlist constant, unresolved and black-box checks"

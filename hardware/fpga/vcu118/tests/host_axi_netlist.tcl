@@ -23,7 +23,7 @@ proc axi_inspect::drivers {pin stream} {
     return [lindex $constants 0]
 }
 
-proc axi_inspect::inspect {checkpoint output} {
+proc axi_inspect::inspect {checkpoint output {full 0}} {
     open_checkpoint $checkpoint
     set stream [open [file join $output axi_netlist.rpt] w]
     fconfigure $stream -encoding utf-8
@@ -75,6 +75,13 @@ proc axi_inspect::inspect {checkpoint output} {
                 } else { puts $stream "NETLIST $netlist" }
             }
         }
+        if {$full} {
+            # Preserve inter-module connectivity and vendor IP in one export.
+            # Failure is fatal: an incomplete full-path archive is not a success.
+            set netlist [file join $output full_design.v]
+            write_verilog -mode funcsim -include_xilinx_libs $netlist
+            puts $stream "NETLIST $netlist"
+        }
         puts $stream "INSPECTION_COMPLETE"
     } message options]
     close $stream
@@ -84,7 +91,7 @@ proc axi_inspect::inspect {checkpoint output} {
 
 if {![info exists ::axi_inspect_library_only]} {
     if {[catch {
-        if {[llength $argv] != 2} { error "Expected checkpoint and output directory" }
+        if {[llength $argv] ni {2 3}} { error "Expected checkpoint, output directory and optional full flag" }
         axi_inspect::inspect {*}$argv
     } message options]} {
         puts stderr [dict get $options -errorinfo]

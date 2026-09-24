@@ -17,7 +17,7 @@ NETLIST_FILES = (
     "i_read_unit.v", "i_write_unit.v", "i_ar_splitter.v", "i_aw_splitter.v",
 )
 MAP_FILES = ("map.json", "transport/vivado.log", "transport/transport.jsonl")
-MAX_INPUT_BYTES = 128 * 1024 * 1024
+MAX_INPUT_BYTES = 512 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 48 * 1024 * 1024
 
 
@@ -45,6 +45,8 @@ def evidence_files(netlist, mapping):
     if "INSPECTION_COMPLETE" not in report.splitlines():
         raise ValueError("Netlist report has no INSPECTION_COMPLETE marker")
     files = [(netlist / name, "netlist/" + name) for name in NETLIST_FILES]
+    if inspection.get("full_export") is True:
+        files.append((netlist / "full_design.v", "netlist/full_design.v"))
     if mapping is not None:
         files.append((mapping / "map.json", "burst_map/map.json"))
         files.extend((mapping / name, "burst_map/" + name) for name in MAP_FILES[1:]
@@ -53,7 +55,7 @@ def evidence_files(netlist, mapping):
         if source.is_symlink() or not source.is_file() or source.stat().st_size == 0:
             raise ValueError(f"Required evidence missing, empty or symlink: {source}")
     if sum(source.stat().st_size for source, _ in files) > MAX_INPUT_BYTES:
-        raise ValueError("Selected evidence exceeds 128 MiB; nothing uploaded")
+        raise ValueError("Selected evidence exceeds 512 MiB; nothing uploaded")
     return files
 
 
@@ -70,7 +72,7 @@ def package(files, output, metadata):
                     size += len(block)
                     total += len(block)
                     if total > MAX_INPUT_BYTES:
-                        raise ValueError("Evidence grew beyond 128 MiB; nothing uploaded")
+                        raise ValueError("Evidence grew beyond 512 MiB; nothing uploaded")
                     checksum.update(block)
                     target.write(block)
             records.append({"path": name, "bytes": size, "sha256": checksum.hexdigest()})
