@@ -23,6 +23,13 @@ the width converter may transform modifiable reads differently. If results
 differ, inspect its input/output AXI handshakes before assigning blame to the
 converter or MIG. The probe does not write memory, reset, or launch the core.
 
+`--cache-long-probe` adds 8-, 3-, 9-, and 256-beat `ARCACHE=2` reads at fresh
+SPM and DDR locations. Each is checked against 256 independently addressed
+single reads taken before the bursts; a second single-read sweep checks
+stability. A `verified` result is meaningful only when `stable` is true.
+These are memory regions, not side-effecting MMIO; never use modifiable reads
+on registers merely because the memory probe succeeds.
+
 Results go to a unique `burst_maps/<timestamp_and_suffix>/run` directory under
 the current directory. The script prints its location before connecting, then
 prints the mapping for each region. Optional positional argument two selects
@@ -124,6 +131,16 @@ JTAG ARADDR/ARLEN/ARSIZE/ARBURST and RDATA/RLAST at RVALID&&RREADY, together
 with the corresponding LLC-side AR/R handshakes. A post-routed checkpoint
 cannot simply have an ILA inserted and remain routed; do not treat the current
 data matches as a component-level fix.
+
+The read-only `--cache-probe` run `20260925_003843_qvgowu2a` used the same
+programmed image. All three windows (`0xffff0000`, `0x1401ff00`,
+`0xa1011000`) were stable. With `ARCACHE=0`, the second beat matched `+0x48`;
+with `ARCACHE=2`, it matched the correct `+0x08` in every window. This is a
+controlled request-attribute difference, not proof that the LLC or DDR width
+converter is the only faulty component. The 64-to-512-bit DDR upsizer has
+separate pass-through and packed paths selected by the modifiable bit, but the
+SPM result also changes. Wider reads and write/readback are not yet validated
+with this attribute; keep production loading in single-beat mode.
 
 ## Inspect the Archived Netlist
 

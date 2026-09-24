@@ -2,6 +2,7 @@
 """Read-only board discriminator; run from the exported software directory."""
 import argparse
 from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -55,7 +56,31 @@ def collect(transport, report, fixed_probe=False, cache_probe=False):
         region["stable"] = before == after
 
 
-def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False):
+def collect_cache_long(transport, report):
+    report["long_regions"] = []
+    for base in (0x14010000, 0xa1012000):
+        print(f"Checking long read region {base:#x} (no memory writes)...", flush=True)
+        region = {"base": hex(base), "stable": None, "cases": []}
+        report["long_regions"].append(region)
+        reads = [Operation("M", "READ", base + 8*i) for i in range(256)]
+        before = transport.exchange(reads)
+        for offset, beats in ((0, 8), (0x38, 3), (0x38, 9), (0, 256)):
+            data = transport.exchange(
+                [Operation("M", "READ", base + offset, beats, cache=2)])[0]
+            expected = b"".join(before[offset//8:offset//8 + beats])
+            mismatches = [i for i in range(beats)
+                          if data[8*i:8*i+8] != expected[8*i:8*i+8]]
+            region["cases"].append({"address": hex(base + offset), "beats": beats,
+                                    "arcache": 2, "verified": not mismatches,
+                                    "mismatch_beats": mismatches,
+                                    "observed_sha256": hashlib.sha256(data).hexdigest(),
+                                    "expected_sha256": hashlib.sha256(expected).hexdigest()})
+        after = transport.exchange(reads)
+        region["stable"] = before == after
+
+
+def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False,
+         cache_long_probe=False):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     print(f"EVIDENCE {output.resolve()}", flush=True)
@@ -67,6 +92,8 @@ def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False):
             if read_debug(transport, [STATUS])[0] & 15 != 7:
                 raise RuntimeError("Board not ready; no memory access attempted")
             collect(transport, report, fixed_probe=fixed_probe, cache_probe=cache_probe)
+            if cache_long_probe:
+                collect_cache_long(transport, report)
     except BaseException as exc:
         report["error"] = str(exc)
         raise
@@ -80,6 +107,11 @@ def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False):
                 print("FIXED", row["address"], "LEN", row["beats"], "MATCHES", row["matches"])
             for row in region.get("cache_rows", []):
                 print("CACHE", row["arcache"], row["address"], "MATCHES", row["matches"])
+        for region in report.get("long_regions", []):
+            print("LONG_REGION", region["base"], "STABLE", region["stable"])
+            for row in region["cases"]:
+                print("CACHE_LONG", row["address"], "LEN", row["beats"],
+                      "VERIFIED", row["verified"], "MISMATCHES", row["mismatch_beats"])
         print("EVIDENCE", output)
 
 
@@ -92,6 +124,8 @@ def cli(argv=None):
                         help="Compare two read-only FIXED bursts with INCR bursts")
     parser.add_argument("--cache-probe", action="store_true",
                         help="Compare read-only INCR bursts with ARCACHE=0 and ARCACHE=2")
+    parser.add_argument("--cache-long-probe", action="store_true",
+                        help="Check 8/3/9/256-beat ARCACHE=2 memory reads against singles")
     args = parser.parse_args(argv)
     if not args.probes.is_file():
         parser.error(f"Probes file does not exist: {args.probes}")
@@ -103,7 +137,8 @@ def cli(argv=None):
         output = Path(tempfile.mkdtemp(prefix=stamp, dir=parent)) / "run"
     try:
         main(args.probes.resolve(), output.resolve(), vivado=args.vivado,
-             fixed_probe=args.fixed_probe, cache_probe=args.cache_probe)
+             fixed_probe=args.fixed_probe, cache_probe=args.cache_probe,
+             cache_long_probe=args.cache_long_probe)
     except KeyboardInterrupt:
         print(f"CANCELLED: inspect {output}", file=sys.stderr)
         return 130

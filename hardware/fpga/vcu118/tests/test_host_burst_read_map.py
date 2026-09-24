@@ -23,8 +23,10 @@ class Memory:
         for op in operations:
             if op.bus != "M" or op.kind != "READ" or op.data:
                 raise AssertionError("Probe must be memory-read-only")
-            if not any(base <= op.address and op.address + 8*op.beats <= base + 256
-                       for base in (0xffff0000, 0x1401ff00, 0xa1011000)):
+            if not any(base <= op.address and op.address + 8*op.beats <= base + size
+                       for base, size in ((0xffff0000, 256), (0x1401ff00, 256),
+                                          (0xa1011000, 256), (0x14010000, 2048),
+                                          (0xa1012000, 2048))):
                 raise AssertionError("Read outside probe window")
             op.wire()
             if self.mode == "failure" and op.beats > 1:
@@ -40,6 +42,8 @@ class Memory:
                 words = [b"\x55" * 8] * op.beats
             if self.mode == "stale" and op.beats > 1:
                 words[1] = b"\xaa" * 8
+            if self.mode == "bad_cache_long" and op.cache == 2 and op.beats == 256:
+                words[64] = b"\xaa" * 8
             if self.mode == "changed" and self.calls == 9:
                 words[0] = b"\x66" * 8
             result.append(b"".join(words))
@@ -100,6 +104,25 @@ class ProbeTests(unittest.TestCase):
             self.assertEqual(region["cache_rows"][1]["matches"],
                              [[base], [hex(int(base, 16) + 8)]])
 
+    def test_cache_long_probe_verifies_cross_line_and_max_burst(self):
+        report = {}
+        probe.collect_cache_long(Memory("normal"), report)
+        self.assertEqual(len(report["long_regions"]), 2)
+        for region in report["long_regions"]:
+            self.assertTrue(region["stable"])
+            self.assertEqual([row["beats"] for row in region["cases"]], [8, 3, 9, 256])
+            self.assertTrue(all(row["verified"] for row in region["cases"]))
+            self.assertTrue(all(row["observed_sha256"] == row["expected_sha256"]
+                                for row in region["cases"]))
+
+    def test_cache_long_probe_reports_mismatch(self):
+        report = {}
+        probe.collect_cache_long(Memory("bad_cache_long"), report)
+        for region in report["long_regions"]:
+            self.assertTrue(region["stable"])
+            self.assertEqual(region["cases"][-1]["mismatch_beats"], [64])
+            self.assertFalse(region["cases"][-1]["verified"])
+
     def test_no_false_attribution_for_stale_data(self):
         for region in self.run_map("stale"):
             self.assertTrue(all(row["matches"][1] == [] for row in region["rows"]))
@@ -156,7 +179,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(probe.cli([str(probes), str(output), "--vivado", "vivado.bat"]), 0)
             run.assert_called_once_with(probes.resolve(), output.resolve(),
                                         vivado="vivado.bat", fixed_probe=False,
-                                        cache_probe=False)
+                                        cache_probe=False, cache_long_probe=False)
 
     def test_fixed_probe_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -167,7 +190,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(probe.cli([str(probes), str(output), "--fixed-probe"]), 0)
             run.assert_called_once_with(probes.resolve(), output.resolve(),
                                         vivado="vivado", fixed_probe=True,
-                                        cache_probe=False)
+                                        cache_probe=False, cache_long_probe=False)
 
     def test_cache_probe_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,7 +201,18 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(probe.cli([str(probes), str(output), "--cache-probe"]), 0)
             run.assert_called_once_with(probes.resolve(), output.resolve(),
                                         vivado="vivado", fixed_probe=False,
-                                        cache_probe=True)
+                                        cache_probe=True, cache_long_probe=False)
+
+    def test_cache_long_probe_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probes = Path(tmp) / "matching.ltx"
+            probes.touch()
+            output = Path(tmp) / "evidence"
+            with patch.object(probe, "main") as run, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(probe.cli([str(probes), str(output), "--cache-long-probe"]), 0)
+            run.assert_called_once_with(probes.resolve(), output.resolve(),
+                                        vivado="vivado", fixed_probe=False,
+                                        cache_probe=False, cache_long_probe=True)
 
     def test_missing_probes_does_not_connect(self):
         with tempfile.TemporaryDirectory() as tmp, \
