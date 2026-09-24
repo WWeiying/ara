@@ -83,13 +83,13 @@ def package(files, output, metadata):
     (output / "manifest.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
-def publish(output, remote, branch):
+def publish(output, remote, branch, message="Collect existing FPGA AXI evidence"):
     # A fresh repository keeps the user's branch, index, hooks and files untouched.
     git(output, "init", "-q")
     git(output, "symbolic-ref", "HEAD", "refs/heads/" + branch)
     git(output, "add", "--", "evidence.zip", "manifest.json")
     git(output, "-c", "user.name=FPGA Evidence", "-c", "user.email=fpga-evidence@localhost",
-        "-c", "commit.gpgsign=false", "commit", "-q", "-m", "Collect existing FPGA AXI evidence")
+        "-c", "commit.gpgsign=false", "commit", "-q", "-m", message)
     git(output, "push", remote, "HEAD:refs/heads/" + branch)
     return git(output, "rev-parse", "HEAD")
 
