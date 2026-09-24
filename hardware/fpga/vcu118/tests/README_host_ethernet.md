@@ -15,6 +15,10 @@ build or Ara integration.
 
 ## One Windows Command
 
+This command creates a new preflight. For the already successful
+`ara_eth_zr9jsk58` run, use **Collect the Existing Example** below instead;
+do not regenerate IP just to collect the review inputs.
+
 From PowerShell, after updating the `ara_dsa` checkout:
 
 ```powershell
@@ -49,6 +53,50 @@ If Git upload fails, local results and the prepared bundle are retained.
 `--out PATH` requires a **new** directory; old evidence is never overwritten.
 `--static-only` checks the repository's board XML without invoking Vivado. It is
 useful for development but cannot establish installed IP availability.
+
+## Collect the Existing Example
+
+The next gate needs actual top-level connections, reset/control logic and XDC
+content, not only the preflight's list of file names. The offline collector reads
+the successful directory without running Vivado, regenerating IP, modifying
+the example/Ara project, or connecting to hardware. Use ordinary PowerShell;
+no GUI, board power, terminal indentation, or Vivado environment setup is needed.
+
+```powershell
+git -C D:\project\ara pull --ff-only origin ara_dsa
+if ($LASTEXITCODE -eq 0) { py -3 D:\project\ara\hardware\fpga\vcu118\tests\host_ethernet_review.py D:\fpga_runs\ara_eth_zr9jsk58 --upload-example }
+```
+
+**Upload scope is different from preflight:** `--upload-example` explicitly
+uploads the selected generated example integration HDL and XDC, plus XCI/XPR
+configuration and existing diagnostic reports, to an isolated branch at `origin`.
+Omit it to create a local bundle only. Upload only to a remote where these example
+files may be shared; the script neither strips notices nor changes their license.
+It does not select TEMAC/PCS-PMA implementation HDL, encrypted cores, license
+files, bitstreams, checkpoints, simulator products or the entire project tree.
+The current successful inventory selects:
+
+- 17 allowlisted Verilog files under `imports`, covering the example top, support,
+  clock/reset, AXI-Lite initialization and example packet/FIFO logic.
+- 15 XDC files recorded by Vivado, including scoped/OOC constraints. These are
+  review inputs, **not** 15 files to apply unconditionally to a new top level.
+- 11 XCI configuration XML files, the example's XPR metadata, and 7 preflight
+  reports. `review.json` adds hashes, parsed IP parameters and explicit open
+  hardware/build acceptance flags. A recognized XML schema is not an IP check.
+
+The collector requires the supported configuration, completed preflight/stages,
+the matching bundled board XML, and required integration files. It validates
+inventory counts, rejects path traversal/links, protected content and oversized
+inputs, and checks the archived bytes against the collected hashes before any
+push. Source files are hashed now; the earlier preflight did not hash generated
+HDL, so this does not prove they remained unchanged since generation. An intact
+preflight directory can be moved; inventory paths are mapped only within it.
+
+Expected output includes `COUNTS`, `REVIEW_REQUIRED`, `UPLOADED_BRANCH` and
+`UPLOADED_COMMIT`. Send the branch/commit, not individual source excerpts. No
+network bitstream or synthesis is produced, and `build_ready` remains false.
+After reviewing this one bundle, the next deliverable is the isolated network
+build/test flow, with explicit pin, clock, PHY-reset, MDIO and control settings.
 
 ### Windows Board Repository Path Fix
 
@@ -254,6 +302,9 @@ its clock/reset/constraint review remains open before building that network imag
 - [PG138 revision history](https://docs.amd.com/r/en-US/pg138-axi-ethernet/Revision-History):
   records version 7.2 on June 24, 2020; installed versions above are from the
   actual uploaded catalog, not inferred from this document date.
+- [PG138 v7.2 VCU118/KCU116 board description](https://docs.amd.com/r/7.2-English/pg138-axi-ethernet/VCU118/KCU116-Board)
+  and [example components](https://docs.amd.com/r/7.2-English/pg138-axi-ethernet/Components-of-Example-Design):
+  architectural review references, not substitutes for the generated 2020.1 files.
 - [Vivado IP flow UG896 v2019.1](https://docs.amd.com/api/khub/documents/v9xbbDpXI1pI8~L4nCyifA/content):
   product and in-process example generation.
 - [Tcl execution traces](https://www.tcl-lang.org/man/tcl8.6/TclCmd/trace.htm):
@@ -262,6 +313,7 @@ its clock/reset/constraint review remains open before building that network imag
 
 ```bash
 python3 -m unittest discover -s hardware/fpga/vcu118/tests -p 'test_host_ethernet_preflight.py'
+python3 -m unittest discover -s hardware/fpga/vcu118/tests -p 'test_host_ethernet_review.py'
 python3 hardware/fpga/vcu118/tests/host_ethernet_preflight.py --static-only
 ```
 
