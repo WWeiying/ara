@@ -1,0 +1,63 @@
+{
+  "diagnostic_only": true,
+  "hardware_access": false,
+  "created_utc": "2026-09-24T16:03:42.294320+00:00",
+  "collection_checkout_commit": "6f86dfd30d1579efa5cfcd150a736215dbb841af",
+  "netlist_source": "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\software\\axi_netlists\\20260924_124446_iul23phx",
+  "map_source": "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\software\\burst_maps\\20260924_235823_4mk9ssb5\\run",
+  "note": "Independently collected runs; checkout commit is not bitstream provenance.",
+  "evidence_branch": "fpga-evidence/axi-20260924_160342-d86275dc",
+  "files": [
+    {
+      "path": "netlist/inspection.json",
+      "bytes": 1632,
+      "sha256": "89c4a3275adcb4c364832b0f5da6769bce0818eae063350a80c9b5b5bcdb7a7b"
+    },
+    {
+      "path": "netlist/axi_netlist.rpt",
+      "bytes": 5554,
+      "sha256": "6555264a569fd1921af2118f3249699105eb2f06588aed8acb1ab1cb26ec099e"
+    },
+    {
+      "path": "netlist/vivado.log",
+      "bytes": 5348,
+      "sha256": "53df5726ae7deb6de4223204888847c77bcb71bf6a888c1e4c6538a44d2e5951"
+    },
+    {
+      "path": "netlist/i_read_unit.v",
+      "bytes": 341300,
+      "sha256": "a86d77692ccd2333091235c25d3b494c250bc875d86d834af92c76f7b9ff6b08"
+    },
+    {
+      "path": "netlist/i_write_unit.v",
+      "bytes": 264182,
+      "sha256": "9db6d5bcb2b6a3cebc135a9b1feb08afce9d815addd777267532bedcaa374919"
+    },
+    {
+      "path": "netlist/i_ar_splitter.v",
+      "bytes": 332076,
+      "sha256": "45e065d1c8f2c725d6985ba9019629189581cab82f0eeb640f0f9d853edf2fa8"
+    },
+    {
+      "path": "netlist/i_aw_splitter.v",
+      "bytes": 332416,
+      "sha256": "1f71b18f15ae28128f33bfb6e0362a9b4218f5e96868a4616c9fd82dbd480de9"
+    },
+    {
+      "path": "burst_map/map.json",
+      "bytes": 9949,
+      "sha256": "7ea98be9e6bfc2620095bd17a90d0db2737c3a2d4a09c11f42447bce996b6c12"
+    },
+    {
+      "path": "burst_map/transport/vivado.log",
+      "bytes": 9744,
+      "sha256": "8398353f6fad64cbda2946ea34928a4e149099ddbb547dc88ef301dfc8bc675f"
+    },
+    {
+      "path": "burst_map/transport/transport.jsonl",
+      "bytes": 11265,
+      "sha256": "cfdff47afe73b4791678d61ce55f80c7affb211d5ba3a93f52a0358ab5bf25ab"
+    }
+  ],
+  "archive_sha256": "e5db08e082452042b94537dafffa5edc2e94a9116b619f405853f6e186d77492"
+}
