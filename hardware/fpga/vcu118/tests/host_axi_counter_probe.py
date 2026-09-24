@@ -21,7 +21,7 @@ def counters(snapshot):
     return {name: snapshot["ddr1"][name] for name in FIELDS}
 
 
-def collect(transport, report, resume_counters=False):
+def collect(transport, report, resume_counters=False, include_spm=False):
     report["identity"] = identity(transport)
     if read_debug(transport, [STATUS])[0] & 15 != 7:
         raise RuntimeError("Board not ready; no memory access attempted")
@@ -49,9 +49,13 @@ def collect(transport, report, resume_counters=False):
         if report["idle_ar_delta"] != 0:
             raise RuntimeError("DDR AR counter changed while idle; no probe reads attempted")
         previous = idle
-        for burst in ("FIXED", "INCR"):
-            address = ADDRESSES[burst]
-            data = transport.exchange([Operation("M", "READ", address, 2, burst=burst)])[0]
+        cases = [(burst, ADDRESSES[burst], 0) for burst in ("FIXED", "INCR")]
+        if include_spm:
+            cases.extend((burst, 0x1401ff00, cache)
+                         for burst in ("INCR", "FIXED") for cache in (0, 2))
+        for burst, address, cache in cases:
+            data = transport.exchange(
+                [Operation("M", "READ", address, 2, burst=burst, cache=cache)])[0]
             current = capture_snapshot(transport)
             if (current["watchdog_snapshot"] or
                     current["snapshot_sequence"] <= previous["snapshot_sequence"]):
@@ -59,6 +63,7 @@ def collect(transport, report, resume_counters=False):
             delta = {name: current["ddr1"][name] - previous["ddr1"][name]
                      for name in ("ar_count", "r_bytes", "error_count")}
             report["reads"].append({"burst": burst, "address": hex(address),
+                                    "arcache": cache,
                                     "data": data.hex(), "delta": delta,
                                     "after": counters(current)})
             previous = current
@@ -80,7 +85,7 @@ def collect(transport, report, resume_counters=False):
                 raise RuntimeError("Counter freeze was not restored")
 
 
-def main(probes, output, vivado="vivado", resume_counters=False):
+def main(probes, output, vivado="vivado", resume_counters=False, include_spm=False):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     report = {"diagnostic_only": True, "memory_writes": False,
@@ -88,7 +93,8 @@ def main(probes, output, vivado="vivado", resume_counters=False):
     print(f"EVIDENCE {output.resolve()}", flush=True)
     try:
         with VivadoTransport(output / "transport", probes=Path(probes), vivado=vivado) as transport:
-            collect(transport, report, resume_counters=resume_counters)
+            collect(transport, report, resume_counters=resume_counters,
+                    include_spm=include_spm)
     except BaseException as exc:
         report["error"] = str(exc)
         raise
@@ -109,6 +115,8 @@ def cli(argv=None):
     parser.add_argument("--vivado", default="vivado")
     parser.add_argument("--resume-counters", action="store_true",
                         help="Temporarily resume frozen counters and restore freeze afterward")
+    parser.add_argument("--include-spm", action="store_true",
+                        help="Also count DDR handshakes around read-only SPM cache/burst cases")
     args = parser.parse_args(argv)
     if not args.probes.is_file():
         parser.error(f"Probes file does not exist: {args.probes}")
@@ -120,7 +128,7 @@ def cli(argv=None):
                                        dir=parent)) / "counter"
     try:
         main(args.probes.resolve(), output.resolve(), vivado=args.vivado,
-             resume_counters=args.resume_counters)
+             resume_counters=args.resume_counters, include_spm=args.include_spm)
     except KeyboardInterrupt:
         return 130
     except Exception as exc:

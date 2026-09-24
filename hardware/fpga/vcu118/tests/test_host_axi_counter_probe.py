@@ -25,9 +25,10 @@ class Memory:
     def exchange(self, operations):
         for op in operations:
             self.calls.append(op)
-            valid_address = (op.address == probe.ADDRESSES[op.burst] if op.beats == 2 else
+            valid_address = (op.address in (*probe.ADDRESSES.values(), 0x1401ff00)
+                             if op.beats == 2 else
                              any(base <= op.address < base + 160
-                                 for base in probe.ADDRESSES.values()))
+                                 for base in (*probe.ADDRESSES.values(), 0x1401ff00)))
             if op.bus != "M" or op.kind != "READ" or not valid_address:
                 raise AssertionError("Only the selected memory address may be read")
             op.wire()
@@ -78,6 +79,25 @@ class ProbeTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "changed while idle"):
                 probe.collect(memory, {"reads": []})
         self.assertEqual(memory.calls, [])
+
+    def test_spm_route_cases_preserve_frozen_state(self):
+        memory = Memory()
+        state, read, write = self.debug_state(frozen=1)
+        report = {"reads": []}
+        with patch.object(probe, "identity", return_value={"caps": 1}), \
+             patch.object(probe, "read_debug", side_effect=read), \
+             patch.object(probe, "write_debug", side_effect=write), \
+             patch.object(probe, "capture_snapshot", side_effect=[
+                 snap(1, 10, 80), snap(2, 10, 80), snap(3, 11, 96),
+                 snap(4, 12, 112), *[snap(i, 12, 112) for i in range(5, 9)]]):
+            probe.collect(memory, report, resume_counters=True, include_spm=True)
+        self.assertEqual(len(report["reads"]), 6)
+        self.assertEqual([(row["burst"], row["arcache"]) for row in report["reads"][2:]],
+                         [("INCR", 0), ("INCR", 2), ("FIXED", 0), ("FIXED", 2)])
+        self.assertTrue(all(row["delta"]["ar_count"] == 0 and
+                            row["delta"]["r_bytes"] == 0 for row in report["reads"][2:]))
+        self.assertEqual(state[probe.COMMAND], 1)
+        self.assertTrue(report["restored_frozen"])
 
     def test_frozen_counters_require_opt_in_and_are_restored(self):
         memory = Memory()
