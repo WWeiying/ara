@@ -23,8 +23,8 @@ the width converter may transform modifiable reads differently. If results
 differ, inspect its input/output AXI handshakes before assigning blame to the
 converter or MIG. The probe does not write memory, reset, or launch the core.
 
-`--cache-long-probe` adds 8-, 3-, 9-, and 256-beat `ARCACHE=2` reads at fresh
-SPM and DDR locations. Each is checked against 256 independently addressed
+`--cache-long-probe` adds 8-, 3-, 9-, and 256-beat `ARCACHE=2` reads at a
+nominal SPM alias and a DDR location. Each is checked against 256 independently addressed
 single reads taken before the bursts; a second single-read sweep checks
 stability. A `verified` result is meaningful only when `stable` is true.
 These are memory regions, not side-effecting MMIO; never use modifiable reads
@@ -38,8 +38,8 @@ path when Vivado is not on PATH. No here-string or pasted Python is needed.
 
 The diagnostic uses existing host transport and identity checks. It reads
 32 independent 64-bit words before and after varied two/three-beat reads at
-DDR scratch `0xffff0000` and uncached LLC SPM `0x1401ff00`. It neither writes
-memory/debug registers nor resets or launches the CPU. It does not reprogram
+DDR scratch `0xffff0000` and the nominal LLC SPM alias `0x1401ff00`. It neither
+writes memory/debug registers nor resets or launches the CPU. It does not reprogram
 the board or change RTL/constraints.
 
 `map.json` retains raw data, all matching single-read addresses, window
@@ -124,13 +124,10 @@ The repeat run `20260925_002054_ttjapjv6` found the same counter deltas and
 stable single-read windows. At `0xa1010000`, FIXED returned words matching
 `+0x00,+0x40`; at `0xa1011000`, INCR returned `+0x00,+0x48`. Thus the pattern
 also occurs on reads that cross the DDR observation point, not only on the
-earlier SPM and cached scratch windows. The retained routed checkpoint does
-not record the source commit, and the programmed `.ltx` has no ILA. The next
-decisive test is a newly implemented diagnostic image that captures accepted
-JTAG ARADDR/ARLEN/ARSIZE/ARBURST and RDATA/RLAST at RVALID&&RREADY, together
-with the corresponding LLC-side AR/R handshakes. A post-routed checkpoint
-cannot simply have an ILA inserted and remain routed; do not treat the current
-data matches as a component-level fix.
+earlier nominal SPM and cached scratch windows. The retained routed checkpoint
+does not record the source commit, and the programmed `.ltx` has no ILA.
+The later ARCACHE and DDR-route discriminators below narrow the hypothesis;
+they do not establish that the parameter change is fixed on the board.
 
 The read-only `--cache-probe` run `20260925_003843_qvgowu2a` used the same
 programmed image. All three windows (`0xffff0000`, `0x1401ff00`,
@@ -138,17 +135,58 @@ programmed image. All three windows (`0xffff0000`, `0x1401ff00`,
 with `ARCACHE=2`, it matched the correct `+0x08` in every window. This is a
 controlled request-attribute difference, not proof that the LLC or DDR width
 converter is the only faulty component. The 64-to-512-bit DDR upsizer has
-separate pass-through and packed paths selected by the modifiable bit, but the
-SPM result also changes. This two-beat result alone was not sufficient to
+separate pass-through and packed paths selected by the modifiable bit. The
+nominal SPM alias also changed, later explained by its observed DDR route.
+This two-beat result alone was not sufficient to
 enable production loading.
 
 The `--cache-long-probe` run `20260925_004313_oc6ce63h` checked
-`ARCACHE=2` at SPM `0x14010000` and DDR `0xa1012000`. The 8-, 3-, 9-,
+`ARCACHE=2` at nominal SPM alias `0x14010000` and DDR `0xa1012000`. The 8-, 3-, 9-,
 and 256-beat results all matched 256 independent single reads; each
 before/after single-read window was stable. This establishes readback
 consistency for those lengths and offsets, not arbitrary regions or writes.
 Raw reports and transport logs are on
 `fpga-evidence/axi-20260924_164533-e02b137d` (commit `20c46372`).
+
+The expanded `--cache-probe` run `20260925_004904_2_r7o7ee` confirmed that
+both `ARCACHE=0` and `ARCACHE=2` FIXED reads still return the second word from
+`+0x40` in all three regions. Only modifiable INCR reads recover the expected
+`+0x08`. This is consistent with the source upsizer packing INCR requests when
+`ARCACHE[1]=1`, while FIXED requests remain narrow pass-through.
+
+The `--include-spm` DDR counter run `20260925_005138_zskhqvr8` found one
+DDR1 AR and two DDR1 R beats for each read at `0x1401ff00`, regardless of
+burst/cache mode. `last_ar_addr=0x1401ff00`. Thus on this programmed image
+the nominal SPM alias was routed to DDR; its matching error is **not** an
+independent test of an on-chip SPM read path. The original label in earlier
+reports described an intended map, not observed routing. No writes were made
+to that alias in this discriminator. Raw map and counter reports are on
+`fpga-evidence/axi-20260924_170036-7b6fbd9a` (commit `9285484a`).
+
+The Windows host-project DDR XCI reports 512-bit AXI and
+`PARAM_VALUE.C0.DDR4_AxiNarrowBurst=false`. The archived bitstream metadata
+does not bind a source commit or XCI hash, so this is strong but not exact
+provenance for the programmed image. With narrow support disabled, passing
+64-bit multi-beat requests through the 64-to-512-bit adapter predicts the
+observed `+0x40` FIXED and `+0x48` INCR data selection; packing a modifiable
+INCR request predicts the correct `+0x08`. [AMD PG150](https://docs.amd.com/r/en-US/pg150-ultrascale-memory-ip/AXI4-Slave-Interface-Parameters)
+requires narrow-burst support when the DDR AXI and application data widths
+match and the slave can receive narrow transfers. The host and dual-DDR IP creation
+scripts now explicitly enable `CONFIG.C0.DDR4_AxiNarrowBurst=true`; baseline
+remains false. An isolated Vivado 2020.1 run at
+`D:\fpga_runs\ara_ddr_narrow_preflight_001` generated the new IP/XCI and
+reported `DDR4_NARROW_BURST=true`, with no synthesis or board access. A fresh
+full host bitstream and board regression are still required before declaring
+the hardware fix complete. Keep the current image's production loading in
+single-beat mode.
+
+To verify the new IP setting, build a fresh full host image and first check
+its DDR XCI, synthesis/implementation reports, bitstream and matching LTX.
+After deliberate reprogramming, repeat read-only cache-0 INCR and FIXED probes
+at stable DDR addresses, including 2/3/256-beat cases, and confirm independent
+single reads match. Only then run guarded scratch writes/readback and the
+existing smoke ELF checks. The isolated IP preflight and cache-2 reads on the
+old image do not substitute for that board regression.
 
 ## Inspect the Archived Netlist
 

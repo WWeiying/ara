@@ -3,9 +3,11 @@
 ## Question
 
 Board reports show successful independent 64-bit accesses but incorrect second
-beats of INCR reads in both DDR scratch (0xffff0000) and uncached LLC SPM
-(0x1401ff00). Resetting JTAG AXI and refreshing its transaction data did not
-change the reported SPM failure. These were initially user-reported board
+beats of INCR reads at both DDR scratch (0xffff0000) and the nominal LLC SPM
+alias (0x1401ff00). Later live DDR counters show the latter actually reached
+DDR1 on the programmed image; it was not an independent SPM-path check.
+Resetting JTAG AXI and refreshing its transaction data did not change the
+reported failure. These were initially user-reported board
 observations; the subsequent read-only map and partial netlist were uploaded
 on `fpga-evidence/axi-20260924_045820-8ac2da54` and verified locally.
 
@@ -20,7 +22,9 @@ is 8 ways x 256 lines x 8 blocks, with 48-bit addresses, 64-bit data and host
 input index 3. Other masters are idle; non-memory outputs are unused.
 
 The bench follows the boot ROM's BIST wait and all-SPM configuration writes.
-DDR then takes the LLC bypass; SPM accesses exercise LLC data storage. The SRAM
+In this simulation, DDR then takes the LLC bypass; SPM accesses exercise LLC
+data storage. This simulated routing does not establish the programmed board's
+route for the nominal SPM alias. The SRAM
 implementation is the existing generic `tc_sram` simulation model. The production
 `dram_wrapper_xilinx` supplies data/ID conversion, CDC, address slicing and UI
 reset logic. A test-only `ddr4` AXI endpoint uses the library `axi_to_mem` adapter
@@ -76,14 +80,16 @@ to use FIXED reads at `0xffff0000` found that the test-only DDR `axi_to_mem`
 endpoint returned zero after the first beat; it cannot validate FIXED burst
 semantics of the physical MIG. That failed attempt is retained at
 `/tmp/ara_host_fixed_probe_20260924`. Neither simulation exercises the Xilinx
-JTAG core. The board's FIXED read matched the next 64-byte line in both regions,
-so the accepted AR fields and R handshakes at the JTAG/LLC boundary still need
-cycle-level capture before any RTL change.
+JTAG core or the physical MIG narrow-burst setting. The board's FIXED read
+matched the next 64-byte line at both addresses. Subsequent ARCACHE and DDR
+counter probes instead point to a disabled narrow-burst setting on the 512-bit
+DDR interface; see [the board mapping](README_host_burst_read_map.md).
 
 This does not reproduce the board failure. It does NOT validate the Xilinx
 JTAG core, Tcl/JTAG transfer packing, XPM/URAM implementation, MIG internals,
 physical timing/metastability, multi-master contention or CPU execution. It does not
-justify declaring the burst loader fixed or modifying RTL speculatively.
+justify declaring the burst loader fixed. The DDR IP parameter change still
+requires a fresh bitstream and board regression.
 
 The earlier low-cost discriminator was the complete `neighbor_single_bytes`
 array already recorded in the Windows `axi_burst02/report.json`: compare the
