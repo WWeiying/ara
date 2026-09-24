@@ -1,20 +1,17 @@
 # VCU118 J10 Ethernet Downloader: Preflight and Bring-Up Plan
 
-Status: **Vivado 2020.1 generated and routed an isolated diagnostic image;
-report review found a reset-release CDC risk, and the registered-output fix
-awaits a new build. No link, throughput or Ethernet-to-DDR test has passed on
-hardware.**
+Status: **Vivado 2020.1 generated and routed the revised isolated diagnostic
+image. The counter-driven reset CDC-10 paths are gone, but reset-fanout CDC-11
+and partial MDIO timing remain for board-level review. No link, throughput or
+Ethernet-to-DDR test has passed on hardware.**
 The existing UART and JTAG single-beat loader remain unchanged.
 
-Next action: re-run the
-[isolated build command](../ethernet/README.md#windows-one-build-invocation)
-with the registered reset fix, using the existing `ara_eth_zr9jsk58` preflight.
-The last run passed all eight build stages; its routed
-[report review](../ethernet/README.md#third-windows-build-review) found ten
-critical CDC paths from the diagnostic counter to asynchronous resets and a
-partial MDIO input constraint. The new reset outputs passed bounded RTL tests.
-The re-run will measure whether the CDC paths are removed. Board PHY/packet
-tests and the Ethernet downloader remain open.
+Next action: use the
+[fourth build review](../ethernet/README.md#fourth-windows-build-review) to
+prepare a read-only cable/target inventory, then a controlled diagnostic
+programming and PHY-ID/management readback with a rollback path. The build
+used the registered reset fix and passed all eight stages; this is not a
+physical link or downloader pass. Board PHY/packet tests remain open.
 
 Successful preflight evidence (`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`): **all 11
 preflight stages passed** using collector `6c94d2ff`. TEMAC reports **Bought** for

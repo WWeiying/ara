@@ -1,10 +1,10 @@
 # Isolated VCU118 J10 Diagnostic Build
 
 Status: Windows Vivado 2020.1 completed all eight build stages on source
-`2043c11b`, including routing, timing reports and bitgen. Report review found
-the diagnostic reset release driven by a combinational counter comparison;
-the registered-output correction below passed local RTL tests but awaits a new
-Windows build. **Physical Ethernet operation is unverified.**
+`421070e6`, including routing, timing reports and bitgen. The registered
+reset-release correction removed the counter-driven CDC-10 paths; reset
+fanout CDC-11 and partial MDIO input timing still need board-level review.
+**Physical Ethernet operation is unverified.**
 This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
 
@@ -150,6 +150,54 @@ our control reset, and need review against the new CDC report. Do not program
 the prior image as an accepted diagnostic image. Re-run the build after the
 registered reset change, then inspect CDC, timing, methodology and DRC reports
 before starting JTAG/MDIO board checks.
+
+## Fourth Windows Build Review
+
+Source `421070e6` produced `D:/fpga_runs/ara_eth_build_nc1cwrm8` on Vivado
+2020.1. Evidence commit `687fad42eeb2f4b57135798c6251bb76a1c7916e` is on
+`fpga-evidence/ethernet-build-20260924_152118-e1536d8d`. Its ZIP SHA256 is
+`29e02ce808c4b04d60456a5e17aa075e05b3e7c0d4894f67e24dd6bca59c980a`.
+All eight stages passed and licensed bitgen produced the local `.bit` and
+`.ltx`; no board connection was made. Routed WNS/WHS/WPWS are
+`+1.268/+0.000/+0.005 ns`. The routed DRC has zero errors and the six-bit RX
+pointer skew is 0.598 ns against its 8 ns bound. Zero hold slack meets the
+reported constraint but has no margin. Correct pin/electrical assertions and
+zero unresolved black boxes passed after routing.
+
+The ten CDC-10 findings sourced at `i_phy_reset/elapsed_reg[20]` in the prior
+image are absent. Total CDC-10 fell from 14 to three, all inside vendor MAC/PCS.
+The new report classifies eight paths from the registered
+`i_phy_reset/settled_reg` to MAC/FIFO/packet reset synchronizers as CDC-11
+Critical fanout. These are intentional asynchronous reset assertions followed
+by per-domain synchronized release, but the report does not establish their
+cycle-level behavior on hardware. CDC-1 (32) and CDC-4 (two) remain inside
+vendor MAC/PCS. No CDC warning was suppressed.
+
+`check_timing.rpt` still flags `mdio` as a partial input-delay constraint; the
+20 ns datapath bound is not a complete PHY-to-MAC input timing check. The
+methodology report has nine LUTAR-1 warnings, including one on our control
+reset's `sys_rst | !locked` assertion path, plus one TIMING-9 warning and a
+CLKC-24 advisory. These are not waived by successful bitgen. The automated
+runner deliberately records `programming_approved: false`. Keep the existing
+Ara image in place until the diagnostic programming and MDIO/link test are
+explicitly undertaken with a rollback path. The next hardware step is a
+read-only cable/target inventory, followed by controlled programming and
+PHY-ID/management readback; no Ethernet downloader exists yet.
+
+## Read-Only Hardware Inventory
+
+From Windows PowerShell, with the board powered and its JTAG cable connected:
+
+```powershell
+& 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat' -mode batch -notrace -nojournal -nolog -source 'D:\project\ara\hardware\fpga\vcu118\ethernet\inventory.tcl'
+```
+
+This command connects to `localhost:3121`, requires exactly one JTAG target
+and one `xcvu9p` device, prints their identities, then closes the connection.
+It does not refresh, reset or program any device. `READ_ONLY_INVENTORY_PASS`
+means only that the Windows host can see a matching device; it does not
+identify the image currently running or test Ethernet. The mock Tcl test is
+`tclsh hardware/fpga/vcu118/tests/test_ethernet_inventory.tcl`.
 
 ## Circuit and Boundaries
 
