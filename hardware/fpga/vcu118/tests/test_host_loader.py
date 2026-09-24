@@ -139,6 +139,17 @@ class ImageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 op.wire()
 
+    def test_fixed_read_is_diagnostic_only(self):
+        self.assertEqual(Operation("M", "READ", 0xffff0000, 2, burst="FIXED").wire(),
+                         "M READ 00000000ffff0000 2 - FIXED")
+        self.assertEqual(Operation("M", "READ", 0xffff0000, 2).wire(),
+                         "M READ 00000000ffff0000 2 -")
+        for op in (Operation("M", "WRITE", 0, data=b"12345678", burst="FIXED"),
+                   Operation("D", "READ", 0, burst="FIXED"),
+                   Operation("M", "READ", 0, burst="WRAP")):
+            with self.assertRaises(ValueError):
+                op.wire()
+
     def test_requires_reset_before_any_transport(self):
         with self.assertRaisesRegex(ValueError, "full-reset-confirmed"):
             host.load_and_run(None, None, self.base, {})
@@ -323,6 +334,16 @@ class TclTransportTests(unittest.TestCase):
         self.assertEqual(snapshot["core"]["retired"], 123)
         self.assertEqual(snapshot["ddr1"]["read_outstanding"], 2)
         self.assertIn("ddr1.r_bytes", (self.base / "snapshot.csv").read_text())
+
+    def test_fixed_burst_reaches_tcl_and_repeats_one_address(self):
+        with self.transport() as transport:
+            address = 0xffff0000
+            single = transport.exchange([Operation("M", "READ", address)])[0]
+            fixed = transport.exchange(
+                [Operation("M", "READ", address, 3, burst="FIXED")])[0]
+            self.assertEqual(fixed, single * 3)
+            self.assertEqual(len(transport.exchange(
+                [Operation("M", "READ", address, 3)])[0]), 24)
 
     def test_single_beat_load_works_when_bursts_are_broken(self):
         prepared = image.prepare_image(self.elf, caps=3)

@@ -50,11 +50,16 @@ proc host::core {bus} {
 proc host::transaction {line} {
     variable serial
     variable cells
-    if {[llength $line] != 5} { error "Malformed operation" }
-    lassign $line bus kind address beats data
+    if {[llength $line] ni {5 6}} { error "Malformed operation" }
+    lassign $line bus kind address beats data burst
+    if {$burst eq ""} { set burst INCR }
     if {$bus ni {M D} || $kind ni {READ WRITE} ||
         ![regexp {^[0-9a-fA-F]{16}$} $address] ||
         ![string is integer -strict $beats]} { error "Invalid operation" }
+    if {$burst ni {INCR FIXED} ||
+        ($burst eq "FIXED" && ($bus ne "M" || $kind ne "READ"))} {
+        error "Invalid diagnostic burst mode"
+    }
     set width [expr {$bus eq "M" ? 8 : 4}]
     set limit [expr {$bus eq "M" ? 256 : 1}]
     set addr [expr 0x$address]
@@ -82,7 +87,7 @@ proc host::transaction {line} {
     } elseif {$data ne "-"} { error "Unexpected READ data" }
     set object [host::core $bus]
     set args [list -type $kind -address $address -len $beats]
-    if {$bus eq "M"} { lappend args -burst INCR -cache 0 -id 0 }
+    if {$bus eq "M"} { lappend args -burst $burst -cache 0 -id 0 }
     if {$kind eq "WRITE"} { lappend args -data $data }
     set txn [create_hw_axi_txn host_[incr serial] $object {*}$args]
     set code [catch {
@@ -93,8 +98,8 @@ proc host::transaction {line} {
         # https://docs.amd.com/r/2023.2-English/ug912-vivado-properties/HW_AXI
         if {[get_property CMD.SIZE $txn] != $width * 8} { error "Wrong IP data width" }
         if {[get_property CMD.LEN $txn] != $beats} { error "Vivado CMD.LEN differs from requested beats" }
-        if {$bus eq "M" && [get_property CMD.BURST $txn] ne "INCR"} {
-            error "Vivado CMD.BURST is not INCR"
+        if {$bus eq "M" && [get_property CMD.BURST $txn] ne $burst} {
+            error "Vivado CMD.BURST differs from requested mode"
         }
         if {$kind eq "WRITE"} {
             set accepted [string map {_ "" " " "" \n "" \r ""} [get_property DATA $txn]]

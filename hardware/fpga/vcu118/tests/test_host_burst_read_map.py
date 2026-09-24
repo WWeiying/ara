@@ -31,7 +31,9 @@ class Memory:
                 raise RuntimeError("mock transport failure")
             stride = 72 if self.mode == "stride72" else 8
             words = [(op.address + stride*i).to_bytes(8, "little") for i in range(op.beats)]
-            if self.mode == "line_advance":
+            if op.burst == "FIXED":
+                words = [op.address.to_bytes(8, "little")] * op.beats
+            if self.mode == "line_advance" and op.burst == "INCR":
                 words = [((op.address & ~63) + 64*i + ((op.address + 8*i) & 63)).to_bytes(8, "little")
                          for i in range(op.beats)]
             if self.mode == "duplicate":
@@ -75,6 +77,15 @@ class ProbeTests(unittest.TestCase):
             for row, offsets in zip(region["rows"], expected):
                 self.assertEqual(row["matches"], [[hex(base + offset)] for offset in offsets])
             self.assertNotEqual(region["rows"][2]["matches"][1], [hex(base + 0x38 + 72)])
+
+    def test_fixed_probe_keeps_address_constant(self):
+        report = {"regions": []}
+        probe.collect(Memory("line_advance"), report, fixed_probe=True)
+        for region in report["regions"]:
+            self.assertTrue(region["stable"])
+            self.assertEqual(len(region["fixed_rows"]), 2)
+            for row in region["fixed_rows"]:
+                self.assertEqual(row["matches"], [[row["address"]]] * row["beats"])
 
     def test_no_false_attribution_for_stale_data(self):
         for region in self.run_map("stale"):
@@ -130,7 +141,18 @@ class CliTests(unittest.TestCase):
             output = Path(tmp) / "evidence"
             with patch.object(probe, "main") as run, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(probe.cli([str(probes), str(output), "--vivado", "vivado.bat"]), 0)
-            run.assert_called_once_with(probes.resolve(), output.resolve(), vivado="vivado.bat")
+            run.assert_called_once_with(probes.resolve(), output.resolve(),
+                                        vivado="vivado.bat", fixed_probe=False)
+
+    def test_fixed_probe_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probes = Path(tmp) / "matching.ltx"
+            probes.touch()
+            output = Path(tmp) / "evidence"
+            with patch.object(probe, "main") as run, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(probe.cli([str(probes), str(output), "--fixed-probe"]), 0)
+            run.assert_called_once_with(probes.resolve(), output.resolve(),
+                                        vivado="vivado", fixed_probe=True)
 
     def test_missing_probes_does_not_connect(self):
         with tempfile.TemporaryDirectory() as tmp, \

@@ -123,7 +123,8 @@ proc run_hw_axi {name} {
     set width [expr {$core eq "mem_a" ? 8 : 4}]
     set result ""
     for {set i 0} {$i < $beats} {incr i} {
-        set a [expr {$addr + $width * $i}]
+        set a [expr {$addr + ($core eq "mem_a" &&
+            [info exists ::txn($name,-burst)] && $::txn($name,-burst) eq "FIXED" ? 0 : $width * $i)}]
         if {$::mode eq "alias" && $core eq "mem_a" && $a >= 0x100000000} {
             set a [expr {$a - 0x80000000}]
         }

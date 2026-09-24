@@ -22,6 +22,7 @@ class Operation:
     beats: int = 1
     data: bytes = b""
     separate_words: bool = False
+    burst: str = "INCR"
 
     @property
     def width(self):
@@ -40,11 +41,15 @@ class Operation:
             raise ValueError("Invalid AXI data length")
         if self.separate_words and (self.kind != "WRITE" or self.beats < 2):
             raise ValueError("Word separators require a multi-beat WRITE")
+        if self.burst not in ("INCR", "FIXED") or (self.burst == "FIXED" and
+                (self.bus != "M" or self.kind != "READ")):
+            raise ValueError("FIXED burst is supported only for memory READ diagnostics")
         data = to_axi_hex(self.data, self.width) if self.kind == "WRITE" else "-"
         if self.separate_words:
             digits = self.width * 2
             data = "_".join(data[i:i + digits] for i in range(0, len(data), digits))
-        return f"{self.bus} {self.kind} {self.address:016x} {self.beats} {data}"
+        line = f"{self.bus} {self.kind} {self.address:016x} {self.beats} {data}"
+        return line if self.burst == "INCR" else f"{line} {self.burst}"
 
 
 class TransportError(RuntimeError):
@@ -159,7 +164,8 @@ class VivadoTransport:
         self.sequence += 1
         seq = self.sequence
         self.audit.write(json.dumps({"batch": seq, "operations": [
-            {"bus": op.bus, "kind": op.kind, "address": op.address, "beats": op.beats}
+            {"bus": op.bus, "kind": op.kind, "address": op.address,
+             "beats": op.beats, **({"burst": op.burst} if op.burst != "INCR" else {})}
             for op in operations]}) + "\n")
         self.audit.flush()
         try:

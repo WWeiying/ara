@@ -10,6 +10,12 @@ In PowerShell, with `$P` set to the matching `.ltx` file:
 py -3 ..\..\vcu118\tests\host_burst_read_map.py $P
 ```
 
+Add `--fixed-probe` to compare two FIXED reads per region with the normal INCR
+reads in the same session. A correct FIXED read returns the starting word on
+every beat. If only INCR is wrong, address progression is suspect; if FIXED is
+also wrong, inspect R-channel ordering/capture before attributing an address
+fault. This option is read-only and does not reset the JTAG AXI core.
+
 Results go to a unique `burst_maps/<timestamp_and_suffix>/run` directory under
 the current directory. The script prints its location before connecting, then
 prints the mapping for each region. Optional positional argument two selects
