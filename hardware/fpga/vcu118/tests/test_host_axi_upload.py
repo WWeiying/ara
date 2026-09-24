@@ -47,6 +47,23 @@ class UploadTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256((root / "evidence.zip").read_bytes()).hexdigest(),
                              manifest["archive_sha256"])
 
+    def test_counter_report_and_transport_are_allowlisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, netlist, mapping = self.fixture(root)
+            counter = root / "counter"
+            (counter / "transport").mkdir(parents=True)
+            for name in upload.COUNTER_FILES:
+                (counter / name).write_text("fixture\n")
+            (counter / "private.key").write_text("never upload")
+            files = upload.evidence_files(netlist, mapping, counter)
+            upload.package(files, root, {})
+            with zipfile.ZipFile(root / "evidence.zip") as bundle:
+                names = bundle.namelist()
+                for name in upload.COUNTER_FILES:
+                    self.assertIn("counter_probe/" + name, names)
+                self.assertFalse(any("private.key" in name for name in names))
+
     def test_missing_netlist_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             _, netlist, _ = self.fixture(Path(tmp))

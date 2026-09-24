@@ -17,6 +17,7 @@ NETLIST_FILES = (
     "i_read_unit.v", "i_write_unit.v", "i_ar_splitter.v", "i_aw_splitter.v",
 )
 MAP_FILES = ("map.json", "transport/vivado.log", "transport/transport.jsonl")
+COUNTER_FILES = ("counter_probe.json", "transport/vivado.log", "transport/transport.jsonl")
 MAX_INPUT_BYTES = 512 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 48 * 1024 * 1024
 
@@ -37,7 +38,7 @@ def latest(parent, marker):
     return max(candidates, key=lambda path: (path.stat().st_mtime_ns, str(path))).parent
 
 
-def evidence_files(netlist, mapping):
+def evidence_files(netlist, mapping, counter=None):
     inspection = json.loads((netlist / "inspection.json").read_text(encoding="utf-8-sig"))
     if inspection.get("collected") is not True:
         raise ValueError("Latest inspection is incomplete; specify --netlist for the intended run")
@@ -51,6 +52,8 @@ def evidence_files(netlist, mapping):
         files.append((mapping / "map.json", "burst_map/map.json"))
         files.extend((mapping / name, "burst_map/" + name) for name in MAP_FILES[1:]
                      if (mapping / name).is_file())
+    if counter is not None:
+        files.extend((counter / name, "counter_probe/" + name) for name in COUNTER_FILES)
     for source, _ in files:
         if source.is_symlink() or not source.is_file() or source.stat().st_size == 0:
             raise ValueError(f"Required evidence missing, empty or symlink: {source}")
@@ -100,6 +103,8 @@ def main(argv=None):
                         default=Path(__file__).resolve().parents[2] / "ara_dsa_vcu118/software")
     parser.add_argument("--netlist", type=Path, help="Existing netlist directory (default: latest)")
     parser.add_argument("--map", type=Path, help="Existing directory containing map.json")
+    parser.add_argument("--counter", type=Path,
+                        help="Existing directory containing counter_probe.json")
     parser.add_argument("--push", action="store_true", help="Upload selected evidence to origin")
     args = parser.parse_args(argv)
     output = None
@@ -110,7 +115,8 @@ def main(argv=None):
         mapping = args.map.resolve(strict=True) if args.map else None
         if mapping is None and list((software / "burst_maps").glob("*/run/map.json")):
             mapping = latest(software / "burst_maps", "*/run/map.json")
-        files = evidence_files(netlist, mapping)
+        counter = args.counter.resolve(strict=True) if args.counter else None
+        files = evidence_files(netlist, mapping, counter)
         root = Path(git(software, "rev-parse", "--show-toplevel"))
         checkout = git(root, "rev-parse", "HEAD")
         remote = git(root, "remote", "get-url", "--push", "origin") if args.push else None
@@ -119,11 +125,13 @@ def main(argv=None):
         output = Path(tempfile.mkdtemp(prefix="ara_axi_evidence_"))
         print(f"NETLIST {netlist}", flush=True)
         print(f"BURST_MAP {mapping or 'not available'}", flush=True)
+        print(f"COUNTER_PROBE {counter or 'not available'}", flush=True)
         print(f"BUNDLE {output}", flush=True)
         metadata = {"diagnostic_only": True, "hardware_access": False,
                     "created_utc": datetime.now(timezone.utc).isoformat(),
                     "collection_checkout_commit": checkout,
                     "netlist_source": str(netlist), "map_source": str(mapping) if mapping else None,
+                    "counter_source": str(counter) if counter else None,
                     "note": "Independently collected runs; checkout commit is not bitstream provenance.",
                     "evidence_branch": branch}
         package(files, output, metadata)

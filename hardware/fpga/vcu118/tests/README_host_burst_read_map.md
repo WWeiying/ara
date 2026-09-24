@@ -106,6 +106,17 @@ AR count by one and R occupancy by 16 bytes, with no recorded errors; the last
 accepted AR address was the requested base. This rejects two separate AR
 transactions at the DDR observation point, but does not reveal the returned
 RDATA at that point or the JTAG input.
+The repeat run `20260925_002054_ttjapjv6` found the same counter deltas and
+stable single-read windows. At `0xa1010000`, FIXED returned words matching
+`+0x00,+0x40`; at `0xa1011000`, INCR returned `+0x00,+0x48`. Thus the pattern
+also occurs on reads that cross the DDR observation point, not only on the
+earlier SPM and cached scratch windows. The retained routed checkpoint does
+not record the source commit, and the programmed `.ltx` has no ILA. The next
+decisive test is a newly implemented diagnostic image that captures accepted
+JTAG ARADDR/ARLEN/ARSIZE/ARBURST and RDATA/RLAST at RVALID&&RREADY, together
+with the corresponding LLC-side AR/R handshakes. A post-routed checkpoint
+cannot simply have an ILA inserted and remain routed; do not treat the current
+data matches as a component-level fix.
 
 ## Inspect the Archived Netlist
 
