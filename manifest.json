@@ -1,0 +1,271 @@
+{
+  "diagnostic_only": true,
+  "hardware_access": false,
+  "build_ready": false,
+  "evidence_branch": "fpga-evidence/ethernet-review-20260924_110539-5c4674fd",
+  "note": "Files are hashed at collection, not at original generation. No HDL/XDC was executed. XDC inventory includes scoped/OOC files, not a list to apply at top level. Example HDL and XDC are included; protected implementation HDL, license files, DCP, bitstream, and simulator products are excluded.",
+  "collection_checkout_commit": "9f4d2711a48eee02681397cc8ee2949d442c81f8",
+  "files": [
+    {
+      "path": "preflight/preflight.json",
+      "bytes": 4779,
+      "sha256": "7ba5875cadd324bbe391d9a24d74f03f2ffda8252af80a121dbb1c7923253447"
+    },
+    {
+      "path": "preflight/requested_config.tsv",
+      "bytes": 526,
+      "sha256": "6cb999a9f6ca8e278c888dc67cfe1b5ecd3f41ecb743d5fde65182ebabbcb7e4"
+    },
+    {
+      "path": "preflight/stages.tsv",
+      "bytes": 182,
+      "sha256": "8dc7cebc25532dc4c10c98c86bc1d3ebbc34ea135305ed709d573e66e5bf673a"
+    },
+    {
+      "path": "preflight/preflight.rpt",
+      "bytes": 33200,
+      "sha256": "ab140a0fc5677decc813f847dcac2be14568d818a8d8ec924ddd053ce008b58b"
+    },
+    {
+      "path": "preflight/ip_status_before.rpt",
+      "bytes": 1077,
+      "sha256": "911525828b9df2fe57cdf55c6c6c679f964759496b9acc761eeb0e259e4a1a2e"
+    },
+    {
+      "path": "preflight/ip_status_after.rpt",
+      "bytes": 2905,
+      "sha256": "1fc9a1eb04a0708b60b6c7ed6757bc24e3ae218ec351898a198d4b52217d24ab"
+    },
+    {
+      "path": "preflight/vivado.log",
+      "bytes": 21988,
+      "sha256": "c0673415f8f8c842fa1def7824bb3ca0b7d7a5b7d6b1592903e696dfe1f59a7e"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/bd_f779_ooc.xdc",
+      "bytes": 697,
+      "sha256": "be6a70cb0f1524782d5c6b4a5387f5e8869e5d5e872fd454dd1d86dcc323af86"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_0/bd_f779_mac_0.xci",
+      "bytes": 81615,
+      "sha256": "0248f94a14336b3ba8b28fbf58bfda6b1c007c6abf6e1298d2a58a7c3cbd3c96"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_0/synth/bd_f779_mac_0.xdc",
+      "bytes": 4337,
+      "sha256": "c0110d796ecdc9695ba1a50f7e40acb057540afdecc54e5e7ec1c96c56312d72"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_0/synth/bd_f779_mac_0_board.xdc",
+      "bytes": 60,
+      "sha256": "7ad209b673e69e5dc7667668407b509d8ac03974abdb527313a511db77cf15bd"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_0/synth/bd_f779_mac_0_clocks.xdc",
+      "bytes": 932,
+      "sha256": "9fba4b1c54cb3740e5edc9e2cd18b4b1fe110c2839a91cd15d3a1c5ea84f3d08"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_0/synth/bd_f779_mac_0_ooc.xdc",
+      "bytes": 852,
+      "sha256": "f9e1c9208f7ba9c6eb927b8a7d48753569eed3dae9f02c34a01bfbc4c0e8f056"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_1/bd_f779_pcs_pma_0.xci",
+      "bytes": 54961,
+      "sha256": "d0710697fe7c2a644b9a3bc31191a35a09d32b365bdb91cb7f4eeb5d97c17fbe"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_1/bd_f779_pcs_pma_0_board.xdc",
+      "bytes": 504,
+      "sha256": "bf995f8cdaa26366389c242da14a5e41055c664ddcaf7e31f59432fb1638e24d"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_1/synth/bd_f779_pcs_pma_0.xdc",
+      "bytes": 4562,
+      "sha256": "054406866ae42d22a3382f12f1bfdcf7b60726a2838126ce2da3f6bdd651a0e3"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_1/synth/bd_f779_pcs_pma_0_clocks.xdc",
+      "bytes": 53,
+      "sha256": "8298857eec2746bfc471d6847a3839d0afe2cfedfc68e68bb5192bfe15dcfd31"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_1/synth/bd_f779_pcs_pma_0_ooc.xdc",
+      "bytes": 552,
+      "sha256": "eaebb0eebe1522daecf2246d067320da422efc2549c4a3a3aa2b72ab88d67e48"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_2/bd_f779_xlconstant_phyadd_0.xci",
+      "bytes": 4489,
+      "sha256": "d8b3f2cbb9659c1be7d38980e7dca1289cb5fab5af2fe43a206c7f27979aed91"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_3/bd_f779_xlconstant_config_vec_0.xci",
+      "bytes": 4498,
+      "sha256": "1b8b0f457b303e553e1253a5f6302bfb620c28680d8b407fdf8615de6e6e3c0f"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_4/bd_f779_xlconstant_config_val_0.xci",
+      "bytes": 4496,
+      "sha256": "9826293536628eaec2bb39945cf808b584cbeccc1ab5cf4d36f87a91929f0c84"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_5/bd_f779_c_shift_ram_0_0.xci",
+      "bytes": 12789,
+      "sha256": "1f378c788ed702c54461a09ee9c3cc46cc6f59c579f1c9dc776b5a67e9a67655"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_5/bd_f779_c_shift_ram_0_0_ooc.xdc",
+      "bytes": 2445,
+      "sha256": "92905fcbefa1ee8cdb02c68ef06c8dfd69d13b87ef1180482ac0e98c3e503369"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_6/bd_f779_c_counter_binary_0_0.xci",
+      "bytes": 13733,
+      "sha256": "48a96b2e25566c279d956edab1228f7942fdc4205b7c41e7fb560f13c692f21c"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_6/bd_f779_c_counter_binary_0_0_ooc.xdc",
+      "bytes": 2445,
+      "sha256": "92905fcbefa1ee8cdb02c68ef06c8dfd69d13b87ef1180482ac0e98c3e503369"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_7/bd_f779_xlconstant_0_0.xci",
+      "bytes": 4025,
+      "sha256": "de0e9c1d12574a680fd2e7a1e7358ffca3cd72d1257a38ee9851ef852904e002"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_8/bd_f779_util_vector_logic_0_0.xci",
+      "bytes": 4748,
+      "sha256": "05c6254517bee187c33bc7ebd8336cd013fafdbcc673dfd2895a9a573620d7da"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/bd_0/ip/ip_9/bd_f779_reset_inv_0.xci",
+      "bytes": 4619,
+      "sha256": "2978cdcb7510b8cda9cee5b088d220d91fbe22455e9a05d4f4f12c327d2c2922"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/eth_j10.xci",
+      "bytes": 43835,
+      "sha256": "3ceb7783820a66fa80ab48110aa877270f575dac19bdd143eeac091c8e217afd"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/eth_j10_board.xdc",
+      "bytes": 119,
+      "sha256": "d0d5397df3ade86b8fcc2f4ea08fce04389f38954472d17f566fb906bf54ed8b"
+    },
+    {
+      "path": "example/eth_j10_ex.srcs/sources_1/ip/eth_j10/synth/eth_j10_ooc.xdc",
+      "bytes": 2877,
+      "sha256": "dcad88474ac6b3f0245102fb72a7b0a272ef73811d88b8990e7f1b9706de023c"
+    },
+    {
+      "path": "example/imports/eth_j10_address_swap.v",
+      "bytes": 9717,
+      "sha256": "b2fc4e18af6de34d6fa5e433f8926011cb3de0bdaa7986b45de77386583c270e"
+    },
+    {
+      "path": "example/imports/eth_j10_axi_lite_ctrl.v",
+      "bytes": 40364,
+      "sha256": "b8c0566ae9739ef86ade4e2df628c71762b333a66301d2fb81ade67093599199"
+    },
+    {
+      "path": "example/imports/eth_j10_axi_mux.v",
+      "bytes": 3713,
+      "sha256": "c12cd434f0279798997bb7eaefce36f033e6053404b5706ce478dd92478ac776"
+    },
+    {
+      "path": "example/imports/eth_j10_axi_pat_check.v",
+      "bytes": 13953,
+      "sha256": "ffed55c7460d7a40cd747b9234d9bf1b179d0142dd376ffe37106041a70f0fac"
+    },
+    {
+      "path": "example/imports/eth_j10_axi_pat_gen.v",
+      "bytes": 12796,
+      "sha256": "75f8e55535d943c595b161476aa78ee1788addb635426ffb87ea5db0ef6f8e5e"
+    },
+    {
+      "path": "example/imports/eth_j10_axi_pipe.v",
+      "bytes": 6202,
+      "sha256": "cbc0dc0e1d2b6b46761230de977bcd2fab16bb4cf5d63b89daa3596ff6d7e917"
+    },
+    {
+      "path": "example/imports/eth_j10_basic_pat_gen.v",
+      "bytes": 12696,
+      "sha256": "9fce2130b3be76541134504a738216675a3754e068c9a5b1d1c07c398231c563"
+    },
+    {
+      "path": "example/imports/eth_j10_bit_sync.v",
+      "bytes": 4360,
+      "sha256": "612a06980fabcddede8fa1c4e5aee523eb7b98fd52b3699cc0e948305d447e87"
+    },
+    {
+      "path": "example/imports/eth_j10_bram_tdp.v",
+      "bytes": 4323,
+      "sha256": "84452205021536b2d547445e169263d3572473482e3dd9c0343cffbc6f556eb8"
+    },
+    {
+      "path": "example/imports/eth_j10_clocks_resets.v",
+      "bytes": 7187,
+      "sha256": "4513fa5f359e774324da3e5c3f6dc160dcdf603fd29e73cbc3e8a4e5c336b451"
+    },
+    {
+      "path": "example/imports/eth_j10_ex_des_loc.xdc",
+      "bytes": 4195,
+      "sha256": "4162697c45669feccb130e7a2133f7cc7d068c67dab9501d6d166091a54b3ecc"
+    },
+    {
+      "path": "example/imports/eth_j10_example.v",
+      "bytes": 14520,
+      "sha256": "a5179edf59990036521ccb2fc3935341e7db66c7500f524e3152c8e487a05091"
+    },
+    {
+      "path": "example/imports/eth_j10_example_design.xdc",
+      "bytes": 2844,
+      "sha256": "7aa1e726bbc49715968f8e50a8d14900d15d254a4d57f11604ebf5fd58429ee8"
+    },
+    {
+      "path": "example/imports/eth_j10_frame_typ.v",
+      "bytes": 8451,
+      "sha256": "b51a2eae6c707662a76ea104f5075545752a247d00bcc73b5cb4c321896acc50"
+    },
+    {
+      "path": "example/imports/eth_j10_reset_sync.v",
+      "bytes": 4552,
+      "sha256": "b8985ab8157c52e21356dc88f7eaf0742ad4280036a96349cfb34d78737db5d7"
+    },
+    {
+      "path": "example/imports/eth_j10_rx_client_fifo.v",
+      "bytes": 28384,
+      "sha256": "b438ff3acff186ca0eb2bd426febee2bda0e22872e6a40b531b18eb1df3b4389"
+    },
+    {
+      "path": "example/imports/eth_j10_support.v",
+      "bytes": 9971,
+      "sha256": "0ad02b835aedcdb3eabe45cf82d7d3dafc97901ce1d760fbd6567977779c0072"
+    },
+    {
+      "path": "example/imports/eth_j10_ten_100_1g_eth_fifo.v",
+      "bytes": 8051,
+      "sha256": "cf337af68d893cfb8aee6cfd8b7e110f3a97a86ab604f6d58803b9f9c945a247"
+    },
+    {
+      "path": "example/imports/eth_j10_tx_client_fifo.v",
+      "bytes": 57909,
+      "sha256": "5d3dc97ef0bc6e275dcb2c2e01370ec726b6eef491d0b95818862764d3cb81b1"
+    },
+    {
+      "path": "example/eth_j10_ex.xpr",
+      "bytes": 15157,
+      "sha256": "e6ee0e87a2317bf79eedee42b004d26e836c1ec13ec42575c72c11a1f9e8604d"
+    },
+    {
+      "path": "review.json",
+      "bytes": 39245,
+      "sha256": "632aaa1e86d763a8fcc51c38e81ece5417ec868b7064aa67b64a0fc66050705b"
+    }
+  ],
+  "archive_sha256": "1b6fadd61adfe4e31a1562bd02acd0d59f86643884dd053629b3658c253095c3"
+}
