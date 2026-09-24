@@ -31,6 +31,9 @@ class Memory:
                 raise RuntimeError("mock transport failure")
             stride = 72 if self.mode == "stride72" else 8
             words = [(op.address + stride*i).to_bytes(8, "little") for i in range(op.beats)]
+            if self.mode == "line_advance":
+                words = [((op.address & ~63) + 64*i + ((op.address + 8*i) & 63)).to_bytes(8, "little")
+                         for i in range(op.beats)]
             if self.mode == "duplicate":
                 words = [b"\x55" * 8] * op.beats
             if self.mode == "stale" and op.beats > 1:
@@ -62,6 +65,16 @@ class ProbeTests(unittest.TestCase):
             for row in region["rows"]:
                 base = int(row["address"], 16)
                 self.assertEqual(row["matches"], [[hex(base + 72*i)] for i in range(row["beats"])])
+
+    def test_reported_board_pattern_is_not_constant_stride(self):
+        expected = ((0, 0x48), (8, 0x50), (0x38, 0x40), (0x40, 0x88),
+                    (0, 0x48, 0x90), (0x38, 0x40, 0x88), (0, 0x48))
+        for region in self.run_map("line_advance"):
+            self.assertTrue(region["stable"])
+            base = int(region["base"], 16)
+            for row, offsets in zip(region["rows"], expected):
+                self.assertEqual(row["matches"], [[hex(base + offset)] for offset in offsets])
+            self.assertNotEqual(region["rows"][2]["matches"][1], [hex(base + 0x38 + 72)])
 
     def test_no_false_attribution_for_stale_data(self):
         for region in self.run_map("stale"):
