@@ -32,11 +32,27 @@ class Memory:
 
 
 class ProbeTests(unittest.TestCase):
+    @staticmethod
+    def debug_state(frozen=0):
+        state = {probe.COMMAND: frozen, probe.STATUS: 7, probe.WATCHDOG: 0}
+
+        def read(_, addresses):
+            return [state[address] for address in addresses]
+
+        def write(_, values):
+            for address, value in values:
+                if address == probe.COMMAND:
+                    state[address] = 0 if value == probe.RESUME else 1
+
+        return state, read, write
+
     def test_counter_deltas_and_order(self):
         memory = Memory()
         report = {"reads": []}
+        _, read, write = self.debug_state()
         with patch.object(probe, "identity", return_value={"caps": 1}), \
-             patch.object(probe, "read_debug", return_value=[7]), \
+             patch.object(probe, "read_debug", side_effect=read), \
+             patch.object(probe, "write_debug", side_effect=write), \
              patch.object(probe, "capture_snapshot",
                           side_effect=[snap(1, 10, 80), snap(2, 10, 80),
                                        snap(3, 11, 96), snap(4, 12, 112)]):
@@ -48,12 +64,47 @@ class ProbeTests(unittest.TestCase):
 
     def test_idle_activity_blocks_probe(self):
         memory = Memory()
+        _, read, write = self.debug_state()
         with patch.object(probe, "identity", return_value={"caps": 1}), \
-             patch.object(probe, "read_debug", return_value=[7]), \
+             patch.object(probe, "read_debug", side_effect=read), \
+             patch.object(probe, "write_debug", side_effect=write), \
              patch.object(probe, "capture_snapshot",
                           side_effect=[snap(1, 10, 80), snap(2, 11, 88)]):
             with self.assertRaisesRegex(RuntimeError, "changed while idle"):
                 probe.collect(memory, {"reads": []})
+        self.assertEqual(memory.calls, [])
+
+    def test_frozen_counters_require_opt_in_and_are_restored(self):
+        memory = Memory()
+        state, read, write = self.debug_state(frozen=1)
+        with patch.object(probe, "identity", return_value={"caps": 1}), \
+             patch.object(probe, "read_debug", side_effect=read), \
+             patch.object(probe, "write_debug", side_effect=write), \
+             patch.object(probe, "capture_snapshot",
+                          side_effect=[snap(1, 10, 80), snap(2, 10, 80),
+                                       snap(3, 11, 96), snap(4, 12, 112)]):
+            with self.assertRaisesRegex(RuntimeError, "frozen"):
+                probe.collect(memory, {"reads": []})
+            self.assertEqual(memory.calls, [])
+            report = {"reads": []}
+            probe.collect(memory, report, resume_counters=True)
+        self.assertEqual(state[probe.COMMAND], 1)
+        self.assertTrue(report["restored_frozen"])
+        self.assertEqual(len(report["reads"]), 2)
+
+    def test_frozen_state_is_restored_when_idle_check_fails(self):
+        memory = Memory()
+        state, read, write = self.debug_state(frozen=1)
+        report = {"reads": []}
+        with patch.object(probe, "identity", return_value={"caps": 1}), \
+             patch.object(probe, "read_debug", side_effect=read), \
+             patch.object(probe, "write_debug", side_effect=write), \
+             patch.object(probe, "capture_snapshot",
+                          side_effect=[snap(1, 10, 80), snap(2, 11, 88)]):
+            with self.assertRaisesRegex(RuntimeError, "changed while idle"):
+                probe.collect(memory, report, resume_counters=True)
+        self.assertEqual(state[probe.COMMAND], 1)
+        self.assertTrue(report["restored_frozen"])
         self.assertEqual(memory.calls, [])
 
     def test_partial_failure_keeps_report(self):

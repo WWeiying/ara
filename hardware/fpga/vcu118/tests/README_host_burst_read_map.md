@@ -77,22 +77,26 @@ cycle capture. Do not infer a component-level root cause from this table.
 After updating the Windows checkout, run from the exported software directory:
 
 ```powershell
-py -3 ..\..\vcu118\tests\host_axi_counter_probe.py $P
+py -3 ..\..\vcu118\tests\host_axi_counter_probe.py $P --resume-counters
 ```
 
 This takes two debug snapshots to require an idle DDR AR counter, then reads
-one two-beat FIXED transaction at `0xa1000000` and one two-beat INCR transaction
-at `0xa1001000`, two previously unused DDR locations,
+one two-beat FIXED transaction at `0xa1010000` and one two-beat INCR transaction
+at `0xa1011000`, two previously unused DDR locations,
 with a debug snapshot after each. It does not write memory or reset/launch the
-SoC. Snapshot commands write only the independent debug register. The report
+SoC. If counters were frozen by the preceding load, `--resume-counters`
+temporarily enables them and restores the original frozen state in a `finally`
+block. It refuses a nonzero watchdog or DDR AR activity in the idle baseline.
+Snapshot/resume/freeze commands write only the independent debug register. The report
 retains AR handshake count, R-channel occupancy bytes, last accepted AR address,
 outstanding count and error count before/after each read. These counters are at
 the **LLC output before DDR width conversion**, not at the JTAG master port.
 An AR delta above one proves multiple requests at this observation point but
 does not identify which upstream block generated them. An AR delta of one does
-not prove correct beat addresses or JTAG return capture. An earlier run at
-`0xffff0000` showed zero AR and R-byte deltas for both modes: that line was
-already in LLC, so the DDR observer saw no traffic.
+not prove correct beat addresses or JTAG return capture. Earlier runs at
+`0xffff0000`, `0xa1000000` and `0xa1001000` showed zero AR and R-byte deltas,
+but did not check whether the counters were frozen. Those deltas are not
+evidence of LLC hits or of any particular bus behavior.
 
 ## Inspect the Archived Netlist
 
