@@ -150,6 +150,15 @@ class ImageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 op.wire()
 
+    def test_modifiable_cache_is_diagnostic_only(self):
+        self.assertEqual(Operation("M", "READ", 0xa1011000, 2, cache=2).wire(),
+                         "M READ 00000000a1011000 2 - INCR 2")
+        for op in (Operation("M", "READ", 0, cache=1),
+                   Operation("M", "WRITE", 0, data=b"12345678", cache=2),
+                   Operation("D", "READ", 0, cache=2)):
+            with self.assertRaises(ValueError):
+                op.wire()
+
     def test_requires_reset_before_any_transport(self):
         with self.assertRaisesRegex(ValueError, "full-reset-confirmed"):
             host.load_and_run(None, None, self.base, {})
@@ -344,6 +353,18 @@ class TclTransportTests(unittest.TestCase):
             self.assertEqual(fixed, single * 3)
             self.assertEqual(len(transport.exchange(
                 [Operation("M", "READ", address, 3)])[0]), 24)
+
+    def test_cache_probe_reaches_tcl_without_changing_default(self):
+        with self.transport() as transport:
+            default, modified = transport.exchange([
+                Operation("M", "READ", 0xa1011000, 2),
+                Operation("M", "READ", 0xa1011000, 2, cache=2),
+            ])
+            self.assertEqual(default, modified)
+        audit = (self.base / "session" / "transport.jsonl").read_text()
+        operations = json.loads(audit.splitlines()[0])["operations"]
+        self.assertNotIn("cache", operations[0])
+        self.assertEqual(operations[1]["cache"], 2)
 
     def test_single_beat_load_works_when_bursts_are_broken(self):
         prepared = image.prepare_image(self.elf, caps=3)

@@ -16,6 +16,13 @@ every beat. If only INCR is wrong, address progression is suspect; if FIXED is
 also wrong, inspect R-channel ordering/capture before attributing an address
 fault. This option is read-only and does not reset the JTAG AXI core.
 
+Add `--cache-probe` for a read-only comparison of two-beat INCR reads with
+`ARCACHE=0` and `ARCACHE=2`. It additionally checks fresh DDR address
+`0xa1011000`. This is a diagnostic control bit, not a proposed loader default:
+the width converter may transform modifiable reads differently. If results
+differ, inspect its input/output AXI handshakes before assigning blame to the
+converter or MIG. The probe does not write memory, reset, or launch the core.
+
 Results go to a unique `burst_maps/<timestamp_and_suffix>/run` directory under
 the current directory. The script prints its location before connecting, then
 prints the mapping for each region. Optional positional argument two selects

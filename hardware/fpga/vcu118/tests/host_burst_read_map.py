@@ -12,8 +12,9 @@ from host_load import identity, read_debug, STATUS
 from host_transport import Operation, VivadoTransport
 
 
-def collect(transport, report, fixed_probe=False):
-    for base in (0xffff0000, 0x1401ff00):
+def collect(transport, report, fixed_probe=False, cache_probe=False):
+    for base in ((0xffff0000, 0x1401ff00, 0xa1011000) if cache_probe
+                 else (0xffff0000, 0x1401ff00)):
         print(f"Reading region {base:#x} (no memory writes)...", flush=True)
         reads = [Operation("M", "READ", base + 8*i) for i in range(32)]
         region = {"base": hex(base), "rows": [], "stable": None}
@@ -38,12 +39,23 @@ def collect(transport, report, fixed_probe=False):
                 region["fixed_rows"].append({"address": hex(base + offset),
                                               "beats": beats, "data": data.hex(),
                                               "matches": matches})
+        if cache_probe:
+            region["cache_rows"] = []
+            for cache in (0, 2):
+                data = transport.exchange(
+                    [Operation("M", "READ", base, 2, cache=cache)])[0]
+                words = [data[i:i+8] for i in range(0, len(data), 8)]
+                matches = [[hex(base + 8*i) for i, old in enumerate(before)
+                            if old == word] for word in words]
+                region["cache_rows"].append({"address": hex(base), "beats": 2,
+                                             "arcache": cache, "data": data.hex(),
+                                             "matches": matches})
         after = transport.exchange(reads)
         region["after"] = [word.hex() for word in after]
         region["stable"] = before == after
 
 
-def main(probes, output, vivado="vivado", fixed_probe=False):
+def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     print(f"EVIDENCE {output.resolve()}", flush=True)
@@ -54,7 +66,7 @@ def main(probes, output, vivado="vivado", fixed_probe=False):
             report["identity"] = identity(transport)
             if read_debug(transport, [STATUS])[0] & 15 != 7:
                 raise RuntimeError("Board not ready; no memory access attempted")
-            collect(transport, report, fixed_probe=fixed_probe)
+            collect(transport, report, fixed_probe=fixed_probe, cache_probe=cache_probe)
     except BaseException as exc:
         report["error"] = str(exc)
         raise
@@ -66,6 +78,8 @@ def main(probes, output, vivado="vivado", fixed_probe=False):
                 print(row["address"], "LEN", row["beats"], "MATCHES", row["matches"])
             for row in region.get("fixed_rows", []):
                 print("FIXED", row["address"], "LEN", row["beats"], "MATCHES", row["matches"])
+            for row in region.get("cache_rows", []):
+                print("CACHE", row["arcache"], row["address"], "MATCHES", row["matches"])
         print("EVIDENCE", output)
 
 
@@ -76,6 +90,8 @@ def cli(argv=None):
     parser.add_argument("--vivado", default="vivado", help="Vivado executable or .bat path")
     parser.add_argument("--fixed-probe", action="store_true",
                         help="Compare two read-only FIXED bursts with INCR bursts")
+    parser.add_argument("--cache-probe", action="store_true",
+                        help="Compare read-only INCR bursts with ARCACHE=0 and ARCACHE=2")
     args = parser.parse_args(argv)
     if not args.probes.is_file():
         parser.error(f"Probes file does not exist: {args.probes}")
@@ -87,7 +103,7 @@ def cli(argv=None):
         output = Path(tempfile.mkdtemp(prefix=stamp, dir=parent)) / "run"
     try:
         main(args.probes.resolve(), output.resolve(), vivado=args.vivado,
-             fixed_probe=args.fixed_probe)
+             fixed_probe=args.fixed_probe, cache_probe=args.cache_probe)
     except KeyboardInterrupt:
         print(f"CANCELLED: inspect {output}", file=sys.stderr)
         return 130

@@ -50,15 +50,19 @@ proc host::core {bus} {
 proc host::transaction {line} {
     variable serial
     variable cells
-    if {[llength $line] ni {5 6}} { error "Malformed operation" }
-    lassign $line bus kind address beats data burst
+    if {[llength $line] ni {5 6 7}} { error "Malformed operation" }
+    lassign $line bus kind address beats data burst cache
     if {$burst eq ""} { set burst INCR }
+    if {$cache eq ""} { set cache 0 }
     if {$bus ni {M D} || $kind ni {READ WRITE} ||
         ![regexp {^[0-9a-fA-F]{16}$} $address] ||
         ![string is integer -strict $beats]} { error "Invalid operation" }
     if {$burst ni {INCR FIXED} ||
         ($burst eq "FIXED" && ($bus ne "M" || $kind ne "READ"))} {
         error "Invalid diagnostic burst mode"
+    }
+    if {$cache ni {0 2} || ($cache != 0 && ($bus ne "M" || $kind ne "READ"))} {
+        error "Invalid diagnostic ARCACHE mode"
     }
     set width [expr {$bus eq "M" ? 8 : 4}]
     set limit [expr {$bus eq "M" ? 256 : 1}]
@@ -87,7 +91,7 @@ proc host::transaction {line} {
     } elseif {$data ne "-"} { error "Unexpected READ data" }
     set object [host::core $bus]
     set args [list -type $kind -address $address -len $beats]
-    if {$bus eq "M"} { lappend args -burst $burst -cache 0 -id 0 }
+    if {$bus eq "M"} { lappend args -burst $burst -cache $cache -id 0 }
     if {$kind eq "WRITE"} { lappend args -data $data }
     set txn [create_hw_axi_txn host_[incr serial] $object {*}$args]
     set code [catch {
@@ -100,6 +104,9 @@ proc host::transaction {line} {
         if {[get_property CMD.LEN $txn] != $beats} { error "Vivado CMD.LEN differs from requested beats" }
         if {$bus eq "M" && [get_property CMD.BURST $txn] ne $burst} {
             error "Vivado CMD.BURST differs from requested mode"
+        }
+        if {$bus eq "M" && [get_property CMD.CACHE $txn] != $cache} {
+            error "Vivado CMD.CACHE differs from requested mode"
         }
         if {$kind eq "WRITE"} {
             set accepted [string map {_ "" " " "" \n "" \r ""} [get_property DATA $txn]]

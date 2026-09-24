@@ -51,6 +51,7 @@ proc get_property {property object} {
     }
     if {$property eq "CMD.LEN"} { return $::txn($object,-len) }
     if {$property eq "CMD.BURST"} { return $::txn($object,-burst) }
+    if {$property eq "CMD.CACHE"} { return $::txn($object,-cache) }
     if {$property eq "DATA"} {
         if {[info exists ::txn($object,result)]} { return $::txn($object,result) }
         if {[info exists ::txn($object,-data)]} { return $::txn($object,-data) }

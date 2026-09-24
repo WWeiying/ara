@@ -23,6 +23,7 @@ class Operation:
     data: bytes = b""
     separate_words: bool = False
     burst: str = "INCR"
+    cache: int = 0
 
     @property
     def width(self):
@@ -44,11 +45,15 @@ class Operation:
         if self.burst not in ("INCR", "FIXED") or (self.burst == "FIXED" and
                 (self.bus != "M" or self.kind != "READ")):
             raise ValueError("FIXED burst is supported only for memory READ diagnostics")
+        if self.cache not in (0, 2) or (self.cache and (self.bus != "M" or self.kind != "READ")):
+            raise ValueError("Nonzero ARCACHE is supported only for memory READ diagnostics")
         data = to_axi_hex(self.data, self.width) if self.kind == "WRITE" else "-"
         if self.separate_words:
             digits = self.width * 2
             data = "_".join(data[i:i + digits] for i in range(0, len(data), digits))
         line = f"{self.bus} {self.kind} {self.address:016x} {self.beats} {data}"
+        if self.cache:
+            return f"{line} {self.burst} {self.cache}"
         return line if self.burst == "INCR" else f"{line} {self.burst}"
 
 
@@ -165,7 +170,8 @@ class VivadoTransport:
         seq = self.sequence
         self.audit.write(json.dumps({"batch": seq, "operations": [
             {"bus": op.bus, "kind": op.kind, "address": op.address,
-             "beats": op.beats, **({"burst": op.burst} if op.burst != "INCR" else {})}
+             "beats": op.beats, **({"burst": op.burst} if op.burst != "INCR" else {}),
+             **({"cache": op.cache} if op.cache else {})}
             for op in operations]}) + "\n")
         self.audit.flush()
         try:
