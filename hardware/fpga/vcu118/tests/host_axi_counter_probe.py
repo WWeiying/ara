@@ -13,7 +13,7 @@ from host_transport import Operation, VivadoTransport
 
 
 FIELDS = ("ar_count", "r_bytes", "last_ar_addr", "read_outstanding", "error_count")
-ADDRESS = 0xffff0000
+ADDRESSES = {"FIXED": 0xa1000000, "INCR": 0xa1001000}
 
 
 def counters(snapshot):
@@ -35,13 +35,14 @@ def collect(transport, report):
         raise RuntimeError("DDR AR counter changed while idle; no probe reads attempted")
     previous = idle
     for burst in ("FIXED", "INCR"):
-        data = transport.exchange([Operation("M", "READ", ADDRESS, 2, burst=burst)])[0]
+        address = ADDRESSES[burst]
+        data = transport.exchange([Operation("M", "READ", address, 2, burst=burst)])[0]
         current = capture_snapshot(transport)
         if current["watchdog_snapshot"] or current["snapshot_sequence"] <= previous["snapshot_sequence"]:
             raise RuntimeError("Fresh DDR snapshot unavailable")
         delta = {name: current["ddr1"][name] - previous["ddr1"][name]
                  for name in ("ar_count", "r_bytes", "error_count")}
-        report["reads"].append({"burst": burst, "address": hex(ADDRESS),
+        report["reads"].append({"burst": burst, "address": hex(address),
                                 "data": data.hex(), "delta": delta,
                                 "after": counters(current)})
         previous = current

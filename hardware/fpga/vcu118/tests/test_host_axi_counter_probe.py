@@ -14,7 +14,7 @@ import host_axi_counter_probe as probe
 
 def snap(sequence, ar, r_bytes):
     return {"snapshot_sequence": sequence, "watchdog_snapshot": False,
-            "ddr1": {"ar_count": ar, "r_bytes": r_bytes, "last_ar_addr": probe.ADDRESS,
+            "ddr1": {"ar_count": ar, "r_bytes": r_bytes, "last_ar_addr": 0,
                      "read_outstanding": 0, "error_count": 0}}
 
 
@@ -25,7 +25,7 @@ class Memory:
     def exchange(self, operations):
         for op in operations:
             self.calls.append(op)
-            if op.bus != "M" or op.kind != "READ" or op.address != probe.ADDRESS:
+            if op.bus != "M" or op.kind != "READ" or op.address != probe.ADDRESSES[op.burst]:
                 raise AssertionError("Only the selected memory address may be read")
             op.wire()
         return [bytes(16)]

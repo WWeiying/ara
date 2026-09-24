@@ -81,7 +81,8 @@ py -3 ..\..\vcu118\tests\host_axi_counter_probe.py $P
 ```
 
 This takes two debug snapshots to require an idle DDR AR counter, then reads
-exactly one two-beat FIXED and one two-beat INCR transaction at `0xffff0000`,
+one two-beat FIXED transaction at `0xa1000000` and one two-beat INCR transaction
+at `0xa1001000`, two previously unused DDR locations,
 with a debug snapshot after each. It does not write memory or reset/launch the
 SoC. Snapshot commands write only the independent debug register. The report
 retains AR handshake count, R-channel occupancy bytes, last accepted AR address,
@@ -89,7 +90,9 @@ outstanding count and error count before/after each read. These counters are at
 the **LLC output before DDR width conversion**, not at the JTAG master port.
 An AR delta above one proves multiple requests at this observation point but
 does not identify which upstream block generated them. An AR delta of one does
-not prove correct beat addresses or JTAG return capture.
+not prove correct beat addresses or JTAG return capture. An earlier run at
+`0xffff0000` showed zero AR and R-byte deltas for both modes: that line was
+already in LLC, so the DDR observer saw no traffic.
 
 ## Inspect the Archived Netlist
 
