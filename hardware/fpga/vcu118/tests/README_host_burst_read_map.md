@@ -75,7 +75,7 @@ value of `011` corresponds to an 8-byte beat. `???` is unresolved/dynamic,
 not a bus value or proof of an error. Dynamic LEN/BURST drivers are not
 cycle-level observations. This diagnostic alone cannot sign off the design.
 Missing hierarchy is reported rather than replaced by current RTL.
-The generated netlists/logs stay local; they are not added to Git.
+The generated netlists/logs stay local unless explicitly uploaded below.
 
 The next falsifiable checks are: does the archived JTAG interface really
 drive SIZE=3, and does the synthesized LLC address recurrence match its RTL?
@@ -92,4 +92,48 @@ The runner and Tcl query logic have mock tests, not a local Vivado run:
 
 ```sh
 python3 -m unittest -v test_host_axi_netlist.py
+```
+
+## Upload Existing Evidence Through Git
+
+No board access or Vivado rerun is needed after netlist extraction. From the
+exported software directory, run:
+
+```powershell
+py -3 ..\..\vcu118\tests\host_axi_upload.py --push
+```
+
+This selects the newest `axi_netlists/*/inspection.json` and, when present,
+the newest `burst_maps/*/run/map.json`. It prints both paths before packaging.
+Use `--netlist PATH` and `--map PATH` to select specific existing directories;
+an incomplete newest inspection is rejected, not silently replaced by an old
+successful one. Missing any of the four exported LLC netlists is an error.
+
+Only the inspection metadata, AXI report, four LLC netlists, Vivado logs,
+mapping JSON and mapping transport audit are included. There is no recursive
+directory upload. DCP, bitstream, ELF, unrelated logs and source changes are
+excluded. The manifest records per-file SHA256/length and the ZIP SHA256.
+Selected input is limited to 128 MiB and the ZIP to 48 MiB.
+
+`--push` authorizes sending these generated design files and logs (including
+local paths) to the checkout's **origin** remote with its existing access
+permissions. Without `--push`, the script only packages them in a new system
+temporary directory for inspection. A fresh temporary Git repository pushes
+only `evidence.zip` and `manifest.json` to a unique
+`fpga-evidence/axi-<UTC timestamp>-<suffix>` branch. The working checkout's
+branch, index and files are untouched; no force push, pull or checkout occurs.
+Git credentials use the existing system setup; the script never reads or
+packages credential files. A rejected push leaves the local package intact
+and reports failure. Do not merge the evidence branch into the source branch.
+
+Send the printed `UPLOADED_BRANCH` line to the investigator. The two selected
+diagnostics are independent runs, not proof they share a board configuration.
+`collection_checkout_commit` describes the upload checkout only, not the
+hardware build; `inspection.json` retains the archived bitstream provenance.
+
+Local validation includes a real push to a temporary local bare repository
+and verifies that existing staged/unstaged data and branch state are untouched:
+
+```sh
+python3 -m unittest -v test_host_axi_upload.py
 ```
