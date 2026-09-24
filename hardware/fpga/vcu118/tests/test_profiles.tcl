@@ -47,6 +47,8 @@ foreach profile {baseline host dual_ddr} {
     assert {[lsort $created] eq [lsort $profile_ips]} "only selected IPs instantiated"
     assert {$generated eq $profile_ips && $ooc eq $profile_ips} "generate/OOC every required IP"
     assert {[dict get $properties ddr4 CONFIG.C0_DDR4_BOARD_INTERFACE] eq "ddr4_sdram_c1_062"} "C1 unchanged"
+    set narrow [dict get $properties ddr4 CONFIG.C0.DDR4_AxiNarrowBurst]
+    assert {$narrow eq [expr {$profile eq "baseline" ? "false" : "true"}]} "DDR narrow burst profile"
     if {$profile ne "baseline"} {
         foreach name {jtag_mem jtag_debug} {
             assert {[dict get $ip_kinds $name] eq "jtag_axi"} "real JTAG AXI IP"

@@ -20,6 +20,9 @@ set_property -dict [list \
 # Settings are based on Cheshire's VCU118 port and AMD board preset 2.4.
 set ddr_ips {ddr4 ddr4_sdram_c1_062}
 if {$fpga_profile eq "dual_ddr"} { lappend ddr_ips ddr4_c2 ddr4_sdram_c2_062 }
+# JTAG's 64-bit master can issue multi-beat 8-byte transfers onto the 512-bit
+# DDR AXI port; host profiles must support those narrow bursts at the MIG.
+set ddr_narrow_burst [expr {$fpga_profile eq "baseline" ? "false" : "true"}]
 # Both interfaces are present in the bundled vcu118/2.4/board.xml.
 # Separate IP instances retain their c0_* ports; the board top maps C2 to c1_*.
 foreach {name interface} $ddr_ips {
@@ -33,6 +36,7 @@ set_property -dict [list \
     CONFIG.C0.DDR4_DataMask {DM_NO_DBI} CONFIG.C0.DDR4_MCS_ECC {false} \
     CONFIG.C0.DDR4_CasWriteLatency {12} CONFIG.C0.DDR4_CasLatency {18} \
     CONFIG.C0.DDR4_AxiDataWidth {512} CONFIG.C0.DDR4_AxiAddressWidth {31} \
+    CONFIG.C0.DDR4_AxiNarrowBurst $ddr_narrow_burst \
     CONFIG.C0.DDR4_AxiIDWidth {8} CONFIG.C0.BANK_GROUP_WIDTH {1} \
     CONFIG.C0.DDR4_AxiSelection {true} \
 ] [get_ips $name]
