@@ -1,0 +1,46 @@
+{
+  "diagnostic_only": true,
+  "hardware_access": false,
+  "collection_checkout_commit": "6bd401c82c437d97f49470269b27e16be469e65d",
+  "evidence_branch": "fpga-evidence/ethernet-20260924_084004-810b0574",
+  "source": "D:\\fpga_runs\\ara_eth_ymyhv6sh",
+  "note": "IP preflight only, not an Ethernet or bitstream acceptance test.",
+  "files": [
+    {
+      "path": "preflight.json",
+      "bytes": 4259,
+      "sha256": "658da0d2e1714807f3a3b23f7ed2f341104514c0378fad967bf0a65b1eefbb61"
+    },
+    {
+      "path": "requested_config.tsv",
+      "bytes": 526,
+      "sha256": "6cb999a9f6ca8e278c888dc67cfe1b5ecd3f41ecb743d5fde65182ebabbcb7e4"
+    },
+    {
+      "path": "stages.tsv",
+      "bytes": 168,
+      "sha256": "a90eb68ab8542b40e4db24ca60b04f2cdef2533f64e6ac17d10e7785e336ab40"
+    },
+    {
+      "path": "preflight.rpt",
+      "bytes": 9856,
+      "sha256": "3964398bea52fb7829dcfaa163499380f73e406635e1d3bbbac6645d9381dfe2"
+    },
+    {
+      "path": "ip_status_before.rpt",
+      "bytes": 1077,
+      "sha256": "b10a7454c19a50571b1c8fec276fd76224a282fdf5811963667d5aad253e7d11"
+    },
+    {
+      "path": "ip_status_after.rpt",
+      "bytes": 2905,
+      "sha256": "c557b180fb6430ea78c2e50e86db69491695d1bfaac8974f1b795998821366a6"
+    },
+    {
+      "path": "vivado.log",
+      "bytes": 21462,
+      "sha256": "7d53716c6619b4bbf54ae24ecbd23e80d8d65a8e144569d82eb0d8e7e74350c1"
+    }
+  ],
+  "archive_sha256": "a7ba69e76c3e03cefc2b0de61ba97bb4b26a4ad06ced24b87cc53ebd1a7a63bd"
+}
