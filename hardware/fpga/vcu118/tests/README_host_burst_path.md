@@ -62,11 +62,23 @@ zero initialization of an enum-bearing structure; runtime assertions are on.
 
 ## Measured Result
 
-Extended-chain evidence: `/tmp/ara_host_chain_final_01`.
+Extended-chain evidence: `/tmp/ara_host_chain_final_01`. A subsequent focused
+run added FIXED reads at `0x1401ff00` and `0x1401ff38` after single-word writes.
+Those reads repeated the starting word on every beat through the crossbar and
+SPM LLC path:
 
 ```text
-PASS: host burst path checked_beats=2292 read_transactions=624 stalled_cycles=3388 cycles=35459
+PASS: host burst path checked_beats=2297 read_transactions=626 stalled_cycles=3383 cycles=35487
 ```
+
+Focused-run evidence: `/tmp/ara_host_fixed_spm_20260924`. A separate attempt
+to use FIXED reads at `0xffff0000` found that the test-only DDR `axi_to_mem`
+endpoint returned zero after the first beat; it cannot validate FIXED burst
+semantics of the physical MIG. That failed attempt is retained at
+`/tmp/ara_host_fixed_probe_20260924`. Neither simulation exercises the Xilinx
+JTAG core. The board's FIXED read matched the next 64-byte line in both regions,
+so the accepted AR fields and R handshakes at the JTAG/LLC boundary still need
+cycle-level capture before any RTL change.
 
 This does not reproduce the board failure. It does NOT validate the Xilinx
 JTAG core, Tcl/JTAG transfer packing, XPM/URAM implementation, MIG internals,

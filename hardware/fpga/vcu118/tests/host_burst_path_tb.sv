@@ -124,6 +124,7 @@ module host_burst_path_tb;
   int host_ar_count = 0, xbar_ar_count = 0, llc_ar_count = 0;
   addr_t expected_ar_addr;
   int expected_ar_beats;
+  axi_pkg::burst_t expected_ar_burst;
   bit host_held = 0, llc_held = 0;
   host_r_chan_t host_prev_r;
   soc_r_chan_t llc_prev_r;
@@ -148,14 +149,14 @@ module host_burst_path_tb;
       if (outputs[2].ar_valid && output_responses[2].ar_ready) begin
         xbar_ar_count++;
         if (outputs[2].ar.addr != expected_ar_addr || outputs[2].ar.len != expected_ar_beats-1 ||
-            outputs[2].ar.size != 3 || outputs[2].ar.burst != axi_pkg::BURST_INCR)
+            outputs[2].ar.size != 3 || outputs[2].ar.burst != expected_ar_burst)
           $fatal(1, "Xbar changed AR fields");
         $display("XBAR AR cycle=%0d addr=%h len=%0d size=%0d", cycles, outputs[2].ar.addr, outputs[2].ar.len, outputs[2].ar.size);
       end
       if (llc_req.ar_valid && cut_rsp.ar_ready) begin
         llc_ar_count++;
         if (cut_req.ar.addr != expected_ar_addr || llc_req.ar.len != expected_ar_beats-1 ||
-            llc_req.ar.size != 3 || llc_req.ar.burst != axi_pkg::BURST_INCR)
+            llc_req.ar.size != 3 || llc_req.ar.burst != expected_ar_burst)
           $fatal(1, "Atomics/cut changed AR fields");
         $display("LLC AR cycle=%0d addr=%h len=%0d size=%0d", cycles, llc_req.ar.addr, llc_req.ar.len, llc_req.ar.size);
       end
@@ -202,29 +203,38 @@ module host_burst_path_tb;
     drive.b_ready = 0;
   endtask
 
-  task automatic read_words(addr_t address, int beats, int epoch);
+  task automatic read_words_mode(addr_t address, int beats, int epoch,
+                                 axi_pkg::burst_t burst);
     @(negedge clk);
     expected_ar_addr = address;
     expected_ar_beats = beats;
+    expected_ar_burst = burst;
     drive.ar = '0;
     drive.ar.addr = address;
     drive.ar.len = 8'(beats-1);
     drive.ar.size = 3;
-    drive.ar.burst = axi_pkg::BURST_INCR;
+    drive.ar.burst = burst;
     drive.ar_valid = 1;
     do @(posedge clk); while (!responses[3].ar_ready);
     @(negedge clk);
     drive.ar_valid = 0;
     for (int i = 0; i < beats; i++) begin
       do @(posedge clk); while (!(responses[3].r_valid && drive.r_ready));
-      if (responses[3].r.data !== pattern(address + 8*i, epoch) ||
+      if (responses[3].r.data !== pattern(
+          burst == axi_pkg::BURST_FIXED ? address : address + 8*i, epoch) ||
           responses[3].r.last != (i == beats-1) ||
           responses[3].r.resp != axi_pkg::RESP_OKAY || responses[3].r.id != 0)
         $fatal(1, "Read mismatch addr=%h beat=%0d got=%h expected=%h last=%b", address, i,
-               responses[3].r.data, pattern(address+8*i, epoch), responses[3].r.last);
+               responses[3].r.data,
+               pattern(burst == axi_pkg::BURST_FIXED ? address : address+8*i, epoch),
+               responses[3].r.last);
       checks++;
     end
     @(negedge clk);
+  endtask
+
+  task automatic read_words(addr_t address, int beats, int epoch);
+    read_words_mode(address, beats, epoch, axi_pkg::BURST_INCR);
   endtask
 
   task automatic exercise(addr_t address, int beats);
@@ -277,11 +287,13 @@ module host_burst_path_tb;
     exercise(48'hffff0040, 2);
     exercise(48'hffff0000, 3);
     exercise(48'hffff0038, 3);
+    read_words_mode(48'h1401ff00, 2, 1, axi_pkg::BURST_FIXED);
+    read_words_mode(48'h1401ff38, 3, 1, axi_pkg::BURST_FIXED);
     exercise(48'h14010000, 256);
     exercise(48'h81002000, 256);
     repeat (20) @(negedge clk);
-    if (checks != 2292 || accepted != checks || stalled == 0 ||
-        host_ar_count != 624 || xbar_ar_count != host_ar_count || llc_ar_count != host_ar_count)
+    if (checks != 2297 || accepted != checks || stalled == 0 ||
+        host_ar_count != 626 || xbar_ar_count != host_ar_count || llc_ar_count != host_ar_count)
       $fatal(1, "Coverage/count mismatch checks=%0d accepted=%0d stalled=%0d AR=%0d/%0d/%0d",
              checks, accepted, stalled, host_ar_count, xbar_ar_count, llc_ar_count);
     $display("PASS: host burst path checked_beats=%0d read_transactions=%0d stalled_cycles=%0d cycles=%0d",

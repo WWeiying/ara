@@ -61,6 +61,36 @@ the hypothesis of a constant 72-byte stride at all starting offsets, but
 does not identify the faulty component. Keep burst writes/load disabled;
 the independently verified single-beat mode remains separate.
 
+The read-only `--fixed-probe` board run `20260924_235823_4mk9ssb5` reproduced
+the INCR table above with stable before/after windows. With `CMD.BURST=FIXED`,
+both regions instead matched `+0x00,+0x40` from a `+0x00` start and
+`+0x38,+0x78,+0xb8` from a `+0x38` start. The tool's raw DATA before and after
+`refresh_hw_axi` agreed. Evidence was uploaded to
+`fpga-evidence/axi-20260924_160342-d86275dc` (commit `73374131`). These are
+matching data addresses, not sampled AR or R bus signals. The common 64-byte
+component persists when AXI burst mode is FIXED, so a simple INCR-only offset
+bug cannot explain all observations. The archived `.ltx` has no ILA for AR/R
+cycle capture. Do not infer a component-level root cause from this table.
+
+## DDR Counter Discriminator
+
+After updating the Windows checkout, run from the exported software directory:
+
+```powershell
+py -3 ..\..\vcu118\tests\host_axi_counter_probe.py $P
+```
+
+This takes two debug snapshots to require an idle DDR AR counter, then reads
+exactly one two-beat FIXED and one two-beat INCR transaction at `0xffff0000`,
+with a debug snapshot after each. It does not write memory or reset/launch the
+SoC. Snapshot commands write only the independent debug register. The report
+retains AR handshake count, R-channel occupancy bytes, last accepted AR address,
+outstanding count and error count before/after each read. These counters are at
+the **LLC output before DDR width conversion**, not at the JTAG master port.
+An AR delta above one proves multiple requests at this observation point but
+does not identify which upstream block generated them. An AR delta of one does
+not prove correct beat addresses or JTAG return capture.
+
 ## Inspect the Archived Netlist
 
 From the same exported software directory and Vivado-enabled shell:
