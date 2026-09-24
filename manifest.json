@@ -1,0 +1,79 @@
+{
+  "diagnostic_only": true,
+  "hardware_access": false,
+  "created_utc": "2026-09-24T16:26:13.615222+00:00",
+  "collection_checkout_commit": "f827228c0079c771d740d1073d7893f9ba7567e5",
+  "netlist_source": "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\software\\axi_netlists\\20260924_124446_iul23phx",
+  "map_source": "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\software\\burst_maps\\20260924_235823_4mk9ssb5\\run",
+  "counter_source": "D:\\project\\ara\\hardware\\fpga\\ara_dsa_vcu118\\software\\burst_maps\\20260925_002054_ttjapjv6\\counter",
+  "note": "Independently collected runs; checkout commit is not bitstream provenance.",
+  "evidence_branch": "fpga-evidence/axi-20260924_162613-fd97de46",
+  "files": [
+    {
+      "path": "netlist/inspection.json",
+      "bytes": 1632,
+      "sha256": "89c4a3275adcb4c364832b0f5da6769bce0818eae063350a80c9b5b5bcdb7a7b"
+    },
+    {
+      "path": "netlist/axi_netlist.rpt",
+      "bytes": 5554,
+      "sha256": "6555264a569fd1921af2118f3249699105eb2f06588aed8acb1ab1cb26ec099e"
+    },
+    {
+      "path": "netlist/vivado.log",
+      "bytes": 5348,
+      "sha256": "53df5726ae7deb6de4223204888847c77bcb71bf6a888c1e4c6538a44d2e5951"
+    },
+    {
+      "path": "netlist/i_read_unit.v",
+      "bytes": 341300,
+      "sha256": "a86d77692ccd2333091235c25d3b494c250bc875d86d834af92c76f7b9ff6b08"
+    },
+    {
+      "path": "netlist/i_write_unit.v",
+      "bytes": 264182,
+      "sha256": "9db6d5bcb2b6a3cebc135a9b1feb08afce9d815addd777267532bedcaa374919"
+    },
+    {
+      "path": "netlist/i_ar_splitter.v",
+      "bytes": 332076,
+      "sha256": "45e065d1c8f2c725d6985ba9019629189581cab82f0eeb640f0f9d853edf2fa8"
+    },
+    {
+      "path": "netlist/i_aw_splitter.v",
+      "bytes": 332416,
+      "sha256": "1f71b18f15ae28128f33bfb6e0362a9b4218f5e96868a4616c9fd82dbd480de9"
+    },
+    {
+      "path": "burst_map/map.json",
+      "bytes": 9949,
+      "sha256": "7ea98be9e6bfc2620095bd17a90d0db2737c3a2d4a09c11f42447bce996b6c12"
+    },
+    {
+      "path": "burst_map/transport/vivado.log",
+      "bytes": 9744,
+      "sha256": "8398353f6fad64cbda2946ea34928a4e149099ddbb547dc88ef301dfc8bc675f"
+    },
+    {
+      "path": "burst_map/transport/transport.jsonl",
+      "bytes": 11265,
+      "sha256": "cfdff47afe73b4791678d61ce55f80c7affb211d5ba3a93f52a0358ab5bf25ab"
+    },
+    {
+      "path": "counter_probe/counter_probe.json",
+      "bytes": 1716,
+      "sha256": "4a4b2db526930d36c3f849af6f7cce227fa1cf444d07a011221b12958274b5e2"
+    },
+    {
+      "path": "counter_probe/transport/vivado.log",
+      "bytes": 7807,
+      "sha256": "8b384d26a76e819783dcb9ac24113599334b9618f263db6d4e29318e872e0652"
+    },
+    {
+      "path": "counter_probe/transport/transport.jsonl",
+      "bytes": 27943,
+      "sha256": "35e1e99a2fb239c2ea3aee78bdcaf5c737fa8de848359aafb752c5ab3fbac911"
+    }
+  ],
+  "archive_sha256": "1d1d2a5315d128f1a1ec95a52b43d298fa9cd6fcde14150a57e22f3a15a68652"
+}
