@@ -4,12 +4,14 @@ Status: **IP/environment preflight only. Ethernet download RTL is not integrated
 and no link, throughput, or Ethernet-to-DDR test has passed on hardware.**
 The existing UART and JTAG single-beat loader remain unchanged.
 
-Latest Windows evidence (`9523a342e8947de5c7834d0eab97c1da71cb2d48`): IP
-configuration and generation passed; the regenerated TEMAC now reports **Bought**
-for both generated and available Synthesis license levels. Example export still
-fails with a Tcl `stdout` channel error. The runner below tests a console/logging
-correction and collects channel diagnostics; it is not yet validated in Windows
-Vivado. Do not start Ara integration on this evidence.
+Latest Windows evidence (`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`): **all 11
+preflight stages passed** using collector `6c94d2ff`. TEMAC reports **Bought** for
+both generated and available Synthesis license levels. Example generation now
+completes with inherited console handles and a Vivado-native log. This validates
+the launch workaround in one Windows run, not Ethernet hardware operation.
+Preserve `D:/fpga_runs/ara_eth_zr9jsk58`; there is no need to repeat this preflight
+unchanged. Next is the example clock/reset/pin review, before an isolated network
+build or Ara integration.
 
 ## One Windows Command
 
@@ -121,9 +123,10 @@ The runner previously used Python to redirect Vivado stdout/stderr to a regular
 file and passed `-nolog`. The hypothesis under test is that this Windows batch
 launch arrangement contributes to the missing Tcl stdout channel. It now leaves
 the console handles inherited and lets Vivado manage its own `-log` file. This
-is a candidate workaround, not a proven root cause or a vendor patch.
+was a candidate workaround at that point, not a proven root cause or a vendor
+patch. The subsequent run below confirms example generation succeeds with it.
 
-To make the next run discriminating, `preflight.rpt` records:
+To distinguish channel failures, `preflight.rpt` records:
 
 - A separate `console` stage, Tcl version, channel names and an actual stdout
   write/flush at startup and immediately before/after example generation.
@@ -143,6 +146,42 @@ configuration, board constraint, vendor installation, or Ara RTL is changed.
 Linux tests cover command construction and inherited stream options, report
 classification, 18 mocked vendor-flow scenarios, and four isolated Tcl processes
 that really close stdout. They cannot reproduce Windows Vivado internals.
+
+### Windows Preflight Passed
+
+Run `D:/fpga_runs/ara_eth_zr9jsk58`, uploaded on branch
+`fpga-evidence/ethernet-20260924_104025-8f42693a` as
+`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`, establishes:
+
+- Vivado 2020.1 exited with code 0; all 11 stages passed, including `example` and
+  `example_inventory`, with the same requested IP configuration as before.
+- Actual stdout writes and flushes succeeded at startup and before/after the
+  example. The example returned 0 and opened `eth_j10_ex`. No stdout channel
+  error or `STDOUT_CLOSE` event was recorded. Channel names alone are not a
+  validity check: this Vivado lists file handles rather than a literal stdout
+  entry even though the stdout write/flush succeeds.
+- The example inventory contains 158 files, including 15 XDC files. This is an
+  inventory, not proof that all constraints are applicable or complete.
+- The required TEMAC Synthesis row is `Bought / Bought`. Neither bitstream
+  generation nor hardware access occurred. Both hardware acceptance flags remain
+  false, intentionally.
+- Archive/member SHA256 values, collector source hashes, requested configuration,
+  stage results and the license table were checked against the uploaded manifest.
+
+The practical example-generation blocker is cleared in this run. The console/log
+change is supported as a workaround; the evidence does not isolate whether handle
+redirection, native logging, or an internal tool interaction caused the original
+failure. Do not call it an Ethernet RTL repair or alter IP settings to chase it.
+
+Before building or programming a network image, review the generated example's
+`eth_j10_example.v`, `eth_j10_support.v`, `eth_j10_clocks_resets.v`,
+`eth_j10_axi_lite_ctrl.v`, `eth_j10_ex_des_loc.xdc`, and
+`eth_j10_example_design.xdc`, together with the IP's scoped clock/board XDC.
+These files remain under `example/eth_j10_ex`; the uploaded bundle contains only
+their inventory, not their contents. Establish independent PHY reset release,
+the reference-clock dependencies, actual external PHY MDIO initialization,
+board-pin/electrical matches, and the example's test-mode controls first. Do not
+infer these connections from file names or use an unreviewed example bitstream.
 
 ## What Is Checked
 
@@ -203,8 +242,8 @@ restrictions before proceeding. `bitstream_license_verified` and
 
 The next hardware image should test the network in isolation, not simultaneously
 introduce a new network stack, DMA, and Ara memory path. Current evidence is
-sufficient to proceed with the licensed-MAC route, but example generation and
-its clock/reset/constraint review must pass before building that network image.
+sufficient to proceed with the licensed-MAC route. Example generation has passed;
+its clock/reset/constraint review remains open before building that network image.
 
 ## References and Local Tests
 
