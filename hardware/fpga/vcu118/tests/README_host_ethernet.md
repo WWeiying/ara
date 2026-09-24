@@ -1,8 +1,17 @@
 # VCU118 J10 Ethernet Downloader: Preflight and Bring-Up Plan
 
-Status: **IP/environment preflight only. Ethernet download RTL is not integrated,
-and no link, throughput, or Ethernet-to-DDR test has passed on hardware.**
+Status: **IP/environment preflight reviewed; isolated diagnostic build flow now
+available. Ethernet download RTL is not integrated, and no link, throughput,
+or Ethernet-to-DDR test has passed on hardware.**
 The existing UART and JTAG single-beat loader remain unchanged.
+
+Next action for the reviewed `ara_eth_zr9jsk58` directory: run the new
+[isolated build command](../ethernet/README.md#windows-one-build-invocation),
+not another unchanged preflight or source collection. It creates a fresh design,
+uses corrected J10 pins, independent PHY reset and JTAG AXI-Lite management,
+and adds a disabled-by-default filtered L2 echo behind the vendor RX FIFO.
+It does not access the board or modify Ara. Local bounded FIFO/echo/reset tests
+passed; real Vivado build/report review and PHY/packet board tests remain open.
 
 Latest Windows evidence (`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`): **all 11
 preflight stages passed** using collector `6c94d2ff`. TEMAC reports **Bought** for
