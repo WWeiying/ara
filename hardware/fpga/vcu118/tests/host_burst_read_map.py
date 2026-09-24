@@ -42,13 +42,15 @@ def collect(transport, report, fixed_probe=False, cache_probe=False):
                                               "matches": matches})
         if cache_probe:
             region["cache_rows"] = []
-            for cache in (0, 2):
+            for burst, cache in (("INCR", 0), ("INCR", 2),
+                                 ("FIXED", 0), ("FIXED", 2)):
                 data = transport.exchange(
-                    [Operation("M", "READ", base, 2, cache=cache)])[0]
+                    [Operation("M", "READ", base, 2, burst=burst, cache=cache)])[0]
                 words = [data[i:i+8] for i in range(0, len(data), 8)]
                 matches = [[hex(base + 8*i) for i, old in enumerate(before)
                             if old == word] for word in words]
                 region["cache_rows"].append({"address": hex(base), "beats": 2,
+                                             "burst": burst,
                                              "arcache": cache, "data": data.hex(),
                                              "matches": matches})
         after = transport.exchange(reads)
@@ -106,7 +108,8 @@ def main(probes, output, vivado="vivado", fixed_probe=False, cache_probe=False,
             for row in region.get("fixed_rows", []):
                 print("FIXED", row["address"], "LEN", row["beats"], "MATCHES", row["matches"])
             for row in region.get("cache_rows", []):
-                print("CACHE", row["arcache"], row["address"], "MATCHES", row["matches"])
+                print("CACHE", row["arcache"], row["burst"], row["address"],
+                      "MATCHES", row["matches"])
         for region in report.get("long_regions", []):
             print("LONG_REGION", region["base"], "STABLE", region["stable"])
             for row in region["cases"]:

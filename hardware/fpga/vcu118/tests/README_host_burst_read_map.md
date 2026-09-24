@@ -16,8 +16,8 @@ every beat. If only INCR is wrong, address progression is suspect; if FIXED is
 also wrong, inspect R-channel ordering/capture before attributing an address
 fault. This option is read-only and does not reset the JTAG AXI core.
 
-Add `--cache-probe` for a read-only comparison of two-beat INCR reads with
-`ARCACHE=0` and `ARCACHE=2`. It additionally checks fresh DDR address
+Add `--cache-probe` for a read-only comparison of two-beat INCR and FIXED
+reads with `ARCACHE=0` and `ARCACHE=2`. It additionally checks fresh DDR address
 `0xa1011000`. This is a diagnostic control bit, not a proposed loader default:
 the width converter may transform modifiable reads differently. If results
 differ, inspect its input/output AXI handshakes before assigning blame to the
@@ -139,8 +139,16 @@ with `ARCACHE=2`, it matched the correct `+0x08` in every window. This is a
 controlled request-attribute difference, not proof that the LLC or DDR width
 converter is the only faulty component. The 64-to-512-bit DDR upsizer has
 separate pass-through and packed paths selected by the modifiable bit, but the
-SPM result also changes. Wider reads and write/readback are not yet validated
-with this attribute; keep production loading in single-beat mode.
+SPM result also changes. This two-beat result alone was not sufficient to
+enable production loading.
+
+The `--cache-long-probe` run `20260925_004313_oc6ce63h` checked
+`ARCACHE=2` at SPM `0x14010000` and DDR `0xa1012000`. The 8-, 3-, 9-,
+and 256-beat results all matched 256 independent single reads; each
+before/after single-read window was stable. This establishes readback
+consistency for those lengths and offsets, not arbitrary regions or writes.
+Raw reports and transport logs are on
+`fpga-evidence/axi-20260924_164533-e02b137d` (commit `20c46372`).
 
 ## Inspect the Archived Netlist
 

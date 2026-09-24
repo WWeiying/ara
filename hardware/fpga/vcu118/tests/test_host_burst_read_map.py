@@ -98,11 +98,14 @@ class ProbeTests(unittest.TestCase):
         for region in report["regions"]:
             self.assertTrue(region["stable"])
             base = region["base"]
-            self.assertEqual([row["arcache"] for row in region["cache_rows"]], [0, 2])
+            self.assertEqual([(row["burst"], row["arcache"]) for row in region["cache_rows"]],
+                             [("INCR", 0), ("INCR", 2), ("FIXED", 0), ("FIXED", 2)])
             self.assertEqual(region["cache_rows"][0]["matches"],
                              [[base], [hex(int(base, 16) + 0x48)]])
             self.assertEqual(region["cache_rows"][1]["matches"],
                              [[base], [hex(int(base, 16) + 8)]])
+            self.assertEqual(region["cache_rows"][2]["matches"], [[base], [base]])
+            self.assertEqual(region["cache_rows"][3]["matches"], [[base], [base]])
 
     def test_cache_long_probe_verifies_cross_line_and_max_burst(self):
         report = {}
