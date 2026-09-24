@@ -199,6 +199,17 @@ means only that the Windows host can see a matching device; it does not
 identify the image currently running or test Ethernet. The mock Tcl test is
 `tclsh hardware/fpga/vcu118/tests/test_ethernet_inventory.tcl`.
 
+On 2026-09-24, the read-only Windows run returned one target
+`localhost:3121/xilinx_tcf/Digilent/210308A3B79F`, one device `xcvu9p_0`, and
+`READ_ONLY_INVENTORY_PASS`. It did not identify the current image or exercise
+J10. The archived Ara host rollback image is still present at
+`D:/fpga_runs/ara_20260923_125216_228b9d4f9525/bitstream_host/`;
+`certutil` rehashed its `.bit` and `.ltx` to
+`bb3eee0dc3469097e39be7ab042049763250f9ef0357713290071c458cbfc2a9`
+and `201c121c270cb1c6be404a197a88bacb81abed5c8afaf4b5be3625eb1ca1c180`,
+matching `bitstream.json`. These checks prepare a rollback; they do not approve
+an unobserved image switch or validate Ethernet.
+
 ## Circuit and Boundaries
 
 - The independent 300 MHz board clock supplies 100 MHz JTAG AXI-Lite, VIO and
