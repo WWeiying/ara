@@ -62,6 +62,16 @@ def collect(transport, report, resume_counters=False):
                                     "data": data.hex(), "delta": delta,
                                     "after": counters(current)})
             previous = current
+        for row in report["reads"]:
+            address = int(row["address"], 16)
+            reads = [Operation("M", "READ", address + 8*i) for i in range(20)]
+            before = transport.exchange(reads)
+            after = transport.exchange(reads)
+            row["neighbor_stable"] = before == after
+            row["matches"] = [
+                [hex(address + 8*i) for i, word in enumerate(before) if word == beat]
+                for beat in (bytes.fromhex(row["data"])[:8], bytes.fromhex(row["data"])[8:])
+            ]
     finally:
         if resumed:
             write_debug(transport, [(COMMAND, FREEZE)])

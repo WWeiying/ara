@@ -91,12 +91,21 @@ Snapshot/resume/freeze commands write only the independent debug register. The r
 retains AR handshake count, R-channel occupancy bytes, last accepted AR address,
 outstanding count and error count before/after each read. These counters are at
 the **LLC output before DDR width conversion**, not at the JTAG master port.
+After the counted reads, the probe also compares each returned beat with a
+20-word window of independently addressed reads, twice to check window stability.
 An AR delta above one proves multiple requests at this observation point but
 does not identify which upstream block generated them. An AR delta of one does
 not prove correct beat addresses or JTAG return capture. Earlier runs at
 `0xffff0000`, `0xa1000000` and `0xa1001000` showed zero AR and R-byte deltas,
 but did not check whether the counters were frozen. Those deltas are not
 evidence of LLC hits or of any particular bus behavior.
+The corrected run `20260925_001751_59vrcxq8` confirmed the counters started
+frozen, the watchdog was off, idle AR delta was zero, and the frozen state was
+restored. Each two-beat read at the fresh DDR addresses increased the LLC-output
+AR count by one and R occupancy by 16 bytes, with no recorded errors; the last
+accepted AR address was the requested base. This rejects two separate AR
+transactions at the DDR observation point, but does not reveal the returned
+RDATA at that point or the JTAG input.
 
 ## Inspect the Archived Netlist
 

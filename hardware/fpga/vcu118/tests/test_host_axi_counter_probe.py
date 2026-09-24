@@ -25,10 +25,13 @@ class Memory:
     def exchange(self, operations):
         for op in operations:
             self.calls.append(op)
-            if op.bus != "M" or op.kind != "READ" or op.address != probe.ADDRESSES[op.burst]:
+            valid_address = (op.address == probe.ADDRESSES[op.burst] if op.beats == 2 else
+                             any(base <= op.address < base + 160
+                                 for base in probe.ADDRESSES.values()))
+            if op.bus != "M" or op.kind != "READ" or not valid_address:
                 raise AssertionError("Only the selected memory address may be read")
             op.wire()
-        return [bytes(16)]
+        return [bytes(op.beats * 8) for op in operations]
 
 
 class ProbeTests(unittest.TestCase):
@@ -57,10 +60,12 @@ class ProbeTests(unittest.TestCase):
                           side_effect=[snap(1, 10, 80), snap(2, 10, 80),
                                        snap(3, 11, 96), snap(4, 12, 112)]):
             probe.collect(memory, report)
-        self.assertEqual([op.burst for op in memory.calls], ["FIXED", "INCR"])
+        self.assertEqual([op.burst for op in memory.calls if op.beats == 2],
+                         ["FIXED", "INCR"])
         self.assertEqual(report["idle_ar_delta"], 0)
         self.assertEqual([row["delta"] for row in report["reads"]],
                          [{"ar_count": 1, "r_bytes": 16, "error_count": 0}] * 2)
+        self.assertTrue(all(row["neighbor_stable"] for row in report["reads"]))
 
     def test_idle_activity_blocks_probe(self):
         memory = Memory()
