@@ -34,7 +34,7 @@ module eth_diag_top (
     .phy_reset_n(phy_rst_n), .settled(phy_settled)
   );
   // Management release depends on the independent timer, NOT on PCS lock.
-  assign mac_reset = ctrl_reset | !phy_settled;
+  assign mac_reset = !phy_settled;
   eth_diag_reset_sync i_packet_reset (.clk(tx_clk), .reset(mac_reset), .reset_out(packet_reset));
   eth_j10_bit_sync i_enable (.clk(tx_clk), .data_in(echo_enable), .data_out(enable_tx));
 

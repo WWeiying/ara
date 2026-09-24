@@ -6,19 +6,27 @@ module eth_diag_reset #(
   input wire clk,
   input wire reset,
   input wire request,
-  output wire phy_reset_n,
-  output wire settled
+  output reg phy_reset_n = 1'b0,
+  output reg settled = 1'b0
 );
   localparam integer TOTAL = HOLD_CYCLES + SETTLE_CYCLES;
   localparam integer WIDTH = $clog2(TOTAL + 1);
   reg [WIDTH-1:0] elapsed = 0;
   always @(posedge clk or posedge reset) begin
-    if (reset) elapsed <= 0;
-    else if (request) elapsed <= 0;
-    else if (elapsed < TOTAL) elapsed <= elapsed + 1'b1;
+    if (reset) begin
+      elapsed <= 0;
+      phy_reset_n <= 0;
+      settled <= 0;
+    end else if (request) begin
+      elapsed <= 0;
+      phy_reset_n <= 0;
+      settled <= 0;
+    end else begin
+      if (elapsed < TOTAL) elapsed <= elapsed + 1'b1;
+      if (elapsed == HOLD_CYCLES - 1) phy_reset_n <= 1;
+      if (elapsed == TOTAL - 1) settled <= 1;
+    end
   end
-  assign phy_reset_n = !reset && !request && elapsed >= HOLD_CYCLES;
-  assign settled = !reset && !request && elapsed == TOTAL;
 endmodule
 
 module eth_diag_reset_sync (

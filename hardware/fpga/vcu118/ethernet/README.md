@@ -1,10 +1,10 @@
 # Isolated VCU118 J10 Diagnostic Build
 
-Status: Windows Vivado 2020.1 has completed top/IP synthesis and the corrected
-pending-hub, pin and electrical checks. The second build stopped on a missing
-`-from` in our timing constraints; the endpoint fixes below are locally
-regression-tested but await a new Windows build.
-**Placement, routing, bitgen and physical Ethernet operation are unverified.**
+Status: Windows Vivado 2020.1 completed all eight build stages on source
+`2043c11b`, including routing, timing reports and bitgen. Report review found
+the diagnostic reset release driven by a combinational counter comparison;
+the registered-output correction below passed local RTL tests but awaits a new
+Windows build. **Physical Ethernet operation is unverified.**
 This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
 
@@ -20,9 +20,10 @@ if ($LASTEXITCODE -eq 0) { py -3 D:\project\ara\hardware\fpga\vcu118\tests\host_
 
 No board power, cable, GUI target connection, `.ltx` argument or hardware reset
 is required for this build. Leave the console open until the final state/upload
-branch. Do not pipe/redirect the command's console handles. This is a real
-synthesis/implementation build, longer than the earlier IP preflight; no runtime
-estimate has been measured yet. Default parallel jobs: 4, selectable with `--jobs`.
+branch. Do not pipe/redirect the command's console handles. The first complete
+isolated Windows build took about 15.5 minutes, including about 4.5 minutes for
+synthesis; subsequent runs can vary. Default parallel jobs: 4, selectable with
+`--jobs`.
 
 The runner creates a fresh short `D:/fpga_runs/ara_eth_build_*` directory. It
 validates the successful preflight and hashes eight reviewed vendor integration
@@ -114,6 +115,41 @@ the 20 ns pad budgets alone do not prove complete MDIO timing coverage.
 Use the same two build commands above. The existing preflight is reused as
 input; a fresh build directory keeps both failed runs intact. No GUI or board
 operation is required. Placement/routing, report review and bitgen remain open.
+
+## Third Windows Build Review
+
+Source `2043c11b` produced `D:/fpga_runs/ara_eth_build_ljcqsx8n` on Vivado
+2020.1. Evidence commit `ec4e0e349005ae234cdf0ea05460b0262f58d540` is on
+`fpga-evidence/ethernet-build-20260924_145627-d0b0f7f6`. All eight stages
+passed, including full-license bitgen. The local `.bit` and `.ltx` remain on
+Windows; only reports/logs were uploaded. Routed WNS/WHS/WPWS are
+`+1.398/+0.011/+0.005 ns`, and the six-bit RX pointer bus-skew check meets its
+8 ns bound with `+7.315 ns` slack. The routed DRC has no errors. None of this
+establishes a working J10 link or approves programming.
+
+The CDC report lists 32 CDC-1, two CDC-4 and 14 CDC-10 Critical findings.
+Most CDC-1 and both CDC-4 findings are inside the generated MAC/PCS. Ten
+CDC-10 paths start at our `i_phy_reset/elapsed_reg[20]` and end at first-stage
+MAC/FIFO/packet reset synchronizers. Static RTL inspection agrees with the
+report: the `elapsed == TOTAL` comparator drove `mac_reset` through logic,
+which could generate a narrow asynchronous reset pulse when counter bits
+change. The PHY-release and settled outputs are now registered in the 100 MHz
+control domain; a software reset request takes effect at the next control
+clock edge, while the external reset still asserts asynchronously. The MAC
+reset uses the registered settled flag directly. The existing 20 ms hold and
+200 ms settle count thresholds are unchanged. A bounded RTL simulation checks
+both thresholds, request latency, asynchronous reset and recovery; vendor
+MAC/PCS silicon and routed CDC still require another Windows build and report.
+
+`check_timing.rpt` has no unconstrained internal endpoint but flags MDIO as a
+partial input-delay constraint. The 20 ns MDIO input routing bound is present;
+the vendor IP has a false-path hold exception to its first MDIO register.
+That is not complete external PHY-to-MAC input timing signoff. The remaining
+LUT-driven async-reset methodology findings include vendor/debug logic and
+our control reset, and need review against the new CDC report. Do not program
+the prior image as an accepted diagnostic image. Re-run the build after the
+registered reset change, then inspect CDC, timing, methodology and DRC reports
+before starting JTAG/MDIO board checks.
 
 ## Circuit and Boundaries
 

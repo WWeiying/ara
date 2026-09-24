@@ -1,22 +1,20 @@
 # VCU118 J10 Ethernet Downloader: Preflight and Bring-Up Plan
 
-Status: **IP/environment preflight reviewed; isolated diagnostic build flow now
-available. Ethernet download RTL is not integrated, and no link, throughput,
-or Ethernet-to-DDR test has passed on hardware.**
+Status: **Vivado 2020.1 generated and routed an isolated diagnostic image;
+report review found a reset-release CDC risk, and the registered-output fix
+awaits a new build. No link, throughput or Ethernet-to-DDR test has passed on
+hardware.**
 The existing UART and JTAG single-beat loader remain unchanged.
 
-Next action for the reviewed `ara_eth_zr9jsk58` directory: run the new
-[isolated build command](../ethernet/README.md#windows-one-build-invocation),
-not another unchanged preflight or source collection. It creates a fresh design,
-uses corrected J10 pins, independent PHY reset and JTAG AXI-Lite management,
-and adds a disabled-by-default filtered L2 echo behind the vendor RX FIFO.
-It does not access the board or modify Ara. Local bounded FIFO/echo/reset tests
-passed. The latest real Vivado run completed top/IP synthesis and the corrected
-pending-hub/pin/electrical checks, then stopped on a missing `-from` in our
-timing script. All custom max-delay/skew endpoints are now explicit, with
-argument/path regression checks; rerun the same isolated build command, not the
-preflight. See the [second build review](../ethernet/README.md#second-windows-build-review).
-Placement/routing, bitgen and PHY/packet board tests remain open.
+Next action: re-run the
+[isolated build command](../ethernet/README.md#windows-one-build-invocation)
+with the registered reset fix, using the existing `ara_eth_zr9jsk58` preflight.
+The last run passed all eight build stages; its routed
+[report review](../ethernet/README.md#third-windows-build-review) found ten
+critical CDC paths from the diagnostic counter to asynchronous resets and a
+partial MDIO input constraint. The new reset outputs passed bounded RTL tests.
+The re-run will measure whether the CDC paths are removed. Board PHY/packet
+tests and the Ethernet downloader remain open.
 
 Successful preflight evidence (`227b2a84c8e9d3fe35c1558b47a3f0f5aa0514df`): **all 11
 preflight stages passed** using collector `6c94d2ff`. TEMAC reports **Bought** for

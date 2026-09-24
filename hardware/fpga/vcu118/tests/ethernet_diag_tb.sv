@@ -98,11 +98,19 @@ module ethernet_diag_tb;
       if (phy_reset_n !== (i>=5) || settled !== (i==16)) $fatal(1, "PHY timer off by one: %0d", i);
     end
     @(negedge clk); phy_request = 1;
-    #1; if (phy_reset_n || settled) $fatal(1, "PHY reset request not applied");
+    #1;
+    if (!phy_reset_n || !settled) $fatal(1, "PHY request changed outputs before clock edge");
+    @(posedge clk); #1;
+    if (phy_reset_n || settled) $fatal(1, "PHY reset request not applied");
     repeat (5) @(negedge clk);
     phy_request = 0;
     repeat (100) @(posedge clk);
     if (!settled) $fatal(1, "PHY reset did not release");
+    @(negedge clk); reset = 1;
+    #1; if (phy_reset_n || settled) $fatal(1, "Asynchronous reset did not assert");
+    @(negedge clk); reset = 0;
+    repeat (20) @(posedge clk);
+    if (!settled) $fatal(1, "PHY reset did not recover");
     make_frame(60); rejected_case(60, 0); // disabled by default
     enable = 1;
     accepted(60); accepted(64); accepted(1514); accepted(60);
