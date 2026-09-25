@@ -41,6 +41,38 @@ if {![catch {eth_sgmii::pcs_read test 2}]} {error "PCS identifier access accepte
             "COMMAND 508 00004000", "COMMAND 504 030e4800",
         ])
 
+    def test_pcs_pulse_releases_request_on_error(self):
+        output = self.tcl("""
+set ::request_state 0
+set ::phy_ok 1
+proc get_hw_probes {args} { return {pcs_request} }
+proc get_property {key probe} {
+    if {$key eq "NAME"} { return pcs_request }
+    if {$key eq "TYPE"} { return vio_output }
+    error "unexpected property $key"
+}
+proc set_property {key value probe} { set ::request_state $value }
+proc commit_hw_vio {vio} {}
+proc refresh_hw_vio {args} {}
+rename eth_board::probe_value eth_board::real_probe_value
+proc eth_board::probe_value {vio name type property width} {
+    if {$name eq "pcs_request"} { return $::request_state }
+    if {$name eq "phy_rst_n_OBUF"} { return $::phy_ok }
+    error "unexpected probe $name"
+}
+eth_sgmii::pulse_pcs_reset vio
+if {$::request_state != 0} {error "request left asserted"}
+set ::phy_ok 0
+if {![catch {eth_sgmii::pulse_pcs_reset vio} message] ||
+    ![string match {*external PHY reset changed*} $message]} {
+    error "unexpected failure result: $message"
+}
+if {$::request_state != 0} {error "request left asserted after failure"}
+puts PCS_PULSE_CLEANUP_PASS
+""")
+        self.assertIn("PCS_RESET_PULSE_COMPLETE", output)
+        self.assertIn("PCS_PULSE_CLEANUP_PASS", output)
+
 
 if __name__ == "__main__":
     unittest.main()

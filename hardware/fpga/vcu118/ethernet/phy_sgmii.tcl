@@ -87,10 +87,56 @@ namespace eval eth_sgmii {
         return $pcs
     }
 
+    proc sample_clock {vio} {
+        set samples {}
+        for {set attempt 0} {$attempt < 4} {incr attempt} {
+            refresh_hw_vio -update_output_values $vio
+            lappend samples [eth_board::probe_value $vio tx_beat_sync vio_input INPUT_VALUE 1]
+            after 250
+        }
+        puts "TX_CLOCK_SAMPLES $samples"
+        puts "TX_CLOCK_MOVING [expr {[llength [lsort -unique $samples]] > 1}]"
+    }
+
+    proc pulse_pcs_reset {vio} {
+        set matches {}
+        foreach probe [get_hw_probes -of_objects $vio] {
+            if {[get_property NAME $probe] eq "pcs_request" &&
+                [get_property TYPE $probe] eq "vio_output"} { lappend matches $probe }
+        }
+        set request [eth_board::one $matches "PCS-reset VIO probe"]
+        if {[eth_board::probe_value $vio pcs_request vio_output OUTPUT_VALUE 1] != 0} {
+            error "PCS reset request already asserted"
+        }
+        set code [catch {
+            set_property OUTPUT_VALUE 1 $request
+            commit_hw_vio $vio
+            after 100
+            refresh_hw_vio -update_output_values $vio
+            if {[eth_board::probe_value $vio pcs_request vio_output OUTPUT_VALUE 1] != 1 ||
+                [eth_board::probe_value $vio phy_rst_n_OBUF vio_input INPUT_VALUE 1] != 1} {
+                error "PCS reset assertion failed or external PHY reset changed"
+            }
+        } message options]
+        set release_code [catch {
+            set_property OUTPUT_VALUE 0 $request
+            commit_hw_vio $vio
+            after 100
+            refresh_hw_vio -update_output_values $vio
+            if {[eth_board::probe_value $vio pcs_request vio_output OUTPUT_VALUE 1] != 0 ||
+                [eth_board::probe_value $vio phy_rst_n_OBUF vio_input INPUT_VALUE 1] != 1} {
+                error "PCS reset release failed or external PHY reset changed"
+            }
+        } release_message release_options]
+        if {$code} { return -options $options $message }
+        if {$release_code} { return -options $release_options $release_message }
+        puts "PCS_RESET_PULSE_COMPLETE external_phy_reset_unchanged"
+    }
+
     proc run {args} {
-        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair hw_server_url" }
+        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair|pcs-reset hw_server_url" }
         lassign $args probes mode server
-        if {$mode ni {inspect repair} || ![file isfile $probes]} { error "Invalid mode or probes file" }
+        if {$mode ni {inspect repair pcs-reset} || ![file isfile $probes]} { error "Invalid mode or probes file" }
         set manager_open 0
         set server_connected 0
         set target_open 0
@@ -148,6 +194,7 @@ namespace eval eth_sgmii {
             set d3 [eth_sgmii::extended_read $axi 0x00d3]
             puts [format "PHY_STATE BMCR=0x%04x BMSR=0x%04x CFG2=0x%04x SGMII_ANEG=0x%04x D3=0x%04x" $bmcr $bmsr $cfg2 $aneg $d3]
             set pcs [eth_sgmii::status $vio]
+            eth_sgmii::sample_clock $vio
             set pcs_control [eth_sgmii::pcs_read $axi 0]
             eth_sgmii::pcs_read $axi 1
             set pcs_status [eth_sgmii::pcs_read $axi 1]
@@ -170,9 +217,29 @@ namespace eval eth_sgmii {
                     set pcs [eth_sgmii::status $vio]
                     if {($pcs & 3) == 3} { break }
                 }
+                eth_sgmii::sample_clock $vio
                 set aneg [eth_sgmii::extended_read $axi 0x0037]
                 puts [format "PHY_SGMII_ANEG_AFTER 0x%04x" $aneg]
                 if {($pcs & 3) != 3} { error "Six-wire configured but PCS link/sync still down" }
+                puts "SGMII_LINK_PASS"
+            } elseif {$mode eq "pcs-reset"} {
+                if {$d3 != 0x4000 || ($cfg2 & 0x80) == 0 ||
+                    ($bmsr & 0x24) != 0x24 || ($pcs & 3) == 3} {
+                    error "PCS-reset preconditions not met; no pulse attempted"
+                }
+                eth_sgmii::pulse_pcs_reset $vio
+                for {set attempt 0} {$attempt < 20} {incr attempt} {
+                    after 500
+                    set pcs [eth_sgmii::status $vio]
+                    if {($pcs & 3) == 3} { break }
+                }
+                eth_sgmii::sample_clock $vio
+                eth_board::axi_word $axi WRITE 0x500 0x7f
+                set d3_after [eth_sgmii::extended_read $axi 0x00d3]
+                set aneg_after [eth_sgmii::extended_read $axi 0x0037]
+                puts [format "PHY_AFTER_PCS_RESET D3=0x%04x SGMII_ANEG=0x%04x" $d3_after $aneg_after]
+                if {$d3_after != 0x4000} { error "External PHY six-wire mode changed during PCS reset" }
+                if {($pcs & 3) != 3} { error "PCS reset completed but link/sync still down" }
                 puts "SGMII_LINK_PASS"
             } else { puts "SGMII_INSPECTION_COMPLETE" }
         } message options]
