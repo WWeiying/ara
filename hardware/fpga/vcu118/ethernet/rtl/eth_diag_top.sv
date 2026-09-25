@@ -65,8 +65,8 @@ module eth_diag_top (
   for (genvar i = 0; i < 20; i = i + 1) begin: gen_status
     eth_j10_bit_sync i_sync (.clk(ctrl_clk), .data_in(status_async[i]), .data_out(status_sync[i]));
   end
-  always @(posedge tx_clk or posedge mac_reset) begin
-    if (mac_reset) begin
+  always @(posedge tx_clk) begin
+    if (packet_reset) begin
       tx_beat_div <= 0;
       tx_beat_bin <= 0;
     end else begin
