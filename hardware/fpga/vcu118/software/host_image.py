@@ -114,7 +114,7 @@ def elf_class():
     return ELFFile
 
 
-def prepare_image(elf_path, raw_loads=(), caps=CAP_HOST):
+def prepare_image(elf_path, raw_loads=(), caps=CAP_HOST, allow_dynamic=False):
     path = Path(elf_path).resolve()
     ELFFile = elf_class()
     segments = []
@@ -126,7 +126,8 @@ def prepare_image(elf_path, raw_loads=(), caps=CAP_HOST):
         entry = int(elf["e_entry"])
         file_length = path.stat().st_size
         for segment in elf.iter_segments():
-            if segment["p_type"] in ("PT_INTERP", "PT_DYNAMIC"):
+            if segment["p_type"] == "PT_INTERP" or (segment["p_type"] == "PT_DYNAMIC" and
+                                                   not allow_dynamic):
                 raise ValueError("Dynamic ELF requires a runtime loader")
             if segment["p_type"] != "PT_LOAD":
                 continue

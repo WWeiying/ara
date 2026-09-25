@@ -10,6 +10,7 @@ from pathlib import Path
 import secrets
 import struct
 import sys
+import threading
 import time
 
 from host_image import CAP_DDR2, CAP_HOST, check_range, prepare_image, sha256_file
@@ -441,7 +442,7 @@ def check_passive_boot(transport):
 
 def load_and_run(transport, image, output, report, full_reset_confirmed=False,
                  run_id=1, seconds=30.0, watchdog_cycles=0, batch_chunks=16,
-                 single_beat=False):
+                 single_beat=False, launch_only=False):
     if not full_reset_confirmed:
         raise ValueError("Explicit --full-reset-confirmed is required before each load")
     if (not 0 < run_id <= 0xFFFFFFFF or not 0 <= watchdog_cycles <= 0xFFFFFFFF or
@@ -499,6 +500,9 @@ def load_and_run(transport, image, output, report, full_reset_confirmed=False,
                                   data=struct.pack("<I", 2) + scratch3)])
     timings["boot_control_and_launch"] = time.monotonic() - start
     report["state"] = "running"
+    write_json(Path(output) / "report.json", report)
+    if launch_only:
+        return None
     start = time.monotonic()
     deadline = start + seconds
     while time.monotonic() < deadline:
@@ -530,12 +534,72 @@ def provenance():
     return {"python": sys.version, "host_sha256": {p.name: sha256_file(p) for p in paths}}
 
 
-def collect_uart(args):
+def serial_module():
     here = Path(__file__).resolve().parent
     for directory in (here / "vendor", here.parents[1] / "ara_dsa_vcu118/software/vendor"):
         for wheel in directory.glob("pyserial-*.whl"):
             sys.path.insert(0, str(wheel))
     import serial
+    return serial
+
+
+def wait_linux_console(port, output, launch, seconds,
+                       marker=b"Linux console, DDR and RVV handoff are alive"):
+    stop = threading.Event()
+    seen = threading.Event()
+    errors = []
+    tail = bytearray()
+    count = 0
+    failure = None
+    output = Path(output)
+    with (output / "uart.bin").open("wb") as stream:
+        def read_console():
+            nonlocal count
+            try:
+                while not stop.is_set():
+                    chunk = port.read(4096)
+                    if chunk:
+                        stream.write(chunk)
+                        stream.flush()
+                        count += len(chunk)
+                        tail.extend(chunk)
+                        if len(tail) > 65536:
+                            del tail[:-65536]
+                        if marker in tail:
+                            seen.set()
+            except Exception as exc:
+                errors.append(exc)
+
+        reader = threading.Thread(target=read_console, daemon=True)
+        reader.start()
+        try:
+            launch()
+            deadline = time.monotonic() + seconds
+            while not seen.is_set() and time.monotonic() < deadline:
+                if errors:
+                    raise RuntimeError(f"UART capture failed: {errors[0]}") from errors[0]
+                seen.wait(min(0.2, max(0, deadline - time.monotonic())))
+        except BaseException as exc:
+            failure = exc
+        finally:
+            stop.set()
+            reader.join(timeout=2)
+    raw = (output / "uart.bin").read_bytes()
+    (output / "uart.txt").write_text(raw.decode("utf-8", errors="replace"), encoding="utf-8")
+    result = {"bytes": count, "marker_seen": seen.is_set(), "marker": marker.decode("ascii"),
+              "sha256": sha256_file(output / "uart.bin")}
+    write_json(output / "uart.json", result)
+    if failure is not None:
+        raise failure
+    if errors:
+        raise RuntimeError(f"UART capture failed: {errors[0]}") from errors[0]
+    if not seen.is_set():
+        raise RuntimeError("Linux init marker not seen before timeout; inspect uart.txt and load_snapshot.json")
+    return result
+
+
+def collect_uart(args):
+    serial = serial_module()
     count = 0
     with serial.Serial(args.port, args.baud, timeout=0.2, rtscts=False, dsrdtr=False) as port:
         with (args.out / "uart.bin").open("wb") as stream:
@@ -555,15 +619,15 @@ def collect_uart(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "load", "snapshot", "uart", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
+    for name in ("prepare", "load", "linux", "snapshot", "uart", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
         sub = commands.add_parser(name)
         sub.add_argument("--out", type=Path, required=True, help="new evidence directory")
-        if name in ("prepare", "load"):
+        if name in ("prepare", "load", "linux"):
             sub.add_argument("--elf", type=Path, required=True)
             sub.add_argument("--load", action="append", type=parse_load, default=[])
         if name == "prepare":
             sub.add_argument("--caps", type=lambda s: int(s, 0), default=CAP_HOST)
-        if name in ("load", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
+        if name in ("load", "linux", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
             sub.add_argument("--vivado", default="vivado")
             sub.add_argument("--server", default="localhost:3121")
             sub.add_argument("--probes", type=Path, help="matching debug probes .ltx file")
@@ -573,7 +637,7 @@ def main(argv=None):
             sub.add_argument("--debug-cell", default="gen_host.i_host_bridge.i_jtag_debug")
             sub.add_argument("--transaction-timeout", type=float, default=30)
             sub.add_argument("--startup-timeout", type=float, default=120)
-        if name in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
+        if name in ("load", "linux", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe"):
             sub.add_argument("--full-reset-confirmed", action="store_true")
         if name == "axi-spm-probe":
             sub.add_argument("--destructive-spm-test-confirmed", action="store_true")
@@ -586,13 +650,17 @@ def main(argv=None):
             sub.add_argument("--batch-chunks", type=int, default=16)
             sub.add_argument("--single-beat", action="store_true",
                              help="use only single-beat memory transactions; slower, burst hardware remains unverified")
-        if name in ("load", "uart"):
-            sub.add_argument("--seconds", type=float, default=30)
+        if name == "linux":
+            sub.add_argument("--port", required=True, help="Linux UART console, normally CP2105 Standard COM6")
+            sub.add_argument("--baud", type=int, default=115200)
+            sub.add_argument("--batch-chunks", type=int, default=128)
+        if name in ("load", "linux", "uart"):
+            sub.add_argument("--seconds", type=float, default=180 if name == "linux" else 30)
         if name == "uart":
             sub.add_argument("--port", required=True)
             sub.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args(argv)
-    if args.command in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not args.full_reset_confirmed:
+    if args.command in ("load", "linux", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not args.full_reset_confirmed:
         parser.error("Perform a full VIO reset first, then explicitly pass --full-reset-confirmed")
     if args.command == "axi-spm-probe" and not args.destructive_spm_test_confirmed:
         parser.error("--destructive-spm-test-confirmed is required; 16 SPM bytes WILL be overwritten then restored")
@@ -601,13 +669,13 @@ def main(argv=None):
     for key in ("seconds", "transaction_timeout", "startup_timeout", "baud"):
         if hasattr(args, key) and (not math.isfinite(getattr(args, key)) or getattr(args, key) <= 0):
             parser.error(f"--{key.replace('_', '-')} must be finite and positive")
-    if args.command == "load":
-        if not 0 <= args.watchdog_cycles <= 0xFFFFFFFF or not 1 <= args.batch_chunks <= 128:
+    if args.command in ("load", "linux"):
+        if not 1 <= args.batch_chunks <= 128 or (args.command == "load" and not 0 <= args.watchdog_cycles <= 0xFFFFFFFF):
             parser.error("Watchdog must fit uint32; batch chunks must be 1..128")
-        args.run_id = args.run_id if args.run_id is not None else secrets.randbelow(0xFFFFFFFF) + 1
+        args.run_id = args.run_id if args.command == "load" and args.run_id is not None else secrets.randbelow(0xFFFFFFFF) + 1
         if not 0 < args.run_id <= 0xFFFFFFFF:
             parser.error("Run ID must be a nonzero uint32")
-    if args.command in ("load", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and args.probes is not None:
+    if args.command in ("load", "linux", "snapshot", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and args.probes is not None:
         if not args.probes.is_file():
             parser.error(f"Debug probes file not found: {args.probes}")
         args.probes = args.probes.resolve()
@@ -688,17 +756,31 @@ def main(argv=None):
                 if any(snapshot.get(name, {}).get("error_count", 0) for name in ("ddr1", "ddr2")):
                     raise RuntimeError("DDR AXI error recorded during scratch test")
             report.update(state="passed_small_ddr_scratch_test", passed=True)
-        else:
+        elif args.command in ("load", "linux"):
             with connect("load") as transport:
                 ident = identity(transport)
                 report["identity"] = ident
                 start = time.monotonic()
-                image = prepare_image(args.elf, args.load, ident["caps"])
+                image = prepare_image(args.elf, args.load, ident["caps"],
+                                      allow_dynamic=args.command == "linux")
                 report["other_timings_seconds"]["image_preparation"] = time.monotonic() - start
                 write_json(args.out / "image.json", image.manifest())
-                load_and_run(transport, image, args.out, report, args.full_reset_confirmed,
-                             args.run_id, args.seconds, args.watchdog_cycles, args.batch_chunks,
-                             args.single_beat)
+                if args.command == "linux":
+                    report["uart_port"] = args.port
+                    report["uart_baud"] = args.baud
+                    with serial_module().Serial(args.port, args.baud, timeout=0.2,
+                                                rtscts=False, dsrdtr=False) as console:
+                        report["uart"] = wait_linux_console(
+                            console, args.out,
+                            lambda: load_and_run(transport, image, args.out, report,
+                                                 args.full_reset_confirmed, args.run_id,
+                                                 args.seconds, 0, args.batch_chunks,
+                                                 launch_only=True), args.seconds)
+                    report.update(state="passed_linux_init_marker", passed=True, completed_utc=now())
+                else:
+                    load_and_run(transport, image, args.out, report, args.full_reset_confirmed,
+                                 args.run_id, args.seconds, args.watchdog_cycles, args.batch_chunks,
+                                 args.single_beat)
         write_json(args.out / "report.json", report)
         print(f"{report['state']}: {args.out}")
         metrics = report.get("load_metrics", {})
@@ -710,9 +792,10 @@ def main(argv=None):
                   f"{metrics['ratio_to_uart_theoretical_not_measured_speedup']:.6f}; NOT measured speedup")
         return 0
     except Exception as exc:
+        linux_launched = args.command == "linux" and report.get("state") in ("launching", "running")
         report.update(state="failed", passed=False, error=str(exc), completed_utc=now())
         write_json(args.out / "report.json", report)
-        if args.command in ("load", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not (args.out / "snapshot.json").exists():
+        if args.command in ("load", "linux", "ddr-test", "axi-probe", "axi-burst-probe", "axi-spm-probe") and not (args.out / "snapshot.json").exists() and not linux_launched:
             # A timed-out memory transaction must not prevent independent diagnosis.
             try:
                 with connect("recovery_debug") as transport:

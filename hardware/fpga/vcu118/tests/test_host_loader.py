@@ -7,6 +7,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -119,6 +120,42 @@ class ImageTests(unittest.TestCase):
         self.elf.write_bytes(self.elf.read_bytes()[:-1])
         with self.assertRaisesRegex(ValueError, "truncated"):
             image.prepare_image(self.elf)
+
+    def test_linux_opensbi_dynamic_header_is_explicitly_scoped(self):
+        artifacts = EXPORTED.parent / "linux/artifacts"
+        firmware = artifacts / "fw_jump.elf"
+        with self.assertRaisesRegex(ValueError, "Dynamic ELF"):
+            image.prepare_image(firmware)
+        prepared = image.prepare_image(firmware, [
+            (0x80100000, artifacts / "ara_vcu118.dtb"),
+            (0x80200000, artifacts / "Image"),
+            (0x88000000, artifacts / "initramfs.cpio")], allow_dynamic=True)
+        self.assertEqual(prepared.entry, 0x80000000)
+        self.assertEqual(sum(segment.size for segment in prepared.segments), 30029946)
+        self.assertEqual(len(prepared.segments), 5)
+
+    def test_linux_console_marker_requires_actual_uart_bytes(self):
+        class FakePort:
+            def __init__(self, parts):
+                self.parts = list(parts)
+                self.launched = False
+
+            def read(self, size):
+                if self.launched and self.parts:
+                    return self.parts.pop(0)
+                time.sleep(0.005)
+                return b""
+
+        port = FakePort([b"OpenSBI\r\nLinux console, DDR and ",
+                         b"RVV handoff are alive\r\n"])
+        result = host.wait_linux_console(port, self.base, lambda: setattr(port, "launched", True), 1)
+        self.assertTrue(result["marker_seen"])
+        self.assertIn("OpenSBI", (self.base / "uart.txt").read_text())
+        missing = self.base / "missing"
+        missing.mkdir()
+        with self.assertRaisesRegex(RuntimeError, "marker not seen"):
+            host.wait_linux_console(FakePort([]), missing, lambda: None, 0.03)
+        self.assertFalse(json.loads((missing / "uart.json").read_text())["marker_seen"])
 
     def test_burst_bounds_every_alignment(self):
         for low in (0, 1, 7, 2040, 2047, 4088, 4095):
@@ -343,6 +380,16 @@ class TclTransportTests(unittest.TestCase):
         self.assertEqual(snapshot["core"]["retired"], 123)
         self.assertEqual(snapshot["ddr1"]["read_outstanding"], 2)
         self.assertIn("ddr1.r_bytes", (self.base / "snapshot.csv").read_text())
+
+    def test_linux_launch_only_does_not_wait_for_debug_done_or_freeze_running_core(self):
+        with self.transport() as transport:
+            report = {"passed": False}
+            host.load_and_run(transport, image.prepare_image(self.elf, caps=3), self.base,
+                              report, True, 17, 0.01, 0, 16, launch_only=True)
+            self.assertEqual(report["state"], "running")
+            self.assertFalse(report["passed"])
+            self.assertTrue((self.base / "load_snapshot.json").is_file())
+            self.assertFalse((self.base / "snapshot.json").exists())
 
     def test_fixed_burst_reaches_tcl_and_repeats_one_address(self):
         with self.transport() as transport:
