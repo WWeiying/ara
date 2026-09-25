@@ -112,6 +112,20 @@ puts BRINGUP_ECHO_GUARD_PASS
 """)
         self.assertIn("BRINGUP_ECHO_GUARD_PASS", output)
 
+    def test_link_completion_does_not_require_page_received_bit(self):
+        output = self.tcl("""
+eth_sgmii::check_link_result 0x4000 0x188b 0x0003
+eth_sgmii::check_link_result 0x4000 0x188b 0x0001
+if {![catch {eth_sgmii::check_link_result 0x4000 0x188b 0x0000}]} {
+    error "incomplete AN accepted"
+}
+if {![catch {eth_sgmii::check_link_result 0x4000 0x0800 0x0001}]} {
+    error "down PCS accepted"
+}
+puts AN_COMPLETE_GUARD_PASS
+""")
+        self.assertIn("AN_COMPLETE_GUARD_PASS", output)
+
     def test_sgmii_aneg_restart_restores_cfg2_on_failure(self):
         output = self.tcl("""
 set ::cfg2 0x29c7

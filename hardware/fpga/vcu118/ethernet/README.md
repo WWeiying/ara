@@ -493,3 +493,10 @@ pulses only the FPGA PCS reset if link is down, and checks D3 and SGMII
 negotiation readback. It is idempotent when link is already up. A board power
 cycle or reprogramming requires this sequence again; it is not yet automatic
 in the FPGA image.
+
+On a later read-only check, the PHY negotiation register can read `0x0001`
+instead of `0x0003`: bit 0 still reports auto-negotiation complete, while bit
+1 only reports a received page. The link check requires bit 0 plus both PCS
+link/sync bits; it does not require the received-page indication to remain set.
+When echo is enabled, `bringup` permits this already-linked read-only check
+but refuses to change D3 or pulse PCS reset.

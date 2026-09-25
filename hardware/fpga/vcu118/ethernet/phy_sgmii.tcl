@@ -118,6 +118,12 @@ namespace eval eth_sgmii {
         }
     }
 
+    proc check_link_result {d3 pcs aneg} {
+        if {$d3 != 0x4000 || ($pcs & 3) != 3 || ($aneg & 1) != 1} {
+            error "SGMII bringup did not establish PCS link and PHY auto-negotiation"
+        }
+    }
+
     proc status {vio} {
         refresh_hw_vio -update_output_values $vio
         set sync [eth_board::probe_value $vio status_sync vio_input INPUT_VALUE 5]
@@ -316,9 +322,7 @@ namespace eval eth_sgmii {
                 set d3_after [eth_sgmii::extended_read $axi 0x00d3]
                 set aneg_after [eth_sgmii::extended_read $axi 0x0037]
                 puts [format "PHY_AFTER_BRINGUP D3=0x%04x SGMII_ANEG=0x%04x" $d3_after $aneg_after]
-                if {$d3_after != 0x4000 || ($pcs & 3) != 3 || ($aneg_after & 3) != 3} {
-                    error "SGMII bringup did not establish PCS link and PHY auto-negotiation"
-                }
+                eth_sgmii::check_link_result $d3_after $pcs $aneg_after
                 puts "SGMII_LINK_PASS"
             } elseif {$mode eq "aneg-restart"} {
                 if {!$clock_moving || $d3 != 0x4000 || ($cfg2 & 0x80) == 0 ||
