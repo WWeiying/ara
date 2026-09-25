@@ -380,8 +380,9 @@ layout on this image. Out-of-range/partial raw GUI transactions can alias the
 MAC register window and set the diagnostic sticky error; there is no AXI address
 firewall in this isolated image. No DDR interface is connected.
 
-VIO `i_vio` output 0 requests PHY+MAC/packet reset; output 1 enables echo, both
-initially zero. Input 0 is a 32-bit diagnostic vector:
+VIO `i_vio` output 0 requests PHY+MAC/packet reset, output 1 enables echo,
+and output 2 requests a MAC/PCS-only reset without resetting the external PHY;
+all initialize to zero. Input 0 is a 32-bit diagnostic vector:
 
 | Bits | Meaning |
 | --- | --- |
@@ -392,7 +393,9 @@ initially zero. Input 0 is a 32-bit diagnostic vector:
 | 4 | Echo enable requested |
 | 5, 6, 7 | Sticky frame seen, echo submitted to TX FIFO, frame rejected |
 | 23:8 | Independently synchronized PCS status bits, **not atomic** |
-| 31:24 | Zero |
+| 27:24 | Gray-coded MAC transmit clock heartbeat, synchronized per bit |
+| 28 | MAC/PCS reset asserted |
+| 31:29 | Zero |
 
 Sticky packet bits clear on packet reset. The error bit clears on control/PHY
 reset. They are observations, not packet counts, PHY link qualification or proof
@@ -432,7 +435,38 @@ protected MAC/PCS, JTAG IP, physical FCS checking, MDIO, top MMCM or analog PHY.
 Python/Tcl tests exercise source integrity, immutable input copies, license and
 failure gates; mocked APIs cannot prove real Vivado command/IP compatibility.
 
-After this build/report gate: provide the checked JTAG/MDIO initialization and
-readback sequence, program the matching `.bit`/`.ltx`, verify 1G/full-duplex link,
-then run PC packet tests. Only after that integrate a reliable UDP data protocol
-and DDR writes with CRC, range checks, acknowledgements and readback.
+## September 25 Board Link Result
+
+The isolated diagnostic image from source `262671c8` is
+`D:/fpga_runs/ara_eth_build_pcs_20260925_02/eth_diag.{bit,ltx}`. All eight
+Vivado 2020.1 build stages passed, including licensed bitgen. Routed WNS/WHS
+are `+1.390/+0.010 ns`; the DRC has zero errors. The build is diagnostic,
+not a production timing or CDC signoff: the report still has 17 CDC-10
+findings (including reset fanout and three combinational Gray heartbeat
+paths), vendor CDC findings and partial MDIO input timing. Neither these
+warnings nor a passing bitstream prove packet function.
+
+After programming the image, the external DP83867 at MDIO address 3 had
+`BMCR=0x1140`, `BMSR=0x796d`, `CFG2=0x29c7`, `CFG4=0x10b0`,
+`D3=0x0000`; PCS was `0x0800` and the MAC transmit clock heartbeat was
+static. Writing only D3 bit 14 (`0x4000`) made the heartbeat move, but PCS
+remained `0x0800` and SGMII negotiation status was `0x0000`. A 100 ms
+MAC/PCS-only reset pulse then established PCS `0x188b` (link and sync both
+high) and PHY SGMII negotiation status `0x0003`, without resetting the PHY.
+The discriminating cause is startup ordering: the PHY's six-wire 625 MHz
+clock is not enabled until after the FPGA PCS has already been released.
+The 2 us CFG4 negotiation timer was not changed, and CFG2 restart was not
+needed in this run.
+
+With echo enabled, Windows Scapy/Npcap received exact replies for 60, 64,
+512 and 1514-byte raw Ethernet frames. Evidence remains on Windows in
+`D:/fpga_runs/eth_pcs_program_20260925_01`,
+`D:/fpga_runs/eth_pcs_inspect_20260925_01.log`,
+`D:/fpga_runs/eth_pcs_repair_20260925_01.log`,
+`D:/fpga_runs/eth_pcs_reset_20260925_01.log`, and
+`D:/fpga_runs/eth_echo_packets_20260925_02/echo_packets.json`.
+The diagnostic image is currently on the FPGA; the Ara host image was not
+restored during this test. This proves the J10 PHY/PCS/MAC/FIFO/echo path for
+these frames, but not sustained throughput, IP/UDP, Ara/DDR transfer or a
+working program downloader. Those require a separate bounded protocol and
+memory-side integration.

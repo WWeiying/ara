@@ -75,6 +75,31 @@ puts PCS_PULSE_CLEANUP_PASS
         self.assertIn("PCS_RESET_PULSE_COMPLETE", output)
         self.assertIn("PCS_PULSE_CLEANUP_PASS", output)
 
+    def test_enable_six_wire_requires_readback(self):
+        output = self.tcl("""
+set ::d3 0
+rename eth_sgmii::mdio_write eth_sgmii::real_mdio_write
+proc eth_sgmii::mdio_write {axi reg value} {
+    puts [format "MDIO_WRITE %d 0x%04x" $reg $value]
+    if {$reg == 14 && $value == 0x4000} { set ::d3 $value }
+}
+rename eth_sgmii::extended_read eth_sgmii::real_extended_read
+proc eth_sgmii::extended_read {axi address} {
+    if {$address != 0x00d3} {error "unexpected extended register"}
+    return $::d3
+}
+eth_sgmii::enable_six_wire test
+if {$::d3 != 0x4000} {error "D3 not written"}
+set ::d3 0
+rename eth_sgmii::mdio_write {}
+proc eth_sgmii::mdio_write {axi reg value} {}
+if {![catch {eth_sgmii::enable_six_wire test} message] ||
+    $message ne "Six-wire mode readback failed"} {error "readback guard failed: $message"}
+puts SIX_WIRE_GUARD_PASS
+""")
+        self.assertIn("PHY_D3_AFTER 0x4000", output)
+        self.assertIn("SIX_WIRE_GUARD_PASS", output)
+
     def test_sgmii_aneg_restart_restores_cfg2_on_failure(self):
         output = self.tcl("""
 set ::cfg2 0x29c7

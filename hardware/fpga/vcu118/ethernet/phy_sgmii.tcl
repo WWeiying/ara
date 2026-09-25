@@ -87,6 +87,26 @@ namespace eval eth_sgmii {
         return [eth_sgmii::mdio_read $axi 14]
     }
 
+    proc enable_six_wire {axi} {
+        eth_sgmii::mdio_write $axi 13 0x001f
+        eth_sgmii::mdio_write $axi 14 0x00d3
+        eth_sgmii::mdio_write $axi 13 0x401f
+        eth_sgmii::mdio_write $axi 14 0x4000
+        set d3 [eth_sgmii::extended_read $axi 0x00d3]
+        puts [format "PHY_D3_AFTER 0x%04x" $d3]
+        if {$d3 != 0x4000} { error "Six-wire mode readback failed" }
+    }
+
+    proc wait_pcs_link {vio} {
+        set pcs 0
+        for {set attempt 0} {$attempt < 20} {incr attempt} {
+            after 500
+            set pcs [eth_sgmii::status $vio]
+            if {($pcs & 3) == 3} { break }
+        }
+        return $pcs
+    }
+
     proc status {vio} {
         refresh_hw_vio -update_output_values $vio
         set sync [eth_board::probe_value $vio status_sync vio_input INPUT_VALUE 5]
@@ -175,9 +195,9 @@ namespace eval eth_sgmii {
     }
 
     proc run {args} {
-        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair|pcs-reset|aneg-restart hw_server_url" }
+        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair|pcs-reset|aneg-restart|bringup hw_server_url" }
         lassign $args probes mode server
-        if {$mode ni {inspect repair pcs-reset aneg-restart} || ![file isfile $probes]} { error "Invalid mode or probes file" }
+        if {$mode ni {inspect repair pcs-reset aneg-restart bringup} || ![file isfile $probes]} { error "Invalid mode or probes file" }
         set manager_open 0
         set server_connected 0
         set target_open 0
@@ -247,18 +267,8 @@ namespace eval eth_sgmii {
                     ($bmsr & 0x24) != 0x24 || ($pcs & 3) == 3} {
                     error "Six-wire repair preconditions not met; no write attempted"
                 }
-                eth_sgmii::mdio_write $axi 13 0x001f
-                eth_sgmii::mdio_write $axi 14 0x00d3
-                eth_sgmii::mdio_write $axi 13 0x401f
-                eth_sgmii::mdio_write $axi 14 0x4000
-                set after_d3 [eth_sgmii::extended_read $axi 0x00d3]
-                puts [format "PHY_D3_AFTER 0x%04x" $after_d3]
-                if {$after_d3 != 0x4000} { error "Six-wire mode readback failed" }
-                for {set attempt 0} {$attempt < 20} {incr attempt} {
-                    after 500
-                    set pcs [eth_sgmii::status $vio]
-                    if {($pcs & 3) == 3} { break }
-                }
+                eth_sgmii::enable_six_wire $axi
+                set pcs [eth_sgmii::wait_pcs_link $vio]
                 eth_sgmii::sample_clock $vio
                 set aneg [eth_sgmii::extended_read $axi 0x0037]
                 puts [format "PHY_SGMII_ANEG_AFTER 0x%04x" $aneg]
@@ -270,11 +280,7 @@ namespace eval eth_sgmii {
                     error "PCS-reset preconditions not met; no pulse attempted"
                 }
                 eth_sgmii::pulse_pcs_reset $vio
-                for {set attempt 0} {$attempt < 20} {incr attempt} {
-                    after 500
-                    set pcs [eth_sgmii::status $vio]
-                    if {($pcs & 3) == 3} { break }
-                }
+                set pcs [eth_sgmii::wait_pcs_link $vio]
                 eth_sgmii::sample_clock $vio
                 eth_board::axi_word $axi WRITE 0x500 0x7f
                 set d3_after [eth_sgmii::extended_read $axi 0x00d3]
@@ -283,17 +289,35 @@ namespace eval eth_sgmii {
                 if {$d3_after != 0x4000} { error "External PHY six-wire mode changed during PCS reset" }
                 if {($pcs & 3) != 3} { error "PCS reset completed but link/sync still down" }
                 puts "SGMII_LINK_PASS"
+            } elseif {$mode eq "bringup"} {
+                if {($d3 != 0 && $d3 != 0x4000) || ($cfg2 & 0x80) == 0 ||
+                    ($bmcr & 0x5000) != 0x1000 || ($bmsr & 0x24) != 0x24 ||
+                    ($d3 == 0 && ($pcs & 3) == 3)} {
+                    error "Bringup preconditions not met; no write attempted"
+                }
+                if {$d3 == 0} { eth_sgmii::enable_six_wire $axi }
+                if {![eth_sgmii::sample_clock $vio]} {
+                    error "PHY six-wire mode configured but MAC transmit clock is not moving"
+                }
+                if {($pcs & 3) != 3} {
+                    eth_sgmii::pulse_pcs_reset $vio
+                    set pcs [eth_sgmii::wait_pcs_link $vio]
+                    eth_board::axi_word $axi WRITE 0x500 0x7f
+                }
+                set d3_after [eth_sgmii::extended_read $axi 0x00d3]
+                set aneg_after [eth_sgmii::extended_read $axi 0x0037]
+                puts [format "PHY_AFTER_BRINGUP D3=0x%04x SGMII_ANEG=0x%04x" $d3_after $aneg_after]
+                if {$d3_after != 0x4000 || ($pcs & 3) != 3 || ($aneg_after & 3) != 3} {
+                    error "SGMII bringup did not establish PCS link and PHY auto-negotiation"
+                }
+                puts "SGMII_LINK_PASS"
             } elseif {$mode eq "aneg-restart"} {
                 if {!$clock_moving || $d3 != 0x4000 || ($cfg2 & 0x80) == 0 ||
                     ($bmsr & 0x24) != 0x24 || ($pcs & 3) == 3} {
                     error "SGMII AN restart preconditions not met; no write attempted"
                 }
                 eth_sgmii::restart_sgmii_aneg $axi $cfg2
-                for {set attempt 0} {$attempt < 20} {incr attempt} {
-                    after 500
-                    set pcs [eth_sgmii::status $vio]
-                    if {($pcs & 3) == 3} { break }
-                }
+                set pcs [eth_sgmii::wait_pcs_link $vio]
                 set aneg_after [eth_sgmii::extended_read $axi 0x0037]
                 puts [format "PHY_SGMII_ANEG_AFTER 0x%04x" $aneg_after]
                 if {($pcs & 3) != 3} { error "SGMII AN retriggered but PCS link/sync still down" }
