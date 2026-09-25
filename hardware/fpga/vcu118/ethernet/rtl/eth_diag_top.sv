@@ -6,7 +6,7 @@ module eth_diag_top (
   output wire phy_rst_n, mdio_mdc,
   inout wire mdio
 );
-  wire ctrl_clk, locked, ctrl_reset, phy_request, echo_enable, phy_settled;
+  wire ctrl_clk, locked, ctrl_reset, phy_request, echo_enable, pcs_request, phy_settled;
   wire mac_reset, packet_reset, tx_clk, rx_clk;
   wire [31:0] awaddr, araddr, wdata, rdata;
   wire [3:0] wstrb;
@@ -20,6 +20,9 @@ module eth_diag_top (
   wire mac_tx_ready, mac_tx_bad, rx_valid, rx_last, rx_ready;
   wire tx_valid, tx_last, tx_ready, enable_tx, seen, sent, rejected;
   wire [19:0] status_async, status_sync;
+  wire [3:0] tx_beat_gray, tx_beat_sync;
+  reg [22:0] tx_beat_div = 0;
+  reg [3:0] tx_beat_bin = 0;
   reg response_error = 0;
 
   eth_j10_clocks_resets i_clocks (
@@ -34,7 +37,10 @@ module eth_diag_top (
     .phy_reset_n(phy_rst_n), .settled(phy_settled)
   );
   // Management release depends on the independent timer, NOT on PCS lock.
-  assign mac_reset = !phy_settled;
+  eth_diag_pcs_reset i_pcs_reset (
+    .clk(ctrl_clk), .reset(ctrl_reset), .phy_settled(phy_settled),
+    .request(pcs_request), .mac_reset(mac_reset)
+  );
   eth_diag_reset_sync i_packet_reset (.clk(tx_clk), .reset(mac_reset), .reset_out(packet_reset));
   eth_j10_bit_sync i_enable (.clk(tx_clk), .data_in(echo_enable), .data_out(enable_tx));
 
@@ -59,10 +65,24 @@ module eth_diag_top (
   for (genvar i = 0; i < 20; i = i + 1) begin: gen_status
     eth_j10_bit_sync i_sync (.clk(ctrl_clk), .data_in(status_async[i]), .data_out(status_sync[i]));
   end
+  always @(posedge tx_clk or posedge mac_reset) begin
+    if (mac_reset) begin
+      tx_beat_div <= 0;
+      tx_beat_bin <= 0;
+    end else begin
+      tx_beat_div <= tx_beat_div + 1'b1;
+      if (&tx_beat_div) tx_beat_bin <= tx_beat_bin + 1'b1;
+    end
+  end
+  assign tx_beat_gray = tx_beat_bin ^ (tx_beat_bin >> 1);
+  for (genvar i = 0; i < 4; i = i + 1) begin: gen_beat
+    eth_j10_bit_sync i_sync (.clk(ctrl_clk), .data_in(tx_beat_gray[i]), .data_out(tx_beat_sync[i]));
+  end
   // Independent status bits, not an atomic PCS snapshot or a link-pass indication.
   eth_vio i_vio (
-    .clk(ctrl_clk), .probe_in0({8'b0, status_sync, response_error, phy_settled, phy_rst_n, locked}),
-    .probe_out0(phy_request), .probe_out1(echo_enable)
+    .clk(ctrl_clk), .probe_in0({3'b0, mac_reset, tx_beat_sync, status_sync,
+                               response_error, phy_settled, phy_rst_n, locked}),
+    .probe_out0(phy_request), .probe_out1(echo_enable), .probe_out2(pcs_request)
   );
   IOBUF i_mdio (.I(mdio_o), .T(mdio_t), .O(mdio_i), .IO(mdio));
   eth_j10_support i_mac (

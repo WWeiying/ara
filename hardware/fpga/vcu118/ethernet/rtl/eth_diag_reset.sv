@@ -41,3 +41,18 @@ module eth_diag_reset_sync (
   end
   assign reset_out = stages[2];
 endmodule
+
+module eth_diag_pcs_reset (
+  input wire clk,
+  input wire reset,
+  input wire phy_settled,
+  input wire request,
+  output wire mac_reset
+);
+  reg request_q = 1'b0;
+  always @(posedge clk or posedge reset) begin
+    if (reset) request_q <= 1'b0;
+    else request_q <= request;
+  end
+  assign mac_reset = !phy_settled | request_q;
+endmodule

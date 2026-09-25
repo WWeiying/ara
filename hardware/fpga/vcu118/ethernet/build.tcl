@@ -128,9 +128,10 @@ proc eth_build::run {output source board_repo jobs} {
             CONFIG.M_AXI_DATA_WIDTH 32 CONFIG.M_AXI_ADDR_WIDTH 32]
         create_ip -vlnv xilinx.com:ip:vio:3.0 -module_name eth_vio
         require_config [get_ips eth_vio] [dict create CONFIG.C_NUM_PROBE_IN 1 \
-            CONFIG.C_PROBE_IN0_WIDTH 32 CONFIG.C_NUM_PROBE_OUT 2 \
+            CONFIG.C_PROBE_IN0_WIDTH 32 CONFIG.C_NUM_PROBE_OUT 3 \
             CONFIG.C_PROBE_OUT0_WIDTH 1 CONFIG.C_PROBE_OUT0_INIT_VAL 0x0 \
-            CONFIG.C_PROBE_OUT1_WIDTH 1 CONFIG.C_PROBE_OUT1_INIT_VAL 0x0]
+            CONFIG.C_PROBE_OUT1_WIDTH 1 CONFIG.C_PROBE_OUT1_INIT_VAL 0x0 \
+            CONFIG.C_PROBE_OUT2_WIDTH 1 CONFIG.C_PROBE_OUT2_INIT_VAL 0x0]
         generate_target all [get_ips]
         report_ip_status -license_status -file [file join $output ip_status.rpt]
         full_license [file join $output ip_status.rpt]
