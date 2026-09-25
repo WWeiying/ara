@@ -504,3 +504,10 @@ The read-only repeat returned `SGMII_LINK_PASS` in
 `D:/fpga_runs/eth_bringup_20260925_04.log`; 60, 64, 512 and 1514-byte
 echoes still passed afterward in
 `D:/fpga_runs/eth_echo_packets_20260925_04/echo_packets.json`.
+
+## Ethernet-to-DDR downloader work
+
+The diagnostic image above is not an Ethernet loader. The separate loader
+feasibility result and unprogrammed protocol prototype are recorded in
+[LOADER_STATUS.md](LOADER_STATUS.md). Do not run `eth_load.py` against the
+diagnostic image: it has no IP/TCP receiver or DDR write path.
