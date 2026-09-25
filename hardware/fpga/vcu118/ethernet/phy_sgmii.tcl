@@ -13,7 +13,8 @@ namespace eval eth_sgmii {
             }
         } elseif {$address == 0x504} {
             if {$value != 0x030d4800 && $value != 0x030e4800 &&
-                $value != 0x030e8800 && $value != 0x03148800} {
+                $value != 0x030e8800 && $value != 0x03148800 &&
+                $value != 0x01008800 && $value != 0x01018800} {
                 error "MDIO command not permitted: $value"
             }
         } else { error "AXI write address not permitted: $address" }
@@ -57,6 +58,16 @@ namespace eval eth_sgmii {
         eth_board::mdio_ready $axi
         set result [eth_board::axi_word $axi READ 0x50c]
         if {($result & 0x10000) == 0} { error "MDIO read data not ready" }
+        return [expr {$result & 0xffff}]
+    }
+
+    proc pcs_read {axi reg} {
+        if {$reg ni {0 1}} { error "PCS register read not permitted: $reg" }
+        eth_board::mdio_ready $axi
+        eth_sgmii::axi_write $axi 0x504 [expr {(1 << 24) | ($reg << 16) | 0x8800}]
+        eth_board::mdio_ready $axi
+        set result [eth_board::axi_word $axi READ 0x50c]
+        if {($result & 0x10000) == 0} { error "PCS MDIO read data not ready" }
         return [expr {$result & 0xffff}]
     }
 
@@ -137,6 +148,10 @@ namespace eval eth_sgmii {
             set d3 [eth_sgmii::extended_read $axi 0x00d3]
             puts [format "PHY_STATE BMCR=0x%04x BMSR=0x%04x CFG2=0x%04x SGMII_ANEG=0x%04x D3=0x%04x" $bmcr $bmsr $cfg2 $aneg $d3]
             set pcs [eth_sgmii::status $vio]
+            set pcs_control [eth_sgmii::pcs_read $axi 0]
+            eth_sgmii::pcs_read $axi 1
+            set pcs_status [eth_sgmii::pcs_read $axi 1]
+            puts [format "PCS_MDIO CONTROL=0x%04x STATUS=0x%04x" $pcs_control $pcs_status]
             if {$mode eq "repair"} {
                 if {($d3 & 0x4000) != 0} { error "Six-wire mode already enabled; no write attempted" }
                 if {$d3 != 0 || ($cfg2 & 0x80) == 0 || ($bmcr & 0x5000) != 0x1000 ||

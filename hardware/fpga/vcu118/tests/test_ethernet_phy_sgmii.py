@@ -32,6 +32,7 @@ if {![catch {eth_sgmii::mdio_write test 0 0x4000}]} {error "BMCR write accepted"
 if {![catch {eth_sgmii::mdio_write test 14 0x4140}]} {error "loopback write accepted"}
 if {![catch {eth_sgmii::real_axi_write test 0x508 0x4140}]} {error "raw data write accepted"}
 if {![catch {eth_sgmii::real_axi_write test 0x504 0x03004800}]} {error "raw BMCR command accepted"}
+if {![catch {eth_sgmii::pcs_read test 2}]} {error "PCS identifier access accepted"}
 """)
         self.assertEqual(output.splitlines(), [
             "COMMAND 508 0000001f", "COMMAND 504 030d4800",
