@@ -5,6 +5,18 @@ proc one {objects label} {
     return [lindex $objects 0]
 }
 
+proc vio_probe {vio name type port} {
+    set matches {}
+    foreach probe [get_hw_probes -of_objects $vio] {
+        if {[get_property NAME $probe] eq $name &&
+            [get_property TYPE $probe] eq $type &&
+            [get_property PROBE_PORT $probe] eq $port} {
+            lappend matches $probe
+        }
+    }
+    return [one $matches "$name $type port $port"]
+}
+
 proc program_host_image {bit ltx} {
     foreach path [list $bit $ltx] {
         if {![file isfile $path] || [file size $path] == 0} { error "Missing/empty image: $path" }
@@ -23,10 +35,10 @@ proc program_host_image {bit ltx} {
     refresh_hw_device $device
 
     set vio [one [get_hw_vios -of_objects $device] {board VIO}]
-    set reset [one [get_hw_probes -quiet probe_out0 -of_objects $vio] {reset probe}]
-    set boot_mode [one [get_hw_probes -quiet probe_out1 -of_objects $vio] {boot mode probe}]
-    set boot_select [one [get_hw_probes -quiet probe_out2 -of_objects $vio] {boot select probe}]
-    set status [one [get_hw_probes -quiet probe_in0 -of_objects $vio] {status probe}]
+    set reset [vio_probe $vio vio_reset vio_output 0]
+    set boot_mode [vio_probe $vio vio_boot_mode vio_output 1]
+    set boot_select [vio_probe $vio vio_boot_select vio_output 2]
+    set status [vio_probe $vio status vio_input 0]
     set_property OUTPUT_VALUE_RADIX HEX $reset
     set_property OUTPUT_VALUE_RADIX HEX $boot_mode
     set_property OUTPUT_VALUE_RADIX HEX $boot_select
