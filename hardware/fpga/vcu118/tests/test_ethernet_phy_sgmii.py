@@ -30,8 +30,10 @@ eth_sgmii::mdio_write test 13 0x401f
 eth_sgmii::mdio_write test 14 0x4000
 if {![catch {eth_sgmii::mdio_write test 0 0x4000}]} {error "BMCR write accepted"}
 if {![catch {eth_sgmii::mdio_write test 14 0x4140}]} {error "loopback write accepted"}
+if {![catch {eth_sgmii::mdio_write test 20 0x29c7}]} {error "unguarded CFG2 write accepted"}
 if {![catch {eth_sgmii::real_axi_write test 0x508 0x4140}]} {error "raw data write accepted"}
 if {![catch {eth_sgmii::real_axi_write test 0x504 0x03004800}]} {error "raw BMCR command accepted"}
+if {![catch {eth_sgmii::real_axi_write test 0x504 0x03144800}]} {error "raw CFG2 command accepted"}
 if {![catch {eth_sgmii::pcs_read test 2}]} {error "PCS identifier access accepted"}
 """)
         self.assertEqual(output.splitlines(), [
@@ -72,6 +74,55 @@ puts PCS_PULSE_CLEANUP_PASS
 """)
         self.assertIn("PCS_RESET_PULSE_COMPLETE", output)
         self.assertIn("PCS_PULSE_CLEANUP_PASS", output)
+
+    def test_sgmii_aneg_restart_restores_cfg2_on_failure(self):
+        output = self.tcl("""
+set ::cfg2 0x29c7
+set ::fail_once 0
+rename eth_sgmii::axi_write eth_sgmii::real_axi_write
+proc eth_sgmii::axi_write {axi address value} {
+    eth_sgmii::real_axi_write $axi $address $value
+    if {$address == 0x508} { set ::data $value }
+    if {$address == 0x504 && $value == 0x03144800} {
+        set ::cfg2 $::data
+        puts [format "CFG2_WRITE 0x%04x" $::cfg2]
+        if {$::fail_once && ($::cfg2 & 0x80) == 0} {
+            set ::fail_once 0
+            error "injected failure after CFG2 disable"
+        }
+    }
+}
+proc get_property {name object} {
+    if {$name eq "CMD.SIZE"} {return 32}
+    if {$name eq "CMD.LEN"} {return 1}
+    if {$name eq "STATUS.AXI_WRITE_BUSY"} {return 0}
+    if {$name eq "STATUS.AXI_WRITE_DONE"} {return 1}
+    if {$name eq "STATUS.BRESP"} {return OKAY}
+    error "unexpected property $name"
+}
+proc create_hw_axi_txn {args} {return txn}
+proc run_hw_axi {txn} {}
+proc refresh_hw_axi {axi} {}
+proc delete_hw_axi_txn {txn} {}
+rename eth_board::mdio_ready eth_board::real_mdio_ready
+proc eth_board::mdio_ready {axi} {}
+rename eth_sgmii::mdio_read eth_sgmii::real_mdio_read
+proc eth_sgmii::mdio_read {axi reg} {
+    if {$reg != 20} {error "unexpected register"}
+    return $::cfg2
+}
+eth_sgmii::restart_sgmii_aneg test $::cfg2
+if {$::cfg2 != 0x29c7 || $eth_sgmii::cfg2_allowed ne {}} {error "CFG2 not restored"}
+set ::fail_once 1
+if {![catch {eth_sgmii::restart_sgmii_aneg test $::cfg2} message] ||
+    $message ne "injected failure after CFG2 disable"} {error "failure not propagated: $message"}
+if {$::cfg2 != 0x29c7 || $eth_sgmii::cfg2_allowed ne {}} {error "CFG2 not restored after failure"}
+puts CFG2_RESTORE_PASS
+""")
+        self.assertIn("SGMII_ANEG_RESTARTED CFG2=0x29c7", output)
+        self.assertEqual(output.count("CFG2_WRITE 0x2947"), 2)
+        self.assertEqual(output.count("CFG2_WRITE 0x29c7"), 2)
+        self.assertIn("CFG2_RESTORE_PASS", output)
 
 
 if __name__ == "__main__":

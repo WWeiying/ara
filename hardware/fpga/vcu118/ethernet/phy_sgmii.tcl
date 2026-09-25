@@ -4,16 +4,20 @@ source [file join [file dirname [info script]] board_probe.tcl]
 
 namespace eval eth_sgmii {
     variable serial 0
+    variable cfg2_allowed {}
 
     proc axi_write {axi address value} {
         variable serial
+        variable cfg2_allowed
         if {$address == 0x508} {
-            if {$value ni {0x001f 0x0037 0x00d3 0x401f 0x4000}} {
+            if {$value ni {0x001f 0x0031 0x0037 0x00d3 0x401f 0x4000} &&
+                [lsearch -exact $cfg2_allowed $value] < 0} {
                 error "MDIO data write not permitted: $value"
             }
         } elseif {$address == 0x504} {
             if {$value != 0x030d4800 && $value != 0x030e4800 &&
                 $value != 0x030e8800 && $value != 0x03148800 &&
+                !($value == 0x03144800 && [llength $cfg2_allowed] == 2) &&
                 $value != 0x01008800 && $value != 0x01018800} {
                 error "MDIO command not permitted: $value"
             }
@@ -38,12 +42,16 @@ namespace eval eth_sgmii {
     }
 
     proc mdio_write {axi reg value} {
-        if {$reg ni {13 14}} { error "PHY register write not permitted: $reg" }
+        variable cfg2_allowed
+        if {$reg ni {13 14 20}} { error "PHY register write not permitted: $reg" }
         if {$reg == 13 && $value ni {0x001f 0x401f}} {
             error "PHY control value not permitted: $value"
         }
-        if {$reg == 14 && $value ni {0x0037 0x00d3 0x4000}} {
+        if {$reg == 14 && $value ni {0x0031 0x0037 0x00d3 0x4000}} {
             error "PHY data value not permitted: $value"
+        }
+        if {$reg == 20 && [lsearch -exact $cfg2_allowed $value] < 0} {
+            error "PHY CFG2 value not permitted: $value"
         }
         eth_board::mdio_ready $axi
         eth_sgmii::axi_write $axi 0x508 $value
@@ -72,7 +80,7 @@ namespace eval eth_sgmii {
     }
 
     proc extended_read {axi address} {
-        if {$address ni {0x0037 0x00d3}} { error "Extended PHY address not permitted: $address" }
+        if {$address ni {0x0031 0x0037 0x00d3}} { error "Extended PHY address not permitted: $address" }
         eth_sgmii::mdio_write $axi 13 0x001f
         eth_sgmii::mdio_write $axi 14 $address
         eth_sgmii::mdio_write $axi 13 0x401f
@@ -95,7 +103,40 @@ namespace eval eth_sgmii {
             after 250
         }
         puts "TX_CLOCK_SAMPLES $samples"
-        puts "TX_CLOCK_MOVING [expr {[llength [lsort -unique $samples]] > 1}]"
+        set moving [expr {[llength [lsort -unique $samples]] > 1}]
+        puts "TX_CLOCK_MOVING $moving"
+        return $moving
+    }
+
+    proc restart_sgmii_aneg {axi cfg2} {
+        variable cfg2_allowed
+        if {$cfg2_allowed ne {}} { error "CFG2 write already active" }
+        if {($cfg2 & 0x80) == 0} { error "SGMII auto-negotiation already disabled" }
+        set disabled [expr {$cfg2 & ~0x80}]
+        set cfg2_allowed [list $disabled $cfg2]
+        set code [catch {
+            eth_sgmii::mdio_write $axi 20 $disabled
+            if {[eth_sgmii::mdio_read $axi 20] != $disabled} {
+                error "CFG2 disable readback mismatch"
+            }
+            after 100
+            eth_sgmii::mdio_write $axi 20 $cfg2
+            if {[eth_sgmii::mdio_read $axi 20] != $cfg2} {
+                error "CFG2 re-enable readback mismatch"
+            }
+        } message options]
+        set restore_code [catch {
+            if {[eth_sgmii::mdio_read $axi 20] != $cfg2} {
+                eth_sgmii::mdio_write $axi 20 $cfg2
+                if {[eth_sgmii::mdio_read $axi 20] != $cfg2} {
+                    error "CFG2 restoration readback mismatch"
+                }
+            }
+        } restore_message restore_options]
+        set cfg2_allowed {}
+        if {$restore_code} { return -options $restore_options $restore_message }
+        if {$code} { return -options $options $message }
+        puts "SGMII_ANEG_RESTARTED CFG2=[format 0x%04x $cfg2]"
     }
 
     proc pulse_pcs_reset {vio} {
@@ -134,9 +175,9 @@ namespace eval eth_sgmii {
     }
 
     proc run {args} {
-        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair|pcs-reset hw_server_url" }
+        if {[llength $args] != 3} { error "Usage: phy_sgmii.tcl image.ltx inspect|repair|pcs-reset|aneg-restart hw_server_url" }
         lassign $args probes mode server
-        if {$mode ni {inspect repair pcs-reset} || ![file isfile $probes]} { error "Invalid mode or probes file" }
+        if {$mode ni {inspect repair pcs-reset aneg-restart} || ![file isfile $probes]} { error "Invalid mode or probes file" }
         set manager_open 0
         set server_connected 0
         set target_open 0
@@ -191,10 +232,11 @@ namespace eval eth_sgmii {
             set bmsr [eth_board::mdio_read $axi 3 1]
             set cfg2 [eth_sgmii::mdio_read $axi 20]
             set aneg [eth_sgmii::extended_read $axi 0x0037]
+            set cfg4 [eth_sgmii::extended_read $axi 0x0031]
             set d3 [eth_sgmii::extended_read $axi 0x00d3]
-            puts [format "PHY_STATE BMCR=0x%04x BMSR=0x%04x CFG2=0x%04x SGMII_ANEG=0x%04x D3=0x%04x" $bmcr $bmsr $cfg2 $aneg $d3]
+            puts [format "PHY_STATE BMCR=0x%04x BMSR=0x%04x CFG2=0x%04x CFG4=0x%04x SGMII_ANEG=0x%04x D3=0x%04x" $bmcr $bmsr $cfg2 $cfg4 $aneg $d3]
             set pcs [eth_sgmii::status $vio]
-            eth_sgmii::sample_clock $vio
+            set clock_moving [eth_sgmii::sample_clock $vio]
             set pcs_control [eth_sgmii::pcs_read $axi 0]
             eth_sgmii::pcs_read $axi 1
             set pcs_status [eth_sgmii::pcs_read $axi 1]
@@ -240,6 +282,21 @@ namespace eval eth_sgmii {
                 puts [format "PHY_AFTER_PCS_RESET D3=0x%04x SGMII_ANEG=0x%04x" $d3_after $aneg_after]
                 if {$d3_after != 0x4000} { error "External PHY six-wire mode changed during PCS reset" }
                 if {($pcs & 3) != 3} { error "PCS reset completed but link/sync still down" }
+                puts "SGMII_LINK_PASS"
+            } elseif {$mode eq "aneg-restart"} {
+                if {!$clock_moving || $d3 != 0x4000 || ($cfg2 & 0x80) == 0 ||
+                    ($bmsr & 0x24) != 0x24 || ($pcs & 3) == 3} {
+                    error "SGMII AN restart preconditions not met; no write attempted"
+                }
+                eth_sgmii::restart_sgmii_aneg $axi $cfg2
+                for {set attempt 0} {$attempt < 20} {incr attempt} {
+                    after 500
+                    set pcs [eth_sgmii::status $vio]
+                    if {($pcs & 3) == 3} { break }
+                }
+                set aneg_after [eth_sgmii::extended_read $axi 0x0037]
+                puts [format "PHY_SGMII_ANEG_AFTER 0x%04x" $aneg_after]
+                if {($pcs & 3) != 3} { error "SGMII AN retriggered but PCS link/sync still down" }
                 puts "SGMII_LINK_PASS"
             } else { puts "SGMII_INSPECTION_COMPLETE" }
         } message options]
