@@ -4,8 +4,9 @@ Status: Windows Vivado 2020.1 completed all eight build stages on source
 `421070e6`, including routing, timing reports and bitgen. The registered
 reset-release correction removed the counter-driven CDC-10 paths; reset
 fanout CDC-11 and partial MDIO input timing still need board-level review.
-JTAG management, VIO baseline and external PHY ID passed on the board;
-**physical Ethernet link and packet operation remain unverified.**
+JTAG management, VIO baseline and external PHY ID passed on the board.
+The PHY now reports a copper link with the PC; **packet operation remains
+unverified.**
 This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
 
@@ -298,6 +299,26 @@ snapshot using that `.ltx` succeeded with ABI 1 and live status 7 at
 `D:/fpga_runs/ara_restore_snapshot_20260925_0833`. This re-establishes debug
 access, not ELF execution or the JTAG multi-beat-read fix. No diagnostic image
 is intentionally left running on the board.
+
+### Copper Link Recheck (2026-09-25)
+
+With the PC wired adapter showing a 1 Gbps link, the same hash-checked
+diagnostic image passed its VIO/management baseline at
+`D:/fpga_runs/eth_board_link_20260925_01`. Guarded MDIO reads at
+`D:/fpga_runs/eth_board_link_mdio_20260925_01` returned PHY 3 ID
+`0x2000/0xa231`, BMCR `0x1140`, and BMSR `0x796d` twice. BMSR bit 2 (link)
+and bit 5 (autonegotiation complete) were set. This establishes PHY-side
+copper link only; MAC frame transmit/receive, CRC, and DDR transfer were not
+tested. The Windows host has no Scapy/Npcap raw-frame sender installed for the
+diagnostic EtherType `0x88b5` echo test.
+
+The prior host-profile `.bit/.ltx` pair from
+`D:/fpga_runs/ara_20260925_090839_d764e60053a1/bitstream_host` was
+reprogrammed afterward. Its bitstream SHA256 is
+`48fd36284014654fd42663bded79ac4b6b350d2a4eb91e2588d0e7b39451d041`;
+the restore log is `D:/fpga_runs/eth_board_link_restore_20260925_01.log` and
+ended with `BOARD_READY status=e`. Reprogramming/reset does not restore the
+previously running software image.
 
 ## Circuit and Boundaries
 

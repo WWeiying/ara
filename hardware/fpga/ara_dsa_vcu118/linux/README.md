@@ -30,6 +30,28 @@ The repository also includes the resulting first-boot payloads in
 `linux/artifacts/`. This is the directory to use on a Windows board PC that
 does not have the RISC-V toolchain.
 
+## JTAG bring-up status (2026-09-25)
+
+The `host_load.py linux` path wrote and read back all five OpenSBI/DTB/kernel/
+initramfs ranges: 30,029,946 payload bytes in 172.28 seconds, including
+readback. Evidence is in `D:/fpga_host_runs/linux_jtag_20260925_01`. OpenSBI
+and Linux 6.19.6 reached the early console, but the initramfs success marker
+never appeared. This is **not** a successful Linux boot.
+
+Read-only JTAG snapshots in `D:/fpga_host_runs/linux_jtag_20260925_snapshot02`
+show repeated illegal-instruction traps (cause 2) at
+`0xffffffff80b93822`, with zero reported DDR response errors. The board bytes
+at physical `0x80d93822` match the loaded `Image`. The `Image` matches the
+SDK's `install64_qemu/Image`; its `vmlinux` symbol `_etext` is at
+`0xffffffff80b9373e`, putting the trap PC 228 bytes into non-code padding.
+The last console line comes from `unaligned_access_init()`; the next initcall
+path probes misaligned access. A **software-only diagnostic hypothesis** is
+to skip that probe with kernel boot arguments
+`unaligned_scalar_speed=unsupported unaligned_vector_speed=unsupported` and
+check whether boot advances. This has not been run and is not a proven cause:
+the bad branch/return could still originate elsewhere, including hardware.
+Do not change RTL based on the current evidence.
+
 ## Windows load
 
 After programming the existing `.bit` and `.ltx` in Vivado, run from the
