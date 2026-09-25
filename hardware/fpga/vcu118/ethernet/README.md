@@ -231,8 +231,18 @@ py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --program-conf
 The evidence directory is new for every run and contains `console.log`,
 `vivado.log`, and `board_probe.json`. If baseline checking fails after the
 `PROGRAMMED diagnostic` line, the diagnostic image may still be running;
-the tool does not silently restore Ara. To explicitly restore the archived
-host image, use a fresh output directory:
+the tool does not silently restore Ara. Recheck the running diagnostic image
+without reprogramming using a fresh output directory:
+
+```powershell
+py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --check-only --out D:\fpga_runs\eth_board_check_01
+```
+
+`--check-only` does not program or reset; it attaches the matching probes file
+and reads the running diagnostic VIO/AXI cores. It does not prove the FPGA's
+bitstream contents match the local hash by itself. The VIO names are those
+observed on the Vivado 2020.1 programmed image, not the RTL port `probe_in0`.
+To restore the archived host image, use a fresh output directory:
 
 ```powershell
 py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --program-confirmed --restore --out D:\fpga_runs\eth_board_restore_01

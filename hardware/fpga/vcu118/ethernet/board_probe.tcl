@@ -8,12 +8,31 @@ namespace eval eth_board {
         return [lindex $objects 0]
     }
 
+    proc probe_value {vio name type property width} {
+        set matches {}
+        foreach probe [get_hw_probes -of_objects $vio] {
+            if {[get_property NAME $probe] eq $name && [get_property TYPE $probe] eq $type} {
+                lappend matches $probe
+            }
+        }
+        set probe [eth_board::one $matches "$name $type probe"]
+        set radix [expr {$property eq "INPUT_VALUE" ? "INPUT_VALUE_RADIX" : "OUTPUT_VALUE_RADIX"}]
+        set_property $radix HEX $probe
+        set raw [get_property $property $probe]
+        regsub -nocase {^0x} $raw {} digits
+        if {![regexp -nocase {^[0-9a-f]+$} $digits] || [string length $digits] != $width} {
+            error "Unexpected $name value: $raw"
+        }
+        scan $digits %x value
+        return $value
+    }
+
     proc run {args} {
         if {[llength $args] != 4} {
-            error "Usage: board_probe.tcl image.bit image.ltx diagnostic|restore hw_server_url"
+            error "Usage: board_probe.tcl image.bit image.ltx diagnostic|check|restore hw_server_url"
         }
         lassign $args bit probes mode server
-        if {$mode ni {diagnostic restore}} { error "Invalid image mode" }
+        if {$mode ni {diagnostic check restore}} { error "Invalid image mode" }
         foreach path [list $bit $probes] {
             if {![file isfile $path]} { error "Missing image file: $path" }
         }
@@ -31,12 +50,12 @@ namespace eval eth_board {
             set device [eth_board::one [get_hw_devices -of_objects $target -filter {PART =~ xcvu9p*}] "xcvu9p device"]
             puts "TARGET $target DEVICE $device PART=[get_property PART $device]"
             current_hw_device $device
-            set_property PROGRAM.FILE $bit $device
+            if {$mode ne "check"} { set_property PROGRAM.FILE $bit $device }
             set_property PROBES.FILE $probes $device
-            program_hw_devices $device
+            if {$mode ne "check"} { program_hw_devices $device }
             refresh_hw_device $device
-            puts "PROGRAMMED $mode"
-            if {$mode eq "diagnostic"} {
+            if {$mode eq "check"} { puts "CHECK_ONLY no programming attempted" } else { puts "PROGRAMMED $mode" }
+            if {$mode in {diagnostic check}} {
                 set vios [get_hw_vios -of_objects $device]
                 set vio [eth_board::one $vios "diagnostic VIO"]
                 set cell [string map {. /} [get_property CELL_NAME $vio]]
@@ -49,16 +68,20 @@ namespace eval eth_board {
                 }
                 set axi [eth_board::one $management "diagnostic management AXI"]
                 if {[get_property PROTOCOL $axi] ne "AXI4_Lite"} { error "Management AXI is not AXI4_Lite" }
-                set probe [eth_board::one [get_hw_probes -of_objects $vio probe_in0] "status probe"]
-                set_property INPUT_VALUE_RADIX HEX $probe
-                refresh_hw_vio $vio
-                set raw [get_property INPUT_VALUE $probe]
-                if {![regexp -nocase {^(0x)?[0-9a-f]{8}$} $raw]} { error "Unexpected VIO status: $raw" }
-                scan $raw %x value
+                refresh_hw_vio -update_output_values $vio
+                set locked [eth_board::probe_value $vio locked vio_input INPUT_VALUE 1]
+                set phy_reset [eth_board::probe_value $vio phy_rst_n_OBUF vio_input INPUT_VALUE 1]
+                set settled [eth_board::probe_value $vio phy_settled vio_input INPUT_VALUE 1]
+                set axi_error [eth_board::probe_value $vio response_error vio_input INPUT_VALUE 1]
+                set sync [eth_board::probe_value $vio status_sync vio_input INPUT_VALUE 5]
+                set echo [eth_board::probe_value $vio echo_enable vio_output OUTPUT_VALUE 1]
+                set request [eth_board::probe_value $vio phy_request vio_output OUTPUT_VALUE 1]
+                set value [expr {($sync << 4) | ($axi_error << 3) | ($settled << 2) |
+                                 ($phy_reset << 1) | $locked}]
                 puts [format "STATUS_HEX 0x%08x" $value]
-                puts "STATUS_BITS locked=[expr {($value >> 0) & 1}] phy_reset_released=[expr {($value >> 1) & 1}] settled=[expr {($value >> 2) & 1}] axi_error=[expr {($value >> 3) & 1}] echo_enabled=[expr {($value >> 4) & 1}] pcs=[format 0x%04x [expr {($value >> 8) & 0xffff}]]"
+                puts "STATUS_BITS locked=$locked phy_reset_released=$phy_reset settled=$settled axi_error=$axi_error echo_enabled=$echo phy_request=$request pcs=[format 0x%04x [expr {($value >> 8) & 0xffff}]]"
                 puts "MANAGEMENT_AXI $axi PROTOCOL=[get_property PROTOCOL $axi]"
-                if {($value & 7) != 7 || ($value & 0x18) != 0} {
+                if {($value & 7) != 7 || $axi_error != 0 || $echo != 0 || $request != 0} {
                     error "Diagnostic reset/clock not settled, AXI error, or echo unexpectedly enabled"
                 }
                 puts "DIAGNOSTIC_BASELINE_PASS"
