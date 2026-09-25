@@ -51,6 +51,12 @@ eth_board::run $bit $ltx diagnostic localhost:3121
 if {$::program_count != 1} { error "Diagnostic image not programmed exactly once" }
 eth_board::run $bit $ltx check localhost:3121
 if {$::program_count != 1} { error "Check-only mode programmed the board" }
+set ::mdio_count 0
+proc eth_board::identify_phy {axi} { incr ::mdio_count }
+eth_board::run $bit $ltx mdio localhost:3121
+if {$::program_count != 1 || $::mdio_count != 1} {
+    error "MDIO-only mode reprogrammed or skipped its probe"
+}
 set ::settled 0
 if {![catch {eth_board::run $bit $ltx check localhost:3121} error] ||
     ![string match *not\ settled* $error]} {

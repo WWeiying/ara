@@ -45,6 +45,12 @@ class BoardProbeTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertIn("MOCK_BOARD_PASS", run.stdout)
 
+    def test_tcl_mock_mdio_id_and_restoration(self):
+        run = subprocess.run(["tclsh", str(Path(__file__).with_name("test_ethernet_mdio_probe.tcl"))],
+                             capture_output=True, text=True, check=False)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertIn("MOCK_MDIO_PASS", run.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

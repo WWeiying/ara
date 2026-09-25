@@ -1,6 +1,7 @@
 # Program one verified VCU118 image and inspect its debug cores. Hash checks
 # and the explicit programming confirmation are enforced by board_probe.py.
 namespace eval eth_board {
+    variable serial 0
     proc one {objects description} {
         if {[llength $objects] != 1} {
             error "Expected exactly one $description, found [llength $objects]: $objects"
@@ -27,12 +28,99 @@ namespace eval eth_board {
         return $value
     }
 
+    proc axi_word {axi kind address {data -}} {
+        variable serial
+        if {$address ni {0x500 0x504 0x50c} || $kind ni {READ WRITE}} {
+            error "MDIO probe forbids this AXI access"
+        }
+        if {$kind eq "WRITE"} {
+            if {![string is integer -strict $data] || $data < 0 ||
+                ($address == 0x500 && $data > 0x7f) ||
+                ($address == 0x504 && (($data & 0x1f00c800) != 0x03008800 ||
+                                       (($data >> 16) & 31) > 3)) ||
+                $address == 0x50c} {
+                error "MDIO probe forbids this AXI write"
+            }
+        } elseif {$data ne "-"} { error "Unexpected read data" }
+        set args [list -type $kind -address [format %08x $address] -len 1]
+        if {$kind eq "WRITE"} { lappend args -data [format %08x $data] }
+        set txn [create_hw_axi_txn eth_mdio_[incr serial] $axi {*}$args]
+        set code [catch {
+            if {[get_property CMD.SIZE $txn] != 32 || [get_property CMD.LEN $txn] != 1} {
+                error "Unexpected AXI word width/length"
+            }
+            run_hw_axi $txn
+            refresh_hw_axi $axi
+            set prefix STATUS.AXI_${kind}
+            if {[get_property ${prefix}_BUSY $axi] != 0 ||
+                [get_property ${prefix}_DONE $axi] != 1} {
+                error "AXI $kind did not complete"
+            }
+            set response [get_property [expr {$kind eq "READ" ? "STATUS.RRESP" : "STATUS.BRESP"}] $axi]
+            if {$response ne "OKAY"} { error "AXI $kind at [format 0x%03x $address] returned $response" }
+            if {$kind eq "READ"} {
+                set raw [string map {_ "" " " "" \n "" \r ""} [get_property DATA $txn]]
+                regsub -nocase {^0x} $raw {} raw
+                if {![regexp -nocase {^[0-9a-f]{8}$} $raw]} { error "Malformed AXI data: $raw" }
+                scan $raw %x result
+                set result
+            } else { set result - }
+        } value options]
+        set cleanup [catch {delete_hw_axi_txn $txn} cleanup_value cleanup_options]
+        if {$code} { return -options $options $value }
+        if {$cleanup} { return -options $cleanup_options $cleanup_value }
+        return $value
+    }
+
+    proc mdio_ready {axi} {
+        for {set attempt 0} {$attempt < 20} {incr attempt} {
+            set control [eth_board::axi_word $axi READ 0x504]
+            if {$control & 0x80} { return }
+            after 10
+        }
+        error "MDIO ready timeout"
+    }
+
+    proc mdio_read {axi phy reg} {
+        eth_board::mdio_ready $axi
+        set command [expr {($phy << 24) | ($reg << 16) | 0x8800}]
+        eth_board::axi_word $axi WRITE 0x504 $command
+        eth_board::mdio_ready $axi
+        set result [eth_board::axi_word $axi READ 0x50c]
+        if {($result & 0x10000) == 0} { error "MDIO read data not ready" }
+        return [expr {$result & 0xffff}]
+    }
+
+    proc identify_phy {axi} {
+        set original [expr {[eth_board::axi_word $axi READ 0x500] & 0x7f}]
+        set code [catch {
+            # 100 MHz management clock, maximal divider; safely below 2.5 MHz MDC.
+            eth_board::axi_word $axi WRITE 0x500 0x7f
+            set setup [eth_board::axi_word $axi READ 0x500]
+            if {($setup & 0x7f) != 0x7f} { error "MDIO setup readback mismatch" }
+            set id1 [eth_board::mdio_read $axi 3 2]
+            set id2 [eth_board::mdio_read $axi 3 3]
+            puts [format "PHY3_ID 0x%04x 0x%04x" $id1 $id2]
+            if {$id1 != 0x2000 || ($id2 & 0xfff0) != 0xa230} {
+                error "External PHY 3 is not identified as TI DP83867"
+            }
+            set bmcr [eth_board::mdio_read $axi 3 0]
+            set bmsr_first [eth_board::mdio_read $axi 3 1]
+            set bmsr_second [eth_board::mdio_read $axi 3 1]
+            puts [format "PHY3_BMCR 0x%04x BMSR_FIRST 0x%04x BMSR_SECOND 0x%04x" $bmcr $bmsr_first $bmsr_second]
+            puts "PHY_ID_PASS link_not_validated"
+        } value options]
+        set restore_code [catch {eth_board::axi_word $axi WRITE 0x500 $original} restore_value restore_options]
+        if {$code} { return -options $options $value }
+        if {$restore_code} { return -options $restore_options $restore_value }
+    }
+
     proc run {args} {
         if {[llength $args] != 4} {
-            error "Usage: board_probe.tcl image.bit image.ltx diagnostic|check|restore hw_server_url"
+            error "Usage: board_probe.tcl image.bit image.ltx diagnostic|check|mdio|restore hw_server_url"
         }
         lassign $args bit probes mode server
-        if {$mode ni {diagnostic check restore}} { error "Invalid image mode" }
+        if {$mode ni {diagnostic check mdio restore}} { error "Invalid image mode" }
         foreach path [list $bit $probes] {
             if {![file isfile $path]} { error "Missing image file: $path" }
         }
@@ -50,12 +138,12 @@ namespace eval eth_board {
             set device [eth_board::one [get_hw_devices -of_objects $target -filter {PART =~ xcvu9p*}] "xcvu9p device"]
             puts "TARGET $target DEVICE $device PART=[get_property PART $device]"
             current_hw_device $device
-            if {$mode ne "check"} { set_property PROGRAM.FILE $bit $device }
+            if {$mode in {diagnostic restore}} { set_property PROGRAM.FILE $bit $device }
             set_property PROBES.FILE $probes $device
-            if {$mode ne "check"} { program_hw_devices $device }
+            if {$mode in {diagnostic restore}} { program_hw_devices $device }
             refresh_hw_device $device
-            if {$mode eq "check"} { puts "CHECK_ONLY no programming attempted" } else { puts "PROGRAMMED $mode" }
-            if {$mode in {diagnostic check}} {
+            if {$mode in {check mdio}} { puts "CHECK_ONLY no programming attempted" } else { puts "PROGRAMMED $mode" }
+            if {$mode in {diagnostic check mdio}} {
                 set vios [get_hw_vios -of_objects $device]
                 set vio [eth_board::one $vios "diagnostic VIO"]
                 set cell [string map {. /} [get_property CELL_NAME $vio]]
@@ -85,6 +173,7 @@ namespace eval eth_board {
                     error "Diagnostic reset/clock not settled, AXI error, or echo unexpectedly enabled"
                 }
                 puts "DIAGNOSTIC_BASELINE_PASS"
+                if {$mode eq "mdio"} { eth_board::identify_phy $axi }
             } else {
                 puts "RESTORE_PROGRAMMED"
             }

@@ -52,19 +52,20 @@ def main(argv=None):
     parser.add_argument("--program-confirmed", action="store_true", help="Acknowledge that this replaces the running FPGA image")
     parser.add_argument("--restore", action="store_true", help="Restore the archived Ara host image")
     parser.add_argument("--check-only", action="store_true", help="Read the running diagnostic image without programming")
+    parser.add_argument("--mdio-only", action="store_true", help="Identify external PHY 3 through guarded MDIO reads; no programming")
     parser.add_argument("--build", type=Path, default=DEFAULT_BUILD)
     parser.add_argument("--rollback", type=Path, default=DEFAULT_RESTORE)
     parser.add_argument("--vivado", default="D:/Xilinx/Vivado/2020.1/bin/vivado.bat")
     parser.add_argument("--server", default="localhost:3121")
     parser.add_argument("--out", type=Path, required=True, help="New evidence directory")
     args = parser.parse_args(argv)
-    if args.restore and args.check_only:
-        parser.error("--restore and --check-only are mutually exclusive")
-    if not args.program_confirmed and not args.check_only:
+    if sum((args.restore, args.check_only, args.mdio_only)) > 1:
+        parser.error("--restore, --check-only, and --mdio-only are mutually exclusive")
+    if not args.program_confirmed and not (args.check_only or args.mdio_only):
         parser.error("--program-confirmed is required")
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    report = {"mode": "restore" if args.restore else ("check" if args.check_only else "diagnostic"),
+    report = {"mode": "restore" if args.restore else ("check" if args.check_only else ("mdio" if args.mdio_only else "diagnostic")),
               "started_utc": datetime.now(timezone.utc).isoformat(), "state": "not_programmed"}
     code = 1
     try:
@@ -85,13 +86,16 @@ def main(argv=None):
         report["vivado_exit_code"] = run.returncode
         console = (output / "console.log").read_text(encoding="utf-8", errors="replace")
         for line in console.splitlines():
-            if line.startswith(("TARGET ", "PROGRAMMED ", "CHECK_ONLY ", "STATUS_", "MANAGEMENT_AXI ", "DIAGNOSTIC_BASELINE_PASS", "RESTORE_PROGRAMMED", "ETH_BOARD_ERROR ")):
+            if line.startswith(("TARGET ", "PROGRAMMED ", "CHECK_ONLY ", "STATUS_", "MANAGEMENT_AXI ", "DIAGNOSTIC_BASELINE_PASS", "PHY3_", "PHY_ID_PASS", "RESTORE_PROGRAMMED", "ETH_BOARD_ERROR ")):
                 print(line, flush=True)
-        if run.returncode == 0 and ("RESTORE_PROGRAMMED" if args.restore else "DIAGNOSTIC_BASELINE_PASS") in console:
-            report["state"] = "restored_not_software_verified" if args.restore else "diagnostic_baseline_pass_packet_test_pending"
+        marker = "RESTORE_PROGRAMMED" if args.restore else ("PHY_ID_PASS" if args.mdio_only else "DIAGNOSTIC_BASELINE_PASS")
+        if run.returncode == 0 and marker in console:
+            report["state"] = ("restored_not_software_verified" if args.restore else
+                               "phy_id_pass_link_not_validated" if args.mdio_only else
+                               "diagnostic_baseline_pass_packet_test_pending")
             code = 0
         else:
-            report["state"] = "read_only_check_failed" if args.check_only else (
+            report["state"] = "management_check_failed" if (args.check_only or args.mdio_only) else (
                 "programmed_but_check_failed" if f"PROGRAMMED {report['mode']}" in console else "programming_failed_or_unknown")
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         report["error"] = str(exc)

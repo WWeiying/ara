@@ -242,6 +242,18 @@ py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --check-only -
 and reads the running diagnostic VIO/AXI cores. It does not prove the FPGA's
 bitstream contents match the local hash by itself. The VIO names are those
 observed on the Vivado 2020.1 programmed image, not the RTL port `probe_in0`.
+After that passes, identify the external DP83867 at MDIO address 3 without
+programming or changing PHY registers:
+
+```powershell
+py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --mdio-only --out D:\fpga_runs\eth_board_mdio_01
+```
+
+This performs only 32-bit AXI-Lite accesses to MAC offsets `0x500`, `0x504`
+and `0x50c`: enable MDIO at the maximum clock divider, read PHY ID/BMCR/BMSR,
+and restore the prior MDIO setup word even on an ID mismatch. No PHY writes
+or echo enable are issued. `PHY_ID_PASS` confirms identification, **not** link
+or packet operation. A host-side JTAG response/timeout fails the check.
 To restore the archived host image, use a fresh output directory:
 
 ```powershell
