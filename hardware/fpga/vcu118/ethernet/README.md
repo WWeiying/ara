@@ -470,3 +470,26 @@ restored during this test. This proves the J10 PHY/PCS/MAC/FIFO/echo path for
 these frames, but not sustained throughput, IP/UDP, Ara/DDR transfer or a
 working program downloader. Those require a separate bounded protocol and
 memory-side integration.
+
+The build recorded SHA256 `479415d2ad04905051146de20686b0cc9331af224ab1e1ecd1f226b973ebc673`
+for `eth_diag.bit` and `cac8a43a74d0139c85b07de41d887fa905674731c7627b40d2e8933f0ed8ae1d`
+for `eth_diag.ltx`. A second programming (`eth_pcs_program_20260925_02`)
+returned the original `PCS=0x0800` baseline; one `bringup` invocation then
+repeated the D3/clock/PCS/AN pass. Echo passed all four sizes again in
+`eth_echo_packets_20260925_03/echo_packets.json`. The board currently runs
+this diagnostic image with echo enabled.
+
+For the already programmed matching diagnostic image, this is the repeatable
+Windows bringup command (not an Ara-image or DDR command):
+
+```powershell
+$P = 'D:/fpga_runs/ara_eth_build_pcs_20260925_02/eth_diag.ltx'
+& 'D:/Xilinx/Vivado/2020.1/bin/vivado.bat' -mode batch -notrace -nojournal -source 'D:/project/ara/hardware/fpga/vcu118/ethernet/phy_sgmii.tcl' -tclargs $P bringup localhost:3121
+```
+
+`bringup` identifies PHY 3, checks copper link and current D3/CFG2/PCS
+state, writes only D3 bit 14 when needed, verifies transmit-clock activity,
+pulses only the FPGA PCS reset if link is down, and checks D3 and SGMII
+negotiation readback. It is idempotent when link is already up. A board power
+cycle or reprogramming requires this sequence again; it is not yet automatic
+in the FPGA image.

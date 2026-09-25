@@ -107,6 +107,17 @@ namespace eval eth_sgmii {
         return $pcs
     }
 
+    proc check_bringup {d3 cfg2 bmcr bmsr pcs echo_enabled} {
+        if {($d3 != 0 && $d3 != 0x4000) || ($cfg2 & 0x80) == 0 ||
+            ($bmcr & 0x5000) != 0x1000 || ($bmsr & 0x24) != 0x24 ||
+            ($d3 == 0 && ($pcs & 3) == 3)} {
+            error "Bringup preconditions not met; no write attempted"
+        }
+        if {$echo_enabled && ($d3 != 0x4000 || ($pcs & 3) != 3)} {
+            error "Disable echo before changing PHY/PCS state; no write attempted"
+        }
+    }
+
     proc status {vio} {
         refresh_hw_vio -update_output_values $vio
         set sync [eth_board::probe_value $vio status_sync vio_input INPUT_VALUE 5]
@@ -230,10 +241,12 @@ namespace eval eth_sgmii {
                     error "Diagnostic baseline failed: $name"
                 }
             }
-            foreach name {phy_request echo_enable} {
-                if {[eth_board::probe_value $vio $name vio_output OUTPUT_VALUE 1] != 0} {
-                    error "Diagnostic control unexpectedly enabled: $name"
-                }
+            if {[eth_board::probe_value $vio phy_request vio_output OUTPUT_VALUE 1] != 0} {
+                error "Diagnostic PHY reset request unexpectedly enabled"
+            }
+            set echo_enabled [eth_board::probe_value $vio echo_enable vio_output OUTPUT_VALUE 1]
+            if {$echo_enabled && $mode ne "bringup"} {
+                error "Diagnostic echo unexpectedly enabled"
             }
             set original [expr {[eth_board::axi_word $axi READ 0x500] & 0x7f}]
             set setup_saved 1
@@ -290,11 +303,7 @@ namespace eval eth_sgmii {
                 if {($pcs & 3) != 3} { error "PCS reset completed but link/sync still down" }
                 puts "SGMII_LINK_PASS"
             } elseif {$mode eq "bringup"} {
-                if {($d3 != 0 && $d3 != 0x4000) || ($cfg2 & 0x80) == 0 ||
-                    ($bmcr & 0x5000) != 0x1000 || ($bmsr & 0x24) != 0x24 ||
-                    ($d3 == 0 && ($pcs & 3) == 3)} {
-                    error "Bringup preconditions not met; no write attempted"
-                }
+                eth_sgmii::check_bringup $d3 $cfg2 $bmcr $bmsr $pcs $echo_enabled
                 if {$d3 == 0} { eth_sgmii::enable_six_wire $axi }
                 if {![eth_sgmii::sample_clock $vio]} {
                     error "PHY six-wire mode configured but MAC transmit clock is not moving"

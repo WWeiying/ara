@@ -100,6 +100,18 @@ puts SIX_WIRE_GUARD_PASS
         self.assertIn("PHY_D3_AFTER 0x4000", output)
         self.assertIn("SIX_WIRE_GUARD_PASS", output)
 
+    def test_bringup_allows_read_only_check_with_echo_enabled(self):
+        output = self.tcl("""
+eth_sgmii::check_bringup 0 0x29c7 0x1140 0x796d 0x0800 0
+eth_sgmii::check_bringup 0x4000 0x29c7 0x1140 0x796d 0x188b 1
+if {![catch {eth_sgmii::check_bringup 0 0x29c7 0x1140 0x796d 0x0800 1} message] ||
+    ![string match {*Disable echo*} $message]} {error "echo guard failed"}
+if {![catch {eth_sgmii::check_bringup 0x4000 0x29c7 0x1140 0x796d 0x0800 1} message] ||
+    ![string match {*Disable echo*} $message]} {error "PCS guard failed"}
+puts BRINGUP_ECHO_GUARD_PASS
+""")
+        self.assertIn("BRINGUP_ECHO_GUARD_PASS", output)
+
     def test_sgmii_aneg_restart_restores_cfg2_on_failure(self):
         output = self.tcl("""
 set ::cfg2 0x29c7
