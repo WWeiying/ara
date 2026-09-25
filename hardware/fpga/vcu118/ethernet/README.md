@@ -4,7 +4,8 @@ Status: Windows Vivado 2020.1 completed all eight build stages on source
 `421070e6`, including routing, timing reports and bitgen. The registered
 reset-release correction removed the counter-driven CDC-10 paths; reset
 fanout CDC-11 and partial MDIO input timing still need board-level review.
-**Physical Ethernet operation is unverified.**
+JTAG management, VIO baseline and external PHY ID passed on the board;
+**physical Ethernet link and packet operation remain unverified.**
 This is a build gate, not the Ara Ethernet-to-DDR downloader or a throughput result.
 The existing Ara RTL, golden host bitstream and UART/JTAG loaders are unchanged.
 
@@ -39,8 +40,9 @@ upload bitstreams, checkpoints, generated IP HDL or license files. Logs can
 contain local paths/license diagnostics. The current checkout/index is unchanged.
 Reports are also uploaded after a failed build; send the final branch name.
 
-Success is `built_needs_manual_review_and_board_test`. **Do not program the new
-image yet.** First review the uploaded IO/clock/CDC/timing/methodology reports.
+Success is `built_needs_manual_review_and_board_test`. At this build stage,
+do not program without reviewing IO/clock/CDC/timing/methodology reports and
+obtaining explicit permission; the first authorized board test is recorded below.
 Any `FAIL` stops the flow; no DRC severity is downgraded. TEMAC must report a
 full Synthesis license before synthesis, and actual bitgen must succeed. This
 does not constitute a complete timing-coverage review or hardware acceptance.
@@ -263,6 +265,39 @@ py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --program-conf
 Restoring the bitstream does not prove the prior Ara program resumed; use
 the existing host loader/smoke test to re-establish that separately. The
 board baseline does not replace PHY ID, negotiation, packet or DDR testing.
+
+### First Board Result (2026-09-25)
+
+The hash-checked diagnostic image from `ara_eth_build_nc1cwrm8` was programmed
+on the single VCU118 target. The first status script queried `probe_in0`, but
+Vivado 2020.1 exposed the connected nets as separate VIO probes; it reported
+`programmed_but_check_failed`. Read-only `inspect_debug.tcl` identified the
+actual probes, and a subsequent `--check-only` run passed without reprogramming:
+
+```text
+STATUS_HEX 0x00080007
+locked=1 phy_reset_released=1 settled=1 axi_error=0
+echo_enabled=0 phy_request=0 pcs=0x0800
+MANAGEMENT_AXI hw_axi_1 PROTOCOL=AXI4_Lite
+DIAGNOSTIC_BASELINE_PASS
+```
+
+Evidence: `D:/fpga_runs/eth_board_baseline_20260925_0816` (first status query),
+`D:/fpga_runs/eth_board_check_20260925_0822` (passing check), and
+`D:/fpga_runs/eth_board_mdio_20260925_0830` (PHY read). The MDIO run used
+only MAC register reads/guarded MDIO-read commands and returned external PHY 3
+ID `0x2000/0xa231`, BMCR `0x1140`, and BMSR `0x7949` on both reads. It passed
+`PHY_ID_PASS`; the prior MAC MDIO setup was restored. BMSR link bit 2 is zero,
+and Windows wired adapters reported disconnected. Neither a copper link nor
+Ethernet packets or DDR transfer were validated. The `pcs=0x0800` sample is
+not a copper link qualification.
+
+The archived Ara host `.bit/.ltx` pair was then reprogrammed with `--restore`
+(`D:/fpga_runs/eth_board_restore_20260925_0830`). A subsequent Ara JTAG debug
+snapshot using that `.ltx` succeeded with ABI 1 and live status 7 at
+`D:/fpga_runs/ara_restore_snapshot_20260925_0833`. This re-establishes debug
+access, not ELF execution or the JTAG multi-beat-read fix. No diagnostic image
+is intentionally left running on the board.
 
 ## Circuit and Boundaries
 
