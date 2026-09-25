@@ -77,6 +77,19 @@ try {
         }
         $done = (Get-Content -Raw -LiteralPath (Join-Path $session 'completed_audit.txt')).Trim()
         if ($done -ne $name) { throw 'Missing or mismatched audit completion record' }
+        $reportFiles = @(Get-ChildItem -LiteralPath $reports -File -Filter '*.rpt')
+        $requiredReports = @('route_status.rpt', 'timing_summary.rpt', 'check_timing.rpt',
+            'cdc.rpt', 'drc.rpt', 'methodology.rpt', 'constraint_checks.rpt',
+            'boundary_checks.rpt', 'multiple_drivers.rpt')
+        foreach ($required in $requiredReports) {
+            if ($required -notin $reportFiles.Name) { throw "Missing audit report: $required" }
+        }
+        $reportHashes = [ordered]@{}
+        foreach ($file in $reportFiles) {
+            if ($file.Length -le 0) { throw "Empty audit report: $($file.FullName)" }
+            $reportHashes[$file.Name] = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash
+        }
+        $record['ReportHashes'] = $reportHashes
         $record['AutomatedChecksPassed'] = $true
         $record | ConvertTo-Json -Depth 4 |
             Set-Content -LiteralPath (Join-Path $session 'completed_audit.json') -Encoding UTF8

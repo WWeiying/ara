@@ -68,6 +68,8 @@ foreach ($case in @('healthy', 'native_error', 'missing_marker', 'wrong_marker',
             Assert ($record.SHA256 -eq (Get-FileHash -Algorithm SHA256 -LiteralPath $global:FakeCheckpoint).Hash) 'checkpoint hash'
             Assert ($record.ScriptHashes.'audit_routed.ps1' -ne '') 'script provenance'
             Assert ($record.ScriptHashes.'warning_details.tcl' -ne '') 'warning-query provenance'
+            Assert ($record.ReportHashes.'cdc.rpt' -eq
+                (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $record.Reports 'cdc.rpt')).Hash) 'report provenance'
             Assert ($record.AutomatedChecksPassed -and $record.ManualReviewRequired -and !$record.BitstreamGenerated) 'bounded success statement'
         }
     }

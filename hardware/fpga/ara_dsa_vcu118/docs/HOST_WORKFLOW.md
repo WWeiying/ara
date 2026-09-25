@@ -5,10 +5,11 @@
 This is an optional RTL and host-software implementation. Local digital tests
 are not Vivado timing/CDC/DRC signoff and are not an FPGA pass. Build the `host`
 profile first and complete stages 1 and 2 before building `dual_ddr`.
-The host-profile debug snapshot and UART-launched `host_smoke.elf` have board
-evidence (PASS marker, 509 retired instructions, zero traps/DDR errors). JTAG
-host ELF loading has not passed its AXI burst preflight, and C2 has not been
-validated on the board.
+The host-profile debug snapshot, JTAG single-beat and multi-beat ELF loading,
+AXI burst probe, and a 64 KiB DDR payload now have board evidence on the
+timing-cut host image (509 retired instructions, zero traps/DDR errors). The
+earlier image's burst read-offset failure no longer reproduces, but its exact
+cycle-level cause is not proven. C2 has not been validated on the board.
 
 The existing baseline, COM6/115200 boot ROM, UART loader, Linux images and
 QBS/AKV arithmetic are not replaced by this feature. An old bitstream cannot
@@ -63,6 +64,24 @@ $bit = @{
 }
 .\scripts\write_profile_bit.ps1 @bit
 ```
+
+For subsequent builds, a completed routed-checkpoint audit can avoid repeating
+the full CDC/DRC/methodology/coverage reports during bitgen. First run
+`audit_routed.ps1` on the exact routed DCP and review its reports. Then pass
+its printed `completed_audit.json` to the bit writer:
+
+```powershell
+$bit.AuditManifest = 'D:\fpga_runs\ara_audit_...\completed_audit.json'
+.\scripts\write_profile_bit.ps1 @bit
+```
+
+The audited mode checks the same profile, checkpoint and SHA-256, audit-script
+hashes, completion marker, and every report hash before invoking Vivado. It
+still checks multiple drivers, setup/hold timing, and Vivado's native bitgen
+DRC. A missing, stale, or altered audit is rejected; omit `-AuditManifest` to
+retain the original full-report mode. Audits made before report hashes were
+recorded cannot use the fast mode. Neither mode replaces manual review of CDC,
+DRC, or unconstrained paths.
 
 The default output is `bitstream_host` inside that run directory. It must not
 already exist. Program the matching `.bit`/`.ltx` in Hardware Manager, not

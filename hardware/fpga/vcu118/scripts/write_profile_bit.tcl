@@ -1,8 +1,9 @@
 # Operate on the routed checkpoint only; never launch synthesis/implementation.
 source [file join [file dirname [info script]] common.tcl]
 require_vivado
-if {[llength $argv] != 2} { error "Expected: routed.dcp output_directory" }
-lassign $argv checkpoint out
+if {[llength $argv] != 3} { error "Expected: routed.dcp output_directory full|audited" }
+lassign $argv checkpoint out mode
+if {$mode ni {full audited}} { error "Unknown bitstream report mode: $mode" }
 if {![file isfile $checkpoint] || [file size $checkpoint] == 0} {
     error "Missing/empty routed checkpoint: $checkpoint"
 }
@@ -26,9 +27,9 @@ set code [catch {
     }
     set reports [file join $out reports]
     require_no_multiple_drivers $reports
-    # Includes full DRC, LUTLP, CDC, bus-skew and physical boundary checks.
-    # Recheck saved constraints, do not read new XDC or waive any violation.
-    write_reports $reports true
+    # In audited mode the wrapper has verified the same checkpoint and immutable
+    # full-report evidence. Keep live driver/timing checks and native bitgen DRC.
+    if {$mode eq "full"} { write_reports $reports true }
     foreach delay {max min} {
         set paths [get_timing_paths -quiet -delay_type $delay -max_paths 1]
         if {[llength $paths] != 1} { error "Missing $delay timing path" }

@@ -24,5 +24,11 @@ if ($global:FakeCase -ne 'missing_marker') {
     if ($global:FakeCase -eq 'wrong_marker') { $name = 'impl_old' }
     $name | Set-Content -LiteralPath (Join-Path $global:FakeAuditSession 'completed_audit.txt')
 }
+$reportDir = Join-Path $global:FakePackage "reports/audit_$token"
+New-Item -ItemType Directory -Path $reportDir | Out-Null
+foreach ($name in @('route_status', 'timing_summary', 'check_timing', 'cdc', 'drc',
+                    'methodology', 'constraint_checks', 'boundary_checks', 'multiple_drivers')) {
+    "fake $name" | Set-Content -LiteralPath (Join-Path $reportDir "$name.rpt")
+}
 $global:LASTEXITCODE = 0
 if ($global:FakeCase -eq 'native_error') { $global:LASTEXITCODE = 1 }
