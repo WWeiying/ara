@@ -35,6 +35,9 @@ class EchoPacketTests(unittest.TestCase):
     def test_control_tcl_loads_without_vivado(self):
         script = ("set ::eth_echo_library_only 1\n"
                   f"source {{{(ETHERNET / 'echo_control.tcl').as_posix()}}}\n"
+                  "if {![catch {eth_echo::require_pcs_link 0x8000} message]} {error \"missing link accepted\"}\n"
+                  "if {![string match {*link/sync not ready*} $message]} {error $message}\n"
+                  "eth_echo::require_pcs_link 0x0030\n"
                   "puts ECHO_LIBRARY_READY\n")
         result = subprocess.run(["tclsh"], input=script, text=True,
                                 capture_output=True, check=True)

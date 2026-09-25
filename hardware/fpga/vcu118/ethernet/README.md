@@ -309,8 +309,7 @@ diagnostic image passed its VIO/management baseline at
 `0x2000/0xa231`, BMCR `0x1140`, and BMSR `0x796d` twice. BMSR bit 2 (link)
 and bit 5 (autonegotiation complete) were set. This establishes PHY-side
 copper link only; MAC frame transmit/receive, CRC, and DDR transfer were not
-tested. The Windows host has no Scapy/Npcap raw-frame sender installed for the
-diagnostic EtherType `0x88b5` echo test.
+tested in that run.
 
 The prior host-profile `.bit/.ltx` pair from
 `D:/fpga_runs/ara_20260925_090839_d764e60053a1/bitstream_host` was
@@ -319,6 +318,35 @@ reprogrammed afterward. Its bitstream SHA256 is
 the restore log is `D:/fpga_runs/eth_board_link_restore_20260925_01.log` and
 ended with `BOARD_READY status=e`. Reprogramming/reset does not restore the
 previously running software image.
+
+### Raw-Frame Echo Attempt (2026-09-25)
+
+Scapy and Npcap were installed on Windows. The verified diagnostic image was
+programmed at `D:/fpga_runs/eth_echo_program_20260925_01`, and a guarded
+read of the MAC configuration showed RX/TX enabled with FCS handled by the MAC.
+The VIO echo enable took effect, but the first 60-byte raw frame received no
+matching reply (`D:/fpga_runs/eth_echo_packets_20260925_01`). A later VIO
+read showed `enable=1 seen=0 sent=0 rejected=0 pcs=0x0800` at
+`D:/fpga_runs/eth_echo_control_status_20260925_01.log`. This is a failed
+packet test, not evidence of an echo RTL defect: the frame was not observed
+at the echo input. Per PG047, PCS status bits 0 and 1 indicate link and
+synchronization; both are zero in `0x0800`. The 1G speed field is not valid
+until SGMII negotiation completes. Copper link at the PC/PHY is therefore
+insufficient to declare FPGA-side SGMII ready.
+
+The generated example writes PHY extended register `0x00D3` bit 14 to select
+six-wire mode and supply the differential SGMII clock to the FPGA. The
+diagnostic design deliberately omits that example controller, so missing PHY
+clock-mode initialization is the leading hypothesis, not yet a confirmed
+cause. First read back the PHY clock-mode and SGMII status registers; only
+then make a bounded, verified MDIO configuration change. Do not replay the
+example's copper loopback/auto-negotiation settings on a PC link. `on` mode
+now refuses to enable echo unless both PCS link and sync are present.
+
+The original Ara host image was restored with
+`D:/fpga_runs/eth_echo_restore_20260925_01.log`; Vivado exited successfully
+after `BOARD_READY status=e`. As with the earlier restore, this does not
+restore or validate a previously running software image.
 
 ## Circuit and Boundaries
 

@@ -5,6 +5,13 @@ source [file join [file dirname [info script]] board_probe.tcl]
 namespace eval eth_echo {
     variable serial 0
 
+    proc require_pcs_link {sync} {
+        set pcs [expr {($sync >> 4) & 0xffff}]
+        if {($pcs & 3) != 3} {
+            error [format "SGMII PCS link/sync not ready: status=0x%04x" $pcs]
+        }
+    }
+
     proc mac_read {axi address} {
         variable serial
         if {$address ni {0x404 0x408 0x700 0x704 0x708}} {
@@ -70,6 +77,7 @@ namespace eval eth_echo {
             set settled [eth_board::probe_value $vio phy_settled vio_input INPUT_VALUE 1]
             set axi_error [eth_board::probe_value $vio response_error vio_input INPUT_VALUE 1]
             set request [eth_board::probe_value $vio phy_request vio_output OUTPUT_VALUE 1]
+            set sync [eth_board::probe_value $vio status_sync vio_input INPUT_VALUE 5]
             set rcw [eth_echo::mac_read $axi 0x404]
             set tc [eth_echo::mac_read $axi 0x408]
             set filter [eth_echo::mac_read $axi 0x708]
@@ -80,6 +88,7 @@ namespace eval eth_echo {
                 if {!$locked || !$phy_reset || !$settled || $axi_error || $request} {
                     error "Diagnostic clock/reset/AXI baseline failed"
                 }
+                eth_echo::require_pcs_link $sync
                 if {($rcw & 0x30000000) != 0x10000000 ||
                     ($tc & 0x30000000) != 0x10000000} {
                     error "MAC RX/TX disabled or in-band FCS enabled"
