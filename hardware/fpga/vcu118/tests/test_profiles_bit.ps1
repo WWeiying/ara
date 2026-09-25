@@ -84,6 +84,7 @@ $manifest = Join-Path $auditDir 'completed_audit.json'
     Set-Content -LiteralPath $manifest
 $global:ExpectedBitMode = 'audited'
 foreach ($case in @('valid', 'report_changed', 'script_changed', 'checkpoint_changed', 'profile_changed')) {
+    $global:BitCase = $case
     $audit = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
     if ($case -eq 'report_changed') { 'tampered' | Set-Content -LiteralPath (Join-Path $reports 'cdc.rpt') }
     if ($case -eq 'script_changed') { Add-Content -LiteralPath (Join-Path $scripts 'audit_support.tcl') -Value 'tampered' }
