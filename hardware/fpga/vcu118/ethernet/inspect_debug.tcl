@@ -20,8 +20,11 @@ set status [catch {
     refresh_hw_device $device
     foreach vio [get_hw_vios -of_objects $device] {
         puts "VIO $vio CELL_NAME=[get_property CELL_NAME $vio]"
+        refresh_hw_vio -update_output_values $vio
         foreach probe [get_hw_probes -of_objects $vio] {
-            puts "PROBE $probe NAME=[get_property NAME $probe] TYPE=[get_property TYPE $probe] PORT=[get_property PROBE_PORT $probe]"
+            set type [get_property TYPE $probe]
+            set property [expr {$type eq "vio_input" ? "INPUT_VALUE" : "OUTPUT_VALUE"}]
+            puts "PROBE $probe NAME=[get_property NAME $probe] TYPE=$type PORT=[get_property PROBE_PORT $probe] VALUE=[get_property $property $probe]"
         }
     }
     foreach axi [get_hw_axis -of_objects $device] {
