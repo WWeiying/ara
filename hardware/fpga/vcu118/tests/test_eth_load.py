@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Loopback protocol tests; they do not validate the FPGA receiver or DDR."""
 from pathlib import Path
+import json
 import shutil
 import socket
 import struct
@@ -134,6 +135,7 @@ class ProtocolTests(unittest.TestCase):
         process = subprocess.Popen([str(executable)], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE)
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        self.addCleanup(process.stdout.close)
 
         class PipeStream:
             def sendall(self, data):
@@ -149,6 +151,91 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(process.wait(timeout=5), 0)
         self.assertEqual((caps, chunk), (CAP_HOST, 4096))
         self.assertEqual((result["payload_bytes"], result["verified_blocks"]), (12000, 3))
+
+    def start_tcp_server(self, lwip=False):
+        here = Path(__file__).resolve().parent
+        firmware = here.parent / "ethernet/firmware"
+        executable = Path(self.temp.name) / "eth_loader_tcp_server"
+        command = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror"]
+        if lwip:
+            command += ["-DETH_LOADER_LWIP", "-I", str(here / "include")]
+        command += [str(firmware / "eth_loader_core.c"),
+                    str(firmware / "eth_loader_tcp.c"),
+                    str(here / "eth_loader_tcp_server.c"),
+                    "-o", str(executable)]
+        subprocess.run(command, check=True)
+        process = subprocess.Popen([str(executable)], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        self.addCleanup(process.stdout.close)
+        line = process.stdout.readline()
+        self.assertTrue(line.startswith("PORT "), line)
+        return process, int(line.split()[1])
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler unavailable")
+    def test_real_tcp_sender_to_c_receiver_with_fragmented_hello(self):
+        process, port = self.start_tcp_server()
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as stream:
+            stream.settimeout(5)
+            for byte in eth_load.MAGIC:
+                stream.sendall(bytes([byte]))
+            self.assertEqual(eth_load.HELLO.unpack(
+                eth_load.receive_exact(stream, eth_load.HELLO.size)),
+                (eth_load.MAGIC, CAP_HOST, 4096))
+            result = eth_load.transfer(stream, self.image, 4096)
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertEqual(process.stdout.readline().strip(), "RESULT 0")
+        self.assertEqual(result["payload_bytes"], 12000)
+        self.assertEqual(result["verified_blocks"], 3)
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler unavailable")
+    def test_lwip_socket_build_path_with_native_shim(self):
+        process, port = self.start_tcp_server(lwip=True)
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as stream:
+            self.assertEqual(eth_load.hello(stream), (CAP_HOST, 4096))
+            result = eth_load.transfer(stream, self.image, 4096)
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertEqual(process.stdout.readline().strip(), "RESULT 0")
+        self.assertEqual(result["payload_bytes"], 12000)
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler unavailable")
+    def test_real_tcp_rejects_corrupt_payload_before_write(self):
+        process, port = self.start_tcp_server()
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as stream:
+            stream.settimeout(5)
+            self.assertEqual(eth_load.hello(stream), (CAP_HOST, 4096))
+            stream.sendall(eth_load.RECORD.pack(b"DATA", self.address, 4, 0))
+            stream.sendall(b"bad!")
+            address, crc, status = eth_load.ACK.unpack(
+                eth_load.receive_exact(stream, eth_load.ACK.size))
+            self.assertEqual((address, crc, status), (self.address, 0, 2))
+        self.assertEqual(process.wait(timeout=5), 2)
+        self.assertEqual(process.stdout.readline().strip(), "RESULT -9")
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler unavailable")
+    def test_real_tcp_disconnection_aborts_transfer(self):
+        process, port = self.start_tcp_server()
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as stream:
+            self.assertEqual(eth_load.hello(stream), (CAP_HOST, 4096))
+            stream.sendall(eth_load.RECORD.pack(b"DATA", self.address, 4, 0))
+            stream.sendall(b"ab")
+        self.assertEqual(process.wait(timeout=5), 2)
+        self.assertEqual(process.stdout.readline().strip(), "RESULT -8")
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler unavailable")
+    def test_real_elf_cli_against_native_tcp_peer(self):
+        elf = SOFTWARE / "host_smoke.elf"
+        if not elf.is_file():
+            self.skipTest("host_smoke.elf unavailable")
+        process, port = self.start_tcp_server()
+        output = Path(self.temp.name) / "report"
+        self.assertEqual(eth_load.main(["--elf", str(elf), "--host", "127.0.0.1",
+                                        "--port", str(port), "--out", str(output)]), 0)
+        self.assertEqual(process.wait(timeout=5), 0)
+        self.assertEqual(process.stdout.readline().strip(), "RESULT 0")
+        report = json.loads((output / "report.json").read_text())
+        self.assertEqual(report["payload_bytes"], 4800)
+        self.assertEqual(report["state"], "transfer_verified_by_peer_not_execution")
+        self.assertFalse(report["board_verified"])
 
 
 if __name__ == "__main__":

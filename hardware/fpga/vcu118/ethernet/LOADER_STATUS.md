@@ -18,7 +18,12 @@
   its MAC configuration cannot be connected to lwIP unchanged. See
   [PG138 processor mode](https://docs.amd.com/r/7.2-English/pg138-axi-ethernet/Functional-Description).
 - The Python sender and hardware-independent C receiver passed native unit
-  tests, including one actual Python-to-C pipe exchange. These tests use
+  tests, including Python-to-C pipe and real localhost TCP exchanges with
+  the actual `host_smoke.elf`. Fragmented handshake, bad payload CRC and
+  mid-record disconnect were exercised. The TCP adapter has a lwIP socket
+  build path checked with a native shim forcing short sends/receives, not real
+  lwIP/BSP headers; no board
+  BSP exists to compile/link it yet. These tests use
   simulated memory, not the FPGA. The C receiver also compiled without
   warnings using Vitis 2020.1 `mb-gcc` on Windows. The sender's `--plan-only`
   mode parsed the real `host_smoke.elf` into 448-byte and 4352-byte DDR1
@@ -42,9 +47,12 @@ The host report's transfer rate includes per-block peer readback acknowledgments
 
 The intended software base is the Vitis 2020.1 FreeRTOS lwIP TCP performance
 server in `D:/Xilinx/Vitis/2020.1/data/embeddedsw/lib/sw_apps/` with its
-socket-mode API. The custom code is limited to the memory-write/verification
-callback and Ara-specific boot handoff; the TCP stack, MAC driver and DMA
-remain Xilinx components. This integration has **not** been built or tested.
+socket-mode API. `firmware/eth_loader_tcp.c` now supplies exact-length socket
+I/O for the shared receiver and was tested through native BSD sockets; the
+actual lwIP branch and FreeRTOS task still require an XSA/BSP. The remaining
+custom code is the physical DDR memory callback and eventual boot handoff;
+the TCP stack, MAC driver and DMA remain Xilinx components. This board
+integration has **not** been built or tested.
 
 ## Required before programming a loader image
 
