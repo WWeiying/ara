@@ -155,8 +155,8 @@ module dram_wrapper_xilinx #(
   axi_dw_resp_t dresizer_iresizer_rsp;
 
   // Signals after id width resizing
-  axi_dw_iw_req_t  iresizer_cdc_req, cdc_dram_req;
-  axi_dw_iw_resp_t iresizer_cdc_rsp, cdc_dram_rsp;
+  axi_dw_iw_req_t  iresizer_cdc_req, cdc_cut_req, cdc_dram_req;
+  axi_dw_iw_resp_t iresizer_cdc_rsp, cdc_cut_rsp, cdc_dram_rsp;
 
   // Entry signals
   assign soc_dresizer_req = soc_req_i;
@@ -245,13 +245,38 @@ module dram_wrapper_xilinx #(
       .src_resp_o ( iresizer_cdc_rsp ),
       .dst_clk_i  ( dram_axi_clk ),
       .dst_rst_ni ( ui_resetn    ),
-      .dst_req_o  ( cdc_dram_req ),
-      .dst_resp_i ( cdc_dram_rsp )
+      .dst_req_o  ( cdc_cut_req ),
+      .dst_resp_i ( cdc_cut_rsp )
     );
   end else begin : gen_no_cdc
-    assign cdc_dram_req     = iresizer_cdc_req;
-    assign iresizer_cdc_rsp = cdc_dram_rsp;
+    assign cdc_cut_req      = iresizer_cdc_req;
+    assign iresizer_cdc_rsp = cdc_cut_rsp;
   end
+
+`ifdef TARGET_VCU118
+  // Isolate the CDC read-FIFO full detector from the MIG upsizer's RREADY path.
+  axi_cut #(
+    .Bypass     ( 1'b1                ),
+    .BypassR    ( 1'b0                ),
+    .aw_chan_t  ( axi_dw_iw_aw_chan_t ),
+    .w_chan_t   ( axi_dw_iw_w_chan_t  ),
+    .b_chan_t   ( axi_dw_iw_b_chan_t  ),
+    .ar_chan_t  ( axi_dw_iw_ar_chan_t ),
+    .r_chan_t   ( axi_dw_iw_r_chan_t  ),
+    .axi_req_t  ( axi_dw_iw_req_t     ),
+    .axi_resp_t ( axi_dw_iw_resp_t    )
+  ) i_ddr_r_cut (
+    .clk_i      ( dram_axi_clk ),
+    .rst_ni     ( ui_resetn   ),
+    .slv_req_i  ( cdc_cut_req ),
+    .slv_resp_o ( cdc_cut_rsp ),
+    .mst_req_o  ( cdc_dram_req ),
+    .mst_resp_i ( cdc_dram_rsp )
+  );
+`else
+  assign cdc_dram_req = cdc_cut_req;
+  assign cdc_cut_rsp  = cdc_dram_rsp;
+`endif
 
   ////////////////////////////////
   //  Map User, Resize Address  //
