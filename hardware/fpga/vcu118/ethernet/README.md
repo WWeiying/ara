@@ -210,6 +210,38 @@ and `201c121c270cb1c6be404a197a88bacb81abed5c8afaf4b5be3625eb1ca1c180`,
 matching `bitstream.json`. These checks prepare a rollback; they do not approve
 an unobserved image switch or validate Ethernet.
 
+## Isolated Board Baseline
+
+`board_probe.py` verifies the recorded SHA256 of both diagnostic image files
+and the archived Ara rollback pair before opening Hardware Manager. It requires
+`--program-confirmed` because programming replaces the running Ara image and
+resets the FPGA. It requires one target and one xcvu9p device, then programs
+the matching `.bit`/`.ltx`. In diagnostic mode it reads only the VIO status
+and identifies the JTAG AXI-Lite core; it does not enable echo, touch MDIO,
+or send packets. A baseline pass needs MMCM lock, PHY reset release, reset
+settled, and no AXI error or echo request. It is **not** a PHY/link test.
+
+After obtaining explicit permission to interrupt the Ara image, run from the
+Windows checkout after pulling this source:
+
+```powershell
+py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --program-confirmed --out D:\fpga_runs\eth_board_baseline_01
+```
+
+The evidence directory is new for every run and contains `console.log`,
+`vivado.log`, and `board_probe.json`. If baseline checking fails after the
+`PROGRAMMED diagnostic` line, the diagnostic image may still be running;
+the tool does not silently restore Ara. To explicitly restore the archived
+host image, use a fresh output directory:
+
+```powershell
+py -3 D:\project\ara\hardware\fpga\vcu118\ethernet\board_probe.py --program-confirmed --restore --out D:\fpga_runs\eth_board_restore_01
+```
+
+Restoring the bitstream does not prove the prior Ara program resumed; use
+the existing host loader/smoke test to re-establish that separately. The
+board baseline does not replace PHY ID, negotiation, packet or DDR testing.
+
 ## Circuit and Boundaries
 
 - The independent 300 MHz board clock supplies 100 MHz JTAG AXI-Lite, VIO and
