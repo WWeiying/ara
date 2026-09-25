@@ -500,3 +500,7 @@ instead of `0x0003`: bit 0 still reports auto-negotiation complete, while bit
 link/sync bits; it does not require the received-page indication to remain set.
 When echo is enabled, `bringup` permits this already-linked read-only check
 but refuses to change D3 or pulse PCS reset.
+The read-only repeat returned `SGMII_LINK_PASS` in
+`D:/fpga_runs/eth_bringup_20260925_04.log`; 60, 64, 512 and 1514-byte
+echoes still passed afterward in
+`D:/fpga_runs/eth_echo_packets_20260925_04/echo_packets.json`.
