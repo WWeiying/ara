@@ -1,0 +1,64 @@
+GATHER -> INDEXED LOAD WAR797: FROZEN PREPARE-ONLY HANDOFF
+
+Workspace: /home/wangwy/openproject/ara_dsa_signoff_integration
+No RTL changes, no agent simv/EDA launch, no admission.
+Parent owns the separately authorized unique run. Do not relaunch it.
+
+Frozen code SHA256:
+  verification/coverage/gather_war797.py
+    fb12449e20e802cbf00ac504e3ff71924a03cd0c99f19c0e8f9e2910db9d6fea
+  verification/coverage/test_gather_war797.py
+    e49eac080c6efe2caac22e0bbc18e935f14faffffae68db517afe06f785bb90e
+  apps/riscv-tests/isa/rv64uv/vgather_war797.c
+    1045c6a7988cbe5420ae6105814387191900a9a2366ab919178a5f559dcf787e
+
+Actual agent tests: 10 tests, 10.469s, OK, exit0, no skips.
+Parent independently reports 10 actual tests PASS (~10.4s).
+Command:
+  env PYTHONPATH=/tmp/vsmul797-host-deps:verification/coverage python3 -B -m unittest verification.coverage.test_gather_war797 -v
+
+Successful software preflight:
+  verification/out/gather-war797-preflight-agent-20261008-02/preflight.json
+  SHA cd05bebfca68cba72358c6b5185bbb75897ba0dd6bafb2fcab69d6283ccd4371
+  ELF SHA 09bfb4a43e447c93108d4347b574ec8298cd4bd746ebdf72279d58f6bcb1a51f
+  39052 entry-to-tohost instructions; exact terminal; legal RAM/96-byte stack.
+  4 rounds, 3192 checks, 16 full-group writers, 16384 primary VRF bytes.
+  Source/guards12672 bytes, snapshot/guards12672 bytes, 24 CSR values.
+  Actual compile ISA rv64gcv_zfh_zvfh includes C. RVC is decoded/compared,
+  not skipped. Gather/load pair is adjacent, both32-bit.
+  preflight01 is preserved failure evidence for an overly restrictive
+  compressed-retirement preflight assertion, not a DUT failure.
+
+Prepared unique run:
+  verification/out/gather-war797-old-image-parent-20261008-01.prepared.json
+  SHA e344e4f083ab58c3f6a30ae6ad7f34cd3991678abffee914403d700bd149cd5f
+  Frozen simv SHA 2e63524b92da663fd08401e1c2414363aa3a2732735feaceef55bd8be7ea59b3
+  Runtime66 pins. Process budget300s; parent outer RuntimeMaxSec360.
+  Agent prepare and verify actual PASS, no VCS launch.
+
+Four rounds e8/m8/VL1024/tu/mu/vstart0. Reverse-byte indices in rounds0/2;
+nonsequential fourfold-repeat indices in rounds1/3. Each round has two
+input loads, Gather(v16,v8,v0), adjacent indexed load overwritingv8,
+then index/Gather/overwrite snapshots. No instructions separate the pair.
+Three LDU accepts per round imply target queue slots2,1,0,3.
+Actual target bitmap must confirm all four slots, not software intent alone.
+
+Strict collector gates:
+  Successful OS terminal + exact command/ELF/image/PID/lifecycle, no timeout.
+  Full scalar PC/opcode/register/memory diff, all source/guards/CSR reads.
+  All16 native architectural writers exact known bytes, no missing/extra
+  writer, no unknown skips, no partial comparison stop.
+  Gather source3 is an architectural SLDU producer and is compared against
+  Gather gold. Only non-Gather source3 transport is checked as identity
+  against fully known architectural prestate. No blanket source3 removal.
+  Full6162 metric exact797 ordered-prefix OR and full2989 Toggle OR.
+  Eleven LDU wait_complete fields have176 raw zero slots in797. This is
+  residual capacity, NOT predicted gain or official denominator.
+  All four queue slots must have actual new target coordinates; otherwise
+  FAIL/HOLD, even when architecture and simulator exit are successful.
+  No percentage claim, no auto admission, no auto retry.
+
+After the parent's service is terminal, offline collect (does NOT launch EDA):
+  env PYTHONPATH=/tmp/vsmul797-host-deps:verification/coverage python3 -B verification/coverage/gather_war797.py collect --run verification/out/gather-war797-old-image-parent-20261008-01 --seal e344e4f083ab58c3f6a30ae6ad7f34cd3991678abffee914403d700bd149cd5f --output verification/out/gather-war797-qualified-parent-20261008-01
+
+DUT qualification and measured new hits are PENDING at handoff.

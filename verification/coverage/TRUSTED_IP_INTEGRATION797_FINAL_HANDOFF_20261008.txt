@@ -1,0 +1,91 @@
+FINAL INDEPENDENT POLICY REVIEW FOR VOLTA PREPARE; NO EDA / NO EL APPLICATION
+
+User permits whole independent functional execution IP, including modified IP.
+UNCHANGED SOURCE IS NOT REQUIRED. Existing strict797 PASS is supporting
+functional evidence, not exhaustive verification or absence-of-bug proof.
+
+EXACT SUCCESSOR PACKET
+verification/out/trusted-execution797-leaves-review-agent-20261008-01.json
+SHA256 d09a67f4b3985dea799ca5e32613e54260dd0c4d52f99e99578a47518ffb742c
+Generator: verification/coverage/review_trusted_execution797_leaves.py
+Actual command exited0:
+env PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/review_trusted_execution797_leaves.py --output verification/out/trusted-execution797-leaves-review-agent-20261008-01.json
+No new DUT tests or EDA executed. This receipt is a source/design/shape-bound
+read-only inventory, not native EL qualification. Fresh outputs only.
+
+DECISIONS
+RECOMMEND simd_mul,16: independent multiplier/fixed-point arithmetic pipeline.
+Relevant PASS: strict797 corpus and admitted797 VSMUL saturation qualification
+(scalar/native source3 transport/VRF/CSR/guards). Includes core-owned internal
+valid/ready/mask/vxsat pipeline; vmfpu integration stays covered.
+
+RECOMMEND serdiv,5: independent division execution core incl internal FSM.
+Four vector cores and one scalar core. Relevant PASS: historical ordinary
+integer DIV/REM cases in strict797. No confirmed open arithmetic-core defect
+identified in reviewed records. Keep simd_div and scalar mult wrappers covered.
+Do not confuse fpnew/C910 FP divsqrt problems with integer serdiv.
+
+RECOMMEND fpnew_fma,32: independent arithmetic and pipeline IP (28 Ara,3 scalar,
+1 QBS child). Relevant PASS: strict797 FP arithmetic corpus; existing actual
+half-FMA source/tail four-phase functional qualification. Scalar FMA functional
+qualification did not trigger hold/stall: acknowledge this test gap without
+inventing a requirement for exhaustive revalidation under this policy.
+Core-owned pipeline/Tag/mask/status/flush/handshake may be excluded; enclosing
+fpnew routing/arbitration, vmfpu flags/CSR/result-queue owners stay covered.
+fpnew_pkg FP16/INT8 conversion-lane modifications are allowed and not grounds
+for rejecting FMA/classifier/rounding; conversion owners remain separately held.
+
+RECOMMEND fpnew_classifier,127: independent combinational classification.
+Existing strict797 class/NaN/FP arithmetic evidence; no state/transaction owner.
+
+RECOMMEND fpnew_rounding,50: ALL actually compiled instances have EnableRSR=0.
+Independent deterministic combinational rounding, exercised by existing FP
+arithmetic/conversion result/flag PASS comparisons. EnableRSR1/LFSR is NOT
+approved; no stochastic extension or blanket fpnew-rounding family wildcard.
+
+RECOMMEND common_cells/lzc,501: independent combinational zero-count leaf.
+Existing integer/FP/normalization consumers in strict797 provide relevant PASS
+evidence. Width/MODE and compiled identity are per-instance in packet; no need
+to rerun every input combination before policy prepare. Parent consumer's
+count interpretation, scheduling, exception/result behavior remains covered.
+
+HOLD simd_alu,4 whole cores: actual vmadc/vmsbc active-result mismatches at
+vstart61 remain unlocalized. This HOLD is about a specific real issue, not
+locally modified RTL. Do not let overall797 PASS erase excluded FAIL cases.
+Evidence verification/out/gap35-analysis-20261004-01/failure-triage.json.
+Affected investigation files: simd_alu.sv, valu.sv, operand_requester.sv,
+masku.sv. Exact root not known, so neither core-only nor wrapper-only claimed.
+
+KNOWN BUGS MUST REMAIN VISIBLE
+Mask compare prestart wrong-word: confirmed operand_requester/lane/MaskU fetch
+and merge chain; actual active compare bits correct. Evidence:
+verification/out/mask-compare-known786-measured-bug-agent-20261008-01.json.
+Slide prefix corruption: sldu.sv control/write-BE path affected, root not yet
+cycle-proven. Sv39 FOF suppression mismatch: VLSU/vldu/addrgen/dispatcher
+exception ownership affected, specific root not proven. No wrapper exclusion.
+Detailed evidence/status/source references remain in predecessor handoff:
+verification/coverage/TRUSTED_EXECUTION797_VOLTA_HANDOFF_20261008.txt.
+
+RETAIN, WITHOUT EXCEPTION
+valu, vmfpu, simd_div and scalar mult integration; input/operand/result queues;
+fpnew_top/opgroup/fmt/multifmt routing/arbiters; flag/exception/CSR commit;
+MaskU, SLDU, VLSU/addrgen, dispatcher; QBS/AKV controllers and QBS accumulator;
+fpnew cast/divsqrt and C910 rounding. An approved independent child inside a
+retained parent does NOT authorize whole-parent removal.
+Functional tests, assertions and scoreboards remain enabled for waived IP.
+
+EXECUTABLE VOLTA RECOMMENDATION
+Use packet minimal_recommended_roots:625 exact scopes.731 recommended module
+instances include106 already-nested leaves, so do NOT import all731 as redundant
+whole-scope directives. Four HOLD simd_alu roots must not enter whole EL.
+Each candidate has source SHA, compiled definition/parameters, design checksum
+and Toggle checksum. Scope-native prepare should reconcile inherited point EL
+inside selected descendants, preserve every unselected scope and retain raw797.
+Use a fresh output directory; no wildcard family expansion, checksum bypass,
+frozen-file edits, launch or formal APPLIED/qualified claims from prepare alone.
+Native save/reload/reset and five-stage scope protection await parent launch.
+Current qualified797+MaskU73.18 policy remains separate; successor denominator
+changes must never be reported as stimulus hits. No official count forecast.
+
+PREPARE CAN PROCEED NOW for the625 recommended roots without waiting for carry
+root-cause work. The simd_alu HOLD does not block the other six families.

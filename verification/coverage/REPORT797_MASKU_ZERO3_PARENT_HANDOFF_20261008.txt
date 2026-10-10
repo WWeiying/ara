@@ -1,0 +1,63 @@
+FROZEN REPORT797 PLUS MASKU ZERO3 - PREPARE ONLY
+
+Working directory: /home/wangwy/openproject/ara_dsa_signoff_integration
+Output: verification/out/current-population797-masku-zero3-prepared-agent-20261008-01
+Config seal: 170c663a862aa530540f186eb1d04101d4b14046647cf14e5a894a5ab8343e1b
+Completed baseline797 qualification seal:
+  1ebc05103bc71ee6ec26d97e51ed4867fed3d35a21ee38490956c3ccadf2c5c6
+Independent union seal:
+  fb995f4d46fa436b89407fa80ef9447db371d82e07b8ceee2bdc0e952d73053e
+Admission797 seal:
+  775485fa0a5cfbb8bb1715374e60d3228d341522b2df3c666754407b30ef55f4
+
+Frozen successor tools:
+  verification/coverage/report_population797_masku_zero3.py
+  verification/coverage/test_report_population797_masku_zero3.py
+Their hashes and every inherited dependency are pinned in config.json.
+Do not modify these tools, union tools, original report797, RTL or EDA tools.
+
+Actual pre-freeze tests: 11 tests, 114.308s, exit0, OK.
+Prepare: actual exit0, population797, pins31452, no EDA.
+Final frozen test/check evidence:
+  output/host-tests-receipt.json
+  output/host-check-receipt.json
+These receipts are generated after actual subprocess completion. Require
+returncode0 before treating the frozen host replay as PASS. They are not
+native qualification. No successor qualification.json is claimed at prepare.
+
+Contract:
+  Same formal797 membership; not798. All original pins and 17 baseline native
+  output pins retained. Completed baseline q required before prepare.
+  Entire inherited EL retained byte-for-byte, plus exactly three MaskU full
+  physical vectors [255:0], checksum1400516067, qualified locally in nativev2.
+  Added768 physical bits /1536 direction members, not an anticipated gain or
+  official denominator. Existing physical membership checked for dedup.
+  Actual796 raw, actual797 suffix raw and complete797 OR are all zero at each
+  target direction; all984 other local objects remain protected.
+  Same original five-stage73scope protocol (root ara_tb plus72 roots), no
+  new root or changed Tcl. Complete raw hierarchy has2989 rows.
+  Verify requires raw/reset/final all six metrics equal completed baseline797.
+  Applied/reloaded only allow Score/Toggle change in target ancestor scopes;
+  other metrics and unaffected scopes must equal the same baseline797.
+  Full raw hierarchy metrics must equal original raw.csv, not a forecast.
+  Compiled metadata does not directly list VlBitMaskEnable localparam; source
+  non-overridable literal-zero proof and native exact guards remain distinct.
+  This is not parentalias qualification or a new RTL signoff.
+
+Parent host review, NO EDA:
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B -m unittest discover -s verification/coverage -p test_report_population797_masku_zero3.py -v
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/report_population797_masku_zero3.py check --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-masku-zero3-prepared-agent-20261008-01 --seal 170c663a862aa530540f186eb1d04101d4b14046647cf14e5a894a5ab8343e1b
+
+PARENT-ONLY STARTUP AFTER REVIEW/AUTHORIZATION - NOT EXECUTED HERE
+The service directly owns the mature frozen report worker. RuntimeMaxSec4200
+includes host replay overhead; DVE budget remains3600. No retry or extra case.
+
+  systemd-run --user --collect --unit=ara-current-population797-masku-zero3-parent-20261008-01.service --slice=app.slice --property=Type=exec --property=RuntimeMaxSec=4200 --property=TimeoutStopSec=10 --property=KillMode=control-group --property=StandardOutput=append:/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-masku-zero3-parent-service-20261008-01.log --property=StandardError=inherit --working-directory=/home/wangwy/openproject/ara_dsa_signoff_integration /usr/bin/env PYTHONPATH=/tmp/vsmul797-host-deps /usr/bin/python3 -B /home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/report_population797_masku_zero3.py run-reviewed --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-masku-zero3-prepared-agent-20261008-01 --seal 170c663a862aa530540f186eb1d04101d4b14046647cf14e5a894a5ab8343e1b --parent-reviewed-seal 170c663a862aa530540f186eb1d04101d4b14046647cf14e5a894a5ab8343e1b
+
+After authorized native completion:
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/report_population797_masku_zero3.py verify --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-masku-zero3-prepared-agent-20261008-01 --seal 170c663a862aa530540f186eb1d04101d4b14046647cf14e5a894a5ab8343e1b
+
+Require strict terminal guard, executed config seal, exact selected797, both
+COMPACT777_FIVE_PHASE_DONE and DVE_COVERAGE_EXPORT_DONE exactly once, full EL
+and baseline-metric checks, final cleanup empty, and qualification.json.
+Inspect once for progress, then after completion; no frequent EDA polling.

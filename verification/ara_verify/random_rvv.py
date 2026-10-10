@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import shlex
+import csv
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -13,7 +15,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .dependencies import DependencyError, locked_tools
+from .artifacts import check_inputs, sha256, simulation_image
 from .spike_trace import CommitComparisonError, compare_commit_prefix
+from .spike_probe import check_spike_vstart, probe_paths
 from .stimulus_coverage import write_stimulus_coverage
 from .trace import TraceValidationError, validate_trace
 from .vector_commit import (
@@ -55,6 +59,21 @@ class RandomRvvRunOptions:
     checkpoint_mask_register: Optional[int] = None
     vector_commit_compare: bool = False
     vector_commit_index: Optional[int] = None
+    defined_scalar_sources: bool = False
+    spike_isa: str = "rv64gcv_zvl1024b"
+
+
+def _require_completed_reference(returncode: int, timed_out: bool) -> None:
+    """Never parse a failed reference's potentially unbounded trap-loop log."""
+    if timed_out or returncode != 0:
+        raise CommitComparisonError(
+            f"reference execution incomplete (returncode={returncode}, "
+            f"timed_out={timed_out}); comparison skipped")
+
+
+def _complete_vector_comparison(comparison: Dict[str, object]) -> bool:
+    return (comparison.get("status") in {"MATCH", "TERMINAL_MATCH", "TERMINAL_TOHOST_MATCH"}
+            and comparison.get("stopped_at_unobservable") is None)
 
 
 def _profile_iterations(repo_root: Path, test: str) -> int:
@@ -677,12 +696,25 @@ def _comparison_vector_checkpoint(
 
 def _vector_checkpoint_report(
     comparison: Dict[str, object], locations: Sequence[Dict[str, object]],
-    completed: bool = False,
+    completed: bool = False, checkpoint_traps: Sequence[Dict[str, object]] = (),
 ) -> Dict[str, object]:
     records = [dict(location) for location in locations]
     first_failure = _comparison_vector_checkpoint(comparison, locations)
 
-    if comparison.get("status") == "MATCH" or (
+    if checkpoint_traps:
+        failed_index = min(
+            int(checkpoint_traps[0]["index"]),
+            int(first_failure["index"]) if first_failure is not None else len(records),
+        )
+        for record in records:
+            index = int(record["index"])
+            record["status"] = (
+                "PASS" if index < failed_index
+                else "FAIL" if index == failed_index
+                else "NOT_RUN"
+            )
+        status = "FAIL"
+    elif comparison.get("status") in {"MATCH", "TERMINAL_MATCH", "TERMINAL_TOHOST_MATCH"} or (
         comparison.get("status") == "PREFIX" and completed
     ):
         for record in records:
@@ -720,8 +752,51 @@ def _vector_checkpoint_report(
         "not_run": counts["NOT_RUN"],
         "unknown": counts["UNKNOWN"],
         "first_failure": first_failure,
+        "checkpoint_traps": list(checkpoint_traps),
         "checkpoints": records,
     }
+
+
+def _checkpoint_traps(
+    trace: Path, locations: Sequence[Dict[str, object]],
+    exception_log: Path | None = None,
+) -> List[Dict[str, object]]:
+    ranges = [
+        (int(location["checkpoint_pc"], 16), int(location["read_done_pc"], 16),
+         int(location["index"]))
+        for location in locations
+    ]
+    traps: List[Dict[str, object]] = []
+    with trace.open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            if row["event"] != "retire" or row["trap"] != "1":
+                continue
+            pc = int(row["pc"], 16)
+            for start, end, index in ranges:
+                if start <= pc <= end:
+                    traps.append({"index": index, "pc": f"0x{pc:016x}",
+                                  "cycle": int(row["cycle"]), "source": "rvfi"})
+                    break
+    if exception_log is not None:
+        if not exception_log.is_file():
+            return [{"index": 0, "reason": "missing CVA6 exception log"}]
+        exception_re = re.compile(
+            r"^Exception\s+@\s+\d+,\s+PC:\s*([0-9a-fA-F]+),\s+Cause:"
+        )
+        with exception_log.open(encoding="utf-8", errors="replace") as file:
+            for line in file:
+                match = exception_re.match(line)
+                if match is None:
+                    continue
+                pc = int(match.group(1), 16)
+                for start, end, index in ranges:
+                    if start <= pc <= end:
+                        traps.append({"index": index, "pc": f"0x{pc:016x}",
+                                      "source": "cva6_exception_log"})
+                        break
+    traps.sort(key=lambda trap: int(trap["index"]))
+    return traps
 
 
 def run_random_rvv(options: RandomRvvRunOptions) -> int:
@@ -743,6 +818,8 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         raise ValueError("vector commit index requires --vector-commit-compare")
     if options.vector_commit_index is not None and options.vector_commit_index <= 0:
         raise ValueError("vector commit index must be positive")
+    if options.defined_scalar_sources and (not options.vector_signature or options.vector_checkpoints):
+        raise ValueError("defined scalar sources require --vector-signature without checkpoints")
     if not options.simv.is_file():
         raise DependencyError(f"missing Ara simulator: {options.simv}")
     if not options.spike.is_file():
@@ -772,12 +849,16 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         "vector_signature": strict_vector_state,
         "vector_checkpoints": options.vector_checkpoints,
         "vector_commit_compare": options.vector_commit_compare,
+        "input_snapshots": True,
+        "defined_scalar_sources": options.defined_scalar_sources,
         "timeouts": {
             "rtl_s": options.timeout_s,
             "spike_s": options.spike_timeout_s,
             "watchdog_cycles": options.watchdog_cycles,
         },
         "git": _git_snapshot(generation.repo_root),
+        "simv_image_sha256": simulation_image(options.simv),
+        "spike_sha256": sha256(options.spike),
     }
     inputs = generation.repo_root / "verification" / "worktree_inputs.json"
     if inputs.is_file():
@@ -794,6 +875,15 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
     for tool in (gcc, objcopy, readelf, objdump):
         if not tool.is_file():
             raise DependencyError(f"missing RISC-V tool: {tool}")
+    if not generation.dry_run:
+        probe_gcc, probe_source = probe_paths(generation.repo_root)
+        probe = check_spike_vstart(options.spike, probe_gcc,
+                                   output / "spike_probe", probe_source)
+        if probe["status"] != "PASS":
+            raise DependencyError(
+                f"Spike cannot execute restartable vector ALU at nonzero vstart: "
+                f"{output / 'spike_probe/spike_probe.json'}"
+            )
 
     first_step_name = "generate" if deterministic_stream else "generate_compile"
     _write_command(output / f"{first_step_name}.command.json", generation_command, tool_root)
@@ -809,8 +899,6 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         raise RuntimeError(
             f"RVV generation/compile failed; see {output / f'{first_step_name}.log'}"
         )
-
-    write_stimulus_coverage(output, generation.test)
 
     signature_manifest: List[Dict[str, object]] = []
     deterministic_rewrite_manifest: List[Dict[str, object]] = []
@@ -854,6 +942,7 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                         source, vector_checkpoints=options.vector_checkpoints,
                         checkpoint_indices=options.checkpoint_indices,
                         checkpoint_mask_register=options.checkpoint_mask_register,
+                        defined_scalar_sources=options.defined_scalar_sources,
                     )
                     signature_manifest.append({
                         **rewrite_record,
@@ -871,6 +960,7 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                         "checkpoint_memory_regions": list(rewrite.checkpoint_memory_regions),
                         "checkpoint_memory_sites": list(rewrite.checkpoint_memory_sites),
                         "checkpoint_mask_register": rewrite.checkpoint_mask_register,
+                        "defined_scalar_source_reads": rewrite.defined_scalar_source_reads,
                     })
         except (OSError, VectorSignatureError) as error:
             raise RuntimeError(f"vector signature rewrite failed: {error}") from error
@@ -892,6 +982,9 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         )
         if compile_rc != 0 or compile_timeout:
             raise RuntimeError(f"RVV compile failed; see {output / 'compile.log'}")
+
+    # Count the final rewritten program that was compiled for RTL and Spike.
+    write_stimulus_coverage(output, generation.test)
 
     elfs = sorted(
         (output / "asm_test").glob(f"{generation.test}_*.o"),
@@ -922,13 +1015,27 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
     for index, elf in enumerate(elfs):
         case = output / "tests" / elf.stem
         case.mkdir(parents=True, exist_ok=True)
-        entry = _elf_entry(elf, readelf)
-        tohost = _elf_symbol(elf, readelf, "tohost")
-        exit_pc = _vector_exit_pc(elf, readelf, objdump) if strict_vector_state else None
+        frozen_elf = case / "input.elf"
+        shutil.copy2(elf, frozen_elf)
+        if sha256(elf) != sha256(frozen_elf):
+            raise RuntimeError(f"generated ELF changed while freezing: {elf}")
+        inputs = {
+            "binary": {"source": str(elf), "path": str(frozen_elf),
+                       "sha256": sha256(frozen_elf)},
+            "simv": {"path": str(options.simv),
+                     "image_sha256": run_metadata["simv_image_sha256"]},
+            "spike": {"path": str(options.spike),
+                      "sha256": run_metadata["spike_sha256"]},
+        }
+        (case / "inputs.json").write_text(
+            json.dumps(inputs, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        entry = _elf_entry(frozen_elf, readelf)
+        tohost = _elf_symbol(frozen_elf, readelf, "tohost")
+        exit_pc = _vector_exit_pc(frozen_elf, readelf, objdump) if strict_vector_state else None
         spike_log = case / "spike_commit.log"
         spike_command = [
-            str(options.spike), "--isa=rv64gcv_zvl1024b", "--log-commits",
-            f"--log={spike_log}", str(elf),
+            str(options.spike), f"--isa={options.spike_isa}", "--log-commits",
+            f"--log={spike_log}", str(frozen_elf),
         ]
         _write_command(case / "spike.command.json", spike_command, case)
         spike_rc, spike_elapsed, spike_timeout = _run_logged(
@@ -939,7 +1046,7 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         vector_trace = case / "ara_vector_trace.csv"
         rtl_command = [
             str(options.simv), "-l", "run.vcs.log",
-            f"+ntb_random_seed={generation.seed + index}", f"+PRELOAD={elf}",
+            f"+ntb_random_seed={generation.seed + index}", f"+PRELOAD={frozen_elf}",
             f"+TESTCASE={elf.stem}", "+NO_FSDB", f"+COMMIT_TRACE={ara_trace}",
             f"+COMMIT_WATCHDOG={options.watchdog_cycles}", f"+COMMIT_TOHOST={tohost:016x}",
         ]
@@ -958,9 +1065,11 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                 rtl_text += log.read_text(encoding="utf-8", errors="replace")
         rtl_success = "Core Test *** SUCCESS ***" in rtl_text
 
+        reference_valid = spike_rc == 0 and not spike_timeout
         unobservable_register_values = set()
         if options.vector_commit_compare:
             try:
+                _require_completed_reference(spike_rc, spike_timeout)
                 unobservable_register_values = unobservable_vector_scalar_write_indices(
                     spike_log, ara_trace, vector_trace, entry
                 )
@@ -968,16 +1077,18 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                 pass
         comparison: Dict[str, object]
         try:
+            _require_completed_reference(spike_rc, spike_timeout)
             comparison = compare_commit_prefix(
-                spike_log, ara_trace, entry, unobservable_register_values
+                spike_log, ara_trace, entry, unobservable_register_values,
+                terminal_ecall_pc=exit_pc,
+                terminal_tohost_address=tohost,
+                rtl_exception_log=(case / "trace_hart_0.log") if (case / "trace_hart_0.log").is_file() else None,
             )
         except CommitComparisonError as error:
-            comparison = {"status": "ERROR", "reason": str(error), "vector_state_compared": False}
-        if strict_vector_state:
-            comparison["vector_state_compared"] = (
-                comparison.get("status") == "MATCH" or
-                (comparison.get("status") == "PREFIX" and rtl_success)
-            )
+            comparison = {"status": "ERROR" if reference_valid else "SKIPPED_REFERENCE_FAILURE",
+                          "reason": str(error), "vector_state_compared": False}
+        if strict_vector_state and reference_valid:
+            comparison["vector_state_compared"] = _complete_vector_comparison(comparison)
             if options.vector_checkpoints:
                 if options.checkpoint_mask_register is None:
                     comparison["vector_state_method"] = (
@@ -1007,7 +1118,14 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                 if checkpoint is not None:
                     comparison["vector_checkpoint"] = checkpoint
                 checkpoint_report = _vector_checkpoint_report(
-                    comparison, checkpoint_locations, completed=rtl_success
+                    comparison, checkpoint_locations, completed=rtl_success,
+                    checkpoint_traps=_checkpoint_traps(
+                        ara_trace, checkpoint_locations, case / "trace_hart_0.log"
+                    ),
+                )
+                comparison["vector_state_compared"] = (
+                    comparison["vector_state_compared"] and
+                    checkpoint_report["status"] == "PASS"
                 )
                 comparison["vector_checkpoint_summary"] = {
                     key: checkpoint_report[key]
@@ -1035,6 +1153,7 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
         vector_commit: Dict[str, object] = {"status": "DISABLED"}
         if options.vector_commit_compare:
             try:
+                _require_completed_reference(spike_rc, spike_timeout)
                 vector_stop_index = (
                     min(unobservable_register_values)
                     if comparison.get("status") == "PREFIX" and
@@ -1044,15 +1163,20 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
                     spike_log, ara_trace, vector_trace, entry,
                     selected_index=options.vector_commit_index,
                     stop_spike_index=vector_stop_index,
+                    aligned_vector_faults=comparison.get("aligned_vector_faults"),
                 )
             except (CommitComparisonError, VectorCommitComparisonError) as error:
-                vector_commit = {"status": "ERROR", "reason": str(error)}
+                vector_commit = {"status": "ERROR" if reference_valid else "SKIPPED_REFERENCE_FAILURE",
+                                 "reason": str(error)}
             (case / "vector_commit_comparison.json").write_text(
                 json.dumps(vector_commit, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
 
-        if spike_rc != 0 or spike_timeout:
+        input_errors = check_inputs(inputs, frozen_elf)
+        if input_errors:
+            status = "INPUT_CHANGED"
+        elif spike_rc != 0 or spike_timeout:
             status = "SPIKE_FAIL"
         elif rtl_timeout:
             status = "RTL_TIMEOUT"
@@ -1060,24 +1184,30 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
             status = "RTL_STALL"
         elif rtl_rc != 0 or not rtl_success:
             status = "RTL_FAIL"
-        elif comparison.get("status") not in {"MATCH", "PREFIX"}:
+        elif comparison.get("status") == "PREFIX" and not strict_vector_state:
+            status = "INCOMPLETE_PREFIX"
+        elif comparison.get("status") not in {"MATCH", "TERMINAL_MATCH", "TERMINAL_TOHOST_MATCH", "PREFIX"}:
             status = "MISMATCH"
+        elif strict_vector_state and not _complete_vector_comparison(comparison):
+            status = "INCOMPLETE_COMPARISON"
         elif trace_summary.get("status") != "VALID":
             status = "TRACE_FAIL"
-        elif options.vector_commit_compare and (
-            vector_commit.get("status") != "PASS" and not (
-                comparison.get("status") == "PREFIX" and
-                vector_commit.get("status") == "PREFIX"
-            )
+        elif options.vector_checkpoints and (
+            comparison.get("vector_checkpoint_summary", {}).get("status") != "PASS"
         ):
-            status = "VECTOR_MISMATCH"
+            status = "CHECKPOINT_FAIL"
+        elif options.vector_commit_compare and vector_commit.get("status") != "PASS":
+            status = ("VECTOR_INCOMPLETE" if vector_commit.get("status") == "PREFIX"
+                      else "VECTOR_MISMATCH")
         else:
             status = "PASS"
 
         result: Dict[str, object] = {
             "name": elf.stem,
             "seed": generation.seed + index,
-            "elf": str(elf),
+            "elf": str(frozen_elf),
+            "generated_elf": str(elf),
+            "input_errors": input_errors,
             "status": status,
             "spike_returncode": spike_rc,
             "spike_elapsed_s": round(spike_elapsed, 3),
@@ -1085,6 +1215,10 @@ def run_random_rvv(options: RandomRvvRunOptions) -> int:
             "rtl_returncode": rtl_rc,
             "rtl_elapsed_s": round(rtl_elapsed, 3),
             "rtl_timed_out": rtl_timeout,
+            "rtl_success": rtl_success,
+            "rtl_failure_lines": [line for line in rtl_text.splitlines()
+                                  if any(word in line.lower() for word in
+                                         ("fatal", "failed", "watchdog", "exceeds"))][:16],
             "comparison": comparison,
             "trace": trace_summary,
             "vector_signature": strict_vector_state,

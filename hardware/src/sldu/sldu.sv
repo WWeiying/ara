@@ -452,6 +452,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   } slide_state_e;
   slide_state_e state_d, state_q;
 
+  logic slide1up_scalar_only;
+  assign slide1up_scalar_only = state_q == SLIDE_RUN_VSLIDE1UP_FIRST_WORD &&
+      ((vinsn_issue_q.stride[$bits(vinsn_issue_q.vl)-1:0] >>
+        vinsn_issue_q.vtype.vsew) >= vinsn_issue_q.vl);
+
   // A source-class bit travels with each lane word. On reduction startup,
   // discard only words that are provably from the preceding non-reduction
   // stream. Backpressure the upstream stream while flushing so a legitimate
@@ -478,6 +483,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
 `ifdef FOR_VERIFY
   longint unsigned debug_reshuffle_idle_cycle_q;
+
+  assert property (@(posedge clk_i) disable iff (!rst_ni)
+      slide1up_scalar_only |-> !(|sldu_operand_ready))
+    else $fatal(1, "Scalar-only slide consumed a younger operand");
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -691,9 +700,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // During a reduction (vinsn_issue_q.vfu == VFU_Alu/VFU_MFPU) don't wait for mask bits
         if (((state_q == SLIDE_NP2_COMMIT
               ? np2_data_valid_q : &sldu_operand_valid) ||
-             slide_down_source_oor ||
-           (((vinsn_issue_q.stride[$bits(vinsn_issue_q.vl)-1:0] >> vinsn_issue_q.vtype.vsew) >= vinsn_issue_q.vl) &&
-           (state_q == SLIDE_RUN_VSLIDE1UP_FIRST_WORD))) &&
+             slide_down_source_oor || slide1up_scalar_only) &&
            !result_queue_full && (vinsn_issue_q.vm || vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} || (|mask_valid_q)))
         begin
 
@@ -708,8 +715,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               unsigned'(vrf_pnt_q) * NrLanes * 8;
           automatic int unsigned preserved_prefix_bytes =
               unsigned'(vinsn_issue_q.vstart) << unsigned'(vinsn_issue_q.vtype.vsew);
-          automatic logic partial_reshuffle = vinsn_issue_q.scale_vl &&
-              vinsn_issue_q.op == VSLIDEDOWN && vinsn_issue_q.stride == '0 &&
+          automatic logic preserve_restart_prefix =
+              vinsn_issue_q.op == VSLIDEDOWN &&
               vinsn_issue_q.vstart != '0;
           automatic int unsigned scalar_seq_byte =
               (unsigned'(vinsn_issue_q.vl) - 1) << unsigned'(vinsn_issue_q.vtype.vsew);
@@ -729,7 +736,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           for (int unsigned b = 0; b < 8*NrLanes; b++)
             if (((b >= out_pnt_q && b < output_limit_q &&
                   b < current_output_end) &&
-                 (!partial_reshuffle ||
+                 (!preserve_restart_prefix ||
                   (output_word_base + b >= preserved_prefix_bytes))) ||
                 vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu})
               out_en_seq[b] = 1'b1;
@@ -828,7 +835,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             in_pnt_d           = '0;
             if (state_q == SLIDE_NP2_COMMIT)
               np2_data_valid_d = 1'b0;
-            else if (!slide_down_source_oor)
+            // A scalar-only slide did not request a source word. Any buffered
+            // word belongs to a younger instruction and must remain queued.
+            else if (!slide_down_source_oor && !slide1up_scalar_only)
               sldu_operand_ready = '1;
             // Left-rotate the logarithmic counter. Hacky way to write it, but it's to
             // deal with the 2-lanes design without complaints from Verilator...
@@ -1101,12 +1110,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu} || &result_final_gnt_d))
       // There is something waiting to be written
       if (!result_queue_empty) begin
-        if (state_q != SLIDE_NP2_SETUP)
-          // Increment the read pointer
-          if (result_queue_read_pnt_q == ResultQueueDepth-1)
-            result_queue_read_pnt_d = 0;
-          else
-            result_queue_read_pnt_d = result_queue_read_pnt_q + 1;
+        // A completed result belongs to the commit stream even if the next
+        // issue instruction has already entered NP2 setup.
+        if (result_queue_read_pnt_q == ResultQueueDepth-1)
+          result_queue_read_pnt_d = 0;
+        else
+          result_queue_read_pnt_d = result_queue_read_pnt_q + 1;
 
         // Decrement the counter of results waiting to be written
         result_queue_cnt_d -= 1;

@@ -785,7 +785,223 @@ module ara_tb;
     repeat (5) #(ClockPeriod);
 
     // Start the clock
+`ifdef ARA_VERIFY_UVM_CVXIF
+    fork
+      forever #(ClockPeriod/2) clk = ~clk;
+      begin : uvm_inflight_reset
+        string reset_kind;
+        string reset_state_target;
+        string expected_state;
+        bit target_qbs;
+        bit target_qbs_compute;
+        bit target_dispatcher;
+        bit target_dispatcher_lsu;
+        int unsigned reset_read_index;
+        if ($value$plusargs("ARA_UVM_RESET_ON_AXI=%s", reset_kind)) begin
+          if (reset_kind == "read") begin
+            reset_read_index = 1;
+            void'($value$plusargs("ARA_UVM_RESET_READ_INDEX=%d", reset_read_index));
+            if (reset_read_index == 0)
+              $fatal(1, "ARA_UVM_RESET_READ_INDEX must be positive");
+            repeat (reset_read_index)
+              @(posedge clk iff (dut.i_ara_soc.i_system.i_ara.axi_req_o.ar_valid &&
+                                 dut.i_ara_soc.i_system.i_ara.axi_resp_i.ar_ready));
+          end else if (reset_kind == "write") begin
+            @(posedge clk iff (dut.i_ara_soc.i_system.i_ara.axi_req_o.aw_valid &&
+                               dut.i_ara_soc.i_system.i_ara.axi_resp_i.aw_ready));
+          end else if (reset_kind == "state") begin
+            if (!$value$plusargs("ARA_UVM_RESET_STATE_TARGET=%s", reset_state_target))
+              $fatal(1, "ARA_UVM_RESET_STATE_TARGET is required");
+            target_qbs = 1'b1;
+            target_qbs_compute = 1'b0;
+            target_dispatcher = 1'b0;
+            target_dispatcher_lsu = 1'b0;
+            case (reset_state_target)
+              "qbs_request": expected_state = "QBS_ENGINE_DESCRIPTOR_REQUEST";
+              "qbs_validate": expected_state = "QBS_ENGINE_VALIDATE";
+              "qbs_compute_start": expected_state = "QBS_ENGINE_COMPUTE_START";
+              "qbs_commit": expected_state = "QBS_ENGINE_COMMIT";
+              "qbs_fault_drain": expected_state = "QBS_ENGINE_COMPUTE_FAULT_DRAIN";
+              "qbs_compute_init": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_INIT";
+              end
+              "qbs_compute_load_tile": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_LOAD_TILE";
+              end
+              "qbs_compute_tile": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_COMPUTE_TILE";
+              end
+              "qbs_compute_wait_weight": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_WAIT_WEIGHT";
+              end
+              "qbs_compute_start_weight": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_START_WEIGHT";
+              end
+              "qbs_compute_start_context_wave": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_START_CONTEXT_WAVE";
+              end
+              "qbs_compute_clear_block": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_CLEAR_BLOCK";
+              end
+              "qbs_compute_final_drain": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_FINAL_DRAIN";
+              end
+              "qbs_compute_result": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_RESULT";
+              end
+              "qbs_compute_fault_drain": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_FAULT_DRAIN";
+              end
+              "qbs_compute_fault_clear": begin
+                target_qbs_compute = 1'b1;
+                expected_state = "QBS_FAULT_CLEAR";
+              end
+              "disp_overlap_capture": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_CAPTURE";
+              end
+              "disp_overlap_fixup": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_FIXUP";
+              end
+              "disp_overlap_issue_original": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_ISSUE_ORIGINAL";
+              end
+              "disp_overlap_prefix_fixup": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_PREFIX_FIXUP";
+              end
+              "disp_overlap_respond": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_RESPOND";
+              end
+              "disp_overlap_wait_capture": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_WAIT_CAPTURE";
+              end
+              "disp_overlap_wait_fixup": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_WAIT_FIXUP";
+              end
+              "disp_overlap_wait_original": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_WAIT_ORIGINAL";
+              end
+              "disp_overlap_wait_prefix_fixup": begin
+                target_dispatcher = 1'b1;
+                expected_state = "OVERLAP_WAIT_PREFIX_FIXUP";
+              end
+              "disp_reshuffle": begin
+                target_dispatcher = 1'b1;
+                expected_state = "RESHUFFLE";
+              end
+              "disp_source_snapshot_capture": begin
+                target_dispatcher = 1'b1;
+                expected_state = "SOURCE_SNAPSHOT_CAPTURE";
+              end
+              "disp_source_snapshot_wait": begin
+                target_dispatcher = 1'b1;
+                expected_state = "SOURCE_SNAPSHOT_WAIT";
+              end
+              "disp_wait_idle": begin
+                target_dispatcher = 1'b1;
+                expected_state = "WAIT_IDLE";
+              end
+              "disp_wait_idle_flush": begin
+                target_dispatcher = 1'b1;
+                expected_state = "WAIT_IDLE_FLUSH";
+              end
+              "disp_lsu_flush": begin
+                target_dispatcher_lsu = 1'b1;
+                expected_state = "LSU_FLUSH";
+              end
+              "disp_lsu_flush_wait": begin
+                target_dispatcher_lsu = 1'b1;
+                expected_state = "LSU_FLUSH_WAIT";
+              end
+              "akv_request": begin
+                target_qbs = 1'b0;
+                expected_state = "AKV_ENGINE_DESCRIPTOR_REQUEST";
+              end
+              "akv_validate": begin
+                target_qbs = 1'b0;
+                expected_state = "AKV_ENGINE_VALIDATE";
+              end
+              "akv_column_gather": begin
+                target_qbs = 1'b0;
+                expected_state = "AKV_ENGINE_COLUMN_GATHER";
+              end
+              "akv_replay_read": begin
+                target_qbs = 1'b0;
+                expected_state = "AKV_ENGINE_REPLAY_READ";
+              end
+              "akv_replay_write": begin
+                target_qbs = 1'b0;
+                expected_state = "AKV_ENGINE_REPLAY_WRITE";
+              end
+              default: $fatal(1, "unsupported ARA_UVM_RESET_STATE_TARGET=%s", reset_state_target);
+            endcase
+            if (target_qbs_compute)
+              @(negedge clk iff (dut.i_ara_soc.i_system.i_ara.i_vlsu.i_qbs_engine.i_compute_engine.state_q.name() == expected_state));
+            else if (target_dispatcher)
+              @(negedge clk iff (dut.i_ara_soc.i_system.i_ara.i_dispatcher.state_q.name() == expected_state));
+            else if (target_dispatcher_lsu)
+              @(negedge clk iff (dut.i_ara_soc.i_system.i_ara.i_dispatcher.lsu_ex_state_q.name() == expected_state));
+            else if (target_qbs)
+              @(negedge clk iff (dut.i_ara_soc.i_system.i_ara.i_vlsu.i_qbs_engine.state_q.name() == expected_state));
+            else
+              @(negedge clk iff (dut.i_ara_soc.i_system.i_ara.i_vlsu.i_akv_engine.state_q.name() == expected_state));
+          end else begin
+            $fatal(1, "ARA_UVM_RESET_ON_AXI must be read, write or state");
+          end
+          if (reset_kind == "state") begin
+            if (target_qbs_compute)
+              $display("[ARA_UVM_RESET_TEST] kind=state observed=1 target=%s actual=%s",
+                       reset_state_target,
+                       dut.i_ara_soc.i_system.i_ara.i_vlsu.i_qbs_engine.i_compute_engine.state_q.name());
+            else if (target_dispatcher)
+              $display("[ARA_UVM_RESET_TEST] kind=state observed=1 target=%s actual=%s",
+                       reset_state_target,
+                       dut.i_ara_soc.i_system.i_ara.i_dispatcher.state_q.name());
+            else if (target_dispatcher_lsu)
+              $display("[ARA_UVM_RESET_TEST] kind=state observed=1 target=%s actual=%s",
+                       reset_state_target,
+                       dut.i_ara_soc.i_system.i_ara.i_dispatcher.lsu_ex_state_q.name());
+            else if (target_qbs)
+              $display("[ARA_UVM_RESET_TEST] kind=state observed=1 target=%s actual=%s",
+                       reset_state_target,
+                       dut.i_ara_soc.i_system.i_ara.i_vlsu.i_qbs_engine.state_q.name());
+            else
+              $display("[ARA_UVM_RESET_TEST] kind=state observed=1 target=%s actual=%s",
+                       reset_state_target,
+                       dut.i_ara_soc.i_system.i_ara.i_vlsu.i_akv_engine.state_q.name());
+            rst_n = 1'b0;
+          end else begin
+            $display("[ARA_UVM_RESET_TEST] kind=%s accepted=1 read_index=%0d",
+                     reset_kind, reset_kind == "read" ? reset_read_index : 0);
+            // Reset between accepting edges so both monitors observe the same handshake.
+            @(negedge clk) rst_n = 1'b0;
+          end
+          repeat (4) @(negedge clk);
+          rst_n = 1'b1;
+          $display("[ARA_UVM_RESET_TEST] kind=%s released=1", reset_kind);
+        end
+      end
+    join
+`else
     forever #(ClockPeriod/2) clk = ~clk;
+`endif
   end
 
   logic [63:0] wall_cycle;
@@ -1334,6 +1550,10 @@ module ara_tb;
 `ifdef SAIF
    $dumpoff;
    $dumpflush;
+`endif
+`ifdef ARA_VERIFY_UVM_CVXIF
+      // Let the passive UVM monitor finish its check/report phases before EOC.
+      repeat (5) @(posedge clk);
 `endif
       $finish(exit >> 1);
     end
@@ -1998,6 +2218,110 @@ module ara_tb;
     .axi_b_valid_i (dut.i_ara_soc.i_system.i_ara.axi_resp_i.b_valid),
     .axi_b_ready_i (dut.i_ara_soc.i_system.i_ara.axi_req_o.b_ready)
   );
+
+  integer store_b_probe_fd;
+  int unsigned store_b_probe_start, store_b_probe_end;
+  initial begin : store_b_probe_setup
+    string probe_file;
+    store_b_probe_fd = 0;
+    store_b_probe_start = 0;
+    store_b_probe_end = 0;
+    if ($value$plusargs("STORE_B_PROBE_FILE=%s", probe_file)) begin
+      void'($value$plusargs("STORE_B_PROBE_START=%d", store_b_probe_start));
+      void'($value$plusargs("STORE_B_PROBE_END=%d", store_b_probe_end));
+      store_b_probe_fd = $fopen(probe_file, "w");
+      if (!store_b_probe_fd || store_b_probe_end <= store_b_probe_start)
+        $fatal(1, "invalid store-B probe file or cycle window");
+      $fwrite(store_b_probe_fd, {
+        "cycle,commit_ack,cvx_req_valid,cvx_req_ready,cvx_req_insn,cvx_resp_valid,",
+        "ara_req_valid,ara_req_ready,seq_wait,seq_addr_ack,seq_store_done,",
+        "disp_state,vstu_pending_b,wlast_fire,b_valid,b_ready,store_complete,",
+        "acc_issue,acc_issue_insn,acc_issue_rs1,acc_queue_usage,acc_queue_insn,",
+        "scalar_store_pending,translation,stu_data_valid,stu_data_ready,",
+        "w_valid,w_ready,ar_valid,ar_ready,ar_addr,vl_preview_valid,vl_preview_id,vl_preview_value,vl_forward_valid,",
+        "authorized_valid,authorized_ready,request_empty,request_full\n"});
+    end
+  end
+
+  always @(posedge clk) begin : store_b_probe_sample
+    if (rst_n && store_b_probe_fd && wall_cycle >= store_b_probe_start &&
+        wall_cycle <= store_b_probe_end) begin
+      $fwrite(store_b_probe_fd, {
+        "%0d,%0h,%0d,%0d,%08h,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,",
+        "%0d,%08h,%016h,%0d,%08h,%0d,%0d,%0h,%0h,%0d,%0d,%0d,%0d,%016h,%0d,%0d,%016h,%0d,%0d,%0d,%0d,%0d\n"},
+        wall_cycle,
+        dut.i_ara_soc.i_system.i_ariane.commit_stage_i.commit_ack_o[1:0],
+        dut.i_ara_soc.i_system.acc_req.acc_req.req_valid,
+        dut.i_ara_soc.i_system.acc_resp.acc_resp.req_ready,
+        dut.i_ara_soc.i_system.acc_req.acc_req.insn,
+        dut.i_ara_soc.i_system.acc_resp.acc_resp.resp_valid,
+        dut.i_ara_soc.i_system.i_ara.ara_req_valid,
+        dut.i_ara_soc.i_system.i_ara.ara_req_ready,
+        dut.i_ara_soc.i_system.i_ara.i_sequencer.state_q,
+        dut.i_ara_soc.i_system.i_ara.i_sequencer.addrgen_acked_q,
+        dut.i_ara_soc.i_system.i_ara.i_sequencer.memory_store_completed_q,
+        dut.i_ara_soc.i_system.i_ara.i_dispatcher.state_q,
+        dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.vinsn_queue_q.pending_b[
+          dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.vinsn_queue_q.commit_pnt],
+        dut.i_ara_soc.i_system.i_ara.axi_req_o.w_valid &&
+          dut.i_ara_soc.i_system.i_ara.axi_resp_i.w_ready &&
+          dut.i_ara_soc.i_system.i_ara.axi_req_o.w.last,
+        dut.i_ara_soc.i_system.i_ara.axi_resp_i.b_valid,
+        dut.i_ara_soc.i_system.i_ara.axi_req_o.b_ready,
+        dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.store_complete_o,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_valid_q,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.fu_data_i.imm[31:0],
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.fu_data_i.operand_a,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_insn_queue_usage,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_insn_queue_o.imm[31:0],
+        !dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_no_st_pending_i,
+        dut.i_ara_soc.i_system.acc_req.acc_mmu_en,
+        dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.stu_operand_valid,
+        dut.i_ara_soc.i_system.i_ara.i_vlsu.i_vstu.stu_operand_ready,
+        dut.i_ara_soc.i_system.i_ara.axi_req_o.w_valid,
+        dut.i_ara_soc.i_system.i_ara.axi_resp_i.w_ready,
+        dut.i_ara_soc.i_system.i_ara.axi_req_o.ar_valid,
+        dut.i_ara_soc.i_system.i_ara.axi_resp_i.ar_ready,
+        dut.i_ara_soc.i_system.i_ara.axi_req_o.ar.addr,
+        dut.i_ara_soc.i_system.i_ariane.acc_preview_valid,
+        dut.i_ara_soc.i_system.i_ariane.acc_preview_id,
+        dut.i_ara_soc.i_system.i_ariane.acc_preview_data,
+        dut.i_ara_soc.i_system.i_ariane.issue_stage_i.i_scoreboard.preview_valid_q,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_req_valid,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.acc_req_ready,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.i_accelerator_req_register.fifo_empty,
+        dut.i_ara_soc.i_system.i_ariane.gen_accelerator.i_acc_dispatcher.i_accelerator_req_register.fifo_full);
+    end
+  end
+
+  final begin
+    if (store_b_probe_fd) $fclose(store_b_probe_fd);
+  end
+
+  // Distinguish a live preview slot from an operand actually consumed at issue.
+  `define STORE_PREVIEW_SB dut.i_ara_soc.i_system.i_ariane.issue_stage_i.i_scoreboard
+  `define STORE_PREVIEW_IRO dut.i_ara_soc.i_system.i_ariane.issue_stage_i.i_issue_read_operands
+  always @(posedge clk) begin
+    if (rst_n && $test$plusargs("VSET_PREVIEW_TRACE") &&
+        `STORE_PREVIEW_SB.preview_valid_q && !`STORE_PREVIEW_SB.preview_consumed &&
+        !`STORE_PREVIEW_SB.flush_i && !`STORE_PREVIEW_SB.flush_unissued_instr_i) begin
+      for (int unsigned p = 0; p < $bits(`STORE_PREVIEW_IRO.issue_ack_o); p++) begin
+        if (`STORE_PREVIEW_IRO.issue_instr_valid_i[p] &&
+            `STORE_PREVIEW_IRO.issue_ack_o[p] && !`STORE_PREVIEW_IRO.issue_instr_i[p].ex.valid &&
+            ((`STORE_PREVIEW_IRO.forward_rs1[p] &&
+              `STORE_PREVIEW_IRO.idx_hzd_rs1[p] == `STORE_PREVIEW_SB.preview_id_q) ||
+             (`STORE_PREVIEW_IRO.forward_rs2[p] &&
+              `STORE_PREVIEW_IRO.idx_hzd_rs2[p] == `STORE_PREVIEW_SB.preview_id_q)))
+          $display("[VSET_PREVIEW_FORWARD] cycle=%0d pc=%h op=%0d producer_id=%0d value=%h operand_a=%h operand_b=%h",
+              wall_cycle, `STORE_PREVIEW_IRO.issue_instr_i[p].pc,
+              `STORE_PREVIEW_IRO.issue_instr_i[p].op, `STORE_PREVIEW_SB.preview_id_q,
+              `STORE_PREVIEW_SB.preview_data_q, `STORE_PREVIEW_IRO.fu_data_n[p].operand_a,
+              `STORE_PREVIEW_IRO.fu_data_n[p].operand_b);
+      end
+    end
+  end
+  `undef STORE_PREVIEW_SB
+  `undef STORE_PREVIEW_IRO
 `endif
 `endif
 

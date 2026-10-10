@@ -1,0 +1,51 @@
+{
+  "scope": "Three bounded RV64 M/S/U CSR tests. No RTL, checker, old case, Makefrag, old script, or apps/bin edits. Spike preflight only; unified runner owns future VCS admission and coverage deltas.",
+  "isa_sources": [
+    "https://docs.riscv.org/reference/isa/v20240411/unpriv/zicsr.html",
+    "https://docs.riscv.org/reference/isa/v20240411/priv/priv-csrs.html",
+    "https://docs.riscv.org/reference/isa/v20240411/priv/machine.html",
+    "https://docs.riscv.org/reference/isa/v20240411/priv/supervisor.html"
+  ],
+  "profile": {
+    "isa": "RV64 with M/S/U and F; cycle/instret CY/IR enable bits writable; no custom CSR at selected RV32 high-half addresses",
+    "pmp": "No PMP entries; Spike --pmpregions=0; matches ara_soc cfg.NrPMPEntries=0, no PMP configuration writes in tests",
+    "translation": "satp=Bare, MPRV=0, MPV=0, no delegated exceptions or enabled interrupts; all state restored before main",
+    "tval": "Exact zero-extended 32-bit faulting CSR instruction, exact zero for ECALL. Illegal-instruction zero TVAL is an ISA-permitted alternative, but is not accepted by these target-profile builds. No observed-value calibration or RTL-derived functional oracle.",
+    "abi": "Naked handler uses only t0-t2; probe uses only caller-saved registers, preserves RA/SP and all s registers, GP and TP. Every probe checks entry/exit RA and SP. No C code executes in lower privilege.",
+    "trap": "Exactly one trap per probe. Illegal CSR: cause=2, EPC=stub, rd sentinel unchanged. Legal CSR: ECALL cause=11/9/8, EPC=stub+4. Trap MPP identifies originating privilege; MIE/MPIE/MPRV checked zero. Handler forces MPP=M and MRET to fixed resume, never mepc+4. M-only CSR at resume also enforces M-mode recovery.",
+    "stub": "Aligned writable two-word RAM stub, dynamic CSR encoding followed by ECALL; fence rw,rw and fence.i precede every execution. Permissions and value expectations do not inspect RTL. No CSR-space sweep."
+  },
+  "coverage_baseline": {
+    "source": "verification/out/gap35-analysis-20261004-01/system-points.json",
+    "cache": "verification/out/gap35-analysis-20261004-01/baseline-bits.json",
+    "tests": 620,
+    "csr_branch_raw": {"covered": 175, "width": 626},
+    "interpretation": "Read/write case specs 3 and 17 each have 160 missing raw branch bits, many constant/disabled. Targets below are reachable semantic paths, not a claim to cover those 320 bits. No conversion to DVE percentages."
+  },
+  "cases": {
+    "csr_gap35_permissions": {
+      "phases": 132,
+      "illegal": 126,
+      "source_audit": "ISA Zicsr/address privilege oracle: 132 explicit probes, exact cause/EPC/TVAL/MPP and no faulting rd writeback, M-mode fixed recovery, forbidden scratch writes checked unchanged. Mvendorid/mhartid are compared with same-boot baselines, never platform-specific constants. See gap35_csr_source_audit.json and per-case Spike evidence.",
+      "rationale": "Exercise missing permission/debug-only checks and RV64 high-half read/update exceptions. mvendorid/mhartid M reads vs S/U denial; zero-mask CSRRS/CSRRC with nonzero rs1 remains a write, unlike x0/zero immediate. Writes to read-only cycle/instret denied in M/S/U with enables set. dcsr/dpc/dscratch0/1 read/write denied outside Debug even in M. mstatush/menvcfgh/mcycleh/minstreth/cycleh/instreth read/write rejected on RV64. S/U cannot access mscratch, U cannot access sscratch.",
+      "rtl_navigation_only": ["csr_regfile.sv read case lines 425-436, 691-714; update case 1746-1753; privilege_check 2575-2580; exception_ctrl 2623-2632", "commit_stage.sv csr exception and no writeback path 212-224, 396-400"],
+      "not_claimed": "Entering Debug, debug CSR successful values, disabled extension/config branches, or complete CSR address-space coverage."
+    },
+    "csr_gap35_counteren": {
+      "phases": 36,
+      "illegal": 16,
+      "source_audit": "Independent ISA permission formula: M always; S requires mcounteren bit; U requires mcounteren AND scounteren bit. Four CY/IR enable combinations plus opposite CY/IR masks in M/S/U. Legal reads bracketed by M counter reads, denied rd unchanged, counters must continue progressing even when inaccessible. No fixed timing or counter inhibit/write assumptions.",
+      "rationale": "Exercise user counter denial from either enable level independently, S ignoring scounteren, M bypassing both, and per-counter bit selection. Targets privilege_check CY/IR cases and successful cycle/instret read paths; also exact privilege-tagged ECALL and illegal-instruction completion.",
+      "rtl_navigation_only": ["csr_regfile.sv 698-714, 2597-2605, 2623-2632", "commit_stage.sv 212-224, 396-400"],
+      "not_claimed": "time CSR/CLINT, HPM events, counter inhibition, exact cycle latency, or H-extension virtual counter paths."
+    },
+    "csr_gap35_fp_rw": {
+      "phases": 75,
+      "illegal": 27,
+      "source_audit": "FS=Off fflags/frm/fcsr read, register write and rd=x0 immediate write must trap in M/S/U, leave rd/FCSR unchanged and FS Off. FS enabled: exact FCSR alias readback and prior-rd values for all six CSR op forms. M mscratch and M/S sscratch use an independent XLEN bitwise model, including high bits and rd=x0. Reserved FCSR bits remain zero; no floating/vector instructions.",
+      "rationale": "Exercise FS Off read-access/update-access exception paths and all FFLAGS/FRM/FCSR aliases without RVV overlap. Positive six-form CSR RMW sequences prevent a deny-all test from passing and distinguish correct rd old-value semantics from post-write state.",
+      "rtl_navigation_only": ["csr_regfile.sv 388-407, 1155-1183, 2447-2453, 2623-2632", "commit_stage.sv 212-224, 396-400"],
+      "not_claimed": "FP arithmetic, vector CSR state, dirty-state precision, disabled FP configurations, or legacy custom FCSR CSRs."
+    }
+  }
+}

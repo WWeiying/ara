@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Link stable tool inputs and clone clean, detached dependency snapshots into
-# an isolated worktree. No RTL, test source, or result directory is copied
-# from the source worktree. A dirty source dependency is intentionally read at
-# HEAD only, so an unfinished edit in another worktree cannot silently enter a
-# sign-off run.
+# Clone locked dependency commits and apply only the reviewed, hash-pinned
+# patch bundles in verification/patches. Never import arbitrary source edits
+# or share writable dependency RTL with another worktree.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SOURCE_ROOT=${SOURCE_ROOT:-"$ROOT/../ara_dsa"}
 SOURCE_ROOT=$(cd "$SOURCE_ROOT" && pwd)
@@ -32,10 +30,10 @@ link_path() {
 snapshot_git_repo() {
     local destination=$1
     local source=$2
-    local revision
-    revision=$(git -C "$source" rev-parse HEAD)
+    local revision=$3
     if [[ -L "$destination" ]]; then
-        rm "$destination"
+        printf 'error: refusing to replace linked tool checkout: %s\n' "$destination" >&2
+        exit 1
     elif [[ -e "$destination" ]]; then
         [[ -d "$destination/.git" ]] || {
             printf 'error: dependency destination is not a Git checkout: %s\n' "$destination" >&2
@@ -63,9 +61,9 @@ install_locked_bender() {
         local actual
         actual=$("$destination" --version 2>/dev/null | awk '{print $NF}')
         [[ "$actual" == "$expected" ]] && return
-        rm -f "$destination"
-    elif [[ -e "$destination" || -L "$destination" ]]; then
-        rm -f "$destination"
+    elif [[ -e "$destination" && ! -f "$destination" && ! -L "$destination" ]]; then
+        printf 'error: Bender destination is not a regular file: %s\n' "$destination" >&2
+        exit 1
     fi
     [[ "$ALLOW_DOWNLOAD" == 1 ]] || {
         printf 'error: Bender %s is required and ALLOW_DOWNLOAD=0\n' "$expected" >&2
@@ -94,31 +92,35 @@ PY
         printf 'error: failed to install Bender %s\n' "$expected" >&2
         exit 1
     }
-    mkdir -p "$(dirname "$destination")"
-    cp "$temp/bender" "$destination"
-    chmod 0755 "$destination"
-    [[ "$($destination --version | awk '{print $NF}')" == "$expected" ]] || {
+    chmod 0755 "$temp/bender"
+    [[ "$("$temp/bender" --version | awk '{print $NF}')" == "$expected" ]] || {
         printf 'error: installed Bender version does not match %s\n' "$expected" >&2
         exit 1
     }
+    mkdir -p "$(dirname "$destination")"
+    mv -f "$temp/bender" "$destination"
+    rmdir "$temp"
 }
 
 printf 'worktree: %s\nsource:   %s\n' "$ROOT" "$SOURCE_ROOT"
 link_path "$ROOT/install" "$SOURCE_ROOT/install"
 link_path "$ROOT/apps/third-party" "$SOURCE_ROOT/apps/third-party"
 install_locked_bender "$ROOT/hardware/bender" "$(sed -n 's/^BENDER_VERSION := //p' "$ROOT/hardware/Makefile")"
-snapshot_git_repo "$ROOT/verification/tools/riscv-dv-rvv1" "$SOURCE_ROOT/verification/tools/riscv-dv-rvv1"
+TOOL_REVISION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tools"]["riscv-dv-rvv1"]["revision"])' "$ROOT/verification/toolchain.lock.json")
+snapshot_git_repo "$ROOT/verification/tools/riscv-dv-rvv1" "$SOURCE_ROOT/verification/tools/riscv-dv-rvv1" "$TOOL_REVISION"
 
 for dependency in apb axi common_cells common_verification cva6 fpnew \
                   fpu_div_sqrt_mvp tech_cells_generic; do
-    snapshot_git_repo "$ROOT/hardware/deps/$dependency" "$SOURCE_ROOT/hardware/deps/$dependency"
+    PYTHONPATH="$ROOT/verification" python3 -m ara_verify.dependency_patches \
+        --root "$ROOT" --package "$dependency" --source "$SOURCE_ROOT/hardware/deps/$dependency"
 done
 
-python3 - "$ROOT" "$SOURCE_ROOT" <<'PY'
+PYTHONPATH="$ROOT/verification" python3 - "$ROOT" "$SOURCE_ROOT" <<'PY'
 import json
 import subprocess
 import sys
 from pathlib import Path
+from ara_verify.dependency_patches import load_registry
 
 root, source = map(Path, sys.argv[1:])
 
@@ -144,16 +146,21 @@ payload = {
     "snapshots": {
         "riscv_dv_rvv1": {
             "source": str(source / "verification/tools/riscv-dv-rvv1"),
-            "commit": command(source / "verification/tools/riscv-dv-rvv1", "rev-parse", "HEAD"),
+            "commit": command(root / "verification/tools/riscv-dv-rvv1", "rev-parse", "HEAD"),
         },
         "hardware_deps": {
             name: {
                 "source": str(source / "hardware/deps" / name),
-                "commit": command(source / "hardware/deps" / name, "rev-parse", "HEAD"),
+                "commit": command(root / "hardware/deps" / name, "rev-parse", "HEAD"),
             }
             for name in ("apb", "axi", "common_cells", "common_verification",
                          "cva6", "fpnew", "fpu_div_sqrt_mvp", "tech_cells_generic")
         },
+    },
+    "local_patches": load_registry(root),
+    "required_cva6_submodules": {
+        relative: command(root / "hardware/deps/cva6" / relative, "rev-parse", "HEAD")
+        for relative in ("core/cache_subsystem/hpdcache", "core/cvfpu")
     },
 }
 out = root / "verification/worktree_inputs.json"

@@ -29,7 +29,25 @@ if [[ ! -x ${generator} || ! -x ${simulator} ]]; then
   exit 2
 fi
 
-mkdir -p "${result_dir}"
+if [[ -e ${result_dir} ]]; then
+  printf 'result directory already exists: %s\n' "${result_dir}" >&2
+  exit 2
+fi
+mkdir -p "${result_dir}/inputs/q4_K" "${result_dir}/inputs/q6_K"
+cp -p "${q4_capture}/weight_q4_K.bin" "${q4_capture}/activation_f32.bin" \
+  "${q4_capture}/output_f32.bin" "${result_dir}/inputs/q4_K/"
+cp -p "${q6_capture}/weight_q6_K.bin" "${q6_capture}/activation_f32.bin" \
+  "${q6_capture}/output_f32.bin" "${result_dir}/inputs/q6_K/"
+q4_capture=${result_dir}/inputs/q4_K
+q6_capture=${result_dir}/inputs/q6_K
+(
+  cd "${result_dir}"
+  sha256sum inputs/q4_K/*.bin inputs/q6_K/*.bin \
+    "${generator}" "${simulator}" "${script_dir}/run_adaptive_real_rtl.sh" \
+    "${script_dir}/qbs_command_vectors.c" > SHA256SUMS
+  find "${simulator}.daidir" -type f -name '*.so' -print0 | sort -z | \
+    xargs -0 -r sha256sum >> SHA256SUMS
+)
 summary=${result_dir}/summary.csv
 printf '%s\n' \
   'case,profile,m,n,k,cycles,weight_bytes,activation_bytes,payload_bytes,ranges,dot_cycles,prefetch_wait_cycles' \
@@ -67,7 +85,7 @@ traffic = re.search(
     r"ranges=(\d+) dot=(\d+) prefetch_wait=(\d+)", text)
 if (cycle is None or traffic is None or
         "QBS engine PASS: 1 functional cases" not in text or
-        "Fatal:" in text):
+        "Fatal:" in text or "Error:" in text or "UVM_ERROR" in text):
     raise SystemExit(f"incomplete QBS RTL result: {log_path}")
 with open(summary_path, "a", newline="", encoding="utf-8") as output:
     csv.writer(output).writerow(
@@ -86,4 +104,8 @@ run_case q6_m4n32 q6_K "${q6_capture}" 1536 8960 0 4 0 32
 run_case q6_m8n16 q6_K "${q6_capture}" 1536 8960 0 8 0 16
 run_case q6_m7n16 q6_K "${q6_capture}" 1536 8960 8 7 0 16
 
+(cd "${result_dir}" && sha256sum -c --status SHA256SUMS)
+(cd "${result_dir}" &&
+  sha256sum -- ./*.vectors ./*.log summary.csv SHA256SUMS > RUN_SHA256SUMS &&
+  sha256sum -c --status RUN_SHA256SUMS)
 printf 'wrote %s\n' "${summary}"

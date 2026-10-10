@@ -1,0 +1,27 @@
+READONLY SUPPLEMENT FOR FROZEN TRUSTED REPORT01 - NO EDA
+
+Working directory: /home/wangwy/openproject/ara_dsa_signoff_integration
+Helper: verification/coverage/verify_trusted_ip797_readonly.py
+  SHA256 a3ab0c2497cc4225f04781d03cb5ac1b050e81ae5ee611cdc2d1db2c106e1072
+Tests: verification/coverage/test_verify_trusted_ip797_readonly.py
+  SHA256 4a21c966a26ef3fe7466be154f4b2d39012ee0c1c4998da123250b7478536e28
+Manifest: verification/out/trusted-ip797-readonly-supplement-prepared-agent-20261008-01/manifest.json
+  SHA256 fe0f2fb17ad705db9016ba0de74b12ed30d44393789eb1535240231163aeb7f5
+Actual frozen tests: 12 PASS, 0.014s, exit0; frozen manifest pins check PASS.
+Host receipt: package/host-tests-receipt.json. No native qualification claimed.
+
+Only after the original service has terminated and qualification.json exists:
+
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/verify_trusted_ip797_readonly.py verify --manifest /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/trusted-ip797-readonly-supplement-prepared-agent-20261008-01/manifest.json --seal fe0f2fb17ad705db9016ba0de74b12ed30d44393789eb1535240231163aeb7f5 --receipt /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/trusted-ip797-readonly-supplement-prepared-agent-20261008-01/native-readonly-receipt.json
+
+No launch/run mode. All report inputs are read-only; optional receipt must be
+outside the sealed report output and is created exclusively, never overwritten.
+Strict new whole577 annotation/module checksum/duplicates and exact roots;
+historical annotations unchanged; inherited outside-subtree semantics retained.
+Applied and reloaded both checked; initial/reset/final/cleanup EL empty.
+Trusted, compact, export DONE markers each exactly once; FAILED diagnostics
+reject even with DONE. Strict terminal0/timeoutfalse/executed seal/live witness.
+Exporter has no dedicated rc artifact: owning process terminal0 + export DONE
+and absence of FAILED are the explicit basis, not a fabricated exporter code.
+Original qualification output pins checked; recursive DVEfiles/*.log pins and
+qualification seal recorded with read-end drift check. No full source/VDB replay.

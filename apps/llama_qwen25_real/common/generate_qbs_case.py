@@ -92,7 +92,7 @@ def main() -> None:
         "#define QBS_BENCH_PREBUILT_DESCRIPTOR 1" in main_source
     )
     uses_m8_activation_pack = 5 <= inputs <= 8
-    uses_m4_activation_pack = inputs == 4 and weight_type != "q8_0"
+    uses_m4_activation_pack = inputs == 4 and weight_type not in base["Q8_0_ACTIVATION_WEIGHTS"]
     operations = source_define(main_source, "QBS_BENCH_OPERATIONS", 1)
     cross_op_reuse = bool(
         source_define(main_source, "QBS_BENCH_CROSS_OP_REUSE", 0)
@@ -103,7 +103,9 @@ def main() -> None:
     quantizations = 1 if cross_op_reuse else operations
     layout_name = "qbs_r4_block_major_v1"
     provenance["embedded_weight_layout"] = layout_name
-    activation_profile = "Q8_0" if weight_type == "q8_0" else "Q8_K"
+    activation_profile = (
+        "Q8_0" if weight_type in base["Q8_0_ACTIVATION_WEIGHTS"] else "Q8_K"
+    )
     timed_stages = [f"F32_to_{activation_profile}"]
     if uses_m4_activation_pack:
         timed_stages.append("M4_activation_interleave")

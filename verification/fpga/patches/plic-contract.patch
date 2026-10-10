@@ -1,0 +1,48 @@
+diff --git a/src/rv_plic/tpl/rv_plic/rtl/rv_plic.sv.tpl b/src/rv_plic/tpl/rv_plic/rtl/rv_plic.sv.tpl
+--- a/src/rv_plic/tpl/rv_plic/rtl/rv_plic.sv.tpl
++++ b/src/rv_plic/tpl/rv_plic/rtl/rv_plic.sv.tpl
+@@ -81,7 +81,11 @@
+   always_comb begin
+     complete = '0;
+     for (int i = 0 ; i < NumTarget ; i++) begin
+-      if (complete_we[i]) complete[complete_id[i]] = 1'b1;
++      // Check the completing context's enable, not the last claim's owner.
++      if (complete_we[i] && complete_id[i] != '0 &&
++          complete_id[i] < NumSrc) begin
++        if (ie[i][complete_id[i]]) complete[complete_id[i]] = 1'b1;
++      end
+     end
+   end
+ 
+@@ -201,6 +205,22 @@
+   ////////////////////////
+   // Register interface //
+   ////////////////////////
++  // Keep reserved source zero hard-zero in storage as well as readback.
++  // Match reg_top's address truncation; leave strobes and other words intact.
++  reg_req_t reg_req_sanitized;
++  always_comb begin
++    reg_req_sanitized = reg_req_i;
++    if (reg_req_i.valid && reg_req_i.write) begin
++      case (reg_req_i.addr[BlockAw-1:0])
++% for t in range(target):
++        ${(module_instance_name).upper()}_IE${t}${'_0' if src > 32 else ''}_OFFSET:
++          reg_req_sanitized.wdata[0] = 1'b0;
++% endfor
++        default: ;
++      endcase
++    end
++  end
++
+   //  Limitation of register tool prevents the module from having flexibility to parameters
+   //  So, signals are manually tied at the top.
+   ${module_instance_name}_reg_top #(
+@@ -210,7 +230,7 @@
+     .clk_i,
+     .rst_ni,
+ 
+-    .reg_req_i,
++    .reg_req_i (reg_req_sanitized),
+     .reg_rsp_o,
+ 
+     .reg2hw,

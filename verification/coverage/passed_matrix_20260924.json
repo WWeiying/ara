@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "name": "rvv",
+      "source_result": "verification/out/verilator-coverage-signoff-matrix-20260924-01/rvv/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 1200
+    },
+    {
+      "name": "qbs",
+      "source_result": "verification/out/verilator-coverage-signoff-matrix-20260924-01/qbs/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 1200
+    },
+    {
+      "name": "akv",
+      "source_result": "verification/out/verilator-coverage-signoff-matrix-20260924-01/akv/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 1200
+    },
+    {
+      "name": "alu",
+      "source_result": "verification/out/verilator-coverage-alu-smoke-20260924-01/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 2400
+    },
+    {
+      "name": "vfpu",
+      "source_result": "verification/out/verilator-coverage-vfpu-smoke-20260924-01/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 2400
+    },
+    {
+      "name": "vdiv",
+      "source_result": "verification/out/verilator-coverage-vdiv-20260924-01/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 2400
+    },
+    {
+      "name": "vwmul",
+      "source_result": "verification/out/verilator-coverage-vwmul-20260924-01/result.json",
+      "term_cycles": 45000,
+      "timeout_s": 6000
+    }
+  ]
+}

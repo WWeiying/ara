@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -31,17 +30,6 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_MANIFEST = SCRIPT_DIR / "suites.json"
 DEFAULT_PLAN = SCRIPT_DIR / "verification_plan.json"
-
-
-def _default_spike() -> Path:
-    configured = os.environ.get("SPIKE")
-    if configured:
-        return Path(configured)
-    candidates = (
-        REPO_ROOT.parent / "riscv-isa-sim" / "build" / "spike",
-        REPO_ROOT / "install" / "riscv-isa-sim" / "bin" / "spike",
-    )
-    return next((candidate for candidate in candidates if candidate.is_file()), candidates[-1])
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -76,6 +64,9 @@ def _parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--require-trace", action="store_true")
     audit_parser.add_argument("--require-vector", action="store_true")
     audit_parser.add_argument("--require-coverage", action="store_true")
+    audit_parser.add_argument("--require-full-match", action="store_true")
+    audit_parser.add_argument("--recompute-terminal-tohost", action="store_true",
+                              help="re-audit frozen tohost-terminated RVV traces without rerunning VCS")
 
     random_parser = subparsers.add_parser(
         "generate-rvv", help="generate deterministic RVV 1.0 random assembly"
@@ -109,8 +100,12 @@ def _parser() -> argparse.ArgumentParser:
         help="reuse a precompiled VCS riscv-dv instruction-generator executable",
     )
     random_run_parser.add_argument(
-        "--spike", type=Path,
-        default=_default_spike(),
+        "--spike", type=Path, required=True,
+        help="RVV-compatible Spike build; nonzero-vstart ALU support is required",
+    )
+    random_run_parser.add_argument(
+        "--spike-isa", choices=("rv64gcv_zvl1024b", "rv64gcv_zvfh_zvl1024b"),
+        default="rv64gcv_zvl1024b",
     )
     random_run_parser.add_argument("--timeout", type=int, default=120)
     random_run_parser.add_argument("--spike-timeout", type=int, default=30)
@@ -118,6 +113,10 @@ def _parser() -> argparse.ArgumentParser:
     random_run_parser.add_argument(
         "--vector-signature", action="store_true",
         help="compare all vector-register bytes at test exit using a deterministic signature",
+    )
+    random_run_parser.add_argument(
+        "--defined-scalar-sources", action="store_true",
+        help="define sources before vector-to-scalar reads in strict generated RVV tests",
     )
     random_run_parser.add_argument(
         "--vector-checkpoints", "--per-vector-instruction",
@@ -166,13 +165,23 @@ def _parser() -> argparse.ArgumentParser:
         "--case", action="append", default=[],
         help="replay only this exact case name; repeatable",
     )
+    replay_parser.add_argument(
+        "--include-passed", action="store_true",
+        help="also replay cases marked PASS in the input summary",
+    )
     replay_parser.add_argument("--output", type=Path, required=True)
     replay_parser.add_argument("--simv", type=Path, required=True)
-    replay_parser.add_argument("--spike", type=Path, default=_default_spike())
+    replay_parser.add_argument("--spike", type=Path, required=True)
+    replay_parser.add_argument(
+        "--spike-isa", choices=("rv64gcv_zvl1024b", "rv64gcv_zvfh_zvl1024b"),
+        default="rv64gcv_zvl1024b",
+    )
     replay_parser.add_argument("--jobs", type=int, default=1)
     replay_parser.add_argument("--timeout", type=int, default=900)
     replay_parser.add_argument("--spike-timeout", type=int, default=900)
     replay_parser.add_argument("--watchdog-cycles", type=int, default=1000000)
+    replay_parser.add_argument("--fault-vstart-probe", action="store_true",
+                               help="enable the separately compiled trap-vstart bind probe")
 
     postprocess_parser = subparsers.add_parser(
         "postprocess-rvv",
@@ -202,6 +211,18 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--build-only", action="store_true")
     run_parser.add_argument("--dry-run", action="store_true")
     run_parser.add_argument("--commit-trace", action="store_true", help="record RVFI and CVXIF events")
+    run_parser.add_argument(
+        "--code-coverage", action="store_true",
+        help="build a fresh VCS image with RTL line/condition/FSM/toggle/branch coverage",
+    )
+    run_parser.add_argument(
+        "--contract-monitor", action="store_true",
+        help="compile/check the real Ara protocol monitor; a reused simv must already contain it",
+    )
+    run_parser.add_argument(
+        "--probe-kind", action="append", default=[],
+        help="require a complete state_prereq.<kind>.log capture; repeat for every compiled probe",
+    )
     return parser
 
 
@@ -265,6 +286,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 checkpoint_mask_register=args.checkpoint_mask_register,
                 vector_commit_compare=args.vector_commit_compare,
                 vector_commit_index=args.vector_commit_index,
+                defined_scalar_sources=args.defined_scalar_sources,
+                spike_isa=args.spike_isa,
             ))
         except (DependencyError, OSError, RuntimeError, ValueError) as error:
             print(f"error: {error}", file=sys.stderr)
@@ -272,7 +295,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "replay-failed-rvv":
         try:
-            cases = failed_random_cases(args.summary.resolve(), args.case)
+            cases = failed_random_cases(
+                args.summary.resolve(), args.case, include_passed=args.include_passed
+            )
             results = replay_failed_cases(RvvReplayOptions(
                 output=args.output.resolve(),
                 simv=args.simv.resolve(),
@@ -281,6 +306,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 spike_timeout_s=args.spike_timeout,
                 watchdog_cycles=args.watchdog_cycles,
                 jobs=args.jobs,
+                spike_isa=args.spike_isa,
+                fault_vstart_probe=args.fault_vstart_probe,
             ), cases)
         except (OSError, RuntimeError, ValueError) as error:
             print(f"error: {error}", file=sys.stderr)
@@ -326,7 +353,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             print(f"requirements: {summary['requirement_count']}")
             for item in summary["requirements"]:
-                print(f"{item['id']:16} {item['risk']:8} tests={item['test_count']:4}  {item['title']}")
+                detail = [f"tests={item['test_count']:4}"]
+                if item["random_profiles"]:
+                    detail.append(f"random={len(item['random_profiles']):2}")
+                if item["linux_levels"]:
+                    detail.append(f"linux={len(item['linux_levels']):1}")
+                print(f"{item['id']:16} {item['risk']:8} {' '.join(detail)}  {item['title']}")
             print(f"random profiles: {summary['random_profile_count']}")
             print(f"Linux levels:    {', '.join(summary['linux_levels'])}")
             print("coverage:")
@@ -342,6 +374,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 require_trace=args.require_trace,
                 require_vector=args.require_vector,
                 require_coverage=args.require_coverage,
+                require_full_match=args.require_full_match,
+                recompute_terminal_tohost=args.recompute_terminal_tohost,
             )
         except PlanError as error:
             print(f"error: {error}", file=sys.stderr)
@@ -382,6 +416,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         simv=args.simv,
         commit_trace=args.commit_trace,
         timeout_s=args.timeout,
+        contract_monitor=args.contract_monitor,
+        probe_kinds=tuple(args.probe_kind),
+        code_coverage=args.code_coverage,
     )
     runner = RegressionRunner(options, tests, [str(Path(sys.argv[0]).resolve()), *(argv or sys.argv[1:])])
     try:

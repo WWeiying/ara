@@ -1,0 +1,36 @@
+{
+  "schema": "REVIEWED_DVE_POINT_WAIVERS_740_V1",
+  "status": "APPLIED_SAVED_RELOADED_RESET_VERIFIED",
+  "exclusion_file": "verification/coverage/waivers/old_image_reviewed_5832.el",
+  "exclusion_sha256": "15a4e30cd84ed05620a34a67ac7b668eb6b0ac79b01cb69b4e7fc48a4185c4f3",
+  "image_sha256": "2e63524b92da663fd08401e1c2414363aa3a2732735feaceef55bd8be7ea59b3",
+  "design_sha256": "6ba9f4af477f14793ca1967e7d9aa3fc8274864d897dee88de267597cd3be3be",
+  "population": 740,
+  "point_counts": {
+    "qbs_pending_metadata_branch": 448,
+    "nonfunctional_operand_observation_branch": 1832,
+    "operand_parameter_boundary_branch": 1144,
+    "ff1_width_boundary_branch": 904,
+    "narrow_exponent_boundary_branch": 1272,
+    "fp16_pack_boundary_branch": 208,
+    "mask_store_snapshot_condition": 24
+  },
+  "total_points": 5832,
+  "scope_exclusions": false,
+  "source_reviews": [
+    "verification/out/six-policy-740-eligibility-agent-20261007-01/audit.json",
+    "verification/out/mask-store-snapshot-cond24-740-applicability-audit-agent-20261007-01.json"
+  ],
+  "application_result": "verification/out/point-only-5832-raw740-v4-agent-20261007-01/result.json",
+  "application_result_sha256": "3e7e581606ae8a50fe0e5d8febb26ddeb0bb6114176ed62d02390c70d4bfbbda",
+  "formal_summary": "verification/out/point-only-5832-raw740-v4-agent-20261007-01/summary_waived.csv",
+  "formal_scope_count": 11,
+  "raw_hierarchy_rows": 2989,
+  "full_hierarchy_fresh": false,
+  "protected_metrics": ["Line", "Toggle", "FSM"],
+  "failed_tests_included": false,
+  "new_RTL_signoff": false,
+  "assumptions": "Frozen elaboration; normal post-reset execution; no force/deposit or pre-reset X claim. Observation exclusions are not claims of unreachability.",
+  "future_use_gate": "Recheck compiled design, coverage shapes and source/configuration proof before reuse. A new image is not automatically approved. Use fresh rooted reports and retain the raw report.",
+  "annotation_note": "Native EL retains original capture annotations. This review authorizes only the exact scoped records, not broader candidate policies."
+}

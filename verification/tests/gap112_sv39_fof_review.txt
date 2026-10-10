@@ -1,0 +1,56 @@
+GAP112 successor: one RAM-contained Sv39 FOF. No RTL/TB/image/compiler change.
+Original RAM-boundary run remains failed, not admitted, not a DUT bug.
+This successor only builds software and prepares a parent-reviewed 180s run.
+
+Frozen source/build and formal740 gates reuse gap112_fof_flush.binding(),
+plus exact source-book hashes of Ara/system/VLSU/addrgen/CVA6 LSU/MMU.
+Prior proven ordinary masked Sv39 fault/retry is formal736; it is a route
+reference, NOT proof that this new FOF or dispatcher transition has hit.
+
+Map VA0x40000000 via root[1] -> middle[0] -> leaf[0] to sf_pages[0].
+Data leaf 0xc3 = V/R/A/D, U/W/X=0. Second leaf[1] remains 0, invalid.
+VA0x40000ffc maps to sf_pages+4092, not last physical RAM word.
+Root/middle/leaf are sf_pages+4096/+8192/+12288, inside ELF and RAM.
+Root[2]=0x200000cf is the proven U=0 R/W/X/A/D 1GiB identity mapping
+for code, stack and ordinary arrays; actual accesses remain in 2MiB RAM.
+No delegation/interrupts, S privilege via MRET, SUM/MXR/TVM/MPRV/MPV clear.
+PMP entries are zero in frozen SoC. All leaf A/D bits pre-set: no PTW stores.
+FENCE + full SFENCE.VMA follow SATP setup and original SATP restoration.
+
+addrgen.sv:748..753 clamps each AXI request to one 4KiB page;
+first VA page contributes 4 bytes, remaining length=12 bytes, element index1.
+1144 permits AXI only on successful translation (or bare mode).
+1213..1250 recognizes the second-page MMU fault as later-element FOF,
+suppresses trap and supplies exception_vstart=4-(12>>2)=1 for VL update.
+The invalid leaf cannot translate to an out-of-range physical AXI request.
+All successful translations and all PTW PTE reads are RAM-contained.
+
+Masked e32/m2 VL4 FOF at sf_fof is immediately followed by CSR VL read.
+Independent full64 DIV uses v24/v25; v10 has a known full32 non-destination
+snapshot. v8 starts with invalid EEW tag: no required mismatch reshuffle.
+DIV may finish before PTW; raw78 (WAIT_IDLE_FLUSH -> WAIT_IDLE) is only a
+timing hypothesis. Other PTW/control gains are measured, never promised.
+
+Expected: FOF returns VL1/vstart0/vtype17 and element0=0x12345678,
+no load trap; only S-ecall cause9 at sf_ecall, tval0, masked MPP=S ledger.
+Recovery VL8 e32/m1 load at VA0x40000040 returns known words16..23.
+One trap handler writes one count and ten exact ledger words, resumes M,
+then restores all 15 saved CSRs including SATP, vector configuration,
+interrupt/delegation/trap context and complete original MSTATUS.
+
+2294 C checks; independent Python checks every byte of all four pages,
+outer adjacent guards, DIV source/result, v10 snapshot, recovery/prefix,
+CSR/trap/result ledgers and before/after context. No selfcheck-only PASS.
+FOF elements1..3 may be spuriously updated per ISA; do not dump/read them.
+No whole-VRF/tail equality or cycle timing qualification is claimed.
+https://docs.riscv.org/reference/isa/unpriv/v-st-ext
+
+Compile uses existing LLVM executable and rv64gcv_zfh_zvfh/lp64d, scalar-C
+-mno-implicit-float/no-vectorize/no-SLP/no-unroll. Exact17 RVV opcodes,
+including restore vsetvl; linked FOF/DIV/recovery words and adjacent CSR
+are checked. Existing gap112_start.S/gap75.ld, no new boot/TB machinery.
+Spike: --priv=msu --pmpregions=0 -m0x80000000:0x200000.
+VCS: existing fixed image66, sim180s/systemd240s, full commit/vector trace,
+no FSDB, force, reset, retries or automatic admission. Fatal/no SUCCESS is
+always NOT PASS even if OS returncode0. Postrun full native/scalar/lifecycle
+and exact latest-baseline raw gain verification remain separate parent gates.

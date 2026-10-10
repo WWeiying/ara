@@ -10,6 +10,8 @@ from ara_verify.random_rvv import (
     RandomRvvOptions,
     RandomRvvRunOptions,
     _comparison_vector_checkpoint,
+    _complete_vector_comparison,
+    _checkpoint_traps,
     _generated_case_sort_key,
     _link_generator_simv,
     _rewrite_ordered_indexed_stores,
@@ -24,6 +26,13 @@ from ara_verify.trace import TraceValidationError
 
 
 class RandomRvvCommandTests(unittest.TestCase):
+    def test_strict_vector_comparison_rejects_prefix(self):
+        self.assertFalse(_complete_vector_comparison({"status": "PREFIX"}))
+        self.assertFalse(_complete_vector_comparison({
+            "status": "TERMINAL_MATCH", "stopped_at_unobservable": {"index": 12},
+        }))
+        self.assertTrue(_complete_vector_comparison({"status": "TERMINAL_MATCH"}))
+
     def _repo(self, root: Path) -> Path:
         tool = root / "verification/tools/riscv-dv-rvv1"
         tool.mkdir(parents=True)
@@ -355,9 +364,9 @@ class RandomRvvCommandTests(unittest.TestCase):
             ("vector mismatch", 0, False, 0, False, "success", "MATCH", "valid",
              "MISMATCH", "VECTOR_MISMATCH"),
             ("matched scalar cannot accept vector prefix", 0, False, 0, False,
-             "success", "MATCH", "valid", "PREFIX", "VECTOR_MISMATCH"),
+             "success", "MATCH", "valid", "PREFIX", "VECTOR_INCOMPLETE"),
             ("shared unobservable prefix", 0, False, 0, False, "success", "PREFIX",
-             "valid", "PREFIX", "PASS"),
+             "valid", "PREFIX", "INCOMPLETE_PREFIX"),
             ("all gates pass", 0, False, 0, False, "success", "MATCH", "valid", "PASS",
              "PASS"),
         ]
@@ -429,23 +438,39 @@ class RandomRvvCommandTests(unittest.TestCase):
                                return_value=["python3", str(tool)]),
                     mock.patch("ara_verify.random_rvv._run_logged", side_effect=run_logged),
                     mock.patch("ara_verify.random_rvv._run_rtl", side_effect=run_rtl),
+                    mock.patch("ara_verify.random_rvv.check_spike_vstart",
+                               return_value={"status": "PASS"}),
                     mock.patch("ara_verify.random_rvv.write_stimulus_coverage"),
                     mock.patch("ara_verify.random_rvv._elf_entry", return_value=0x80000000),
                     mock.patch("ara_verify.random_rvv._elf_symbol", return_value=0x80001000),
                     mock.patch("ara_verify.random_rvv.compare_commit_prefix",
-                               return_value={"status": comparison_status}),
+                               return_value={"status": comparison_status}) as scalar_compare,
+                    mock.patch("ara_verify.random_rvv.unobservable_vector_scalar_write_indices",
+                               return_value=set()) as unknown_compare,
                     mock.patch("ara_verify.random_rvv.validate_trace",
                                side_effect=validate_trace),
                     mock.patch("ara_verify.random_rvv.compare_vector_commits",
-                               return_value={"status": vector_status}),
+                               return_value={"status": vector_status}) as vector_compare,
                 ):
                     returncode = run_random_rvv(options)
+                    if spike_rc != 0 or spike_timeout:
+                        scalar_compare.assert_not_called()
+                        unknown_compare.assert_not_called()
+                        vector_compare.assert_not_called()
 
                 result = json.loads((output / "summary.json").read_text())[0]
                 self.assertEqual(result["status"], expected)
+                if spike_rc != 0 or spike_timeout:
+                    self.assertEqual(result["comparison"]["status"], "SKIPPED_REFERENCE_FAILURE")
+                    self.assertEqual(result["vector_commit"]["status"], "SKIPPED_REFERENCE_FAILURE")
+                    self.assertEqual(result["rtl_returncode"], rtl_rc)
                 self.assertEqual(returncode, 0 if expected == "PASS" else 1)
                 run_metadata = json.loads((output / "run.json").read_text())
                 self.assertEqual(run_metadata["status"], "COMPLETE")
+                self.assertTrue(run_metadata["input_snapshots"])
+                self.assertEqual(result["input_errors"], [])
+                self.assertEqual(result["elf"], str(output / "tests/profile_0/input.elf"))
+                self.assertTrue((output / "tests/profile_0/inputs.json").is_file())
                 self.assertIn("invocation", run_metadata)
                 self.assertIn("commit", run_metadata["git"])
                 self.assertIn(
@@ -550,6 +575,61 @@ class RandomRvvCommandTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "PASS")
         self.assertEqual(report["passed"], 2)
+
+    def test_checkpoint_trap_invalidates_matching_prefix(self):
+        locations = [{
+            "index": 0, "site": "initial_state",
+            "checkpoint_pc": "0x0000000080001000",
+            "read_done_pc": "0x0000000080001100",
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            trace = Path(directory) / "retire.csv"
+            exception_log = Path(directory) / "trace_hart_0.log"
+            trace.write_text(
+                "cycle,event,pc,trap\n"
+                "1,retire,0000000080001004,0\n"
+                "2,retire,0000000080001050,1\n"
+                "3,retire,0000000080002000,1\n",
+                encoding="utf-8",
+            )
+            exception_log.write_text(
+                "Exception @ 123, PC: 0000000080001060, Cause: Illegal Instruction, \n",
+                encoding="utf-8",
+            )
+            traps = _checkpoint_traps(trace, locations, exception_log)
+
+        self.assertEqual(len(traps), 2)
+        self.assertEqual(traps[0]["pc"], "0x0000000080001050")
+        self.assertEqual(traps[1]["source"], "cva6_exception_log")
+        report = _vector_checkpoint_report(
+            {"status": "PREFIX"}, locations, completed=True,
+            checkpoint_traps=traps,
+        )
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["failed"], 1)
+
+    def test_checkpoint_exception_log_catches_missing_rvfi_trap(self):
+        locations = [{
+            "index": 0, "checkpoint_pc": "0x0000000080001000",
+            "read_done_pc": "0x0000000080001100",
+        }]
+        with tempfile.TemporaryDirectory() as directory:
+            trace = Path(directory) / "retire.csv"
+            exception_log = Path(directory) / "trace_hart_0.log"
+            trace.write_text(
+                "cycle,event,pc,trap\n1,retire,0000000080001004,0\n",
+                encoding="utf-8",
+            )
+            exception_log.write_text(
+                "Exception @ 123, PC: 0000000080001050, Cause: Illegal Instruction, \n",
+                encoding="utf-8",
+            )
+            traps = _checkpoint_traps(trace, locations, exception_log)
+
+        self.assertEqual(traps, [{
+            "index": 0, "pc": "0x0000000080001050",
+            "source": "cva6_exception_log",
+        }])
 
     def test_reports_incomplete_matching_prefix_as_unresolved(self):
         locations = [{"index": 0, "site": "initial_state"}]

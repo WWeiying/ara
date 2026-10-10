@@ -1,0 +1,134 @@
+{
+  "purpose": "Lossless per-subcase AKV check coverage; not claiming cross-subcase temporal equivalence",
+  "tests": [
+    "app:coverage_akv_portability_s0",
+    "app:coverage_akv_portability_s1",
+    "app:coverage_akv_portability_s2",
+    "app:coverage_akv_portability_s3",
+    "app:coverage_akv_portability_s4",
+    "app:coverage_akv_portability_s5",
+    "app:coverage_akv_portability_s6",
+    "app:coverage_akv_portability_mixed",
+    "app:coverage_akv_d256_s0",
+    "app:coverage_akv_d256_s3",
+    "app:coverage_akv_d256_s4",
+    "app:coverage_akv_d256_s6",
+    "app:coverage_akv_d256_s7",
+    "app:coverage_akv_d256_s1_score",
+    "app:coverage_akv_d256_s1_pv",
+    "app:coverage_akv_d256_s1_online",
+    "app:coverage_akv_d256_s2_score",
+    "app:coverage_akv_d256_s2_pv",
+    "app:coverage_akv_d256_s2_online",
+    "app:coverage_akv_d256_s5_score",
+    "app:coverage_akv_d256_s5_pv",
+    "app:coverage_akv_d256_s5_online"
+  ],
+  "retries": {},
+  "budgets": {
+    "app:coverage_akv_portability_s0": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s1": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s2": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s3": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s4": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s5": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_s6": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_portability_mixed": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s0": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s3": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s4": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s6": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s7": {
+      "seconds": 600,
+      "reason": "Single independent original subcase with full initialization/reference/checks; old combined program was still progressing after300s. Data shapes and checks unchanged."
+    },
+    "app:coverage_akv_d256_s1_score": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s1_pv": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s1_online": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s2_score": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s2_pv": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s2_online": {
+      "seconds": 900,
+      "reason": "Original 3/4-row, 17-token D256 case, split into independently initialized score/PV/online groups after old300s trace showed progress inside this case."
+    },
+    "app:coverage_akv_d256_s5_score": {
+      "seconds": 1800,
+      "reason": "Original 8-row, 64-token D256 case kept intact within one check group; independent native/reference computation, sentinel and fflags checks. Largest group receives a bounded 30-minute allowance, not an RTL watchdog change."
+    },
+    "app:coverage_akv_d256_s5_pv": {
+      "seconds": 1800,
+      "reason": "Original 8-row, 64-token D256 case kept intact within one check group; independent native/reference computation, sentinel and fflags checks. Largest group receives a bounded 30-minute allowance, not an RTL watchdog change."
+    },
+    "app:coverage_akv_d256_s5_online": {
+      "seconds": 1800,
+      "reason": "Original 8-row, 64-token D256 case kept intact within one check group; independent native/reference computation, sentinel and fflags checks. Largest group receives a bounded 30-minute allowance, not an RTL watchdog change."
+    }
+  },
+  "source_dependencies": [
+    "apps/coverage_akv_shared/selection.json",
+    "apps/coverage_akv_shared/phase_selection.json",
+    "apps/coverage_akv_shared/verify_sources.py",
+    "apps/coverage_akv_shared/verify_phases.py",
+    "apps/coverage_akv_shared/d256_core.h",
+    "apps/coverage_akv_shared/d256_phase_core.h",
+    "apps/coverage_akv_shared/portability_core.h",
+    "apps/akv_portability_smoke/main.c",
+    "apps/akv_portability_smoke/runtime.c",
+    "apps/akv_portability_smoke/native.S",
+    "apps/akv_d256_reuse_smoke/main.c",
+    "apps/akv_d256_reuse_smoke/runtime.c",
+    "apps/akv_d256_reuse_smoke/native.S",
+    "apps/akv_d256_reuse_smoke/script/gen_data.py"
+  ]
+}

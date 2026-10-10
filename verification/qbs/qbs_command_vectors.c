@@ -214,11 +214,16 @@ static int emit_case_data(FILE *output, unsigned case_id, unsigned profile,
     }
   }
   if (source_activations != NULL) {
-    if (activation_profile != QBS_ACTIVATION_PROFILE_Q8_K ||
-        qbs_ref_quantize_q8_k(source_activations,
-                              (size_t)m * k_blocks * block_elements,
-                              (qbs_block_q8_k_t *)row_activations,
-                              row_activation_blocks) != QBS_REF_OK) {
+    qbs_ref_status_t quantize_status = QBS_REF_BAD_ARGUMENT;
+    if (activation_profile == QBS_ACTIVATION_PROFILE_Q8_K)
+      quantize_status = qbs_ref_quantize_q8_k(
+          source_activations, (size_t)m * k_blocks * block_elements,
+          (qbs_block_q8_k_t *)row_activations, row_activation_blocks);
+    else if (activation_profile == QBS_ACTIVATION_PROFILE_Q8_0)
+      quantize_status = qbs_ref_quantize_q8_0(
+          source_activations, (size_t)m * k_blocks * block_elements,
+          (qbs_block_q8_0_t *)row_activations, row_activation_blocks);
+    if (quantize_status != QBS_REF_OK) {
       fprintf(stderr, "activation quantization failure for command case %u\n",
               case_id);
       return 1;
@@ -422,7 +427,23 @@ static int parse_unsigned(const char *text, unsigned *value) {
 static unsigned parse_profile(const char *text) {
   if (strcmp(text, "q4_K") == 0) return QBS_WEIGHT_PROFILE_Q4_K;
   if (strcmp(text, "q6_K") == 0) return QBS_WEIGHT_PROFILE_Q6_K;
+  if (strcmp(text, "q2_K") == 0) return QBS_WEIGHT_PROFILE_Q2_K;
+  if (strcmp(text, "q4_0") == 0) return QBS_WEIGHT_PROFILE_Q4_0;
+  if (strcmp(text, "q5_0") == 0) return QBS_WEIGHT_PROFILE_Q5_0;
+  if (strcmp(text, "iq4_nl") == 0) return QBS_WEIGHT_PROFILE_IQ4_NL;
   return QBS_WEIGHT_PROFILE_INVALID;
+}
+
+static const char *real_weight_filename(unsigned profile) {
+  switch (profile) {
+    case QBS_WEIGHT_PROFILE_Q4_K: return "weight_q4_K.bin";
+    case QBS_WEIGHT_PROFILE_Q6_K: return "weight_q6_K.bin";
+    case QBS_WEIGHT_PROFILE_Q2_K: return "weight_q2_K.bin";
+    case QBS_WEIGHT_PROFILE_Q4_0: return "weight_q4_0.bin";
+    case QBS_WEIGHT_PROFILE_Q5_0: return "weight_q5_0.bin";
+    case QBS_WEIGHT_PROFILE_IQ4_NL: return "weight_iq4_nl.bin";
+    default: return NULL;
+  }
 }
 
 static int read_slice(const char *path, size_t offset, void *data,
@@ -467,9 +488,9 @@ static int emit_real_case(FILE *output, unsigned profile,
   char path[4096];
   int ok = weights != NULL && activations != NULL && golden != NULL;
 
-  const char *weight_name = profile == QBS_WEIGHT_PROFILE_Q4_K
-      ? "weight_q4_K.bin" : "weight_q6_K.bin";
-  if (ok && snprintf(path, sizeof(path), "%s/%s", directory, weight_name) <
+  const char *weight_name = real_weight_filename(profile);
+  if (ok && weight_name != NULL &&
+      snprintf(path, sizeof(path), "%s/%s", directory, weight_name) <
                 (int)sizeof(path))
     ok = read_slice(path, (size_t)output_start * row_weight_bytes, weights,
                     weight_bytes);
@@ -513,7 +534,8 @@ int main(int argc, char **argv) {
   if (argc != 2 && argc != 11) {
     fprintf(stderr,
             "usage: %s OUTPUT\n"
-            "       %s OUTPUT --real q4_K|q6_K DIRECTORY FULL_N K "
+            "       %s OUTPUT --real q4_K|q6_K|q2_K|q4_0|q5_0|iq4_nl "
+            "DIRECTORY FULL_N K "
             "INPUT_START M OUTPUT_START N\n",
             argv[0], argv[0]);
     return 2;

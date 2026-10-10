@@ -1,0 +1,258 @@
+{
+  "state": "PASS",
+  "scope": "bounded real-module VCS units; not integrated signoff",
+  "guard_scope": "extracted actual assertions, not full Ara parameter elaboration",
+  "small_old_new_same_sim_time_ps": 52690000,
+  "source_freeze": {
+    "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+    "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+    "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+  },
+  "runs": {
+    "old_partial": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-vldu-old-02",
+      "status": {
+        "state": "FAIL",
+        "pid": 2056439,
+        "start": 1791556787.3341453,
+        "suite": "vldu",
+        "baseline": true,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "e4f41e895f5d4f12d93100fec9be25014e1fa80573cae9a19d3d90c8dac2f40b",
+        "run_exit": 0,
+        "finish": 1791556824.3931518
+      },
+      "pins_sha256": "8803e9a5b7f5881e04dc9617ca17a3855001c9a5d4ae8f98e8e3f283d7ed5fca",
+      "command_sha256": "14e273f131f78502efa1655d7ccfbe26679ae2a20e5409e32ece3782ba546739",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+        "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+        "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      },
+      "log_sha256": "9d015e29715f1fdb609122dd84afaa06f23dacf801710ae7325e6e857c197cfb"
+    },
+    "old_split": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-vldu-old-split-01",
+      "status": {
+        "state": "FAIL",
+        "pid": 2079908,
+        "start": 1791557155.009065,
+        "suite": "vldu",
+        "baseline": true,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "d614d5e929117314afc42d8bc513d6912b53ec711913d82e6ae88df7ada952c9",
+        "run_exit": 0,
+        "finish": 1791557191.9980257
+      },
+      "pins_sha256": "1a55da895af504142d3a873257f50f18d6decb494adf170a1d311b4a4db8d3d6",
+      "command_sha256": "c5f42a75b9d71a840e24933d4c4a7b1e93b97f1d001757bfc55bbbcdc200a70e",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+        "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+        "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      },
+      "log_sha256": "64335543940990457afcada79c0a5f60c2446c7f1133904ad907eb6d77bafbc3"
+    },
+    "new_long": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-vldu-new-03",
+      "status": {
+        "state": "PASS",
+        "pid": 2079624,
+        "start": 1791557153.8169985,
+        "suite": "vldu",
+        "baseline": false,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "b22627ff955509ca4948c43568a176d68c8d1c622f51dfa893d92956aeab4ce7",
+        "run_exit": 0,
+        "finish": 1791557191.140365
+      },
+      "pins_sha256": "36b9b8215dc08220455e38214735423971e1e001de96764a7b0232120ae67232",
+      "command_sha256": "cbc59db587f8438bdfbe3d561d4cd0880fe292ab42bf81099aea5deafa060e2f",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+        "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+        "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+      },
+      "log_sha256": "f1a46f805bc4bd81ceaee35c96d8e696058c901858de9c8f72448e3edf147697"
+    },
+    "old_small": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-vldu-small-old-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2087157,
+        "start": 1791557235.7329388,
+        "suite": "vldu",
+        "baseline": true,
+        "archive_requested": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "baseline_fingerprints": {
+          "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+          "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+          "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+        },
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "cec8e1f0a6d56a55c4cf7dbf6ad9930c8330154abc02398640853d18bad7a494",
+        "run_exit": 0,
+        "finish": 1791557273.2130768
+      },
+      "pins_sha256": "0213ff1469c559d86c955574d557f40cb750ef5715101ceb4be8109c9f5850ec",
+      "command_sha256": "b7b757a34b55140c317a78e7c9a2ad77af5875c9213c6b5ba5f520a1e6e3b75a",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+        "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+        "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      },
+      "log_sha256": "68ae1f8cf605c6b6a1fe68a64ec0ab636fa89bc225f5cdce366724b12713aa9d"
+    },
+    "new_small": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-vldu-small-new-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2080425,
+        "start": 1791557156.1743386,
+        "suite": "vldu",
+        "baseline": false,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "cfe9ed0c5a74103e66725e4a4796916db63416b15e0ca44a0dbf3d7c8c84825f",
+        "run_exit": 0,
+        "finish": 1791557193.794522
+      },
+      "pins_sha256": "36b9b8215dc08220455e38214735423971e1e001de96764a7b0232120ae67232",
+      "command_sha256": "8d3175dd186035a8cc4ab5a31bc6e653cd1636bfead49b8d18325463eb9aa23c",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+        "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+        "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+      },
+      "log_sha256": "a9fbe33b2fa4231bc69d946710831a8804626dced0d0d3be8ce91e686481a0d4"
+    },
+    "old_mul": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-mul-old-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2058032,
+        "start": 1791556825.057081,
+        "suite": "mul",
+        "baseline": true,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "702dfb3d089495cda77b8706de87e820de67f028b6e5d20bbb13b06f50e20c41",
+        "run_exit": 0,
+        "finish": 1791556905.2343633
+      },
+      "pins_sha256": "02f0ddcbc8d4ca40cee71fb31a468f801deee797ea28dec22c69c6c9e7bcbb15",
+      "command_sha256": "a384d8a68aadf18fa4836daf1fe95bf5b28ef585c5b5bd24ff6468beb39d43f6",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+        "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+        "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      },
+      "log_sha256": "805c3933b4d3eb52a85a3dad2168d6a47a7f876739e1d1bc33dc77e60eed2f49"
+    },
+    "new_mul": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-mul-new-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2066594,
+        "start": 1791556970.4018464,
+        "suite": "mul",
+        "baseline": false,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "18991639819f5049f2168f8f873d2fa0b36249562b369e5b60c7dd880dd58818",
+        "run_exit": 0,
+        "finish": 1791557055.9972122
+      },
+      "pins_sha256": "739201f6352ae7dda46113ce813ed4784dd55758ddd3040ce9eda83af0be4ac9",
+      "command_sha256": "895b825a76b2d76210c9068f48c6fa5f5de88fe76ba112ce7c1c3ee5b4037a57",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+        "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+        "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+      },
+      "log_sha256": "55251ead4924a08fedf7f7c3154353dd8453fe6a767088eca6d00ba33942f484"
+    },
+    "old_guard": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-guard-old-128x4-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2058808,
+        "start": 1791556831.8733504,
+        "suite": "guard",
+        "baseline": true,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "1e2c1c0e7e3ba47191ed30103c8672fdd14f65d32b6733c56090eb23889d1eb8",
+        "run_exit": 0,
+        "finish": 1791556868.0347564
+      },
+      "pins_sha256": "cd4602da18bace7fcd3db7df117a1e1ecdb78f2fed2d7c11ee0efdc3d41277ed",
+      "command_sha256": "217fd0dfd2eb7f5ae945efd5bccae46a76a8f8128d20f8c82ce8c5656dfd6169",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64",
+        "hardware/src/vlsu/vldu.sv": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d",
+        "hardware/src/ara.sv": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      },
+      "log_sha256": "0b3a11f4ee2fd959e9a44a85276acd1f482e29a9a6689e3113e172648c58d156"
+    },
+    "reject_guard": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-guard-new-128x4-01",
+      "status": {
+        "state": "COMPILE_FAILED",
+        "pid": 2070276,
+        "start": 1791557002.2205443,
+        "suite": "guard",
+        "baseline": false,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 255,
+        "finish": 1791557014.6967854
+      },
+      "pins_sha256": "1d6cfaf814f213446ec9c7ea06b29f71ea427de059241363277540fc81e90800",
+      "command_sha256": "49f71c788a242849c4dd6f0829eb837f2fcd765572da38e8bd16e497cfeea67d",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+        "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+        "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+      },
+      "scope": "actual assertion block extracted from ara.sv, NOT full Ara elaboration",
+      "log_sha256": "1540d0f6eb995143019abc37c0f5b6eaa73c93e856405d49fe1c093bb38ecf22"
+    },
+    "new_guard": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/ara-upstream-20261009-agent-guard-new-256x4-01",
+      "status": {
+        "state": "PASS",
+        "pid": 2070550,
+        "start": 1791557003.4029863,
+        "suite": "guard",
+        "baseline": false,
+        "archive": "/tmp/ara-signoff-upstream-before-20261009.tgz",
+        "archive_sha256": "bbc7a77d13e5bd7832f8001b54884b35b08d18675f56e698e35d365383802601",
+        "compile_exit": 0,
+        "image_sha256": "d2e9443bd05d1ea90e4fed5baf73b2dbccd2f0546aeb8c8ef7347afd7d31e3c1",
+        "run_exit": 0,
+        "finish": 1791557039.531157
+      },
+      "pins_sha256": "0643e2073524068d34180f0f692fb34dcece36b60bf92c72fbded502ef8ce4cd",
+      "command_sha256": "f8330bf4e9901fe612d508e9a18a873475e6f8e8d472a65f9f9b439685407970",
+      "rtl": {
+        "hardware/src/lane/simd_mul.sv": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471",
+        "hardware/src/vlsu/vldu.sv": "5700da41de5b85998b3feba441a4bddda0645b4f0f00f04927baedeb0899f07c",
+        "hardware/src/ara.sv": "e80a6e0f1bd480818a7d923e147b8ffce5a0b98a955d14afe1f8746684b3794d"
+      },
+      "log_sha256": "2cfe9fd8a61a5b30861f862f35e4e32b857e6ee87f6492ea2f6c9d94f526cc47"
+    }
+  }
+}

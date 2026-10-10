@@ -1,0 +1,42 @@
+CLIP17 450-second runner / unified collector handoff to Hooke
+
+Collector owner: qualify_narrow_clip_reject_terminal.py and its matching test.
+Do not edit these files from the runner task. Parent is testing frozen base.
+No v3 wrapper or textual source replacement is needed.
+
+Current collector SHA256:
+bd969d58c962560411f2b7dc8406afa6e5f15c4b03c28b9eb13dd76db0e30d0a
+Current test SHA256:
+b68573d2c691d372d6f92ead84a1dd8cc6b6c10e362f68c03b1826de4fdb24fe
+Current runner SHA256 (immutable, 300 seconds):
+4a31a0eac990dcf301ec4c836319dec8fcaff0917dda5b332b921f6bb6658b44
+
+Please provide the successor runner path, source/test SHA256, and prepared
+receipt schema before collector integration. The collector owner will bind
+an explicit allowlisted runner profile in the SAME helper and seal new plans.
+No user-supplied arbitrary Python import, arbitrary budget, or implicit default
+profile inference will be accepted. Profile and source pins must survive
+prepare, verify, and collect; dependency pins include both runner and tests.
+
+Required common runner interface:
+PRE, PRE_SEAL, ELF, ELF_SHA, IMAGE_SHA, NAME, BUDGET=450, life, require;
+command(out), manifest(out), verify_prepared(out, record).
+If different, report exact differences rather than adapting frozen inputs.
+Collector verifies prepared == actual manifest, startup PID/process_group,
+budget, command, image and ELF identity, OS success and no timeout.
+The requested budget must agree across prepared, startup and selected profile.
+
+Unchanged preflight:
+verification/out/narrow-clip-reject-preflight-737-agent-20261006-01
+preflight SHA256:
+f0fc1ee53df6af7c7a1b78df9ff2aa5bb4655dc2c805268dcce32606a3b7576e
+ELF SHA256:
+a0cb0f491a8cee459b93855138db8cc961a5eda74a35caea9bde5854a57a6f04
+
+Exact17 rejected owners, zero rejected backend/native activity, complete
+scalar/memory/CSR/guards, 33 normal vector writers / 4100 bytes, 2094 checks
+and 3 full VRF snapshots remain mandatory. No checker tolerance changes.
+
+Original 300-second TIMEOUT evidence stays untouched and cannot qualify PASS.
+New runner/plan/run/qualification directories must be independent.
+No autonomous launch, retry, collect or admission by the collector task.

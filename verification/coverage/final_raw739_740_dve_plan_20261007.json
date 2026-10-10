@@ -1,0 +1,51 @@
+{
+  "schema": "FINAL_BATCH_RAW_DVE_STATIC_PLAN_V1",
+  "status": "WAIT_FINAL_POPULATION_NO_DVE",
+  "known_formal_population": 739,
+  "known_formal_baseline": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/csr-frozen-counter-offline-admitted-739-parent-20261007-01",
+  "known_formal_manifest_seal": "0ad9267a071b8019f758e8fe312c7b696bf977a1136f48474f65a39c2b81ffea",
+  "allowed_final_populations": [739, 740],
+  "population_freeze_gate": "Parent confirms final population and exact formal admission manifest path/schema/seal. If740, require exact739prefix plus one unique admitted queue VDB; never timeout/HOLD candidate. Do not relabel739config as740.",
+  "single_run": true,
+  "automatic_retry": false,
+  "DVE_COVERAGE_TIMEOUT": 600,
+  "DVE_WAIVERS": "off",
+  "entry_environment": "dve_tool_identity.controlled_environment; unset caller DVE; controlled launcher PATH; no reviewed exclusion hooks",
+  "design": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/repaired-aligned-build-20260930-01/sim/simv.vdb",
+  "old_image_files": 66,
+  "metrics": ["line", "cond", "branch", "fsm", "tgl"],
+  "wrapper": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/run_dve_coverage.sh",
+  "export": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/export_dve_coverage.tcl",
+  "command_shape": ["/bin/bash", "PINNED_WRAPPER", "FRESH_FINAL_REPORT_DIRECTORY", "--inputs-file", "PINNED_FINAL_INPUTS_TXT"],
+  "pre_run_gates": [
+    "Exact formal PASS-only admission manifest and all inherited input/outputpins; status population and unique combined-bits tests match ordered combined-inputs exactly.",
+    "Ledger has count+1 entries, design first, exactly739 or740 unique test VDBs. Bind full6162 raw shape universe and old design/checksums.",
+    "Derive each native selected test from that VDB's unique testdata directory, not guessed testcase name; pin all five original metric files and source/design identities.",
+    "Prepare and hash actual DVE wrapper/launcher/resolved dve.exe plus Xvfb/xauth/timeout identities before execution, alongside export/verifier Python/Tcl dependencies.",
+    "Use new prepared and report directories, exclusive execution receipt, foreground managed service and parent-approved configseal; no simulation or waiver application."
+  ],
+  "live_identity_gate": "Bind actual resolved dve.exe SHA, /proc exe/starttime, descendant relation to this wrapper launch, command and cwd to the prepared identity. No wrapper-only identity claims.",
+  "post_run_gates": [
+    "Process exits0 within600s; diagnostic file empty and exact DVE_COVERAGE_EXPORT_DONE. Partial CSV never accepted as a report.",
+    "Report inputs equal final ledger and actual selected_tests equal complete ordered native identities; no extra/missing/duplicate tests.",
+    "waiver_status DISABLED; no exclusions.el, summary_waived.csv or summary_waived.csv.partial.",
+    "Validate CSV complete Name/Depth/Score/Line/Toggle/FSM/Condition/Branch fields, finite0..100 percent orNA; rebuild hierarchy from actual Depth stack and collapsed node names, never scope.split dot assumptions.",
+    "Require full hierarchy against verified same-design raw715 summary. No blanket missing-root allowance; hold any difference for exact source-reviewed evidence.",
+    "Revalidate all input/tool/configpins afterrun in a fresh integrity pass; bind execution/liveidentity/logs/summary/selection/waiverstatus/population-verification hashes to independent final result."
+  ],
+  "population_verifier": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/verify_historical_raw_report.py",
+  "hierarchy_reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/raw715-dve-20261006-01/summary.csv",
+  "identity_helper": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/dve_tool_identity.py",
+  "systemd_policy": {
+    "foreground_wait": true,
+    "RuntimeMaxSec": 900,
+    "TimeoutStopSec": 15,
+    "KillMode": "control-group"
+  },
+  "final_reporting_scope": "Actual final selected historical PASS raw DVE percentages only; no percentage addition, no waiver percentage, no new RTL signoff. Preserve old reports and failed diagnostics.",
+  "after_completion": "Deliver final result/seals/summary then pause batch work; no further cases.",
+  "prepared_config_created": false,
+  "launch_authorized": false,
+  "EDA_started": false,
+  "simulations_started": false
+}

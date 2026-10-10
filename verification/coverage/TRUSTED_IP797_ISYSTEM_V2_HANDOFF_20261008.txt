@@ -1,0 +1,54 @@
+FROZEN SUCCESSOR: i_system-only TRUSTED_IP_INTEGRATION; NO EDA OR EL APPLIED
+
+Scope is EXACTLY ara_tb.dut.i_ara_soc.i_system and its descendants.
+Old leaves-review traversed the full-design797 union without a root filter.
+Its48 extra LZC instances are UART/outer AXI DWC/arbiters outside i_system.
+This was an unintended enumeration expansion, NOT an authorized expansion of
+paper coverage scope. All48 are removed and explicitly recorded as NOT_APPROVED.
+Old tools/packets/handoffs are retained unchanged for provenance.
+
+USE THIS PACKET, NOT THE PREDECESSOR625-ROOT LIST:
+verification/out/trusted-execution797-isystem-review-agent-20261008-02.json
+SHA256 7089a39a78818e9abf5e420aef5b5b4e61a196e8743983654ed19be6cf104769
+683 RECOMMEND instances,577 minimal roots,106 nested already-owned leaves.
+4 simd_alu whole modules HOLD.687 total in-scope reviewed candidates.
+Counts: simd_mul16,serdiv5,fpnew_fma32,classifier127,rounding50,lzc453;
+simd_alu4 HOLD. The old731 full-design count must not enter the paper report;
+the exact accepted recommendation count is683.
+
+CURRENT POLICY DOCUMENT REBOUND AND SEALED:
+verification/coverage/DVE_WAIVERS.md
+SHA256 43c28dd340442a32a0cd966d572d5c501e57da011dd7282d78dbc3a122d00311
+Includes broad comparable independent-IP authorization, permits local edits,
+and requires unresolved known-function failures to stay HOLD.
+The disk policy hash at this audit happened to equal the leaves-review pin;
+this does NOT use an older policy claim as authority: successor explicitly
+pins the current document and rechecks it at read end. Prior pins are preserved
+under predecessor provenance. Any future policy edit requires a fresh successor.
+
+FROZEN GENERATOR
+verification/coverage/review_trusted_execution797_system_v2.py
+SHA256 0218e9316bc05b2a43fffd5f70d7a021cff96428682b013ab72887f7db56150b
+FROZEN TESTS
+verification/coverage/test_review_trusted_execution797_system_v2.py
+SHA256 ac3ed9e2248124119f75d13258095d9415322538818e7937598dc2db31fc0790
+
+ACTUAL TEST RECEIPT
+env PYTHONPATH=verification/coverage python3 -B -m unittest -v verification/coverage/test_review_trusted_execution797_system_v2.py
+Exit0;8 tests in1.380s;OK. Includes actual pinned predecessor source/design/
+evidence checks; outside injection, misleading namespace prefix, duplicate,
+root expansion, nested-root and known-bug-HOLD negative checks.
+
+ACTUAL PACKET RECEIPT
+python3 -B verification/coverage/review_trusted_execution797_system_v2.py --output verification/out/trusted-execution797-isystem-review-agent-20261008-02.json
+Exit0, hash above. Fresh outputs only; do not overwrite this frozen packet.
+Only standard-library Python needed; no simulation/EDA/dependency installation.
+
+VOLTA ACTION
+Prepare native EL using minimal_recommended_roots577 and exact candidate source/
+parameter/design/Toggle checksums. Do not import outside_scope_REMOVED_NOT_APPROVED
+as candidates. Retain all wrappers/controllers/architectural state and functional
+assertions/tests, original raw797 and qualified797+MaskU73.18 policy separately.
+Reconcile inherited point EL inside selected descendants; no wildcard expansion.
+Native save/reload/reset five-stage scope protection remains parent-authorized
+work, not completed by this offline packet. No EDA launch is authorized here.

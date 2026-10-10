@@ -1,0 +1,222 @@
+{
+  "purpose": "Repair test-execution truncation without changing RTL or checker",
+  "tests": [
+    "rvv:coverage_trap_state_quiet",
+    "rvv:coverage_vl1r_quiet",
+    "rvv:coverage_vlseg_quiet",
+    "rvv:retry_linux_vector_context",
+    "rvv:retry_operand_e64",
+    "app:retry_qbs_q6k",
+    "app:retry_qbs_q8_0",
+    "app:retry_qbs_chain3_operation",
+    "rvv:repair_fp16_int8_s0",
+    "rvv:repair_fp16_int8_s1",
+    "rvv:repair_fp16_int8_s2",
+    "rvv:repair_fp16_int8_s3",
+    "rvv:repair_fp16_int8_s4",
+    "rvv:repair_fp16_int8_s5",
+    "rvv:repair_fp16_int8_s6",
+    "rvv:repair_fp16_int8_s7",
+    "rvv:repair_fp16_int8_s8",
+    "rvv:repair_fp16_int8_s9",
+    "rvv:repair_fp16_int8_s10",
+    "rvv:repair_fp16_int8_s11",
+    "rvv:repair_fp16_int8_s12",
+    "rvv:repair_fp16_int8_s13",
+    "rvv:repair_fp16_int8_s14",
+    "rvv:repair_fp16_int8_s15",
+    "rvv:repair_fp16_int8_s16",
+    "rvv:repair_fp16_int8_s17",
+    "rvv:repair_fp16_int8_s18",
+    "rvv:repair_fp16_int8_s19",
+    "rvv:repair_fp16_int8_s20",
+    "rvv:repair_fp16_int8_s21",
+    "rvv:repair_fp16_int8_s22",
+    "rvv:repair_fp16_int8_s23",
+    "rvv:repair_fp16_int8_s24",
+    "rvv:repair_fp16_int8_s25",
+    "rvv:repair_fp16_int8_s26",
+    "rvv:repair_fp16_int8_s27",
+    "rvv:repair_fp16_int8_s28",
+    "rvv:repair_fp16_int8_s29",
+    "rvv:repair_fp16_int8_s30",
+    "rvv:repair_fp16_int8_s31"
+  ],
+  "retries": {
+    "rvv:retry_linux_vector_context": "rvv:linux_vector_context",
+    "rvv:retry_operand_e64": "rvv:rvv_coverage_operand_edges_e64",
+    "app:retry_qbs_q6k": "app:llama_qwen25_q6k_decode_attn_q_qbs",
+    "app:retry_qbs_q8_0": "app:llama_qwen25_q8_0_decode_attn_q_qbs",
+    "app:retry_qbs_chain3_operation": "app:llama_qwen25_decode_attn_q_qbs_chain3_operation"
+  },
+  "budgets": {
+    "rvv:coverage_trap_state_quiet": {
+      "seconds": 300,
+      "reason": "Only allowlisted success/progress text removed; original checks, complete workload and final failure/exit are retained."
+    },
+    "rvv:coverage_vl1r_quiet": {
+      "seconds": 300,
+      "reason": "Only allowlisted success/progress text removed; original checks, complete workload and final failure/exit are retained."
+    },
+    "rvv:coverage_vlseg_quiet": {
+      "seconds": 300,
+      "reason": "Only allowlisted success/progress text removed; original checks, complete workload and final failure/exit are retained."
+    },
+    "rvv:repair_fp16_int8_s0": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s1": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s2": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s3": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s4": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s5": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s6": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s7": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s8": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s9": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s10": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s11": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s12": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s13": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s14": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s15": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s16": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s17": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s18": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s19": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s20": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s21": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s22": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s23": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s24": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s25": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s26": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s27": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s28": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s29": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s30": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:repair_fp16_int8_s31": {
+      "seconds": 600,
+      "reason": "32 disjoint shards replace 8: 14-15 of 464 cases per ELF with at most one 512-element geometry. Old traces prove finite scalar-oracle progress; 600s is a conservative bound for uneven large cases, not an RTL watchdog change."
+    },
+    "rvv:retry_linux_vector_context": {
+      "seconds": 600,
+      "reason": "Same ELF: 4/6 complete context rounds at cycle105647 in 300s; next finite initialization loop observed, no nonzero failure store. Estimated total about160k cycles plus reporting."
+    },
+    "rvv:retry_operand_e64": {
+      "seconds": 600,
+      "reason": "Same ELF: 44/56 completed cases, case45 finite memset at cycle119596; estimated complete wall time400-450s."
+    },
+    "app:retry_qbs_q6k": {
+      "seconds": 600,
+      "reason": "Same ELF already reached QBS_REAL_BENCH result=PASS after value/status selfcheck, then truncated during report printf. Bound includes remaining report and normal simulator completion; prefix PASS alone is not accepted."
+    },
+    "app:retry_qbs_q8_0": {
+      "seconds": 600,
+      "reason": "Same ELF already reached QBS_REAL_BENCH result=PASS after value/status selfcheck, then truncated during report printf. Bound includes remaining report and normal simulator completion; prefix PASS alone is not accepted."
+    },
+    "app:retry_qbs_chain3_operation": {
+      "seconds": 600,
+      "reason": "Same ELF already reached QBS_REAL_BENCH result=PASS after value/status selfcheck, then truncated during report printf. Bound includes remaining report and normal simulator completion; prefix PASS alone is not accepted."
+    }
+  },
+  "source_dependencies": [
+    "apps/riscv-tests/isa/rv64uv/coverage_quiet_success.h",
+    "apps/riscv-tests/isa/rv64uv/vl1r.c",
+    "apps/riscv-tests/isa/rv64uv/vlseg.c",
+    "apps/riscv-tests/isa/rv64uv/trap_state_prereq.c",
+    "apps/riscv-tests/isa/rv64uv/vfncvt_int8.c"
+  ],
+  "evidence": "verification/out/timeout-repair-20260927-01/triage.json"
+}

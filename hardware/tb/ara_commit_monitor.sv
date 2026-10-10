@@ -101,6 +101,15 @@ module ara_commit_monitor #(
     end
   end
 
+  // Mark mid-run resets so VID events can be checked within each reset epoch.
+  always @(negedge rst_ni) begin
+    if (vector_trace_en && vector_trace_fd != 0 && cycle_q > 0) begin
+      $fdisplay(vector_trace_fd,
+          "%0d,reset,0,0,0,0,00000000,0,0,0,0,0,0,00,0000000000000000,%0d,%0d",
+          cycle_q, NrLanes, VLEN);
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     longint unsigned next_order;
     logic progress;

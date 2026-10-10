@@ -74,7 +74,7 @@ reset_vector:
     // VCU118 Cheshire design has DDR at 0x80000000 but does not expose that
     // simulation-only CTRL window, so use the top of the 2 MiB bare-metal
     // image region for FPGA-hosted applications.
-#if defined(ARA_FPGA)
+#if defined(ARA_FPGA) || defined(SPIKE_REFERENCE)
     li      sp, 0x80200000
 #else
     la      t0, dram_end_address_reg

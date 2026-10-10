@@ -34,11 +34,14 @@
 
 - 固定 RTL commit、配置文件、VLEN、lane 数、编译宏和 simulator 命令；
 - 用 `Bender.lock` 和 `toolchain.lock.json` 锁定依赖和工具；
-- 使用 `verification/setup_worktree.sh`，依赖以 clean detached checkout 快照进入验证 worktree；
+- 使用 `verification/setup_worktree.sh`，依赖按 Bender 锁定提交建立独立 checkout；
+- 已审计 CVA6/FPnew 修复只能通过 `verification/patches/dependencies.json` 中固定
+  revision 和 SHA-256 的补丁注入，并写入 `worktree_inputs.json`；缺失补丁或未知改动
+  均阻断签核。原 PULP 余数补丁因待核实反例被隔离，不在应用清单内；
 - 保存 Git commit、worktree 状态、VCS/Spike/Bender 版本、ELF/网表/bitstream SHA-256；
 - 生成测试库存、需求到 suite 的映射和本轮 seed 清单。
 
-门禁：`verify.py doctor` 无 ERROR，禁止 dirty dependency，`verify.py plan` 为 `VALID`。
+门禁：`verify.py doctor` 无 ERROR，禁止未批准的 dependency 差异，`verify.py plan` 为 `VALID`。
 
 ### G1：静态检查与可编译性
 
@@ -143,6 +146,31 @@ RTL Linux 不能只看 UART 输出。至少要检查启动阶段、内核版本�
 
 每轮板卡测试记录：bitstream SHA、Vivado/Vitis 版本、XDC 时钟、板卡序列号、DDR 校准状态、软件镜像哈希、启动日志、程序输出、周期/计数器、错误计数和环境温度。板卡 PASS 必须能由同一 bitstream 和软件镜像重现，不能只记录“运行过”。
 
+#### FPGA 作为验证加速器的边界
+
+FPGA 适合承载仿真难以承受的长程序：Linux 启动、用户态上下文切换、长时间 RVV
+回归、QBS/AKV fallback 对照，以及较长的 llama.cpp 算子和模型片段。它运行在真实
+时钟和真实 DDR 系统上，通常能显著缩短这类测试的墙钟时间；但板卡可观测的主要是
+UART/JTAG/ILA/性能计数器，不能像 VCS 一样自然保存每个周期的完整波形，也不能单独
+定位一条指令的首个错误。因此 FPGA 是长时间覆盖的加速器，不是 VCS、Spike 或形式
+检查的替代品。
+
+板卡采用可复现的双重证据：
+
+1. Spike/QEMU、VCS 和 VCU118 使用相同 ELF、输入数据、随机 seed 和软件版本。
+2. 每个测试输出架构状态签名、内存签名、结果校验和以及软件/bitstream SHA-256。
+3. VCS 负责首错定位和 CVXIF/VLSU/QBS/AKV 协议检查；FPGA 负责长时压力、Linux、
+   DDR、缓存、异常返回和模型级运行；两者的最终签名必须一致。
+4. 性能比较同时记录板上时钟、DDR 状态、缓存配置、counter 版本和环境温度。板上
+   更快只反映执行平台不同，不能直接替代 RTL 周期级性能结论。
+
+`verification/run_signoff.py` 是统一门禁入口。它把 preflight、VCS/Spike 差分、
+Linux stage result 或串口启动和 VCU118 manifest 检查写入同一个 `signoff.json`，并把缺少 `simv`、
+Linux 用户态 marker 或 bitstream manifest 标记为 `NOT_CONFIGURED`，不会把未运行误记
+为 PASS。完整 FPGA 门禁要求 manifest 同时记录当前 RTL commit、bitstream 和软件
+hash、DDR 校准、复位/UART smoke、QBS/AKV、RVV fallback 和长模型 smoke；当前仓库
+已有的历史 VCU118 报告因未生成 bitstream，不能满足这一门禁。
+
 ### G8：最终签收
 
 最终签收分为四个独立结论：
@@ -155,6 +183,62 @@ RTL Linux 不能只看 UART 输出。至少要检查启动阶段、内核版本�
 任何一个结论缺少对应证据，只能标记 `INCOMPLETE`，不能用平均性能或少量 kernel PASS 覆盖。
 
 ## 3. 建议的执行顺序
+
+2026-09-22 输入基线审计发现：原 `ara_dsa` 的 CVA6/FPnew/除法依赖有本地修复，
+不能仅凭依赖 HEAD 与锁文件一致就认为验证 worktree 与原工程相同。当前新的
+fence 补丁也未进入旧 FPGA 导出。CVA6/FPnew 已审核、合并并固定补丁；PULP 的
+原 sticky 改动因实测反例被隔离，不能将源码中存在的改动全部当作正确修复。新组合
+已通过六个自检 RVV 程序及真实接口协议检查。随后实际 CVA6 dispatcher 模块级
+实验覆盖 commit/flush/backpressure、50 个 fence 组合与 20 个标量访存组合。
+SoC 前置检查又发现 SSTATUS 的 VS 映射和 VILL 恢复两个根因，现已修复：增强
+165 项、原失败 87 项冻结 ELF、归约/加载/配置三点回归均通过。不同结果只归属
+各自记录的源码组合，不能合并成完整 ISA 差分或 Linux 签核。
+随后 S/Sv39 定向测试覆盖非恒等翻译及向量跨页 load/store 缺页重启，并定位
+ECALL tval 错误（R-90）。最小修复后原 116 项 ELF、165 项状态、vle32、vsetvl
+四点同镜像通过，九路周期记录及输入/协议审计通过。这仍是 Linux 前置验证，
+不是 OS 启动。随后一次 24-case/448-check 异常矩阵定位 breakpoint/SSIP 的
+tval 泄漏（R-91/R-92）；保持原 ELF 不变，最小修改后的 448 项及四点相邻回归
+通过，11 路捕获完整。详见 `patches/README.md` 和验证报告第 101-106 节。
+
+软件链路另有独立进展：arch-v3 QEMU 的 Linux 用户态已实际执行真实模型数据的
+QBS M1/N32/K1536 小计算，32 项输出、保护区及输入不变性通过；强制 RVV fallback
+和缺扩展时 SIGILL 后选择 fallback 也通过。原生调用由 helper 入口记录佐证，
+不是把软件模拟器称为硬件。见 `linux/CUSTOM_RUNTIME_READINESS.md` 第 9 节。
+这不证明 RTL/FPGA Linux、完整模型、AKV 原生执行或 custom context 的跨进程安全。
+
+FPGA 软件准备已生成 `out/fpga-linux-userspace-bundle-20260922`：新 OpenSBI 和
+DTB 匹配已验证 cpio，initrd end 为 `0x88309200`，ELF 加载区间和内嵌 DTB
+逐字节一致。状态仅为 `PREPARED_NOT_BOOTED`。封装一致也不等于硬件适配正确：
+只读审查发现导出 PLIC 为 32 sources/1 target，而 DTB 宣告 51 sources/M+S 两个
+context；须一致地审核外设生成物、地址映射与设备树，不能只改参数或 DTB 数字。
+固定 Cheshire 配置实际为 58 槽（含保留源0）/2 contexts/nonstd_regs=0，软件 ndev
+应为 57，地址截取宽度应为26。隔离生成与总线验收流程见 `fpga/PLIC_BRINGUP.md`；
+新 Linux 候选包已按 ndev57 重建内外 DTB/OpenSBI，仍未上板。
+一次PLIC/真实AXI寄存器桥VCS测试已完成370笔事务，配置与上下文基本访问通过，
+但确认IE[0]可写、禁用context仍接受completion、AXI窄读误触相邻claim三类问题。
+初次子系统功能门禁为FAIL；隔离补丁后相同TB的370笔事务、3223次检查和7组已PASS。
+补丁尚未合入正式导出，不能提升为Linux/板卡就绪；证据和范围见
+`fpga/reports/PLIC_CONTRACT_20260922.md`。
+桥接范围回归随后完成：同TB原桥负例FAIL、修复桥5组PASS；覆盖全部32种
+偏移/size组合、INCR读burst、AW/W交错、响应背压及错误归属，共65个AR、74个R
+beat、6笔写。见 `fpga/reports/MMIO_CONTRACT_20260922.md`；不扩大为其它桥配置或整机通过。
+下一步优先闭合系统交接与这一差异，再确认板卡连接及匹配 bitstream，进行
+DDR、Linux、上下文隔离和真实模型门禁。先用标准 RVV 跑模型基线，再受控开启
+custom 路径，不因 custom 上下文尚未就绪而把普通 Linux 链路无限延后；也不能
+直接用旧 FPGA 导出替代当前修复版本。
+
+随后已生成 `out/fpga-soc-candidate-20260922-04/package`：17份RTL实际变化，
+已配入ndev57的DTB/OpenSBI，原导出保持不变。59项相关host检查通过；226份
+此前默认映射缺失的源码已找到固定提交来源，但没有把来源核查冒充功能签核。
+下一道行为门禁是FPGA特有load_unit等待态异常与旧返回竞争，详见
+`fpga/SOC_CANDIDATE.md`。整包仍为PREPARED_NOT_BUILT。
+
+load边界随后完成15组、22条逻辑请求实测，464项检查通过；两轮trace相同，
+唯一修正是测试台错误的NI等待状态假设，未修改RTL。真实MMU/PTW、返回流水、
+scoreboard、Linux整机和板卡门禁仍未完成。局部证据见
+`cva6/LOAD_CONTRACT_MEASURED_20260922.md`；完整SoC仿真交接见
+`fpga/SOC_SIMULATION.md`，后续以候选Cheshire和稀疏外部存储推进，不能用IRQ绑零
+的普通ara_tb替代。
 
 当前最稳妥的执行顺序是：
 
@@ -188,3 +272,13 @@ verification/out/<run-id>/
 ```
 
 `verification/verify.py audit` 只在 run metadata、结果状态、重放命令和需要的 trace/vector/coverage 证据均齐全时给出 `PASS`。这条规则用于阻止“旧日志混入新结果”和“被 watchdog 截断却被当作通过”的问题。
+
+统一入口的推荐顺序为：
+
+```text
+preflight -> VCS/Spike 定向差分 -> riscv-dv 随机回归 -> QEMU/Linux 软件契约
+          -> VCU118 bare-metal -> VCU118 Linux -> VCU118 QBS/AKV -> VCU118 长模型
+```
+
+板卡阶段应先完成短的确定性签名测试，再增加 Linux 运行时间、内存压力和模型规模；
+出现签名不匹配时，回退到相同输入的 Spike/VCS 复现，而不是直接在板卡上盲目修改 RTL。

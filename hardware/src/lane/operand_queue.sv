@@ -441,7 +441,12 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       // Zero extension + Reordering for FP conversions
       OpQueueAdjustFPCvt: begin
         unique case (cmd.eew)
-          EW8:  if (RVVB(FPUSupport) || RVVBA(FPUSupport)) conv_operand = {32'b0, ibuf_operand[16 + 8*select +: 8], ibuf_operand[16 + 8*select +: 8], ibuf_operand[32 + 8*select +: 8], ibuf_operand[8*select +: 8]};
+          // EW8 lane order is 0,4,2,6,1,5,3,7; EW16 requires 0,2,1,3.
+          // Select alternating source bytes in destination physical order.
+          EW8: if (RVVH(FPUSupport) || RVVB(FPUSupport) || RVVBA(FPUSupport))
+            conv_operand = {32'b0, ibuf_operand[48 + 8*select +: 8],
+              ibuf_operand[32 + 8*select +: 8], ibuf_operand[16 + 8*select +: 8],
+              ibuf_operand[8*select +: 8]};
           EW16: conv_operand = {32'b0, ibuf_operand[32 + 8*select +: 16], ibuf_operand[8*select +: 16]};
           EW32: conv_operand = {32'b0, ibuf_operand[8*select +: 32]};
           default:;

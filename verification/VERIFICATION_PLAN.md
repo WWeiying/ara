@@ -53,6 +53,10 @@
 
 定向 RVV 测试覆盖规格中有明确边界的操作：SEW/LMUL、尾和 mask policy、非零 `vstart`、重叠寄存器组、segment/indexed/mask memory、reduction、异常和恢复。
 
+Masked indexed load/store 另设签收矩阵：`vstart=0/1` 下被掩蔽的失配地址不得触发异常、MMU 翻译或 AXI 请求，load 保持目的状态，store 不写内存；有效元素分别检查对齐访问结果和失配异常的 cause、tval、vstart。跨 lane/掩码字边界、未映射页、异常 flush 后紧随的下一条 indexed 指令，还需检查掩码与索引属于同一 instruction ID、每个元素只完成一次且不会停滞。修复候选在同一镜像上通过这些定向点后，再回归普通 indexed、unit-stride、segment 及 QBS/AKV；当前 `vmasked_indexed_alignment.c` 和 `vmasked_indexed_store_alignment.c` 只覆盖其中的地址/`vstart` 子集，不能替代整组签收。
+
+浮点归约必须单独覆盖“操作语义与共享控制字段编码相撞”的边界。例如 `VFREDMAX` 的 `cvt_resize=2'b10` 表示 `-Inf` 中性值，而普通 FP 窄化路径中相同编码表示 `CVT_NARROW`；issue、mask、结果打包和元素计数逻辑都必须同时依据 `resize` 与操作类型判定，不能只看共享字段。`vfredmax.c` 的边界回归包含正负 FP32 输入、显式 `-Inf` 初值以及 `VL=4/1`，用于防止该类错误重新进入大规模程序未覆盖的路径。
+
 每个测试至少保存：
 
 1. ELF、反汇编和生成命令；
@@ -110,6 +114,26 @@ Linux 回归还必须覆盖：进程/线程切换后的 vector CSR、信号或�
 
 ## 3. 签核门禁
 
+### 3.1 启动诊断仿真之前
+
+减少的是没有判别力的试跑，不是必要的回归覆盖。每个新问题在改 RTL 前先填写：
+
+| 项目 | 必须明确的内容 |
+|---|---|
+| 失败定义 | 哪条指令、哪个架构状态不符；期望来自规范或独立参考模型，不从 DUT 算法照抄 |
+| 候选根因 | 沿请求、依赖、队列、执行和完成路径列出能够解释现象的假设及反例 |
+| 判别证据 | 对每个假设列出信号、预期值和排除条件；区分 valid、握手、完成和退休 |
+| 一次捕获方案 | PC/指令、reset epoch、事务序号、队列占用、握手、flush、当前/下一状态、结果/flags；明确采样相位、触发点和上限 |
+| 通过条件 | 程序自检、协议检查、捕获完整性分别判定；探针结束不等于 DUT 正确 |
+| 后续步骤 | 先离线分析已有捕获，再决定是否有证据缺口必须追加仿真；修复后运行定向反例及相邻功能回归 |
+
+诊断程序在安全范围内继续检查并记录全部失败的 ID、实际值和期望值，统一在测量
+区之外输出。不可恢复的异常必须立即终止，不能为了收集更多结果继续执行损坏的
+状态。同一次捕获由独立审查者核对 oracle 和时序解释，避免只用最终错误值猜根因。
+旧 ELF、补丁、探针、日志和失败结论保留；新验证使用独立目录，不能覆盖首错证据。
+
+### 3.2 结果准入
+
 一次结果只有同时满足以下条件才可标记为签核通过：
 
 1. 运行状态为 `COMPLETE`，没有 `FAIL`、`TIMEOUT`、`ERROR`、`NOT_RUN`；
@@ -126,10 +150,10 @@ Linux 回归还必须覆盖：进程/线程切换后的 vector CSR、信号或�
 cd /home/wangwy/openproject/ara_dsa_verification
 PYTHONPATH=verification python3 verification/verify.py plan
 PYTHONPATH=verification python3 verification/verify.py doctor
-PYTHONPATH=verification python3 -m unittest discover -s verification/tests
+make -C verification unit
 PYTHONPATH=verification python3 verification/verify.py audit \
   --run verification/out/<completed-run> \
-  --require-trace --require-vector --require-coverage
+  --require-trace --require-vector --require-coverage --require-full-match
 ```
 
 `verification_audit.json` 是签核输出，不允许用手工修改 summary.json 的方式通过。

@@ -23,6 +23,10 @@ module ara_tb_verilator #(
   localparam AxiAddrWidth     = 64;
   localparam AxiWideDataWidth = 64 * NrLanes / 2;
   localparam L2NumWords       = L2SizeBytes / (AxiWideDataWidth / 8);
+  logic [63:0] dut_exit;
+  logic [63:0] exit_status_q;
+
+  assign exit_o = exit_status_q[0] ? exit_status_q : dut_exit;
 
   /*********
    *  DUT  *
@@ -37,7 +41,7 @@ module ara_tb_verilator #(
   ) dut (
     .clk_i (clk_i ),
     .rst_ni(rst_ni),
-    .exit_o(exit_o)
+    .exit_o(dut_exit)
   );
 
   // Load the ELF directly into the uninitialized Verilator SRAM. Keeping
@@ -64,17 +68,20 @@ module ara_tb_verilator #(
    *  EOC  *
    *********/
 
-  always @(posedge clk_i) begin
-    if (exit_o[0]) begin
-      if (exit_o >> 1) begin
-        $warning("Core Test ", $sformatf("*** FAILED *** (tohost = %0d)", (exit_o >> 1)));
+  always @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      exit_status_q <= '0;
+    end else if (dut_exit[0]) begin
+      exit_status_q <= dut_exit;
+      if (dut_exit >> 1) begin
+        $warning("Core Test ", $sformatf("*** FAILED *** (tohost = %0d)", (dut_exit >> 1)));
       end else begin
         // Print vector HW runtime
         $display("[hw-cycles]: %d", int'(dut.runtime_buf_q));
-        $info("Core Test ", $sformatf("*** SUCCESS *** (tohost = %0d)", (exit_o >> 1)));
+        $info("Core Test ", $sformatf("*** SUCCESS *** (tohost = %0d)", (dut_exit >> 1)));
       end
 
-      $finish(exit_o >> 1);
+      $finish(dut_exit >> 1);
     end
   end
 

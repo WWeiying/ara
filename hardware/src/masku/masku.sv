@@ -51,6 +51,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     output logic     [NrLanes-1:0]                     mask_valid_o,
     output logic                                       mask_valid_lane_o,
     output vfu_e                                         mask_target_fu_o,
+    output vid_t                                       mask_owner_id_o,
+    output vlen_t                                      mask_first_element_o,
     input  logic     [NrLanes-1:0]                     lane_mask_ready_i,
     input  logic                                       vldu_mask_ready_i,
     input  logic                                       vstu_mask_ready_i,
@@ -295,6 +297,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   strb_t [MaskQueueDepth-1:0][NrLanes-1:0] mask_queue_d, mask_queue_q;
   logic  [MaskQueueDepth-1:0][NrLanes-1:0] mask_queue_valid_d, mask_queue_valid_q;
   vfu_e  [MaskQueueDepth-1:0]               mask_queue_target_d, mask_queue_target_q;
+  vid_t  [MaskQueueDepth-1:0]               mask_queue_owner_d, mask_queue_owner_q;
+  vlen_t [MaskQueueDepth-1:0]               mask_queue_first_d, mask_queue_first_q;
   // We need two pointers in the mask queue. One pointer to
   // indicate with `strb_t` we are currently writing into (write_pnt),
   // and one pointer to indicate which `strb_t` we are currently
@@ -316,6 +320,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       mask_queue_q           <= '0;
       mask_queue_valid_q     <= '0;
       mask_queue_target_q    <= '{default: VFU_None};
+      mask_queue_owner_q     <= '0;
+      mask_queue_first_q     <= '0;
       mask_queue_write_pnt_q <= '0;
       mask_queue_read_pnt_q  <= '0;
       mask_queue_cnt_q       <= '0;
@@ -323,6 +329,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       mask_queue_q           <= mask_queue_d;
       mask_queue_valid_q     <= mask_queue_valid_d;
       mask_queue_target_q    <= mask_queue_target_d;
+      mask_queue_owner_q     <= mask_queue_owner_d;
+      mask_queue_first_q     <= mask_queue_first_d;
       mask_queue_write_pnt_q <= mask_queue_write_pnt_d;
       mask_queue_read_pnt_q  <= mask_queue_read_pnt_d;
       mask_queue_cnt_q       <= mask_queue_cnt_d;
@@ -783,19 +791,22 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     if (vinsn_issue_valid) begin
       // Evaluate the instruction
       unique case (vinsn_issue.op) inside
-        // Mask logical: pass through the result already computed in the ALU. The
-        // operation is unmasked. Preserve the restart prefix and, under tail-undisturbed
-        // policy, the destination bits at or above vl.
+        // Evaluate independently deshuffled mask sources. Same-register identities
+        // must not depend on uninitialized VRF bits. Keep prefix/tail merging below.
         [VMANDNOT:VMXNOR]: begin
           unique case (vinsn_issue.op)
-            VMANDNOT: alu_result_vm_m = ~masku_operand_m_seq & masku_operand_alu_seq;
+            VMANDNOT: alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '0 : ~masku_operand_m_seq & masku_operand_alu_seq;
             VMAND   : alu_result_vm_m =  masku_operand_m_seq & masku_operand_alu_seq;
             VMOR    : alu_result_vm_m =  masku_operand_m_seq | masku_operand_alu_seq;
-            VMXOR   : alu_result_vm_m =  masku_operand_m_seq ^ masku_operand_alu_seq;
-            VMORNOT : alu_result_vm_m = ~masku_operand_m_seq | masku_operand_alu_seq;
+            VMXOR   : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '0 : masku_operand_m_seq ^ masku_operand_alu_seq;
+            VMORNOT : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '1 : ~masku_operand_m_seq | masku_operand_alu_seq;
             VMNAND  : alu_result_vm_m = ~(masku_operand_m_seq & masku_operand_alu_seq);
             VMNOR   : alu_result_vm_m = ~(masku_operand_m_seq | masku_operand_alu_seq);
-            VMXNOR  : alu_result_vm_m = ~(masku_operand_m_seq ^ masku_operand_alu_seq);
+            VMXNOR  : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '1 : ~(masku_operand_m_seq ^ masku_operand_alu_seq);
             default : alu_result_vm_m = '1;
           endcase
           if (vinsn_issue.use_vd_op) begin
@@ -1022,6 +1033,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     mask_queue_d           = mask_queue_q;
     mask_queue_valid_d     = mask_queue_valid_q;
     mask_queue_target_d    = mask_queue_target_q;
+    mask_queue_owner_d     = mask_queue_owner_q;
+    mask_queue_first_d     = mask_queue_first_q;
     mask_queue_write_pnt_d = mask_queue_write_pnt_q;
     mask_queue_read_pnt_d  = mask_queue_read_pnt_q;
     mask_queue_cnt_d       = mask_queue_cnt_q;
@@ -1159,6 +1172,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           // Trigger the request signal
           mask_queue_valid_d[mask_queue_write_pnt_q] = {NrLanes{1'b1}};
           mask_queue_target_d[mask_queue_write_pnt_q] = vinsn_issue.vfu;
+          mask_queue_owner_d[mask_queue_write_pnt_q] = vinsn_issue.id;
+          mask_queue_first_d[mask_queue_write_pnt_q] = vinsn_issue.vl - read_cnt_q;
 
           // Are there lanes with no valid elements?
           // If so, mute their request signal
@@ -1202,6 +1217,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     // Is this operand going to the lanes?
     mask_target_fu_o  = mask_queue_empty ? VFU_None :
                                            mask_queue_target_q[mask_queue_read_pnt_q];
+    mask_owner_id_o = mask_queue_owner_q[mask_queue_read_pnt_q];
+    mask_first_element_o = mask_queue_first_q[mask_queue_read_pnt_q];
     mask_valid_lane_o = mask_target_fu_o inside {VFU_Alu, VFU_MFpu, VFU_MaskUnit};
 
     // All lanes accepted the VRF request
@@ -1515,12 +1532,17 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           // Write to the result queue if the entry is full or if this is the last output
           // if this is the last output slice of the vector.
           // Also, handshake the vd input, which follows the output.
-          if (vinsn_issue.op inside {[VRGATHER:VCOMPRESS]}) masku_operand_vd_ready = '1;
+          if (vinsn_issue.op == VCOMPRESS ||
+              (vinsn_issue.op inside {VRGATHER, VRGATHEREI16} && !vrgat_idx_oor_q))
+            masku_operand_vd_ready = '1;
           if ((out_valid_cnt_q == out_valid_threshold_q) || (issue_cnt_d == '0) ||
               ((vinsn_issue.op == VCOMPRESS) && vcompress_last_idx_q)) begin
             out_valid_cnt_clr = 1'b1;
             // Handshake vd input
-            if (vinsn_issue.use_vd_op) begin
+            if (vinsn_issue.use_vd_op &&
+                (vinsn_issue.op == VCOMPRESS ||
+                 !(vinsn_issue.op inside {VRGATHER, VRGATHEREI16}) ||
+                 !vrgat_idx_oor_q)) begin
               masku_operand_vd_ready = '1;
             end
             // Assert valid result queue output

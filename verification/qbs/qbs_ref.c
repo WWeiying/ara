@@ -265,6 +265,36 @@ float qbs_ref_fp16_to_fp32(qbs_fp16_t value) {
   return result;
 }
 
+static qbs_fp16_t fp32_nonnegative_to_fp16_rne(float value) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof(bits));
+  int exponent = (int)((bits >> 23) & 0xffu) - 112;
+  const uint32_t mantissa = bits & 0x7fffffu;
+  if (exponent >= 31) return UINT16_C(0x7c00);
+  if (exponent < -10) return 0;
+  if (exponent <= 0) {
+    const unsigned shift = (unsigned)(14 - exponent);
+    const uint32_t significand = mantissa | 0x800000u;
+    uint32_t fraction = significand >> shift;
+    const uint32_t remainder = significand & ((1u << shift) - 1u);
+    const uint32_t halfway = 1u << (shift - 1u);
+    if (remainder > halfway || (remainder == halfway && (fraction & 1u)))
+      ++fraction;
+    return (qbs_fp16_t)fraction;
+  }
+  uint32_t fraction = mantissa >> 13;
+  const uint32_t remainder = mantissa & 0x1fffu;
+  if (remainder > 0x1000u || (remainder == 0x1000u && (fraction & 1u))) {
+    ++fraction;
+    if (fraction == 0x400u) {
+      fraction = 0;
+      ++exponent;
+    }
+  }
+  if (exponent >= 31) return UINT16_C(0x7c00);
+  return (qbs_fp16_t)(((unsigned)exponent << 10) | fraction);
+}
+
 uint64_t qbs_ref_capability_word(unsigned index, unsigned vlen_bits) {
   return qbs_capability_word(index, vlen_bits);
 }
@@ -559,6 +589,40 @@ qbs_ref_status_t qbs_ref_quantize_q8_k(const float *input,
         sum += quantized;
       }
       destination->bsums[subgroup] = (int16_t)sum;
+    }
+  }
+  if (old_round != -1) (void)fesetround(old_round);
+  return QBS_REF_OK;
+}
+
+qbs_ref_status_t qbs_ref_quantize_q8_0(const float *input,
+                                       size_t input_elements,
+                                       qbs_block_q8_0_t *output,
+                                       size_t output_blocks) {
+  if (input == NULL || output == NULL ||
+      input_elements % QBS_Q8_0_BLOCK_ELEMENTS != 0)
+    return QBS_REF_BAD_ARGUMENT;
+  const size_t blocks = input_elements / QBS_Q8_0_BLOCK_ELEMENTS;
+  if (output_blocks < blocks) return QBS_REF_BUFFER_SIZE;
+
+  const int old_round = fegetround();
+  if (fesetround(FE_TONEAREST) != 0) return QBS_REF_BAD_ARGUMENT;
+  for (size_t block = 0; block < blocks; ++block) {
+    const float *source = input + block * QBS_Q8_0_BLOCK_ELEMENTS;
+    qbs_block_q8_0_t *destination = &output[block];
+    float maximum = 0.0f;
+    for (unsigned element = 0; element < QBS_Q8_0_BLOCK_ELEMENTS; ++element) {
+      const float absolute = fabsf(source[element]);
+      if (absolute > maximum) maximum = absolute;
+    }
+    const float scale = rounded_div(maximum, 127.0f);
+    const float inverse = scale != 0.0f ? rounded_div(1.0f, scale) : 0.0f;
+    destination->d = fp32_nonnegative_to_fp16_rne(scale);
+    for (unsigned element = 0; element < QBS_Q8_0_BLOCK_ELEMENTS; ++element) {
+      int quantized = nearest_int(rounded_mul(source[element], inverse));
+      if (quantized > 127) quantized = 127;
+      if (quantized < -128) quantized = -128;
+      destination->qs[element] = (int8_t)quantized;
     }
   }
   if (old_round != -1) (void)fesetround(old_round);

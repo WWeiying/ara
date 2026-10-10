@@ -13,8 +13,15 @@ class TraceTests(unittest.TestCase):
         self.assertTrue(is_vector_instruction(0x0205E007))
         self.assertTrue(is_vector_instruction(0x0D0572D7))
         self.assertTrue(is_vector_instruction(0x00905073))
+        self.assertTrue(is_vector_instruction(0x00B5045B))  # QBS
+        self.assertTrue(is_vector_instruction(0x0005455B))  # AKV
+        self.assertTrue(is_vector_instruction(0x0000502F))  # vector AMO width 101
         self.assertFalse(is_vector_instruction(0xF1462507))
+        self.assertFalse(is_vector_instruction(0xFEC61F27))  # scalar FP16 store
+        self.assertFalse(is_vector_instruction(0x00001007))  # scalar FP16 load
+        self.assertFalse(is_vector_instruction(0x0000202F))  # scalar AMO word
         self.assertFalse(is_vector_instruction(0x30005073))
+        self.assertFalse(is_vector_instruction(0x0000000B))  # other custom opcode
 
     def test_valid_trace(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -29,6 +36,21 @@ class TraceTests(unittest.TestCase):
             )
             summary = validate_trace(path)
             self.assertEqual(summary["retire_count"], 2)
+            self.assertEqual(summary["cvx_request_count"], 1)
+
+    def test_custom_request_does_not_match_scalar_fp16_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trace.csv"
+            path.write_text(
+                HEADER
+                + "1,cvx_req,-1,-1,2,0,00b5045b,0,0,0,00,00,0\n"
+                + "2,cvx_resp,-1,-1,2,0,00000000,0,0,0,00,00,0\n"
+                + "3,retire,0,0,-1,0,fec61f27,0,0,0,00,00,0\n"
+                + "4,retire,1,0,-1,0,00b5045b,0,0,0,00,00,0\n",
+                encoding="utf-8",
+            )
+            summary = validate_trace(path)
+            self.assertEqual(summary["vector_retire_count"], 1)
             self.assertEqual(summary["cvx_request_count"], 1)
 
     def test_rejects_orphan_response(self):

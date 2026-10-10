@@ -17,6 +17,7 @@ from typing import Dict, List, Sequence, Tuple
 import yaml
 
 from ara_verify.stimulus_coverage import merge_stimulus_coverage
+from ara_verify.spike_probe import check_spike_vstart, probe_paths
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -136,11 +137,14 @@ def source_snapshot() -> Dict[str, object]:
     digest = hashlib.sha256()
     files: List[str] = []
     for root in (REPO_ROOT / "hardware", REPO_ROOT / "apps", REPO_ROOT / "verification"):
-        for path in sorted(root.rglob("*")):
-            relative_parts = path.relative_to(root).parts
-            if not path.is_file() or any(part in SOURCE_EXCLUDE_DIRS for part in relative_parts):
-                continue
+        source_paths = []
+        for directory, subdirs, names in os.walk(root):
+            subdirs[:] = [name for name in subdirs if name not in SOURCE_EXCLUDE_DIRS]
+            source_paths.extend(Path(directory) / name for name in names)
+        for path in sorted(source_paths):
             if path.suffix not in SOURCE_SUFFIXES and path.name not in {"Makefile", "Makefrag"}:
+                continue
+            if not path.is_file():
                 continue
             relative = path.relative_to(REPO_ROOT).as_posix()
             if relative in SOURCE_EXCLUDE_FILES:
@@ -500,6 +504,12 @@ def main() -> int:
     args.spike = spike
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
+    if not args.dry_run:
+        probe_gcc, probe_source = probe_paths(REPO_ROOT)
+        probe = check_spike_vstart(spike, probe_gcc, output / "spike_probe", probe_source)
+        if probe["status"] != "PASS":
+            raise RuntimeError(f"Spike lacks nonzero-vstart widening ALU support: "
+                               f"{output / 'spike_probe/spike_probe.json'}")
 
     profiles = random_profiles()
     validate_required_random_profiles(profiles)

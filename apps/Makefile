@@ -22,6 +22,7 @@ COMMON_DIR := $(ROOT_DIR)/common
 TESTS_DIR := $(ROOT_DIR)/riscv-tests/isa
 RVTEST_MACRO_HEADERS := $(shell find $(TESTS_DIR)/macros -type f)
 
+
 sim_l2_mb ?= 1
 valid_sim_l2_mb := 1 2 4 8 16 32 64
 ifeq ($(filter $(sim_l2_mb),$(valid_sim_l2_mb)),)
@@ -46,12 +47,15 @@ include $(COMMON_DIR)/riscv_tests.mk
 include $(COMMON_DIR)/default_args.mk
 
 # This contract test includes masks with -Inf and checks NaN rejection.
-akv_portability_smoke/main.c.o akv_portability_smoke/runtime.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
+akv_portability_smoke/main.c.o akv_portability_smoke/runtime.c.o akv_column_coverage_smoke/main.c.o akv_column_coverage_smoke/runtime.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
 akv_d256_reuse_smoke/main.c.o: RISCV_CCFLAGS += -fno-fast-math -ffp-contract=off
-akv_portability_smoke/runtime.c.o akv_d256_reuse_smoke/runtime.c.o: \
+akv_portability_smoke/runtime.c.o akv_column_coverage_smoke/runtime.c.o akv_d256_reuse_smoke/runtime.c.o: \
     $(wildcard ../software/akv/src/*.c ../software/akv/include/akv/*.h)
 akv_d256_reuse_smoke/native.S.o: ../software/akv/src/akv_v2_attention_rvv.S
-akv_portability_smoke/native.S.o: ../software/akv/src/akv_attention_rvv.S ../software/akv/src/akv_v2_attention_rvv.S
+akv_portability_smoke/native.S.o akv_column_coverage_smoke/native.S.o: ../software/akv/src/akv_attention_rvv.S ../software/akv/src/akv_v2_attention_rvv.S
+akv_column_coverage_smoke/main.c.o: akv_portability_smoke/main.c
+akv_column_coverage_smoke/runtime.c.o: akv_portability_smoke/runtime.c
+akv_column_coverage_smoke/native.S.o: akv_portability_smoke/native.S
 llama_q4km_operator/akv_v2_attention.S.o llama_q4km_operator/akv_v2_attention.S.o.spike: \
     ../software/akv/src/akv_v2_attention_rvv.S
 
@@ -62,8 +66,11 @@ APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c
 APPS += $(patsubst $(APPS_DIR)/%/main.cpp,%,$(shell find $(APPS_DIR) -name "main.cpp"))
 LLAMA_QWEN25_APPS := $(filter llama_qwen25_%,$(APPS))
 LLAMA_QWEN25_COMMON := $(shell find llama_qwen25_real/common -type f 2>/dev/null)
+LLAMA_QWEN25_COMMON += llama_q4km_micro/micro_kernels.c llama_q4km_micro/micro_kernels.h \
+	llama_q4k_repack_bench/repack_kernels.c llama_q4k_repack_bench/repack_kernels.h
 LLAMA_QBS_APPS := $(foreach app,$(LLAMA_QWEN25_APPS),\
 	$(if $(findstring _qbs,$(app)),$(app)))
+QBS_RUNTIME_APPS := $(LLAMA_QBS_APPS) qbs_wide_phase_cov
 QBS_RUNTIME_HEADERS := \
 	$(ARA_DIR)/software/qbs/include/qbs/qbs.h \
 	$(ARA_DIR)/software/qbs/include/qbs/qbs_abi.h
@@ -156,9 +163,9 @@ endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template_ideal,$(app))))
 
 define app_compile_template_spike
-bin/$1.spike: $1/data.S.o.spike $(addsuffix .o.spike, $(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_SPIKE) $(COMMON_SPIKE) patch-spike-crt0 $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS))
+bin/$1.spike: $1/data.S.o.spike $(addsuffix .o.spike, $(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_SPIKE) $(COMMON_SPIKE) patch-spike-crt0 $(if $(filter $1,$(QBS_RUNTIME_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS))
 	mkdir -p bin/
-	$$(RISCV_CC) -Iinclude $$(RISCV_CCFLAGS_SPIKE) -o $$@ $$(addsuffix .o.spike, $$(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS)) $(RUNTIME_SPIKE) $$(RISCV_LDFLAGS_SPIKE) -DSPIKE
+	$$(RISCV_CC) -Iinclude $$(RISCV_CCFLAGS_SPIKE) -o $$@ $$(addsuffix .o.spike, $$(shell find $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(QBS_RUNTIME_APPS)),$(QBS_RUNTIME_SPIKE_OBJECTS)) $(RUNTIME_SPIKE) $$(RISCV_LDFLAGS_SPIKE) -DSPIKE
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template_spike,$(app))))
@@ -166,9 +173,9 @@ $(foreach app,$(APPS),$(eval $(call app_compile_template_spike,$(app))))
 $(addsuffix /main.c.o.spike,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
 
 define app_compile_template
-bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) linker_script $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_OBJECTS))
+bin/$1$(BIN_SUFFIX): $1/data.S.o $(addsuffix .o, $(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(RUNTIME_LLVM) linker_script $(if $(filter $1,$(QBS_RUNTIME_APPS)),$(QBS_RUNTIME_OBJECTS))
 	mkdir -p bin/
-	$$(RISCV_CC) -Iinclude $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(LLAMA_QBS_APPS)),$(QBS_RUNTIME_OBJECTS)) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS)
+	$$(RISCV_CC) -Iinclude $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find -L $(1) -name "*.c" -o -name "*.cpp" -o -name "*.S")) $(if $(filter $1,$(QBS_RUNTIME_APPS)),$(QBS_RUNTIME_OBJECTS)) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS)
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $(1)/$(1)$(BIN_SUFFIX).dump
 	$$(RISCV_NM) -n $$@ >> $(1)/$(1)$(BIN_SUFFIX).dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
@@ -177,7 +184,7 @@ endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
 
 $(addsuffix /main.c.o,$(LLAMA_QWEN25_APPS)): $(LLAMA_QWEN25_COMMON)
-$(addsuffix /main.c.o,$(LLAMA_QBS_APPS)): $(QBS_RUNTIME_HEADERS)
+$(addsuffix /main.c.o,$(QBS_RUNTIME_APPS)): $(QBS_RUNTIME_HEADERS)
 
 $(COMMON_DIR)/qbs_runtime.c.o: \
 		$(ARA_DIR)/software/qbs/src/qbs_runtime.c $(QBS_RUNTIME_HEADERS)
@@ -236,6 +243,14 @@ llama_qwen25_small_qbs_akv/akv_v2_attention.S.o.spike: $(AKV_RUNTIME_ASM_SOURCE)
 
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)
+
+$(addprefix bin/rv64uv-ara-,vgap75_ext16_f2 vgap75_ext32_f4 vgap75_ext64_f2 vgap75_ext64_f4 vgap75_ext64_f8): $(TESTS_DIR)/rv64uv/vgap75_ext_body.h
+$(addprefix bin/rv64uv-ara-,vgap75_red16 vgap75_red32 vgap75_red64): $(TESTS_DIR)/rv64uv/vgap75_red_body.h
+$(addprefix bin/rv64uv-ara-,vgap76_mul16 vgap76_mul32 vgap76_add16 vgap76_add32 vgap76_sub16 vgap76_sub32 vgap76_red16 vgap76_red32): $(TESTS_DIR)/rv64uv/vgap76_wide_body.h
+$(addprefix bin/rv64uv-ara-,vgap77_onehot16 vgap77_onehot32 vgap77_dense16 vgap77_dense32): $(TESTS_DIR)/rv64uv/vgap76_wide_body.h
+$(addprefix bin/rv64uv-ara-,vgap78_add16 vgap78_add32 vgap78_sub16 vgap78_sub32): $(TESTS_DIR)/rv64uv/vgap76_wide_body.h
+$(addprefix bin/rv64uv-ara-,vgap79_add16 vgap79_add32 vgap79_add64 vgap79_mul16 vgap79_mul32 vgap79_mul64 vgap79_wide16 vgap79_wide32): $(TESTS_DIR)/rv64uv/vgap79_special_body.h
+$(addprefix bin/rv64uv-ara-,vgap80_uniform16 vgap80_uniform32): $(TESTS_DIR)/rv64uv/vgap80_uniform_body.h
 
 define rvtest_compile_template
 TESTS_$(1) := $(addprefix bin/, $($(addsuffix _ara_tests, $1)))

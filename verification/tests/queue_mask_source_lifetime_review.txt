@@ -1,0 +1,58 @@
+QUEUE MASK SOURCE LIFETIME MATRIX - STATIC REVIEW ONLY
+
+Baseline: clip17-offline-admitted-738-parent-20261006-01.
+Admission SHA256: 972d4dec87035fb12343d25305666a8d9c5a88ea8215ef330638e468386249f7.
+Build source book SHA256: 6d29e3ee19e7ac361d7a875b2acaacb6c9d17b4a976491538e9c6f5c918b761b.
+Image SHA256: 2e63524b92da663fd08401e1c2414363aa3a2732735feaceef55bd8be7ea59b3.
+
+Primary: each gen_lanes[0..3].i_lane.i_operand_requester cond raw665,
+width1256 checksum1592560956, frozen source line496, vector010.
+All four are zero in raw738. This means ONLY the source-lifetime term
+of the three-way stall OR is true. XML coordinates are NOT native GUI IDs.
+
+Eight legal cells: EEW8/16/32/64, LMUL1/2, full VLMAX, vstart0, tu/mu.
+Load source v8 and distinct comparison source v24. Adjacent vdivu.vx
+v16,v8,3 then vmsltu.vx v8,v24,half_unsigned_max. No slide, segment,
+indexed memory or prestart operation. Div source and destination groups
+are aligned/disjoint; comparison destination v8 is disjoint from v24.
+
+Frozen dispatcher snapshot line2148..2155 explicitly enables use_vd_op
+for VMSLTU. Snapshot lane_sequencer line1066..1103 routes old vd through
+MaskB, and line1203..1206 copies source-lifetime and wait-complete flags.
+Current lane_sequencer differs; it is NOT used as image evidence.
+Frozen sequencer line655..715 computes WAR readers and pure ordered WAR
+source-lifetime release, excluding RAW/WAW/wait-complete for that vid.
+Line885..900 does NOT mark VDIVU as an unordered/read-wait-complete op.
+The first v8 register has matching group offset0 for both operations.
+Requester line496..507 tests source-lifetime independently of hazard_vd.
+
+Falsifiable hypothesis: the older divider still has an active source
+request when the younger MaskB request enters REQUESTING. LMUL2 needs
+eight source words per lane versus a five-word MFPU input buffer; slow
+division supplies backpressure. This is not measured timing evidence.
+Discriminator: MaskB state REQUESTING; source_lifetime_active for older
+division vid; matching hazard_source_lifetime; RAW term0; wait term0.
+If all source words were captured before MaskB starts, primary stays zero.
+Do not infer hit from the software/Spike PASS or instruction count.
+
+Independent Python unsigned model checks division ORIGINAL source bytes,
+packed comparison mask, retained bytes and all memory guards, 24 CSR values,
+eight adjacent instruction pairs, terminal result and no traps. Mask tail
+preservation is this fixed implementation/reference contract, not a claim
+that arbitrary RVV implementations must preserve every mask tail bit.
+All 56 executed RVV PCs are audited; no implicit compiler RVV is accepted.
+6936 software checks; 6912 fully reconstructed buffer bytes.
+
+Queue zero triage is LIMITED, not a universal unreachable proof:
+input FIFO cond1110 needs pop while empty (consumer valid forbids it);
+FALL_THROUGH=0 prevents empty expression vector10;
+power-of-two pointer wrap comparison has documented arithmetic dead code;
+ALU/MFPU flush is not a throughput target. Other queue zeros remain HOLD.
+No new exclusions or native waiver qualification are produced.
+
+Rejected predecessor: VID software preflight passed, but frozen dispatcher
+line2712 disables use_vd_op, so it cannot exercise this MaskB primary.
+Its output is preserved as software diagnostic only; do not run it on DUT.
+
+Only software build/Spike is authorized here. DUT simulation, qualification,
+raw gain, admission and any EL application require subsequent parent review.

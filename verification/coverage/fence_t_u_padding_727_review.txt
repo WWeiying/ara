@@ -1,0 +1,22 @@
+727 successor static review context (no build or simulation evidence)
+
+The app REVIEW.txt and the original 726 static output remain historical,
+unchanged records. prepare_fence_t_u_padding_727.py binds the new static
+review to gap106-offline-admitted-727-parent-20261006-01 and verifies the
+admission manifest and combined-bits pins before reading actual bits.
+
+The 14 primary candidates are controller cond raw indices
+29,31,33,40,41,42,43,44,45,46,50; controller branch raw1;
+csr_regfile branch raw520; and csr_regfile line raw780.
+All 14 are unhit in formal727. Primary already-hit points are rejected.
+
+Controller branch raw33 and raw36 are corroborating witnesses, not extra
+primary gain targets. Both are also unhit in formal727. Any prior assertion
+that they were already hit is not supported by this bitmap. The successor
+records their actual hit727 values and does not require witnesses to be zero.
+
+PAD65536 remains a fixed candidate, not a proved latency bound. Native
+continuous counter observation is unavailable and not cycle-qualified.
+Static preparation does not establish ELF correctness or authorize VCS.
+The separate build-only command must be followed by linked-ELF review;
+no run or admission is performed by this static helper or build script.

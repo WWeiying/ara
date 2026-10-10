@@ -28,6 +28,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  ara_req_t                        ara_req_i,
     input  logic                            ara_req_valid_i,
     output logic                            ara_req_ready_o,
+    output logic                            ara_store_accepted_o,
     output ara_resp_t                       ara_resp_o,
     output logic                            ara_resp_valid_o,
     output logic                            ara_idle_o,
@@ -253,7 +254,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   // If the instruction requires an answer to Ariane, the sequencer needs to wait.
   enum logic { IDLE, WAIT } state_d, state_q;
+`ifdef ARA_STORE_B_AB_BASELINE
+  localparam bit WaitForStoreB = 1'b0;
+`else
+  localparam bit WaitForStoreB = 1'b1;
+`endif
   logic addrgen_acked_d, addrgen_acked_q;
+  logic memory_store_completed_d, memory_store_completed_q;
   exception_t addrgen_exception_d, addrgen_exception_q;
   vlen_t addrgen_exception_vstart_d, addrgen_exception_vstart_q;
   logic addrgen_fof_exception_d, addrgen_fof_exception_q;
@@ -501,6 +508,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Default assignments
     state_d               = state_q;
     addrgen_acked_d       = addrgen_acked_q;
+    memory_store_completed_d = memory_store_completed_q;
     addrgen_exception_d   = addrgen_exception_q;
     addrgen_exception_vstart_d = addrgen_exception_vstart_q;
     addrgen_fof_exception_d = addrgen_fof_exception_q;
@@ -520,6 +528,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // No response
     ara_resp_o       = '0;
     ara_resp_valid_o = 1'b0;
+    ara_store_accepted_o = 1'b0;
 
     // Always ready to receive a new request
     ara_req_ready_o = 1'b1;
@@ -676,8 +685,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                   waw_hazard_vec[
                       write_list_d[ara_req_i.vd + i].vid] |=
                       write_list_d[ara_req_i.vd + i].valid;
+                  // MASKU's VIOTA/VID writes are not paced by older lane results.
                   if (write_list_d[ara_req_i.vd + i].valid &&
-                      (ara_req_i.op == VCOMPRESS ||
+                      (ara_req_i.op inside {VIOTA, VID, VCOMPRESS} ||
                        write_list_d[ara_req_i.vd + i].wait_complete ||
                        write_list_d[ara_req_i.vd + i].group_offset != i[2:0])) begin
                     wait_complete_vec[
@@ -783,6 +793,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               vl            : ara_req_i.vl,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
+              fault_only_first: ara_req_i.fault_only_first,
               akv_refill    : ara_req_i.akv_refill,
               akv_v2        : ara_req_i.akv_v2,
               akv_column    : ara_req_i.akv_column,
@@ -843,8 +854,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                   (!ara_req_i.use_vd && !ara_req_i.overlap_capture)) begin
                 ara_req_ready_o = 1'b0;
                 state_d         = WAIT;
+                ara_store_accepted_o = WaitForStoreB && is_store(ara_req_i.op);
                 if (is_load(ara_req_i.op) || is_store(ara_req_i.op))
                   addrgen_acked_d = 1'b0;
+                if (is_store(ara_req_i.op))
+                  memory_store_completed_d = 1'b0;
                 if (is_load(ara_req_i.op) || is_store(ara_req_i.op)) begin
                   addrgen_exception_d = '0;
                   addrgen_exception_vstart_d = '0;
@@ -961,6 +975,15 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           addrgen_fof_exception_d = addrgen_fof_exception_i;
         end
 
+        if (is_store(pe_req_o.op) &&
+            pe_resp_i[NrLanes+OffsetStore].vinsn_done[pe_req_o.id]) begin
+          memory_store_completed_d = 1'b1;
+          if (addrgen_exception_i.valid) begin
+            addrgen_exception_d = addrgen_exception_i;
+            addrgen_exception_vstart_d = addrgen_exception_vstart_i;
+          end
+        end
+
         // Stop requesting if the operations have been completely acknowledged:
         // 1) Scalar moves / vcpop / vfirst only need acknowledgement from
         //    their operand suppliers.  MASKU requests are broadcast atomically
@@ -986,7 +1009,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         // Wait for the address translation
         if ((is_load(pe_req_o.op) || is_store(pe_req_o.op)) &&
             (addrgen_acked_q || addrgen_ack_i) &&
-            (&memory_lane_accepted_d) && memory_mask_accepted_d) begin
+            (&memory_lane_accepted_d) && memory_mask_accepted_d &&
+            (!WaitForStoreB || !is_store(pe_req_o.op) || memory_store_completed_d)) begin
           // The address generator acknowledges indexed operations only after
           // consuming their lane operands.  Withdraw the broadcast request in
           // the same cycle so it cannot be accepted again after AddrGen
@@ -995,11 +1019,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           state_d             = IDLE;
           ara_req_ready_o     = 1'b1;
           ara_resp_valid_o    = 1'b1;
-          ara_resp_o.exception = addrgen_ack_i
-                               ? addrgen_exception_i : addrgen_exception_q;
-          ara_resp_o.exception_vstart = addrgen_ack_i
-                                      ? addrgen_exception_vstart_i
-                                      : addrgen_exception_vstart_q;
+          ara_resp_o.exception = WaitForStoreB
+                               ? addrgen_exception_d
+                               : (addrgen_ack_i ? addrgen_exception_i : addrgen_exception_q);
+          ara_resp_o.exception_vstart = WaitForStoreB
+                                      ? addrgen_exception_vstart_d
+                                      : (addrgen_ack_i ? addrgen_exception_vstart_i
+                                                       : addrgen_exception_vstart_q);
           ara_resp_o.fof_exception = addrgen_ack_i
                                    ? addrgen_fof_exception_i
                                    : addrgen_fof_exception_q;
@@ -1008,6 +1034,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             ara_resp_o.fflags_valid = qbs_fflags_valid_i;
           end
           addrgen_acked_d = 1'b0;
+          memory_store_completed_d = 1'b0;
           memory_lane_accepted_d = '0;
           memory_mask_accepted_d = 1'b0;
         end
@@ -1035,6 +1062,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     if (!rst_ni) begin
       state_q <= IDLE;
       addrgen_acked_q <= 1'b0;
+      memory_store_completed_q <= 1'b0;
       addrgen_exception_q <= '0;
       addrgen_exception_vstart_q <= '0;
       addrgen_fof_exception_q <= 1'b0;
@@ -1058,6 +1086,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     end else begin
       state_q <= state_d;
       addrgen_acked_q <= addrgen_acked_d;
+      memory_store_completed_q <= memory_store_completed_d;
       addrgen_exception_q <= addrgen_exception_d;
       addrgen_exception_vstart_q <= addrgen_exception_vstart_d;
       addrgen_fof_exception_q <= addrgen_fof_exception_d;

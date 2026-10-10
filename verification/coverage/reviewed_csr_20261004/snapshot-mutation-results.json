@@ -1,0 +1,21 @@
+{
+  "status": "PASS_OFFLINE_MUTATION_REGRESSION_NOT_APPLICATION_APPROVAL",
+  "recorded_from_terminal_test_output": true,
+  "runner": "unittest suite with sys.addaudithook rejecting every subprocess.Popen event before spawning",
+  "test_module": "test_wrapper.py",
+  "methods": [
+    "test_reviewed_root_and_exact_snapshot_membership",
+    "test_runtime_callbacks_refuse_resealed_or_changed_bundle",
+    "test_run_binds_reviewed_root_at_every_boundary"
+  ],
+  "elapsed_seconds": 11.782,
+  "snapshot_membership_negatives": 7,
+  "callback_negatives": 12,
+  "outer_boundary_negatives": 16,
+  "intact_positive": 1,
+  "actual_subprocess_audit_events": [],
+  "real_dve_launches": 0,
+  "mock_popen_calls_are_not_real_processes": true,
+  "final_coverage_application": false,
+  "independent_final_review": "PENDING"
+}

@@ -1,0 +1,74 @@
+FROZEN REPORT797 HANDOFF - PREPARE ONLY, NO EDA EXECUTED
+
+Working directory: /home/wangwy/openproject/ara_dsa_signoff_integration
+Output: verification/out/current-population797-inherited796-agent-20261008-01
+Config seal: 4145a211520006ec00b04c6ba18ffdf1acdd700bf761774c0fad69bc523a1fc0
+Admission797 seal: 775485fa0a5cfbb8bb1715374e60d3228d341522b2df3c666754407b30ef55f4
+
+Frozen code:
+  verification/coverage/report_population797_inherited796.py
+  SHA256 79274ad37035b8a18d967f152309f5b1bcf7bfaca322f78a800fba1bcae48006
+  verification/coverage/test_report_population797_inherited796.py
+  SHA256 ed188631441628aefdd62659e338959c27319c62910152bcd013aef0e7ecd647
+Do not modify either candidate or frozen dependencies before parent consumption.
+
+Actual tests: 13 tests, 212.311s, returncode0, OK.
+Receipt: output/host-tests-receipt.json (host tests, not EDA qualification).
+  SHA256 0246423fc3aa1b886b6471d5ee3c88de4ac9a1a773b117dc58109202beb2f500
+Includes actual approved797 replay and complete historical pin checks, exact
+796 prefix, native797 single metric/Toggle reads, 6162/2989 mathematical OR,
+all source-zero constant families, unchanged complete796 EL, inherited native
+five-stage/module evidence, and negative identity/shape/hit/collision tests.
+
+Prepare actual exit0:
+  output/prepare-receipt.json
+  SHA256 6b498713e6550c29e1b7c2c27e8211b0a7423954772b83735a66d4b3457cbba4
+  Config pins31254, population797, official_denominator_verified=false,
+  new_exclusions_added=false, parent_launch_approval_required=true.
+  Owning future service: ara-current-population797-inherited796-parent-20261008-01.service
+  Runtime budget3600s; no service was started by this agent.
+
+Byte-identical to qualified796:
+  combined.el SHA256 2704de24f115e289d8c1e60c3847dc39d7f7d13e955eb284ddc66f6fd42596c9
+  root-selection.tcl SHA256 380b34ccc26be9159b70e16dd203e55cc303695d795fc68ec07b2f721dfb258f
+Five stages raw/applied/reset/reloaded/final, 72 roots, all2989 raw hierarchy
+scopes, unchanged frozen DVE engine/scoring. No new local qualification is
+needed for this exact-EL797 report. New ELs can use a successor later.
+
+Offline check receipt:
+  Actual exit0: FULL797_INHERITED796_CHECK_PASS_NO_EDA.
+  host-check-receipt.json SHA256 aff965f60b9848b7ce318503c3e33d06567deeba393d5d223e1dcc3b504236b1
+  output/host-check-receipt.json is written only after actual check exit0.
+  Until that receipt exists, check is still pending; do not infer PASS.
+Native797 verify receipt:
+  output/qualification.json can exist only after authorized five-stage EDA
+  and native verify. It has NOT been produced by this agent. Host check is
+  not native verify; no percentages or official denominator are extrapolated.
+
+Independent parent tests:
+  PYTHONPATH=/tmp/vsmul797-host-deps:verification/coverage python3 -B -m unittest -v test_report_population797_inherited796
+
+Independent parent offline check (NO EDA):
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/report_population797_inherited796.py check --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-inherited796-agent-20261008-01 --seal 4145a211520006ec00b04c6ba18ffdf1acdd700bf761774c0fad69bc523a1fc0
+
+PARENT-ONLY STARTUP COMMAND - NOT EXECUTED HERE
+After parent review/authorization, run from the working directory above.
+The transient service owns the Python worker directly; its app.slice and unit
+must match the sealed cgroup. RuntimeMaxSec4200 includes host replay overhead;
+the frozen DVE worker budget remains3600 (not increased).
+
+  systemd-run --user --collect --unit=ara-current-population797-inherited796-parent-20261008-01.service --slice=app.slice --property=Type=exec --property=RuntimeMaxSec=4200 --property=TimeoutStopSec=10 --property=KillMode=control-group --property=StandardOutput=append:/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-inherited796-parent-service-20261008-01.log --property=StandardError=inherit --working-directory=/home/wangwy/openproject/ara_dsa_signoff_integration /usr/bin/env PYTHONPATH=/tmp/vsmul797-host-deps /usr/bin/python3 -B /home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/report_population797_inherited796.py run-reviewed --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-inherited796-agent-20261008-01 --seal 4145a211520006ec00b04c6ba18ffdf1acdd700bf761774c0fad69bc523a1fc0 --parent-reviewed-seal 4145a211520006ec00b04c6ba18ffdf1acdd700bf761774c0fad69bc523a1fc0
+
+The worker performs check, starts the frozen five-stage DVE report, verifies
+the native outputs, and writes qualification.json. Parent should confirm real
+DVE progress once, then inspect after completion; do not repeatedly poll a
+long-running global EDA report.
+
+Parent native verification after completed report:
+  PYTHONPATH=/tmp/vsmul797-host-deps python3 -B verification/coverage/report_population797_inherited796.py verify --output /home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/current-population797-inherited796-agent-20261008-01 --seal 4145a211520006ec00b04c6ba18ffdf1acdd700bf761774c0fad69bc523a1fc0
+
+Toggle counts read-only findings:
+  verification/coverage/REPORT797_TOGGLE_COUNTS_READONLY_20261008.txt
+Installed Show Ratio exists but historical actual763 getters still yielded
+percentages. Existing796 exports do not provide Covered/Total. No verified
+getter/counts currently establish an exact80 budget; do not infer from raw bits.

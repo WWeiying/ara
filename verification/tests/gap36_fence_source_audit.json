@@ -1,0 +1,54 @@
+{
+  "case": "app:fence_t_gap36_smoke",
+  "status": "SOURCE_REVIEW_ONLY_NOT_DUT_PASS",
+  "contract": "CVA6 custom FENCE.T architectural identity at PC+4, not a ratified standard ISA model. Independent expected register patterns, CSR settings and memory arithmetic; no observed RTL values used as expected data.",
+  "precheck": "Compile plus static linked-ELF audit and negative audit mutations only. Neither Spike nor VCS is run. No NOP replacement binary or hardware-instruction golden is produced.",
+  "profile": {
+    "entry": "Shared crt0 calls rvtest_init in M. Both FENCE.T sites execute there, before the CRT's MRET to main. Machine CSR checks immediately after each probe also enforce M execution.",
+    "controls": "satp=Bare; mie=0; mstatus MIE/MPIE/MPRV/MPV/VS/MPP=0 and FS=Dirty; medeleg=mideleg=0; FENCE_T_PAD(0x7c3)=0; FENCE_T_SEL(0x7c4)=0. Fresh simulation boot, time_irq tied zero. PAD CSR write alone does not clear an already running pad counter, so arbitrary live-system entry is out of scope.",
+    "accelerator": "Fresh reset and no RVV/QBS/AKV instructions anywhere in this ELF. VS=Off throughout probes. No accelerator work may precede entry from a resident loader. FENCE.T is NOT connected to the accelerator store barrier; do not use this case to claim draining in-flight accelerator traffic.",
+    "csr": "14 stable CSR values compared before and after each fence: mstatus, mie, satp, mtvec, medeleg, mideleg, mscratch, sscratch, mcounteren, scounteren, fcsr, PAD, SEL, mepc. mstatus uses a pre-fence WARL baseline with mandatory control-bit checks; counters, mip and FENCE_T_CEIL are intentionally excluded.",
+    "registers": "All x0-x31 and f0-f31 captured and checked each round. SP has a valid dedicated aligned stack; x31 is the snapshot address; other GPR and all FPR patterns differ by round and register. FPR comparisons are raw 64-bit bits, not numerical FP equality. Original caller GPR/FPR state including RA/SP/GP/TP and callee-saved registers is restored by assembly before returning to C.",
+    "pc": "Real 0x0000000b at two distinct static sites. First PC+4 instruction saves x30 before clobber; PC+8 AUIPC captures its exact address. Snapshot slots are poisoned first. Skipping PC+4 leaves x30 poison; wrong AUIPC address fails exact comparison. Static ELF audit binds both addresses and instruction words.",
+    "memory": "64 aligned words (512 bytes) initialized then changed by scalar loads, stores, taken/not-taken branches. Independently recomputed sum and all words checked. Two cache guards, two snapshot guards and all 64 seed words checked after each fence.",
+    "traps": "Zero traps accepted. Direct mtvec handler captures cause/EPC/TVAL/mstatus, switches to dedicated emergency stack and reports FAIL with nonzero EOC. No skip-and-resume handler and no illegal-instruction emulation.",
+    "pass": "Exactly two rounds (completion mask 3), exactly 458 checks, zero failures, unique exact summary and PASS marker, successful hardware EOC, and no unexpected trap. Round two begins only after round one passes. No progress or recovery into boot cannot be counted as PASS."
+  },
+  "source_audit": "Two real custom0 FENCE.T instructions; M/Bare/IRQoff/PAD0, scalar-only fresh boot, 458 fixed checks over two rounds. Static/ELF precheck only, NO Spike or DUT PASS. See gap36_fence_source_audit.json. Architectural identity alone cannot distinguish a hardware NOP: later admission requires exact fence/resume commits AND controller microreset FSM activity.",
+  "rationale": "Reach controller's normal IDLE -> FLUSH_DCACHE -> DRAIN_REQS -> PAD -> RST_UARCH -> IDLE path twice, plus FENCE_T decode/commit, pad zero and reset-PC restart, while checking scalar architectural state survives. Do not claim the three external-reset-only arcs or infer a DVE percentage from raw bits.",
+  "targets": [
+    "ara_tb.dut.i_ara_soc.i_system.i_ariane.controller_i",
+    "ara_tb.dut.i_ara_soc.i_system.i_ariane.commit_stage_i",
+    "ara_tb.dut.i_ara_soc.i_system.i_ariane.csr_regfile_i"
+  ],
+  "post_dut_admission": [
+    "Runner selfcheck+trace-audit must pass and the exact 458-check summary must appear once; validate_log in build_gap36_fence.py can independently check UART text.",
+    "Commit trace must contain each audited fence PC with instruction 0x0000000b exactly once and its first post-fence store at PC+4, in order. Duplicate boot/probe execution is not accepted.",
+    "Require controller FSM state/arc evidence beyond IDLE, including FLUSH_DCACHE, DRAIN_REQS, PAD, RST_UARCH and normal return to IDLE; do not admit a NOP-like implementation from UART identity alone. Existing raw shape has 5 states + 8 arcs (13 points), baseline 0x400 only IDLE. Expected normal reachable union is 10/13 RAW points, not a measured result or DVE denominator.",
+    "If trace/checker bookkeeping resets with scalar microreset, investigate that separately; do not change this frozen test or weaken the checker to obtain a pass."
+  ],
+  "rtl_navigation_only": [
+    "core/decoder.sv:1651 custom0 FENCE_T; last-stage accelerator override:1678. hardware/src/cva6_accel_first_pass_decoder.sv:152 uses QbsOpcodeCustom2; hardware/include/qbs_pkg.sv:21 is 0x5b, not 0x0b.",
+    "core/commit_stage.sv:231 requires no_st_pending_i; cva6.sv:1133 includes WT write buffer empty.",
+    "core/controller.sv:269 saves pc_commit+4; normal FSM:338-380; pad loading:390; reset-only transition block:415 onward.",
+    "core/cva6.sv:696-701 separates microreset; frontend boot restart:721-722; CSR global reset:1190; issue_read_operands GPR/FPR reset uses global rst_ni, not rst_uarch_ni.",
+    "core/cva6.sv:1627 accelerator global reset, :1646 barrier only fence/fence.i; hardware/src/ara_system.sv:356 Ara global reset, time_irq tied zero:184."
+  ],
+  "compile_manifest": "verification/out/repaired-aligned-build-20260930-01/sim/vcs_source_manifest.json",
+  "pinned_rtl": [
+    "hardware/deps/cva6/core/decoder.sv",
+    "hardware/deps/cva6/core/controller.sv",
+    "hardware/deps/cva6/core/commit_stage.sv",
+    "hardware/deps/cva6/core/cva6.sv",
+    "hardware/deps/cva6/core/csr_regfile.sv",
+    "hardware/deps/cva6/core/issue_stage.sv",
+    "hardware/deps/cva6/core/issue_read_operands.sv",
+    "hardware/deps/cva6/core/acc_dispatcher.sv",
+    "hardware/src/cva6_accel_first_pass_decoder.sv",
+    "hardware/src/ara_system.sv",
+    "hardware/include/qbs_pkg.sv"
+  ],
+  "timeout_s": 300,
+  "budget": "Two bounded probes, 128 warm-loop iterations total, 458 checks and only two success UART lines. 300 seconds is a conservative scheduling budget, not a measured latency or completion guarantee.",
+  "not_claimed": "Spike compatibility, architectural hardware PASS, speculative-security proof, constant execution time, arbitrary outstanding accelerator quiescence, LR/SC reservations, S/U operation, nonzero padding, external-reset arcs, cache miss counts or measured coverage gains."
+}

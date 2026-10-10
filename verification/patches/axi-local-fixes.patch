@@ -1,0 +1,92 @@
+diff --git a/src/axi_burst_splitter_gran.sv b/src/axi_burst_splitter_gran.sv
+index 2ae847a4d0f625c0f9887af48a635f1be7fb3e22..e30923ed26211dfba754710f9df0bba25b378e74 100644
+--- a/src/axi_burst_splitter_gran.sv
++++ b/src/axi_burst_splitter_gran.sv
+@@ -106,7 +106,7 @@ module axi_burst_splitter_gran #(
+       axi_pkg::len_t len, axi_pkg::len_t len_limit);
+ 
+     // if the splitter does not touch the transaction: allow it
+-    if (len >= len_limit) begin
++    if (len <= len_limit) begin
+       return 1'b1;
+ 
+     //
+diff --git a/src/axi_demux_id_counters.sv b/src/axi_demux_id_counters.sv
+index 7e8c88da58797a39fd6ab10e31fbe0e823fe7c07..b3dcb651ed58cebbd50d5abd7aa4b58e4f68422a 100644
+--- a/src/axi_demux_id_counters.sv
++++ b/src/axi_demux_id_counters.sv
+@@ -20,6 +20,7 @@ module axi_demux_id_counters #(
+   // the lower bits of the AXI ID that should be considered, results in 2**AXI_ID_BITS counters
+   parameter int unsigned AxiIdBits         = 2,
+   parameter int unsigned CounterWidth      = 4,
++  parameter int unsigned MaxTrans          = 2**CounterWidth - 1,
+   parameter type         mst_port_select_t = logic
+ ) (
+   input  logic                 clk_i,   // Clock
+@@ -124,8 +125,9 @@ module axi_demux_id_counters #(
+       .q_o        ( in_flight ),
+       .overflow_o ( overflow  )
+     );
+-    assign occupied[i] = |in_flight;
+-    assign cnt_full[i] = overflow | (&in_flight);
++    assign occupied[i] = |{overflow, in_flight};
++    // A simultaneous AR push and ATOP injection can advance the count by two.
++    assign cnt_full[i] = overflow | (in_flight >= cnt_t'(MaxTrans));
+ 
+     // holds the selection signal for this id
+     `FFLARN(mst_select_q[i], push_mst_select_i, push_en[i], '0, clk_i, rst_ni)
+diff --git a/src/axi_demux_simple.sv b/src/axi_demux_simple.sv
+index 3f854c14fe0888a3bc84968068efdea846fb1c03..e7f49e9aa400d59ba47bbc2e8b495c6b139b3112 100644
+--- a/src/axi_demux_simple.sv
++++ b/src/axi_demux_simple.sv
+@@ -66,7 +66,9 @@ module axi_demux_simple #(
+   input  axi_resp_t   [NoMstPorts-1:0]  mst_resps_i
+ );
+ 
+-  localparam int unsigned IdCounterWidth = cf_math_pkg::idx_width(MaxTrans);
++  // Include MaxTrans and the +2 delta from simultaneous AR/ATOP ID aliases.
++  localparam int unsigned IdCounterWidth =
++      (MaxTrans < 2) ? 2 : cf_math_pkg::idx_width(MaxTrans + 1);
+   typedef logic [IdCounterWidth-1:0] id_cnt_t;
+ 
+   // pass through if only one master port
+@@ -165,7 +167,7 @@ module axi_demux_simple #(
+         // An AW can be handled if `i_aw_id_counter` and `i_counter_open_w` are not full.  An ATOP that
+         // requires an R response can be handled if additionally `i_ar_id_counter` is not full (this
+         // only applies if ATOPs are supported at all).
+-        if (!aw_id_cnt_full && (w_open != {IdCounterWidth{1'b1}}) &&
++        if (!aw_id_cnt_full && (w_open < IdCounterWidth'(MaxTrans)) &&
+             (!(ar_id_cnt_full && slv_req_i.aw.atop[axi_pkg::ATOP_R_RESP]) ||
+              !AtopSupport)) begin
+           // There is a valid AW vector make the id lookup and go further, if it passes.
+@@ -210,6 +212,7 @@ module axi_demux_simple #(
+       axi_demux_id_counters #(
+         .AxiIdBits         ( AxiLookBits    ),
+         .CounterWidth      ( IdCounterWidth ),
++        .MaxTrans          ( MaxTrans       ),
+         .mst_port_select_t ( select_t       )
+       ) i_aw_id_counter (
+         .clk_i                        ( clk_i                          ),
+@@ -356,6 +359,7 @@ module axi_demux_simple #(
+       axi_demux_id_counters #(
+         .AxiIdBits         ( AxiLookBits    ),
+         .CounterWidth      ( IdCounterWidth ),
++        .MaxTrans          ( MaxTrans       ),
+         .mst_port_select_t ( select_t       )
+       ) i_ar_id_counter (
+         .clk_i                        ( clk_i                                       ),
+diff --git a/src/axi_to_detailed_mem.sv b/src/axi_to_detailed_mem.sv
+index da516938d760a0ed556e736e9e9a47fd54dac0f5..376a48f073fe0b3913f3d0fbaac5f7cc32242b68 100644
+--- a/src/axi_to_detailed_mem.sv
++++ b/src/axi_to_detailed_mem.sv
+@@ -505,8 +505,8 @@ module axi_to_detailed_mem #(
+     // Set active write banks based on strobe
+     assign meta_buf_bank_strb[i] = |meta_buf.strb[i*NumBytesPerBank +: NumBytesPerBank];
+     // Set active read banks based on size and address offset: (bank.end > addr) && (bank.start < addr+size)
+-    assign meta_buf_size_enable[i] = ((i*NumBytesPerBank + NumBytesPerBank) > (meta_buf.addr % DataWidth/8)) &&
+-                                     ((i*NumBytesPerBank) < ((meta_buf.addr % DataWidth/8) + 1<<meta_buf.size));
++    assign meta_buf_size_enable[i] = ((i*NumBytesPerBank + NumBytesPerBank) > (meta_buf.addr % (DataWidth/8))) &&
++                                     ((i*NumBytesPerBank) < ((meta_buf.addr % (DataWidth/8)) + (1<<meta_buf.size)));
+   end
+   assign resp_b_err    = |(m2s_resp.err    &  meta_buf_bank_strb);   // Ensure only active banks are used (strobe)
+   assign resp_b_exokay = &(m2s_resp.exokay | ~meta_buf_bank_strb) & meta_buf.lock;   // Ensure only active banks are used (strobe)

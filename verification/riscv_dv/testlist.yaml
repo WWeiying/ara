@@ -217,6 +217,46 @@
     +no_csr_instr=1
   rtl_test: core_base_test
 
+- test: ara_dsa_rvv1_short_control_cross
+  description: Bounded mixed scalar/RVV stream emphasizing control and vtype changes
+  iterations: 20
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=2
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +dist_control_mode=1
+    +dist_csr=20
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_short_memory_cross
+  description: Bounded indexed/strided memory and restart-state cross stress
+  iterations: 20
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,4
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
 - test: ara_dsa_rvv1_nightly
   description: Long mixed RVV regression intended for broad multi-seed overnight checking
   iterations: 50
@@ -236,4 +276,205 @@
     +boot_mode=m
     +tvec_alignment=8
     +no_csr_instr=1
+  rtl_test: core_base_test
+
+
+# Bounded coverage aliases: only instr_cnt differs from each source profile.
+
+- test: ara_dsa_rvv1_short_memory_cross_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_short_memory_cross
+  iterations: 20
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,4
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_short_control_cross_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_short_control_cross
+  iterations: 20
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=2
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +dist_control_mode=1
+    +dist_csr=20
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_arithmetic_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_arithmetic
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_load_store_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_load_store
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_LFSR
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,10
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_integer_stress_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_integer_stress
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_fp32_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_fp32
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64f
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_fp64_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_fp64
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_floating_point=1
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64d
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_vtype_churn_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_vtype_churn
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +dist_control_mode=1
+    +dist_csr=20
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_load_store_slide_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_load_store_slide
+  iterations: 10
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +vreg_ls_index_init=LS_INDEX_INIT_SLIDE
+    +enable_vstart_randomisation=1
+    +directed_instr_0=riscv_vector_load_store_instr_stream,10
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=1
+  rtl_test: core_base_test
+
+- test: ara_dsa_rvv1_smoke_coverage300
+  description: Bounded 300-instruction alias of ara_dsa_rvv1_smoke
+  iterations: 1
+  gen_test: riscv_instr_base_test
+  gen_opts: >
+    +instr_cnt=300
+    +num_of_sub_program=0
+    +enable_vector_extension=1
+    +vector_instr_only=1
+    +vreg_init_method=RANDOM_VALUES_LOAD
+    +zvl_extension=1024
+    +zve_extension=zve64x
+    +no_fence=1
+    +no_branch_jump=1
+    +boot_mode=m
+    +tvec_alignment=8
+    +no_csr_instr=0
   rtl_test: core_base_test

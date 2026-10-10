@@ -6,15 +6,85 @@
 #         Basile Bougenot <bbougenot@student.ethz.ch>
 
 rv64uv_sc_tests = vaadd \
+                  vgap80_uniform16 \
+                  vgap80_uniform32 \
+                  vgap79_add16 \
+                  vgap79_add32 \
+                  vgap79_add64 \
+                  vgap79_mul16 \
+                  vgap79_mul32 \
+                  vgap79_mul64 \
+                  vgap79_wide16 \
+                  vgap79_wide32 \
+                  vgap78_add16 \
+                  vgap78_add32 \
+                  vgap78_sub16 \
+                  vgap78_sub32 \
+                  vgap77_onehot16 \
+                  vgap77_onehot32 \
+                  vgap77_dense16 \
+                  vgap77_dense32 \
+                  vgap76_mul16 \
+                  vgap76_mul32 \
+                  vgap76_add16 \
+                  vgap76_add32 \
+                  vgap76_sub16 \
+                  vgap76_sub32 \
+                  vgap76_red16 \
+                  vgap76_red32 \
+                  vgap75_ext16_f2 \
+                  vgap75_ext32_f4 \
+                  vgap75_ext64_f2 \
+                  vgap75_ext64_f4 \
+                  vgap75_ext64_f8 \
+                  vgap75_red16 \
+                  vgap75_red32 \
+                  vgap75_red64 \
+                  linux_csr_gap33 \
+                  vcoverage_gap33_e8_m1 \
+                  vcoverage_gap33_e8_m2 \
+                  vcoverage_gap33_e8_m4 \
+                  vcoverage_gap33_e8_m8 \
+                  vcoverage_gap33_e16_m1 \
+                  vcoverage_gap33_e16_m2 \
+                  vcoverage_gap33_e16_m4 \
+                  vcoverage_gap33_e16_m8 \
+                  vcoverage_gap33_e32_m1 \
+                  vcoverage_gap33_e32_m2 \
+                  vcoverage_gap33_e32_m4 \
+                  vcoverage_gap33_e32_m8 \
+                  vcoverage_gap33_e64_m1 \
+                  vcoverage_gap33_e64_m2 \
+                  vcoverage_gap33_e64_m4 \
+                  vcoverage_gap33_e64_m8 \
                   vaaddu\
                   vasub \
                   vasubu \
                   vaverage_matrix \
                   vfp_vstart_edges \
+                  linux_state_prereq \
+                  vector_misaligned_trap \
+                  linux_vector_context \
+                  linux_mmu_relocate \
+                  stvec_readback \
+                  sv39_state_prereq \
+                  trap_state_prereq \
                   vdiv_vstart_edges \
                   vmask_carry_tail_edges \
+                  vmsbc_e64_known \
                   vmask_compare_edges \
+                  vmask_dest_overlap_illegal \
+                  vregister_group_illegal \
                   vmask_logical_matrix \
+                  vpolicy_masked_edges \
+                  vmasked_indexed_alignment \
+                  vmasked_indexed_store_alignment \
+                  vindexed_fault_vstart \
+                  vstore_axi_error \
+                  vstore_axi_error_bursts \
+                  vstore_lookahead \
+                  vseg_indexed_fault_source \
+                  vpolicy_type_matrix \
                   vmask_mem_emul_edges \
                   vmask_scalar_handoff \
                   vid_queue_edges \
@@ -43,6 +113,8 @@ rv64uv_sc_tests = vaadd \
                   vnclipu \
                   vnclip_edges \
                   vadd \
+                  vadd_coverage_smoke \
+                  vfpu_coverage_smoke \
                   vsub \
                   vrsub \
                   vwaddu \
@@ -140,6 +212,7 @@ rv64uv_sc_tests = vaadd \
                   vfredosum \
                   vfredmin \
                   vfredmax \
+                  vfredmax_boundary \
                   vfwredusum \
                   vfwredosum \
                   vfclass \
@@ -155,8 +228,12 @@ rv64uv_sc_tests = vaadd \
                   vmfgt \
                   vmfge \
                   vfcvt \
+                  vec_fp_csr_order \
+                  vfdiv_mask_flags \
                   vfwcvt \
+                  vfwcvt_int8 \
                   vfncvt \
+                  vfncvt_int8 \
                   vmand \
                   vmnand \
                   vmandnot \
@@ -168,6 +245,7 @@ rv64uv_sc_tests = vaadd \
                   vslideup \
                   vslidedown \
                   vslide1up \
+                  vslide1up_vredand \
                   vfslide1up \
                   vslide1down \
                   vfslide1down \

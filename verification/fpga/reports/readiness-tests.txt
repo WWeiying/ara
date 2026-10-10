@@ -1,0 +1,24 @@
+test_absent_sysfs_not_evidence_of_absent_board (test_fpga_readiness.ReadinessTests) ... ok
+test_all_files_available_is_still_not_signoff (test_fpga_readiness.ReadinessTests) ... ok
+test_bad_manifest_and_empty_payload_unknown (test_fpga_readiness.ReadinessTests) ... ok
+test_cli_rejects_outside_scope_and_symlink_parent (test_fpga_readiness.ReadinessTests) ... ok
+test_cli_writes_json_exclusively_and_exits_nonzero (test_fpga_readiness.ReadinessTests) ... ok
+test_custom_runtime_gates_independent_of_linux_markers (test_fpga_readiness.ReadinessTests) ... ok
+test_export_revision_is_content_not_acceptance (test_fpga_readiness.ReadinessTests) ... ok
+test_fifo_not_opened (test_fpga_readiness.ReadinessTests) ... ok
+test_file_replaced_while_inspecting_is_unknown (test_fpga_readiness.ReadinessTests) ... ok
+test_known_artifact_problems_require_exact_identity (test_fpga_readiness.ReadinessTests) ... ok
+test_marker_and_completed_audit_are_not_bitstreams (test_fpga_readiness.ReadinessTests) ... ok
+test_missing_is_not_unknown_or_pass (test_fpga_readiness.ReadinessTests) ... ok
+test_out_of_tree_input_not_read (test_fpga_readiness.ReadinessTests) ... ok
+test_permission_error_not_missing (test_fpga_readiness.ReadinessTests) ... ok
+test_regular_artifact_hash_and_bounds (test_fpga_readiness.ReadinessTests) ... ok
+test_scan_bound_is_unknown_not_missing (test_fpga_readiness.ReadinessTests) ... ok
+test_symlink_files_and_directories_not_followed (test_fpga_readiness.ReadinessTests) ... ok
+test_tools_are_metadata_only_and_directory_is_not_a_tool (test_fpga_readiness.ReadinessTests) ... ok
+test_uart_only_metadata_usb_only_allowlisted_attributes (test_fpga_readiness.ReadinessTests) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.103s
+
+OK

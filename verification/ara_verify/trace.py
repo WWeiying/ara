@@ -14,9 +14,19 @@ def is_vector_instruction(instruction: int) -> bool:
     funct3 = (instruction >> 12) & 0x7
     if opcode == 0x57:
         return True
-    # Opcodes 0x07 and 0x27 are shared with scalar FP loads/stores.
-    if opcode in {0x07, 0x27} and funct3 not in {0x2, 0x3}:
+    # QBS and AKV use custom-2 and are offloaded over the same CVXIF path.
+    if opcode == 0x5B:
         return True
+    # Mirror CVA6's vector-memory first-pass decode. These opcodes are also
+    # used by scalar FP loads/stores, including FP16 (width 001).
+    if opcode in {0x07, 0x27}:
+        mew = (instruction >> 28) & 0x1
+        return (mew, funct3) in {
+            (0, 0), (0, 5), (0, 6), (0, 7),
+            (1, 0), (1, 5), (1, 6), (1, 7),
+        }
+    if opcode == 0x2F:
+        return funct3 in {0, 5, 6, 7}
     # CVA6 also offloads accesses to the architected vector CSRs over CVXIF.
     # These participate in the same request/retire ordering check even though
     # their opcode is SYSTEM rather than a vector opcode.

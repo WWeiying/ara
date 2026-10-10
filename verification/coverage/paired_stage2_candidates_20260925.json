@@ -1,0 +1,28 @@
+{
+  "frozen_sources": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/frozen_sources",
+  "paired_manifest": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/frozen_sources/paired_manifest.json",
+  "archived_runner": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/frozen_sources/run_real_dut_case.archived.sh",
+  "cases": [
+    {
+      "name": "q4_K_prefill_n32_m4",
+      "source_kind": "uvm",
+      "source_result": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/q4_K_prefill_n32_m4/qbs/uvm_result.json",
+      "term_cycles": 250000,
+      "timeout_s": 10800
+    },
+    {
+      "name": "q8_0",
+      "source_kind": "uvm",
+      "source_result": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/q8_0/qbs/uvm_result.json",
+      "term_cycles": 100000,
+      "timeout_s": 7200
+    },
+    {
+      "name": "akv_v2",
+      "source_kind": "uvm",
+      "source_result": "verification/out/integrated-final-qbs-akv-pairs-20260925-01/akv_v2/akv/uvm_result.json",
+      "term_cycles": 100000,
+      "timeout_s": 7200
+    }
+  ]
+}

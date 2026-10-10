@@ -33,6 +33,7 @@
     logic                              load_complete;                        \
     logic [4:0]                        fflags;                               \
     logic                              fflags_valid;                         \
+    logic                              fp_csr_busy;                          \
     logic                              inval_valid;                          \
     logic [63:0]                       inval_addr;                           \
   } accelerator_resp_t;
@@ -57,13 +58,19 @@
 `define CVA6_INTF_TYPEDEF_CVA6_TO_ACC(cva6_to_acc_t, accelerator_req_t, acc_mmu_resp_t) \
   typedef struct packed {                                                               \
     accelerator_req_t acc_req;                                                          \
+    accelerator_req_t vset_preview_req;                                                 \
     logic             acc_mmu_en;                                                       \
+    logic             load_prepare_valid;                                               \
+    logic [63:0]      load_prepare_addr;                                                 \
+    logic             load_prepare_safe;                                                \
+    logic             load_prepare_flush;                                               \
     acc_mmu_resp_t    acc_mmu_resp;                                                     \
   } cva6_to_acc_t;
 
 `define CVA6_INTF_TYPEDEF_ACC_TO_CVA6(acc_to_cva6_t, accelerator_resp_t, acc_mmu_req_t) \
   typedef struct packed {                                                               \
     accelerator_resp_t acc_resp;                                                        \
+    accelerator_resp_t vset_preview_resp;                                               \
     acc_mmu_req_t      acc_mmu_req;                                                     \
   } acc_to_cva6_t;
 
@@ -87,4 +94,3 @@
     logic gva  ;                                               \
     logic valid;                                               \
   } exception_t;
-

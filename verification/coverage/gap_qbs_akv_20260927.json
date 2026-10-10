@@ -1,0 +1,1234 @@
+{
+  "schema_version": 1,
+  "purpose": "Existing app candidates absent from extension-01; functional-gap stimuli, not claims that corresponding DVE bins are unhit.",
+  "status": "STATIC_SELECTION_ONLY_NOT_SIMULATED",
+  "previous_plan": "verification/out/vcs-dve-extension-20260927-01/plan.json",
+  "required_configuration": {
+    "nr_lanes": 4,
+    "vlen": 1024,
+    "sim_l2_bytes": 2097152,
+    "ram_base": "0x80000000",
+    "ram_end_exclusive": "0x80200000",
+    "qbs": true,
+    "akv": true,
+    "akv_v2": true
+  },
+  "image_provenance": {
+    "source_manifest": "verification/out/vcs-dve-coverage-20260927-01/sim/vcs_source_manifest.json",
+    "source_manifest_sha256": "0e1a37c04fba2ae53cb802676e71eab3b113bb5190e2c6e9f5268af28eb9e496",
+    "simv": "verification/out/vcs-dve-coverage-20260927-01/sim/simv",
+    "simv_sha256": "7f2c399f99e30cb7a5a96965190e968a6c63ad5d6240989721e130ca0638f5a9",
+    "requirement": "Parent must retain and validate the complete previous-plan image (including simv.daidir), compiled-source and checker identities; do not relabel the image from current source snapshots."
+  },
+  "tests": [
+    "app:llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+    "app:llama_qwen25_q3k_decode_attn_q_qbs",
+    "app:llama_qwen25_q5k_decode_attn_q_qbs",
+    "app:llama_qwen25_q6k_decode_attn_q_qbs",
+    "app:llama_qwen25_q8_0_decode_attn_q_qbs",
+    "app:llama_qwen25_q4_0_decode_attn_q_qbs",
+    "app:llama_qwen25_q5_0_decode_attn_q_qbs",
+    "app:llama_qwen25_iq4_nl_decode_attn_q_qbs",
+    "app:llama_qwen25_decode_attn_q_qbs_ctx2",
+    "app:llama_qwen25_decode_attn_q_qbs_chain3_operation",
+    "app:llama_qwen25_decode_attn_q_qbs_chain3_crossop",
+    "app:llama_qwen25_shape_decode_n32_qbs_prebuilt",
+    "app:akv_portability_smoke",
+    "app:akv_d256_reuse_smoke",
+    "app:llama_qwen25_prefill_attn_q_qbs_m8"
+  ],
+  "build_targets": [
+    "llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+    "llama_qwen25_q3k_decode_attn_q_qbs",
+    "llama_qwen25_q5k_decode_attn_q_qbs",
+    "llama_qwen25_q6k_decode_attn_q_qbs",
+    "llama_qwen25_q8_0_decode_attn_q_qbs",
+    "llama_qwen25_q4_0_decode_attn_q_qbs",
+    "llama_qwen25_q5_0_decode_attn_q_qbs",
+    "llama_qwen25_iq4_nl_decode_attn_q_qbs",
+    "llama_qwen25_decode_attn_q_qbs_ctx2",
+    "llama_qwen25_decode_attn_q_qbs_chain3_operation",
+    "llama_qwen25_decode_attn_q_qbs_chain3_crossop",
+    "llama_qwen25_shape_decode_n32_qbs_prebuilt",
+    "akv_portability_smoke",
+    "akv_d256_reuse_smoke",
+    "llama_qwen25_prefill_attn_q_qbs_m8"
+  ],
+  "builds_executed": 0,
+  "selection_policy": {
+    "run_first": "14 fixed-workload candidates; optionally schedule the larger M8 app last",
+    "rebuild": "Not needed for these observed ELFs. If rebuilding, only these new targets, serialize shared runtime builds, then recheck ELF data/layout and regenerate ELF identities before freezing.",
+    "isolation": "One app per existing case-isolated VCS invocation; never carry QBS context from ctx2 into another app.",
+    "pass": "Require actual successful simulator/program completion, existing fail/fatal/trap checks and the complete app-specific selfcheck. No PASS-by-substring, no Spike differential claim for custom QBS/AKV instructions."
+  },
+  "oracles": {
+    "qbs_captured_golden": {
+      "source": "apps/llama_qwen25_real/common/qbs_benchmark_impl.h:532",
+      "generator": "apps/llama_qwen25_real/common/generate_case.py:213",
+      "checks": "All outputs of every operation against captured output_f32 sliced by case.json, atol=0.002 + rtol=0.002*abs(reference), data size validation and QBS_STATUS_OK. Require the matching QBS_REAL_BENCH case/shape/operation fields.",
+      "elf_data_validation": "Read-only exact byte search of repacked R4 weights, activation slice and golden slice in each observed ELF; offsets and SHA256 recorded below.",
+      "limits": "Existing comparator does not explicitly reject NaN; no claim of comprehensive FP exceptional-value checking. Captured golden is independent of QBS RTL, but this is not instruction-by-instruction Spike comparison. Repeated-operation tests replay the same captured weights, not different real operators."
+    },
+    "akv_portability": {
+      "source": "apps/akv_portability_smoke/main.c:23",
+      "require": [
+        "AKV_PORTABLE cases 0..6 each status=0 errors=0",
+        "AKV_PORTABLE mixed_nonzero errors=0",
+        "AKV native portability smoke: PASS",
+        "successful program completion"
+      ],
+      "checks": "64 outputs per case against analytic 0/1/2 expectations; final nonconstant data against akv_attention_execute_v2_with_features_reference, absolute tolerance 0.004 with NaN-rejecting predicate.",
+      "limits": "Scalar reference shares plan/feature definitions; independent numerical execution, not a completely separate specification."
+    },
+    "akv_d256_bit_exact": {
+      "source": "apps/akv_d256_reuse_smoke/main.c:88",
+      "reference": "apps/akv_d256_reuse_smoke/native.S:1",
+      "require": [
+        "AKV_D256_REUSE cases 0..7 each errors=0",
+        "AKV D256 reuse smoke: PASS cases=8 bit_exact=1",
+        "AKV D256 online PV: PASS cases=8 bit_exact=1",
+        "successful program completion"
+      ],
+      "checks": "Whole score/accumulator buffers including sentinels compared bitwise; fflags compared; RVV memory reference bypasses AKV delivery and online reference uses C RVV intrinsics.",
+      "limits": "Panel4 exercise is conditional on capability; PASS alone does not prove panel4 was taken. Logical D256 maps to D128 descriptors, not native RTL D256."
+    }
+  },
+  "validation": {
+    "elf_load_range": "All selected ELF PT_LOAD memory ranges are inside 0x80000000..0x80200000; this is a static fit check, not proof of runtime bounds or stack high-water.",
+    "source_provenance": "Source hashes identify reviewed source at selection time; they are not a reconstructed historical build manifest for pre-existing ELFs.",
+    "no_existing_case_selected": true,
+    "no_vcs_started": true,
+    "no_rtl_checker_or_old_script_changes": true
+  },
+  "excluded": [
+    {
+      "test": "app:llama_qwen25_decode_ffn_gate_qbs",
+      "reason": "Observed ELF PT_LOAD end 0x8036baa8 exceeds 2MiB RAM."
+    },
+    {
+      "test": "app:llama_qwen25_prefill_ffn_gate_qbs",
+      "reason": "Observed ELF PT_LOAD end 0x8038bd38 exceeds 2MiB RAM."
+    },
+    {
+      "test": "app:llama_qwen25_small_qbs_akv",
+      "reason": "Near RAM limit (PT_LOAD end 0x801f17d8), larger mixed workload; prefer smaller independent stimuli."
+    },
+    {
+      "test": "app:llama_qwen25_q2k_decode_ffn_down_qbs",
+      "reason": "Choose the shorter 4-row version for the same Q2_K profile."
+    }
+  ],
+  "cases": [
+    {
+      "test": "app:llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+      "elf": "apps/bin/llama_qwen25_q2k_decode_ffn_down_4r_qbs",
+      "elf_sha256": "5ab001c726e5cc1eacb585df2a4b47f4d47616aea16cb7a15d2542c781ec60e0",
+      "elf_bytes": 44032,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489200,
+          "file_bytes": 5552,
+          "memory_bytes": 5552
+        },
+        {
+          "address": 2147489216,
+          "end": 2147516832,
+          "file_bytes": 27616,
+          "memory_bytes": 27616
+        },
+        {
+          "address": 2147516864,
+          "end": 2147522488,
+          "file_bytes": 5624,
+          "memory_bytes": 5624
+        }
+      ],
+      "load_end_hex": "0x800097b8",
+      "source": "apps/llama_qwen25_q2k_decode_ffn_down_4r_qbs/main.c",
+      "source_sha256": "f1a4d3188f4138005184f7cf0a2e2ff77bd6d2a66ca246434d35416d0cff6c9c",
+      "build_command": "make -C apps llama_qwen25_q2k_decode_ffn_down_4r_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 4864,
+        "rows": 4,
+        "inputs": 1,
+        "weight_type": "q2_K",
+        "k_blocks": 19,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "q2k_decode_ffn_down_4r_qbs",
+      "case_spec_sha256": "b1378bf0e9d9e812c1ce867f13ea5b165b5dd98b9f5cfb1fcc09b7711c37c7f1",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 16,
+          "sha256": "e82005f440317f9e51807766e723d45a1d57cb8c56c97c905f0f01276c1056e0",
+          "elf_offset": 36288
+        },
+        "activation": {
+          "bytes": 19456,
+          "sha256": "d1f54837a7ae6b6636771103bc64ebdc901a88f3aa02fe062f4aceb38abb97a9",
+          "elf_offset": 16832
+        },
+        "weight_r4": {
+          "bytes": 6384,
+          "sha256": "1e2721c7eb0fdd8b0d1fc87f25cca1e9614b5d58ffbb7aaef89169b9f6cb35cb",
+          "elf_offset": 10432
+        }
+      },
+      "capture_directory": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-q2k-20260923-03/capture/decode/operators/blk_0_ffn_down_weight",
+      "benchmark_defines": {},
+      "reason": "Q2_K/Q8_K, M1 N4 K4864 (19 blocks): shortest existing Q2_K slice; partial N32 tile and one complete R4 row group.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q2k_decode_ffn_down_4r_qbs",
+        "k": 4864,
+        "rows": 4,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q3k_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q3k_decode_attn_q_qbs",
+      "elf_sha256": "78dea3a173a1efd99c9b57d1a442227d7ac8692be588ba9b4b6f7bd9f091d461",
+      "elf_bytes": 191536,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489276,
+          "file_bytes": 5628,
+          "memory_bytes": 5628
+        },
+        {
+          "address": 2147489280,
+          "end": 2147667152,
+          "file_bytes": 177872,
+          "memory_bytes": 177872
+        },
+        {
+          "address": 2147667200,
+          "end": 2147669992,
+          "file_bytes": 2792,
+          "memory_bytes": 2792
+        }
+      ],
+      "load_end_hex": "0x8002d7e8",
+      "source": "apps/llama_qwen25_q3k_decode_attn_q_qbs/main.c",
+      "source_sha256": "9a767b71b98cc1042649e40de7ec11802203c7b82f5420d57bc6efa731fdf8f7",
+      "build_command": "make -C apps llama_qwen25_q3k_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "weight_type": "q3_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "q3k_decode_attn_q_qbs",
+      "case_spec_sha256": "b7351b45748c38c83f4d15b670beef317a21b5d8093e655545485514fb079b5b",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 1024,
+          "sha256": "89ba0bbd7ea67fc2aa16b9f2448e0dc06b64d59e04eadb3cefcc507f563b394c",
+          "elf_offset": 185600
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "e8693504ffa3111a370e3aaa75d4ab5ab67e730c393ee6f14d0cd0f1dbf671d3",
+          "elf_offset": 179456
+        },
+        "weight_r4": {
+          "bytes": 168960,
+          "sha256": "c7c2b3602554a025ded724553ceeb5dd7a46b5769ac7a8215b7b661933bde6b1",
+          "elf_offset": 10496
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q3_k_m-real-formats-v2/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q3_K/Q8_K, M1 N256 K1536: packed 3-bit decode and subgroup scales; eight bounded output tiles.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q3k_decode_attn_q_qbs",
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q5k_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q5k_decode_attn_q_qbs",
+      "elf_sha256": "5ca97ca761b742f42b724cd7d10c735b4c8f251255e88010a4bde0404c67b17b",
+      "elf_bytes": 292912,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489274,
+          "file_bytes": 5626,
+          "memory_bytes": 5626
+        },
+        {
+          "address": 2147489280,
+          "end": 2147768528,
+          "file_bytes": 279248,
+          "memory_bytes": 279248
+        },
+        {
+          "address": 2147768576,
+          "end": 2147771368,
+          "file_bytes": 2792,
+          "memory_bytes": 2792
+        }
+      ],
+      "load_end_hex": "0x800463e8",
+      "source": "apps/llama_qwen25_q5k_decode_attn_q_qbs/main.c",
+      "source_sha256": "0d1a728406720476f18145f9e3cf003f016bdd1fda2bcc306808b03c3283556f",
+      "build_command": "make -C apps llama_qwen25_q5k_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "weight_type": "q5_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "q5k_decode_attn_q_qbs",
+      "case_spec_sha256": "b28aae4f70883f2ea17acda4abb9440748e461cb5356e175f5daca88e6edd90c",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 1024,
+          "sha256": "e8ee702ef0d6704f173bfeecdeb612dfd9858ff0c3dfd7247d254c2022ffb7ca",
+          "elf_offset": 286976
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "90b843a58e7aa728a4f4bbc3b227e680702335aaa13c7d07f143be2adc50d138",
+          "elf_offset": 280832
+        },
+        "weight_r4": {
+          "bytes": 270336,
+          "sha256": "462b15817bac291e2476b3497508aaed5ab1a07686989705bcce87b6ec5f55c8",
+          "elf_offset": 10496
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q5_k_m-real-formats-v1/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q5_K/Q8_K, M1 N256 K1536: high-bit reconstruction and subgroup scales; eight output tiles.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q5k_decode_attn_q_qbs",
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q6k_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q6k_decode_attn_q_qbs",
+      "elf_sha256": "1060fbb1a94fd10a4705d0b51ce913f0dc6bb2c5d8cb1e273136a5a9fbea55ec",
+      "elf_bytes": 345200,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489282,
+          "file_bytes": 5634,
+          "memory_bytes": 5634
+        },
+        {
+          "address": 2147489344,
+          "end": 2147820816,
+          "file_bytes": 331472,
+          "memory_bytes": 331472
+        },
+        {
+          "address": 2147820864,
+          "end": 2147823656,
+          "file_bytes": 2792,
+          "memory_bytes": 2792
+        }
+      ],
+      "load_end_hex": "0x80053028",
+      "source": "apps/llama_qwen25_q6k_decode_attn_q_qbs/main.c",
+      "source_sha256": "004f541ece45b95e7dbe4952698b639cec6784e603893f23c60c0456d5d76bba",
+      "build_command": "make -C apps llama_qwen25_q6k_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "weight_type": "q6_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "q6k_decode_attn_q_qbs",
+      "case_spec_sha256": "c1cd5bf2ccd77dc8779a0baf5682371ed04c3530da22f1b54cb085b1b7c08231",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 1024,
+          "sha256": "7558ce987af76976c071ed405c4c655841bf0ab4a479a2cfdf02e7475cf3bda9",
+          "elf_offset": 339264
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "b4475ec946d765ce3c86538d98b5a55f3c0869829ad240c752b97210b130844c",
+          "elf_offset": 333120
+        },
+        "weight_r4": {
+          "bytes": 322560,
+          "sha256": "0bdcff50b1e0b8cbc4af0a05535294c79bff1da140c3f780a1ec88c1e982fd86",
+          "elf_offset": 10560
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q6_k-real-formats-v1/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q6_K/Q8_K, M1 N256 K1536: signed scale/high-bit reconstruction; eight output tiles.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q6k_decode_attn_q_qbs",
+        "k": 1536,
+        "rows": 256,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q8_0_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q8_0_decode_attn_q_qbs",
+      "elf_sha256": "60e6d6fd4c0a5913fadcacf696bf7e8222bfb7b14cff45e212fb71052f6119e7",
+      "elf_bytes": 262480,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147488816,
+          "file_bytes": 5168,
+          "memory_bytes": 5168
+        },
+        {
+          "address": 2147488832,
+          "end": 2147738896,
+          "file_bytes": 250064,
+          "memory_bytes": 250064
+        },
+        {
+          "address": 2147738944,
+          "end": 2147740936,
+          "file_bytes": 1992,
+          "memory_bytes": 1992
+        }
+      ],
+      "load_end_hex": "0x8003ed08",
+      "source": "apps/llama_qwen25_q8_0_decode_attn_q_qbs/main.c",
+      "source_sha256": "968d7fa2c003de3286de801c133b4770a5fdbc7cbdd397f28223c4ee8432a711",
+      "build_command": "make -C apps llama_qwen25_q8_0_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 896,
+        "rows": 256,
+        "inputs": 1,
+        "weight_type": "q8_0",
+        "k_blocks": 28,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_0"
+      },
+      "case_id": "q8_0_decode_attn_q_qbs",
+      "case_spec_sha256": "d927a76e23e52666df9f99cc7d4a4524968eb0dde05ca27c69d30567937143ff",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 1024,
+          "sha256": "bdd8c137f93e69d59f0322812a40d5730ec245099da30a261405a87e835e7cbb",
+          "elf_offset": 257344
+        },
+        "activation": {
+          "bytes": 3584,
+          "sha256": "925ecf5a90a8811fd27c89631595df7b9f68ac92571ef0b1d622c2ced9cb07a3",
+          "elf_offset": 253760
+        },
+        "weight_r4": {
+          "bytes": 243712,
+          "sha256": "42609cb7412815b4d7dd5ff9cc6e4c730f2e6e23e661a8f21f70820d791af94c",
+          "elf_offset": 10048
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-0.5b-q8_0-real-formats-v1/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q8_0/Q8_0, M1 N256 K896 (28 blocks): non-K activation profile and many short blocks.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q8_0_decode_attn_q_qbs",
+        "k": 896,
+        "rows": 256,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q4_0_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q4_0_decode_attn_q_qbs",
+      "elf_sha256": "1c4a1f493536a21bc8b550e03c4237ec94e2ddfb827887cbce055f17a9d7505a",
+      "elf_bytes": 47536,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147488476,
+          "file_bytes": 4828,
+          "memory_bytes": 4828
+        },
+        {
+          "address": 2147488512,
+          "end": 2147524176,
+          "file_bytes": 35664,
+          "memory_bytes": 35664
+        },
+        {
+          "address": 2147524224,
+          "end": 2147525992,
+          "file_bytes": 1768,
+          "memory_bytes": 1768
+        }
+      ],
+      "load_end_hex": "0x8000a568",
+      "source": "apps/llama_qwen25_q4_0_decode_attn_q_qbs/main.c",
+      "source_sha256": "2e499f2048ba3fed4118803e3099fc855f2e8b4b1fe3e6cae88b1290cfacc1a5",
+      "build_command": "make -C apps llama_qwen25_q4_0_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 32,
+        "inputs": 1,
+        "weight_type": "q4_0",
+        "k_blocks": 48,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_0"
+      },
+      "case_id": "q4_0_decode_attn_q_qbs",
+      "case_spec_sha256": "2e1a0ef73e0e1ec5f8b1f85036ac6e33b880b5d5acfddb963fdcfcd0a9b68fe5",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 128,
+          "sha256": "6183ed9067e9d242a8ef08ced8d47fc47c35cc180803eb31e5f8d1603f1446ae",
+          "elf_offset": 43520
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "6c32f8559fa961abe7f8b70ff4c865c57c63a344846a7d4675f28bcd28760878",
+          "elf_offset": 37376
+        },
+        "weight_r4": {
+          "bytes": 27648,
+          "sha256": "a1e8d50699434337b8171f407681d277a603c22a4575b7b9c7dc7cc5260d1f32",
+          "elf_offset": 9728
+        }
+      },
+      "capture_directory": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-q4-0-20260923-03/capture/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q4_0/Q8_0, M1 N32 K1536 (48 blocks): symmetric 4-bit non-K profile, one output tile.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q4_0_decode_attn_q_qbs",
+        "k": 1536,
+        "rows": 32,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_q5_0_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_q5_0_decode_attn_q_qbs",
+      "elf_sha256": "bea45725a3efd2595cf0306c981d951a36d142ea5fe17a0ba027ca53e48326c9",
+      "elf_bytes": 36368,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147488478,
+          "file_bytes": 4830,
+          "memory_bytes": 4830
+        },
+        {
+          "address": 2147488512,
+          "end": 2147513680,
+          "file_bytes": 25168,
+          "memory_bytes": 25168
+        },
+        {
+          "address": 2147513728,
+          "end": 2147514824,
+          "file_bytes": 1096,
+          "memory_bytes": 1096
+        }
+      ],
+      "load_end_hex": "0x800079c8",
+      "source": "apps/llama_qwen25_q5_0_decode_attn_q_qbs/main.c",
+      "source_sha256": "9471dc59da966e5110c868f1c568fb7ae16c8509fcae2bba2f16b7b23f9a0336",
+      "build_command": "make -C apps llama_qwen25_q5_0_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 896,
+        "rows": 32,
+        "inputs": 1,
+        "weight_type": "q5_0",
+        "k_blocks": 28,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_0"
+      },
+      "case_id": "q5_0_decode_attn_q_qbs",
+      "case_spec_sha256": "1b67907bcf88e42849c3943cf21b27f66f965d2740ecbb55e845bb37a326e1c1",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 128,
+          "sha256": "ac72adf4b76701b5492145a1808ab2c833a15167a5ae7357aab76df278988b24",
+          "elf_offset": 33024
+        },
+        "activation": {
+          "bytes": 3584,
+          "sha256": "e063b4dc0b16277fec03ab7144c489fa38e86bc1cc75f3ffcb0ad9440e57293f",
+          "elf_offset": 29440
+        },
+        "weight_r4": {
+          "bytes": 19712,
+          "sha256": "dc4a869fd11f48e88d806489f5ee51e5a6400fd5e8a9308c2f96e3fd4f9b111b",
+          "elf_offset": 9728
+        }
+      },
+      "capture_directory": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-q5-0-20260923-03/capture/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "Q5_0/Q8_0, M1 N32 K896 (28 blocks): non-K high-bit reconstruction, one output tile.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "q5_0_decode_attn_q_qbs",
+        "k": 896,
+        "rows": 32,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_iq4_nl_decode_attn_q_qbs",
+      "elf": "apps/bin/llama_qwen25_iq4_nl_decode_attn_q_qbs",
+      "elf_sha256": "f2c017691e19ec2841919962ec4b53c69f5b59ce01af9276da1dc8dde1550fdc",
+      "elf_bytes": 32784,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147488478,
+          "file_bytes": 4830,
+          "memory_bytes": 4830
+        },
+        {
+          "address": 2147488512,
+          "end": 2147510096,
+          "file_bytes": 21584,
+          "memory_bytes": 21584
+        },
+        {
+          "address": 2147510144,
+          "end": 2147511240,
+          "file_bytes": 1096,
+          "memory_bytes": 1096
+        }
+      ],
+      "load_end_hex": "0x80006bc8",
+      "source": "apps/llama_qwen25_iq4_nl_decode_attn_q_qbs/main.c",
+      "source_sha256": "a9903b7c5b43267f718180c8c6eed05c90767a1cbb8c35fb57b6658ea664df4c",
+      "build_command": "make -C apps llama_qwen25_iq4_nl_decode_attn_q_qbs config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 896,
+        "rows": 32,
+        "inputs": 1,
+        "weight_type": "iq4_nl",
+        "k_blocks": 28,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_0"
+      },
+      "case_id": "iq4_nl_decode_attn_q_qbs",
+      "case_spec_sha256": "d2c91db92b46eb5973d4f7390a17d1c0199881ea4749d9c3403407b7e6e924b3",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 128,
+          "sha256": "ab271b707785611db5597ae1873a7679579246238f9791332a1a321db51f4d6f",
+          "elf_offset": 29440
+        },
+        "activation": {
+          "bytes": 3584,
+          "sha256": "1018825d3e9f35161c62d05e6ca63c27633a80ac3b074aedc011808bd5b99dd1",
+          "elf_offset": 25856
+        },
+        "weight_r4": {
+          "bytes": 16128,
+          "sha256": "57709dbd16fd51cebb58b64206e2581e931c1c9ac64441d5df791391961e6867",
+          "elf_offset": 9728
+        }
+      },
+      "capture_directory": "/home/wangwy/openproject/ara_verification_archive/captures/qbs-format-closure-iq4-nl-20260923-03/capture/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "IQ4_NL/Q8_0, M1 N32 K896 (28 blocks): nonlinear weight lookup, one output tile.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "iq4_nl_decode_attn_q_qbs",
+        "k": 896,
+        "rows": 32,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_decode_attn_q_qbs_ctx2",
+      "elf": "apps/bin/llama_qwen25_decode_attn_q_qbs_ctx2",
+      "elf_sha256": "73bc3346bc490778cbb7b224ba907e88309589a2f7ba6109fc82a6d76a805595",
+      "elf_bytes": 76080,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489020,
+          "file_bytes": 5372,
+          "memory_bytes": 5372
+        },
+        {
+          "address": 2147489024,
+          "end": 2147552464,
+          "file_bytes": 63440,
+          "memory_bytes": 63440
+        },
+        {
+          "address": 2147552512,
+          "end": 2147554536,
+          "file_bytes": 2024,
+          "memory_bytes": 2024
+        }
+      ],
+      "load_end_hex": "0x800114e8",
+      "source": "apps/llama_qwen25_decode_attn_q_qbs_ctx2/main.c",
+      "source_sha256": "e89b18d96fb32749f9756bae12a860d4b65eedf617c4053209c19867bfff5e8e",
+      "build_command": "make -C apps llama_qwen25_decode_attn_q_qbs_ctx2 config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "weight_type": "q4_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "decode_attn_q_qbs_ctx2",
+      "case_spec_sha256": "67ed996345c7b4b4a7e2043cc9973dbc6aeb95bf9eb9a0e4f3d124133db94b44",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 256,
+          "sha256": "30782b04da86a3d3297a257af10ec6804ecf26eccb83cd23ace5abbff4f043f6",
+          "elf_offset": 71680
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1",
+          "elf_offset": 65536
+        },
+        "weight_r4": {
+          "bytes": 55296,
+          "sha256": "31a21dbd8f6e0ebe3d9065745b05e048b4237ed920bd22278c341a4292d62593",
+          "elf_offset": 10240
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {
+        "QBS_BENCH_ACTIVATION_CONTEXT": "1",
+        "QBS_BENCH_CONTEXT_KEEP_VALID": "1",
+        "QBS_BENCH_CONTEXT_GENERATION": "37"
+      },
+      "reason": "Q4_K/Q8_K, M1 N64 K1536: two tiles FILL then REUSE, generation 37, keep-valid; isolated process required.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "decode_attn_q_qbs_ctx2",
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 1,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_decode_attn_q_qbs_chain3_operation",
+      "elf": "apps/bin/llama_qwen25_decode_attn_q_qbs_chain3_operation",
+      "elf_sha256": "23a3622e1beab1ba63acc8060a6d4ee34ed7cb0b231f20d9ed61dbffb5b70b4e",
+      "elf_bytes": 77104,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489478,
+          "file_bytes": 5830,
+          "memory_bytes": 5830
+        },
+        {
+          "address": 2147489536,
+          "end": 2147552976,
+          "file_bytes": 63440,
+          "memory_bytes": 63440
+        },
+        {
+          "address": 2147553024,
+          "end": 2147555560,
+          "file_bytes": 2536,
+          "memory_bytes": 2536
+        }
+      ],
+      "load_end_hex": "0x800118e8",
+      "source": "apps/llama_qwen25_decode_attn_q_qbs_chain3_operation/main.c",
+      "source_sha256": "09504e457a229de613271d1a5ddbe3a3987f854d9deba606e7f8e1662391112e",
+      "build_command": "make -C apps llama_qwen25_decode_attn_q_qbs_chain3_operation config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "weight_type": "q4_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "decode_attn_q_qbs_chain3_operation",
+      "case_spec_sha256": "871f00b6ba4d934c8e23d1d5e75893e2015aa154b9f89bcc81615335429e7d52",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 256,
+          "sha256": "30782b04da86a3d3297a257af10ec6804ecf26eccb83cd23ace5abbff4f043f6",
+          "elf_offset": 72192
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1",
+          "elf_offset": 66048
+        },
+        "weight_r4": {
+          "bytes": 55296,
+          "sha256": "31a21dbd8f6e0ebe3d9065745b05e048b4237ed920bd22278c341a4292d62593",
+          "elf_offset": 10752
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {
+        "QBS_BENCH_ACTIVATION_CONTEXT": "1",
+        "QBS_BENCH_CONTEXT_GENERATION": "41",
+        "QBS_BENCH_OPERATIONS": "3"
+      },
+      "reason": "Q4_K/Q8_K, M1 N64 K1536: three operations, per-operation FILL then RELEASE, generation 41; three quantizations.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "decode_attn_q_qbs_chain3_operation",
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 3,
+        "cross_op_reuse": 0,
+        "activation_context": 1,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_decode_attn_q_qbs_chain3_crossop",
+      "elf": "apps/bin/llama_qwen25_decode_attn_q_qbs_chain3_crossop",
+      "elf_sha256": "a200fb647d286bee5a8f6c949d155d21628b779f287139701a705d259633a326",
+      "elf_bytes": 77104,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147489518,
+          "file_bytes": 5870,
+          "memory_bytes": 5870
+        },
+        {
+          "address": 2147489536,
+          "end": 2147552976,
+          "file_bytes": 63440,
+          "memory_bytes": 63440
+        },
+        {
+          "address": 2147553024,
+          "end": 2147555560,
+          "file_bytes": 2536,
+          "memory_bytes": 2536
+        }
+      ],
+      "load_end_hex": "0x800118e8",
+      "source": "apps/llama_qwen25_decode_attn_q_qbs_chain3_crossop/main.c",
+      "source_sha256": "5ff6cc2557880efead417d02062322e59a2b2e133a47aed33915cd92c3c93476",
+      "build_command": "make -C apps llama_qwen25_decode_attn_q_qbs_chain3_crossop config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "weight_type": "q4_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "decode_attn_q_qbs_chain3_crossop",
+      "case_spec_sha256": "997f12cc128746a55816f883d5c48295bba4ea594c4fe45880f6b04c9f860319",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 256,
+          "sha256": "30782b04da86a3d3297a257af10ec6804ecf26eccb83cd23ace5abbff4f043f6",
+          "elf_offset": 72192
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1",
+          "elf_offset": 66048
+        },
+        "weight_r4": {
+          "bytes": 55296,
+          "sha256": "31a21dbd8f6e0ebe3d9065745b05e048b4237ed920bd22278c341a4292d62593",
+          "elf_offset": 10752
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {
+        "QBS_BENCH_ACTIVATION_CONTEXT": "1",
+        "QBS_BENCH_CONTEXT_GENERATION": "41",
+        "QBS_BENCH_OPERATIONS": "3",
+        "QBS_BENCH_CROSS_OP_REUSE": "1"
+      },
+      "reason": "Q4_K/Q8_K, M1 N64 K1536: three operations, FILL then REUSE across operations then final RELEASE; one quantization.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "decode_attn_q_qbs_chain3_crossop",
+        "k": 1536,
+        "rows": 64,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 3,
+        "cross_op_reuse": 1,
+        "activation_context": 1,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:llama_qwen25_shape_decode_n32_qbs_prebuilt",
+      "elf": "apps/bin/llama_qwen25_shape_decode_n32_qbs_prebuilt",
+      "elf_sha256": "c15aecdb338fff15f52d052dd4ffe7aaa25158d2f54bf1675598d5ce46cbb031",
+      "elf_bytes": 48176,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147488940,
+          "file_bytes": 5292,
+          "memory_bytes": 5292
+        },
+        {
+          "address": 2147488960,
+          "end": 2147524624,
+          "file_bytes": 35664,
+          "memory_bytes": 35664
+        },
+        {
+          "address": 2147524672,
+          "end": 2147526632,
+          "file_bytes": 1960,
+          "memory_bytes": 1960
+        }
+      ],
+      "load_end_hex": "0x8000a7e8",
+      "source": "apps/llama_qwen25_shape_decode_n32_qbs_prebuilt/main.c",
+      "source_sha256": "0bf8bc5d929b4113e2cc5ebe70431eb47ae1c7cddbe38ab9f34bdbb96155bad8",
+      "build_command": "make -C apps llama_qwen25_shape_decode_n32_qbs_prebuilt config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 32,
+        "inputs": 1,
+        "weight_type": "q4_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "ROW_MAJOR",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "shape_decode_n32_qbs_prebuilt",
+      "case_spec_sha256": "8302a1a58029616c42610e9addfe7159b7536d2ded0cb11cf2511905698e2fe0",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 128,
+          "sha256": "9c29bd4234c6d8c1a159cae5e66072e09f3e8f2ce0b843b0f9c3d6b0ae962113",
+          "elf_offset": 43968
+        },
+        "activation": {
+          "bytes": 6144,
+          "sha256": "c053e6e62ba859c90be074c06c449fdc21117beb407e1afc864313cee39044f1",
+          "elf_offset": 37824
+        },
+        "weight_r4": {
+          "bytes": 27648,
+          "sha256": "d5cd42fcab8514ee34eda594c53293202dd7536cc8923a2994fafd60b99b3510",
+          "elf_offset": 10176
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/decode/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {
+        "QBS_BENCH_PREBUILT_DESCRIPTOR": "1"
+      },
+      "reason": "Q4_K/Q8_K, M1 N32 K1536: prebuilt descriptor path rather than per-command stack construction; one tile.",
+      "priority": "first_wave",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection",
+      "expected_report": {
+        "case": "shape_decode_n32_qbs_prebuilt",
+        "k": 1536,
+        "rows": 32,
+        "inputs": 1,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    },
+    {
+      "test": "app:akv_portability_smoke",
+      "elf": "apps/bin/akv_portability_smoke",
+      "elf_sha256": "9f448ed6872716b6c31190e6bd26f354ddb408c1eb0e7a60ac38a196a85f0f09",
+      "elf_bytes": 50432,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147503058,
+          "file_bytes": 19410,
+          "memory_bytes": 19410
+        },
+        {
+          "address": 2147503072,
+          "end": 2147503080,
+          "file_bytes": 8,
+          "memory_bytes": 8
+        },
+        {
+          "address": 2147503088,
+          "end": 2147504848,
+          "file_bytes": 1760,
+          "memory_bytes": 1760
+        },
+        {
+          "address": 2147504848,
+          "end": 2147528408,
+          "file_bytes": 23560,
+          "memory_bytes": 23560
+        }
+      ],
+      "load_end_hex": "0x8000aed8",
+      "source": "apps/akv_portability_smoke/main.c",
+      "source_sha256": "86aa1e74dbea5ea5a4fee512e6fa34a77245a2ddaa9ee5ddb2492e2b4673668c",
+      "build_command": "make -C apps akv_portability_smoke config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "reason": "Full seven-case V2 D64 Q1 KV65 portability test plus nonconstant mixed-feature scalar-reference comparison; includes full64/tail1, masks, sinks, window, all-masked, softcap, bias, mask-scale and plain-score entry.",
+      "priority": "first_wave",
+      "oracle": "akv_portability",
+      "estimated_work": "Fixed finite app workload; no wall-time measurement in this selection"
+    },
+    {
+      "test": "app:akv_d256_reuse_smoke",
+      "elf": "apps/bin/akv_d256_reuse_smoke",
+      "elf_sha256": "7112fb5e2f8af16937624365c4ca48f28592c6d9d57ba78a4eb2e6a2580da4db",
+      "elf_bytes": 129584,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147495610,
+          "file_bytes": 11962,
+          "memory_bytes": 11962
+        },
+        {
+          "address": 2147495616,
+          "end": 2147585408,
+          "file_bytes": 89792,
+          "memory_bytes": 89792
+        },
+        {
+          "address": 2147585408,
+          "end": 2147586800,
+          "file_bytes": 1392,
+          "memory_bytes": 1392
+        },
+        {
+          "address": 2147586800,
+          "end": 2147607496,
+          "file_bytes": 20696,
+          "memory_bytes": 20696
+        }
+      ],
+      "load_end_hex": "0x8001e3c8",
+      "source": "apps/akv_d256_reuse_smoke/main.c",
+      "source_sha256": "98af9c8ea958cb8ae6105f3ef34dadbbfc7e7107246c0e1bf7db84b97c4729bf",
+      "build_command": "make -C apps akv_d256_reuse_smoke config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "reason": "Logical D256 represented by two resident D128 halves; rows 1/3/4/5/7/8, KV 1/3/17/65, tile64 and tail1, non-unit stride, RNE/RDN, generic and capability-gated panel4 plus online PV; bitwise values and fflags oracle.",
+      "priority": "second_wave",
+      "oracle": "akv_d256_bit_exact",
+      "estimated_work": "8 fixed subcases, each with native and independent reference checks"
+    },
+    {
+      "test": "app:llama_qwen25_prefill_attn_q_qbs_m8",
+      "elf": "apps/bin/llama_qwen25_prefill_attn_q_qbs_m8",
+      "elf_sha256": "c8407bfe1f714089c5365a4548cac70d289215e9a8920021ea0b8b11a84ca157",
+      "elf_bytes": 1516864,
+      "load_segments": [
+        {
+          "address": 2147483648,
+          "end": 2147490776,
+          "file_bytes": 7128,
+          "memory_bytes": 7128
+        },
+        {
+          "address": 2147490816,
+          "end": 2148917968,
+          "file_bytes": 1427152,
+          "memory_bytes": 1427152
+        },
+        {
+          "address": 2148918016,
+          "end": 2148995224,
+          "file_bytes": 77208,
+          "memory_bytes": 77208
+        }
+      ],
+      "load_end_hex": "0x80171098",
+      "source": "apps/llama_qwen25_prefill_attn_q_qbs_m8/main.c",
+      "source_sha256": "c52b8d34ea0336d504094fa8475ab73b153e721eb6abefcc225e80a354440552",
+      "build_command": "make -C apps llama_qwen25_prefill_attn_q_qbs_m8 config=default nr_lanes=4 vlen=1024 sim_l2_mb=2",
+      "requires_build": false,
+      "shape": {
+        "k": 1536,
+        "rows": 1536,
+        "inputs": 8,
+        "weight_type": "q4_K",
+        "k_blocks": 6,
+        "weight_layout": "R4_BLOCK_MAJOR",
+        "activation_layout": "M8_GROUPED",
+        "activation_profile": "Q8_K"
+      },
+      "case_id": "prefill_attn_q_qbs_m8",
+      "case_spec_sha256": "617c8f4a0b6b63beeebfcf718c79f533d3f78b8e5edfdad0ba7e4c7a2ad00b10",
+      "embedded_capture_check": {
+        "golden": {
+          "bytes": 49152,
+          "sha256": "01c51d5efc290ee8124eca2cfdaf2e29b05699f10365cccc00ce744ac102efee",
+          "elf_offset": 1388288
+        },
+        "activation": {
+          "bytes": 49152,
+          "sha256": "c3dd963ff994609bb140d713ebb499f62fa1a45984ef4b75fa5429501bfe5219",
+          "elf_offset": 1339136
+        },
+        "weight_r4": {
+          "bytes": 1327104,
+          "sha256": "8accd35245eec010f52f9028a3d1b1b1f232699692d1cb448b89df2396c54e47",
+          "elf_offset": 12032
+        }
+      },
+      "capture_directory": "/home/wangwy/llama/captures/qwen2.5-1.5b-q4_k_m/prefill/operators/blk_0_attn_q_weight",
+      "benchmark_defines": {},
+      "reason": "M8_GROUPED activation/R4 weights, Q4_K/Q8_K M8 N1536 K1536 (96 N16 tiles): only existing dedicated M8 app; larger bounded optional follow-up, not a short smoke.",
+      "priority": "optional_larger",
+      "oracle": "qbs_captured_golden",
+      "estimated_work": "96 QBS commands / 12288 output values; no wall-time prediction without simulation",
+      "expected_report": {
+        "case": "prefill_attn_q_qbs_m8",
+        "k": 1536,
+        "rows": 1536,
+        "inputs": 8,
+        "mismatches": 0,
+        "qbs_status": 0,
+        "operations": 1,
+        "cross_op_reuse": 0,
+        "activation_context": 0,
+        "result": "PASS"
+      }
+    }
+  ]
+}

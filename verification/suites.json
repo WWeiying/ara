@@ -25,10 +25,62 @@
         "app:vsaxpy"
       ]
     },
+    "rvv-fast-integrity": {
+      "description": "Short real-DUT gate for reduction, indexed restart, strided, and fault-first memory behavior before long regressions.",
+      "tests": [
+        "rvv:vfredmax_boundary",
+        "rvv:vindexed_vstart_edges",
+        "rvv:vmasked_indexed_alignment",
+        "rvv:vmasked_indexed_store_alignment",
+        "rvv:vls",
+        "rvv:vlff"
+      ]
+    },
     "llama-micro": {
       "description": "Qwen2.5 Q4_K_M quantization and quantized-dot microkernel replay.",
       "tests": [
         "app:llama_q4km_micro"
+      ]
+    },
+    "linux-prereq": {
+      "description": "Baremetal CSR and scalar FP prerequisites, not Linux boot or context-switch signoff.",
+      "tests": [
+        "rvv:linux_state_prereq"
+      ]
+    },
+    "linux-fast-prereq": {
+      "description": "Short real-DUT gate for Linux CSR, trap, Sv39, MMU relocation, and RVV context prerequisites; not a Linux boot.",
+      "tests": [
+        "rvv:linux_state_prereq",
+        "rvv:stvec_readback",
+        "rvv:trap_state_prereq",
+        "rvv:sv39_state_prereq",
+        "rvv:linux_mmu_relocate",
+        "rvv:linux_vector_context"
+      ]
+    },
+    "linux-vector-context": {
+      "description": "Linux 6.19.6 standard-RVV context sequence in real S mode, not full Linux boot.",
+      "tests": ["rvv:linux_vector_context"]
+    },
+    "linux-mmu-relocate": {
+      "description": "Linux head.S MMU relocation sequence and targeted TLB remap in S mode; requires independent host evidence audit.",
+      "tests": ["rvv:linux_mmu_relocate"]
+    },
+    "stvec-readback": {
+      "description": "Non-CLIC STVEC Direct/Vectored WARL readback matrix, not interrupt-controller verification.",
+      "tests": ["rvv:stvec_readback"]
+    },
+    "sv39-prereq": {
+      "description": "Actual-SoC S-mode nonidentity Sv39 mappings and vector page-fault restart; not Linux boot.",
+      "tests": [
+        "rvv:sv39_state_prereq"
+      ]
+    },
+    "trap-prereq": {
+      "description": "Actual-SoC M/S/U traps, delegation and software-pending SSIP; not CLINT/PLIC or Linux boot.",
+      "tests": [
+        "rvv:trap_state_prereq"
       ]
     },
     "rvv-diagnostic": {
@@ -37,6 +89,40 @@
         "rvv:vadd",
         "rvv:vle32",
         "rvv:vse32"
+      ]
+    },
+    "rvv-memory-gap": {
+      "description": "Self-checking strided, indexed, segment, and fault-first loads missing from the current-image activity matrix.",
+      "tests": [
+        "rvv:vls",
+        "rvv:vluxei",
+        "rvv:vlseg",
+        "rvv:vlff"
+      ]
+    },
+    "rvv-masked-indexed": {
+      "description": "Masked indexed load/store alignment, vstart, memory effect, and active-fault regression.",
+      "tests": [
+        "rvv:vmasked_indexed_alignment",
+        "rvv:vmasked_indexed_store_alignment",
+        "rvv:vindexed_fault_vstart"
+      ]
+    },
+    "rvv-store-b-fault": {
+      "description": "Single- and multi-burst AXI B-response fault ownership and precise trap tests.",
+      "tests": [
+        "rvv:vstore_axi_error",
+        "rvv:vstore_axi_error_bursts"
+      ]
+    },
+    "rvv-state-layout-gap": {
+      "description": "Self-checking illegal vstart and widening/narrowing register-overlap cases on one VCS image.",
+      "tests": [
+        "rvv:villegal_vstart_ops",
+        "rvv:vmask_dest_overlap_illegal",
+        "rvv:vregister_group_illegal",
+        "rvv:vwiden_overlap_edges",
+        "rvv:vnclip_edges"
       ]
     },
     "rvv-directed": {
@@ -54,10 +140,13 @@
         "rvv:vasubu",
         "rvv:vaverage_matrix",
         "rvv:vdiv_vstart_edges",
+        "rvv:vindexed_fault_vstart",
         "rvv:vfp_vstart_edges",
         "rvv:vmask_carry_tail_edges",
         "rvv:vmask_compare_edges",
         "rvv:vmask_logical_matrix",
+        "rvv:vpolicy_masked_edges",
+        "rvv:vpolicy_type_matrix",
         "rvv:vmask_mem_emul_edges",
         "rvv:vmask_scalar_handoff",
         "rvv:vcpop",

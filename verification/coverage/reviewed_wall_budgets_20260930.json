@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "scope": "Host wall budgets only; no ELF/checker/RTL-cycle changes",
+  "cases": [
+    {
+      "source_name": "rvv:vpolicy_type_matrix",
+      "elf_sha256": "7973e1e2bb942caec0a51c860d4e2ab6a9c942e93df8004c621c7b3d32a60714",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 312.4422498771455,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0234-rvv-vpolicy_type_matrix-7973e1e2bb94-da26e07d36ec.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0234-rvv-vpolicy_type_matrix-7973e1e2bb94-da26e07d36ec/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0234-rvv-vpolicy_type_matrix-7973e1e2bb94-da26e07d36ec/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:vlseg",
+      "elf_sha256": "eb13e45cc4ca45035ebf7c2a17656867dd40ed1694c1e36dd4b28378dd430a62",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 433.6553668619599,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0528-rvv-vlseg-eb13e45cc4ca-02a7e20a99e4.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0528-rvv-vlseg-eb13e45cc4ca-02a7e20a99e4/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0528-rvv-vlseg-eb13e45cc4ca-02a7e20a99e4/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:vl1r",
+      "elf_sha256": "adb3a5f74318578d07ba1b449be513729900deba684b1ca8e30600c619cb1383",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 665.4237490692176,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0529-extra-rvv-vl1r-799113d0a27a.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0529-extra-rvv-vl1r-799113d0a27a/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0529-extra-rvv-vl1r-799113d0a27a/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:trap_state_prereq",
+      "elf_sha256": "5776c9851a28848b8e579148565b6a0f1e041e50f60bc399af32eaacbe5a229f",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 536.4564663949423,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0530-extra-rvv-trap_state_prereq-883b3fe0ee04.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0530-extra-rvv-trap_state_prereq-883b3fe0ee04/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0530-extra-rvv-trap_state_prereq-883b3fe0ee04/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s0",
+      "elf_sha256": "daa922cd87f05601d8d2ea277320e49e2cd1e3063fca7299135924beccf8a36e",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 886.5453513741959,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0531-extra-rvv-coverage_fp16_int8_s0-8fb3f4da18a5.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0531-extra-rvv-coverage_fp16_int8_s0-8fb3f4da18a5/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0531-extra-rvv-coverage_fp16_int8_s0-8fb3f4da18a5/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s1",
+      "elf_sha256": "752eeaa7745802222dd0b53016550f67297931a6e7e95f1144bb6b807bb9be61",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 798.2953066239133,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0532-extra-rvv-coverage_fp16_int8_s1-b94e0a27fc4d.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0532-extra-rvv-coverage_fp16_int8_s1-b94e0a27fc4d/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0532-extra-rvv-coverage_fp16_int8_s1-b94e0a27fc4d/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s2",
+      "elf_sha256": "2ff881b85589174a4dc05124bdb48ed064dedf36806d0290f050b2555ef39d5e",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 764.5578435640782,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0533-extra-rvv-coverage_fp16_int8_s2-6e66740c961b.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0533-extra-rvv-coverage_fp16_int8_s2-6e66740c961b/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0533-extra-rvv-coverage_fp16_int8_s2-6e66740c961b/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s3",
+      "elf_sha256": "eeae7306fb79c70eadc005a89573b01d37d2ce35e7354b13fa2586721780c842",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 876.49827279686,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0534-extra-rvv-coverage_fp16_int8_s3-109faa3cc464.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0534-extra-rvv-coverage_fp16_int8_s3-109faa3cc464/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0534-extra-rvv-coverage_fp16_int8_s3-109faa3cc464/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s4",
+      "elf_sha256": "faabda5702b2682ba2d5f82ce62422a11206396f8603046633532c0e6c48bec9",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 915.7066109059379,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0535-extra-rvv-coverage_fp16_int8_s4-ee6b39f3c14f.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0535-extra-rvv-coverage_fp16_int8_s4-ee6b39f3c14f/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0535-extra-rvv-coverage_fp16_int8_s4-ee6b39f3c14f/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s5",
+      "elf_sha256": "23462c090706142a8880c9178b26d88fa5ddafdfd680bdc301a41887509b2eeb",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 836.7587088542059,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0536-extra-rvv-coverage_fp16_int8_s5-c5084ea276ab.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0536-extra-rvv-coverage_fp16_int8_s5-c5084ea276ab/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0536-extra-rvv-coverage_fp16_int8_s5-c5084ea276ab/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s6",
+      "elf_sha256": "4d3bff243879be0f34938be3d0d7f3efb8d81f497249331c8b23d37d096aad02",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 948.8524746720213,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0537-extra-rvv-coverage_fp16_int8_s6-f603d63a3781.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0537-extra-rvv-coverage_fp16_int8_s6-f603d63a3781/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0537-extra-rvv-coverage_fp16_int8_s6-f603d63a3781/independent_audit.json"
+    },
+    {
+      "source_name": "rvv:coverage_fp16_int8_s7",
+      "elf_sha256": "0abd0d92a383e8f42c0782e49d0212169797952fd68e7c87799842c670e41b3f",
+      "wall_seconds": 1200,
+      "historical_elapsed_s": 831.6593282890972,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0538-extra-rvv-coverage_fp16_int8_s7-921fd79f8adc.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0538-extra-rvv-coverage_fp16_int8_s7-921fd79f8adc/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0538-extra-rvv-coverage_fp16_int8_s7-921fd79f8adc/independent_audit.json"
+    },
+    {
+      "source_name": "app:akv_portability_smoke",
+      "elf_sha256": "9f448ed6872716b6c31190e6bd26f354ddb408c1eb0e7a60ac38a196a85f0f09",
+      "wall_seconds": 2400,
+      "historical_elapsed_s": 1682.8304790239781,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0539-extra-app-akv_portability_smoke-df9fac34728e.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0539-extra-app-akv_portability_smoke-df9fac34728e/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0539-extra-app-akv_portability_smoke-df9fac34728e/independent_audit.json"
+    },
+    {
+      "source_name": "app:akv_d256_reuse_smoke",
+      "elf_sha256": "7112fb5e2f8af16937624365c4ca48f28592c6d9d57ba78a4eb2e6a2580da4db",
+      "wall_seconds": 7200,
+      "historical_elapsed_s": 5737.202802082058,
+      "history_outcome": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/outcomes/c0540-extra-app-akv_d256_reuse_smoke-93a3247a338a.json",
+      "history_summary": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0540-extra-app-akv_d256_reuse_smoke-93a3247a338a/summary.json",
+      "history_audit": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/out/full-recollection-20260928-02/results/c0540-extra-app-akv_d256_reuse_smoke-93a3247a338a/independent_audit.json"
+    }
+  ]
+}

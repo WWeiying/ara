@@ -537,6 +537,26 @@ static void test_q8_0_decode(void) {
   CHECK(memcmp(actual, expected, sizeof(actual)) == 0);
 }
 
+static void test_q8_0_quantize(void) {
+  float input[2 * QBS_Q8_0_BLOCK_ELEMENTS] = {0};
+  qbs_block_q8_0_t blocks[2];
+  input[0] = 127.0f;
+  input[1] = -127.0f;
+  CHECK_STATUS(qbs_ref_quantize_q8_0(input, 2 * QBS_Q8_0_BLOCK_ELEMENTS,
+                                     blocks, 2), QBS_REF_OK);
+  CHECK(blocks[0].d == UINT16_C(0x3c00));
+  CHECK(blocks[0].qs[0] == 127);
+  CHECK(blocks[0].qs[1] == -127);
+  CHECK(blocks[0].qs[2] == 0);
+  CHECK(blocks[1].d == 0);
+  for (unsigned element = 0; element < QBS_Q8_0_BLOCK_ELEMENTS; ++element)
+    CHECK(blocks[1].qs[element] == 0);
+  CHECK_STATUS(qbs_ref_quantize_q8_0(input, QBS_Q8_0_BLOCK_ELEMENTS - 1,
+                                     blocks, 2), QBS_REF_BAD_ARGUMENT);
+  CHECK_STATUS(qbs_ref_quantize_q8_0(input, 2 * QBS_Q8_0_BLOCK_ELEMENTS,
+                                     blocks, 1), QBS_REF_BUFFER_SIZE);
+}
+
 static void test_q2_decode(void) {
   qbs_block_q2_k_t block;
   memset(&block, 0, sizeof(block));
@@ -1097,6 +1117,7 @@ int main(void) {
   test_q3_decode();
   test_q4_0_decode();
   test_q8_0_decode();
+  test_q8_0_quantize();
   test_q2_decode();
   test_q5_0_decode();
   test_iq4_nl_decode();

@@ -15,7 +15,7 @@
     "differential": ["commit_comparison", "trace_summary"],
     "vector": ["vector_checkpoints_or_signature", "memory_signature"],
     "random": ["stimulus_coverage", "seed_manifest"],
-    "linux": ["boot_log", "payload_hashes", "userspace_smoke"],
+    "linux": ["boot_log", "payload_hashes", "userspace_smoke", "stage_result", "stage_result_sha256"],
     "fpga": ["bitstream_hash", "software_hash", "board_manifest", "ddr_status"]
   },
   "fpga_signoff": {
@@ -69,6 +69,13 @@
       "evidence": ["directed_pass", "vector_state", "memory_signature", "trace_valid"]
     },
     {
+      "id": "RVV-MASKED-INDEXED",
+      "title": "Masked indexed load/store skip, active fault, restart, and memory effect",
+      "risk": "critical",
+      "suites": ["rvv-masked-indexed"],
+      "evidence": ["directed_pass", "spike_match", "vector_state", "memory_signature", "trace_valid"]
+    },
+    {
       "id": "RVV-RESTART",
       "title": "vstart restart, tail/mask preservation, and exception recovery",
       "risk": "critical",
@@ -109,8 +116,18 @@
       "id": "LINUX-SYS",
       "title": "Linux boot, virtual memory, context switching, and user-mode paths",
       "risk": "critical",
+      "suites": ["linux-prereq", "sv39-prereq", "trap-prereq", "linux-vector-context", "linux-mmu-relocate"],
       "linux_levels": ["linux_qemu", "linux_rtl", "linux_fpga"],
       "evidence": ["boot_markers", "payload_hashes", "rvv_userspace", "qbs_fallback"]
+    },
+    {
+      "id": "FPGA-IRQ",
+      "title": "Generated interrupt controller, MMIO map, device tree, and M/S interrupt delivery",
+      "risk": "critical",
+      "suites": [],
+      "evidence": ["pinned_plic_generation", "plic_static_contract", "axi_plic_contract", "mmio_read_range_and_error_attribution", "embedded_dtb_match", "soc_external_irq", "board_uart_interrupts"],
+      "commands": ["plic-prepare", "plic-contract", "mmio-prepare", "mmio-contract"],
+      "note": "Subsystem commands have independent result formats; static/RTL PASS does not close CPU or board delivery."
     },
     {
       "id": "QBS-AKV",
@@ -120,6 +137,7 @@
       "evidence": ["contract_pass", "numeric_check", "fallback_pass"]
     }
   ],
+  "coverage_constraints": {"elen_bits": 64},
   "coverage_dimensions": {
     "sew": ["e8", "e16", "e32", "e64"],
     "lmul": ["mf8", "mf4", "mf2", "m1", "m2", "m4", "m8"],

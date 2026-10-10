@@ -1,0 +1,46 @@
+GAP112: formal740, frozen repaired-aligned-build-20260930-01 only.
+
+Primary diagnostic target: dispatcher state_q FSM raw78, width92/checksum
+1099616778, WAIT_IDLE_FLUSH -> WAIT_IDLE; exact before vector in target-before.json.
+Compiled line1752 is shared state encoding, not attribution to the local CSR if.
+CSR handling source line4634 forces WAIT_IDLE when state_qq != WAIT_IDLE.
+arch_decode admits WAIT_IDLE_FLUSH only with LSU_FLUSH_DONE (line1198).
+
+One hypothesis, not a guarantee of gain: independent 64-element e32/m2 DIV
+keeps Ara busy while masked FOF at the last physical RAM word completes.
+The very next instruction reads vl. If this request is already waiting when
+the flush is DONE, its CSR dependency rule creates raw78. If it arrives only
+after NORMAL_OPERATION resumes, raw78 remains false and the hypothesis fails.
+No hint/length/timeout tuning or repeat is planned. Segment raw5/8, line304,
+are asynchronous reset edges and have no stimulus or waiver here.
+
+v8/v9 are untouched before FOF. eew_valid_q resets to zero (dispatcher543).
+active_group_needs_reshuffle requires eew_valid_q[base+r] AND EEW mismatch
+(dispatcher417): the invalid initial tag is not itself a reshuffle request.
+Setup writes only v10,v24/v25,v0. FOF uses no indexed source, so this v8
+path cannot inevitably drain the older DIV by destination reshuffling.
+The e32/m2 VL64->4 vset does not reduce LMUL (dispatcher1751).
+
+Frozen compile.command.json explicitly has sim_l2_mb=2. Behavioral ara_tb
+rejects the unmapped middle; Spike receives exactly -m0x80000000:0x200000.
+The witness is 0x801ffffc; second e32 element is 0x80200000, outside RAM.
+The new independent boot stub uses sp=0x801ff000, not gap75's 0x80200000,
+so the witness cannot corrupt main's saved return address. M-mode, bare
+translation, PMP0 follow the established Spike/run environment.
+
+Independent expected values: FOF no trap, vl1/vstart0, first destination
+word0x12345678, full64 DIV quotients, full32 non-destination v10 words,
+all source arrays and memory guards, then legal nf2 segment load recovery
+with two full4-word fields and vl4/vstart0. 194 software checks total.
+The FOF starts with vstart0: no nonempty prestart is claimed. Destinations
+past the shortened vl may be overwritten by a FOF, even under tu, so these
+unobserved v8/v9 values are not required to equal old/Spike bytes. Only the
+defined prefix is exported. v10 is not in the m2 v8/v9 destination group.
+The segment recovery exercises an existing legal path; no new segment FSM
+edge is promised. Toggle/FSM gain requires actual singleton measurement.
+
+Software-only host/Spike preflight, then one parent-reviewed foreground old
+image run,180s sim/240s systemd, no retry; full commit/vector traces preserved.
+Simulator exit/selfchecks are not admission. Independent full scalar/native
+vector/lifecycle review and latest baseline raw delta remain separate gates.
+Existing frozen image, source, helpers and prior evidence are unchanged.

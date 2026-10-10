@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "name": "rvv",
+      "source_result": "../ara_dsa_verification/verification/out/verilator-coverage-current-fix-matrix-20260924-01/rvv/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 1200
+    },
+    {
+      "name": "alu",
+      "source_result": "../ara_dsa_verification/verification/out/verilator-coverage-current-fix-matrix-20260924-01/alu/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 2400
+    },
+    {
+      "name": "vasub",
+      "source_result": "../ara_dsa_verification/verification/out/verilator-coverage-fixedpoint-vasub-20260924-01/result.json",
+      "term_cycles": 30000,
+      "timeout_s": 1800
+    },
+    {
+      "name": "sv39",
+      "source_result": "../ara_dsa_verification/verification/out/verilator-coverage-sv39-relocate-2h-20260924-01/result.json",
+      "term_cycles": 20000,
+      "timeout_s": 7200
+    },
+    {
+      "name": "qwen_real",
+      "source_kind": "uvm",
+      "source_result": "verification/out/integrated-qwen-20260925-01/uvm_result.json",
+      "term_cycles": 100000,
+      "timeout_s": 7200
+    }
+  ]
+}

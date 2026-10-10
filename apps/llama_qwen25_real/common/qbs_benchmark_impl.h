@@ -36,6 +36,18 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
 #ifndef BENCH_WEIGHT_Q8_0
 #define BENCH_WEIGHT_Q8_0 0
 #endif
+#ifndef BENCH_WEIGHT_Q4_0
+#define BENCH_WEIGHT_Q4_0 0
+#endif
+#ifndef BENCH_WEIGHT_Q5_0
+#define BENCH_WEIGHT_Q5_0 0
+#endif
+#ifndef BENCH_WEIGHT_IQ4_NL
+#define BENCH_WEIGHT_IQ4_NL 0
+#endif
+#ifndef BENCH_WEIGHT_Q2
+#define BENCH_WEIGHT_Q2 0
+#endif
 
 // The primary measurement follows the production GGML command path: construct
 // one stack descriptor for each QBS command, issue a fence and vsetvli, execute
@@ -94,17 +106,23 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
 // Existing Q6_K apps predate explicit one-hot format macros and only set
 // BENCH_WEIGHT_Q4=0. Preserve that source contract.
 #if !(BENCH_WEIGHT_Q3 || BENCH_WEIGHT_Q4 || BENCH_WEIGHT_Q5 || \
-      BENCH_WEIGHT_Q6 || BENCH_WEIGHT_Q8_0)
+      BENCH_WEIGHT_Q6 || BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || \
+      BENCH_WEIGHT_Q5_0 || BENCH_WEIGHT_IQ4_NL || BENCH_WEIGHT_Q2)
 #undef BENCH_WEIGHT_Q6
 #define BENCH_WEIGHT_Q6 1
 #endif
 
 #if (BENCH_WEIGHT_Q3 + BENCH_WEIGHT_Q4 + BENCH_WEIGHT_Q5 + \
-     BENCH_WEIGHT_Q6 + BENCH_WEIGHT_Q8_0) != 1
+     BENCH_WEIGHT_Q6 + BENCH_WEIGHT_Q8_0 + BENCH_WEIGHT_Q4_0 + \
+     BENCH_WEIGHT_Q5_0 + BENCH_WEIGHT_IQ4_NL + BENCH_WEIGHT_Q2) != 1
 #error "select exactly one QBS weight format"
 #endif
 
-#if BENCH_WEIGHT_Q3
+#if BENCH_WEIGHT_Q2
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q2_K
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q2_K_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q2_K_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q3
 #define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q3_K
 #define BENCH_WEIGHT_BLOCK_BYTES QBS_Q3_K_BLOCK_BYTES
 #define BENCH_BLOCK_ELEMENTS QBS_Q3_K_BLOCK_ELEMENTS
@@ -120,13 +138,26 @@ void q4km_quantize_row_q8_K(const float *x, block_q8_K *y, int64_t k)
 #define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q6_K
 #define BENCH_WEIGHT_BLOCK_BYTES QBS_Q6_K_BLOCK_BYTES
 #define BENCH_BLOCK_ELEMENTS QBS_Q6_K_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q4_0
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q4_0
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q4_0_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q4_0_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_Q5_0
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q5_0
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_Q5_0_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_Q5_0_BLOCK_ELEMENTS
+#elif BENCH_WEIGHT_IQ4_NL
+#define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_IQ4_NL
+#define BENCH_WEIGHT_BLOCK_BYTES QBS_IQ4_NL_BLOCK_BYTES
+#define BENCH_BLOCK_ELEMENTS QBS_IQ4_NL_BLOCK_ELEMENTS
 #else
 #define BENCH_WEIGHT_PROFILE QBS_WEIGHT_PROFILE_Q8_0_WEIGHT
 #define BENCH_WEIGHT_BLOCK_BYTES QBS_Q8_0_WEIGHT_BLOCK_BYTES
 #define BENCH_BLOCK_ELEMENTS QBS_Q8_0_WEIGHT_BLOCK_ELEMENTS
 #endif
 
-#if BENCH_WEIGHT_Q8_0
+#if BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || BENCH_WEIGHT_Q5_0 || \
+    BENCH_WEIGHT_IQ4_NL
 typedef block_q8_0 benchmark_activation_block_t;
 #define BENCH_ACTIVATION_PROFILE QBS_ACTIVATION_PROFILE_Q8_0
 #else
@@ -145,7 +176,8 @@ typedef block_q8_K benchmark_activation_block_t;
 #define BENCH_USE_M4_INTERLEAVED 0
 #define BENCH_ACTIVATION_LAYOUT QBS_ACTIVATION_LAYOUT_M8_INTERLEAVED
 #define BENCH_PACKED_ACTIVATION_ROWS QBS_MAX_M
-#elif BENCH_INPUTS == 4 && !BENCH_WEIGHT_Q8_0
+#elif BENCH_INPUTS == 4 && !BENCH_WEIGHT_Q8_0 && !BENCH_WEIGHT_Q4_0 && \
+      !BENCH_WEIGHT_Q5_0 && !BENCH_WEIGHT_IQ4_NL
 #define BENCH_TILE_N QBS_MAX_N
 #define BENCH_USE_M8_INTERLEAVED 0
 #define BENCH_USE_M4_INTERLEAVED 1
@@ -294,7 +326,8 @@ static void benchmark_setup_descriptors(void) {
 static __attribute__((noinline)) void benchmark_quantize(void) {
   const float *activation = (const float *)benchmark_activation_start;
   for (int input = 0; input < BENCH_INPUTS; ++input) {
-#if BENCH_WEIGHT_Q8_0
+#if BENCH_WEIGHT_Q8_0 || BENCH_WEIGHT_Q4_0 || BENCH_WEIGHT_Q5_0 || \
+    BENCH_WEIGHT_IQ4_NL
     q4km_quantize_row_q8_0(
         activation + input * BENCH_K,
         quantized_activation + input * BENCH_BLOCKS, BENCH_K);
@@ -511,15 +544,25 @@ static __attribute__((noinline)) int benchmark_validate(
         const int index = input * BENCH_ROWS + row;
         const float actual = benchmark_actual(operation, input, row);
         const float reference = golden[index];
-        float absolute = actual - reference;
-        if (absolute < 0.0f) absolute = -absolute;
-        const float magnitude = reference < 0.0f ? -reference : reference;
-        const float relative =
-            absolute / (magnitude > 1.0e-12f ? magnitude : 1.0e-12f);
-        if (absolute > max_abs) max_abs = absolute;
-        if (relative > max_rel) max_rel = relative;
-        if (absolute > BENCH_ATOL + BENCH_RTOL * magnitude) ++mismatches;
         const uint32_t bits = benchmark_float_bits(actual);
+        const uint32_t reference_bits = benchmark_float_bits(reference);
+        // NaN comparisons are false; reject nonfinite values before tolerance arithmetic.
+        if ((bits & 0x7f800000u) == 0x7f800000u ||
+            (reference_bits & 0x7f800000u) == 0x7f800000u) {
+          const uint32_t infinity_bits = 0x7f800000u;
+          ++mismatches;
+          memcpy(&max_abs, &infinity_bits, sizeof(max_abs));
+          memcpy(&max_rel, &infinity_bits, sizeof(max_rel));
+        } else {
+          float absolute = actual - reference;
+          if (absolute < 0.0f) absolute = -absolute;
+          const float magnitude = reference < 0.0f ? -reference : reference;
+          const float relative =
+              absolute / (magnitude > 1.0e-12f ? magnitude : 1.0e-12f);
+          if (absolute > max_abs) max_abs = absolute;
+          if (relative > max_rel) max_rel = relative;
+          if (absolute > BENCH_ATOL + BENCH_RTOL * magnitude) ++mismatches;
+        }
         for (int byte = 0; byte < 4; ++byte) {
           checksum ^= (bits >> (8 * byte)) & 0xffu;
           checksum *= 1099511628211ull;
