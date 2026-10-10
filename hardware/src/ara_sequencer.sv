@@ -176,6 +176,15 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         (request.vtype.vsew == EW32))) &&
       (request.vl >= 1);
   endfunction : exact_chain_eligible
+
+  function automatic int unsigned written_register_count(input ara_req_t request);
+    // Reductions write a scalar even when the source spans several registers.
+    // Other writes use the destination EMUL (including widening and loads),
+    // while fractional groups still occupy part of one architectural register.
+    if (request.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})
+      return 1;
+    return request.emul[2] ? 1 : (1 << int'(request.emul));
+  endfunction : written_register_count
 `endif
 
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
@@ -185,8 +194,22 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   function automatic logic ordered_source_duplicate(
     ara_req_t leader, ara_req_t candidate
   );
+    int unsigned source_registers;
+    logic leader_changes_source;
+    // Reductions write one scalar destination, but their vector source can
+    // span an LMUL register group. Adjacency alone does not establish equal
+    // inputs: e.g. two vfredosum v2,v1,v2 instructions have different seeds.
+    source_registers = candidate.vtype.vlmul[2]
+                     ? 1 : (1 << int'(candidate.vtype.vlmul));
+    leader_changes_source = leader.use_vd && (
+      (candidate.use_vs1 && (leader.vd == candidate.vs1)) ||
+      (candidate.use_vs2 &&
+       (int'(leader.vd) >= int'(candidate.vs2)) &&
+       (int'(leader.vd) < int'(candidate.vs2) + source_registers)) ||
+      (!candidate.vm && (leader.vd == VMASK)));
     ordered_source_duplicate =
       (NrLanes == 4) &&
+      !leader_changes_source &&
       (leader.op inside {VFREDOSUM, VFWREDOSUM}) &&
       (candidate.op == leader.op) &&
       // Masked duplicates are exact as well: RVV predicates through v0, and
@@ -674,8 +697,14 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               if (ara_req_i.use_vd) write_list_d[ara_req_i.vd] = '{vid: vinsn_id_n, valid: 1'b1};
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
               if (ara_req_i.use_vd) begin
-                vreg_version_d[ara_req_i.vd] =
-                  pe_req_d.vd_version;
+                // A group write also replaces scalars cached for interior
+                // registers. Increment each member's own epoch: changing
+                // only the group's base leaves those old cache entries live.
+                for (int reg_idx = 0; reg_idx < 32; reg_idx++)
+                  if ((reg_idx >= int'(ara_req_i.vd)) &&
+                      (reg_idx < int'(ara_req_i.vd) +
+                                 written_register_count(ara_req_i)))
+                    vreg_version_d[reg_idx] = vreg_version_q[reg_idx] + 1'b1;
                 writer_exact_d[vinsn_id_n] =
                   exact_chain_eligible(ara_req_i);
                 writer_vd_d[vinsn_id_n] =

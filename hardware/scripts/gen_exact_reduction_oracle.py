@@ -270,10 +270,46 @@ def make_widening_vector(rng: random.Random, rm: int) -> int:
     return pack_vector(False, rm, seed, data, active, expected, status)
 
 
+def special_vectors() -> list[int]:
+    """Directed IEEE cases with a fixed source-subtree-then-seed topology.
+
+    These expected values are explicit, rather than obtained from the finite
+    integer model. In particular, a qNaN seed cannot suppress NV already
+    raised by the source subtree's opposite infinities.
+    """
+    vectors = []
+    for fp16 in (False, True):
+        width = 16 if fp16 else 32
+        inf = 0x7C00 if fp16 else 0x7F800000
+        neg = 1 << (width - 1)
+        qnan = 0x7E00 if fp16 else 0x7FC00000
+        snan = inf | 1
+        one = 0x3C00 if fp16 else 0x3F800000
+        two = 0x4000 if fp16 else 0x40000000
+        cases = [
+            (qnan, inf, inf | neg, 3, qnan, 16),
+            (inf, qnan, inf | neg, 3, qnan, 0),
+            (inf | neg, inf, 0, 3, qnan, 16),
+            (snan, inf, inf | neg, 0, snan, 0),
+            (qnan | 3, inf, snan, 0, qnan | 3, 0),
+            (neg, neg, neg, 3, neg, 0),
+            (0, inf, snan, 3, qnan, 16),
+            (one, snan, one, 2, two, 0),
+        ]
+        for rm in range(5):
+            for seed, a, b, active, result, status in cases:
+                vectors.append(pack_vector(
+                    fp16, rm, seed, a | (b << width), active, result, status
+                ))
+    return vectors
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--count-per-format", type=int, default=300)
     parser.add_argument("--seed", type=lambda value: int(value, 0), default=0xA4A2026)
+    parser.add_argument("--special", action="store_true",
+                        help="append 80 directed NaN/Inf/mask/zero cases")
     parser.add_argument(
         "--output",
         type=Path,
@@ -290,6 +326,8 @@ def main() -> None:
             vectors.append(make_vector(rng, fp16, index % 5))
     for index in range(args.count_per_format):
         vectors.append(make_widening_vector(rng, index % 5))
+    if args.special:
+        vectors.extend(special_vectors())
 
     digits = (VECTOR_WIDTH + 3) // 4
     args.output.write_text(

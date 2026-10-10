@@ -27,6 +27,14 @@
 #define enable_fp()
 #endif
 
+// Keep every comparison and failure diagnostic in fast functional regressions;
+// optionally omit only repetitive UART progress messages. Default is verbose.
+#ifdef RVV_TEST_QUIET
+#define RVV_TEST_PROGRESS(...) ((void)0)
+#else
+#define RVV_TEST_PROGRESS(...) printf(__VA_ARGS__)
+#endif
+
 // Ara testbench ROI markers.  Reading cycle into x0 is architecturally
 // side-effect free; the FOR_VERIFY monitor recognizes the pair and emits one
 // focused PERF report.  Spike builds keep the ISA tests unchanged.
@@ -63,7 +71,7 @@ int test_case;
 // by comparing with golden_vtype value used as a reference. Also check for
 // illegal values of vlmul and vsew which violtate: ELEN >= SEW/LMUL
 #define check_vtype_vl(casenum, vtype, golden_vtype, avl, vl, vsew, vlmul)                                                     \
-  printf("Checking vtype and vl #%d...\n", casenum); \
+  RVV_TEST_PROGRESS("Checking vtype and vl #%d...\n", casenum); \
   if((vlmul==5 && (vsew == 1 || vsew == 2 || vsew ==3)) || (vlmul==6 && (vsew == 2 || vsew ==3)) || (vlmul==7 && vsew==3)){   \
   if((vtype != 0x8000000000000000) || (vl != 0)){    \
   printf("FAILED. Got vtype = %lx, expected vtype = 8000000000000000. avl = %lx, vl = %lx.\n", vtype,avl, vl);     \
@@ -74,21 +82,28 @@ int test_case;
     num_failed++;                                                                                                  \
     return;                                                                                                        \
   }                                                                                                                \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 #define check_vxsat(casenum, vxsat, golden_vxsat)                                                                  \
-  printf("Checking vxsat #%d...\n", casenum);                                                               \
+  RVV_TEST_PROGRESS("Checking vxsat #%d...\n", casenum);                                                               \
   if (vxsat != golden_vxsat) {                                                                        \
     printf("FAILED. Got vxsat = %lx, expected vxsat = %lx.\n", vxsat, golden_vxsat); \
     num_failed++;                                                                                                  \
     return;                                                                                                        \
   }                                                                                                                \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 // In order to avoid that scalar loads run ahead of vector stores,
 // we use an instruction to ensure that all vector stores have been
 // committed before continuing with scalar memory operations.
+#ifdef RVV_AUDIT_SYNC
+// Ara-specific functional-test synchronization: its dispatcher waits for all
+// vector operations before serving a vector CSR read. This is not a portable
+// replacement for FENCE and must not be used to measure reduction throughput.
+#define MEMORY_BARRIER asm volatile ("csrr zero, vstart" ::: "memory")
+#else
 #define MEMORY_BARRIER // asm volatile ("fence");
+#endif
 
 // Zero-initialized variables can be problematic on bare-metal.
 // Therefore, initialize them during runtime.
@@ -113,13 +128,13 @@ int test_case;
 
 // Check the result against a scalar golden value
 #define XCMP(casenum,act,exp)                                           \
-  printf("Checking the results of the test case %d:\n", casenum);       \
+  RVV_TEST_PROGRESS("Checking the results of the test case %d:\n", casenum);       \
   if (act != exp) {                                                     \
     printf("Index %d FAILED. Got %d, expected %d.\n", casenum, act, exp);\
     num_failed++;                                                       \
     return;                                                             \
   }                                                                     \
-  printf("PASSED.\n");                                                  \
+  RVV_TEST_PROGRESS("PASSED.\n");                                                  \
 
 // Check the result against a floating-point scalar golden value
 #define FCMP(casenum,act,exp)                                           \
@@ -128,25 +143,25 @@ int test_case;
     num_failed++;                                                       \
     return;                                                             \
   }                                                                     \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 // Check the results against a vector of golden values
 #define VCMP(T,str,casenum,vexp,act...)                                               \
   T vact[] = {act};                                                                   \
-  printf("Checking the results of the test case %d:\n", casenum);                     \
+  RVV_TEST_PROGRESS("Checking the results of the test case %d:\n", casenum);                     \
   MEMORY_BARRIER;                                                                     \
   for (unsigned int i = 0; i < sizeof(vact)/sizeof(T); i++) {                         \
     if (vexp[i] != vact[i]) {                                                         \
-      printf("Index %d FAILED. Got "#str", expected "#str".\n", i, vexp[i], vact[i]); \
+      printf("Test %d index %d FAILED. Got "#str", expected "#str".\n", casenum, i, vexp[i], vact[i]); \
       num_failed++;                                                                   \
       return;                                                                         \
     }                                                                                 \
   }                                                                                   \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 //Macro used to compare large number of elements
 #define LVCMP(T,str,casenum,elements, vexp ,vact)                                     \
-  printf("Checking the results of the test case %d:\n", casenum);                     \
+  RVV_TEST_PROGRESS("Checking the results of the test case %d:\n", casenum);                     \
   MEMORY_BARRIER;                                                                     \
   for (unsigned int i = 0; i < elements; i++) {                                       \
     if (vexp[i] != vact[i]) {                                                         \
@@ -155,12 +170,12 @@ int test_case;
       return;                                                                         \
     }                                                                                 \
   }                                                                                   \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 
 // Check the results against an in-memory vector of golden values
 #define VMCMP(T,str,casenum,vexp,vgold,size)                                          \
-  printf("Checking the results of the test case %d:\n", casenum);                     \
+  RVV_TEST_PROGRESS("Checking the results of the test case %d:\n", casenum);                     \
   MEMORY_BARRIER;                                                                     \
   for (unsigned int i = 0; i < size; i++) {                                           \
     if (vexp[i] != vgold[i]) {                                                        \
@@ -169,13 +184,13 @@ int test_case;
       return;                                                                         \
     }                                                                                 \
   }                                                                                   \
-  printf("PASSED.\n");
+  RVV_TEST_PROGRESS("PASSED.\n");
 
 // Macros to set vector length, type and multiplier
 // Don't use this to set VL == 0 since the compiler puts rs1 == x0
 #define VSET(VLEN,VTYPE,LMUL)                                                          \
   do {                                                                                 \
-  asm volatile ("vsetvli t0, %[A]," #VTYPE "," #LMUL ", ta, ma \n" :: [A] "r" (VLEN)); \
+  asm volatile ("vsetvli zero, %[A]," #VTYPE "," #LMUL ", ta, ma \n" :: [A] "r" (VLEN) : "memory"); \
   } while(0)
 
 // Macros to set vector length equal to zero
@@ -189,15 +204,17 @@ int test_case;
 #define VSETMAX(VTYPE,LMUL)                                                            \
   do {                                                                                 \
   int64_t scalar = -1;                                                                 \
-  asm volatile ("vsetvli t1, %[A]," #VTYPE "," #LMUL", ta, ma \n":: [A] "r" (scalar)); \
+  asm volatile ("vsetvli zero, %[A]," #VTYPE "," #LMUL", ta, ma \n":: [A] "r" (scalar) : "memory"); \
   } while(0)
 
-// Macro to load a vector register with data from the stack
+// In synchronized audit builds, finish the asynchronous load before this
+// temporary's lifetime ends and another macro can reuse its stack storage.
 #define VLOAD(datatype,loadtype,vreg,vec...)                                \
   do {                                                                      \
     volatile datatype V ##vreg[] = {vec};                                   \
     MEMORY_BARRIER;                                                         \
     asm volatile ("vl"#loadtype".v "#vreg", (%0)  \n":: [V] "r"(V ##vreg)); \
+    MEMORY_BARRIER;                                                         \
   } while(0)
 
 // Macro to store a vector register into the pointer vec
@@ -252,7 +269,7 @@ int test_case;
  ***************************/
 
 // Vector comparison
-#define VCMP_U64(casenum,vect,act...) {VSTORE_U64(vect); VCMP(uint64_t,%x,casenum,Ru64,act)}
+#define VCMP_U64(casenum,vect,act...) {VSTORE_U64(vect); VCMP(uint64_t,%lx,casenum,Ru64,act)}
 #define VCMP_U32(casenum,vect,act...) {VSTORE_U32(vect); VCMP(uint32_t,%x,casenum,Ru32,act)}
 #define VCMP_U16(casenum,vect,act...) {VSTORE_U16(vect); VCMP(uint16_t,%x,casenum,Ru16,act)}
 #define VCMP_U8(casenum,vect,act...)  {VSTORE_U8(vect) ; VCMP(uint8_t, %x,casenum, Ru8,act)}

@@ -3,7 +3,6 @@
 // accumulator and the central one-shot finalizer together.
 
 module fp_exact_reduction_oracle_tb;
-  localparam int unsigned VectorCount = 900;
   localparam int unsigned VectorWidth = 141;
 
   logic clk;
@@ -46,11 +45,12 @@ module fp_exact_reduction_oracle_tb;
   logic [31:0] late_final_result;
   logic [4:0] late_final_status;
 
-  logic [VectorWidth-1:0] vectors [0:VectorCount-1];
+  logic [VectorWidth-1:0] vector_bits;
 
   fp32_exact_reduction_accum #(
     .ExponentSegmented (1'b1),
-    .EmitRoundedResult (1'b0)
+    .EmitRoundedResult (1'b0),
+    .DeferSeed         (1'b1)
   ) i_accum (
     .clk_i                  (clk),
     .rst_ni                 (rst_n),
@@ -90,7 +90,7 @@ module fp_exact_reduction_oracle_tb;
     .neg_zero_seen_i        (neg_zero_seen),
     .seed_valid_i           (state_seed_valid),
     .seed_i                 (state_seed),
-    .seed_in_exact_i        (1'b1),
+    .seed_in_exact_i        (1'b0),
     .rnd_mode_i             (state_rnd_mode),
     .format_fp16_i          (state_format_fp16),
     .result_o               (final_result),
@@ -152,10 +152,22 @@ module fp_exact_reduction_oracle_tb;
   always #5 clk = ~clk;
 
   initial begin
+    #10000000;
+    $fatal(1, "FAIL: exact oracle watchdog expired");
+  end
+
+  initial begin
     logic [31:0] expected_result;
     logic [4:0] expected_status;
+    string vector_path;
+    integer vector_file;
+    integer test;
+    integer scanned;
 
-    $readmemh("hardware/tb/fp_exact_reduction_oracle_vectors.mem", vectors);
+    vector_path = "hardware/tb/fp_exact_reduction_oracle_vectors.mem";
+    void'($value$plusargs("VECTOR_FILE=%s", vector_path));
+    vector_file = $fopen(vector_path, "r");
+    if (!vector_file) $fatal(1, "FAIL: cannot open oracle vectors %s", vector_path);
     clk = 1'b0;
     rst_n = 1'b0;
     start = 1'b0;
@@ -170,11 +182,13 @@ module fp_exact_reduction_oracle_tb;
     repeat (3) @(posedge clk);
     rst_n = 1'b1;
 
-    for (int unsigned test = 0; test < VectorCount; test++) begin
+    test = 0;
+    scanned = $fscanf(vector_file, "%h", vector_bits);
+    while (scanned == 1) begin
       wait (!busy && !late_busy);
       @(negedge clk);
       {format_fp16, rnd_mode, seed, data, active,
-       expected_result, expected_status} = vectors[test];
+       expected_result, expected_status} = vector_bits;
       start = 1'b1;
       in_valid = 1'b1;
       @(negedge clk);
@@ -202,10 +216,16 @@ module fp_exact_reduction_oracle_tb;
         $fatal(1);
       end
       @(posedge clk);
+      test++;
+      scanned = $fscanf(vector_file, "%h", vector_bits);
     end
 
+    if (!$feof(vector_file) || test == 0)
+      $fatal(1, "FAIL: malformed or empty oracle file after %0d vectors", test);
+    $fclose(vector_file);
+
     $display("PASS: exact integer oracle (%0d FP32/FP16/widening reductions, conventional and late seed)",
-             VectorCount);
+             test);
     $finish;
   end
 

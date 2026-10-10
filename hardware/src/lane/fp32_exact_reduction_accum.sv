@@ -22,7 +22,12 @@ module fp32_exact_reduction_accum #(
   // A global packet merger can consume the exact state directly.  Disabling
   // the lane-local final result lets synthesis prune four redundant rounders
   // while preserving the same state-ready handshake.
-  parameter bit EmitRoundedResult = 1'b1
+  parameter bit EmitRoundedResult = 1'b1,
+  // Global reductions always attach the seed at the central root, even when
+  // it is already available. This keeps the special-value tree independent
+  // of whether a producer is still running (late seed). Preserve seed
+  // metadata for transport, but exclude it from the lane's numeric subtree.
+  parameter bit DeferSeed = 1'b0
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -646,20 +651,20 @@ module fp32_exact_reduction_accum #(
           seed_valid_d          = seed_valid_i;
           seed_raw_d            = seed_i;
           source_seen_d         = 1'b0;
-          finite_nonzero_seen_d = seed_valid_i &&
+          finite_nonzero_seen_d = seed_valid_i && !DeferSeed &&
             value_is_finite_nonzero(seed_i, format_fp16_i);
-          pos_zero_seen_d       = seed_valid_i &&
+          pos_zero_seen_d       = seed_valid_i && !DeferSeed &&
             value_is_zero(seed_i, format_fp16_i) &&
             !value_sign(seed_i, format_fp16_i);
-          neg_zero_seen_d       = seed_valid_i &&
+          neg_zero_seen_d       = seed_valid_i && !DeferSeed &&
             value_is_zero(seed_i, format_fp16_i) &&
             value_sign(seed_i, format_fp16_i);
           result_d              = '0;
           status_d              = '0;
 
-          if (seed_valid_i)
+          if (seed_valid_i && !DeferSeed)
             bank_special_d[0] = value_special(seed_i, format_fp16_i);
-          if (seed_valid_i && !value_is_nan(seed_i, format_fp16_i) &&
+          if (seed_valid_i && !DeferSeed && !value_is_nan(seed_i, format_fp16_i) &&
               !value_is_inf(seed_i, format_fp16_i)) begin
             if (ExponentSegmented)
               segment_bin_d[value_segment_index(seed_i, format_fp16_i)] =
@@ -876,6 +881,8 @@ module fp32_exact_reduction_accum #(
 
 `ifndef SYNTHESIS
   initial begin
+    assert (!DeferSeed || !EmitRoundedResult)
+      else $fatal(1, "deferred seed requires a global finalizer");
     assert (AccWidth >= 288)
       else $fatal(1, "binary32 exact reduction accumulator is too narrow");
   end

@@ -61,6 +61,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           alu_vinsn_done_o,
     output logic                                           mfpu_vinsn_done_o,
     input  logic                [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_i,
+    // Sticky min/max source activity, retained until this instruction ID is reused.
+    output logic [NrVInsn-1:0]             minmax_active_o,
+    input  logic [NrVInsn-1:0]             minmax_global_active_i,
     // Interface with the Store unit
     output elen_t                                          stu_operand_o,
     output logic                                           stu_operand_valid_o,
@@ -144,6 +147,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     logic [NrVInsn-1:0] hazard;
     // Architectural register epoch expected by this operand.
     vreg_version_t source_version;
+    // Epoch zero is a valid value after wraparound, not an invalid sentinel.
+    logic source_version_valid;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -187,6 +192,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     // Vector machine metadata
     vlen_t vl;
+    // Preserve the architectural length for lane-uniform reduction protocols.
+    // vl above is divided among lanes and can be zero for a nonempty vector.
+    vlen_t global_vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
   } vfu_operation_t;
@@ -560,6 +568,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .alu_ready_o          (alu_ready                              ),
     .alu_vinsn_done_o     (alu_vinsn_done                         ),
     .mfpu_ready_o         (mfpu_ready                             ),
+    .minmax_active_o     (minmax_active_o),
+    .minmax_global_active_i(minmax_global_active_i),
     .mfpu_vinsn_done_o    (mfpu_vinsn_done                        ),
     // Interface with the SLDU/ADDRGEN arbiter
     .alu_red_complete_o   (alu_red_complete                       ),

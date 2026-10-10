@@ -20,7 +20,7 @@ module fp32_exact_reduction_finalize #(
   input  logic                        neg_zero_seen_i,
   input  logic                        seed_valid_i,
   input  logic [31:0]                 seed_i,
-  // Deasserted for a versioned late-bound seed.  In that case the vector
+  // Deasserted when seed insertion is deferred to this finalizer. The global
   // subtree intentionally excludes the seed and this finalizer inserts the
   // producer's already-rounded architectural value exactly once.
   input  logic                        seed_in_exact_i,

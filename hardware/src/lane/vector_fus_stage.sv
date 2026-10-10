@@ -41,6 +41,9 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     output logic           [NrVInsn-1:0]      alu_vinsn_done_o,
     output logic                              mfpu_ready_o,
     output logic           [NrVInsn-1:0]      mfpu_vinsn_done_o,
+    // Sticky min/max source activity, retained until this instruction ID is reused.
+    output logic [NrVInsn-1:0]             minmax_active_o,
+    input  logic [NrVInsn-1:0]             minmax_global_active_i,
     // Interface with the lane
     output logic                              alu_red_complete_o,
     output logic                              fpu_red_complete_o,
@@ -184,6 +187,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .vfu_operation_i      (vfu_operation_i                 ),
     .vfu_operation_valid_i(vfu_operation_valid_i           ),
     .mfpu_ready_o         (mfpu_ready_o                    ),
+    .minmax_active_o     (minmax_active_o),
+    .minmax_global_active_i(minmax_global_active_i),
     .mfpu_vinsn_done_o    (mfpu_vinsn_done_o               ),
     // Interface with the lane
     .fpu_red_complete_o   (fpu_red_complete_o              ),

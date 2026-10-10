@@ -253,11 +253,17 @@ ifeq ($(reduction_exact_sum),1)
   ifneq ($(nr_lanes),4)
     $(error reduction_exact_sum currently requires nr_lanes=4)
   endif
+  ifeq ($(shell test $(vlen) -le 8192 && echo yes),)
+    $(error reduction_exact_sum requires VLEN<=8192 for the 288-bit lane accumulator)
+  endif
   bender_defs += --define ARA_RED_EXACT_SUM_4LANE=1
 endif
 ifeq ($(reduction_exact_segmented),1)
   ifneq ($(reduction_exact_sum),1)
     $(error reduction_exact_segmented requires reduction_exact_sum=1)
+  endif
+  ifeq ($(shell test $(vlen) -le 4096 && echo yes),)
+    $(error reduction_exact_segmented requires VLEN<=4096 for 49-bit exponent bins)
   endif
   bender_defs += --define ARA_RED_EXACT_SEGMENTED_4LANE=1
 endif
@@ -270,6 +276,12 @@ ifeq ($(reduction_exact_global),1)
   endif
   ifneq ($(nr_lanes),4)
     $(error reduction_exact_global currently requires nr_lanes=4)
+  endif
+  # At LMUL=8, VLEN/4 binary32 elements plus the scalar seed can contribute.
+  # A 288-bit signed 2^-149 accumulator holds at most 1024 maximum finite
+  # binary32 values. VLEN=4096 would require 1025 (including the seed).
+  ifeq ($(shell test $(vlen) -le 2048 && echo yes),)
+    $(error reduction_exact_global requires VLEN<=2048 for the 288-bit global sum)
   endif
   bender_defs += --define ARA_RED_EXACT_GLOBAL_4LANE=1
 endif

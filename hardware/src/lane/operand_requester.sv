@@ -260,6 +260,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     logic [2:0] byte_offset;
     // Architectural epoch of the register value requested by this consumer.
     vreg_version_t source_version;
+    logic source_version_valid;
+    // source_version names this register, not later members of an LMUL group.
+    logic [4:0] source_register;
 
     // Hazards between vector instructions
     logic [NrVInsn-1:0] hazard;
@@ -314,9 +317,13 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   // Two short-lived, version-tagged victim entries keep consecutive
   // reductions available across retirement and vsetvl boundaries.  This
   // covers the common pair-accumulator pattern without a content-addressed
-  // structure.  The entry expires before 256 cycles, so it cannot survive
-  // enough one-write-per-cycle updates for an eight-bit epoch to wrap.
+  // structure. Epochs advance at issue, but cache age starts at writeback.
+  // Up to NrVInsn younger epochs can therefore already exist at insertion.
+  // Reserve those epochs plus two edge cycles before the counter wraps;
+  // merely expiring before 256 cycles from writeback is insufficient.
   localparam int unsigned ReductionResultCacheDepth = 2;
+  localparam int unsigned ReductionResultCacheMaxAge =
+    (1 << VRegVersionWidth) - NrVInsn - 2;
   logic [ReductionResultCacheDepth-1:0]
     reduction_result_cache_valid_q;
   vreg_version_t [ReductionResultCacheDepth-1:0]
@@ -407,7 +414,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       for (int entry = 0; entry < ReductionResultCacheDepth; entry++) begin
         if (reduction_result_cache_valid_q[entry]) begin
           if (reduction_result_cache_age_q[entry] ==
-              ({VRegVersionWidth{1'b1}} - 1'b1)) begin
+              VRegVersionWidth'(ReductionResultCacheMaxAge)) begin
             reduction_result_cache_valid_q[entry] <= 1'b0;
             reduction_result_cache_age_q[entry]   <= '0;
           end else begin
@@ -607,6 +614,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
         vew         : operand_request_i[requester_index].eew,
         byte_offset : vstart_byte[2:0],
         source_version : operand_request_i[requester_index].source_version,
+        source_version_valid : operand_request_i[requester_index].source_version_valid,
+        source_register : operand_request_i[requester_index].vs,
         hazard      : operand_request_i[requester_index].hazard,
         is_widening : operand_request_i[requester_index].cvt_resize == CVT_WIDE,
         default: '0
@@ -702,6 +711,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
             cached_mfpu_forward_match =
               recent_mfpu_result_valid_q &&
+              requester_metadata_q[requester_index].source_version_valid &&
               (requester_metadata_q[requester_index].source_version ==
                recent_mfpu_result_version_q) &&
               requester_metadata_q[requester_index]
@@ -719,6 +729,14 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
                  entry < ReductionResultCacheDepth; entry++) begin
               if (!reduction_cache_forward_match &&
                   reduction_result_cache_valid_q[entry] &&
+                  requester_metadata_q[requester_index].source_version_valid &&
+                  // The saved epoch belongs to the requested base register.
+                  // A later word can lie in another group member with a
+                  // different epoch. Read that member from the VRF instead
+                  // of matching its cached scalar against the base's epoch.
+                  (requester_metadata_q[requester_index].addr ==
+                   vaddr(requester_metadata_q[requester_index].source_register,
+                         NrLanes, VLEN)) &&
                   (requester_metadata_q[requester_index].source_version ==
                    reduction_result_cache_version_q[entry]) &&
                   (requester_metadata_q[requester_index].addr ==
@@ -897,6 +915,8 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
 `ifndef SYNTHESIS
+  initial assert ((1 << VRegVersionWidth) > NrVInsn + 2)
+    else $fatal(1, "Register epoch is too narrow for reduction cache lifetime");
   for (genvar requester = 0; requester < NrOperandQueues; requester++) begin
     a_forwarded_operand_replaces_vrf_read: assert property (
       @(posedge clk_i) disable iff (!rst_ni)

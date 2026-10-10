@@ -41,6 +41,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  logic                         vfu_operation_valid_i,
     output logic                         mfpu_ready_o,
     output logic           [NrVInsn-1:0] mfpu_vinsn_done_o,
+    // Sticky min/max source activity, retained until this instruction ID is reused.
+    output logic [NrVInsn-1:0]             minmax_active_o,
+    input  logic [NrVInsn-1:0]             minmax_global_active_i,
     // Interface with the lane
     output logic                         fpu_red_complete_o,
     // Interface with the operand queues
@@ -767,8 +770,21 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         )) ||
        ((vinsn.op == VFWREDUSUM) &&
         (vinsn.vtype.vsew == EW32))) &&
-      (vinsn.vl >= 1);
+      (vinsn.global_vl >= 1);
   endfunction : red_exact_sum_eligible
+
+  // Source slots in a 64-bit lane word are shuffled: for FP16 the logical
+  // order is slots 0,2,1,3. Derive tail activity from the same byte enables
+  // as the VRF datapath, then combine it with the expanded mask in that layout.
+  function automatic logic [3:0] red_exact_source_active(
+    logic [3:0] count, vew_e width, logic unmasked, strb_t mask
+  );
+    strb_t active_bytes;
+    active_bytes = be(count, width) & (unmasked ? '1 : mask);
+    if (width == EW16)
+      return {active_bytes[6], active_bytes[4], active_bytes[2], active_bytes[0]};
+    return {2'b00, active_bytes[4], active_bytes[0]};
+  endfunction : red_exact_source_active
 
 `ifdef ARA_RED_EXACT_STREAM_4LANE
   // The early-release stream path advances only across a homogeneous exact
@@ -784,7 +800,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_exact_sum_eligible(successor) &&
       (successor.op == foreground.op) &&
       (successor.vtype == foreground.vtype) &&
-      (successor.vl == foreground.vl) &&
+      (successor.global_vl == foreground.global_vl) &&
       (successor.vstart == foreground.vstart) &&
       (successor.vm == foreground.vm) &&
       (successor.fp_rm == foreground.fp_rm) &&
@@ -823,8 +839,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     (mfpu_state_q == INTRA_LANE_REDUCTION);
 
   // Each independent feedback context must start from the identity of the
-  // reduction that owns it.  Zero is correct for sum, while min/max need the
-  // IEEE infinities used by the legacy neutral-fill path.  Keeping this as an
+  // reduction that owns it. Zero is used for sum; quiet NaNs represent absent
+  // min/max inputs, including all-NaN data. Keeping this as an
   // instruction-derived value also makes a foreground/background hand-off
   // independent of whichever instruction currently drives ntr_val.
   function automatic elen_t red_context_neutral(vfu_operation_t vinsn);
@@ -832,17 +848,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     unique case (vinsn.op)
       VFREDMIN: begin
         unique case (vinsn.vtype.vsew)
-          EW16: red_context_neutral = {4{16'h7c00}};
-          EW32: red_context_neutral = {2{32'h7f800000}};
-          EW64: red_context_neutral = 64'h7ff0000000000000;
+          EW16: red_context_neutral = {4{16'h7e00}};
+          EW32: red_context_neutral = {2{32'h7fc00000}};
+          EW64: red_context_neutral = 64'h7ff8000000000000;
           default:;
         endcase
       end
       VFREDMAX: begin
         unique case (vinsn.vtype.vsew)
-          EW16: red_context_neutral = {4{16'hfc00}};
-          EW32: red_context_neutral = {2{32'hff800000}};
-          EW64: red_context_neutral = 64'hfff0000000000000;
+          EW16: red_context_neutral = {4{16'h7e00}};
+          EW32: red_context_neutral = {2{32'h7fc00000}};
+          EW64: red_context_neutral = 64'h7ff8000000000000;
           default:;
         endcase
       end
@@ -1146,6 +1162,86 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
      );
   end
 
+  // Ported from signoff integration 7d5d1829: qNaN neutral + empty-set seed.
+  // This branch overlaps reductions, so activity and seed are indexed by VID.
+  // Local completion must not clear them before lane 0's final VRF grant.
+  logic [NrVInsn-1:0] minmax_active_q, minmax_instruction_q, minmax_seed_snan_q;
+  elen_t [NrVInsn-1:0] minmax_seed_q;
+  logic minmax_seed_issue;
+  logic minmax_seed_nv;
+  assign minmax_active_o = minmax_active_q;
+
+  function automatic logic minmax_snan(elen_t value, vew_e ew);
+    case (ew)
+      EW8:  return (&value[6:2]) && !value[1] && value[0];
+      EW16: return (&value[14:10]) && !value[9] && (|value[8:0]);
+      EW32: return (&value[30:23]) && !value[22] && (|value[21:0]);
+      EW64: return (&value[62:52]) && !value[51] && (|value[50:0]);
+      default: return 1'b0;
+    endcase
+  endfunction
+
+  function automatic elen_t minmax_quiet_seed(elen_t value, vew_e ew);
+    minmax_quiet_seed = value;
+    if (minmax_snan(value, ew)) begin
+      case (ew)
+        EW8:  minmax_quiet_seed[1] = 1'b1;
+        EW16: minmax_quiet_seed[9] = 1'b1;
+        EW32: minmax_quiet_seed[22] = 1'b1;
+        EW64: minmax_quiet_seed[51] = 1'b1;
+        default:;
+      endcase
+    end
+  endfunction
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      minmax_active_q <= '0;
+      minmax_instruction_q <= '0;
+      minmax_seed_q <= '0;
+      minmax_seed_snan_q <= '0;
+    end else begin
+      if (!vinsn_queue_full && vfu_operation_valid_i &&
+          (vfu_operation_i.vfu == VFU_MFpu ||
+           vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
+        minmax_active_q[vfu_operation_i.id] <= 1'b0;
+        minmax_instruction_q[vfu_operation_i.id] <=
+          vfu_operation_i.op inside {VFREDMIN, VFREDMAX};
+        minmax_seed_snan_q[vfu_operation_i.id] <= 1'b0;
+      end
+      if (vinsn_issue_q_valid && vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) begin
+        if (mfpu_operand_valid_i[vinsn_issue_q.swap_vs2_vd_op ? 2 : 1] &&
+            mfpu_operand_ready_o[vinsn_issue_q.swap_vs2_vd_op ? 2 : 1]) begin
+          automatic logic [3:0] count;
+          automatic strb_t active_bytes;
+          count = 1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew));
+          if (intra_op_rx_cnt_q >= vinsn_issue_q.vl) count = '0;
+          else if (count > vinsn_issue_q.vl - intra_op_rx_cnt_q)
+            count = vinsn_issue_q.vl - intra_op_rx_cnt_q;
+          active_bytes = be(count, vinsn_issue_q.vtype.vsew) &
+                         (vinsn_issue_q.vm ? '1 : mask_i);
+          minmax_active_q[vinsn_issue_q.id] <=
+            minmax_active_q[vinsn_issue_q.id] | (|active_bytes);
+        end
+        if (lane_id_i == 0 && first_op_q &&
+            mfpu_operand_valid_i[0] && mfpu_operand_ready_o[0]) begin
+          minmax_seed_q[vinsn_issue_q.id] <=
+            vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0];
+          minmax_seed_snan_q[vinsn_issue_q.id] <= minmax_snan(
+            vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0],
+            vinsn_issue_q.vtype.vsew);
+        end
+      end
+    end
+  end
+
+  // Delay the seed's NV contribution until global source activity is known.
+  // A masked-empty reduction copies even an sNaN seed without raising NV.
+  assign minmax_seed_nv = (lane_id_i == 0) && mfpu_result_req_o &&
+    mfpu_result_gnt_i && minmax_instruction_q[mfpu_result_id_o] &&
+    minmax_global_active_i[mfpu_result_id_o] &&
+    minmax_seed_snan_q[mfpu_result_id_o];
+
   ///////////
   //  FPU  //
   ///////////
@@ -1275,7 +1371,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     .ExponentSegmented (1'b0),
 `endif
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
-    .EmitRoundedResult (1'b0)
+    .EmitRoundedResult (1'b0),
+    .DeferSeed         (1'b1)
 `else
     .EmitRoundedResult (1'b1)
 `endif
@@ -1529,25 +1626,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         VFREDMIN: begin
           fp_op = MINMAX;
           fp_rm = RNE;
-          // positive infinity
+          // Quiet NaN does not replace an all-NaN minimum with infinity.
           case (vfpu_exec_vinsn.vtype.vsew)
-            EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'h78}};
-            EW16: ntr_val = {4{16'h7c00}};
-            EW32: ntr_val = {2{32'h7f800000}};
+            EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'h7e}};
+            EW16: ntr_val = {4{16'h7e00}};
+            EW32: ntr_val = {2{32'h7fc00000}};
             default: // EW64
-              ntr_val = 64'h7ff0000000000000;
+              ntr_val = 64'h7ff8000000000000;
           endcase
         end
         VFREDMAX: begin
           fp_op = MINMAX;
           fp_rm = RTZ;
-          // negative infinity
+          // The same quiet NaN is neutral for maximumNumber.
           case (vfpu_exec_vinsn.vtype.vsew)
-            EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'hf8}};
-            EW16: ntr_val = {4{16'hfc00}};
-            EW32: ntr_val = {2{32'hff800000}};
+            EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) ntr_val = {8{8'h7e}};
+            EW16: ntr_val = {4{16'h7e00}};
+            EW32: ntr_val = {2{32'h7fc00000}};
             default: // EW64
-              ntr_val = 64'hfff0000000000000;
+              ntr_val = 64'h7ff8000000000000;
           endcase
         end
         default:;
@@ -1945,7 +2042,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // its leader.  This remains correct even if software clears fflags between
     // the two vector instructions.
     assign fflags_ex_d = (ordered_alias_flags_replay
-                       ? ordered_memo_fflags_q : vfpu_ex_flag)
+                       ? ordered_memo_fflags_q : ((vfpu_out_valid && vfpu_out_ready) ? vfpu_ex_flag : '0)) | {minmax_seed_nv, 4'b0}
 `ifdef ARA_RED_EXACT_SUM_4LANE
                        | (exact_sum_out_fire ? exact_sum_status : '0)
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
@@ -1954,7 +2051,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 `endif
                        ;
-    assign fflags_ex_valid_d = ordered_alias_flags_replay |
+    assign fflags_ex_valid_d = minmax_seed_nv | ordered_alias_flags_replay |
                                (vfpu_out_valid & vfpu_out_ready)
 `ifdef ARA_RED_EXACT_SUM_4LANE
                                | exact_sum_out_fire
@@ -1964,7 +2061,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
                                ;
 `else
-    assign fflags_ex_d       = vfpu_ex_flag
+    assign fflags_ex_d       = ((vfpu_out_valid && vfpu_out_ready) ? vfpu_ex_flag : '0) | {minmax_seed_nv, 4'b0}
 `ifdef ARA_RED_EXACT_SUM_4LANE
                              | (exact_sum_out_fire ? exact_sum_status : '0)
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
@@ -1973,7 +2070,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
 `endif
                              ;
-    assign fflags_ex_valid_d = (vfpu_out_valid & vfpu_out_ready)
+    assign fflags_ex_valid_d = minmax_seed_nv | (vfpu_out_valid & vfpu_out_ready)
 `ifdef ARA_RED_EXACT_SUM_4LANE
                              | exact_sum_out_fire
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
@@ -2106,6 +2203,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     // Short-circuit invalid elements divisions with a mask
     issue_be = '0;
+    minmax_seed_issue = 1'b0;
 
     fpu_red_complete_d = 1'b0;
 
@@ -2497,6 +2595,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Update the element issue counter and the related issue_be signal for the divider
         // How many elements are we issuing?
         automatic logic [3:0] issue_element_cnt = (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+        automatic logic [3:0] source_element_cnt = issue_element_cnt;
+        if (intra_op_rx_cnt_q >= vinsn_issue_q.vl) source_element_cnt = '0;
+        else if (source_element_cnt > vinsn_issue_q.vl - intra_op_rx_cnt_q)
+          source_element_cnt = vinsn_issue_q.vl - intra_op_rx_cnt_q;
+
 
         // If the workload is unbalanced and some lanes already have commit_cnt == '0,
         // delay the commit until we are over with the inter-lanes phase
@@ -2520,7 +2623,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                            : mfpu_operand_valid_i[1]);
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
-            (mask_valid_i || vinsn_issue_q.vm) &&
+            (mask_valid_i || vinsn_issue_q.vm || (vinsn_issue_q.vl == 0)) &&
             (!first_op_q || vinsn_issue_q.late_seed ||
              mfpu_operand_valid_i[0]);
 `ifndef ARA_RED_EXACT_GLOBAL_4LANE
@@ -2544,27 +2647,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                  !vinsn_issue_q.late_seed;
           exact_sum_data       = vinsn_issue_q.swap_vs2_vd_op
                                ? mfpu_operand_i[2] : mfpu_operand_i[1];
-`ifdef ARA_RED_EXACT_FP16_4LANE
-          if (vinsn_issue_q.vtype.vsew == EW16) begin
-            exact_sum_active[0] = (issue_element_cnt >= 1) &&
-                                  (vinsn_issue_q.vm || mask_i[0]);
-            exact_sum_active[1] = (issue_element_cnt >= 2) &&
-                                  (vinsn_issue_q.vm || mask_i[2]);
-            exact_sum_active[2] = (issue_element_cnt >= 3) &&
-                                  (vinsn_issue_q.vm || mask_i[4]);
-            exact_sum_active[3] = (issue_element_cnt >= 4) &&
-                                  (vinsn_issue_q.vm || mask_i[6]);
-          end else begin
-`endif
-            exact_sum_active[0] = (issue_element_cnt >= 1) &&
-                                  (vinsn_issue_q.vm || mask_i[0]);
-            exact_sum_active[1] = (issue_element_cnt >= 2) &&
-                                  (vinsn_issue_q.vm || mask_i[4]);
-`ifdef ARA_RED_EXACT_FP16_4LANE
-          end
-`endif
+          exact_sum_active = red_exact_source_active(
+            issue_element_cnt, vinsn_issue_q.vtype.vsew,
+            vinsn_issue_q.vm, mask_i);
           exact_sum_last       = (issue_cnt_q <= issue_element_cnt);
-          exact_sum_in_valid   = (issue_cnt_q != '0) &&
+          exact_sum_in_valid   = ((issue_cnt_q != '0) ||
+                                  (first_op_q && vinsn_issue_q.vl == 0)) &&
                                  exact_operands_valid;
           exact_sum_start      = first_op_q && exact_sum_in_valid;
 `ifndef ARA_RED_EXACT_GLOBAL_4LANE
@@ -2573,13 +2661,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
           if (exact_sum_in_valid && exact_sum_in_ready) begin
             issue_cnt_d       = issue_cnt_q - issue_element_cnt;
-            intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+            intra_op_rx_cnt_d = intra_op_rx_cnt_q + ((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt);
             mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
                                  ? {2'b10, first_op_q &&
                                            !vinsn_issue_q.late_seed}
                                  : {2'b01, first_op_q &&
                                            !vinsn_issue_q.late_seed};
-            mask_ready_o = !vinsn_issue_q.vm;
+            mask_ready_o = !vinsn_issue_q.vm && (vinsn_issue_q.vl != 0);
             first_op_d = 1'b0;
           end
 
@@ -2625,10 +2713,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               // bypass when the round-robin pointer wraps after four cycles.
               operand_a = processed_red_operand(mfpu_operand_i[1],
                                                 ~vinsn_issue_q.vm,
-                                                mask_i, issue_element_cnt, ntr_val);
+                                                mask_i, (vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt, ntr_val);
               operand_c = processed_red_operand(mfpu_operand_i[2],
                                                 ~vinsn_issue_q.vm,
-                                                mask_i, issue_element_cnt, ntr_val);
+                                                mask_i, (vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt, ntr_val);
+              minmax_seed_issue = first_op_q;
               operand_b = first_op_q
                         ? (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0])
                         : red_context_data_d[red_context_issue_q];
@@ -2651,7 +2740,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                       : red_context_issue_q + 1'b1;
 
                   issue_cnt_d = issue_cnt_q - issue_element_cnt;
-                  intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+                  intra_op_rx_cnt_d = intra_op_rx_cnt_q + ((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt);
                   mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
                                        ? {2'b10, first_op_q}
                                        : {2'b01, first_op_q};
@@ -2667,6 +2756,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 issue_be = '1;
                 operand_b = red_context_data_d[0];
                 operand_c = red_context_data_d[1];
+                operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
                 vfpu_tag_in = strb_t'(RedContextTagMarker |
                   (red_context_two_way_q ? RedContextTagRoot : RedContextTagPair));
                 vfpu_in_valid = 1'b1;
@@ -2691,6 +2781,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                            !red_context_pending_d[1]) begin
                 operand_b = red_context_data_d[2];
                 operand_c = red_context_data_d[3];
+                operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
                 vfpu_tag_in = strb_t'(RedContextTagMarker |
                   RedContextTagPair | 8'h01);
                 vfpu_in_valid = 1'b1;
@@ -2711,6 +2802,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 issue_be = '1;
                 operand_b = red_context_data_d[0];
                 operand_c = red_context_data_d[1];
+                operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
                 vfpu_tag_in = strb_t'(RedContextTagMarker |
                   RedContextTagRoot);
                 vfpu_in_valid = 1'b1;
@@ -2792,10 +2884,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // =======================================================
 
           // Do we have all the operands necessary for this instruction?
-          operand_a = processed_red_operand(mfpu_operand_i[1], ~vinsn_issue_q.vm, mask_i, issue_element_cnt, ntr_val);
-          operand_c = processed_red_operand(mfpu_operand_i[2], ~vinsn_issue_q.vm, mask_i, issue_element_cnt, ntr_val);
+          operand_a = processed_red_operand(mfpu_operand_i[1], ~vinsn_issue_q.vm, mask_i, (vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt, ntr_val);
+          operand_c = processed_red_operand(mfpu_operand_i[2], ~vinsn_issue_q.vm, mask_i, (vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt, ntr_val);
 
           if (first_op_q) begin
+            minmax_seed_issue = 1'b1;
             operand_b = vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0];
             if ((vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2] : mfpu_operand_valid_i[1]) &&
                 (mask_valid_i || vinsn_issue_q.vm || (vinsn_issue_q.vl == '0)) && // Don't wait mask if vl is 0
@@ -2879,7 +2972,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op ? {2'b10, first_op_q} : {2'b01, first_op_q};
                 // Acknowledge the mask operands
                 mask_ready_o = ~vinsn_issue_q.vm;
-                intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+                intra_op_rx_cnt_d = intra_op_rx_cnt_q + ((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) ? source_element_cnt : issue_element_cnt);
               end
 
               if (intra_issued_op_cnt_q != (latency - 1)) intra_issued_op_cnt_d = intra_issued_op_cnt_q + 1;
@@ -2988,7 +3081,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                            : mfpu_operand_valid_i[1]);
           automatic logic exact_operands_valid =
             source_word_valid && vinsn_issue_q_valid &&
-            (mask_valid_i || vinsn_issue_q.vm) &&
+            (mask_valid_i || vinsn_issue_q.vm || (vinsn_issue_q.vl == 0)) &&
             (!first_op_q || vinsn_issue_q.late_seed ||
              mfpu_operand_valid_i[0]);
 
@@ -3008,27 +3101,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                  !vinsn_issue_q.late_seed;
           exact_sum_data = vinsn_issue_q.swap_vs2_vd_op
                          ? mfpu_operand_i[2] : mfpu_operand_i[1];
-`ifdef ARA_RED_EXACT_FP16_4LANE
-          if (vinsn_issue_q.vtype.vsew == EW16) begin
-            exact_sum_active[0] = (issue_element_cnt >= 1) &&
-                                  (vinsn_issue_q.vm || mask_i[0]);
-            exact_sum_active[1] = (issue_element_cnt >= 2) &&
-                                  (vinsn_issue_q.vm || mask_i[2]);
-            exact_sum_active[2] = (issue_element_cnt >= 3) &&
-                                  (vinsn_issue_q.vm || mask_i[4]);
-            exact_sum_active[3] = (issue_element_cnt >= 4) &&
-                                  (vinsn_issue_q.vm || mask_i[6]);
-          end else begin
-`endif
-            exact_sum_active[0] = (issue_element_cnt >= 1) &&
-                                  (vinsn_issue_q.vm || mask_i[0]);
-            exact_sum_active[1] = (issue_element_cnt >= 2) &&
-                                  (vinsn_issue_q.vm || mask_i[4]);
-`ifdef ARA_RED_EXACT_FP16_4LANE
-          end
-`endif
+          exact_sum_active = red_exact_source_active(
+            issue_element_cnt, vinsn_issue_q.vtype.vsew,
+            vinsn_issue_q.vm, mask_i);
           exact_sum_last = (issue_cnt_q <= issue_element_cnt);
-          exact_sum_in_valid = (issue_cnt_q != '0) &&
+          exact_sum_in_valid = ((issue_cnt_q != '0) ||
+                                (first_op_q && vinsn_issue_q.vl == 0)) &&
                                exact_operands_valid;
           exact_sum_start = first_op_q && exact_sum_in_valid;
 
@@ -3040,7 +3118,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                            !vinsn_issue_q.late_seed}
                                  : {2'b01, first_op_q &&
                                            !vinsn_issue_q.late_seed};
-            mask_ready_o = !vinsn_issue_q.vm;
+            mask_ready_o = !vinsn_issue_q.vm && (vinsn_issue_q.vl != 0);
             first_op_d = 1'b0;
             exact_stream_background_input_fire = 1'b1;
           end
@@ -3467,8 +3545,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             ((vinsn_processing_q.vl == '0) ? !first_op_q : red_hs_synch_q)) begin
 `endif
           mfpu_state_d = MFPU_WAIT;
-        end else if ((lane_id_i == '0) && sldu_mfpu_valid_q && to_process_cnt_d == '0) begin
-          // Lane 0 should wait for the final result
+        end else if ((lane_id_i == '0) && sldu_mfpu_valid_q && to_process_cnt_q == '0) begin
+          // Local work must already be drained before this token can be the
+          // final result. A masked skip can decrement the next-state count
+          // to zero while consuming the incoming token for the last local
+          // element. That same token still has to visit the remaining lanes;
+          // treating it as the returned result would commit a partial sum.
           result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
           result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
           result_queue_d[result_queue_write_pnt_q].version =
@@ -3654,6 +3736,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           intra_op_rx_cnt_d       = '0;
           osum_issue_cnt_d        = '0;
 `ifdef ARA_RED_CONTEXT_FLOW_4LANE
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          // A live successor already owns these slots.  Keep the next-state
+          // values, including any tagged FPU response accepted this cycle;
+          // restoring the registered values here would lose that response.
+          if (!(red_stream_foreground_advanced_q && red_stream_bg_active_q)) begin
+`endif
           red_context_data_d       = {RedContextCount{
             red_context_neutral(vinsn_issue_d)}};
           red_context_valid_d      = '1;
@@ -3664,6 +3752,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           red_context_enabled_d    = red_context_eligible(vinsn_issue_d);
           red_context_two_way_d    = (vinsn_issue_d.vl <= 8);
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
+          end
           if (red_stream_foreground_advanced_q) begin
             red_stream_promote_foreground = 1'b1;
             red_stream_prefetched_count_d =
@@ -3679,14 +3768,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               issue_cnt_d                   = issue_cnt_q;
               first_op_d                    = first_op_q;
               intra_op_rx_cnt_d             = intra_op_rx_cnt_q;
-              red_context_data_d            = red_context_data_q;
-              red_context_valid_d           = red_context_valid_q;
-              red_context_pending_d         = red_context_pending_q;
-              red_context_issue_d           = red_context_issue_q;
-              red_context_pair_issue_d      = red_context_pair_issue_q;
-              red_context_phase_d           = red_context_phase_q;
-              red_context_enabled_d         = red_context_enabled_q;
-              red_context_two_way_d         = red_context_two_way_q;
             end
 
             if ((red_stream_root_count_q != '0) ||
@@ -3848,7 +3929,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         exact_sum_active[0]  = (bg_issue_element_cnt >= 1);
         exact_sum_active[1]  = (bg_issue_element_cnt >= 2);
         exact_sum_last       = (issue_cnt_q <= bg_issue_element_cnt);
-        exact_sum_in_valid   = (issue_cnt_q != '0) &&
+        exact_sum_in_valid   = ((issue_cnt_q != '0) ||
+                                  (first_op_q && vinsn_issue_q.vl == 0)) &&
                                bg_exact_operands_valid;
         exact_sum_start      = first_op_q && exact_sum_in_valid;
         exact_sum_out_ready  = 1'b1;
@@ -3890,6 +3972,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                               ~vinsn_issue_q.vm,
                                               mask_i, bg_issue_element_cnt,
                                               ntr_val);
+            minmax_seed_issue = first_op_q;
             operand_b = first_op_q
                       ? (vinsn_issue_q.use_scalar_op ? scalar_op
                                                      : mfpu_operand_i[0])
@@ -3934,6 +4017,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               issue_be = '1;
               operand_b = red_context_data_d[0];
               operand_c = red_context_data_d[1];
+              operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
               vfpu_tag_in = strb_t'(RedContextTagMarker |
                 (red_context_two_way_q ? RedContextTagRoot
                                        : RedContextTagPair));
@@ -3959,6 +4043,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 !red_context_pending_d[1]) begin
               operand_b = red_context_data_d[2];
               operand_c = red_context_data_d[3];
+              operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
               vfpu_tag_in = strb_t'(RedContextTagMarker |
                 RedContextTagPair | 8'h01);
               vfpu_in_valid = 1'b1;
@@ -3977,6 +4062,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 red_context_valid_d[0] && red_context_valid_d[1]) begin
               operand_b = red_context_data_d[0];
               operand_c = red_context_data_d[1];
+              operand_a = operand_c; // MINMAX uses A/B; ADD uses B/C.
               vfpu_tag_in = strb_t'(RedContextTagMarker |
                 RedContextTagRoot);
               vfpu_in_valid = 1'b1;
@@ -4071,6 +4157,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     end
 `endif
 
+    // All absent min/max operands have already been replaced by quiet NaNs.
+    // Enable exception reporting for real sNaN sources and internal merges.
+    // Quiet only the seed: its NV depends on GLOBAL activity, not this lane's mask.
+    if (vfpu_exec_vinsn.op inside {VFREDMIN, VFREDMAX}) begin
+      issue_be = '1;
+      if (minmax_seed_issue)
+        operand_b = minmax_quiet_seed(operand_b, vfpu_exec_vinsn.vtype.vsew);
+    end
+
     //////////////////////////////////
     //  Write results into the VRF  //
     //////////////////////////////////
@@ -4108,6 +4203,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     if (mfpu_state_q == EXACT_GLOBAL_TX)
       mfpu_result_wdata_o = exact_packet_word;
 `endif
+    // Correct the architectural value before VRF writeback AND result-cache capture.
+    // Do not override the same data bus while it carries an intermediate SLDU token.
+    if (lane_id_i == 0 && mfpu_result_req_o &&
+        minmax_instruction_q[mfpu_result_id_o] &&
+        !minmax_global_active_i[mfpu_result_id_o])
+      mfpu_result_wdata_o = minmax_seed_q[mfpu_result_id_o];
     mfpu_result_be_o    = result_queue_q[result_queue_read_pnt_q].be;
 
     // Received a grant from the VRF, or the mask unit ate the result.
@@ -4542,6 +4643,21 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
 `ifdef ARA_RED_EXACT_SUM_4LANE
 `ifndef SYNTHESIS
+  initial begin : p_exact_capacity_contract
+    assert (NrLanes == 4)
+      else $fatal(1, "exact reduction supports four lanes");
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    assert (VLEN <= 2048)
+      else $fatal(1, "288-bit global exact state cannot cover LMUL=8 and seed");
+`elsif ARA_RED_EXACT_SEGMENTED_4LANE
+    assert (VLEN <= 4096)
+      else $fatal(1, "49-bit exact bins cannot cover the lane population and seed");
+`else
+    assert (VLEN <= 8192)
+      else $fatal(1, "288-bit lane exact state cannot cover the lane population and seed");
+`endif
+  end
+
   a_exact_sum_start_has_clean_owner: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       exact_sum_start |->
@@ -4557,6 +4673,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           || (mfpu_state_q inside {EXACT_GLOBAL_TX,
                                    EXACT_GLOBAL_WINDOW_RX,
                                    EXACT_GLOBAL_RX})
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+          // A short-window lane can finish its successor before the prior
+          // result returns. RX then enters WAIT for prior retirement, while
+          // the successor's complete accumulator remains owned by issue.
+          || ((mfpu_state_q == MFPU_WAIT) &&
+              exact_stream_foreground_advanced_q)
+`endif
 `endif
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           || red_stream_bg_active_q
@@ -4597,7 +4720,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   a_exact_masked_input_has_mask_credit: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       (exact_sum_in_valid && exact_sum_in_ready &&
-       !vinsn_processing_q.vm) |->
+       !vinsn_issue_q.vm && (vinsn_issue_q.vl != 0)) |->
         (mask_valid_i && mask_ready_o)
   ) else $error("masked exact reduction consumed data without MASKU credit");
 

@@ -55,7 +55,8 @@ void TEST_CASE2(void) {
            0x40C00000, 0x40E00000, 0x41000000, 0x3F800000, 0x40000000,
            0x40400000, 0x40800000, 0x40A00000, 0x40C00000, 0x40E00000,
            0x41000000);
-  VLOAD_64(v2, 0x3FF0000000000000);
+  // v2 was loaded with VL=1 above; reloading its one-element array here
+  // with VL=16 would read past the stack object into the peripheral region.
   asm volatile("vfwredsum.vs v4, v6, v2, v0.t");
   VCMP_U64(4, v4, 0x4042800000000000);
 }

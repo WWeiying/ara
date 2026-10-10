@@ -1,0 +1,1850 @@
+{
+  "baseline": "30c6971bff8400024ba8dd671c2fc02e451bd39a",
+  "audit_start_head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+  "note": "Uncommitted worktree audit. PASS is limited to the stated tests. Known failing baselines and pre-fix experiments are retained as FAIL. Full logs and ELFs remain under ignored hardware/build/reduction_audit.",
+  "builds": {
+    "ordered_final_token_fix": {
+      "head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+      "note": "Ten audit fixes: eight initial full-SoC classes, cache epoch lifetime margin, and ordered lane-0 final-token ownership after masked skip.",
+      "sha256": {
+        "hardware/Makefile": "07a2469cde470173d60b6dfc4981f86309bf3fc064f9696b4329e9bdd9cb738c",
+        "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+        "hardware/include/ara/ara_typedef.svh": "325ef0533c3f09d36b77c931530821387b2bba3514fa45dec6fa336a9aa4f192",
+        "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+        "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+        "hardware/src/ara.sv": "5e35d557f5b213242cc2508cb70f50b1b88200c90762d9f63248cb6814a1643e",
+        "hardware/src/ara_dispatcher.sv": "ba69694d00d67c62fdde33d1a73b424dc7ff603f3b2cf2341cd98422b58aa0bb",
+        "hardware/src/ara_sequencer.sv": "5f42453132a0bd6c2e731f1a988bf999f5bf292fa3f217190973406923dc92f7",
+        "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+        "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+        "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+        "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+        "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+        "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/src/lane/lane.sv": "c127589cdfe98388fa48cc35d4f8f552b2e6821303dd6e1cf04934f8b4abafa7",
+        "hardware/src/lane/lane_sequencer.sv": "4eb80f51993affa7800dd6aa6294bf9d8b17ef31edcdce9ddfa513875e411550",
+        "hardware/src/lane/operand_queue.sv": "8a631172cb143d2f93bf14498cd7931235cd3082a54962dcc68cff60052e7a39",
+        "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+        "hardware/src/lane/operand_requester.sv": "c35a314bb8f210acff0461f19b55c34ae2a5a811253e30722edaec30189882be",
+        "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+        "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+        "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+        "hardware/src/lane/simd_mul.sv": "9ad5dc81ca35475a3f6f3b7c00f28784a1e4dd39415e5b0825fc9afdbdd210f4",
+        "hardware/src/lane/valu.sv": "5aa3a4c16ae76182f5d0407bf8276cf1ee95486680bb90ca19a4eb7bd86bd5c4",
+        "hardware/src/lane/vector_fus_stage.sv": "053ea9c28a5e6ebe5ec4b273a1018504f5adde8a27b0d1d36d10994cda16b1fd",
+        "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+        "hardware/src/lane/vmfpu.sv": "37d333ba80b2450100a16f56f32b35f92b4a9aac162322592224ab7cee10e90d",
+        "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+        "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+        "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+        "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+        "hardware/src/vlsu/addrgen.sv": "aec922cc12f18f89c28f5e471090cb259f32e07a75b65918553ed1f5eb84a6ed",
+        "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+        "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+        "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+      },
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "filelist_sha256": "e4d08e04d446adf2bb5ab1ce6f80dd9a5c5ce48d6c01ef5392b2463924c9419a"
+    },
+    "ordered_final_token_disabled": {
+      "head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+      "note": "Same sources as ordered_final_token_fix; all reduction optimizations disabled.",
+      "sha256": {
+        "hardware/Makefile": "07a2469cde470173d60b6dfc4981f86309bf3fc064f9696b4329e9bdd9cb738c",
+        "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+        "hardware/include/ara/ara_typedef.svh": "325ef0533c3f09d36b77c931530821387b2bba3514fa45dec6fa336a9aa4f192",
+        "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+        "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+        "hardware/src/ara.sv": "5e35d557f5b213242cc2508cb70f50b1b88200c90762d9f63248cb6814a1643e",
+        "hardware/src/ara_dispatcher.sv": "ba69694d00d67c62fdde33d1a73b424dc7ff603f3b2cf2341cd98422b58aa0bb",
+        "hardware/src/ara_sequencer.sv": "5f42453132a0bd6c2e731f1a988bf999f5bf292fa3f217190973406923dc92f7",
+        "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+        "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+        "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+        "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+        "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+        "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/src/lane/lane.sv": "c127589cdfe98388fa48cc35d4f8f552b2e6821303dd6e1cf04934f8b4abafa7",
+        "hardware/src/lane/lane_sequencer.sv": "4eb80f51993affa7800dd6aa6294bf9d8b17ef31edcdce9ddfa513875e411550",
+        "hardware/src/lane/operand_queue.sv": "8a631172cb143d2f93bf14498cd7931235cd3082a54962dcc68cff60052e7a39",
+        "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+        "hardware/src/lane/operand_requester.sv": "c35a314bb8f210acff0461f19b55c34ae2a5a811253e30722edaec30189882be",
+        "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+        "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+        "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+        "hardware/src/lane/simd_mul.sv": "9ad5dc81ca35475a3f6f3b7c00f28784a1e4dd39415e5b0825fc9afdbdd210f4",
+        "hardware/src/lane/valu.sv": "5aa3a4c16ae76182f5d0407bf8276cf1ee95486680bb90ca19a4eb7bd86bd5c4",
+        "hardware/src/lane/vector_fus_stage.sv": "053ea9c28a5e6ebe5ec4b273a1018504f5adde8a27b0d1d36d10994cda16b1fd",
+        "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+        "hardware/src/lane/vmfpu.sv": "37d333ba80b2450100a16f56f32b35f92b4a9aac162322592224ab7cee10e90d",
+        "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+        "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+        "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+        "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+        "hardware/src/vlsu/addrgen.sv": "aec922cc12f18f89c28f5e471090cb259f32e07a75b65918553ed1f5eb84a6ed",
+        "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+        "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+        "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+      },
+      "simulator_sha256": "6a4668ec3703378145c75dc3878f17dca9a8a4cb14f5fd18e3e6500382e92c7c",
+      "filelist_sha256": "55383dc7bede63b64f5f175f55e58877b9a69c421189328a3e12b170d60f6e2d"
+    },
+    "cache_lifetime_fix": {
+      "head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+      "note": "Eight previous end-to-end defect fixes plus bounded cache lifetime reserving in-flight epochs; unit interface counterexample, not a CVA6 end-to-end wrap reproducer.",
+      "sha256": {
+        "hardware/Makefile": "07a2469cde470173d60b6dfc4981f86309bf3fc064f9696b4329e9bdd9cb738c",
+        "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+        "hardware/include/ara/ara_typedef.svh": "325ef0533c3f09d36b77c931530821387b2bba3514fa45dec6fa336a9aa4f192",
+        "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+        "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+        "hardware/src/ara.sv": "5e35d557f5b213242cc2508cb70f50b1b88200c90762d9f63248cb6814a1643e",
+        "hardware/src/ara_dispatcher.sv": "ba69694d00d67c62fdde33d1a73b424dc7ff603f3b2cf2341cd98422b58aa0bb",
+        "hardware/src/ara_sequencer.sv": "5f42453132a0bd6c2e731f1a988bf999f5bf292fa3f217190973406923dc92f7",
+        "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+        "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+        "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+        "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+        "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+        "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/src/lane/lane.sv": "c127589cdfe98388fa48cc35d4f8f552b2e6821303dd6e1cf04934f8b4abafa7",
+        "hardware/src/lane/lane_sequencer.sv": "4eb80f51993affa7800dd6aa6294bf9d8b17ef31edcdce9ddfa513875e411550",
+        "hardware/src/lane/operand_queue.sv": "8a631172cb143d2f93bf14498cd7931235cd3082a54962dcc68cff60052e7a39",
+        "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+        "hardware/src/lane/operand_requester.sv": "c35a314bb8f210acff0461f19b55c34ae2a5a811253e30722edaec30189882be",
+        "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+        "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+        "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+        "hardware/src/lane/simd_mul.sv": "9ad5dc81ca35475a3f6f3b7c00f28784a1e4dd39415e5b0825fc9afdbdd210f4",
+        "hardware/src/lane/valu.sv": "5aa3a4c16ae76182f5d0407bf8276cf1ee95486680bb90ca19a4eb7bd86bd5c4",
+        "hardware/src/lane/vector_fus_stage.sv": "053ea9c28a5e6ebe5ec4b273a1018504f5adde8a27b0d1d36d10994cda16b1fd",
+        "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+        "hardware/src/lane/vmfpu.sv": "f2a8be48d51c93f3c3ffcffae2f6b53ec50ab7e848d692723f26607364e0f991",
+        "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+        "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+        "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+        "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+        "hardware/src/vlsu/addrgen.sv": "aec922cc12f18f89c28f5e471090cb259f32e07a75b65918553ed1f5eb84a6ed",
+        "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+        "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+        "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+      },
+      "simulator_sha256": "0f6506bba6c7e8088f9006af5ddf52fbd038d994b2f6e528ea50edc406a9d3f8",
+      "filelist_sha256": "e4d08e04d446adf2bb5ab1ce6f80dd9a5c5ce48d6c01ef5392b2463924c9419a"
+    },
+    "epoch_valid_fix_v2": {
+      "head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+      "note": "Includes eight defect classes: group epoch and ownership fixes plus explicit source version validity and ALU source epochs. Full four-lane VLEN=1024 profile.",
+      "sha256": {
+        "hardware/Makefile": "07a2469cde470173d60b6dfc4981f86309bf3fc064f9696b4329e9bdd9cb738c",
+        "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+        "hardware/include/ara/ara_typedef.svh": "325ef0533c3f09d36b77c931530821387b2bba3514fa45dec6fa336a9aa4f192",
+        "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+        "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+        "hardware/src/ara.sv": "5e35d557f5b213242cc2508cb70f50b1b88200c90762d9f63248cb6814a1643e",
+        "hardware/src/ara_dispatcher.sv": "ba69694d00d67c62fdde33d1a73b424dc7ff603f3b2cf2341cd98422b58aa0bb",
+        "hardware/src/ara_sequencer.sv": "5f42453132a0bd6c2e731f1a988bf999f5bf292fa3f217190973406923dc92f7",
+        "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+        "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+        "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+        "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+        "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+        "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/src/lane/lane.sv": "c127589cdfe98388fa48cc35d4f8f552b2e6821303dd6e1cf04934f8b4abafa7",
+        "hardware/src/lane/lane_sequencer.sv": "4eb80f51993affa7800dd6aa6294bf9d8b17ef31edcdce9ddfa513875e411550",
+        "hardware/src/lane/operand_queue.sv": "8a631172cb143d2f93bf14498cd7931235cd3082a54962dcc68cff60052e7a39",
+        "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+        "hardware/src/lane/operand_requester.sv": "234eb9073bf8605a54e30c473479672157ebc4dcbd39c4fb8e0f48e01bf2e29f",
+        "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+        "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+        "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+        "hardware/src/lane/simd_mul.sv": "9ad5dc81ca35475a3f6f3b7c00f28784a1e4dd39415e5b0825fc9afdbdd210f4",
+        "hardware/src/lane/valu.sv": "5aa3a4c16ae76182f5d0407bf8276cf1ee95486680bb90ca19a4eb7bd86bd5c4",
+        "hardware/src/lane/vector_fus_stage.sv": "053ea9c28a5e6ebe5ec4b273a1018504f5adde8a27b0d1d36d10994cda16b1fd",
+        "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+        "hardware/src/lane/vmfpu.sv": "f2a8be48d51c93f3c3ffcffae2f6b53ec50ab7e848d692723f26607364e0f991",
+        "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+        "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+        "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+        "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+        "hardware/src/vlsu/addrgen.sv": "aec922cc12f18f89c28f5e471090cb259f32e07a75b65918553ed1f5eb84a6ed",
+        "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+        "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+        "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+      },
+      "simulator_sha256": "c13dbc713079df25227108723611795a5806bae2f81fdbef2dba2480603c3881",
+      "filelist_sha256": "e4d08e04d446adf2bb5ab1ce6f80dd9a5c5ce48d6c01ef5392b2463924c9419a"
+    },
+    "epoch_disabled": {
+      "head": "e4d261110ea7b8ad37305059d2dc5256b7898247",
+      "note": "Same eight-fix working-tree RTL as epoch_valid_fix_v2; no reduction optimization defines; four lanes VLEN=1024.",
+      "sha256": {
+        "hardware/Makefile": "07a2469cde470173d60b6dfc4981f86309bf3fc064f9696b4329e9bdd9cb738c",
+        "hardware/include/ara/ara.svh": "83f15750b453770ae8ca05f9db9f802a8589bbafbc861820c7f469eb591009b1",
+        "hardware/include/ara/ara_typedef.svh": "325ef0533c3f09d36b77c931530821387b2bba3514fa45dec6fa336a9aa4f192",
+        "hardware/include/ara/intf_typedef.svh": "97937627d7bc61d77485eb03f64652e7a9a0128618d401c4789fb63254108c96",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+        "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+        "hardware/src/ara.sv": "5e35d557f5b213242cc2508cb70f50b1b88200c90762d9f63248cb6814a1643e",
+        "hardware/src/ara_dispatcher.sv": "ba69694d00d67c62fdde33d1a73b424dc7ff603f3b2cf2341cd98422b58aa0bb",
+        "hardware/src/ara_sequencer.sv": "5f42453132a0bd6c2e731f1a988bf999f5bf292fa3f217190973406923dc92f7",
+        "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+        "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+        "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+        "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+        "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+        "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/src/lane/lane.sv": "c127589cdfe98388fa48cc35d4f8f552b2e6821303dd6e1cf04934f8b4abafa7",
+        "hardware/src/lane/lane_sequencer.sv": "4eb80f51993affa7800dd6aa6294bf9d8b17ef31edcdce9ddfa513875e411550",
+        "hardware/src/lane/operand_queue.sv": "8a631172cb143d2f93bf14498cd7931235cd3082a54962dcc68cff60052e7a39",
+        "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+        "hardware/src/lane/operand_requester.sv": "234eb9073bf8605a54e30c473479672157ebc4dcbd39c4fb8e0f48e01bf2e29f",
+        "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+        "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+        "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+        "hardware/src/lane/simd_mul.sv": "9ad5dc81ca35475a3f6f3b7c00f28784a1e4dd39415e5b0825fc9afdbdd210f4",
+        "hardware/src/lane/valu.sv": "5aa3a4c16ae76182f5d0407bf8276cf1ee95486680bb90ca19a4eb7bd86bd5c4",
+        "hardware/src/lane/vector_fus_stage.sv": "053ea9c28a5e6ebe5ec4b273a1018504f5adde8a27b0d1d36d10994cda16b1fd",
+        "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+        "hardware/src/lane/vmfpu.sv": "f2a8be48d51c93f3c3ffcffae2f6b53ec50ab7e848d692723f26607364e0f991",
+        "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+        "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+        "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+        "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+        "hardware/src/vlsu/addrgen.sv": "aec922cc12f18f89c28f5e471090cb259f32e07a75b65918553ed1f5eb84a6ed",
+        "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+        "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+        "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+      },
+      "simulator_sha256": "77a53e5144f333f2ddbb34149c59d66e7c26af5d6195905a400a1446f2b9161a",
+      "filelist_sha256": "55383dc7bede63b64f5f175f55e58877b9a69c421189328a3e12b170d60f6e2d"
+    }
+  },
+  "suites": {
+    "final_complete_suite": {
+      "manifest_sha256": "0ec17af0d0a21e50e2c36d704cd062e21a9bdd911942cefadb2595a18ba99f31",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "perf_exact_global_fp16_probe",
+          "elf_sha256": "b309dc72b9df8366efbae5db9cec819046a251aa1073001c969032dcac65c96c",
+          "returncode": 0,
+          "seconds": 171.19,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "a7937e69b5f36429f58cedf1837de93b5357df8d9ba3654bebd87813fdc37318",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_exact_global_reduction_probe",
+          "elf_sha256": "14b6df5d153be2f5d884dd9fc7323f4ed5c12bdc99cba72aca9f0ac202a56eaf",
+          "returncode": 0,
+          "seconds": 262.68,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "5a03e49be06f721c709ffa17e187447c67fc8feb8c7168568bb4da401c3c628c",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_exact_global_widening_probe",
+          "elf_sha256": "4ab450b10cdd7151446cd5876b61a2dccaa490bd80514991a2f2f0c028c7aad3",
+          "returncode": 0,
+          "seconds": 159.31,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "0dc9742f254443b8dcaae1fe31bd9cb6303b9c6c0c9d9e0856e64336860b57b4",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_exact_global_widening_stream_probe",
+          "elf_sha256": "a86301dd73544b347afc13d5e39af0f2cea3be5230d4a62b58676df7bc3cc38b",
+          "returncode": 0,
+          "seconds": 41.92,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "e4298ab9ecfc438eb234504c0b6ce836735b870c109e85a992ae7b45c7c3dfdb",
+          "key_output": [
+            "[PERF] total_cycles               : 135",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_exact_sparse_window_probe",
+          "elf_sha256": "88a813a4c9a608c76c93a991142be273aaaad2a99cd64d5d167d03dfd08dc325",
+          "returncode": 0,
+          "seconds": 24.34,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "85bb7c97ef9b45d541979012b4520c1c5efb06bc8515ccb6e0017941d3aa5d61",
+          "key_output": [
+            "[PERF] total_cycles               : 71",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_integer_reduction_stream_probe",
+          "elf_sha256": "f3beba2f2d0842a9e1ad4c395697da5c2c310df5dce14871c34b64eaa731ce95",
+          "returncode": 0,
+          "seconds": 27.99,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "b92ac87ce9e5cb9e2f52f1c9bdb339871afde05a32a45c6963a29ded8ab0a0f0",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_integer_reduction_throughput_probe",
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "returncode": 0,
+          "seconds": 26.28,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "d44aed64b661d02080660146a67fbf2a859c0929157ac08662f9b562b406afa9",
+          "key_output": [
+            "[PERF] total_cycles               : 160",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_masked_ordered_alias_probe",
+          "elf_sha256": "4a55c543d1abbb4090113f95c4dcd03292bcce63dc11bc261d1140e31ebd11d8",
+          "returncode": 0,
+          "seconds": 24.03,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "5fe7418f7f7684d0e2f0e0a698b14e1315d83b567a04f00a641064699743a42e",
+          "key_output": [
+            "[PERF] total_cycles               : 137",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_masked_reduction_stream_probe",
+          "elf_sha256": "829b85562db851ada4dd82b8cc78c737709c01fa95c0992a74a773cf061fbca6",
+          "returncode": 0,
+          "seconds": 27.99,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "77f79e4ff03cd473944b4cbc6e032808d19031c6ea8981c10a8cfa6119e494a2",
+          "key_output": [
+            "[PERF] total_cycles               : 254",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 26.04,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "e9b120fd2c6f269c1e8c987978580c7bbba51b867ed4f6cb040f439927b22796",
+          "key_output": [
+            "[PERF] total_cycles               : 549",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_reduction_interleave_probe",
+          "elf_sha256": "4c61adcf77f55f297c580dcc78612007062cf0b3c7fb467ea8cd1099f1da84ec",
+          "returncode": 0,
+          "seconds": 31.0,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "d03137a9a6a3f0de81aa925ea24f133cac97de5ebafb38bb49e1c1373fcbfcf3",
+          "key_output": [
+            "[PERF] total_cycles               : 123",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_chain_bypass_probe",
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "returncode": 0,
+          "seconds": 184.71,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "f9880210795cf0b359173febd0672822e30fd08a3c89c24e70b417fe6195d3e1",
+          "key_output": [
+            "[PERF] total_cycles               : 881",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_e16_stream_probe",
+          "elf_sha256": "f7411a107fe7efb361abd5d5084da4ef4579268e0f607ed812b19597490adfe6",
+          "returncode": 0,
+          "seconds": 24.93,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "265f543517dcf6c2a13ca0ac6eb75593b75408063829a6d3bb6753c667a4b5f8",
+          "key_output": [
+            "[PERF] total_cycles               : 103",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_e64_stream_probe",
+          "elf_sha256": "ff6842b163c86323ea8b87cbd8f152088c922cb360fc02a7fe8230eab28703dc",
+          "returncode": 0,
+          "seconds": 27.64,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "ceea391945b54c8a8302a545b3d9a585f8799fc70ba172cb21fe5b87165087a5",
+          "key_output": [
+            "[PERF] total_cycles               : 292",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_minmax_stream_probe",
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "returncode": 0,
+          "seconds": 27.9,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "f748f10469518f6df8f4e01720545e58fe430e816be6936aa2055c590a9549f2",
+          "key_output": [
+            "[PERF] total_cycles               : 261",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_short_stream_probe",
+          "elf_sha256": "6a61f9f054dca6a624929a853ebe892259e47f6c59d27225bf3461f962c08b70",
+          "returncode": 0,
+          "seconds": 24.29,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "2b910d45cac172beb7f658b6128c2c17f202a01e015fea96eb2e729b645a9bc8",
+          "key_output": [
+            "[PERF] total_cycles               : 103",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_widening_ordered_stream_probe",
+          "elf_sha256": "02045f260d839ba4333c12843331e56edd854797fa2042a73c87bb53c54f54b6",
+          "returncode": 0,
+          "seconds": 24.43,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "42732a1fdd1105515d035d0641688c6498d3b88e425e41dc1045c256077673ba",
+          "key_output": [
+            "[PERF] total_cycles               : 124",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_widening_unordered_stream_probe",
+          "elf_sha256": "3d3a03b45489e3e09b63e8cb7f7d1cf2b430d4a8f1b2f4f3f306492e41c100c8",
+          "returncode": 0,
+          "seconds": 24.48,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "ce94d4311378ec8d271b6832bb27848e2b0d907356aff2dbe0fd9f8830f28512",
+          "key_output": [
+            "[PERF] total_cycles               : 135",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfredmax",
+          "elf_sha256": "2dbfed602e5dc63cec97293384252f97f113c2e79a33b4d47bb34ffa76b6a89e",
+          "returncode": 0,
+          "seconds": 96.38,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "fcf5ee7f815c4f08d4c12c43aba7078cf6dc77d9f97faedeb6fa5d4a5cb4a440",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfredmin",
+          "elf_sha256": "52c0dbae794e43982a464546448d2589a803b1d8c9cdd2cc215d5a9542b62e7b",
+          "returncode": 0,
+          "seconds": 93.45,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "24900cedc5bc3fdc1cc89a8721315606837af53c1f3d7adc3b1cc9cbc7bb8518",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfredosum",
+          "elf_sha256": "d9f505ba8487f5eddd15c97877c309e85a52e0df093b10096e19dd410844fde2",
+          "returncode": 0,
+          "seconds": 103.29,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "92a194339166132f8faebff45b28ba3c35656100f7ebe3fb456c42c2acc79864",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfredusum",
+          "elf_sha256": "0ca7a4c9f161da3f6da33776e8d86decb4b7fd8256dfe9af115fd856ffd8049c",
+          "returncode": 0,
+          "seconds": 97.07,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "7a2e79f6f9aefdcc241a060b194fa054339bd94fcaaed55a252b8806d83bec25",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfwredosum",
+          "elf_sha256": "bc76d4b49607595d1f70cf76c7ec76e414dbfce06b6ef031c52cc73241c177ae",
+          "returncode": 0,
+          "seconds": 71.04,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "48f8e1aea4e25819b1d7c2eb13b1590124d9656ca13df53f7a8bee703f840307",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vfwredusum",
+          "elf_sha256": "85444a5867072ac53f84378a84c13fe59a5cbb071fcb7433c6277058abe92af9",
+          "returncode": 0,
+          "seconds": 69.3,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "d47899bffe969175097ae3093bdc4e6c0f5b621629927ddb3b960ec06e2174d4",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredand",
+          "elf_sha256": "ca4582bec3d0fcb9106189d2f75f6474ee54f43491ec2c53116b4ba78e6fc5b5",
+          "returncode": 0,
+          "seconds": 42.58,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "d227cb84923eb888a1a43c5728a6e03d66e31c818bf54c6c4382b0f88324a3fd",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredor",
+          "elf_sha256": "e6d808669f7c528d760acca0ab62beaf8ae5931d774b96cae1aa8110f4749806",
+          "returncode": 0,
+          "seconds": 40.68,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "435ee57de2f7d9ba4c59601519fee8dd1f84f187257506f7cc9ed14390aa5747",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredsum",
+          "elf_sha256": "4ee9375e2a78d4be26dffa4708eb87d267f5c0bbc351ebc668530b27fbd79fc9",
+          "returncode": 0,
+          "seconds": 80.97,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "1188dec5dfd5ba1c183f619d40b86cbd627bb56c75fa98ae2fa564ccfdc74782",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredxor",
+          "elf_sha256": "6fe4ebef1b059ae46d35f75bfd986b11b73a81a7f24ef1c78b28f6cc35c9b352",
+          "returncode": 0,
+          "seconds": 19.62,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "6aa9828583950547a769d8a902c3a778e3ed645ca7722a9037130f92fb59ae1a",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredmax",
+          "elf_sha256": "682fc323873692ad083de754c685f74d43b3cfa859cbed46b3ba7a711817a7de",
+          "returncode": 0,
+          "seconds": 38.92,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "ea1826f3d3736b911d039e246426f031316213eef8e206b151f6cbd7e948309f",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredmaxu",
+          "elf_sha256": "dbbac75f4c068815c8225d427544d4e4e0c5ce64d9a5fc436f90eb9422a84746",
+          "returncode": 0,
+          "seconds": 53.05,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "f0afc5bf9c137bc50a7c2c1b202308439ee3245b221094684dd63389fa9ffffb",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredmin",
+          "elf_sha256": "087fb5f34f4a1ae04ec6719b4b3fdb300900ae57f2da6a2c949a8480bcd8e5e7",
+          "returncode": 0,
+          "seconds": 47.08,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "1d634dda8d780c118687a00721ee412eaa3a23cb7128f0e6dce8a91313d5f21c",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vredminu",
+          "elf_sha256": "cd394cb587019309a7f369858ac1299eaf9af02c51452454bb44ba23aee81ce4",
+          "returncode": 0,
+          "seconds": 52.96,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "067e97fac0f2c54c7b6a3a22c7dfaeb374532b0953f00ef42bd6ae87ac613f4f",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vwredsum",
+          "elf_sha256": "d35164cbe008fec4b13adce96a95ed0dff57119fe925cfac6592a7f1d1b37725",
+          "returncode": 0,
+          "seconds": 83.27,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "b13e0da21b95204b1ccecbd1fb43ae9556e94209b4bd5f545ab865e2a85cf944",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "rv64uv-ara-vwredsumu",
+          "elf_sha256": "4080267c08ca605a47ac6e2498275ce14086d4e38bb68c267deef8dc95c86d20",
+          "returncode": 0,
+          "seconds": 82.02,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "e31d22c1114adc44b4bdfd11edf5dd6ae477d16be09d42218522c2b875800d5f",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "final_targeted_checks": {
+      "manifest_sha256": "d4b889549eb847332ae9117ddbddfc55336d60164dbf9731cdcce9eba1219816",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "reduction_audit_epoch_zero",
+          "elf_sha256": "476e570e6d8d0113827e5066aa55d47a0299101d809874ab7f92591ae2a696f4",
+          "returncode": 0,
+          "seconds": 45.15,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "78b87d0937dfd586fdbb5cb118d98e33e05b88227a26f70756721edb81009ee6",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_group_source",
+          "elf_sha256": "f4ce61caf6dfa148dd5feeb883b8bfc5cd06370eeffc69796e72bf73c22d2133",
+          "returncode": 0,
+          "seconds": 25.84,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "3d410337df6a49ec1b9669acce0c7dc2aacb08d43a7a5afddfad8786db3ca02c",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_group_matrix",
+          "elf_sha256": "b19604f9793798e5d77be00419d9ed9e8522bb1658c9447447b330f6a0f289e8",
+          "returncode": 0,
+          "seconds": 20.83,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "8fa7f72e8601a94fd3c7f8dbac0f0bc417007104211ebc312e4c1f23c369d3a6",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_lengths",
+          "elf_sha256": "deb851172a6b4df2b128c76654ad7f5b655e0a3c2117d11b7a3f4c9d2010058e",
+          "returncode": 0,
+          "seconds": 103.99,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "8e823041b832cb3b93753d4e108994c24dc7d4a1a8f45440600c36aba27499cc",
+          "key_output": [
+            "[PERF] total_cycles               : 73",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 64",
+            "[PERF] total_cycles               : 77",
+            "[PERF] total_cycles               : 76",
+            "[PERF] total_cycles               : 76",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 72",
+            "[PERF] total_cycles               : 84",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 69",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 62",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 55",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 64",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 65",
+            "[PERF] total_cycles               : 65",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 62",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 65",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_alias",
+          "elf_sha256": "ee090efcb0c341f1cf1c0bd56d2b9e890feb6da52a004f449f84cc62fa292aa4",
+          "returncode": 0,
+          "seconds": 28.35,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "27528a1a4d92991b4bbf38763357562e4ed87a523484c96fd3e45d6bf33e4b11",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_seed",
+          "elf_sha256": "4817824029feeae3bff069650954eb8180be17c85ecc36342163056246512fba",
+          "returncode": 0,
+          "seconds": 40.43,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "16758d204fe28bb4b7030cbed0d96b73a8f43a97fed2818132a198f9a6e5dc12",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_context",
+          "elf_sha256": "fa57bfed5a5082c74b920712333961fc60f22387c580b8da3f6e3961335693a5",
+          "returncode": 0,
+          "seconds": 39.33,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "a16cb5b38e8ec876c81adf59575faa4910d0315277763f68db28389f4c575f8d",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_chain_bypass_probe",
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "returncode": 0,
+          "seconds": 196.04,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "990f0a949276b3e40808605a3376d4101acf51464b8b1e15381be33b103b7fc9",
+          "key_output": [
+            "[PERF] total_cycles               : 881",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_integer_reduction_throughput_probe",
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "returncode": 0,
+          "seconds": 29.1,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "7efbbc63fcd5c416bc16881cb8ec17e551e071ade634cbb0e3b017386bb0e237",
+          "key_output": [
+            "[PERF] total_cycles               : 160",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_minmax_stream_probe",
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "returncode": 0,
+          "seconds": 28.12,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "06f9cc19f7e240a37b5e8d466411a15d6a842de3d3c29a676ba8f99568aed606",
+          "key_output": [
+            "[PERF] total_cycles               : 261",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 28.39,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "24ca2585e50b88ec7021078bfe9fdba2ab82be40131e95e7a08f967ab5f8b3a9",
+          "key_output": [
+            "[PERF] total_cycles               : 549",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "cache_lifetime_checks": {
+      "manifest_sha256": "25a6e40e6840e066f19c095c66353dec4b36988d3c7ed0a8640c66c9570a1452",
+      "simulator_sha256": "0f6506bba6c7e8088f9006af5ddf52fbd038d994b2f6e528ea50edc406a9d3f8",
+      "tests": [
+        {
+          "app": "reduction_audit_epoch_zero",
+          "elf_sha256": "476e570e6d8d0113827e5066aa55d47a0299101d809874ab7f92591ae2a696f4",
+          "returncode": 0,
+          "seconds": 39.26,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "d20ecd44791c9975adf105a1e824abe0295006b1a120490a9b77883558a8ee14",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_group_source",
+          "elf_sha256": "f4ce61caf6dfa148dd5feeb883b8bfc5cd06370eeffc69796e72bf73c22d2133",
+          "returncode": 0,
+          "seconds": 23.28,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "a92dc92c98c23fb3e69d66ee0a7de0f0631d33d11c33ebfcf5b047edea96d14a",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_group_matrix",
+          "elf_sha256": "b19604f9793798e5d77be00419d9ed9e8522bb1658c9447447b330f6a0f289e8",
+          "returncode": 0,
+          "seconds": 20.72,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "ad17b8b16aa673388920335942ae1a49c449695b8a5fca0371a77a9620f3bd24",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_lengths",
+          "elf_sha256": "deb851172a6b4df2b128c76654ad7f5b655e0a3c2117d11b7a3f4c9d2010058e",
+          "returncode": 0,
+          "seconds": 89.18,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "7a1edd26f85d970cb1db97c3070dd87d52121ffd3459c666b9f733adc9b04887",
+          "key_output": [
+            "[PERF] total_cycles               : 73",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 57",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 64",
+            "[PERF] total_cycles               : 77",
+            "[PERF] total_cycles               : 76",
+            "[PERF] total_cycles               : 76",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 67",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 68",
+            "[PERF] total_cycles               : 72",
+            "[PERF] total_cycles               : 84",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 56",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 58",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 69",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 62",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 55",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 50",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 53",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 66",
+            "[PERF] total_cycles               : 64",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 63",
+            "[PERF] total_cycles               : 65",
+            "[PERF] total_cycles               : 65",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 71",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 60",
+            "[PERF] total_cycles               : 59",
+            "[PERF] total_cycles               : 62",
+            "[PERF] total_cycles               : 61",
+            "[PERF] total_cycles               : 70",
+            "[PERF] total_cycles               : 65",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_alias",
+          "elf_sha256": "ee090efcb0c341f1cf1c0bd56d2b9e890feb6da52a004f449f84cc62fa292aa4",
+          "returncode": 0,
+          "seconds": 30.4,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "9c2c8e71d15dea44c3ec6dcc9a58e7d8ff84095a6695ddfab1ee6c5b70cf34a4",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_seed",
+          "elf_sha256": "4817824029feeae3bff069650954eb8180be17c85ecc36342163056246512fba",
+          "returncode": 0,
+          "seconds": 34.51,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "b61cbcf7991b601e1c4a9b116a2e5d4142e7e23f4961e914324d55f825f9128e",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "reduction_audit_context",
+          "elf_sha256": "fa57bfed5a5082c74b920712333961fc60f22387c580b8da3f6e3961335693a5",
+          "returncode": 0,
+          "seconds": 37.17,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "f61419ad35cc808bcf262fa3187608364cd6be76b5f96e9582307d3e931cf2ff",
+          "key_output": [
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_chain_bypass_probe",
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "returncode": 0,
+          "seconds": 173.44,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "41ebe9b48f7a103ccb495705c0837313f739c081b55963fa57bcf61e3bc5b053",
+          "key_output": [
+            "[PERF] total_cycles               : 881",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_integer_reduction_throughput_probe",
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "returncode": 0,
+          "seconds": 20.87,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "e9e983fd6b0bcf9940a04eb2effd63ba78b6dffc51bfa26b45c13e2ca2b72d65",
+          "key_output": [
+            "[PERF] total_cycles               : 160",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_minmax_stream_probe",
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "returncode": 0,
+          "seconds": 26.49,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "314231830de993952eb23f366660cd754f803faf0cb26e09bcfcaa98a5d37faf",
+          "key_output": [
+            "[PERF] total_cycles               : 261",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 26.74,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "755220796c582d56aed1dbdb7353b649990e8d001d13ba82703da874ed422e08",
+          "key_output": [
+            "[PERF] total_cycles               : 549",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "ordered_final_token_checks": {
+      "manifest_sha256": "4bce468491f12c42cf54a98a8f312b33d1da56646a94890ffe6252e360f72a2d",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "reduction_audit_ordered_fp16",
+          "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+          "returncode": 0,
+          "seconds": 28.43,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "a670cfbfe021f4c34e055bb159d4633373b436e65832d6d2ea49c0cfb78f11bb",
+          "key_output": [
+            "tail audit PASS: 1 cases, each checks 128 destination bytes",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_masked_ordered_alias_probe",
+          "elf_sha256": "4a55c543d1abbb4090113f95c4dcd03292bcce63dc11bc261d1140e31ebd11d8",
+          "returncode": 0,
+          "seconds": 24.83,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "e71a3d354df850bff05f26e9e691639b061996d6863caa1d80eed329fafaa9f6",
+          "key_output": [
+            "[PERF] total_cycles               : 137",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 26.68,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "b3679d4dc9b611d531740b2a5a0420d4085ae8beeb670f7cc1ecc3060a8e5a93",
+          "key_output": [
+            "[PERF] total_cycles               : 549",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_widening_ordered_stream_probe",
+          "elf_sha256": "02045f260d839ba4333c12843331e56edd854797fa2042a73c87bb53c54f54b6",
+          "returncode": 0,
+          "seconds": 24.77,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "90f2082dbad29d31a557b8c0c7528683597caf49431add5491f2a8c27e0d5f0e",
+          "key_output": [
+            "[PERF] total_cycles               : 124",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "ordered_rounding_full": {
+      "manifest_sha256": "7e82342ddb0e7f8b54ce0507d38cc6d05065a0eefc9b6914012cb570f076a71c",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "reduction_audit_ordered_rounding",
+          "elf_sha256": "197857baf77dda0b9def5eec312793dbc6f0932b2ac91ff3e50cd6e99376f7b1",
+          "returncode": 0,
+          "seconds": 70.9,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "eb6924e30cb9b9a7ce47206068e18a06a62782235deeed1742d5d426e5d18fa7",
+          "key_output": [
+            "ordered rounding PASS: 30 cases",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "tail_boundary_v2_off": {
+      "manifest_sha256": "de45c317b6b533bf7fdb5d751892e9b25fcdd81480985c6a643b61c8140b2e39",
+      "simulator_sha256": "77a53e5144f333f2ddbb34149c59d66e7c26af5d6195905a400a1446f2b9161a",
+      "tests": [
+        {
+          "app": "reduction_audit_tail",
+          "elf_sha256": "4fbeb529ff6a7a20304396aa64deb6a6a1b62c72fac00a6dc0b4a39689e67006",
+          "returncode": 0,
+          "seconds": 1617.6,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "42dd860a3ff71f589a9f667f4503f24b74e0108cf5e56397229b300e374a5968",
+          "key_output": [
+            "tail audit PASS: 324 cases, each checks 128 destination bytes",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "tail_boundary_v2_full": {
+      "manifest_sha256": "7f21e2ff4e143ffade8eec68a78010c816382d70abbb1395048eacdd96fa8c11",
+      "simulator_sha256": "c13dbc713079df25227108723611795a5806bae2f81fdbef2dba2480603c3881",
+      "tests": [
+        {
+          "app": "reduction_audit_tail",
+          "elf_sha256": "4fbeb529ff6a7a20304396aa64deb6a6a1b62c72fac00a6dc0b4a39689e67006",
+          "returncode": 0,
+          "seconds": 1250.05,
+          "failures": [
+            "tail FAIL op=vfredosum_16 vl=15 mode=2 word=0 got=123456789abc4800 expected=123456789abc4880",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "744d0873f3a6ac871131b57e964e7da467e5dc0ca5e1dc29bc1a9e6c712fc0a2",
+          "key_output": [
+            "tail FAIL op=vfredosum_16 vl=15 mode=2 word=0 got=123456789abc4800 expected=123456789abc4880",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        }
+      ]
+    },
+    "tail_fp_final": {
+      "manifest_sha256": "d5049fabc9b46ae3f764a391d4b1ee854959167f9e81dab2177f9f57122df406",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "reduction_audit_tail_fp",
+          "elf_sha256": "9a94616c3262792b5a4e3dda0e740fbb2de07760e6f94a2e1702448321e169b0",
+          "returncode": 0,
+          "seconds": 522.24,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "3dc82b384cc7a925c66ffefe35bf18417ee8c8164bc20f536760f32d9f4e4705",
+          "key_output": [
+            "tail audit PASS: 96 cases, each checks 128 destination bytes",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "ordered_final_perf_on": {
+      "manifest_sha256": "3b1251bf966a7d5ee4e1963b008dd9ad65a2a8550c27569a002f5b6064691b90",
+      "simulator_sha256": "7e2cfe730346655cd4f1d0224009d1446d995c6f34b12c9b248b81c5ac738500",
+      "tests": [
+        {
+          "app": "perf_integer_reduction_throughput_probe",
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "returncode": 0,
+          "seconds": 32.56,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "2898f3595ff112e7887503d3b2a39f1df208837f094b2bd1ff336983196b9704",
+          "key_output": [
+            "[PERF] total_cycles               : 160",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_minmax_stream_probe",
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "returncode": 0,
+          "seconds": 25.84,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "ea7154760758ae6b5b59aaaec499749b9f31432e18ce10451736c0b5a1726f27",
+          "key_output": [
+            "[PERF] total_cycles               : 261",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 32.3,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "6607b5a40e8153430c42ea0d090e5ff922806ceca73d1769b1a105cddd69da6e",
+          "key_output": [
+            "[PERF] total_cycles               : 549",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "ordered_final_perf_off": {
+      "manifest_sha256": "ec09483f6b123566b7752993aba5c9731db174c97e2d3630f82756ef23d57107",
+      "simulator_sha256": "6a4668ec3703378145c75dc3878f17dca9a8a4cb14f5fd18e3e6500382e92c7c",
+      "tests": [
+        {
+          "app": "perf_integer_reduction_throughput_probe",
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "returncode": 0,
+          "seconds": 28.35,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "70ec49b44a6466f2edbe88c597671314494056fdc004a5de759698410d53eadb",
+          "key_output": [
+            "[PERF] total_cycles               : 309",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_reduction_minmax_stream_probe",
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "returncode": 0,
+          "seconds": 29.45,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "5f0d13bad0bbcfb1c8eb45ef901bdb2f0ddb85e19280e537152918a5b5a70912",
+          "key_output": [
+            "[PERF] total_cycles               : 411",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        },
+        {
+          "app": "perf_ordered_nonduplicate_probe",
+          "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+          "returncode": 0,
+          "seconds": 42.18,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "be14d9678286b561f9343204f9125982cc353248e1d3210baebe53b1abf08631",
+          "key_output": [
+            "[PERF] total_cycles               : 2085",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    },
+    "latest_nan_full": {
+      "manifest_sha256": "2d11bd8dce901c0438ce1687029eb2af9ee9d39178fd783621289e3af89f1071",
+      "simulator_sha256": "c13dbc713079df25227108723611795a5806bae2f81fdbef2dba2480603c3881",
+      "tests": [
+        {
+          "app": "reduction_audit_minmax",
+          "elf_sha256": "e5698fd1c6fbecc24b56feec652b6439228ce010bb0a17685b03262d7c3f1521",
+          "returncode": 0,
+          "seconds": 37.77,
+          "failures": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "33b0f36f16ebfa39f9ea7ac821a8c42b7eb9ad00ea9ceea8ec78a8fdcb07b97d",
+          "key_output": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        },
+        {
+          "app": "reduction_audit_minmax_masked",
+          "elf_sha256": "6aeea8e928267fe509dd518d6cd83b43b5b93ab86b60fb0b2e65158d339f04af",
+          "returncode": 0,
+          "seconds": 41.03,
+          "failures": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 masked=7f800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "1659d4e482da10749aa629762f46e6f08f555593b14fb820ca09cfcf1898b62a",
+          "key_output": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 masked=7f800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        }
+      ]
+    },
+    "latest_nan_off": {
+      "manifest_sha256": "67c9368e7931913d0bc2e26dee191a8e3aa84859e837683ae6dad7a5ccba2cbc",
+      "simulator_sha256": "77a53e5144f333f2ddbb34149c59d66e7c26af5d6195905a400a1446f2b9161a",
+      "tests": [
+        {
+          "app": "reduction_audit_minmax",
+          "elf_sha256": "e5698fd1c6fbecc24b56feec652b6439228ce010bb0a17685b03262d7c3f1521",
+          "returncode": 0,
+          "seconds": 35.51,
+          "failures": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "55e0c3c2fcac5ead2a842664eeb938fb3d8498b665e41f7db35771eecc64b933",
+          "key_output": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        },
+        {
+          "app": "reduction_audit_minmax_masked",
+          "elf_sha256": "6aeea8e928267fe509dd518d6cd83b43b5b93ab86b60fb0b2e65158d339f04af",
+          "returncode": 0,
+          "seconds": 39.32,
+          "failures": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 masked=7f800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "85a83241fa6c5058c06e46a9496e8576f07c5f71081d111ae03aacde6f63f931",
+          "key_output": [
+            "minmax NaN audit: min=7f800000 max=ffffffffff800000 masked=7f800000 flags=0 FAIL",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        }
+      ]
+    },
+    "ordered_fp16_full": {
+      "manifest_sha256": "a8c8645ac5c2a1be3943c3ab98067b964b55b70ae09349c4d1aa6c138c9704c3",
+      "simulator_sha256": "0f6506bba6c7e8088f9006af5ddf52fbd038d994b2f6e528ea50edc406a9d3f8",
+      "tests": [
+        {
+          "app": "reduction_audit_ordered_fp16",
+          "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+          "returncode": 0,
+          "seconds": 49.03,
+          "failures": [
+            "tail FAIL op=vfredosum_16 vl=15 mode=2 word=0 got=123456789abc4800 expected=123456789abc4880",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ],
+          "pass": false,
+          "log_sha256": "8f0d279d34a453b3533ebb39c8617cdb55b76095f51a17bb90d46cf54391c1ac",
+          "key_output": [
+            "tail FAIL op=vfredosum_16 vl=15 mode=2 word=0 got=123456789abc4800 expected=123456789abc4880",
+            "Core Test *** FAILED *** (tohost = 1)"
+          ]
+        }
+      ]
+    },
+    "ordered_fp16_off": {
+      "manifest_sha256": "652a7e7abcb8d23aaf27838fa27dc752bb5a983cf88b1ebd0e95051a7ff69813",
+      "simulator_sha256": "e3ea3c4554af0b9bba0e86ff32482f15e9d041ce2525261cd2e02a6671e898f2",
+      "tests": [
+        {
+          "app": "reduction_audit_ordered_fp16",
+          "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+          "returncode": 0,
+          "seconds": 30.48,
+          "failures": [],
+          "pass": true,
+          "log_sha256": "3a77ea334fe8e78a4be4cbe12bbaaeb2bba34d388f1ccc2dee93e8849ce06414",
+          "key_output": [
+            "tail audit PASS: 1 cases, each checks 128 destination bytes",
+            "Core Test *** SUCCESS *** (tohost = 0)"
+          ]
+        }
+      ]
+    }
+  },
+  "units": {
+    "numeric_single_final": {
+      "manifest_sha256": "3afb11c4c783f4d46c6ee53d9a34dd384eea722ae34388234e16d4e540df5fd2",
+      "pass": true,
+      "source_sha256": {
+        "hardware/tb/fp_exact_reduction_oracle_tb.sv": "9462190b2ba44bc65fc3552f9966645a7490fdbe285e7153ce82601eb0566f05",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/scripts/gen_exact_reduction_oracle.py": "a2603705e5ae0197ec8811078d854937fe0d18f099dc6c2b466653bb2a7d9326"
+      },
+      "simulator_sha256": "63c05e53103fbaa198141845e2a67194fba814ff0ba8a0daae29801384091ff6",
+      "log_sha256": "09aa1566f9de28ef17d1ebf5f4164cb095a0711c6811843851c2e25fbb86660e",
+      "key_output": [
+        "PASS: exact integer oracle (980 FP32/FP16/widening reductions, conventional and late seed)"
+      ]
+    },
+    "numeric_multibeat_final": {
+      "manifest_sha256": "5339acbc03a174575b9241f138cf51841321afe266d392ff3c47c09173968aa1",
+      "pass": true,
+      "source_sha256": {
+        "hardware/tb/reduction_multibeat_tb.sv": "8477dcf5fdfe9a747f4a7bc99c4f21925fbf4b7af5a9fd50d526c3c79f86da45",
+        "hardware/src/lane/fp32_exact_reduction_accum.sv": "134c467895413ed2fa9cb5c0ea30bb7d96d09cf9b54bcee428c4a7288372bc51",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/scripts/gen_reduction_multibeat.py": "b837049566735b07b410b5ce6bad3862453d6fb36f849e99acf11cd882323aea",
+        "hardware/scripts/gen_exact_reduction_oracle.py": "a2603705e5ae0197ec8811078d854937fe0d18f099dc6c2b466653bb2a7d9326"
+      },
+      "simulator_sha256": "7c1afc4d08461d44906d0928264f3a98d06ef065c75d1d3fa68cd4a4f4d1c4b4",
+      "log_sha256": "2eac18ab4d4abc8ec42f1604d7215eb51d37c483bdca776ca01891422749f816",
+      "key_output": [
+        "PASS: multi-beat exact audit (1500 cases, 3 implementations)"
+      ]
+    },
+    "sldu_packet_repro": {
+      "manifest_sha256": "e5e79bfcdc20175470e53f203482be0fe896221fc90db4305f0e8b4d4c95b274",
+      "pass": true,
+      "source_sha256": {
+        "hardware/tb/sldu_packet_oracle_tb.sv": "9a0d63ebfa3bb67bdd9ff60d31d3601ffb46446bb8ff7f5dfe807c433f21a064",
+        "hardware/scripts/gen_sldu_packet_oracle.py": "eeb04ac0ae15e382961a05836be4f527d5463d3c22ae3eefe6fe1ee04ef7a779",
+        "hardware/scripts/gen_exact_reduction_oracle.py": "a2603705e5ae0197ec8811078d854937fe0d18f099dc6c2b466653bb2a7d9326",
+        "hardware/src/sldu/sldu.sv": "929b29379e141965f6827525db446f7c07738403ff2560ad8dee5e22bf4b0aab",
+        "hardware/src/lane/fp32_exact_reduction_finalize.sv": "02d78d8df1f23de7bc560a5828ef73409957ac8f45ec9712ba319a5238ca1c5b",
+        "hardware/build/reduction_audit/sldu_packet_repro/filelist": "2670ad3cbe235a9f99d14c460ffa8489786e9b57e0ea766ef29e9015f54f9b74",
+        "hardware/build/reduction_audit/sldu_packet_repro/vectors.txt": "6d1d4c75969e7cfd27e1ad8d10c82b994a6d864264b68666bddcfd383dce155c",
+        "hardware/build/reduction_audit/sldu_packet_repro/simv": "732bf7d78d18870bdadbdf86df64e942daa3b3aae73ee619cd15005b474d6a65"
+      },
+      "simulator_sha256": null,
+      "log_sha256": "00490a14d6f70be67551b050f74d3064077ec6014ef2adcc50d8b15b81c3118e",
+      "key_output": [
+        "PASS: 1200 SLDU packet cases, skew, stale tokens, output stalls, root and result"
+      ]
+    },
+    "cache_lifetime_before": {
+      "manifest_sha256": "568166d756c55742d09bb9472658490511fe5e528431ac859dbc21414afe59b8",
+      "pass": false,
+      "source_sha256": {
+        "hardware/tb/operand_cache_lifetime_tb.sv": "0eefa32bc8a58d1734089c6e4017e16e5c032653af52620d7db250d493746011",
+        "hardware/src/lane/operand_requester.sv": "234eb9073bf8605a54e30c473479672157ebc4dcbd39c4fb8e0f48e01bf2e29f",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/build/reduction_audit/cache_lifetime_before/filelist": "2670ad3cbe235a9f99d14c460ffa8489786e9b57e0ea766ef29e9015f54f9b74"
+      },
+      "simulator_sha256": "8f9a9a67fc174f8d24cdaf4fab596f18f40fd20c9a47947ba69a7e1f21b28300",
+      "log_sha256": "aec39c090d9b7a6ac7628e22d19725448cd7ea1dc82443984442b7da3d7780fb",
+      "key_output": [
+        "PASS: fresh epoch-zero cached seed",
+        "FAIL: wrapped epoch forwarded old payload 32 while new producer pending"
+      ]
+    },
+    "cache_lifetime_after": {
+      "manifest_sha256": "2a83194508c5c84e76c2e0a363aa47e759e444d314fb4f73c127e32883c28447",
+      "pass": true,
+      "source_sha256": {
+        "hardware/tb/operand_cache_lifetime_tb.sv": "0eefa32bc8a58d1734089c6e4017e16e5c032653af52620d7db250d493746011",
+        "hardware/src/lane/operand_requester.sv": "c35a314bb8f210acff0461f19b55c34ae2a5a811253e30722edaec30189882be",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/build/reduction_audit/cache_lifetime_after/filelist": "2670ad3cbe235a9f99d14c460ffa8489786e9b57e0ea766ef29e9015f54f9b74"
+      },
+      "simulator_sha256": "f9bce76be28b7ab8dc994f7e8c9c78b120cc07ba51c96c780302d3efaacae5d6",
+      "log_sha256": "c4e733a202e1276e5b66e07a65ede20fe82bc8cd1ea5dd5c6a975ca325f2f02d",
+      "key_output": [
+        "PASS: fresh epoch-zero cached seed",
+        "PASS: pending wrapped epoch waits and reads VRF",
+        "PASS: operand cache lifetime"
+      ]
+    },
+    "cache_lifetime_boundaries": {
+      "manifest_sha256": "212bd867d9729c445dac74a1c921c331a439165cd7cea3e4ea84d3f2b18347f8",
+      "pass": true,
+      "source_sha256": {
+        "hardware/tb/operand_cache_lifetime_tb.sv": "525424684638e08d813f0ecbcd09cd4557b0cef07d716cff0f65f5bfe0a75bb3",
+        "hardware/src/lane/operand_requester.sv": "c35a314bb8f210acff0461f19b55c34ae2a5a811253e30722edaec30189882be",
+        "hardware/include/ara_pkg.sv": "da27c38cc99f0c0f18eb7a0eff00cd2f07bcea8debc99668a0a57daa2e25a2ca",
+        "hardware/build/reduction_audit/cache_lifetime_boundaries/filelist": "2670ad3cbe235a9f99d14c460ffa8489786e9b57e0ea766ef29e9015f54f9b74"
+      },
+      "simulator_sha256": "97bb3d8dbfe9bb1f5887a4bbb89fc641c3f23f0c9c21be14ddc99908c1901aaf",
+      "log_sha256": "da4a094f3e877c9e6a52ecffd3c0945ebfcd5fcbc20318b4c471b49d53de0234",
+      "key_output": [
+        "PASS: fresh epoch-zero cached seed",
+        "PASS: pending wrapped epoch waits and reads VRF",
+        "PASS: cache age delay=0 forward=1",
+        "PASS: cache age delay=1 forward=1",
+        "PASS: cache age delay=244 forward=1",
+        "PASS: cache age delay=245 forward=1",
+        "PASS: cache age delay=246 forward=0",
+        "PASS: cache age delay=247 forward=0",
+        "PASS: cache age delay=254 forward=0",
+        "PASS: operand cache lifetime"
+      ]
+    }
+  },
+  "performance": {
+    "disabled_build": "ordered_final_token_disabled",
+    "enabled_build": "ordered_final_token_fix",
+    "same_rtl_hashes": true,
+    "results": [
+      {
+        "app": "perf_integer_reduction_throughput_probe",
+        "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+        "disabled": 309,
+        "enabled": 160,
+        "reduction_percent": 48.22
+      },
+      {
+        "app": "perf_reduction_minmax_stream_probe",
+        "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+        "disabled": 411,
+        "enabled": 261,
+        "reduction_percent": 36.5
+      },
+      {
+        "app": "perf_ordered_nonduplicate_probe",
+        "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+        "disabled": 2085,
+        "enabled": 549,
+        "reduction_percent": 73.67
+      }
+    ]
+  },
+  "configuration_gates": {
+    "note": "Makefile parser gates only; does not claim RTL simulation of every accepted parameter combination.",
+    "tests": [
+      {
+        "name": "flat_limit",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=8192",
+          "reduction_exact_sum=1"
+        ],
+        "expected_accept": true,
+        "returncode": 0,
+        "pass": true,
+        "output": ""
+      },
+      {
+        "name": "flat_overflow",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=16384",
+          "reduction_exact_sum=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:257: *** reduction_exact_sum requires VLEN<=8192 for the 288-bit lane accumulator.  Stop.\n"
+      },
+      {
+        "name": "segmented_limit",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=4096",
+          "reduction_exact_sum=1",
+          "reduction_exact_segmented=1"
+        ],
+        "expected_accept": true,
+        "returncode": 0,
+        "pass": true,
+        "output": ""
+      },
+      {
+        "name": "segmented_overflow",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=8192",
+          "reduction_exact_sum=1",
+          "reduction_exact_segmented=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:266: *** reduction_exact_segmented requires VLEN<=4096 for 49-bit exponent bins.  Stop.\n"
+      },
+      {
+        "name": "global_limit",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=2048",
+          "reduction_complete_4lane=1"
+        ],
+        "expected_accept": true,
+        "returncode": 0,
+        "pass": true,
+        "output": ""
+      },
+      {
+        "name": "global_overflow",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=4",
+          "vlen=4096",
+          "reduction_complete_4lane=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:284: *** reduction_exact_global requires VLEN<=2048 for the 288-bit global sum.  Stop.\n"
+      },
+      {
+        "name": "profile_2_lanes",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=2",
+          "vlen=1024",
+          "reduction_complete_4lane=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:132: *** reduction_complete_4lane requires nr_lanes=4.  Stop.\n"
+      },
+      {
+        "name": "profile_8_lanes",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=8",
+          "vlen=1024",
+          "reduction_complete_4lane=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:132: *** reduction_complete_4lane requires nr_lanes=4.  Stop.\n"
+      },
+      {
+        "name": "profile_16_lanes",
+        "command": [
+          "make",
+          "--no-print-directory",
+          "-s",
+          "-C",
+          "hardware",
+          "-f",
+          "Makefile",
+          "-f",
+          "-",
+          "audit_guard",
+          "nr_lanes=16",
+          "vlen=1024",
+          "reduction_complete_4lane=1"
+        ],
+        "expected_accept": false,
+        "returncode": 2,
+        "pass": true,
+        "output": "Makefile:132: *** reduction_complete_4lane requires nr_lanes=4.  Stop.\n"
+      }
+    ]
+  }
+}

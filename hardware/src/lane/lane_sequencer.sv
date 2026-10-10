@@ -360,6 +360,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
 
       // Vector length calculation
+      vfu_operation_d.global_vl = pe_req.vl;
       vfu_operation_d.vl = pe_req.vl / NrLanes;
       // If lane_id_i < vl % NrLanes, this lane has to execute one extra micro-operation.
       // Also, if the ALU/VMFPU should pre-process data for the MASKU, force a balanced payload
@@ -394,6 +395,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[AluA] = '{
             id         : pe_req.id,
             vs         : pe_req.vs1,
+            source_version_valid : 1'b1,
+            source_version : pe_req.vs1_version,
             eew        : pe_req.eew_vs1,
             // If reductions and vl == 0, we must replace with neutral values
             conv       : (vfu_operation_d.vl == '0) ? OpQueueReductionZExt : pe_req.conversion_vs1,
@@ -413,6 +416,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[AluB] = '{
             id         : pe_req.id,
             vs         : pe_req.vs2,
+            source_version_valid : 1'b1,
+            source_version : pe_req.vs2_version,
             eew        : pe_req.eew_vs2,
             // If reductions and vl == 0, we must replace with neutral values
             conv       : (vfu_operation_d.vl == '0) ? OpQueueReductionZExt : pe_req.conversion_vs2,
@@ -455,6 +460,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MulFPUA] = '{
             id         : pe_req.id,
             vs         : pe_req.vs1,
+            source_version_valid : 1'b1,
             source_version : pe_req.vs1_version,
             eew        : pe_req.eew_vs1,
             // If reductions and vl == 0, we must replace with neutral values
@@ -479,6 +485,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MulFPUB] = '{
             id         : pe_req.id,
             vs         : pe_req.swap_vs2_vd_op ? pe_req.vd        : pe_req.vs2,
+            source_version_valid : 1'b1,
             source_version : pe_req.swap_vs2_vd_op
                            ? pe_req.vd_operand_version : pe_req.vs2_version,
             eew        : pe_req.swap_vs2_vd_op ? pe_req.eew_vd_op : pe_req.eew_vs2,
@@ -504,6 +511,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MulFPUC] = '{
             id         : pe_req.id,
             vs         : pe_req.swap_vs2_vd_op ? pe_req.vs2            : pe_req.vd,
+            source_version_valid : 1'b1,
             source_version : pe_req.swap_vs2_vd_op
                            ? pe_req.vs2_version : pe_req.vd_operand_version,
             eew        : pe_req.swap_vs2_vd_op ? pe_req.eew_vs2        : pe_req.eew_vd_op,
@@ -593,6 +601,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[StA] = '{
             id      : pe_req.id,
             vs      : pe_req.vs1,
+            source_version_valid : 1'b1,
             source_version : pe_req.vs1_version,
             eew     : pe_req.old_eew_vs1,
             conv    : pe_req.conversion_vs1,
@@ -939,6 +948,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request[MaskB] = '{
             id         : pe_req.id,
             vs         : pe_req.vs2,
+            source_version_valid : 1'b1,
             source_version : pe_req.vs2_version,
             eew        : pe_req.eew_vs2,
             conv       : pe_req.conversion_vs2,

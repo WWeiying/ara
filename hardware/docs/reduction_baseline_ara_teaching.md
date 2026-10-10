@@ -506,7 +506,7 @@ if (cmd.is_reduct && cmd.target_fu == ALU_SLDU)
   ntr.w64 = {8{ntrh_int, {7{ntrl_int}}}}; // EW8 的每元素位型
 ```
 
-`ntrh_int` 是符号位，`ntrl_int` 复制到其余位。于是 `00→0x00`， `11→0xff`，`01→0x7f`，`10→0x80`。同一个两位字段就能覆盖整数 sum/OR、AND/unsigned min、signed min、signed max 的单位元。浮点分支把 `01/10` 译成正/负无穷的 IEEE 位型。**注意**字段名叫 `cvt_resize` 不表示此处正在做宽度转换；基线复用了它的编码，阅读时要看 consumer。
+`ntrh_int` 是符号位，`ntrl_int` 复制到其余位。于是 `00→0x00`， `11→0xff`，`01→0x7f`，`10→0x80`。同一个两位字段就能覆盖整数 sum/OR、AND/unsigned min、signed min、signed max 的单位元。浮点分支把 `01/10` 译成正/负无穷的 IEEE 位型。这里是在描述代码，不代表它覆盖了所有 IEEE 特殊值：本次核查发现，当 min/max 的 seed 和有效源全为 NaN 时，这些无穷填充值会把本应为 NaN 的结果变成无穷；全 inactive 时的 seed 原样复制也有失败反例，见[核查记录](reduction_correctness_audit.md)。**注意**字段名叫 `cvt_resize` 不表示此处正在做宽度转换；基线复用了它的编码，阅读时要看 consumer。
 
 行业里常用这种“数据加有效性”做法：无效槽位送单位元，让一棵固定形状的树照常运行。它简化控制，但 `neutral` 是否真的无副作用必须连同 signed zero、NaN 和异常标志验证；对 masked-off FP 值，仅替换数值仍不足以证明不会产生异常。
 

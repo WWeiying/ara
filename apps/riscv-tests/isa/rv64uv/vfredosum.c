@@ -58,7 +58,16 @@ void TEST_CASE1(void) {
       0x40A00000, 0x40C00000, 0x40E00000, 0x41000000);
   VLOAD_32(v3, 0x3F800000);
   asm volatile("vfredosum.vs v1, v2, v3");
-  VCMP_U32(4, v1, 0x43908000);
+  // vsetvli may clamp AVL=64 to VLMAX (32 at VLEN=1024, e32,m1).
+  // These small integer additions are exact in every FP32 reduction tree.
+  uint64_t active_vl;
+  read_vl(active_vl);
+  uint32_t reference_sum = 1;
+  for (uint64_t i = 0; i < active_vl; ++i)
+    reference_sum += i % 8 + 1;
+  union { float value; uint32_t bits; } expected;
+  expected.value = (float)reference_sum;
+  VCMP_U32(4, v1, expected.bits);
 }
 
 // Masked naive test

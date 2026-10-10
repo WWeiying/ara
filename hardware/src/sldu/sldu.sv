@@ -445,8 +445,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // Keep one rounded scalar per in-flight instruction ID.  This turns the
   // original linear-chain entry into a small versioned producer table, so
   // independent exact reductions may be interleaved without evicting one
-  // another.  Reaccepting an instruction ID invalidates its old slot before
-  // execution; destination and epoch checks protect register redefinitions.
+  // another. Keep the old result when an ID is reaccepted: an older queued
+  // consumer may still need it after the producer retires. Only completion
+  // replaces a slot. The SLDU executes in order, so the new producer cannot
+  // replace that value before older consumers bind it; destination and epoch
+  // checks distinguish architectural register definitions.
   logic [NrVInsn-1:0]       exact_result_cache_valid_d,
                               exact_result_cache_valid_q;
   logic [NrVInsn-1:0][4:0]  exact_result_cache_vd_d,
@@ -510,7 +513,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     .neg_zero_seen_i       (exact_neg_zero_seen_q),
     .seed_valid_i          (exact_seed_valid_q),
     .seed_i                (exact_seed_q),
-    .seed_in_exact_i       (!vinsn_commit.late_seed),
+    // The seed occupies the same root node for ordinary and late binding.
+    .seed_in_exact_i       (1'b0),
     .rnd_mode_i            (exact_rnd_mode_q),
     .format_fp16_i         (exact_format_fp16_q),
     .result_o              (exact_final_result),
@@ -1494,13 +1498,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
       exact_global_d[vinsn_queue_q.accept_pnt] =
         exact_global_eligible(pe_req_i);
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
-      // Instruction IDs are recycled.  Kill any rounded value left by the
-      // previous owner as soon as a new exact producer with that ID enters
-      // the SLDU queue, before a dependent header can inspect the slot.
-      if (exact_global_eligible(pe_req_i))
-        exact_result_cache_valid_d[pe_req_i.id] = 1'b0;
-`endif
 `endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       begin : p_mark_ordered_alias

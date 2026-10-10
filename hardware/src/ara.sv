@@ -254,6 +254,13 @@ module ara import ara_pkg::*; #(
   logic                            lsu_current_burst_exception;
   logic              [NrLanes-1:0] alu_vinsn_done;
   logic              [NrLanes-1:0] mfpu_vinsn_done;
+  logic [NrLanes-1:0][NrVInsn-1:0] minmax_active;
+  logic [NrVInsn-1:0] minmax_global_active;
+  always_comb begin
+    minmax_global_active = '0;
+    for (int lane = 0; lane < NrLanes; lane++)
+      minmax_global_active |= minmax_active[lane];
+  end
   // Interface with the operand requesters
   logic [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table;
   // Ready for lane 0 (scalar operand fwd)
@@ -398,6 +405,8 @@ module ara import ara_pkg::*; #(
       .pe_req_ready_o                  (pe_req_ready[lane]                  ),
       .pe_resp_o                       (pe_resp[lane]                       ),
       .alu_vinsn_done_o                (alu_vinsn_done[lane]                ),
+      .minmax_active_o                (minmax_active[lane]),
+      .minmax_global_active_i         (minmax_global_active),
       .mfpu_vinsn_done_o               (mfpu_vinsn_done[lane]               ),
       .global_hazard_table_i           (global_hazard_table                 ),
       // Interface with the slide unit
