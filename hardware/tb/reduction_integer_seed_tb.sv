@@ -19,6 +19,7 @@ module reduction_integer_seed_tb;
   reduction_completion_engine #(.EnableExact(0)) dut (
     .clk_i(clk),.rst_ni(rst_n),.cmd_i(cmd),.cmd_valid_i(cmd_valid),.cmd_ready_o(cmd_ready),
     .partial_i(partial),.partial_valid_i(partial_valid),.partial_ready_o(partial_ready),
+    .seed_lifetime_i('0), .external_seed_i('0), .external_seed_valid_i('0), .ordinary_seed_i('0), .ordinary_seed_valid_i('0),
     .seed_i(seed),.seed_valid_i(seed_valid),.seed_ready_o(seed_ready),
     .result_o(result),.result_valid_o(result_valid),.result_ready_i(result_ready),.occupancy_o(),
     .exact_cmd_i('0),.exact_cmd_valid_i(0),.exact_cmd_ready_o(),

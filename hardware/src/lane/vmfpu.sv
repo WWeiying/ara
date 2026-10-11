@@ -98,6 +98,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   endfunction
   logic [NrVInsn-1:0] rce_pending_d, rce_pending_q;
   logic rce_writeback, rce_handoff, rce_exception_valid;
+  logic rce_ordinary_drain;
   logic [4:0] rce_exception_flags;
 
   assign rce_writeback = rce_can_retire_o && rce_result_valid_i && lane_id_i == 0;
@@ -302,7 +303,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic mask_operand_ready;
   logic mask_operand_gnt;
   logic mask_result_owned;
-  assign mask_result_owned = !(RceFpCompletionEnable && vinsn_commit_valid && uses_rce(vinsn_commit));
+  assign rce_ordinary_drain = RceMfpuRestartEnable && RceMixedEnable &&
+    vinsn_commit_valid && !is_reduction(vinsn_commit.op) &&
+    result_queue_cnt_q != 0 && result_queue_valid_q[result_queue_read_pnt_q] &&
+    result_queue_q[result_queue_read_pnt_q].id == vinsn_commit.id &&
+    !result_queue_q[result_queue_read_pnt_q].is_reduction;
+  assign mask_result_owned = !(RceFpCompletionEnable && vinsn_commit_valid && uses_rce(vinsn_commit)) &&
+    (!RceMfpuRestartEnable || is_reduction(vinsn_commit.op) || rce_ordinary_drain);
 
   assign mask_operand_gnt = mask_result_owned && mask_operand_ready && result_queue_q[result_queue_read_pnt_q].mask && result_queue_valid_q[result_queue_read_pnt_q];
 
@@ -2216,7 +2223,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     rce_partial_o = '{id: vinsn_processing_q.id,
       data: result_queue_q[result_queue_write_pnt_q].wdata,
       source_active: word_red_active_q[vinsn_processing_q.id], fflags: '0,
-      seed_valid: lane_id_i == 0, seed: word_red_seed_q[vinsn_processing_q.id]};
+      seed_valid: lane_id_i == 0 && !vinsn_processing_q.late_seed, seed: word_red_seed_q[vinsn_processing_q.id]};
     rce_partial_valid_o = 1'b0;
     rce_result_ready_o = 1'b0;
 
@@ -2807,16 +2814,17 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               operand_c = processed_red_operand(mfpu_operand_i[2],
                                                 ~vinsn_issue_q.vm,
                                                 mask_i, ((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) || rce_fp64_sum(vinsn_issue_q.op, vinsn_issue_q.vtype.vsew)) ? source_element_cnt : issue_element_cnt, ntr_val);
-              word_red_seed_issue = first_op_q;
+              word_red_seed_issue = first_op_q && !vinsn_issue_q.late_seed;
               operand_b = first_op_q
-                        ? (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0])
+                        ? (vinsn_issue_q.late_seed ? ntr_val :
+                           (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0]))
                         : red_context_data_d[red_context_issue_q];
 
               operands_valid = source_word_valid &&
                 (mask_valid_i || vinsn_issue_q.vm) &&
                 red_context_valid_d[red_context_issue_q] &&
                 !red_context_pending_d[red_context_issue_q] &&
-                (!first_op_q || mfpu_operand_valid_i[0]);
+                (!first_op_q || vinsn_issue_q.late_seed || mfpu_operand_valid_i[0]);
 
               if (issue_cnt_q != '0 && operands_valid && vinsn_issue_q_valid) begin
                 vfpu_tag_in = vfpu_tag_t'(RedContextTagMarker |
@@ -2832,8 +2840,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                   issue_cnt_d = issue_cnt_q - issue_element_cnt;
                   intra_op_rx_cnt_d = intra_op_rx_cnt_q + (((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) || rce_fp64_sum(vinsn_issue_q.op, vinsn_issue_q.vtype.vsew)) ? source_element_cnt : issue_element_cnt);
                   mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
-                                       ? {2'b10, first_op_q}
-                                       : {2'b01, first_op_q};
+                                       ? {2'b10, first_op_q && !vinsn_issue_q.late_seed}
+                                       : {2'b01, first_op_q && !vinsn_issue_q.late_seed};
                   mask_ready_o = !vinsn_issue_q.vm;
                   first_op_d = 1'b0;
                 end
@@ -2978,11 +2986,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           operand_c = processed_red_operand(mfpu_operand_i[2], ~vinsn_issue_q.vm, mask_i, ((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) || rce_fp64_sum(vinsn_issue_q.op, vinsn_issue_q.vtype.vsew)) ? source_element_cnt : issue_element_cnt, ntr_val);
 
           if (first_op_q) begin
-            word_red_seed_issue = 1'b1;
-            operand_b = vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0];
+            word_red_seed_issue = !vinsn_issue_q.late_seed;
+            operand_b = vinsn_issue_q.late_seed ? ntr_val :
+              (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0]);
             if ((vinsn_issue_q.swap_vs2_vd_op ? mfpu_operand_valid_i[2] : mfpu_operand_valid_i[1]) &&
                 (mask_valid_i || vinsn_issue_q.vm || (vinsn_issue_q.vl == '0)) && // Don't wait mask if vl is 0
-                 mfpu_operand_valid_i[0]) begin
+                 (vinsn_issue_q.late_seed || mfpu_operand_valid_i[0])) begin
               operands_valid     = 1'b1;
               intra_op_rx_cnt_en = 1'b1;
             end else begin
@@ -3059,7 +3068,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               if (intra_op_rx_cnt_en) begin
                 // Acknowledge the operands from the operand queue
                 //mfpu_operand_ready_o = operands_ready;
-                mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op ? {2'b10, first_op_q} : {2'b01, first_op_q};
+                mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op ? {2'b10, first_op_q && !vinsn_issue_q.late_seed} : {2'b01, first_op_q && !vinsn_issue_q.late_seed};
                 // Acknowledge the mask operands
                 mask_ready_o = ~vinsn_issue_q.vm;
                 intra_op_rx_cnt_d = intra_op_rx_cnt_q + (((vinsn_issue_q.op inside {VFREDMIN, VFREDMAX}) || rce_fp64_sum(vinsn_issue_q.op, vinsn_issue_q.vtype.vsew)) ? source_element_cnt : issue_element_cnt);
@@ -3718,7 +3727,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         automatic logic can_drain = drain_prefetch ||
           (mfpu_operand_valid_i[2] &&
            (vinsn_issue_q.vm || mask_valid_i) &&
-           (!first_op_q || mfpu_operand_valid_i[0]));
+           (!first_op_q || vinsn_issue_q.late_seed || mfpu_operand_valid_i[0]));
 
         if (can_drain && issue_cnt_q != '0) begin
           if (drain_prefetch)
@@ -4043,7 +4052,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       if (red_exact_sum_eligible(vinsn_issue_q)) begin
         automatic logic bg_exact_operands_valid =
           bg_source_word_valid && vinsn_issue_q_valid &&
-          (!first_op_q || mfpu_operand_valid_i[0]);
+          (!first_op_q || vinsn_issue_q.late_seed || mfpu_operand_valid_i[0]);
         automatic logic [31:0] bg_empty_subtree_identity =
           (vinsn_issue_q.fp_rm == RDN) ? 32'h00000000 : 32'h80000000;
 
@@ -4069,8 +4078,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           issue_cnt_d = issue_cnt_q - bg_issue_element_cnt;
           intra_op_rx_cnt_d = intra_op_rx_cnt_q + bg_issue_element_cnt;
           mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
-                               ? {2'b10, first_op_q}
-                               : {2'b01, first_op_q};
+                               ? {2'b10, first_op_q && !vinsn_issue_q.late_seed}
+                               : {2'b01, first_op_q && !vinsn_issue_q.late_seed};
           first_op_d = 1'b0;
           red_stream_bg_issue_cycles_d =
             red_stream_bg_issue_cycles_q + 1'b1;
@@ -4102,10 +4111,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                               ~vinsn_issue_q.vm,
                                               mask_i, bg_issue_element_cnt,
                                               ntr_val);
-            word_red_seed_issue = first_op_q;
+            word_red_seed_issue = first_op_q && !vinsn_issue_q.late_seed;
             operand_b = first_op_q
-                      ? (vinsn_issue_q.use_scalar_op ? scalar_op
-                                                     : mfpu_operand_i[0])
+                      ? (vinsn_issue_q.late_seed ? ntr_val :
+                         (vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0]))
                       : red_context_data_d[red_context_issue_q];
 
             operands_valid = bg_source_word_valid &&
@@ -4117,7 +4126,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                (mfpu_state_q == INTER_LANES_REDUCTION_TX)) &&
               red_context_valid_d[red_context_issue_q] &&
               !red_context_pending_d[red_context_issue_q] &&
-              (!first_op_q || mfpu_operand_valid_i[0]);
+              (!first_op_q || vinsn_issue_q.late_seed || mfpu_operand_valid_i[0]);
 
             if (issue_cnt_q != '0 && operands_valid &&
                 vinsn_issue_q_valid) begin
@@ -4133,8 +4142,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 issue_cnt_d = issue_cnt_q - bg_issue_element_cnt;
                 intra_op_rx_cnt_d = intra_op_rx_cnt_q + bg_issue_element_cnt;
                 mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op
-                                     ? {2'b10, first_op_q}
-                                     : {2'b01, first_op_q};
+                                     ? {2'b10, first_op_q && !vinsn_issue_q.late_seed}
+                                     : {2'b01, first_op_q && !vinsn_issue_q.late_seed};
                 mask_ready_o = !vinsn_issue_q.vm;
                 first_op_d = 1'b0;
                 red_stream_bg_issue_cycles_d =
@@ -4308,7 +4317,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     // Send result information to the VRF
     // Use mfpu_result_gnt register instead of mfpu_state, because the state could be changed
-    if (mfpu_state_q inside {NO_REDUCTION, MFPU_WAIT})
+    if ((mfpu_state_q inside {NO_REDUCTION, MFPU_WAIT}) || rce_ordinary_drain)
       mfpu_result_req_o = (result_queue_valid_q[result_queue_read_pnt_q] && !result_queue_q[result_queue_read_pnt_q].mask) ? 1'b1 : 1'b0;
     else
       mfpu_result_req_o = 1'b0;
@@ -4336,8 +4345,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     mfpu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
 `endif
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
-    if (mfpu_state_q == EXACT_GLOBAL_TX)
+    if (mfpu_state_q == EXACT_GLOBAL_TX) begin
+      // Packet transport and VRF share the same data bus. Drain older normal
+      // writes during local accumulation; once transmitting, packets own it.
       mfpu_result_wdata_o = exact_packet_word;
+      if (RceMfpuRestartEnable) mfpu_result_req_o = 1'b0;
+    end
 `endif
     // Correct the architectural value before VRF writeback AND result-cache capture.
     // Do not override the same data bus while it carries an intermediate SLDU token.
@@ -4387,6 +4400,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         if (commit_cnt_q < commit_element_cnt) commit_cnt_d = '0;
       end
     end
+
+    // Local reduction state must not pin an older ordinary commit head.
+    // Its final real queue grant still controls commit_cnt and retirement.
+    if (RceMfpuRestartEnable && RceMixedEnable && vinsn_commit_valid &&
+        !is_reduction(vinsn_commit.op)) prevent_commit = 1'b0;
 
     if (vinsn_commit_valid && uses_rce(vinsn_commit)) begin
       prevent_commit = 1'b1;
@@ -4631,12 +4649,19 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         to_process_cnt_d = vinsn_queue_d.vinsn[vinsn_queue_d.processing_pnt].vl;
     end
     if (RceFpCompletionEnable && mfpu_state_d == NO_REDUCTION &&
-        vinsn_queue_d.issue_cnt != 0 && result_queue_cnt_d == 0 &&
+        vinsn_queue_d.issue_cnt != 0 &&
+        (result_queue_cnt_d == 0 ||
+         (RceMfpuRestartEnable && RceMixedEnable && uses_rce(vinsn_issue_d) &&
+          (uses_exact_rce(vinsn_issue_d) ||
+           (result_queue_cnt_d < ResultQueueDepth &&
+            !result_queue_valid_d[result_queue_write_pnt_d])))) &&
         vinsn_queue_d.processing_pnt == vinsn_queue_d.issue_pnt &&
         is_reduction(vinsn_issue_d.op) &&
         (vinsn_queue_d.issue_pnt == vinsn_queue_d.commit_pnt ||
          (RceMixedEnable && uses_rce(vinsn_issue_d) &&
-          uses_rce(vinsn_queue_d.vinsn[vinsn_queue_d.commit_pnt])))) begin
+          (uses_rce(vinsn_queue_d.vinsn[vinsn_queue_d.commit_pnt]) ||
+           (RceMfpuRestartEnable &&
+            !is_reduction(vinsn_queue_d.vinsn[vinsn_queue_d.commit_pnt].op)))))) begin
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       mfpu_state_d = ordered_alias_d[vinsn_queue_d.issue_pnt]
         ? OSUM_ALIAS_DRAIN : next_mfpu_state(vinsn_issue_d.op);

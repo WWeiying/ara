@@ -69,6 +69,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           stu_operand_valid_o,
     input  logic                                           stu_operand_ready_i,
     // Dedicated RCE local-result and completion ownership interfaces.
+    output ara_rce_pkg::rce_seed_write_t [1:0] rce_seed_write_o,
+    output logic [1:0] rce_seed_write_valid_o,
+    output ara_rce_pkg::rce_seed_write_t [1:0] rce_external_seed_o,
+    output logic [1:0] rce_external_seed_valid_o,
     output ara_rce_pkg::rce_partial_t rce_partial_o,
     output logic rce_partial_valid_o,
     input logic rce_partial_ready_i,
@@ -337,7 +341,54 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   elen_t                                      mfpu_result_wdata;
   strb_t                                      mfpu_result_be;
   logic                                       mfpu_result_gnt;
+  ara_rce_pkg::rce_external_write_t [1:0] external_write;
+  logic [1:0] external_write_valid;
+  if (ara_rce_pkg::RceExternalSeedEnable) begin : gen_external_seed_capture
+    logic [NrVInsn-1:0][4:0] base_q;
+    vreg_version_t [NrVInsn-1:0] version_q;
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin base_q <= '0; version_q <= '0; end
+      else if (pe_req_valid_i && pe_req_ready_o && pe_req.use_vd) begin
+        base_q[pe_req.id] <= pe_req.vd;
+        version_q[pe_req.id] <= pe_req.vd_version;
+      end
+    end
+    for (genvar port=0; port<2; port++) begin : gen_port
+      assign rce_external_seed_o[port] = '{seed: '{producer: external_write[port].id,
+        vd: base_q[external_write[port].id], version: version_q[external_write[port].id],
+        data: external_write[port].data}, be: external_write[port].be};
+      assign rce_external_seed_valid_o[port] = lane_id_i == 0 && external_write_valid[port] &&
+        external_write[port].addr == 64'(vaddr(base_q[external_write[port].id],NrLanes,VLEN));
+    end
+  end else begin : gen_no_external_seed_capture
+    assign rce_external_seed_o = '0;
+    assign rce_external_seed_valid_o = '0;
+  end
   // To the slide unit (reductions)
+  if (ara_rce_pkg::RceOrdinarySeedEnable) begin : gen_seed_write_capture
+    logic [NrVInsn-1:0][4:0] base_vd_q;
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) base_vd_q <= '0;
+      else if (pe_req_valid_i && pe_req_ready_o && pe_req.use_vd)
+        base_vd_q[pe_req.id] <= pe_req.vd;
+    end
+    assign rce_seed_write_o[0] = '{seed: '{producer: alu_result_id,
+      vd: base_vd_q[alu_result_id], version: alu_result_version, data: alu_result_wdata},
+      be: alu_result_be};
+    assign rce_seed_write_o[1] = '{seed: '{producer: mfpu_result_id,
+      vd: base_vd_q[mfpu_result_id], version: mfpu_result_version, data: mfpu_result_wdata},
+      be: mfpu_result_be};
+    // Capture only the base register's first word. Later LMUL group words
+    // must not evict this producer's scalar seed from its per-ID cache.
+    assign rce_seed_write_valid_o[0] = lane_id_i == 0 && alu_result_req && alu_result_gnt &&
+      !alu_result_is_reduction && alu_result_addr == vaddr(base_vd_q[alu_result_id],NrLanes,VLEN);
+    assign rce_seed_write_valid_o[1] = lane_id_i == 0 && mfpu_result_req && mfpu_result_gnt &&
+      !mfpu_result_is_reduction && mfpu_result_addr == vaddr(base_vd_q[mfpu_result_id],NrLanes,VLEN);
+  end else begin : gen_no_seed_write_capture
+    assign rce_seed_write_o = '0;
+    assign rce_seed_write_valid_o = '0;
+  end
+
   logic                                       sldu_result_gnt_opqueues;
   // Support for store exception flush
   logic                                       lsu_ex_flush_op_queues_d, lsu_ex_flush_op_queues_q;
@@ -351,6 +402,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_cmd_t(operand_request_cmd_t),
     .operand_queue_cmd_t  (operand_queue_cmd_t  )
   ) i_operand_requester (
+    .rce_external_write_o(external_write),
+    .rce_external_write_valid_o(external_write_valid),
     .clk_i                    (clk_i                   ),
     .rst_ni                   (rst_ni                  ),
     // Interface with the main sequencer
@@ -814,7 +867,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // The selectors are controlled by the slide unit itself, which must know what it will receive next.
   assign sldu_alu_valid    = sldu_red_valid_i & (sldu_addrgen_sel_q == ALU_RED_SEL);
   assign sldu_mfpu_valid   = sldu_red_valid_i & (sldu_addrgen_sel_q == FPU_RED_SEL);
-  assign sldu_result_gnt_o = sldu_addrgen_sel_q == SLDU_SEL ? sldu_result_gnt_opqueues :
+  // The egress selector owns source transmission, not outstanding Slide writes.
+  // It can already name a younger reduction while the last Slide results wait
+  // for VRF acceptance. Never acknowledge those writes with a FU token-ready.
+  assign sldu_result_gnt_o = (sldu_result_req_i || sldu_addrgen_sel_q == SLDU_SEL) ? sldu_result_gnt_opqueues :
                             (sldu_addrgen_sel_q == ALU_RED_SEL ? sldu_alu_ready : sldu_mfpu_ready);
 
   //////////////////

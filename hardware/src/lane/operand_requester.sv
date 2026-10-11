@@ -90,7 +90,9 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     input  elen_t                                      ldu_result_wdata_i,
     input  strb_t                                      ldu_result_be_i,
     output logic                                       ldu_result_gnt_o,
-    output logic                                       ldu_result_final_gnt_o
+    output logic                                       ldu_result_final_gnt_o,
+    output ara_rce_pkg::rce_external_write_t [1:0] rce_external_write_o,
+    output logic [1:0] rce_external_write_valid_o
   );
 
   import cf_math_pkg::idx_width;
@@ -145,6 +147,19 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     .valid_o   (sldu_result_req                                                              ),
     .ready_i   (sldu_result_gnt                                                              )
   );
+
+  // Publish the buffered payload only when the VRF actually accepts it.
+  if (ara_rce_pkg::RceExternalSeedEnable) begin : gen_external_seed_write
+    assign rce_external_write_o[0] = '{id: ldu_result_id, addr: 64'(ldu_result_addr),
+      data: ldu_result_wdata, be: ldu_result_be};
+    assign rce_external_write_o[1] = '{id: sldu_result_id, addr: 64'(sldu_result_addr),
+      data: sldu_result_wdata, be: sldu_result_be};
+    assign rce_external_write_valid_o = {sldu_result_req && sldu_result_gnt,
+                                       ldu_result_req && ldu_result_gnt};
+  end else begin : gen_no_external_seed_write
+    assign rce_external_write_o = '0;
+    assign rce_external_write_valid_o = '0;
+  end
 
   // Mask unit
   vid_t   masku_result_id;

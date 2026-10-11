@@ -74,7 +74,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   ////////////////////////////////
 
   // We store a certain number of in-flight vector instructions
-  localparam VInsnQueueDepth = SlduInsnQueueDepth;
+  localparam VInsnQueueDepth = ara_rce_pkg::RceSlduQueueDepth;
 
   struct packed {
     pe_req_t [VInsnQueueDepth-1:0] vinsn;
@@ -740,7 +740,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
     unique case (state_q)
       SLIDE_IDLE: begin
-        if (vinsn_issue_valid_q) begin
+        if (vinsn_issue_valid_q
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+            && (!ara_rce_pkg::RceExactDecoupleEnable ||
+             !ara_rce_pkg::RceExactDirectEnable ||
+             vinsn_queue_q.issue_pnt == vinsn_queue_q.commit_pnt ||
+             vinsn_issue_q.vfu == VFU_SlideUnit ||
+             exact_global_q[vinsn_queue_q.issue_pnt])
+`endif
+            ) begin
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
           if (ordered_alias_q[vinsn_queue_q.issue_pnt]) begin
             // The lane VMFPUs drain the duplicate operand requests and replay
@@ -756,8 +764,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `endif
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
           if (exact_global_q[vinsn_queue_q.issue_pnt]) begin
-            rce_exact_cmd_valid_o = ara_rce_pkg::RceExactEnable;
-            state_d                       = SLIDE_RUN_EXACT;
+            rce_exact_cmd_valid_o = ara_rce_pkg::RceExactEnable &&
+              (!ara_rce_pkg::RceExactDecoupleEnable || rce_exact_cmd_ready_i);
+            state_d = (!ara_rce_pkg::RceExactEnable || rce_exact_cmd_valid_o)
+              ? SLIDE_RUN_EXACT : SLIDE_IDLE;
             exact_packet_beat_d           = '0;
             exact_limb_count_d            = 3'd5;
             exact_root_d                  = '0;
@@ -868,7 +878,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           exact_limb_merge_fire = rce_exact_events_i.limb_fire;
           exact_implicit_sign_lane_count = rce_exact_events_i.implicit_sign_lanes;
           if (rce_exact_local_complete_i) begin
-            state_d = SLIDE_WAIT_EXACT;
+            state_d = ara_rce_pkg::RceExactDecoupleEnable && ara_rce_pkg::RceExactDirectEnable
+              ? SLIDE_IDLE : SLIDE_WAIT_EXACT;
             vinsn_queue_d.issue_pnt += 1'b1;
             vinsn_queue_d.issue_cnt -= 1'b1;
           end
@@ -1502,6 +1513,25 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       default:;
     endcase
 
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    // Communication issue and architectural completion have independent owners.
+    // Older exact results may retire while a younger Slide fills its own FIFO.
+    if (ara_rce_pkg::RceExactDecoupleEnable && ara_rce_pkg::RceExactDirectEnable) begin
+      rce_completion_valid_o = rce_exact_result_valid_i && vinsn_commit_valid &&
+        exact_global_q[vinsn_queue_q.commit_pnt] && rce_exact_result_i.id == vinsn_commit.id;
+      rce_exact_result_ready_o = rce_completion_valid_o && rce_completion_ready_i;
+      if (rce_exact_result_ready_o) begin
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+        exact_result_cache_valid_d[vinsn_commit.id] = 1'b1;
+        exact_result_cache_vd_d[vinsn_commit.id] = vinsn_commit.vd;
+        exact_result_cache_version_d[vinsn_commit.id] = vinsn_commit.vd_version;
+        exact_result_cache_data_d[vinsn_commit.id] = rce_exact_result_i.data;
+`endif
+        commit_cnt_d = '0;
+      end
+    end
+`endif
+
     //////////////////////////////////
     //  Write results into the VRF  //
     //////////////////////////////////
@@ -1509,6 +1539,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     for (int lane = 0; lane < NrLanes; lane++) begin: result_write
       sldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}));
       sldu_red_valid_o[lane]    = result_queue_valid_q[result_queue_read_pnt_q][lane] & (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu});
+      if (ara_rce_pkg::RceExactDecoupleEnable &&
+          (!vinsn_commit_valid || result_queue_q[result_queue_read_pnt_q][lane].id != vinsn_commit.id)) begin
+        sldu_result_req_o[lane] = 1'b0;
+        sldu_red_valid_o[lane] = 1'b0;
+      end
       sldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr;
       sldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id;
       sldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata;
@@ -1539,6 +1574,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       if (((vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_valid_o[lane]) || sldu_result_req_o[lane]) && sldu_result_gnt_i[lane]) begin
         result_queue_valid_d[result_queue_read_pnt_q][lane] = 1'b0;
         result_queue_d[result_queue_read_pnt_q][lane]       = '0;
+        // Keep the entry owner until every lane has granted. Lane 0 may drain
+        // first, but the final queue pop still checks this ID against commit.
+        if (ara_rce_pkg::RceExactDecoupleEnable)
+          result_queue_d[result_queue_read_pnt_q][lane].id =
+            result_queue_q[result_queue_read_pnt_q][lane].id;
         // Reset the final gnt vector since we are now waiting for another final gnt
         result_final_gnt_d[lane] = 1'b0;
       end
@@ -1574,7 +1614,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     if (!(|result_queue_valid_d[result_queue_read_pnt_q]) &&
       (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu} || (&result_final_gnt_d || commit_cnt_q > (NrLanes * 8))))
       // There is something waiting to be written
-      if (!result_queue_empty) begin
+      if (!result_queue_empty &&
+          (!ara_rce_pkg::RceExactDecoupleEnable ||
+           result_queue_q[result_queue_read_pnt_q][0].id == vinsn_commit.id)) begin
         if (state_q != SLIDE_NP2_SETUP)
           // Increment the read pointer
           if (result_queue_read_pnt_q == ResultQueueDepth-1)

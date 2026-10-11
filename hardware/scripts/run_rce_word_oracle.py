@@ -33,10 +33,11 @@ def main():
     additions = [root/'hardware/include/ara_rce_pkg.sv',
                  root/'hardware/src/reduction/reduction_completion_engine.sv',
                  root/'hardware/tb/reduction_completion_engine_tb.sv']
-    suffixes = ['/hardware/include/ara_rce_pkg.sv',
-                '/hardware/src/reduction/reduction_completion_engine.sv']
+    # Accept both SoC lists and a previous frozen module list without
+    # redeclaring an obsolete package/module after the current sources.
+    replaced_names = {source.name for source in additions}
     lines = [s for s in original if '/hardware/tb/' not in s and
-             '+define+FOR_VERIFY' not in s and not any(s.endswith(x) for x in suffixes)]
+             '+define+FOR_VERIFY' not in s and Path(s).name not in replaced_names]
     pkg_pos = next(i for i, s in enumerate(lines) if s.endswith('/hardware/include/ara_pkg.sv')) + 1
     frozen = out/'rtl'; frozen.mkdir()
     for source in additions:

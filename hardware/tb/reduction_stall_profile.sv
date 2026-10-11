@@ -26,15 +26,16 @@ bind reduction_completion_engine reduction_stall_profile #(.Kind("word")) i_stal
   .clk_i, .rst_ni, .lane_i(64'd0), .events_i({
     (result_fire && count_q == ContextDepth),                    // 15 full + pop
     (state_q == FP_WAIT && fp_out_valid && !fp_seed_q && lane_q != NrLanes-1), // 14 feedback boundary
-    (state_q == MERGE && !active_q[read_q][lane_q]),              // 13 inactive merge lane
-    ((state_q == MERGE || state_q == FOLD) && !(|active_q[read_q])), // 12 globally empty compute
-    (state_q == HOLD && !result_ready_i),                        // 11 output backpressure
-    (state_q == SEED && !seed_ready_q[read_q]),                   // 10 seed wait
+    (state_q == MERGE && (!merge_lane_found ||
+                         !active_q[work_ptr][merge_lane])),    // 13 no active selected merge lane
+    ((state_q == MERGE || state_q == FOLD) && !(|active_q[work_ptr])), // 12 globally empty compute
+    (result_valid_o && !result_ready_i),                        // 11 output backpressure
+    (state_q == SEED && !seed_ready_q[work_ptr]),                // 10 active context seed wait
     (state_q == IDLE && valid_q[read_q] && !(&received_q[read_q])), // 9 partial wait
     (state_q == IDLE && valid_q[read_q] && (&received_q[read_q])),  // 8 startup bubble
     result_fire,                                               // 7 completions
     (state_q == FP_WAIT),                                       // 6
-    (state_q == HOLD),                                          // 5
+    result_valid_o,                                            // 5 externally held result
     (state_q == SEED),                                          // 4
     (state_q == FOLD),                                          // 3
     (state_q == MERGE),                                         // 2

@@ -355,6 +355,10 @@ module ara import ara_pkg::*; #(
   // Integer RCE integration shares the physical lane egress, but has its own
   // receive contexts and return channel. Completion stays owned by the lanes
   // until the actual lane-zero VRF write grant.
+  ara_rce_pkg::rce_seed_write_t [NrLanes-1:0][1:0] rce_seed_write;
+  logic [NrLanes-1:0][1:0] rce_seed_write_valid;
+  ara_rce_pkg::rce_seed_write_t [NrLanes-1:0][1:0] rce_external_seed;
+  logic [NrLanes-1:0][1:0] rce_external_seed_valid;
   ara_rce_pkg::rce_partial_t [NrLanes-1:0] rce_partial, rce_input;
   logic [NrLanes-1:0] rce_partial_valid, rce_partial_ready;
   logic [NrLanes-1:0] rce_can_retire, rce_wb_ready;
@@ -436,6 +440,10 @@ module ara import ara_pkg::*; #(
       .pe_req_valid_i                  (pe_req_valid                        ),
       .pe_vinsn_running_i              (pe_vinsn_running                    ),
       .pe_req_ready_o                  (pe_req_ready[lane]                  ),
+      .rce_external_seed_o(rce_external_seed[lane]),
+      .rce_external_seed_valid_o(rce_external_seed_valid[lane]),
+      .rce_seed_write_o(rce_seed_write[lane]),
+      .rce_seed_write_valid_o(rce_seed_write_valid[lane]),
       .rce_partial_o(rce_partial[lane]),
       .rce_partial_valid_o(rce_partial_valid[lane]),
       .rce_partial_ready_i(rce_partial_ready[lane]),
@@ -687,6 +695,9 @@ module ara import ara_pkg::*; #(
       .cmd_valid_i(command_valid), .cmd_ready_o(command_ready),
       .partial_i(rce_input), .partial_valid_i(rce_partial_valid),
       .partial_ready_o(rce_partial_ready), .seed_i('0), .seed_valid_i(1'b0),
+      .external_seed_i(rce_external_seed[0]), .external_seed_valid_i(rce_external_seed_valid[0]),
+      .seed_lifetime_i(pe_vinsn_running),
+      .ordinary_seed_i(rce_seed_write[0]), .ordinary_seed_valid_i(rce_seed_write_valid[0]),
       .seed_ready_o(), .result_o(word_result), .result_valid_o(word_result_valid),
       .result_ready_i(word_result_ready), .occupancy_o(),
       .exact_cmd_i(rce_exact_cmd), .exact_cmd_valid_i(rce_exact_cmd_valid),

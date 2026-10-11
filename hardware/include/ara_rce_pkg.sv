@@ -4,10 +4,90 @@ package ara_rce_pkg;
   import ara_pkg::*;
   import rvv_pkg::*;
 
+  // Optional descriptor buffering, not another transport or arithmetic unit.
+  // Sequencer reservations and SLDU physical storage must use the same depth.
+`ifdef ARA_RED_RCE_SLDU_BUFFER
+  localparam int unsigned RceSlduQueueDepth = 4;
+`else
+  localparam int unsigned RceSlduQueueDepth = SlduInsnQueueDepth;
+`endif
+
+`ifdef ARA_RED_RCE_SEED_GROUP
+  localparam bit RceSeedGroupEnable = 1'b1;
+`else
+  localparam bit RceSeedGroupEnable = 1'b0;
+`endif
+
+`ifdef ARA_RED_RCE_SEED_LOOKAHEAD
+  localparam bit RceSeedLookaheadEnable = 1'b1;
+`else
+  localparam bit RceSeedLookaheadEnable = 1'b0;
+`endif
 `ifdef ARA_RED_RCE_QUEUE_LOOKAHEAD
   localparam bit RceQueueLookaheadEnable = 1'b1;
 `else
   localparam bit RceQueueLookaheadEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_ORDINARY_SEED_SAME_VFU
+  localparam bit RceOrdinarySeedSameVfuEnable = 1'b1;
+`else
+  localparam bit RceOrdinarySeedSameVfuEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_ORDINARY_SEED
+  localparam bit RceOrdinarySeedEnable = 1'b1;
+`else
+  localparam bit RceOrdinarySeedEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_EXTERNAL_SEED
+  localparam bit RceExternalSeedEnable = RceOrdinarySeedEnable;
+`else
+  localparam bit RceExternalSeedEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_FP_LATE_SEED
+  localparam bit RceFpLateSeedEnable = 1'b1;
+`else
+  localparam bit RceFpLateSeedEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_EXACT_DECOUPLE
+  localparam bit RceExactDecoupleEnable = 1'b1;
+`else
+  localparam bit RceExactDecoupleEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_SPLIT_CREDIT
+  localparam bit RceSplitCreditEnable = 1'b1;
+`else
+  localparam bit RceSplitCreditEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_WORD_SPARSE
+  localparam bit RceWordSparseEnable = 1'b1;
+`else
+  localparam bit RceWordSparseEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_FP64_SPARSE
+  localparam bit RceFp64SparseEnable = 1'b1;
+`else
+  localparam bit RceFp64SparseEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_FP64_SEED_FEEDBACK
+  localparam bit RceFp64SeedFeedbackEnable = 1'b1;
+`else
+  localparam bit RceFp64SeedFeedbackEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_FP64_FEEDBACK
+  localparam bit RceFp64FeedbackEnable = 1'b1;
+`else
+  localparam bit RceFp64FeedbackEnable = 1'b0;
+`endif
+`ifdef ARA_RED_RCE_MFPU_RESTART
+  localparam bit RceMfpuRestartEnable = 1'b1;
+`else
+  localparam bit RceMfpuRestartEnable = 1'b0;
+`endif
+// Skip arithmetic only after every lane has supplied its activity metadata.
+`ifdef ARA_RED_RCE_EMPTY_BYPASS
+  localparam bit RceEmptyBypassEnable = 1'b1;
+`else
+  localparam bit RceEmptyBypassEnable = 1'b0;
 `endif
 `ifdef ARA_RED_RCE_WORD_TURNAROUND
   localparam bit RceWordTurnaroundEnable = 1'b1;
@@ -143,6 +223,17 @@ package ara_rce_pkg;
     vreg_version_t version;
     elen_t data;
   } rce_seed_t;
+  typedef struct packed {
+    rce_seed_t seed;
+    logic [7:0] be;
+  } rce_seed_write_t;
+  typedef struct packed {
+    vid_t id;
+    logic [63:0] addr;
+    elen_t data;
+    logic [7:0] be;
+  } rce_external_write_t;
+
 
   typedef struct packed {
     vid_t id;

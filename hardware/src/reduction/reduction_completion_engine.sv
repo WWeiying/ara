@@ -28,6 +28,11 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   input rce_partial_t [NrLanes-1:0] partial_i,
   input logic [NrLanes-1:0] partial_valid_i,
   output logic [NrLanes-1:0] partial_ready_o,
+  input logic [NrVInsn-1:0] seed_lifetime_i,
+  input rce_seed_write_t [1:0] external_seed_i,
+  input logic [1:0] external_seed_valid_i,
+  input rce_seed_write_t [1:0] ordinary_seed_i,
+  input logic [1:0] ordinary_seed_valid_i,
   input rce_seed_t seed_i,
   input logic seed_valid_i,
   output logic seed_ready_o,
@@ -57,7 +62,15 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   logic [ContextDepth-1:0][NrLanes-1:0] received_q, active_q;
   elen_t [ContextDepth-1:0][NrLanes-1:0] partial_q;
   logic [ContextDepth-1:0][NrLanes-1:0][4:0] flags_q;
-  logic [PtrWidth-1:0] read_q, write_q;
+  logic [PtrWidth-1:0] read_q, write_q, work_ptr;
+  // The retirement pointer never changes during speculative completion work.
+  // One checkpoint and one completed-result slot share the existing datapath.
+  logic background_q, prepared_valid_q;
+  elen_t paused_accum_q;
+  logic [4:0] paused_flags_q;
+  logic paused_fp_seed_done_q;
+  rce_result_t prepared_result_q;
+  assign work_ptr = background_q ? next_ptr(read_q) : read_q;
   logic [$clog2(ContextDepth+1)-1:0] count_q;
   // Initialization may consume the final accepted partial on this edge.
   // No arithmetic bypass: the initialized accumulator remains registered.
@@ -72,12 +85,55 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   elen_t merge_a, merge_b, merge_result;
   logic [4:0] merge_flags;
   logic command_fire, result_fire;
+  logic [ContextDepth-1:0] cached_seed_ready;
+  elen_t [ContextDepth-1:0] cached_seed_data;
   logic fp_sum, fp_seed_q, fp_seed_done_q;
+  logic fp_feedback_request, fp_seed_feedback_request;
   logic fp_in_valid, fp_in_ready, fp_out_valid;
   elen_t fp_result;
   fpnew_pkg::status_t fp_status;
   vid_t fp_tag;
   logic word_compute;
+  logic sparse_integer, sparse_fp, merge_lane_found;
+  logic fp_next_found;
+  logic [LaneWidth-1:0] fp_next_lane;
+  logic [LaneWidth-1:0] merge_lane;
+  // Lane 0 is always retained in the initial accumulator, including any
+  // embedded seed. Empty source lanes 1..N-1 contain only neutral padding.
+  // Select the next active lane without adding another arithmetic unit.
+  always_comb begin
+    sparse_integer = RceWordSparseEnable &&
+      (command_q[work_ptr].op inside {VREDSUM, VWREDSUM, VWREDSUMU,
+        VREDAND, VREDOR, VREDXOR, VREDMIN, VREDMAX, VREDMINU, VREDMAXU});
+    sparse_fp = RceFp64SparseEnable && fp_sum;
+    merge_lane = lane_q;
+    merge_lane_found = !(sparse_integer || sparse_fp);
+    for (int lane = 1; lane < NrLanes; lane++)
+      if ((sparse_integer || sparse_fp) && !merge_lane_found && lane >= int'(lane_q) &&
+          active_q[work_ptr][lane]) begin
+        merge_lane = LaneWidth'(lane);
+        merge_lane_found = 1'b1;
+      end
+  end
+  // Search strictly above the in-flight lane. The first active lane keeps
+  // the original rounded addition order; no inactive value enters the FPU.
+  always_comb begin
+    fp_next_lane = lane_q + 1'b1;
+    fp_next_found = lane_q < NrLanes-1;
+    if (RceFp64SparseEnable) begin
+      fp_next_found = 1'b0;
+      for (int lane = 1; lane < NrLanes; lane++)
+        if (!fp_next_found && lane > int'(lane_q) && active_q[work_ptr][lane]) begin
+          fp_next_lane = LaneWidth'(lane);
+          fp_next_found = 1'b1;
+        end
+    end
+  end
+  rce_seed_write_t [3:0] captured_seed;
+  logic [3:0] captured_seed_valid;
+  assign captured_seed = {external_seed_i, ordinary_seed_i};
+  assign captured_seed_valid = {external_seed_valid_i & {2{RceExternalSeedEnable}},
+                                ordinary_seed_valid_i & {2{RceOrdinarySeedEnable}}};
   logic committed_seed_valid, command_seed_valid;
   rce_seed_t committed_seed;
   elen_t command_seed_data;
@@ -90,51 +146,95 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   // Only actual result acceptance (the top-level VRF grant) can publish a seed.
   // The small per-ID cache bridges retirement before a consumer command arrives.
   // A new command invalidates the previous lifetime of that ID before reuse.
-  assign committed_seed_valid = RceIntLateSeedEnable && result_fire &&
-                                result_q.write_enable && !result_q.is_fp;
+  assign committed_seed_valid = result_fire && result_q.write_enable &&
+    ((RceIntLateSeedEnable && !result_q.is_fp) || RceFpLateSeedEnable);
   assign committed_seed = '{producer: result_q.id, vd: result_q.vd,
                             version: result_q.version, data: result_q.data};
-  if (RceIntLateSeedEnable) begin : gen_integer_seed_cache
+  if (RceIntLateSeedEnable || RceFpLateSeedEnable || RceOrdinarySeedEnable) begin : gen_word_seed_cache
     logic [NrVInsn-1:0] valid_q;
     logic [NrVInsn-1:0][4:0] vd_q;
     vreg_version_t [NrVInsn-1:0] version_q;
     elen_t [NrVInsn-1:0] data_q;
+    logic [NrVInsn-1:0][7:0] bytes_q;
+    logic [NrVInsn-1:0] live_q;
+    function automatic logic covers(logic [7:0] bytes, vew_e eew);
+      logic [7:0] needed;
+      needed = 8'((9'd1 << (1 << int'(eew))) - 1);
+      return (bytes & needed) == needed;
+    endfunction
     always_comb begin
       command_seed_valid = valid_q[cmd_i.seed_producer] &&
         vd_q[cmd_i.seed_producer] == cmd_i.seed_register &&
-        version_q[cmd_i.seed_producer] == cmd_i.seed_version;
+        version_q[cmd_i.seed_producer] == cmd_i.seed_version &&
+        covers(bytes_q[cmd_i.seed_producer],cmd_i.eew);
       command_seed_data = data_q[cmd_i.seed_producer];
-      if (committed_seed_valid && seed_matches(cmd_i, committed_seed)) begin
+      for (int slot=0; slot<ContextDepth; slot++) begin
+        cached_seed_ready[slot] = valid_q[command_q[slot].seed_producer] &&
+          vd_q[command_q[slot].seed_producer] == command_q[slot].seed_register &&
+          version_q[command_q[slot].seed_producer] == command_q[slot].seed_version &&
+          covers(bytes_q[command_q[slot].seed_producer], command_q[slot].eew);
+        cached_seed_data[slot] = data_q[command_q[slot].seed_producer];
+      end
+      if (committed_seed_valid && seed_matches(cmd_i, committed_seed) &&
+          covers(result_q.be,cmd_i.eew)) begin
         command_seed_valid = 1'b1;
         command_seed_data = committed_seed.data;
       end
     end
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
-        valid_q <= '0; vd_q <= '0; version_q <= '0; data_q <= '0;
+        valid_q <= '0; vd_q <= '0; version_q <= '0; data_q <= '0; bytes_q <= '0; live_q <= '0;
       end else begin
+        live_q <= seed_lifetime_i;
+        for (int id=0; id<NrVInsn; id++)
+          if (RceOrdinarySeedEnable && seed_lifetime_i[id] && !live_q[id])
+            valid_q[id] <= 1'b0;
         if (command_fire) valid_q[cmd_i.id] <= 1'b0;
         if (committed_seed_valid) begin
           valid_q[committed_seed.producer] <= 1'b1;
           vd_q[committed_seed.producer] <= committed_seed.vd;
           version_q[committed_seed.producer] <= committed_seed.version;
           data_q[committed_seed.producer] <= committed_seed.data;
+          bytes_q[committed_seed.producer] <= result_q.be;
+        end
+        // Both write ports capture independently; a simultaneous ALU/FPU
+        // completion must not be lost behind a single-broadcast arbiter.
+        for (int port=0; port<4; port++) if (captured_seed_valid[port]) begin
+          valid_q[captured_seed[port].seed.producer] <= 1'b1;
+          vd_q[captured_seed[port].seed.producer] <= captured_seed[port].seed.vd;
+          version_q[captured_seed[port].seed.producer] <= captured_seed[port].seed.version;
+          data_q[captured_seed[port].seed.producer] <= captured_seed[port].seed.data;
+          bytes_q[captured_seed[port].seed.producer] <= captured_seed[port].be;
         end
       end
     end
   end else begin : gen_no_integer_seed_cache
     assign command_seed_valid = 1'b0;
     assign command_seed_data = '0;
+    assign cached_seed_ready = '0;
+    assign cached_seed_data = '0;
   end
 
-  assign fp_sum = rce_fp64_sum(command_q[read_q].op, command_q[read_q].eew);
+  assign fp_sum = rce_fp64_sum(command_q[work_ptr].op, command_q[work_ptr].eew);
   assign word_compute = !fp_sum &&
     ((state_q inside {MERGE, FOLD}) ||
-     (state_q == SEED && seed_ready_q[read_q] && (|active_q[read_q])));
-  assign fp_in_valid = fp_sum &&
-    ((state_q == MERGE && active_q[read_q][lane_q]) ||
-     (state_q == SEED && seed_ready_q[read_q] && (|active_q[read_q]) &&
-      command_q[read_q].seed_mode != RCE_SEED_EMBEDDED && !fp_seed_done_q));
+     (state_q == SEED && seed_ready_q[work_ptr] && (|active_q[work_ptr])));
+  // Return-to-input forwarding preserves the fixed ascending lane order.
+  // The returning operation is consumed even if the next input is stalled;
+  // in that case its result is saved and normal MERGE retries the next lane.
+  assign fp_feedback_request = RceFp64FeedbackEnable && fp_sum &&
+    state_q == FP_WAIT && fp_out_valid && !fp_seed_q &&
+    fp_next_found && active_q[work_ptr][fp_next_lane];
+  // Feed the final lane sum directly into the seed add when its version is
+  // already bound. A blocked input falls back to SEED with the saved result.
+  assign fp_seed_feedback_request = RceFp64SeedFeedbackEnable && fp_sum &&
+    state_q == FP_WAIT && fp_out_valid && !fp_seed_q &&
+    !fp_next_found && seed_ready_q[work_ptr] &&
+    command_q[work_ptr].seed_mode != RCE_SEED_EMBEDDED && !fp_seed_done_q;
+  assign fp_in_valid = fp_feedback_request || fp_seed_feedback_request || (fp_sum &&
+    ((state_q == MERGE && merge_lane_found && active_q[work_ptr][merge_lane]) ||
+     (state_q == SEED && seed_ready_q[work_ptr] && (|active_q[work_ptr]) &&
+      command_q[work_ptr].seed_mode != RCE_SEED_EMBEDDED && !fp_seed_done_q)));
 
   if (RceFp64SumEnable) begin : gen_fp64_add
     elen_t operand_a, operand_b;
@@ -142,10 +242,13 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     // Isolate by operation class. Clearing on every invalid feedback cycle
     // adds zero/data transitions between dependent FP64 adds; keeping the
     // active FP64 context connected avoids that cost without holding registers.
-    assign operand_a = !RceOperandIsolationEnable || fp_sum ? merge_a : '0;
-    assign operand_b = !RceOperandIsolationEnable || fp_sum ? merge_b : '0;
+    assign operand_a = (fp_feedback_request || fp_seed_feedback_request) ? fp_result :
+      (!RceOperandIsolationEnable || fp_sum ? merge_a : '0);
+    assign operand_b = fp_seed_feedback_request ? command_q[work_ptr].seed :
+      fp_feedback_request ? partial_q[work_ptr][fp_next_lane] :
+      (!RceOperandIsolationEnable || fp_sum ? merge_b : '0);
     assign rounding_mode = !RceOperandIsolationEnable || fp_sum ?
-      command_q[read_q].fp_rm : fpnew_pkg::RNE;
+      command_q[work_ptr].fp_rm : fpnew_pkg::RNE;
     // Fixed ADD and a constant multiplicand specialize the existing arithmetic
     // core to addition. No lane FPU, multiplier operation, divider or SIMD wrapper.
     // AFTER keeps op_i constant through the arithmetic cone; two output stages
@@ -154,7 +257,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       .PipeConfig(fpnew_pkg::AFTER), .TagType(vid_t), .AuxType(logic)) i_add (
       .clk_i, .rst_ni, .operands_i({operand_b, operand_a, 64'h3ff0000000000000}),
       .is_boxed_i(3'b111), .rnd_mode_i(rounding_mode),
-      .op_i(fpnew_pkg::ADD), .op_mod_i(1'b0), .tag_i(command_q[read_q].id),
+      .op_i(fpnew_pkg::ADD), .op_mod_i(1'b0), .tag_i(command_q[work_ptr].id),
       .mask_i(1'b1), .aux_i(1'b0), .in_valid_i(fp_in_valid), .in_ready_o(fp_in_ready),
       .flush_i(1'b0), .result_o(fp_result), .status_o(fp_status), .extension_bit_o(),
       .tag_o(fp_tag), .mask_o(), .aux_o(), .out_valid_o(fp_out_valid),
@@ -226,21 +329,21 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   // Retained organization for an independent, cycle-identical structural ablation.
   `define RCE_MERGE_WIDTH(W) \
     for (int e = 0; e < 64/W; e++) begin \
-      if (command_q[read_q].op inside {VFREDMIN, VFREDMAX}) begin \
+      if (command_q[work_ptr].op inside {VFREDMIN, VFREDMAX}) begin \
         automatic logic [64:0] fp; \
-        fp = fp_extreme(command_q[read_q].op == VFREDMAX, W, \
+        fp = fp_extreme(command_q[work_ptr].op == VFREDMAX, W, \
           elen_t'(merge_a[W*e +: W]), elen_t'(merge_b[W*e +: W]), \
           merge_a[W*e +: W] < merge_b[W*e +: W], \
           merge_a[W*e +: W] == merge_b[W*e +: W]); \
         merge_result[W*e +: W] = fp[W-1:0]; \
         merge_flags[4] |= fp[64]; \
-      end else merge_result[W*e +: W] = W'(integer_merge(command_q[read_q].op, W, \
+      end else merge_result[W*e +: W] = W'(integer_merge(command_q[work_ptr].op, W, \
           elen_t'(merge_a[W*e +: W]), elen_t'(merge_b[W*e +: W]))); \
     end
 
   always_comb begin
     merge_a = accum_q;
-    merge_b = partial_q[read_q][lane_q];
+    merge_b = partial_q[work_ptr][merge_lane];
     if (state_q == FOLD) begin
       case (fold_q)
         0: merge_b = accum_q >> 32;
@@ -249,9 +352,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       endcase
     end else if (state_q == SEED) begin
       automatic elen_t mask;
-      mask = 64'hffffffffffffffff >> (64 - (8 << int'(command_q[read_q].eew)));
+      mask = 64'hffffffffffffffff >> (64 - (8 << int'(command_q[work_ptr].eew)));
       merge_a = accum_q & mask;
-      merge_b = command_q[read_q].seed & mask;
+      merge_b = command_q[work_ptr].seed & mask;
     end
     if (RceOperandIsolationEnable && !word_compute && !fp_sum) begin
       merge_a = '0;
@@ -263,7 +366,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   always_comb begin
     merge_result = '0;
     merge_flags = '0;
-    case (command_q[read_q].eew)
+    case (command_q[work_ptr].eew)
       EW8:  begin `RCE_MERGE_WIDTH(8) end
       EW16: begin `RCE_MERGE_WIDTH(16) end
       EW32: begin `RCE_MERGE_WIDTH(32) end
@@ -280,15 +383,15 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     elen_t add_a, add_b, packed_sum, compare_a, compare_b;
     logic [3:0][7:0] less, equal;
     logic add_enabled, compare_enabled;
-    assign add_enabled = command_q[read_q].op inside {VREDSUM, VWREDSUM, VWREDSUMU};
-    assign compare_enabled = command_q[read_q].op inside
+    assign add_enabled = command_q[work_ptr].op inside {VREDSUM, VWREDSUM, VWREDSUMU};
+    assign compare_enabled = command_q[work_ptr].op inside
       {VREDMIN, VREDMINU, VREDMAX, VREDMAXU, VFREDMIN, VFREDMAX};
     assign add_a = !RceOperandIsolationEnable || (word_compute && add_enabled) ? merge_a : '0;
     assign add_b = !RceOperandIsolationEnable || (word_compute && add_enabled) ? merge_b : '0;
     assign compare_a = !RceOperandIsolationEnable || (word_compute && compare_enabled) ? merge_a : '0;
     assign compare_b = !RceOperandIsolationEnable || (word_compute && compare_enabled) ? merge_b : '0;
     always_comb begin
-      case (command_q[read_q].eew)
+      case (command_q[work_ptr].eew)
         EW8: guard_bits = 8'h00;
         EW16: guard_bits = 8'h55;
         EW32: guard_bits = 8'h77;
@@ -321,32 +424,32 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     end
     `define RCE_EXTREME_WIDTH(W, L) \
       for (int e = 0; e < 64/W; e++) begin \
-        if (command_q[read_q].op inside {VFREDMIN, VFREDMAX}) begin \
+        if (command_q[work_ptr].op inside {VFREDMIN, VFREDMAX}) begin \
           automatic logic [64:0] fp; \
-          fp = fp_extreme(command_q[read_q].op == VFREDMAX, W, \
+          fp = fp_extreme(command_q[work_ptr].op == VFREDMAX, W, \
             elen_t'(merge_a[W*e +: W]), elen_t'(merge_b[W*e +: W]), \
             less[L][W/8*e], equal[L][W/8*e]); \
           merge_result[W*e +: W] = fp[W-1:0]; \
           merge_flags[4] |= fp[64]; \
         end else begin \
           automatic logic a_less, select_a; \
-          a_less = (command_q[read_q].op inside {VREDMIN, VREDMAX}) && \
+          a_less = (command_q[work_ptr].op inside {VREDMIN, VREDMAX}) && \
             (merge_a[W*e+W-1] != merge_b[W*e+W-1]) ? \
             merge_a[W*e+W-1] : less[L][W/8*e]; \
-          select_a = command_q[read_q].op inside {VREDMAX, VREDMAXU} ? !a_less : a_less; \
+          select_a = command_q[work_ptr].op inside {VREDMAX, VREDMAXU} ? !a_less : a_less; \
           merge_result[W*e +: W] = select_a ? merge_a[W*e +: W] : merge_b[W*e +: W]; \
         end \
       end
     always_comb begin
       merge_result = '0;
       merge_flags = '0;
-      case (command_q[read_q].op)
+      case (command_q[work_ptr].op)
         VREDSUM, VWREDSUM, VWREDSUMU: merge_result = packed_sum;
         VREDAND: merge_result = merge_a & merge_b;
         VREDOR: merge_result = merge_a | merge_b;
         VREDXOR: merge_result = merge_a ^ merge_b;
         VREDMIN, VREDMINU, VREDMAX, VREDMAXU, VFREDMIN, VFREDMAX:
-          case (command_q[read_q].eew)
+          case (command_q[work_ptr].eew)
             EW8: begin `RCE_EXTREME_WIDTH(8, 0) end
             EW16: begin `RCE_EXTREME_WIDTH(16, 1) end
             EW32: begin `RCE_EXTREME_WIDTH(32, 2) end
@@ -364,7 +467,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   assign cmd_ready_o = ((count_q < ContextDepth) ||
     (RceWordTurnaroundEnable && result_fire)) && rce_word_eligible(cmd_i.op, cmd_i.eew);
   assign command_fire = cmd_valid_i && cmd_ready_o;
-  assign result_valid_o = state_q == HOLD;
+  assign result_valid_o = state_q == HOLD && !background_q;
   assign result_o = result_q;
   assign result_fire = result_valid_o && result_ready_i;
 
@@ -411,6 +514,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       read_q <= '0; write_q <= '0; count_q <= '0;
       lane_q <= '0; fold_q <= '0; accum_q <= '0; accrued_q <= '0;
       result_q <= '0;
+      background_q <= 1'b0; prepared_valid_q <= 1'b0;
+      paused_accum_q <= '0; paused_flags_q <= '0;
+      paused_fp_seed_done_q <= 1'b0; prepared_result_q <= '0;
       fp_seed_q <= 1'b0;
       fp_seed_done_q <= 1'b0;
     end else begin
@@ -457,50 +563,62 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           command_q[slot].seed <= seed_i.data;
           seed_ready_q[slot] <= 1'b1;
         end
+        if (valid_q[slot] && !seed_ready_q[slot] && cached_seed_ready[slot]) begin
+          command_q[slot].seed <= cached_seed_data[slot];
+          seed_ready_q[slot] <= 1'b1;
+        end
         if (valid_q[slot] && !seed_ready_q[slot] && committed_seed_valid &&
-            seed_matches(command_q[slot], committed_seed)) begin
+            seed_matches(command_q[slot], committed_seed) &&
+            (result_q.be & 8'((9'd1 << (1 << int'(command_q[slot].eew))) - 1)) ==
+              8'((9'd1 << (1 << int'(command_q[slot].eew))) - 1)) begin
           command_q[slot].seed <= committed_seed.data;
           seed_ready_q[slot] <= 1'b1;
         end
       end
       case (state_q)
         IDLE: if (valid_q[read_q]) begin
-          if (command_q[read_q].vl_zero) begin
-            result_q <= '{id: command_q[read_q].id, vd: command_q[read_q].vd,
-              version: command_q[read_q].vd_version,
-              is_fp: (command_q[read_q].op inside {VFREDMIN, VFREDMAX}) || fp_sum, default: '0};
+          if (command_q[work_ptr].vl_zero) begin
+            result_q <= '{id: command_q[work_ptr].id, vd: command_q[work_ptr].vd,
+              version: command_q[work_ptr].vd_version,
+              is_fp: (command_q[work_ptr].op inside {VFREDMIN, VFREDMAX}) || fp_sum, default: '0};
             state_q <= HOLD;
           end else if (&received_now[read_q]) begin
             automatic logic [4:0] flags;
             flags = '0;
-            for (int lane = 0; lane < NrLanes; lane++) flags |= flags_now[read_q][lane];
+            for (int lane = 0; lane < NrLanes; lane++) flags |= flags_now[work_ptr][lane];
             accrued_q <= flags;
-            accum_q <= first_partial_now[read_q];
+            accum_q <= first_partial_now[work_ptr];
             lane_q <= LaneWidth'(1);
             fold_q <= '0;
             fp_seed_done_q <= 1'b0;
-            if (fp_sum && !(|active_now[read_q])) state_q <= SEED;
+            if ((fp_sum || RceEmptyBypassEnable) && !(|active_now[work_ptr]))
+              state_q <= SEED;
             else if (NrLanes > 1) state_q <= MERGE;
-            else state_q <= command_q[read_q].eew == EW64 ? SEED : FOLD;
+            else state_q <= command_q[work_ptr].eew == EW64 ? SEED : FOLD;
           end
         end
         MERGE: begin
           if (fp_sum) begin
-            if (!active_q[read_q][lane_q]) begin
+            if (sparse_fp && !merge_lane_found) begin
+              state_q <= SEED;
+            end else if (!active_q[work_ptr][merge_lane]) begin
               // Inactive subtrees may copy the other operand without adding zero.
               if (lane_q == NrLanes-1) state_q <= SEED;
               else lane_q <= lane_q + 1'b1;
             end else if (fp_in_valid && fp_in_ready) begin
+              lane_q <= merge_lane;
               fp_seed_q <= 1'b0;
               state_q <= FP_WAIT;
             end
           end else begin
-          accum_q <= merge_result;
-          accrued_q <= accrued_q | merge_flags;
-          if (lane_q == NrLanes-1) begin
+          if (merge_lane_found) begin
+            accum_q <= merge_result;
+            accrued_q <= accrued_q | merge_flags;
+          end
+          if (!merge_lane_found || merge_lane == NrLanes-1) begin
             fold_q <= '0;
-            state_q <= command_q[read_q].eew == EW64 ? SEED : FOLD;
-          end else lane_q <= lane_q + 1'b1;
+            state_q <= command_q[work_ptr].eew == EW64 ? SEED : FOLD;
+          end else lane_q <= merge_lane + 1'b1;
           end
         end
         FP_WAIT: if (fp_out_valid) begin
@@ -509,50 +627,87 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           if (fp_seed_q) begin
             fp_seed_done_q <= 1'b1;
             state_q <= SEED;
-          end else if (lane_q == NrLanes-1) state_q <= SEED;
+          end else if (!fp_next_found) begin
+            if (fp_seed_feedback_request && fp_in_ready) begin
+              fp_seed_q <= 1'b1;
+              state_q <= FP_WAIT;
+            end else state_q <= SEED;
+          end
           else begin
-            lane_q <= lane_q + 1'b1;
-            state_q <= MERGE;
+            lane_q <= fp_next_lane;
+            state_q <= fp_feedback_request && fp_in_ready ? FP_WAIT : MERGE;
           end
         end
         FOLD: begin
           accum_q <= merge_result;
           accrued_q <= accrued_q | merge_flags;
           fold_q <= fold_q + 1'b1;
-          if (fold_q == (2 - int'(command_q[read_q].eew))) state_q <= SEED;
+          if (fold_q == (2 - int'(command_q[work_ptr].eew))) state_q <= SEED;
         end
-        SEED: if (seed_ready_q[read_q]) begin
+        SEED: if (seed_ready_q[work_ptr]) begin
           automatic logic empty_source, embedded;
           automatic elen_t scalar_mask;
-          empty_source = !(|active_q[read_q]);
-          embedded = command_q[read_q].seed_mode == RCE_SEED_EMBEDDED;
-          scalar_mask = 64'hffffffffffffffff >> (64 - (8 << int'(command_q[read_q].eew)));
+          empty_source = !(|active_q[work_ptr]);
+          embedded = command_q[work_ptr].seed_mode == RCE_SEED_EMBEDDED;
+          scalar_mask = 64'hffffffffffffffff >> (64 - (8 << int'(command_q[work_ptr].eew)));
           if (fp_sum && !empty_source && !embedded && !fp_seed_done_q) begin
             if (fp_in_valid && fp_in_ready) begin
               fp_seed_q <= 1'b1;
               state_q <= FP_WAIT;
             end
           end else begin
-          result_q <= '{id: command_q[read_q].id, vd: command_q[read_q].vd,
-            version: command_q[read_q].vd_version,
-            data: (empty_source ? command_q[read_q].seed :
+          result_q <= '{id: command_q[work_ptr].id, vd: command_q[work_ptr].vd,
+            version: command_q[work_ptr].vd_version,
+            data: (empty_source ? command_q[work_ptr].seed :
                     ((embedded || fp_sum) ? accum_q : merge_result)) & scalar_mask,
-            be: 8'((9'd1 << (1 << int'(command_q[read_q].eew))) - 1'b1),
+            be: 8'((9'd1 << (1 << int'(command_q[work_ptr].eew))) - 1'b1),
             // In embedded min/max mode the lane may have quieted the seed
             // before knowing GLOBAL source activity. Its sNaN NV is deferred
             // here, and must survive even if only another lane was active.
             fflags: empty_source ? 5'b0 : accrued_q | merge_flags,
             write_enable: 1'b1,
-            is_fp: (command_q[read_q].op inside {VFREDMIN, VFREDMAX}) || fp_sum};
+            is_fp: (command_q[work_ptr].op inside {VFREDMIN, VFREDMAX}) || fp_sum};
           state_q <= HOLD;
           end
+        end else if (RceSeedLookaheadEnable && !background_q && !prepared_valid_q &&
+                     count_q > 1 && valid_q[next_ptr(read_q)] &&
+                     (&received_q[next_ptr(read_q)]) && seed_ready_q[next_ptr(read_q)] &&
+                     !command_q[next_ptr(read_q)].vl_zero) begin
+          automatic logic [PtrWidth-1:0] slot = next_ptr(read_q);
+          automatic logic [4:0] flags = '0;
+          for (int lane = 0; lane < NrLanes; lane++) flags |= flags_q[slot][lane];
+          paused_accum_q <= accum_q;
+          paused_flags_q <= accrued_q;
+          paused_fp_seed_done_q <= fp_seed_done_q;
+          background_q <= 1'b1;
+          accum_q <= first_partial_now[slot];
+          accrued_q <= flags;
+          lane_q <= LaneWidth'(1);
+          fold_q <= '0;
+          fp_seed_done_q <= 1'b0;
+          if ((RceEmptyBypassEnable || rce_fp64_sum(command_q[slot].op, command_q[slot].eew)) &&
+              !(|active_q[slot])) state_q <= SEED;
+          else if (NrLanes > 1) state_q <= MERGE;
+          else state_q <= command_q[slot].eew == EW64 ? SEED : FOLD;
         end
-        HOLD: if (result_fire) begin
+        HOLD: if (background_q) begin
+          prepared_result_q <= result_q;
+          prepared_valid_q <= 1'b1;
+          background_q <= 1'b0;
+          accum_q <= paused_accum_q;
+          accrued_q <= paused_flags_q;
+          fp_seed_done_q <= paused_fp_seed_done_q;
+          state_q <= SEED;
+        end else if (result_fire) begin
           read_q <= next_ptr(read_q);
           state_q <= IDLE;
           // Only an already resident successor can bypass initialization.
           // A same-slot refill has no received partials yet and must use IDLE.
-          if (RceWordTurnaroundEnable && count_q > 1 &&
+          if (prepared_valid_q) begin
+            result_q <= prepared_result_q;
+            prepared_valid_q <= 1'b0;
+            state_q <= HOLD;
+          end else if (RceWordTurnaroundEnable && count_q > 1 &&
               valid_q[next_ptr(read_q)] && (&received_now[next_ptr(read_q)]) &&
               !command_q[next_ptr(read_q)].vl_zero) begin
             automatic logic [PtrWidth-1:0] next_slot = next_ptr(read_q);
@@ -563,7 +718,8 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             lane_q <= LaneWidth'(1);
             fold_q <= '0;
             fp_seed_done_q <= 1'b0;
-            if (rce_fp64_sum(command_q[next_slot].op, command_q[next_slot].eew) &&
+            if ((RceEmptyBypassEnable ||
+                 rce_fp64_sum(command_q[next_slot].op, command_q[next_slot].eew)) &&
                 !(|active_now[next_slot])) state_q <= SEED;
             else if (NrLanes > 1) state_q <= MERGE;
             else state_q <= command_q[next_slot].eew == EW64 ? SEED : FOLD;
@@ -583,8 +739,13 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     result_valid_o && !result_ready_i |=> result_valid_o && $stable(result_o));
   a_bounded_contexts: assert property (@(posedge clk_i) disable iff (!rst_ni)
     count_q <= ContextDepth);
+  a_background_owner: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    background_q |-> count_q > 1 && !result_valid_o && !prepared_valid_q);
+  a_prepared_owner: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    prepared_valid_q |-> count_q > 1 &&
+      prepared_result_q.id == command_q[next_ptr(read_q)].id);
   a_fp_response_owner: assert property (@(posedge clk_i) disable iff (!rst_ni)
-    fp_out_valid |-> state_q == FP_WAIT && fp_sum && fp_tag == command_q[read_q].id);
+    fp_out_valid |-> state_q == FP_WAIT && fp_sum && fp_tag == command_q[work_ptr].id);
   for (genvar slot = 0; slot < ContextDepth; slot++) begin
     a_unique_owner: assert property (@(posedge clk_i) disable iff (!rst_ni)
       command_fire |-> !(valid_q[slot] && command_q[slot].id == cmd_i.id));
@@ -602,6 +763,26 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     typedef enum logic [1:0] {EXACT_IDLE, EXACT_RECEIVE, EXACT_RESULT} exact_state_e;
     exact_state_e state_q, state_d;
     rce_exact_command_t owner_q;
+    rce_exact_result_t completed_q, raw_result;
+    logic completed_valid_q, completed_space, completed_push;
+    assign completed_space = !completed_valid_q || exact_result_ready_i;
+    // An empty holding slot is transparent to an already-ready writeback port.
+    // Capture only on backpressure, or when replacing a consumed older result.
+    // Never both publish and enqueue the same raw result.
+    assign completed_push = RceExactDecoupleEnable && state_q == EXACT_RESULT &&
+      completed_space && (completed_valid_q || !exact_result_ready_i);
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        completed_q <= '0;
+        completed_valid_q <= 1'b0;
+      end else if (RceExactDecoupleEnable) begin
+        if (exact_result_valid_o && exact_result_ready_i) completed_valid_q <= 1'b0;
+        if (completed_push) begin
+          completed_q <= raw_result;
+          completed_valid_q <= 1'b1;
+        end
+      end
+    end
     logic exact_late_seed_ready;
   logic [2:0]   exact_packet_beat_d, exact_packet_beat_q;
   logic [2:0]   exact_limb_count_d, exact_limb_count_q;
@@ -677,8 +858,10 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
          exact_packet_beat_q > exact_lane_limb_count_q[lane]);
     end
     assign exact_cmd_ready_o = state_q == EXACT_IDLE;
-    assign exact_result_valid_o = state_q == EXACT_RESULT;
-    assign exact_result_o = '{id: owner_q.id, vd: owner_q.vd, version: owner_q.version,
+    assign exact_result_valid_o = (RceExactDecoupleEnable && completed_valid_q) ||
+      state_q == EXACT_RESULT;
+    assign exact_result_o = RceExactDecoupleEnable && completed_valid_q ? completed_q : raw_result;
+    assign raw_result = '{id: owner_q.id, vd: owner_q.vd, version: owner_q.version,
       be: exact_format_fp16_q ? 8'h03 : 8'h0f,
       data: exact_final_result, fflags: exact_final_status};
     assign exact_events_o = '{stale_token_drop: exact_stale_token_drop, header_wait: exact_header_rendezvous_wait, header_fire: exact_header_merge_fire, seed_wait: exact_late_seed_wait, seed_bind: exact_late_seed_bind, limb_fire: exact_limb_merge_fire, window_limbs: exact_header_global_limb_count, implicit_sign_lanes: exact_implicit_sign_lane_count};
@@ -894,7 +1077,8 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       end
 
 
-        EXACT_RESULT: if (exact_result_ready_i) state_d = EXACT_IDLE;
+        EXACT_RESULT: if (RceExactDecoupleEnable ? completed_space : exact_result_ready_i)
+          state_d = EXACT_IDLE;
         default: state_d = EXACT_IDLE;
       endcase
     end

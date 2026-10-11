@@ -43,6 +43,8 @@ def main():
                         help="extra simulator argument (repeatable, e.g. +vcs+loopreport)")
     parser.add_argument("--recheck", action="store_true",
                         help="reclassify completed log files without rerunning simulation")
+    parser.add_argument("--apps-file", type=Path,
+                        help="JSON array of application names; appended to positional apps")
     parser.add_argument("apps", nargs="*")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
@@ -57,10 +59,31 @@ def main():
         manifest["log_reclassified"] = True
         (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         sys.exit(0 if all(item["pass"] for item in manifest["tests"]) else 1)
+    if args.apps_file:
+        try:
+            listed = json.loads(args.apps_file.read_text())
+        except (OSError, ValueError) as error:
+            parser.error(f"cannot read application list: {error}")
+        if not isinstance(listed, list) or not all(isinstance(app, str) for app in listed):
+            parser.error("application list must be a JSON array of names")
+        args.apps.extend(listed)
     if not args.apps:
         parser.error("at least one application is required")
     if (out / "manifest.json").exists():
         parser.error("choose a new output directory to preserve earlier evidence")
+    if len(set(args.apps)) != len(args.apps):
+        parser.error("application names must be unique")
+    # Reject globbed disassembly (.dump) and other non-ELF inputs before any
+    # simulations start. Such files are test-driver errors, not RTL failures.
+    for app in args.apps:
+        if Path(app).name != app:
+            parser.error("application names must not contain directory components")
+        source = root / "apps" / "bin" / app
+        if not source.is_file():
+            parser.error(f"missing ELF: {source}")
+        with source.open("rb") as stream:
+            if stream.read(4) != b"\x7fELF":
+                parser.error(f"not an ELF executable: {source}")
     manifest = {
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "simulator": str(simulator), "simulator_sha256": sha256(simulator),
@@ -72,8 +95,6 @@ def main():
     inputs = out / "inputs"
     inputs.mkdir()
     for app in args.apps:
-        if Path(app).name != app:
-            parser.error("application names must not contain directory components")
         shutil.copy2(root / "apps" / "bin" / app, inputs / app)
 
     def run(app):

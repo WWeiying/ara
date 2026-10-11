@@ -99,8 +99,71 @@ bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIA
 # explicitly enabled so each mechanism can be measured independently.  The
 # context stream switch covers both VMFPU and VALU reduction pipelines.
 # Independently controlled completion-throughput experiments.
+reduction_rce_seed_lookahead ?= 0
+ifeq ($(reduction_rce_seed_lookahead),1)
+  bender_defs += --define ARA_RED_RCE_SEED_LOOKAHEAD=1
+endif
 reduction_rce_queue_lookahead ?= 0
 reduction_rce_word_turnaround ?= 0
+reduction_rce_ordinary_seed_same_vfu ?= 0
+ifeq ($(reduction_rce_ordinary_seed_same_vfu),1)
+  ifneq ($(reduction_rce_ordinary_seed),1)
+    $(error reduction_rce_ordinary_seed_same_vfu requires reduction_rce_ordinary_seed=1)
+  endif
+  bender_defs += --define ARA_RED_RCE_ORDINARY_SEED_SAME_VFU=1
+endif
+reduction_rce_ordinary_seed ?= 0
+ifeq ($(reduction_rce_ordinary_seed),1)
+  bender_defs += --define ARA_RED_RCE_ORDINARY_SEED=1
+endif
+reduction_rce_fp_late_seed ?= 0
+ifeq ($(reduction_rce_fp_late_seed),1)
+  bender_defs += --define ARA_RED_RCE_FP_LATE_SEED=1
+endif
+reduction_rce_exact_decouple ?= 0
+ifeq ($(reduction_rce_exact_decouple),1)
+  bender_defs += --define ARA_RED_RCE_EXACT_DECOUPLE=1
+endif
+reduction_rce_sldu_buffer ?= 0
+ifeq ($(reduction_rce_sldu_buffer),1)
+  bender_defs += --define ARA_RED_RCE_SLDU_BUFFER=1
+endif
+reduction_rce_split_credit ?= 0
+ifeq ($(reduction_rce_split_credit),1)
+  bender_defs += --define ARA_RED_RCE_SPLIT_CREDIT=1
+endif
+reduction_rce_word_sparse ?= 0
+ifeq ($(reduction_rce_word_sparse),1)
+  bender_defs += --define ARA_RED_RCE_WORD_SPARSE=1
+endif
+reduction_rce_external_seed ?= 0
+ifeq ($(reduction_rce_external_seed),1)
+  bender_defs += --define ARA_RED_RCE_EXTERNAL_SEED=1
+endif
+reduction_rce_seed_group ?= 0
+ifeq ($(reduction_rce_seed_group),1)
+  bender_defs += --define ARA_RED_RCE_SEED_GROUP=1
+endif
+reduction_rce_fp64_sparse ?= 0
+ifeq ($(reduction_rce_fp64_sparse),1)
+  bender_defs += --define ARA_RED_RCE_FP64_SPARSE=1
+endif
+reduction_rce_fp64_seed_feedback ?= 0
+ifeq ($(reduction_rce_fp64_seed_feedback),1)
+  bender_defs += --define ARA_RED_RCE_FP64_SEED_FEEDBACK=1
+endif
+reduction_rce_fp64_feedback ?= 0
+ifeq ($(reduction_rce_fp64_feedback),1)
+  bender_defs += --define ARA_RED_RCE_FP64_FEEDBACK=1
+endif
+reduction_rce_mfpu_restart ?= 0
+ifeq ($(reduction_rce_mfpu_restart),1)
+  bender_defs += --define ARA_RED_RCE_MFPU_RESTART=1
+endif
+reduction_rce_empty_bypass ?= 0
+ifeq ($(reduction_rce_empty_bypass),1)
+  bender_defs += --define ARA_RED_RCE_EMPTY_BYPASS=1
+endif
 reduction_rce_exact_egress_release ?= 0
 reduction_rce_result_depth ?= 2
 ifeq ($(reduction_rce_queue_lookahead),1)
@@ -405,7 +468,7 @@ ifeq ($(reduction_rce_int_late_seed),1)
   endif
   bender_defs += --define ARA_RED_RCE_INT_LATE_SEED=1
 endif
-ifneq ($(filter 1,$(reduction_chain_bypass) $(reduction_rce_int_late_seed)),)
+ifneq ($(filter 1,$(reduction_chain_bypass) $(reduction_rce_int_late_seed) $(reduction_rce_fp_late_seed) $(reduction_rce_ordinary_seed)),)
   bender_defs += --define ARA_RED_REGISTER_VERSIONS=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)

@@ -1,0 +1,75 @@
+--- a/hardware/include/ara_rce_pkg.sv
++++ b/hardware/include/ara_rce_pkg.sv
+@@ -41,6 +41,11 @@
+   localparam bit RceExactDecoupleEnable = 1'b1;
+ `else
+   localparam bit RceExactDecoupleEnable = 1'b0;
++`endif
++`ifdef ARA_RED_RCE_PARALLEL_RETIRE
++  localparam bit RceParallelRetireEnable = 1'b1;
++`else
++  localparam bit RceParallelRetireEnable = 1'b0;
+ `endif
+ `ifdef ARA_RED_RCE_SPLIT_CREDIT
+   localparam bit RceSplitCreditEnable = 1'b1;
+--- a/hardware/src/ara.sv
++++ b/hardware/src/ara.sv
+@@ -674,12 +674,13 @@
+       assign sldu_operand_ready[l] = rce_partial_valid[l] ?
+                                     rce_partial_ready[l] : sldu_operand_ready_legacy[l];
+     end
+-    // Initially preserve the sequencer's two shared slide/reduction credits.
+-    // Serialize completion credit pulses; a one-bit queue counter must never
+-    // lose simultaneous SLDU and RCE retirements. Independent RCE credit
+-    // accounting can be introduced separately from the arithmetic migration.
++    // Shared credits require one completion per cycle. With separate Word
++    // credits, one Word and one SLDU completion may coexist: each decrements
++    // its own counter. Exact completion still belongs to the SLDU domain.
+     assign rce_wb_valid = result_valid && (&rce_can_retire) &&
+-                          !(|sldu_pe_resp.vinsn_done);
++      (!(|sldu_pe_resp.vinsn_done) ||
++       (ara_rce_pkg::RceParallelRetireEnable && ara_rce_pkg::RceSplitCreditEnable &&
++        !select_exact));
+     assign result_ready = rce_wb_valid && rce_wb_ready[0];
+     assign rce_retire = result_valid && result_ready;
+     always_comb begin
+--- a/hardware/src/ara_sequencer.sv
++++ b/hardware/src/ara_sequencer.sv
+@@ -565,6 +565,11 @@
+     word_credit_down |-> word_credit_count_q != 0);
+   a_word_completion_single: assert property (@(posedge clk_i) disable iff (!rst_ni)
+     $onehot0(pe_resp_i[NrLanes+OffsetSlide].vinsn_done & word_credit_ids_q));
++  a_sldu_completion_single: assert property (@(posedge clk_i) disable iff (!rst_ni)
++    $onehot0(pe_resp_i[NrLanes+OffsetSlide].vinsn_done & ~word_credit_ids_q));
++  a_sldu_credit_retirement: assert property (@(posedge clk_i) disable iff (!rst_ni)
++    insn_queue_done[VFU_SlideUnit] |->
++      insn_queue_cnt_q[VFU_SlideUnit] != 0 || insn_queue_cnt_up[VFU_SlideUnit]);
+ `endif
+   // Gold tickets and passes
+   // Normally, instructions can be issued to the lane sequencer only if
+--- a/hardware/tb/reduction_throughput_profile.sv
++++ b/hardware/tb/reduction_throughput_profile.sv
+@@ -1,5 +1,10 @@
+ // SPDX-License-Identifier: SHL-0.51
+ // Additional read-only events for independent completion-throughput ablations.
++bind ara_sequencer reduction_stall_profile #(.Kind("parallel_retire"),.N(1))
++  i_parallel_retire_profile (
++  .clk_i, .rst_ni, .lane_i(64'd0),
++  .events_i(word_credit_down && insn_queue_done[VFU_SlideUnit])
++);
+ bind ara_sequencer reduction_stall_profile #(.Kind("word_credit"),.N(5)) i_word_credit_profile (
+   .clk_i, .rst_ni, .lane_i(64'd0), .events_i({
+     ara_req_valid_i && ara_req_ready_o && word_credit_request &&
+--- a/hardware/Makefile
++++ b/hardware/Makefile
+@@ -123,6 +123,10 @@
+ reduction_rce_exact_decouple ?= 0
+ ifeq ($(reduction_rce_exact_decouple),1)
+   bender_defs += --define ARA_RED_RCE_EXACT_DECOUPLE=1
++endif
++reduction_rce_parallel_retire ?= 0
++ifeq ($(reduction_rce_parallel_retire),1)
++  bender_defs += --define ARA_RED_RCE_PARALLEL_RETIRE=1
+ endif
+ reduction_rce_sldu_buffer ?= 0
+ ifeq ($(reduction_rce_sldu_buffer),1)

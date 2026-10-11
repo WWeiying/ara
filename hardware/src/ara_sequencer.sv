@@ -158,7 +158,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // and useful across long reductions.
   vreg_version_t [31:0] vreg_version_d, vreg_version_q;
   logic [NrVInsn-1:0] writer_exact_d, writer_exact_q;
-  logic [NrVInsn-1:0] writer_integer_d, writer_integer_q;
+  logic [NrVInsn-1:0] writer_word_d, writer_word_q;
+  logic [NrVInsn-1:0] writer_ordinary_d, writer_ordinary_q;
+  logic [NrVInsn-1:0] writer_mfpu_d, writer_mfpu_q;
+  logic [NrVInsn-1:0] writer_external_d, writer_external_q;
   rvv_pkg::vew_e [NrVInsn-1:0] writer_seed_eew_d, writer_seed_eew_q;
   logic [NrVInsn-1:0][4:0] writer_vd_d, writer_vd_q;
   vreg_version_t [NrVInsn-1:0] writer_version_d, writer_version_q;
@@ -183,9 +186,28 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `endif
   endfunction : exact_chain_eligible
 
-  function automatic logic integer_chain_eligible(input ara_req_t request);
-    return ara_rce_pkg::RceIntLateSeedEnable && request.vl != 0 &&
-           request.op inside {[VREDSUM:VWREDSUM]};
+  function automatic logic word_chain_eligible(input ara_req_t request);
+    return request.vl != 0 &&
+      ((ara_rce_pkg::RceIntLateSeedEnable && request.op inside {[VREDSUM:VWREDSUM]}) ||
+       (ara_rce_pkg::RceFpLateSeedEnable &&
+        ara_rce_pkg::rce_fp_word(request.op, request.vtype.vsew)));
+  endfunction
+
+  function automatic logic external_seed_producer(input ara_req_t request);
+    return ara_rce_pkg::RceExternalSeedEnable && request.use_vd && request.vm &&
+      request.vl != 0 && request.vstart == 0 &&
+      ((request.op == VLE && !request.fault_only_first && request.nf == 0) ||
+       request.op == VSLIDEDOWN);
+  endfunction
+
+  function automatic logic ordinary_seed_producer(input ara_req_t request);
+    // Masked and restarted producers may preserve element zero. Those retain
+    // the normal VRF dependency until a merged architectural seed is available.
+    return ara_rce_pkg::RceOrdinarySeedEnable && request.use_vd && request.vm &&
+      request.vl != 0 && request.vstart == 0 &&
+      (external_seed_producer(request) ||
+       request.op inside {[VADD:VWREDSUM], [VMUL:VFWREDOSUM]}) &&
+      !(request.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]});
   endfunction
 
   function automatic int unsigned written_register_count(input ara_req_t request);
@@ -413,10 +435,27 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     for (int id = 0; id < NrVInsn; id++) begin
       automatic reduction_access_t older = reduction_access_q[id];
       automatic register_span_t mask = '{valid: 1'b1, first: VMASK, limit: 6'd1};
+      automatic logic seed_group_safe;
+      seed_group_safe = 1'b0;
+`ifdef ARA_RED_REGISTER_VERSIONS
+      // A supported ordinary producer already supplies a versioned first-word
+      // seed. Only this scalar RAW may bypass a mismatched whole-group span;
+      // all source-vector, destination, mask and older-reader guards remain.
+      seed_group_safe = ara_rce_pkg::RceSeedGroupEnable &&
+        ara_req_i.use_vs1 && word_chain_eligible(ara_req_i) &&
+        writer_word_q[id] && writer_ordinary_q[id] &&
+        write_list_q[ara_req_i.vs1].valid &&
+        write_list_q[ara_req_i.vs1].vid == vid_t'(id) &&
+        writer_vd_q[id] == ara_req_i.vs1 &&
+        writer_version_q[id] == vreg_version_q[ara_req_i.vs1] &&
+        writer_seed_eew_q[id] >= ara_req_i.vtype.vsew &&
+        (writer_external_q[id] || ara_rce_pkg::RceOrdinarySeedSameVfuEnable ||
+         writer_mfpu_q[id] != (vfu(ara_req_i.op) == VFU_MFpu));
+`endif
       if (vinsn_running_q[id] && (request_access.reduction || older.reduction)) begin
         reduction_group_wait |=
           // RAW/WAW, including old-vd fetch and v0.
-          mismatched_overlap(older.vd, request_access.vs1) ||
+          (!seed_group_safe && mismatched_overlap(older.vd, request_access.vs1)) ||
           mismatched_overlap(older.vd, request_access.vs2) ||
           mismatched_overlap(older.vd, request_access.vd) ||
           (request_access.masked && mismatched_overlap(older.vd, mask)) ||
@@ -495,7 +534,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   localparam int unsigned InsnQueueDepth [NrVFUs] = '{
     ValuInsnQueueDepth,
     MfpuInsnQueueDepth,
-    SlduInsnQueueDepth,
+    ara_rce_pkg::RceSlduQueueDepth,
     MaskuInsnQueueDepth,
     VlduInsnQueueDepth,
     VstuInsnQueueDepth,
@@ -515,6 +554,44 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   logic [NrVFUs-1:0] vinsn_queue_issue;
   logic              accepted_insn, accepted_insn_stalled;
   logic [NrVFUs-1:0] target_vfus_vec;
+  // Word completion contexts have their own capacity, independent of SLDU.
+  // Like the existing VFU counters, one blocked incoming request may reserve
+  // an extra credit; it may not dispatch until a physical context is free.
+  localparam int unsigned WordCreditDepth = 2;
+  logic word_credit_request, word_credit_up, word_credit_down;
+  logic word_credit_issue, word_credit_ticket_q;
+  logic [idx_width(WordCreditDepth+2)-1:0] word_credit_count_q;
+  logic [NrVInsn-1:0] word_credit_ids_q, word_credit_ids_d;
+  assign word_credit_request = ara_rce_pkg::RceSplitCreditEnable && ara_req_i.vl != 0 &&
+    ((ara_rce_pkg::RceIntEnable && ara_req_i.op inside {[VREDSUM:VWREDSUM]}) ||
+     ara_rce_pkg::rce_fp_word(ara_req_i.op, ara_req_i.vtype.vsew));
+  assign word_credit_up = accepted_insn && word_credit_request;
+  assign word_credit_down = |(pe_resp_i[NrLanes+OffsetSlide].vinsn_done & word_credit_ids_q);
+  assign word_credit_issue = !word_credit_request || word_credit_count_q < WordCreditDepth ||
+    (word_credit_ticket_q && word_credit_count_q == WordCreditDepth &&
+     ara_req_token_q == ara_req_i.token);
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      word_credit_count_q <= '0;
+      word_credit_ticket_q <= 1'b0;
+    end else begin
+      if (word_credit_up != word_credit_down)
+        word_credit_count_q <= word_credit_down ? word_credit_count_q - 1'b1 :
+                                                     word_credit_count_q + 1'b1;
+      if (accepted_insn_stalled)
+        word_credit_ticket_q <= word_credit_request && word_credit_count_q >= WordCreditDepth-1;
+    end
+  end
+`ifndef SYNTHESIS
+  a_word_credit_capacity: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    word_credit_count_q <= WordCreditDepth+1);
+  a_word_dispatched_capacity: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    $countones(word_credit_ids_q) <= WordCreditDepth);
+  a_word_credit_retirement: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    word_credit_down |-> word_credit_count_q != 0);
+  a_word_completion_single: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    $onehot0(pe_resp_i[NrLanes+OffsetSlide].vinsn_done & word_credit_ids_q));
+`endif
   // Gold tickets and passes
   // Normally, instructions can be issued to the lane sequencer only if
   // the counters have not reached their maximum capacity.
@@ -555,6 +632,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     read_list_d           = read_list_q;
     write_list_d          = write_list_q;
     reduction_access_d    = reduction_access_q;
+    word_credit_ids_d = word_credit_ids_q & ~pe_resp_i[NrLanes+OffsetSlide].vinsn_done;
     global_hazard_table_d = global_hazard_table_o;
 
     // Maintain request
@@ -563,7 +641,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `ifdef ARA_RED_REGISTER_VERSIONS
     vreg_version_d   = vreg_version_q;
     writer_exact_d   = writer_exact_q;
-    writer_integer_d = writer_integer_q;
+    writer_word_d = writer_word_q;
+    writer_ordinary_d = writer_ordinary_q;
+    writer_mfpu_d = writer_mfpu_q;
+    writer_external_d = writer_external_q;
     writer_seed_eew_d = writer_seed_eew_q;
     writer_vd_d      = writer_vd_q;
     writer_version_d = writer_version_q;
@@ -621,7 +702,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         end else if (ara_req_valid_i) begin
           // The target PE is ready, and we can handle another running vector instruction
           // Let instructions with priority pass be issued
-          if (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full &&
+          if (&vinsn_queue_issue && word_credit_issue && !stall_lanes_desynch && !vinsn_running_full &&
               !reduction_group_wait &&
               // MaskB is untagged. Let the preceding mask-result instruction
               // drain its old-vd operands before issuing a scalar extraction.
@@ -655,13 +736,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             // the preceding rounded scalar seed is available.  The tuple
             // {producer ID, register epoch} names that seed unambiguously.
             if (ara_req_i.use_vs1 &&
-                (exact_chain_eligible(ara_req_i) || integer_chain_eligible(ara_req_i)) &&
+                (exact_chain_eligible(ara_req_i) || word_chain_eligible(ara_req_i)) &&
                 write_list_d[ara_req_i.vs1].valid) begin
               late_seed_producer =
                 write_list_d[ara_req_i.vs1].vid;
               late_seed_candidate =
                 ((exact_chain_eligible(ara_req_i) && writer_exact_q[late_seed_producer]) ||
-                 (integer_chain_eligible(ara_req_i) && writer_integer_q[late_seed_producer] &&
+                 (word_chain_eligible(ara_req_i) && writer_word_q[late_seed_producer] &&
+                  // Ordinary same-VFU producers serialize local computation;
+                  // defer only across VFUs by default, avoiding an extra seed
+                  // operation without overlap. Keep a separate ablation knob.
+                  (!writer_ordinary_q[late_seed_producer] || writer_external_q[late_seed_producer] ||
+                   ara_rce_pkg::RceOrdinarySeedSameVfuEnable ||
+                   writer_mfpu_q[late_seed_producer] != (vfu(ara_req_i.op) == VFU_MFpu)) &&
                   writer_seed_eew_q[late_seed_producer] >= ara_req_i.vtype.vsew)) &&
                 (writer_vd_q[late_seed_producer] == ara_req_i.vs1) &&
                 (writer_version_q[late_seed_producer] ==
@@ -676,7 +763,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               // real vs2/v0 RAW.  A chain that changes destination still gets
               // late seed binding, but retains any ambiguous WAR bit.
               pe_req_d.hazard_vs1[late_seed_producer] = 1'b0;
-              if (ara_req_i.vd == ara_req_i.vs1) begin
+              // A vector producer may still own tail elements after its seed
+              // word writes. Keep its WAW/WAR until the whole vector completes;
+              // scalar-only reduction producers can use the existing relaxation.
+              if (ara_req_i.vd == ara_req_i.vs1 && !writer_ordinary_q[late_seed_producer]) begin
                 if (ara_req_i.vs2 != ara_req_i.vs1)
                   pe_req_d.hazard_vs2[late_seed_producer] = 1'b0;
                 if (ara_req_i.vm || (ara_req_i.vs1 != VMASK))
@@ -788,6 +878,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
               // Remember that the vector instruction is running
               reduction_access_d[vinsn_id_n] = request_access;
+              word_credit_ids_d[vinsn_id_n] = word_credit_request;
               unique case (vfu(ara_req_i.op))
                 VFU_LoadUnit : pe_vinsn_running_d[NrLanes + OffsetLoad][vinsn_id_n]  = 1'b1;
                 VFU_StoreUnit: pe_vinsn_running_d[NrLanes + OffsetStore][vinsn_id_n] = 1'b1;
@@ -833,7 +924,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                     vreg_version_d[reg_idx] = vreg_version_q[reg_idx] + 1'b1;
                 writer_exact_d[vinsn_id_n] =
                   exact_chain_eligible(ara_req_i);
-                writer_integer_d[vinsn_id_n] = integer_chain_eligible(ara_req_i);
+                writer_word_d[vinsn_id_n] = word_chain_eligible(ara_req_i) || ordinary_seed_producer(ara_req_i);
+                writer_ordinary_d[vinsn_id_n] = ordinary_seed_producer(ara_req_i);
+                writer_external_d[vinsn_id_n] = external_seed_producer(ara_req_i);
+                writer_mfpu_d[vinsn_id_n] = vfu(ara_req_i.op) == VFU_MFpu;
                 writer_seed_eew_d[vinsn_id_n] = ara_req_i.vtype.vsew;
                 writer_vd_d[vinsn_id_n] =
                   ara_req_i.vd;
@@ -910,13 +1004,17 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       read_list_q  <= '0;
       write_list_q <= '0;
       reduction_access_q <= '0;
+      word_credit_ids_q <= '0;
 
       pe_req_o       <= '0;
       pe_req_valid_o <= 1'b0;
 `ifdef ARA_RED_REGISTER_VERSIONS
       vreg_version_q   <= '0;
       writer_exact_q   <= '0;
-      writer_integer_q <= '0;
+      writer_word_q <= '0;
+      writer_ordinary_q <= '0;
+      writer_mfpu_q <= '0;
+      writer_external_q <= '0;
       writer_seed_eew_q <= '0;
       writer_vd_q      <= '0;
       writer_version_q <= '0;
@@ -935,6 +1033,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       pending_mask_insn_q <= 1'b0;
     end else begin
       state_q <= state_d;
+      word_credit_ids_q <= word_credit_ids_d;
 
       read_list_q  <= read_list_d;
       write_list_q <= write_list_d;
@@ -945,7 +1044,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `ifdef ARA_RED_REGISTER_VERSIONS
       vreg_version_q   <= vreg_version_d;
       writer_exact_q   <= writer_exact_d;
-      writer_integer_q <= writer_integer_d;
+      writer_word_q <= writer_word_d;
+      writer_ordinary_q <= writer_ordinary_d;
+      writer_mfpu_q <= writer_mfpu_d;
+      writer_external_q <= writer_external_d;
       writer_seed_eew_q <= writer_seed_eew_d;
       writer_vd_q      <= writer_vd_d;
       writer_version_q <= writer_version_d;
@@ -1003,7 +1105,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   assign insn_queue_done[VFU_LoadUnit]  = |pe_resp_i[NrLanes+OffsetLoad].vinsn_done;
   assign insn_queue_done[VFU_StoreUnit] = |pe_resp_i[NrLanes+OffsetStore].vinsn_done;
   assign insn_queue_done[VFU_MaskUnit]  = |pe_resp_i[NrLanes+OffsetMask].vinsn_done;
-  assign insn_queue_done[VFU_SlideUnit] = |pe_resp_i[NrLanes+OffsetSlide].vinsn_done;
+  assign insn_queue_done[VFU_SlideUnit] =
+    |(pe_resp_i[NrLanes+OffsetSlide].vinsn_done & ~word_credit_ids_q);
   // Dummy counter, just for compatibility
   assign insn_queue_done[VFU_None]      = insn_queue_cnt_up[VFU_None];
 
@@ -1016,6 +1119,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // Masked instructions do use the mask unit as well
   always_comb begin
     target_vfus_vec                = target_vfus(ara_req_i.op);
+    if (word_credit_request) target_vfus_vec[VFU_SlideUnit] = 1'b0;
     target_vfus_vec[VFU_MaskUnit] |= ~ara_req_i.vm;
   end
 

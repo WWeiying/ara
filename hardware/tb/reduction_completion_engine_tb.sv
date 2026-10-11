@@ -32,6 +32,14 @@ module reduction_completion_engine_tb;
   int consecutive_stalls = 0, max_consecutive_stalls = 0;
   int command_stalls = 0;
   int full_refills = 0, ready_successors = 0;
+  int fp_sparse_jumps = 0;
+  int fp_sparse_feedback_jumps = 0;
+  int fp_feedback_fires = 0;
+  int fp_seed_feedback_fires = 0;
+  int sparse_lane_jumps = 0;
+  int sparse_empty_tails = 0;
+  int seed_lookahead_completions = 0;
+  int empty_results = 0, empty_arithmetic_cycles = 0, empty_seed_wait_cycles = 0;
   bit stress_seed_tuple, result_was_stalled = 0;
   rce_result_t stalled_result;
   int admitted = 0, completed = 0, total = 0, cycles = 0;
@@ -43,7 +51,8 @@ module reduction_completion_engine_tb;
   reduction_completion_engine #(.EnableExact(1'b0)) dut (
     .clk_i(clk), .rst_ni(rst_n), .cmd_i(cmd), .cmd_valid_i(cmd_valid),
     .cmd_ready_o(cmd_ready), .partial_i(partial), .partial_valid_i(partial_valid),
-    .partial_ready_o(partial_ready), .seed_i(seed), .seed_valid_i(seed_valid),
+    .partial_ready_o(partial_ready), .seed_lifetime_i('0), .external_seed_i('0), .external_seed_valid_i('0), .ordinary_seed_i('0), .ordinary_seed_valid_i('0),
+    .seed_i(seed), .seed_valid_i(seed_valid),
     .seed_ready_o(seed_ready), .result_o(result), .result_valid_o(result_valid),
     .result_ready_i(result_ready), .occupancy_o(occupancy),
     .exact_cmd_i('0), .exact_cmd_valid_i(1'b0), .exact_cmd_ready_o(),
@@ -163,6 +172,30 @@ module reduction_completion_engine_tb;
       consecutive_stalls = result_was_stalled ? consecutive_stalls + 1 : 0;
       if (consecutive_stalls > max_consecutive_stalls)
         max_consecutive_stalls = consecutive_stalls;
+      if (dut.valid_q[dut.work_ptr] && (&dut.received_q[dut.work_ptr]) &&
+          !dut.command_q[dut.work_ptr].vl_zero && !(|dut.active_q[dut.work_ptr])) begin
+        if (dut.state_q == dut.MERGE || dut.state_q == dut.FOLD) begin
+          empty_arithmetic_cycles++;
+          if (RceEmptyBypassEnable)
+            $fatal(1, "FAIL: inactive source entered arithmetic with bypass enabled");
+        end
+        if (dut.state_q == dut.SEED && !dut.seed_ready_q[dut.work_ptr])
+          empty_seed_wait_cycles++;
+      end
+      if (result_valid && result_ready && !dut.command_q[dut.read_q].vl_zero &&
+          !(|dut.active_q[dut.read_q])) empty_results++;
+      if (dut.background_q && dut.state_q == dut.HOLD) seed_lookahead_completions++;
+      if (dut.fp_feedback_request && dut.fp_in_ready) begin
+        fp_feedback_fires++;
+        if (int'(dut.fp_next_lane) > int'(dut.lane_q)+1) fp_sparse_feedback_jumps++;
+      end
+      if (dut.sparse_fp && dut.state_q == dut.MERGE && dut.fp_in_valid && dut.fp_in_ready &&
+          dut.merge_lane != dut.lane_q) fp_sparse_jumps++;
+      if (dut.fp_seed_feedback_request && dut.fp_in_ready) fp_seed_feedback_fires++;
+      if (dut.state_q == dut.MERGE && dut.sparse_integer) begin
+        if (dut.merge_lane_found && dut.merge_lane != dut.lane_q) sparse_lane_jumps++;
+        if (!dut.merge_lane_found) sparse_empty_tails++;
+      end
       if (cmd_valid && !cmd_ready) command_stalls++;
       if (occupancy == 2) overlap_cycles++;
       if (occupancy == 2 && result_valid && result_ready) begin
@@ -214,6 +247,17 @@ module reduction_completion_engine_tb;
       $fatal(1, "FAIL: missing bad seed ID/register/version coverage");
     if (RceWordTurnaroundEnable && (full_refills == 0 || ready_successors == 0))
       $fatal(1, "FAIL: missing full-refill or ready-successor coverage");
+    if (empty_results == 0 || empty_seed_wait_cycles == 0)
+      $fatal(1, "FAIL: missing empty-source completion or late-seed wait coverage");
+    $display("FP_SPARSE: merge_jumps=%0d feedback_jumps=%0d", fp_sparse_jumps, fp_sparse_feedback_jumps);
+    $display("FP_FEEDBACK: fires=%0d", fp_feedback_fires);
+    $display("FP_SEED_FEEDBACK: fires=%0d", fp_seed_feedback_fires);
+    $display("WORD_SPARSE: jumps=%0d empty_tails=%0d", sparse_lane_jumps, sparse_empty_tails);
+    if ($test$plusargs("REQUIRE_FP_SEED_FEEDBACK") && fp_seed_feedback_fires == 0)
+      $fatal(1, "FP64 seed feedback was not exercised");
+    $display("SEED_LOOKAHEAD: completions=%0d", seed_lookahead_completions);
+    $display("EMPTY: results=%0d arithmetic_cycles=%0d seed_wait_cycles=%0d",
+      empty_results, empty_arithmetic_cycles, empty_seed_wait_cycles);
     $display("TURNAROUND: full_refills=%0d ready_successors=%0d", full_refills, ready_successors);
     $display("PROTOCOL: command_stalls=%0d max_result_stall=%0d bad_version=%0d bad_id=%0d bad_register=%0d",
       command_stalls, max_consecutive_stalls, bad_seed_counts[0], bad_seed_counts[1], bad_seed_counts[2]);

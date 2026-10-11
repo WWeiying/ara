@@ -2,6 +2,8 @@
 
 本文解释 `reduction-optimization` 分支在本仓库**优化前基线**之上做了什么、为什么这样做，以及如何从代码和仿真中复现这些机制。它是一份面向阅读 RTL 和继续开发的教学文档；逐次实验的完整记录仍在 [`reduction_acceleration_4lane.md`](reduction_acceleration_4lane.md)。
 
+版本范围：本文主体讲解建立专用 RCE 之前的优化基础。后续独立规约收尾、规约与普通指令混合执行、Word 类 Late Seed，以及中央等待期间复用归并器的当前实现与验证状态，见[专用 Reduction Completion Engine 实现记录](reduction_completion_engine.md)。阅读当前 RTL 时应结合该记录，不应将本文历史路径视作所有规约仍在使用的唯一实现，也不能把历史性能数字直接当作当前组合配置的测量结果。
+
 本文的历史优化配置如下；2026-10-07 的核查修复在此基础上继续修改，详见[正确性核查记录](reduction_correctness_audit.md)。历史周期表尚未全部在修复后重测。
 
 ```text
