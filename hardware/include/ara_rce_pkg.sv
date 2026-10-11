@@ -48,6 +48,11 @@ package ara_rce_pkg;
 `else
   localparam bit RceFpLateSeedEnable = 1'b0;
 `endif
+`ifdef ARA_RED_RCE_EXACT_SEED_RECEIVE
+  localparam bit RceExactSeedReceiveEnable = 1'b1;
+`else
+  localparam bit RceExactSeedReceiveEnable = 1'b0;
+`endif
 `ifdef ARA_RED_RCE_EXACT_DECOUPLE
   localparam bit RceExactDecoupleEnable = 1'b1;
 `else
@@ -159,6 +164,12 @@ package ara_rce_pkg;
 `endif
   localparam bit RceFpCompletionEnable = RceFp64SumEnable || RceFpMinMaxEnable || RceExactDirectEnable;
   localparam bit RceEnable = RceIntEnable || RceFpMinMaxEnable || RceExactEnable || RceFp64SumEnable;
+
+`ifdef ARA_RED_RCE_EXACT_EXTERNAL_SEED
+  localparam bit RceExactExternalSeedEnable = RceExternalSeedEnable && RceExactEnable;
+`else
+  localparam bit RceExactExternalSeedEnable = 1'b0;
+`endif
 
   // Exact packet transport remains ordered by its SLDU adapter. This command
   // owns one sparse frame; late-seed data is version-checked by that adapter.

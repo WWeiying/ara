@@ -107,6 +107,7 @@ module sldu_packet_oracle_tb;
   end
   sldu #(.NrLanes(4), .VLEN(VLEN), .vaddr_t(vaddr_t),
          .pe_req_t(pe_req_t), .pe_resp_t(pe_resp_t)) dut (
+    .exact_external_seed_i('0), .exact_external_seed_valid_i('0),
     .rce_exact_cmd_o(exact_cmd), .rce_exact_cmd_valid_o(exact_cmd_valid),
     .rce_exact_cmd_ready_i(exact_cmd_ready), .rce_exact_operand_o(exact_operand),
     .rce_exact_operand_valid_o(exact_operand_valid), .rce_exact_operand_ready_i(exact_operand_ready),

@@ -120,6 +120,14 @@ reduction_rce_fp_late_seed ?= 0
 ifeq ($(reduction_rce_fp_late_seed),1)
   bender_defs += --define ARA_RED_RCE_FP_LATE_SEED=1
 endif
+reduction_rce_exact_external_seed ?= 0
+ifeq ($(reduction_rce_exact_external_seed),1)
+  bender_defs += --define ARA_RED_RCE_EXACT_EXTERNAL_SEED=1
+endif
+reduction_rce_exact_seed_receive ?= 0
+ifeq ($(reduction_rce_exact_seed_receive),1)
+  bender_defs += --define ARA_RED_RCE_EXACT_SEED_RECEIVE=1
+endif
 reduction_rce_exact_decouple ?= 0
 ifeq ($(reduction_rce_exact_decouple),1)
   bender_defs += --define ARA_RED_RCE_EXACT_DECOUPLE=1

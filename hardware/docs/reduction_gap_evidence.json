@@ -1,7 +1,7 @@
 {
   "date": "2026-10-11",
   "base_commit": "d93d088d",
-  "scope": "Completed individual stages and latest combined106; simulation evidence for listed configurations and workloads only",
+  "scope": "Completed individual stages, accepted106 checkpoint, and exact external/receive full110; listed configurations and workloads only",
   "stages": {
     "sparse_fp64_full101": {
       "suite": "gap_fp64_sparse_full_soc_v1",
@@ -2516,6 +2516,1292 @@
           "nonzero_seed_hazard": 64
         }
       }
+    },
+    "exact_external_seed_on_main": {
+      "programs": 10,
+      "manifest_sha256": "a049284cf3f04684ae3a635196d1ab0532c9de93f1530d5ffe3b0087e8b3f75a",
+      "simulator_sha256": "a9266206c990c1f763dc8e71115f648823d3206e398a15225abd9dd036fe99b1",
+      "tests": {
+        "perf_rce_exact_load_seed": {
+          "pass": true,
+          "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+          "log_sha256": "b9bd6f22be55b0df0493e92862c06cf920c5bc5de31797248b3a7631a267fcc0",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_slide_seed": {
+          "pass": true,
+          "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+          "log_sha256": "65fa6ad0b0e8f726b3a37c079e7026813baeeb8d82f8235bd4302ccce61a903a",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_external_seed": {
+          "pass": true,
+          "elf_sha256": "2223bf34c496e220fa9c0a197757cc26c2df8fbc31aa58a8cd4687267fbb8b7a",
+          "log_sha256": "ddc12796687d5b29426fc6f37465faca3c866ee424f0bac84d1fa885f7a04126",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_mixed": {
+          "pass": true,
+          "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+          "log_sha256": "2c5f32d36b819cf45b7c78bc312e61f67b38e54af7bc7aa9d8b7bbbadf96e90b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_slide": {
+          "pass": true,
+          "elf_sha256": "f40cfd074711825bc3ac9360d928ad2ab78f27628dc2871c8a7aa654fbe0d0e5",
+          "log_sha256": "8dbb052663f48aa34a1a7aee63a42fc1f4ecb6b2b29f1444db3a15ed46c603bd",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_saturation": {
+          "pass": true,
+          "elf_sha256": "1219f6a44ad41edff7b5dcbc1e55c0476d4f8d040388bfb308f8b084d962f103",
+          "log_sha256": "135997c6e6458b5fcc85fd369923b432bd044f7a273c3208089d7229cc7b66a0",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp_csr_order": {
+          "pass": true,
+          "elf_sha256": "86f1514c4b48fe527154a630f8ef07e79db7f9b494a78592fcd9180f310c54d5",
+          "log_sha256": "7239fa3a4b319bde2182dfaadb3668c2816365888772e03eab10aebd392e9a68",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_hetero_matrix": {
+          "pass": true,
+          "elf_sha256": "da7215b53c110649cac4f71a85354957a213da6ac2aa113d542b9893506c3544",
+          "log_sha256": "b983019576581c5e620733239af3e997ed7a6f2767b7bc0419a055c7e53005fb",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_integer_seed_hazards": {
+          "pass": true,
+          "elf_sha256": "1591ca56856ad942b7f911f3ad0c7e7a8597c1ccfd06a8482f17f96713694f4b",
+          "log_sha256": "58b0e2ddd506bcb5e3c25e373ad453e59b7d590b0ef8baec9ca81dacb07949cd",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_chain_bypass_probe": {
+          "pass": true,
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "log_sha256": "8b8e9b1cbbcba08ef37d067cef58e4994277538fe3d9d83c4bccdfcb0e02d6e6",
+          "measured_window_cycles": [
+            819
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        }
+      }
+    },
+    "exact_external_seed_on_versions": {
+      "programs": 1,
+      "manifest_sha256": "577089753af5914ac91d9b0ba78b9bedae4b07cbfabdfdf35950de908efcc283",
+      "simulator_sha256": "a9266206c990c1f763dc8e71115f648823d3206e398a15225abd9dd036fe99b1",
+      "tests": {
+        "reduction_rce_exact_seed_versions": {
+          "pass": true,
+          "elf_sha256": "2d392d86e271892a949ae329ff90498bc3fb79a2c02e4dbd7b20e5b7252795fe",
+          "log_sha256": "fc10d2098b54a08dc9afa4f5bde8a84b9e7d5820eedf5fd375d31d8916f8d1ce",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        }
+      }
+    },
+    "exact_external_seed_off_main": {
+      "programs": 10,
+      "manifest_sha256": "c77e89e1d6440a62527453fd5f30f6ede3b98a304e4972bcd4eb55783f26906f",
+      "simulator_sha256": "13d338e348e07e83519c85943fa7b6df331145a026bf97221439b9deede3c251",
+      "tests": {
+        "perf_rce_exact_load_seed": {
+          "pass": true,
+          "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+          "log_sha256": "b2354477dd7c46d75c7a2cf32767967892c3802df4b5c552ddb1d096fcd3c645",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            463,
+            436,
+            470,
+            500
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_slide_seed": {
+          "pass": true,
+          "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+          "log_sha256": "95e34ba471a823bc505f1f043b28531b73be5e532dc4e30b9f623b4b918c7b5c",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            397,
+            360,
+            388,
+            422
+          ],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_external_seed": {
+          "pass": true,
+          "elf_sha256": "2223bf34c496e220fa9c0a197757cc26c2df8fbc31aa58a8cd4687267fbb8b7a",
+          "log_sha256": "2b2452b96fcfc6a31097a6f323dff8d4b43154abf45079bfdfd124a554e7abfe",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_mixed": {
+          "pass": true,
+          "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+          "log_sha256": "d7ee4804197d69574804670c427d0a4b97a970228a88a93766665acebe0ae86f",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_slide": {
+          "pass": true,
+          "elf_sha256": "f40cfd074711825bc3ac9360d928ad2ab78f27628dc2871c8a7aa654fbe0d0e5",
+          "log_sha256": "bfc44eb77de25afc9fb2a8e9448188e61431e644565f97eaf470220db06cf20b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_saturation": {
+          "pass": true,
+          "elf_sha256": "1219f6a44ad41edff7b5dcbc1e55c0476d4f8d040388bfb308f8b084d962f103",
+          "log_sha256": "4d79a55b44a7b185bd4edc499d650f4dc3253883efc402d4e14a7b8ee2e58b9f",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp_csr_order": {
+          "pass": true,
+          "elf_sha256": "86f1514c4b48fe527154a630f8ef07e79db7f9b494a78592fcd9180f310c54d5",
+          "log_sha256": "02b597e35b94784a6b3551470a48f5157208e34e446826d53a8ec25d8c87c5f5",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_hetero_matrix": {
+          "pass": true,
+          "elf_sha256": "da7215b53c110649cac4f71a85354957a213da6ac2aa113d542b9893506c3544",
+          "log_sha256": "a5027d5e446ffd4bab05b6c699a6961e66f2d58bfe8e0b2bdc8a9756eead3dcb",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_integer_seed_hazards": {
+          "pass": true,
+          "elf_sha256": "1591ca56856ad942b7f911f3ad0c7e7a8597c1ccfd06a8482f17f96713694f4b",
+          "log_sha256": "752c590964e87439bf8693cea335a150d395e4d50107aebae2e59fe04b8217ff",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_chain_bypass_probe": {
+          "pass": true,
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "log_sha256": "38640c521a4167d6b01fc5a8cfc784581a378bf987d763640a4acaeb2f3da93d",
+          "measured_window_cycles": [
+            824
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        }
+      }
+    },
+    "exact_external_seed_off_versions": {
+      "programs": 1,
+      "manifest_sha256": "9e72db8677e127691649325dd7c7a4798a98b358bc0069acc4fca86ec173b451",
+      "simulator_sha256": "13d338e348e07e83519c85943fa7b6df331145a026bf97221439b9deede3c251",
+      "tests": {
+        "reduction_rce_exact_seed_versions": {
+          "pass": true,
+          "elf_sha256": "2d392d86e271892a949ae329ff90498bc3fb79a2c02e4dbd7b20e5b7252795fe",
+          "log_sha256": "a20d491684682fd87bdfed26eb6f7af3de799a7ad7bf3852d13a7aa638813b6d",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        }
+      }
+    },
+    "exact_external_seed_full110": {
+      "suite": "gap_exact_external_seed_full_soc_v1",
+      "programs": 110,
+      "manifest_sha256": "2e3d76f83a3766c0795f2d2a2aea0da5ab3bf6a7515e33f6aa76a4c0b6e1e79f",
+      "simulator_sha256": "a9266206c990c1f763dc8e71115f648823d3206e398a15225abd9dd036fe99b1",
+      "tests": {
+        "perf_rce_word_slide": {
+          "pass": true,
+          "elf_sha256": "6b0699a23022e13088c4188d679c1e169b6c69b117233db491106e37e47481c8",
+          "log_sha256": "03360ed6f215db2b2e6d08c8214234de803544ef3088d2314a365d491a85350d",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            344
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_sparse_source": {
+          "pass": true,
+          "elf_sha256": "cd3ab6bfff2791537537a9abee2ae425fcb7a7126f543d05c8f7bb40e3852866",
+          "log_sha256": "49974afdc38e79d4fbf45f26afa99e35398fa0d956aed2c37b3695fea778d16d",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            286,
+            258,
+            253,
+            253,
+            270,
+            335
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_seed_wait": {
+          "pass": true,
+          "elf_sha256": "8ee758af48b650edaa063bb0a65e5bd7af2074203a47929addc7ebf5e10f8667",
+          "log_sha256": "90afab6b4ee493c778fc65e04c540cc9944848065b2e07e4645599782c9ee572",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            1497
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_seed_wait_consumer": {
+          "pass": true,
+          "elf_sha256": "e01bc7bba3f77b0cb5040d6332559f60d8386d6b83465d079cf5e7adf4788d80",
+          "log_sha256": "5a7e7f3b8ec5a9d7f92bad126d4a3bef658f8b4e26d6d768c33f7aae70434eda",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            1625
+          ],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_random_dependencies": {
+          "pass": true,
+          "elf_sha256": "a362553c166c8aec8c7db50dfb0816447fbf7c6f74fbdf703eb1b7acd0727563",
+          "log_sha256": "19e2cca583e3fc683f9c4b7c354e12316e0eb6784e5b9c5ad162c378fd305182",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_empty_source": {
+          "pass": true,
+          "elf_sha256": "95cd2849c997af62b64f2c3bd4ac9d014b708dbe78f2f700d372d85b72120b14",
+          "log_sha256": "677535e637a53de8799ba6c76e52057a2c555a5b2d023afd5b30e95b909d5d29",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": [
+            {
+              "label": "EMPTY group=0 windows=8",
+              "cycles": 3408
+            },
+            {
+              "label": "EMPTY group=1 windows=8",
+              "cycles": 3687
+            },
+            {
+              "label": "EMPTY group=2 windows=8",
+              "cycles": 4188
+            },
+            {
+              "label": "EMPTY group=3 windows=8",
+              "cycles": 4188
+            },
+            {
+              "label": "EMPTY group=4 windows=4",
+              "cycles": 2108
+            },
+            {
+              "label": "EMPTY group=5 windows=4",
+              "cycles": 2356
+            },
+            {
+              "label": "EMPTY group=6 windows=4",
+              "cycles": 2228
+            }
+          ]
+        },
+        "reduction_rce_fp_late_seed": {
+          "pass": true,
+          "elf_sha256": "2858cfcc96ffa3dab93c020f565897bd284a8330ddd05a4812dca048c84a812c",
+          "log_sha256": "dda8e33736b0b805b091d553c6d2f8fdfabf017338080b829b65f3d36e2484a6",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": [
+            {
+              "label": "FP_LATE extremes e16",
+              "cycles": 529
+            },
+            {
+              "label": "FP_LATE extremes e32",
+              "cycles": 528
+            },
+            {
+              "label": "FP_LATE extremes e64",
+              "cycles": 529
+            },
+            {
+              "label": "FP_LATE sum64",
+              "cycles": 667
+            }
+          ]
+        },
+        "reduction_rce_ordinary_seed": {
+          "pass": true,
+          "elf_sha256": "abd27fc5ae334a5f1f0ad2377472cbad1f2a6e38cb01330e2bfbbb45289ba372",
+          "log_sha256": "4f7df9e0bd894ff396418c131e345e1712e8a958ffbc428981f31178cc00818b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": [
+            {
+              "label": "ORDINARY_SEED integer m1",
+              "cycles": 663
+            },
+            {
+              "label": "ORDINARY_SEED integer m2",
+              "cycles": 1189
+            },
+            {
+              "label": "ORDINARY_SEED integer m4",
+              "cycles": 1701
+            },
+            {
+              "label": "ORDINARY_SEED float",
+              "cycles": 1386
+            },
+            {
+              "label": "ORDINARY_SEED cross_vfu m4",
+              "cycles": 501
+            },
+            {
+              "label": "ORDINARY_SEED mul_to_alu m4",
+              "cycles": 425
+            }
+          ]
+        },
+        "reduction_rce_hetero_matrix": {
+          "pass": true,
+          "elf_sha256": "da7215b53c110649cac4f71a85354957a213da6ac2aa113d542b9893506c3544",
+          "log_sha256": "c043fc306898d2a7c5f4c7f0ff58b65bbec9c0465f1d97c74c23e4a967c6f0db",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_narrow_queue": {
+          "pass": true,
+          "elf_sha256": "3958e4adb8ce69726684d6798f6a0b517de5ec2ed913c5158f745f994bcc67b4",
+          "log_sha256": "a4be103fa9b15e88b52ace3bad51e6fd845b94dfe2e8da1be1d494015db78f8f",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fractional": {
+          "pass": true,
+          "elf_sha256": "06ed4408421b31b81b087627eafe079172207594fb4b214ad953ac14d5bdc36f",
+          "log_sha256": "b13842f1b508f6488c949a984517025ab7cf0f45d637ea56d2e0f5d61c4a7432",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_queue_packing": {
+          "pass": true,
+          "elf_sha256": "d9c6d0ddbe80fb0b294c8b16e17bfd5e53407442b3dc06b52304626756834b74",
+          "log_sha256": "fc08c42d8b42a1e0f0605423d3b83bf23fb67f5f6d0b6f0cfc835fa497c52720",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_integer_seed_matrix": {
+          "pass": true,
+          "elf_sha256": "511a022cda8f3a08ef81c08121a65a5d3f68dd7474cee47be61065004068a0b6",
+          "log_sha256": "d1661ab013e2b847109e42cbb3c109e83a101192383e1a402fcb49550b754be4",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_integer_seed_hazards": {
+          "pass": true,
+          "elf_sha256": "1591ca56856ad942b7f911f3ad0c7e7a8597c1ccfd06a8482f17f96713694f4b",
+          "log_sha256": "0cc250bb75da48aff47aeabf0f7472fa289d585c73b3ff14e50b5412da5ae763",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_integer_seed_shapes": {
+          "pass": true,
+          "elf_sha256": "86c61b9f92d0c62dce2af770c3791d2a17c0e512eec2363b9e604eeb4b51b959",
+          "log_sha256": "84f849bc028d16af0f280d5cab4e430b25146e344d898ca9c512799cae310064",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_mixed": {
+          "pass": true,
+          "elf_sha256": "535db26ca7de29afc3fd4cd5ffce0a331147767619f317aa0278911d23443503",
+          "log_sha256": "de1e27aacb04560efd4273253daa11b772484e873b236b90c6430e93aa82ce4c",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_hetero": {
+          "pass": true,
+          "elf_sha256": "b991c0c51c3ea5c37693276d02b55a8efd20b9176a98f5cafb23a02f6fa230fe",
+          "log_sha256": "8312d5cf33fb8816a8f582f5762c0e5f5fc09ce2aabfab65f1678f5bbe801be7",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_ownership": {
+          "pass": true,
+          "elf_sha256": "7f5ee1c1fd89278ff4b478ff69d484dfb8481a4ee91584ff056cb1022dd44506",
+          "log_sha256": "c62f791b40052fedf4a4f8cbab98991db2050d925826d724917832fc1c1173f0",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_saturation_mask": {
+          "pass": true,
+          "elf_sha256": "346ec238c083e1f24b8acac503d9108b49e5bf4a7636cadb4aa9c13697c07744",
+          "log_sha256": "e31b1d3cd1f9fa3ec4471d792df96eff89c4ac8a03f78f181a7e112d79daf414",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_backend_mix": {
+          "pass": true,
+          "elf_sha256": "79c1b295d2180216700c3d54e4ebf7ba5e05848ca8a9870e93994520c4139b33",
+          "log_sha256": "2718435c92202fb31f705447d4bb84837f7aa38a8b83248a14bb1e5a6c89428f",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_mixed": {
+          "pass": true,
+          "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+          "log_sha256": "fde52c72818168ea6158b9be3ff7633b533894a8f2384b03be86d5a7cd66f64c",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_slide": {
+          "pass": true,
+          "elf_sha256": "f40cfd074711825bc3ac9360d928ad2ab78f27628dc2871c8a7aa654fbe0d0e5",
+          "log_sha256": "84c2328077ddca530af21bcf970a2ccaf96e1f90e96a79cfeeca6c6f53898b3e",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_saturation": {
+          "pass": true,
+          "elf_sha256": "1219f6a44ad41edff7b5dcbc1e55c0476d4f8d040388bfb308f8b084d962f103",
+          "log_sha256": "48dd53f09445f71482ee9e27fc4a4eda64ccb8fb1bfd869dd2e3812c4c0211e7",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_mixed": {
+          "pass": true,
+          "elf_sha256": "e052464d491b2cebe616663f9f69b77f71f32df40be4a34b644601d8b0043b9f",
+          "log_sha256": "1572c72b09a056c5f00d75a7339830f2232924930a401b2e03ec3d59434dcdfd",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_slide": {
+          "pass": true,
+          "elf_sha256": "5cdfb3c46a9eb214316b887c8ebfc3804d4b08d78c6158704865bdead9e6311d",
+          "log_sha256": "4acb1ae4a6a34f92304d2641e2b511dce01c482d229cd57cd78488244a21bb55",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_saturation": {
+          "pass": true,
+          "elf_sha256": "e8b8ada973cb8105aa2843e129893cb2b9da9273b09afa3e649e9461b9389d20",
+          "log_sha256": "08a50ed00f8fb0db09ce32f288d22acc0358ef158e0f36c8b3000883ed27d163",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_edges": {
+          "pass": true,
+          "elf_sha256": "da076410c505afeaaa31cc494886d2581cd8fd68d4b64212ae4d260e5d894639",
+          "log_sha256": "78eae151b56f53e749350f38a3c0dd06bfe2161bb528a8bdb6e3869bec08cc05",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_widen_edges": {
+          "pass": true,
+          "elf_sha256": "e448c93bc672f0d025770944ffc1bb1f744b24083d0c7fd18919fdd1196f8321",
+          "log_sha256": "3e7aabe124fe46a6955f8e205a8cb6a41d545d94beadb91aa0bb0323ed09a761",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp64_masked_add": {
+          "pass": true,
+          "elf_sha256": "d63370c3f031f2062549930081da18b7e94561df0e35c96c6fc960a3fa7f3b85",
+          "log_sha256": "6c2b11644cf033f4a5690673b81d0f3753a52deb8b3cffb8c01067e57da06472",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp_mixed": {
+          "pass": true,
+          "elf_sha256": "27aeada5fbc65d218a00a3b3e57d36d0a78e0043fe2a974f7eff2602d0f2eee8",
+          "log_sha256": "f55c0bf242ad91b0be6994ad77f364a1221b8ff283009d7a486cf312de93fd4b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_group_seed": {
+          "pass": true,
+          "elf_sha256": "d250605d3d2cf790424a63429fada30dbda0e867d4a33a32663799e1f467e9a1",
+          "log_sha256": "2abda7ce89ef4a16066cc46208e74cfbf959a081b8a426de36e001e2e7475334",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_lmul_matrix": {
+          "pass": true,
+          "elf_sha256": "88517eceacc8c5feb3ee6a51ecff5a9762ad6be56318549c08ce3469d91028e3",
+          "log_sha256": "dd90bb1124e2900e5fe8acc790835b1c20df57e43f433363b2ba3e182378ab71",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_lmul_data": {
+          "pass": true,
+          "elf_sha256": "e2c700da501e38213dc14c3d4d4bbd10fc9cef5322591ce6f6e1feb7909bc531",
+          "log_sha256": "122c0e4a49aaa60c8aa9cc4649c91aa00a62adb7c40e78065fd69296fde85b6e",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_scalar_lmul": {
+          "pass": true,
+          "elf_sha256": "28137bb26512f205d91657f436f7fdaca91adf26cd2312ce2927d71cc62a7862",
+          "log_sha256": "370773ab0a161de3615f402131bb7b717a52ae5123055c8a79c255e9934b79cf",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_ordered_boundary": {
+          "pass": true,
+          "elf_sha256": "67eb61bb0390cd0ce5b356ea6de518b5e8b39f2a215b877e3affa20bc07c1f9c",
+          "log_sha256": "7f607ed3373c4ade618f8732fdee5bda7c412dbe7c30802841bdfe936e73034b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_slide_boundary": {
+          "pass": true,
+          "elf_sha256": "9416b200f385402b0f51a9f416beef9afa63cffdbdad91e457b6fa9569feb9dd",
+          "log_sha256": "533976090b2eb9a2aef8d409d1a76fe863adcd706bc6a02a523df072fcbe20e0",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_div_mask": {
+          "pass": true,
+          "elf_sha256": "a20b780a6541460f4f6e99c98930ee26636a1649c9e9ccd3e36c6b09099036e4",
+          "log_sha256": "e166c969e086abe5f4161d4105fba72746c10e4aa5c3085b9f46c8576d5d5780",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_div_mask_stride": {
+          "pass": true,
+          "elf_sha256": "e858cdd8d242e3ecfb35c2042bafe108f4fdce93e77ddd82de2eafe8daf6acce",
+          "log_sha256": "56b733c0c8a15486df90aec5c05018a54ae8b31901d1445adc96e1f5a335fb54",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_vsmul_oracle": {
+          "pass": true,
+          "elf_sha256": "4e34c8e8f581a03f225033934489efbdd8315ba8e21d339d867a29766b7a45a2",
+          "log_sha256": "f2f33f445314ce4e70b3d09bb1df72aea312aae543fd85ca8826341de6717673",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_audit_minmax_ieee": {
+          "pass": true,
+          "elf_sha256": "aa80455a4de7a470622aa0495d1f9aafd50ce9bd611fc5ef6e0d1e4e16a4f03a",
+          "log_sha256": "a29866a151dee9320df5bdac1450ae4922aaeae5a563543fdf81c462d14b73bf",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_audit_short": {
+          "pass": true,
+          "elf_sha256": "0f455dafd382cb0697f24a8c220af4023895b2d84faddc30db01f9abf8a6c89b",
+          "log_sha256": "11060131cdd06b8ba0fea764a4b6bb64589c63ab1bf2d7a097104c5605d4d761",
+          "measured_window_cycles": [
+            30
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_audit_empty": {
+          "pass": true,
+          "elf_sha256": "40bdd4f0d69c21cfa29c32d7e0b58811dae0367ef6da550c54c84fd5c7fde30a",
+          "log_sha256": "a61396f3c739d676e66c68efeb9b8e36445916734f9671d2d9110bc31f33abae",
+          "measured_window_cycles": [
+            28
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_audit_widen_mask": {
+          "pass": true,
+          "elf_sha256": "78c9c128a353d81801d00a9be5afacf25c68e7ac25e98d3a6bebb08580d840f2",
+          "log_sha256": "9b3186514b6836eebe53a1df2db9c080f92d8c766dcdeaf70d90d750daaf29b2",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_hetero_sew": {
+          "pass": true,
+          "elf_sha256": "693e925be679a3a72ee66edf6378eeb756cd6476e22a0fb3fcf512f67d9535d2",
+          "log_sha256": "804453297670be04d54323929c7bd7afa02615fa5546eea15e8f73ffe02b84a4",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fp_csr_order": {
+          "pass": true,
+          "elf_sha256": "86f1514c4b48fe527154a630f8ef07e79db7f9b494a78592fcd9180f310c54d5",
+          "log_sha256": "f52dbb5064982c26234d05413136706fe091ade0853a288545c329e73f09ad02",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_div_rounding": {
+          "pass": true,
+          "elf_sha256": "2e118d7f6f4fe80ee54c4f0f7d437a5e90c9db9274944ac45acdb1ef0c71b609",
+          "log_sha256": "e77d440755a1cf5d62591372032ae28237919f4b7d8256a06d38df5145fdd03b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_shared": {
+          "pass": true,
+          "elf_sha256": "803aa2740f6e122e23e317f1bdb453351c46eafca8c6f9be4736206b23270aff",
+          "log_sha256": "69010e9c01ca4b6809e03a32436ad21c66e6d15738636111fb48058f127b937e",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_fixed_csr": {
+          "pass": true,
+          "elf_sha256": "7fcf3a7426b0ff82d49db8a2b17c0906eb62bf6fafeb9d727bf60b3c2b56694a",
+          "log_sha256": "4be344ce0dbea60af8328a60cb030e75c6487282d440085b518b507355bc0936",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_probe": {
+          "pass": true,
+          "elf_sha256": "45fddfa39f194a97609302039ed3d701f0e9c6af07efbf7f2e8aba50d18bbcc8",
+          "log_sha256": "46b9df524de95f0b908dbb3c76644d052ee9269a5f7418e3e183df7b71c19dbc",
+          "measured_window_cycles": [
+            144
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_stream_probe": {
+          "pass": true,
+          "elf_sha256": "bd2096428fb00532da183a1106a69bfb3b8fdcddb06b24e50ab32fc48ff7c80f",
+          "log_sha256": "87a2e9989e20eeb845304beeed416c2c99c4754825868b722e263270d77dedac",
+          "measured_window_cycles": [
+            183
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_stream_tag_probe": {
+          "pass": true,
+          "elf_sha256": "840adbdc2c91e243817355c53ca4a94a502047da73ad56190a7845dd75f9186f",
+          "log_sha256": "5fc304a1e8417d9ecca70cf7ec32053270f7d8be5f7deb352b3c8481bd387c2d",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_short_stream_probe": {
+          "pass": true,
+          "elf_sha256": "6a61f9f054dca6a624929a853ebe892259e47f6c59d27225bf3461f962c08b70",
+          "log_sha256": "11e2e7f8fcf00f17f2fe658b75632fe7a262a4abcab62a85e702e10d236f9d7d",
+          "measured_window_cycles": [
+            93
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_e16_stream_probe": {
+          "pass": true,
+          "elf_sha256": "f7411a107fe7efb361abd5d5084da4ef4579268e0f607ed812b19597490adfe6",
+          "log_sha256": "d526aff489406eec241010369726901125c2f6c7ab3d05546170e18332821de6",
+          "measured_window_cycles": [
+            93
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_e64_stream_probe": {
+          "pass": true,
+          "elf_sha256": "ff6842b163c86323ea8b87cbd8f152088c922cb360fc02a7fe8230eab28703dc",
+          "log_sha256": "6101f6027e7dcf63e5f147ba3b8d0c71f337483618cc0423b14eea5091d98360",
+          "measured_window_cycles": [
+            292
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_minmax_stream_probe": {
+          "pass": true,
+          "elf_sha256": "b94fc83b27b249258cd23c3e60c2a05f4300c576158d426fc21e6e2bf740482f",
+          "log_sha256": "cbe12cd918e8fb4ac8fd3ad8bd2d463d6c3f3f3ed23a559d0a470ce4d12259a5",
+          "measured_window_cycles": [
+            177
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_integer_reduction_stream_probe": {
+          "pass": true,
+          "elf_sha256": "f3beba2f2d0842a9e1ad4c395697da5c2c310df5dce14871c34b64eaa731ce95",
+          "log_sha256": "4a2ae0a740576a195a0295d79f0f5df2666b98497042ee84de22089401c5c450",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_integer_reduction_throughput_probe": {
+          "pass": true,
+          "elf_sha256": "994aebd95f49aa7f8a4a607b3a4202904537e1b83ea4b729a8306ed3391a6e30",
+          "log_sha256": "1a43c00c12d5c966c134f9e96cbbfb3a6cd72e72ff878f9fee8620bef27cf5fc",
+          "measured_window_cycles": [
+            149
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_masked_reduction_stream_probe": {
+          "pass": true,
+          "elf_sha256": "829b85562db851ada4dd82b8cc78c737709c01fa95c0992a74a773cf061fbca6",
+          "log_sha256": "9ea86f83707507b5a7d3720029dbd084d9448815f3eace14590a4725c449f95e",
+          "measured_window_cycles": [
+            243
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_ordered_reduction_interleave_probe": {
+          "pass": true,
+          "elf_sha256": "4c61adcf77f55f297c580dcc78612007062cf0b3c7fb467ea8cd1099f1da84ec",
+          "log_sha256": "fa5fa5ff8796e43b4d9c702d3137e6b4f775fac1cfbf10481e61fc5121be5710",
+          "measured_window_cycles": [
+            124
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_widening_reduction_probe": {
+          "pass": true,
+          "elf_sha256": "60491598cc30fecd56131081a5739e16a6a39361aac5df212f5283d47f1b43ce",
+          "log_sha256": "edbc0432aca5187492ff4815f429b1884e290347c05be0b8fc9829f944e9236e",
+          "measured_window_cycles": [
+            86
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_exact_global_reduction_probe": {
+          "pass": true,
+          "elf_sha256": "14b6df5d153be2f5d884dd9fc7323f4ed5c12bdc99cba72aca9f0ac202a56eaf",
+          "log_sha256": "b30ffad3a48a5d1864051ab731b5d0cbdaf8730791ad9b5c87321acbc26c56af",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_chain_bypass_probe": {
+          "pass": true,
+          "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+          "log_sha256": "cc1a2405fc8f1f85bbcfd9bb3199b9a5ac909b57de32936fed6b51695f224e67",
+          "measured_window_cycles": [
+            819
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_mask_probe_0": {
+          "pass": true,
+          "elf_sha256": "027dd052dded5491b847695c736a669294dd01e0b182157561cae63fb0d2bb59",
+          "log_sha256": "83354fd175abb37c7eca3a9734ecd2179e572945d76d7575c5ca551fd17c108e",
+          "measured_window_cycles": [
+            89
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_mask_probe_25": {
+          "pass": true,
+          "elf_sha256": "c72deff9302ab1381dc974cbe1ec8f9334248badea3ec574e4d8183208474857",
+          "log_sha256": "a22cad20d45944bd987befb046f17b04100d2f50eded84ca6a69cc15e78b701d",
+          "measured_window_cycles": [
+            98
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_mask_probe_50": {
+          "pass": true,
+          "elf_sha256": "c351856ba63353c52f5e4f226497018af5a342f38f722b775235e2ae3ed3bd28",
+          "log_sha256": "301ea67e3479d6ae53f5da719ffb311fc2c8b7a1340ca6e0bf7ccee3f043e31d",
+          "measured_window_cycles": [
+            106
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_mask_probe_100": {
+          "pass": true,
+          "elf_sha256": "6ef3a736e176d413a1f2ef294f09f88d579276f277f76dd30e68e460c8f66fe8",
+          "log_sha256": "fbb54a9b6ac1989eb9467270b1c9276866524dad62edbd04dda2d9a9902aca85",
+          "measured_window_cycles": [
+            121
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_reduction_mask_probe_0_snan": {
+          "pass": true,
+          "elf_sha256": "f7755020794b87b781de6baf65eaac6034e169c2c26c665728c76384ff3ee22e",
+          "log_sha256": "baa00cfa942649b948ddf724b6ab9a2d6fed8d492b66619730ddce311f62f894",
+          "measured_window_cycles": [
+            90
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_integer_seed": {
+          "pass": true,
+          "elf_sha256": "4a764881833d8a620f247aaab3c27e86bacbd64ca6092c7cf94baf8fd71b04ef",
+          "log_sha256": "a48a669d264a978672fe3715d5c7cc717a08e17eb7ca88c135e70d99d4932d47",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            269
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_mixed_probe": {
+          "pass": true,
+          "elf_sha256": "215977c12b81d3929cb7abe6def81adedd95796e7cedb5ecae14cad4e0f7ffe5",
+          "log_sha256": "1d2aa78f972df8a5a99656f451ed2ed4f324599ce5f7425e575a7a7bc2e721d2",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            335
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_mixed": {
+          "pass": true,
+          "elf_sha256": "c95870f65151f5b547ee3a4c0330657eda4a54461e211b8ffb4b16674c6cb31e",
+          "log_sha256": "2fe1a389bbe40793f3064dfb928198425e58094743ea12f66266369e8288d374",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            652
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_fp64_mixed": {
+          "pass": true,
+          "elf_sha256": "32e7cd6244aaa363cfc7412b4d361b63a2f26a4ab8c7685c6b595161d2e33768",
+          "log_sha256": "fe9880f8ef75c4d016604b8989ceb91a09a11972d2b5c84e40b0943e33ea66a5",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            974
+          ],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfredmax": {
+          "pass": true,
+          "elf_sha256": "2dbfed602e5dc63cec97293384252f97f113c2e79a33b4d47bb34ffa76b6a89e",
+          "log_sha256": "47be4c820d58a3bcfddc78885643c31e54164b73bd9be8631728947156355a80",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfredmin": {
+          "pass": true,
+          "elf_sha256": "52c0dbae794e43982a464546448d2589a803b1d8c9cdd2cc215d5a9542b62e7b",
+          "log_sha256": "d24f315f5d3b04f6f006261e8d40e631530196cde55422b47dbb03b7d5aee2ef",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfredosum": {
+          "pass": true,
+          "elf_sha256": "d9f505ba8487f5eddd15c97877c309e85a52e0df093b10096e19dd410844fde2",
+          "log_sha256": "015c401623707f1e17bfe224c6571a9ac2e36a4de5fadd4f4e5b151419c75777",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfredusum": {
+          "pass": true,
+          "elf_sha256": "0ca7a4c9f161da3f6da33776e8d86decb4b7fd8256dfe9af115fd856ffd8049c",
+          "log_sha256": "bb765d15a815ced4e5d8d9016af9cb0e792ef41e512c99b6d29202fd3485098d",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfwredosum": {
+          "pass": true,
+          "elf_sha256": "bc76d4b49607595d1f70cf76c7ec76e414dbfce06b6ef031c52cc73241c177ae",
+          "log_sha256": "88fa84957f8776cb5f9c3230caccfe4458b620c4c7adb7210124d5e014ef0d1d",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfwredusum": {
+          "pass": true,
+          "elf_sha256": "85444a5867072ac53f84378a84c13fe59a5cbb071fcb7433c6277058abe92af9",
+          "log_sha256": "4554ffbd03b0ba90388032dde2f136bdb5927fdaa79f1fa7d5a971515bb1b9c0",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredand": {
+          "pass": true,
+          "elf_sha256": "ca4582bec3d0fcb9106189d2f75f6474ee54f43491ec2c53116b4ba78e6fc5b5",
+          "log_sha256": "a61ae372512b10950a78fc9f4361a6fa1054e81647ee671edf9b8e8f7dd14f20",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredmax": {
+          "pass": true,
+          "elf_sha256": "682fc323873692ad083de754c685f74d43b3cfa859cbed46b3ba7a711817a7de",
+          "log_sha256": "cc0285af1f2cfb786bbafb61fe15d9e8e729207013a9577c720ece257b6d31b3",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredmaxu": {
+          "pass": true,
+          "elf_sha256": "dbbac75f4c068815c8225d427544d4e4e0c5ce64d9a5fc436f90eb9422a84746",
+          "log_sha256": "df138b2e6da81e69cdc87e37cb887e2602f949d129a2c31af8b5e16e9a97bfc5",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredmin": {
+          "pass": true,
+          "elf_sha256": "087fb5f34f4a1ae04ec6719b4b3fdb300900ae57f2da6a2c949a8480bcd8e5e7",
+          "log_sha256": "42d185b285881f85141b6d37e2ff2557845ab63a1eedd104a7e3b1ab80e7fb76",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredminu": {
+          "pass": true,
+          "elf_sha256": "cd394cb587019309a7f369858ac1299eaf9af02c51452454bb44ba23aee81ce4",
+          "log_sha256": "aa49318b64a7f72def4965ebb6fddee0c4bd8d9a8dfde106943d42d9b7a56265",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredor": {
+          "pass": true,
+          "elf_sha256": "e6d808669f7c528d760acca0ab62beaf8ae5931d774b96cae1aa8110f4749806",
+          "log_sha256": "f0a002575c23a85a641514c6a8563598fb0d575ef7bc895183e9897fafa6b456",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredsum": {
+          "pass": true,
+          "elf_sha256": "4ee9375e2a78d4be26dffa4708eb87d267f5c0bbc351ebc668530b27fbd79fc9",
+          "log_sha256": "7b514cc7759739cc8591203779233018a067f802b618efca2de753d03c41b0ba",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vredxor": {
+          "pass": true,
+          "elf_sha256": "6fe4ebef1b059ae46d35f75bfd986b11b73a81a7f24ef1c78b28f6cc35c9b352",
+          "log_sha256": "b15428e7ff8dc7d60b828b70cd52f30a2d1fe6705a5b17b82bda7b0e268f7075",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vwredsum": {
+          "pass": true,
+          "elf_sha256": "d35164cbe008fec4b13adce96a95ed0dff57119fe925cfac6592a7f1d1b37725",
+          "log_sha256": "7ab1cb7a3ca8660202adf761d8a86314fd613d79c5965a400efada3a5a89af88",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vwredsumu": {
+          "pass": true,
+          "elf_sha256": "4080267c08ca605a47ac6e2498275ce14086d4e38bb68c267deef8dc95c86d20",
+          "log_sha256": "4e04775d0d5da8ce8249a0413443851bb95b5993e70bdecc48ab0f9329aba55b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_egress_window": {
+          "pass": true,
+          "elf_sha256": "290501652bdab5e594560953efdde50a6d9c99cf3f1c7dd723ff23af5d884d1d",
+          "log_sha256": "b48f94bfd7048dbb2660f74b46571a9668b951296624a1a32f81aaf77d382030",
+          "measured_window_cycles": [
+            133
+          ],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_slide": {
+          "pass": true,
+          "elf_sha256": "d725a2f6c57c096f497eea5f7cbb7f00c7e6f25b0ee44f34fb179896c2d66feb",
+          "log_sha256": "33155527405d8bdd2b19c5ea4d2a2a476d7b73c92c428d00b169514bdb68f6ad",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            501
+          ],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vadd": {
+          "pass": true,
+          "elf_sha256": "16e830aafb5d0e188c7aeb8042ab042ce8564e377b55c7f0b6799a457d98f356",
+          "log_sha256": "d68b8760a73d9aaf01710d3d23ef949f665ab4dcac62c3688b5b1f952a11952e",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfadd": {
+          "pass": true,
+          "elf_sha256": "697a7a8fd8847c9e4036bf0fe6f250a2d43f7d3b0a538bae6c709b76343b8ece",
+          "log_sha256": "5193b9a449942f5a9f93af3f29141d4c27ae840faaf7ced19af7d8fd58b5b742",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfmul": {
+          "pass": true,
+          "elf_sha256": "fecf3cc65b23cb6226b78e55363210e03097d0c3f64723c01be2b490e90509af",
+          "log_sha256": "d70378ffb1960c3e608edbd738b51eba193c2c63d65cb1d1046fcdd09c551ee3",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vfncvt": {
+          "pass": true,
+          "elf_sha256": "078df8cba6d7412bda8ed6af1a3be4d43bb78b013e14014ac41b8a9bf68fcd6e",
+          "log_sha256": "be0644e92dcb5d9bd422317a2c065c6b167ccf9f64e4c531913e39a70cf40908",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vnsrl": {
+          "pass": true,
+          "elf_sha256": "44d894387a097fb7d366cb70fedd37e6859a4c893d9032575243a7275ab7fc9f",
+          "log_sha256": "da01f9a033949c1e1565060cae9f760ce7a299428cdd242abab0f2e0f5c43b77",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vnsra": {
+          "pass": true,
+          "elf_sha256": "078b801a31dc0a1b486b4f4916e244082c24510431b0dd8fe87ec85f3522fbce",
+          "log_sha256": "6f8fcb9c7985ad8b0789fae6e91bf51e08d6bf8801f21a040e79bb0d532ddb1c",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vsaddu": {
+          "pass": true,
+          "elf_sha256": "ff55f8729e86bfdfb32d2b3e682957ab7136e21430d33d693b488105648df694",
+          "log_sha256": "bb0cf19cb87c407ade7c47ee7f7c1cd09c1735866f13c6d8a1a6c626534de3be",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vmerge": {
+          "pass": true,
+          "elf_sha256": "ff6491595747544511d1fab44416c403e8ba34c6e474e3abcb78d4906a1a9e52",
+          "log_sha256": "507aa2d3c2205e437cc9b663567587934c803d271c1d79e0d5fe150c6edb7d63",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vmseq": {
+          "pass": true,
+          "elf_sha256": "7d74515c5f92ea5d551f93362874d37a3c33234847ca49a647d0e872aaf7ceed",
+          "log_sha256": "a4f68acdbe6cc427403a8188f4630879b54ca67e9466aac7dcb1a8caadec7291",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "rv64uv-ara-vmul": {
+          "pass": true,
+          "elf_sha256": "4c5363769ea9f349eceead646709b9d2dfba3c0ca4451e37e86192c0fbf482aa",
+          "log_sha256": "9f521ad246a438c18afddb9545858d93356a7e46372954bae31d2aedcde93b21",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_fp64_sparse": {
+          "pass": true,
+          "elf_sha256": "aa4bb7bd11fc8efce5370746a797987292c6af50ed943bf77a60d36885979ae3",
+          "log_sha256": "bd67986e0036a47c0a7a4b821c3136194f6ed3da585f605ccfa6540837f13659",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            492,
+            434,
+            450,
+            482,
+            434,
+            450,
+            434,
+            434,
+            465,
+            945,
+            979
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_load_seed": {
+          "pass": true,
+          "elf_sha256": "59990e32c0db1a1549eaad556e500bef1b7ea88298946bf61e7aedb7eccf3cb1",
+          "log_sha256": "ff024edd37ffaed3ed3a82a72911cc19236b1c719b803ab0bc02f1e26231470e",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            742,
+            804,
+            932
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_slide_seed": {
+          "pass": true,
+          "elf_sha256": "b8ae849cb801fbe4a4671dd1c98f3d8bdb0fb547da481cdd1bb76dd690c6898d",
+          "log_sha256": "dc1fe3a66f7bb7197b50a72cb9b8d7af4300a2624f6ceff5f90e7941c7211b81",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            663,
+            725,
+            853
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_load_seed_m1": {
+          "pass": true,
+          "elf_sha256": "7f221e23a8871e416371e159b0d7dd00e85e7d37a23de958fb0c7a7cf2a45863",
+          "log_sha256": "213e365e47f4aa1ae1afa8fbbd76d4efedeaaec658f4ea521cf8c6315ef65b1c",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            529,
+            596,
+            708
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_slide_seed_m1": {
+          "pass": true,
+          "elf_sha256": "5256e7f8a16e76e1033fe6260bead39209a0af6a618d9c35570136226416d7ef",
+          "log_sha256": "090af365bf835f981728305692c1efdf4e3139b87412ef63aa83afc4b0669932",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            453,
+            517,
+            629
+          ],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_seed_group": {
+          "pass": true,
+          "elf_sha256": "fca5c3c810f465b7d44b22f8cc645b79681db3a5eeb66f090ea69904a25d2d9d",
+          "log_sha256": "24cf1379e43d9419278c937c7a2539d15b37594680af2e852332ebc1487f9e8a",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_external_seed": {
+          "pass": true,
+          "elf_sha256": "d4d5e043eabc31e2e99eb8d1b836d6802db271f27c85e6936bc36012689cdf1a",
+          "log_sha256": "74ae52cd72c6feee114b4feaf388572f0cc5eb744e41bc51394b9c47d6cae40b",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_load_seed": {
+          "pass": true,
+          "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+          "log_sha256": "c84b01f84e543affa56fcde66e1f899a5cdea2c6c82377aff7713ce6ae867fc2",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "labelled_software_cycles": []
+        },
+        "perf_rce_exact_slide_seed": {
+          "pass": true,
+          "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+          "log_sha256": "5346ec3a4603820f891c3ed22c5789b31319f0c1c63f77b5850cb32bb3784599",
+          "measured_window_cycles": [],
+          "software_cycles": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_external_seed": {
+          "pass": true,
+          "elf_sha256": "2223bf34c496e220fa9c0a197757cc26c2df8fbc31aa58a8cd4687267fbb8b7a",
+          "log_sha256": "bfac778655f9d6dde09a61378462ba651b56acb57850c15f3e382bb364a1c326",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        },
+        "reduction_rce_exact_seed_versions": {
+          "pass": true,
+          "elf_sha256": "2d392d86e271892a949ae329ff90498bc3fb79a2c02e4dbd7b20e5b7252795fe",
+          "log_sha256": "0fd51672feab60dda4b5bb562f7587f78d280330d4a683955d36f34339bc33df",
+          "measured_window_cycles": [],
+          "software_cycles": [],
+          "labelled_software_cycles": []
+        }
+      }
     }
   },
   "external_overlap": {
@@ -2601,5 +3887,252 @@
     "simulator_matches": true,
     "working_functional_files_match": 8,
     "scope": "Source identity rechecked at full106 acceptance; all 106 expected programs passed"
+  },
+  "exact_snapshot_protocol": {
+    "pass": true,
+    "checks": 1600,
+    "trials": 100,
+    "manifest_sha256": "d7e9884d9a4a0b7aa055d231988939e9e27493592ce0b86499b3d4d77d63b016",
+    "simulator_sha256": "9ec4826914e24bfcc2593d0e50ca800c31d98610fcb6d16976479fcd3bec7f14",
+    "log_sha256": "29ba346a593ca67a10db0e98054cbdf2e6f9b889e5d1e65629a13b85184d3dff",
+    "scope": "Real SLDU queue snapshots; transport deliberately blocked by head Slide, not arithmetic/retirement proof",
+    "failed_build_v1": "Full SoC filelist had ara_tb unit tasks referencing its absent top; module-only list used in v2; RTL unchanged"
+  },
+  "exact_external_seed_cycle_observation": {
+    "perf_rce_exact_load_seed": {
+      "dispatches": 64,
+      "excluded": 2,
+      "unambiguous": 62,
+      "compute_before_seed": 62,
+      "delta_range": [
+        1,
+        2
+      ],
+      "seed_ready_at_all_clear_headers": true,
+      "software_cycles": [
+        401,
+        372,
+        390,
+        420
+      ],
+      "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+      "log_sha256": "87b8a83a9a5fe1ac0f0ad3826b820b3124147b6df85243db5ab83f9cdb2cb68a"
+    },
+    "perf_rce_exact_slide_seed": {
+      "dispatches": 64,
+      "excluded": 2,
+      "unambiguous": 62,
+      "compute_before_seed": 61,
+      "delta_range": [
+        -5,
+        3
+      ],
+      "seed_ready_at_all_clear_headers": true,
+      "software_cycles": [
+        323,
+        299,
+        309,
+        373
+      ],
+      "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+      "log_sha256": "cb4fd0921719eef9706072b32177cdf533858c49df19ff1ab09478dd6302d948"
+    }
+  },
+  "exact_snapshot_protocol_v3": {
+    "pass": true,
+    "checks": 2000,
+    "trials": 100,
+    "manifest_sha256": "be0397bb33c0b59294ed8546354ddfad126407c8f913c60f80bae396830e6c80",
+    "simulator_sha256": "f6ecac9b0a3649eba9b10e24d1db6869f0231d8b51a3773e5184a7927c57717c",
+    "log_sha256": "e3880abd8a98e54ff1aa0ce1cde6e27b400bbfad436cfa988dc9b930caddcf8f",
+    "scope": "Real SLDU queued snapshots: concurrent cache replacement, two ports, metadata/bytes rejection, all four descriptors full and backpressure",
+    "previous": "v2 passed1600; v3 adds third queued consumer/full capacity"
+  },
+  "exact_receive_ablation": {
+    "programs": 5,
+    "only_difference": "ARA_RED_RCE_EXACT_SEED_RECEIVE=1",
+    "same_frozen_sources": 438,
+    "manifest_sha256": "02f9b3723d333f3677d34d91c67df466a8c151dc4ff984599597234f67a6191e",
+    "simulator_sha256": "00b67fdda842ba5e3f1c9574541a3327b02b5fdf14cddfd34e281a2ff2756ad5",
+    "comparison": {
+      "perf_rce_exact_load_seed": {
+        "software_cycles": {
+          "receive_on": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "receive_off": [
+            401,
+            372,
+            390,
+            420
+          ]
+        },
+        "measured_window_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "labelled_software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        }
+      },
+      "perf_rce_exact_slide_seed": {
+        "software_cycles": {
+          "receive_on": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "receive_off": [
+            323,
+            299,
+            309,
+            373
+          ]
+        },
+        "measured_window_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "labelled_software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        }
+      },
+      "reduction_rce_exact_seed_versions": {
+        "software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "measured_window_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "labelled_software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        }
+      },
+      "reduction_rce_exact_mixed": {
+        "software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "measured_window_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "labelled_software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        }
+      },
+      "perf_reduction_chain_bypass_probe": {
+        "software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        },
+        "measured_window_cycles": {
+          "receive_on": [
+            819
+          ],
+          "receive_off": [
+            819
+          ]
+        },
+        "labelled_software_cycles": {
+          "receive_on": [],
+          "receive_off": []
+        }
+      }
+    },
+    "tests": {
+      "perf_rce_exact_load_seed": {
+        "pass": true,
+        "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+        "log_sha256": "1023a27e066ca9a46d43ed4d091bea2c5cf3db176f993b2ad5e718ff56a5bef4",
+        "measured_window_cycles": [],
+        "software_cycles": [
+          401,
+          372,
+          390,
+          420
+        ]
+      },
+      "perf_rce_exact_slide_seed": {
+        "pass": true,
+        "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+        "log_sha256": "5e397536d6efd056105cc2cc1da95ac440f631cc0391fc7754e6bbd36b1896f8",
+        "measured_window_cycles": [],
+        "software_cycles": [
+          323,
+          299,
+          309,
+          373
+        ]
+      },
+      "reduction_rce_exact_seed_versions": {
+        "pass": true,
+        "elf_sha256": "2d392d86e271892a949ae329ff90498bc3fb79a2c02e4dbd7b20e5b7252795fe",
+        "log_sha256": "958a373f3c21687e26cd4f870d3f62c8bce90c8cec5f44296400c768a6b8e5dd",
+        "measured_window_cycles": [],
+        "software_cycles": []
+      },
+      "reduction_rce_exact_mixed": {
+        "pass": true,
+        "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+        "log_sha256": "a5f7e7e587ab7521424a7e5e5ad05303dad1c5cd96ceb6017a0c0d8e45389531",
+        "measured_window_cycles": [],
+        "software_cycles": []
+      },
+      "perf_reduction_chain_bypass_probe": {
+        "pass": true,
+        "elf_sha256": "a97c9110ce3ed2d0872d00cce61f1879ca1ca3fcc024afffbebb3d210d78b8c8",
+        "log_sha256": "8122ce70d1169ffc0643d18fb618b2d5cbbb927dd08bdbe84d17f222538aea65",
+        "measured_window_cycles": [
+          819
+        ],
+        "software_cycles": []
+      }
+    }
+  },
+  "exact_reproduction_configuration": {
+    "configuration": "hardware/config/reduction_completion_exact_4lane.mk",
+    "build": "gap_exact_external_seed_on_build_v1",
+    "make_only": [
+      "ARA_RED_RCE_RESULT_DEPTH=2"
+    ],
+    "build_only": [],
+    "depth_note": "ResultDepth2 equals package default; explicit ALU/FPU4 overrides",
+    "exact_expected_programs": 110,
+    "scope": "Variable expansion only; no standard Make compile claimed"
+  },
+  "exact_functional_source_audit": {
+    "frozen_source_count": 438,
+    "functional_overlays": {
+      "hardware/include/ara_rce_pkg.sv": "7bbc340000b3f8c850ddd289b44c0c30d5685bb3f67f31021e2ef7c08dcc405b",
+      "hardware/src/ara_sequencer.sv": "42368e72e207b2996fe2c5cbf14469c003a8bcf96806e30ec89737364e0ae5e2",
+      "hardware/src/ara.sv": "98c06d8c2e493f85e4dcccf944a94755f9ac17821ed51b3d3255696985b63c7c",
+      "hardware/src/sldu/sldu.sv": "34e9ff0efdab874f3e0aacb7f1653ee9b7a47d4e7bb7d58e9bb85bb48be866d5",
+      "hardware/src/lane/valu.sv": "bb91c72dedd5c536311f075ef7378491d5a1ef5fa92173cfb0a5bafb0721a2e8",
+      "hardware/src/lane/vmfpu.sv": "16926a4d5eadb2bb83f47c4bef00c2a35433bac5ac039b9246243446611911ab",
+      "hardware/src/lane/lane.sv": "c3615728116e0544a91c9c2a60c8ef142161c93bbd1a340ba696dd6cb6ccd619",
+      "hardware/src/lane/operand_requester.sv": "7c31f1449d35b55f44a981fb7363878abab33e5bf0cafa442521c81a5b4292db",
+      "hardware/src/reduction/reduction_completion_engine.sv": "92b96ffd3c2bae182da0a8c5a4f1e771e6db4ed676c8c4070ab6dfa20ba670a4"
+    },
+    "source_manifest_sha256": "1f191ee89ae8a38763530f31d8254ba5f837f1b8fcdec60a2e937f06d2bace2c",
+    "scope": "All frozen sources, filelist and simulator match; nine functional overlays matched at acceptance, then one explicitly checked SLDU comment-only correction",
+    "comment_only_reconciliation": {
+      "file": "hardware/src/sldu/sldu.sv",
+      "tested_sha256": "34e9ff0efdab874f3e0aacb7f1653ee9b7a47d4e7bb7d58e9bb85bb48be866d5",
+      "current_sha256": "3a5cdbe5fb5e1669025a97d96df7bf2dbadc980663f5cf28ee092d76b31227f3",
+      "old_comment": "  // Keep one rounded scalar per in-flight instruction ID.  This turns the\n  // original linear-chain entry into a small versioned producer table, so\n  // independent exact reductions may be interleaved without evicting one\n  // another. Keep the old result when an ID is reaccepted: an older queued\n  // consumer may still need it after the producer retires. Only completion\n  // replaces a slot. The SLDU executes in order, so the new producer cannot\n  // replace that value before older consumers bind it; destination and epoch\n  // checks distinguish architectural register definitions.\n",
+      "new_comment": "  // Versioned scalar table for exact producers; eligible external VRF writes\n  // may also publish their first word when the extension is enabled. In that\n  // mode each queued consumer snapshots its matching value before a later\n  // producer lifetime can replace this cache entry. Without the extension,\n  // the original exact-only path retains its ordered completion cache. The\n  // register/epoch checks distinguish different architectural definitions.\n",
+      "check": "Replacing exactly this new comment with old comment reproduces frozen file byte-for-byte; no functional RTL changes"
+    }
   }
 }

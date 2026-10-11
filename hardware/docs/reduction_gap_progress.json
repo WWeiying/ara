@@ -4421,7 +4421,7 @@
     "fp_late_status": "FP extrema and FP64 source-only local phase with versioned seed binding implemented; initial same-ELF chains passed on/off; ordinary vector producers and full heterogeneous matrix remain outstanding",
     "ordinary_seed_status": "Seven directed SoC tests and 4-result protocol test passed. Same-VFU integer cycles unchanged; same-VFU FP regresses 1386->1482. Cross-VFU benchmark running; cost-aware eligibility and full integrated regression outstanding."
   },
-  "current_status": "Latest combined106 passed with exact expected set and frozen simulator/ELF/log classification verified; current8 functional files match frozen build; remaining scope audit outstanding",
+  "current_status": "Original six optimization gaps addressed within declared4Lane/VLEN1024 scope; current exact extension full110, paired11, snapshot2000, actual-input observations and receive ablation verified. Negative experiments and deferred correctness remain explicit.",
   "exact_fallthrough_stage": {
     "status": "developing",
     "regression_evidence": "hardware/build/rce/gap_final_inputs_v1/paired_cycles.csv",
@@ -4708,22 +4708,20 @@
     "decision": "Retain output-backpressure scheduling limitation; one observed opportunity in this set does not justify extra result/checkpoint ownership state. No universal absence claim."
   },
   "completion_audit": {
-    "status": "not_complete",
+    "status": "requirements_and_integration_verified",
     "integration_gate": {
-      "expected": 106,
-      "suite": "hardware/build/rce/gap_external_seed_full_soc_v1",
+      "expected": 110,
+      "suite": "hardware/build/rce/gap_exact_external_seed_full_soc_v1",
       "state": "passed",
-      "recorded": 106,
-      "recorded_pass": 106,
-      "session_id": 96367,
-      "last_verified_live_utc": "2026-10-11T08:41:48.987886+00:00",
+      "previous_accepted_commit": "ec64f1e5",
+      "previous_accepted_programs": 106,
+      "session_id": 98382,
+      "recorded": 110,
+      "recorded_pass": 110,
       "exact_expected_set": true,
       "hashes_verified": true
     },
-    "required_followup": [
-      "Complete requirement audit including remaining coverage and scheduling gaps",
-      "Review and commit intended artifacts; do not push without instruction"
-    ],
+    "required_followup": [],
     "architecture_boundaries": [
       "Ordered floating-point reductions retain strict original order",
       "Ordinary late seed is restricted to validated unmasked non-restarted arithmetic producers and cross-VFU eligibility by default",
@@ -4735,8 +4733,10 @@
       "Existing VNCLIPU counterexample",
       "vslideup ISA counterexample also present before the Lane grant fix"
     ],
-    "source_recheck": "hardware/build/rce/gap_external_seed_inputs_v1/source_recheck.json",
-    "documentation_reconciliation": "Current-boundary table updated for sparse FP64, external seed, and historical99/current106 distinction"
+    "source_recheck": "hardware/docs/reduction_gap_evidence.json:exact_functional_source_audit",
+    "documentation_reconciliation": "Authoritative status rewritten for accepted106, full110, independent ablation and current reproduction profile",
+    "scope_audit": "hardware/docs/reduction_completion_scope_audit.json",
+    "delivery": "Source/test/config/docs are included in the delivery commit; resolve its revision with git HEAD. No push for this stage."
   },
   "parallel_retire_stage": {
     "status": "building_then_nine_program_pair_regression",
@@ -5116,5 +5116,340 @@
       "Implement per-consumer versioned seed retention and independent build switch",
       "Compare same frozen ELFs and validate ID reuse/backpressure before widening candidate"
     ]
+  },
+  "exact_seed_receive_stage": {
+    "status": "module_three_modes_and_soc12_passed",
+    "base_commit": "ec64f1e5",
+    "switch": "reduction_rce_exact_seed_receive",
+    "default": 0,
+    "module": {
+      "on": {
+        "manifest_sha256": "ebe52db3e3ad7c4e37a7a5aeb0892bd02a1ad98e674a658abc147208a34777e7",
+        "runs": [
+          {
+            "label": "late",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "embedded",
+            "returncode": 0,
+            "pass": true
+          }
+        ],
+        "vectors_sha256": "06ecbc8e5925b407881926d130d467c16b14c5afc1f2cb023a7b705ad6dd21e0",
+        "before_seed_beats": 19202,
+        "paired_cases_per_run": 1200
+      },
+      "off": {
+        "manifest_sha256": "d20eb569a233603ab6f671fdf3918ce7dce51fded40ae329528b5df1131c9d4a",
+        "runs": [
+          {
+            "label": "late",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "embedded",
+            "returncode": 0,
+            "pass": true
+          }
+        ],
+        "vectors_sha256": "06ecbc8e5925b407881926d130d467c16b14c5afc1f2cb023a7b705ad6dd21e0",
+        "before_seed_beats": 0,
+        "paired_cases_per_run": 1200
+      }
+    },
+    "soc_build": "hardware/build/rce/gap_exact_seed_receive_on_build_v1",
+    "boundary": "Only exact receive/seed wait decoupling; external exact producer admission not yet implemented",
+    "transient_module_verified": {
+      "on": {
+        "manifest_sha256": "a78ea7267630ee3ea5c6d6036f4fdada4cb921f79cef446e349735964d5c950c",
+        "runs": [
+          {
+            "label": "late",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "embedded",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "transient",
+            "returncode": 0,
+            "pass": true
+          }
+        ],
+        "vectors_sha256": "06ecbc8e5925b407881926d130d467c16b14c5afc1f2cb023a7b705ad6dd21e0",
+        "paired_cases_per_run": 1200
+      },
+      "off": {
+        "manifest_sha256": "fbd145cb6b6ee09b6d66e8568a278d950f4af27923507d4c2d56bb8bab64de7c",
+        "runs": [
+          {
+            "label": "late",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "embedded",
+            "returncode": 0,
+            "pass": true
+          },
+          {
+            "label": "transient",
+            "returncode": 0,
+            "pass": true
+          }
+        ],
+        "vectors_sha256": "06ecbc8e5925b407881926d130d467c16b14c5afc1f2cb023a7b705ad6dd21e0",
+        "paired_cases_per_run": 1200
+      }
+    },
+    "soc_verified": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/soc_receive_verified.json",
+    "performance_attribution": "Independent five-program ablation verified; all nine measured application windows unchanged, including chain819. Two functional-only programs carry no cycle measurement. Actual late-header receive opportunity remains module-validated only.",
+    "external_only_ablation": {
+      "build": "hardware/build/rce/gap_exact_external_seed_no_receive_build_v1",
+      "session_id": 66383,
+      "state": "soc5_passed_same_elf_identity_verified",
+      "switch_difference": "remove ARA_RED_RCE_EXACT_SEED_RECEIVE=1; keep external seed enabled",
+      "suite": "hardware/build/rce/gap_exact_external_seed_no_receive_soc_v1",
+      "verified": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/no_receive_verified.json",
+      "comparison": {
+        "perf_rce_exact_load_seed": {
+          "software_cycles": {
+            "receive_on": [
+              401,
+              372,
+              390,
+              420
+            ],
+            "receive_off": [
+              401,
+              372,
+              390,
+              420
+            ]
+          },
+          "measured_window_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "labelled_software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          }
+        },
+        "perf_rce_exact_slide_seed": {
+          "software_cycles": {
+            "receive_on": [
+              323,
+              299,
+              309,
+              373
+            ],
+            "receive_off": [
+              323,
+              299,
+              309,
+              373
+            ]
+          },
+          "measured_window_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "labelled_software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          }
+        },
+        "reduction_rce_exact_seed_versions": {
+          "software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "measured_window_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "labelled_software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          }
+        },
+        "reduction_rce_exact_mixed": {
+          "software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "measured_window_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "labelled_software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          }
+        },
+        "perf_reduction_chain_bypass_probe": {
+          "software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          },
+          "measured_window_cycles": {
+            "receive_on": [
+              819
+            ],
+            "receive_off": [
+              819
+            ]
+          },
+          "labelled_software_cycles": {
+            "receive_on": [],
+            "receive_off": []
+          }
+        }
+      }
+    }
+  },
+  "exact_external_seed_stage": {
+    "status": "paired11_snapshot2000_observed2_ablation5_and_full110_passed",
+    "base_commit": "ec64f1e5",
+    "switch": "reduction_rce_exact_external_seed",
+    "default": 0,
+    "cache": "reuse SLDU exact result cache; actual external writes carry byte coverage",
+    "snapshots": "one valid/data32/original normalized width per SLDU descriptor, captured before producer ID replacement",
+    "eligibility": "Existing eligible VLE/VSLIDEDOWN producers only, proper width/register/version checks; same-VFU arithmetic extension remains separate",
+    "on_session": 53573,
+    "off_session": 76451,
+    "builds": [
+      "gap_exact_external_seed_on_build_v1",
+      "gap_exact_external_seed_off_build_v1"
+    ],
+    "scope": "No integrated acceptance or performance claim yet",
+    "provenance": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/external_provenance.json",
+    "version_reuse_test": {
+      "app": "reduction_rce_exact_seed_versions",
+      "on_session": 42556,
+      "off_session": 35892,
+      "state": "both_passed",
+      "pairs": 320,
+      "seed_values": [
+        3,
+        5
+      ],
+      "vl": [
+        1,
+        16,
+        32,
+        64,
+        128
+      ]
+    },
+    "verified": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/external_verified.json",
+    "performance": {
+      "perf_rce_exact_load_seed": {
+        "off": [
+          463,
+          436,
+          470,
+          500
+        ],
+        "on": [
+          401,
+          372,
+          390,
+          420
+        ]
+      },
+      "perf_rce_exact_slide_seed": {
+        "off": [
+          397,
+          360,
+          388,
+          422
+        ],
+        "on": [
+          323,
+          299,
+          309,
+          373
+        ]
+      }
+    },
+    "snapshot_protocol_verified": {
+      "pass": true,
+      "checks": 2000,
+      "trials": 100,
+      "manifest_sha256": "be0397bb33c0b59294ed8546354ddfad126407c8f913c60f80bae396830e6c80",
+      "simulator_sha256": "f6ecac9b0a3649eba9b10e24d1db6869f0231d8b51a3773e5184a7927c57717c",
+      "log_sha256": "e3880abd8a98e54ff1aa0ce1cde6e27b400bbfad436cfa988dc9b930caddcf8f",
+      "scope": "Real SLDU queued snapshots: concurrent cache replacement, two ports, metadata/bytes rejection, all four descriptors full and backpressure",
+      "previous": "v2 passed1600; v3 adds third queued consumer/full capacity"
+    },
+    "observer_build": "hardware/build/rce/gap_exact_external_seed_observed_build_v1",
+    "width_decode_audit": {
+      "source": "hardware/src/ara_dispatcher.sv OpcodeLoadFp",
+      "finding": "For eligible non-indexed VLE, vtype.vsew is normalized to instruction EEW before sequencer records producer width; producer width check is actual load storage width",
+      "scope": "No RTL change; indexed/segmented/FOF producers remain separately qualified"
+    },
+    "observer_suite": {
+      "state": "passed",
+      "session_id": 18174,
+      "suite": "hardware/build/rce/gap_exact_external_seed_observed_soc_v1",
+      "programs": 2,
+      "events": "Actual exact_sum_in_valid && exact_sum_in_ready, plus header/limb/seed binding",
+      "summary": {
+        "perf_rce_exact_load_seed": {
+          "dispatches": 64,
+          "excluded": 2,
+          "unambiguous": 62,
+          "compute_before_seed": 62,
+          "delta_range": [
+            1,
+            2
+          ],
+          "seed_ready_at_all_clear_headers": true,
+          "software_cycles": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+          "log_sha256": "87b8a83a9a5fe1ac0f0ad3826b820b3124147b6df85243db5ab83f9cdb2cb68a"
+        },
+        "perf_rce_exact_slide_seed": {
+          "dispatches": 64,
+          "excluded": 2,
+          "unambiguous": 62,
+          "compute_before_seed": 61,
+          "delta_range": [
+            -5,
+            3
+          ],
+          "seed_ready_at_all_clear_headers": true,
+          "software_cycles": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+          "log_sha256": "cb4fd0921719eef9706072b32177cdf533858c49df19ff1ab09478dd6302d948"
+        }
+      },
+      "verified": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/overlap_verified.json"
+    },
+    "tracked_reproduction": {
+      "profile": "hardware/config/reduction_completion_exact_4lane.mk",
+      "apps": "hardware/config/reduction_completion_exact_regression.json",
+      "programs": 110,
+      "config_check": "hardware/build/rce/gap_exact_seed_receive_inputs_v1/exact_config_check.json",
+      "scope": "Macro expansion matched frozen build; standard Make compile not separately performed"
+    }
   }
 }

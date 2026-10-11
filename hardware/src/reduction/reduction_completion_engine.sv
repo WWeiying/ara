@@ -760,7 +760,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   // transport; it does not consume or duplicate the packed-word contexts.
   // Local state, carry propagation and rounding now belong to this RCE.
   if (EnableExact) begin : gen_exact
-    typedef enum logic [1:0] {EXACT_IDLE, EXACT_RECEIVE, EXACT_RESULT} exact_state_e;
+    typedef enum logic [1:0] {EXACT_IDLE, EXACT_RECEIVE, EXACT_RESULT, EXACT_SEED_WAIT} exact_state_e;
     exact_state_e state_q, state_d;
     rce_exact_command_t owner_q;
     rce_exact_result_t completed_q, raw_result;
@@ -849,11 +849,12 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     .status_o              (exact_final_status)
   );
 
-    assign exact_late_seed_ready = !owner_q.late_seed || exact_seed_ready_i;
+    assign exact_late_seed_ready = !owner_q.late_seed || exact_seed_ready_i ||
+      (RceExactSeedReceiveEnable && exact_seed_valid_q);
     // Per-lane ownership of the current sparse frame, independent of result
     // retirement. The transport may already buffer a following instruction.
     for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_exact_lane_consumed
-      assign exact_lane_consumed_o[lane] = state_q == EXACT_RESULT ||
+      assign exact_lane_consumed_o[lane] = state_q == EXACT_RESULT || state_q == EXACT_SEED_WAIT ||
         (state_q == EXACT_RECEIVE && exact_packet_beat_q != 0 &&
          exact_packet_beat_q > exact_lane_limb_count_q[lane]);
     end
@@ -893,10 +894,20 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       exact_limb_merge_fire = '0;
       exact_header_global_limb_count = '0;
       exact_implicit_sign_lane_count = '0;
+      // The adapter retains the issuing descriptor until local_complete.
+      // Snapshot a matching seed once; later bus changes cannot replace it.
+      if (RceExactSeedReceiveEnable && owner_q.late_seed && !exact_seed_valid_q &&
+          exact_seed_ready_i && ((state_q == EXACT_RECEIVE && exact_packet_beat_q != 0) ||
+                                state_q == EXACT_SEED_WAIT)) begin
+        exact_seed_valid_d = 1'b1;
+        exact_seed_d = exact_seed_data_i;
+        exact_late_seed_bind = 1'b1;
+      end
       case (state_q)
         EXACT_IDLE: if (exact_cmd_valid_i) begin
           state_d = EXACT_RECEIVE;
           exact_packet_beat_d = '0;
+          exact_seed_valid_d = 1'b0;
           exact_limb_count_d = 3'd5;
           exact_root_d = '0;
           exact_carry_d = '0;
@@ -936,17 +947,17 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
               header_limb_count = exact_operand_i[lane][13:11];
           end
           exact_header_rendezvous_wait = !(&header_match)
-                                         || !exact_late_seed_ready
+                                         || (!RceExactSeedReceiveEnable && !exact_late_seed_ready)
           ;
           exact_late_seed_wait =
-            owner_q.late_seed && !exact_late_seed_ready
+            owner_q.late_seed && !exact_late_seed_ready && !RceExactSeedReceiveEnable
                                          ;
 
           if (&header_match
-              && exact_late_seed_ready
+              && (RceExactSeedReceiveEnable || exact_late_seed_ready)
              ) begin
             exact_header_merge_fire = 1'b1;
-            exact_late_seed_bind = owner_q.late_seed;
+            exact_late_seed_bind = owner_q.late_seed && exact_late_seed_ready;
             exact_header_global_limb_count = header_limb_count;
             exact_operand_ready_o = '1;
             special_pair_lo = exact_merge_special(
@@ -968,7 +979,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
               exact_operand_i[0][18] | exact_operand_i[1][18] |
               exact_operand_i[2][18] | exact_operand_i[3][18];
             if (owner_q.late_seed) begin
-              exact_seed_valid_d = 1'b1;
+              exact_seed_valid_d = exact_late_seed_ready;
               exact_seed_d =
                 exact_seed_data_i;
             end else begin
@@ -1067,8 +1078,12 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             endcase
 
             if (exact_packet_beat_q == exact_limb_count_q) begin
-              state_d = EXACT_RESULT;
-              exact_local_complete_o = 1'b1;
+              if (RceExactSeedReceiveEnable && owner_q.late_seed && !exact_seed_valid_d)
+                state_d = EXACT_SEED_WAIT;
+              else begin
+                state_d = EXACT_RESULT;
+                exact_local_complete_o = 1'b1;
+              end
             end else begin
               exact_packet_beat_d = exact_packet_beat_q + 1'b1;
             end
@@ -1077,6 +1092,14 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       end
 
 
+        EXACT_SEED_WAIT: begin
+          exact_late_seed_wait = !exact_seed_valid_d;
+          // Do not advance the SLDU descriptor while its seed lookup is needed.
+          if (exact_seed_valid_d) begin
+            state_d = EXACT_RESULT;
+            exact_local_complete_o = 1'b1;
+          end
+        end
         EXACT_RESULT: if (RceExactDecoupleEnable ? completed_space : exact_result_ready_i)
           state_d = EXACT_IDLE;
         default: state_d = EXACT_IDLE;

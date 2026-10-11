@@ -48,6 +48,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     output elen_t [NrLanes-1:0] rce_exact_operand_o,
     output logic [NrLanes-1:0] rce_exact_operand_valid_o,
     input logic [NrLanes-1:0] rce_exact_operand_ready_i,
+    input ara_rce_pkg::rce_seed_write_t [1:0] exact_external_seed_i,
+    input logic [1:0] exact_external_seed_valid_i,
     output logic rce_exact_seed_ready_o,
     output logic [31:0] rce_exact_seed_data_o,
     input logic rce_exact_local_complete_i,
@@ -478,14 +480,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic [31:0]  exact_final_result;
   logic [4:0]   exact_final_status;
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
-  // Keep one rounded scalar per in-flight instruction ID.  This turns the
-  // original linear-chain entry into a small versioned producer table, so
-  // independent exact reductions may be interleaved without evicting one
-  // another. Keep the old result when an ID is reaccepted: an older queued
-  // consumer may still need it after the producer retires. Only completion
-  // replaces a slot. The SLDU executes in order, so the new producer cannot
-  // replace that value before older consumers bind it; destination and epoch
-  // checks distinguish architectural register definitions.
+  // Versioned scalar table for exact producers; eligible external VRF writes
+  // may also publish their first word when the extension is enabled. In that
+  // mode each queued consumer snapshots its matching value before a later
+  // producer lifetime can replace this cache entry. Without the extension,
+  // the original exact-only path retains its ordered completion cache. The
+  // register/epoch checks distinguish different architectural definitions.
   logic [NrVInsn-1:0]       exact_result_cache_valid_d,
                               exact_result_cache_valid_q;
   logic [NrVInsn-1:0][4:0]  exact_result_cache_vd_d,
@@ -494,15 +494,25 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                                   exact_result_cache_version_q;
   logic [NrVInsn-1:0][31:0] exact_result_cache_data_d,
                               exact_result_cache_data_q;
+  logic [NrVInsn-1:0][3:0] exact_result_cache_bytes_d, exact_result_cache_bytes_q;
+  // Consumer-owned snapshots survive producer ID reuse while queued.
+  logic [VInsnQueueDepth-1:0] exact_seed_snapshot_valid_d, exact_seed_snapshot_valid_q;
+  logic [VInsnQueueDepth-1:0][31:0] exact_seed_snapshot_data_d, exact_seed_snapshot_data_q;
+  vew_e [VInsnQueueDepth-1:0] exact_seed_width_d, exact_seed_width_q;
+  function automatic logic exact_seed_covers(logic [3:0] bytes, vew_e width);
+    return width == EW16 ? (&bytes[1:0]) : (&bytes);
+  endfunction
   logic         exact_late_seed_ready;
 
   assign exact_late_seed_ready =
     !vinsn_issue_q.late_seed ||
+    (ara_rce_pkg::RceExactExternalSeedEnable ?
+      exact_seed_snapshot_valid_q[vinsn_queue_q.issue_pnt] :
     (exact_result_cache_valid_q[vinsn_issue_q.seed_producer_id] &&
      (exact_result_cache_vd_q[vinsn_issue_q.seed_producer_id] ==
       vinsn_issue_q.vs1) &&
      (exact_result_cache_version_q[vinsn_issue_q.seed_producer_id] ==
-      vinsn_issue_q.seed_version));
+      vinsn_issue_q.seed_version)));
 `endif
   // Simulation-visible protocol events.  They are not architectural outputs
   // and are pruned when no monitor observes them.
@@ -589,7 +599,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
   assign rce_exact_cmd_o.late_seed = vinsn_issue_q.late_seed;
   assign rce_exact_seed_ready_o = exact_late_seed_ready;
-  assign rce_exact_seed_data_o = exact_result_cache_data_q[vinsn_issue_q.seed_producer_id];
+  assign rce_exact_seed_data_o = ara_rce_pkg::RceExactExternalSeedEnable ?
+    exact_seed_snapshot_data_q[vinsn_queue_q.issue_pnt] :
+    exact_result_cache_data_q[vinsn_issue_q.seed_producer_id];
 `else
   assign rce_exact_cmd_o.late_seed = 1'b0;
   assign rce_exact_seed_ready_o = 1'b1;
@@ -700,6 +712,19 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     exact_result_cache_vd_d         = exact_result_cache_vd_q;
     exact_result_cache_version_d    = exact_result_cache_version_q;
     exact_result_cache_data_d       = exact_result_cache_data_q;
+    exact_result_cache_bytes_d = exact_result_cache_bytes_q;
+    exact_seed_snapshot_valid_d = exact_seed_snapshot_valid_q;
+    exact_seed_snapshot_data_d = exact_seed_snapshot_data_q;
+    exact_seed_width_d = exact_seed_width_q;
+    if (ara_rce_pkg::RceExactExternalSeedEnable) begin
+      for (int port=0; port<2; port++) if (exact_external_seed_valid_i[port]) begin
+        exact_result_cache_valid_d[exact_external_seed_i[port].seed.producer] = 1'b1;
+        exact_result_cache_vd_d[exact_external_seed_i[port].seed.producer] = exact_external_seed_i[port].seed.vd;
+        exact_result_cache_version_d[exact_external_seed_i[port].seed.producer] = exact_external_seed_i[port].seed.version;
+        exact_result_cache_data_d[exact_external_seed_i[port].seed.producer] = exact_external_seed_i[port].seed.data[31:0];
+        exact_result_cache_bytes_d[exact_external_seed_i[port].seed.producer] = exact_external_seed_i[port].be[3:0];
+      end
+    end
 `endif
     exact_stale_token_drop         = '0;
     exact_header_rendezvous_wait   = 1'b0;
@@ -1104,6 +1129,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           if (rce_exact_result_ready_o) begin
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
             exact_result_cache_valid_d[vinsn_commit.id] = 1'b1;
+            exact_result_cache_bytes_d[vinsn_commit.id] = 4'hf;
             exact_result_cache_vd_d[vinsn_commit.id] = vinsn_commit.vd;
             exact_result_cache_version_d[vinsn_commit.id] = vinsn_commit.vd_version;
             exact_result_cache_data_d[vinsn_commit.id] = exact_final_result;
@@ -1117,6 +1143,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           rce_exact_result_ready_o = ara_rce_pkg::RceExactEnable;
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
           exact_result_cache_valid_d[vinsn_commit.id]   = 1'b1;
+            exact_result_cache_bytes_d[vinsn_commit.id] = 4'hf;
           exact_result_cache_vd_d[vinsn_commit.id]      = vinsn_commit.vd;
           exact_result_cache_version_d[vinsn_commit.id] =
             vinsn_commit.vd_version;
@@ -1523,6 +1550,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       if (rce_exact_result_ready_o) begin
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
         exact_result_cache_valid_d[vinsn_commit.id] = 1'b1;
+            exact_result_cache_bytes_d[vinsn_commit.id] = 4'hf;
         exact_result_cache_vd_d[vinsn_commit.id] = vinsn_commit.vd;
         exact_result_cache_version_d[vinsn_commit.id] = vinsn_commit.vd_version;
         exact_result_cache_data_d[vinsn_commit.id] = rce_exact_result_i.data;
@@ -1679,6 +1707,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
       exact_global_d[vinsn_queue_q.accept_pnt] =
         exact_global_eligible(pe_req_i);
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+      exact_seed_snapshot_valid_d[vinsn_queue_q.accept_pnt] = 1'b0;
+      exact_seed_width_d[vinsn_queue_q.accept_pnt] = pe_req_i.vtype.vsew;
+`endif
 `endif
 `ifdef ARA_RED_SOURCE_FUSION_4LANE
       begin : p_mark_ordered_alias
@@ -1716,6 +1748,34 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       vinsn_queue_d.issue_cnt += 1;
       vinsn_queue_d.commit_cnt += 1;
     end
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+    if (ara_rce_pkg::RceExactExternalSeedEnable) begin
+      for (int slot=0; slot<VInsnQueueDepth; slot++) begin
+        automatic pe_req_t consumer = vinsn_queue_d.vinsn[slot];
+        automatic vid_t producer = consumer.seed_producer_id;
+        if (!exact_global_d[slot]) exact_seed_snapshot_valid_d[slot] = 1'b0;
+        else if (consumer.late_seed && !exact_seed_snapshot_valid_d[slot]) begin
+          // Check the old cache first: a concurrent new ID lifetime may replace
+          // it this cycle, while an already accepted old consumer still needs it.
+          if (exact_result_cache_valid_q[producer] &&
+              exact_result_cache_vd_q[producer] == consumer.vs1 &&
+              exact_result_cache_version_q[producer] == consumer.seed_version &&
+              exact_seed_covers(exact_result_cache_bytes_q[producer], exact_seed_width_d[slot])) begin
+            exact_seed_snapshot_valid_d[slot] = 1'b1;
+            exact_seed_snapshot_data_d[slot] = exact_result_cache_data_q[producer];
+          end else if (exact_result_cache_valid_d[producer] &&
+              exact_result_cache_vd_d[producer] == consumer.vs1 &&
+              exact_result_cache_version_d[producer] == consumer.seed_version &&
+              exact_seed_covers(exact_result_cache_bytes_d[producer], exact_seed_width_d[slot])) begin
+            exact_seed_snapshot_valid_d[slot] = 1'b1;
+            exact_seed_snapshot_data_d[slot] = exact_result_cache_data_d[producer];
+          end
+        end
+      end
+    end
+`endif
+`endif
   end: p_sldu
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -1753,6 +1813,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_result_cache_vd_q          <= '0;
       exact_result_cache_version_q     <= '0;
       exact_result_cache_data_q        <= '0;
+      exact_result_cache_bytes_q <= '0;
+      exact_seed_snapshot_valid_q <= '0;
+      exact_seed_snapshot_data_q <= '0;
+      exact_seed_width_q <= '0;
 `endif
 `endif
       pe_resp_o             <= '0;
@@ -1794,6 +1858,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       exact_result_cache_vd_q          <= exact_result_cache_vd_d;
       exact_result_cache_version_q     <= exact_result_cache_version_d;
       exact_result_cache_data_q        <= exact_result_cache_data_d;
+      exact_result_cache_bytes_q <= exact_result_cache_bytes_d;
+      exact_seed_snapshot_valid_q <= exact_seed_snapshot_valid_d;
+      exact_seed_snapshot_data_q <= exact_seed_snapshot_data_d;
+      exact_seed_width_q <= exact_seed_width_d;
 `endif
 `endif
       pe_resp_o             <= pe_resp;

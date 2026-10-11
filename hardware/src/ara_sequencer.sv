@@ -442,7 +442,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       // seed. Only this scalar RAW may bypass a mismatched whole-group span;
       // all source-vector, destination, mask and older-reader guards remain.
       seed_group_safe = ara_rce_pkg::RceSeedGroupEnable &&
-        ara_req_i.use_vs1 && word_chain_eligible(ara_req_i) &&
+        ara_req_i.use_vs1 && (word_chain_eligible(ara_req_i) ||
+          (ara_rce_pkg::RceExactExternalSeedEnable && exact_chain_eligible(ara_req_i) && writer_external_q[id])) &&
         writer_word_q[id] && writer_ordinary_q[id] &&
         write_list_q[ara_req_i.vs1].valid &&
         write_list_q[ara_req_i.vs1].vid == vid_t'(id) &&
@@ -741,7 +742,10 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               late_seed_producer =
                 write_list_d[ara_req_i.vs1].vid;
               late_seed_candidate =
-                ((exact_chain_eligible(ara_req_i) && writer_exact_q[late_seed_producer]) ||
+                ((exact_chain_eligible(ara_req_i) &&
+                  (writer_exact_q[late_seed_producer] ||
+                   (ara_rce_pkg::RceExactExternalSeedEnable && writer_external_q[late_seed_producer] &&
+                    writer_seed_eew_q[late_seed_producer] >= ara_req_i.vtype.vsew))) ||
                  (word_chain_eligible(ara_req_i) && writer_word_q[late_seed_producer] &&
                   // Ordinary same-VFU producers serialize local computation;
                   // defer only across VFUs by default, avoiding an extra seed

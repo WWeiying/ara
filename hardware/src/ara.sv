@@ -743,6 +743,7 @@ module ara import ara_pkg::*; #(
     .pe_req_t (pe_req_t ),
     .pe_resp_t(pe_resp_t)
   ) i_sldu (
+    .exact_external_seed_i(rce_external_seed[0]), .exact_external_seed_valid_i(rce_external_seed_valid[0]),
     .rce_completion_o(rce_exact_completion),
     .rce_completion_valid_o(rce_exact_completion_valid),
     .rce_completion_ready_i(rce_exact_completion_ready),

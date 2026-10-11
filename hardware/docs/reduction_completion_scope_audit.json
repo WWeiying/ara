@@ -1,0 +1,138 @@
+{
+  "objective": "依次解决上述每个缺口问题，正确性方面的问题可以先不做/和我当前的机制优化关系不是特别大",
+  "scope": "Original six optimization gaps, 4 Lane VLEN1024, retained architectural dependency/ownership invariants; exhaustive ISA proof and synthesis excluded by user",
+  "audit_state": "original_scope_and_evidence_review_passed",
+  "requirements": [
+    {
+      "id": "empty_tail",
+      "requirement": "全Mask源避免无效收尾",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/reduction/reduction_completion_engine.sv:RceEmptyBypassEnable and active_now"
+      ],
+      "current_full110_tests": [
+        "perf_rce_empty_source",
+        "reduction_audit_empty"
+      ],
+      "boundary": "Empty source bypass retains seed wait; VL0 separately handled"
+    },
+    {
+      "id": "ordinary_restart",
+      "requirement": "普通运算后的规约安全重启",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/lane/vmfpu.sv:rce_ordinary_drain, RceMfpuRestartEnable"
+      ],
+      "current_full110_tests": [
+        "reduction_rce_backend_mix",
+        "reduction_rce_fp64_mixed",
+        "reduction_rce_ownership"
+      ],
+      "boundary": "Execution/commit ownership stays separate; actual operand and FIFO constraints retained"
+    },
+    {
+      "id": "fp64_feedback",
+      "requirement": "FP64反馈及空Lane停顿",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/reduction/reduction_completion_engine.sv:fp_next_lane, sparse_fp"
+      ],
+      "current_full110_tests": [
+        "perf_rce_fp64_sparse",
+        "reduction_rce_fp64_edges",
+        "reduction_rce_fp64_widen_edges"
+      ],
+      "boundary": "Active-lane order retained; last-to-seed experiment remains independently disabled"
+    },
+    {
+      "id": "exact_sldu",
+      "requirement": "精确收尾与SLDU资源解耦",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/reduction/reduction_completion_engine.sv:completed_q, completed_space",
+        "hardware/src/ara_sequencer.sv:word_credit_ids_q",
+        "hardware/src/sldu/sldu.sv:RceSlduQueueDepth"
+      ],
+      "current_full110_tests": [
+        "reduction_rce_exact_slide",
+        "reduction_rce_exact_saturation",
+        "perf_rce_word_slide",
+        "perf_rce_exact_slide"
+      ],
+      "boundary": "Bounded result/descriptor slots; transport and result port contention remain physical limits"
+    },
+    {
+      "id": "late_seed",
+      "requirement": "扩大Late Seed覆盖",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/ara_sequencer.sv:word_chain_eligible, late_seed_candidate",
+        "hardware/src/reduction/reduction_completion_engine.sv:gen_word_seed_cache",
+        "hardware/src/sldu/sldu.sv:exact_seed_snapshot_valid_q"
+      ],
+      "current_full110_tests": [
+        "reduction_rce_integer_seed_matrix",
+        "reduction_rce_integer_seed_hazards",
+        "reduction_rce_fp_late_seed",
+        "reduction_rce_exact_external_seed",
+        "reduction_rce_exact_seed_versions"
+      ],
+      "boundary": "Validated reductions and eligible ordinary/external producers; masked/restarted/FOF/segmented producer fallback is retained"
+    },
+    {
+      "id": "heterogeneous",
+      "requirement": "不同规约形态安全交错",
+      "status": "implemented_and_verified_in_declared_configuration",
+      "sources": [
+        "hardware/src/ara_sequencer.sv:p_reduction_group_guard",
+        "hardware/src/reduction/reduction_completion_engine.sv:command_q"
+      ],
+      "current_full110_tests": [
+        "reduction_rce_hetero_matrix",
+        "reduction_rce_hetero_sew",
+        "reduction_rce_fractional",
+        "reduction_rce_scalar_lmul"
+      ],
+      "boundary": "Per-context format/progress metadata; true RAW/WAR/WAW and mask conflicts are not removed"
+    }
+  ],
+  "integration": {
+    "expected": 110,
+    "passed": 110,
+    "exact_expected_set": true,
+    "manifest_sha256": "2e3d76f83a3766c0795f2d2a2aea0da5ab3bf6a7515e33f6aa76a4c0b6e1e79f",
+    "simulator_sha256": "a9266206c990c1f763dc8e71115f648823d3206e398a15225abd9dd036fe99b1",
+    "evidence": "hardware/docs/reduction_gap_evidence.json"
+  },
+  "new_exact_extension": {
+    "external_seed": "paired11 per side, 2000 snapshot checks, observed exact input overlap and full110",
+    "receive_decoupling": "three module modes per side and full110; independent five-program ablation shows no improvement across nine measured windows; default off"
+  },
+  "delivery": {
+    "branch": "reduction-optimization",
+    "main_docs": "hardware/docs/reduction_gap_status.md",
+    "history": "hardware/docs/reduction_completion_engine.md",
+    "profile": "hardware/config/reduction_completion_exact_4lane.mk",
+    "apps": "hardware/config/reduction_completion_exact_regression.json",
+    "source_identity": "nine functional overlays at acceptance; one explicitly verified comment-only reconciliation afterward",
+    "push": "not_requested_for_this_stage"
+  },
+  "not_claimed": [
+    "Unconditional overlap of arbitrary two instructions",
+    "All Lane counts or arbitrary memory delay",
+    "Complete RVV formal proof",
+    "Area/Fmax/power or real execution-time improvement",
+    "Application gain for receive decoupling in measured nine windows"
+  ],
+  "retained_evaluated_limits": [
+    "Output-HOLD background merger prototype not added: only one eligible cycle in existing eight-program profiling",
+    "Same-VFU ordinary late-seed experiment regressed1386->1482 and stays off",
+    "Parallel Word/SLDU retirement regressed344->351 and remains rejected"
+  ],
+  "deferred_unrelated_correctness": [
+    "Existing vstart exception semantics",
+    "Existing VNCLIPU counterexample",
+    "Independent before/after vslideup ISA counterexample"
+  ],
+  "local_commit_gate": "Performed as final delivery step after source/test/docs review; identify final revision from git HEAD"
+}
