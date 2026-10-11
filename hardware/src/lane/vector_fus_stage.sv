@@ -47,6 +47,17 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     // Interface with the lane
     output logic                              alu_red_complete_o,
     output logic                              fpu_red_complete_o,
+    // Dedicated RCE local-result and completion ownership interfaces.
+    input logic rce_select_fp_i,
+    output ara_rce_pkg::rce_partial_t rce_partial_o,
+    output logic rce_partial_valid_o,
+    input logic rce_partial_ready_i,
+    input ara_rce_pkg::rce_result_t rce_result_i,
+    input logic rce_result_valid_i,
+    output logic rce_result_ready_o,
+    output logic rce_can_retire_o,
+    output logic [NrVInsn-1:0] rce_fp_retire_ready_o,
+    input logic rce_retire_i,
     // Interface with the operand queues
     input  elen_t          [1:0]              alu_operand_i,
     input  logic           [1:0]              alu_operand_valid_i,
@@ -103,6 +114,14 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
   logic mfpu_mask_ready;
   assign mask_ready_o = alu_mask_ready | mfpu_mask_ready;
 
+  ara_rce_pkg::rce_partial_t alu_rce_partial, fp_rce_partial;
+  logic alu_rce_valid, fp_rce_valid;
+  logic alu_rce_ready, fp_rce_ready, alu_rce_can_retire, fp_rce_can_retire;
+  assign rce_partial_o = rce_select_fp_i ? fp_rce_partial : alu_rce_partial;
+  assign rce_partial_valid_o = rce_select_fp_i ? fp_rce_valid : alu_rce_valid;
+  assign rce_result_ready_o = rce_result_i.is_fp ? fp_rce_ready : alu_rce_ready;
+  assign rce_can_retire_o = rce_result_i.is_fp ? fp_rce_can_retire : alu_rce_can_retire;
+
   // saturation selection
   logic alu_vxsat, mfpu_vxsat;
   assign vxsat_flag_o = mfpu_vxsat | alu_vxsat;
@@ -131,6 +150,14 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .alu_vinsn_done_o     (alu_vinsn_done_o               ),
     // Interface with the lane
     .alu_red_complete_o   (alu_red_complete_o             ),
+    .rce_partial_o(alu_rce_partial),
+    .rce_partial_valid_o(alu_rce_valid),
+    .rce_partial_ready_i(rce_partial_ready_i && !rce_select_fp_i),
+    .rce_result_i(rce_result_i),
+    .rce_result_valid_i(rce_result_valid_i && !rce_result_i.is_fp),
+    .rce_result_ready_o(alu_rce_ready),
+    .rce_can_retire_o(alu_rce_can_retire),
+    .rce_retire_i(rce_retire_i && !rce_result_i.is_fp),
     // Interface with the operand queues
     .alu_operand_i        (alu_operand_i                  ),
     .alu_operand_valid_i  (alu_operand_valid_i            ),
@@ -192,6 +219,15 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mfpu_vinsn_done_o    (mfpu_vinsn_done_o               ),
     // Interface with the lane
     .fpu_red_complete_o   (fpu_red_complete_o              ),
+    .rce_partial_o(fp_rce_partial),
+    .rce_partial_valid_o(fp_rce_valid),
+    .rce_partial_ready_i(rce_partial_ready_i && rce_select_fp_i),
+    .rce_result_i(rce_result_i),
+    .rce_result_valid_i(rce_result_valid_i && rce_result_i.is_fp),
+    .rce_result_ready_o(fp_rce_ready),
+    .rce_can_retire_o(fp_rce_can_retire),
+    .rce_fp_retire_ready_o(rce_fp_retire_ready_o),
+    .rce_retire_i(rce_retire_i && rce_result_i.is_fp),
     // Interface with the operand queues
     .mfpu_operand_i       (mfpu_operand_i                  ),
     .mfpu_operand_valid_i (mfpu_operand_valid_i            ),

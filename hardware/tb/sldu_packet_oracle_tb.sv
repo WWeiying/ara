@@ -4,6 +4,7 @@
 module sldu_packet_oracle_tb;
   import ara_pkg::*;
   import rvv_pkg::*;
+  import ara_rce_pkg::*;
   localparam int NrLanes = 4;
   localparam int VLEN = 1024;
   typedef logic [$clog2(VLEN+1)-1:0] vlen_t;
@@ -25,15 +26,93 @@ module sldu_packet_oracle_tb;
   int fp16, rm, tests = 0;
   logic [63:0] held_output [4];
   logic [3:0] held = 0;
+  logic [3:0] slide_valid, slide_final_grants;
+  bit trailing_slide = 0;
+  logic [3:0] trailing_sent;
+  int trailing_frames = 0, trailing_wait_cycles = 0;
+  function automatic logic [63:0] trailing_word(int lane);
+    return 64'hace0123456780000 | (64'(tests) << 2) | 64'(lane);
+  endfunction
+  // Model the final VRF grant one cycle after a Slide write is accepted.
+  always_ff @(posedge clk)
+    slide_final_grants <= rst_n ? slide_valid & grants : '0;
+  rce_exact_command_t exact_cmd;
+  rce_exact_result_t exact_result;
+  rce_exact_events_t exact_events;
+  elen_t [3:0] exact_operand;
+  logic [3:0] exact_operand_valid, exact_operand_ready;
+  logic exact_cmd_valid, exact_cmd_ready, exact_seed_ready;
+  logic [31:0] exact_seed_data;
+  logic exact_local_complete, exact_result_valid, exact_result_ready;
+  rce_result_t completion, held_completion;
+  logic completion_valid, completion_ready = 0;
+  bit completion_held = 0, completion_seen;
+  int boundary_hold = 0, output_hold = 5;
+  int direct_stall_cycles = 0, direct_results = 0;
+  // Independently stall the RCE-to-adapter boundary, in addition to the
+  // existing per-lane output grants. Both sides see the same handshake.
+  logic exact_result_transfer_enable;
+  int unsigned exact_result_wait_q;
+  int unsigned exact_boundary_stall_cycles;
+  assign exact_result_transfer_enable = exact_result_wait_q >=
+    (boundary_hold != 0 ? boundary_hold : tests % 8);
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      exact_result_wait_q <= 0;
+      exact_boundary_stall_cycles <= 0;
+    end else if (!exact_result_valid) exact_result_wait_q <= 0;
+    else if (!exact_result_transfer_enable) begin
+      exact_result_wait_q <= exact_result_wait_q + 1;
+      exact_boundary_stall_cycles <= exact_boundary_stall_cycles + 1;
+    end
+  end
+
+  logic root_complete;
+  logic [287:0] observed_root;
+  logic [3:0] exact_lane_consumed;
+  reduction_completion_engine #(.EnableExact(RceExactEnable)) rce (
+    .clk_i(clk), .rst_ni(rst_n), .cmd_i('0), .cmd_valid_i(1'b0), .cmd_ready_o(),
+    .partial_i('0), .partial_valid_i('0), .partial_ready_o(),
+    .seed_i('0), .seed_valid_i(1'b0), .seed_ready_o(),
+    .result_o(), .result_valid_o(), .result_ready_i(1'b0), .occupancy_o(),
+    .exact_cmd_i(exact_cmd), .exact_cmd_valid_i(exact_cmd_valid),
+    .exact_cmd_ready_o(exact_cmd_ready), .exact_operand_i(exact_operand),
+    .exact_operand_valid_i(exact_operand_valid), .exact_operand_ready_o(exact_operand_ready),
+    .exact_seed_ready_i(exact_seed_ready), .exact_seed_data_i(exact_seed_data),
+    .exact_local_complete_o(exact_local_complete),
+    .exact_lane_consumed_o(exact_lane_consumed), .exact_result_o(exact_result),
+    .exact_result_valid_o(exact_result_valid),
+    .exact_result_ready_i(exact_result_ready && exact_result_transfer_enable),
+    .exact_events_o(exact_events)
+  );
+  if (RceExactEnable) begin : gen_rce_root_probe
+    assign root_complete = exact_local_complete;
+    assign observed_root = rce.gen_exact.exact_root_d;
+  end else begin : gen_legacy_root_probe
+    assign root_complete = dut.exact_limb_merge_fire &&
+      dut.exact_packet_beat_q == dut.exact_limb_count_q;
+    assign observed_root = dut.exact_root_d;
+  end
   sldu #(.NrLanes(4), .VLEN(VLEN), .vaddr_t(vaddr_t),
          .pe_req_t(pe_req_t), .pe_resp_t(pe_resp_t)) dut (
+    .rce_exact_cmd_o(exact_cmd), .rce_exact_cmd_valid_o(exact_cmd_valid),
+    .rce_exact_cmd_ready_i(exact_cmd_ready), .rce_exact_operand_o(exact_operand),
+    .rce_exact_operand_valid_o(exact_operand_valid), .rce_exact_operand_ready_i(exact_operand_ready),
+    .rce_exact_seed_ready_o(exact_seed_ready), .rce_exact_seed_data_o(exact_seed_data),
+    .rce_exact_local_complete_i(exact_local_complete),
+    .rce_exact_lane_consumed_i(exact_lane_consumed), .rce_exact_result_i(exact_result),
+    .rce_exact_result_valid_i(exact_result_valid && exact_result_transfer_enable),
+    .rce_exact_result_ready_o(exact_result_ready),
+    .rce_exact_events_i(exact_events),
+    .rce_completion_o(completion), .rce_completion_valid_o(completion_valid),
+    .rce_completion_ready_i(completion_ready),
     .clk_i(clk), .rst_ni(rst_n), .pe_req_i(req), .pe_req_valid_i(req_valid),
     .pe_vinsn_running_i(running), .pe_req_ready_o(req_ready), .pe_resp_o(resp),
     .sldu_operand_i(input_data), .sldu_operand_valid_i(input_valid),
-    .sldu_operand_ready_o(input_ready), .sldu_result_req_o(),
+    .sldu_operand_ready_o(input_ready), .sldu_result_req_o(slide_valid),
     .sldu_result_id_o(output_id), .sldu_result_addr_o(),
     .sldu_result_wdata_o(output_data), .sldu_result_be_o(),
-    .sldu_result_gnt_i(grants), .sldu_result_final_gnt_i(4'b0),
+    .sldu_result_gnt_i(grants), .sldu_result_final_gnt_i(slide_final_grants),
     .sldu_mux_sel_o(), .sldu_red_valid_o(output_valid),
     .mask_i('0), .mask_valid_i('0), .mask_ready_o()
   );
@@ -74,6 +153,14 @@ module sldu_packet_oracle_tb;
     req = '0;
     input_data = '0;
     random_seed = 32'h71002026;
+    void'($value$plusargs("SCHEDULE_SEED=%d", random_seed));
+    void'($value$plusargs("BOUNDARY_HOLD=%d", boundary_hold));
+    void'($value$plusargs("OUTPUT_HOLD=%d", output_hold));
+    if (boundary_hold < 0 || boundary_hold > 256 || output_hold < 0 || output_hold > 256)
+      $fatal(1, "FAIL: invalid exact hold interval");
+    trailing_slide = $test$plusargs("TRAILING_SLIDE");
+    if (trailing_slide && (!RceExactEgressReleaseEnable || !RceExactDirectEnable || output_hold < 8))
+      $fatal(1, "FAIL: trailing Slide requires early egress, direct results and OUTPUT_HOLD>=8");
     void'($urandom(random_seed));
     void'($value$plusargs("VECTOR_FILE=%s", path));
     fd = $fopen(path, "r");
@@ -108,8 +195,11 @@ module sldu_packet_oracle_tb;
       @(negedge clk);
       req_valid = 0;
       received = '0;
+      trailing_sent = '0;
       root_checked = 0;
       held = 0;
+      completion_held = 0;
+      completion_seen = 0;
       hold_cycles = 0;
       done = 0;
       cycles = 0;
@@ -120,14 +210,36 @@ module sldu_packet_oracle_tb;
             input_valid[lane] = 1;
             input_data[lane] = packet_word(lane, cursor[lane]);
           end
-          grants[lane] = hold_cycles >= 5 && $urandom_range(0,2) != 0;
+          if (trailing_slide && !input_valid[lane] && cursor[lane] == count[lane]+1 &&
+              !trailing_sent[lane]) begin
+            input_valid[lane] = 1;
+            input_data[lane] = trailing_word(lane);
+          end
+          grants[lane] = hold_cycles >= output_hold && $urandom_range(0,2) != 0;
         end
+        completion_ready = hold_cycles >= output_hold && $urandom_range(0,2) != 0;
         @(posedge clk);
         input_fire = input_valid & input_ready;
-        if (|output_valid) hold_cycles++;
-        if (dut.exact_limb_merge_fire && dut.exact_packet_beat_q == dut.exact_limb_count_q) begin
-          if (dut.exact_root_d !== expected_root)
-            $fatal(1, "FAIL: root test=%0d got=%072x expected=%072x", tests, dut.exact_root_d, expected_root);
+        if (|output_valid || completion_valid) hold_cycles++;
+        if (RceExactDirectEnable) begin
+          if (completion_held && (!completion_valid || completion !== held_completion))
+            $fatal(1, "FAIL: exact direct completion changed under backpressure");
+          completion_held = completion_valid && !completion_ready;
+          held_completion = completion;
+          if (completion_held) direct_stall_cycles++;
+          if (completion_valid && completion_ready) begin
+            if (completion_seen || completion !== rce_result_t'{
+                id: req.id, vd: req.vd, version: req.vd_version,
+                data: {32'b0,expected_result}, be: (fp16 ? 8'h03 : 8'h0f),
+                fflags: expected_flags, write_enable: 1'b1, is_fp: 1'b1})
+              $fatal(1, "FAIL: exact direct result/tag/byte-enable test=%0d", tests);
+            completion_seen = 1;
+            direct_results++;
+          end
+        end
+        if (root_complete) begin
+          if (observed_root !== expected_root)
+            $fatal(1, "FAIL: root test=%0d got=%072x expected=%072x", tests, observed_root, expected_root);
           root_checked = 1;
         end
         for (int lane=0; lane<4; lane++) begin
@@ -141,17 +253,58 @@ module sldu_packet_oracle_tb;
               $fatal(1, "FAIL: token test=%0d lane=%0d got=%016x expected=%02x/%08x", tests,lane,output_data[lane],expected_flags,expected_result);
             received[lane] = 1;
           end
-          if (input_fire[lane]) cursor[lane]++;
+          if (input_fire[lane]) begin
+            if (trailing_slide && cursor[lane] == count[lane]+1)
+              trailing_sent[lane] = 1;
+            else cursor[lane]++;
+          end
+          if (trailing_slide && exact_lane_consumed[lane] && dut.sldu_operand_valid[lane]) begin
+            if (dut.sldu_operand_ready[lane] ||
+                dut.sldu_operand[lane] !== trailing_word(lane))
+              $fatal(1, "FAIL: trailing Slide word consumed/corrupted by exact frame");
+            trailing_wait_cycles++;
+          end
         end
         done = resp.vinsn_done[req.id];
         if (++cycles > 1000) $fatal(1, "FAIL: SLDU test=%0d timeout",tests);
         @(negedge clk);
         input_valid &= ~input_fire;
       end
-      if (!(&received) || !root_checked) $fatal(1,"FAIL: early retirement");
+      if (!(RceExactDirectEnable ? completion_seen : &received) || !root_checked)
+        $fatal(1,"FAIL: early retirement");
       for (int lane=0; lane<4; lane++)
         if (cursor[lane] != count[lane]+1) $fatal(1,"FAIL: unconsumed packet");
       input_valid = 0;
+      if (trailing_slide) begin
+        if (!(&trailing_sent)) $fatal(1,"FAIL: trailing words were not buffered");
+        running[req.id] = 0;
+        // No new data is supplied: the following Slide must consume exactly
+        // the four words queued while the preceding reduction was live.
+        req = '0;
+        req.id = vid_t'((tests+1)%NrVInsn);
+        req.op = VSLIDEDOWN; req.vfu = VFU_SlideUnit;
+        req.vm = 1; req.vl = 4; req.vtype.vsew = EW64; req.eew_vs2 = EW64;
+        req.vtype.vlmul = LMUL_1; req.vs2 = 16; req.use_vs2 = 1;
+        req.vd = 20; req.use_vd = 1; req.stride = 0;
+        req_valid = 1; running[req.id] = 1;
+        do @(posedge clk); while (!req_ready);
+        @(negedge clk); req_valid = 0;
+        received = '0; done = 0; cycles = 0;
+        while (!done) begin
+          for (int lane=0; lane<4; lane++) grants[lane] = $urandom_range(0,2) != 0;
+          @(posedge clk);
+          for (int lane=0; lane<4; lane++) if (slide_valid[lane] && grants[lane]) begin
+            if (received[lane] || output_data[lane] !== trailing_word(lane) || output_id[lane] != req.id)
+              $fatal(1,"FAIL: trailing Slide data/owner mismatch lane=%0d got=%h expected=%h id=%0d expected_id=%0d",lane,output_data[lane],trailing_word(lane),output_id[lane],req.id);
+            received[lane] = 1;
+          end
+          done = resp.vinsn_done[req.id];
+          if (++cycles > 100) $fatal(1,"FAIL: trailing Slide timeout");
+          @(negedge clk);
+        end
+        if (!(&received)) $fatal(1,"FAIL: trailing Slide retired early");
+        trailing_frames++;
+      end
       grants = 0;
       running = 0;
       repeat (3) @(negedge clk);
@@ -161,6 +314,16 @@ module sldu_packet_oracle_tb;
     end
     if (!$feof(fd) || tests == 0) $fatal(1,"FAIL: malformed SLDU oracle");
     $display("PASS: %0d SLDU packet cases, skew, stale tokens, output stalls, root and result",tests);
+    if (RceExactEnable && tests >= 8 && exact_boundary_stall_cycles == 0)
+      $fatal(1, "FAIL: exact completion boundary stalls were not exercised");
+    $display("RCE exact boundary stalls: %0d", exact_boundary_stall_cycles);
+    if (RceExactDirectEnable && (direct_results != tests ||
+        (output_hold > 0 && direct_stall_cycles < tests * output_hold)))
+      $fatal(1, "FAIL: missing direct completion/backpressure coverage");
+    $display("RCE exact direct results=%0d stalls=%0d", direct_results, direct_stall_cycles);
+    if (trailing_slide && (trailing_frames != tests || trailing_wait_cycles == 0))
+      $fatal(1,"FAIL: missing trailing-frame ownership coverage");
+    $display("TRAILING_SLIDE: frames=%0d protected_lane_cycles=%0d",trailing_frames,trailing_wait_cycles);
     $finish;
   end
 endmodule

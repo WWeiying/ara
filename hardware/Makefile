@@ -3,9 +3,11 @@ ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 ARA_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$ARA_DIR)
 INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
 VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
+# VCS supplies svdpi.h as well; a VCS-only checkout need not install Verilator.
+DPI_INCLUDE ?= $(if $(VCS_HOME),$(VCS_HOME)/include,$(VERILATOR_INCLUDE))
 
-BENDER         := /home/wangwy/openproject/ara/hardware/bender
-BENDER_VERSION := 0.27.3
+BENDER         ?= $(ROOT_DIR)/bender
+BENDER_VERSION := 0.28.2
 
 # Choose Ara's configuration
 ifndef config
@@ -96,6 +98,79 @@ bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIA
 # Reduction-acceleration ablation switches.  Keep the baseline behavior unless
 # explicitly enabled so each mechanism can be measured independently.  The
 # context stream switch covers both VMFPU and VALU reduction pipelines.
+# Independently controlled completion-throughput experiments.
+reduction_rce_queue_lookahead ?= 0
+reduction_rce_word_turnaround ?= 0
+reduction_rce_exact_egress_release ?= 0
+reduction_rce_result_depth ?= 2
+ifeq ($(reduction_rce_queue_lookahead),1)
+  bender_defs += --define ARA_RED_RCE_QUEUE_LOOKAHEAD=1
+endif
+ifeq ($(reduction_rce_word_turnaround),1)
+  bender_defs += --define ARA_RED_RCE_WORD_TURNAROUND=1
+endif
+ifeq ($(reduction_rce_exact_egress_release),1)
+  bender_defs += --define ARA_RED_RCE_EXACT_EGRESS_RELEASE=1
+endif
+ifneq ($(filter $(reduction_rce_result_depth),2 4),$(reduction_rce_result_depth))
+  $(error reduction_rce_result_depth must be 2 or 4)
+endif
+bender_defs += --define ARA_RED_RCE_RESULT_DEPTH=$(reduction_rce_result_depth)
+reduction_rce_alu_result_depth ?= $(reduction_rce_result_depth)
+reduction_rce_fp_result_depth ?= $(reduction_rce_result_depth)
+ifneq ($(filter $(reduction_rce_alu_result_depth),2 4),$(reduction_rce_alu_result_depth))
+  $(error reduction_rce_alu_result_depth must be 2 or 4)
+endif
+ifneq ($(filter $(reduction_rce_fp_result_depth),2 4),$(reduction_rce_fp_result_depth))
+  $(error reduction_rce_fp_result_depth must be 2 or 4)
+endif
+bender_defs += --define ARA_RED_RCE_ALU_RESULT_DEPTH=$(reduction_rce_alu_result_depth)
+bender_defs += --define ARA_RED_RCE_FP_RESULT_DEPTH=$(reduction_rce_fp_result_depth)
+
+
+reduction_rce_int ?= 0
+reduction_rce_int_late_seed ?= 0
+reduction_rce_compact_word ?= 0
+reduction_rce_operand_isolation ?= 0
+reduction_rce_mixed ?= 0
+reduction_rce_fp_minmax ?= 0
+reduction_rce_fp64_sum ?= 0
+reduction_rce_exact ?= 0
+reduction_rce_exact_direct ?= 0
+reduction_exact_no_round_bubble ?= 0
+ifeq ($(reduction_exact_no_round_bubble),1)
+  bender_defs += --define ARA_RED_EXACT_NO_ROUND_BUBBLE=1
+endif
+ifeq ($(reduction_rce_int),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_rce_int currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_RCE_INT=1
+endif
+ifeq ($(reduction_rce_compact_word),1)
+  bender_defs += --define ARA_RED_RCE_COMPACT_WORD=1
+endif
+ifeq ($(reduction_rce_operand_isolation),1)
+  bender_defs += --define ARA_RED_RCE_OPERAND_ISOLATION=1
+endif
+ifeq ($(reduction_rce_fp_minmax),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_rce_fp_minmax currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_RCE_FP_MINMAX=1
+endif
+ifeq ($(reduction_rce_fp64_sum),1)
+  ifneq ($(nr_lanes),4)
+    $(error reduction_rce_fp64_sum currently requires nr_lanes=4)
+  endif
+  bender_defs += --define ARA_RED_RCE_FP64_SUM=1
+endif
+ifeq ($(reduction_rce_mixed),1)
+  ifeq ($(filter 1,$(reduction_rce_int) $(reduction_rce_fp_minmax) $(reduction_rce_exact) $(reduction_rce_fp64_sum)),)
+    $(error reduction_rce_mixed requires an enabled RCE backend)
+  endif
+  bender_defs += --define ARA_RED_RCE_MIXED=1
+endif
 reduction_output_bypass ?= 0
 reduction_route_bypass  ?= 0
 reduction_mask_fastpath ?= 0
@@ -285,6 +360,18 @@ ifeq ($(reduction_exact_global),1)
   endif
   bender_defs += --define ARA_RED_EXACT_GLOBAL_4LANE=1
 endif
+ifeq ($(reduction_rce_exact_direct),1)
+  ifneq ($(reduction_rce_exact),1)
+    $(error reduction_rce_exact_direct requires reduction_rce_exact=1)
+  endif
+  bender_defs += --define ARA_RED_RCE_EXACT_DIRECT=1
+endif
+ifeq ($(reduction_rce_exact),1)
+  ifneq ($(reduction_exact_global),1)
+    $(error reduction_rce_exact requires reduction_exact_global=1)
+  endif
+  bender_defs += --define ARA_RED_RCE_EXACT=1
+endif
 ifeq ($(reduction_exact_fixed_window),1)
   ifneq ($(reduction_exact_global),1)
     $(error reduction_exact_fixed_window requires reduction_exact_global=1)
@@ -311,6 +398,15 @@ ifeq ($(reduction_chain_bypass),1)
     $(error reduction_chain_bypass currently requires nr_lanes=4)
   endif
   bender_defs += --define ARA_RED_CHAIN_BYPASS_4LANE=1
+endif
+ifeq ($(reduction_rce_int_late_seed),1)
+  ifneq ($(reduction_rce_int),1)
+    $(error reduction_rce_int_late_seed requires reduction_rce_int=1)
+  endif
+  bender_defs += --define ARA_RED_RCE_INT_LATE_SEED=1
+endif
+ifneq ($(filter 1,$(reduction_chain_bypass) $(reduction_rce_int_late_seed)),)
+  bender_defs += --define ARA_RED_REGISTER_VERSIONS=1
 endif
 ifneq ($(filter 1,$(reduction_dense_input_bypass) $(reduction_tree_input_bypass)),)
   bender_defs += --define ARA_RED_INPUT_BYPASS=1
@@ -360,7 +456,7 @@ SIMULATOR_LOG := -l comp.vcs.log
 SIMULATOR_POWER_OPT := 
 SIMV_POWER_OPT      := +fsdb+power +fsdb+all 
 SIM_DUMP := 
-SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) /home/wangwy/openproject/ara/hardware/build/work-dpi/elfloader.o
+SIM_FILELIST := -f $(vcs_library)/bender_script_$(config) $(dpi)
 SIM_TIME := #+vcs+finish+10000ns
 APP := +PRELOAD=$(preload) +TESTCASE=$(app)
 ifeq ($(no_fsdb), 1)
@@ -381,7 +477,7 @@ dpi: $(buildpath)/$(dpi_library)/ara_dpi.so
 
 $(buildpath)/$(dpi_library)/%.o: tb/dpi/%.cc
 	@mkdir -p $(buildpath)/$(dpi_library)
-	@$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
+	@$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(DPI_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
 
 $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 	@mkdir -p $(buildpath)/$(dpi_library)
@@ -392,6 +488,7 @@ compile: bender dpi ../Bender.yml
 	@echo "ARA Configuration: NR_LANES=$(nr_lanes) VLEN=$(vlen)"
 	@$(BENDER) script verilator $(bender_targs_vcs) $(bender_defs_veril) --define FOR_VERIFY  > $(vcs_library)/bender_script_$(config)
 	@$(call generate_sram_filelist, $(sram_techlib_path), $(vcs_library)/bender_script_$(config))
+	@python3 scripts/prepare_reduction_dependency_overlay.py $(vcs_library)/bender_script_$(config)
 	@mkdir -p ./$(sim_dir)/incremental_db
 	@cd ./$(sim_dir) && vcs $(SIMULATOR_OPT) -top ara_tb $(TIMESCALE) $(SIM_TIME) $(SIMULATOR_DEF) $(SIM_FILELIST) $(SIM_DUMP) $(SIMULATOR_LOG) $(SIMULATOR_POWER_OPT)
 

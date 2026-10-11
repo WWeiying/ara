@@ -41,6 +41,24 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     // Support for reductions
     output sldu_mux_e              sldu_mux_sel_o,
     output logic     [NrLanes-1:0] sldu_red_valid_o,
+    // Dedicated exact completion backend; SLDU owns transport and retirement.
+    output ara_rce_pkg::rce_exact_command_t rce_exact_cmd_o,
+    output logic rce_exact_cmd_valid_o,
+    input logic rce_exact_cmd_ready_i,
+    output elen_t [NrLanes-1:0] rce_exact_operand_o,
+    output logic [NrLanes-1:0] rce_exact_operand_valid_o,
+    input logic [NrLanes-1:0] rce_exact_operand_ready_i,
+    output logic rce_exact_seed_ready_o,
+    output logic [31:0] rce_exact_seed_data_o,
+    input logic rce_exact_local_complete_i,
+    input logic [NrLanes-1:0] rce_exact_lane_consumed_i,
+    input ara_rce_pkg::rce_exact_result_t rce_exact_result_i,
+    input logic rce_exact_result_valid_i,
+    output logic rce_exact_result_ready_o,
+    input ara_rce_pkg::rce_exact_events_t rce_exact_events_i,
+    output ara_rce_pkg::rce_result_t rce_completion_o,
+    output logic rce_completion_valid_o,
+    input logic rce_completion_ready_i,
     // Interface with the Mask Unit
     input  strb_t    [NrLanes-1:0] mask_i,
     input  logic     [NrLanes-1:0] mask_valid_i,
@@ -385,6 +403,24 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // The SLDU slides by powers of two
   logic [idx_width(4*NrLanes):0] sld_slamt;
 
+  // Architectural source extent, including fractional LMUL. A slidedown
+  // operand request can cross this boundary into the next physical register;
+  // those bytes must become zero, regardless of that register's contents.
+  // Adapted from ara_dsa_signoff_integration (7d5d1829).
+  int unsigned slide_source_group_bytes;
+  always_comb begin
+    slide_source_group_bytes = VLEN / 8;
+    unique case (vinsn_issue_q.vtype.vlmul)
+      LMUL_2:   slide_source_group_bytes <<= 1;
+      LMUL_4:   slide_source_group_bytes <<= 2;
+      LMUL_8:   slide_source_group_bytes <<= 3;
+      LMUL_1_2: slide_source_group_bytes >>= 1;
+      LMUL_1_4: slide_source_group_bytes >>= 2;
+      LMUL_1_8: slide_source_group_bytes >>= 3;
+      default: ;
+    endcase
+  end
+
   sldu_op_dp #(
     .NrLanes  (NrLanes    )
   ) i_sldu_op_dp (
@@ -504,6 +540,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     end
   endfunction
 
+  if (!ara_rce_pkg::RceExactEnable) begin : gen_legacy_exact_finalize
   fp32_exact_reduction_finalize i_fp32_exact_reduction_finalize (
     .exact_value_i         (exact_root_q),
     .special_i             (exact_special_q),
@@ -520,6 +557,49 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     .result_o              (exact_final_result),
     .status_o              (exact_final_status)
   );
+  end else begin : gen_rce_exact_finalize
+    assign exact_final_result = rce_exact_result_i.data;
+    assign exact_final_status = rce_exact_result_i.fflags;
+  end
+
+`endif
+
+  assign rce_exact_operand_o = sldu_operand;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+  assign rce_exact_operand_valid_o =
+    ara_rce_pkg::RceExactEnable && state_q == SLIDE_RUN_EXACT ?
+      (sldu_operand_valid & (ara_rce_pkg::RceExactEgressReleaseEnable ?
+        ~rce_exact_lane_consumed_i : {NrLanes{1'b1}})) : '0;
+  // A completed lane may queue a later exact header or Slide word. Keep it
+  // in the input FIFO until its own command becomes active; do not present
+  // it as an extra limb of the older frame. The backend must not consume it.
+`ifndef SYNTHESIS
+  if (ara_rce_pkg::RceExactEgressReleaseEnable) begin : gen_exact_frame_ownership
+    for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_lane
+      a_finished_frame_does_not_pop: assert property (
+        @(posedge clk_i) disable iff (!rst_ni)
+        state_q == SLIDE_RUN_EXACT && rce_exact_lane_consumed_i[lane] |->
+          !sldu_operand_ready[lane] && !rce_exact_operand_valid_o[lane]);
+    end
+  end
+`endif
+  assign rce_exact_cmd_o.id = vinsn_issue_q.id;
+  assign rce_exact_cmd_o.vd = vinsn_issue_q.vd;
+  assign rce_exact_cmd_o.version = vinsn_issue_q.vd_version;
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+  assign rce_exact_cmd_o.late_seed = vinsn_issue_q.late_seed;
+  assign rce_exact_seed_ready_o = exact_late_seed_ready;
+  assign rce_exact_seed_data_o = exact_result_cache_data_q[vinsn_issue_q.seed_producer_id];
+`else
+  assign rce_exact_cmd_o.late_seed = 1'b0;
+  assign rce_exact_seed_ready_o = 1'b1;
+  assign rce_exact_seed_data_o = '0;
+`endif
+`else
+  assign rce_exact_operand_valid_o = '0;
+  assign rce_exact_cmd_o = '0;
+  assign rce_exact_seed_ready_o = 1'b0;
+  assign rce_exact_seed_data_o = '0;
 `endif
 
   logic  [8*NrLanes-1:0] out_en_flat, out_en_seq;
@@ -541,6 +621,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   vlen_t commit_cnt_d, commit_cnt_q;
 
   always_comb begin: p_sldu
+    rce_completion_o = '{id: rce_exact_result_i.id, vd: rce_exact_result_i.vd,
+      version: rce_exact_result_i.version, data: {32'b0, rce_exact_result_i.data},
+      be: rce_exact_result_i.be, fflags: rce_exact_result_i.fflags,
+      write_enable: 1'b1, is_fp: 1'b1};
+    rce_completion_valid_o = 1'b0;
+    rce_exact_cmd_valid_o = 1'b0;
+    rce_exact_result_ready_o = 1'b0;
     // Maintain state
     vinsn_queue_d = vinsn_queue_q;
     issue_cnt_d   = issue_cnt_q;
@@ -669,6 +756,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 `endif
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
           if (exact_global_q[vinsn_queue_q.issue_pnt]) begin
+            rce_exact_cmd_valid_o = ara_rce_pkg::RceExactEnable;
             state_d                       = SLIDE_RUN_EXACT;
             exact_packet_beat_d           = '0;
             exact_limb_count_d            = 3'd5;
@@ -769,6 +857,22 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         logic [NrLanes-1:0][63:0] limb_operand;
         logic [2:0] header_limb_count;
 
+        if (ara_rce_pkg::RceExactEnable) begin
+          sldu_operand_ready = rce_exact_operand_ready_i;
+          exact_stale_token_drop = rce_exact_events_i.stale_token_drop;
+          exact_header_rendezvous_wait = rce_exact_events_i.header_wait;
+          exact_header_merge_fire = rce_exact_events_i.header_fire;
+          exact_late_seed_wait = rce_exact_events_i.seed_wait;
+          exact_late_seed_bind = rce_exact_events_i.seed_bind;
+          exact_header_global_limb_count = rce_exact_events_i.window_limbs;
+          exact_limb_merge_fire = rce_exact_events_i.limb_fire;
+          exact_implicit_sign_lane_count = rce_exact_events_i.implicit_sign_lanes;
+          if (rce_exact_local_complete_i) begin
+            state_d = SLIDE_WAIT_EXACT;
+            vinsn_queue_d.issue_pnt += 1'b1;
+            vinsn_queue_d.issue_cnt -= 1'b1;
+          end
+        end else begin
         chunk_sum = '0;
         special_pair_lo = '0;
         special_pair_hi = '0;
@@ -949,6 +1053,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             end
           end
         end
+        end
       end
 
       SLIDE_SEND_EXACT_WINDOW: begin
@@ -979,7 +1084,26 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // One tagged completion token replaces the legacy three tree rounds
         // and lane-zero SIMD fold.  Broadcasting it keeps all lane FSMs at
         // the same architectural phase while only lane zero writes the value.
-        if (!result_queue_full) begin
+        if (ara_rce_pkg::RceExactDirectEnable) begin
+          // Retain SLDU command/seed-cache ownership through the actual VRF
+          // grant. No completion token is enqueued on this path.
+          rce_completion_valid_o = rce_exact_result_valid_i && vinsn_commit_valid &&
+            rce_exact_result_i.id == vinsn_commit.id;
+          rce_exact_result_ready_o = rce_completion_valid_o && rce_completion_ready_i;
+          if (rce_exact_result_ready_o) begin
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            exact_result_cache_valid_d[vinsn_commit.id] = 1'b1;
+            exact_result_cache_vd_d[vinsn_commit.id] = vinsn_commit.vd;
+            exact_result_cache_version_d[vinsn_commit.id] = vinsn_commit.vd_version;
+            exact_result_cache_data_d[vinsn_commit.id] = exact_final_result;
+`endif
+            commit_cnt_d = '0;
+            state_d = SLIDE_IDLE;
+          end
+        end else
+        if (!result_queue_full &&
+            (!ara_rce_pkg::RceExactEnable || rce_exact_result_valid_i)) begin
+          rce_exact_result_ready_o = ara_rce_pkg::RceExactEnable;
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
           exact_result_cache_valid_d[vinsn_commit.id]   = 1'b1;
           exact_result_cache_vd_d[vinsn_commit.id]      = vinsn_commit.vd;
@@ -1039,6 +1163,21 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sld_op_dst[lane][8*b +: 8];
                 result_queue_d[result_queue_write_pnt_q][lane].be[b]           = 1'b1;
               end
+
+          // Zero source elements at or beyond VLMAX. VL only bounds the
+          // destination: legal source elements above VL must still be read.
+          if (vinsn_issue_q.op == VSLIDEDOWN &&
+              !vinsn_issue_q.use_scalar_op && vinsn_issue_q.stride != '0) begin
+            for (int unsigned b = 0; b < 8*NrLanes; b++) begin
+              automatic int unsigned shuffled_byte =
+                shuffle_index(b, NrLanes, vinsn_issue_q.vtype.vsew);
+              if (out_en_seq[b] &&
+                  unsigned'(vrf_pnt_q) * NrLanes * 8 + b +
+                    unsigned'(vinsn_issue_q.stride) >= slide_source_group_bytes)
+                result_queue_d[result_queue_write_pnt_q]
+                  [shuffled_byte / 8].wdata[8*(shuffled_byte % 8) +: 8] = '0;
+            end
+          end
 
           // Initialize id and addr fields of the result queue requests
           for (int lane = 0; lane < NrLanes; lane++) begin
@@ -1625,6 +1764,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
 `ifndef SYNTHESIS
+  if (!ara_rce_pkg::RceExactEnable) begin : gen_legacy_exact_assertions
   a_exact_fp16_root_has_shared_quantum: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       (state_q == SLIDE_WAIT_EXACT && exact_format_fp16_q) |->
@@ -1653,6 +1793,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
          sldu_operand_valid[lane]) |->
           (sldu_operand[lane][63] == exact_lane_sign_q[lane])
     ) else $error("exact lane header sign disagrees with its guard limb");
+  end
   end
 `endif
 `endif

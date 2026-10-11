@@ -521,7 +521,7 @@ segment update    = old_bin + signed(significand << local_shift)
 
 单个正常数的 significand 有 24 位，窗口内最多移 15 位；最多 257 项 （256 个向量元素加 seed）还需要 9 位 population carry，再留 1 个有符号位，总计 `24+15+9+1=49` 位。这里的 256 是此模块的设计容量，不是当前 e32/m1 指令的实际 `VLMAX`。源码还保留非 segmented 的四个 288-bit bank 形式，便于比较算法与反馈路径；最终 profile 选 16 段。
 
-完成所有输入后，状态机按 `IDLE→ACCUMULATE→MERGE_PAIRS→MERGE_ROOT→ROUND_RESULT→HOLD_RESULT` 合并这些精确 partial sum，再由 [`fp32_exact_reduction_finalize.sv`](../src/lane/fp32_exact_reduction_finalize.sv) 做唯一的格式化舍入。第一拍可以同时接受新任务和首个 beat，所以看 `IDLE` 时不能误以为它纯粹是启动空拍。`HOLD_RESULT` 则一直保持稳定输出，直到下游 `out_ready_i` 才释放 owner。
+完成所有输入后，状态机按 `IDLE→ACCUMULATE→MERGE_PAIRS→MERGE_ROOT→ROUND_RESULT→HOLD_RESULT` 合并这些精确 partial sum，再由 [`fp32_exact_reduction_finalize.sv`](../src/lane/fp32_exact_reduction_finalize.sv) 做唯一的格式化舍入。第一拍可以同时接受新任务和首个 beat，所以看 `IDLE` 时不能误以为它纯粹是启动空拍。`HOLD_RESULT` 则一直保持稳定输出，直到下游 `out_ready_i` 才释放 owner。 在 `reduction-rce` 开发分支中，另有默认关闭的 `reduction_exact_no_round_bubble` 开关：当本地只输出精确状态、`EmitRoundedResult=0` 时，`ROUND_RESULT` 没有舍入工作，因此可由 `MERGE_ROOT` 直接进入 `HOLD_RESULT`，提前一拍交付已寄存的精确状态；两级进位归一化及需要本地舍入的模式保持原流程。实现与测试范围见[收尾引擎记录](reduction_completion_engine.md#全路径停顿审查与精确累加空拍优化)。
 
 ### 10.3 数值位和语义位为什么必须分开
 

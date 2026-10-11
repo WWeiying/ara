@@ -132,6 +132,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     endcase
   endfunction : prev_prev_ew
 
+  function automatic logic reduction_result(ara_op_e op);
+    return op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]};
+  endfunction
+
+  function automatic logic [2:0] register_count_minus_one(vlmul_e lmul);
+    case (lmul)
+      LMUL_2: return 3'd1;
+      LMUL_4: return 3'd3;
+      LMUL_8: return 3'd7;
+      default: return '0;
+    endcase
+  endfunction
+
   /////////////////////////
   //  Backend interface  //
   /////////////////////////
@@ -182,12 +195,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   rvv_pkg::vew_e eew_old_buffer_d, eew_old_buffer_q, eew_new_buffer_d, eew_new_buffer_q;
   // Helpers to handle reshuffling with LMUL > 1
   logic [2:0] rs_lmul_cnt_d, rs_lmul_cnt_q;
-  logic [2:0] rs_lmul_cnt_limit_d, rs_lmul_cnt_limit_q;
+  // Separate bounds for {vs1, vs2, vd}: a reduction has two scalar
+  // operands even when its vector source spans several registers.
+  logic [2:0][2:0] rs_lmul_limits_d, rs_lmul_limits_q;
+  logic [2:0] rs_lmul_cnt_limit;
   logic rs_mask_request_d, rs_mask_request_q;
   // Save vreg to be reshuffled before reshuffling
   logic [4:0] vs_buffer_d, vs_buffer_q;
   // Keep track of the registers to be reshuffled |vs1|vs2|vd|
   logic [2:0] reshuffle_req_d, reshuffle_req_q;
+  always_comb begin
+    casez (reshuffle_req_q)
+      3'b??1: rs_lmul_cnt_limit = rs_lmul_limits_q[0];
+      3'b?10: rs_lmul_cnt_limit = rs_lmul_limits_q[1];
+      default: rs_lmul_cnt_limit = rs_lmul_limits_q[2];
+    endcase
+  end
   // Segment memory operations end or ongoing?
   logic seg_mem_op_end, pending_seg_mem_op_d, pending_seg_mem_op_q;
   // Easily handle the riscv incoming instruction
@@ -205,7 +228,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       vs_buffer_q          <= '0;
       reshuffle_req_q      <= '0;
       rs_lmul_cnt_q        <= '0;
-      rs_lmul_cnt_limit_q  <= '0;
+      rs_lmul_limits_q     <= '0;
       rs_mask_request_q    <= 1'b0;
       reshuffle_eew_vs1_q  <= rvv_pkg::EW8;
       reshuffle_eew_vs2_q  <= rvv_pkg::EW8;
@@ -221,7 +244,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       vs_buffer_q          <= vs_buffer_d;
       reshuffle_req_q      <= reshuffle_req_d;
       rs_lmul_cnt_q        <= rs_lmul_cnt_d;
-      rs_lmul_cnt_limit_q  <= rs_lmul_cnt_limit_d;
+      rs_lmul_limits_q     <= rs_lmul_limits_d;
       rs_mask_request_q    <= rs_mask_request_d;
       reshuffle_eew_vs1_q  <= reshuffle_eew_vs1_d;
       reshuffle_eew_vs2_q  <= reshuffle_eew_vs2_d;
@@ -392,7 +415,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     pending_seg_mem_op_d = pending_seg_mem_op_q;
 
     rs_lmul_cnt_d       = '0;
-    rs_lmul_cnt_limit_d = '0;
+    rs_lmul_limits_d    = rs_lmul_limits_q;
     rs_mask_request_d   = 1'b0;
 
     illegal_insn = 1'b0;
@@ -425,6 +448,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       store_complete: store_zero_vl | store_complete_q,
       store_pending : store_pending_i,
       fflags_valid  : |fflags_ex_valid_i,
+      // Scalar acknowledgement can precede vector execution and RCE writeback.
+      fp_csr_busy   : !ara_idle_i || ara_req_valid_o || acc_req_i.req_valid ||
+                      state_q != NORMAL_OPERATION,
       default       : '0
     };
     acc_resp_o.req_ready  = 1'b0;
@@ -492,7 +518,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
         // Handle LMUL > 1
         rs_lmul_cnt_d       = rs_lmul_cnt_q;
-        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
         rs_mask_request_d   = 1'b0;
 
         // Every single reshuffle request refers to LMUL == 1
@@ -527,7 +552,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         // Backend ready - Decide what to do next
         if (ara_req_ready_i) begin
           // Register completely reshuffled
-          if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
+          if (rs_lmul_cnt_q == rs_lmul_cnt_limit) begin
             rs_lmul_cnt_d = 0;
 
             // Delete the already processed vector register from the notebook -> |vs1|vs2|vd|
@@ -929,8 +954,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   default: illegal_insn = 1'b1;
                 endcase
 
-                // Instructions with an integer LMUL have extra constraints on the registers they can
-                // access.
+                // Widening reductions still write one scalar register. Their
+                // vector source retains data LMUL, not the widened result EMUL.
+                if (reduction_result(ara_req.op)) begin
+                  ara_req.emul = LMUL_1;
+                  lmul_vs1 = LMUL_1;
+                  case (lmul_vs2)
+                    LMUL_2: if (|insn.varith_type.rs2[0:0]) illegal_insn = 1'b1;
+                    LMUL_4: if (|insn.varith_type.rs2[1:0]) illegal_insn = 1'b1;
+                    LMUL_8: if (|insn.varith_type.rs2[2:0]) illegal_insn = 1'b1;
+                    LMUL_RSVD: illegal_insn = 1'b1;
+                    default: ;
+                  endcase
+                end
+
+                // Other OPIVV instructions retain their existing group checks.
                 unique case (ara_req.emul)
                   LMUL_2: if ((insn.varith_type.rs1 & 5'b00001) != 5'b00000 ||
                         (insn.varith_type.rs2 & 5'b00001) != 5'b00000 ||
@@ -1886,6 +1924,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   default: illegal_insn = 1'b1;
                 endcase
 
+                if (reduction_result(ara_req.op)) begin
+                  ara_req.emul = LMUL_1;
+                  lmul_vs1 = LMUL_1;
+                end
+
                 // Instructions with an integer LMUL have extra constraints on the registers they can
                 // access. These constraints can be different for the two source operands and the
                 // destination register.
@@ -2544,6 +2587,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     end
                     default: illegal_insn = 1'b1;
                   endcase
+
+                  if (reduction_result(ara_req.op)) begin
+                    ara_req.emul = LMUL_1;
+                    lmul_vs1 = LMUL_1;
+                  end
 
                   // Instructions with an integer LMUL have extra constraints on the registers they
                   // can access. The constraints can be different for the two source operands and the
@@ -3384,6 +3432,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
               acc_resp_o.resp_valid = 1'b1;
               is_config        = 1'b1;
 
+              // acc_req_i.rs1 is the operand value, not instruction bits [19:15].
+              // Both register and immediate forms use the low CSR-width bits.
               unique case (instr.itype.funct3)
                 3'b001: begin // csrrw
                   // Decode the CSR.
@@ -3394,16 +3444,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       acc_resp_o.result = csr_vstart_q;
                     end
                     riscv::CSR_VXRM: begin
-                      csr_vxrm_d            = vxrm_t'(acc_req_i.rs1[16:15]);
+                      csr_vxrm_d            = vxrm_t'(acc_req_i.rs1[1:0]);
                       acc_resp_o.result = vlen_t'(csr_vxrm_q);
                     end
                     riscv::CSR_VXSAT: begin
-                      csr_vxsat_d           = vxsat_e'(acc_req_i.rs1[15]);
+                      csr_vxsat_d           = vxsat_e'(acc_req_i.rs1[0]);
                       acc_resp_o.result = vlen_t'(csr_vxsat_q);
                     end
                     riscv::CSR_VCSR: begin
-                      csr_vxrm_d            = vxrm_t'(  acc_req_i.rs1[17:16]  );
-                      csr_vxsat_d           = vxsat_e'( acc_req_i.rs1[15]    );
+                      csr_vxrm_d            = vxrm_t'(  acc_req_i.rs1[2:1]  );
+                      csr_vxsat_d           = vxsat_e'( acc_req_i.rs1[0]    );
                       acc_resp_o.result = vlen_t'(  { csr_vxrm_q, csr_vxsat_q } );
                     end
                     default: illegal_insn = 1'b1;
@@ -3432,16 +3482,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       else illegal_insn = 1'b1;
                     end
                     riscv::CSR_VXRM: begin
-                      csr_vxrm_d            = csr_vxrm_q | vxrm_t'(acc_req_i.rs1[16:15]);
+                      csr_vxrm_d            = csr_vxrm_q | vxrm_t'(acc_req_i.rs1[1:0]);
                       acc_resp_o.result = vlen_t'(csr_vxrm_q);
                     end
                     riscv::CSR_VXSAT: begin
-                      csr_vxsat_d           = csr_vxsat_q | vxsat_e'(acc_req_i.rs1[15]);
+                      csr_vxsat_d           = csr_vxsat_q | vxsat_e'(acc_req_i.rs1[0]);
                       acc_resp_o.result = vlen_t'(csr_vxsat_q);
                     end
                     riscv::CSR_VCSR: begin
-                      csr_vxrm_d            = csr_vxrm_q  | vxrm_t'(acc_req_i.rs1[17:16]);
-                      csr_vxsat_d           = csr_vxsat_q | vxsat_e'(acc_req_i.rs1[15]);
+                      csr_vxrm_d            = csr_vxrm_q  | vxrm_t'(acc_req_i.rs1[2:1]);
+                      csr_vxsat_d           = csr_vxsat_q | vxsat_e'(acc_req_i.rs1[0]);
                       acc_resp_o.result = vlen_t'(  { csr_vxrm_q, csr_vxsat_q } );
                     end
                     default: illegal_insn = 1'b1;
@@ -3474,11 +3524,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       acc_resp_o.result = csr_vxsat_q;
                     end
                     riscv::CSR_VXRM: begin
-                      csr_vxrm_d           = csr_vxrm_q & ~vxsat_e'(acc_req_i.rs1[1:0]);
+                      csr_vxrm_d           = csr_vxrm_q & ~vxrm_t'(acc_req_i.rs1[1:0]);
                       acc_resp_o.result = csr_vxrm_q;
                     end
                     riscv::CSR_VCSR: begin
-                      csr_vxrm_d            = csr_vxrm_q  & ~vxsat_e'(acc_req_i.rs1[2:1]);
+                      csr_vxrm_d            = csr_vxrm_q  & ~vxrm_t'(acc_req_i.rs1[2:1]);
                       csr_vxsat_d           = csr_vxsat_q & ~vxsat_e'(acc_req_i.rs1[0]);
                       acc_resp_o.result = vlen_t'(  { csr_vxrm_q, csr_vxsat_q } );
                     end
@@ -3502,10 +3552,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       acc_resp_o.result = csr_vxsat_q;
                     end
                     riscv::CSR_VCSR: begin
-                      // logic [19:15] rs1; So, LSB is [15]
                       csr_vxrm_d            = vxrm_t'(acc_req_i.rs1[2:1]);
                       csr_vxsat_d           = vxsat_e'(acc_req_i.rs1[0]);
-                      acc_resp_o.result = csr_vxsat_q;
+                      acc_resp_o.result = vlen_t'({csr_vxrm_q, csr_vxsat_q});
                     end
                     default: illegal_insn = 1'b1;
                   endcase
@@ -3578,7 +3627,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       acc_resp_o.result = csr_vxsat_q;
                     end
                     riscv::CSR_VXRM: begin
-                      csr_vxrm_d           = csr_vxrm_q & ~vxsat_e'(acc_req_i.rs1[1:0]);
+                      csr_vxrm_d           = csr_vxrm_q & ~vxrm_t'(acc_req_i.rs1[1:0]);
                       acc_resp_o.result = csr_vxrm_q;
                     end
                     riscv::CSR_VCSR: begin
@@ -3679,13 +3728,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         acc_resp_o.resp_valid = 1'b0;
         ara_req_valid  = 1'b0;
 
-        // Initialize the reshuffle counter limit to handle LMUL > 1
-        unique case (ara_req.emul)
-          LMUL_2:  rs_lmul_cnt_limit_d = 1;
-          LMUL_4:  rs_lmul_cnt_limit_d = 3;
-          LMUL_8:  rs_lmul_cnt_limit_d = 7;
-          default: rs_lmul_cnt_limit_d = 0;
-        endcase
+        // Existing non-reduction bounds are unchanged. Reduction sources may
+        // span data LMUL while their scalar seed/result must stop at one register.
+        rs_lmul_limits_d = {3{register_count_minus_one(ara_req.emul)}};
+        if (reduction_result(ara_req.op))
+          rs_lmul_limits_d = {3'd0, register_count_minus_one(lmul_vs2), 3'd0};
 
         // Save info for next reshuffles
         reshuffle_eew_vs1_d = ara_req.eew_vs1;

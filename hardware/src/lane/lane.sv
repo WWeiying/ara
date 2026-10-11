@@ -68,6 +68,16 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output elen_t                                          stu_operand_o,
     output logic                                           stu_operand_valid_o,
     input  logic                                           stu_operand_ready_i,
+    // Dedicated RCE local-result and completion ownership interfaces.
+    output ara_rce_pkg::rce_partial_t rce_partial_o,
+    output logic rce_partial_valid_o,
+    input logic rce_partial_ready_i,
+    input ara_rce_pkg::rce_result_t rce_result_i,
+    input logic rce_result_valid_i,
+    output logic rce_result_ready_o,
+    output logic rce_can_retire_o,
+    output logic [NrVInsn-1:0] rce_fp_retire_ready_o,
+    input logic rce_retire_i,
     // Interface with the Slide/Address Generation unit
     output elen_t                                          sldu_addrgen_operand_o,
     output logic                                           sldu_operand_valid_o,
@@ -542,6 +552,24 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic sldu_alu_req_valid_o, sldu_mfpu_req_valid_o;
   logic sldu_alu_ready, sldu_mfpu_ready;
   logic alu_red_complete, fpu_red_complete;
+  ara_rce_pkg::rce_partial_t rce_partial_local;
+  logic rce_partial_local_valid, rce_partial_local_ready;
+
+
+  typedef enum logic [2:0] {
+    SLDU_SEL    = 3'd0,
+    ADDRGEN_SEL = 3'd1,
+    ALU_RED_SEL = 3'd2,
+    FPU_RED_SEL = 3'd3,
+    RCE_RED_SEL = 3'd4,
+    RCE_FP_RED_SEL = 3'd5
+  } sldu_addrgen_sel_e;
+  typedef enum logic [1:0] {
+    MUX_OPQUEUE_SEL = 2'd0,
+    MUX_ALU_SEL     = 2'd1,
+    MUX_FPU_SEL     = 2'd2
+  } sldu_addrgen_mux_sel_e;
+  sldu_addrgen_sel_e sldu_addrgen_sel_d, sldu_addrgen_sel_q;
 
   vector_fus_stage #(
     .NrLanes        (NrLanes        ),
@@ -573,6 +601,16 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .mfpu_vinsn_done_o    (mfpu_vinsn_done                        ),
     // Interface with the SLDU/ADDRGEN arbiter
     .alu_red_complete_o   (alu_red_complete                       ),
+    .rce_select_fp_i(sldu_addrgen_sel_q == RCE_FP_RED_SEL),
+    .rce_partial_o(rce_partial_local),
+    .rce_partial_valid_o(rce_partial_local_valid),
+    .rce_partial_ready_i(rce_partial_local_ready),
+    .rce_result_i(rce_result_i),
+    .rce_result_valid_i(rce_result_valid_i),
+    .rce_result_ready_o(rce_result_ready_o),
+    .rce_can_retire_o(rce_can_retire_o),
+    .rce_fp_retire_ready_o(rce_fp_retire_ready_o),
+    .rce_retire_i(rce_retire_i),
     .fpu_red_complete_o   (fpu_red_complete                       ),
     // Interface with the operand requester
     // ALU
@@ -629,23 +667,18 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // This bus is connected to ALU, FPU, and one operand queue.
   // Arbitration is necessary due to the serialization on the unique databus.
   // The easiest form of arbitration is to follow instruction order.
-  typedef enum logic [1:0] {
-    SLDU_SEL    = 2'd0,
-    ADDRGEN_SEL = 2'd1,
-    ALU_RED_SEL = 2'd2,
-    FPU_RED_SEL = 2'd3
-  } sldu_addrgen_sel_e;
-  typedef enum logic [1:0] {
-    MUX_OPQUEUE_SEL = 2'd0,
-    MUX_ALU_SEL     = 2'd1,
-    MUX_FPU_SEL     = 2'd2
-  } sldu_addrgen_mux_sel_e;
-  sldu_addrgen_sel_e sldu_addrgen_sel_d, sldu_addrgen_sel_q;
   sldu_addrgen_mux_sel_e sldu_addrgen_mux_sel;
   logic sldu_addrgen_arbiter_push, sldu_addrgen_arbiter_pop, sldu_addrgen_arbiter_empty;
 
   ara_op_e vfu_operation_op_q;
   logic vfu_operation_valid_q;
+  logic vfu_operation_rce_q;
+  logic vfu_operation_fp_rce_q;
+  `FF(vfu_operation_fp_rce_q, ara_rce_pkg::rce_fp_word(vfu_operation.op, vfu_operation.vtype.vsew) &&
+      (vfu_operation.global_vl != 0), 1'b0, clk_i, rst_ni);
+  `FF(vfu_operation_rce_q, ara_rce_pkg::RceIntEnable &&
+      (vfu_operation.op inside {[VREDSUM:VWREDSUM]}) &&
+      (vfu_operation.global_vl != 0), 1'b0, clk_i, rst_ni);
   logic sldu_operand_opqueues_valid;
 
   // Selector FIFO to enforce instruction order
@@ -688,11 +721,12 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
           sldu_addrgen_arbiter_push = 1'b1;
         end
         [VREDSUM:VWREDSUM]: begin
-          sldu_addrgen_sel_d = ALU_RED_SEL;
+          sldu_addrgen_sel_d = vfu_operation_rce_q ? RCE_RED_SEL : ALU_RED_SEL;
           sldu_addrgen_arbiter_push = 1'b1;
         end
         [VFREDUSUM:VFWREDOSUM]: begin
-          sldu_addrgen_sel_d = FPU_RED_SEL;
+          sldu_addrgen_sel_d = vfu_operation_fp_rce_q
+            ? RCE_FP_RED_SEL : FPU_RED_SEL;
           sldu_addrgen_arbiter_push = 1'b1;
         end
         default:;
@@ -711,6 +745,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
         ALU_RED_SEL: begin
           sldu_addrgen_arbiter_pop = alu_red_complete;
         end
+        RCE_RED_SEL, RCE_FP_RED_SEL: begin
+          sldu_addrgen_arbiter_pop = rce_partial_valid_o && rce_partial_ready_i;
+        end
         FPU_RED_SEL: begin
           sldu_addrgen_arbiter_pop = fpu_red_complete;
         end
@@ -720,8 +757,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
     // MUX the alu, fpu, and opqueue stream
     unique case (sldu_addrgen_sel_q)
-      ALU_RED_SEL: sldu_addrgen_mux_sel = MUX_ALU_SEL;
-      FPU_RED_SEL: sldu_addrgen_mux_sel = MUX_FPU_SEL;
+      ALU_RED_SEL, RCE_RED_SEL: sldu_addrgen_mux_sel = MUX_ALU_SEL;
+      FPU_RED_SEL, RCE_FP_RED_SEL: sldu_addrgen_mux_sel = MUX_FPU_SEL;
       default: sldu_addrgen_mux_sel = MUX_OPQUEUE_SEL;
     endcase
   end
@@ -731,14 +768,26 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .DATA_T(elen_t),
     .N_INP (3) // ALU, FPU, OpQueue
   ) i_sldu_addrgen_stream_mux (
-    .inp_data_i ({mfpu_result_wdata, alu_result_wdata, sldu_addrgen_operand_opqueues}),
-    .inp_valid_i({sldu_mfpu_req_valid_o, sldu_alu_req_valid_o, sldu_operand_opqueues_valid}),
+    .inp_data_i ({
+      (sldu_addrgen_sel_q == RCE_FP_RED_SEL ? rce_partial_local.data : mfpu_result_wdata),
+      (sldu_addrgen_sel_q == RCE_RED_SEL ? rce_partial_local.data : alu_result_wdata),
+      sldu_addrgen_operand_opqueues}),
+    .inp_valid_i({
+      (sldu_addrgen_sel_q == RCE_FP_RED_SEL ? rce_partial_local_valid : sldu_mfpu_req_valid_o),
+      (sldu_addrgen_sel_q == RCE_RED_SEL ? rce_partial_local_valid : sldu_alu_req_valid_o),
+      sldu_operand_opqueues_valid}),
     .inp_ready_o({sldu_mfpu_gnt, sldu_alu_gnt, sldu_operand_opqueues_ready}),
     .inp_sel_i  (sldu_addrgen_mux_sel),
     .oup_data_o (sldu_addrgen_operand_o),
     .oup_valid_o(sldu_operand_valid_o),
     .oup_ready_i(sldu_operand_ready_i)
   );
+
+  assign rce_partial_o = rce_partial_local;
+  assign rce_partial_valid_o = (sldu_addrgen_sel_q inside {RCE_RED_SEL, RCE_FP_RED_SEL}) &&
+                               rce_partial_local_valid;
+  assign rce_partial_local_ready = (sldu_addrgen_sel_q inside {RCE_RED_SEL, RCE_FP_RED_SEL}) &&
+                                   rce_partial_ready_i;
 
   // OpQueue-valid DEMUX
   // Ready can come from either addrgen or sldu
@@ -774,5 +823,14 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   if (NrLanes == 0)
     $error("[lane] Ara needs to have at least one lane.");
+
+`ifndef SYNTHESIS
+  if (ara_rce_pkg::RceExactEgressReleaseEnable) begin : gen_egress_owner_check
+    a_fp_egress_pop_has_owner: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      fpu_red_complete |-> !sldu_addrgen_arbiter_empty &&
+        sldu_addrgen_sel_q == FPU_RED_SEL);
+  end
+`endif
 
 endmodule : lane

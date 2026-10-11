@@ -33,6 +33,7 @@
     logic                              load_complete;                        \
     logic [4:0]                        fflags;                               \
     logic                              fflags_valid;                         \
+    logic                              fp_csr_busy;                          \
     logic                              inval_valid;                          \
     logic [63:0]                       inval_addr;                           \
   } accelerator_resp_t;

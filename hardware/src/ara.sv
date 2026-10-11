@@ -269,6 +269,7 @@ module ara import ara_pkg::*; #(
   // Mask unit operands
   elen_t     [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand;
   logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_valid;
+  logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_valid_masku;
   logic      [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_ready_masku, masku_operand_ready_lane;
   strb_t     [NrLanes-1:0]                     mask;
   logic      [NrLanes-1:0]                     mask_valid;
@@ -321,9 +322,16 @@ module ara import ara_pkg::*; #(
 
   // Scalar move support
   always_comb begin
+    masku_operand_valid_masku = masku_operand_valid;
     masku_operand_ready_lane = masku_operand_ready_masku;
     // The scalar move fetches the data from lane 0 - MaskB OpQueue (idx == 1)
     masku_operand_ready_lane[0][1] = masku_operand_ready_masku[0][1] | pe_scalar_resp_ready;
+    // A scalar extraction owns lane 0's MaskB transaction. Neither the MASKU
+    // spill register nor its ready signal may consume that transaction.
+    if (pe_req.op inside {VMVXS, VFMVFS}) begin
+      masku_operand_valid_masku[0][1] = 1'b0;
+      masku_operand_ready_lane[0][1] = pe_scalar_resp_ready;
+    end
   end
 
   /////////////
@@ -343,6 +351,31 @@ module ara import ara_pkg::*; #(
   sldu_mux_e                                   sldu_mux_sel;
   logic                                        addrgen_operand_ready;
   logic      [NrLanes-1:0]                     sldu_red_valid;
+
+  // Integer RCE integration shares the physical lane egress, but has its own
+  // receive contexts and return channel. Completion stays owned by the lanes
+  // until the actual lane-zero VRF write grant.
+  ara_rce_pkg::rce_partial_t [NrLanes-1:0] rce_partial, rce_input;
+  logic [NrLanes-1:0] rce_partial_valid, rce_partial_ready;
+  logic [NrLanes-1:0] rce_can_retire, rce_wb_ready;
+  ara_rce_pkg::rce_result_t rce_result;
+  logic rce_wb_valid, rce_retire;
+  logic [NrLanes-1:0][NrVInsn-1:0] rce_fp_retire_ready;
+  ara_rce_pkg::rce_result_t rce_exact_completion;
+  logic rce_exact_completion_valid, rce_exact_completion_ready;
+  logic [NrLanes-1:0] sldu_operand_valid_legacy, sldu_operand_ready_legacy;
+  pe_resp_t sldu_pe_resp;
+  logic rce_request;
+  ara_rce_pkg::rce_exact_command_t rce_exact_cmd;
+  ara_rce_pkg::rce_exact_result_t rce_exact_result;
+  ara_rce_pkg::rce_exact_events_t rce_exact_events;
+  elen_t [NrLanes-1:0] rce_exact_operand;
+  logic [NrLanes-1:0] rce_exact_operand_valid, rce_exact_operand_ready;
+  logic rce_exact_cmd_valid, rce_exact_cmd_ready, rce_exact_seed_ready;
+  logic [31:0] rce_exact_seed_data;
+  logic rce_exact_local_complete, rce_exact_result_valid, rce_exact_result_ready;
+  logic [NrLanes-1:0] rce_exact_lane_consumed;
+
 
   // Results
   // Load Unit
@@ -403,6 +436,15 @@ module ara import ara_pkg::*; #(
       .pe_req_valid_i                  (pe_req_valid                        ),
       .pe_vinsn_running_i              (pe_vinsn_running                    ),
       .pe_req_ready_o                  (pe_req_ready[lane]                  ),
+      .rce_partial_o(rce_partial[lane]),
+      .rce_partial_valid_o(rce_partial_valid[lane]),
+      .rce_partial_ready_i(rce_partial_ready[lane]),
+      .rce_result_i(rce_result),
+      .rce_result_valid_i(rce_wb_valid),
+      .rce_result_ready_o(rce_wb_ready[lane]),
+      .rce_can_retire_o(rce_can_retire[lane]),
+      .rce_fp_retire_ready_o(rce_fp_retire_ready[lane]),
+      .rce_retire_i(rce_retire),
       .pe_resp_o                       (pe_resp[lane]                       ),
       .alu_vinsn_done_o                (alu_vinsn_done[lane]                ),
       .minmax_active_o                (minmax_active[lane]),
@@ -587,6 +629,102 @@ module ara import ara_pkg::*; #(
   // Interface with the Mask Unit
   logic sldu_mask_ready;
 
+  if (ara_rce_pkg::RceEnable) begin : gen_rce
+    ara_rce_pkg::rce_command_t command;
+    logic command_valid, command_ready, result_valid, result_ready;
+    ara_rce_pkg::rce_result_t word_result;
+    logic word_result_valid, word_result_ready, select_exact;
+    logic [NrLanes-1:0] exact_owner_ready;
+    for (genvar l = 0; l < NrLanes; l++) begin
+      assign exact_owner_ready[l] = rce_fp_retire_ready[l][rce_exact_completion.id];
+    end
+    assign select_exact = ara_rce_pkg::RceExactDirectEnable &&
+                          rce_exact_completion_valid && (&exact_owner_ready);
+    assign rce_result = select_exact ? rce_exact_completion : word_result;
+    assign result_valid = select_exact ? rce_exact_completion_valid : word_result_valid;
+    assign word_result_ready = result_ready && !select_exact;
+    assign rce_exact_completion_ready = result_ready && select_exact;
+    logic [NrVInsn-1:0] seen_q;
+    assign rce_request = (pe_req.vl != 0) &&
+      ((ara_rce_pkg::RceIntEnable && pe_req.op inside {[VREDSUM:VWREDSUM]}) ||
+       ara_rce_pkg::rce_fp_word(pe_req.op, pe_req.vtype.vsew));
+    assign command = '{id: pe_req.id, op: pe_req.op, eew: pe_req.vtype.vsew,
+      vd: pe_req.vd, vd_version: pe_req.vd_version, fp_rm: pe_req.fp_rm, vl_zero: 1'b0,
+      seed_mode: pe_req.late_seed ? ara_rce_pkg::RCE_SEED_WAIT : ara_rce_pkg::RCE_SEED_EMBEDDED,
+      seed_producer: pe_req.seed_producer_id, seed_register: pe_req.vs1,
+      seed_version: pe_req.seed_version, default: '0};
+    assign command_valid = pe_req_valid && rce_request && !seen_q[pe_req.id];
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) seen_q <= '0;
+      else begin
+        seen_q <= seen_q & pe_vinsn_running;
+        if (command_valid && command_ready) seen_q[pe_req.id] <= 1'b1;
+      end
+    end
+    for (genvar l = 0; l < NrLanes; l++) begin
+      always_comb begin
+        rce_input[l] = rce_partial[l];
+        rce_input[l].data = sldu_addrgen_operand[l];
+      end
+      assign sldu_operand_valid_legacy[l] = sldu_operand_valid[l] && !rce_partial_valid[l];
+      assign sldu_operand_ready[l] = rce_partial_valid[l] ?
+                                    rce_partial_ready[l] : sldu_operand_ready_legacy[l];
+    end
+    // Initially preserve the sequencer's two shared slide/reduction credits.
+    // Serialize completion credit pulses; a one-bit queue counter must never
+    // lose simultaneous SLDU and RCE retirements. Independent RCE credit
+    // accounting can be introduced separately from the arithmetic migration.
+    assign rce_wb_valid = result_valid && (&rce_can_retire) &&
+                          !(|sldu_pe_resp.vinsn_done);
+    assign result_ready = rce_wb_valid && rce_wb_ready[0];
+    assign rce_retire = result_valid && result_ready;
+    always_comb begin
+      pe_resp[NrLanes+OffsetSlide] = sldu_pe_resp;
+      if (rce_retire && !select_exact) pe_resp[NrLanes+OffsetSlide].vinsn_done[rce_result.id] = 1'b1;
+    end
+    reduction_completion_engine #(.NrLanes(NrLanes), .ContextDepth(2)) i_rce (
+      .clk_i(clk_i), .rst_ni(rst_ni), .cmd_i(command),
+      .cmd_valid_i(command_valid), .cmd_ready_o(command_ready),
+      .partial_i(rce_input), .partial_valid_i(rce_partial_valid),
+      .partial_ready_o(rce_partial_ready), .seed_i('0), .seed_valid_i(1'b0),
+      .seed_ready_o(), .result_o(word_result), .result_valid_o(word_result_valid),
+      .result_ready_i(word_result_ready), .occupancy_o(),
+      .exact_cmd_i(rce_exact_cmd), .exact_cmd_valid_i(rce_exact_cmd_valid),
+      .exact_cmd_ready_o(rce_exact_cmd_ready), .exact_operand_i(rce_exact_operand),
+      .exact_operand_valid_i(rce_exact_operand_valid),
+      .exact_operand_ready_o(rce_exact_operand_ready),
+      .exact_seed_ready_i(rce_exact_seed_ready), .exact_seed_data_i(rce_exact_seed_data),
+      .exact_local_complete_o(rce_exact_local_complete),
+      .exact_lane_consumed_o(rce_exact_lane_consumed),
+      .exact_result_o(rce_exact_result), .exact_result_valid_o(rce_exact_result_valid),
+      .exact_result_ready_i(rce_exact_result_ready), .exact_events_o(rce_exact_events)
+
+    );
+`ifndef SYNTHESIS
+    a_reserved_completion_capacity: assert property (@(posedge clk_i) disable iff (!rst_ni)
+      command_valid |-> command_ready)
+      else $error("RCE command lacked its reserved sequencer credit");
+`endif
+  end else begin : gen_no_rce
+    assign rce_exact_completion_ready = 1'b0;
+    assign rce_exact_cmd_ready = 1'b0;
+    assign rce_exact_operand_ready = '0;
+    assign rce_exact_local_complete = 1'b0;
+    assign rce_exact_lane_consumed = '0;
+    assign rce_exact_result = '0;
+    assign rce_exact_result_valid = 1'b0;
+    assign rce_exact_events = '0;
+    assign rce_request = 1'b0;
+    assign rce_partial_ready = '0;
+    assign rce_result = '0;
+    assign rce_wb_valid = 1'b0;
+    assign rce_retire = 1'b0;
+    assign rce_input = '0;
+    assign sldu_operand_valid_legacy = sldu_operand_valid;
+    assign sldu_operand_ready = sldu_operand_ready_legacy;
+    assign pe_resp[NrLanes+OffsetSlide] = sldu_pe_resp;
+  end
+
   sldu #(
     .NrLanes  (NrLanes  ),
     .VLEN     (VLEN     ),
@@ -594,18 +732,31 @@ module ara import ara_pkg::*; #(
     .pe_req_t (pe_req_t ),
     .pe_resp_t(pe_resp_t)
   ) i_sldu (
+    .rce_completion_o(rce_exact_completion),
+    .rce_completion_valid_o(rce_exact_completion_valid),
+    .rce_completion_ready_i(rce_exact_completion_ready),
+
+    .rce_exact_cmd_o(rce_exact_cmd), .rce_exact_cmd_valid_o(rce_exact_cmd_valid),
+    .rce_exact_cmd_ready_i(rce_exact_cmd_ready), .rce_exact_operand_o(rce_exact_operand),
+    .rce_exact_operand_valid_o(rce_exact_operand_valid),
+    .rce_exact_operand_ready_i(rce_exact_operand_ready),
+    .rce_exact_seed_ready_o(rce_exact_seed_ready), .rce_exact_seed_data_o(rce_exact_seed_data),
+    .rce_exact_local_complete_i(rce_exact_local_complete),
+    .rce_exact_lane_consumed_i(rce_exact_lane_consumed),
+    .rce_exact_result_i(rce_exact_result), .rce_exact_result_valid_i(rce_exact_result_valid),
+    .rce_exact_result_ready_o(rce_exact_result_ready), .rce_exact_events_i(rce_exact_events),
     .clk_i                   (clk_i                            ),
     .rst_ni                  (rst_ni                           ),
     // Interface with the main sequencer
     .pe_req_i                (pe_req                           ),
-    .pe_req_valid_i          (pe_req_valid                     ),
+    .pe_req_valid_i          (pe_req_valid && !rce_request      ),
     .pe_vinsn_running_i      (pe_vinsn_running                 ),
     .pe_req_ready_o          (pe_req_ready[NrLanes+OffsetSlide]),
-    .pe_resp_o               (pe_resp[NrLanes+OffsetSlide]     ),
+    .pe_resp_o               (sldu_pe_resp                     ),
     // Interface with the lanes
     .sldu_operand_i          (sldu_addrgen_operand             ),
-    .sldu_operand_valid_i    (sldu_operand_valid               ),
-    .sldu_operand_ready_o    (sldu_operand_ready               ),
+    .sldu_operand_valid_i    (sldu_operand_valid_legacy        ),
+    .sldu_operand_ready_o    (sldu_operand_ready_legacy        ),
     .sldu_result_req_o       (sldu_result_req                  ),
     .sldu_result_addr_o      (sldu_result_addr                 ),
     .sldu_result_id_o        (sldu_result_id                   ),
@@ -644,7 +795,7 @@ module ara import ara_pkg::*; #(
     .result_scalar_valid_o   (result_scalar_valid             ),
     // Interface with the lanes
     .masku_operand_i         (masku_operand                   ),
-    .masku_operand_valid_i   (masku_operand_valid             ),
+    .masku_operand_valid_i   (masku_operand_valid_masku       ),
     .masku_operand_ready_o   (masku_operand_ready_masku       ),
     .masku_result_req_o      (masku_result_req                ),
     .masku_result_addr_o     (masku_result_addr               ),

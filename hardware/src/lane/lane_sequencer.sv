@@ -411,7 +411,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             target_fu  : ALU_SLDU,
             default    : '0
           };
-          operand_request_push[AluA] = pe_req.use_vs1;
+          operand_request_push[AluA] = pe_req.use_vs1 && !pe_req.late_seed;
 
           operand_request[AluB] = '{
             id         : pe_req.id,

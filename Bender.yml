@@ -28,6 +28,7 @@ sources:
     # Packages
     - hardware/include/rvv_pkg.sv
     - hardware/include/ara_pkg.sv
+    - hardware/include/ara_rce_pkg.sv
 
     # Sources
     # Level 0
@@ -46,6 +47,7 @@ sources:
     - hardware/src/lane/simd_mul.sv
     - hardware/src/lane/fp32_exact_reduction_finalize.sv
     - hardware/src/lane/fp32_exact_reduction_accum.sv
+    - hardware/src/reduction/reduction_completion_engine.sv
     - hardware/src/lane/vector_regfile.sv
     - hardware/src/lane/power_gating_generic.sv
     - hardware/src/masku/masku_operands.sv

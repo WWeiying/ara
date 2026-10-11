@@ -27,7 +27,16 @@ module fp32_exact_reduction_accum #(
   // it is already available. This keeps the special-value tree independent
   // of whether a producer is still running (late seed). Preserve seed
   // metadata for transport, but exclude it from the lane's numeric subtree.
-  parameter bit DeferSeed = 1'b0
+  parameter bit DeferSeed = 1'b0,
+  // With centralized rounding, ROUND_RESULT only clears an unused payload.
+  // Preserve the two normalization stages; optionally publish their registered
+  // exact state immediately afterwards. This does not change rounded mode.
+  parameter bit SkipUnroundedRoundStage =
+`ifdef ARA_RED_EXACT_NO_ROUND_BUBBLE
+    1'b1
+`else
+    1'b0
+`endif
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -802,7 +811,13 @@ module fp32_exact_reduction_accum #(
         end
         bank_special_d[0] =
           merge_special(bank_special_q[0], bank_special_q[1]);
-        state_d = ROUND_RESULT;
+        if (SkipUnroundedRoundStage && !EmitRoundedResult) begin
+          result_d = '0;
+          status_d = '0;
+          state_d = HOLD_RESULT;
+        end else begin
+          state_d = ROUND_RESULT;
+        end
       end
 
       ROUND_RESULT: begin

@@ -1,0 +1,172 @@
+diff --git a/hdl/control_mvp.sv b/hdl/control_mvp.sv
+index bda9c01fb7e4f24cc8392b3619eca32b79a89ac3..6bed8a7be66d08c539bb38fef382fe23ed8b2c59 100644
+--- a/hdl/control_mvp.sv
++++ b/hdl/control_mvp.sv
+@@ -74,6 +74,7 @@ module control_mvp
+ 
+    output logic                                       Ready_SO,
+    output logic                                       Done_SO,
++   output logic                                       Remainder_nonzero_SO,
+ 
+    output logic [C_MANT_FP64+4:0]                     Mant_result_prenorm_DO,
+  //  output logic [3:0]                                 Round_bit_DO,
+@@ -82,6 +83,10 @@ module control_mvp
+ 
+    logic  [C_MANT_FP64+1+4:0]                         Partial_remainder_DN,Partial_remainder_DP; //58bits,r=q+2
+    logic  [C_MANT_FP64+4:0]                           Quotient_DP; //57bits
++
++   // Keep the exactness information that lies below the generated quotient
++   // bits. Directed rounding needs it when all explicit rounding bits are zero.
++   assign Remainder_nonzero_SO = Special_case_dly_SBI && (|Partial_remainder_DP);
+    /////////////////////////////////////////////////////////////////////////////
+    // Assign Inputs                                                          //
+    /////////////////////////////////////////////////////////////////////////////
+diff --git a/hdl/defs_div_sqrt_mvp.sv b/hdl/defs_div_sqrt_mvp.sv
+index b3f41fec6175fdec0d146c0a5ae3e3cb51d4e8d3..aa5e0a56bc604c1c1832f97dcb8ecaa6f1aa6611 100644
+--- a/hdl/defs_div_sqrt_mvp.sv
++++ b/hdl/defs_div_sqrt_mvp.sv
+@@ -17,8 +17,9 @@ package defs_div_sqrt_mvp;
+    localparam C_RM                  = 3;
+    localparam C_RM_NEAREST          = 3'h0;
+    localparam C_RM_TRUNC            = 3'h1;
+-   localparam C_RM_PLUSINF          = 3'h2;
+-   localparam C_RM_MINUSINF         = 3'h3;
++   localparam C_RM_MINUSINF         = 3'h2;
++   localparam C_RM_PLUSINF          = 3'h3;
++   localparam C_RM_NEAREST_MAXMAG   = 3'h4;
+    localparam C_PC                  = 6; // Precision Control
+    localparam C_FS                  = 2; // Format Selection
+    localparam C_IUNC                = 2; // Iteration Unit Number Control
+diff --git a/hdl/div_sqrt_top_mvp.sv b/hdl/div_sqrt_top_mvp.sv
+index 3af6081b7fdb5fa6d8c3c80ed681a4405ccd4fab..146ac21b1c56c1345011359cd0eb16000f9e6a53 100644
+--- a/hdl/div_sqrt_top_mvp.sv
++++ b/hdl/div_sqrt_top_mvp.sv
+@@ -92,6 +92,7 @@ module div_sqrt_top_mvp
+    logic FP64_S;
+    logic FP16_S;
+    logic FP16ALT_S;
++   logic Remainder_nonzero_S;
+ 
+ 
+  preprocess_mvp  preprocess_U0
+@@ -148,6 +149,7 @@ module div_sqrt_top_mvp
+    .FP16ALT_SO            (FP16ALT_S          ),
+    .Ready_SO              (Ready_SO           ),
+    .Done_SO               (Done_SO            ),
++   .Remainder_nonzero_SO  (Remainder_nonzero_S),
+    .Exp_z_DO              (Exp_z_D            ),
+    .Mant_z_DO             (Mant_z_D           )
+     );
+@@ -169,6 +171,7 @@ module div_sqrt_top_mvp
+    .SNaN_SI               (SNaN_S             ),
+    .RM_SI                 (RM_dly_S           ),
+    .Full_precision_SI     (Full_precision_S   ),
++   .Remainder_nonzero_SI  (Remainder_nonzero_S),
+    .FP32_SI               (FP32_S             ),
+    .FP64_SI               (FP64_S             ),
+    .FP16_SI               (FP16_S             ),
+diff --git a/hdl/norm_div_sqrt_mvp.sv b/hdl/norm_div_sqrt_mvp.sv
+index 97ba25b7316afb899501646a7f098f36f6e867ac..d075fac25f43401e17d49944fe19446def57e954 100644
+--- a/hdl/norm_div_sqrt_mvp.sv
++++ b/hdl/norm_div_sqrt_mvp.sv
+@@ -59,6 +59,7 @@ module norm_div_sqrt_mvp
+    input logic                                  SNaN_SI,
+    input logic [C_RM-1:0]                       RM_SI,
+    input logic                                  Full_precision_SI,
++   input logic                                  Remainder_nonzero_SI,
+    input logic                                  FP32_SI,
+    input logic                                  FP64_SI,
+    input logic                                  FP16_SI,
+@@ -108,7 +109,19 @@ module norm_div_sqrt_mvp
+    //normalization
+    logic [1:0]                                  Mant_lower_D;
+    logic                                        Mant_sticky_bit_D;
+-   logic [C_MANT_FP64+4:0]                      Mant_forround_D;
++  logic [C_MANT_FP64+4:0]                      Mant_forround_D;
++
++  logic                                        Overflow_to_inf_S;
++  always_comb begin
++    unique case (RM_SI)
++      C_RM_NEAREST,
++      C_RM_NEAREST_MAXMAG: Overflow_to_inf_S = 1'b1;
++      C_RM_TRUNC:          Overflow_to_inf_S = 1'b0;
++      C_RM_PLUSINF:        Overflow_to_inf_S = ~Sign_in_DI;
++      C_RM_MINUSINF:       Overflow_to_inf_S = Sign_in_DI;
++      default:             Overflow_to_inf_S = 1'b1;
++    endcase
++  end
+ 
+    always_comb
+      begin
+@@ -288,8 +301,8 @@ module norm_div_sqrt_mvp
+           Div_Zero_S=1'b0;
+           Exp_OF_S=1'b1;
+           Exp_UF_S=1'b0;
+-          Mant_res_norm_D='0;
+-          Exp_res_norm_D='1;
++          Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
++          Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+           Mant_forround_D='0;
+           Sign_res_D=Sign_in_DI;
+           NV_OP_S = 1'b0;
+@@ -313,8 +326,8 @@ module norm_div_sqrt_mvp
+               Div_Zero_S=1'b0;
+               Exp_OF_S=1'b1;
+               Exp_UF_S=1'b0;
+-              Mant_res_norm_D= '0;
+-              Exp_res_norm_D='1;
++              Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
++              Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+               Mant_forround_D='0;
+               Sign_res_D=Sign_in_DI;
+               NV_OP_S = 1'b0;
+@@ -324,8 +337,8 @@ module norm_div_sqrt_mvp
+               Div_Zero_S=1'b0;
+               Exp_OF_S=1'b1;
+               Exp_UF_S=1'b0;
+-              Mant_res_norm_D= '0;
+-              Exp_res_norm_D='1;
++              Mant_res_norm_D=Overflow_to_inf_S ? '0 : '1;
++              Exp_res_norm_D=Overflow_to_inf_S ? '1 : ({C_EXP_FP64{1'b1}} - 1'b1);
+               Mant_forround_D='0;
+               Sign_res_D=Sign_in_DI;
+               NV_OP_S = 1'b0;
+@@ -379,7 +392,8 @@ module norm_div_sqrt_mvp
+         begin
+           Mant_upper_D = Mant_res_norm_D[C_MANT_FP64:0];
+           Mant_lower_D = Mant_forround_D[C_MANT_FP64+4:C_MANT_FP64+3];
+-          Mant_sticky_bit_D = | Mant_forround_D[C_MANT_FP64+3:0];
++          Mant_sticky_bit_D = (|Mant_forround_D[C_MANT_FP64+3:0]) |
++                              Remainder_nonzero_SI;
+         end
+       else if(FP16_SI)
+         begin
+@@ -406,6 +420,8 @@ module norm_div_sqrt_mvp
+         case (RM_SI)
+           C_RM_NEAREST :
+             Mant_roundUp_S = Mant_lower_D[1] && ((Mant_lower_D[0] | Mant_sticky_bit_D )| ( (FP32_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP32]) | (FP64_SI&&Mant_upper_D[0]) | (FP16_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP16]) | (FP16ALT_SI&&Mant_upper_D[C_MANT_FP64-C_MANT_FP16ALT]) ) );
++          C_RM_NEAREST_MAXMAG:
++            Mant_roundUp_S = Mant_lower_D[1];
+           C_RM_TRUNC   :
+             Mant_roundUp_S = 0;
+           C_RM_PLUSINF :
+diff --git a/hdl/nrbd_nrsc_mvp.sv b/hdl/nrbd_nrsc_mvp.sv
+index 62bd147f6127d97b90e5a689eefe1a1c33db83bb..1fdd3823a3dd9400fe34e21a3b03b64624007b73 100644
+--- a/hdl/nrbd_nrsc_mvp.sv
++++ b/hdl/nrbd_nrsc_mvp.sv
+@@ -61,6 +61,7 @@ module nrbd_nrsc_mvp
+    output logic                                FP16ALT_SO,
+    output logic                                Ready_SO,
+    output logic                                Done_SO,
++   output logic                                Remainder_nonzero_SO,
+    output logic  [C_MANT_FP64+4:0]             Mant_z_DO,
+    output logic [C_EXP_FP64+1:0]               Exp_z_DO
+     );
+@@ -95,6 +96,7 @@ control_mvp         control_U0
+    .FP16ALT_SO                               (FP16ALT_SO                      ),
+    .Ready_SO                                 (Ready_SO                        ),
+    .Done_SO                                  (Done_SO                         ),
++   .Remainder_nonzero_SO                     (Remainder_nonzero_SO            ),
+    .Mant_result_prenorm_DO                   (Mant_z_DO                       ),
+    .Exp_result_prenorm_DO                    (Exp_z_DO                        )
+ );

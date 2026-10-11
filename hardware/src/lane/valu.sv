@@ -34,6 +34,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     output logic           [NrVInsn-1:0] alu_vinsn_done_o,
     // Interface with the lane
     output logic                         alu_red_complete_o,
+    // Dedicated completion path; retirement is separate from local handoff.
+    output ara_rce_pkg::rce_partial_t     rce_partial_o,
+    output logic                         rce_partial_valid_o,
+    input  logic                         rce_partial_ready_i,
+    input  ara_rce_pkg::rce_result_t      rce_result_i,
+    input  logic                         rce_result_valid_i,
+    output logic                         rce_result_ready_o,
+    output logic                         rce_can_retire_o,
+    input  logic                         rce_retire_i,
     // Interface with the operand queues
     input  elen_t          [1:0]         alu_operand_i,
     input  logic           [1:0]         alu_operand_valid_i,
@@ -63,6 +72,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   );
 
   import cf_math_pkg::idx_width;
+  import ara_rce_pkg::*;
   `include "common_cells/registers.svh"
 
   /////////////
@@ -133,7 +143,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   //  Result queue  //
   ////////////////////
 
-  localparam int unsigned ResultQueueDepth = 2;
+  localparam int unsigned ResultQueueDepth = RceIntEnable ? RceAluResultQueueDepth : 2;
 
   // There is a result queue per VFU, holding the results that were not
   // yet accepted by the corresponding lane.
@@ -145,6 +155,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     elen_t wdata;
     strb_t be;
     logic mask;
+    strb_t vxsat;
   } payload_t;
 
   // Result queue
@@ -160,6 +171,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   // Is the result queue full?
   logic result_queue_full;
+  logic result_queue_recycle, result_queue_space;
   assign result_queue_full = (result_queue_cnt_q == ResultQueueDepth);
 
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_result_queue_ff
@@ -187,7 +199,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   logic mask_operand_gnt;
 
   assign mask_operand_valid = result_queue_q[result_queue_read_pnt_q].mask
-                            & result_queue_valid_q[result_queue_read_pnt_q];
+                            & result_queue_valid_q[result_queue_read_pnt_q]
+                            // A younger MASKU result must not consume the
+                            // commit counter still owned by an RCE reduction.
+                            & !(RceIntEnable && vinsn_commit_valid &&
+                                uses_rce(vinsn_commit));
   assign mask_operand_gnt = mask_operand_valid & mask_operand_ready;
 
   spill_register #(
@@ -427,8 +443,15 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   `FF(alu_red_complete_o, alu_red_complete_d, 1'b0, clk_i, rst_ni);
 
   // Signal to indicate the state of the ALU
-  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION} alu_state_e;
+  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION, RCE_SEND, REDUCTION_WRITEBACK} alu_state_e;
   alu_state_e alu_state_d, alu_state_q;
+
+  function automatic logic uses_rce(vfu_operation_t insn);
+    return RceIntEnable && is_reduction(insn.op) && (insn.global_vl != 0);
+  endfunction
+  elen_t rce_accum_d, rce_accum_q, rce_seed_d, rce_seed_q;
+  logic rce_active_d, rce_active_q, rce_writeback;
+  logic [NrVInsn-1:0] rce_pending_d, rce_pending_q;
 
   // Reductions commit by zeroing the commit counter
   // When the workload is unbalanced, some lanes can start the operation with a zeroed commit counter
@@ -463,6 +486,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // Main Alu input MUXes
   // Operands can come from the input queues, from the other lanes, or from the reduction accumulator
   assign alu_operand_a  =
+                          uses_rce(vinsn_issue_q) && vinsn_issue_q.late_seed &&
+                          alu_state_q == INTRA_LANE_REDUCTION && first_op_q
+                        ? rce_integer_identity(vinsn_issue_q.op, vinsn_issue_q.vtype.vsew) :
+                          uses_rce(vinsn_issue_q) &&
+                          alu_state_q == INTRA_LANE_REDUCTION && !first_op_q
+                        ? rce_accum_q :
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
                           red_stream_bg_exec
                         ? (red_stream_bg_first_q
@@ -551,12 +580,36 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     vinsn_queue_d = vinsn_queue_q;
     issue_cnt_d   = issue_cnt_q;
     commit_cnt_d  = commit_cnt_q;
+    rce_accum_d = rce_accum_q;
+    rce_seed_d = rce_seed_q;
+    rce_active_d = rce_active_q;
+    rce_pending_d = rce_pending_q;
+    rce_partial_o = '{id: vinsn_issue_q.id, data: rce_accum_q,
+      source_active: rce_active_q, fflags: '0,
+      seed_valid: lane_id_i == 0 && !vinsn_issue_q.late_seed, seed: rce_seed_q};
+    rce_partial_valid_o = 1'b0;
+    rce_result_ready_o = 1'b0;
+    rce_can_retire_o = RceIntEnable && vinsn_commit_valid &&
+      uses_rce(vinsn_commit) && rce_pending_q[vinsn_commit.id] &&
+      (vinsn_commit.id == rce_result_i.id);
+    rce_writeback = rce_can_retire_o && rce_result_valid_i && lane_id_i == 0;
 
     result_queue_d           = result_queue_q;
     result_queue_valid_d     = result_queue_valid_q;
     result_queue_read_pnt_d  = result_queue_read_pnt_q;
     result_queue_write_pnt_d = result_queue_write_pnt_q;
     result_queue_cnt_d       = result_queue_cnt_q;
+    // Reclaim the OLD head before packing a younger word. Commit accounting
+    // still uses q below; a same-slot enqueue must win over the old clear.
+    result_queue_recycle = RceQueueLookaheadEnable &&
+      alu_state_q == NO_REDUCTION &&
+      ((alu_result_gnt_i && !rce_writeback) || mask_operand_gnt);
+    result_queue_space = !result_queue_full || result_queue_recycle;
+    if (result_queue_recycle) begin
+      result_queue_valid_d[result_queue_read_pnt_q] = 1'b0;
+      result_queue_d[result_queue_read_pnt_q] = '0;
+    end
+
 
     narrowing_select_d = narrowing_select_q;
 
@@ -631,7 +684,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         NO_REDUCTION: begin
           // Do not accept operands if the result queue is full!
           // Do not accept operands from this state if the current instruction is a reduction
-          if (!result_queue_full && !is_reduction(vinsn_issue_q.op)) begin
+          if (result_queue_space && !is_reduction(vinsn_issue_q.op) &&
+              (!uses_rce(vinsn_commit) || RceMixedEnable)) begin
             // Do we have all the operands necessary for this instruction?
             if ((alu_operand_valid_i[1] || !vinsn_issue_q.use_vs2) &&
                 (alu_operand_valid_i[0] || !vinsn_issue_q.use_vs1) &&
@@ -653,7 +707,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 mask_ready_o = !vinsn_issue_q.vm;
 
               // Store the result in the result queue
-              result_queue_d[result_queue_write_pnt_q].wdata = result_queue_q[result_queue_write_pnt_q].wdata | valu_result;
+              result_queue_d[result_queue_write_pnt_q].wdata = result_queue_d[result_queue_write_pnt_q].wdata | valu_result;
+              if (RceIntEnable)
+                result_queue_d[result_queue_write_pnt_q].vxsat |= alu_vxsat;
               result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + ((vinsn_issue_q.vl - issue_cnt_q) >> (unsigned'(EW64) - unsigned'(vinsn_issue_q.vtype.vsew)));
               result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
               result_queue_d[result_queue_write_pnt_q].version =
@@ -726,11 +782,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           // delay the commit until we are over with the inter-lanes phase
           prevent_commit = 1'b1;
           // Stall only if this is the first operation for this reduction instruction and the result queue is full
-          if (!(first_op_q && result_queue_full)) begin
+          if (uses_rce(vinsn_issue_q) || !(first_op_q && result_queue_full)) begin
             // Do we have all the operands necessary for this instruction?
             // The second operand is needed only during the first operation of a reduction instruction
             if ((alu_operand_valid_i[1] || !vinsn_issue_q.use_vs2) &&
-                (alu_operand_valid_i[0] || !vinsn_issue_q.use_vs1 || !first_op_q) &&
+                (alu_operand_valid_i[0] || !vinsn_issue_q.use_vs1 || !first_op_q ||
+                 (uses_rce(vinsn_issue_q) && vinsn_issue_q.late_seed)) &&
                 (mask_valid_i || vinsn_issue_q.vm)) begin
               // How many elements are we committing with this word?
               automatic logic [6:0] element_cnt = element_cnt_issue;
@@ -745,10 +802,19 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               valu_valid = 1'b1;
 
               // Acknowledge the operands of this instruction
-              alu_operand_ready_o = {vinsn_issue_q.use_vs2, vinsn_issue_q.use_vs1 & first_op_q};
+              alu_operand_ready_o = {vinsn_issue_q.use_vs2,
+                vinsn_issue_q.use_vs1 & first_op_q & !vinsn_issue_q.late_seed};
               // Acknowledge the mask operands
               mask_ready_o = ~vinsn_issue_q.vm;
 
+              if (uses_rce(vinsn_issue_q)) begin
+                // RCE local state never borrows a normal writeback queue slot.
+                for (int b = 0; b < 8; b++)
+                  rce_accum_d[8*b +: 8] = red_mask[b] ?
+                    valu_result[8*b +: 8] : alu_operand_a[8*b +: 8];
+                rce_active_d = (first_op_q ? 1'b0 : rce_active_q) | (|red_mask);
+                if (first_op_q && !vinsn_issue_q.late_seed) rce_seed_d = alu_operand_i[0];
+              end else begin
               // Reduction instruction, accumulate the result
               for (int b = 0; b < 8; b++) begin
                 result_queue_d[result_queue_write_pnt_q].wdata[8*b +: 8] =
@@ -762,6 +828,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 vinsn_issue_q.vd_version;
               result_queue_d[result_queue_write_pnt_q].is_reduction = 1'b1;
               result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_issue_q.vtype.vsew);
+              end
 
               // The first operation of this instruction has just been done
               first_op_d = 1'b0;
@@ -771,9 +838,22 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               // Finished issuing the micro-operations of this vector instruction
               if (vinsn_issue_valid && issue_cnt_d == '0) begin
                 // We can start the inter-lanes reduction
-                alu_state_d = INTER_LANES_REDUCTION_TX;
+                alu_state_d = uses_rce(vinsn_issue_q) ? RCE_SEND : INTER_LANES_REDUCTION_TX;
               end
             end
+          end
+        end
+        RCE_SEND: begin
+          prevent_commit = 1'b1;
+          rce_partial_valid_o = 1'b1;
+          if (rce_partial_ready_i) begin
+            rce_pending_d[vinsn_issue_q.id] = 1'b1;
+            vinsn_queue_d.issue_cnt -= 1;
+            vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt == VInsnQueueDepth-1 ?
+              '0 : vinsn_queue_q.issue_pnt + 1'b1;
+            if (vinsn_queue_d.issue_cnt != 0)
+              issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
+            alu_state_d = NO_REDUCTION;
           end
         end
         INTER_LANES_REDUCTION_TX: begin
@@ -857,6 +937,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           commit_cnt_d = '0;
         end
         SIMD_REDUCTION: begin
+          // Finishing the horizontal fold only enqueues a scalar. Lane 0
+          // retains the architectural owner until that scalar wins the VRF.
+          prevent_commit = 1'b1;
           if (lane_id_i == '0) begin
             valu_valid = (simd_red_cnt_q != simd_red_cnt_max_q);
 
@@ -888,8 +971,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               if (vinsn_queue_d.issue_cnt != 0)
                 issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl;
 
-              // Commit and give the done to the main sequencer
-              commit_cnt_d = '0;
+              alu_state_d = REDUCTION_WRITEBACK;
 
               // Bump pointers and counters of the result queue
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -900,6 +982,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
             end
           end
+        end
+        REDUCTION_WRITEBACK: begin
+          prevent_commit = 1'b1;
         end
         default:;
       endcase
@@ -1032,8 +1117,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     alu_result_wdata_o = alu_red_valid_o
                        ? result_queue_q[result_queue_write_pnt_q].wdata
                        : result_queue_q[result_queue_read_pnt_q].wdata;
-    if (alu_state_q == NO_REDUCTION || (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
-      alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] & ((alu_state_q == SIMD_REDUCTION) || !result_queue_q[result_queue_read_pnt_q].mask);
+    if (alu_state_q inside {NO_REDUCTION, REDUCTION_WRITEBACK} ||
+        (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
+      alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] &
+        ((alu_state_q inside {SIMD_REDUCTION, REDUCTION_WRITEBACK}) ||
+         !result_queue_q[result_queue_read_pnt_q].mask);
     end else begin
       alu_result_req_o = 1'b0;
     end
@@ -1045,15 +1133,40 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       result_queue_q[result_queue_read_pnt_q].is_reduction;
     alu_result_be_o   = result_queue_q[result_queue_read_pnt_q].be;
 
+    if (RceIntEnable) begin
+      // Preserve per-VFU writeback order. The RCE has a separate completion
+      // slot, so younger normal results cannot prevent the older scalar write.
+      if (uses_rce(vinsn_commit)) alu_result_req_o = 1'b0;
+      if (rce_writeback) begin
+        alu_result_req_o = rce_result_i.write_enable;
+        alu_result_wdata_o = rce_result_i.data;
+        alu_result_addr_o = vaddr(rce_result_i.vd, NrLanes, VLEN);
+        alu_result_id_o = rce_result_i.id;
+        alu_result_version_o = rce_result_i.version;
+        alu_result_is_reduction_o = 1'b1;
+        alu_result_be_o = rce_result_i.be;
+        rce_result_ready_o = !rce_result_i.write_enable || alu_result_gnt_i;
+      end
+    end
+
     // alu saturation calculation
-    if (|result_queue_valid_q)
+    if (RceIntEnable) begin
+      // Mixed issue can buffer multiple ordinary results behind an older
+      // RCE completion. Flags must travel with the word and its byte enables;
+      // the one-cycle live ALU flag register may already name a younger word.
+      if ((alu_result_gnt_i && !rce_writeback) || mask_operand_gnt)
+        vxsat_flag_o = |(result_queue_q[result_queue_read_pnt_q].vxsat &
+                         result_queue_q[result_queue_read_pnt_q].be);
+    end else if (|result_queue_valid_q)
       vxsat_flag_o = |(alu_vxsat_q & result_queue_q[result_queue_read_pnt_q].be);
 
     // Received a grant from the VRF or MASKU.
     // Deactivate the request.
-    if (alu_result_gnt_i || mask_operand_gnt) begin
+    if ((alu_result_gnt_i && !rce_writeback) || mask_operand_gnt) begin
+      if (!result_queue_recycle) begin
       result_queue_valid_d[result_queue_read_pnt_q] = 1'b0;
       result_queue_d[result_queue_read_pnt_q]       = '0;
+      end
 
       // Increment the read pointer
       if (result_queue_read_pnt_q == ResultQueueDepth-1) result_queue_read_pnt_d = 0;
@@ -1062,15 +1175,28 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       // Decrement the counter of results waiting to be written
       result_queue_cnt_d -= 1;
 
-      // Decrement the counter of the instruction that owns this queued
-      // result.  A streamed reduction may retire internally before its final
-      // scalar wins the VRF port, so the live commit pointer can already name
-      // its successor here.  The queue-carried tag is the authoritative
-      // lifetime, just like its id/version/address payload.
+      // Classify the granted word from its queued payload. Issue-side
+      // execution may already belong to a background reduction; it must not
+      // determine how this result updates the architectural commit counter.
       if (!result_queue_q[result_queue_read_pnt_q].is_reduction) begin
         automatic logic [6:0] element_cnt = element_cnt_commit;
           commit_cnt_d = commit_cnt_q - element_cnt;
         if (commit_cnt_q < element_cnt) commit_cnt_d = '0;
+      end
+      if (alu_state_q == REDUCTION_WRITEBACK &&
+          result_queue_q[result_queue_read_pnt_q].is_reduction &&
+          result_queue_q[result_queue_read_pnt_q].id == vinsn_commit.id) begin
+        commit_cnt_d = '0;
+        prevent_commit = 1'b0;
+      end
+    end
+
+    if (uses_rce(vinsn_commit) && vinsn_commit_valid) begin
+      prevent_commit = 1'b1;
+      if (rce_retire_i && rce_can_retire_o) begin
+        commit_cnt_d = '0;
+        prevent_commit = 1'b0;
+        rce_pending_d[vinsn_commit.id] = 1'b0;
       end
     end
 
@@ -1089,7 +1215,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         commit_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt].vl;
 
       // If this was a reduction, clean the Lane SLDU/ADDRGEN arbiter
-      if (is_reduction(vinsn_commit.op)) begin
+      if (is_reduction(vinsn_commit.op) && !uses_rce(vinsn_commit)) begin
         alu_red_complete_d = 1'b1;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
         red_stream_retire_current = 1'b1;
@@ -1104,6 +1230,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       // Initialize counters and alu state if needed by the next instruction
       // After a reduction, the next instructions starts after the reduction commits
+      if (!uses_rce(vinsn_commit)) begin
       if (is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op) && (vinsn_queue_d.issue_cnt != '0)) begin
         // Initialize reduction-related sequential elements
         first_op_d              = 1'b1;
@@ -1114,6 +1241,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       end else begin
         alu_state_d = NO_REDUCTION;
       end
+      end
     end
 
     //////////////////////////////
@@ -1121,7 +1249,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     //////////////////////////////
 
     if (!vinsn_queue_full && vfu_operation_valid_i &&
-      (vfu_operation_i.vfu == VFU_Alu || vfu_operation_i.op inside {[VMSEQ:VCOMPRESS]})) begin
+      (vfu_operation_i.vfu == VFU_Alu ||
+       (vfu_operation_i.op inside {[VMSEQ:VCOMPRESS]} && vfu_operation_i.op != VID))) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = vfu_operation_i;
       // Do not wait for masks if, during a reduction, this lane is just a pass-through
       // The only valid instructions here with vl == '0 are reductions
@@ -1133,7 +1262,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       // Initialize counters and alu state if the instruction queue was empty
       // and the lane is not reducing
-      if ((vinsn_queue_d.issue_cnt == '0) && !prevent_commit
+      if ((vinsn_queue_d.issue_cnt == '0) &&
+          (!prevent_commit || (RceIntEnable && alu_state_q == NO_REDUCTION))
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
           && (red_stream_prefetched_count_q == '0)
           // A streamed reduction can have no remaining issue-side entry
@@ -1262,6 +1392,34 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     end
 `endif
 
+    // A successor can arrive after the final fold advanced issue, while the
+    // scalar still waits for writeback. Initialize its count only when that
+    // scalar retires, using the post-accept entry. A streamed successor has
+    // already consumed elements, so its independent progress must be kept.
+    if (alu_state_q == REDUCTION_WRITEBACK &&
+        alu_result_req_o && alu_result_gnt_i &&
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+        !red_stream_foreground_advanced_q &&
+`endif
+        vinsn_queue_d.issue_cnt != 0)
+      issue_cnt_d = vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt].vl;
+
+    // Local handoff may empty the issue queue in the same cycle that a new
+    // instruction is accepted. Read the post-accept descriptor: the legacy
+    // acceptance guard deliberately does not initialize state in RCE_SEND.
+    if (RceIntEnable && alu_state_q == RCE_SEND && rce_partial_ready_i &&
+        vinsn_queue_d.issue_cnt != 0)
+      issue_cnt_d = vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt].vl;
+
+    if (RceIntEnable && alu_state_d == NO_REDUCTION &&
+        vinsn_queue_d.issue_cnt != 0 &&
+        uses_rce(vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt]) &&
+        (vinsn_queue_d.issue_pnt == vinsn_queue_d.commit_pnt ||
+         (RceMixedEnable && uses_rce(vinsn_queue_d.vinsn[vinsn_queue_d.commit_pnt])))) begin
+      alu_state_d = INTRA_LANE_REDUCTION;
+      first_op_d = 1'b1;
+    end
+
     ///////////
     // Clear //
     ///////////
@@ -1275,6 +1433,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       issue_cnt_q             <= '0;
+      rce_accum_q <= '0; rce_seed_q <= '0; rce_active_q <= 1'b0; rce_pending_q <= '0;
       commit_cnt_q            <= '0;
       narrowing_select_q      <= 1'b0;
       simd_red_cnt_q          <= '0;
@@ -1306,6 +1465,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 `endif
     end else begin
       issue_cnt_q             <= issue_cnt_d;
+      rce_accum_q <= rce_accum_d; rce_seed_q <= rce_seed_d;
+      rce_active_q <= rce_active_d; rce_pending_q <= rce_pending_d;
       commit_cnt_q            <= commit_cnt_d;
       narrowing_select_q      <= narrowing_select_d;
       simd_red_cnt_q          <= simd_red_cnt_d;
@@ -1356,7 +1517,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
          (alu_state_q inside {INTER_LANES_REDUCTION_TX,
                               INTER_LANES_REDUCTION_RX,
                               LN0_REDUCTION_COMMIT,
-                              SIMD_REDUCTION}))
+                              SIMD_REDUCTION,
+                              REDUCTION_WRITEBACK}))
   ) else $error("integer reduction background ALU issue escaped tree overlap");
 
   a_integer_stream_completed_context_is_stable: assert property (
@@ -1414,13 +1576,72 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   a_alu_writeback_has_valid_queue_owner: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
-      alu_result_req_o |->
+      (alu_result_req_o && !rce_writeback) |->
         (result_queue_cnt_q != '0 &&
          result_queue_valid_q[result_queue_read_pnt_q] &&
          !$isunknown({alu_result_id_o, alu_result_version_o,
                       alu_result_addr_o, alu_result_be_o}))
   ) else $error("VALU writeback metadata has no valid result-queue owner");
 `endif
+`endif
+
+`ifndef SYNTHESIS
+  a_reduction_first_element_has_count: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      alu_state_q == INTRA_LANE_REDUCTION && first_op_q &&
+      vinsn_issue_valid && vinsn_issue_q.vl != 0 |-> issue_cnt_q != 0
+  ) else $error("integer reduction starts with a missing source element count");
+
+  a_legacy_reduction_retire_requires_writeback: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      lane_id_i == 0 && vinsn_commit_valid && vinsn_commit.global_vl != 0 &&
+      is_reduction(vinsn_commit.op) && !uses_rce(vinsn_commit) &&
+      alu_vinsn_done_o[vinsn_commit.id] |->
+        alu_state_q == REDUCTION_WRITEBACK && alu_result_req_o && alu_result_gnt_i &&
+        alu_result_id_o == vinsn_commit.id
+  ) else $error("legacy integer reduction retired before its scalar VRF grant");
+
+  a_legacy_reduction_holds_writeback: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      alu_state_q == REDUCTION_WRITEBACK && alu_result_req_o && !alu_result_gnt_i |=>
+        alu_result_req_o && $stable({alu_result_id_o, alu_result_version_o,
+                                    alu_result_addr_o, alu_result_wdata_o, alu_result_be_o})
+  ) else $error("legacy integer reduction changed a stalled scalar result");
+
+  if (RceIntEnable) begin : gen_rce_ownership_checks
+    a_partial_stable_until_handoff: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      rce_partial_valid_o && !rce_partial_ready_i |=>
+        rce_partial_valid_o && $stable(rce_partial_o));
+
+    a_local_start_has_elements: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      alu_state_q == INTRA_LANE_REDUCTION && uses_rce(vinsn_issue_q) &&
+      first_op_q && vinsn_issue_q.vl != 0 |-> issue_cnt_q != 0);
+
+    a_mask_result_has_commit_owner: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      mask_operand_gnt |-> vinsn_commit_valid &&
+        result_queue_q[result_queue_read_pnt_q].id == vinsn_commit.id);
+  end
+`endif
+
+`ifndef SYNTHESIS
+  if (RceQueueLookaheadEnable) begin : gen_result_queue_credit_checks
+    // Reduction states also use a valid bit as a live accumulator marker,
+    // without enqueuing an architectural result. Population equality applies
+    // to ordinary execution, the only state with queue lookahead enabled.
+    a_result_queue_count: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      result_queue_cnt_q <= ResultQueueDepth);
+    a_ordinary_result_queue_population: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      alu_state_q == NO_REDUCTION |->
+        result_queue_cnt_q == $countones(result_queue_valid_q));
+    a_recycle_has_old_owner: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+      result_queue_recycle |-> result_queue_valid_q[result_queue_read_pnt_q]);
+  end
 `endif
 
 endmodule : valu

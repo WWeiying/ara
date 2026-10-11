@@ -142,7 +142,11 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
   assign signed_a = op inside {VMULH, VSMUL};
   assign signed_b = op inside {VMULH, VMULHSU, VSMUL};
 
-  // saturation and rounding mode
+  // VSMUL overflows only for min-signed times min-signed. Detect from
+  // operands so clamping the result cannot feed back into the overflow flag.
+  // Replicate each flag over its bytes for the VMFPU byte-enable mask.
+  // Keep the existing multiplier pipeline and handshake unchanged.
+  // Saturation and rounding mode
   vxsat_t vxsat;
   vxrm_t  vxrm;
   strb_t  r;
@@ -156,7 +160,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
       assign mul_res.w128[l] =
       $signed({opa.w64[l][63] & signed_a, opa.w64[l]}) * $signed({opb.w64[l][63] & signed_b, opb.w64[l]});
       if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w64[l] = (op == VSMUL) ? result_o[(l+1)*64-1] ^ mul_res.w128[l][127] : '0;
+        assign vxsat.w64[l] = {8{(op == VSMUL) &&
+          opa.w64[l] == 64'h8000000000000000 && opb.w64[l] == 64'h8000000000000000}};
       else
         assign vxsat.w64[l] = '0;
     end : gen_mul
@@ -176,7 +181,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<1; b++) r[b] = !mul_res.w128[b][63] & (mul_res.w128[b][62:0] != '0);
           endcase
-          for (int l = 0; l < 1; l++) result_o[64*l +: 64] = (op == VSMUL) ? (mul_res.w128[l] >> 63) + r[l] : mul_res.w128[l][63:0];
+          for (int l = 0; l < 1; l++)
+            result_o[64*l +: 64] = (|vxsat.w64[l]) ? 64'h7fffffffffffffff :
+              (mul_res.w128[l] >> 63) + r[l];
         end
         VMULH,
         VMULHU,
@@ -198,7 +205,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
       assign mul_res.w64[l] =
       $signed({opa.w32[l][31] & signed_a, opa.w32[l]}) * $signed({opb.w32[l][31] & signed_b, opb.w32[l]});
       if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w32[l] = (op == VSMUL) ? result_o[(l+1)*32-1] ^ mul_res.w64[l][63] : '0;
+        assign vxsat.w32[l] = {4{(op == VSMUL) &&
+          opa.w32[l] == 32'h80000000 && opb.w32[l] == 32'h80000000}};
       else
         assign vxsat.w32[l] = '0;
     end: gen_mul
@@ -215,7 +223,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<2; b++) r[b] = !mul_res.w64[b][31] & (mul_res.w64[b][30:0] != '0);
           endcase
-          for (int l = 0; l < 2; l++) result_o[32*l +: 32] = (op == VSMUL) ? (mul_res.w64[l] >> 31) + r[l] : mul_res.w64[l][31:0];
+          for (int l = 0; l < 2; l++)
+            result_o[32*l +: 32] = (|vxsat.w32[l]) ? 32'h7fffffff :
+              (mul_res.w64[l] >> 31) + r[l];
         end
         VMULH,
         VMULHU,
@@ -235,7 +245,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
       assign mul_res.w32[l] =
       $signed({opa.w16[l][15] & signed_a, opa.w16[l]}) * $signed({opb.w16[l] [15] & signed_b, opb.w16[l]});
       if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w16[l] = (op == VSMUL) ? result_o[(l+1)*16-1] ^ mul_res.w32[l][31] : '0;
+        assign vxsat.w16[l] = {2{(op == VSMUL) &&
+          opa.w16[l] == 16'h8000 && opb.w16[l] == 16'h8000}};
       else
         assign vxsat.w16[l] = '0;
     end : gen_mul
@@ -252,7 +263,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<4; b++) r[b] = !mul_res.w32[b][15] & (mul_res.w32[b][14:0] != '0);
           endcase
-          for (int l = 0; l < 4; l++) result_o[16*l +: 16] = (op == VSMUL) ? (mul_res.w32[l] >> 16) + r[l] : mul_res.w32[l][15:0];
+          for (int l = 0; l < 4; l++)
+            result_o[16*l +: 16] = (|vxsat.w16[l]) ? 16'h7fff :
+              (mul_res.w32[l] >> 15) + r[l];
         end
         VMULH,
         VMULHU,
@@ -272,7 +285,8 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
       assign mul_res.w16[l] =
       $signed({opa.w8[l][7] & signed_a, opa.w8[l]}) * $signed({opb.w8[l][7] & signed_b, opb.w8[l]});
       if (FixPtSupport == FixedPointEnable)
-        assign vxsat.w8[l] = (op == VSMUL) ? result_o[(l+1)*8-1] ^ mul_res.w16[l][15] : '0;
+        assign vxsat.w8[l] = {1{(op == VSMUL) &&
+          opa.w8[l] == 8'h80 && opb.w8[l] == 8'h80}};
       else
         assign vxsat.w8[l] = '0;
     end : gen_mul
@@ -289,7 +303,9 @@ module simd_mul import ara_pkg::*; import rvv_pkg::*; #(
             2'b10: r ='0;
             2'b11: for (int b=0; b<8; b++) r[b] = !mul_res.w16[b][7] & (mul_res.w16[b][6:0] != '0);
           endcase
-          for (int l = 0; l < 8; l++) result_o[8*l +: 8] = (op == VSMUL) ? (mul_res.w16[l] >> 7) + r[l] : mul_res.w16[l][7:0];
+          for (int l = 0; l < 8; l++)
+            result_o[8*l +: 8] = (|vxsat.w8[l]) ? 8'h7f :
+              (mul_res.w16[l] >> 7) + r[l];
         end
         VMULH,
         VMULHU,

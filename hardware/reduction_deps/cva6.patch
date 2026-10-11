@@ -1,0 +1,628 @@
+diff --git a/Bender.yml b/Bender.yml
+index 770234eeb45887c6b638eddf30b7cf02136a5e63..887e739a975f52bdcf33aa127ab04fed1623fa8e 100644
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -7,7 +7,7 @@ package:
+ 
+ # WT_DCACHE
+ dependencies:
+-  axi: { git: "https://github.com/pulp-platform/axi.git", version: 0.31.0 }
++  axi: { git: "https://github.com/pulp-platform/axi.git", version: 0.39.10 }
+   common_cells:
+     { git: "https://github.com/pulp-platform/common_cells", version: 1.23.0 }
+   fpnew: { git: "https://github.com/pulp-platform/cvfpu.git", rev: pulp-v0.2.3 }
+@@ -236,10 +236,13 @@ sources:
+       # SRAM Wrappers stay tech-independent; we leave technology mapping to tc_sram
+       - common/local/util/tc_sram_wrapper.sv
+       - common/local/util/tc_sram_wrapper_cache_techno.sv
+-      - common/local/util/sram_pulp.sv
+-      - common/local/util/sram_cache.sv
+ 
+-      - target: not(synthesis)
++      - target: not(sram_mc) 
++        files:
++          - common/local/util/sram_cache.sv
++          - common/local/util/sram_pulp.sv
++
++      - target: notsynthesis
+         files:
+           # Tracer (behavioral code, not RTL)
+           - core/include/instr_tracer_pkg.sv
+diff --git a/common/local/util/sram_cache.sv b/common/local/util/sram_cache.sv
+index 7ca7559b7c1b1ea85f4976c87b965402d4dc6b72..cf2937861b51a8da70e1ce79d4a06f55782f9bf2 100644
+--- a/common/local/util/sram_cache.sv
++++ b/common/local/util/sram_cache.sv
+@@ -110,14 +110,11 @@ module sram_cache #(
+           .NUM_WORDS  (NUM_WORDS)
+       ) data_sram (
+           .clk_i  (clk_i),
+-          .rst_ni (rst_ni),
+           .req_i  (req_i),
+           .we_i   (we_i),
+           .addr_i (addr_i),
+-          .wuser_i(wuser_i),
+           .wdata_i(wdata_i),
+           .be_i   (be_i),
+-          .ruser_o(ruser_o),
+           .rdata_o(rdata_o)
+       );
+   end
+diff --git a/core/acc_dispatcher.sv b/core/acc_dispatcher.sv
+index aa526951e6eb7bfbd2bc6db9cd6a711272099f6b..a8ff7ff8cc0716230440d899cc70b7d74b207e64 100644
+--- a/core/acc_dispatcher.sv
++++ b/core/acc_dispatcher.sv
+@@ -189,17 +189,23 @@ module acc_dispatcher
+ 
+     // We received a new instruction
+     if (acc_valid_q) insn_pending_d[acc_data.trans_id] = 1'b1;
+-    // Flush all received instructions
+-    if (flush_ex_i) insn_pending_d = '0;
+-
+     // An accelerator instruction is no longer speculative.
+     if (acc_commit && insn_pending_q[acc_commit_trans_id]) begin
+       insn_ready_d[acc_commit_trans_id]   = 1'b1;
+       insn_pending_d[acc_commit_trans_id] = 1'b0;
+     end
+ 
+-    // An accelerator instruction was issued.
+-    if (acc_req_o.acc_req.req_valid) insn_ready_d[acc_req_o.acc_req.trans_id] = 1'b0;
++    // The committed instruction left the speculative queue and is retained by
++    // the non-flushable output spill register from this point onward.
++    if (acc_insn_queue_pop) insn_ready_d[acc_insn_queue_o.trans_id] = 1'b0;
++
++    // A pipeline flush invalidates all queue-resident transaction-ID state.
++    // Transaction IDs are reused, so retaining a ready bit would let a later
++    // instruction bypass its own commit check.
++    if (flush_ex_i) begin
++      insn_pending_d = '0;
++      insn_ready_d   = '0;
++    end
+   end : p_non_speculative_ff
+ 
+   /*************************
+@@ -266,8 +272,10 @@ module acc_dispatcher
+           default: '0
+       };
+       // Wait until the instruction is no longer speculative.
+-      acc_req_valid      = insn_ready_q[acc_insn_queue_o.trans_id] ||
+-                           (acc_commit && insn_pending_q[acc_commit_trans_id] && !flush_unissued_instr_i);
++      acc_req_valid      = (insn_ready_q[acc_insn_queue_o.trans_id] ||
++                            (acc_commit && insn_pending_q[acc_commit_trans_id] &&
++                             acc_insn_queue_o.trans_id == acc_commit_trans_id)) &&
++                           !flush_unissued_instr_i;
+       acc_insn_queue_pop = acc_req_valid && acc_req_ready;
+     end
+   end
+@@ -294,8 +302,8 @@ module acc_dispatcher
+   assign acc_req_o.acc_req.resp_ready = 1'b1;
+ 
+   // Signal dispatched load/store to issue stage
+-  assign acc_ld_disp = acc_req_valid && (acc_insn_queue_o.operation == ACCEL_OP_LOAD);
+-  assign acc_st_disp = acc_req_valid && (acc_insn_queue_o.operation == ACCEL_OP_STORE);
++  assign acc_ld_disp = acc_insn_queue_pop && (acc_insn_queue_o.operation == ACCEL_OP_LOAD);
++  assign acc_st_disp = acc_insn_queue_pop && (acc_insn_queue_o.operation == ACCEL_OP_STORE);
+ 
+   // Cache invalidation
+   assign inval_valid_o = acc_resp_i.acc_resp.inval_valid;
+diff --git a/core/cache_subsystem/cva6_icache.sv b/core/cache_subsystem/cva6_icache.sv
+index dccf92bf21bf991368de427bb88a9d87ce52021b..ee3218bdade41bc1128532967f50a5ffd1f557c8 100644
+--- a/core/cache_subsystem/cva6_icache.sv
++++ b/core/cache_subsystem/cva6_icache.sv
+@@ -460,6 +460,8 @@ module cva6_icache
+ 
+   logic [CVA6Cfg.ICACHE_TAG_WIDTH:0] cl_tag_valid_rdata[CVA6Cfg.ICACHE_SET_ASSOC-1:0];
+ 
++
++`ifndef TARGET_SRAM_MC
+   for (genvar i = 0; i < CVA6Cfg.ICACHE_SET_ASSOC; i++) begin : gen_sram
+     // Tag RAM
+     sram_cache #(
+@@ -482,7 +484,6 @@ module cva6_icache
+         .ruser_o(),
+         .rdata_o(cl_tag_valid_rdata[i])
+     );
+-
+     assign cl_tag_rdata[i] = cl_tag_valid_rdata[i][CVA6Cfg.ICACHE_TAG_WIDTH-1:0];
+     assign vld_rdata[i]    = cl_tag_valid_rdata[i][CVA6Cfg.ICACHE_TAG_WIDTH];
+ 
+@@ -508,6 +509,53 @@ module cva6_icache
+     );
+   end
+ 
++`else
++  logic [CVA6Cfg.ICACHE_SET_ASSOC-1:0] unused_bits;
++  for (genvar i = 0; i < CVA6Cfg.ICACHE_SET_ASSOC; i++) begin : gen_sram
++    // Tag RAM
++    TS1N28HPCPUHDSVTB64X48M4SWBSO tag_sram(
++      .SLP  (1'b0),
++      .SD   (1'b0),
++      .CLK  (clk_i),
++      .CEB  (!vld_req[i]),
++      .WEB  (!vld_we),
++      .CEBM (1'b1),
++      .WEBM (1'b1),
++      .A    (vld_addr),
++      .D    ({1'b0, vld_wdata[i], cl_tag_q}),
++      .BWEB ('0),
++      .AM   ('0),
++      .DM   ('0),
++      .BWEBM('1),
++      .BIST (1'b0),
++      .RTSEL(2'b01),
++      .WTSEL(2'b0),
++      .Q    ({unused_bits[i], cl_tag_valid_rdata[i]}));
++
++    assign cl_tag_rdata[i] = cl_tag_valid_rdata[i][CVA6Cfg.ICACHE_TAG_WIDTH-1:0];
++    assign vld_rdata[i]    = cl_tag_valid_rdata[i][CVA6Cfg.ICACHE_TAG_WIDTH];
++
++      // Data RAM
++    TS1N28HPCPUHDSVTB64X128M4SWBSO data_sram(
++      .SLP  (1'b0),
++      .SD   (1'b0),
++      .CLK  (clk_i),
++      .CEB  (!cl_req[i]),
++      .WEB  (!cl_we),
++      .CEBM (1'b1),
++      .WEBM (1'b1),
++      .A    (cl_index),
++      .D    (mem_rtrn_i.data),
++      .BWEB ('0),
++      .AM   ('0),
++      .DM   ('0),
++      .BWEBM('1),
++      .BIST (1'b0),
++      .RTSEL(2'b01),
++      .WTSEL(2'b0),
++      .Q    (cl_rdata[i]));
++     end
++`endif
+ 
+   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
+     if (!rst_ni) begin
+diff --git a/core/cache_subsystem/wt_cache_subsystem.sv b/core/cache_subsystem/wt_cache_subsystem.sv
+index e33158739a9445e4a4f0f4b08481f3b45cd8c476..83c0ebadb91f3b0dcb9af8c0fbc3fb9747f8aa7f 100644
+--- a/core/cache_subsystem/wt_cache_subsystem.sv
++++ b/core/cache_subsystem/wt_cache_subsystem.sv
+@@ -258,12 +258,21 @@ module wt_cache_subsystem
+   assert property (
+     @(posedge clk_i) disable iff (!rst_ni) icache_dreq_o.valid |-> (|icache_dreq_o.data) !== 1'hX)
+   else
++`ifdef ARA_FAIL_FAST_ASSERTS
++    $fatal(
++        1,
++        "[l1 dcache] reading invalid instructions: vaddr=%08X, data=%08X",
++        icache_dreq_o.vaddr,
++        icache_dreq_o.data
++    );
++`else
+     $warning(
+         1,
+         "[l1 dcache] reading invalid instructions: vaddr=%08X, data=%08X",
+         icache_dreq_o.vaddr,
+         icache_dreq_o.data
+     );
++`endif
+ 
+   for (genvar j = 0; j < CVA6Cfg.XLEN / 8; j++) begin : gen_invalid_write_assertion
+     a_invalid_write_data :
+diff --git a/core/cache_subsystem/wt_dcache_mem.sv b/core/cache_subsystem/wt_dcache_mem.sv
+index e20320de2457f589f5fa86405bcd5d195e83d4d8..c4d309731fb9a20ca6dea5a3b5d0644ada6ad36f 100644
+--- a/core/cache_subsystem/wt_dcache_mem.sv
++++ b/core/cache_subsystem/wt_dcache_mem.sv
+@@ -303,6 +303,7 @@ module wt_dcache_mem
+ 
+   logic [CVA6Cfg.DCACHE_TAG_WIDTH:0] vld_tag_rdata[CVA6Cfg.DCACHE_SET_ASSOC-1:0];
+ 
++`ifndef TARGET_SRAM_MC
+   for (genvar k = 0; k < DCACHE_NUM_BANKS; k++) begin : gen_data_banks
+     // Data RAM
+     sram_cache #(
+@@ -352,6 +353,69 @@ module wt_dcache_mem
+     );
+   end
+ 
++`else
++  for (genvar k = 0; k < DCACHE_NUM_BANKS; k++) begin : gen_data_banks
++    // Data RAM
++  logic [DCACHE_NUM_BANKS-1:0][CVA6Cfg.DCACHE_SET_ASSOC-1:0][CVA6Cfg.XLEN-1:0] bank_be_o;
++
++  always_comb begin
++    for(int i=0; i<CVA6Cfg.DCACHE_SET_ASSOC; i++) begin
++      for(int j=0; j<(CVA6Cfg.XLEN/8); j++) begin
++        bank_be_o[k][i][j*8 +: 8] = {8{bank_be[k][i][j]}};
++      end
++    end
++  end
++
++  TS1N28HPCPUHDSVTB64X256M1SWBSO i_data_sram(
++    .SLP  (1'b0),
++    .SD   (1'b0),
++    .CLK  (clk_i),
++    .CEB  (!bank_req[k]),
++    .WEB  (!bank_we[k]),
++    .CEBM (1'b1),
++    .WEBM (1'b1),
++    .A    (bank_idx[k]),
++    .D    (bank_wdata[k]),
++    .BWEB (~bank_be_o[k]),
++    .AM   ('0),
++    .DM   ('0),
++    .BWEBM('1),
++    .BIST (1'b0),
++    .RTSEL(2'b01),
++    .WTSEL(2'b0),
++    .Q    (bank_rdata[k]));
++
++  end
++
++  logic [1:0] unused_bits[CVA6Cfg.DCACHE_SET_ASSOC-1:0];
++
++  for (genvar i = 0; i < CVA6Cfg.DCACHE_SET_ASSOC; i++) begin : gen_tag_srams
++
++    assign tag_rdata[i]     = vld_tag_rdata[i][CVA6Cfg.DCACHE_TAG_WIDTH-1:0];
++    assign rd_vld_bits_o[i] = vld_tag_rdata[i][CVA6Cfg.DCACHE_TAG_WIDTH];
++
++  TS1N28HPCPUHDSVTB64X48M4SWBSO i_tag_sram(
++    .SLP  (1'b0),
++    .SD   (1'b0),
++    .CLK  (clk_i),
++    .CEB  (!vld_req[i]),
++    .WEB  (!vld_we),
++    .CEBM (1'b1),
++    .WEBM (1'b1),
++    .A    (vld_addr),
++    .D    ({2'b0, vld_wdata[i], wr_cl_tag_i}),
++    .BWEB ('0),
++    .AM   ('0),
++    .DM   ('0),
++    .BWEBM('1),
++    .BIST (1'b0),
++    .RTSEL(2'b01),
++    .WTSEL(2'b0),
++    .Q    ({unused_bits[i], vld_tag_rdata[i]}));
++
++  end
++`endif
++
+   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
+     if (!rst_ni) begin
+       bank_idx_q <= '0;
+diff --git a/core/cache_subsystem/wt_l15_adapter.sv b/core/cache_subsystem/wt_l15_adapter.sv
+index 6e6ddae4f6f01488ac59f784b1059f739ffb0baa..172bc2f0295d2a19d1a6f56fda9c622c1615f81c 100644
+--- a/core/cache_subsystem/wt_l15_adapter.sv
++++ b/core/cache_subsystem/wt_l15_adapter.sv
+@@ -57,33 +57,8 @@ module wt_l15_adapter
+     parameter type icache_req_t = logic,
+     parameter type icache_rtrn_t = logic,
+     parameter type dcache_req_t = logic,
+-    parameter type dcache_rtrn_t = logic
+-) (
+-    input logic clk_i,
+-    input logic rst_ni,
+-
+-    // icache
+-    input  logic         icache_data_req_i,
+-    output logic         icache_data_ack_o,
+-    input  icache_req_t  icache_data_i,
+-    // returning packets must be consumed immediately
+-    output logic         icache_rtrn_vld_o,
+-    output icache_rtrn_t icache_rtrn_o,
+-
+-    // dcache
+-    input  logic         dcache_data_req_i,
+-    output logic         dcache_data_ack_o,
+-    input  dcache_req_t  dcache_data_i,
+-    // returning packets must be consumed immediately
+-    output logic         dcache_rtrn_vld_o,
+-    output dcache_rtrn_t dcache_rtrn_o,
+-
+-    // L15
+-    output l15_req_t  l15_req_o,
+-    input  l15_rtrn_t l15_rtrn_i
+-);
+-
+-  localparam type l15_req_t = struct packed {
++    parameter type dcache_rtrn_t = logic,
++    parameter type l15_req_t = struct packed {
+     logic l15_val;  // valid signal, asserted with request
+     logic l15_req_ack;  // ack for response
+     wt_cache_pkg::l15_reqtypes_t l15_rqtype;  // see below for encoding
+@@ -100,8 +75,8 @@ module wt_l15_adapter
+     logic [63:0] l15_data_next_entry;  // unused in Ariane (only used for CAS atomic requests)
+     logic [wt_cache_pkg::L15_TLB_CSM_WIDTH-1:0] l15_csm_data;  // unused in Ariane
+     logic [3:0] l15_amo_op;  // atomic operation type
+-  };
+-  localparam type l15_rtrn_t = struct packed {
++  },
++  parameter type l15_rtrn_t = struct packed {
+     logic l15_ack;  // ack for request struct
+     logic l15_header_ack;  // ack for request struct
+     logic l15_val;  // valid signal for return struct
+@@ -126,7 +101,32 @@ module wt_l15_adapter
+     logic l15_inval_icache_inval;  // unused in openpiton
+     logic [CVA6Cfg.DCACHE_SET_ASSOC_WIDTH-1:0] l15_inval_way;  // way to invalidate
+     logic l15_blockinitstore;  // unused in openpiton
+-  };
++  }
++) (
++    input logic clk_i,
++    input logic rst_ni,
++
++    // icache
++    input  logic         icache_data_req_i,
++    output logic         icache_data_ack_o,
++    input  icache_req_t  icache_data_i,
++    // returning packets must be consumed immediately
++    output logic         icache_rtrn_vld_o,
++    output icache_rtrn_t icache_rtrn_o,
++
++    // dcache
++    input  logic         dcache_data_req_i,
++    output logic         dcache_data_ack_o,
++    input  dcache_req_t  dcache_data_i,
++    // returning packets must be consumed immediately
++    output logic         dcache_rtrn_vld_o,
++    output dcache_rtrn_t dcache_rtrn_o,
++
++    // L15
++    output l15_req_t  l15_req_o,
++    input  l15_rtrn_t l15_rtrn_i
++);
++
+ 
+   // request path
+   icache_req_t icache_data;
+diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
+index 180cba4faca594055f597665f10b82d392774f3b..60df1ed9e3a8bdd748e69b158cec3b20843c7521 100644
+--- a/core/csr_regfile.sv
++++ b/core/csr_regfile.sv
+@@ -1983,8 +1983,10 @@ module csr_regfile
+       mstatus_d.vs = riscv::Dirty;
+     end
+     // hardwired extension registers
+-    if (CVA6Cfg.RVS || CVA6Cfg.RVF) begin
+-      mstatus_d.sd = (mstatus_q.xs == riscv::Dirty) | (mstatus_q.fs == riscv::Dirty);
++    if (CVA6Cfg.RVS || CVA6Cfg.RVF || CVA6Cfg.RVV) begin
++      mstatus_d.sd = (mstatus_d.xs == riscv::Dirty) |
++                     (mstatus_d.fs == riscv::Dirty) |
++                     (mstatus_d.vs == riscv::Dirty);
+     end else begin
+       mstatus_d.sd = riscv::Off;
+     end
+diff --git a/core/fpu_wrap.sv b/core/fpu_wrap.sv
+index 5b5fefc23d69783be79974067194be0bea1c31f1..0805fe0e037e2fab38246d5ce728d85c94287a27 100644
+--- a/core/fpu_wrap.sv
++++ b/core/fpu_wrap.sv
+@@ -522,12 +522,51 @@ module fpu_wrap
+     assign fpu_vec_op = use_hold ? fpu_vec_op_q : fpu_vec_op_d;
+     assign fpu_tag    = use_hold ? fpu_tag_q : fpu_tag_d;
+ 
++    // Canonicalize malformed scalar operands before div/sqrt.  This keeps
++    // scalar NaN-boxing behavior explicit across the available backends.
++    function automatic logic [CVA6Cfg.FLen-1:0] canonical_nan(
++        input fpnew_pkg::fp_format_e fmt
++    );
++      logic [CVA6Cfg.FLen-1:0] value;
++      value = '1;
++      unique case (fmt)
++        fpnew_pkg::FP64:    value = 64'h7ff8_0000_0000_0000;
++        fpnew_pkg::FP32:    value[31:0] = 32'h7fc0_0000;
++        fpnew_pkg::FP16:    value[15:0] = 16'h7e00;
++        fpnew_pkg::FP16ALT: value[15:0] = 16'h7fc0;
++        fpnew_pkg::FP8:     value[7:0]  = 8'h7e;
++        default:            value = '1;
++      endcase
++      return value;
++    endfunction
++
++    function automatic logic [CVA6Cfg.FLen-1:0] canonicalize_unboxed(
++        input logic [CVA6Cfg.FLen-1:0] value,
++        input fpnew_pkg::fp_format_e fmt
++    );
++      automatic int unsigned fmt_width = fpnew_pkg::fp_width(fmt);
++      automatic logic is_boxed = 1'b1;
++      for (int unsigned bit_idx = fmt_width; bit_idx < CVA6Cfg.FLen; bit_idx++) begin
++        is_boxed &= value[bit_idx];
++      end
++      return is_boxed ? value : canonical_nan(fmt);
++    endfunction
++
+     // Consolidate operands
+     logic [2:0][CVA6Cfg.FLen-1:0] fpu_operands;
+ 
+-    assign fpu_operands[0] = operand_a;
+-    assign fpu_operands[1] = operand_b;
+-    assign fpu_operands[2] = operand_c;
++    always_comb begin
++      fpu_operands[0] = operand_a;
++      fpu_operands[1] = operand_b;
++      fpu_operands[2] = operand_c;
++
++      if (!fpu_vec_op && (fpu_op == fpnew_pkg::DIV)) begin
++        fpu_operands[0] = canonicalize_unboxed(operand_a, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++        fpu_operands[1] = canonicalize_unboxed(operand_b, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++      end else if (!fpu_vec_op && (fpu_op == fpnew_pkg::SQRT)) begin
++        fpu_operands[0] = canonicalize_unboxed(operand_a, fpnew_pkg::fp_format_e'(fpu_srcfmt));
++      end
++    end
+ 
+     //---------------
+     // FPU instance
+@@ -536,7 +575,9 @@ module fpu_wrap
+     fpnew_top #(
+         .Features      (FPU_FEATURES),
+         .Implementation(FPU_IMPLEMENTATION),
+-        .DivSqrtSel    (fpnew_pkg::PULP),
++        // Match the vector FP backend: the legacy PULP divider has known
++        // one-ULP IEEE-754 rounding errors on directed div/sqrt cases.
++        .DivSqrtSel    (fpnew_pkg::THMULTI),
+         .TagType       (logic [CVA6Cfg.TRANS_ID_BITS-1:0])
+     ) i_fpnew_bulk (
+         .clk_i,
+diff --git a/docs/01_cva6_user/user_cfg_doc.rst b/docs/01_cva6_user/user_cfg_doc.rst
+index d0e52b1a1bd3034c088572bf1e915b542d20e65c..d13eeabe7ec1ebf499ed95543cd4ae880e9a93d1 100644
+--- a/docs/01_cva6_user/user_cfg_doc.rst
++++ b/docs/01_cva6_user/user_cfg_doc.rst
+@@ -20,6 +20,10 @@
+      - ``int unsigned``
+      - General Purpose Register Size (in bits)
+ 
++   * - ``VLEN``
++     - ``int unsigned``
++     - Virtual address Size (in bits)
++
+    * - ``RVA``
+      - ``bit``
+      - Atomic RISC-V extension
+@@ -28,6 +32,10 @@
+      - ``bit``
+      - Bit manipulation RISC-V extension
+ 
++   * - ``ZKN``
++     - ``bit``
++     - Scalar Cryptography RISC-V entension
++
+    * - ``RVV``
+      - ``bit``
+      - Vector RISC-V extension
+@@ -48,6 +56,18 @@
+      - ``bit``
+      - Zcmp RISC-V extension
+ 
++   * - ``RVZCMT``
++     - ``bit``
++     - Zcmt RISC-V extension
++
++   * - ``RVSCLIC``
++     - ``bit``
++     - CLIC extension
++
++   * - ``RVXHCLIC``
++     - ``bit``
++     - CLIC virtualization extension (vCLIC)
++
+    * - ``RVZiCond``
+      - ``bit``
+      - Zicond RISC-V extension
+@@ -80,6 +100,10 @@
+      - ``bit``
+      - Non standard 8bits Floating Point extension
+ 
++   * - ``XF8ALT``
++     - ``bit``
++     - TO_BE_COMPLETED
++
+    * - ``XFVec``
+      - ``bit``
+      - Non standard Vector Floating Point extension
+@@ -100,6 +124,10 @@
+      - ``bit``
+      - User mode
+ 
++   * - ``SoftwareInterruptEn``
++     - ``bit``
++     - Software interrupts are enabled
++
+    * - ``DebugEn``
+      - ``bit``
+      - Debug support
+@@ -140,6 +168,10 @@
+      - ``bit [63:0]``
+      - PMP CSR read-only bits
+ 
++   * - ``PMPNapotEn``
++     - ``bit``
++     - PMP NA4 and NAPOT mode enable
++
+    * - ``NrNonIdempotentRules``
+      - ``int unsigned``
+      - PMA non idempotent rules number
+@@ -180,10 +212,18 @@
+      - ``bit``
+      - CV-X-IF coprocessor interface enable
+ 
++   * - ``CoproType``
++     - ``copro_type_t``
++     - Coprocessor type
++
+    * - ``NOCType``
+      - ``noc_type_e``
+      - NOC bus type
+ 
++   * - ``CLICNumInterruptSrc``
++     - ``int unsigned``
++     - Number of interrupt signals from the CLIC.
++
+    * - ``AxiAddrWidth``
+      - ``int unsigned``
+      - AXI address width
+@@ -240,6 +280,14 @@
+      - ``int unsigned``
+      - Data cache line width
+ 
++   * - ``DcacheFlushOnFence``
++     - ``bit``
++     - Data cache flush on fence
++
++   * - ``DcacheInvalidateOnFlush``
++     - ``bit``
++     - Data cache invalidate on flush
++
+    * - ``DataUserEn``
+      - ``int unsigned``
+      - User field on data bus enable
+@@ -258,7 +306,11 @@
+ 
+    * - ``FpgaEn``
+      - ``bit``
+-     - Is FPGA optimization of CV32A6
++     - Is FPGA optimization of CV32A6 for Xilinx and Altera
++
++   * - ``FpgaAlteraEn``
++     - ``bit``
++     - Is FPGA optimization for Altera FPGA
+ 
+    * - ``TechnoCut``
+      - ``bit``
+@@ -300,10 +352,18 @@
+      - ``int unsigned``
+      - Branch target buffer entries
+ 
++   * - ``BPType``
++     - ``bp_type_t``
++     - Branch predictor type
++
+    * - ``BHTEntries``
+      - ``int unsigned``
+      - Branch history entries
+ 
++   * - ``BHTHist``
++     - ``int unsigned``
++     - Branch history bits
++
+    * - ``InstrTlbEntries``
+      - ``int unsigned``
+      - MMU instruction TLB entries
+diff --git a/pd/synth/Makefile b/pd/synth/Makefile
+index 483912214449487bd0a6daae76fa90ae5f4ba09f..8c930a8da8cf84aa0f6db8a49736b707a3107a9b 100644
+--- a/pd/synth/Makefile
++++ b/pd/synth/Makefile
+@@ -21,12 +21,12 @@ TARGET               ?= cv32a65x
+ 
+ EXPORT_LIST=SNPSLMD_QUEUE=TRUE TECH_NAME=$(TECH_NAME) DESIGN_NAME=$(DESIGN_NAME) TARGET=$(TARGET) TERM=vt100 PERIOD=$(PERIOD) FOUNDRY_PATH=$(FOUNDRY_PATH) LOCAL_LIB_PATH=$(LOCAL_LIB_PATH) TARGET_LIBRARY_FILES=$(TARGET_LIBRARY_FILES) INPUT_DELAY=$(INPUT_DELAY) OUTPUT_DELAY=$(OUTPUT_DELAY)
+ 
+-ifndef FOUNDRY_PATH
+-  $(error "Please provide FOUNDRY techno")
+-endif
+-ifndef TECH_NAME
+-  $(error "Please provide TECH_NAME techno")
+-endif
++#ifndef FOUNDRY_PATH
++#  $(error "Please provide FOUNDRY techno")
++#endif
++#ifndef TECH_NAME
++#  $(error "Please provide TECH_NAME techno")
++#endif
+ 
+ # Create Flist with good compilation order for synthesis
+ #	- config_pkg.sv

@@ -10,8 +10,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--count', type=int, default=1200)
+    parser.add_argument('--seed', type=lambda s: int(s, 0), default=0x510020261007)
     args = parser.parse_args()
-    rng = random.Random(0x510020261007)
+    rng = random.Random(args.seed)
     edges = [0, 1, -1]
     for bit in [63, 64, 127, 128, 191, 192, 255, 256, 280]:
         for delta in [-1, 0, 1]:

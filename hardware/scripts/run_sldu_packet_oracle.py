@@ -17,6 +17,8 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--count', type=int, default=1200)
     parser.add_argument('--vcs', default='vcs')
+    parser.add_argument('--vector-seed', type=lambda s: int(s, 0))
+    parser.add_argument('--sim-arg', action='append', default=[])
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     out = args.out.resolve()
@@ -37,8 +39,12 @@ def main():
     filelist.write_text('\n'.join(line for line in original.splitlines()
                                  if '/hardware/tb/' not in line and
                                  '+define+FOR_VERIFY' not in line) + '\n')
-    tb = root / 'hardware/tb/sldu_packet_oracle_tb.sv'
-    generator = root / 'hardware/scripts/gen_sldu_packet_oracle.py'
+    tb = out / 'sldu_packet_oracle_tb.sv'
+    shutil.copy2(root / 'hardware/tb/sldu_packet_oracle_tb.sv', tb)
+    generator = out / 'gen_sldu_packet_oracle.py'
+    shutil.copy2(root / 'hardware/scripts/gen_sldu_packet_oracle.py', generator)
+    shutil.copy2(root / 'hardware/scripts/gen_exact_reduction_oracle.py', out / 'gen_exact_reduction_oracle.py')
+    shutil.copy2(Path(__file__), out / 'runner.py')
     vectors = out / 'vectors.txt'
     commands = [
         [sys.executable, str(generator), '--output', str(vectors), '--count', str(args.count)],
@@ -47,7 +53,20 @@ def main():
          '-Mdir=csrc', '-o', str(out / 'simv')],
         [str(out / 'simv'), '-no_save', '+VECTOR_FILE=' + str(vectors)],
     ]
-    manifest = {'commands': commands, 'requested_cases': args.count, 'pass': False}
+    if args.vector_seed is not None:
+        commands[0] += ['--seed', str(args.vector_seed)]
+    commands[2] += args.sim_arg
+    sources = {Path(s) for s in filelist.read_text().splitlines()
+               if s.startswith('/') and Path(s).is_file()}
+    for line in filelist.read_text().splitlines():
+        if line.startswith('+incdir+'):
+            for directory in line[len('+incdir+'):].split('+'):
+                sources.update(p for p in Path(directory).rglob('*')
+                               if p.is_file() and p.suffix in ('.sv', '.svh', '.v', '.vh'))
+    sources.update([tb, generator, out/'gen_exact_reduction_oracle.py', out/'runner.py', filelist])
+    hashes = {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(sources)}
+    manifest = {'commands': commands, 'requested_cases': args.count, 'pass': False,
+                'input_sha256': hashes}
     for command, name in zip(commands, ['generate', 'compile', 'run']):
         with (out / (name + '.log')).open('w') as log:
             result = subprocess.run(command, cwd=out, stdout=log, stderr=subprocess.STDOUT, timeout=300)
@@ -57,11 +76,10 @@ def main():
             sys.exit(f'{name} failed; see {out / (name + ".log")}')
     output = (out / 'run.log').read_text()
     manifest['failures'] = re.findall(r'^.*(?:Error:|Fatal:|\bFAIL\b|started at .*failed at).*$', output, re.M)
-    manifest['pass'] = not manifest['failures'] and f'PASS: {args.count} SLDU packet cases' in output
-    inputs = [tb, generator, root / 'hardware/scripts/gen_exact_reduction_oracle.py',
-              root / 'hardware/src/sldu/sldu.sv',
-              root / 'hardware/src/lane/fp32_exact_reduction_finalize.sv',
-              filelist, vectors, out / 'simv']
+    manifest['source_drift'] = [p for p,h in hashes.items()
+                              if hashlib.sha256(Path(p).read_bytes()).hexdigest() != h]
+    manifest['pass'] = not manifest['failures'] and not manifest['source_drift'] and f'PASS: {args.count} SLDU packet cases' in output
+    inputs = sorted(sources) + [vectors, out / 'simv', out / 'run.log']
     manifest['sha256'] = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(f'{"PASS" if manifest["pass"] else "FAIL"}: {args.count} SLDU packet cases; {out}')

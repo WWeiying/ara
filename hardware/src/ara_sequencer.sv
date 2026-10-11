@@ -152,12 +152,14 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   pe_req_t pe_req_d;
   logic    pe_req_valid_d;
 
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
   // The producer ID disambiguates simultaneously live definitions; the
   // wider architectural epoch also makes post-retirement result caches safe
   // and useful across long reductions.
   vreg_version_t [31:0] vreg_version_d, vreg_version_q;
   logic [NrVInsn-1:0] writer_exact_d, writer_exact_q;
+  logic [NrVInsn-1:0] writer_integer_d, writer_integer_q;
+  rvv_pkg::vew_e [NrVInsn-1:0] writer_seed_eew_d, writer_seed_eew_q;
   logic [NrVInsn-1:0][4:0] writer_vd_d, writer_vd_q;
   vreg_version_t [NrVInsn-1:0] writer_version_d, writer_version_q;
   logic late_seed_candidate;
@@ -169,13 +171,22 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `ifdef ARA_RED_EXACT_FP16_4LANE
     sum_width_eligible |= request.vtype.vsew == EW16;
 `endif
+`ifdef ARA_RED_CHAIN_BYPASS_4LANE
     exact_chain_eligible = (NrLanes == 4) &&
       (((request.op == VFREDUSUM) &&
         sum_width_eligible) ||
        ((request.op == VFWREDUSUM) &&
         (request.vtype.vsew == EW32))) &&
       (request.vl >= 1);
+`else
+    exact_chain_eligible = 1'b0;
+`endif
   endfunction : exact_chain_eligible
+
+  function automatic logic integer_chain_eligible(input ara_req_t request);
+    return ara_rce_pkg::RceIntLateSeedEnable && request.vl != 0 &&
+           request.op inside {[VREDSUM:VWREDSUM]};
+  endfunction
 
   function automatic int unsigned written_register_count(input ara_req_t request);
     // Reductions write a scalar even when the source spans several registers.
@@ -318,6 +329,106 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   vreg_access_t [31:0] read_list_d, read_list_q;
   vreg_access_t [31:0] write_list_d, write_list_q;
 
+  // Result-paced chaining assumes matching register-group positions. A
+  // reduction scalar can alias an interior member of an ordinary group;
+  // the base-register table cannot represent that dependency. Keep compact
+  // spans for every live instruction; interlock only mismatched overlaps
+  // involving a reduction. Disjoint and matching-span requests retain the
+  // existing chaining path, including versioned exact late seed.
+  typedef struct packed {
+    logic valid;
+    logic [4:0] first;
+    logic [5:0] limit;
+  } register_span_t;
+  typedef struct packed {
+    register_span_t vs1, vs2, vd;
+    logic reads_vd, masked, reduction;
+  } reduction_access_t;
+  reduction_access_t [NrVInsn-1:0] reduction_access_d, reduction_access_q;
+  reduction_access_t request_access;
+  logic reduction_group_wait;
+
+  function automatic logic reduction_operation(ara_op_e op);
+    return op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]};
+  endfunction
+
+  function automatic logic mask_destination(ara_op_e op);
+    return op inside {[VMFEQ:VMFGE], [VMSEQ:VMSGT], [VMADC:VMSBC],
+                      [VMSBF:VMSIF], [VMANDNOT:VMXNOR]};
+  endfunction
+
+  function automatic int unsigned register_count(rvv_pkg::vlmul_e lmul);
+    case (lmul)
+      rvv_pkg::LMUL_2: return 2;
+      rvv_pkg::LMUL_4: return 4;
+      rvv_pkg::LMUL_8: return 8;
+      default: return 1;
+    endcase
+  endfunction
+
+  function automatic int unsigned source_count(ara_req_t req, logic first_source);
+    automatic rvv_pkg::vew_e eew = first_source ? req.eew_vs1 : req.eew_vs2;
+    int unsigned count;
+    if (reduction_operation(req.op))
+      return first_source ? 1 : register_count(req.vtype.vlmul);
+    if (!first_source && req.op inside {VLXE, VSXE})
+      return register_count(rvv_pkg::vlmul_e'(req.vtype.vlmul + eew - req.vtype.vsew));
+    if (req.op inside {[VMANDNOT:VMXNOR], [VMSBF:VMSIF], VCPOP, VFIRST, VIOTA,
+                       VMVXS, VFMVFS} || (first_source && req.op == VCOMPRESS))
+      return 1;
+    count = register_count(mask_destination(req.op) ? req.vtype.vlmul : req.emul);
+    if (!is_store(req.op)) begin
+      if (req.cvt_resize == CVT_WIDE && unsigned'(eew) < unsigned'(req.vtype.vsew))
+        count = count > 1 ? count >> 1 : 1;
+      else if ((req.cvt_resize == CVT_NARROW || req.op inside {VNSRL, VNSRA, VNCLIP, VNCLIPU}) &&
+               unsigned'(eew) > unsigned'(req.vtype.vsew))
+        count = count < 8 ? count << 1 : 8;
+    end
+    return count;
+  endfunction
+
+  function automatic reduction_access_t access_spans(ara_req_t req);
+    reduction_access_t access;
+    access.reduction = reduction_operation(req.op);
+    access.vs1 = '{valid: req.use_vs1, first: req.vs1,
+                   limit: 6'(int'(req.vs1) + source_count(req, 1'b1))};
+    access.vs2 = '{valid: req.use_vs2, first: req.vs2,
+                   limit: 6'(int'(req.vs2) + source_count(req, 1'b0))};
+    access.vd = '{valid: req.use_vd, first: req.vd,
+                  limit: 6'(int'(req.vd) + ((access.reduction || mask_destination(req.op))
+                                         ? 1 : register_count(req.emul)))};
+    access.reads_vd = req.use_vd_op;
+    access.masked = !req.vm;
+    return access;
+  endfunction
+
+  function automatic logic mismatched_overlap(register_span_t a, register_span_t b);
+    return a.valid && b.valid && {1'b0,a.first} < b.limit && {1'b0,b.first} < a.limit &&
+           (a.first != b.first || a.limit != b.limit);
+  endfunction
+
+  always_comb begin : p_reduction_group_guard
+    request_access = access_spans(ara_req_i);
+    reduction_group_wait = 1'b0;
+    for (int id = 0; id < NrVInsn; id++) begin
+      automatic reduction_access_t older = reduction_access_q[id];
+      automatic register_span_t mask = '{valid: 1'b1, first: VMASK, limit: 6'd1};
+      if (vinsn_running_q[id] && (request_access.reduction || older.reduction)) begin
+        reduction_group_wait |=
+          // RAW/WAW, including old-vd fetch and v0.
+          mismatched_overlap(older.vd, request_access.vs1) ||
+          mismatched_overlap(older.vd, request_access.vs2) ||
+          mismatched_overlap(older.vd, request_access.vd) ||
+          (request_access.masked && mismatched_overlap(older.vd, mask)) ||
+          // WAR retains every live reader, not only the newest table entry.
+          mismatched_overlap(request_access.vd, older.vs1) ||
+          mismatched_overlap(request_access.vd, older.vs2) ||
+          (older.reads_vd && mismatched_overlap(request_access.vd, older.vd)) ||
+          (older.masked && mismatched_overlap(request_access.vd, mask));
+      end
+    end
+  end
+
   // This function determines the VFU responsible for handling this operation.
   function automatic vfu_e vfu(ara_op_e op`ifndef SYNTHESIS = VADD `endif);
     unique case (op) inside
@@ -352,7 +463,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           if (i == VFU_MFpu) target_vfus[i] = 1'b1;
       [VMSEQ:VMXNOR]:
         for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_Alu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
+          // VID generates its indices inside MASKU; no Lane ALU input is consumed.
+          if (i == VFU_MaskUnit || (i == VFU_Alu && op != VID))
+            target_vfus[i] = 1'b1;
       [VRGATHER:VCOMPRESS]:
         for (int i = 0; i < NrVFUs; i++)
           if (i == VFU_Alu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
@@ -421,6 +534,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // Since the scalar move uses the MaskB opqueue, we need to wait to finish
   // the MASKU insn to be sure that the forwarded value is the scalar one
   logic running_mask_insn_d, running_mask_insn_q;
+  logic pending_mask_insn_d, pending_mask_insn_q;
 
   logic lsu_current_burst_exception_q;
   `FF(lsu_current_burst_exception_q, lsu_current_burst_exception_i, 1'b0, clk_i, rst_ni);
@@ -440,14 +554,17 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     pe_vinsn_running_d    = pe_vinsn_running_q;
     read_list_d           = read_list_q;
     write_list_d          = write_list_q;
+    reduction_access_d    = reduction_access_q;
     global_hazard_table_d = global_hazard_table_o;
 
     // Maintain request
     pe_req_d       = '0;
     pe_req_valid_d = 1'b0;
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
     vreg_version_d   = vreg_version_q;
     writer_exact_d   = writer_exact_q;
+    writer_integer_d = writer_integer_q;
+    writer_seed_eew_d = writer_seed_eew_q;
     writer_vd_d      = writer_vd_q;
     writer_version_d = writer_version_q;
     late_seed_candidate = 1'b0;
@@ -504,7 +621,12 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         end else if (ara_req_valid_i) begin
           // The target PE is ready, and we can handle another running vector instruction
           // Let instructions with priority pass be issued
-          if (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full) begin
+          if (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full &&
+              !reduction_group_wait &&
+              // MaskB is untagged. Let the preceding mask-result instruction
+              // drain its old-vd operands before issuing a scalar extraction.
+              !((ara_req_i.op inside {VMVXS, VFMVFS}) &&
+                (pending_mask_insn_q || running_mask_insn_q))) begin
             ///////////////
             //  Hazards  //
             ///////////////
@@ -528,16 +650,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
               write_list_d[ara_req_i.vd].valid;
 
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
-            // A dependent exact reduction may consume its vector body before
+`ifdef ARA_RED_REGISTER_VERSIONS
+            // A supported dependent reduction may consume its vector body before
             // the preceding rounded scalar seed is available.  The tuple
             // {producer ID, register epoch} names that seed unambiguously.
-            if (ara_req_i.use_vs1 && exact_chain_eligible(ara_req_i) &&
+            if (ara_req_i.use_vs1 &&
+                (exact_chain_eligible(ara_req_i) || integer_chain_eligible(ara_req_i)) &&
                 write_list_d[ara_req_i.vs1].valid) begin
               late_seed_producer =
                 write_list_d[ara_req_i.vs1].vid;
               late_seed_candidate =
-                writer_exact_q[late_seed_producer] &&
+                ((exact_chain_eligible(ara_req_i) && writer_exact_q[late_seed_producer]) ||
+                 (integer_chain_eligible(ara_req_i) && writer_integer_q[late_seed_producer] &&
+                  writer_seed_eew_q[late_seed_producer] >= ara_req_i.vtype.vsew)) &&
                 (writer_vd_q[late_seed_producer] == ara_req_i.vs1) &&
                 (writer_version_q[late_seed_producer] ==
                  vreg_version_q[ara_req_i.vs1]);
@@ -619,7 +744,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               hazard_vs2    : pe_req_d.hazard_vs2,
               default       : '0
             };
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
             pe_req_d.late_seed =
               late_seed_candidate;
             pe_req_d.seed_producer_id =
@@ -662,6 +787,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               ara_req_ready_o = 1'b1;
 
               // Remember that the vector instruction is running
+              reduction_access_d[vinsn_id_n] = request_access;
               unique case (vfu(ara_req_i.op))
                 VFU_LoadUnit : pe_vinsn_running_d[NrLanes + OffsetLoad][vinsn_id_n]  = 1'b1;
                 VFU_StoreUnit: pe_vinsn_running_d[NrLanes + OffsetStore][vinsn_id_n] = 1'b1;
@@ -695,7 +821,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
               // Mark that this vector instruction is writing to vector vd
               if (ara_req_i.use_vd) write_list_d[ara_req_i.vd] = '{vid: vinsn_id_n, valid: 1'b1};
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
               if (ara_req_i.use_vd) begin
                 // A group write also replaces scalars cached for interior
                 // registers. Increment each member's own epoch: changing
@@ -707,6 +833,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                     vreg_version_d[reg_idx] = vreg_version_q[reg_idx] + 1'b1;
                 writer_exact_d[vinsn_id_n] =
                   exact_chain_eligible(ara_req_i);
+                writer_integer_d[vinsn_id_n] = integer_chain_eligible(ara_req_i);
+                writer_seed_eew_d[vinsn_id_n] = ara_req_i.vtype.vsew;
                 writer_vd_d[vinsn_id_n] =
                   ara_req_i.vd;
                 writer_version_d[vinsn_id_n] =
@@ -757,13 +885,16 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         end
 
         // Wait for the scalar result
-        if (!ara_req_i.use_vd && pe_scalar_resp_valid_i) begin
+        if ((pe_req_o.op inside {VMVXS, VFMVFS, VCPOP, VFIRST}) &&
+            pe_scalar_resp_valid_i &&
+            ((pe_req_o.op inside {VCPOP, VFIRST}) ||
+             !(pending_mask_insn_q || running_mask_insn_q))) begin
           // Acknowledge the request
           state_d                = IDLE;
           ara_req_ready_o        = 1'b1;
           ara_resp_valid_o       = 1'b1;
           ara_resp_o.resp        = pe_scalar_resp_i;
-          pe_scalar_resp_ready_o = pe_scalar_resp_valid_i & ~running_mask_insn_q;
+          pe_scalar_resp_ready_o = pe_req_o.op inside {VMVXS, VFMVFS};
         end
       end
     endcase
@@ -778,12 +909,15 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       read_list_q  <= '0;
       write_list_q <= '0;
+      reduction_access_q <= '0;
 
       pe_req_o       <= '0;
       pe_req_valid_o <= 1'b0;
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
       vreg_version_q   <= '0;
       writer_exact_q   <= '0;
+      writer_integer_q <= '0;
+      writer_seed_eew_q <= '0;
       writer_vd_q      <= '0;
       writer_version_q <= '0;
 `endif
@@ -798,17 +932,21 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       global_hazard_table_o <= '0;
 
       running_mask_insn_q <= 1'b0;
+      pending_mask_insn_q <= 1'b0;
     end else begin
       state_q <= state_d;
 
       read_list_q  <= read_list_d;
       write_list_q <= write_list_d;
+      reduction_access_q <= reduction_access_d;
 
       pe_req_o       <= pe_req_d;
       pe_req_valid_o <= pe_req_valid_d;
-`ifdef ARA_RED_CHAIN_BYPASS_4LANE
+`ifdef ARA_RED_REGISTER_VERSIONS
       vreg_version_q   <= vreg_version_d;
       writer_exact_q   <= writer_exact_d;
+      writer_integer_q <= writer_integer_d;
+      writer_seed_eew_q <= writer_seed_eew_d;
       writer_vd_q      <= writer_vd_d;
       writer_version_q <= writer_version_d;
 `endif
@@ -823,6 +961,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       global_hazard_table_o <= global_hazard_table_d;
 
       running_mask_insn_q <= running_mask_insn_d;
+      pending_mask_insn_q <= pending_mask_insn_d;
     end
   end
 
@@ -837,12 +976,19 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // This works only if MASKU insn queue has width == 1
   always_comb begin
     running_mask_insn_d = running_mask_insn_q;
+    pending_mask_insn_d = pending_mask_insn_q;
 
     if (|pe_resp_i[NrLanes+OffsetMask].vinsn_done)
       running_mask_insn_d = 1'b0;
 
-    if (pe_req_valid_o && &operand_requester_ready && pe_req_o.vfu == VFU_MaskUnit)
+    if (pe_req_valid_o && &operand_requester_ready && pe_req_o.vfu == VFU_MaskUnit) begin
       running_mask_insn_d = 1'b1;
+      pending_mask_insn_d = 1'b0;
+    end
+    // Reserve ownership at acceptance, including the interval before lanes
+    // accept the request (the same distinction used by signoff integration).
+    if (accepted_insn && vfu(ara_req_i.op) == VFU_MaskUnit)
+      pending_mask_insn_d = 1'b1;
   end
 
   //////////////

@@ -1,0 +1,102 @@
+#include <stdint.h>
+
+#include "printf.h"
+#include "runtime.h"
+
+// Four sparse lane states span five global limbs; exact cancellation leaves 3 ULPs.
+static const uint32_t source[8] __attribute__((aligned(128))) =
+  {0x7f000000,0,1,0,0xff000000,0,2,0};
+int main(void) {
+  uint64_t result, flags;
+
+  asm volatile(
+      "li t0, 8\n"
+      "vsetvli t0, t0, e32, m1, ta, ma\n"
+      "vle32.v v1, (%[src])\n"
+      "vmv.v.i v2, 0\n"
+      "vmv.v.i v3, 0\n"
+      "vmv.x.s t1, v3\n"
+      "csrwi fflags, 0\n"
+      "csrwi frm, 0\n"
+      "fence\n"
+      "rdcycle zero\n"
+      "vfredusum.vs v4,  v1, v2\n"
+      "vfredusum.vs v5,  v1, v2\n"
+      "vfredusum.vs v6,  v1, v2\n"
+      "vfredusum.vs v7,  v1, v2\n"
+      "vfredusum.vs v8,  v1, v2\n"
+      "vfredusum.vs v9,  v1, v2\n"
+      "vfredusum.vs v10, v1, v2\n"
+      "vfredusum.vs v11, v1, v2\n"
+      "vfredusum.vs v12, v1, v2\n"
+      "vfredusum.vs v13, v1, v2\n"
+      "vfredusum.vs v14, v1, v2\n"
+      "vfredusum.vs v15, v1, v2\n"
+      "vfredusum.vs v16, v1, v2\n"
+      "vfredusum.vs v17, v1, v2\n"
+      "vfredusum.vs v18, v1, v2\n"
+      "vfredusum.vs v19, v1, v2\n"
+      "vmv.x.s t1, v19\n"
+      "fence\n"
+      "rdcycle zero\n"
+      "li t2, 0\n"
+      "li t4, 3\n"
+      "vmv.x.s t3, v4\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v5\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v6\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v7\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v8\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v9\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v10\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v11\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v12\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v13\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v14\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v15\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v16\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v17\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v18\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "vmv.x.s t3, v19\n"
+      "xor t3, t3, t4\n"
+      "or t2, t2, t3\n"
+      "mv %[result], t2\n"
+      "csrr %[flags],fflags\n"
+      : [result] "=&r"(result), [flags] "=&r"(flags)
+      : [src] "r"(source)
+      : "t0", "t1", "t2", "t3", "t4", "memory");
+
+  const int failed = result != 0 || flags != 0;
+  printf("RCE sparse egress probe: result=%lx flags=%lx (%s)\n", result, flags,
+         failed ? "FAILED" : "PASSED");
+  return failed;
+}

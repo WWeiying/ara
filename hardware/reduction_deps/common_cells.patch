@@ -1,0 +1,474 @@
+diff --git a/Bender.yml b/Bender.yml
+index df666703790e2785bdf185356b3ebaffc38a21d5..f9bc3970f37e7867695a717111d645c554213748 100644
+--- a/Bender.yml
++++ b/Bender.yml
+@@ -38,6 +38,8 @@ sources:
+       - src/edge_propagator_tx.sv
+       - src/exp_backoff.sv
+       - src/fifo_v3.sv
++      - src/fifo_v4.sv
++      - src/fifo_v5.sv
+       - src/gray_to_binary.sv
+       - src/isochronous_4phase_handshake.sv
+       - src/isochronous_spill_register.sv
+@@ -98,6 +100,7 @@ sources:
+       - src/cdc_reset_ctrlr.sv
+       - src/cdc_fifo_gray.sv
+       - src/fall_through_register.sv
++      - src/fall_through_register_v1.sv
+       - src/id_queue.sv
+       - src/stream_to_mem.sv
+       - src/stream_arbiter_flushable.sv
+diff --git a/src/fall_through_register_v1.sv b/src/fall_through_register_v1.sv
+new file mode 100644
+index 0000000000000000000000000000000000000000..1614f150cefe806677b53ecfc75c870a81bafb71
+--- /dev/null
++++ b/src/fall_through_register_v1.sv
+@@ -0,0 +1,58 @@
++// Copyright 2018 ETH Zurich and University of Bologna.
++// Copyright and related rights are licensed under the Solderpad Hardware
++// License, Version 0.51 (the "License"); you may not use this file except in
++// compliance with the License. You may obtain a copy of the License at
++// http://solderpad.org/licenses/SHL-0.51. Unless required by applicable law
++// or agreed to in writing, software, hardware and materials distributed under
++// this License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
++// CONDITIONS OF ANY KIND, either express or implied. See the License for the
++// specific language governing permissions and limitations under the License.
++
++// Fall-through register with a simple stream-like ready/valid handshake.
++// This register does not cut the combinatorial path on the valid and data signals.
++// It only cuts the combinatorial path on the ready signal.
++// In case the module at its output is ready to accept data within the same clock cycle, they are forwarded.
++// Use this module to get a 'default ready' behavior towards the input.
++module fall_through_register_v1 #(
++    parameter type T             = logic,  // Vivado requires a default value for type parameters.
++    parameter int unsigned DEPTH = 1
++) (
++    input  logic    clk_i,          // Clock
++    input  logic    rst_ni,         // Asynchronous active-low reset
++    input  logic    clr_i,          // Synchronous clear
++    input  logic    testmode_i,     // Test mode to bypass clock gating
++    // Input port
++    input  logic    valid_i,
++    output logic    ready_o,
++    input  T        data_i,
++    // Output port
++    output logic    valid_o,
++    input  logic    ready_i,
++    output T        data_o
++);
++
++    logic   fifo_empty,
++            fifo_full;
++
++    fifo_v3 #(
++        .FALL_THROUGH   (1'b1),
++        .DEPTH          (DEPTH),
++        .dtype          (T)
++    ) i_fifo (
++        .clk_i          (clk_i),
++        .rst_ni         (rst_ni),
++        .flush_i        (clr_i),
++        .testmode_i     (testmode_i),
++        .full_o         (fifo_full),
++        .empty_o        (fifo_empty),
++        .usage_o        (),
++        .data_i         (data_i),
++        .push_i         (valid_i & ~fifo_full),
++        .data_o         (data_o),
++        .pop_i          (ready_i & ~fifo_empty)
++    );
++
++    assign ready_o = ~fifo_full;
++    assign valid_o = ~fifo_empty;
++
++endmodule
+diff --git a/src/fifo_v4.sv b/src/fifo_v4.sv
+new file mode 100644
+index 0000000000000000000000000000000000000000..67d7cc2cf5e3a55a67ff5363c2a9a913f4b77ab1
+--- /dev/null
++++ b/src/fifo_v4.sv
+@@ -0,0 +1,205 @@
++// Copyright 2018 ETH Zurich and University of Bologna.
++// Copyright and related rights are licensed under the Solderpad Hardware
++// License, Version 0.51 (the "License"); you may not use this file except in
++// compliance with the License.  You may obtain a copy of the License at
++// http://solderpad.org/licenses/SHL-0.51. Unless required by applicable law
++// or agreed to in writing, software, hardware and materials distributed under
++// this License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
++// CONDITIONS OF ANY KIND, either express or implied. See the License for the
++// specific language governing permissions and limitations under the License.
++
++// Dual-write extension of FIFO V3, supports simultaneous write of two entries
++// Write port 1 has higher priority and is stored at an earlier position than port 2 when writing simultaneously
++// Backward compatible with FIFO V3 when DUAL_WRITE_EN = 0
++
++`include "common_cells/registers.svh"
++`include "common_cells/assertions.svh"
++
++module fifo_v4 #(
++  parameter type dtype                = logic,
++  parameter int unsigned DEPTH        = 8,
++  parameter bit FALL_THROUGH          = 1'b0,
++  parameter bit DUAL_WRITE_EN          = 1'b0, // Enable dual write ports
++  parameter int unsigned ALM_FULL_TH   = 1,  // Almost full threshold
++  parameter int unsigned ALM_EMPTY_TH  = 1   // Almost empty threshold
++)(
++  input  logic                  clk_i,
++  input  logic                  rst_ni,
++  input  logic                  testmode_i, // Test mode (for compatibility with fifo_v3)
++  input  logic                  flush_i,
++
++  // Write port 1 (higher priority, stored first when dual writing)
++  input  dtype                  wdata_i,
++  input  logic                  push_i,
++  output logic                  full_o,
++  output logic                  alm_full_o,
++
++  // Write port 2 (lower priority, stored second when dual writing)
++  input  dtype                  wdata2_i,
++  input  logic                  push2_i,
++  output logic                  full2_o,
++
++  // Read port (name aligned with fifo_v3 for compatibility)
++  output dtype                  data_o,
++  input  logic                  pop_i,
++  output logic                  empty_o,
++  output logic                  alm_empty_o,
++
++  output logic [$clog2(DEPTH):0] usage_o
++);
++
++  localparam int unsigned ADDR_WIDTH = (DEPTH > 1) ? $clog2(DEPTH) : 1;
++  localparam int unsigned CNT_WIDTH  = $clog2(DEPTH) + 1;
++
++  // Memory array
++  dtype [DEPTH-1:0] mem;
++
++  // Pointers
++  logic [ADDR_WIDTH-1:0] wr_ptr_d, wr_ptr_q;
++  logic [ADDR_WIDTH-1:0] rd_ptr_d, rd_ptr_q;
++  logic [CNT_WIDTH-1:0]  usage_d, usage_q;
++
++  // Internal signals
++  logic                  write;
++  logic                  read;
++  dtype                  rdata;
++  logic                  empty;
++  logic                  full;
++  logic                  full2; // Full for dual write operation
++
++  // ---------------------------
++  // Pointer and usage update
++  // ---------------------------
++  always_comb begin
++    wr_ptr_d = wr_ptr_q;
++    rd_ptr_d = rd_ptr_q;
++    usage_d  = usage_q;
++
++    unique case ({push_i, push2_i})
++      2'b11: begin
++        if (DUAL_WRITE_EN && !full2) begin
++          wr_ptr_d = wr_ptr_q + 2'd2;
++          usage_d = usage_q + 2'd2;
++        end
++      end
++      2'b10: begin
++        if (!full) begin
++          wr_ptr_d = wr_ptr_q + 1'd1;
++          usage_d = usage_q + 1'd1;
++        end
++      end
++      2'b01: begin
++        if (!full2) begin
++          wr_ptr_d = wr_ptr_q + 1'd1;
++          usage_d = usage_q + 1'd1;
++        end
++      end
++      default: begin end
++    endcase
++
++    // Read operation
++    if (pop_i && !empty) begin
++      rd_ptr_d = rd_ptr_q + 1'd1;
++      usage_d = usage_d - 1'd1;
++    end
++
++    // Wrap pointers for non-power-of-2 depth
++    if (wr_ptr_d >= DEPTH) begin
++      wr_ptr_d = wr_ptr_d - DEPTH;
++    end
++    if (rd_ptr_d >= DEPTH) begin
++      rd_ptr_d = rd_ptr_d - DEPTH;
++    end
++
++    // Flush operation
++    if (flush_i) begin
++      wr_ptr_d = '0;
++      rd_ptr_d = '0;
++      usage_d = '0;
++    end
++  end
++
++  // ---------------------------
++  // Memory write
++  // ---------------------------
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      mem <= '0;
++    end else begin
++      // Write port 1 has priority in case of address overlap
++      if (push_i && !full) begin
++        mem[wr_ptr_q] <= wdata_i;
++      end
++      // Write port 2 writes to next address
++      if (DUAL_WRITE_EN && push2_i && !full2) begin
++        // Port 2 address: +1 only when port 1 is also writing, otherwise same as current write pointer
++        // Wrap write address for port 2 for non-power-of-2 depth
++        mem[(wr_ptr_q + push_i >= DEPTH) ? (wr_ptr_q + push_i - DEPTH) : (wr_ptr_q + push_i)] <= wdata2_i;
++      end
++    end
++  end
++
++  // ---------------------------
++  // Memory read
++  // ---------------------------
++  assign rdata = mem[rd_ptr_q];
++
++  // ---------------------------
++  // Fall through logic
++  // ---------------------------
++  generate
++    if (FALL_THROUGH) begin : gen_fall_through
++      logic [CNT_WIDTH-1:0] rd_ptr_mux;
++      always_comb begin
++        rd_ptr_mux = rd_ptr_q;
++        if (pop_i && !empty) begin
++          rd_ptr_mux = rd_ptr_q + 1'd1;
++        end
++        // Forward incoming data directly if FIFO is empty
++        if (empty && push_i) begin
++          data_o = wdata_i;
++        end else if (empty && DUAL_WRITE_EN && push2_i) begin
++          data_o = wdata2_i;
++        end else begin
++          data_o = mem[rd_ptr_mux];
++        end
++      end
++    end else begin : gen_no_fall_through
++      assign data_o = rdata;
++    end
++  endgenerate
++
++  // ---------------------------
++  // Flags generation
++  // ---------------------------
++  assign empty = (usage_q == '0);
++  assign full  = (usage_q >= DEPTH);
++  assign full2 = DUAL_WRITE_EN ? (usage_q >= DEPTH - 1'b1) : full; // Need at least 2 entries free for dual write
++
++  assign empty_o     = empty;
++  assign full_o      = full;
++  assign full2_o     = full2;
++  assign alm_full_o  = (usage_q >= DEPTH - ALM_FULL_TH);
++  assign alm_empty_o = (usage_q <= ALM_EMPTY_TH);
++  assign usage_o     = usage_q;
++
++  // ---------------------------
++  // Registers
++  // ---------------------------
++  `FF(wr_ptr_q, wr_ptr_d, '0)
++  `FF(rd_ptr_q, rd_ptr_d, '0)
++  `FF(usage_q, usage_d, '0)
++
++  // ---------------------------
++  // Assertions (disabled per user request)
++  // ---------------------------
++  // `ASSERT_NEVER(PushFullPort1, push_i && full, "Push to full FIFO port 1")
++  // `ASSERT_NEVER(PushFullPort2, push2_i && full2, "Push to full FIFO port 2")
++  // `ASSERT_NEVER(PopEmpty, pop_i && empty, "Pop from empty FIFO")
++  // `ASSERT_NEVER(PushDuringFlush, (push_i || push2_i) && flush_i, "Push during flush")
++  // `ASSERT_NEVER(PopDuringFlush, pop_i && flush_i, "Pop during flush")
++  // `ASSERT_INIT(DepthValid, DEPTH > 0)
++  // `ASSERT_NEVER(WrPtrOutOfBounds, wr_ptr_q >= DEPTH, "Write pointer out of bounds")
++  // `ASSERT_NEVER(RdPtrOutOfBounds, rd_ptr_q >= DEPTH, "Read pointer out of bounds")
++
++endmodule
+diff --git a/src/fifo_v5.sv b/src/fifo_v5.sv
+new file mode 100644
+index 0000000000000000000000000000000000000000..49c9631d807b0753e94a534aacbbab5527ce65bb
+--- /dev/null
++++ b/src/fifo_v5.sv
+@@ -0,0 +1,172 @@
++// Copyright 2018 ETH Zurich and University of Bologna.
++// Copyright and related rights are licensed under the Solderpad Hardware
++// License, Version 0.51 (the "License"); you may not use this file except in
++// compliance with the License. You may obtain a copy of the License at
++// http://solderpad.org/licenses/SHL-0.51. Unless required by applicable law
++// or agreed to in writing, software, hardware and materials distributed under
++// this License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
++// CONDITIONS OF ANY KIND, either express or implied. See the License for the
++// specific language governing permissions and limitations under the License.
++
++// Author: Florian Zaruba <zarubaf@iis.ee.ethz.ch>
++
++`include "common_cells/assertions.svh"
++
++module fifo_v5 #(
++    parameter bit          FALL_THROUGH = 1'b0, // fifo is in fall-through mode
++    parameter int unsigned DATA_WIDTH   = 32,   // default data width if the fifo is of type logic
++    parameter int unsigned DEPTH        = 8,    // depth can be arbitrary from 0 to 2**32
++    parameter type dtype                = logic [DATA_WIDTH-1:0],
++    // DO NOT OVERWRITE THIS PARAMETER
++    parameter int unsigned ADDR_DEPTH   = (DEPTH > 1) ? $clog2(DEPTH) : 1
++)(
++    input  logic  clk_i,            // Clock
++    input  logic  rst_ni,           // Asynchronous reset active low
++    input  logic  flush_i,          // flush the queue
++    input  logic  testmode_i,       // test_mode to bypass clock gating
++    // status flags
++    output logic  full_o,           // queue is full
++    output logic  empty_o,          // queue is empty
++    output logic  [ADDR_DEPTH-1:0] usage_o,  // fill pointer
++    // as long as the queue is not full we can push new data
++    input  dtype  data_i,           // data to push into the queue
++    input  logic  push_i,           // data is valid and can be pushed to the queue
++    // as long as the queue is not empty we can pop new elements
++    output dtype  data_o,           // output data
++    output dtype  mem_o[DEPTH - 1:0],
++    output logic  vld_o[DEPTH - 1:0],
++    input  logic  pop_i             // pop head from queue
++);
++    // local parameter
++    // FIFO depth - handle the case of pass-through, synthesizer will do constant propagation
++    localparam int unsigned FifoDepth = (DEPTH > 0) ? DEPTH : 1;
++    // clock gating control
++    logic gate_clock;
++    // pointer to the read and write section of the queue
++    logic [ADDR_DEPTH - 1:0] read_pointer_n, read_pointer_q, write_pointer_n, write_pointer_q;
++    // keep a counter to keep track of the current queue status
++    // this integer will be truncated by the synthesis tool
++    logic [ADDR_DEPTH:0] status_cnt_n, status_cnt_q;
++    // actual memory
++    dtype [FifoDepth - 1:0] mem_n, mem_q;
++    logic [FifoDepth - 1:0] vld_n, vld_q;
++
++    assign usage_o = status_cnt_q[ADDR_DEPTH-1:0];
++
++    if (DEPTH == 0) begin : gen_pass_through
++        assign empty_o     = ~push_i;
++        assign full_o      = ~pop_i;
++    end else begin : gen_fifo
++        assign full_o       = (status_cnt_q == FifoDepth[ADDR_DEPTH:0]);
++        assign empty_o      = (status_cnt_q == 0) & ~(FALL_THROUGH & push_i);
++    end
++    // status flags
++
++    // read and write queue logic
++    always_comb begin : read_write_comb
++        // default assignment
++        read_pointer_n  = read_pointer_q;
++        write_pointer_n = write_pointer_q;
++        status_cnt_n    = status_cnt_q;
++        data_o          = (DEPTH == 0) ? data_i : mem_q[read_pointer_q];
++        mem_n           = mem_q;
++        vld_n           = vld_q;
++        gate_clock      = 1'b1;
++        
++        for(int i=0;i<FifoDepth;i++) begin
++          mem_o[i] = mem_q[i];
++          vld_o[i] = vld_q[i];
++        end 
++
++        // push a new element to the queue
++        if (push_i && ~full_o) begin
++            // push the data onto the queue
++            mem_n[write_pointer_q] = data_i;
++            vld_n[write_pointer_q] = 1'b1;
++            // un-gate the clock, we want to write something
++            gate_clock = 1'b0;
++            // increment the write counter
++            // this is dead code when DEPTH is a power of two
++            if (write_pointer_q == FifoDepth[ADDR_DEPTH-1:0] - 1)
++                write_pointer_n = '0;
++            else
++                write_pointer_n = write_pointer_q + 1;
++            // increment the overall counter
++            status_cnt_n    = status_cnt_q + 1;
++        end
++
++        if (pop_i && ~empty_o) begin
++            vld_n[read_pointer_q] = '0;
++            // read from the queue is a default assignment
++            // but increment the read pointer...
++            // this is dead code when DEPTH is a power of two
++            if (read_pointer_n == FifoDepth[ADDR_DEPTH-1:0] - 1)
++                read_pointer_n = '0;
++            else
++                read_pointer_n = read_pointer_q + 1;
++            // ... and decrement the overall count
++            status_cnt_n   = status_cnt_q - 1;
++        end
++
++        // keep the count pointer stable if we push and pop at the same time
++        if (push_i && pop_i &&  ~full_o && ~empty_o)
++            status_cnt_n   = status_cnt_q;
++
++        // FIFO is in pass through mode -> do not change the pointers
++        if (FALL_THROUGH && (status_cnt_q == 0) && push_i) begin
++            data_o = data_i;
++            if (pop_i) begin
++                status_cnt_n = status_cnt_q;
++                read_pointer_n = read_pointer_q;
++                write_pointer_n = write_pointer_q;
++            end
++        end
++    end
++
++    // sequential process
++    always_ff @(posedge clk_i or negedge rst_ni) begin
++        if(~rst_ni) begin
++            read_pointer_q  <= '0;
++            write_pointer_q <= '0;
++            status_cnt_q    <= '0;
++        end else begin
++            if (flush_i) begin
++                read_pointer_q  <= '0;
++                write_pointer_q <= '0;
++                status_cnt_q    <= '0;
++             end else begin
++                read_pointer_q  <= read_pointer_n;
++                write_pointer_q <= write_pointer_n;
++                status_cnt_q    <= status_cnt_n;
++            end
++        end
++    end
++
++    always_ff @(posedge clk_i or negedge rst_ni) begin
++        if(~rst_ni) begin
++            mem_q <= {FifoDepth{dtype'('0)}};
++        end else if (!gate_clock) begin
++            mem_q <= mem_n;
++        end
++    end
++    
++    always_ff @(posedge clk_i or negedge rst_ni) begin
++        if(~rst_ni) begin
++            vld_q <= '{default:'0};
++        end else begin
++            vld_q <= vld_n;
++        end
++    end
++
++
++`ifndef COMMON_CELLS_ASSERTS_OFF
++    `ASSERT_INIT(depth_0, DEPTH > 0, "DEPTH must be greater than 0.")
++
++    `ASSERT(full_write, full_o |-> ~push_i, clk_i, !rst_ni,
++            "Trying to push new data although the FIFO is full.")
++
++    `ASSERT(empty_read, empty_o |-> ~pop_i, clk_i, !rst_ni,
++            "Trying to pop data although the FIFO is empty.")
++`endif
++
++endmodule // fifo_v3
