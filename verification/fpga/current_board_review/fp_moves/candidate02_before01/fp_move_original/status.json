@@ -1,0 +1,14 @@
+{
+  "name": "fp_move_original",
+  "status": "FAIL",
+  "returncode": 0,
+  "elapsed_s": 35.26479210006073,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_move_original",
+    "RVV_FP_MOVE_DETAIL op=6 seed=0 scalar=0 invalid_box=0 vl=2 mask=0 sticky=0 vstart=1 actual_flags=0 errors=1",
+    "RVV_FP_MOVE_CLASSIFY returned_vstart=0 first_bad_element=0 expected_bits=0 actual_bits=31743 scalar_expected=1311768467463790320 scalar_actual=1311768467463790320 guard_before=91 guard_after=91",
+    "RVV_FP_MOVE_FAIL sew=16 cases=1 errors=1",
+    "BOARD_CASE_FAIL fp_move_original"
+  ],
+  "console_sha256": "12be86039ea57316c627f8b82e771fe7036d4d774eda13b139671332aaa7f550"
+}

@@ -1,0 +1,30 @@
+{
+  "state": "PASS_84_REAL_RTL_NAN_MINMAX",
+  "scope": "directed module tests, not archived source or SoC closure",
+  "runs": [
+    {
+      "lanes": 4,
+      "compile_rc": 0,
+      "compile_seconds": 42.315445069689304,
+      "run_rc": 0,
+      "run_seconds": 12.39399952115491,
+      "state": "PASS",
+      "cases": 42,
+      "min_cycles": 51,
+      "max_cycles": 93
+    },
+    {
+      "lanes": 1,
+      "compile_rc": 0,
+      "compile_seconds": 41.316737389191985,
+      "run_rc": 0,
+      "run_seconds": 11.794147382955998,
+      "state": "PASS",
+      "cases": 42,
+      "min_cycles": 83,
+      "max_cycles": 266
+    }
+  ],
+  "cases": 84,
+  "pins_unchanged": true
+}

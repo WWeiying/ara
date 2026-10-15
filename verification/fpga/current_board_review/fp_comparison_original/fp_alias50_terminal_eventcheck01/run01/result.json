@@ -1,0 +1,859 @@
+{
+  "status": "INDEPENDENT_ORIGINAL_ALIAS50_ARCHITECTURAL_ACCEPTED_NOT_FULL_PARENT",
+  "generated": {
+    "strict": {
+      "status": "PASS_RAW_ORIGINAL_ALIAS50_NOT_FULL_PARENT",
+      "target_calls": 50,
+      "full_result_bit_checks": 25600,
+      "guard_checks": 100,
+      "returned_vstart_zero": 50,
+      "returned_flags_checked": 50,
+      "helper_instructions": 800,
+      "unused_helper_retirements": 0,
+      "actual_initialization_stores": 64100,
+      "firmware_retired_to_exit": 1574883,
+      "retired": 1574889,
+      "park_retired": 6,
+      "calls": [
+        {
+          "ordinal": 1,
+          "op": 0,
+          "vl": 0,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 21204,
+            "retired": 15668
+          }
+        },
+        {
+          "ordinal": 2,
+          "op": 0,
+          "vl": 0,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 60769,
+            "retired": 48020
+          }
+        },
+        {
+          "ordinal": 3,
+          "op": 0,
+          "vl": 0,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 100004,
+            "retired": 80381
+          }
+        },
+        {
+          "ordinal": 4,
+          "op": 0,
+          "vl": 0,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 139215,
+            "retired": 112733
+          }
+        },
+        {
+          "ordinal": 5,
+          "op": 0,
+          "vl": 0,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 178434,
+            "retired": 145094
+          }
+        },
+        {
+          "ordinal": 6,
+          "op": 0,
+          "vl": 0,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 217645,
+            "retired": 177446
+          }
+        },
+        {
+          "ordinal": 7,
+          "op": 0,
+          "vl": 0,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 256488,
+            "retired": 209551
+          }
+        },
+        {
+          "ordinal": 8,
+          "op": 0,
+          "vl": 0,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 295315,
+            "retired": 241647
+          }
+        },
+        {
+          "ordinal": 9,
+          "op": 0,
+          "vl": 1,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 334554,
+            "retired": 274013
+          }
+        },
+        {
+          "ordinal": 10,
+          "op": 0,
+          "vl": 1,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 372780,
+            "retired": 306359
+          }
+        },
+        {
+          "ordinal": 11,
+          "op": 0,
+          "vl": 1,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 410998,
+            "retired": 338714
+          }
+        },
+        {
+          "ordinal": 12,
+          "op": 0,
+          "vl": 1,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 449206,
+            "retired": 371060
+          }
+        },
+        {
+          "ordinal": 13,
+          "op": 0,
+          "vl": 1,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 487424,
+            "retired": 403415
+          }
+        },
+        {
+          "ordinal": 14,
+          "op": 0,
+          "vl": 1,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 525632,
+            "retired": 435761
+          }
+        },
+        {
+          "ordinal": 15,
+          "op": 0,
+          "vl": 1,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 563474,
+            "retired": 467860
+          }
+        },
+        {
+          "ordinal": 16,
+          "op": 0,
+          "vl": 1,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 601298,
+            "retired": 499950
+          }
+        },
+        {
+          "ordinal": 17,
+          "op": 0,
+          "vl": 2,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 639536,
+            "retired": 532310
+          }
+        },
+        {
+          "ordinal": 18,
+          "op": 0,
+          "vl": 2,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 677747,
+            "retired": 564650
+          }
+        },
+        {
+          "ordinal": 19,
+          "op": 0,
+          "vl": 2,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 715968,
+            "retired": 596999
+          }
+        },
+        {
+          "ordinal": 20,
+          "op": 0,
+          "vl": 2,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 754179,
+            "retired": 629339
+          }
+        },
+        {
+          "ordinal": 21,
+          "op": 0,
+          "vl": 2,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 792400,
+            "retired": 661688
+          }
+        },
+        {
+          "ordinal": 22,
+          "op": 0,
+          "vl": 2,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 830611,
+            "retired": 694028
+          }
+        },
+        {
+          "ordinal": 23,
+          "op": 0,
+          "vl": 2,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 868456,
+            "retired": 726121
+          }
+        },
+        {
+          "ordinal": 24,
+          "op": 0,
+          "vl": 2,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 906283,
+            "retired": 758205
+          }
+        },
+        {
+          "ordinal": 25,
+          "op": 0,
+          "vl": 3,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 944524,
+            "retired": 790559
+          }
+        },
+        {
+          "ordinal": 26,
+          "op": 0,
+          "vl": 3,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 982735,
+            "retired": 822893
+          }
+        },
+        {
+          "ordinal": 27,
+          "op": 0,
+          "vl": 3,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1020956,
+            "retired": 855236
+          }
+        },
+        {
+          "ordinal": 28,
+          "op": 0,
+          "vl": 3,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1059167,
+            "retired": 887570
+          }
+        },
+        {
+          "ordinal": 29,
+          "op": 0,
+          "vl": 3,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1097388,
+            "retired": 919913
+          }
+        },
+        {
+          "ordinal": 30,
+          "op": 0,
+          "vl": 3,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1135599,
+            "retired": 952247
+          }
+        },
+        {
+          "ordinal": 31,
+          "op": 0,
+          "vl": 3,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 0,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1173444,
+            "retired": 984334
+          }
+        },
+        {
+          "ordinal": 32,
+          "op": 0,
+          "vl": 3,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 1,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1211271,
+            "retired": 1016412
+          }
+        },
+        {
+          "ordinal": 33,
+          "op": 0,
+          "vl": 256,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1249517,
+            "retired": 1048760
+          }
+        },
+        {
+          "ordinal": 34,
+          "op": 0,
+          "vl": 256,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1286225,
+            "retired": 1079576
+          }
+        },
+        {
+          "ordinal": 35,
+          "op": 0,
+          "vl": 256,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1322943,
+            "retired": 1110401
+          }
+        },
+        {
+          "ordinal": 36,
+          "op": 0,
+          "vl": 256,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1359651,
+            "retired": 1141217
+          }
+        },
+        {
+          "ordinal": 37,
+          "op": 0,
+          "vl": 256,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1396369,
+            "retired": 1172042
+          }
+        },
+        {
+          "ordinal": 38,
+          "op": 0,
+          "vl": 256,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1433077,
+            "retired": 1202858
+          }
+        },
+        {
+          "ordinal": 39,
+          "op": 0,
+          "vl": 256,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1469419,
+            "retired": 1233427
+          }
+        },
+        {
+          "ordinal": 40,
+          "op": 0,
+          "vl": 256,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1505743,
+            "retired": 1263987
+          }
+        },
+        {
+          "ordinal": 41,
+          "op": 0,
+          "vl": 511,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1542481,
+            "retired": 1294817
+          }
+        },
+        {
+          "ordinal": 42,
+          "op": 0,
+          "vl": 511,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1577669,
+            "retired": 1324103
+          }
+        },
+        {
+          "ordinal": 43,
+          "op": 0,
+          "vl": 511,
+          "mode": 1,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1612862,
+            "retired": 1353398
+          }
+        },
+        {
+          "ordinal": 44,
+          "op": 0,
+          "vl": 511,
+          "mode": 1,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1648045,
+            "retired": 1382684
+          }
+        },
+        {
+          "ordinal": 45,
+          "op": 0,
+          "vl": 511,
+          "mode": 2,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1683238,
+            "retired": 1411979
+          }
+        },
+        {
+          "ordinal": 46,
+          "op": 0,
+          "vl": 511,
+          "mode": 2,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1718421,
+            "retired": 1441265
+          }
+        },
+        {
+          "ordinal": 47,
+          "op": 0,
+          "vl": 511,
+          "mode": 3,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1753238,
+            "retired": 1470304
+          }
+        },
+        {
+          "ordinal": 48,
+          "op": 0,
+          "vl": 511,
+          "mode": 3,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1788037,
+            "retired": 1499334
+          }
+        },
+        {
+          "ordinal": 49,
+          "op": 0,
+          "vl": 512,
+          "mode": 0,
+          "sticky": 0,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 16,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1823250,
+            "retired": 1528634
+          }
+        },
+        {
+          "ordinal": 50,
+          "op": 0,
+          "vl": 512,
+          "mode": 0,
+          "sticky": 1,
+          "reads": 514,
+          "vstart": 0,
+          "flags": 17,
+          "target": {
+            "pc": "0x80000508",
+            "encoding": "62881457",
+            "cycle": 1858422,
+            "retired": 1557914
+          }
+        }
+      ],
+      "full_reference_vectors": false,
+      "source_scope": "original first50, not682/full parent/Linux"
+    },
+    "generic": {
+      "rows": 1576732,
+      "first_cycle": 82,
+      "last_cycle": 1879290,
+      "retire_count": 1574889,
+      "vector_retire_count": 453,
+      "cvx_request_count": 453,
+      "cvx_response_count": 453,
+      "cvx_max_inflight": 1,
+      "cvx_replay_count": 0,
+      "arch_request_replay_count": 0,
+      "cvx_exception_count": 0,
+      "architecture_request_count": 453,
+      "backend_uop_alloc_count": 242,
+      "backend_uop_done_count": 242,
+      "backend_uop_max_inflight": 3
+    },
+    "csv_sha256": "353025d07d61f9525e5e4fce76f004695bd9a588f85a654c5f14dc068202d497",
+    "scope": "All25600 source bits/100guards/50flags/vstarts; scalar CSV, not direct vector-port payload"
+  },
+  "csv_parses": 1,
+  "raw_identity": [
+    64770,
+    30774067421,
+    180475985,
+    1791865986632480583,
+    1791865986632480583
+  ],
+  "raw_bytes": 180475985,
+  "row_delivery_unchanged": true,
+  "pins_pre_post_unchanged": true,
+  "full_parent_accepted": false,
+  "reference_used_as_DUT_evidence": false,
+  "direct_vector_payload_claimed": false,
+  "source_scope": "original first50/49 predecessors, not682/fullparent/Linux",
+  "old_cancelled_attempt_unchanged": true,
+  "no_DUT_REF_build": true
+}

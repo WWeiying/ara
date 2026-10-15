@@ -1,0 +1,31 @@
+{
+  "status": "STATIC_SOURCE_MODEL_EVIDENCE_NO_BLOCKER_NOT_DUT_ENTRY",
+  "ready_sha256": "06197d69f8e3767e358b0dacdb6020147f8b1dcf7c9961fd20f5929436a0941a",
+  "auditor_sha256": "c89534b3f4fb418159feabe377d067a8fa213d408c57eac404db89755cd56000",
+  "verified_pin_count": 227,
+  "calls": 482,
+  "results": 246784,
+  "guards": 964,
+  "helper_instructions": 6266,
+  "host_capture_bytes": 1077752,
+  "host_capture_sha256": "89f6f8a1eee5ca8d8dc5a8bd549df94024b612954b42faa41ebfd2f20ab20044",
+  "reference_sha256": "348017eedaff3f98b8fd7b9eb52506a3c73e7c269ac015b737ccc5860dc018c5",
+  "no_Spike_Host_build_or_DUT_executed": true,
+  "raw_trace_parses": 0,
+  "raw_bytes_hashed_only": true,
+  "elapsed_s": 2.7934046210721135,
+  "actual_review_process_exit": 0,
+  "actual_process_waited": true,
+  "verdict": "NO_BLOCKER_WORK05_SOFTWARE_REFERENCE_EVIDENCE_ONLY",
+  "blocking_findings": [],
+  "DUT_entry_approved": false,
+  "preparation_mutated": false,
+  "scope": "Complete requested original first482 and481predecessors, not full22400/Linux history",
+  "budget_note": "Work05 READY legacy proxy2266.114275s retained; user reports successor worker independent estimate about5552s. Neither is measured M8 runtime; worker final budget/plan not yet reviewed.",
+  "limits": [
+    "Reference raw acceptance consumed from pinned producer metadata/code; no independent raw reparse.",
+    "Returned high-word zero is the original status-container check, not direct fflags/vxrm/vxsat sampling.",
+    "Original C text not recovered; original Linux binary-equivalent reconstructed source proven by complete ELF byte identity.",
+    "Scalar setup scheduling/alignment and software verification changed; original input/helper/vector call order retained, not exact Linux microstate."
+  ]
+}

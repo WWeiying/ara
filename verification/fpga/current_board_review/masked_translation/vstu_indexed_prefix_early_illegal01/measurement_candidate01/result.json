@@ -1,0 +1,32 @@
+{
+  "scope": "Real AddrGen/VSTU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1894917,
+  "cases": [
+    {
+      "variant": "candidate",
+      "returncode": 0,
+      "elapsed_s": 10.643274944741279,
+      "observed_marker": [
+        "BROKEN_GOOD_PREFIX_EARLY_DISCARD_NOT_ARCH_PASS"
+      ],
+      "observations": [
+        "OBSERVATION indexed_vl2 accepted=1 AW=1 W=0 B=0 early=1 early_cycle=9 good_pendingB0=1 premature_pops=1 premature_done=1 mask_pops=1 done_cycle=10 last_pop_cycle=9 global_idle=1"
+      ],
+      "full_SOC_acceptance": false,
+      "translation_enabled": false,
+      "genuine_AW_before_early_illegal": true
+    }
+  ],
+  "state": "INDEXED_PREFIX_DISCRIMINATOR_COMPLETE_NOT_ARCH_PASS",
+  "compile_returncode": 0,
+  "compile_seconds": 29.386457984801382,
+  "pins_unchanged": true,
+  "variant": "candidate",
+  "vstu_sha256": "c63f227a8b25a102ae83c90c50766be989db92c07fdf43af135d07b3a35afb36",
+  "sole_override_vstu": true,
+  "RTL_edits": false,
+  "host_budget_per_compile_or_case_s": 60,
+  "rtl_watchdog_cycles": 200,
+  "measured_result_cycle": 100,
+  "no_internal_state_injection": true
+}

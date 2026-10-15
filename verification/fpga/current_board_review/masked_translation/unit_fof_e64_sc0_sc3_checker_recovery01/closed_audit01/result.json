@@ -1,0 +1,853 @@
+{
+  "status": "ARCHITECTURAL_RESULTS_ACCEPTED_OFFLINE_OLD_BATCH_NOT_ACCEPTED",
+  "cases": [
+    {
+      "status": "PASS_UNIT_FOF_E64_SC0_SC3",
+      "scenario": 0,
+      "sew": 64,
+      "rows": 167122,
+      "retired": 167018,
+      "last_cycle": 238304,
+      "checks": 5477,
+      "checkpoints": [
+        {
+          "phase": 0,
+          "bytes": 21840,
+          "checks": 2726,
+          "cycle": 134566
+        },
+        {
+          "phase": 1,
+          "bytes": 21800,
+          "checks": 5463,
+          "cycle": 237371
+        }
+      ],
+      "actions": [
+        "checkpoint0",
+        "enter_s",
+        "helper",
+        "younger",
+        "handler",
+        "return_m",
+        "checkpoint1"
+      ],
+      "original_helper_instructions": 11,
+      "capacity_instructions": 3,
+      "target_attempts": 1,
+      "returned_vl": 4,
+      "post_helper_vl": 8,
+      "actual_handler_csrs": [
+        {
+          "0": 9,
+          "1": 2147485960,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300100,
+          "5": 8,
+          "6": 24,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "allowed_undefined_indices": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "output_allocation": 130,
+      "data_bytes": 8192,
+      "page_table_bytes": 12288,
+      "mask_bytes": 16,
+      "original_guards": [
+        0,
+        9
+      ],
+      "postexit_park": 6,
+      "ctrl": [
+        0
+      ],
+      "target_architectural_exceptions": 0,
+      "zero_MMU_or_physical_requests_proved": false,
+      "Linux_signal_equivalence": false,
+      "memory_owner_count": 4,
+      "helper_owner_count": 3,
+      "memory_owners": [
+        {
+          "seq": 10,
+          "trans_id": 2,
+          "insn": 33946631,
+          "cycle": 134769,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 134770
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 134770,
+              "cycle": 134801
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147486020,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 134780,
+          "response_cycle": 134780,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486020,
+            "insn": 33946631,
+            "cycle": 134782,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 3,
+          "insn": 45481991,
+          "cycle": 134781,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 134782
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 134782,
+              "cycle": 134803
+            }
+          ],
+          "site": "mask",
+          "pc": 2147486024,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 134787,
+          "response_cycle": 134787,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486024,
+            "insn": 45481991,
+            "cycle": 134789,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 4,
+          "insn": 17136647,
+          "cycle": 134788,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 134789
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 134789,
+              "cycle": 134896
+            }
+          ],
+          "site": "target",
+          "pc": 2147486028,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 134896,
+          "response_cycle": 134896,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486028,
+            "insn": 17136647,
+            "cycle": 134898,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 2,
+          "insn": 33946663,
+          "cycle": 134914,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 134915
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 134915,
+              "cycle": 134977
+            }
+          ],
+          "site": "result",
+          "pc": 2147486050,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 134915,
+          "response_cycle": 134977,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486050,
+            "insn": 33946663,
+            "cycle": 134979,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        }
+      ],
+      "memory_allocations": 4,
+      "source_active_elements": 8,
+      "source_masked_elements": 0,
+      "source_successful_target_elements": 4,
+      "target_returned_vl": 4,
+      "lifecycle_successor": "source-bound-four-memory-owners01",
+      "successor": "exact_main_and_completion_handler_opaque_spills01",
+      "opaque_spills": [
+        {
+          "register": 8,
+          "value": 0,
+          "pc": 2147484578,
+          "address": 2148532192,
+          "cycle": 19660,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 9,
+          "value": 0,
+          "pc": 2147484580,
+          "address": 2148532184,
+          "cycle": 19661,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 18,
+          "value": 0,
+          "pc": 2147484582,
+          "address": 2148532176,
+          "cycle": 19662,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 19,
+          "value": 0,
+          "pc": 2147484584,
+          "address": 2148532168,
+          "cycle": 19663,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 20,
+          "value": 0,
+          "pc": 2147484586,
+          "address": 2148532160,
+          "cycle": 19664,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 21,
+          "value": 0,
+          "pc": 2147484588,
+          "address": 2148532152,
+          "cycle": 19665,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 22,
+          "value": 0,
+          "pc": 2147484590,
+          "address": 2148532144,
+          "cycle": 19666,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 23,
+          "value": 0,
+          "pc": 2147484592,
+          "address": 2148532136,
+          "cycle": 19674,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 24,
+          "value": 0,
+          "pc": 2147484594,
+          "address": 2148532128,
+          "cycle": 19675,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 25,
+          "value": 0,
+          "pc": 2147484596,
+          "address": 2148532120,
+          "cycle": 19676,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 26,
+          "value": 0,
+          "pc": 2147484598,
+          "address": 2148532112,
+          "cycle": 19677,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 27,
+          "value": 0,
+          "pc": 2147484600,
+          "address": 2148532104,
+          "cycle": 19678,
+          "source": "actual_RVFI_first_caller_spill"
+        }
+      ],
+      "actual_main_prologue_instructions": 14,
+      "original_literal_symbol_keys": [
+        "__bss_end",
+        "__bss_start",
+        "_start",
+        "check",
+        "check_state",
+        "fx_checkpoint",
+        "fx_completed",
+        "fx_ecall",
+        "fx_enter_mret",
+        "fx_errors",
+        "fx_guard_hi",
+        "fx_guard_lo",
+        "fx_handler",
+        "fx_m_resume",
+        "fx_mask",
+        "fx_out",
+        "fx_pages",
+        "fx_records",
+        "fx_s_entry",
+        "fx_trap",
+        "fx_trap_mret",
+        "fx_unexpected",
+        "fx_younger_store",
+        "main",
+        "replay_mismatch",
+        "trap_entry"
+      ],
+      "unchanged_business_oracle": true,
+      "completion_ecall_context": {
+        "pc": 2147485960,
+        "cycle": 135018,
+        "sp": 2148531968,
+        "returned_vl": 4,
+        "post_helper_vl": 8
+      },
+      "handler_prologue_instructions": 17,
+      "handler_opaque_registers": [
+        7,
+        28,
+        29,
+        30,
+        31
+      ],
+      "handler_saved_values": {
+        "1": 2147485884,
+        "5": 2147512440,
+        "6": 1,
+        "7": 0,
+        "28": 0,
+        "29": 0,
+        "30": 0,
+        "31": 0,
+        "10": 4,
+        "11": 2147512600,
+        "12": 2147512576,
+        "13": 8,
+        "14": 2726,
+        "15": 10752,
+        "16": 38654705664,
+        "17": 2147512320
+      },
+      "handler_restored_registers": [
+        1,
+        5,
+        6,
+        7,
+        28,
+        29,
+        30,
+        31,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "actual_child_returncode": 0,
+      "actual_child_elapsed_s": 246.55669990787283,
+      "CSV_semantic_passes": 1,
+      "unchanged_rows": 167122,
+      "CSV_sha256": "21c3df736c44bdd08bc28d333e1060a185e1a75126e444c7132dce9532d85c27",
+      "old_checker_status": "NOT_PASS_UNIT_FOF",
+      "old_worker_exit": {
+        "EXIT_CODE": "exited",
+        "EXIT_STATUS": "1",
+        "SERVICE_RESULT": "exit-code",
+        "recorded_unix_s": 1791961243.7663486
+      },
+      "original_generic_summary_recomputed": false
+    },
+    {
+      "status": "PASS_UNIT_FOF_E64_SC0_SC3",
+      "scenario": 3,
+      "sew": 64,
+      "rows": 166267,
+      "retired": 166163,
+      "last_cycle": 240269,
+      "checks": 5481,
+      "checkpoints": [
+        {
+          "phase": 0,
+          "bytes": 21840,
+          "checks": 2726,
+          "cycle": 137752
+        },
+        {
+          "phase": 1,
+          "bytes": 21832,
+          "checks": 5467,
+          "cycle": 239337
+        }
+      ],
+      "actions": [
+        "checkpoint0",
+        "enter_s",
+        "helper",
+        "younger",
+        "handler",
+        "return_m",
+        "checkpoint1"
+      ],
+      "original_helper_instructions": 11,
+      "capacity_instructions": 3,
+      "target_attempts": 1,
+      "returned_vl": 8,
+      "post_helper_vl": 8,
+      "actual_handler_csrs": [
+        {
+          "0": 9,
+          "1": 2147485872,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300100,
+          "5": 8,
+          "6": 24,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "allowed_undefined_indices": [],
+      "output_allocation": 130,
+      "data_bytes": 8192,
+      "page_table_bytes": 12288,
+      "mask_bytes": 16,
+      "original_guards": [
+        0,
+        9
+      ],
+      "postexit_park": 6,
+      "ctrl": [
+        0
+      ],
+      "target_architectural_exceptions": 0,
+      "zero_MMU_or_physical_requests_proved": false,
+      "Linux_signal_equivalence": false,
+      "memory_owner_count": 4,
+      "helper_owner_count": 3,
+      "memory_owners": [
+        {
+          "seq": 10,
+          "trans_id": 1,
+          "insn": 33946631,
+          "cycle": 137953,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 137954
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 137954,
+              "cycle": 137985
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147485892,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 137964,
+          "response_cycle": 137964,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485892,
+            "insn": 33946631,
+            "cycle": 137966,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 2,
+          "insn": 45481991,
+          "cycle": 137965,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 137966
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 137966,
+              "cycle": 137987
+            }
+          ],
+          "site": "mask",
+          "pc": 2147485896,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 137971,
+          "response_cycle": 137971,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485896,
+            "insn": 45481991,
+            "cycle": 137973,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 3,
+          "insn": 359431,
+          "cycle": 137972,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 137973
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 137973,
+              "cycle": 138004
+            }
+          ],
+          "site": "target",
+          "pc": 2147485900,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138000,
+          "response_cycle": 138000,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485900,
+            "insn": 359431,
+            "cycle": 138002,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 1,
+          "insn": 33946663,
+          "cycle": 138011,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 138012
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 138012,
+              "cycle": 138074
+            }
+          ],
+          "site": "result",
+          "pc": 2147485922,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138012,
+          "response_cycle": 138074,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485922,
+            "insn": 33946663,
+            "cycle": 138076,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        }
+      ],
+      "memory_allocations": 4,
+      "source_active_elements": 0,
+      "source_masked_elements": 8,
+      "source_successful_target_elements": 0,
+      "target_returned_vl": 8,
+      "lifecycle_successor": "source-bound-four-memory-owners01",
+      "successor": "exact_main_and_completion_handler_opaque_spills01",
+      "opaque_spills": [
+        {
+          "register": 8,
+          "value": 0,
+          "pc": 2147484508,
+          "address": 2148532192,
+          "cycle": 19649,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 9,
+          "value": 0,
+          "pc": 2147484510,
+          "address": 2148532184,
+          "cycle": 19650,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 18,
+          "value": 0,
+          "pc": 2147484512,
+          "address": 2148532176,
+          "cycle": 19660,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 19,
+          "value": 0,
+          "pc": 2147484514,
+          "address": 2148532168,
+          "cycle": 19661,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 20,
+          "value": 0,
+          "pc": 2147484516,
+          "address": 2148532160,
+          "cycle": 19662,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 21,
+          "value": 0,
+          "pc": 2147484518,
+          "address": 2148532152,
+          "cycle": 19663,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 22,
+          "value": 0,
+          "pc": 2147484520,
+          "address": 2148532144,
+          "cycle": 19664,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 23,
+          "value": 0,
+          "pc": 2147484522,
+          "address": 2148532136,
+          "cycle": 19665,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 24,
+          "value": 0,
+          "pc": 2147484524,
+          "address": 2148532128,
+          "cycle": 19666,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 25,
+          "value": 0,
+          "pc": 2147484526,
+          "address": 2148532120,
+          "cycle": 19667,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 26,
+          "value": 0,
+          "pc": 2147484528,
+          "address": 2148532112,
+          "cycle": 19675,
+          "source": "actual_RVFI_first_caller_spill"
+        },
+        {
+          "register": 27,
+          "value": 0,
+          "pc": 2147484530,
+          "address": 2148532104,
+          "cycle": 19676,
+          "source": "actual_RVFI_first_caller_spill"
+        }
+      ],
+      "actual_main_prologue_instructions": 14,
+      "original_literal_symbol_keys": [
+        "__bss_end",
+        "__bss_start",
+        "_start",
+        "check",
+        "check_state",
+        "fx_checkpoint",
+        "fx_completed",
+        "fx_ecall",
+        "fx_enter_mret",
+        "fx_errors",
+        "fx_guard_hi",
+        "fx_guard_lo",
+        "fx_handler",
+        "fx_m_resume",
+        "fx_mask",
+        "fx_out",
+        "fx_pages",
+        "fx_records",
+        "fx_s_entry",
+        "fx_trap",
+        "fx_trap_mret",
+        "fx_unexpected",
+        "fx_younger_store",
+        "main",
+        "replay_mismatch",
+        "trap_entry"
+      ],
+      "unchanged_business_oracle": true,
+      "completion_ecall_context": {
+        "pc": 2147485872,
+        "cycle": 138111,
+        "sp": 2148531968,
+        "returned_vl": 8,
+        "post_helper_vl": 8
+      },
+      "handler_prologue_instructions": 17,
+      "handler_opaque_registers": [
+        7,
+        28,
+        29,
+        30,
+        31
+      ],
+      "handler_saved_values": {
+        "1": 2147485796,
+        "5": 2147512440,
+        "6": 1,
+        "7": 0,
+        "28": 0,
+        "29": 0,
+        "30": 0,
+        "31": 0,
+        "10": 8,
+        "11": 2147512600,
+        "12": 2147512576,
+        "13": 8,
+        "14": 2726,
+        "15": 10752,
+        "16": 38654705664,
+        "17": 2147512320
+      },
+      "handler_restored_registers": [
+        1,
+        5,
+        6,
+        7,
+        28,
+        29,
+        30,
+        31,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "actual_child_returncode": 0,
+      "actual_child_elapsed_s": 246.99806061573327,
+      "CSV_semantic_passes": 1,
+      "unchanged_rows": 166267,
+      "CSV_sha256": "428a7f2ff6f48cd3d8d47219cbf9ff2a3aa3f96df22693fa1b64ca060c973f12",
+      "old_checker_status": "NOT_PASS_UNIT_FOF",
+      "old_worker_exit": {
+        "EXIT_CODE": "exited",
+        "EXIT_STATUS": "1",
+        "SERVICE_RESULT": "exit-code",
+        "recorded_unix_s": 1791961243.7663486
+      },
+      "original_generic_summary_recomputed": false
+    }
+  ],
+  "checks": 10958,
+  "rows": 333389,
+  "retired": 333181,
+  "memory_owners": 8,
+  "helper_owners": 6,
+  "checkpoints": 4,
+  "original_plan_pins": 894,
+  "verified_pins": 936,
+  "pins_pre_post_unchanged": true,
+  "old_batch_status": "NOT_ACCEPTED_LATE_ABORT",
+  "old_batch_aborted": true,
+  "old_pins_field": false,
+  "actual_original_worker_exit": {
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "1",
+    "SERVICE_RESULT": "exit-code",
+    "recorded_unix_s": 1791961243.7663486
+  },
+  "new_DUT": false,
+  "new_Spike": false,
+  "retry": false,
+  "elapsed_s": 24.02527574636042,
+  "full_Linux_or_family_closure": false
+}

@@ -1,0 +1,15 @@
+{
+  "stage": "first",
+  "passed": true,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_scalar_original/vcs_candidate04_01/first/replay/tests/rvv_small_masks_scalar_restart_e8_m2",
+      "elapsed_s": 49.86473445594311,
+      "kind": "app",
+      "name": "rvv_small_masks_scalar_restart_e8_m2",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ]
+}

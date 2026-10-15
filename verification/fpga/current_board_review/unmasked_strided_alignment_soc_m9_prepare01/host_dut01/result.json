@@ -1,0 +1,39 @@
+{
+  "status": "HOST_FOUR_BRIDGES_PASS_NOT_DUT",
+  "results": [
+    {
+      "member": "load_m",
+      "status": "HOST_EXISTING_REFERENCE_DECODER_BRIDGE_PASS_NOT_DUT",
+      "checks": 697,
+      "scalar_rows": 29186,
+      "endpoint": "native Spike HTIF1",
+      "cvx_proven": false
+    },
+    {
+      "member": "store_m",
+      "status": "HOST_EXISTING_REFERENCE_DECODER_BRIDGE_PASS_NOT_DUT",
+      "checks": 698,
+      "scalar_rows": 29186,
+      "endpoint": "native Spike HTIF1",
+      "cvx_proven": false
+    },
+    {
+      "member": "load_sv39",
+      "status": "HOST_EXISTING_REFERENCE_DECODER_BRIDGE_PASS_NOT_DUT",
+      "checks": 697,
+      "scalar_rows": 35729,
+      "endpoint": "native Spike HTIF1",
+      "cvx_proven": false
+    },
+    {
+      "member": "store_sv39",
+      "status": "HOST_EXISTING_REFERENCE_DECODER_BRIDGE_PASS_NOT_DUT",
+      "checks": 698,
+      "scalar_rows": 30729,
+      "endpoint": "native Spike HTIF1",
+      "cvx_proven": false
+    }
+  ],
+  "checker_sha256": "0dd3f3f397f1eaed1970ea0722fba9161969910e15b4cb606caa61cbcdbedd59",
+  "oracle_sha256": "410e34298d453e50f918213c0335ba15dbc96fdd4192b21372d0138c451e419d"
+}

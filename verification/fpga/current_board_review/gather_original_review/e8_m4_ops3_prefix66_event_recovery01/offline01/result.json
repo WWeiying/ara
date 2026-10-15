@@ -1,0 +1,1699 @@
+{
+  "status": "ARCHITECTURAL_PREFIX66_ACCEPTED_OLD_WORKER_ERROR_PRESERVED",
+  "plan_sha256": "5de3a259e330825548009fbe17a4f80da34c3a6b816b495a695564621ea4ddbb",
+  "generic": {
+    "rows": 1317045,
+    "first_cycle": 82,
+    "last_cycle": 1862392,
+    "retire_count": 1314151,
+    "vector_retire_count": 730,
+    "cvx_request_count": 730,
+    "cvx_response_count": 730,
+    "cvx_max_inflight": 1,
+    "cvx_replay_count": 0,
+    "arch_request_replay_count": 0,
+    "cvx_exception_count": 0,
+    "architecture_request_count": 730,
+    "backend_uop_alloc_count": 352,
+    "backend_uop_done_count": 352,
+    "backend_uop_max_inflight": 4
+  },
+  "strict": {
+    "status": "PASS_RAW66_M4_FULL_SETUP_SCALAR_ORACLE",
+    "calls": [
+      {
+        "ordinal": 1,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          0,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 50011
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 2,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          0,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 70351
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 3,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          0,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 90700
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 4,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          0,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 111044
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 5,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          1,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 129600
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 6,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          1,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 148660
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 7,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          1,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 167729
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 8,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          1,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 186793
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 9,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          2,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 206774
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 10,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          2,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 227259
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 11,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          2,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 247753
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 12,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          2,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 268242
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 13,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          3,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 285518
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 14,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          3,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 303298
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 15,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          3,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 321087
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 16,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          0,
+          3,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 0,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 338871
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 17,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          0,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 358712
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 18,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          0,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 379053
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 19,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          0,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 399417
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 20,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          0,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 419760
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 21,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          1,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 438316
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 22,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          1,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 457377
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 23,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          1,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 476458
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 24,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          1,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 495521
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 25,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          2,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 515502
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 26,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          2,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 535988
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 27,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          2,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 556500
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 28,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          2,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 576988
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 29,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          3,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 594264
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 30,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          3,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 0,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 612045
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 31,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          3,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 629848
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 32,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          1,
+          3,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 1,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 647631
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 33,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          0,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 667473
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 34,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          0,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 687829
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 35,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          0,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 2,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 708192
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 36,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          0,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 728534
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 37,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          1,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 747091
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 38,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          1,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 766169
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 39,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          1,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 2,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 785254
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 40,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          1,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 804316
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 41,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          2,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 824298
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 42,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          2,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 844802
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 43,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          2,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 2,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 865313
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 44,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          2,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 885800
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 45,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          3,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 903077
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 46,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          3,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 920872
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 47,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          3,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 2,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 938674
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 48,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          2,
+          3,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 2,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 956456
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 49,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          0,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 976298
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 50,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          0,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 996668
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 51,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          0,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 3,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1017045
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 52,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          0,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1037386
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 53,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          1,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1055943
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 54,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          1,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1075032
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 55,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          1,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 3,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1094128
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 56,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          1,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1113189
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 57,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          2,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1133171
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 58,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          2,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1153697
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 59,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          2,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 3,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1174230
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 60,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          2,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1194716
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 61,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          3,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1211993
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 62,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          3,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1229801
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 63,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          3,
+          2
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 3,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1247616
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 64,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          3,
+          3,
+          3
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 3,
+          "vstart": 511,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1265397
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 65,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          4,
+          0,
+          0
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 256,
+          "vstart": 1,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1285239
+        },
+        "returned_vstart": 0
+      },
+      {
+        "ordinal": 66,
+        "original_tuple": [
+          0,
+          3,
+          0,
+          4,
+          0,
+          1
+        ],
+        "setup_values_checked": 2178,
+        "setup_bytes_checked": 2690,
+        "target": {
+          "pc": 2147485528,
+          "insn": 814726231,
+          "vl": 256,
+          "vstart": 128,
+          "scalar": 0,
+          "immediate": 31,
+          "source31": 177,
+          "csv_line": 1309151
+        },
+        "returned_vstart": 0
+      }
+    ],
+    "target_hits": 66,
+    "routine_retire_counts": [
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66,
+      66
+    ],
+    "helper_instruction_retirements": 858,
+    "fullcap_checks": 33792,
+    "guards": 132,
+    "actual_output_scalar_loads": 33924,
+    "returned_vstart_zero": 66,
+    "setup_values_per_call": 2178,
+    "setup_bytes_per_call": 2690,
+    "physical_predicate_bytes": 128,
+    "actual_vlenb_reads": [
+      {
+        "pc": 2147483778,
+        "value": 128
+      },
+      {
+        "pc": 2147484424,
+        "value": 128
+      }
+    ],
+    "actual_capacity_returns": [
+      {
+        "pc": 2147485348,
+        "value": 512
+      }
+    ],
+    "retired_rows": 1314151,
+    "csv_rows": 1317045,
+    "csv_last_cycle": 1862392,
+    "post_exit_park_retired": 6,
+    "soc_ctrl_exit": 0,
+    "full_child_acceptance": false,
+    "exact_historical_stall_reproduction": false
+  },
+  "actual_monitor": {
+    "schema": "UNVALIDATED_MONITOR_OUTCOME_V1",
+    "architectural_acceptance": false,
+    "name": "gather_prefix_e8_m4_ops3",
+    "source_label": "rvv_permute_restart_e8_m4_ops3",
+    "returncode": 0,
+    "elapsed_s": 1639.1430871919729,
+    "timed_out": false,
+    "failure_seen": false,
+    "command": [
+      "/home/wangwy/fpga_runs/current_board_memory_candidate06/campaign/image/_build/vcs/simv",
+      "-l",
+      "run.vcs.log",
+      "+ntb_random_seed=1",
+      "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m4_ops3_prefix66_vcs_m6_plan01/prepared01/replay/tests/gather_prefix_e8_m4_ops3/input.elf",
+      "+TESTCASE=gather_prefix_e8_m4_ops3",
+      "+NO_FSDB",
+      "+COMMIT_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m4_ops3_prefix66_vcs_m6_plan01/prepared01/replay/tests/gather_prefix_e8_m4_ops3/commit_trace.csv"
+    ],
+    "cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m4_ops3_prefix66_vcs_m6_plan01/prepared01/replay/tests/gather_prefix_e8_m4_ops3/work",
+    "console_path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_original_review/e8_m4_ops3_prefix66_vcs_m6_plan01/prepared01/replay/tests/gather_prefix_e8_m4_ops3/console.log",
+    "timeout_s": 5400
+  },
+  "csv_sha256": "5d2f1d543f11b35644cbdb76dd3a657a333f18d82f0653299e68cd25536dbebd",
+  "csv_identity": [
+    64770,
+    30789441582,
+    150392232,
+    1791841505626252567,
+    1791841505626252567
+  ],
+  "csv_parses": 1,
+  "seconds": 94.3353513260372,
+  "pins_pre_post_unchanged": true,
+  "original_worker_status": "NOT_PASS",
+  "original_worker_aborted": true,
+  "original_worker_relabelled": false,
+  "new_DUT_runs": 0,
+  "RTL_changes": 0,
+  "unknown_stall_closed": false,
+  "full2688_accepted": false,
+  "Linux_execution": false
+}

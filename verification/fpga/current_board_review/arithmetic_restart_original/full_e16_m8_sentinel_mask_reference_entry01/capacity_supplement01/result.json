@@ -1,0 +1,65 @@
+{
+  "status": "CAPACITY3_FOCUSED_ACCEPTED",
+  "PCs": [
+    "0x8000199e",
+    "0x800019a0",
+    "0x800019a4"
+  ],
+  "codes": [
+    "0x52fd",
+    "0xb2f557",
+    "0x8082"
+  ],
+  "original_lines": [
+    7301,
+    7302,
+    7303
+  ],
+  "counts": [
+    1,
+    1,
+    1
+  ],
+  "contiguous_original_retirement_window": true,
+  "t0": "0xffffffffffffffff",
+  "a0": 512,
+  "VL": 512,
+  "VTYPE": 11,
+  "actual_CSR_delta": {
+    "vstart": 0,
+    "vl": 512,
+    "vtype": 11
+  },
+  "ret_no_side_effects": true,
+  "original_result_sha256": "563c7295b58c6029adf1fda245eec77d7c62d1b92db2d6d2975b6594a59b9d04",
+  "original_READY_sha256": "bc6dc1ba90bd6906d16f2c2111380947ce0d92bf3aa3f49c2eabec044f754b87",
+  "raw_sha256_inherited": "0d425b05da1c75bc16818717b0c0ee876010edd8b6822e8d22ae3ae446eef1f6",
+  "raw_stat_before": {
+    "device": 64770,
+    "inode": 37166792888,
+    "size": 425581826,
+    "mtime_ns": 1792021275998331423,
+    "ctime_ns": 1792021275998331423
+  },
+  "raw_stat_after": {
+    "device": 64770,
+    "inode": 37166792888,
+    "size": 425581826,
+    "mtime_ns": 1792021275998331423,
+    "ctime_ns": 1792021275998331423
+  },
+  "focused_output_sha256": "ef5151f46385c3cb016d2eee558afb6ae5fba6803620538425ee07767c33d3c4",
+  "focused_output_bytes": 273,
+  "actual_rg_execution_sha256": "9ff081311acbd234685907c8e0fda56692dfaebf8a3a5c39ff1914932fe15248",
+  "pins_pre_post_unchanged": true,
+  "original_capacity_gap_preserved": true,
+  "firmware_to_HTIF": 2540955,
+  "calls": 4095,
+  "results": 2096640,
+  "guards": 8190,
+  "vstart_zero": 4095,
+  "packed_output_reads": 528255,
+  "reference_attempts": 1,
+  "DUT_runs": 0,
+  "independent_combined_terminal_review_pending": true
+}

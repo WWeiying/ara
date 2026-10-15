@@ -1,0 +1,27 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "tests": 28,
+  "failures": 0,
+  "exit_code": 0,
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/vcs_m6_current96_plan01/checker.py": "f3c5ec0e4573542ba906bac27933f6b9ada2d08d3ab8f5b883616112b4002b13",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/vcs_m6_current96_plan01/observer.py": "3db0771a5abd305fe36be0bced763b6dd55bc0b1fc410319f7a70aa06076d55a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/vcs_m6_current96_plan01/replay.py": "62e8720e80bf438f6a07f56ff2862146169d889dc76e82f5cac8b5c2299679cb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/vcs_m6_current96_plan01/test_host.py": "acdb1c4dda40b9ff6f18232aa29d8ae685e5df9a7e848e508084b1cfdc61899b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/vcs_m6_current96_plan01/README.md": "101309ff93fd14ea05fa047411cb023b6073b3b06b1906b062ec61f28ad29526",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/prepare.py": "c8852599c65e0a0812a7dc77dc365eb40398252867a29b226f34d758e5c56cf8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/run.py": "c1c3804dbe36fa981ea7b6cbcfa5d7b69fb793b2a14c37831fb96e866f2d2a78",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/replay_memory_regression.py": "4c317b218d8558c09035f2b5b728f936df1b9dcb33783803ff8d736f24b868e2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_repair05/regression.py": "10358143c0b18f62bb4772aa9b0a117676eb9121d35bebbd80be7bd5e26c9966",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_vcs_m6_plan01/replay.py": "ca22d0134b40d53fb14534b853128d1ae20362c8cdd2b289566ab4b44536bab8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/scoped_rv64c_memory.py": "dc68adbfd0b3614f2c81691b4a15210612c813271cc96922ef0145e7f8b61a88",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/sv39_adapter.py": "ab417371030a11a3ddfc94677836017704b6667b196e49b47022229599a070bd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/reference.py": "f8ec3cc86956d6d1dacd4e99e9da74c10b9d70ee09e966acb47aa6fd7eb3e05d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/indexed_review/sv39/csv_oracle.py": "246a21b910becd67dc271e32107fcfdce36191317924f7829a01b47f8c5b4451"
+  },
+  "log_sha256": "5a0e1308b00ecc8ca24b44060ace1caa16f0db886367f05b6a60b506ad2316f8",
+  "synthetic_only": true,
+  "DUT": false,
+  "reference_execution": false,
+  "resource_queries": false
+}

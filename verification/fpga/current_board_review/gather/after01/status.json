@@ -1,0 +1,181 @@
+{
+  "state": "PASS",
+  "cases": [
+    {
+      "name": "historical",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=1 vl=2 mode=0 masked=1 pattern=0 cycles=9 requests=2 prefix_bytes=0 mismatches=0 first16=91 second16=1000"
+      ]
+    },
+    {
+      "name": "start0",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+START=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=0 vl=2 mode=0 masked=1 pattern=0 cycles=9 requests=2 prefix_bytes=0 mismatches=0 first16=1000 second16=1000"
+      ]
+    },
+    {
+      "name": "unmasked",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+MASKED=0"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=1 vl=2 mode=0 masked=0 pattern=0 cycles=9 requests=2 prefix_bytes=0 mismatches=0 first16=91 second16=1000"
+      ]
+    },
+    {
+      "name": "mask_off",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+PATTERN=2"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=1 vl=2 mode=0 masked=1 pattern=2 cycles=9 requests=2 prefix_bytes=0 mismatches=0 first16=91 second16=91"
+      ]
+    },
+    {
+      "name": "empty_body",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+START=2"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=2 vl=2 mode=0 masked=1 pattern=0 cycles=9 requests=2 prefix_bytes=0 mismatches=0 first16=91 second16=91"
+      ]
+    },
+    {
+      "name": "out_of_range",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+INDEX=64"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=1 vl=2 mode=0 masked=1 pattern=0 cycles=7 requests=1 prefix_bytes=0 mismatches=0 first16=91 second16=0"
+      ]
+    },
+    {
+      "name": "vector_indices",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+MODE=1",
+        "+VL=19",
+        "+START=17"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=17 vl=19 mode=1 masked=1 pattern=0 cycles=32 requests=19 prefix_bytes=0 mismatches=0 first16=91 second16=91"
+      ]
+    },
+    {
+      "name": "ei16_indices",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+MODE=2",
+        "+SEW=2",
+        "+VL=11",
+        "+START=9"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=2 start=9 vl=11 mode=2 masked=1 pattern=0 cycles=21 requests=11 prefix_bytes=0 mismatches=0 first16=91 second16=0"
+      ]
+    },
+    {
+      "name": "e8_crossword",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+SEW=0",
+        "+VL=35",
+        "+START=33",
+        "+MODE=1",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=0 start=33 vl=35 mode=1 masked=1 pattern=1 cycles=53 requests=35 prefix_bytes=0 mismatches=0 first16=23387 second16=23387"
+      ]
+    },
+    {
+      "name": "e16_crossword",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+SEW=1",
+        "+VL=19",
+        "+START=17",
+        "+MODE=1",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=17 vl=19 mode=1 masked=1 pattern=1 cycles=32 requests=19 prefix_bytes=0 mismatches=0 first16=91 second16=91"
+      ]
+    },
+    {
+      "name": "e32_crossword",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+SEW=2",
+        "+VL=11",
+        "+START=9",
+        "+MODE=1",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=2 start=9 vl=11 mode=1 masked=1 pattern=1 cycles=21 requests=11 prefix_bytes=0 mismatches=0 first16=91 second16=0"
+      ]
+    },
+    {
+      "name": "e64_crossword",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/after01/simv",
+        "-no_save",
+        "+SEW=3",
+        "+VL=7",
+        "+START=5",
+        "+MODE=1",
+        "+PATTERN=1"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=3 start=5 vl=7 mode=1 masked=1 pattern=1 cycles=16 requests=7 prefix_bytes=0 mismatches=0 first16=91 second16=0"
+      ]
+    }
+  ]
+}

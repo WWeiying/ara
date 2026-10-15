@@ -1,0 +1,9 @@
+{
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_s": 59.75876227580011,
+  "oracle_pass": true,
+  "no_rtl_build": true,
+  "no_rtl_edits": true,
+  "full_matrix_not_replayed": true
+}

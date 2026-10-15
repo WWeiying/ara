@@ -1,0 +1,38 @@
+{
+  "status": "PASS",
+  "started": 1791694847.0478373,
+  "ended": 1791695857.4120874,
+  "returncode": 0,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final04_successor01/replay/tests/extension_e32_m4_vf4",
+      "elapsed_s": 651.013764411211,
+      "kind": "app",
+      "name": "extension_e32_m4_vf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final04_successor01/replay/tests/extension_e64_m4_vf4",
+      "elapsed_s": 630.2244349969551,
+      "kind": "app",
+      "name": "extension_e64_m4_vf4",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/extension_overlap/final04_successor01/replay/tests/extension_e64_m8_vf8",
+      "elapsed_s": 1000.7072341190651,
+      "kind": "app",
+      "name": "extension_e64_m8_vf8",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ],
+  "pins_unchanged": true,
+  "no_build": true,
+  "original_results_preserved": true
+}

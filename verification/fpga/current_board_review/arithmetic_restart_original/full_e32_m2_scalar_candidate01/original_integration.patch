@@ -1,0 +1,50 @@
+--- /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/recovery22/reconstructed_oracle.c	2026-10-11 03:25:23.192313891 -0700
++++ /home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e32_m2_scalar_candidate01/candidate_original.c	2026-10-14 12:09:10.119123994 -0700
+@@ -13,6 +13,10 @@
+ typedef uint64_t word;
+ #endif
+ #include "operations.h"
++#if SEW != 32
++#error This scalar candidate is only for original e32/m2
++#endif
++#include "scalar_setup.h"
+ static word a[1024], b[1024], out[1026];
+ static uint8_t mask[128];
+ static uint64_t checks, elements, errors;
+@@ -93,7 +97,7 @@
+ }
+ void probe_main(void) {
+     unsigned cap=capacity();
+-    if(!cap || cap>1024){text("RVV_MATRIX_UNSUPPORTED_CAPACITY\n");finish(2);}
++    if(cap!=64){text("RVV_MATRIX_UNSUPPORTED_CAPACITY\n");finish(2);}
+     unsigned lengths[]={0,1,2,3,cap/2,cap-1,cap};
+     for(unsigned seed=0;seed<3;++seed) {
+         uint64_t random=UINT64_C(0x937ad68de41c725f)^seed;
+@@ -107,23 +111,19 @@
+             case 3:b[i]=SEW;break;
+             }
+         }
++        uint32_t fp_seed[8];
++        e32m2_seed_pattern(fp_seed,fp_inputs,seed);
+         for(unsigned op=0;op<OPERATION_COUNT;++op)
+         for(unsigned li=0;li<7;++li) {
+             unsigned vl=lengths[li];if(vl>cap)continue;
+             for(unsigned mode=0;mode<3;++mode) {
+-                for(unsigned i=0;i<128;++i)mask[i]=0;
+-                for(unsigned i=0;i<cap;++i)
+-                    if(selected(mode,i))mask[i/8]|=1u<<(i%8);
++                e32m2_initialize_mask(mask,mode);
+                 unsigned trials=kinds[op]==0 ? 3:1;
+                 for(unsigned si=0;si<trials;++si) {
+                     unsigned start=si==0 ? 0:si==1 ? vl/2:(vl<cap ? vl:cap-1);
+                     word sentinel=(word)0x5b;
+ #if SEW >= 32
+-                    if(op>=25)
+-                        for(unsigned i=0;i<cap;++i) {
+-                            a[i]=fp_inputs[(i+seed)%8];
+-                            b[i]=fp_inputs[(i*3+seed)%8];
+-                        }
++                    if(op>=25)e32m2_refresh_fp(a,b,fp_seed);
+ #endif
+                     for(unsigned i=0;i<cap+2;++i)out[i]=sentinel;
+ #ifdef TRACE_OP0

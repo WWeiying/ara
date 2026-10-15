@@ -1,0 +1,114 @@
+{
+  "status": "PASS_INDEPENDENT_TERMINAL_SINGLE",
+  "generic": {
+    "rows": 827948,
+    "first_cycle": 82,
+    "last_cycle": 1118832,
+    "retire_count": 827772,
+    "vector_retire_count": 49,
+    "cvx_request_count": 50,
+    "cvx_response_count": 50,
+    "cvx_max_inflight": 1,
+    "cvx_replay_count": 0,
+    "arch_request_replay_count": 0,
+    "cvx_exception_count": 1,
+    "architecture_request_count": 50,
+    "backend_uop_alloc_count": 13,
+    "backend_uop_done_count": 13,
+    "backend_uop_max_inflight": 3
+  },
+  "numerical": {
+    "checks": 17274,
+    "checkpoints": [
+      {
+        "phase": 0,
+        "cycle": 207252,
+        "checks": 4117
+      },
+      {
+        "phase": 1,
+        "cycle": 352736,
+        "checks": 8450
+      },
+      {
+        "phase": 2,
+        "cycle": 731309,
+        "checks": 12563
+      },
+      {
+        "phase": 3,
+        "cycle": 1111331,
+        "checks": 17052
+      }
+    ],
+    "output_reads": 130,
+    "original_results": 64,
+    "original_guards": 2,
+    "extra_storage_guards": 64,
+    "memory_halfword_reads": 16384,
+    "refills": [
+      2048
+    ],
+    "retry_cycles": [
+      731504
+    ],
+    "actual_handler_csrs": [
+      {
+        "0": 13,
+        "1": 2147487264,
+        "2": 1073745902,
+        "3": 9223372079804460544,
+        "4": 9223372036855300101,
+        "5": 8,
+        "6": 8,
+        "7": 5,
+        "8": 117,
+        "9": 5
+      },
+      {
+        "0": 9,
+        "1": 2147487228,
+        "2": 0,
+        "3": 9223372079804460544,
+        "4": 9223372036855300101,
+        "5": 64,
+        "6": 8,
+        "7": 0,
+        "8": 117,
+        "9": 5
+      }
+    ],
+    "ctrl": [
+      0
+    ],
+    "postexit_park": 6
+  },
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/launch.json": "ad09a490f495b619bc16502bd13182df2a7c7e4870e688cfcaebd77312266f11",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/run.json": "09710f756240be1ac9c4e62070c5b68437bfb9fee96d7e53949af1088505b200",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/summary.json": "1b27e7f2dc50be106b244a18f2d58f33d011e4723e3c5327ec9c9c79d0e1a922",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/input.elf": "04e25a1fa3b6ba094af6d60d50f8ec0dd60f2ec2503f47dda05fd2011c5a0a43",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/inputs.json": "9fa9287b596b6062fc40b9c09187295014ec2086e9aa1fed088461434e37303b",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/command.json": "8a35d8fdddea7e781de9eb0aae5655f7f8437ddff30feaacf606be620143f4fe",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/console.log": "db27a327a621aca73d8b839da00ac88020dca30d0022f674dae6dbda5b1ab973",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/work/run.vcs.log": "844704a9698b3ef8e410471ff6aafd71a41027aed3ac783e0c47d123c9ade4c0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/trace_summary.json": "050aa520308e9fb10064b07fb6e933b5d9eb18421770b75a58e9c4283cd2d103",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/strict_prefix.json": "79d13d9b6ee12861824bc20f4317bde0a7b44f533bc2a1f5c5743485f630714e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/complete.json": "812fe100a941e5fa407a452f2ce9c2f5619343aa16004c38a916dbe75b00054a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/child_outcome.unvalidated.json": "86c0a5d0f0471a1f428c67caefda6b2d7c20e182d3399ee3b6b881e29f36dee0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/monitor_outcome.unvalidated.json": "3a521b7a67fed0b8989958267b2cce295d0b0a239ca59696389109cb717abab2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_vcs_m6_plan01/prepared01/replay/tests/negative_stride_load_e16_m1_u1_s0_b3_m2_f0_g3/commit_trace.csv": "c414d29e1d34583ff015124b9c9d98d2f22538136ee25646af2e7677c683faf3"
+  },
+  "original_input_pin_count": 690,
+  "plan_sha256": "aa4c92d225e275b79626d8b732d97363ff5bcc85b71d4a29a1def3b9e367906f",
+  "actual_monitor_returncode": 0,
+  "elapsed_s": 996.6796678779647,
+  "source_oracle_executor_rerun": false,
+  "raw_reference_reparsed": false,
+  "csv_full_passes": 1,
+  "original_worker_full_oracle": "Bound strict_prefix.json accepted; no second source-oracle execution",
+  "service_exit": "NOT_QUERIED_NOT_PROVEN; launch ownership is separately pinned, no GC-default inference",
+  "scope": "One source-derived real Sv39 single; not original Linux signalframe or parent96",
+  "finished": 1791847611.5738068,
+  "waiter_ready_sha256": "b284c842652d87b2a0e3125b6d634a1f09d1621fe4e3561cb9fa6cb6e9191eec"
+}

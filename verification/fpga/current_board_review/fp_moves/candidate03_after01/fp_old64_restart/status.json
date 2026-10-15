@@ -1,0 +1,13 @@
+{
+  "name": "fp_old64_restart",
+  "status": "PASS",
+  "returncode": 0,
+  "elapsed_s": 32.85617148783058,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_old64_restart",
+    "RVV_FP_MOVE_PASS sew=16 cases=1 errors=0",
+    "BOARD_CASE_PASS fp_old64_restart"
+  ],
+  "input_sha256": "1c5f403626678ac85653aa89b9f87e329f5a0ec9318c3cba62a6e66389d851a5",
+  "console_sha256": "1e385709707afb22ca0bf9181527595e668ec5851983d3875472f32b8a7e8b14"
+}

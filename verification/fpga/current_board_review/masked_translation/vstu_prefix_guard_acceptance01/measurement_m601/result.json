@@ -1,0 +1,22 @@
+{
+  "scope": "Real AddrGen/VSTU/MASKU/sequencer; modeled MMU and lane predicate source; not Linux/SoC",
+  "pid": 1898115,
+  "cases": [
+    {
+      "name": "normal",
+      "kind": "normal",
+      "vl": 4,
+      "variant": "m6",
+      "returncode": 0,
+      "elapsed_s": 10.843452851753682,
+      "expected_marker": "NORMAL_PATH_W_B_COMPLETE_NOT_SOC_ACCEPTANCE",
+      "marker_count": 0,
+      "observations": [],
+      "full_SOC_acceptance": false
+    }
+  ],
+  "state": "ERROR",
+  "compile_returncode": 0,
+  "compile_seconds": 32.34629672532901,
+  "error": "AssertionError('Acceptance failed; no retry')"
+}

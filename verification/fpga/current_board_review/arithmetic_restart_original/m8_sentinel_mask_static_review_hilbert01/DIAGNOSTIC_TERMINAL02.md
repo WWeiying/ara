@@ -1,0 +1,14 @@
+# Diagnostic02 Terminal Review
+
+ACCEPTED_DIAGNOSTIC_ONLY. The closed-file diagnostic completed, not the original DUT program. Full4095 remains NOT_PASS and formal inventory stays18/22. No raw read/rehash, semantic reparse, test or simulator execution by this metadata review.
+
+Evidence root: `full_e16_m8_sentinel_vcs_m9_plan01/diagnostic02`. Actual review binding matches ENTRYf78626ca... and review15a2b962.... All80 ENTRY pins freshly match.
+
+- `execute_wait.json` SHA256 `b71fb5d7960bbafb95d33a3a2860b064003607fb45a9d45326c11399a8e52d73`: child3849875 actual0/348.595999s, no timeout/retry. Internal result elapsed346.695108s.
+- `run01/result.json` SHA256 `6d7e7a01b8ba9a57445e13c0cb4b8cb63a9d5a1c86e3959d469c3631c8d617e0`: EOF reached,296607084B consumed in one hash/semantic pass; recorded before/after dev/inode/size/mtime equal. Full-file SHA256 `1c8b5505754fdddad8b133f328ee511ef23370b46c76611f42c5bca80096503a` is inherited from this completed pass, not independently rehashed. Old diagnostic01 partial digest and deadline failure remain separate.
+-2570844 rows delivered unchanged,2399641 retirements; before/after delivery digests equal. Completed3868 calls have full129 output reads, original fresh/oracle/ID/gold/vstart and required owner completion. Source counters checks3868/elements1980416/errors0 corroborate that prefix only. Packed reads498972 equals3868*129.
+- Active original call3869 (zero-based3868) is seed2/op18/VL0/mode1/vstart0, next helper index3, no oracle reads and no returned-vstart yet. This call is NOT completed. EOF contains3 pending backend uops, no pending accepted CVX response,1 unmatched architecture start, and no unretired accepted requests. The pending uops are part of the unfinished frontier, not waived completed-call obligations. Aggregate required-retired-owner count includes frontier work and must not be described as all completed.
+- Last recorded retirement/progress: cycle20211971, PC80001d1a, instruction0205d807. Observed tail since progress0; maximum recorded watchdog-progress gap3280, maximum completed-owner lifetime3306. These support continuing progress within the captured prefix, not a permanent deadlock claim. Final simulator cycle is unknown; EOF is the end of the captured file, not software exit or an exact simulator stop-cycle witness.
+-39 progress checkpoints, SHA256 `42782c7de0d1b33555f6e2fa3c12d63d5fafe3a1d3f9ed73930d7f71aa469251`, none triggered early stop. Last checkpoint2555904 rows/294868043B at343.930786s projected345.918985s; completed result is consistent with continued traversal to EOF. This does not retroactively justify other workloads' budgets or authorize another scan.
+
+Original DUT actual timeout10800s/return255, service1, collector1 and NOT_PASS are unchanged. No hardware root cause or Linux closure follows. Only a future full original program acceptance could change the formal shape count; this diagnostic cannot.

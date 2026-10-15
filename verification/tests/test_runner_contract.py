@@ -157,7 +157,8 @@ def test_run_consumes_private_elf_and_enforces_requested_monitor(tmp_path, conte
     assert (result.artifact_dir / "inputs.json").is_file()
 
 
-def test_timeout_still_records_protocol_evidence(tmp_path):
+@pytest.mark.parametrize("sticky_abort", [False, True])
+def test_timeout_still_records_protocol_evidence(tmp_path, sticky_abort):
     (tmp_path / "elf").write_bytes(b"elf")
     (tmp_path / "simv").write_bytes(b"simv")
     case = Case("rvv:probe", "rvv", "probe", tmp_path / "elf", "probe", 2)
@@ -166,12 +167,32 @@ def test_timeout_still_records_protocol_evidence(tmp_path):
 
     def fake_run(command, cwd, console, timeout, cancel_event=None):
         console.write_text("incomplete run\n")
+        if sticky_abort:
+            cancel_event.set()
         return -15, 2.0, True, False
 
     with patch("ara_verify.runner._run_monitored", side_effect=fake_run):
         result = runner._run_test(case, tmp_path / "simv")
     assert result.status == "TIMEOUT"
     assert json.loads((result.artifact_dir / "contract_summary.json").read_text())["status"] == "FAIL"
+
+
+def test_external_cancellation_without_timeout_remains_cancelled(tmp_path):
+    (tmp_path / "elf").write_bytes(b"elf")
+    (tmp_path / "simv").write_bytes(b"simv")
+    case = Case("rvv:probe", "rvv", "probe", tmp_path / "elf", "probe", 2)
+    runner = RegressionRunner(options(tmp_path), [case], [])
+    runner.prepare()
+
+    def fake_run(command, cwd, console, timeout, cancel_event=None):
+        console.write_text("external cancellation\n")
+        cancel_event.set()
+        return -15, 0.1, False, False
+
+    with patch("ara_verify.runner._run_monitored", side_effect=fake_run):
+        result = runner._run_test(case, tmp_path / "simv")
+    assert result.status == "CANCELLED"
+    assert result.returncode == -15
 
 
 @pytest.mark.parametrize("change", ["delete_simv", "mutate_library", "delete_library", "new_library"])

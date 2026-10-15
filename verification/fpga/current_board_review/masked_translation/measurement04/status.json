@@ -1,0 +1,136 @@
+{
+  "state": "EXPECTED_REPRODUCTION_PASS",
+  "scope": "EXPECTED_REPRODUCTION_NOT_ARCHITECTURAL_PASS",
+  "cases": [
+    {
+      "request_high_cycles": [
+        3,
+        4,
+        5
+      ],
+      "events": {
+        "mmu_valid": [
+          6
+        ],
+        "push": [
+          6
+        ],
+        "desc_valid": [
+          7
+        ],
+        "ar_valid": [],
+        "ack": [
+          7
+        ],
+        "ack_exception": [
+          7
+        ]
+      },
+      "architectural_pass": null,
+      "interpretation": "Unexpected all-off fault reproduced",
+      "name": "alloff_fault",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/measurement04/simv",
+        "-no_save",
+        "+CASE=0"
+      ],
+      "exit_code": 0,
+      "expected_reproduction_pass": true,
+      "elapsed_seconds": 10.694003698881716,
+      "marker": "DISCRIMINATOR_EXPECTATION_PASS case=alloff_fault accept=1 request=3 response=6 push=6 pop=7 ack=7 translations=1 exceptions=1 ar=0 architectural_pass=NOT_CLAIMED",
+      "wave_bytes": 32851
+    },
+    {
+      "request_high_cycles": [
+        3,
+        4,
+        5
+      ],
+      "events": {
+        "mmu_valid": [
+          6
+        ],
+        "push": [
+          6
+        ],
+        "desc_valid": [
+          7
+        ],
+        "ar_valid": [],
+        "ack": [
+          7
+        ],
+        "ack_exception": [
+          7
+        ]
+      },
+      "architectural_pass": null,
+      "interpretation": "Active fault control",
+      "name": "active_fault",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/measurement04/simv",
+        "-no_save",
+        "+CASE=1"
+      ],
+      "exit_code": 0,
+      "expected_reproduction_pass": true,
+      "elapsed_seconds": 10.64424819080159,
+      "marker": "DISCRIMINATOR_EXPECTATION_PASS case=active_fault accept=1 request=3 response=6 push=6 pop=7 ack=7 translations=1 exceptions=1 ar=0 architectural_pass=NOT_CLAIMED",
+      "wave_bytes": 32961
+    },
+    {
+      "request_high_cycles": [
+        3,
+        4,
+        5
+      ],
+      "events": {
+        "mmu_valid": [
+          6
+        ],
+        "push": [
+          6
+        ],
+        "desc_valid": [
+          7
+        ],
+        "ar_valid": [
+          6
+        ],
+        "ack": [
+          6
+        ],
+        "ack_exception": []
+      },
+      "architectural_pass": null,
+      "interpretation": "All-off still translates and issues AR; no architectural completion oracle here",
+      "name": "alloff_valid",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/measurement04/simv",
+        "-no_save",
+        "+CASE=2"
+      ],
+      "exit_code": 0,
+      "expected_reproduction_pass": true,
+      "elapsed_seconds": 10.647490457165986,
+      "marker": "DISCRIMINATOR_EXPECTATION_PASS case=alloff_valid accept=1 request=3 response=6 push=6 pop=7 ack=6 translations=1 exceptions=0 ar=1 architectural_pass=NOT_CLAIMED",
+      "wave_bytes": 31515
+    }
+  ],
+  "compile_seconds": 25.081689131911844,
+  "frozen_verified_after_run": true,
+  "original_linux_verified_after_run": true,
+  "artifacts": {
+    "compile.console.log": "ed2135e3fe7b3aaf6458570d896cc569315f4b66f55b796cf3b38e39fa71066e",
+    "compile.log": "58705be4c4e17e8eb32ba820c57f833cf5b09fb18fc2d9b022a24cfc55476c24",
+    "alloff_fault/run.log": "e8daee96a6cdc43b83627b6fc7e19c0332062ee4b25d9d753617bd732d32fdc3",
+    "alloff_fault/cycles.csv": "fa4595810d73decc1e9b01afcf1c6d21a2999c0cf4b5e6f84697868922e6c5e6",
+    "alloff_fault/window.vcd": "8f224db4b6bb79c4dfdb6ebed81895f37a2b95e457634a996899d57b9a1f3be0",
+    "active_fault/run.log": "1966aa48e87ad447a031f93108e4c47ef015af9a08242fd5b8d85df46e0ed85d",
+    "active_fault/cycles.csv": "939c3e568963abbad0b72bcf2fce23cefd8fdf79c0218a25373548cd18453383",
+    "active_fault/window.vcd": "89e1fc23d9dd978d8960a42435263637b7d941322a5e08a983722b84600adf7a",
+    "alloff_valid/run.log": "708dca83d9233e964ba8846aa77c07e6f79426a11d2f1a238c4ceaaea16f64a0",
+    "alloff_valid/cycles.csv": "bf190773c45dbebebbca4b1d2e390360ee95c2cbbfd26574a4e2faca91ed950e",
+    "alloff_valid/window.vcd": "d68ea8a9514d60580ce22e12150d350c606bbe42ebb03795e8e074fec2dc18f5"
+  }
+}

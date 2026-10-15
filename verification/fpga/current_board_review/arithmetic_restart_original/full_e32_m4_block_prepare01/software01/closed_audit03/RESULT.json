@@ -1,0 +1,278 @@
+{
+  "status": "HOST46_PASS_ACTUAL_SOC_COMPILE0_STATIC_COST_HOLD_NO_REFERENCE_NO_DUT",
+  "original_workflow_exit": {
+    "returncode": 1,
+    "timed_out": false,
+    "elapsed_seconds": 33.04881114931777
+  },
+  "original_error_preserved": "KeyError: capacity; stripped archive has .text label only",
+  "soc_compile": {
+    "returncode": 0,
+    "expected_returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 1.7731651607900858
+  },
+  "elf_sha256": "1a106b67ced352f957c29e0a5327d22ab0169fcc399daaf8bc6a25943ea72e4b",
+  "Host_runs": 46,
+  "full_history_runs": 30,
+  "structural_negatives": 16,
+  "helpers": {
+    "capacity": {
+      "original_pc": "0x10906",
+      "compiled_pc": "0x80002268",
+      "instructions": 3
+    },
+    "op_0": {
+      "original_pc": "0x1090e",
+      "compiled_pc": "0x80002270",
+      "instructions": 13
+    },
+    "op_1": {
+      "original_pc": "0x1093e",
+      "compiled_pc": "0x800022a0",
+      "instructions": 13
+    },
+    "op_2": {
+      "original_pc": "0x1096e",
+      "compiled_pc": "0x800022d0",
+      "instructions": 13
+    },
+    "op_3": {
+      "original_pc": "0x1099e",
+      "compiled_pc": "0x80002300",
+      "instructions": 13
+    },
+    "op_4": {
+      "original_pc": "0x109ce",
+      "compiled_pc": "0x80002330",
+      "instructions": 13
+    },
+    "op_5": {
+      "original_pc": "0x109fe",
+      "compiled_pc": "0x80002360",
+      "instructions": 13
+    },
+    "op_6": {
+      "original_pc": "0x10a2e",
+      "compiled_pc": "0x80002390",
+      "instructions": 13
+    },
+    "op_7": {
+      "original_pc": "0x10a5e",
+      "compiled_pc": "0x800023c0",
+      "instructions": 13
+    },
+    "op_8": {
+      "original_pc": "0x10a8e",
+      "compiled_pc": "0x800023f0",
+      "instructions": 13
+    },
+    "op_9": {
+      "original_pc": "0x10abe",
+      "compiled_pc": "0x80002420",
+      "instructions": 13
+    },
+    "op_10": {
+      "original_pc": "0x10aee",
+      "compiled_pc": "0x80002450",
+      "instructions": 13
+    },
+    "op_11": {
+      "original_pc": "0x10b1e",
+      "compiled_pc": "0x80002480",
+      "instructions": 13
+    },
+    "op_12": {
+      "original_pc": "0x10b4e",
+      "compiled_pc": "0x800024b0",
+      "instructions": 13
+    },
+    "op_13": {
+      "original_pc": "0x10b7e",
+      "compiled_pc": "0x800024e0",
+      "instructions": 13
+    },
+    "op_14": {
+      "original_pc": "0x10bae",
+      "compiled_pc": "0x80002510",
+      "instructions": 13
+    },
+    "op_15": {
+      "original_pc": "0x10bde",
+      "compiled_pc": "0x80002540",
+      "instructions": 13
+    },
+    "op_16": {
+      "original_pc": "0x10c0e",
+      "compiled_pc": "0x80002570",
+      "instructions": 13
+    },
+    "op_17": {
+      "original_pc": "0x10c3e",
+      "compiled_pc": "0x800025a0",
+      "instructions": 13
+    },
+    "op_18": {
+      "original_pc": "0x10c6e",
+      "compiled_pc": "0x800025d0",
+      "instructions": 13
+    },
+    "op_19": {
+      "original_pc": "0x10c9e",
+      "compiled_pc": "0x80002600",
+      "instructions": 13
+    },
+    "op_20": {
+      "original_pc": "0x10cce",
+      "compiled_pc": "0x80002630",
+      "instructions": 13
+    },
+    "op_21": {
+      "original_pc": "0x10cfe",
+      "compiled_pc": "0x80002660",
+      "instructions": 13
+    },
+    "op_22": {
+      "original_pc": "0x10d2e",
+      "compiled_pc": "0x80002690",
+      "instructions": 13
+    },
+    "op_23": {
+      "original_pc": "0x10d5e",
+      "compiled_pc": "0x800026c0",
+      "instructions": 13
+    },
+    "op_24": {
+      "original_pc": "0x10d8e",
+      "compiled_pc": "0x800026f0",
+      "instructions": 13
+    },
+    "op_25": {
+      "original_pc": "0x10dbe",
+      "compiled_pc": "0x80002720",
+      "instructions": 13
+    },
+    "op_26": {
+      "original_pc": "0x10dee",
+      "compiled_pc": "0x80002750",
+      "instructions": 13
+    },
+    "op_27": {
+      "original_pc": "0x10e1e",
+      "compiled_pc": "0x80002780",
+      "instructions": 13
+    },
+    "op_28": {
+      "original_pc": "0x10e4e",
+      "compiled_pc": "0x800027b0",
+      "instructions": 13
+    },
+    "op_29": {
+      "original_pc": "0x10e7e",
+      "compiled_pc": "0x800027e0",
+      "instructions": 13
+    },
+    "op_30": {
+      "original_pc": "0x10eae",
+      "compiled_pc": "0x80002810",
+      "instructions": 13
+    },
+    "op_31": {
+      "original_pc": "0x10ede",
+      "compiled_pc": "0x80002840",
+      "instructions": 13
+    },
+    "op_32": {
+      "original_pc": "0x10f0e",
+      "compiled_pc": "0x80002870",
+      "instructions": 13
+    },
+    "op_33": {
+      "original_pc": "0x10f3e",
+      "compiled_pc": "0x800028a0",
+      "instructions": 13
+    },
+    "op_34": {
+      "original_pc": "0x10f6e",
+      "compiled_pc": "0x800028d0",
+      "instructions": 13
+    }
+  },
+  "helper_instructions": 458,
+  "helper_bytes": 1688,
+  "extra_RVV": 0,
+  "new_scalar_CSR_fence": 0,
+  "original_elf_sha256": "4e537be1270d607f847b8c7d3d4e7be76b9b7408d184effc33a9c066cb811cf9",
+  "original_assembly_sha256": "878be135cd439f7a481312e7afd4b2ce4203806ce5f92c453000918f75c7316b",
+  "helper_region": {
+    "original_start": "0x10906",
+    "original_end_exclusive": "0x10f9e",
+    "compiled_start": "0x80002268",
+    "compiled_end_exclusive": "0x80002900",
+    "source_order_contiguous": true,
+    "unique_individual_windows": 36,
+    "file_backed_executable_bytes": true,
+    "sha256": "d44dea9535d297c3c6dc1894db7086c82ca5fb1ec8c32a4f891450b7676c417e"
+  },
+  "actual_cache_totals": {
+    "cache_instructions": 2014890,
+    "actual_LD": 389025,
+    "expected_LD": 124041,
+    "ID_LHU": 53865,
+    "hit": 33123,
+    "miss": 14757,
+    "stack_store": 35910,
+    "stack_load": 35910
+  },
+  "full_FP_SW": 483840,
+  "full_mask_SB": 154350,
+  "full_output_SD": 389025,
+  "mandatory_positive_core": 3283395,
+  "core_terms": {
+    "cache": 2014890,
+    "output_init": 424935,
+    "FP": 529830,
+    "mask": 235935,
+    "original_helpers": 77805
+  },
+  "whole_CFG_decision": "Cannot meet3M: mandatory disjoint scalar leaves plus original helpers already exceed3M. Main/caller/RNG/startup add nonnegative cost; no invented exact whole-firmware count.",
+  "cache_control_result_independent": true,
+  "gp_from_actual_startup": "0x80041b9a",
+  "stack_gap": 768872,
+  "actual_frames": [
+    {
+      "pc": "0x8000000c",
+      "bytes": 24
+    },
+    {
+      "pc": "0x8000007e",
+      "bytes": 48
+    },
+    {
+      "pc": "0x8000169e",
+      "bytes": 48
+    },
+    {
+      "pc": "0x80001704",
+      "bytes": 80
+    },
+    {
+      "pc": "0x80001966",
+      "bytes": 272
+    },
+    {
+      "pc": "0x80002932",
+      "bytes": 16
+    },
+    {
+      "pc": "0x8000296e",
+      "bytes": 32
+    }
+  ],
+  "compiled_positive_CFG_not_retired_reference": true,
+  "original_C_has_fflags_oracle": false,
+  "spike_backend_not_compiled": "Stopped after first fixed candidate already proves budget HOLD; no second variant",
+  "pins_unchanged": true,
+  "pin_count": 260,
+  "elapsed_seconds": 29.297863229177892
+}

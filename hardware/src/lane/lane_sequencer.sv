@@ -849,6 +849,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
           unique case (pe_req.op)
             VSLIDEUP: begin
+              // SLDU traverses vs2 from its beginning and gates prestart writes.
+              // Architectural vstart must not offset the source word stream.
+              operand_request[SlideAddrGenA].vstart = '0;
               // We need to trim full words from the end of the vector that are not used
               // as operands by the slide unit.
               // Since this request goes outside of the lane, we might need to request an
@@ -906,7 +909,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             eew     : EW64,
             is_slide: 1'b1,
             vtype   : pe_req.vtype,
-            vstart  : vfu_operation_d.vstart,
+            // Slides traverse destination masks independently of vstart.
+            // Slideup overrides this with its stride-based word origin below.
+            vstart  : '0,
             hazard  : pe_req.hazard_vm | pe_req.hazard_vd,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
@@ -963,8 +968,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           if (pe_req.op inside {[VMSEQ:VMSBC],[VRGATHER:VRGATHEREI16]}) begin
             // These source regs contain non-mask vectors.
             operand_request[AluA].eew = pe_req.op == VRGATHEREI16 ? EW16 : pe_req.eew_vs1;
-            // Carry-mask packing starts at bit zero; MASKU preserves the vstart prefix.
-            if (pe_req.op inside {[VMADC:VMSBC]})
+            // MASKU scans comparisons and gather indices from element zero;
+            // its destination byte enables separately preserve vstart.
+            if (pe_req.op inside {[VMSEQ:VMSBC], VRGATHER, VRGATHEREI16})
               operand_request[AluA].vstart = '0;
             operand_request[AluA].vl  = pe_req.vl / NrLanes;
             if ((operand_request[AluA].vl * NrLanes) != pe_req.vl)
@@ -1002,8 +1008,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           if (pe_req.op inside {[VMSEQ:VMSBC]}) begin
             // These source regs contain non-mask vectors.
             operand_request[AluB].eew = pe_req.eew_vs2;
-            if (pe_req.op inside {[VMADC:VMSBC]})
-              operand_request[AluB].vstart = '0;
+            operand_request[AluB].vstart = '0;
             operand_request[AluB].vl  = pe_req.vl / NrLanes;
             if ((operand_request[AluB].vl * NrLanes) != pe_req.vl)
               operand_request[AluB].vl += 1;
@@ -1026,7 +1031,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             scale_vl: pe_req.scale_vl,
             vl      : pe_req.vl / NrLanes,
             vtype   : pe_req.vtype,
-            vstart  : vfu_operation_d.vstart,
+            // Match VMFPU's full-VL stream and MASKU's zero-origin packing.
+            vstart  : '0,
             hazard  : pe_req.hazard_vs1 | pe_req.hazard_vd,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
@@ -1050,7 +1056,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             scale_vl: pe_req.scale_vl,
             vl      : pe_req.vl / NrLanes,
             vtype   : pe_req.vtype,
-            vstart  : vfu_operation_d.vstart,
+            vstart  : '0,
             hazard  : pe_req.hazard_vs2 | pe_req.hazard_vd,
             target_fu : ALU_SLDU,
             conv      : OpQueueConversionNone,
@@ -1210,19 +1216,27 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       end
 
       // Predication masks are packed bits, irrespective of the data SEW.
-      // Keep their aggregate-word address calculation identical for every
-      // execution unit. Slides use a separate stride-based mask request.
+      // ALU/MFPU/MASKU traverse from element zero and suppress prestart writes;
+      // their predicate stream must cover that same full range. Memory units
+      // start at the word containing vstart. Slides have stride-based requests.
       // Mask-logical vs1 starts at word zero, like vs2 and old vd; MASKU
       // preserves prestart bits when merging the three aligned streams.
       if (operand_request_push[MaskM] && pe_req.vfu != VFU_SlideUnit &&
           !(pe_req.op inside {[VMANDNOT:VMXNOR]})) begin
-        operand_request[MaskM].vstart = pe_req.vstart / (NrLanes * ELEN);
-        operand_request[MaskM].vl = '0;
-        if (pe_req.vstart < pe_req.vl) begin
+        if (pe_req.vfu inside {VFU_Alu, VFU_MFpu, VFU_MaskUnit}) begin
+          operand_request[MaskM].vstart = '0;
           operand_request[MaskM].vl =
-              (pe_req.vl - ((pe_req.vstart / (NrLanes * ELEN)) *
-               (NrLanes * ELEN)) + (NrLanes * ELEN) - 1) /
+              (pe_req.vl + (NrLanes * ELEN) - 1) /
               (NrLanes * ELEN);
+        end else begin
+          operand_request[MaskM].vstart = pe_req.vstart / (NrLanes * ELEN);
+          operand_request[MaskM].vl = '0;
+          if (pe_req.vstart < pe_req.vl) begin
+            operand_request[MaskM].vl =
+                (pe_req.vl - ((pe_req.vstart / (NrLanes * ELEN)) *
+                 (NrLanes * ELEN)) + (NrLanes * ELEN) - 1) /
+                (NrLanes * ELEN);
+          end
         end
       end
     end : lane_received_vinst

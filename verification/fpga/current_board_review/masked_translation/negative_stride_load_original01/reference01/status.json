@@ -1,0 +1,118 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 836976,
+  "firmware_commits": 836971,
+  "scalar_checks": 17274,
+  "checkpoints": [
+    {
+      "phase": 0,
+      "bytes": 23236,
+      "commit": 159992
+    },
+    {
+      "phase": 1,
+      "bytes": 23228,
+      "commit": 264016
+    },
+    {
+      "phase": 2,
+      "bytes": 23228,
+      "commit": 546894
+    },
+    {
+      "phase": 3,
+      "bytes": 23220,
+      "commit": 826702
+    }
+  ],
+  "actions": [
+    "checkpoint0",
+    "target",
+    "checkpoint1",
+    "repair_sfence",
+    "refill",
+    "checkpoint2",
+    "retry_mret",
+    "target",
+    "younger",
+    "checkpoint3"
+  ],
+  "targets": [
+    {
+      "pc": "0x80000e28",
+      "vstart": 0,
+      "addresses": [
+        "0x40001006"
+      ],
+      "commit": 160039
+    },
+    {
+      "pc": "0x80000e28",
+      "vstart": 5,
+      "addresses": [
+        "0x40000fee"
+      ],
+      "commit": 546934
+    }
+  ],
+  "traps": [
+    [
+      "trap_load_page_fault",
+      2147487272
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147487236
+    ]
+  ],
+  "helper_entries": 1,
+  "helper_retirements": 11,
+  "capacity_calls": 1,
+  "retry_mrets": [
+    {
+      "commit": 546933,
+      "pc": "0x80000d1c",
+      "mepc": "0x80000e28",
+      "mstatus": "0x8000000a00002e00",
+      "vl": 8,
+      "vtype": 8,
+      "vstart": 5,
+      "arguments": [
+        "0x40001016",
+        "0x80008398",
+        "0x80008192",
+        "0x80008180",
+        "0x40",
+        "0x80001180"
+      ],
+      "t3": "0xfffffffffffffff8"
+    }
+  ],
+  "htif": [
+    1
+  ],
+  "output_elements": 64,
+  "output_guards": 2,
+  "memory_bytes": 8192,
+  "linux_signal_equivalence": false,
+  "parent96_accepted": false,
+  "execution": {
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 15.2561419098638,
+    "raw_bytes": 101219616,
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zfh_zvfh_zvl1024b",
+      "--priv=msu",
+      "--pmpregions=0",
+      "-m2",
+      "--instructions=1500000",
+      "-l",
+      "--log-commits",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_load_original01/software01/spike.elf"
+    ]
+  },
+  "raw_sha256": "2616cfd2f69f2b3775302b213f09b751c0dad1df3e0d6179293b40622f97af9d",
+  "pins_unchanged": true
+}

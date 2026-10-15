@@ -1,0 +1,65 @@
+{
+  "status": "HOST_PASS_NOT_DUT",
+  "positive": [
+    {
+      "mode": "prefix",
+      "status": "PASS",
+      "calls": 482,
+      "log_sha256": "44b8ebc9109f32594af12c62caeb2b1a9f54d9f0fc29a2609f76dbc3531a11f8"
+    },
+    {
+      "mode": "full_capture",
+      "status": "PASS",
+      "calls": 482,
+      "log_sha256": "8b7e214002f972a35e34ff17cc9152c6bae876951eec2a50acce8e1fed6c3902"
+    }
+  ],
+  "negative": [
+    {
+      "mutation": "active",
+      "rejected": true,
+      "log_sha256": "2b245a675e3409c0f906cab659407181c63ccdc9b9e72dff7180c2775a7c0b25"
+    },
+    {
+      "mutation": "prestart",
+      "rejected": true,
+      "log_sha256": "87ed9db9a877cf11bef21c4d57b9b0bbe4799c2923386b3efc7ddee35e8571b4"
+    },
+    {
+      "mutation": "maskedoff",
+      "rejected": true,
+      "log_sha256": "cc46b0da48d2a75de630ebac786fd827531ad97af50c7e50b0860c3b56385a6f"
+    },
+    {
+      "mutation": "tail",
+      "rejected": true,
+      "log_sha256": "bc7f2ec3e946b45a18be1cc599b4e96dc3c3143a701dbf6d46688949c9852272"
+    },
+    {
+      "mutation": "left_guard",
+      "rejected": true,
+      "log_sha256": "fb851efe259d4155a37cca62d1998f7924336a2a20bba7e356e3caa50f02db1a"
+    },
+    {
+      "mutation": "right_guard",
+      "rejected": true,
+      "log_sha256": "ac93ea521b0b042345de216dc4fcffbfa6e7e8c2a4b64a0826139c394b952b05"
+    },
+    {
+      "mutation": "vstart_low",
+      "rejected": true,
+      "log_sha256": "f9d512a7ccd5c59932643e00eacadc187f530c7d0d4ebf6b15e4168337bb033c"
+    },
+    {
+      "mutation": "return_high",
+      "rejected": true,
+      "log_sha256": "4482cccedf2512a0f317ccb94a2b0220c3a8f0b376cf9c598e386f3c344cd958"
+    },
+    {
+      "mutation": "dropped_accumulator",
+      "rejected": true,
+      "log_sha256": "249ec189ee543c5e2ecadf02e65781d3c3bf78b96ba05a4f58d452fd12a178b1"
+    }
+  ],
+  "checker_tests": 6
+}

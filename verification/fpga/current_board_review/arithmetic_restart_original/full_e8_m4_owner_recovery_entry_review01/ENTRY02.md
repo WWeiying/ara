@@ -1,0 +1,13 @@
+# e8m4 closed CSV recovery entry
+
+结论：NO_BLOCKER_ONE_CLOSED_CSV_RECOVERY_NOT_DUT。绑定prepared02 plan SHA38d90ad0213fbb7d1e9f7779d687ecbda32d07cc5623f6a478e142067e1d9b96。
+
+fresh813 pins全部一致；closed CSV327166937 bytes，stat及digest身份核对，无语义重解析。原actual sim0/10573.338762348s、NOT_PASS及service exit1保留。
+
+唯一owner语义差异为精确原0x38813c57 VI unsigned offset2>=VL：18项合法无需backend。其余required目标2592、memory20475、op24 117、总23067；不固定uop总数。optional实际owner仍要配对。完整4095/2096640results/8190guards/53235helper/266175reads、fresh和vstart及generic检查不减。
+
+已读12项实际Host0/2.074s与4项publication Host0/0.919s。负例具有独立明确期望：VL3、各helper、slidedown/op24删pair均拒绝，VL1/2合法无pair允许，错误required和未配对拒绝。不是仅同predicate循环自证。
+
+runner02解决此前lateabort：昂贵strict写/hash后重查Event，最终小result以SIGBLOCK后Event/pending检查为决策线性化点，保持屏蔽至audit进程立即退出。外层600s仍SIGKILL并wait；先保存真实numeric再检查结果。只有outer terminal实际wait0且非timeout与接受result同时成立才可恢复验收，不能凭result单独接受。
+
+授权范围为既定唯一一次closed audit，由Tesla执行。无VCS/RTL/新参考。旧NOT_PASS、service1及旧脚本/raw不覆盖，不宣称Linux历史症状关闭。本审只读源码/metadata/hash，未重跑Host或CSV语义解析。

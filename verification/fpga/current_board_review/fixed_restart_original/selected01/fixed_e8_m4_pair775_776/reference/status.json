@@ -1,0 +1,16 @@
+{
+  "name": "fixed_e8_m4_pair775_776",
+  "status": "SPIKE_PASS_SOURCE_SELECTION_NOT_PREFIX",
+  "calls": 2,
+  "original_trials": [
+    775,
+    776
+  ],
+  "instructions_to_replay_exit": 371229,
+  "cycles_to_replay_exit": 371229,
+  "elapsed_s": 0.12905098171904683,
+  "elf_sha256": "0236f4d9e1b5dde886bd34d9d601a8f1282ef104b3a0be717180a89df8fec2a9",
+  "log_sha256": "cd910fd76dcb33ab406699e4959ed4690181948df83690df45e9888fd33e1d45",
+  "original_prefix_acceptance": false,
+  "DUT_started": false
+}

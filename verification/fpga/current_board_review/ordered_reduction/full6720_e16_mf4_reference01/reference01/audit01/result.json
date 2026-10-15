@@ -1,0 +1,23 @@
+{
+  "status": "REFERENCE_FULL6720_PASS_SOURCE_ONLY_NOT_DUT",
+  "calls": 6720,
+  "output_bytes": 967680,
+  "flags": 6720,
+  "vstarts": 6720,
+  "helper_instructions": 141120,
+  "capacity_instructions": 3,
+  "events": {
+    "input_SH": 128,
+    "seed_SD": 128,
+    "fixture_fields": 6720,
+    "mask_SD": 26880,
+    "output_SD": 120960,
+    "output_LD": 120960
+  },
+  "flags_seen": 21,
+  "firmware_to_HTIF": 1126049,
+  "whole_raw_rows": 1130000,
+  "park_rows": 3946,
+  "EOF_pure_park": true,
+  "console": "BOARD_CASE_BEGIN fp_redspecial_e16_mf4_full6720\nRVV_FP_REDSPECIAL_PASS sew=16 cases=6720 flags_seen=21 errors=0\nBOARD_CASE_PASS fp_redspecial_e16_mf4_full6720\nBOARD_REPLAY_PASS\n"
+}

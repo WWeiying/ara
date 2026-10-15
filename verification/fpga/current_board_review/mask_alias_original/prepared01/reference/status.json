@@ -1,0 +1,65 @@
+{
+  "status": "SPIKE_FULL_ORIGINAL_SOURCE_PASS_NOT_DUT",
+  "results": [
+    {
+      "name": "rvv_masks_alias_restart_e8_m4",
+      "status": "PASS",
+      "configurations": 5376,
+      "elapsed_s": 19.477576952893287,
+      "isa": "rv64gcv_zvl1024b",
+      "instructions_to_replay_exit": 126731252,
+      "spike_cycles_to_replay_exit": 126731252,
+      "elf_sha256": "b7106d1fcb579256dc65c918e2b250c2badc9ab4a06b9a0b94b78f4c303ce8ca",
+      "log_sha256": "b38074fb5277b927b9b6e407f1053f2c9dd6f4bbbbcb253a343202ba28f27e16",
+      "command": [
+        "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+        "-d",
+        "--debug-cmd=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/reference/rvv_masks_alias_restart_e8_m4.cmd",
+        "--isa=rv64gcv_zvl1024b",
+        "-m2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/spike/rvv_masks_alias_restart_e8_m4.elf"
+      ]
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8",
+      "status": "PASS",
+      "configurations": 5376,
+      "elapsed_s": 35.17105162283406,
+      "isa": "rv64gcv_zvl1024b",
+      "instructions_to_replay_exit": 230149840,
+      "spike_cycles_to_replay_exit": 230149840,
+      "elf_sha256": "466cea8c4039c809d8f1ec3a3764550b7b111bf75916be416e5e0ebf52b7b30f",
+      "log_sha256": "325e58739f0a5ef8a2810772e3df3919bee86acfd3195305dd9bfa775be9ed22",
+      "command": [
+        "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+        "-d",
+        "--debug-cmd=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/reference/rvv_masks_alias_restart_e8_m8.cmd",
+        "--isa=rv64gcv_zvl1024b",
+        "-m2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/spike/rvv_masks_alias_restart_e8_m8.elf"
+      ]
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8",
+      "status": "PASS",
+      "configurations": 5376,
+      "elapsed_s": 19.87032653996721,
+      "isa": "rv64gcv_zvl1024b",
+      "instructions_to_replay_exit": 129147584,
+      "spike_cycles_to_replay_exit": 129147584,
+      "elf_sha256": "3aaeffea3c3122dddaf42b31c211fdecb459e2c0eedf5eb678241b80d00d65f2",
+      "log_sha256": "fd4125e212256fe8e45619428d90e9628eaa5d5b896482fc31b68c201f0158d4",
+      "command": [
+        "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+        "-d",
+        "--debug-cmd=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/reference/rvv_masks_alias_restart_e16_m8.cmd",
+        "--isa=rv64gcv_zvl1024b",
+        "-m2",
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/prepared01/spike/rvv_masks_alias_restart_e16_m8.elf"
+      ]
+    }
+  ],
+  "total_configurations": 16128,
+  "original_linux_replayed": false,
+  "VCS_launched": false
+}

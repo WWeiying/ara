@@ -1,0 +1,5 @@
+{
+  "error": "ValueError: Unclassified text byte/boundary at 0x80000078",
+  "scope": "SUPPLEMENT_ONLY_NOT_WORKER_REPLACEMENT",
+  "status": "NOT_ACCEPTED"
+}

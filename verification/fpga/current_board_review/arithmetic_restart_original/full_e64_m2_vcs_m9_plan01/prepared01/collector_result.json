@@ -1,0 +1,52 @@
+{
+  "status": "ACCEPTED_M9_ORIGINAL_E64_M2_FULL5985_NOT_LINUX",
+  "pid": 3424205,
+  "started": 1792016234.215081,
+  "csv_semantic_reparses": 0,
+  "scope": "Original e64/m2 full5985 source port, not original Linux stall closure",
+  "plan_sha256": "25fd2b8fd4523771d3ebfa61581f7c960ef26ff009e99ed3176f027a33f96b14",
+  "complete_sha256": "1ec252c216d30c4cd783d9c8615b4148c67c4f92ee30ee90dae1c87a813bb0c5",
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "observed_at": 1792016233.985425,
+    "hook_pid": 3424203,
+    "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+  },
+  "actual_monitor": {
+    "schema": "UNVALIDATED_CHILD_OUTCOME_V2",
+    "architectural_acceptance": false,
+    "returncode": 0,
+    "elapsed_s": 6231.263964696322,
+    "timed_out": false,
+    "failure_seen": false,
+    "cancelled": false,
+    "command": [
+      "/home/wangwy/fpga_runs/current_board_memory_candidate09/campaign/image/_build/vcs/simv",
+      "-l",
+      "run.vcs.log",
+      "+ntb_random_seed=1",
+      "+PRELOAD=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e64_m2_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e64_m2_full5985_fp_period/input.elf",
+      "+TESTCASE=arithmetic_original_e64_m2_full5985_fp_period",
+      "+NO_FSDB",
+      "+COMMIT_TRACE=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e64_m2_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e64_m2_full5985_fp_period/commit_trace.csv"
+    ],
+    "cwd": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e64_m2_vcs_m9_plan01/prepared01/replay/tests/arithmetic_original_e64_m2_full5985_fp_period/work",
+    "command_sha256": "5cca90c593a4f02d618255ed72035f2b53eeeea2f1965290bae5e0bec7aa0865"
+  },
+  "strict_report_sha256": "d599fd5eeb2a3b6d8d1591efb7064cc881450350c203506dc9c1f7a2d930b519",
+  "csv_sha256": "284b335f2e7a14ec537a0e4a93476f320cd5cb7b88c092d3a2ebdd65b4faf5ad",
+  "calls": 5985,
+  "results": 191520,
+  "guards": 11970,
+  "vstart_zero": 5985,
+  "helper_instructions": 77805,
+  "packed_output_reads": 203490,
+  "required_memory_helpers": 29925,
+  "required_targets": 3762,
+  "required_op24_targets": 117,
+  "pins_pre_post_unchanged": true,
+  "original_Linux_historical_stall_closed": false,
+  "finished": 1792016245.2959108
+}

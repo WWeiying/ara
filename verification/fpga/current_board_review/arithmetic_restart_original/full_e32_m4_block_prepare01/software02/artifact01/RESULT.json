@@ -1,0 +1,51 @@
+{
+  "status": "ACTUAL_LINKED_CFG_PASS_PENDING_INDEPENDENT_REVIEW",
+  "backends": {
+    "soc": {
+      "elf_sha256": "6adde60cb19b74d8aa1e1c44a2219042d2a482da18e824772ba2cdf47bd940bf",
+      "whole_positive_upper": 2804832,
+      "within3M": true,
+      "terms": {
+        "capacity": 3,
+        "mask": 235935,
+        "output_init": 424935,
+        "original_helper_bodies": 77805,
+        "cache": 1123125,
+        "FP": 529830,
+        "direct_replay_write_upper": 2744,
+        "number_and_nested_write_upper": 2031,
+        "main_including_all_caller_code": 372492,
+        "startup_upper": 35926,
+        "main_trampoline": 1,
+        "runtime_exit_through_completion": 5
+      }
+    },
+    "spike": {
+      "elf_sha256": "a91b41df8ad8156243f0e79d998a0ec9783f2bc2113dfe6016404988abb9970f",
+      "whole_positive_upper": 2814407,
+      "within3M": true,
+      "terms": {
+        "capacity": 3,
+        "mask": 231525,
+        "output_init": 424935,
+        "original_helper_bodies": 77805,
+        "cache": 1123125,
+        "FP": 529830,
+        "direct_replay_write_upper": 4704,
+        "number_and_nested_write_upper": 2451,
+        "main_including_all_caller_code": 360520,
+        "startup_upper": 59501,
+        "main_trampoline": 1,
+        "runtime_exit_through_completion": 7
+      }
+    }
+  },
+  "host_runs": 46,
+  "short_host_cases": 6,
+  "pins_unchanged": true,
+  "pin_count": 489,
+  "reference_executed": false,
+  "DUT_executed": false,
+  "cost_scope": "Full successful source history conditional scalar CFG, not retired/architectural validation; source error fallback retained, not successful-path cost",
+  "elapsed_seconds": 63.21976823406294
+}

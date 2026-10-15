@@ -1,0 +1,13 @@
+{
+  "name": "int_old8_restart",
+  "status": "PASS",
+  "returncode": 0,
+  "elapsed_s": 30.804243673104793,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN int_old8_restart",
+    "RVV_FP_MOVE_PASS sew=16 cases=1 errors=0",
+    "BOARD_CASE_PASS int_old8_restart"
+  ],
+  "input_sha256": "3826d876b6539a028537e235a7bc18e1f9bcd76bcad139e463ddcd1d7baddcf8",
+  "console_sha256": "e68d7e400c214ee068c7b264f22f5a343fdc08baa250d3f8239f03ce94b467cb"
+}

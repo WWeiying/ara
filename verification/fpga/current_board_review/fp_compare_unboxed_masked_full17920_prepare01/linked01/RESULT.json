@@ -1,0 +1,18 @@
+{
+  "status": "STATIC_COST_GATE_PASS_PENDING_REFERENCE_ADMISSION",
+  "backends": {
+    "soc": {
+      "elf_sha256": "18294ae7aa7a2a503e0ab82d532f6c7dcc6f92ad752e3972e50038a7c03173ea",
+      "whole_success_upper": 2810222,
+      "margin_to_3M": 189778
+    },
+    "spike": {
+      "elf_sha256": "09c4eaf6033b25922a57e1c7223616e6a849d30b6393a67fd64d91da097a7634",
+      "whole_success_upper": 2796402,
+      "margin_to_3M": 203598
+    }
+  },
+  "pins_unchanged": true,
+  "reference_executed": false,
+  "DUT_executed": false
+}

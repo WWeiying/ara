@@ -1,0 +1,13 @@
+{
+  "name": "fp_old64_empty",
+  "status": "PASS",
+  "returncode": 0,
+  "elapsed_s": 22.125387416686863,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_old64_empty",
+    "RVV_FP_MOVE_PASS sew=16 cases=1 errors=0",
+    "BOARD_CASE_PASS fp_old64_empty"
+  ],
+  "input_sha256": "4634107dc7c753020d9c327426f225b7d0385e36355e337616cf27ff1cc26793",
+  "console_sha256": "c3a0d9407d5bc0b6793e901767df864ec0ab5818a6c2d78c0bbb02933ac562e7"
+}

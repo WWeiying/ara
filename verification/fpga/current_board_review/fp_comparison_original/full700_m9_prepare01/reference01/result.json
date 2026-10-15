@@ -1,0 +1,48 @@
+{
+  "status": "SOURCE700_FULL_DYNAMIC_REFERENCE_ACCEPTED_NOT_DUT",
+  "calls": 700,
+  "predecessors": 699,
+  "result_bits": 358400,
+  "guards": 1400,
+  "flags": 700,
+  "vstarts": 700,
+  "helper_instructions": 12880,
+  "firmware": 2179709,
+  "baseline_firmware": 2123855,
+  "baseline_actual_M8_s": 4259.165035946295,
+  "nominal_projection_s": 4371.174285126556,
+  "margin20_projection_s": 5245.409142151867,
+  "case_budget_s": 10800,
+  "actual_reference": {
+    "returncode": 0,
+    "pid": 2839349,
+    "timed_out": false,
+    "elapsed_s": 4.378917186986655
+  },
+  "actual_audit": {
+    "returncode": 0,
+    "pid": 2840027,
+    "timed_out": false,
+    "elapsed_s": 95.68617194099352
+  },
+  "raw_sha256": "9e8274c428c732e161df8d9aa685ed61e3b7fbf19989cd13fc28db59e3338eef",
+  "raw_bytes": 166616102,
+  "pins_pre_post_unchanged": true,
+  "endpoint_call": {
+    "ordinal": 700,
+    "op": 2,
+    "vl": 3,
+    "mode": 1,
+    "sticky": 1,
+    "reads": 195,
+    "vstart": 0,
+    "flags": 1,
+    "target": {
+      "pc": "0x8000077c",
+      "encoding": "6e881457",
+      "cycle": 2177526,
+      "retired": 2177527
+    }
+  },
+  "limitation": "M8 throughput projection onto frozenM9, not runtime guarantee or full17920 acceptance"
+}

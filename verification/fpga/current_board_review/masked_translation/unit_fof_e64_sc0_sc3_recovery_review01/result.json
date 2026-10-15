@@ -1,0 +1,32 @@
+{
+  "decision": "NO_BLOCKER",
+  "blockers": [],
+  "scope": "Exact main/handler opaque ABI spill checker repair and one closed-CSV offline audit; not architectural acceptance yet",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_sc0_sc3_checker_recovery01/successor.py": "93f37b7df6401b4999acac601ac9036589312dc51f0266fceeb0b1c4035a361f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_sc0_sc3_checker_recovery01/successor_handler.py": "3baa7353e87aaa781d2b1bcb76066e7c8e3cea7c21c533530c07ba884e104820",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_sc0_sc3_checker_recovery01/test_host.py": "3f8dad72aed42eca40a793ef0724ff98d382f2c90d56fb49df1d5517e68ad6c1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_sc0_sc3_checker_recovery01/test_handler.py": "19821e47cbb143d8a9b0de5bd6b7f283cf261e546487afd7e5be98c2992ed848",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_sc0_sc3_checker_recovery01/audit.py": "54c3ba14b81205a6b07aaac1bda6bd772eaf6105f8ac053e3b9fd548a1c1a352"
+  },
+  "original_plan_sha256": "11521664380ef491f6db4823b8ccd99865a25df2011fd6ed1f12b52ee0e995b1",
+  "reference_ready_sha256": "8c2f89e677e1cf6148ad3d1013f1598a91ed77506a73266603d956ffe9672e1e",
+  "reviewed_host_counts": [12, 10],
+  "host_actual_returncodes_from_receipts": [0, 0],
+  "independent_actual_ELF_constructor_and_metadata_check_returncode": 0,
+  "independent_check_tool_chunk": "76c307",
+  "independent_check_wall_s": 0.620090777,
+  "unknown_registers_defaulted_to_zero": false,
+  "main_opaque_inputs": [8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27],
+  "handler_opaque_inputs": [7, 28, 29, 30, 31],
+  "handler_restored_register_count": 16,
+  "original_data_FOF_tail_and_four_owner_checks_inherited": true,
+  "original_batch_status_retained": "NOT_ACCEPTED_LATE_ABORT",
+  "original_worker_exit_status_retained": "1",
+  "persisted_simulator_returncodes": [0, 0],
+  "old_checker_firstfailure": "KeyError8 at row12989 in both cases",
+  "Host_rerun": false,
+  "reference_or_DUT_execution": false,
+  "CSV_parse_by_reviewer": false,
+  "permission_scope": "Existing authorized one offline semantic pass per immutable closed CSV, no simulation retry"
+}

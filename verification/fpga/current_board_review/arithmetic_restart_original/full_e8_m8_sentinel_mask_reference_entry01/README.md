@@ -1,0 +1,15 @@
+# Exact e8/m8 Reference Entry (Not Executed)
+
+Scope: original4095 integer calls, SEW8/CAP1024/vtype3/physical8; a and b each exactly1024B, helper out+1, checked output1026B =128 words plus2B LHU tail, full128B predicate. Original helper13 instructions/call, RNG chronology, source fallback, immutable dictionary and seed state are retained. No e16 extra input BSS, SW4 tail or upper64B-zero mask is inherited.
+
+Executor: reference02.py. Consumer: reference_check02.py with lifecycle02.py/context.py/gates.py/PROFILE.json and the immutable original e8 oracle. Profiles were derived from existing linked scalar code, not compiled anew or executed with Spike. The static scalar main walk derives exact reordered initializer/mask/RNG PCs and values, not vector results. Profile stores per seed are2944 each/8832 total; output129 stores/call; mask16 SD per group/1575 groups.
+
+Capacity is required from the first audit: exact0x52fd li t0,-1,0x0032f557 vsetvli a0,t0,e8m8,0x8082 ret, once each in consecutive retirements, actual t0/a0/VL1024/vtype3 and no return effects. Full output/guards/vstart/physical group/inputs are checked against the source oracle. A shared shadow verifies all scalar reads against actual initialization or pinned ROM, including gold/ID loads. Actual comparator nextPC/branch/return and aggregate PC counts must match the linked conditional success CFG, including209340 constant-construction instructions,69615 IDs,109575 gold loads and528255 output reads. This is not a checksum.
+
+Lifecycle02 rejects a known business-store PC that escapes its exact bank bounds. Original Host01 is preserved actual1/2.272416631s with2 failures: invalid test assumption that SH tail was last (compiler scheduled it earlier), and the bank-escape checker gap. No model or source was changed. Host02 uses actual tail offset/width irrespective of position and tests the strengthened bank rejection. It passed18 short tests actual0/2.421909723s. These are constructed actual-PC/profile snapshots and first-seed fixtures, not a full fake raw or fullstream/ISA proof.
+
+Future execution is doubly gated: actual independent ENTRY review hash plus a later explicit parent authorization file/hash. Preparation approval alone cannot run it. No such parent record is created here.
+
+Fixed future bounds: rs4000000;quit,120s wall,768MiB raw RLIMIT_FSIZE,600s closed audit, firmware_to_HTIF<=3000000 before READY. Numeric Popen.wait outcome is fsynced before metadata/audit checks; no retry. One closed audit checks through EOF, accepts only exact pure park after HTIF1, preserves actual original return0 and failure veto. Any mismatch retains actual receipts and first context; budget excess is HOLD, not permission to extend. No DUT or runtime guarantee.
+
+Review schema expected by executor: status=NO_BLOCKER_EXACT_REFERENCE_ENTRY_ONLY, entry_sha256=<actual ENTRY>, one_attempt=true, DUT_authorized=false. This review is not execution permission. Parent schema is in AUTHORIZATION_SCHEMA.json. No compiler, fullstream Host, Spike/reference, VCS or RTL operation was performed in this entry stage.

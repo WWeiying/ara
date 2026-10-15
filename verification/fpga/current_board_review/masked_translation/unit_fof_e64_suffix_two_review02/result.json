@@ -1,0 +1,103 @@
+{
+  "decision": "NO_BLOCKER",
+  "blockers": [],
+  "plan_sha256": "3bc80c42d8e6bf7f722d81184ef8fc4bcac099e2518547292f5172665324e949",
+  "worker_sha256": "672196e5799683b56fc86bf9df09254694159d53a77356b2fe6f2c19395790e0",
+  "checker_sha256": "215f4298d5ae56f1c5102ce3d5a714ecb2f1f277176bf535f6a33eff750878bb",
+  "source_owners_sha256": "b840dbf0ab8af33f4a86c69a0fc70ed0127c4654590cf275d3dfe4877637dcd3",
+  "reference_ready_sha256": "816491edd10f338f435c3bcf473cb7cc4434d1ce65fbe7cfb419dab9bce6a2c5",
+  "image_sha256": "48d9e4d2acb1fa239e05549fe695caad36af34c1f02aaffe041bb8261e302b5a",
+  "source_reference_review": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_review01/result.json",
+  "source_reference_reused_not_reaudited": true,
+  "source_reference_accepted": true,
+  "worker_entry_accepted": true,
+  "tests": [
+    {
+      "scenario": 1,
+      "test": "all_four_owners",
+      "accepted": true
+    },
+    {
+      "scenario": 1,
+      "test": "delete_complete_pair_old_vd",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for old_vd"
+    },
+    {
+      "scenario": 1,
+      "test": "delete_complete_pair_mask",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for mask"
+    },
+    {
+      "scenario": 1,
+      "test": "delete_complete_pair_target",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for target"
+    },
+    {
+      "scenario": 1,
+      "test": "delete_complete_pair_result",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for result"
+    },
+    {
+      "scenario": 2,
+      "test": "all_four_owners",
+      "accepted": true
+    },
+    {
+      "scenario": 2,
+      "test": "delete_complete_pair_old_vd",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for old_vd"
+    },
+    {
+      "scenario": 2,
+      "test": "delete_complete_pair_mask",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for mask"
+    },
+    {
+      "scenario": 2,
+      "test": "delete_complete_pair_target",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for target"
+    },
+    {
+      "scenario": 2,
+      "test": "delete_complete_pair_result",
+      "rejected": true,
+      "reason": "Missing nonempty backend lifecycle for result"
+    }
+  ],
+  "independent_delta_host_tests": 10,
+  "inputs_unchanged": true,
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_review02/check_delta.py": "b61528b9c10f469e705f1dc9bfe3a18c1c1f57b4111c88500270649c833a52d9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_review01/result.json": "335b1d57d5435030db4e92d0ad92a4823333d0a174b290518b32150914924083",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_review01/REVIEW.md": "fdb8c921e0e34f11b03b12e0d8e4624b0c1ae554fc2e61bca6af5a4798a59714",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/prepared01/plan.json": "3bc80c42d8e6bf7f722d81184ef8fc4bcac099e2518547292f5172665324e949",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/prepared01/ready.json": "4cc191520cf78eee84fc743bcc0cf0cacf8ee4f24c6fd35d99154cb8fcabd2c1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/prepared01/dryrun_gate.json": "60306fdd763494850a03c243408cb5c051c4c97c94bda457063f272c1d3d2fc1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/prepared01/service_launch.json": "6cffabaa8a0169d8fabece820684f0d9530e3083a8bb2ca8bbb497c56475355a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/source_owners.py": "b840dbf0ab8af33f4a86c69a0fc70ed0127c4654590cf275d3dfe4877637dcd3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/checker.py": "215f4298d5ae56f1c5102ce3d5a714ecb2f1f277176bf535f6a33eff750878bb",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/replay.py": "672196e5799683b56fc86bf9df09254694159d53a77356b2fe6f2c19395790e0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/test_worker.py": "635266c0932740c1565064c3e454ccf581dd7164b1025b17790088d00a8108c9",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/host02/status.json": "8aae3d38979f6cc5ca642e899ee24530a624d456b132b168fcf1fc751436efb3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/host02/execution.json": "a3c06107eb2f817c7f5b71e92a4337e1f0edae24fc3165c88c85940eff873ccd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/service_launch.py": "4e59c7241a98ed8ddc09c7b8202cdc2812eace1f5d9c1e9d50ac099f69367f2f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_vcs_m9_plan01/pinned_service_exit.py": "05ed8d7d400d9940d30f77bdbd287f40d9a5623e43bdf8c05bf3b4ed0718a517"
+  },
+  "jobs": 2,
+  "case_timeout_s": 1800,
+  "worker_timeout_s": 3900,
+  "service_timeout_s": 4200,
+  "scope": "M9 two original e64 suffix singles; launch-entry review only, no DUT acceptance",
+  "no_new_reference": true,
+  "no_CSV_parse": true,
+  "no_live_queries": true,
+  "DUT_started_by_review": false,
+  "zero_physical_MMU_activity_proved": false
+}

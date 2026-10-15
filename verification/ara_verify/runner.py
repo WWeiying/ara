@@ -496,14 +496,15 @@ class RegressionRunner:
             )
             if evidence["status"] != "PASS":
                 contract_error = "; ".join(evidence["issues"])
-        if self.cancel_event.is_set():
-            return TestResult(test.name, test.kind, "CANCELLED", returncode, elapsed,
-                              "run cancelled; private process group stopped", artifact_dir)
+        # A batch abort raised after monitor return must not hide its timeout.
         if timed_out:
             return TestResult(
                 test.name, test.kind, "TIMEOUT", None, elapsed,
                 f"timeout after {timeout_s}s", artifact_dir,
             )
+        if self.cancel_event.is_set():
+            return TestResult(test.name, test.kind, "CANCELLED", returncode, elapsed,
+                              "run cancelled; private process group stopped", artifact_dir)
 
         run_log = work_dir / "run.vcs.log"
         text = console_path.read_text(encoding="utf-8", errors="replace")

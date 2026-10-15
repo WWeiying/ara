@@ -1,0 +1,39 @@
+{
+  "status": "FULL1134_PACKED_REFERENCE_PASS_NOT_DUT",
+  "bound_sha256": "d8f8d364c77680bcc5d6b2573df6347bbd769a2064487359eb19f0b6d1b67000",
+  "review_sha256": "a000e54ba9ec28b99f3aad69dca71f59316b9161f0f89e56c8b60f30b09c309d",
+  "reference_sha256": "7557cc7ada0a5ce4a0cd1de8e1ec36cdc6350dc3864f68caf9dc193951fb7bf0",
+  "actual_spike": {
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zvl1024b",
+      "-m2",
+      "--instructions=40000000",
+      "--log-commits",
+      "--log=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/corrected02/reference01/commits.log",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/corrected02/spike/whole_all.elf"
+    ],
+    "pid": 2896631,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 10.124525628983974,
+    "attempts": 1
+  },
+  "actual_audit": {
+    "command": [
+      "/usr/bin/python3",
+      "-B",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/whole_register_original/continuous_packed_prepare01/corrected02/audit.py",
+      "--bound-sha256",
+      "d8f8d364c77680bcc5d6b2573df6347bbd769a2064487359eb19f0b6d1b67000"
+    ],
+    "pid": 2896914,
+    "returncode": 0,
+    "timeout": false,
+    "elapsed_s": 97.72953406581655,
+    "attempts": 1
+  },
+  "firmware_through_htif": 4348773,
+  "DUT_started": false,
+  "retries": 0
+}

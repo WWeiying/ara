@@ -1,0 +1,52 @@
+{
+  "image": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after03",
+  "simv_sha256": "c2b6057e65c15fc2d62e73c55d0f6ba7f813a54db01c961d1ddcfdb329872d0a",
+  "cases": [
+    {
+      "name": "active_unstalled",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after03/simv",
+        "-no_save",
+        "+VL=273",
+        "+NV=261",
+        "+PATTERN=1"
+      ],
+      "status": "FAIL",
+      "returncode": 0,
+      "evidence": [
+        "WRITE cycle=19 lane=0 addr=96 be=ff data=71d3d359597171d3",
+        "WRITE cycle=19 lane=1 addr=96 be=ff data=d359597171d3d359",
+        "WRITE cycle=19 lane=2 addr=96 be=ff data=597171d3d3595971",
+        "WRITE cycle=19 lane=3 addr=96 be=ff data=71d3d359597171d3",
+        "WRITE cycle=21 lane=0 addr=97 be=ff data=5b5b5b5b5b5bd359",
+        "WRITE cycle=21 lane=1 addr=97 be=ff data=5b5b5b5b5b5b5b5b",
+        "WRITE cycle=21 lane=2 addr=97 be=ff data=5b5b5b5b5b5b5b5b",
+        "WRITE cycle=21 lane=3 addr=97 be=ff data=5b5b5b5b5b5b5b5b"
+      ]
+    },
+    {
+      "name": "quiet_stalled",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison/consumer_after03/simv",
+        "-no_save",
+        "+VL=273",
+        "+NV=-1",
+        "+PATTERN=1",
+        "+STALLS=1"
+      ],
+      "status": "FAIL",
+      "returncode": 0,
+      "evidence": [
+        "WRITE cycle=91 lane=0 addr=98 be=ff data=71d3d359597171d3",
+        "WRITE cycle=91 lane=1 addr=98 be=ff data=d359597171d3d359",
+        "WRITE cycle=91 lane=2 addr=98 be=ff data=597171d3d3595971",
+        "WRITE cycle=91 lane=3 addr=98 be=ff data=71d3d359597171d3",
+        "WRITE cycle=92 lane=0 addr=97 be=ff data=5b5b5b5b5b5bd359",
+        "WRITE cycle=92 lane=1 addr=97 be=ff data=5b5b5b5b5b5b5b5b",
+        "WRITE cycle=92 lane=2 addr=97 be=ff data=5b5b5b5b5b5b5b5b",
+        "WRITE cycle=92 lane=3 addr=97 be=ff data=5b5b5b5b5b5b5b5b",
+        "wrong write footprint e=0 count=0"
+      ]
+    }
+  ]
+}

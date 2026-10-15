@@ -1,0 +1,29 @@
+{
+  "state": "PASS",
+  "compile_seconds": 25.07608788833022,
+  "run_seconds": 10.640421343967319,
+  "returncode": 0,
+  "cases": [
+    "CASE_PASS case=0 successor_no_reset=1",
+    "CASE_PASS case=1 successor_no_reset=1",
+    "CASE_PASS case=2 successor_no_reset=1",
+    "CASE_PASS case=3 successor_no_reset=1",
+    "CASE_PASS case=4 successor_no_reset=1",
+    "CASE_PASS case=5 successor_no_reset=1"
+  ],
+  "stores": [
+    "STORE_PASS case=0 owner=0 w=0 b=0 desc=17 skips=17 fault_offer=-1 fault_accept=-1 last_b=-1 done=24 idle=1",
+    "STORE_PASS case=0 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=43 done=44 idle=1",
+    "STORE_PASS case=1 owner=0 w=2 b=2 desc=8 skips=5 fault_offer=15 fault_accept=31 last_b=31 done=32 idle=1",
+    "STORE_PASS case=1 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=52 done=53 idle=1",
+    "STORE_PASS case=2 owner=0 w=2 b=2 desc=8 skips=5 fault_offer=15 fault_accept=31 last_b=31 done=32 idle=1",
+    "STORE_PASS case=2 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=52 done=53 idle=1",
+    "STORE_PASS case=3 owner=0 w=6 b=6 desc=17 skips=11 fault_offer=-1 fault_accept=-1 last_b=37 done=38 idle=1",
+    "STORE_PASS case=3 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=57 done=58 idle=1",
+    "STORE_PASS case=4 owner=0 w=2 b=1 desc=1 skips=0 fault_offer=-1 fault_accept=-1 last_b=13 done=14 idle=1",
+    "STORE_PASS case=4 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=33 done=34 idle=1",
+    "STORE_PASS case=5 owner=0 w=0 b=0 desc=1 skips=0 fault_offer=7 fault_accept=7 last_b=-1 done=8 idle=1",
+    "STORE_PASS case=5 owner=1 w=2 b=2 desc=7 skips=5 fault_offer=-1 fault_accept=-1 last_b=27 done=28 idle=1"
+  ],
+  "frozen_verified": true
+}

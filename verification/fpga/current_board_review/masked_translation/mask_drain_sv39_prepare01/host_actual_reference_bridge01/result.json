@@ -1,0 +1,232 @@
+{
+  "status": "HOST_ADAPTER_PASS_NOT_DUT",
+  "members": [
+    {
+      "status": "HOST_EXISTING_SPIKE_ROW_ADAPTER_PASS_NOT_DUT",
+      "member": "load",
+      "source_raw_sha256": "81a82e60cb9ca8148ad6316138ba52362fb28330f20dd12caca9b4b2774ca72f",
+      "actual_endpoint": {
+        "HTIF": [
+          1
+        ]
+      },
+      "endpoint_bridge": "validated HTIF1 substitutes CTRL0 for Host finish test only",
+      "synthetic_cycle_order": true,
+      "partial_not_retired": 1,
+      "checks": 914,
+      "scalar_commits": 120321,
+      "saved_csrs": {
+        "768": 9223372079804474880,
+        "772": 0,
+        "773": 2147483732,
+        "833": 0,
+        "834": 0,
+        "835": 0,
+        "384": 0,
+        "770": 0,
+        "771": 0,
+        "3104": 0,
+        "3105": 9223372036854775808,
+        "8": 0,
+        "15": 0,
+        "3": 0
+      },
+      "traps": [
+        {
+          "0": 13,
+          "1": 2147487132,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 9,
+          "6": 26,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        },
+        {
+          "0": 9,
+          "1": 2147487500,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 9,
+          "6": 26,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "actions": [
+        {
+          "name": "handler",
+          "cycle": 55102
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 55128
+        },
+        {
+          "name": "mt_repair_store",
+          "cycle": 55224
+        },
+        {
+          "name": "mt_repair_sfence",
+          "cycle": 55227
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 55228
+        },
+        {
+          "name": "mt_target",
+          "cycle": 55229
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 55249
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 55266
+        },
+        {
+          "name": "mt_recovery_store",
+          "cycle": 55281
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 55297
+        },
+        {
+          "name": "handler",
+          "cycle": 55321
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 55347
+        }
+      ],
+      "complete_finish_checks": true,
+      "restore_readback_checks": 14
+    },
+    {
+      "status": "HOST_EXISTING_SPIKE_ROW_ADAPTER_PASS_NOT_DUT",
+      "member": "store",
+      "source_raw_sha256": "8982c1d631251c67120af820ae5c439465a2da8ad4283562ac0842e3ec6fa146",
+      "actual_endpoint": {
+        "HTIF": [
+          1
+        ]
+      },
+      "endpoint_bridge": "validated HTIF1 substitutes CTRL0 for Host finish test only",
+      "synthetic_cycle_order": true,
+      "partial_not_retired": 1,
+      "checks": 914,
+      "scalar_commits": 125321,
+      "saved_csrs": {
+        "768": 9223372079804474880,
+        "772": 0,
+        "773": 2147483732,
+        "833": 0,
+        "834": 0,
+        "835": 0,
+        "384": 0,
+        "770": 0,
+        "771": 0,
+        "3104": 0,
+        "3105": 9223372036854775808,
+        "8": 0,
+        "15": 0,
+        "3": 0
+      },
+      "traps": [
+        {
+          "0": 15,
+          "1": 2147487156,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 9,
+          "6": 26,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        },
+        {
+          "0": 9,
+          "1": 2147487524,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 9,
+          "6": 26,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      ],
+      "actions": [
+        {
+          "name": "handler",
+          "cycle": 55102
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 55128
+        },
+        {
+          "name": "mt_repair_store",
+          "cycle": 55224
+        },
+        {
+          "name": "mt_repair_sfence",
+          "cycle": 55227
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 55228
+        },
+        {
+          "name": "mt_target",
+          "cycle": 55229
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 55249
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 55266
+        },
+        {
+          "name": "mt_recovery_store",
+          "cycle": 55281
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 55297
+        },
+        {
+          "name": "handler",
+          "cycle": 55321
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 55347
+        }
+      ],
+      "complete_finish_checks": true,
+      "restore_readback_checks": 14
+    }
+  ],
+  "negatives": [
+    "retire_gap",
+    "retire_duplicate",
+    "cycle_regressed",
+    "saved_CSR_mismatch",
+    "duplicate_handler_CSR"
+  ],
+  "checker_sha256": "62ece09471c5b318b7e34d99b462571c0f93bcef5762511fba44c60df8412842",
+  "bridge_sha256": "cfcbb56bf223805780bef08050ea74dd464a0d27373ae33f5aae4ef131040a1e"
+}

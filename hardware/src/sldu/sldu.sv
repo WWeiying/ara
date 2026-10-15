@@ -716,7 +716,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           automatic int unsigned preserved_prefix_bytes =
               unsigned'(vinsn_issue_q.vstart) << unsigned'(vinsn_issue_q.vtype.vsew);
           automatic logic preserve_restart_prefix =
-              vinsn_issue_q.op == VSLIDEDOWN &&
+              vinsn_issue_q.op inside {VSLIDEUP, VSLIDEDOWN} &&
               vinsn_issue_q.vstart != '0;
           automatic int unsigned scalar_seq_byte =
               (unsigned'(vinsn_issue_q.vl) - 1) << unsigned'(vinsn_issue_q.vtype.vsew);
@@ -801,7 +801,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             state_d = SLIDE_RUN;
 
           // If this is a vslide1up instruction, copy the scalar operand to the first word
-          if (state_q == SLIDE_RUN_VSLIDE1UP_FIRST_WORD)
+          if (state_q == SLIDE_RUN_VSLIDE1UP_FIRST_WORD &&
+              vinsn_issue_q.vstart == '0)
             unique case (vinsn_issue_q.vtype.vsew)
               EW8: begin
                 result_queue_d[result_queue_write_pnt_q][0].wdata[7:0] =

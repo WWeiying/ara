@@ -1,0 +1,269 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "commits": 1595309,
+  "points": [
+    {
+      "round": 0,
+      "commit": 312259,
+      "values_checked": 32
+    },
+    {
+      "round": 1,
+      "commit": 331589,
+      "values_checked": 32
+    },
+    {
+      "round": 2,
+      "commit": 350919,
+      "values_checked": 32
+    },
+    {
+      "round": 3,
+      "commit": 370249,
+      "values_checked": 32
+    },
+    {
+      "round": 4,
+      "commit": 389579,
+      "values_checked": 32
+    },
+    {
+      "round": 5,
+      "commit": 408909,
+      "values_checked": 32
+    },
+    {
+      "round": 6,
+      "commit": 428239,
+      "values_checked": 32
+    },
+    {
+      "round": 7,
+      "commit": 447569,
+      "values_checked": 32
+    },
+    {
+      "round": 8,
+      "commit": 466899,
+      "values_checked": 32
+    },
+    {
+      "round": 9,
+      "commit": 486229,
+      "values_checked": 32
+    },
+    {
+      "round": 10,
+      "commit": 505559,
+      "values_checked": 32
+    },
+    {
+      "round": 11,
+      "commit": 524889,
+      "values_checked": 32
+    },
+    {
+      "round": 12,
+      "commit": 544219,
+      "values_checked": 32
+    },
+    {
+      "round": 13,
+      "commit": 563549,
+      "values_checked": 32
+    },
+    {
+      "round": 14,
+      "commit": 582879,
+      "values_checked": 32
+    },
+    {
+      "round": 15,
+      "commit": 602209,
+      "values_checked": 32
+    },
+    {
+      "round": 16,
+      "commit": 621539,
+      "values_checked": 32
+    },
+    {
+      "round": 17,
+      "commit": 640869,
+      "values_checked": 32
+    },
+    {
+      "round": 18,
+      "commit": 660199,
+      "values_checked": 32
+    },
+    {
+      "round": 19,
+      "commit": 679529,
+      "values_checked": 32
+    },
+    {
+      "round": 20,
+      "commit": 698859,
+      "values_checked": 32
+    },
+    {
+      "round": 21,
+      "commit": 718189,
+      "values_checked": 32
+    },
+    {
+      "round": 22,
+      "commit": 737519,
+      "values_checked": 32
+    },
+    {
+      "round": 23,
+      "commit": 756849,
+      "values_checked": 32
+    },
+    {
+      "round": 24,
+      "commit": 776179,
+      "values_checked": 32
+    },
+    {
+      "round": 25,
+      "commit": 795509,
+      "values_checked": 32
+    },
+    {
+      "round": 26,
+      "commit": 814839,
+      "values_checked": 32
+    },
+    {
+      "round": 27,
+      "commit": 834169,
+      "values_checked": 32
+    },
+    {
+      "round": 28,
+      "commit": 853499,
+      "values_checked": 32
+    },
+    {
+      "round": 29,
+      "commit": 872829,
+      "values_checked": 32
+    },
+    {
+      "round": 30,
+      "commit": 892159,
+      "values_checked": 32
+    },
+    {
+      "round": 31,
+      "commit": 911489,
+      "values_checked": 32
+    },
+    {
+      "round": 32,
+      "commit": 930819,
+      "values_checked": 32
+    },
+    {
+      "round": 33,
+      "commit": 950149,
+      "values_checked": 32
+    },
+    {
+      "round": 34,
+      "commit": 969479,
+      "values_checked": 32
+    },
+    {
+      "round": 35,
+      "commit": 988809,
+      "values_checked": 32
+    },
+    {
+      "round": 36,
+      "commit": 1008139,
+      "values_checked": 32
+    },
+    {
+      "round": 37,
+      "commit": 1027469,
+      "values_checked": 32
+    },
+    {
+      "round": 38,
+      "commit": 1046799,
+      "values_checked": 32
+    },
+    {
+      "round": 39,
+      "commit": 1066129,
+      "values_checked": 32
+    },
+    {
+      "round": 40,
+      "commit": 1085459,
+      "values_checked": 32
+    },
+    {
+      "round": 41,
+      "commit": 1104789,
+      "values_checked": 32
+    },
+    {
+      "round": 42,
+      "commit": 1124119,
+      "values_checked": 32
+    },
+    {
+      "round": 43,
+      "commit": 1143449,
+      "values_checked": 32
+    },
+    {
+      "round": 44,
+      "commit": 1162779,
+      "values_checked": 32
+    },
+    {
+      "round": 45,
+      "commit": 1182109,
+      "values_checked": 32
+    },
+    {
+      "round": 46,
+      "commit": 1201439,
+      "values_checked": 32
+    },
+    {
+      "round": 47,
+      "commit": 1220769,
+      "values_checked": 32
+    },
+    {
+      "round": 48,
+      "commit": 1240099,
+      "values_checked": 32
+    },
+    {
+      "round": 49,
+      "commit": 1259429,
+      "values_checked": 32
+    }
+  ],
+  "original_helper_instructions": 41,
+  "original_elf_sha256": "07b1438fbea419215576f071fd5e89c38f01238ab19fbc564ad861faf738e03d",
+  "soc_elf_sha256": "5a73bf57dc9d9cef6136ec8daa53e409c77abd5e0e47645d403392df5310347f",
+  "spike_elf_sha256": "def805ef49cfead13f0e2dad949e838c63718b358b0470f47b5cef0d7c4df2c1",
+  "reloads": 50,
+  "targets": 1650,
+  "faults": 1600,
+  "repairs": 1600,
+  "retries": 1600,
+  "checks": 21595,
+  "raw_markers": "VECTOR_PASS loops=50 overlap=1 data_bits=32 index_bits=64 fault_pages=1 minor_faults=1600\nINDEXED_ORIGINAL_PASS\n",
+  "policy": "32 initially invalid read-only pages per round; Linux batching unknown",
+  "VCS_launched": false
+}

@@ -1,0 +1,156 @@
+{
+  "status": "M6_FRESH02_LAUNCH_GATE_AUDIT_PASS_NOT_REGRESSION48_PASS",
+  "findings": [],
+  "exact_coordinator_pins_verified": 889,
+  "prior885_preserved": true,
+  "predecessor_evidence_verified": 29,
+  "predecessor_gate_replay_matches": true,
+  "cases": [
+    {
+      "name": "d32m2_i64_fault_ov1",
+      "status": "PASS",
+      "returncode": 0,
+      "elapsed_s": 3059.0834649289027,
+      "checks": 21595,
+      "rounds": 50,
+      "points": 50,
+      "repairs": 1600,
+      "retries": 1600
+    },
+    {
+      "name": "d32m2_i64_resident_ov1",
+      "status": "PASS",
+      "returncode": 0,
+      "elapsed_s": 1336.3999156081118,
+      "checks": 5215,
+      "rounds": 50,
+      "points": 51,
+      "repairs": 0,
+      "retries": 0
+    },
+    {
+      "name": "d32m2_i64_fault_ov0",
+      "status": "PASS",
+      "returncode": 0,
+      "elapsed_s": 2845.9045185628347,
+      "checks": 21595,
+      "rounds": 50,
+      "points": 50,
+      "repairs": 1600,
+      "retries": 1600
+    }
+  ],
+  "oracle_checks": 48405,
+  "predecessor_service": {
+    "properties": {
+      "MainPID": "0",
+      "Result": "success",
+      "ExecMainExitTimestamp": "Sun 2026-10-11 14:47:44 PDT",
+      "ExecMainCode": "1",
+      "ExecMainStatus": "0",
+      "Id": "ara-indexed-overlap-m6-01.service",
+      "LoadState": "loaded",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "residual": [],
+    "historical_service_exit_verified": true
+  },
+  "witness_exit": {
+    "kind": "SYSTEMD_EXIT_FACTS_ONLY",
+    "properties": {
+      "Id": "ara-indexed-overlap-m6-01.service",
+      "LoadState": "loaded",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "MainPID": 0,
+      "ExecMainPID": 620452,
+      "ExecMainCode": 1,
+      "ExecMainStatus": 0,
+      "ExecMainStartTimestamp": 1791749155893688,
+      "ExecMainExitTimestamp": 1791755264680327,
+      "ControlGroup": "",
+      "Result": "success",
+      "InvocationID": "94f592605b7147d3b5e47923457f3078",
+      "observed_unix": 1791755383.0816243
+    },
+    "exit_evidence_complete": true
+  },
+  "timeline": {
+    "predecessor_complete": {
+      "unix": 1791755264.6360774,
+      "utc": "2026-10-11T21:47:44.636077+00:00"
+    },
+    "predecessor_actual_exit": {
+      "unix": 1791755264.680327,
+      "utc": "2026-10-11T21:47:44.680327+00:00"
+    },
+    "witness_observed_exit": {
+      "unix": 1791755383.0816243,
+      "utc": "2026-10-11T21:49:43.081624+00:00"
+    },
+    "followup_admission": {
+      "unix": 1791755412.8992379,
+      "utc": "2026-10-11T21:50:12.899238+00:00"
+    },
+    "regression_child_launch": {
+      "unix": 1791755414.7648017,
+      "utc": "2026-10-11T21:50:14.764802+00:00"
+    }
+  },
+  "exit_to_child_seconds": 150.0844748020172,
+  "child": {
+    "pid": 675396,
+    "command": [
+      "/usr/bin/python3",
+      "-B",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_repair05/regression.py",
+      "run",
+      "--image",
+      "/home/wangwy/fpga_runs/current_board_memory_candidate06/campaign/image",
+      "--out",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_repair05/repair06_regression48_prepared01",
+      "--plan-sha256",
+      "ac33642809800f58c5f4534bdb52622849335ee3872a2b4347da7b7588ff8929",
+      "--authorize-run"
+    ],
+    "parent": 628354,
+    "cgroup": "/user.slice/user-1002.slice/user@1002.service/app.slice/ara-indexed-overlap-m6-followup-01.service",
+    "new_service": false
+  },
+  "resources_at_admission": {
+    "time": 1791755412.8992379,
+    "live": [],
+    "external": 0,
+    "jobs": 4,
+    "unused_external_reservation": 0,
+    "total": 4,
+    "available_bytes": 198597091328
+  },
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/coordinator_successor.py": "a78191e2e8288318fbebf67612a69ed71f2f799ec0bb11825f2e7fac15d3c130",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02/plan.json": "ee0b810e5bcd99cb7d2727923628a35b202db3c66219b7fac96966bf2a1124d4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/prepared01/plan.json": "4765cdfc0805b304b593b4fed7be2542a66907b4890ae777f0707bbe0c6ae007",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_worker/prepared01/complete.json": "5346d4623f744603f1a2d65677d7bed74615746bf8ec112d8604d9505f6bfd48",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02/launch.json": "b1f80caea996103f590cd1b5a0ba178410788c24a2ce83fdc789813b639062f1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02/admission.json": "91981567aeb3b759597bcce7ccd35354793af2c6411273ffb688582ebd5f5af1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02/child.json": "31299386d4e2bb2f613243e5deaaeedb0c516e4401981f36d24a33bd9d4bc135",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02/service_command.NOT_EXECUTED.json": "217b7f554887f8cba5c6e9aebfc5103429aa9280bb4e0c3b5087b04a06c25dba",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_exit_witness01/run01/startup.json": "0654b6cb1494fe9512a2db976f9d5122ce09dd1d64d28684b45296e0df636dca",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_exit_witness01/run01/actualexit.json": "39eeb93e860798bf5a51f599400a3cc7c3555ea3989fc2ed77002aeda3d29875",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather_repair05/repair06_regression48_prepared01/launch.json": "2916280885d48df40d67ff4caa809b5eff4556da1a383f88271ebb65f7f6dd94",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/indexed_overlap_original/repair06_followup/fresh02_launch_audit01/audit.py": "5cd805c1959ba1299391ad54d1076ba363e0e963fb6c51190956b5ba28b5e131"
+  },
+  "gate_code_locations": {
+    "service_exit": "coordinator_successor.py:129",
+    "terminal_and_oracle": "coordinator_successor.py:185",
+    "final_admission": "coordinator_successor.py:307",
+    "spawn": "coordinator_successor.py:324"
+  },
+  "parent_observation": "Four actual original38 M6 simvs reported by parent; not independently repolled here",
+  "scope": "Launch prerequisite/evidence audit. Saved full-oracle ledgers and CSV hashes verified; no CSV oracle recomputation.",
+  "regression48_verdict": "NOT_ASSESSED_RUNNING_CAMPAIGN_NOT_POLLED",
+  "service_or_process_queries": false,
+  "simulations_launched": false,
+  "sealed_files_modified": false
+}

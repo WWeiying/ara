@@ -1,0 +1,57 @@
+{
+  "state": "FAIL",
+  "cases": [
+    {
+      "case": 0,
+      "status": "PASS",
+      "marker": [
+        "LOCAL_PASS case=0 name=alloff_fault descriptors=8 axi=0 translations=0 ack_cycle=11 cycles=17 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 1,
+      "status": "PASS",
+      "marker": [
+        "LOCAL_PASS case=1 name=active_fault descriptors=1 axi=0 translations=1 ack_cycle=8 cycles=13 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 3,
+      "status": "FAIL",
+      "marker": [],
+      "returncode": 0
+    },
+    {
+      "case": 14,
+      "status": "PASS",
+      "marker": [
+        "LOCAL_PASS case=14 name=odd_active_after_skips descriptors=4 axi=0 translations=0 ack_cycle=8 cycles=13 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 20,
+      "status": "FAIL",
+      "marker": [],
+      "returncode": 0
+    },
+    {
+      "case": 21,
+      "status": "PASS",
+      "marker": [
+        "LOCAL_PASS case=21 name=unmasked_burst descriptors=1 axi=1 translations=1 ack_cycle=7 cycles=13 consumer_real=0"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": 23,
+      "status": "FAIL",
+      "marker": [],
+      "returncode": 0
+    }
+  ],
+  "real_consumer_validation": false,
+  "frozen_unchanged": true
+}

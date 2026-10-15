@@ -1,0 +1,20 @@
+{
+  "status": "HOST_EQUIVALENCE_PASS",
+  "calls": 777,
+  "result_bytes": 397824,
+  "guards": 1554,
+  "unique_expected_rows": 54,
+  "negative_rejections": [
+    "active",
+    "prestart",
+    "maskedoff",
+    "tail",
+    "left_guard",
+    "right_guard",
+    "vstart",
+    "lost_sticky",
+    "spurious_sat"
+  ],
+  "original_scalar_oracle_crosscheck": true,
+  "global_rng_order_unchanged": true
+}

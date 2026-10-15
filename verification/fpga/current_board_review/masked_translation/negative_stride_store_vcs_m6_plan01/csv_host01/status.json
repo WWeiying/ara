@@ -1,0 +1,478 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "synthetic": true,
+  "actual_soc_elf_sha256": "bdeaefcb2a25106578d2c78ca4bcb30f634dc73db9a4be03ac1607f2989235fb",
+  "rows": 213559,
+  "positive": {
+    "status": "PASS_NEGATIVE_STRIDE_STORE_FULL_SINGLE",
+    "rows": 213559,
+    "retired": 213549,
+    "last_cycle": 427198,
+    "checks": 17275,
+    "checkpoints": [
+      {
+        "phase": 0,
+        "cycle": 205368,
+        "bytes": 23244,
+        "checks": 4117
+      },
+      {
+        "phase": 1,
+        "cycle": 274704,
+        "bytes": 23236,
+        "checks": 8451
+      },
+      {
+        "phase": 2,
+        "cycle": 352762,
+        "bytes": 23236,
+        "checks": 12564
+      },
+      {
+        "phase": 3,
+        "cycle": 424520,
+        "bytes": 23228,
+        "checks": 17053
+      }
+    ],
+    "actual_handler_csrs": [
+      {
+        "0": 15,
+        "1": 2147487242,
+        "2": 1073745902,
+        "3": 2048,
+        "4": 9223372036855300101,
+        "5": 8,
+        "6": 8,
+        "7": 5,
+        "8": 117,
+        "9": 5
+      },
+      {
+        "0": 9,
+        "1": 2147487168,
+        "2": 0,
+        "3": 2048,
+        "4": 9223372036855300101,
+        "5": 64,
+        "6": 8,
+        "7": 0,
+        "8": 117,
+        "9": 5
+      }
+    ],
+    "retry_mrets": [
+      {
+        "cycle": 352786,
+        "mepc": 2147487242,
+        "vstart": 5,
+        "base": 1073745942,
+        "stride": 18446744073709551608
+      }
+    ],
+    "helper_instructions": 10,
+    "optional_trapping_retirements": 0,
+    "refills": [
+      2048
+    ],
+    "actions": [
+      "checkpoint0",
+      "handler",
+      "prefix_read",
+      "checkpoint1",
+      "pte",
+      "repair",
+      "refill",
+      "checkpoint2",
+      "retry",
+      "target",
+      "younger",
+      "handler",
+      "return_m",
+      "checkpoint3"
+    ],
+    "ctrl": [
+      0
+    ],
+    "cvx_faults": [
+      {
+        "cycle": 205404,
+        "insn": "0x9c55c27"
+      }
+    ],
+    "postexit_park": 1,
+    "target_store_requests": 2,
+    "store_completions": [
+      {
+        "arch_order": 0,
+        "vid": 0,
+        "allocated": 205400,
+        "done": 205402
+      },
+      {
+        "arch_order": 1,
+        "vid": 0,
+        "allocated": 352792,
+        "done": 352794
+      }
+    ],
+    "prefix_visibility": [
+      {
+        "cycle": 205508,
+        "pc": 2147484946,
+        "address": 2147500038,
+        "value": 127
+      }
+    ],
+    "b_response_evidence": "Architectural prefix visibility and same-owner backend completion; AXI B handshakes not present in RVFI",
+    "vector_evidence": "Actual scalar loads after pinned vector stores; no direct RVFI vector payload claim"
+  },
+  "negatives": [
+    {
+      "name": "store_source_output2",
+      "result": {
+        "status": "REJECTED",
+        "error": "Phase3 byte 8000819e: expected 7f, actual 36",
+        "row": 212220,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 17053
+      }
+    },
+    {
+      "name": "store_source_element5",
+      "result": {
+        "status": "REJECTED",
+        "error": "Phase3 byte 800081a4: expected a6, actual 0",
+        "row": 212220,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 17053
+      }
+    },
+    {
+      "name": "inactive_output",
+      "result": {
+        "status": "REJECTED",
+        "error": "Phase3 byte 800081a0: expected 8c, actual 0",
+        "row": 212220,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 17053
+      }
+    },
+    {
+      "name": "tail63",
+      "result": {
+        "status": "REJECTED",
+        "error": "Phase3 byte 80008218: expected 98, actual 0",
+        "row": 212220,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 17053
+      }
+    },
+    {
+      "name": "guard0",
+      "result": {
+        "status": "REJECTED",
+        "error": "Scalar read disagrees with stored/ELF bytes",
+        "row": 176958,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 12564
+      }
+    },
+    {
+      "name": "guard65",
+      "result": {
+        "status": "REJECTED",
+        "error": "Scalar read disagrees with stored/ELF bytes",
+        "row": 176960,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 12564
+      }
+    },
+    {
+      "name": "prefix_not_visible",
+      "result": {
+        "status": "REJECTED",
+        "error": "Missing/wrong pre-repair committed-store visibility",
+        "row": 102714,
+        "actions": [
+          "checkpoint0",
+          "handler"
+        ],
+        "checks": 4117
+      }
+    },
+    {
+      "name": "wrong_retry_encoding",
+      "result": {
+        "status": "REJECTED",
+        "error": "Actual ELF PC/encoding mismatch",
+        "row": 176353,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2"
+        ],
+        "checks": 12564
+      }
+    },
+    {
+      "name": "missing_checkpoint",
+      "result": {
+        "status": "REJECTED",
+        "error": "Retry before full repair checkpoint",
+        "row": 176352,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill"
+        ],
+        "checks": 12564
+      }
+    },
+    {
+      "name": "missing_final_guard",
+      "result": {
+        "status": "REJECTED",
+        "error": "Complete output64/guards/extrastorage reads",
+        "row": 213558,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m",
+          "checkpoint3"
+        ],
+        "checks": 17275
+      }
+    },
+    {
+      "name": "missing_CTRL",
+      "result": {
+        "status": "REJECTED",
+        "error": "CTRL/CVX terminal",
+        "row": 213556,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m",
+          "checkpoint3"
+        ],
+        "checks": 17275
+      }
+    },
+    {
+      "name": "missing_store_done",
+      "result": {
+        "status": "REJECTED",
+        "error": "Handler precedes accepted target-store completion",
+        "row": 102662,
+        "actions": [
+          "checkpoint0"
+        ],
+        "checks": 4117
+      }
+    },
+    {
+      "name": "wrong_fault_opcode",
+      "result": {
+        "status": "REJECTED",
+        "error": "Wrong/extra CVX exception",
+        "row": 102662,
+        "actions": [
+          "checkpoint0"
+        ],
+        "checks": 4117
+      }
+    },
+    {
+      "name": "missing_prefix_observation",
+      "result": {
+        "status": "REJECTED",
+        "error": "Exact source fault/repair/order",
+        "row": 213558,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m",
+          "checkpoint3"
+        ],
+        "checks": 17275
+      }
+    },
+    {
+      "name": "prefix_store_replayed",
+      "result": {
+        "status": "REJECTED",
+        "error": "Scalar read disagrees with stored/ELF bytes",
+        "row": 181194,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 12564
+      }
+    },
+    {
+      "name": "retry_store_wrong_ordinal",
+      "result": {
+        "status": "REJECTED",
+        "error": "Phase3 byte 80003fee: expected a6, actual 127",
+        "row": 212220,
+        "actions": [
+          "checkpoint0",
+          "handler",
+          "prefix_read",
+          "checkpoint1",
+          "pte",
+          "repair",
+          "refill",
+          "checkpoint2",
+          "retry",
+          "target",
+          "younger",
+          "handler",
+          "return_m"
+        ],
+        "checks": 17053
+      }
+    }
+  ],
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_store_vcs_m6_plan01/test_csv.py": "36111b711f03cdf775acd7e24f5dd144f2fc147a6f08fcc9844b929759b4ecae",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_store_vcs_m6_plan01/csv_check.py": "ea1884f31ea747b7a60f3deb6860bbfed8d63e22bc2559df67d4a8f08931f8cf",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_store_vcs_m6_plan01/checker.py": "92ac01900766b116e8c8a589b8abab054b83801624d82fad38e24f0d03f570f8",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/negative_stride_store_original01/READY.json": "af47366282d50441056b62740801f754615b31eec82f35083b538bade7a61f65"
+  }
+}

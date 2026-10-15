@@ -1,0 +1,8 @@
+{
+  "status": "TERMINAL_COLLECTOR_ACCEPTED",
+  "collector_wait_sha256": "dba07c8991b78e1aeeb592ec40e19826461e9590d2db2e1ad6406820e981d993",
+  "collector_result_sha256": "f634b1a9f14ef079e90fa300a0b201f7c0941af0bbce8b439263628025b77921",
+  "actual_collector_wait": 0,
+  "timed_out": false,
+  "no_DUT_retry": true
+}

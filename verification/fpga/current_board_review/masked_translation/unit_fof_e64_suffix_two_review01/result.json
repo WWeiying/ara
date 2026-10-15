@@ -1,0 +1,78 @@
+{
+  "schema": "UNIT_FOF_SUFFIX_INDEPENDENT_REVIEW_V1",
+  "decision": "SOURCE_REFERENCE_NO_BLOCKER_DUT_CHECKER_HOLD",
+  "source_reference_accepted": true,
+  "worker_entry_accepted": false,
+  "DUT_admitted": false,
+  "reference_raw_reparsed": false,
+  "reference_or_DUT_executed": false,
+  "reference_READY_sha256": "816491edd10f338f435c3bcf473cb7cc4434d1ce65fbe7cfb419dab9bce6a2c5",
+  "pins_verified": 732,
+  "cases": [
+    {
+      "scenario": 1,
+      "original_elf_sha256": "25e13a67b7432e540269cca236a1b6596b66a0e152f121eb6f9ef8cc48ab0df4",
+      "original_target": "0x10456",
+      "original_tval": "0x3f8d7c8000",
+      "helper_encodings_compared": 50,
+      "source_result": [
+        11,
+        48,
+        85,
+        122,
+        91,
+        91,
+        91,
+        91
+      ],
+      "actual_reference_rc": 0,
+      "reference_records": 172731,
+      "reference_checks": 5481
+    },
+    {
+      "scenario": 2,
+      "original_elf_sha256": "5538ce81a3a80a64ac089efb9c5f6dba84fc7e1bc13dc7e36c8253eb8479e85e",
+      "original_target": "0x1047e",
+      "original_tval": "0x3f8de0c000",
+      "helper_encodings_compared": 50,
+      "source_result": [
+        11,
+        48,
+        85,
+        122,
+        91,
+        91,
+        91,
+        91
+      ],
+      "actual_reference_rc": 0,
+      "reference_records": 172731,
+      "reference_checks": 5481
+    }
+  ],
+  "blocking_findings": [
+    {
+      "id": "P1_OWNER_COVERAGE",
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/unit_fof_e64_suffix_two_prepare01/csv_check.py",
+      "detail": "arch_start/uop_alloc/uop_done ignored; no required per-owner completed-backend contract"
+    }
+  ],
+  "host_counterexamples": [
+    {
+      "scenario": 1,
+      "accepted_invalid_opcode_arch": true,
+      "accepted_orphan_done": true,
+      "balanced_pair_has_no_semantic_checker_state_effect": true,
+      "full_synthetic_DUT_PASS_claimed": false
+    },
+    {
+      "scenario": 2,
+      "accepted_invalid_opcode_arch": true,
+      "accepted_orphan_done": true,
+      "balanced_pair_has_no_semantic_checker_state_effect": true,
+      "full_synthetic_DUT_PASS_claimed": false
+    }
+  ],
+  "evidence_pins_sha256": "f76c7c5d4e060256a438ae2893647050238b388fa4155a68094457b14d547bc3",
+  "elapsed_s": 2.2355775190517306
+}

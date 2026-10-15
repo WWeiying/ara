@@ -1,0 +1,96 @@
+{
+  "status": "HOST_ACTUAL_SOURCE_CALL_FLOW_EQUIVALENT",
+  "calls_each": 682,
+  "positive_pairs": 1,
+  "negative_pairs": 6,
+  "full_a_b_mask_output_initialization": true,
+  "all_call_parameters_and_order": true,
+  "byte_identical_call_record_sha256": "33a28b465394f1c8cdf8c71ebfbd41d5b135ff6f3194d06bbfb4bf1299804163",
+  "results": [
+    {
+      "returncode": 0,
+      "pid": 2029744,
+      "elapsed_s": 0.03381791617721319,
+      "mutation": 0
+    },
+    {
+      "returncode": 1,
+      "pid": 2029745,
+      "elapsed_s": 0.03368359664455056,
+      "mutation": 1
+    },
+    {
+      "returncode": 1,
+      "pid": 2029746,
+      "elapsed_s": 0.03384065302088857,
+      "mutation": 2
+    },
+    {
+      "returncode": 1,
+      "pid": 2029747,
+      "elapsed_s": 0.033787086606025696,
+      "mutation": 3
+    },
+    {
+      "returncode": 1,
+      "pid": 2029748,
+      "elapsed_s": 0.03412305796518922,
+      "mutation": 4
+    },
+    {
+      "returncode": 1,
+      "pid": 2029749,
+      "elapsed_s": 0.033838299568742514,
+      "mutation": 5
+    },
+    {
+      "returncode": 1,
+      "pid": 2029750,
+      "elapsed_s": 0.03373170783743262,
+      "mutation": 6
+    },
+    {
+      "returncode": 0,
+      "pid": 2029758,
+      "elapsed_s": 0.03378380881622434,
+      "mutation": 0
+    },
+    {
+      "returncode": 1,
+      "pid": 2029759,
+      "elapsed_s": 0.033967013005167246,
+      "mutation": 1
+    },
+    {
+      "returncode": 1,
+      "pid": 2029760,
+      "elapsed_s": 0.03432694869115949,
+      "mutation": 2
+    },
+    {
+      "returncode": 1,
+      "pid": 2029761,
+      "elapsed_s": 0.03372316900640726,
+      "mutation": 3
+    },
+    {
+      "returncode": 1,
+      "pid": 2029762,
+      "elapsed_s": 0.03373588575050235,
+      "mutation": 4
+    },
+    {
+      "returncode": 1,
+      "pid": 2029763,
+      "elapsed_s": 0.0338230449706316,
+      "mutation": 5
+    },
+    {
+      "returncode": 1,
+      "pid": 2029764,
+      "elapsed_s": 0.033877369947731495,
+      "mutation": 6
+    }
+  ],
+  "limits": "Host scalar flow proof, not RISC-V ABI or dynamic VRF-state audit"
+}

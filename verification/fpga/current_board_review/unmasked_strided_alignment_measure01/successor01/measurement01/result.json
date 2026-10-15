@@ -1,0 +1,17 @@
+{
+  "state": "ERROR",
+  "pid": 2127939,
+  "scope": "Joint real M8 sequencer/AddrGen/MASKU/VLDU, no lanes/CPU/MMU; not SoC",
+  "nr_lanes": 4,
+  "axi_data_width": 128,
+  "vlen": 1024,
+  "translation_enabled": false,
+  "per_case_cycles": 250,
+  "compile_budget_s": 90,
+  "startup_and_batch_budget_s": 60,
+  "compile_returncode": 0,
+  "compile_seconds": 29.994952075649053,
+  "run_returncode": 0,
+  "run_seconds": 10.641571452841163,
+  "error": "AssertionError('Batch not complete')"
+}

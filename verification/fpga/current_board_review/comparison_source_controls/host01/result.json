@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cc",
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-DHOST_CHECK",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_source_controls/control.c",
+    "-o",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_source_controls/host01/check"
+  ],
+  "returncode": 0,
+  "stdout": "HOST_CHECK_PASS checks=156 cases=3 shifted16_rejected=3\n",
+  "stderr": "",
+  "source_sha256": "21d226757aff712eca7e6820607923afbf4b44b17997346332be4012114ddfe6"
+}

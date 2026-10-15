@@ -1,0 +1,14 @@
+{
+  "variant": "candidate",
+  "returncode": 0,
+  "elapsed_s": 10.643274944741279,
+  "observed_marker": [
+    "BROKEN_GOOD_PREFIX_EARLY_DISCARD_NOT_ARCH_PASS"
+  ],
+  "observations": [
+    "OBSERVATION indexed_vl2 accepted=1 AW=1 W=0 B=0 early=1 early_cycle=9 good_pendingB0=1 premature_pops=1 premature_done=1 mask_pops=1 done_cycle=10 last_pop_cycle=9 global_idle=1"
+  ],
+  "full_SOC_acceptance": false,
+  "translation_enabled": false,
+  "genuine_AW_before_early_illegal": true
+}

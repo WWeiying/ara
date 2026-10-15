@@ -1,0 +1,10 @@
+{
+  "kind": "ACTUAL_SYSTEMD_OBSERVER_EXIT_NOT_DUT_RESULT",
+  "SERVICE_RESULT": "success",
+  "EXIT_CODE": "exited",
+  "EXIT_STATUS": "0",
+  "observed_at": 1792034546.1912065,
+  "pid": 3728013,
+  "DUT_acceptance_claimed": false,
+  "observation_timeout_is_not_DUT_terminal": true
+}

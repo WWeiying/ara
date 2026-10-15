@@ -1,0 +1,22 @@
+{
+  "status": "SOURCE_NO_BLOCKER_STATIC_PLAN_COST_NOT_ADMITTED",
+  "source_plan_no_blocker": true,
+  "plan_sha256": "6f5c84473b9c7ef7ee30e7df61d4b37d278f64bfa91348bad3b22039769b0b98",
+  "source_pins_sha256": "859975428067f9f8635bac88137a7a3372ded3bf0a8c4295d3aa26ea07bdeb02",
+  "source_pins_fresh_verified": 12,
+  "original_ELF_sha256": "4e537be1270d607f847b8c7d3d4e7be76b9b7408d184effc33a9c066cb811cf9",
+  "helper_instructions": 458,
+  "helper_bytes": 1688,
+  "helper_bytes_sha256": "d44dea9535d297c3c6dc1894db7086c82ca5fb1ec8c32a4f891450b7676c417e",
+  "scope": {"SEW": 32, "LMUL": "m4", "CAP": 128, "physical_registers": 4, "group_bytes": 512, "calls": 5985, "results": 766080, "guards": 11970, "output_bytes": 520, "whole_output_words": 65, "FP_calls": 1890, "FP_SW_each": 256, "FP_SW_total": 483840, "selected_SB_per_mode": [128, 64, 18]},
+  "FP_expected": {"words": 640, "bytes": 2560, "VA": "0x115b0", "unique": true, "sha256": "b6ba4a7cb146e697a04723349b9e023e2210dc0714b717f70eb8bfb6c3a8438a"},
+  "FP_inputs": {"words": 8, "bytes": 32, "VA": "0x11590", "byte_occurrences": 5, "identity_basis": "original_code_address_chain_and_ELF_LOAD", "sha256": "0fc58c7e3dce546882fe0310427254fa002b61964299ca3e90a9b264e4805c65"},
+  "ROM": {"analytic_block_upper": 8856, "pool_and_ID_upper_bytes": 674514, "planning_envelope_bytes": 842610, "actual_unique_blocks": null, "actual_map": null},
+  "cost_admitted": false,
+  "actual_m4_firmware": null,
+  "compiled_port_accepted": false,
+  "reference_admission": false,
+  "DUT_admission": false,
+  "Linux_closure": false,
+  "review_actions": "static_source_disassembly_ELF_bytes_headers_and_hash_checks_only"
+}

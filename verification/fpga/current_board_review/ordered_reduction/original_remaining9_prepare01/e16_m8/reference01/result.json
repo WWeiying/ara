@@ -1,0 +1,20 @@
+{
+  "status": "EXECUTOR_REFERENCE_PASS_PENDING_INDEPENDENT_REVIEW",
+  "shape": "e16_m8",
+  "target_calls": 1,
+  "helper_instructions": 21,
+  "original_oracle_bytes": 144,
+  "fixture_fields": 6720,
+  "flags": 16,
+  "vstart": 0,
+  "result": "0x7e00",
+  "firmware_retired": 1924035,
+  "retired_total": 1925000,
+  "parking_retired": 960,
+  "elapsed_s": 3.124125561211258,
+  "raw_bytes": 124942133,
+  "pins_unchanged": true,
+  "DUT_run": false,
+  "Linux_run": false,
+  "full6720_accepted": false
+}

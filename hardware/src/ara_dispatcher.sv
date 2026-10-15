@@ -469,6 +469,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic [4:0] vs_buffer_d, vs_buffer_q;
   // Keep track of the registers to be reshuffled |vs1|vs2|vd|
   logic [2:0] reshuffle_req_d, reshuffle_req_q;
+  logic integer_extension;
   logic legal_widen_overlap;
   logic legal_narrow_overlap;
   logic narrow_low_overlap_alias;
@@ -1024,6 +1025,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     reshuffle_lmul_vs1_d = reshuffle_lmul_vs1_q;
     reshuffle_lmul_vs2_d = reshuffle_lmul_vs2_q;
     reshuffle_lmul_vd_d  = reshuffle_lmul_vd_q;
+    integer_extension = 1'b0;
     legal_widen_overlap = 1'b0;
     legal_narrow_overlap = 1'b0;
     narrow_low_overlap_alias = 1'b0;
@@ -2419,10 +2421,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                   6'b100101: ara_req.op = ara_pkg::VSLL;
                   6'b100111: begin // vmv<nr>r.v
                     automatic int unsigned vlmax;
+                    automatic vew_e move_eew = eew_q[insn.varith_type.rs2];
                     // Execute also if vl == 0
                     ignore_zero_vl_check = 1'b1;
+                    // Keep the stored-layout fast path at vstart=0. A restart
+                    // byte offset must be exactly representable in move_eew;
+                    // normalize wider source layouts rather than round it down.
+                    if (csr_vstart_q != '0 && csr_vtype_q.vsew < move_eew)
+                      move_eew = csr_vtype_q.vsew;
                     // The number of elements depends on the EEW we will consider
-                    vlmax = VLENB >> eew_q[insn.varith_type.rs2];
+                    vlmax = VLENB >> move_eew;
                     // Rescale the maximum vector length depending on how many
                     // registers we should copy (VLMAX = simm[2:0] * VLEN / SEW).
                     unique case (insn.varith_type.rs1[17:15])
@@ -2454,14 +2462,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     ara_req.use_vs1       = 1'b1;
                     ara_req.use_vs2       = 1'b0;
                     ara_req.vs1           = insn.varith_type.rs2;
-                    ara_req.eew_vs1       = eew_q[insn.varith_type.rs2];
+                    ara_req.eew_vs1       = move_eew;
                     // The source group is selected by the whole-register move
                     // encoding, independently of the current vtype LMUL. Use the
                     // complete group when normalizing mixed per-register layouts.
                     lmul_vs1              = ara_req.emul;
                     // Copy the encoding information to the new register
-                    ara_req.vtype.vsew    = eew_q[insn.varith_type.rs2];
+                    ara_req.vtype.vsew    = move_eew;
                     ara_req.vl            = vlmax; // whole register move
+                    // Compare in architectural elements before rescaling to
+                    // avoid wrapping an out-of-range restart in vlen_t.
+                    if (unsigned'(csr_vstart_q) >=
+                        ((vlmax << move_eew) >> csr_vtype_q.vsew)) begin
+                      ara_req_valid        = 1'b0;
+                      acc_resp_o.req_ready  = 1'b1;
+                      acc_resp_o.resp_valid = 1'b1;
+                    end else begin
+                      ara_req.vstart = vlen_t'((unsigned'(csr_vstart_q) <<
+                          csr_vtype_q.vsew) >> move_eew);
+                    end
                   end
                   6'b101000: ara_req.op = ara_pkg::VSRL;
                   6'b101001: ara_req.op = ara_pkg::VSRA;
@@ -2790,6 +2809,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     ara_req.vtype.vsew = eew_q[ara_req.vd];
                   end
                   6'b010010: begin // VXUNARY0
+                    integer_extension = insn.varith_type.rs1 inside {
+                        5'b00010, 5'b00011, 5'b00100,
+                        5'b00101, 5'b00110, 5'b00111};
                     // These instructions do not use vs1
                     ara_req.use_vs1    = 1'b0;
                     // They are always encoded as ADDs with zero.
@@ -3137,6 +3159,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     ara_req.op      = ara_pkg::VMVSX;
                     ara_req.use_vs2 = 1'b0;
                     ara_req.vl      = |csr_vl_q ? 1 : '0;
+                    // Scalar insertion targets element zero; the CSR-based
+                    // empty-operation gate still checks architectural vstart.
+                    ara_req.vstart  = '0;
                     // This instruction ignores LMUL checks
                     skip_lmul_checks  = 1'b1;
                   end
@@ -3758,7 +3783,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                         (insn.varith_type.rd & 5'b00011) != 5'b00000) illegal_insn = ara_req.use_vd;
                       LMUL_8   : if (!single_register_result(ara_req.op) &&
                         (insn.varith_type.rd & 5'b00111) != 5'b00000) illegal_insn = ara_req.use_vd;
-                      LMUL_RSVD: illegal_insn = 1'b1;
+                      LMUL_RSVD: if (!widening_reduction(ara_req.op))
+                        illegal_insn = 1'b1;
                       default:;
                     endcase
                     unique case (lmul_vs2)
@@ -3865,6 +3891,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                       ara_req.op      = ara_pkg::VFMVSF;
                       ara_req.use_vs2 = 1'b0;
                       ara_req.vl      = |csr_vl_q ? 1 : '0;
+                      // Use the scalar destination interval, not the ordinary
+                      // vector prestart interval. Preserve the CSR no-op gate.
+                      ara_req.vstart  = '0;
                       // This instruction ignores LMUL checks
                       skip_lmul_checks  = 1'b1;
                     end
@@ -5466,10 +5495,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // A masked widening write cannot leave the inactive destination bytes
         // in a narrow layout. If a narrow source overlaps the high destination
         // registers, retain that source before normalizing the complete old
-        // destination into the wide layout.
-        masked_widen_layout_conflict = ara_req.use_vd && !ara_req.vm &&
+        // destination into the wide layout. Extensions use this path even when
+        // unmasked: it preserves prestart/tail bytes for every extension factor
+        // without relying on factor-specific read-before-write overlap repair.
+        masked_widen_layout_conflict = ara_req.use_vd &&
+            (!ara_req.vm || integer_extension) &&
             reshuffle_req_d[0] && !single_register_result(ara_req.op) &&
-            unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew) &&
+            (integer_extension ||
+             unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew)) &&
             ((ara_req.use_vs1 && !reshuffle_req_d[2] &&
               unsigned'(ara_req.eew_vs1) < unsigned'(ara_req.vtype.vsew) &&
               widening_high_overlap(ara_req.vd, ara_req.emul,
@@ -5481,7 +5514,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
         source_snapshot_resolves_widen = source_snapshot_valid_q &&
             ara_req.use_vd &&
-            unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew) &&
+            (integer_extension ||
+             unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew)) &&
             ((ara_req.use_vs1 && ara_req.vs1 == source_snapshot_vs_q &&
               ara_req.eew_vs1 == source_snapshot_eew_q &&
               lmul_vs1 == source_snapshot_lmul_q) ||
@@ -5611,6 +5645,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
             register_in_group(ara_req.vd, ara_req.vs2, lmul_vs2) &&
             reshuffle_req_d[1];
 
+        // Indexed-load offsets can share vd's base but not its EEW. Keep
+        // their normalization before the source snapshot and vd conversion.
         // Mask out duplicate requests for the same architectural operand.
         reshuffle_req_d &= {
           (!ara_req.use_vs2 ||
@@ -5620,7 +5656,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
               (ara_req.vs1 != ara_req.vd)),
           !ara_req.use_vd || (ara_req.vs2 != ara_req.vd) ||
               ara_req.op == VSLIDEDOWN || narrow_low_overlap_alias ||
-              reduction_source_overlap_reshuffle,
+              reduction_source_overlap_reshuffle || indexed_load_groups_overlap,
           1'b1};
 
         // A widening reduction may legally place its single-register result
@@ -5645,11 +5681,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // widening arithmetic widens its operands in the operand queues and
         // deliberately leaves cvt_resize at CVT_SAME.  Classify the overlap
         // from the architectural destination EEW instead of that datapath-
-        // specific field.  Reductions are excluded because their destination
-        // occupies only one architectural register.
+        // specific field. Integer extensions leave destination SEW equal to
+        // CSR SEW but still widen vs2; include only their exact decode domain,
+        // not indexed loads or gathers with a narrower index operand.
+        // Reductions have only one architectural destination register.
         legal_widen_overlap = ara_req.use_vd &&
             !single_register_result(ara_req.op) &&
-            unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew) &&
+            (integer_extension ||
+             unsigned'(ara_req.vtype.vsew) > unsigned'(csr_vtype_q.vsew)) &&
             ((ara_req.use_vs1 &&
               unsigned'(ara_req.eew_vs1) < unsigned'(ara_req.vtype.vsew) &&
               widening_high_overlap(ara_req.vd, ara_req.emul,

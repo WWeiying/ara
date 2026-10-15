@@ -1,0 +1,145 @@
+{
+  "status": "TERMINAL_CHILD_RECEIPTS_AND_INPUT_PINS_ACCEPTED",
+  "at": 1791870389.7048178,
+  "results": [
+    {
+      "member": "load",
+      "status": "M7_MASK_DRAIN_LOAD_PASS",
+      "returncode": 0,
+      "elapsed_s": 177.29025372117758,
+      "checks": 914,
+      "rows": 114346,
+      "retired_rows": 114050,
+      "last_cycle": 145030,
+      "input_pins_rehashed": 674,
+      "small_evidence_rehashed": 11,
+      "plan_sha256": "798c39ec339621a5a66c09ba0af883d996ad43eaae0fdc1ebee11c23a1e15ecd",
+      "complete_sha256": "8248fff95092b655ec2b9240a990930e5aa4a11771c6f17787b834afec021676",
+      "receipt_sha256": "9b43f615ea765848f4b98298fcb90f80ada3bc7308710154bf0e6d0dda581ae9",
+      "csv_result_sha256": "aa671a8747483f8cf822504a8ae97a2db95f8d04b359e2a6d55e083c4b388f7c",
+      "csv_producer_sha256": "22c6622915b4a84ec30dfdb40513c3d6dc30411d594678d76427065be7ff041d",
+      "actions": [
+        {
+          "name": "handler",
+          "cycle": 60626
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 60725
+        },
+        {
+          "name": "mt_repair_store",
+          "cycle": 61497
+        },
+        {
+          "name": "mt_repair_sfence",
+          "cycle": 61519
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 61526
+        },
+        {
+          "name": "mt_target",
+          "cycle": 61661
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 61816
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 61873
+        },
+        {
+          "name": "mt_recovery_store",
+          "cycle": 61970
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 62000
+        },
+        {
+          "name": "handler",
+          "cycle": 62484
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 62535
+        }
+      ],
+      "no_new_csv_read_or_parse": true,
+      "observed_worker_service_numeric_exit": "NOT_QUERIED_NO_GC_INFERENCE"
+    },
+    {
+      "member": "store",
+      "status": "M7_MASK_DRAIN_STORE_PASS",
+      "returncode": 0,
+      "elapsed_s": 182.56944536510855,
+      "checks": 914,
+      "rows": 117367,
+      "retired_rows": 117073,
+      "last_cycle": 148655,
+      "input_pins_rehashed": 674,
+      "small_evidence_rehashed": 11,
+      "plan_sha256": "30f0ebd54cd35fca856e7cd9b45781f22eab10b1b76b967bfb3b15d6e242157c",
+      "complete_sha256": "d4f472b252a9697f083b8724d0eede59dffb1257d55bdf331442fc67bff1971c",
+      "receipt_sha256": "77bdd6388a25576e5ca7a6da2e9e8f029a933798492830f7c72d6e6c78b8d778",
+      "csv_result_sha256": "aa0007c02521587e23c61c0795ab82c5541b33ec2d9a282a54c6d30ce8298f25",
+      "csv_producer_sha256": "ba83f1791d798980817534f4cac3f719c609f2dbdbefe2a195e774f1a9ee6046",
+      "actions": [
+        {
+          "name": "handler",
+          "cycle": 60593
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 60700
+        },
+        {
+          "name": "mt_repair_store",
+          "cycle": 61457
+        },
+        {
+          "name": "mt_repair_sfence",
+          "cycle": 61479
+        },
+        {
+          "name": "mt_retry_mret",
+          "cycle": 61486
+        },
+        {
+          "name": "mt_target",
+          "cycle": 61618
+        },
+        {
+          "name": "mt_recovery_load",
+          "cycle": 61802
+        },
+        {
+          "name": "mt_successor_add",
+          "cycle": 61859
+        },
+        {
+          "name": "mt_recovery_store",
+          "cycle": 61958
+        },
+        {
+          "name": "mt_younger_store",
+          "cycle": 61988
+        },
+        {
+          "name": "handler",
+          "cycle": 62484
+        },
+        {
+          "name": "mt_trap_vstart_read",
+          "cycle": 62535
+        }
+      ],
+      "no_new_csv_read_or_parse": true,
+      "observed_worker_service_numeric_exit": "NOT_QUERIED_NO_GC_INFERENCE"
+    }
+  ],
+  "scope": "New e64 VL9 Sv39 load/store mask-drain boundaries on M7; not original16 or indexed early-illegal closure"
+}

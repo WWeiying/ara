@@ -1,0 +1,98 @@
+{
+  "status": "ORIGINAL_IMAGE_KALLSYMS_RECOVERED_NOT_RUNTIME_PROOF",
+  "image": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/source/Image",
+  "image_sha256": "716aef49389b25a0a3f4deac47de0bb69467a10f1057041cecd0f0621fbbf285",
+  "symbol_count": 52248,
+  "input_pins": {
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/source/Image": "716aef49389b25a0a3f4deac47de0bb69467a10f1057041cecd0f0621fbbf285",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/original_image_kallsyms_recovery01/extract.py": "a3dff95562395fa7a5b35b49ae10468cdc9e69e40f7e301c4c29d651da296320",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/host/bin/riscv64-buildroot-linux-gnu-objdump": "3805eb2de891677c2f02afbde0f1aa5c3defa4d50b25d9527160c4edf4faffb7",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/build/linux-6.19.6/scripts/extract-ikconfig": "070020a9c5a0b9e6f7e24f5728073e8e62155be49133a9f3f37e8fc19230a9b1",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/build/linux-6.19.6/scripts/kallsyms.c": "483e985963ca03f061446b35dc98e91cefa09f69cd1016db6174ba1a9b990f5a",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/build/linux-6.19.6/kernel/kallsyms.c": "f08045bbd97aa86abe0675258d94337c3f8eaab320756c5a20bc1b592d108726",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/build/linux-6.19.6/kernel/kallsyms_internal.h": "38a6601ce21b2a53ad1dbb126c94aff870d0917ee291d996cbc2207c589d8da8"
+  },
+  "config_command": [
+    "bash",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/build/linux-6.19.6/scripts/extract-ikconfig",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/source/Image"
+  ],
+  "config_returncode": 0,
+  "tables": {
+    "num_syms": "0x11832b0",
+    "names": "0x11832b8",
+    "markers": "0x12274f0",
+    "token_table": "0x1227828",
+    "token_index": "0x1227ba0",
+    "offsets": "0x1227da0",
+    "relative_base": "0x125ae00",
+    "seqs_of_names": "0x125ae08"
+  },
+  "relative_base_value": "0xffffffff80002000",
+  "full_markers_validated": 205,
+  "full_name_index_permutation_and_sort": true,
+  "address_order_validated": true,
+  "pc_matches": [
+    {
+      "pc": "0xffffffff80013a16",
+      "symbol": "save_v_state",
+      "type": "t",
+      "start": "0xffffffff80013898",
+      "offset": "0x17e",
+      "aliases": [
+        "tsave_v_state"
+      ],
+      "next_symbol_start": "0xffffffff80013b3c",
+      "instruction_bytes": "ba97",
+      "interval_is": "Next kallsyms address, not DWARF/ELF function-size proof"
+    },
+    {
+      "pc": "0xffffffff80013a18",
+      "symbol": "save_v_state",
+      "type": "t",
+      "start": "0xffffffff80013898",
+      "offset": "0x180",
+      "aliases": [
+        "tsave_v_state"
+      ],
+      "next_symbol_start": "0xffffffff80013b3c",
+      "instruction_bytes": "73258000",
+      "interval_is": "Next kallsyms address, not DWARF/ELF function-size proof"
+    },
+    {
+      "pc": "0xffffffff80b8754e",
+      "symbol": "fallback_scalar_usercopy_sum_enabled",
+      "type": "T",
+      "start": "0xffffffff80b874e8",
+      "offset": "0x66",
+      "aliases": [
+        "Tfallback_scalar_usercopy_sum_enabled"
+      ],
+      "next_symbol_start": "0xffffffff80b875b4",
+      "instruction_bytes": "2338c503",
+      "interval_is": "Next kallsyms address, not DWARF/ELF function-size proof"
+    },
+    {
+      "pc": "0xffffffff80b8759e",
+      "symbol": "fallback_scalar_usercopy_sum_enabled",
+      "type": "T",
+      "start": "0xffffffff80b874e8",
+      "offset": "0xb6",
+      "aliases": [
+        "Tfallback_scalar_usercopy_sum_enabled"
+      ],
+      "next_symbol_start": "0xffffffff80b875b4",
+      "instruction_bytes": "2300f500",
+      "interval_is": "Next kallsyms address, not DWARF/ELF function-size proof"
+    }
+  ],
+  "config_kallsyms_all": false,
+  "uses_mismatching_vmlinux_symbols": false,
+  "DWARF_recovered": false,
+  "runtime_dump_or_root_cause_proved": false,
+  "output_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/original_image_kallsyms_recovery01/output01/accepted.config": "5321c8c739fdb06a76db8ee6a8bdf0a2d31804ac63ae2421feb36acadba1faf5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/original_image_kallsyms_recovery01/output01/System.map.recovered": "0de6ffa184888ea95ede077bbfa8aa26030466e99061e682f029306214ad9b0e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/original_image_kallsyms_recovery01/output01/pc_windows.txt": "834060dae96a032fd75e0a482799adcdb72b7d7e31d75fdd5c4c4a7405ce2940"
+  }
+}

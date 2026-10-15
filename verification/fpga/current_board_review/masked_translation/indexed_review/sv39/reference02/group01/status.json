@@ -1,0 +1,276 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "trials": [
+    4,
+    5,
+    6,
+    7
+  ],
+  "checks": 11694,
+  "commits": 933609,
+  "checkpoints": [
+    {
+      "trial": 4,
+      "phase": 1,
+      "commits": 156691,
+      "checks": 355,
+      "checked_bytes": 32784
+    },
+    {
+      "trial": 4,
+      "phase": 2,
+      "commits": 301706,
+      "checks": 3004,
+      "checked_bytes": 32776
+    },
+    {
+      "trial": 5,
+      "phase": 1,
+      "commits": 418144,
+      "checks": 3356,
+      "checked_bytes": 32784
+    },
+    {
+      "trial": 5,
+      "phase": 2,
+      "commits": 563160,
+      "checks": 6005,
+      "checked_bytes": 32776
+    },
+    {
+      "trial": 6,
+      "phase": 2,
+      "commits": 747048,
+      "checks": 8842,
+      "checked_bytes": 32848
+    },
+    {
+      "trial": 7,
+      "phase": 2,
+      "commits": 930938,
+      "checks": 11679,
+      "checked_bytes": 32848
+    }
+  ],
+  "actions": {
+    "4": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "5": [
+      "target",
+      "fault_checkpoint",
+      "repair",
+      "retry",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "6": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    "7": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  },
+  "traps": [
+    [
+      "trap_load_page_fault",
+      2147489168
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489088
+    ],
+    [
+      "trap_load_page_fault",
+      2147489168
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489088
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489088
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147489088
+    ]
+  ],
+  "target_events": [
+    {
+      "trial": 4,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": []
+    },
+    {
+      "trial": 4,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": [
+        [
+          1073745976,
+          null
+        ],
+        [
+          1073745980,
+          null
+        ],
+        [
+          1073745984,
+          null
+        ],
+        [
+          1073745988,
+          null
+        ],
+        [
+          1073745992,
+          null
+        ],
+        [
+          1073745996,
+          null
+        ],
+        [
+          1073746000,
+          null
+        ],
+        [
+          1073746060,
+          null
+        ],
+        [
+          1073746064,
+          null
+        ],
+        [
+          1073746068,
+          null
+        ],
+        [
+          1073746072,
+          null
+        ],
+        [
+          1073746076,
+          null
+        ],
+        [
+          1073746080,
+          null
+        ],
+        [
+          1073746084,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 5,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": []
+    },
+    {
+      "trial": 5,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": [
+        [
+          1073745964,
+          null
+        ],
+        [
+          1073745968,
+          null
+        ],
+        [
+          1073745972,
+          null
+        ],
+        [
+          1073745976,
+          null
+        ],
+        [
+          1073745980,
+          null
+        ],
+        [
+          1073745984,
+          null
+        ],
+        [
+          1073745988,
+          null
+        ],
+        [
+          1073746048,
+          null
+        ],
+        [
+          1073746052,
+          null
+        ],
+        [
+          1073746056,
+          null
+        ],
+        [
+          1073746060,
+          null
+        ],
+        [
+          1073746064,
+          null
+        ],
+        [
+          1073746068,
+          null
+        ],
+        [
+          1073746072,
+          null
+        ]
+      ]
+    },
+    {
+      "trial": 6,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": []
+    },
+    {
+      "trial": 7,
+      "pc": "0x80001590",
+      "insn": "0xcd056c07",
+      "access": []
+    }
+  ],
+  "case_checks": [
+    3001,
+    3001,
+    2837,
+    2837
+  ],
+  "VCS_launched": false,
+  "Linux_replay": false,
+  "elapsed_s": 41.69885760778561,
+  "elf_sha256": {
+    "soc": "e8030e99ac8c173912e2f71687184c43a132bf1226e82fa846e653183bec5af7",
+    "spike": "b1db49cfe26dfa299f795d186572381aed593fa70c68c891b02e5581cb5a4a1c"
+  }
+}

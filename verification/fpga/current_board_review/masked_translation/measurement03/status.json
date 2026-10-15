@@ -1,0 +1,7 @@
+{
+  "state": "ERROR",
+  "scope": "EXPECTED_REPRODUCTION_NOT_ARCHITECTURAL_PASS",
+  "cases": [],
+  "compile_seconds": 25.151788498740643,
+  "error": "ValueError('Fixture failed: alloff_fault')"
+}

@@ -1,0 +1,11 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "configurations": 777,
+  "instructions_to_replay_exit": 16249331,
+  "cycles_to_replay_exit": 16249331,
+  "elapsed_s": 2.575158170890063,
+  "elf_sha256": "62717595c4443e097ed15a6211293d20a5a43c0bc7daaa6dd7fd5aaf20a0fdd5",
+  "log_sha256": "33c477f7d87ca613157510208f2c8c1e34c873127131f5afd4c83b857f5824f0",
+  "isa": "rv64gcv_zvl1024b",
+  "original_linux_replayed": false
+}

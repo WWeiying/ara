@@ -1,0 +1,91 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 170047,
+  "firmware_commits": 170042,
+  "sew": 16,
+  "scenario": 1,
+  "boot_commits": 5,
+  "firmware_to_htif": 166042,
+  "scalar_checks": 5481,
+  "checkpoints": [
+    {
+      "phase": 0,
+      "bytes": 21060,
+      "checks": 2726,
+      "commit": 94983
+    },
+    {
+      "phase": 1,
+      "bytes": 21052,
+      "checks": 5467,
+      "commit": 165563
+    }
+  ],
+  "actions": [
+    "checkpoint0",
+    "enter_s",
+    "helper",
+    "younger",
+    "handler",
+    "return_m",
+    "checkpoint1"
+  ],
+  "targets": [
+    {
+      "commit": 95016,
+      "pc": "0x80000908",
+      "addresses": [
+        "0x40000ff8",
+        "0x40000ffa",
+        "0x40000ffc",
+        "0x40000ffe"
+      ],
+      "raw_vector_commit": " e16 m1 l8 c8_vstart 0x0000000000000000 v24 0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005b005b005b005b007a00550030000b mem 0x0000000040000ff8 mem 0x0000000040000ffa mem 0x0000000040000ffc mem 0x0000000040000ffe"
+    }
+  ],
+  "traps": [
+    [
+      "trap_supervisor_ecall",
+      2147485932
+    ]
+  ],
+  "actual_handler_csrs": [
+    {
+      "0": 9,
+      "1": 2147485932,
+      "2": 0,
+      "3": 9223372079804460544,
+      "4": 9223372036855300100,
+      "5": 8,
+      "6": 8,
+      "7": 0,
+      "8": 117,
+      "9": 5
+    }
+  ],
+  "original_helper_instructions": 11,
+  "helper_entries": 1,
+  "capacity_instructions": 3,
+  "target_attempts": 1,
+  "output_allocation_elements": 130,
+  "output_checked_elements": 130,
+  "original_result_elements": 8,
+  "original_guards": [
+    0,
+    9
+  ],
+  "mask_bytes": 16,
+  "allowed_undefined_output_indices": [],
+  "full_data_bytes": 8192,
+  "page_table_bytes": 12288,
+  "htif": [
+    1
+  ],
+  "postexit_park": 4000,
+  "linux_signal_equivalence": false,
+  "parent8_ELFs_accepted": false,
+  "raw_sha256": "6f706ebe287bf987686355358242d4f80b7bfad9537d8450fcb50a3fa609fdbf",
+  "elf_sha256": "4a114a0ef16ac87a5c065c8b9768451337ded142eac77ead8675b5c847fcc944",
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "parser_elapsed_s": 5.537314736749977
+}

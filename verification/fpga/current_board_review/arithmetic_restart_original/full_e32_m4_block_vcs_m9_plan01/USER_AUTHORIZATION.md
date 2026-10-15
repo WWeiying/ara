@@ -1,0 +1,3 @@
+# Conditional Single M9 Run
+
+The parent authorized this sole e32/m4 full5985 worker after accepted software02 and the independently accepted same-raw reference recovery. Exact Host and Hilbert's exact plan NO_BLOCKER are required before one background launch. Fixed budgets: one job, case10800s, worker12000s, service13200s. Fresh admission counts all actual live simv plus this job, cap24, available memory at least32GiB, reserved slots0. No retry, rebuild, software/reference rerun or production RTL change is authorized. Confirm one CPU/CSV-size growth interval and leave the service running; no ongoing polling. The actual systemd ExecStopPost hook records service facts and performs a bounded metadata-only terminal collection.

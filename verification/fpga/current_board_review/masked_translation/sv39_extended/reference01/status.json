@@ -1,0 +1,419 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "cases": [
+    "unit_load_retry",
+    "unit_store_retry",
+    "positive_load_retry",
+    "negative_store_retry",
+    "zero_load_retry",
+    "zero_store_alloff",
+    "fof_shorten",
+    "fof_masked_suffix"
+  ],
+  "checkpoints": [
+    {
+      "case": "unit_load_retry",
+      "id": 0,
+      "phase": 1,
+      "checked_bytes": 22360,
+      "commit": 189698
+    },
+    {
+      "case": "unit_load_retry",
+      "id": 0,
+      "phase": 2,
+      "checked_bytes": 22652,
+      "commit": 237423
+    },
+    {
+      "case": "unit_store_retry",
+      "id": 1,
+      "phase": 1,
+      "checked_bytes": 22360,
+      "commit": 277012
+    },
+    {
+      "case": "unit_store_retry",
+      "id": 1,
+      "phase": 2,
+      "checked_bytes": 22652,
+      "commit": 325212
+    },
+    {
+      "case": "positive_load_retry",
+      "id": 2,
+      "phase": 1,
+      "checked_bytes": 22360,
+      "commit": 364505
+    },
+    {
+      "case": "positive_load_retry",
+      "id": 2,
+      "phase": 2,
+      "checked_bytes": 22652,
+      "commit": 412230
+    },
+    {
+      "case": "negative_store_retry",
+      "id": 3,
+      "phase": 1,
+      "checked_bytes": 22360,
+      "commit": 451815
+    },
+    {
+      "case": "negative_store_retry",
+      "id": 3,
+      "phase": 2,
+      "checked_bytes": 22652,
+      "commit": 500015
+    },
+    {
+      "case": "zero_load_retry",
+      "id": 4,
+      "phase": 1,
+      "checked_bytes": 22360,
+      "commit": 539311
+    },
+    {
+      "case": "zero_load_retry",
+      "id": 4,
+      "phase": 2,
+      "checked_bytes": 22652,
+      "commit": 586955
+    },
+    {
+      "case": "zero_store_alloff",
+      "id": 5,
+      "phase": 2,
+      "checked_bytes": 22660,
+      "commit": 635581
+    },
+    {
+      "case": "fof_shorten",
+      "id": 6,
+      "phase": 2,
+      "checked_bytes": 22644,
+      "commit": 679861
+    },
+    {
+      "case": "fof_masked_suffix",
+      "id": 7,
+      "phase": 2,
+      "checked_bytes": 22660,
+      "commit": 724871
+    }
+  ],
+  "checks": 6227,
+  "case_checks": [
+    630,
+    630,
+    630,
+    630,
+    630,
+    456,
+    448,
+    456
+  ],
+  "commits": 780454,
+  "traps": [
+    [
+      "trap_load_page_fault",
+      "0000000080001330"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_store_page_fault",
+      "0000000080001338"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_load_page_fault",
+      "0000000080001340"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_store_page_fault",
+      "0000000080001348"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_load_page_fault",
+      "0000000080001340"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "00000000800013f8"
+    ]
+  ],
+  "actions": [
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "fault_checkpoint",
+      "repair_sfence",
+      "retry_mret",
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ],
+    [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  ],
+  "target_events": [
+    [
+      {
+        "insn": "0x55c07",
+        "access": [
+          [
+            1073745918,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000005 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b27e6005b005b mem 0x0000000040000ffe"
+      },
+      {
+        "insn": "0x55c07",
+        "access": [
+          [
+            1073745924,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b2855005b005b27e6005b005b mem 0x0000000040001004"
+      }
+    ],
+    [
+      {
+        "insn": "0x55c27",
+        "access": [
+          [
+            1073745918,
+            127
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000005 mem 0x0000000040000ffe 0x007f"
+      },
+      {
+        "insn": "0x55c27",
+        "access": [
+          [
+            1073745924,
+            166
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 mem 0x0000000040001004 0x00a6"
+      }
+    ],
+    [
+      {
+        "insn": "0x9c55c07",
+        "access": [
+          [
+            1073745912,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000005 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b2777005b005b mem 0x0000000040000ff8"
+      },
+      {
+        "insn": "0x9c55c07",
+        "access": [
+          [
+            1073745936,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b2933005b005b2777005b005b mem 0x0000000040001010"
+      }
+    ],
+    [
+      {
+        "insn": "0x9c55c27",
+        "access": [
+          [
+            1073745922,
+            127
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000005 mem 0x0000000040001002 0x007f"
+      },
+      {
+        "insn": "0x9c55c27",
+        "access": [
+          [
+            1073745910,
+            166
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 mem 0x0000000040000ff6 0x00a6"
+      }
+    ],
+    [
+      {
+        "insn": "0x9c55c07",
+        "access": [],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000002"
+      },
+      {
+        "insn": "0x9c55c07",
+        "access": [
+          [
+            1073745920,
+            null
+          ],
+          [
+            1073745920,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b280b005b005b280b005b005b mem 0x0000000040001000 mem 0x0000000040001000"
+      }
+    ],
+    [
+      {
+        "insn": "0x9c55c27",
+        "access": [],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000"
+      }
+    ],
+    [
+      {
+        "insn": "0x1055c07",
+        "access": [
+          [
+            1073745912,
+            null
+          ],
+          [
+            1073745914,
+            null
+          ],
+          [
+            1073745916,
+            null
+          ],
+          [
+            1073745918,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l4 c8_vstart 0x0000000000000000 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b007a00550030000b c3104_vl 0x0000000000000004 mem 0x0000000040000ff8 mem 0x0000000040000ffa mem 0x0000000040000ffc mem 0x0000000040000ffe"
+      }
+    ],
+    [
+      {
+        "insn": "0x1055c07",
+        "access": [
+          [
+            1073745912,
+            null
+          ],
+          [
+            1073745914,
+            null
+          ],
+          [
+            1073745916,
+            null
+          ],
+          [
+            1073745918,
+            null
+          ]
+        ],
+        "vector_event": " e16 m1 l8 c8_vstart 0x0000000000000000 v24 0x005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b005b007a00550030000b mem 0x0000000040000ff8 mem 0x0000000040000ffa mem 0x0000000040000ffc mem 0x0000000040000ffe"
+      }
+    ]
+  ],
+  "fof_undefined_halves": {
+    "case": 6,
+    "register": "v24",
+    "elements": [
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  "coverage_admitted": false,
+  "VCS_launched": false,
+  "Linux_launched": false,
+  "host_rows": 35840,
+  "elapsed_seconds": 30.623580663930625,
+  "elf_sha256": {
+    "soc": "a0219fef355612a36370851a6a4d3011bb30991afbc19459068c3728526ea982",
+    "spike": "7930df70a20a13f37683dc8d9556e189eca26dfbd2df6eae401be8619657430e"
+  }
+}

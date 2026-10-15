@@ -1,0 +1,20 @@
+{
+  "status": "LINKED_POSITIVE_CFG_COMPLETE_PENDING_INDEPENDENT_REVIEW",
+  "backends": {
+    "soc": {
+      "status": "COMPILED_POSITIVE_CFG_LT_3M_PENDING_INDEPENDENT_REVIEW",
+      "elf_sha256": "520b652eb8a4d4dc634a17a36a9d5e71c382a4679afeb8aeb54746d18a37be73",
+      "whole_positive_upper": 2971630,
+      "margin_to_3M": 28370
+    },
+    "spike": {
+      "status": "COMPILED_POSITIVE_CFG_LT_3M_PENDING_INDEPENDENT_REVIEW",
+      "elf_sha256": "9b6f3e8fa391514816fc6731aeb8b9628d374fbe5f0e1ccb85fb6a2e929e1254",
+      "whole_positive_upper": 2957810,
+      "margin_to_3M": 42190
+    }
+  },
+  "inputs_unchanged": true,
+  "reference": false,
+  "DUT": false
+}

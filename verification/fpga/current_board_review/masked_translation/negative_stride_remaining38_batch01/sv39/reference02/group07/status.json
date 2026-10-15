@@ -1,0 +1,371 @@
+{
+  "status": "REFERENCE_PASS_NOT_DUT",
+  "case_count": 4,
+  "cases": [
+    {
+      "actions": [
+        "checkpoint0",
+        "target",
+        "younger",
+        "ecall",
+        "checkpoint1",
+        "repair_sfence",
+        "refill",
+        "checkpoint2",
+        "checkpoint3"
+      ],
+      "targets": [
+        {
+          "pc": "0x800011b8",
+          "vstart": 0,
+          "partial_fault_record": false,
+          "accesses": [],
+          "firmware_records": 449800
+        }
+      ],
+      "traps": [
+        {
+          "cause": "trap_supervisor_ecall",
+          "pc": "0x80001194",
+          "firmware_records": 449838
+        }
+      ],
+      "mrets": [],
+      "checkpoints": [
+        {
+          "phase": 0,
+          "checks": 4117,
+          "firmware_records": 449754,
+          "bytes": 23340,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 1,
+          "checks": 8606,
+          "firmware_records": 846792,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 2,
+          "checks": 12719,
+          "firmware_records": 1244215,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 3,
+          "checks": 16832,
+          "firmware_records": 1629306,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        }
+      ],
+      "capacity": 1,
+      "entry": 1,
+      "helper_retirements": 10
+    },
+    {
+      "actions": [
+        "checkpoint0",
+        "fault",
+        "checkpoint1",
+        "repair_sfence",
+        "refill",
+        "checkpoint2",
+        "retry_mret",
+        "target",
+        "younger",
+        "ecall",
+        "checkpoint3"
+      ],
+      "targets": [
+        {
+          "pc": "0x800011de",
+          "vstart": 0,
+          "partial_fault_record": true,
+          "accesses": [],
+          "firmware_records": 2080910
+        },
+        {
+          "pc": "0x800011de",
+          "vstart": 2,
+          "partial_fault_record": false,
+          "accesses": [
+            [
+              "0x40000ffa",
+              127
+            ],
+            [
+              "0x40000fee",
+              166
+            ]
+          ],
+          "firmware_records": 2896777
+        }
+      ],
+      "traps": [
+        {
+          "cause": "trap_store_page_fault",
+          "pc": "0x800011de",
+          "firmware_records": 2080910
+        },
+        {
+          "cause": "trap_supervisor_ecall",
+          "pc": "0x80001194",
+          "firmware_records": 2896814
+        }
+      ],
+      "mrets": [
+        {
+          "mepc": "0x800011de",
+          "vstart": 2,
+          "arguments": [
+            "0x40001002",
+            "0x80008400",
+            "0x800081fa",
+            "0x800081e8",
+            "0x40",
+            "0x800081e0"
+          ],
+          "stride": "0xfffffffffffffffc"
+        }
+      ],
+      "checkpoints": [
+        {
+          "phase": 0,
+          "checks": 21154,
+          "firmware_records": 2080864,
+          "bytes": 23340,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 1,
+          "checks": 25485,
+          "firmware_records": 2486929,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 4
+        },
+        {
+          "phase": 2,
+          "checks": 29598,
+          "firmware_records": 2896734,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 3,
+          "checks": 34087,
+          "firmware_records": 3306320,
+          "bytes": 23324,
+          "unconstrained_partial_bytes": 0
+        }
+      ],
+      "capacity": 1,
+      "entry": 1,
+      "helper_retirements": 11
+    },
+    {
+      "actions": [
+        "checkpoint0",
+        "fault",
+        "checkpoint1",
+        "repair_sfence",
+        "refill",
+        "checkpoint2",
+        "retry_mret",
+        "target",
+        "younger",
+        "ecall",
+        "checkpoint3"
+      ],
+      "targets": [
+        {
+          "pc": "0x800011de",
+          "vstart": 0,
+          "partial_fault_record": true,
+          "accesses": [],
+          "firmware_records": 3758180
+        },
+        {
+          "pc": "0x800011de",
+          "vstart": 2,
+          "partial_fault_record": false,
+          "accesses": [
+            [
+              "0x40000ff6",
+              127
+            ],
+            [
+              "0x40000fde",
+              166
+            ]
+          ],
+          "firmware_records": 4574047
+        }
+      ],
+      "traps": [
+        {
+          "cause": "trap_store_page_fault",
+          "pc": "0x800011de",
+          "firmware_records": 3758180
+        },
+        {
+          "cause": "trap_supervisor_ecall",
+          "pc": "0x80001194",
+          "firmware_records": 4574084
+        }
+      ],
+      "mrets": [
+        {
+          "mepc": "0x800011de",
+          "vstart": 2,
+          "arguments": [
+            "0x40001006",
+            "0x80008400",
+            "0x800081fa",
+            "0x800081e8",
+            "0x40",
+            "0x800081e0"
+          ],
+          "stride": "0xfffffffffffffff8"
+        }
+      ],
+      "checkpoints": [
+        {
+          "phase": 0,
+          "checks": 38409,
+          "firmware_records": 3758134,
+          "bytes": 23340,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 1,
+          "checks": 42740,
+          "firmware_records": 4164199,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 4
+        },
+        {
+          "phase": 2,
+          "checks": 46853,
+          "firmware_records": 4574004,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 3,
+          "checks": 51342,
+          "firmware_records": 4983590,
+          "bytes": 23324,
+          "unconstrained_partial_bytes": 0
+        }
+      ],
+      "capacity": 1,
+      "entry": 1,
+      "helper_retirements": 11
+    },
+    {
+      "actions": [
+        "checkpoint0",
+        "target",
+        "younger",
+        "ecall",
+        "checkpoint1",
+        "repair_sfence",
+        "refill",
+        "checkpoint2",
+        "checkpoint3"
+      ],
+      "targets": [
+        {
+          "pc": "0x800011de",
+          "vstart": 0,
+          "partial_fault_record": false,
+          "accesses": [],
+          "firmware_records": 5431308
+        }
+      ],
+      "traps": [
+        {
+          "cause": "trap_supervisor_ecall",
+          "pc": "0x80001194",
+          "firmware_records": 5431345
+        }
+      ],
+      "mrets": [],
+      "checkpoints": [
+        {
+          "phase": 0,
+          "checks": 55664,
+          "firmware_records": 5431262,
+          "bytes": 23340,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 1,
+          "checks": 60153,
+          "firmware_records": 5836683,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 2,
+          "checks": 64266,
+          "firmware_records": 6242298,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        },
+        {
+          "phase": 3,
+          "checks": 68379,
+          "firmware_records": 6635581,
+          "bytes": 23332,
+          "unconstrained_partial_bytes": 0
+        }
+      ],
+      "capacity": 1,
+      "entry": 1,
+      "helper_retirements": 10
+    }
+  ],
+  "scalar_checks": 68602,
+  "firmware_records_through_htif": 6643496,
+  "commit_records": 6646350,
+  "boot_records": 5,
+  "park_records": 2849,
+  "htif": [
+    1
+  ],
+  "vector_pc_counts": {
+    "0x80000f88": 6,
+    "0x80000f90": 6,
+    "0x80000992": 1,
+    "0x80000f98": 6,
+    "0x8000119e": 4,
+    "0x80000fa0": 6,
+    "0x800011a4": 1,
+    "0x800011a8": 1,
+    "0x800011b0": 1,
+    "0x800011b4": 1,
+    "0x800011b8": 1,
+    "0x800011c0": 1,
+    "0x800011c4": 1,
+    "0x800011ca": 3,
+    "0x800011ce": 3,
+    "0x800011d6": 3,
+    "0x800010d8": 4,
+    "0x800011da": 3,
+    "0x800010dc": 4,
+    "0x800011de": 5,
+    "0x800010e4": 4,
+    "0x800011e6": 3,
+    "0x800011ea": 3,
+    "0x80000ffc": 2
+  },
+  "output_elements_per_case": 64,
+  "output_guards_per_case": 2,
+  "full_memory_bytes_per_case": 8192,
+  "original_linux_equivalence": false,
+  "parent96_closed": false
+}

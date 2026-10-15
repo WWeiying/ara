@@ -1,0 +1,25 @@
+{
+  "status": "HOST_PASS_SOURCE_SELECTION_NOT_PREFIX",
+  "matched_parent_log": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/prepared01/host/prefix.log",
+  "exact_call_rows": [
+    "CALL 775 0 512 1 7 a01acacf8faeb073",
+    "CALL 776 0 512 256 0 a01acacf8faeb073"
+  ],
+  "selected_original_trials": [
+    775,
+    776
+  ],
+  "negative_rejected": [
+    "active",
+    "prestart",
+    "left_guard",
+    "right_guard",
+    "vstart",
+    "spurious_vxsat",
+    "lost_sticky_vxsat"
+  ],
+  "inapplicable_mutations": [
+    "maskedoff",
+    "tail"
+  ]
+}

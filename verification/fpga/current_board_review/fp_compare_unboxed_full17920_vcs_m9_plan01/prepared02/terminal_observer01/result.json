@@ -1,0 +1,59 @@
+{
+  "CSV_identity_inherited": "05b8a0413378031366c55e0f6e478a422d7fcfe989132dcd8f89c001b8b0bfa4",
+  "DUT_rerun": false,
+  "FPR_evidence": "committed writeback, not physical FPR readback",
+  "actual_simulator_elapsed_s": 6687.05148726888,
+  "collector_wait": {
+    "actual_wait_exit": 0,
+    "elapsed_s": 9.037510651163757,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "pid": 3650454,
+    "timed_out": false
+  },
+  "evidence_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/collector.wait.json": "cebb6defc7f9fb4501c8507103db0a935128cc6c6a4a8643422d4459d259f4a0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/collector_result.json": "1ff1b0af52932ca1e2e759a86aee5f4a3766a63b8f128624bd1d474749e43dec",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/complete.json": "8f9d7ac68ee54a98c8a704098ba307c2c9b29d74ede0ba1efb45b405f911b29a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/plan.json": "b6d0677124a045a35294a1c0be4a7b0f6a004f52e9f570e6e5b9478c4296bdbd",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/ready.json": "89c37924aefdcca6ada87dfb1430ce0bc8e6853c4827297eec10340b37e1339f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_e16_mf4_full17920/child_outcome.unvalidated.json": "a66a1b853d4642beb41d861f4f7c8d9b30701149dc0f2ebf968c660bad5b07c1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/replay/tests/fp_compare_unboxed_e16_mf4_full17920/strict_original.json": "c41288a94a05595e970db86a456cc56e85fe056d832f07d170c97b20b17fc310",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_full17920_vcs_m9_plan01/prepared02/service_exit.json": "269272887557e3d043e1078310f772a371bc91b950679d15dfd8534ad194b545"
+  },
+  "finished": 1792031259.93664,
+  "input_pin_count": 750,
+  "linux_acceptance": false,
+  "numerical_reaudit": false,
+  "owner_contract": {
+    "memory": 89600,
+    "target_elidable": 2560,
+    "target_required": 15360
+  },
+  "plan_sha256": "b6d0677124a045a35294a1c0be4a7b0f6a004f52e9f570e6e5b9478c4296bdbd",
+  "producer_pins_unchanged": true,
+  "rows": 3413323,
+  "scope": {
+    "FPR_committed_writebacks": 10752,
+    "calls": 17920,
+    "capacity_instructions": 3,
+    "flags": 17920,
+    "fresh_stores": 734720,
+    "guards": 35840,
+    "helper_instructions": 326144,
+    "input_LD": 143360,
+    "output_LWU": 17920,
+    "record_LD": 2240,
+    "result_bits": 286720,
+    "vstarts": 17920
+  },
+  "semantic_CSV_reads": 0,
+  "service_exit": {
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "SERVICE_RESULT": "success",
+    "hook_pid": 3650453,
+    "kind": "ACTUAL_SYSTEMD_EXEC_STOP_POST",
+    "observed_at": 1792031249.219973
+  },
+  "status": "ACCEPTED_FULL17920_M9_METADATA_REVIEW_NOT_LINUX"
+}

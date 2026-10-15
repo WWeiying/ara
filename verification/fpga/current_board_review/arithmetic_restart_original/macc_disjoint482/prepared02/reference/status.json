@@ -1,0 +1,12 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "name": "macc_disjoint_e8_m4_prefix482",
+  "configurations": 482,
+  "isa": "rv64gcv_zvl1024b",
+  "instructions_to_replay_exit": 16438522,
+  "cycle_counter": 16438522,
+  "elapsed_s": 2.5792472274042666,
+  "elf_sha256": "0500bac3477b4a850b0f50170927dee982c43c0c78f31226d7d778b08349ff18",
+  "log_sha256": "25b0f6d5ed6ba006ac1d88825cda287d2ffabda154bd13b122721e35f8e066c7",
+  "historical_prints_matched": 26
+}

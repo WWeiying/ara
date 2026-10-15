@@ -1,0 +1,295 @@
+{
+  "status": "HOST_SPIKE_DERIVED_CSV_CHECKER_PASS_NOT_DUT",
+  "positive": {
+    "status": "NF8_CSV_ORACLE_PASS",
+    "trials": [
+      68,
+      69,
+      70,
+      71
+    ],
+    "checks": 12602,
+    "checkpoints": [
+      {
+        "trial": 68,
+        "phase": 1,
+        "checks": 369,
+        "cycle": 148293,
+        "checked_bytes": 33360
+      },
+      {
+        "trial": 68,
+        "phase": 2,
+        "checks": 3147,
+        "cycle": 290828,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 69,
+        "phase": 1,
+        "checks": 3517,
+        "cycle": 385578,
+        "checked_bytes": 33344
+      },
+      {
+        "trial": 69,
+        "phase": 2,
+        "checks": 6295,
+        "cycle": 528113,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 70,
+        "phase": 1,
+        "checks": 6661,
+        "cycle": 622799,
+        "checked_bytes": 33360
+      },
+      {
+        "trial": 70,
+        "phase": 2,
+        "checks": 9439,
+        "cycle": 765334,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 71,
+        "phase": 1,
+        "checks": 9809,
+        "cycle": 860084,
+        "checked_bytes": 33344
+      },
+      {
+        "trial": 71,
+        "phase": 2,
+        "checks": 12587,
+        "cycle": 1002619,
+        "checked_bytes": 33352
+      }
+    ],
+    "traps": [
+      {
+        "trial": 68,
+        "cycle": 75651,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 3,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 68,
+        "cycle": 148519,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 69,
+        "cycle": 312872,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 3,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 69,
+        "cycle": 385804,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 70,
+        "cycle": 550157,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 3,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 70,
+        "cycle": 623025,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 71,
+        "cycle": 787378,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 3,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 71,
+        "cycle": 860310,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": {
+      "68": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "69": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "70": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "71": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ]
+    },
+    "last_cycle": 1003061,
+    "observed_memory_bytes": 266816
+  },
+  "negatives_rejected": [
+    "fractional_upper_tail",
+    "output_guard",
+    "outside_data",
+    "PTE",
+    "wrong_vstart",
+    "invalid_tval",
+    "mask_byte",
+    "stride_argument",
+    "missing_magic",
+    "error",
+    "casecount",
+    "missing_target",
+    "missing_comparison",
+    "first_mismatch",
+    "equal_but_wrong_reference_want",
+    "partial_store_third_value_69_0",
+    "partial_store_third_value_69_1",
+    "partial_store_third_value_69_2",
+    "partial_store_third_value_69_3",
+    "partial_store_third_value_71_0",
+    "partial_store_third_value_71_1",
+    "partial_store_third_value_71_2",
+    "partial_store_third_value_71_3",
+    "equal_but_wrong_restoration"
+  ],
+  "allowed_partial_states": 16,
+  "reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference_campaign01/partition01/group17",
+  "reference_sha256": "0b65f370933b5b9481778799f0027a28574a6116916d3edfef169c61724ccfd0",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/host_csv.py": "db5a8b9d1b58ffde6435d5f524a83a14549174928d99e0f678a07a2bff06b5c3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/csv_oracle.py": "8ff9b8ef6c6c117d706fc28ce2f27c3dfb0dff74fe9993f42205a0f1ad2fa9e1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference.py": "bdc2f7d906342f88d258a2b5f42d8e4dcbaa282bd96740f4cf853fde71ee108e"
+  }
+}

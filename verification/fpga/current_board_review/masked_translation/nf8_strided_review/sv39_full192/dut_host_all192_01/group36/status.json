@@ -1,0 +1,295 @@
+{
+  "status": "HOST_SPIKE_DERIVED_CSV_CHECKER_PASS_NOT_DUT",
+  "positive": {
+    "status": "NF8_CSV_ORACLE_PASS",
+    "trials": [
+      144,
+      145,
+      146,
+      147
+    ],
+    "checks": 12602,
+    "checkpoints": [
+      {
+        "trial": 144,
+        "phase": 1,
+        "checks": 369,
+        "cycle": 148437,
+        "checked_bytes": 33360
+      },
+      {
+        "trial": 144,
+        "phase": 2,
+        "checks": 3147,
+        "cycle": 298384,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 145,
+        "phase": 1,
+        "checks": 3517,
+        "cycle": 393278,
+        "checked_bytes": 33344
+      },
+      {
+        "trial": 145,
+        "phase": 2,
+        "checks": 6295,
+        "cycle": 543225,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 146,
+        "phase": 1,
+        "checks": 6661,
+        "cycle": 638055,
+        "checked_bytes": 33360
+      },
+      {
+        "trial": 146,
+        "phase": 2,
+        "checks": 9439,
+        "cycle": 788002,
+        "checked_bytes": 33352
+      },
+      {
+        "trial": 147,
+        "phase": 1,
+        "checks": 9809,
+        "cycle": 882896,
+        "checked_bytes": 33344
+      },
+      {
+        "trial": 147,
+        "phase": 2,
+        "checks": 12587,
+        "cycle": 1032843,
+        "checked_bytes": 33352
+      }
+    ],
+    "traps": [
+      {
+        "trial": 144,
+        "cycle": 75645,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 144,
+        "cycle": 155822,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 145,
+        "cycle": 320422,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 145,
+        "cycle": 400663,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 146,
+        "cycle": 565263,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 146,
+        "cycle": 645440,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 147,
+        "cycle": 810040,
+        "values": {
+          "0": 15,
+          "1": 2147489316,
+          "2": 1073745920,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 8,
+          "6": 23,
+          "7": 1,
+          "8": 117,
+          "9": 5
+        }
+      },
+      {
+        "trial": 147,
+        "cycle": 890281,
+        "values": {
+          "0": 9,
+          "1": 2147489092,
+          "2": 0,
+          "3": 9223372079804460544,
+          "4": 9223372036855300101,
+          "5": 16,
+          "6": 23,
+          "7": 0,
+          "8": 117,
+          "9": 5
+        }
+      }
+    ],
+    "actions": {
+      "144": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "145": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "146": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ],
+      "147": [
+        "enter",
+        "handler",
+        "fault_checkpoint",
+        "pte",
+        "repair",
+        "retry",
+        "target",
+        "younger",
+        "handler",
+        "return_m",
+        "final_checkpoint",
+        "case_done"
+      ]
+    },
+    "last_cycle": 1033285,
+    "observed_memory_bytes": 266816
+  },
+  "negatives_rejected": [
+    "fractional_upper_tail",
+    "output_guard",
+    "outside_data",
+    "PTE",
+    "wrong_vstart",
+    "invalid_tval",
+    "mask_byte",
+    "stride_argument",
+    "missing_magic",
+    "error",
+    "casecount",
+    "missing_target",
+    "missing_comparison",
+    "first_mismatch",
+    "equal_but_wrong_reference_want",
+    "partial_store_third_value_145_0",
+    "partial_store_third_value_145_1",
+    "partial_store_third_value_145_2",
+    "partial_store_third_value_145_3",
+    "partial_store_third_value_147_0",
+    "partial_store_third_value_147_1",
+    "partial_store_third_value_147_2",
+    "partial_store_third_value_147_3",
+    "equal_but_wrong_restoration"
+  ],
+  "allowed_partial_states": 16,
+  "reference": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference_campaign01/partition00/group36",
+  "reference_sha256": "709cd93e0ea6a79f03712fe91baea7136b96b05b4564d2a02d1fab53e7ba666f",
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/host_csv.py": "db5a8b9d1b58ffde6435d5f524a83a14549174928d99e0f678a07a2bff06b5c3",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/csv_oracle.py": "8ff9b8ef6c6c117d706fc28ce2f27c3dfb0dff74fe9993f42205a0f1ad2fa9e1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/nf8_strided_review/sv39_full192/reference.py": "bdc2f7d906342f88d258a2b5f42d8e4dcbaa282bd96740f4cf853fde71ee108e"
+  }
+}

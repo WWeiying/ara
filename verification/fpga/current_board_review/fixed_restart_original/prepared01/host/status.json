@@ -1,0 +1,53 @@
+{
+  "status": "HOST_PASS_NOT_VECTOR_EXECUTION",
+  "positive": [
+    {
+      "mode": "prefix",
+      "calls": 777,
+      "status": "PASS"
+    },
+    {
+      "mode": "full_capture",
+      "calls": 777,
+      "status": "PASS"
+    }
+  ],
+  "negative": [
+    {
+      "name": "active",
+      "rejected": true
+    },
+    {
+      "name": "prestart",
+      "rejected": true
+    },
+    {
+      "name": "maskedoff",
+      "rejected": true
+    },
+    {
+      "name": "tail",
+      "rejected": true
+    },
+    {
+      "name": "left_guard",
+      "rejected": true
+    },
+    {
+      "name": "right_guard",
+      "rejected": true
+    },
+    {
+      "name": "vstart",
+      "rejected": true
+    },
+    {
+      "name": "lost_sticky_vxsat",
+      "rejected": true
+    },
+    {
+      "name": "spurious_vxsat",
+      "rejected": true
+    }
+  ]
+}

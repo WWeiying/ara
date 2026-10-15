@@ -1,0 +1,51 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "trials": [
+    31
+  ],
+  "checks": 2984,
+  "commits": 220774,
+  "checkpoints": [
+    {
+      "trial": 31,
+      "phase": 2,
+      "commits": 216595,
+      "checks": 2969,
+      "checked_bytes": 33368
+    }
+  ],
+  "actions": {
+    "31": [
+      "target",
+      "younger",
+      "final_checkpoint"
+    ]
+  },
+  "traps": [
+    [
+      "trap_supervisor_ecall",
+      2147489048
+    ]
+  ],
+  "target_events": [
+    {
+      "trial": 31,
+      "pc": "0x8000156e",
+      "insn": "0xe9c56c07",
+      "access": []
+    }
+  ],
+  "case_checks": [
+    0,
+    0,
+    0,
+    2966
+  ],
+  "VCS_launched": false,
+  "Linux_replay": false,
+  "elapsed_s": 9.213183012790978,
+  "elf_sha256": {
+    "soc": "a605432cd14730bc65a9114f80ebc22e2e429d30cf071b533ae35f6b34a01ce9",
+    "spike": "386fcfa1c937fa4fe2975b88cf3080ed6832e9c0853f569575ab8dc3f5d1d7e3"
+  }
+}

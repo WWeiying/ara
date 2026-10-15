@@ -1,0 +1,177 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "host": {
+    "alloff_fault": {
+      "rows": 4224,
+      "full_vector_bytes": 512,
+      "data_bytes": 8192
+    },
+    "active_fault_retry": {
+      "rows": 4224,
+      "full_vector_bytes": 512,
+      "data_bytes": 8192
+    },
+    "alloff_valid": {
+      "rows": 4224,
+      "full_vector_bytes": 512,
+      "data_bytes": 8192
+    }
+  },
+  "spike": {
+    "alloff_fault": {
+      "status": "HOST_SPIKE_PASS_NOT_DUT",
+      "variant": "alloff_fault",
+      "retired": 275188,
+      "verified_memory_bytes": 23084,
+      "traps": [
+        [
+          "trap_supervisor_ecall",
+          "0000000080000c20"
+        ]
+      ],
+      "actions": [
+        "mt_target",
+        "mt_recovery_load",
+        "mt_younger_store"
+      ],
+      "checks": 709,
+      "full_oldvd_bytes": 128,
+      "neighbor_guard_bytes": 256,
+      "recovery_register_bytes": 128,
+      "original_linux_replay": false,
+      "coverage_admitted": false
+    },
+    "active_fault_retry": {
+      "status": "HOST_SPIKE_PASS_NOT_DUT",
+      "variant": "active_fault_retry",
+      "retired": 275326,
+      "verified_memory_bytes": 23076,
+      "traps": [
+        [
+          "trap_load_page_fault",
+          "0000000080000c94"
+        ],
+        [
+          "trap_supervisor_ecall",
+          "0000000080000d44"
+        ]
+      ],
+      "actions": [
+        "fault_partial",
+        "mt_repair_store",
+        "mt_repair_sfence",
+        "mt_retry_mret",
+        "mt_target",
+        "mt_recovery_load",
+        "mt_younger_store"
+      ],
+      "checks": 709,
+      "full_oldvd_bytes": 128,
+      "neighbor_guard_bytes": 256,
+      "recovery_register_bytes": 128,
+      "original_linux_replay": false,
+      "coverage_admitted": false
+    },
+    "alloff_valid": {
+      "status": "HOST_SPIKE_PASS_NOT_DUT",
+      "variant": "alloff_valid",
+      "retired": 275191,
+      "verified_memory_bytes": 23084,
+      "traps": [
+        [
+          "trap_supervisor_ecall",
+          "0000000080000c44"
+        ]
+      ],
+      "actions": [
+        "mt_target",
+        "mt_recovery_load",
+        "mt_younger_store"
+      ],
+      "checks": 709,
+      "full_oldvd_bytes": 128,
+      "neighbor_guard_bytes": 256,
+      "recovery_register_bytes": 128,
+      "original_linux_replay": false,
+      "coverage_admitted": false
+    }
+  },
+  "RTL_changed": false,
+  "VCS_launched": false,
+  "Linux_launched": false,
+  "outputs": {
+    "input_pins.json": "1132adbb079eaf47e057f78aa4faba6e237fc417822eefb6452533f6d1947a1a",
+    "linux_provenance.json": "9a9798c21da99a115f1455cafafb1b8da35502952cd9c04b9d8b852054e59aa8",
+    "prepared/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "prepared/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "prepared/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "prepared/sv39_fixture.c": "0a0e22be55802a23719efd679e41595067b4a7a20da789d9d214a881b01e2f49",
+    "prepared/sv39_fixture.S": "83d40f83d4178135a80dbf70f60269acb8f5f5f5350bd0722b5fa4b416bc61ec",
+    "prepared/provenance.json": "ba80fcd6e3b06b02bc140b0bba927bf4f9165d15128b152a0fb335a877b4ce35",
+    "alloff_fault/host.compile.log.command.json": "8798b0e1194f4e8979d2f268e7f4fe96b8d5ae11172270241b24f207abde4470",
+    "alloff_fault/host.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "alloff_fault/host": "0972dacb4f2fd64c76c99eca25ed745da9707e584a908c23320315f13d0c1a64",
+    "alloff_fault/host.stdout.command.json": "e174b83251dc4de7a7a77c20c04bd8b92f1916b3e1ff94df9a0a73fd9511c028",
+    "alloff_fault/host.stdout": "142c5716a4b6887eca8c754b5b30ed5cab3cba39f4024a1408cdee42e4616a0f",
+    "alloff_fault/spike.stdout.command.json": "1ae4c20f595fafe19f8ddaa8e32e9a831b183a239b970d83d90ce0647f1e86ef",
+    "alloff_fault/spike.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "alloff_fault/spike.trace": "47b68b041533ba541e9b725d301a80bb6e01b69786b2b1a9ec1fb8960f7233e6",
+    "alloff_fault/validation.json": "988c38d2a779d6c81fa7ef2585a38ffb5f9f71615bcbac417741485f17c12b19",
+    "active_fault_retry/host.compile.log.command.json": "dfdfc0391f6332419254911c4c4d9c8834f0e73fa9c90fc47394fc9fdc33ae7b",
+    "active_fault_retry/host.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "active_fault_retry/host": "cdde7b4e85ed18451dcdc7e96fb9a0846b33dfdb2d1f65b9726e0494689a2e57",
+    "active_fault_retry/host.stdout.command.json": "a39f28e1abce153ef15255a66adee7eb0e123f92f1f5545dd6787af4be4ba9f7",
+    "active_fault_retry/host.stdout": "b5d142df91489e73cc4b409cddc4fcc3dda8711ae95a8d3c4e51b8f75980371f",
+    "active_fault_retry/spike.stdout.command.json": "da4e1557e00950623e1fbd243adfae94ed5f5869c2076900aa5145a48cf7809f",
+    "active_fault_retry/spike.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "active_fault_retry/spike.trace": "bf6fb1a13abf3231dfaeac4b3959f6b1aee96c16f24b3d3c2148b9a0d5ff6f41",
+    "active_fault_retry/validation.json": "9f4626149c4c640ceff49a96bac7c12eeaeed38555d83c6770d088333c203246",
+    "alloff_valid/host.compile.log.command.json": "d2f7e26b8bfe690fdf0ee41f25e31f8904e942d6b65210b2795f9d80f9349ba6",
+    "alloff_valid/host.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "alloff_valid/host": "0972dacb4f2fd64c76c99eca25ed745da9707e584a908c23320315f13d0c1a64",
+    "alloff_valid/host.stdout.command.json": "7e37c6c69eae682d466abf31ced3899f20c7268bb1c0814dcdbf54df5003b4b6",
+    "alloff_valid/host.stdout": "142c5716a4b6887eca8c754b5b30ed5cab3cba39f4024a1408cdee42e4616a0f",
+    "alloff_valid/spike.stdout.command.json": "30ac576dcf7ef20b1529d9ad10f63192cf7b96c5a4acbbdc92967c90f0eb4677",
+    "alloff_valid/spike.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "alloff_valid/spike.trace": "11744723cbbfea67f4e4552baa4b6a6aa18f015dcabee0ce6c41f9d91ee87f2b",
+    "alloff_valid/validation.json": "3a6362abb56fc081b272cdcef059328360a588d103a2c221241d822bfc381ca7",
+    "soc/alloff_fault.compile.log.command.json": "39b1f004ac06561ca38e4b0c4b4d8710c3f36649aa668b0ffc19189c1032da3f",
+    "soc/alloff_fault.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "soc/alloff_fault.elf": "f82d0997b05006b39f50a68ee10bbe68863ab77e005fed15a6948a89e3070228",
+    "soc/alloff_fault.dis.command.json": "ac1dd17b897180ff1f5219aa720dd3d6cd748f0aa69807110c88a0f24665cbb0",
+    "soc/alloff_fault.dis": "935bae7aa6f83caadfb5fe54538e3e1f485dbed8776b9f62c874e79a51223e7e",
+    "soc/alloff_fault.symbols.json": "d1bda2dfeeea1e77be1372fd3c8749c45967ae86a2cdc5a2bd54699409f44236",
+    "soc/active_fault_retry.compile.log.command.json": "b5d536a137f2e15d8e026d1a8984051ca7a7848c11b2949b174e27dd33dbffdb",
+    "soc/active_fault_retry.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "soc/active_fault_retry.elf": "3878fe33e9a73e6cd183304418e67370df88104789cd257f11cb7253d09a2691",
+    "soc/active_fault_retry.dis.command.json": "5ca06d9efe84e63e78922de30b337faa7e039606aaa24a3d81b345bc44b4dbff",
+    "soc/active_fault_retry.dis": "0d26af93cafe05bc942b3f41e363f748521302553022061d4d5d33e9bba26fa4",
+    "soc/active_fault_retry.symbols.json": "9aeb308504aa59d08febc728805d37a6fdd0aeea4fc72cd1ffd1ab86634b42c4",
+    "soc/alloff_valid.compile.log.command.json": "15fb3cdb1a96a28937033bbb3afceb9fa60e11c1f4be626e42bc58ff48a1900e",
+    "soc/alloff_valid.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "soc/alloff_valid.elf": "61e9d623e877dace0f3bac6d71d01978ba8389ef35b4cda7e0c9af19098ea169",
+    "soc/alloff_valid.dis.command.json": "aa67b9a949042f88ec32915cb1d28a8cbe6a83cbde371287cda29a6f70f79404",
+    "soc/alloff_valid.dis": "deef70dd1f86086593ced93c08394a0cbed29e4baa58497e9568a77e284832e9",
+    "soc/alloff_valid.symbols.json": "576538e68d76d6c34d0bf5c94402bc8cc37e4d7a0b28affcd7a94e15df57e570",
+    "soc/programs.json": "8a195f12a5600fc4c95ba38e2619f81fc76541019358050d166fccf5daa8213f",
+    "spike/alloff_fault.compile.log.command.json": "ce84dc40aa98a9c04361c1dba6f43bc4d74be2f873f9df2c592005157ff241f0",
+    "spike/alloff_fault.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "spike/alloff_fault.elf": "56ad5ad806c9290cd8246abb84a9673af79a94a00cb13a630fddd9b5729a829e",
+    "spike/alloff_fault.dis.command.json": "506f874b49976317ae23fa65eae851d468b5c507d275878ac651ebb7b82fd0ca",
+    "spike/alloff_fault.dis": "5e3c3ccc3289397f40570b8bc3f7943c253bc8ee93acd0f577e3d9ccb5437b6b",
+    "spike/alloff_fault.symbols.json": "6bcee22722c632f93328a6e69fed1a61615b2a5e61189deff832ed57c919082a",
+    "spike/active_fault_retry.compile.log.command.json": "efdc3883e1b4853bf19e2314b34f3d79ff6cf8c3de6904ac3cc2b58d05fab763",
+    "spike/active_fault_retry.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "spike/active_fault_retry.elf": "e9079d8f4d97cec19596f61407709ed8f374d32e41cd63bfea835337a013939d",
+    "spike/active_fault_retry.dis.command.json": "5db349bd745d3b265fe082166586d2d0f489f48f88166cb14d3912d94fb7092c",
+    "spike/active_fault_retry.dis": "2c133c94fd9ccf8e13e94960c685a9c9f8a414925aa038555fa8a0774830fc96",
+    "spike/active_fault_retry.symbols.json": "1904d2d70be00f4fcaf623f32cd893a49daa46498df32c486382fcd50bbcdd3a",
+    "spike/alloff_valid.compile.log.command.json": "195899d9d030caf5bfa68320476b21694c70186097ebdf0eb5ca391143f8503d",
+    "spike/alloff_valid.compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "spike/alloff_valid.elf": "29f29e42a114abcd250d0bc894834c791b8f09774c66bfbd51506136b21d265d",
+    "spike/alloff_valid.dis.command.json": "f0031c8c1e647878b51afcfd8c218d9e29869fcc24eed86cb4fecf16ef730fbf",
+    "spike/alloff_valid.dis": "543746ef48d252160471ca2e543d31c589707dde30384071edea1f47b0d079c9",
+    "spike/alloff_valid.symbols.json": "9bd066ebaedb8ad2d2e5876d6ff1a8e0684cb83b86079a2531db90f2a3d23af3",
+    "spike/programs.json": "63a37850c745478b64cacf7d65ea2297fccc1e3698eae923f832598ebb3b952c"
+  }
+}

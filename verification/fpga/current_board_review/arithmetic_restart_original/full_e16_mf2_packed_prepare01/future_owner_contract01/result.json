@@ -1,0 +1,29 @@
+{
+  "status": "STATIC_OWNER_ELIGIBILITY_HOST_PASS_NOT_WORKER_NOT_DUT",
+  "tests": 6,
+  "contract": {
+    "source_calls": 4095,
+    "required_helper_memory_owners": 20475,
+    "required_target_owners": 2592,
+    "required_op24_target_owners": 117,
+    "reason_counts": {
+      "vstart_ge_vl": 1485,
+      "unsigned_vslideup_vi_offset_ge_vl": 18
+    },
+    "total_uop_count_fixed": false,
+    "full_oracle_and_vstart_unchanged": true
+  },
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf2_packed_prepare01/future_owner_contract01/policy.py": "addcd0ea52144c8c7a95bd661330a66c2b406dbce7b3759ba1714d347e0a3f17",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf2_packed_prepare01/future_owner_contract01/test_host.py": "dfc55895e6f1a1b8242482bc415795cb3e80f4468cdb32e7308b2bd1b4517a5a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf2_packed_prepare01/future_owner_contract01/run_host.py": "e364b3eeeaa2d48aef3b681ae707c67d7dabf70624632bcc5ad14e740bc87d33",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf2_packed_prepare01/proof.json": "b9525d6c64a4a8eb43d13f9aec9066189a1315767ba9f80b6d644acafbc9a70f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_mf2_packed_prepare01/sequence.json": "01638e7e01fc37e72121ce7f45f3cde574b1412a57d22e2b1106f146db06d3de",
+    "/home/wangwy/fpga_runs/current_board_memory_candidate09/frozen/sources/hardware/src/ara_dispatcher.sv": "c179ddd08b2bdb8648246f187aa892be5853fda38aeca850402d5e5b9b17ef7d"
+  },
+  "pins_pre_post_unchanged": true,
+  "reference_entry_unchanged": true,
+  "reference_runs": 0,
+  "DUT_runs": 0,
+  "CSV_reads": 0
+}

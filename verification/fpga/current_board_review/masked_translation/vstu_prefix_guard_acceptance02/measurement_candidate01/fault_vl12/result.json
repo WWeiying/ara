@@ -1,0 +1,14 @@
+{
+  "name": "fault_vl12",
+  "kind": "fault",
+  "vl": 12,
+  "variant": "candidate",
+  "returncode": 0,
+  "elapsed_s": 10.642878030892462,
+  "expected_marker": "BOUNDARY_MASK_DRAIN_GLOBAL_IDLE",
+  "marker_count": 1,
+  "observations": [
+    "OBSERVATION vl=12 accepted=1 mmu=1 ack=1 descriptor=1 st_done=1 mask_done=1 response=1 mask_accepts=3 global_idle=1 mask_commit=0 stable_rows=21 aw=0 w=0 mask_pops=3 st_done_cycle=14 last_mask_cycle=12 last_pop_cycle=13 windows=3 local_idle=1 pending_b=0"
+  ],
+  "full_SOC_acceptance": false
+}

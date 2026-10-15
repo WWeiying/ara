@@ -1,0 +1,310 @@
+{
+  "status": "PASS_M5_FOCUS2_FULL514_ORIGIN0_CONTROL_IDENTICAL",
+  "complete_sha256": "8fd8f3f4819078d74a7d65b1b2fd5d513836a7b542e992d897c9ae255a8b1d5e",
+  "image": {
+    "image_sha256": "9349bdae91e72706ffbb22ad20a7f62795215a5263b1ec0cc4e4837fc21d1500",
+    "snapshot_sha256": "0fb492aebe246deeeacf312b387d0813837afe4b023e53e5fe5d584bca5c0dbf",
+    "configuration_sha256": "6aaa87d2cdbabde8aee6baebad81dc7109d08361f788e799a44420f7cd037785",
+    "simv": "/home/wangwy/fpga_runs/current_board_memory_candidate05/campaign/image/_build/vcs/simv"
+  },
+  "same_elf_hashes": {
+    "gather_probe_e8_m4_ops20_start128": "800f7bc74ee19fae5c9e57056c9a33d058d54412e467b84d7a48a12e99dd3515",
+    "gather_probe_e8_m4_ops20_start0": "c957eba6b78a81d7f4ddaf734f4730e5fa63c20ca1336119e365c454993e7db6"
+  },
+  "wave_results": {
+    "gather_probe_e8_m4_ops20_start128": {
+      "status": "ORIGIN0_SCAN128_IDX511_ACTIVE_BE79_PASS",
+      "requests": [
+        {
+          "cycle": 39075,
+          "lane": 0,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 39075,
+          "lane": 1,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 39075,
+          "lane": 2,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 39075,
+          "lane": 3,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        }
+      ],
+      "first_grants": [
+        {
+          "cycle": 39076,
+          "lane": 0,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 39076,
+          "lane": 1,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 39076,
+          "lane": 2,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 39076,
+          "lane": 3,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        }
+      ],
+      "scans": [
+        {
+          "cycle": 39080,
+          "scan": 0,
+          "index": 0,
+          "oor": 0
+        },
+        {
+          "cycle": 39619,
+          "scan": 128,
+          "index": 511,
+          "oor": 0
+        }
+      ],
+      "consumptions": [
+        {
+          "cycle": 39636,
+          "destination": 128,
+          "index": 511,
+          "oor": 0
+        }
+      ],
+      "active_writes": [
+        {
+          "cycle": 39763,
+          "lane": 0,
+          "address": 100,
+          "be": 255,
+          "low_byte": 79
+        }
+      ],
+      "sampling": "Actual pre-rising-edge valid AND ready; no force",
+      "fsdb_sha256": "dc225ca645ffc9af4bc7cfece1463f9a487bc57d470248f49ff3aca1904ea7f6",
+      "normalized_vcd_sha256": "a2fde09b910b4b92e1da89912739fe233e365dbfbe6fecccfc37d6f953c0252f"
+    },
+    "gather_probe_e8_m4_ops20_start0": {
+      "status": "ORIGIN0_SCAN128_IDX511_ACTIVE_BE79_PASS",
+      "requests": [
+        {
+          "cycle": 38538,
+          "lane": 0,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 38538,
+          "lane": 1,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 38538,
+          "lane": 2,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        },
+        {
+          "cycle": 38538,
+          "lane": 3,
+          "vstart": 0,
+          "eew": 1,
+          "length": 64
+        }
+      ],
+      "first_grants": [
+        {
+          "cycle": 38539,
+          "lane": 0,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 38539,
+          "lane": 1,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 38539,
+          "lane": 2,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        },
+        {
+          "cycle": 38539,
+          "lane": 3,
+          "address": 64,
+          "bank_address": 8,
+          "remaining": 64
+        }
+      ],
+      "scans": [
+        {
+          "cycle": 38543,
+          "scan": 0,
+          "index": 0,
+          "oor": 0
+        },
+        {
+          "cycle": 39082,
+          "scan": 128,
+          "index": 511,
+          "oor": 0
+        }
+      ],
+      "consumptions": [
+        {
+          "cycle": 39099,
+          "destination": 128,
+          "index": 511,
+          "oor": 0
+        }
+      ],
+      "active_writes": [
+        {
+          "cycle": 39226,
+          "lane": 0,
+          "address": 100,
+          "be": 255,
+          "low_byte": 79
+        }
+      ],
+      "sampling": "Actual pre-rising-edge valid AND ready; no force",
+      "fsdb_sha256": "ad3beda7ad4999de89c4b4ee7a26842cd8366437884704dae6c1c59c94609c28",
+      "normalized_vcd_sha256": "8e0da448b103a75eff1ba72f06d6f2538af54bd3a72f1da73eb9a1c74f32e2da"
+    }
+  },
+  "start0_comparison": {
+    "all_rows_compared": 30135,
+    "changed_rows": 0,
+    "changed_nonretire_rows": 0,
+    "examples": [],
+    "m4_sha256": "cc584af7a53d51f37095abcaa435092ded0baabcf2563d89f05ef84a287e3f15",
+    "m5_sha256": "cc584af7a53d51f37095abcaa435092ded0baabcf2563d89f05ef84a287e3f15",
+    "byte_identical": true
+  },
+  "start0_end_cycles": {
+    "m4_exit": [
+      {
+        "cycle": "54288",
+        "event": "retire",
+        "order": "30071",
+        "port": "0",
+        "trans_id": "-1",
+        "pc": "0000000080000072",
+        "insn": "00a2b023",
+        "rd": "0",
+        "rd_wdata": "0000000000000000",
+        "mem_addr": "00000000d0000000",
+        "mem_rmask": "00",
+        "mem_wmask": "ff",
+        "mem_wdata": "0000000000000000",
+        "trap": "0"
+      }
+    ],
+    "m5_exit": [
+      {
+        "cycle": "54288",
+        "event": "retire",
+        "order": "30071",
+        "port": "0",
+        "trans_id": "-1",
+        "pc": "0000000080000072",
+        "insn": "00a2b023",
+        "rd": "0",
+        "rd_wdata": "0000000000000000",
+        "mem_addr": "00000000d0000000",
+        "mem_rmask": "00",
+        "mem_wmask": "ff",
+        "mem_wdata": "0000000000000000",
+        "trap": "0"
+      }
+    ],
+    "m4_last_cycle": 54297,
+    "m5_last_cycle": 54297,
+    "m4_last_retire": {
+      "cycle": "54297",
+      "event": "retire",
+      "order": "30077",
+      "port": "0",
+      "trans_id": "-1",
+      "pc": "0000000080000076",
+      "insn": "0000a001",
+      "rd": "0",
+      "rd_wdata": "0000000080000078",
+      "mem_addr": "0000000000000000",
+      "mem_rmask": "00",
+      "mem_wmask": "00",
+      "mem_wdata": "0000000000000000",
+      "trap": "0"
+    },
+    "m5_last_retire": {
+      "cycle": "54297",
+      "event": "retire",
+      "order": "30077",
+      "port": "0",
+      "trans_id": "-1",
+      "pc": "0000000080000076",
+      "insn": "0000a001",
+      "rd": "0",
+      "rd_wdata": "0000000080000078",
+      "mem_addr": "0000000000000000",
+      "mem_rmask": "00",
+      "mem_wmask": "00",
+      "mem_wdata": "0000000000000000",
+      "trap": "0"
+    },
+    "m4_events": {
+      "retire": 30078,
+      "arch_start": 15,
+      "cvx_req": 15,
+      "cvx_resp": 15,
+      "uop_alloc": 6,
+      "uop_done": 6
+    },
+    "m5_events": {
+      "retire": 30078,
+      "arch_start": 15,
+      "cvx_req": 15,
+      "cvx_resp": 15,
+      "uop_alloc": 6,
+      "uop_done": 6
+    }
+  },
+  "retries": 0,
+  "software_changed": false,
+  "prefix_closed": false
+}

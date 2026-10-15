@@ -1,0 +1,8 @@
+{
+  "SERVICE_RESULT": "success",
+  "EXIT_CODE": "exited",
+  "EXIT_STATUS": "0",
+  "observed_at": 1792016233.985425,
+  "hook_pid": 3424203,
+  "kind": "SYSTEMD_EXEC_STOP_POST_ACTUAL_ENVIRONMENT"
+}

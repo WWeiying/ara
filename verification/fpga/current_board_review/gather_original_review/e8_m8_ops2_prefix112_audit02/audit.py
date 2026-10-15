@@ -1,0 +1,553 @@
+#!/usr/bin/env python3
+"""Authorized second offline VI0 prefix112 audit; exact original post-HTIF park only."""
+import difflib
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+OUT = Path(__file__).resolve().parent
+PREP = OUT.parent / 'e8_m8_ops2_prefix112_prepare01'
+REF = OUT.parent / 'e8_m8_ops2_prefix112_reference_successor01'
+ROOT = OUT.parents[4]
+NAME = 'gather_prefix_e8_m8_ops2'
+CAMPAIGN = Path('/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01')
+PART = CAMPAIGN / 'rvv_permute_partitions01'
+CHILD = 'rvv_permute_restart_e8_m8_ops2'
+OBJ = ROOT / 'install/riscv-gcc/bin/riscv64-unknown-elf-objdump'
+
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def read(path):
+    return json.loads(path.read_text())
+
+
+def sha(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1048576), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def asm(path):
+    text = subprocess.check_output([str(OBJ), '-d', str(path)], text=True)
+    rows = []
+    for line in text.splitlines():
+        m = re.match(r'\s*([0-9a-f]+):\s+([0-9a-f]+)\s+(.+)', line)
+        if m:
+            rows.append(dict(pc=int(m[1], 16), insn=m[2], text=m[3]))
+    return rows
+
+
+
+ATTEMPT01 = OUT.parent / 'e8_m8_ops2_prefix112_audit01'
+PRIOR_PINS = {
+    str(ATTEMPT01 / 'audit.py'): '896445fd68f96b673ccbef66259be671500186d0856c1ffce252777d5d2a5207',
+    str(ATTEMPT01 / 'attempt01.json'): 'fe8baae29f501260f46a691f13f32450da69e6f7e69ce8c973fdfd417fecf569',
+}
+
+
+def save_new(path, value):
+    with path.open('x') as stream:
+        json.dump(value, stream, indent=2)
+        stream.write('\n')
+
+
+def original_park():
+    elf = PREP / 'spike01' / (NAME + '.elf')
+    need(sha(elf) == '93cfba245d048b057891ed94db7feacac71cd41a2076569de4d130c9917e0f78',
+         'Unchanged Spike ELF required for park identity')
+    disassembly = subprocess.check_output(
+        [str(OBJ), '-d', '--disassemble=replay_exit', str(elf)], text=True)
+    rows = []
+    for line in disassembly.splitlines():
+        m = re.match(r'\s*([0-9a-f]+):\s+([0-9a-f]+)\s+(.+)', line)
+        if m:
+            rows.append(dict(pc=int(m[1],16), insn=m[2], text=m[3]))
+    need(len(rows) == 7 and rows[-2]['pc'] == 0x8000007a and
+         rows[-2]['insn'] == '00a2b023' and rows[-1]['pc'] == 0x8000007e and
+         rows[-1]['insn'] == 'a001' and rows[-1]['text'].startswith('j\t8000007e '),
+         'Original replay_exit store and self-loop')
+    return dict(elf=str(elf), elf_sha256=sha(elf), store=rows[-2], park=rows[-1],
+                disassembly=disassembly)
+
+
+def check_park_line(line, identity):
+    m = re.fullmatch(r'core\s+0:\s+3\s+(0x[0-9a-f]+)\s+\((0x[0-9a-f]+)\)\s*', line)
+    need(m is not None, 'Post-HTIF record has side effects or invalid core/privilege/format')
+    need(int(m[1],16) == identity['park']['pc'] and
+         int(m[2],16) == int(identity['park']['insn'],16),
+         'Post-HTIF PC/encoding differs from original park')
+
+
+def park_negatives():
+    identity = original_park()
+    good = 'core   0: 3 0x000000008000007e (0xa001)\n'
+    check_park_line(good, identity)
+    bad = {
+        'other_pc': good.replace('8000007e', '80000080'),
+        'other_encoding': good.replace('a001', '0001'),
+        'gpr_write': good.rstrip() + ' x5 0x0000000000000001\n',
+        'zero_gpr_write': good.rstrip() + ' x0 0x0000000000000000\n',
+        'vector_write': good.rstrip() + ' v0 0x00\n',
+        'floating_write': good.rstrip() + ' f0 0x00\n',
+        'csr_write': good.rstrip() + ' c8_vstart 0x1\n',
+        'memory_write': good.rstrip() + ' mem 0x80000d40 0x1\n',
+        'memory_read': good.rstrip() + ' mem 0x80000d40\n',
+        'trap': good.rstrip() + ' trap_illegal_instruction\n',
+        'other_core': good.replace('core   0:', 'core   1:'),
+        'other_privilege': good.replace(': 3 ', ': 1 '),
+        'unparsed_record': 'unrecognized trailing record\n',
+    }
+    results = []
+    for name, line in bad.items():
+        try:
+            check_park_line(line, identity)
+        except ValueError as error:
+            results.append(dict(name=name, status='REJECTED_AS_EXPECTED', reason=str(error)))
+        else:
+            raise ValueError('Unsafe park record accepted: ' + name)
+    for path, digest in PRIOR_PINS.items():
+        need(sha(Path(path)) == digest, 'Prior audit evidence changed')
+    save_new(OUT / 'park_negatives.json', dict(status='PASS_OFFLINE_PARK_GATE_ONLY',
+        original_park=identity, positive=1, negatives=results, auditor_sha256=sha(Path(__file__)),
+        prior_pins=PRIOR_PINS, no_raw_parse=True, no_reference_or_dut_execution=True))
+    print('PASS_OFFLINE_PARK_GATE_ONLY: 1 positive, 13 rejected negatives', flush=True)
+
+
+def independent_model():
+    state = 0xe736815b449aec21
+    data, indices, indices16 = [], [], []
+    for i in range(1024):
+        state ^= (state << 13) & 0xffffffffffffffff
+        state ^= state >> 7
+        state ^= (state << 17) & 0xffffffffffffffff
+        data.append(state & 0xff)
+        index = [0, 1, 1023, 1024, 1025, state % 1056][i % 6]
+        indices.append(index & 255)
+        indices16.append(index)
+    rows = []
+    # The first112 calls never leave seed0/scalar-slot0 of the selected child.
+    for li, vl in enumerate([0, 1, 2, 3, 512, 1023, 1024]):
+        for mode in range(4):
+            mask = [mode == 0 or (mode == 1 and i % 2 == 1) or
+                    (mode == 2 and i % 7 == 2) for i in range(1024)]
+            pred = [sum(int(mask[8*b+j]) << j for j in range(8))
+                    for b in range(128)]
+            for trial, start in enumerate([1, vl // 2, vl if vl <= 1023 else 1023, 1023]):
+                result = [91] * 1024
+                for i in range(start, vl):
+                    if mask[i]:
+                        result[i] = data[0]
+                rows.append(dict(ordinal=len(rows)+1, tuple=[0,2,0,li,mode,trial],
+                                 vl=vl, vstart=start, scalar=0,
+                                 predicate=pred, output=result))
+                if len(rows) == 112:
+                    return data, indices, indices16, rows
+
+
+def verify_preparation():
+    ready = read(REF / 'READY.json')
+    need(sha(REF / 'READY.json') ==
+         'e6962c38c215ec69ec0f0b3aaf5ebadaa9fb33341027a6c8d7f31fba0f135520', 'READY identity')
+    need(sha(REF / 'input_pins.json') == ready['input_pins_sha256'] and
+         sha(REF / 'artifact_pins.json') == ready['artifact_pins_sha256'], 'Pin table identities')
+    inputs, artifacts = read(REF / 'input_pins.json'), read(REF / 'artifact_pins.json')
+    need(len(inputs) == 410 and len(artifacts) == 22, 'Pin table counts')
+    pins = {}
+    for table in (inputs, artifacts):
+        for name, digest in table.items():
+            need(name not in pins or pins[name] == digest, 'Conflicting pins')
+            pins[name] = digest
+    for name, digest in pins.items():
+        if Path(name) != REF / 'reference/commits.log':
+            need(sha(Path(name)) == digest, 'Pin changed: ' + name)
+    admission_path = OUT.parent / 'e8_m8_ops2_prefix112_reference_admission01/review.json'
+    need(sha(admission_path) == ready['admission_sha256'] ==
+         '05c5c38d985229b2e9a6133786a11a373b6a9d02ecad6c98e8b7c9bf2bcbf3c8', 'Parent admission')
+    admission = read(admission_path)
+    need(admission['decision'] == 'AUTHORIZE_ONE_REFERENCE_SUCCESSOR_5050000_NOT_DUT' and
+         admission['new_limits'] == dict(total_debug_steps=5050000, seconds=120,
+         output_bytes_per_file=805306368, one_attempt_only=True), 'Exact bound authorization')
+    need(admission['constraints']['dut_timeout_remains_9000_seconds'] is True and
+         not (PREP / 'READY.json').exists() and
+         read(PREP / 'reference/not_completed.json')['status'] == 'NOT_COMPLETED_WITHIN_BOUND',
+         'Original unsuccessful status preserved')
+    old_checker = (PREP / 'reference_check.py').read_bytes()
+    need(old_checker.count(b'MAX_RETIRED = 1024, 112, 5_000_000') == 1 and
+         (REF / 'reference_check.py').read_bytes() == old_checker.replace(
+         b'MAX_RETIRED = 1024, 112, 5_000_000', b'MAX_RETIRED = 1024, 112, 5_050_000'),
+         'Successor numerical checker unchanged')
+    for kind, digest in [('soc', 'a0445bcb877799d488e40f37d7bcbc038d9f0e36a7a60e147ed8baf3c5ea5f74'),
+                         ('spike', '93cfba245d048b057891ed94db7feacac71cd41a2076569de4d130c9917e0f78')]:
+        item = admission[kind + '_elf']
+        need(sha(Path(item['path'])) == item['sha256'] == ready[kind+'_elf']['sha256'] == digest,
+             'Unchanged original112 ELF: ' + kind)
+    original = PREP / 'prepared' / NAME / 'original'
+    manifest = read(PART / 'manifest.json')
+    case, = [x for x in manifest['cases'] if x['name'] == CHILD]
+    rec, = [x for x in read(CAMPAIGN / 'stall_family_triage02/triage.json')['cases']
+            if x['name'] == CHILD]
+    need(case == read(original / 'case.json')['case'] and
+         case['operation_ids'] == [2] and case['configurations'] == 2688 and
+         case['sew'] == 8 and case['lmul'] == 'm8', 'Original selection')
+    need('rvv_recovery08_172' in rec['report'], 'Wrong archived scene')
+    need(rec['last_trial'] is None and sha(Path(rec['report'])) == rec['report_sha256'],
+         'Archive report/unknown tuple')
+    need(sha(original / 'original_linux.elf') == case['sha256'] == rec['elf_sha256'] ==
+         sha(PART / 'release/binaries' / CHILD) == sha(Path(rec['report']).parent / CHILD), 'ELF provenance')
+    need(case['sha256'] == 'cc5015d9e7838bfc4f0d4f2b0627e6a08930bd4058b12651a4f988a5c9b1d712', 'Archived e8 ELF')
+    need(sha(original / 'scenario.c') == manifest['source_sha256']['permutation_oracle.c'], 'C provenance')
+    provenance = read(PREP / 'prepared/provenance.json')
+    port_case, = provenance['cases']
+    need(port_case['id'] == NAME and port_case['operation'] == 2 and
+         port_case['original_case'] == case and port_case['defines'] ==
+         ['SEW=8', 'RESTART_PERMUTATIONS=1', 'PERMUTE_OP_MASK=4'], 'Port selection')
+    for file in ['operations.S', 'operations.h']:
+        need((original / file).read_bytes() == (PART / CHILD / file).read_bytes(), 'Assembly/header copy')
+    sys.path.insert(0, str(OUT.parent))
+    sys.path.insert(0, str(OUT.parent.parent / 'integration'))
+    from prepare import adapt
+    source = (original / 'scenario.c').read_text()
+    adapted = adapt(source, NAME)
+    anchor = '            ++cases;\n'
+    need(adapted.count(anchor) == 1, 'Unique prefix anchor')
+    port = adapted.replace(anchor, anchor + '            if(cases==112)goto prefix_done;\n')
+    anchor = '    text(errors ? "RVV_PERMUTE_FAIL sew=":"RVV_PERMUTE_PASS sew=");'
+    need(port.count(anchor) == 1, 'Unique finish anchor')
+    port = port.replace(anchor, 'prefix_done:\n    if(cases!=112)++errors;\n'
+                        '    text(errors ? "RVV_GATHER_PREFIX_FAIL sew=":"RVV_GATHER_PREFIX_PASS sew=");')
+    need(port == (PREP / 'prepared' / NAME / 'case.c').read_text(), 'Source adaptation')
+    for label, before, after in [('adapter', source, adapted), ('prefix', adapted, port)]:
+        diff = ''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True),
+                       fromfile=label+'_before', tofile=label+'_after'))
+        need(diff == (PREP / 'source_diffs' / (label+'.diff')).read_text(), 'Recorded diff differs')
+    proof = read(PREP / 'source_elf_proof.json')
+    codes = [x['insn'] for x in proof['original_routine']]
+    need(len(codes) == 13 and codes[8] == '30803c57' and
+         proof['original_routine'][8]['pc'] == 0x10600, 'Original vi0 helper contract')
+    for kind, elf in [('original', original / 'original_linux.elf')]+[
+            (k, Path(proof[k+'_elf']['path'])) for k in ['soc', 'spike']]:
+        dis = asm(elf)
+        windows = [dis[i:i+13] for i in range(len(dis)-12)
+                   if [x['insn'] for x in dis[i:i+13]] == codes]
+        need(len(windows) == 1 and windows[0] == proof[kind+'_routine'], 'Actual ELF helper ' + kind)
+    host = read(PREP / 'host/host_gate.json')
+    need([x['injection'] for x in host['tests']] ==
+         ['none','active','prestart','inactive','tail','guard0','guard1','vstart','wrong_vi31',
+          'upper_active','last_active','last_inactive'], 'Host membership')
+    for row in host['tests']:
+        log = PREP / 'host' / (row['injection']+'.log')
+        need(sha(log) == row['log_sha256'] and row['status'] == 'PASS', 'Host raw pin')
+        rc = 0 if row['injection'] == 'none' else 1
+        need(row['returncode'] == rc and
+             f'HOST_PREFIX_CALLS=112 INJECTED={rc}' in log.read_text() and
+             f'RVV_GATHER_PREFIX_{"PASS" if rc == 0 else "FAIL"} sew=8 cases=112 errors={rc}'
+             in log.read_text(), 'Host raw outcome')
+    need('-DPERMUTE_OP_MASK=4' in host['command'] and '-DSEW=8' in host['command']
+         and '-DRESTART_PERMUTATIONS=1' in host['command'], 'Original Host op2 selection')
+    need(sha(PREP / 'host/host_gate.json') ==
+         'c3994321b79307a1fa5110f7a21d6df92df64eab3fc2989b3de23df5ea22513b', 'Reused Host12')
+    gate = read(REF / 'host/host_gate.json')
+    need(sha(REF / 'host/host_gate.json') == ready['host_gate_sha256'] and
+         gate['status'] == 'PASS_7_SUCCESSOR_NEGATIVE_CONTROLS', 'New Host gate')
+    negatives = gate['tests']
+    need([n['name'] for n in negatives] == ['old_5m_no_htif', 'wrong_encoding', 'wrong_result',
+         'wrong_guard0', 'wrong_guard1', 'wrong_vstart', 'missing_oracle'], 'New negative membership')
+    need(all(n['status'] == 'REJECTED_AS_EXPECTED' and sha(Path(n['path'])) == n['sha256']
+         for n in negatives), 'New retained negatives')
+    return ready, proof, pins
+
+
+def parse_once(proof, park):
+    data, indices, indices16, gold = independent_model()
+    need(len(gold) == 112 and gold[-1]['tuple'] == [0,2,0,6,3,3] and
+         [sum(r['vl'] == vl for r in gold) for vl in (0,1,2,3,512,1023,1024)] == [16]*7,
+         'Complete first scalar-slot: seven VLs by four masks by four starts')
+    recorded_model = read(PREP / 'host_expected.json')
+    need(gold == recorded_model['rows'] and data == recorded_model['input'] and
+         indices == recorded_model['indices'] and indices16 == recorded_model['indices16'], 'Independent oracle disagrees')
+    shim = (PREP / 'host/shim.c').read_text()
+    for name, expected in [('data', data), ('indices', indices),
+                           ('vl', [g['vl'] for g in gold]),
+                           ('start', [g['vstart'] for g in gold]),
+                           ('masks', [v for g in gold for v in g['predicate']]),
+                           ('output', [v for g in gold for v in g['output']])]:
+        match = re.search(r'gold_' + name + r'\[\]=\{([^}]+)\}', shim)
+        need(match and [int(v) for v in match[1].split(',')] == expected,
+             'Host static fixture differs: ' + name)
+    ref = read(REF / 'reference/reference.json')
+    routine = proof['spike_routine']
+    lookup = {x['pc']:i for i,x in enumerate(routine)}
+    elf = Path(proof['spike_elf']['path'])
+    symbols = subprocess.check_output([str(OBJ), '-t', str(elf)], text=True)
+    addresses = {}
+    for line in symbols.splitlines():
+        fields = line.split()
+        if fields and fields[-1] in ['input','indices','indices16','predicate','output','replay_log','tohost']:
+            addresses[fields[-1]] = int(fields[0],16)
+    need({k:hex(v) for k,v in addresses.items()} == ref['addresses'], 'Actual ELF symbols')
+    regs, memory, vectors, csr = {0:0}, {}, {}, {}
+    calls, counts, checks = [], [0]*13, 0
+    current, step, retired, exited = None, 0, 0, False
+    console = bytearray(8192)
+    header = re.compile(r'core\s+0:\s+\d\s+(0x[0-9a-f]+)\s+\((0x[0-9a-f]+)\)(.*)')
+    integer = re.compile(r'\bx(\d+)\s+0x([0-9a-f]+)')
+    vector = re.compile(r'\bv(\d+)\s+0x([0-9a-f]+)')
+    csrs = re.compile(r'\bc\d+_(vstart|vl|vtype)\s+0x([0-9a-f]+)')
+    mem = re.compile(r'\bmem\s+0x([0-9a-f]+)(?:\s+0x([0-9a-f]+))?')
+    digest, prefix_digest = hashlib.sha256(), hashlib.sha256()
+    total_commits, boot_pcs, prefix_bytes, old_boundary = 0, [], 0, None
+    vector_pcs = {}
+    capacity_vset_checks = 0
+    htif_total, post_htif_park_records = None, 0
+
+    def group(first):
+        raw = b''.join(vectors[n].to_bytes(128,'little') for n in range(first,first+8))
+        return list(raw)
+
+    def finish():
+        if current is not None:
+            need(step == 0 and current['seen'] == set(range(1026)), 'Full scalar oracle incomplete')
+            current.pop('seen')
+
+    with (REF / 'reference/commits.log').open('rb') as stream:
+        for lineno, raw in enumerate(stream, 1):
+            digest.update(raw)
+            if total_commits < 5000000:
+                prefix_digest.update(raw)
+                prefix_bytes += len(raw)
+            line = raw.decode('ascii')
+            need('trap_' not in line, 'Unexpected reference trap')
+            if exited:
+                check_park_line(line, park)
+                total_commits += 1
+                need(total_commits <= 5050000, 'Authorized total-step ceiling including park')
+                post_htif_park_records += 1
+                continue
+            m = header.match(line)
+            if not m:
+                continue
+            total_commits += 1
+            need(total_commits <= 5050000, 'Authorized total-step ceiling')
+            pc, code, rest = int(m[1],16), int(m[2],16), m[3]
+            if pc < 0x80000000:
+                need(retired == 0, 'Unexpected firmware return into boot')
+                boot_pcs.append(hex(pc))
+                continue
+            retired += 1
+            if code & 127 == 87:
+                key = f'{pc:x}:{code:08x}'
+                vector_pcs[key] = vector_pcs.get(key, 0) + 1
+            rd = integer.search(rest)
+            accesses = [(int(a,16), int(b,16) if b else None) for a,b in mem.findall(rest)]
+            if code & 127 == 35:
+                width = 1 << ((code >> 12) & 7)
+                need(width <= 8, 'Scalar store width')
+                for address, value in accesses:
+                    need(value is not None, 'Scalar store lacks value')
+                    for b in range(width):
+                        memory[address+b] = (value >> (8*b)) & 255
+                    if width == 1 and addresses['replay_log'] <= address < addresses['replay_log']+8192:
+                        console[address-addresses['replay_log']] = value & 255
+            i = lookup.get(pc)
+            if code & 127 == 87 and i is None:
+                need(code == 0x0032f557 and rd and int(rd[1]) == 10 and
+                     int(rd[2],16) == 1024, 'Only original capacity vset outside helper')
+                capacity_vset_checks += 1
+            if i is not None:
+                need(i == step and code == int(routine[i]['insn'],16), f'Helper order/encoding at {lineno}')
+                if i == 0:
+                    finish()
+                    j = len(calls)
+                    need(j < 112, 'Extra call')
+                    g = gold[j]
+                    args = [addresses['input'], addresses['indices'], addresses['output']+1,
+                            g['vl'], 1024, addresses['predicate'], 0, g['vstart']]
+                    need([regs.get(n) for n in range(10,18)] == args, 'Arguments/history differ')
+                    for name, values, width in [('input',data,1), ('indices',indices,1),
+                            ('indices16',indices16,2), ('predicate',g['predicate'],1), ('output',[91]*1026,1)]:
+                        for k, value in enumerate(values):
+                            start = addresses[name]+k*width
+                            actual = bytes(memory[start+b] for b in range(width))
+                            need(int.from_bytes(actual,'little') == value, 'Initialization ' + name)
+                    current = dict(ordinal=j+1, tuple=g['tuple'], vl=g['vl'], vstart=g['vstart'],
+                                   seen=set(), setup_values=4226)
+                    calls.append(current)
+                if i in (0,5,10):
+                    need(rd and int(rd[1]) == 5 and int(rd[2],16) == (g['vl'] if i == 5 else 1024), 'vset return')
+                if i == 8:
+                    need(csr.get('vl') == g['vl'] and csr.get('vstart') == g['vstart'] and
+                         csr.get('vtype') == 3, 'Target architectural CSR')
+                    need(group(8) == data and group(16) == indices and group(24) == [91]*1024, 'Target full vectors')
+                    need(vectors[0] & ((1 << 1024)-1) == int.from_bytes(bytes(g['predicate']),'little'), 'Target predicate')
+                    need((code >> 12) & 7 == 3 and (code >> 15) & 31 == 0 and
+                         (code >> 25) & 1 == 0 and code >> 26 == 12,
+                         'Actual masked OPIVI unsigned0 encoding')
+                    need(regs.get(28) == 0 and regs.get(16) == 0,
+                         'Original unused scalar/move not retained')
+                    need(group(8)[0] == data[0] == 185 and data[31] == 177,
+                         'Independent actual source0 discriminator')
+                    current.update(target_retired=retired, target_line=lineno,
+                                   actual_source0=group(8)[0], immediate_unsigned=0,
+                                   predicate_words256=[hex((vectors[0] >> (256*w)) & ((1<<256)-1)) for w in range(4)],
+                                   active_selected_by_word256=[sum(1 for k in range(256*w,256*(w+1))
+                                       if g['vstart'] <= k < g['vl'] and
+                                       (g['predicate'][k//8] >> (k%8)) & 1) for w in range(4)],
+                                   body_nonempty=g['vstart'] < g['vl'],
+                                   active_selected_count=sum((g['predicate'][k//8] >> (k%8)) & 1
+                                       for k in range(g['vstart'],g['vl'])))
+                if i == 9:
+                    need(rd and int(rd[1]) == 10 and int(rd[2],16) == 0, 'Returned vstart')
+                if i == 11:
+                    need(csr.get('vl') == 1024 and group(24) == g['output'], 'Store full vector state')
+                    need(accesses == [(addresses['output']+1+k,v) for k,v in enumerate(g['output'])], 'Full vector store')
+                counts[i] += 1
+                step = (step+1) % 13
+            for n,v in vector.findall(rest):
+                vectors[int(n)] = int(v,16)
+            for name,value in csrs.findall(rest):
+                csr[name] = int(value,16)
+            if code & 127 == 87 and i is None:
+                need(csr.get('vl') == 1024 and csr.get('vtype') == 3, 'Capacity CSR')
+            if i in (0,5,10):
+                need(csr.get('vl') == (g['vl'] if i == 5 else 1024) and csr.get('vtype') == 3,
+                     'vset actual VL/vtype state')
+            if i == 8:
+                need(group(24) == g['output'] and csr.get('vstart') == 0, 'Actual target result/reset')
+            if current is not None and code & 127 == 3 and accesses:
+                for address, value in accesses:
+                    if addresses['output'] <= address < addresses['output']+1026:
+                        need(step == 0 and (code >> 12) & 7 == 4 and rd and value is None,
+                             'Scalar oracle load contract')
+                        index = address-addresses['output']
+                        need(index not in current['seen'], 'Duplicate scalar check')
+                        want = 91 if index in (0,1025) else g['output'][index-1]
+                        need(int(rd[2],16) == want, 'Scalar output/guard differs')
+                        current['seen'].add(index)
+                        checks += 1
+            if accesses == [(addresses['tohost'],1)] and code & 127 == 35:
+                need(pc == park['store']['pc'] and code == int(park['store']['insn'],16),
+                     'Successful HTIF must be original replay_exit store')
+                finish()
+                exited = True
+                htif_total = total_commits
+            if rd:
+                regs[int(rd[1])] = int(rd[2],16)
+            if total_commits == 5000000:
+                old_boundary = dict(total_commits=total_commits, firmware_retired=retired,
+                    bytes=prefix_bytes, sha256=prefix_digest.hexdigest(),
+                    calls=len(calls), helper_counts=list(counts), scalar_reads=checks,
+                    final_call_read_count=len(current['seen']),
+                    missing_final_indices=sorted(set(range(1026)) - current['seen']),
+                    successful_htif_seen=exited, pc=hex(pc))
+    old = read(PREP / 'reference/not_completed.json')
+    need(old_boundary is not None and prefix_digest.hexdigest() == old['commit_sha256'] and
+         prefix_bytes == old['commit_bytes'] == 327020339 and
+         old_boundary['firmware_retired'] == 4999995 and old_boundary['scalar_reads'] == 114832 and
+         old_boundary['helper_counts'] == [112]*13 and old_boundary['final_call_read_count'] == 946 and
+         not old_boundary['successful_htif_seen'], 'Old5M cutoff reproduced without reparsing old raw')
+    need(htif_total == ref['total_commit_records_to_htif'] == 5002737 and
+         len(boot_pcs) == 5 and htif_total - retired == 5, 'Boot vs firmware count')
+    need(total_commits == htif_total + post_htif_park_records and total_commits <= 5050000,
+         'All raw commits including original park remain bounded')
+    need(capacity_vset_checks == 1, 'Original capacity call count')
+    need(exited and len(calls) == 112 and counts == [112]*13 and checks == 114912, 'Incomplete execution')
+    need(retired == ref['firmware_retired_to_htif_store'] == 5002732, 'Retirement cost')
+    need(digest.hexdigest() == ref['commit_sha256'], 'Single-pass raw identity')
+    need(digest.hexdigest() == 'd193e349e23df14e39c6e58671748849bbba3688f30f012c0cca3aff02b91ba6',
+         'Expected raw identity')
+    need(len(ref['calls']) == len(calls), 'Recorded call count')
+    for actual, recorded in zip(calls, ref['calls']):
+        need(actual['tuple'] == recorded['original_tuple'] and
+             actual['target_retired'] == recorded['target']['retired'] and
+             actual['target_line'] == recorded['target']['trace_line'] and
+             actual['actual_source0'] == recorded['actual_source0'] == 185 and
+             actual['immediate_unsigned'] == recorded['immediate_unsigned'] == 0,
+             'Recorded target/history/source0 differs')
+    text = console.split(b'\0',1)[0].decode('ascii')
+    need(text == ref['reconstructed_console'] == (REF / 'reference/runtime.log').read_text(), 'Raw console differs')
+    for marker in proof['spike_elf']['pass_markers']:
+        need(text.splitlines().count(marker) == 1, 'Pass marker count')
+    need(not re.search('FAIL|TRAP|MISMATCH|DETAIL|RVV_PERMUTE_PASS',text), 'Failure marker veto')
+    execution, command = read(REF / 'reference/execution.json'), read(REF / 'reference/command.json')
+    need(execution['returncode'] == ref['returncode'] == 0 and execution['command'] == command['command'] and
+         execution['elapsed_s'] == ref['elapsed_s'] < 120 and command['total_debug_steps'] == 5050000 and
+         command['seconds'] == 120 and command['output_bytes_per_file'] == 768*1024*1024 and
+         '--isa=rv64gcv_zvl1024b' in command['command'] and
+         command['command'][-1] == str(elf), 'Execution/limits')
+    need(command['one_attempt_only'] is True and command['compilation'] is False and
+         command['dut'] is False and (REF / 'reference/spike.cmd').read_text() ==
+         f'rs 5050000\nstr {addresses["replay_log"]:x}\nquit\n', 'Exact authorized debug step bound')
+    need((REF / 'reference/commits.log').stat().st_size == ref['commit_bytes'] == 327291090 and
+         ref['commit_bytes'] < command['output_bytes_per_file'], 'Raw size/bound')
+    need(sha(Path(command['command'][0])) ==
+         'c03c5a84f2313b2e0bb28be7aba496836b8d7b29e472c918457bca21f8abc7d2', 'Spike identity')
+    return dict(calls=calls, helper_counts=counts, scalar_checks=checks, fullcap_results=114688,
+                guards=224, returned_vstart_checks=112, vset_checks=336, setup_values_per_call=4226,
+                full_vector_inputs_predicate_oldvd_checks=112, full_result_vector_checks=112,
+                full_vector_store_checks=112, retired=retired, raw_sha256=digest.hexdigest(),
+                raw_bytes=(REF / 'reference/commits.log').stat().st_size,
+                console=text, recorded_spike_seconds=execution['elapsed_s'],
+                actual_source0=data[0], unused_scalar_register=0, immediate_unsigned=0,
+                actual_source31=data[31], arithmetic_vector_pc_counts=vector_pcs,
+                capacity_vset_checks=capacity_vset_checks,
+                total_commits_to_htif=htif_total, all_raw_commit_records=total_commits,
+                post_htif_original_park_records=post_htif_park_records, original_park=park,
+                boot_pcs=boot_pcs, old_5m_boundary=old_boundary,
+                active_selected_elements=sum(r['active_selected_count'] for r in calls),
+                nonempty_body_calls=[r['ordinal'] for r in calls if r['body_nonempty']],
+                active_selected_calls=[r['ordinal'] for r in calls if r['active_selected_count']],
+                no_body_calls=[r['ordinal'] for r in calls if not r['body_nonempty']])
+
+
+def main():
+    need(sys.argv[1:] in (['--park-negatives'], ['--parse-once']), 'Explicit offline mode required')
+    if sys.argv[1:] == ['--park-negatives']:
+        park_negatives()
+        return
+    target = OUT / 'audit.json'
+    need(not target.exists(), 'Do not overwrite audit evidence')
+    negative = read(OUT / 'park_negatives.json')
+    need(negative['status'] == 'PASS_OFFLINE_PARK_GATE_ONLY' and negative['positive'] == 1 and
+         len(negative['negatives']) == 13 and all(n['status'] == 'REJECTED_AS_EXPECTED'
+         for n in negative['negatives']) and negative['auditor_sha256'] == sha(Path(__file__)),
+         'Park negatives must pass before full parse with unchanged script')
+    for path, digest in PRIOR_PINS.items():
+        need(sha(Path(path)) == digest, 'Prior audit evidence changed')
+    ready, proof, pins = verify_preparation()
+    park = original_park()
+    need(park == negative['original_park'], 'Disassembled park identity changed')
+    save_new(OUT / 'parse_started.json', dict(status='SECOND_OFFLINE_PARSE_STARTED',
+        one_attempt_only=True, prior_pins=PRIOR_PINS, auditor_sha256=sha(Path(__file__)),
+        raw=str(REF/'reference/commits.log'), park_negative_sha256=sha(OUT/'park_negatives.json')))
+    try:
+        result = parse_once(proof, park)
+        need(result['raw_sha256'] == pins[str(REF / 'reference/commits.log')], 'Raw evidence pin')
+        for path, digest in PRIOR_PINS.items():
+            need(sha(Path(path)) == digest, 'Prior audit evidence changed')
+        result.update(status='ACCEPTED_SOURCE_REFERENCE_ONLY_NOT_DUT', ready_sha256=sha(REF/'READY.json'),
+                      artifact_pins=22, input_pins=410, prior_pins=PRIOR_PINS,
+                      host_results_read_not_rerun=12, offline_negative_results_read_not_rerun=7,
+                      new_park_gate_positive=1, new_park_gate_negative=13,
+                      auditor_sha256=sha(Path(__file__)), original_stopped_tuple=None,
+                      full2688_child_pass=False, linux_replay=False, source_proof=proof)
+        save_new(target, result)
+    except BaseException as error:
+        save_new(OUT/'failure.json', dict(status='INDEPENDENT_AUDIT_INCOMPLETE_NOT_PASS',
+            error=repr(error), no_auto_retry=True))
+        raise
+    print(json.dumps({k:v for k,v in result.items() if k not in
+          ['calls','source_proof','console','nonempty_body_calls','active_selected_calls','no_body_calls']},indent=2))
+
+
+if __name__ == '__main__':
+    main()

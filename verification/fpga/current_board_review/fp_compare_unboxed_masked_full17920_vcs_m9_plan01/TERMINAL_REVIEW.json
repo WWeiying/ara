@@ -1,0 +1,56 @@
+{
+  "decision": "ACCEPTED_MASKED_FP16_FULL17920_M9_TERMINAL_METADATA_NOT_LINUX",
+  "reviewer": "Hilbert",
+  "prepared_directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_compare_unboxed_masked_full17920_vcs_m9_plan01/prepared02",
+  "plan_sha256": "da669e3a02daf9f5226312d42dc278a350b1c5c0e07ccaa9b80a3febdfa14f83",
+  "entry_review_sha256": "658750176943ef84aa1ff842df023acdba54c79683da6d946cc25cd69ba5b6ec",
+  "complete_sha256": "399bf44ed99d9763fe67b7e205582632af11e10e504d0133a795e7ed683f0287",
+  "collector_result_sha256": "f634b1a9f14ef079e90fa300a0b201f7c0941af0bbce8b439263628025b77921",
+  "collector_wait_sha256": "dba07c8991b78e1aeeb592ec40e19826461e9590d2db2e1ad6406820e981d993",
+  "actual_simulator": {
+    "returncode": 0,
+    "elapsed_s": 7843.901511622127,
+    "timed_out": false,
+    "failure_seen": false
+  },
+  "actual_service": {
+    "SERVICE_RESULT": "success",
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0"
+  },
+  "actual_collector": {
+    "actual_wait_exit": 0,
+    "timed_out": false,
+    "elapsed_s": 7.834389945026487
+  },
+  "scope": {
+    "calls": 17920,
+    "result_bits": 286720,
+    "guards": 35840,
+    "flags": 17920,
+    "vstarts": 17920,
+    "FPR_committed_writebacks": 10752,
+    "rows": 3540753,
+    "required_memory_owners": 89600,
+    "required_target_owners": 15360,
+    "vl0_target_elidable": 2560
+  },
+  "evidence_review": {
+    "fresh_terminal_evidence_and_approval_hashes": 16,
+    "terminal_event_wait_and_result_hashes_match": true,
+    "plan_pins_unchanged": "Confirmed by sealed complete and collector; no new full 800/843-pin rescan",
+    "large_strict_and_csv_hashes": "Inherited from complete/collector; not rehashed",
+    "strict_read": "Read existing strict summary/owner ledger output; no CSV semantic reparse",
+    "notification": "terminal_event.json accepted",
+    "CSV_reads": 0,
+    "DUT_reruns": 0
+  },
+  "retries": 0,
+  "aborted": false,
+  "limitations": [
+    "Metadata acceptance of existing full-source M9 checker result, not independent numerical reexecution",
+    "FPR evidence is committed writeback payload, not physical register readback",
+    "Original Linux symptom not closed; historical prepared01 HOLD retained"
+  ],
+  "blocking_findings": []
+}

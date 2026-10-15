@@ -1,0 +1,102 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 172552,
+  "firmware_commits": 172547,
+  "scalar_checks": 5481,
+  "checkpoints": [
+    {
+      "phase": 0,
+      "bytes": 21840,
+      "checks": 2726,
+      "commit": 97489
+    },
+    {
+      "phase": 1,
+      "bytes": 21832,
+      "checks": 5467,
+      "commit": 169928
+    }
+  ],
+  "actions": [
+    "checkpoint0",
+    "enter_s",
+    "helper",
+    "younger",
+    "handler",
+    "return_m",
+    "checkpoint1"
+  ],
+  "targets": [
+    {
+      "commit": 97521,
+      "pc": "0x800008fc",
+      "addresses": [],
+      "raw_vector_commit": " e64 m1 l8 c8_vstart 0x0000000000000000"
+    }
+  ],
+  "traps": [
+    [
+      "trap_supervisor_ecall",
+      2147485880
+    ]
+  ],
+  "actual_handler_csrs": [
+    {
+      "0": 9,
+      "1": 2147485880,
+      "2": 0,
+      "3": 9223372079804460544,
+      "4": 9223372036855300100,
+      "5": 8,
+      "6": 24,
+      "7": 0,
+      "8": 117,
+      "9": 5
+    }
+  ],
+  "original_helper_instructions": 11,
+  "helper_entries": 1,
+  "capacity_instructions": 3,
+  "target_attempts": 1,
+  "output_allocation_elements": 130,
+  "output_checked_elements": 130,
+  "original_result_elements": 8,
+  "original_guards": [
+    0,
+    9
+  ],
+  "mask_bytes": 16,
+  "allowed_undefined_output_indices": [],
+  "full_data_bytes": 8192,
+  "page_table_bytes": 12288,
+  "htif": [
+    1
+  ],
+  "postexit_park": 2140,
+  "linux_signal_equivalence": false,
+  "parent8_ELFs_accepted": false,
+  "execution": {
+    "actual_wait_returncode": 0,
+    "timeout": false,
+    "elapsed_s": 3.0242786812596023,
+    "raw_bytes": 20918270,
+    "command": [
+      "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+      "--isa=rv64gcv_zfh_zvfh_zvl1024b",
+      "--priv=msu",
+      "--pmpregions=0",
+      "-m2",
+      "--instructions=1500000",
+      "-l",
+      "--log-commits",
+      "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_original_two_singles01/software01/e64/spike.elf"
+    ]
+  },
+  "raw_path": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/fof_original_two_singles01/recovery01/reference_e64_01/spike.trace",
+  "raw_sha256": "6d70ddd86715e448a31332183abbc7263f8c7689bbef712ed9133a0bab90699e",
+  "pins_unchanged": true,
+  "checker_sha256": "aaf353ca41989df625f8d6d60721a223176a843cad1b94dc09f97b06c81bd2f3",
+  "offline_check_elapsed_s": 5.603352731093764,
+  "reference_invocations": 1,
+  "old_e8_rejection_preserved": true
+}

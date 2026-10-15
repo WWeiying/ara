@@ -1,0 +1,11 @@
+# e16/m1 软件源码独审
+
+NO_BLOCKER_SOURCE_FOR_HOST_AND_COMPILE，绑定source_entry f57cab9b75eba331f64a145c062fdf79993d2c2c76414172d6fbee0627266679；38pins fresh一致。
+
+原ELF与重建ELF同为c9d4a166a1618a221ee99ea0325a83ee34bd2ee4d422574c31a90d182783bc2f。源码身份是binary-equivalent reconstruction，不冒充原C字节恢复。实际.S为e16/m1 tu/mu，CAP64/vtype8，单物理寄存器完整128B。
+
+完整4095calls/262080elements/8190guards/4095vstart、三seed各64步RNG、原helper与历史顺序/fallback保留。合法memcpy处理132B输出：16个8B加精确4B尾；typed005b及两个guard完整参与。mask初始化128B，实际vlm消耗8B，上120B为零。未见越界、别名cast或shift64问题。
+
+557304B表与mask静态预算可容纳；这不替代实际链接LOAD/stack及禁止额外RVV的编译后核验。Host源码保留原C/model逐位置及原诊断对比、132byte逐位置、未对齐/保护页尾界和高byte/guard/vstart/UB负例，尚不声明实际Host通过。
+
+本结论仅进入Host和软件编译。后续审实际artifact及有限参考入口，尤其真实数值exit与HTIF后EOF。不启动DUT，未重读旧raw、未运行编译/Host/参考。

@@ -1,0 +1,760 @@
+{
+  "status": "CONSTRUCTED_SHORT_PROFILE_ONLY_NOT_RAW_DIAGNOSIS",
+  "actual_csv_reads": 0,
+  "reference_reads": 0,
+  "full4095_stream_test": false,
+  "rows": 10994,
+  "completed_calls": 4,
+  "calls_entered": 5,
+  "original_model_initialization_s": 9.408575796987861,
+  "fixture_construction_s": 1.1518315821886063,
+  "strict_initialization_s": 0.11531013157218695,
+  "profiled_consumer_s": 4.821101137436926,
+  "total_s": 15.496818648185581,
+  "functions": [
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/observer.py",
+      "line": 47,
+      "function": "rows",
+      "primitive_calls": 10995,
+      "calls": 10995,
+      "self_s": 0.43948224300000005,
+      "cumulative_s": 2.6548604570000003
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 92,
+      "function": "consume",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.298588371,
+      "cumulative_s": 2.106050084
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 160,
+      "function": "consume",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.6744136030000001,
+      "cumulative_s": 1.5093602590000001
+    },
+    {
+      "file": "/usr/lib64/python3.9/json/__init__.py",
+      "line": 183,
+      "function": "dumps",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.144286618,
+      "cumulative_s": 1.3961676230000002
+    },
+    {
+      "file": "/usr/lib64/python3.9/json/encoder.py",
+      "line": 182,
+      "function": "encode",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.154912078,
+      "cumulative_s": 1.1803536840000002
+    },
+    {
+      "file": "/usr/lib64/python3.9/json/encoder.py",
+      "line": 204,
+      "function": "iterencode",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 1.00803139,
+      "cumulative_s": 1.00803139
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.all>",
+      "primitive_calls": 27050,
+      "calls": 42410,
+      "self_s": 0.149938347,
+      "cumulative_s": 0.665087449
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 132,
+      "function": "begin_call",
+      "primitive_calls": 5,
+      "calls": 5,
+      "self_s": 0.003286605,
+      "cumulative_s": 0.5148882570000001
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 122,
+      "function": "value",
+      "primitive_calls": 31398,
+      "calls": 31398,
+      "self_s": 0.173098367,
+      "cumulative_s": 0.41655742700000004
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/macc_disjoint482/full482_optimized_prepare01/vcs_m8_plan03/checker.py",
+      "line": 318,
+      "function": "observe",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.022979906,
+      "cumulative_s": 0.310250069
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/observer.py",
+      "line": 59,
+      "function": "observe",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.15547206900000002,
+      "cumulative_s": 0.287258938
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 141,
+      "function": "<listcomp>",
+      "primitive_calls": 20,
+      "calls": 20,
+      "self_s": 0.015433278000000002,
+      "cumulative_s": 0.246117097
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/ordered_reduction/original_remaining9_terminal_audit01/observer.py",
+      "line": 51,
+      "function": "<genexpr>",
+      "primitive_calls": 164910,
+      "calls": 164910,
+      "self_s": 0.184532845,
+      "cumulative_s": 0.244719719
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.sum>",
+      "primitive_calls": 31405,
+      "calls": 31405,
+      "self_s": 0.065197079,
+      "cumulative_s": 0.14845691800000002
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'update' of '_hashlib.HASH' objects>",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.138104299,
+      "cumulative_s": 0.138104299
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 146,
+      "function": "<genexpr>",
+      "primitive_calls": 10250,
+      "calls": 10250,
+      "self_s": 0.025038088,
+      "cumulative_s": 0.135575981
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 148,
+      "function": "<genexpr>",
+      "primitive_calls": 5125,
+      "calls": 5125,
+      "self_s": 0.032119548000000005,
+      "cumulative_s": 0.107089552
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_vcs_m6_plan01/checker.py",
+      "line": 40,
+      "function": "memory_op",
+      "primitive_calls": 10813,
+      "calls": 10813,
+      "self_s": 0.073988791,
+      "cumulative_s": 0.105656235
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 86,
+      "function": "gap",
+      "primitive_calls": 32754,
+      "calls": 32754,
+      "self_s": 0.10166145600000001,
+      "cumulative_s": 0.10166145600000001
+    },
+    {
+      "file": "/home/wangwy/fpga_runs/current_board_memory_candidate09/frozen/sources/verification/ara_verify/trace.py",
+      "line": 12,
+      "function": "is_vector_instruction",
+      "primitive_calls": 21673,
+      "calls": 21673,
+      "self_s": 0.099165607,
+      "cumulative_s": 0.099165607
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 124,
+      "function": "<genexpr>",
+      "primitive_calls": 62922,
+      "calls": 62922,
+      "self_s": 0.083105123,
+      "cumulative_s": 0.083105123
+    },
+    {
+      "file": "/usr/lib64/python3.9/collections/__init__.py",
+      "line": 581,
+      "function": "__init__",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.07332022,
+      "cumulative_s": 0.077793786
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.isinstance>",
+      "primitive_calls": 197892,
+      "calls": 197892,
+      "self_s": 0.072247607,
+      "cumulative_s": 0.072247607
+    },
+    {
+      "file": "/usr/lib64/python3.9/json/encoder.py",
+      "line": 104,
+      "function": "__init__",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.071527321,
+      "cumulative_s": 0.071527321
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 98,
+      "function": "<dictcomp>",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.062789195,
+      "cumulative_s": 0.062789195
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fp_comparison_original/fp_alias50_terminal_eventcheck01/observer.py",
+      "line": 25,
+      "function": "retirement",
+      "primitive_calls": 10813,
+      "calls": 10813,
+      "self_s": 0.061687845000000005,
+      "cumulative_s": 0.061808537000000004
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 123,
+      "function": "<genexpr>",
+      "primitive_calls": 62922,
+      "calls": 62922,
+      "self_s": 0.052437389,
+      "cumulative_s": 0.052437389
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.len>",
+      "primitive_calls": 59353,
+      "calls": 59353,
+      "self_s": 0.052390110000000004,
+      "cumulative_s": 0.052390110000000004
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 167,
+      "function": "<genexpr>",
+      "primitive_calls": 54065,
+      "calls": 54065,
+      "self_s": 0.050435520000000005,
+      "cumulative_s": 0.050435520000000005
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_vcs_m6_plan01/checker.py",
+      "line": 32,
+      "function": "is_vector",
+      "primitive_calls": 18079,
+      "calls": 18079,
+      "self_s": 0.041636177,
+      "cumulative_s": 0.041636177
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/integration/replay_memory_regression.py",
+      "line": 28,
+      "function": "require",
+      "primitive_calls": 116999,
+      "calls": 116999,
+      "self_s": 0.041554566,
+      "cumulative_s": 0.041554566
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/coverage/scoped_rv64c_memory.py",
+      "line": 4,
+      "function": "decode",
+      "primitive_calls": 1899,
+      "calls": 1899,
+      "self_s": 0.031014680000000003,
+      "cumulative_s": 0.031014680000000003
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'get' of 'dict' objects>",
+      "primitive_calls": 22987,
+      "calls": 22987,
+      "self_s": 0.023897245,
+      "cumulative_s": 0.023897245
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'update' of 'set' objects>",
+      "primitive_calls": 2149,
+      "calls": 2149,
+      "self_s": 0.020922696,
+      "cumulative_s": 0.020922696
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'values' of 'dict' objects>",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.015669035,
+      "cumulative_s": 0.015669035
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'items' of 'dict' objects>",
+      "primitive_calls": 32986,
+      "calls": 32986,
+      "self_s": 0.012811696000000001,
+      "cumulative_s": 0.012811696000000001
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'encode' of 'str' objects>",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.006463057,
+      "cumulative_s": 0.006463057
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.any>",
+      "primitive_calls": 2167,
+      "calls": 2167,
+      "self_s": 0.0022605190000000003,
+      "cumulative_s": 0.0056987470000000005
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'join' of 'str' objects>",
+      "primitive_calls": 21988,
+      "calls": 21988,
+      "self_s": 0.005349483,
+      "cumulative_s": 0.005349483
+    },
+    {
+      "file": "/usr/lib64/python3.9/collections/__init__.py",
+      "line": 649,
+      "function": "update",
+      "primitive_calls": 10994,
+      "calls": 10994,
+      "self_s": 0.004473566,
+      "cumulative_s": 0.004473566
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_vcs_m6_plan01/checker.py",
+      "line": 36,
+      "function": "is_csr",
+      "primitive_calls": 10813,
+      "calls": 10813,
+      "self_s": 0.004182211,
+      "cumulative_s": 0.004182211
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 236,
+      "function": "<genexpr>",
+      "primitive_calls": 5770,
+      "calls": 5770,
+      "self_s": 0.0041225540000000005,
+      "cumulative_s": 0.0041225540000000005
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'setdefault' of 'dict' objects>",
+      "primitive_calls": 11039,
+      "calls": 11039,
+      "self_s": 0.003544287,
+      "cumulative_s": 0.003544287
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_small2_vcs_m6_plan01/checker.py",
+      "line": 56,
+      "function": "loaded_value",
+      "primitive_calls": 668,
+      "calls": 668,
+      "self_s": 0.001088908,
+      "cumulative_s": 0.001088908
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 77,
+      "function": "check_owners",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 0.000534676,
+      "cumulative_s": 0.00064928
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 115,
+      "function": "partial",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 0.000212198,
+      "cumulative_s": 0.0006311660000000001
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_mask_software02/linked_cfg_cost02.py",
+      "line": 35,
+      "function": "initial",
+      "primitive_calls": 80,
+      "calls": 80,
+      "self_s": 0.00039373500000000004,
+      "cumulative_s": 0.000467998
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 66,
+      "function": "bind",
+      "primitive_calls": 47,
+      "calls": 47,
+      "self_s": 0.000282946,
+      "cumulative_s": 0.000337108
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method from_bytes>",
+      "primitive_calls": 596,
+      "calls": 596,
+      "self_s": 0.00027311400000000003,
+      "cumulative_s": 0.00027311400000000003
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'add' of 'set' objects>",
+      "primitive_calls": 516,
+      "calls": 516,
+      "self_s": 0.000204118,
+      "cumulative_s": 0.000204118
+    },
+    {
+      "file": "/usr/lib64/python3.9/collections/__init__.py",
+      "line": 595,
+      "function": "__missing__",
+      "primitive_calls": 465,
+      "calls": 465,
+      "self_s": 0.000145541,
+      "cumulative_s": 0.000145541
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 126,
+      "function": "finish_call",
+      "primitive_calls": 5,
+      "calls": 5,
+      "self_s": 0.00013885200000000002,
+      "cumulative_s": 0.000140559
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 120,
+      "function": "<genexpr>",
+      "primitive_calls": 6,
+      "calls": 6,
+      "self_s": 9.5017e-05,
+      "cumulative_s": 9.5017e-05
+    },
+    {
+      "file": "/home/wangwy/fpga_runs/current_board_memory_candidate09/frozen/sources/verification/ara_verify/trace.py",
+      "line": 54,
+      "function": "_validate_retired_request_sequence",
+      "primitive_calls": 2,
+      "calls": 2,
+      "self_s": 7.113200000000001e-05,
+      "cumulative_s": 9.432900000000001e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'append' of 'list' objects>",
+      "primitive_calls": 285,
+      "calls": 285,
+      "self_s": 9.093000000000001e-05,
+      "cumulative_s": 9.093000000000001e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 137,
+      "function": "<dictcomp>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 1.1414000000000001e-05,
+      "cumulative_s": 8.998300000000001e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.max>",
+      "primitive_calls": 67,
+      "calls": 67,
+      "self_s": 6.7977e-05,
+      "cumulative_s": 6.7977e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 310,
+      "function": "target_required",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 1.4564000000000002e-05,
+      "cumulative_s": 3.9916e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'pop' of 'dict' objects>",
+      "primitive_calls": 87,
+      "calls": 87,
+      "self_s": 3.6444000000000005e-05,
+      "cumulative_s": 3.6444000000000005e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 79,
+      "function": "<listcomp>",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 3.6166e-05,
+      "cumulative_s": 3.6166e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'ljust' of 'bytes' objects>",
+      "primitive_calls": 80,
+      "calls": 80,
+      "self_s": 2.9966e-05,
+      "cumulative_s": 2.9966e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 161,
+      "function": "<genexpr>",
+      "primitive_calls": 48,
+      "calls": 48,
+      "self_s": 2.833e-05,
+      "cumulative_s": 2.833e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 135,
+      "function": "<listcomp>",
+      "primitive_calls": 5,
+      "calls": 5,
+      "self_s": 2.1282e-05,
+      "cumulative_s": 2.8283e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 80,
+      "function": "<genexpr>",
+      "primitive_calls": 48,
+      "calls": 48,
+      "self_s": 2.6968000000000003e-05,
+      "cumulative_s": 2.6968000000000003e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/owner_policy.py",
+      "line": 13,
+      "function": "required_target",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 8.107e-06,
+      "cumulative_s": 2.5352e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 17,
+      "function": "need",
+      "primitive_calls": 95,
+      "calls": 95,
+      "self_s": 2.2664000000000002e-05,
+      "cumulative_s": 2.2664000000000002e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 137,
+      "function": "<genexpr>",
+      "primitive_calls": 27,
+      "calls": 27,
+      "self_s": 1.9306e-05,
+      "cumulative_s": 1.9306e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/owner_policy.py",
+      "line": 5,
+      "function": "no_work_reason",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 1.7245000000000002e-05,
+      "cumulative_s": 1.7245000000000002e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'digest' of '_hashlib.HASH' objects>",
+      "primitive_calls": 2,
+      "calls": 2,
+      "self_s": 1.3887000000000001e-05,
+      "cumulative_s": 1.3887000000000001e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py",
+      "line": 139,
+      "function": "<genexpr>",
+      "primitive_calls": 20,
+      "calls": 20,
+      "self_s": 1.2664000000000001e-05,
+      "cumulative_s": 1.2664000000000001e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'update' of 'dict' objects>",
+      "primitive_calls": 4,
+      "calls": 4,
+      "self_s": 1.1956e-05,
+      "cumulative_s": 1.1956e-05
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.sorted>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 1.1018e-05,
+      "cumulative_s": 1.1018e-05
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 143,
+      "function": "<dictcomp>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 8.957e-06,
+      "cumulative_s": 8.957e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 27,
+      "function": "small",
+      "primitive_calls": 3,
+      "calls": 3,
+      "self_s": 7.653000000000001e-06,
+      "cumulative_s": 8.63e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic_performance01/profile_short.py",
+      "line": 50,
+      "function": "__iter__",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 7.469000000000001e-06,
+      "cumulative_s": 8.373000000000001e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 140,
+      "function": "<dictcomp>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 6.074000000000001e-06,
+      "cumulative_s": 6.074000000000001e-06
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'hexdigest' of '_hashlib.HASH' objects>",
+      "primitive_calls": 2,
+      "calls": 2,
+      "self_s": 5.993e-06,
+      "cumulative_s": 5.993e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 163,
+      "function": "<dictcomp>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 4.842e-06,
+      "cumulative_s": 4.842e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 155,
+      "function": "<genexpr>",
+      "primitive_calls": 6,
+      "calls": 6,
+      "self_s": 3.2790000000000003e-06,
+      "cumulative_s": 4.401e-06
+    },
+    {
+      "file": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py",
+      "line": 154,
+      "function": "<dictcomp>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 2.7210000000000003e-06,
+      "cumulative_s": 3.484e-06
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<method 'disable' of '_lsprof.Profiler' objects>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 1.368e-06,
+      "cumulative_s": 1.368e-06
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "function": "<built-in method builtins.iter>",
+      "primitive_calls": 1,
+      "calls": 1,
+      "self_s": 9.04e-07,
+      "cumulative_s": 9.04e-07
+    }
+  ],
+  "source_pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic_performance01/profile_short.py": "1135655a3da5731b224dd4f6b31de0100a26812f8efcb9bc353e6777854971a0",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/diagnostic01/diagnostic.py": "253a2075f03091a783fd7f4335f90707186e4ae644450a11a639244f0d05c892",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/checker.py": "76ea70dc65aa74c3b0a117283ebe74b2a844211eae08689df7d10a8a404c4d85",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/arithmetic_restart_original/full_e16_m8_sentinel_vcs_m9_plan01/host_records.py": "82db70e4e3c9bea4fda526a41b9a7889cae2286c479a99fb430a7585c3ec742a"
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "source_bytes_recovered": false,
+  "successor_sha256": "ab82b4891f9e926e37ef4d9f10fc44b0f953136deef2173b84427c0447e81006",
+  "expected_original_c_sha256": "b2c21801fc8186d30fbe67d23f31bf5fb89dde1f838314e93c1224b6fdc58c44",
+  "reconstructed_c_sha256": "7483f9dfde7012f7b800314fe1765f8cee9836fbcfbdc16fc641554397884e91",
+  "results": [
+    {
+      "name": "rvv_matrix_e8_mf8",
+      "original_sha256": "34ee36018d2a19687b23552a822b77c31cd256adb9401f85610e06d4204e68d8",
+      "reconstructed_sha256": "34ee36018d2a19687b23552a822b77c31cd256adb9401f85610e06d4204e68d8",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_mf4",
+      "original_sha256": "da5d08b60f2b68567aea7254fc3c3ab1ce8c14369e5f473b384fa91248fce823",
+      "reconstructed_sha256": "da5d08b60f2b68567aea7254fc3c3ab1ce8c14369e5f473b384fa91248fce823",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_mf2",
+      "original_sha256": "2e16fe0a09238c14efb89b28326190c15225b10680138e7339f07c8541f38093",
+      "reconstructed_sha256": "2e16fe0a09238c14efb89b28326190c15225b10680138e7339f07c8541f38093",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_m1",
+      "original_sha256": "199a69e4394959e73f0b7458359c06f0e39a09f4c621028eb356723684dd1f9a",
+      "reconstructed_sha256": "199a69e4394959e73f0b7458359c06f0e39a09f4c621028eb356723684dd1f9a",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_m2",
+      "original_sha256": "fe193c889801184a3144895f4817f0e9e6a9dfffae3144f6bf5bbcd311a1c0c6",
+      "reconstructed_sha256": "fe193c889801184a3144895f4817f0e9e6a9dfffae3144f6bf5bbcd311a1c0c6",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_m4",
+      "original_sha256": "5b77ae16b4316cb33e507d488103b9a31a12db6e371e60cec95092858f382ad8",
+      "reconstructed_sha256": "5b77ae16b4316cb33e507d488103b9a31a12db6e371e60cec95092858f382ad8",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e8_m8",
+      "original_sha256": "ee9874270f50735cb04da599bb477d3d9da2bbeba0e77cbec9e1eb1ea0f8310f",
+      "reconstructed_sha256": "ee9874270f50735cb04da599bb477d3d9da2bbeba0e77cbec9e1eb1ea0f8310f",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_mf4",
+      "original_sha256": "e538572bcf13bd7338647f5a7e5b7bfc8627f1ee04598d8fb0283a76926b998c",
+      "reconstructed_sha256": "e538572bcf13bd7338647f5a7e5b7bfc8627f1ee04598d8fb0283a76926b998c",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_mf2",
+      "original_sha256": "3c15efe93cf3a1cc23e76682afb4990ed23098410739f7b1be2dbc59ca9c1b7a",
+      "reconstructed_sha256": "3c15efe93cf3a1cc23e76682afb4990ed23098410739f7b1be2dbc59ca9c1b7a",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_m1",
+      "original_sha256": "c9d4a166a1618a221ee99ea0325a83ee34bd2ee4d422574c31a90d182783bc2f",
+      "reconstructed_sha256": "c9d4a166a1618a221ee99ea0325a83ee34bd2ee4d422574c31a90d182783bc2f",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_m2",
+      "original_sha256": "b115b75ea3c8e412af0bdff3e45cfbcfb9fdc328c71ce1c41f81287480ae53b2",
+      "reconstructed_sha256": "b115b75ea3c8e412af0bdff3e45cfbcfb9fdc328c71ce1c41f81287480ae53b2",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_m4",
+      "original_sha256": "749f2add1cece8848f89436f905b5bfc5ab2b5593c0ab16857c49c6b8bf20782",
+      "reconstructed_sha256": "749f2add1cece8848f89436f905b5bfc5ab2b5593c0ab16857c49c6b8bf20782",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e16_m8",
+      "original_sha256": "68fc999069ab1f830f6dc4c572f1ebe851c8511b412aa355cd5e0fabe9a4ef7d",
+      "reconstructed_sha256": "68fc999069ab1f830f6dc4c572f1ebe851c8511b412aa355cd5e0fabe9a4ef7d",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e32_mf2",
+      "original_sha256": "eb5640c9d6e86ac40fab372d900b1d54048ebd54f4d8137a92efa93a0fb45c49",
+      "reconstructed_sha256": "eb5640c9d6e86ac40fab372d900b1d54048ebd54f4d8137a92efa93a0fb45c49",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e32_m1",
+      "original_sha256": "0c11f7a2d6bcf0fa0ee27e5f4eb3f9d1fc567d29ad638c5e2c9675d0dc2785e4",
+      "reconstructed_sha256": "0c11f7a2d6bcf0fa0ee27e5f4eb3f9d1fc567d29ad638c5e2c9675d0dc2785e4",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e32_m2",
+      "original_sha256": "978310da20bf437709dae962164491c1f1e8bea6acb9b62ba7a0dbe01c621c3c",
+      "reconstructed_sha256": "978310da20bf437709dae962164491c1f1e8bea6acb9b62ba7a0dbe01c621c3c",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e32_m4",
+      "original_sha256": "4e537be1270d607f847b8c7d3d4e7be76b9b7408d184effc33a9c066cb811cf9",
+      "reconstructed_sha256": "4e537be1270d607f847b8c7d3d4e7be76b9b7408d184effc33a9c066cb811cf9",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e32_m8",
+      "original_sha256": "ab307903f1da301801731456464a9358f5f85a0bb4cdcff1a7657f88a833f8f2",
+      "reconstructed_sha256": "ab307903f1da301801731456464a9358f5f85a0bb4cdcff1a7657f88a833f8f2",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e64_m1",
+      "original_sha256": "5c15d5227aacb7ccd7115f7f2379081f21d33c928358055caebe4dd480ceebe2",
+      "reconstructed_sha256": "5c15d5227aacb7ccd7115f7f2379081f21d33c928358055caebe4dd480ceebe2",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e64_m2",
+      "original_sha256": "1ac38feec918ada897841aef50bc5edc0b1d713f39b2193d89157f7d31a2e436",
+      "reconstructed_sha256": "1ac38feec918ada897841aef50bc5edc0b1d713f39b2193d89157f7d31a2e436",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e64_m4",
+      "original_sha256": "c8e9bad5a0247cb63c9b908a316b5b0f775b242984e187d66f1aa7b3137720f6",
+      "reconstructed_sha256": "c8e9bad5a0247cb63c9b908a316b5b0f775b242984e187d66f1aa7b3137720f6",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    },
+    {
+      "name": "rvv_matrix_e64_m8",
+      "original_sha256": "85a3dec84feba1068e1e27033f1f475c91df66dc88192dbaecdf44bf6b4df60b",
+      "reconstructed_sha256": "85a3dec84feba1068e1e27033f1f475c91df66dc88192dbaecdf44bf6b4df60b",
+      "exact_elf_equal": true,
+      "disassembly_equal": true
+    }
+  ]
+}

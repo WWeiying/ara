@@ -1,0 +1,13 @@
+# Diagnostic02 Exact Entry
+
+NO_BLOCKER_POSTPROCESS_DIAGNOSTIC02_ONCE. ENTRY SHA256 `f78626ca0bf1eb31e6a90f2c90fce0154a41ca89e88d594fe48314103dd3fb71`,80 fresh matching pins. Under pinned parent's conditional authorization, Zeno may perform exactly one closed296607084B CSV diagnostic, hard1800s, without another parent approval. No DUT/reference execution, e8 runtime permission, timeout extension of VCS, or automatic retry.
+
+Reviewed diagnostic_scan.py/run_once.py/test_budget.py, parent fields, ENTRY pins and actual Host wait0/0.316812s. Eight boundary tests cover warmup exclusion, two excessive estimates, reset after good estimate, valid EOF, range errors, after-digest/before-fetch placement and bad tail. No tests/raw were rerun by reviewer.
+
+Actual consumer imports the exact sealed verification_performance02 sidecar and original diagnostic01. The previously accepted34 checks and old/new complete state/digest/owner equivalence therefore remain applicable to the same fast consumer; new code changes only scan orchestration/budget/progress. No regenerated checker or new scalar oracle substitutes for those artifacts. Pinned /usr/bin/python3 resolves CPython3.9, enforced by executable digest and in-child version assertion.
+
+One binary open retains original strict framing, exact field/type/order delivery, dual digest and same-pass raw SHA. Completed calls still require full fresh/oracle/ID/gold/vstart and necessary owners; bad earlier rows are not EOF waivers. At EOF, original prefix.partial is diagnostic only, never whole4095 acceptance. Post stat/byte count and all80 pins must match before publishing result.
+
+BoundaryReader runs checkpoints after the transport's after-digest and before fetching another record. Every65536 consumed rows journals and fsyncs progress. First eligible point at >=32MiB establishes baseline; subsequent rate estimates exclude warmup from rate but include elapsed startup in projected finish. Two consecutive projected totals >1650s stop; a good estimate resets the streak. EOF does not trigger a forecast-only rejection. Internal1790 guard checks each4096 rows; outer child1800 bound kills/waits on expiry and saves actual numeric receipt. Partial/early-stop evidence identifies only bytes read and never claims a full-file hash or EOF.
+
+Exclusive run01/command/log/binding files enforce the sole attempt. Failure preserves compact diagnostic state, not architectural acceptance. Existing diagnostic01 deadline failure, original DUT timeout/service1/NOT_PASS and18/22 remain unchanged. After completion, independent review will use small receipts/results/progress and pins, not rescan raw. No forecast or short benchmark guarantees completion.

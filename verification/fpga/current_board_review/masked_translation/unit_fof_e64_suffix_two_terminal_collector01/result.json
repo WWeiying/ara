@@ -1,0 +1,385 @@
+{
+  "status": "PASS_INDEPENDENT_M9_UNIT_FOF_TWO_TERMINAL_NOT_LINUX",
+  "accepted": true,
+  "CSV_semantic_reparsed": false,
+  "new_DUT_or_reference": false,
+  "service_exit": {
+    "EXIT_CODE": "exited",
+    "EXIT_STATUS": "0",
+    "SERVICE_RESULT": "success",
+    "recorded_unix_s": 1791959361.476322
+  },
+  "case_results": [
+    {
+      "status": "PASS_CASE_METADATA_AND_PINS_NOT_CSV_REPARSE",
+      "name": "unit_fof_e64_scenario1",
+      "child_returncode": 0,
+      "elapsed_s": 279.30597507115453,
+      "generic": {
+        "rows": 166878,
+        "first_cycle": 82,
+        "last_cycle": 241953,
+        "retire_count": 166774,
+        "vector_retire_count": 32,
+        "cvx_request_count": 32,
+        "cvx_response_count": 32,
+        "cvx_max_inflight": 1,
+        "cvx_replay_count": 0,
+        "arch_request_replay_count": 0,
+        "cvx_exception_count": 0,
+        "architecture_request_count": 32,
+        "backend_uop_alloc_count": 4,
+        "backend_uop_done_count": 4,
+        "backend_uop_max_inflight": 3
+      },
+      "checks": 5481,
+      "owners": [
+        {
+          "seq": 10,
+          "trans_id": 2,
+          "insn": 33946631,
+          "cycle": 138940,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 138941
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 138941,
+              "cycle": 138971
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147485948,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138951,
+          "response_cycle": 138951,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485948,
+            "insn": 33946631,
+            "cycle": 138953,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 3,
+          "insn": 45481991,
+          "cycle": 138952,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 138953
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 138953,
+              "cycle": 138973
+            }
+          ],
+          "site": "mask",
+          "pc": 2147485952,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138958,
+          "response_cycle": 138958,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485952,
+            "insn": 45481991,
+            "cycle": 138960,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 4,
+          "insn": 359431,
+          "cycle": 138959,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 138960
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 138960,
+              "cycle": 139055
+            }
+          ],
+          "site": "target",
+          "pc": 2147485956,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 139051,
+          "response_cycle": 139051,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485956,
+            "insn": 359431,
+            "cycle": 139053,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 2,
+          "insn": 33946663,
+          "cycle": 139062,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 139063
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 139063,
+              "cycle": 139125
+            }
+          ],
+          "site": "result",
+          "pc": 2147485978,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 139063,
+          "response_cycle": 139125,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485978,
+            "insn": 33946663,
+            "cycle": 139127,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        }
+      ],
+      "output_words": 130,
+      "original_result_elements": 8,
+      "original_guards": 2,
+      "undefined_suffix_waivers": 0,
+      "producer_checker_execution": "in-process successful return; no separate numeric wait exists",
+      "CSV_semantic_reparsed": false,
+      "raw_logs_vetoed": 2
+    },
+    {
+      "status": "PASS_CASE_METADATA_AND_PINS_NOT_CSV_REPARSE",
+      "name": "unit_fof_e64_scenario2",
+      "child_returncode": 0,
+      "elapsed_s": 265.00103827705607,
+      "generic": {
+        "rows": 166878,
+        "first_cycle": 82,
+        "last_cycle": 241954,
+        "retire_count": 166774,
+        "vector_retire_count": 32,
+        "cvx_request_count": 32,
+        "cvx_response_count": 32,
+        "cvx_max_inflight": 1,
+        "cvx_replay_count": 0,
+        "arch_request_replay_count": 0,
+        "cvx_exception_count": 0,
+        "architecture_request_count": 32,
+        "backend_uop_alloc_count": 4,
+        "backend_uop_done_count": 4,
+        "backend_uop_max_inflight": 3
+      },
+      "checks": 5481,
+      "owners": [
+        {
+          "seq": 10,
+          "trans_id": 2,
+          "insn": 33946631,
+          "cycle": 138951,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 138952
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 138952,
+              "cycle": 138983
+            }
+          ],
+          "site": "old_vd",
+          "pc": 2147485988,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138962,
+          "response_cycle": 138962,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485988,
+            "insn": 33946631,
+            "cycle": 138964,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 11,
+          "trans_id": 3,
+          "insn": 45481991,
+          "cycle": 138963,
+          "allocations": [
+            {
+              "vid": 1,
+              "cycle": 138964
+            }
+          ],
+          "completions": [
+            {
+              "vid": 1,
+              "allocated": 138964,
+              "cycle": 138985
+            }
+          ],
+          "site": "mask",
+          "pc": 2147485992,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 138969,
+          "response_cycle": 138969,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485992,
+            "insn": 45481991,
+            "cycle": 138971,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 12,
+          "trans_id": 4,
+          "insn": 17136647,
+          "cycle": 138970,
+          "allocations": [
+            {
+              "vid": 2,
+              "cycle": 138971
+            }
+          ],
+          "completions": [
+            {
+              "vid": 2,
+              "allocated": 138971,
+              "cycle": 139067
+            }
+          ],
+          "site": "target",
+          "pc": 2147485996,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 139063,
+          "response_cycle": 139063,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147485996,
+            "insn": 17136647,
+            "cycle": 139065,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        },
+        {
+          "seq": 16,
+          "trans_id": 2,
+          "insn": 33946663,
+          "cycle": 139074,
+          "allocations": [
+            {
+              "vid": 0,
+              "cycle": 139075
+            }
+          ],
+          "completions": [
+            {
+              "vid": 0,
+              "allocated": 139075,
+              "cycle": 139137
+            }
+          ],
+          "site": "result",
+          "pc": 2147486018,
+          "vl": 8,
+          "vtype": 24,
+          "vstart": 0,
+          "request_cycle": 139075,
+          "response_cycle": 139137,
+          "trap": 0,
+          "retire_context": {
+            "pc": 2147486018,
+            "insn": 33946663,
+            "cycle": 139139,
+            "vl": 8,
+            "vtype": 24,
+            "vstart": 0
+          }
+        }
+      ],
+      "output_words": 130,
+      "original_result_elements": 8,
+      "original_guards": 2,
+      "undefined_suffix_waivers": 0,
+      "producer_checker_execution": "in-process successful return; no separate numeric wait exists",
+      "CSV_semantic_reparsed": false,
+      "raw_logs_vetoed": 2
+    }
+  ],
+  "independent_case_audit_returncodes": [
+    0,
+    0
+  ],
+  "producer_numeric_child_returncodes": [
+    0,
+    0
+  ],
+  "producer_checker_execution": "Both in-process checks returned PASS; no separate wait status exists",
+  "original_scope": "Exactly two source-derived e64 masked suffix singles; not Linux/full parent",
+  "input_pin_count": 759,
+  "output_pin_count": 29,
+  "unique_pin_count": 790,
+  "pins_pre_post_unchanged": true,
+  "CSV_hash_only": true,
+  "checks": 10962,
+  "rows": 333756,
+  "original_members": 2,
+  "memory_owners": 8,
+  "raw_logs_checked": 4,
+  "plan_sha256": "3bc80c42d8e6bf7f722d81184ef8fc4bcac099e2518547292f5172665324e949",
+  "image_sha256": "48d9e4d2acb1fa239e05549fe695caad36af34c1f02aaffe041bb8261e302b5a",
+  "complete_sha256": "0c636fd1b7b14a367d36ab66f41fc7a5a6e7b65f13f988b44ff4648d6cf1efc0",
+  "verified_pins_sha256": "09706585a3af5291aed561f52f65fc2c33791b994578253eb76ccf6a94de8ea8",
+  "audit_elapsed_s": 4.873060625046492
+}

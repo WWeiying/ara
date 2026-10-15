@@ -1,0 +1,15 @@
+{
+  "name": "normal",
+  "kind": "normal",
+  "vl": 4,
+  "variant": "m6",
+  "returncode": 0,
+  "elapsed_s": 10.64993990631774,
+  "expected_marker": "NORMAL_PATH_W_B_COMPLETE_NOT_SOC_ACCEPTANCE",
+  "marker_count": 1,
+  "observations": [
+    "OBSERVATION normal_masked_vl4 accepted=1 AW=4 W=4 B=4 early=0 early_cycle=-1 good_pendingB0=0 premature_pops=0 premature_done=0 mask_pops=1 done_cycle=56 last_pop_cycle=44 global_idle=1",
+    "NORMAL_ACCEPTANCE AW=4 W=4 B=4 strb=ff/ff00/ff0000/ff000000 data=4x123456789abcdef0 W_cycle=41 B_cycle=55 last_pop=44 done=56 samecycle_pops=1 pendingB_cycles=10 local_spill_empty=1"
+  ],
+  "full_SOC_acceptance": false
+}

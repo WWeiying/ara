@@ -1,0 +1,74 @@
+{
+  "status": "NO_BLOCKER_STATIC_SOURCE_MODEL_PLAN_ONLY",
+  "analysis_sha256": "e58ede774e2fca95d78d213d879c4a530eb7215442153500740a70d1629c64d7",
+  "plan_sha256": "428dba919a39de0ef83f637709b7fd0cff21414a8dd4bb5230fcb4e0ee5e9eae",
+  "model_sha256": "a5e776b86ef28738821ca8e3f6fc1676dde631348a161e7b3593362b391d0874",
+  "fresh_source_pins": 11,
+  "pin_drift": [],
+  "scope": {
+    "SEW": 64,
+    "LMUL": "m2",
+    "CAP": 32,
+    "vtype": 25,
+    "calls": 5985,
+    "FP_calls": 1890,
+    "results": 191520,
+    "guards": 11970,
+    "helper_instructions": 77805,
+    "static_helper_instructions": 458,
+    "group_bytes": 256,
+    "physical_registers": 2,
+    "output_bytes": 272,
+    "whole_u64_reads_each": 34,
+    "total_reads": 203490,
+    "tail_block_valid_bytes": 16,
+    "physical_mask_bytes": 128,
+    "actual_vlm_bytes": 4,
+    "guard_bits": "000000000000005b"
+  },
+  "provenance": {
+    "original_ELF_sha256": "1ac38feec918ada897841aef50bc5edc0b1d713f39b2193d89157f7d31a2e436",
+    "FP_expected_bytes": 5120,
+    "FP_expected_ELF_occurrences": 1,
+    "FP_expected_vaddr": "0x11560",
+    "FP_input_ELF_occurrences": 5,
+    "FP_input_code_bound_vaddr": "0x11520",
+    "helpers_fresh_byte_hashes": 35,
+    "original_C_bytes_recovered": false,
+    "binary_equivalent_reconstruction": true
+  },
+  "FP_refresh": {
+    "calls": 1890,
+    "words_per_call": 64,
+    "stores": 120960,
+    "preserve_a_then_b_per_element": true,
+    "preserve_next_seed_RNG": true,
+    "fflags_acceptance_claim": false
+  },
+  "ROM_bytes_proposed": 147466,
+  "cost": {
+    "under_3M_proved": false,
+    "illustrative_range": [
+      2998560,
+      3297810
+    ],
+    "not_measurement": true
+  },
+  "findings": [],
+  "pending": [
+    "Parent authorization before any Host/compile/artifact stage",
+    "Concrete port implementation and actual scalar lowering/helper/no-extra-RVV/map proof",
+    "Bounded reference cost eligibility not established by this static model"
+  ],
+  "Host_authorized": false,
+  "compile_authorized": false,
+  "reference_authorized": false,
+  "DUT_authorized": false,
+  "reviewer_executions": {
+    "model": 0,
+    "Host": 0,
+    "compile": 0,
+    "reference": 0,
+    "DUT": 0
+  }
+}

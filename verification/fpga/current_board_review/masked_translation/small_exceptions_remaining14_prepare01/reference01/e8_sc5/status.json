@@ -1,0 +1,86 @@
+{
+  "status": "REFERENCE_CHECKER_PASS_NOT_DUT",
+  "commits": 169546,
+  "firmware_commits": 169541,
+  "sew": 8,
+  "scenario": 5,
+  "boot_commits": 5,
+  "firmware_to_htif": 164845,
+  "scalar_checks": 5481,
+  "checkpoints": [
+    {
+      "phase": 0,
+      "bytes": 20930,
+      "checks": 2726,
+      "commit": 94483
+    },
+    {
+      "phase": 1,
+      "bytes": 20922,
+      "checks": 5467,
+      "commit": 164366
+    }
+  ],
+  "actions": [
+    "checkpoint0",
+    "enter_s",
+    "helper",
+    "younger",
+    "handler",
+    "return_m",
+    "checkpoint1"
+  ],
+  "targets": [
+    {
+      "commit": 94515,
+      "pc": "0x800008f4",
+      "addresses": [],
+      "raw_vector_commit": " e8 m1 l8 c8_vstart 0x0000000000000000"
+    }
+  ],
+  "traps": [
+    [
+      "trap_supervisor_ecall",
+      2147485872
+    ]
+  ],
+  "actual_handler_csrs": [
+    {
+      "0": 9,
+      "1": 2147485872,
+      "2": 0,
+      "3": 9223372079804460544,
+      "4": 9223372036855300100,
+      "5": 8,
+      "6": 0,
+      "7": 0,
+      "8": 117,
+      "9": 5
+    }
+  ],
+  "original_helper_instructions": 11,
+  "helper_entries": 1,
+  "capacity_instructions": 3,
+  "target_attempts": 1,
+  "output_allocation_elements": 130,
+  "output_checked_elements": 130,
+  "original_result_elements": 8,
+  "original_guards": [
+    0,
+    9
+  ],
+  "mask_bytes": 16,
+  "allowed_undefined_output_indices": [],
+  "full_data_bytes": 8192,
+  "page_table_bytes": 12288,
+  "htif": [
+    1
+  ],
+  "postexit_park": 4696,
+  "linux_signal_equivalence": false,
+  "parent8_ELFs_accepted": false,
+  "raw_sha256": "9979eecbd5f0a0f32d444c5745ee10af2e3a02e7132ba9021dbd9c75cc49f30c",
+  "elf_sha256": "4ae4557ae2b711053946b136bb27b520cef73e9b5871d6b61d9bdc85141785ae",
+  "isa": "rv64gcv_zfh_zvfh_zvl1024b",
+  "parser_elapsed_s": 2.719047601800412
+}

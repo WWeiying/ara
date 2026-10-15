@@ -1,0 +1,96 @@
+{
+  "stage": "smokes",
+  "passed": true,
+  "results": [
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vadd",
+      "elapsed_s": 78.09295576578006,
+      "kind": "app",
+      "name": "rvv_vadd",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vslideup",
+      "elapsed_s": 66.64909249125049,
+      "kind": "app",
+      "name": "rvv_vslideup",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vslidedown",
+      "elapsed_s": 56.276073484215885,
+      "kind": "app",
+      "name": "rvv_vslidedown",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vrgather",
+      "elapsed_s": 39.52951295673847,
+      "kind": "app",
+      "name": "rvv_vrgather",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vmseq",
+      "elapsed_s": 81.69223242392763,
+      "kind": "app",
+      "name": "rvv_vmseq",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vfredosum",
+      "elapsed_s": 63.907414227724075,
+      "kind": "app",
+      "name": "rvv_vfredosum",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/rvv_vfwredosum",
+      "elapsed_s": 39.58794349711388,
+      "kind": "app",
+      "name": "rvv_vfwredosum",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/qbs_control_smoke",
+      "elapsed_s": 14.352991515770555,
+      "kind": "app",
+      "name": "qbs_control_smoke",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/akv_context_smoke",
+      "elapsed_s": 33.614023853093386,
+      "kind": "app",
+      "name": "akv_context_smoke",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    },
+    {
+      "artifact_dir": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/comparison_alias_original/candidate04_01/smokes/replay/tests/qbs_akv_handoff_smoke",
+      "elapsed_s": 20.46663597971201,
+      "kind": "app",
+      "name": "qbs_akv_handoff_smoke",
+      "reason": "",
+      "returncode": 0,
+      "status": "PASS"
+    }
+  ]
+}

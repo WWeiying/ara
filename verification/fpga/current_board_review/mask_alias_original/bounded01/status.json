@@ -1,0 +1,68 @@
+{
+  "status": "BOUNDED_PARTITIONS_READY_NOT_DUT",
+  "results": [
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_prefix",
+      "configurations": 98,
+      "status": "PASS",
+      "instructions_to_replay_exit": 1821876,
+      "elapsed_s": 0.3173397039063275,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "fc5a82376012c03feb76a2e81868bf8f0b1fd7af31e4dc77b2b402797b03abde",
+      "log_sha256": "e08e8573823a215686a919eb1ffdf14d204011383c755dd039d8e2fffe89871b"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m4_tuple",
+      "configurations": 1,
+      "status": "PASS",
+      "instructions_to_replay_exit": 33593,
+      "elapsed_s": 0.03427624423056841,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "86da693dab86d12fe632d1454c744a1709a3f19b29753e68ac52df678710c59d",
+      "log_sha256": "1f79cbad9b9ed4550b2d44881792275f49939d4fe50fed9af59db2f6bfbd34c9"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_prefix",
+      "configurations": 66,
+      "status": "PASS",
+      "instructions_to_replay_exit": 2183688,
+      "elapsed_s": 0.36775953881442547,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "b41773e463c0292dab984bc682eb43a193f8e02cc9be5f25f3e44d79cc004974",
+      "log_sha256": "310fbfa1f61a2c29f87f7400edd6c2831a6641be7c93b0d83279cb9b232c9c86"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e8_m8_tuple",
+      "configurations": 1,
+      "status": "PASS",
+      "instructions_to_replay_exit": 57275,
+      "elapsed_s": 0.03446536371484399,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "1039c8b2513726fb40c195202e97241ddecb1bcd281203100d89e669bebe97ec",
+      "log_sha256": "6e6f634ba2ee98d3c07fff48d340401098eb28f98a4f762680092c02c7ba9d7b"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_prefix",
+      "configurations": 98,
+      "status": "PASS",
+      "instructions_to_replay_exit": 1872552,
+      "elapsed_s": 0.3169706170447171,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "9df3c2e4dd58c3d5af7ae0daec1a0d9dd905940caca1b6c205549e31ad52d71b",
+      "log_sha256": "e98e058e0b5ea8bde5273bc0443eef5909678a395ba2e90e12d36e7c6e1dfa86"
+    },
+    {
+      "name": "rvv_masks_alias_restart_e16_m8_tuple",
+      "configurations": 1,
+      "status": "PASS",
+      "instructions_to_replay_exit": 37161,
+      "elapsed_s": 0.03452458092942834,
+      "isa": "rv64gcv_zvl1024b",
+      "elf_sha256": "aa369cf91ea7d74c52dcc43e8958379741680119fce1401ebae2b103e151b66f",
+      "log_sha256": "c6825f47755904bcaec403543b31a119dac8b66238de3cc65d887bc31e818e87"
+    }
+  ],
+  "soc_programs": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/mask_alias_original/bounded01/soc/programs.json",
+  "VCS_launched": false,
+  "RTL_modified": false
+}

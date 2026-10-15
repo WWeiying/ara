@@ -1,0 +1,11 @@
+{
+  "audit_sha256": "855d1117028bba88dd19f59b998ce004c3813e42967518253da8a828a6f0b2e8",
+  "errors": 0,
+  "failures": 0,
+  "generic_validator_sha256": "b5751d25426ba78893c52359519d3b6f1df6bc9c77eb341c91cdca1ff75b506a",
+  "log_sha256": "3a178efa2bc8e17ef212bf2e055e03388751d1058b36524d96ddfd5f96a935e9",
+  "status": "HOST_PASS",
+  "synthetic_only": true,
+  "tests": 34,
+  "tests_sha256": "22476d8f8b0f965616db61e5b9d5e5d408397979a36bba2700cfe4b7d6682dc3"
+}

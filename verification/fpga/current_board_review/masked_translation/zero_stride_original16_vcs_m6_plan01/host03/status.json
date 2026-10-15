@@ -1,0 +1,1335 @@
+{
+  "status": "PASS_HOST_ONLY_NOT_DUT",
+  "synthetic": true,
+  "rows": 396179,
+  "positive": {
+    "status": "PASS_ORIGINAL16_FULL_ORACLE",
+    "rows": 396179,
+    "retired": 396039,
+    "last_cycle": 792438,
+    "cases": 16,
+    "checks": 19212,
+    "outputs": 1024,
+    "guards": 32,
+    "memory_words": 16384,
+    "returned_vstart": 16,
+    "checkpoints": [
+      {
+        "case": 0,
+        "phase": 0,
+        "cycle": 28866,
+        "checks": 4,
+        "checked_bytes": 38232,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 0,
+        "phase": 1,
+        "cycle": 29374,
+        "checks": 33,
+        "checked_bytes": 37712,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 0,
+        "phase": 2,
+        "cycle": 29392,
+        "checks": 33,
+        "checked_bytes": 37712,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 0,
+        "phase": 3,
+        "cycle": 29874,
+        "checks": 56,
+        "checked_bytes": 36680,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 0,
+        "phase": 4,
+        "cycle": 48346,
+        "checks": 1210,
+        "checked_bytes": 37704,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 1,
+        "phase": 0,
+        "cycle": 77016,
+        "checks": 1210,
+        "checked_bytes": 38216,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 1,
+        "phase": 1,
+        "cycle": 77540,
+        "checks": 1240,
+        "checked_bytes": 37704,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 1,
+        "phase": 2,
+        "cycle": 77558,
+        "checks": 1240,
+        "checked_bytes": 37704,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 1,
+        "phase": 3,
+        "cycle": 78040,
+        "checks": 1263,
+        "checked_bytes": 36672,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 1,
+        "phase": 4,
+        "cycle": 96512,
+        "checks": 2417,
+        "checked_bytes": 37696,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 2,
+        "phase": 0,
+        "cycle": 125170,
+        "checks": 2417,
+        "checked_bytes": 38200,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 2,
+        "phase": 1,
+        "cycle": 125710,
+        "checks": 2448,
+        "checked_bytes": 37696,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 2,
+        "phase": 2,
+        "cycle": 125728,
+        "checks": 2448,
+        "checked_bytes": 37696,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 2,
+        "phase": 3,
+        "cycle": 126210,
+        "checks": 2471,
+        "checked_bytes": 36664,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 2,
+        "phase": 4,
+        "cycle": 144682,
+        "checks": 3625,
+        "checked_bytes": 37688,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 3,
+        "phase": 0,
+        "cycle": 173328,
+        "checks": 3625,
+        "checked_bytes": 38184,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 3,
+        "phase": 3,
+        "cycle": 173814,
+        "checks": 3648,
+        "checked_bytes": 37152,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 3,
+        "phase": 4,
+        "cycle": 192296,
+        "checks": 4802,
+        "checked_bytes": 38176,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 4,
+        "phase": 0,
+        "cycle": 220936,
+        "checks": 4802,
+        "checked_bytes": 38176,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 4,
+        "phase": 1,
+        "cycle": 221444,
+        "checks": 4831,
+        "checked_bytes": 37648,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 4,
+        "phase": 2,
+        "cycle": 221462,
+        "checks": 4831,
+        "checked_bytes": 37648,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 4,
+        "phase": 3,
+        "cycle": 221944,
+        "checks": 4854,
+        "checked_bytes": 36616,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 4,
+        "phase": 4,
+        "cycle": 240416,
+        "checks": 6008,
+        "checked_bytes": 37648,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 5,
+        "phase": 0,
+        "cycle": 269044,
+        "checks": 6008,
+        "checked_bytes": 38160,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 5,
+        "phase": 1,
+        "cycle": 269568,
+        "checks": 6038,
+        "checked_bytes": 37640,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 5,
+        "phase": 2,
+        "cycle": 269586,
+        "checks": 6038,
+        "checked_bytes": 37640,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 5,
+        "phase": 3,
+        "cycle": 270068,
+        "checks": 6061,
+        "checked_bytes": 36608,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 5,
+        "phase": 4,
+        "cycle": 288540,
+        "checks": 7215,
+        "checked_bytes": 37640,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 6,
+        "phase": 0,
+        "cycle": 317156,
+        "checks": 7215,
+        "checked_bytes": 38144,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 6,
+        "phase": 1,
+        "cycle": 317696,
+        "checks": 7246,
+        "checked_bytes": 37632,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 6,
+        "phase": 2,
+        "cycle": 317714,
+        "checks": 7246,
+        "checked_bytes": 37632,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 6,
+        "phase": 3,
+        "cycle": 318196,
+        "checks": 7269,
+        "checked_bytes": 36600,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 6,
+        "phase": 4,
+        "cycle": 336668,
+        "checks": 8423,
+        "checked_bytes": 37632,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 7,
+        "phase": 0,
+        "cycle": 365272,
+        "checks": 8423,
+        "checked_bytes": 38128,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 7,
+        "phase": 3,
+        "cycle": 365758,
+        "checks": 8446,
+        "checked_bytes": 37088,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 7,
+        "phase": 4,
+        "cycle": 384240,
+        "checks": 9600,
+        "checked_bytes": 38120,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 8,
+        "phase": 0,
+        "cycle": 412838,
+        "checks": 9600,
+        "checked_bytes": 38120,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 8,
+        "phase": 1,
+        "cycle": 413346,
+        "checks": 9629,
+        "checked_bytes": 37600,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 8,
+        "phase": 2,
+        "cycle": 416440,
+        "checks": 9629,
+        "checked_bytes": 37600,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 8,
+        "phase": 3,
+        "cycle": 416922,
+        "checks": 9652,
+        "checked_bytes": 36568,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 8,
+        "phase": 4,
+        "cycle": 435394,
+        "checks": 10806,
+        "checked_bytes": 37592,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 9,
+        "phase": 0,
+        "cycle": 463980,
+        "checks": 10806,
+        "checked_bytes": 38104,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 9,
+        "phase": 1,
+        "cycle": 464504,
+        "checks": 10836,
+        "checked_bytes": 37592,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 9,
+        "phase": 2,
+        "cycle": 467598,
+        "checks": 10836,
+        "checked_bytes": 37592,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 9,
+        "phase": 3,
+        "cycle": 468080,
+        "checks": 10859,
+        "checked_bytes": 36560,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 9,
+        "phase": 4,
+        "cycle": 486552,
+        "checks": 12013,
+        "checked_bytes": 37584,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 10,
+        "phase": 0,
+        "cycle": 515126,
+        "checks": 12013,
+        "checked_bytes": 38088,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 10,
+        "phase": 1,
+        "cycle": 515666,
+        "checks": 12044,
+        "checked_bytes": 37584,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 10,
+        "phase": 2,
+        "cycle": 518760,
+        "checks": 12044,
+        "checked_bytes": 37584,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 10,
+        "phase": 3,
+        "cycle": 519242,
+        "checks": 12067,
+        "checked_bytes": 36552,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 10,
+        "phase": 4,
+        "cycle": 537714,
+        "checks": 13221,
+        "checked_bytes": 37576,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 11,
+        "phase": 0,
+        "cycle": 566276,
+        "checks": 13221,
+        "checked_bytes": 38072,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 11,
+        "phase": 3,
+        "cycle": 566762,
+        "checks": 13244,
+        "checked_bytes": 37040,
+        "unobservable_bytes": 1048
+      },
+      {
+        "case": 11,
+        "phase": 4,
+        "cycle": 588320,
+        "checks": 14398,
+        "checked_bytes": 38064,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 12,
+        "phase": 0,
+        "cycle": 616876,
+        "checks": 14398,
+        "checked_bytes": 38064,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 12,
+        "phase": 1,
+        "cycle": 617384,
+        "checks": 14427,
+        "checked_bytes": 37536,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 12,
+        "phase": 2,
+        "cycle": 620478,
+        "checks": 14427,
+        "checked_bytes": 37544,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 12,
+        "phase": 3,
+        "cycle": 620960,
+        "checks": 14450,
+        "checked_bytes": 36504,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 12,
+        "phase": 4,
+        "cycle": 639432,
+        "checks": 15604,
+        "checked_bytes": 37536,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 13,
+        "phase": 0,
+        "cycle": 667976,
+        "checks": 15604,
+        "checked_bytes": 38048,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 13,
+        "phase": 1,
+        "cycle": 668500,
+        "checks": 15634,
+        "checked_bytes": 37528,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 13,
+        "phase": 2,
+        "cycle": 671594,
+        "checks": 15634,
+        "checked_bytes": 37536,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 13,
+        "phase": 3,
+        "cycle": 672076,
+        "checks": 15657,
+        "checked_bytes": 36496,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 13,
+        "phase": 4,
+        "cycle": 690548,
+        "checks": 16811,
+        "checked_bytes": 37528,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 14,
+        "phase": 0,
+        "cycle": 719080,
+        "checks": 16811,
+        "checked_bytes": 38032,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 14,
+        "phase": 1,
+        "cycle": 719620,
+        "checks": 16842,
+        "checked_bytes": 37520,
+        "unobservable_bytes": 32
+      },
+      {
+        "case": 14,
+        "phase": 2,
+        "cycle": 722714,
+        "checks": 16842,
+        "checked_bytes": 37528,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 14,
+        "phase": 3,
+        "cycle": 723196,
+        "checks": 16865,
+        "checked_bytes": 36488,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 14,
+        "phase": 4,
+        "cycle": 741668,
+        "checks": 18019,
+        "checked_bytes": 37520,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 15,
+        "phase": 0,
+        "cycle": 770188,
+        "checks": 18019,
+        "checked_bytes": 38016,
+        "unobservable_bytes": 24
+      },
+      {
+        "case": 15,
+        "phase": 3,
+        "cycle": 770674,
+        "checks": 18042,
+        "checked_bytes": 36976,
+        "unobservable_bytes": 1056
+      },
+      {
+        "case": 15,
+        "phase": 4,
+        "cycle": 792232,
+        "checks": 19196,
+        "checked_bytes": 38008,
+        "unobservable_bytes": 24
+      }
+    ],
+    "handler_csrs": [
+      {
+        "case": 0,
+        "index": 0,
+        "finish": false,
+        "cycle": 28904,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 0,
+        "index": 1,
+        "finish": true,
+        "cycle": 29490,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 1,
+        "index": 0,
+        "finish": false,
+        "cycle": 77054,
+        "csrs": {
+          "7": 1,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 1,
+        "index": 1,
+        "finish": true,
+        "cycle": 77656,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 2,
+        "index": 0,
+        "finish": false,
+        "cycle": 125208,
+        "csrs": {
+          "7": 2,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 2,
+        "index": 1,
+        "finish": true,
+        "cycle": 125826,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 3,
+        "index": 0,
+        "finish": true,
+        "cycle": 173430,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 4,
+        "index": 0,
+        "finish": false,
+        "cycle": 220974,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 4,
+        "index": 1,
+        "finish": true,
+        "cycle": 221560,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 5,
+        "index": 0,
+        "finish": false,
+        "cycle": 269082,
+        "csrs": {
+          "7": 1,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 5,
+        "index": 1,
+        "finish": true,
+        "cycle": 269684,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 6,
+        "index": 0,
+        "finish": false,
+        "cycle": 317194,
+        "csrs": {
+          "7": 2,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 6,
+        "index": 1,
+        "finish": true,
+        "cycle": 317812,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 7,
+        "index": 0,
+        "finish": true,
+        "cycle": 365374,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 8,
+        "index": 0,
+        "finish": false,
+        "cycle": 412876,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 8,
+        "index": 1,
+        "finish": true,
+        "cycle": 416538,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 9,
+        "index": 0,
+        "finish": false,
+        "cycle": 464018,
+        "csrs": {
+          "7": 1,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 9,
+        "index": 1,
+        "finish": true,
+        "cycle": 467696,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 10,
+        "index": 0,
+        "finish": false,
+        "cycle": 515164,
+        "csrs": {
+          "7": 2,
+          "6": 26,
+          "5": 8,
+          "0": 13,
+          "1": 2147487556,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 10,
+        "index": 1,
+        "finish": true,
+        "cycle": 518858,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 11,
+        "index": 0,
+        "finish": true,
+        "cycle": 566378,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 12,
+        "index": 0,
+        "finish": false,
+        "cycle": 616914,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 12,
+        "index": 1,
+        "finish": true,
+        "cycle": 620576,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 13,
+        "index": 0,
+        "finish": false,
+        "cycle": 668014,
+        "csrs": {
+          "7": 1,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 13,
+        "index": 1,
+        "finish": true,
+        "cycle": 671692,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 14,
+        "index": 0,
+        "finish": false,
+        "cycle": 719118,
+        "csrs": {
+          "7": 2,
+          "6": 26,
+          "5": 8,
+          "0": 15,
+          "1": 2147487594,
+          "2": 1073745920,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 14,
+        "index": 1,
+        "finish": true,
+        "cycle": 722812,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      },
+      {
+        "case": 15,
+        "index": 0,
+        "finish": true,
+        "cycle": 770290,
+        "csrs": {
+          "7": 0,
+          "6": 26,
+          "5": 64,
+          "0": 9,
+          "1": 2147487520,
+          "2": 0,
+          "3": 2048,
+          "4": 9223372036855300101,
+          "8": 0,
+          "9": 0
+        }
+      }
+    ],
+    "faults": [
+      {
+        "case": 0,
+        "cycle": 28902,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 1,
+        "cycle": 77052,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 2,
+        "cycle": 125206,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 4,
+        "cycle": 220972,
+        "insn": "0x9c57c27"
+      },
+      {
+        "case": 5,
+        "cycle": 269080,
+        "insn": "0x9c57c27"
+      },
+      {
+        "case": 6,
+        "cycle": 317192,
+        "insn": "0x9c57c27"
+      },
+      {
+        "case": 8,
+        "cycle": 412874,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 9,
+        "cycle": 464016,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 10,
+        "cycle": 515162,
+        "insn": "0x9c57c07"
+      },
+      {
+        "case": 12,
+        "cycle": 616912,
+        "insn": "0x9c57c27"
+      },
+      {
+        "case": 13,
+        "cycle": 668012,
+        "insn": "0x9c57c27"
+      },
+      {
+        "case": 14,
+        "cycle": 719116,
+        "insn": "0x9c57c27"
+      }
+    ],
+    "retry_mrets": [
+      {
+        "case": 0,
+        "cycle": 29414,
+        "mepc": 2147487556,
+        "vstart": 0
+      },
+      {
+        "case": 1,
+        "cycle": 77580,
+        "mepc": 2147487556,
+        "vstart": 1
+      },
+      {
+        "case": 2,
+        "cycle": 125750,
+        "mepc": 2147487556,
+        "vstart": 2
+      },
+      {
+        "case": 4,
+        "cycle": 221484,
+        "mepc": 2147487594,
+        "vstart": 0
+      },
+      {
+        "case": 5,
+        "cycle": 269608,
+        "mepc": 2147487594,
+        "vstart": 1
+      },
+      {
+        "case": 6,
+        "cycle": 317736,
+        "mepc": 2147487594,
+        "vstart": 2
+      },
+      {
+        "case": 8,
+        "cycle": 416462,
+        "mepc": 2147487556,
+        "vstart": 0
+      },
+      {
+        "case": 9,
+        "cycle": 467620,
+        "mepc": 2147487556,
+        "vstart": 1
+      },
+      {
+        "case": 10,
+        "cycle": 518782,
+        "mepc": 2147487556,
+        "vstart": 2
+      },
+      {
+        "case": 12,
+        "cycle": 620500,
+        "mepc": 2147487594,
+        "vstart": 0
+      },
+      {
+        "case": 13,
+        "cycle": 671616,
+        "mepc": 2147487594,
+        "vstart": 1
+      },
+      {
+        "case": 14,
+        "cycle": 722736,
+        "mepc": 2147487594,
+        "vstart": 2
+      }
+    ],
+    "ecalls": 16,
+    "refills": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "target_attempts": 28,
+    "optional_trapping_retirements": 0,
+    "ctrl": [
+      0
+    ],
+    "postexit_park": 1,
+    "unobserved": "Bootstrap copy has no scalar read; pre-cleanup vector side effects and AXI/MMU physical transactions are not proven by RVFI",
+    "original_final_data": "Full actual scalar reads for64 outputs/2guards/8KiB each; no invented vector-write payload",
+    "linux_stall_closed": false,
+    "current_mask_drain_candidate_tested": false
+  },
+  "negative": [
+    {
+      "name": "load_wrong",
+      "error": "Case0/phase4 byte80009038 got0 expected11"
+    },
+    {
+      "name": "typed_seed",
+      "error": "Case1/phase4 byte80009039 got91 expected0"
+    },
+    {
+      "name": "tail63",
+      "error": "Case0/phase4 byte80009230 got0 expected91"
+    },
+    {
+      "name": "guard_low",
+      "error": "Read disagrees with previously observed data"
+    },
+    {
+      "name": "guard65",
+      "error": "Read disagrees with previously observed data"
+    },
+    {
+      "name": "active_store",
+      "error": "Case4/phase4 byte80004000 got0 expected101"
+    },
+    {
+      "name": "alloff_store",
+      "error": "Case7/phase4 byte80004000 got101 expected11"
+    },
+    {
+      "name": "last_memory",
+      "error": "Read disagrees with previously observed data"
+    },
+    {
+      "name": "wrong_retry_encoding",
+      "error": "Actual SoC PC/encoding"
+    },
+    {
+      "name": "missing_output_observation",
+      "error": "Missing final original byte observation"
+    },
+    {
+      "name": "missing_final_case_oracle_and_CTRL",
+      "error": "Original72 checkpoints"
+    },
+    {
+      "name": "raw_console_veto",
+      "rejected": true
+    },
+    {
+      "name": "raw_console_veto",
+      "rejected": true
+    },
+    {
+      "name": "raw_console_veto",
+      "rejected": true
+    },
+    {
+      "name": "raw_console_veto",
+      "rejected": true
+    },
+    {
+      "name": "runtime_historical_name_mix",
+      "rejected": true
+    },
+    {
+      "name": "runtime_historical_name_mix",
+      "rejected": true
+    }
+  ],
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/zero_stride_original16_vcs_m6_plan01/test_host.py": "759a00cfa6d771ec8e948e899d9831a762f6f6b84ae9f955f72772a1c7d0266f",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/zero_stride_original16_vcs_m6_plan01/csv_check.py": "12df73cdef07d0017670adeec64ae83c0b56c4f57cfdf4dd7e7a59bfcfb68ea4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/zero_stride_original16_vcs_m6_plan01/checker.py": "d2f3998b32de5124efbf25d2df6ac41d5079f9e6dad96f17585f227275b154df",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/masked_translation/zero_stride_e64_m4_original16_prepare01/READY.json": "f70f17aaa945dc0c2932c8f5f549893059c07fb9e79155aa5c7f20386c7094b5"
+  },
+  "actual_soc_elf_sha256": "d719042343a32e41c31442bb77d4464bce3b09bb7aa3104e03726068a2d29c46"
+}

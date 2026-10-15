@@ -1,0 +1,91 @@
+{
+  "status": "EXACT_ELF_REBUILT",
+  "original_c_bytes_recovered": false,
+  "expected_original_c_sha256": "b50d3298db2c10f35a5a286f4db01d8b32603afdfc0a0ad1a5b0d3df087e56bc",
+  "successor_c_sha256": "ab82b4891f9e926e37ef4d9f10fc44b0f953136deef2173b84427c0447e81006",
+  "original_elf_sha256": "ca6937f7969cb2664becfe53fac5e49111415929e96220874568964b293b85cc",
+  "rebuilt_elf_sha256": "ca6937f7969cb2664becfe53fac5e49111415929e96220874568964b293b85cc",
+  "byte_identical": true,
+  "command": [
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/host/bin/riscv64-buildroot-linux-gnu-gcc",
+    "-Os",
+    "-march=rv64gcv",
+    "-mabi=lp64d",
+    "-nostdlib",
+    "-static",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-fno-tree-vectorize",
+    "-fno-tree-slp-vectorize",
+    "-msmall-data-limit=0",
+    "-Wl,--build-id=none",
+    "-Wl,-s",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-DSEW=8",
+    "-DFRACTIONAL_SUITE=1",
+    "-I/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/recovery01",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/recovery01/successor_oracle.c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/recovery01/scenario.S",
+    "-lgcc",
+    "-o",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/recovery01/rvv_fixed_restart_e8_m4"
+  ],
+  "historical_record": {
+    "name": "rvv_fixed_restart_e8_m4",
+    "elf_sha256": "ca6937f7969cb2664becfe53fac5e49111415929e96220874568964b293b85cc",
+    "retest_status": "no_retirement_stall_observed",
+    "report": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_failure_retest01/supervisor10/latest_report.json",
+    "instructions": [
+      {
+        "pc": 67918,
+        "opcode": "9c880c57",
+        "asm": "vsmul.vv\tv24,v8,v16,v0.t"
+      },
+      {
+        "pc": 67922,
+        "opcode": "00802573",
+        "asm": "csrr\ta0,vstart"
+      }
+    ],
+    "elf_verified": true,
+    "snapshot_verified": true,
+    "last_trial": "RVV_TRIAL seed=0 vl=512 mask=0 vstart=256 completed=776",
+    "report_sha256": "4e8dc8bd6f45738a6676c8220bd5ff8dc926dab75ed5c2f97d484227dba1e5c8",
+    "last_pc": 67918,
+    "head_pc": 67922,
+    "cycle_delta": 525906091,
+    "ddr": {
+      "ddr1": {
+        "read_outstanding": 0,
+        "write_outstanding": 0,
+        "error_count": 0
+      },
+      "ddr2": {
+        "read_outstanding": 0,
+        "write_outstanding": 0,
+        "error_count": 0
+      }
+    },
+    "binary": "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_additions33/binaries/rvv_fixed_restart_e8_m4",
+    "group": "packed_mask_restart_boundary",
+    "confidence": "static_candidate"
+  },
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/oracle.c": "ab82b4891f9e926e37ef4d9f10fc44b0f953136deef2173b84427c0447e81006",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/fixed.py": "eb7f9ccb89ad52c6f7334e5d9b6296d053ddf337ee3f1ab3fbab6e0c32d3fdd5",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/build.py": "23a818e4e045d4c58d9d9738573d0cca990111e97922881225938ce822875e7c",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fixed_restart01/manifest.json": "b46f42f1edaf0da2134af42f77a4bbe1f00cb9eddc369a61e9509a7d8d9d880a",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fixed_restart01/operations.h": "adec2fb8c81bc1b2f9173c7928dd2d3dabbae932596cb139e058b6f11cb98fb9",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fixed_restart01/rvv_fixed_restart_e8_m4.S": "9b4552c734a6f456d094bf77dd1510495df3c5421b6bb05bc3492b5e5ecac2c0",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_fixed_restart01/overlay/opt/ara-tests/rvv_fixed_restart_e8_m4": "ca6937f7969cb2664becfe53fac5e49111415929e96220874568964b293b85cc",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/host/bin/riscv64-buildroot-linux-gnu-gcc": "24e7eb7249702e80a2e5cd0e03d98121f4544d69c455db6259993b4f0804149c",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/stall_family_triage02/triage.json": "eb87f0ed9c07b3978e91e35ff5bcc0824388beb312510ba942ef061c0f63043f",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_failure_retest01/supervisor10/latest_report.json": "4e8dc8bd6f45738a6676c8220bd5ff8dc926dab75ed5c2f97d484227dba1e5c8",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_additions33/binaries/rvv_fixed_restart_e8_m4": "ca6937f7969cb2664becfe53fac5e49111415929e96220874568964b293b85cc",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/fixed_restart_original/recover.py": "cf0cddc9a66bae6ac56ccf172fa00e0949c826c9f3844101038986775b0b9a83"
+  },
+  "DUT_started": false
+}

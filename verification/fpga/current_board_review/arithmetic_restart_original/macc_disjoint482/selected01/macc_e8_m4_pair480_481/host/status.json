@@ -1,0 +1,23 @@
+{
+  "status": "HOST_PASS_SOURCE_SELECTION_NOT_PREFIX",
+  "exact_call_rows": [
+    "CALL 480 0 512 1 0 cd3506418f2df673 56f1b2e31a7a93f5",
+    "CALL 481 0 512 256 0 cd3506418f2df673 5ccbbef2ede70eda"
+  ],
+  "parent_prefix_and_full_capture_rows_identical": true,
+  "independent_python_rows_identical": true,
+  "negative_rejected": [
+    "active",
+    "prestart",
+    "left_guard",
+    "right_guard",
+    "vstart_low",
+    "return_high"
+  ],
+  "checker_tests": 7,
+  "inapplicable_mutations": [
+    "maskedoff",
+    "tail",
+    "dropped_accumulator"
+  ]
+}

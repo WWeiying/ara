@@ -1,0 +1,15 @@
+{
+  "name": "fp_old64_restart",
+  "status": "FAIL",
+  "returncode": 0,
+  "elapsed_s": 36.30941213667393,
+  "oracle_lines": [
+    "BOARD_CASE_BEGIN fp_old64_restart",
+    "RVV_FP_MOVE_DETAIL op=6 seed=0 scalar=0 invalid_box=0 vl=18 mask=0 sticky=0 vstart=17 actual_flags=0 errors=1",
+    "RVV_FP_MOVE_CLASSIFY returned_vstart=0 first_bad_element=0 expected_bits=0 actual_bits=31743 scalar_expected=1311768467463790320 scalar_actual=1311768467463790320 guard_before=91 guard_after=91",
+    "RVV_FP_MOVE_FAIL sew=16 cases=1 errors=1",
+    "BOARD_CASE_FAIL fp_old64_restart"
+  ],
+  "input_sha256": "1c5f403626678ac85653aa89b9f87e329f5a0ec9318c3cba62a6e66389d851a5",
+  "console_sha256": "9249c8a5dfeb5bd0306d0a03b01bdcd26bf44075563d0375ec803295cfcbd5e3"
+}

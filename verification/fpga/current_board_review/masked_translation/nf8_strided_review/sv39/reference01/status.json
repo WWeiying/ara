@@ -1,0 +1,14 @@
+{
+  "status": "HOST_SPIKE_SELECTED4_PASS_NOT_DUT",
+  "trials": [
+    19,
+    17,
+    67,
+    31
+  ],
+  "host_rows": 18948,
+  "all192_spike": false,
+  "original_169_128_root_cause_known": false,
+  "VCS_launched": false,
+  "Linux_replay": false
+}

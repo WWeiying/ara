@@ -261,6 +261,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 `endif
   logic addrgen_acked_d, addrgen_acked_q;
   logic memory_store_completed_d, memory_store_completed_q;
+  logic memory_load_completed_d, memory_load_completed_q;
   exception_t addrgen_exception_d, addrgen_exception_q;
   vlen_t addrgen_exception_vstart_d, addrgen_exception_vstart_q;
   logic addrgen_fof_exception_d, addrgen_fof_exception_q;
@@ -509,6 +510,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     state_d               = state_q;
     addrgen_acked_d       = addrgen_acked_q;
     memory_store_completed_d = memory_store_completed_q;
+    memory_load_completed_d = memory_load_completed_q;
     addrgen_exception_d   = addrgen_exception_q;
     addrgen_exception_vstart_d = addrgen_exception_vstart_q;
     addrgen_fof_exception_d = addrgen_fof_exception_q;
@@ -647,7 +649,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                     write_list_d[VMASK].valid;
                 if (write_list_d[VMASK].valid &&
                     (write_list_d[VMASK].wait_complete ||
-                     write_list_d[VMASK].group_offset != '0)) begin
+                     write_list_d[VMASK].group_offset != '0 ||
+                     // Slideup can skip mask words; a producer's earlier
+                     // writeback pulse does not make the selected word ready.
+                     (ara_req_i.op == VSLIDEUP &&
+                      ara_req_i.stride >= NrLanes * ELEN))) begin
                   wait_complete_vec[write_list_d[VMASK].vid] = 1'b1;
                 end
               end
@@ -859,6 +865,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                   addrgen_acked_d = 1'b0;
                 if (is_store(ara_req_i.op))
                   memory_store_completed_d = 1'b0;
+                if (is_load(ara_req_i.op))
+                  memory_load_completed_d = 1'b0;
                 if (is_load(ara_req_i.op) || is_store(ara_req_i.op)) begin
                   addrgen_exception_d = '0;
                   addrgen_exception_vstart_d = '0;
@@ -975,6 +983,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           addrgen_fof_exception_d = addrgen_fof_exception_i;
         end
 
+        // A fault response must not release a younger request before the
+        // faulting load has drained its prefix and exception state. Keep an
+        // early done even if the address acknowledgement arrives later.
+        if (is_load(pe_req_o.op) &&
+            pe_resp_i[NrLanes+OffsetLoad].vinsn_done[pe_req_o.id])
+          memory_load_completed_d = 1'b1;
+
         if (is_store(pe_req_o.op) &&
             pe_resp_i[NrLanes+OffsetStore].vinsn_done[pe_req_o.id]) begin
           memory_store_completed_d = 1'b1;
@@ -1010,6 +1025,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         if ((is_load(pe_req_o.op) || is_store(pe_req_o.op)) &&
             (addrgen_acked_q || addrgen_ack_i) &&
             (&memory_lane_accepted_d) && memory_mask_accepted_d &&
+            (!is_load(pe_req_o.op) || !addrgen_exception_d.valid || memory_load_completed_d) &&
             (!WaitForStoreB || !is_store(pe_req_o.op) || memory_store_completed_d)) begin
           // The address generator acknowledges indexed operations only after
           // consuming their lane operands.  Withdraw the broadcast request in
@@ -1035,6 +1051,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           end
           addrgen_acked_d = 1'b0;
           memory_store_completed_d = 1'b0;
+          memory_load_completed_d = 1'b0;
           memory_lane_accepted_d = '0;
           memory_mask_accepted_d = 1'b0;
         end
@@ -1063,6 +1080,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       state_q <= IDLE;
       addrgen_acked_q <= 1'b0;
       memory_store_completed_q <= 1'b0;
+      memory_load_completed_q <= 1'b0;
       addrgen_exception_q <= '0;
       addrgen_exception_vstart_q <= '0;
       addrgen_fof_exception_q <= 1'b0;
@@ -1087,6 +1105,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       state_q <= state_d;
       addrgen_acked_q <= addrgen_acked_d;
       memory_store_completed_q <= memory_store_completed_d;
+      memory_load_completed_q <= memory_load_completed_d;
       addrgen_exception_q <= addrgen_exception_d;
       addrgen_exception_vstart_q <= addrgen_exception_vstart_d;
       addrgen_fof_exception_q <= addrgen_fof_exception_d;

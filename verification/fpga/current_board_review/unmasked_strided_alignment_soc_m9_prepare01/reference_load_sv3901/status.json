@@ -1,0 +1,67 @@
+{
+  "status": "HOST_SPIKE_PASS_NOT_DUT",
+  "checks": 697,
+  "retired": 35729,
+  "actions": [
+    "handler",
+    "mt_trap_vstart_read",
+    "mt_fault_snapshot",
+    "mt_poison_prefix",
+    "mt_repair_stride",
+    "mt_restore_start",
+    "mt_retry_mret",
+    "mt_target",
+    "mt_result_snapshot",
+    "mt_successor_load",
+    "mt_successor_store",
+    "mt_next_snapshot",
+    "handler",
+    "mt_trap_vstart_read"
+  ],
+  "traps": [
+    {
+      "0": 4,
+      "1": 2147486380,
+      "2": 1073754324,
+      "3": 9223372079804460544,
+      "4": 9223372036855300098,
+      "5": 2,
+      "6": 24,
+      "7": 1,
+      "8": 117,
+      "9": 5
+    },
+    {
+      "0": 9,
+      "1": 2147486592,
+      "2": 0,
+      "3": 9223372079804460544,
+      "4": 9223372036855300098,
+      "5": 2,
+      "6": 24,
+      "7": 0,
+      "8": 117,
+      "9": 5
+    }
+  ],
+  "restore_readback_checks": 14,
+  "endpoint": "spike",
+  "partial_attempts": 1,
+  "raw_traps": [
+    [
+      "trap_load_address_misaligned",
+      2147486380
+    ],
+    [
+      "trap_supervisor_ecall",
+      2147486592
+    ]
+  ],
+  "member": "load_sv39",
+  "actual_profile": "rv64gcv_zfh_zvfh_zvl1024b",
+  "receipt": {
+    "returncode": 0,
+    "elapsed_s": 0.6189310890622437,
+    "raw_bytes": 3985392
+  }
+}

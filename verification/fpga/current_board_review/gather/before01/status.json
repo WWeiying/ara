@@ -1,0 +1,18 @@
+{
+  "state": "EXPECTED_BUG_REPRODUCED",
+  "cases": [
+    {
+      "name": "historical",
+      "command": [
+        "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/current_board_review/gather/before01/simv",
+        "-no_save",
+        "+EXPECT_BUG"
+      ],
+      "passed": true,
+      "exit": 0,
+      "result": [
+        "RESULT sew=1 start=1 vl=2 mode=0 masked=1 pattern=0 cycles=9 requests=2 prefix_bytes=2 mismatches=2 first16=1000 second16=1000"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "simulator_exit": 0,
+  "elapsed_s": 26.69046202627942,
+  "measurement": [
+    "EPOCH_RESULT variant=0000000000000000 flags=0000000000000010 first=0000000000007e00 second=0000000000000000",
+    "EPOCH_RESULT variant=0000000000000001 flags=0000000000000010 first=0000000000007e00 second=0000000000004000"
+  ],
+  "signal_count": 50,
+  "no_rtl_edits": true,
+  "no_build": true
+}

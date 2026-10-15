@@ -1,0 +1,21 @@
+{
+  "status": "EXACT_ORIGINAL_ELF_RECONSTRUCTED",
+  "original_sha256": "608e941760443563f055058d60f18ce466a06d016fb277989fc332ed9cdb347d",
+  "rebuilt_sha256": "608e941760443563f055058d60f18ce466a06d016fb277989fc332ed9cdb347d",
+  "original_c_sha256": "496a4ddbfa9a4b7c29e71287981d10860f76fcdd5c4bb55830e08bed8bd04222",
+  "reconstructed_c_sha256": "ab82b4891f9e926e37ef4d9f10fc44b0f953136deef2173b84427c0447e81006",
+  "source_text_recovered": false,
+  "whole_elf_byte_equal": true,
+  "full_program_executed": false,
+  "hypothesis": "Original disassembly checks tty return at 0x106be; retain current C unchanged; successor chain/alias features may preprocess away under archived header",
+  "input_pins": {
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/oracle.c": "ab82b4891f9e926e37ef4d9f10fc44b0f953136deef2173b84427c0447e81006",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/integer_forms.py": "830e763fd2af355b9cb24e6271e75fda703db1e3ea1a776fc2e11c3cd0bfe7b7",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/linux/diagnostics/rvv_matrix/build.py": "23a818e4e045d4c58d9d9738573d0cca990111e97922881225938ce822875e7c",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_macc_restart_disjoint01/manifest.json": "ff0c22debed27941d8b564d461211937b449f9b0af28a6d6a4de6a695b5c03a8",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_macc_restart_disjoint01/operations.h": "8be917873f374b6433418b349732c02f4519a4aad8eb0060fc7f89c28048a935",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_macc_restart_disjoint01/rvv_integer_macc_accumulators_restart_e8_m4.S": "11d92fd876817c0abdf0a570cfd9d6523721c434fc8a46d789bb481045fd6f8a",
+    "/home/wangwy/fpga_runs/ara_hw_campaign_20261007_01/rvv_additions42/binaries/rvv_integer_macc_accumulators_restart_e8_m4": "608e941760443563f055058d60f18ce466a06d016fb277989fc332ed9cdb347d",
+    "/home/wangwy/openproject/cva6/cva6-sdk/buildroot/output/host/bin/riscv64-buildroot-linux-gnu-gcc": "24e7eb7249702e80a2e5cd0e03d98121f4544d69c455db6259993b4f0804149c"
+  }
+}
