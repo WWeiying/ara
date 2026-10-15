@@ -582,7 +582,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             conv     : pe_req.conversion_vs2,
             target_fu: MFPU_ADDRGEN,
             vl       : pe_req.vl / NrLanes,
-            scale_vl : pe_req.scale_vl,
+            // vl counts indices, independently of the loaded/stored data SEW.
+            // Scaling by SEW/EEW would leave extra words or starve ADDRGEN.
+            scale_vl : 1'b0,
             vstart   : vfu_operation_d.vstart,
             vtype    : pe_req.vtype,
             hazard   : pe_req.hazard_vs2 | pe_req.hazard_vd,
@@ -651,7 +653,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             conv     : pe_req.conversion_vs2,
             target_fu: MFPU_ADDRGEN,
             vl       : pe_req.vl / NrLanes,
-            scale_vl : pe_req.scale_vl,
+            // vl counts indices, independently of the loaded/stored data SEW.
+            // Scaling by SEW/EEW would leave extra words or starve ADDRGEN.
+            scale_vl : 1'b0,
             vstart   : vfu_operation_d.vstart,
             vtype    : pe_req.vtype,
             hazard   : pe_req.hazard_vs2 | pe_req.hazard_vd,

@@ -1,0 +1,521 @@
+{
+  "scope": "Frozen four-lane VLEN1024 paper Base/Full plus identical indexed-operand correctness fix; not a validation of other dirty working-tree RTL.",
+  "parents": {
+    "base": {
+      "parent_manifest": {
+        "path": "hardware/build/rce/paper_iv_cumulative_v1/base_commit_build/source_manifest.json",
+        "sha256": "a6b42a2053d4bfcae833212ed072b8dd10cb203f6aee1e739c4e349d8955bb36"
+      },
+      "patch_manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_fixed/manifest.json",
+        "sha256": "2d99e8ccc95519c82ecb704f7881e691c12aa3caaa2e77741517d6176a6d3536"
+      },
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "frozen_parent_sources_unchanged": true
+    },
+    "full": {
+      "parent_manifest": {
+        "path": "hardware/build/rce/paper_iscas_v2/full/source_manifest.json",
+        "sha256": "e70c97bef8585f9d6fd6a4c79b54779722755c01dbf73ac76cc4c5ed45a102e2"
+      },
+      "patch_manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_fixed/manifest.json",
+        "sha256": "cd9714634a1696ce2a383cde1a08db67085074a49e859f0f7c0b493a54c416ca"
+      },
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "frozen_parent_sources_unchanged": true
+    }
+  },
+  "successful_spmv_runs": [
+    {
+      "configuration": "base",
+      "app": "paper_v6_spmv_s",
+      "pass": true,
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "elf_sha256": "78a36b4a4f4b25b3f839674f5629f62386884df3151783db2dd81fedfb517002",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_test/manifest.json",
+        "sha256": "4222a286cd77fa98da60fe8a87f755588480d8f8ab905362db19a70332b2c96f"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_test/paper_v6_spmv_s/stdout.log",
+        "sha256": "f0b4f15cc70c66468daa528c6d91234f415814514f4bb25f80c09c49f9311550"
+      },
+      "kernel": "spmv",
+      "scale": "S",
+      "rows": 64,
+      "nnz": 255,
+      "cycles": 7371
+    },
+    {
+      "configuration": "base",
+      "app": "paper_v6_spmv_m",
+      "pass": true,
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "elf_sha256": "6beb04769ff66381dd927a4e4c6e869292dc90d14e53cccfd49a7fecf9f60482",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/manifest.json",
+        "sha256": "309a7935401c23b476fd8f546a2670336c5c0a3bb929fc66ce58e4bc2460fa29"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/paper_v6_spmv_m/stdout.log",
+        "sha256": "6b37a05baa3dc468a99682f01dddebd7aae22b495af5b9a455e9dd668110ed3a"
+      },
+      "kernel": "spmv",
+      "scale": "M",
+      "rows": 128,
+      "nnz": 1023,
+      "cycles": 16768
+    },
+    {
+      "configuration": "base",
+      "app": "paper_v6_spmv_l",
+      "pass": true,
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "elf_sha256": "80661a6fff3259345de617a78406d571f21b793714c4a9eae0922de43d7635ff",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/manifest.json",
+        "sha256": "309a7935401c23b476fd8f546a2670336c5c0a3bb929fc66ce58e4bc2460fa29"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/paper_v6_spmv_l/stdout.log",
+        "sha256": "fc23d4ffcdf4c3a6d5dd1a6c820727df45ee0f0b83a36e3df797cd566e335ca4"
+      },
+      "kernel": "spmv",
+      "scale": "L",
+      "rows": 256,
+      "nnz": 4088,
+      "cycles": 50073
+    },
+    {
+      "configuration": "base",
+      "app": "paper_v6_spmvo2_s",
+      "pass": true,
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "elf_sha256": "b514a0ba7a67d2037ccc5483d8be8896d93c574ffd86a48380b7208795f3c65c",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/manifest.json",
+        "sha256": "309a7935401c23b476fd8f546a2670336c5c0a3bb929fc66ce58e4bc2460fa29"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_sizes/paper_v6_spmvo2_s/stdout.log",
+        "sha256": "41ec33a1f16be0cd51c4761f57975d1b27a9db0ac290f7f5e8f4306e8f29956d"
+      },
+      "kernel": "spmvo2",
+      "scale": "S",
+      "rows": 64,
+      "nnz": 255,
+      "cycles": 7371
+    },
+    {
+      "configuration": "base",
+      "app": "spmv_indexed_regression",
+      "pass": true,
+      "simulator_sha256": "5a0fcb1f5bfa3417b198456134ed0202227528c4d05122ea120a98ffeefcd577",
+      "elf_sha256": "97a1e7417e55ea5a72c845ab66b97673a0369200a96fc294b7129ab1aa845539",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_spmv_reg/manifest.json",
+        "sha256": "d42e3ad8711431fdff714a7bee9997b694da907a6942c0be8838252aa897e07a"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/base_spmv_reg/spmv_indexed_regression/stdout.log",
+        "sha256": "6b26f55877ce65e939ccafe50a44fb8835a4e4f42f1cf35073ff2e009766dc18"
+      }
+    },
+    {
+      "configuration": "full",
+      "app": "paper_v6_spmv_s",
+      "pass": true,
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "elf_sha256": "78a36b4a4f4b25b3f839674f5629f62386884df3151783db2dd81fedfb517002",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_test/manifest.json",
+        "sha256": "50ec4e315192d2d30e4f722296df5662b62fab8b35add4f033b4c2b3568f12c2"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_test/paper_v6_spmv_s/stdout.log",
+        "sha256": "05ae1a03d3379eddb7813677f836abda575f6d9e7230b9ee4c0392ab6908ca45"
+      },
+      "kernel": "spmv",
+      "scale": "S",
+      "rows": 64,
+      "nnz": 255,
+      "cycles": 6489
+    },
+    {
+      "configuration": "full",
+      "app": "paper_v6_spmv_m",
+      "pass": true,
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "elf_sha256": "6beb04769ff66381dd927a4e4c6e869292dc90d14e53cccfd49a7fecf9f60482",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/manifest.json",
+        "sha256": "8a8385b23c50dac397ba5c56db8a505b420f97c15c23a75ac2b8a08106ccd9db"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/paper_v6_spmv_m/stdout.log",
+        "sha256": "1a66ccc6c5383f4fff5997235d02a49178ba7092bb26f3dc8f5e0cb860641637"
+      },
+      "kernel": "spmv",
+      "scale": "M",
+      "rows": 128,
+      "nnz": 1023,
+      "cycles": 14908
+    },
+    {
+      "configuration": "full",
+      "app": "paper_v6_spmv_l",
+      "pass": true,
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "elf_sha256": "80661a6fff3259345de617a78406d571f21b793714c4a9eae0922de43d7635ff",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/manifest.json",
+        "sha256": "8a8385b23c50dac397ba5c56db8a505b420f97c15c23a75ac2b8a08106ccd9db"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/paper_v6_spmv_l/stdout.log",
+        "sha256": "fdb7d947b19f53727dc77d27c481007d507948469cd37476edb1e606659f49d9"
+      },
+      "kernel": "spmv",
+      "scale": "L",
+      "rows": 256,
+      "nnz": 4088,
+      "cycles": 44313
+    },
+    {
+      "configuration": "full",
+      "app": "paper_v6_spmvo2_s",
+      "pass": true,
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "elf_sha256": "b514a0ba7a67d2037ccc5483d8be8896d93c574ffd86a48380b7208795f3c65c",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/manifest.json",
+        "sha256": "8a8385b23c50dac397ba5c56db8a505b420f97c15c23a75ac2b8a08106ccd9db"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_sizes/paper_v6_spmvo2_s/stdout.log",
+        "sha256": "b4da932118359fc0ba52046d962b5cb10c4e6330df230fa48a4a36b782869d1c"
+      },
+      "kernel": "spmvo2",
+      "scale": "S",
+      "rows": 64,
+      "nnz": 255,
+      "cycles": 6297
+    },
+    {
+      "configuration": "full",
+      "app": "spmv_indexed_regression",
+      "pass": true,
+      "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+      "elf_sha256": "97a1e7417e55ea5a72c845ab66b97673a0369200a96fc294b7129ab1aa845539",
+      "manifest": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_spmv_reg/manifest.json",
+        "sha256": "3e521f78b37219330ceafab754c2a24d0399e6d67914abe43f9d0c49765e87bb"
+      },
+      "log": {
+        "path": "hardware/build/rce/spmv_debug_v1/full_spmv_reg/spmv_indexed_regression/stdout.log",
+        "sha256": "6ae4f8754823bbfd491ec9a9faa760a2b0d80ece2cadbdc4bee1826869974f5c"
+      }
+    }
+  ],
+  "full_indexed_regression": {
+    "programs": 16,
+    "checked_scenarios": 512,
+    "runs": [
+      {
+        "configuration": "full",
+        "app": "indexed_egress_8_8",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "98d32fd7b7de5c3cffa079d210929fe5c6b80e96810561ac337c082e86c95ff7",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_8_8/stdout.log",
+          "sha256": "6c3af8fa7aa27100b5e30ebf5653451ba33d9b32d4d7f1d48a2df92e7934d699"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_8_16",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "273c340de7b179e0364ea989fd2741bcdc296991c4bb93ad90a7650cf0f2d5de",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_8_16/stdout.log",
+          "sha256": "b1363ab78f7f0d1d0f6bfdc6a0946627a73996d205cc714f5b00b4c7eaa499bb"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_8_32",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "9f89402abceeaa6d8c44e47934ace70a1daa555734f24c08bf0c16304b18cd71",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_8_32/stdout.log",
+          "sha256": "658847645380b9eaf5685cb889d87096f6f3a0736a627be9fd18e3a59acf7561"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_8_64",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "a467a0268c5aaa6674b25dec5ec24fa44b93c27f4317fbbb07903df9e17ffe72",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_8_64/stdout.log",
+          "sha256": "e1a2c8f918e6b9d8becf826d0701f31c559b1e35a758c2d877f3386a7f0dbb01"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_16_8",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "529ecc773598393d6864e1d7ef7599eb46695c2d88b91749de53215868a7c294",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_16_8/stdout.log",
+          "sha256": "2501017fad9a2094da30c7a356fbba94a292d87ca5da58433b81fc8844af950c"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_16_16",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "0bec13a6357a16e0748482f4290010e051d387f92a79fd4dba6aef507791588d",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_16_16/stdout.log",
+          "sha256": "fbbe82bca095defbf508f94b05d4767d0791445c7299887b2c3bcd011b456fd1"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_16_32",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "130f618fb7b75bfa290f47d31012b5fcc810eaf38c3e2b5004de79dbc36dd52b",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_16_32/stdout.log",
+          "sha256": "143e5a43b442012cd9abbe3734b15f65ac950de27d23cd74abc4760eb4aae3d7"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_16_64",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "5a0b7b02218172b0413a7dbbe98e84f436b2d9e0c141b7dcac7e3c129e1c757d",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_16_64/stdout.log",
+          "sha256": "97ccd094fddecfb687b1dfa3aa4716b6e864f98c4a84c5fa2402f5c9c13b77d5"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_32_8",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "b0f63aa076919128f67d89c1919fff926945cfed5d1893d95b64ceff0bc4bf71",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_32_8/stdout.log",
+          "sha256": "e10652fbfbf2dcb74bd4b2ef64f6e173a60a16698615a00bd9a65c650c06663e"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_32_16",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "e300836624387929728bbb51be53a6ac2b22ea4cd701c9899fe4cfe8f0a2e623",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_32_16/stdout.log",
+          "sha256": "f95b967bcb2deed479097d6c2b552c30ae3ee8f0d3d906455a28b308769000b0"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_32_32",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "e4e249bacb29b3f5600dd7e5ea8010517b9bd92f91bfc073a594b21d99cdd60b",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_32_32/stdout.log",
+          "sha256": "909e92569f55922fd35ba3343233924a28174d12fb4cba386c142ca864112049"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_32_64",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "3f507717179a6a097c4b5b3587b66f78b0f297c87c718817f861659c665500c7",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_32_64/stdout.log",
+          "sha256": "9b80eacd3e0fc4f0675bcd476ae2f8e18b92b024914426746dc8f62d34fa6356"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_64_8",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "706eba689e6759ceb7590385d81f320aa5106c014fe98cf101f627036afa96da",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_64_8/stdout.log",
+          "sha256": "0ce2c5ae38237ba489e32c92c119f6e894476a2f4072ac02114d757dc89a1d63"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_64_16",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "175816c20b706b789d9b4a87999dcf6a41ac04277827e509eee631e8eca7958f",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_64_16/stdout.log",
+          "sha256": "c8c31aa6c5a94b1a40ea75cbcb4d663d470705f14c1b99050ac3da7127510b1b"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_64_32",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "03241639c3cd0bd81684a5ec77a592f9b777266d5f6a367efe09aa58fc85d0fa",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_64_32/stdout.log",
+          "sha256": "16b055afe6297515e00da5f8e6bb8fcb72159de565c4f1f711b02fb26b020d29"
+        }
+      },
+      {
+        "configuration": "full",
+        "app": "indexed_egress_64_64",
+        "pass": true,
+        "simulator_sha256": "043ddaf39861cafeaebad59207d61f44fe63ca5246fe7b2f42dd20cd14c847b4",
+        "elf_sha256": "baa6f6a977b563d3261e24e8a7a13a4b6a9714d61021f1be0661f33c4f40e4e1",
+        "manifest": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/manifest.json",
+          "sha256": "efc0fdc186fdc89fcb23bea1aadf104ae34092b8084ad270732348aeab783602"
+        },
+        "log": {
+          "path": "hardware/build/rce/spmv_debug_v1/full_split_reg/indexed_egress_64_64/stdout.log",
+          "sha256": "e7a086aefffdbd87ae7c928f7aa561a5907624a9f41b63e25b6b171bf84abbd9"
+        }
+      }
+    ]
+  },
+  "original_failure_snapshots": [
+    {
+      "path": "hardware/build/rce/spmv_debug_v1/watch_base/spmv_debug_watch/stdout.log",
+      "sha256": "f8e75f3340dac0636654fb3e1810a865195bee45ff42ea95cb7732042794e8c3"
+    },
+    {
+      "path": "hardware/build/rce/spmv_debug_v1/watch_full/spmv_debug_watch/stdout.log",
+      "sha256": "cff1a52821a139c43a6761f278b5dbcd6a6d5dbc3e839b3183e27a8f54eb8db1"
+    },
+    {
+      "path": "hardware/build/rce/spmv_debug_v1/ucli/probe2.log",
+      "sha256": "4446903a498ca433b0331e4fbd3935f6688c76c8a8b9add90fffd3466cb38664"
+    }
+  ],
+  "open_historical_base_failure": {
+    "description": "Short indexed/mask-setup sequence also stalls before patch; repeats without integer reduction. Not fixed or counted as pass.",
+    "evidence": [
+      {
+        "path": "hardware/build/rce/spmv_debug_v1/base_old_reg_watch/indexed_egress_watch/stdout.log",
+        "sha256": "6e525fd2c37b16b1fc2d8353135031ba809e97976e8f6711cfcdee87b22bdb29"
+      },
+      {
+        "path": "hardware/build/rce/spmv_debug_v1/base_reg_watch/indexed_egress_watch/stdout.log",
+        "sha256": "f87401242e05442d5989b72f0e3d2428fa252937ab2e638761b366c36506581c"
+      },
+      {
+        "path": "hardware/build/rce/spmv_debug_v1/base_memory_watch/indexed_memory_watch/stdout.log",
+        "sha256": "4e3e2b9bbcc1356d51c84456e81c0ebd1d98118baf1273d4cf7d07b77ae1c9c3"
+      },
+      {
+        "path": "hardware/build/rce/spmv_debug_v1/ucli/base_reg2.log",
+        "sha256": "efedab4a01e09e20ae2b194bc8b58343a275e326b6956f8ab1c64241f211449d"
+      }
+    ]
+  },
+  "working_tree_matches_tested_patch_except_comments": true,
+  "sources": [
+    {
+      "path": "hardware/src/lane/lane_sequencer.sv",
+      "sha256": "19dfe2b77530e0d9d6f30d2240a22affbe158d182a843e9da3f25f038d225922"
+    },
+    {
+      "path": "hardware/src/vlsu/addrgen.sv",
+      "sha256": "32ac3caa1d14b43b1fae6cdaa57427a028405e3b56251d462e741c32d22eca43"
+    },
+    {
+      "path": "apps/spmv_indexed_regression/main.c",
+      "sha256": "c5b5a68332de01e25c9d9240314bf7374dd317f8642b8ffe45db0ab52f13d7ba"
+    },
+    {
+      "path": "apps/indexed_egress_regression/main.c",
+      "sha256": "05d78eea46eec7219ff0a1603890fdfddf3c2b97306e973bf0d796c321157f6c"
+    }
+  ]
+}

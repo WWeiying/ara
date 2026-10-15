@@ -435,9 +435,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // TODO: apply the same vstart logic also to mask_valid_i
 
         // Handle handshake and data between VRF and spill register
-        // We accept all the incoming data, without any checks
-        // since Ara stalls on an indexed memory operation
-        if (&addrgen_operand_valid) begin
+        // Ara stalls dispatch on an indexed memory operation, so the
+        // operands belong to this instruction until all indices are consumed.
+        // The final address can remain buffered while AXI finishes. Do not
+        // consume another index (or underflow the count) during that interval.
+        if ((idx_op_cnt_q != 0) && &addrgen_operand_valid) begin
 
           // Valid data for the spill register
           idx_vaddr_valid_d = 1'b1;
