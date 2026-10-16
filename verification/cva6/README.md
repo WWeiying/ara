@@ -106,3 +106,12 @@ The output directory must not exist, must be inside this worktree's
 compile command (180-second limit) and one simulator command (30-second limit),
 with process-group cleanup on timeout. Each command and input hash is recorded.
 No FSDB is required: the bounded JSONL trace is the complete focused probe set.
+
+## WT Cache Read / Invalidation Collision
+
+The [2026-10-15 repair and paired results](WT_INVAL_READ_REPAIR_20261015.md)
+cover external invalidation overlapping AXI read responses. The actual-module
+test reproduces four original failures and passes thirty repaired D-cache,
+I-cache, LR and concurrent-B scenarios. A normal read's cycle records remain
+identical. Run `run_wt_inval_collision.py --output <new verification/out path>`
+with host VCS; it freezes current inputs and retains both variants' evidence.

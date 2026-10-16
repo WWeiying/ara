@@ -4,8 +4,8 @@
     "cva6": {
       "revision": "b29fd3cf906e7f4c71da4c2f46451c4c60a4487f",
       "patch": "cva6-local-fixes.patch",
-      "sha256": "74a51bffbde2e61e6097d0635bfa02dba1a251c0175124de909bd0bb3c06750d",
-      "source": "ara_dsa local CVA6 fixes plus verification fence, issue-stall preservation, SSTATUS VS alias and ECALL/breakpoint/interrupt tval, non-CLIC STVEC readback/BASE consistency; integrated store-B precise exceptions, VL preview/request fallthrough/FP CSR ordering; current-lookup superpage early PPN composition",
+      "sha256": "3853ab475d5e20887a5a086cbdca6afdf7bfa3b5e178e99bf48ea3b05551dfb2",
+      "source": "ara_dsa local CVA6 fixes plus verification fence, issue-stall preservation, SSTATUS VS alias and ECALL/breakpoint/interrupt tval, non-CLIC STVEC readback/BASE consistency; integrated store-B precise exceptions, VL preview/request fallthrough/FP CSR ordering; current-lookup superpage early PPN composition; WT AXI read backpressure during external cache invalidation",
       "scope": "Current FP16/FP32/FP64 configuration; THMULTI does not support FP8/FP8ALT; 20261009 RV64/Sv39 RVH=0 directed checks for flush allocation priority, xRET MPRV, canonical response alignment and nonleaf PTE ADU rejection",
       "upstream_fixes": [
         "b30e7dba3e85b887da5a01aab34c2438653efa83",
