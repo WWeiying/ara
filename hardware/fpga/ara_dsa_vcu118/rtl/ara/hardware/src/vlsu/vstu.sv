@@ -222,6 +222,12 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
   logic exception_pending_d, exception_pending_q;
   logic [idx_width(VInsnQueueDepth)-1:0] exception_slot_d, exception_slot_q;
+  logic exception_mask_last;
+  assign exception_mask_last = mask_word_valid &&
+      mask_word_q.owner == vinsn_issue_q.id &&
+      (unsigned'(mask_word_q.first_element) +
+       ((NrLanes * DataWidthB) >> unsigned'(vinsn_issue_q.vtype.vsew))) >=
+      unsigned'(vinsn_issue_q.vl);
 
   // Is the vector instruction queue full?
   logic vinsn_queue_full;
@@ -575,10 +581,24 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
     // Clear instruction from queue and data in case of exceptions from addrgen
     // Wait until we have only one instruction to commit, i.e., the previous memory operations are over and have been successful (with an ack on the b channel)
+    // Keep accepting the faulting owner's predicates until the last word.
+    // Otherwise MASKU cannot finish and the idle-gated flush cannot start.
+    // An early indexed error may precede WLAST for an older descriptor.
+    // pending_b alone cannot establish that this write prefix has drained.
     if (vinsn_issue_valid && (vinsn_queue_q.commit_cnt == 1) &&
         vinsn_queue_q.commit_pnt == exception_slot_d &&
         vinsn_queue_d.pending_b[vinsn_queue_q.commit_pnt] == '0 &&
-        exception_pending_d) begin : exception
+        (!axi_addrgen_req_valid_i || axi_addrgen_req_i.is_exception) &&
+        exception_pending_d && !vinsn_issue_q.vm && mask_word_valid &&
+        mask_word_q.owner == vinsn_issue_q.id)
+      mask_ready_d = 1'b1;
+
+    if (vinsn_issue_valid && (vinsn_queue_q.commit_cnt == 1) &&
+        vinsn_queue_q.commit_pnt == exception_slot_d &&
+        vinsn_queue_d.pending_b[vinsn_queue_q.commit_pnt] == '0 &&
+        (!axi_addrgen_req_valid_i || axi_addrgen_req_i.is_exception) &&
+        exception_pending_d &&
+        (vinsn_issue_q.vm || exception_mask_last)) begin : exception
       if (vinsn_queue_d.b_error_valid[vinsn_queue_q.commit_pnt]) begin
         store_b_exception_d.valid = 1'b1;
         store_b_exception_d.cause = riscv::ST_ACCESS_FAULT;
@@ -604,10 +624,6 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       // A fault can complete without a W beat, so discard the faulting
       // instruction's buffered operands before issuing the next store.
       stu_operand_ready = '1;
-      if (!vinsn_issue_q.vm && mask_valid_q[0] &&
-          mask_word_q.owner == vinsn_issue_q.id)
-        mask_ready_d = 1'b1;
-
       // Abort the main sequencer -> operand-req request
       stu_current_burst_exception_d = 1'b1;
 

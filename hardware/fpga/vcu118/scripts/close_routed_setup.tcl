@@ -44,6 +44,12 @@ if {[catch {
     if {![file isfile $checkpoint] || ![file isdirectory $out]} { error "Missing input or output" }
     source [file join $package scripts run_support.tcl]
     set_param general.maxThreads 8
+    set_param board.repoPaths [linsert [get_param board.repoPaths] 0 [file join $package board_files]]
+    if {[llength [get_board_parts -quiet xilinx.com:vcu118:part0:2.4]] != 1} {
+        error "Frozen VCU118 board definition is unavailable"
+    }
+    set_msg_config -id {Board 49-67} -new_severity ERROR
+    set_msg_config -id {Constraints 18-638} -new_severity ERROR
     stage $out opening
     open_checkpoint $checkpoint
     require_route $out

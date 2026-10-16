@@ -11,6 +11,9 @@ REVIEWED_DISPATCHER_SHA256 = {
     "9ea8fc3957fec2fa167d2e2aad77e40c85cca6ade8f46deeaba7a22d96bcc397",
     # ELEN and empty/blocked segment fixes; layout/control helpers are unchanged.
     "9af95c3eee6c63ecd9e60bf6d7c6474bdaaf1c5f96cef1bd653a6d51c6a2dd43",
+    # Signoff 5ee02215: restart/overlap/FOF legality and QBS commit fixes.
+    # Existing layout arithmetic and request-isolation implementation are retained.
+    "c179ddd08b2bdb8648246f187aa892be5853fda38aeca850402d5e5b9b17ef7d",
 }
 
 

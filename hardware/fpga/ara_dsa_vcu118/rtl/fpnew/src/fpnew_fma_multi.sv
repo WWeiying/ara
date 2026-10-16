@@ -745,11 +745,26 @@ module fpnew_fma_multi #(
     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
     localparam int unsigned MAN_BITS = fpnew_pkg::man_bits(fpnew_pkg::fp_format_e'(fmt));
+    logic unbounded_round_bit;
+
+    // One bit below the subnormal round bit becomes the unbounded round bit.
+    // Narrow formats keep it in final_mantissa, not in the super-format tail.
+    if (MAN_BITS < SUPER_MAN_BITS) begin : gen_narrow_uf_round_bit
+      assign unbounded_round_bit = final_mantissa[SUPER_MAN_BITS-MAN_BITS-1];
+    end else begin : gen_full_uf_round_bit
+      assign unbounded_round_bit = sum_sticky_bits[2*SUPER_MAN_BITS+4];
+    end
 
     if (FpFmtConfig[fmt]) begin : active_format
       always_comb begin : post_process
         // detect of / uf
-        fmt_uf_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // denormal
+        // Use the transaction's pipelined RM, not the current input request's RM.
+        fmt_uf_after_round[fmt] = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+            || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+                && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
+                && ((round_sticky_bits != 2'b11)
+                    || (!unbounded_round_bit
+                        && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
         fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
 
         // Assemble regular result, nan box short ones.

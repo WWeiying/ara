@@ -281,11 +281,12 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   // Exception handling FSM
   // Needed because of the result queue buffer, which can contain partial
   // results upon exception.
-  enum logic [1:0] {
+  enum logic [2:0] {
     IDLE,
     VALID_RESULT_QUEUE,
     WAIT_RESULT_QUEUE,
-    HANDLE_EXCEPTION
+    HANDLE_EXCEPTION,
+    DRAIN_EXCEPTION_MASK
   } ldu_ex_state_d, ldu_ex_state_q;
   // An early indexed fault can follow ARs whose R beats have not returned yet.
   logic early_illegal_pending_d, early_illegal_pending_q;
@@ -336,7 +337,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     ldu_current_burst_exception_d = 1'b0;
 
     // Inform the main sequencer if we are idle
-    pe_req_ready_o = !vinsn_queue_full;
+    pe_req_ready_o = !vinsn_queue_full && ldu_ex_state_q == IDLE &&
+                    // AddrGen and the instruction request may arrive in either
+                    // order. Admit the faulting owner before blocking successors.
+                    (!vinsn_issue_valid ||
+                     (!early_illegal_pending_d &&
+                      !(axi_addrgen_req_valid_i && axi_addrgen_req_i.is_load &&
+                        axi_addrgen_req_i.is_exception)));
 
     ////////////////////////////////////
     //  Read data from the R channel  //
@@ -477,16 +484,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         axi_r_byte_pnt_d   = '0;
         // Account for the beat we consumed
         axi_len_d     = axi_len_q + 1;
-      end : axi_r_beat_finish
 
-      // Consumed all beats from this burst
-      if ($unsigned(axi_len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_i.len) + 1)) begin : axi_finish
-        // Reset AXI pointers
-        axi_len_d               = '0;
-        axi_r_byte_pnt_d             = '0;
-        // Wait for another AXI request
-        axi_addrgen_req_ready_o = 1'b1;
-      end : axi_finish
+        // Compare the consumed beat index, not the wrapping next count. Skip
+        // descriptors consume bytes internally and must retire without RVALID.
+        if (axi_len_q == axi_addrgen_req_i.len) begin : axi_finish
+          axi_len_d = '0;
+          axi_addrgen_req_ready_o = 1'b1;
+        end : axi_finish
+      end : axi_r_beat_finish
 
       // Finished issuing results
       if (vinsn_issue_valid && issue_cnt_bytes_d == '0 ) begin : vrf_results_finish
@@ -576,7 +581,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     end : wait_for_write_back
 
     // Finished committing the results of a vector instruction
-    if (vinsn_commit_valid && commit_cnt_bytes_d == '0) begin : vinsn_done
+    if (vinsn_commit_valid && commit_cnt_bytes_d == '0 &&
+        ldu_ex_state_q == IDLE) begin : vinsn_done
       // Mark the vector instruction as being done
       pe_resp_d.vinsn_done[vinsn_commit.id] = 1'b1;
 
@@ -617,15 +623,37 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       end
       // Write the partial results to the VRF
       VALID_RESULT_QUEUE: begin
-        ldu_ex_state_d = WAIT_RESULT_QUEUE;
-        // Send to the lanes what we had written in the resqueue before the exception.
-        // If this is empty, the byte-enalbe signals should be zero, so no write happens.
-        result_queue_valid_d[result_queue_write_pnt_q] |= {NrLanes{1'b1}};
+        if (vrf_word_byte_cnt_q == '0) begin
+          ldu_ex_state_d = WAIT_RESULT_QUEUE;
+        end else if (!result_queue_full) begin
+          // A partial prefix is a real FIFO entry, not an out-of-band request.
+          result_queue_valid_d[result_queue_write_pnt_q] = '1;
+          result_queue_cnt_d += 1;
+          if (result_queue_write_pnt_q == ResultQueueDepth-1)
+            result_queue_write_pnt_d = '0;
+          else
+            result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+          ldu_ex_state_d = WAIT_RESULT_QUEUE;
+        end
       end
       // Wait until the resqueue is empty
       WAIT_RESULT_QUEUE: begin
-        if (!(|result_queue_valid_q[result_queue_read_pnt_q])) begin
-          ldu_ex_state_d = HANDLE_EXCEPTION;
+        // Requester acceptance can precede the actual VRF write by many cycles.
+        if (result_queue_cnt_d == '0 && !(|result_queue_valid_d) &&
+            (&result_final_gnt_d)) begin
+          ldu_ex_state_d = vinsn_issue_q.vm ? HANDLE_EXCEPTION : DRAIN_EXCEPTION_MASK;
+        end
+      end
+      // Keep the owner live until MASKU can finish its predicate stream.
+      // Flushing after load completion cannot do this: the dispatcher first
+      // waits for global idle, which still includes this MASKU instruction.
+      DRAIN_EXCEPTION_MASK: begin
+        if (mask_word_valid && mask_word_q.owner == vinsn_issue_q.id) begin
+          mask_ready_d = 1'b1;
+          if ((unsigned'(mask_word_q.first_element) +
+               ((NrLanes * DataWidthB) >> unsigned'(vinsn_issue_q.vtype.vsew))) >=
+              unsigned'(vinsn_issue_q.vl))
+            ldu_ex_state_d = HANDLE_EXCEPTION;
         end
       end
       // Handle the exception
@@ -642,6 +670,14 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         // Reset axi state
         axi_len_d        = '0;
         axi_r_byte_pnt_d = '0;
+        issue_cnt_bytes_d = '0;
+        commit_cnt_bytes_d = '0;
+        vrf_word_byte_pnt_d = '0;
+        vrf_word_byte_cnt_d = '0;
+        seq_word_wr_offset_d = '0;
+        first_payload_byte_d = '0;
+        first_result_queue_read_d = 1'b0;
+        result_queue_d[result_queue_write_pnt_q] = '0;
 
         // Ack the addrgen for this last faulty request
         axi_addrgen_req_ready_o = axi_addrgen_req_valid_i;
@@ -712,7 +748,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       axi_r_byte_pnt_q              <= '0;
       vrf_word_byte_pnt_q           <= '0;
       pe_resp_o                     <= '0;
-      result_final_gnt_q            <= '0;
+      // No requester write is outstanding after reset. Acceptance clears the
+      // corresponding bit; the final VRF grant sets it again.
+      result_final_gnt_q            <= '1;
       seq_word_wr_offset_q          <= '0;
       first_payload_byte_q          <= '0;
       vrf_word_byte_cnt_q           <= '0;

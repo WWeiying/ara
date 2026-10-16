@@ -616,7 +616,13 @@ module fpnew_fma #(
   );
 
   // Classification after rounding
-  assign uf_after_round = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // exponent = 0
+  // Include tiny unbounded-exponent results that round to min-normal.
+  assign uf_after_round = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+      || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+          && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
+          && ((round_sticky_bits != 2'b11)
+              || (!sum_sticky_bits[MAN_BITS*2 + 4]
+                  && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
   assign of_after_round = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // exponent all ones
 
   // -----------------

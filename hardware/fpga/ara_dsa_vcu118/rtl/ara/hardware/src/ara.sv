@@ -241,6 +241,10 @@ module ara import ara_pkg::*; #(
   // Interface with the lanes
   logic      [NrLanes-1:0][4:0] fflags_ex;
   logic      [NrLanes-1:0]      fflags_ex_valid;
+  logic      [NrLanes-1:0][4:0] lane_fflags_ex;
+  logic      [NrLanes-1:0]      lane_fflags_ex_valid;
+  logic [4:0] masku_fflags;
+  logic       masku_fflags_valid;
   logic      [NrLanes-1:0]      vxsat_flag;
   vxrm_t     [NrLanes-1:0]      alu_vxrm;
   // Flush support for store exceptions
@@ -248,6 +252,18 @@ module ara import ara_pkg::*; #(
   logic [4:0] qbs_fflags;
   logic       qbs_fflags_valid;
   logic [NrLanes-1:0] lsu_ex_flush_stu;
+
+  // Comparisons acquire their architectural exception mask in MASKU, not the
+  // lanes. Reuse the existing dispatcher flag interface without changing the
+  // lane completion or CSR ordering protocol.
+  always_comb begin
+    fflags_ex = lane_fflags_ex;
+    fflags_ex_valid = lane_fflags_ex_valid;
+    if (masku_fflags_valid) begin
+      fflags_ex[0] |= masku_fflags;
+      fflags_ex_valid[0] = 1'b1;
+    end
+  end
 
   ara_dispatcher #(
     .CVA6Cfg           (CVA6Cfg           ),
@@ -489,8 +505,8 @@ module ara import ara_pkg::*; #(
       // Interface with the dispatcher
       .vxsat_flag_o                    (vxsat_flag[lane]                    ),
       .alu_vxrm_i                      (alu_vxrm[lane]                      ),
-      .fflags_ex_o                     (fflags_ex[lane]                     ),
-      .fflags_ex_valid_o               (fflags_ex_valid[lane]               ),
+      .fflags_ex_o                     (lane_fflags_ex[lane]                ),
+      .fflags_ex_valid_o               (lane_fflags_ex_valid[lane]          ),
       // Support for store exception flush
       .lsu_ex_flush_i                  (lsu_ex_flush_lane                   ),
       .lsu_ex_flush_o                  (lsu_ex_flush_stu[lane]              ),
@@ -752,6 +768,8 @@ module ara import ara_pkg::*; #(
     .pe_resp_o               (pe_resp[NrLanes+OffsetMask]     ),
     .result_scalar_o         (result_scalar                   ),
     .result_scalar_valid_o   (result_scalar_valid             ),
+    .fflags_o                (masku_fflags                    ),
+    .fflags_valid_o          (masku_fflags_valid              ),
     // Interface with the lanes
     .masku_operand_i         (masku_operand                   ),
     .masku_operand_valid_i   (masku_operand_valid_masku       ),
@@ -799,6 +817,10 @@ module ara import ara_pkg::*; #(
     $error(
       "[ara] The vector length must be greater or equal than the maximum size of a single vector element"
     );
+
+  // vaddr() addresses ELEN-bit words in each lane; a smaller stride aliases registers.
+  if (VLEN < ELEN * NrLanes)
+    $error("[ara] The vector length must hold at least one ELEN-bit word per lane.");
 
   if (VLEN != 2**$clog2(VLEN))
     $error("[ara] The vector length must be a power of two.");

@@ -604,12 +604,13 @@
      CdcLogDepth   : 5,
      IdWidth       : 8,
      AddrWidth     : 32,
-@@ -115,6 +126,30 @@
+@@ -115,6 +126,37 @@
    // Clock on which is clocked the DRAM AXI
    logic dram_axi_clk;
    logic dram_rst_o;
 +  logic calib_complete;
 +  logic ui_resetn;
++  logic ui_resetn_sync;
 +  // Synchronize system-reset release before using it in the UI domain.
 +  logic ui_por_n;
 +  rstgen i_ui_por (
@@ -630,12 +631,18 @@
 +`else
 +    .clk_i(dram_axi_clk), .rst_ni(fabric_ready_o), .test_mode_i(1'b0),
 +`endif
-+    .rst_no(ui_resetn), .init_no()
++    .rst_no(ui_resetn_sync), .init_no()
 +  );
++  // Preserve all four ASYNC_REG stages. Only the extra distribution stage
++  // drives UI loads and may be replicated by physical optimization.
++  always_ff @(posedge dram_axi_clk or negedge ui_resetn_sync) begin
++    if (!ui_resetn_sync) ui_resetn <= 1'b0;
++    else ui_resetn <= 1'b1;
++  end
  
    // Signals before resizing
    axi_soc_req_t  soc_dresizer_req;
-@@ -125,8 +160,8 @@
+@@ -125,8 +167,8 @@
    axi_dw_resp_t dresizer_iresizer_rsp;
  
    // Signals after id width resizing
@@ -646,7 +653,7 @@
  
    // Entry signals
    assign soc_dresizer_req = soc_req_i;
-@@ -214,14 +249,64 @@
+@@ -214,14 +256,64 @@
        .src_req_i  ( iresizer_cdc_req ),
        .src_resp_o ( iresizer_cdc_rsp ),
        .dst_clk_i  ( dram_axi_clk ),
@@ -716,7 +723,7 @@
  
    ////////////////////////////////
    //  Map User, Resize Address  //
-@@ -241,11 +326,13 @@
+@@ -241,11 +333,13 @@
    /////////////////////////
  
  `ifdef USE_DDR4
@@ -731,7 +738,7 @@
      // Clock and reset out
      .c0_ddr4_ui_clk             ( dram_axi_clk ),
      .c0_ddr4_ui_clk_sync_rst    ( dram_rst_o   ),
-@@ -288,13 +375,125 @@
+@@ -288,13 +382,125 @@
      .c0_ddr4_s_axi_rlast        ( cdc_dram_rsp.r.last   ),
      .c0_ddr4_s_axi_rvalid       ( cdc_dram_rsp.r_valid  ),
      // Others
@@ -859,7 +866,7 @@
  `endif
  
    /////////////////////////
-@@ -359,4 +558,13 @@
+@@ -359,4 +565,13 @@
    );
  `endif  // USE_DDR3
  

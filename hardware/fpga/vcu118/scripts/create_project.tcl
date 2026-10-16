@@ -32,6 +32,9 @@ set_property top $design_top [current_fileset]
 set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
 source [file join $package_root scripts create_ip.tcl]
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints board.xdc]
+if {$fpga_profile in {dual_ddr dual_ddr_ethernet}} {
+    add_files -fileset constrs_1 -norecurse [file join $package_root constraints ddr2_clock.xdc]
+}
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints timing.xdc]
 if {$fpga_profile eq "host_ethernet"} {
     add_files -fileset constrs_1 -norecurse [file join $package_root constraints ethernet.xdc]

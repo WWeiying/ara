@@ -71,6 +71,17 @@ proc check_run {name expected} {
     }
 }
 
+proc check_pulsed_latches {dir {reject true}} {
+    file mkdir $dir
+    set checks [get_drc_checks -quiet PSLT-1]
+    if {[llength $checks] != 1} { error "PSLT-1 check unavailable" }
+    report_drc -checks $checks -name ara_pslt -force -file [file join $dir pslt.rpt]
+    set violations [get_drc_violations -name ara_pslt PSLT*]
+    puts "PSLT_COUNT=[llength $violations]"
+    if {$reject && [llength $violations]} { error "Pulsed latch violations remain: $dir/pslt.rpt" }
+    return [llength $violations]
+}
+
 proc require_no_multiple_drivers {dir} {
     file mkdir $dir
     report_drc -checks MDRV-1 -name ara_drivers -force -file [file join $dir multiple_drivers.rpt]

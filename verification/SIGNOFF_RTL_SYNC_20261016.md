@@ -59,5 +59,8 @@ with original and target SHA256 values in
 against their target hashes; all comparisons passed.
 No automatic rollback or worktree reset is performed.
 
-These changes are uncommitted. Dependency source edits live in their separate
-checkouts; the canonical patches and registry preserve the reproducible delta.
+The main RTL import is committed as `f1160620`. Dependency source edits live in
+their separate checkouts; the committed canonical patches and registry preserve
+the reproducible delta. The subsequent FPGA source refresh is recorded under
+`hardware/fpga/vcu118/results/20261016_signoff_sync/` and does not replace board
+validation of a newly built image.

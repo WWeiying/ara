@@ -66,7 +66,9 @@ module axi_demux_simple #(
   input  axi_resp_t   [NoMstPorts-1:0]  mst_resps_i
 );
 
-  localparam int unsigned IdCounterWidth = cf_math_pkg::idx_width(MaxTrans);
+  // Include MaxTrans and the +2 delta from simultaneous AR/ATOP ID aliases.
+  localparam int unsigned IdCounterWidth =
+      (MaxTrans < 2) ? 2 : cf_math_pkg::idx_width(MaxTrans + 1);
   typedef logic [IdCounterWidth-1:0] id_cnt_t;
 
   // pass through if only one master port
@@ -165,7 +167,7 @@ module axi_demux_simple #(
         // An AW can be handled if `i_aw_id_counter` and `i_counter_open_w` are not full.  An ATOP that
         // requires an R response can be handled if additionally `i_ar_id_counter` is not full (this
         // only applies if ATOPs are supported at all).
-        if (!aw_id_cnt_full && (w_open != {IdCounterWidth{1'b1}}) &&
+        if (!aw_id_cnt_full && (w_open < IdCounterWidth'(MaxTrans)) &&
             (!(ar_id_cnt_full && slv_req_i.aw.atop[axi_pkg::ATOP_R_RESP]) ||
              !AtopSupport)) begin
           // There is a valid AW vector make the id lookup and go further, if it passes.
@@ -210,6 +212,7 @@ module axi_demux_simple #(
       axi_demux_id_counters #(
         .AxiIdBits         ( AxiLookBits    ),
         .CounterWidth      ( IdCounterWidth ),
+        .MaxTrans          ( MaxTrans       ),
         .mst_port_select_t ( select_t       )
       ) i_aw_id_counter (
         .clk_i                        ( clk_i                          ),
@@ -356,6 +359,7 @@ module axi_demux_simple #(
       axi_demux_id_counters #(
         .AxiIdBits         ( AxiLookBits    ),
         .CounterWidth      ( IdCounterWidth ),
+        .MaxTrans          ( MaxTrans       ),
         .mst_port_select_t ( select_t       )
       ) i_ar_id_counter (
         .clk_i                        ( clk_i                                       ),

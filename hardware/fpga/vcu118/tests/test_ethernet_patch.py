@@ -3,6 +3,7 @@ import unittest
 from test_ddr2_patch import HERE, baseline_wrapper, patch_ddr2
 from ddr_cut_fpga import patch_ddr_read_cut
 from ethernet_fpga import patch_ethernet
+from ui_reset_fpga import patch_ui_reset_distribution
 
 
 class EthernetPatchTests(unittest.TestCase):
@@ -11,7 +12,8 @@ class EthernetPatchTests(unittest.TestCase):
 
     def test_export_matches(self):
         wrapper = HERE.parent / "ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv"
-        self.assertEqual(wrapper.read_text(), patch_ethernet(self.original()))
+        self.assertEqual(wrapper.read_text(),
+                         patch_ui_reset_distribution(patch_ethernet(self.original())))
 
     def test_patch_guards(self):
         text = self.original()

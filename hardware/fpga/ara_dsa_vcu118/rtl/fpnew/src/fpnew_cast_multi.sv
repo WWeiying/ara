@@ -588,7 +588,13 @@ module fpnew_cast_multi #(
     if (FpFmtConfig[fmt]) begin : active_format
       always_comb begin : post_process
         // detect of / uf
-        fmt_uf_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // denormal
+        // Tininess uses an unbounded exponent, including rounding to min-normal.
+        fmt_uf_after_round[fmt] = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+            || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
+                && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
+                && ((round_sticky_bits != 2'b11)
+                    || (!destination_mant[NUM_FP_STICKY-1]
+                        && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
         fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
 
         // Assemble regular result, nan box short ones. Int zeroes need to be detected`
@@ -735,12 +741,12 @@ module fpnew_cast_multi #(
   logic [WIDTH-1:0]   fp_result, int_result;
   fpnew_pkg::status_t fp_status, int_status;
 
-  assign fp_regular_status.NV = src_is_int_q & (of_before_round | of_after_round); // overflow is invalid for I2F casts
+  assign fp_regular_status.NV = 1'b0; // finite I2F overflow raises OF, not NV
   assign fp_regular_status.DZ = 1'b0; // no divisions
-  assign fp_regular_status.OF = ~src_is_int_q & (~info_q.is_inf & (of_before_round | of_after_round)); // inf casts no OF
+  assign fp_regular_status.OF = (src_is_int_q | ~info_q.is_inf) & (of_before_round | of_after_round);
   assign fp_regular_status.UF = uf_after_round & fp_regular_status.NX;
-  assign fp_regular_status.NX = src_is_int_q ? (| fp_round_sticky_bits) // overflow is invalid in i2f
-            : (| fp_round_sticky_bits) | (~info_q.is_inf & (of_before_round | of_after_round));
+  assign fp_regular_status.NX = (| fp_round_sticky_bits)
+            | ((src_is_int_q | ~info_q.is_inf) & (of_before_round | of_after_round));
   assign int_regular_status = '{NX: (| int_round_sticky_bits), default: 1'b0};
 
   assign fp_result  = fp_result_is_special  ? fp_special_result  : fmt_result[dst_fmt_q2];

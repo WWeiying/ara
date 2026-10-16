@@ -32,6 +32,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     output pe_resp_t                                   pe_resp_o,
     output elen_t                                      result_scalar_o,
     output logic                                       result_scalar_valid_o,
+    output logic [4:0]                                 fflags_o,
+    output logic                                       fflags_valid_o,
     // Interface with the lanes
     input  elen_t    [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_i,
     input  logic     [NrLanes-1:0][NrMaskFUnits+2-1:0] masku_operand_valid_i,
@@ -115,6 +117,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
   logic  [NrLanes*DataWidth-1:0] bit_enable_mask;
   logic  [NrLanes*DataWidth-1:0] alu_result_compressed_seq;
+  logic  [NrLanes*DataWidth-1:0] fp_compare_nv_seq;
 
   // Performs all shuffling and deshuffling of mask operands (including masks for mask instructions)
   // Furthermore, it buffers certain operands that would create long critical paths
@@ -153,7 +156,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     .masku_operand_m_seq_valid_o   (                             ),
     .masku_operand_m_seq_ready_i   (                          '0 ),
     .bit_enable_mask_o             (             bit_enable_mask ),
-    .alu_result_compressed_seq_o   (   alu_result_compressed_seq )
+    .alu_result_compressed_seq_o   (   alu_result_compressed_seq ),
+    .fp_compare_nv_seq_o           (           fp_compare_nv_seq )
   );
 
   // Local Parameter for mask logical instructions
@@ -441,6 +445,26 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   logic in_ready_cnt_en, in_ready_cnt_clr;
   in_ready_cnt_t in_ready_cnt_delta_q, in_ready_cnt_q;
   in_ready_cnt_t in_ready_threshold_d, in_ready_threshold_q;
+
+  // Comparisons are computed unpredicated in VMFPU. Only MASKU owns the exact
+  // architectural window and predicate. Publish flags on accepted result beats,
+  // before their VRF commit; stalled or stale beats must not modify fflags.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      fflags_o <= '0;
+      fflags_valid_o <= 1'b0;
+    end else begin
+      fflags_o <= '0;
+      fflags_valid_o <= 1'b0;
+      if (vinsn_issue_valid && vinsn_issue.op inside {[VMFEQ:VMFGE]} &&
+          (&masku_operand_alu_valid) && (&masku_operand_alu_ready)) begin
+        fflags_o <= {(|(fp_compare_nv_seq & result_queue_active_mask_seq &
+                       (masku_operand_m_seq | {NrLanes*DataWidth{vinsn_issue.vm}}))),
+                     4'b0000};
+        fflags_valid_o <= 1'b1;
+      end
+    end
+  end
 
   assign in_ready_cnt_delta_q = 1;
 
@@ -791,19 +815,22 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     if (vinsn_issue_valid) begin
       // Evaluate the instruction
       unique case (vinsn_issue.op) inside
-        // Mask logical: pass through the result already computed in the ALU. The
-        // operation is unmasked. Preserve the restart prefix and, under tail-undisturbed
-        // policy, the destination bits at or above vl.
+        // Evaluate independently deshuffled mask sources. Same-register identities
+        // must not depend on uninitialized VRF bits. Keep prefix/tail merging below.
         [VMANDNOT:VMXNOR]: begin
           unique case (vinsn_issue.op)
-            VMANDNOT: alu_result_vm_m = ~masku_operand_m_seq & masku_operand_alu_seq;
+            VMANDNOT: alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '0 : ~masku_operand_m_seq & masku_operand_alu_seq;
             VMAND   : alu_result_vm_m =  masku_operand_m_seq & masku_operand_alu_seq;
             VMOR    : alu_result_vm_m =  masku_operand_m_seq | masku_operand_alu_seq;
-            VMXOR   : alu_result_vm_m =  masku_operand_m_seq ^ masku_operand_alu_seq;
-            VMORNOT : alu_result_vm_m = ~masku_operand_m_seq | masku_operand_alu_seq;
+            VMXOR   : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '0 : masku_operand_m_seq ^ masku_operand_alu_seq;
+            VMORNOT : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '1 : ~masku_operand_m_seq | masku_operand_alu_seq;
             VMNAND  : alu_result_vm_m = ~(masku_operand_m_seq & masku_operand_alu_seq);
             VMNOR   : alu_result_vm_m = ~(masku_operand_m_seq | masku_operand_alu_seq);
-            VMXNOR  : alu_result_vm_m = ~(masku_operand_m_seq ^ masku_operand_alu_seq);
+            VMXNOR  : alu_result_vm_m = (vinsn_issue.vs1 == vinsn_issue.vs2)
+                                      ? '1 : ~(masku_operand_m_seq ^ masku_operand_alu_seq);
             default : alu_result_vm_m = '1;
           endcase
           if (vinsn_issue.use_vd_op) begin
@@ -936,27 +963,33 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
             default: vrgat_res[out_valid_cnt_q[idx_width(NrLanes*ELENB/8)-1:0] * 64 +: 64] = vrgat_buf[0 +: 64];
           endcase
 
-          // BE signal for VRGATHER
+          // Gather traverses the prefix; vl - issue_cnt_q is the absolute
+          // destination element, unlike the word-local out_valid_cnt_q.
+		  // Suppress prestart writes for masked and unmasked gathers alike.
 		  unique case (vinsn_issue.vtype.vsew)
             EW8: begin
               vrgat_m_seq_bit = masku_operand_m_seq[in_m_ready_cnt_q[idx_width(NrLanes*DataWidth)-1:0]];
               be_vrgat_seq_d[out_valid_cnt_q[idx_width(NrLanes*DataWidth/8)-1:0] * 1 +: 1] =
-                {1{vinsn_issue.vm}} | {1{vrgat_m_seq_bit}};
+                {1{(vinsn_issue.vm | vrgat_m_seq_bit) &&
+                   ((vinsn_issue.vl - issue_cnt_q) >= vinsn_issue.vstart)}};
             end
             EW16: begin
               vrgat_m_seq_bit = masku_operand_m_seq[in_m_ready_cnt_q[idx_width(NrLanes*DataWidth)-1:0]];
               be_vrgat_seq_d[out_valid_cnt_q[idx_width(NrLanes*DataWidth/16)-1:0] * 2 +: 2] =
-                {2{vinsn_issue.vm}} | {2{vrgat_m_seq_bit}};
+                {2{(vinsn_issue.vm | vrgat_m_seq_bit) &&
+                   ((vinsn_issue.vl - issue_cnt_q) >= vinsn_issue.vstart)}};
             end
             EW32: begin
               vrgat_m_seq_bit = masku_operand_m_seq[in_m_ready_cnt_q[idx_width(NrLanes*DataWidth)-1:0]];
               be_vrgat_seq_d[out_valid_cnt_q[idx_width(NrLanes*DataWidth/32)-1:0] * 4 +: 4] =
-                {4{vinsn_issue.vm}} | {4{vrgat_m_seq_bit}};
+                {4{(vinsn_issue.vm | vrgat_m_seq_bit) &&
+                   ((vinsn_issue.vl - issue_cnt_q) >= vinsn_issue.vstart)}};
             end
             default: begin // EW64
               vrgat_m_seq_bit = masku_operand_m_seq[in_m_ready_cnt_q[idx_width(NrLanes*DataWidth)-1:0]];
               be_vrgat_seq_d[out_valid_cnt_q[idx_width(NrLanes*DataWidth/64)-1:0] * 8 +: 8] =
-                {8{vinsn_issue.vm}} | {8{vrgat_m_seq_bit}};
+                {8{(vinsn_issue.vm | vrgat_m_seq_bit) &&
+                   ((vinsn_issue.vl - issue_cnt_q) >= vinsn_issue.vstart)}};
             end
           endcase
 
@@ -1421,9 +1454,11 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       elm_per_lane = 4'b1000;
     for (int l = 0; l < NrLanes; l++) additional_elm[l] = effective_elm_cnt[idx_width(NrLanes)-1:0] > l;
 
-    // Default operand queue assignment
-    for (int unsigned lane = 0; lane < NrLanes; lane++) begin
-      result_queue_d[result_queue_write_pnt_q][lane] = '{
+    // A full queue wraps its write pointer onto a live result. Retain that
+    // result's descriptor as well as its data until the consumer accepts it.
+    if (!result_queue_full) begin
+      for (int unsigned lane = 0; lane < NrLanes; lane++) begin
+        result_queue_d[result_queue_write_pnt_q][lane] = '{
         wdata: result_queue_q[result_queue_write_pnt_q][lane].wdata, // Retain the last-cycle's data
 		// VIOTA, VID generate a non-mask vector and should comply with undisturbed policy
         // This means that we can use the byte-enable signal
@@ -1432,7 +1467,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
                : '1,
         addr : vaddr(vinsn_issue.vd, NrLanes, VLEN) + iteration_cnt_q,
         id   : vinsn_issue.id
-      };
+        };
+      end
     end
 
     // Is there an instruction ready to be issued?
@@ -1769,8 +1805,10 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           result_scalar_valid_d = 1'b1;
         end
 
+        // SLDU traverses the prefix and suppresses its write strobes; unlike
+        // memory operations it still consumes those destination mask words.
         if (!pe_req_i.vm &&
-            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu}) &&
+            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu, VFU_SlideUnit}) &&
             pe_req_i.vstart != '0) begin
           read_cnt_d = (pe_req_i.vstart >= pe_req_i.vl)
                      ? '0
@@ -1884,7 +1922,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_queue_d.commit_cnt == '0) begin
         commit_cnt_d = pe_req_i.vl;
         if (!pe_req_i.vm &&
-            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu}) &&
+            !(pe_req_i.vfu inside {VFU_MaskUnit, VFU_Alu, VFU_MFpu, VFU_SlideUnit}) &&
             pe_req_i.vstart != '0) begin
           commit_cnt_d = (pe_req_i.vstart >= pe_req_i.vl)
                        ? '0

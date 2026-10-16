@@ -11,7 +11,8 @@ from collections import Counter
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("package", type=Path)
-parser.add_argument("--profile", choices=("baseline", "host", "dual_ddr", "host_ethernet"), default="baseline")
+parser.add_argument("--profile", choices=("baseline", "host", "dual_ddr", "host_ethernet",
+                                        "dual_ddr_ethernet"), default="baseline")
 parser.add_argument("--allow-vendor-ip", action="store_true",
                     help="Allow only the exact expected unelaborated Vivado IP/primitives")
 args = parser.parse_args()
@@ -30,9 +31,9 @@ for name, value in manifest["defines"].items():
     argv.append("-D" + name + ("" if value is None else "=" + str(value)))
 if args.profile != "baseline":
     argv.append("-DARA_FPGA_HOST")
-if args.profile == "dual_ddr":
+if args.profile in ("dual_ddr", "dual_ddr_ethernet"):
     argv.append("-DARA_FPGA_DDR2")
-if args.profile == "host_ethernet":
+if args.profile in ("host_ethernet", "dual_ddr_ethernet"):
     argv.append("-DARA_FPGA_ETHERNET")
 argv.extend("-I" + str(root / path) for path in manifest["include_dirs"])
 argv.extend(str(root / path) for path in manifest["files"])
@@ -107,13 +108,13 @@ if args.profile != "baseline":
             symbol = symbol.type.canonicalType.find(member)
         if symbol.type.bitWidth != width:
             raise RuntimeError(f"JTAG IP width mismatch: {field} = {symbol.type.bitWidth}, expected {width}")
-if args.profile == "dual_ddr":
+if args.profile in ("dual_ddr", "dual_ddr_ethernet"):
     vendor.add("ddr4_c2")
     for path in ("i_ddr_router", "gen_ddr2.i_dram_wrapper_c2"):
         if compilation.getRoot().lookupName("ara_dsa_vcu118." + path) is None:
             raise RuntimeError("Missing dual DDR hardware: " + path)
 errors, external = [], set()
-if args.profile == "host_ethernet":
+if args.profile in ("host_ethernet", "dual_ddr_ethernet"):
     vendor.update({"loader_bd_wrapper", "eth_control"})
     for suffix in ("i_eth_loader", "i_eth_shared_ddr.i_isolate", "i_eth_shared_ddr.gen_static_ids"):
         if compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper." + suffix) is None:
@@ -125,7 +126,7 @@ if args.profile == "host_ethernet":
     print("Ethernet DDR IDs: Ara 5 bits zero-extended to 8; source-tag partition enabled")
     demux = "ara_dsa_vcu118.i_dram_wrapper.i_eth_shared_ddr.i_range.i_demux_simple"
     for parameter, expected in (("AxiLookBits", 1), ("UniqueIds", 0), ("MaxTrans", 32),
-                                ("AtopSupport", 0), ("IdCounterWidth", 5)):
+                                ("AtopSupport", 0), ("IdCounterWidth", 6)):
         symbol = compilation.getRoot().lookupName(demux + "." + parameter)
         if symbol is None or int(symbol.value.value) != expected:
             raise RuntimeError("Unexpected loader protection parameter: " + parameter)

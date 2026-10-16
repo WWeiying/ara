@@ -153,10 +153,6 @@ module load_unit
     ldbuf_flushed_d = ldbuf_flushed_q;
     ldbuf_valid_d   = ldbuf_valid_q;
 
-    //  In case of flush, raise the flushed flag in all slots.
-    if (flush_i) begin
-      ldbuf_flushed_d = '1;
-    end
     //  Free read entry (in the case of fall-through mode, free the entry
     //  only if there is no pending load)
     if (ldbuf_r && (!LDBUF_FALLTHROUGH || !ldbuf_w)) begin
@@ -166,6 +162,10 @@ module load_unit
     if (ldbuf_w) begin
       ldbuf_flushed_d[ldbuf_windex] = 1'b0;
       ldbuf_valid_d[ldbuf_windex]   = 1'b1;
+    end
+    // Flush also cancels a slot allocated by a simultaneous cache grant.
+    if (flush_i) begin
+      ldbuf_flushed_d = '1;
     end
   end
 

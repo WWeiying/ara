@@ -30,6 +30,7 @@ set code [catch {
         error "Checkpoint Ethernet hierarchy does not match profile $fpga_profile"
     }
     set reports [file join $out reports]
+    check_pulsed_latches $reports
     require_no_multiple_drivers $reports
     # In audited mode the wrapper has verified the same checkpoint and immutable
     # full-report evidence. Keep live driver/timing checks and native bitgen DRC.

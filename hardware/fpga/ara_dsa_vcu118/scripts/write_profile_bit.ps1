@@ -68,7 +68,7 @@ try {
         $recordedReports = @($audit.ReportHashes.PSObject.Properties.Name)
         foreach ($required in @('route_status.rpt', 'timing_summary.rpt', 'check_timing.rpt',
                                 'cdc.rpt', 'drc.rpt', 'methodology.rpt', 'constraint_checks.rpt',
-                                'boundary_checks.rpt', 'multiple_drivers.rpt')) {
+                                'boundary_checks.rpt', 'multiple_drivers.rpt', 'pslt.rpt')) {
             if ($required -notin $recordedReports) { throw "Audit report missing from manifest: $required" }
         }
         if ($reportFiles.Count -ne $recordedReports.Count) { throw 'Audit report inventory changed.' }

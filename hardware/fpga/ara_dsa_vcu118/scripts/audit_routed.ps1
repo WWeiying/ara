@@ -80,7 +80,7 @@ try {
         $reportFiles = @(Get-ChildItem -LiteralPath $reports -File -Filter '*.rpt')
         $requiredReports = @('route_status.rpt', 'timing_summary.rpt', 'check_timing.rpt',
             'cdc.rpt', 'drc.rpt', 'methodology.rpt', 'constraint_checks.rpt',
-            'boundary_checks.rpt', 'multiple_drivers.rpt')
+            'boundary_checks.rpt', 'multiple_drivers.rpt', 'pslt.rpt')
         foreach ($required in $requiredReports) {
             if ($required -notin $reportFiles.Name) { throw "Missing audit report: $required" }
         }

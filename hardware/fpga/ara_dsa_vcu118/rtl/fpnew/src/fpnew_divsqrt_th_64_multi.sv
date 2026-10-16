@@ -217,7 +217,7 @@ module fpnew_divsqrt_th_64_multi #(
   // Valid synch with other lanes
   // When one divsqrt unit completes an operation, keep its done high, waiting for the other lanes
   // As soon as all the lanes are over, we can clear this FF and start with a new operation
-  `FFLARNC(unit_done_q, unit_done, unit_done, simd_synch_done, 1'b0, clk_i, rst_ni);
+  `FFLARNC(unit_done_q, unit_done, unit_done, simd_synch_done | flush_i, 1'b0, clk_i, rst_ni);
   // Tell the other units that this unit has finished now or in the past
   assign divsqrt_done_o = (unit_done_q | unit_done) & result_vec_op_q;
 
@@ -373,11 +373,11 @@ module fpnew_divsqrt_th_64_multi #(
   
   // Select func 1 cycle after div issue
   logic func_sel;
-  `FFLARNC(func_sel, 1'b1, op_starting, func_sel, 1'b0, clk_i, rst_ni)
+  `FFLARNC(func_sel, 1'b1, op_starting, func_sel | flush_i, 1'b0, clk_i, rst_ni)
 
   // Select operands 2 cycles after div issue
   logic op_sel;
-  `FFLARNC(op_sel, 1'b1, func_sel, op_sel, 1'b0, clk_i, rst_ni)
+  `FFLARNC(op_sel, 1'b1, func_sel, op_sel | flush_i, 1'b0, clk_i, rst_ni)
 
   ct_vfdsu_top i_ct_vfdsu_top (
     .cp0_vfpu_icg_en                ( 1'b0                      ), // Internal clock gating, (module enable) doesn't matter when the clk_gate module is redundant anyway

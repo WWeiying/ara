@@ -273,8 +273,36 @@ index aa526951e..54ab062fc 100644
    /**************************
     *  Accelerator barriers  *
     **************************/
+diff --git a/core/cache_subsystem/wt_axi_adapter.sv b/core/cache_subsystem/wt_axi_adapter.sv
+index 22cc5c075..5f259d75a 100644
+--- a/core/cache_subsystem/wt_axi_adapter.sv
++++ b/core/cache_subsystem/wt_axi_adapter.sv
+@@ -527,9 +527,10 @@ module wt_axi_adapter
+ 
+   // decode virtual read channels of icache
+   always_comb begin : p_axi_rtrn_decode
+-    // we are not ready when invalidating
++    // Invalidation owns the D-cache return slot. Backpressure AXI as well,
++    // otherwise a simultaneous read beat is accepted but never captured.
+     // note: b's are buffered separately
+-    axi_rd_rdy        = ~invalidate;
++    axi_rd_rdy        = ~invalidate & ~inval_valid_i;
+ 
+     icache_rtrn_rd_en = 1'b0;
+     icache_rtrn_vld_d = 1'b0;
+@@ -550,8 +551,8 @@ module wt_axi_adapter
+     b_pop              = 1'b0;
+     dcache_sc_rtrn     = 1'b0;
+ 
+-    // External invalidation requests (from coprocessor). This is safe as
+-    // there are no other transactions when a coprocessor has pending stores.
++    // External invalidation can overlap speculative fetches and page walks.
++    // The shared R channel is held until this return slot is available.
+     inval_ready_o      = 1'b0;
+     if (inval_valid_i) begin
+       inval_ready_o         = 1'b1;
 diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
-index 180cba4fa..b4361c7d9 100644
+index 180cba4fa..660d93f90 100644
 --- a/core/csr_regfile.sv
 +++ b/core/csr_regfile.sv
 @@ -497,7 +497,8 @@ module csr_regfile
@@ -330,6 +358,34 @@ index 180cba4fa..b4361c7d9 100644
      end else begin
        mstatus_d.sd = riscv::Off;
      end
+@@ -2350,12 +2361,12 @@ module csr_regfile
+       end
+       // set mpie to 1
+       mstatus_d.mpie = 1'b1;
++      if (mstatus_q.mpp != riscv::PRIV_LVL_M) mstatus_d.mprv = 1'b0;
+       if (CVA6Cfg.RVH) begin
+         // set virtualization mode
+         v_d           = mstatus_q.mpv;
+         //set mstatus mpv to false
+         mstatus_d.mpv = 1'b0;
+-        if (mstatus_q.mpp != riscv::PRIV_LVL_M) mstatus_d.mprv = 1'b0;
+       end
+       // restore mintstatus
+       if (CVA6Cfg.RVSCLIC && clic_mode_o && mcause_q[CVA6Cfg.XLEN-1])
+@@ -2373,12 +2384,12 @@ module csr_regfile
+       mstatus_d.spp  = 1'b0;
+       // set spie to 1
+       mstatus_d.spie = 1'b1;
++      mstatus_d.mprv = 1'b0;
+       if (CVA6Cfg.RVH) begin
+         // set virtualization mode
+         v_d            = hstatus_q.spv;
+         //set hstatus spv to false
+         hstatus_d.spv  = 1'b0;
+-        mstatus_d.mprv = 1'b0;
+       end
+       // restore sintstatus
+       if (CVA6Cfg.RVSCLIC && clic_mode_o && scause_q[CVA6Cfg.XLEN-1])
 diff --git a/core/cva6.sv b/core/cva6.sv
 index 1bf0de585..3ba3fa414 100644
 --- a/core/cva6.sv
@@ -374,6 +430,63 @@ index 1bf0de585..3ba3fa414 100644
      assign acc_exception_ex_id        = '0;
      assign acc_resp_fflags            = '0;
      assign acc_resp_fflags_valid      = '0;
+diff --git a/core/cva6_mmu/cva6_mmu.sv b/core/cva6_mmu/cva6_mmu.sv
+index 08a776112..a12a3b995 100644
+--- a/core/cva6_mmu/cva6_mmu.sv
++++ b/core/cva6_mmu/cva6_mmu.sv
+@@ -521,8 +521,8 @@ module cva6_mmu
+     misaligned_ex_n.valid = misaligned_ex_i.valid & lsu_req_i;
+ 
+     // we work with SV39 or SV32, so if VM is enabled, check that all bits [CVA6Cfg.VLEN-1:CVA6Cfg.SV-1] are equal to bit [CVA6Cfg.SV]
+-    canonical_addr_check = (lsu_req_i && en_ld_st_translation_i &&
+-           !((&lsu_vaddr_i[CVA6Cfg.VLEN-1:CVA6Cfg.SV-1]) == 1'b1 || (|lsu_vaddr_i[CVA6Cfg.VLEN-1:CVA6Cfg.SV-1]) == 1'b0));
++    canonical_addr_check = (lsu_req_q && en_ld_st_translation_i &&
++           !((&lsu_vaddr_q[CVA6Cfg.VLEN-1:CVA6Cfg.SV-1]) == 1'b1 || (|lsu_vaddr_q[CVA6Cfg.VLEN-1:CVA6Cfg.SV-1]) == 1'b0));
+ 
+     // Check if the User flag is set, then we may only access it in supervisor mode
+     // if SUM is enabled
+@@ -556,14 +556,23 @@ module cva6_mmu
+         // Strange 9+PtLevels to avoid CI errors on (purely syntactic) checks on Sv32, where
+         // `PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels)` equals `11` and would lead to `lsu_paddr_o[11:12]`
+         lsu_paddr_o[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels] = lsu_vaddr_q[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels];
+-        lsu_dtlb_ppn_o[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels] = lsu_vaddr_n[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels];
+       end
+ 
+       if (dtlb_is_page_q[0]) begin
+-        lsu_dtlb_ppn_o[PPNWMin:12] = lsu_vaddr_n[PPNWMin:12];
+         lsu_paddr_o[PPNWMin:12] = lsu_vaddr_q[PPNWMin:12];
+       end
+ 
++      // The early PPN uses this lookup's page size; its bit zero is PA bit 12.
++      for (int level = 1; level < CVA6Cfg.PtLevels; level++) begin
++        if (dtlb_is_page[CVA6Cfg.PtLevels-1-level]) begin
++          for (int bit_idx = 0; bit_idx < CVA6Cfg.PPNW; bit_idx++) begin
++            if (bit_idx < level * (CVA6Cfg.VpnLen / CVA6Cfg.PtLevels)) begin
++              lsu_dtlb_ppn_o[bit_idx] = lsu_vaddr_n[bit_idx+12];
++            end
++          end
++        end
++      end
++
+ 
+ 
+       // ---------
+diff --git a/core/cva6_mmu/cva6_ptw.sv b/core/cva6_mmu/cva6_ptw.sv
+index 4bd6f4dd5..5f7fea1e0 100644
+--- a/core/cva6_mmu/cva6_ptw.sv
++++ b/core/cva6_mmu/cva6_ptw.sv
+@@ -543,9 +543,9 @@ module cva6_ptw
+                   endcase
+                 end else ptw_pptr_n = {pte.ppn, vaddr_lvl[0][ptw_lvl_q[0]], (CVA6Cfg.PtLevels)'(0)};
+ 
+-                if (CVA6Cfg.RVH && (pte.a || pte.d || pte.u)) begin
++                if (pte.a || pte.d || pte.u) begin
+                   state_d = PROPAGATE_ERROR;
+-                  ptw_stage_d = ptw_stage_q;
++                  if (CVA6Cfg.RVH) ptw_stage_d = ptw_stage_q;
+                 end
+ 
+               end
 diff --git a/core/decoder.sv b/core/decoder.sv
 index d907b2094..f4686a47f 100644
 --- a/core/decoder.sv
@@ -544,9 +657,31 @@ index f0b0817ea..fde047837 100644
        .x_rd_i,
        .rvfi_issue_pointer_o,
 diff --git a/core/load_unit.sv b/core/load_unit.sv
-index bea5efa6d..7ca3d91e5 100644
+index bea5efa6d..5611825c7 100644
 --- a/core/load_unit.sv
 +++ b/core/load_unit.sv
+@@ -153,10 +153,6 @@ module load_unit
+     ldbuf_flushed_d = ldbuf_flushed_q;
+     ldbuf_valid_d   = ldbuf_valid_q;
+ 
+-    //  In case of flush, raise the flushed flag in all slots.
+-    if (flush_i) begin
+-      ldbuf_flushed_d = '1;
+-    end
+     //  Free read entry (in the case of fall-through mode, free the entry
+     //  only if there is no pending load)
+     if (ldbuf_r && (!LDBUF_FALLTHROUGH || !ldbuf_w)) begin
+@@ -167,6 +163,10 @@ module load_unit
+       ldbuf_flushed_d[ldbuf_windex] = 1'b0;
+       ldbuf_valid_d[ldbuf_windex]   = 1'b1;
+     end
++    // Flush also cancels a slot allocated by a simultaneous cache grant.
++    if (flush_i) begin
++      ldbuf_flushed_d = '1;
++    end
+   end
+ 
+   always_ff @(posedge clk_i or negedge rst_ni) begin : ldbuf_ff
 @@ -286,35 +286,53 @@ module load_unit
  
        // wait here for the page offset to not match anymore

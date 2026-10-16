@@ -662,7 +662,7 @@
     "ARA_AKV_ENABLE": 1,
     "ARA_AKV_V2_ENABLE": 1
   },
-  "created_utc": "2026-09-30T16:56:10.184966+00:00",
+  "created_utc": "2026-10-16T11:11:59.980093+00:00",
   "revisions": {
     "apb": {
       "commit": "77ddf073f194d44b9119949d2421be59789e69ae",
@@ -673,136 +673,21 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "68f8910b3c56269a9d289b81dfe5fd347b49759f",
+      "commit": "50ace3fa91408dbce62b1cc70ea2147647fabf11",
       "tracked_changes": [
         ".gitignore",
-        "Bender.yml",
         "apps/common/crt0.S",
         "apps/riscv-tests/isa/rv64uv/Makefrag",
         "apps/riscv-tests/isa/rv64uv/vfredmax.c",
         "backend/syn/ara_soc/v1-dc/reports/area.rpt",
         "hardware/Makefile",
-        "hardware/fpga/ara_dsa_vcu118/.gitignore",
-        "hardware/fpga/ara_dsa_vcu118/README_WINDOWS.md",
-        "hardware/fpga/ara_dsa_vcu118/SHA256SUMS",
-        "hardware/fpga/ara_dsa_vcu118/docs/FPGA_ISSUES.md",
-        "hardware/fpga/ara_dsa_vcu118/docs/INTEGRATION.md",
-        "hardware/fpga/ara_dsa_vcu118/linux/README.md",
-        "hardware/fpga/ara_dsa_vcu118/linux/ara_vcu118.dts.in",
-        "hardware/fpga/ara_dsa_vcu118/linux/build_linux_bringup.sh",
-        "hardware/fpga/ara_dsa_vcu118/manifest.json",
-        "hardware/fpga/ara_dsa_vcu118/provenance/ara_local.patch",
-        "hardware/fpga/ara_dsa_vcu118/provenance/cva6_local.patch",
-        "hardware/fpga/ara_dsa_vcu118/provenance/integration.patch",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/include/ara/intf_typedef.svh",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/include/ara_pkg.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_dispatcher.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/ara_sequencer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/operand_queue.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/simd_div.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/valu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/lane/vmfpu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/masku/masku.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/segment_sequencer.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/sldu/sldu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/addrgen.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/vldu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/vlsu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src/vlsu/vstu.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/axi/src/axi_id_remap.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/acc_dispatcher.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/csr_regfile.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/cva6.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/decoder.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/include/ariane_pkg.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/include/riscv_pkg.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/issue_read_operands.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/issue_stage.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/scoreboard.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/fpnew/src/fpnew_cast_multi.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/fpnew/src/fpnew_opgroup_multifmt_slice.sv",
-        "hardware/fpga/ara_dsa_vcu118/rtl/fpnew/src/fpnew_pkg.sv",
-        "hardware/fpga/ara_dsa_vcu118/scripts/audit_routed.ps1",
-        "hardware/fpga/ara_dsa_vcu118/scripts/common.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/config.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/create_ip.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/create_profile.ps1",
-        "hardware/fpga/ara_dsa_vcu118/scripts/create_project.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/prepare_profile.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/program_host_image.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/run.ps1",
-        "hardware/fpga/ara_dsa_vcu118/scripts/run_support.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/sources.tcl",
-        "hardware/fpga/ara_dsa_vcu118/scripts/write_profile_bit.ps1",
-        "hardware/fpga/ara_dsa_vcu118/scripts/write_profile_bit.tcl",
-        "hardware/fpga/ara_dsa_vcu118/software/README.md",
-        "hardware/fpga/ara_dsa_vcu118/software/eth_load.py",
-        "hardware/fpga/ara_dsa_vcu118/software/host_load.py",
-        "hardware/fpga/ara_dsa_vcu118/software/host_transport.py",
-        "hardware/fpga/ara_dsa_vcu118/software/host_vivado.tcl",
-        "hardware/fpga/ara_dsa_vcu118/software/reference/params.h",
-        "hardware/fpga/ara_dsa_vcu118/software/smoke.c",
-        "hardware/fpga/ara_dsa_vcu118/software/smoke.dump",
-        "hardware/fpga/ara_dsa_vcu118/software/smoke.elf",
-        "hardware/fpga/ara_dsa_vcu118/software/smoke.map",
-        "hardware/fpga/ara_dsa_vcu118/software/test_host_axi_probe.py",
-        "hardware/fpga/ara_dsa_vcu118/software/test_host_axi_txn.tcl",
-        "hardware/fpga/ara_dsa_vcu118/software/test_host_probes.py",
-        "hardware/fpga/ara_dsa_vcu118/software/test_host_probes.tcl",
-        "hardware/fpga/ara_dsa_vcu118/software/uart_load.py",
+        "hardware/fpga/ara_dsa_vcu118/rtl/cva6/core/cva6_mmu/cva6_mmu.sv",
         "hardware/fpga/vcu118/check_rtl.py",
-        "hardware/fpga/vcu118/dispatcher_control_fpga.py",
         "hardware/fpga/vcu118/dispatcher_fpga.py",
-        "hardware/fpga/vcu118/ethernet/LOADER_STATUS.md",
-        "hardware/fpga/vcu118/ethernet/README.md",
-        "hardware/fpga/vcu118/ethernet/firmware/eth_loader_core.c",
-        "hardware/fpga/vcu118/ethernet/firmware/eth_loader_core.h",
-        "hardware/fpga/vcu118/export.py",
+        "hardware/fpga/vcu118/docs/HOST_WORKFLOW.md",
         "hardware/fpga/vcu118/rtl/ara_dsa_vcu118.sv",
-        "hardware/fpga/vcu118/scripts/audit_routed.ps1",
-        "hardware/fpga/vcu118/scripts/common.tcl",
-        "hardware/fpga/vcu118/scripts/config.tcl",
-        "hardware/fpga/vcu118/scripts/create_ip.tcl",
-        "hardware/fpga/vcu118/scripts/create_profile.ps1",
+        "hardware/fpga/vcu118/scripts/close_routed_setup.tcl",
         "hardware/fpga/vcu118/scripts/create_project.tcl",
-        "hardware/fpga/vcu118/scripts/prepare_profile.tcl",
-        "hardware/fpga/vcu118/scripts/run.ps1",
-        "hardware/fpga/vcu118/scripts/run_support.tcl",
-        "hardware/fpga/vcu118/scripts/write_profile_bit.ps1",
-        "hardware/fpga/vcu118/scripts/write_profile_bit.tcl",
-        "hardware/fpga/vcu118/software/host_load.py",
-        "hardware/fpga/vcu118/software/host_transport.py",
-        "hardware/fpga/vcu118/software/host_vivado.tcl",
-        "hardware/fpga/vcu118/tests/check_dispatcher_layout.py",
-        "hardware/fpga/vcu118/tests/eth_loader_core_test.c",
-        "hardware/fpga/vcu118/tests/test_ddr2_patch.py",
-        "hardware/fpga/vcu118/tests/test_eth_load.py",
-        "hardware/fpga/vcu118/tests/test_export.py",
-        "hardware/fpga/vcu118/tests/test_host_loader.py",
-        "hardware/fpga/vcu118/tests/test_host_mock.tcl",
-        "hardware/fpga/vcu118/tests/test_profiles_bit.tcl",
-        "hardware/fpga/vcu118/tests/test_runs.tcl",
-        "hardware/include/ara/intf_typedef.svh",
-        "hardware/include/ara_pkg.sv",
-        "hardware/src/ara.sv",
-        "hardware/src/ara_dispatcher.sv",
-        "hardware/src/ara_sequencer.sv",
-        "hardware/src/ara_soc.sv",
-        "hardware/src/ara_system.sv",
-        "hardware/src/lane/operand_queue.sv",
-        "hardware/src/lane/simd_div.sv",
-        "hardware/src/lane/valu.sv",
-        "hardware/src/lane/vmfpu.sv",
-        "hardware/src/masku/masku.sv",
-        "hardware/src/segment_sequencer.sv",
-        "hardware/src/sldu/sldu.sv",
-        "hardware/src/vlsu/addrgen.sv",
-        "hardware/src/vlsu/vldu.sv",
-        "hardware/src/vlsu/vlsu.sv",
-        "hardware/src/vlsu/vstu.sv",
         "hardware/tb/ara_commit_monitor.sv",
         "hardware/tb/ara_tb.sv",
         "hardware/tb/ara_tb_verilator.sv",
@@ -849,7 +734,12 @@
     },
     "axi": {
       "commit": "a8c53cee2520d328d390c507c88818e8ac144c8c",
-      "tracked_changes": []
+      "tracked_changes": [
+        "src/axi_burst_splitter_gran.sv",
+        "src/axi_demux_id_counters.sv",
+        "src/axi_demux_simple.sv",
+        "src/axi_to_detailed_mem.sv"
+      ]
     },
     "axi_llc": {
       "commit": "559bcbd09a5a884dbe31e2d72fd95d024e357f39",
@@ -889,8 +779,11 @@
         "common/local/util/instr_tracer.sv",
         "common/local/util/sram_cache.sv",
         "core/acc_dispatcher.sv",
+        "core/cache_subsystem/wt_axi_adapter.sv",
         "core/csr_regfile.sv",
         "core/cva6.sv",
+        "core/cva6_mmu/cva6_mmu.sv",
+        "core/cva6_mmu/cva6_ptw.sv",
         "core/decoder.sv",
         "core/fpu_wrap.sv",
         "core/include/ariane_pkg.sv",
@@ -910,8 +803,12 @@
       "tracked_changes": [
         "src/fpnew_cast_multi.sv",
         "src/fpnew_divsqrt_multi.sv",
+        "src/fpnew_divsqrt_th_64_multi.sv",
+        "src/fpnew_fma.sv",
+        "src/fpnew_fma_multi.sv",
         "src/fpnew_opgroup_multifmt_slice.sv",
         "src/fpnew_pkg.sv",
+        "vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v",
         "vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v"
       ]
     },
@@ -1478,7 +1375,7 @@
     },
     {
       "file": "rtl/axi/src/axi_demux_id_counters.sv",
-      "source_sha256": "fb1f48bf188a28e693f7fd977f1bc52c60234f21874bc9c02b75ccd0ed01945a"
+      "source_sha256": "f5a5e5ce65757bcdd731f50f0a5984c2d990ec461f86aaa3c413d26088c8b10a"
     },
     {
       "file": "rtl/axi/src/axi_intf.sv",
@@ -1490,7 +1387,7 @@
     },
     {
       "file": "rtl/axi/src/axi_burst_splitter_gran.sv",
-      "source_sha256": "45692198d156d2c51219fa3c26a50b85046b79d0fb31c5917ca93a186fbbe243"
+      "source_sha256": "1f2b0ffc2b8d72fd467349e49ff10e195a7f9cbd45947c406d9aaec1e52afc3e"
     },
     {
       "file": "rtl/axi/src/axi_burst_unwrap.sv",
@@ -1518,7 +1415,7 @@
     },
     {
       "file": "rtl/axi/src/axi_demux_simple.sv",
-      "source_sha256": "6aa93c6c442db7b52f2daa9be0b4cfc5a79dc835abfd6ab65355950ed07558c2"
+      "source_sha256": "910936bc31ae1dd2f15f9e61a33a46bf80c74d603d936934f744fd7fa00c3f61"
     },
     {
       "file": "rtl/axi/src/axi_dw_downsizer.sv",
@@ -1622,7 +1519,7 @@
     },
     {
       "file": "rtl/axi/src/axi_to_detailed_mem.sv",
-      "source_sha256": "dfa78d1f75a355a4552f53d2fc030490c49e767ada5dae2c525c4d554800c506"
+      "source_sha256": "1f71f1702323228af459919d86096d8c6eb37c170276346452d42191cfd9ee7c"
     },
     {
       "file": "rtl/axi/src/axi_burst_splitter.sv",
@@ -1714,7 +1611,7 @@
     },
     {
       "file": "rtl/fpnew/src/fpnew_cast_multi.sv",
-      "source_sha256": "92edb8181795189d1fa7c0a901795746696cc199f1bd8911681e162509a8eefa"
+      "source_sha256": "f6f8367472bc6edcddaf0edca70f9a9cfea1d76a0240e142ce8917899fa023ee"
     },
     {
       "file": "rtl/fpnew/src/fpnew_classifier.sv",
@@ -1782,7 +1679,7 @@
     },
     {
       "file": "rtl/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v",
-      "source_sha256": "fe2cc8b2717ab39b627c67c4f9c831208216c8ac7f1c6e4b77670d114b56fc1a"
+      "source_sha256": "df94dc248d8e3e4976cfdad861640abd344a1b9bcafa166eba4901c827bc13da"
     },
     {
       "file": "rtl/fpnew/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_prepare.v",
@@ -1818,7 +1715,7 @@
     },
     {
       "file": "rtl/fpnew/src/fpnew_divsqrt_th_64_multi.sv",
-      "source_sha256": "5436effe873707cc0ecaf60de9b5476f3739df7d8549adaabee2fbc7aab1535d"
+      "source_sha256": "ed3cbc98654adba53bc74ae2e37f9341738806b81b82f0f84bb14a2a8301b8ce"
     },
     {
       "file": "rtl/fpnew/src/fpnew_divsqrt_multi.sv",
@@ -1826,11 +1723,11 @@
     },
     {
       "file": "rtl/fpnew/src/fpnew_fma.sv",
-      "source_sha256": "f46700037a6f9efe9b74855d3d21ebaeaf42f5dd522b9e812bbc56ad7193ec71"
+      "source_sha256": "ea20197ff471429defd9122bcce98fac708bff280986800183874872fc7688c8"
     },
     {
       "file": "rtl/fpnew/src/fpnew_fma_multi.sv",
-      "source_sha256": "2448c3eb959bd777b517cdcc74e9282e9ce69dfd9def6d11e814743d8f5bbc8e"
+      "source_sha256": "73fee010682853487671fdbafda6b36553ca99fda91802bded7233ec9e51000d"
     },
     {
       "file": "rtl/fpnew/src/fpnew_sdotp_multi.sv",
@@ -2058,11 +1955,11 @@
     },
     {
       "file": "rtl/cva6/core/cva6_mmu/cva6_mmu.sv",
-      "source_sha256": "4859d957d56541c27928e347cee7ef800486cf3b1ad91aa53a9e3e044344c480"
+      "source_sha256": "3e3f19db1ef8d3526c2e5e751c89ce923244a4ae7be617144d523c6c6480d431"
     },
     {
       "file": "rtl/cva6/core/cva6_mmu/cva6_ptw.sv",
-      "source_sha256": "82dab3584098056cff37c18e3070875b0b71ba185e90fd878151fc197c0d9505"
+      "source_sha256": "bfe7766f9c58c3eb298e57a2ffd8121c5cd1343de61d2e59d82a777c0c7abe2d"
     },
     {
       "file": "rtl/cva6/core/cvxif_example/include/cvxif_instr_pkg.sv",
@@ -2126,7 +2023,7 @@
     },
     {
       "file": "rtl/cva6/core/csr_regfile.sv",
-      "source_sha256": "635466f3c536e290b6cdf208c12cef762ed394fbf701e03c89ecf770420d12f4"
+      "source_sha256": "c45c93f66eabad7dda244bad3246d62fa42488a3644675e997e5a9ff911988bb"
     },
     {
       "file": "rtl/cva6/core/decoder.sv",
@@ -2162,7 +2059,7 @@
     },
     {
       "file": "rtl/cva6/core/load_unit.sv",
-      "source_sha256": "042db6cbcfdba16f6810a49de010eeb52105829e444a348df5fc7ec89f3ac7dd"
+      "source_sha256": "e15f4580464b6bed074cbf1e5255bac6ff2f749ee6884ea0fe4eea90f2ea8045"
     },
     {
       "file": "rtl/cva6/core/load_store_unit.sv",
@@ -2278,7 +2175,7 @@
     },
     {
       "file": "rtl/cva6/core/cache_subsystem/wt_axi_adapter.sv",
-      "source_sha256": "8141dfb8af2f098529b421a1b281bb167a74f4e79bcf7881a795aad3c286d3dd"
+      "source_sha256": "d3da46f4f86eaf238ceabd377734330214060a17d04cdbeeb9eb19f2a44de321"
     },
     {
       "file": "rtl/cva6/core/cache_subsystem/cva6_icache.sv",
@@ -2726,11 +2623,11 @@
     },
     {
       "file": "rtl/ara/hardware/src/ara_dispatcher.sv",
-      "source_sha256": "9af95c3eee6c63ecd9e60bf6d7c6474bdaaf1c5f96cef1bd653a6d51c6a2dd43"
+      "source_sha256": "c179ddd08b2bdb8648246f187aa892be5853fda38aeca850402d5e5b9b17ef7d"
     },
     {
       "file": "rtl/ara/hardware/src/ara_sequencer.sv",
-      "source_sha256": "acf333e10d5b143cddb5bf037e55067bde4f3d644cb01ea4a8e82525c0f97454"
+      "source_sha256": "bf5d5a9be860340ca7a6f8d8c636da67cf9650f7b7b72d1123ce983e8eea5655"
     },
     {
       "file": "rtl/ara/hardware/src/axi_inval_filter.sv",
@@ -2738,7 +2635,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/lane/lane_sequencer.sv",
-      "source_sha256": "db2def1a76cc25a715a31a7efa1336804e2156dd9aa731f96de81ccde7a58cf3"
+      "source_sha256": "c11e2a871b91a7aaf940f9e4fb0ef79229a48a2a9b7e2db3fd1108e24dc01dcc"
     },
     {
       "file": "rtl/ara/hardware/src/lane/operand_queue.sv",
@@ -2758,7 +2655,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/lane/simd_mul.sv",
-      "source_sha256": "1ba7d9f1ed1aed9ec5407d0af244c4aa3a4be1f2457fdaee4653d6fa875c6c64"
+      "source_sha256": "6f2796c849dbfdcac556791d6b31be11ef2769441453c5bfcfc1db296dbf8471"
     },
     {
       "file": "rtl/ara/hardware/src/lane/vector_regfile.sv",
@@ -2770,7 +2667,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/masku/masku_operands.sv",
-      "source_sha256": "789747d1a4f03fe1da20c9024e78b7226c6d3b6b8cebb35a41778f4f0aeb327a"
+      "source_sha256": "c907488c75b5051a917e61c5ac08bca15859f2f0506fd61dae07dd576569456f"
     },
     {
       "file": "rtl/ara/hardware/src/sldu/p2_stride_gen.sv",
@@ -2782,19 +2679,19 @@
     },
     {
       "file": "rtl/ara/hardware/src/sldu/sldu.sv",
-      "source_sha256": "e23f11037461a2648e1b783d01ecba32f2f1569ac3e0f2258248a95b0149d687"
+      "source_sha256": "1908da4368316c0979e388e934cf04dacf2d266297b36d35b1a803222d2a311e"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/addrgen.sv",
-      "source_sha256": "abbdabe6a9d13cc81ad27ffa38f0149ec9c8f9f3b0383bf142b7d9987da5d2ac"
+      "source_sha256": "3736b64136ebbf5629dadb0037457279f9bb91307356c468c9677d321c8c51c5"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/vldu.sv",
-      "source_sha256": "2661d1d5bd22ad95825c38be679622d7bae987deae743e12d1fadfe7c3b0af0d"
+      "source_sha256": "92f9ebbeb136cd3ff11ae1a8ea92ce31b3aac077ae0667f79d82e919a3603401"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/vstu.sv",
-      "source_sha256": "139b27c0784c867b7a6032665c1634bb4b843ec2d9be5c4a3c6cb6d8fd2919f2"
+      "source_sha256": "37880822b8066fa13e66619dd335cb42db84cdc5730c6f4dff9a3f2fd0af46a0"
     },
     {
       "file": "rtl/ara/hardware/src/vlsu/qbs/qbs_profile_decoder.sv",
@@ -2870,7 +2767,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/lane/vmfpu.sv",
-      "source_sha256": "1f8288ed2a50f8fa59a7ea3d6f3a7e3138f5219bbb1af52e864d9dfe359d8307"
+      "source_sha256": "e9b8c8c2aa952b76661b01fa0a4b53d87e2f1d7219beb40a42a4d6998c5f7b12"
     },
     {
       "file": "rtl/ara/hardware/src/lane/fixed_p_rounding.sv",
@@ -2890,7 +2787,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/masku/masku.sv",
-      "source_sha256": "9d41dc028967ed5b639072073b2ab07db87254419c30d0eae6b7a558b79f926f"
+      "source_sha256": "1bc71bbb732a842d59fdcc48d4f44aa79f830f2bb11444923b15910b8d875f3d"
     },
     {
       "file": "rtl/ara/hardware/src/lane/vector_fus_stage.sv",
@@ -2906,7 +2803,7 @@
     },
     {
       "file": "rtl/ara/hardware/src/ara.sv",
-      "source_sha256": "ab7af0adead3fbc3a78cba5029ab8fb3fe3066b6f954085dff27971343be1eac"
+      "source_sha256": "1d190744249603d6c3d6e2c9c21cd5ac121fee2a9c65f5b227be239c320286da"
     },
     {
       "file": "rtl/axi_llc/include/axi_llc/assign.svh",
