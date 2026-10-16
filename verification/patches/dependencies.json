@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "patches": {
+    "cva6": {
+      "revision": "b29fd3cf906e7f4c71da4c2f46451c4c60a4487f",
+      "patch": "cva6-local-fixes.patch",
+      "sha256": "3853ab475d5e20887a5a086cbdca6afdf7bfa3b5e178e99bf48ea3b05551dfb2",
+      "source": "ara_dsa local CVA6 fixes plus verification fence, issue-stall preservation, SSTATUS VS alias and ECALL/breakpoint/interrupt tval, non-CLIC STVEC readback/BASE consistency; integrated store-B precise exceptions, VL preview/request fallthrough/FP CSR ordering; current-lookup superpage early PPN composition; WT AXI read backpressure during external cache invalidation",
+      "scope": "Current FP16/FP32/FP64 configuration; THMULTI does not support FP8/FP8ALT; 20261009 RV64/Sv39 RVH=0 directed checks for flush allocation priority, xRET MPRV, canonical response alignment and nonleaf PTE ADU rejection",
+      "upstream_fixes": [
+        "b30e7dba3e85b887da5a01aab34c2438653efa83",
+        "d2fdf99a3837e12d615dc32f5e3aea03ee62e4ca",
+        "47b72e3193708e870d9e3f333de6e39b95b6e9bc",
+        "f7c04c3721693b1c9045ae8a8da0ed6ac1f68cf8"
+      ]
+    },
+    "axi": {
+      "revision": "a8c53cee2520d328d390c507c88818e8ac144c8c",
+      "patch": "axi-local-fixes.patch",
+      "sha256": "86b5161018e2c7454265739ca7b12b28e9b48bf04f507f61117956a236327f5f",
+      "source": "Selective upstream splitter support, demux capacity and bank response-mask fixes; minimum two-bit demux delta for legal AR/ATOP lookup aliases",
+      "scope": "Actual-module directed protocol tests; bank error/exokay fix is preventive for current L2 wrapper with tied-zero status inputs",
+      "upstream_fixes": [
+        "4da15979747f326bde2f9869c64e587ce599772c",
+        "da8793b0e3f14c9186c94fac9ed6ec06375c254e",
+        "e55ae2a7ee606ee3cfd4257f63982a971b704407"
+      ]
+    },
+    "fpnew": {
+      "revision": "e5aa6a01b5bbe1675c3aa8872e1203413ded83d1",
+      "patch": "fpnew-local-fixes.patch",
+      "sha256": "819bbd9e4f2e78b462fcd0eced4d09e1675b8c8e60b72d8d57fa30e56d1117c9",
+      "source": "ara_dsa local cast infinity, PULP HOLD and C910 round_add55 changes; FP16-INT8 cast and DIV/SQRT format/mask exception fixes",
+      "scope": "Cast and C910 active with THMULTI; 20261009 I2F overflow, cast/FMA/DIV underflow and flush fixes validated against SoftFloat, including local multifmt mantissa-bit adaptation; PULP HOLD needs separate configuration coverage",
+      "upstream_fixes": [
+        "2c7947726a0859c08cc27cbbd45662424dedb41e",
+        "cb3f0e596a445188cc9fe73994e11fd3dc97d7a7",
+        "822047af5f05515994dd433156be3a99c2773727",
+        "a6af691551ffbd76d5d9cf30774d3295a41615e4",
+        "f322dd95b81d9a9e4df40d72bea84ce3dccf009c",
+        "bb0e8bbbddaf47f1feb3e37af8320c94c8e99a78"
+      ]
+    }
+  }
+}

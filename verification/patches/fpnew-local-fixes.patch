@@ -1,0 +1,499 @@
+diff --git a/src/fpnew_cast_multi.sv b/src/fpnew_cast_multi.sv
+index fca5f3b6df9230b01cb38ce63aa787c8f20bc1a6..b2a113dce67943db44a5a022029056929ad521fa 100644
+--- a/src/fpnew_cast_multi.sv
++++ b/src/fpnew_cast_multi.sv
+@@ -423,6 +423,16 @@ module fpnew_cast_multi #(
+   logic       of_before_round, uf_before_round;
+ 
+ 
++  // The negative signed minimum is representable at exponent N-1; rounding
++  // decides whether a value in that binade reaches it or exceeds the range.
++  logic negative_int_boundary;
++  always_comb begin
++    negative_int_boundary = 1'b0;
++    if (dst_is_int_q && !op_mod_q2 && input_sign_q)
++      negative_int_boundary =
++          input_exp_q == signed'(fpnew_pkg::int_width(int_fmt_q2) - 1);
++  end
++
+   // Perform adjustments to mantissa and exponent
+   always_comb begin : cast_value
+     // Default assignment
+@@ -440,7 +450,8 @@ module fpnew_cast_multi #(
+       // By default right shift mantissa to be an integer
+       denorm_shamt = unsigned'(MAX_INT_WIDTH - 1 - input_exp_q);
+       // overflow: when converting to unsigned the range is larger by one
+-      if (input_exp_q >= signed'(fpnew_pkg::int_width(int_fmt_q2) - 1 + op_mod_q2)) begin
++      if (input_exp_q >= signed'(fpnew_pkg::int_width(int_fmt_q2) - 1 + op_mod_q2) &&
++          !negative_int_boundary) begin
+         denorm_shamt    = '0; // prevent shifting
+         of_before_round = 1'b1;
+       // underflow
+@@ -450,9 +461,12 @@ module fpnew_cast_multi #(
+       end
+     // Handle FP over-/underflows
+     end else begin
+-      // Overflow or infinities (for proper rounding)
+-      if ((destination_exp_q >= signed'(2**fpnew_pkg::exp_bits(dst_fmt_q2))-1) ||
+-          (~src_is_int_q && info_q.is_inf)) begin
++      // Infinities remain infinities independently of the rounding mode.
++      if (~src_is_int_q && info_q.is_inf) begin
++        final_exp       = unsigned'(2**fpnew_pkg::exp_bits(dst_fmt_q2)-1);
++        preshift_mant   = '0;
++      // Finite overflow is rounded according to the selected mode.
++      end else if (destination_exp_q >= signed'(2**fpnew_pkg::exp_bits(dst_fmt_q2))-1) begin
+         final_exp       = unsigned'(2**fpnew_pkg::exp_bits(dst_fmt_q2)-2); // largest normal value
+         preshift_mant   = '1;                           // largest normal value and RS bits set
+         of_before_round = 1'b1;
+@@ -574,7 +588,13 @@ module fpnew_cast_multi #(
+     if (FpFmtConfig[fmt]) begin : active_format
+       always_comb begin : post_process
+         // detect of / uf
+-        fmt_uf_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // denormal
++        // Tininess uses an unbounded exponent, including rounding to min-normal.
++        fmt_uf_after_round[fmt] = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++            || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++                && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
++                && ((round_sticky_bits != 2'b11)
++                    || (!destination_mant[NUM_FP_STICKY-1]
++                        && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
+         fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
+ 
+         // Assemble regular result, nan box short ones. Int zeroes need to be detected`
+@@ -594,7 +614,7 @@ module fpnew_cast_multi #(
+   assign rounded_int_res      = rounded_sign ? unsigned'(-rounded_abs) : rounded_abs;
+   assign rounded_int_res_zero = (rounded_int_res == '0);
+ 
+-  // Detect integer overflows after rounding (only positives)
++  // Detect integer overflows after rounding.
+   for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_int_overflow
+     // Set up some constants
+     localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
+@@ -607,6 +627,9 @@ module fpnew_cast_multi #(
+           // Check whether the rounded MSB differs from unrounded MSB
+           ifmt_of_after_round[ifmt] = ~rounded_int_res[INT_WIDTH-2+op_mod_q2];
+         end
++        if (rounded_sign && !op_mod_q2 && input_exp_q == signed'(INT_WIDTH - 1))
++          ifmt_of_after_round[ifmt] =
++              rounded_abs[INT_WIDTH-1:0] != {1'b1, {(INT_WIDTH-1){1'b0}}};
+       end
+     end else begin : inactive_format
+       assign ifmt_of_after_round[ifmt] = fpnew_pkg::DONT_CARE;
+@@ -701,7 +724,8 @@ module fpnew_cast_multi #(
+   // Detect special case from source format (inf, nan, overflow, nan-boxing or negative unsigned)
+   assign int_result_is_special = info_q.is_nan | info_q.is_inf |
+                                  of_before_round | of_after_round | ~info_q.is_boxed |
+-                                 (input_sign_q & op_mod_q2 & ~rounded_int_res_zero);
++                                 (input_sign_q & op_mod_q2 &
++                                  (~rounded_int_res_zero | (input_exp_q >= 0 && !info_q.is_zero)));
+ 
+   // All integer special cases are invalid
+   assign int_special_status = '{NV: 1'b1, default: 1'b0};
+@@ -717,17 +741,20 @@ module fpnew_cast_multi #(
+   logic [WIDTH-1:0]   fp_result, int_result;
+   fpnew_pkg::status_t fp_status, int_status;
+ 
+-  assign fp_regular_status.NV = src_is_int_q & (of_before_round | of_after_round); // overflow is invalid for I2F casts
++  assign fp_regular_status.NV = 1'b0; // finite I2F overflow raises OF, not NV
+   assign fp_regular_status.DZ = 1'b0; // no divisions
+-  assign fp_regular_status.OF = ~src_is_int_q & (~info_q.is_inf & (of_before_round | of_after_round)); // inf casts no OF
++  assign fp_regular_status.OF = (src_is_int_q | ~info_q.is_inf) & (of_before_round | of_after_round);
+   assign fp_regular_status.UF = uf_after_round & fp_regular_status.NX;
+-  assign fp_regular_status.NX = src_is_int_q ? (| fp_round_sticky_bits) // overflow is invalid in i2f
+-            : (| fp_round_sticky_bits) | (~info_q.is_inf & (of_before_round | of_after_round));
++  assign fp_regular_status.NX = (| fp_round_sticky_bits)
++            | ((src_is_int_q | ~info_q.is_inf) & (of_before_round | of_after_round));
+   assign int_regular_status = '{NX: (| int_round_sticky_bits), default: 1'b0};
+ 
+   assign fp_result  = fp_result_is_special  ? fp_special_result  : fmt_result[dst_fmt_q2];
+   assign fp_status  = fp_result_is_special  ? fp_special_status  : fp_regular_status;
+-  assign int_result = int_result_is_special ? int_special_result : rounded_int_res;
++  // Reuse the sign-extended minimum encoding also for a valid negative
++  // boundary result; its flags still come from the normal rounding path.
++  assign int_result = (int_result_is_special || negative_int_boundary)
++                     ? int_special_result : rounded_int_res;
+   assign int_status = int_result_is_special ? int_special_status : int_regular_status;
+ 
+   // Final results for output pipeline
+diff --git a/src/fpnew_divsqrt_multi.sv b/src/fpnew_divsqrt_multi.sv
+index ac23c43e27d8aab4a9809f2e8f869fc482270fd7..e1816c494b7a01dfb9a992e1d22572e1bb2dec47 100644
+--- a/src/fpnew_divsqrt_multi.sv
++++ b/src/fpnew_divsqrt_multi.sv
+@@ -318,8 +318,8 @@ module fpnew_divsqrt_multi #(
+   logic [WIDTH-1:0]   result_d;
+   fpnew_pkg::status_t status_d;
+   // Prioritize hold register data
+-  assign result_d = unit_done_q ? held_result_q : adjusted_result;
+-  assign status_d = unit_done_q ? held_status_q : unit_status;
++  assign result_d = (unit_done_q || (state_q == HOLD)) ? held_result_q : adjusted_result;
++  assign status_d = (unit_done_q || (state_q == HOLD)) ? held_status_q : unit_status;
+ 
+   // ----------------
+   // Output Pipeline
+@@ -373,4 +373,5 @@ module fpnew_divsqrt_multi #(
+   assign aux_o           = out_pipe_aux_q[NUM_OUT_REGS];
+   assign out_valid_o     = out_pipe_valid_q[NUM_OUT_REGS];
+   assign busy_o          = (| {inp_pipe_valid_q, unit_busy, out_pipe_valid_q});
++
+ endmodule
+diff --git a/src/fpnew_divsqrt_th_64_multi.sv b/src/fpnew_divsqrt_th_64_multi.sv
+index a15878af62728a3c791db1b148af836264e4ea1b..57743c87979d07e21aa70d94da3c4a7e754a445f 100644
+--- a/src/fpnew_divsqrt_th_64_multi.sv
++++ b/src/fpnew_divsqrt_th_64_multi.sv
+@@ -217,7 +217,7 @@ module fpnew_divsqrt_th_64_multi #(
+   // Valid synch with other lanes
+   // When one divsqrt unit completes an operation, keep its done high, waiting for the other lanes
+   // As soon as all the lanes are over, we can clear this FF and start with a new operation
+-  `FFLARNC(unit_done_q, unit_done, unit_done, simd_synch_done, 1'b0, clk_i, rst_ni);
++  `FFLARNC(unit_done_q, unit_done, unit_done, simd_synch_done | flush_i, 1'b0, clk_i, rst_ni);
+   // Tell the other units that this unit has finished now or in the past
+   assign divsqrt_done_o = (unit_done_q | unit_done) & result_vec_op_q;
+ 
+@@ -373,11 +373,11 @@ module fpnew_divsqrt_th_64_multi #(
+   
+   // Select func 1 cycle after div issue
+   logic func_sel;
+-  `FFLARNC(func_sel, 1'b1, op_starting, func_sel, 1'b0, clk_i, rst_ni)
++  `FFLARNC(func_sel, 1'b1, op_starting, func_sel | flush_i, 1'b0, clk_i, rst_ni)
+ 
+   // Select operands 2 cycles after div issue
+   logic op_sel;
+-  `FFLARNC(op_sel, 1'b1, func_sel, op_sel, 1'b0, clk_i, rst_ni)
++  `FFLARNC(op_sel, 1'b1, func_sel, op_sel | flush_i, 1'b0, clk_i, rst_ni)
+ 
+   ct_vfdsu_top i_ct_vfdsu_top (
+     .cp0_vfpu_icg_en                ( 1'b0                      ), // Internal clock gating, (module enable) doesn't matter when the clk_gate module is redundant anyway
+diff --git a/src/fpnew_fma.sv b/src/fpnew_fma.sv
+index d725a5d1b9a3d131acf54f3f815856bdbfd22d1d..900acbd2e883ba4610548c4bdd1249ea6d12e1c3 100644
+--- a/src/fpnew_fma.sv
++++ b/src/fpnew_fma.sv
+@@ -616,7 +616,13 @@ module fpnew_fma #(
+   );
+ 
+   // Classification after rounding
+-  assign uf_after_round = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // exponent = 0
++  // Include tiny unbounded-exponent results that round to min-normal.
++  assign uf_after_round = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++      || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++          && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
++          && ((round_sticky_bits != 2'b11)
++              || (!sum_sticky_bits[MAN_BITS*2 + 4]
++                  && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
+   assign of_after_round = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // exponent all ones
+ 
+   // -----------------
+diff --git a/src/fpnew_fma_multi.sv b/src/fpnew_fma_multi.sv
+index e2320846815e19d2e9c15151827ad4b03b29a124..9f323fbd08a996319fe453cc28217dc9f8e7390a 100644
+--- a/src/fpnew_fma_multi.sv
++++ b/src/fpnew_fma_multi.sv
+@@ -745,11 +745,26 @@ module fpnew_fma_multi #(
+     localparam int unsigned FP_WIDTH = fpnew_pkg::fp_width(fpnew_pkg::fp_format_e'(fmt));
+     localparam int unsigned EXP_BITS = fpnew_pkg::exp_bits(fpnew_pkg::fp_format_e'(fmt));
+     localparam int unsigned MAN_BITS = fpnew_pkg::man_bits(fpnew_pkg::fp_format_e'(fmt));
++    logic unbounded_round_bit;
++
++    // One bit below the subnormal round bit becomes the unbounded round bit.
++    // Narrow formats keep it in final_mantissa, not in the super-format tail.
++    if (MAN_BITS < SUPER_MAN_BITS) begin : gen_narrow_uf_round_bit
++      assign unbounded_round_bit = final_mantissa[SUPER_MAN_BITS-MAN_BITS-1];
++    end else begin : gen_full_uf_round_bit
++      assign unbounded_round_bit = sum_sticky_bits[2*SUPER_MAN_BITS+4];
++    end
+ 
+     if (FpFmtConfig[fmt]) begin : active_format
+       always_comb begin : post_process
+         // detect of / uf
+-        fmt_uf_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0; // denormal
++        // Use the transaction's pipelined RM, not the current input request's RM.
++        fmt_uf_after_round[fmt] = (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++            || ((pre_round_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '0)
++                && (rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == 1)
++                && ((round_sticky_bits != 2'b11)
++                    || (!unbounded_round_bit
++                        && ((rnd_mode_q == fpnew_pkg::RNE) || (rnd_mode_q == fpnew_pkg::RMM)))));
+         fmt_of_after_round[fmt] = rounded_abs[EXP_BITS+MAN_BITS-1:MAN_BITS] == '1; // inf exp.
+ 
+         // Assemble regular result, nan box short ones.
+diff --git a/src/fpnew_opgroup_multifmt_slice.sv b/src/fpnew_opgroup_multifmt_slice.sv
+index f5991cbd7c46bd8f64970e8a838e3ce5db42ffdc..08bc6443ae8fa765b621cec9839450654965ca30 100644
+--- a/src/fpnew_opgroup_multifmt_slice.sv
++++ b/src/fpnew_opgroup_multifmt_slice.sv
+@@ -91,7 +91,8 @@ or on 16b inputs producing 32b outputs");
+   // We will send the format information along with the data
+   localparam int unsigned FMT_BITS =
+       fpnew_pkg::maximum($clog2(NUM_FORMATS), $clog2(NUM_INT_FORMATS));
+-  localparam int unsigned AUX_BITS = FMT_BITS + 4; // also add vectorial and integer flags
++  // CONV also carries per-transaction lane participation through its pipeline.
++  localparam int unsigned AUX_BITS = FMT_BITS + 4 + (OpGroup == fpnew_pkg::CONV);
+ 
+   logic [NUM_LANES-1:0] lane_in_ready, lane_out_valid, divsqrt_done, divsqrt_ready; // Handshake signals for the lanes
+   logic                 vectorial_op;
+@@ -216,7 +217,11 @@ or on 16b inputs producing 32b outputs");
+       logic lane_is_used;
+       assign lane_is_used = (LANE_FORMATS[src_fmt_i] & ~is_up_cast) |
+                             (LANE_FORMATS[dst_fmt_i] &  is_up_cast) | (OpGroup == fpnew_pkg::DIVSQRT);
+-      assign in_valid = in_valid_i & ((lane == 0) | vectorial_op) & lane_is_used; // upper lanes only for vectors
++      // Sparse CONV valid streams can advance upper lanes past lane 0 under
++      // backpressure. Every lane must carry every token, including scalar and
++      // unsupported-format bubbles; participation is applied at the output.
++      assign in_valid = (OpGroup == fpnew_pkg::CONV) ? in_valid_i :
++          in_valid_i & ((lane == 0) | vectorial_op) & lane_is_used;
+ 
+       // Slice out the operands for this lane, upper bits are ignored in the unit
+       always_comb begin : prepare_input
+@@ -322,6 +327,20 @@ or on 16b inputs producing 32b outputs");
+           .busy_o          ( lane_busy[lane]     )
+         );
+       end else if (OpGroup == fpnew_pkg::DIVSQRT) begin : lane_instance
++        logic [NUM_FORMATS-1:0] format_masks;
++        logic div_mask;
++        // Input masks use the finest enabled element width, whereas DIV lanes
++        // are packed at the selected width. Preserve the physical mask stride.
++        for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_format_mask
++          if (ACTIVE_FORMATS[fmt]) begin : supported
++            localparam int unsigned MASK_STRIDE = NUM_SIMD_LANES /
++                fpnew_pkg::num_lanes(Width, fpnew_pkg::fp_format_e'(fmt), EnableVectors);
++            assign format_masks[fmt] = simd_mask_i[MASK_STRIDE*LANE];
++          end else begin : unsupported
++            assign format_masks[fmt] = 1'b0;
++          end
++        end
++        assign div_mask = format_masks[dst_fmt_i];
+          if (DivSqrtSel == fpnew_pkg::TH32 && LANE_FORMATS[0] && (LANE_FORMATS[1:fpnew_pkg::NUM_FP_FORMATS-1] == '0)) begin : gen_th32_e906_divsqrt
+           // The T-head-based DivSqrt unit is supported only in FP32-only configurations
+           fpnew_divsqrt_th_32 #(
+@@ -337,7 +356,7 @@ or on 16b inputs producing 32b outputs");
+             .rnd_mode_i      ( rnd_mode            ),
+             .op_i,
+             .tag_i,
+-            .mask_i          ( simd_mask_i[lane]   ),
++            .mask_i          ( div_mask            ),
+             .aux_i           ( aux_data            ),
+             .in_valid_i      ( in_valid            ),
+             .in_ready_o      ( lane_in_ready[lane] ),
+@@ -368,7 +387,7 @@ or on 16b inputs producing 32b outputs");
+             .op_i,
+             .dst_fmt_i,
+             .tag_i,
+-            .mask_i           ( simd_mask_i[lane]   ),
++            .mask_i           ( div_mask            ),
+             .aux_i            ( aux_data            ),
+             .vectorial_op_i   ( vectorial_op        ), // synchronize only vectorial operations
+             .in_valid_i       ( in_valid            ),
+@@ -404,7 +423,7 @@ or on 16b inputs producing 32b outputs");
+             .op_i,
+             .dst_fmt_i,
+             .tag_i,
+-            .mask_i           ( simd_mask_i[lane]   ),
++            .mask_i           ( div_mask            ),
+             .aux_i            ( aux_data            ),
+             .vectorial_op_i   ( vectorial_op        ), // synchronize only vectorial operations
+             .in_valid_i       ( in_valid            ),
+@@ -428,6 +447,33 @@ or on 16b inputs producing 32b outputs");
+       end else if (OpGroup == fpnew_pkg::NONCOMP) begin : lane_instance
+ 
+       end else if (OpGroup == fpnew_pkg::CONV) begin : lane_instance
++        logic conv_mask;
++        logic [AUX_BITS-1:0] conv_aux;
++        assign conv_aux = {lane_is_used & ((lane == 0) | vectorial_op),
++                           aux_data[FMT_BITS+3:0]};
++        // Masks address physical finest-format units, while each conversion
++        // lane consumes/produces an element of the larger operand width.
++        // CPK uses independent scalar operands and retains its direct masks.
++        always_comb begin : select_conv_mask
++          int unsigned src_width, dst_width, mask_index;
++          // Do not evaluate the integer-format validator for an unknown op
++          // before reset propagation. A ternary evaluates both sides for X.
++          if (op_i == fpnew_pkg::I2F)
++            src_width = fpnew_pkg::int_width(int_fmt_i);
++          else
++            src_width = fpnew_pkg::fp_width(src_fmt_i);
++          if (op_i == fpnew_pkg::F2I)
++            dst_width = fpnew_pkg::int_width(int_fmt_i);
++          else
++            dst_width = fpnew_pkg::fp_width(dst_fmt_i);
++          mask_index = dst_is_cpk ? LANE :
++              LANE * fpnew_pkg::maximum(src_width, dst_width) /
++              fpnew_pkg::min_fp_width(FpFmtConfig);
++          conv_mask = 1'b0;
++          if (mask_index < NUM_SIMD_LANES)
++            conv_mask = simd_mask_i[mask_index];
++        end
++
+         fpnew_cast_multi #(
+           .FpFmtConfig  ( LANE_FORMATS         ),
+           .IntFmtConfig ( CONV_INT_FORMATS     ),
+@@ -447,8 +493,8 @@ or on 16b inputs producing 32b outputs");
+           .dst_fmt_i,
+           .int_fmt_i,
+           .tag_i,
+-          .mask_i          ( simd_mask_i[lane]   ),
+-          .aux_i           ( aux_data            ),
++          .mask_i          ( conv_mask           ),
++          .aux_i           ( conv_aux            ),
+           .in_valid_i      ( in_valid            ),
+           .in_ready_o      ( lane_in_ready[lane] ),
+           .flush_i,
+@@ -465,12 +511,19 @@ or on 16b inputs producing 32b outputs");
+       end // ADD OTHER OPTIONS HERE
+ 
+       // Handshakes are only done if the lane is actually used
+-      assign out_ready            = out_ready_i & ((lane == 0) | result_is_vector);
+-      assign lane_out_valid[lane] = out_valid & ((lane == 0) | result_is_vector);
++      assign out_ready = (OpGroup == fpnew_pkg::CONV) ? out_ready_i :
++          out_ready_i & ((lane == 0) | result_is_vector);
++      assign lane_out_valid[lane] = out_valid & ((lane == 0) | result_is_vector) &
++          ((OpGroup != fpnew_pkg::CONV) || lane_aux[lane][AUX_BITS-1]);
+ 
+       // Properly NaN-box or sign-extend the slice result if not in use
+       assign local_result      = lane_out_valid[lane] ? op_result : {(LANE_WIDTH){lane_ext_bit[0]}};
+-      assign lane_status[lane] = lane_out_valid[lane] ? op_status : '0;
++      // DIV/SQRT starts every SIMD sublane to preserve lockstep completion.
++      // Sublanes outside the returned FP format compute dummy operands and
++      // must not contribute their exceptions (for example dummy 0/0 -> NV).
++      assign lane_status[lane] = lane_out_valid[lane] &&
++          ((OpGroup != fpnew_pkg::DIVSQRT) || ACTIVE_FORMATS[result_fmt])
++          ? op_status : '0;
+ 
+     // Otherwise generate constant sign-extension
+     end else begin : inactive_lane
+@@ -576,7 +629,7 @@ or on 16b inputs producing 32b outputs");
+     // Input stage: First element of pipeline is taken from inputs
+     assign byp_pipe_target_q[0]  = conv_target_d;
+     assign byp_pipe_aux_q[0]     = target_aux_d;
+-    assign byp_pipe_valid_q[0]   = in_valid_i & vectorial_op;
++    assign byp_pipe_valid_q[0]   = in_valid_i;
+     // Generate the register stages
+     for (genvar i = 0; i < NumPipeRegs; i++) begin : gen_bypass_pipeline
+       // Internal register enable for this stage
+@@ -594,7 +647,7 @@ or on 16b inputs producing 32b outputs");
+       `FFL(byp_pipe_aux_q[i+1],     byp_pipe_aux_q[i],     reg_ena, '0)
+     end
+     // Output stage: Ready travels backwards from output side, driven by downstream circuitry
+-    assign byp_pipe_ready[NumPipeRegs] = out_ready_i & result_is_vector;
++    assign byp_pipe_ready[NumPipeRegs] = out_ready_i;
+     // Output stage: assign module outputs
+     assign conv_target_q = byp_pipe_target_q[NumPipeRegs];
+ 
+@@ -639,7 +692,7 @@ or on 16b inputs producing 32b outputs");
+   // ------------
+   // Output Side
+   // ------------
+-  assign {result_is_cpk, result_fmt_is_int, result_is_vector, result_fmt, result_is_vsum} = lane_aux[0];
++  assign {result_is_cpk, result_fmt_is_int, result_is_vector, result_fmt, result_is_vsum} = lane_aux[0][FMT_BITS+3:0];
+ 
+   assign result_o = result_fmt_is_int ? ifmt_slice_result[result_fmt]                   :
+                     result_is_cpk     ? fmt_conv_cpk_result[result_fmt][result_vec_op]  :
+diff --git a/src/fpnew_pkg.sv b/src/fpnew_pkg.sv
+index 1e8ce09920788409f80c202a61ac1df7106893e0..ae156f5a4fbb7cfa2a384a786c64c323d5efb713 100644
+--- a/src/fpnew_pkg.sv
++++ b/src/fpnew_pkg.sv
+@@ -481,8 +481,9 @@ package fpnew_pkg;
+ 
+     for (int unsigned ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++)
+       for (int unsigned fmt = 0; fmt < NUM_FP_FORMATS; fmt++)
+-        // Mask active int formats with the width of the float formats
+-        if ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))))
++        // FP16 lanes also produce INT8 without requiring floating-point FP8.
++        if ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))) ||
++            (int_format_e'(ifmt) == INT8 && fp_format_e'(fmt) == FP16))
+           res[ifmt] |= icfg[ifmt] && lanefmts[fmt];
+     return res;
+   endfunction
+@@ -546,9 +547,10 @@ package fpnew_pkg;
+ 
+     for (int unsigned ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++)
+       for (int unsigned fmt = 0; fmt < NUM_FP_FORMATS; fmt++)
+-        // Mask active int formats with the width of the float formats
++        // Keep other configurations unchanged; add only FP16/INT8 conversion.
+         res[ifmt] |= icfg[ifmt] && lanefmts[fmt] &&
+-                     (fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt)));
++                     ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))) ||
++                      (int_format_e'(ifmt) == INT8 && fp_format_e'(fmt) == FP16));
+     return res;
+   endfunction
+ 
+diff --git a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v b/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v
+index 681b77aa8865021a18a0d924177e7ddc622229a8..fe56ca05934efc6f4e383e8807d87dd34500ced7 100644
+--- a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v
++++ b/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_pack.v
+@@ -404,7 +404,7 @@ assign ex4_rst_inf[63:0]       = (vfdsu_ex4_double) ? ex4_doub_rst_inf[63:0] :
+                                   vfdsu_ex4_half    ? ex4_half_rst_inf[63:0] : ex4_bfloat_rst_inf[63:0];
+ 
+       
+-assign ex4_cor_uf            = (vfdsu_ex4_uf && !ex4_denorm_potnt_norm || ex4_uf_plus)
++assign ex4_cor_uf            = (vfdsu_ex4_uf || ex4_denorm_potnt_norm || ex4_uf_plus)
+                                && vfdsu_ex4_nx;
+ assign ex4_cor_nx            =  vfdsu_ex4_nx 
+                                 || vfdsu_ex4_of 
+diff --git a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v b/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v
+index 69462eb9f85c7b296116379449c0e8fdd3c703d4..affeff8c15a2646ed12dac9d19c1ffc3c44540ec 100644
+--- a/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v
++++ b/vendor/openc910/C910_RTL_FACTORY/gen_rtl/vfdsu/rtl/ct_vfdsu_round.v
+@@ -983,15 +983,57 @@ end
+ //RN : Never occur
+ //RP : sign of quotient is -
+ //RM : sign of quotient is +
+-assign frac_add1_rst[54:0]             = {1'b0,total_qt_rt_58[56:3]} +
+-                                         frac_add1_op1_with_denorm[54:0];
++// Keep format/denormal selection and IEEE rounding unchanged. Bound the
++// post-selection carry depth instead of rippling across all 55 bits.
++function [54:0] round_add55;
++  input [54:0] a, b;
++  input carry_in;
++  reg [55:0] ax, bx, result;
++  reg [4:0] sum0 [0:13], sum1 [0:13];
++  reg [13:0] g [0:4], p [0:4];
++  reg [13:0] carry;
++  integer block_index, level;
++  begin
++    ax = {1'b0, a};
++    bx = {1'b0, b};
++    for (block_index = 0; block_index < 14; block_index = block_index + 1) begin
++      sum0[block_index] = {1'b0, ax[4*block_index +: 4]} +
++                          {1'b0, bx[4*block_index +: 4]};
++      sum1[block_index] = sum0[block_index] + 5'd1;
++      g[0][block_index] = sum0[block_index][4];
++      p[0][block_index] = &(ax[4*block_index +: 4] ^ bx[4*block_index +: 4]);
++    end
++    for (level = 0; level < 4; level = level + 1) begin
++      for (block_index = 0; block_index < 14; block_index = block_index + 1) begin
++        g[level+1][block_index] = g[level][block_index];
++        p[level+1][block_index] = p[level][block_index];
++        if (block_index >= (1 << level)) begin
++          g[level+1][block_index] = g[level][block_index] |
++              (p[level][block_index] & g[level][block_index-(1 << level)]);
++          p[level+1][block_index] = p[level][block_index] &
++              p[level][block_index-(1 << level)];
++        end
++      end
++    end
++    carry[0] = carry_in;
++    for (block_index = 1; block_index < 14; block_index = block_index + 1)
++      carry[block_index] = g[4][block_index-1] | (p[4][block_index-1] & carry_in);
++    for (block_index = 0; block_index < 14; block_index = block_index + 1)
++      result[4*block_index +: 4] = carry[block_index]
++          ? sum1[block_index][3:0] : sum0[block_index][3:0];
++    round_add55 = result[54:0];
++  end
++endfunction
++
++assign frac_add1_rst[54:0]             = round_add55({1'b0,total_qt_rt_58[56:3]},
++                                         frac_add1_op1_with_denorm[54:0], 1'b0);
+ assign frac_add1_op1_with_denorm[54:0] = ex3_rslt_denorm ? 
+                                   {1'b0,vfdsu_ex3_result_denorm_round_add_num[52:0],1'b0} :
+                                   frac_add1_op1[54:0];      
+ assign frac_sub1_rst[54:0]             = (ex3_rst_eq_1)
+                                        ? {2'b0,{53{1'b1}}}
+-                                       : {1'b0,total_qt_rt_58[56:3]} +
+-                                         frac_sub1_op1_with_denorm[54:0] + {54'b0,ex3_rslt_denorm};
++                                       : round_add55({1'b0,total_qt_rt_58[56:3]},
++                                         frac_sub1_op1_with_denorm[54:0], ex3_rslt_denorm);
+ assign frac_sub1_op1_with_denorm[54:0] = ex3_rslt_denorm ?
+                                 ~{1'b0,vfdsu_ex3_result_denorm_round_add_num[52:0],1'b0} :
+                                 frac_sub1_op1[54:0];
+@@ -1155,4 +1197,3 @@ end
+ // &ModuleEnd; @739
+ endmodule
+ 
+-

@@ -1075,10 +1075,13 @@ typedef struct packed {
   // original request, namely the fields below.
   typedef struct packed {
     axi_pkg::largest_addr_t addr;
+    axi_pkg::largest_addr_t vaddr;
+    logic [$clog2(rvv_pkg::RISCV_MAX_VLEN)-1:0] elem_start;
     axi_pkg::size_t size;
     axi_pkg::len_t len;
     logic is_load;
     logic is_exception;
+    logic is_skip;
   } addrgen_axi_req_t;
 
   //////////////////////////

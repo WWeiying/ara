@@ -162,6 +162,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   // Result queue
   payload_t [ResultQueueDepth-1:0]            result_queue_d, result_queue_q;
+  payload_t result_write;
   logic     [ResultQueueDepth-1:0]            result_queue_valid_d, result_queue_valid_q;
   // We need two pointers in the result queue. One pointer to
   // indicate with `payload_t` we are currently writing into (write_pnt),
@@ -300,9 +301,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   // This function returns 1'b1 if `op` is a narrowing instruction, i.e.,
   // it produces only EEW/2 per cycle.
-  function automatic logic narrowing(resize_e resize);
+  function automatic logic narrowing(resize_e resize, ara_op_e op);
     narrowing = 1'b0;
-    if (resize == CVT_NARROW)
+    // Floating reductions reuse cvt_resize[1:0] for their neutral value
+    // encoding: VFREDMAX uses 2'b10, which is also CVT_NARROW. Reductions
+    // never use the narrowing issue/packing path.
+    if (resize == CVT_NARROW && !(op inside {[VFREDUSUM:VFWREDOSUM]}))
       narrowing = 1'b1;
   endfunction: narrowing
 
@@ -681,6 +685,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // neutral values injected into the reduction tree are not contributions.
   elen_t reduction_seed_d, reduction_seed_q;
   logic  reduction_any_active_d, reduction_any_active_q;
+  logic  reduction_epoch_any_active_d, reduction_epoch_any_active_q;
   assign reduction_any_active_o = reduction_any_active_q;
 
   // Inform the lane SLDU/ADDRGEN arbiter that this reduction is over
@@ -944,8 +949,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   vfpu_tag_t vfpu_tag_in, vfpu_tag_out;
   strb_t vfpu_control_in;
 
-  assign vfpu_mask = vfpu_tag_out.control;
-
   // neutral value for Intraline reduction optimization
   elen_t         ntr_val;
 
@@ -958,13 +961,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [2:0] fp_sign;
   // Is the FPU enabled?
   if (FPUSupport != FPUSupportNone) begin : fpu_gen
+    assign vfpu_mask = vfpu_tag_out.control;
     // Features (enabled formats, vectors etc.)
     localparam fpu_features_t FPUFeatures = '{
       Width        : 64,
       EnableVectors: 1'b1,
       EnableNanBox : 1'b1,
       FpFmtMask    : {RVVF(FPUSupport), RVVD(FPUSupport), RVVH(FPUSupport), RVVB(FPUSupport), RVVHA(FPUSupport), RVVBA(FPUSupport)},
-      IntFmtMask   : {logic'(RVVB(FPUSupport) || RVVBA(FPUSupport)), 1'b1, 1'b1, 1'b1}
+      IntFmtMask   : {logic'(RVVH(FPUSupport) || RVVB(FPUSupport) || RVVBA(FPUSupport)), 1'b1, 1'b1, 1'b1}
     };
 
     // Implementation (number of registers etc)
@@ -1156,6 +1160,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           fp_src_fmt = (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op)) ? FP16 : FP8;
           fp_dst_fmt = FP8;
           fp_int_fmt = (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT16 : INT8;
+        end else if (RVVH(FPUSupport) && vinsn_issue_q.cvt_resize == CVT_NARROW &&
+                     fp_op == F2I) begin
+          // fpnew routes readiness by dst_fmt even for F2I. Keep an enabled
+          // FP format for routing; int_fmt selects the packed integer result.
+          fp_src_fmt = FP16;
+          fp_dst_fmt = FP16;
+          fp_int_fmt = INT8;
         end
         EW16: begin
           fp_src_fmt = !(RVVB(FPUSupport) || RVVBA(FPUSupport))
@@ -1167,6 +1178,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                      ? (vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT32 : INT16
                      : (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT8 :
             ((vinsn_issue_q.cvt_resize == CVT_NARROW && !is_reduction(vinsn_issue_q.op) && fp_op == I2F) ? INT32 : INT16);
+          if (RVVH(FPUSupport) && vinsn_issue_q.cvt_resize == CVT_WIDE && fp_op == I2F) begin
+            fp_src_fmt = FP16;
+            fp_int_fmt = INT8;
+          end
         end
         EW32: begin
           fp_src_fmt = (vinsn_issue_q.cvt_resize == CVT_WIDE && !is_reduction(vinsn_issue_q.op)) ? FP16 :
@@ -1204,12 +1219,39 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         assign vfpu_simd_mask[b] = issue_be[2*b];
     end: gen_vfpu_simd_mask
 
+    // MASKU owns the comparison predicate and [vstart, vl) window. Preserve
+    // element NV until that filtering, before FPnew collapses its lane status.
+    logic [NUM_FP_FORMATS-1:0][7:0] comparison_nv_by_fmt;
+    for (genvar fmt = 0; fmt < NUM_FP_FORMATS; fmt++) begin : gen_comparison_format
+      localparam fp_format_e Format = fp_format_e'(fmt);
+      localparam int unsigned Width = fp_width(Format);
+      for (genvar elem = 0; elem < 8; elem++) begin : gen_element
+        if (FPUFeatures.FpFmtMask[fmt] && elem < 64/Width) begin : gen_active
+          fp_info_t [1:0] info;
+          fpnew_classifier #(.FpFormat(Format), .NumOperands(2)) i_classifier (
+            .operands_i ({operand_b[elem*Width +: Width], operand_a[elem*Width +: Width]}),
+            // Scalar boxing has already been normalized by the dispatcher.
+            .is_boxed_i (2'b11),
+            .info_o     (info)
+          );
+          assign comparison_nv_by_fmt[fmt][elem] =
+            (vinsn_issue_q.op inside {VMFEQ, VMFNE}) ?
+              (info[0].is_signalling | info[1].is_signalling) :
+              (info[0].is_nan | info[1].is_nan);
+        end else begin : gen_unused
+          assign comparison_nv_by_fmt[fmt][elem] = 1'b0;
+        end
+      end
+    end
+
     assign vfpu_tag_in = '{
 `ifndef SYNTHESIS
       debug_ara_op:    vinsn_issue_q.op,
       debug_id:        vinsn_issue_q.id,
 `endif
-      operand_a: operand_a,
+      // Only estimates consume the original operand from the returning tag.
+      operand_a: (vinsn_issue_q.op inside {[VMFEQ:VMFGE]}) ?
+        elen_t'(comparison_nv_by_fmt[fp_src_fmt]) : operand_a,
       flag_mask: strb_t'(vfpu_simd_mask),
       control:   vfpu_control_in
     };
@@ -1496,6 +1538,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       // After a comparison, send the mask back to the mask unit
       // 1) Negate the result if op == VMFNE (fpnew does not natively support a not-equal comparison)
       // 2) Encode the mask in the bit after each comparison result
+      // 3) Carry per-element NV in bit 2 for MASKU's architectural filtering
       if (vinsn_processing_q.op inside {[VMFEQ:VMFGE]}) begin
         unique case (vinsn_processing_q.vtype.vsew)
           EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) begin
@@ -1504,32 +1547,66 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 ~vfpu_processed_result[8*b] :
                 vfpu_processed_result[8*b];
             for (int b = 0; b < 8; b++) vfpu_processed_result[8*b+1] = vfpu_mask[1*b];
+            for (int b = 0; b < 8; b++) vfpu_processed_result[8*b+2] = vfpu_tag_out.operand_a[b];
           end
           EW16: begin
             for (int b = 0; b < 4; b++) vfpu_processed_result[16*b] =
               (vinsn_processing_q.op == VMFNE) ?
                 ~vfpu_processed_result[16*b] :
                 vfpu_processed_result[16*b];
+            for (int b = 0; b < 4; b++) vfpu_processed_result[16*b+2] = vfpu_tag_out.operand_a[b];
           end
           EW32: begin
             for (int b = 0; b < 2; b++) vfpu_processed_result[32*b] =
               (vinsn_processing_q.op == VMFNE) ?
                 ~vfpu_processed_result[32*b] :
                 vfpu_processed_result[32*b];
+            for (int b = 0; b < 2; b++) vfpu_processed_result[32*b+2] = vfpu_tag_out.operand_a[b];
           end
           EW64: begin
             for (int b = 0; b < 1; b++) vfpu_processed_result[b] =
               (vinsn_processing_q.op == VMFNE) ?
                 ~vfpu_processed_result[b] :
                 vfpu_processed_result[b];
+            vfpu_processed_result[2] = vfpu_tag_out.operand_a[0];
           end
         endcase
       end
     end
 
-    // Stabilize signals regardless of FPU latency (signals to CVA6)
-    assign fflags_ex_d       = vfpu_ex_flag;
-    assign fflags_ex_valid_d = vfpu_out_valid & vfpu_out_ready;
+    // The seed can raise an exception before another lane sees an active source.
+    // Retain unordered-tree flags until all lanes have completed the tree: an
+    // empty reduction copies the seed without exceptions, even for an sNaN.
+    logic [4:0] reduction_fflags_d, reduction_fflags_q;
+    always_comb begin
+      reduction_fflags_d = reduction_fflags_q;
+      fflags_ex_d = vfpu_ex_flag;
+      fflags_ex_valid_d = vfpu_out_valid & vfpu_out_ready;
+      if (vinsn_processing_q.op inside {[VMFEQ:VMFGE]}) begin
+        // The dispatcher ORs lane data without per-lane valid qualification.
+        fflags_ex_d = '0;
+        fflags_ex_valid_d = 1'b0;
+      end
+      if (vinsn_processing_q_valid &&
+          vinsn_processing_q.op inside {VFREDUSUM, VFWREDUSUM, VFREDMIN, VFREDMAX}) begin
+        fflags_ex_d = '0;
+        fflags_ex_valid_d = 1'b0;
+        if (vfpu_out_valid && vfpu_out_ready)
+          reduction_fflags_d |= vfpu_ex_flag;
+      end
+      // Publish before local completion, while this activity epoch is still
+      // live. Ordinary/ordered operations keep their per-result flag path.
+      if ((mfpu_state_q inside {LN0_REDUCTION_COMMIT, SIMD_REDUCTION}) &&
+          mfpu_state_d == MFPU_WAIT) begin
+        fflags_ex_d = reduction_fflags_d & {5{reduction_epoch_any_active_q}};
+        fflags_ex_valid_d = 1'b1;
+        reduction_fflags_d = '0;
+      end
+    end
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) reduction_fflags_q <= '0;
+      else reduction_fflags_q <= reduction_fflags_d;
+    end
   end else begin : no_fpu_gen // The FPU is disabled
     assign vfpu_in_ready     = 1'b0;
     assign vfpu_result       = '0;
@@ -1603,6 +1680,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     commit_cnt_d     = commit_cnt_q;
 
     result_queue_d           = result_queue_q;
+    result_write             = result_queue_q[result_queue_write_pnt_q];
     result_queue_valid_d     = result_queue_valid_q;
     result_queue_read_pnt_d  = result_queue_read_pnt_q;
     result_queue_write_pnt_d = result_queue_write_pnt_q;
@@ -1706,6 +1784,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     first_op_d              = first_op_q;
     reduction_seed_d        = reduction_seed_q;
     reduction_any_active_d  = reduction_any_active_q;
+    reduction_epoch_any_active_d = reduction_epoch_any_active_q;
     simd_red_cnt_d          = simd_red_cnt_q;
     reduction_rx_cnt_d      = reduction_rx_cnt_q;
     sldu_transactions_cnt_d = sldu_transactions_cnt_q;
@@ -1810,10 +1889,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               if (issue_element_cnt_narrow > issue_cnt_q) issue_element_cnt_narrow = issue_cnt_q;
 
               // If the instruction is a narrowing one, we are issuing elements for one half of vtype.vsew
-              issue_cnt_d = (narrowing(vinsn_issue_q.cvt_resize)) ? (issue_cnt_q - issue_element_cnt_narrow) : (issue_cnt_q - issue_element_cnt);
+              issue_cnt_d = (narrowing(vinsn_issue_q.cvt_resize, vinsn_issue_q.op)) ? (issue_cnt_q - issue_element_cnt_narrow) : (issue_cnt_q - issue_element_cnt);
 
               // Give the correct be signal to the divider/FPU
-              issue_be = (narrowing(vinsn_issue_q.cvt_resize) ?
+              issue_be = (narrowing(vinsn_issue_q.cvt_resize, vinsn_issue_q.op) ?
                 be(issue_element_cnt_narrow, vinsn_issue_q.vtype.vsew) :
                 be(issue_element_cnt, vinsn_issue_q.vtype.vsew)) &
                 (vinsn_issue_q.vfu == VFU_MFpu
@@ -1822,7 +1901,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                                       vinsn_issue_q.vtype.vsew)
                  : {StrbWidth{1'b1}}) &
                 (vinsn_issue_q.vm ? {StrbWidth{1'b1}} :
-                 (narrowing(vinsn_issue_q.cvt_resize) ?
+                 (narrowing(vinsn_issue_q.cvt_resize, vinsn_issue_q.op) ?
                   narrowing_input_mask(mask_i, vinsn_issue_q.vtype.vsew,
                                        narrowing_select_in_q) : mask_i));
               // Carry the same execution mask through fpnew to the result
@@ -1831,7 +1910,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             end
 
             // Update the narrowing selector and acknowledge the mask operatnds if needed
-            if (narrowing(vinsn_issue_q.cvt_resize)) begin
+            if (narrowing(vinsn_issue_q.cvt_resize, vinsn_issue_q.op)) begin
               // Issued one half of the elements for the related narrowed result
               narrowing_select_in_d = ~narrowing_select_in_q;
 
@@ -1885,7 +1964,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
         // Narrowing FPU results need to be shuffled before being saved for storing
         unique case (vinsn_processing_q.vtype.vsew)
-          EW8: if (RVVB(FPUSupport) || RVVBA(FPUSupport)) begin
+          EW8: begin
             narrowing_shuffled_result[63:56] = unit_out_result[31:24];
             narrowing_shuffled_result[55:48] = unit_out_result[31:24];
             narrowing_shuffled_result[47:40] = unit_out_result[23:16];
@@ -1895,11 +1974,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             narrowing_shuffled_result[15:8]  = unit_out_result[7:0];
             narrowing_shuffled_result[7:0]   = unit_out_result[7:0];
             narrowing_shuffle_be             = !narrowing_select_out_q ? 8'b01010101 : 8'b10101010;
-          end else begin
-            // Default assignment
-            narrowing_shuffled_result[63:32] = unit_out_result[31:0];
-            narrowing_shuffled_result[31:0]  = unit_out_result[31:0];
-            narrowing_shuffle_be             = !narrowing_select_out_q ? 8'b00110011 : 8'b11001100;
           end
           EW16: begin
             narrowing_shuffled_result[63:48] = unit_out_result[31:16];
@@ -1948,45 +2022,46 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
           // Update the number of elements still to be processed
           // If the instruction is a narrowing one, we have processed elements for one half of vtype.vsew
-          to_process_cnt_d = (narrowing(vinsn_processing_q.cvt_resize)) ? (to_process_cnt_q - processed_element_cnt_narrow) : (to_process_cnt_q - processed_element_cnt);
+          to_process_cnt_d = (narrowing(vinsn_processing_q.cvt_resize, vinsn_processing_q.op)) ? (to_process_cnt_q - processed_element_cnt_narrow) : (to_process_cnt_q - processed_element_cnt);
 
           // Store the result in the result queue
-          result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
-          result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN) +
+          result_write.id    = vinsn_processing_q.id;
+          result_write.addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN) +
             ((vinsn_processing_q.vl - to_process_cnt_q) >> (int'(EW64) - vinsn_processing_q.vtype.vsew));
-          result_queue_d[result_queue_write_pnt_q].vxsat =
+          result_write.vxsat =
             (vinsn_processing_q.op == VSMUL) ?
               mfpu_vxsat[vinsn_processing_q.vtype.vsew] : '0;
           // FP narrowing instructions pack the result in two different cycles, and only some 8-bit slices are active
-          if (narrowing(vinsn_processing_q.cvt_resize)) begin
-            if (RVVB(FPUSupport) || RVVBA(FPUSupport)) begin
+          if (narrowing(vinsn_processing_q.cvt_resize, vinsn_processing_q.op)) begin
+            if (RVVB(FPUSupport) || RVVBA(FPUSupport) ||
+                vinsn_processing_q.vtype.vsew == EW8) begin
               for (int b = 0; b < 8; b++)
                 if (narrowing_shuffle_be[b])
-                  result_queue_d[result_queue_write_pnt_q].wdata[b*8 +: 8] = narrowing_shuffled_result[b*8 +: 8];
+                  result_write.wdata[b*8 +: 8] = narrowing_shuffled_result[b*8 +: 8];
             end else begin
               for (int b = 0; b < 4; b++)
                 if (narrowing_shuffle_be[2*b])
-                  result_queue_d[result_queue_write_pnt_q].wdata[b*16 +: 16] = narrowing_shuffled_result[b*16 +: 16];
+                  result_write.wdata[b*16 +: 16] = narrowing_shuffled_result[b*16 +: 16];
             end
           end else begin
-            result_queue_d[result_queue_write_pnt_q].wdata = unit_out_result;
+            result_write.wdata = unit_out_result;
           end
-          if (narrowing(vinsn_processing_q.cvt_resize)) begin
+          if (narrowing(vinsn_processing_q.cvt_resize, vinsn_processing_q.op)) begin
             if (!narrowing_select_out_q)
-              result_queue_d[result_queue_write_pnt_q].be = narrowing_result_be;
+              result_write.be = narrowing_result_be;
             else
-              result_queue_d[result_queue_write_pnt_q].be |= narrowing_result_be;
+              result_write.be |= narrowing_result_be;
           end else begin
-            result_queue_d[result_queue_write_pnt_q].be =
+            result_write.be =
               be(processed_element_cnt, vinsn_processing_q.vtype.vsew) &
                 (vinsn_processing_q.vfu == VFU_MFpu ? unit_out_mask :
                  (vinsn_processing_q.vm ? {StrbWidth{1'b1}} : unit_out_mask));
           end
 
-          result_queue_d[result_queue_write_pnt_q].mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
+          result_write.mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
 
           // Update the narrowing selector, validate the result, bump result queue pointers/counters
-          if (narrowing(vinsn_processing_q.cvt_resize)) begin
+          if (narrowing(vinsn_processing_q.cvt_resize, vinsn_processing_q.op)) begin
             // Processed one half of the elements for the related narrowed result
             narrowing_select_out_d = ~narrowing_select_out_q;
 
@@ -2033,6 +2108,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Update the element issue counter and the related issue_be signal for the divider
         // How many elements are we issuing?
         automatic logic [3:0] issue_element_cnt = (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+        automatic logic [3:0] source_element_cnt = (1 << (int'(EW64) - int'(vinsn_issue_q.vtype.vsew)));
+        automatic strb_t source_be;
+
+        // Neutral filling and partial-sum merging change issue_cnt_q without
+        // consuming the same number of source elements. Mask real input tails
+        // with source progress, not with the reduction work counter.
+        if (intra_op_rx_cnt_q >= vinsn_issue_q.vl)
+          source_element_cnt = '0;
+        else if (source_element_cnt > (vinsn_issue_q.vl - intra_op_rx_cnt_q))
+          source_element_cnt = vinsn_issue_q.vl - intra_op_rx_cnt_q;
+        source_be = be(source_element_cnt, vinsn_issue_q.vtype.vsew) &
+                    (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
 
         // No response for this reduction can return before its first partial
         // result is transmitted in INTER_LANES_REDUCTION_TX. Therefore an
@@ -2052,8 +2139,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Update the number of elements still to be issued
         if (issue_element_cnt > issue_cnt_q) issue_element_cnt = issue_cnt_q;
 
-        // Give the correct be signal to the divider/FPU
-        issue_be = be(issue_element_cnt, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
+        // Sources are already predicate/tail-neutralized. Partial sums and the
+        // seed remain meaningful even when the current source predicate is zero.
+        issue_be = '1;
 
         // Stall only if this is the first operation for this reduction instruction and the result queue is full
         if (!(first_op_q && result_queue_full)) begin
@@ -2075,10 +2163,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             else if (vfpu_tag_out.control == '0)
               to_process_cnt_d = to_process_cnt_q - processed_element_cnt;
 
-            result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
-            result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
-            result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
-            result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_processing_q.vtype.vsew);
+            result_write.wdata = vfpu_processed_result;
+            result_write.addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+            result_write.id    = vinsn_processing_q.id;
+            result_write.be    = be(1, vinsn_processing_q.vtype.vsew);
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
 
             first_result_op_valid_d = 1'b1;
@@ -2093,8 +2181,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // =======================================================
 
           // Do we have all the operands necessary for this instruction?
-          operand_a = processed_red_operand(mfpu_operand_i[1], ~vinsn_issue_q.vm, mask_i, issue_element_cnt, ntr_val);
-          operand_c = processed_red_operand(mfpu_operand_i[2], ~vinsn_issue_q.vm, mask_i, issue_element_cnt, ntr_val);
+          operand_a = processed_red_operand(mfpu_operand_i[1], ~vinsn_issue_q.vm, mask_i, source_element_cnt, ntr_val);
+          operand_c = processed_red_operand(mfpu_operand_i[2], ~vinsn_issue_q.vm, mask_i, source_element_cnt, ntr_val);
 
           if (first_op_q) begin
             operand_b = vinsn_issue_q.use_scalar_op ? scalar_op : mfpu_operand_i[0];
@@ -2160,6 +2248,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // Issue the micro-operations
           // =======================================================
 
+          if (vfpu_control_in == strb_t'(2)) issue_be = '0;
+
           if (operands_valid && vinsn_issue_q_valid) begin
             // Validate the inputs of FPU
             vfpu_in_valid = 1'b1;
@@ -2177,12 +2267,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               if (first_op_q) begin
                 reduction_seed_d = vinsn_issue_q.use_scalar_op ? scalar_op
                                                                 : mfpu_operand_i[0];
-                // Start a fresh per-lane activity epoch.  Keep it live until
-                // the first handshake of the next reduction so lanes that
-                // finish early cannot erase evidence before lane 0 commits.
-                reduction_any_active_d = |issue_be;
+                // Local activity may start the next instruction before other
+                // lanes commit. Each lane snapshots this epoch at first RX.
+                reduction_any_active_d = |source_be;
               end else if (intra_op_rx_cnt_en)
-                reduction_any_active_d |= |issue_be;
+                reduction_any_active_d |= |source_be;
               first_op_d = 1'b0;
 
               if (intra_op_rx_cnt_en) begin
@@ -2191,7 +2280,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                 mfpu_operand_ready_o = vinsn_issue_q.swap_vs2_vd_op ? {2'b10, first_op_q} : {2'b01, first_op_q};
                 // Acknowledge the mask operands
                 mask_ready_o = ~vinsn_issue_q.vm;
-                intra_op_rx_cnt_d = intra_op_rx_cnt_q + issue_element_cnt;
+                intra_op_rx_cnt_d = intra_op_rx_cnt_q + source_element_cnt;
               end
 
               if (intra_issued_op_cnt_q != (latency - 1)) intra_issued_op_cnt_d = intra_issued_op_cnt_q + 1;
@@ -2230,6 +2319,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
       end
       INTER_LANES_REDUCTION_RX: begin
+        // Every slot contains an already neutralized partial reduction.
+        issue_be = '1;
         // If the workload is unbalanced and some lanes already have commit_cnt == '0,
         // delay the commit until we are over with the inter-lanes phase
         prevent_commit = 1'b1;
@@ -2268,7 +2359,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               // Lane 0 is receiving an already processed result
               // and needs to SIMD-reduce the result
               if (lane_id_i == '0) begin
-                result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
+                result_write.wdata = sldu_operand_q;
                 result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
                 unique case (vinsn_commit.vtype.vsew)
                     EW8 : simd_red_cnt_max_d = 2'd3;
@@ -2292,7 +2383,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // If we have a valid result from the FPU,
         // write it in the queue and send it to the SLDU
         if (vfpu_out_valid && !result_queue_full) begin
-          result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+          result_write.wdata = vfpu_processed_result;
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
           mfpu_state_d = INTER_LANES_REDUCTION_TX;
         end
@@ -2309,6 +2400,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         commit_cnt_d = '0;
       end
       SIMD_REDUCTION: begin // only lane 0 can enter this state
+        // The fold compacts into physical low bytes, not shuffled source slots.
+        // FP16 needs two low slots on its first fold and one on its second.
+        issue_be = strb_t'(8'hff >> (8 - (4 >> simd_red_cnt_q)));
         unique case (simd_red_cnt_q)
           2'd0: simd_red_operand = {32'b0, result_queue_q[result_queue_write_pnt_q].wdata[63:32]};
           2'd1: simd_red_operand = {48'b0, result_queue_q[result_queue_write_pnt_q].wdata[31:16]};
@@ -2349,7 +2443,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // Accumulate the result
         if (vfpu_out_valid && !result_queue_full) begin
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
-          result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+          result_write.wdata = vfpu_processed_result;
         end
       end
       OSUM_REDUCTION: begin
@@ -2390,7 +2484,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end else if (!result_queue_full && !red_hs_synch_q &&
                        !result_queue_valid_q[result_queue_write_pnt_q]) begin
             // Preserve the accumulator exactly when this element is inactive.
-            result_queue_d[result_queue_write_pnt_q].wdata = operand_b;
+            result_write.wdata = operand_b;
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
             to_process_cnt_d = to_process_cnt_q - 1;
             osum_issue_fire = 1'b1;
@@ -2419,8 +2513,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             // Note: Also ack even if this is the first operation in lane 0
             sldu_mfpu_ready_d = 1'b1;
 
-            // Give the correct be signal to the divider/FPU
-            issue_be = be(1, vinsn_issue_q.vtype.vsew) & (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
+            // The selected element is compacted into the low FP slot. Its
+            // exception mask must use that same coordinate, not the source
+            // word's unshifted mask (which can disable an active later slot).
+            issue_be = be(1, vinsn_issue_q.vtype.vsew) & {StrbWidth{osum_active}};
             issue_cnt_d = issue_cnt_q - 1;
 
             // The first operation of this instruction has just been done
@@ -2438,7 +2534,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         if (vfpu_out_valid && !result_queue_full) begin
           to_process_cnt_d = to_process_cnt_q - 1;
 
-          result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+          result_write.wdata = vfpu_processed_result;
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
         end
 
@@ -2458,11 +2554,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end else if ((lane_id_i == '0) && sldu_mfpu_valid_q &&
                      issue_cnt_q == '0 && to_process_cnt_d == '0) begin
           // Lane 0 should wait for the final result
-          result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
-          result_queue_d[result_queue_write_pnt_q].id    = vinsn_processing_q.id;
-          result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_processing_q.vtype.vsew);
-          result_queue_d[result_queue_write_pnt_q].mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
-          result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
+          result_write.addr  = vaddr(vinsn_processing_q.vd, NrLanes, VLEN);
+          result_write.id    = vinsn_processing_q.id;
+          result_write.be    = be(1, vinsn_processing_q.vtype.vsew);
+          result_write.mask  = vinsn_processing_q.vfu == VFU_MaskUnit;
+          result_write.wdata = sldu_operand_q;
 
           // Bump pointers and counters of the result queue
           result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
@@ -2529,9 +2625,23 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       default:;
     endcase
 
+    // The first returned tree token requires all lanes' source phases to be
+    // complete. Later rounds require every lane to consume this first token
+    // before any lane can finish and overwrite its activity for the next op.
+    if (mfpu_state_q == INTER_LANES_REDUCTION_RX &&
+        sldu_transactions_cnt_q == $clog2(NrLanes) + 1 &&
+        sldu_mfpu_valid_q && sldu_mfpu_ready_d)
+      reduction_epoch_any_active_d = reduction_global_any_active_i;
+
     //////////////////////////////////
     //  Write results into the VRF  //
     //////////////////////////////////
+
+    // Whole-entry constant-index updates avoid overlapping dynamic field
+    // writes and clears; the later read-side clear retains priority.
+    for (int entry = 0; entry < ResultQueueDepth; entry++)
+      if (result_queue_write_pnt_q == entry)
+        result_queue_d[entry] = result_write;
 
     // Send result information to the VRF
     // Use mfpu_result_gnt register instead of mfpu_state, because the state could be changed
@@ -2543,9 +2653,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     mfpu_result_addr_o  = result_queue_q[result_queue_read_pnt_q].addr;
     mfpu_result_id_o    = result_queue_q[result_queue_read_pnt_q].id;
     mfpu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
-    if (lane_id_i == '0 &&
+    // This bus also sends partials to SLDU before the epoch snapshot exists.
+    // Exact seed bypass belongs only to architectural result writeback.
+    if (mfpu_result_req_o && lane_id_i == '0 &&
         vinsn_commit.op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM} &&
-        !reduction_global_any_active_i)
+        !reduction_epoch_any_active_q)
       mfpu_result_wdata_o = reduction_seed_q;
     mfpu_result_be_o    = result_queue_q[result_queue_read_pnt_q].be;
 
@@ -2557,7 +2669,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         (1 << (int'(EW64) - int'(vinsn_commit.vtype.vsew)));
 
       result_queue_valid_d[result_queue_read_pnt_q] = 1'b0;
-      result_queue_d[result_queue_read_pnt_q]       = '0;
+      for (int entry = 0; entry < ResultQueueDepth; entry++)
+        if (result_queue_read_pnt_q == entry) result_queue_d[entry] = '0;
 
       // Increment the read pointer
       if (result_queue_read_pnt_q == ResultQueueDepth-1) result_queue_read_pnt_d = 0;
@@ -2717,6 +2830,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       first_op_q              <= 1'b0;
       reduction_seed_q        <= '0;
       reduction_any_active_q  <= 1'b0;
+      reduction_epoch_any_active_q <= 1'b0;
       sldu_transactions_cnt_q <= '0;
       red_hs_synch_q          <= 1'b0;
       simd_red_cnt_max_q      <= '0;
@@ -2743,6 +2857,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       first_op_q              <= first_op_d;
       reduction_seed_q        <= reduction_seed_d;
       reduction_any_active_q  <= reduction_any_active_d;
+      reduction_epoch_any_active_q <= reduction_epoch_any_active_d;
       sldu_transactions_cnt_q <= sldu_transactions_cnt_d;
       red_hs_synch_q          <= red_hs_synch_d;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
@@ -2798,6 +2913,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       debug_stall_cycle_q <= '0;
     end else begin
       debug_stall_cycle_q <= debug_stall_cycle_q + 1'b1;
+      if ($test$plusargs("ARA_DEBUG_FP64_DIV") &&
+          (lane_id_i == 1 || lane_id_i == 2) &&
+          debug_stall_cycle_q >= 44000 && debug_stall_cycle_q <= 44600 &&
+          ((debug_stall_cycle_q >= 44200 && debug_stall_cycle_q <= 44250) ||
+           debug_stall_cycle_q % 20 == 0)) begin
+        $display("[ARA_FP64_DIV] t=%0t cyc=%0d lane=%0d issue=%0b:%0d:%0d proc=%0b:%0d:%0d operands=%b/%b valid=%0b lat=%0b div_in=%0b/%0b div_out=%0b/%0b div_state=%0d/%0d cnt=%0d/%0d be=%h ser_state=%0d ser_in=%0b/%0b ser_out=%0b/%0b rq=%0d",
+                 $time, debug_stall_cycle_q, lane_id_i,
+                 vinsn_issue_q_valid, vinsn_issue_q.id, issue_cnt_q,
+                 vinsn_processing_q_valid, vinsn_processing_q.id, to_process_cnt_q,
+                 mfpu_operand_valid_i, mfpu_operand_ready_o, operands_valid,
+                 latency_stall, vdiv_in_valid, vdiv_in_ready,
+                 vdiv_out_valid, vdiv_out_ready,
+                 i_simd_div.issue_state_q, i_simd_div.commit_state_q,
+                 i_simd_div.issue_cnt_q, i_simd_div.commit_cnt_q,
+                 i_simd_div.be_q, i_simd_div.i_serdiv.state_q,
+                 i_simd_div.serdiv_in_valid, i_simd_div.serdiv_in_ready,
+                 i_simd_div.serdiv_out_valid, i_simd_div.serdiv_out_ready,
+                 result_queue_cnt_q);
+      end
       if ($test$plusargs("ARA_DEBUG_MFPU_STALL") &&
           debug_stall_cycle_q != 0 && debug_stall_cycle_q % 10000 == 0) begin
         $display("[ARA_MFPU_STATE] %m t=%0t cyc=%0d q=%0d/%0d/%0d ptr=%0d/%0d/%0d issue=%0b:id%0d/op%0d rem%0d proc=%0b:id%0d/op%0d rem%0d commit=%0b:id%0d/op%0d rem%0d operands=%b/%b valid=%0b rq=%0d state=%0d",

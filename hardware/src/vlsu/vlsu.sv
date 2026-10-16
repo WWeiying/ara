@@ -40,6 +40,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  axi_resp_t               axi_resp_i,
     // Interface with the dispatcher
     input  logic                    core_st_pending_i,
+    input  logic                    load_prepare_valid_i,
+    input  logic [63:0]              load_prepare_addr_i,
+    input  logic                    load_prepare_safe_i,
+    input  logic                    load_prepare_flush_i,
     output logic                    load_complete_o,
     output logic                    store_complete_o,
     output logic                    store_pending_o,
@@ -70,6 +74,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     input  strb_t     [NrLanes-1:0] mask_i,
     input  logic      [NrLanes-1:0] mask_valid_i,
     input  vfu_e                      mask_target_fu_i,
+    input  vid_t                      mask_owner_id_i,
+    input  vlen_t                     mask_first_element_i,
     output logic                    vldu_mask_ready_o,
     output logic                    vstu_mask_ready_o,
 
@@ -113,6 +119,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   assign store_complete_o = store_complete;
 
   logic stu_current_burst_exception, ldu_current_burst_exception;
+  exception_t store_b_exception;
+  vlen_t store_b_exception_vstart;
   assign lsu_current_burst_exception_o = stu_current_burst_exception | ldu_current_burst_exception;
 
   `FF(lsu_ex_flush_done_o, lsu_ex_flush_i, 1'b0, clk_i, rst_ni);
@@ -133,6 +141,20 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   axi_resp_t axi_resp;
   axi_req_t  normal_axi_req;
   axi_resp_t normal_axi_resp;
+  axi_req_t prepared_axi_req;
+  axi_resp_t prepared_axi_resp;
+  logic prepare_inflight, prepare_ar_fire, prepare_hit;
+  logic prepare_store_active_q, prepare_store_seen_q;
+  vid_t prepare_store_id_q;
+  logic [64:0] prepare_store_start_q, prepare_store_end_q;
+  logic prepare_allowed, prepare_invalidate;
+  logic prepare_pending_q, prepare_ready;
+  logic prepare_hint_full, prepare_hint_empty;
+  logic [63:0] prepare_addr_q;
+  axi_ar_t prepare_ar;
+  axi_ar_t addrgen_ar;
+  logic addrgen_ar_valid, addrgen_ar_ready, ar_hold_empty;
+  localparam int unsigned PrepareBytes = (VLEN/8 > 256) ? 256 : VLEN/8;
 
   axi_cut #(
     .ar_chan_t (axi_ar_t  ),
@@ -160,6 +182,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   logic             axi_addrgen_req_valid;
   logic             ldu_axi_addrgen_req_ready;
   logic             stu_axi_addrgen_req_ready;
+  strb_t [NrLanes-1:0] ldu_mask_word, stu_mask_word;
+  logic [NrLanes-1:0] ldu_mask_word_valid, stu_mask_word_valid;
+  vid_t ldu_mask_owner_id, stu_mask_owner_id;
+  vlen_t ldu_mask_first_element, stu_mask_first_element;
   logic             addrgen_idle;
   logic             normal_pe_req_valid;
   logic             normal_mmu_misaligned_ex;
@@ -189,9 +215,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .axi_aw_o                   (normal_axi_req.aw           ),
     .axi_aw_valid_o             (normal_axi_req.aw_valid     ),
     .axi_aw_ready_i             (normal_axi_resp.aw_ready    ),
-    .axi_ar_o                   (normal_axi_req.ar           ),
-    .axi_ar_valid_o             (normal_axi_req.ar_valid     ),
-    .axi_ar_ready_i             (normal_axi_resp.ar_ready    ),
+    .axi_ar_o                   (addrgen_ar                  ),
+    .axi_ar_valid_o             (addrgen_ar_valid            ),
+    .axi_ar_ready_i             (addrgen_ar_ready            ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer
@@ -213,6 +239,14 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .axi_addrgen_req_valid_o    (axi_addrgen_req_valid      ),
     .ldu_axi_addrgen_req_ready_i(ldu_axi_addrgen_req_ready  ),
     .stu_axi_addrgen_req_ready_i(stu_axi_addrgen_req_ready  ),
+    .ldu_mask_word_i            (ldu_mask_word             ),
+    .ldu_mask_word_valid_i      (ldu_mask_word_valid       ),
+    .ldu_mask_owner_id_i        (ldu_mask_owner_id         ),
+    .ldu_mask_first_element_i   (ldu_mask_first_element    ),
+    .stu_mask_word_i            (stu_mask_word             ),
+    .stu_mask_word_valid_i      (stu_mask_word_valid       ),
+    .stu_mask_owner_id_i        (stu_mask_owner_id         ),
+    .stu_mask_first_element_i   (stu_mask_first_element    ),
     .lsu_ex_flush_i             (lsu_ex_flush_i             ),
 
     // CSR input
@@ -277,7 +311,13 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     // Interface with the Mask unit
     .mask_i                 (mask_i                    ),
     .mask_valid_i           (mask_valid_i & {NrLanes{mask_target_fu_i == VFU_LoadUnit}}),
+    .mask_owner_id_i        (mask_owner_id_i           ),
+    .mask_first_element_i   (mask_first_element_i      ),
     .mask_ready_o           (vldu_mask_ready_o         ),
+    .mask_word_o            (ldu_mask_word             ),
+    .mask_word_valid_o      (ldu_mask_word_valid       ),
+    .mask_owner_id_o        (ldu_mask_owner_id         ),
+    .mask_first_element_o   (ldu_mask_first_element    ),
     // Interface with the lanes
     .ldu_result_req_o       (normal_ldu_result_req     ),
     .ldu_result_addr_o      (normal_ldu_result_addr    ),
@@ -305,7 +345,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .VLEN        (VLEN        ),
     .vaddr_t     (vaddr_t     ),
     .pe_req_t    (pe_req_t    ),
-    .pe_resp_t   (pe_resp_t   )
+    .pe_resp_t   (pe_resp_t   ),
+    .exception_t (exception_t )
   ) i_vstu (
     .clk_i                  (clk_i                      ),
     .rst_ni                 (rst_ni                     ),
@@ -326,6 +367,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     .pe_req_ready_o         (normal_pe_req_ready[OffsetStore]),
     .pe_resp_o              (normal_pe_resp[OffsetStore]),
     .stu_current_burst_exception_o (stu_current_burst_exception),
+    .store_b_exception_o    (store_b_exception          ),
+    .store_b_exception_vstart_o (store_b_exception_vstart),
     // Interface with the address generator
     .axi_addrgen_req_i      (axi_addrgen_req            ),
     .axi_addrgen_req_valid_i(axi_addrgen_req_valid      ),
@@ -334,7 +377,13 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
     // Interface with the Mask unit
     .mask_i                 (mask_i                     ),
     .mask_valid_i           (mask_valid_i & {NrLanes{mask_target_fu_i == VFU_StoreUnit}}),
+    .mask_owner_id_i        (mask_owner_id_i            ),
+    .mask_first_element_i   (mask_first_element_i       ),
     .mask_ready_o           (vstu_mask_ready_o          ),
+    .mask_word_o            (stu_mask_word              ),
+    .mask_word_valid_o      (stu_mask_word_valid        ),
+    .mask_owner_id_o        (stu_mask_owner_id          ),
+    .mask_first_element_o   (stu_mask_first_element     ),
     // Interface with the lanes
     .stu_operand_i          (stu_operand_i              ),
     .stu_operand_valid_i    (stu_operand_valid_i        ),
@@ -519,10 +568,131 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       pe_req_i.op != VQBEXEC && !pe_req_is_akv &&
       !qbs_active_q && !akv_active_q;
 
+  // The only outstanding precise store owns this preparation window. Indexed,
+  // segmented and strided stores do not provide a bounded disjoint range.
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prepare_store_seen_q <= 1'b0;
+      prepare_store_active_q <= 1'b0;
+      prepare_store_id_q <= '0;
+      prepare_store_start_q <= '0;
+      prepare_store_end_q <= '0;
+    end else begin
+      if (!normal_pe_req_valid || pe_req_i.vfu != VFU_StoreUnit)
+        prepare_store_seen_q <= 1'b0;
+      if (normal_pe_req_valid && pe_req_i.vfu == VFU_StoreUnit &&
+          pe_req_ready_o[1] &&
+          (!prepare_store_seen_q || prepare_store_id_q != pe_req_i.id)) begin
+        prepare_store_seen_q <= 1'b1;
+        prepare_store_id_q <= pe_req_i.id;
+        prepare_store_start_q <= 65'(pe_req_i.scalar_op);
+        prepare_store_end_q <= 65'(pe_req_i.scalar_op) +
+            (65'(pe_req_i.vl) << pe_req_i.vtype.vsew);
+        prepare_store_active_q <= pe_req_i.op == VSE &&
+            65'(pe_req_i.scalar_op) + (65'(pe_req_i.vl) << pe_req_i.vtype.vsew)
+                <= (65'd1 << CVA6Cfg.PLEN);
+      end
+      if (store_complete || store_b_exception.valid ||
+          normal_addrgen_exception.valid || lsu_ex_flush_i)
+        prepare_store_active_q <= 1'b0;
+    end
+  end
+
+  // Issue can expose both addresses before the older store reaches VLSU.
+  // Queue the hints instead of overwriting the first while its window is closed.
+  // Overflow drops only speculative work; architectural loads always remain.
+  fifo_v3 #(.DEPTH(2), .dtype(logic [63:0])) i_prepare_hint_queue (
+    .clk_i, .rst_ni, .flush_i(prepare_invalidate || store_complete), .testmode_i(1'b0),
+    .data_i(load_prepare_addr_i), .push_i(load_prepare_valid_i && !prepare_hint_full),
+    .full_o(prepare_hint_full), .usage_o(), .data_o(prepare_addr_q),
+    .pop_i(prepare_allowed && prepare_ready), .empty_o(prepare_hint_empty)
+  );
+  assign prepare_pending_q = !prepare_hint_empty;
+
+  always_comb begin
+    prepare_ar = '0;
+    prepare_ar.addr = AxiAddrWidth'(prepare_addr_q);
+    prepare_ar.len = 8'(PrepareBytes / (AxiDataWidth / 8) - 1);
+    prepare_ar.size = 3'($clog2(AxiDataWidth / 8));
+    prepare_ar.cache = axi_pkg::CACHE_MODIFIABLE;
+    prepare_ar.burst = axi_pkg::BURST_INCR;
+  end
+  assign prepare_invalidate = load_prepare_flush_i || !load_prepare_safe_i ||
+      lsu_ex_flush_i || store_b_exception.valid || normal_addrgen_exception.valid ||
+      qbs_active_q || akv_active_q ||
+      (pe_req_valid_i && (pe_req_i.op == VQBEXEC || pe_req_is_akv));
+  assign prepare_allowed = prepare_pending_q && load_prepare_safe_i &&
+      !prepare_invalidate && prepare_store_active_q &&
+      prepare_addr_q[$clog2(AxiDataWidth/8)-1:0] == '0 &&
+      (13'(prepare_addr_q[11:0]) + 13'(PrepareBytes) <= 13'd4096) &&
+      qbs_range_is_cacheable_idempotent(AxiAddrWidth'(prepare_addr_q),
+                                       13'(PrepareBytes)) &&
+      (65'(prepare_addr_q) >= prepare_store_end_q ||
+       65'(prepare_addr_q) + 65'(PrepareBytes) <= prepare_store_start_q);
+
+`ifdef ARA_STORE_B_AB_BASELINE
+  assign normal_axi_req.ar = addrgen_ar;
+  assign normal_axi_req.ar_valid = addrgen_ar_valid;
+  assign addrgen_ar_ready = normal_axi_resp.ar_ready;
+  assign ar_hold_empty = !addrgen_ar_valid;
+  assign prepared_axi_req = normal_axi_req;
+  assign normal_axi_resp = prepared_axi_resp;
+  assign prepare_inflight = 1'b0;
+  assign prepare_ar_fire = 1'b0;
+  assign prepare_hit = 1'b0;
+  assign prepare_ready = 1'b0;
+`else
+  // AddrGen emits VALID only when READY. Registered queue credit breaks the
+  // feedback through hit/arbitration logic; fall-through keeps the empty path
+  // zero-cycle and a stalled request persists independently of AddrGen.
+  logic ar_hold_full;
+  fifo_v3 #(.DEPTH(2), .FALL_THROUGH(1'b1), .dtype(axi_ar_t)) i_prepare_ar_hold (
+    .clk_i, .rst_ni, .flush_i(1'b0), .testmode_i(1'b0),
+    .data_i(addrgen_ar), .push_i(addrgen_ar_valid && addrgen_ar_ready),
+    .full_o(ar_hold_full), .usage_o(), .data_o(normal_axi_req.ar),
+    .pop_i(normal_axi_req.ar_valid && normal_axi_resp.ar_ready),
+    .empty_o(ar_hold_empty)
+  );
+  assign addrgen_ar_ready = !ar_hold_full;
+  assign normal_axi_req.ar_valid = !ar_hold_empty;
+  store_load_lookahead_pair #(
+    .Bytes(PrepareBytes), .DataWidth(AxiDataWidth),
+    .ar_t(axi_ar_t), .r_t(axi_r_t), .req_t(axi_req_t), .resp_t(axi_resp_t)
+  ) i_store_load_lookahead (
+    .clk_i, .rst_ni, .prepare_i(prepare_allowed), .prepare_ready_o(prepare_ready),
+    .prepare_ar_i(prepare_ar),
+    .invalidate_i(prepare_invalidate), .req_i(normal_axi_req),
+    .allow_disjoint_writes_i(prepare_store_active_q && load_prepare_safe_i),
+    .resp_o(normal_axi_resp), .req_o(prepared_axi_req), .resp_i(prepared_axi_resp),
+    .inflight_o(prepare_inflight), .prepare_fire_o(prepare_ar_fire), .hit_o(prepare_hit)
+  );
+`endif
+
+  // synthesis translate_off
+  longint unsigned prepare_reads_q, prepare_hits_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prepare_reads_q <= 0;
+      prepare_hits_q <= 0;
+    end else begin
+      if (prepare_ar_fire) prepare_reads_q <= prepare_reads_q + 1;
+      if (prepare_hit) prepare_hits_q <= prepare_hits_q + 1;
+      if ($test$plusargs("STORE_LOAD_PREPARE_TRACE") &&
+          (load_prepare_valid_i || (prepare_allowed && prepare_ready) || prepare_ar_fire || prepare_hit))
+        $display("[STORE_LOAD_PREPARE] t=%0t valid=%b pending=%b allowed=%b ready=%b addr=%h store_active=%b safe=%b cancel=%b aw=%b demand_ar=%b ar=%b hit=%b reads=%0d hits=%0d",
+          $time, load_prepare_valid_i, prepare_pending_q, prepare_allowed, prepare_ready, prepare_addr_q,
+          prepare_store_active_q, load_prepare_safe_i, prepare_invalidate,
+          normal_axi_req.aw_valid, normal_axi_req.ar_valid,
+          prepare_ar_fire, prepare_hit, prepare_reads_q, prepare_hits_q);
+    end
+  end
+  // synthesis translate_on
+
   // ara_idle is the primary command barrier. These local conditions defend the
   // ownership transfer against stale queue/cut state and make the handoff
   // independent of a fixed drain delay.
   assign normal_vlsu_idle = addrgen_idle && vldu_idle && vstu_idle &&
+      !prepare_inflight && ar_hold_empty &&
       !normal_axi_req.ar_valid && !normal_axi_req.aw_valid &&
       !normal_axi_req.w_valid && !normal_axi_resp.r_valid &&
       !normal_axi_resp.b_valid && !axi_req_o.ar_valid &&
@@ -660,8 +830,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
   // AXI ownership includes the registered cut. No normal response is exposed
   // while QBS owns the read channel, and QBS never drives write channels.
   always_comb begin
-    axi_req = normal_axi_req;
-    normal_axi_resp = axi_resp;
+    axi_req = prepared_axi_req;
+    prepared_axi_resp = axi_resp;
     qbs_axi_ar_ready = 1'b0;
     qbs_axi_r = '0;
     qbs_axi_r_valid = 1'b0;
@@ -674,7 +844,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       axi_req.ar = qbs_axi_ar;
       axi_req.ar_valid = qbs_axi_ar_valid;
       axi_req.r_ready = qbs_axi_r_ready;
-      normal_axi_resp = '0;
+      prepared_axi_resp = '0;
       qbs_axi_ar_ready = axi_resp.ar_ready;
       qbs_axi_r = axi_resp.r;
       qbs_axi_r_valid = axi_resp.r_valid;
@@ -683,7 +853,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       axi_req.ar = akv_axi_ar;
       axi_req.ar_valid = akv_axi_ar_valid;
       axi_req.r_ready = akv_axi_r_ready;
-      normal_axi_resp = '0;
+      prepared_axi_resp = '0;
       akv_axi_ar_ready = axi_resp.ar_ready;
       akv_axi_r = axi_resp.r;
       akv_axi_r_valid = axi_resp.r_valid;
@@ -825,8 +995,10 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
       addrgen_ack_o = 1'b1;
     end else begin
       addrgen_ack_o = normal_addrgen_ack;
-      addrgen_exception_o = normal_addrgen_exception;
-      addrgen_exception_vstart_o = normal_addrgen_exception_vstart;
+      addrgen_exception_o = store_b_exception.valid
+          ? store_b_exception : normal_addrgen_exception;
+      addrgen_exception_vstart_o = store_b_exception.valid
+          ? store_b_exception_vstart : normal_addrgen_exception_vstart;
       addrgen_fof_exception_o = normal_addrgen_fof_exception;
     end
   end
@@ -1184,7 +1356,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
         if (!qbs_active_q && !akv_active_q &&
             pe_req_i.op != VQBEXEC && !pe_req_is_akv) begin
-          assert (axi_req.ar_valid == normal_axi_req.ar_valid &&
+          assert (axi_req.ar_valid == prepared_axi_req.ar_valid &&
                   axi_req.aw_valid == normal_axi_req.aw_valid &&
                   axi_req.w_valid == normal_axi_req.w_valid &&
                   ldu_result_req_o == normal_ldu_result_req)

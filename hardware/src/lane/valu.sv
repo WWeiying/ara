@@ -146,6 +146,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   // Result queue
   payload_t [ResultQueueDepth-1:0]            result_queue_d, result_queue_q;
+  payload_t result_write;
   logic     [ResultQueueDepth-1:0]            result_queue_valid_d, result_queue_valid_q;
   // We need two pointers in the result queue. One pointer to indicate with `payload_t` we are
   // currently writing into (write_pnt), and one pointer to indicate which `payload_t` we are
@@ -584,6 +585,21 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   end
 
   always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_DEBUG_VSRA_TAIL") && valu_valid &&
+        vinsn_issue_q.op == VSRA && vinsn_issue_q.vd == 5'd12 &&
+        vinsn_issue_q.vl == (lane_id_i == '0 ? 39 : 38) &&
+        vinsn_issue_q.vtype.vsew == EW8 && lane_id_i < 2 &&
+        issue_cnt_q <= 8) begin
+      $display("[ARA_VSRA_TAIL] t=%0t lane=%0d id=%0d rem=%0d src=%016h shamt=%016h alu=%016h queued=%016h be=%02h qcnt=%0d",
+               $time, lane_id_i, vinsn_issue_q.id, issue_cnt_q,
+               alu_operand_b, alu_operand_a, valu_result,
+               result_queue_d[result_queue_write_pnt_q].wdata,
+               result_queue_d[result_queue_write_pnt_q].be,
+               result_queue_cnt_q);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
     if (rst_ni && $test$plusargs("ARA_DEBUG_VXSAT_FLOW")) begin
       if (valu_valid && |alu_vxsat)
         $display("[ARA_VXSAT_VALU_GEN] t=%0t lane=%0d id=%0d op=%0d sew=%0d rem=%0d raw=%02h be=%02h mask=%02h",
@@ -822,6 +838,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     commit_cnt_d  = commit_cnt_q;
 
     result_queue_d           = result_queue_q;
+    result_write            = result_queue_q[result_queue_write_pnt_q];
     result_queue_valid_d     = result_queue_valid_q;
     result_queue_read_pnt_d  = result_queue_read_pnt_q;
     result_queue_write_pnt_d = result_queue_write_pnt_q;
@@ -897,7 +914,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 mask_ready_o = !vinsn_issue_q.vm;
 
               // Store the result in the result queue
-              result_queue_d[result_queue_write_pnt_q].wdata = result_queue_q[result_queue_write_pnt_q].wdata | valu_result;
+              result_write.wdata = result_queue_q[result_queue_write_pnt_q].wdata | valu_result;
               if (vinsn_issue_q.preserve_narrow_vd) begin
                 automatic strb_t narrow_active_be =
                     active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
@@ -907,11 +924,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                     (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i);
                 for (int unsigned b = 0; b < StrbWidth; b++) begin
                   if (masked_narrow_preserve_be[b] && !narrow_execute_be[b])
-                    result_queue_d[result_queue_write_pnt_q].wdata[8*b +: 8] =
+                    result_write.wdata[8*b +: 8] =
                         masked_narrow_preserve_data[8*b +: 8];
                 end
               end
-              result_queue_d[result_queue_write_pnt_q].vxsat =
+              result_write.vxsat =
                   result_queue_q[result_queue_write_pnt_q].vxsat |
                   (alu_vxsat & (vinsn_issue_q.preserve_narrow_vd
                       ? (active_from_vstart(vinsn_issue_q.vl - issue_cnt_q,
@@ -919,11 +936,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                                             vinsn_issue_q.vtype.vsew) &
                          (vinsn_issue_q.vm ? {StrbWidth{1'b1}} : mask_i))
                       : {StrbWidth{1'b1}}));
-              result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + ((vinsn_issue_q.vl - issue_cnt_q) >> (unsigned'(EW64) - unsigned'(vinsn_issue_q.vtype.vsew)));
-              result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
-              result_queue_d[result_queue_write_pnt_q].mask  = vinsn_issue_q.vfu == VFU_MaskUnit;
+              result_write.addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN) + ((vinsn_issue_q.vl - issue_cnt_q) >> (unsigned'(EW64) - unsigned'(vinsn_issue_q.vtype.vsew)));
+              result_write.id    = vinsn_issue_q.id;
+              result_write.mask  = vinsn_issue_q.vfu == VFU_MaskUnit;
               if (!narrowing(vinsn_issue_q.op) || !narrowing_select_q)
-                result_queue_d[result_queue_write_pnt_q].be =
+                result_write.be =
                     be(element_cnt, vinsn_issue_q.vtype.vsew) &
                     (vinsn_issue_q.preserve_narrow_vd
                      ? {StrbWidth{1'b1}}
@@ -1021,14 +1038,14 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
               // Reduction instruction, accumulate the result
               for (int b = 0; b < 8; b++) begin
-                result_queue_d[result_queue_write_pnt_q].wdata[8*b +: 8] =
+                result_write.wdata[8*b +: 8] =
                     red_mask[b]            ?
                     valu_result[8*b +: 8]  :
                     alu_operand_a[8*b +: 8];
               end
-              result_queue_d[result_queue_write_pnt_q].addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN);
-              result_queue_d[result_queue_write_pnt_q].id    = vinsn_issue_q.id;
-              result_queue_d[result_queue_write_pnt_q].be    = be(1, vinsn_issue_q.vtype.vsew);
+              result_write.addr  = vaddr(vinsn_issue_q.vd, NrLanes, VLEN);
+              result_write.id    = vinsn_issue_q.id;
+              result_write.be    = be(1, vinsn_issue_q.vtype.vsew);
 
               // The first operation of this instruction has just been done
               first_op_d = 1'b0;
@@ -1069,7 +1086,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               // Issue the operation
               valu_valid = 1'b1;
               // Write the result
-              result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
+              result_write.wdata = valu_result;
               // One reduction step less for this lane
               reduction_rx_cnt_d = reduction_rx_cnt_q - 1;
             end
@@ -1078,7 +1095,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               // Lane 0 is receiving an already processed result
               // and needs to SIMD-reduce the result
               if (lane_id_i == '0) begin
-                result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
+                result_write.wdata = sldu_operand_q;
                 unique case (vinsn_commit.vtype.vsew)
                     EW8 : simd_red_cnt_max_d = 2'd3;
                     EW16: simd_red_cnt_max_d = 2'd2;
@@ -1131,7 +1148,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
             if (simd_red_cnt_q != simd_red_cnt_max_q) begin
               simd_red_cnt_d = simd_red_cnt_q + 1;
-              result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
+              result_write.wdata = valu_result;
             end else if (vinsn_issue_valid &&
                          vinsn_issue_q.id == vinsn_commit.id) begin
               // The reduction result may need an extra cycle to drain from
@@ -1169,6 +1186,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     //  Write results into the VRF  //
     //////////////////////////////////
 
+    // Keep payload updates entry-local. Vivado 2020.1 mis-synthesizes the
+    // overlapping dynamic field writes/whole-entry clears, losing held data.
+    for (int entry = 0; entry < ResultQueueDepth; entry++)
+      if (result_queue_write_pnt_q == entry)
+        result_queue_d[entry] = result_write;
+
     alu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
     if (alu_state_q == NO_REDUCTION || (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
       alu_result_req_o = result_queue_valid_q[result_queue_read_pnt_q] & ((alu_state_q == SIMD_REDUCTION) || !result_queue_q[result_queue_read_pnt_q].mask);
@@ -1188,7 +1211,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     // Deactivate the request.
     if (alu_result_gnt_i || mask_operand_gnt) begin
       result_queue_valid_d[result_queue_read_pnt_q] = 1'b0;
-      result_queue_d[result_queue_read_pnt_q]       = '0;
+      for (int entry = 0; entry < ResultQueueDepth; entry++)
+        if (result_queue_read_pnt_q == entry) result_queue_d[entry] = '0;
 
       // Increment the read pointer
       if (result_queue_read_pnt_q == ResultQueueDepth-1) result_queue_read_pnt_d = 0;
@@ -1310,7 +1334,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
     // Clear the accumulator after a partial reduction
     if (alu_state_q == LN0_REDUCTION_COMMIT && alu_state_d == NO_REDUCTION)
-      result_queue_d[result_queue_read_pnt_q] = '0;
+      for (int entry = 0; entry < ResultQueueDepth; entry++)
+        if (result_queue_read_pnt_q == entry) result_queue_d[entry] = '0;
 
   end : p_valu
 

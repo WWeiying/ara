@@ -80,6 +80,8 @@ sources:
     - hardware/src/lane/valu.sv
     - hardware/src/lane/vmfpu.sv
     - hardware/src/lane/fixed_p_rounding.sv
+    - hardware/src/vlsu/store_load_lookahead.sv
+    - hardware/src/vlsu/store_load_lookahead_pair.sv
     - hardware/src/vlsu/vlsu.sv
     - hardware/src/masku/masku.sv
     # Level 3
@@ -87,6 +89,7 @@ sources:
     # Level 4
     - hardware/src/lane/lane.sv
     # Level 5
+    - hardware/src/vsetvl_preview.sv
     - hardware/src/ara.sv
     # Level 6
     - hardware/src/ara_system.sv

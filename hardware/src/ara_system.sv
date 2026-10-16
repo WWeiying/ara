@@ -81,6 +81,10 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   ariane_axi_resp_t ariane_narrow_axi_resp;
   ara_axi_req_t     ariane_axi_req, ara_axi_req_inval, ara_axi_req;
   ara_axi_resp_t    ariane_axi_resp, ara_axi_resp_inval, ara_axi_resp;
+`ifdef ARA_VERIFY_AXI_DELAY
+  ara_axi_req_t     ara_axi_req_delayed;
+  ara_axi_resp_t    ara_axi_resp_delayed;
+`endif
 
   //////////////////////
   //  Ara and Ariane  //
@@ -306,8 +310,13 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
 `else
     .en_i         (acc_cons_en       ),
 `endif
+`ifdef ARA_VERIFY_AXI_DELAY
+    .slv_req_i    (ara_axi_req_delayed ),
+    .slv_resp_o   (ara_axi_resp_delayed),
+`else
     .slv_req_i    (ara_axi_req       ),
     .slv_resp_o   (ara_axi_resp      ),
+`endif
     .mst_req_o    (ara_axi_req_inval ),
     .mst_resp_i   (ara_axi_resp_inval),
     .inval_addr_o (inval_addr        ),
@@ -355,6 +364,27 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .axi_req_o       (ara_axi_req   ),
     .axi_resp_i      (ara_axi_resp  )
   );
+
+`ifdef ARA_VERIFY_AXI_DELAY
+  axi_delayer #(
+    .aw_chan_t       (ara_axi_aw_t  ),
+    .w_chan_t        (ara_axi_w_t   ),
+    .b_chan_t        (ara_axi_b_t   ),
+    .ar_chan_t       (ara_axi_ar_t  ),
+    .r_chan_t        (ara_axi_r_t   ),
+    .axi_req_t       (ara_axi_req_t ),
+    .axi_resp_t      (ara_axi_resp_t),
+    .FixedDelayInput (3             ),
+    .FixedDelayOutput(0             )
+  ) i_ara_verify_axi_delayer (
+    .clk_i,
+    .rst_ni,
+    .slv_req_i (ara_axi_req        ),
+    .slv_resp_o(ara_axi_resp       ),
+    .mst_req_o(ara_axi_req_delayed),
+    .mst_resp_i(ara_axi_resp_delayed)
+  );
+`endif
 
   axi_mux #(
     .SlvAxiIDWidth(AxiIdWidth       ),

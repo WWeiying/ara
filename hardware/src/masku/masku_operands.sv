@@ -58,7 +58,8 @@ module masku_operands import ara_pkg::*; import rvv_pkg::*; #(
     output logic  [     NrLanes-1:0] masku_operand_m_seq_valid_o,
     input  logic  [     NrLanes-1:0] masku_operand_m_seq_ready_i,
     output logic  [NrLanes*ELEN-1:0] bit_enable_mask_o,           // Bit mask for mask unit instructions (shuffled like mask register)
-    output logic  [NrLanes*ELEN-1:0] alu_result_compressed_seq_o  // ALU/FPU results compressed (from sew to 1-bit) (deshuffled, in mask format)
+    output logic  [NrLanes*ELEN-1:0] alu_result_compressed_seq_o, // ALU/FPU results compressed (from sew to 1-bit) (deshuffled, in mask format)
+    output logic  [NrLanes*ELEN-1:0] fp_compare_nv_seq_o
   );
 
   // Imports
@@ -225,6 +226,7 @@ module masku_operands import ara_pkg::*; import rvv_pkg::*; #(
   // -------------------------------------------
   always_comb begin
     alu_result_compressed_seq_o = '1;
+    fp_compare_nv_seq_o = '0;
     for (int b = 0; b < ELENB * NrLanes; b++) begin
       if ((b & ((1 << vinsn_issue_i.eew_vs2) - 1)) == '0) begin
         automatic int src_byte        = shuffle_index(b, NrLanes, vinsn_issue_i.eew_vs2);
@@ -234,6 +236,9 @@ module masku_operands import ara_pkg::*; import rvv_pkg::*; #(
         automatic int dest_bit_seq  = (b >> vinsn_issue_i.eew_vs2) + vrf_pnt_i;
         automatic int dest_byte_seq = dest_bit_seq / ELENB;
         alu_result_compressed_seq_o[ELENB * dest_byte_seq + dest_bit_seq[idx_width(ELENB)-1:0]] = masku_operand_alu_o[src_byte_lane][8 * src_byte_offset];
+        // VMFPU carries each comparison's NV in its otherwise unused bit 2.
+        // Keep the same element mapping as bit 0; other slices contribute zero.
+        fp_compare_nv_seq_o[ELENB * dest_byte_seq + dest_bit_seq[idx_width(ELENB)-1:0]] = masku_operand_alu_o[src_byte_lane][8 * src_byte_offset + 2];
       end
     end
   end
