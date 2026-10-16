@@ -23,13 +23,18 @@ proc create_ip {args} {
     dict set ::ip_versions $name [option $args -version]
 }
 proc set_property {args} {
+    if {[lindex $args 0] eq "synth_checkpoint_mode"} { return }
     assert {[lindex $args 0] eq "-dict"} "IP configuration must be explicit"
     dict set ::properties [lindex $args end] [lindex $args 1]
 }
 proc generate_target {target ips} { set ::generated $ips }
 proc create_ip_run {ip} { lappend ::ooc $ip }
+proc import_files {args} { set ::imported [lindex $args end] }
+proc get_files {args} { return $::imported }
+proc make_wrapper {args} { return loader_bd_wrapper.v }
+proc add_files {args} {}
 
-foreach profile {baseline host dual_ddr} {
+foreach profile {baseline host dual_ddr host_ethernet dual_ddr_ethernet} {
     set ::env(ARA_FPGA_PROFILE) $profile
     source $scripts/common.tcl
     set expected ara_dsa_vcu118
@@ -40,12 +45,26 @@ foreach profile {baseline host dual_ddr} {
     assert {$design_top eq "ara_dsa_vcu118"} "DCP name follows unchanged RTL top"
     set expected_defines {}
     if {$profile ne "baseline"} { lappend expected_defines ARA_FPGA_HOST }
-    if {$profile eq "dual_ddr"} { lappend expected_defines ARA_FPGA_DDR2 }
+    if {$profile in {dual_ddr dual_ddr_ethernet}} { lappend expected_defines ARA_FPGA_DDR2 }
+    if {$profile in {host_ethernet dual_ddr_ethernet}} { lappend expected_defines ARA_FPGA_ETHERNET }
     assert {$profile_defines eq $expected_defines} "exact profile defines"
     set created {}; set properties {}; set ip_kinds {}; set ip_versions {}; set ooc {}
+    # Reject missing artifacts before creating any vendor IP, then use a mock BD.
+    set package_root [file join $scratch $profile]
+    if {$profile in {host_ethernet dual_ddr_ethernet}} {
+        assert {[catch {source $scripts/create_ip.tcl} message]} "missing loader rejected"
+        assert {![llength $created]} "no partial IP generation without loader"
+        assert {[string match {*Missing validated shared-DDR loader*} $message]} "artifact diagnostic"
+        put [file join $package_root ethernet loader_bd loader_bd.bd] mock
+    }
     source $scripts/create_ip.tcl
     assert {[lsort $created] eq [lsort $profile_ips]} "only selected IPs instantiated"
-    assert {$generated eq $profile_ips && $ooc eq $profile_ips} "generate/OOC every required IP"
+    set expected_ooc $profile_ips
+    if {$profile in {host_ethernet dual_ddr_ethernet}} {
+        set expected_ooc [linsert $expected_ooc 0 $imported]
+    }
+    assert {$generated eq $profile_ips && $ooc eq $expected_ooc} "generate/OOC every required IP"
+    if {$profile eq "dual_ddr_ethernet"} { assert {$run_jobs == 1} "bound combined OOC memory" }
     assert {[dict get $properties ddr4 CONFIG.C0_DDR4_BOARD_INTERFACE] eq "ddr4_sdram_c1_062"} "C1 unchanged"
     set narrow [dict get $properties ddr4 CONFIG.C0.DDR4_AxiNarrowBurst]
     assert {$narrow eq [expr {$profile eq "baseline" ? "false" : "true"}]} "DDR narrow burst profile"
@@ -62,14 +81,14 @@ foreach profile {baseline host dual_ddr} {
             assert {[dict get $properties jtag_debug $key] == $value} "debug bridge $key"
         }
     }
-    if {$profile eq "dual_ddr"} {
+    if {$profile in {dual_ddr dual_ddr_ethernet}} {
         set c1 [dict get $properties ddr4]; set c2 [dict get $properties ddr4_c2]
         assert {[dict get $c2 CONFIG.C0_DDR4_BOARD_INTERFACE] eq "ddr4_sdram_c2_062"} "C2 interface"
         dict unset c1 CONFIG.C0_DDR4_BOARD_INTERFACE
         dict unset c2 CONFIG.C0_DDR4_BOARD_INTERFACE
         assert {$c1 eq $c2} "C2 identical geometry/timing to C1"
     }
-    set n [expr {$profile eq "dual_ddr" ? 2 : 1}]
+    set n [expr {$profile in {dual_ddr dual_ddr_ethernet} ? 2 : 1}]
     assert {[llength [fpga_checks::gray_groups]] == 10*$n} "every channel has ten Gray groups"
     assert {[llength [fpga_checks::cdc_failures {}]] == 65*$n+1} "empty CDC fails closed"
     assert {[llength [fpga_checks::skew_failures {} true]] == 10*$n} "empty skew fails closed"
@@ -113,7 +132,7 @@ proc get_property {key object} {
         default { error "Unexpected property $key" }
     }
 }
-foreach profile {baseline host dual_ddr} {
+foreach profile {baseline host dual_ddr host_ethernet dual_ddr_ethernet} {
     set ::env(ARA_FPGA_PROFILE) $profile
     source $scripts/config.tcl
     set build_dir [file join $scratch $project_name]

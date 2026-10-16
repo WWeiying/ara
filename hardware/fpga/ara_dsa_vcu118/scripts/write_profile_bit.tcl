@@ -22,11 +22,11 @@ set code [catch {
         }
     }
     set count [llength [get_pins -quiet gen_ddr2.i_dram_wrapper_c2/soc_clk_i]]
-    if {$count != ($fpga_profile eq "dual_ddr")} {
+    if {$count != ($fpga_profile in {dual_ddr dual_ddr_ethernet})} {
         error "Checkpoint DDR2 hierarchy does not match profile $fpga_profile"
     }
-    set count [llength [get_pins -quiet i_dram_wrapper/i_eth_loader/i_control/clk]]
-    if {$count != ($fpga_profile eq "host_ethernet")} {
+    set count [llength [get_pins -quiet i_dram_wrapper/gen_ethernet.i_eth_loader/i_control/clk]]
+    if {$count != ($fpga_profile in {host_ethernet dual_ddr_ethernet})} {
         error "Checkpoint Ethernet hierarchy does not match profile $fpga_profile"
     }
     set reports [file join $out reports]

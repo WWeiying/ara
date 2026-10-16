@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('baseline', 'host', 'dual_ddr', 'host_ethernet')][string]$Profile = 'baseline',
+    [ValidateSet('baseline', 'host', 'dual_ddr', 'host_ethernet', 'dual_ddr_ethernet')][string]$Profile = 'baseline',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat'
 )
 Set-StrictMode -Version Latest

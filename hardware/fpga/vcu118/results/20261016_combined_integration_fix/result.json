@@ -1,0 +1,44 @@
+{
+  "baseline_commit": "5f46c437135c4bb31a25f06c0eea2b86d2869bbf",
+  "baseline_tag": "fpga-before-combined-fix-20261016",
+  "main_rtl_reference": "5ee02215edd65967040c837e786b7e1f668fcc36",
+  "main_src_include_diff": [],
+  "fixed": [
+    "Instantiate the Ethernet loader and shared arbiter on DDR channel C1 only",
+    "Explicitly terminate C2 Ethernet inputs and bypass its loader path",
+    "Support dual_ddr_ethernet in canonical create, prepare, run, audit and bitgen entry points",
+    "Update linked-netlist constraints and hierarchy gates for the C1 generate scope",
+    "Select the frozen runner profile from snapshot metadata instead of hardcoding host_ethernet",
+    "Check source package checksums before freezing and reject missing loader BD before IP creation"
+  ],
+  "offline_validation": {
+    "python_regression_passed": 181,
+    "python_regression_seconds": 45.02,
+    "profiles": ["baseline", "host", "dual_ddr", "host_ethernet", "dual_ddr_ethernet"],
+    "profile_static_elaboration": "passed; exact vendor-IP allowlist retained",
+    "profile_ip_cdc_provenance_mock_checks": 197,
+    "profile_bitgen_gate_mock_scenarios": 70,
+    "package_checks": 12,
+    "package_sha256_entries": 799,
+    "package_sha256_mismatches": 0,
+    "export_sync": "zero changes, local overrides and conflicts after synchronization",
+    "ethernet_pad_timing_tcl_mock": "passed",
+    "vcs_ddr_router_response_checks": 334,
+    "vcs_baseline_wrapper_reset": "passed",
+    "vcs_dual_wrapper_reset": "passed",
+    "vcs_c2_ethernet_bypass": "passed with the actual exported wrapper; no loader model supplied",
+    "vcs_shared_ddr_protocol_checks": 588,
+    "vcs_shared_ddr_single_id_cycle_equivalence_checks": 2541,
+    "jtag_generated_ethernet_hierarchy_mock": "passed"
+  },
+  "evidence_root": "/home/wangwy/fpga_runs/fpga_combined_fix_20261016",
+  "synchronization_backup": ".fpga_sync_backups/20261016T115908Z_36dc4db4",
+  "limitations": [
+    "No Vivado synthesis, implementation or bitstream generation was launched",
+    "No FPGA board access, programming or reset was performed",
+    "Vendor PHY/IP blocks are not physically validated by these offline tests",
+    "Windows PowerShell orchestration tests were updated but not executed on this Linux host",
+    "The canonical export requires genuine matching loader BD, XSA, ELF and firmware metadata supplied to freeze_ara_build.py before an Ethernet build",
+    "Historical staging and physical-continuation tools retain their original baseline guards"
+  ]
+}

@@ -64,7 +64,7 @@ proc fpga_run::check_ips {} {
         set run [reusable ${name}_synth_1 {*synth_design Complete*} ${name}.dcp]
         puts "REUSE IP: $name ([get_property DIRECTORY $run])"
     }
-    if {$fpga_profile eq "host_ethernet"} {
+    if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
         reusable loader_bd_synth_1 {*synth_design Complete*} loader_bd.dcp
     }
 }

@@ -1,4 +1,8 @@
 # Real vendor IP only. No synthesis black-box substitutes are supplied.
+if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
+    set loader_source [file join $package_root ethernet loader_bd loader_bd.bd]
+    if {![file isfile $loader_source]} { error "Missing validated shared-DDR loader: $loader_source; freeze genuine loader artifacts first" }
+}
 create_ip -name clk_wiz -vendor xilinx.com -library ip -version 6.0 -module_name clkwiz
 set_property -dict [list \
     CONFIG.PRIM_IN_FREQ {250.000} CONFIG.PRIM_SOURCE {No_buffer} \
@@ -19,7 +23,7 @@ set_property -dict [list \
 # One populated VCU118 64-bit DDR4 channel, 2 GiB at physical 0x80000000.
 # Settings are based on Cheshire's VCU118 port and AMD board preset 2.4.
 set ddr_ips {ddr4 ddr4_sdram_c1_062}
-if {$fpga_profile eq "dual_ddr"} { lappend ddr_ips ddr4_c2 ddr4_sdram_c2_062 }
+if {$fpga_profile in {dual_ddr dual_ddr_ethernet}} { lappend ddr_ips ddr4_c2 ddr4_sdram_c2_062 }
 # JTAG's 64-bit master can issue multi-beat 8-byte transfers onto the 512-bit
 # DDR AXI port; host profiles must support those narrow bursts at the MIG.
 set ddr_narrow_burst [expr {$fpga_profile eq "baseline" ? "false" : "true"}]
@@ -57,13 +61,11 @@ if {$fpga_profile ne "baseline"} {
         CONFIG.M_AXI_ADDR_WIDTH {32} \
     ] [get_ips jtag_debug]
 }
-if {$fpga_profile eq "host_ethernet"} {
+if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
     create_ip -name vio -vendor xilinx.com -library ip -version 3.0 -module_name eth_control
     set_property -dict [list CONFIG.C_NUM_PROBE_IN 1 CONFIG.C_PROBE_IN0_WIDTH 256 \
         CONFIG.C_NUM_PROBE_OUT 1 CONFIG.C_PROBE_OUT0_WIDTH 1 \
         CONFIG.C_PROBE_OUT0_INIT_VAL 0x0] [get_ips eth_control]
-    set loader_source [file join $package_root ethernet loader_bd loader_bd.bd]
-    if {![file isfile $loader_source]} { error "Missing validated shared-DDR loader: $loader_source" }
     import_files -norecurse $loader_source
     set loader_bd [get_files -quiet */loader_bd.bd]
     if {[llength $loader_bd] != 1} { error "Expected one imported loader BD" }

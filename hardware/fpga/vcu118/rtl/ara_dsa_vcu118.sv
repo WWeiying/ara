@@ -165,6 +165,10 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
       .axi_soc_r_chan_t(axi_llc_r_chan_t), .axi_soc_req_t(axi_llc_req_t),
       .axi_soc_resp_t(axi_llc_rsp_t)
     ) i_dram_wrapper_c2 (
+`ifdef ARA_FPGA_ETHERNET
+      .eth_ref_p(1'b0), .eth_ref_n(1'b0), .eth_rxp(1'b0), .eth_rxn(1'b0),
+      .eth_txp(), .eth_txn(), .eth_mdc(), .eth_phy_reset_n(), .eth_mdio(),
+`endif
       .sys_rst_i(sys_rst), .soc_resetn_i(rst_n), .soc_clk_i(soc_clk),
       .fabric_reset_ni(fabric_ready),
       .dram_clk_i(c2_sys_clk), .fabric_ready_o(dram_ready[1]),

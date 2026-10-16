@@ -16,12 +16,12 @@ proc get_pins {args} {
     set host [expr {$::fpga_profile ne "baseline"}]
     if {$::case eq "wrong_profile"} { set host [expr {!$host}] }
     if {[string match gen_host* $pin]} { return [expr {$host ? $pin : {}}] }
-    if {[string match i_dram_wrapper/i_eth_loader/* $pin]} {
-        set ethernet [expr {$::fpga_profile eq "host_ethernet"}]
+    if {[string match i_dram_wrapper/gen_ethernet.i_eth_loader/* $pin]} {
+        set ethernet [expr {$::fpga_profile in {host_ethernet dual_ddr_ethernet}}]
         if {$::case eq "wrong_ethernet"} { set ethernet [expr {!$ethernet}] }
         return [expr {$ethernet ? $pin : {}}]
     }
-    return [expr {$::fpga_profile eq "dual_ddr" ? $pin : {}}]
+    return [expr {$::fpga_profile in {dual_ddr dual_ddr_ethernet} ? $pin : {}}]
 }
 proc require_no_multiple_drivers {dir} {
     lappend ::gates drivers
@@ -61,7 +61,7 @@ proc source {path} {
     } else { uplevel 1 [list real_source $path] }
 }
 put $scratch/ara_dsa_vcu118_routed.dcp checkpoint
-foreach profile {baseline host dual_ddr host_ethernet} {
+foreach profile {baseline host dual_ddr host_ethernet dual_ddr_ethernet} {
     set ::env(ARA_FPGA_PROFILE) $profile
     foreach case {healthy wrong_profile wrong_ethernet pslt drivers reports no_timing negative infinite native_drc audited_healthy audited_no_timing audited_negative audited_native_drc} {
         set gates {}; set closed 0; set opened ""
@@ -82,4 +82,4 @@ foreach profile {baseline host dual_ddr host_ethernet} {
     }
 }
 unset ::env(ARA_FPGA_PROFILE)
-puts "PASS: 56 profile bitgen gate scenarios (mocked, no synthesis)"
+puts "PASS: 70 profile bitgen gate scenarios (mocked, no synthesis)"

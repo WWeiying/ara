@@ -36,7 +36,7 @@ if {$fpga_profile in {dual_ddr dual_ddr_ethernet}} {
     add_files -fileset constrs_1 -norecurse [file join $package_root constraints ddr2_clock.xdc]
 }
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints timing.xdc]
-if {$fpga_profile eq "host_ethernet"} {
+if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
     add_files -fileset constrs_1 -norecurse [file join $package_root constraints ethernet.xdc]
     add_files -fileset constrs_1 -norecurse [file join $package_root constraints ethernet_timing.tcl]
 }

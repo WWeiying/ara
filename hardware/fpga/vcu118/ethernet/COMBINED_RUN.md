@@ -5,6 +5,28 @@ validated loader BD, final XSA, matching firmware ELF and its build metadata.
 It computes hashes of actual input bytes, including uncommitted changes, and
 rejects concurrent modification during copying. It does not launch Vivado.
 
+## Current dual-DDR entry
+
+The canonical exporter now supports `dual_ddr_ethernet` directly. Do not apply
+the historical `linux/diagnostics/stage_dual_ethernet.py` transformation to a
+fresh export: its MMU provenance guard describes an older baseline, not the
+current main-RTL import.
+
+Freeze a current export with `freeze_ara_build.py --profile dual_ddr_ethernet`
+and its required `--package`, `--bd`, `--xsa`, `--elf`, `--metadata`, `--out`
+arguments. Supply the genuine, matching loader BD/XSA/firmware artifacts from
+the validated loader build. They are not fabricated or committed by the RTL
+exporter. Missing artifacts stop IP preparation before IP creation. Freeze
+also checks every source file against the package's original `SHA256SUMS`.
+
+The frozen runner selects its profile from `snapshot.json`; synthesis remains
+the default. The combined profile uses serial OOC jobs to bound memory use.
+Only C1 instantiates the loader/shared arbiter. C2 bypasses that logic, with
+unused Ethernet pins explicitly terminated. Timing constraints and bitstream
+checks use the `i_dram_wrapper/gen_ethernet.i_eth_loader` hierarchy.
+These source fixes and offline checks do not constitute a new Vivado timing
+signoff or board validation. Existing bitstreams are not changed.
+
 Run `run_combined.ps1` from that independent bundle root. It verifies the
 inventory, prepares only required IP, then runs `host_ethernet` synthesis only
 by default (`-Stage synth`). It does not advance to implementation even if

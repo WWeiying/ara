@@ -117,14 +117,23 @@ errors, external = [], set()
 if args.profile in ("host_ethernet", "dual_ddr_ethernet"):
     vendor.update({"loader_bd_wrapper", "eth_control"})
     for suffix in ("i_eth_loader", "i_eth_shared_ddr.i_isolate", "i_eth_shared_ddr.gen_static_ids"):
-        if compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper." + suffix) is None:
+        if compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper.gen_ethernet." + suffix) is None:
             raise RuntimeError("Missing Ethernet integration instance: " + suffix)
     soc_req = compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper.soc_req_i")
     soc_id = soc_req.type.canonicalType.find("ar").type.canonicalType.find("id")
     if soc_id.type.bitWidth != 5:
         raise RuntimeError("Review static DDR ID partition after SoC ID width change")
     print("Ethernet DDR IDs: Ara 5 bits zero-extended to 8; source-tag partition enabled")
-    demux = "ara_dsa_vcu118.i_dram_wrapper.i_eth_shared_ddr.i_range.i_demux_simple"
+    if args.profile == "dual_ddr_ethernet":
+        c2 = "ara_dsa_vcu118.gen_ddr2.i_dram_wrapper_c2."
+        bypass = compilation.getRoot().lookupName(c2 + "gen_no_ethernet")
+        if bypass is None or bypass.isUninstantiated:
+            raise RuntimeError("C2 must bypass the C1-only Ethernet loader")
+        for suffix in ("i_eth_loader", "i_eth_shared_ddr",
+                       "gen_ethernet.i_eth_loader", "gen_ethernet.i_eth_shared_ddr"):
+            if compilation.getRoot().lookupName(c2 + suffix) is not None:
+                raise RuntimeError("Unexpected Ethernet hardware on C2: " + suffix)
+    demux = "ara_dsa_vcu118.i_dram_wrapper.gen_ethernet.i_eth_shared_ddr.i_range.i_demux_simple"
     for parameter, expected in (("AxiLookBits", 1), ("UniqueIds", 0), ("MaxTrans", 32),
                                 ("AtopSupport", 0), ("IdCounterWidth", 6)):
         symbol = compilation.getRoot().lookupName(demux + "." + parameter)

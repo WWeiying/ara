@@ -54,7 +54,7 @@ proc configure_package_constraints {} {
     set_property USED_IN_SYNTHESIS false $cdc
     set_property USED_IN_IMPLEMENTATION true $cdc
     set_property PROCESSING_ORDER LATE $cdc
-    if {$fpga_profile eq "host_ethernet"} {
+    if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
         set eth [get_files -quiet [file join $package_root constraints ethernet_timing.tcl]]
         if {[llength $eth] != 1} { error "Missing Ethernet linked-netlist constraints" }
         set_property FILE_TYPE TCL $eth

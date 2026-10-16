@@ -266,6 +266,7 @@ module dram_wrapper_xilinx #(
   end
 
 `ifdef ARA_FPGA_ETHERNET
+  if (Channel == 0) begin : gen_ethernet
   axi_dw_iw_req_t loader_req;
   axi_dw_iw_resp_t loader_rsp;
   logic loader_lock;
@@ -285,6 +286,12 @@ module dram_wrapper_xilinx #(
     .loader_req_i(loader_req), .loader_rsp_o(loader_rsp),
     .mem_req_o(cdc_cut_req), .mem_rsp_i(cdc_cut_rsp), .status_o(loader_status)
   );
+  end else begin : gen_no_ethernet
+    assign cdc_cut_req = cdc_ara_req;
+    assign cdc_ara_rsp = cdc_cut_rsp;
+    assign {eth_txp, eth_txn, eth_mdc, eth_phy_reset_n} = '0;
+    assign eth_mdio = 1'bz;
+  end
 `else
   assign cdc_cut_req = cdc_ara_req;
   assign cdc_ara_rsp = cdc_cut_rsp;

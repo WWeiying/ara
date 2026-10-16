@@ -149,6 +149,53 @@ endmodule
 """
 
 
+C2_ETHERNET_TB = r"""
+`include "axi/typedef.svh"
+module c2_ethernet_tb;
+  timeunit 1ns; timeprecision 1ps;
+  `AXI_TYPEDEF_ALL(bus, logic [47:0], logic [4:0], logic [63:0], logic [7:0], logic [1:0])
+  logic clk = 0;
+  always #5 clk = ~clk;
+  wire txp, txn, mdc, phy_reset;
+  tri mdio;
+  dram_wrapper_xilinx #(
+    .axi_soc_aw_chan_t(bus_aw_chan_t), .axi_soc_w_chan_t(bus_w_chan_t),
+    .axi_soc_b_chan_t(bus_b_chan_t), .axi_soc_ar_chan_t(bus_ar_chan_t),
+    .axi_soc_r_chan_t(bus_r_chan_t), .axi_soc_req_t(bus_req_t),
+    .axi_soc_resp_t(bus_resp_t), .Channel(1)
+  ) c2 (
+    .sys_rst_i(1'b0), .dram_clk_i(clk), .soc_clk_i(clk),
+    .fabric_reset_ni(1'b1), .soc_resetn_i(1'b1),
+    .fabric_ready_o(), .soc_req_i('0), .soc_rsp_o(),
+    .eth_ref_p(1'b0), .eth_ref_n(1'b0), .eth_rxp(1'b0), .eth_rxn(1'b0),
+    .eth_txp(txp), .eth_txn(txn), .eth_mdc(mdc), .eth_phy_reset_n(phy_reset), .eth_mdio(mdio)
+  );
+  initial begin
+    // Full-struct patterns check every bypass bit, independent of CDC/MIG behavior.
+    force c2.cdc_ara_req = '0;
+    force c2.cdc_cut_rsp = '0;
+    #1;
+    if (c2.cdc_cut_req !== c2.cdc_ara_req || c2.cdc_ara_rsp !== c2.cdc_cut_rsp)
+      $fatal(1, "C2 zero bypass mismatch");
+    force c2.cdc_ara_req = '1;
+    force c2.cdc_cut_rsp = '1;
+    #1;
+    if (c2.cdc_cut_req !== c2.cdc_ara_req || c2.cdc_ara_rsp !== c2.cdc_cut_rsp)
+      $fatal(1, "C2 ones bypass mismatch");
+    force c2.cdc_ara_req = '0;
+    force c2.cdc_cut_rsp = '1;
+    #1;
+    if (c2.cdc_cut_req !== c2.cdc_ara_req || c2.cdc_ara_rsp !== c2.cdc_cut_rsp)
+      $fatal(1, "C2 independent request/response bypass mismatch");
+    if ({txp, txn, mdc, phy_reset} !== '0 || mdio !== 1'bz)
+      $fatal(1, "Unused C2 Ethernet pins are not quiescent");
+    $display("PASS: DDR C2 Ethernet bypass, no loader/IP model supplied");
+    $finish;
+  end
+endmodule
+"""
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="New independent result directory")
@@ -169,11 +216,16 @@ def main():
     (out / "dram_wrapper_xilinx.sv").write_text(patched)
     (out / "vendor_stubs.sv").write_text(vendor_stub("ddr4") + vendor_stub("ddr4_c2"))
     (out / "wrapper_tb.sv").write_text(WRAPPER_TB)
+    (out / "c2_ethernet_tb.sv").write_text(C2_ETHERNET_TB)
     tests = {
         "router": ("tb", [], [HERE / "rtl/ara_ddr_router.sv", HERE / "tests/ddr2_router_tb.sv"]),
         "baseline_wrapper": ("wrapper_tb", [], [out / "vendor_stubs.sv", out / "dram_wrapper_xilinx.sv", out / "wrapper_tb.sv"]),
         "dual_wrapper": ("wrapper_tb", ["+define+ARA_FPGA_DDR2"], [out / "vendor_stubs.sv", out / "dram_wrapper_xilinx.sv", out / "wrapper_tb.sv"]),
     }
+    if args.actual_wrapper:
+        tests["c2_ethernet_bypass"] = ("c2_ethernet_tb",
+            ["+define+ARA_FPGA_DDR2+ARA_FPGA_ETHERNET"],
+            [out / "vendor_stubs.sv", out / "dram_wrapper_xilinx.sv", out / "c2_ethernet_tb.sv"])
     results = {}
     for name, (top, defines, extra) in tests.items():
         work = out / name

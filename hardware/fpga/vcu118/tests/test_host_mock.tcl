@@ -52,7 +52,10 @@ proc get_hw_axis {args} {
 }
 proc get_property {property object} {
     if {$property eq "NAME"} {
-        if {$object eq "eth_output"} { return top/i_eth_loader/lock_o }
+        if {$object eq "eth_output"} {
+            if {$::mode eq "eth_generated"} { return top/i_dram_wrapper/gen_ethernet.i_eth_loader/lock_o }
+            return top/i_eth_loader/lock_o
+        }
         return $object
     }
     if {$property eq "PROBE_PORT"} { return 0 }
@@ -60,7 +63,10 @@ proc get_property {property object} {
     if {$property eq "WIDTH"} { return [expr {$object eq "eth_high" ? 224 : $object eq "eth_low" ? 32 : 256}] }
     if {$property eq "CELL_NAME"} {
         switch $object {
-            eth_vio { return top/i_dram_wrapper/i_eth_loader/i_control }
+            eth_vio {
+                if {$::mode eq "eth_generated"} { return top/i_dram_wrapper/gen_ethernet.i_eth_loader/i_control }
+                return top/i_dram_wrapper/i_eth_loader/i_control
+            }
             mem_a { return top/gen_host/i_host_bridge/i_jtag_mem }
             debug_b - debug_duplicate { return top/gen_host.i_host_bridge/i_jtag_debug }
             default { return other/i_jtag_mem_unused }

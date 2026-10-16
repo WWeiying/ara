@@ -29,7 +29,7 @@ foreach name $profile_ips {
         error "Refusing to restart $run ($status). Inspect its log; no run was reset."
     }
 }
-if {$fpga_profile eq "host_ethernet"} {
+if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
     set loader_run [get_runs -quiet loader_bd_synth_1]
     if {[llength $loader_run] != 1} { error "Missing loader BD synthesis run" }
     set status [get_property STATUS $loader_run]

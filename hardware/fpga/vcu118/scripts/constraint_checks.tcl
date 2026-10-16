@@ -9,7 +9,7 @@ proc fpga_checks::ddr_channels {} {
         return [::ara_cdc::ddr_channels]
     }
     set channels {i_dram_wrapper c0_ddr4_reset_n}
-    if {[info exists ::fpga_profile] && $::fpga_profile eq "dual_ddr"} {
+    if {[info exists ::fpga_profile] && $::fpga_profile in {dual_ddr dual_ddr_ethernet}} {
         lappend channels gen_ddr2.i_dram_wrapper_c2 c1_ddr4_reset_n
     }
     return $channels

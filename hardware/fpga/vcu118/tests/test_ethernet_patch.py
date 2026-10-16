@@ -32,6 +32,17 @@ class EthernetPatchTests(unittest.TestCase):
         self.assertIn(".ara_req_i(cdc_ara_req)", text)
         self.assertEqual(text.count("ddr4 i_dram ("), self.original().count("ddr4 i_dram ("))
 
+    def test_loader_is_c1_only(self):
+        text = patch_ethernet(self.original())
+        enabled, disabled = text.split("end else begin : gen_no_ethernet", 1)
+        self.assertIn("if (Channel == 0) begin : gen_ethernet", enabled)
+        self.assertIn("i_eth_loader (", enabled)
+        self.assertIn("i_eth_shared_ddr (", enabled)
+        self.assertNotIn("i_eth_loader (", disabled)
+        self.assertIn("assign cdc_cut_req = cdc_ara_req;", disabled)
+        self.assertIn("assign cdc_ara_rsp = cdc_cut_rsp;", disabled)
+        self.assertIn("assign eth_mdio = 1'bz;", disabled)
+
 
 if __name__ == "__main__":
     unittest.main()

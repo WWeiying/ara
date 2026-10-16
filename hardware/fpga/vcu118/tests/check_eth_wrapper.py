@@ -32,8 +32,8 @@ def main():
     monitor = """
   always @(sys_rst or c1.ui_resetn) begin
     #1;
-    if (c1.i_eth_loader.i_loader.sys_reset !== (sys_rst || !c1.ui_resetn) ||
-        c1.i_eth_loader.i_loader.ui_reset !== !c1.ui_resetn)
+    if (c1.gen_ethernet.i_eth_loader.i_loader.sys_reset !== (sys_rst || !c1.ui_resetn) ||
+        c1.gen_ethernet.i_eth_loader.i_loader.ui_reset !== !c1.ui_resetn)
       $fatal(1, "Loader reset did not follow the shared UI readiness loss");
   end
   initial begin #20000;

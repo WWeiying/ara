@@ -5,10 +5,11 @@ Set-StrictMode -Version Latest
 $root = $PSScriptRoot
 $package = Join-Path $root 'package'
 $state = Join-Path $root 'state.json'
+$profile = 'unverified'
 if (Test-Path -LiteralPath $state) { throw 'Existing flow state; inspect it instead of restarting' }
 function Set-Stage([string]$Stage, [string]$Message = '') {
     $record = @{ Stage = $Stage; Updated = (Get-Date -Format o); Message = $Message;
-                 Profile = 'host_ethernet'; BoardModified = $false; ProcessId = $PID }
+                 Profile = $profile; BoardModified = $false; ProcessId = $PID }
     $record | ConvertTo-Json | Set-Content -LiteralPath "$state.tmp" -Encoding UTF8
     Move-Item -LiteralPath "$state.tmp" -Destination $state -Force
 }
@@ -16,18 +17,21 @@ Start-Transcript -LiteralPath (Join-Path $root 'flow.log') -NoClobber
 try {
     Set-Stage 'verify_snapshot'
     $snapshot = Get-Content -LiteralPath (Join-Path $root 'snapshot.json') -Raw | ConvertFrom-Json
-    if ($snapshot.profile -ne 'host_ethernet' -or
+    if ($snapshot.profile -notin @('host_ethernet', 'dual_ddr_ethernet') -or
         (Get-FileHash -LiteralPath (Join-Path $package 'SHA256SUMS')).Hash.ToLower() -ne $snapshot.inventory_sha256) {
         throw 'Snapshot inventory/profile mismatch'
     }
+    $profile = $snapshot.profile
     & py -3 (Join-Path $package 'scripts\verify_package.py')
     if ($LASTEXITCODE -ne 0) { throw 'Snapshot verification failed' }
     Set-Stage 'prepare_ip'
-    & (Join-Path $package 'scripts\create_profile.ps1') -Profile host_ethernet
+    & (Join-Path $package 'scripts\create_profile.ps1') -Profile $profile
+    if ($LASTEXITCODE -ne 0) { throw 'IP preparation failed' }
     if ($Stage -eq 'synth') { Set-Stage 'synthesis_only' } else { Set-Stage 'synthesis_and_implementation' }
-    & (Join-Path $package 'scripts\run.ps1') -Profile host_ethernet -Stage $Stage -RunRoot (Join-Path $root 'runs')
+    & (Join-Path $package 'scripts\run.ps1') -Profile $profile -Stage $Stage -RunRoot (Join-Path $root 'runs')
+    if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
     if ($Stage -eq 'synth') {
-        $record = Join-Path $package 'build\managed\host_ethernet\latest_synth.json'
+        $record = Join-Path $package "build\managed\$profile\latest_synth.json"
         if (!(Test-Path -LiteralPath $record)) { throw 'Missing accepted synthesis record' }
         Set-Stage 'synthesis_passed_no_implementation' $record
     } else {

@@ -5,11 +5,11 @@ namespace eval ara_eth_timing {
         return $objects
     }
     proc apply {} {
-        set root i_dram_wrapper/i_eth_loader/i_loader/loader_bd_i
+        set root i_dram_wrapper/gen_ethernet.i_eth_loader/i_loader/loader_bd_i
         set mb [one [get_pins -quiet $root/mb/Clk] "MicroBlaze clock pin"]
         set management [one [get_clocks -quiet -of_objects $mb] "management clock"]
         set ui [one [get_clocks -quiet -of_objects [one \
-            [get_pins -quiet i_dram_wrapper/i_eth_loader/i_control/clk] "UI clock pin"]] "UI clock"]
+            [get_pins -quiet i_dram_wrapper/gen_ethernet.i_eth_loader/i_control/clk] "UI clock pin"]] "UI clock"]
         foreach clock [list $management $ui] period {10.0 3.333} {
             set actual [get_property PERIOD $clock]
             if {![string is double -strict $actual] || abs($actual - $period) > 0.01} {
