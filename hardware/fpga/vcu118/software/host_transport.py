@@ -207,6 +207,36 @@ class VivadoTransport:
             self.audit.flush()
             raise TransportError(f"AXI batch {seq} failed: {exc}") from exc
 
+    def ethernet_status(self, lock=False):
+        """Read loader status or request a one-way DDR admission lock."""
+        if self.broken:
+            raise TransportError("Session is unusable; open a new session")
+        self.sequence += 1
+        seq = self.sequence
+        action = "LOCK" if lock else "READ"
+        self.audit.write(json.dumps({"ethernet": seq, "action": action}) + "\n")
+        self.audit.flush()
+        try:
+            self.sock.sendall(f"ETH {seq} {action}\n".encode("ascii"))
+            fields = self._line().split()
+            if len(fields) != 4 or fields[1:3] != [str(seq), "0"]:
+                raise TransportError("Mismatched Ethernet response")
+            if self._line() != f"END {seq}":
+                raise TransportError("Missing Ethernet completion")
+            if fields[0] == "ERR":
+                raise TransportError(bytes.fromhex(fields[3]).decode("utf-8", errors="replace"))
+            if fields[0] != "OK" or len(fields[3]) != 64:
+                raise TransportError("Invalid Ethernet status width")
+            value = int(fields[3], 16)
+            if value & 0xFFFFFFFF != 0x45544831:
+                raise TransportError("Not the integrated Ethernet ABI")
+            self.audit.write(json.dumps({"ethernet": seq, "status": fields[3]}) + "\n")
+            self.audit.flush()
+            return value
+        except (OSError, ValueError, TransportError) as exc:
+            self.broken = True
+            raise TransportError(f"Ethernet control {seq} failed: {exc}") from exc
+
     def reset_memory_axi(self):
         if self.broken:
             raise TransportError("Session is unusable; open a new debug-only session")

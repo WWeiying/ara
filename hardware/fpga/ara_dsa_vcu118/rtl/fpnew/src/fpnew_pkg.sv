@@ -481,8 +481,9 @@ package fpnew_pkg;
 
     for (int unsigned ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++)
       for (int unsigned fmt = 0; fmt < NUM_FP_FORMATS; fmt++)
-        // Mask active int formats with the width of the float formats
-        if ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))))
+        // FP16 lanes also produce INT8 without requiring floating-point FP8.
+        if ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))) ||
+            (int_format_e'(ifmt) == INT8 && fp_format_e'(fmt) == FP16))
           res[ifmt] |= icfg[ifmt] && lanefmts[fmt];
     return res;
   endfunction
@@ -546,9 +547,10 @@ package fpnew_pkg;
 
     for (int unsigned ifmt = 0; ifmt < NUM_INT_FORMATS; ifmt++)
       for (int unsigned fmt = 0; fmt < NUM_FP_FORMATS; fmt++)
-        // Mask active int formats with the width of the float formats
+        // Keep other configurations unchanged; add only FP16/INT8 conversion.
         res[ifmt] |= icfg[ifmt] && lanefmts[fmt] &&
-                     (fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt)));
+                     ((fp_width(fp_format_e'(fmt)) == int_width(int_format_e'(ifmt))) ||
+                      (int_format_e'(ifmt) == INT8 && fp_format_e'(fmt) == FP16));
     return res;
   endfunction
 

@@ -91,7 +91,8 @@ or on 16b inputs producing 32b outputs");
   // We will send the format information along with the data
   localparam int unsigned FMT_BITS =
       fpnew_pkg::maximum($clog2(NUM_FORMATS), $clog2(NUM_INT_FORMATS));
-  localparam int unsigned AUX_BITS = FMT_BITS + 4; // also add vectorial and integer flags
+  // CONV also carries per-transaction lane participation through its pipeline.
+  localparam int unsigned AUX_BITS = FMT_BITS + 4 + (OpGroup == fpnew_pkg::CONV);
 
   logic [NUM_LANES-1:0] lane_in_ready, lane_out_valid, divsqrt_done, divsqrt_ready; // Handshake signals for the lanes
   logic                 vectorial_op;
@@ -216,7 +217,11 @@ or on 16b inputs producing 32b outputs");
       logic lane_is_used;
       assign lane_is_used = (LANE_FORMATS[src_fmt_i] & ~is_up_cast) |
                             (LANE_FORMATS[dst_fmt_i] &  is_up_cast) | (OpGroup == fpnew_pkg::DIVSQRT);
-      assign in_valid = in_valid_i & ((lane == 0) | vectorial_op) & lane_is_used; // upper lanes only for vectors
+      // Sparse CONV valid streams can advance upper lanes past lane 0 under
+      // backpressure. Every lane must carry every token, including scalar and
+      // unsupported-format bubbles; participation is applied at the output.
+      assign in_valid = (OpGroup == fpnew_pkg::CONV) ? in_valid_i :
+          in_valid_i & ((lane == 0) | vectorial_op) & lane_is_used;
 
       // Slice out the operands for this lane, upper bits are ignored in the unit
       always_comb begin : prepare_input
@@ -322,6 +327,20 @@ or on 16b inputs producing 32b outputs");
           .busy_o          ( lane_busy[lane]     )
         );
       end else if (OpGroup == fpnew_pkg::DIVSQRT) begin : lane_instance
+        logic [NUM_FORMATS-1:0] format_masks;
+        logic div_mask;
+        // Input masks use the finest enabled element width, whereas DIV lanes
+        // are packed at the selected width. Preserve the physical mask stride.
+        for (genvar fmt = 0; fmt < NUM_FORMATS; fmt++) begin : gen_format_mask
+          if (ACTIVE_FORMATS[fmt]) begin : supported
+            localparam int unsigned MASK_STRIDE = NUM_SIMD_LANES /
+                fpnew_pkg::num_lanes(Width, fpnew_pkg::fp_format_e'(fmt), EnableVectors);
+            assign format_masks[fmt] = simd_mask_i[MASK_STRIDE*LANE];
+          end else begin : unsupported
+            assign format_masks[fmt] = 1'b0;
+          end
+        end
+        assign div_mask = format_masks[dst_fmt_i];
          if (DivSqrtSel == fpnew_pkg::TH32 && LANE_FORMATS[0] && (LANE_FORMATS[1:fpnew_pkg::NUM_FP_FORMATS-1] == '0)) begin : gen_th32_e906_divsqrt
           // The T-head-based DivSqrt unit is supported only in FP32-only configurations
           fpnew_divsqrt_th_32 #(
@@ -337,7 +356,7 @@ or on 16b inputs producing 32b outputs");
             .rnd_mode_i      ( rnd_mode            ),
             .op_i,
             .tag_i,
-            .mask_i          ( simd_mask_i[lane]   ),
+            .mask_i          ( div_mask            ),
             .aux_i           ( aux_data            ),
             .in_valid_i      ( in_valid            ),
             .in_ready_o      ( lane_in_ready[lane] ),
@@ -368,7 +387,7 @@ or on 16b inputs producing 32b outputs");
             .op_i,
             .dst_fmt_i,
             .tag_i,
-            .mask_i           ( simd_mask_i[lane]   ),
+            .mask_i           ( div_mask            ),
             .aux_i            ( aux_data            ),
             .vectorial_op_i   ( vectorial_op        ), // synchronize only vectorial operations
             .in_valid_i       ( in_valid            ),
@@ -404,7 +423,7 @@ or on 16b inputs producing 32b outputs");
             .op_i,
             .dst_fmt_i,
             .tag_i,
-            .mask_i           ( simd_mask_i[lane]   ),
+            .mask_i           ( div_mask            ),
             .aux_i            ( aux_data            ),
             .vectorial_op_i   ( vectorial_op        ), // synchronize only vectorial operations
             .in_valid_i       ( in_valid            ),
@@ -428,6 +447,33 @@ or on 16b inputs producing 32b outputs");
       end else if (OpGroup == fpnew_pkg::NONCOMP) begin : lane_instance
 
       end else if (OpGroup == fpnew_pkg::CONV) begin : lane_instance
+        logic conv_mask;
+        logic [AUX_BITS-1:0] conv_aux;
+        assign conv_aux = {lane_is_used & ((lane == 0) | vectorial_op),
+                           aux_data[FMT_BITS+3:0]};
+        // Masks address physical finest-format units, while each conversion
+        // lane consumes/produces an element of the larger operand width.
+        // CPK uses independent scalar operands and retains its direct masks.
+        always_comb begin : select_conv_mask
+          int unsigned src_width, dst_width, mask_index;
+          // Do not evaluate the integer-format validator for an unknown op
+          // before reset propagation. A ternary evaluates both sides for X.
+          if (op_i == fpnew_pkg::I2F)
+            src_width = fpnew_pkg::int_width(int_fmt_i);
+          else
+            src_width = fpnew_pkg::fp_width(src_fmt_i);
+          if (op_i == fpnew_pkg::F2I)
+            dst_width = fpnew_pkg::int_width(int_fmt_i);
+          else
+            dst_width = fpnew_pkg::fp_width(dst_fmt_i);
+          mask_index = dst_is_cpk ? LANE :
+              LANE * fpnew_pkg::maximum(src_width, dst_width) /
+              fpnew_pkg::min_fp_width(FpFmtConfig);
+          conv_mask = 1'b0;
+          if (mask_index < NUM_SIMD_LANES)
+            conv_mask = simd_mask_i[mask_index];
+        end
+
         fpnew_cast_multi #(
           .FpFmtConfig  ( LANE_FORMATS         ),
           .IntFmtConfig ( CONV_INT_FORMATS     ),
@@ -447,8 +493,8 @@ or on 16b inputs producing 32b outputs");
           .dst_fmt_i,
           .int_fmt_i,
           .tag_i,
-          .mask_i          ( simd_mask_i[lane]   ),
-          .aux_i           ( aux_data            ),
+          .mask_i          ( conv_mask           ),
+          .aux_i           ( conv_aux            ),
           .in_valid_i      ( in_valid            ),
           .in_ready_o      ( lane_in_ready[lane] ),
           .flush_i,
@@ -465,12 +511,19 @@ or on 16b inputs producing 32b outputs");
       end // ADD OTHER OPTIONS HERE
 
       // Handshakes are only done if the lane is actually used
-      assign out_ready            = out_ready_i & ((lane == 0) | result_is_vector);
-      assign lane_out_valid[lane] = out_valid & ((lane == 0) | result_is_vector);
+      assign out_ready = (OpGroup == fpnew_pkg::CONV) ? out_ready_i :
+          out_ready_i & ((lane == 0) | result_is_vector);
+      assign lane_out_valid[lane] = out_valid & ((lane == 0) | result_is_vector) &
+          ((OpGroup != fpnew_pkg::CONV) || lane_aux[lane][AUX_BITS-1]);
 
       // Properly NaN-box or sign-extend the slice result if not in use
       assign local_result      = lane_out_valid[lane] ? op_result : {(LANE_WIDTH){lane_ext_bit[0]}};
-      assign lane_status[lane] = lane_out_valid[lane] ? op_status : '0;
+      // DIV/SQRT starts every SIMD sublane to preserve lockstep completion.
+      // Sublanes outside the returned FP format compute dummy operands and
+      // must not contribute their exceptions (for example dummy 0/0 -> NV).
+      assign lane_status[lane] = lane_out_valid[lane] &&
+          ((OpGroup != fpnew_pkg::DIVSQRT) || ACTIVE_FORMATS[result_fmt])
+          ? op_status : '0;
 
     // Otherwise generate constant sign-extension
     end else begin : inactive_lane
@@ -576,7 +629,7 @@ or on 16b inputs producing 32b outputs");
     // Input stage: First element of pipeline is taken from inputs
     assign byp_pipe_target_q[0]  = conv_target_d;
     assign byp_pipe_aux_q[0]     = target_aux_d;
-    assign byp_pipe_valid_q[0]   = in_valid_i & vectorial_op;
+    assign byp_pipe_valid_q[0]   = in_valid_i;
     // Generate the register stages
     for (genvar i = 0; i < NumPipeRegs; i++) begin : gen_bypass_pipeline
       // Internal register enable for this stage
@@ -594,7 +647,7 @@ or on 16b inputs producing 32b outputs");
       `FFL(byp_pipe_aux_q[i+1],     byp_pipe_aux_q[i],     reg_ena, '0)
     end
     // Output stage: Ready travels backwards from output side, driven by downstream circuitry
-    assign byp_pipe_ready[NumPipeRegs] = out_ready_i & result_is_vector;
+    assign byp_pipe_ready[NumPipeRegs] = out_ready_i;
     // Output stage: assign module outputs
     assign conv_target_q = byp_pipe_target_q[NumPipeRegs];
 
@@ -639,7 +692,7 @@ or on 16b inputs producing 32b outputs");
   // ------------
   // Output Side
   // ------------
-  assign {result_is_cpk, result_fmt_is_int, result_is_vector, result_fmt, result_is_vsum} = lane_aux[0];
+  assign {result_is_cpk, result_fmt_is_int, result_is_vector, result_fmt, result_is_vsum} = lane_aux[0][FMT_BITS+3:0];
 
   assign result_o = result_fmt_is_int ? ifmt_slice_result[result_fmt]                   :
                     result_is_cpk     ? fmt_conv_cpk_result[result_fmt][result_vec_op]  :

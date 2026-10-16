@@ -5,6 +5,13 @@ import re
 
 # db90e341 already includes the layout/control changes and Vivado VL casts.
 UPSTREAM_DISPATCHER_SHA256 = "e28714d0dc41020363ac8da3207c4124ebcf400f7ce790a2c0cf7436f808eeb1"
+REVIEWED_DISPATCHER_SHA256 = {
+    UPSTREAM_DISPATCHER_SHA256,
+    # RVV legality/store-response fixes retain the upstream layout/control helpers.
+    "9ea8fc3957fec2fa167d2e2aad77e40c85cca6ade8f46deeaba7a22d96bcc397",
+    # ELEN and empty/blocked segment fixes; layout/control helpers are unchanged.
+    "9af95c3eee6c63ecd9e60bf6d7c6474bdaaf1c5f96cef1bd653a6d51c6a2dd43",
+}
 
 
 HELPERS = """  // FPGA-only: keep the 64-bit modulo-add semantics, but only carry through
@@ -135,7 +142,7 @@ NEW_UPDATE = """      automatic logic [7:0] active_registers = fpga_active_regis
 
 def patch_dispatcher_layout(text):
     """Fail closed on a changed upstream function; never patch main RTL in place."""
-    if hashlib.sha256(text.encode()).hexdigest() == UPSTREAM_DISPATCHER_SHA256:
+    if hashlib.sha256(text.encode()).hexdigest() in REVIEWED_DISPATCHER_SHA256:
         return text
     patched = "function automatic vlen_t fpga_slide_bound(" in text
     for name, (digest, replacement) in FUNCTIONS.items():

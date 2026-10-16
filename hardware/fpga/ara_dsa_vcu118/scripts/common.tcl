@@ -31,7 +31,7 @@ proc require_project_profile {} {
     }
     set actual {}
     foreach define [get_property verilog_define [get_filesets sources_1]] {
-        if {[regexp {^ARA_FPGA_(HOST|DDR2)($|=)} $define]} { lappend actual $define }
+        if {[regexp {^ARA_FPGA_(HOST|DDR2|ETHERNET)($|=)} $define]} { lappend actual $define }
     }
     if {[lsort $actual] ne [lsort $profile_defines]} {
         error "Project defines do not match profile $fpga_profile: $actual (expected $profile_defines)"
@@ -46,7 +46,7 @@ proc require_project_profile {} {
 }
 
 proc configure_package_constraints {} {
-    global package_root
+    global package_root fpga_profile
     set cdc [get_files -quiet [file join $package_root constraints cdc.xdc]]
     if {[llength $cdc] != 1} { error "Missing package CDC constraint file in project" }
     # Existing XPRs cache FILE_TYPE. Vivado 2020.1 rejects control flow in XDC.
@@ -54,6 +54,14 @@ proc configure_package_constraints {} {
     set_property USED_IN_SYNTHESIS false $cdc
     set_property USED_IN_IMPLEMENTATION true $cdc
     set_property PROCESSING_ORDER LATE $cdc
+    if {$fpga_profile eq "host_ethernet"} {
+        set eth [get_files -quiet [file join $package_root constraints ethernet_timing.tcl]]
+        if {[llength $eth] != 1} { error "Missing Ethernet linked-netlist constraints" }
+        set_property FILE_TYPE TCL $eth
+        set_property USED_IN_SYNTHESIS false $eth
+        set_property USED_IN_IMPLEMENTATION true $eth
+        set_property PROCESSING_ORDER LATE $eth
+    }
 }
 
 proc check_run {name expected} {
@@ -178,7 +186,8 @@ proc reset_buffer_failures {out} {
 }
 
 # Fail closed on missing/overridden budgets after saving the diagnostics. Missing
-# CDC constraints fail even before routing; estimated negative slack does not.
+# CDC constraints fail even before routing. Global synthesis timing acceptance
+# (including estimated slack) is enforced separately by fpga_run::require_timing.
 proc write_boundary_checks {dir routed} {
     set out [open [file join $dir boundary_checks.rpt] w]
     set failures {}

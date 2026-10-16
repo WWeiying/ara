@@ -4,6 +4,11 @@
 `include "phy_definitions.svh"
 
 module ara_dsa_vcu118 import cheshire_pkg::*; (
+`ifdef ARA_FPGA_ETHERNET
+  input logic eth_ref_p, eth_ref_n, eth_rxp, eth_rxn,
+  output logic eth_txp, eth_txn, eth_mdc, eth_phy_reset_n,
+  inout wire eth_mdio,
+`endif
   input logic sys_clk_p,
   input logic sys_clk_n,
   input logic sys_reset,

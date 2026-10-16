@@ -1,0 +1,13 @@
+# J10 only. E12/D12 clock buffering, L19 reset and C1 MIG remain owned by Ara.
+set_property -dict {PACKAGE_PIN AT22 IOSTANDARD LVDS} [get_ports eth_ref_p]
+set_property -dict {PACKAGE_PIN AU22 IOSTANDARD LVDS} [get_ports eth_ref_n]
+set_property -dict {PACKAGE_PIN AU21 IOSTANDARD DIFF_HSTL_I_DCI_18} [get_ports eth_txp]
+set_property -dict {PACKAGE_PIN AV21 IOSTANDARD DIFF_HSTL_I_DCI_18} [get_ports eth_txn]
+set_property -dict {PACKAGE_PIN AU24 IOSTANDARD DIFF_HSTL_I_DCI_18} [get_ports eth_rxp]
+set_property -dict {PACKAGE_PIN AV24 IOSTANDARD DIFF_HSTL_I_DCI_18} [get_ports eth_rxn]
+set_property -dict {PACKAGE_PIN AR23 IOSTANDARD LVCMOS18} [get_ports eth_mdio]
+set_property -dict {PACKAGE_PIN AV23 IOSTANDARD LVCMOS18} [get_ports eth_mdc]
+set_property -dict {PACKAGE_PIN BA21 IOSTANDARD LVCMOS18} [get_ports eth_phy_reset_n]
+set_property OUTPUT_IMPEDANCE RDRV_48_48 [get_ports {eth_txp eth_txn}]
+set_property ODT RTT_48 [get_ports {eth_rxp eth_rxn}]
+set_property DIFF_TERM_ADV TERM_100 [get_ports {eth_ref_p eth_ref_n}]

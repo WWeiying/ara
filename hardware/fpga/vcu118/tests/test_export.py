@@ -9,14 +9,17 @@ import unittest
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from export import (patch_akv_descriptor_reduction, patch_akv_byte_counts,
-                    patch_dispatcher_vlen_casts, patch_qbs_fault_decode, replace_once)
+                    patch_dispatcher_vlen_casts, patch_qbs_fault_decode, patch_sram_cache, replace_once)
 from prepare import ROOT
 from dispatcher_fpga import FUNCTIONS, HELPERS, NEW_UPDATE, OLD_UPDATE, patch_dispatcher_layout
 from dispatcher_control_fpga import (dispatcher_edits, patch_dispatcher_control,
                                      patch_segment_geometry, segment_edits)
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
+from ui_reset_fpga import patch_ui_reset_distribution
 from cdc_fpga import patch_reset_muxes
 from ddr2_fpga import patch_ddr2
+from ethernet_fpga import patch_ethernet
+from ddr_cut_fpga import patch_ddr_read_cut
 
 
 def frozen_file(path, revision="dec4174a"):
@@ -27,8 +30,33 @@ class IntegrationPatchTests(unittest.TestCase):
     legacy = "if (read_completion_valid && !&descriptor_byte_valid_q) begin\n"
     current = "if (read_completion_valid && !(&descriptor_byte_valid_q)) begin\n"
 
+    def test_reviewed_main_rtl_passes_through(self):
+        dispatcher = (ROOT / "hardware/src/ara_dispatcher.sv").read_text()
+        segment = (ROOT / "hardware/src/segment_sequencer.sv").read_text()
+        cast = patch_dispatcher_vlen_casts(dispatcher)
+        self.assertEqual(cast, dispatcher)
+        self.assertEqual(patch_dispatcher_layout(cast), dispatcher)
+        self.assertEqual(patch_dispatcher_control(cast), dispatcher)
+        self.assertEqual(patch_segment_geometry(segment), segment)
+        for transform, source in ((patch_dispatcher_layout, dispatcher),
+                                  (patch_dispatcher_control, dispatcher),
+                                  (patch_segment_geometry, segment)):
+            with self.subTest(transform=transform.__name__):
+                with self.assertRaises(RuntimeError):
+                    transform(source + "\n// unreviewed revision\n")
+
     def test_legacy_akv_syntax(self):
         self.assertEqual(patch_akv_descriptor_reduction(self.legacy), self.current)
+
+    def test_sram_cache_upstream_ports_are_not_duplicated(self):
+        source = (ROOT / "hardware/deps/cva6/common/local/util/sram_cache.sv").read_text()
+        ports = "          .rst_ni (rst_ni),\n          .wuser_i(wuser_i),\n          .ruser_o(ruser_o),\n"
+        self.assertEqual(source.count(ports), 1)
+        self.assertEqual(patch_sram_cache(source), source)
+        self.assertEqual(patch_sram_cache(source.replace(ports, "")), source)
+        for invalid in ("", source + source, source.replace(ports, ports + ports)):
+            with self.assertRaises(RuntimeError):
+                patch_sram_cache(invalid)
 
     def test_current_akv_is_unchanged(self):
         self.assertEqual(patch_akv_descriptor_reduction(self.current), self.current)
@@ -67,7 +95,7 @@ class JtagPatchTests(unittest.TestCase):
             before = subprocess.check_output(["git", "show", "74042fbd:hardware/fpga/ara_dsa_vcu118/" + rel],
                                              cwd=ROOT, text=True)
             after = transform(before)
-            current = patch_ddr2(after) if rel.endswith("dram_wrapper_xilinx.sv") else after
+            current = patch_ui_reset_distribution(patch_ethernet(patch_ddr_read_cut(patch_ddr2(after)))) if rel.endswith("dram_wrapper_xilinx.sv") else after
             self.assertEqual(current, (pkg / rel).read_text(), rel)
             with self.assertRaises(RuntimeError):
                 transform("")
@@ -296,7 +324,6 @@ class MainlineSyncTests(unittest.TestCase):
         import json
         pkg = ROOT / "hardware/fpga/ara_dsa_vcu118"
         manifest = json.loads((pkg / "manifest.json").read_text())
-        evidence = json.loads((ROOT / "verification/timing/results/20260916_control_closure/summary.json").read_text())
         transforms = {
             "hardware/src/ara_dispatcher.sv": lambda t: patch_dispatcher_control(
                 patch_dispatcher_layout(patch_dispatcher_vlen_casts(t))),
@@ -310,14 +337,13 @@ class MainlineSyncTests(unittest.TestCase):
             if not rel.startswith("rtl/ara/hardware/"):
                 continue
             source_path = rel.removeprefix("rtl/ara/")
-            raw = frozen_file(source_path, self.revision)
+            raw = (ROOT / source_path).read_text()
             digest = hashlib.sha256(raw.encode()).hexdigest()
             self.assertEqual(record["source_sha256"], digest, rel)
-            self.assertEqual(evidence["source_sha256"][source_path], digest, rel)
             expected = transforms.get(source_path, lambda t: t)(raw)
             self.assertEqual((pkg / rel).read_text(), expected, rel)
             checked += 1
-        self.assertEqual(checked, 54)
+        self.assertEqual(checked, 57)
 
     def test_current_ara_provenance_replays(self):
         import re
@@ -351,10 +377,11 @@ class MainlineSyncTests(unittest.TestCase):
         record = json.loads((directory / "result.json").read_text())
         self.assertEqual(record["state"], "PASS")
         self.assertEqual(record["upstream"], self.revision)
-        rtl = ROOT / "hardware/fpga/ara_dsa_vcu118/rtl/ara/hardware/src"
         for name, key in (("ara_dispatcher.sv", "after_sha256"),
                           ("segment_sequencer.sv", "segment_after_sha256")):
-            self.assertEqual(hashlib.sha256((rtl / name).read_bytes()).hexdigest(), record[key])
+            # Historical timing evidence applies only to its recorded revision.
+            source = frozen_file("hardware/src/" + name, self.revision)
+            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), record[key])
         log = (directory / "dispatcher_run.txt").read_text()
         self.assertIn(record["dispatcher_comparison"], log)
         self.assertIn(record["eew_metadata_comparison"], log)

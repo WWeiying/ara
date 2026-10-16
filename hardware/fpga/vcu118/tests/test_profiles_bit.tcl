@@ -16,11 +16,20 @@ proc get_pins {args} {
     set host [expr {$::fpga_profile ne "baseline"}]
     if {$::case eq "wrong_profile"} { set host [expr {!$host}] }
     if {[string match gen_host* $pin]} { return [expr {$host ? $pin : {}}] }
+    if {[string match i_dram_wrapper/i_eth_loader/* $pin]} {
+        set ethernet [expr {$::fpga_profile eq "host_ethernet"}]
+        if {$::case eq "wrong_ethernet"} { set ethernet [expr {!$ethernet}] }
+        return [expr {$ethernet ? $pin : {}}]
+    }
     return [expr {$::fpga_profile eq "dual_ddr" ? $pin : {}}]
 }
 proc require_no_multiple_drivers {dir} {
     lappend ::gates drivers
     if {$::case eq "drivers"} { error "Multiple drivers remain" }
+}
+proc check_pulsed_latches {dir} {
+    lappend ::gates pslt
+    if {$::case eq "pslt"} {error "PSLT remains"}
 }
 proc write_reports {dir reject_loops} {
     assert {$reject_loops} "loop and physical checks required"
@@ -52,9 +61,9 @@ proc source {path} {
     } else { uplevel 1 [list real_source $path] }
 }
 put $scratch/ara_dsa_vcu118_routed.dcp checkpoint
-foreach profile {baseline host dual_ddr} {
+foreach profile {baseline host dual_ddr host_ethernet} {
     set ::env(ARA_FPGA_PROFILE) $profile
-    foreach case {healthy wrong_profile drivers reports no_timing negative infinite native_drc audited_healthy audited_no_timing audited_negative audited_native_drc} {
+    foreach case {healthy wrong_profile wrong_ethernet pslt drivers reports no_timing negative infinite native_drc audited_healthy audited_no_timing audited_negative audited_native_drc} {
         set gates {}; set closed 0; set opened ""
         set out $scratch/${profile}_$case
         set mode [expr {[string match audited_* $case] ? "audited" : "full"}]
@@ -63,7 +72,7 @@ foreach profile {baseline host dual_ddr} {
         assert {$failed == ($case ni {healthy audited_healthy})} "$profile/$case: $message"
         assert {$closed == 1} "always close design, including gate failure"
         if {$case in {healthy audited_healthy}} {
-            set expected [expr {$mode eq "full" ? {drivers reports bitgen} : {drivers bitgen}}]
+            set expected [expr {$mode eq "full" ? {pslt drivers reports bitgen} : {pslt drivers bitgen}}]
             assert {$gates eq $expected} "required gates before bitgen"
             assert {[file size $out/ara_dsa_vcu118.bit] > 0} "bit produced"
         } else {
@@ -73,4 +82,4 @@ foreach profile {baseline host dual_ddr} {
     }
 }
 unset ::env(ARA_FPGA_PROFILE)
-puts "PASS: 36 profile bitgen gate scenarios (mocked, no synthesis)"
+puts "PASS: 56 profile bitgen gate scenarios (mocked, no synthesis)"

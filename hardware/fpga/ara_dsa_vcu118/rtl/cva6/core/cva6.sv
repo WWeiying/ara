@@ -496,6 +496,9 @@ module cva6
   logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_trans_id_ex_id;
   logic [CVA6Cfg.XLEN-1:0] acc_result_ex_id;
   logic acc_valid_ex_id;
+  logic acc_preview_valid;
+  logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id;
+  logic [CVA6Cfg.XLEN-1:0] acc_preview_data;
   exception_t acc_exception_ex_id;
   logic halt_acc_ctrl;
   logic [4:0] acc_resp_fflags;
@@ -951,6 +954,9 @@ module cva6
       .wbdata_i                (wbdata_ex_id),
       .ex_ex_i                 (ex_ex_ex_id),
       .wt_valid_i              (wt_valid_ex_id),
+      .acc_preview_valid_i     (acc_preview_valid),
+      .acc_preview_id_i        (acc_preview_id),
+      .acc_preview_data_i      (acc_preview_data),
       .x_we_i                  (x_we_ex_id),
       .x_rd_i                  (x_rd_ex_id),
 
@@ -1600,6 +1606,9 @@ module cva6
   // ----------------
 
   if (CVA6Cfg.EnableAccelerator) begin : gen_accelerator
+    assign acc_preview_valid = cvxif_resp_i.vset_preview_resp.resp_valid;
+    assign acc_preview_id = cvxif_resp_i.vset_preview_resp.trans_id;
+    assign acc_preview_data = cvxif_resp_i.vset_preview_resp.result;
     acc_dispatcher #(
         .CVA6Cfg           (CVA6Cfg),
         .fu_data_t         (fu_data_t),
@@ -1664,6 +1673,9 @@ module cva6
     assign acc_trans_id_ex_id         = '0;
     assign acc_result_ex_id           = '0;
     assign acc_valid_ex_id            = '0;
+    assign acc_preview_valid          = 1'b0;
+    assign acc_preview_id             = '0;
+    assign acc_preview_data           = '0;
     assign acc_exception_ex_id        = '0;
     assign acc_resp_fflags            = '0;
     assign acc_resp_fflags_valid      = '0;

@@ -153,9 +153,96 @@ proc host::transaction {line} {
     return $value
 }
 
+proc host::ethernet {action} {
+    variable device
+    if {$action ni {READ LOCK}} { error "Invalid Ethernet control action" }
+    set matches {}
+    foreach object [get_hw_vios -of_objects $device] {
+        set cell [string map {. /} [get_property CELL_NAME $object]]
+        if {[string match */i_eth_loader/i_control $cell]} { lappend matches $object }
+    }
+    set vio [host::select_one $matches - "integrated Ethernet VIO"]
+    set inputs {}; set outputs {}
+    foreach probe [get_hw_probes -of_objects $vio] {
+        switch -- [get_property TYPE $probe] {
+            vio_input { lappend inputs $probe }
+            vio_output { lappend outputs $probe }
+        }
+    }
+    set lock_probes {}
+    foreach probe $outputs {
+        if {[regexp {/(gen_ethernet\.)?i_eth_loader/lock_o$} [get_property NAME $probe]]} {
+            lappend lock_probes $probe
+        }
+    }
+    set output [host::select_one $lock_probes - "Ethernet lock output"]
+    foreach input $inputs { set_property INPUT_VALUE_RADIX HEX $input }
+    refresh_hw_vio $vio
+    set bits [lrepeat 256 -]
+    foreach input $inputs {
+        if {[get_property PROBE_PORT $input] != 0} { error "Unexpected Ethernet input port" }
+        set start [get_property PROBE_PORT_BITS $input]
+        set width [get_property WIDTH $input]
+        set raw [get_property INPUT_VALUE $input]
+        regsub -nocase {^0x} $raw {} raw
+        if {![string is integer -strict $start] || ![string is integer -strict $width] ||
+            $width < 1 || $start < 0 || $start + $width > 256 ||
+            ![regexp -nocase {^[0-9a-f]+$} $raw] ||
+            [string length $raw] != ($width + 3) / 4} {
+            error "Invalid Ethernet status probe layout/value"
+        }
+        if {$width % 4 != 0} {
+            scan [string index $raw 0] %x high
+            if {$high >= (1 << ($width % 4))} {
+                error "Ethernet status probe has bits outside its declared width"
+            }
+        }
+        for {set offset 0} {$offset < $width} {incr offset} {
+            set digit [string index $raw end-[expr {$offset / 4}]]
+            scan $digit %x nibble
+            set bit [expr {($nibble >> ($offset % 4)) & 1}]
+            set index [expr {$start + $offset}]
+            if {[lindex $bits $index] ne "-"} { error "Overlapping Ethernet status probes" }
+            lset bits $index $bit
+        }
+    }
+    if {[lsearch -exact $bits -] >= 0} { error "Incomplete Ethernet status probes" }
+    set value ""
+    for {set i 252} {$i >= 0} {incr i -4} {
+        set nibble 0
+        for {set j 0} {$j < 4} {incr j} {
+            set nibble [expr {$nibble | ([lindex $bits [expr {$i + $j}]] << $j)}]
+        }
+        append value [format %x $nibble]
+    }
+    if {[string range $value end-7 end] ne "45544831"} {
+        error "Ethernet status width/magic mismatch"
+    }
+    if {$action eq "LOCK"} {
+        # No unlock operation exists; clearing admission needs a full UI reset.
+        set_property OUTPUT_VALUE_RADIX HEX $output
+        set_property OUTPUT_VALUE 1 $output
+        commit_hw_vio $vio
+    }
+    return $value
+}
+
 proc host::serve {channel} {
     while {[gets $channel header] >= 0} {
         if {$header eq "QUIT"} { return }
+        if {[llength $header] == 3 && [lindex $header 0] eq "ETH"} {
+            lassign $header command seq action
+            if {![string is integer -strict $seq]} { error "Invalid Ethernet sequence" }
+            if {[catch {host::ethernet $action} value]} {
+                binary scan [encoding convertto utf-8 $value] H* error_hex
+                puts $channel "ERR $seq 0 $error_hex"
+            } else {
+                puts $channel "OK $seq 0 $value"
+            }
+            puts $channel "END $seq"
+            flush $channel
+            continue
+        }
         if {[llength $header] == 3 && [lindex $header 0] eq "RESET"} {
             lassign $header command seq bus
             if {![string is integer -strict $seq] || $bus ne "M"} { error "Invalid reset request" }

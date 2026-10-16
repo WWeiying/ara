@@ -15,11 +15,128 @@ index 5376d5c10..926b82ad3 100644
    end
  
    final begin
+diff --git a/common/local/util/sram_cache.sv b/common/local/util/sram_cache.sv
+index cf2937861..c5bac8e03 100644
+--- a/common/local/util/sram_cache.sv
++++ b/common/local/util/sram_cache.sv
+@@ -110,6 +110,9 @@ module sram_cache #(
+           .NUM_WORDS  (NUM_WORDS)
+       ) data_sram (
+           .clk_i  (clk_i),
++          .rst_ni (rst_ni),
++          .wuser_i(wuser_i),
++          .ruser_o(ruser_o),
+           .req_i  (req_i),
+           .we_i   (we_i),
+           .addr_i (addr_i),
 diff --git a/core/acc_dispatcher.sv b/core/acc_dispatcher.sv
-index aa526951e..485ec49e0 100644
+index aa526951e..54ab062fc 100644
 --- a/core/acc_dispatcher.sv
 +++ b/core/acc_dispatcher.sv
-@@ -189,17 +189,23 @@ module acc_dispatcher
+@@ -113,6 +113,20 @@ module acc_dispatcher
+   // Accelerator load/store pending signals
+   logic acc_no_ld_pending;
+   logic acc_no_st_pending;
++  logic acc_insn_queue_empty;
++  logic fp_csr_access;
++  logic fp_csr_wait;
++
++  // Use the issue-stage immediate, not csr_addr_i from an older EX operation.
++  assign fp_csr_access = !issue_instr_i.ex.valid && (issue_instr_i.fu == CSR) &&
++      (issue_instr_i.op inside {CSR_READ, CSR_WRITE, CSR_SET, CSR_CLEAR}) &&
++      (issue_instr_i.result[11:0] inside {riscv::CSR_FFLAGS, riscv::CSR_FRM,
++                                         riscv::CSR_FCSR});
++  // Include every transfer stage: queue empty does not imply backend idle.
++  // Waiting on fflags_valid also lets the final flag update reach FCSR first.
++  assign fp_csr_wait = acc_valid_q || !acc_insn_queue_empty ||
++      acc_req_o.acc_req.req_valid || acc_resp_i.acc_resp.fp_csr_busy ||
++      acc_resp_i.acc_resp.fflags_valid;
+ 
+   // Stall issue stage in three cases:
+   always_comb begin : stall_issue
+@@ -128,18 +142,58 @@ module acc_dispatcher
+       issue_stall_o = acc_cons_en_i & (~acc_no_st_pending | ~acc_no_ld_pending);
+       default: issue_stall_o = 1'b0;
+     endcase
++
++    // Fences are decoded as CTRL_FLOW/other non-memory functional units, so
++    // they cannot be selected by the FU case above.  They still flush younger
++    // CVA6 state and therefore must wait for all accelerator memory requests;
++    // otherwise a pending vector-load ID can be reused by a younger scalar
++    // load before the accelerator response returns.
++    if (issue_instr_i.op inside {FENCE, FENCE_I, SFENCE_VMA, HFENCE_VVMA, HFENCE_GVMA}) begin
++      issue_stall_o |= ~acc_no_st_pending | ~acc_no_ld_pending;
++    end
++    if (fp_csr_access) issue_stall_o |= fp_csr_wait;
+   end
+ 
++  // pragma translate_off
++  longint unsigned fp_csr_cycle;
++  longint unsigned fp_csr_trace_start, fp_csr_trace_end;
++  bit fp_csr_trace_enabled;
++  initial begin
++    fp_csr_trace_enabled = $test$plusargs("FP_CSR_TRACE");
++    fp_csr_trace_start = 0;
++    fp_csr_trace_end = 5000;
++    void'($value$plusargs("FP_CSR_TRACE_START=%d", fp_csr_trace_start));
++    void'($value$plusargs("FP_CSR_TRACE_END=%d", fp_csr_trace_end));
++  end
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) fp_csr_cycle <= 0;
++    else begin
++      fp_csr_cycle <= fp_csr_cycle + 1;
++      if (fp_csr_trace_enabled && fp_csr_cycle >= fp_csr_trace_start &&
++          fp_csr_cycle <= fp_csr_trace_end &&
++          (fp_csr_access || acc_resp_i.acc_resp.fflags_valid))
++        $display("[FP_CSR] cycle=%0d csr=%03h access=%b fire=%b wait=%b stage=%b queue=%b spill=%b backend=%b flags_valid=%b flags=%02h",
++                 fp_csr_cycle, issue_instr_i.result[11:0], fp_csr_access,
++                 issue_instr_hs_i, fp_csr_wait, acc_valid_q,
++                 !acc_insn_queue_empty, acc_req_o.acc_req.req_valid,
++                 acc_resp_i.acc_resp.fp_csr_busy, acc_resp_i.acc_resp.fflags_valid,
++                 acc_resp_i.acc_resp.fflags);
++      assert (!(fp_csr_access && fp_csr_wait && issue_instr_hs_i))
++        else $error("Floating CSR issued before older accelerator work drained");
++    end
++  end
++  // pragma translate_on
++
+   /***********************
+    *  Instruction queue  *
+    ***********************/
+ 
+-  localparam InstructionQueueDepth = 3;
++  localparam InstructionQueueDepth = 4;
+ 
+   fu_data_t                                        acc_data;
+   fu_data_t                                        acc_insn_queue_o;
+   logic                                            acc_insn_queue_pop;
+-  logic                                            acc_insn_queue_empty;
++  logic                                            acc_insn_queue_full;
+   logic     [idx_width(InstructionQueueDepth)-1:0] acc_insn_queue_usage;
+   logic                                            acc_commit;
+   logic     [           CVA6Cfg.TRANS_ID_BITS-1:0] acc_commit_trans_id;
+@@ -158,7 +212,7 @@ module acc_dispatcher
+       .testmode_i(1'b0),
+       .data_i    (fu_data_i),
+       .push_i    (acc_valid_q),
+-      .full_o    (  /* Unused */),
++      .full_o    (acc_insn_queue_full),
+       .data_o    (acc_insn_queue_o),
+       .pop_i     (acc_insn_queue_pop),
+       .empty_o   (acc_insn_queue_empty),
+@@ -166,7 +220,10 @@ module acc_dispatcher
+   );
+ 
+   // We are ready if the instruction queue is able to accept at least one more entry.
+-  assign acc_ready = acc_insn_queue_usage < (InstructionQueueDepth - 1);
++  // usage_o omits the high count bit at a power-of-two depth. Reserve one
++  // slot for the issue-stage register, and never interpret a full FIFO as empty.
++  assign acc_ready = !acc_insn_queue_full &&
++                    acc_insn_queue_usage < (InstructionQueueDepth - 1);
+ 
+   /**********************************
+    *  Non-speculative instructions  *
+@@ -189,17 +246,23 @@ module acc_dispatcher
  
      // We received a new instruction
      if (acc_valid_q) insn_pending_d[acc_data.trans_id] = 1'b1;
@@ -48,7 +165,65 @@ index aa526951e..485ec49e0 100644
    end : p_non_speculative_ff
  
    /*************************
-@@ -266,8 +272,10 @@ module acc_dispatcher
+@@ -211,11 +274,16 @@ module acc_dispatcher
+   logic             acc_req_ready;
+ 
+   accelerator_req_t acc_req_int;
+-  spill_register #(
+-      .T(accelerator_req_t)
++  // Keep both non-flushable slots, but avoid a bubble when the channel is empty.
++  // Authorization remains at acc_req_valid, before this ownership boundary.
++  fall_through_register_v1 #(
++      .T(accelerator_req_t),
++      .DEPTH(2)
+   ) i_accelerator_req_register (
+       .clk_i  (clk_i),
+       .rst_ni (rst_ni),
++      .clr_i  (1'b0),
++      .testmode_i(1'b0),
+       .data_i (acc_req),
+       .valid_i(acc_req_valid),
+       .ready_o(acc_req_ready),
+@@ -237,6 +305,38 @@ module acc_dispatcher
+   assign acc_req_o.acc_mmu_resp          = acc_mmu_resp_i;
+   assign acc_req_o.acc_mmu_en            = acc_mmu_en_i;
+ 
++  // This sideband is only a cancellable read hint, never an instruction grant.
++  // Translation/protected and non-consistent cases retain the normal path.
++  logic prepare_no_pmp;
++  always_comb begin
++    prepare_no_pmp = 1'b1;
++    for (int unsigned i = 0; i < CVA6Cfg.NrPMPEntries; i++)
++      prepare_no_pmp &= pmpcfg_i[i] == '0;
++  end
++  assign acc_req_o.load_prepare_safe =
++      (CVA6Cfg.NrPMPEntries == 0 ||
++       (ld_st_priv_lvl_i == PRIV_LVL_M && prepare_no_pmp)) &&
++      !acc_mmu_en_i && acc_cons_en_i && acc_no_st_pending_i;
++  assign acc_req_o.load_prepare_flush = flush_ex_i || flush_unissued_instr_i;
++  assign acc_req_o.load_prepare_valid = acc_valid_q &&
++      !acc_no_st_pending &&
++      fu_data_i.operation == ACCEL_OP_LOAD && fu_data_i.imm[31:20] == 12'h020 &&
++      fu_data_i.imm[6:0] == 7'h07 &&
++      fu_data_i.imm[14:12] inside {3'b000, 3'b101, 3'b110, 3'b111} &&
++      acc_req_o.load_prepare_safe && !acc_req_o.load_prepare_flush;
++  assign acc_req_o.load_prepare_addr = 64'(fu_data_i.operand_a);
++
++  always_comb begin
++    acc_req_o.vset_preview_req = '0;
++`ifndef ARA_STORE_B_AB_BASELINE
++    acc_req_o.vset_preview_req.req_valid = acc_valid_q && !acc_no_st_pending &&
++        !flush_ex_i && !flush_unissued_instr_i;
++`endif
++    acc_req_o.vset_preview_req.insn = fu_data_i.imm[31:0];
++    acc_req_o.vset_preview_req.rs1 = fu_data_i.operand_a;
++    acc_req_o.vset_preview_req.trans_id = fu_data_i.trans_id;
++  end
++
+   always_comb begin : accelerator_req_dispatcher
+     // Do not fetch from the instruction queue
+     acc_insn_queue_pop = 1'b0;
+@@ -266,8 +366,10 @@ module acc_dispatcher
            default: '0
        };
        // Wait until the instruction is no longer speculative.
@@ -61,7 +236,7 @@ index aa526951e..485ec49e0 100644
        acc_insn_queue_pop = acc_req_valid && acc_req_ready;
      end
    end
-@@ -294,8 +302,8 @@ module acc_dispatcher
+@@ -294,8 +396,8 @@ module acc_dispatcher
    assign acc_req_o.acc_req.resp_ready = 1'b1;
  
    // Signal dispatched load/store to issue stage
@@ -72,7 +247,7 @@ index aa526951e..485ec49e0 100644
  
    // Cache invalidation
    assign inval_valid_o = acc_resp_i.acc_resp.inval_valid;
-@@ -311,7 +319,8 @@ module acc_dispatcher
+@@ -311,7 +413,8 @@ module acc_dispatcher
    always_comb begin : accelerator_commit
      acc_commit = 1'b0;
      if (!commit_instr_i[0].valid && commit_instr_i[0].fu == ACCEL) acc_commit = 1'b1;
@@ -82,7 +257,7 @@ index aa526951e..485ec49e0 100644
        acc_commit = 1'b1;
    end
  
-@@ -326,6 +335,15 @@ module acc_dispatcher
+@@ -326,6 +429,15 @@ module acc_dispatcher
    assign acc_commit_trans_id = !commit_instr_i[0].valid ? commit_instr_i[0].trans_id
                                                          : commit_instr_i[1].trans_id;
  
@@ -99,10 +274,50 @@ index aa526951e..485ec49e0 100644
     *  Accelerator barriers  *
     **************************/
 diff --git a/core/csr_regfile.sv b/core/csr_regfile.sv
-index 180cba4fa..60df1ed9e 100644
+index 180cba4fa..b4361c7d9 100644
 --- a/core/csr_regfile.sv
 +++ b/core/csr_regfile.sv
-@@ -1983,8 +1983,10 @@ module csr_regfile
+@@ -497,7 +497,8 @@ module csr_regfile
+         else read_access_exception = 1'b1;
+         riscv::CSR_STVEC:
+         if (CVA6Cfg.RVS)
+-          csr_rdata =  clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : {stvec_q[CVA6Cfg.XLEN-1:6], 5'b0, stvec_q[0]};
++          // Non-CLIC readback must match the BASE used by trap redirection.
++          csr_rdata = clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : stvec_q;
+         else read_access_exception = 1'b1;
+         riscv::CSR_SINTSTATUS: begin
+           if (CVA6Cfg.RVS && CVA6Cfg.RVSCLIC) begin
+@@ -1316,7 +1317,9 @@ module csr_regfile
+         // sstatus is a subset of mstatus - mask it accordingly
+         riscv::CSR_SSTATUS: begin
+           if (CVA6Cfg.RVS) begin
+-            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0];
++            // VS aliases mstatus here; do not widen the shared VSSTATUS mask.
++            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0] |
++                   (CVA6Cfg.RVV ? CVA6Cfg.XLEN'(riscv::SSTATUS_VS) : '0);
+             mstatus_d = (mstatus_q & ~{{64-CVA6Cfg.XLEN{1'b0}}, mask}) | {{64-CVA6Cfg.XLEN{1'b0}}, (csr_wdata & mask)};
+             // hardwire to zero if floating point extension is not present
+             if (!CVA6Cfg.FpPresent) begin
+@@ -1365,9 +1368,15 @@ module csr_regfile
+         end
+ 
+         riscv::CSR_STVEC:
+-        if (CVA6Cfg.RVS)
+-          stvec_d = clic_mode_o ? {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11} : {csr_wdata[CVA6Cfg.XLEN-1:2], 1'b0, csr_wdata[0]};
+-        else update_access_exception = 1'b1;
++        if (CVA6Cfg.RVS) begin
++          if (clic_mode_o)
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11};
++          else if (csr_wdata[0])
++            // priv_output inserts cause[5:0] into BASE[7:2], as for MTVEC.
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:8], 7'b0, 1'b1};
++          else
++            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b0};
++        end else update_access_exception = 1'b1;
+         riscv::CSR_SCOUNTEREN:
+         if (CVA6Cfg.RVS) scounteren_d = {{CVA6Cfg.XLEN - 32{1'b0}}, csr_wdata[31:0]};
+         else update_access_exception = 1'b1;
+@@ -1983,8 +1992,10 @@ module csr_regfile
        mstatus_d.vs = riscv::Dirty;
      end
      // hardwired extension registers
@@ -115,6 +330,83 @@ index 180cba4fa..60df1ed9e 100644
      end else begin
        mstatus_d.sd = riscv::Off;
      end
+diff --git a/core/cva6.sv b/core/cva6.sv
+index 1bf0de585..3ba3fa414 100644
+--- a/core/cva6.sv
++++ b/core/cva6.sv
+@@ -496,6 +496,9 @@ module cva6
+   logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_trans_id_ex_id;
+   logic [CVA6Cfg.XLEN-1:0] acc_result_ex_id;
+   logic acc_valid_ex_id;
++  logic acc_preview_valid;
++  logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id;
++  logic [CVA6Cfg.XLEN-1:0] acc_preview_data;
+   exception_t acc_exception_ex_id;
+   logic halt_acc_ctrl;
+   logic [4:0] acc_resp_fflags;
+@@ -951,6 +954,9 @@ module cva6
+       .wbdata_i                (wbdata_ex_id),
+       .ex_ex_i                 (ex_ex_ex_id),
+       .wt_valid_i              (wt_valid_ex_id),
++      .acc_preview_valid_i     (acc_preview_valid),
++      .acc_preview_id_i        (acc_preview_id),
++      .acc_preview_data_i      (acc_preview_data),
+       .x_we_i                  (x_we_ex_id),
+       .x_rd_i                  (x_rd_ex_id),
+ 
+@@ -1600,6 +1606,9 @@ module cva6
+   // ----------------
+ 
+   if (CVA6Cfg.EnableAccelerator) begin : gen_accelerator
++    assign acc_preview_valid = cvxif_resp_i.vset_preview_resp.resp_valid;
++    assign acc_preview_id = cvxif_resp_i.vset_preview_resp.trans_id;
++    assign acc_preview_data = cvxif_resp_i.vset_preview_resp.result;
+     acc_dispatcher #(
+         .CVA6Cfg           (CVA6Cfg),
+         .fu_data_t         (fu_data_t),
+@@ -1664,6 +1673,9 @@ module cva6
+     assign acc_trans_id_ex_id         = '0;
+     assign acc_result_ex_id           = '0;
+     assign acc_valid_ex_id            = '0;
++    assign acc_preview_valid          = 1'b0;
++    assign acc_preview_id             = '0;
++    assign acc_preview_data           = '0;
+     assign acc_exception_ex_id        = '0;
+     assign acc_resp_fflags            = '0;
+     assign acc_resp_fflags_valid      = '0;
+diff --git a/core/decoder.sv b/core/decoder.sv
+index d907b2094..f4686a47f 100644
+--- a/core/decoder.sv
++++ b/core/decoder.sv
+@@ -1809,6 +1809,8 @@ module decoder
+       end else if (ecall) begin
+         // this exception is valid
+         instruction_o.ex.valid = 1'b1;
++        // ECALL has no trap-value payload; do not retain the instruction bits.
++        instruction_o.ex.tval = '0;
+         // depending on the privilege mode, set the appropriate cause
+         if (priv_lvl_i == riscv::PRIV_LVL_S && CVA6Cfg.RVS) begin
+           instruction_o.ex.cause = (CVA6Cfg.RVH && v_i) ? riscv::ENV_CALL_VSMODE : riscv::ENV_CALL_SMODE;
+@@ -1822,6 +1824,9 @@ module decoder
+         instruction_o.ex.valid = 1'b1;
+         // set breakpoint cause
+         instruction_o.ex.cause = riscv::BREAKPOINT;
++        // Breakpoints report their faulting PC, not the instruction encoding.
++        if (CVA6Cfg.TvalEn)
++          instruction_o.ex.tval = {{CVA6Cfg.XLEN-CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
+         // set gva bit
+         if (CVA6Cfg.RVH) instruction_o.ex.gva = v_i;
+         else instruction_o.ex.gva = 1'b0;
+@@ -1921,6 +1926,9 @@ module decoder
+           instruction_o.ex.cause = interrupt_cause;
+         end
+       end
++      // Only a selected interrupt has no tval; masked IRQs retain sync payloads.
++      if (instruction_o.ex.valid && instruction_o.ex.cause[CVA6Cfg.XLEN-1])
++        instruction_o.ex.tval = '0;
+     end
+ 
+     // a debug request has precendece over everything else
 diff --git a/core/fpu_wrap.sv b/core/fpu_wrap.sv
 index 5b5fefc23..05177856f 100644
 --- a/core/fpu_wrap.sv
@@ -187,3 +479,248 @@ index 5b5fefc23..05177856f 100644
          .TagType       (logic [CVA6Cfg.TRANS_ID_BITS-1:0])
      ) i_fpnew_bulk (
          .clk_i,
+diff --git a/core/include/ariane_pkg.sv b/core/include/ariane_pkg.sv
+index 5765233d8..e5a19f3ef 100644
+--- a/core/include/ariane_pkg.sv
++++ b/core/include/ariane_pkg.sv
+@@ -116,6 +116,7 @@ package ariane_pkg;
+     | riscv::SSTATUS_SIE
+     | riscv::SSTATUS_SPIE
+     | riscv::SSTATUS_SPP
++    | (Cfg.RVV ? riscv::SSTATUS_VS : 64'b0)
+     | riscv::SSTATUS_FS
+     | riscv::SSTATUS_XS
+     | riscv::SSTATUS_SUM
+diff --git a/core/include/riscv_pkg.sv b/core/include/riscv_pkg.sv
+index 83c9e69a8..7646cdb5e 100644
+--- a/core/include/riscv_pkg.sv
++++ b/core/include/riscv_pkg.sv
+@@ -741,6 +741,7 @@ package riscv;
+   localparam logic [63:0] SSTATUS_SIE = 'h00000002;
+   localparam logic [63:0] SSTATUS_SPIE = 'h00000020;
+   localparam logic [63:0] SSTATUS_SPP = 'h00000100;
++  localparam logic [63:0] SSTATUS_VS = 'h00000600;
+   localparam logic [63:0] SSTATUS_FS = 'h00006000;
+   localparam logic [63:0] SSTATUS_XS = 'h00018000;
+   localparam logic [63:0] SSTATUS_SUM = 'h00040000;
+diff --git a/core/issue_read_operands.sv b/core/issue_read_operands.sv
+index 60772fad5..892108c81 100644
+--- a/core/issue_read_operands.sv
++++ b/core/issue_read_operands.sv
+@@ -583,7 +583,10 @@ module issue_read_operands
+           stall_rs3[0]   = 1'b0;
+         end
+       end
+-      stall_raw[0] = x_transaction_rejected ? 1'b0 : stall_rs1[0] || stall_rs2[0] || stall_rs3[0];
++      // Preserve an upstream functional-unit stall (for example, the
++      // accelerator fence barrier).  The CVXIF operand logic may add a
++      // dependency stall, but must not overwrite a back-pressure request.
++      stall_raw[0] = stall_i | (x_transaction_rejected ? 1'b0 : stall_rs1[0] || stall_rs2[0] || stall_rs3[0]);
+     end
+ 
+     if (CVA6Cfg.SuperscalarEn) begin
+diff --git a/core/issue_stage.sv b/core/issue_stage.sv
+index f0b0817ea..fde047837 100644
+--- a/core/issue_stage.sv
++++ b/core/issue_stage.sv
+@@ -140,6 +140,9 @@ module issue_stage
+     input exception_t [CVA6Cfg.NrWbPorts-1:0] ex_ex_i,
+     // Indicates valid results - EX_STAGE
+     input logic [CVA6Cfg.NrWbPorts-1:0] wt_valid_i,
++    input logic acc_preview_valid_i,
++    input logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id_i,
++    input logic [CVA6Cfg.XLEN-1:0] acc_preview_data_i,
+     // CVXIF write enable - EX_STAGE
+     input logic x_we_i,
+     // CVXIF destination register - EX_STAGE
+@@ -231,6 +234,9 @@ module issue_stage
+       .wbdata_i                (wbdata_i),
+       .ex_i                    (ex_ex_i),
+       .wt_valid_i,
++      .acc_preview_valid_i,
++      .acc_preview_id_i,
++      .acc_preview_data_i,
+       .x_we_i,
+       .x_rd_i,
+       .rvfi_issue_pointer_o,
+diff --git a/core/load_unit.sv b/core/load_unit.sv
+index bea5efa6d..7ca3d91e5 100644
+--- a/core/load_unit.sv
++++ b/core/load_unit.sv
+@@ -286,35 +286,53 @@ module load_unit
+ 
+       // wait here for the page offset to not match anymore
+       WAIT_PAGE_OFFSET: begin
+-        // we make a new request as soon as the page offset does not match anymore
+-        if (!page_offset_matches_i) begin
++        // An exception does not need a cache request. Retire it here instead
++        // of waiting for the store-buffer conflict or a cache grant to clear.
++        if (ex_i.valid) begin
++          if (!req_port_i.data_rvalid) begin
++            state_d = IDLE;
++            pop_ld_o = 1'b1;
++          end
++        end else if (!page_offset_matches_i) begin
++          // we make a new request as soon as the page offset does not match anymore
+           state_d = WAIT_GNT;
+         end
+       end
+ 
+       WAIT_GNT: begin
+-        // keep the translation request up
+-        translation_req_o   = 1'b1;
+-        // keep the request up
+-        req_port_o.data_req = 1'b1;
+-        // we finally got a data grant
+-        if (req_port_i.data_gnt) begin
+-          // so we send the tag in the next cycle
+-          if (CVA6Cfg.MmuPresent && !dtlb_hit_i) begin
+-            state_d = ABORT_TRANSACTION;
+-          end else begin
+-            if (!stall_ni) begin
+-              // we got a grant and a hit on the DTLB so we can send the tag in the next cycle
+-              state_d  = SEND_TAG;
+-              pop_ld_o = 1'b1;
+-              // translation valid but this is to NC and the WB is not yet empty.
+-            end else if (CVA6Cfg.NonIdemPotenceEn) begin
+-              state_d = ABORT_TRANSACTION_NI;
++        // An exception is already complete at the LSU/MMU boundary. Do not
++        // let it depend on D$ arbitration, cache init, or stall_i.
++        // Keep the MMU request asserted independently of ex_i. The MMU
++        // exception is derived from the request and must not feed it back
++        // combinationally.
++        translation_req_o = 1'b1;
++        if (ex_i.valid) begin
++          if (!req_port_i.data_rvalid) begin
++            state_d = IDLE;
++            pop_ld_o = 1'b1;
++          end
++        end else begin
++          // keep the translation request up
++          // keep the request up
++          req_port_o.data_req = 1'b1;
++          // we finally got a data grant
++          if (req_port_i.data_gnt) begin
++            // so we send the tag in the next cycle
++            if (CVA6Cfg.MmuPresent && !dtlb_hit_i) begin
++              state_d = ABORT_TRANSACTION;
++            end else begin
++              if (!stall_ni) begin
++                // we got a grant and a hit on the DTLB so we can send the tag in the next cycle
++                state_d  = SEND_TAG;
++                pop_ld_o = 1'b1;
++                // translation valid but this is to NC and the WB is not yet empty.
++              end else if (CVA6Cfg.NonIdemPotenceEn) begin
++                state_d = ABORT_TRANSACTION_NI;
++              end
+             end
+           end
+-
++          // otherwise we keep waiting on our grant
+         end
+-        // otherwise we keep waiting on our grant
+       end
+       // we know for sure that the tag we want to send is valid
+       SEND_TAG: begin
+@@ -446,7 +464,9 @@ module load_unit
+     // exceptions can retire out-of-order -> but we need to give priority to non-excepting load and stores
+     // so we simply check if we got an rvalid if so we prioritize it by not retiring the exception - we simply go for another
+     // round in the load FSM
+-    if ((CVA6Cfg.MmuPresent || CVA6Cfg.NonIdemPotenceEn) && (state_q == WAIT_TRANSLATION) && !req_port_i.data_rvalid && ex_i.valid && valid_i) begin
++    if ((CVA6Cfg.MmuPresent || CVA6Cfg.NonIdemPotenceEn) &&
++        (state_q inside {WAIT_PAGE_OFFSET, WAIT_GNT, WAIT_TRANSLATION}) &&
++        !req_port_i.data_rvalid && ex_i.valid && valid_i) begin
+       trans_id_o = lsu_ctrl_i.trans_id;
+       valid_o = 1'b1;
+       ex_o.valid = 1'b1;
+diff --git a/core/scoreboard.sv b/core/scoreboard.sv
+index 6a1b3d094..60d4b4986 100644
+--- a/core/scoreboard.sv
++++ b/core/scoreboard.sv
+@@ -79,6 +79,10 @@ module scoreboard #(
+     input exception_t [CVA6Cfg.NrWbPorts-1:0] ex_i,
+     // Indicates valid results - EX_STAGE
+     input logic [CVA6Cfg.NrWbPorts-1:0] wt_valid_i,
++    // Pure vsetvli result available for operand forwarding, never retirement.
++    input logic acc_preview_valid_i,
++    input logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id_i,
++    input logic [CVA6Cfg.XLEN-1:0] acc_preview_data_i,
+     // Cvxif we for writeback - EX_STAGE
+     input logic x_we_i,
+     // CVXIF destination register - ISSUE_STAGE
+@@ -99,6 +103,41 @@ module scoreboard #(
+   } sb_mem_t;
+   sb_mem_t [CVA6Cfg.NR_SB_ENTRIES-1:0] mem_q, mem_n;
+   logic [CVA6Cfg.NR_SB_ENTRIES-1:0] still_issued;
++  logic [CVA6Cfg.NrIssuePorts:0][CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer;
++  logic preview_valid_q;
++  logic [CVA6Cfg.TRANS_ID_BITS-1:0] preview_id_q;
++  logic [CVA6Cfg.XLEN-1:0] preview_data_q;
++  logic preview_consumed, preview_reused;
++
++  always_comb begin
++    preview_consumed = 1'b0;
++    preview_reused = 1'b0;
++    for (int unsigned p = 0; p < CVA6Cfg.NrWbPorts; p++)
++      preview_consumed |= wt_valid_i[p] && trans_id_i[p] == preview_id_q;
++    for (int unsigned p = 0; p < CVA6Cfg.NrIssuePorts; p++)
++      preview_reused |= decoded_instr_valid_i[p] && decoded_instr_ack_o[p] &&
++                        issue_pointer[p] == preview_id_q;
++  end
++
++  always_ff @(posedge clk_i or negedge rst_ni) begin
++    if (!rst_ni) begin
++      preview_valid_q <= 1'b0;
++      preview_id_q <= '0;
++      preview_data_q <= '0;
++    end else begin
++      if (acc_preview_valid_i && !preview_valid_q &&
++          still_issued[acc_preview_id_i] &&
++          mem_q[acc_preview_id_i].sbe.fu == ariane_pkg::ACCEL &&
++          !mem_q[acc_preview_id_i].sbe.valid) begin
++        preview_valid_q <= 1'b1;
++        preview_id_q <= acc_preview_id_i;
++        preview_data_q <= acc_preview_data_i;
++      end
++      if (preview_valid_q && (preview_consumed || preview_reused ||
++          !still_issued[preview_id_q])) preview_valid_q <= 1'b0;
++      if (flush_i || flush_unissued_instr_i) preview_valid_q <= 1'b0;
++    end
++  end
+ 
+   logic [CVA6Cfg.NrIssuePorts-1:0] issue_full;
+   logic [1:0][CVA6Cfg.NR_SB_ENTRIES/2-1:0] issued_instrs_even_odd;
+@@ -109,7 +148,6 @@ module scoreboard #(
+ 
+   logic [CVA6Cfg.NrIssuePorts-1:0] num_issue;
+   logic [CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer_n, issue_pointer_q;
+-  logic [CVA6Cfg.NrIssuePorts:0][CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer;
+ 
+   logic [CVA6Cfg.NrCommitPorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] commit_pointer_n, commit_pointer_q;
+   logic [$clog2(CVA6Cfg.NrCommitPorts):0] num_commit;
+@@ -297,8 +335,24 @@ module scoreboard #(
+   assign fwd_o.issue_pointer = issue_pointer;
+   assign fwd_o.wb = wb;
+   for (genvar i = 0; i < CVA6Cfg.NR_SB_ENTRIES; i++) begin
+-    assign fwd_o.sbe[i] = mem_q[i].sbe;
++    always_comb begin
++      fwd_o.sbe[i] = mem_q[i].sbe;
++      if (preview_valid_q && preview_id_q == i && still_issued[i] &&
++          !mem_q[i].sbe.valid && !flush_i && !flush_unissued_instr_i) begin
++        fwd_o.sbe[i].valid = 1'b1;
++        fwd_o.sbe[i].result = preview_data_q;
++      end
++    end
++  end
++
++  // synthesis translate_off
++  for (genvar p = 0; p < CVA6Cfg.NrWbPorts; p++) begin : gen_preview_check
++    assert property (@(posedge clk_i) disable iff (!rst_ni)
++      preview_valid_q && still_issued[preview_id_q] && wt_valid_i[p] &&
++      trans_id_i[p] == preview_id_q && !ex_i[p].valid |->
++      wbdata_i[p] == preview_data_q);
+   end
++  // synthesis translate_on
+ 
+   // sequential process
+   always_ff @(posedge clk_i or negedge rst_ni) begin : regs

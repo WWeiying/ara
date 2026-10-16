@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('all', 'synth', 'impl', 'inspect')][string]$Stage = 'synth',
-    [ValidateSet('baseline', 'host', 'dual_ddr')][string]$Profile = 'baseline',
+    [ValidateSet('baseline', 'host', 'dual_ddr', 'host_ethernet')][string]$Profile = 'baseline',
     [string]$Vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat',
     [string]$RunRoot
 )
@@ -14,7 +14,7 @@ function Get-InputFingerprint([string]$Root) {
     $rows = foreach ($row in Get-Content -LiteralPath (Join-Path $Root 'SHA256SUMS')) {
         if ($row -notmatch '^[0-9a-f]{64}  (.+)$') { throw 'Invalid SHA256SUMS entry' }
         $name = $Matches[1]
-        if ($name -match '^(rtl/|scripts/|constraints/|board_files/|manifest\.json$)') {
+        if ($name -match '^(rtl/|scripts/|constraints/|board_files/|ethernet/|manifest\.json$)') {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Root $name)).Hash
             "$hash  $name"
         }

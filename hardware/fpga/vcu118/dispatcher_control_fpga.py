@@ -6,10 +6,15 @@ Pin the reviewed input versions: a changed decoder needs a fresh path review.
 import hashlib
 import re
 
-from dispatcher_fpga import UPSTREAM_DISPATCHER_SHA256
+from dispatcher_fpga import REVIEWED_DISPATCHER_SHA256
 
 
 UPSTREAM_SEGMENT_SHA256 = "5b443bf1aa3bb2e64d21e6661c2aee4b0edaaeeb6c3a5d92eb99a6923cc33552"
+REVIEWED_SEGMENT_SHA256 = {
+    UPSTREAM_SEGMENT_SHA256,
+    # Stop issuing micro-ops after an exception; layout_req geometry is unchanged.
+    "672ddcdfafc3fb40206e9b28c9c4e5d67d40dc9fae18e577cff9c5dc586d4452",
+}
 
 
 ARCH_GATE = """state_q == NORMAL_OPERATION || state_q == OVERLAP_ISSUE_ORIGINAL ||
@@ -144,7 +149,7 @@ def patch(text, transform, digest, marker):
 
 
 def patch_dispatcher_control(text):
-    if hashlib.sha256(text.encode()).hexdigest() == UPSTREAM_DISPATCHER_SHA256:
+    if hashlib.sha256(text.encode()).hexdigest() in REVIEWED_DISPATCHER_SHA256:
         return text
     return patch(text, dispatcher_edits,
                  "c3aee27113948b3005a50f7e7db853c510154c7cc3b563e1af442126293dc250",
@@ -152,7 +157,7 @@ def patch_dispatcher_control(text):
 
 
 def patch_segment_geometry(text):
-    if hashlib.sha256(text.encode()).hexdigest() == UPSTREAM_SEGMENT_SHA256:
+    if hashlib.sha256(text.encode()).hexdigest() in REVIEWED_SEGMENT_SHA256:
         return text
     return patch(text, segment_edits,
                  "fe8d7256650bd56c710138071f6f8541f33fc0a9aa7ed567e6c0d8f9a12e4cf7",

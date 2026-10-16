@@ -29,18 +29,52 @@ proc refresh_hw_device {args} {}
 proc close_hw_target {args} {}
 proc disconnect_hw_server {} {}
 proc close_hw_manager {} {}
+set ::eth_locked 0
+proc get_hw_vios {args} {
+    if {$::mode eq "eth_absent"} { return {} }
+    if {$::mode eq "eth_duplicate"} { return {eth_vio eth_vio} }
+    return eth_vio
+}
+proc get_hw_probes {args} {
+    if {$::mode eq "eth_split"} { return {eth_high eth_low eth_output} }
+    return {eth_input eth_output}
+}
+proc refresh_hw_vio {args} {}
+proc commit_hw_vio {vio} { set ::eth_locked 1 }
+proc set_property {property value object} {
+    if {$property in {INPUT_VALUE_RADIX OUTPUT_VALUE_RADIX}} { return }
+    if {$property eq "OUTPUT_VALUE" && $object eq "eth_output" && $value == 1} { return }
+    error "Unexpected property write $property $value $object"
+}
 proc get_hw_axis {args} {
     if {$::mode eq "duplicate"} { return {debug_b mem_a debug_duplicate} }
     return {debug_b mem_a unrelated}
 }
 proc get_property {property object} {
-    if {$property eq "NAME"} { return $object }
+    if {$property eq "NAME"} {
+        if {$object eq "eth_output"} { return top/i_eth_loader/lock_o }
+        return $object
+    }
+    if {$property eq "PROBE_PORT"} { return 0 }
+    if {$property eq "PROBE_PORT_BITS"} { return [expr {$object eq "eth_high" ? 32 : 0}] }
+    if {$property eq "WIDTH"} { return [expr {$object eq "eth_high" ? 224 : $object eq "eth_low" ? 32 : 256}] }
     if {$property eq "CELL_NAME"} {
         switch $object {
+            eth_vio { return top/i_dram_wrapper/i_eth_loader/i_control }
             mem_a { return top/gen_host/i_host_bridge/i_jtag_mem }
             debug_b - debug_duplicate { return top/gen_host.i_host_bridge/i_jtag_debug }
             default { return other/i_jtag_mem_unused }
         }
+    }
+    if {$property eq "TYPE"} {
+        return [expr {$object eq "eth_output" ? "vio_output" : "vio_input"}]
+    }
+    if {$property eq "INPUT_VALUE"} {
+        if {$object eq "eth_high"} { return [string repeat 0 56] }
+        if {$object eq "eth_low"} { return 45544831 }
+        if {$::mode eq "eth_width"} { return 45544831 }
+        if {$::mode eq "eth_magic"} { return [string repeat 0 64] }
+        return "[string repeat 0 55]${::eth_locked}45544831"
     }
     if {$property eq "PROTOCOL"} {
         return [expr {$object eq "mem_a" ? "AXI4_Full" : "AXI4_Lite"}]

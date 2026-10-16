@@ -17,7 +17,27 @@ proc vio_probe {vio name type port} {
     return [one $matches "$name $type port $port"]
 }
 
-proc program_host_image {bit ltx} {
+proc board_vio {device} {
+    set matches {}
+    foreach vio [get_hw_vios -of_objects $device] {
+        set board 1
+        foreach {name type port} {
+            vio_reset vio_output 0
+            vio_boot_mode vio_output 1
+            vio_boot_select vio_output 2
+            status vio_input 0
+        } {
+            if {[catch {vio_probe $vio $name $type $port}]} {
+                set board 0
+                break
+            }
+        }
+        if {$board} { lappend matches $vio }
+    }
+    return [one $matches {board VIO}]
+}
+
+proc program_host_image {bit ltx {cold_no_reset 0}} {
     foreach path [list $bit $ltx] {
         if {![file isfile $path] || [file size $path] == 0} { error "Missing/empty image: $path" }
     }
@@ -34,7 +54,7 @@ proc program_host_image {bit ltx} {
     puts "PROGRAMMED $bit"
     refresh_hw_device $device
 
-    set vio [one [get_hw_vios -of_objects $device] {board VIO}]
+    set vio [board_vio $device]
     set reset [vio_probe $vio vio_reset vio_output 0]
     set boot_mode [vio_probe $vio vio_boot_mode vio_output 1]
     set boot_select [vio_probe $vio vio_boot_select vio_output 2]
@@ -45,12 +65,18 @@ proc program_host_image {bit ltx} {
     set_property INPUT_VALUE_RADIX HEX $status
     set_property OUTPUT_VALUE 0 $boot_mode
     set_property OUTPUT_VALUE 0 $boot_select
-    set_property OUTPUT_VALUE 1 $reset
-    commit_hw_vio $vio
-    after 100
-    set_property OUTPUT_VALUE 0 $reset
-    commit_hw_vio $vio
-    puts {VIO_FULL_RESET_PULSED boot_mode=0 boot_select=0}
+    if {$cold_no_reset} {
+        set_property OUTPUT_VALUE 0 $reset
+        commit_hw_vio $vio
+        puts {VIO_COLD_START_NO_EXTRA_RESET boot_mode=0 boot_select=0}
+    } else {
+        set_property OUTPUT_VALUE 1 $reset
+        commit_hw_vio $vio
+        after 100
+        set_property OUTPUT_VALUE 0 $reset
+        commit_hw_vio $vio
+        puts {VIO_FULL_RESET_PULSED boot_mode=0 boot_select=0}
+    }
 
     for {set attempt 0} {$attempt < 120} {incr attempt} {
         refresh_hw_vio $vio
@@ -71,8 +97,13 @@ proc program_host_image {bit ltx} {
 }
 
 if {[catch {
-    if {[llength $argv] != 2} { error {Expected image.bit image.ltx} }
-    program_host_image {*}$argv
+    if {[llength $argv] == 2} {
+        program_host_image {*}$argv
+    } elseif {[llength $argv] == 3 && [lindex $argv 2] eq "--cold-no-reset"} {
+        program_host_image {*}[lrange $argv 0 1] 1
+    } else {
+        error {Expected image.bit image.ltx ?--cold-no-reset?}
+    }
 } message options]} {
     puts stderr "PROGRAM_HOST_ERROR $message"
     puts stderr [dict get $options -errorinfo]

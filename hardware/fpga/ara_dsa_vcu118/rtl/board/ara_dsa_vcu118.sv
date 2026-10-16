@@ -4,6 +4,11 @@
 `include "phy_definitions.svh"
 
 module ara_dsa_vcu118 import cheshire_pkg::*; (
+`ifdef ARA_FPGA_ETHERNET
+  input logic eth_ref_p, eth_ref_n, eth_rxp, eth_rxn,
+  output logic eth_txp, eth_txn, eth_mdc, eth_phy_reset_n,
+  inout wire eth_mdio,
+`endif
   input logic sys_clk_p,
   input logic sys_clk_n,
   input logic sys_reset,
@@ -14,6 +19,7 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   output logic jtag_tdo_o,
   `DDR4_INTF(1, 8, 64, 8)
 `ifdef ARA_FPGA_DDR2
+  input logic c2_sys_clk_p, c2_sys_clk_n,
   output logic c1_ddr4_act_n,
   output logic [16:0] c1_ddr4_adr,
   output logic [1:0] c1_ddr4_ba,
@@ -147,6 +153,11 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
   );
   assign fabric_ready = &dram_ready;
   if (1) begin : gen_ddr2
+    wire c2_sys_clk;
+    // U21 Q1 is local to C2's SLR; C1's reference cannot clock this MIG.
+    IBUFDS #(.IBUF_LOW_PWR("FALSE")) i_bufds_c2_clk (
+      .I(c2_sys_clk_p), .IB(c2_sys_clk_n), .O(c2_sys_clk)
+    );
     dram_wrapper_xilinx #(
       .Channel(1),
       .axi_soc_aw_chan_t(axi_llc_aw_chan_t), .axi_soc_w_chan_t(axi_llc_w_chan_t),
@@ -156,7 +167,7 @@ module ara_dsa_vcu118 import cheshire_pkg::*; (
     ) i_dram_wrapper_c2 (
       .sys_rst_i(sys_rst), .soc_resetn_i(rst_n), .soc_clk_i(soc_clk),
       .fabric_reset_ni(fabric_ready),
-      .dram_clk_i(sys_clk), .fabric_ready_o(dram_ready[1]),
+      .dram_clk_i(c2_sys_clk), .fabric_ready_o(dram_ready[1]),
       .soc_req_i(dram_req[1]), .soc_rsp_o(dram_rsp[1]),
       .c0_ddr4_act_n(c1_ddr4_act_n), .c0_ddr4_adr(c1_ddr4_adr),
       .c0_ddr4_ba(c1_ddr4_ba), .c0_ddr4_bg(c1_ddr4_bg),

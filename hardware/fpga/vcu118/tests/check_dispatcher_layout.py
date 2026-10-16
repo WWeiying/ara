@@ -254,6 +254,8 @@ def main():
     ap.add_argument("--upstream", default="db90e341",
                     help="Reviewed mainline revision for an integrated dispatcher")
     ap.add_argument("--vcs", default="vcs")
+    ap.add_argument("--current-main", action="store_true",
+                    help="Compare with captured current main RTL, including new interfaces/states")
     args = ap.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -261,10 +263,14 @@ def main():
     rtl = pkg / "rtl/ara/hardware"
     before = subprocess.check_output(["git", "show", f"{args.reference}:{REL}"],
                                      cwd=ROOT, text=True)
+    layout_before = before
+    if args.current_main:
+        before = (ROOT / "hardware/src/ara_dispatcher.sv").read_text()
+        (out / "main_dispatcher.sv").write_text(before)
     after = (ROOT / REL).read_text()
     integrated = "function automatic vlen_t slide_bound(" in after
     if integrated:
-        source = subprocess.check_output([
+        source = before if args.current_main else subprocess.check_output([
             "git", "show", f"{args.upstream}:hardware/src/ara_dispatcher.sv"
         ], cwd=ROOT, text=True)
         expected = patch_dispatcher_control(patch_dispatcher_layout(
@@ -284,7 +290,7 @@ def main():
              "+incdir+" + str(rtl / "include"), "+incdir+" + str(out)]
     results = {}
     update = NEW_UPDATE.replace("fpga_active_registers", "active_register_mask") if integrated else NEW_UPDATE
-    (out / "layout.sv").write_text(layout_module(before, "layout_before", OLD_UPDATE) +
+    (out / "layout.sv").write_text(layout_module(layout_before, "layout_before", OLD_UPDATE) +
                                   layout_module(after, "layout_after", update) + BENCH)
 
     def run(name, sources, top, extra=()):
@@ -322,8 +328,11 @@ def main():
     (out / "reference.sv").write_text(reference)
     old_segment = subprocess.check_output(["git", "show", f"{args.reference}:{SEG_REL}"],
                                           cwd=ROOT, text=True)
+    if args.current_main:
+        old_segment = (ROOT / "hardware/src/segment_sequencer.sv").read_text()
+        (out / "main_segment.sv").write_text(old_segment)
     segment = (ROOT / SEG_REL).read_text()
-    segment_source = subprocess.check_output([
+    segment_source = old_segment if args.current_main else subprocess.check_output([
         "git", "show", f"{args.upstream}:hardware/src/segment_sequencer.sv"
     ], cwd=ROOT, text=True) if integrated else old_segment
     if patch_segment_geometry(segment_source) != segment:
@@ -334,6 +343,21 @@ def main():
         "git", "show", f"{args.reference}:verification/timing/dispatcher_equivalence_tb.sv"
     ], cwd=ROOT, text=True)
     original_bench = bench
+    if args.current_main:
+        if "WAIT_STORE_RESPONSE" not in before or "ara_store_accepted_i" not in before:
+            raise RuntimeError("Current-main stimulus expects the reviewed store interface")
+        bench = bench.replace("  int seed=", "  logic ara_store_accepted_i = 0;\n  int seed=")
+        bench = bench.replace("        ara_resp_valid_i=trial%7==3;",
+                              "        ara_store_accepted_i=ara_req_valid_o && "
+                              "is_store(ara_req_o.op) && trial%3==0;\n"
+                              "        ara_resp_valid_i=trial%7==3;")
+        bench = bench.replace("state_code<15", "state_code<16")
+        bench = bench.replace("i<15", "i<16")
+        bench = bench.replace("            endcase", """              15: begin
+                force dut.state_q=dut.WAIT_STORE_RESPONSE;
+                force reference.state_q=reference.WAIT_STORE_RESPONSE;
+              end
+            endcase""")
     bench = bench.replace("  int seed=", "  int fpga_trial, fpga_phase;\n"
                           "  int fpga_eew_checks=0, fpga_segment_first=0, fpga_segment_later=0;\n"
                           "  int seed=")
@@ -382,7 +406,8 @@ def main():
         ["+define+FOR_VERIFY+ARA_QBS_ENABLE+ARA_AKV_ENABLE+ARA_AKV_V2_ENABLE"])
     (out / "result.json").write_text(json.dumps({
         "state": "PASS", "reference": args.reference,
-        "upstream": args.upstream if integrated else None,
+        "current_main": args.current_main,
+        "upstream": args.upstream if integrated and not args.current_main else None,
         "before_sha256": hashlib.sha256(before.encode()).hexdigest(),
         "after_sha256": hashlib.sha256(after.encode()).hexdigest(),
         "testbench_sha256": hashlib.sha256(bench.encode()).hexdigest(),

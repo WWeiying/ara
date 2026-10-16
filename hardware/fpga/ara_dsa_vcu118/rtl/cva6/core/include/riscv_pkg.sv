@@ -741,6 +741,7 @@ package riscv;
   localparam logic [63:0] SSTATUS_SIE = 'h00000002;
   localparam logic [63:0] SSTATUS_SPIE = 'h00000020;
   localparam logic [63:0] SSTATUS_SPP = 'h00000100;
+  localparam logic [63:0] SSTATUS_VS = 'h00000600;
   localparam logic [63:0] SSTATUS_FS = 'h00006000;
   localparam logic [63:0] SSTATUS_XS = 'h00018000;
   localparam logic [63:0] SSTATUS_SUM = 'h00040000;

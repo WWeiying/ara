@@ -48,6 +48,9 @@ proc require_no_multiple_drivers {dir} {
     incr ::driver_checks
     if {$::scenario eq "drivers"} { error "Multiple drivers remain" }
 }
+proc check_pulsed_latches {dir} {
+    if {$::scenario eq "pslt_remaining"} {error "PSLT remains after reopen"}
+}
 proc fpga_warning_details::write {dir} {
     incr ::warning_reports
     if {$::scenario eq "warning_error"} { error "Warning connectivity query failed" }
@@ -75,7 +78,7 @@ proc get_property {property path} {
     if {$::scenario eq "scientific"} { return 2.3e-2 }
     return 0.01
 }
-set scenarios {healthy boolean_words scientific bad_token missing_dcp empty_dcp wrong_extension
+set scenarios {healthy boolean_words scientific pslt_remaining bad_token missing_dcp empty_dcp wrong_extension
     missing_session existing_project existing_reports existing_marker open_error close_error
     route_query_error route_empty route_invalid unrouted route_errors drivers boundary_error warning_error}
 foreach kind {max min} {

@@ -140,6 +140,9 @@ module issue_stage
     input exception_t [CVA6Cfg.NrWbPorts-1:0] ex_ex_i,
     // Indicates valid results - EX_STAGE
     input logic [CVA6Cfg.NrWbPorts-1:0] wt_valid_i,
+    input logic acc_preview_valid_i,
+    input logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id_i,
+    input logic [CVA6Cfg.XLEN-1:0] acc_preview_data_i,
     // CVXIF write enable - EX_STAGE
     input logic x_we_i,
     // CVXIF destination register - EX_STAGE
@@ -231,6 +234,9 @@ module issue_stage
       .wbdata_i                (wbdata_i),
       .ex_i                    (ex_ex_i),
       .wt_valid_i,
+      .acc_preview_valid_i,
+      .acc_preview_id_i,
+      .acc_preview_data_i,
       .x_we_i,
       .x_rd_i,
       .rvfi_issue_pointer_o,

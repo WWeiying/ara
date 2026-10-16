@@ -79,6 +79,10 @@ module scoreboard #(
     input exception_t [CVA6Cfg.NrWbPorts-1:0] ex_i,
     // Indicates valid results - EX_STAGE
     input logic [CVA6Cfg.NrWbPorts-1:0] wt_valid_i,
+    // Pure vsetvli result available for operand forwarding, never retirement.
+    input logic acc_preview_valid_i,
+    input logic [CVA6Cfg.TRANS_ID_BITS-1:0] acc_preview_id_i,
+    input logic [CVA6Cfg.XLEN-1:0] acc_preview_data_i,
     // Cvxif we for writeback - EX_STAGE
     input logic x_we_i,
     // CVXIF destination register - ISSUE_STAGE
@@ -99,6 +103,41 @@ module scoreboard #(
   } sb_mem_t;
   sb_mem_t [CVA6Cfg.NR_SB_ENTRIES-1:0] mem_q, mem_n;
   logic [CVA6Cfg.NR_SB_ENTRIES-1:0] still_issued;
+  logic [CVA6Cfg.NrIssuePorts:0][CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer;
+  logic preview_valid_q;
+  logic [CVA6Cfg.TRANS_ID_BITS-1:0] preview_id_q;
+  logic [CVA6Cfg.XLEN-1:0] preview_data_q;
+  logic preview_consumed, preview_reused;
+
+  always_comb begin
+    preview_consumed = 1'b0;
+    preview_reused = 1'b0;
+    for (int unsigned p = 0; p < CVA6Cfg.NrWbPorts; p++)
+      preview_consumed |= wt_valid_i[p] && trans_id_i[p] == preview_id_q;
+    for (int unsigned p = 0; p < CVA6Cfg.NrIssuePorts; p++)
+      preview_reused |= decoded_instr_valid_i[p] && decoded_instr_ack_o[p] &&
+                        issue_pointer[p] == preview_id_q;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      preview_valid_q <= 1'b0;
+      preview_id_q <= '0;
+      preview_data_q <= '0;
+    end else begin
+      if (acc_preview_valid_i && !preview_valid_q &&
+          still_issued[acc_preview_id_i] &&
+          mem_q[acc_preview_id_i].sbe.fu == ariane_pkg::ACCEL &&
+          !mem_q[acc_preview_id_i].sbe.valid) begin
+        preview_valid_q <= 1'b1;
+        preview_id_q <= acc_preview_id_i;
+        preview_data_q <= acc_preview_data_i;
+      end
+      if (preview_valid_q && (preview_consumed || preview_reused ||
+          !still_issued[preview_id_q])) preview_valid_q <= 1'b0;
+      if (flush_i || flush_unissued_instr_i) preview_valid_q <= 1'b0;
+    end
+  end
 
   logic [CVA6Cfg.NrIssuePorts-1:0] issue_full;
   logic [1:0][CVA6Cfg.NR_SB_ENTRIES/2-1:0] issued_instrs_even_odd;
@@ -109,7 +148,6 @@ module scoreboard #(
 
   logic [CVA6Cfg.NrIssuePorts-1:0] num_issue;
   logic [CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer_n, issue_pointer_q;
-  logic [CVA6Cfg.NrIssuePorts:0][CVA6Cfg.TRANS_ID_BITS-1:0] issue_pointer;
 
   logic [CVA6Cfg.NrCommitPorts-1:0][CVA6Cfg.TRANS_ID_BITS-1:0] commit_pointer_n, commit_pointer_q;
   logic [$clog2(CVA6Cfg.NrCommitPorts):0] num_commit;
@@ -297,8 +335,24 @@ module scoreboard #(
   assign fwd_o.issue_pointer = issue_pointer;
   assign fwd_o.wb = wb;
   for (genvar i = 0; i < CVA6Cfg.NR_SB_ENTRIES; i++) begin
-    assign fwd_o.sbe[i] = mem_q[i].sbe;
+    always_comb begin
+      fwd_o.sbe[i] = mem_q[i].sbe;
+      if (preview_valid_q && preview_id_q == i && still_issued[i] &&
+          !mem_q[i].sbe.valid && !flush_i && !flush_unissued_instr_i) begin
+        fwd_o.sbe[i].valid = 1'b1;
+        fwd_o.sbe[i].result = preview_data_q;
+      end
+    end
   end
+
+  // synthesis translate_off
+  for (genvar p = 0; p < CVA6Cfg.NrWbPorts; p++) begin : gen_preview_check
+    assert property (@(posedge clk_i) disable iff (!rst_ni)
+      preview_valid_q && still_issued[preview_id_q] && wt_valid_i[p] &&
+      trans_id_i[p] == preview_id_q && !ex_i[p].valid |->
+      wbdata_i[p] == preview_data_q);
+  end
+  // synthesis translate_on
 
   // sequential process
   always_ff @(posedge clk_i or negedge rst_ni) begin : regs

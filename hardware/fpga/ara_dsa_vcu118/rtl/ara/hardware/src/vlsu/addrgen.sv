@@ -22,7 +22,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     parameter  type         exception_t  = logic,
     // Dependant parameters. DO NOT CHANGE!
     localparam type         axi_addr_t   = logic [AxiAddrWidth-1:0],
-    localparam type         vlen_t       = logic[$clog2(VLEN+1)-1:0]
+    localparam type         vlen_t       = logic[$clog2(VLEN+1)-1:0],
+    localparam type         strb_t       = logic[$bits(elen_t)/8-1:0]
   ) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
@@ -66,6 +67,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output logic                           axi_addrgen_req_valid_o,
     input  logic                           ldu_axi_addrgen_req_ready_i,
     input  logic                           stu_axi_addrgen_req_ready_i,
+    input  strb_t           [NrLanes-1:0] ldu_mask_word_i,
+    input  logic            [NrLanes-1:0] ldu_mask_word_valid_i,
+    input  vid_t                           ldu_mask_owner_id_i,
+    input  vlen_t                          ldu_mask_first_element_i,
+    input  strb_t           [NrLanes-1:0] stu_mask_word_i,
+    input  logic            [NrLanes-1:0] stu_mask_word_valid_i,
+    input  vid_t                           stu_mask_owner_id_i,
+    input  vlen_t                          stu_mask_first_element_i,
     // Interface with the lanes (for scatter/gather operations)
     input  elen_t            [NrLanes-1:0] addrgen_operand_i,
     input  logic             [NrLanes-1:0] addrgen_operand_valid_i,
@@ -374,13 +383,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           vstart  : pe_req_q.vstart
         };
 
-        // Ara does not support misaligned AXI requests
+        // Reject an element-unaligned access before forming an AXI request.
         if (is_addr_error(pe_req_q.scalar_op, pe_req_q.vtype.vsew[1:0])) begin
           state_d         = IDLE;
           addrgen_ack_o   = 1'b1;
           addrgen_exception_o.valid = 1'b1;
-          addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
-          addrgen_exception_o.tval  = '0;
+          addrgen_exception_o.cause = is_load(pe_req_q.op)
+              ? riscv::LD_ADDR_MISALIGNED : riscv::ST_ADDR_MISALIGNED;
+          addrgen_exception_o.tval  = pe_req_q.scalar_op;
         end
         else begin : address_valid
           addrgen_req_valid = 1'b1;
@@ -499,10 +509,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         word_lane_ptr_d = '0;
         // Raise an error if necessary
         if (idx_op_error_q) begin
-          // In this case, we always get EEW-misaligned exceptions
+          // The faulting indexed address is held until this instruction ends.
           addrgen_exception_o.valid = 1'b1;
-          addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
-          addrgen_exception_o.tval  = '0;
+          addrgen_exception_o.cause = is_load(pe_req_q.op)
+              ? riscv::LD_ADDR_MISALIGNED : riscv::ST_ADDR_MISALIGNED;
+          addrgen_exception_o.tval  = idx_final_vaddr_q;
         end
         // Propagate the exception from the MMU (if any)
         // NOTE: this would override idx_op_error_q
@@ -527,10 +538,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       end
     endcase
 
-    // Immediately kill the load/store if the instruction was illegal
+    // Early exceptions have no AXI exception beat; tell the load/store unit
+    // to drain its result queue before retiring the faulting instruction.
     if (addrgen_exception_o.valid && addrgen_ack_o) begin
-      addrgen_illegal_load_o  =  is_load(pe_req_q.op) && (addrgen_exception_o.cause == riscv::ILLEGAL_INSTR);
-      addrgen_illegal_store_o = !is_load(pe_req_q.op) && (addrgen_exception_o.cause == riscv::ILLEGAL_INSTR);
+      addrgen_illegal_load_o  = is_load(pe_req_q.op) &&
+          (addrgen_exception_o.cause inside {riscv::ILLEGAL_INSTR, riscv::LD_ADDR_MISALIGNED});
+      addrgen_illegal_store_o = !is_load(pe_req_q.op) &&
+          (addrgen_exception_o.cause inside {riscv::ILLEGAL_INSTR, riscv::ST_ADDR_MISALIGNED});
     end
   end : addr_generation
 
@@ -581,6 +595,39 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   // AXI Request Generation signals, declared here for convenience
   addrgen_req_t axi_addrgen_d, axi_addrgen_q;
+  logic idx_predicate_valid, idx_predicate_active;
+
+  always_comb begin : indexed_predicate
+    int unsigned element_number, word_first, elements_per_word;
+    int unsigned word_byte, shuffled_byte, mask_lane, mask_offset;
+    strb_t [NrLanes-1:0] word;
+    logic [NrLanes-1:0] word_valid;
+    vid_t owner;
+
+    idx_predicate_valid = pe_req_q.vm;
+    idx_predicate_active = pe_req_q.vm;
+    word = axi_addrgen_q.is_load ? ldu_mask_word_i : stu_mask_word_i;
+    word_valid = axi_addrgen_q.is_load ? ldu_mask_word_valid_i : stu_mask_word_valid_i;
+    owner = axi_addrgen_q.is_load ? ldu_mask_owner_id_i : stu_mask_owner_id_i;
+    word_first = axi_addrgen_q.is_load ? ldu_mask_first_element_i : stu_mask_first_element_i;
+    element_number = unsigned'(pe_req_q.vl) -
+                     (unsigned'(axi_addrgen_q.len) >> axi_addrgen_q.vew);
+    elements_per_word = (NrLanes * DataWidthB) >> axi_addrgen_q.vew;
+    word_byte = '0;
+    shuffled_byte = '0;
+    mask_lane = '0;
+    mask_offset = '0;
+    if (!pe_req_q.vm && state_q == ADDRGEN_IDX_OP &&
+        owner == pe_req_q.id && element_number >= word_first &&
+        element_number < word_first + elements_per_word) begin
+      word_byte = (element_number - word_first) << axi_addrgen_q.vew;
+      shuffled_byte = shuffle_index(word_byte, NrLanes, pe_req_q.vtype.vsew);
+      mask_lane = shuffled_byte / DataWidthB;
+      mask_offset = shuffled_byte % DataWidthB;
+      idx_predicate_valid = word_valid[mask_lane];
+      idx_predicate_active = word[mask_lane][mask_offset];
+    end
+  end
 
   // Narrower AXI Data Byte-Width used for misaligned stores
   logic [clog2_AxiStrobeWidth-1:0]            narrow_axi_data_bwidth;
@@ -870,7 +917,29 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         // NOTE: this might be referring to an obsolete axi_cut implementation
         if (axi_addrgen_queue_empty || (axi_addrgen_req_o.is_load && axi_addrgen_q.is_load) ||
              (~axi_addrgen_req_o.is_load && ~axi_addrgen_q.is_load)) begin : axi_ax_idle
-          if (!axi_addrgen_queue_full && axi_ax_ready) begin : start_req
+          if (!axi_addrgen_queue_full && state_q == ADDRGEN_IDX_OP &&
+              idx_vaddr_valid_q && idx_predicate_valid && !idx_predicate_active) begin
+            axi_addrgen_queue = '{
+              addr         : '0,
+              vaddr        : '0,
+              elem_start   : '0,
+              size         : axi_addrgen_q.vew,
+              len          : '0,
+              is_load      : axi_addrgen_q.is_load,
+              is_exception : 1'b0,
+              is_skip      : 1'b1
+            };
+            axi_addrgen_queue_push = 1'b1;
+            idx_vaddr_ready_d = 1'b1;
+            axi_addrgen_d.len = axi_addrgen_q.len - (1 << axi_addrgen_q.vew);
+            if (axi_addrgen_d.len == '0) begin
+              addrgen_req_ready = 1'b1;
+              axi_addrgen_state_d = AXI_ADDRGEN_IDLE;
+            end
+          end else if (!axi_addrgen_queue_full && axi_ax_ready &&
+                       (state_q != ADDRGEN_IDX_OP ||
+                        (idx_vaddr_valid_q && idx_predicate_valid &&
+                         idx_predicate_active))) begin : start_req
             automatic logic [CVA6Cfg.PLEN-1:0] paddr;
 
             // Mux target address
@@ -926,10 +995,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // Send this request to the load/store units
               axi_addrgen_queue = '{
                 addr         : paddr,
+                vaddr        : axi_addrgen_q.addr,
+                elem_start   : pe_req_q.vl - (axi_addrgen_q.len >> axi_addrgen_q.vew),
                 len          : burst_length - 1,
                 size         : eff_axi_dw_log_q,
                 is_load      : axi_addrgen_q.is_load,
-                is_exception : 1'b0
+                is_exception : 1'b0,
+                is_skip      : 1'b0
               };
 
               // Calculate the addresses for the next iteration
@@ -977,10 +1049,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // Send this request to the load/store units
               axi_addrgen_queue = '{
                 addr         : paddr,
+                vaddr        : axi_addrgen_q.addr,
+                elem_start   : pe_req_q.vl - (axi_addrgen_q.len >> axi_addrgen_q.vew),
                 size         : axi_addrgen_q.vew,
                 len          : 0,
                 is_load      : axi_addrgen_q.is_load,
-                is_exception : 1'b0
+                is_exception : 1'b0,
+                is_skip      : 1'b0
               };
 
               // Account for the requested operands
@@ -1006,7 +1081,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   // Generate an error
                   idx_op_error_d          = 1'b1;
                   // Forward next vstart info to the dispatcher
-                  addrgen_exception_vstart_d  = (addrgen_req.len - axi_addrgen_q.len) >> axi_addrgen_q.vew - 1;
+                  addrgen_exception_vstart_d  = pe_req_q.vl - (axi_addrgen_q.len >> axi_addrgen_q.vew);
                   addrgen_req_ready       = 1'b1;
                   axi_addrgen_state_d     = AXI_ADDRGEN_IDLE;
                 end : eew_misaligned_error
@@ -1040,10 +1115,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   // Prepare the request for the load or store unit
                   axi_addrgen_queue = '{
                     addr         : idx_final_paddr,
+                    vaddr        : idx_final_vaddr_q,
+                    elem_start   : pe_req_q.vl - (axi_addrgen_q.len >> axi_addrgen_q.vew),
                     size         : axi_addrgen_q.vew,
                     len          : 0,
                     is_load      : axi_addrgen_q.is_load,
-                    is_exception : 1'b0
+                    is_exception : 1'b0,
+                    is_skip      : 1'b0
                   };
 
                   // Account for the requested operands
@@ -1141,10 +1219,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // Send the exception to the load or store unit
               axi_addrgen_queue = '{
                 addr         : paddr,
+                vaddr        : '0,
+                elem_start   : '0,
                 size         : axi_addrgen_q.vew,
                 len          : 0,
                 is_load      : axi_addrgen_q.is_load,
-                is_exception : 1'b1
+                is_exception : 1'b1,
+                is_skip      : 1'b0
               };
               // Don't take trap if fault-only-first and exception is on element whose idx > 0
               axi_addrgen_queue_push = ~(axi_addrgen_q.fault_only_first

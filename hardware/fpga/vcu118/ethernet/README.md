@@ -1,6 +1,11 @@
 # Isolated VCU118 J10 Diagnostic Build
 
-Status: Windows Vivado 2020.1 completed all eight build stages on source
+Current loader status: the isolated J10/CDMA ELF-and-data downloader is
+board-tested at 8.65-8.77 MB/s including DDR readback. See
+[LOADER_STATUS.md](LOADER_STATUS.md) for the matching bitstream/ELF, evidence,
+protocol checks and command. Ara execution/handoff remains outside this milestone.
+
+Earlier diagnostic-image status: Windows Vivado 2020.1 completed all eight build stages on source
 `421070e6`, including routing, timing reports and bitgen. The registered
 reset-release correction removed the counter-driven CDC-10 paths; reset
 fanout CDC-11 and partial MDIO input timing still need board-level review.
@@ -507,7 +512,9 @@ echoes still passed afterward in
 
 ## Ethernet-to-DDR downloader work
 
-The diagnostic image above is not an Ethernet loader. The separate loader
-feasibility result and unprogrammed protocol prototype are recorded in
-[LOADER_STATUS.md](LOADER_STATUS.md). Do not run `eth_load.py` against the
-diagnostic image: it has no IP/TCP receiver or DDR write path.
+The diagnostic image above is not an Ethernet loader. The separate
+MicroBlaze/lwIP loader has now been routed, programmed and tested on the
+board for J10-to-DDR transfer; results, measured throughput and remaining
+limits are in [LOADER_STATUS.md](LOADER_STATUS.md). `eth_load.py` requires
+that loader image and its standalone ELF. It cannot work against the earlier
+diagnostic echo image, which has no IP/TCP receiver or DDR write path.

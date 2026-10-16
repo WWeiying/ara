@@ -14,9 +14,13 @@ from prepare import HERE, ROOT, CACHE, CHESHIRE, BOARD_PORT, BOARD_TREE
 from dispatcher_fpga import patch_dispatcher_layout
 from dispatcher_control_fpga import patch_dispatcher_control, patch_segment_geometry
 from jtag_fpga import patch_jtag, patch_tap, patch_reset_sync, patch_ready
+from ui_reset_fpga import patch_ui_reset_distribution
 from cdc_fpga import patch_reset_muxes, patch_fifo_selectors
 from host_debug_fpga import patch_soc_debug
 from ddr2_fpga import patch_ddr2
+from ddr_cut_fpga import patch_ddr_read_cut
+from ethernet_fpga import patch_ethernet
+from axi_remap_fpga import patch_axi_remap
 
 
 def replace_once(text, old, new):
@@ -154,11 +158,15 @@ def patch_soc(text):
 def patch_sram_cache(text):
     # Generic ASIC memory ignored these floating inputs. XPM has an actual
     # output reset port, so preserve the existing cache reset down the wrapper.
-    text = replace_once(text, "          .clk_i  (clk_i),", """          .clk_i  (clk_i),
+    old = "          .clk_i  (clk_i),\n          .req_i  (req_i),"
+    new = """          .clk_i  (clk_i),
           .rst_ni (rst_ni),
           .wuser_i(wuser_i),
-          .ruser_o(ruser_o),""")
-    return text
+          .ruser_o(ruser_o),
+          .req_i  (req_i),"""
+    if text.count(new) == 1 and old not in text:
+        return text
+    return replace_once(text, old, new)
 
 
 def patch_dram(text):
@@ -182,7 +190,7 @@ def patch_dram(text):
                         ".addn_ui_clkout1            ( )")
     text = text.replace("// 333 MHz AXI (cf. CdcLogDepth)",
                         "// UI clock derived by the Vivado DDR4 IP")
-    return patch_ready(text)
+    return patch_ui_reset_distribution(patch_ready(text))
 
 
 def git(path, *args):
@@ -281,6 +289,7 @@ def export(dst, gcc, objdump, smoke_from=None):
                     files.append(name)
 
     for rel, transform in [("rtl/cheshire/hw/cheshire_pkg.sv", patch_soc_pkg),
+                           ("rtl/axi/src/axi_id_remap.sv", patch_axi_remap),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc),
                            ("rtl/cheshire/hw/cheshire_soc.sv", patch_soc_debug),
                            ("rtl/cva6/common/local/util/sram_cache.sv", patch_sram_cache),
@@ -307,7 +316,7 @@ def export(dst, gcc, objdump, smoke_from=None):
         path = dst / "rtl/board" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         before = (board_src / name).read_text()
-        after = patch_ddr2(patch_dram(before)) if name.endswith(".sv") else before
+        after = patch_ethernet(patch_ddr_read_cut(patch_ddr2(patch_dram(before)))) if name.endswith(".sv") else before
         path.write_text(after)
         if name.endswith(".sv"):
             files.append(path.relative_to(dst).as_posix())

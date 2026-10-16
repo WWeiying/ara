@@ -1,0 +1,1 @@
+You are evaluating a RISC-V accelerator. Explain in one short paragraph how a compiler should choose between an ordinary RVV kernel, QBS quantized matrix multiplication, and AKV attention for a fixed transformer graph.

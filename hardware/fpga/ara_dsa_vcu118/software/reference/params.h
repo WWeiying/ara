@@ -33,7 +33,7 @@ extern void *__base_usb;
 extern void *__base_spm;
 extern void *__base_dram;
 
-// Default boot baudrate. Keep this aligned with the standard CP2105 channel.
+// Default boot baudrate
 static const uint32_t __BOOT_BAUDRATE = 115200;
 
 // Maximum number of LBAs to copy to SPM for boot (48 KiB)

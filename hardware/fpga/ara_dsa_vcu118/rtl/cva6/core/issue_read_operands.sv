@@ -583,7 +583,10 @@ module issue_read_operands
           stall_rs3[0]   = 1'b0;
         end
       end
-      stall_raw[0] = x_transaction_rejected ? 1'b0 : stall_rs1[0] || stall_rs2[0] || stall_rs3[0];
+      // Preserve an upstream functional-unit stall (for example, the
+      // accelerator fence barrier).  The CVXIF operand logic may add a
+      // dependency stall, but must not overwrite a back-pressure request.
+      stall_raw[0] = stall_i | (x_transaction_rejected ? 1'b0 : stall_rs1[0] || stall_rs2[0] || stall_rs3[0]);
     end
 
     if (CVA6Cfg.SuperscalarEn) begin

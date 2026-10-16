@@ -56,7 +56,13 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the Mask unit
     input  strb_t            [NrLanes-1:0] mask_i,
     input  logic             [NrLanes-1:0] mask_valid_i,
+    input  vid_t                           mask_owner_id_i,
+    input  vlen_t                          mask_first_element_i,
     output logic                           mask_ready_o,
+    output strb_t            [NrLanes-1:0] mask_word_o,
+    output logic             [NrLanes-1:0] mask_word_valid_o,
+    output vid_t                           mask_owner_id_o,
+    output vlen_t                          mask_first_element_o,
     // Quiescence indication for exclusive VLSU clients
     output logic                           idle_o
   );
@@ -70,10 +76,18 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   //  MASK cut  //
   ////////////////
 
+  typedef struct packed {
+    strb_t [NrLanes-1:0] bits;
+    logic [NrLanes-1:0] valid;
+    vid_t owner;
+    vlen_t first_element;
+  } mask_word_t;
+  mask_word_t mask_word_q;
   strb_t [NrLanes-1:0] mask_q;
-  logic  [NrLanes-1:0] mask_valid_d, mask_valid_q;
+  logic [NrLanes-1:0] mask_valid_q;
   logic                mask_ready_d;
-  logic  [NrLanes-1:0] mask_ready_q;
+  logic                mask_word_ready, mask_word_valid;
+  logic                mask_input_valid;
   // Insn queue related signal
   pe_req_t vinsn_issue_d, vinsn_issue_q;
   logic vinsn_issue_valid;
@@ -81,27 +95,32 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   // Flush support
   logic lsu_ex_flush_q;
 
-  for (genvar l = 0; l < NrLanes; l++) begin
-    spill_register_flushable #(
-      .T(strb_t)
-    ) i_vldu_mask_register (
-      .clk_i     (clk_i           ),
-      .rst_ni    (rst_ni          ),
-      .flush_i   (lsu_ex_flush_q  ),
-      .data_o    (mask_q[l]       ),
-      .valid_o   (mask_valid_q[l] ),
-      .ready_i   (mask_ready_d    ),
-      .data_i    (mask_i[l]       ),
-      .valid_i   (mask_valid_d[l] ),
-      .ready_o   (mask_ready_q[l] )
-    );
+  spill_register_flushable #(
+    .T(mask_word_t)
+  ) i_vldu_mask_register (
+    .clk_i   (clk_i           ),
+    .rst_ni  (rst_ni          ),
+    .flush_i (lsu_ex_flush_q  ),
+    .data_o  (mask_word_q     ),
+    .valid_o (mask_word_valid ),
+    .ready_i (mask_ready_d    ),
+    .data_i  (mask_word_t'{bits: mask_i, valid: mask_valid_i,
+                           owner: mask_owner_id_i,
+                           first_element: mask_first_element_i}),
+    .valid_i (mask_input_valid),
+    .ready_o (mask_word_ready )
+  );
 
-    // Sample only SLDU mask valid
-    assign mask_valid_d[l] = mask_valid_i[l] & ~vinsn_issue_q.vm & vinsn_issue_valid;
-  end
+  assign mask_q = mask_word_q.bits;
+  assign mask_valid_q = mask_word_valid ? mask_word_q.valid : '0;
 
-  // Don't upset the masku with a spurious ready
-  assign mask_ready_o = mask_ready_q[0] & mask_valid_i[0] & ~vinsn_issue_q.vm & vinsn_issue_valid;
+  assign mask_word_o = mask_q;
+  assign mask_word_valid_o = mask_valid_q;
+  assign mask_owner_id_o = mask_word_q.owner;
+  assign mask_first_element_o = mask_word_q.first_element;
+
+  assign mask_input_valid = (|mask_valid_i) & ~vinsn_issue_q.vm & vinsn_issue_valid;
+  assign mask_ready_o = mask_word_ready & mask_input_valid;
 
   ////////////////////////////////
   //  Vector instruction queue  //
@@ -268,6 +287,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     WAIT_RESULT_QUEUE,
     HANDLE_EXCEPTION
   } ldu_ex_state_d, ldu_ex_state_q;
+  // An early indexed fault can follow ARs whose R beats have not returned yet.
+  logic early_illegal_pending_d, early_illegal_pending_q;
 
   localparam unsigned DataWidthB = DataWidth / 8;
 
@@ -306,6 +327,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     first_result_queue_read_d = first_result_queue_read_q;
 
     ldu_ex_state_d = ldu_ex_state_q;
+    early_illegal_pending_d = early_illegal_pending_q | addrgen_illegal_load_i;
 
     // Normally write multiple of resqueue width
     vrf_eff_write_bytes       = (NrLanes * DataWidthB);
@@ -325,7 +347,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     // - The Address Generator sent us the data about the corresponding AR beat
     // - There is place in the result queue to write the data read from the R channel
     // - This request did not generate an exception
-    if (axi_r_valid_i && axi_addrgen_req_valid_i
+    if ((axi_r_valid_i || (axi_addrgen_req_valid_i && axi_addrgen_req_i.is_skip)) &&
+        axi_addrgen_req_valid_i
         && axi_addrgen_req_i.is_load && !axi_addrgen_req_i.is_exception
         && !result_queue_full) begin : axi_r_beat_read
       // Bytes valid in the current R beat
@@ -391,7 +414,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
               // Copy data and byte strobe
               result_queue_d[result_queue_write_pnt_q][vrf_lane].wdata[8*vrf_offset +: 8] =
-                axi_r_i.data[8*axi_byte +: 8];
+                axi_addrgen_req_i.is_skip ? '0 : axi_r_i.data[8*axi_byte +: 8];
               result_queue_d[result_queue_write_pnt_q][vrf_lane].be[vrf_offset] =
                 vinsn_issue_q.vm || mask_q[vrf_lane][vrf_offset];
             end : is_vrf_byte
@@ -450,7 +473,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       // Consumed all valid bytes in this R beat
       if ((axi_r_byte_pnt_d == (upper_byte - lower_byte + 1)) || (issue_cnt_bytes_d == '0)) begin : axi_r_beat_finish
         // Request another beat
-        axi_r_ready_o = 1'b1;
+        axi_r_ready_o = !axi_addrgen_req_i.is_skip;
         axi_r_byte_pnt_d   = '0;
         // Account for the beat we consumed
         axi_len_d     = axi_len_q + 1;
@@ -587,7 +610,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       IDLE: begin
         // Handle the exception only if this is the last instruction committing results
         if (vinsn_issue_valid && (vinsn_queue_q.commit_cnt == 1) &&
-            ((axi_addrgen_req_valid_i && axi_addrgen_req_i.is_exception) || addrgen_illegal_load_i)) begin
+            ((axi_addrgen_req_valid_i && axi_addrgen_req_i.is_exception) ||
+             (early_illegal_pending_d && !axi_addrgen_req_valid_i))) begin
           ldu_ex_state_d = VALID_RESULT_QUEUE;
         end
       end
@@ -607,6 +631,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       // Handle the exception
       HANDLE_EXCEPTION: begin
         ldu_ex_state_d = IDLE;
+        early_illegal_pending_d = 1'b0;
 
         // Signal done to sequencer
         pe_resp_d.vinsn_done[vinsn_commit.id] = 1'b1;
@@ -694,6 +719,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       lsu_ex_flush_q                <= 1'b0;
       ldu_current_burst_exception_o <= 1'b0;
       ldu_ex_state_q                <= IDLE;
+      early_illegal_pending_q       <= 1'b0;
       first_result_queue_read_q     <= 1'b0;
     end else begin
       vinsn_running_q               <= vinsn_running_d;
@@ -710,6 +736,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       lsu_ex_flush_q                <= lsu_ex_flush_i;
       ldu_current_burst_exception_o <= ldu_current_burst_exception_d;
       ldu_ex_state_q                <= ldu_ex_state_d;
+      early_illegal_pending_q       <= early_illegal_pending_d;
       first_result_queue_read_q     <= first_result_queue_read_d;
     end
   end
@@ -721,5 +748,24 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
                   commit_cnt_bytes_q == '0 && axi_len_q == '0 &&
                   axi_r_byte_pnt_q == '0 && ldu_ex_state_q == IDLE &&
                   !(|mask_valid_q);
+
+`ifdef FOR_VERIFY
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && $test$plusargs("ARA_PROBE_VLDU_FAULT_ORDER") &&
+        vinsn_issue_valid && vinsn_issue_q.op == VLXE &&
+        (addrgen_illegal_load_i || axi_r_valid_i || ldu_ex_state_q != IDLE ||
+         axi_addrgen_req_valid_i || !result_queue_empty)) begin
+      $display("[VLDU_FAULT_ORDER] t=%0t id=%0d vstart=%0d ex=%0d illegal=%0b desc_v=%0b desc_ex=%0b desc_addr=%h desc_pop=%0b r_v=%0b r_r=%0b r_data=%h result_cnt=%0d result_valid=%b result_req=%b result_gnt=%b issue_bytes=%0d commit_bytes=%0d",
+               $time, vinsn_issue_q.id, vinsn_issue_q.vstart,
+               ldu_ex_state_q, addrgen_illegal_load_i,
+               axi_addrgen_req_valid_i, axi_addrgen_req_i.is_exception,
+               axi_addrgen_req_i.addr, axi_addrgen_req_ready_o,
+               axi_r_valid_i, axi_r_ready_o, axi_r_i.data,
+               result_queue_cnt_q, result_queue_valid_q[result_queue_read_pnt_q],
+               ldu_result_req_o, ldu_result_gnt_i,
+               issue_cnt_bytes_q, commit_cnt_bytes_q);
+    end
+  end
+`endif
 
 endmodule : vldu

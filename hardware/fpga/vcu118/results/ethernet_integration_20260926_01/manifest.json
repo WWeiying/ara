@@ -1,0 +1,50 @@
+{
+  "bytes": 268435456,
+  "address": "0x90000ff8",
+  "sha256": "29d6f88d62fd1980d77754e73c1d840528ae39cb5e4e7e9039eb4cae37bf2182",
+  "samples": [
+    {
+      "address": "0x90000ff8",
+      "expected_word": 795951918
+    },
+    {
+      "address": "0x98000ff8",
+      "expected_word": 2240494505
+    },
+    {
+      "address": "0xa0000ff4",
+      "expected_word": 2045594196
+    }
+  ],
+  "runs": [
+    {
+      "seconds": 26.926931200083345,
+      "payload_bytes": 268440256,
+      "MB_per_second": 9.969210899130204,
+      "data_retries": 0,
+      "control_retries": 0
+    },
+    {
+      "seconds": 26.98283310001716,
+      "payload_bytes": 268440256,
+      "MB_per_second": 9.948557106845437,
+      "data_retries": 0,
+      "control_retries": 0
+    }
+  ],
+  "independent_ddr_spotcheck_passed": true,
+  "counters_after": {
+    "eth_probe_stage": 8,
+    "eth_probe_cdma_ticks": 418123424,
+    "eth_probe_cdma_calls": 826916,
+    "eth_probe_input_ticks": 907634629,
+    "eth_probe_tx_ticks": 2444253467,
+    "eth_probe_profile_frames": 413489,
+    "eth_probe_cdma_error": 0,
+    "eth_probe_cdma_timeouts": 0,
+    "eth_probe_tx_drops": 0,
+    "eth_probe_bad_frames": 0,
+    "eth_probe_load_rejected": 3,
+    "eth_probe_ddr_bytes": 570559091
+  }
+}

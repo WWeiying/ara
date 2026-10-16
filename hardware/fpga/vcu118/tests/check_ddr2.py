@@ -153,6 +153,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="New independent result directory")
     parser.add_argument("--vcs", default="vcs")
+    parser.add_argument("--actual-wrapper", action="store_true",
+                        help="Test the current exported wrapper instead of the historical patch baseline")
     args = parser.parse_args()
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -162,8 +164,8 @@ def main():
              if p.startswith(("rtl/common_cells/", "rtl/axi/"))]
     incs = ["+incdir+" + str(pkg / p) for p in manifest["include_dirs"]]
     incs += ["+incdir+" + str(pkg / "rtl/board")]
-    original = baseline_wrapper()
-    patched = patch_ddr2(original)
+    patched = ((pkg / "rtl/board/dram_wrapper_xilinx.sv").read_text() if args.actual_wrapper
+               else patch_ddr2(baseline_wrapper()))
     (out / "dram_wrapper_xilinx.sv").write_text(patched)
     (out / "vendor_stubs.sv").write_text(vendor_stub("ddr4") + vendor_stub("ddr4_c2"))
     (out / "wrapper_tb.sv").write_text(WRAPPER_TB)

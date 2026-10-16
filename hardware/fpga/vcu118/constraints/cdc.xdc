@@ -36,11 +36,12 @@ proc ara_cdc::ddr_channels {} {
     set channels {i_dram_wrapper c0_ddr4_reset_n}
     set second gen_ddr2.i_dram_wrapper_c2
     set present [llength [get_pins -quiet $second/soc_clk_i]]
-    # Saved checkpoints have no source fileset; use their retained hierarchy.
-    # In project mode, also reject a missing channel required by the profile.
+    # Implementation workers have a GateLvl sources_1 with no RTL defines.
+    # Only RTL filesets can validate elaboration macros; linked designs use
+    # retained hierarchy and (when available) the explicitly selected profile.
     if {[llength [info commands get_filesets]]} {
         set fileset [get_filesets -quiet sources_1]
-        if {[llength $fileset]} {
+        if {[llength $fileset] && [get_property DESIGN_MODE $fileset] eq "RTL"} {
             set enabled 0
             foreach define [get_property verilog_define $fileset] {
                 if {[regexp {^ARA_FPGA_DDR2($|=)} $define]} { set enabled 1 }
@@ -48,6 +49,15 @@ proc ara_cdc::ddr_channels {} {
             if {$enabled != ($present != 0)} {
                 error "CDC: ARA_FPGA_DDR2 profile and second DDR hierarchy disagree"
             }
+        }
+    }
+    if {[info exists ::fpga_profile]} {
+        if {$::fpga_profile ni {baseline host host_ethernet dual_ddr dual_ddr_ethernet}} {
+            error "CDC: unknown profile $::fpga_profile"
+        }
+        set expected [expr {$::fpga_profile in {dual_ddr dual_ddr_ethernet}}]
+        if {$expected != ($present != 0)} {
+            error "CDC: selected profile and second DDR hierarchy disagree"
         }
     }
     if {$present} {
@@ -233,7 +243,8 @@ proc ara_cdc::ddr_fifo {wrapper} {
     }
 }
 
-proc ara_cdc::apply {} {
+proc ara_cdc::apply {{configure_debug true}} {
+    variable application_complete false
     set channels [ddr_channels]
     set resets {i_rstgen/rst_ni}
     set pors {i_board_por/rst_ni}
@@ -274,7 +285,10 @@ proc ara_cdc::apply {} {
     jtag
     uart
     foreach {wrapper pad} $channels { ddr_reset $wrapper $pad }
-    debug_clock
+    if {$configure_debug} { debug_clock }
+    set application_complete true
 }
 
-ara_cdc::apply
+if {![info exists ::ara_cdc_library_only] || !$::ara_cdc_library_only} {
+    ara_cdc::apply
+}

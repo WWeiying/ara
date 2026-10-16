@@ -29,6 +29,16 @@ foreach name $profile_ips {
         error "Refusing to restart $run ($status). Inspect its log; no run was reset."
     }
 }
+if {$fpga_profile eq "host_ethernet"} {
+    set loader_run [get_runs -quiet loader_bd_synth_1]
+    if {[llength $loader_run] != 1} { error "Missing loader BD synthesis run" }
+    set status [get_property STATUS $loader_run]
+    if {$status eq "Not started"} {
+        lappend pending $loader_run
+    } elseif {![string match {*synth_design Complete*} $status]} {
+        error "Refusing to restart loader BD: $status"
+    }
+}
 if {[llength $pending]} { launch_runs $pending -jobs $run_jobs }
 foreach run $pending {
     wait_on_run $run

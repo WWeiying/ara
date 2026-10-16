@@ -1,0 +1,19 @@
+COUNTER eth_probe_stage 8
+COUNTER eth_probe_cdma_ticks 418123424
+COUNTER eth_probe_cdma_calls 826916
+COUNTER eth_probe_input_ticks 907634629
+COUNTER eth_probe_tx_ticks 2444253467
+COUNTER eth_probe_profile_frames 413489
+COUNTER eth_probe_cdma_error 0
+COUNTER eth_probe_cdma_timeouts 0
+COUNTER eth_probe_tx_drops 0
+COUNTER eth_probe_bad_frames 0
+COUNTER eth_probe_load_rejected 3
+COUNTER eth_probe_ddr_bytes 570559091
+DDR 0x80000000 809504883
+DDR 0x800001c0 0
+DDR 0x800012bc 0
+DDR 0x8c000ff8 3030285553
+DDR 0x8c800ff8 645902995
+DDR 0x8d000ff4 3536028383
+PROFILE_READ_COMPLETE

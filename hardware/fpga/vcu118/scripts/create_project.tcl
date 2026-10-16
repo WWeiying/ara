@@ -33,6 +33,10 @@ set_property STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY none [get_runs synth_1]
 source [file join $package_root scripts create_ip.tcl]
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints board.xdc]
 add_files -fileset constrs_1 -norecurse [file join $package_root constraints timing.xdc]
+if {$fpga_profile eq "host_ethernet"} {
+    add_files -fileset constrs_1 -norecurse [file join $package_root constraints ethernet.xdc]
+    add_files -fileset constrs_1 -norecurse [file join $package_root constraints ethernet_timing.tcl]
+}
 set cdc [file join $package_root constraints cdc.xdc]
 add_files -fileset constrs_1 -norecurse $cdc
 configure_package_constraints

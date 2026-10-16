@@ -9,6 +9,9 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 from ddr2_fpga import patch_ddr2
+from ethernet_fpga import patch_ethernet
+from ddr_cut_fpga import patch_ddr_read_cut
+from ui_reset_fpga import patch_ui_reset_distribution
 
 
 def baseline_wrapper():
@@ -55,7 +58,18 @@ class DdrPatchTests(unittest.TestCase):
 
     def test_exported_wrapper(self):
         wrapper = HERE.parent / "ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv"
-        self.assertEqual(wrapper.read_bytes(), patch_ddr2(baseline_wrapper()).encode())
+        self.assertEqual(wrapper.read_bytes(), patch_ui_reset_distribution(
+            patch_ethernet(patch_ddr_read_cut(patch_ddr2(baseline_wrapper())))).encode())
+
+    def test_read_cut_matches_accepted_revision(self):
+        accepted = subprocess.check_output([
+            "git", "show", "456fd1e9:hardware/fpga/ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv"
+        ], cwd=HERE, text=True)
+        source = patch_ddr2(baseline_wrapper())
+        self.assertEqual(patch_ddr_read_cut(source), accepted)
+        for invalid in ("", accepted, source.replace("cdc_dram_req", "changed_req")):
+            with self.assertRaises(RuntimeError):
+                patch_ddr_read_cut(invalid)
 
 
 if __name__ == "__main__":

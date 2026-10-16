@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Candidate TCP image sender for the VCU118 Ethernet-to-DDR loader.
-
-The board receiver is not implemented yet. This module is deliberately usable
-against a test peer, but a successful exchange is not a board validation.
-"""
+"""TCP image sender for the standalone VCU118 Ethernet-to-DDR loader."""
 import argparse
 import json
 from pathlib import Path
@@ -21,6 +17,7 @@ HELLO = struct.Struct("<8sII")  # magic, capabilities, largest accepted data blo
 RECORD = struct.Struct("<4sQII")  # opcode, address/entry, byte count, CRC32
 ACK = struct.Struct("<QII")  # address/entry, DDR readback CRC32, status
 MAX_CHUNK = 65536
+CAP_PIPELINE = 4
 
 
 def receive_exact(stream, length):
@@ -60,11 +57,20 @@ def blocks(segment, max_chunk):
         yield address, bytes(block)
 
 
-def send_record(stream, opcode, address, data=b""):
+def send_record(stream, opcode, address, data=b"", timing=None):
     crc = zlib.crc32(data)
+    started = time.monotonic()
     stream.sendall(RECORD.pack(opcode, address, len(data), crc))
     if data:
         stream.sendall(data)
+    sent = time.monotonic()
+    check_ack(stream, address, crc)
+    if timing is not None:
+        timing["send_seconds"] += sent - started
+        timing["ack_wait_seconds"] += time.monotonic() - sent
+
+
+def check_ack(stream, address, crc):
     observed_address, observed_crc, status = ACK.unpack(receive_exact(stream, ACK.size))
     if status or observed_address != address or observed_crc != crc:
         raise RuntimeError(f"DDR verification rejected at 0x{address:x}: "
@@ -72,17 +78,40 @@ def send_record(stream, opcode, address, data=b""):
                            f"readback_crc=0x{observed_crc:08x}, expected_crc=0x{crc:08x}")
 
 
-def transfer(stream, image, max_chunk):
-    if not 1 <= max_chunk <= MAX_CHUNK:
-        raise ValueError("Invalid board maximum chunk size")
+def transfer(stream, image, max_chunk, timing=None, inflight=1):
+    if not 1 <= max_chunk <= MAX_CHUNK or not 1 <= inflight <= 8:
+        raise ValueError("Invalid board maximum chunk size or in-flight window")
     count = 0
     total = 0
+    pending = []
     for segment in image.segments:
         for address, data in blocks(segment, max_chunk):
-            send_record(stream, b"DATA", address, data)
+            if inflight == 1:
+                send_record(stream, b"DATA", address, data, timing)
+            else:
+                crc = zlib.crc32(data)
+                started = time.monotonic()
+                stream.sendall(RECORD.pack(b"DATA", address, len(data), crc))
+                stream.sendall(data)
+                if timing is not None:
+                    timing["send_seconds"] += time.monotonic() - started
+                pending.append((address, crc))
+                if len(pending) == inflight:
+                    started = time.monotonic()
+                    for expected_address, expected_crc in pending:
+                        check_ack(stream, expected_address, expected_crc)
+                    if timing is not None:
+                        timing["ack_wait_seconds"] += time.monotonic() - started
+                    pending.clear()
             count += 1
             total += len(data)
-    send_record(stream, b"DONE", image.entry)
+    if pending:
+        started = time.monotonic()
+        for expected_address, expected_crc in pending:
+            check_ack(stream, expected_address, expected_crc)
+        if timing is not None:
+            timing["ack_wait_seconds"] += time.monotonic() - started
+    send_record(stream, b"DONE", image.entry, timing=timing)
     return {"payload_bytes": total, "verified_blocks": count,
             "entry": image.entry, "execution_started": False}
 
@@ -102,15 +131,18 @@ def main(argv=None):
     parser.add_argument("--elf", required=True, type=Path)
     parser.add_argument("--load", action="append", type=parse_load, default=[])
     parser.add_argument("--host", help="Board IP; omit only with --plan-only")
+    parser.add_argument("--source", help="Local IPv4 address to bind for the board link")
     parser.add_argument("--port", type=int, default=49200)
     parser.add_argument("--timeout", type=float, default=30)
+    parser.add_argument("--inflight", type=int, default=1,
+                        help="Maximum DATA records sent before checking their ACKs (1..8)")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--plan-only", action="store_true", help="Validate image without network access")
     args = parser.parse_args(argv)
     if not args.plan_only and not args.host:
         parser.error("--host is required unless --plan-only is set")
-    if not 1 <= args.port <= 65535 or args.timeout <= 0:
-        parser.error("Invalid port or timeout")
+    if not 1 <= args.port <= 65535 or args.timeout <= 0 or not 1 <= args.inflight <= 8:
+        parser.error("Invalid port, timeout or in-flight window")
     report = {"state": "starting", "board_verified": False, "execution_started": False}
     created = False
     try:
@@ -120,14 +152,21 @@ def main(argv=None):
             image = prepare_image(args.elf, args.load)
             report.update(state="plan_only", image=image.manifest())
         else:
-            with socket.create_connection((args.host, args.port), args.timeout) as stream:
+            source_address = (args.source, 0) if args.source else None
+            with socket.create_connection((args.host, args.port), args.timeout,
+                                          source_address=source_address) as stream:
                 stream.settimeout(args.timeout)
+                report["local_address"] = stream.getsockname()[0]
                 caps, max_chunk = hello(stream)
+                if args.inflight > 1 and not caps & CAP_PIPELINE:
+                    raise ValueError("Board firmware does not support pipelined records")
                 image = prepare_image(args.elf, args.load, caps=caps)
                 report.update(image=image.manifest(), board_capabilities=caps,
-                              board_max_chunk=max_chunk)
+                              board_max_chunk=max_chunk, inflight_records=args.inflight)
                 started = time.monotonic()
-                report.update(transfer(stream, image, max_chunk))
+                timing = {"send_seconds": 0.0, "ack_wait_seconds": 0.0}
+                report.update(transfer(stream, image, max_chunk, timing, args.inflight))
+                report.update(timing)
                 elapsed = time.monotonic() - started
                 report["transfer_seconds_including_peer_readback"] = elapsed
                 report["payload_bytes_per_second_including_peer_readback"] = (

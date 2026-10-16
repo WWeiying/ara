@@ -8,14 +8,14 @@
 
   chosen {
     stdout-path = &uart0;
-    bootargs = "earlycon=sbi console=ttyS0,115200 earlyprintk loglevel=7 rdinit=/init";
+    bootargs = "earlycon=sbi console=ttyS0,115200 earlyprintk loglevel=7 rdinit=/init unaligned_scalar_speed=unsupported unaligned_vector_speed=unsupported";
     linux,initrd-start = <0x0 __INITRD_START__>;
     linux,initrd-end = <0x0 __INITRD_END__>;
   };
 
   memory@80000000 {
     device_type = "memory";
-    reg = <0x0 0x80000000 0x0 0x80000000>;
+    reg = <0x0 0x80000000 0x0 0x7eff0000>;
   };
 
   cpus {

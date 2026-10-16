@@ -423,6 +423,16 @@ module fpnew_cast_multi #(
   logic       of_before_round, uf_before_round;
 
 
+  // The negative signed minimum is representable at exponent N-1; rounding
+  // decides whether a value in that binade reaches it or exceeds the range.
+  logic negative_int_boundary;
+  always_comb begin
+    negative_int_boundary = 1'b0;
+    if (dst_is_int_q && !op_mod_q2 && input_sign_q)
+      negative_int_boundary =
+          input_exp_q == signed'(fpnew_pkg::int_width(int_fmt_q2) - 1);
+  end
+
   // Perform adjustments to mantissa and exponent
   always_comb begin : cast_value
     // Default assignment
@@ -440,7 +450,8 @@ module fpnew_cast_multi #(
       // By default right shift mantissa to be an integer
       denorm_shamt = unsigned'(MAX_INT_WIDTH - 1 - input_exp_q);
       // overflow: when converting to unsigned the range is larger by one
-      if (input_exp_q >= signed'(fpnew_pkg::int_width(int_fmt_q2) - 1 + op_mod_q2)) begin
+      if (input_exp_q >= signed'(fpnew_pkg::int_width(int_fmt_q2) - 1 + op_mod_q2) &&
+          !negative_int_boundary) begin
         denorm_shamt    = '0; // prevent shifting
         of_before_round = 1'b1;
       // underflow
@@ -597,7 +608,7 @@ module fpnew_cast_multi #(
   assign rounded_int_res      = rounded_sign ? unsigned'(-rounded_abs) : rounded_abs;
   assign rounded_int_res_zero = (rounded_int_res == '0);
 
-  // Detect integer overflows after rounding (only positives)
+  // Detect integer overflows after rounding.
   for (genvar ifmt = 0; ifmt < int'(NUM_INT_FORMATS); ifmt++) begin : gen_int_overflow
     // Set up some constants
     localparam int unsigned INT_WIDTH = fpnew_pkg::int_width(fpnew_pkg::int_format_e'(ifmt));
@@ -610,6 +621,9 @@ module fpnew_cast_multi #(
           // Check whether the rounded MSB differs from unrounded MSB
           ifmt_of_after_round[ifmt] = ~rounded_int_res[INT_WIDTH-2+op_mod_q2];
         end
+        if (rounded_sign && !op_mod_q2 && input_exp_q == signed'(INT_WIDTH - 1))
+          ifmt_of_after_round[ifmt] =
+              rounded_abs[INT_WIDTH-1:0] != {1'b1, {(INT_WIDTH-1){1'b0}}};
       end
     end else begin : inactive_format
       assign ifmt_of_after_round[ifmt] = fpnew_pkg::DONT_CARE;
@@ -704,7 +718,8 @@ module fpnew_cast_multi #(
   // Detect special case from source format (inf, nan, overflow, nan-boxing or negative unsigned)
   assign int_result_is_special = info_q.is_nan | info_q.is_inf |
                                  of_before_round | of_after_round | ~info_q.is_boxed |
-                                 (input_sign_q & op_mod_q2 & ~rounded_int_res_zero);
+                                 (input_sign_q & op_mod_q2 &
+                                  (~rounded_int_res_zero | (input_exp_q >= 0 && !info_q.is_zero)));
 
   // All integer special cases are invalid
   assign int_special_status = '{NV: 1'b1, default: 1'b0};
@@ -730,7 +745,10 @@ module fpnew_cast_multi #(
 
   assign fp_result  = fp_result_is_special  ? fp_special_result  : fmt_result[dst_fmt_q2];
   assign fp_status  = fp_result_is_special  ? fp_special_status  : fp_regular_status;
-  assign int_result = int_result_is_special ? int_special_result : rounded_int_res;
+  // Reuse the sign-extended minimum encoding also for a valid negative
+  // boundary result; its flags still come from the normal rounding path.
+  assign int_result = (int_result_is_special || negative_int_boundary)
+                     ? int_special_result : rounded_int_res;
   assign int_status = int_result_is_special ? int_special_status : int_regular_status;
 
   // Final results for output pipeline

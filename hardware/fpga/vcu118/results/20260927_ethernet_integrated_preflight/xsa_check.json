@@ -1,0 +1,7 @@
+{
+  "state": "metadata_checked",
+  "checks": 28,
+  "xsa_sha256": "914dcd8852f51885616fd9b0346f82768888406869c997a18c4465dd63a932a7",
+  "physical_cdc_signoff": false,
+  "board_validated": false
+}

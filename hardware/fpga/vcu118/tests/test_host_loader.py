@@ -709,6 +709,13 @@ class TclTransportTests(unittest.TestCase):
                 with self.assertRaisesRegex(TransportError, error):
                     transport.exchange([Operation("M", "READ", 0x80000000)])
 
+    def test_ethernet_status_reassembles_split_vio_probes(self):
+        with self.transport("eth_split") as transport:
+            self.assertEqual(transport.ethernet_status(), 0x45544831)
+        with self.transport("eth_magic", "bad_eth_magic") as transport:
+            with self.assertRaisesRegex(TransportError, "magic mismatch"):
+                transport.ethernet_status()
+
     def test_readback_mismatch_does_not_boot(self):
         with self.transport("corrupt") as transport:
             with self.assertRaisesRegex(RuntimeError, "readback mismatch"):

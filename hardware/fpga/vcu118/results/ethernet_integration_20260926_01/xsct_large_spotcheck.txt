@@ -1,0 +1,14 @@
+TARGET_STATE   1  xcvu9p
+     2  MicroBlaze Debug Module at USER2
+        3* MicroBlaze #0 (Running)
+     4  Legacy Debug Hub
+READ_0x90000ff8 795951918
+READ_0x98000ff8 2240494505
+READ_0xa0000ff4 2045594196
+PC_SAMPLE_0 pc: 00015184
+
+PC_SAMPLE_1 pc: 000164a0
+
+PC_SAMPLE_2 pc: 000164a0
+
+TIMER1_TICKS_IN_3S 308596299

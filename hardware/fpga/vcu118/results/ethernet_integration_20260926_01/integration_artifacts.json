@@ -1,0 +1,65 @@
+{
+  "state": "standalone_baseline_artifacts_not_integrated",
+  "artifacts": [
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bd_cdma_02\\loader_cdma.bit",
+      "bytes": 80159230,
+      "sha256": "eab51ee5d7051f796f5ee864aee74260e5a7fa484fb941b6f0658e4faf7fedc8"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bd_cdma_02\\loader_cdma.ltx",
+      "bytes": 1051,
+      "sha256": "8c3ee01f46da903e6a11c7e4b5db49cee049b8fc0d075b6388d6f8c0d3e4dc2c"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bd_cdma_02\\loader_no_bitstream.xsa",
+      "bytes": 770987,
+      "sha256": "e9346f58bc7c534c304877ee5838985615a61db6d1b7ea43007052d9a7a02f28"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_app\\fast_probe_cdma\\fast_probe.elf",
+      "bytes": 879020,
+      "sha256": "3b447ca9331f65ef7deb8892f066c4fa61ddcbc4ae679e56b94debf06c1df87e"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_app\\src\\lscript.ld",
+      "bytes": 5917,
+      "sha256": "e4b54fbba78f3ae2684009cf2dbff2b7cdb4dbbff3fdc1388757f04df6541475"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_app\\src\\eth_fast_probe_main.c",
+      "bytes": 12714,
+      "sha256": "8bd61e95921a4435edc1d5a27aede7601c8c0135ce0a544da76bf322d754b9e5"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_platform\\mb\\loader_domain\\bsp\\mb\\include\\xparameters.h",
+      "bytes": 33927,
+      "sha256": "2196037f5c48b4cbbb4944b8eb8d5f3edc1a3c71810152db43560891e96e6ba0"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_platform\\mb\\loader_domain\\bsp\\mb\\lib\\libxil.a",
+      "bytes": 1330380,
+      "sha256": "40f4ddbf0d5f2ebc4f3f434e84ccaf711d068fee6d01a2021aa457f262048635"
+    },
+    {
+      "path": "D:\\fpga_runs\\ara_loader_bsp_cdma_01\\loader_platform\\mb\\loader_domain\\bsp\\mb\\lib\\liblwip4.a",
+      "bytes": 1465002,
+      "sha256": "b36060682504164296917c8a7386f7847b82ae087c49d5d0c7698eb6c01306b1"
+    },
+    {
+      "path": "D:\\fpga_host_runs\\eth_large_20260926_223313_043\\manifest.json",
+      "bytes": 1289,
+      "sha256": "fb20f707dd86d42fadca293d0f6e7fee6ddcd5e218133d3d69cf7218f0ba678b"
+    },
+    {
+      "path": "D:\\fpga_host_runs\\eth_large_20260926_223313_043\\run1\\report.json",
+      "bytes": 2450,
+      "sha256": "13c331066c59c2a657b90886e0231f65d8ae3f8c2614951fc61397a583f48c71"
+    },
+    {
+      "path": "D:\\fpga_host_runs\\eth_large_20260926_223313_043\\run2\\report.json",
+      "bytes": 2449,
+      "sha256": "b2cf71aed4a97aaec8c24c8de896acc58723159bb86623138584d9051ee37071"
+    }
+  ]
+}

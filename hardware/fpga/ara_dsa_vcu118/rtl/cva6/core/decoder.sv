@@ -1809,6 +1809,8 @@ module decoder
       end else if (ecall) begin
         // this exception is valid
         instruction_o.ex.valid = 1'b1;
+        // ECALL has no trap-value payload; do not retain the instruction bits.
+        instruction_o.ex.tval = '0;
         // depending on the privilege mode, set the appropriate cause
         if (priv_lvl_i == riscv::PRIV_LVL_S && CVA6Cfg.RVS) begin
           instruction_o.ex.cause = (CVA6Cfg.RVH && v_i) ? riscv::ENV_CALL_VSMODE : riscv::ENV_CALL_SMODE;
@@ -1822,6 +1824,9 @@ module decoder
         instruction_o.ex.valid = 1'b1;
         // set breakpoint cause
         instruction_o.ex.cause = riscv::BREAKPOINT;
+        // Breakpoints report their faulting PC, not the instruction encoding.
+        if (CVA6Cfg.TvalEn)
+          instruction_o.ex.tval = {{CVA6Cfg.XLEN-CVA6Cfg.VLEN{pc_i[CVA6Cfg.VLEN-1]}}, pc_i};
         // set gva bit
         if (CVA6Cfg.RVH) instruction_o.ex.gva = v_i;
         else instruction_o.ex.gva = 1'b0;
@@ -1921,6 +1926,9 @@ module decoder
           instruction_o.ex.cause = interrupt_cause;
         end
       end
+      // Only a selected interrupt has no tval; masked IRQs retain sync payloads.
+      if (instruction_o.ex.valid && instruction_o.ex.cause[CVA6Cfg.XLEN-1])
+        instruction_o.ex.tval = '0;
     end
 
     // a debug request has precendece over everything else

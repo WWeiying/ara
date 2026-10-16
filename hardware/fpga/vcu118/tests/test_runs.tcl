@@ -161,8 +161,27 @@ proc require_no_multiple_drivers {dir} {
     }
 }
 proc get_timing_paths {args} {
-    if {$::scenario eq "no_timing"} { return {} }
+    if {$::scenario in {no_timing synth_no_timing}} { return {} }
     return path
+}
+proc report_timing_summary {args} {
+    set fields {0.5 0 0 100 0.1 0 0 100 0.1 0 0 100}
+    set fail [expr {$::scenario in {bad_timing synth_bad_setup synth_bad_hold synth_bad_pulse synth_rounded_failure} ||
+        ($::scenario eq "route_bad_timing" && [llength $::launched])}]
+    if {$fail} {
+        set offset 0
+        if {$::scenario eq "synth_bad_hold"} { set offset 4 }
+        if {$::scenario eq "synth_bad_pulse"} { set offset 8 }
+        lset fields $offset -0.1
+        lset fields [expr {$offset + 2}] 1
+        if {$::scenario eq "synth_rounded_failure"} { lset fields $offset -0.000 }
+    }
+    if {$::scenario eq "synth_no_endpoints"} { lset fields 3 0 }
+    if {$::scenario eq "synth_nonfinite"} { lset fields 0 NaN }
+    set result "WNS(ns) TNS(ns) Failing Total WHS(ns) THS(ns) Failing Total WPWS(ns) TPWS(ns) Failing Total\n-----\n[join $fields {   }]\n"
+    if {$::scenario eq "synth_bad_summary"} { set result "Unrecognized timing summary" }
+    put [lindex $args [expr {[lsearch -exact $args -file] + 1}]] $result
+    return $result
 }
 # Any accidental IP rebuild, reset, deletion, or bitstream generation is an error.
 foreach forbidden {reset_runs delete_runs generate_target create_ip_run upgrade_ip write_bitstream} {
@@ -174,11 +193,13 @@ foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomple
     missing_dcp empty_dcp hook missing_hook existing_dir launcher_error error_marker crash failed_status
     log_cancelled log_canceled log_stackfree delayed_log_crash
     implementation stale_parent bad_timing no_timing loop route_loop synth_multidriver impl_multidriver route_multidriver
+    synth_bad_setup synth_bad_hold synth_bad_pulse synth_no_timing synth_bad_summary
+    synth_nonfinite synth_no_endpoints synth_rounded_failure route_bad_timing
     inspect inspect_stale inspect_open_error} {
     setup $scenario
     set stage synth
     set use_parent -
-    if {$scenario in {implementation stale_parent bad_timing no_timing loop route_loop impl_multidriver route_multidriver}} {
+    if {$scenario in {implementation stale_parent bad_timing no_timing loop route_loop impl_multidriver route_multidriver route_bad_timing}} {
         set stage impl
         set use_parent $parent
     }
@@ -224,7 +245,15 @@ foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomple
                 assert {$reported eq ""} "failed inspection must not report success"
             }
         }
-        if {$scenario in {loop impl_multidriver}} { assert {![llength $launched]} "block implementation before launch" }
+        if {$scenario in {loop impl_multidriver bad_timing no_timing}} {
+            assert {![llength $launched] && ![llength $created]} "block implementation before creation/launch"
+        }
+        if {$scenario in {synth_bad_setup synth_bad_hold synth_bad_pulse synth_no_timing synth_bad_summary
+            synth_nonfinite synth_no_endpoints synth_rounded_failure route_bad_timing}} {
+            assert {[llength $launched] == 1} "check timing after the requested run"
+            assert {$reported eq "${stage}_$token"} "preserve failure reports"
+            assert {[file exists [file join $package_root reports ${stage}_$token timing_gate.rpt]]} "preserve timing gate evidence"
+        }
         if {$scenario in {synth_multidriver impl_multidriver route_multidriver}} {
             assert {$message eq "Multiple drivers remain"} "driver gate diagnostic preserved"
             assert {$reported eq ""} "reject before expensive reports and success marker"

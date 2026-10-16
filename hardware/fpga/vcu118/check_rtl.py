@@ -11,7 +11,7 @@ from collections import Counter
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("package", type=Path)
-parser.add_argument("--profile", choices=("baseline", "host", "dual_ddr"), default="baseline")
+parser.add_argument("--profile", choices=("baseline", "host", "dual_ddr", "host_ethernet"), default="baseline")
 parser.add_argument("--allow-vendor-ip", action="store_true",
                     help="Allow only the exact expected unelaborated Vivado IP/primitives")
 args = parser.parse_args()
@@ -32,6 +32,8 @@ if args.profile != "baseline":
     argv.append("-DARA_FPGA_HOST")
 if args.profile == "dual_ddr":
     argv.append("-DARA_FPGA_DDR2")
+if args.profile == "host_ethernet":
+    argv.append("-DARA_FPGA_ETHERNET")
 argv.extend("-I" + str(root / path) for path in manifest["include_dirs"])
 argv.extend(str(root / path) for path in manifest["files"])
 command = " ".join('"' + arg + '"' for arg in argv)
@@ -47,6 +49,8 @@ prefix = "ara_dsa_vcu118.i_cheshire_soc.gen_cva6_cores[0]."
 paths = [prefix + "i_core_cva6", prefix + "gen_ara.i_ara"]
 paths += [prefix + f"gen_ara.i_ara.gen_lanes[{i}].i_lane" for i in range(4)]
 paths += [prefix + "gen_ara.i_ara.i_vlsu." + name for name in ("i_qbs_engine", "i_akv_engine")]
+paths += [prefix + "gen_ara.i_ara.i_vsetvl_preview",
+          prefix + "gen_ara.i_ara.i_vlsu.i_store_load_lookahead"]
 payload_rams = []
 payload_widths = {}
 for bank in range(2):
@@ -65,7 +69,8 @@ for path in paths:
         raise RuntimeError(f"Missing required hardware instance {path}")
     instances[symbol.definition.name] += 1
 required = {"cva6": 1, "ara": 1, "lane": 4, "qbs_engine": 1, "akv_engine": 1,
-            "qbs_payload_buffer": 2, "qbs_payload_sram": 24}
+            "qbs_payload_buffer": 2, "qbs_payload_sram": 24,
+            "vsetvl_preview": 1, "store_load_lookahead_pair": 1}
 for name, count in required.items():
     if instances[name] != count:
         raise RuntimeError(f"Expected {count} {name} instances, got {instances[name]}")
@@ -108,6 +113,23 @@ if args.profile == "dual_ddr":
         if compilation.getRoot().lookupName("ara_dsa_vcu118." + path) is None:
             raise RuntimeError("Missing dual DDR hardware: " + path)
 errors, external = [], set()
+if args.profile == "host_ethernet":
+    vendor.update({"loader_bd_wrapper", "eth_control"})
+    for suffix in ("i_eth_loader", "i_eth_shared_ddr.i_isolate", "i_eth_shared_ddr.gen_static_ids"):
+        if compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper." + suffix) is None:
+            raise RuntimeError("Missing Ethernet integration instance: " + suffix)
+    soc_req = compilation.getRoot().lookupName("ara_dsa_vcu118.i_dram_wrapper.soc_req_i")
+    soc_id = soc_req.type.canonicalType.find("ar").type.canonicalType.find("id")
+    if soc_id.type.bitWidth != 5:
+        raise RuntimeError("Review static DDR ID partition after SoC ID width change")
+    print("Ethernet DDR IDs: Ara 5 bits zero-extended to 8; source-tag partition enabled")
+    demux = "ara_dsa_vcu118.i_dram_wrapper.i_eth_shared_ddr.i_range.i_demux_simple"
+    for parameter, expected in (("AxiLookBits", 1), ("UniqueIds", 0), ("MaxTrans", 32),
+                                ("AtopSupport", 0), ("IdCounterWidth", 5)):
+        symbol = compilation.getRoot().lookupName(demux + "." + parameter)
+        if symbol is None or int(symbol.value.value) != expected:
+            raise RuntimeError("Unexpected loader protection parameter: " + parameter)
+    print("Ethernet protection: one lookup bit, ordering counters enabled, MaxTrans=32")
 for diag in compilation.getAllDiagnostics():
     severity = driver.diagEngine.getSeverity(diag.code, diag.location)
     if severity not in (DiagnosticSeverity.Error, DiagnosticSeverity.Fatal):

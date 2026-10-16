@@ -480,6 +480,14 @@ def load_and_run(transport, image, output, report, full_reset_confirmed=False,
     timings["load_snapshot_collection"] = time.monotonic() - start
     if any(loading_snapshot.get(name, {}).get("error_count", 0) for name in ("ddr1", "ddr2")):
         raise RuntimeError("DDR AXI error recorded while loading; refusing launch")
+    return _launch_verified(transport, image, output, report, scratch3, run_id,
+                            seconds, watchdog_cycles, launch_only)
+
+
+def _launch_verified(transport, image, output, report, scratch3, run_id,
+                     seconds, watchdog_cycles=0, launch_only=False, before_doorbell=None):
+    """Internal completion path; callers must finish their transport's verification."""
+    timings = report.setdefault("other_timings_seconds", {})
     # Publish the entry as one 64-bit pair, then the doorbell LAST. Do not read
     # back scratch[2] after launch: ROM may already have consumed/cleared it.
     start = time.monotonic()
@@ -494,10 +502,13 @@ def load_and_run(transport, image, output, report, full_reset_confirmed=False,
     check = read_debug(transport, [DONE, RUN_ID, RESULT, FLAGS])
     if check != [0, run_id, 0xFFFFFFFF, 0]:
         raise RuntimeError("Debug run controls did not initialize")
+    if before_doorbell is not None:
+        before_doorbell()
     report.update(state="launching", run_id=run_id, launched_utc=now())
     write_json(Path(output) / "report.json", report)
     transport.exchange([Operation("M", "WRITE", SCRATCH + 8,
                                   data=struct.pack("<I", 2) + scratch3)])
+    report["execution_started"] = True
     timings["boot_control_and_launch"] = time.monotonic() - start
     report["state"] = "running"
     write_json(Path(output) / "report.json", report)

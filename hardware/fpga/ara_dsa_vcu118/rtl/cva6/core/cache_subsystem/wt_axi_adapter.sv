@@ -527,9 +527,10 @@ module wt_axi_adapter
 
   // decode virtual read channels of icache
   always_comb begin : p_axi_rtrn_decode
-    // we are not ready when invalidating
+    // Invalidation owns the D-cache return slot. Backpressure AXI as well,
+    // otherwise a simultaneous read beat is accepted but never captured.
     // note: b's are buffered separately
-    axi_rd_rdy        = ~invalidate;
+    axi_rd_rdy        = ~invalidate & ~inval_valid_i;
 
     icache_rtrn_rd_en = 1'b0;
     icache_rtrn_vld_d = 1'b0;
@@ -550,8 +551,8 @@ module wt_axi_adapter
     b_pop              = 1'b0;
     dcache_sc_rtrn     = 1'b0;
 
-    // External invalidation requests (from coprocessor). This is safe as
-    // there are no other transactions when a coprocessor has pending stores.
+    // External invalidation can overlap speculative fetches and page walks.
+    // The shared R channel is held until this return slot is available.
     inval_ready_o      = 1'b0;
     if (inval_valid_i) begin
       inval_ready_o         = 1'b1;

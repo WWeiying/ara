@@ -89,6 +89,23 @@ int main(void) {
     const uint32_t crc = eth_loader_crc32(payload, sizeof(payload));
 
     assert(eth_loader_crc32("123456789", 9) == UINT32_C(0xcbf43926));
+    for (size_t length = 0; length < 256; ++length) {
+        uint8_t bytes[259];
+        uint32_t reference = UINT32_MAX;
+        for (size_t i = 0; i < length; ++i)
+            bytes[i] = (uint8_t)((i * 73u + length * 19u) & 255u);
+        for (size_t i = 0; i < length; ++i) {
+            reference ^= bytes[i];
+            for (unsigned bit = 0; bit < 8; ++bit)
+                reference = (reference >> 1) ^
+                    ((reference & 1u) ? UINT32_C(0xedb88320) : 0);
+        }
+        for (size_t offset = 0; offset < 4; ++offset) {
+            memmove(bytes + offset, bytes, length);
+            assert(eth_loader_crc32(bytes + offset, length) == ~reference);
+            memmove(bytes, bytes + offset, length);
+        }
+    }
     init(&m);
     append_record(&m, "DATA", UINT64_C(0x80000008), payload, sizeof(payload), crc);
     append_record(&m, "DONE", UINT64_C(0x80000008), NULL, 0, 0);

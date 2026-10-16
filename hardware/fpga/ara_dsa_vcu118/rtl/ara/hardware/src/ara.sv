@@ -66,6 +66,21 @@ module ara import ara_pkg::*; #(
   `include "ara/ara_typedef.svh"
   import cf_math_pkg::idx_width;
 
+  logic preview_valid;
+  logic [CVA6Cfg.XLEN-1:0] preview_vl;
+  vsetvl_preview #(.VLEN(VLEN), .ELEN(ELEN), .XLEN(CVA6Cfg.XLEN)) i_vsetvl_preview (
+    .valid_i(acc_req_i.vset_preview_req.req_valid),
+    .insn_i(acc_req_i.vset_preview_req.insn),
+    .avl_i(acc_req_i.vset_preview_req.rs1),
+    .valid_o(preview_valid), .vl_o(preview_vl)
+  );
+  always_comb begin
+    acc_resp_o.vset_preview_resp = '0;
+    acc_resp_o.vset_preview_resp.resp_valid = preview_valid;
+    acc_resp_o.vset_preview_resp.result = preview_vl;
+    acc_resp_o.vset_preview_resp.trans_id = acc_req_i.vset_preview_req.trans_id;
+  end
+
   ///////////////////
   //  Definitions  //
   ///////////////////
@@ -212,6 +227,7 @@ module ara import ara_pkg::*; #(
   ara_req_t                     ara_req;
   logic                         ara_req_valid;
   logic                         ara_req_ready;
+  logic                         ara_store_accepted;
   ara_resp_t                    ara_resp;
   logic                         ara_resp_valid;
   logic                         ara_idle;
@@ -253,6 +269,7 @@ module ara import ara_pkg::*; #(
     .ara_req_o         (ara_req         ),
     .ara_req_valid_o   (ara_req_valid   ),
     .ara_req_ready_i   (ara_req_ready   ),
+    .ara_store_accepted_i(ara_store_accepted),
     .ara_resp_i        (ara_resp        ),
     .ara_resp_valid_i  (ara_resp_valid  ),
     .ara_idle_i        (ara_idle        ),
@@ -308,6 +325,8 @@ module ara import ara_pkg::*; #(
   logic      [NrLanes-1:0]                     mask_valid;
   logic                                        mask_valid_lane;
   vfu_e                                         mask_target_fu;
+  vid_t                                        mask_owner_id;
+  vlen_t                                       mask_first_element;
   logic      [NrLanes-1:0]                     lane_mask_ready;
 
   // A request with more than one PE consumer must be accepted atomically. If
@@ -343,6 +362,7 @@ module ara import ara_pkg::*; #(
     .ara_req_i             (ara_req                  ),
     .ara_req_valid_i       (ara_req_valid            ),
     .ara_req_ready_o       (ara_req_ready            ),
+    .ara_store_accepted_o  (ara_store_accepted       ),
     .ara_resp_o            (ara_resp                 ),
     .ara_resp_valid_o      (ara_resp_valid           ),
     .ara_idle_o            (ara_idle                 ),
@@ -605,6 +625,10 @@ module ara import ara_pkg::*; #(
     .axi_resp_i                 (axi_resp_i                                            ),
     // Interface with the dispatcher
     .core_st_pending_i          (core_st_pending                                       ),
+    .load_prepare_valid_i       (acc_req_i.load_prepare_valid                           ),
+    .load_prepare_addr_i        (acc_req_i.load_prepare_addr                            ),
+    .load_prepare_safe_i        (acc_req_i.load_prepare_safe                            ),
+    .load_prepare_flush_i       (acc_req_i.load_prepare_flush                           ),
     .load_complete_o            (load_complete                                         ),
     .store_complete_o           (store_complete                                        ),
     .store_pending_o            (store_pending                                         ),
@@ -626,6 +650,8 @@ module ara import ara_pkg::*; #(
     .mask_i                     (mask                                                  ),
     .mask_valid_i               (mask_valid                                            ),
     .mask_target_fu_i           (mask_target_fu                                        ),
+    .mask_owner_id_i            (mask_owner_id                                        ),
+    .mask_first_element_i       (mask_first_element                                   ),
     .vldu_mask_ready_o          (vldu_mask_ready                                       ),
     .vstu_mask_ready_o          (vstu_mask_ready                                       ),
     // Interface with the lanes
@@ -745,6 +771,8 @@ module ara import ara_pkg::*; #(
     .mask_valid_o            (mask_valid                      ),
     .mask_valid_lane_o       (mask_valid_lane                 ),
     .mask_target_fu_o        (mask_target_fu                  ),
+    .mask_owner_id_o         (mask_owner_id                   ),
+    .mask_first_element_o    (mask_first_element              ),
     .lane_mask_ready_i       (lane_mask_ready                 ),
     .vldu_mask_ready_i       (vldu_mask_ready                 ),
     .vstu_mask_ready_i       (vstu_mask_ready                 ),

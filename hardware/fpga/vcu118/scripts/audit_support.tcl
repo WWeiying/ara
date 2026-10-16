@@ -20,6 +20,7 @@ proc fpga_audit::execute {checkpoint session token} {
     # Do not open the package XPR or re-apply the working tree's constraints.
     set code [catch {
         open_checkpoint [file normalize $checkpoint]
+        check_pulsed_latches $dir
         report_route_status -file [file join $dir route_status.rpt]
         foreach check {ROUTED_FULLY ERRORS_IN_ROUTES} expected {1 0} {
             set value [report_route_status -boolean_check $check]

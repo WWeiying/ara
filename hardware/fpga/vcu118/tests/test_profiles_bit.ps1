@@ -70,7 +70,7 @@ foreach ($name in @('audit_routed.ps1', 'audit_routed.tcl', 'audit_support.tcl',
 }
 $reportHashes = @{}
 foreach ($name in @('route_status', 'timing_summary', 'check_timing', 'cdc', 'drc',
-                    'methodology', 'constraint_checks', 'boundary_checks', 'multiple_drivers')) {
+                    'methodology', 'constraint_checks', 'boundary_checks', 'multiple_drivers', 'pslt')) {
     $file = Join-Path $reports "$name.rpt"
     "fake $name" | Set-Content -LiteralPath $file
     $reportHashes["$name.rpt"] = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash

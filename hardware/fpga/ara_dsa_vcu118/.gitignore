@@ -5,8 +5,6 @@
 /build/
 /reports/
 /output/
-/linux/out/
-/linux/qwen25_eval/out/
 .Xil/
 .cache/
 /.fpga_sync_backups/

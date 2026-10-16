@@ -25,6 +25,10 @@ set code [catch {
     if {$count != ($fpga_profile eq "dual_ddr")} {
         error "Checkpoint DDR2 hierarchy does not match profile $fpga_profile"
     }
+    set count [llength [get_pins -quiet i_dram_wrapper/i_eth_loader/i_control/clk]]
+    if {$count != ($fpga_profile eq "host_ethernet")} {
+        error "Checkpoint Ethernet hierarchy does not match profile $fpga_profile"
+    }
     set reports [file join $out reports]
     require_no_multiple_drivers $reports
     # In audited mode the wrapper has verified the same checkpoint and immutable

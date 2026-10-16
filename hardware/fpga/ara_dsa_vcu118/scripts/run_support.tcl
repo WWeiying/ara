@@ -1,5 +1,44 @@
 namespace eval fpga_run {}
 
+proc fpga_run::require_timing {dir} {
+    file mkdir $dir
+    set report [report_timing_summary -report_unconstrained -return_string \
+        -file [file join $dir timing_gate.rpt]]
+    foreach delay {max min} {
+        if {![llength [get_timing_paths -quiet -delay_type $delay -max_paths 1]]} {
+            error "Missing $delay timing paths; inspect $dir. Run was not accepted."
+        }
+    }
+    # Vivado's summary includes pulse-width checks, unlike get_timing_paths.
+    set header false
+    foreach line [split $report \n] {
+        if {!$header && [regexp {^\s*WNS\(ns\).*WHS\(ns\).*WPWS\(ns\)} $line]} {
+            set header true
+            continue
+        }
+        if {!$header} { continue }
+        if {[regexp {^[\s-]*$} $line]} { continue }
+        set fields [regexp -all -inline {\S+} $line]
+        if {[llength $fields] != 12} { break }
+        set valid true
+        foreach value $fields {
+            if {![regexp {^-?[0-9]+(?:\.[0-9]+)?$} $value]} { set valid false }
+        }
+        if {!$valid} { break }
+        foreach offset {0 4 8} label {setup hold pulse_width} {
+            set slack [lindex $fields $offset]
+            set failing [lindex $fields [expr {$offset + 2}]]
+            set total [lindex $fields [expr {$offset + 3}]]
+            if {$slack < 0 || $failing != 0 || $total <= 0} {
+                error "Timing gate failed ($label: slack=$slack, failing=$failing, total=$total); inspect $dir/timing_gate.rpt. No downstream run is permitted."
+            }
+        }
+        puts "TIMING_GATE PASS: $dir (setup, hold, pulse width)"
+        return
+    }
+    error "Timing summary missing/unrecognized; inspect $dir/timing_gate.rpt. Run was not accepted."
+}
+
 proc fpga_run::nonempty {path} {
     if {![file isfile $path] || [file size $path] == 0} {
         error "Missing/empty file: $path"
@@ -16,7 +55,7 @@ proc fpga_run::reusable {name expected checkpoint} {
 }
 
 proc fpga_run::check_ips {} {
-    global profile_ips
+    global profile_ips fpga_profile
     foreach name $profile_ips {
         set ip [get_ips -quiet $name]
         if {[llength $ip] != 1 || [get_property IS_LOCKED $ip]} {
@@ -24,6 +63,9 @@ proc fpga_run::check_ips {} {
         }
         set run [reusable ${name}_synth_1 {*synth_design Complete*} ${name}.dcp]
         puts "REUSE IP: $name ([get_property DIRECTORY $run])"
+    }
+    if {$fpga_profile eq "host_ethernet"} {
+        reusable loader_bd_synth_1 {*synth_design Complete*} loader_bd.dcp
     }
 }
 
@@ -141,6 +183,7 @@ proc fpga_run::execute {stage session token parent} {
         open_run $parent
         require_no_multiple_drivers [file join $package_root reports preflight_$token]
         require_no_combinational_loops [file join $package_root reports preflight_$token]
+        require_timing [file join $package_root reports preflight_$token]
         close_design
     } elseif {$parent ne "-"} { error "Synthesis must not have a parent" }
     if {$stage eq "synth"} {
@@ -169,13 +212,8 @@ proc fpga_run::execute {stage session token parent} {
     open_run $name
     require_no_multiple_drivers [file join $package_root reports $name]
     write_reports $name [expr {$stage eq "impl"}]
+    require_timing [file join $package_root reports $name]
     if {$stage eq "impl"} {
-        set setup [get_timing_paths -quiet -delay_type max -max_paths 1]
-        set hold [get_timing_paths -quiet -delay_type min -max_paths 1]
-        if {![llength $setup] || ![llength $hold]} { error "No timing paths; inspect reports/$name" }
-        if {[get_property SLACK $setup] < 0 || [get_property SLACK $hold] < 0} {
-            error "Timing not met; inspect reports/$name. No bitstream was generated."
-        }
         puts "Route complete. Review DRC/CDC/unconstrained paths before generating a bitstream."
     }
     set handle [open [file join $session completed_run.txt] {WRONLY CREAT EXCL}]

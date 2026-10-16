@@ -1,0 +1,11 @@
+Read the following fictional operations report and answer using only its facts.
+
+On Monday, a regional depot held 420 vaccine doses. Quality staff quarantined 60 doses after a temperature alarm; those doses cannot be shipped. Cedar Clinic requested 180 doses and Harbor Clinic requested 140. Both clinics require delivery before noon on Tuesday. Reserve stock at the depot must remain at least 20 usable doses after shipments.
+
+The first plan used a truck carrying up to 300 doses in validated cold boxes. It would reach Cedar at 09:00 and Harbor at 11:00. On Monday evening, flooding closed the road from Cedar to Harbor. The alternate road adds two hours to Harbor's arrival time but does not affect Cedar. The truck's capacity and refrigeration remain unchanged.
+
+A courier offered a separate refrigerated van carrying up to 80 doses directly from the depot to Harbor, arriving at 10:30. Harbor later confirmed that a local hospital would supply 60 of its requested doses before noon, reducing its demand from the depot. Cedar has no other supplier. The quarantined batch is still awaiting laboratory clearance; an earlier suggestion that it might be released on Tuesday is not authorization to use it.
+
+Write a short recommendation. State the usable inventory, the updated total depot demand, and the remaining usable stock. Explain why the original route no longer meets the deadline and assign each clinic's shipment to a vehicle. Do not count quarantined doses or duplicate the hospital's contribution.
+
+Recommendation:

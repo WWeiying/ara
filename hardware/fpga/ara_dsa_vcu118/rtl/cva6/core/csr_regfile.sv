@@ -497,7 +497,8 @@ module csr_regfile
         else read_access_exception = 1'b1;
         riscv::CSR_STVEC:
         if (CVA6Cfg.RVS)
-          csr_rdata =  clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : {stvec_q[CVA6Cfg.XLEN-1:6], 5'b0, stvec_q[0]};
+          // Non-CLIC readback must match the BASE used by trap redirection.
+          csr_rdata = clic_mode_o ? {stvec_q[CVA6Cfg.XLEN-1:6], 6'b11} : stvec_q;
         else read_access_exception = 1'b1;
         riscv::CSR_SINTSTATUS: begin
           if (CVA6Cfg.RVS && CVA6Cfg.RVSCLIC) begin
@@ -1316,7 +1317,9 @@ module csr_regfile
         // sstatus is a subset of mstatus - mask it accordingly
         riscv::CSR_SSTATUS: begin
           if (CVA6Cfg.RVS) begin
-            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0];
+            // VS aliases mstatus here; do not widen the shared VSSTATUS mask.
+            mask = ariane_pkg::SMODE_STATUS_WRITE_MASK[CVA6Cfg.XLEN-1:0] |
+                   (CVA6Cfg.RVV ? CVA6Cfg.XLEN'(riscv::SSTATUS_VS) : '0);
             mstatus_d = (mstatus_q & ~{{64-CVA6Cfg.XLEN{1'b0}}, mask}) | {{64-CVA6Cfg.XLEN{1'b0}}, (csr_wdata & mask)};
             // hardwire to zero if floating point extension is not present
             if (!CVA6Cfg.FpPresent) begin
@@ -1365,9 +1368,15 @@ module csr_regfile
         end
 
         riscv::CSR_STVEC:
-        if (CVA6Cfg.RVS)
-          stvec_d = clic_mode_o ? {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11} : {csr_wdata[CVA6Cfg.XLEN-1:2], 1'b0, csr_wdata[0]};
-        else update_access_exception = 1'b1;
+        if (CVA6Cfg.RVS) begin
+          if (clic_mode_o)
+            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b11};
+          else if (csr_wdata[0])
+            // priv_output inserts cause[5:0] into BASE[7:2], as for MTVEC.
+            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:8], 7'b0, 1'b1};
+          else
+            stvec_d = {csr_wdata[CVA6Cfg.XLEN-1:2], 2'b0};
+        end else update_access_exception = 1'b1;
         riscv::CSR_SCOUNTEREN:
         if (CVA6Cfg.RVS) scounteren_d = {{CVA6Cfg.XLEN - 32{1'b0}}, csr_wdata[31:0]};
         else update_access_exception = 1'b1;

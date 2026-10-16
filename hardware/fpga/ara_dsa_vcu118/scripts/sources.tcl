@@ -430,10 +430,13 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/ara/hardware/src/lane/valu.sv} \
     {rtl/ara/hardware/src/lane/vmfpu.sv} \
     {rtl/ara/hardware/src/lane/fixed_p_rounding.sv} \
+    {rtl/ara/hardware/src/vlsu/store_load_lookahead.sv} \
+    {rtl/ara/hardware/src/vlsu/store_load_lookahead_pair.sv} \
     {rtl/ara/hardware/src/vlsu/vlsu.sv} \
     {rtl/ara/hardware/src/masku/masku.sv} \
     {rtl/ara/hardware/src/lane/vector_fus_stage.sv} \
     {rtl/ara/hardware/src/lane/lane.sv} \
+    {rtl/ara/hardware/src/vsetvl_preview.sv} \
     {rtl/ara/hardware/src/ara.sv} \
     {rtl/axi_llc/src/axi_llc_pkg.sv} \
     {rtl/axi_llc/src/axi_llc_burst_cutter.sv} \
@@ -614,9 +617,11 @@ set rtl_files [list {rtl/tech_cells_generic/src/fpga/pad_functional_xilinx.sv} \
     {rtl/cheshire/hw/cheshire_pkg.sv} \
     {rtl/cheshire/hw/cheshire_soc.sv} \
     {rtl/board/dram_wrapper_xilinx.sv} \
-    {rtl/board/ara_dsa_vcu118.sv} \
     {rtl/board/ara_axi_observer.sv} \
     {rtl/board/ara_ddr_router.sv} \
+    {rtl/board/ara_dsa_vcu118.sv} \
+    {rtl/board/ara_eth_loader.sv} \
+    {rtl/board/ara_eth_shared_ddr.sv} \
     {rtl/board/ara_fpga_debug.sv} \
     {rtl/board/ara_host_bridge.sv}]
 set rtl_include_dirs [list {rtl/common_cells/include} \

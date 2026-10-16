@@ -113,6 +113,20 @@ module acc_dispatcher
   // Accelerator load/store pending signals
   logic acc_no_ld_pending;
   logic acc_no_st_pending;
+  logic acc_insn_queue_empty;
+  logic fp_csr_access;
+  logic fp_csr_wait;
+
+  // Use the issue-stage immediate, not csr_addr_i from an older EX operation.
+  assign fp_csr_access = !issue_instr_i.ex.valid && (issue_instr_i.fu == CSR) &&
+      (issue_instr_i.op inside {CSR_READ, CSR_WRITE, CSR_SET, CSR_CLEAR}) &&
+      (issue_instr_i.result[11:0] inside {riscv::CSR_FFLAGS, riscv::CSR_FRM,
+                                         riscv::CSR_FCSR});
+  // Include every transfer stage: queue empty does not imply backend idle.
+  // Waiting on fflags_valid also lets the final flag update reach FCSR first.
+  assign fp_csr_wait = acc_valid_q || !acc_insn_queue_empty ||
+      acc_req_o.acc_req.req_valid || acc_resp_i.acc_resp.fp_csr_busy ||
+      acc_resp_i.acc_resp.fflags_valid;
 
   // Stall issue stage in three cases:
   always_comb begin : stall_issue
@@ -128,18 +142,58 @@ module acc_dispatcher
       issue_stall_o = acc_cons_en_i & (~acc_no_st_pending | ~acc_no_ld_pending);
       default: issue_stall_o = 1'b0;
     endcase
+
+    // Fences are decoded as CTRL_FLOW/other non-memory functional units, so
+    // they cannot be selected by the FU case above.  They still flush younger
+    // CVA6 state and therefore must wait for all accelerator memory requests;
+    // otherwise a pending vector-load ID can be reused by a younger scalar
+    // load before the accelerator response returns.
+    if (issue_instr_i.op inside {FENCE, FENCE_I, SFENCE_VMA, HFENCE_VVMA, HFENCE_GVMA}) begin
+      issue_stall_o |= ~acc_no_st_pending | ~acc_no_ld_pending;
+    end
+    if (fp_csr_access) issue_stall_o |= fp_csr_wait;
   end
+
+  // pragma translate_off
+  longint unsigned fp_csr_cycle;
+  longint unsigned fp_csr_trace_start, fp_csr_trace_end;
+  bit fp_csr_trace_enabled;
+  initial begin
+    fp_csr_trace_enabled = $test$plusargs("FP_CSR_TRACE");
+    fp_csr_trace_start = 0;
+    fp_csr_trace_end = 5000;
+    void'($value$plusargs("FP_CSR_TRACE_START=%d", fp_csr_trace_start));
+    void'($value$plusargs("FP_CSR_TRACE_END=%d", fp_csr_trace_end));
+  end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) fp_csr_cycle <= 0;
+    else begin
+      fp_csr_cycle <= fp_csr_cycle + 1;
+      if (fp_csr_trace_enabled && fp_csr_cycle >= fp_csr_trace_start &&
+          fp_csr_cycle <= fp_csr_trace_end &&
+          (fp_csr_access || acc_resp_i.acc_resp.fflags_valid))
+        $display("[FP_CSR] cycle=%0d csr=%03h access=%b fire=%b wait=%b stage=%b queue=%b spill=%b backend=%b flags_valid=%b flags=%02h",
+                 fp_csr_cycle, issue_instr_i.result[11:0], fp_csr_access,
+                 issue_instr_hs_i, fp_csr_wait, acc_valid_q,
+                 !acc_insn_queue_empty, acc_req_o.acc_req.req_valid,
+                 acc_resp_i.acc_resp.fp_csr_busy, acc_resp_i.acc_resp.fflags_valid,
+                 acc_resp_i.acc_resp.fflags);
+      assert (!(fp_csr_access && fp_csr_wait && issue_instr_hs_i))
+        else $error("Floating CSR issued before older accelerator work drained");
+    end
+  end
+  // pragma translate_on
 
   /***********************
    *  Instruction queue  *
    ***********************/
 
-  localparam InstructionQueueDepth = 3;
+  localparam InstructionQueueDepth = 4;
 
   fu_data_t                                        acc_data;
   fu_data_t                                        acc_insn_queue_o;
   logic                                            acc_insn_queue_pop;
-  logic                                            acc_insn_queue_empty;
+  logic                                            acc_insn_queue_full;
   logic     [idx_width(InstructionQueueDepth)-1:0] acc_insn_queue_usage;
   logic                                            acc_commit;
   logic     [           CVA6Cfg.TRANS_ID_BITS-1:0] acc_commit_trans_id;
@@ -158,7 +212,7 @@ module acc_dispatcher
       .testmode_i(1'b0),
       .data_i    (fu_data_i),
       .push_i    (acc_valid_q),
-      .full_o    (  /* Unused */),
+      .full_o    (acc_insn_queue_full),
       .data_o    (acc_insn_queue_o),
       .pop_i     (acc_insn_queue_pop),
       .empty_o   (acc_insn_queue_empty),
@@ -166,7 +220,10 @@ module acc_dispatcher
   );
 
   // We are ready if the instruction queue is able to accept at least one more entry.
-  assign acc_ready = acc_insn_queue_usage < (InstructionQueueDepth - 1);
+  // usage_o omits the high count bit at a power-of-two depth. Reserve one
+  // slot for the issue-stage register, and never interpret a full FIFO as empty.
+  assign acc_ready = !acc_insn_queue_full &&
+                    acc_insn_queue_usage < (InstructionQueueDepth - 1);
 
   /**********************************
    *  Non-speculative instructions  *
@@ -217,11 +274,16 @@ module acc_dispatcher
   logic             acc_req_ready;
 
   accelerator_req_t acc_req_int;
-  spill_register #(
-      .T(accelerator_req_t)
+  // Keep both non-flushable slots, but avoid a bubble when the channel is empty.
+  // Authorization remains at acc_req_valid, before this ownership boundary.
+  fall_through_register_v1 #(
+      .T(accelerator_req_t),
+      .DEPTH(2)
   ) i_accelerator_req_register (
       .clk_i  (clk_i),
       .rst_ni (rst_ni),
+      .clr_i  (1'b0),
+      .testmode_i(1'b0),
       .data_i (acc_req),
       .valid_i(acc_req_valid),
       .ready_o(acc_req_ready),
@@ -242,6 +304,38 @@ module acc_dispatcher
   // MMU interface
   assign acc_req_o.acc_mmu_resp          = acc_mmu_resp_i;
   assign acc_req_o.acc_mmu_en            = acc_mmu_en_i;
+
+  // This sideband is only a cancellable read hint, never an instruction grant.
+  // Translation/protected and non-consistent cases retain the normal path.
+  logic prepare_no_pmp;
+  always_comb begin
+    prepare_no_pmp = 1'b1;
+    for (int unsigned i = 0; i < CVA6Cfg.NrPMPEntries; i++)
+      prepare_no_pmp &= pmpcfg_i[i] == '0;
+  end
+  assign acc_req_o.load_prepare_safe =
+      (CVA6Cfg.NrPMPEntries == 0 ||
+       (ld_st_priv_lvl_i == PRIV_LVL_M && prepare_no_pmp)) &&
+      !acc_mmu_en_i && acc_cons_en_i && acc_no_st_pending_i;
+  assign acc_req_o.load_prepare_flush = flush_ex_i || flush_unissued_instr_i;
+  assign acc_req_o.load_prepare_valid = acc_valid_q &&
+      !acc_no_st_pending &&
+      fu_data_i.operation == ACCEL_OP_LOAD && fu_data_i.imm[31:20] == 12'h020 &&
+      fu_data_i.imm[6:0] == 7'h07 &&
+      fu_data_i.imm[14:12] inside {3'b000, 3'b101, 3'b110, 3'b111} &&
+      acc_req_o.load_prepare_safe && !acc_req_o.load_prepare_flush;
+  assign acc_req_o.load_prepare_addr = 64'(fu_data_i.operand_a);
+
+  always_comb begin
+    acc_req_o.vset_preview_req = '0;
+`ifndef ARA_STORE_B_AB_BASELINE
+    acc_req_o.vset_preview_req.req_valid = acc_valid_q && !acc_no_st_pending &&
+        !flush_ex_i && !flush_unissued_instr_i;
+`endif
+    acc_req_o.vset_preview_req.insn = fu_data_i.imm[31:0];
+    acc_req_o.vset_preview_req.rs1 = fu_data_i.operand_a;
+    acc_req_o.vset_preview_req.trans_id = fu_data_i.trans_id;
+  end
 
   always_comb begin : accelerator_req_dispatcher
     // Do not fetch from the instruction queue

@@ -556,12 +556,21 @@ module cva6_mmu
         // Strange 9+PtLevels to avoid CI errors on (purely syntactic) checks on Sv32, where
         // `PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels)` equals `11` and would lead to `lsu_paddr_o[11:12]`
         lsu_paddr_o[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels] = lsu_vaddr_q[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels];
-        lsu_dtlb_ppn_o[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels] = lsu_vaddr_n[PPNWMin-(CVA6Cfg.VpnLen/CVA6Cfg.PtLevels):9+CVA6Cfg.PtLevels];
       end
 
       if (dtlb_is_page_q[0]) begin
-        lsu_dtlb_ppn_o[PPNWMin:12] = lsu_vaddr_n[PPNWMin:12];
         lsu_paddr_o[PPNWMin:12] = lsu_vaddr_q[PPNWMin:12];
+      end
+
+      // The early PPN uses this lookup's page size; its bit zero is PA bit 12.
+      for (int level = 1; level < CVA6Cfg.PtLevels; level++) begin
+        if (dtlb_is_page[CVA6Cfg.PtLevels-1-level]) begin
+          for (int bit_idx = 0; bit_idx < CVA6Cfg.PPNW; bit_idx++) begin
+            if (bit_idx < level * (CVA6Cfg.VpnLen / CVA6Cfg.PtLevels)) begin
+              lsu_dtlb_ppn_o[bit_idx] = lsu_vaddr_n[bit_idx+12];
+            end
+          end
+        end
       end
 
 

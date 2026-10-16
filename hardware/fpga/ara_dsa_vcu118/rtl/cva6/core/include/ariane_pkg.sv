@@ -116,6 +116,7 @@ package ariane_pkg;
     | riscv::SSTATUS_SIE
     | riscv::SSTATUS_SPIE
     | riscv::SSTATUS_SPP
+    | (Cfg.RVV ? riscv::SSTATUS_VS : 64'b0)
     | riscv::SSTATUS_FS
     | riscv::SSTATUS_XS
     | riscv::SSTATUS_SUM

@@ -37,6 +37,11 @@ module dram_wrapper_xilinx #(
 `ifdef ARA_FPGA_DDR2
   input  logic  fabric_reset_ni,
 `endif
+`ifdef ARA_FPGA_ETHERNET
+  input logic eth_ref_p, eth_ref_n, eth_rxp, eth_rxn,
+  output logic eth_txp, eth_txn, eth_mdc, eth_phy_reset_n,
+  inout wire eth_mdio,
+`endif
   // PHY interfaces
 `ifdef USE_DDR4
   `DDR4_INTF(Ddr4CsNWidth, Ddr4DmDbiNWidth, Ddr4DqWidth, Ddr4DqsWidth)
@@ -123,6 +128,7 @@ module dram_wrapper_xilinx #(
   logic dram_rst_o;
   logic calib_complete;
   logic ui_resetn;
+  logic ui_resetn_sync;
   // Synchronize system-reset release before using it in the UI domain.
   logic ui_por_n;
   rstgen i_ui_por (
@@ -143,8 +149,14 @@ module dram_wrapper_xilinx #(
 `else
     .clk_i(dram_axi_clk), .rst_ni(fabric_ready_o), .test_mode_i(1'b0),
 `endif
-    .rst_no(ui_resetn), .init_no()
+    .rst_no(ui_resetn_sync), .init_no()
   );
+  // Preserve all four ASYNC_REG stages. Only the extra distribution stage
+  // drives UI loads and may be replicated by physical optimization.
+  always_ff @(posedge dram_axi_clk or negedge ui_resetn_sync) begin
+    if (!ui_resetn_sync) ui_resetn <= 1'b0;
+    else ui_resetn <= 1'b1;
+  end
 
   // Signals before resizing
   axi_soc_req_t  soc_dresizer_req;
@@ -155,8 +167,8 @@ module dram_wrapper_xilinx #(
   axi_dw_resp_t dresizer_iresizer_rsp;
 
   // Signals after id width resizing
-  axi_dw_iw_req_t  iresizer_cdc_req, cdc_cut_req, cdc_dram_req;
-  axi_dw_iw_resp_t iresizer_cdc_rsp, cdc_cut_rsp, cdc_dram_rsp;
+  axi_dw_iw_req_t  iresizer_cdc_req, cdc_ara_req, cdc_cut_req, cdc_dram_req;
+  axi_dw_iw_resp_t iresizer_cdc_rsp, cdc_ara_rsp, cdc_cut_rsp, cdc_dram_rsp;
 
   // Entry signals
   assign soc_dresizer_req = soc_req_i;
@@ -245,13 +257,38 @@ module dram_wrapper_xilinx #(
       .src_resp_o ( iresizer_cdc_rsp ),
       .dst_clk_i  ( dram_axi_clk ),
       .dst_rst_ni ( ui_resetn    ),
-      .dst_req_o  ( cdc_cut_req ),
-      .dst_resp_i ( cdc_cut_rsp )
+      .dst_req_o  ( cdc_ara_req ),
+      .dst_resp_i ( cdc_ara_rsp )
     );
   end else begin : gen_no_cdc
-    assign cdc_cut_req      = iresizer_cdc_req;
-    assign iresizer_cdc_rsp = cdc_cut_rsp;
+    assign cdc_ara_req      = iresizer_cdc_req;
+    assign iresizer_cdc_rsp = cdc_ara_rsp;
   end
+
+`ifdef ARA_FPGA_ETHERNET
+  axi_dw_iw_req_t loader_req;
+  axi_dw_iw_resp_t loader_rsp;
+  logic loader_lock;
+  logic [255:0] loader_status;
+  ara_eth_loader #(.req_t(axi_dw_iw_req_t), .rsp_t(axi_dw_iw_resp_t)) i_eth_loader (
+    .sys_clk_i(dram_clk_i), .sys_rst_i(sys_rst_i),
+    .ui_clk_i(dram_axi_clk), .ui_resetn_i(ui_resetn),
+    .req_o(loader_req), .rsp_i(loader_rsp), .status_i(loader_status), .lock_o(loader_lock),
+    .eth_ref_p, .eth_ref_n, .eth_rxp, .eth_rxn, .eth_txp, .eth_txn, .eth_mdc, .eth_phy_reset_n, .eth_mdio
+  );
+  ara_eth_shared_ddr #(.AddrWidth(SocAddrWidth), .UserWidth(SocUserWidth),
+    .LoaderSingleId(1),
+    .StaticIdPartition(SocIdWidth < cfg.IdWidth && cfg.IdWidth == 8),
+    .req_t(axi_dw_iw_req_t), .rsp_t(axi_dw_iw_resp_t)) i_eth_shared_ddr (
+    .clk_i(dram_axi_clk), .rst_ni(ui_resetn), .lock_i(loader_lock),
+    .ara_req_i(cdc_ara_req), .ara_rsp_o(cdc_ara_rsp),
+    .loader_req_i(loader_req), .loader_rsp_o(loader_rsp),
+    .mem_req_o(cdc_cut_req), .mem_rsp_i(cdc_cut_rsp), .status_o(loader_status)
+  );
+`else
+  assign cdc_cut_req = cdc_ara_req;
+  assign cdc_ara_rsp = cdc_cut_rsp;
+`endif
 
 `ifdef TARGET_VCU118
   // Isolate the CDC read-FIFO full detector from the MIG upsizer's RREADY path.

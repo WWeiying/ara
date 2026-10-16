@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "scope": "R-channel AXI cut data/handshake and bypassed channels; not physical signoff",
+  "inputs": {
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/axi/src/axi_pkg.sv": "244bd5cb3c5bc58d786f2ed2f5eeefd910c4fe03a175f4a2888c6a2ea1c430dc",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/axi/src/axi_intf.sv": "85dea3129f2f63e6a06d1ee210fa1b76a689694e9f9fb5c489948d7eefd1c0ac",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register_flushable.sv": "3285eb2e557f6377de88df91751b0bccdad07b16be9d926314a52a23e964f02c",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/common_cells/src/spill_register.sv": "97bf85128f538c54c749896b8eee5fcfe4b27c16845d2a17990979a63b09f2ec",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/axi/src/axi_cut.sv": "b1e8e3c8480d9b2b2f5e15c81e40278a98d227e50f6003e68f2d86a98171f9aa",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/vcu118/tests/ddr_r_cut_tb.sv": "78b1f8c421aa1e6c463d11092622205241051908fd05caec0fb689baf1153af9",
+    "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv": "4cf536ed0e6afbb237cafa1edce670ff4e1f6d4a097d7ed97ca25fcd2962f921"
+  }
+}

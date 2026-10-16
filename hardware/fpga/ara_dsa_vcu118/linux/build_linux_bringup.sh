@@ -13,6 +13,8 @@ OPENSBI_SRC=${OPENSBI_SRC:-"$SDK/buildroot/output/build/opensbi-1.7"}
 TARGET_ROOTFS=${TARGET_ROOTFS:-"$SDK/buildroot/output/target"}
 BUSYBOX=${BUSYBOX:-"$TARGET_ROOTFS/bin/busybox"}
 DTC=${DTC:-dtc}
+INIT_SOURCE=${INIT_SOURCE:-"$SCRIPT_DIR/rootfs/init"}
+UART_POLLING=${UART_POLLING:-0}
 
 FW_ADDR=0x80000000
 DTB_ADDR=0x80100000
@@ -28,6 +30,10 @@ command -v "$CC" >/dev/null 2>&1 || die "missing RISC-V compiler: $CC"
 command -v "$READELF" >/dev/null 2>&1 || die "missing RISC-V readelf: $READELF"
 command -v "$STRIP" >/dev/null 2>&1 || die "missing RISC-V strip: $STRIP"
 command -v "$DTC" >/dev/null 2>&1 || die "missing device-tree compiler: $DTC"
+[[ "$UART_POLLING" == 0 || "$UART_POLLING" == 1 ]] || die "UART_POLLING must be 0 or 1"
+if [[ "$UART_POLLING" == 1 ]]; then
+    command -v fdtput >/dev/null 2>&1 || die "missing fdtput for polling UART variant"
+fi
 command -v cpio >/dev/null 2>&1 || die "missing cpio"
 [[ -f "$KERNEL_IMAGE" ]] || die "kernel Image not found: $KERNEL_IMAGE"
 [[ -f "$OPENSBI_SRC/Makefile" ]] || die "OpenSBI source not found: $OPENSBI_SRC"
@@ -35,11 +41,13 @@ command -v cpio >/dev/null 2>&1 || die "missing cpio"
 [[ -f "$TARGET_ROOTFS/lib/ld-linux-riscv64-lp64d.so.1" ]] || die "RISC-V dynamic loader not found: $TARGET_ROOTFS/lib"
 [[ -f "$TARGET_ROOTFS/lib/libc.so.6" ]] || die "RISC-V libc not found: $TARGET_ROOTFS/lib"
 [[ -f "$TARGET_ROOTFS/lib/libresolv.so.2" ]] || die "RISC-V libresolv not found: $TARGET_ROOTFS/lib"
-[[ -f "$SCRIPT_DIR/rootfs/init" ]] || die "initramfs init not found: $SCRIPT_DIR/rootfs/init"
+[[ -f "$INIT_SOURCE" ]] || die "initramfs init not found: $INIT_SOURCE"
 
 mkdir -p "$OUT"
 rm -rf "$OUT/initramfs" "$OUT/opensbi-fw-jump"
 mkdir -p "$OUT/initramfs"/{bin,sbin,usr/bin,usr/sbin,lib,dev,proc,sys,dev/pts,dev/shm,etc,root,run,tmp}
+# The SDK loader searches /lib64 even though its interpreter lives in /lib.
+ln -s lib "$OUT/initramfs/lib64"
 
 # Package only BusyBox, its runtime libraries, and applet symlinks so the
 # interactive initramfs remains small enough for the UART bring-up path.
@@ -55,7 +63,7 @@ for applet_dir in bin sbin usr/bin usr/sbin; do
         ln -s "$(readlink "$applet")" "$destination_dir/$applet_name"
     done < <(find "$source_dir" -maxdepth 1 -type l -lname '*busybox*' -print0)
 done
-cp "$SCRIPT_DIR/rootfs/init" "$OUT/initramfs/init"
+cp "$INIT_SOURCE" "$OUT/initramfs/init"
 chmod 0755 "$OUT/initramfs/init"
 cat > "$OUT/initramfs/etc/passwd" <<'EOF'
 root:x:0:0:root:/root:/bin/sh
@@ -84,6 +92,9 @@ sed \
     -e "s/__INITRD_END__/$initrd_end/g" \
     "$SCRIPT_DIR/ara_vcu118.dts.in" > "$OUT/ara_vcu118.dts"
 "$DTC" -I dts -O dtb -o "$OUT/ara_vcu118.dtb" "$OUT/ara_vcu118.dts"
+if [[ "$UART_POLLING" == 1 ]]; then
+    fdtput -d "$OUT/ara_vcu118.dtb" /soc/serial@3002000 interrupts interrupt-parent
+fi
 
 make -C "$OPENSBI_SRC" O="$OUT/opensbi-fw-jump" \
     PLATFORM=generic PLATFORM_RISCV_XLEN=64 \

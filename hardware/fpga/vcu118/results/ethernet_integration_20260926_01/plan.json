@@ -1,0 +1,474 @@
+{
+  "state": "offline_preparation_complete_integration_not_implemented",
+  "created_utc": "2026-09-26T22:34:13.376758+00:00",
+  "git_head": "68f8910b3c56269a9d289b81dfe5fd347b49759f",
+  "provenance": "Source hashes include uncommitted files; git HEAD alone is insufficient.",
+  "hardware_validated": false,
+  "launch_allowed": false,
+  "image": {
+    "format": "ara-host-image-v1",
+    "entry": 2147483648,
+    "caps": 1,
+    "ddr_windows": [
+      [
+        2147483648,
+        4294967296
+      ]
+    ],
+    "sources": [
+      {
+        "path": "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/software/host_smoke.elf",
+        "bytes": 5984,
+        "sha256": "0bc7d3a56646e6bdf2dead6d8eba8e8daa269b62463e07d59579c1213dc0d296"
+      }
+    ],
+    "segments": [
+      {
+        "address": 2147483648,
+        "size": 448,
+        "file_size": 448,
+        "source": "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/software/host_smoke.elf",
+        "source_offset": 4096,
+        "flags": 5,
+        "kind": "elf",
+        "sha256": "e3745f686d19008802f7fe8d909bfb98120dda219408132857c6cd08b194fcf7"
+      },
+      {
+        "address": 2147484096,
+        "size": 4352,
+        "file_size": 0,
+        "source": "/home/wangwy/openproject/ara_dsa/hardware/fpga/ara_dsa_vcu118/software/host_smoke.elf",
+        "source_offset": 448,
+        "flags": 6,
+        "kind": "elf",
+        "sha256": "6fc74890c52aef57c0b98ace4a7dec52972c8498fbe56e84e68d40b7c8087e4e"
+      }
+    ]
+  },
+  "payload_bytes_including_bss": 4800,
+  "proposed_regions_half_open": {
+    "application": [
+      2147483648,
+      4278124544
+    ],
+    "diagnostic": [
+      4278124544,
+      4278190080
+    ],
+    "loader_private": [
+      4278190080,
+      4294967296
+    ]
+  },
+  "legacy_jtag_preflight_conflicts": {
+    "address": 4294901760,
+    "region": "loader_private"
+  },
+  "sources": [
+    {
+      "path": "ara_dsa_vcu118/constraints/board.xdc",
+      "bytes": 1226,
+      "sha256": "b6744a4520f0acd44d1c59f98155776477dd6298f479bb360b2ce1f73e60715c"
+    },
+    {
+      "path": "ara_dsa_vcu118/rtl/board/ara_dsa_vcu118.sv",
+      "bytes": 10503,
+      "sha256": "11c7a7331b0f500b6b44166785dabb3b465d332d951877252a93aba83bab5b2b"
+    },
+    {
+      "path": "ara_dsa_vcu118/rtl/board/ara_fpga_debug.sv",
+      "bytes": 6302,
+      "sha256": "f881692114cd63e7bfb24caf1cad0bcdb196aba8f4dd7a4fb6bd30254e54527f"
+    },
+    {
+      "path": "ara_dsa_vcu118/rtl/board/ara_host_bridge.sv",
+      "bytes": 3604,
+      "sha256": "b5848f4759c3039796fea4d614d58b1082e19b7133fc1b921cad9d59ae458fea"
+    },
+    {
+      "path": "ara_dsa_vcu118/rtl/board/dram_wrapper_xilinx.sv",
+      "bytes": 21063,
+      "sha256": "4cf536ed0e6afbb237cafa1edce670ff4e1f6d4a097d7ed97ca25fcd2962f921"
+    },
+    {
+      "path": "ara_dsa_vcu118/scripts/config.tcl",
+      "bytes": 805,
+      "sha256": "02fe5ffc0b728e1893d313c464306d194fc71f406abb230d5c1ecb086aa36dba"
+    },
+    {
+      "path": "ara_dsa_vcu118/scripts/create_ip.tcl",
+      "bytes": 3383,
+      "sha256": "ebaebb5233b634d57ef0d66058faeef8cb89b3cc0dffc8e92e9b2e39df9515d7"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/eth_fast_load.py",
+      "bytes": 7167,
+      "sha256": "becbb8c5eed7015e16d23b1b7afe2419cf91426fd1a64c41e2d55e5d9552c18b"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/eth_load.py",
+      "bytes": 8156,
+      "sha256": "fb767a0fd77f7ae529fa74be9530b893bf11fc3db709ee16eea09dd3585e9689"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/fpga_debug.h",
+      "bytes": 4525,
+      "sha256": "eb12cfc1d9790f247cc1cdfe6c86acb908a503f479b3071256f9b2dfdb6e6054"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_image.py",
+      "bytes": 7148,
+      "sha256": "89c9f7c9b24dd72c7d5ef9b987051889bb3a9d49b3507d2593ec6dd416cd97ce"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_load.py",
+      "bytes": 43246,
+      "sha256": "7d3a3bbb86a1979e836e886d4c4255df23e6b5fee17da29c42071aa589a18e5d"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_smoke.elf",
+      "bytes": 5984,
+      "sha256": "0bc7d3a56646e6bdf2dead6d8eba8e8daa269b62463e07d59579c1213dc0d296"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_smoke.ld",
+      "bytes": 728,
+      "sha256": "f853f288e7fb75b7ab238e46d60f26a980317c9db5b9df100e4afe9ae363f103"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_start.S",
+      "bytes": 806,
+      "sha256": "8dc0a36040de2b941bdac66921d69e9d5c88784dfdef7a77b4d8534c0d18639b"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_transport.py",
+      "bytes": 11349,
+      "sha256": "5f03c1c983a685f668b63040a11cb8099230b999594fc66cae3afb02aa749ccb"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/host_vivado.tcl",
+      "bytes": 10830,
+      "sha256": "66e29e4475f2233ddb334d154c1c6cb2a7360810bbdc6107d06fcafdfa04d862"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/reference/cheshire_bootrom.S",
+      "bytes": 2994,
+      "sha256": "c860f2b595048df6f4c5992385a48e2c91c98cfd75f1a5a2e1fd0ddd8d6eafe5"
+    },
+    {
+      "path": "ara_dsa_vcu118/software/reference/cheshire_bootrom.c",
+      "bytes": 3643,
+      "sha256": "7f33963da87b04f6668e75e4b53f916123e31486dafaa6054586b4bf9fb7e1f7"
+    },
+    {
+      "path": "vcu118/ethernet/ARA_INTEGRATION.md",
+      "bytes": 9373,
+      "sha256": "75e9c7b3308d4add836ae463677b2f9031da5c7cca8986beb920008b408d3755"
+    },
+    {
+      "path": "vcu118/ethernet/LOADER_STATUS.md",
+      "bytes": 26766,
+      "sha256": "8952a91391c732e368dd752ed40fa920a3cfed469e07403f146961d56b6ec79d"
+    },
+    {
+      "path": "vcu118/ethernet/README.md",
+      "bytes": 30130,
+      "sha256": "47303e6537ae9a0d725d64b9f7385fbaecdbf9c84c14686f5504b03d3c7d8efe"
+    },
+    {
+      "path": "vcu118/ethernet/board_probe.py",
+      "bytes": 5882,
+      "sha256": "c6653e8817c9326626b16a3389a56b9b261292f177d79bfc699f59fc918f2689"
+    },
+    {
+      "path": "vcu118/ethernet/board_probe.tcl",
+      "bytes": 9866,
+      "sha256": "7a77e3172c2fb2ce43a69732afd797cdb2a24b535da2128a0d1f6a4b9badbdf3"
+    },
+    {
+      "path": "vcu118/ethernet/build.tcl",
+      "bytes": 11543,
+      "sha256": "e7f2e27c1a09c0b3b8c2cef0f4b63542a428432f8e6621acf601971944f38cb6"
+    },
+    {
+      "path": "vcu118/ethernet/constraints/loader_pins.xdc",
+      "bytes": 1471,
+      "sha256": "dbfcd8bddd6f550457e8edfbc7748fa26be595d37b764672df08b76163de90fe"
+    },
+    {
+      "path": "vcu118/ethernet/constraints/pins.xdc",
+      "bytes": 1482,
+      "sha256": "51e81b515dd94088ab51b964aad44e2888ef83155d765ad277aeb7e16c9e5c49"
+    },
+    {
+      "path": "vcu118/ethernet/constraints/timing.tcl",
+      "bytes": 3193,
+      "sha256": "67017722a5d3254ee769923c24701443b36ad3a07d67b5db681605a12bae0809"
+    },
+    {
+      "path": "vcu118/ethernet/echo_control.tcl",
+      "bytes": 6777,
+      "sha256": "ac2af2bd61a7c0f2aabe79e5540069a65d1408304971953b564a248012a0f53c"
+    },
+    {
+      "path": "vcu118/ethernet/echo_packets.py",
+      "bytes": 4540,
+      "sha256": "8141d48fe4aac791d4987ff66bfec7166d6632922674157f1501051093fff740"
+    },
+    {
+      "path": "vcu118/ethernet/fast_probe_host.py",
+      "bytes": 4552,
+      "sha256": "6ae6aa3d400f75d965324f468d5d0c2effa8cd3f758419b81eda1d32222b72e7"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_fast_load.c",
+      "bytes": 2707,
+      "sha256": "c03e919b140d8b0d08a6123ee887593cae13fe815da76ff597216b6109597d74"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_fast_load.h",
+      "bytes": 1237,
+      "sha256": "5f8f535cad168bc464f32438ceddddec676e14ba53025881a5aeaa8ec1487fe9"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_fast_probe_frame.c",
+      "bytes": 2131,
+      "sha256": "fd75353cd30be2c65ad2e6fa676ec506466637d8958763070ada13c06ac51a4e"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_fast_probe_frame.h",
+      "bytes": 321,
+      "sha256": "a246f25b6732be0abe5206db91d7812bb28b9e1cfc60abef21036d8ea9a2a43d"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_fast_probe_main.c",
+      "bytes": 12714,
+      "sha256": "8bd61e95921a4435edc1d5a27aede7601c8c0135ce0a544da76bf322d754b9e5"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_core.c",
+      "bytes": 28795,
+      "sha256": "968a3de1fb7fe502b83f142a348692b49c38aa45b4f21da753f1f3e14148e13c"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_core.h",
+      "bytes": 1310,
+      "sha256": "a77f4c05ca7f1b367b00cb7d36a5d25b2d72327cc69983f4ac7a4e969fc9803b"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_ddr.c",
+      "bytes": 2226,
+      "sha256": "f4a1fc450ccdc4dc2e50ad430c3e24831669fa986799858d4b4967ae6e0f4043"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_ddr.h",
+      "bytes": 264,
+      "sha256": "f09fcfe2b9f8bcde428a70a645f0bc02f913c6ef21c37af49a0768fe32ac072f"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_main.c",
+      "bytes": 3513,
+      "sha256": "2a3a961fcc236aaa0a7c45454758ba66c0279546fcdd91c88c1bf4bb6e7a8da5"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_platform.c",
+      "bytes": 3391,
+      "sha256": "b194406a4da0df8b570ada47027c3a6ff9cb9b1f4e25270484cd40ed90a6578e"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_platform.h",
+      "bytes": 369,
+      "sha256": "9c219dfe708352257007b6fa026514647b18b75e877aef338bd16b98fdf27274"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_raw.c",
+      "bytes": 7106,
+      "sha256": "29fa2cc4e1af0bc4a4fcc1c7556b741622fdccaf04b43133fb0a47a761858aed"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_raw.h",
+      "bytes": 415,
+      "sha256": "978bc1bfd36c3361ead9033694e4fdf3b38ead0dac5baa0bf99b317edc3c996e"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_stream.c",
+      "bytes": 7833,
+      "sha256": "698ab693fabae320c50f40a3ed70f35f26725ba5d0f4d35174ba10a9ba0b1019"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_stream.h",
+      "bytes": 1523,
+      "sha256": "0822a0b569ca7b3a1873889cc4d41668f98a5165e3f8bd61d7e73cc454d7ec14"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_tcp.c",
+      "bytes": 2389,
+      "sha256": "e912eba40387e50d828dfa7da4176c5aebf4c95a64a5e1351f188e732052c815"
+    },
+    {
+      "path": "vcu118/ethernet/firmware/eth_loader_tcp.h",
+      "bytes": 327,
+      "sha256": "6abef1d378be648cf187108cc0894de5d3dffa7178578170fa770e9213a31ef1"
+    },
+    {
+      "path": "vcu118/ethernet/inspect_debug.tcl",
+      "bytes": 1699,
+      "sha256": "14f717dc2c4d3993b4b42aed878f1dd20d76078ada0595f0bcb8d9e2234f698a"
+    },
+    {
+      "path": "vcu118/ethernet/inspect_timing.tcl",
+      "bytes": 609,
+      "sha256": "f72b84721126101dd58ed378e2d6335e6e569e9e12436681b14fb2178146ed8c"
+    },
+    {
+      "path": "vcu118/ethernet/inventory.tcl",
+      "bytes": 1666,
+      "sha256": "6cf7b94f5af72f5b54e29bca17e040dba587c255111605b3503dfd9d2de8c034"
+    },
+    {
+      "path": "vcu118/ethernet/loader_app_build.tcl",
+      "bytes": 3198,
+      "sha256": "aec4e7d899f730eefbf0f1d3acbe640e12e4e117867c105771d5a8933f903f2b"
+    },
+    {
+      "path": "vcu118/ethernet/loader_app_prepare.tcl",
+      "bytes": 3018,
+      "sha256": "21206dc07b5e17963da00a4de50e11d1ffb13883aba014cb8bccf57d15e77ff8"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_bitgen.tcl",
+      "bytes": 2499,
+      "sha256": "e851ac998b2279dcfe263fceaa1ac58c461dfce4fb19d930197a996813763b8e"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_build.tcl",
+      "bytes": 15528,
+      "sha256": "69d6c2440a3f0ac8e4948d1b3fcd90fb2ceef73eeb92c37e93cbd347b6844973"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_bus_skew.tcl",
+      "bytes": 791,
+      "sha256": "5d597078c5da5bcd49fecd33b2813cb990f3e2e5bd3bf48754cd903f1a860a3f"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_export.tcl",
+      "bytes": 909,
+      "sha256": "59828c907805bf8ee0d6471a8b733ac971831acab42d8a4acd49e5c109b5d9e7"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_opt.tcl",
+      "bytes": 2814,
+      "sha256": "fdf62e65bc069aa151865cc287ce33499af35ceedb414137c9f538e5fbfa4c1e"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_pin_audit.tcl",
+      "bytes": 2678,
+      "sha256": "323b431785dbfcf5635aac9fcb32a44b7ffc4e5876339e4e01317edbe624e822"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_route.tcl",
+      "bytes": 3398,
+      "sha256": "322f374fba74d169d3d021a85b2169ed3428e49bbc56c7d41b6c1688c32f8805"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bd_synth.tcl",
+      "bytes": 2000,
+      "sha256": "755ccffcdc4baf23819c7d4fa8186e327dad20254e24508b4a6d1125628befa6"
+    },
+    {
+      "path": "vcu118/ethernet/loader_board_program.tcl",
+      "bytes": 1817,
+      "sha256": "95209b07bb8748f5c9d075a4319bbfd1f3a5bbdacd20bdf3a33a04ee010a33af"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bsp.tcl",
+      "bytes": 1745,
+      "sha256": "4cce9269c3a8f986a272804fd4cca5ae72e795dfbd25f9feaa5d39b14266b65c"
+    },
+    {
+      "path": "vcu118/ethernet/loader_bsp_update.tcl",
+      "bytes": 811,
+      "sha256": "5bbd74fefff5134a95513d548e0c65c739f371f967f0cda76cb624f2c37fa378"
+    },
+    {
+      "path": "vcu118/ethernet/loader_cdma_inventory.tcl",
+      "bytes": 954,
+      "sha256": "84a9ac7c698f15bdc56ebe323c8fd521b5dce551ebb34eeaa38d60e3aa2aae78"
+    },
+    {
+      "path": "vcu118/ethernet/loader_fast_probe_build.tcl",
+      "bytes": 3253,
+      "sha256": "81385a7e6aa9d4ecee07d1363ebbfbf4d799180f786f6353af00063913995347"
+    },
+    {
+      "path": "vcu118/ethernet/loader_fast_profile.tcl",
+      "bytes": 1204,
+      "sha256": "db8c00dba76708b69094aee2a039df0a9743887698b10e1cb62ee976849e5b49"
+    },
+    {
+      "path": "vcu118/ethernet/loader_mb_download.tcl",
+      "bytes": 742,
+      "sha256": "95eb63fc2404e856422c17eba0fbe758bf9afcbadd4887a83d46eada4bf3ce67"
+    },
+    {
+      "path": "vcu118/ethernet/loader_mb_inspect.tcl",
+      "bytes": 1012,
+      "sha256": "c5238895883aea44507eb062ed52cffcd2f52d0e69c46b3ce7567cc149e567e9"
+    },
+    {
+      "path": "vcu118/ethernet/loader_mb_main_sp.tcl",
+      "bytes": 1305,
+      "sha256": "4bbed4cce0f82d471bab9582647e5b005b00fa357c8aaeb1110b31959e347a08"
+    },
+    {
+      "path": "vcu118/ethernet/loader_mb_targets.tcl",
+      "bytes": 466,
+      "sha256": "47a5da1133b33040ae5cb1fb9f3e504ff1000d1fd95ec73e8dbb02e876e130c5"
+    },
+    {
+      "path": "vcu118/ethernet/loader_mb_trace.tcl",
+      "bytes": 732,
+      "sha256": "d612b804f5595bea89c8a97c81fb2a84b6e668a93992ec27c5d2b620c150a95e"
+    },
+    {
+      "path": "vcu118/ethernet/loader_preflight.tcl",
+      "bytes": 3287,
+      "sha256": "1e9e1837a6d7051bda97a5b0933eaccde60b999bffaac00cf3e6425cda99edc4"
+    },
+    {
+      "path": "vcu118/ethernet/phy_sgmii.tcl",
+      "bytes": 17377,
+      "sha256": "be2a00b69410430a22f2129f69f36a8e02a669cabebbedff1aa71478eecea137"
+    },
+    {
+      "path": "vcu118/ethernet/prepare_ara_integration.py",
+      "bytes": 5259,
+      "sha256": "cb96524e6801d80794ea7a6dd3d688416e51f30e4b9a5dbbc3f8c51d04221614"
+    },
+    {
+      "path": "vcu118/ethernet/rtl/eth_diag_echo.sv",
+      "bytes": 3224,
+      "sha256": "e5747e5ef07f7d65bd7daf7b8a3fa54ca83ac5b25d1bb655db2df19fbe17f828"
+    },
+    {
+      "path": "vcu118/ethernet/rtl/eth_diag_reset.sv",
+      "bytes": 1559,
+      "sha256": "9ad8ee6638a870a3861d0a293b7241715ea172471848535c7a1d1cd03afb3961"
+    },
+    {
+      "path": "vcu118/ethernet/rtl/eth_diag_top.sv",
+      "bytes": 6569,
+      "sha256": "db4ad523db2c784a3bc7ab4409884d26324a1313a53b1ef8060cace048da3c37"
+    }
+  ],
+  "sources_zip_sha256": "2e8ba64d883e6c849bf66a047db2dccdae380eebe626753790f810cdd63f3534",
+  "remaining_gates": [
+    "Single shared C1 MIG and checked global-to-bank address translation",
+    "DDR arbitration, ID conversion, CDC and common reset validation",
+    "Hardware write admission, network/DMA drain and no-write launch lock",
+    "Cold passive boot and CPU/LLC cache visibility validation",
+    "Matching integrated bitstream/firmware identity and reserved-region enforcement",
+    "Relocated JTAG preflight and verified network-load/JTAG-launch orchestration",
+    "Route timing, DRC, CDC and integrated board acceptance"
+  ]
+}

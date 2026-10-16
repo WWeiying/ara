@@ -57,6 +57,21 @@ if {$fpga_profile ne "baseline"} {
         CONFIG.M_AXI_ADDR_WIDTH {32} \
     ] [get_ips jtag_debug]
 }
+if {$fpga_profile eq "host_ethernet"} {
+    create_ip -name vio -vendor xilinx.com -library ip -version 3.0 -module_name eth_control
+    set_property -dict [list CONFIG.C_NUM_PROBE_IN 1 CONFIG.C_PROBE_IN0_WIDTH 256 \
+        CONFIG.C_NUM_PROBE_OUT 1 CONFIG.C_PROBE_OUT0_WIDTH 1 \
+        CONFIG.C_PROBE_OUT0_INIT_VAL 0x0] [get_ips eth_control]
+    set loader_source [file join $package_root ethernet loader_bd loader_bd.bd]
+    if {![file isfile $loader_source]} { error "Missing validated shared-DDR loader: $loader_source" }
+    import_files -norecurse $loader_source
+    set loader_bd [get_files -quiet */loader_bd.bd]
+    if {[llength $loader_bd] != 1} { error "Expected one imported loader BD" }
+    set_property synth_checkpoint_mode Singular $loader_bd
+    generate_target all $loader_bd
+    add_files -norecurse [make_wrapper -files $loader_bd -top]
+    create_ip_run $loader_bd
+}
 generate_target all [get_ips $profile_ips]
 # create_ip_run accepts one sub-design, not an IP collection (UG835).
 foreach name $profile_ips {

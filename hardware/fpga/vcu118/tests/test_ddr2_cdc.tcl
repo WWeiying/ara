@@ -12,6 +12,7 @@ proc get_filesets {args} { return sources_1 }
 rename get_property baseline_get_property
 proc get_property {key object} {
     if {$key eq "verilog_define"} { return $::ddr_defines }
+    if {$key eq "DESIGN_MODE"} { return $::ddr_mode }
     return [baseline_get_property $key $object]
 }
 rename set_max_delay baseline_set_max_delay
@@ -39,10 +40,16 @@ proc set_false_path {args} {
         lappend ::false_paths $args
     } else { baseline_set_false_path {*}$args }
 }
-foreach ddr_case {dual single missing_channel unexpected_channel missing_pad missing_c1_coupled_reset missing_c2_coupled_reset missing_second_stage missing_ui_clock missing_por} {
+foreach ddr_case {dual single gate_dual gate_single gate_missing_profile_channel gate_wrong_profile missing_channel unexpected_channel missing_pad missing_c1_coupled_reset missing_c2_coupled_reset missing_second_stage missing_ui_clock missing_por} {
     setup healthy
+    unset -nocomplain ::fpga_profile
+    set ddr_mode [expr {[string match gate_* $ddr_case] ? "GateLvl" : "RTL"}]
     set ddr_defines [expr {$ddr_case in {single unexpected_channel} ? {} : {ARA_FPGA_DDR2}}]
-    if {$ddr_case ni {single missing_channel}} {
+    if {$ddr_mode eq "GateLvl"} {
+        set ddr_defines {}
+        set ::fpga_profile [expr {$ddr_case in {gate_single gate_wrong_profile} ? "host_ethernet" : "dual_ddr_ethernet"}]
+    }
+    if {$ddr_case ni {single gate_single missing_channel gate_missing_profile_channel}} {
         dict set ::pins i_dram_wrapper/fabric_reset_ni reset
         dict for {name clock} $::pins {
             if {[string match i_dram_wrapper/* $name]} {
@@ -75,14 +82,25 @@ foreach ddr_case {dual single missing_channel unexpected_channel missing_pad mis
         }
     }
     set failed [catch {source $root/constraints/cdc.xdc} message]
-    assert {$failed == ($ddr_case ni {dual single})} "$ddr_case: $message"
+    assert {$failed == ($ddr_case ni {dual single gate_dual gate_single})} "$ddr_case: $message"
+    assert {!!$::ara_cdc::application_complete == !$failed} "failed application cannot leave a success marker"
     if {$failed} {
         assert {[string match CDC:* $message]} "intentional fail-closed error"
     } else {
-        set dual [expr {$ddr_case eq "dual"}]
+        set dual [expr {$ddr_case in {dual gate_dual}}]
         assert {[llength $max_delays] == 21 + 16*$dual} "every DDR datapath/reset bound applied"
         assert {[llength $bus_skews] == 10 + 10*$dual} "every DDR Gray skew bound applied"
         assert {[llength $false_paths] == 5 + 2*$dual} "only documented reset/status exceptions"
     }
     puts "PASS DDR2 CDC $ddr_case"
 }
+unset -nocomplain ::fpga_profile
+setup healthy
+set ddr_mode GateLvl
+set ara_cdc_library_only true
+source $root/constraints/cdc.xdc
+assert {![llength $max_delays] && !$debug_connected} "library loading has no design side effects"
+ara_cdc::apply false
+assert {[llength $max_delays] == 21 && !$debug_connected} "routed review does not reconnect debug clock"
+unset ara_cdc_library_only
+puts "PASS CDC library and timing-only application"

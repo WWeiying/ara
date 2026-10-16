@@ -16,10 +16,13 @@ sys.dont_write_bytecode = True
 SOFTWARE = Path(__file__).resolve().parents[2] / "ara_dsa_vcu118/software"
 sys.path.insert(0, str(SOFTWARE))
 import eth_load
-from host_image import CAP_HOST, Image, Segment
+from host_image import CAP_DDR2, CAP_HOST, Image, Segment
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_pipeline_capability_does_not_enable_ddr2(self):
+        self.assertEqual(eth_load.CAP_PIPELINE & CAP_DDR2, 0)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -78,6 +81,42 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(result["verified_blocks"], 4)
         self.assertFalse(result["execution_started"])
         self.assertEqual(received, self.source.read_bytes() + bytes(12000 - self.source.stat().st_size))
+
+    def test_pipelined_sender_waits_for_each_verified_ack(self):
+        client, server = socket.socketpair()
+        self.addCleanup(client.close)
+        self.addCleanup(server.close)
+        client.settimeout(5)
+        server.settimeout(5)
+        seen = []
+        errors = []
+
+        def peer():
+            try:
+                for _ in range(4):
+                    opcode, address, length, crc = eth_load.RECORD.unpack(
+                        eth_load.receive_exact(server, eth_load.RECORD.size))
+                    data = eth_load.receive_exact(server, length)
+                    self.assertEqual(opcode, b"DATA")
+                    self.assertEqual(crc, zlib.crc32(data))
+                    seen.append((address, crc))
+                for address, crc in seen:
+                    server.sendall(eth_load.ACK.pack(address, crc, 0))
+                opcode, address, length, crc = eth_load.RECORD.unpack(
+                    eth_load.receive_exact(server, eth_load.RECORD.size))
+                self.assertEqual((opcode, length, crc), (b"DONE", 0, 0))
+                server.sendall(eth_load.ACK.pack(address, crc, 0))
+            except BaseException as exc:
+                errors.append(exc)
+
+        worker = threading.Thread(target=peer)
+        worker.start()
+        result = eth_load.transfer(client, self.image, 3000, inflight=4)
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(errors, errors)
+        self.assertEqual(result["verified_blocks"], 4)
+        self.assertEqual(len(seen), 4)
 
     def test_rejects_wrong_crc_and_never_sends_done(self):
         client, server = socket.socketpair()
@@ -229,12 +268,14 @@ class ProtocolTests(unittest.TestCase):
         process, port = self.start_tcp_server()
         output = Path(self.temp.name) / "report"
         self.assertEqual(eth_load.main(["--elf", str(elf), "--host", "127.0.0.1",
-                                        "--port", str(port), "--out", str(output)]), 0)
+                                        "--source", "127.0.0.1", "--port", str(port),
+                                        "--out", str(output)]), 0)
         self.assertEqual(process.wait(timeout=5), 0)
         self.assertEqual(process.stdout.readline().strip(), "RESULT 0")
         report = json.loads((output / "report.json").read_text())
         self.assertEqual(report["payload_bytes"], 4800)
         self.assertEqual(report["state"], "transfer_verified_by_peer_not_execution")
+        self.assertEqual(report["local_address"], "127.0.0.1")
         self.assertFalse(report["board_verified"])
 
 

@@ -27,7 +27,7 @@ if ($global:FakeCase -ne 'missing_marker') {
 $reportDir = Join-Path $global:FakePackage "reports/audit_$token"
 New-Item -ItemType Directory -Path $reportDir | Out-Null
 foreach ($name in @('route_status', 'timing_summary', 'check_timing', 'cdc', 'drc',
-                    'methodology', 'constraint_checks', 'boundary_checks', 'multiple_drivers')) {
+                    'methodology', 'constraint_checks', 'boundary_checks', 'multiple_drivers', 'pslt')) {
     "fake $name" | Set-Content -LiteralPath (Join-Path $reportDir "$name.rpt")
 }
 $global:LASTEXITCODE = 0

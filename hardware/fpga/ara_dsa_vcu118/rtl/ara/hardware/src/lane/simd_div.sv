@@ -149,8 +149,8 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
       end
       WAIT_DONE: begin
         // Wait for the entire 64-bit result to be created
-        // We need vew_q stable when serdiv_result is produced
-        issue_state_d = valid_o ? ISSUE_IDLE : WAIT_DONE;
+        // Keep the word metadata stable until the result is accepted.
+        issue_state_d = (valid_o && ready_i) ? ISSUE_IDLE : WAIT_DONE;
       end
       default: begin
         issue_state_d = ISSUE_IDLE;
