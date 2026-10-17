@@ -7,6 +7,11 @@ Set-StrictMode -Version Latest
 $root = $PSScriptRoot
 $package = Join-Path $root 'package'
 $config = Get-Content (Join-Path $root 'release_inputs.json') -Raw | ConvertFrom-Json
+if ($config.PSObject.Properties.Name -contains 'Package') {
+    $package = $config.Package
+}
+$driver = Join-Path $package 'ethernet\release_build.tcl'
+if ($config.PSObject.Properties.Name -contains 'Driver') {$driver=$config.Driver}
 $vivado = 'D:\Xilinx\Vivado\2020.1\bin\vivado.bat'
 $env:ARA_FPGA_PROFILE = 'dual_ddr_ethernet'
 $modified = $false
@@ -31,10 +36,10 @@ function Run-Tool([string]$mode, [string]$directory) {
     if (@(Get-Process vivado -ErrorAction SilentlyContinue).Count) {throw 'Vivado busy'}
     Push-Location $directory
     try {
-        & $vivado -mode batch -notrace -nojournal -log (Join-Path $directory 'vivado.log') `
-            -source (Join-Path $package 'ethernet\release_build.tcl') `
+        & $vivado -mode batch -notrace -nojournal -log (Join-Path $directory "$mode.log") `
+            -source $driver `
             -tclargs $mode $package $directory $config.Token $config.Reference (Join-Path $root 'tools')
-        if ($LASTEXITCODE) {throw "$mode failed; inspect $directory\vivado.log"}
+        if ($LASTEXITCODE) {throw "$mode failed; inspect $directory\$mode.log"}
     } finally {Pop-Location}
 }
 if (Test-Path (Join-Path $root 'state.json')) {throw 'Existing release state; inspect rather than restart'}
@@ -46,11 +51,19 @@ try {
     State 'verify_frozen_release'
     Verify-Inputs
     if (@(Get-Process vivado -ErrorAction SilentlyContinue).Count) {throw 'Vivado busy'}
-    State 'prepare_ip_and_project'
-    & (Join-Path $package 'scripts\create_profile.ps1') -Profile dual_ddr_ethernet
-    if ($LASTEXITCODE) {throw 'Project/IP preparation failed'}
     New-Item -ItemType Directory -Force -Path (Join-Path $package 'build\managed') | Out-Null
-    $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
+    if (($config.PSObject.Properties.Name -contains 'PreparedProject') -and $config.PreparedProject) {
+        $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
+        State 'verify_prepared_ip_without_rebuild'
+        Run-Tool 'prepared' (Join-Path $root 'synth')
+    } else {
+        State 'prepare_ip_and_project'
+        & (Join-Path $package 'scripts\create_profile.ps1') -Profile dual_ddr_ethernet
+        if ($LASTEXITCODE) {throw 'Project/IP preparation failed'}
+    }
+    if ($null -eq $lock) {
+        $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
+    }
     State 'synthesis'
     Run-Tool 'synth' (Join-Path $root 'synth')
     State 'synthesis_setup_and_reviewed_physical_gate'

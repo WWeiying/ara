@@ -143,6 +143,12 @@ proc fpga_run::wait_checked {name expected dir} {
             set last_print $now
             set last_status $status
             flush stdout
+            set progress [open [file join $dir wait_progress.tcllist] w]
+            set log [file join $dir runme.log]
+            set bytes -1; set modified -1
+            if {[file isfile $log]} {set bytes [file size $log]; set modified [file mtime $log]}
+            puts $progress [list time $now run $name status $status log $log bytes $bytes modified $modified]
+            close $progress
         }
         # No elapsed-time/CPU cutoff: quiet optimization phases can be valid.
         after 5000

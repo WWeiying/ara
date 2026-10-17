@@ -1,0 +1,50 @@
+{
+  "status": "orchestration_defects_repaired_loader_recovery_in_progress",
+  "rtl_changed_during_flow_audit": false,
+  "board_modified": false,
+  "stalled_attempt": "D:/fpga_runs/ara_va_release_20261017_01",
+  "observations": {
+    "blocked_run": "loader_bd_synth_1",
+    "last_log_time_local": "2026-10-17T15:29:54+08:00",
+    "checked_after": "2026-10-17T17:26:49+08:00",
+    "last_message": "Synthesis finished with 0 errors, 0 critical warnings and 553 warnings",
+    "missing": ["loader_bd.dcp", "successful worker completion markers"],
+    "actual_call": "synth_design had not returned to generated loader_bd.tcl; rename_ref/write_checkpoint had not executed",
+    "cpu_seconds_over_10_seconds": {"prepare_parent_8972": 0.0625, "synth_parent_20332": 0, "task_worker_17688": 0},
+    "free_physical_memory_kib": 17875856,
+    "wait_chain_cycle_detected": false,
+    "conclusion": "Confirmed inactive OOC synthesis stall, not evidence of current Ara RTL timing failure. The proprietary internal wait cause is not yet proven."
+  },
+  "workflow_findings": [
+    {
+      "issue": "IP preparation used bare wait_on_run, bypassing managed crash/log checks and periodic named-run progress",
+      "repair": "Use fpga_run::wait_checked and publish run name, log size and last log write time",
+      "limit": "Progress reporting is not automatic deadlock detection; quiet phases are not killed based on elapsed time alone"
+    },
+    {
+      "issue": "Fresh frozen builds regenerated unchanged OOC IPs; release wrapper had no explicit verified prepared-project continuation",
+      "repair": "Allow an explicitly configured immutable package/project, re-open it and require check_ips before continuation; reject stale, failed, locked or missing checkpoints",
+      "limit": "No blind cross-project DCP copying or spoofing completion markers"
+    },
+    {
+      "issue": "Coarse root state did not expose which IP was being waited on; a live process was incorrectly treated as useful progress",
+      "repair": "Add wait_progress.tcllist snapshots and separate per-mode tool logs; operational status must consider log and CPU progress, not process existence alone"
+    }
+  ],
+  "recovery": {
+    "process_action": "Saved logs, input scripts, process tree, CPU delta and Windows wait chains; stopped only owned hung build processes, including its orphan task worker",
+    "attempt_02": "Backup glob selected a marker twice; stopped before reset or synthesis. Fixed by deduplicating paths; failed attempt retained",
+    "attempt_03": "One controlled loader-only retry with general.maxThreads=1 and synth.maxThreads=1; preserve other completed OOC runs",
+    "output": "D:/fpga_runs/ara_va_release_20261017_03",
+    "after_recovery": "Recheck all IPs, then automatic current-RTL synthesis, incremental implementation, routed audit, bitgen, board smoke and Linux checks",
+    "not_yet_proven": "Single-thread retry resolves the proprietary wait; new bitstream timing and Linux boot remain unverified"
+  },
+  "regression": {
+    "prepare_profile_mock_checks": 66,
+    "managed_run_mock_regression": "passed, including quiet valid phases and failure rejection",
+    "release_flow_python_tests": 5,
+    "rebuild_report_gate_python_tests": 10,
+    "vendor_execution_is_separate_from_mock_tests": true
+  },
+  "evidence": "/home/wangwy/fpga_runs/ara_va_release_20261017_01/hang_review_01"
+}

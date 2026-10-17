@@ -216,6 +216,11 @@ foreach scenario {healthy quiet_phase benign_log missing_run missing_ip incomple
         }
         assert {[llength $launched] <= 1} "only one run launched"
         assert {[file exists [file join $session completed_run.txt]] == $success} "completion marker"
+        if {$scenario eq "quiet_phase"} {
+            set progress [fpga_checks::read_report [file join $session synth_$token wait_progress.tcllist]]
+            assert {[dict get $progress run] eq "synth_$token"} "progress identifies the actual waiting run"
+            assert {[dict exists $progress modified] && [dict exists $progress bytes]} "progress includes file freshness, not just process existence"
+        }
         assert {[file exists [file join $session old synth_1 exception.log]]} "old artifacts preserved"
         if {$scenario in {log_cancelled log_canceled log_stackfree delayed_log_crash}} {
             assert {[string first "runme.log" $message] >= 0} "crash error identifies the log"

@@ -6,7 +6,16 @@ if {[catch {
     set ::rebuild_test_mode true
     source [file join $package ethernet rebuild_mainrtl.tcl]
     set ::rebuild_opt_preflight [file join $tools dual_cdc_preflight.tcl]
-    rebuild_run $mode $package $out $token synth_$token $reference
+    if {$mode eq "prepared"} {
+        source [file join $package scripts common.tcl]
+        source [file join $package scripts run_support.tcl]
+        open_package_project
+        fpga_run::check_ips
+        close_project
+        puts "PREPARED_PROJECT_VERIFIED"
+    } else {
+        rebuild_run $mode $package $out $token synth_$token $reference
+    }
 } message]} {
     puts stderr $::errorInfo
     exit 1

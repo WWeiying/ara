@@ -662,7 +662,7 @@
     "ARA_AKV_ENABLE": 1,
     "ARA_AKV_V2_ENABLE": 1
   },
-  "created_utc": "2026-10-17T06:56:36.952721+00:00",
+  "created_utc": "2026-10-17T09:34:06.993123+00:00",
   "revisions": {
     "apb": {
       "commit": "77ddf073f194d44b9119949d2421be59789e69ae",
@@ -673,7 +673,7 @@
       "tracked_changes": []
     },
     "ara": {
-      "commit": "7b9f36750030afe9b2af45046c67db471776cdfb",
+      "commit": "06f06f076890406c02970e12ed9f651989e60c8d",
       "tracked_changes": [
         ".gitignore",
         "apps/common/crt0.S",
@@ -681,7 +681,11 @@
         "apps/riscv-tests/isa/rv64uv/vfredmax.c",
         "backend/syn/ara_soc/v1-dc/reports/area.rpt",
         "hardware/Makefile",
-        "hardware/src/vlsu/addrgen.sv",
+        "hardware/fpga/vcu118/ethernet/release_build.tcl",
+        "hardware/fpga/vcu118/ethernet/run_release.ps1",
+        "hardware/fpga/vcu118/scripts/prepare_profile.tcl",
+        "hardware/fpga/vcu118/scripts/run_support.tcl",
+        "hardware/fpga/vcu118/tests/test_release_flow.py",
         "hardware/tb/ara_commit_monitor.sv",
         "hardware/tb/ara_tb.sv",
         "hardware/tb/ara_tb_verilator.sv",
@@ -723,7 +727,6 @@
         "verification/tests/test_trace.py",
         "verification/tests/test_vector_commit.py",
         "verification/tests/test_vector_signature.py",
-        "verification/timing/generate_closure_checks.py",
         "verification/verify.py"
       ]
     },

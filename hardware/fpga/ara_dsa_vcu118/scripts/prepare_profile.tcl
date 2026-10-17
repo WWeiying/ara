@@ -41,7 +41,10 @@ if {$fpga_profile in {host_ethernet dual_ddr_ethernet}} {
 }
 if {[llength $pending]} { launch_runs $pending -jobs $run_jobs }
 foreach run $pending {
-    wait_on_run $run
+    set dir [get_property DIRECTORY [get_runs $run]]
+    puts "PREPARE_WAIT: $run; log=[file join $dir runme.log]"
+    flush stdout
+    fpga_run::wait_checked $run {*synth_design Complete*} $dir
     check_run $run {*synth_design Complete*}
 }
 fpga_run::check_ips

@@ -33,6 +33,22 @@ class ReleaseFlowTests(unittest.TestCase):
         self.assertIn('read_checkpoint -incremental $reference', text)
         self.assertIn('STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight', text)
 
+    def test_prepared_resume_rechecks_actual_ip_results(self):
+        text = (ROOT / 'release_build.tcl').read_text()
+        prepared = text.split('if {$mode eq "prepared"}', 1)[1].split('} else {', 1)[0]
+        self.assertIn('open_package_project', prepared)
+        self.assertIn('fpga_run::check_ips', prepared)
+        self.assertIn('close_project', prepared)
+        self.assertNotIn('launch_runs', prepared)
+
+    def test_ip_wait_is_observable_without_automatic_reset(self):
+        scripts = ROOT.parent / 'scripts'
+        text = (scripts / 'prepare_profile.tcl').read_text()
+        self.assertNotIn('wait_on_run $run', text)
+        self.assertIn('fpga_run::wait_checked $run', text)
+        self.assertNotIn('reset_run ', text)
+        self.assertIn('wait_progress.tcllist', (scripts / 'run_support.tcl').read_text())
+
 
 if __name__ == '__main__':
     unittest.main()
