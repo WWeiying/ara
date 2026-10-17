@@ -1,0 +1,47 @@
+{
+  "status": "linux_boot_and_bounded_basic_checks_passed_with_separate_host_cleanup_defect",
+  "source_commit": "adbc41505d4659e779b20f39de700fedec5f4384",
+  "bitstream": "D:/fpga_runs/ara_va_release_20261017_04/bitstream/ara_dsa_vcu118.bit",
+  "bitstream_sha256": "baffa395f08ba7dbea0e2eb99d1de72da65d73a1023f9a0925fab687a8919d07",
+  "ltx_sha256": "fb6e99ba9940923d5843110f38a19722fba355ad6e042a14e08e0b8ec3dae396",
+  "board": "xcvu9p, Digilent/210308A3B79F",
+  "flash_modified": false,
+  "rtl_modified_during_validation": false,
+  "linux_payloads": "Unchanged original payload set, verified against recorded manifest before loading",
+  "results": {
+    "program_and_board_readiness": "passed",
+    "ethernet_smoke_load_execute": "passed",
+    "linux_init_handoff_marker": true,
+    "kernel_init_time_seconds": 69.054262,
+    "original_init_vector_restore_page_fault_reproduced": false,
+    "linux_kernel": "6.19.6 riscv64",
+    "shell_memory_smoke": "passed: 1 MiB tmpfs write, SHA256, copy and compare",
+    "system_checks_passed": 8,
+    "system_checks": ["kernel", "dual_ddr_memory", "cpu_features", "process_exec", "integer64", "filesystem", "timer", "kernel_log"],
+    "memtotal_kib": 3996732,
+    "ram_ranges_observed": ["80050000-fefeffff", "100000000-17fffffff"],
+    "panic_oops_bug_in_kernel_log": false,
+    "guest_restarted_between_init_marker_and_console_checks": false,
+    "guest_left_running": true
+  },
+  "linux_transfer": {
+    "payload_bytes": 34902190,
+    "seconds_including_readback": 4.0559077999787405,
+    "bytes_per_second_including_readback": 8605272.042964818
+  },
+  "host_issue": {
+    "id": "HOST-CLEANUP-EXIT-RACE",
+    "source": "hardware/fpga/vcu118/software/host_transport.py:stop_owned_tree",
+    "observation": "taskkill returned a failure because one descendant had already exited while also reporting termination of the owned root; no live Vivado client remained at the following preflight",
+    "effect": "The original boot report and wrapper state say failed despite uart.marker_seen=true. They are preserved unchanged. Independent console checks on the same still-running guest passed.",
+    "fixed": false
+  },
+  "scope_limits": [
+    "One repaired-image Linux boot and bounded basic checks, not exhaustive RVV regression or long-duration stability signoff",
+    "Both RAM ranges enumerated; this does not certify full-capacity memory integrity or deliberate stress of both DDR controllers",
+    "Full manual CDC signoff remains open"
+  ],
+  "evidence_remote": "D:/fpga_runs/ara_va_board_20261018_01",
+  "evidence_local": "/home/wangwy/fpga_runs/ara_va_board_20261018_01/collected",
+  "evidence_zip_sha256": "da4adb2b8ef41515d36fbcbb50591779d8bcd350ec29ba3d8dab57f206392465"
+}
