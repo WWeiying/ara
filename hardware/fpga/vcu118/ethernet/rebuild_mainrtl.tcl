@@ -82,6 +82,10 @@ proc rebuild_run {mode package out token parent reference {optimized -}} {
         fpga_run::reusable $parent {*synth_design Complete*} ${design_top}.dcp
         set name impl_$token
         set run [fpga_run::clone_run impl_1 $name $parent]
+        if {[info exists ::rebuild_opt_preflight]} {
+            fpga_run::nonempty $::rebuild_opt_preflight
+            set_property STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight $run
+        }
         current_run -implementation $run
         rebuild_stage $out optimize_current_netlist
         launch_runs $name -jobs 1 -dir $out -to_step opt_design

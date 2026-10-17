@@ -110,3 +110,13 @@ if {![catch {rebuild_run resume package $out abcdef012345 - $ref $ref}]} {
     error "Dual-channel physical optimization bypassed strict timing"
 }
 puts "PASS: dual profile runs one physical pass and retains strict routed gate"
+set rebuild_opt_preflight $ref
+proc set_property {args} {record property {*}$args}
+set scenario pass
+set calls {}
+set out [file join $root dual_hook]; file mkdir $out
+rebuild_run impl package $out abcdef012345 synth_abcdef012345 $ref
+set configured [lsearch -exact $calls [list property STEPS.OPT_DESIGN.TCL.PRE $ref impl_abcdef012345]]
+set launched [lsearch -glob $calls {launch *}]
+if {$configured < 0 || $configured >= $launched} {error "CDC preflight hook not installed before opt launch"}
+puts "PASS: dual CDC hook is installed on the isolated run before implementation"
