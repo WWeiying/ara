@@ -1,0 +1,42 @@
+{
+  "status": "repair_reviewed_integrated_and_focused_tests_passed",
+  "source": {
+    "worktree": "/home/wangwy/openproject/ara_dsa_signoff_integration",
+    "branch_head_at_review": "5ee02215",
+    "repair_origin": "uncommitted hardware/src/vlsu/addrgen.sv working-tree change",
+    "sha256": "0dda59391b0452def1ed3a9134a4b99b774e19c8249836c1914bb918d4151617",
+    "identical_in": ["source worktree", "ara_dsa main RTL", "exported FPGA RTL"]
+  },
+  "version_management": {
+    "before_tag": "fpga-pre-virtual-address-repair-20261017",
+    "before_commit": "7b9f36750030afe9b2af45046c67db471776cdfb",
+    "fpga_sync_backup": "hardware/fpga/ara_dsa_vcu118/.fpga_sync_backups/20261017T065704Z_79106af8"
+  },
+  "review": {
+    "architectural_virtual_width": "CVA6Cfg.VLEN, distinct from vector register VLEN",
+    "covered_storage": ["request address", "unit-stride lookahead", "strided lookahead and addition", "indexed spill", "burst boundaries and cross-page upper bits"],
+    "unchanged": ["MMU canonical check", "AXI physical address width", "queue depths", "pipeline stages", "board constraints and clock configuration"],
+    "no_additional_functional_defect_found_in_reviewed_repair": true
+  },
+  "verification": {
+    "main_rtl": {"repair_cases": 18, "archived_faulty_controls": 10, "passed": true},
+    "exported_fpga_rtl": {"repair_cases": 18, "archived_faulty_controls": 10, "passed": true},
+    "static_type_tests": {"cases": 5, "passed": true},
+    "export_consistency_tests": {"cases": 3, "passed": true},
+    "package_checksum_files": 799,
+    "scope": "Actual addrgen/MMU RTL with controlled DTLB hit and PTE; no full SoC simulation",
+    "evidence": [
+      "/home/wangwy/fpga_runs/ara_va_integration_main_20261017_01",
+      "/home/wangwy/fpga_runs/ara_va_integration_neighbors_20261017_01",
+      "/home/wangwy/fpga_runs/ara_va_integration_fpga_20261017_01",
+      "/home/wangwy/fpga_runs/ara_va_integration_fpga_neighbors_20261017_01"
+    ]
+  },
+  "remaining": [
+    "Full page-table walk and Linux boot validation",
+    "Synthesis, implementation, timing review and new bitstream board validation",
+    "Independent platform review of physical-address overflow when PLEN exceeds AXI width; not evidence of an observed board fault"
+  ],
+  "board_modified": false,
+  "vivado_launched": false
+}

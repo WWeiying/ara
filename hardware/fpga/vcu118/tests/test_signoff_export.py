@@ -14,6 +14,15 @@ from export import patch_sram_cache
 
 
 class SignoffExportTests(unittest.TestCase):
+    def test_addrgen_preserves_main_virtual_address_repair(self):
+        relative = 'rtl/ara/hardware/src/vlsu/addrgen.sv'
+        source = (ROOT / 'hardware/src/vlsu/addrgen.sv').read_bytes()
+        self.assertEqual(source, (PACKAGE / relative).read_bytes())
+        manifest = json.loads((PACKAGE / 'manifest.json').read_text())
+        record = next(row for row in manifest['source_hashes_before_integration']
+                      if row['file'] == relative)
+        self.assertEqual(hashlib.sha256(source).hexdigest(), record['source_sha256'])
+
     def test_registered_dependencies_retain_only_reviewed_fpga_transforms(self):
         manifest = json.loads((PACKAGE / "manifest.json").read_text())
         transforms = {

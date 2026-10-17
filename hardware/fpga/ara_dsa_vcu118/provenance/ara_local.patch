@@ -1,0 +1,195 @@
+diff --git a/hardware/src/vlsu/addrgen.sv b/hardware/src/vlsu/addrgen.sv
+index 69245b72..212f4797 100644
+--- a/hardware/src/vlsu/addrgen.sv
++++ b/hardware/src/vlsu/addrgen.sv
+@@ -88,6 +88,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   localparam unsigned DataWidth = $bits(elen_t);
+   localparam unsigned DataWidthB = DataWidth / 8;
+ 
++  // Untranslated addresses retain all architectural bits, independently of AXI PA width.
++  localparam unsigned VAddrWidth = CVA6Cfg.VLEN;
++  typedef logic [VAddrWidth-1:0] vaddr_t;
++
+   localparam unsigned Log2NrLanes = $clog2(NrLanes);
+   localparam unsigned Log2LaneWordWidthB = $clog2(DataWidthB/1);
+   localparam unsigned Log2LaneWordWidthH = $clog2(DataWidthB/2);
+@@ -108,7 +112,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+ 
+   // Check if the address is aligned to a particular width
+   // Max element width: 8 bytes
+-  function automatic logic is_addr_error(axi_addr_t addr, logic [1:0] vew);
++  function automatic logic is_addr_error(vaddr_t addr, logic [1:0] vew);
+     // log2(MAX_ELEMENT_WIDTH_BYTE)
+     localparam LOG2_MAX_SEW_BYTE = 3;
+     typedef logic [LOG2_MAX_SEW_BYTE:0] max_sew_byte_t;
+@@ -123,7 +127,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   // The address generation process interacts with another process, that
+   // generates the AXI requests. They interact through the following signals.
+   typedef struct packed {
+-    axi_addr_t addr;
++    vaddr_t addr;
+     vlen_t len;
+     elen_t stride;
+     logic [1:0] vew; // Support only up to 64-bit
+@@ -178,7 +182,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   logic [$bits(elen_t)*NrLanes-1:0] shuffled_word;
+   logic [$bits(elen_t)*NrLanes-1:0] deshuffled_word;
+   elen_t                            reduced_word;
+-  axi_addr_t                        idx_final_vaddr_d, idx_final_vaddr_q;
++  vaddr_t                           idx_final_vaddr_d, idx_final_vaddr_q;
+   elen_t                            idx_vaddr;
+   logic                             idx_op_error_d, idx_op_error_q;
+   vlen_t                            addrgen_exception_vstart_d, addrgen_exception_vstart_q;
+@@ -199,7 +203,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+ 
+   // Break the path from the VRF to the AXI request
+   spill_register_flushable #(
+-    .T(axi_addr_t)
++    .T(vaddr_t)
+   ) i_addrgen_idx_op_spill_reg (
+     .clk_i  (clk_i           ),
+     .rst_ni (rst_ni          ),
+@@ -221,7 +225,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   logic addrgen_fof_exception_d, addrgen_fof_exception_q;
+ 
+   vlen_t len_temp;
+-  axi_addr_t next_addr_strided_temp;
++  vaddr_t next_addr_strided_temp;
+ 
+   // Running vector instructions
+   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
+@@ -241,8 +245,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+     WAIT_LAST_TRANSLATION
+   } state_q, state_d;
+ 
+-  axi_addr_t lookahead_addr_e_d, lookahead_addr_e_q;
+-  axi_addr_t lookahead_addr_se_d, lookahead_addr_se_q;
++  vaddr_t lookahead_addr_e_d, lookahead_addr_e_q;
++  vaddr_t lookahead_addr_se_d, lookahead_addr_se_q;
+   vlen_t lookahead_len_d, lookahead_len_q;
+   logic unsafe_stride_defer;
+ 
+@@ -251,7 +255,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   assign unsafe_stride_defer = pe_req_q.vm &&
+       (pe_req_q.op inside {VLSE, VSSE}) &&
+       (lookahead_len_q > (vlen_t'(1) << pe_req_q.vtype.vsew[1:0])) &&
+-      is_addr_error(axi_addr_t'(pe_req_q.stride), pe_req_q.vtype.vsew[1:0]);
++      is_addr_error(vaddr_t'(pe_req_q.stride), pe_req_q.vtype.vsew[1:0]);
+ 
+   // TODO: Masked elements do not generate exceptions on:
+   //      * EEW misalignment
+@@ -682,9 +686,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+     AXI_ADDRGEN_WAIT_TRANSLATION            // Wait for MMU to ack back
+   } axi_addrgen_state_d, axi_addrgen_state_q;
+ 
+-  axi_addr_t aligned_start_addr_d, aligned_start_addr_q;
+-  axi_addr_t aligned_next_start_addr_d, aligned_next_start_addr_q, aligned_next_start_addr_temp;
+-  axi_addr_t aligned_end_addr_d, aligned_end_addr_q, aligned_end_addr_temp;
++  vaddr_t aligned_start_addr_d, aligned_start_addr_q;
++  vaddr_t aligned_next_start_addr_d, aligned_next_start_addr_q, aligned_next_start_addr_temp;
++  vaddr_t aligned_end_addr_d, aligned_end_addr_q, aligned_end_addr_temp;
+ 
+   // MSb of the next-next page (page selector for page 2 positions after the current one)
+   logic [($bits(aligned_start_addr_d) - 12)-1:0] next_2page_msb_d, next_2page_msb_q;
+@@ -693,14 +697,14 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+   logic [idx_width(clog2_AxiStrobeWidth):0] eff_axi_dw_log_d, eff_axi_dw_log_q;
+ 
+   function automatic void set_end_addr (
+-      input  logic [($bits(axi_addr_t) - 12)-1:0]       next_2page_msb,
++      input  logic [(VAddrWidth - 12)-1:0]             next_2page_msb,
+       input  vlen_t                                     num_bytes,
+-      input  axi_addr_t                                 addr,
++      input  vaddr_t                                   addr,
+       input  logic [clog2_AxiStrobeWidth:0]             eff_axi_dw,
+       input  logic [idx_width(clog2_AxiStrobeWidth):0]  eff_axi_dw_log,
+-      input  axi_addr_t                                 aligned_start_addr,
+-      output axi_addr_t                                 aligned_end_addr,
+-      output axi_addr_t                                 aligned_next_start_addr
++      input  vaddr_t                                   aligned_start_addr,
++      output vaddr_t                                   aligned_end_addr,
++      output vaddr_t                                   aligned_next_start_addr
+   );
+ 
+     automatic int unsigned max_burst_bytes = 256 << eff_axi_dw_log;
+@@ -711,10 +715,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+     // Length, alignment and the exclusive-end adjustment only carry through
+     // this bounded low word. Compute upper-word +/-1 in parallel, retaining
+     // modulo-address-width wrap, zero length and the existing page clamp.
+-    if (AxiAddrWidth > OffsetWidth && AxiAddrWidth <= 64) begin
++    if (VAddrWidth > OffsetWidth && VAddrWidth <= 64) begin
+       automatic logic [OffsetWidth+1:0] next_low, end_low;
+-      automatic logic [AxiAddrWidth-OffsetWidth-1:0] upper, upper_inc, upper_dec;
+-      upper = addr[AxiAddrWidth-1:OffsetWidth];
++      automatic logic [VAddrWidth-OffsetWidth-1:0] upper, upper_inc, upper_dec;
++      upper = addr[VAddrWidth-1:OffsetWidth];
+       upper_inc = upper + 1'b1;
+       upper_dec = upper - 1'b1;
+       next_low = {2'b0, addr[OffsetWidth-1:0]};
+@@ -730,28 +734,28 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+       aligned_next_start_addr = {upper, next_low[OffsetWidth-1:0]};
+       aligned_end_addr = {upper, end_low[OffsetWidth-1:0]};
+       case (next_low[OffsetWidth+1:OffsetWidth])
+-        2'b01: aligned_next_start_addr[AxiAddrWidth-1:OffsetWidth] = upper_inc;
+-        2'b11: aligned_next_start_addr[AxiAddrWidth-1:OffsetWidth] = upper_dec;
++        2'b01: aligned_next_start_addr[VAddrWidth-1:OffsetWidth] = upper_inc;
++        2'b11: aligned_next_start_addr[VAddrWidth-1:OffsetWidth] = upper_dec;
+         default:;
+       endcase
+       case (end_low[OffsetWidth+1:OffsetWidth])
+-        2'b01: aligned_end_addr[AxiAddrWidth-1:OffsetWidth] = upper_inc;
+-        2'b11: aligned_end_addr[AxiAddrWidth-1:OffsetWidth] = upper_dec;
++        2'b01: aligned_end_addr[VAddrWidth-1:OffsetWidth] = upper_inc;
++        2'b11: aligned_end_addr[VAddrWidth-1:OffsetWidth] = upper_dec;
+         default:;
+       endcase
+-    end else if (AxiAddrWidth <= 64) begin
++    end else if (VAddrWidth <= 64) begin
+       if (num_bytes >= max_burst_bytes) begin
+         aligned_next_start_addr = aligned_addr(
+-            axi_addr_t'(prefix_add65(65'(addr), 65'(max_burst_bytes), 1'b0)), eff_axi_dw_log);
++            vaddr_t'(prefix_add65(65'(addr), 65'(max_burst_bytes), 1'b0)), eff_axi_dw_log);
+       end else begin
+-        aligned_next_start_addr = axi_addr_t'(prefix_add65(
+-            65'(aligned_addr(axi_addr_t'(prefix_add3_65(
++        aligned_next_start_addr = vaddr_t'(prefix_add65(
++            65'(aligned_addr(vaddr_t'(prefix_add3_65(
+                 65'(addr), 65'(num_bytes), '1, 1'b0)), eff_axi_dw_log)),
+             65'(eff_axi_dw), 1'b0));
+       end
+-      aligned_end_addr = axi_addr_t'(prefix_sub65(65'(aligned_next_start_addr), 65'd1, 1'b0));
++      aligned_end_addr = vaddr_t'(prefix_sub65(65'(aligned_next_start_addr), 65'd1, 1'b0));
+     end else begin
+-      // Preserve the parameterized behavior for wider AXI address types.
++      // Preserve the parameterized behavior for wider architectural address types.
+       if (num_bytes >= max_burst_bytes)
+         aligned_next_start_addr = aligned_addr(addr + max_burst_bytes, eff_axi_dw_log);
+       else
+@@ -761,8 +765,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+ 
+     // But since AXI requests are aligned in 4 KiB pages, aligned_end_addr must be in the
+     // same page as aligned_start_addr
+-    if (aligned_start_addr[AxiAddrWidth-1:12] != aligned_end_addr[AxiAddrWidth-1:12]) begin
+-        aligned_end_addr        = {aligned_start_addr[AxiAddrWidth-1:12], 12'hFFF};
++    if (aligned_start_addr[VAddrWidth-1:12] != aligned_end_addr[VAddrWidth-1:12]) begin
++        aligned_end_addr        = {aligned_start_addr[VAddrWidth-1:12], 12'hFFF};
+         aligned_next_start_addr = {                     next_2page_msb  , 12'h000};
+     end
+   endfunction
+@@ -838,7 +842,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+         // has zeroes in the upper positions.
+         // We can use this also for the misaligned address calculation, as the next 2 page msb
+         // will be the same either way.
+-        next_2page_msb_d = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
++        next_2page_msb_d = aligned_start_addr_d[VAddrWidth-1:12] + 1;
+         // The final address can be found similarly...
+         set_end_addr (
+           next_2page_msb_d,
+@@ -908,7 +912,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
+ 
+         // Pre-calculate the next_2page_msb. This should not require much energy if the addr
+         // has zeroes in the upper positions.
+-        next_2page_msb_d = aligned_next_start_addr_q[AxiAddrWidth-1:12] + 1;
++        next_2page_msb_d = aligned_next_start_addr_q[VAddrWidth-1:12] + 1;
+ 
+         // Pre-calculate the bytes used in a unit-strided access and the remaining bytes to ask.
+         // The proper way to do so would be aligned_end_addr_q[11:0] + 1 - axi_addrgen_q.addr[11:0].

@@ -1,0 +1,27 @@
+{
+  "status": "direct_fault_mechanism_reproduced",
+  "rtl_modified": false,
+  "board_fix_verified": false,
+  "board_evidence": "/home/wangwy/fpga_runs/ara_signoff_dual_eth_20261016_01/linux_02",
+  "simulation_evidence": "/home/wangwy/fpga_runs/ara_linux_canonical_rootcause_20261017/recorded_repro",
+  "board_fault": {
+    "epc": "0xffffffff80015e88",
+    "instruction": "0x02070007",
+    "operation": "vector load from a4 during kernel vector context restore",
+    "a4": "0xffffffd680846000",
+    "badaddr": "0x0000ffd680846000",
+    "cause": 13
+  },
+  "root_cause": "Ara addrgen retains untranslated virtual addresses in axi_addr_t. The FPGA AXI address width is 48 while architectural virtual addresses are 64 bits. Truncation and subsequent zero extension turn a canonical kernel address into a noncanonical Sv39 address before MMU translation.",
+  "historical_masking": "The archived MMU canonical check used live request/address inputs instead of the registered request/address. Ara deasserts its MMU request when the response is valid; the old check consequently misses this malformed address in the response cycle. The corrected registered canonical check exposes the latent address-width bug.",
+  "simulation_scope": "Actual exported addrgen and MMU RTL; controlled valid DTLB hit/PTE; behavioral storage for unexercised TLB/PTW memories. Representative first vector-load request, not full kernel or full SoC simulation.",
+  "controls": [
+    {"axi_width": 48, "mmu": "current", "address": "high_canonical", "fault": true, "cause": 13, "tval": "0x0000ffd680846000", "axi_read_issued": false},
+    {"axi_width": 48, "mmu": "current", "address": "low_canonical", "fault": false, "axi_read_issued": true},
+    {"axi_width": 64, "mmu": "current", "address": "high_canonical", "fault": false, "axi_read_issued": true},
+    {"axi_width": 48, "mmu": "archived_live_input_check", "address": "high_canonical", "fault": false, "axi_read_issued": true}
+  ],
+  "controls_passed": 4,
+  "fix_direction": "Separate architectural virtual-address storage/arithmetic from physical AXI address types throughout addrgen, including indexed/strided paths and exception metadata. Narrow only after translation. Keep the corrected MMU canonical check; do not bypass it or blindly reconstruct truncated upper bits.",
+  "limits": "This identifies the observed init panic; it does not establish that no other Linux or RVV bugs exist, nor validate a corrected bitstream."
+}
