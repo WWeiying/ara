@@ -4,8 +4,14 @@ if {[catch {
     lassign $argv mode package out token reference tools
     set ::env(ARA_FPGA_PROFILE) dual_ddr_ethernet
     set ::rebuild_test_mode true
-    source [file join $package ethernet rebuild_mainrtl.tcl]
+    set library [file join [file dirname [info script]] rebuild_mainrtl.tcl]
+    if {![file isfile $library]} {set library [file join $package ethernet rebuild_mainrtl.tcl]}
+    source $library
     set ::rebuild_opt_preflight [file join $tools dual_cdc_preflight.tcl]
+    if {$mode in {impl impl_existing} &&
+        (![file isfile $::rebuild_opt_preflight] || [file size $::rebuild_opt_preflight] == 0)} {
+        error "Missing implementation preflight before opening/creating runs: $::rebuild_opt_preflight"
+    }
     if {$mode eq "prepared"} {
         source [file join $package scripts common.tcl]
         source [file join $package scripts run_support.tcl]

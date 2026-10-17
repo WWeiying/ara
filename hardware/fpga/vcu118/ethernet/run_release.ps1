@@ -24,6 +24,11 @@ function State([string]$stage, [string]$message='') {
     Move-Item (Join-Path $root 'state.json.tmp') (Join-Path $root 'state.json') -Force
 }
 function Verify-Inputs {
+    foreach ($required in @($driver,(Join-Path $root 'tools\dual_cdc_preflight.tcl'))) {
+        if (!(Test-Path -LiteralPath $required -PathType Leaf) -or !(Get-Item -LiteralPath $required).Length) {
+            throw "Missing release prerequisite: $required"
+        }
+    }
     foreach ($row in $config.Files) {
         if ((Get-FileHash -LiteralPath $row.Path).Hash.ToLower() -ne $row.SHA256) {
             throw "Frozen release input changed: $($row.Path)"
@@ -52,7 +57,17 @@ try {
     Verify-Inputs
     if (@(Get-Process vivado -ErrorAction SilentlyContinue).Count) {throw 'Vivado busy'}
     New-Item -ItemType Directory -Force -Path (Join-Path $package 'build\managed') | Out-Null
-    if (($config.PSObject.Properties.Name -contains 'PreparedProject') -and $config.PreparedProject) {
+    $reuseSynthesis=$config.PSObject.Properties.Name -contains 'AcceptedSynthesis'
+    if ($reuseSynthesis) {
+        $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
+        State 'verify_accepted_synthesis_no_rebuild'
+        $accepted=$config.AcceptedSynthesis
+        if ($accepted.Run -ne "synth_$($config.Token)" -or
+            (Get-Content $accepted.Stage -Raw).Trim() -ne 'synthesis_complete_requires_physical_gate' -or
+            (Get-Content $accepted.Gate -Raw | ConvertFrom-Json).passed -ne $true) {
+            throw 'Synthesis continuation lacks matching accepted evidence'
+        }
+    } elseif (($config.PSObject.Properties.Name -contains 'PreparedProject') -and $config.PreparedProject) {
         $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
         State 'verify_prepared_ip_without_rebuild'
         Run-Tool 'prepared' (Join-Path $root 'synth')
@@ -64,16 +79,20 @@ try {
     if ($null -eq $lock) {
         $lock=[IO.File]::Open((Join-Path $package 'build\managed\run.lock'),'OpenOrCreate','ReadWrite','None')
     }
-    State 'synthesis'
-    Run-Tool 'synth' (Join-Path $root 'synth')
+    $synthesisReport=Join-Path $root 'synth\synthesis_timing.rpt'
+    if (!$reuseSynthesis) {
+        State 'synthesis'
+        Run-Tool 'synth' (Join-Path $root 'synth')
+    } else {$synthesisReport=$config.AcceptedSynthesis.Report}
     State 'synthesis_setup_and_reviewed_physical_gate'
     & py -3 (Join-Path $package 'ethernet\check_rebuild_reports.py') synthesis `
-        (Join-Path $root 'synth\synthesis_timing.rpt') $config.BaselineSynthesis `
+        $synthesisReport $config.BaselineSynthesis `
         --out (Join-Path $root 'synthesis_gate.json')
     if ($LASTEXITCODE) {throw 'New synthesis violation; implementation not launched'}
     Verify-Inputs
     State 'implementation_using_closed_reference'
-    Run-Tool 'impl' (Join-Path $root 'impl')
+    if ($reuseSynthesis) {Run-Tool 'impl_existing' (Join-Path $root 'impl')}
+    else {Run-Tool 'impl' (Join-Path $root 'impl')}
     $checkpoint=Join-Path $root 'impl\ara_dsa_vcu118_routed.dcp'
     $lock.Dispose(); $lock=$null
     State 'routed_drc_cdc_timing_audit'

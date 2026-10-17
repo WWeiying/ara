@@ -55,8 +55,17 @@ proc report_route_status {args} {
     return [expr {$::scenario ne "route_fail"}]
 }
 proc get_timing_paths {args} {return path}
-proc get_runs {name} {return $name}
+proc get_runs {args} {return [lindex $args end]}
 proc get_property {args} {
+    if {[lindex $args 0] eq "PARENT"} {
+        if {$::scenario eq "existing_wrong_parent"} {return synth_wrong}
+        return synth_abcdef012345
+    }
+    if {[lindex $args 0] eq "STATUS" && [string match existing_* $::scenario] &&
+        [lsearch -glob $::calls {launch *}] < 0} {
+        if {$::scenario eq "existing_started"} {return "Running opt_design"}
+        return "Not started"
+    }
     if {[lindex $args 0] eq "STATUS"} {return "Not started place_design"}
     return [expr {$::scenario eq "setup_fail" ? -0.1 : 0.1}]
 }
@@ -120,3 +129,12 @@ set configured [lsearch -exact $calls [list property STEPS.OPT_DESIGN.TCL.PRE $r
 set launched [lsearch -glob $calls {launch *}]
 if {$configured < 0 || $configured >= $launched} {error "CDC preflight hook not installed before opt launch"}
 puts "PASS: dual CDC hook is installed on the isolated run before implementation"
+foreach scenario {existing_pass existing_started existing_wrong_parent} {
+    set calls {}
+    set out [file join $root $scenario]; file mkdir $out
+    set code [catch {rebuild_run impl_existing package $out abcdef012345 synth_abcdef012345 $ref} msg]
+    if {$code != ($scenario ne "existing_pass")} {error "Unexpected $scenario: $msg"}
+    if {[lsearch -glob $calls {clone *}] >= 0} {error "Continuation cloned or rebuilt a run"}
+    if {$scenario ne "existing_pass" && [lsearch -glob $calls {launch *}] >= 0} {error "Launched incompatible existing run"}
+}
+puts "PASS: continuation accepts only an unstarted implementation with the correct synthesis parent"

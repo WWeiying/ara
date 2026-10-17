@@ -74,14 +74,25 @@ proc rebuild_run {mode package out token parent reference {optimized -}} {
         }
         # Python separately inventories every failing clock group before impl.
         rebuild_stage $out synthesis_complete_requires_physical_gate
-    } elseif {$mode in {impl resume}} {
-      if {$mode eq "impl"} {
+    } elseif {$mode in {impl impl_existing resume}} {
+      if {$mode in {impl impl_existing}} {
         if {$parent ne "synth_$token" || ![file isfile $reference]} {
             error "Missing current synthesized parent or physical reference"
         }
         fpga_run::reusable $parent {*synth_design Complete*} ${design_top}.dcp
         set name impl_$token
-        set run [fpga_run::clone_run impl_1 $name $parent]
+        if {$mode eq "impl_existing"} {
+            set run [get_runs -quiet $name]
+            if {[llength $run] != 1 || [get_property STATUS $run] ne "Not started" ||
+                [get_property PARENT $run] ne $parent} {
+                error "Only an unstarted implementation with the accepted synthesis parent may continue"
+            }
+            set f [open [file join $out continued_run.txt] {WRONLY CREAT EXCL}]
+            puts $f [list run $name parent $parent status [get_property STATUS $run]]
+            close $f
+        } else {
+            set run [fpga_run::clone_run impl_1 $name $parent]
+        }
         if {[info exists ::rebuild_opt_preflight]} {
             fpga_run::nonempty $::rebuild_opt_preflight
             set_property STEPS.OPT_DESIGN.TCL.PRE $::rebuild_opt_preflight $run

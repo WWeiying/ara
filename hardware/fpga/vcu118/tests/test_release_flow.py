@@ -49,6 +49,14 @@ class ReleaseFlowTests(unittest.TestCase):
         self.assertNotIn('reset_run ', text)
         self.assertIn('wait_progress.tcllist', (scripts / 'run_support.tcl').read_text())
 
+    def test_synthesis_continuation_requires_accepted_evidence(self):
+        text = (ROOT / 'run_release.ps1').read_text()
+        self.assertIn('AcceptedSynthesis', text)
+        self.assertIn('if (!$reuseSynthesis)', text)
+        self.assertIn("Run-Tool 'impl_existing'", text)
+        self.assertIn("'synthesis_complete_requires_physical_gate'", text)
+        self.assertIn('Missing release prerequisite', text)
+
 
 if __name__ == '__main__':
     unittest.main()

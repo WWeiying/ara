@@ -1,0 +1,30 @@
+{
+  "status": "implementation_started_from_accepted_synthesis",
+  "output": "D:/fpga_runs/ara_va_release_20261017_04",
+  "source_commit": "adbc41505d4659e779b20f39de700fedec5f4384",
+  "source_package": "D:/fpga_runs/ara_va_release_20261017_01/package",
+  "synthesis_run": "synth_a017adbc4152",
+  "synthesis_checkpoint": "D:/fpga_runs/ara_va_release_20261017_03/synth/synth_a017adbc4152/ara_dsa_vcu118.dcp",
+  "synthesis_checkpoint_bytes": 144567412,
+  "synthesis_rebuilt": false,
+  "ip_rebuilt": false,
+  "implementation_run": "impl_a017adbc4152",
+  "prerequisite_repair": {
+    "missing_file": "tools/dual_cdc_preflight.tcl",
+    "sha256": "6861dc7854b52911d2307ac490abd7e3d23769ba8848d3f803e68a7f5fee3600",
+    "policy": "Required before any expensive stage; no silent fallback or skipped CDC checks"
+  },
+  "continuation_checks": [
+    "Frozen input inventory and every registered input hash verified",
+    "Accepted synthesis report, completion stage, gate and checkpoint hashed",
+    "Synthesis setup and reviewed physical-group gate repeated successfully without rerunning synthesis",
+    "All OOC IPs reused only after checkpoint/status/freshness checks",
+    "Existing implementation accepted only in Not started state with matching PARENT",
+    "Original stopped attempt and logs preserved; no run deleted or reset"
+  ],
+  "remaining_automatic_stages": ["optimization", "reference-based placement", "routing", "strict timing and routed audit", "CDC report comparison", "bitstream and probes generation"],
+  "board_programming_requested_in_this_continuation": false,
+  "board_modified": false,
+  "bitstream_generated": false,
+  "tests": {"release_flow_python": 6, "report_gate_python": 10, "rebuild_tcl": "passed, including rejection of started runs and wrong synthesis parents"}
+}
