@@ -1,0 +1,10 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "faults": [
+    [
+      "trap_supervisor_ecall",
+      "00000000800003e8"
+    ]
+  ],
+  "scope": "one-call semantic adapter, unchanged gather32 ASM"
+}

@@ -1,0 +1,25 @@
+{
+  "state": "PASS",
+  "scope": "Actual dispatcher and segment sequencer; modeled backend acceptance/completion; no VRF or numerical claim",
+  "board_source_commit": "adbc41505d4659e779b20f39de700fedec5f4384",
+  "current_rtl_differs_from_board_commit": true,
+  "expect_fixed": true,
+  "uniform_index_eew8": true,
+  "expect_normalized": true,
+  "dispatcher_source_override": null,
+  "partial_control": "Legal e32/m1 VL16; vs2=v2, index EEW64/EMUL2; active source register v2",
+  "historical_m2_limit": "Historical out03/out_fixed01 m2 and pre-legal-partial runs used unaligned v2 with index EMUL4; layout negative controls only, not legal-instruction regression evidence",
+  "start": 1792293018.4551206,
+  "results": [
+    "RESULT case=m1_full phase=fault0 captures=1 reshapes=1 originals=1 tag2=2 tag3=3 vstart=0 snapshot=0",
+    "RESULT case=m1_full phase=retry captures=2 reshapes=3 retry_reshapes=2 originals=2 tag2=2 tag3=3 vstart=0 snapshot=0",
+    "RESULT case=m1_partial_vl16 phase=fault0 captures=1 reshapes=1 originals=1 tag2=2 tag3=3 vstart=0 snapshot=0",
+    "RESULT case=m1_partial_vl16 phase=retry captures=2 reshapes=3 retry_reshapes=2 originals=2 tag2=2 tag3=3 vstart=0 snapshot=0",
+    "RESULT case=uniform_eew8 phase=capture cycle=296 tag2=3 tag3=3 capture_eew=3 source_normalizations=2",
+    "RESULT case=uniform_eew8 phase=fault0 captures=1 reshapes=3 source_normalizations=2 originals=1 tag2=2 tag3=3 vstart=0",
+    "RESULT case=uniform_eew8 phase=capture cycle=330 tag2=3 tag3=3 capture_eew=3 source_normalizations=3",
+    "RESULT case=uniform_eew8 phase=retry captures=2 reshapes=5 source_normalizations=3 retry_reshapes=2 retry_source_normalizations=1 originals=2 vstart=0",
+    "DISPATCHER_PASS checks=117 cycles=355 scope=control_path_only_no_VRF_numerical_claim"
+  ],
+  "finish": 1792293059.1528563
+}

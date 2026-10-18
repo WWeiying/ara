@@ -1,0 +1,14 @@
+{
+  "status": "SPIKE_PASS_NOT_DUT",
+  "faults": [
+    [
+      "trap_load_page_fault",
+      "0000000080000850"
+    ],
+    [
+      "trap_supervisor_ecall",
+      "0000000080000470"
+    ]
+  ],
+  "scope": "one-call semantic adapter, unchanged gather32 ASM"
+}

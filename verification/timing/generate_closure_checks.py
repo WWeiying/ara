@@ -20,6 +20,8 @@ def address_module(name, source):
     return f"""module {name} import ara_pkg::*; import cf_math_pkg::*; #(
   parameter int AxiAddrWidth=64, AxiDataWidth=128, VLEN=1024,
   localparam int clog2_AxiStrobeWidth=$clog2(AxiDataWidth/8),
+  localparam int VAddrWidth=AxiAddrWidth,
+  localparam type vaddr_t=logic[VAddrWidth-1:0],
   localparam type axi_addr_t=logic[AxiAddrWidth-1:0],
   localparam type vlen_t=logic[$clog2(VLEN+1)-1:0]
 ) (

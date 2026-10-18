@@ -5355,6 +5355,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         in_lane_op = ara_req.op inside {[VADD:VMERGE]} || ara_req.op inside {[VREDSUM:VMSBC]} ||
                      ara_req.op inside {[VMANDNOT:VMXNOR]} || ara_req.op inside {[VMVXS:VSLIDEDOWN]} ||
                      ara_req.op inside {VRGATHER, VRGATHEREI16};
+        indexed_load_groups_overlap = ara_req.op == VLXE &&
+            ara_req.use_vd && ara_req.use_vs2 &&
+            register_groups_overlap(ara_req.vd, ara_req.emul,
+                                    ara_req.vs2, lmul_vs2);
         // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
         // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
@@ -5382,7 +5386,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                        ara_req.vs2, lmul_vs2, vs2_reshuffle_eew,
                        vs2_reshuffle_vstart, vs2_reshuffle_vl)) &&
             (in_lane_op || ara_req.op == VCOMPRESS ||
-             indexed_mixed_vs2_layout),
+             indexed_mixed_vs2_layout || indexed_load_groups_overlap),
           ara_req.use_vd && ara_req.op != VQBEXEC &&
             (is_segment_mem_op && is_vload
                 ? register_span_needs_reshuffle(
@@ -5394,9 +5398,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
                     single_register_result(ara_req.op) ? LMUL_1 : ara_req.emul,
                     ara_req.vtype.vsew, ara_req.vstart, ara_req.vl)) &&
             // A full active destination can skip preservation only for a pure
-            // overwrite. Accumulate and other read-modify-write operations
-            // must first expose every old-vd register in the requested layout.
-            !(!ara_req.use_vd_op && !reduction_result(ara_req.op) &&
+            // overwrite. A faulting indexed load must leave overlapping indices
+            // restartable even before its first write. Preserve vd's bytes in
+            // its new layout after capturing the index source, including VLmax.
+            !(!indexed_load_groups_overlap && !ara_req.use_vd_op && !reduction_result(ara_req.op) &&
               ara_req.op != VCOMPRESS && ara_req.op != VSLIDEUP && ara_req.vm &&
               ara_req.vstart == 0 &&
               (ara_req.vl == ((VLENB << ara_req.emul[1:0]) >> ara_req.vtype.vsew)))};
@@ -5405,13 +5410,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
         // complete index group.  If those groups overlap, retain the index
         // source after any required layout normalization and replay it for the
         // whole address-generation phase.
-        indexed_load_groups_overlap = ara_req.op == VLXE &&
-            ara_req.use_vd && ara_req.use_vs2 &&
-            register_groups_overlap(ara_req.vd, ara_req.emul,
-                                    ara_req.vs2, lmul_vs2);
         // Normalize the overlapping index source before touching vd.  The
         // generic vd-first reshuffle order would otherwise destroy the source
-        // view before it can be retained.
+        // view before it can be retained. The raw-word snapshot is tagged with
+        // the requested index EEW, so even a uniformly different source layout
+        // (for example after an e8 context restore) must first be normalized.
         if (indexed_load_groups_overlap && !source_snapshot_valid_q &&
             reshuffle_req_d[1])
           reshuffle_req_d[0] = 1'b0;

@@ -1,0 +1,20 @@
+{
+  "cases": [
+    "fault_overlap",
+    "resident_overlap",
+    "fault_nonoverlap",
+    "fault_overlap_context",
+    "resident_nonoverlap",
+    "fault_overlap_mid",
+    "fault_overlap_last"
+  ],
+  "passed": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ]
+}
