@@ -78,6 +78,9 @@ if {[catch {
         puts DC_ELAB_COMPLETE
     } else {
         set_fix_multiple_port_nets -all -buffer_constants
+        # Hold repair is opt-in in DC. Keep the original setup/hold constraints;
+        # allow the mapper to insert data-path delay without worsening setup WNS.
+        set_fix_hold [all_clocks]
         set_app_var verilogout_no_tri true
         set_cost_priority -delay
         set power_cg_module_naming_style CLKGATE_%e_%d
@@ -94,6 +97,13 @@ if {[catch {
         stage COMPILE
         require_ok {compile_ultra -no_seq_output_inversion -no_autoungroup -gate_clock}
         checkpoint mapped_checkpoint
+        report_qor > ../reports/qor_before_incremental.rpt
+        report_constraint -all_violators -nosplit > ../reports/violation_before_incremental.rpt
+        stage INCREMENTAL_TIMING
+        # Revisit mapped setup, hold and design-rule violations after the first
+        # pass. Preserve hierarchy and the same clock-gating policy.
+        require_ok {compile_ultra -incremental -no_seq_output_inversion -no_autoungroup -gate_clock}
+        checkpoint timing_optimized
         stage REPORT
         define_name_rules verilog -target_bus_naming_style {%s[%d]} -case_insensitive
         change_names -rules verilog -hierarchy
@@ -103,13 +113,19 @@ if {[catch {
         report_area -hierarchy > ../reports/area.rpt
         report_qor > ../reports/qor.rpt
         report_hierarchy -noleaf > ../reports/hierarchy.rpt
-        report_constraint -all_violators > ../reports/violation.rpt
+        report_constraint -all_violators -nosplit > ../reports/violation.rpt
+        report_constraint -all_violators -max_delay -nosplit > ../reports/violation_setup.rpt
+        report_constraint -all_violators -min_delay -nosplit > ../reports/violation_hold.rpt
+        report_constraint -all_violators -max_transition -max_capacitance -max_fanout -nosplit \
+            > ../reports/violation_design_rules.rpt
+        report_clock -attributes > ../reports/clock_attributes.rpt
         report_clock_gating > ../reports/clock_gating.rpt
         check_design > ../reports/check_design.rpt
         check_timing > ../reports/check_timing.rpt
         report_timing -delay_type max -max_paths 100 -transition_time -input_pins -nets \
             > ../reports/timing_max.rpt
-        report_timing -delay_type min -max_paths 50 > ../reports/timing_min.rpt
+        report_timing -delay_type min -max_paths 100 -transition_time -input_pins -nets \
+            > ../reports/timing_min.rpt
         set starts [all_registers -edge_triggered -output_pins]
         set ends [all_registers -edge_triggered -data_pins]
         report_timing -from $starts -to $ends -delay_type max -max_paths 50 \
@@ -146,8 +162,12 @@ if {[catch {
         puts $f "profile=$RCE_PROFILE"
         puts $f "clock_period_ns=$RCE_CLOCK_PERIOD_NS"
         puts $f "setup_uncertainty_ns=[expr {.15 * $RCE_CLOCK_PERIOD_NS}]"
+        puts $f "hold_uncertainty_ns=0.075"
+        puts $f "hold_fix_enabled=1"
+        puts $f "incremental_timing_passes=1"
         puts $f "total_cell_area=[get_attribute [current_design] area]"
         puts $f "worst_setup_slack_ns=[min_slack [get_timing_paths -delay_type max -max_paths 1]]"
+        puts $f "worst_hold_slack_ns=[min_slack [get_timing_paths -delay_type min -max_paths 1]]"
         puts $f "worst_reg2reg_slack_ns=[min_slack [get_timing_paths -delay_type max -from $starts -to $ends -max_paths 1]]"
         puts $f "power=vectorless_not_workload_power"
         close $f

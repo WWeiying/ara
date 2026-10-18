@@ -289,6 +289,9 @@ def prepare(args, out):
                 'profile': args.profile, 'defines': defines, 'source_count': len(sources),
                 'scope': 'ara_soc: real CVA6 + Ara + AXI/peripherals + 1MiB L2; 4 lanes/VLEN1024',
                 'period_ns': args.period, 'setup_uncertainty_ns': .15 * args.period,
+                'hold_uncertainty_ns': .075,
+                'timing_optimization': {'fix_hold': True, 'incremental_passes': 1,
+                                        'report_schema': 2},
                 'cores': args.cores, 'container': args.container, 'dc_home': str(args.dc_home),
                 'reference': str(args.reference), 'bender_command': command,
                 'frozen_files': records,
@@ -340,12 +343,26 @@ def report(out):
     artifacts += [flow / 'reports' / name for name in
                   ('area.rpt', 'qor.rpt', 'physical_summary.rpt', 'timing_max.rpt',
                    'reg2reg_max.rpt', 'macro_inventory.rpt', 'power_vectorless.rpt')]
+    if m.get('timing_optimization', {}).get('report_schema', 1) >= 2:
+        artifacts += [flow / 'reports' / name for name in (
+            'timing_min.rpt', 'violation.rpt', 'violation_setup.rpt',
+            'violation_hold.rpt', 'violation_design_rules.rpt',
+            'clock_attributes.rpt', 'qor_before_incremental.rpt',
+            'violation_before_incremental.rpt', 'check_timing.rpt')]
     if any(not p.is_file() or not p.stat().st_size for p in artifacts):
         raise ValueError('Missing synthesis result')
     physical = dict(line.split('=', 1) for line in (flow / 'reports/physical_summary.rpt').read_text().splitlines() if '=' in line)
     summary = {'profile': m['profile'], 'scope': m['scope'], 'physical': physical,
                'limits': 'Mapped synthesis estimates, not routed Fmax or workload power',
                'artifacts': [{'path': str(p.relative_to(out)), 'sha256': sha(p)} for p in artifacts]}
+    if m.get('timing_optimization', {}).get('report_schema', 1) >= 2:
+        setup = float(physical['worst_setup_slack_ns'])
+        hold = float(physical['worst_hold_slack_ns'])
+        summary['setup_met'] = setup >= 0
+        summary['hold_met'] = hold >= 0
+        summary['all_constraints_met'] = (
+            setup >= 0 and hold >= 0 and
+            '(VIOLATED)' not in (flow / 'reports/violation.rpt').read_text())
     write_json(out / 'synthesis_summary.json', summary)
     print(json.dumps(summary, indent=2))
 

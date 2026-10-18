@@ -189,28 +189,22 @@ module fp32_exact_reduction_finalize #(
     end
   endfunction
 
-  // A two-level leading-one search avoids synthesizing the 288-entry linear
-  // priority chain produced by a monolithic ascending for-loop.  Sixteen-bit
-  // groups first locate the highest occupied window; a second short search
-  // resolves the bit within that window.  FP16 and FP32 share this decode.
+  // Balanced leading-one search. Pad to a power of two so every decision
+  // examines a constant-size half; no selected-group variable bit reads.
   function automatic integer exact_msb(input accumulator_t magnitude);
-    logic [17:0] group_nonzero;
-    int highest_group;
+    localparam int SearchWidth = 1 << $clog2(AccWidth);
+    logic [SearchWidth-1:0] window;
+    integer position;
     begin
-      group_nonzero = '0;
-      for (int group = 0; group < 18; group++)
-        group_nonzero[group] = |magnitude[group*16 +: 16];
-
-      highest_group = -1;
-      for (int group = 0; group < 18; group++)
-        if (group_nonzero[group])
-          highest_group = group;
-
-      exact_msb = -1;
-      if (highest_group >= 0)
-        for (int bit_index = 0; bit_index < 16; bit_index++)
-          if (magnitude[highest_group*16 + bit_index])
-            exact_msb = highest_group*16 + bit_index;
+      window = {{(SearchWidth-AccWidth){1'b0}}, magnitude};
+      position = 0;
+      for (int level = $clog2(SearchWidth)-1; level >= 0; level--) begin
+        if (|(window >> (1 << level))) begin
+          window = window >> (1 << level);
+          position += (1 << level);
+        end
+      end
+      exact_msb = magnitude == 0 ? -1 : position;
     end
   endfunction
 

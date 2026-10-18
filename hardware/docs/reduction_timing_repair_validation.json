@@ -1,0 +1,62 @@
+{
+  "recorded_utc": "2026-10-18T16:48:15.595405+00:00",
+  "reference_commit": "d074a7aa",
+  "sources": {
+    "hardware/src/lane/fp32_exact_reduction_finalize.sv": "90ff23d75aa5aa3c048210e261dadd7cf8452d72226f3735c786fe0b46088077",
+    "hardware/src/lane/simd_mul.sv": "9c5a776ae1f589b146a9c9c4b165357628976d5b2dc9c3ee7d97feaa744fe9aa",
+    "hardware/src/reduction/shared_scalar_fp_add.sv": "0a0e84de5eb23f96b2bc44c060ca5912332ad69eb7a7a514f06e037b04480fcc",
+    "hardware/scripts/synthesis/templates/dc.tcl": "bf27e8a22748b47d7d580d502d089e432ccb4a8f20c9a682b6d7574750620bc0"
+  },
+  "evidence": {
+    "hardware/build/timing_finalize_head_equivalence_20261018/finalize/manifest.json": {
+      "sha256": "3a8f114a4e685bcd213532d286e4b99b95af17b36902ec1e6a4846df5e4232e7",
+      "result": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "f2354bd2d3e24f4ef6a3a0c16b7b83df6a85bc836ed7795c35bd73f8ddf6aa56"
+      }
+    },
+    "hardware/build/timing_simd_mul_head_equivalence_20261018_v2/manifest.json": {
+      "sha256": "3487c33a2cfbe3abd4b13ef543f9210d751231d976e7c029a2a3af86f300d229",
+      "result": {
+        "pass": true,
+        "returncode": 0,
+        "timeout": false,
+        "errors": [],
+        "log_sha256": "8b11d751f8218b96238cdf98b07dffa56498a2f9e2a9c071b5ce021f99240e89"
+      }
+    },
+    "hardware/build/timing_closure_shared_add_v1/manifest.json": {
+      "sha256": "9859d698871c81d7fd972a8d86e0e1e3f3a182d48c8cd73bd806b34671efeb85",
+      "result": {
+        "pass": true,
+        "returncode": 0,
+        "timeout": false,
+        "errors": [],
+        "log_sha256": "6d6ed467a3e6d21d9278593b964211b234a7cd2483929e86cf19f1ef23d18a1e"
+      }
+    },
+    "hardware/build/timing_closure_soc_v1/compare_previous_tail/summary.json": {
+      "sha256": "2c41b37d50206a3fb137d9e391ebfd69077185497687f1827173bb2ee09740d8",
+      "result": {}
+    }
+  },
+  "soc_comparison": {
+    "all_pass": true,
+    "tests": 50,
+    "windows": 105,
+    "equal": 105,
+    "slower": 0,
+    "faster": 0,
+    "finish_equal": 50,
+    "finish_slower": 0,
+    "finish_faster": 0,
+    "comparison_sha256": "a5d9938532b78f1fe0373aa52193076ffcec0e05d8ae99b21989d9ba1fa49bc3"
+  },
+  "synthesis": {
+    "directory": "hardware/build/synthesis/reduction_timing_repair_entry_v1",
+    "state_at_recording": "RUNNING",
+    "timing_closed": null
+  }
+}

@@ -137,6 +137,60 @@ class PreparationTests(unittest.TestCase):
                 program = 'set f [open {' + str(p) + '}]; set s [read $f]; close $f\nif {![info complete $s]} {exit 1}\n'
                 subprocess.run(['tclsh'], input=program, text=True, check=True)
 
+    def test_unified_timing_template(self):
+        # Exercise the production template transformations as well as Tcl
+        # parsing: their exact replacement anchors must survive flow edits.
+        program = '''import unified
+from pathlib import Path
+import subprocess
+text = unified.unified_template((unified.flow.HERE / 'templates/dc.tcl').read_text())
+assert text.index('set_fix_hold [all_clocks]') < text.index('stage COMPILE')
+assert 'compile_ultra -incremental' in text
+assert 'worst_hold_slack_ns=' in text
+assert 'violation_hold.rpt' in text
+assert 'violation_design_rules.rpt' in text
+assert 'reg2reg_query_scope.rpt' in text
+assert 'get_timing_paths -delay_type max -from $starts' not in text
+script = 'set s {' + text + '}\\nif {![info complete $s]} {exit 1}\\n'
+subprocess.run(['tclsh'], input=script, text=True, check=True)
+'''
+        subprocess.run(['python3', '-c', program], cwd=HERE, check=True)
+
+    def test_report_distinguishes_completion_and_closure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            reports = out / flow.FLOW / 'reports'
+            reports.mkdir(parents=True)
+            outputs = out / flow.FLOW / 'outputs'
+            outputs.mkdir()
+            run = out / flow.FLOW / 'run'
+            run.mkdir()
+            (run / 'dc.log').write_text('DC_FLOW_COMPLETE\n')
+            flow.write_json(out / 'status.json', {'state': 'COMPLETE'})
+            for name in ('area.rpt', 'qor.rpt', 'timing_max.rpt', 'reg2reg_max.rpt',
+                         'macro_inventory.rpt', 'power_vectorless.rpt', 'timing_min.rpt',
+                         'violation_setup.rpt', 'violation_hold.rpt',
+                         'violation_design_rules.rpt', 'clock_attributes.rpt',
+                         'qor_before_incremental.rpt', 'violation_before_incremental.rpt',
+                         'check_timing.rpt'):
+                (reports / name).write_text('report\n')
+            for ext in ('.ddc', '.v', '.sdc'):
+                (outputs / ('ara_soc_dc' + ext)).write_text('output\n')
+            manifest = {'profile': 'full', 'scope': 'ara_soc',
+                        'timing_optimization': {'report_schema': 2}}
+            for setup, hold, violated, expected in (
+                    (-.1, .1, True, False), (.1, -.1, True, False),
+                    (.1, .1, True, False), (.1, .1, False, True)):
+                (reports / 'physical_summary.rpt').write_text(
+                    f'worst_setup_slack_ns={setup}\nworst_hold_slack_ns={hold}\n')
+                (reports / 'violation.rpt').write_text('(VIOLATED)\n' if violated else 'No violations\n')
+                with patch.object(flow, 'check', return_value=manifest), patch('builtins.print'):
+                    flow.report(out)
+                summary = flow.json.loads((out / 'synthesis_summary.json').read_text())
+                self.assertEqual(summary['all_constraints_met'], expected)
+                self.assertEqual(summary['setup_met'], setup >= 0)
+                self.assertEqual(summary['hold_met'], hold >= 0)
+
 
 if __name__ == '__main__':
     unittest.main()

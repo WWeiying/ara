@@ -16,12 +16,49 @@ module shared_scalar_fp_add import fpnew_pkg::*; (
   logic [52:0] larger_sig, smaller_sig;
   logic [11:0] larger_exp, smaller_exp, norm_exp, max_exp, distance;
   logic [56:0] larger_ext, smaller_ext, aligned, sum, normalized;
-  logic sign, subtraction, lost, overflow_before;
+  logic sign, subtraction, overflow_before;
   integer leading, left_shift;
   logic [2:0][63:0] rounded_result;
   status_t [2:0] rounded_status;
   logic [1:0] selected_format;
   logic [63:0] canonical_nan, infinity;
+
+  // Balanced, fixed-distance search: six mux levels rather than a
+  // source-order priority scan. Bits 7:0 are padding, not precision.
+  function automatic integer leading56(input logic [55:0] value);
+    logic [63:0] window;
+    integer offset;
+    begin
+      window = {value, 8'b0};
+      offset = 0;
+      for (int level = 5; level >= 0; level--) begin
+        if ((window >> (64-(1 << level))) == 0) begin
+          window = window << (1 << level);
+          offset += (1 << level);
+        end
+      end
+      leading56 = value == 0 ? 56 : offset;
+    end
+  endfunction
+
+  // Combine alignment and sticky accumulation in the same barrel stages.
+  function automatic logic [56:0] shift_right_jam57(
+    input logic [56:0] value, input logic [11:0] amount
+  );
+    logic [56:0] window;
+    logic discarded;
+    begin
+      window = value;
+      for (int level = 0; level < 6; level++) begin
+        discarded = |(window << (57-(1 << level)));
+        if (amount[level]) begin
+          window = window >> (1 << level);
+          window[0] |= discarded;
+        end
+      end
+      shift_right_jam57 = amount >= 57 ? {56'b0, |value} : window;
+    end
+  endfunction
 
   assign operand = {b_i, a_i};
   always_comb begin
@@ -95,11 +132,7 @@ module shared_scalar_fp_add import fpnew_pkg::*; (
     larger_ext = {1'b0, larger_sig, 3'b0};
     smaller_ext = {1'b0, smaller_sig, 3'b0};
     distance = larger_exp - smaller_exp;
-    aligned = smaller_ext >> distance;
-    lost = 1'b0;
-    for (int bit_idx = 0; bit_idx < 57; bit_idx++)
-      if (distance > bit_idx) lost |= smaller_ext[bit_idx];
-    aligned[0] |= lost;
+    aligned = shift_right_jam57(smaller_ext, distance);
     sum = subtraction ? larger_ext - aligned : larger_ext + aligned;
     normalized = sum;
     norm_exp = larger_exp;
@@ -110,9 +143,7 @@ module shared_scalar_fp_add import fpnew_pkg::*; (
       normalized[0] |= sum[0];
       norm_exp = larger_exp + 1'b1;
     end else begin
-      leading = 56;
-      for (int bit_idx = 0; bit_idx < 56; bit_idx++)
-        if (sum[bit_idx]) leading = 55-bit_idx;
+      leading = leading56(sum[55:0]);
       left_shift = leading;
       if (left_shift > int'(larger_exp)-1) left_shift = int'(larger_exp)-1;
       normalized = sum << left_shift;

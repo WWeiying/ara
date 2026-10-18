@@ -15,6 +15,8 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--reference', default='13dfca21955dfd4e05905e92e4afaff7b7b579b6')
     parser.add_argument('--vcs', default='vcs')
+    parser.add_argument('--build-manifest', type=Path,
+                        help='Frozen VCS build manifest supplying the simulator executable')
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--collision-forward', action='store_true', help='Enable candidate in independent numerical oracle')
     parser.add_argument('--compact-segments', action='store_true', help='Compare 32-bit exponent windows against the original representation')
@@ -28,6 +30,11 @@ def main():
         parser.error('--cases must be positive')
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
+    build_manifest = None
+    if args.build_manifest:
+        build_manifest = json.loads(args.build_manifest.read_text())
+        args.vcs = build_manifest['command'][0]
+        shutil.copy2(args.build_manifest, out / 'reference_source_manifest.json')
     reference = subprocess.check_output(
         ['git', 'rev-parse', args.reference + '^{commit}'], cwd=root, text=True).strip()
     jobs = []
@@ -56,6 +63,10 @@ def main():
                                           'module ' + module + '_reference', original)
                 if count != 1:
                     raise ValueError('Expected one reference module')
+                # The finalizer source also defines the seed helper. Keep its
+                # definition and any reference instances isolated from the DUT.
+                original = re.sub(r'\bfp32_exact_reduction_seed\b',
+                                  'fp32_exact_reduction_seed_reference', original)
                 (directory / 'reference.sv').write_text(original)
                 sources.insert(0, 'reference.sv')
         shutil.copy2(root / 'hardware/tb' / (top + '.sv'), directory / (top + '.sv'))
@@ -83,6 +94,8 @@ def main():
         command = [args.vcs, '-full64', '-sverilog', '-timescale=1ns/1ps',
                    *defines, *sources, '-top', top, '-o', 'simv']
         manifest = {'reference_commit': reference, 'command': command,
+                    'build_manifest_sha256': hashlib.sha256(args.build_manifest.read_bytes()).hexdigest() if args.build_manifest else None,
+                    'build_manifest_command': build_manifest['command'] if build_manifest else None,
                     'reference_accumulator_override': str(args.reference_accumulator.resolve()) if args.reference_accumulator else None,
                     'runtime_arguments': runtime, 'required_marker': marker,
                     'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
