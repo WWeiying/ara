@@ -1,0 +1,5 @@
+0x0000000000000000
+BOARD_CASE_BEGIN unboxed_unmasked_alias_v16_e32_m1_t0_ctx1
+RVV_FP_COMPARE_PASS sew=32 cases=1 errors=0
+BOARD_REPLAY_PASS
+

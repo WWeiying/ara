@@ -1,0 +1,8 @@
+[
+  "/home/wangwy/openproject/riscv-isa-sim-ara-dsa-vstart/build/spike",
+  "-d",
+  "--debug-cmd=/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.cmd",
+  "--isa=rv64gcv_zfh_zvfh_zvl1024b",
+  "-m2",
+  "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/scenarios_prepared03/rvv_fp_compare_unmasked_alias_v16_e32_m8/t0_ctx0/spike.elf"
+]

@@ -1,0 +1,6 @@
+{
+  "state": "PASS",
+  "independent_fp_pair_checks": 1800,
+  "rejected_bit_flags_guard_mutations": 704,
+  "note": "Integer ordered-key oracle cross-checked against Python IEEE float comparisons. Negative tests run on host only; no DUT negative-test loops."
+}

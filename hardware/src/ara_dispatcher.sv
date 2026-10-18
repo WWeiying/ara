@@ -5650,14 +5650,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; import qbs_pkg::*;
 
         // Indexed-load offsets can share vd's base but not its EEW. Keep
         // their normalization before the source snapshot and vd conversion.
+        // A comparison's packed-mask destination retains its old layout, not
+        // the source SEW. An aliased source still needs its own conversion;
+        // after it completes, re-decode also picks up the new old-vd layout.
         // Mask out duplicate requests for the same architectural operand.
         reshuffle_req_d &= {
           (!ara_req.use_vs2 ||
            (ara_req.vs1 != ara_req.vs2) ||
            ara_req.source_snapshot_replay_vs2) &&
               (!ara_req.use_vd ||
-              (ara_req.vs1 != ara_req.vd)),
+              (ara_req.vs1 != ara_req.vd) ||
+              (ara_req.op inside {[VMFEQ:VMSBC]})),
           !ara_req.use_vd || (ara_req.vs2 != ara_req.vd) ||
+              (ara_req.op inside {[VMFEQ:VMSBC]}) ||
               ara_req.op == VSLIDEDOWN || narrow_low_overlap_alias ||
               reduction_source_overlap_reshuffle || indexed_load_groups_overlap,
           1'b1};

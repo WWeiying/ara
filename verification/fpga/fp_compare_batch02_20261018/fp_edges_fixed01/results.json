@@ -1,0 +1,49 @@
+{
+  "results": [
+    {
+      "returncode": 0,
+      "elapsed_s": 22.38184642791748,
+      "name": "e16_g0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 20.928459882736206,
+      "name": "e16_g1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 22.682948350906372,
+      "name": "e32_g0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 20.624361515045166,
+      "name": "e32_g1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 22.727962732315063,
+      "name": "e64_g0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 21.118462800979614,
+      "name": "e64_g1",
+      "status": "PASS",
+      "diagnostics": []
+    }
+  ],
+  "planned": 6,
+  "passed": 6,
+  "scope": "24 new directed FP16/32/64 tests, six four-case ELFs; precomputed byte allowed-set oracle; host-only negative selftests; Spike reference only, no DUT run, not original Linux ELF attribution."
+}

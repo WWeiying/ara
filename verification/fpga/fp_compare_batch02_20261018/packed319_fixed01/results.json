@@ -1,0 +1,14 @@
+{
+  "results": [
+    {
+      "returncode": 0,
+      "elapsed_s": 581.0174195766449,
+      "name": "packed319",
+      "status": "PASS",
+      "diagnostics": []
+    }
+  ],
+  "planned": 1,
+  "passed": 1,
+  "scope": "Original319 vector-helper history and exact allowed-output scalar oracle; optimized scalar timing; no Linux scheduler or full17920 acceptance"
+}

@@ -1,0 +1,26 @@
+{
+  "status": "PASS_CAUSE_AND_CORRECTED_SOURCE_STREAM",
+  "before_issue_ns": 15766.5,
+  "after_issue_ns": 15792.5,
+  "conversion_delay_cycles": 26.0,
+  "source_beats": 8,
+  "lane_words_checked": 32,
+  "old_mismatching_lane_words": 32,
+  "normalization_requests": [
+    {
+      "time_ns": 15767.5,
+      "op": 129,
+      "reg": 8
+    },
+    {
+      "time_ns": 15768.5,
+      "op": 129,
+      "reg": 9
+    }
+  ],
+  "source_sha256": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/cycle_before02/comparison.vcd": "d922957ab114a143df9403cb7ecda893e6ca04d282c077e165e39c8df7855d9d",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/fp_compare_batch02_20261018/cycle_fixed01/comparison.vcd": "7ae891898e312ce31b1301d9b7a8462ad3aac2d9f8e62492b34ca45be55f82db"
+  },
+  "scope": "One deterministic Linux-layout derivative; not proof of the exact interruption point in archived board execution"
+}

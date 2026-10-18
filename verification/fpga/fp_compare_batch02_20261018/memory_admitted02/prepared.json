@@ -1,0 +1,61 @@
+{
+  "programs": {
+    "p1_o1_c0_s1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p1_o1_c0_s1",
+      "elf_sha256": "c52b5c0a16cf91afeb131c19283af13116b0b23320c0c03ff720e429961b3e97",
+      "pass_markers": [
+        "SYSTEM_PASS faults=0000000000000001 errors=0000000000000000"
+      ]
+    },
+    "p10_o1_c0_s1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p10_o1_c0_s1",
+      "elf_sha256": "a9a0136742bb090ba8267d106d3347483c652552b0eefe801ab39ec3f33df713",
+      "pass_markers": [
+        "SYSTEM_PASS faults=0000000000000001 errors=0000000000000000"
+      ]
+    },
+    "p14_o1_c0_s1": {
+      "directory": "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/p14_o1_c0_s1",
+      "elf_sha256": "a360fc767ded7fb42be5b2920262ac1110e6b0915ebc0009786cc3bb64165525",
+      "pass_markers": [
+        "SYSTEM_PASS faults=0000000000000001 errors=0000000000000000"
+      ]
+    }
+  },
+  "pins": {
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_current01/p1_o1_c0_s1/result.json": "bfe8f309b5331cb05eba1b7c100f40c2bf249775fa204e5c7d05818849701027",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p1_o1_c0_s1/reference.json": "fa9810d8433593f8adba70355f992d1e645ad67609f2886f812a4ab7e744b2b2",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p1_o1_c0_s1/spike.elf": "ef373801648855c60a8303c47414e187e4b98cac791cd7ec2afc9f72ac5ae475",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p1_o1_c0_s1/soc.elf": "c52b5c0a16cf91afeb131c19283af13116b0b23320c0c03ff720e429961b3e97",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/source-pins.json": "b1ccd9182145e09c8d090d230ffcdc64968ba3dd8db40095066a98da76fc317c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/original.S": "f29601e68d1a09ba1a0de79388e27cbdf610f9123ed1ef0d1d1e5ea27d2cf427",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/original.c": "84eb15397e6e676cd5ea648e3f5cff161c6e29bee930466a65b7af163ec5efe1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/fixture.c": "185c4940f107b75ad9e40167b398adc58b7982edc4deb124e98eb8c71bde9977",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/run.py": "3e1763be4734d1be6104c5e2b01bd61238827faae836e9bc1b44f5caec7dc805",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/fixture.S": "6269c969ebdf0276060c4ba0cb7bc783bf27fd069da941ba5647cac36937ad43",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/inputs/linux_vector_context.c": "922c691d6727583732292c28051a77ad07b1aa707f94c60a8612dd5b8087c94a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_current01/p10_o1_c0_s1/result.json": "b401caad6b46a4c0a038ff610c51499c92f56e7d677f88e13478018c458e5a3e",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p10_o1_c0_s1/reference.json": "14fbcf2d1b3b1638701317de7d47c4cbee5b5856a61f425c52c8f92c3d1ef3d5",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p10_o1_c0_s1/spike.elf": "271742c50a9629cc0537d6ee22aded3cd68c4bd46c9528f4e80176abeb7473f7",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/pilot_inputs01/p10_o1_c0_s1/soc.elf": "a9a0136742bb090ba8267d106d3347483c652552b0eefe801ab39ec3f33df713",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_current01/p14_o1_c0_s1/result.json": "7b0f73edcc8ccc22564df955ab8da4f5b7735b34036c25ff92fcbb93492d868c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/p14_o1_c0_s1/reference.json": "5fa507fc1a69ca21dba0c84789803625fd23235d4485a78b6dd7ffe6c0078cc4",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/p14_o1_c0_s1/spike.elf": "ce4a93646afdf9edf91b61192baf1f3130e6a0e6edfdb26840ed3c65b9b2856c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/p14_o1_c0_s1/soc.elf": "a360fc767ded7fb42be5b2920262ac1110e6b0915ebc0009786cc3bb64165525",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/source-pins.json": "b1ccd9182145e09c8d090d230ffcdc64968ba3dd8db40095066a98da76fc317c",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/original.S": "f29601e68d1a09ba1a0de79388e27cbdf610f9123ed1ef0d1d1e5ea27d2cf427",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/original.c": "84eb15397e6e676cd5ea648e3f5cff161c6e29bee930466a65b7af163ec5efe1",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/fixture.c": "185c4940f107b75ad9e40167b398adc58b7982edc4deb124e98eb8c71bde9977",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/run.py": "3e1763be4734d1be6104c5e2b01bd61238827faae836e9bc1b44f5caec7dc805",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/fixture.S": "6269c969ebdf0276060c4ba0cb7bc783bf27fd069da941ba5647cac36937ad43",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/startup.S": "3ab886ee55bf807790e0c17e982d3142e5207f317bbde593d2b5d8cc4f151582",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/runtime.c": "91aecf556bf3f17f1e3b21241099c81fdca2e624eff3a1a37986dc9629dae5db",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/replay.ld": "6478bcdc036d6fa64beec95c51748e4778a2e0c49a74efcabc0fdb537ad3a82a",
+    "/home/wangwy/openproject/ara_dsa_signoff_integration/verification/fpga/indexed_fault_prefix_20261018/position14_inputs01/inputs/linux_vector_context.c": "922c691d6727583732292c28051a77ad07b1aa707f94c60a8612dd5b8087c94a"
+  },
+  "files": {},
+  "scope": "Three unchanged Sv39 indexed-overlap fault/restart controls, prefixes1/10/14. Not Linux or new FPGA acceptance"
+}

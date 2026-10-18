@@ -1,0 +1,105 @@
+{
+  "results": [
+    {
+      "returncode": 0,
+      "elapsed_s": 27.595680713653564,
+      "name": "unboxed_unmasked_alias_v16_e32_m1_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 33.51432681083679,
+      "name": "unboxed_unmasked_alias_v16_e32_m1_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 31.15181827545166,
+      "name": "unmasked_alias_v8_e32_m4_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 37.92300820350647,
+      "name": "unmasked_alias_v8_e32_m4_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 43.544432163238525,
+      "name": "unmasked_alias_v16_e32_m8_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 47.85625672340393,
+      "name": "unmasked_alias_v16_e32_m8_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 26.28508496284485,
+      "name": "unmasked_alias_v8_e32_mf2_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 32.20695161819458,
+      "name": "unmasked_alias_v8_e32_mf2_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 35.121609926223755,
+      "name": "unboxed_unmasked_alias_v16_e16_m4_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 42.3370623588562,
+      "name": "unboxed_unmasked_alias_v16_e16_m4_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 36.51897716522217,
+      "name": "unboxed_unmasked_alias_v16_e16_m4_t1_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 41.23331904411316,
+      "name": "unboxed_unmasked_alias_v16_e16_m4_t1_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 41.22949719429016,
+      "name": "unboxed_unmasked_alias_v8_e16_m4_t0_ctx0",
+      "status": "PASS",
+      "diagnostics": []
+    },
+    {
+      "returncode": 0,
+      "elapsed_s": 46.80283451080322,
+      "name": "unboxed_unmasked_alias_v8_e16_m4_t0_ctx1",
+      "status": "PASS",
+      "diagnostics": []
+    }
+  ],
+  "planned": 14,
+  "passed": 14,
+  "scope": "7 authentic first-failure tuples; 7 separate context-layout controls. Not full sequence or Linux execution."
+}

@@ -1,0 +1,8 @@
+{
+  "returncode": 0,
+  "elapsed_s": 186.18736052513123,
+  "name": "rvv_fp_compare_unboxed_unmasked_alias_v16_e32_m1_single",
+  "status": "PASS",
+  "diagnostics": [],
+  "original_helper_calls": 1
+}

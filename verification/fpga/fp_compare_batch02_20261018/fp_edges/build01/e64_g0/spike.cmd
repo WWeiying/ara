@@ -1,0 +1,5 @@
+until pc 0 0000000080000068
+reg 0 a0
+reg 0 minstret
+str 00000000800021c0
+rs

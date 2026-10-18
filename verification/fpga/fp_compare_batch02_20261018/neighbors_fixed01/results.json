@@ -1,0 +1,14 @@
+{
+  "results": [
+    {
+      "returncode": 0,
+      "elapsed_s": 1353.300348997116,
+      "name": "fp_compare_integer_neighbors",
+      "status": "PASS",
+      "diagnostics": []
+    }
+  ],
+  "planned": 1,
+  "passed": 1,
+  "scope": "New directed e32/m2 bare-metal regression, no original Linux ELF attribution. No VCS run. VMADC/VMSBC data-source aliases excluded as illegal. Context assembly imported unchanged from parent scenarios.py."
+}
