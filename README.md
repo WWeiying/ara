@@ -1,5 +1,7 @@
 # Ara
 
+本研究分支统一使用 **4 Lane、VLEN=1024 的 reduction 配置**。构建、验证与综合入口见 [统一版本说明](hardware/docs/reduction_unified_version.md)。历史实验配置仅用于复现。
+
 [![ci](https://github.com/pulp-platform/ara/actions/workflows/ci.yml/badge.svg)](https://github.com/pulp-platform/ara/actions/workflows/ci.yml)
 
 Ara is a vector unit working as a coprocessor for the CVA6 core.

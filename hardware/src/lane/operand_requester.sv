@@ -15,6 +15,22 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     parameter  type          vaddr_t               = logic, // Type used to address vector register file elements
     parameter  type          operand_request_cmd_t = logic,
     parameter  type          operand_queue_cmd_t   = logic,
+    // Scalar reduction-result victims accelerate vd[0] consumers. Other
+    // Lanes may use the normal VRF/live forwarding paths instead of victims.
+    parameter bit RootOnlyReductionCache =
+`ifdef ARA_RED_ROOT_ONLY_RESULT_CACHE
+      1'b1,
+`else
+      1'b0,
+`endif
+    // Optional area tradeoff: arithmetic consumers retain forwarding; the
+    // other queues use the existing hazard-checked VRF path.
+    parameter bit ArithmeticOnlyForwarding =
+`ifdef ARA_RED_ARITHMETIC_ONLY_FORWARD
+      1'b1,
+`else
+      1'b0,
+`endif
     // Dependant parameters. DO NOT CHANGE!
     localparam int unsigned  StrbWidth = $bits(elen_t)/8,
     localparam type          strb_t  = logic[StrbWidth-1:0],
@@ -22,6 +38,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                                       clk_i,
     input  logic                                       rst_ni,
+    input  logic[idx_width(NrLanes)-1:0]                 lane_id_i,
     // Interface with the main sequencer
     input  logic            [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_i,
     // Interface with the lane sequencer
@@ -374,9 +391,84 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
     reduction_result_cache_replace_q;
 `endif
 
-  assign forwarded_operand_o       = forwarded_operand_q;
   assign forwarded_operand_valid_o = forwarded_operand_valid_q;
 
+`ifdef ARA_RED_SHARED_FORWARD_CAPTURE
+`ifndef ARA_RED_CHAIN_BYPASS_4LANE
+  initial $fatal(1, "shared forward capture requires reduction chain bypass");
+`endif
+  // Capture each producer word once, rather than once per consuming queue.
+  // Match/priority/credit logic is unchanged. The source selector and payload
+  // are sampled on the same edge, including simultaneous cache replacement.
+  // Only valid responses own a payload; invalid outputs need not retain data.
+  localparam int unsigned ForwardSources = 5;
+  logic [NrOperandQueues-1:0][2:0] forward_source_d, forward_source_q;
+  logic [ForwardSources-1:0] forward_capture;
+  elen_t [ForwardSources-1:0] forward_source_data, forward_source_data_q;
+  assign forward_source_data[0] = reduction_result_cache_wdata_q[0];
+  assign forward_source_data[1] = reduction_result_cache_wdata_q[1];
+  assign forward_source_data[2] = recent_sldu_result_wdata_q;
+  assign forward_source_data[3] = recent_mfpu_result_wdata_q;
+  assign forward_source_data[4] = sldu_result_wdata;
+  always_comb begin
+    forward_source_d = '0;
+    forward_capture = '0;
+    for (int requester = 0; requester < NrOperandQueues; requester++) begin
+      if (operand_forward_reduction_cache_fire[requester])
+        forward_source_d[requester] = {2'b00, operand_forward_reduction_cache_index[requester]};
+      else if (operand_forward_sldu_cache_fire[requester])
+        forward_source_d[requester] = 3'd2;
+      else if (operand_forward_mfpu_fire[requester])
+        forward_source_d[requester] = 3'd3;
+      else
+        forward_source_d[requester] = 3'd4;
+      if (operand_forward_fire[requester])
+        forward_capture[forward_source_d[requester]] = 1'b1;
+    end
+  end
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      forwarded_operand_valid_q <= '0;
+      forward_source_q <= '0;
+      forward_source_data_q <= '0;
+    end else begin
+      forwarded_operand_valid_q <= operand_forward_fire;
+      for (int requester = 0; requester < NrOperandQueues; requester++)
+        if (operand_forward_fire[requester])
+          forward_source_q[requester] <= forward_source_d[requester];
+      for (int source = 0; source < ForwardSources; source++)
+        if (forward_capture[source])
+          forward_source_data_q[source] <= forward_source_data[source];
+    end
+  end
+  for (genvar requester = 0; requester < NrOperandQueues; requester++) begin : gen_shared_forward_output
+    if (ArithmeticOnlyForwarding && requester > int'(MulFPUC)) begin : gen_vrf_only
+      assign forwarded_operand_o[requester] = '0;
+    end else begin : gen_forward
+      assign forwarded_operand_o[requester] = forward_source_data_q[forward_source_q[requester]];
+    end
+  end
+  // Independently retain the original per-consumer response for verification.
+  // This cone is excluded from synthesis and observes actual match decisions.
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) forwarded_operand_q <= '0;
+    else for (int requester = 0; requester < NrOperandQueues; requester++)
+      if (operand_forward_fire[requester])
+        forwarded_operand_q[requester] <= operand_forward_data[requester];
+  end
+  for (genvar requester = 0; requester < NrOperandQueues; requester++) begin : gen_shared_forward_check
+    a_shared_forward_payload: assert property (@(posedge clk_i) disable iff (!rst_ni)
+      forwarded_operand_valid_q[requester] |->
+      // Equivalence includes unknown tail bytes from partial producer writes.
+      // Logical == returns X even for identical four-state words; require
+      // exact bit-for-bit equality with the original registered response.
+      forwarded_operand_o[requester] === forwarded_operand_q[requester])
+      else $error("shared forwarding response differs from original requester payload");
+  end
+`endif
+`else
+  assign forwarded_operand_o = forwarded_operand_q;
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_forwarded_operands
     if (!rst_ni) begin
       forwarded_operand_q       <= '0;
@@ -388,6 +480,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
           forwarded_operand_q[requester] <= operand_forward_data[requester];
     end
   end
+`endif
 
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
   // MFPU result addresses may leave the result queue in bank-friendly order
@@ -417,6 +510,15 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_reduction_result_cache
     if (!rst_ni) begin
+      reduction_result_cache_valid_q   <= '0;
+      reduction_result_cache_version_q <= '0;
+      reduction_result_cache_addr_q    <= '0;
+      reduction_result_cache_wdata_q   <= '0;
+      reduction_result_cache_be_q      <= '0;
+      reduction_result_cache_age_q     <= '0;
+      reduction_result_cache_from_mfpu_q <= '0;
+      reduction_result_cache_replace_q <= 1'b0;
+    end else if (RootOnlyReductionCache && lane_id_i != '0) begin
       reduction_result_cache_valid_q   <= '0;
       reduction_result_cache_version_q <= '0;
       reduction_result_cache_addr_q    <= '0;
@@ -496,6 +598,12 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
   end
+
+`ifndef SYNTHESIS
+  a_nonroot_victim_cache_disabled: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    RootOnlyReductionCache && lane_id_i != '0 |-> reduction_result_cache_valid_q == '0)
+    else $error("non-root reduction victim cache unexpectedly valid");
+`endif
 
   // A single-cycle victim entry is sufficient to bridge the arbitration
   // boundary after a reduction result has entered the VRF.  Keeping it for
@@ -695,6 +803,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
             automatic vlen_t num_elements;
 
 `ifdef ARA_RED_CHAIN_BYPASS_4LANE
+            if (!ArithmeticOnlyForwarding || requester_index <= int'(MulFPUC)) begin
             // A producer write covers exactly the bytes this requester needs
             // from the current 64-bit word.  Requiring the byte enables avoids
             // forwarding masked/tail bytes whose old architectural value still
@@ -818,6 +927,7 @@ module operand_requester import ara_pkg::*; import rvv_pkg::*; #(
                 sldu_result_gnt;
               operand_forward_data[requester_index] =
                 sldu_result_wdata;
+            end
             end
 `endif
 

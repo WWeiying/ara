@@ -48,6 +48,8 @@ sources:
     - hardware/src/lane/fp32_exact_reduction_finalize.sv
     - hardware/src/lane/fp32_exact_reduction_accum.sv
     - hardware/src/reduction/reduction_completion_engine.sv
+    - hardware/src/reduction/shared_scalar_fp_add.sv
+    - hardware/src/reduction/shared_ordered_adder.sv
     - hardware/src/lane/vector_regfile.sv
     - hardware/src/lane/power_gating_generic.sv
     - hardware/src/masku/masku_operands.sv

@@ -410,6 +410,23 @@ module ara import ara_pkg::*; #(
   logic      [NrLanes-1:0]                     masku_vrgat_req_ready;
   vrgat_req_t                                  masku_vrgat_req;
 
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+  localparam int OrderedAddClients = NrLanes
+`ifdef ARA_RED_SHARED_RCE_ADD
+    + 1
+`endif
+    ;
+  ordered_add_request_t [OrderedAddClients-1:0] ordered_add_request;
+  ordered_add_response_t [OrderedAddClients-1:0] ordered_add_response;
+  logic [OrderedAddClients-1:0] ordered_add_valid, ordered_add_ready;
+  logic [OrderedAddClients-1:0] ordered_add_response_valid, ordered_add_response_ready;
+  shared_ordered_adder #(.NrLanes(NrLanes), .FPUSupport(FPUSupport),
+    .NrClients(OrderedAddClients),
+    .NrUnits(`ARA_RED_SHARED_ORDERED_UNITS)) i_shared_ordered_adder (
+    .clk_i, .rst_ni, .request_i(ordered_add_request), .valid_i(ordered_add_valid),
+    .ready_o(ordered_add_ready), .response_o(ordered_add_response),
+    .response_valid_o(ordered_add_response_valid), .response_ready_i(ordered_add_response_ready));
+`endif
   for (genvar lane = 0; lane < NrLanes; lane++) begin: gen_lanes
     lane #(
       .NrLanes              (NrLanes              ),
@@ -421,6 +438,14 @@ module ara import ara_pkg::*; #(
       .pe_req_t_bits        ($bits(pe_req_t)      ),
       .pe_resp_t_bits       ($bits(pe_resp_t)     )
     ) i_lane (
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+      .ordered_add_request_o(ordered_add_request[lane]),
+      .ordered_add_valid_o(ordered_add_valid[lane]),
+      .ordered_add_ready_i(ordered_add_ready[lane]),
+      .ordered_add_response_i(ordered_add_response[lane]),
+      .ordered_add_response_valid_i(ordered_add_response_valid[lane]),
+      .ordered_add_response_ready_o(ordered_add_response_ready[lane]),
+`endif
       .clk_i                           (clk_i                               ),
       .rst_ni                          (rst_ni                              ),
       .scan_enable_i                   (scan_enable_i                       ),
@@ -690,7 +715,19 @@ module ara import ara_pkg::*; #(
       pe_resp[NrLanes+OffsetSlide] = sldu_pe_resp;
       if (rce_retire && !select_exact) pe_resp[NrLanes+OffsetSlide].vinsn_done[rce_result.id] = 1'b1;
     end
-    reduction_completion_engine #(.NrLanes(NrLanes), .ContextDepth(2)) i_rce (
+    reduction_completion_engine #(.NrLanes(NrLanes), .ContextDepth(2)
+`ifdef ARA_RED_SHARED_RCE_ADD
+      , .UseSharedFp64Add(1'b1)
+`endif
+    ) i_rce (
+`ifdef ARA_RED_SHARED_RCE_ADD
+      .shared_add_request_o(ordered_add_request[NrLanes]),
+      .shared_add_valid_o(ordered_add_valid[NrLanes]),
+      .shared_add_ready_i(ordered_add_ready[NrLanes]),
+      .shared_add_response_i(ordered_add_response[NrLanes]),
+      .shared_add_response_valid_i(ordered_add_response_valid[NrLanes]),
+      .shared_add_response_ready_o(ordered_add_response_ready[NrLanes]),
+`endif
       .clk_i(clk_i), .rst_ni(rst_ni), .cmd_i(command),
       .cmd_valid_i(command_valid), .cmd_ready_o(command_ready),
       .partial_i(rce_input), .partial_valid_i(rce_partial_valid),
@@ -717,6 +754,11 @@ module ara import ara_pkg::*; #(
       else $error("RCE command lacked its reserved sequencer credit");
 `endif
   end else begin : gen_no_rce
+`ifdef ARA_RED_SHARED_RCE_ADD
+    assign ordered_add_request[NrLanes] = '0;
+    assign ordered_add_valid[NrLanes] = 1'b0;
+    assign ordered_add_response_ready[NrLanes] = 1'b0;
+`endif
     assign rce_exact_completion_ready = 1'b0;
     assign rce_exact_cmd_ready = 1'b0;
     assign rce_exact_operand_ready = '0;

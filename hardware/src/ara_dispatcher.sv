@@ -960,9 +960,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   ara_req.emul = LMUL_1;
                   lmul_vs1 = LMUL_1;
                   case (lmul_vs2)
-                    LMUL_2: if (|insn.varith_type.rs2[0:0]) illegal_insn = 1'b1;
-                    LMUL_4: if (|insn.varith_type.rs2[1:0]) illegal_insn = 1'b1;
-                    LMUL_8: if (|insn.varith_type.rs2[2:0]) illegal_insn = 1'b1;
+                    LMUL_2: if ((insn.varith_type.rs2 & 5'b00001) != 5'b00000) illegal_insn = 1'b1;
+                    LMUL_4: if ((insn.varith_type.rs2 & 5'b00011) != 5'b00000) illegal_insn = 1'b1;
+                    LMUL_8: if ((insn.varith_type.rs2 & 5'b00111) != 5'b00000) illegal_insn = 1'b1;
                     LMUL_RSVD: illegal_insn = 1'b1;
                     default: ;
                   endcase

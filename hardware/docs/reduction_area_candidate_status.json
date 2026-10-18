@@ -1,0 +1,729 @@
+{
+  "updated_utc": "2026-10-14T16:32:26.440807+00:00",
+  "scope": "Evidence index; local area differences are not additive integrated savings",
+  "integrated_paired_area": "unverified",
+  "integrated_timing_closure": "unverified",
+  "candidates": {
+    "root_cache": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/root_only_cache_full_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 34,
+            "failures": [],
+            "manifest_sha256": "8811e680a80a129298ff1db8ac753137d794eafba13f073e093dca90f4105062"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 34,
+            "failures": [],
+            "manifest_sha256": "ba521f0ed7a47a1324a7943febd401a02280bed5716a774bf6e5b5c5de2b07cb"
+          }
+        },
+        "comparison_sha256": "9452ef5575675e48b5358fa553fff92536724df53929be396826482d2a1d296e",
+        "performance_windows": 93,
+        "strict_no_regression": true,
+        "changed_windows": [],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": true
+      },
+      "local_area": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/requester_root_cache_ppa_v1",
+        "state": "collected",
+        "completed_modes": {
+          "root": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "bc491612dbea200e2b2d08b51c0fa38c9412ea0bbd141bb55cf669aa3ec9bdfc"
+          },
+          "nonroot": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "f5b4282fba26bfdfe2661ad72c3909d659591bfc0f6d5c0fee8435a779fd019a"
+          },
+          "nonroot_compact": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "b239c158457d821138105bb97c4314085d8644e3ed26d9da8d4908ffd3bfdc07"
+          }
+        },
+        "comparison_sha256": "190e86b2472339bca1350548686a740506726ec2f31679838a4a5be5eef303d3",
+        "evidence": {
+          "results": [
+            {
+              "mode": "root",
+              "area": 18865.055789,
+              "worst_reported_slack_ns": 7.8e-05,
+              "area_sha256": "1b89df0c9f23675d1d4bd612ccdd3128d1eda8893a79662a56ef451a10368cf7",
+              "timing_sha256": "f0ed737945bb7c6e614bd253006698fc2d13c6d54f3a843d99fabe9cae835282"
+            },
+            {
+              "mode": "nonroot",
+              "area": 18865.055789,
+              "worst_reported_slack_ns": 7.8e-05,
+              "area_sha256": "b6757e26a777097151ed7dfa42353627c6b57aae065f2b905e06c6f0f3d8e701",
+              "timing_sha256": "a45701f7d58ad87a167fc74c73cb06f081ca418a04c48b19149b6594bee33386"
+            },
+            {
+              "mode": "nonroot_compact",
+              "area": 16053.575806,
+              "worst_reported_slack_ns": 0.000206,
+              "area_sha256": "6d0faa618d907aceb00141257125aabe764fbd2ff880ce4a702f054454d6f67e",
+              "timing_sha256": "fae1a91a7369a27e7ac8cc3a9b05b7c5bb03b9cf39a01355128c5f9e68ab07a7"
+            }
+          ],
+          "nonroot_area_reduction_percent": 14.903109826154559,
+          "nonroot_saved_area": 2811.4799829999974,
+          "three_nonroot_local_difference": 8434.439948999992,
+          "scope": "Matched local requester, all ports retained; three-Lane sum is not integrated SoC proof"
+        }
+      }
+    },
+    "legacy_fp_stream_prune": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/prune_fp_stream_full_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 35,
+            "failures": [],
+            "manifest_sha256": "a38166e5f389b05530fda38e626b694d7465e282b6962ec2f43af98ae0795bbf"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 35,
+            "failures": [],
+            "manifest_sha256": "36654bf3fe53a4c4bfdc5abcdbabf0b45150c205b15abb48c48aab4dd3055a52"
+          }
+        },
+        "comparison_sha256": "56947196acd7253468c7f9ca97a8b2e1c061da756e70029389281fda9e2d2876",
+        "performance_windows": 93,
+        "strict_no_regression": true,
+        "changed_windows": [],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": true
+      },
+      "local_area": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/vmfpu_stream_ppa_v1",
+        "state": "collected",
+        "completed_modes": {
+          "baseline": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "0481b7d9b1123e3bd0adb0f7b0c0c1ac41e4dd0d89444af9ceee2550a88a7029"
+          },
+          "scalar": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "6b332a46ff01232ec8c763148eb18f18e271d35ccec46338482a58d1172f0afa"
+          }
+        },
+        "comparison_sha256": "b723e53bd11eb4b90c5fb7d56573fcf35168edf0432eb264979e9d28a9c2a541",
+        "evidence": {
+          "complete": true,
+          "results": [
+            {
+              "mode": "baseline",
+              "area_um2": 164139.358097,
+              "worst_reported_setup_slack_ns": -0.030157,
+              "worst_reported_hold_slack_ns": -0.122878,
+              "hold_violations": 10424.0,
+              "report_hashes": {
+                "area.rpt": "fbe51872e1ccbc0e787e0077f337dffe316ca779f1d4319463dd44e889054ca4",
+                "qor.rpt": "c859345d5c202176bae9592f785d4231f19d7a9b29c8f086395890c2560afa38",
+                "timing.rpt": "d4a1a643ec63f9dba56d6cfcff7a1b8f48deb27591fc0169b5e68cb010d6c81d",
+                "hold.rpt": "73a4ef1fc776466127ef8590ae8d830f0338b68a21c184e94cd3bb6f09ff1064",
+                "check_timing.rpt": "b2e48e07b900108a04280aef716f0cb2f531e739183dd0651d4f7760de8c0373"
+              }
+            },
+            {
+              "mode": "scalar",
+              "area_um2": 160813.126136,
+              "worst_reported_setup_slack_ns": 9e-06,
+              "worst_reported_hold_slack_ns": -0.117559,
+              "hold_violations": 10104.0,
+              "report_hashes": {
+                "area.rpt": "44d1a00f62b571660fca50f5fcae3f807a00e5daba7515bf5abf005ecd4ffb2e",
+                "qor.rpt": "d8e8ef1867a200ac288ec122b6016ab9a656ecd3cefffae63acd2b3ed6d46c8b",
+                "timing.rpt": "5b65dad21ac70b0309dfd2c37b3d129b09d74aeb6b5189eb75362df9c4ad840f",
+                "hold.rpt": "cc36c1144b06ed2dffb783f368268dbce3ef936a8d94326bb9b1b220b17fd6f3",
+                "check_timing.rpt": "3becca0a9e2cac5db2177947c7bbb48e3b64befca4b1daf8ba266fc98ec9c3ba"
+              }
+            }
+          ],
+          "area_saved_um2": 3326.231960999983,
+          "area_saved_percent": 2.02646823989302,
+          "scope": "local VMFPU; all ports dynamic, shared ADD external; 4Lane/VLEN1024; not SoC PPA",
+          "limits": "Local synthesis; dynamic Lane ID; no integrated area or Fmax claim. Functional and cycle evidence is separate."
+        }
+      }
+    },
+    "compact_exact_segments": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/exact_compact_segments_soc_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 35,
+            "failures": [],
+            "manifest_sha256": "8f21396e18fed86252af711af7a8f09ad75344aafeb7ecf35525c5c5e6b6ad22"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 35,
+            "failures": [],
+            "manifest_sha256": "5e5d16c30703643223ce308cb5a3e04be7180afa3be5b6e0e4f2ccc023cd646c"
+          }
+        },
+        "comparison_sha256": "56947196acd7253468c7f9ca97a8b2e1c061da756e70029389281fda9e2d2876",
+        "performance_windows": 93,
+        "strict_no_regression": true,
+        "changed_windows": [],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": true
+      },
+      "local_area": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/exact_compact_segments_ppa_v1",
+        "state": "collected",
+        "completed_modes": {
+          "0": {
+            "returncode": 0,
+            "complete": true
+          },
+          "1": {
+            "returncode": 0,
+            "complete": true
+          }
+        },
+        "comparison_sha256": "f38315387ed89f50b4e966778806bcb764479a35e23f2313b3d7766af29af76c",
+        "evidence": [
+          {
+            "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/exact_compact_segments_ppa_v1",
+            "source_sha256": "852a90c6886b4e5c9896655345fdb902a0944118d66341fab9b79eaa905b1e3a",
+            "constraints_match": true,
+            "library_hashes": {
+              "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140_180a/tcbn28hpcplusbwp12t40p140tt0p9v25c.db": "5363ad782af12e7cec187d23d27696c136d9d9014b8ba645b544228b18caf8e4",
+              "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140cg_110c/AN61001_20180123/tcbn28hpcplusbwp12t40p140cg_110c_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140cg_110c/tcbn28hpcplusbwp12t40p140cgtt0p9v25c.db": "3c49131aaeeb55898ea8146f44fa9c8cf88bed09b4100ea938c6d2c1f33055d1",
+              "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140hvt_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140hvt_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140hvt_180a/tcbn28hpcplusbwp12t40p140hvttt0p9v25c.db": "7713426e3696e3432549a29bdd1a53108097875298017e222d5a41f4087f71f3",
+              "/home/wangwy/technical_library/tsmc28nm/logic/tcbn28hpcplusbwp12t40p140lvt_180a/AN61001_20180514/tcbn28hpcplusbwp12t40p140lvt_180a_nldm/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn28hpcplusbwp12t40p140lvt_180a/tcbn28hpcplusbwp12t40p140lvttt0p9v25c.db": "23871045f29427359495a50150b4527ba26b0a4a1fbc2db66d5f12b782252afc"
+            },
+            "results": [
+              {
+                "mode": 0,
+                "cell_area": 11622.911888,
+                "sequential_cells": 846.0,
+                "worst_setup_slack_ns": 7.6e-05,
+                "setup_tns_ns": 0.0,
+                "setup_violating_paths": 0.0,
+                "worst_hold_slack_ns": -0.08,
+                "hold_violating_paths": 704.0,
+                "report_hashes": {
+                  "area.rpt": "8c7e63e5b5407c15421e64eeb9167b46fb19035ea81e0daf0caeeaeaa4d95425",
+                  "qor.rpt": "e65dc25567ab159e94258ed289a2caf8af72b0a37094eb877ad04c78d9ab3efe",
+                  "timing.rpt": "157c15e86ec7df33fc4d8fa5d36c989eb1aebb0f555db006832abc4fb5816795",
+                  "run.tcl": "0f7ae398a97f4b410761664c928fbca3f3ed43acd7f0c0deeb7207179c7258dd"
+                }
+              },
+              {
+                "mode": 1,
+                "cell_area": 10442.375925,
+                "sequential_cells": 582.0,
+                "worst_setup_slack_ns": 0.000261,
+                "setup_tns_ns": 0.0,
+                "setup_violating_paths": 0.0,
+                "worst_hold_slack_ns": -0.1,
+                "hold_violating_paths": 468.0,
+                "report_hashes": {
+                  "area.rpt": "48898173e59809734e711c8b72881db697d233e5e7811cc8f7c699eaa6b26850",
+                  "qor.rpt": "8a1c2846eaffe957bf19322c77a2b1cae7a7a10d7fb5ae66e6b69ee6bbd5134f",
+                  "timing.rpt": "a3c96323f4941f5ba434ed46ab13d268b5a328e6a39c31bfd41591c9813fe3cd",
+                  "run.tcl": "3869fd0eb635372b623765a7ce964fe85e7af9aa6aa1379fe7c572b54cb0d120"
+                }
+              }
+            ],
+            "area_saved": 1180.5359630000003,
+            "area_saved_percent": 10.156972489990546,
+            "scope": "Local synthesis only; unchanged simulation cycles do not establish unchanged SoC Fmax."
+          }
+        ]
+      }
+    },
+    "shared_completion": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/shared_completion_soc_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 20,
+            "failures": [],
+            "manifest_sha256": "ef9295b9857688f85faece8ff285fcb24f5d419a6da70b49552767d43d0d6023"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 20,
+            "failures": [],
+            "manifest_sha256": "11953faeb21e7a50b5e01ed2515cd6c56720b592c6b7c5a95e2dccbd040560d9"
+          }
+        },
+        "comparison_sha256": "3c5125a752807dcc8b44f621cbedc651988fff2479385f3b47d6df42105d09db",
+        "performance_windows": 14,
+        "strict_no_regression": true,
+        "changed_windows": [
+          {
+            "app": "perf_rce_ordered_capacity",
+            "window": 1,
+            "baseline": 845,
+            "candidate": 749,
+            "cycle_change_percent": -11.360946745562128
+          },
+          {
+            "app": "perf_rce_ordered_capacity",
+            "window": 2,
+            "baseline": 1293,
+            "candidate": 1197,
+            "cycle_change_percent": -7.424593967517401
+          },
+          {
+            "app": "perf_rce_ordered_capacity",
+            "window": 3,
+            "baseline": 2029,
+            "candidate": 1933,
+            "cycle_change_percent": -4.731394775751607
+          },
+          {
+            "app": "perf_rce_fp64_mixed",
+            "window": 0,
+            "baseline": 974,
+            "candidate": 940,
+            "cycle_change_percent": -3.490759753593431
+          },
+          {
+            "app": "reduction_rce_fp_late_seed",
+            "window": 3,
+            "baseline": 667,
+            "candidate": 663,
+            "cycle_change_percent": -0.5997001499250421
+          }
+        ],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": false
+      },
+      "local_area": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/shared_completion_ppa_v1",
+        "state": "collected",
+        "completed_modes": {
+          "baseline": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "9ec0b3c3587fd2ba02a34a1b5cc316b63dd972068c10059b297924f739274077"
+          },
+          "scalar": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "4ee11dc3c7547ec7612311d8a10b7a5833919357abbc4c3019403abfe69161bb"
+          }
+        },
+        "comparison_sha256": "7dbb0a4ac2cb7742f172315617e04926d6067dc69e5b4680f0c95363c6d6e7f4",
+        "evidence": {
+          "complete": true,
+          "results": [
+            {
+              "mode": "baseline",
+              "area_um2": 55386.575491,
+              "worst_reported_setup_slack_ns": -0.472119,
+              "worst_reported_hold_slack_ns": -0.114435,
+              "hold_violations": 2574.0,
+              "report_hashes": {
+                "area.rpt": "c989c722d3be5a98d7f678f502ab46a5818d8387f04c602002df7ed8305afe37",
+                "qor.rpt": "1e177492e5a3b636b4c70dc30ba1ee0951795c5e3ca0685e1d0f047cb31883ca",
+                "timing.rpt": "0cbcfc8467eeaae3a04dafe628fa1603d2e8a503c264943f8a93da65ffb46bac",
+                "hold.rpt": "a64aa32d79c40d7418b7efe6044201a8280681687d41726c49acbc3e4824410f",
+                "check_timing.rpt": "3becca0a9e2cac5db2177947c7bbb48e3b64befca4b1daf8ba266fc98ec9c3ba",
+                "check_design_before.rpt": "2427d18fee4e96bec7f292136f8285e98e339f757627b7da87071b22580dd248",
+                "check_design_after.rpt": "7e25eb990018891c6685ce598886f2d8d6f2894aa88a1edc0b9a2e840d91b68d"
+              }
+            },
+            {
+              "mode": "scalar",
+              "area_um2": 49649.711567,
+              "worst_reported_setup_slack_ns": -0.461991,
+              "worst_reported_hold_slack_ns": -0.125926,
+              "hold_violations": 2442.0,
+              "report_hashes": {
+                "area.rpt": "a150eed660975a5b77d3365167d25bac3175362d9beb7a4ffe7597370436e8d3",
+                "qor.rpt": "a84a06fd0bd14f0027da415628082a86c9bd199d944d837b0827141d07627ff7",
+                "timing.rpt": "83c50a0fefbe31e755823ee296be512538494e6b4a98b8a923745e06f1faaed2",
+                "hold.rpt": "21d2b1dfaeea99ddfb7d6c7d4e99341f0baa440522e88b7edd1956864012082a",
+                "check_timing.rpt": "3becca0a9e2cac5db2177947c7bbb48e3b64befca4b1daf8ba266fc98ec9c3ba",
+                "check_design_before.rpt": "30e9e023a4e66f6290468f54d0802b965fb618ccb7cf2d34180c0ae5cebaf551",
+                "check_design_after.rpt": "e9ef75bd06fbdf331b49dec492eaf4678ba9ee8163df894bc9205a47857c65a4"
+              }
+            }
+          ],
+          "area_saved_um2": 5736.863924000005,
+          "area_saved_percent": 10.357859956393611,
+          "scope": "RCE plus ordered backend with all interfaces dynamic; private FP64 vs fifth-client sharing; local PPA only",
+          "limits": "Combined local RCE/ordered synthesis; no integrated SoC area or Fmax claim. Functional and cycle evidence is separate."
+        }
+      }
+    },
+    "independent_ordered_mask": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/ordered_mask_decouple_soc_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 12,
+            "failures": [],
+            "manifest_sha256": "4ef9f2b277316f5a30a70d8817249687b48a8a725aefc933498960dd4e966a46"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 12,
+            "failures": [],
+            "manifest_sha256": "ecdd89d9d5b65ade5cd8b435abdbabf7890a9c7313cb4b2a0ce801f576c992d4"
+          }
+        },
+        "comparison_sha256": "8b6a1fdd4c46e12c85b44a425f8aa27018faca2f40c4e4efbfbe35558c9cc7f2",
+        "performance_windows": 10,
+        "strict_no_regression": true,
+        "changed_windows": [],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": true
+      }
+    },
+    "arithmetic_forward_only": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/arithmetic_forward_soc_v2",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 18,
+            "failures": [],
+            "manifest_sha256": "0d2c7f28ad426cef3a1e04b7bdbf668bb25541ea1dfe068bd5d9509a8b50da3d"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 18,
+            "failures": [],
+            "manifest_sha256": "5df5e8c1c518137f059442cb82d35ce3f53c74d9ef8fb81556fa5defd6072245"
+          }
+        },
+        "comparison_sha256": "a22b18d16778d0ba03fee26f5d1e5dd6c52a702b7d31d933ca879e647ac5b46b",
+        "performance_windows": 20,
+        "strict_no_regression": false,
+        "changed_windows": [
+          {
+            "app": "perf_rce_ordered_capacity",
+            "window": 0,
+            "baseline": 470,
+            "candidate": 473,
+            "cycle_change_percent": 0.6382978723404209
+          },
+          {
+            "app": "perf_rvv_memory_coverage",
+            "window": 0,
+            "baseline": 390,
+            "candidate": 392,
+            "cycle_change_percent": 0.512820512820511
+          }
+        ],
+        "worst_window_slowdown_percent": 0.6382978723404209,
+        "all_finish_times_equal": false
+      },
+      "local_area": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/requester_arithmetic_ppa_v1",
+        "state": "collected",
+        "completed_modes": {
+          "root_reference": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "3bf69b906588b3fad240653eb304012c3cd3b9c19f642a5573608d75a997554d"
+          },
+          "root_arithmetic": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "79e93eb0591dfba21f251458ed3a6a98ada05eba555510c7e307cd0bb4f08f21"
+          },
+          "nonroot_reference": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "57f44d45e81fbea260d6741527cbc37de2c93c48f8275cd07f5e1188ccc1a635"
+          },
+          "nonroot_arithmetic": {
+            "returncode": 0,
+            "complete": true,
+            "log_sha256": "2e3a4b5611fdc1731ff880023459e7344e81048a4971d22c2a153b8de27e1e34"
+          }
+        },
+        "partial_evidence": {
+          "partial": true,
+          "lane": "root",
+          "results": [
+            {
+              "mode": "root_reference",
+              "area_um2": 19132.007749,
+              "worst_reported_setup_slack_ns": 0.000189,
+              "report_sha256": {
+                "area.rpt": "9b60f414066636f9d9fb7f25e31e6b94eec3edab0cc33e5aa9243358be7bf97e",
+                "timing.rpt": "1b6d8a4fd2b3bd1a65a353a2eef99243cbd7e5e9fc70c7bba2ff4bd84151a2cf",
+                "qor.rpt": "b979532909930ac82dbc8a880a82794e2578138305e7b249e65b474460db48a4",
+                "run.tcl": "9eeb7d3759ed8d203e1d56d5dd996a13e9250addada1618600bd1e16fbcbb9fa"
+              }
+            },
+            {
+              "mode": "root_arithmetic",
+              "area_um2": 17122.055812,
+              "worst_reported_setup_slack_ns": 1e-05,
+              "report_sha256": {
+                "area.rpt": "3649bf80a74787338b3cb01f139673802e3981fc5fb22541e6ced04c27db3dee",
+                "timing.rpt": "ce2bdbaa4e793548abd6c88a368f0d6fe33635f5e04b9c2e139d14b5bd1f754c",
+                "qor.rpt": "9bb82beb36e33a6e0c9aecaaf9bec98acf174f2f2905f21f93c6a3f8ff0a2c35",
+                "run.tcl": "6fe0460028e5da25fca7d67cdc408b1384a78f419bf6f2dd8832109dbbc55513"
+              }
+            }
+          ],
+          "area_saved_percent": 10.505703130425815,
+          "scope": "Matched root requester pair only; nonroot pair is pending, no integrated area/Fmax claim"
+        },
+        "comparison_sha256": "5c5f83f5b5aade8c5403b3c39a531dec84c59e4d75d7f416d74113b665535742",
+        "evidence": {
+          "complete": true,
+          "results": [
+            {
+              "mode": "root_reference",
+              "area_um2": 19132.007749,
+              "worst_reported_setup_slack_ns": 0.000189,
+              "qor_hold_violation_ns": -0.11,
+              "hold_violations": 1602.0,
+              "report_hashes": {
+                "area.rpt": "9b60f414066636f9d9fb7f25e31e6b94eec3edab0cc33e5aa9243358be7bf97e",
+                "qor.rpt": "b979532909930ac82dbc8a880a82794e2578138305e7b249e65b474460db48a4",
+                "timing.rpt": "1b6d8a4fd2b3bd1a65a353a2eef99243cbd7e5e9fc70c7bba2ff4bd84151a2cf",
+                "check_timing.rpt": "94bf7675a38cf2f7e109edbc8dc51e1112bf6d2b3427362c2e14197d434eaf38"
+              }
+            },
+            {
+              "mode": "root_arithmetic",
+              "area_um2": 17122.055812,
+              "worst_reported_setup_slack_ns": 1e-05,
+              "qor_hold_violation_ns": -0.11,
+              "hold_violations": 1498.0,
+              "report_hashes": {
+                "area.rpt": "3649bf80a74787338b3cb01f139673802e3981fc5fb22541e6ced04c27db3dee",
+                "qor.rpt": "9bb82beb36e33a6e0c9aecaaf9bec98acf174f2f2905f21f93c6a3f8ff0a2c35",
+                "timing.rpt": "ce2bdbaa4e793548abd6c88a368f0d6fe33635f5e04b9c2e139d14b5bd1f754c",
+                "check_timing.rpt": "3becca0a9e2cac5db2177947c7bbb48e3b64befca4b1daf8ba266fc98ec9c3ba"
+              }
+            },
+            {
+              "mode": "nonroot_reference",
+              "area_um2": 16004.855819,
+              "worst_reported_setup_slack_ns": 0.000126,
+              "qor_hold_violation_ns": -0.11,
+              "hold_violations": 1225.0,
+              "report_hashes": {
+                "area.rpt": "698129cc219d988eedd7bb1b59b1dcce53f0f07167ce6ff07f917e30588dad01",
+                "qor.rpt": "90bf15dd7e118d97382e7632ab12035943351f2e6dbe05b25773655412b7e12e",
+                "timing.rpt": "bb37e768eb3e7cfbe95b65f86d2c3f6fb93223b3d9b9ee1c1acb96f0909edc3f",
+                "check_timing.rpt": "94bf7675a38cf2f7e109edbc8dc51e1112bf6d2b3427362c2e14197d434eaf38"
+              }
+            },
+            {
+              "mode": "nonroot_arithmetic",
+              "area_um2": 14744.183819,
+              "worst_reported_setup_slack_ns": 0.000181,
+              "qor_hold_violation_ns": -0.11,
+              "hold_violations": 1166.0,
+              "report_hashes": {
+                "area.rpt": "a53f391c4265113b1ac914f07e52efe38e71fe52742ddf2784d2a4732b2982f4",
+                "qor.rpt": "4d4d1490554c278b62031fde0f59c74b6be14eab644bd581997cbac4d935a9d2",
+                "timing.rpt": "cff14ad1b4f65f676fcac8b90303edc5b499c997522539ddbf06853ac8752fdf",
+                "check_timing.rpt": "94bf7675a38cf2f7e109edbc8dc51e1112bf6d2b3427362c2e14197d434eaf38"
+              }
+            }
+          ],
+          "pairs": [
+            {
+              "lane": "root",
+              "baseline_area_um2": 19132.007749,
+              "candidate_area_um2": 17122.055812,
+              "area_saved_um2": 2009.9519370000016,
+              "area_saved_percent": 10.505703130425815
+            },
+            {
+              "lane": "nonroot",
+              "baseline_area_um2": 16004.855819,
+              "candidate_area_um2": 14744.183819,
+              "area_saved_um2": 1260.6720000000005,
+              "area_saved_percent": 7.8768094774300135
+            }
+          ],
+          "scope": "local requester with all ports dynamic/retained except Lane ID; 4Lane/VLEN1024; not SoC PPA",
+          "limits": "Matched local requester only; no integrated area/Fmax claim; QoR hold precision is limited. Performance tradeoff must be reported separately."
+        }
+      },
+      "expanded_simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/arithmetic_forward_full_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 50,
+            "failures": [],
+            "manifest_sha256": "722ee5da28ba77d75080340363af2436a4de6d20b5c91d5dccfb2783d5c9d7ab"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 50,
+            "failures": [],
+            "manifest_sha256": "eb287592a05e438b843fc11937d4f68cb3cbcd7e6554b22e4776fb063979294e"
+          }
+        },
+        "comparison_sha256": "08313415fdc76cf011bf95b95118a4305d434de9502abb74bdad8455895929e7",
+        "performance_windows": 105,
+        "strict_no_regression": false,
+        "changed_windows": [
+          {
+            "app": "perf_rce_ordered_capacity",
+            "window": 0,
+            "baseline": 470,
+            "candidate": 473,
+            "cycle_change_percent": 0.6382978723404209
+          },
+          {
+            "app": "perf_rvv_memory_coverage",
+            "window": 0,
+            "baseline": 390,
+            "candidate": 392,
+            "cycle_change_percent": 0.512820512820511
+          }
+        ],
+        "worst_window_slowdown_percent": 0.6382978723404209,
+        "all_finish_times_equal": false
+      }
+    },
+    "context_issue_cut": {
+      "simulation": {
+        "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/context_issue_cut_soc_v1",
+        "state": "functional_pass",
+        "sides": {
+          "baseline": {
+            "state": "COMPLETE",
+            "recorded_tests": 18,
+            "failures": [],
+            "manifest_sha256": "0e46e7ce0c0e1fed86dba3b8676cb09d2c5c1ecd89a6f65a9495341001f7ea56"
+          },
+          "scalar": {
+            "state": "COMPLETE",
+            "recorded_tests": 18,
+            "failures": [],
+            "manifest_sha256": "57faa06426dc489386388769bb6137745060d827212a25c1852ff8fe8cbb4bbd"
+          }
+        },
+        "comparison_sha256": "f1797d100c92855905db04fc80eef87d163aafd2cc48aba991089c36bcecb53c",
+        "performance_windows": 15,
+        "strict_no_regression": true,
+        "changed_windows": [],
+        "worst_window_slowdown_percent": 0,
+        "all_finish_times_equal": true
+      }
+    }
+  },
+  "combined_suite": {
+    "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/shared_completion_full_v1",
+    "state": "functional_pass",
+    "sides": {
+      "baseline": {
+        "state": "COMPLETE",
+        "recorded_tests": 44,
+        "failures": [],
+        "manifest_sha256": "8c745d9e165d100889dd39e863ce6eabc842f11d76ed1f02de0fa9a9e6374b99"
+      },
+      "scalar": {
+        "state": "COMPLETE",
+        "recorded_tests": 44,
+        "failures": [],
+        "manifest_sha256": "b9c282113e62caf40d9787f9b521350171bba6e4f8fb8c26d1faae5a82cd9a7b"
+      }
+    },
+    "comparison_sha256": "2fd0d45871416cd2a33191f70ea2dd37ed779b7e8e711801a41c6ae6e6fae1c2",
+    "performance_windows": 101,
+    "strict_no_regression": true,
+    "changed_windows": [
+      {
+        "app": "perf_rce_fp64_mixed",
+        "window": 0,
+        "baseline": 974,
+        "candidate": 940,
+        "cycle_change_percent": -3.490759753593431
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "window": 1,
+        "baseline": 845,
+        "candidate": 749,
+        "cycle_change_percent": -11.360946745562128
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "window": 2,
+        "baseline": 1293,
+        "candidate": 1197,
+        "cycle_change_percent": -7.424593967517401
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "window": 3,
+        "baseline": 2029,
+        "candidate": 1933,
+        "cycle_change_percent": -4.731394775751607
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "window": 3,
+        "baseline": 667,
+        "candidate": 663,
+        "cycle_change_percent": -0.5997001499250421
+      }
+    ],
+    "worst_window_slowdown_percent": 0,
+    "all_finish_times_equal": false
+  },
+  "retained_failures": {
+    "arithmetic_forward_soc_v1": {
+      "directory": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/arithmetic_forward_soc_v1",
+      "state": "functional_failure",
+      "sides": {
+        "baseline": {
+          "state": "COMPLETE",
+          "recorded_tests": 18,
+          "failures": [
+            "perf_rvv_memory_coverage"
+          ],
+          "manifest_sha256": "c20eba834e9175d0167ab65373ab6af714914769e160a765ac9d46412eab4768"
+        },
+        "scalar": {
+          "state": "COMPLETE",
+          "recorded_tests": 18,
+          "failures": [],
+          "manifest_sha256": "52715fb74fb3d368b9f1f983c83a2766b7ee35657d0fe6afd768b0087cadf016"
+        }
+      },
+      "performance": "strict_comparison_missing"
+    }
+  },
+  "exact_family": {
+    "comparison": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/exact_backend_tradeoff_v3/comparison.json",
+    "sha256": "d159f7696a3bdb038132ea2889007e31e03c6e65eb09068cefc3221ce9fddcb9",
+    "representation_cycles_equal": true,
+    "limits": "Exactly representable sums only; independent stream includes source writes; no general ISA, area, Fmax or workload-average claim"
+  }
+}

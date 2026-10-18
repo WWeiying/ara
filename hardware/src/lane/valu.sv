@@ -57,6 +57,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     output strb_t                        alu_result_be_o,
     input  logic                         alu_result_gnt_i,
     // Interface with the Slide Unit
+    output elen_t                        alu_red_data_o,
     output logic                         alu_red_valid_o,
     input  logic                         alu_red_ready_i,
     input  elen_t                        sldu_operand_i,
@@ -132,12 +133,33 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       vinsn_queue_q <= '0;
+`ifndef ARA_RED_SHARED_ISSUE_DESCRIPTOR
       vinsn_issue_q <= '0;
+`endif
     end else begin
       vinsn_queue_q <= vinsn_queue_d;
+`ifndef ARA_RED_SHARED_ISSUE_DESCRIPTOR
       vinsn_issue_q <= vinsn_issue_d;
+`endif
     end
   end
+
+`ifdef ARA_RED_SHARED_ISSUE_DESCRIPTOR
+  // The old issue register captured queue_d[issue_pnt_d] on the same edge
+  // as queue_q captured queue_d. Read that registered slot directly instead
+  // of keeping a second immutable descriptor. Queue ownership is unchanged.
+  assign vinsn_issue_q = vinsn_queue_q.vinsn[vinsn_queue_q.issue_pnt];
+`ifndef SYNTHESIS
+  vfu_operation_t issue_descriptor_reference_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) issue_descriptor_reference_q <= '0;
+    else issue_descriptor_reference_q <= vinsn_issue_d;
+  end
+  a_shared_issue_descriptor: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    vinsn_issue_q == issue_descriptor_reference_q)
+    else $error("shared issue descriptor differs from original registered descriptor");
+`endif
+`endif
 
   ////////////////////
   //  Result queue  //
@@ -377,6 +399,13 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // inter-instruction decoupling: keep the current reduction in the SLDU tree
   // while an independent shadow accumulator consumes the next reduction's
   // local operands in otherwise idle ALU cycles.
+  // RCE handles all nonempty integer reductions. Keep the legacy tree
+  // protocol for fallback, but do not retain its unused background contexts.
+`ifdef ARA_RED_PRUNE_LEGACY_INT_STREAM
+  localparam bit RedLegacyStreamEnable = !RceIntEnable;
+`else
+  localparam bit RedLegacyStreamEnable = 1'b1;
+`endif
   logic red_stream_bg_active_d, red_stream_bg_active_q;
   logic red_stream_bg_complete_d, red_stream_bg_complete_q;
   logic red_stream_foreground_advanced_d, red_stream_foreground_advanced_q;
@@ -416,7 +445,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                red_stream_primary_conflict_cycles_q;
 
   function automatic logic red_stream_eligible(vfu_operation_t vinsn);
-    red_stream_eligible = (NrLanes == 4) && is_reduction(vinsn.op) &&
+    red_stream_eligible = RedLegacyStreamEnable && (NrLanes == 4) && is_reduction(vinsn.op) &&
 `ifndef ARA_RED_MASKED_STREAM_4LANE
       vinsn.vm &&
 `endif
@@ -1114,8 +1143,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     // write-side context.  Normally read_pnt == write_pnt during a reduction;
     // a streamed successor is the important exception because the preceding
     // architectural result may still be waiting at read_pnt.
+    alu_red_data_o = result_queue_q[result_queue_write_pnt_q].wdata;
     alu_result_wdata_o = alu_red_valid_o
-                       ? result_queue_q[result_queue_write_pnt_q].wdata
+                       ? alu_red_data_o
                        : result_queue_q[result_queue_read_pnt_q].wdata;
     if (alu_state_q inside {NO_REDUCTION, REDUCTION_WRITEBACK} ||
         (alu_state_q == SIMD_REDUCTION && simd_red_cnt_q == simd_red_cnt_max_q)) begin
@@ -1430,6 +1460,55 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
   end : p_valu
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+`ifdef ARA_RED_STATIC_LEGACY_STATE
+  // The selected RCE profile cannot activate these legacy contexts. Use a
+  // generate-time constant, not a zero-fed FF: synthesis deliberately disables
+  // sequential constant propagation, which would retain the FF's consumers.
+  if (RedLegacyStreamEnable) begin : gen_legacy_stream_state
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        red_stream_bg_active_q <= '0;
+        red_stream_bg_complete_q <= '0;
+        red_stream_foreground_advanced_q <= '0;
+        red_stream_bg_first_q <= '0;
+        red_stream_bg_acc_q <= '0;
+        red_stream_bg_result_q <= '0;
+        red_stream_root_data_q <= '0;
+        red_stream_root_write_pnt_q <= '0;
+        red_stream_root_read_pnt_q <= '0;
+        red_stream_root_count_q <= '0;
+        red_stream_prefetched_count_q <= '0;
+      end else begin
+        red_stream_bg_active_q <= red_stream_bg_active_d;
+        red_stream_bg_complete_q <= red_stream_bg_complete_d;
+        red_stream_foreground_advanced_q <= red_stream_foreground_advanced_d;
+        red_stream_bg_first_q <= red_stream_bg_first_d;
+        red_stream_bg_acc_q <= red_stream_bg_acc_d;
+        red_stream_bg_result_q <= red_stream_bg_result_d;
+        red_stream_root_data_q <= red_stream_root_data_d;
+        red_stream_root_write_pnt_q <= red_stream_root_write_pnt_d;
+        red_stream_root_read_pnt_q <= red_stream_root_read_pnt_d;
+        red_stream_root_count_q <= red_stream_root_count_d;
+        red_stream_prefetched_count_q <= red_stream_prefetched_count_d;
+      end
+    end
+  end else begin : gen_no_legacy_stream_state
+    assign red_stream_bg_active_q = '0;
+    assign red_stream_bg_complete_q = '0;
+    assign red_stream_foreground_advanced_q = '0;
+    assign red_stream_bg_first_q = '0;
+    assign red_stream_bg_acc_q = '0;
+    assign red_stream_bg_result_q = '0;
+    assign red_stream_root_data_q = '0;
+    assign red_stream_root_write_pnt_q = '0;
+    assign red_stream_root_read_pnt_q = '0;
+    assign red_stream_root_count_q = '0;
+    assign red_stream_prefetched_count_q = '0;
+  end
+`endif
+`endif
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       issue_cnt_q             <= '0;
@@ -1444,6 +1523,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       simd_red_cnt_max_q      <= '0;
       alu_vxsat_q             <= '0;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
+`ifndef ARA_RED_STATIC_LEGACY_STATE
       red_stream_bg_active_q               <= 1'b0;
       red_stream_bg_complete_q             <= 1'b0;
       red_stream_foreground_advanced_q     <= 1'b0;
@@ -1455,6 +1535,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       red_stream_root_read_pnt_q           <= '0;
       red_stream_root_count_q              <= '0;
       red_stream_prefetched_count_q        <= '0;
+`endif
 `ifdef ARA_RED_SLACK_SCHED_4LANE
       red_stream_slack_score_q             <= 3;
       red_stream_slack_defer_cycles_q      <= '0;
@@ -1477,18 +1558,19 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
       alu_vxsat_q             <= alu_vxsat_d;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
-      red_stream_bg_active_q               <= red_stream_bg_active_d;
-      red_stream_bg_complete_q             <= red_stream_bg_complete_d;
-      red_stream_foreground_advanced_q     <=
-        red_stream_foreground_advanced_d;
-      red_stream_bg_first_q                <= red_stream_bg_first_d;
-      red_stream_bg_acc_q                  <= red_stream_bg_acc_d;
-      red_stream_bg_result_q               <= red_stream_bg_result_d;
-      red_stream_root_data_q               <= red_stream_root_data_d;
-      red_stream_root_write_pnt_q          <= red_stream_root_write_pnt_d;
-      red_stream_root_read_pnt_q           <= red_stream_root_read_pnt_d;
-      red_stream_root_count_q              <= red_stream_root_count_d;
-      red_stream_prefetched_count_q        <= red_stream_prefetched_count_d;
+`ifndef ARA_RED_STATIC_LEGACY_STATE
+      red_stream_bg_active_q               <= RedLegacyStreamEnable ? red_stream_bg_active_d : '0;
+      red_stream_bg_complete_q             <= RedLegacyStreamEnable ? red_stream_bg_complete_d : '0;
+      red_stream_foreground_advanced_q     <= RedLegacyStreamEnable ? red_stream_foreground_advanced_d : '0;
+      red_stream_bg_first_q                <= RedLegacyStreamEnable ? red_stream_bg_first_d : '0;
+      red_stream_bg_acc_q                  <= RedLegacyStreamEnable ? red_stream_bg_acc_d : '0;
+      red_stream_bg_result_q               <= RedLegacyStreamEnable ? red_stream_bg_result_d : '0;
+      red_stream_root_data_q               <= RedLegacyStreamEnable ? red_stream_root_data_d : '0;
+      red_stream_root_write_pnt_q          <= RedLegacyStreamEnable ? red_stream_root_write_pnt_d : '0;
+      red_stream_root_read_pnt_q           <= RedLegacyStreamEnable ? red_stream_root_read_pnt_d : '0;
+      red_stream_root_count_q              <= RedLegacyStreamEnable ? red_stream_root_count_d : '0;
+      red_stream_prefetched_count_q        <= RedLegacyStreamEnable ? red_stream_prefetched_count_d : '0;
+`endif
 `ifdef ARA_RED_SLACK_SCHED_4LANE
       red_stream_slack_score_q             <= red_stream_slack_score_d;
       red_stream_slack_defer_cycles_q      <= red_stream_slack_defer_cycles_d;
@@ -1503,6 +1585,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
 `ifndef SYNTHESIS
+  a_pruned_integer_stream_is_unused: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      !RedLegacyStreamEnable |->
+        (!red_stream_bg_active_d && !red_stream_bg_complete_d &&
+         red_stream_prefetched_count_d == 0 && red_stream_root_count_d == 0))
+    else $error("pruned legacy integer context was still required");
   a_integer_stream_keeps_compatible_controls: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       (red_stream_bg_active_q || red_stream_bg_complete_q) |->

@@ -29,6 +29,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   ) (
     input  logic                         clk_i,
     input  logic                         rst_ni,
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    output ordered_add_request_t ordered_add_request_o,
+    output logic ordered_add_valid_o,
+    input logic ordered_add_ready_i,
+    input ordered_add_response_t ordered_add_response_i,
+    input logic ordered_add_response_valid_i,
+    output logic ordered_add_response_ready_o,
+`endif
     input  logic[idx_width(NrLanes)-1:0] lane_id_i,
     // Interface with Dispatcher
     output logic                         mfpu_vxsat_o,
@@ -69,6 +77,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     output strb_t                        mfpu_result_be_o,
     input  logic                         mfpu_result_gnt_i,
     // Interface with the Slide Unit
+    output elen_t                        mfpu_red_data_o,
     output logic                         mfpu_red_valid_o,
     input  logic                         mfpu_red_ready_i,
     input  elen_t                        sldu_operand_i,
@@ -99,6 +108,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [NrVInsn-1:0] rce_pending_d, rce_pending_q;
   logic rce_writeback, rce_handoff, rce_exception_valid;
   logic rce_ordinary_drain;
+  elen_t mfpu_base_wdata;
   logic [4:0] rce_exception_flags;
 
   assign rce_writeback = rce_can_retire_o && rce_result_valid_i && lane_id_i == 0;
@@ -186,12 +196,33 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       vinsn_queue_q <= '0;
+`ifndef ARA_RED_SHARED_ISSUE_DESCRIPTOR
       vinsn_issue_q <= '0;
+`endif
     end else begin
       vinsn_queue_q <= vinsn_queue_d;
+`ifndef ARA_RED_SHARED_ISSUE_DESCRIPTOR
       vinsn_issue_q <= vinsn_issue_d;
+`endif
     end
   end
+
+`ifdef ARA_RED_SHARED_ISSUE_DESCRIPTOR
+  // The old issue register captured queue_d[issue_pnt_d] on the same edge
+  // as queue_q captured queue_d. Read that registered slot directly instead
+  // of keeping a second immutable descriptor. Queue ownership is unchanged.
+  assign vinsn_issue_q = vinsn_queue_q.vinsn[vinsn_queue_q.issue_pnt];
+`ifndef SYNTHESIS
+  vfu_operation_t issue_descriptor_reference_q;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) issue_descriptor_reference_q <= '0;
+    else issue_descriptor_reference_q <= vinsn_issue_d;
+  end
+  a_shared_issue_descriptor: assert property (@(posedge clk_i) disable iff (!rst_ni)
+    vinsn_issue_q == issue_descriptor_reference_q)
+    else $error("shared issue descriptor differs from original registered descriptor");
+`endif
+`endif
 
   ////////////////////
   //  Result queue  //
@@ -935,6 +966,28 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   endfunction : red_context_eligible
 
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
+  // Only specialize the fully covered standard-FP four-Lane profile.
+  // Widened sums arrive with destination SEW (32/64); ordered sums never
+  // qualify for this legacy background tree. Foreground contexts remain.
+  localparam bit RedLegacyFpStreamEnable =
+`ifdef ARA_RED_PRUNE_LEGACY_FP_STREAM
+`ifdef ARA_RED_EXACT_SUM_4LANE
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+`ifdef ARA_RED_EXACT_FP16_4LANE
+    !((NrLanes == 4) && (FPUSupport == FPUSupportHalfSingleDouble) &&
+      RceFpMinMaxEnable && RceExactDirectEnable);
+`else
+    1'b1;
+`endif
+`else
+    1'b1;
+`endif
+`else
+    1'b1;
+`endif
+`else
+    1'b1;
+`endif
   // One context remains attached to the foreground inter-lane tree while the
   // explicit feedback slots below accumulate the next independent reduction.
   // The first implementation intentionally accepts homogeneous streams only:
@@ -984,10 +1037,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                               ;
   endfunction : red_stream_local_eligible
 
-  function automatic logic red_stream_compatible(
+  function automatic logic red_stream_compatible_unpruned(
     vfu_operation_t foreground, vfu_operation_t background
   );
-    red_stream_compatible = !uses_rce(foreground) && !uses_rce(background) &&
+    red_stream_compatible_unpruned = !uses_rce(foreground) && !uses_rce(background) &&
       red_stream_local_eligible(foreground) &&
       red_stream_local_eligible(background)
 `ifdef ARA_RED_MASKED_STREAM_4LANE
@@ -1005,7 +1058,25 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       (foreground.vm == background.vm)
 `endif
       ;
-  endfunction : red_stream_compatible
+  endfunction : red_stream_compatible_unpruned
+
+  function automatic logic red_stream_compatible(
+    vfu_operation_t foreground, vfu_operation_t background
+  );
+    return RedLegacyFpStreamEnable && red_stream_compatible_unpruned(foreground, background);
+  endfunction
+`ifndef SYNTHESIS
+  // Check the old condition itself, so disabling admission cannot conceal
+  // a real legal user of the removed path.
+  a_pruned_fp_stream_has_no_eligible_pair: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      !RedLegacyFpStreamEnable && vinsn_queue_q.processing_cnt != 0 &&
+      vinsn_queue_q.issue_cnt > 1 |->
+      !red_stream_compatible_unpruned(vinsn_processing_q,
+        vinsn_queue_q.vinsn[(vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+          ? 0 : vinsn_queue_q.issue_pnt + 1]))
+    else $error("FP legacy stream specialization removed an eligible queued pair");
+`endif
 `endif
 
   // Tag layout for context-flow fpnew requests. The bit above the full byte
@@ -1346,7 +1417,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic [2:0]  exact_packet_beat_d, exact_packet_beat_q;
   logic [2:0]  exact_limb_count_d, exact_limb_count_q;
   logic [2:0]  exact_local_limb_count;
+  logic [2:0]  exact_local_low_zero_limbs;
   logic [63:0] exact_packet_word;
+  logic exact_header_bypass;
+  logic [2:0] exact_packet_beat;
+  assign exact_header_bypass = mfpu_state_q == INTRA_LANE_REDUCTION &&
+    exact_sum_out_valid && vinsn_issue_q_valid && vinsn_processing_q_valid &&
+    red_exact_sum_eligible(vinsn_issue_q) && uses_exact_rce(vinsn_processing_q) &&
+    vinsn_issue_q.id == vinsn_processing_q.id;
+  assign exact_packet_beat = exact_header_bypass ? 3'd0 : exact_packet_beat_q;
   logic        exact_global_result_fire;
   logic [4:0]  exact_global_status;
 `ifdef ARA_RED_EXACT_STREAM_4LANE
@@ -1380,9 +1459,35 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       exact_local_limb_count = 3'd4;
     else if (exact_sum_value[127:64] != sign_fill)
       exact_local_limb_count = 3'd3;
+    // The RCE resolves the high carry from the recorded lane signs. It needs
+    // the last data limb, without the legacy extra sign-extension guard limb.
+    if (uses_exact_rce(vinsn_processing_q)) begin
+      exact_local_limb_count = 3'd1;
+      if ({{32{exact_sum_value[287]}}, exact_sum_value[287:256]} != sign_fill)
+        exact_local_limb_count = 3'd5;
+      else if (exact_sum_value[255:192] != sign_fill)
+        exact_local_limb_count = 3'd4;
+      else if (exact_sum_value[191:128] != sign_fill)
+        exact_local_limb_count = 3'd3;
+      else if (exact_sum_value[127:64] != sign_fill)
+        exact_local_limb_count = 3'd2;
+    end
 `endif
 
-    unique case (exact_packet_beat_q)
+    // Omit only provably zero low limbs. The old fixed/high-only transport
+    // remains valid with a zero prefix count. Seed insertion stays at the RCE.
+    exact_local_low_zero_limbs = '0;
+`ifndef ARA_RED_EXACT_FIXED_WINDOW_4LANE
+    if (uses_exact_rce(vinsn_processing_q)) begin
+      if (exact_sum_value[63:0] == '0) exact_local_low_zero_limbs = 3'd1;
+      if (exact_sum_value[127:0] == '0) exact_local_low_zero_limbs = 3'd2;
+      if (exact_sum_value[191:0] == '0) exact_local_low_zero_limbs = 3'd3;
+      if (exact_sum_value[255:0] == '0) exact_local_low_zero_limbs = 3'd4;
+      if (exact_sum_value == '0) exact_local_low_zero_limbs = 3'd5;
+    end
+`endif
+
+    unique case (exact_packet_beat)
       3'd0: begin
         // One self-describing header precedes the active exact-state window.
         // The instruction/lane tags make cross-context or cross-lane mixing
@@ -1404,7 +1509,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // after its last limb.  The SLDU reconstructs omitted high limbs from
         // this two's-complement sign, avoiding a global-window feedback token.
         exact_packet_word[8]     = exact_sum_value[287];
-        exact_packet_word[7:0]   = 8'(vinsn_processing_q.id);
+        // Bits 7:5 were zero padding around the three-bit instruction ID.
+        // Reuse them without widening the packet or truncating any valid ID.
+        exact_packet_word[7:5]   = exact_local_low_zero_limbs;
+        exact_packet_word[4:0]   = 5'(vinsn_processing_q.id);
       end
       3'd1: exact_packet_word = exact_sum_value[63:0];
       3'd2: exact_packet_word = exact_sum_value[127:64];
@@ -1544,7 +1652,14 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         '{default: DISABLED},
         '{default: DISABLED},
         '{default: DISABLED}},
+`ifdef ARA_RED_ORDERED_OUTPUT_REG
+      // Keep one cycle of token latency, but make ADD constant at the
+      // combinational FMA input. BEFORE registers reset their opcode to
+      // FMADD, which can otherwise retain unused multiplication hardware.
+      PipeConfig: AFTER
+`else
       PipeConfig: BEFORE
+`endif
     };
 `endif
 
@@ -1858,8 +1973,82 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     assign bulk_vfpu_out_ready = vfpu_out_ready;
     assign ordered_fast_out_ready = vfpu_out_ready && !bulk_vfpu_out_valid;
 
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+    // Ordered tokens consume only the low result element; source extraction
+    // already places that element in bits [SEW-1:0]. Keep one pipeline register
+    // and every supported format, but remove the unused SIMD arithmetic lanes.
+    // RVV operands are unboxed: the old vector mode bypassed boxing checks,
+    // so scalar mode must explicitly disable them. Upper result bits are not
+    // architectural: ordered writeback enables only the low SEW element.
+    localparam fpu_features_t OrderedScalarFeatures = '{
+      Width: ELEN, EnableVectors: 1'b0, EnableNanBox: 1'b0,
+      FpFmtMask: FPUFeatures.FpFmtMask, IntFmtMask: FPUFeatures.IntFmtMask};
+`endif
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    logic ordered_request_mask;
+`ifdef ARA_RED_ORDERED_READY_INDEPENDENT_MASK
+    // The scalar ordered request always targets element zero of the
+    // extracted operand. Describe that element before ready is known; only
+    // counters/operand consumption depend on acceptance. This removes the
+    // ready -> issue_be -> shared request mask -> ready feedback edge.
+    assign ordered_request_mask = vinsn_issue_q.vm || mask_i[0];
+`ifndef SYNTHESIS
+    a_ordered_mask_transfer_equivalent: assert property (@(posedge clk_i) disable iff (!rst_ni)
+      ordered_add_valid_o && ordered_add_ready_i |->
+        ordered_request_mask == vfpu_simd_mask[0])
+      else $error("ready-independent ordered mask changed an accepted operation");
+`endif
+`else
+    assign ordered_request_mask = vfpu_simd_mask[0];
+`endif
+    // Ordered requests never consume a bulk-FPU combinational result.
+    // Select their two operands directly from the registered token / operand
+    // queues, rather than passing through the general reduction feedback mux.
+    // This exposes the existing state invariant to static timing analysis.
+    elen_t [2:0] ordered_request_operands;
+    logic ordered_request_prefetch;
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+    assign ordered_request_prefetch = ordered_prefetch_valid_q &&
+      vinsn_issue_q.vm && vinsn_issue_q.vtype.vsew == EW32;
+`else
+    assign ordered_request_prefetch = 1'b0;
+`endif
+    assign ordered_request_operands[0] = '0; // ADD uses only operands 1 and 2.
+    assign ordered_request_operands[1] = first_op_q && lane_id_i == '0 ?
+      (vinsn_issue_q.use_scalar_op ? scalar_op :
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+       ordered_request_prefetch ? ordered_prefetch_seed_q :
+`endif
+       mfpu_operand_i[0]) : sldu_operand_q;
+    assign ordered_request_operands[2] = processed_osum_operand(
+`ifdef ARA_RED_ORDERED_INTERLEAVE_4LANE
+      ordered_request_prefetch ? ordered_prefetch_source_q :
+`endif
+      mfpu_operand_i[2], osum_issue_cnt_q, vinsn_issue_q.vtype.vsew,
+      ~vinsn_issue_q.vm, mask_i, ntr_val);
+`ifndef SYNTHESIS
+    a_ordered_direct_operands: assert property (@(posedge clk_i) disable iff (!rst_ni)
+      ordered_add_valid_o && ordered_add_ready_i |->
+        ordered_request_operands[2:1] == vfpu_operands[2:1])
+      else $error("direct ordered operands differ from general issue operands");
+`endif
+    assign ordered_add_request_o = '{operands: ordered_request_operands, rm: fp_rm,
+      src_fmt: fp_src_fmt, dst_fmt: fp_dst_fmt, int_fmt: fp_int_fmt,
+      tag: vfpu_tag_in, mask: ordered_request_mask};
+    assign ordered_add_valid_o = ordered_fast_in_valid;
+    assign ordered_fast_in_ready = ordered_add_ready_i;
+    assign ordered_fast_result = ordered_add_response_i.result;
+    assign ordered_fast_ex_flag = ordered_add_response_i.status;
+    assign ordered_fast_tag_out = ordered_add_response_i.tag;
+    assign ordered_fast_out_valid = ordered_add_response_valid_i;
+    assign ordered_add_response_ready_o = ordered_fast_out_ready;
+`else
     fpnew_top #(
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+      .Features      (OrderedScalarFeatures     ),
+`else
       .Features      (FPUFeatures               ),
+`endif
       .Implementation(OrderedFastImplementation),
       .DivSqrtSel    (DivSqrtSel                ),
       .TagType       (vfpu_tag_t                ),
@@ -1871,12 +2060,30 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .hart_id_i     ('0                     ),
       .flush_i       (1'b0                   ),
       .rnd_mode_i    (fp_rm                  ),
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+      .op_i          (fpnew_pkg::ADD         ),
+      .op_mod_i      (1'b0                   ),
+`elsif ARA_RED_ORDERED_ADD_ONLY
+      // This instance accepts only ordered sums. Expose the invariant at the
+      // arithmetic boundary so synthesis can remove unused ADDMUL operations.
+      .op_i          (fpnew_pkg::ADD         ),
+      .op_mod_i      (1'b0                   ),
+`else
       .op_i          (fp_op                  ),
       .op_mod_i      (fp_opmod               ),
+`endif
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+      .vectorial_op_i(1'b0                   ),
+`else
       .vectorial_op_i(1'b1                   ),
+`endif
       .operands_i    (vfpu_operands          ),
       .tag_i         (vfpu_tag_in            ),
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+      .simd_mask_i   (vfpu_simd_mask[0]      ),
+`else
       .simd_mask_i   (vfpu_simd_mask         ),
+`endif
       .src_fmt_i     (fp_src_fmt             ),
       .dst_fmt_i     (fp_dst_fmt             ),
       .int_fmt_i     (fp_int_fmt             ),
@@ -1889,6 +2096,18 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .out_ready_i   (ordered_fast_out_ready ),
       .busy_o        (/* Unused */           )
     );
+`endif // ARA_RED_SHARED_ORDERED_ADD
+`ifndef SYNTHESIS
+`ifdef ARA_RED_ORDERED_SCALAR_ADD
+    // The finest-format mask repeats bits for wider elements; byte enables
+    // express the actual one-element contract independently of format.
+    a_ordered_scalar_contract: assert property (@(posedge clk_i) disable iff (!rst_ni)
+      ordered_fast_in_valid |-> (fp_op == ADD && !fp_opmod &&
+                                 (issue_be & ~be(1, vfpu_exec_vinsn.vtype.vsew)) == '0))
+      else $fatal(1, "Ordered scalar path received a non-add or multi-element request");
+`endif
+`endif
+
 `else
     assign bulk_vfpu_in_valid  = vfpu_in_valid;
     assign vfpu_in_ready       = bulk_vfpu_in_ready;
@@ -2894,7 +3113,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               // The indexed return write above is a same-cycle bypass.  Once
               // both pair roots are present, launch the root immediately
               // instead of spending a phase-transition bubble.
+`ifdef ARA_RED_CONTEXT_ISSUE_CUT
+              // A newly accepted pair owns pending[1], so it cannot also
+              // launch the root. Select from registered progress before ready.
+              else if (red_context_pair_issue_q == 2 &&
+`else
               if (red_context_pair_issue_d == 2 &&
+`endif
                   !red_context_pending_d[0] && !red_context_pending_d[1] &&
                   red_context_valid_d[0] && red_context_valid_d[1]) begin
                 issue_be = '1;
@@ -3093,78 +3318,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
       end
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
-      EXACT_GLOBAL_TX: begin
-        // Every lane emits the same packet beat number.  The SLDU input
-        // spills absorb independent backpressure; a lane advances only after
-        // its own word is owned by the network.
-        prevent_commit   = 1'b1;
-        mfpu_red_valid_o = exact_sum_out_valid &&
-          (!RceExactDirectEnable ||
-           (!rce_writeback && (RceExactEgressReleaseEnable ||
-             !(uses_exact_rce(vinsn_commit) && vinsn_commit.id != vinsn_processing_q.id))));
-        // The packet and VRF writeback still share one data bus. With early
-        // egress release the previous frame no longer owns the selector FIFO;
-        // its architectural result remains owned by rce_pending/commit.
-
-        if (mfpu_red_valid_o && mfpu_red_ready_i) begin
-          if (exact_packet_beat_q == 3'd0) begin
-            // Every lane follows its own advertised schedule.  The SLDU
-            // substitutes sign extension for lanes whose windows end early,
-            // so no max-window round trip is needed before limb one.
-            exact_limb_count_d  = exact_local_limb_count;
-            exact_packet_beat_d = 3'd1;
-          end else if (exact_packet_beat_q == exact_limb_count_q) begin
-            if (uses_exact_rce(vinsn_processing_q)) begin
-              // Pop the egress selector once, after its final beat is accepted.
-              // Do not release the architectural instruction or destination.
-              if (RceExactEgressReleaseEnable) fpu_red_complete_d = 1'b1;
-              exact_sum_out_ready = 1'b1;
-              rce_handoff = 1'b1;
-              rce_pending_d[vinsn_processing_q.id] = 1'b1;
-              vinsn_queue_d.issue_cnt -= 1'b1;
-              vinsn_queue_d.processing_cnt -= 1'b1;
-              vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt == VInsnQueueDepth-1
-                ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
-              vinsn_queue_d.processing_pnt = vinsn_queue_q.processing_pnt == VInsnQueueDepth-1
-                ? '0 : vinsn_queue_q.processing_pnt + 1'b1;
-              mfpu_state_d = NO_REDUCTION;
-            end else begin
-            mfpu_state_d = EXACT_GLOBAL_RX;
-`ifdef ARA_RED_EXACT_STREAM_4LANE
-            // The complete exact state is now owned by the SLDU.  Releasing
-            // the lane accumulator here, rather than after the final result
-            // returns, creates a second bounded context: packet N is being
-            // finalized while the same accumulator consumes packet N+1.
-            exact_sum_out_ready    = 1'b1;
-            exact_stream_early_release = 1'b1;
-
-            if (!exact_stream_foreground_advanced_q &&
-                (vinsn_queue_q.issue_cnt > 1)) begin
-              automatic logic [idx_width(VInsnQueueDepth)-1:0]
-                next_issue_pnt =
-                  (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
-                    ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
-              automatic vfu_operation_t next_issue =
-                vinsn_queue_q.vinsn[next_issue_pnt];
-
-              if (red_exact_stream_compatible(vinsn_issue_q, next_issue)) begin
-                vinsn_queue_d.issue_cnt =
-                  vinsn_queue_q.issue_cnt - 1'b1;
-                vinsn_queue_d.issue_pnt = next_issue_pnt;
-                issue_cnt_d             = next_issue.vl;
-                first_op_d              = 1'b1;
-                intra_op_rx_cnt_d       = '0;
-                exact_stream_foreground_advanced_d = 1'b1;
-                exact_stream_successor_launch = 1'b1;
-              end
-            end
-`endif
-            end
-          end else begin
-            exact_packet_beat_d = exact_packet_beat_q + 1'b1;
-          end
-        end
-      end
+      EXACT_GLOBAL_TX:; // Shared packet service below also handles first-header bypass.
 
       EXACT_GLOBAL_WINDOW_RX: begin
         // The SLDU returns the maximum active-window length reported by the
@@ -3967,6 +4121,86 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       default:;
     endcase
 
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    // The normalized state is already registered in the accumulator HOLD
+    // state. Send its header on that first valid cycle instead of spending a
+    // cycle only changing the MFPU state. Backpressure falls into TX at beat0;
+    // a successful bypass shares exactly the same progress/ownership logic.
+    if (mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) begin
+      // Every lane emits the same packet beat number.  The SLDU input
+      // spills absorb independent backpressure; a lane advances only after
+      // its own word is owned by the network.
+      prevent_commit   = 1'b1;
+      mfpu_red_valid_o = exact_sum_out_valid &&
+        (!RceExactDirectEnable ||
+         (RceExactEgressReleaseEnable ||
+           !(uses_exact_rce(vinsn_commit) && vinsn_commit.id != vinsn_processing_q.id)));
+      // Packet egress has its own data connection. An older RCE result may
+      // write the VRF concurrently; it retains its own pending/commit owner.
+
+      if (mfpu_red_valid_o && mfpu_red_ready_i) begin
+        if (exact_packet_beat == 3'd0 &&
+            exact_local_low_zero_limbs < exact_local_limb_count) begin
+          // Every lane follows its own advertised schedule.  The SLDU
+          // substitutes sign extension for lanes whose windows end early,
+          // so no max-window round trip is needed before limb one.
+          exact_limb_count_d  = exact_local_limb_count;
+          exact_packet_beat_d = exact_local_low_zero_limbs + 3'd1;
+        end else if (exact_packet_beat == 3'd0 ||
+                     exact_packet_beat == exact_limb_count_q) begin
+          if (uses_exact_rce(vinsn_processing_q)) begin
+            // Pop the egress selector once, after its final beat is accepted.
+            // Do not release the architectural instruction or destination.
+            if (RceExactEgressReleaseEnable) fpu_red_complete_d = 1'b1;
+            exact_sum_out_ready = 1'b1;
+            rce_handoff = 1'b1;
+            rce_pending_d[vinsn_processing_q.id] = 1'b1;
+            vinsn_queue_d.issue_cnt -= 1'b1;
+            vinsn_queue_d.processing_cnt -= 1'b1;
+            vinsn_queue_d.issue_pnt = vinsn_queue_q.issue_pnt == VInsnQueueDepth-1
+              ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+            vinsn_queue_d.processing_pnt = vinsn_queue_q.processing_pnt == VInsnQueueDepth-1
+              ? '0 : vinsn_queue_q.processing_pnt + 1'b1;
+            mfpu_state_d = NO_REDUCTION;
+          end else begin
+          mfpu_state_d = EXACT_GLOBAL_RX;
+`ifdef ARA_RED_EXACT_STREAM_4LANE
+          // The complete exact state is now owned by the SLDU.  Releasing
+          // the lane accumulator here, rather than after the final result
+          // returns, creates a second bounded context: packet N is being
+          // finalized while the same accumulator consumes packet N+1.
+          exact_sum_out_ready    = 1'b1;
+          exact_stream_early_release = 1'b1;
+
+          if (!exact_stream_foreground_advanced_q &&
+              (vinsn_queue_q.issue_cnt > 1)) begin
+            automatic logic [idx_width(VInsnQueueDepth)-1:0]
+              next_issue_pnt =
+                (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
+                  ? '0 : vinsn_queue_q.issue_pnt + 1'b1;
+            automatic vfu_operation_t next_issue =
+              vinsn_queue_q.vinsn[next_issue_pnt];
+
+            if (red_exact_stream_compatible(vinsn_issue_q, next_issue)) begin
+              vinsn_queue_d.issue_cnt =
+                vinsn_queue_q.issue_cnt - 1'b1;
+              vinsn_queue_d.issue_pnt = next_issue_pnt;
+              issue_cnt_d             = next_issue.vl;
+              first_op_d              = 1'b1;
+              intra_op_rx_cnt_d       = '0;
+              exact_stream_foreground_advanced_d = 1'b1;
+              exact_stream_successor_launch = 1'b1;
+            end
+          end
+`endif
+          end
+        end else begin
+          exact_packet_beat_d = exact_packet_beat + 1'b1;
+        end
+      end
+    end
+`endif
+
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
     // Decouple the next homogeneous reduction from the foreground tree.  The
     // architectural processing/commit pointers stay on the foreground; only
@@ -4196,7 +4430,13 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
               end
             end
 
+`ifdef ARA_RED_CONTEXT_ISSUE_CUT
+            // A newly accepted pair owns pending[1], so it cannot also
+            // launch the root. Select from registered progress before ready.
+            else if (red_context_pair_issue_q == 2 &&
+`else
             if (red_context_pair_issue_d == 2 &&
+`endif
                 !red_context_pending_d[0] && !red_context_pending_d[1] &&
                 red_context_valid_d[0] && red_context_valid_d[1]) begin
               operand_b = red_context_data_d[0];
@@ -4333,7 +4573,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     mfpu_result_is_reduction_o =
       result_queue_q[result_queue_read_pnt_q].is_reduction;
 `ifdef ARA_RED_OUTPUT_BYPASS
-    mfpu_result_wdata_o = osum_output_bypass_active
+    mfpu_base_wdata = osum_output_bypass_active
                         ?
 `ifdef ARA_RED_MASK_SKIP
                           (osum_mask_skip_active ? operand_b : vfpu_processed_result)
@@ -4342,23 +4582,24 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
                         : result_queue_q[result_queue_read_pnt_q].wdata;
 `else
-    mfpu_result_wdata_o = result_queue_q[result_queue_read_pnt_q].wdata;
-`endif
-`ifdef ARA_RED_EXACT_GLOBAL_4LANE
-    if (mfpu_state_q == EXACT_GLOBAL_TX) begin
-      // Packet transport and VRF share the same data bus. Drain older normal
-      // writes during local accumulation; once transmitting, packets own it.
-      mfpu_result_wdata_o = exact_packet_word;
-      if (RceMfpuRestartEnable) mfpu_result_req_o = 1'b0;
-    end
+    mfpu_base_wdata = result_queue_q[result_queue_read_pnt_q].wdata;
 `endif
     // Correct the architectural value before VRF writeback AND result-cache capture.
-    // Do not override the same data bus while it carries an intermediate SLDU token.
+    // Active word reductions retain their queue value until the final VRF write.
     if (lane_id_i == 0 && mfpu_result_req_o &&
         word_red_instruction_q[mfpu_result_id_o] &&
         !minmax_global_active_i[mfpu_result_id_o])
-      mfpu_result_wdata_o = word_red_seed_q[mfpu_result_id_o];
+      mfpu_base_wdata = word_red_seed_q[mfpu_result_id_o];
     mfpu_result_be_o    = result_queue_q[result_queue_read_pnt_q].be;
+
+    // Packet transport and VRF writes have separate selectors. An older
+    // ordinary result can drain while exact packet egress is active as well.
+    mfpu_result_wdata_o = mfpu_base_wdata;
+    mfpu_red_data_o = mfpu_base_wdata;
+`ifdef ARA_RED_EXACT_GLOBAL_4LANE
+    if (mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass)
+      mfpu_red_data_o = exact_packet_word;
+`endif
 
     if (RceFpCompletionEnable) begin
       if (uses_rce(vinsn_commit)) mfpu_result_req_o = 1'b0;
@@ -4698,6 +4939,49 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `endif
   end: p_vmfpu
 
+`ifdef ARA_RED_CONTEXT_STREAM_4LANE
+`ifdef ARA_RED_STATIC_LEGACY_STATE
+  // The selected RCE profile cannot activate these legacy contexts. Use a
+  // generate-time constant, not a zero-fed FF: synthesis deliberately disables
+  // sequential constant propagation, which would retain the FF's consumers.
+  if (RedLegacyFpStreamEnable) begin : gen_legacy_stream_state
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        red_stream_bg_active_q <= '0;
+        red_stream_bg_complete_q <= '0;
+        red_stream_foreground_advanced_q <= '0;
+        red_stream_bg_result_q <= '0;
+        red_stream_root_data_q <= '0;
+        red_stream_root_write_pnt_q <= '0;
+        red_stream_root_read_pnt_q <= '0;
+        red_stream_root_count_q <= '0;
+        red_stream_prefetched_count_q <= '0;
+      end else begin
+        red_stream_bg_active_q <= red_stream_bg_active_d;
+        red_stream_bg_complete_q <= red_stream_bg_complete_d;
+        red_stream_foreground_advanced_q <= red_stream_foreground_advanced_d;
+        red_stream_bg_result_q <= red_stream_bg_result_d;
+        red_stream_root_data_q <= red_stream_root_data_d;
+        red_stream_root_write_pnt_q <= red_stream_root_write_pnt_d;
+        red_stream_root_read_pnt_q <= red_stream_root_read_pnt_d;
+        red_stream_root_count_q <= red_stream_root_count_d;
+        red_stream_prefetched_count_q <= red_stream_prefetched_count_d;
+      end
+    end
+  end else begin : gen_no_legacy_stream_state
+    assign red_stream_bg_active_q = '0;
+    assign red_stream_bg_complete_q = '0;
+    assign red_stream_foreground_advanced_q = '0;
+    assign red_stream_bg_result_q = '0;
+    assign red_stream_root_data_q = '0;
+    assign red_stream_root_write_pnt_q = '0;
+    assign red_stream_root_read_pnt_q = '0;
+    assign red_stream_root_count_q = '0;
+    assign red_stream_prefetched_count_q = '0;
+  end
+`endif
+`endif
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       rce_pending_q <= '0;
@@ -4750,6 +5034,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_context_enabled_q    <= 1'b0;
       red_context_two_way_q    <= 1'b0;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
+`ifndef ARA_RED_STATIC_LEGACY_STATE
       red_stream_bg_active_q               <= 1'b0;
       red_stream_bg_complete_q             <= 1'b0;
       red_stream_foreground_advanced_q     <= 1'b0;
@@ -4759,6 +5044,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_stream_root_read_pnt_q           <= '0;
       red_stream_root_count_q              <= '0;
       red_stream_prefetched_count_q        <= '0;
+`endif
 `ifdef ARA_RED_SLACK_SCHED_4LANE
       red_stream_slack_score_q             <= 3;
       red_stream_slack_defer_cycles_q      <= '0;
@@ -4822,18 +5108,20 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       red_context_enabled_q    <= red_context_enabled_d;
       red_context_two_way_q    <= red_context_two_way_d;
 `ifdef ARA_RED_CONTEXT_STREAM_4LANE
-      red_stream_bg_active_q               <= red_stream_bg_active_d;
-      red_stream_bg_complete_q             <= red_stream_bg_complete_d;
-      red_stream_foreground_advanced_q     <= red_stream_foreground_advanced_d;
-      red_stream_bg_result_q               <= red_stream_bg_result_d;
-      red_stream_root_data_q               <= red_stream_root_data_d;
-      red_stream_root_write_pnt_q          <= red_stream_root_write_pnt_d;
-      red_stream_root_read_pnt_q           <= red_stream_root_read_pnt_d;
-      red_stream_root_count_q              <= red_stream_root_count_d;
-      red_stream_prefetched_count_q        <= red_stream_prefetched_count_d;
+`ifndef ARA_RED_STATIC_LEGACY_STATE
+      red_stream_bg_active_q               <= RedLegacyFpStreamEnable ? red_stream_bg_active_d : '0;
+      red_stream_bg_complete_q             <= RedLegacyFpStreamEnable ? red_stream_bg_complete_d : '0;
+      red_stream_foreground_advanced_q     <= RedLegacyFpStreamEnable ? red_stream_foreground_advanced_d : '0;
+      red_stream_bg_result_q               <= RedLegacyFpStreamEnable ? red_stream_bg_result_d : '0;
+      red_stream_root_data_q               <= RedLegacyFpStreamEnable ? red_stream_root_data_d : '0;
+      red_stream_root_write_pnt_q          <= RedLegacyFpStreamEnable ? red_stream_root_write_pnt_d : '0;
+      red_stream_root_read_pnt_q           <= RedLegacyFpStreamEnable ? red_stream_root_read_pnt_d : '0;
+      red_stream_root_count_q              <= RedLegacyFpStreamEnable ? red_stream_root_count_d : '0;
+      red_stream_prefetched_count_q        <= RedLegacyFpStreamEnable ? red_stream_prefetched_count_d : '0;
+`endif
 `ifdef ARA_RED_SLACK_SCHED_4LANE
-      red_stream_slack_score_q             <= red_stream_slack_score_d;
-      red_stream_slack_defer_cycles_q      <= red_stream_slack_defer_cycles_d;
+      red_stream_slack_score_q             <= RedLegacyFpStreamEnable ? red_stream_slack_score_d : '0;
+      red_stream_slack_defer_cycles_q      <= RedLegacyFpStreamEnable ? red_stream_slack_defer_cycles_d : '0;
 `endif
       red_stream_bg_issue_cycles_q         <= red_stream_bg_issue_cycles_d;
       red_stream_overlap_cycles_q          <= red_stream_overlap_cycles_d;
@@ -4923,10 +5211,40 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 `ifdef ARA_RED_EXACT_GLOBAL_4LANE
   a_exact_packet_holds_state_under_backpressure: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
-      (mfpu_state_q == EXACT_GLOBAL_TX && mfpu_red_valid_o &&
+      ((mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) && mfpu_red_valid_o &&
        !mfpu_red_ready_i) |=>
-        $stable({exact_packet_beat_q, exact_packet_word})
+        $stable({exact_packet_beat, exact_packet_word})
   ) else $error("exact reduction packet changed under backpressure");
+
+  a_exact_packet_owns_egress_data: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      ((mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) && mfpu_red_valid_o) |->
+        mfpu_red_data_o == exact_packet_word
+  ) else $error("exact packet egress was overwritten by architectural writeback");
+
+  a_exact_header_bypass_advances_once: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (exact_header_bypass && mfpu_red_valid_o && mfpu_red_ready_i &&
+       exact_local_low_zero_limbs < exact_local_limb_count) |=>
+        (mfpu_state_q == EXACT_GLOBAL_TX &&
+         exact_packet_beat_q == $past(exact_local_low_zero_limbs) + 3'd1)
+  ) else $error("exact header bypass repeated or skipped its first payload");
+
+  a_exact_header_bypass_is_not_retirement: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      (exact_header_bypass && mfpu_red_valid_o && mfpu_red_ready_i) |->
+        !mfpu_vinsn_done_o[vinsn_processing_q.id]
+  ) else $error("exact header bypass prematurely retired its instruction");
+
+  a_exact_packet_preserves_ordinary_writeback: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      ((mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) &&
+       rce_ordinary_drain && !rce_writeback) |->
+        (mfpu_result_wdata_o == result_queue_q[result_queue_read_pnt_q].wdata &&
+         mfpu_result_id_o == result_queue_q[result_queue_read_pnt_q].id &&
+         mfpu_result_version_o == result_queue_q[result_queue_read_pnt_q].version &&
+         mfpu_result_req_o == !result_queue_q[result_queue_read_pnt_q].mask)
+  ) else $error("exact packet prevented or corrupted an older ordinary writeback");
 
   a_exact_global_result_is_tagged: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
@@ -4937,9 +5255,26 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     @(posedge clk_i) disable iff (!rst_ni)
       (mfpu_state_q == EXACT_GLOBAL_TX &&
        exact_packet_beat_q != 0) |->
-        (exact_limb_count_q inside {[3'd2:3'd5]} &&
+        (exact_limb_count_q inside {[3'd1:3'd5]} &&
+         (exact_limb_count_q != 3'd1 || uses_exact_rce(vinsn_processing_q)) &&
          exact_packet_beat_q <= exact_limb_count_q)
   ) else $error("exact reduction active window is malformed");
+
+  // The new compact frame omits upper sign limbs rather than transmitting
+  // a guard. Check that promise at the producer, where the full value exists.
+  a_exact_compact_window_preserves_upper_value: assert property (
+    @(posedge clk_i) disable iff (!rst_ni)
+      ((mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) && exact_packet_beat == 0 &&
+       mfpu_red_valid_o && uses_exact_rce(vinsn_processing_q)) |->
+        ((exact_local_limb_count >= 3'd5 ||
+          exact_sum_value[287:256] == {32{exact_sum_value[287]}}) &&
+         (exact_local_limb_count >= 3'd4 ||
+          exact_sum_value[287:192] == {96{exact_sum_value[287]}}) &&
+         (exact_local_limb_count >= 3'd3 ||
+          exact_sum_value[287:128] == {160{exact_sum_value[287]}}) &&
+         (exact_local_limb_count >= 3'd2 ||
+          exact_sum_value[287:64] == {224{exact_sum_value[287]}}))
+  ) else $error("exact compact window omitted non-sign upper bits");
 
   a_exact_global_window_token_is_tagged: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
@@ -4959,8 +5294,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
   a_exact_header_matches_element_format: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
-      (mfpu_state_q == EXACT_GLOBAL_TX &&
-       exact_packet_beat_q == 0 && mfpu_red_valid_o) |->
+      ((mfpu_state_q == EXACT_GLOBAL_TX || exact_header_bypass) &&
+       exact_packet_beat == 0 && mfpu_red_valid_o) |->
 `ifdef ARA_RED_EXACT_FP16_4LANE
         (exact_packet_word[10] ==
           (vinsn_processing_q.vtype.vsew == rvv_pkg::EW16))

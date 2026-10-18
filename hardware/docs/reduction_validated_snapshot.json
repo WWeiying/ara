@@ -1,0 +1,1852 @@
+{
+  "scope": "Validated working-tree RTL snapshot accompanying the checkpoint commit. Source hashes identify the tested contents; local build products and logs are not included.",
+  "captured_utc": "2026-10-18T06:59:48.552144+00:00",
+  "branch": "reduction-optimization",
+  "parent_commit": "bf1d6e1bb9cc9183911c906333652ad57cd8836b",
+  "production_source_sha256": {
+    "hardware/include/ara_pkg.sv": "cfadccbcfaee2c95b9ffcef7eb7a9c1f948d09ae3cda03e9d2326b9e46f42450",
+    "hardware/include/ara_rce_pkg.sv": "7bbc340000b3f8c850ddd289b44c0c30d5685bb3f67f31021e2ef7c08dcc405b",
+    "hardware/include/rvv_pkg.sv": "7c0095c0cc994f9e54b19245efa6a1340623b65ebe59f5c89c5af39473fd74fa",
+    "hardware/src/accel_dispatcher_ideal.sv": "d30a8e0fc2113f9d706851bf17571e5c5c0eb0663f927971aae79dd805ae97d0",
+    "hardware/src/ara.sv": "0d674a46c829876eb003faf1c632b10854609ad3606c1d033b65adf904286cd5",
+    "hardware/src/ara_dispatcher.sv": "6be4ccb210ebb202073dc02720bd10fb78926e164dc8cc852bb018f9c4fb59fb",
+    "hardware/src/ara_sequencer.sv": "42368e72e207b2996fe2c5cbf14469c003a8bcf96806e30ec89737364e0ae5e2",
+    "hardware/src/ara_soc.sv": "8eee9e973f3a61b117c0d30c0d73e2ccf0f4a1fb8e538ec55a627c9da9771a74",
+    "hardware/src/ara_system.sv": "4730007021458b1ac6183126acedebe8dbf8ed8bf0b431e8c0df6b4f27b404d4",
+    "hardware/src/axi_inval_filter.sv": "d809d7cfe3c060a61b98fde45dc549ee6a1d8b3247f3a5f54bce9011bcb5453e",
+    "hardware/src/ctrl_registers.sv": "17fa647282641871ccdd602dfd3bcc4250f03f086af994e465157e46a4412b47",
+    "hardware/src/cva6_accel_first_pass_decoder.sv": "52125b674dd7d84e2ea6c87aa7f0e224c611c0dc6f081ef029a17eca141f4b94",
+    "hardware/src/lane/fixed_p_rounding.sv": "d7499699c213f5b4fbfd6bb07af9d0376ff87fdbebc580fb115f3d33f2092717",
+    "hardware/src/lane/fp32_exact_reduction_accum.sv": "25dddecb0fb5908a9dbf74e974bdd4b624f3115133f288fe65fcfc870237498a",
+    "hardware/src/lane/fp32_exact_reduction_finalize.sv": "99888f0b7c5fd8c48fd233fbdb769d49436e1cde51cf1ed5dfc75dc35472fb2c",
+    "hardware/src/lane/lane.sv": "aae6f0d917c6812f5b5eaf86922a9770aa876a6242e779c1d58ea958ccc18597",
+    "hardware/src/lane/lane_sequencer.sv": "19dfe2b77530e0d9d6f30d2240a22affbe158d182a843e9da3f25f038d225922",
+    "hardware/src/lane/operand_queue.sv": "4c537b8f7b2fbbe837c09fc2d872cc080eb0e5a5ed022068a1b3b26b3d4e94df",
+    "hardware/src/lane/operand_queues_stage.sv": "6b0150d900030585c4689e054cc7a47256e0663e9a9eb36780380549518c4676",
+    "hardware/src/lane/operand_requester.sv": "a877ca4373d0a7e01258648560a1ee01dbc1606e9d52ad5193e1e6e02831d0f1",
+    "hardware/src/lane/power_gating_generic.sv": "bd02987a0fa1c8927d75c94cef735d7a652e718c21b11ce3583b4610094de890",
+    "hardware/src/lane/simd_alu.sv": "523149388d5c61e206d538fa659b32d49cef4de8576638829f104c211c8f018e",
+    "hardware/src/lane/simd_div.sv": "35705545fbf3ae7ea1d3819f830a87ade46945e8f4d7bcb3b2a8afc00dc80358",
+    "hardware/src/lane/simd_mul.sv": "fc44beaf9b5763062db6cf8d1562ed474ed8ff187a9314113e20f126693a26bb",
+    "hardware/src/lane/valu.sv": "55d257b1befdda47154582fee5433bc1cd7817cfe27a659d4342f873348c6a76",
+    "hardware/src/lane/vector_fus_stage.sv": "f9d7302bc8540a8e9f2e6199274867cc3d2769e18a20ec02a50b9ab21d757536",
+    "hardware/src/lane/vector_regfile.sv": "583f5b0e5af1a6ac7d120280923b858024f017bc475a79fb3d406449211e2314",
+    "hardware/src/lane/vmfpu.sv": "7a5b3bbec2d79bc5132a791d6c631d00afeba2352967469a9f0158beed678607",
+    "hardware/src/masku/masku.sv": "fb72a8f9b1a62f47bc9b1f7c13c9c73579240c1abcd0fbb9a897a1f9409dd25e",
+    "hardware/src/masku/masku_operands.sv": "3928afe9e48f2761962d637cc378e5fce6506e908e740361123ac546e26ceb06",
+    "hardware/src/reduction/reduction_completion_engine.sv": "9df11beab2cb65c6835f9b0d502725f20f210d68ea3bc5bf8c9d48f26060436e",
+    "hardware/src/reduction/shared_ordered_adder.sv": "26b8e943a0e8e24dceb2b3fb96478d398e2d6bfee49947da6fe6073bfcb2013e",
+    "hardware/src/reduction/shared_scalar_fp_add.sv": "fc0a6dfb530668efa19d27326ba216238dd6975b6105f7290252cfc433c87102",
+    "hardware/src/segment_sequencer.sv": "ebfa2564b4f07423c90f0dc6ce9a12f432da135016fb50f0492518edcc9f257f",
+    "hardware/src/sldu/p2_stride_gen.sv": "9a8ff968fa483148d0954c5702b536f9210eee0dfd179320d053426678fa1eee",
+    "hardware/src/sldu/sldu.sv": "3a5cdbe5fb5e1669025a97d96df7bf2dbadc980663f5cf28ee092d76b31227f3",
+    "hardware/src/sldu/sldu_op_dp.sv": "7e797633be7a0074bbacc6f345e38534cf2ca9e1453cfc4e97d84a8a9d60474c",
+    "hardware/src/vlsu/addrgen.sv": "32ac3caa1d14b43b1fae6cdaa57427a028405e3b56251d462e741c32d22eca43",
+    "hardware/src/vlsu/vldu.sv": "b941a58f707b54ec7505469fe92720213ddb658d01b78677ede1ddebcb0fd06f",
+    "hardware/src/vlsu/vlsu.sv": "2f44e503afa02535c2a73f5c50ed302c41433702ad501fe77f7b26efa2d14eb1",
+    "hardware/src/vlsu/vstu.sv": "df1fbfee134eb0617b250777e188aa9f62c3530c5f88e5ed354566b438fc635f"
+  },
+  "production_config_sha256": "f32a444b3f9174ef82c53ec95819415cdc90248ef6543bba2ff7383faab32563",
+  "functional_suite": {
+    "passed": 50,
+    "simulator_sha256": "2db0a84940cd0ade8c79ea97b20f77bd743e741a71f4f510276a6774fd8ac58a",
+    "apps": [
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_exact_slide",
+        "elf_sha256": "d725a2f6c57c096f497eea5f7cbb7f00c7e6f25b0ee44f34fb179896c2d66feb",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_sparse_window_probe",
+        "elf_sha256": "88a813a4c9a608c76c93a991142be273aaaad2a99cd64d5d167d03dfd08dc325",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "elf_sha256": "befb16ee3b5596bf91628479adf45917e722a4637618c7ca7f5145a416798618",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_global_fp16_probe",
+        "elf_sha256": "b309dc72b9df8366efbae5db9cec819046a251aa1073001c969032dcac65c96c",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_global_reduction_probe",
+        "elf_sha256": "14b6df5d153be2f5d884dd9fc7323f4ed5c12bdc99cba72aca9f0ac202a56eaf",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_global_widening_probe",
+        "elf_sha256": "4ab450b10cdd7151446cd5876b61a2dccaa490bd80514991a2f2f0c028c7aad3",
+        "pass": true
+      },
+      {
+        "app": "perf_exact_global_widening_stream_probe",
+        "elf_sha256": "a86301dd73544b347afc13d5e39af0f2cea3be5230d4a62b58676df7bc3cc38b",
+        "pass": true
+      },
+      {
+        "app": "perf_masked_ordered_alias_probe",
+        "elf_sha256": "4a55c543d1abbb4090113f95c4dcd03292bcce63dc11bc261d1140e31ebd11d8",
+        "pass": true
+      },
+      {
+        "app": "perf_masked_reduction_stream_probe",
+        "elf_sha256": "829b85562db851ada4dd82b8cc78c737709c01fa95c0992a74a773cf061fbca6",
+        "pass": true
+      },
+      {
+        "app": "perf_ordered_nonduplicate_probe",
+        "elf_sha256": "199c33c5a3899d58f26905d8747555f5c72c1ece4a98bcc216604b319174d7a6",
+        "pass": true
+      },
+      {
+        "app": "perf_ordered_reduction_interleave_probe",
+        "elf_sha256": "4c61adcf77f55f297c580dcc78612007062cf0b3c7fb467ea8cd1099f1da84ec",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_exact_mixed",
+        "elf_sha256": "c95870f65151f5b547ee3a4c0330657eda4a54461e211b8ffb4b16674c6cb31e",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_fp64_mixed",
+        "elf_sha256": "32e7cd6244aaa363cfc7412b4d361b63a2f26a4ab8c7685c6b595161d2e33768",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "elf_sha256": "126f0373d9f7bf9de2330a2786cee11894b4b1a9abffbabb8ef2e4052582226f",
+        "pass": true
+      },
+      {
+        "app": "perf_reduction_e64_stream_probe",
+        "elf_sha256": "ff6842b163c86323ea8b87cbd8f152088c922cb360fc02a7fe8230eab28703dc",
+        "pass": true
+      },
+      {
+        "app": "perf_reduction_short_stream_probe",
+        "elf_sha256": "6a61f9f054dca6a624929a853ebe892259e47f6c59d27225bf3461f962c08b70",
+        "pass": true
+      },
+      {
+        "app": "perf_widening_ordered_stream_probe",
+        "elf_sha256": "02045f260d839ba4333c12843331e56edd854797fa2042a73c87bb53c54f54b6",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_alias",
+        "elf_sha256": "ee090efcb0c341f1cf1c0bd56d2b9e890feb6da52a004f449f84cc62fa292aa4",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_context",
+        "elf_sha256": "fa57bfed5a5082c74b920712333961fc60f22387c580b8da3f6e3961335693a5",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_empty",
+        "elf_sha256": "40bdd4f0d69c21cfa29c32d7e0b58811dae0367ef6da550c54c84fd5c7fde30a",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_epoch_zero",
+        "elf_sha256": "476e570e6d8d0113827e5066aa55d47a0299101d809874ab7f92591ae2a696f4",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_group_fp",
+        "elf_sha256": "7418126738f4b4b1e6aee2c5ccbeef30c0540033c098e14c858d3851bc8b983c",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_minmax_ieee",
+        "elf_sha256": "aa80455a4de7a470622aa0495d1f9aafd50ce9bd611fc5ef6e0d1e4e16a4f03a",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_ordered_fp16",
+        "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_ordered_rounding",
+        "elf_sha256": "197857baf77dda0b9def5eec312793dbc6f0932b2ac91ff3e50cd6e99376f7b1",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_seed",
+        "elf_sha256": "4817824029feeae3bff069650954eb8180be17c85ecc36342163056246512fba",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_tail",
+        "elf_sha256": "4fbeb529ff6a7a20304396aa64deb6a6a1b62c72fac00a6dc0b4a39689e67006",
+        "pass": true
+      },
+      {
+        "app": "reduction_audit_widen_mask",
+        "elf_sha256": "78c9c128a353d81801d00a9be5afacf25c68e7ac25e98d3a6bebb08580d840f2",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_exact_mixed",
+        "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_edges",
+        "elf_sha256": "da076410c505afeaaa31cc494886d2581cd8fd68d4b64212ae4d260e5d894639",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_masked_add",
+        "elf_sha256": "d63370c3f031f2062549930081da18b7e94561df0e35c96c6fc960a3fa7f3b85",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_narrow_queue",
+        "elf_sha256": "3958e4adb8ce69726684d6798f6a0b517de5ec2ed913c5158f745f994bcc67b4",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_saturation",
+        "elf_sha256": "e8b8ada973cb8105aa2843e129893cb2b9da9273b09afa3e649e9461b9389d20",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_slide",
+        "elf_sha256": "5cdfb3c46a9eb214316b887c8ebfc3804d4b08d78c6158704865bdead9e6311d",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp64_widen_edges",
+        "elf_sha256": "e448c93bc672f0d025770944ffc1bb1f744b24083d0c7fd18919fdd1196f8321",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "elf_sha256": "2858cfcc96ffa3dab93c020f565897bd284a8330ddd05a4812dca048c84a812c",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_fp_mixed",
+        "elf_sha256": "27aeada5fbc65d218a00a3b3e57d36d0a78e0043fe2a974f7eff2602d0f2eee8",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_lmul_matrix",
+        "elf_sha256": "88517eceacc8c5feb3ee6a51ecff5a9762ad6be56318549c08ce3469d91028e3",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_ordered_boundary",
+        "elf_sha256": "67eb61bb0390cd0ce5b356ea6de518b5e8b39f2a215b877e3affa20bc07c1f9c",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_ownership",
+        "elf_sha256": "7f5ee1c1fd89278ff4b478ff69d484dfb8481a4ee91584ff056cb1022dd44506",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_queue_packing",
+        "elf_sha256": "d9c6d0ddbe80fb0b294c8b16e17bfd5e53407442b3dc06b52304626756834b74",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_random_dependencies",
+        "elf_sha256": "a362553c166c8aec8c7db50dfb0816447fbf7c6f74fbdf703eb1b7acd0727563",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_mixed_probe",
+        "elf_sha256": "215977c12b81d3929cb7abe6def81adedd95796e7cedb5ecae14cad4e0f7ffe5",
+        "pass": true
+      },
+      {
+        "app": "perf_rce_word_slide",
+        "elf_sha256": "6b0699a23022e13088c4188d679c1e169b6c69b117233db491106e37e47481c8",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_integer_seed_hazards",
+        "elf_sha256": "1591ca56856ad942b7f911f3ad0c7e7a8597c1ccfd06a8482f17f96713694f4b",
+        "pass": true
+      },
+      {
+        "app": "reduction_rce_slide_boundary",
+        "elf_sha256": "9416b200f385402b0f51a9f416beef9afa63cffdbdad91e457b6fa9569feb9dd",
+        "pass": true
+      },
+      {
+        "app": "perf_rvv_memory_coverage",
+        "elf_sha256": "aff2a1331c5ea6ea6c0b2a0ac00475392c852fcf7d6ea695807652c77b562d83",
+        "pass": true
+      },
+      {
+        "app": "perf_rvv_memory_ordered_coverage",
+        "elf_sha256": "d09d0e7b58ac1845532e4189883373074d457893c929fba2eadf56241c5111a6",
+        "pass": true
+      }
+    ]
+  },
+  "performance": {
+    "scope": "Independent reload of complete raw 50-test manifests, frozen input ELF hashes, simulator hashes, success/finish logs, strict ordered window labels; header parity checked",
+    "functional_tests": 50,
+    "performance_windows": 105,
+    "counts": {
+      "same": 18,
+      "decreased": 87,
+      "increased": 0
+    },
+    "header_all_windows_equal": true,
+    "windows": [
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 409,
+        "candidate": 361
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 409,
+        "candidate": 361
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 203,
+        "candidate": 200
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 379,
+        "candidate": 363
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=1 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 403,
+        "candidate": 355
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 397,
+        "candidate": 349
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 185,
+        "candidate": 182
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 365,
+        "candidate": 349
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=4 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 403,
+        "candidate": 355
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 392,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 185,
+        "candidate": 182
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 360,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=8 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 410,
+        "candidate": 362
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 196,
+        "candidate": 193
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 409,
+        "candidate": 361
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 201,
+        "candidate": 198
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 377,
+        "candidate": 361
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=32 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 194,
+        "candidate": 193
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 536,
+        "candidate": 488
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 292,
+        "candidate": 289
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 535,
+        "candidate": 487
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 297,
+        "candidate": 294
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 503,
+        "candidate": 487
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=128 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 290,
+        "candidate": 289
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 744,
+        "candidate": 696
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=0 chain=1 reductions=16 chain_span=8 cycles=<cycles> PASS",
+        "baseline": 438,
+        "candidate": 432
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 743,
+        "candidate": 695
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 425,
+        "candidate": 422
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 711,
+        "candidate": 695
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=16 vl=256 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 418,
+        "candidate": 417
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 378,
+        "candidate": 330
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 377,
+        "candidate": 329
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 185,
+        "candidate": 182
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 345,
+        "candidate": 329
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=1 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 403,
+        "candidate": 355
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 392,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 185,
+        "candidate": 182
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 360,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=4 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 403,
+        "candidate": 355
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 180,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 392,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 195,
+        "candidate": 192
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 360,
+        "candidate": 344
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=8 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 178,
+        "candidate": 177
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 451,
+        "candidate": 403
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 228,
+        "candidate": 225
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 441,
+        "candidate": 393
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 233,
+        "candidate": 230
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 409,
+        "candidate": 393
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=32 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 226,
+        "candidate": 225
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 744,
+        "candidate": 696
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 420,
+        "candidate": 417
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 743,
+        "candidate": 695
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 435,
+        "candidate": 432
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 711,
+        "candidate": 695
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=128 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 418,
+        "candidate": 417
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=0 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 1144,
+        "candidate": 1096
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=0 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 676,
+        "candidate": 673
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=1 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 1143,
+        "candidate": 1095
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=1 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 681,
+        "candidate": 678
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=2 chain=0 reductions=16 chain_span=0 cycles=<cycles> PASS",
+        "baseline": 1111,
+        "candidate": 1095
+      },
+      {
+        "app": "perf_exact_backend_tradeoff",
+        "label": "EXACT_TRADEOFF sew=32 vl=256 mask=2 chain=1 reductions=16 chain_span=16 cycles=<cycles> PASS",
+        "baseline": 674,
+        "candidate": 673
+      },
+      {
+        "app": "perf_exact_global_widening_stream_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 118,
+        "candidate": 90
+      },
+      {
+        "app": "perf_exact_sparse_window_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 62,
+        "candidate": 49
+      },
+      {
+        "app": "perf_masked_ordered_alias_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 137,
+        "candidate": 137
+      },
+      {
+        "app": "perf_masked_reduction_stream_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 243,
+        "candidate": 240
+      },
+      {
+        "app": "perf_ordered_nonduplicate_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 549,
+        "candidate": 549
+      },
+      {
+        "app": "perf_ordered_reduction_interleave_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 124,
+        "candidate": 124
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "label": "RCE Load seed PASS: pairs=16 vl=1 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 401,
+        "candidate": 353
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "label": "RCE Load seed PASS: pairs=16 vl=4 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 372,
+        "candidate": 324
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "label": "RCE Load seed PASS: pairs=16 vl=16 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 390,
+        "candidate": 342
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "label": "RCE Load seed PASS: pairs=16 vl=32 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 420,
+        "candidate": 374
+      },
+      {
+        "app": "perf_rce_exact_mixed",
+        "label": "RCE exact mixed probe PASS: pairs=32 vl=32 sew=32 cycles=<cycles>",
+        "baseline": 652,
+        "candidate": 524
+      },
+      {
+        "app": "perf_rce_exact_slide",
+        "label": "RCE exact Slide probe PASS: pairs=32 vl=32 sew=32 cycles=<cycles>",
+        "baseline": 501,
+        "candidate": 404
+      },
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "label": "RCE Slide seed PASS: pairs=16 vl=1 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 323,
+        "candidate": 275
+      },
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "label": "RCE Slide seed PASS: pairs=16 vl=4 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 299,
+        "candidate": 251
+      },
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "label": "RCE Slide seed PASS: pairs=16 vl=16 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 309,
+        "candidate": 261
+      },
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "label": "RCE Slide seed PASS: pairs=16 vl=32 sew=32 lmul=1 cycles=<cycles>",
+        "baseline": 373,
+        "candidate": 341
+      },
+      {
+        "app": "perf_rce_fp64_mixed",
+        "label": "RCE FP64 mixed probe PASS: pairs=32 vl=16 sew=64 cycles=<cycles>",
+        "baseline": 940,
+        "candidate": 940
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "label": "COMPLETION_CAPACITY vl=1 pairs=32 cycles=<cycles> PASS",
+        "baseline": 473,
+        "candidate": 473
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "label": "COMPLETION_CAPACITY vl=4 pairs=32 cycles=<cycles> PASS",
+        "baseline": 749,
+        "candidate": 749
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "label": "COMPLETION_CAPACITY vl=8 pairs=32 cycles=<cycles> PASS",
+        "baseline": 1197,
+        "candidate": 1197
+      },
+      {
+        "app": "perf_rce_ordered_capacity",
+        "label": "COMPLETION_CAPACITY vl=16 pairs=32 cycles=<cycles> PASS",
+        "baseline": 1933,
+        "candidate": 1933
+      },
+      {
+        "app": "perf_reduction_e64_stream_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 292,
+        "candidate": 292
+      },
+      {
+        "app": "perf_reduction_short_stream_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 93,
+        "candidate": 64
+      },
+      {
+        "app": "perf_widening_ordered_stream_probe",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 123,
+        "candidate": 123
+      },
+      {
+        "app": "reduction_audit_empty",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 28,
+        "candidate": 27
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "label": "FP_LATE extremes e16 cycles=<cycles>",
+        "baseline": 529,
+        "candidate": 529
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "label": "FP_LATE extremes e32 cycles=<cycles>",
+        "baseline": 528,
+        "candidate": 528
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "label": "FP_LATE extremes e64 cycles=<cycles>",
+        "baseline": 529,
+        "candidate": 529
+      },
+      {
+        "app": "reduction_rce_fp_late_seed",
+        "label": "FP_LATE sum64 cycles=<cycles>",
+        "baseline": 663,
+        "candidate": 663
+      },
+      {
+        "app": "perf_rce_mixed_probe",
+        "label": "RCE mixed probe PASS: pairs=32 vl=32 sew=32 cycles=<cycles>",
+        "baseline": 335,
+        "candidate": 335
+      },
+      {
+        "app": "perf_rce_word_slide",
+        "label": "RCE Word Slide probe PASS: pairs=32 vl=32 sew=32 cycles=<cycles>",
+        "baseline": 344,
+        "candidate": 344
+      },
+      {
+        "app": "perf_rvv_memory_coverage",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 392,
+        "candidate": 392
+      },
+      {
+        "app": "perf_rvv_memory_ordered_coverage",
+        "label": "[PERF] total_cycles               : <cycles>",
+        "baseline": 98,
+        "candidate": 98
+      }
+    ],
+    "physical_PPA_verified": false
+  },
+  "dense_windows": {
+    "elf_sha256": "1f80e6a9fb17f0afb9febcdb36290e105ab58540b011be6d81fd6f41405f68d8",
+    "windows": [
+      {
+        "kind": "SEED",
+        "full288": 0,
+        "chain": 0,
+        "cycles": 453,
+        "result": "40e00000",
+        "flags": 0,
+        "delta_vs_baseline": -16,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SEED",
+        "full288": 0,
+        "chain": 1,
+        "cycles": 194,
+        "result": "42860000",
+        "flags": 0,
+        "delta_vs_baseline": -31,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SEED",
+        "full288": 1,
+        "chain": 0,
+        "cycles": 462,
+        "result": "40e00000",
+        "flags": 0,
+        "delta_vs_baseline": 0,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SEED",
+        "full288": 1,
+        "chain": 1,
+        "cycles": 218,
+        "result": "42860000",
+        "flags": 0,
+        "delta_vs_baseline": -15,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SERIAL",
+        "full288": 0,
+        "chain": 0,
+        "cycles": 416,
+        "result": "40e00000",
+        "flags": 0,
+        "delta_vs_baseline": -16,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SERIAL",
+        "full288": 0,
+        "chain": 1,
+        "cycles": 416,
+        "result": "42860000",
+        "flags": 0,
+        "delta_vs_baseline": -16,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SERIAL",
+        "full288": 1,
+        "chain": 0,
+        "cycles": 432,
+        "result": "40e00000",
+        "flags": 0,
+        "delta_vs_baseline": 0,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      },
+      {
+        "kind": "SERIAL",
+        "full288": 1,
+        "chain": 1,
+        "cycles": 432,
+        "result": "42860000",
+        "flags": 0,
+        "delta_vs_baseline": 0,
+        "delta_vs_seedfold": -16,
+        "delta_vs_packetegress": -16,
+        "delta_vs_headerbypass": 0
+      }
+    ],
+    "all_numeric_flags_tohost_pass": true
+  },
+  "fallback_windows": {
+    "all_pass": true,
+    "same_elf": true,
+    "results": [
+      {
+        "mode": "baseline",
+        "simulator": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/exact_direct_read_soc_v2/baseline/simv",
+        "simulator_sha256": "7d852a1ac119e1948b2914e6a33b40a28d53c3464ed1c3badb3ca7a14d595860",
+        "elf_sha256": "66551679d4c455422ee1d7b0953752bdf14da0a05a5a99b4c8822539855b0b8e",
+        "stdout_sha256": "5a003943e680bbb549802ab1d0f2d0f42eff925cdf9c0e8ce0d56a10c49f5f7c",
+        "windows": [
+          {
+            "scenario": 0,
+            "chain": 0,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ]
+          },
+          {
+            "scenario": 0,
+            "chain": 1,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ]
+          },
+          {
+            "scenario": 1,
+            "chain": 0,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ]
+          },
+          {
+            "scenario": 1,
+            "chain": 1,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ]
+          },
+          {
+            "scenario": 2,
+            "chain": 0,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x3f800000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              }
+            ]
+          },
+          {
+            "scenario": 2,
+            "chain": 1,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x3f800000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              }
+            ]
+          },
+          {
+            "scenario": 3,
+            "chain": 0,
+            "cycles": 208,
+            "cycles_per_reduction": 26.0,
+            "result": "0x42000000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              }
+            ]
+          },
+          {
+            "scenario": 3,
+            "chain": 1,
+            "cycles": 208,
+            "cycles_per_reduction": 26.0,
+            "result": "0x43800000",
+            "last_fflags": 0,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42800000",
+                "flags": 0
+              },
+              {
+                "bits": "0x42c00000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43000000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43200000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43600000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43800000",
+                "flags": 0
+              }
+            ]
+          }
+        ],
+        "tohost_success": true
+      },
+      {
+        "mode": "integrated",
+        "simulator": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/production_tail_integrated_soc_20261017_v1/production/simv",
+        "simulator_sha256": "2db0a84940cd0ade8c79ea97b20f77bd743e741a71f4f510276a6774fd8ac58a",
+        "elf_sha256": "66551679d4c455422ee1d7b0953752bdf14da0a05a5a99b4c8822539855b0b8e",
+        "stdout_sha256": "a00a2650b6e5b101476bc0cbd93cdc73592fb172420386a72552448066b39735",
+        "windows": [
+          {
+            "scenario": 0,
+            "chain": 0,
+            "cycles": 184,
+            "cycles_per_reduction": 23.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ],
+            "delta_vs_baseline": -8
+          },
+          {
+            "scenario": 0,
+            "chain": 1,
+            "cycles": 184,
+            "cycles_per_reduction": 23.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ],
+            "delta_vs_baseline": -8
+          },
+          {
+            "scenario": 1,
+            "chain": 0,
+            "cycles": 184,
+            "cycles_per_reduction": 23.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ],
+            "delta_vs_baseline": -8
+          },
+          {
+            "scenario": 1,
+            "chain": 1,
+            "cycles": 184,
+            "cycles_per_reduction": 23.0,
+            "result": "0x40400000",
+            "last_fflags": 0,
+            "fflags_or": 0,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x40400000",
+                "flags": 0
+              }
+            ],
+            "delta_vs_baseline": -8
+          },
+          {
+            "scenario": 2,
+            "chain": 0,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x3f800000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              }
+            ],
+            "delta_vs_baseline": 0
+          },
+          {
+            "scenario": 2,
+            "chain": 1,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x3f800000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              },
+              {
+                "bits": "0x3f800000",
+                "flags": 1
+              }
+            ],
+            "delta_vs_baseline": 0
+          },
+          {
+            "scenario": 3,
+            "chain": 0,
+            "cycles": 192,
+            "cycles_per_reduction": 24.0,
+            "result": "0x42000000",
+            "last_fflags": 1,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              }
+            ],
+            "delta_vs_baseline": -16
+          },
+          {
+            "scenario": 3,
+            "chain": 1,
+            "cycles": 185,
+            "cycles_per_reduction": 23.125,
+            "result": "0x43800000",
+            "last_fflags": 0,
+            "fflags_or": 1,
+            "integer_oracle_steps": [
+              {
+                "bits": "0x42000000",
+                "flags": 1
+              },
+              {
+                "bits": "0x42800000",
+                "flags": 0
+              },
+              {
+                "bits": "0x42c00000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43000000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43200000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43400000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43600000",
+                "flags": 0
+              },
+              {
+                "bits": "0x43800000",
+                "flags": 0
+              }
+            ],
+            "delta_vs_baseline": -23
+          }
+        ],
+        "tohost_success": true
+      }
+    ]
+  },
+  "profile": {
+    "summary_count": 400,
+    "totals": {
+      "profile_cycles": 9433856,
+      "packet_valid": 9554,
+      "packet_fire": 8950,
+      "headers": 5872,
+      "packet_stall": 604,
+      "wb": 3257,
+      "wb_fire": 3196,
+      "overlap": 4,
+      "overlap_packet_fire": 4,
+      "overlap_both_fire": 4,
+      "different_owner": 4,
+      "distinct_data": 4,
+      "stall_wb_overlap": 0,
+      "bypass_fire": 5688,
+      "normal_drain_fire": 3336,
+      "normal_packet_both_fire": 0,
+      "normal_packet_overlap": 0,
+      "normal_distinct_data": 0
+    },
+    "normal_packet_overlap_not_observed_in_suite": true
+  },
+  "normal_packet_directed": {
+    "pass": true,
+    "coverage": {
+      "normal_packet_both_fire": 2,
+      "normal_drain_fire": 16,
+      "normal_distinct_data": 2,
+      "verified_different_data_and_owner_events": [
+        {
+          "kind": "mfpu_exact",
+          "lane": "0",
+          "cycle": "478",
+          "packet_id": "1",
+          "normal_id": "0",
+          "packet": "40400000e0321841",
+          "normal": "4040000040400000"
+        },
+        {
+          "kind": "mfpu_exact",
+          "lane": "0",
+          "cycle": "479",
+          "packet_id": "1",
+          "normal_id": "0",
+          "packet": "0000000001000000",
+          "normal": "4040000040400000"
+        }
+      ]
+    },
+    "software_correctness": {
+      "vl": 32,
+      "all_32_vfadd_elements": "0x40400000 (3.0)",
+      "exact_scalar": "0x420c0000 (35.0)",
+      "fflags": 0,
+      "tohost": 0
+    },
+    "scope": "Simulation-only ordinary-result/younger exact-packet independent bus overlap under legal consumer backpressure."
+  },
+  "seed_receive_production_mode0": {
+    "cases": 500,
+    "no_seed_receive_macro_in_filelist": true,
+    "header_wait_cases": 169,
+    "header_wait_cycles": 338,
+    "postbody_seed_wait_cases": 0,
+    "mode0_numeric_expected_fields_unchanged": true
+  },
+  "physical_results": {
+    "state": "SYNTHESIS_RUNNING_NOT_FINAL",
+    "directory": "hardware/build/synthesis/reduction_tail_integrated_entry_v1",
+    "area_timing_benefits_verified": false
+  },
+  "limits": [
+    "Reference is the optimized reduction design before timing retiming, not unmodified upstream Ara.",
+    "Cycle measurements do not establish execution time at a measured clock frequency.",
+    "Directed legal backpressure test proves concurrency correctness, not production performance benefit."
+  ]
+}

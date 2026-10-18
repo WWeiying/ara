@@ -36,6 +36,8 @@ def classify(result, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sim", required=True, type=Path)
+    parser.add_argument("--elf-dir", type=Path,
+                        help="Read ELFs from an already frozen input directory")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--timeout", type=int, default=180)
@@ -48,6 +50,7 @@ def main():
     parser.add_argument("apps", nargs="*")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
+    elf_dir = args.elf_dir.resolve() if args.elf_dir else root / "apps" / "bin"
     simulator = args.sim.resolve()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -78,7 +81,7 @@ def main():
     for app in args.apps:
         if Path(app).name != app:
             parser.error("application names must not contain directory components")
-        source = root / "apps" / "bin" / app
+        source = elf_dir / app
         if not source.is_file():
             parser.error(f"missing ELF: {source}")
         with source.open("rb") as stream:
@@ -88,6 +91,8 @@ def main():
         "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
         "simulator": str(simulator), "simulator_sha256": sha256(simulator),
         "note": "Simulator build provenance must be checked against its compile log/filelist.",
+        "expected_apps": args.apps,
+        "state": "RUNNING",
         "tests": [],
     }
     # Freeze every input before launching any job: builds can otherwise replace
@@ -95,7 +100,7 @@ def main():
     inputs = out / "inputs"
     inputs.mkdir()
     for app in args.apps:
-        shutil.copy2(root / "apps" / "bin" / app, inputs / app)
+        shutil.copy2(elf_dir / app, inputs / app)
 
     def run(app):
         elf = inputs / app
@@ -124,6 +129,8 @@ def main():
         for result in pool.map(run, args.apps):
             manifest["tests"].append(result)
             (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest["state"] = "COMPLETE"
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sys.exit(0 if all(item["pass"] for item in manifest["tests"]) else 1)
 
 

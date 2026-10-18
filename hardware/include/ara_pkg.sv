@@ -1970,4 +1970,21 @@ typedef struct packed {
 
 
 
+  // Lane-to-shared ordered ADD interface. Original fpnew tag bits are opaque;
+  // the shared backend appends its own physical Lane owner separately.
+  typedef struct packed {
+    logic [2:0][63:0] operands;
+    fpnew_pkg::roundmode_e rm;
+    fpnew_pkg::fp_format_e src_fmt;
+    fpnew_pkg::fp_format_e dst_fmt;
+    fpnew_pkg::int_format_e int_fmt;
+    logic [8:0] tag;
+    logic mask;
+  } ordered_add_request_t;
+  typedef struct packed {
+    logic [63:0] result;
+    fpnew_pkg::status_t status;
+    logic [8:0] tag;
+  } ordered_add_response_t;
+
 endpackage : ara_pkg

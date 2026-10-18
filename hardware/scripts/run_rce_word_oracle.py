@@ -16,6 +16,8 @@ def main():
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--count', type=int, default=2640)
     p.add_argument('--fp64', action='store_true', help='FP64 add completion oracle')
+    p.add_argument('--shared-completion', action='store_true', help='RCE shares an adder with four contending clients')
+    p.add_argument('--seed-feedback', action='store_true', help='Also exercise the optional FP64 seed-feedback path')
     p.add_argument('--vector-seed', type=lambda s: int(s, 0))
     p.add_argument('--schedule-seed', type=lambda s: int(s, 0))
     p.add_argument('--hold-cycles', type=int, default=0)
@@ -33,12 +35,19 @@ def main():
     additions = [root/'hardware/include/ara_rce_pkg.sv',
                  root/'hardware/src/reduction/reduction_completion_engine.sv',
                  root/'hardware/tb/reduction_completion_engine_tb.sv']
+    if args.shared_completion:
+        if not args.fp64:
+            p.error('shared completion requires --fp64')
+        additions.append(root/'hardware/src/reduction/shared_ordered_adder.sv')
     # Accept both SoC lists and a previous frozen module list without
     # redeclaring an obsolete package/module after the current sources.
     replaced_names = {source.name for source in additions}
     lines = [s for s in original if '/hardware/tb/' not in s and
              '+define+FOR_VERIFY' not in s and Path(s).name not in replaced_names]
-    pkg_pos = next(i for i, s in enumerate(lines) if s.endswith('/hardware/include/ara_pkg.sv')) + 1
+    package_positions = [i for i,s in enumerate(lines) if Path(s).name=='ara_pkg.sv']
+    if len(package_positions)!=1:
+        raise ValueError('Expected one ara_pkg.sv in reference filelist')
+    pkg_pos = package_positions[0] + 1
     frozen = out/'rtl'; frozen.mkdir()
     for source in additions:
         shutil.copy2(source, frozen/source.name)
@@ -46,6 +55,10 @@ def main():
     lines += [str(frozen/a.name) for a in additions[1:]]
     if args.fp64:
         lines.insert(0, '+define+ARA_RED_RCE_FP64_SUM=1')
+    if args.shared_completion:
+        lines[:0]=['+define+ARA_RED_SHARED_RCE_ADD=1','+define+ARA_RED_TEST_SHARED_COMPLETION=1']
+    if args.seed_feedback:
+        lines.insert(0,'+define+ARA_RED_RCE_FP64_SEED_FEEDBACK=1')
     fl = out/'filelist'; fl.write_text('\n'.join(lines)+'\n')
     vectors = out/'vectors.txt'
     generator = root/'hardware/scripts'/('gen_rce_fp64_oracle.py' if args.fp64 else 'gen_rce_word_oracle.py')

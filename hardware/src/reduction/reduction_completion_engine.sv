@@ -17,11 +17,20 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   parameter int unsigned NrLanes = 4,
   parameter int unsigned ContextDepth = 2,
   parameter bit EnableExact = RceExactEnable,
+  parameter bit UseSharedFp64Add = 1'b0,
   localparam int unsigned PtrWidth = (ContextDepth > 1) ? $clog2(ContextDepth) : 1,
   localparam int unsigned LaneWidth = (NrLanes > 1) ? $clog2(NrLanes) : 1
 ) (
   input logic clk_i,
   input logic rst_ni,
+`ifdef ARA_RED_SHARED_RCE_ADD
+  output ordered_add_request_t shared_add_request_o,
+  output logic shared_add_valid_o,
+  input logic shared_add_ready_i,
+  input ordered_add_response_t shared_add_response_i,
+  input logic shared_add_response_valid_i,
+  output logic shared_add_response_ready_o,
+`endif
   input rce_command_t cmd_i,
   input logic cmd_valid_i,
   output logic cmd_ready_o,
@@ -85,6 +94,12 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   elen_t merge_a, merge_b, merge_result;
   logic [4:0] merge_flags;
   logic command_fire, result_fire;
+`ifndef SYNTHESIS
+`ifndef ARA_RED_SHARED_RCE_ADD
+  initial assert (!UseSharedFp64Add)
+    else $fatal(1, "shared FP64 completion requires ARA_RED_SHARED_RCE_ADD ports");
+`endif
+`endif
   logic [ContextDepth-1:0] cached_seed_ready;
   elen_t [ContextDepth-1:0] cached_seed_data;
   logic fp_sum, fp_seed_q, fp_seed_done_q;
@@ -236,6 +251,13 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
      (state_q == SEED && seed_ready_q[work_ptr] && (|active_q[work_ptr]) &&
       command_q[work_ptr].seed_mode != RCE_SEED_EMBEDDED && !fp_seed_done_q)));
 
+`ifdef ARA_RED_SHARED_RCE_ADD
+  if (!RceFp64SumEnable || !UseSharedFp64Add) begin : gen_shared_unused
+    assign shared_add_request_o = '0;
+    assign shared_add_valid_o = 1'b0;
+    assign shared_add_response_ready_o = 1'b0;
+  end
+`endif
   if (RceFp64SumEnable) begin : gen_fp64_add
     elen_t operand_a, operand_b;
     fpnew_pkg::roundmode_e rounding_mode;
@@ -253,6 +275,26 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     // core to addition. No lane FPU, multiplier operation, divider or SIMD wrapper.
     // AFTER keeps op_i constant through the arithmetic cone; two output stages
     // isolate the result handshake. Physical pruning/timing still need synthesis.
+`ifdef ARA_RED_SHARED_RCE_ADD
+    if (UseSharedFp64Add) begin : gen_shared
+      assign shared_add_request_o = '{
+        operands: {operand_b, operand_a, 64'h3ff0000000000000},
+        rm: rounding_mode, src_fmt: fpnew_pkg::FP64, dst_fmt: fpnew_pkg::FP64,
+        int_fmt: fpnew_pkg::INT64, tag: 9'(command_q[work_ptr].id), mask: 1'b1};
+      assign shared_add_valid_o = fp_in_valid;
+      assign fp_in_ready = shared_add_ready_i;
+      assign fp_result = shared_add_response_i.result;
+      assign fp_status = shared_add_response_i.status;
+      assign fp_tag = vid_t'(shared_add_response_i.tag);
+      assign fp_out_valid = shared_add_response_valid_i;
+      assign shared_add_response_ready_o = state_q == FP_WAIT;
+`ifndef SYNTHESIS
+      a_shared_completion_tag: assert property (@(posedge clk_i) disable iff (!rst_ni)
+        fp_out_valid |-> shared_add_response_i.tag == 9'(command_q[work_ptr].id))
+        else $error("shared RCE result has incorrect instruction owner");
+`endif
+    end else begin : gen_private
+`endif
     fpnew_fma #(.FpFormat(fpnew_pkg::FP64), .NumPipeRegs(2),
       .PipeConfig(fpnew_pkg::AFTER), .TagType(vid_t), .AuxType(logic)) i_add (
       .clk_i, .rst_ni, .operands_i({operand_b, operand_a, 64'h3ff0000000000000}),
@@ -263,6 +305,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       .tag_o(fp_tag), .mask_o(), .aux_o(), .out_valid_o(fp_out_valid),
       .out_ready_i(state_q == FP_WAIT), .busy_o()
     );
+`ifdef ARA_RED_SHARED_RCE_ADD
+    end
+`endif
   end else begin : gen_no_fp64_add
     assign fp_in_ready = 1'b0;
     assign fp_out_valid = 1'b0;
@@ -760,17 +805,17 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   // transport; it does not consume or duplicate the packed-word contexts.
   // Local state, carry propagation and rounding now belong to this RCE.
   if (EnableExact) begin : gen_exact
-    typedef enum logic [1:0] {EXACT_IDLE, EXACT_RECEIVE, EXACT_RESULT, EXACT_SEED_WAIT} exact_state_e;
+    typedef enum logic [2:0] {EXACT_IDLE, EXACT_RECEIVE, EXACT_RESULT, EXACT_SEED_WAIT, EXACT_SEED_ADD} exact_state_e;
     exact_state_e state_q, state_d;
     rce_exact_command_t owner_q;
     rce_exact_result_t completed_q, raw_result;
     logic completed_valid_q, completed_space, completed_push;
     assign completed_space = !completed_valid_q || exact_result_ready_i;
-    // An empty holding slot is transparent to an already-ready writeback port.
-    // Capture only on backpressure, or when replacing a consumed older result.
-    // Never both publish and enqueue the same raw result.
+    // Use the existing completion slot as a timing boundary. A finalized
+    // result is always captured before it reaches VRF / forwarding consumers.
+    // Simultaneous pop/push replaces an old result without losing ownership.
     assign completed_push = RceExactDecoupleEnable && state_q == EXACT_RESULT &&
-      completed_space && (completed_valid_q || !exact_result_ready_i);
+      completed_space;
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
         completed_q <= '0;
@@ -787,9 +832,11 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   logic [2:0]   exact_packet_beat_d, exact_packet_beat_q;
   logic [2:0]   exact_limb_count_d, exact_limb_count_q;
   logic [NrLanes-1:0][2:0] exact_lane_limb_count_d, exact_lane_limb_count_q;
+  logic [NrLanes-1:0][2:0] exact_lane_start_d, exact_lane_start_q;
   logic [NrLanes-1:0]      exact_lane_sign_d, exact_lane_sign_q;
   logic [287:0] exact_root_d, exact_root_q;
-  logic [1:0]   exact_carry_d, exact_carry_q;
+  logic [2:0]   exact_carry_d, exact_carry_q;
+  logic         exact_seed_folded_d, exact_seed_folded_q;
   logic [3:0]   exact_special_d, exact_special_q;
   logic         exact_source_seen_d, exact_source_seen_q;
   logic         exact_finite_nonzero_seen_d, exact_finite_nonzero_seen_q;
@@ -832,6 +879,42 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     end
   endfunction
 
+  logic [287:0] seeded_root;
+  logic [287:0] header_fixed_seed;
+  logic [3:0] seeded_special;
+  logic seeded_finite_nonzero, seeded_pos_zero, seeded_neg_zero;
+  logic seed_header_phase;
+  logic [3:0] header_source_special;
+  logic header_finite_nonzero, header_pos_zero, header_neg_zero;
+  assign seed_header_phase = state_q == EXACT_RECEIVE && exact_packet_beat_q == 0;
+  assign header_source_special = exact_merge_special(
+    exact_merge_special(exact_operand_i[0][25:22], exact_operand_i[1][25:22]),
+    exact_merge_special(exact_operand_i[2][25:22], exact_operand_i[3][25:22]));
+  assign header_finite_nonzero = exact_operand_i[0][20] | exact_operand_i[1][20] |
+                                exact_operand_i[2][20] | exact_operand_i[3][20];
+  assign header_pos_zero = exact_operand_i[0][19] | exact_operand_i[1][19] |
+                          exact_operand_i[2][19] | exact_operand_i[3][19];
+  assign header_neg_zero = exact_operand_i[0][18] | exact_operand_i[1][18] |
+                          exact_operand_i[2][18] | exact_operand_i[3][18];
+  fp32_exact_reduction_seed i_exact_seed (
+    // Command acceptance has already cleared root during the header phase.
+    // Reuse the same converter/adder for optional preload and late binding.
+    .exact_value_i(exact_root_q),
+    .special_i(seed_header_phase ? header_source_special : exact_special_q),
+    .finite_nonzero_seen_i(seed_header_phase ? header_finite_nonzero : exact_finite_nonzero_seen_q),
+    .pos_zero_seen_i(seed_header_phase ? header_pos_zero : exact_pos_zero_seen_q),
+    .neg_zero_seen_i(seed_header_phase ? header_neg_zero : exact_neg_zero_seen_q),
+    .seed_valid_i(seed_header_phase ? (owner_q.late_seed ? exact_late_seed_ready :
+                                  exact_operand_i[0][17]) : exact_seed_valid_q),
+    .seed_in_exact_i(1'b0),
+    .seed_i(seed_header_phase ? (owner_q.late_seed ? exact_seed_data_i :
+                              exact_operand_i[0][63:32]) : exact_seed_q),
+    .format_fp16_i(seed_header_phase ? exact_operand_i[0][10] : exact_format_fp16_q),
+    .exact_value_o(seeded_root), .seed_fixed_o(header_fixed_seed), .special_o(seeded_special),
+    .finite_nonzero_seen_o(seeded_finite_nonzero),
+    .pos_zero_seen_o(seeded_pos_zero), .neg_zero_seen_o(seeded_neg_zero)
+  );
+
   fp32_exact_reduction_finalize i_fp32_exact_reduction_finalize (
     .exact_value_i         (exact_root_q),
     .special_i             (exact_special_q),
@@ -841,8 +924,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     .neg_zero_seen_i       (exact_neg_zero_seen_q),
     .seed_valid_i          (exact_seed_valid_q),
     .seed_i                (exact_seed_q),
-    // The seed occupies the same root node for ordinary and late binding.
-    .seed_in_exact_i       (1'b0),
+    // The receive merger or EXACT_SEED_ADD has bound the seed in the root.
+    // A constant here removes seed addition from the rounding timing cone.
+    .seed_in_exact_i       (1'b1),
     .rnd_mode_i            (exact_rnd_mode_q),
     .format_fp16_i         (exact_format_fp16_q),
     .result_o              (exact_final_result),
@@ -854,14 +938,19 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
     // Per-lane ownership of the current sparse frame, independent of result
     // retirement. The transport may already buffer a following instruction.
     for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_exact_lane_consumed
-      assign exact_lane_consumed_o[lane] = state_q == EXACT_RESULT || state_q == EXACT_SEED_WAIT ||
+      assign exact_lane_consumed_o[lane] = state_q == EXACT_RESULT || state_q == EXACT_SEED_ADD || state_q == EXACT_SEED_WAIT ||
         (state_q == EXACT_RECEIVE && exact_packet_beat_q != 0 &&
-         exact_packet_beat_q > exact_lane_limb_count_q[lane]);
+         (exact_packet_beat_q > exact_lane_limb_count_q[lane] ||
+          exact_lane_start_q[lane] > exact_lane_limb_count_q[lane]));
     end
-    assign exact_cmd_ready_o = state_q == EXACT_IDLE;
-    assign exact_result_valid_o = (RceExactDecoupleEnable && completed_valid_q) ||
+    // Capturing the old finalized result transfers its complete ownership to
+    // the completion slot. The root/context registers may accept a new owner
+    // at the same edge; an intervening IDLE cycle serves no purpose.
+    assign exact_cmd_ready_o = state_q == EXACT_IDLE ||
+      (RceExactDecoupleEnable && state_q == EXACT_RESULT && completed_space);
+    assign exact_result_valid_o = RceExactDecoupleEnable ? completed_valid_q :
       state_q == EXACT_RESULT;
-    assign exact_result_o = RceExactDecoupleEnable && completed_valid_q ? completed_q : raw_result;
+    assign exact_result_o = RceExactDecoupleEnable ? completed_q : raw_result;
     assign raw_result = '{id: owner_q.id, vd: owner_q.vd, version: owner_q.version,
       be: exact_format_fp16_q ? 8'h03 : 8'h0f,
       data: exact_final_result, fflags: exact_final_status};
@@ -872,9 +961,11 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       exact_packet_beat_d = exact_packet_beat_q;
       exact_limb_count_d = exact_limb_count_q;
       exact_lane_limb_count_d = exact_lane_limb_count_q;
+      exact_lane_start_d = exact_lane_start_q;
       exact_lane_sign_d = exact_lane_sign_q;
       exact_root_d = exact_root_q;
       exact_carry_d = exact_carry_q;
+      exact_seed_folded_d = exact_seed_folded_q;
       exact_special_d = exact_special_q;
       exact_source_seen_d = exact_source_seen_q;
       exact_finite_nonzero_seen_d = exact_finite_nonzero_seen_q;
@@ -911,22 +1002,47 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           exact_limb_count_d = 3'd5;
           exact_root_d = '0;
           exact_carry_d = '0;
+          exact_seed_folded_d = 1'b0;
         end
       EXACT_RECEIVE: begin
-        logic [65:0] chunk_sum;
+        logic [66:0] chunk_sum;
+        logic [63:0] seed_limb;
+        logic [66:0] csa_a, csa_b, csa_c, csa_d, csa_e;
+        logic [66:0] csa_s1, csa_c1, csa_s2, csa_c2, csa_s3, csa_c3;
+        logic seed_low_fits, seed_high_fits, seed_fold;
+        logic [2:0] negative_lane_count;
+        logic signed [3:0] upper_correction;
+        logic signed [3:0] header_upper_correction;
         logic [3:0] special_pair_lo, special_pair_hi;
         logic [NrLanes-1:0] header_match;
         logic [NrLanes-1:0] limb_available;
         logic [NrLanes-1:0][63:0] limb_operand;
-        logic [2:0] header_limb_count;
+        logic [2:0] header_limb_count, header_start;
 
         chunk_sum = '0;
+        seed_limb = '0;
+        csa_a = '0; csa_b = '0; csa_c = '0; csa_d = '0; csa_e = '0;
+        csa_s1 = '0; csa_c1 = '0; csa_s2 = '0; csa_c2 = '0;
+        csa_s3 = '0; csa_c3 = '0;
+        seed_low_fits = 1'b0;
+        seed_high_fits = 1'b0;
+        seed_fold = 1'b0;
+        negative_lane_count = {2'b0, exact_lane_sign_q[0]} +
+                              {2'b0, exact_lane_sign_q[1]} +
+                              {2'b0, exact_lane_sign_q[2]} +
+                              {2'b0, exact_lane_sign_q[3]};
+        upper_correction = '0;
+        header_upper_correction = -($signed({3'b0, exact_operand_i[0][8]}) +
+                                     $signed({3'b0, exact_operand_i[1][8]}) +
+                                     $signed({3'b0, exact_operand_i[2][8]}) +
+                                     $signed({3'b0, exact_operand_i[3][8]}));
         special_pair_lo = '0;
         special_pair_hi = '0;
         header_match = '0;
         limb_available = '0;
         limb_operand = '0;
-        header_limb_count = 3'd2;
+        header_limb_count = 3'd1;
+        header_start = 3'd6;
 
         if (exact_packet_beat_q == 3'd0) begin
           // A previous reduction may leave an inactive-lane dummy token in
@@ -937,7 +1053,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             header_match[lane] = exact_operand_valid_i[lane] &&
               (exact_operand_i[lane][31:28] == 4'he) &&
               (exact_operand_i[lane][27:26] == lane[1:0]) &&
-              (exact_operand_i[lane][7:0] == 8'(owner_q.id));
+              (exact_operand_i[lane][4:0] == 5'(owner_q.id));
             if (exact_operand_valid_i[lane] && !header_match[lane])
               exact_operand_ready_o[lane] = 1'b1;
             exact_stale_token_drop[lane] =
@@ -945,6 +1061,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             if (header_match[lane] &&
                 exact_operand_i[lane][13:11] > header_limb_count)
               header_limb_count = exact_operand_i[lane][13:11];
+            if (header_match[lane] &&
+                {1'b0, exact_operand_i[lane][7:5]} + 4'd1 < {1'b0, header_start})
+              header_start = exact_operand_i[lane][7:5] + 3'd1;
           end
           exact_header_rendezvous_wait = !(&header_match)
                                          || (!RceExactSeedReceiveEnable && !exact_late_seed_ready)
@@ -956,6 +1075,26 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           if (&header_match
               && (RceExactSeedReceiveEnable || exact_late_seed_ready)
              ) begin
+            // Fold a ready seed into the already-required receive window.
+            // Never extend the window or wait for a missing seed just to fold.
+            unique case (header_start)
+              3'd1: seed_low_fits = 1'b1;
+              3'd2: seed_low_fits = header_fixed_seed[63:0] == '0;
+              3'd3: seed_low_fits = header_fixed_seed[127:0] == '0;
+              3'd4: seed_low_fits = header_fixed_seed[191:0] == '0;
+              3'd5: seed_low_fits = header_fixed_seed[255:0] == '0;
+              default: seed_low_fits = header_fixed_seed == '0;
+            endcase
+            unique case (header_limb_count)
+              3'd1: seed_high_fits = header_fixed_seed[287:64] == {224{header_fixed_seed[287]}};
+              3'd2: seed_high_fits = header_fixed_seed[287:128] == {160{header_fixed_seed[287]}};
+              3'd3: seed_high_fits = header_fixed_seed[287:192] == {96{header_fixed_seed[287]}};
+              3'd4: seed_high_fits = header_fixed_seed[287:256] == {32{header_fixed_seed[287]}};
+              default: seed_high_fits = 1'b1;
+            endcase
+            seed_fold = exact_late_seed_ready && seed_low_fits && seed_high_fits &&
+                        header_start <= header_limb_count;
+            exact_seed_folded_d = seed_fold;
             exact_header_merge_fire = 1'b1;
             exact_late_seed_bind = owner_q.late_seed && exact_late_seed_ready;
             exact_header_global_limb_count = header_limb_count;
@@ -991,12 +1130,45 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             exact_limb_count_d = header_limb_count;
             for (int lane = 0; lane < NrLanes; lane++) begin
               exact_lane_limb_count_d[lane] = exact_operand_i[lane][13:11];
+              exact_lane_start_d[lane] = exact_operand_i[lane][7:5] + 3'd1;
               exact_lane_sign_d[lane] = exact_operand_i[lane][8];
             end
             exact_root_d       = '0;
             exact_carry_d      = '0;
-            exact_packet_beat_d = 3'd1;
+            exact_packet_beat_d = header_start;
             state_d = EXACT_RECEIVE;
+            if (seed_fold) begin
+              exact_root_d = header_fixed_seed;
+              exact_special_d = seeded_special;
+              exact_finite_nonzero_seen_d = seeded_finite_nonzero;
+              exact_pos_zero_seen_d = seeded_pos_zero;
+              exact_neg_zero_seen_d = seeded_neg_zero;
+            end
+            // A payload-free frame contains its full numeric state in the
+            // header: zero low limbs and the advertised upper sign extension.
+            // This also covers -2**(64*end), whose only nonzero bits are the
+            // omitted high ones. With start>end all negative lanes necessarily
+            // begin their sign extension at this same global end.
+            // Keep both timing boundaries; reclaim omitted transport cycles.
+            if (header_start > header_limb_count) begin
+              unique case (header_limb_count)
+                3'd1: exact_root_d[287:64] =
+                  {{220{header_upper_correction[3]}}, header_upper_correction};
+                3'd2: exact_root_d[287:128] =
+                  {{156{header_upper_correction[3]}}, header_upper_correction};
+                3'd3: exact_root_d[287:192] =
+                  {{92{header_upper_correction[3]}}, header_upper_correction};
+                3'd4: exact_root_d[287:256] =
+                  {{28{header_upper_correction[3]}}, header_upper_correction};
+                default: ; // No bits above the fifth (32-bit) data limb.
+              endcase
+              if (RceExactSeedReceiveEnable && owner_q.late_seed && !exact_seed_valid_d)
+                state_d = EXACT_SEED_WAIT;
+              else begin
+                state_d = EXACT_SEED_ADD;
+                exact_local_complete_o = 1'b1;
+              end
+            end
 
 `ifndef SYNTHESIS
             for (int lane = 0; lane < NrLanes; lane++) begin
@@ -1005,7 +1177,9 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
                 else $error("exact reduction packet disagrees on rounding mode");
               assert (exact_operand_i[lane][10] == exact_operand_i[0][10])
                 else $error("exact reduction packet disagrees on FP format");
-              assert (exact_operand_i[lane][13:11] inside {[3'd2:3'd5]})
+              assert (exact_operand_i[lane][7:5] <= 3'd5)
+                else $error("exact reduction packet has an invalid low-zero prefix");
+              assert (exact_operand_i[lane][13:11] inside {[3'd1:3'd5]})
                 else $error("exact reduction packet advertises an invalid active window");
             end
             if (owner_q.late_seed) begin
@@ -1031,7 +1205,10 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           // extension advertised in the header.  Required lane tokens retain
           // normal ready/valid backpressure.
           for (int lane = 0; lane < NrLanes; lane++) begin
-            if (exact_packet_beat_q <= exact_lane_limb_count_q[lane]) begin
+            if (exact_packet_beat_q < exact_lane_start_q[lane]) begin
+              limb_available[lane] = 1'b1;
+              limb_operand[lane] = '0;
+            end else if (exact_packet_beat_q <= exact_lane_limb_count_q[lane]) begin
               limb_available[lane] = exact_operand_valid_i[lane];
               limb_operand[lane] = exact_operand_i[lane];
             end else begin
@@ -1046,33 +1223,66 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
             // rendezvous has completed.
             for (int lane = 0; lane < NrLanes; lane++)
               exact_operand_ready_o[lane] =
+                exact_packet_beat_q >= exact_lane_start_q[lane] &&
                 exact_packet_beat_q <= exact_lane_limb_count_q[lane];
-            // Four unsigned limb additions plus the carry from the previous
-            // little-endian limb implement one 288-bit two's-complement sum.
-            // The 4->2->1 grouping is explicit for timing and maps naturally
-            // onto a parameterized hierarchical merger.
-            chunk_sum =
-              ({2'b0, limb_operand[0]} + {2'b0, limb_operand[1]}) +
-              ({2'b0, limb_operand[2]} + {2'b0, limb_operand[3]}) +
-              {{64{1'b0}}, exact_carry_q};
-            exact_carry_d = chunk_sum[65:64];
+            // Unprocessed root limbs still contain the preloaded seed. Once
+            // processed they contain the final sum and are never read again.
+            if (exact_seed_folded_q) begin
+              unique case (exact_packet_beat_q)
+                3'd1: seed_limb = exact_root_q[63:0];
+                3'd2: seed_limb = exact_root_q[127:64];
+                3'd3: seed_limb = exact_root_q[191:128];
+                3'd4: seed_limb = exact_root_q[255:192];
+                default: seed_limb = {{32{exact_root_q[287]}}, exact_root_q[287:256]};
+              endcase
+            end
+            // Compress the five operands and carry before a single final CPA.
+            // No additional wide arithmetic unit or root register is needed.
+            csa_a = {3'b0, limb_operand[0]};
+            csa_b = {3'b0, limb_operand[1]};
+            csa_c = {3'b0, limb_operand[2]};
+            csa_d = {3'b0, limb_operand[3]};
+            csa_e = {3'b0, seed_limb};
+            csa_s1 = csa_a ^ csa_b ^ csa_c;
+            csa_c1 = ((csa_a & csa_b) | (csa_a & csa_c) | (csa_b & csa_c)) << 1;
+            csa_s2 = csa_d ^ csa_e ^ {64'b0, exact_carry_q};
+            csa_c2 = ((csa_d & csa_e) | (csa_d & {64'b0, exact_carry_q}) |
+                      (csa_e & {64'b0, exact_carry_q})) << 1;
+            csa_s3 = csa_s1 ^ csa_c1 ^ csa_s2;
+            csa_c3 = ((csa_s1 & csa_c1) | (csa_s1 & csa_s2) | (csa_c1 & csa_s2)) << 1;
+            csa_a = csa_s3 ^ csa_c3 ^ csa_c2;
+            csa_b = ((csa_s3 & csa_c3) | (csa_s3 & csa_c2) | (csa_c3 & csa_c2)) << 1;
+            chunk_sum = csa_a + csa_b;
+            exact_carry_d = chunk_sum[66:64];
+            // Above the last transmitted limb each source is all zeros or
+            // all ones. In unbounded signed arithmetic their sum is therefore
+            // carry_out - number_of_negative_operands (-5..4 with seed). This resolves the
+            // upper root without transmitting a guard limb or adding a wide
+            // carry-propagation stage. Also valid for legacy guarded packets.
+            upper_correction = $signed({1'b0, chunk_sum[66:64]}) -
+                               $signed({1'b0, negative_lane_count}) -
+                               $signed({3'b0, (exact_seed_folded_q && exact_root_q[287])});
 
             unique case (exact_packet_beat_q)
-              3'd1: exact_root_d[63:0]    = chunk_sum[63:0];
+              3'd1: begin
+                exact_root_d[63:0] = chunk_sum[63:0];
+                if (exact_limb_count_q == 3'd1)
+                  exact_root_d[287:64] = {{220{upper_correction[3]}}, upper_correction};
+              end
               3'd2: begin
                 exact_root_d[127:64] = chunk_sum[63:0];
                 if (exact_limb_count_q == 3'd2)
-                  exact_root_d[287:128] = {160{chunk_sum[63]}};
+                  exact_root_d[287:128] = {{156{upper_correction[3]}}, upper_correction};
               end
               3'd3: begin
                 exact_root_d[191:128] = chunk_sum[63:0];
                 if (exact_limb_count_q == 3'd3)
-                  exact_root_d[287:192] = {96{chunk_sum[63]}};
+                  exact_root_d[287:192] = {{92{upper_correction[3]}}, upper_correction};
               end
               3'd4: begin
                 exact_root_d[255:192] = chunk_sum[63:0];
                 if (exact_limb_count_q == 3'd4)
-                  exact_root_d[287:256] = {32{chunk_sum[63]}};
+                  exact_root_d[287:256] = {{28{upper_correction[3]}}, upper_correction};
               end
               default: exact_root_d[287:256] = chunk_sum[31:0];
             endcase
@@ -1081,7 +1291,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
               if (RceExactSeedReceiveEnable && owner_q.late_seed && !exact_seed_valid_d)
                 state_d = EXACT_SEED_WAIT;
               else begin
-                state_d = EXACT_RESULT;
+                state_d = exact_seed_folded_q ? EXACT_RESULT : EXACT_SEED_ADD;
                 exact_local_complete_o = 1'b1;
               end
             end else begin
@@ -1096,12 +1306,32 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           exact_late_seed_wait = !exact_seed_valid_d;
           // Do not advance the SLDU descriptor while its seed lookup is needed.
           if (exact_seed_valid_d) begin
-            state_d = EXACT_RESULT;
+            state_d = EXACT_SEED_ADD;
             exact_local_complete_o = 1'b1;
           end
         end
-        EXACT_RESULT: if (RceExactDecoupleEnable ? completed_space : exact_result_ready_i)
+        EXACT_SEED_ADD: begin
+          // Reuse the root and special-state registers: no second 288-bit bank.
+          // This state executes once per context, after all limbs and seed arrive.
+          exact_root_d = seeded_root;
+          exact_special_d = seeded_special;
+          exact_finite_nonzero_seen_d = seeded_finite_nonzero;
+          exact_pos_zero_seen_d = seeded_pos_zero;
+          exact_neg_zero_seen_d = seeded_neg_zero;
+          state_d = EXACT_RESULT;
+        end
+        EXACT_RESULT: if (RceExactDecoupleEnable ? completed_space : exact_result_ready_i) begin
           state_d = EXACT_IDLE;
+          if (RceExactDecoupleEnable && exact_cmd_valid_i) begin
+            state_d = EXACT_RECEIVE;
+            exact_packet_beat_d = '0;
+            exact_seed_valid_d = 1'b0;
+            exact_limb_count_d = 3'd5;
+            exact_root_d = '0;
+            exact_carry_d = '0;
+            exact_seed_folded_d = 1'b0;
+          end
+        end
         default: state_d = EXACT_IDLE;
       endcase
     end
@@ -1112,9 +1342,11 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
         exact_packet_beat_q <= '0;
         exact_limb_count_q <= '0;
         exact_lane_limb_count_q <= '0;
+        exact_lane_start_q <= '0;
         exact_lane_sign_q <= '0;
         exact_root_q <= '0;
         exact_carry_q <= '0;
+        exact_seed_folded_q <= 1'b0;
         exact_special_q <= '0;
         exact_source_seen_q <= '0;
         exact_finite_nonzero_seen_q <= '0;
@@ -1130,9 +1362,11 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
         exact_packet_beat_q <= exact_packet_beat_d;
         exact_limb_count_q <= exact_limb_count_d;
         exact_lane_limb_count_q <= exact_lane_limb_count_d;
+        exact_lane_start_q <= exact_lane_start_d;
         exact_lane_sign_q <= exact_lane_sign_d;
         exact_root_q <= exact_root_d;
         exact_carry_q <= exact_carry_d;
+        exact_seed_folded_q <= exact_seed_folded_d;
         exact_special_q <= exact_special_d;
         exact_source_seen_q <= exact_source_seen_d;
         exact_finite_nonzero_seen_q <= exact_finite_nonzero_seen_d;
@@ -1145,9 +1379,24 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
       end
     end
 `ifndef SYNTHESIS
-    initial assert (NrLanes == 4) else $fatal(1, "exact RCE requires four lanes");
+    initial begin
+      assert (NrLanes == 4) else $fatal(1, "exact RCE requires four lanes");
+      assert ($bits(vid_t) <= 5) else $fatal(1, "exact header ID field is too narrow");
+    end
     a_exact_command_reserved: assert property (@(posedge clk_i) disable iff (!rst_ni)
       exact_cmd_valid_i |-> exact_cmd_ready_o);
+    a_exact_header_starts_from_empty_root: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        seed_header_phase |-> exact_root_q == '0
+    ) else $error("exact seed preload reused a nonempty root");
+    a_exact_folded_seed_is_not_added_twice: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        exact_seed_folded_q |-> state_q != EXACT_SEED_ADD && state_q != EXACT_SEED_WAIT
+    ) else $error("exact folded seed entered the late seed adder");
+    a_exact_folded_seed_has_owner: assert property (
+      @(posedge clk_i) disable iff (!rst_ni)
+        exact_seed_folded_q |-> exact_seed_valid_q
+    ) else $error("exact folded seed has no bound version");
     a_exact_result_stable: assert property (@(posedge clk_i) disable iff (!rst_ni)
       exact_result_valid_o && !exact_result_ready_i |=>
       exact_result_valid_o && $stable(exact_result_o));
@@ -1160,7 +1409,7 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
   a_exact_limb_schedule_is_bounded: assert property (
     @(posedge clk_i) disable iff (!rst_ni)
       (state_q == EXACT_RECEIVE && exact_packet_beat_q != 0) |->
-        (exact_limb_count_q inside {[3'd2:3'd5]} &&
+        (exact_limb_count_q inside {[3'd1:3'd5]} &&
          exact_packet_beat_q <= exact_limb_count_q)
   ) else $error("RCE exact reduction limb schedule is malformed");
 
@@ -1172,13 +1421,17 @@ module reduction_completion_engine import ara_pkg::*; import rvv_pkg::*;
           !exact_operand_valid_i[lane]
     ) else $error("finished exact lane sent a redundant high limb");
 
-    a_last_sparse_limb_matches_header_sign: assert property (
+    // A data limb below bit 256 may have either MSB: the header separately
+    // specifies its omitted upper extension. Only the full-width top word
+    // itself contains the architectural sign bit (bit 31 of this word).
+    a_full_width_sparse_limb_matches_header_sign: assert property (
       @(posedge clk_i) disable iff (!rst_ni)
         (state_q == EXACT_RECEIVE &&
-         exact_packet_beat_q == exact_lane_limb_count_q[lane] &&
+         exact_packet_beat_q == 3'd5 &&
+         exact_lane_limb_count_q[lane] == 3'd5 &&
          exact_operand_valid_i[lane]) |->
-          (exact_operand_i[lane][63] == exact_lane_sign_q[lane])
-    ) else $error("exact lane header sign disagrees with its guard limb");
+          (exact_operand_i[lane][63:31] == {33{exact_lane_sign_q[lane]}})
+    ) else $error("exact lane header sign disagrees with its full-width limb");
   end
 
 `endif

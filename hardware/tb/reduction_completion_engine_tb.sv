@@ -48,7 +48,49 @@ module reduction_completion_engine_tb;
   int overlap_cycles = 0, partial_stalls = 0, result_stalls = 0, wrong_seeds = 0;
   ara_op_e ops [14] = '{VREDSUM,VREDAND,VREDOR,VREDXOR,VREDMINU,VREDMIN,
     VREDMAXU,VREDMAX,VWREDSUMU,VWREDSUM,VFREDMIN,VFREDMAX,VFREDUSUM,VFWREDUSUM};
-  reduction_completion_engine #(.EnableExact(1'b0)) dut (
+`ifdef ARA_RED_TEST_SHARED_COMPLETION
+  ordered_add_request_t [4:0] add_request;
+  ordered_add_response_t [4:0] add_response;
+  logic [4:0] add_valid,add_ready,add_out_valid,add_out_ready;
+  logic [3:0] synthetic_accepted;
+  int shared_blocked=0,shared_contended=0;
+  shared_ordered_adder #(.NrClients(5),.NrUnits(1)) shared_add (
+    .clk_i(clk),.rst_ni(rst_n),.request_i(add_request),.valid_i(add_valid),.ready_o(add_ready),
+    .response_o(add_response),.response_valid_o(add_out_valid),.response_ready_i(add_out_ready));
+  always @(posedge clk) begin
+    synthetic_accepted=add_valid[3:0]&add_ready[3:0];
+    if (rst_n) begin
+      if (add_valid[4]&&!add_ready[4]) shared_blocked++;
+      if (add_valid[4]&&(|add_valid[3:0])) shared_contended++;
+    end
+  end
+  // Stable requests from four unrelated clients force arbitration while the
+  // RCE model independently checks seed ownership, flags and partial results.
+  always @(negedge clk) for (int client=0;client<4;client++) begin
+    if (!rst_n) begin add_valid[client]=0;add_request[client]='0;add_out_ready[client]=0;end
+    else begin
+      add_out_ready[client]=!(client==1&&cycles%128<24);
+      if (!add_valid[client]||synthetic_accepted[client]) begin
+        // Alternate pressure and quiet intervals. Drain a held request before
+        // withdrawing valid, allowing both blocked and accepted RCE feedback.
+        add_valid[client]=cycles%256<128;
+        add_request[client]='{operands:{64'h3ff0000000000000,64'h3ff0000000000000,64'h3ff0000000000000},
+          rm:fpnew_pkg::RNE,src_fmt:fpnew_pkg::FP64,dst_fmt:fpnew_pkg::FP64,
+          int_fmt:fpnew_pkg::INT64,tag:9'(cycles+client),mask:1'b1};
+      end
+    end
+  end
+`endif
+  reduction_completion_engine #(.EnableExact(1'b0)
+`ifdef ARA_RED_TEST_SHARED_COMPLETION
+    ,.UseSharedFp64Add(1'b1)
+`endif
+  ) dut (
+`ifdef ARA_RED_TEST_SHARED_COMPLETION
+    .shared_add_request_o(add_request[4]),.shared_add_valid_o(add_valid[4]),.shared_add_ready_i(add_ready[4]),
+    .shared_add_response_i(add_response[4]),.shared_add_response_valid_i(add_out_valid[4]),
+    .shared_add_response_ready_o(add_out_ready[4]),
+`endif
     .clk_i(clk), .rst_ni(rst_n), .cmd_i(cmd), .cmd_valid_i(cmd_valid),
     .cmd_ready_o(cmd_ready), .partial_i(partial), .partial_valid_i(partial_valid),
     .partial_ready_o(partial_ready), .seed_lifetime_i('0), .external_seed_i('0), .external_seed_valid_i('0), .ordinary_seed_i('0), .ordinary_seed_valid_i('0),
@@ -261,6 +303,14 @@ module reduction_completion_engine_tb;
     $display("TURNAROUND: full_refills=%0d ready_successors=%0d", full_refills, ready_successors);
     $display("PROTOCOL: command_stalls=%0d max_result_stall=%0d bad_version=%0d bad_id=%0d bad_register=%0d",
       command_stalls, max_consecutive_stalls, bad_seed_counts[0], bad_seed_counts[1], bad_seed_counts[2]);
+`ifdef ARA_RED_TEST_SHARED_COMPLETION
+    if (shared_blocked==0||shared_contended==0) $fatal(1,"shared RCE arbitration not exercised");
+    if (RceFp64FeedbackEnable&&fp_feedback_fires==0)
+      $fatal(1,"shared RCE accepted feedback was not exercised");
+    if (RceFp64SeedFeedbackEnable&&fp_seed_feedback_fires==0)
+      $fatal(1,"shared RCE accepted seed feedback was not exercised");
+    $display("SHARED_RCE_CONTENTION blocked=%0d contended=%0d",shared_blocked,shared_contended);
+`endif
     $display("PASS: %0d RCE word cases; cycles=%0d two_context_cycles=%0d result_stalls=%0d wrong_seed_versions=%0d",
       completed, cycles, overlap_cycles, result_stalls, wrong_seeds);
     $finish;

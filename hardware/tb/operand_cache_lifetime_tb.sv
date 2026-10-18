@@ -64,6 +64,7 @@ module operand_cache_lifetime_tb;
     .operand_queue_cmd_t(operand_queue_cmd_t)) dut (
     .clk_i(clk),
     .rst_ni(rst_n),
+    .lane_id_i('0),
     .global_hazard_table_i(hazards),
     .operand_request_i(requests),
     .operand_request_valid_i(request_valid),

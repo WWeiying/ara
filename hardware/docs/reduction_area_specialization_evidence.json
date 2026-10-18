@@ -1,0 +1,827 @@
+{
+  "baseline_commit": "13dfca21955dfd4e05905e92e4afaff7b7b579b6",
+  "profile": "full_compact",
+  "local_area": {
+    "shared_update": {
+      "directory": "hardware/build/exact_update_ppa_v1",
+      "source_sha256": "cb2470e406c15aa26f8d1c4cc335ceaa54a84615a32b1a0edf4ecfc93f7bc79f",
+      "constraints_match": true,
+      "library_hashes": {
+        "tcbn28hpcplusbwp12t40p140tt0p9v25c.db": "5363ad782af12e7cec187d23d27696c136d9d9014b8ba645b544228b18caf8e4",
+        "tcbn28hpcplusbwp12t40p140cgtt0p9v25c.db": "3c49131aaeeb55898ea8146f44fa9c8cf88bed09b4100ea938c6d2c1f33055d1",
+        "tcbn28hpcplusbwp12t40p140hvttt0p9v25c.db": "7713426e3696e3432549a29bdd1a53108097875298017e222d5a41f4087f71f3",
+        "tcbn28hpcplusbwp12t40p140lvttt0p9v25c.db": "23871045f29427359495a50150b4527ba26b0a4a1fbc2db66d5f12b782252afc"
+      },
+      "results": [
+        {
+          "mode": 0,
+          "cell_area": 17256.455826,
+          "sequential_cells": 846.0,
+          "worst_setup_slack_ns": 8.3e-05,
+          "setup_tns_ns": 0.0,
+          "setup_violating_paths": 0.0,
+          "worst_hold_slack_ns": -0.08,
+          "hold_violating_paths": 566.0,
+          "report_hashes": {
+            "area.rpt": "29035bb7de377c5da63272556df3f92fa3208c70c514e986784365257b324192",
+            "qor.rpt": "afee6d2226a65df535f569ff7cbaeacc576aeaa51c5507e317a4f4c1902e1400",
+            "timing.rpt": "fc5177b31dc579b38a993a8ccf6f18d2e47aaf6ae85c3e4ae8eab3b3d4fa3329",
+            "run.tcl": "f876061661c9acdb603ac484621f7242e6ad09c8a993096c4aafd2fa007ec967"
+          }
+        },
+        {
+          "mode": 1,
+          "cell_area": 18343.247925,
+          "sequential_cells": 846.0,
+          "worst_setup_slack_ns": 4.8e-05,
+          "setup_tns_ns": 0.0,
+          "setup_violating_paths": 0.0,
+          "worst_hold_slack_ns": -0.11,
+          "hold_violating_paths": 979.0,
+          "report_hashes": {
+            "area.rpt": "6d4f158d3db04032453799cf62eeddd3f80fc5a0e44cb8b79aa0d2e32e6bd507",
+            "qor.rpt": "a232a1f123891ccee2ca8c08288419bfa3b0a2cf5af7463402b4ee6f795b57c5",
+            "timing.rpt": "16bb734f8697a909bc1309569ea958f4055a203b6c0c570e7795c2b93fdcbb5a",
+            "run.tcl": "2b3139f61764a71853f5d233dc7da25ddeeeebeea0df6b22d87f7ac8f43cdf11"
+          }
+        }
+      ],
+      "area_saved": -1086.7920989999984,
+      "area_saved_percent": -6.297887063011798,
+      "scope": "Local synthesis only; unchanged simulation cycles do not establish unchanged SoC Fmax.",
+      "selection": "rejected: area increases"
+    },
+    "shared_normalize": {
+      "directory": "hardware/build/exact_normalize_ppa_v1",
+      "source_sha256": "0f8a381b45fce5f624d6f51f1865dce9327ef19fa030a50abc47a05b51a725b5",
+      "constraints_match": true,
+      "library_hashes": {
+        "tcbn28hpcplusbwp12t40p140tt0p9v25c.db": "5363ad782af12e7cec187d23d27696c136d9d9014b8ba645b544228b18caf8e4",
+        "tcbn28hpcplusbwp12t40p140cgtt0p9v25c.db": "3c49131aaeeb55898ea8146f44fa9c8cf88bed09b4100ea938c6d2c1f33055d1",
+        "tcbn28hpcplusbwp12t40p140hvttt0p9v25c.db": "7713426e3696e3432549a29bdd1a53108097875298017e222d5a41f4087f71f3",
+        "tcbn28hpcplusbwp12t40p140lvttt0p9v25c.db": "23871045f29427359495a50150b4527ba26b0a4a1fbc2db66d5f12b782252afc"
+      },
+      "results": [
+        {
+          "mode": 0,
+          "cell_area": 17256.455826,
+          "sequential_cells": 846.0,
+          "worst_setup_slack_ns": 8.3e-05,
+          "setup_tns_ns": 0.0,
+          "setup_violating_paths": 0.0,
+          "worst_hold_slack_ns": -0.08,
+          "hold_violating_paths": 566.0,
+          "report_hashes": {
+            "area.rpt": "951e7afcf06fb2f8ed9d32be176c862877d0ed999b704e838095cd7b62c94102",
+            "qor.rpt": "978338033d97c4587625b86883de775fff9a91c4b3698f232e8210ca15b74162",
+            "timing.rpt": "3388e441b9a2f5c0b7649decb3a30c4fda8b1b97bf8fc4aec884ead2e7dbd5a5",
+            "run.tcl": "6809298c54a0f028abab69858240efe9f39b82bad8bcad9b1b0b6852da8db9cd"
+          }
+        },
+        {
+          "mode": 1,
+          "cell_area": 16253.99984,
+          "sequential_cells": 846.0,
+          "worst_setup_slack_ns": 2.4e-05,
+          "setup_tns_ns": 0.0,
+          "setup_violating_paths": 0.0,
+          "worst_hold_slack_ns": -0.08,
+          "hold_violating_paths": 614.0,
+          "report_hashes": {
+            "area.rpt": "b513678089684c9edea5d7f3b471b8169db534442b69bbaa1c6d1e8d5ccaaaf6",
+            "qor.rpt": "bbdc7a735e11e34ebd25acf620132440aa813b64121f6e210c2473377967aa08",
+            "timing.rpt": "09843a5d1ea16d36a1454c895b836dc44e020550a096afffd1273781950e2ee1",
+            "run.tcl": "dd672745df2ffdef08d08d923139f534f0f8f936170365bda81392c7caea6244"
+          }
+        }
+      ],
+      "area_saved": 1002.4559860000008,
+      "area_saved_percent": 5.80916496474101,
+      "scope": "Local synthesis only; unchanged simulation cycles do not establish unchanged SoC Fmax.",
+      "selection": "selected for full_compact; integrated PPA pending"
+    }
+  },
+  "unit_verification": [
+    {
+      "test": "finalize",
+      "reference_commit": "13dfca21955dfd4e05905e92e4afaff7b7b579b6",
+      "required_marker": "EXACT_FINALIZE_EQUIVALENCE_PASS cases=56736",
+      "sources": {
+        "fp32_exact_reduction_finalize.sv": "44b8ca34effbdaec053f31adbf9b2080586fc6b4c3137b0b5add15bea618e3ac",
+        "reference.sv": "0b00bf0f9ae8cb1e728614d4bbdabc9ccc236721be43729b3f92748588aec463",
+        "exact_finalize_equivalence_tb.sv": "19c4c68017f6dca19d63fceabb918898e804e631c535c3282d531fd3a3941a06"
+      },
+      "compile": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "270ecb8b30e104e875bb263d73f1297951a0e42da0e61e0b7ca1815258b6ffdb"
+      },
+      "run": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "1821402403df68ccc6f4ed35dc61625770f556fb6a8e5712cdb2ccf0d404eedc"
+      }
+    },
+    {
+      "test": "accum",
+      "reference_commit": "13dfca21955dfd4e05905e92e4afaff7b7b579b6",
+      "required_marker": "EXACT_UPDATE_EQUIVALENCE_PASS cases=300 configs=12",
+      "sources": {
+        "fp32_exact_reduction_accum.sv": "0f8a381b45fce5f624d6f51f1865dce9327ef19fa030a50abc47a05b51a725b5",
+        "reference.sv": "7b838dbc164a08a82254c755419e1816342901d86b42d81a15d35c9370671831",
+        "exact_update_equivalence_tb.sv": "975d5f4ebf2baee2e263f19dca53d5919ec1c6d8a66f4dfc03eaca09827b8a29"
+      },
+      "compile": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "a07d6b7a1e33fd5f70f9e64c90334e8b5f88aa8bb1fe2304e185daaa46c3e55e"
+      },
+      "run": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "3227a49c811e5c45061e7f3aa053c676a38321b92e5991ba85e043dfbf680d90"
+      }
+    },
+    {
+      "test": "oracle",
+      "reference_commit": "13dfca21955dfd4e05905e92e4afaff7b7b579b6",
+      "required_marker": "PASS: exact integer oracle (900 ",
+      "sources": {
+        "fp32_exact_reduction_accum.sv": "0f8a381b45fce5f624d6f51f1865dce9327ef19fa030a50abc47a05b51a725b5",
+        "fp32_exact_reduction_finalize.sv": "44b8ca34effbdaec053f31adbf9b2080586fc6b4c3137b0b5add15bea618e3ac",
+        "fp_exact_reduction_oracle_tb.sv": "9462190b2ba44bc65fc3552f9966645a7490fdbe285e7153ce82601eb0566f05",
+        "fp_exact_reduction_oracle_vectors.mem": "60fde4564423714096e70fc8080bbe6b0a6f790d722ee2b8a484378992305c23"
+      },
+      "compile": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "2e25099ee231163d98c03a90e9901c0103323524557de8c360e0ef2f0aaa421e"
+      },
+      "run": {
+        "returncode": 0,
+        "pass": true,
+        "failures": [],
+        "log_sha256": "e65caa0a192fc943f85d3bbd625da6e84bbe970f8a928977fcbe5917110730e3"
+      }
+    }
+  ],
+  "soc_verification": {
+    "status": "PASS",
+    "selected_run": "hardware/build/exact_area_soc_normalize_v1",
+    "all_three_candidates_run": "hardware/build/exact_area_soc_v3",
+    "pending": [],
+    "all_three_candidates": {
+      "status": "PASS",
+      "apps": 22,
+      "cycle_windows": 15,
+      "results": [
+        {
+          "app": "perf_exact_global_fp16_probe",
+          "elf_sha256": "b309dc72b9df8366efbae5db9cec819046a251aa1073001c969032dcac65c96c",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            297715000,
+            297715000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_exact_global_reduction_probe",
+          "elf_sha256": "14b6df5d153be2f5d884dd9fc7323f4ed5c12bdc99cba72aca9f0ac202a56eaf",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            445665000,
+            445665000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_exact_global_widening_probe",
+          "elf_sha256": "4ab450b10cdd7151446cd5876b61a2dccaa490bd80514991a2f2f0c028c7aad3",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            226555000,
+            226555000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_exact_global_widening_stream_probe",
+          "elf_sha256": "a86301dd73544b347afc13d5e39af0f2cea3be5230d4a62b58676df7bc3cc38b",
+          "baseline_cycles": [
+            118
+          ],
+          "scalar_cycles": [
+            118
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            66625000,
+            66625000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_exact_sparse_window_probe",
+          "elf_sha256": "88a813a4c9a608c76c93a991142be273aaaad2a99cd64d5d167d03dfd08dc325",
+          "baseline_cycles": [
+            62
+          ],
+          "scalar_cycles": [
+            62
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            35135000,
+            35135000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_rce_exact_mixed",
+          "elf_sha256": "c95870f65151f5b547ee3a4c0330657eda4a54461e211b8ffb4b16674c6cb31e",
+          "baseline_cycles": [
+            652
+          ],
+          "scalar_cycles": [
+            652
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            40585000,
+            40585000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_rce_exact_slide",
+          "elf_sha256": "d725a2f6c57c096f497eea5f7cbb7f00c7e6f25b0ee44f34fb179896c2d66feb",
+          "baseline_cycles": [
+            501
+          ],
+          "scalar_cycles": [
+            501
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            47575000,
+            47575000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_rce_exact_load_seed",
+          "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+          "baseline_cycles": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "scalar_cycles": [
+            401,
+            372,
+            390,
+            420
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            120855000,
+            120855000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_rce_exact_slide_seed",
+          "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+          "baseline_cycles": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "scalar_cycles": [
+            323,
+            299,
+            309,
+            373
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            115215000,
+            115215000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_reduction_short_stream_probe",
+          "elf_sha256": "6a61f9f054dca6a624929a853ebe892259e47f6c59d27225bf3461f962c08b70",
+          "baseline_cycles": [
+            93
+          ],
+          "scalar_cycles": [
+            93
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            37265000,
+            37265000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "perf_masked_reduction_stream_probe",
+          "elf_sha256": "829b85562db851ada4dd82b8cc78c737709c01fa95c0992a74a773cf061fbca6",
+          "baseline_cycles": [
+            243
+          ],
+          "scalar_cycles": [
+            243
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            40305000,
+            40305000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_alias",
+          "elf_sha256": "ee090efcb0c341f1cf1c0bd56d2b9e890feb6da52a004f449f84cc62fa292aa4",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            41705000,
+            41705000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_empty",
+          "elf_sha256": "40bdd4f0d69c21cfa29c32d7e0b58811dae0367ef6da550c54c84fd5c7fde30a",
+          "baseline_cycles": [
+            28
+          ],
+          "scalar_cycles": [
+            28
+          ],
+          "cycle_measurement_available": true,
+          "finish_time_ticks": [
+            40895000,
+            40895000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_context",
+          "elf_sha256": "fa57bfed5a5082c74b920712333961fc60f22387c580b8da3f6e3961335693a5",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            57035000,
+            57035000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_seed",
+          "elf_sha256": "4817824029feeae3bff069650954eb8180be17c85ecc36342163056246512fba",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            51345000,
+            51345000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_tail",
+          "elf_sha256": "4fbeb529ff6a7a20304396aa64deb6a6a1b62c72fac00a6dc0b4a39689e67006",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            2898405000,
+            2898405000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_widen_mask",
+          "elf_sha256": "78c9c128a353d81801d00a9be5afacf25c68e7ac25e98d3a6bebb08580d840f2",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            50515000,
+            50515000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_group_fp",
+          "elf_sha256": "7418126738f4b4b1e6aee2c5ccbeef30c0540033c098e14c858d3851bc8b983c",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            35385000,
+            35385000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_rce_exact_mixed",
+          "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            32995000,
+            32995000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_rce_fp_mixed",
+          "elf_sha256": "27aeada5fbc65d218a00a3b3e57d36d0a78e0043fe2a974f7eff2602d0f2eee8",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            32475000,
+            32475000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_ordered_fp16",
+          "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            45285000,
+            45285000
+          ],
+          "no_cycle_regression": true
+        },
+        {
+          "app": "reduction_audit_ordered_rounding",
+          "elf_sha256": "197857baf77dda0b9def5eec312793dbc6f0932b2ac91ff3e50cd6e99376f7b1",
+          "baseline_cycles": [],
+          "scalar_cycles": [],
+          "cycle_measurement_available": false,
+          "finish_time_ticks": [
+            125815000,
+            125815000
+          ],
+          "no_cycle_regression": true
+        }
+      ]
+    },
+    "selected_apps": 22,
+    "selected_cycle_windows": 15,
+    "selected_results": [
+      {
+        "app": "perf_exact_global_fp16_probe",
+        "elf_sha256": "b309dc72b9df8366efbae5db9cec819046a251aa1073001c969032dcac65c96c",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          297715000,
+          297715000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_exact_global_reduction_probe",
+        "elf_sha256": "14b6df5d153be2f5d884dd9fc7323f4ed5c12bdc99cba72aca9f0ac202a56eaf",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          445665000,
+          445665000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_exact_global_widening_probe",
+        "elf_sha256": "4ab450b10cdd7151446cd5876b61a2dccaa490bd80514991a2f2f0c028c7aad3",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          226555000,
+          226555000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_exact_global_widening_stream_probe",
+        "elf_sha256": "a86301dd73544b347afc13d5e39af0f2cea3be5230d4a62b58676df7bc3cc38b",
+        "baseline_cycles": [
+          118
+        ],
+        "scalar_cycles": [
+          118
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          66625000,
+          66625000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_exact_sparse_window_probe",
+        "elf_sha256": "88a813a4c9a608c76c93a991142be273aaaad2a99cd64d5d167d03dfd08dc325",
+        "baseline_cycles": [
+          62
+        ],
+        "scalar_cycles": [
+          62
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          35135000,
+          35135000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_rce_exact_mixed",
+        "elf_sha256": "c95870f65151f5b547ee3a4c0330657eda4a54461e211b8ffb4b16674c6cb31e",
+        "baseline_cycles": [
+          652
+        ],
+        "scalar_cycles": [
+          652
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          40585000,
+          40585000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_rce_exact_slide",
+        "elf_sha256": "d725a2f6c57c096f497eea5f7cbb7f00c7e6f25b0ee44f34fb179896c2d66feb",
+        "baseline_cycles": [
+          501
+        ],
+        "scalar_cycles": [
+          501
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          47575000,
+          47575000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_rce_exact_load_seed",
+        "elf_sha256": "efd817fd99d8a4885f6ac78dfc5b4f1b465918dc66657db358e56275d06b4fa6",
+        "baseline_cycles": [
+          401,
+          372,
+          390,
+          420
+        ],
+        "scalar_cycles": [
+          401,
+          372,
+          390,
+          420
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          120855000,
+          120855000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_rce_exact_slide_seed",
+        "elf_sha256": "09c9dfa05d799d7355b79f97ae8b415c8e7755a197a5af1b7cd72497ddfeca7c",
+        "baseline_cycles": [
+          323,
+          299,
+          309,
+          373
+        ],
+        "scalar_cycles": [
+          323,
+          299,
+          309,
+          373
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          115215000,
+          115215000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_reduction_short_stream_probe",
+        "elf_sha256": "6a61f9f054dca6a624929a853ebe892259e47f6c59d27225bf3461f962c08b70",
+        "baseline_cycles": [
+          93
+        ],
+        "scalar_cycles": [
+          93
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          37265000,
+          37265000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "perf_masked_reduction_stream_probe",
+        "elf_sha256": "829b85562db851ada4dd82b8cc78c737709c01fa95c0992a74a773cf061fbca6",
+        "baseline_cycles": [
+          243
+        ],
+        "scalar_cycles": [
+          243
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          40305000,
+          40305000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_alias",
+        "elf_sha256": "ee090efcb0c341f1cf1c0bd56d2b9e890feb6da52a004f449f84cc62fa292aa4",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          41705000,
+          41705000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_empty",
+        "elf_sha256": "40bdd4f0d69c21cfa29c32d7e0b58811dae0367ef6da550c54c84fd5c7fde30a",
+        "baseline_cycles": [
+          28
+        ],
+        "scalar_cycles": [
+          28
+        ],
+        "cycle_measurement_available": true,
+        "finish_time_ticks": [
+          40895000,
+          40895000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_context",
+        "elf_sha256": "fa57bfed5a5082c74b920712333961fc60f22387c580b8da3f6e3961335693a5",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          57035000,
+          57035000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_seed",
+        "elf_sha256": "4817824029feeae3bff069650954eb8180be17c85ecc36342163056246512fba",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          51345000,
+          51345000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_tail",
+        "elf_sha256": "4fbeb529ff6a7a20304396aa64deb6a6a1b62c72fac00a6dc0b4a39689e67006",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          2898405000,
+          2898405000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_widen_mask",
+        "elf_sha256": "78c9c128a353d81801d00a9be5afacf25c68e7ac25e98d3a6bebb08580d840f2",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          50515000,
+          50515000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_group_fp",
+        "elf_sha256": "7418126738f4b4b1e6aee2c5ccbeef30c0540033c098e14c858d3851bc8b983c",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          35385000,
+          35385000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_rce_exact_mixed",
+        "elf_sha256": "6a2f52ce59087c42abc19c50b26647b22807bc2b070d428bbf5ec926a319451f",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          32995000,
+          32995000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_rce_fp_mixed",
+        "elf_sha256": "27aeada5fbc65d218a00a3b3e57d36d0a78e0043fe2a974f7eff2602d0f2eee8",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          32475000,
+          32475000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_ordered_fp16",
+        "elf_sha256": "d72a05cd1c3adf557af85e5e961c5b4a9efb53a779f3a0e483502c99c8e302c9",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          45285000,
+          45285000
+        ],
+        "no_cycle_regression": true
+      },
+      {
+        "app": "reduction_audit_ordered_rounding",
+        "elf_sha256": "197857baf77dda0b9def5eec312793dbc6f0932b2ac91ff3e50cd6e99376f7b1",
+        "baseline_cycles": [],
+        "scalar_cycles": [],
+        "cycle_measurement_available": false,
+        "finish_time_ticks": [
+          125815000,
+          125815000
+        ],
+        "no_cycle_regression": true
+      }
+    ]
+  },
+  "integrated_ppa": {
+    "status": "RUNNING",
+    "run": "hardware/build/synthesis/full_compact_prepare_v1",
+    "started_utc": "2026-10-13T06:51:40.560446+00:00",
+    "driver_pid": 1977440,
+    "dc_pid": 1977501,
+    "container": "synopsys_workspace"
+  },
+  "limitations": [
+    "Local synthesis is not integrated Ara/SoC area or routed Fmax.",
+    "Hold violations remain in both accumulator variants.",
+    "Shared extraction has no completed area comparison yet."
+  ]
+}

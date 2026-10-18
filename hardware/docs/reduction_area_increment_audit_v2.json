@@ -1,0 +1,415 @@
+{
+  "scope": "4-lane historical report comparison; NOT matched causal feature overhead",
+  "reports": [
+    {
+      "path": "/home/wangwy/openproject/dc_ara_main_real/backend/syn/ara_soc/v1-dc/reports/area.rpt",
+      "sha256": "5774d3264a0a6b09d6876c037ca325b0c99889e395c924a3f8d2e8a410a729c6"
+    },
+    {
+      "path": "/home/wangwy/openproject/ara_reduction_optimization/hardware/build/synthesis/full_retry2/backend/syn/ara_soc/v1-dc/reports/area.rpt",
+      "sha256": "8eba5e290f23d8e0f4ca07428b26d676a92e72db83290f0a0854b8729aaf9b27"
+    }
+  ],
+  "ara": {
+    "reference": 915540.9599,
+    "candidate": 1347266.6842,
+    "delta": 431725.7243
+  },
+  "disjoint_groups": {
+    "vmfpu": {
+      "reference": 542460.9056,
+      "candidate": 819771.1110999999,
+      "delta": 277310.2054999998,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_vfus/i_vmfpu",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_vfus/i_vmfpu",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_vfus/i_vmfpu",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_vfus/i_vmfpu"
+      ],
+      "local_comb_delta": 30508.128000000004,
+      "local_seq_delta": 18443.3759
+    },
+    "valu": {
+      "reference": 78442.5592,
+      "candidate": 103632.31079999999,
+      "delta": 25189.75159999999,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_vfus/i_valu",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_vfus/i_valu",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_vfus/i_valu",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_vfus/i_valu"
+      ],
+      "local_comb_delta": 11267.2556,
+      "local_seq_delta": 14588.2796
+    },
+    "operand_requester": {
+      "reference": 41980.00750000001,
+      "candidate": 83287.67910000001,
+      "delta": 41307.6716,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_operand_requester",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_operand_requester",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_operand_requester",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_operand_requester"
+      ],
+      "local_comb_delta": 18427.920000000002,
+      "local_seq_delta": 21043.007599999997
+    },
+    "lane_sequencer": {
+      "reference": 16259.375600000001,
+      "candidate": 28788.8156,
+      "delta": 12529.44,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_lane_sequencer",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_lane_sequencer",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_lane_sequencer",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_lane_sequencer"
+      ],
+      "local_comb_delta": 522.3119999999999,
+      "local_seq_delta": 11299.847999999998
+    },
+    "operand_queues": {
+      "reference": 68911.9188,
+      "candidate": 70145.8788,
+      "delta": 1233.9600000000064,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_operand_queues",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_operand_queues",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_operand_queues",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_operand_queues"
+      ],
+      "local_comb_delta": 0.0,
+      "local_seq_delta": 0.0
+    },
+    "vrf": {
+      "reference": 66605.8908,
+      "candidate": 66886.7868,
+      "delta": 280.8960000000079,
+      "paths": [
+        "i_system/i_ara/gen_lanes_0__i_lane/i_vrf",
+        "i_system/i_ara/gen_lanes_1__i_lane/i_vrf",
+        "i_system/i_ara/gen_lanes_2__i_lane/i_vrf",
+        "i_system/i_ara/gen_lanes_3__i_lane/i_vrf"
+      ],
+      "local_comb_delta": 0.0,
+      "local_seq_delta": 280.896
+    },
+    "rce": {
+      "reference": 0,
+      "candidate": 36522.0236,
+      "delta": 36522.0236,
+      "paths": [
+        "i_system/i_ara/gen_rce_i_rce"
+      ],
+      "local_comb_delta": 8647.4639,
+      "local_seq_delta": 8005.3679
+    },
+    "sldu": {
+      "reference": 16051.7277,
+      "candidate": 30276.7915,
+      "delta": 14225.0638,
+      "paths": [
+        "i_system/i_ara/i_sldu"
+      ],
+      "local_comb_delta": 8604.959900000002,
+      "local_seq_delta": 4822.439899999999
+    },
+    "sequencer": {
+      "reference": 4418.2319,
+      "candidate": 12496.8479,
+      "delta": 8078.616000000001,
+      "paths": [
+        "i_system/i_ara/i_sequencer"
+      ],
+      "local_comb_delta": 3795.2879000000003,
+      "local_seq_delta": 4168.751899999999
+    },
+    "dispatcher": {
+      "reference": 6347.7119,
+      "candidate": 9058.7279,
+      "delta": 2711.0159999999996,
+      "paths": [
+        "i_system/i_ara/i_dispatcher"
+      ],
+      "local_comb_delta": -85.84799999999996,
+      "local_seq_delta": 1362.48
+    },
+    "masku": {
+      "reference": 35419.2714,
+      "candidate": 37578.7435,
+      "delta": 2159.472099999999,
+      "paths": [
+        "i_system/i_ara/i_masku"
+      ],
+      "local_comb_delta": 142.46410000000105,
+      "local_seq_delta": 2201.472
+    },
+    "vlsu": {
+      "reference": 36961.0074,
+      "candidate": 41279.2795,
+      "delta": 4318.272099999995,
+      "paths": [
+        "i_system/i_ara/i_vlsu"
+      ],
+      "local_comb_delta": -2.856,
+      "local_seq_delta": 0.0
+    },
+    "unassigned_glue_and_other": {
+      "reference": 1682.3521000000183,
+      "candidate": 7541.688100000378,
+      "delta": 5859.3360000003595
+    }
+  },
+  "nested_vmfpu_lane0_do_not_add": [
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk2_0__leading_zero_e16_i",
+      "reference": 9.576,
+      "candidate": 11.088
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk2_1__leading_zero_e16_i",
+      "reference": 9.576,
+      "candidate": 11.088
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk2_2__leading_zero_e16_i",
+      "reference": 9.576,
+      "candidate": 11.088
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk2_3__leading_zero_e16_i",
+      "reference": 10.416,
+      "candidate": 10.416
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk3_0__leading_zero_e32_i",
+      "reference": 26.208,
+      "candidate": 28.392
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_genblk3_1__leading_zero_e32_i",
+      "reference": 26.376,
+      "candidate": 28.392
+    },
+    {
+      "lane0_child": "fpu_gen_genblk2_leading_zero_e64",
+      "reference": 71.064,
+      "candidate": 74.088
+    },
+    {
+      "lane0_child": "fpu_gen_i_fpnew_bulk",
+      "reference": 84890.7351,
+      "candidate": 86152.247
+    },
+    {
+      "lane0_child": "fpu_gen_i_fpnew_ordered_fast",
+      "reference": 0,
+      "candidate": 41897.3517
+    },
+    {
+      "lane0_child": "genblk1_0__i_simd_mul_gating_mask",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_0__i_simd_mul_gating_op",
+      "reference": 5.544,
+      "candidate": 5.712
+    },
+    {
+      "lane0_child": "genblk1_0__i_simd_mul_gating_op_a",
+      "reference": 50.232,
+      "candidate": 46.368
+    },
+    {
+      "lane0_child": "genblk1_0__i_simd_mul_gating_op_b",
+      "reference": 44.352,
+      "candidate": 45.36
+    },
+    {
+      "lane0_child": "genblk1_0__i_simd_mul_gating_op_c",
+      "reference": 44.352,
+      "candidate": 45.528
+    },
+    {
+      "lane0_child": "genblk1_1__i_simd_mul_gating_mask",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_1__i_simd_mul_gating_op",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_1__i_simd_mul_gating_op_a",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_1__i_simd_mul_gating_op_b",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_1__i_simd_mul_gating_op_c",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_2__i_simd_mul_gating_mask",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_2__i_simd_mul_gating_op",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_2__i_simd_mul_gating_op_a",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_2__i_simd_mul_gating_op_b",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_2__i_simd_mul_gating_op_c",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_3__i_simd_mul_gating_mask",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_3__i_simd_mul_gating_op",
+      "reference": 5.376,
+      "candidate": 5.376
+    },
+    {
+      "lane0_child": "genblk1_3__i_simd_mul_gating_op_a",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_3__i_simd_mul_gating_op_b",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk1_3__i_simd_mul_gating_op_c",
+      "reference": 44.016,
+      "candidate": 44.016
+    },
+    {
+      "lane0_child": "genblk3_genblk1_0__leading_zero_e16_i",
+      "reference": 9.576,
+      "candidate": 9.576
+    },
+    {
+      "lane0_child": "genblk4_leading_zero_e32",
+      "reference": 24.528,
+      "candidate": 24.528
+    },
+    {
+      "lane0_child": "i_fp32_exact_reduction_accum",
+      "reference": 0,
+      "candidate": 18218.2558
+    },
+    {
+      "lane0_child": "i_mask_operand_register",
+      "reference": 487.536,
+      "candidate": 487.032
+    },
+    {
+      "lane0_child": "i_mfpu_reduction_spill_register",
+      "reference": 488.376,
+      "candidate": 493.416
+    },
+    {
+      "lane0_child": "i_simd_div",
+      "reference": 4060.0559,
+      "candidate": 4380.4319
+    },
+    {
+      "lane0_child": "i_simd_mul_ew16",
+      "reference": 5655.5519,
+      "candidate": 4498.1999
+    },
+    {
+      "lane0_child": "i_simd_mul_ew32",
+      "reference": 8920.1279,
+      "candidate": 8481.9839
+    },
+    {
+      "lane0_child": "i_simd_mul_ew64",
+      "reference": 14531.9998,
+      "candidate": 13472.0878
+    },
+    {
+      "lane0_child": "i_simd_mul_ew8",
+      "reference": 2624.16,
+      "candidate": 2494.632
+    },
+    {
+      "lane0_child": "i_simd_mul_manual_clk_gate",
+      "reference": 2.52,
+      "candidate": 2.52
+    }
+  ],
+  "nested_vmfpu_four_lanes_do_not_add": [
+    {
+      "child": "fpu_gen_i_fpnew_bulk",
+      "reference": 341203.9644,
+      "candidate": 343711.532,
+      "delta": 2507.5676000000094
+    },
+    {
+      "child": "fpu_gen_i_fpnew_ordered_fast",
+      "reference": 0,
+      "candidate": 164339.6147,
+      "delta": 164339.6147
+    },
+    {
+      "child": "i_fp32_exact_reduction_accum",
+      "reference": 0,
+      "candidate": 72761.9753,
+      "delta": 72761.9753
+    },
+    {
+      "child": "i_simd_mul_ew8",
+      "reference": 10565.184,
+      "candidate": 9978.864000000001,
+      "delta": -586.3199999999979
+    },
+    {
+      "child": "i_simd_mul_ew16",
+      "reference": 22457.231600000003,
+      "candidate": 17979.1916,
+      "delta": -4478.0400000000045
+    },
+    {
+      "child": "i_simd_mul_ew32",
+      "reference": 35620.031599999995,
+      "candidate": 33877.3676,
+      "delta": -1742.663999999997
+    },
+    {
+      "child": "i_simd_mul_ew64",
+      "reference": 59930.9752,
+      "candidate": 53917.07919999999,
+      "delta": -6013.896000000008
+    },
+    {
+      "child": "i_simd_div",
+      "reference": 16127.9996,
+      "candidate": 17476.8716,
+      "delta": 1348.8719999999994
+    }
+  ]
+}

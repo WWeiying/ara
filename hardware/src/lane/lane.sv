@@ -38,6 +38,14 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                                           clk_i,
     input  logic                                           rst_ni,
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    output ordered_add_request_t ordered_add_request_o,
+    output logic ordered_add_valid_o,
+    input logic ordered_add_ready_i,
+    input ordered_add_response_t ordered_add_response_i,
+    input logic ordered_add_response_valid_i,
+    output logic ordered_add_response_ready_o,
+`endif
     // Scan chain
     input  logic                                           scan_enable_i,
     input  logic                                           scan_data_i,
@@ -330,6 +338,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic                                       alu_result_is_reduction;
   vaddr_t                                     alu_result_addr;
   elen_t                                      alu_result_wdata;
+  elen_t                                      alu_red_data;
   strb_t                                      alu_result_be;
   logic                                       alu_result_gnt;
   // Multiplier/FPU
@@ -339,6 +348,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic                                       mfpu_result_is_reduction;
   vaddr_t                                     mfpu_result_addr;
   elen_t                                      mfpu_result_wdata;
+  elen_t                                      mfpu_red_data;
   strb_t                                      mfpu_result_be;
   logic                                       mfpu_result_gnt;
   ara_rce_pkg::rce_external_write_t [1:0] external_write;
@@ -402,6 +412,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .operand_request_cmd_t(operand_request_cmd_t),
     .operand_queue_cmd_t  (operand_queue_cmd_t  )
   ) i_operand_requester (
+    .lane_id_i                (lane_id_i              ),
     .rce_external_write_o(external_write),
     .rce_external_write_valid_o(external_write_valid),
     .clk_i                    (clk_i                   ),
@@ -634,6 +645,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .vaddr_t        (vaddr_t        ),
     .vfu_operation_t(vfu_operation_t)
   ) i_vfus (
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    .ordered_add_request_o, .ordered_add_valid_o, .ordered_add_ready_i,
+    .ordered_add_response_i, .ordered_add_response_valid_i, .ordered_add_response_ready_o,
+`endif
     .clk_i                (clk_i                                  ),
     .rst_ni               (rst_ni                                 ),
     .lane_id_i            (lane_id_i                              ),
@@ -673,6 +688,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .alu_result_is_reduction_o(alu_result_is_reduction            ),
     .alu_result_addr_o    (alu_result_addr                        ),
     .alu_result_wdata_o   (alu_result_wdata                       ),
+    .alu_red_data_o       (alu_red_data                           ),
     .alu_result_be_o      (alu_result_be                          ),
     .alu_result_gnt_i     (alu_result_gnt                         ),
     // MFPU
@@ -682,6 +698,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .mfpu_result_is_reduction_o(mfpu_result_is_reduction          ),
     .mfpu_result_addr_o   (mfpu_result_addr                       ),
     .mfpu_result_wdata_o  (mfpu_result_wdata                      ),
+    .mfpu_red_data_o      (mfpu_red_data                          ),
     .mfpu_result_be_o     (mfpu_result_be                         ),
     .mfpu_result_gnt_i    (mfpu_result_gnt                        ),
     // Interface with the Slide Unit
@@ -822,8 +839,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .N_INP (3) // ALU, FPU, OpQueue
   ) i_sldu_addrgen_stream_mux (
     .inp_data_i ({
-      (sldu_addrgen_sel_q == RCE_FP_RED_SEL ? rce_partial_local.data : mfpu_result_wdata),
-      (sldu_addrgen_sel_q == RCE_RED_SEL ? rce_partial_local.data : alu_result_wdata),
+      (sldu_addrgen_sel_q == RCE_FP_RED_SEL ? rce_partial_local.data : mfpu_red_data),
+      (sldu_addrgen_sel_q == RCE_RED_SEL ? rce_partial_local.data : alu_red_data),
       sldu_addrgen_operand_opqueues}),
     .inp_valid_i({
       (sldu_addrgen_sel_q == RCE_FP_RED_SEL ? rce_partial_local_valid : sldu_mfpu_req_valid_o),

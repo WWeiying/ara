@@ -22,6 +22,9 @@ endif
 include $(ARA_DIR)/config/$(config).mk
 include $(ARA_DIR)/config/sram.mk
 
+# One supported reduction implementation for this research branch.
+include $(ARA_DIR)/config/reduction.mk
+
 # build path
 buildpath      ?= $(ARA_DIR)/hardware/build
 resultpath     ?= results
@@ -186,7 +189,6 @@ endif
 ifneq ($(filter $(reduction_rce_result_depth),2 4),$(reduction_rce_result_depth))
   $(error reduction_rce_result_depth must be 2 or 4)
 endif
-bender_defs += --define ARA_RED_RCE_RESULT_DEPTH=$(reduction_rce_result_depth)
 reduction_rce_alu_result_depth ?= $(reduction_rce_result_depth)
 reduction_rce_fp_result_depth ?= $(reduction_rce_result_depth)
 ifneq ($(filter $(reduction_rce_alu_result_depth),2 4),$(reduction_rce_alu_result_depth))
@@ -258,6 +260,31 @@ reduction_tree_stage_pipeline ?= 0
 reduction_ordered_interleave  ?= 0
 reduction_source_fusion       ?= 0
 reduction_ordered_fast        ?= 0
+# Independent area ablations; keep the legacy path available for comparison.
+reduction_ordered_add_only    ?= 0
+reduction_ordered_scalar_add  ?= 0
+reduction_ordered_output_reg  ?= 0
+reduction_shared_finalize_extract ?= 0
+reduction_shared_exact_update ?= 0
+reduction_shared_exact_normalize ?= 0
+reduction_shared_forward_capture ?= 0
+reduction_shared_issue_descriptor ?= 0
+reduction_exact_collision_forward ?= 0
+reduction_exact_direct_bin_read ?= 0
+reduction_compact_exact_segments ?= 0
+reduction_wide_exact_segments ?= 0
+reduction_shared_ordered_add ?= 0
+reduction_shared_rce_add ?= 0
+reduction_ordered_ready_independent_mask ?= 0
+reduction_static_legacy_state ?= 0
+reduction_context_issue_cut ?= 0
+reduction_compact_ordered_backend ?= 0
+reduction_static_ordered_arbiter ?= 0
+reduction_shared_ordered_units ?= 1
+reduction_root_only_result_cache ?= 0
+reduction_arithmetic_only_forward ?= 0
+reduction_prune_legacy_int_stream ?= 0
+reduction_prune_legacy_fp_stream ?= 0
 reduction_exact_sum           ?= 0
 reduction_exact_segmented     ?= 0
 reduction_exact_global        ?= 0
@@ -395,6 +422,125 @@ ifeq ($(reduction_ordered_fast),1)
   endif
   bender_defs += --define ARA_RED_ORDERED_FAST_4LANE=1
 endif
+ifeq ($(reduction_ordered_add_only),1)
+  ifneq ($(reduction_ordered_fast),1)
+    $(error reduction_ordered_add_only requires reduction_ordered_fast=1)
+  endif
+  bender_defs += --define ARA_RED_ORDERED_ADD_ONLY=1
+endif
+ifeq ($(reduction_ordered_scalar_add),1)
+  ifneq ($(reduction_ordered_fast),1)
+    $(error reduction_ordered_scalar_add requires reduction_ordered_fast=1)
+  endif
+  bender_defs += --define ARA_RED_ORDERED_SCALAR_ADD=1
+endif
+ifeq ($(reduction_ordered_output_reg),1)
+  ifneq ($(reduction_ordered_scalar_add),1)
+    $(error reduction_ordered_output_reg requires reduction_ordered_scalar_add=1)
+  endif
+  bender_defs += --define ARA_RED_ORDERED_OUTPUT_REG=1
+endif
+
+ifeq ($(reduction_shared_finalize_extract),1)
+  bender_defs += --define ARA_RED_SHARED_FINALIZE_EXTRACT=1
+endif
+ifeq ($(reduction_shared_exact_update),1)
+  bender_defs += --define ARA_RED_SHARED_EXACT_UPDATE=1
+endif
+ifeq ($(reduction_shared_exact_normalize),1)
+  bender_defs += --define ARA_RED_SHARED_EXACT_NORMALIZE=1
+endif
+ifeq ($(reduction_compact_exact_segments),1)
+  ifneq ($(reduction_exact_segmented),1)
+    $(error compact exact segments require reduction_exact_segmented=1)
+  endif
+  bender_defs += --define ARA_RED_COMPACT_EXACT_SEGMENTS=1
+endif
+ifeq ($(reduction_shared_forward_capture),1)
+  bender_defs += --define ARA_RED_SHARED_FORWARD_CAPTURE=1
+endif
+ifeq ($(reduction_shared_issue_descriptor),1)
+  bender_defs += --define ARA_RED_SHARED_ISSUE_DESCRIPTOR=1
+endif
+ifeq ($(reduction_root_only_result_cache),1)
+  ifneq ($(reduction_chain_bypass),1)
+    $(error root-only result cache requires reduction_chain_bypass=1)
+  endif
+  bender_defs += --define ARA_RED_ROOT_ONLY_RESULT_CACHE=1
+endif
+ifeq ($(reduction_arithmetic_only_forward),1)
+  ifneq ($(reduction_chain_bypass),1)
+    $(error arithmetic-only forwarding requires reduction_chain_bypass=1)
+  endif
+  bender_defs += --define ARA_RED_ARITHMETIC_ONLY_FORWARD=1
+endif
+ifeq ($(reduction_exact_collision_forward),1)
+  bender_defs += --define ARA_RED_EXACT_COLLISION_FORWARD=1
+endif
+ifeq ($(reduction_prune_legacy_int_stream),1)
+  bender_defs += --define ARA_RED_PRUNE_LEGACY_INT_STREAM=1
+endif
+ifeq ($(reduction_prune_legacy_fp_stream),1)
+  ifneq ($(reduction_exact_sum)$(reduction_exact_global)$(reduction_exact_fp16)$(reduction_rce_fp_minmax)$(reduction_rce_exact_direct),11111)
+    $(error FP legacy stream pruning requires exact_sum/global/fp16 and rce_fp_minmax/exact_direct)
+  endif
+  bender_defs += --define ARA_RED_PRUNE_LEGACY_FP_STREAM=1
+endif
+ifeq ($(reduction_shared_rce_add),1)
+  ifneq ($(reduction_shared_ordered_add),1)
+    $(error shared RCE ADD requires reduction_shared_ordered_add=1)
+  endif
+  ifneq ($(reduction_rce_fp64_sum),1)
+    $(error shared RCE ADD requires reduction_rce_fp64_sum=1)
+  endif
+  bender_defs += --define ARA_RED_SHARED_RCE_ADD=1
+endif
+ifeq ($(reduction_compact_ordered_backend),1)
+  ifneq ($(reduction_shared_ordered_add),1)
+    $(error compact ordered backend requires reduction_shared_ordered_add=1)
+  endif
+  bender_defs += --define ARA_RED_COMPACT_ORDERED_BACKEND=1
+endif
+ifeq ($(reduction_static_ordered_arbiter),1)
+  ifneq ($(reduction_shared_ordered_add),1)
+    $(error static ordered arbiter requires reduction_shared_ordered_add=1)
+  endif
+  bender_defs += --define ARA_RED_STATIC_ORDERED_ARBITER=1
+endif
+ifeq ($(reduction_static_legacy_state),1)
+  bender_defs += --define ARA_RED_STATIC_LEGACY_STATE=1
+endif
+ifeq ($(reduction_exact_direct_bin_read),1)
+  bender_defs += --define ARA_RED_EXACT_DIRECT_BIN_READ=1
+endif
+ifeq ($(reduction_wide_exact_segments),1)
+  bender_defs += --define ARA_RED_WIDE_EXACT_SEGMENTS=1
+endif
+ifeq ($(reduction_context_issue_cut),1)
+  ifneq ($(reduction_context_flow),1)
+    $(error context issue cut requires reduction_context_flow=1)
+  endif
+  bender_defs += --define ARA_RED_CONTEXT_ISSUE_CUT=1
+endif
+ifeq ($(reduction_ordered_ready_independent_mask),1)
+  ifneq ($(reduction_shared_ordered_add),1)
+    $(error independent ordered mask requires reduction_shared_ordered_add=1)
+  endif
+  bender_defs += --define ARA_RED_ORDERED_READY_INDEPENDENT_MASK=1
+endif
+ifeq ($(reduction_shared_ordered_add),1)
+  ifneq ($(words $(reduction_shared_ordered_units)),1)
+    $(error reduction_shared_ordered_units must be 1 or 2)
+  endif
+  ifeq ($(filter $(reduction_shared_ordered_units),1 2),)
+    $(error reduction_shared_ordered_units must be 1 or 2)
+  endif
+  ifneq ($(reduction_ordered_fast)$(reduction_ordered_scalar_add)$(reduction_ordered_output_reg),111)
+    $(error shared ordered ADD requires ordered_fast=1, ordered_scalar_add=1, ordered_output_reg=1)
+  endif
+  bender_defs += --define ARA_RED_SHARED_ORDERED_ADD=1 --define ARA_RED_SHARED_ORDERED_UNITS=$(reduction_shared_ordered_units)
+endif
+
 ifeq ($(reduction_exact_sum),1)
   ifneq ($(nr_lanes),4)
     $(error reduction_exact_sum currently requires nr_lanes=4)
@@ -618,25 +764,36 @@ trace:
 	@./run/scripts/compare_traces.py -g ./run/log/ref_trace.log -d ./run/log/dut_trace.log -o ./run/log/diff_report
 	@head -n 20 ./run/log/diff_report
 
-dc:
-	@echo "1.Generating dc flist"
-	@$(BENDER) script verilator $(bender_targs_dc) $(bender_defs_veril) > ../backend/flist/ara_soc.f
-	@cd ../backend/flist && cat ara_soc.f | \
-	grep -v "incdir" | \
-	grep -v "+define"| \
-	grep -v "ara_tb_verilator.sv"| \
-	grep -v "_pkg.sv" > rtl.temp
-	@cd ../backend/flist && cat ara_soc.f | grep "incdir"      >  incdir.temp 
-	@cd ../backend/flist && echo "+define+SYNTHESIS"           >  defines.temp 
-	@cd ../backend/flist && echo "+define+HPDCACHE_ASSERT_OFF" >> defines.temp 
-	@cd ../backend/flist && cat ara_soc.f | grep "+define"     >> defines.temp 
-	@cd ../backend/flist && cat ara_soc.f | grep "_pkg.sv"     >  packages.temp 
-	@cd ../backend/flist && cat incdir.temp   >  ara_soc_dc.f
-	@cd ../backend/flist && cat defines.temp  >> ara_soc_dc.f
-	@cd ../backend/flist && cat packages.temp >> ara_soc_dc.f
-	@cd ../backend/flist && cat rtl.temp      >> ara_soc_dc.f
-	@echo "2.Synthesis"
-	@cd ../backend/syn/ara_soc/v1-dc/run/ && ./run.cmd
+# Full-SoC reduction synthesis: prepare/check never launch Design Compiler.
+# Preserve the familiar `make dc` entry, but run only a prepared snapshot.
+override dc_profile := reduction
+dc_out ?= $(ARA_DIR)/hardware/build/synthesis/$(dc_profile)
+dc_period ?= 1.0
+dc_cores ?= 8
+DC_FLOW := $(ARA_DIR)/hardware/scripts/synthesis/unified.py
+.PHONY: dc dc_flist dc_preflight dc_status dc_check_options
+
+dc_check_options:
+	@test "$(nr_lanes):$(vlen):$(config)" = "4:1024:default" || { echo 'DC profiles require config=default, nr_lanes=4, vlen=1024.' >&2; exit 1; }
+	@test "$(ideal_dispatcher)" != "1" || { echo 'DC uses real CVA6; ideal_dispatcher is not supported.' >&2; exit 1; }
+	@test -z "$(filter reduction_%,$(foreach v,$(.VARIABLES),$(if $(filter command line,$(origin $(v))),$(v))))" || { echo 'The reduction configuration is fixed; per-feature overrides are not accepted.' >&2; exit 1; }
+
+
+dc_flist: dc_check_options
+	@python3 "$(DC_FLOW)" prepare --profile "$(dc_profile)" --out "$(dc_out)" --period "$(dc_period)" --cores "$(dc_cores)"
+
+dc_preflight: dc_check_options
+	@if [ -f "$(dc_out)/manifest.json" ]; then \
+	  python3 "$(DC_FLOW)" check --out "$(dc_out)"; \
+	else \
+	  $(MAKE) --no-print-directory dc_flist; \
+	fi
+
+dc: dc_check_options
+	@python3 "$(DC_FLOW)" run --out "$(dc_out)"
+
+dc_status:
+	@python3 "$(DC_FLOW)" status --out "$(dc_out)"
 
 sram:
 	@$(call generate_sram, $(spsram127_techlib_path), $(L2_SRAM_CONFIGS))

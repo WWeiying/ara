@@ -9,7 +9,14 @@
 // metadata inputs preserve IEEE-754 special-value and signed-zero behavior.
 
 module fp32_exact_reduction_finalize #(
-  parameter integer AccWidth = 288
+  parameter integer AccWidth = 288,
+  // Share format-dependent extraction without adding a pipeline stage.
+  parameter bit SharedExtract =
+`ifdef ARA_RED_SHARED_FINALIZE_EXTRACT
+    1'b1
+`else
+    1'b0
+`endif
 ) (
   input  logic signed [AccWidth-1:0] exact_value_i,
   // {nan, invalid, positive infinity, negative infinity}
@@ -78,34 +85,31 @@ module fp32_exact_reduction_finalize #(
     input logic [31:0] value,
     input logic format_fp16
   );
-    accumulator_t magnitude;
-    logic [23:0] significand32;
-    logic [10:0] significand16;
+    // Negate at native significand width, before sign extension and alignment.
+    // -(m << s) == sign_extend(-m) << s in the exact accumulator domain.
+    logic signed [24:0] significand;
     int unsigned shift;
     begin
-      magnitude = '0;
+      significand = '0;
+      shift = 0;
       if (format_fp16) begin
-        if (value[14:10] == 5'h00) begin
-          magnitude = value[9:0];
-          magnitude = magnitude <<< 125;
+        if (value[14:10] == 0) begin
+          significand = $signed({15'b0, value[9:0]});
+          shift = 125;
         end else if (value[14:10] != 5'h1f) begin
-          significand16 = {1'b1, value[9:0]};
-          shift = value[14:10] + 124;
-          magnitude = significand16;
-          magnitude = magnitude <<< shift;
+          significand = $signed({14'b0, 1'b1, value[9:0]});
+          shift = int'(value[14:10]) + 124;
         end
-        value_to_fixed = value[15] ? -magnitude : magnitude;
       end else begin
-        if (value[30:23] == 8'h00) begin
-          magnitude[22:0] = value[22:0];
+        if (value[30:23] == 0) begin
+          significand = $signed({2'b0, value[22:0]});
         end else if (value[30:23] != 8'hff) begin
-          significand32 = {1'b1, value[22:0]};
-          shift = value[30:23] - 1'b1;
-          magnitude = significand32;
-          magnitude = magnitude <<< shift;
+          significand = $signed({1'b0, 1'b1, value[22:0]});
+          shift = int'(value[30:23]) - 1;
         end
-        value_to_fixed = value[31] ? -magnitude : magnitude;
       end
+      if (value_sign(value, format_fp16)) significand = -significand;
+      value_to_fixed = accumulator_t'(significand) <<< shift;
     end
   endfunction
 
@@ -217,7 +221,10 @@ module fp32_exact_reduction_finalize #(
     input logic [2:0] round_mode,
     input logic finite_nonzero_seen,
     input logic pos_zero_seen,
-    input logic neg_zero_seen
+    input logic neg_zero_seen,
+    input logic [23:0] extracted_significand,
+    input logic extracted_guard,
+    input logic extracted_sticky
   );
     logic zero_sign;
     logic [23:0] significand;
@@ -251,14 +258,20 @@ module fp32_exact_reduction_finalize #(
           flags[2] = 1'b1;
           flags[0] = 1'b1;
         end else begin
-          significand = magnitude >>> shift;
-          guard_bit = 1'b0;
-          sticky_bit = 1'b0;
-          if (shift > 0)
-            guard_bit = magnitude[shift-1];
-          for (int i = 0; i < AccWidth; i++)
-            if (i < (shift-1))
-              sticky_bit |= magnitude[i];
+          if (SharedExtract) begin
+            significand = extracted_significand;
+            guard_bit = extracted_guard;
+            sticky_bit = extracted_sticky;
+          end else begin
+            significand = magnitude >>> shift;
+            guard_bit = 1'b0;
+            sticky_bit = 1'b0;
+            if (shift > 0)
+              guard_bit = magnitude[shift-1];
+            for (int i = 0; i < AccWidth; i++)
+              if (i < (shift-1))
+                sticky_bit |= magnitude[i];
+          end
           inexact = guard_bit | sticky_bit;
 
           unique case (round_mode)
@@ -312,7 +325,10 @@ module fp32_exact_reduction_finalize #(
     input logic [2:0] round_mode,
     input logic finite_nonzero_seen,
     input logic pos_zero_seen,
-    input logic neg_zero_seen
+    input logic neg_zero_seen,
+    input logic [23:0] extracted_significand,
+    input logic extracted_guard,
+    input logic extracted_sticky
   );
     logic zero_sign;
     logic [10:0] significand;
@@ -346,14 +362,20 @@ module fp32_exact_reduction_finalize #(
           flags[2] = 1'b1;
           flags[0] = 1'b1;
         end else begin
-          significand = magnitude >>> shift;
-          guard_bit = 1'b0;
-          sticky_bit = 1'b0;
-          if (shift > 0)
-            guard_bit = magnitude[shift-1];
-          for (int i = 0; i < AccWidth; i++)
-            if (i < (shift-1))
-              sticky_bit |= magnitude[i];
+          if (SharedExtract) begin
+            significand = extracted_significand;
+            guard_bit = extracted_guard;
+            sticky_bit = extracted_sticky;
+          end else begin
+            significand = magnitude >>> shift;
+            guard_bit = 1'b0;
+            sticky_bit = 1'b0;
+            if (shift > 0)
+              guard_bit = magnitude[shift-1];
+            for (int i = 0; i < AccWidth; i++)
+              if (i < (shift-1))
+                sticky_bit |= magnitude[i];
+          end
           inexact = guard_bit | sticky_bit;
 
           unique case (round_mode)
@@ -408,6 +430,9 @@ module fp32_exact_reduction_finalize #(
     logic insert_seed;
     logic sign;
     int msb;
+    int extract_shift;
+    logic [23:0] extracted_significand;
+    logic extracted_guard, extracted_sticky;
 
     rounded = '0;
     rounded_fp16 = '0;
@@ -440,6 +465,20 @@ module fp32_exact_reduction_finalize #(
     sign = effective_exact[AccWidth-1];
     magnitude = sign ? -effective_exact : effective_exact;
     msb = exact_msb(magnitude);
+    // A single 24-bit window also supplies the low 11 bits for binary16.
+    // Subnormal and special results bypass this window in the rounders.
+    extract_shift = 0;
+    extracted_significand = '0;
+    extracted_guard = 1'b0;
+    extracted_sticky = 1'b0;
+    if (SharedExtract) begin
+      if (format_fp16_i && msb >= 135) extract_shift = msb - 10;
+      else if (!format_fp16_i && msb >= 23) extract_shift = msb - 23;
+      extracted_significand = magnitude >>> extract_shift;
+      if (extract_shift > 0) extracted_guard = magnitude[extract_shift-1];
+      for (int i = 0; i < AccWidth; i++)
+        if (i < extract_shift-1) extracted_sticky |= magnitude[i];
+    end
     result_o = '0;
     status_o = '0;
 
@@ -463,14 +502,18 @@ module fp32_exact_reduction_finalize #(
       rounded_fp16 = round_fixed_fp16(magnitude, sign, msb, rnd_mode_i,
                                       effective_finite_nonzero_seen,
                                       effective_pos_zero_seen,
-                                      effective_neg_zero_seen);
+                                      effective_neg_zero_seen,
+                                      extracted_significand, extracted_guard,
+                                      extracted_sticky);
       status_o = rounded_fp16[20:16];
       result_o = {16'b0, rounded_fp16[15:0]};
     end else begin
       rounded = round_fixed(magnitude, sign, msb, rnd_mode_i,
                             effective_finite_nonzero_seen,
                             effective_pos_zero_seen,
-                            effective_neg_zero_seen);
+                            effective_neg_zero_seen,
+                            extracted_significand, extracted_guard,
+                            extracted_sticky);
       status_o = rounded[36:32];
       result_o = rounded[31:0];
     end
@@ -483,4 +526,156 @@ module fp32_exact_reduction_finalize #(
   end
 `endif
 
+endmodule
+
+// Exact seed binding stage for the central RCE. Its outputs are captured in
+// the existing root/metadata registers before final normalization and rounding.
+// The original finalizer remains usable as a combinational standalone block.
+module fp32_exact_reduction_seed #(parameter integer AccWidth = 288) (
+  input logic signed [AccWidth-1:0] exact_value_i,
+  input logic [3:0] special_i,
+  input logic finite_nonzero_seen_i, pos_zero_seen_i, neg_zero_seen_i,
+  input logic seed_valid_i, seed_in_exact_i,
+  input logic [31:0] seed_i,
+  input logic format_fp16_i,
+  output logic signed [AccWidth-1:0] exact_value_o,
+  // Conversion alone, shared with the RCE header preload. It bypasses the
+  // wide root adder; checking window fit must not follow that carry chain.
+  output logic signed [AccWidth-1:0] seed_fixed_o,
+  output logic [3:0] special_o,
+  output logic finite_nonzero_seen_o, pos_zero_seen_o, neg_zero_seen_o
+);
+  typedef logic signed [AccWidth-1:0] accumulator_t;
+  function automatic logic value_is_nan(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_nan = format_fp16
+                 ? ((&value[14:10]) && (|value[9:0]))
+                 : ((&value[30:23]) && (|value[22:0]));
+  endfunction
+
+  function automatic logic value_is_snan(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_snan = value_is_nan(value, format_fp16) &&
+                    (format_fp16 ? !value[9] : !value[22]);
+  endfunction
+
+  function automatic logic value_is_inf(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_inf = format_fp16
+                 ? ((&value[14:10]) && !(|value[9:0]))
+                 : ((&value[30:23]) && !(|value[22:0]));
+  endfunction
+
+  function automatic logic value_is_zero(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_is_zero = format_fp16 ? !(|value[14:0])
+                                : !(|value[30:0]);
+  endfunction
+
+  function automatic logic value_sign(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    value_sign = format_fp16 ? value[15] : value[31];
+  endfunction
+
+  function automatic accumulator_t value_to_fixed(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    // Negate at native significand width, before sign extension and alignment.
+    // -(m << s) == sign_extend(-m) << s in the exact accumulator domain.
+    logic signed [24:0] significand;
+    int unsigned shift;
+    begin
+      significand = '0;
+      shift = 0;
+      if (format_fp16) begin
+        if (value[14:10] == 0) begin
+          significand = $signed({15'b0, value[9:0]});
+          shift = 125;
+        end else if (value[14:10] != 5'h1f) begin
+          significand = $signed({14'b0, 1'b1, value[9:0]});
+          shift = int'(value[14:10]) + 124;
+        end
+      end else begin
+        if (value[30:23] == 0) begin
+          significand = $signed({2'b0, value[22:0]});
+        end else if (value[30:23] != 8'hff) begin
+          significand = $signed({1'b0, 1'b1, value[22:0]});
+          shift = int'(value[30:23]) - 1;
+        end
+      end
+      if (value_sign(value, format_fp16)) significand = -significand;
+      value_to_fixed = accumulator_t'(significand) <<< shift;
+    end
+  endfunction
+
+  function automatic logic [3:0] value_special(
+    input logic [31:0] value,
+    input logic format_fp16
+  );
+    logic sign;
+    begin
+      value_special = '0;
+      sign = value_sign(value, format_fp16);
+      if (value_is_nan(value, format_fp16)) begin
+        value_special[3] = 1'b1;
+        value_special[2] = value_is_snan(value, format_fp16);
+      end else if (value_is_inf(value, format_fp16)) begin
+        value_special[1] = !sign;
+        value_special[0] = sign;
+      end
+    end
+  endfunction
+
+  function automatic logic [3:0] merge_special(
+    input logic [3:0] left,
+    input logic [3:0] right
+  );
+    begin
+      merge_special = '0;
+      merge_special[2] = left[2] | right[2];
+      if (left[3] || right[3]) begin
+        merge_special[3] = 1'b1;
+      end else if ((left[1] && right[0]) ||
+                   (left[0] && right[1])) begin
+        merge_special[3] = 1'b1;
+        merge_special[2] = 1'b1;
+      end else begin
+        merge_special[1] = left[1] | right[1];
+        merge_special[0] = left[0] | right[0];
+      end
+    end
+  endfunction
+
+
+  always_comb begin
+    seed_fixed_o = '0;
+    if (seed_valid_i && !seed_in_exact_i &&
+        !value_is_nan(seed_i, format_fp16_i) && !value_is_inf(seed_i, format_fp16_i))
+      seed_fixed_o = value_to_fixed(seed_i, format_fp16_i);
+    exact_value_o = exact_value_i;
+    special_o = special_i;
+    finite_nonzero_seen_o = finite_nonzero_seen_i;
+    pos_zero_seen_o = pos_zero_seen_i;
+    neg_zero_seen_o = neg_zero_seen_i;
+    if (seed_valid_i && !seed_in_exact_i) begin
+      special_o = merge_special(special_i, value_special(seed_i, format_fp16_i));
+      finite_nonzero_seen_o |= !value_is_nan(seed_i, format_fp16_i) &&
+        !value_is_inf(seed_i, format_fp16_i) && !value_is_zero(seed_i, format_fp16_i);
+      pos_zero_seen_o |= value_is_zero(seed_i, format_fp16_i) && !value_sign(seed_i, format_fp16_i);
+      neg_zero_seen_o |= value_is_zero(seed_i, format_fp16_i) && value_sign(seed_i, format_fp16_i);
+      if (!value_is_nan(seed_i, format_fp16_i) && !value_is_inf(seed_i, format_fp16_i))
+        exact_value_o = exact_value_i + seed_fixed_o;
+    end
+  end
 endmodule

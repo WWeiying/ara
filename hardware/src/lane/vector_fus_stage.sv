@@ -27,6 +27,14 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
   ) (
     input  logic                              clk_i,
     input  logic                              rst_ni,
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    output ordered_add_request_t ordered_add_request_o,
+    output logic ordered_add_valid_o,
+    input logic ordered_add_ready_i,
+    input ordered_add_response_t ordered_add_response_i,
+    input logic ordered_add_response_valid_i,
+    output logic ordered_add_response_ready_o,
+`endif
     input  logic [idx_width(NrLanes)-1:0]     lane_id_i,
     // Interface with Dispatcher
     output logic                              vxsat_flag_o,
@@ -84,6 +92,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     output strb_t                             mfpu_result_be_o,
     input  logic                              mfpu_result_gnt_i,
     // Interface with the Slide Unit
+    output elen_t                             alu_red_data_o,
+    output elen_t                             mfpu_red_data_o,
     input  elen_t                             sldu_operand_i,
     output logic                              sldu_alu_req_valid_o,
     input  logic                              sldu_alu_valid_i,
@@ -169,6 +179,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .alu_result_version_o (alu_result_version_o           ),
     .alu_result_is_reduction_o(alu_result_is_reduction_o  ),
     .alu_result_wdata_o   (alu_result_wdata_o             ),
+    .alu_red_data_o       (alu_red_data_o                 ),
     .alu_result_be_o      (alu_result_be_o                ),
     .alu_result_gnt_i     (alu_result_gnt_i               ),
     // Interface with the Slide Unit
@@ -201,6 +212,10 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .vaddr_t        (vaddr_t        ),
     .vfu_operation_t(vfu_operation_t)
   ) i_vmfpu (
+`ifdef ARA_RED_SHARED_ORDERED_ADD
+    .ordered_add_request_o, .ordered_add_valid_o, .ordered_add_ready_i,
+    .ordered_add_response_i, .ordered_add_response_valid_i, .ordered_add_response_ready_o,
+`endif
     .clk_i                (clk_i                           ),
     .rst_ni               (rst_ni                          ),
     .lane_id_i            (lane_id_i                       ),
@@ -239,6 +254,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mfpu_result_is_reduction_o(mfpu_result_is_reduction_o ),
     .mfpu_result_addr_o   (mfpu_result_addr_o              ),
     .mfpu_result_wdata_o  (mfpu_result_wdata_o             ),
+    .mfpu_red_data_o      (mfpu_red_data_o                ),
     .mfpu_result_be_o     (mfpu_result_be_o                ),
     .mfpu_result_gnt_i    (mfpu_result_gnt_i               ),
     // Interface with the Slide Unit
